@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0269](BE-0269-ios-alert-guard-early-wait-intervention.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0269") |
+| Implementing PR | [#1122](https://github.com/bajutsu-e2e/bajutsu/pull/1122) |
 | Topic | Platform support |
 <!-- /BE-METADATA -->
 
@@ -115,13 +116,26 @@ that cadence.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — deterministic pre-check reusing the existing `shows_app_ui` (`bajutsu/elements.py`)
-      on the already-fetched poll result across every screen-polling branch (`for`/`gone`
-      /`screenChanged`/`settled`); the network `request` branch is out of scope.
-- [ ] Unit 2 — debounce the heuristic over a short run of consecutive polls before acting.
-- [ ] Unit 3 — thread a guard callback into `_wait()` (and `_wait_settled`) so a debounced hit
+- [x] Unit 1 — deterministic pre-check reusing the existing `shows_app_ui` (`bajutsu/elements.py`)
+      on the already-fetched poll result across the screen-polling branches that a system alert can
+      *stall* — `for`/`screenChanged`/`settled`. Narrowed from the proposal's list: `gone` is **not**
+      guarded (a collapsed tree already satisfies "gone" and returns at once, so no timeout is
+      wasted — guarding it would mean redefining "gone" to reject a blank screen, out of scope), and
+      the network `request` branch remains out of scope.
+- [x] Unit 2 — debounce the heuristic over a short run of consecutive polls before acting
+      (`_GUARD_DEBOUNCE_POLLS`, mirroring `_SETTLE_POLLS`).
+- [x] Unit 3 — thread a guard callback into `_wait()` (and `_wait_settled`) so a debounced hit
       triggers the guard in place and polling resumes against the original `deadline`.
-- [ ] Unit 4 — cooldown / max-attempts cap on guard invocations within one wait.
+- [x] Unit 4 — cooldown (`_GUARD_COOLDOWN`) and max-attempts (`_GUARD_MAX_ATTEMPTS`) cap on guard
+      invocations within one wait; on exhaustion it logs once and falls back to the wait's timeout.
+
+**Log**
+
+- [#1122](https://github.com/bajutsu-e2e/bajutsu/pull/1122) — implemented all four units in `bajutsu/orchestrator/waits.py` (the `_AlertGuardGate`
+  gate + threading `on_blocked`/`alerts` through `_wait`/`_wait_settled`) and
+  `bajutsu/orchestrator/loop.py` (wiring; the end-of-step retry deliberately does not re-arm the
+  mid-wait guard, bounding a step's AI-vision calls at `_GUARD_MAX_ATTEMPTS` + 1). Covered by
+  `tests/orchestrator/test_waits.py`.
 
 ## References
 

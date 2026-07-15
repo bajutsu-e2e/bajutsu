@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0269](BE-0269-ios-alert-guard-early-wait-intervention-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0269") |
+| 実装 PR | [#1122](https://github.com/bajutsu-e2e/bajutsu/pull/1122) |
 | トピック | プラットフォーム対応 |
 <!-- /BE-METADATA -->
 
@@ -113,13 +114,26 @@
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] ユニット 1 — 既存の `shows_app_ui`（`bajutsu/elements.py`）を再利用した決定的な事前チェックを、
-      すでに取得済みのポーリング結果から、画面をポーリングするすべての分岐（`for` / `gone` /
-      `screenChanged` / `settled`）に対して置く。ネットワークを対象とする `request` の分岐はスコープ外とする。
-- [ ] ユニット 2 — 検知結果を数回連続のポーリングで確認してから動かす。
-- [ ] ユニット 3 — `_wait()`（および `_wait_settled`）にガード呼び出しを差し込み、確認できた時点で
-      その場でガードを呼び、元の `deadline` に対してポーリングを再開する。
-- [ ] ユニット 4 — 1 回の待機あたりのガード呼び出しに、間隔と最大回数の上限を設ける。
+- [x] ユニット 1 — 既存の `shows_app_ui`（`bajutsu/elements.py`）を再利用した決定的な事前チェックを、
+      すでに取得済みのポーリング結果から、システムアラートが**足止め**しうる画面ポーリングの分岐
+      （`for` / `screenChanged` / `settled`）に対して置きました。提案の一覧から狭めています。`gone` は
+      ガードしません。崩れたツリーはそのまま「消えた」を満たしてすぐ返るため、タイムアウトを浪費せず、
+      ガードするには「消えた」を空画面では成立しないと再定義することになり、スコープ外だからです。
+      ネットワークを対象とする `request` の分岐も従来どおりスコープ外です。
+- [x] ユニット 2 — 検知結果を数回連続のポーリング（`_SETTLE_POLLS` にならった `_GUARD_DEBOUNCE_POLLS`）で
+      確認してから動かします。
+- [x] ユニット 3 — `_wait()`（および `_wait_settled`）にガード呼び出しを差し込み、確認できた時点で
+      その場でガードを呼び、元の `deadline` に対してポーリングを再開します。
+- [x] ユニット 4 — 1 回の待機あたりのガード呼び出しに、間隔（`_GUARD_COOLDOWN`）と最大回数
+      （`_GUARD_MAX_ATTEMPTS`）の上限を設けました。上限に達したときは一度だけログを残し、待機自身の
+      タイムアウトへ戻します。
+
+**ログ**
+
+- [#1122](https://github.com/bajutsu-e2e/bajutsu/pull/1122) — 4 つのユニットを `bajutsu/orchestrator/waits.py`（`_AlertGuardGate` と、`on_blocked` /
+  `alerts` を `_wait` / `_wait_settled` へ通す配線）と `bajutsu/orchestrator/loop.py`（配線。ステップ
+  末尾のリトライは意図的にミッドウェイトのガードを再武装しないため、1 ステップの AI vision 呼び出しは
+  `_GUARD_MAX_ATTEMPTS` + 1 に収まります）で実装しました。`tests/orchestrator/test_waits.py` で検証しています。
 
 ## 参考
 

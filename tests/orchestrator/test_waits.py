@@ -440,4 +440,315 @@ def test_wait_still_sleeps_when_query_is_fast() -> None:
     assert all(abs(s - _POLL) < 0.001 for s in sleeps), f"expected {_POLL}s sleeps, got {sleeps}"
 
 
+# --- BE-0269: early system-alert guard intervention during a wait ---
+
+
+class _CollapsingDriver:
+    """A driver whose tree is collapsed (a system alert covering the app) until the guard clears
+    it, at which point it reveals `revealed`. Models the SpringBoard-alert failure signature that
+    `shows_app_ui` detects: no actionable content while blocked."""
+
+    name = "collapsing"
+
+    def __init__(self, revealed: list[base.Element]) -> None:
+        self._revealed = revealed
+        self.cleared = False
+
+    def query(self) -> list[base.Element]:
+        return self._revealed if self.cleared else []
+
+
+def test_wait_for_guard_fires_mid_wait_and_records_the_alert() -> None:
+    """BE-0269 Units 1+3: a collapsed tree during a `for` wait triggers the guard mid-wait; once it
+    clears the block the awaited element is found well before the timeout, and the dismissed alert is
+    recorded so the report shows the step only passed on a recovery."""
+    from bajutsu.orchestrator.types import AlertEvent
+    from bajutsu.orchestrator.waits import _wait
+    from bajutsu.scenario import Wait
+
+    driver = _CollapsingDriver([el("ready", "R")])
+    calls = {"n": 0}
+
+    def on_blocked(d: object) -> AlertEvent:
+        calls["n"] += 1
+        d.cleared = True  # type: ignore[attr-defined]
+        return AlertEvent(label="Not Now")
+
+    alerts: list[AlertEvent] = []
+    clock = _LogicalClock()
+    w = Wait.model_validate({"for": {"id": "ready"}, "timeout": 30.0})
+    ok, reason, tree = _wait(driver, w, clock, on_blocked=on_blocked, alerts=alerts)
+    assert ok and reason == ""
+    assert tree == [el("ready", "R")]
+    assert calls["n"] == 1  # the guard fired exactly once, mid-wait
+    assert alerts == [AlertEvent(label="Not Now")]
+    assert clock.now() < 1.0  # cleared in a few poll intervals, not the full 30s budget
+
+
+def test_wait_guard_debounces_a_transient_collapse() -> None:
+    """BE-0269 Unit 2: a single collapsed poll (a transient render frame) must not fire the guard —
+    only a short run of consecutive collapsed polls does."""
+    from bajutsu.orchestrator.types import AlertEvent
+    from bajutsu.orchestrator.waits import _wait
+    from bajutsu.scenario import Wait
+
+    class OneFrameCollapse:
+        name = "one-frame"
+
+        def __init__(self) -> None:
+            self.polls = 0
+
+        def query(self) -> list[base.Element]:
+            self.polls += 1
+            return [] if self.polls == 1 else [el("ready", "R")]
+
+    calls = {"n": 0}
+
+    def on_blocked(_d: object) -> AlertEvent:
+        calls["n"] += 1
+        return AlertEvent()
+
+    clock = _LogicalClock()
+    w = Wait.model_validate({"for": {"id": "ready"}, "timeout": 30.0})
+    ok, _reason, _tree = _wait(OneFrameCollapse(), w, clock, on_blocked=on_blocked, alerts=[])  # type: ignore[arg-type]
+    assert ok
+    assert calls["n"] == 0  # one transient collapse is below the debounce threshold
+
+
+def test_wait_guard_is_capped_then_falls_back_to_timeout() -> None:
+    """BE-0269 Unit 4: a persistent collapse the guard can't clear fires it at most
+    `_GUARD_MAX_ATTEMPTS` times, then the wait falls back to its normal timeout — the poll loop never
+    becomes a hot AI-vision loop."""
+    from bajutsu.orchestrator.waits import _GUARD_MAX_ATTEMPTS, _wait
+    from bajutsu.scenario import Wait
+
+    class NeverClears:
+        name = "stuck"
+
+        def query(self) -> list[base.Element]:
+            return []  # collapsed forever; the dismiss never takes
+
+    calls = {"n": 0}
+
+    def on_blocked(_d: object) -> None:
+        calls["n"] += 1
+        return None  # the guard looked but nothing was dismissible
+
+    clock = _LogicalClock()
+    w = Wait.model_validate({"for": {"id": "never"}, "timeout": 30.0})
+    ok, reason, _tree = _wait(NeverClears(), w, clock, on_blocked=on_blocked, alerts=[])  # type: ignore[arg-type]
+    assert not ok
+    assert "timeout" in reason
+    assert calls["n"] == _GUARD_MAX_ATTEMPTS
+
+
+def test_wait_guard_never_fires_while_app_ui_is_visible() -> None:
+    """BE-0269 Unit 1: the deterministic pre-check (`shows_app_ui`) — not a blind timer — is the
+    trigger, so a wait whose tree always shows app content never asks the guard to look."""
+    from bajutsu.orchestrator.types import AlertEvent
+    from bajutsu.orchestrator.waits import _wait
+    from bajutsu.scenario import Wait
+
+    class AppVisible:
+        name = "app"
+
+        def __init__(self) -> None:
+            self.polls = 0
+
+        def query(self) -> list[base.Element]:
+            self.polls += 1
+            return [el("row", "Row")] if self.polls >= 5 else [el("other", "Other")]
+
+    calls = {"n": 0}
+
+    def on_blocked(_d: object) -> AlertEvent:
+        calls["n"] += 1
+        return AlertEvent()
+
+    clock = _LogicalClock()
+    w = Wait.model_validate({"for": {"id": "row"}, "timeout": 30.0})
+    ok, _reason, _tree = _wait(AppVisible(), w, clock, on_blocked=on_blocked, alerts=[])  # type: ignore[arg-type]
+    assert ok
+    assert calls["n"] == 0
+
+
+def test_wait_settled_guard_fires_on_a_collapsed_screen() -> None:
+    """BE-0269 Unit 3: `settled` never treats a collapsed tree as settled, so an alert would burn the
+    whole timeout; the guard now fires mid-settle to clear it, then the screen settles normally."""
+    from bajutsu.orchestrator.types import AlertEvent
+    from bajutsu.orchestrator.waits import _wait
+    from bajutsu.scenario import Wait
+
+    driver = _CollapsingDriver([el("home", "Home")])
+    calls = {"n": 0}
+
+    def on_blocked(d: object) -> AlertEvent:
+        calls["n"] += 1
+        d.cleared = True  # type: ignore[attr-defined]
+        return AlertEvent(label="OK")
+
+    alerts: list[AlertEvent] = []
+    clock = _LogicalClock()
+    w = Wait.model_validate({"until": "settled", "timeout": 30.0})
+    ok, _reason, tree = _wait(driver, w, clock, on_blocked=on_blocked, alerts=alerts)
+    assert ok  # a settle never fails the step
+    assert calls["n"] == 1
+    assert alerts == [AlertEvent(label="OK")]
+    assert tree == [el("home", "Home")]
+    assert clock.now() < 2.0  # cleared and settled quickly, not the full 30s
+
+
+def test_run_scenario_guard_fires_during_a_wait_step() -> None:
+    """BE-0269 end to end: a `for` wait blocked by a system alert has the guard fire mid-wait (not
+    only after the whole timeout elapses), the alert is recorded on the step outcome, and the step
+    passes once cleared."""
+    from bajutsu.orchestrator.types import AlertEvent
+
+    driver = FakeDriver([])  # collapsed under a system alert
+
+    def on_blocked(d: base.Driver) -> AlertEvent:
+        d.screen = [el("ready", "R")]  # type: ignore[attr-defined]
+        return AlertEvent(label="Not Now")
+
+    result = run_scenario(
+        driver,
+        _scenario({"name": "x", "steps": [{"wait": {"for": {"id": "ready"}, "timeout": 30.0}}]}),
+        clock=FakeClock(),
+        on_blocked=on_blocked,
+    )
+    assert result.ok and result.steps[0].ok
+    assert result.steps[0].alerts == [AlertEvent(label="Not Now")]
+    # Proves the guard fired *mid-wait*, not only via the end-of-step retry: had the wait run to its
+    # 30s deadline before the guard was asked to look, the step would have taken ~30s of logical
+    # time. A few poll intervals means it recovered inside the wait's own loop.
+    assert result.steps[0].duration_s < 1.0
+
+
+def test_wait_screen_changed_guard_fires_when_started_under_an_alert() -> None:
+    """BE-0269 Unit 3: a `screenChanged` wait that begins with the screen already collapsed by a
+    system alert would never observe a change; the guard clears it mid-wait — which itself changes
+    the screen — so the wait completes instead of burning the whole timeout."""
+    from bajutsu.orchestrator.types import AlertEvent
+    from bajutsu.orchestrator.waits import _wait
+    from bajutsu.scenario import Wait
+
+    driver = _CollapsingDriver([el("home", "Home")])  # the `before` snapshot is the collapsed tree
+    calls = {"n": 0}
+
+    def on_blocked(d: object) -> AlertEvent:
+        calls["n"] += 1
+        d.cleared = True  # type: ignore[attr-defined]
+        return AlertEvent(label="Close")
+
+    alerts: list[AlertEvent] = []
+    clock = _LogicalClock()
+    w = Wait.model_validate({"until": "screenChanged", "timeout": 30.0})
+    ok, reason, _tree = _wait(driver, w, clock, on_blocked=on_blocked, alerts=alerts)
+    assert ok and reason == ""
+    assert calls["n"] == 1
+    assert alerts == [AlertEvent(label="Close")]
+    assert clock.now() < 1.0
+
+
+def test_wait_guard_cooldown_spaces_out_attempts() -> None:
+    """BE-0269 Unit 4: the cooldown — not only the attempt cap — paces the guard, so a persistent
+    collapse can never fire the AI-vision call faster than `_GUARD_COOLDOWN`."""
+    from bajutsu.orchestrator.waits import _GUARD_COOLDOWN, _GUARD_MAX_ATTEMPTS, _wait
+    from bajutsu.scenario import Wait
+
+    class NeverClears:
+        name = "stuck"
+
+        def query(self) -> list[base.Element]:
+            return []
+
+    clock = _LogicalClock()
+    fire_times: list[float] = []
+
+    def on_blocked(_d: object) -> None:
+        fire_times.append(clock.now())
+        return None
+
+    w = Wait.model_validate({"for": {"id": "never"}, "timeout": 30.0})
+    _wait(NeverClears(), w, clock, on_blocked=on_blocked, alerts=[])  # type: ignore[arg-type]
+    assert len(fire_times) == _GUARD_MAX_ATTEMPTS
+    assert fire_times[1] - fire_times[0] >= _GUARD_COOLDOWN
+
+
+def test_wait_guard_does_not_extend_the_deadline() -> None:
+    """BE-0269 Unit 3: the guard fires within the original timeout budget and never resets the
+    deadline — if the awaited element would only appear long after the deadline, the wait still
+    times out on schedule rather than being kept alive by the intervention."""
+    from bajutsu.orchestrator.types import AlertEvent
+    from bajutsu.orchestrator.waits import _wait
+    from bajutsu.scenario import Wait
+
+    class SlowReveal:
+        name = "slow"
+
+        def __init__(self, clock: _LogicalClock) -> None:
+            self._clock = clock
+
+        def query(self) -> list[base.Element]:
+            return [el("ready", "R")] if self._clock.now() >= 10.0 else []
+
+    clock = _LogicalClock()
+
+    def on_blocked(_d: object) -> AlertEvent:
+        return AlertEvent(label="OK")  # "dismisses", but the element is still 10s out
+
+    w = Wait.model_validate({"for": {"id": "ready"}, "timeout": 1.0})
+    ok, reason, _tree = _wait(SlowReveal(clock), w, clock, on_blocked=on_blocked, alerts=[])  # type: ignore[arg-type]
+    assert not ok
+    assert "timeout" in reason
+    assert clock.now() < 2.0  # honored the 1s budget; the guard did not push the deadline to 10s
+
+
+def test_wait_guard_fires_without_an_alerts_list() -> None:
+    """BE-0269: a guarded wait called with no `alerts` list (a direct `_wait` call) still fires the
+    guard and recovers — the recording is simply dropped, never a crash on a None list."""
+    from bajutsu.orchestrator.types import AlertEvent
+    from bajutsu.orchestrator.waits import _wait
+    from bajutsu.scenario import Wait
+
+    driver = _CollapsingDriver([el("ready", "R")])
+    calls = {"n": 0}
+
+    def on_blocked(d: object) -> AlertEvent:
+        calls["n"] += 1
+        d.cleared = True  # type: ignore[attr-defined]
+        return AlertEvent(label="X")
+
+    clock = _LogicalClock()
+    w = Wait.model_validate({"for": {"id": "ready"}, "timeout": 30.0})
+    ok, _reason, _tree = _wait(driver, w, clock, on_blocked=on_blocked)  # no alerts list
+    assert ok
+    assert calls["n"] == 1
+
+
+def test_wait_guard_warns_once_when_it_gives_up(caplog) -> None:  # type: ignore[no-untyped-def]
+    """BE-0269: when the guard exhausts its attempts on a still-collapsed screen, it logs exactly
+    once — so the ensuing bare `wait timeout` is not a silent failure that hides the guard having
+    stepped in and given up (determinism first, fail loudly)."""
+    import logging
+
+    from bajutsu.orchestrator.waits import _wait
+    from bajutsu.scenario import Wait
+
+    class NeverClears:
+        name = "stuck"
+
+        def query(self) -> list[base.Element]:
+            return []
+
+    def on_blocked(_d: object) -> None:
+        return None
+
+    clock = _LogicalClock()
+    w = Wait.model_validate({"for": {"id": "never"}, "timeout": 30.0})
+    with caplog.at_level(logging.WARNING):
+        _wait(NeverClears(), w, clock, on_blocked=on_blocked, alerts=[])  # type: ignore[arg-type]
+    assert sum("gave up" in r.getMessage() for r in caplog.records) == 1
+
+
 # --- if / forEach control flow ---
