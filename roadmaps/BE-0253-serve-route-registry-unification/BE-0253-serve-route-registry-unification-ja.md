@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0253") |
-| 実装 PR | [#1098](https://github.com/bajutsu-e2e/bajutsu/pull/1098), [#1108](https://github.com/bajutsu-e2e/bajutsu/pull/1108), [#_pending_](https://github.com/bajutsu-e2e/bajutsu/pull/_pending_) |
+| 実装 PR | [#1098](https://github.com/bajutsu-e2e/bajutsu/pull/1098), [#1108](https://github.com/bajutsu-e2e/bajutsu/pull/1108), [#1115](https://github.com/bajutsu-e2e/bajutsu/pull/1115) |
 | トピック | コードベース品質・技術的負債 |
 <!-- /BE-METADATA -->
 
@@ -162,7 +162,7 @@ drift を、grep できる明示的な宣言に変えます。作業は MECE な
   にしています。Part 3（`app.py` をレジストリから生成する）と Part 4（`local_only` による FastAPI
   側で欠けているエンドポイントの判定）は次のスライスで実装します。
 - 2026-07-15 — Part 3〜4（`app.py` のレジストリからの生成と判定）を
-  [#_pending_](https://github.com/bajutsu-e2e/bajutsu/pull/_pending_) で実装し、この項目を完了しました。
+  [#1115](https://github.com/bajutsu-e2e/bajutsu/pull/1115) で実装し、この項目を完了しました。
   `make_app` は `ROUTES` を走査し、`handle` を持ち `local_only` でない各エントリを登録するようになり、
   手書きの `@app.<method>` デコレータ約 40 個を置き換えました。`off_loop` のルート（インデックス、
   ES モジュールのフロントエンド、run ファイルの配信とレンジ配信とアーカイブ配信、Server-Sent Events

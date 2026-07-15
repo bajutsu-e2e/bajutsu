@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0253") |
-| Implementing PR | [#1098](https://github.com/bajutsu-e2e/bajutsu/pull/1098), [#1108](https://github.com/bajutsu-e2e/bajutsu/pull/1108), [#_pending_](https://github.com/bajutsu-e2e/bajutsu/pull/_pending_) |
+| Implementing PR | [#1098](https://github.com/bajutsu-e2e/bajutsu/pull/1098), [#1108](https://github.com/bajutsu-e2e/bajutsu/pull/1108), [#1115](https://github.com/bajutsu-e2e/bajutsu/pull/1115) |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
@@ -142,7 +142,7 @@ declaration. Five MECE parts:
   but kept bespoke per backend. Part 3 (generate `app.py` from the registry) and Part 4 (triage the
   FastAPI-missing endpoints via `local_only`) follow in the next slice.
 - 2026-07-15 — Parts 3–4 (generate `app.py` from the registry + triage) landed in
-  [#_pending_](https://github.com/bajutsu-e2e/bajutsu/pull/_pending_), completing the item. `make_app`
+  [#1115](https://github.com/bajutsu-e2e/bajutsu/pull/1115), completing the item. `make_app`
   now iterates `ROUTES` and registers every entry that carries a `handle` and is not `local_only`,
   replacing ~40 hand-written `@app.<method>` decorators; the off_loop routes (index, ES-module frontend,
   run file/range/archive, SSE, OAuth, login, raw-body uploads) stay bespoke. A backend-neutral
