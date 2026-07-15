@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0250") |
-| Implementing PR | [#1093](https://github.com/bajutsu-e2e/bajutsu/pull/1093), [#1100](https://github.com/bajutsu-e2e/bajutsu/pull/1100) |
+| Implementing PR | [#1093](https://github.com/bajutsu-e2e/bajutsu/pull/1093), [#1100](https://github.com/bajutsu-e2e/bajutsu/pull/1100), [#1106](https://github.com/bajutsu-e2e/bajutsu/pull/1106) |
 | Topic | Codebase quality & technical debt |
 | Related | [BE-0172](../BE-0172-run-loop-step-decomposition/BE-0172-run-loop-step-decomposition.md) |
 <!-- /BE-METADATA -->
@@ -169,7 +169,7 @@ before and after) rather than changing any assertion's observable behavior.
   narrows its own field (`assert a.X is not None`) and delegates to the unchanged per-kind `_eval_*`, so one dict
   holds every kind under strict typing. Behavior-preserving (exactly one kind is set per scenario validation, so
   scan order is immaterial); the existing assertion suite plus a new registry-covers-every-kind guard are the parity
-  net. PR [#PENDING](https://github.com/bajutsu-e2e/bajutsu/pull/PENDING).
+  net. PR [#1106](https://github.com/bajutsu-e2e/bajutsu/pull/1106).
 
 ## References
 
