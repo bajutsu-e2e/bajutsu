@@ -603,7 +603,9 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 ### Surfacing CLI features in the serve Web UI
 
 <!-- GENERATED:proposals-serve-cli-features -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0272](BE-0272-serve-version-badge/BE-0272-serve-version-badge.md) | Show bajutsu's running commit/version in the serve Web UI header | Proposal |
 <!-- /GENERATED:proposals-serve-cli-features -->
 
 ### Hosting the web UI (cloud / self-hosted)

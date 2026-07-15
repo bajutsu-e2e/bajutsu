@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-serve-version-badge-ja.md)
+**English** · [日本語](BE-0272-serve-version-badge-ja.md)
 
-# BE-XXXX — Show bajutsu's running commit/version in the serve Web UI header
+# BE-0272 — Show bajutsu's running commit/version in the serve Web UI header
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-serve-version-badge.md) |
+| Proposal | [BE-0272](BE-0272-serve-version-badge.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0272") |
 | Topic | Surfacing CLI features in the serve Web UI |
 <!-- /BE-METADATA -->
 
