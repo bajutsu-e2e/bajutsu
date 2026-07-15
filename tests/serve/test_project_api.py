@@ -139,6 +139,15 @@ def test_source_spec_is_screened_by_the_allowlist_when_hosted(tmp_path: Path) ->
     assert status == 403
 
 
+def test_register_treats_a_whitespace_only_source_spec_as_absent(tmp_path: Path) -> None:
+    # A whitespace-only `sourceSpec` (e.g. a direct API call bypassing the Add form's own `.trim()`)
+    # must be the same no-op as an omitted source, not a `file` source whose path is blank spaces.
+    state = _hub_state(tmp_path)
+    payload, status = ops.register_project(state, {"name": "blank", "sourceSpec": "   "})
+    assert status == 200
+    assert payload["source"] is None
+
+
 def test_deregister_retains_the_runs_and_drops_the_label(tmp_path: Path) -> None:
     state = _hub_state(tmp_path)
     reg = state.project_registry
