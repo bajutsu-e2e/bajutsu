@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-serve-scenario-secrets-ja.md)
+**English** · [日本語](BE-0274-serve-scenario-secrets-ja.md)
 
-# BE-XXXX — Set scenario-declared secrets from the serve Web UI
+# BE-0274 — Set scenario-declared secrets from the serve Web UI
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-serve-scenario-secrets.md) |
+| Proposal | [BE-0274](BE-0274-serve-scenario-secrets.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0274") |
 | Topic | Security hardening |
 | Related | [BE-0032](../BE-0032-secret-variables/BE-0032-secret-variables.md), [BE-0136](../BE-0136-serve-write-once-secrets/BE-0136-serve-write-once-secrets.md) |
 <!-- /BE-METADATA -->

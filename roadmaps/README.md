@@ -631,7 +631,9 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 ### Security hardening
 
 <!-- GENERATED:proposals-security -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0274](BE-0274-serve-scenario-secrets/BE-0274-serve-scenario-secrets.md) | Set scenario-declared secrets from the serve Web UI | Proposal |
 <!-- /GENERATED:proposals-security -->
 
 ### Development infrastructure (contributor workflow)

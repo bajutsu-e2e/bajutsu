@@ -1,14 +1,14 @@
-[English](BE-XXXX-serve-scenario-secrets.md) · **日本語**
+[English](BE-0274-serve-scenario-secrets.md) · **日本語**
 
-# BE-XXXX — serve の Web UI からシナリオが宣言したシークレットを設定する
+# BE-0274 — serve の Web UI からシナリオが宣言したシークレットを設定する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-serve-scenario-secrets-ja.md) |
+| 提案 | [BE-0274](BE-0274-serve-scenario-secrets-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0274") |
 | トピック | セキュリティ強化 |
 | 関連 | [BE-0032](../BE-0032-secret-variables/BE-0032-secret-variables-ja.md)、[BE-0136](../BE-0136-serve-write-once-secrets/BE-0136-serve-write-once-secrets-ja.md) |
 <!-- /BE-METADATA -->
