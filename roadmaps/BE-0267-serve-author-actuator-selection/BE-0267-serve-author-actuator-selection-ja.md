@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0267") |
-| 実装 PR | _pending_ |
+| 実装 PR | [#1121](https://github.com/bajutsu-e2e/bajutsu/pull/1121) |
 | トピック | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 
@@ -90,8 +90,9 @@ XCUITest の runner を起動しないためです。Enrich は同一の backend
 
 ログ:
 
-- _pending_ — serve の capture・enrich でコスト順選択を再利用。`select_actuator_cost_first` を追加し、
-  `_default_driver_factory` と capture・enrich を backend 列全体で共通ファクトリに通す。
+- [#1121](https://github.com/bajutsu-e2e/bajutsu/pull/1121) — serve の capture・enrich でコスト順選択を
+  再利用。`select_actuator_cost_first` を追加し、`_default_driver_factory` と capture・enrich を backend
+  列全体で共通ファクトリに通す。
 
 ## 参考
 

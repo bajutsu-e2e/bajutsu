@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0267") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#1121](https://github.com/bajutsu-e2e/bajutsu/pull/1121) |
 | Topic | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 
@@ -97,8 +97,9 @@ corrective for multi-candidate ones (`[ios]`).
 
 Log:
 
-- _pending_ — Reuse cost-ordered selection in serve capture/enrich: add `select_actuator_cost_first`,
-  route `_default_driver_factory` and capture/enrich through it over the full backend list.
+- [#1121](https://github.com/bajutsu-e2e/bajutsu/pull/1121) — Reuse cost-ordered selection in serve
+  capture/enrich: add `select_actuator_cost_first`, route `_default_driver_factory` and capture/enrich
+  through it over the full backend list.
 
 ## References
 
