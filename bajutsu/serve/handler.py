@@ -403,6 +403,11 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     self._json(*ops.set_provider(state, body, self._actor()))
                 case "/api/theme":
                     self._json(*ops.upload_theme(state, body, self._actor()))
+                case "/api/compose":
+                    # Assemble a `(config, scenarios, binary)` triple from artifacts already
+                    # uploaded via `/api/artifacts/*` and bind it as the active config (BE-0268).
+                    # A small JSON body of shas, not a raw upload — the bytes already landed.
+                    self._json(*ops.bind_composition(state, body, actor=self._actor()))
                 case "/api/ant/login":
                     self._json(*ops.ant_login(state))
                 case "/api/run":

@@ -566,6 +566,36 @@
       <div class="upmeta" id="up-meta" data-testid="upload.meta" hidden></div>
       <div class="gitsrcerr" id="up-error" data-testid="upload.error" hidden></div>
     </div>
+    <!-- Compose from artifacts (BE-0268): upload config / scenarios / binary independently, then
+         assemble a triple. Each part is content-addressed, so an unchanged part is skipped (no
+         re-upload) and a new binary×scenario combination is a fresh triple over stored parts. -->
+    <div class="gitsrc">
+      <label class="gitsrclbl">Compose from artifacts</label>
+      <div class="composezones">
+        <div class="composezone drop" id="cmp-config-drop" data-testid="compose.config.drop">
+          <div class="composelbl">Config <span class="composereq">required</span></div>
+          <input type="file" id="cmp-config-file" data-testid="compose.config.file" accept=".yml,.yaml,application/x-yaml" hidden>
+          <button class="cfgbtn" id="cmp-config-pick" type="button" data-testid="compose.config.pick">Choose&hellip;</button>
+          <div class="composestate" id="cmp-config-state" data-testid="compose.config.state"></div>
+        </div>
+        <div class="composezone drop" id="cmp-scenarios-drop" data-testid="compose.scenarios.drop">
+          <div class="composelbl">Scenarios <span class="composeopt">(.zip)</span></div>
+          <input type="file" id="cmp-scenarios-file" data-testid="compose.scenarios.file" accept=".zip,application/zip" hidden>
+          <button class="cfgbtn" id="cmp-scenarios-pick" type="button" data-testid="compose.scenarios.pick">Choose&hellip;</button>
+          <div class="composestate" id="cmp-scenarios-state" data-testid="compose.scenarios.state"></div>
+        </div>
+        <div class="composezone drop" id="cmp-binary-drop" data-testid="compose.binary.drop">
+          <div class="composelbl">Binary <span class="composeopt">(.app.zip / .ipa)</span></div>
+          <input type="file" id="cmp-binary-file" data-testid="compose.binary.file" accept=".zip,.ipa,application/zip,application/octet-stream" hidden>
+          <button class="cfgbtn" id="cmp-binary-pick" type="button" data-testid="compose.binary.pick">Choose&hellip;</button>
+          <div class="composestate" id="cmp-binary-state" data-testid="compose.binary.state"></div>
+        </div>
+      </div>
+      <button class="cfgbtn" id="cmp-run" type="button" data-testid="compose.load">Compose &amp; load</button>
+      <div class="gitsrchint">Each part is stored by the sha256 of its bytes, so an <b>unchanged</b> part (same sha) is <b>not re-uploaded</b>. <b>Compose &amp; load</b> assembles the selected parts into the active config the Replay / Record / Crawl tabs run from &mdash; the config names where scenarios and the binary land. Swap one part and compose again to run a new combination without re-uploading the rest. The parts carry <b>no secrets</b>: <code>${secrets.*}</code> resolve from the server's environment.</div>
+      <div class="upmeta" id="cmp-meta" data-testid="compose.meta" hidden></div>
+      <div class="gitsrcerr" id="cmp-error" data-testid="compose.error" hidden></div>
+    </div>
     <!-- The file browser is a local affordance; a hosted deployment hides this whole block, since a
          remote user has no filesystem relationship to the host (BE-0108). -->
     <div id="fssrc" data-testid="config.fs-source">
