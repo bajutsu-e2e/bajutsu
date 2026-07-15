@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0253](BE-0253-serve-route-registry-unification.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0253") |
+| Implementing PR | [#1098](https://github.com/bajutsu-e2e/bajutsu/pull/1098) |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
@@ -120,8 +121,15 @@ declaration. Five MECE parts:
 - [ ] Triage every endpoint missing from `app.py` today (`/flakiness`, `/api/ant/login`,
       `/api/enrich`, `/api/codegen`, `/api/capture/*`, `/api/jobs/{id}/respond-human`,
       `/runs/{id}/archive.zip`): mark genuinely local-only ones `local_only=True`, backfill the rest
-- [ ] Collapse the duplicated auth/CSRF/Host/header enforcement into one shared gate helper used by
+- [x] Collapse the duplicated auth/CSRF/Host/header enforcement into one shared gate helper used by
       both backends
+
+### Log
+
+- 2026-07-15 — Part 5 (shared gate helper) landed in [#1098](https://github.com/bajutsu-e2e/bajutsu/pull/1098):
+  new framework-agnostic `bajutsu/serve/gate.py` (`HARDENING_HEADERS`, `allowed_hosts`/`host_allowed`,
+  `csrf_ok`, `is_open`, `is_authorized`, `actor_for`) that both backends call; transport mechanics stay
+  per-backend. Behavior-preserving. Parts 1–4 (the declarative route registry) follow in later slices.
 
 ## References
 

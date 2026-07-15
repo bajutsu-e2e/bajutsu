@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 from conftest import el
 
-from bajutsu.assertions import evaluate, evaluate_one, passed
+from bajutsu.assertions import EvalContext, evaluate, evaluate_one, passed
 from bajutsu.drivers import base
 from bajutsu.scenario import Assertion
 
@@ -23,6 +23,36 @@ SCREEN: list[base.Element] = [
     el("result.row.1", "A", ["cell"]),
     el("result.row.2", "B", ["cell"]),
 ]
+
+
+def test_public_surface_reexported_from_package_root() -> None:
+    """The package split (BE-0250) keeps every public name importable from `bajutsu.assertions`."""
+    import bajutsu.assertions as pkg
+
+    for name in (
+        "AssertionResult",
+        "EvalContext",
+        "GoldenContext",
+        "SchemaContext",
+        "VisualContext",
+        "VisualEvidence",
+        "count_matching",
+        "evaluate",
+        "evaluate_one",
+        "match_request",
+        "passed",
+        "request_label",
+    ):
+        assert hasattr(pkg, name), name
+        assert name in pkg.__all__, name
+
+
+def test_submodules_import_without_a_cycle() -> None:
+    """Each seam module loads on its own — the leaf `_common` keeps the split acyclic (BE-0250)."""
+    import importlib
+
+    for mod in ("_common", "network", "visual", "schema", "evaluate"):
+        assert importlib.import_module(f"bajutsu.assertions.{mod}") is not None
 
 
 def _a(data: dict[str, object]) -> Assertion:
@@ -68,29 +98,70 @@ def test_not_found_fails_with_reason() -> None:
     assert r.reason  # a failure reason is set
 
 
+# --- EvalContext bundling (BE-0250 Unit 2) ---
+
+
+def test_eval_context_is_frozen() -> None:
+    """EvalContext is a frozen value — a run cannot mutate a shared context (BE-0250 Unit 2)."""
+    import dataclasses
+
+    ctx = EvalContext(clipboard="x")
+    assert (ctx.visual, ctx.schema, ctx.golden, ctx.clipboard) == (None, None, None, "x")
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        ctx.clipboard = "y"  # type: ignore[misc]
+
+
+def test_eval_context_delivers_each_field_to_its_kind(tmp_path: Path) -> None:
+    """A single EvalContext routes clipboard and golden to their respective evaluators (BE-0250)."""
+    import json
+
+    golden_dir = tmp_path / "goldens"
+    golden_dir.mkdir()
+    entry = {
+        "identifier": "c.toggle",
+        "label": "T",
+        "traits": ["switch"],
+        "value": "1",
+        "frame": [10.0, 20.0, 50.0, 30.0],
+    }
+    (golden_dir / "controls.json").write_text(json.dumps({"c.toggle": entry}), encoding="utf-8")
+    from bajutsu.assertions import GoldenContext
+
+    ctx = EvalContext(golden=GoldenContext(goldens_dir=golden_dir), clipboard="COUPON123")
+    screen = [el("c.toggle", "T", ["switch"], value="1", frame=(10.0, 20.0, 50.0, 30.0))]
+    assert evaluate_one(screen, _a({"clipboard": {"equals": "COUPON123"}}), ctx=ctx).ok
+    assert evaluate_one(screen, _a({"golden": {"path": "controls.json"}}), ctx=ctx).ok
+
+
 # --- clipboard read-back (BE-0052) ---
 
 
 def test_clipboard_equals_matches_the_read_value() -> None:
-    r = evaluate_one(SCREEN, _a({"clipboard": {"equals": "COUPON123"}}), clipboard="COUPON123")
+    r = evaluate_one(
+        SCREEN, _a({"clipboard": {"equals": "COUPON123"}}), ctx=EvalContext(clipboard="COUPON123")
+    )
     assert r.ok and r.kind == "clipboard"
 
 
 def test_clipboard_equals_mismatch_fails_with_reason() -> None:
-    r = evaluate_one(SCREEN, _a({"clipboard": {"equals": "COUPON123"}}), clipboard="other")
+    r = evaluate_one(
+        SCREEN, _a({"clipboard": {"equals": "COUPON123"}}), ctx=EvalContext(clipboard="other")
+    )
     assert not r.ok
     assert "COUPON123" in r.reason and "other" in r.reason
 
 
 def test_clipboard_matches_regex() -> None:
-    r = evaluate_one(SCREEN, _a({"clipboard": {"matches": r"\d{6}"}}), clipboard="code 482913")
+    r = evaluate_one(
+        SCREEN, _a({"clipboard": {"matches": r"\d{6}"}}), ctx=EvalContext(clipboard="code 482913")
+    )
     assert r.ok
 
 
 def test_clipboard_without_device_control_fails_cleanly() -> None:
     # No clipboard supplied (fake driver / parallel run): a clean not-ok, not a crash — mirrors how
     # the visual assertion degrades when no visual context is provided.
-    r = evaluate_one(SCREEN, _a({"clipboard": {"equals": "x"}}), clipboard=None)
+    r = evaluate_one(SCREEN, _a({"clipboard": {"equals": "x"}}), ctx=EvalContext(clipboard=None))
     assert not r.ok
     assert "clipboard" in r.reason.lower()
 
@@ -124,7 +195,7 @@ def test_evaluate_and_passed() -> None:
 
 def test_compile_cache_reuses_compiled_pattern() -> None:
     """_compile caches compiled regex patterns in assertions module."""
-    from bajutsu.assertions import _compile
+    from bajutsu.assertions._common import _compile
 
     _compile.cache_clear()
     _compile("foo.*bar")
@@ -211,13 +282,15 @@ def test_visual_assertion_pass(tmp_path):
     screenshot = tmp_path / "screenshot.png"
     img.save(screenshot)
 
-    ctx = VisualContext(
+    vc = VisualContext(
         screenshot_path=screenshot,
         baselines_dir=baselines,
         diff_dir=tmp_path / "diffs",
         run_dir=tmp_path,
     )
-    result = evaluate_one(SCREEN, _a({"visual": {"baseline": "red.png"}}), visual_context=ctx)
+    result = evaluate_one(
+        SCREEN, _a({"visual": {"baseline": "red.png"}}), ctx=EvalContext(visual=vc)
+    )
     assert result.ok
     assert result.kind == "visual"
     assert result.visual is not None
@@ -240,13 +313,15 @@ def test_visual_assertion_fail(tmp_path):
     screenshot = tmp_path / "screenshot.png"
     Image.new("RGBA", (10, 10), (0, 0, 255, 255)).save(screenshot)
 
-    ctx = VisualContext(
+    vc = VisualContext(
         screenshot_path=screenshot,
         baselines_dir=baselines,
         diff_dir=tmp_path / "diffs",
         run_dir=tmp_path,
     )
-    result = evaluate_one(SCREEN, _a({"visual": {"baseline": "red.png"}}), visual_context=ctx)
+    result = evaluate_one(
+        SCREEN, _a({"visual": {"baseline": "red.png"}}), ctx=EvalContext(visual=vc)
+    )
     assert not result.ok
     assert "diff" in result.reason
     assert result.visual is not None
@@ -258,13 +333,15 @@ def test_visual_assertion_fail(tmp_path):
 def test_visual_assertion_missing_baseline(tmp_path):
     from bajutsu.assertions import VisualContext
 
-    ctx = VisualContext(
+    vc = VisualContext(
         screenshot_path=tmp_path / "00-home" / "visual-actual.png",
         baselines_dir=tmp_path / "baselines",
         diff_dir=tmp_path / "00-home",
         run_dir=tmp_path,
     )
-    result = evaluate_one(SCREEN, _a({"visual": {"baseline": "missing.png"}}), visual_context=ctx)
+    result = evaluate_one(
+        SCREEN, _a({"visual": {"baseline": "missing.png"}}), ctx=EvalContext(visual=vc)
+    )
     assert not result.ok
     assert "baseline not found" in result.reason
     assert result.visual is not None
@@ -293,7 +370,7 @@ def test_visual_pixelmatch_fields_with_resolved_exact_fails(tmp_path):
     screenshot = tmp_path / "screenshot.png"
     img.save(screenshot)
 
-    ctx = VisualContext(
+    vc = VisualContext(
         screenshot_path=screenshot,
         baselines_dir=baselines,
         diff_dir=tmp_path / "diffs",
@@ -303,7 +380,7 @@ def test_visual_pixelmatch_fields_with_resolved_exact_fails(tmp_path):
     result = evaluate_one(
         SCREEN,
         _a({"visual": {"baseline": "red.png", "colorTolerance": 0.5}}),
-        visual_context=ctx,
+        ctx=EvalContext(visual=vc),
     )
     assert not result.ok
     assert "resolved engine is 'exact'" in result.reason
@@ -322,13 +399,15 @@ def test_visual_evidence_records_engine(tmp_path):
     screenshot = tmp_path / "screenshot.png"
     img.save(screenshot)
 
-    ctx = VisualContext(
+    vc = VisualContext(
         screenshot_path=screenshot,
         baselines_dir=baselines,
         diff_dir=tmp_path / "diffs",
         run_dir=tmp_path,
     )
-    result = evaluate_one(SCREEN, _a({"visual": {"baseline": "red.png"}}), visual_context=ctx)
+    result = evaluate_one(
+        SCREEN, _a({"visual": {"baseline": "red.png"}}), ctx=EvalContext(visual=vc)
+    )
     assert result.ok
     assert result.visual is not None
     assert result.visual.engine == "exact"
@@ -346,7 +425,7 @@ def test_visual_evidence_records_pixelmatch(tmp_path):
     screenshot = tmp_path / "screenshot.png"
     img.save(screenshot)
 
-    ctx = VisualContext(
+    vc = VisualContext(
         screenshot_path=screenshot,
         baselines_dir=baselines,
         diff_dir=tmp_path / "diffs",
@@ -355,7 +434,7 @@ def test_visual_evidence_records_pixelmatch(tmp_path):
     result = evaluate_one(
         SCREEN,
         _a({"visual": {"baseline": "red.png", "compare": "pixelmatch"}}),
-        visual_context=ctx,
+        ctx=EvalContext(visual=vc),
     )
     assert result.ok
     assert result.visual is not None
@@ -375,7 +454,7 @@ def test_visual_context_default_compare_fallback(tmp_path):
     screenshot = tmp_path / "screenshot.png"
     img.save(screenshot)
 
-    ctx = VisualContext(
+    vc = VisualContext(
         screenshot_path=screenshot,
         baselines_dir=baselines,
         diff_dir=tmp_path / "diffs",
@@ -385,7 +464,7 @@ def test_visual_context_default_compare_fallback(tmp_path):
     result = evaluate_one(
         SCREEN,
         _a({"visual": {"baseline": "red.png"}}),
-        visual_context=ctx,
+        ctx=EvalContext(visual=vc),
     )
     assert result.ok
     assert result.visual is not None
@@ -444,7 +523,7 @@ def test_visual_element_scoped_pass(tmp_path: Path) -> None:
     r = evaluate_one(
         _framed_screen(),
         _a({"visual": {"baseline": "card.png", "element": {"id": "card"}}}),
-        visual_context=_vc(tmp_path, shot),
+        ctx=EvalContext(visual=_vc(tmp_path, shot)),
     )
     assert r.ok
     assert r.visual is not None
@@ -469,7 +548,7 @@ def test_visual_element_scoped_missing_baseline_reports_the_crop(tmp_path: Path)
     r = evaluate_one(
         _framed_screen(),
         _a({"visual": {"baseline": "card.png", "element": {"id": "card"}}}),
-        visual_context=_vc(tmp_path, shot),
+        ctx=EvalContext(visual=_vc(tmp_path, shot)),
     )
     assert not r.ok
     assert r.visual is not None
@@ -495,7 +574,7 @@ def test_visual_element_scoped_ignores_unrelated_change(tmp_path: Path) -> None:
     r = evaluate_one(
         _framed_screen(),
         _a({"visual": {"baseline": "card.png", "element": {"id": "card"}}}),
-        visual_context=_vc(tmp_path, shot),
+        ctx=EvalContext(visual=_vc(tmp_path, shot)),
     )
     assert r.ok
 
@@ -514,7 +593,7 @@ def test_visual_element_scoped_fail(tmp_path: Path) -> None:
     r = evaluate_one(
         _framed_screen(),
         _a({"visual": {"baseline": "card.png", "element": {"id": "card"}}}),
-        visual_context=_vc(tmp_path, shot),
+        ctx=EvalContext(visual=_vc(tmp_path, shot)),
     )
     assert not r.ok
     assert r.visual is not None
@@ -534,7 +613,7 @@ def test_visual_element_ambiguous_fails(tmp_path: Path) -> None:
     r = evaluate_one(
         _framed_screen(),
         _a({"visual": {"baseline": "card.png", "element": {"traits": ["staticText"]}}}),
-        visual_context=_vc(tmp_path, tmp_path / "shot.png"),
+        ctx=EvalContext(visual=_vc(tmp_path, tmp_path / "shot.png")),
     )
     assert not r.ok
     assert r.reason.startswith("element ")  # a resolution failure, not a pixel diff
@@ -552,7 +631,7 @@ def test_visual_element_not_found_fails(tmp_path: Path) -> None:
     r = evaluate_one(
         _framed_screen(),
         _a({"visual": {"baseline": "card.png", "element": {"id": "nope"}}}),
-        visual_context=_vc(tmp_path, tmp_path / "shot.png"),
+        ctx=EvalContext(visual=_vc(tmp_path, tmp_path / "shot.png")),
     )
     assert not r.ok
 
@@ -573,7 +652,7 @@ def test_visual_element_empty_frame_fails_cleanly(tmp_path: Path) -> None:
     r = evaluate_one(
         screen,
         _a({"visual": {"baseline": "card.png", "element": {"id": "collapsed"}}}),
-        visual_context=_vc(tmp_path, tmp_path / "shot.png"),
+        ctx=EvalContext(visual=_vc(tmp_path, tmp_path / "shot.png")),
     )
     assert not r.ok
     assert "empty frame" in r.reason
@@ -595,7 +674,7 @@ def test_visual_element_scoped_scale_factor(tmp_path: Path) -> None:
     r = evaluate_one(
         _framed_screen(),
         _a({"visual": {"baseline": "card.png", "element": {"id": "card"}}}),
-        visual_context=_vc(tmp_path, shot),
+        ctx=EvalContext(visual=_vc(tmp_path, shot)),
     )
     assert r.ok
     assert r.visual is not None
@@ -616,14 +695,14 @@ def test_visual_selector_mask_hides_dynamic_element(tmp_path: Path) -> None:
     actual.save(shot)
 
     masked = _a({"visual": {"baseline": "home.png", "exclude": [{"selector": {"id": "clock"}}]}})
-    r = evaluate_one(_framed_screen(), masked, visual_context=_vc(tmp_path, shot))
+    r = evaluate_one(_framed_screen(), masked, ctx=EvalContext(visual=_vc(tmp_path, shot)))
     assert r.ok
     assert r.visual is not None
     assert r.visual.masked_selectors  # provenance records the mask
 
     # Without the mask the same screen fails — proving the mask did the work.
     bare = _a({"visual": {"baseline": "home.png"}})
-    r2 = evaluate_one(_framed_screen(), bare, visual_context=_vc(tmp_path, shot))
+    r2 = evaluate_one(_framed_screen(), bare, ctx=EvalContext(visual=_vc(tmp_path, shot)))
     assert not r2.ok
 
 
@@ -640,7 +719,7 @@ def test_visual_selector_mask_not_found_is_noop(tmp_path: Path) -> None:
 
     # A selector matching nothing masks nothing — the real diff survives and fails.
     a = _a({"visual": {"baseline": "home.png", "exclude": [{"selector": {"id": "ghost"}}]}})
-    r = evaluate_one(_framed_screen(), a, visual_context=_vc(tmp_path, shot))
+    r = evaluate_one(_framed_screen(), a, ctx=EvalContext(visual=_vc(tmp_path, shot)))
     assert not r.ok
 
 
@@ -655,7 +734,9 @@ def test_visual_selector_mask_ambiguous_fails(tmp_path: Path) -> None:
     a = _a(
         {"visual": {"baseline": "home.png", "exclude": [{"selector": {"traits": ["staticText"]}}]}}
     )
-    r = evaluate_one(_framed_screen(), a, visual_context=_vc(tmp_path, tmp_path / "shot.png"))
+    r = evaluate_one(
+        _framed_screen(), a, ctx=EvalContext(visual=_vc(tmp_path, tmp_path / "shot.png"))
+    )
     assert not r.ok
     assert r.reason.startswith("exclude selector ")  # ambiguous mask fails, never masks first match
 
@@ -683,7 +764,7 @@ def test_visual_element_scoped_with_selector_mask(tmp_path: Path) -> None:
             }
         }
     )
-    r = evaluate_one(_framed_screen(), a, visual_context=_vc(tmp_path, shot))
+    r = evaluate_one(_framed_screen(), a, ctx=EvalContext(visual=_vc(tmp_path, shot)))
     assert r.ok
 
 
@@ -716,7 +797,7 @@ def test_visual_element_scoped_mask_straddling_crop_edge(tmp_path: Path) -> None
             }
         }
     )
-    r = evaluate_one(screen, a, visual_context=_vc(tmp_path, shot))
+    r = evaluate_one(screen, a, ctx=EvalContext(visual=_vc(tmp_path, shot)))
     assert r.ok
 
 
@@ -743,7 +824,7 @@ def test_visual_mixed_rectangle_and_selector_mask(tmp_path: Path) -> None:
             }
         }
     )
-    r = evaluate_one(_framed_screen(), a, visual_context=_vc(tmp_path, shot))
+    r = evaluate_one(_framed_screen(), a, ctx=EvalContext(visual=_vc(tmp_path, shot)))
     assert r.ok
 
 
@@ -754,7 +835,7 @@ def test_prepare_visual_comparison_whole_screen_is_a_passthrough(tmp_path: Path)
     """No element / no selector mask: preprocessing leaves the whole screenshot as the actual."""
     from PIL import Image
 
-    from bajutsu.assertions import _prepare_visual_comparison
+    from bajutsu.assertions.visual import _prepare_visual_comparison
 
     shot = tmp_path / "shot.png"
     Image.new("RGBA", (100, 100), (255, 0, 0, 255)).save(shot)
@@ -763,7 +844,7 @@ def test_prepare_visual_comparison_whole_screen_is_a_passthrough(tmp_path: Path)
     prepared = _prepare_visual_comparison(_vc(tmp_path, shot), a, _framed_screen(), "home.png")
 
     # A whole-screen comparison: no crop, no scale, the actual is the untouched screenshot.
-    from bajutsu.assertions import _Prepared
+    from bajutsu.assertions.visual import _Prepared
 
     assert isinstance(prepared, _Prepared)
     assert prepared.crop is None
@@ -776,7 +857,7 @@ def test_prepare_visual_comparison_crops_to_the_element(tmp_path: Path) -> None:
     """An element-scoped comparison writes the crop and reports it as the actual (40x30 card)."""
     from PIL import Image
 
-    from bajutsu.assertions import _prepare_visual_comparison, _Prepared
+    from bajutsu.assertions.visual import _prepare_visual_comparison, _Prepared
 
     actual = Image.new("RGBA", (100, 100), (255, 0, 0, 255))
     _paint(actual, (10, 10, 40, 30), (0, 255, 0, 255))
@@ -800,7 +881,8 @@ def test_prepare_visual_comparison_element_not_found_returns_result(tmp_path: Pa
     """An unresolvable element scope short-circuits to a failing AssertionResult, not a crop."""
     from PIL import Image
 
-    from bajutsu.assertions import AssertionResult, _prepare_visual_comparison
+    from bajutsu.assertions import AssertionResult
+    from bajutsu.assertions.visual import _prepare_visual_comparison
 
     shot = tmp_path / "shot.png"
     Image.new("RGBA", (100, 100), (255, 0, 0, 255)).save(shot)
@@ -818,7 +900,9 @@ def test_resolve_masks_selector_and_rectangle(tmp_path: Path) -> None:
     """Selector masks resolve to pixel rectangles (with provenance); plain rectangles pass through."""
     from PIL import Image
 
-    from bajutsu.assertions import AssertionResult, ExcludeRegion, _resolve_masks
+    from bajutsu.assertions import AssertionResult
+    from bajutsu.assertions.visual import _resolve_masks
+    from bajutsu.scenario import ExcludeRegion
 
     shot = tmp_path / "shot.png"
     Image.new("RGBA", (100, 100), (0, 255, 0, 255)).save(shot)
@@ -848,7 +932,8 @@ def test_resolve_masks_selector_and_rectangle(tmp_path: Path) -> None:
 
 def test_resolve_masks_ambiguous_selector_returns_result(tmp_path: Path) -> None:
     """An ambiguous mask selector fails the assertion rather than masking the first match."""
-    from bajutsu.assertions import AssertionResult, _resolve_masks
+    from bajutsu.assertions import AssertionResult
+    from bajutsu.assertions.visual import _resolve_masks
 
     a = _a(
         {"visual": {"baseline": "home.png", "exclude": [{"selector": {"traits": ["staticText"]}}]}}
@@ -865,7 +950,8 @@ def test_resolve_masks_ambiguous_selector_returns_result(tmp_path: Path) -> None
 
 def test_resolve_masks_translates_into_crop_local_coordinates(tmp_path: Path) -> None:
     """When element-scoped, masks are shifted into the crop's local coordinate space."""
-    from bajutsu.assertions import ExcludeRegion, _resolve_masks
+    from bajutsu.assertions.visual import _resolve_masks
+    from bajutsu.scenario import ExcludeRegion
 
     a = _a({"visual": {"baseline": "card.png", "exclude": [{"selector": {"id": "badge"}}]}}).visual
     assert a is not None
@@ -881,7 +967,7 @@ def test_resolve_baselines_copies_the_baseline_and_prepares_the_diff_path(tmp_pa
     """Baseline I/O: the baseline is copied into the run dir and the diff path is prepared."""
     from PIL import Image
 
-    from bajutsu.assertions import _resolve_baselines
+    from bajutsu.assertions.visual import _resolve_baselines
 
     baselines = tmp_path / "baselines"
     baselines.mkdir()
@@ -933,8 +1019,10 @@ def test_golden_assertion_pass(tmp_path: Path) -> None:
     elements: list[base.Element] = [
         el("ctrl.toggle", "Toggle", ["switch"], value="1", frame=(10.0, 20.0, 50.0, 30.0)),
     ]
-    ctx = GoldenContext(goldens_dir=golden_dir)
-    result = evaluate_one(elements, _a({"golden": {"path": "controls.json"}}), golden_context=ctx)
+    gc = GoldenContext(goldens_dir=golden_dir)
+    result = evaluate_one(
+        elements, _a({"golden": {"path": "controls.json"}}), ctx=EvalContext(golden=gc)
+    )
     assert result.ok
     assert result.kind == "golden"
 
@@ -960,8 +1048,10 @@ def test_golden_assertion_mismatch_fails(tmp_path: Path) -> None:
     elements: list[base.Element] = [
         el("ctrl.toggle", "Switch", ["button"], value="0", frame=(10.0, 20.0, 50.0, 30.0)),
     ]
-    ctx = GoldenContext(goldens_dir=golden_dir)
-    result = evaluate_one(elements, _a({"golden": {"path": "controls.json"}}), golden_context=ctx)
+    gc = GoldenContext(goldens_dir=golden_dir)
+    result = evaluate_one(
+        elements, _a({"golden": {"path": "controls.json"}}), ctx=EvalContext(golden=gc)
+    )
     assert not result.ok
     assert "ctrl.toggle" in result.reason
 
@@ -984,8 +1074,8 @@ def test_golden_assertion_missing_element_fails(tmp_path: Path) -> None:
     }
     (golden_dir / "controls.json").write_text(json.dumps(golden_data), encoding="utf-8")
 
-    ctx = GoldenContext(goldens_dir=golden_dir)
-    result = evaluate_one([], _a({"golden": {"path": "controls.json"}}), golden_context=ctx)
+    gc = GoldenContext(goldens_dir=golden_dir)
+    result = evaluate_one([], _a({"golden": {"path": "controls.json"}}), ctx=EvalContext(golden=gc))
     assert not result.ok
     assert "missing" in result.reason.lower()
 
@@ -999,16 +1089,20 @@ def test_golden_assertion_no_context_fails() -> None:
 def test_golden_assertion_file_not_found_fails(tmp_path: Path) -> None:
     from bajutsu.assertions import GoldenContext
 
-    ctx = GoldenContext(goldens_dir=tmp_path)
-    result = evaluate_one(SCREEN, _a({"golden": {"path": "nonexistent.json"}}), golden_context=ctx)
+    gc = GoldenContext(goldens_dir=tmp_path)
+    result = evaluate_one(
+        SCREEN, _a({"golden": {"path": "nonexistent.json"}}), ctx=EvalContext(golden=gc)
+    )
     assert not result.ok
 
 
 def test_golden_path_traversal_rejected(tmp_path: Path) -> None:
     from bajutsu.assertions import GoldenContext
 
-    ctx = GoldenContext(goldens_dir=tmp_path)
-    result = evaluate_one(SCREEN, _a({"golden": {"path": "../../etc/passwd"}}), golden_context=ctx)
+    gc = GoldenContext(goldens_dir=tmp_path)
+    result = evaluate_one(
+        SCREEN, _a({"golden": {"path": "../../etc/passwd"}}), ctx=EvalContext(golden=gc)
+    )
     assert not result.ok
     assert "escapes" in result.reason
 
@@ -1035,14 +1129,14 @@ def test_golden_via_evaluate(tmp_path: Path) -> None:
     elements: list[base.Element] = [
         el("ctrl.toggle", "Toggle", ["switch"], value="1", frame=(10.0, 20.0, 50.0, 30.0)),
     ]
-    ctx = GoldenContext(goldens_dir=golden_dir)
+    gc = GoldenContext(goldens_dir=golden_dir)
     results = evaluate(
         elements,
         [
             _a({"exists": {"id": "ctrl.toggle"}}),
             _a({"golden": {"path": "controls.json"}}),
         ],
-        golden_context=ctx,
+        ctx=EvalContext(golden=gc),
     )
     assert passed(results)
     assert results[1].kind == "golden"
