@@ -1,0 +1,244 @@
+"""The Android emulator lifecycle via `adb` (the adb backend's environment) — idb's twin."""
+
+from __future__ import annotations
+
+import logging
+import os
+import subprocess
+from collections.abc import Callable, Mapping
+from pathlib import Path
+from typing import Protocol, runtime_checkable
+
+from bajutsu import adb, backends
+from bajutsu.config import Effective, require_android
+from bajutsu.crawl import AliveCheck, ClearBlocking, Recover, Reset
+from bajutsu.drivers import base
+from bajutsu.network import Collector
+from bajutsu.orchestrator import DeviceControl, RelaunchFn
+from bajutsu.platform_lifecycle import readiness
+from bajutsu.platform_lifecycle.device_control import android_device_control
+from bajutsu.scenario import Preconditions, Relaunch, Scenario
+
+logger = logging.getLogger(__name__)
+
+# Overrides the resident UI Automator read channel (BE-0245). By default the channel is on whenever
+# the server APKs are built (`make -C BajutsuAndroidUIAutomatorServer build`) and off otherwise, so a fresh clone
+# reads via `uiautomator dump` exactly as before. Set to 0/false/no to force the dump path even on a
+# built tree; set to 1/true/yes to force the resident path (start() degrades loudly to dump if it is
+# not built). Either way a channel failure falls back to `uiautomator dump`.
+_RESIDENT_ENV = "BAJUTSU_ADB_RESIDENT"
+
+
+@runtime_checkable
+class ResidentServerLike(Protocol):
+    """The lease-lifecycle slice of `bajutsu.adb_resident.ResidentServer` the environment drives."""
+
+    def start(self) -> Callable[[], str]: ...
+
+    def stop(self) -> None: ...
+
+
+class AndroidEnvironment:
+    """The Android emulator lifecycle via `adb` (the adb backend's environment) — idb's twin.
+
+    `start` runs the adb sequence — boot-readiness wait → optional APK (re)install → `pm clear` for a
+    clean state (the `erase` equivalent) → `am force-stop` → runtime-permission pre-grant (`pm grant`,
+    BE-0210) → `am start` (launch env forwarded as intent extras) → deeplink — and returns the `adb`
+    driver. The lease-shaping methods mirror the iOS
+    `_DeviceEnvironment`, over `adb` instead of `simctl`: the same seam, a different subprocess tool.
+    Network is not observed natively (no `NETWORK` capability), so that path degrades the same honest
+    way iOS's mocked network does. Device control backs the subset the emulator can honor
+    (`setLocation`, BE-0211, plus clipboard through the app's in-app receiver, BE-0233); the rest of
+    the family stays unsupported.
+    """
+
+    def __init__(
+        self,
+        actuator: str,
+        serial: str,
+        adb_run: adb.RunFn = adb._real_run,
+        *,
+        resident_factory: Callable[[], ResidentServerLike] | None = None,
+    ) -> None:
+        self._actuator = actuator
+        self._serial = serial
+        self._run = adb_run
+        # Override the resident-server construction in tests; None uses the real, env-gated default.
+        self._resident_factory = resident_factory
+        self._resident: ResidentServerLike | None = None
+
+    def resolve_device(self, udid: str) -> str:
+        return adb.resolve_serial(udid, self._run)
+
+    def captures_video(self) -> bool:
+        return False  # screenrecord is a driver-interval capture, not the record command's video
+
+    def start(
+        self,
+        eff: Effective,
+        pre: Preconditions,
+        *,
+        extra_env: Mapping[str, str] | None = None,
+        record_video_dir: Path | None = None,
+    ) -> base.Driver:
+        android = require_android(eff)
+        e = adb.Env(self._serial, run=self._run)
+        try:
+            readiness._await_boot(e)
+            if android.app_path:
+                if not Path(android.app_path).exists():
+                    raise adb.DeviceError(
+                        f"appPath not found: {android.app_path} (build the app first)"
+                    )
+                e.install(android.app_path)
+            # `pm clear` is the clean-state reset (fresh app data); skip it only on an explicit
+            # `overwrite` reinstall with no erase, matching iOS's "keep data" overwrite path.
+            if pre.erase or pre.reinstall == "clean":
+                e.clear(android.package)
+            e.force_stop(android.package)  # clean start so readiness reflects the new launch
+            # Grant runtime permissions after `pm clear` (which resets grants) but before launch, so
+            # a permission prompt never blocks the scenario — deterministic, no timing (BE-0210).
+            e.grant_permissions(android.package, android.grant_permissions)
+            launch_env: Mapping[str, str] = {
+                **eff.launch_env,
+                **pre.launch_env,
+                **(extra_env or {}),
+            }
+            e.launch(android.package, launch_env)
+            if pre.deeplink is not None:
+                e.open_url(pre.deeplink, android.package)
+        except subprocess.CalledProcessError as exc:
+            raise adb.device_error(exc) from exc
+        except OSError as exc:
+            # adb itself could not be run (e.g. missing from PATH) — surface it as a clean
+            # DeviceError (exit 2) rather than an unhandled traceback or a spin to the boot deadline.
+            raise adb.DeviceError(
+                f"could not run adb ({exc}); is Android platform-tools installed and on PATH?"
+            ) from exc
+        # The resident read channel drives whatever app is now on screen (BE-0245); a startup failure
+        # degrades to `uiautomator dump` rather than failing the lease.
+        return backends.make_driver(
+            self._actuator, self._serial, fetch_hierarchy=self._begin_resident()
+        )
+
+    def _begin_resident(self) -> Callable[[], str] | None:
+        """Start the resident server for this lease, or None to read via `uiautomator dump`."""
+        server = self._make_resident()
+        if server is None:
+            return None
+        from bajutsu.drivers.adb import AdbResidentError
+
+        try:
+            fetch = server.start()
+        except AdbResidentError as exc:
+            logger.warning(
+                "resident UI Automator server unavailable (%s); reading via `uiautomator dump`", exc
+            )
+            return None
+        self._resident = server
+        return fetch
+
+    def _make_resident(self) -> ResidentServerLike | None:
+        if self._resident_factory is not None:
+            return self._resident_factory()
+        from bajutsu.adb_resident import ResidentServer, server_apks_built
+
+        override = os.environ.get(_RESIDENT_ENV, "").strip().lower()
+        if override in {"0", "false", "no"}:
+            return None  # explicit opt-out: read via `uiautomator dump`
+        # Default-on by APK presence: route reads through the resident server whenever it is built.
+        # A truthy override forces it on even before a build (start() then degrades loudly to dump).
+        forced_on = override in {"1", "true", "yes"}
+        if not forced_on and not server_apks_built():
+            return None
+        # The choice now flips on whatever is built on disk, not an explicit flag, so log which
+        # channel it landed on (and why) — otherwise a stale local build silently switching a run
+        # onto the resident channel is invisible without inspecting build-output paths.
+        logger.debug(
+            "resident UI Automator channel selected (%s)",
+            f"{_RESIDENT_ENV} override" if forced_on else "server APKs built",
+        )
+        return ResidentServer(self._serial, run=self._run)
+
+    def device_catalog(self) -> dict[str, dict[str, str]]:
+        return adb.device_catalog(self._run)
+
+    def observes_network_via_driver(self) -> bool:
+        return False  # no native network monitor — the same mocked story as iOS
+
+    def records_video_up_front(self) -> bool:
+        return False  # screenrecord records on demand via driver_interval, not up front like web
+
+    def hook_collector(self, driver: base.Driver, scenario: Scenario) -> Collector:
+        raise NotImplementedError("the adb backend does not observe network via the driver")
+
+    def relauncher(
+        self,
+        eff: Effective,
+        scenario: Scenario,
+        driver: base.Driver,
+        *,
+        extra_env: Mapping[str, str] | None = None,
+    ) -> RelaunchFn:
+        package = require_android(eff).package
+        e = adb.Env(self._serial, run=self._run)
+        pre = scenario.preconditions
+
+        def relaunch(opts: Relaunch) -> None:
+            e.force_stop(package)  # restart only the app; the device is not rebooted
+            launch_env = {
+                **eff.launch_env,
+                **pre.launch_env,
+                **(extra_env or {}),
+                **(opts.env or {}),
+            }
+            e.launch(package, launch_env)
+            readiness._await_ready(
+                driver, ready_sel=eff.ready_when, id_namespaces=eff.id_namespaces
+            )
+
+        return relaunch
+
+    def controller(self, eff: Effective) -> DeviceControl | None:
+        # The emulator-backed subset (setLocation over the console + clipboard over the app's in-app
+        # receiver, BE-0233); the rest of the family raises UnsupportedAction, and preflight (BE-0212)
+        # rejects it up front from the adb capability set. Clipboard addresses its broadcast at the
+        # app under test, so the package is threaded through.
+        return android_device_control(self._serial, require_android(eff).package, self._run)
+
+    def teardown(self, driver: base.Driver, eff: Effective) -> None:
+        # Stop the resident server first (BE-0245) so no instrumentation is left running on the device,
+        # then force-stop the app — this runs in the run's finally, so it fires on failure/interrupt too.
+        if self._resident is not None:
+            self._resident.stop()
+            self._resident = None
+        adb.Env(self._serial, run=self._run).force_stop(require_android(eff).package)
+
+    def has_devices(self) -> bool:
+        return True
+
+    def plan_lanes(self, udid_arg: str, workers: int) -> list[str]:
+        serials = [self.resolve_device(s.strip()) for s in udid_arg.split(",") if s.strip()]
+        return serials[: max(1, min(workers, len(serials)))]
+
+    def crawl_reset(self, eff: Effective) -> Reset:
+        package = require_android(eff).package
+        e = adb.Env(self._serial, run=self._run)
+
+        def reset(driver: base.Driver) -> None:
+            e.force_stop(package)
+            e.launch(package, eff.launch_env)
+            readiness._await_ready(
+                driver, ready_sel=eff.ready_when, id_namespaces=eff.id_namespaces
+            )
+
+        return reset
+
+    def crawl_aliveness(self) -> AliveCheck | None:
+        return None  # the engine reads the accessibility tree for device crash detection
+
+    def crawl_recover(self) -> Recover | None:
+        return None  # no in-lane recovery: a wedged device surfaces as a DeviceError
+
+    def crawl_dialog_clearer(self) -> ClearBlocking | None:
+        return None  # OS prompts are handled by the optional alert guard, wired by the CLI

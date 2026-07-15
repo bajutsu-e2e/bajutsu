@@ -12,7 +12,7 @@ from __future__ import annotations
 import contextlib
 from dataclasses import dataclass
 
-from bajutsu import adb, simctl
+from bajutsu import simctl
 from bajutsu.backends import make_driver
 from bajutsu.config import Effective, require_web, web_base_url
 from bajutsu.drivers import base
@@ -225,12 +225,13 @@ def probe_screen(
         # shell out to `xcrun` and fail on a host without Xcode (e.g. the Linux gate).
         return make_driver("fake", _first_udid(udid)).query()
     # xcuitest needs a running runner to query, but doctor only scores the current screen — idb can
-    # read the same accessibility tree without a runner (BE-0019). Android resolves its serial via
-    # adb (the same parameterization the run pipeline uses), the iOS family via simctl.
+    # read the same accessibility tree without a runner (BE-0019).
     query_actuator = "idb" if actuator == "xcuitest" else actuator
     first = _first_udid(udid)
-    if actuator == "adb":
-        resolved = adb.resolve_serial(first)
-    else:
-        resolved = simctl.resolve_udid(first, run=simctl_run)
+    # How the device handle resolves is the platform's, behind the Environment seam (BE-0256): the
+    # iOS family via simctl (threading serve's host-safe runner), Android via adb. Imported lazily —
+    # `platform_lifecycle` imports `namespace_of` from this module, so a top-level import would cycle.
+    from bajutsu.platform_lifecycle import environment_for
+
+    resolved = environment_for(actuator, first, simctl_run).resolve_device(first)
     return make_driver(query_actuator, resolved).query()

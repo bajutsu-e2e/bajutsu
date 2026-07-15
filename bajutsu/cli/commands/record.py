@@ -32,6 +32,7 @@ from bajutsu.cli._shared import (
 from bajutsu.cli.handoff import make_handoff
 from bajutsu.config import WEB_ENGINES, Effective
 from bajutsu.handoff import HumanHandoffUnavailable
+from bajutsu.platform_lifecycle import environment_for
 from bajutsu.record import record as record_loop
 from bajutsu.runner import launch_driver
 from bajutsu.scenario import Preconditions, dump_scenarios
@@ -240,10 +241,12 @@ def record(
             with_screenshot=screenshot,
             alert_guard=alert_guard,
             secret_tokens=_secret_tokens(eff),
-            # A mobile (iOS-simulator) app always records a scenario-wide screen video; the recording
-            # is a simctl interval, so it's specific to the idb backend (web replays capture video by
-            # other means, and the fake actuator has no device to record).
-            capture_video=actuator == "idb",
+            # Whether to record a scenario-wide screen video while authoring is the platform's to
+            # answer, behind the Environment seam (BE-0256): the simctl-backed devices (idb, xcuitest)
+            # record via a simctl interval, web captures by other means during replay, and the fake
+            # actuator has no device. Asking the seam fixes xcuitest, which `actuator == "idb"` used to
+            # skip silently.
+            capture_video=environment_for(actuator, udid).captures_video(),
             report=say,
             # A "needs human" turn hands off to this responder; with no responder (CI, non-interactive)
             # the loop raises below rather than hanging or guessing (BE-0179).

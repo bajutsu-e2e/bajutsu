@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0256](BE-0256-platform-lifecycle-package-split.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0256") |
+| Implementing PR | [#1080](https://github.com/bajutsu-e2e/bajutsu/pull/1080) |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
@@ -166,15 +167,23 @@ the Tier-2 `run`/CI gate (prime directive 1 is unaffected).
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Split `platform_lifecycle.py` into the `platform_lifecycle/` package (`protocols.py`,
+- [x] Split `platform_lifecycle.py` into the `platform_lifecycle/` package (`protocols.py`,
       `readiness.py`, `device_control.py`, `environments/{ios,android,web,xcuitest,fake}.py`,
       `__init__.py` re-exports) with no behavior change
-- [ ] Unify `_await_ready` / `_await_boot` onto `base.wait_until`'s deadline discipline
-- [ ] Add `Environment.resolve_device(actuator, udid)` and route `run.py` / `audit.py` / `doctor.py`
+- [x] Unify `_await_ready` / `_await_boot` onto `base.wait_until`'s deadline discipline
+- [x] Add `Environment.resolve_device(udid)` and route `run.py` / `audit.py` / `doctor.py`
       through it
-- [ ] Add a new `Environment.captures_video` predicate (not a reuse of `records_video_up_front`) and route
+- [x] Add a new `Environment.captures_video` predicate (not a reuse of `records_video_up_front`) and route
       `record.py`'s `capture_video` through it, fixing the XCUITest video-capture bug, with a
       regression test
+
+**Log**
+
+- Implemented as one PR: the `platform_lifecycle/` package split (`protocols.py`, `readiness.py`,
+  `device_control.py`, `relaunchers.py`, `factories.py`, `environments/{ios,android,web,xcuitest,fake}.py`),
+  a shared `base.deadline_ticks` primitive backing `base.wait_until` / `_await_ready` / `_await_boot`,
+  the `resolve_device` / `captures_video` seam methods, and the four CLI/doctor call sites routed
+  through them (fixing the XCUITest video-capture bug).
 
 ## References
 

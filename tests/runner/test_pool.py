@@ -69,7 +69,7 @@ def test_device_pool_per_device_resources(monkeypatch: pytest.MonkeyPatch) -> No
         return ""
 
     monkeypatch.setattr(
-        "bajutsu.platform_lifecycle.make_driver",
+        "bajutsu.backends.make_driver",
         lambda actuator, udid: FakeDriver([_el("home", "H"), _el("ok", "OK")]),
     )
 
@@ -122,7 +122,7 @@ def test_device_pool_wires_readiness_and_provenance_into_the_sink(
     """The lease folds the launch readiness outcome and this scenario's BE-0049 provenance into the
     sink, so a first-wait timeout diagnostic can state them (BE-0231 Unit 1)."""
     monkeypatch.setattr(
-        "bajutsu.platform_lifecycle.make_driver",
+        "bajutsu.backends.make_driver",
         lambda actuator, udid: FakeDriver([_el("home", "H"), _el("ok", "OK")]),  # 2 → count signal
     )
     lease, shutdown = device_pool(
@@ -164,7 +164,7 @@ def test_device_pool_labels_leased_simulator(monkeypatch: pytest.MonkeyPatch) ->
         return catalog if args == simctl.list_devices_cmd() else ""
 
     monkeypatch.setattr(
-        "bajutsu.platform_lifecycle.make_driver",
+        "bajutsu.backends.make_driver",
         lambda actuator, udid: FakeDriver([_el("home", "H"), _el("ok", "OK")]),
     )
     lease, shutdown = device_pool(
@@ -185,7 +185,7 @@ def test_device_pool_labels_leased_simulator(monkeypatch: pytest.MonkeyPatch) ->
 def test_device_pool_single_device_keeps_full_features(monkeypatch: pytest.MonkeyPatch) -> None:
     """A pool of one is the single-device path: collector + interval sink + control, all on."""
     monkeypatch.setattr(
-        "bajutsu.platform_lifecycle.make_driver",
+        "bajutsu.backends.make_driver",
         lambda actuator, udid: FakeDriver([_el("home", "H"), _el("ok", "OK")]),
     )
     lease, shutdown = device_pool(
@@ -218,7 +218,7 @@ def test_device_pool_no_network_has_no_collector(monkeypatch: pytest.MonkeyPatch
         return ""
 
     monkeypatch.setattr(
-        "bajutsu.platform_lifecycle.make_driver",
+        "bajutsu.backends.make_driver",
         lambda actuator, udid: FakeDriver([_el("home", "H"), _el("ok", "OK")]),
     )
     lease, shutdown = device_pool(
@@ -264,9 +264,7 @@ def test_device_pool_stops_started_collectors_when_one_fails(
             self.stopped = True
 
     monkeypatch.setattr("bajutsu.runner.pool.NetworkCollector", FlakyCollector)
-    monkeypatch.setattr(
-        "bajutsu.platform_lifecycle.make_driver", lambda actuator, udid: FakeDriver([])
-    )
+    monkeypatch.setattr("bajutsu.backends.make_driver", lambda actuator, udid: FakeDriver([]))
 
     with pytest.raises(OSError, match="port in use"):
         device_pool(
@@ -428,7 +426,7 @@ def test_device_pool_web_lease(monkeypatch: pytest.MonkeyPatch) -> None:
         fakes.append(d)
         return d
 
-    monkeypatch.setattr("bajutsu.platform_lifecycle.make_driver", fake_make_driver)
+    monkeypatch.setattr("bajutsu.backends.make_driver", fake_make_driver)
     lease, shutdown = device_pool(
         ["web"], ["web"], _eff_web(), Path("runs"), network=False, available=lambda b: True
     )
@@ -470,7 +468,7 @@ def test_device_pool_web_lease_builds_a_page_hooked_collector(
         fakes.append(d)
         return d
 
-    monkeypatch.setattr("bajutsu.platform_lifecycle.make_driver", fake_make_driver)
+    monkeypatch.setattr("bajutsu.backends.make_driver", fake_make_driver)
     lease, shutdown = device_pool(
         ["web"], ["web"], _eff_web(), Path("runs"), network=True, available=lambda b: True
     )
@@ -491,7 +489,7 @@ def test_device_pool_web_lease_builds_a_page_hooked_collector(
 def test_device_pool_web_requires_base_url(monkeypatch: pytest.MonkeyPatch) -> None:
     # A web app with no baseUrl fails cleanly at launch (simctl.DeviceError), not deep in Playwright.
     monkeypatch.setattr(
-        "bajutsu.platform_lifecycle.make_driver",
+        "bajutsu.backends.make_driver",
         lambda actuator, udid, base_url=None: FakeDriver([]),
     )
     eff_no_url = _web_eff(base_url=None)
@@ -509,7 +507,7 @@ def test_device_pool_uses_a_resolved_network_fallback(monkeypatch: pytest.Monkey
     # When a same-platform read-only provider is resolved (BE-0020), its collector supplies network
     # instead of the actuator's app-side one, and the lease's provenance names it as a fallback.
     monkeypatch.setattr(
-        "bajutsu.platform_lifecycle.make_driver",
+        "bajutsu.backends.make_driver",
         lambda actuator, udid: FakeDriver([_el("home", "H"), _el("ok", "OK")]),
     )
     ex = NetworkExchange(method="GET", path="/items", status=200)
@@ -541,7 +539,7 @@ def test_device_pool_releases_resources_when_launch_fails(monkeypatch: pytest.Mo
     # starves later leases. A flaky launch fails once; the retry must then lease the freed device
     # (a never-returned udid would block free.get() forever).
     monkeypatch.setattr(
-        "bajutsu.platform_lifecycle.make_driver",
+        "bajutsu.backends.make_driver",
         lambda actuator, udid: FakeDriver([_el("home", "H"), _el("ok", "OK")]),
     )
 
@@ -611,7 +609,7 @@ def test_device_pool_network_lease_defaults_to_collector_provenance(
     # With no fallback resolved (today's iOS), the app-side collector supplies network and the
     # provenance stays "collector".
     monkeypatch.setattr(
-        "bajutsu.platform_lifecycle.make_driver",
+        "bajutsu.backends.make_driver",
         lambda actuator, udid: FakeDriver([_el("home", "H"), _el("ok", "OK")]),
     )
     lease, shutdown = device_pool(

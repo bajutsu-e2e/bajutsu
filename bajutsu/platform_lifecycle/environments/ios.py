@@ -1,0 +1,154 @@
+"""The device-style lifecycle: the iOS Simulator (`simctl`) backend and its shared base.
+
+`_DeviceEnvironment` holds every lease-shaping method the simctl family (iOS, XCUITest, fake) share;
+`IosEnvironment` adds the idb backend's `start` sequence.
+"""
+
+from __future__ import annotations
+
+import subprocess
+from collections.abc import Mapping
+from pathlib import Path
+
+from bajutsu import backends, simctl
+from bajutsu.config import Effective, require_ios
+from bajutsu.crawl import AliveCheck, ClearBlocking, Recover, Reset
+from bajutsu.drivers import base
+from bajutsu.network import Collector
+from bajutsu.orchestrator import DeviceControl, RelaunchFn
+from bajutsu.platform_lifecycle import readiness
+from bajutsu.platform_lifecycle.device_control import device_control
+from bajutsu.platform_lifecycle.relaunchers import device_relauncher
+from bajutsu.scenario import Preconditions, Scenario
+
+
+class _DeviceEnvironment:
+    """The device-style lifecycle: the iOS Simulator (`simctl`) backend and the fake test backend,
+    which mimics the same shape without a real device.
+
+    Only `start` differs between them — the fake runs no device sequence — so every lease-shaping
+    method (catalog, relaunch, control, teardown, the external-receiver network strategy) lives here.
+    """
+
+    def __init__(self, actuator: str, udid: str, env_run: simctl.RunFn = simctl._real_run) -> None:
+        self._actuator = actuator
+        self._udid = udid
+        self._run = env_run
+
+    def resolve_device(self, udid: str) -> str:
+        return simctl.resolve_udid(udid, self._run)
+
+    def captures_video(self) -> bool:
+        return True  # a simctl-backed device records a scenario-wide video via a simctl interval
+
+    def device_catalog(self) -> dict[str, dict[str, str]]:
+        return simctl.device_catalog(self._run)
+
+    def observes_network_via_driver(self) -> bool:
+        return False  # the app reports to an external collector via BAJUTSU_COLLECTOR
+
+    def records_video_up_front(self) -> bool:
+        return False  # simctl records on demand
+
+    def hook_collector(self, driver: base.Driver, scenario: Scenario) -> Collector:
+        raise NotImplementedError("device backends observe network via an external receiver")
+
+    def relauncher(
+        self,
+        eff: Effective,
+        scenario: Scenario,
+        driver: base.Driver,
+        *,
+        extra_env: Mapping[str, str] | None = None,
+    ) -> RelaunchFn:
+        return device_relauncher(self._udid, self._run, extra_env)(eff, scenario, driver)
+
+    def controller(self, eff: Effective) -> DeviceControl | None:
+        return device_control(self._udid, require_ios(eff).bundle_id, self._run)
+
+    def teardown(self, driver: base.Driver, eff: Effective) -> None:
+        simctl.Env(self._udid, run=self._run).terminate(require_ios(eff).bundle_id)
+
+    def has_devices(self) -> bool:
+        return True
+
+    def plan_lanes(self, udid_arg: str, workers: int) -> list[str]:
+        udids = [self.resolve_device(u.strip()) for u in udid_arg.split(",") if u.strip()]
+        return udids[: max(1, min(workers, len(udids)))]
+
+    def crawl_reset(self, eff: Effective) -> Reset:
+        # Return to a clean start the way `run` reaches any state: relaunch (not a full erase) so each
+        # frontier revisit stays fast; the engine then replays the shortest path from the entry.
+        e = simctl.Env(self._udid, run=self._run)
+        bundle_id = require_ios(eff).bundle_id
+
+        def reset(driver: base.Driver) -> None:
+            e.terminate(bundle_id)
+            e.launch(bundle_id, [*eff.launch_args, *simctl.locale_args(eff.locale)], eff.launch_env)
+            readiness._await_ready(
+                driver, ready_sel=eff.ready_when, id_namespaces=eff.id_namespaces
+            )
+
+        return reset
+
+    def crawl_aliveness(self) -> AliveCheck | None:
+        return None  # the engine reads the accessibility tree for device crash detection
+
+    def crawl_recover(self) -> Recover | None:
+        return None  # no in-lane recovery: a wedged device surfaces as a DeviceError
+
+    def crawl_dialog_clearer(self) -> ClearBlocking | None:
+        return None  # OS prompts are handled by the optional alert guard, wired by the CLI
+
+
+class IosEnvironment(_DeviceEnvironment):
+    """The iOS Simulator lifecycle via `simctl` (the idb backend's environment).
+
+    `erase` needs a shut-down device, so an erase run shuts down first (shutdown → erase → boot);
+    any `simctl` step that fails is surfaced as a clean `simctl.DeviceError` so the CLI exits 2 instead
+    of dumping a traceback.
+    """
+
+    def start(
+        self,
+        eff: Effective,
+        pre: Preconditions,
+        *,
+        extra_env: Mapping[str, str] | None = None,
+        record_video_dir: Path | None = None,
+    ) -> base.Driver:
+        ios = require_ios(eff)
+        e = simctl.Env(self._udid, run=self._run)
+        try:
+            if pre.erase:
+                e.shutdown()  # erase only works on a shut-down device
+                e.erase()
+            e.boot()
+            # A configured .app is reinstalled before each run so every scenario starts from a
+            # known-good binary. `clean` (default) uninstalls first (fresh app + data); `overwrite`
+            # installs over the existing app. After an `erase` the app is gone, so skip the uninstall.
+            if ios.app_path:
+                if not Path(ios.app_path).exists():
+                    raise simctl.DeviceError(
+                        f"appPath not found: {ios.app_path} (build the app first)"
+                    )
+                if pre.reinstall == "clean" and not pre.erase:
+                    e.uninstall(ios.bundle_id)
+                e.install(ios.app_path)
+            e.terminate(ios.bundle_id)  # clean start so readiness reflects the new launch
+            launch_env: Mapping[str, str] = {
+                **eff.launch_env,
+                **pre.launch_env,
+                **(extra_env or {}),
+            }
+            locale = pre.locale or eff.locale  # scenario locale overrides the app/config default
+            e.launch(
+                ios.bundle_id,
+                [*eff.launch_args, *pre.launch_args, *simctl.locale_args(locale)],
+                launch_env,
+            )
+            if pre.deeplink is not None:
+                e.openurl(pre.deeplink)
+        except subprocess.CalledProcessError as exc:
+            raise simctl.device_error(exc) from exc
+        return backends.make_driver(self._actuator, self._udid)

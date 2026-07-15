@@ -26,7 +26,6 @@ import typer
 
 from bajutsu import audit as _audit
 from bajutsu import device_errors
-from bajutsu import simctl as _simctl
 from bajutsu.backends import select_actuator_for_scenario
 from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
@@ -35,6 +34,7 @@ from bajutsu.cli._shared import (
     _start_launch_server_or_exit,
     read_manifests,
 )
+from bajutsu.platform_lifecycle import environment_for
 from bajutsu.run_id import new_run_id
 from bajutsu.runner import device_pool, run_all
 from bajutsu.scenario import Scenario, load_expanded_scenarios
@@ -144,7 +144,13 @@ def _repeat_audit(
     # unavailable actuator exits cleanly instead of crashing later.
     actuator, backends = _select_actuator_or_exit(backend, eff, [])
     try:
-        udids = ["web"] if actuator == "playwright" else [_simctl.resolve_udid(udid)]
+        # How a device handle resolves is the platform's, behind the Environment seam (BE-0256); web
+        # has no device, so its lane is the synthetic "web".
+        udids = (
+            ["web"]
+            if actuator == "playwright"
+            else [environment_for(actuator, udid).resolve_device(udid)]
+        )
     except device_errors.DeviceError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None

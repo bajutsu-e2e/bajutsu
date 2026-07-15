@@ -14,9 +14,7 @@ if TYPE_CHECKING:
 
 import typer
 
-from bajutsu import adb as _adb
 from bajutsu import device_errors, github
-from bajutsu import simctl as _simctl
 from bajutsu import usage as _usage
 from bajutsu import usage_ledger as _usage_ledger
 from bajutsu.artifact_perms import make_run_dir
@@ -36,6 +34,7 @@ from bajutsu.cli._shared import (
 )
 from bajutsu.config import WEB_ENGINES, Effective, IosConfig
 from bajutsu.orchestrator import AlertEvent, BlockedHandler, RunResult
+from bajutsu.platform_lifecycle import environment_for
 from bajutsu.report.archive import archive_run_dir
 from bajutsu.report.manifest import _run_backend
 from bajutsu.run_id import new_run_id
@@ -880,9 +879,11 @@ def run(
     actuator, backends = _select_actuator(backend, eff, engines)
     # Web has no simctl udid: `--workers N` is N near-free BrowserContext lanes (BE-0054); for idb,
     # `--udid` is a concrete comma list capped to the pool size. (The "booted" default is unused on
-    # web.) Android resolves its device serials via adb, not simctl.
-    resolve_device = _adb.resolve_serial if actuator == "adb" else _simctl.resolve_udid
-    udids, workers = _resolve_lanes(actuator, udid, workers, resolve_device)
+    # web.) How a device handle resolves is the platform's, behind the Environment seam (BE-0256):
+    # Android via adb, the iOS family via simctl — no `actuator == "adb"` branch here.
+    udids, workers = _resolve_lanes(
+        actuator, udid, workers, environment_for(actuator, udid).resolve_device
+    )
     _apply_dismiss_alerts(scenarios, dismiss_alerts)
     on_blocked_for = _alert_guard_factory(scenarios, eff, alert_instruction)
     # Network collection resolves `--network/--no-network` over the target's `network` config, then on
