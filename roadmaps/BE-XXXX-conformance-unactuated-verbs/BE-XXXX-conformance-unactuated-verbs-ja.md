@@ -19,8 +19,9 @@
 テスト（`tests/driver_conformance.py`）にかけて、どれも同じように振る舞うことを確かめる仕組みが、
 [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md) にあります（adb レーンは
 [BE-0270](../BE-0270-android-adb-driver-conformance/BE-0270-android-adb-driver-conformance-ja.md)
-が追加しました）。バックエンドごとに別々のテストを書くのではなく、この 1 本を各バックエンドに対して流すので、
-「どのバックエンドも同じように振る舞う」ことが、願望ではなく検査になります。この共通テストが現在カバーして
+が追加しました）。バックエンドごとに別々のテストを書くのではなく、この 1 本を各バックエンドに対して流します。
+こうして「どのバックエンドも同じように振る舞う」という前提が、そう期待するだけの状態から、実際の検査で
+裏づけられた状態に変わります。この共通テストが現在カバーして
 いるのは、tap、label と trait による解決、multi-touch と `selectOption` の capability の約束、そして条件待機の
 セマンティクスです。`Driver` プロトコルの操作のうち、テキスト編集の一群（`delete_text`、`select_all`、
 `copy_selection`）と `tap_point` は、この共通テストの範囲外にあり、どのレーンでも実機で一度もアクチュエート
