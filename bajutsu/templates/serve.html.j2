@@ -463,6 +463,11 @@
         <span class="au-step-label" id="au-step-label">No step loaded</span>
         <button class="run au-nav-btn" id="au-next" data-testid="author.next" disabled>Next &rarr;</button>
       </div>
+      <!-- Edit-only: a live session to pick against the current screen with no prior run (BE-0262). -->
+      <div class="au-live au-edit au-btnrow">
+        <button class="run" id="au-live-start" data-testid="author.live-start" data-idle="Start live session">Start live session</button>
+        <button class="run" id="au-live-stop" data-testid="author.live-stop" hidden>Stop session</button>
+      </div>
       <div class="status" id="au-status"></div>
       <div class="au-screen-wrap" id="au-screen-wrap">
         <div class="au-placeholder" id="au-placeholder">Pick a mode: Capture a new flow, or load a scenario to Edit / Enrich.</div>

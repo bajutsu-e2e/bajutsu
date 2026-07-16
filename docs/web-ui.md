@@ -376,11 +376,15 @@ in the [CLI reference](cli.md#crawl).
    the screenshot to record each action.
 3. Click **Finish & save** to write the captured flow.
 
-**Edit** — fix a step against the screenshot the run captured.
+**Edit** — fix a step against a screenshot, from a past run or a live session.
 
-1. Choose a **Scenario** and a **Run** and click **Load**.
-2. Step through with **← Prev** / **Next →**; the label shows which step is loaded.
-3. Click on the screenshot to re-target the step, then **Apply** the change to the YAML.
+1. Choose a **Scenario** and click **Load**. The **Run** picker lists only that scenario's own past
+   runs, so a chosen run's steps line up with the scenario instead of silently mismatching; pick a
+   **Run** to step through its captured screenshots.
+2. No prior run? Click **Start live session** to boot the target and pick against its current screen —
+   Edit needs no run. **Stop session** ends it without saving.
+3. Step through with **← Prev** / **Next →**; the label shows which step is loaded.
+4. Click on the screenshot to re-target the loaded step, then **Apply** the change to the YAML.
 
 **Enrich** — add suggested assertions.
 

@@ -419,9 +419,13 @@ def test_read_scenario_with_run_reads_from_object_storage(tmp_path: Path) -> Non
     assert steps[0]["elementsUrl"] == "/runs/run1/00-login/step0/elements.json"
 
 
-def test_read_scenario_without_run_returns_yaml_only(tmp_path: Path) -> None:
-    """Without runId and without opting into structure, the response is the plain {yaml} — no
-    steps and no scenarios. This is what the Author editor's no-run load still gets (BE-0273)."""
+def test_read_scenario_without_run_derives_steps_from_yaml(tmp_path: Path) -> None:
+    """Without runId, steps are derived from the scenario YAML itself (BE-0262).
+
+    The Author Edit picker needs a step list even for a scenario that has never run, so a live
+    session can target a step to fix; the per-step screenshot/elements URLs are absent because there
+    is no stored run — the live path supplies the current screenshot instead.
+    """
     state, _runs = _state(tmp_path)
     scn_dir = tmp_path / "scenarios"
     (scn_dir / "login.yaml").write_text(SCENARIO_YAML, encoding="utf-8")
@@ -433,8 +437,12 @@ def test_read_scenario_without_run_returns_yaml_only(tmp_path: Path) -> None:
     )
     assert status == 200
     assert "yaml" in payload
-    assert "steps" not in payload
-    assert "scenarios" not in payload
+    steps = payload["steps"]
+    assert len(steps) == 3
+    assert [s["action"] for s in steps] == ["tap", "type", "tap"]
+    for s in steps:
+        assert s["screenshotUrl"] is None
+        assert s["elementsUrl"] is None
 
 
 def test_read_scenario_without_run_returns_structural_scenarios(tmp_path: Path) -> None:

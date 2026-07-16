@@ -82,31 +82,47 @@ def start_capture(
     return {"ok": True, "screenSize": list(screen_size)}, 200
 
 
-def mark_capture(
-    state: ServeState, body: dict[str, Any], *, actor: str | None = None
-) -> tuple[Any, int]:
-    """Resolve a point, proxy-actuate, and append the step."""
+def _active_session(
+    state: ServeState, actor: str | None
+) -> tuple[CaptureSession | None, tuple[Any, int] | None]:
+    """The active session if *actor* owns it, else an error response (BE-0262).
+
+    Shared by every operation that drives an open session (mark / live-resolve / close), so the
+    single-session and per-actor-ownership guards stay identical across them.
+    """
     session = state.capture
     if session is None:
-        return {"error": "no active capture session"}, 400
+        return None, ({"error": "no active capture session"}, 400)
     if session.actor is not None and actor != session.actor:
-        return {"error": "capture session belongs to another user"}, 403
+        return None, ({"error": "capture session belongs to another user"}, 403)
+    return session, None
 
-    kind = str(body.get("kind", "tap"))
+
+def _resolve_point(
+    session: CaptureSession, body: dict[str, Any]
+) -> tuple[Any, tuple[Any, int] | None]:
+    """Resolve a normalized screen point against the session's live tree.
+
+    Returns the resolution result, or a malformed-point error response — the shared resolution mark
+    actuates on and the live Edit picker returns as-is (BE-0262).
+    """
     point = body.get("point", [0.5, 0.5])
     if not isinstance(point, list) or len(point) != 2:
-        return {"error": "point must be [x, y] normalized"}, 400
+        return None, ({"error": "point must be [x, y] normalized"}, 400)
     try:
         nx, ny = float(point[0]), float(point[1])
     except (TypeError, ValueError):
-        return {"error": "point values must be numeric"}, 400
+        return None, ({"error": "point values must be numeric"}, 400)
 
-    from bajutsu.record_capture import resolve_capture, step_for_tap, step_for_type
+    from bajutsu.record_capture import resolve_capture
 
     sw, sh = session.screen_size
-    px, py = nx * sw, ny * sh
-    result = resolve_capture(session.elements, (px, py), session.namespaces)
+    result = resolve_capture(session.elements, (nx * sw, ny * sh), session.namespaces)
+    return result, None
 
+
+def _feedback_payload(result: Any) -> tuple[Any, int] | None:
+    """The refused / ambiguity response shared by mark and the live picker; None on a clean match."""
     if result.refused:
         return {"refused": result.refused}, 200
     if result.ambiguity:
@@ -117,6 +133,26 @@ def mark_capture(
             "selector": result.selector.model_dump(exclude_none=True, by_alias=True),
             "rung": result.rung,
         }, 200
+    return None
+
+
+def mark_capture(
+    state: ServeState, body: dict[str, Any], *, actor: str | None = None
+) -> tuple[Any, int]:
+    """Resolve a point, proxy-actuate, and append the step."""
+    session, err = _active_session(state, actor)
+    if err:
+        return err
+    assert session is not None
+
+    kind = str(body.get("kind", "tap"))
+    result, err = _resolve_point(session, body)
+    if err:
+        return err
+    if (feedback := _feedback_payload(result)) is not None:
+        return feedback
+
+    from bajutsu.record_capture import step_for_tap, step_for_type
 
     sel = result.selector
     raw = sel.as_selector()
@@ -170,3 +206,45 @@ def finish_capture(
 
     state.capture = None
     return {"ok": True, "path": saved, "yaml": yaml_text}, 200
+
+
+def resolve_capture_pick(
+    state: ServeState, body: dict[str, Any], *, actor: str | None = None
+) -> tuple[Any, int]:
+    """Resolve a screen click against the live session's tree and return the selector (BE-0262).
+
+    The Edit editor's live picker: it mirrors mark's resolution but is pure — it neither actuates the
+    driver nor appends a step. The human Applies the returned selector to the YAML, so this stays
+    authoring assistance and never touches the deterministic verdict path.
+    """
+    session, err = _active_session(state, actor)
+    if err:
+        return err
+    assert session is not None
+
+    result, err = _resolve_point(session, body)
+    if err:
+        return err
+    if (feedback := _feedback_payload(result)) is not None:
+        return feedback
+
+    return {
+        "selector": result.selector.model_dump(exclude_none=True, by_alias=True),
+        "rung": result.rung,
+    }, 200
+
+
+def close_capture(
+    state: ServeState, body: dict[str, Any], *, actor: str | None = None
+) -> tuple[Any, int]:
+    """End a live session without saving a scenario — the live Edit picker's teardown (BE-0262).
+
+    finish_capture is save-and-close; this is the close half, for a picking session that produced no
+    scenario to persist. Teardown mirrors finish's (drop the session; the driver is released with it,
+    as the Driver protocol has no generic quit), so a live Edit session cannot leak a driver.
+    """
+    _session, err = _active_session(state, actor)
+    if err:
+        return err
+    state.capture = None
+    return {"ok": True}, 200

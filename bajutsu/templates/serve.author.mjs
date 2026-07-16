@@ -347,6 +347,9 @@ if(!NARROW_MQ.matches)initTiling();
   let enrichResult=null;     // last enrichment response {expect, settle, note}
   // Capture state.
   let capActive=false;
+  // Edit live-session state (BE-0262): a driver booted just to pick against the current screen when
+  // no run's stored screenshots exist. It shares Capture's single-session slot + per-actor ownership.
+  let liveActive=false;
   // Inline validation + schema assistance (BE-0138).
   let auSchema=null;         // scenario JSON Schema, fetched once for completion / hover
   let auDiagnostics=[];      // last /api/lint findings [{line, column, message, severity}]
@@ -364,6 +367,9 @@ if(!NARROW_MQ.matches)initTiling();
     document.querySelectorAll('#view-author .au-loadrow').forEach(e=>e.hidden=m==='capture');
     // The proposal panel belongs to Enrich; leaving the mode hides any open proposal.
     if(m!=='enrich')$('#au-enrich-panel').hidden=true;
+    // A live Edit session holds the single capture slot; leaving Edit closes it so Capture's Start
+    // (which boots into the same slot) isn't blocked by a stale session (BE-0262).
+    if(m!=='edit'&&liveActive)auLiveStop();
     // Capture starts fresh with no saved scenario, so codegen has nothing to export there.
     if(m==='capture'){auCodegenReset();$('#au-codegen').disabled=true;}
   }
@@ -474,7 +480,11 @@ if(!NARROW_MQ.matches)initTiling();
   }
 
   async function auLoadRuns(){
-    const runs=await getJSON('/api/runs',[]);
+    // Scope the picker to the selected scenario (BE-0262): a run for another scenario can't feed
+    // the picker (its step ids won't line up), so listing it only invites a silent mismatch.
+    const scnName=($('#au-scenario').value||'').split('|')[1]||'';
+    const url=scnName?'/api/runs?scenario='+encodeURIComponent(scnName):'/api/runs';
+    const runs=await getJSON(url,[]);
     const opts=runs.map(r=>{
       const label=r.id+' '+(r.ok?'✓':'✗');
       return `<option value="${esc(r.id)}">${esc(label)}</option>`;
@@ -547,12 +557,18 @@ if(!NARROW_MQ.matches)initTiling();
     $('#au-prev').disabled=idx===0;
     $('#au-next').disabled=idx===auSteps.length-1;
     $('#au-step-label').textContent='Step '+(idx+1)+' / '+auSteps.length;
-    if(s.screenshotUrl){
+    if(liveActive){
+      // A live session backs every step with the one current screenshot; keep it as steps change.
+      $('#au-screenshot').hidden=false;$('#au-placeholder').hidden=true;
+    }else if(s.screenshotUrl){
       $('#au-screenshot').src=s.screenshotUrl;
       $('#au-screenshot').hidden=false;$('#au-placeholder').hidden=true;
     }else{
+      // No run screenshot and no live session — state how to get a picker rather than sit inert (BE-0262).
       $('#au-screenshot').hidden=true;$('#au-placeholder').hidden=false;
-      $('#au-placeholder').textContent='No screenshot for this step.';
+      $('#au-placeholder').textContent=$('#au-run').value
+        ?'No screenshot for this step.'
+        :'No run selected — click “Start live session” to pick elements on the current screen.';
     }
     $('#au-feedback').hidden=true;
     auResolvedSel=null;
@@ -560,18 +576,31 @@ if(!NARROW_MQ.matches)initTiling();
 
   async function editResolve(nx,ny){
     if(auIdx<0||auIdx>=auSteps.length)return;
-    const target=$('#au-target').value;
-    const runId=$('#au-run').value;
-    const s=auSteps[auIdx];
     $('#au-status').textContent='Resolving…';$('#au-status').className='status run';
     try{
-      const r=await fetch('/api/scenario/resolve',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({target:target,runId:runId,stepId:s.stepId,point:[nx,ny]})});
-      const d=await r.json();
+      let d;
+      if(liveActive){
+        // Live session: resolve against the current on-device tree, no run required (BE-0262).
+        const r=await fetch('/api/capture/resolve',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({point:[nx,ny]})});
+        d=await r.json();
+      }else{
+        // Run-backed: resolve against the selected run's stored element tree for this step.
+        const s=auSteps[auIdx];
+        const r=await fetch('/api/scenario/resolve',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({target:$('#au-target').value,runId:$('#au-run').value,stepId:s.stepId,point:[nx,ny]})});
+        d=await r.json();
+      }
       if(d.error){$('#au-status').textContent=d.error;$('#au-status').className='status ng';return;}
       if(d.refused){$('#au-status').textContent=d.refused;$('#au-status').className='status ng';$('#au-feedback').hidden=true;auResolvedSel=null;return;}
+      // The two resolvers report ambiguity differently: run-backed gives {ambiguous, candidates},
+      // the live one an {ambiguity:[…]} list. Surface either; both still return a selector to Apply.
       if(d.ambiguous){
         $('#au-status').textContent='Ambiguous: '+d.candidates+' elements share this selector. Narrow with within/index.';
+        $('#au-status').className='status ng';
+      }else if(d.ambiguity){
+        const ids=d.ambiguity.map(a=>a.identifier||a.label||'?').join(', ');
+        $('#au-status').textContent='Ambiguous: '+ids+'. Narrow with within/index.';
         $('#au-status').className='status ng';
       }else{
         $('#au-status').textContent='Resolved — click Apply to update the YAML';$('#au-status').className='status ok';
@@ -582,6 +611,38 @@ if(!NARROW_MQ.matches)initTiling();
       $('#au-rung').textContent=d.rung;$('#au-rung').className='au-rung rung-'+d.rung;
       $('#au-sel').textContent=desc;
     }catch(e){$('#au-status').textContent=String(e);$('#au-status').className='status ng';}
+  }
+
+  // ---- Edit live session (BE-0262): boot a driver to pick against the current screen ----
+  // Reuses Capture's endpoints and single-session slot: Start boots a driver + takes a screenshot,
+  // a screenshot click resolves live (editResolve above), and Stop/close tears the session down
+  // without saving. This gives Edit a working picker on a scenario that has never run.
+  async function auLiveStart(){
+    const target=$('#au-target').value;
+    if(!target){$('#au-status').textContent='Select a target first.';$('#au-status').className='status ng';return;}
+    $('#au-status').textContent='Starting live session…';$('#au-status').className='status run';
+    try{
+      const r=await fetch('/api/capture/start',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({target})});
+      const d=await r.json();
+      if(!r.ok||d.error){$('#au-status').textContent=d.error||'failed';$('#au-status').className='status ng';return;}
+      liveActive=true;
+      $('#au-live-start').hidden=true;$('#au-live-stop').hidden=false;
+      $('#au-placeholder').hidden=true;$('#au-screenshot').hidden=false;
+      $('#au-screenshot').src='/api/capture/screenshot?t='+Date.now();
+      $('#au-status').textContent='Live session — click the screenshot to pick a selector for the current step.';$('#au-status').className='status ok';
+    }catch(e){$('#au-status').textContent=String(e);$('#au-status').className='status ng';}
+  }
+  async function auLiveStop(){
+    if(!liveActive)return;
+    liveActive=false;
+    $('#au-live-start').hidden=false;$('#au-live-stop').hidden=true;
+    // Best-effort teardown: the session is already dropped client-side, so a failed close (already
+    // gone / network) just leaves the server to time the driver out rather than blocking the UI.
+    try{await fetch('/api/capture/close',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});}
+    catch(e){/* ignore */}
+    // Fall back to the current step's own screen (a run screenshot, or the no-session prompt).
+    if(auIdx>=0)auShowStep(auIdx);
   }
 
   // Shared screenshot click — routed by the active mode.
@@ -920,12 +981,16 @@ if(!NARROW_MQ.matches)initTiling();
   $('#au-next').addEventListener('click',()=>{if(auIdx<auSteps.length-1)auShowStep(auIdx+1);});
   // Load button.
   $('#au-load').addEventListener('click',auLoad);
+  // Live Edit session controls (BE-0262).
+  $('#au-live-start').addEventListener('click',auLiveStart);
+  $('#au-live-stop').addEventListener('click',auLiveStop);
   // Picking a different scenario invalidates any open generation — drop it so Copy/Download can't
-  // export the previous scenario's file.
-  $('#au-scenario').addEventListener('change',auCodegenReset);
+  // export the previous scenario's file — and re-scopes the run picker to the new scenario (BE-0262).
+  $('#au-scenario').addEventListener('change',()=>{auCodegenReset();auLoadRuns();});
   // Target change reloads scenarios and re-picks the emit valid for the new backend; any open
   // codegen result is for the old target, so drop it rather than let Copy/Download export a stale file.
-  $('#au-target').addEventListener('change',()=>{auLoadScenarios();auSyncEmit();auCodegenReset();});
+  // A live session is bound to the old target's driver, so close it too (BE-0262).
+  $('#au-target').addEventListener('change',()=>{if(liveActive)auLiveStop();auLoadScenarios();auSyncEmit();auCodegenReset();});
   // YAML textarea edits enable save and re-validate (BE-0138): gutter updates instantly, lint debounced.
   $('#au-yaml').addEventListener('input',()=>{
     $('#au-save').disabled=false;auRenderGutter();auLintSoon();

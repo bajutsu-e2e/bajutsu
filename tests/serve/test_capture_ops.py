@@ -302,3 +302,110 @@ def test_finish_capture_no_session(tmp_path: Path) -> None:
     payload, status = ops.finish_capture(state, {})
     assert status == 400
     assert "no active" in payload["error"]
+
+
+# ---------------------------------------------------------------------------
+# resolve_capture_pick — live step-picking for the Edit editor (BE-0262)
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_pick_returns_selector_without_side_effects(tmp_path: Path) -> None:
+    # The Edit picker resolves a screen click against the live tree, mirroring mark's resolution —
+    # but it is pure: it neither actuates the driver nor appends a step (the human Applies the
+    # returned selector to the YAML). This is what keeps the live path off the verdict path.
+    state = _state_with_config(tmp_path)
+    driver = FakeDriver(_screen())
+    ops.start_capture(state, {"target": "demo"}, driver_factory=lambda _t, _b, _u: driver)
+    before = list(driver.actions)  # start already took the initial screenshot
+
+    payload, status = ops.resolve_capture_pick(
+        state,
+        {"point": [0.5, 0.41]},  # inside auth.submit
+    )
+    assert status == 200
+    assert payload["selector"]["id"] == "auth.submit"
+    assert payload["rung"] == "id"
+    assert state.capture.steps == []  # no step appended
+    assert driver.actions == before  # resolve drove nothing — no tap, no re-screenshot
+
+
+def test_resolve_pick_ambiguous_returns_feedback(tmp_path: Path) -> None:
+    dup_screen = [
+        {
+            "identifier": "dup",
+            "label": "A",
+            "traits": ["button"],
+            "value": None,
+            "frame": (10.0, 10.0, 80.0, 44.0),
+        },
+        {
+            "identifier": "dup",
+            "label": "B",
+            "traits": ["button"],
+            "value": None,
+            "frame": (10.0, 60.0, 80.0, 44.0),
+        },
+    ]
+    state = _state_with_config(tmp_path)
+    driver = FakeDriver(dup_screen)
+    ops.start_capture(state, {"target": "demo"}, driver_factory=lambda _t, _b, _u: driver)
+
+    payload, status = ops.resolve_capture_pick(state, {"point": [0.5, 0.3]})
+    assert status == 200
+    assert payload.get("ambiguity") is not None
+    assert state.capture.steps == []
+
+
+def test_resolve_pick_no_session(tmp_path: Path) -> None:
+    state = _state_with_config(tmp_path)
+    payload, status = ops.resolve_capture_pick(state, {"point": [0.5, 0.5]})
+    assert status == 400
+    assert "no active" in payload["error"]
+
+
+def test_resolve_pick_rejects_another_users_session(tmp_path: Path) -> None:
+    # Per-actor ownership (BE-0012) reused for the live Edit session (BE-0262 Unit 4): one user's
+    # live session cannot be driven by another.
+    state = _state_with_config(tmp_path)
+    driver = FakeDriver(_screen())
+    ops.start_capture(
+        state, {"target": "demo"}, actor="alice", driver_factory=lambda _t, _b, _u: driver
+    )
+    payload, status = ops.resolve_capture_pick(state, {"point": [0.5, 0.41]}, actor="bob")
+    assert status == 403
+    assert "another user" in payload["error"]
+
+
+# ---------------------------------------------------------------------------
+# close_capture — end a live session without saving a scenario (BE-0262)
+# ---------------------------------------------------------------------------
+
+
+def test_close_capture_tears_down_without_saving(tmp_path: Path) -> None:
+    state = _state_with_config(tmp_path)
+    driver = FakeDriver(_screen())
+    ops.start_capture(state, {"target": "demo"}, driver_factory=lambda _t, _b, _u: driver)
+
+    payload, status = ops.close_capture(state, {})
+    assert status == 200
+    assert payload["ok"] is True
+    assert state.capture is None
+
+
+def test_close_capture_no_session(tmp_path: Path) -> None:
+    state = _state_with_config(tmp_path)
+    payload, status = ops.close_capture(state, {})
+    assert status == 400
+    assert "no active" in payload["error"]
+
+
+def test_close_capture_rejects_another_users_session(tmp_path: Path) -> None:
+    state = _state_with_config(tmp_path)
+    driver = FakeDriver(_screen())
+    ops.start_capture(
+        state, {"target": "demo"}, actor="alice", driver_factory=lambda _t, _b, _u: driver
+    )
+    payload, status = ops.close_capture(state, {}, actor="bob")
+    assert status == 403
+    assert "another user" in payload["error"]
+    assert state.capture is not None  # ownership check keeps the other user's session intact

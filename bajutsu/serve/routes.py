@@ -182,7 +182,13 @@ ROUTES: tuple[Route, ...] = (
         local_only=True,
     ),
     Route("GET", "/api/simulators", lambda state, ctx: ops.simulators_payload(state)),
-    Route("GET", "/api/runs", lambda state, ctx: ops.runs_payload(state, actor=ctx.actor())),
+    Route(
+        "GET",
+        "/api/runs",
+        lambda state, ctx: ops.runs_payload(
+            state, actor=ctx.actor(), scenario=ctx.query("scenario")
+        ),
+    ),
     Route(
         "GET", "/api/projects", lambda state, ctx: ops.list_projects_view(state, actor=ctx.actor())
     ),
@@ -409,6 +415,20 @@ ROUTES: tuple[Route, ...] = (
         "POST",
         "/api/capture/finish",
         lambda state, ctx: ops.finish_capture(state, ctx.body(), actor=ctx.actor()),
+        local_only=True,
+    ),
+    # Live step-picking for the Edit editor (BE-0262): resolve reuses the capture session's live
+    # tree without actuating (pure authoring assist), close ends it without saving a scenario.
+    Route(
+        "POST",
+        "/api/capture/resolve",
+        lambda state, ctx: ops.resolve_capture_pick(state, ctx.body(), actor=ctx.actor()),
+        local_only=True,
+    ),
+    Route(
+        "POST",
+        "/api/capture/close",
+        lambda state, ctx: ops.close_capture(state, ctx.body(), actor=ctx.actor()),
         local_only=True,
     ),
     Route(

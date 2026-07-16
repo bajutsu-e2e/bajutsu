@@ -192,8 +192,9 @@ def test_http_read_scenario_without_run(tmp_path: Path) -> None:
         path = str(scn_dir / "login.yaml")
         body = _get_json(port, f"/api/scenario?target=demo&path={path}")
         assert "yaml" in body
-        assert "steps" not in body
-        assert "scenarios" not in body
+        # Without a run the steps are derived from the YAML (BE-0262), with no per-step artifacts.
+        assert len(body["steps"]) == 2
+        assert all(s["screenshotUrl"] is None for s in body["steps"])
     finally:
         server.shutdown()
         server.server_close()

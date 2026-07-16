@@ -100,6 +100,8 @@ _EXPECTED: frozenset[tuple[str, str]] = frozenset(
         ("POST", "/api/capture/start"),
         ("POST", "/api/capture/mark"),
         ("POST", "/api/capture/finish"),
+        ("POST", "/api/capture/resolve"),
+        ("POST", "/api/capture/close"),
         ("POST", "/api/worker/lease"),
         ("POST", "/api/worker/heartbeat"),
         ("POST", "/api/worker/result"),
@@ -157,8 +159,9 @@ def test_content_type_only_on_the_four_text_routes() -> None:
 def test_local_only_is_exactly_the_triaged_set() -> None:
     # PR-C's Part 4 triage: the FastAPI (hosted) generator deliberately skips these. `ant_login`
     # writes a machine-global credential and already 403s when hosted; the capture routes hold an
-    # in-process Driver across start/mark/finish (and its screenshot), a single-process model. Every
-    # other route is served by both backends.
+    # in-process Driver across start/mark/finish/resolve/close (and its screenshot), a single-process
+    # model — this includes the live Edit picker's resolve/close (BE-0262). Every other route is
+    # served by both backends.
     local = {(r.method, r.path) for r in ROUTES if r.local_only}
     assert local == {
         ("GET", "/api/ant/login"),
@@ -166,6 +169,8 @@ def test_local_only_is_exactly_the_triaged_set() -> None:
         ("POST", "/api/capture/start"),
         ("POST", "/api/capture/mark"),
         ("POST", "/api/capture/finish"),
+        ("POST", "/api/capture/resolve"),
+        ("POST", "/api/capture/close"),
         ("GET", "/api/capture/screenshot"),
     }
 

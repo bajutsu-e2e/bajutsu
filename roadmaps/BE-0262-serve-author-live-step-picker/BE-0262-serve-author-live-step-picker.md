@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0262](BE-0262-serve-author-live-step-picker.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0262") |
+| Implementing PR | _pending_ |
 | Topic | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 
@@ -85,11 +86,22 @@ unaffected (the live driver is chosen per target's config, reusing the same sele
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — target/scenario-scoped Author run list.
-- [ ] Unit 2 — live step-picking path (boot driver, screenshot, resolve click).
-- [ ] Unit 3 — explicit UI state for no-run/no-session.
-- [ ] Unit 4 — reuse capture-session lifecycle + ownership.
-- [ ] Unit 5 — tests for scoping, live resolve, and placeholder state.
+- [x] Unit 1 — target/scenario-scoped Author run list.
+- [x] Unit 2 — live step-picking path (boot driver, screenshot, resolve click).
+- [x] Unit 3 — explicit UI state for no-run/no-session.
+- [x] Unit 4 — reuse capture-session lifecycle + ownership.
+- [x] Unit 5 — tests for scoping, live resolve, and placeholder state.
+
+### Log
+
+- _pending_ — implemented all five units in one PR. Unit 1 scopes `/api/runs` by scenario name
+  (`runs_payload` filter + `serve.author.mjs` `auLoadRuns`). Unit 2 boots a live driver via Capture's
+  session and adds `resolve_capture_pick` (pure resolve, no actuation) reached through
+  `POST /api/capture/resolve`; `read_scenario` now derives the step list from the scenario YAML when
+  no run is selected so a never-run scenario still has steps to fix. Unit 3 states how to start a live
+  session in place of the inert no-run placeholder. Unit 4 reuses the single-session slot, per-actor
+  ownership, and adds `close_capture` (`POST /api/capture/close`) for save-less teardown. Unit 5 adds
+  the scoping, live-resolve, and placeholder-state tests.
 
 ## References
 

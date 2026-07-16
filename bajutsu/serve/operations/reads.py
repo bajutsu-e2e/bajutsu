@@ -108,7 +108,9 @@ def simulators_payload(state: ServeState) -> tuple[Any, int]:
     return list_simulators(state.simctl), 200
 
 
-def runs_payload(state: ServeState, *, actor: str | None = None) -> tuple[Any, int]:
+def runs_payload(
+    state: ServeState, *, actor: str | None = None, scenario: str | None = None
+) -> tuple[Any, int]:
     # Opportunistically purge trash past the retention window before listing (BE-0239) — the lazy
     # sweep, on the history read rather than a background daemon (SqlSessionStore's expiry-on-read
     # precedent). A no-op when retention is disabled; scoped to the actor's org.
@@ -118,8 +120,17 @@ def runs_payload(state: ServeState, *, actor: str | None = None) -> tuple[Any, i
     # UI shape is identical. Without one (local / stdlib serve), list straight from the artifact
     # store.
     if state.repository is not None:
-        return [r.summary for r in state.repository.list_runs(org_id=state.org_of(actor))], 200
-    return state.artifacts.list_runs(), 200
+        runs = [r.summary for r in state.repository.list_runs(org_id=state.org_of(actor))]
+    else:
+        runs = state.artifacts.list_runs()
+    # Scope the Author run picker to the loaded scenario (BE-0262): a chosen run's step ids only line
+    # up with a scenario of the same name, so a run that never executed it can't feed the picker.
+    # Scenario name is the step-id compatibility key the run-backed resolve already keys on (a run's
+    # summary records the names it ran, not a file path); org scoping and the target-scoped Author
+    # scenario list bound the rest.
+    if scenario is not None:
+        runs = [r for r in runs if scenario in (r.get("scenarios") or [])]
+    return runs, 200
 
 
 def crawl_runs_payload(state: ServeState, *, actor: str | None = None) -> tuple[Any, int]:
@@ -285,12 +296,12 @@ def read_scenario(
         return {"error": "not found"}, 404
     if not run_id:
         # The Replay viewer (BE-0273) opts in with `structure` to read what a scenario *is* without
-        # a run: the runner's own per-scenario parse, no run-scoped URLs. Every other no-run caller
-        # (the Author editor) keeps the plain {yaml} it always got, paying for no extra parse. The
-        # run-scoped `steps` below stays run_id-only.
+        # a run: the runner's own per-scenario parse, no run-scoped URLs.
         if structure:
             return {"yaml": text, "scenarios": _scenario_structure(text)}, 200
-        return {"yaml": text}, 200
+        # No run selected: the step list is derived from the YAML alone so the Author Edit picker
+        # works on a scenario that has never run — a live session supplies the screenshot (BE-0262).
+        return {"yaml": text, "steps": _yaml_steps(text, scenario_name)}, 200
     if not valid_run_id(run_id):
         return {"yaml": text, "steps": []}, 200
     return {"yaml": text, "steps": _step_artifacts(state, text, run_id, scenario_name, org)}, 200
@@ -327,6 +338,43 @@ def _scenario_structure(yaml_text: str) -> list[dict[str, Any]]:
     return result
 
 
+def _matched_scenario(yaml_text: str, scenario_name: str | None) -> Scenario | None:
+    """The named scenario in the YAML (else the first), or None if it doesn't parse or is empty.
+
+    The one place the editor resolves "which scenario in this file" — shared by the run-backed step
+    list and the run-less, YAML-derived one so both pick the same scenario.
+    """
+    scenarios = _parse_scenarios_safe(yaml_text)
+    matched = (
+        next((s for s in scenarios if s.name == scenario_name), None) if scenario_name else None
+    )
+    if matched is None and scenarios:
+        matched = scenarios[0]
+    return matched
+
+
+def _yaml_steps(yaml_text: str, scenario_name: str | None) -> list[dict[str, Any]]:
+    """Step handles derived from the scenario YAML alone — no run artifacts (BE-0262).
+
+    The Author Edit picker needs a step list for a scenario that has never run, so a live session
+    can target a step to fix. Screenshot/elements URLs are None because there is no stored run; the
+    live path supplies the current screenshot.
+    """
+    matched = _matched_scenario(yaml_text, scenario_name)
+    if matched is None:
+        return []
+    return [
+        {
+            "stepId": None,
+            "action": action,
+            "fields": fields,
+            "elementsUrl": None,
+            "screenshotUrl": None,
+        }
+        for action, fields in (_step_action_fields(step) for step in matched.steps)
+    ]
+
+
 def _step_artifacts(
     state: ServeState,
     yaml_text: str,
@@ -335,7 +383,9 @@ def _step_artifacts(
     org: str,
 ) -> list[dict[str, Any]]:
     """Build per-step artifact handles for the editor (BE-0013)."""
-    scenarios = _parse_scenarios_safe(yaml_text)
+    matched = _matched_scenario(yaml_text, scenario_name)
+    if matched is None:
+        return []
 
     artifacts = state.for_org(org).artifacts
     try:
@@ -348,15 +398,7 @@ def _step_artifacts(
     if manifest is None:
         return []
 
-    matched = (
-        next((s for s in scenarios if s.name == scenario_name), None) if scenario_name else None
-    )
-    if matched is None and scenarios:
-        matched = scenarios[0]
-    if matched is None:
-        return []
-
-    effective_name = scenario_name or (matched.name if matched else None)
+    effective_name = scenario_name or matched.name
     sid = _find_sid(manifest, effective_name)
     if sid is None:
         return []
