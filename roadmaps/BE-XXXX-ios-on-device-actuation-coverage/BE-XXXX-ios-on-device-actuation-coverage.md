@@ -67,11 +67,11 @@ Proposal altitude. The work is MECE along the units below.
 
 ## Alternatives considered
 
-* **Rely on Android for cross-backend actuation confidence.** Android's breadth does not transfer:
+- **Rely on Android for cross-backend actuation confidence.** Android's breadth does not transfer:
   iOS actuators run through the XCUITest runner channel and the idb companion, code the Android
   lane never touches. Trusting Android for iOS behavior is exactly the backend-agnostic assumption
   the conformance work exists to check, not to take on faith.
-* **Make every new job a required gate.** The macOS ten-times metering makes that costly, and the
+- **Make every new job a required gate.** The macOS ten-times metering makes that costly, and the
   Simulator lane's flakiness history ([BE-0218](../BE-0218-e2e-simulator-flaky-readiness-actuation/BE-0218-e2e-simulator-flaky-readiness-actuation.md))
   argues for landing new actuation jobs as signal first and promoting only once they prove stable.
 

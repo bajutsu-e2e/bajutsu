@@ -68,11 +68,11 @@ macOS ランナーは Linux の 10 倍で課金されるため、どの新しい
 
 ## 検討した代替案
 
-* **バックエンド横断のアクチュエーションの確信を Android に頼る。** Android の広さは iOS には及びません。iOS の
+- **バックエンド横断のアクチュエーションの確信を Android に頼る。** Android の広さは iOS には及びません。iOS の
   アクチュエータは XCUITest のランナーチャネルと idb コンパニオンを通り、これは Android レーンが一度も触れない
   コードです。iOS の挙動を Android で信用することは、まさに conformance 作業が確かめるために存在する、
   バックエンドに依存しないという前提であり、そのまま信じてよいものではありません。
-* **新しいジョブをすべて必須ゲートにする。** macOS の 10 倍課金がそれを高価にし、Simulator レーンの
+- **新しいジョブをすべて必須ゲートにする。** macOS の 10 倍課金がそれを高価にし、Simulator レーンの
   フレーキー履歴（[BE-0218](../BE-0218-e2e-simulator-flaky-readiness-actuation/BE-0218-e2e-simulator-flaky-readiness-actuation-ja.md)）
   は、新しいアクチュエーションジョブをまずシグナルとして着地させ、安定を確認してから昇格させることを支持します。
 
