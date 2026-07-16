@@ -168,6 +168,17 @@ def test_runs_payload_scoped_surfaces_a_run_past_the_hosted_cap(tmp_path: Path) 
     assert [r["id"] for r in scoped] == ["login-run"]
 
 
+def test_runs_payload_scoped_local_list_is_not_re_capped(tmp_path: Path) -> None:
+    # BE-0262 follow-up: the local artifact-store listing is unbounded (no `list_runs` cap), so the
+    # scenario-scoped list must stay unbounded too — re-capping it would make the local scoped picker
+    # *stricter* than the unscoped one. All 51 runs of the loaded scenario must be reachable.
+    state = _local_state(tmp_path)
+    for i in range(51):
+        _run_dir_for(state, f"login-{i:03d}", "login")
+    scoped = ops.runs_payload(state, scenario="login")[0]
+    assert len(scoped) == 51
+
+
 # --- hosted (repository) ---
 
 
