@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-crossbackend-e2e-required-gate-ja.md)
+**English** · [日本語](BE-0279-crossbackend-e2e-required-gate-ja.md)
 
-# BE-XXXX — Align required E2E checks across every backend
+# BE-0279 — Align required E2E checks across every backend
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-crossbackend-e2e-required-gate.md) |
+| Proposal | [BE-0279](BE-0279-crossbackend-e2e-required-gate.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0279") |
 | Topic | Platform support |
 <!-- /BE-METADATA -->
 

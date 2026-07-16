@@ -575,6 +575,7 @@ Under consideration — not yet decided. Promote an item to *In progress* once w
 | ID | Item | Status |
 |---|---|---|
 | [BE-0008](BE-0008-flutter-support/BE-0008-flutter-support.md) | Flutter support | Proposal |
+| [BE-0279](BE-0279-crossbackend-e2e-required-gate/BE-0279-crossbackend-e2e-required-gate.md) | Align required E2E checks across every backend | Proposal |
 <!-- /GENERATED:proposals-platform -->
 
 ### Driver & backend architecture
