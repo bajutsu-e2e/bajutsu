@@ -133,6 +133,13 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   information*; internal `_helpers` keep one prose line of *why*. **Never restate types**; describe
   meaning. English, like all code. Migrate module by module in small PRs. Full rule:
   [`docs/ai-development.md`](docs/ai-development.md).
+- **Follow the [`tech-writing`](.claude/skills/tech-writing/) skill whenever you write or revise a
+  BE roadmap item or a prose doc, in either language.** It is the authoritative prose norm:
+  language-agnostic technique (draft top-down, state the contribution up front, put a sentence's
+  most important element at its end, keep the verb near the subject, prefer the active voice, cut
+  filler) plus English-specific mechanics (serial comma, *that* / *which*, dashes, numbers). Invoke
+  it *before* writing, not after. For Japanese it is the umbrella above `japanese-tech-writing`
+  (next bullet). Like the bilingual-docs rule, it is a review-time norm, not a CI gate.
 - **Always follow the [`japanese-tech-writing`](.claude/skills/japanese-tech-writing/) skill
   whenever you generate Japanese — without exception.** This is not limited to `docs/ja/` and
   roadmap `*-ja.md`: it covers *any* Japanese you produce, including freshly written prose,

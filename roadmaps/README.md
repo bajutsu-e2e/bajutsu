@@ -81,10 +81,17 @@ checks this shape. The **Status** decides only the index bucket: `Implemented` /
 ships — set its `Status` and regenerate the index (`make roadmap-index`); the item **stays in its
 original directory** (BE-0159), and the table moves it to the matching bucket automatically.
 
+Both language files follow the [`tech-writing`](../.claude/skills/tech-writing/) skill — the
+authoritative prose norm for BE items and docs. It sets the language-agnostic technique every item
+should meet: draft top-down, state the contribution up front in the Introduction and Motivation,
+reserve the end of each sentence for its most important element, keep the verb near the subject,
+prefer the active voice, and cut filler. Invoke it before you write, not after.
+
 Write the Japanese file (`*-ja.md`) in **敬体 (the polite *desu/masu* style, ですます調)**,
-consistent with `docs/ja/` — never the plain *da/dearu* style (常体). This is part of the
-[`japanese-tech-writing`](../.claude/skills/japanese-tech-writing/) norm; a translation must read
-as natural polite Japanese, not a literal rendering of the English.
+consistent with `docs/ja/` — never the plain *da/dearu* style (常体). For Japanese, `tech-writing`
+sits above the [`japanese-tech-writing`](../.claude/skills/japanese-tech-writing/) norm; apply
+both, and a translation must read as natural polite Japanese, not a literal rendering of the
+English.
 
 ---
 
