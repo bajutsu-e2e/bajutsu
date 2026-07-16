@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
-| トピック | Platform support |
+| トピック | プラットフォーム対応 |
 | 関連 | [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity-ja.md), [BE-0221](../BE-0221-android-scenario-portability-guarantee/BE-0221-android-scenario-portability-guarantee-ja.md), [BE-0218](../BE-0218-e2e-simulator-flaky-readiness-actuation/BE-0218-e2e-simulator-flaky-readiness-actuation-ja.md), [BE-0240](../BE-0240-ios-capability-aware-actuator-selection/BE-0240-ios-capability-aware-actuator-selection-ja.md) |
 <!-- /BE-METADATA -->
 
@@ -53,7 +53,7 @@ macOS ランナーは Linux の 10 倍で課金されるため、どの新しい
 
 ## 詳細設計
 
-提案の粒度です。作業は以下のユニットに沿って MECE に分かれます。
+提案の粒度です。作業は以下の単位に沿って MECE に分かれます。
 
 - **iOS idb インタラクションジョブ。** インタラクションシナリオ（tap / type / swipe / scroll / back に
   `gestures.yaml` の doubleTap と longPress を加えたもの）を課金対象の `ios-e2e` ジョブに昇格させ、idb の
