@@ -60,7 +60,7 @@
   `UnsupportedAction` を送出すること。`MULTI_TOUCH` や `SELECT_OPTION` と違い、テキスト編集の select/copy 用の
   `Capability` トークンはまだ存在しないため、契約がアクチュエートと送出の挙動を直接表明するか、それとも同じように
   ゲートするための新しい capability を導入する（各バックエンドの `CAPABILITIES` に反映する）かは、最初に決めるべき
-  小問です。現状では adb、Playwright、XCUITest が select/copy をアクチュエートし、idb は送出します。`tap_point`
+  検討事項です。現状では adb、Playwright、XCUITest が select/copy をアクチュエートし、idb は送出します。`tap_point`
   では、既知フレームの要素への座標タップが、その要素への意味的な tap と同じ観測可能な効果を持つこと。
 - **3 つの適合性画面を拡張する。** iOS の `ConformanceView`、Compose の `ConformanceScreen`、web ハーネスの
   document に、編集可能なテキストフィールドと既知フレームの要素を加えます。準備完了マーカーの契約はそのまま
