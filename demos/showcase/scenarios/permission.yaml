@@ -45,11 +45,6 @@
   preconditions:
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
-    # This scenario's launch does more work before the app is interactive than its sibling above
-    # (a `simctl privacy grant` call ahead of the app launch, BE-0276), so — unlike the tap-first
-    # pattern elsewhere in this suite — wait for the tab bar itself before the first tap, rather
-    # than assuming it's already rendered.
-    - wait: { for: { label: "Permissions", traits: [button] }, timeout: 10 }
     - tap: { label: "Permissions", traits: [button] }
       capture: [video]
     - wait: { for: { id: perm.requestLocation }, timeout: 10 }
