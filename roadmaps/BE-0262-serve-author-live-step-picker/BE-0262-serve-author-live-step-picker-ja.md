@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0262") |
-| 実装 PR | _pending_ |
+| 実装 PR | [#1134](https://github.com/bajutsu-e2e/bajutsu/pull/1134) |
 | トピック | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 
@@ -86,7 +86,7 @@ Capture と同じ選択を再利用します）。
 
 ### ログ
 
-- _pending_ — 5 つのユニットを 1 本の PR で実装しました。Unit 1 は `/api/runs` をシナリオ名で絞ります
+- [#1134](https://github.com/bajutsu-e2e/bajutsu/pull/1134) — 5 つのユニットを 1 本の PR で実装しました。Unit 1 は `/api/runs` をシナリオ名で絞ります
   （`runs_payload` のフィルタと `serve.author.mjs` の `auLoadRuns`）。Unit 2 は Capture のセッションを
   使ってライブなドライバを起動し、`POST /api/capture/resolve` から到達する `resolve_capture_pick`
   （actuate もステップ追加もしない純粋な解決）を追加します。run を選んでいないときは `read_scenario` が

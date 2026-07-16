@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0262") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#1134](https://github.com/bajutsu-e2e/bajutsu/pull/1134) |
 | Topic | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 
@@ -94,7 +94,7 @@ unaffected (the live driver is chosen per target's config, reusing the same sele
 
 ### Log
 
-- _pending_ — implemented all five units in one PR. Unit 1 scopes `/api/runs` by scenario name
+- [#1134](https://github.com/bajutsu-e2e/bajutsu/pull/1134) — implemented all five units in one PR. Unit 1 scopes `/api/runs` by scenario name
   (`runs_payload` filter + `serve.author.mjs` `auLoadRuns`). Unit 2 boots a live driver via Capture's
   session and adds `resolve_capture_pick` (pure resolve, no actuation) reached through
   `POST /api/capture/resolve`; `read_scenario` now derives the step list from the scenario YAML when
