@@ -1,6 +1,6 @@
 **English** · [日本語](BE-XXXX-conformance-unactuated-verbs-ja.md)
 
-# BE-XXXX — Extend the driver conformance contract to unactuated Driver verbs
+# BE-XXXX — Extend the driver conformance contract to unactuated Driver operations
 
 <!-- BE-METADATA -->
 | Field | Value |
@@ -20,9 +20,9 @@ runs one backend-agnostic spec against every backend — `FakeDriver` on the Lin
 XCUITest / adb / Playwright on-device ([BE-0270](../BE-0270-android-adb-driver-conformance/BE-0270-android-adb-driver-conformance.md)
 added the adb lane). The contract today pins tap, label-and-trait resolution, the multi-touch and
 `selectOption` capability promises, and the condition-wait semantics. Several `Driver` Protocol
-verbs sit outside it, actuated by no real backend in any lane: the text-editing family
+operations sit outside it, actuated by no real backend in any lane: the text-editing family
 (`delete_text`, `select_all`, `copy_selection`) and `tap_point`. This item extends the contract to
-cover those verbs, so the one spec proves them on every backend at once.
+cover those operations, so the one spec proves them on every backend at once.
 
 ## Motivation
 
@@ -39,7 +39,7 @@ The contract is the cheapest place to close this gap: one spec runs against five
 single test body adds coverage everywhere rather than one showcase scenario per backend. The
 capability model already gives the contract its shape — a backend that declares the capability
 must actuate, and one that does not must raise `UnsupportedAction` loudly rather than silently
-no-op. The text-editing verbs and `tap_point` extend that same pattern.
+no-op. The text-editing operations and `tap_point` extend that same pattern.
 
 One constraint shapes the work. The on-device conformance harnesses realize a requested screen as
 a list of identifier-bearing buttons, which is enough for tap and resolution tests but not for
@@ -52,8 +52,8 @@ document) to present an editable field and a known-frame element.
 
 Proposal altitude. The work is MECE along the units below.
 
-- **Enumerate the verb contract.** State the invariants the new verbs must satisfy, grounded in the
-  `Driver` Protocol. Text editing: a backend that actuates the verbs completes `type_text` then
+- **Enumerate the operation contract.** State the invariants the new operations must satisfy, grounded in the
+  `Driver` Protocol. Text editing: a backend that actuates the operations completes `type_text` then
   `select_all` then `copy_selection` without `UnsupportedAction`, and `delete_text` reduces the
   field's reported length; one that does not — idb, which raises `select_all` / `copy_selection`
   unconditionally today — raises `UnsupportedAction`. Unlike `MULTI_TOUCH` and `SELECT_OPTION`,
@@ -71,7 +71,7 @@ Proposal altitude. The work is MECE along the units below.
   channel (the iOS spec-file write, the Android intent reseed, the web `set_content`) so the field
   and the known-frame element are present before the contract body runs.
 - **Confirm capability declarations match behavior.** Check that each backend's declared
-  capabilities agree with which verbs it actuates versus refuses, so the contract's
+  capabilities agree with which operations it actuates versus refuses, so the contract's
   promise-versus-behavior check stays honest.
 
 ## Alternatives considered
@@ -80,7 +80,7 @@ Proposal altitude. The work is MECE along the units below.
   text-editing / `tap_point` scenario per backend would duplicate the same intent four times and
   invite per-backend drift — exactly what the conformance suite exists to prevent. The contract is
   the point: one spec, every backend.
-- **Leave the text-editing verbs at command-construction unit tests only.** The mocked-subprocess
+- **Leave the text-editing operations at command-construction unit tests only.** The mocked-subprocess
   tests prove the argv / HTTP / key-combination a backend builds, but never that the real device
   performs the edit. A capability the tool advertises but no lane observes is a promise without a
   check.
@@ -91,7 +91,7 @@ Proposal altitude. The work is MECE along the units below.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Enumerate the verb contract (text-editing round-trip, `tap_point`, actuate-vs-raise per backend, and whether to add a text-editing capability).
+- [ ] Enumerate the operation contract (text-editing round-trip, `tap_point`, actuate-vs-raise per backend, and whether to add a text-editing capability).
 - [ ] Extend the iOS / Compose / web conformance screens with an editable field and a known-frame element.
 - [ ] Add the new contract test bodies to `tests/driver_conformance.py`.
 - [ ] Wire screen realization into the on-device harnesses.
