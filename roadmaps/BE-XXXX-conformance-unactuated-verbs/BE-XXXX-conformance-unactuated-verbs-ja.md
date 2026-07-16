@@ -15,15 +15,18 @@
 
 ## はじめに
 
-ドライバ適合性契約（[BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md)）は、
-バックエンドに依存しない 1 つの仕様を、すべてのバックエンドに課す取り決めです。この仕様は、Linux ゲートでは
-`FakeDriver` に対して、実機では idb、XCUITest、adb、Playwright に対して走ります（adb レーンは
+**ドライバ適合性契約**（[BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md)）とは、
+すべてのバックエンドが等しく満たさなければならない挙動の取り決めであり、それを 1 つのテスト本体
+（`tests/driver_conformance.py`）として書き下したものです。バックエンドごとに別々のテストを書くのではなく、
+この 1 本を各バックエンドに対して流すので、「どのバックエンドも同じように振る舞う」ことが、願望ではなく検査に
+なります。このテストは、Linux ゲートでは `FakeDriver` に対して、実機では idb、XCUITest、adb、Playwright に
+対して走ります（adb レーンは
 [BE-0270](../BE-0270-android-adb-driver-conformance/BE-0270-android-adb-driver-conformance-ja.md)
 が追加しました）。契約が現在定めているのは、tap、label と trait による解決、multi-touch と
 `selectOption` の capability の約束、そして条件待機のセマンティクスです。`Driver` プロトコルの操作のうち、
 テキスト編集の一群（`delete_text`、`select_all`、`copy_selection`）と `tap_point` は、この契約の外にあり、
-どのレーンでも実機で一度もアクチュエートされていません。本項目では、これらの操作を契約に取り込み、1 つの
-仕様がすべてのバックエンドでそれらを一度に検証するようにします。
+どのレーンでも実機で一度もアクチュエートされていません。本項目では、これらの操作を契約に取り込み、1 本の
+テストがすべてのバックエンドでそれらを一度に検証するようにします。
 
 ## 動機
 
