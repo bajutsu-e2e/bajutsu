@@ -10,7 +10,7 @@
 | Status | **Proposal** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | Topic | Driver & backend architecture |
-| Related | [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md), [BE-0270](../BE-0270-android-adb-driver-conformance/BE-0270-android-adb-driver-conformance.md), [BE-0265](../BE-0265-text-editing-steps/BE-0265-text-editing-steps.md) |
+| Related | [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md), [BE-0270](../BE-0270-android-adb-driver-conformance/BE-0270-android-adb-driver-conformance.md), [BE-0265](../BE-0265-text-editing-steps/BE-0265-text-editing-steps.md), [BE-0269](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -46,7 +46,7 @@ a list of identifier-bearing buttons, which is enough for tap and resolution tes
 text editing: exercising `delete_text` or `select_all` needs a real editable text field on the
 screen. So the contract addition comes with a small extension to each platform's conformance
 screen (the iOS `ConformanceView`, the Compose `ConformanceScreen`, and the web harness's rendered
-document) to present an editable field and an element at a known coordinate.
+document) to present an editable field and a known-frame element.
 
 ## Detailed design
 
@@ -68,8 +68,8 @@ Proposal altitude. The work is MECE along the units below.
   channel (the iOS spec-file write, the Android intent reseed, the web `set_content`) so the field
   and the known-frame element are present before the contract body runs.
 - **Confirm capability declarations match behavior.** Check that each backend's declared
-  capabilities agree with which verbs it actuates versus refuses, so the contract's promise-versus
-  -behavior check stays honest.
+  capabilities agree with which verbs it actuates versus refuses, so the contract's
+  promise-versus-behavior check stays honest.
 
 ## Alternatives considered
 
@@ -99,4 +99,5 @@ Proposal altitude. The work is MECE along the units below.
 - [BE-0114 — Driver conformance suite for backend-agnostic behavior](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md)
 - [BE-0270 — Driver conformance for the adb backend on-device](../BE-0270-android-adb-driver-conformance/BE-0270-android-adb-driver-conformance.md)
 - [BE-0265 — Text-editing steps: select, clear, delete, copy](../BE-0265-text-editing-steps/BE-0265-text-editing-steps.md)
+- [BE-0269 — Speed up the system-alert guard's intervention during wait steps](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention.md)
 - `tests/driver_conformance.py`, `bajutsu/drivers/fake.py`

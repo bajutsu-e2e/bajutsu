@@ -9,8 +9,8 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
-| トピック | Driver & backend architecture |
-| 関連 | [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md), [BE-0270](../BE-0270-android-adb-driver-conformance/BE-0270-android-adb-driver-conformance-ja.md), [BE-0265](../BE-0265-text-editing-steps/BE-0265-text-editing-steps-ja.md) |
+| トピック | ドライバとバックエンドのアーキテクチャ |
+| 関連 | [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md), [BE-0270](../BE-0270-android-adb-driver-conformance/BE-0270-android-adb-driver-conformance-ja.md), [BE-0265](../BE-0265-text-editing-steps/BE-0265-text-editing-steps-ja.md), [BE-0269](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
@@ -47,11 +47,11 @@
 実体化します。これは tap や解決のテストには十分ですが、テキスト編集には足りません。`delete_text` や
 `select_all` を試すには、画面上に編集可能な実テキストフィールドが必要です。そのため契約への追加とあわせて、
 各プラットフォームの適合性画面（iOS の `ConformanceView`、Compose の `ConformanceScreen`、web ハーネスが
-描画する document）に、編集可能なフィールドと既知座標の要素を出すための小さな拡張を加えます。
+描画する document）に、編集可能なフィールドと既知フレームの要素を出すための小さな拡張を加えます。
 
 ## 詳細設計
 
-提案の粒度です。作業は以下のユニットに沿って MECE に分かれます。
+提案の粒度です。作業は以下の単位に沿って MECE に分かれます。
 
 - **動詞の契約を列挙する。** `Driver` プロトコルに基づき、新しい動詞が満たすべき不変条件を明文化します。
   テキスト編集では、capability を宣言したバックエンドで `type_text` に続けて `select_all`、`copy_selection`
@@ -98,4 +98,5 @@
 - [BE-0114 — バックエンド非依存の挙動を保証するドライバ適合性スイート](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md)
 - [BE-0270 — adb バックエンドの実機ドライバ適合性](../BE-0270-android-adb-driver-conformance/BE-0270-android-adb-driver-conformance-ja.md)
 - [BE-0265 — テキスト編集ステップ: select、clear、delete、copy](../BE-0265-text-editing-steps/BE-0265-text-editing-steps-ja.md)
+- [BE-0269 — wait ステップ中のシステムアラートガードの介入を早める](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention-ja.md)
 - `tests/driver_conformance.py`、`bajutsu/drivers/fake.py`
