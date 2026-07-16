@@ -183,9 +183,13 @@ Log:
   wiring across all five platform environments (with a runtime `UnsupportedAction` backstop on
   `fake`/`web`), codegen TODOs, bilingual docs, a showcase fixture, and tests. Also wired the
   showcase fixture's `location` scenario into on-device CI on both platforms: `ios-e2e.yml`'s
-  `smoke (idb)` job now runs `permission.yaml` with `--exclude ai` (the file's other scenario needs
-  the vision `dismissAlerts` guard on iOS, so it stays out of the deterministic gate per prime
-  directive 1); `android-e2e.yml`'s `smoke (adb)` job already ran both scenarios unchanged.
+  `xcuitest (multi-touch)` job now also runs `permission.yaml` with `--exclude ai` on the XCUITest
+  backend — `permission.yaml` taps the "Permissions" tab bar item, which idb can never resolve (it
+  collapses the tab bar into one opaque group), so it needs the same forced-XCUITest treatment as
+  that job's multi-touch scenario; the excluded scenario needs the vision `dismissAlerts` guard on
+  iOS, so it stays out of the deterministic gate per prime directive 1. `android-e2e.yml`'s
+  `smoke (adb)` job already ran both scenarios in the same file unchanged (adb's tab bar has no
+  such limitation).
 
 ## References
 

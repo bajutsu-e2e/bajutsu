@@ -181,22 +181,6 @@ jobs:
           udid: ${{ steps.sim.outputs.udid }}
           artifact-name: smoke-run
 
-      # The `permissions` field (BE-0276) on-device: `--exclude ai` drops permission.yaml's
-      # notification scenario (its iOS grant path needs the vision `dismissAlerts` guard, so it stays
-      # non-deterministic here and is never run in this gate — prime directive 1) and keeps only
-      # `location`, which `simctl privacy grant` pre-grants declaratively before launch with no
-      # prompt. The android-e2e.yml `smoke (adb)` job already runs both scenarios in permission.yaml
-      # (Android needs no AI for either), so this is the iOS twin of that on-device coverage.
-      - name: Run permission scenarios (idb)
-        uses: ./.github/actions/bajutsu-e2e
-        with:
-          scenarios: demos/showcase/scenarios/permission.yaml
-          exclude: ai
-          target: showcase-swiftui
-          config: demos/showcase/showcase.config.yaml
-          udid: ${{ steps.sim.outputs.udid }}
-          artifact-name: permission-run
-
   # The BE-0006 element-tree golden over idb: pins the normalized accessibility tree for the Stable
   # catalog's list rows, reached on the launch tab so idb needs no tab navigation. Runs the same
   # golden.yaml the weekly idb-monitor runs, now also per PR — the iOS twin of android-e2e.yml's
@@ -386,13 +370,21 @@ jobs:
   # select-and-fall-through is covered deterministically by the fast-gate unit tests (an injected
   # availability fn), and the idb actuation path by the `smoke (idb)` job above — a macOS runner
   # always has xcodebuild, so xcuitest never actually degrades to idb here to observe.
+  #
+  # Also runs the deterministic scenario from `permission.yaml` (BE-0276): that scenario taps the
+  # "Permissions" tab bar item, which idb can never resolve (see docs/showcase.md), so it needs the
+  # same forced-XCUITest treatment as the multi-touch scenario above — this job's Simulator/app/
+  # runner build already pays for that, so the second scenario is one extra `bajutsu run` rather
+  # than a whole new job. Retains the job's original name (`xcuitest (multi-touch)` is a
+  # branch-protection required check) even though it now covers a second scenario.
   xcuitest-gestures:
     name: xcuitest (multi-touch)
     needs: changes
     if: needs.changes.outputs.relevant == 'true'
     runs-on: macos-latest
     # Cap the metered macOS job (10x billing): a hung Simulator/runner would otherwise run to the
-    # 6h default. Build + a single gesture run is ~12min, so 25 catches a real hang with headroom.
+    # 6h default. Build + the gesture and permission scenario runs is ~13min, so 25 catches a real
+    # hang with headroom.
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
@@ -482,6 +474,27 @@ jobs:
           config: demos/showcase/showcase.config.yaml
           udid: ${{ steps.sim.outputs.udid }}
           artifact-name: xcuitest-gestures-run
+
+      # The `permissions` field (BE-0276) on-device: reached via the same Simulator/app/runner this
+      # job already built for the multi-touch scenario above, so it costs one more `bajutsu run`
+      # rather than a whole new job. Forced onto XCUITest, like the multi-touch scenario, because
+      # `permission.yaml` taps the "Permissions" tab bar item — idb collapses the tab bar into one
+      # opaque group and can never resolve that tap (docs/showcase.md), regardless of backend cost
+      # order. `--exclude ai` drops the file's notification scenario (its iOS grant path needs the
+      # vision `dismissAlerts` guard, so it stays out of this deterministic gate — prime directive
+      # 1) and keeps only `location`, which `simctl privacy grant` pre-grants before launch with no
+      # prompt. android-e2e.yml's `smoke (adb)` job already runs both scenarios in permission.yaml
+      # unchanged (adb's tab bar has no such limitation), so this is the iOS twin of that coverage.
+      - name: Run the permission scenario (xcuitest)
+        uses: ./.github/actions/bajutsu-e2e
+        with:
+          scenarios: demos/showcase/scenarios/permission.yaml
+          exclude: ai
+          target: showcase-swiftui
+          backend: xcuitest
+          config: demos/showcase/showcase.config.yaml
+          udid: ${{ steps.sim.outputs.udid }}
+          artifact-name: xcuitest-permission-run
 
   # The driver conformance suite (BE-0114): one backend-agnostic contract, run on-device against
   # BOTH iOS backends — idb (idb_companion) and XCUITest (the resident BajutsuRunner). It proves
