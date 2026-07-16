@@ -66,9 +66,9 @@ happens to carry a usable `.git`.
   (`bajutsu/serve/operations/version.py`), when the `git rev-parse --short
   HEAD` read returns `None` (no `.git` checkout), read
   `BAJUTSU_BUILD_COMMIT` from the environment; if it's non-empty, return it as
-  `commit` with `branch: None` and `dirty: False` — a build-arg embedded value
+  `commit` with `branch: None` and `dirty: None` — a build-arg embedded value
   has no working branch or dirty-tree concept, so those fields stay their
-  "unknown" defaults rather than fabricating a value. Git detection stays the
+  "unknown" defaults (`None`) rather than fabricating a known "clean" value. Git detection stays the
   primary source and runs first, unchanged, so this only ever activates the
   cases BE-0272 already left as "nothing to report."
   Consider surfacing where the value came from (e.g. a `source: "git" |
