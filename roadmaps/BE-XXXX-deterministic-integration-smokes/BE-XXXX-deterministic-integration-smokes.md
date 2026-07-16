@@ -34,7 +34,7 @@ touching prime directive 1.
 Autonomous crawl ([BE-0038](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md))
 uses an LLM guide, but the crawl engine over a non-AI guide is deterministic. Its real-device
 contract — screen-change detection, crash detection, and the `recover` seam — is entirely scripted
-by the fake's `react` hook today, so whether a real app's screen actually changes in response to an
+by the fake's `react` hook today, so whether a real app's screen changes in response to an
 action, and whether `recover` heals a wedged browser, is unobserved. A non-AI crawl over the web
 showcase exercises that contract without a model.
 
