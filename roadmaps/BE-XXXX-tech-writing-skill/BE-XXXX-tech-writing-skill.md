@@ -77,7 +77,8 @@ The work breaks down into four independent units.
      *that* (restrictive, no comma) versus *which* (non-restrictive, set off by commas); no bare
      "this" / "that" as a noun (say "this X"); avoid singular "they" for an unspecified single
      person — reword to the plural or a role; hyphen for a compound adjective, en-dash for a range,
-     em-dash for emphasis (with surrounding spaces, per Chicago); spell out a positive whole number
+     em-dash for emphasis (with surrounding spaces — this repo's own convention; Chicago itself
+     closes them up); spell out a positive whole number
      below ten used as an adjective, numeral when used as a noun; a colon only after a complete
      sentence. A short source note (an HTML comment) credits Vitter, mirroring how
      `japanese-tech-writing` credits its own source.
