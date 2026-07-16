@@ -76,7 +76,7 @@ pass.
   their hands") or a role, rather than "each reviewer raised their hand".
 - **Dashes.** A hyphen joins a compound adjective ("capability-aware selection"). An en-dash marks a
   range ("steps 3–7") with no surrounding spaces. An em-dash sets off an aside for emphasis — with a
-  space on each side, per the Chicago style this repo follows.
+  space on each side, per this repo's own convention (Chicago itself specifies no space).
 - **Numbers.** Spell out a positive whole number below ten used as an adjective ("three drivers");
   use the numeral when it is a noun or ten or above.
 - **Colon.** Introduce a list or an elaboration with a colon only after a complete sentence.
