@@ -586,6 +586,45 @@ async function clearKey(){
 }
 $('#keyclear').addEventListener('click',clearKey);
 
+// ---- Scenario secrets (BE-0274): the ${secrets.X} names the bound config declares, each a
+// write-once masked field — the same non-disclosure shape as the API key, looped over the declared
+// list. Set/cleared through POST /api/secrets (admin); the section hides entirely when none.
+function renderScnSecret(row,d){
+  const cur=row.querySelector('.scnsecret-cur'),inp=row.querySelector('input');
+  if(d.set){cur.innerHTML='Current: <code>'+esc(d.masked||'')+'</code>';inp.placeholder='Enter a new value to replace it'}
+  else{cur.textContent='Not set yet.';inp.placeholder='value'}
+}
+async function postScnSecret(name,value,row,err,inp){
+  err.textContent='';err.className='keystatus';
+  const d=await postJSON('/api/secrets',{name,value},{error:'request failed'});
+  if(d.error){err.textContent=d.error;err.className='keystatus ng';return}
+  inp.value='';renderScnSecret(row,{set:!!d.set,masked:d.masked||''});
+  err.textContent=d.set?'saved':'cleared';err.className='keystatus ok';
+}
+// Fetch the declared list and (re)render one field per name. Called on config change and when the
+// Settings modal opens, so switching to a config with a different `secrets:` refreshes the panel.
+// Row markup follows the innerHTML+esc pattern of renderKey/renderGitCred; only the two nodes that
+// take listeners are grabbed afterward. `d.name` is escaped, like every other masked-field render.
+async function loadScenarioSecrets(){
+  const sec=$('#scnsecretsection'),host=$('#scnsecrets-list');if(!sec||!host)return;
+  const list=await getJSON('/api/secrets',[]);
+  const items=Array.isArray(list)?list:[];
+  host.textContent='';sec.hidden=items.length===0;
+  for(const d of items){
+    const row=document.createElement('div');row.className='scnsecret';
+    row.innerHTML='<label class="keylabel">'+esc(d.name)+'</label>'
+      +'<div class="keycur scnsecret-cur"></div>'
+      +'<div class="keyrow"><input type="password" class="keyinput" autocomplete="off" spellcheck="false" data-testid="settings.scnsecret-input"></div>'
+      +'<div class="keyactions"><button class="cfgbtn scnsecret-save" data-testid="settings.scnsecret-save">Save</button>'
+      +'<button class="keyclear scnsecret-clear" data-testid="settings.scnsecret-clear">Clear</button>'
+      +'<span class="keystatus scnsecret-err"></span></div>';
+    host.appendChild(row);renderScnSecret(row,d);
+    const inp=row.querySelector('input'),err=row.querySelector('.scnsecret-err');
+    row.querySelector('.scnsecret-save').addEventListener('click',()=>postScnSecret(d.name,inp.value,row,err,inp));
+    row.querySelector('.scnsecret-clear').addEventListener('click',()=>postScnSecret(d.name,'',row,err,inp));
+  }
+}
+
 // ---- Claude Code OAuth token (BE-0215): the claude-code provider's headless credential. Same
 // write-once shape as the API key — masked only, never revealed — held under CLAUDE_CODE_OAUTH_TOKEN.
 let ccTokState={set:false,masked:''};
@@ -758,7 +797,7 @@ async function saveSettings(){
   if(provider==='ant')refreshAntLogin();
 }
 // ---- Settings modal: one panel for the provider + API-key controls ----
-function openSettings(){openModal($('#settingsmodal'));$('#apikey').value='';$('#cctoken').value='';setSettingsStatus('','');loadKey();loadCcTok();loadProv()}
+function openSettings(){openModal($('#settingsmodal'));$('#apikey').value='';$('#cctoken').value='';setSettingsStatus('','');loadKey();loadCcTok();loadProv();loadScenarioSecrets()}
 function closeSettings(){closeModal($('#settingsmodal'))}
 $('#opensettings').addEventListener('click',openSettings);
 $('#settingsclose').addEventListener('click',closeSettings);
@@ -804,6 +843,7 @@ async function loadShared(){
   await loadScenarios();
   if(!$('#view-author').hidden)authorRefresh();
   refreshAiAvailability();  // a newly-bound config's ai.keyEnv can change reachability
+  loadScenarioSecrets();  // a newly-bound config declares its own `secrets:` — refresh the panel (BE-0274)
 }
 // Scenarios come from the selected target's configured dir, so reload when the Replay target changes.
 async function loadScenarios(){

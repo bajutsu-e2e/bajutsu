@@ -230,6 +230,18 @@ displayed again — to change it, set a new one; **Clear** removes it. It powers
 provider and the alert guard (Bedrock uses AWS credentials instead). Only the AI paths need it:
 **Record**, **Crawl**, and Replay with alert-dismiss on.
 
+**Scenario secrets** ([BE-0274](../roadmaps/BE-0274-serve-scenario-secrets/BE-0274-serve-scenario-secrets.md))
+lists the secrets the *bound config* declares — the environment-variable names under its `secrets:`
+list that a scenario references as `${secrets.X}`
+([Secrets](configuration.md#secrets-secrets), [BE-0032](../roadmaps/BE-0032-secret-variables/BE-0032-secret-variables.md)). The panel shows
+one **write-once** field per declared name (masked, never displayed again, just like the API key), so
+you can provision a scenario's credentials from the Web UI instead of `export`ing them or hand-editing
+a `.env` before launching `serve`. A value set here materializes under its own declared name, and a
+spawned **Replay** / **Record** / **Crawl** inherits it so `${secrets.X}` resolves in the run. The
+panel is hidden when the bound config declares no secrets, and refreshes when you switch to a config
+with a different `secrets:` list — only names the config itself declares are settable, never an
+arbitrary environment variable. Setting one is an **admin** action on a role-gated deployment.
+
 ## Record — author a scenario from a goal
 
 **What it does.** Explores toward a natural-language goal with AI and writes the resulting scenario,

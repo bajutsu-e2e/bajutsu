@@ -64,6 +64,38 @@ def test_get_reads_delegate_to_operations(tmp_path: Path) -> None:
     assert client.get("/api/nope").status_code == 404
 
 
+def test_scenario_secrets_delegate_to_operations(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # BE-0274: the scenario-secrets pair works on the hosted backend too — GET returns the declared
+    # list (a bare JSON array, exercising list serialization through JSONResponse), POST sets one.
+    monkeypatch.delenv("LOGIN_PASSWORD", raising=False)
+    scn_dir = tmp_path / "scenarios"
+    scn_dir.mkdir()
+    (scn_dir / "smoke.yaml").write_text(SCENARIO, encoding="utf-8")
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        "defaults: { backend: [idb] }\n"
+        "targets:\n"
+        f"  demo: {{ bundleId: com.example.demo, scenarios: {scn_dir}, secrets: [LOGIN_PASSWORD] }}\n",
+        encoding="utf-8",
+    )
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    client = _client(srv.ServeState(config=cfg, runs_dir=runs, root=tmp_path, cwd=tmp_path))
+    try:
+        assert client.get("/api/secrets").json() == [
+            {"name": "LOGIN_PASSWORD", "set": False, "masked": None}
+        ]
+        resp = client.post(
+            "/api/secrets", json={"name": "LOGIN_PASSWORD", "value": "hunter2-secret"}
+        )
+        assert resp.status_code == 200 and resp.json()["masked"] == "hunt…cret"
+        assert client.get("/api/secrets").json()[0]["set"] is True
+    finally:
+        monkeypatch.delenv("LOGIN_PASSWORD", raising=False)
+
+
 def test_run_file_honors_a_range_request(tmp_path: Path) -> None:
     # /runs/<rel> has its own Range handling (not delegated to `ops`, unlike the routes above), so
     # it's covered here too, not just in the stdlib-handler suite (BE-0015 PR3).

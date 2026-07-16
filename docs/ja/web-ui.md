@@ -230,6 +230,18 @@ AI が生成するプローズ、すなわち `record` の `from:` 由来と `cr
 Anthropic API プロバイダとアラートガードで使われます（Bedrock は代わりに AWS 認証情報を使います）。
 必要とするのは AI を使うパスだけです。**Record**、**Crawl**、そしてアラートガードを有効にした Replay です。
 
+**Scenario secrets**（[BE-0274](../../roadmaps/BE-0274-serve-scenario-secrets/BE-0274-serve-scenario-secrets-ja.md)）
+は、バインド中の config が宣言するシークレット、つまりシナリオが `${secrets.X}` として参照する
+`secrets:` の環境変数名を一覧します（[シークレット](configuration.md#シークレットsecrets)、
+[BE-0032](../../roadmaps/BE-0032-secret-variables/BE-0032-secret-variables-ja.md)）。宣言された名前ごと
+に **write-once** のフィールドを並べ、API キーと同じくマスク表示だけで再表示はされません。これにより、
+`serve` を起動する前に環境変数を export したり `.env` を手で編集したりしなくても、シナリオが必要とする
+認証情報を Web UI から用意できます。ここで設定した値はその宣言済みの名前の環境変数に入り、spawn される
+**Replay** / **Record** / **Crawl** が引き継ぐので、run のなかで `${secrets.X}` が解決します。バインド中の
+config がシークレットを宣言していないときは、このセクションは表示されません。`secrets:` の内容が異なる
+config に切り替えると、一覧は更新されます。設定できるのは config 自身が宣言している名前だけで、任意の
+環境変数を設定することはできません。ロールで保護されたデプロイでは、設定は **admin** の操作です。
+
 ## Record — ゴールからシナリオをオーサリングする
 
 **何をする画面か。** 自然言語のゴールに向けて AI で探索し、その結果のシナリオを 1 手ずつ書き出します。

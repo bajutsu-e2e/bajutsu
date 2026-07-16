@@ -33,6 +33,22 @@ def test_set_then_describe_returns_masked_only() -> None:
     assert store.describe("aiApiKey") == "sk-a…2345"
 
 
+def test_scenario_declared_secret_round_trips_encrypted() -> None:
+    # BE-0274: a scenario's own declared secret name (an env-var name, not one of the three fixed
+    # operator-credential logical names) is stored per org through the same generic store — set →
+    # describe returns the mask, and the ciphertext column never holds the plaintext. This pins the
+    # BE-0136 generalization the hosted storage path relies on.
+    engine = _engine()
+    store = DbSecretStore(engine, "acme", Fernet(Fernet.generate_key()))
+    assert store.describe("LOGIN_PASSWORD") is None  # unset
+
+    assert store.set("LOGIN_PASSWORD", "hunter2-secret") == "hunt…cret"
+    assert store.describe("LOGIN_PASSWORD") == "hunt…cret"
+    with engine.connect() as conn:
+        stored = conn.execute(select(Secret.ciphertext)).all()[0][0]
+    assert "hunter2-secret" not in stored and "secret" not in stored
+
+
 def test_stored_ciphertext_never_holds_the_plaintext() -> None:
     engine = _engine()
     store = DbSecretStore(engine, "default", Fernet(Fernet.generate_key()))

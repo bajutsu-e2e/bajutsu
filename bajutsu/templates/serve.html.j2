@@ -749,6 +749,13 @@
       </div>
       <div class="fshint">Write-once: set or replace the key here; it is shown only masked and never displayed again. Used by the <b>Anthropic API</b> provider (Amazon Bedrock uses AWS credentials instead). Only the AI paths need it: <b>Record</b>, <b>Crawl</b>, and Replay with <code>--dismiss-alerts</code>.</div>
     </div>
+    <!-- Scenario secrets (BE-0274): the ${secrets.X} names the bound config declares, each a masked
+         write-once field. Populated by serve.core.mjs loadScenarioSecrets(); hidden when none. -->
+    <div class="setsection" id="scnsecretsection" data-testid="settings.scnsecrets-section" hidden>
+      <div class="setlabel">Scenario secrets</div>
+      <div class="fshint">The secrets this config's scenarios declare (<code>${secrets.X}</code>, BE-0032). Set each one here instead of <code>export</code>ing it before launching <code>serve</code>. Write-once &mdash; stored masked and never shown again; a spawned <b>Replay</b> / <b>Record</b> / <b>Crawl</b> resolves <code>${secrets.X}</code> from it.</div>
+      <div id="scnsecrets-list" data-testid="settings.scnsecrets-list"></div>
+    </div>
     <div class="keyactions">
       <button class="cfgbtn keysave" id="settingssave" data-testid="settings.save">Save</button>
       <span class="keystatus" id="setstatus" data-testid="settings.status"></span>

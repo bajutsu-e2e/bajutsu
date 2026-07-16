@@ -497,6 +497,9 @@ header .appversion .dirty{color:var(--acc);font-weight:700}
 .keyrow{display:flex;gap:.4rem}
 .keyinput{flex:1;background:var(--bg2);border:1px solid var(--line);color:var(--fg);border-radius:8px;padding:.4rem .6rem;font:inherit}
 .keyactions{display:flex;align-items:center;gap:.6rem;margin-top:.7rem}
+/* Scenario secrets (BE-0274): one write-once field per declared name, stacked in the list. */
+.scnsecret{margin-top:.85rem}
+.scnsecret:first-child{margin-top:.4rem}
 /* Theme editor (BE-0191 unit 6): the contract-generated form has one input per token, so it can be
    far taller than the viewport. Cap the box and scroll only the form, keeping the header and the
    action buttons pinned as a footer — otherwise Save/Upload sit below the fold (a usability trap,
