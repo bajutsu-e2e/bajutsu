@@ -32,9 +32,9 @@ Android は圧倒的に最もよく動かされているバックエンドであ
 （[BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity-ja.md)、
 [BE-0221](../BE-0221-android-scenario-portability-guarantee/BE-0221-android-scenario-portability-guarantee-ja.md)）。
 iOS のアクチュエータはコマンド構築のレベル（サブプロセスをモックした単体テスト）でしか実証されていません。
-この非対称は、必須の `E2E` ゲートを出荷しているプラットフォームで、バックエンドに依存しないという約束を
-損ないます。iOS のアクチュエータは XCUITest のランナーチャネルと idb コンパニオンにある共有外のコードを通る
-ため、そこにバックエンド固有の退行があっても、いまはどの iOS レーンも落ちません。
+この非対称は、必須の `E2E` ゲートを備えるプラットフォームで、バックエンドに依存しないという約束を
+損ないます。iOS のアクチュエータは、XCUITest のランナーチャネルと idb コンパニオンにある、共有実装の外の
+コードを通ります。そこにバックエンド固有の退行があっても、いまはどの iOS レーンも落ちません。
 
 ギャップはシナリオの不足ではなく、CI 配線の不足です。シナリオは存在します。`ios-e2e` のインタラクション
 ジョブ（tap / type / swipe / scroll / back に加えて `gestures.yaml` の doubleTap と longPress）と、ランナー
@@ -68,10 +68,10 @@ macOS ランナーは Linux の 10 倍で課金されるため、どの新しい
 
 ## 検討した代替案
 
-* **バックエンド横断のアクチュエーションの確信を Android に頼る。** Android の広さは移らせません。iOS の
-  アクチュエータは XCUITest のランナーチャネルと idb コンパニオンを通り、Android レーンが一度も触れない
+* **バックエンド横断のアクチュエーションの確信を Android に頼る。** Android の広さは iOS には及びません。iOS の
+  アクチュエータは XCUITest のランナーチャネルと idb コンパニオンを通り、これは Android レーンが一度も触れない
   コードです。iOS の挙動を Android で信用することは、まさに conformance 作業が確かめるために存在する、
-  バックエンドに依存しないという前提であり、鵜呑みにするものではありません。
+  バックエンドに依存しないという前提であり、そのまま信じてよいものではありません。
 * **新しいジョブをすべて必須ゲートにする。** macOS の 10 倍課金がそれを高価にし、Simulator レーンの
   フレーキー履歴（[BE-0218](../BE-0218-e2e-simulator-flaky-readiness-actuation/BE-0218-e2e-simulator-flaky-readiness-actuation-ja.md)）
   は、新しいアクチュエーションジョブをまずシグナルとして着地させ、安定を確認してから昇格させることを支持します。
