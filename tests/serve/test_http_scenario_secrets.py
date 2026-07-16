@@ -118,6 +118,7 @@ def test_set_describe_and_clear_round_trip(tmp_path: Path, monkeypatch: pytest.M
     returns the plaintext. The value lands in the process env under its own name (BE-0032), so a
     spawned run inheriting ``os.environ`` via ``jobs._spawn_env`` resolves ``${secrets.LOGIN_PASSWORD}``."""
     monkeypatch.delenv("LOGIN_PASSWORD", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)  # clean start + auto-restore at teardown
     cfg = _project_with_secrets(tmp_path, demo_secrets="[LOGIN_PASSWORD]")
     server, port = _serve(_state(tmp_path, cfg))
     try:
