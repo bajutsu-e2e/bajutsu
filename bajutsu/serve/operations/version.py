@@ -77,7 +77,7 @@ def server_checkout() -> tuple[Any, int]:
             return {
                 "commit": build_commit,
                 "branch": None,
-                "dirty": False,
+                "dirty": None,
                 "source": "build-arg",
             }, 200
         return {"commit": None, "branch": None, "dirty": False, "source": None}, 200

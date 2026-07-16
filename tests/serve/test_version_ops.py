@@ -113,7 +113,7 @@ def test_server_checkout_falls_back_to_the_build_arg_commit(
     assert payload == {
         "commit": "deadbeef",
         "branch": None,
-        "dirty": False,
+        "dirty": None,
         "source": "build-arg",
     }
 
