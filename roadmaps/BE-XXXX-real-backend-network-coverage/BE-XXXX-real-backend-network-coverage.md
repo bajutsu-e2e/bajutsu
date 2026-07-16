@@ -39,12 +39,12 @@ Whether a secret in a *really captured* header or body is masked in the persiste
 proven nowhere, because no lane produces such evidence. A regression that leaked a captured
 credential would pass the whole suite.
 
-The scenarios that would exercise this already exist for iOS and are orphaned; the web side needs
+The scenarios that would exercise the real path already exist for iOS and are orphaned; the web side needs
 only that the existing jobs stop opting out with `--no-network`. So the cost is mostly wiring, not
 new authoring. Android is a separate matter and stays out of scope: it has no native network
 monitor (`observes_network_via_driver` is false and the adb driver declares no `NETWORK`
-capability), so there is nothing to actuate there yet — this item records that as a known gap
-rather than skipping it silently.
+capability), so there is nothing to actuate there yet — this item records the Android gap
+explicitly rather than skipping it silently.
 
 ## Detailed design
 
@@ -72,8 +72,8 @@ Proposal altitude. The work is MECE along the units below.
   and the collector's receiver, but never the app-side sender, the browser interception, or
   redaction of really captured evidence. The largest real-path gap would stay unobserved.
 - **Use an external mock server ([BE-0027](../BE-0027-mock-server-external/BE-0027-mock-server-external.md))
-  instead of driver-level interception.** That is a different layer (a standalone stub the app
-  talks to) and complements this item rather than replacing it; it would not exercise the
+  instead of driver-level interception.** That approach is a different layer (a standalone stub the
+  app talks to) and complements this item rather than replacing it; it would not exercise the
   `page.route` / collector path this item is about.
 
 ## Progress
