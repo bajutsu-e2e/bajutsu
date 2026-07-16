@@ -593,6 +593,12 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 | [BE-0276](BE-0276-scenario-permission-state/BE-0276-scenario-permission-state.md) | Declarative per-scenario permission state (simctl privacy / pm grant) | Proposal |
 <!-- /GENERATED:proposals-scenario-authoring -->
 
+### Verification & coverage
+
+<!-- GENERATED:proposals-verification -->
+
+<!-- /GENERATED:proposals-verification -->
+
 ### Authoring experience (record / GUI editor)
 
 <!-- GENERATED:proposals-authoring -->
