@@ -10,8 +10,10 @@
 #     short-circuits to granted with no dialog. No prompt appears, so the guard never fires and no LLM
 #     runs — the flow stays fully deterministic on the android-e2e lane (prime directive 1 holds). The
 #     guard is an alert *handler*, never an assertion, so it never touches the pass/fail verdict.
-# The app model starts at notDetermined regardless of any OS-level grant, so the pre/post assertions
-# are identical on both platforms. `dismissAlerts` is on but no-ops wherever no prompt appears.
+# The app's notification model starts at notDetermined regardless of any OS-level grant (it only
+# updates inside the request completion handler), so the pre/post assertions below are identical on
+# both platforms. `dismissAlerts` is on but no-ops wherever no prompt appears. The location scenario
+# below does *not* share this "starts at notDetermined" property on iOS — see its own comment.
 # Tagged `ai` (on top of `permission`/`system`) so the iOS smoke lane can `--exclude ai` and run only
 # this file's deterministic `location` scenario below, per prime directive 1 — Android runs both
 # untouched (neither needs AI there).
@@ -48,10 +50,11 @@
     - tap: { label: "Permissions", traits: [button] }
       capture: [video]
     - wait: { for: { id: perm.requestLocation }, timeout: 10 }
-    - assert:
-        - value: { sel: { id: perm.location.value }, equals: "notDetermined" }
     - tap: { id: perm.requestLocation }
-    # Pre-granted, so the OS answers immediately with no dialog to tap.
-    - wait: { for: { id: perm.location.value, value: "authorizedWhenInUse" }, timeout: 5 }
+    # Android: pre-granted, so the RequestPermission launcher's callback fires immediately with no
+    # dialog. iOS: CLLocationManager reports a pre-granted status as soon as the delegate is set —
+    # before this tap even runs — so, unlike the sibling notification scenario above, there is no
+    # "notDetermined" window to assert here; the tap still runs as a no-op sanity check.
+    - wait: { for: { id: perm.location.value, value: "authorizedWhenInUse" }, timeout: 10 }
   expect:
     - value: { sel: { id: perm.location.value }, equals: "authorizedWhenInUse" }
