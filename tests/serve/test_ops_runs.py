@@ -137,6 +137,48 @@ def test_runs_payload_scoped_keeps_a_multi_scenario_run(tmp_path: Path) -> None:
     assert [r["id"] for r in ops.runs_payload(state, scenario="checkout")[0]] == ["r1"]
 
 
+def test_runs_payload_scoped_surfaces_a_run_past_the_hosted_cap(tmp_path: Path) -> None:
+    # BE-0262 follow-up: the DB `list_runs` caps at the newest 50 runs. When scoping to a scenario,
+    # that cap must count *scoped* runs — otherwise a run of the loaded scenario that falls outside
+    # the newest-50 global window is silently dropped and the picker can't reach it.
+    state, repo = _hosted_state(tmp_path)
+    base = datetime(2026, 1, 1, tzinfo=UTC)
+    repo.record_run(
+        RunRecord(
+            id="login-run",
+            org_id="default",
+            status="done",
+            ok=True,
+            summary={"id": "login-run", "scenarios": ["login"]},
+            created_at=base,  # the oldest run — past the newest-50 window below
+        )
+    )
+    for i in range(50):
+        repo.record_run(
+            RunRecord(
+                id=f"other-{i}",
+                org_id="default",
+                status="done",
+                ok=True,
+                summary={"id": f"other-{i}", "scenarios": ["checkout"]},
+                created_at=base + timedelta(minutes=i + 1),
+            )
+        )
+    scoped = ops.runs_payload(state, scenario="login", actor="admin")[0]
+    assert [r["id"] for r in scoped] == ["login-run"]
+
+
+def test_runs_payload_scoped_local_list_is_not_re_capped(tmp_path: Path) -> None:
+    # BE-0262 follow-up: the local artifact-store listing is unbounded (no `list_runs` cap), so the
+    # scenario-scoped list must stay unbounded too — re-capping it would make the local scoped picker
+    # *stricter* than the unscoped one. All 51 runs of the loaded scenario must be reachable.
+    state = _local_state(tmp_path)
+    for i in range(51):
+        _run_dir_for(state, f"login-{i:03d}", "login")
+    scoped = ops.runs_payload(state, scenario="login")[0]
+    assert len(scoped) == 51
+
+
 # --- hosted (repository) ---
 
 

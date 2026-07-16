@@ -28,6 +28,11 @@ if TYPE_CHECKING:
 DEFAULT_LEASE_TIMEOUT_SECONDS = 120.0
 DEFAULT_LEASE_MAX_ATTEMPTS = 3
 
+# The default newest-N window `list_runs` caps at (`None` means unbounded). Shared so the serve
+# read path that re-caps a scoped list post-filter (`operations.reads`) stays in lock-step: a future
+# bump here must not silently leave that path capping at a stale number.
+DEFAULT_RUN_LIMIT = 50
+
 
 @dataclass
 class LeasedJob:
@@ -115,7 +120,7 @@ class Repository(Protocol):
         *,
         org_id: str,
         project_id: str | None = None,
-        limit: int | None = 50,
+        limit: int | None = DEFAULT_RUN_LIMIT,
         include_deleted: bool = False,
     ) -> list[RunRecord]:
         """An org's runs, newest first, capped at *limit*; ``None`` means unbounded (the per-project
@@ -333,7 +338,7 @@ class SqlRepository:
         *,
         org_id: str,
         project_id: str | None = None,
-        limit: int | None = 50,
+        limit: int | None = DEFAULT_RUN_LIMIT,
         include_deleted: bool = False,
     ) -> list[RunRecord]:
         from sqlalchemy import select

@@ -95,6 +95,11 @@ Capture と同じ選択を再利用します）。
   Unit 4 は単一セッションのスロットと actor 単位の所有を再利用し、保存せずに終了する `close_capture`
   （`POST /api/capture/close`）を加えます。Unit 5 は絞り込み・ライブ解決・プレースホルダ状態のテストを
   追加します。
+- [#1137](https://github.com/bajutsu-e2e/bajutsu/pull/1137) — #1134 のレビューで挙がった非ブロッキングな
+  2 点への追従です。`runs_payload` は DB の最新 50 件の上限を適用した*後*で run 一覧を絞っていたため、
+  hosted で対象シナリオの run がその窓の外に落ちると拾えませんでした。シナリオを指定したときは上限なしで
+  列挙し、絞り込んだ後に同じ窓へ改めて上限をかけるようにしました。あわせて、抽出した `_resolve_point` と
+  `_feedback_payload` の型を `Any` から `CaptureResult` に絞りました。
 
 ## 参考
 

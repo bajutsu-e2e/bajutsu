@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from bajutsu.config import load_config
 from bajutsu.redaction import Redactor
@@ -12,6 +12,11 @@ from bajutsu.serve.operations._common import (
     _resolve_org_or_forbid,
 )
 from bajutsu.serve.state import CaptureSession, ServeState
+
+if TYPE_CHECKING:
+    # Only for annotations — resolve_capture (and CaptureResult) are imported lazily at call sites
+    # to keep this module's import light, so the type stays out of the runtime import graph.
+    from bajutsu.record_capture import CaptureResult
 
 
 def start_capture(
@@ -100,7 +105,7 @@ def _active_session(
 
 def _resolve_point(
     session: CaptureSession, body: dict[str, Any]
-) -> tuple[Any, tuple[Any, int] | None]:
+) -> tuple[CaptureResult | None, tuple[Any, int] | None]:
     """Resolve a normalized screen point against the session's live tree.
 
     Returns the resolution result, or a malformed-point error response — the shared resolution mark
@@ -121,7 +126,7 @@ def _resolve_point(
     return result, None
 
 
-def _feedback_payload(result: Any) -> tuple[Any, int] | None:
+def _feedback_payload(result: CaptureResult) -> tuple[Any, int] | None:
     """The refused / ambiguity response shared by mark and the live picker; None on a clean match."""
     if result.refused:
         return {"refused": result.refused}, 200
@@ -149,6 +154,7 @@ def mark_capture(
     result, err = _resolve_point(session, body)
     if err:
         return err
+    assert result is not None  # a clean _resolve_point returns the result and no error
     if (feedback := _feedback_payload(result)) is not None:
         return feedback
 
@@ -225,6 +231,7 @@ def resolve_capture_pick(
     result, err = _resolve_point(session, body)
     if err:
         return err
+    assert result is not None  # a clean _resolve_point returns the result and no error
     if (feedback := _feedback_payload(result)) is not None:
         return feedback
 

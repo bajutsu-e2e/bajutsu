@@ -33,6 +33,7 @@ from bajutsu.serve.operations._common import _resolve_org_or_forbid
 from bajutsu.serve.operations.config import FS_DISABLED_ERROR
 from bajutsu.serve.operations.runs import sweep_expired_trash
 from bajutsu.serve.orgs import targets_for_org
+from bajutsu.serve.server.db import DEFAULT_RUN_LIMIT as _RUN_HISTORY_LIMIT
 from bajutsu.serve.state import ServeState
 
 _REPORT_SUFFIX = "/report.html"
@@ -108,6 +109,11 @@ def simulators_payload(state: ServeState) -> tuple[Any, int]:
     return list_simulators(state.simctl), 200
 
 
+# The newest-N run window the history list shows: `db.DEFAULT_RUN_LIMIT`, the DB `list_runs` default
+# cap, sourced so the two stay in lock-step. Also the post-filter cap for a scenario-scoped DB list,
+# so a scoped picker on the server backend stays as bounded as the unscoped one.
+
+
 def runs_payload(
     state: ServeState, *, actor: str | None = None, scenario: str | None = None
 ) -> tuple[Any, int]:
@@ -119,17 +125,30 @@ def runs_payload(
     # durable and org-scoped (BE-0015 7c-4). The stored summary mirrors the artifact entry, so the
     # UI shape is identical. Without one (local / stdlib serve), list straight from the artifact
     # store.
+    #
+    # When scoping to a scenario, the DB cap must count *scoped* runs, not global ones: the scenario
+    # name lives in the JSON summary, not an indexed column, so it can't push into the query — list
+    # unbounded and cap after filtering, or a run of the loaded scenario that falls outside the
+    # newest-N global window is silently dropped and the picker can't reach it (BE-0262 follow-up).
     if state.repository is not None:
-        runs = [r.summary for r in state.repository.list_runs(org_id=state.org_of(actor))]
+        limit = None if scenario is not None else _RUN_HISTORY_LIMIT
+        runs = [
+            r.summary for r in state.repository.list_runs(org_id=state.org_of(actor), limit=limit)
+        ]
     else:
         runs = state.artifacts.list_runs()
     # Scope the Author run picker to the loaded scenario (BE-0262): a chosen run's step ids only line
     # up with a scenario of the same name, so a run that never executed it can't feed the picker.
     # Scenario name is the step-id compatibility key the run-backed resolve already keys on (a run's
     # summary records the names it ran, not a file path); org scoping and the target-scoped Author
-    # scenario list bound the rest.
+    # scenario list bound the rest. On the DB path, re-cap the scoped list to the same newest-N window
+    # so the payload stays bounded like the unscoped one (list_runs returns newest-first). The local
+    # artifact-store list is unbounded either way, so re-capping it would make scoped *stricter* than
+    # unscoped — gate the re-cap to the DB path so local/dev serve stays symmetric.
     if scenario is not None:
         runs = [r for r in runs if scenario in (r.get("scenarios") or [])]
+        if state.repository is not None:
+            runs = runs[:_RUN_HISTORY_LIMIT]
     return runs, 200
 
 

@@ -102,6 +102,11 @@ unaffected (the live driver is chosen per target's config, reusing the same sele
   session in place of the inert no-run placeholder. Unit 4 reuses the single-session slot, per-actor
   ownership, and adds `close_capture` (`POST /api/capture/close`) for save-less teardown. Unit 5 adds
   the scoping, live-resolve, and placeholder-state tests.
+- [#1137](https://github.com/bajutsu-e2e/bajutsu/pull/1137) — follow-up on two non-blocking review notes
+  from #1134. `runs_payload` scoped the run list *after* the DB's newest-50 cap, so in hosted mode a run
+  of the loaded scenario outside that window was dropped; it now lists unbounded and re-caps after
+  filtering when a scenario is given. Also tightened the extracted `_resolve_point` / `_feedback_payload`
+  types from `Any` to `CaptureResult`.
 
 ## References
 
