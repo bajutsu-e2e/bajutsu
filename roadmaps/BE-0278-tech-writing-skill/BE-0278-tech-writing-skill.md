@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0278](BE-0278-tech-writing-skill.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0278") |
+| Implementing PR | [#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN) |
 | Topic | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
 
@@ -99,6 +100,11 @@ The work breaks down into four independent units.
    - [`roadmaps/README.md`](../../roadmaps/README.md) (and `README-ja.md`) note in the BE-authoring
      section that items follow `tech-writing`, next to the existing 敬体 / `japanese-tech-writing`
      note.
+   - The authoring skills that draft BE prose point at `tech-writing` at the moment they write:
+     [`ideation`](../../.claude/skills/ideation/SKILL.md) (its drafting step) and the Phase A of
+     [`propose-and-build`](../../.claude/skills/propose-and-build/SKILL.md) invoke it before drafting,
+     beside their existing `japanese-tech-writing` pointer, so the norm is active at authoring time —
+     not merely discoverable in the docs.
 4. **Scope: BE items and every prose document, both languages.** The norm applies to
    `roadmaps/BE-*/*.md` and `*-ja.md` and to every document under `docs/` (and its `docs/ja/`
    mirror), consistent with the *Documentation style* section's existing reach ("including roadmap
@@ -132,10 +138,19 @@ norm holds exactly the way the bilingual-docs rule and the DESIGN.md-realignment
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] 1. New `tech-writing` skill (language-agnostic principles + English mechanics + source note)
-- [ ] 2. Layering with `japanese-tech-writing` (umbrella declaration + reciprocal pointer)
-- [ ] 3. Reference wiring in `docs/ai-development.md`, `CLAUDE.md`, and `roadmaps/README.md` (+ `-ja`)
-- [ ] 4. Scope statement (BE items + `docs/`, both languages; docstrings excluded)
+- [x] 1. New `tech-writing` skill (language-agnostic principles + English mechanics + source note)
+- [x] 2. Layering with `japanese-tech-writing` (umbrella declaration + reciprocal pointer)
+- [x] 3. Reference wiring in `docs/ai-development.md`, `CLAUDE.md`, `roadmaps/README.md` (+ `-ja`), and
+  the BE-authoring skills (`ideation`, `propose-and-build`) so the norm is active at authoring time
+- [x] 4. Scope statement (BE items + `docs/`, both languages; docstrings excluded)
+
+Log:
+
+- The `tech-writing` skill, its `japanese-tech-writing` layering, and the wiring in
+  `docs/ai-development.md` / `CLAUDE.md` / `roadmaps/README.md` (+ `-ja`) landed in
+  [#1138](https://github.com/bajutsu-e2e/bajutsu/pull/1138), before this item was numbered.
+- This PR completes the item: it wires `tech-writing` into the BE-authoring skills (`ideation`,
+  `propose-and-build`), so the norm is invoked at drafting time, and flips the item to Implemented.
 
 ## References
 
