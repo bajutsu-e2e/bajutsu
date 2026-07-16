@@ -6,7 +6,7 @@
 > **in-app**: the app reports each exchange to a collector bajutsu runs, and a `request`
 > assertion checks the accumulated exchanges.
 >
-> Implementation: `bajutsu/network.py` (model + collector), `bajutsu/assertions.py`
+> Implementation: `bajutsu/network.py` (model + collector), `bajutsu/assertions/network.py`
 > (`request` eval), the in-app SDK (software development kit) [`BajutsuKit`](../BajutsuKit/README.md).
 
 Related: [scenarios](scenarios.md) · [evidence](evidence.md)

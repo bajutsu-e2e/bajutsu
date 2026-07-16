@@ -160,7 +160,7 @@ not the core.
 |---|---|
 | Scenario DSL (domain-specific language) & grammar | [scenarios](scenarios.md) · [dsl-grammar](dsl-grammar.md) |
 | Selector model & deterministic resolution | [selectors](selectors.md) |
-| Machine assertions (the only judges) | `assertions.py` · [concepts](concepts.md) |
+| Machine assertions (the only judges) | `assertions/` · [concepts](concepts.md) |
 | observe → act → verify orchestrator | [run-loop](run-loop.md) |
 | Evidence subsystem (capturePolicy / manifest) | [evidence](evidence.md) |
 | Reporter (manifest / JUnit / HTML) | [reporting](reporting.md) |

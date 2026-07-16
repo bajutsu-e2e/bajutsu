@@ -202,7 +202,7 @@ verdict (`"exact"` or `"pixelmatch"`; [BE-0165](../roadmaps/BE-0165-visual-compa
 
 The engine is selected per assertion (`compare:`) with a target-level config fallback
 (`visualCompare`), and is recorded in the manifest so the algorithm that produced each
-verdict is traceable. Implementation: `bajutsu/assertions.py` `VisualEvidence`.
+verdict is traceable. Implementation: `bajutsu/assertions/visual.py` `VisualEvidence`.
 
 ## Masking (redact)
 

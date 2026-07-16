@@ -6,7 +6,7 @@
 > **アプリ内**で行います。アプリが個々の通信を Bajutsu の起動するコレクタに報告し、`request`
 > アサーションが蓄積された通信を照合します。
 >
-> 実装: `bajutsu/network.py`（モデルとコレクタ）、`bajutsu/assertions.py`（`request` の評価）、
+> 実装: `bajutsu/network.py`（モデルとコレクタ）、`bajutsu/assertions/network.py`（`request` の評価）、
 > アプリ内 SDK（software development kit、ソフトウェア開発キット）の
 > [`BajutsuKit`](../../BajutsuKit/README.md)。
 
