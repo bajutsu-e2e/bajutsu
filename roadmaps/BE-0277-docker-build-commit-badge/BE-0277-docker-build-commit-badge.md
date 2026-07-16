@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0277") |
-| Implementing PR | [#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN) |
+| Implementing PR | [#1133](https://github.com/bajutsu-e2e/bajutsu/pull/1133) |
 | Topic | Hosting the web UI (cloud / self-hosted) |
 <!-- /BE-METADATA -->
 
@@ -147,7 +147,7 @@ happens to carry a usable `.git`.
 
 Log:
 
-- Implemented in [#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN): build
+- Implemented in [#1133](https://github.com/bajutsu-e2e/bajutsu/pull/1133): build
   arg + `BAJUTSU_BUILD_COMMIT` embed, `server_checkout()` fallback with a
   `source` field, badge tooltip, root `.dockerignore`, compose `build.args`,
   and the bilingual self-hosting docs.
