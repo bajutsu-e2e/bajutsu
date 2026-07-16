@@ -553,7 +553,7 @@ runs/<runId>/
 
 | マイルストーン | 内容 |
 |---|---|
-| **M1** | `simctl.py`（simctl ラッパ）+ `drivers/base,idb`（共通 IF、id → frame 中心のセレクタ解決）+ YAML シナリオ(pydantic) + `assertions.py` + 証跡の軽量 3 点（`screenshot`/`elements`/`actionLog`）と `result:error` 安全網 + `manifest.json` + per-target config（`targets.<name>` 解決, `bajutsu run --target` / `doctor --target`）。**idb でシナリオが通る** こと、**config だけで対象アプリを切り替えられる** ことを完了条件とする |
+| **M1** | `simctl.py`（simctl ラッパ）+ `drivers/base,idb`（共通 IF、id → frame 中心のセレクタ解決）+ YAML シナリオ(pydantic) + `assertions/` + 証跡の軽量 3 点（`screenshot`/`elements`/`actionLog`）と `result:error` 安全網 + `manifest.json` + per-target config（`targets.<name>` 解決, `bajutsu run --target` / `doctor --target`）。**idb でシナリオが通る** こと、**config だけで対象アプリを切り替えられる** ことを完了条件とする |
 | **M2** | observe→act→verify の AI ループ（自然言語ステップ・証跡指示の解釈と正規化）+ ルール方式（トリガー）一式 + `video` / `deviceLog` + Reporter(JUnit/HTML) |
 | **M3** | `network`（in-protocol の mocks / collector、§3.2）+ `appTrace`（os_signpost）+ redaction + XCUITest codegen（Tier2）+ CI 統合 |
 | **M4** | 自己修復トリアージ（失敗証跡から原因要約・テスト更新提案、人間レビュー前提） |

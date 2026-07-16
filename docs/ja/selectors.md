@@ -107,7 +107,7 @@ idb は使える semantic tap を持たないため、抽象側は **常に `que
 
 ## アサーション評価
 
-実装: `bajutsu/assertions.py`。`evaluate(elements, assertions) -> list[AssertionResult]` が各アサーションを評価し、`passed(results)` が AND を取ります。**評価は総関数**で、解決失敗（not-found / ambiguous）も例外でなく「失敗した `AssertionResult`」として返します（そのままレポートに載ります）。
+実装: `bajutsu/assertions/`（`evaluate.py`。BE-0250 で単一モジュールから分割）。`evaluate(elements, assertions) -> list[AssertionResult]` が各アサーションを評価し、`passed(results)` が AND を取ります。**評価は総関数**で、解決失敗（not-found / ambiguous）も例外でなく「失敗した `AssertionResult`」として返します（そのままレポートに載ります）。
 
 ```python
 @dataclass(frozen=True)
