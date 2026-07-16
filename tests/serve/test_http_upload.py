@@ -31,11 +31,25 @@ _CONFIG = (
 _SCENARIO = "- name: alpha\n  steps:\n    - tap: { id: home.title }\n"
 
 
+# A fixed entry timestamp keeps repeated builds of the same logical bundle byte-identical, so the
+# content-addressed cache (BE-0243) sees them as the same upload. A plain string name lets zipfile
+# stamp each entry with the current time, which straddles a 2-second boundary between two calls and
+# desyncs their sha256 — a flake on the required `check` gate.
+_ZIP_EPOCH = (1980, 1, 1, 0, 0, 0)
+
+
+def _write_entry(zf: zipfile.ZipFile, name: str, content: str | bytes) -> None:
+    info = zipfile.ZipInfo(name, date_time=_ZIP_EPOCH)
+    info.compress_type = zipfile.ZIP_DEFLATED
+    info.external_attr = 0o644 << 16
+    zf.writestr(info, content)
+
+
 def _bundle_zip(config: str = _CONFIG, scenario: str = _SCENARIO) -> bytes:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr("bajutsu.config.yaml", config)
-        zf.writestr("scenarios/smoke.yaml", scenario)
+        _write_entry(zf, "bajutsu.config.yaml", config)
+        _write_entry(zf, "scenarios/smoke.yaml", scenario)
     return buf.getvalue()
 
 
@@ -43,7 +57,7 @@ def _zip_with(entries: dict[str, bytes]) -> bytes:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for name, content in entries.items():
-            zf.writestr(name, content)
+            _write_entry(zf, name, content)
     return buf.getvalue()
 
 
