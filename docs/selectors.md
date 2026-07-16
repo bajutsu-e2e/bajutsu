@@ -129,7 +129,8 @@ so the `id` selector resolves directly against the normalized form.
 
 ## Assertion evaluation
 
-Implementation: `bajutsu/assertions.py`. `evaluate(elements, assertions) -> list[AssertionResult]`
+Implementation: `bajutsu/assertions/` (`evaluate.py`, split from a single module in BE-0250).
+`evaluate(elements, assertions) -> list[AssertionResult]`
 evaluates each assertion, and `passed(results)` ANDs them. **Evaluation is total**: a resolution
 failure (not-found / ambiguous) is returned as a failed `AssertionResult` rather than an exception
 (it lands straight in the report).

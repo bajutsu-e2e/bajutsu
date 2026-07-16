@@ -155,7 +155,7 @@ Android のほうが idb の近い双子であるにもかかわらず、Web が
 |---|---|
 | シナリオ DSL（domain-specific language）と文法 | [scenarios](scenarios.md) · [dsl-grammar](dsl-grammar.md) |
 | セレクタモデルと決定的解決 | [selectors](selectors.md) |
-| 機械アサーション（唯一の判定者） | `assertions.py` · [concepts](concepts.md) |
+| 機械アサーション（唯一の判定者） | `assertions/` · [concepts](concepts.md) |
 | observe → act → verify オーケストレータ | [run-loop](run-loop.md) |
 | 証跡サブシステム（capturePolicy / manifest） | [evidence](evidence.md) |
 | レポーター（manifest / JUnit / HTML） | [reporting](reporting.md) |
