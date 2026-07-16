@@ -32,17 +32,18 @@ cover those operations, so the one test body proves them on every backend at onc
 The text-editing steps ([BE-0265](../BE-0265-text-editing-steps/BE-0265-text-editing-steps.md))
 shipped, and each backend's command construction is unit-tested with a mocked subprocess. What no
 lane does is actuate `delete_text` / `select_all` / `copy_selection` against a real device or
-browser: the round-trip from a step to an observed field change is never exercised. `tap_point` is
-in the same position, with a real command test only on XCUITest and Playwright and no lane that actuates it —
-and it is the foundation of the alert-dismissal path (the vision-located coordinate tap that
-[BE-0269](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention.md) relies on), so leaving it
-unobserved on-device is a real risk.
+browser: the round-trip from a step to an observed field change is never exercised. `tap_point`
+is in the same position: a real command test exists only on XCUITest and Playwright, and no lane
+actuates it at all. It is also the foundation of the alert-dismissal path — the vision-located
+coordinate tap that
+[BE-0269](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention.md)
+relies on — so leaving it unobserved on-device is a real risk.
 
-The contract is the cheapest place to close this gap: one spec runs against five backends, so a
-single test body adds coverage everywhere rather than one showcase scenario per backend. The
-capability model already gives the contract its shape — a backend that declares the capability
-must actuate, and one that does not must raise `UnsupportedAction` loudly rather than silently
-no-op. The text-editing operations and `tap_point` extend that same pattern.
+The contract is the cheapest place to close this gap. One spec runs against five backends, so
+instead of writing a separate showcase scenario per backend, a single test body adds coverage
+everywhere at once. The capability model already gives the contract its shape — a backend that
+declares the capability must actuate, and one that does not must raise `UnsupportedAction` loudly
+rather than silently no-op. The text-editing operations and `tap_point` extend that same pattern.
 
 One constraint shapes the work. The on-device conformance harnesses realize a requested screen as
 a list of identifier-bearing buttons, which is enough for tap and resolution tests but not for
