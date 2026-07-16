@@ -317,6 +317,22 @@ docker compose up -d            # postgres + minio + migrate（alembic upgrade h
 `migrate` が `bajutsu` の起動前に Alembic マイグレーションを head まで適用し、`minio-init` がバケットを
 作成します。コントロールプレーンは `:8765` で待ち受けます。
 
+web UI のバージョンバッジ（BE-0272）に、このイメージが動作しているコミットを表示したい場合は、そのコミットを
+ビルド時に渡します（BE-0277）。イメージには読み取れる `.git` が含まれないため、バッジはこの埋め込み値に
+フォールバックします。
+
+```bash
+GIT_COMMIT=$(git rev-parse HEAD) docker compose build bajutsu   # そのあと `docker compose up -d`
+```
+
+`docker-compose.yml` は、呼び出し元のシェル（または `.env` のエントリ）から `GIT_COMMIT` を解決し、
+`bajutsu` サービスのビルド引数に渡します。設定しなければ、バッジは従来どおりバージョンだけを表示します。
+compose を通さずコントロールプレーンのイメージを直接ビルドする場合は次のようにします。
+
+```bash
+docker build --build-arg GIT_COMMIT=$(git rev-parse HEAD) -f deploy/self-host/Dockerfile .
+```
+
 公開ポートは `BIND_ADDR`（既定は `127.0.0.1`）にバインドします。Mac の worker が別ホストから MinIO に届く
 ようにするには、`.env` の `BIND_ADDR` をノードの tailnet IP に設定してください。公開インターフェースを
 持つホストで `0.0.0.0` にはしないでください。成果物バケットを露出させてしまいます。

@@ -1,0 +1,30 @@
+# Build-context excludes for deploy/self-host/Dockerfile (context is the repo root; BE-0277).
+# The image installs bajutsu from source (`pip install .`), so it needs the tracked tree, not
+# these build-irrelevant, already-gitignored paths. Excluding .git here is the whole point of
+# BE-0277: the version badge's commit identity comes from the explicit GIT_COMMIT build arg, not
+# from whatever .git the context happened to carry — and dropping .git also keeps it from bloating
+# the image and busting the COPY layer's cache on every commit.
+.git
+
+# Python / build caches and virtualenvs — rebuilt in the image, never copied in.
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.json
+htmlcov/
+
+# Local run output, secrets, and scratch — never part of a reproducible image.
+tmp/
+runs/
+uploads/
+.env
+.DS_Store

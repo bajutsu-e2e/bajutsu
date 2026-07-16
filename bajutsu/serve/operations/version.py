@@ -60,15 +60,27 @@ def server_version() -> tuple[Any, int]:
 
 
 def server_checkout() -> tuple[Any, int]:
-    """bajutsu's Git checkout identity: short commit SHA, branch name, and dirty flag (BE-0272).
+    """bajutsu's checkout identity: short commit SHA, branch name, dirty flag, and source (BE-0272).
 
     Read fresh per request so a serve left running while its checkout is edited stays accurate.
-    Every field is null/False when serve runs outside a Git checkout (e.g. a pip-installed copy).
+    Git detection is the primary source and runs first, unchanged; only when it finds no checkout
+    does the build-time `BAJUTSU_BUILD_COMMIT` fall back in (BE-0277), for a self-hosted Docker
+    image that ships no `.git`. `source` names where `commit` came from ("git" / "build-arg"), or
+    is None when neither yields one — a build-arg value has no branch or dirty-tree concept, so
+    those stay their "unknown" defaults rather than fabricating a clean-checkout look.
     admin-gated by the caller (`authz`): a branch name routinely encodes an in-progress BE slug.
     """
     commit = _git("rev-parse", "--short", "HEAD")
-    if commit is None:  # not a Git checkout — nothing to report
-        return {"commit": None, "branch": None, "dirty": False}, 200
+    if commit is None:  # not a Git checkout — fall back to a build-time embedded commit, if any
+        build_commit = os.environ.get("BAJUTSU_BUILD_COMMIT", "").strip()
+        if build_commit:
+            return {
+                "commit": build_commit,
+                "branch": None,
+                "dirty": None,
+                "source": "build-arg",
+            }, 200
+        return {"commit": None, "branch": None, "dirty": False, "source": None}, 200
     branch = _git("rev-parse", "--abbrev-ref", "HEAD")
     if branch == "HEAD":  # detached HEAD — "HEAD" is not a branch name, so report none
         branch = None
@@ -77,4 +89,4 @@ def server_checkout() -> tuple[Any, int]:
     # concurrent git op) is the wrong default — match commit/branch, which stay None on a failure.
     status = _git("status", "--porcelain")
     dirty = bool(status) if status is not None else None
-    return {"commit": commit, "branch": branch, "dirty": dirty}, 200
+    return {"commit": commit, "branch": branch, "dirty": dirty, "source": "git"}, 200

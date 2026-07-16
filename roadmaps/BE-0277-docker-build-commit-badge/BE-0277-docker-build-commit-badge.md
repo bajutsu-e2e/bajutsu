@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0277](BE-0277-docker-build-commit-badge.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0277") |
+| Implementing PR | [#1133](https://github.com/bajutsu-e2e/bajutsu/pull/1133) |
 | Topic | Hosting the web UI (cloud / self-hosted) |
 <!-- /BE-METADATA -->
 
@@ -65,9 +66,9 @@ happens to carry a usable `.git`.
   (`bajutsu/serve/operations/version.py`), when the `git rev-parse --short
   HEAD` read returns `None` (no `.git` checkout), read
   `BAJUTSU_BUILD_COMMIT` from the environment; if it's non-empty, return it as
-  `commit` with `branch: None` and `dirty: False` — a build-arg embedded value
+  `commit` with `branch: None` and `dirty: None` — a build-arg embedded value
   has no working branch or dirty-tree concept, so those fields stay their
-  "unknown" defaults rather than fabricating a value. Git detection stays the
+  "unknown" defaults (`None`) rather than fabricating a known "clean" value. Git detection stays the
   primary source and runs first, unchanged, so this only ever activates the
   cases BE-0272 already left as "nothing to report."
   Consider surfacing where the value came from (e.g. a `source: "git" |
@@ -132,16 +133,24 @@ happens to carry a usable `.git`.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] `deploy/self-host/Dockerfile`: add `ARG GIT_COMMIT=""` and embed it into
+- [x] `deploy/self-host/Dockerfile`: add `ARG GIT_COMMIT=""` and embed it into
       `ENV BAJUTSU_BUILD_COMMIT`.
-- [ ] `bajutsu/serve/operations/version.py`: fall back to
+- [x] `bajutsu/serve/operations/version.py`: fall back to
       `BAJUTSU_BUILD_COMMIT` in `server_checkout()` when Git detection finds
-      no checkout; decide on a `source` field for the frontend.
-- [ ] Root `.dockerignore`: exclude `.git` and other build-irrelevant,
+      no checkout; adds a `source: "git" | "build-arg" | null` field the
+      frontend badge uses to render an embedded commit distinctly.
+- [x] Root `.dockerignore`: exclude `.git` and other build-irrelevant,
       already-gitignored paths.
-- [ ] `docker-compose.yml`: pass the build argument through `build.args`.
-- [ ] Docs: `docs/self-hosting.md` and its Japanese mirror document the
+- [x] `docker-compose.yml`: pass the build argument through `build.args`.
+- [x] Docs: `docs/self-hosting.md` and its Japanese mirror document the
       `--build-arg GIT_COMMIT=$(git rev-parse HEAD)` invocation.
+
+Log:
+
+- Implemented in [#1133](https://github.com/bajutsu-e2e/bajutsu/pull/1133): build
+  arg + `BAJUTSU_BUILD_COMMIT` embed, `server_checkout()` fallback with a
+  `source` field, badge tooltip, root `.dockerignore`, compose `build.args`,
+  and the bilingual self-hosting docs.
 
 ## References
 

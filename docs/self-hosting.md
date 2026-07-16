@@ -328,6 +328,22 @@ docker compose up -d            # postgres + minio + migrate (alembic upgrade he
 `migrate` runs the Alembic migrations to head before `bajutsu` starts, and `minio-init` creates the
 bucket. The control plane then listens on `:8765`.
 
+To have the web UI's version badge (BE-0272) show which commit this image is running, pass that
+commit at build time (BE-0277) — the image ships no `.git` to read, so the badge falls back to this
+embedded value:
+
+```bash
+GIT_COMMIT=$(git rev-parse HEAD) docker compose build bajutsu   # then `docker compose up -d`
+```
+
+`docker-compose.yml` resolves `GIT_COMMIT` from the invoking shell (or a `.env` entry) into the
+`bajutsu` service's build arg. Leave it unset and the badge simply shows the version alone, as
+before. To build the control-plane image directly instead of through compose:
+
+```bash
+docker build --build-arg GIT_COMMIT=$(git rev-parse HEAD) -f deploy/self-host/Dockerfile .
+```
+
 Published ports bind to `BIND_ADDR` (default `127.0.0.1`). For a Mac worker to reach MinIO from
 another host, set `BIND_ADDR` in `.env` to the node's **tailnet IP** — never `0.0.0.0` on a host
 with a public interface, since that would expose the artifacts bucket.
