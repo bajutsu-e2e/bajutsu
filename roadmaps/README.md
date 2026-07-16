@@ -619,6 +619,7 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 | [BE-0168](BE-0168-self-host-high-availability/BE-0168-self-host-high-availability.md) | Self-hosted high availability and single-point-of-failure hardening | Proposal |
 | [BE-0170](BE-0170-weighted-fair-org-dispatch/BE-0170-weighted-fair-org-dispatch.md) | Weighted-fair cross-org job dispatch | Proposal |
 | [BE-0244](BE-0244-deploy-hosted-web-ui-service/BE-0244-deploy-hosted-web-ui-service.md) | Deploy the hosted web UI service | Proposal |
+| [BE-0277](BE-0277-docker-build-commit-badge/BE-0277-docker-build-commit-badge.md) | Embed the commit hash into self-hosted Docker images for the version badge | Proposal |
 <!-- /GENERATED:proposals-hosting -->
 
 ### Configuration sourcing
