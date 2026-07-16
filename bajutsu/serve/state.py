@@ -601,11 +601,14 @@ class ServeState:
         so it is not config-overridable like the SDK key; the Git config-source credential maps to
         the bajutsu-owned ``BAJUTSU_GIT_CONFIG_TOKEN`` (BE-0224), which the in-process private-repo
         fetch reads — deliberately *not* ``GITHUB_TOKEN`` so clearing the UI credential never pops an
-        operator's own exported token. Imported lazily to avoid a cycle with the operations layer,
-        which imports this module."""
+        operator's own exported token. Any other name is a scenario-declared secret (BE-0274): its
+        `secrets:` entry already *is* an environment-variable name (BE-0032), so it maps to itself —
+        not through ``active_key_env``, which would overwrite the AI key's var. Imported lazily to
+        avoid a cycle with the operations layer, which imports this module."""
         from bajutsu.ai.claude_code import OAUTH_TOKEN_ENV
         from bajutsu.config_source import GIT_CONFIG_TOKEN_ENV
         from bajutsu.serve.operations.config import (
+            AI_API_KEY_SECRET,
             AI_CLAUDE_CODE_TOKEN_SECRET,
             GIT_CONFIG_TOKEN_SECRET,
             active_key_env,
@@ -615,7 +618,9 @@ class ServeState:
             return OAUTH_TOKEN_ENV
         if name == GIT_CONFIG_TOKEN_SECRET:
             return GIT_CONFIG_TOKEN_ENV
-        return active_key_env(self)
+        if name == AI_API_KEY_SECRET:
+            return active_key_env(self)
+        return name
 
     def for_org(self, org: str) -> StoreBundle:
         """The storage seams scoped to *org*. A server backend prefixes each org's objects; local

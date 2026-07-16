@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0274](BE-0274-serve-scenario-secrets.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0274") |
+| Implementing PR | [#1144](https://github.com/bajutsu-e2e/bajutsu/pull/1144) |
 | Topic | Security hardening |
 | Related | [BE-0032](../BE-0032-secret-variables/BE-0032-secret-variables.md), [BE-0136](../BE-0136-serve-write-once-secrets/BE-0136-serve-write-once-secrets.md) |
 <!-- /BE-METADATA -->
@@ -177,16 +178,24 @@ a self-hosted run consuming a stored scenario secret on the remote worker is the
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Resolve the bound config's declared `secrets:` names (union across targets)
-- [ ] `GET /api/secrets` (read operation), no role gate, never a plaintext value
-- [ ] `POST /api/secrets` (write operation), admin-gated, rejects an undeclared name
-- [ ] `ServeState._env_var_for_secret` extended for declared scenario-secret names
-- [ ] UI: Scenario secrets section in `serve.core.mjs`, refreshes on config change
-- [ ] Both backends store per-name: local `EnvSecretStore` and (self-hosted) `DbSecretStore` — the
+- [x] Resolve the bound config's declared `secrets:` names (union across targets)
+- [x] `GET /api/secrets` (read operation), no role gate, never a plaintext value
+- [x] `POST /api/secrets` (write operation), admin-gated, rejects an undeclared name
+- [x] `ServeState._env_var_for_secret` extended for declared scenario-secret names
+- [x] UI: Scenario secrets section in `serve.core.mjs`, refreshes on config change
+- [x] Both backends store per-name: local `EnvSecretStore` and (self-hosted) `DbSecretStore` — the
       seam split is inherited, so this is a test/verify item, not new storage code
-- [ ] Tests: declared-name reflection, undeclared-name rejection, masked-only round trip, spawned
+- [x] Tests: declared-name reflection, undeclared-name rejection, masked-only round trip, spawned
       local-run env inheritance, hosted `DbSecretStore` per-org round trip (ciphertext never plaintext)
-- [ ] Docs updated (`docs/web-ui.md`, `docs/self-hosting.md`, both languages)
+- [x] Docs updated (`docs/web-ui.md`, `docs/self-hosting.md`, both languages)
+
+**Log**
+
+- Implemented all checklist items in one change: `GET`/`POST /api/secrets` + `declared_secret_names`
+  in `operations/config.py`, the `_env_var_for_secret` identity mapping for declared names in
+  `state.py`, the shared route + `_ADMIN_PATHS` gating, the Settings "Scenario secrets" UI, and the
+  bilingual docs. Storing verified on both backends; self-hosted consumption stays the follow-up
+  (Detailed design 7). PR: [#1144](https://github.com/bajutsu-e2e/bajutsu/pull/1144).
 
 **Out of scope (follow-up).** The self-hosted *consumption* leg only: injecting a stored per-org
 scenario secret into the remote worker's spawned `bajutsu run` so `${secrets.X}` resolves there.

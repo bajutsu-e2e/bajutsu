@@ -394,6 +394,20 @@ export BAJUTSU_SECRETS_KEY=…
 （[BE-0215](../../roadmaps/BE-0215-claude-code-oauth-token-credential/BE-0215-claude-code-oauth-token-credential-ja.md)）。
 保存もマスク表示も更新も、上の API キーとまったく同じように扱います。
 
+同じストアは、シナリオが**自身**で宣言するシークレットも保持します
+（[BE-0274](../../roadmaps/BE-0274-serve-scenario-secrets/BE-0274-serve-scenario-secrets-ja.md)）。config が
+`${secrets.X}` のために `secrets:` に並べる名前のことです。これまでは値を供給する手段が、プロセスが
+引き継ぐ `.env` しかありませんでした。今は管理者が設定パネルの **Scenario secrets** セクションから各値を
+設定でき、ホスト型のコントロールプレーンでは、オペレータの認証情報と同じ org ごとの暗号化された `secrets`
+テーブルに（上ですでに必須の `BAJUTSU_SECRETS_KEY` を再利用し、新しい鍵は不要で）、write-once かつマスクして
+保存します。セルフホストのデプロイでまだ配線されていないのは、保存済みのシナリオシークレットを**消費**する
+部分です。run はコントロールプレーンのプロセスではなくリモートの Mac ワーカーで実行されるため、保存した値を
+ワーカーが spawn する `bajutsu run` まで届ける部分（および、平文をジョブキューに載せるのか、ワーカー自身が
+復号するのかという信頼境界の判断）は追跡中の follow-up です。Git config ソース用トークンについて
+[BE-0224](../../roadmaps/BE-0224-github-private-repo-config-auth/BE-0224-github-private-repo-config-auth-ja.md)
+が残しているギャップと同じものです。保存はどちらのバックエンドでも今すぐ動きます。**ローカル**の `serve`
+では、値はプロセスの環境に保持され、spawn される run がそのまま引き継ぎます。
+
 ### 3. Mac ワーカーを動かす
 
 各 Mac で（Tier A と同じ Aqua セッション設定。auto-login と `caffeinate`/`pmset`）、idb ワーカーの

@@ -406,6 +406,20 @@ browser-less host and so can't complete `claude setup-token`'s interactive sign-
 ([BE-0215](../roadmaps/BE-0215-claude-code-oauth-token-credential/BE-0215-claude-code-oauth-token-credential.md)).
 It is stored, masked, and rotated exactly like the API key above.
 
+The same store also holds a scenario's **own** declared secrets
+([BE-0274](../roadmaps/BE-0274-serve-scenario-secrets/BE-0274-serve-scenario-secrets.md)) — the
+`secrets:` names a config lists for `${secrets.X}`. Previously the only way to supply these was the
+`.env` the process inherited; now an admin sets each one from the settings panel's **Scenario
+secrets** section, and on the hosted control plane it lands in the same per-org encrypted `secrets`
+table (reusing `BAJUTSU_SECRETS_KEY`, already required above — no new key), write-once and masked
+like the operator credentials. What is **not yet wired** on a self-hosted deployment is *consuming* a
+stored scenario secret: a run executes on a remote Mac worker, not in the control-plane process, so
+threading the stored value into the worker's spawned `bajutsu run` (and the trust-boundary decision
+of whether the plaintext rides the job queue or the worker decrypts it itself) is a tracked
+follow-up — the same gap [BE-0224](../roadmaps/BE-0224-github-private-repo-config-auth/BE-0224-github-private-repo-config-auth.md)
+leaves for the Git config-source token. Storing works on both backends today; on a **local** `serve`
+the value is held in the process environment and a spawned run inherits it directly.
+
 ### 3. Run a Mac worker
 
 On each Mac (the same Aqua-session setup as Tier A — auto-login, `caffeinate`/`pmset`), install the

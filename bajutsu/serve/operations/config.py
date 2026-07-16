@@ -55,6 +55,17 @@ AI_CLAUDE_CODE_TOKEN_SECRET = "aiClaudeCodeOauthToken"  # noqa: S105 — a logic
 # resolves through the process-global App / env credential today.
 GIT_CONFIG_TOKEN_SECRET = "gitConfigToken"  # noqa: S105 — a logical name, not a value
 
+# The three logical names above are all valid identifiers, so `_valid_key_env_name` alone would let a
+# scenario-declared secret collide with one of them: `_env_var_for_secret` maps `AI_API_KEY_SECRET` to
+# `active_key_env`'s env var (the operator's real Anthropic API key, or a configured `ai.keyEnv`), so
+# a config that declares e.g. `secrets: [aiApiKey]` would let `GET /api/secrets` disclose that key's
+# masked preview to any actor and `POST /api/secrets` overwrite it — the same collision applies to the
+# other two. `declared_secret_names` excludes all three so a scenario secret can never alias a reserved
+# operator credential.
+_RESERVED_SECRET_NAMES = frozenset(
+    {AI_API_KEY_SECRET, AI_CLAUDE_CODE_TOKEN_SECRET, GIT_CONFIG_TOKEN_SECRET}
+)
+
 _UNSAFE_ENV_VARS = frozenset(
     {
         "PATH",
@@ -544,6 +555,76 @@ def set_git_credential(state: ServeState, value: str, actor: str | None) -> tupl
     masked = state.for_org(state.org_of(actor)).secrets.set(
         GIT_CONFIG_TOKEN_SECRET, value, updated_by=actor
     )
+    if masked is not None:
+        return {"ok": True, "set": True, "masked": masked}, 200
+    return {"ok": True, "set": False}, 200
+
+
+def declared_secret_names(state: ServeState) -> list[str]:
+    """The scenario secret env-var names the bound config declares, union across targets (BE-0274).
+
+    A config's ``secrets:`` list (per-target, merged over defaults) names the environment variables
+    ``${secrets.X}`` resolves at run time (BE-0032). A scenario can run against any target, so the
+    panel offers the union of every target's effective list, order-preserving. Names that fail the
+    ``_valid_key_env_name`` guard (a non-identifier, or a system variable like ``PATH``) are dropped
+    so the UI never offers — nor the write path accepts — an unsafe env-var write; a name in
+    ``_RESERVED_SECRET_NAMES`` is dropped too, so a scenario secret can never alias the AI key, the
+    Claude Code OAuth token, or the Git credential. No config bound, an empty ``secrets:``, or a
+    config that fails to load yields an empty list (the panel then shows nothing to configure); a
+    load failure is logged at debug, matching ``active_key_env``."""
+    if state.config is None:
+        return []
+    try:
+        cfg = load_config(state.config.read_text(encoding="utf-8"))
+        names: dict[str, None] = {}
+        for target in cfg.targets:
+            for name in resolve(cfg, target).secrets:
+                if _valid_key_env_name(name) and name not in _RESERVED_SECRET_NAMES:
+                    names.setdefault(name, None)
+        return list(names)
+    except Exception:
+        logging.getLogger(__name__).debug(
+            "cannot resolve declared secrets from config", exc_info=True
+        )
+        return []
+
+
+def scenario_secrets_info(state: ServeState, actor: str | None) -> tuple[Any, int]:
+    """The scenario secrets the bound config declares, each with whether it is set and a masked
+    preview — never the plaintext (BE-0274).
+
+    One entry per declared name (`declared_secret_names`), `masked` read from the actor's org secret
+    store so a hosted deployment scopes it per org. Write-once, like `api_key_info`: no `value` field
+    ever, for any role. An empty list when no config is bound or it declares no `secrets:`."""
+    bundle = state.for_org(state.org_of(actor))
+    out = []
+    for name in declared_secret_names(state):
+        masked = bundle.secrets.describe(name)
+        out.append({"name": name, "set": masked is not None, "masked": masked})
+    return out, 200
+
+
+def set_scenario_secret(
+    state: ServeState, body: dict[str, Any], actor: str | None
+) -> tuple[Any, int]:
+    """Set or replace a scenario-declared secret (an empty *value* clears it), through the write-once
+    secret store (BE-0274). The response redacts what was stored — never the plaintext.
+
+    Only a name the bound config's ``secrets:`` actually declares is accepted (400 otherwise), which
+    keeps this from being an arbitrary-environment-variable-write primitive. `declared_secret_names`
+    has already dropped any name that fails the ``_valid_key_env_name`` guard (a non-identifier, or a
+    system variable like ``PATH``) or that aliases a reserved operator credential (the AI key, the
+    Claude Code OAuth token, the Git credential), so a name that passes the membership check is safe
+    to write. Local serve holds the value in the process env under its own declared name for a spawned
+    run to inherit
+    (`${secrets.X}` resolves there); a hosted deployment encrypts it per org. Unlike the operator
+    credentials there is no whitespace guard — a scenario secret (a login password, say) may
+    legitimately contain spaces."""
+    name = str(body.get("name", "") or "")
+    if name not in declared_secret_names(state):
+        return {"error": f"{name!r} is not a secret declared by the bound config"}, 400
+    value = str(body.get("value", "") or "")
+    masked = state.for_org(state.org_of(actor)).secrets.set(name, value, updated_by=actor)
     if masked is not None:
         return {"ok": True, "set": True, "masked": masked}, 200
     return {"ok": True, "set": False}, 200

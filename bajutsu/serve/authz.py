@@ -138,6 +138,10 @@ _ADMIN_PATHS = frozenset(
         "/api/apikey",
         "/api/claudecodetoken",
         "/api/gitcredential",
+        # Setting a scenario-declared secret (BE-0274) is the same credential-write tier as the three
+        # above. Only POST is gated here; GET /api/secrets is describe-only and ungated (this set is
+        # consulted only past the `method != "POST"` guard in `required_role`).
+        "/api/secrets",
         "/api/provider",
         "/api/ant/login",
     }

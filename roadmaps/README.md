@@ -423,6 +423,7 @@ Closing the edges the deterministic core does not touch — `serve`'s HTTP surfa
 | [BE-0153](BE-0153-encode-aware-secret-redaction/BE-0153-encode-aware-secret-redaction.md) | Encode-aware secret redaction | Implemented |
 | [BE-0155](BE-0155-idb-input-text-via-stdin/BE-0155-idb-input-text-via-stdin.md) | Pass idb input text via stdin to keep secrets out of argv | Implemented |
 | [BE-0174](BE-0174-scenario-ref-path-containment/BE-0174-scenario-ref-path-containment.md) | Contain scenario component and data refs within the suite root | Implemented |
+| [BE-0274](BE-0274-serve-scenario-secrets/BE-0274-serve-scenario-secrets.md) | Set scenario-declared secrets from the serve Web UI | Implemented |
 <!-- /GENERATED:implemented-security -->
 
 ### Dogfood fixtures (demo apps)
@@ -637,9 +638,7 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 ### Security hardening
 
 <!-- GENERATED:proposals-security -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0274](BE-0274-serve-scenario-secrets/BE-0274-serve-scenario-secrets.md) | Set scenario-declared secrets from the serve Web UI | Proposal |
+
 <!-- /GENERATED:proposals-security -->
 
 ### Development infrastructure (contributor workflow)

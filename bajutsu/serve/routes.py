@@ -173,6 +173,9 @@ ROUTES: tuple[Route, ...] = (
     Route(
         "GET", "/api/gitcredential", lambda state, ctx: ops.git_credential_info(state, ctx.actor())
     ),
+    # The scenario secrets the bound config declares (BE-0274): describe-only (masked, no value),
+    # so — like the three credential reads above — it carries no role gate.
+    Route("GET", "/api/secrets", lambda state, ctx: ops.scenario_secrets_info(state, ctx.actor())),
     Route("GET", "/api/provider", lambda state, ctx: ops.provider_info(state, ctx.actor())),
     Route("GET", "/api/themecontract", lambda state, ctx: ops.get_theme_contract(state)),
     Route(
@@ -303,6 +306,13 @@ ROUTES: tuple[Route, ...] = (
     ),
     Route(
         "POST", "/api/provider", lambda state, ctx: ops.set_provider(state, ctx.body(), ctx.actor())
+    ),
+    # Set/clear a scenario-declared secret (BE-0274): admin-gated (see `authz._ADMIN_PATHS`),
+    # rejects any name the bound config doesn't declare.
+    Route(
+        "POST",
+        "/api/secrets",
+        lambda state, ctx: ops.set_scenario_secret(state, ctx.body(), ctx.actor()),
     ),
     Route(
         "POST", "/api/theme", lambda state, ctx: ops.upload_theme(state, ctx.body(), ctx.actor())
