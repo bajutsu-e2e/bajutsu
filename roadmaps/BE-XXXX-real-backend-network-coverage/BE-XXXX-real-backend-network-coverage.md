@@ -68,10 +68,10 @@ Proposal altitude. The work is MECE along the units below.
 
 ## Alternatives considered
 
-* **Keep `--no-network` everywhere and rely on unit tests.** The unit tests prove the pure logic
+- **Keep `--no-network` everywhere and rely on unit tests.** The unit tests prove the pure logic
   and the collector's receiver, but never the app-side sender, the browser interception, or
   redaction of really captured evidence. The largest real-path gap would stay unobserved.
-* **Use an external mock server ([BE-0027](../BE-0027-mock-server-external/BE-0027-mock-server-external.md))
+- **Use an external mock server ([BE-0027](../BE-0027-mock-server-external/BE-0027-mock-server-external.md))
   instead of driver-level interception.** That is a different layer (a standalone stub the app
   talks to) and complements this item rather than replacing it; it would not exercise the
   `page.route` / collector path this item is about.
