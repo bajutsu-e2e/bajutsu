@@ -31,7 +31,7 @@ pass.
   this one, and where the two overlap (filler, redundancy, restraint of rhetorical flourish) its
   specific wording governs. The English mechanics never apply to Japanese: Japanese has its own
   dash and punctuation rules, already in that skill.
-- **This is a review-time norm, not a CI gate.** Judging clarity, emphasis, and argument order
+- **Enforcement stays a review-time norm, not a CI gate.** Judging clarity, emphasis, and argument order
   needs semantic judgment; putting that on the gate would put an LLM on the `run` / CI verdict path,
   which prime directive 1 forbids. It holds the same way the bilingual-docs and DESIGN.md-alignment
   ([BE-0113](../../../roadmaps/BE-0113-design-doc-realignment/BE-0113-design-doc-realignment.md))

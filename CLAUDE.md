@@ -145,7 +145,8 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   roadmap `*-ja.md`: it covers *any* Japanese you produce, including freshly written prose,
   translations from English, and revisions/rewrites of existing Japanese. The skill is the
   authoritative style for Japanese prose in this project; invoke it before writing or editing the
-  Japanese, not after.
+  Japanese, not after. It is the Japanese layer beneath the [`tech-writing`](.claude/skills/tech-writing/)
+  umbrella (previous bullet); apply both for Japanese prose.
 - Docs are **bilingual**: English in `docs/`, Japanese mirror in `docs/ja/`. Update both when
   you change a documented behavior.
 - **Keep DESIGN.md and `docs/architecture.md` in step with behavior (BE-0113).** A PR that changes
