@@ -55,6 +55,17 @@ AI_CLAUDE_CODE_TOKEN_SECRET = "aiClaudeCodeOauthToken"  # noqa: S105 — a logic
 # resolves through the process-global App / env credential today.
 GIT_CONFIG_TOKEN_SECRET = "gitConfigToken"  # noqa: S105 — a logical name, not a value
 
+# The three logical names above are all valid identifiers, so `_valid_key_env_name` alone would let a
+# scenario-declared secret collide with one of them: `_env_var_for_secret` maps `AI_API_KEY_SECRET` to
+# `active_key_env`'s env var (the operator's real Anthropic API key, or a configured `ai.keyEnv`), so
+# a config that declares e.g. `secrets: [aiApiKey]` would let `GET /api/secrets` disclose that key's
+# masked preview to any actor and `POST /api/secrets` overwrite it — the same collision applies to the
+# other two. `declared_secret_names` excludes all three so a scenario secret can never alias a reserved
+# operator credential.
+_RESERVED_SECRET_NAMES = frozenset(
+    {AI_API_KEY_SECRET, AI_CLAUDE_CODE_TOKEN_SECRET, GIT_CONFIG_TOKEN_SECRET}
+)
+
 _UNSAFE_ENV_VARS = frozenset(
     {
         "PATH",
@@ -556,9 +567,11 @@ def declared_secret_names(state: ServeState) -> list[str]:
     ``${secrets.X}`` resolves at run time (BE-0032). A scenario can run against any target, so the
     panel offers the union of every target's effective list, order-preserving. Names that fail the
     ``_valid_key_env_name`` guard (a non-identifier, or a system variable like ``PATH``) are dropped
-    so the UI never offers — nor the write path accepts — an unsafe env-var write. No config bound,
-    an empty ``secrets:``, or a config that fails to load yields an empty list (the panel then shows
-    nothing to configure); a load failure is logged at debug, matching ``active_key_env``."""
+    so the UI never offers — nor the write path accepts — an unsafe env-var write; a name in
+    ``_RESERVED_SECRET_NAMES`` is dropped too, so a scenario secret can never alias the AI key, the
+    Claude Code OAuth token, or the Git credential. No config bound, an empty ``secrets:``, or a
+    config that fails to load yields an empty list (the panel then shows nothing to configure); a
+    load failure is logged at debug, matching ``active_key_env``."""
     if state.config is None:
         return []
     try:
@@ -566,7 +579,7 @@ def declared_secret_names(state: ServeState) -> list[str]:
         names: dict[str, None] = {}
         for target in cfg.targets:
             for name in resolve(cfg, target).secrets:
-                if _valid_key_env_name(name):
+                if _valid_key_env_name(name) and name not in _RESERVED_SECRET_NAMES:
                     names.setdefault(name, None)
         return list(names)
     except Exception:
@@ -600,8 +613,10 @@ def set_scenario_secret(
     Only a name the bound config's ``secrets:`` actually declares is accepted (400 otherwise), which
     keeps this from being an arbitrary-environment-variable-write primitive. `declared_secret_names`
     has already dropped any name that fails the ``_valid_key_env_name`` guard (a non-identifier, or a
-    system variable like ``PATH``), so a name that passes the membership check is safe to write. Local
-    serve holds the value in the process env under its own declared name for a spawned run to inherit
+    system variable like ``PATH``) or that aliases a reserved operator credential (the AI key, the
+    Claude Code OAuth token, the Git credential), so a name that passes the membership check is safe
+    to write. Local serve holds the value in the process env under its own declared name for a spawned
+    run to inherit
     (`${secrets.X}` resolves there); a hosted deployment encrypts it per org. Unlike the operator
     credentials there is no whitespace guard — a scenario secret (a login password, say) may
     legitimately contain spaces."""

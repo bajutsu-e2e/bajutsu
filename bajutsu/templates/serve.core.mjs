@@ -597,7 +597,7 @@ function renderScnSecret(row,d){
 async function postScnSecret(name,value,row,err,inp){
   err.textContent='';err.className='keystatus';
   const d=await postJSON('/api/secrets',{name,value},{error:'request failed'});
-  if(d.error){err.textContent=d.error;err.className='keystatus ng';return}
+  if(d.error){err.textContent=d.error;err.className='keystatus ng';return;}
   inp.value='';renderScnSecret(row,{set:!!d.set,masked:d.masked||''});
   err.textContent=d.set?'saved':'cleared';err.className='keystatus ok';
 }

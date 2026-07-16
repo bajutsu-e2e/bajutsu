@@ -20,6 +20,11 @@ from _shared import (
 
 from bajutsu import serve as srv
 from bajutsu.serve.jobs import _spawn_env
+from bajutsu.serve.operations.config import (
+    AI_API_KEY_SECRET,
+    AI_CLAUDE_CODE_TOKEN_SECRET,
+    GIT_CONFIG_TOKEN_SECRET,
+)
 
 
 def _project_with_secrets(tmp_path: Path, *, demo_secrets: str, other_secrets: str = "") -> Path:
@@ -93,6 +98,34 @@ def test_unsafe_declared_name_is_dropped(tmp_path: Path, monkeypatch: pytest.Mon
         code, _ = _post(port, "/api/secrets", {"name": "PATH", "value": "x"})
         assert code == 400
     finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_reserved_operator_secret_name_is_dropped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A config that declares a reserved operator-credential name (the AI key, the Claude Code OAuth
+    token, or the Git credential) as a scenario secret never offers it, and cannot write it — the
+    ``_RESERVED_SECRET_NAMES`` guard keeps a scenario secret from aliasing one of those, which would
+    otherwise let ``GET /api/secrets`` disclose the real credential's masked preview to any actor, and
+    ``POST /api/secrets`` overwrite it (both endpoints share ``declared_secret_names``)."""
+    monkeypatch.delenv("LOGIN_PASSWORD", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    reserved = [AI_API_KEY_SECRET, AI_CLAUDE_CODE_TOKEN_SECRET, GIT_CONFIG_TOKEN_SECRET]
+    cfg = _project_with_secrets(
+        tmp_path, demo_secrets="[LOGIN_PASSWORD, " + ", ".join(reserved) + "]"
+    )
+    server, port = _serve(_state(tmp_path, cfg))
+    try:
+        assert [e["name"] for e in _get_json(port, "/api/secrets")] == ["LOGIN_PASSWORD"]
+        for name in reserved:
+            code, _ = _post(port, "/api/secrets", {"name": name, "value": "x"})
+            assert code == 400
+        # The real AI key env var was never touched by any of the rejected writes.
+        assert "ANTHROPIC_API_KEY" not in os.environ
+    finally:
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
         server.shutdown()
         server.server_close()
 
