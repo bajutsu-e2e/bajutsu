@@ -26,7 +26,7 @@ This item wires the real network path into CI, web first (cheap on Linux) then i
 
 ## Motivation
 
-This is the single largest untested real-path surface in the project. The pure matchers, the
+The network path is the project's single largest untested real-path surface. The pure matchers, the
 one-to-one request assignment, the response-schema validation, and the sequence matching are
 covered by unit tests, and the collector's HTTP receiver plus token authentication are exercised
 as an in-process self-loop. What no test observes is the real boundary: the app-side sender
