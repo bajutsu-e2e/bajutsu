@@ -29,12 +29,14 @@ def test_http_version_checkout_returns_the_identity_shape(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(version_ops, "_REPO_ANCHOR", tmp_path)  # no .git → all-null, no ambient dep
+    monkeypatch.delenv("BAJUTSU_BUILD_COMMIT", raising=False)  # and no build-arg fallback (BE-0277)
     server, port = _serve(srv.ServeState(runs_dir=tmp_path, cwd=tmp_path))
     try:
         assert _get_json(port, "/api/version/checkout") == {
             "commit": None,
             "branch": None,
             "dirty": False,
+            "source": None,
         }
     finally:
         server.shutdown()

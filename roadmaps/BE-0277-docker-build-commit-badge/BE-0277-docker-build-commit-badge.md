@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0277](BE-0277-docker-build-commit-badge.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0277") |
+| Implementing PR | [#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN) |
 | Topic | Hosting the web UI (cloud / self-hosted) |
 <!-- /BE-METADATA -->
 
@@ -132,16 +133,24 @@ happens to carry a usable `.git`.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] `deploy/self-host/Dockerfile`: add `ARG GIT_COMMIT=""` and embed it into
+- [x] `deploy/self-host/Dockerfile`: add `ARG GIT_COMMIT=""` and embed it into
       `ENV BAJUTSU_BUILD_COMMIT`.
-- [ ] `bajutsu/serve/operations/version.py`: fall back to
+- [x] `bajutsu/serve/operations/version.py`: fall back to
       `BAJUTSU_BUILD_COMMIT` in `server_checkout()` when Git detection finds
-      no checkout; decide on a `source` field for the frontend.
-- [ ] Root `.dockerignore`: exclude `.git` and other build-irrelevant,
+      no checkout; adds a `source: "git" | "build-arg" | null` field the
+      frontend badge uses to render an embedded commit distinctly.
+- [x] Root `.dockerignore`: exclude `.git` and other build-irrelevant,
       already-gitignored paths.
-- [ ] `docker-compose.yml`: pass the build argument through `build.args`.
-- [ ] Docs: `docs/self-hosting.md` and its Japanese mirror document the
+- [x] `docker-compose.yml`: pass the build argument through `build.args`.
+- [x] Docs: `docs/self-hosting.md` and its Japanese mirror document the
       `--build-arg GIT_COMMIT=$(git rev-parse HEAD)` invocation.
+
+Log:
+
+- Implemented in [#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN): build
+  arg + `BAJUTSU_BUILD_COMMIT` embed, `server_checkout()` fallback with a
+  `source` field, badge tooltip, root `.dockerignore`, compose `build.args`,
+  and the bilingual self-hosting docs.
 
 ## References
 

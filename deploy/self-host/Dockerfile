@@ -3,6 +3,13 @@
 # built from this image — it runs natively on a Mac (it needs the Simulator) via `bajutsu worker`.
 FROM python:3.13-slim
 
+# The commit this image was built at (BE-0277). Passed by the build pipeline (see docker-compose.yml
+# and docs/self-hosting.md); embedded as BAJUTSU_BUILD_COMMIT so serve's version badge can report it
+# when there's no .git in the image to read. Left unset it stays empty and the badge's Git detection
+# simply finds nothing to fall back to — an unset arg changes nothing.
+ARG GIT_COMMIT=""
+ENV BAJUTSU_BUILD_COMMIT=$GIT_COMMIT
+
 WORKDIR /app
 COPY . /app
 # The control plane serves the FastAPI app and enqueues runs to Redis (RQ), persists to Postgres,

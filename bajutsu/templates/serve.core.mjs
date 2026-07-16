@@ -400,7 +400,11 @@ async function loadVersion(){
   let html='v'+esc(v.version);
   const c=await getJSON('/api/version/checkout',{});
   if(c.commit){
-    html+=' &middot; <code>'+esc(c.commit)+'</code>';
+    // source "build-arg" (BE-0277): the commit was embedded at Docker build time, not read from a
+    // live checkout, so there's no branch or dirty flag to show — title the code so the absent
+    // branch/marker reads as "embedded", not "clean checkout".
+    const t=c.source==='build-arg'?' title="commit embedded at build time (no working checkout)"':'';
+    html+=' &middot; <code'+t+'>'+esc(c.commit)+'</code>';
     if(c.branch)html+=' ('+esc(c.branch)+')';
     if(c.dirty)html+=' <span class="dirty" title="uncommitted changes in the checkout">*</span>';
   }

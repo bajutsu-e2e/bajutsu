@@ -75,7 +75,16 @@ services:
       postgres: { condition: service_healthy }
 
   bajutsu:
-    build: { context: ../.., dockerfile: deploy/self-host/Dockerfile }
+    # GIT_COMMIT (BE-0277) embeds the built commit into the image so serve's version badge can
+    # report it with no .git in the container. Compose resolves it from the invoking shell or .env;
+    # build with e.g. `GIT_COMMIT=$(git rev-parse HEAD) docker compose build bajutsu`. Unset → empty
+    # → the badge shows the version alone, as before. Only this service serves the badge endpoint,
+    # so `migrate` (Alembic only) needs no build arg.
+    build:
+      context: ../..
+      dockerfile: deploy/self-host/Dockerfile
+      args:
+        GIT_COMMIT: ${GIT_COMMIT:-}
     env_file: .env
     # Same as migrate: derive the DB URL from POSTGRES_PASSWORD so it can't use a stale password.
     environment:
