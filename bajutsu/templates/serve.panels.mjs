@@ -87,12 +87,55 @@ function recRunDone(j){
 // ---- Replay: scenario info, run, history ----
 function showInfo(){
   const f=scnFiles.find(s=>s.path===$('#scn').value),el=$('#names');
+  $('#viewscn').disabled=!$('#scn').value;  // View scenario needs a selection, not a run (BE-0273)
   if(!f){el.innerHTML='';return}
   let h='';
   if(f.description)h+=`<div class="finfo">${esc(f.description)}</div>`;
   if(f.scenarios&&f.scenarios.length)h+='<ul class="scnlist">'+f.scenarios.map(s=>`<li><b>${esc(s.name)}</b>${s.description?' &mdash; <span class="sd">'+esc(s.description)+'</span>':''}</li>`).join('')+'</ul>';
   el.innerHTML=h;
 }
+// Read-only scenario viewer (BE-0273): show the selected scenario's raw YAML and the runner's own
+// per-scenario step parse, so a user can confirm what a run does before spending one on it. Reuses
+// the existing GET /api/scenario (no runId → structural steps, no run artifacts); never edits.
+function scnViewMode(raw){
+  $('#scnviewtree').hidden=raw;$('#scnviewbody').hidden=!raw;
+  $('#scnview-raw').classList.toggle('active',raw);
+  $('#scnview-structured').classList.toggle('active',!raw);
+}
+// Compact one step's fields: `{ id: nav.replay }`, `[ { exists: … } ]` — bare keys, no JSON quotes.
+function scnCompact(v){
+  if(v===null||v===undefined)return '';
+  if(Array.isArray(v))return '[ '+v.map(scnCompact).join(', ')+' ]';
+  if(typeof v==='object')return '{ '+Object.entries(v).map(([k,val])=>`${k}: ${scnCompact(val)}`).join(', ')+' }';
+  return String(v);
+}
+function scnStepLine(step){
+  const fields=scnCompact(step.fields);
+  return `<span class="scnview-act">${esc(step.action)}</span>${fields?' '+esc(fields):''}`;
+}
+async function openScnView(){
+  const target=$('#target').value,path=$('#scn').value;
+  if(!path)return;
+  const tree=$('#scnviewtree');tree.innerHTML='';
+  $('#scnviewpath').textContent=path;
+  // structure=1 opts into the runner-parsed per-scenario steps (BE-0273); yaml comes back either way.
+  const d=await getJSON('/api/scenario?target='+encodeURIComponent(target)+'&path='+encodeURIComponent(path)+'&structure=1',{error:'request failed'});
+  $('#scnviewbody').textContent=d.error?d.error:(d.yaml||'');
+  const scns=d.scenarios||[];
+  const hasStructure=scns.length>0;  // empty on a parse failure → fall back to raw (authoritative)
+  if(hasStructure){
+    tree.innerHTML=scns.map(s=>{
+      const steps=(s.steps||[]).map(st=>`<li>${scnStepLine(st)}</li>`).join('');
+      return `<div class="scnview-scn"><div class="scnview-name">${esc(s.name||'(unnamed)')}</div>`
+        +(s.description?`<div class="sd">${esc(s.description)}</div>`:'')
+        +(steps?`<ol class="scnview-steplist">${steps}</ol>`:'<div class="sd">(no steps)</div>')+'</div>';
+    }).join('');
+  }
+  $('#scnview-structured').disabled=!hasStructure;
+  scnViewMode(!hasStructure);
+  openModal($('#scnviewmodal'));
+}
+function closeScnView(){closeModal($('#scnviewmodal'))}
 // Grade the selected scenario's determinism (BE-0145). The Replay view has only the file path, so
 // the server reads it from {target, path}; advisory, so a failed audit just leaves the badge hidden.
 // A sequence guard drops a stale response so a slow audit for a since-changed selection can't
@@ -545,6 +588,11 @@ function initPanels(){
   });
   // Replay.
   $('#scn').addEventListener('change',()=>{showInfo();replayAudit();replayCodegen.reset();});
+  $('#viewscn').addEventListener('click',openScnView);
+  $('#scnviewclose').addEventListener('click',closeScnView);
+  $('#scnview-structured').addEventListener('click',()=>scnViewMode(false));
+  $('#scnview-raw').addEventListener('click',()=>scnViewMode(true));
+  $('#scnviewmodal').addEventListener('click',e=>{if(e.target===$('#scnviewmodal'))closeScnView()});
   $('#simrefresh').addEventListener('click',loadSims);
   $('#go').addEventListener('click',async()=>{
     $('#out').textContent='';  // Replay's own pane clearing (the shared start skeleton lives in startJob)

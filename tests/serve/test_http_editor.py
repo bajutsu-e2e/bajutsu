@@ -193,6 +193,28 @@ def test_http_read_scenario_without_run(tmp_path: Path) -> None:
         body = _get_json(port, f"/api/scenario?target=demo&path={path}")
         assert "yaml" in body
         assert "steps" not in body
+        assert "scenarios" not in body
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_http_read_scenario_structure_opt_in(tmp_path: Path) -> None:
+    """The Replay viewer (BE-0273) passes structure=1 to get the runner-parsed per-scenario steps
+    without a run — the run-scoped step artifacts stay behind runId."""
+    scn_dir, cfg, runs = project(tmp_path)
+    (scn_dir / "login.yaml").write_text(_LOGIN_YAML, encoding="utf-8")
+
+    state = srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+    server, port = _serve(state)
+    try:
+        path = str(scn_dir / "login.yaml")
+        body = _get_json(port, f"/api/scenario?target=demo&path={path}&structure=1")
+        assert "yaml" in body
+        assert "steps" not in body
+        scenarios = body["scenarios"]
+        assert [s["name"] for s in scenarios] == ["login"]
+        assert [st["action"] for st in scenarios[0]["steps"]] == ["tap", "tap"]
     finally:
         server.shutdown()
         server.server_close()

@@ -420,7 +420,8 @@ def test_read_scenario_with_run_reads_from_object_storage(tmp_path: Path) -> Non
 
 
 def test_read_scenario_without_run_returns_yaml_only(tmp_path: Path) -> None:
-    """Without runId, the response is the plain {yaml} — no steps."""
+    """Without runId and without opting into structure, the response is the plain {yaml} — no
+    steps and no scenarios. This is what the Author editor's no-run load still gets (BE-0273)."""
     state, _runs = _state(tmp_path)
     scn_dir = tmp_path / "scenarios"
     (scn_dir / "login.yaml").write_text(SCENARIO_YAML, encoding="utf-8")
@@ -433,6 +434,70 @@ def test_read_scenario_without_run_returns_yaml_only(tmp_path: Path) -> None:
     assert status == 200
     assert "yaml" in payload
     assert "steps" not in payload
+    assert "scenarios" not in payload
+
+
+def test_read_scenario_without_run_returns_structural_scenarios(tmp_path: Path) -> None:
+    """With structure opt-in but no runId, the viewer (BE-0273) gets the runner's per-scenario
+    parse: every named scenario with its ordered steps' action/fields — no run, no run-scoped URLs."""
+    state, _runs = _state(tmp_path)
+    scn_dir = tmp_path / "scenarios"
+    (scn_dir / "login.yaml").write_text(SCENARIO_YAML, encoding="utf-8")
+
+    payload, status = ops.read_scenario(
+        state,
+        "demo",
+        str(scn_dir / "login.yaml"),
+        structure=True,
+    )
+    assert status == 200
+    scenarios = payload["scenarios"]
+    assert [s["name"] for s in scenarios] == ["login"]
+    steps = scenarios[0]["steps"]
+    assert [s["action"] for s in steps] == ["tap", "type", "tap"]
+    assert steps[0]["fields"] == {"id": "auth.email"}
+    assert steps[1]["fields"]["into"] == {"id": "auth.password"}
+    # The structural view is run-independent, so it never carries the run-scoped artifact URLs.
+    assert "elementsUrl" not in steps[0]
+    assert "screenshotUrl" not in steps[0]
+
+
+def test_read_scenario_without_run_covers_all_named_scenarios(tmp_path: Path) -> None:
+    """A file with several named scenarios yields one structural entry per scenario (the Replay
+    picker is per-file), unlike the run-scoped `steps` which resolves a single scenario."""
+    state, _runs = _state(tmp_path)
+    scn_dir = tmp_path / "scenarios"
+    (scn_dir / "multi.yaml").write_text(
+        "- name: first\n"
+        "  description: the first\n"
+        "  steps:\n"
+        "    - tap: { id: a.one }\n"
+        "- name: second\n"
+        "  steps:\n"
+        "    - tap: { id: b.two }\n",
+        encoding="utf-8",
+    )
+
+    payload, status = ops.read_scenario(state, "demo", str(scn_dir / "multi.yaml"), structure=True)
+    assert status == 200
+    scenarios = payload["scenarios"]
+    assert [s["name"] for s in scenarios] == ["first", "second"]
+    assert scenarios[0]["description"] == "the first"
+    assert scenarios[0]["steps"][0]["fields"] == {"id": "a.one"}
+    assert scenarios[1]["steps"][0]["fields"] == {"id": "b.two"}
+
+
+def test_read_scenario_without_run_unparseable_yaml_has_no_structure(tmp_path: Path) -> None:
+    """Malformed YAML still returns its raw text (the authoritative view) with an empty
+    structure — the viewer falls back to raw rather than failing the request."""
+    state, _runs = _state(tmp_path)
+    scn_dir = tmp_path / "scenarios"
+    (scn_dir / "broken.yaml").write_text("this: is: not: a: scenario\n", encoding="utf-8")
+
+    payload, status = ops.read_scenario(state, "demo", str(scn_dir / "broken.yaml"), structure=True)
+    assert status == 200
+    assert "yaml" in payload
+    assert payload["scenarios"] == []
 
 
 def test_read_scenario_with_run_defaults_to_first_scenario(tmp_path: Path) -> None:

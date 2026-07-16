@@ -200,6 +200,9 @@
       <div class="panel" id="panel-run" data-testid="replay.panel-run">
         <label>Scenario</label>
         <select id="scn" data-testid="replay.scenario"></select><div class="names" id="names" data-testid="replay.scenario-info"></div>
+        <!-- See what you're about to run (BE-0273): a read-only view of the selected scenario's
+             raw YAML + runner-parsed steps. Enabled once a scenario is picked; no run required. -->
+        <button class="cfgbtn" id="viewscn" data-testid="replay.view-scenario" disabled>View scenario</button>
         <!-- Determinism audit badge (BE-0145): the selected scenario's static stability grade. -->
         <div class="grade-badge" id="scn-grade" data-testid="replay.grade" hidden></div>
         <label>Target</label><select id="target" data-testid="replay.target"></select>
@@ -670,6 +673,26 @@
     <div class="cfgtree" id="cfgviewtree" data-testid="config.view-tree"></div>
     <pre class="cfgview" id="cfgviewbody" data-testid="config.view-content" hidden></pre>
     <div class="gitsrchint">The config is shown verbatim. <code>${secrets.*}</code> placeholders are not resolved (they resolve from the server's environment at run time), but a secret written <b>literally</b> into the file would be shown as-is &mdash; keep secrets in <code>${secrets.*}</code> refs, not in the file.</div>
+  </div>
+</div>
+
+<!-- Read-only scenario viewer (BE-0273): what the selected Replay scenario contains, before Run.
+     Mirrors the config viewer (BE-0187) — a raw-YAML ↔ structured-steps toggle, never editable. -->
+<div class="modal" id="scnviewmodal" data-testid="replay.scenario-view-modal" hidden>
+  <div class="fsbox cfgviewbox">
+    <div class="fshead">
+      <span class="ttl">Scenario</span>
+      <!-- Structured (runner-parsed per-scenario steps) vs the raw YAML the file holds. -->
+      <div class="cfgviewtoggle" role="tablist">
+        <button class="cfgtogbtn active" id="scnview-structured" data-testid="replay.scenario-view-toggle-structured">Structured</button>
+        <button class="cfgtogbtn" id="scnview-raw" data-testid="replay.scenario-view-toggle-raw">Raw</button>
+      </div>
+      <button class="fsclose" id="scnviewclose" data-testid="replay.scenario-view-close">&#10005;</button>
+    </div>
+    <div class="cfgpath" id="scnviewpath" data-testid="replay.scenario-view-path"></div>
+    <div class="cfgtree scnview-steps" id="scnviewtree" data-testid="replay.scenario-view-structured"></div>
+    <pre class="cfgview" id="scnviewbody" data-testid="replay.scenario-view-content" hidden></pre>
+    <div class="gitsrchint">Read-only: this never edits the scenario. The raw YAML is byte-for-byte what runs; the structured view is the runner's own parse of it.</div>
   </div>
 </div>
 
