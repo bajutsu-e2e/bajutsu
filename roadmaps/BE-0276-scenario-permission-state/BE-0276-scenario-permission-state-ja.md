@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0276](BE-0276-scenario-permission-state-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0276") |
+| 実装 PR | [#1129](https://github.com/bajutsu-e2e/bajutsu/pull/1129) |
 | トピック | シナリオ記述機能 |
 | 関連 | [BE-0052](../BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake-ja.md)、[BE-0212](../BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities-ja.md)、[BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity-ja.md) |
 | 由来 | Maestro |
@@ -161,14 +162,18 @@ scenario:
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] シナリオスキーマと共通の権限項目の語彙（`permissions` フィールド、parse / 検証）。
-- [ ] capability トークン `deviceControl.permissions` と権限項目単位の preflight マッピング。
-- [ ] iOS backend：`simctl privacy` コマンドビルダー、権限項目から TCC へのマップ、対応する権限項目の宣言。
-- [ ] Android backend：`grantPermissions` を再利用した `pm grant|revoke` マッピング、対応する権限項目の宣言。
-- [ ] run-loop / lease 経路での起動前適用の配線。
-- [ ] フィールド向けの codegen ラベル付き TODO。
-- [ ] ドキュメント（scenarios.md と日本語版、DSL 文法）と showcase フィクスチャ。
-- [ ] テスト：スキーマ、部分対応 backend の preflight、コマンドビルダー、未知の権限項目での明快な失敗。
+- [x] シナリオスキーマと共通の権限項目の語彙（`permissions` フィールド、parse / 検証）。
+- [x] capability トークン `deviceControl.permissions` と権限項目単位の preflight マッピング。
+- [x] iOS backend：`simctl privacy` コマンドビルダー、権限項目から TCC へのマップ、対応する権限項目の宣言。
+- [x] Android backend：`grantPermissions` を再利用した `pm grant|revoke` マッピング、対応する権限項目の宣言。
+- [x] run-loop / lease 経路での起動前適用の配線。
+- [x] フィールド向けの codegen ラベル付き TODO。
+- [x] ドキュメント（scenarios.md と日本語版、DSL 文法）と showcase フィクスチャ。
+- [x] テスト：スキーマ、部分対応 backend の preflight、コマンドビルダー、未知の権限項目での明快な失敗。
+
+ログ：
+
+- [#1129](https://github.com/bajutsu-e2e/bajutsu/pull/1129) — `permissions` シナリオフィールドを一気通貫で実装しました。スキーマと語彙の検証、権限項目単位の capability トークン（`deviceControl.permissions.<service>`）と preflight のゲート、`simctl privacy` / `pm grant`・`pm revoke` のコマンドビルダー（デバイスを操作する前にすべて検証する、原子的な適用）、5 つのプラットフォーム環境すべてにまたがる起動前適用の配線（`fake`／`web` には実行時の `UnsupportedAction` backstop を用意）、codegen の TODO、両言語のドキュメント、showcase フィクスチャ、テストを含みます。加えて、showcase フィクスチャの `location` シナリオを両プラットフォームの実機 CI に配線しました。`ios-e2e.yml` の `xcuitest (multi-touch)` ジョブは、XCUITest backend 上で `--exclude ai` 付きの `permission.yaml` も実行するようになっています。`permission.yaml` は「Permissions」タブバー項目をタップしますが、idb はタブバー全体を一つの不透明なグループにまとめてしまうため、この項目を解決できません。そのため、同じジョブの multi-touch シナリオと同様、XCUITest への強制が必要です。除外したシナリオは iOS 上でビジョンによる `dismissAlerts` ガードを必要とするため、prime directive 1 に従って決定的なゲートの対象外のままです。`android-e2e.yml` の `smoke (adb)` ジョブは、もともと同じファイルの両方のシナリオをそのまま実行していました（adb のタブバーにはこの制約がありません）。
 
 ## 参考
 

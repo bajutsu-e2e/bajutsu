@@ -92,6 +92,22 @@ def network_unsupported(subject: str) -> str:
     return f"{subject} has no network interception; assert via a mock/proxy; not generated"
 
 
+def permissions_setup_lines(scenario: Scenario) -> list[str]:
+    """The `// TODO` lines naming each `permissions` entry (BE-0276), one per service.
+
+    No target here generates app-level test code that can pre-set OS permission state (bajutsu
+    applies the field itself, before the generated test's launch step runs) — the same
+    "labeled TODO, not generated" shape as the `setLocation` / `push` step TODOs (BE-0026), and
+    named per service (not the field as a whole) so a scenario with a mixed grant/revoke set is
+    unambiguous in the generated output. Shared by every target via `setup_lines` since none can
+    represent it.
+    """
+    return [
+        f"// TODO: permissions.{service} ({action}) — bajutsu applies this before launch; not generated"
+        for service, action in scenario.permissions.items()
+    ]
+
+
 class CodeGenerator(Protocol):
     """The target-specific parts of a generated test file.
 

@@ -205,6 +205,7 @@ def device_pool(
                 # Start on the same environment we tear down: a stateful backend (XCUITest's resident
                 # runner) must be terminated by the instance that spawned it (BE-0240).
                 environment=lease_env,
+                permissions=scenario.permissions,
             )
             sink = FileSink(
                 run_dir,

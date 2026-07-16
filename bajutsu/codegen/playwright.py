@@ -20,7 +20,7 @@ from __future__ import annotations
 import re
 
 from bajutsu.assertions import request_label
-from bajutsu.codegen.common import ms, render_test_file
+from bajutsu.codegen.common import ms, permissions_setup_lines, render_test_file
 from bajutsu.drivers import base
 from bajutsu.scenario import Assertion, Gone, RequestMatch, Scenario, Step
 from bajutsu.scenario.models.assertions import CountMatch, TextMatch, Wait, WaitRequest
@@ -503,8 +503,11 @@ class _PlaywrightGen:
 
     def setup_lines(self, scenario: Scenario) -> list[str]:
         # Install the network-exchange recorder before navigation, but only when the scenario asserts
-        # over the network — otherwise the scaffold stays free of unused plumbing.
-        return list(_RECORDER_SETUP) if _scenario_uses_network(scenario) else []
+        # over the network — otherwise the scaffold stays free of unused plumbing. `permissions`
+        # (BE-0276) has no browser equivalent (no TCC/pm-style OS permission model), so it is always
+        # a TODO when present, regardless of the target this scenario also runs on.
+        lines = list(_RECORDER_SETUP) if _scenario_uses_network(scenario) else []
+        return lines + permissions_setup_lines(scenario)
 
     def launch_env_line(self, key: str, value: str) -> str:
         return f"await page.addInitScript(() => localStorage.setItem({_ts(key)}, {_ts(value)}));"

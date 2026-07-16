@@ -135,6 +135,22 @@ def test_fake_environment_runs_no_lifecycle() -> None:
     assert driver.query() == []  # the real fake driver, constructed without any device step
 
 
+def test_fake_environment_rejects_permissions() -> None:
+    # No mechanism to apply `permissions` (BE-0276); preflight normally rejects this first, but a
+    # caller that drives a lease directly (capabilities=None in runner/pipeline.py) bypasses it —
+    # this is the runtime backstop, the same shape as an unsupported gesture.
+    with pytest.raises(base.UnsupportedAction):
+        FakeEnvironment("fake", "UDID").start(
+            _eff(), Preconditions(), permissions={"camera": "grant"}
+        )
+
+
+def test_web_environment_rejects_permissions() -> None:
+    eff = _web_eff(base_url="https://app.test")
+    with pytest.raises(base.UnsupportedAction):
+        WebEnvironment("playwright").start(eff, Preconditions(), permissions={"camera": "grant"})
+
+
 def test_ios_environment_surfaces_a_failing_step_as_device_error() -> None:
     import subprocess
 
@@ -442,6 +458,61 @@ def test_xcuitest_environment_start_launches_runner_and_creates_driver(
     popen_env = popen_calls[0]["kwargs"].get("env", {})
     assert isinstance(popen_env, dict) and popen_env.get("BAJUTSU_RUNNER_PORT") == "54321"
     assert make_driver_calls[0]["kwargs"].get("runner_port") == 54321
+
+
+def test_xcuitest_environment_applies_permissions_before_the_runner_launches(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # BE-0276: xcuitest shares the same simctl-backed pre-launch sequence as idb, so `permissions`
+    # runs before the xcodebuild runner process (and thus the app) ever starts.
+    from bajutsu.config import XcuitestConfig
+
+    simctl_calls: list[list[str]] = []
+
+    def fake_run(args: list[str], extra_env: object = None) -> str:
+        simctl_calls.append(args)
+        return ""
+
+    monkeypatch.setattr(
+        "bajutsu.platform_lifecycle.environments.xcuitest._allocate_port", lambda: 54321
+    )
+
+    popen_started_after_privacy: list[bool] = []
+
+    class FakePopen:
+        def __init__(self, cmd: list[str], **kwargs: object) -> None:
+            popen_started_after_privacy.append(
+                any(c[:3] == ["xcrun", "simctl", "privacy"] for c in simctl_calls)
+            )
+
+        def terminate(self) -> None:
+            pass
+
+        def wait(self, timeout: float | None = None) -> int:
+            return 0
+
+    monkeypatch.setattr("subprocess.Popen", FakePopen)
+
+    class FakeXcuitestDriver:
+        name = "xcuitest"
+
+        def await_ready(self, **kw: object) -> None:
+            pass
+
+    monkeypatch.setattr("bajutsu.backends.make_driver", lambda *a, **k: FakeXcuitestDriver())
+
+    import plistlib
+    import tempfile
+
+    with tempfile.NamedTemporaryFile(suffix=".xctestrun") as f:
+        plistlib.dump({"__xctestrun_metadata__": {"FormatVersion": 1}, "T": {}}, f)
+        f.flush()
+        eff = _ios_eff(xcuitest=XcuitestConfig(test_runner=f.name), app_path=None)
+        xe = XcuitestEnvironment("xcuitest", "UDID-1", env_run=fake_run)
+        xe.start(eff, Preconditions(), permissions={"camera": "grant"})
+
+    assert popen_started_after_privacy == [True]
+    assert any(c[:3] == ["xcrun", "simctl", "privacy"] and c[4] == "grant" for c in simctl_calls)
 
 
 def test_xcuitest_environment_teardown_stops_runner(monkeypatch: pytest.MonkeyPatch) -> None:

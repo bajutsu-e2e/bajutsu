@@ -31,6 +31,7 @@ def launch_driver(
     extra_env: Mapping[str, str] | None = None,
     record_video_dir: Path | None = None,
     environment: RunEnvironment | None = None,
+    permissions: Mapping[str, str] | None = None,
 ) -> tuple[base.Driver, ReadinessResult]:
     """Bring a device up, launch the app under config + scenario env, and return a ready driver.
 
@@ -55,6 +56,8 @@ def launch_driver(
             the instance that must later tear itself down). Defaults to a fresh
             `environment_for(actuator, udid, env_run)`; the pool passes its own per-lease environment
             so the instance that starts the resident runner is the one that terminates it (BE-0240).
+        permissions: The scenario's `permissions` field (BE-0276), applied before the app process
+            starts. None (or a platform with no mechanism) applies nothing.
 
     Returns:
         The driver bound to the launched app (already polled until its UI has rendered), paired with
@@ -68,6 +71,8 @@ def launch_driver(
     # The per-platform startup (iOS simctl sequence, web browser context, …) lives behind the
     # `Environment` seam, so this path no longer branches on the actuator name (BE-0009 Phase 0).
     env = environment if environment is not None else environment_for(actuator, udid, env_run)
-    driver = env.start(eff, pre, extra_env=extra_env, record_video_dir=record_video_dir)
+    driver = env.start(
+        eff, pre, extra_env=extra_env, record_video_dir=record_video_dir, permissions=permissions
+    )
     readiness = _await_ready(driver, ready_sel=eff.ready_when)
     return driver, readiness

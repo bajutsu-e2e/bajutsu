@@ -76,13 +76,22 @@ final class LocationAuth: NSObject, ObservableObject, CLLocationManagerDelegate 
 
     override init() {
         super.init()
+        // Assigning the delegate itself triggers an immediate `locationManagerDidChangeAuthorization`
+        // callback reporting the current status (CoreLocation's documented behavior since iOS 14),
+        // so `status` already reflects reality — including a pre-grant (BE-0276) — before `request()`
+        // is ever called; no separate read is needed here.
         manager.delegate = self
-        status = Self.string(manager.authorizationStatus)
     }
 
-    // Raises the system location prompt (SpringBoard, out-of-process).
+    // Raises the system location prompt (SpringBoard, out-of-process). When authorization was
+    // already decided before launch (BE-0276's `permissions:` pre-grant), this call is a
+    // documented no-op with no state transition, so `locationManagerDidChangeAuthorization` never
+    // fires for it — `status` is already correct by now regardless (from the delegate-assignment
+    // announcement above), but resync here too as a defensive belt-and-suspenders rather than
+    // relying on that alone.
     func request() {
         manager.requestWhenInUseAuthorization()
+        status = Self.string(manager.authorizationStatus)
     }
 
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {

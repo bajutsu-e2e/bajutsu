@@ -66,6 +66,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
         *,
         extra_env: Mapping[str, str] | None = None,
         record_video_dir: Path | None = None,
+        permissions: Mapping[str, str] | None = None,
     ) -> base.Driver:
         ios = require_ios(eff)
         e = simctl.Env(self._udid, run=self._run)
@@ -82,6 +83,10 @@ class XcuitestEnvironment(_DeviceEnvironment):
                 if pre.reinstall == "clean" and not pre.erase:
                     e.uninstall(ios.bundle_id)
                 e.install(ios.app_path)
+            # Set permission state after install (a fresh install/erase resets TCC grants) but
+            # before the runner launches the app, so a permission prompt never blocks it (BE-0276).
+            if permissions:
+                e.apply_permissions(ios.bundle_id, permissions)
         except subprocess.CalledProcessError as exc:
             raise simctl.device_error(exc) from exc
 

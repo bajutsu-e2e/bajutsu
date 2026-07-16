@@ -26,6 +26,7 @@ from bajutsu.codegen.common import (
     ident,
     is_plain_substring,
     network_unsupported,
+    permissions_setup_lines,
     render_test_file,
 )
 from bajutsu.drivers import base
@@ -373,8 +374,9 @@ class _XcuitestGen:
         return f"  func {ident(name)}() {{"
 
     def setup_lines(self, scenario: Scenario) -> list[str]:
-        # XCUITest has no network-interception surface, so there is no pre-launch observer to install.
-        return []
+        # XCUITest has no network-interception surface, so there is no pre-launch observer to
+        # install beyond the `permissions` TODO (BE-0276) below.
+        return permissions_setup_lines(scenario)
 
     def launch_env_line(self, key: str, value: str) -> str:
         return f"app.launchEnvironment[{_s(key)}] = {_s(value)}"

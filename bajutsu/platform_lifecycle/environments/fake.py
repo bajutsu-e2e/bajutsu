@@ -25,5 +25,12 @@ class FakeEnvironment(_DeviceEnvironment):
         *,
         extra_env: Mapping[str, str] | None = None,
         record_video_dir: Path | None = None,
+        permissions: Mapping[str, str] | None = None,
     ) -> base.Driver:
+        # No device, so no mechanism to apply `permissions`. Preflight normally rejects a scenario
+        # naming one before this is ever reached, but preflight is skippable (a lease driven
+        # directly, `capabilities=None` in runner/pipeline.py) — so this is the runtime backstop,
+        # the same shape gestures.py's `_require_multi_touch` is for an unsupported gesture.
+        if permissions:
+            raise base.UnsupportedAction("permissions is not supported on the fake driver")
         return backends.make_driver(self._actuator, self._udid)

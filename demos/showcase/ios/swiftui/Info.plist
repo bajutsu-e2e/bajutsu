@@ -31,6 +31,8 @@
 	</array>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Showcase's Permissions tab exercises the location-authorization flow.</string>
 	<key>UILaunchScreen</key>
 	<dict>
 		<key>UIColorName</key>

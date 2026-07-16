@@ -192,6 +192,14 @@ def test_adb_advertises_setlocation_and_clipboard_only() -> None:
     assert base.Capability.DC_STATUS_BAR not in caps
 
 
+def test_adb_advertises_the_whole_permission_vocabulary() -> None:
+    # `pm grant`/`pm revoke` back every service, including `notifications` (POST_NOTIFICATIONS,
+    # API 33+) — unlike iOS, which has no TCC service for it (BE-0276).
+    caps = AdbDriver("E", run=lambda a: "").capabilities()
+    for service in base.PERMISSION_SERVICES:
+        assert base.permission_capability(service) in caps
+
+
 def _sc(**body: object) -> Scenario:
     return Scenario.model_validate({"name": "s", **body})
 

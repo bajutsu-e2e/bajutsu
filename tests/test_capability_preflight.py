@@ -18,30 +18,37 @@ from bajutsu import capability_preflight
 from bajutsu.drivers import base
 from bajutsu.scenario import Scenario
 
-_IDB = {
-    base.Capability.QUERY,
-    base.Capability.ELEMENTS,
-    base.Capability.SCREENSHOT,
-} | base.DEVICE_CONTROL_ALL
+_IDB = (
+    {
+        base.Capability.QUERY,
+        base.Capability.ELEMENTS,
+        base.Capability.SCREENSHOT,
+    }
+    | base.DEVICE_CONTROL_ALL
+    # idb honors every permission service but `notifications` (BE-0276) — the real asymmetry, so
+    # this fixture doubles as the "backend missing one service" case below.
+    | base.IOS_PERMISSION_CAPABILITIES
+)
 _FULL = _IDB | {
     base.Capability.SEMANTIC_TAP,
     base.Capability.CONDITION_WAIT,
     base.Capability.MULTI_TOUCH,
     base.Capability.NETWORK,
 }
-# idb minus the whole device-control family — a backend that advertises no device-control token
-# (e.g. Playwright, or a future backend without a real DeviceControl wired), used to prove
-# device-control steps are gated.
-_NO_CONTROL = _IDB - base.DEVICE_CONTROL_ALL
+# idb minus the whole device-control family (including permissions) — a backend that advertises no
+# device-control token (e.g. Playwright, or a future backend without a real DeviceControl wired),
+# used to prove device-control steps are gated.
+_NO_CONTROL = _IDB - base.DEVICE_CONTROL_ALL - base.IOS_PERMISSION_CAPABILITIES
 # A backend that supports only part of the family (the Android emulator: setLocation + clipboard,
-# BE-0212) — used to prove preflight admits the supported subset and fails fast for the rest.
+# plus the whole permission vocabulary, BE-0210/BE-0276) — used to prove preflight admits the
+# supported subset and fails fast for the rest.
 _SUBSET = {
     base.Capability.QUERY,
     base.Capability.ELEMENTS,
     base.Capability.SCREENSHOT,
     base.Capability.DC_SET_LOCATION,
     base.Capability.DC_CLIPBOARD,
-}
+} | base.ANDROID_PERMISSION_CAPABILITIES
 
 
 def _sc(**body: object) -> Scenario:
@@ -275,6 +282,41 @@ def test_subset_backend_admits_supported_and_names_only_unsupported() -> None:
     assert len(reasons) == 1
     assert reasons[0].startswith("step 2: ")
     assert base.Capability.DC_PUSH in reasons[0]
+
+
+# --- permissions gated per service, not per field (BE-0276) ---
+
+
+def test_permissions_supported_on_every_service_passes() -> None:
+    # Android supports the whole vocabulary, including notifications.
+    sc = _sc(permissions={"camera": "grant", "notifications": "revoke"}, steps=[])
+    assert capability_preflight.unsupported(sc, _SUBSET) == []
+
+
+def test_permissions_names_each_unsupported_service_individually() -> None:
+    # idb has no TCC service for notifications; a scenario naming it alongside a supported service
+    # is rejected for notifications only, named by its own per-service token.
+    sc = _sc(permissions={"camera": "grant", "notifications": "grant"}, steps=[])
+    reasons = capability_preflight.unsupported(sc, _IDB)
+    assert len(reasons) == 1
+    assert "permissions.notifications" in reasons[0]
+    assert base.permission_capability("notifications") in reasons[0]
+    assert "camera" not in reasons[0]
+
+
+def test_permissions_whole_mechanism_unsupported_names_every_service() -> None:
+    # A backend with no permission capability at all (web, fake) names every requested service.
+    sc = _sc(permissions={"camera": "grant", "location": "revoke"}, steps=[])
+    reasons = capability_preflight.unsupported(sc, _NO_CONTROL)
+    assert len(reasons) == 2
+    assert any("permissions.camera" in r for r in reasons)
+    assert any("permissions.location" in r for r in reasons)
+
+
+def test_permissions_empty_field_never_gated() -> None:
+    # No permissions entry, so nothing to check even on a backend with zero permission support.
+    sc = _sc(steps=[])
+    assert capability_preflight.unsupported(sc, _NO_CONTROL) == []
 
 
 # --- Path hints in reason strings (BE-0024) ---

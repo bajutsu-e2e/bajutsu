@@ -68,3 +68,38 @@ def test_dismiss_alerts_bool_and_object_forms() -> None:
         Scenario.model_validate(
             {"name": "x", "dismissAlerts": {"bogus": 1}, "steps": [{"tap": {"id": "a"}}]}
         )
+
+
+def test_permissions_default_unset() -> None:
+    # Empty by default, and pruned when empty so a dumped scenario stays clean (BE-0276).
+    s = Scenario.model_validate({"name": "x", "steps": [{"tap": {"id": "a"}}]})
+    assert s.permissions == {}
+    assert "permissions" not in dump_scenarios([s])
+
+
+def test_permissions_parse_and_round_trip() -> None:
+    s = Scenario.model_validate(
+        {
+            "name": "x",
+            "permissions": {"camera": "grant", "location": "revoke"},
+            "steps": [{"tap": {"id": "a"}}],
+        }
+    )
+    assert s.permissions == {"camera": "grant", "location": "revoke"}
+
+    rt = load_scenarios(dump_scenarios([s]))[0]
+    assert rt.permissions == {"camera": "grant", "location": "revoke"}
+
+
+def test_permissions_rejects_unknown_service() -> None:
+    with pytest.raises(ValidationError):
+        Scenario.model_validate(
+            {"name": "x", "permissions": {"bogus": "grant"}, "steps": [{"tap": {"id": "a"}}]}
+        )
+
+
+def test_permissions_rejects_unknown_action() -> None:
+    with pytest.raises(ValidationError):
+        Scenario.model_validate(
+            {"name": "x", "permissions": {"camera": "bogus"}, "steps": [{"tap": {"id": "a"}}]}
+        )

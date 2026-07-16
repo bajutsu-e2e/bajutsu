@@ -452,6 +452,7 @@ class IdbDriver(CoordinateTreeDriver):
             }
         )
         | base.DEVICE_CONTROL_ALL
+        | base.IOS_PERMISSION_CAPABILITIES
     )
 
     def capabilities(self) -> set[str]:

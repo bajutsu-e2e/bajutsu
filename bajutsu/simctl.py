@@ -121,6 +121,18 @@ def clear_location_cmd(udid: str) -> list[str]:
     return ["xcrun", "simctl", "location", validated_udid(udid), "clear"]
 
 
+# The one permission-vocabulary service (BE-0276) with no simctl privacy TCC (Transparency,
+# Consent, and Control) equivalent — iOS notification authorization is not part of TCC. Every other
+# vocabulary entry names its own TCC service (`base.PERMISSION_SERVICES`'s spelling matches
+# `simctl privacy`'s service names 1:1), so no separate service->TCC-name map is needed.
+_NO_TCC_SERVICE = "notifications"
+
+
+def privacy_cmd(udid: str, action: str, tcc_service: str, bundle_id: str) -> list[str]:
+    """`simctl privacy <udid> <grant|revoke> <tcc-service> <bundle>` (BE-0276)."""
+    return ["xcrun", "simctl", "privacy", validated_udid(udid), action, tcc_service, bundle_id]
+
+
 def push_cmd(udid: str, bundle_id: str, payload_path: str) -> list[str]:
     return ["xcrun", "simctl", "push", validated_udid(udid), bundle_id, payload_path]
 
@@ -334,6 +346,30 @@ class Env:
 
     def clear_location(self) -> None:
         self._run(clear_location_cmd(self.udid), None)
+
+    def apply_permissions(self, bundle_id: str, permissions: Mapping[str, str]) -> None:
+        """Grant or revoke each `service: grant|revoke` entry in `permissions` up front, so a
+        runtime prompt never blocks the run (`simctl privacy`, BE-0276).
+
+        Every entry's service and action are validated before any `simctl privacy` call runs, so
+        an unsupported service or an unrecognized action fails before the device is touched at all
+        — never partway through, leaving some services already mutated (preflight/schema normally
+        reject this before any device work; this validation is the runtime backstop for a caller
+        that bypasses both).
+
+        Raises:
+            DeviceError: a service has no TCC equivalent (`notifications`), or an action is neither
+                `grant` nor `revoke`.
+        """
+        for service, action in permissions.items():
+            if service == _NO_TCC_SERVICE:
+                raise DeviceError(f"permissions.{service} has no simctl privacy equivalent on iOS")
+            if action not in ("grant", "revoke"):
+                raise DeviceError(
+                    f"unknown simctl privacy action: {action!r} (expected grant|revoke)"
+                )
+        for service, action in permissions.items():
+            self._run(privacy_cmd(self.udid, action, service, bundle_id), None)
 
     def clear_keychain(self) -> None:
         self._run(keychain_reset_cmd(self.udid), None)

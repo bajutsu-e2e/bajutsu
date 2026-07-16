@@ -95,6 +95,7 @@ Scenario ::= {
   mocks?:          list(<Mock>),            # default []
   redact?:         <Redact>,
   dismissAlerts?:  <DismissAlerts>,         # alert guard; on when unset
+  permissions?:    <Permissions>,           # pre-launch OS permission state; default {}
 }
 
 Component ::= { params?: list(string), steps: list(<Step>) }
@@ -114,6 +115,11 @@ Preconditions ::= {
 DismissAlerts ::= boolean                                   # shorthand for { enabled: <bool> }
                | { enabled?: boolean,                       # default true
                    instruction?: string }                   # button to tap (else dismiss)
+
+Permissions ::= map(PermissionService, PermissionAction)    # applied before the app launches
+PermissionService ::= "location" | "camera" | "microphone" | "contacts"
+                     | "photos" | "calendar" | "notifications"
+PermissionAction  ::= "grant" | "revoke"
 
 # ── Step = exactly one Action + optional modifiers ─────────────────────
 Step      ::= <Action> & <StepMods>
@@ -296,6 +302,7 @@ Omitted optional keys take these values (so a minimal scenario is just `name` + 
 | `Scenario.tags` / `expect` / `capturePolicy` / `mocks` | `[]` |
 | `Scenario.preconditions` | `{}` (i.e. `erase: false`, `reinstall: clean`) |
 | `Scenario.dismissAlerts` | unset (alert guard on; dismiss the prompt) |
+| `Scenario.permissions` | `{}` (no pre-launch permission state applied) |
 | `Preconditions.erase` | `false` |
 | `Preconditions.reinstall` | `clean` |
 | `Preconditions.launchArgs` | `[]` |

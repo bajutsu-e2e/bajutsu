@@ -169,6 +169,7 @@ What a scenario can express: variables and light control flow, data-driven runs,
 | [BE-0052](BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md) | Device-state primitives: timezone, clipboard, shake | Implemented |
 | [BE-0186](BE-0186-mailbox-provider-registry/BE-0186-mailbox-provider-registry.md) | Mailbox provider registry for the email step | Implemented |
 | [BE-0265](BE-0265-text-editing-steps/BE-0265-text-editing-steps.md) | Text-editing steps: select, clear, delete, copy | Implemented |
+| [BE-0276](BE-0276-scenario-permission-state/BE-0276-scenario-permission-state.md) | Declarative per-scenario permission state (simctl privacy / pm grant) | Implemented |
 <!-- /GENERATED:implemented-scenario-authoring -->
 
 ### Verification & coverage
@@ -590,9 +591,7 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 ### Scenario authoring features
 
 <!-- GENERATED:proposals-scenario-authoring -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0276](BE-0276-scenario-permission-state/BE-0276-scenario-permission-state.md) | Declarative per-scenario permission state (simctl privacy / pm grant) | Proposal |
+
 <!-- /GENERATED:proposals-scenario-authoring -->
 
 ### Authoring experience (record / GUI editor)

@@ -233,6 +233,15 @@ def test_network_and_device_control_are_todo() -> None:
     assert "// TODO: request assertion" in code
 
 
+def test_permissions_field_emits_a_labeled_todo_per_service() -> None:
+    code = _gen(
+        "- name: x\n  permissions: { camera: grant, notifications: grant }\n  steps:\n"
+        "    - tap: { id: a }\n"
+    )
+    assert "// TODO: permissions.camera (grant)" in code
+    assert "// TODO: permissions.notifications (grant)" in code
+
+
 def test_text_and_value_regex_and_contains() -> None:
     code = _gen(
         "- name: x\n  steps:\n    - tap: { id: a }\n"

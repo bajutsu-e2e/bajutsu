@@ -37,6 +37,10 @@ targets:
         CFBundleURLTypes:
           - CFBundleURLName: com.bajutsu.showcase.ios.swiftui
             CFBundleURLSchemes: [showcaseswiftui]
+        # Without this, CLLocationManager.authorizationStatus stays notDetermined forever — even
+        # after `simctl privacy grant location` (BE-0276) — since the system withholds the real
+        # status from an app that couldn't show a consent string if it were asked for one.
+        NSLocationWhenInUseUsageDescription: "Showcase's Permissions tab exercises the location-authorization flow."
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.bajutsu.showcase.ios.swiftui
@@ -62,6 +66,7 @@ targets:
         CFBundleURLTypes:
           - CFBundleURLName: com.bajutsu.showcase.ios.swiftui.noax
             CFBundleURLSchemes: [showcaseswiftuinoax]
+        NSLocationWhenInUseUsageDescription: "Showcase's Permissions tab exercises the location-authorization flow."
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.bajutsu.showcase.ios.swiftui.noax
