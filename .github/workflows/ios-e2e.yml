@@ -181,6 +181,22 @@ jobs:
           udid: ${{ steps.sim.outputs.udid }}
           artifact-name: smoke-run
 
+      # The `permissions` field (BE-0276) on-device: `--exclude ai` drops permission.yaml's
+      # notification scenario (its iOS grant path needs the vision `dismissAlerts` guard, so it stays
+      # non-deterministic here and is never run in this gate — prime directive 1) and keeps only
+      # `location`, which `simctl privacy grant` pre-grants declaratively before launch with no
+      # prompt. The android-e2e.yml `smoke (adb)` job already runs both scenarios in permission.yaml
+      # (Android needs no AI for either), so this is the iOS twin of that on-device coverage.
+      - name: Run permission scenarios (idb)
+        uses: ./.github/actions/bajutsu-e2e
+        with:
+          scenarios: demos/showcase/scenarios/permission.yaml
+          exclude: ai
+          target: showcase-swiftui
+          config: demos/showcase/showcase.config.yaml
+          udid: ${{ steps.sim.outputs.udid }}
+          artifact-name: permission-run
+
   # The BE-0006 element-tree golden over idb: pins the normalized accessibility tree for the Stable
   # catalog's list rows, reached on the launch tab so idb needs no tab navigation. Runs the same
   # golden.yaml the weekly idb-monitor runs, now also per PR — the iOS twin of android-e2e.yml's

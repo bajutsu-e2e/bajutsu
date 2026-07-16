@@ -9,6 +9,12 @@ inputs:
   scenarios:
     description: A single scenario *.yaml to run (passed as `run --scenario`).
     required: true
+  exclude:
+    description: >-
+      Comma list; skip scenarios carrying any of these tags (passed as `run --exclude`). Empty
+      (the default) runs every scenario in the file.
+    required: false
+    default: ""
   target:
     description: Target key in bajutsu.config.yaml.
     required: true
@@ -67,12 +73,13 @@ runs:
       shell: bash
       env:
         SCENARIOS: ${{ inputs.scenarios }}
+        EXCLUDE: ${{ inputs.exclude }}
         TARGET: ${{ inputs.target }}
         UDID: ${{ inputs.udid }}
         BACKEND: ${{ inputs.backend }}
         CONFIG: ${{ inputs.config }}
       run: >-
-        uv run --no-sync bajutsu run --scenario "$SCENARIOS" --target "$TARGET"
+        uv run --no-sync bajutsu run --scenario "$SCENARIOS" --exclude "$EXCLUDE" --target "$TARGET"
         --udid "$UDID" --backend "$BACKEND"
         --config "$CONFIG" --no-erase
 

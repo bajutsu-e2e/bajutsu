@@ -181,7 +181,11 @@ Log:
   (`deviceControl.permissions.<service>`) and preflight gating, `simctl privacy` / `pm grant`|`pm
   revoke` command builders (atomic — validated before any device mutation), apply-before-launch
   wiring across all five platform environments (with a runtime `UnsupportedAction` backstop on
-  `fake`/`web`), codegen TODOs, bilingual docs, a showcase fixture, and tests.
+  `fake`/`web`), codegen TODOs, bilingual docs, a showcase fixture, and tests. Also wired the
+  showcase fixture's `location` scenario into on-device CI on both platforms: `ios-e2e.yml`'s
+  `smoke (idb)` job now runs `permission.yaml` with `--exclude ai` (the file's other scenario needs
+  the vision `dismissAlerts` guard on iOS, so it stays out of the deterministic gate per prime
+  directive 1); `android-e2e.yml`'s `smoke (adb)` job already ran both scenarios unchanged.
 
 ## References
 

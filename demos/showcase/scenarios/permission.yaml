@@ -12,8 +12,11 @@
 #     guard is an alert *handler*, never an assertion, so it never touches the pass/fail verdict.
 # The app model starts at notDetermined regardless of any OS-level grant, so the pre/post assertions
 # are identical on both platforms. `dismissAlerts` is on but no-ops wherever no prompt appears.
+# Tagged `ai` (on top of `permission`/`system`) so the iOS smoke lane can `--exclude ai` and run only
+# this file's deterministic `location` scenario below, per prime directive 1 — Android runs both
+# untouched (neither needs AI there).
 - name: grant notification permission
-  tags: [permission, system]
+  tags: [permission, system, ai]
   dismissAlerts: { instruction: "tap Allow" }   # iOS: tap Allow to grant; Android: no-op (pre-granted)
   preconditions:
     launchEnv: { SHOWCASE_UITEST: "1" }

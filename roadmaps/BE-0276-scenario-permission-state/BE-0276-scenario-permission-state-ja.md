@@ -173,7 +173,7 @@ scenario:
 
 ログ：
 
-- [#1129](https://github.com/bajutsu-e2e/bajutsu/pull/1129) — `permissions` シナリオフィールドを一気通貫で実装しました。スキーマと語彙の検証、権限項目単位の capability トークン（`deviceControl.permissions.<service>`）と preflight のゲート、`simctl privacy` / `pm grant`・`pm revoke` のコマンドビルダー（デバイスを操作する前にすべて検証する、原子的な適用）、5 つのプラットフォーム環境すべてにまたがる起動前適用の配線（`fake`／`web` には実行時の `UnsupportedAction` backstop を用意）、codegen の TODO、両言語のドキュメント、showcase フィクスチャ、テストを含みます。
+- [#1129](https://github.com/bajutsu-e2e/bajutsu/pull/1129) — `permissions` シナリオフィールドを一気通貫で実装しました。スキーマと語彙の検証、権限項目単位の capability トークン（`deviceControl.permissions.<service>`）と preflight のゲート、`simctl privacy` / `pm grant`・`pm revoke` のコマンドビルダー（デバイスを操作する前にすべて検証する、原子的な適用）、5 つのプラットフォーム環境すべてにまたがる起動前適用の配線（`fake`／`web` には実行時の `UnsupportedAction` backstop を用意）、codegen の TODO、両言語のドキュメント、showcase フィクスチャ、テストを含みます。加えて、showcase フィクスチャの `location` シナリオを両プラットフォームの実機 CI に配線しました。`ios-e2e.yml` の `smoke (idb)` ジョブは、`--exclude ai` 付きで `permission.yaml` を実行するようになっています（同じファイルのもう一方のシナリオは iOS 上でビジョンによる `dismissAlerts` ガードを必要とするため、prime directive 1 に従って決定的なゲートの対象外のままです）。`android-e2e.yml` の `smoke (adb)` ジョブは、もともと同じファイルの両方のシナリオをそのまま実行していました。
 
 ## 参考
 
