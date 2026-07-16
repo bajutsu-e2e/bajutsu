@@ -16,7 +16,7 @@ from bajutsu import usage_stats as _usage_stats
 from bajutsu.config import Config, load_config
 from bajutsu.drivers import base as driver_base
 from bajutsu.scenario import load_scenario_file
-from bajutsu.scenario.models import STEP_ACTIONS, Step
+from bajutsu.scenario.models import STEP_ACTIONS, Scenario, Step
 from bajutsu.serve import flakiness as _flakiness
 from bajutsu.serve import jobs
 from bajutsu.serve.artifacts import Artifact, ArtifactStore
@@ -273,7 +273,7 @@ def read_scenario(
     actor: str | None = None,
     run_id: str | None = None,
     scenario_name: str | None = None,
-    structure: str | None = None,
+    structure: bool = False,
 ) -> tuple[Any, int]:
     # A scenario in another org's target reads as not-found (non-leaky) — BE-0015 multi-tenancy.
     org = state.org_of(actor)
@@ -296,6 +296,19 @@ def read_scenario(
     return {"yaml": text, "steps": _step_artifacts(state, text, run_id, scenario_name, org)}, 200
 
 
+def _parse_scenarios_safe(yaml_text: str) -> list[Scenario]:
+    """The file's scenarios via the runner's parse, or an empty list if it won't parse.
+
+    Both read paths that surface a scenario's structure without a run (the editor's step
+    artifacts and the Replay viewer) treat an unparseable file as "nothing to show" rather
+    than an error, so they share this swallow.
+    """
+    try:
+        return load_scenario_file(yaml_text).scenarios
+    except Exception:
+        return []
+
+
 def _scenario_structure(yaml_text: str) -> list[dict[str, Any]]:
     """Every named scenario in the file with its ordered steps, from the runner's own parse.
 
@@ -304,12 +317,8 @@ def _scenario_structure(yaml_text: str) -> list[dict[str, Any]]:
     drift from how a run actually reads the scenario. Unparseable YAML yields an empty list —
     the viewer falls back to the raw text, which stays authoritative.
     """
-    try:
-        scenarios = load_scenario_file(yaml_text).scenarios
-    except Exception:
-        return []
     result: list[dict[str, Any]] = []
-    for scenario in scenarios:
+    for scenario in _parse_scenarios_safe(yaml_text):
         steps = []
         for step in scenario.steps:
             action, fields = _step_action_fields(step)
@@ -326,10 +335,7 @@ def _step_artifacts(
     org: str,
 ) -> list[dict[str, Any]]:
     """Build per-step artifact handles for the editor (BE-0013)."""
-    try:
-        scenarios = load_scenario_file(yaml_text).scenarios
-    except (ValueError, Exception):
-        return []
+    scenarios = _parse_scenarios_safe(yaml_text)
 
     artifacts = state.for_org(org).artifacts
     try:

@@ -448,7 +448,7 @@ def test_read_scenario_without_run_returns_structural_scenarios(tmp_path: Path) 
         state,
         "demo",
         str(scn_dir / "login.yaml"),
-        structure="1",
+        structure=True,
     )
     assert status == 200
     scenarios = payload["scenarios"]
@@ -478,7 +478,7 @@ def test_read_scenario_without_run_covers_all_named_scenarios(tmp_path: Path) ->
         encoding="utf-8",
     )
 
-    payload, status = ops.read_scenario(state, "demo", str(scn_dir / "multi.yaml"), structure="1")
+    payload, status = ops.read_scenario(state, "demo", str(scn_dir / "multi.yaml"), structure=True)
     assert status == 200
     scenarios = payload["scenarios"]
     assert [s["name"] for s in scenarios] == ["first", "second"]
@@ -494,7 +494,7 @@ def test_read_scenario_without_run_unparseable_yaml_has_no_structure(tmp_path: P
     scn_dir = tmp_path / "scenarios"
     (scn_dir / "broken.yaml").write_text("this: is: not: a: scenario\n", encoding="utf-8")
 
-    payload, status = ops.read_scenario(state, "demo", str(scn_dir / "broken.yaml"), structure="1")
+    payload, status = ops.read_scenario(state, "demo", str(scn_dir / "broken.yaml"), structure=True)
     assert status == 200
     assert "yaml" in payload
     assert payload["scenarios"] == []
