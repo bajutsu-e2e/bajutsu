@@ -61,10 +61,10 @@ Proposal altitude. The work is MECE along the units below.
 
 ## Alternatives considered
 
-* **Leave these features at unit-test level.** The pure logic is covered, but the mutating-tree
+- **Leave these features at unit-test level.** The pure logic is covered, but the mutating-tree
   behavior of `forEach` and the snapshot-drift and recomposition-timing premises are
   unrepresentable in the fake. A frozen screen can never surface them.
-* **Build a synthetic stress harness for the timing premises.** A bespoke harness would be less
+- **Build a synthetic stress harness for the timing premises.** A bespoke harness would be less
   faithful than a real showcase screen and would not reuse the existing on-device infrastructure;
   a live showcase element is both closer to reality and cheaper.
 
