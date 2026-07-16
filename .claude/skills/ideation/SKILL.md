@@ -105,9 +105,9 @@ invoke the [`tech-writing`](../tech-writing/SKILL.md) skill — it is the author
 prose in both languages ([BE-0278](../../../roadmaps/BE-0278-tech-writing-skill/BE-0278-tech-writing-skill.md)),
 and it shapes the draft rather than proofreading it, so read it *before* writing, not after. A BE
 item is argued prose: an Introduction that states its contribution up front, a Motivation that moves
-from the known problem to the new result, a Detailed design that reads cleanly on both sides.
-item is argued prose: an Introduction that states its contribution up front, a Motivation that moves
 from the known problem to the new result, and a Detailed design that reads cleanly on both sides.
+
+**Localize the Japanese** side (the title, the `トピック`, and the prose) — the scaffolder seeds both
 files from the same English input, so the Japanese is a starting point to rewrite into natural
 Japanese, not a finished translation. Write it under the
 [`japanese-tech-writing`](../japanese-tech-writing/SKILL.md) skill (敬体; the Japanese layer beneath
