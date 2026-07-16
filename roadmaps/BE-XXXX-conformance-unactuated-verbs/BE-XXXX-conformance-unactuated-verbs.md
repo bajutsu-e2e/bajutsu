@@ -18,7 +18,7 @@
 The **driver conformance contract** ([BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md))
 is the set of behaviors every backend must satisfy alike, written as one test body
 (`tests/driver_conformance.py`). Rather than testing each backend separately, that one body runs
-against every backend, so "all backends behave alike" becomes a check rather than a hope. It runs
+against every backend, so their uniform behavior is verified rather than assumed. It runs
 against `FakeDriver` on the Linux gate and idb / XCUITest / adb / Playwright on-device
 ([BE-0270](../BE-0270-android-adb-driver-conformance/BE-0270-android-adb-driver-conformance.md)
 added the adb lane). The contract today pins tap, label-and-trait resolution, the multi-touch and
