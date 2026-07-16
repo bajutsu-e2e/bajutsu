@@ -73,7 +73,7 @@ pass.
 - **No bare "this" / "that" as a noun.** Name what it points to: "this behavior", "that
   constraint", not a lone "this".
 - **No singular "they" for an unspecified single person.** Reword to the plural ("reviewers raise
-  their hand") or a role, rather than "each reviewer raised their hand".
+  their hands") or a role, rather than "each reviewer raised their hand".
 - **Dashes.** A hyphen joins a compound adjective ("capability-aware selection"). An en-dash marks a
   range ("steps 3–7") with no surrounding spaces. An em-dash sets off an aside for emphasis — with a
   space on each side, per the Chicago style this repo follows.
