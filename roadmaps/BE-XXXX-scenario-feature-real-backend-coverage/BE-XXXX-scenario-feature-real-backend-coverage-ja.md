@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
-| トピック | Verification & coverage |
+| トピック | 検証とカバレッジ |
 | 関連 | [BE-0031](../BE-0031-data-driven-scenarios/BE-0031-data-driven-scenarios-ja.md), [BE-0033](../BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow-ja.md), [BE-0030](../BE-0030-parameterized-shared-steps/BE-0030-parameterized-shared-steps-ja.md) |
 <!-- /BE-METADATA -->
 
@@ -44,7 +44,7 @@
 
 ## 詳細設計
 
-提案の粒度です。作業は以下のユニットに沿って MECE に分かれます。
+提案の粒度です。作業は以下の単位に沿って MECE に分かれます。
 
 - **`extract` の再利用シナリオ。** adb と web で、実フィールドの値を `extract` で取り込み、後続のステップに渡し、
   取り込んだ値が実ツリーの報告どおりであることをアサートします。
