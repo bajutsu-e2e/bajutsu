@@ -678,6 +678,14 @@ These rules apply to all documentation — English under `docs/` and the Japanes
 `docs/ja/` — and to every future update, not just new files. Agents must follow them, and they
 apply equally when reporting on or summarizing work.
 
+- **Follow the [`tech-writing`](../.claude/skills/tech-writing/SKILL.md) skill.** It is the
+  authoritative prose norm for every document here and every BE roadmap item, in both languages:
+  language-agnostic writing technique (draft top-down, state the contribution up front, reserve a
+  sentence's end for its most important element, keep the verb near the subject, prefer the active
+  voice, cut filler) plus English-specific mechanics (serial comma, *that* / *which*, dashes,
+  numbers). Invoke it *before* writing or revising, not after. The rules below are the specific
+  expectations this section and that skill share; for Japanese prose, `tech-writing` sits above the
+  [`japanese-tech-writing`](../.claude/skills/japanese-tech-writing/SKILL.md) skill (see below).
 - **Write natural prose.** A Japanese document must read as natural Japanese; an English document
   must read as natural English. A mirror conveys the same content naturally in its own language —
   it is not a word-for-word transliteration of the other.
@@ -697,7 +705,9 @@ apply equally when reporting on or summarizing work.
   fresh or translate the English mirror into `docs/ja/` (or a roadmap `*-ja.md`), apply
   [`japanese-tech-writing`](../.claude/skills/japanese-tech-writing/): it is the authoritative style
   for Japanese prose in this repo, and a translation must read as natural Japanese under those norms,
-  not a literal rendering of the English.
+  not a literal rendering of the English. It sits beneath the
+  [`tech-writing`](../.claude/skills/tech-writing/SKILL.md) umbrella (above); apply both for Japanese
+  prose.
 - **Japanese documents use 敬体 (the polite *desu/masu* style, ですます調).** Every Japanese file
   under `docs/ja/` and every roadmap `*-ja.md` is written in 敬体, never the plain *da/dearu* style
   (常体). Keep the whole document consistent: only sentence-final predicates take the polite form —

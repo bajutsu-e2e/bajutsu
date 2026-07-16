@@ -1,0 +1,97 @@
+---
+name: tech-writing
+model: sonnet
+description: >-
+  The authoritative prose norm for Bajutsu's writing — language-agnostic writing technique
+  (top-down drafting, sentence stress, subject–verb proximity, active voice, cutting filler)
+  plus English-specific mechanics (serial comma, that/which, dashes, numbers). Use it whenever
+  you write or revise a BE roadmap item (`*.md` / `*-ja.md`) or a prose document under `docs/`,
+  in either language. For Japanese prose it is the umbrella above `japanese-tech-writing`; apply
+  both, and where they overlap the Japanese skill's specific wording governs.
+---
+
+<!--
+The language-agnostic principles and the English mechanics below are distilled from
+Jeffrey Scott Vitter, "Structure + Style = Communication" (The University of Kansas, 2011).
+-->
+
+# Technical-writing norm
+
+Bajutsu's writing is argued prose: BE items and the documents under `docs/` make a case a reader
+must be able to follow. This skill is the authoritative norm for that prose, in both languages.
+Invoke it **before** you write or revise, not after — it shapes the draft, it is not a proofreading
+pass.
+
+- **Scope.** Every BE roadmap item (`roadmaps/BE-*/*.md` and its `*-ja.md` mirror) and every
+  document under `docs/` (and the `docs/ja/` mirror), in both languages. It does **not** govern
+  code docstrings, which keep their own standard ([BE-0065](../../../roadmaps/BE-0065-docstring-standard-api-reference/BE-0065-docstring-standard-api-reference.md)).
+- **Two layers.** The *language-agnostic principles* below hold for both languages. The *English
+  mechanics* hold for English prose only. For **Japanese** prose, also apply
+  [`japanese-tech-writing`](../japanese-tech-writing/SKILL.md) — it is the Japanese layer beneath
+  this one, and where the two overlap (filler, redundancy, restraint of rhetorical flourish) its
+  specific wording governs. The English mechanics never apply to Japanese: Japanese has its own
+  dash and punctuation rules, already in that skill.
+- **Enforcement stays a review-time norm, not a CI gate.** Judging clarity, emphasis, and argument order
+  needs semantic judgment; putting that on the gate would put an LLM on the `run` / CI verdict path,
+  which prime directive 1 forbids. It holds the same way the bilingual-docs and DESIGN.md-alignment
+  ([BE-0113](../../../roadmaps/BE-0113-design-doc-realignment/BE-0113-design-doc-realignment.md))
+  norms hold: a contributor and reviewer expectation, checked by people.
+
+## Language-agnostic principles (both languages)
+
+- **Draft top-down, version by version.** Do not write a long argued section linearly from its
+  first sentence. Build it in passes: first a rough outline of the points in the order you will
+  treat them; then the section titles and each section's main idea; then subideas and a story line;
+  then the near-final prose. The outline forces the organization the reader will need.
+- **Go for clarity and simplicity.** On review, cut every word, phrase, and sentence that carries
+  no meaning. Streamlining is a required pass, not a nicety.
+- **State the contribution up front.** A BE item's Introduction and Motivation state the problem,
+  the background, the contribution, and why it matters — before the detail. A reader who stops after
+  the first two paragraphs should still come away with the point.
+- **The two stress points of a sentence are its beginning and its end.** The end carries the most
+  emphasis, so reserve it for the most important element. Move from the known to the unknown, from
+  the given to the new, from background to result. Put transitional and background words
+  ("Therefore", "However", "In the last section") at the front, saving the content for the end.
+- **Keep the verb close to the subject.** A long clause wedged between a subject and its verb makes
+  a sentence hard to parse. Rewrite so the verb arrives early, then let the qualifications follow.
+- **Prefer the active voice, and write as "we".** The active voice is clearer and shorter; the
+  first-person plural keeps it active without the "I" of a personal essay.
+- **Cut filler.** Drop words and phrases that add no meaning — "actually", "basically",
+  "essentially", "it is important to note that", "note that", a bare "now". Keep "thus" /
+  "therefore" only where they genuinely signal a conclusion.
+
+## English-specific mechanics (English prose only)
+
+- **Formal word choice.** Use "many" or "much", not "a lot of". Spell out contractions in formal
+  text. Reserve symbols and abbreviations for formulas; in prose, spell out the word (write "for
+  all", not "∀"; "such that", not "s.t.").
+- **Serial (Oxford) comma.** In a list of three or more items, put a comma before the final "and"
+  or "or": "the driver, the runner, and the reporter".
+- **That vs. which.** Use *that* (no comma) for a restrictive clause that specifies which thing you
+  mean. Use *which* (set off by commas) for a non-restrictive clause that adds information not
+  needed to identify the thing.
+- **No bare "this" / "that" as a noun.** Name what it points to: "this behavior", "that
+  constraint", not a lone "this".
+- **No singular "they" for an unspecified single person.** Reword to the plural ("reviewers raise
+  their hands") or a role, rather than "each reviewer raised their hand".
+- **Dashes.** A hyphen joins a compound adjective ("capability-aware selection"). An en-dash marks a
+  range ("steps 3–7") with no surrounding spaces. An em-dash sets off an aside for emphasis — with a
+  space on each side, per this repo's own convention (Chicago itself specifies no space).
+- **Numbers.** Spell out a positive whole number below ten used as an adjective ("three drivers");
+  use the numeral when it is a noun or ten or above.
+- **Colon.** Introduce a list or an elaboration with a colon only after a complete sentence.
+
+## Verify your work
+
+After drafting, reread once against this list: does the piece lead with its contribution, does each
+sentence end on its most important element, is the verb near its subject, is every sentence free of
+filler? For Japanese, run the same reread under [`japanese-tech-writing`](../japanese-tech-writing/SKILL.md).
+
+## References
+
+- Jeffrey Scott Vitter, *Structure + Style = Communication* (The University of Kansas, 2011) — the
+  source of the principles and English mechanics above.
+- [`japanese-tech-writing`](../japanese-tech-writing/SKILL.md) — the Japanese layer beneath this
+  norm.
+- [`docs/ai-development.md`](../../../docs/ai-development.md) — the *Documentation style* section
+  this skill is the authoritative reference for.
