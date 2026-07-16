@@ -147,6 +147,21 @@ def test_author_edit_mode_controls(tmp_path: Path) -> None:
         assert el in text, el
 
 
+def test_author_edit_mode_live_session_controls(tmp_path: Path) -> None:
+    """Edit ships a live-session picker (BE-0262): Start/Stop controls tagged au-edit so the mode
+    switcher shows them only in Edit, giving a working picker with no prior run."""
+    text = _index_text(tmp_path)
+    for el in (
+        'id="au-live-start"',
+        'id="au-live-stop"',
+        'data-testid="author.live-start"',
+        'data-testid="author.live-stop"',
+    ):
+        assert el in text, el
+    # The controls belong to the Edit mode group, so setMode reveals them only in Edit.
+    assert '<div class="au-live au-edit' in text
+
+
 def test_author_enrich_mode_controls(tmp_path: Path) -> None:
     text = _index_text(tmp_path)
     assert 'id="au-enrich"' in text
@@ -186,6 +201,27 @@ def test_author_js_wires_editor_endpoints(tmp_path: Path) -> None:
     assert "/api/scenario/resolve" in text
     assert "runId=" in text
     assert "scenario=" in text
+
+
+def test_author_js_wires_live_session_endpoints(tmp_path: Path) -> None:
+    """The live Edit picker reuses Capture's session endpoints (BE-0262): boot + screenshot to open,
+    resolve to pick, close to tear down without saving."""
+    text = _author_js(tmp_path)
+    for ep in (
+        "/api/capture/start",
+        "/api/capture/screenshot",
+        "/api/capture/resolve",
+        "/api/capture/close",
+    ):
+        assert ep in text, ep
+
+
+def test_author_js_states_no_run_no_session_prompt(tmp_path: Path) -> None:
+    """With no run and no live session, Edit states how to get a picker rather than sitting inert
+    (BE-0262 unit 3): the placeholder branches on the Run selection and points at the live session."""
+    text = _author_js(tmp_path)
+    assert "to pick elements on the current screen" in text
+    assert "$('#au-run').value" in text
 
 
 def test_author_js_wires_save_and_enrich(tmp_path: Path) -> None:

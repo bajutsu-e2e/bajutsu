@@ -26,8 +26,10 @@ from bajutsu.serve.operations._common import (
 from bajutsu.serve.operations.audit import audit_scenario
 from bajutsu.serve.operations.author_edit import apply_enrichment_edit, apply_selector_edit
 from bajutsu.serve.operations.capture import (
+    close_capture,
     finish_capture,
     mark_capture,
+    resolve_capture_pick,
     start_capture,
 )
 from bajutsu.serve.operations.codegen import generate_codegen
@@ -171,6 +173,7 @@ __all__ = [
     "bulk_delete_runs",
     "cancel_job",
     "claude_code_token_info",
+    "close_capture",
     "config_content",
     "config_info",
     "coverage_view",
@@ -204,6 +207,7 @@ __all__ = [
     "register_project",
     "render_metrics",
     "required_role",
+    "resolve_capture_pick",
     "resolve_scenario_pick",
     "respond_human",
     "restore_run",

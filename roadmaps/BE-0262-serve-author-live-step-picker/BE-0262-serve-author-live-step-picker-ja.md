@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0262](BE-0262-serve-author-live-step-picker-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0262") |
+| 実装 PR | [#1134](https://github.com/bajutsu-e2e/bajutsu/pull/1134) |
 | トピック | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 
@@ -77,11 +78,23 @@ Capture と同じ選択を再利用します）。
 > 作業の進行に合わせて最新に保ってください。チェックリストは *詳細設計* の MECE な作業分解を反映し
 > （作業単位ごとに 1 ボックス）、ログは変更内容と時期を（古い順に）記録し PR をリンクします。
 
-- [ ] Unit 1 — target/シナリオで絞った Author の run 一覧。
-- [ ] Unit 2 — ライブなステップ選択経路（ドライバ起動・スクリーンショット・クリック解決）。
-- [ ] Unit 3 — run なし・セッションなしの明示的な UI 状態。
-- [ ] Unit 4 — capture セッションのライフサイクルと所有の再利用。
-- [ ] Unit 5 — 絞り込み・ライブ解決・プレースホルダ状態のテスト。
+- [x] Unit 1 — target/シナリオで絞った Author の run 一覧。
+- [x] Unit 2 — ライブなステップ選択経路（ドライバ起動・スクリーンショット・クリック解決）。
+- [x] Unit 3 — run なし・セッションなしの明示的な UI 状態。
+- [x] Unit 4 — capture セッションのライフサイクルと所有の再利用。
+- [x] Unit 5 — 絞り込み・ライブ解決・プレースホルダ状態のテスト。
+
+### ログ
+
+- [#1134](https://github.com/bajutsu-e2e/bajutsu/pull/1134) — 5 つのユニットを 1 本の PR で実装しました。Unit 1 は `/api/runs` をシナリオ名で絞ります
+  （`runs_payload` のフィルタと `serve.author.mjs` の `auLoadRuns`）。Unit 2 は Capture のセッションを
+  使ってライブなドライバを起動し、`POST /api/capture/resolve` から到達する `resolve_capture_pick`
+  （actuate もステップ追加もしない純粋な解決）を追加します。run を選んでいないときは `read_scenario` が
+  シナリオ YAML からステップ一覧を導出するので、一度も run していないシナリオでも直す対象のステップが
+  そろいます。Unit 3 は run なしの不活性なプレースホルダに代えて、ライブセッションの始め方を示します。
+  Unit 4 は単一セッションのスロットと actor 単位の所有を再利用し、保存せずに終了する `close_capture`
+  （`POST /api/capture/close`）を加えます。Unit 5 は絞り込み・ライブ解決・プレースホルダ状態のテストを
+  追加します。
 
 ## 参考
 

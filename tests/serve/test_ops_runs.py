@@ -8,6 +8,7 @@ audit-log entry, and the lazy retention sweep with an injected clock.
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -38,6 +39,15 @@ def _run_dir(state: ServeState, run_id: str) -> None:
     d = state.runs_dir / run_id
     d.mkdir(parents=True)
     (d / "manifest.json").write_text('{"ok": true, "scenarios": []}')
+
+
+def _run_dir_for(state: ServeState, run_id: str, *scenario_names: str) -> None:
+    d = state.runs_dir / run_id
+    d.mkdir(parents=True)
+    scenarios = [{"scenario": name, "ok": True} for name in scenario_names]
+    (d / "manifest.json").write_text(
+        json.dumps({"ok": True, "scenarios": scenarios}), encoding="utf-8"
+    )
 
 
 def _audit_actions(repo: SqlRepository) -> list[tuple[str, str]]:
@@ -99,6 +109,32 @@ def test_bulk_delete_purge_is_a_strict_boolean(tmp_path: Path) -> None:
     assert (
         state.artifacts.restore_run("r1") is True
     )  # still in the trash — soft-deleted, not purged
+
+
+# --- scenario-scoped listing (BE-0262) ---
+
+
+def test_runs_payload_unscoped_lists_every_run(tmp_path: Path) -> None:
+    state = _local_state(tmp_path)
+    _run_dir_for(state, "r1", "login")
+    _run_dir_for(state, "r2", "checkout")
+    assert {r["id"] for r in ops.runs_payload(state)[0]} == {"r1", "r2"}
+
+
+def test_runs_payload_scoped_excludes_other_scenarios(tmp_path: Path) -> None:
+    # BE-0262 Unit 1: the Author run picker scopes to the loaded scenario so a chosen run's step ids
+    # line up with it. A run for another scenario is excluded.
+    state = _local_state(tmp_path)
+    _run_dir_for(state, "r1", "login")
+    _run_dir_for(state, "r2", "checkout")
+    assert [r["id"] for r in ops.runs_payload(state, scenario="login")[0]] == ["r1"]
+
+
+def test_runs_payload_scoped_keeps_a_multi_scenario_run(tmp_path: Path) -> None:
+    # A run that executed several scenarios matches when any of them is the loaded one.
+    state = _local_state(tmp_path)
+    _run_dir_for(state, "r1", "login", "checkout")
+    assert [r["id"] for r in ops.runs_payload(state, scenario="checkout")[0]] == ["r1"]
 
 
 # --- hosted (repository) ---
