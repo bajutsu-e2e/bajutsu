@@ -62,10 +62,10 @@ Proposal altitude. The work is MECE along the units below.
 
 ## Alternatives considered
 
-* **Leave all three at fake-only coverage.** The deterministic sub-paths are runnable on a real
+- **Leave all three at fake-only coverage.** The deterministic sub-paths are runnable on a real
   backend, and their real-device behavior (the mailbox fetch, crawl's screen-change detection and
   `recover`, MCP actuation) is unobserved. Fake-only leaves a runnable path untested.
-* **Gate the AI paths themselves.** Putting the model-driven crawl / record / enrich on a CI gate
+- **Gate the AI paths themselves.** Putting the model-driven crawl / record / enrich on a CI gate
   would place an LLM on the verdict path, violating prime directive 1. Only the deterministic
   sub-paths are in scope.
 
