@@ -80,9 +80,13 @@ final class LocationAuth: NSObject, ObservableObject, CLLocationManagerDelegate 
         status = Self.string(manager.authorizationStatus)
     }
 
-    // Raises the system location prompt (SpringBoard, out-of-process).
+    // Raises the system location prompt (SpringBoard, out-of-process). When authorization was
+    // already decided before launch (BE-0276's `permissions:` pre-grant), this call is a
+    // documented no-op with no state transition, so `locationManagerDidChangeAuthorization`
+    // never fires — resync here too rather than relying on the delegate alone.
     func request() {
         manager.requestWhenInUseAuthorization()
+        status = Self.string(manager.authorizationStatus)
     }
 
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
