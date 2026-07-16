@@ -705,7 +705,9 @@ apply equally when reporting on or summarizing work.
   fresh or translate the English mirror into `docs/ja/` (or a roadmap `*-ja.md`), apply
   [`japanese-tech-writing`](../.claude/skills/japanese-tech-writing/): it is the authoritative style
   for Japanese prose in this repo, and a translation must read as natural Japanese under those norms,
-  not a literal rendering of the English.
+  not a literal rendering of the English. It sits beneath the
+  [`tech-writing`](../.claude/skills/tech-writing/SKILL.md) umbrella (above); apply both for Japanese
+  prose.
 - **Japanese documents use 敬体 (the polite *desu/masu* style, ですます調).** Every Japanese file
   under `docs/ja/` and every roadmap `*-ja.md` is written in 敬体, never the plain *da/dearu* style
   (常体). Keep the whole document consistent: only sentence-final predicates take the polite form —
