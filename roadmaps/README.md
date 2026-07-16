@@ -645,7 +645,9 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 ### Development infrastructure (contributor workflow)
 
 <!-- GENERATED:proposals-developer-experience -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0278](BE-0278-tech-writing-skill/BE-0278-tech-writing-skill.md) | A unified technical-writing skill for BE items and prose docs | Proposal |
 <!-- /GENERATED:proposals-developer-experience -->
 
 ### Codebase quality & technical debt
