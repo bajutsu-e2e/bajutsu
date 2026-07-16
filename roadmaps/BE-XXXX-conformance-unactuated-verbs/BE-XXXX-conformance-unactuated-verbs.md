@@ -30,7 +30,7 @@ The text-editing steps ([BE-0265](../BE-0265-text-editing-steps/BE-0265-text-edi
 shipped, and each backend's command construction is unit-tested with a mocked subprocess. What no
 lane does is actuate `delete_text` / `select_all` / `copy_selection` against a real device or
 browser: the round-trip from a step to an observed field change is never exercised. `tap_point` is
-in the same position, with a real command test only on XCUITest and no lane that actuates it —
+in the same position, with a real command test only on XCUITest and Playwright and no lane that actuates it —
 and it is the foundation of the alert-dismissal path (the vision-located coordinate tap that
 [BE-0269](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention.md) relies on), so leaving it
 unobserved on-device is a real risk.
@@ -53,12 +53,15 @@ document) to present an editable field and a known-frame element.
 Proposal altitude. The work is MECE along the units below.
 
 - **Enumerate the verb contract.** State the invariants the new verbs must satisfy, grounded in the
-  `Driver` Protocol. Text editing: on a backend that declares the capability, `type_text` then
-  `select_all` then `copy_selection` completes without `UnsupportedAction`, and `delete_text`
-  reduces the field's reported length; on a backend that does not, each raises `UnsupportedAction`
-  (the idb / XCUITest / adb split for select and copy is asserted as the raise, mirroring the
-  existing `MULTI_TOUCH` and `SELECT_OPTION` contract tests). `tap_point`: a coordinate tap on an
-  element of known frame has the same observable effect as a semantic tap on it.
+  `Driver` Protocol. Text editing: a backend that actuates the verbs completes `type_text` then
+  `select_all` then `copy_selection` without `UnsupportedAction`, and `delete_text` reduces the
+  field's reported length; one that does not — idb, which raises `select_all` / `copy_selection`
+  unconditionally today — raises `UnsupportedAction`. Unlike `MULTI_TOUCH` and `SELECT_OPTION`,
+  there is no `Capability` token for text-editing select/copy yet, so a first sub-decision is
+  whether the contract asserts the actuate-versus-raise behavior directly or a new capability is
+  introduced (and added to each backend's `CAPABILITIES`) to gate it the same way; today adb,
+  Playwright, and XCUITest actuate select/copy while idb raises. `tap_point`: a coordinate tap on
+  an element of known frame has the same observable effect as a semantic tap on it.
 - **Extend the three conformance screens.** Add an editable text field and a known-frame element to
   the iOS `ConformanceView`, the Compose `ConformanceScreen`, and the web harness document, keeping
   the readiness marker contract intact.
@@ -73,11 +76,11 @@ Proposal altitude. The work is MECE along the units below.
 
 ## Alternatives considered
 
-* **Per-backend actuation scenarios in the showcase instead of the contract.** Authoring a
+- **Per-backend actuation scenarios in the showcase instead of the contract.** Authoring a
   text-editing / `tap_point` scenario per backend would duplicate the same intent four times and
   invite per-backend drift — exactly what the conformance suite exists to prevent. The contract is
   the point: one spec, every backend.
-* **Leave the text-editing verbs at command-construction unit tests only.** The mocked-subprocess
+- **Leave the text-editing verbs at command-construction unit tests only.** The mocked-subprocess
   tests prove the argv / HTTP / key-combination a backend builds, but never that the real device
   performs the edit. A capability the tool advertises but no lane observes is a promise without a
   check.
@@ -88,7 +91,7 @@ Proposal altitude. The work is MECE along the units below.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Enumerate the verb contract (text-editing round-trip, `tap_point`, capability-gated raises).
+- [ ] Enumerate the verb contract (text-editing round-trip, `tap_point`, actuate-vs-raise per backend, and whether to add a text-editing capability).
 - [ ] Extend the iOS / Compose / web conformance screens with an editable field and a known-frame element.
 - [ ] Add the new contract test bodies to `tests/driver_conformance.py`.
 - [ ] Wire screen realization into the on-device harnesses.
