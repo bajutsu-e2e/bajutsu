@@ -74,7 +74,7 @@ directives、docstring のスタイル
 | `make check` の実行内容一覧 | `CLAUDE.md`（すでにもっとも詳しい） | `docs/ai-development.md`、`CONTRIBUTING.md`、`AGENTS.md`、`docs/contributor-workflow-tutorial.md` |
 | docstring のスタイル（BE-0065） | `docs/ai-development.md` | `.github/claude-review-prompt.md` |
 | バイリンガルドキュメントの運用（どのファイルをいつ） | `docs/ai-development.md` | `.github/claude-review-prompt.md`、`AGENTS.md` |
-| 日本語の文章スタイル（敬体、造語を使わない） | `japanese-tech-writing` スキル（BE-0278 のとおり） | `.github/claude-review-prompt.md`、`AGENTS.md` |
+| 日本語の文章スタイル（敬体、造語を使わない） | `japanese-document-writing` スキル（BE-0278 のとおり） | `.github/claude-review-prompt.md`、`AGENTS.md` |
 | Prime directives | `CLAUDE.md`（維持。後述） | — |
 
 作業は MECE に次のとおり分解します。
