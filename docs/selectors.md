@@ -66,7 +66,7 @@ Addresses an element. **All provided fields are AND-ed.**
 
 ### Authoring vs. runtime representation
 
-- The scenario-side selector is `scenario/models/selector.py`'s `Selector` (pydantic, with aliases like `idMatches`).
+- The scenario-side [selector](glossary.md#scenario-authoring) is `scenario/models/selector.py`'s `Selector` (pydantic, with aliases like `idMatches`).
 - What reaches resolution is `drivers/base.py`'s `Selector` (TypedDict).
 - The conversion is `Selector.as_selector()` (drops `None`, turns it into a TypedDict).
 

@@ -2,7 +2,7 @@
 
 # AI authoring (record / Tier 1)
 
-> Tier 1 = AI live operation. From a natural-language goal, the AI explores and operates the app,
+> [Tier 1](glossary.md#the-two-tiers) = AI live operation. From a natural-language goal, the AI explores and operates the app,
 > then writes out a **deterministic scenario**. AI is involved only here (at record time). The
 > resulting YAML is AI-independent and is owned by the user from that point forward.
 >

@@ -2,7 +2,7 @@
 
 # 証跡（Evidence/Trace）サブシステム
 
-繰り返し発生する動作の証跡は、単発の指示ではなく **繰り返し発火するルール**として表現します。こうすると、2 回目以降も AI なしで同じ証跡が集まります。
+繰り返し発生する動作の[証跡](glossary.md#証跡-capturepolicy-trace-triage)は、単発の指示ではなく **繰り返し発火するルール**として表現します。こうすると、2 回目以降も AI なしで同じ証跡が集まります。
 
 実装: `bajutsu/evidence.py`（瞬時 + Sink）、`bajutsu/intervals.py`（区間: video / deviceLog / appTrace）。発火判定は orchestrator 側（[run-loop](run-loop.md#証跡ルールの発火)）で行います。
 

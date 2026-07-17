@@ -59,7 +59,7 @@ flowchart LR
 ### 1. Reach：より多くのプラットフォームと面
 
 `Driver`、環境、id 規約の継ぎ目は、設定で調整できるだけでなく **丸ごと差し替え**られるよう作ってあり、
-その結果 **同じ決定的コアが今日すでに iOS、Android、Web を駆動しています**。各プラットフォームは、
+その結果 **同じ決定的コアが今日すでに iOS、Android、Web を駆動しています**。各[プラットフォーム](glossary.md#driver-backend-actuator-platform)は、
 自分の actuator と環境、安定 id 規約だけを足しています。**iOS**（idb / XCUITest）、**web**
 （Playwright）、**Android**（adb）backend はいずれも実装済みで end-to-end に検証されています
 （[architecture → 実装状況](architecture.md#実装状況) 参照）。残るは **Flutter** です。

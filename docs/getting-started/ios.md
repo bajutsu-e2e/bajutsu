@@ -2,7 +2,7 @@
 
 # Getting started — iOS track
 
-> Finishes the [Getting started](index.md) loop on an **iOS Simulator** via the idb backend. Needs
+> Finishes the [Getting started](index.md) loop on an **iOS Simulator** via the idb [backend](../glossary.md#driver-backend-actuator-platform). Needs
 > macOS + Xcode. On a machine without a Mac, follow the [web track](web.md) instead — the same
 > loop against a browser, no Xcode or Simulator required.
 

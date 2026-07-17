@@ -62,7 +62,7 @@ flowchart LR
 ### 1. Reach — more platforms and surfaces
 
 The `Driver` / environment / id-convention seams were built to be replaced, not just configured, so
-**the same deterministic core drives iOS, Android, and the Web** today, with each platform adding
+**the same deterministic core drives iOS, Android, and the Web** today, with each [platform](glossary.md#driver-backend-actuator-platform) adding
 only its own actuator + environment + stable-id convention. **iOS** (idb / XCUITest), **web**
 (Playwright), and **Android** (adb) backends have all landed and are validated end-to-end (see
 [architecture → implementation status](architecture.md#implementation-status)); **Flutter** is the

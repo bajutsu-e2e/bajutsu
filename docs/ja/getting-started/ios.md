@@ -2,7 +2,7 @@
 
 # Getting started（iOS トラック）
 
-> [Getting started](index.md) のループを **iOS Simulator** 上で idb backend を使って完結させます。
+> [Getting started](index.md) のループを **iOS Simulator** 上で idb [backend](../glossary.md#driver-backend-actuator-platform) を使って完結させます。
 > macOS と Xcode が必要です。Mac がないマシンでは、代わりに[web トラック](web.md)を辿ってください。
 > Xcode も Simulator も要らず、同じループをブラウザに対して辿れます。
 

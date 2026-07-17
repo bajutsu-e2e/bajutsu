@@ -2,7 +2,7 @@
 
 # ドライバ抽象、バックエンド、環境管理
 
-> ひとつの `Driver` インターフェースの裏にバックエンド（`idb`（iOS Simulator）、`adb`（Android
+> ひとつの `Driver` インターフェースの裏に[バックエンド](glossary.md#driver-backend-actuator-platform)（`idb`（iOS Simulator）、`adb`（Android
 > エミュレータ）、`playwright`（web ブラウザ）、それにテスト用のインメモリ `fake`）を置き、能力差を
 > 抽象側で吸収します。プラットフォーム対応のレジストリが `backend` リストから actuator を選びます。
 > iOS ではアプリの起動（boot/launch）を `simctl` ラッパが担い、Android ではその双子である `adb`
