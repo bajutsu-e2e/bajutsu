@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from conftest import FakeBackend, FakeBlock, FakeUsage
 
-from bajutsu.agent_protocols import Observation
+from bajutsu.agents.claude import ClaudeAgent, proposal_from_call
+from bajutsu.agents.protocols import Observation
 from bajutsu.ai.base import (
     AnyTool,
     ImagePart,
@@ -13,7 +14,6 @@ from bajutsu.ai.base import (
     TextPart,
     ToolUseBlock,
 )
-from bajutsu.claude_agent import ClaudeAgent, proposal_from_call
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.record import record
@@ -170,7 +170,7 @@ def test_request_uses_forced_tool_choice() -> None:
 
 
 def test_effort_is_threaded_into_the_request() -> None:
-    from bajutsu.ai_config import AiConfig
+    from bajutsu.agents.ai_config import AiConfig
 
     backend = FakeBackend(FakeBlock("tap", {"id": "a"}))
     ClaudeAgent(backend=backend, ai=AiConfig(effort="high")).next_action(_obs())
@@ -180,7 +180,7 @@ def test_effort_is_threaded_into_the_request() -> None:
 def test_output_language_is_folded_into_the_system_prompt() -> None:
     # BE-0188: `ai.language` appends a language instruction to the system prompt; `auto` (default)
     # appends nothing, so the prompt stays byte-identical (and prompt-cacheable).
-    from bajutsu.ai_config import AiConfig
+    from bajutsu.agents.ai_config import AiConfig
 
     default = FakeBackend(FakeBlock("tap", {"id": "a"}))
     ClaudeAgent(backend=default).next_action(_obs())
@@ -216,7 +216,7 @@ def test_no_screenshot_is_text_only() -> None:
 
 def test_text_only_turn_with_vision_available_invites_need_screenshot() -> None:
     # BE-0192: a text-only turn in a vision-capable session nudges the agent to escalate on demand.
-    from bajutsu.claude_agent import _render
+    from bajutsu.agents.claude import _render
 
     obs = Observation(
         goal="g", screen=[_el("a", "A")], history=[]
@@ -230,7 +230,7 @@ def test_no_vision_session_forbids_need_screenshot() -> None:
     # BE-0192: in --no-screenshot mode (vision_available=False) the guidance must explicitly forbid
     # escalating — need_screenshot can never be satisfied and would dead-end the record. The
     # on-demand invitation must be absent; a clear prohibition must be present.
-    from bajutsu.claude_agent import _render
+    from bajutsu.agents.claude import _render
 
     obs = Observation(goal="g", screen=[_el("a", "A")], history=[], vision_available=False)
     text = _render(obs)
@@ -272,13 +272,13 @@ def test_plan_decomposes_goal_into_steps() -> None:
     assert isinstance(request.tool_choice, NamedTool) and request.tool_choice.name == "plan"
     assert {t.name for t in request.tools} == {"plan"}
     # The plan is best-effort, so it's bounded by a short timeout (a hung CLI must not stall the run).
-    from bajutsu.claude_agent import PLAN_TIMEOUT_S
+    from bajutsu.agents.claude import PLAN_TIMEOUT_S
 
     assert request.timeout_s == PLAN_TIMEOUT_S
 
 
 def test_plan_is_rendered_into_the_turn_prompt() -> None:
-    from bajutsu.claude_agent import _render
+    from bajutsu.agents.claude import _render
 
     obs = Observation(
         goal="g", screen=[_el("a", "A")], history=[], plan=["First do X", "Then do Y"]
@@ -311,7 +311,7 @@ def _element_lines(text: str) -> list[str]:
 
 
 def test_empty_value_and_traits_are_dropped_from_the_line() -> None:
-    from bajutsu.claude_agent import _render
+    from bajutsu.agents.claude import _render
 
     obs = Observation(goal="g", screen=[_full_el("a", "A", None, [])], history=[])
     line = _element_lines(_render(obs))[0]
@@ -320,7 +320,7 @@ def test_empty_value_and_traits_are_dropped_from_the_line() -> None:
 
 
 def test_every_addressing_field_is_kept_when_present() -> None:
-    from bajutsu.claude_agent import _render
+    from bajutsu.agents.claude import _render
 
     obs = Observation(
         goal="g", screen=[_full_el("f", "Email", "you@x.co", ["textField"])], history=[]
@@ -331,7 +331,7 @@ def test_every_addressing_field_is_kept_when_present() -> None:
 
 
 def test_valueless_element_keeps_traits_so_it_stays_addressable() -> None:
-    from bajutsu.claude_agent import _render
+    from bajutsu.agents.claude import _render
 
     # No id, no label, no value — only traits. It must still render (addressable by traits),
     # so compaction never turns it into a dropped, unaddressable element.
@@ -344,7 +344,7 @@ def test_valueless_element_keeps_traits_so_it_stays_addressable() -> None:
 
 
 def test_small_screen_never_reports_omissions() -> None:
-    from bajutsu.claude_agent import _render
+    from bajutsu.agents.claude import _render
 
     screen = [_full_el("a", "A", None, ["button"]), _full_el(None, None, None, [])]
     text = _render(Observation(goal="g", screen=screen, history=[]))
@@ -352,7 +352,7 @@ def test_small_screen_never_reports_omissions() -> None:
 
 
 def test_large_screen_collapses_only_the_non_addressable_remainder() -> None:
-    from bajutsu.claude_agent import _LARGE_SCREEN_ELEMENTS, _render
+    from bajutsu.agents.claude import _LARGE_SCREEN_ELEMENTS, _render
 
     addressable = [_full_el(f"row{i}", f"Row {i}", None, ["button"]) for i in range(60)]
     decorative = [_full_el(None, None, None, []) for _ in range(5)]
@@ -366,7 +366,7 @@ def test_large_screen_collapses_only_the_non_addressable_remainder() -> None:
 
 
 def test_large_screen_of_only_addressable_elements_reports_nothing() -> None:
-    from bajutsu.claude_agent import _LARGE_SCREEN_ELEMENTS, _render
+    from bajutsu.agents.claude import _LARGE_SCREEN_ELEMENTS, _render
 
     screen = [
         _full_el(f"r{i}", f"R{i}", None, ["button"]) for i in range(_LARGE_SCREEN_ELEMENTS + 5)

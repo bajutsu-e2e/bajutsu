@@ -9,7 +9,7 @@ from pathlib import Path
 
 from _shared import project
 
-from bajutsu.agent_protocols import EnrichmentProposal, StepContext
+from bajutsu.agents.protocols import EnrichmentProposal, StepContext
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.scenario import Assertion, Scenario

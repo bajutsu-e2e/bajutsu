@@ -14,7 +14,9 @@ from typing import Any
 import pytest
 from conftest import FakeBlock
 
-from bajutsu.agent_protocols import Observation
+from bajutsu.agents.ai_config import AiConfig
+from bajutsu.agents.claude import ClaudeAgent
+from bajutsu.agents.protocols import Observation
 from bajutsu.ai import base, create_backend, credential_gap, known_providers
 from bajutsu.ai.base import (
     AnyTool,
@@ -27,8 +29,6 @@ from bajutsu.ai.base import (
     ToolUseBlock,
 )
 from bajutsu.ai.registry import Adapter, register
-from bajutsu.ai_config import AiConfig
-from bajutsu.claude_agent import ClaudeAgent
 from bajutsu.config import AiSettings
 from bajutsu.drivers import base as drivers_base
 from bajutsu.redaction import Redactor
@@ -154,7 +154,7 @@ def test_announce_ai_pushes_each_line_to_the_report_sink() -> None:
 
 
 def test_credential_gap_dispatches_to_the_resolved_provider(monkeypatch: Any) -> None:
-    from bajutsu import anthropic_client
+    from bajutsu.agents import anthropic_client
 
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     # api-key without a key, and Bedrock without a model id, each report their own gap token.

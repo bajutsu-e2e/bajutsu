@@ -17,8 +17,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from bajutsu.agents.ai_config import DEFAULT_PROVIDER, AiConfig, resolve_model, resolve_provider
 from bajutsu.ai.base import AiBackend
-from bajutsu.ai_config import DEFAULT_PROVIDER, AiConfig, resolve_model, resolve_provider
 
 BackendFactory = Callable[[AiConfig | None], AiBackend]
 CredentialGap = Callable[[AiConfig | None], str | None]

@@ -105,17 +105,14 @@ The `bajutsu/` package (Python 3.13+, pydantic v2 / typer / anthropic / pyyaml /
 | `provision.py` | Config-aware environment installer (BE-0164): resolve a config's backends + AI provider, install only their extras/tools idempotently (`make install`) | — |
 | `runner/` | config + scenarios → report; device pool + launch sequence (package: `pipeline` / `pool` / `launch`) | [run-loop](run-loop.md#runner-the-run-pipeline) |
 | `doctor.py` | Convention score (id coverage, etc.) | [configuration](configuration.md#doctor-the-convention-score) |
-| `agent_protocols.py` · `agent_factory.py` | Authoring Agent abstraction (`Observation`/`Proposal`/`Agent`) + construction of the one SDK-backed agent | [recording](recording.md) |
-| `ai/` | Vendor-neutral AI backend seam (BE-0104): `AiBackend` protocol + normalized request/response types (`base`), provider registry (`registry`), Anthropic reference adapter over `anthropic_client` (`anthropic`) — the Anthropic API, Amazon Bedrock, and the Anthropic CLI `ant` (BE-0163) | [configuration](configuration.md#ai-provider-ai-be-0047) |
-| `claude_agent.py` | The SDK authoring agent (forced tool use · prompt cache); provider-agnostic — Anthropic API / Bedrock / `ant` | [recording](recording.md#the-claude-authoring-agent) |
+| `agents/` | AI / authoring-agent periphery (BE-0257): `protocols` + `factory` (the `Observation`/`Proposal`/`Agent` abstraction + construction of the one SDK-backed agent), `claude` (the authoring agent), `claude_backed` (shared base, BE-0246), `claude_enrich`, `claude_triage`, `ai_config` (provider/model/effort/language resolution), `anthropic_client` (SDK client construction), `availability` (credential-gap messaging), `enrich` (the enrichment loop), `alerts` (system-alert guard) | [recording](recording.md) |
+| `ai/` | Vendor-neutral AI backend seam (BE-0104): `AiBackend` protocol + normalized request/response types (`base`), provider registry (`registry`), Anthropic reference adapter over `agents.anthropic_client` (`anthropic`) — the Anthropic API, Amazon Bedrock, and the Anthropic CLI `ant` (BE-0163) | [configuration](configuration.md#ai-provider-ai-be-0047) |
 | `record.py` | The record loop (observe → propose → execute → emit) | [recording](recording.md#the-record-loop) |
 | `crawl/` | Autonomous breadth-first crawl → screen map: `core` engine + `serialize`, with `guide` / `tabs` / `report` / `repro` / `flows` | [recording](recording.md) |
-| `alerts.py` | System-alert detection / dismissal (vision locator) | [recording](recording.md#dismissing-system-alerts-automatically) |
 | `codegen/` | Scenario → native test generation: XCUITest (Swift), Playwright (TypeScript), UI Automator (Kotlin) | [codegen](codegen.md) |
 | `visual.py` | Visual-regression image comparison (the `visual` assertion) | [evidence](evidence.md) |
 | `trace.py` | Text timeline over a saved run (the `trace` command) | [cli](cli.md) |
 | `triage.py` | M4 self-heal: rule-based `HeuristicTriageAgent` + structured fixes (`renameId`/`addIndex`/`raiseTimeout`), `--apply`/`--write`/`--rerun` | [cli](cli.md) |
-| `claude_triage.py` | Claude-backed `TriageAgent` (`--ai`, failure screenshot) | [cli](cli.md) |
 | `github/` | GitHub helpers: `actions` (CI, continuous integration, annotations + job summary), `app` (App installation token for the private-repo config source), `errors` (the shared access error) | [ci](ci.md) |
 | `serve/` | Local web UI (the `serve` command): author / run / reports / triage a failed run | [cli](cli.md) |
 | `mcp/` | MCP server: exposes `run`/`doctor` as tools + run evidence as resources | [cli](cli.md) |
@@ -144,10 +141,10 @@ flowchart TB
     record["record.py / crawl/<br/>(Tier 1 / AI)"]
     codegen["codegen/<br/>(structural)"]
     trace["trace.py<br/>(timeline)"]
-    triage["triage.py / claude_triage.py<br/>(self-heal · advisory)"]
+    triage["triage.py / agents/claude_triage.py<br/>(self-heal · advisory)"]
 
     orch["orchestrator/"]
-    agentStuff["agent_protocols.py / agent_factory.py /<br/>claude_agent.py / alerts.py"]
+    agentStuff["agents/<br/>(protocols · factory · claude · alerts · …)"]
     serveGh["serve/ · github/<br/>(web UI · CI)"]
 
     assertions["assertions/"]
@@ -221,10 +218,10 @@ declared:
 2. **Contract** — the stable surfaces a consumer depends on: the scenario schema (`scenario/`) and
    the `Driver` Protocol (`drivers/base.py`).
 3. **Periphery** — the consumers of the contract, each removable behind an optional extra:
-   `serve/`, `mcp/`, the codegen emitters, the AI / agent paths (`agent_protocols.py`, `ai_config.py`,
-   `anthropic_client.py`, `record.py`, `enrich.py`, `triage.py`, `crawl/guide.py`, …), and the
-   `github/actions.py` / `notify.py` / `alerts.py` helpers (the rest of `github/` — `app` / `errors`
-   — is core-safe, so `config_source` reaches it without pulling the periphery in).
+   `serve/`, `mcp/`, the codegen emitters, the AI / agent paths (`agents/` — `protocols`, `ai_config`,
+   `anthropic_client`, `enrich`, `alerts`, … — plus `record.py`, `triage.py`, `crawl/guide.py`, …),
+   and the `github/actions.py` / `notify.py` helpers (the rest of `github/` — `app` / `errors` — is
+   core-safe, so `config_source` reaches it without pulling the periphery in).
 
 Three contracts are enforced:
 
@@ -391,7 +388,7 @@ device (the shared device is reseeded via one channel, so parallel workers would
   gate (`preflight.py`: iOS needs the required CLIs + a booted Simulator; web needs Playwright + its
   Chromium browser)
 - The `trace` command (`trace.py`): a text timeline over a saved run (steps + network + appTrace)
-- M4 self-healing triage (`triage.py` + `claude_triage.py`): assemble a failed run's context +
+- M4 self-healing triage (`triage.py` + `agents/claude_triage.py`): assemble a failed run's context +
   a `TriageAgent` diagnosis (rule-based `HeuristicTriageAgent`, or `--ai` Claude with the failure
   screenshot). An agent can propose a structured fix (`renameId` / `addIndex` / `raiseTimeout`);
   `--apply`/`--write` patches the scenario source (diff-previewed, opt-in) and `--rerun` re-runs it

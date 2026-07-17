@@ -66,9 +66,13 @@ def test_run_path_top_level_modules_are_relevant() -> None:
         "bajutsu/mailbox.py",
         "bajutsu/intervals.py",
         # record.py unconditionally imports the Agent/EnrichmentAgent protocols from
-        # agent_protocols (record is an E2E verb), mirroring the old agent.py entry. Its sibling
-        # agent_factory (the old agents.py) is deliberately excluded — see the parity test below.
-        "bajutsu/agent_protocols.py",
+        # agents.protocols (record is an E2E verb), mirroring the old agent.py entry (now
+        # agent_protocols.py, packaged by BE-0257). Its sibling agents.factory (the old
+        # agents.py / agent_factory.py) is deliberately excluded — see the parity test below.
+        "bajutsu/agents/protocols.py",
+        # `bajutsu.agents.protocols` executes `agents/__init__.py` on import, same as
+        # `crawl/__init__.py` below.
+        "bajutsu/agents/__init__.py",
         "bajutsu/crawl/core.py",
         # record imports `screen_identity` through the package re-export, so `__init__` is on the
         # on-device import path — and `__init__` unconditionally imports `serialize` too, putting it
@@ -81,11 +85,12 @@ def test_run_path_top_level_modules_are_relevant() -> None:
 
 
 def test_agent_factory_is_not_relevant_by_parity() -> None:
-    # agent_factory.py is the renamed agents.py, which was never on the allow-list: only agent.py
-    # (now agent_protocols.py) was. cli/commands/record.py does import make_agent from it, so an
-    # argument exists for listing it — but that is a trigger-surface change, not a rename, so the
-    # BE-0246 rename keeps exact parity and leaves closing that latent gap to a separate decision.
-    assert is_relevant(["bajutsu/agent_factory.py"]) is False
+    # agents/factory.py (was agent_factory.py, the renamed agents.py) was never on the allow-list:
+    # only agent.py (now agents/protocols.py) was. cli/commands/record.py does import make_agent
+    # from it, so an argument exists for listing it — but that is a trigger-surface change, not a
+    # rename, so the BE-0246/BE-0257 renames keep exact parity and leave closing that latent gap to
+    # a separate decision.
+    assert is_relevant(["bajutsu/agents/factory.py"]) is False
 
 
 def test_non_run_path_top_level_modules_are_not_relevant() -> None:
@@ -97,7 +102,7 @@ def test_non_run_path_top_level_modules_are_not_relevant() -> None:
         "bajutsu/audit.py",
         "bajutsu/coverage.py",
         "bajutsu/usage_stats.py",
-        "bajutsu/alerts.py",
+        "bajutsu/agents/alerts.py",
         "bajutsu/github.py",
         # The crawl engine core/serialize/__init__ trigger (above), but the periphery siblings in the
         # same package do not — the on-device run never imports them, so `crawl/**` must not be swept

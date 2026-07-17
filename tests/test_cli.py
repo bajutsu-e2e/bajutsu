@@ -163,7 +163,7 @@ def test_triage_ai_fails_closed_without_credential(
 
 def test_credential_gap_messages_for_ant_are_actionable() -> None:
     # The ant provider's fail-closed messages (BE-0163) name the fix, mirroring bedrock's.
-    from bajutsu.anthropic_client import ANT_CLI_MISSING, ANT_CLI_UNAUTHENTICATED
+    from bajutsu.agents.anthropic_client import ANT_CLI_MISSING, ANT_CLI_UNAUTHENTICATED
     from bajutsu.cli._shared import _credential_gap_message
     from bajutsu.config import load_config, resolve
 

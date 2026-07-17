@@ -863,7 +863,7 @@ def _fake_cross_run_agent(fix: Fix | None) -> type:
 
 def _stub_ai_cli(monkeypatch: pytest.MonkeyPatch, fix: Fix | None) -> None:
     monkeypatch.setattr(
-        "bajutsu.claude_triage.ClaudeCrossRunTriageAgent", _fake_cross_run_agent(fix)
+        "bajutsu.agents.claude_triage.ClaudeCrossRunTriageAgent", _fake_cross_run_agent(fix)
     )
     monkeypatch.setattr("bajutsu.cli.commands.triage._require_ai_credential", lambda eff: None)
     monkeypatch.setattr("bajutsu.cli.commands.triage._install_usage_ledger", lambda eff, cmd: None)

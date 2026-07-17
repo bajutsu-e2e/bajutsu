@@ -11,8 +11,8 @@ import struct
 
 from conftest import FakeBackend, FakeBlock, el
 
+from bajutsu.agents.ai_config import AiConfig
 from bajutsu.ai.base import AnyTool, ImagePart, TextPart
-from bajutsu.ai_config import AiConfig
 from bajutsu.crawl import tabs as crawl_tabs
 
 

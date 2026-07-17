@@ -344,7 +344,7 @@ def _alert_guard_factory(
 
     if not any(_enabled(s) for s in scenarios):
         return None
-    from bajutsu.alerts import SystemAlertGuard
+    from bajutsu.agents.alerts import SystemAlertGuard
 
     # One shared locator across the per-scenario guards (one client), None when the credential is
     # missing (the shared helper prints the note and no-ops, so the guard never falls back). Mask the

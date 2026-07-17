@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from conftest import ShotDriver
 
-from bajutsu.agent_protocols import Observation, Proposal
+from bajutsu.agents.protocols import Observation, Proposal
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.elements import shows_app_ui

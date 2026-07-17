@@ -248,16 +248,7 @@ forbidden_modules = [
     "bajutsu.serve",
     "bajutsu.mcp",
     "bajutsu.codegen",
-    "bajutsu.agent_protocols",
-    "bajutsu.agent_factory",
-    "bajutsu.claude_agent",
-    "bajutsu.claude_backed_agent",
-    "bajutsu.claude_enrich_agent",
-    "bajutsu.claude_triage",
-    "bajutsu.ai_config",
-    "bajutsu.anthropic_client",
-    "bajutsu.ai_availability",
-    "bajutsu.enrich",
+    "bajutsu.agents",
     "bajutsu.triage",
     "bajutsu.record",
     "bajutsu.record_capture",
@@ -265,7 +256,6 @@ forbidden_modules = [
     "bajutsu.crawl.guide",
     "bajutsu.github.actions",
     "bajutsu.notify",
-    "bajutsu.alerts",
 ]
 
 # The deterministic core must also stay free of the hosting-only third-party extras (BE-0129): the

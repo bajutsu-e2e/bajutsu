@@ -13,8 +13,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from bajutsu.agents.ai_config import AiConfig
 from bajutsu.ai.registry import announcement
-from bajutsu.ai_config import AiConfig
 
 
 def announce_ai(

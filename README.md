@@ -252,21 +252,19 @@ bajutsu/
 ├── orchestrator/         # deterministic Tier 2 run loop (act → wait → verify)
 ├── runner/               # config + scenarios -> report via a device pool
 ├── report/               # manifest.json + JUnit + interactive HTML
-├── evidence.py           # instant captures (screenshot / elements) + Sinks
-├── intervals.py          # interval capture (video / deviceLog) via simctl
-├── network.py            # network observation (exchange model + collector)
-├── visual.py             # visual-regression image comparison
-├── redaction.py          # mask secrets in captured evidence
+├── evidence/              # instant + interval captures (core), network observation, visual-regression
+│                          #   comparison, golden element-tree comparison, secret redaction
+├── analysis/              # read-only advisory analysis: coverage, determinism audit, run-stats
 ├── config.py             # team defaults × per-target resolution (iOS bundleId / web baseUrl)
 ├── simctl.py             # simctl command layer (iOS environment)
 ├── preflight.py          # environment runnability gate for doctor / CI
 ├── doctor.py             # convention score
-├── agent_protocols.py · agent_factory.py  # authoring Agent abstraction + construction (Tier 1)
-├── claude_agent.py       # the SDK authoring agent (Anthropic API / Bedrock / ant)
+├── agents/                # AI/agent periphery: protocols + factory, the Claude authoring/enrich/triage
+│                          #   agents, ai_config/anthropic_client, availability, enrich loop, alert guard
 ├── record.py             # record loop: explore -> emit a scenario
 ├── crawl/                # autonomous breadth-first crawl -> screen map (core + guide/tabs/report/repro/flows)
-├── alerts.py             # system-alert guard (vision locator)
-├── codegen/              # scenario -> native tests (XCUITest / Playwright / UI Automator)
+├── analytics/             # token/cost accounting: usage, the attributed ledger, the usage dashboard
+├── codegen/               # scenario -> native tests (XCUITest / Playwright / UI Automator)
 ├── trace.py              # inspect a finished run as a text timeline
 ├── triage.py             # self-healing triage: diagnose a failed run, propose a fix
 ├── lint.py               # scenario linter + JSON Schema generation

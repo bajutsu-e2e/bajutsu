@@ -15,8 +15,8 @@ from pathlib import Path
 import pytest
 from sqlalchemy import create_engine
 
-from bajutsu import ai_config as aic
 from bajutsu import serve as srv
+from bajutsu.agents import ai_config as aic
 from bajutsu.serve import operations as ops
 from bajutsu.serve.jobs import _spawn_env
 from bajutsu.serve.operations.config import provider_env, resolve_provider_env

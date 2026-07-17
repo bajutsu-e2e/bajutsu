@@ -51,12 +51,13 @@ from collections.abc import Iterable
 _RUN_PATH = (
     r"bajutsu/(?:runner|scenario|orchestrator|codegen)/"
     r"|bajutsu/(?:"
-    r"_yaml|adb|agent_protocols|artifact_perms|backends|capabilities|capability_preflight"
+    r"_yaml|adb|artifact_perms|backends|capabilities|capability_preflight"
     r"|config|config_source|device_id|dom|dotenv|elements|evidence|golden"
     r"|handoff|idb_version|interp|intervals|mailbox|network|platform_lifecycle|record"
     r"|redaction|run_id|screenshots|simctl|totp|visual|web_network|webview"
     r")\.py$"
     r"|bajutsu/crawl/(?:core|serialize|__init__)\.py$"
+    r"|bajutsu/agents/(?:protocols|__init__)\.py$"
     r"|bajutsu/assertions/"
     # The driver abstraction (Point/Element/Selector, the Driver Protocol, selector resolution) every
     # backend's driver module imports, along with the shared run-path modules above (runner/,

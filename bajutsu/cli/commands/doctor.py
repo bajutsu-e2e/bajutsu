@@ -7,8 +7,9 @@ from pathlib import Path
 import typer
 
 from bajutsu import adb as _adb
-from bajutsu import ai_availability, capability_preflight, device_errors, preflight
+from bajutsu import capability_preflight, device_errors, preflight
 from bajutsu import simctl as _simctl
+from bajutsu.agents import availability as ai_availability
 from bajutsu.ai import credential_gap
 from bajutsu.backends import (
     capabilities_for,
