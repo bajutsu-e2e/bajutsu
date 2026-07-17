@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-glossary-link-requirement-ja.md)
+**English** · [日本語](BE-0286-glossary-link-requirement-ja.md)
 
-# BE-XXXX — Link glossary terms to their definitions on first use
+# BE-0286 — Link glossary terms to their definitions on first use
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-glossary-link-requirement.md) |
+| Proposal | [BE-0286](BE-0286-glossary-link-requirement.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0286") |
 | Topic | Development infrastructure (contributor workflow) |
 | Related | [BE-0213](../BE-0213-glossary-and-docs-structure/BE-0213-glossary-and-docs-structure.md) |
 <!-- /BE-METADATA -->

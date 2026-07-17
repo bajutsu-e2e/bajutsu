@@ -601,7 +601,9 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 ### Development infrastructure (contributor workflow)
 
 <!-- GENERATED:proposals-developer-experience -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0286](BE-0286-glossary-link-requirement/BE-0286-glossary-link-requirement.md) | Link glossary terms to their definitions on first use | Proposal |
 <!-- /GENERATED:proposals-developer-experience -->
 
 ### Codebase quality & technical debt

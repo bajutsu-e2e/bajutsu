@@ -1,14 +1,14 @@
-[English](BE-XXXX-glossary-link-requirement.md) · **日本語**
+[English](BE-0286-glossary-link-requirement.md) · **日本語**
 
-# BE-XXXX — 用語集の用語を初出時にリンクする
+# BE-0286 — 用語集の用語を初出時にリンクする
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-glossary-link-requirement-ja.md) |
+| 提案 | [BE-0286](BE-0286-glossary-link-requirement-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0286") |
 | トピック | 開発基盤（コントリビュータ体験） |
 | 関連 | [BE-0213](../BE-0213-glossary-and-docs-structure/BE-0213-glossary-and-docs-structure-ja.md) |
 <!-- /BE-METADATA -->
