@@ -31,12 +31,12 @@ from bajutsu.config_source import (
     DEFAULT_CONFIG as DEFAULT_CONFIG,  # re-exported: the single owner is config_source (BE-0251)
 )
 from bajutsu.config_source import (
-    GitHubAccessError,
     is_full_sha,
     materialize,
     parse_config_spec,
     source_provenance,
 )
+from bajutsu.github import GitHubAccessError
 from bajutsu.redaction import Redactor
 from bajutsu.runner.launch_server import start_launch_server
 

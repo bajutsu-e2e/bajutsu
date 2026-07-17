@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0257") |
-| 実装 PR | [#1045](https://github.com/bajutsu-e2e/bajutsu/pull/1045)、[#1052](https://github.com/bajutsu-e2e/bajutsu/pull/1052) |
+| 実装 PR | [#1045](https://github.com/bajutsu-e2e/bajutsu/pull/1045)、[#1052](https://github.com/bajutsu-e2e/bajutsu/pull/1052)、[#1172](https://github.com/bajutsu-e2e/bajutsu/pull/1172) |
 | トピック | コードベース品質・技術的負債 |
 | 関連 | [BE-0112](../BE-0112-layer-boundary-enforcement/BE-0112-layer-boundary-enforcement-ja.md)、[BE-0135](../BE-0135-module-naming-debt/BE-0135-module-naming-debt-ja.md)、[BE-0092](../BE-0092-crawl-coordinator-extraction/BE-0092-crawl-coordinator-extraction-ja.md) |
 <!-- /BE-METADATA -->
@@ -139,8 +139,8 @@
 - [x] `bajutsu/codegen/` パッケージ（`__init__` / `common` / `emit` / `playwright` / `uiautomator`）。
 - [x] `bajutsu/crawl/` パッケージ（`__init__` / `core` / `flows` / `guide` / `report` / `repro` /
   `tabs` / `serialize`）。
-- [ ] `bajutsu/github/` パッケージ（`__init__` / `actions` / `app`）。`config_source` と
-  `github_app` の循環を解消します。
+- [x] `bajutsu/github/` パッケージ（`__init__` / `actions` / `app` / `errors`）。`config_source`
+  と `github_app` の循環を解消します。
 - [ ] `bajutsu/agents/` の周辺パッケージ（9個のモジュール）。
 - [ ] `bajutsu/evidence/` と `bajutsu/analysis/` のパッケージ。
 - [ ] `bajutsu/analytics/` パッケージ（`usage` / `ledger` / `stats`）。
@@ -160,6 +160,13 @@
   パスフィルタを `crawl/core.py` と `crawl/serialize.py`、`crawl/__init__.py`（オンデバイス実行が
   import するエンジンと re-export。周辺のモジュールは対象外のまま）へ向け直し、日英のドキュメントも
   更新しました。
+- 2026-07-17（[#1172](https://github.com/bajutsu-e2e/bajutsu/pull/1172)）: ステージ 3。フラットな
+  `github.py` / `github_app.py` を `bajutsu/github/` パッケージ（`actions` の CI エミッタと `app` の
+  App トークン経路、`errors`、re-export の `__init__`）へ移動し、`GitHubAccessError` を独立した
+  `github/errors.py` へ移しました。これで `github.app` と `config_source` は互いを import せずに共有
+  でき、`config_source` ↔ `github_app` の循環を根本から解消します。あわせて import-linter の
+  `bajutsu.github` を `bajutsu.github.actions`（周辺の部分。`app` と `errors` は決定的コアからも安全に
+  参照できます）へ向け直し、日英のドキュメントも更新しました。
 
 ## 参考
 

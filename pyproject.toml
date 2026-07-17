@@ -59,7 +59,7 @@ oauth = ["authlib>=1.3"]
 # responseSchema assertion is evaluated — never on the default path.
 schema = ["jsonschema>=4.0"]
 # GitHub App installation-token auth for the private-repo config source (BE-0224): `cryptography`
-# signs the RS256 App JWT. Imported lazily (`bajutsu.github_app`), only when App credentials are
+# signs the RS256 App JWT. Imported lazily (`bajutsu.github.app`), only when App credentials are
 # configured — a personal-access-token deployment never loads it, never on the default path.
 githubapp = ["cryptography>=42.0"]
 # Evidence upload to object storage via a single URI (BE-0110). The SDK is imported lazily, only
@@ -263,7 +263,7 @@ forbidden_modules = [
     "bajutsu.record_capture",
     "bajutsu.screenshots",
     "bajutsu.crawl.guide",
-    "bajutsu.github",
+    "bajutsu.github.actions",
     "bajutsu.notify",
     "bajutsu.alerts",
 ]

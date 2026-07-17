@@ -261,7 +261,7 @@ bajutsu/
 ├── trace.py              # 完了した run をテキストのタイムラインで確認
 ├── triage.py             # 自己修復トリアージ: 失敗 run を診断し修正案を提示
 ├── lint.py               # シナリオ linter + JSON Schema 生成
-├── github.py             # `run` の GitHub Actions 連携
+├── github/               # GitHub 連携: actions（CI アノテーション）、app（App インストールトークン）、errors（共有エラー）
 ├── mcp/                  # MCP サーバ（エージェント連携用のツール + リソース）
 ├── serve/                # ローカル Web UI（オーサリング + 実行 + レポート; Tier 1）
 ├── cli/                  # CLI (typer) — コマンドごとに cli/commands/ 配下の 1 ファイル

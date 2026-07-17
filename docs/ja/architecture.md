@@ -115,7 +115,7 @@ flowchart TB
 | `trace.py` | 保存済み run のテキストタイムライン（`trace` コマンド） | [cli](cli.md) |
 | `triage.py` | M4 自己修復: ルールベース `HeuristicTriageAgent` + 構造化 fix（`renameId`/`addIndex`/`raiseTimeout`）、`--apply`/`--write`/`--rerun` | [cli](cli.md) |
 | `claude_triage.py` | Claude ベースの `TriageAgent`（`--ai`、失敗スクリーンショット） | [cli](cli.md) |
-| `github.py` | GitHub ヘルパ（CI） | [ci](ci.md) |
+| `github/` | GitHub ヘルパ：`actions`（CI、アノテーション + ジョブサマリ）、`app`（プライベートリポジトリの config source 向けの App インストールトークン）、`errors`（共有するアクセスエラー） | [ci](ci.md) |
 | `serve/` | ローカル Web UI（`serve` コマンド）: オーサリング / 実行 / レポート / 失敗した run の triage | [cli](cli.md) |
 | `mcp/` | MCP サーバ: `run`/`doctor` をツール + 実行証跡をリソースとして公開 | [cli](cli.md) |
 | `lint.py` | シナリオ linter + JSON Schema 生成（`lint` / `schema` コマンド） | [cli](cli.md) |
@@ -146,7 +146,7 @@ flowchart TB
 
     orch["orchestrator/"]
     agentStuff["agent_protocols.py / agent_factory.py /<br/>claude_agent.py / alerts.py"]
-    serveGh["serve/ · github.py<br/>（Web UI・CI）"]
+    serveGh["serve/ · github/<br/>（Web UI・CI）"]
 
     assertions["assertions/"]
     evidence["evidence.py<br/>+ intervals.py · network.py · visual.py · redaction.py"]
@@ -206,7 +206,7 @@ flowchart TB
 
 1. **決定性コア**：モデルにも periphery のスタックにも触れずに判定と証跡を導く経路です。`orchestrator/`、`runner/`、`drivers/base.py`、`assertions/`、`evidence.py`、`report/`、`config/`、`scenario/`、`preflight.py` / `capability_preflight.py` / `capabilities.py`、`doctor.py`、`lint.py` が含まれます。prime directive を担います。
 2. **契約（contract）**：利用者が依存する安定した界面です。シナリオスキーマ（`scenario/`）と `Driver` Protocol（`drivers/base.py`）です。
-3. **periphery**：契約の利用側で、いずれもオプションの extra の背後に切り離せます。`serve/`、`mcp/`、codegen のエミッタ、AI / エージェント経路（`agent_protocols.py`、`ai_config.py`、`anthropic_client.py`、`record.py`、`enrich.py`、`triage.py`、`crawl/guide.py` など）、`github.py` / `notify.py` / `alerts.py` のヘルパです。
+3. **periphery**：契約の利用側で、いずれもオプションの extra の背後に切り離せます。`serve/`、`mcp/`、codegen のエミッタ、AI / エージェント経路（`agent_protocols.py`、`ai_config.py`、`anthropic_client.py`、`record.py`、`enrich.py`、`triage.py`、`crawl/guide.py` など）、`github/actions.py` / `notify.py` / `alerts.py` のヘルパです（`github/` の残り、`app` と `errors` は決定的コアからも参照できるので、`config_source` は periphery を巻き込まずに利用します）。
 
 強制する契約は 3 つです。
 

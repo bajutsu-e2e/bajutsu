@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from bajutsu import github
+from bajutsu.github import actions
 from bajutsu.orchestrator import RunResult
 
 
@@ -14,7 +14,7 @@ def _res(name: str, ok: bool, failure: str | None = None) -> RunResult:
 
 def test_emit_noop_outside_actions(tmp_path: Path) -> None:
     out: list[str] = []
-    emitted = github.emit(
+    emitted = actions.emit(
         [_res("s", False, "x")], tmp_path / "report.html", env={}, echo=out.append
     )
     assert emitted is False and out == []  # nothing outside Actions
@@ -24,7 +24,7 @@ def test_emit_annotations_and_summary(tmp_path: Path) -> None:
     summary = tmp_path / "summary.md"
     out: list[str] = []
     results = [_res("login works", True), _res("checkout fails", False, "value mismatch\nactual=3")]
-    emitted = github.emit(
+    emitted = actions.emit(
         results,
         Path("runs/r1/report.html"),
         env={"GITHUB_ACTIONS": "true", "GITHUB_STEP_SUMMARY": str(summary)},
@@ -45,7 +45,7 @@ def test_emit_summary_appends(tmp_path: Path) -> None:
     summary = tmp_path / "summary.md"
     summary.write_text("pre-existing\n", encoding="utf-8")
     env = {"GITHUB_ACTIONS": "true", "GITHUB_STEP_SUMMARY": str(summary)}
-    github.emit([_res("s", True)], Path("report.html"), env=env, echo=lambda _: None)
+    actions.emit([_res("s", True)], Path("report.html"), env=env, echo=lambda _: None)
     text = summary.read_text(encoding="utf-8")
     assert text.startswith("pre-existing\n")  # appended, not overwritten
     assert "## bajutsu — PASS (1/1)" in text

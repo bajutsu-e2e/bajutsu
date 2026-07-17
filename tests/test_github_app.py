@@ -1,4 +1,4 @@
-"""Minting a GitHub App installation token for the private-repo config source (bajutsu/github_app.py, BE-0224).
+"""Minting a GitHub App installation token for the private-repo config source (bajutsu/github/app.py, BE-0224).
 
 The App-level API calls are injected (the `fetch` seam), so the token flow tests offline; the RS256
 signature is exercised for real against a generated RSA key (`cryptography` is in the dev group via
@@ -14,8 +14,9 @@ import pytest
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ed25519, padding, rsa
 
-from bajutsu.config_source import GitConfigSpec, GitHubAccessError
-from bajutsu.github_app import _app_jwt, _fetch, installation_token
+from bajutsu.config_source import GitConfigSpec
+from bajutsu.github import GitHubAccessError
+from bajutsu.github.app import _app_jwt, _fetch, installation_token
 
 _SPEC = GitConfigSpec("github.com", "acme", "repo", None, None)
 
