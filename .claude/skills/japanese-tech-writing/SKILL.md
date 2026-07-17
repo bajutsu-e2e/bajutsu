@@ -198,9 +198,10 @@ npx --prefix "$SKILL_DIR/textlint" textlint \
 ### ルールの変え方
 
 ルールは [`textlint/.textlintrc.json`](textlint/.textlintrc.json) を編集して変える。いまは
-`textlint-rule-preset-ja-technical-writing`（日本語の技術文書向けの定番プリセット）を既定設定のまま
-有効にしているだけで、個別の調整はしていない。ルールを切る・足す・しきい値を変える手順は
-[`textlint/README.md`](textlint/README.md) にある。プリセットの指摘が本スキルの規範や、
+`textlint-rule-preset-ja-technical-writing`（日本語の技術文書向けの定番プリセット）に加え、
+日本語・英語それぞれの個別ルールを足している。有効なルールの一覧と選定理由は
+[`textlint/README.md`](textlint/README.md) の「いまの既定ルール」節にある。ルールを切る・
+足す・しきい値を変える手順も同じ README にある。プリセットの指摘が本スキルの規範や、
 このリポジトリで意図的に許している表記（全角・日本語文字、ダッシュの扱いなど）と衝突するときも、
 このファイルで調整する。
 

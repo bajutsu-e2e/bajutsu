@@ -33,8 +33,41 @@ hash より広く強い保証になる。版を上げるときは `package.json`
 
 ## いまの既定ルール
 
-`textlint-rule-preset-ja-technical-writing`（日本語の技術文書向けの定番プリセット）を、
-プリセットの既定設定のまま有効にしているだけである。個別ルールの調整はしていない。
+`textlint-rule-preset-ja-technical-writing`（日本語の技術文書向けの定番プリセット）に加えて、
+以下の個別ルールを有効にしている。
+
+日本語向け：
+
+- `spellcheck-tech-word` — 技術用語の表記ゆれ（「インターフェース」→「インタフェース」など）
+- `ja-hiragana-keishikimeishi` / `ja-hiragana-fukushi` / `ja-hiragana-hojodoushi` — 形式名詞・
+  副詞・補助動詞をひらがなで書くべき箇所の指摘
+- `ja-hiraku` — 上記3ルールと同じ品詞（`keishikimeishi`・`fukushi`・`hojodoushi`）は二重報告を
+  避けるため無効化し、代名詞・副助詞・補助形容詞・連体詞・接続詞など残りの品詞だけを有効にしている
+- `general-novel-style-ja` — 句読点・記号の用法（既定設定は一部の項目のみ有効。詳細は
+  `.textlintrc.json` を参照）
+- `prefer-tari-tari` — 「〜たり〜たりする」の並列表現の用法
+- `@textlint-ja/textlint-rule-no-insert-dropping-sa` — サ抜き・サ入れ表現の誤用
+- `no-mixed-zenkaku-and-hankaku-alphabet` — 全角・半角アルファベットの混在
+- `joyo-kanji` / `ja-joyo-or-jinmeiyo-kanji` — 常用漢字・人名用漢字の範囲チェック
+
+英語向け：
+
+- `write-good` — 受動態・冗長表現など英文スタイルの指摘
+- `stop-words` — filler word・バズワード・決まり文句の検出
+- `unexpanded-acronym` — 頭字語が文書中で展開されているかの確認
+- `abbr-within-parentheses` — 括弧内の略語表記の確認
+- `alex` — 性別・人種・宗教などに関する配慮を欠く表現の検出
+- `ukraine` — ウクライナの地名・人名がロシア語風の綴りになっていないかの検出
+
+`ja-kyoiku-kanji`（教育漢字）と `ja-allowed-kanji`（許可漢字の明示的な指定）は
+`package.json` に依存として加えたうえで `.textlintrc.json` では無効(`false`)にしている。
+どちらも常用漢字よりさらに狭い範囲に漢字を限定するルールで、技術文書には厳しすぎるため
+既定では無効にしている。必要な場面があれば、個別に `true` にして使う。
+
+`textlint-rule-ginger`（Ginger 校正 API を使う英文チェック）は導入していない。依存の
+`gingerbread` → `request` → `form-data`/`qs`/`tough-cookie`/`uuid` が `npm audit` で
+critical 2件・moderate 3件（いずれも修正版なし）を報告し、`gingerbread` 自体も npm 上で
+サポート終了と表示されているため見送った。
 
 ## ルールの変え方
 
