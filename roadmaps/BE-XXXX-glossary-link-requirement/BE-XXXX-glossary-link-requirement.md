@@ -65,17 +65,21 @@ that gap from here on.
 
 The work is two independent units:
 
-1. **Add the convention to `CLAUDE.md` and `docs/ai-development.md`** (both languages). Add it next
-   to the existing bilingual-docs and DESIGN.md-alignment
-   ([BE-0113](../BE-0113-design-doc-realignment/BE-0113-design-doc-realignment.md)) norms in
-   `docs/ai-development.md`'s *Documentation style* section. Mirror the short form into `CLAUDE.md`'s
-   *Conventions* list, the way those two neighboring norms already do. Wording: "When prose in a BE
-   roadmap item or a `docs/` page uses a term defined in `docs/glossary.md` in its Bajutsu-specific
-   sense, its first substantive mention links to the term's glossary entry (`glossary.md#anchor` or
-   `docs/ja/glossary.md#anchor`) rather than re-explaining the term inline." State plainly that this
-   is a review-time norm, not a CI gate. The reason matches the two neighboring norms: deciding
-   whether an ordinary English word like "step" or "target" invokes its Bajutsu-specific sense needs
-   human judgment, and prime directive 1 keeps semantic judgment off the `run` / CI gate.
+1. **Add the convention to `CLAUDE.md`'s *Conventions* list and to `docs/ai-development.md`'s
+   *Documentation style (every document, both languages)* section**, with the Japanese mirror in
+   `docs/ja/ai-development.md`'s corresponding section (「ドキュメントの書き方（全ドキュメント、両言語に
+   適用）」). In `CLAUDE.md`, add it next to the existing bilingual-docs and DESIGN.md-alignment
+   ([BE-0113](../BE-0113-design-doc-realignment/BE-0113-design-doc-realignment.md)) bullets, which
+   already sit adjacent there. In `docs/ai-development.md`, add it alongside that section's existing
+   rules (natural prose, no coined terms, spelling out acronyms, 敬体) — this section does not
+   itself carry the bilingual-docs/BE-0113 adjacency; that pairing lives only in `CLAUDE.md`.
+   Wording: "When prose in a BE roadmap item or a `docs/` page uses a term defined in
+   `docs/glossary.md` in its Bajutsu-specific sense, its first substantive mention links to the
+   term's glossary entry (`glossary.md#anchor` or `docs/ja/glossary.md#anchor`) rather than
+   re-explaining the term inline." State plainly that this is a review-time norm, not a CI gate. The
+   reason matches the two neighboring `CLAUDE.md` norms: deciding whether an ordinary English word
+   like "step" or "target" invokes its Bajutsu-specific sense needs human judgment, and prime
+   directive 1 keeps semantic judgment off the `run` / CI gate.
 2. **Backfill the `docs/` pages the inventory above identifies**, in both languages: `drivers.md`,
    `cli.md`, `scenarios.md`, `evidence.md`, `recording.md`, `selectors.md`, `architecture.md`,
    `vision.md`, `getting-started/index.md`, and `getting-started/ios.md`, plus their `docs/ja/`
