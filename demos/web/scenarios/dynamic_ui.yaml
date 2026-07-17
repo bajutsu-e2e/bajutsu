@@ -13,7 +13,7 @@
 # scope here.)
 description: >-
   Web dynamic UI — reach home, capture the live ticker's value, then condition-wait for it to
-  change (no tap ever drives it) and assert against the freshly observed value in the same step.
+  change (no tap ever drives it) and assert against the freshly observed value in the very next step.
 scenarios:
   - name: a live-ticking display proves reads observe real UI drift
     steps:
