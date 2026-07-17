@@ -46,10 +46,11 @@ two properties that live only on real hardware: a mutating tree during iteration
 between snapshots.
 
 Because a platform is just a backend behind one interface, these properties must be checked on
-every backend that actuates, not adb and web alone. iOS actuates `tap` / `type` / `swipe` through
-idb and XCUITest, and [BE-0281](../BE-0281-ios-on-device-actuation-coverage/BE-0281-ios-on-device-actuation-coverage.md)
-wires real iOS actuation into CI, so this item targets iOS alongside adb and web. The iOS lane runs
-on metered macOS runners, so it lands as non-gating signal first, the way that sibling work does.
+every backend that actuates, not adb and web alone. idb can actuate `tap` / `type` / `swipe`, but
+no iOS CI lane exercises them on a real scenario yet;
+[BE-0281](../BE-0281-ios-on-device-actuation-coverage/BE-0281-ios-on-device-actuation-coverage.md)
+proposes wiring that in, and once it lands this item targets iOS alongside adb and web. The iOS
+lane runs on metered macOS runners, so it lands as non-gating signal first.
 
 ## Detailed design
 
