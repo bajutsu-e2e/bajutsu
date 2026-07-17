@@ -1,6 +1,6 @@
 [English](BE-XXXX-glossary-link-requirement.md) · **日本語**
 
-# BE-XXXX — 用語集の用語を初出時にリンクする（BE項目・ドキュメント共通規約）
+# BE-XXXX — 用語集の用語を初出時にリンクする
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
