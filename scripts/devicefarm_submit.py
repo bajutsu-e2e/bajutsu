@@ -297,11 +297,15 @@ def _upload_one(
     transfer.upload(created["url"], path)
     deadline = time.monotonic() + _HARD_CAP_SECONDS
     while True:
-        status = client.get_upload(arn=created["arn"])["upload"]["status"]
+        upload = client.get_upload(arn=created["arn"])["upload"]
+        status = upload["status"]
         if status == "SUCCEEDED":
             return str(created["arn"])
         if status == "FAILED":
-            raise DeviceFarmError(f"upload failed on Device Farm: {name}")
+            # Surface Device Farm's own reason (message/metadata). A bare "upload failed" leaves the
+            # operator guessing at an opaque, remote validation failure they cannot reproduce locally.
+            reason = upload.get("message") or upload.get("metadata") or "(no reason reported)"
+            raise DeviceFarmError(f"upload failed on Device Farm: {name}: {reason}")
         if time.monotonic() >= deadline:
             raise DeviceFarmError(f"upload did not complete within the 150-minute cap: {name}")
         sleep(_POLL_INTERVAL_SECONDS)

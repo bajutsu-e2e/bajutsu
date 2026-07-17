@@ -278,9 +278,16 @@ class _FakeClient:
     `run_status`/`upload_status` to exercise the failure branches.
     """
 
-    def __init__(self, *, upload_status: str = "SUCCEEDED", run_status: str = "COMPLETED") -> None:
+    def __init__(
+        self,
+        *,
+        upload_status: str = "SUCCEEDED",
+        run_status: str = "COMPLETED",
+        upload_message: str | None = None,
+    ) -> None:
         self.upload_status = upload_status
         self.run_status = run_status
+        self.upload_message = upload_message
         self.scheduled: dict[str, Any] | None = None
         self._n = 0
 
@@ -289,7 +296,10 @@ class _FakeClient:
         return {"upload": {"arn": f"arn:upload/{self._n}/{name}", "url": f"https://s3/{name}"}}
 
     def get_upload(self, *, arn: str) -> dict[str, Any]:
-        return {"upload": {"arn": arn, "status": self.upload_status}}
+        upload: dict[str, Any] = {"arn": arn, "status": self.upload_status}
+        if self.upload_message is not None:
+            upload["message"] = self.upload_message
+        return {"upload": upload}
 
     def schedule_run(self, **kwargs: Any) -> dict[str, Any]:
         self.scheduled = kwargs
@@ -372,6 +382,15 @@ def test_submit_and_collect_fails_loud_on_a_failed_upload(tmp_path: Path) -> Non
     client = _FakeClient(upload_status="FAILED")
     transfer = _FakeTransfer()
     with pytest.raises(DeviceFarmError, match="upload"):
+        _submit(client, transfer, tmp_path)
+
+
+def test_failed_upload_surfaces_device_farms_reason(tmp_path: Path) -> None:
+    # Device Farm records *why* an upload failed in the upload's message/metadata; the error must
+    # carry it so the operator isn't left guessing at an opaque, remote validation failure.
+    client = _FakeClient(upload_status="FAILED", upload_message="invalid test package structure")
+    transfer = _FakeTransfer()
+    with pytest.raises(DeviceFarmError, match="invalid test package structure"):
         _submit(client, transfer, tmp_path)
 
 
