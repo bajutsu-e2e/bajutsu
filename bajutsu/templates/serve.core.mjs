@@ -8,7 +8,7 @@
 // loadSims / loadShared reach into) are real imports; core and the sections form an import cycle,
 // which is safe because every cross-module binding is used at call time, never at module-evaluation
 // time. serve.author.mjs is the entry module the page loads.
-import {loadHistory, loadStats, loadFlaky, loadUsage, coverageInit, showInfo, replayAudit, onSimChange} from './serve.panels.mjs';
+import {loadHistory, loadStats, loadFlaky, loadUsage, coverageInit, showInfo, replayAudit, onSimChange, loadTrash} from './serve.panels.mjs';
 import {loadMetrics} from './serve.metrics.mjs';
 import {renderProjectsView} from './serve.projects.mjs';
 import {onCrawlSimChange} from './serve.crawl.mjs';
@@ -86,6 +86,95 @@ async function getJSON(url,fallback){try{return await (await fetch(url)).json()}
 async function postJSON(url,body,fallback){
   try{return await (await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).json()}
   catch(e){return fallback}
+}
+
+// ---- run deletion (BE-0239): the soft-delete / restore / purge API, shared by the run and crawl
+// history lists and the Trash view. Cookie-session auth only (no CSRF token; the server enforces the
+// unconditional Origin + Host check on every POST/DELETE). All resolve to a JSON body — an {ok:true}
+// or an {error} the caller surfaces. ----
+// The retention window (days) the /api/config boot read reports, so a delete confirm and the Trash
+// header can state how long a trashed run stays restorable. null until loadConfig runs; <=0 means
+// retention is disabled (trash kept until a manual purge).
+export let retentionDays=null;
+// A human phrase for the trash window, used in confirms and the Trash header.
+function trashWindowNote(){
+  if(retentionDays===null)return 'restorable from the Trash view';
+  return retentionDays>0
+    ?`restorable from the Trash view for ${retentionDays} day${retentionDays===1?'':'s'}`
+    :'restorable from the Trash view until it is permanently deleted';
+}
+async function reqJSON(url,method){
+  try{return await (await fetch(url,{method})).json()}
+  catch(e){return {error:'request failed'}}
+}
+// Soft-delete, restore, and purge all key on the run id alone (`delete_run` is org-scoped by id and
+// type-agnostic), so — like the bulk-delete route — one /api/runs route serves both regular and
+// crawl runs, and the three actions stay symmetric.
+function softDeleteRun(id){return reqJSON('/api/runs/'+encodeURIComponent(id),'DELETE')}
+function restoreRun(id){return postJSON('/api/runs/'+encodeURIComponent(id)+'/restore',{},{error:'request failed'})}
+function purgeRun(id){return reqJSON('/api/runs/'+encodeURIComponent(id)+'?purge=true','DELETE')}
+function bulkDeleteRuns(ids){return postJSON('/api/runs/bulk-delete',{ids},{error:'request failed'})}
+// Confirm + soft-delete one row, then reload the caller's list. `noun` (e.g. 'run'/'crawl') only
+// changes the confirm wording — shared by every history list so that wording and error handling
+// (fail loudly via alert, rather than silently dropping the row) live in one place.
+async function confirmSoftDelete(id,{noun,reload}){
+  if(!window.confirm(`Move ${noun} ${id} to Trash?\n\nIt is ${trashWindowNote()}.`))return;
+  const d=await softDeleteRun(id);
+  if(d&&d.error)window.alert('Delete failed: '+d.error);
+  reload();
+}
+async function confirmBulkDelete(ids,{noun,reload,selector}){
+  if(!window.confirm(`Move ${ids.length} ${noun}${ids.length===1?'':'s'} to Trash?\n\nThey are ${trashWindowNote()}.`))return;
+  const d=await bulkDeleteRuns(ids);
+  if(d&&d.error)window.alert('Delete failed: '+d.error);
+  if(selector)selector.clear();
+  reload();
+}
+
+// Multi-select over a history list that re-renders on a timer (BE-0239). A history list rewrites its
+// rows every few seconds, so the selection can't live in the DOM — it lives in a Set here and is
+// re-applied to the freshly-rendered `.rowck` checkboxes on each sync(). Listeners bind once to the
+// stable list/bar elements (event delegation), so a re-render never drops them; the caller only
+// re-renders rows and then calls sync(). onDelete(ids) fires when the user confirms a bulk delete.
+function historySelector({list, allBox, bar, count, delBtn, clearBtn, onDelete}){
+  const sel=new Set();
+  const boxes=()=>[...list.querySelectorAll('.rowck')];
+  const clear=()=>{sel.clear();sync()};
+  function sync(){
+    const bs=boxes();
+    const cur=new Set(bs.map(b=>b.value));
+    for(const id of [...sel])if(!cur.has(id))sel.delete(id);  // drop rows that scrolled out of the list
+    for(const b of bs)b.checked=sel.has(b.value);
+    if(allBox)allBox.checked=bs.length>0&&bs.every(b=>sel.has(b.value));
+    if(count)count.textContent=sel.size?`${sel.size} selected`:'';
+    if(delBtn)delBtn.disabled=!sel.size;
+    if(bar)bar.hidden=bs.length===0;
+  }
+  list.addEventListener('change',e=>{const b=e.target.closest('.rowck');if(!b)return;if(b.checked)sel.add(b.value);else sel.delete(b.value);sync()});
+  if(allBox)allBox.addEventListener('change',()=>{const on=allBox.checked;for(const b of boxes()){b.checked=on;if(on)sel.add(b.value);else sel.delete(b.value)}sync()});
+  if(clearBtn)clearBtn.addEventListener('click',clear);
+  if(delBtn)delBtn.addEventListener('click',()=>{if(sel.size)onDelete([...sel])});
+  return {sync, clear};
+}
+// The full BE-0239 delete surface for one history list — row-open click, per-row 🗑 delete (with
+// confirm), and the bulk-select toolbar — in one call. The Replay run-history and Crawl run-history
+// lists are otherwise identical here; they differ only in what "open a row" means (`onOpen`) and how
+// to reload after a change (`reload`), so unifying this avoids re-wiring the same delegation twice.
+//   o: {list, noun, onOpen(li), reload, allBox, bar, count, delBtn, clearBtn}
+// Returns the underlying historySelector so the caller can `.sync()` it after each re-render.
+function wireHistoryList(o){
+  const sel=historySelector({
+    list:o.list, allBox:o.allBox, bar:o.bar, count:o.count, delBtn:o.delBtn, clearBtn:o.clearBtn,
+    onDelete:ids=>confirmBulkDelete(ids,{noun:o.noun,reload:o.reload,selector:sel}),
+  });
+  o.list.addEventListener('click',e=>{
+    if(e.target.closest('.rowck'))return;
+    const li=e.target.closest('li[data-id]');if(!li)return;
+    if(e.target.closest('.rowdel')){confirmSoftDelete(li.dataset.id,{noun:o.noun,reload:o.reload});return}
+    o.onOpen(li);
+    o.list.querySelectorAll('li').forEach(x=>x.classList.remove('sel'));li.classList.add('sel');
+  });
+  return sel;
 }
 // Shared skeleton for the run / record / crawl "start" buttons (BE-0202): close any live stream,
 // flip the button busy, POST the request, and on a clean {jobId} hand the stream to streamJob. The
@@ -360,7 +449,7 @@ function openModal(el){
 // ---- top-level Record / Replay / Crawl views ----
 function showView(name){
   document.querySelectorAll('.toptab').forEach(t=>t.classList.toggle('active',t.dataset.view===name));
-  $('#view-record').hidden=name!=='record';$('#view-replay').hidden=name!=='replay';$('#view-crawl').hidden=name!=='crawl';$('#view-author').hidden=name!=='author';$('#view-stats').hidden=name!=='stats';$('#view-flaky').hidden=name!=='flaky';$('#view-usage').hidden=name!=='usage';$('#view-coverage').hidden=name!=='coverage';$('#view-metrics').hidden=name!=='metrics';$('#view-projects').hidden=name!=='projects';
+  $('#view-record').hidden=name!=='record';$('#view-replay').hidden=name!=='replay';$('#view-crawl').hidden=name!=='crawl';$('#view-author').hidden=name!=='author';$('#view-stats').hidden=name!=='stats';$('#view-flaky').hidden=name!=='flaky';$('#view-usage').hidden=name!=='usage';$('#view-coverage').hidden=name!=='coverage';$('#view-metrics').hidden=name!=='metrics';$('#view-projects').hidden=name!=='projects';$('#view-trash').hidden=name!=='trash';
   // The incoming view animates in (enter-only: the outgoing one is hidden instantly, so two sibling
   // views never overlap in the flex column). The picked theme decides the motion via --motion-view-*.
   const shown=$('#view-'+name);if(shown)playEnter(shown,'--motion-view-enter');
@@ -372,6 +461,7 @@ function showView(name){
   if(name==='coverage')coverageInit();
   if(name==='metrics')loadMetrics();
   if(name==='projects')loadProjects();  // re-fetch so the page reflects any CLI-side add/remove
+  if(name==='trash')loadTrash();  // BE-0239: list soft-deleted runs on entry
 }
 document.querySelectorAll('.toptab').forEach(t=>t.addEventListener('click',()=>showView(t.dataset.view)));
 
@@ -381,6 +471,7 @@ document.querySelectorAll('.toptab').forEach(t=>t.addEventListener('click',()=>s
 export let fsSourceEnabled=true;
 async function loadConfig(){
   const c=await getJSON('/api/config',{hasConfig:false});
+  if(typeof c.retentionDays==='number')retentionDays=c.retentionDays;  // BE-0239: trash window for the delete confirms
   fsSourceEnabled=!c.configSources||c.configSources.includes('fs');
   $('#fssrc').hidden=!fsSourceEnabled;
   setCfgName(c.hasConfig?c.config:'no config bound — open one →',c.hasConfig);
@@ -1080,4 +1171,5 @@ export {
   renderGradeBadge, wireDoctor, NARROW_MQ, prefersReducedMotion, motionOff, initTheme,
   openModal, closeModal, showView, loadConfig, loadVersion, setCfgName, closeFs, loadProjects,
   switchProject, loadShared, loadScenarios, loadSims, refreshAiAvailability, storeGitCred,
+  restoreRun, purgeRun, wireHistoryList,
 };

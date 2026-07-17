@@ -169,6 +169,20 @@ def crawl_runs_payload(state: ServeState, *, actor: str | None = None) -> tuple[
     return state.for_org(state.org_of(actor)).artifacts.list_crawl_runs(), 200
 
 
+def trashed_runs_payload(state: ServeState, *, actor: str | None = None) -> tuple[Any, int]:
+    """Soft-deleted runs for the Web UI's Trash view (BE-0239), org-scoped like every history read.
+
+    Each entry is ``{"id", "deletedAt"}`` from the actor's org store — the same trash the retention
+    sweep reads, so a run that a normal delete tombstoned (store + DB together) is listed here. The
+    sweep runs first, so a run already past the retention window never shows as restorable. Read-only
+    and AI-free: it lists what a human soft-deleted, deciding no verdict.
+    """
+    sweep_expired_trash(
+        state, actor=actor
+    )  # drop expired trash before listing, as runs_payload does
+    return state.for_org(state.org_of(actor)).artifacts.list_trashed_runs(), 200
+
+
 # The newest-N run window a serve `/stats` refresh aggregates. Bounds the per-refresh manifest reads
 # over object storage, and keeps the DB and artifact-store paths aggregating the same set (the DB
 # `list_runs` is itself limit-bounded). A large enough window to read a trend, not the whole history.

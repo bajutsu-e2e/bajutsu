@@ -52,6 +52,7 @@ _EXPECTED: frozenset[tuple[str, str]] = frozenset(
         ("GET", "/api/projects/{name}/runs"),
         ("GET", "/api/metrics/projects"),
         ("GET", "/api/crawl/runs"),
+        ("GET", "/api/runs/trash"),
         ("GET", "/api/artifacts/exists"),
         ("GET", "/api/scenario"),
         ("GET", "/api/schema"),

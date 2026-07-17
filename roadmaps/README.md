@@ -321,6 +321,7 @@ Standing up `bajutsu serve` beyond loopback. The hardening that makes the existi
 | [BE-0173](BE-0173-slim-web-worker-image/BE-0173-slim-web-worker-image.md) | Slim Linux web-worker container image | Implemented |
 | [BE-0190](BE-0190-org-scoped-crawl-history/BE-0190-org-scoped-crawl-history.md) | Org-scoped crawl history on the server backend | Implemented |
 | [BE-0204](BE-0204-server-storage-gcs-support/BE-0204-server-storage-gcs-support.md) | GCS support for server-side object storage | Implemented |
+| [BE-0239](BE-0239-deletable-runs-serve/BE-0239-deletable-runs-serve.md) | Deletable runs and reports in the serve Web UI | Implemented |
 | [BE-0277](BE-0277-docker-build-commit-badge/BE-0277-docker-build-commit-badge.md) | Embed the commit hash into self-hosted Docker images for the version badge | Implemented |
 <!-- /GENERATED:implemented-hosting -->
 
@@ -497,9 +498,7 @@ Accepted and actively being built — a PR is in flight or imminent.
 ### Hosting the web UI (cloud / self-hosted)
 
 <!-- GENERATED:in-progress-hosting -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0239](BE-0239-deletable-runs-serve/BE-0239-deletable-runs-serve.md) | Deletable runs and reports in the serve Web UI | In progress |
+
 <!-- /GENERATED:in-progress-hosting -->
 
 ### Codebase quality & technical debt

@@ -210,6 +210,13 @@ ROUTES: tuple[Route, ...] = (
         "/api/crawl/runs",
         lambda state, ctx: ops.crawl_runs_payload(state, actor=ctx.actor()),
     ),
+    # Static path; the exact-segment matcher can't confuse `/api/runs/trash` (3 segments) with the
+    # `/api/runs/{run_id}/…` templates (4+), and there is no GET `/api/runs/{run_id}` to shadow it.
+    Route(
+        "GET",
+        "/api/runs/trash",
+        lambda state, ctx: ops.trashed_runs_payload(state, actor=ctx.actor()),
+    ),
     Route(
         "GET",
         "/api/artifacts/exists",

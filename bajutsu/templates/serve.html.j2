@@ -41,6 +41,9 @@
           it shows for any project count so a single-config `serve` can grow into a hub from its Add
           form; serve.core.mjs (loadProjects) reveals it whenever there is a project to manage. -#}
       <button class="toptab" data-view="projects" data-testid="nav.projects-view" hidden>Projects</button>
+      {#- Trash (BE-0239): soft-deleted runs, restorable within the retention window. Always offered —
+          run deletion is available on every deployment. -#}
+      <button class="toptab" data-view="trash" data-testid="nav.trash">Trash</button>
       <span class="cfgname" id="cfgname" data-testid="nav.config-name"></span>
       <button class="cfgbtn" id="opencfg" data-testid="nav.open-config">Open config</button>
       <button class="cfgbtn" id="viewcfg" data-testid="nav.view-config" hidden>View</button>
@@ -238,6 +241,14 @@
         <!-- Drilldown filter (BE-0241): shown only when the Stats dashboard deep-linked here with a
              run set; "clear" drops back to the full history. -->
         <div class="histfilter" id="histfilter" data-testid="replay.history-filter" hidden><span id="histfilter-label"></span> · <button type="button" class="linklike" id="histfilter-clear">clear</button></div>
+        <!-- Bulk delete (BE-0239): shown whenever the list has rows; "select all" arms it, and the
+             per-row checkboxes feed the count. Delete stays disabled until at least one run is picked. -->
+        <div class="bulkbar" id="histbulk" data-testid="replay.bulk-bar" hidden>
+          <label class="bulksel"><input type="checkbox" id="histbulk-all" data-testid="replay.bulk-all"> select all</label>
+          <span class="bulkcount" id="histbulk-count"></span>
+          <button type="button" class="cfgbtn prjremove" id="histbulk-del" data-testid="replay.bulk-delete" disabled>Delete selected</button>
+          <button type="button" class="linklike" id="histbulk-clear" data-testid="replay.bulk-clear">clear</button>
+        </div>
         <ul class="history" id="history"></ul>
       </div>
     </div>
@@ -317,6 +328,13 @@
            reopens its screen map read-only via the existing loadGraph — no re-crawl, no verdict. -->
       <div class="panel" id="crawl-panel-history" data-testid="crawl.panel-history" hidden>
         <div class="hhead"><span>Past crawls</span><button class="refresh" id="crawl-refresh" title="refresh">&#8635;</button></div>
+        <!-- Bulk delete (BE-0239): mirrors the Replay history bulk bar. -->
+        <div class="bulkbar" id="crawlbulk" data-testid="crawl.bulk-bar" hidden>
+          <label class="bulksel"><input type="checkbox" id="crawlbulk-all" data-testid="crawl.bulk-all"> select all</label>
+          <span class="bulkcount" id="crawlbulk-count"></span>
+          <button type="button" class="cfgbtn prjremove" id="crawlbulk-del" data-testid="crawl.bulk-delete" disabled>Delete selected</button>
+          <button type="button" class="linklike" id="crawlbulk-clear" data-testid="crawl.bulk-clear">clear</button>
+        </div>
         <ul class="history" id="crawl-history" data-testid="crawl.history"></ul>
       </div>
     </div>
@@ -583,6 +601,19 @@
       <div class="gitsrcerr" id="projects-error" data-testid="projects.error" hidden></div>
     </div>
     <div class="statshost" id="projects-host" data-testid="projects.host"><div class="empty" data-testid="projects.empty">Loading projects…</div></div>
+  </div>
+</main>
+
+<!-- ===== Trash (BE-0239): soft-deleted runs, restorable within the retention window; an admin can
+     permanently delete one. Regular and crawl runs share the trash, so both appear here. ===== -->
+<main id="view-trash" data-testid="view.trash" hidden>
+  <div class="card statscard">
+    <div class="yamlhead">
+      <span class="ttl">Trash</span>
+      <span class="muted" id="trash-note" data-testid="trash.note" style="font-size:.8em"></span>
+      <button class="refresh" id="trash-refresh" data-testid="trash.refresh" title="refresh">&#8635;</button>
+    </div>
+    <ul class="history trashlist" id="trash-list" data-testid="trash.list"><li class="muted">Loading…</li></ul>
   </div>
 </main>
 

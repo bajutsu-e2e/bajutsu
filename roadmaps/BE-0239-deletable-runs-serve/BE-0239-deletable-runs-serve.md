@@ -7,9 +7,9 @@
 |---|---|
 | Proposal | [BE-0239](BE-0239-deletable-runs-serve.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0239") |
-| Implementing PR | [#985](https://github.com/bajutsu-e2e/bajutsu/pull/985) _(backend; Web UI to follow)_ |
+| Implementing PR | [#985](https://github.com/bajutsu-e2e/bajutsu/pull/985) _(backend)_, [#1170](https://github.com/bajutsu-e2e/bajutsu/pull/1170) _(Web UI)_ |
 | Topic | Hosting the web UI (cloud / self-hosted) |
 <!-- /BE-METADATA -->
 
@@ -175,8 +175,7 @@ PR.
 - [x] Retention window config + lazy purge sweep
 - [x] `DELETE`/`restore`/bulk-delete API routes, CSRF + RBAC (editor soft-delete/restore, admin
       purge) + org scoping
-- [ ] Web UI: per-row delete, bulk-select, confirm dialogs, Trash view with restore/purge-forever
-      *(follow-up PR)*
+- [x] Web UI: per-row delete, bulk-select, confirm dialogs, Trash view with restore/purge-forever
 - [x] Audit-log entries + `oplog` events for soft-delete/restore/purge
 
 **Log**
@@ -189,6 +188,13 @@ PR.
   with the admin purge gate in the operation), and audit + `oplog` (`run.soft_deleted` /
   `run.restored` / `run.purged`). The item stays `In progress`; the Web UI (unit 5) is the
   follow-up PR that flips it to `Implemented`.
+- Web UI landed (unit 5), flipping the item to `Implemented`: a per-row delete and a bulk-select
+  toolbar (select-all + Delete selected) on both the Replay run-history and Crawl run-history lists,
+  soft-delete confirms that state the retention window, and a top-level **Trash** view listing
+  soft-deleted runs with **Restore** and an admin-gated **Delete forever**. A small read seam feeds
+  it — `GET /api/runs/trash` (org-scoped, sweeping expired trash first) and `retentionDays` on
+  `/api/config` for the confirm/Trash copy. A Chromium smoke test drives the whole delete → trash →
+  restore → bulk-delete → purge path; `docs/web-ui.md` (+ ja mirror) documents the surface.
 
 ## References
 

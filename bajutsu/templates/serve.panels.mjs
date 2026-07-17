@@ -8,6 +8,7 @@ import {
   $, esc, getJSON, postJSON, setStatus, setBusy, streamJob, cancelJob, appendLine, startJob,
   openModal, closeModal, renderGradeBadge, setCfgName, closeFs, loadShared, loadScenarios, loadSims,
   state, scnFiles, aiAvailable,
+  restoreRun, purgeRun, wireHistoryList, retentionDays,
 } from './serve.core.mjs';
 import {replayCodegen} from './serve.author.mjs';
 
@@ -350,15 +351,60 @@ function renderHistFilter(shown){
   $('#histfilter-label').textContent=`filtered: ${label}(${shown} run${shown===1?'':'s'})`;
   box.hidden=false;
 }
+// Per-run delete + bulk-select (BE-0239), wired via the shared `wireHistoryList` (serve.core.mjs) —
+// the Crawl history list (serve.crawl.mjs) wires the same way, so the delete confirm, bulk-delete
+// confirm, and row-click delegation live in one place. `histSel` is the selector wireHistoryList
+// returns (assigned in initPanels); loadHistory re-syncs it after each re-render.
+let histSel=null;
 async function loadHistory(){
   const runs=await getJSON('/api/runs',null);if(!runs)return;
   const tab=$('#histtab');if(tab)tab.textContent='History'+(runs.length?` (${runs.length})`:'');
   const shown=historyFilter?runs.filter(r=>historyFilter.ids.has(r.id)):runs;
   renderHistFilter(shown.length);
   const ul=$('#history');
-  if(!shown.length){ul.innerHTML=`<li class="muted">${historyFilter?'no matching runs':'no runs yet'}</li>`;return;}
-  ul.innerHTML=shown.map(r=>`<li data-id="${r.id}" data-ok="${r.ok?1:0}"${r.id===state.selectedRun?' class="sel"':''}><span class="dot ${r.ok?'ok':'ng'}"></span><span class="hid">${r.id}</span><span class="hsum">${r.passed}/${r.total}${r.scenarios.length?' · '+r.scenarios.join(', '):''}</span></li>`).join('');
-  ul.querySelectorAll('li[data-id]').forEach(li=>li.addEventListener('click',()=>{setReport(li.dataset.id,li.dataset.ok==='1');ul.querySelectorAll('li').forEach(x=>x.classList.remove('sel'));li.classList.add('sel')}));
+  if(!shown.length){ul.innerHTML=`<li class="muted">${historyFilter?'no matching runs':'no runs yet'}</li>`;if(histSel)histSel.sync();return;}
+  ul.innerHTML=shown.map(r=>`<li data-id="${esc(r.id)}" data-ok="${r.ok?1:0}"${r.id===state.selectedRun?' class="sel"':''}><input type="checkbox" class="rowck" aria-label="select run for deletion" data-testid="replay.history-select" value="${esc(r.id)}"><span class="dot ${r.ok?'ok':'ng'}"></span><span class="hid">${esc(r.id)}</span><span class="hsum">${r.passed}/${r.total}${r.scenarios.length?' · '+esc(r.scenarios.join(', ')):''}</span><button type="button" class="rowdel" title="Delete this run" aria-label="Delete run" data-testid="replay.history-delete">&#128465;</button></li>`).join('');
+  if(histSel)histSel.sync();
+}
+// ---- Trash view (BE-0239): soft-deleted runs (regular + crawl share the trash), each restorable or,
+// for an admin, permanently deletable. Restore/purge key on the id alone, so one /api/runs route
+// serves both run types here. The list interactions are delegated once in initPanels. ----
+function trashHeaderNote(){
+  // Guard null the same way trashWindowNote does (serve.core.mjs): loadConfig runs unawaited at
+  // boot, so a Trash-tab visit before /api/config resolves — or a failed fetch — must not read as
+  // "retention disabled" when it's really just unknown yet.
+  if(retentionDays===null)return 'Deleted runs are kept here and can be restored.';
+  return retentionDays>0
+    ?`Deleted runs are kept here and can be restored. Each is permanently removed ${retentionDays} day${retentionDays===1?'':'s'} after deletion.`
+    :'Deleted runs are kept here until permanently removed. Restore one, or delete it forever (admin).';
+}
+// Render an ISO deletion time in the viewer's locale; fall back to the raw value if it can't parse (a
+// hand-edited tombstone), never "Invalid Date".
+function fmtDeletedAt(iso){
+  if(!iso)return 'unknown time';
+  const d=new Date(iso);
+  return isNaN(d.getTime())?iso:d.toLocaleString();
+}
+async function loadTrash(){
+  const list=$('#trash-list');if(!list)return;
+  const note=$('#trash-note');if(note)note.textContent=trashHeaderNote();
+  const runs=await getJSON('/api/runs/trash',null);
+  if(!runs){list.innerHTML='<li class="muted">trash unavailable</li>';return}
+  if(!runs.length){list.innerHTML='<li class="muted" data-testid="trash.empty">Trash is empty</li>';return}
+  list.innerHTML=runs.map(r=>`<li data-id="${esc(r.id)}" data-testid="trash.item"><span class="hid">${esc(r.id)}</span><span class="hsum">deleted ${esc(fmtDeletedAt(r.deletedAt))}</span><span class="trashacts"><button type="button" class="cfgbtn" data-act="restore" data-testid="trash.restore">Restore</button><button type="button" class="cfgbtn prjremove" data-act="purge" data-testid="trash.purge">Delete forever</button></span></li>`).join('');
+}
+async function restoreTrashRun(id){
+  const d=await restoreRun(id);
+  if(d&&d.error)window.alert('Restore failed: '+d.error);
+  loadTrash();
+}
+async function purgeTrashRun(id){
+  // The one irreversible step — an emphatic confirm distinct from the soft-delete one. A non-admin on
+  // a hosted backend gets a 403 (no purge right); surface it plainly rather than silently doing nothing.
+  if(!window.confirm(`Permanently delete run ${id}?\n\nThis cannot be undone — its report, screenshots, video, and network capture are erased for good.`))return;
+  const d=await purgeRun(id);
+  if(d&&d.error)window.alert(d.error==='forbidden'?'Only an admin can permanently delete a run.':'Delete failed: '+d.error);
+  loadTrash();
 }
 
 // Coverage (BE-0146): POST the target (+ optional run set) to /api/coverage and render the returned
@@ -608,6 +654,22 @@ function initPanels(){
   $('#stop').addEventListener('click',()=>cancelJob(state.runJobId,$('#stop')));
   $('#refresh').addEventListener('click',loadHistory);
   $('#histfilter-clear').addEventListener('click',clearHistoryFilter);
+  // History row-open + delete + bulk-select (BE-0239), via the shared wireHistoryList — the Crawl
+  // history list wires the same way in initCrawl.
+  histSel=wireHistoryList({
+    list:$('#history'), noun:'run', reload:loadHistory,
+    onOpen:li=>setReport(li.dataset.id,li.dataset.ok==='1'),
+    allBox:$('#histbulk-all'),bar:$('#histbulk'),count:$('#histbulk-count'),
+    delBtn:$('#histbulk-del'),clearBtn:$('#histbulk-clear'),
+  });
+  // Trash view (BE-0239): refresh + delegated Restore / Delete-forever on the stable list.
+  $('#trash-refresh').addEventListener('click',loadTrash);
+  $('#trash-list').addEventListener('click',e=>{
+    const li=e.target.closest('li[data-id]');if(!li)return;
+    const act=e.target.closest('button[data-act]');if(!act)return;
+    if(act.dataset.act==='restore')restoreTrashRun(li.dataset.id);
+    else if(act.dataset.act==='purge')purgeTrashRun(li.dataset.id);
+  });
   $('#stats-refresh').addEventListener('click',loadStats);
   $('#flaky-refresh').addEventListener('click',loadFlaky);
   $('#usage-refresh').addEventListener('click',loadUsage);
@@ -623,5 +685,5 @@ function initPanels(){
 
 export {
   loadHistory, loadStats, loadFlaky, loadUsage, coverageInit, showInfo, replayAudit, onSimChange,
-  setHistoryFilter, showTab, initPanels,
+  setHistoryFilter, showTab, initPanels, loadTrash,
 };

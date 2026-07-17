@@ -100,6 +100,7 @@ from bajutsu.serve.operations.reads import (
     save_scenario,
     simulators_payload,
     stats_html,
+    trashed_runs_payload,
     usage_html,
 )
 from bajutsu.serve.operations.runs import (
@@ -239,6 +240,7 @@ __all__ = [
     "start_triage",
     "stats_html",
     "sweep_expired_trash",
+    "trashed_runs_payload",
     "upload_theme",
     "usage_html",
     "worker_artifact_urls",

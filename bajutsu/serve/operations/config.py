@@ -134,6 +134,10 @@ def config_info(state: ServeState) -> tuple[Any, int]:
         "oauthEnabled": state.auth.oauth is not None,
         # The config sources this deployment offers, so the UI renders only the usable ones (BE-0108).
         "configSources": sources,
+        # The soft-delete retention window in days, so the delete confirm + Trash view can state how
+        # long a trashed run stays restorable (BE-0239). <= 0 means retention is disabled — trash is
+        # kept until a manual purge.
+        "retentionDays": state.run_retention_days,
     }, 200
 
 
