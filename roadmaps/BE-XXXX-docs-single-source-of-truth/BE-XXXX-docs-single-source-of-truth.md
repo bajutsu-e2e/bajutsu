@@ -71,7 +71,7 @@ independent detail to drift out of sync:
 | `make check` step list | `CLAUDE.md` (already the fullest) | `docs/ai-development.md`, `CONTRIBUTING.md`, `AGENTS.md`, `docs/contributor-workflow-tutorial.md` |
 | Docstring style (BE-0065) | `docs/ai-development.md` | `.github/claude-review-prompt.md` |
 | Bilingual docs process (which files, when) | `docs/ai-development.md` | `.github/claude-review-prompt.md`, `AGENTS.md` |
-| Japanese prose style (敬体, no coined terms) | `japanese-tech-writing` skill (per BE-0278) | `.github/claude-review-prompt.md`, `AGENTS.md` |
+| Japanese prose style (敬体, no coined terms) | `japanese-document-writing` skill (per BE-0278) | `.github/claude-review-prompt.md`, `AGENTS.md` |
 | Prime directives | `CLAUDE.md` (kept, see below) | — |
 
 The work breaks down MECE as:
