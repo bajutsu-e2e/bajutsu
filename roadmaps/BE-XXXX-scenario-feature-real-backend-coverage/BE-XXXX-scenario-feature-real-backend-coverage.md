@@ -1,6 +1,6 @@
 **English** · [日本語](BE-XXXX-scenario-feature-real-backend-coverage-ja.md)
 
-# BE-XXXX — Real-backend coverage for scenario-authoring features
+# BE-XXXX — Verify scenario-authoring features on real backends
 
 <!-- BE-METADATA -->
 | Field | Value |
