@@ -110,7 +110,7 @@ jobs:
             --target "$TARGET" \
             --config showcase.config.yaml \
             --app-apk "$apk" \
-            --package .=bajutsu \
+            --package .=. \
             --package demos/showcase/showcase.config.yaml=showcase.config.yaml \
             --package demos/showcase/scenarios=scenarios \
             --out devicefarm-package.zip \

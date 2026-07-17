@@ -156,12 +156,33 @@ def test_package_excludes_vcs_and_build_noise_dirs(tmp_path: Path) -> None:
     assert "src/runs/leftover.log" not in names
 
 
+def test_package_root_arcname_places_contents_at_the_zip_root(tmp_path: Path) -> None:
+    # `--package .=.` puts the repo (its real tests/ + pyproject.toml) at the zip root, which
+    # Device Farm's APPIUM_PYTHON_TEST_PACKAGE validation requires: the tests/ directory must sit
+    # at the root, and `pip install <root>` needs pyproject.toml there too.
+    src = tmp_path / "repo"
+    src.mkdir()
+    (src / "pyproject.toml").write_text("[project]\nname = 'x'")
+    (src / "tests").mkdir()
+    (src / "tests" / "test_x.py").write_text("def test_x() -> None: ...")
+    out = tmp_path / "package.zip"
+
+    build_package([(src, ".")], out)
+
+    with zipfile.ZipFile(out) as zf:
+        names = set(zf.namelist())
+    assert "pyproject.toml" in names
+    assert "tests/test_x.py" in names
+    # Nothing is nested under a "./" or "repo/" prefix — contents land directly at the root.
+    assert not any(n.startswith(("./", "repo/")) for n in names)
+
+
 def test_package_never_zips_the_output_archive_into_itself(tmp_path: Path) -> None:
     src = tmp_path / "src"
     src.mkdir()
     (src / "keep.yaml").write_text("scenarios: []")
     # The output zip commonly lands inside the tree being packaged: `--out` defaults into the
-    # repo root that `--package .=bajutsu` walks. Zipping the archive into itself reads back its
+    # repo root that `--package .=.` walks. Zipping the archive into itself reads back its
     # own growing bytes and blows the file up without bound, so it must be skipped.
     out = src / "package.zip"
 

@@ -45,7 +45,7 @@ uv run python scripts/devicefarm_submit.py \
   --scenario scenarios/firstlook.yaml --scenario scenarios/controls.yaml \
   --target showcase-compose --config showcase.config.yaml \
   --app-apk app-debug.apk \
-  --package .=bajutsu \
+  --package .=. \
   --package demos/showcase/showcase.config.yaml=showcase.config.yaml \
   --package demos/showcase/scenarios=scenarios \
   --package-only

@@ -7,7 +7,7 @@
 #   uv run python scripts/devicefarm_submit.py \
 #     --scenario scenarios/firstlook.yaml --scenario scenarios/controls.yaml \
 #     --target showcase-compose --config showcase.config.yaml \
-#     --package .=bajutsu --app-apk app-debug.apk --package-only
+#     --package .=. --app-apk app-debug.apk --package-only
 #
 # Device Farm runs these phases on a host that already has `adb` connected to the reserved device
 # (serial `booted`). Bajutsu runs here exactly as it does locally — the verdict comes from its own

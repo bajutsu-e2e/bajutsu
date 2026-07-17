@@ -49,7 +49,7 @@ _UPLOAD_APP = "ANDROID_APP"
 _UPLOAD_TEST_PACKAGE = "APPIUM_PYTHON_TEST_PACKAGE"
 _UPLOAD_TEST_SPEC = "APPIUM_PYTHON_TEST_SPEC"
 
-# Noise directories to keep out of the upload. `--package .=bajutsu` walks the whole checked-out
+# Noise directories to keep out of the upload. `--package .=.` walks the whole checked-out
 # repo root, which already holds `.git/` and the `uv`-created `.venv/` plus build/test caches and
 # scratch output; zipping them would bloat (and could break) every upload. Matched on any path
 # component during the walk.
@@ -162,9 +162,10 @@ def render_test_spec(
 def build_package(entries: Sequence[tuple[Path, str]], out_zip: Path) -> Path:
     """Bundle the Bajutsu payload into `out_zip` for upload, one `(source, arcname)` pair per entry.
 
-    A directory source is added recursively under its arcname; a file source is added at its
-    arcname. Paths under a `_PACKAGE_EXCLUDES` component (VCS/build/cache/scratch noise such as
-    `.git` and `.venv`), symlinks, and the output archive itself are skipped. Returns `out_zip`.
+    A directory source is added recursively under its arcname; the arcname `.` packs the directory
+    *at the zip root* (no prefix). A file source is added at its arcname. Paths under a
+    `_PACKAGE_EXCLUDES` component (VCS/build/cache/scratch noise such as `.git` and `.venv`),
+    symlinks, and the output archive itself are skipped. Returns `out_zip`.
 
     Raises:
         DeviceFarmError: If any source path does not exist — an incomplete package would fail
@@ -172,7 +173,7 @@ def build_package(entries: Sequence[tuple[Path, str]], out_zip: Path) -> Path:
     """
     out_zip.parent.mkdir(parents=True, exist_ok=True)
     # `--out` commonly lands inside a packaged source (its default sits in the repo root that
-    # `--package .=bajutsu` walks). Skip the archive by resolved path so it never zips itself —
+    # `--package .=.` walks). Skip the archive by resolved path so it never zips itself —
     # doing so reads back its own growing bytes and balloons the upload without bound.
     out_resolved = out_zip.resolve()
     with zipfile.ZipFile(out_zip, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -180,17 +181,21 @@ def build_package(entries: Sequence[tuple[Path, str]], out_zip: Path) -> Path:
             if not source.exists():
                 raise DeviceFarmError(f"package source not found: {source}")
             if source.is_dir():
+                # `.` packs the directory at the zip root (no prefix); any other arcname nests
+                # under it. Device Farm's APPIUM_PYTHON_TEST_PACKAGE validation needs the repo's
+                # tests/ (and pyproject.toml for `pip install`) at the root, hence `--package .=.`.
+                prefix = "" if arcname == "." else f"{arcname}/"
                 for path in sorted(source.rglob("*")):
                     rel = path.relative_to(source)
-                    # Skip noise dirs (`.git`, `.venv`, caches, scratch) so `--package .=bajutsu`
-                    # doesn't zip the whole repo root, and skip symlinks so a link pointing outside
-                    # the source tree can't pull in unintended files (mirrors `archive_run_dir`).
+                    # Skip noise dirs (`.git`, `.venv`, caches, scratch) so `--package .=.` doesn't
+                    # zip the whole repo root, and skip symlinks so a link pointing outside the
+                    # source tree can't pull in unintended files (mirrors `archive_run_dir`).
                     if any(part in _PACKAGE_EXCLUDES for part in rel.parts):
                         continue
                     if path.resolve() == out_resolved:
                         continue
                     if path.is_file() and not path.is_symlink():
-                        zf.write(path, f"{arcname}/{rel.as_posix()}")
+                        zf.write(path, f"{prefix}{rel.as_posix()}")
             else:
                 zf.write(source, arcname)
     return out_zip
