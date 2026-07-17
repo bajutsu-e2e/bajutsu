@@ -145,6 +145,11 @@ e2e-network: compose-build
 	adb wait-for-device
 	cd $(ROOT) && ( python3 demos/showcase/android/net_stub.py $(E2E_NET_STUB_PORT) & \
 		stub=$$!; trap "kill $$stub 2>/dev/null" EXIT; \
+		ready=0; for i in $$(seq 1 50); do \
+		  if curl -sf --max-time 1 -o /dev/null "http://127.0.0.1:$(E2E_NET_STUB_PORT)/"; then ready=1; break; fi; \
+		  sleep 0.1; \
+		done; \
+		if [ "$$ready" -ne 1 ]; then echo "net_stub.py did not answer on port $(E2E_NET_STUB_PORT) within the readiness timeout" >&2; exit 1; fi; \
 		BAJUTSU_MIN_WAIT_TIMEOUT=$(E2E_WAIT_FLOOR) \
 		uv run bajutsu run --scenario demos/showcase/scenarios/network_android.yaml \
 			--target showcase-compose --udid $(SERIAL) --backend android --config $(CONFIG) )
