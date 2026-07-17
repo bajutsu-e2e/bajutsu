@@ -8,7 +8,7 @@ import {
   $, esc, getJSON, postJSON, setStatus, setBusy, streamJob, cancelJob, appendLine, startJob,
   openModal, closeModal, renderGradeBadge, setCfgName, closeFs, loadShared, loadScenarios, loadSims,
   state, scnFiles, aiAvailable,
-  softDeleteRun, bulkDeleteRuns, restoreRun, purgeRun, trashWindowNote, historySelector, retentionDays,
+  restoreRun, purgeRun, wireHistoryList, retentionDays,
 } from './serve.core.mjs';
 import {replayCodegen} from './serve.author.mjs';
 
@@ -351,10 +351,10 @@ function renderHistFilter(shown){
   $('#histfilter-label').textContent=`filtered: ${label}(${shown} run${shown===1?'':'s'})`;
   box.hidden=false;
 }
-// Per-run delete + bulk-select (BE-0239). The row-open click, the per-row 🗑 delete, and the
-// checkbox change are all delegated once (initPanels) to the stable `#history` <ul>, so the 4-second
-// auto-refresh that rewrites the rows never drops a listener; loadHistory only rewrites rows and
-// re-syncs the selection. `histSel` is the shared selector (assigned in initPanels).
+// Per-run delete + bulk-select (BE-0239), wired via the shared `wireHistoryList` (serve.core.mjs) —
+// the Crawl history list (serve.crawl.mjs) wires the same way, so the delete confirm, bulk-delete
+// confirm, and row-click delegation live in one place. `histSel` is the selector wireHistoryList
+// returns (assigned in initPanels); loadHistory re-syncs it after each re-render.
 let histSel=null;
 async function loadHistory(){
   const runs=await getJSON('/api/runs',null);if(!runs)return;
@@ -366,22 +366,6 @@ async function loadHistory(){
   ul.innerHTML=shown.map(r=>`<li data-id="${esc(r.id)}" data-ok="${r.ok?1:0}"${r.id===state.selectedRun?' class="sel"':''}><input type="checkbox" class="rowck" aria-label="select run for deletion" data-testid="replay.history-select" value="${esc(r.id)}"><span class="dot ${r.ok?'ok':'ng'}"></span><span class="hid">${esc(r.id)}</span><span class="hsum">${r.passed}/${r.total}${r.scenarios.length?' · '+esc(r.scenarios.join(', ')):''}</span><button type="button" class="rowdel" title="Delete this run" aria-label="Delete run" data-testid="replay.history-delete">&#128465;</button></li>`).join('');
   if(histSel)histSel.sync();
 }
-// Soft-delete one run after confirming, then refresh so the list reflects the server (fail loudly on
-// an error rather than optimistically dropping the row). The run moves to the Trash view, restorable.
-async function deleteHistoryRun(id){
-  if(!window.confirm(`Move run ${id} to Trash?\n\nIt is ${trashWindowNote()}.`))return;
-  const d=await softDeleteRun(id);
-  if(d&&d.error)window.alert('Delete failed: '+d.error);
-  loadHistory();
-}
-async function bulkDeleteHistory(ids){
-  if(!window.confirm(`Move ${ids.length} run${ids.length===1?'':'s'} to Trash?\n\nThey are ${trashWindowNote()}.`))return;
-  const d=await bulkDeleteRuns(ids);
-  if(d&&d.error)window.alert('Delete failed: '+d.error);
-  if(histSel)histSel.clear();
-  loadHistory();
-}
-
 // ---- Trash view (BE-0239): soft-deleted runs (regular + crawl share the trash), each restorable or,
 // for an admin, permanently deletable. Restore/purge key on the id alone, so one /api/runs route
 // serves both run types here. The list interactions are delegated once in initPanels. ----
@@ -666,20 +650,13 @@ function initPanels(){
   $('#stop').addEventListener('click',()=>cancelJob(state.runJobId,$('#stop')));
   $('#refresh').addEventListener('click',loadHistory);
   $('#histfilter-clear').addEventListener('click',clearHistoryFilter);
-  // History row interactions delegated once to the stable <ul> (BE-0239), so the 4s auto-refresh
-  // re-render never drops them: open the report, or delete the run via its 🗑; the checkbox toggles
-  // selection (handled by histSel) and must not open the report.
-  const histUl=$('#history');
-  histUl.addEventListener('click',e=>{
-    if(e.target.closest('.rowck'))return;
-    const li=e.target.closest('li[data-id]');if(!li)return;
-    if(e.target.closest('.rowdel')){deleteHistoryRun(li.dataset.id);return}
-    setReport(li.dataset.id,li.dataset.ok==='1');
-    histUl.querySelectorAll('li').forEach(x=>x.classList.remove('sel'));li.classList.add('sel');
-  });
-  histSel=historySelector({
-    list:histUl,allBox:$('#histbulk-all'),bar:$('#histbulk'),count:$('#histbulk-count'),
-    delBtn:$('#histbulk-del'),clearBtn:$('#histbulk-clear'),onDelete:bulkDeleteHistory,
+  // History row-open + delete + bulk-select (BE-0239), via the shared wireHistoryList — the Crawl
+  // history list wires the same way in initCrawl.
+  histSel=wireHistoryList({
+    list:$('#history'), noun:'run', reload:loadHistory,
+    onOpen:li=>setReport(li.dataset.id,li.dataset.ok==='1'),
+    allBox:$('#histbulk-all'),bar:$('#histbulk'),count:$('#histbulk-count'),
+    delBtn:$('#histbulk-del'),clearBtn:$('#histbulk-clear'),
   });
   // Trash view (BE-0239): refresh + delegated Restore / Delete-forever on the stable list.
   $('#trash-refresh').addEventListener('click',loadTrash);

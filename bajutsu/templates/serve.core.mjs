@@ -114,6 +114,22 @@ function softDeleteRun(id){return reqJSON('/api/runs/'+encodeURIComponent(id),'D
 function restoreRun(id){return postJSON('/api/runs/'+encodeURIComponent(id)+'/restore',{},{error:'request failed'})}
 function purgeRun(id){return reqJSON('/api/runs/'+encodeURIComponent(id)+'?purge=true','DELETE')}
 function bulkDeleteRuns(ids){return postJSON('/api/runs/bulk-delete',{ids},{error:'request failed'})}
+// Confirm + soft-delete one row, then reload the caller's list. `noun` (e.g. 'run'/'crawl') only
+// changes the confirm wording — shared by every history list so that wording and error handling
+// (fail loudly via alert, rather than silently dropping the row) live in one place.
+async function confirmSoftDelete(id,{noun,reload}){
+  if(!window.confirm(`Move ${noun} ${id} to Trash?\n\nIt is ${trashWindowNote()}.`))return;
+  const d=await softDeleteRun(id);
+  if(d&&d.error)window.alert('Delete failed: '+d.error);
+  reload();
+}
+async function confirmBulkDelete(ids,{noun,reload,selector}){
+  if(!window.confirm(`Move ${ids.length} ${noun}${ids.length===1?'':'s'} to Trash?\n\nThey are ${trashWindowNote()}.`))return;
+  const d=await bulkDeleteRuns(ids);
+  if(d&&d.error)window.alert('Delete failed: '+d.error);
+  if(selector)selector.clear();
+  reload();
+}
 
 // Multi-select over a history list that re-renders on a timer (BE-0239). A history list rewrites its
 // rows every few seconds, so the selection can't live in the DOM — it lives in a Set here and is
@@ -139,6 +155,26 @@ function historySelector({list, allBox, bar, count, delBtn, clearBtn, onDelete})
   if(clearBtn)clearBtn.addEventListener('click',clear);
   if(delBtn)delBtn.addEventListener('click',()=>{if(sel.size)onDelete([...sel])});
   return {sync, clear};
+}
+// The full BE-0239 delete surface for one history list — row-open click, per-row 🗑 delete (with
+// confirm), and the bulk-select toolbar — in one call. The Replay run-history and Crawl run-history
+// lists are otherwise identical here; they differ only in what "open a row" means (`onOpen`) and how
+// to reload after a change (`reload`), so unifying this avoids re-wiring the same delegation twice.
+//   o: {list, noun, onOpen(li), reload, allBox, bar, count, delBtn, clearBtn}
+// Returns the underlying historySelector so the caller can `.sync()` it after each re-render.
+function wireHistoryList(o){
+  const sel=historySelector({
+    list:o.list, allBox:o.allBox, bar:o.bar, count:o.count, delBtn:o.delBtn, clearBtn:o.clearBtn,
+    onDelete:ids=>confirmBulkDelete(ids,{noun:o.noun,reload:o.reload,selector:sel}),
+  });
+  o.list.addEventListener('click',e=>{
+    if(e.target.closest('.rowck'))return;
+    const li=e.target.closest('li[data-id]');if(!li)return;
+    if(e.target.closest('.rowdel')){confirmSoftDelete(li.dataset.id,{noun:o.noun,reload:o.reload});return}
+    o.onOpen(li);
+    o.list.querySelectorAll('li').forEach(x=>x.classList.remove('sel'));li.classList.add('sel');
+  });
+  return sel;
 }
 // Shared skeleton for the run / record / crawl "start" buttons (BE-0202): close any live stream,
 // flip the button busy, POST the request, and on a clean {jobId} hand the stream to streamJob. The
@@ -1135,5 +1171,5 @@ export {
   renderGradeBadge, wireDoctor, NARROW_MQ, prefersReducedMotion, motionOff, initTheme,
   openModal, closeModal, showView, loadConfig, loadVersion, setCfgName, closeFs, loadProjects,
   switchProject, loadShared, loadScenarios, loadSims, refreshAiAvailability, storeGitCred,
-  softDeleteRun, restoreRun, purgeRun, bulkDeleteRuns, trashWindowNote, historySelector,
+  restoreRun, purgeRun, wireHistoryList,
 };
