@@ -1,14 +1,14 @@
-[English](BE-XXXX-conformance-unactuated-verbs.md) · **日本語**
+[English](BE-0280-conformance-unactuated-verbs.md) · **日本語**
 
-# BE-XXXX — 全バックエンド共通のテストを、アクチュエートされていない Driver 操作へ広げる
+# BE-0280 — 全バックエンド共通のテストを、アクチュエートされていない Driver 操作へ広げる
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-conformance-unactuated-verbs-ja.md) |
+| 提案 | [BE-0280](BE-0280-conformance-unactuated-verbs-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0280") |
 | トピック | ドライバとバックエンドのアーキテクチャ |
 | 関連 | [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md), [BE-0270](../BE-0270-android-adb-driver-conformance/BE-0270-android-adb-driver-conformance-ja.md), [BE-0265](../BE-0265-text-editing-steps/BE-0265-text-editing-steps-ja.md), [BE-0269](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention-ja.md) |
 <!-- /BE-METADATA -->

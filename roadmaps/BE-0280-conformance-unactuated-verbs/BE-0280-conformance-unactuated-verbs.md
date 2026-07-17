@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-conformance-unactuated-verbs-ja.md)
+**English** · [日本語](BE-0280-conformance-unactuated-verbs-ja.md)
 
-# BE-XXXX — Extend the driver conformance contract to unactuated Driver operations
+# BE-0280 — Extend the driver conformance contract to unactuated Driver operations
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-conformance-unactuated-verbs.md) |
+| Proposal | [BE-0280](BE-0280-conformance-unactuated-verbs.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0280") |
 | Topic | Driver & backend architecture |
 | Related | [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md), [BE-0270](../BE-0270-android-adb-driver-conformance/BE-0270-android-adb-driver-conformance.md), [BE-0265](../BE-0265-text-editing-steps/BE-0265-text-editing-steps.md), [BE-0269](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention.md) |
 <!-- /BE-METADATA -->
