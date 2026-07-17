@@ -63,8 +63,8 @@ Proposal altitude. The work is MECE along the units below.
 - **Data-driven and `relaunch` symmetry.** Run data-driven rows and `relaunch` on web too, so
   neither feature is proven on adb alone.
 - **Extend to iOS once BE-0281 lands.** After BE-0281 wires real iOS actuation into CI, run the
-  same `extract` / `forEach` / data-driven / `relaunch` scenarios on iOS, as a non-gating
-  macOS-metered lane.
+  same `extract` / `forEach` / data-driven / `relaunch` scenarios on iOS, as a non-gating macOS
+  lane.
 - **Dynamic-UI scenario.** Drive a showcase screen with a live element (an elapsed-time or counter
   display) so the read-count snapshot-identity assumption and the wait floor get real exercise;
   wire it into an existing lane as signal.
