@@ -85,6 +85,14 @@
            a `FakeDriver`'s frozen tree can never move this, so a scenario that condition-waits on it
            proves a read genuinely observes real UI drift, not a stale cached snapshot. -->
       <output data-testid="ticker.value">0</output>
+
+      <!-- A network-making surface for the web network CI lane (BE-0282): tapping Sync POSTs to
+           /api/sync with an Authorization header and a `password` body field. A scenario mocks the
+           endpoint (page.route), so this needs no live server; the captured exchange proves the real
+           requestfinished/redaction path. Kept off the onboarding->auth->home smoke flow so the
+           existing scenarios, which never tap it, make no request. -->
+      <button data-testid="sync.button">Sync account</button>
+      <output data-testid="sync.status">idle</output>
     </section>
 
     <script>
@@ -153,6 +161,29 @@
         ticks += 1;
         ticker.textContent = String(ticks);
       }, 2000);
+
+      // Account sync: a real fetch the web network lane observes (BE-0282). The request carries a
+      // secret both ways — an `Authorization` header and a `password` body field — so a `redact`
+      // policy has something to mask in the captured evidence. The URL is same-origin and mocked by
+      // the scenario, so no server answers it in CI.
+      const syncStatus = document.querySelector('[data-testid="sync.status"]');
+      document.querySelector('[data-testid="sync.button"]').addEventListener("click", async () => {
+        syncStatus.textContent = "syncing";
+        try {
+          const res = await fetch("/api/sync", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: "Bearer sk-demo-secret-token-abc123",
+            },
+            body: JSON.stringify({ account: "a@b.com", password: "hunter2-demo-secret" }),
+          });
+          const data = await res.json();
+          syncStatus.textContent = data.ok ? "synced" : "error";
+        } catch {
+          syncStatus.textContent = "error";
+        }
+      });
 
       // A two-finger gesture target: classify the live touches as a pinch (distance change) or a
       // rotate (angle change) so a scenario can assert the multiTouch path drove the page.

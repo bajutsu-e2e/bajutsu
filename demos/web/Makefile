@@ -1,7 +1,7 @@
 # Build / run targets for the web demo (BE-0041): the Playwright backend driving a tiny static
 # web app. Unlike the iOS demos this needs no Mac and no Simulator — it runs on Linux inside the
 # same toolchain as `make check`. Invoke from anywhere with `make -C demos/web <target>`.
-.PHONY: web-deps app-serve e2e record record-handoff record-offline record-handoff-offline
+.PHONY: web-deps app-serve e2e e2e-network record record-handoff record-offline record-handoff-offline
 
 ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../..)
 APP := $(ROOT)/demos/web/app
@@ -31,7 +31,31 @@ e2e: web-deps
 	  sleep 0.1; \
 	done; \
 	if [ "$$ready" -ne 1 ]; then echo "demo server did not answer on port $(PORT) within the readiness timeout" >&2; exit 1; fi; \
-	cd $(ROOT) && uv run bajutsu run --target web --backend web --config $(CONFIG) --no-network --workers 2
+	cd $(ROOT) && uv run bajutsu run --target web --backend web --config $(CONFIG) --no-network --exclude network --workers 2
+
+# Web network smoke (BE-0282): the real network path — page.route interception, requestfinished
+# capture, the `mocked` flag, and redaction of really-captured evidence — which `e2e` above opts out
+# of with --no-network. Runs ONLY the `network`-tagged scenario (network.yaml) WITH network on
+# (--network), into a throwaway runs dir, then asserts the persisted network.json masks the Sync
+# request's secret (the redaction gap the run grammar can't assert). Same background-serve +
+# readiness poll as `e2e`; no device, no Simulator — pure Linux.
+#
+# Android has no native network monitor yet (adb declares no NETWORK capability), so there is no
+# Android twin of this lane — the gap is deliberate and recorded in web-e2e.yml and docs, not an
+# oversight.
+NET_RUNS ?= $(ROOT)/tmp/web-network-runs
+e2e-network: web-deps
+	cd $(APP) && python3 -m http.server $(PORT) >/dev/null 2>&1 & srv=$$!; \
+	trap 'kill $$srv 2>/dev/null' EXIT; \
+	ready=0; for i in $$(seq 1 100); do \
+	  if curl -sf --max-time 2 -o /dev/null "http://localhost:$(PORT)/"; then ready=1; break; fi; \
+	  sleep 0.1; \
+	done; \
+	if [ "$$ready" -ne 1 ]; then echo "demo server did not answer on port $(PORT) within the readiness timeout" >&2; exit 1; fi; \
+	rm -rf $(NET_RUNS); \
+	cd $(ROOT) && uv run bajutsu run --target web --backend web --config $(CONFIG) \
+		--network --tag network --runs-dir $(NET_RUNS) && \
+	uv run python demos/web/network/assert_redaction.py $(NET_RUNS)
 
 # AI authoring (Tier 1) against the demo web app: real Claude drives the Playwright backend toward
 # a natural-language goal and writes the executed steps out as a deterministic scenario — the web

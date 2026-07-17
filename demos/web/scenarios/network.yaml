@@ -1,0 +1,38 @@
+# Web network smoke (BE-0282): drive the real Playwright network path — page.route interception,
+# requestfinished capture, the `mocked` provenance flag, and redaction of really-captured evidence.
+# Unlike smoke.yaml / counter.yaml this runs WITHOUT --no-network (see `make -C demos/web e2e-network`),
+# so it is tagged `network` and the default `make -C demos/web e2e` excludes it — under --no-network
+# mocks aren't served and nothing is captured, which this scenario needs.
+#
+# The Sync button POSTs to /api/sync carrying an Authorization header and a `password` body field.
+# The mock answers it 201 (a live server, if one existed, would 404), so a captured exchange with
+# status 201 proves the mock — not the network — served it. The persisted network.json is then
+# checked for masking by demos/web/network/assert_redaction.py (the redaction gap the run grammar
+# can't assert). No model is consulted anywhere — the verdict is the deterministic `request`
+# assertion plus that check.
+description: >-
+  Web network — sign in, reach home, and Sync the account. A mocked POST /api/sync is intercepted
+  and captured (status 201 proves the mock served it), carrying a secret in a header and body so
+  the run's redaction can be checked against real captured evidence.
+scenarios:
+  - name: sync issues a mocked, captured POST carrying a redacted secret
+    description: >-
+      Onboard, sign in, tap Sync, and assert the mocked POST /api/sync (201) was intercepted and
+      captured. The request carries an Authorization header and a password body field.
+    tags: [network]
+    mocks:
+      - match: { method: POST, pathMatches: "/api/sync$" }
+        respond: { status: 201, body: "{\"ok\":true}" }
+    steps:
+      - tap: { id: onboarding.start }
+      - type: { text: "a@b.com", into: { id: auth.email } }
+      - type: { text: "pw", into: { id: auth.password } }
+      - tap: { id: auth.submit }
+      - wait: { for: { id: home.title }, timeout: 5 }
+      - tap: { id: sync.button }
+        capture: [network]
+      - wait: { until: { request: { method: POST, pathMatches: "/api/sync$", status: 201 } }, timeout: 6 }
+      - wait: { until: settled, timeout: 3 }
+    expect:
+      - request: { method: POST, pathMatches: "/api/sync$", status: 201 }
+      - value: { sel: { id: sync.status }, equals: "synced" }

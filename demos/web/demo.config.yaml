@@ -8,3 +8,8 @@ targets:
     baseUrl: "http://127.0.0.1:8787/index.html"
     backend: [web]
     scenarios: scenarios
+    # Mask the Sync request's secret in captured network evidence (BE-0282). The Authorization
+    # header is masked by default (BE-0130); the `password` body field is app-specific, so it is
+    # named here. network.yaml exercises this; assert_redaction.py checks the persisted evidence.
+    redact:
+      fields: [password]

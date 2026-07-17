@@ -10,13 +10,15 @@ toolchain as `make check`.
 
 | Path | Purpose |
 |---|---|
-| `app/index.html` | the app under test — onboarding → login → counter, plus a device-verification flow for the handoff demo, vanilla JS, stable `data-testid` ids |
+| `app/index.html` | the app under test — onboarding → login → counter, a Sync button that POSTs to `/api/sync` (the network lane's request), plus a device-verification flow for the handoff demo, vanilla JS, stable `data-testid` ids |
 | `scenarios/smoke.yaml` | the deterministic smoke scenario (same step/expect schema as the iOS demos) |
+| `scenarios/network.yaml` | the network smoke ([BE-0282](../../roadmaps/BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md)) — a mocked, captured `POST /api/sync` carrying a secret; tagged `network` so the default `e2e` (`--no-network`) skips it |
+| `network/assert_redaction.py` | checks the persisted `network.json` masks the Sync request's secret — the redaction gap the run grammar can't assert |
 | `record/goals.txt` | the natural-language goal `make -C demos/web record` authors from |
 | `record/record_offline.py` | the offline, API-key-free twin of `record` — the same loop, a keyword agent + FakeDriver |
 | `record/record_handoff_offline.py` | the offline, key-free twin of the human-in-the-loop handoff demo — the real pause/resume with a scripted agent + responder |
 | `demo.config.yaml` | `targets.web` with `baseUrl` + `scenarios` + `backend: [web]` (no `bundleId`) |
-| `Makefile` | `web-deps` / `app-serve` / `e2e` / `record` / `record-handoff` / `record-offline` / `record-handoff-offline` |
+| `Makefile` | `web-deps` / `app-serve` / `e2e` / `e2e-network` / `record` / `record-handoff` / `record-offline` / `record-handoff-offline` |
 
 ## Run it
 
@@ -31,6 +33,32 @@ assertions (the counter reads `2`), never an LLM.
 
 To poke the app by hand (or point the Web UI at it), `make -C demos/web app-serve` and open
 <http://127.0.0.1:8787/index.html>.
+
+## Network smoke (BE-0282)
+
+The default `e2e` above runs with `--no-network`, so it never exercises the real network path. The
+network smoke does the opposite — it drives page.route interception, `requestfinished` capture, the
+`mocked` provenance flag, and redaction of really-captured evidence:
+
+```bash
+make -C demos/web e2e-network
+```
+
+It serves `app/`, taps the **Sync account** button (a real `POST /api/sync` carrying an
+`Authorization` header and a `password` body field), and runs the `network`-tagged
+[`scenarios/network.yaml`](scenarios/network.yaml) **with network on**. A [`mocks:`](../showcase/scenarios/network_mock.yaml)
+entry answers the POST with `201` (a live server, if one existed, would `404`), so a captured
+exchange with status `201` proves the mock — not the network — served it. The scenario's `request`
+assertion is the deterministic interception/capture check; then
+[`network/assert_redaction.py`](network/assert_redaction.py) reads the persisted `network.json` and
+fails unless the exchange is `mocked`, is `201`, and has both secrets masked. No LLM anywhere — the
+verdict is the assertion plus that check.
+
+This lane is the web half of [BE-0282](../../roadmaps/BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md).
+It runs in CI as the non-gating `network (playwright)` job (signal first, promoted to required once
+stable). **Android has no counterpart**: the adb driver declares no `NETWORK` capability and there
+is no native network monitor to actuate, so Android network capture is out of scope pending that
+monitor — a deliberate boundary, not an oversight.
 
 ## Record it
 

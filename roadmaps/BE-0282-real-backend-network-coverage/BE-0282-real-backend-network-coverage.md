@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0282](BE-0282-real-backend-network-coverage.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0282") |
+| Implementing PR | _web slice — PR link added on open_ |
 | Topic | Verification & coverage |
 | Related | [BE-0020](../BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback.md), [BE-0027](../BE-0027-mock-server-external/BE-0027-mock-server-external.md), [BE-0003](../BE-0003-m3-codegen-traces-network-ci/BE-0003-m3-codegen-traces-network-ci.md) |
 <!-- /BE-METADATA -->
@@ -82,11 +83,15 @@ Proposal altitude. The work is MECE along the units below.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Web network smoke: mock + request assert without `--no-network`, asserting interception, capture, and the `mocked` flag.
-- [ ] Web redaction of real captured evidence (secret in header/body masked in persisted evidence).
+- [x] Web network smoke: mock + request assert without `--no-network`, asserting interception, capture, and the `mocked` flag.
+- [x] Web redaction of real captured evidence (secret in header/body masked in persisted evidence).
 - [ ] iOS collector real path: connect `network_mock.yaml` / `network_live.yaml` as a non-gating job.
-- [ ] Record the Android network gap explicitly (out of scope pending a native monitor).
-- [ ] Land as signal first; promote to required only after it proves stable.
+- [x] Record the Android network gap explicitly (out of scope pending a native monitor).
+- [x] Land as signal first; promote to required only after it proves stable. (Web `network (playwright)` job lands non-gating; iOS lane still to come.)
+
+Log:
+
+- Web slice: added a Sync request to the demo app, `demos/web/scenarios/network.yaml` (mocked, captured `POST /api/sync` carrying a secret), a `fields: [password]` redact policy, `demos/web/network/assert_redaction.py`, the `make -C demos/web e2e-network` target, and the non-gating `network (playwright)` CI job. Android gap recorded in the workflow and `docs/architecture.md`. iOS collector real path deferred to a follow-up.
 
 ## References
 
