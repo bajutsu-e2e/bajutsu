@@ -36,7 +36,7 @@ which is the concrete cost of the pattern:
   CI rejects.
 - `CLAUDE.md`, `docs/ai-development.md`, `CONTRIBUTING.md`, `AGENTS.md`, and
   `docs/contributor-workflow-tutorial.md` each enumerate a different subset of the steps
-  `make check` runs, none matching the actual ten steps. A reader who trusts the shorter lists
+  `make check` runs, none matching the actual eleven steps. A reader who trusts the shorter lists
   underestimates what the gate covers.
 
 Beyond those two contradictions, the same pattern repeats without (yet) drifting: the roadmap
