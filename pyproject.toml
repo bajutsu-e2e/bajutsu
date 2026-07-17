@@ -304,3 +304,13 @@ forbidden_modules = [
     "bajutsu.doctor",
     "bajutsu.lint",
 ]
+# `drivers/base.py`'s `Collector` Protocol reference is a TYPE_CHECKING-only dependency on the
+# network-exchange model every driver reports through — pre-dating BE-0257, when `network.py` was a
+# flat sibling module, not part of `bajutsu.evidence`. Packaging it under `evidence/` pulled this
+# one pre-existing edge under the forbidden entry above; scoping the exception to it (rather than
+# dropping `bajutsu.evidence` from `forbidden_modules`) keeps the contract meaningful for
+# `evidence/core.py` / `intervals.py` / `visual.py` / `golden.py` / `redaction.py`, which the inner
+# contract must still never reach.
+ignore_imports = [
+    "bajutsu.drivers.base -> bajutsu.evidence.network",
+]

@@ -130,7 +130,7 @@ AND で結合されるフィールドの集合（`id`、`idMatches`、`label`、
 **evidence（証跡）**：run の最中に取得する成果物で、どのプロバイダが生成したかのタグが付きます。二つの
 形があります。**instant（瞬間）** はスクリーンショットや要素階層で、ステップごとに取得します。
 **interval（区間）** は動画、デバイスログ、アプリトレースで、シナリオをまたいで取得します。
-[evidence](evidence.md) を参照してください。定義は `bajutsu/evidence.py` にあります。
+[evidence](evidence.md) を参照してください。定義は `bajutsu/evidence/core.py` にあります。
 
 **capturePolicy・CaptureRule・「ルール」**：同じ概念の三つの呼び名を、ここで整理します。
 

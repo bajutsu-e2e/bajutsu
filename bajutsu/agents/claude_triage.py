@@ -31,7 +31,7 @@ from bajutsu.ai import (
     resolved_provider,
 )
 from bajutsu.ai.prompts import NEVER_JUDGE_BOUNDARY, render_elements
-from bajutsu.redaction import Redactor
+from bajutsu.evidence.redaction import Redactor
 from bajutsu.triage import (
     FIX_KINDS,
     CrossRunTriageContext,

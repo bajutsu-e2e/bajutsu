@@ -28,8 +28,8 @@ if TYPE_CHECKING:
 
 from bajutsu import simctl as _simctl
 from bajutsu.drivers import base as driver_base
+from bajutsu.evidence.redaction import Redactor
 from bajutsu.object_store import EvidenceTarget, ObjectStore
-from bajutsu.redaction import Redactor
 from bajutsu.scenario.models import Step
 from bajutsu.serve.artifacts import ArtifactStore, LocalArtifactStore
 from bajutsu.serve.baselines import BaselineStore, LocalBaselineStore

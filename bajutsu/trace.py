@@ -18,8 +18,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from bajutsu.evidence.intervals import INTERVAL_KINDS
 from bajutsu.from_grouping import grouped_provenance
-from bajutsu.intervals import INTERVAL_KINDS
 from bajutsu.scenario import load_scenario_file
 
 if TYPE_CHECKING:

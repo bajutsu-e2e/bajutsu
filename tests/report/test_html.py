@@ -8,7 +8,7 @@ from _report import _el, _failing, _passing
 
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence import Artifact
-from bajutsu.network import NetworkExchange
+from bajutsu.evidence.network import NetworkExchange
 from bajutsu.orchestrator import RunResult, run_scenario
 from bajutsu.report import html_report
 from bajutsu.scenario import Scenario

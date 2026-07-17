@@ -28,8 +28,8 @@ from bajutsu.ai import (
     ToolDef,
 )
 from bajutsu.ai.prompts import render_elements
+from bajutsu.evidence.redaction import Redactor
 from bajutsu.record import describe_step, settle_step
-from bajutsu.redaction import Redactor
 from bajutsu.scenario import Scenario
 
 MODEL = "claude-opus-4-8"

@@ -2,7 +2,7 @@
 
 Mines the run records a hosted or self-hosted `serve` accumulates and ranks scenarios by how much
 their verdict flips at a constant content fingerprint. It reuses `audit --history`'s exact
-classification (`bajutsu.audit.classify_stability`) so the DB-backed surface and the file-backed
+classification (`bajutsu.analysis.audit.classify_stability`) so the DB-backed surface and the file-backed
 `audit --history` label a scenario identically.
 
 Determinism-first, like BE-0049: this only *reports* flakiness read from recorded verdicts. It
@@ -25,7 +25,7 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader
 
-from bajutsu.audit import classify_stability
+from bajutsu.analysis.audit import classify_stability
 from bajutsu.run_id import parse_run_id_timestamp
 from bajutsu.serve.server.db import RunRecord
 

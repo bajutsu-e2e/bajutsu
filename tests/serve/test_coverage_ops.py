@@ -188,7 +188,7 @@ def test_malformed_scenario_returns_400(tmp_path: Path) -> None:
 
 def test_read_exchanges_via_store_drops_a_batch_with_one_bad_entry_wholesale() -> None:
     """A `network.json` with one invalid exchange mixed among valid ones drops the whole file's
-    batch, matching `bajutsu.coverage.read_exchanges`'s "a bad entry never leaves a half-read
+    batch, matching `bajutsu.analysis.coverage.read_exchanges`'s "a bad entry never leaves a half-read
     batch" — not a partial batch of just the entries seen before the bad one."""
     manifests = [
         {

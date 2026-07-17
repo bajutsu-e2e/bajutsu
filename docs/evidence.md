@@ -4,7 +4,7 @@
 
 [Evidence](glossary.md#evidence-capturepolicy-trace-triage) capture for a recurring action is expressed as a **repeatedly-firing rule** rather than a one-shot instruction. The rule ensures the same evidence is collected without AI on every subsequent run.
 
-Implementation: `bajutsu/evidence.py` (instant + Sinks) · `bajutsu/intervals.py` (interval: video / deviceLog / appTrace). Firing is decided on the orchestrator side ([run-loop](run-loop.md#evidence-rule-firing)).
+Implementation: `bajutsu/evidence/core.py` (instant + Sinks) · `bajutsu/evidence/intervals.py` (interval: video / deviceLog / appTrace). Firing is decided on the orchestrator side ([run-loop](run-loop.md#evidence-rule-firing)).
 
 Related: [the capture tokens in scenarios](scenarios.md#capture-token-grammar) · [reporting](reporting.md)
 
@@ -95,7 +95,7 @@ To capture just one step, attach `capture:` directly to the step.
 
 ## Interval evidence (video / deviceLog / appTrace)
 
-Implementation: `bajutsu/intervals.py`. These are **subprocess child processes** — `simctl` on iOS,
+Implementation: `bajutsu/evidence/intervals.py`. These are **subprocess child processes** — `simctl` on iOS,
 `adb` on Android — started before the action and stopped after the step settles. Process spawning is
 injectable (`Spawn`) and testable. Web has no subprocess: its intervals are Playwright-native and
 supplied by the driver (see below). (`appTrace` is an iOS interval too — a `log stream` over the
@@ -224,7 +224,7 @@ redact:
 > debugging an auth failure), name it under `unmaskHeaders` — turning off protection is an
 > explicit, visible choice, never the mere absence of `redact:`.
 
-> Redaction **is applied** before evidence is written (`redaction.py` `Redactor`): the device log /
+> Redaction **is applied** before evidence is written (`evidence/redaction.py` `Redactor`): the device log /
 > app trace are scrubbed by key→value patterns, the element tree masks a value when its label is
 > configured (or scrubs an embedded secret), and each network exchange is masked structurally —
 > header values by name, and the url / request / response bodies as free text (so query params and

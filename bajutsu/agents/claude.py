@@ -35,7 +35,7 @@ from bajutsu.ai import (
     ToolUseBlock,
 )
 from bajutsu.ai.prompts import render_elements
-from bajutsu.redaction import Redactor
+from bajutsu.evidence.redaction import Redactor
 from bajutsu.scenario import Assertion, Step
 
 MODEL = "claude-opus-4-8"

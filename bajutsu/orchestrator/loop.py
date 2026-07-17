@@ -12,10 +12,10 @@ import subprocess
 from collections.abc import Callable, Mapping
 from dataclasses import replace
 
-from bajutsu import assertions, interp, intervals
+from bajutsu import assertions, interp
 from bajutsu.assertions import AssertionResult, EvalContext
 from bajutsu.drivers import base
-from bajutsu.evidence import Artifact, EvidenceSink, NullSink
+from bajutsu.evidence import Artifact, EvidenceSink, NullSink, intervals
 from bajutsu.mailbox import extract_value, select
 from bajutsu.orchestrator.actions import _action_of, _do_action, _step_label
 from bajutsu.orchestrator.evidence_rules import (

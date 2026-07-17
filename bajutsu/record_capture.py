@@ -11,7 +11,7 @@ from typing import Literal
 
 from bajutsu import doctor
 from bajutsu.drivers import base
-from bajutsu.redaction import Redactor
+from bajutsu.evidence.redaction import Redactor
 from bajutsu.scenario.models import Selector, Step, Swipe, TypeText
 
 

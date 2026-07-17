@@ -1,4 +1,4 @@
-"""Tests for the static determinism audit (bajutsu/audit.py, BE-0049).
+"""Tests for the static determinism audit (bajutsu/analysis/audit.py, BE-0049).
 
 The audit is a pure, device-free, AI-free function of a scenario: it grades each selector on the
 stability ladder (id > label/traits > index/coordinates), flags over-loose waits, and flags
@@ -12,8 +12,7 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
-from bajutsu.assertions import AssertionResult
-from bajutsu.audit import (
+from bajutsu.analysis.audit import (
     audit_scenario,
     longitudinal,
     referenced_ids,
@@ -22,6 +21,7 @@ from bajutsu.audit import (
     render_repeat,
     repeat_diff,
 )
+from bajutsu.assertions import AssertionResult
 from bajutsu.cli import app
 from bajutsu.orchestrator import RunResult, StepOutcome
 from bajutsu.scenario import load_scenarios

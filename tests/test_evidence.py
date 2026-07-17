@@ -216,8 +216,7 @@ def test_capture_creates_dir_once_for_writing_kinds(
 def test_filesink_dispatches_intervals_to_web_provider(tmp_path: Path) -> None:
     # When a web interval provider is injected, the sink uses it (Playwright-native) instead of
     # the simctl starters, even though the web lane carries a (synthetic) udid.
-    from bajutsu import intervals
-    from bajutsu.evidence import FileSink
+    from bajutsu.evidence import FileSink, intervals
 
     calls: list[tuple[str, str]] = []
 
@@ -250,8 +249,8 @@ def test_filesink_dispatches_adb_driver_intervals_end_to_end(
     # The real seam: FileSink + AdbDriver.driver_interval start BOTH kinds via adb (not the simctl
     # path), even with a udid set. The subprocess spawn is faked so no adb process runs; the video's
     # pull/rm still go through the driver's injected run.
-    from bajutsu import intervals
     from bajutsu.drivers.adb import AdbDriver
+    from bajutsu.evidence import intervals
 
     class _FakeProc:
         def stop(self, sig: int, timeout: float) -> None:

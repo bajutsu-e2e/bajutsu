@@ -11,7 +11,7 @@ from _shared import project
 
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.redaction import Redactor
+from bajutsu.evidence.redaction import Redactor
 from bajutsu.scenario import Redact
 from bajutsu.serve import operations as ops
 from bajutsu.serve.state import ServeState

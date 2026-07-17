@@ -85,7 +85,7 @@ def test_resolve_skips_an_unavailable_provider() -> None:
 def test_network_seeded_fake_is_a_readonly_evidence_provider() -> None:
     from bajutsu.drivers.base import EvidenceProvider
     from bajutsu.drivers.fake import FakeDriver
-    from bajutsu.network import Collector, NetworkExchange
+    from bajutsu.evidence.network import Collector, NetworkExchange
 
     ex = NetworkExchange(method="GET", path="/items", status=200)
     fake = FakeDriver(exchanges=[ex])

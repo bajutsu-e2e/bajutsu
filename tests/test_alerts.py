@@ -123,7 +123,7 @@ def test_locator_absent_decision() -> None:
 def test_locator_redacts_instruction_before_send() -> None:
     # BE-0047: the (possibly user-supplied) --alert-instruction is redacted before it reaches the
     # model. The screenshot beside it is sent as-is — images cannot be pixel-masked.
-    from bajutsu.redaction import Redactor
+    from bajutsu.evidence.redaction import Redactor
     from bajutsu.scenario import Redact
 
     backend = _resolve_alert({"present": False})

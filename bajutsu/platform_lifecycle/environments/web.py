@@ -10,7 +10,7 @@ from bajutsu import backends, simctl
 from bajutsu.config import Effective, require_web
 from bajutsu.crawl import AliveCheck, ClearBlocking, Recover, Reset
 from bajutsu.drivers import base
-from bajutsu.network import Collector
+from bajutsu.evidence.network import Collector
 from bajutsu.orchestrator import DeviceControl, RelaunchFn
 from bajutsu.platform_lifecycle import readiness
 from bajutsu.platform_lifecycle.relaunchers import _web_relauncher

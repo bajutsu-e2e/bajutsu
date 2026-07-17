@@ -6,8 +6,8 @@ from pathlib import Path
 
 from PIL import Image
 
+from bajutsu.evidence.visual import compare_images
 from bajutsu.scenario import ExcludeRegion
-from bajutsu.visual import compare_images
 
 
 def _solid(color: tuple[int, ...], size: tuple[int, int] = (100, 100)) -> Image.Image:

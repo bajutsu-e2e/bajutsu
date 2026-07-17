@@ -9,7 +9,8 @@ from pathlib import Path
 
 import pytest
 
-from bajutsu import intervals, simctl
+from bajutsu import simctl
+from bajutsu.evidence import intervals
 
 
 class FakeProc:

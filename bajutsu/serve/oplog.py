@@ -34,7 +34,7 @@ from contextvars import ContextVar
 from datetime import UTC, datetime
 from typing import IO, Any
 
-from bajutsu.redaction import PLACEHOLDER, Redactor
+from bajutsu.evidence.redaction import PLACEHOLDER, Redactor
 
 # Stable event names so an SRE can grep/alert on `event=`. Keep additions deliberate.
 EVENTS: frozenset[str] = frozenset(

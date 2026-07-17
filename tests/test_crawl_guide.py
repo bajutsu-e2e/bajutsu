@@ -22,7 +22,7 @@ from bajutsu.crawl.guide import (
     make_guide,
 )
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.redaction import Redactor
+from bajutsu.evidence.redaction import Redactor
 from bajutsu.scenario import Redact
 
 

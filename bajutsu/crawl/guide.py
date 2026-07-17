@@ -35,7 +35,7 @@ from bajutsu.ai.prompts import NEVER_JUDGE_BOUNDARY, render_elements
 from bajutsu.crawl import core as crawl
 from bajutsu.crawl import tabs as crawl_tabs
 from bajutsu.drivers import base
-from bajutsu.redaction import Redactor
+from bajutsu.evidence.redaction import Redactor
 from bajutsu.screenshots import screenshot_bytes
 
 MODEL = "claude-opus-4-8"

@@ -15,7 +15,7 @@ from bajutsu.agents.protocols import Agent, EnrichmentAgent
 
 if TYPE_CHECKING:
     from bajutsu.agents.ai_config import AiConfig
-    from bajutsu.redaction import Redactor
+    from bajutsu.evidence.redaction import Redactor
 
 
 def make_agent(

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from bajutsu.drivers import base
 from bajutsu.elements import screen_size_from_elements
+from bajutsu.evidence.redaction import Redactor
 from bajutsu.record_capture import (
     hit_test,
     resolve_capture,
@@ -15,7 +16,6 @@ from bajutsu.record_capture import (
     step_for_tap,
     step_for_type,
 )
-from bajutsu.redaction import Redactor
 from bajutsu.scenario import Redact, load_scenarios
 from bajutsu.scenario.models import Scenario, Selector
 from bajutsu.scenario.serialize import dump_scenario_file

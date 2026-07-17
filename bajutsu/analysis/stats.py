@@ -25,7 +25,7 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader
 
-from bajutsu.audit import longitudinal
+from bajutsu.analysis.audit import longitudinal
 
 # A run id opens with a UTC timestamp (`YYYYMMDD-HHMMSS`), so the day is a pure prefix parse; a run
 # id that doesn't match (a custom label) simply has no day and buckets under "" (unknown).
@@ -450,7 +450,9 @@ def render(s: Stats) -> str:
     return "\n".join(lines)
 
 
-_TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
+# The shared Jinja templates live at the package root (`bajutsu/templates/`), one level up now
+# that this module is packaged under `analysis/` (BE-0257).
+_TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates"
 
 
 @functools.lru_cache(maxsize=1)

@@ -1,7 +1,7 @@
 """Visual-assertion image preprocessing.
 
 The coordinate math, cropping, masking, and Pillow file I/O a `visual` assertion needs before it
-hands off to `bajutsu.visual`'s pixel-compare engine. Frames are in element points; the screenshot
+hands off to `bajutsu.evidence.visual`'s pixel-compare engine. Frames are in element points; the screenshot
 is in device pixels, so everything here resolves selectors and scales frames into pixel space.
 """
 
@@ -256,7 +256,7 @@ def _eval_visual(
         )
 
     try:
-        from bajutsu.visual import compare_images
+        from bajutsu.evidence.visual import compare_images
     except ImportError:
         return AssertionResult(
             False, "visual", detail, "visual assertions need the 'visual' extra (Pillow)"

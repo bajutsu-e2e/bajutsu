@@ -18,7 +18,7 @@ from collections.abc import Iterator
 from typing import TYPE_CHECKING, Protocol, TypedDict, cast, runtime_checkable
 
 if TYPE_CHECKING:
-    from bajutsu.network import Collector
+    from bajutsu.evidence.network import Collector
 
 
 @functools.lru_cache(maxsize=128)

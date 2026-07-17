@@ -36,8 +36,8 @@ from bajutsu.config_source import (
     parse_config_spec,
     source_provenance,
 )
+from bajutsu.evidence.redaction import Redactor
 from bajutsu.github import GitHubAccessError
-from bajutsu.redaction import Redactor
 from bajutsu.runner.launch_server import start_launch_server
 
 if TYPE_CHECKING:

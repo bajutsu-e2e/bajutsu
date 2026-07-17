@@ -15,9 +15,10 @@ from pathlib import Path
 import pytest
 
 import bajutsu.drivers.adb as adb_driver_mod
-from bajutsu import adb, intervals
+from bajutsu import adb
 from bajutsu.drivers import base
 from bajutsu.drivers.adb import AdbDriver, AdbResidentError, parse_hierarchy
+from bajutsu.evidence import intervals
 
 # A realistic dump: a Views native id (package-prefixed) with visible text only, a Compose testTag
 # (verbatim, dotted) that mirrors its state value into content-desc à la the showcase (SPEC §2.1)

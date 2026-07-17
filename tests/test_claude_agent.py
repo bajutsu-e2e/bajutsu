@@ -16,8 +16,8 @@ from bajutsu.ai.base import (
 )
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
+from bajutsu.evidence.redaction import Redactor
 from bajutsu.record import record
-from bajutsu.redaction import Redactor
 from bajutsu.scenario import Redact, dump_scenarios, load_scenarios
 
 

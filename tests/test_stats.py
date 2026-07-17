@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from bajutsu import stats as _stats
+from bajutsu.analysis import stats as _stats
 
 
 def _manifest(

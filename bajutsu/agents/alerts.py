@@ -33,8 +33,8 @@ from bajutsu.ai import (
 )
 from bajutsu.drivers import base
 from bajutsu.elements import screen_size_from_elements
+from bajutsu.evidence.redaction import Redactor
 from bajutsu.orchestrator import AlertEvent
-from bajutsu.redaction import Redactor
 from bajutsu.screenshots import fraction, png_size, screenshot_bytes
 
 LOCATOR_MODEL = "claude-opus-4-8"

@@ -17,10 +17,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
-from bajutsu import intervals
 from bajutsu.artifact_perms import restrict_file
 from bajutsu.drivers import base
-from bajutsu.redaction import Redactor
+from bajutsu.evidence import intervals
+from bajutsu.evidence.redaction import Redactor
 from bajutsu.scenario import Redact
 
 if TYPE_CHECKING:

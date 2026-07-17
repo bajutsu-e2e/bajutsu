@@ -131,4 +131,4 @@ evidence reproduces without AI on the second run onward ([evidence](evidence.md)
 | Machine assertions | `assertions/` |
 | Stability order / actuator | `backends.py` `select_actuator` · each `drivers/*.py` `capabilities()` |
 | App-agnostic | `config/resolve.py` `resolve` → `Effective` |
-| Evidence rules | `orchestrator/loop.py` `_collect_captures` · `evidence.py` |
+| Evidence rules | `orchestrator/loop.py` `_collect_captures` · `evidence/core.py` |

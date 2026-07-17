@@ -37,10 +37,11 @@ from collections.abc import Callable
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
-from bajutsu import adb, intervals
+from bajutsu import adb
 from bajutsu.drivers import base
 from bajutsu.drivers.coordinate_tree import CoordinateTreeDriver
 from bajutsu.elements import screen_size_from_elements
+from bajutsu.evidence import intervals
 
 RunFn = Callable[[list[str]], str]
 

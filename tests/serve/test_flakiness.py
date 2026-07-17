@@ -3,7 +3,7 @@
 Deterministic and observational: the score reads each run's recorded verdict and provenance
 stamp and ranks scenarios by how much their verdict flips at a constant content fingerprint. It
 computes no pass/fail and gates nothing — it reuses `audit --history`'s exact classification
-(`bajutsu.audit.classify_stability`).
+(`bajutsu.analysis.audit.classify_stability`).
 """
 
 from datetime import UTC, datetime, timedelta

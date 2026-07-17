@@ -7,11 +7,10 @@ import html
 import json
 from pathlib import Path
 
-from bajutsu import intervals
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.evidence import FileSink
-from bajutsu.redaction import PLACEHOLDER, Redactor
+from bajutsu.evidence import FileSink, intervals
+from bajutsu.evidence.redaction import PLACEHOLDER, Redactor
 from bajutsu.scenario import Redact
 
 

@@ -123,7 +123,7 @@ So a **target** (config) points at an **app** (software) driven on a **device** 
 **evidence** — Artifacts captured during a run, each tagged with the provider that produced it.
 Two shapes: **instant** (screenshot / element hierarchy, captured per step) and **interval**
 (video / device log / app trace, captured across a scenario). See [evidence](evidence.md);
-defined in `bajutsu/evidence.py`.
+defined in `bajutsu/evidence/core.py`.
 
 **capturePolicy / CaptureRule / "rule"** — Three names for one concept, reconciled here:
 

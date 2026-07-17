@@ -8,7 +8,7 @@ from bajutsu.agents.claude_enrich import ClaudeEnrichmentAgent, _render_enrichme
 from bajutsu.agents.protocols import StepContext
 from bajutsu.ai.base import ImagePart, NamedTool, TextPart
 from bajutsu.drivers import base
-from bajutsu.redaction import Redactor
+from bajutsu.evidence.redaction import Redactor
 from bajutsu.scenario import Redact, Scenario, Step
 
 

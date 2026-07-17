@@ -138,7 +138,7 @@ e2e: compose-build views-build
 # Compose baseline — of the same name, lists.json — lives in its own dir,
 # demos/showcase/scenarios/golden/goldens_android/, selected with `--goldens` (the idb lane uses the
 # default goldens/ beside the scenario). The comparison is field-level with a tolerant frame check
-# (bajutsu/golden.py), so the baseline recorded on the local arm64 emulator also passes on the CI
+# (bajutsu/evidence/golden.py), so the baseline recorded on the local arm64 emulator also passes on the CI
 # x86_64 one: identity / label / traits are stable across the ABI, only the density-scaled frame
 # differs and it is only sanity-checked. The scenario runs on the Stable tab (the launch tab), so it
 # needs no tab-bar navigation. Not part of `make check`: it needs a booted AVD, so android-e2e.yml
