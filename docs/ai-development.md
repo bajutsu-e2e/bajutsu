@@ -456,7 +456,10 @@ from a branch in this repository automatically, run from the
 [`claude-review`](../.github/workflows/claude-review.yml) workflow. It reviews when a PR opens and
 re-reviews on each push, against the
 [`.github/claude-review-prompt.md`](../.github/claude-review-prompt.md) contract, and posts inline
-line-level comments (with `suggestion` blocks where a fix is mechanical) plus a short summary. Until
+line-level comments (with `suggestion` blocks where a fix is mechanical) — inline findings only, no
+top-level summary, since the job re-runs on every push and a fresh summary each time would leave stale,
+contradictory overviews on the PR. It aims to raise every finding in one pass rather than dribbling
+them out across re-runs. Until
 a credential is provisioned the workflow is a dormant green no-op — it posts nothing and never
 blocks — so no review appearing on a PR yet just means the Environment isn't configured. The
 prompt points the reviewer at *this repository's* contract — the three
