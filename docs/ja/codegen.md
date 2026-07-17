@@ -22,9 +22,9 @@ bajutsu codegen <scenario.yaml> --target <name> [--emit xcuitest | playwright | 
 ```
 
 `--emit` は `xcuitest`（既定）、`playwright`、`uiautomator` のいずれかです。`-o -`（既定）なら標準出力に、
-ファイルパスならそのファイルに書き出します。`--emit playwright` は対象が web ターゲットであること
-（`targets.<name>.baseUrl` の設定）を、`--emit uiautomator` は Android ターゲットであること
-（`targets.<name>.package` の設定）を要求し、対応するターゲットでなければ終了コード 2 で終わります。config の
+ファイルパスならそのファイルに書き出します。`--emit playwright` は web ターゲット（`targets.<name>.baseUrl` の設定）を、
+`--emit uiautomator` は Android ターゲット（`targets.<name>.package` の設定）を要求します。
+対応するターゲットでなければ終了コード 2 で終わります。config の
 `launchEnv` は生成テストに引き継がれます（[cli](cli.md#codegen)）。XCUITest では `app.launchEnvironment` に、
 Playwright では `localStorage` のシードに反映され、UI Automator では intent extra として渡されます。
 
@@ -80,7 +80,7 @@ final class ComponentsUITests: XCTestCase {
 | `index: n` | `.element(boundBy: n)`（負の `n` は末尾から数え `.element(boundBy: query.count - k)`。それ以外は `.firstMatch`） |
 
 設定された全フィールドを **AND** で結合します。*忠実な*構造マッピングが無いフィールドがあると、セレクタは
-`el("UNSUPPORTED_SELECTOR")` のまま残ります（誤った推測ではなく、正直なギャップ）。
+`el("UNSUPPORTED_SELECTOR")` のまま残ります（誤った推測ではなく、明示的に残したギャップ）。
 
 - **正規表現メタ文字を含む `labelMatches`**：これは Python の `re.search` パターンです。メタ文字を含ま
   ないものだけが単純な部分文字列で（`CONTAINS`）、本物の正規表現（例 `^Item `）は忠実な NSPredicate 形が
@@ -133,7 +133,7 @@ final class ComponentsUITests: XCTestCase {
 `run` 用のドライバは DOM をたどって解決した要素の中心を座標クリックし、照合を iOS とバイト単位で一致させます。
 生成テストはこれと反対に、Playwright の意味的ロケータ（`getByTestId` / `getByRole`）と web-first アサーション
 （`expect(...).toBeVisible()`）を使います。これは意図したものです。出力先フレームワーク自身がランタイムである
-以上、テストは Playwright の流儀で書かれる必要があり、引き渡し成果物の決定性は Playwright の自動待機が担います
+以上、テストは Playwright の流儀で書く必要があり、引き渡し成果物の決定性は Playwright の自動待機が担います
 （web-first アサーションはテストのタイムアウトまで再試行します）。XCUITest 側の切り分けと同じ構図です。実行時には
 idb が座標タップする一方、生成された XCUITest は `el(id).tap()` と `waitForExistence` を使います。
 
@@ -214,7 +214,7 @@ test.describe('Components', () => {
 して描き出します。これが Android（adb）backend（[drivers](drivers.md)）の引き渡し成果物です。シナリオ群を 1 つの
 計装テストクラスに落とし、**1 シナリオ = 1 個の `@Test` メソッド** とします（XCUITest のメソッド 1 つに対応）。
 
-UI Automator は adb backend の近い双子です。どちらもアプリを別プロセスからの黒箱として `resource-id` / `text` /
+UI Automator は adb backend と構造がきわめて近い出力先です。どちらもアプリを別プロセスからの黒箱として `resource-id` / `text` /
 `content-desc` を通して見ます。そのため生成テストは、**ドライバ自身によるツリーの読み取りを忠実に逆向きにした
 もの**になります。`UiDevice` と `UiObject2` を駆動し JUnit でアサートするので、実行時にドライバが行うことをそのまま
 写し取ります。Espresso のビューマッチャの流儀（文字列キーのシナリオが持たない `R.id` 参照を要する）ではありません。

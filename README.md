@@ -7,7 +7,7 @@
 # Bajutsu
 
 > Natural-language-driven E2E (end-to-end) testing built on a **backend-agnostic driver**: one
-> scenario format and one deterministic runner, where **a platform is just a backend** behind that
+> scenario format and one deterministic runner, where **a platform is a backend** behind that
 > one interface. Swap the backend and the same scenarios run on a different target — the iOS
 > Simulator (idb/XCUITest), a web (Playwright) backend, and an Android (adb) backend are all
 > landed, with Flutter next.
@@ -15,12 +15,12 @@
 > the evidence subsystem, codegen, and self-healing triage are all implemented and
 > unit-tested (no Simulator needed). The iOS **idb/XCUITest backends** are **validated
 > end-to-end on a real Simulator** — scenarios, evidence capture, and the triage self-heal loop
-> all run on-device — the **web (Playwright) backend** runs a deterministic `run` against a
+> all run on-device. The **web (Playwright) backend** runs a deterministic `run` against a
 > browser on the Linux gate ([`demos/web`](demos/web/README.md)), and the **Android (adb)
 > backend** is validated end-to-end on an emulator ([`android-e2e.yml`](.github/workflows/android-e2e.yml)).
 
 Bajutsu takes test scenarios written in (or recorded from) natural language, drives your app —
-taps / typing / swipes / waits — and verifies the result with **machine-checkable assertions**.
+taps / text / swipes / waits — and verifies the result with **machine-checkable assertions**.
 Everything but one seam is platform-neutral: the scenario format, selector resolution, the
 deterministic runner, the evidence subsystem, and the reporter never name a platform. That one seam
 is the **backend** — the driver that actuates the UI. Point the runner at a different backend and
@@ -54,7 +54,7 @@ under [`docs/ja/`](docs/ja/README.md).
   clean environment.
 - **Stable selectors.** Prefer a non-localized, data-derived id — `accessibilityIdentifier`
   on iOS, `data-testid` on the web — over text; coordinates are the last resort.
-- **Stability ladder.** UI actions are attempted most-stable-first (semantic tap by id →
+- **Stability ladder.** Bajutsu attempts UI actions most-stable-first (semantic tap by id →
   coordinate tap → … ), and the chosen backend is the most stable one available.
 - **A platform is a backend.** The deterministic core names no platform; the one platform-specific
   seam is the **backend** (idb / playwright / …) behind the `Driver` interface. Add or swap a
@@ -118,7 +118,7 @@ Validated on a real Simulator (iPhone 17 Pro, recent iOS):
 Validated in a browser (Linux, no Mac):
 
 - The Playwright backend runs the [`demos/web`](demos/web/README.md) scenarios deterministically
-  inside the same gate as CI — proving the core is platform-neutral, including the rich-end web
+  inside the same gate as CI — proving the core is platform-neutral, including the richer web-only
   capabilities (network capture / video / multi-touch / parallel).
 
 Validated on an Android emulator (Linux, no Mac):
@@ -185,7 +185,7 @@ bajutsu schema                                            # print the JSON Schem
 for the hosted backend) round out the set — see the [CLI reference](docs/cli.md).
 
 > `make serve` (or `scripts/serve.sh`) wraps `bajutsu serve` and installs the idb
-> backend's dependencies on demand, so a fresh checkout won't hit
+> backend's dependencies on demand, so a fresh checkout will not hit
 > `no available actuator among ['idb']`. Pass flags via `make serve ARGS="--port 8766"`.
 
 Per-app (and per-platform) settings live in a config file you pass with `--config`; the demos

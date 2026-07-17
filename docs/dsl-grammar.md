@@ -35,7 +35,7 @@ Every mapping rejects keys it does not declare (`_Model`, `scenario/models/_base
 
 ## 2. Grammar at a glance
 
-The **reference graph** below shows which non-terminal references which. It makes visible the recursion and sharing that is harder to trace in the EBNF text: `Selector`'s `within` self-loop, and how `RequestMatch` is shared by the `request` assertion, the `until: { request }` wait, and `Mock.match`. (Actions that carry only scalars and reference no shared non-terminal — `relaunch`, `setLocation`, `push`, `http`, and the device / status-bar steps — are omitted.)
+The **reference graph** below shows which non-terminal references which. It makes visible the recursion and sharing that are harder to trace in the EBNF text: `Selector`'s `within` self-loop, and how `RequestMatch` is shared by the `request` assertion, the `until: { request }` wait, and `Mock.match`. (Actions that carry only scalars and reference no shared non-terminal — `relaunch`, `setLocation`, `push`, `http`, and the device / status-bar steps — are omitted.)
 
 ```mermaid
 graph LR
@@ -257,7 +257,7 @@ MockResponse ::= { status?: integer, headers?: map(string,string), body?: string
 A scenario file is YAML, parsed by Bajutsu's loader (`_yaml.py`), with **one deliberate
 deviation** from YAML 1.1:
 
-- **Only `true` / `false` are booleans.** `on` / `off` / `yes` / `no` stay **strings**. This keeps
+- **Only `true` / `false` are booleans.** `on` / `off` / `yes` / `no` stay **strings**. This deviation keeps
   the `capturePolicy` trigger key `on:` a key (not the boolean `True`) and keeps id/label values
   like `on` intact. ([scenarios](scenarios.md#yaml-caveat))
 
@@ -340,7 +340,7 @@ trimmed). Substitution is **type-preserving at the edges**:
 - A string that is **exactly one token** (`"${row.qty}"`) becomes the **raw bound value** (e.g. a
   number stays a number).
 - A token **embedded** in a larger string is spliced in as text (`"item-${row.id}"`).
-- A token whose namespace isn't being substituted **right now is left intact**, so each layer fills
+- A token whose namespace is not being substituted **right now is left intact**, so each layer fills
   only its own namespace.
 
 Namespaces: `params.*` (components, §6.2), `row.*` (data-driven, §6.3), `secrets.*` (declared
