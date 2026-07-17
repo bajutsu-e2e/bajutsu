@@ -18,11 +18,12 @@ regression net that catches one session breaking another's feature.
 ## The gate
 
 ```bash
-make check        # ruff check . + mypy bajutsu + pytest -q
+make check
 ```
 
-Same three steps as [`.github/workflows/ci.yml`](../.github/workflows/ci.yml). The Python core
-needs no Simulator, so it runs on Linux in seconds. Run it before you call a change done and
+Its steps mirror [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) exactly; the current
+step list lives in [`CLAUDE.md`](../CLAUDE.md), the single source of truth for the gate. The Python
+core needs no Simulator, so it runs on Linux in seconds. Run it before you call a change done and
 again before you push. On-device E2E (macOS + Simulator) is a separate, heavier path and is
 **not** part of this gate.
 
@@ -524,7 +525,7 @@ surface). The key properties, all consistent with the sibling automations:
 ## Roadmap items: BE IDs (strict)
 
 The roadmap is **one directory per item** under [`roadmaps/`](../roadmaps/README.md). Each item lives in
-`roadmaps/<category>/BE-NNNN-<slug>/`, which holds the English file `BE-NNNN-<slug>.md` and its
+`roadmaps/BE-NNNN-<slug>/`, which holds the English file `BE-NNNN-<slug>.md` and its
 Japanese version `BE-NNNN-<slug>-ja.md` (same ID and slug). **BE** stands for *Bajutsu Evolution* and `NNNN`
 is a **zero-padded, four-digit, monotonically increasing** ID. Every item lives directly under `roadmaps/`
 in a flat layout: its path is fixed the moment its ID is allocated and never moves (BE-0159 retired the
@@ -708,6 +709,13 @@ apply equally when reporting on or summarizing work.
   in parentheses right after — e.g. role-based access control (RBAC) — then the acronym alone is
   fine for the rest of the document. This applies everywhere the term appears, including roadmap
   items, not only `docs/`.
+- **Don't restate a cross-cutting norm — link it (BE-0284).** When a rule spans several documents
+  (the gate's step list, the roadmap BE-ID lifecycle, the PR title-and-body shape, this
+  documentation style), state it in full in **one** canonical home and point every other mention at
+  that home with a short link, rather than copying the rule. Each restated copy is a second place a
+  later edit can miss, and two copies drift into contradiction over time. The short, load-bearing
+  prime directives are the deliberate exception: a document that must be self-contained on first
+  read keeps a short, accurate copy rather than sending a first-time reader elsewhere.
 - **Japanese prose follows the `japanese-document-writing` skill.** Whether you write the Japanese side
   fresh or translate the English mirror into `docs/ja/` (or a roadmap `*-ja.md`), apply
   [`japanese-document-writing`](../.claude/skills/japanese-document-writing/): it is the authoritative style

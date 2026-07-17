@@ -86,12 +86,12 @@ make check
 
   For a roadmap PROPOSAL PR, also add:
   ## Files
-    - roadmaps/proposals/BE-XXXX-<slug>/BE-XXXX-<slug>.md + its -ja.md mirror (bilingual pair)
+    - roadmaps/BE-XXXX-<slug>/BE-XXXX-<slug>.md + its -ja.md mirror (bilingual pair)
   ## BE ID allocation
     BE-XXXX is a placeholder — CI allocates the real id on `main` after merge. Don't hand-edit it.
 
   Close the body with reference-style links for anything cited, e.g.
-  [BE-NNNN]: roadmaps/proposals/BE-NNNN-<slug>/BE-NNNN-<slug>.md
+  [BE-NNNN]: roadmaps/BE-NNNN-<slug>/BE-NNNN-<slug>.md
 
   When Claude Code drafts the PR, end the body with:
   🤖 Generated with [Claude Code](https://claude.com/claude-code)

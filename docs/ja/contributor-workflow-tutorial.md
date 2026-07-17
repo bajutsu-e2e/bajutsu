@@ -26,7 +26,7 @@
 ```bash
 uv sync --group dev   # .venv（Python 3.13）+ 依存 + 開発ツール
 make setup            # 上記に加え、追跡されている git フックを配線する（新しいクローンで一度だけ実行）
-make check            # ゲート。format + lint + typecheck + test。green でなければならない
+make check            # 決定的なゲート。green でなければならない（ステップの全一覧は CLAUDE.md）
 ```
 
 `make check` は **契約** です。CI と完全に一致し、Simulator を必要とせず、どこでも走ります。以下の両半分の
