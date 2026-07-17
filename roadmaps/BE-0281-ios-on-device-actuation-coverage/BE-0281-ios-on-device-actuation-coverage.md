@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-ios-on-device-actuation-coverage-ja.md)
+**English** · [日本語](BE-0281-ios-on-device-actuation-coverage-ja.md)
 
-# BE-XXXX — Add real on-device actuation coverage to the iOS CI
+# BE-0281 — Add real on-device actuation coverage to the iOS CI
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-ios-on-device-actuation-coverage.md) |
+| Proposal | [BE-0281](BE-0281-ios-on-device-actuation-coverage.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0281") |
 | Topic | Platform support |
 | Related | [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md), [BE-0221](../BE-0221-android-scenario-portability-guarantee/BE-0221-android-scenario-portability-guarantee.md), [BE-0218](../BE-0218-e2e-simulator-flaky-readiness-actuation/BE-0218-e2e-simulator-flaky-readiness-actuation.md), [BE-0240](../BE-0240-ios-capability-aware-actuator-selection/BE-0240-ios-capability-aware-actuator-selection.md) |
 <!-- /BE-METADATA -->

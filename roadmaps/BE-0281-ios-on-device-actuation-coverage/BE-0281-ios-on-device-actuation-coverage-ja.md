@@ -1,14 +1,14 @@
-[English](BE-XXXX-ios-on-device-actuation-coverage.md) · **日本語**
+[English](BE-0281-ios-on-device-actuation-coverage.md) · **日本語**
 
-# BE-XXXX — iOS CI に実機で操作するテストを加える
+# BE-0281 — iOS CI に実機で操作するテストを加える
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-ios-on-device-actuation-coverage-ja.md) |
+| 提案 | [BE-0281](BE-0281-ios-on-device-actuation-coverage-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0281") |
 | トピック | プラットフォーム対応 |
 | 関連 | [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity-ja.md), [BE-0221](../BE-0221-android-scenario-portability-guarantee/BE-0221-android-scenario-portability-guarantee-ja.md), [BE-0218](../BE-0218-e2e-simulator-flaky-readiness-actuation/BE-0218-e2e-simulator-flaky-readiness-actuation-ja.md), [BE-0240](../BE-0240-ios-capability-aware-actuator-selection/BE-0240-ios-capability-aware-actuator-selection-ja.md) |
 <!-- /BE-METADATA -->
