@@ -370,6 +370,10 @@ async function loadHistory(){
 // for an admin, permanently deletable. Restore/purge key on the id alone, so one /api/runs route
 // serves both run types here. The list interactions are delegated once in initPanels. ----
 function trashHeaderNote(){
+  // Guard null the same way trashWindowNote does (serve.core.mjs): loadConfig runs unawaited at
+  // boot, so a Trash-tab visit before /api/config resolves — or a failed fetch — must not read as
+  // "retention disabled" when it's really just unknown yet.
+  if(retentionDays===null)return 'Deleted runs are kept here and can be restored.';
   return retentionDays>0
     ?`Deleted runs are kept here and can be restored. Each is permanently removed ${retentionDays} day${retentionDays===1?'':'s'} after deletion.`
     :'Deleted runs are kept here until permanently removed. Restore one, or delete it forever (admin).';
