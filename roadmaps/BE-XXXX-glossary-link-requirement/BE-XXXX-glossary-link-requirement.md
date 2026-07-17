@@ -32,9 +32,9 @@ described a one-time editorial choice for the PR that introduced the page. It li
 item's design section, not in `CLAUDE.md` or `docs/ai-development.md`, where this project's working
 conventions actually live — so it was never a rule future contributors could find and follow.
 
-The resulting gap is close to total, not a handful of missed spots. Of the roughly fifteen
-top-level pages under `docs/`, only four — `overview.md`, `concepts.md`, `index.md`, and
-`README.md` — link `glossary.md` at all. Every page that substantively explains a term cluster has
+The resulting gap is close to total, not a handful of missed spots. Of the 27 top-level pages
+under `docs/` (excluding `glossary.md` itself), only four — `overview.md`, `concepts.md`,
+`index.md`, and `README.md` — link `glossary.md` at all. Every page that substantively explains a term cluster has
 zero links to the glossary. `drivers.md` explains driver / backend / actuator / platform. `cli.md`
 explains target / app / device and the CLI verbs. `scenarios.md` explains scenario / step /
 precondition / expect. `evidence.md` explains evidence and `capturePolicy`. `recording.md` explains

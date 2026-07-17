@@ -37,8 +37,9 @@
 このプロジェクトが実際に運用する規約は `CLAUDE.md` と `docs/ai-development.md` に集まっており、
 この一文はそのどちらにもなく、1つの項目の詳細設計の中に置かれていたためです。
 
-その結果、`docs/` 側の欠落はほぼ全面的です。トップレベルページ約15件のうち、`glossary.md` に
-リンクしているのは `overview.md`・`concepts.md`・`index.md`・`README.md` の4件だけです。ある
+その結果、`docs/` 側の欠落はほぼ全面的です。トップレベルページ27件（`glossary.md` 自身を除く）
+のうち、`glossary.md` にリンクしているのは `overview.md`・`concepts.md`・`index.md`・
+`README.md` の4件だけです。ある
 用語クラスタを実質的に説明しているページに限ると、リンクは1件もありません。`drivers.md` は
 driver・backend・actuator・platform を説明しています。`cli.md` は target・app・device と CLI の
 各動詞を説明しています。`scenarios.md` は scenario・step・precondition・expect を説明しています。
