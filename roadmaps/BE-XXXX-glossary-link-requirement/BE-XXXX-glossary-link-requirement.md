@@ -51,7 +51,7 @@ to its definition. One page already gets this right:
 of its vocabulary, in the way this proposal wants every other page to read. That page is proof the
 convention is simple to follow once it is written down as a rule.
 
-Left alone, this recurs. BE-0213's own motivation was a concrete drift it found by inventorying the
+Left alone, the same gap recurs. BE-0213's own motivation was a concrete drift it found by inventorying the
 docs side by side: `getting-started.md` called a scenario a "test," while `scenarios.md` called the
 same thing "a scenario." No glossary caught that mismatch before it shipped. The public docs site
 ([BE-0093](../BE-0093-public-docs-site/BE-0093-public-docs-site.md)) already publishes these pages.
