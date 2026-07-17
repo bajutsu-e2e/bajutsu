@@ -164,6 +164,12 @@ def device_pool(
         # pre-started HTTP receivers, which are reused and stopped in shutdown(). Released on a setup
         # failure too, so one launch failure neither leaks a socket nor starves later leases.
         release_collector: Collector | None = None
+
+        # Teardown for the device-side collector bridge (Android's `adb reverse`, BE-0283); a no-op on
+        # platforms that need none. Released on failure too, so a failed launch never leaks a tunnel.
+        def release_bridge() -> None:
+            pass
+
         try:
             # Web films the whole scenario only when its capture policy asks for video: Playwright
             # records at context-creation time, so the recording dir must be set before the driver
@@ -191,6 +197,9 @@ def device_pool(
             if isinstance(collector, NetworkCollector):
                 extra_env["BAJUTSU_COLLECTOR"] = f"http://127.0.0.1:{collector.port}"
                 extra_env["BAJUTSU_COLLECTOR_TOKEN"] = collector.token
+                # Make the host collector reachable from the leased device before launch (Android
+                # tunnels the port with `adb reverse`; iOS shares the loopback and no-ops) — BE-0283.
+                release_bridge = lease_env.bridge_collector(collector.port)
             webview_bridge, webview_port = _alloc_webview_bridge(lease_env)
             if webview_port is not None:
                 extra_env["BAJUTSU_WEBVIEW_PORT"] = str(webview_port)
@@ -242,6 +251,7 @@ def device_pool(
             control: DeviceControl | None = lease_env.controller(eff)
 
             def release() -> None:
+                release_bridge()  # tear the device-side collector tunnel down first (BE-0283)
                 if release_collector is not None:
                     release_collector.stop()
                 lease_env.teardown(driver, eff)
@@ -262,6 +272,7 @@ def device_pool(
                 webview_bridge=webview_bridge,
             )
         except BaseException:
+            release_bridge()  # a failed launch must not leak the collector tunnel (BE-0283)
             if release_collector is not None:
                 release_collector.stop()
             free.put(udid)

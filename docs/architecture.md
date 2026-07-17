@@ -328,7 +328,9 @@ device (the shared device is reseeded via one channel, so parallel workers would
 - The **Android adb backend** (`drivers/adb.py` + `adb.py`): the coordinate driver
   (`uiautomator dump` → frame-center tap), the `AndroidEnvironment` launch sequence, `doctor`
   reporting, interval evidence (`video` via `screenrecord`, `deviceLog` via `logcat`, both through
-  the driver-supplied `driver_interval` seam) plus the mocked-network story reused from iOS, and
+  the driver-supplied `driver_interval` seam) plus in-app **network capture** — `request` assertions
+  over an OkHttp interceptor (`BajutsuAndroid`) reporting to the host collector, bridged to the
+  emulator with `adb reverse` (BE-0283; `mocks` stay a follow-up), and
   fast-gate unit tests over captured XML fixtures; on-device actuation parity with idb — system
   `back`, deeplink, a single-round-trip `doubleTap`, scroll-into-view resolution, and up-front
   runtime-permission grants (BE-0210); a device-control subset — `setLocation` and clipboard

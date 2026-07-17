@@ -7,8 +7,8 @@
 > アサーションが蓄積された通信を照合します。
 >
 > 実装: `bajutsu/evidence/network.py`（モデルとコレクタ）、`bajutsu/assertions/network.py`（`request` の評価）、
-> アプリ内 SDK（software development kit、ソフトウェア開発キット）の
-> [`BajutsuKit`](../../BajutsuKit/README.md)。
+> アプリ内 SDK（software development kit、ソフトウェア開発キット） — iOS は
+> [`BajutsuKit`](../../BajutsuKit/README.md)、Android は [`BajutsuAndroid`](../../BajutsuAndroid/README.md)。
 
 関連: [scenarios](scenarios.md) · [evidence](evidence.md)
 
@@ -31,8 +31,16 @@ Simulator のアプリはホストプロセスとして動作し、Mac のルー
 3. コレクタは通信をメモリ上に保持します。step の `request` アサーションはその通信に対してリアルタイムに
    評価され、通信はシナリオの証跡として `<sid>/network.json`（マスキング済み）に書き出されます。
 
-`--no-network` を渡すとコレクタを無効にします。BajutsuKit を持たないアプリは何も報告しません
+`--no-network` を渡すとコレクタを無効にします。SDK を持たないアプリは何も報告しません
 （コレクタは空のままです）。この機能はアプリごとのオプトインです。
+
+**Android** も同じ仕組みで、違いは 2 点です（BE-0283）。アプリは
+[`BajutsuAndroid`](../../BajutsuAndroid/README.md) をリンクし、OkHttp クライアントに
+`BajutsuNet.interceptor()` を足します。iOS の `URLProtocol` のような単一の OS レベルの HTTP フックが
+Android にはないため、インターセプタはクライアントごとで、捕捉するのは **OkHttp** の通信です。もう一つは、
+エミュレータの `127.0.0.1` がホストではなくエミュレータ自身のループバックである点です。そこで Bajutsu は
+`adb reverse` でコレクタをデバイスへ橋渡しします（両方向で同じポートなので、注入した `BAJUTSU_COLLECTOR`
+の URL はそのまま解決します）。コレクタ、トークン検査、アサーションパイプラインは同一です。
 
 > これはアプリ内の経路です。RocketSim の GUI ネットワークインスペクタと、TLS を傍受するプロキシは、
 > どちらも採用しませんでした。前者は CLI に公開されておらず（自動アサーションには使えません）、後者は
@@ -71,7 +79,8 @@ expect:
 **ネットワークへ送る代わりに**あらかじめ用意したレスポンスを返します。これにより、テストはライブのサーバに
 依存しません（オフラインでも動作します）。スタブは URL プロトコルの内側で返され（TLS の後段、プロキシも CA も
 使いません）、なお観測の対象になります（`network.json` に `mocked` の印つきで現れ、`request` アサーションは
-他の通信と同様にこれを照合します）。
+他の通信と同様にこれを照合します）。モックは当面 iOS 専用です。BajutsuAndroid は観測はしますが、
+スタブ応答はまだ返しません（BE-0283 の追随の課題です）。
 
 ```yaml
 mocks:
@@ -99,6 +108,12 @@ mocks:
 
 ## アプリ側の契約
 
-[BajutsuKit](../../BajutsuKit/README.md) をリンクし、早い段階で `BajutsuNet.startIfEnabled()` を呼び
-ます。これは `BAJUTSU_COLLECTOR` が設定されていなければ何もせず、`URLSession` の HTTP(S) のみを捕捉し、
-**テスト/デバッグ専用**です（ヘッダとボディを記録するので、リリースには含めず `redact` を使ってください）。
+**iOS** — [BajutsuKit](../../BajutsuKit/README.md) をリンクし、早い段階で
+`BajutsuNet.startIfEnabled()` を呼びます。これは `BAJUTSU_COLLECTOR` が設定されていなければ何もせず、
+`URLSession` の HTTP(S) のみを捕捉し、**テスト/デバッグ専用**です（ヘッダとボディを記録するので、
+リリースには含めず `redact` を使ってください）。
+
+**Android** — [BajutsuAndroid](../../BajutsuAndroid/README.md) をリンクし、起動時に
+`BajutsuNet.configure(env)` を（起動環境変数のマップとともに）呼び、アプリの `OkHttpClient` に
+`BajutsuNet.interceptor()` を足します。これも `BAJUTSU_COLLECTOR` が設定されていなければ何もせず、
+**OkHttp** の HTTP(S) のみを捕捉し、同じく**テスト/デバッグ専用**です。

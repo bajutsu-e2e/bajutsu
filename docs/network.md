@@ -7,7 +7,9 @@
 > assertion checks the accumulated exchanges.
 >
 > Implementation: `bajutsu/evidence/network.py` (model + collector), `bajutsu/assertions/network.py`
-> (`request` eval), the in-app SDK (software development kit) [`BajutsuKit`](../BajutsuKit/README.md).
+> (`request` eval), and the in-app SDK (software development kit) —
+> [`BajutsuKit`](../BajutsuKit/README.md) on iOS, [`BajutsuAndroid`](../BajutsuAndroid/README.md) on
+> Android.
 
 Related: [scenarios](scenarios.md) · [evidence](evidence.md)
 
@@ -30,8 +32,16 @@ A Simulator app runs as a host process and shares the Mac's loopback, so:
    against them in real time, and bajutsu writes them (redacted) to `<sid>/network.json` as
    scenario evidence.
 
-`--no-network` disables the collector. Apps without BajutsuKit report nothing (the
+`--no-network` disables the collector. Apps without the SDK report nothing (the
 collector stays empty); the feature is opt-in per app.
+
+**Android** works the same way, with two differences (BE-0283). The app links
+[`BajutsuAndroid`](../BajutsuAndroid/README.md) and adds `BajutsuNet.interceptor()` to its OkHttp
+client — Android has no single OS-level HTTP hook like iOS's `URLProtocol`, so the interceptor is
+per-client and captures **OkHttp** traffic. And the emulator's `127.0.0.1` is its own loopback, not
+the host's, so bajutsu bridges the collector to the device with `adb reverse` (the same port both
+ways, so the injected `BAJUTSU_COLLECTOR` URL resolves unchanged). The collector, the token check,
+and the assertion pipeline are identical.
 
 > This mechanism is the in-app path. RocketSim's GUI network inspector and a TLS-intercepting proxy
 > were both rejected — the former is not exposed on its CLI (unusable for automated
@@ -69,7 +79,8 @@ A scenario's `mocks` make the network deterministic: when an outgoing request ma
 rule, BajutsuKit returns the canned response **instead of hitting the network**, so a test
 never depends on a live server (and runs offline). The stub is served inside the URL
 protocol — after TLS, no proxy/CA — and is still observed (it appears in `network.json`
-flagged `mocked`, and `request` assertions match it like any exchange).
+flagged `mocked`, and `request` assertions match it like any exchange). Mocks are iOS-only for now;
+BajutsuAndroid observes but does not yet stub (a follow-up to BE-0283).
 
 ```yaml
 mocks:
@@ -97,6 +108,11 @@ completion, so by the time the UI has updated, the exchange is in the collector.
 
 ## App contract
 
-Link [BajutsuKit](../BajutsuKit/README.md) and call `BajutsuNet.startIfEnabled()` early.
+**iOS** — link [BajutsuKit](../BajutsuKit/README.md) and call `BajutsuNet.startIfEnabled()` early.
 It is inert unless `BAJUTSU_COLLECTOR` is set, captures `URLSession` HTTP(S) only, and is
 **test/debug-only** (it records headers/bodies — keep it out of release and use `redact`).
+
+**Android** — link [BajutsuAndroid](../BajutsuAndroid/README.md), call `BajutsuNet.configure(env)` at
+launch (with the launch-env map), and add `BajutsuNet.interceptor()` to the app's `OkHttpClient`. It
+is inert unless `BAJUTSU_COLLECTOR` is set, captures **OkHttp** HTTP(S) only, and is likewise
+**test/debug-only**.

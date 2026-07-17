@@ -25,8 +25,8 @@ the methods its command calls and mypy keeps the two from drifting into each oth
 
 ## Declining a method (the "not applicable" contract)
 
-A method a platform has no use for is declined in exactly one of two ways, chosen per method (never
-ad hoc), and each method's docstring states which it is:
+A method a platform has no use for is declined in exactly one of three ways, chosen per method
+(never ad hoc), and each method's docstring states which it is:
 
 - **First-class null / empty** — for a method the caller *always* invokes and interprets a null
   answer from: `controller` → `None` (no device control), `device_catalog` → `{}` (no devices),
@@ -37,6 +37,10 @@ ad hoc), and each method's docstring states which it is:
   `hook_collector`, which the runner calls only after `observes_network_via_driver()`. A platform
   that returns `False` from the predicate may leave `hook_collector` raising `NotImplementedError`,
   because the check makes the raise unreachable. This is the *only* method that may raise.
+- **No-op implementation** — for a method whose return type is not itself optional (the caller
+  invokes the value it gets back, so there is no null to hand it): `bridge_collector`, whose iOS/web
+  decline is `lambda: None` — a real, callable teardown thunk that does nothing — rather than `None`
+  or a raise, because the caller always calls the returned thunk unconditionally at release.
 
 ## Predicate → capability pairing
 
@@ -60,7 +64,9 @@ A new `Environment` (extend `environment_for`) must, at minimum:
    driver), `relauncher`, `controller` (return `None` if none), `teardown`, `device_catalog`
    (return `{}` if none), `resolve_device`, `captures_video`, and the two run predicates
    (`observes_network_via_driver`, `records_video_up_front`). `hook_collector` may gated-raise
-   unless `observes_network_via_driver()` returns `True`.
+   unless `observes_network_via_driver()` returns `True`. `bridge_collector` returns a real teardown
+   thunk if the platform's device needs the host collector tunneled to it (Android); `lambda: None`
+   otherwise (a Simulator shares the host loopback, and a driver-observed platform never reaches it).
 2. Implement `CrawlEnvironment` as well: `has_devices`, `plan_lanes`, `crawl_reset`, and the three
    `crawl_*` health methods (return `None` from each the platform lacks). `environment_for` returns
    the union `Environment`, so a platform class must satisfy both surfaces — but the crawl half is
@@ -75,7 +81,7 @@ third idiom.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Protocol, runtime_checkable
@@ -172,6 +178,19 @@ class RunEnvironment(Protocol):
         Gated raise: the runner calls this *only when* `observes_network_via_driver()` is `True`, so a
         platform that returns `False` there may leave this raising `NotImplementedError` — the check
         makes the raise unreachable. This is the only Protocol method permitted to raise.
+        """
+
+    def bridge_collector(self, port: int) -> Callable[[], None]:
+        """Make the host's network collector on `127.0.0.1:port` reachable from the leased device.
+
+        No-op implementation: the return type carries no null, so a platform with nothing to bridge
+        returns a real, callable no-op thunk (`lambda: None`) rather than `None` or a raise.
+
+        Called only on the external-receiver path (a `NetworkCollector` was pre-started and its URL
+        injected), right before launch, and the returned thunk is invoked when the lease releases. The
+        iOS Simulator shares the Mac's loopback, so most platforms need nothing and return a no-op; the
+        Android emulator's loopback is its own, so `AndroidEnvironment` tunnels the port back with
+        `adb reverse` (BE-0283). Returns the teardown thunk (removes the tunnel), never `None`.
         """
 
     def relauncher(

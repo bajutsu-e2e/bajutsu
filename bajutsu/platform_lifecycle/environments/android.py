@@ -178,6 +178,25 @@ class AndroidEnvironment:
     def hook_collector(self, driver: base.Driver, scenario: Scenario) -> Collector:
         raise NotImplementedError("the adb backend does not observe network via the driver")
 
+    def bridge_collector(self, port: int) -> Callable[[], None]:
+        # The emulator's 127.0.0.1 is its own loopback, not the host's, so tunnel the collector port
+        # back to the host with `adb reverse` — the injected BAJUTSU_COLLECTOR URL then resolves
+        # on-device unchanged (BE-0283). The reverse-direction twin of the resident server's
+        # forward_cmd (host → device); here the device reaches out to the host.
+        self._run(adb.reverse_cmd(self._serial, port))
+
+        def remove() -> None:
+            # Best-effort teardown: a failed remove (the device already gone) must not mask the
+            # lease's own outcome, so it's swallowed rather than raised — but logged (mirroring
+            # _begin_resident's degrade-with-a-log-line below), so a genuinely stuck tunnel is still
+            # visible to someone debugging a flaky Android lane rather than silently invisible.
+            try:
+                self._run(adb.reverse_remove_cmd(self._serial, port))
+            except (subprocess.CalledProcessError, OSError) as exc:
+                logger.debug("adb reverse --remove failed for port %d: %s", port, exc)
+
+        return remove
+
     def relauncher(
         self,
         eff: Effective,

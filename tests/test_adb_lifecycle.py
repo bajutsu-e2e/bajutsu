@@ -496,6 +496,32 @@ def test_android_environment_start_forwards_collector_env_for_network_mocks() ->
     assert any("--es BAJUTSU_COLLECTOR_TOKEN tok" in j for j in joined)
 
 
+def test_android_environment_bridge_collector_reverses_and_tears_down() -> None:
+    # BE-0283: the emulator's 127.0.0.1 is its own loopback, so the host collector is reached via
+    # `adb reverse tcp:<port> tcp:<port>`; the returned thunk removes the tunnel at lease end.
+    calls: list[list[str]] = []
+    env = AndroidEnvironment("adb", "S", adb_run=_resolve_activity_run(calls))
+    remove = env.bridge_collector(41000)
+    assert ["adb", "-s", "S", "reverse", "tcp:41000", "tcp:41000"] in calls
+    calls.clear()
+    remove()
+    assert ["adb", "-s", "S", "reverse", "--remove", "tcp:41000"] in calls
+
+
+def test_android_environment_bridge_collector_teardown_swallows_adb_failure() -> None:
+    # A device already gone at release makes `adb reverse --remove` fail; the teardown must swallow it
+    # so the lease's own outcome is never masked (the tunnel dies with the emulator regardless).
+    import subprocess
+
+    def run(args: list[str]) -> str:
+        if "--remove" in args:
+            raise subprocess.CalledProcessError(1, args)
+        return ""
+
+    remove = AndroidEnvironment("adb", "S", adb_run=run).bridge_collector(41000)
+    remove()  # does not raise
+
+
 def test_android_environment_start_skips_pm_clear_on_overwrite() -> None:
     calls: list[list[str]] = []
     env = AndroidEnvironment("adb", "S", adb_run=_resolve_activity_run(calls))

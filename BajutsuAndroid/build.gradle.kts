@@ -29,4 +29,9 @@ android {
 dependencies {
     // ContextCompat.registerReceiver picks the right RECEIVER_EXPORTED handling across API levels.
     implementation("androidx.core:core-ktx:1.13.1")
+    // BajutsuNet's interceptor exposes OkHttp types (BE-0283), but only apps that already use OkHttp
+    // call it, so they bring the runtime dependency — compileOnly keeps the library from pinning a
+    // version onto its consumers. okio is OkHttp's transitive I/O layer, used for the request-body copy.
+    compileOnly("com.squareup.okhttp3:okhttp:4.12.0")
+    compileOnly("com.squareup.okio:okio:3.9.0")
 }

@@ -90,9 +90,9 @@ set drives `showcase-compose` unchanged. The Views ids are underscore-mapped (an
 name allows neither `.` nor `-`); the shared set drives `showcase-views` unchanged too because each
 selector lists **both** id forms — `id: [stable.refresh, stable_refresh]` matches whichever the tree
 renders, an OR resolved by the deterministic core, keeping the id convention explicit in the scenario
-rather than a driver-side `.` ↔ `_` rewrite (BE-0221). Networking is plain
-`HttpURLConnection` (no Android BajutsuKit yet — the `network` evidence/mock story is BE-0007's,
-§6 applies to iOS); everything else below holds for all four Android products.
+rather than a driver-side `.` ↔ `_` rewrite (BE-0221). Networking goes through **OkHttp** with
+`BajutsuAndroid`'s interceptor, so `network` evidence works on Android too (BE-0283, §6); `mocks`
+stay a follow-up. Everything else below holds for all four Android products.
 
 ## 3. Launch environment hooks
 
@@ -247,11 +247,15 @@ navigation, scroll, and crawl scenarios.
 
 ## 6. Networking
 
-Uses the standard BajutsuKit integration:
+Uses the standard in-app collector integration (iOS: BajutsuKit; Android: BajutsuAndroid):
 
-- The app links **BajutsuKit** and calls `BajutsuNet.startIfEnabled()` at launch (a no-op unless
-  `BAJUTSU_COLLECTOR` is injected). All requests then flow through the interceptor, so `network`
-  evidence and `mocks` work without app changes ([DESIGN §3.2](../../DESIGN.md)).
+- **iOS** — the app links **BajutsuKit** and calls `BajutsuNet.startIfEnabled()` at launch (a no-op
+  unless `BAJUTSU_COLLECTOR` is injected). All requests then flow through the interceptor, so
+  `network` evidence and `mocks` work without app changes ([DESIGN §3.2](../../DESIGN.md)).
+- **Android** — the app links **BajutsuAndroid**, calls `BajutsuNet.configure(launchEnv)` at launch,
+  and adds `BajutsuNet.interceptor()` to its OkHttp client (BE-0283). `network` evidence then works
+  the same way; `mocks` stay a follow-up, and capture is OkHttp-only (the `URLSession`-only bound's
+  Android twin).
 - Endpoints: catalog GET `SHOWCASE_API_URL` (default `https://example.com`), detail GET
   `<base>/horses/<id>`, log POST `SHOWCASE_HTTP_BASE/post`. Each request mirrors its status to
   the relevant `*.status` `accessibilityValue` so a scenario can `wait` on the response before

@@ -4,7 +4,7 @@
 #
 # `run` / `doctor` land with the BE-0007 adb backend; until then these targets only build.
 .PHONY: build-all wrapper \
-	compose-build compose-noax-build views-build views-noax-build e2e e2e-golden e2e-fallback \
+	compose-build compose-noax-build views-build views-noax-build e2e e2e-network e2e-golden e2e-fallback \
 	e2e-visual e2e-conformance clean
 
 HERE := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
@@ -69,7 +69,8 @@ SERIAL ?= booted
 # a two-finger gesture cannot be approximated — so it requires root (the `e2e` target runs `adb root`)
 # and fails loudly otherwise. Verified on a local arm64 emulator.
 #
-# Still held out: mocked network (a BE-0007 follow-up).
+# Observed network capture lands in its own `e2e-network` target below (BE-0283); mocked network
+# (deterministic stub responses) stays a follow-up.
 E2E_SCENARIOS := smoke firstlook navigation search data_driven relaunch system components modals \
 	controls notices gestures gestures_multitouch permission device
 
@@ -131,6 +132,22 @@ e2e: compose-build views-build
 		uv run bajutsu run --scenario demos/showcase/scenarios/$$s.yaml \
 			--target showcase-views --udid $(SERIAL) --backend android --config $(CONFIG) || exit 1; \
 	done
+
+# On-device network-capture assertion (BE-0283): a `request` assertion observes real emulator traffic
+# end to end — the showcase GETs SHOWCASE_API_URL/horses over OkHttp, BajutsuAndroid's interceptor
+# reports the exchange to the host collector, and the runner bridges that collector to the emulator
+# with `adb reverse` (the transport under test). net_stub.py stands up a throwaway host endpoint the
+# emulator reaches at 10.0.2.2 (its host-loopback alias); the scenario points SHOWCASE_API_URL there.
+# Backgrounded and trap-killed so the port never leaks past the run. Not part of `make check` (needs a
+# booted AVD); android-e2e.yml drives it in its own job. Compose only — one toolkit proves the wire.
+E2E_NET_STUB_PORT ?= 8770
+e2e-network: compose-build
+	adb wait-for-device
+	cd $(ROOT) && ( python3 demos/showcase/android/net_stub.py $(E2E_NET_STUB_PORT) & \
+		stub=$$!; trap "kill $$stub 2>/dev/null" EXIT; \
+		BAJUTSU_MIN_WAIT_TIMEOUT=$(E2E_WAIT_FLOOR) \
+		uv run bajutsu run --scenario demos/showcase/scenarios/network_android.yaml \
+			--target showcase-compose --udid $(SERIAL) --backend android --config $(CONFIG) )
 
 # On-device golden element-tree assertion (BE-0006, BE-0208 unit 4) for the Compose a11y twin over
 # adb. This runs the *same* golden.yaml the idb lane runs; only the baseline dir differs. The adb tree

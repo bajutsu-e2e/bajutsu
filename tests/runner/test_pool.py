@@ -325,13 +325,22 @@ class _RecordingEnv:
     and torn down — enough of the lease seam to prove per-scenario selection and per-lease teardown.
     """
 
-    def __init__(self, actuator: str, udid: str) -> None:
+    def __init__(self, actuator: str, udid: str, *, fail_start: bool = False) -> None:
         self.actuator = actuator
         self.udid = udid
         self.started = False
         self.torn = False
+        self.fail_start = fail_start
+        # BE-0283 bridge recording: the port bridged, whether it was already bridged when start ran
+        # (i.e. before launch), and whether its teardown thunk fired.
+        self.bridged_port: int | None = None
+        self.bridged_before_launch = False
+        self.bridge_torn = False
 
     def start(self, eff: Effective, pre: object, **_: object) -> base.Driver:
+        self.bridged_before_launch = self.bridged_port is not None
+        if self.fail_start:
+            raise RuntimeError("launch failed")
         self.started = True
         return FakeDriver([_el("home", "H"), _el("ok", "OK")])  # 2 elems -> ready on count
 
@@ -340,6 +349,14 @@ class _RecordingEnv:
 
     def observes_network_via_driver(self) -> bool:
         return False
+
+    def bridge_collector(self, port: int) -> Callable[[], None]:
+        self.bridged_port = port
+
+        def remove() -> None:
+            self.bridge_torn = True
+
+        return remove
 
     def records_video_up_front(self) -> bool:
         return False
@@ -395,6 +412,71 @@ def test_device_pool_resolves_actuator_per_scenario_and_tears_down_its_own_env(
         assert xc_env.actuator == "xcuitest" and xc_env.started  # escalated: pinch needs multiTouch
         pinch_lease.release()
         assert xc_env.torn
+    finally:
+        shutdown()
+
+
+def test_device_pool_bridges_the_collector_before_launch_and_tears_it_down(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """BE-0283: for an external-receiver backend (Android), the pool makes the host collector
+    reachable from the device before launch (`adb reverse`) and releases the tunnel with the lease."""
+    created: list[_RecordingEnv] = []
+
+    def fake_env_for(actuator: str, udid: str, env_run: object = None) -> _RecordingEnv:
+        env = _RecordingEnv(actuator, udid)
+        created.append(env)
+        return env
+
+    monkeypatch.setattr("bajutsu.runner.pool.environment_for", fake_env_for)
+    lease, shutdown = device_pool(
+        ["UDID-A"],
+        ["android"],
+        _eff(),
+        Path("runs"),
+        network=True,
+        available=lambda b: True,
+        env_run=lambda *a, **k: "",
+    )
+    try:
+        leased = lease(_eff(), _scn("a"))
+        env = created[-1]  # the lease env
+        assert env.bridged_port == leased.collector.port  # tunnels the pre-started collector's port
+        assert env.bridged_before_launch  # established BEFORE the app launched
+        assert not env.bridge_torn
+        leased.release()
+        assert env.bridge_torn  # the tunnel is released with the lease
+    finally:
+        shutdown()
+
+
+def test_device_pool_releases_the_bridge_when_launch_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A launch failure after the bridge is up must not leak the tunnel (BE-0283)."""
+    created: list[_RecordingEnv] = []
+
+    def fake_env_for(actuator: str, udid: str, env_run: object = None) -> _RecordingEnv:
+        env = _RecordingEnv(actuator, udid, fail_start=True)
+        created.append(env)
+        return env
+
+    monkeypatch.setattr("bajutsu.runner.pool.environment_for", fake_env_for)
+    lease, shutdown = device_pool(
+        ["UDID-A"],
+        ["android"],
+        _eff(),
+        Path("runs"),
+        network=True,
+        available=lambda b: True,
+        env_run=lambda *a, **k: "",
+    )
+    try:
+        with pytest.raises(RuntimeError, match="launch failed"):
+            lease(_eff(), _scn("a"))
+        env = created[-1]
+        assert env.bridged_port is not None  # the bridge was established...
+        assert env.bridge_torn  # ...and torn down on the failure path
     finally:
         shutdown()
 

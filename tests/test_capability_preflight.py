@@ -98,6 +98,19 @@ def test_request_wait_is_not_gated() -> None:
     assert capability_preflight.unsupported(sc, _IDB) == []
 
 
+def test_adb_does_not_advertise_network_yet_request_runs() -> None:
+    # BE-0283: adb captures via the app-side collector (BajutsuNet + `adb reverse`), so it must NOT
+    # advertise the `network` token — that means *native* driver observation — yet a `request`
+    # assertion must still preflight-clean on the real adb capability set.
+    from bajutsu.drivers.adb import AdbDriver
+
+    assert base.Capability.NETWORK not in AdbDriver.CAPABILITIES
+    sc = _sc(
+        steps=[{"tap": {"id": "go"}}], expect=[{"request": {"path": "/horses", "status": 200}}]
+    )
+    assert capability_preflight.unsupported(sc, set(AdbDriver.CAPABILITIES)) == []
+
+
 def test_condition_wait_is_not_gated() -> None:
     # Waits are polled by the orchestrator, so conditionWait is unused — never gate on it.
     sc = _sc(steps=[{"wait": {"until": "screenChanged", "timeout": 5}}])

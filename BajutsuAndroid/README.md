@@ -3,8 +3,9 @@
 English · [日本語](README.ja.md)
 
 In-app device support for [bajutsu](../) on Android. A test/debug-only Android library that lets
-bajutsu drive capabilities the platform only exposes from inside the app process. Today it backs the
-**clipboard**; it is the Android peer of the iOS [`BajutsuKit`](../BajutsuKit) package.
+bajutsu drive capabilities the platform only exposes from inside the app process. It backs the
+**clipboard** and **network capture**; it is the Android peer of the iOS [`BajutsuKit`](../BajutsuKit)
+package.
 
 ## Why in-app support
 
@@ -73,7 +74,38 @@ installed on the device — can send the broadcast and read or write the clipboa
 only.** Gate the `startClipboard` call behind `BuildConfig.DEBUG` (or your own test flag) so it never
 runs in a release build.
 
+## Network capture (BE-0283)
+
+`request` / `requestSequence` assertions observe traffic through the same in-process collector model
+as iOS. When bajutsu runs a scenario with network capture it starts a collector on the host's
+`127.0.0.1:<port>`, bridges it to the emulator with `adb reverse`, and injects its URL as the
+`BAJUTSU_COLLECTOR` intent extra. Unlike iOS's `URLProtocol`, which swizzles into every `URLSession`
+transparently, Android has no single OS-level HTTP hook, so the app adds one line to its OkHttp client
+and enables reporting once at launch:
+
+```kotlin
+import dev.bajutsu.android.BajutsuNet
+
+// Once at launch, from the same launch-env map you already read (a no-op unless bajutsu injected a
+// collector, so it is safe to call unconditionally in a test/debug build):
+BajutsuNet.configure(launchEnv)
+
+// On the OkHttpClient the app under test builds:
+val client = OkHttpClient.Builder()
+    .addInterceptor(BajutsuNet.interceptor())
+    .build()
+```
+
+The interceptor is inert until `configure` finds `BAJUTSU_COLLECTOR`; when enabled it POSTs each
+completed exchange to the collector as JSON matching bajutsu's `NetworkExchange`, over a separate
+client so the report is never itself intercepted. OkHttp is a `compileOnly` dependency here — the app
+brings its own version.
+
 ## Coverage
 
 Clipboard set / get / clear on the app's primary clip. `get` reads the first clip item coerced to
 text. Non-text clip content (images, intents) is out of scope.
+
+Network capture sees **OkHttp-originated HTTP(S)** only — the bounded scope iOS's `URLSession`-only
+capture has. Traffic through `HttpURLConnection` directly, a different HTTP client, or a `WebView` is
+out of scope (a `WebView` needs its own follow-up, as it did on iOS).

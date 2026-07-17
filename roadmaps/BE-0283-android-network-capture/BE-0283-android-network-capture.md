@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0283](BE-0283-android-network-capture.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0283") |
+| Implementing PR | [#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN) |
 | Topic | Platform support |
 | Related | [BE-0003](../BE-0003-m3-codegen-traces-network-ci/BE-0003-m3-codegen-traces-network-ci.md), [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md), [BE-0245](../BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server.md) |
 <!-- /BE-METADATA -->
@@ -136,12 +137,13 @@ as `WKWebView` needed its own follow-up on iOS
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — add `BajutsuNet.kt`'s OkHttp interceptor to `BajutsuAndroid`.
-- [ ] Unit 2 — bridge the collector with `adb reverse` (`reverse_cmd`/`reverse_remove_cmd`, wired
-  into the Android lease lifecycle).
-- [ ] Unit 3 — confirm and record that the capability model needs no change.
-- [ ] Unit 4 — add fast-gate and on-device test coverage.
-- [ ] Unit 5 — reconcile the showcase Android app and its e2e scenario.
+- [x] Unit 1 — add `BajutsuNet.kt`'s OkHttp interceptor to `BajutsuAndroid`.
+- [x] Unit 2 — bridge the collector with `adb reverse` (`reverse_cmd`/`reverse_remove_cmd`, wired
+  into the Android lease lifecycle via the `bridge_collector` seam).
+- [x] Unit 3 — confirm and record that the capability model needs no change.
+- [x] Unit 4 — add fast-gate and on-device test coverage.
+- [x] Unit 5 — reconcile the showcase Android app (OkHttp migration) and its `network_android.yaml`
+  e2e scenario (the `network (adb)` job in `android-e2e.yml`).
 
 ## References
 

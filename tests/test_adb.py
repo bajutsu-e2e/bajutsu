@@ -1061,6 +1061,23 @@ def test_forward_remove_cmd_tears_down_the_host_port() -> None:
     ]
 
 
+def test_reverse_cmd_tunnels_the_same_device_and_host_port() -> None:
+    # `adb reverse tcp:<port> tcp:<port>` — device and host port match so the injected
+    # BAJUTSU_COLLECTOR URL (http://127.0.0.1:<port>) resolves on-device unchanged (BE-0283).
+    assert adb.reverse_cmd("U", 41000) == ["adb", "-s", "U", "reverse", "tcp:41000", "tcp:41000"]
+
+
+def test_reverse_remove_cmd_tears_down_the_tunnel() -> None:
+    assert adb.reverse_remove_cmd("U", 41000) == [
+        "adb",
+        "-s",
+        "U",
+        "reverse",
+        "--remove",
+        "tcp:41000",
+    ]
+
+
 def test_instrument_cmd_starts_the_blocking_serve_test() -> None:
     # `-w` keeps the instrumentation attached (serve() never returns — it holds the warm session);
     # `-e class …#serve` scopes the run to the one method so no other test executes.
