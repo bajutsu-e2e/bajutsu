@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0263") |
+| Implementing PR | [#1164](https://github.com/bajutsu-e2e/bajutsu/pull/1164) |
 | Topic | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 
@@ -96,7 +97,8 @@ deterministic as the other views.
 **Log**
 
 - Author registered in `initTiling`'s `SPECS`; markup + CSS reconciled to drop the fixed grid; the
-  YAML editor, steps, and screen become first-class resizable panes. (PR #_pending_)
+  YAML editor, steps, and screen become first-class resizable panes.
+  ([#1164](https://github.com/bajutsu-e2e/bajutsu/pull/1164))
 
 ## References
 
