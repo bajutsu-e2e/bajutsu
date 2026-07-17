@@ -157,6 +157,10 @@ function initTiling(){
     {id:'view-replay',def:{d:'row',k:['controls','log','report'],s:[1,1,2]},sel:{controls:'.left',log:'.logpanel',report:'.report'}},
     {id:'view-record',def:{d:'row',k:['controls',{d:'col',k:['log','yaml'],s:[1,1]}],s:[1,2]},sel:{controls:'.left',log:'.rec-stack .logpanel',yaml:'.rec-stack .yamlpanel',report:'.rec-stack .rec-report-panel'},optional:['report']},
     {id:'view-crawl',def:{d:'row',k:['controls','graph',{d:'col',k:['plan','console'],s:[1,1]}],s:[1,2,1]},sel:{controls:'.left',graph:'.crawl-graph-panel',plan:'.crawl-plan-panel',console:'.crawl-console-panel'}},
+    // Author (BE-0263): the editor gets its own dominant pane, controls + steps stack on the left, the
+    // screen sits on the right. All four panes are always present (nothing shows/hides like Record's
+    // Run-result), so none is optional.
+    {id:'view-author',def:{d:'row',k:[{d:'col',k:['controls','steps'],s:[1,1]},'yaml','screen'],s:[1,3,2]},sel:{controls:'.left',steps:'.rec-stack .au-steps-card',yaml:'.rec-stack .yamlpanel',screen:'.rec-stack .au-screen-card'}},
   ];
   const leaves=n=>typeof n==='string'?[n]:n.k.flatMap(leaves);
   // A tree is valid when its leaves are unique, all known panels, and include every REQUIRED panel.

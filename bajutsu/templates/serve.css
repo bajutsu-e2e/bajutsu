@@ -46,7 +46,7 @@ main[hidden]{display:none}
    The :not([hidden]) keeps these id-level rules from overriding main[hidden]{display:none}. */
 /* position:relative anchors the tiler's double-buffered leave (BE-0191 unit 4): during a rebuild the
    outgoing .tile-root is held absolute over the view while it animates out (see initTiling rebuild). */
-#view-record:not([hidden]),#view-replay:not([hidden]),#view-crawl:not([hidden]){display:block;position:relative}
+#view-record:not([hidden]),#view-replay:not([hidden]),#view-crawl:not([hidden]),#view-author:not([hidden]){display:block;position:relative}
 .rec-stack{display:grid;grid-template-rows:var(--rec-top,1fr) var(--gw) 1fr;gap:0;height:100%;min-height:0}
 .rec-stack>.logpanel,.rec-stack>.yamlpanel{min-height:0;height:auto}
 /* Crawl view: config on the left, the live screen-map graph (+ progress log) filling the rest. */
@@ -543,7 +543,7 @@ header .appversion .dirty{color:var(--acc);font-weight:700}
 
   /* Every view becomes one column; its content flows, the switcher selects which pane shows. */
   main{display:block;overflow:visible;padding:.7rem;height:auto;min-height:0}
-  #view-record:not([hidden]),#view-replay:not([hidden]),#view-crawl:not([hidden]){display:block}
+  #view-record:not([hidden]),#view-replay:not([hidden]),#view-crawl:not([hidden]),#view-author:not([hidden]){display:block}
   .viewswitch{display:flex;gap:.35rem;margin-bottom:.7rem}
 
   /* Show only the pane the switcher selected (data-pane on <main>); the rest collapse. Every
@@ -554,6 +554,8 @@ header .appversion .dirty{color:var(--acc);font-weight:700}
   main[data-pane="form"]>[data-pane="form"]{display:flex;height:auto}
   main[data-pane="log"]>[data-pane="log"],main[data-pane="log"] .rec-stack>[data-pane="log"],
   main[data-pane="yaml"] .rec-stack>[data-pane="yaml"],
+  main[data-pane="steps"] .rec-stack>[data-pane="steps"],
+  main[data-pane="screen"] .rec-stack>[data-pane="screen"],
   main[data-pane="report"]>[data-pane="report"],
   main[data-pane="graph"]>[data-pane="graph"],
   main[data-pane="plan"]>[data-pane="plan"],
@@ -603,8 +605,12 @@ header .appversion .dirty{color:var(--acc);font-weight:700}
 .au-steplist li{padding:2px 0;cursor:pointer;border-radius:3px}
 .au-steplist li:hover{background:var(--bg2)}
 .au-steplist li.active{background:var(--acc);color:var(--on-acc)}
-.au-steps-card{margin-top:.5em}
-.au-screen-card{display:flex;flex-direction:column}
+/* Steps and screen are each a first-class tile pane (BE-0263): lay them out as a flex column that
+   confines its scroll to the pane, so a long step list or a tall screenshot scrolls in place rather
+   than growing the pane past its tile. */
+.au-steps-card{display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.au-steps-card>.au-steplist{flex:1;min-height:0;overflow:auto}
+.au-screen-card{display:flex;flex-direction:column;min-height:0;overflow:auto}
 /* Enrichment panel (BE-0014) */
 .enrich-panel{border-top:1px solid var(--line);margin-top:.5em;padding-top:.5em}
 .enrich-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:.4em}
@@ -647,10 +653,8 @@ header .appversion .dirty{color:var(--acc);font-weight:700}
 /* That card fills its cell and scrolls its (shadow-DOM report) body, not the page. */
 .statscard{display:flex;flex-direction:column;min-height:0;overflow:hidden}
 .statshost{flex:1;min-height:0;overflow:auto;margin-top:.6rem}
-/* Author is two panes (form + screen) split by one gutter — the screen pane takes all the width to
-   the right of the gutter. The gutter drives --rec-left (its data-var), which now sizes the left
-   column the grid actually uses, so dragging it resizes the split. */
-#view-author{grid-template-columns:var(--rec-left,340px) var(--gw) 1fr}
+/* Author is tiled like Record/Replay/Crawl (BE-0263): initTiling owns the layout via the block-level
+   <main> + .tile-root, so there is no fixed grid here — the panes resize/split/swap and persist. */
 /* Replay codegen action row: emit selector + Generate button below the run output. */
 .codegen-bar{display:flex;align-items:center;gap:.4em;margin-top:.5em}
 .codegen-bar .savebtn{background:var(--acc);color:var(--on-acc);border:0;border-radius:6px;font-weight:700;padding:.35rem .8rem;font-size:.85em;cursor:pointer}

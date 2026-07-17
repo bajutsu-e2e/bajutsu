@@ -226,6 +226,7 @@ The AI-driven `record` (Tier 1) is implemented ([recording.md](../docs/recording
 | [BE-0226](BE-0226-cross-project-metrics-dashboard/BE-0226-cross-project-metrics-dashboard.md) | Cross-project metrics comparison dashboard | Implemented |
 | [BE-0241](BE-0241-stats-run-drilldown/BE-0241-stats-run-drilldown.md) | Drill down from the Stats dashboard to the runs behind it | Implemented |
 | [BE-0262](BE-0262-serve-author-live-step-picker/BE-0262-serve-author-live-step-picker.md) | Live step-picking and target-scoped runs in the Author editor | Implemented |
+| [BE-0263](BE-0263-serve-author-tiling-layout/BE-0263-serve-author-tiling-layout.md) | Bring the Author view into the tiling layout | Implemented |
 | [BE-0267](BE-0267-serve-author-actuator-selection/BE-0267-serve-author-actuator-selection.md) | Reuse cost-ordered actuator selection in serve capture and enrich | Implemented |
 | [BE-0273](BE-0273-serve-replay-scenario-viewer/BE-0273-serve-replay-scenario-viewer.md) | View a scenario's contents from the Replay tab (raw YAML + structured steps) | Implemented |
 <!-- /GENERATED:implemented-authoring -->
@@ -614,7 +615,6 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 |---|---|---|
 | [BE-0182](BE-0182-record-human-value-prompt/BE-0182-record-human-value-prompt.md) | Human value entry during record (OTP / random / one-off values) | Proposal |
 | [BE-0185](BE-0185-record-human-takeover-step/BE-0185-record-human-takeover-step.md) | Human takeover step during record (CAPTCHA / biometrics / unresolvable gestures) | Proposal |
-| [BE-0263](BE-0263-serve-author-tiling-layout/BE-0263-serve-author-tiling-layout.md) | Bring the Author view into the tiling layout | Proposal |
 <!-- /GENERATED:proposals-authoring -->
 
 ### Surfacing CLI features in the serve Web UI
