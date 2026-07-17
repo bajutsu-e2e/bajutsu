@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0257") |
-| Implementing PR | [#1045](https://github.com/bajutsu-e2e/bajutsu/pull/1045), [#1052](https://github.com/bajutsu-e2e/bajutsu/pull/1052) |
+| Implementing PR | [#1045](https://github.com/bajutsu-e2e/bajutsu/pull/1045), [#1052](https://github.com/bajutsu-e2e/bajutsu/pull/1052), [#1172](https://github.com/bajutsu-e2e/bajutsu/pull/1172) |
 | Topic | Codebase quality & technical debt |
 | Related | [BE-0112](../BE-0112-layer-boundary-enforcement/BE-0112-layer-boundary-enforcement.md), [BE-0135](../BE-0135-module-naming-debt/BE-0135-module-naming-debt.md), [BE-0092](../BE-0092-crawl-coordinator-extraction/BE-0092-crawl-coordinator-extraction.md) |
 <!-- /BE-METADATA -->
@@ -154,6 +154,13 @@ packaging lands, stage by stage.
   `crawl/core.py` + `crawl/serialize.py` + `crawl/__init__.py` (the engine and the re-export the
   on-device run imports — the periphery siblings stay excluded), and the bilingual docs at the
   package.
+- 2026-07-17 ([#1172](https://github.com/bajutsu-e2e/bajutsu/pull/1172)): stage 3 — moved the flat
+  `github.py`/`github_app.py` modules into a `bajutsu/github/` package (`actions` CI emitter + `app`
+  App-token path + `errors` + a re-export `__init__`), and moved `GitHubAccessError` into its own
+  `github/errors.py` so `github.app` and `config_source` share it without importing each other —
+  resolving the `config_source` ↔ `github_app` cycle at its root. Retargeted the core import-linter
+  entry from `bajutsu.github` to `bajutsu.github.actions` (the periphery piece; `app`/`errors` stay
+  core-safe), and the bilingual docs at the package.
 
 ## References
 
