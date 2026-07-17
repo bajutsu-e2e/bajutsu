@@ -1,14 +1,14 @@
-[English](BE-XXXX-scenario-feature-real-backend-coverage.md) · **日本語**
+[English](BE-0285-scenario-feature-real-backend-coverage.md) · **日本語**
 
-# BE-XXXX — シナリオ作成機能の実バックエンドカバレッジを検証する
+# BE-0285 — シナリオ作成機能の実バックエンドカバレッジを検証する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-scenario-feature-real-backend-coverage-ja.md) |
+| 提案 | [BE-0285](BE-0285-scenario-feature-real-backend-coverage-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0285") |
 | トピック | 検証とカバレッジ |
 | 関連 | [BE-0031](../BE-0031-data-driven-scenarios/BE-0031-data-driven-scenarios-ja.md), [BE-0033](../BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow-ja.md), [BE-0030](../BE-0030-parameterized-shared-steps/BE-0030-parameterized-shared-steps-ja.md), [BE-0281](../BE-0281-ios-on-device-actuation-coverage/BE-0281-ios-on-device-actuation-coverage-ja.md) |
 <!-- /BE-METADATA -->

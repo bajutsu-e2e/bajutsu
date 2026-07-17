@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-scenario-feature-real-backend-coverage-ja.md)
+**English** · [日本語](BE-0285-scenario-feature-real-backend-coverage-ja.md)
 
-# BE-XXXX — Verify scenario-authoring features on real backends
+# BE-0285 — Verify scenario-authoring features on real backends
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-scenario-feature-real-backend-coverage.md) |
+| Proposal | [BE-0285](BE-0285-scenario-feature-real-backend-coverage.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0285") |
 | Topic | Verification & coverage |
 | Related | [BE-0031](../BE-0031-data-driven-scenarios/BE-0031-data-driven-scenarios.md), [BE-0033](../BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow.md), [BE-0030](../BE-0030-parameterized-shared-steps/BE-0030-parameterized-shared-steps.md), [BE-0281](../BE-0281-ios-on-device-actuation-coverage/BE-0281-ios-on-device-actuation-coverage.md) |
 <!-- /BE-METADATA -->
