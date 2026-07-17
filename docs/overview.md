@@ -5,15 +5,15 @@
 > Implementation-grounded reference for the natural-language-driven E2E (end-to-end) testing tool.
 > Its deterministic core is platform-neutral; the one platform-specific seam is the **backend**
 > behind a single `Driver` interface, so a new platform is a new backend — the iOS Simulator (idb)
-> today, a web (Playwright) backend and an Android (adb) backend landed, Flutter planned.
+> today; a web (Playwright) backend and an Android (adb) backend now landed; Flutter planned.
 > [`README.md`](../README.md) is the introduction and [`DESIGN.md`](../DESIGN.md)
 > covers the design rationale; this set of pages explains **what the code actually
 > does today**, feature by feature. Planned work is in [the roadmap](../roadmaps/README.md).
 
 Bajutsu takes test scenarios written in (or recorded from) natural language, drives an app
-(tap / type / swipe / wait), and verifies the result with **machine-checkable assertions**. The
-deterministic core is platform-neutral; the one platform-specific seam is the **backend**, so the
-same scenarios run on the iOS Simulator (idb) or in a browser (Playwright) by swapping it. The central idea is to keep AI out of the CI (continuous
+(tap / type / swipe / wait), and verifies the result with **machine-checkable assertions**. Because
+the only platform-specific seam is the **backend**, the same scenarios run on the iOS Simulator
+(idb) or in a browser (Playwright) by swapping it. The central idea is to keep AI out of the CI (continuous
 integration) gate: AI is the scenario author and the failure investigator, never the pass/fail
 judge (see [concepts](concepts.md)).
 

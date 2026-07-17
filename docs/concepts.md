@@ -13,7 +13,7 @@ Related: [architecture](architecture.md) · [selectors](selectors.md) · [run-lo
 ## 1. AI is the author and the investigator, never the judge
 
 The non-determinism, cost, and latency of an LLM (large language model) must **not enter the CI
-(continuous integration) gate**. This is the top-level constraint, and it directly produces the
+(continuous integration) gate**. This prohibition is the top-level constraint, and it directly produces the
 two-tier structure (below).
 
 | Command | Tier | AI | How pass/fail is decided |
@@ -23,7 +23,7 @@ two-tier structure (below).
 | `codegen` | — | none | structural mapping of a scenario to XCUITest ([codegen](codegen.md)) |
 
 The `run` path contains no `anthropic` call at all. The single exception is `--dismiss-alerts`
-(it visually dismisses OS system alerts); that prepares the environment rather than deciding
+(it visually dismisses OS system alerts); it prepares the environment rather than deciding
 pass/fail, and runs only when explicitly opted in
 ([the alert guard](recording.md#dismissing-system-alerts-automatically)).
 
@@ -45,12 +45,12 @@ strictly separated.
 
 ## 3. Determinism first (four concrete mechanisms)
 
-Bajutsu's "deterministic" behavior is enforced by the structure of the code.
+The structure of the code enforces Bajutsu's "deterministic" behavior.
 
-1. **An ambiguous selector fails immediately.** When a single action's target matches 2+
+1. **An ambiguous selector fails immediately.** When a single action's target matches two or more
    elements, Bajutsu raises `AmbiguousSelector` instead of tapping whatever matched first
-   ([selectors](selectors.md#resolution-semantics)). Ruling out non-determinism structurally
-   is the most important of these four mechanisms.
+   ([selectors](selectors.md#resolution-semantics)). Of these four mechanisms, ruling out
+   non-determinism structurally matters most.
 2. **Condition waits only; no fixed sleep.** Waiting polls `query()` until a condition holds.
    A `timeout` is mandatory (no infinite waits) ([run-loop](run-loop.md#waits-condition-waits-only)).
 3. **Start from a clean environment.** Each test, by default, `simctl erase`s before boot/launch,
@@ -60,7 +60,7 @@ Bajutsu's "deterministic" behavior is enforced by the structure of the code.
    machine assertions are `exists`/`value`/`label`/`count`/`enabled`/`disabled`/`selected`/`request`/`visual`
    ([selectors](selectors.md#assertion-evaluation)).
 
-> Note the scope: stable identifiers only stabilize the **determinism of selection**.
+> The scope is narrow: stable identifiers only stabilize the **determinism of selection**.
 > Flakiness from timing, state, or the network is handled separately by waits, the environment,
 > and `mocks`.
 
@@ -103,7 +103,7 @@ by `id`, so scenarios do not change
 
 The tool core, the drivers, and the runner do not depend on any app. To target a new app, you
 change **the app-side preparation (adding identifiers, etc.) and one `targets.<name>` config entry**
-— nothing else. Each app's determinism is guaranteed by the same implementation convention
+— nothing else. The same implementation convention guarantees each app's determinism
 ([onboarding in configuration](configuration.md#onboarding-a-new-target)).
 
 The same move makes Bajutsu **platform-agnostic**: a platform is a **backend** behind the `Driver`
