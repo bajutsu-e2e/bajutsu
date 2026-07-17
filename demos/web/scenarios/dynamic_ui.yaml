@@ -1,0 +1,21 @@
+# Dynamic-UI real-backend coverage (BE-0285): the read-count snapshot-identity assumption
+# (BE-0259) assumes two adjacent reads with no actuation between them see the same device state — an
+# assumption only a live, drifting UI can violate. The ticker advances on its own timer, so this wait
+# can pass only against a genuinely live DOM: a frozen FakeDriver would either match instantly (if
+# pre-scripted) or hang to timeout, since nothing ever moves it. (BE-0245's wait-floor premise is
+# Android/adb-specific — a Compose-recomposition poll budget — so it has no web analog and is out of
+# scope here.)
+description: >-
+  Web dynamic UI — reach home, then condition-wait for the live ticker (no tap ever drives it) to
+  reach a value only real wall-clock drift can produce.
+scenarios:
+  - name: a live-ticking display proves reads observe real UI drift
+    steps:
+      - tap: { id: onboarding.start }
+      - type: { text: "a@b.com", into: { id: auth.email } }
+      - type: { text: "pw", into: { id: auth.password } }
+      - tap: { id: auth.submit }
+      - wait: { for: { id: home.title }, timeout: 5 }
+      - wait: { for: { id: ticker.value, value: "20" }, timeout: 15 }
+    expect:
+      - value: { sel: { id: ticker.value }, equals: "20" }

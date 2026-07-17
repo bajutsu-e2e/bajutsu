@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0285](BE-0285-scenario-feature-real-backend-coverage.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0285") |
 | Topic | Verification & coverage |
 | Related | [BE-0031](../BE-0031-data-driven-scenarios/BE-0031-data-driven-scenarios.md), [BE-0033](../BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow.md), [BE-0030](../BE-0030-parameterized-shared-steps/BE-0030-parameterized-shared-steps.md), [BE-0281](../BE-0281-ios-on-device-actuation-coverage/BE-0281-ios-on-device-actuation-coverage.md) |
@@ -84,11 +84,19 @@ Proposal altitude. The work is MECE along the units below.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] `extract` reuse scenario on adb + web (real field value fed into a later step).
-- [ ] `forEach` over a real multi-element list on adb + web.
-- [ ] Data-driven and `relaunch` on web (beyond adb).
+- [ ] `extract` reuse scenario on adb + web (real field value fed into a later step). Web half done; adb remains.
+- [ ] `forEach` over a real multi-element list on adb + web. Web half done; adb remains.
+- [x] Data-driven and `relaunch` on web (beyond adb).
 - [ ] Extend the extract / forEach / data-driven / relaunch scenarios to iOS once BE-0281 lands (non-gating macOS lane).
-- [ ] Dynamic-UI scenario exercising the read-count snapshot-identity and wait-floor premises.
+- [x] Dynamic-UI scenario exercising the read-count snapshot-identity and wait-floor premises (web; the
+  wait-floor premise, BE-0245, is adb/Android-specific and has no web analog).
+
+**Log**
+
+- 2026-07-17: web slice landed — `demos/web/app/index.html` gained a real multi-element list and a
+  live ticker (no prior demo had either), and `demos/web/scenarios/` gained `extract.yaml`,
+  `foreach.yaml`, `data_driven.yaml`, `relaunch.yaml`, and `dynamic_ui.yaml`, all run against the real
+  Playwright backend. adb equivalents for `extract`/`forEach` and the iOS extension remain.
 
 ## References
 

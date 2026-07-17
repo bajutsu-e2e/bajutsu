@@ -1,0 +1,22 @@
+# Data-driven real-backend coverage (BE-0285): data-driven rows already run for real on adb
+# (demos/showcase/scenarios/data_driven.yaml); this is the web twin, so the feature isn't proven on
+# adb alone. Each row runs in its own clean page (BE-0031), so every row starts with all three list
+# items pending regardless of run order.
+description: >-
+  Web data-driven — reach home, then tap the row's list item and assert only that item flipped
+  to done, proving ${row.*} substitution and per-row isolation for real on a browser.
+scenarios:
+  - name: tapping a list item marks it done
+    data:
+      - { n: "1" }
+      - { n: "2" }
+      - { n: "3" }
+    steps:
+      - tap: { id: onboarding.start }
+      - type: { text: "a@b.com", into: { id: auth.email } }
+      - type: { text: "pw", into: { id: auth.password } }
+      - tap: { id: auth.submit }
+      - wait: { for: { id: home.title }, timeout: 5 }
+      - tap: { id: "list.item.${row.n}" }
+    expect:
+      - value: { sel: { id: "list.state.${row.n}" }, equals: "done" }

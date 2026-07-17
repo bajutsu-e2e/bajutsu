@@ -1,0 +1,22 @@
+# extract real-backend coverage (BE-0285): `extract` is thoroughly unit-tested against FakeDriver's
+# scripted tree, but never against a value a real DOM actually reports. This mirrors
+# test_extract_captures_value_into_vars, run against the real Playwright browser instead.
+description: >-
+  Web extract — capture the counter's real DOM value after a tap and reuse it in the very next
+  step's assertion, before the counter changes again.
+scenarios:
+  - name: extract captures the counter's real DOM value and feeds a later step
+    steps:
+      - tap: { id: onboarding.start }
+      - type: { text: "a@b.com", into: { id: auth.email } }
+      - type: { text: "pw", into: { id: auth.password } }
+      - tap: { id: auth.submit }
+      - wait: { for: { id: home.title }, timeout: 5 }
+      - tap: { id: counter.increment }
+      - tap: { id: counter.increment }
+        extract: { count: { sel: { id: counter.value } } }
+      - assert:
+          - value: { sel: { id: counter.value }, equals: "${vars.count}" }
+      - tap: { id: counter.increment }
+    expect:
+      - value: { sel: { id: counter.value }, equals: "3" }
