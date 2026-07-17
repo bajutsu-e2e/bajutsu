@@ -55,42 +55,31 @@ make check   # 決定的なゲート（ステップの全一覧は CLAUDE.md）
   `docs: …`）。
 - **プルリクエストのタイトルと本文は、作業中に使った言語にかかわらず常に英語**にします。履歴を
   誰にとっても読みやすく保つためです。
-- **PR 本文は丁寧に書く。タイトルを 1 行で言い換えるだけにしない。** レビュアーが差分から変更を
-  組み立て直さなくても本文だけで理解できるようにします。`## Summary` で始め、`make check` の検証
-  （緑の数値）で締めます。タイトルと本文の完全なテンプレートと、セクションごとの書き方は
-  [`docs/ai-development.md`](docs/ai-development.md#pull-requests-title-and-body) にあります。これは
-  人間にも AI にも等しく期待されます。
-- PR がロードマップ項目を実装する場合は、**タイトル先頭に角括弧付きで ID** を付け（例:
-  `[BE-0017] feat(mcp): add MCP server`）、その項目の markdown（両言語ファイル）に PR への
-  リンクを追加します。ロードマップ項目に紐づかない PR は、スコープ付きのタイトルのままにします。
-- **レビューには 1 件ずつ返信する。** レビュアー（人間でも、Copilot などの AI レビュアーでも）が
-  コメントを残したら、すべて解消したうえで**コメント 1 件ごとに個別に返信**します。まとめて 1 つ返信
-  するだけでは足りません。各返信では、対応したこと*と*その根拠を示します。根拠とは、解消にあたる
-  具体的な変更（コミットやファイル・行を挙げます）、あるいは変更しない場合はその指摘が当てはまらない
-  具体的な理由のことです。
-  「対応しました」や 👍 だけでは足りません。詳しくは
-  [`docs/ja/ai-development.md`](docs/ja/ai-development.md) を参照してください。
+- **PR のタイトルと本文は 1 つの型に従います。** タイトルを 1 行で言い換えるだけの本文にせず丁寧に
+  書くこと、ロードマップ項目を実装する PR には `[BE-NNNN]` 接頭辞と項目からの逆リンクを付けること
+  です。完全な規約は
+  [`docs/ja/ai-development.md`](docs/ja/ai-development.md#pull-requests-title-and-body) にあります。
+- **レビューには 1 件ずつ、根拠とともに返信します。** まとめて 1 つの返信では足りません。詳しくは
+  [`docs/ja/ai-development.md`](docs/ja/ai-development.md#responding-to-pr-review-comments) を
+  参照してください。
 - このリポジトリは複数のセッションが並行して作業します。worktree、`uv.lock` のマージドライバ、
   その他の並行作業モデルについては [`docs/ai-development.md`](docs/ai-development.md) を参照して
   ください。
 
 ## ロードマップ項目（BE ID）
 
-大きめの機能は **Bajutsu Evolution** 項目として
-[`roadmaps/`](roadmaps/README.md) で管理します。項目ごとにフラットなディレクトリ
-`roadmaps/BE-NNNN-<slug>/` を 1 つ作り、英語ファイルとその日本語版を Swift-Evolution の提案書式で
-置きます。パスは ID の採番時に定まり、以後移動しません。BE-0159 が `状態` 別のフォルダを廃止した
-ため、`状態` はいまや索引の分類だけを決め、置き場所は決めません。ID は不変で単調増加し、索引の表は
-手編集せず生成します。正確な手順（ID の採番、両言語ファイル、`make roadmap-index`）は
-[`docs/ja/ai-development.md`](docs/ja/ai-development.md) に従ってください。
+大きめの機能は **Bajutsu Evolution** 項目として [`roadmaps/`](roadmaps/README.md) で管理します。
+正確な手順（ディレクトリ構成、ID の採番、両言語ファイル、書式）は
+[`docs/ja/ai-development.md`](docs/ja/ai-development.md#roadmap-items-be-ids-strict) に従って
+ください。
 
 ## ドキュメント
 
 ドキュメントはバイリンガルです。英語は [`docs/`](docs/README.md)、日本語ミラーは
 [`docs/ja/`](docs/ja/README.md) にあります。文書化された挙動を変えたら**両方を更新**してください。
-それぞれの言語で自然な散文を書き、確立した技術用語を用い（造語や不自然な強制翻訳をしない）、各
-ページを自己完結させます。詳しい指針は
-[ドキュメントの書き方](docs/ja/ai-development.md)にあります。
+詳しい指針は
+[ドキュメントの書き方](docs/ja/ai-development.md#documentation-style-every-document-both-languages)
+にあります。
 
 ## 守るべき原則（破ってはいけません）
 

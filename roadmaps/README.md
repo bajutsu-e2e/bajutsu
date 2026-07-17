@@ -28,18 +28,12 @@
 
 ## Adding a roadmap item — BE IDs
 
-Every roadmap item is one flat directory `roadmaps/BE-NNNN-<slug>/` holding the English file
-`BE-NNNN-<slug>.md` and its Japanese version `BE-NNNN-<slug>-ja.md` (same ID and slug). **BE**
-stands for *Bajutsu Evolution*; IDs are permanent and monotonically increasing, and `Status`
-decides only which **index bucket** an item lists under below — not its location (BE-0159).
+Every roadmap item lives under `roadmaps/`. The full procedure — directory layout, ID allocation,
+both language files, format — is the single source of truth in
+[`docs/ai-development.md`](../docs/ai-development.md#roadmap-items-be-ids-strict).
 
-**The full procedure is the single source of truth in
-[`docs/ai-development.md`](../docs/ai-development.md#roadmap-items-be-ids-strict)** — ID allocation
-(the `BE-XXXX` placeholder, numbered by CI on `main` after merge; BE-0089), the both-language files,
-the Swift-Evolution format and metadata block, the author-by-handle rule, and the `document-writing`
-/ `japanese-document-writing` prose norms. **Don't hand-edit the index tables below** — they are
-generated from each item's own metadata; run `make roadmap-index` to regenerate them (`make test`
-fails if the committed index drifts).
+**Don't hand-edit the index tables below** — they are generated from each item's own metadata; run
+`make roadmap-index` to regenerate them.
 
 ---
 

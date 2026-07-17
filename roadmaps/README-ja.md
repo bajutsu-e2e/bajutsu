@@ -28,18 +28,12 @@
 
 ## ロードマップ項目の追加：BE ID
 
-すべてのロードマップ項目は、フラットなディレクトリ `roadmaps/BE-NNNN-<slug>/` に英語版
-`BE-NNNN-<slug>.md` と日本語版 `BE-NNNN-<slug>-ja.md`（ID と slug は同一）を入れます。**BE** は
-*Bajutsu Evolution* で、ID は不変かつ単調増加です。`状態` は項目が下に並ぶ**インデックスのバケット**を
-決めるだけで、置き場所は決めません（BE-0159）。
+すべてのロードマップ項目は `roadmaps/` の下に置きます。完全な手順（ディレクトリ構成、ID の採番、
+両言語ファイル、書式）は、唯一の拠り所である
+[`docs/ai-development.md`](../docs/ai-development.md#roadmap-items-be-ids-strict) にあります。
 
-**完全な手順は、唯一の拠り所である
-[`docs/ai-development.md`](../docs/ai-development.md#roadmap-items-be-ids-strict) にあります。** ID の
-採番（`BE-XXXX` プレースホルダを置き、マージ後に CI が `main` 上で採番する方式。BE-0089）、両言語の
-ファイル、Swift-Evolution フォーマットとメタデータブロック、提案者を GitHub アカウント名で明記する
-規約、`document-writing` と `japanese-document-writing` の散文規範を、そこにまとめています。**下の
-インデックス表は手で編集しません。** 各項目自身のメタデータから生成されるので、`make roadmap-index`
-で再生成してください（コミット済みインデックスがズレると `make test` が落ちます）。
+**下のインデックス表は手で編集しません。** 各項目自身のメタデータから生成されるので、
+`make roadmap-index` で再生成してください。
 
 ---
 
