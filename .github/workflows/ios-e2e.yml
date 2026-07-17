@@ -642,7 +642,7 @@ jobs:
       # XCUITest — reached via this job's already-built runner and app for one more `bajutsu run`
       # each, the same cost-sharing the permission scenario above uses rather than a whole new job.
       #   - search.yaml: `/type` into the Search field, then assert the filtered count.
-      #   - notices.yaml: `/swipe` + `/scroll` to walk an off-screen row into view, then `/back` from
+      #   - notices.yaml: `/swipe` to walk an off-screen row into view, then `/back` from
       #     the pushed Notice Detail. The Notices List is XCUITest's reliable scroll surface (the Log
       #     Form's deep rows are not, see gestures_multitouch.yaml's header).
       - name: Run the search scenario (xcuitest — /type)
