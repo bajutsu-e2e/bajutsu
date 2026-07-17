@@ -2,7 +2,7 @@
 
 # The evidence (Evidence/Trace) subsystem
 
-Evidence capture for a recurring action is expressed as a **repeatedly-firing rule** rather than a one-shot instruction. This ensures the same evidence is collected without AI on every subsequent run.
+Evidence capture for a recurring action is expressed as a **repeatedly-firing rule** rather than a one-shot instruction. The rule ensures the same evidence is collected without AI on every subsequent run.
 
 Implementation: `bajutsu/evidence.py` (instant + Sinks) · `bajutsu/intervals.py` (interval: video / deviceLog / appTrace). Firing is decided on the orchestrator side ([run-loop](run-loop.md#evidence-rule-firing)).
 
@@ -118,7 +118,7 @@ app's os_log subsystem, paired into timed intervals by `parse_app_trace`.)
   to 10s, then kills. `screenrecord` records device-side, so its `Interval` also pulls the finalized
   mp4 off the device on stop and removes the device copy. If the pull fails (the device vanished),
   the sink drops that one artifact with a warning rather than emit a path with no file behind it —
-  it does not fail an otherwise-passing scenario while finalizing interval evidence. Note `adb screenrecord` caps a single recording at ~180s
+  it does not fail an otherwise-passing scenario while finalizing interval evidence. `adb screenrecord` caps a single recording at ~180s
   (the platform default/maximum), so an Android video of a longer scenario ends at that mark; the
   on-device tuning of this cap and of SIGINT finalization is part of the deferred BE-0007 e2e.
 - deviceLog can be narrowed by `--predicate` (NSPredicate) to a subsystem, etc. (the CLI's
@@ -158,7 +158,7 @@ The file is self-contained so a rerun-to-green does not discard it:
 
 | Field | What it answers |
 |---|---|
-| `readiness` | Whether the post-launch readiness gate had passed and on which signal (`readyWhen` / `namespace` / `count`, or `timeout`) — separates "the gate returned before the content" from "the content rendered but the awaited element didn't". `null` on a lane that carried no readiness result. |
+| `readiness` | Whether the post-launch readiness gate had passed and on which signal (`readyWhen` / `namespace` / `count`, or `timeout`) — separates "the gate returned before the content" from "the content rendered but the awaited element did not". `null` on a lane that carried no readiness result. |
 | `trace` | The poll timeline: how many polls, when the tree first became non-empty (`firstNonemptySeconds`, `null` if it never did), and how many elements were present at the timeout — separating "nothing rendered / transient-empty" from "rendered, awaited element absent" from "slow cold-boot render". |
 | `provenance` | A [BE-0049](../roadmaps/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md) stamp (scenario hash, tool version, git revision), so the evidence stays identifiable independently of the run. Its `scenarioHash` fingerprints **this scenario alone**, without the file-level `description` the run manifest's `scenarioHash` folds in when present — so it can diverge from the manifest's hash even for a single-scenario run, not only for a suite/matrix run. |
 | `elements` | The (redacted) element tree at the moment of timeout. |
@@ -206,7 +206,7 @@ verdict is traceable. Implementation: `bajutsu/assertions/visual.py` `VisualEvid
 
 ## Masking (redact)
 
-Screenshots, logs, and network data can capture PII (personally identifiable information) and tokens. Declare what to mask before writing. Implementation: `scenario/models/evidence.py` `Redact`. Config's `redact` and the scenario's `redact` are merged (union) ([configuration](configuration.md#merging-redact)).
+Screenshots, logs, and network data can capture personally identifiable information (PII) and tokens. Declare what to mask before writing. Implementation: `scenario/models/evidence.py` `Redact`. Config's `redact` and the scenario's `redact` are merged (union) ([configuration](configuration.md#merging-redact)).
 
 ```yaml
 redact:

@@ -2,8 +2,8 @@
 
 # Selectors and deterministic resolution (the determinism core)
 
-> This module defines how you specify which element to act on or verify, and how that specification
-> is narrowed to exactly one match. Every execution path (orchestrator / drivers /
+> This module defines how you specify which element to act on or verify, and how it narrows that
+> specification to exactly one match. Every execution path (orchestrator / drivers /
 > assertions) depends on this module. Bajutsu's determinism logic is implemented here.
 >
 > Implementation: `bajutsu/drivers/base.py`.
@@ -15,7 +15,7 @@ Related: [the determinism principles](concepts.md#3-determinism-first-four-concr
 ## The normalized element (`Element`)
 
 The driver normalizes the backend's output into a common `Element` (TypedDict). Resolution and
-assertions only ever look at this normalized form (backend differences are absorbed in the driver).
+assertions only ever look at this normalized form (the driver absorbs backend differences).
 
 ```python
 class Element(TypedDict):
@@ -120,7 +120,7 @@ failure" (they do not propagate the exception upward).
 ### Centralized regardless of backend
 
 idb exposes no usable semantic tap, so the abstraction **always verifies the candidate count via
-`query()` before** acting, then taps the resolved element's frame center. This makes the "ambiguous =
+`query()` before** acting, then taps the resolved element's frame center. This up-front count check makes the "ambiguous =
 fail" behavior identical across idb / playwright / fake (each driver's `tap` implementation is in
 [drivers](drivers.md)).
 
@@ -158,6 +158,6 @@ Per-kind mechanics:
 | `request` | matches over the observed network exchanges (not the element tree) | `equals`/`atLeast`/… via `count`, else ≥ 1 ([network](network.md)) |
 
 > Only `exists` uses `find_all` (allows multiple); the other single-element assertions use
-> `resolve_unique` (ambiguous fails). So "tried to check the value when there were 2 matches" also
+> `resolve_unique` (ambiguous fails). So "tried to check the value when there were two matches" also
 > fails deterministically. The `request` kind is the one non-UI assertion — it checks the captured
 > HTTP(S) exchanges instead of the elements (eight kinds in total).

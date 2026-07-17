@@ -40,7 +40,7 @@ to run. Pass `--scenario <file>` to run a single file instead.
 | `--exclude` | "" | comma list; skip scenarios carrying any of these tags |
 | `--udid` | `booted` | the target Simulator (comma list = a device pool for `--workers`) |
 | `--erase / --no-erase` | scenario › config › off | override every scenario's `preconditions.erase` (wipe the simulator first); omit and it resolves each scenario's value, then the target's `erase` config, then off ([BE-0177](../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md)). The app is reinstalled fresh either way (config `appPath` + `preconditions.reinstall`) |
-| `--dismiss-alerts / --no-dismiss-alerts` | scenario › config › on | override every scenario's `dismissAlerts` — the vision guard that dismisses system alerts idb can't see; omit and it resolves each scenario's value, then the target's `dismissAlerts` config, then on (uses the configured AI provider — `ANTHROPIC_API_KEY`, or AWS credentials for Bedrock; [recording](recording.md#dismissing-system-alerts-automatically)) |
+| `--dismiss-alerts / --no-dismiss-alerts` | scenario › config › on | override every scenario's `dismissAlerts` — the vision guard that dismisses system alerts idb cannot see; omit and it resolves each scenario's value, then the target's `dismissAlerts` config, then on (uses the configured AI provider — `ANTHROPIC_API_KEY`, or AWS credentials for Bedrock; [recording](recording.md#dismissing-system-alerts-automatically)) |
 | `--alert-instruction` | "" | default button instruction, below a scenario's own `dismissAlerts.instruction` and above the target's `dismissAlerts` config |
 | `--log-predicate` | "" | an NSPredicate narrowing the `deviceLog` stream (e.g. subsystem) |
 | `--log-subsystem` | "" | the os_log subsystem for `appTrace` (defaults to the app's `bundleId`) |
@@ -60,7 +60,7 @@ to run. Pass `--scenario <file>` to run a single file instead.
   ([evidence](evidence.md#sinks-where-evidence-goes)).
 - `runId` is `YYYYMMDD-HHMMSS`.
 - Output: `PASS|FAIL  runs/<runId>/manifest.json`. **Exits 0 if every scenario passes, 1 on failure.**
-- When the alert guard actually fires (it is the run's only AI), an `AI usage:` line with the
+- When the alert guard fires (it is the run's only AI), an `AI usage:` line with the
   token totals it consumed is printed to **stderr** after the result, leaving stdout the single
   machine-readable result line. A run that used no AI prints nothing.
 
@@ -506,7 +506,7 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
   locates the tabs by vision — the same fallback the alert guard uses — and taps each by coordinate,
   still switching tabs before drilling in. (UIKit tab bars, whose tabs idb exposes as individual
   elements, are a planned refinement — for now they fall back to the same vision path.) The AI only
-  chooses *what to try* — screen identity, transitions and crashes stay deterministic, so the crawl
+  chooses *what to try* — screen identity, transitions, and crashes stay deterministic, so the crawl
   is never a verdict (it never gates CI).
 - Output: `<out>/screenmap.json`, a JSON graph of `nodes` (screens — fingerprint, kind, ids,
   candidate actions, plus `blocked` disabled controls), `edges` (transitions), `crashes` (action
@@ -528,7 +528,7 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
 - On completion it also writes one `<out>/crashes/crash-NNN.yaml` per faithfully reproducible crash
   — a **repro scenario** built from the crash's recorded action path, directly runnable by `run`, so
   a discovered crash becomes a committed Tier 2 regression after human review. The conversion is
-  pure, deterministic and model-free (`tap` / `type` / `fill` map to their steps). A path that taps a
+  pure, deterministic, and model-free (`tap` / `type` / `fill` map to their steps). A path that taps a
   normalized coordinate (a vision-located control) has no selector to address, so it emits no
   scenario rather than a lossy one.
 - **Parallel pool** ([BE-0064](../roadmaps/BE-0064-parallel-crawl/BE-0064-parallel-crawl.md)):
@@ -537,7 +537,7 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
   guide's round-trips overlap across devices, so wall-clock time falls roughly with the device count.
   Only *scheduling* becomes concurrent: which worker reaches a screen first is timing-dependent, so
   for an app with its own non-determinism the recorded paths and discovery order can vary run to run,
-  but screen identity, transitions and crashes stay the same deterministic functions of the element
+  but screen identity, transitions, and crashes stay the same deterministic functions of the element
   tree (the crawl is still never a verdict). A wedged device drops its work and the others carry on.
   Default `--workers 1` is the single-worker crawl, unchanged. On **web** the same model runs N
   **browser processes** instead of simulators
@@ -549,7 +549,7 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
 ### How a screen is identified (the fingerprint)
 
 Every screen is reduced to a **fingerprint** — a short, stable identity that lets the crawl tell a
-revisit from a genuinely new screen. This is a pure, deterministic function of the element tree (no
+revisit from a genuinely new screen. This reduction is a pure, deterministic function of the element tree (no
 AI, no screenshot pixels), which is what keeps the screen map reproducible: the same screen always
 hashes to the same value. Each node records both the fingerprint and its `kind`.
 
@@ -679,7 +679,7 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   `--config` also accepts a Git source (`github:owner/repo@ref:path`), and the "Open config" dialog
   has a **From a Git repository** field for the same spec: serve materializes the repo subtree at the
   ref into its cache, binds that config, and serves from the checkout root — so the config's relative
-  `scenarios` / `appPath` / `build` resolve against the fetched tree. This is the self-hosted payoff
+  `scenarios` / `appPath` / `build` resolve against the fetched tree. This Git binding is the self-hosted payoff
   ([BE-0016](../roadmaps/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) Tier A):
   point serve at the team's test repository instead of hand-syncing files, and switch branches in the
   UI rather than redeploying. The file browser stays confined to `--root`; the checkout is a managed

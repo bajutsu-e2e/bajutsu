@@ -4,7 +4,7 @@
 
 ## Supported versions
 
-Bajutsu is **pre-alpha**. Security fixes are applied to the `main` branch only;
+Bajutsu is **pre-alpha**. We apply security fixes to the `main` branch only;
 there are no released versions to back-port to yet.
 
 ## Reporting a vulnerability
@@ -22,7 +22,7 @@ to reproduce the issue — affected commit, steps, and impact.
 ## Scope and notes
 
 Bajutsu is a defensive end-to-end (E2E) testing tool for the iOS Simulator. A few
-project-specific points worth keeping in mind:
+project-specific points are worth keeping in mind:
 
 - **API keys / secrets.** Only the AI paths (`record`, `run --dismiss-alerts`)
   need `ANTHROPIC_API_KEY`. Never commit or share API keys; keep them in `.env`
@@ -30,6 +30,6 @@ project-specific points worth keeping in mind:
 - **Captured evidence.** Run artifacts under `runs/` (screenshots, page sources,
   logs) can contain sensitive data from the app under test. Review them before
   sharing, attaching to a pull request, or uploading to CI.
-- **AI is never the judge.** The deterministic `run` gate involves no LLM; AI is
-  used only to author scenarios and investigate failures. Pass/fail comes solely
+- **AI is never the judge.** The deterministic `run` gate involves no LLM; we
+  use AI only to author scenarios and investigate failures. Pass/fail comes solely
   from machine-checkable assertions.

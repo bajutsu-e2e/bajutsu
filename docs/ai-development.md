@@ -11,7 +11,7 @@
 > reference it links to for the rules (the gate, branches, BE-ID lifecycle, model tiers, PR template).
 
 The whole design rests on one property: **the deterministic gate is cheap, runs anywhere, and
-mirrors CI exactly.** This is what lets work fan out safely — every branch is independently
+mirrors CI exactly.** This property is what lets work fan out safely — every branch is independently
 verifiable, so "green locally" reliably predicts "green in CI", and the test suite is a
 regression net that catches one session breaking another's feature.
 
@@ -65,8 +65,7 @@ make preflight   # git fetch origin && git rebase origin/main && make check, the
 version of the pre-push routine: it syncs, rebases onto `origin/main`, runs the gate, then prints
 the "definition of done" reminder (both-language docs touched? a test changed with the behavior?
 `Status` flipped if shipping?). It is **advisory and human-initiated** — the pre-push hook already
-*gates* `make check`, so this is the do-it-early version a human runs before they think they are
-done, not a second hard gate. Run it whenever; you don't need to remember the individual steps.
+*gates* `make check`. Run it whenever; you don't need to remember the individual steps.
 
 Rebasing frequently means you meet other sessions' merged work early, when conflicts are a line
 or two — not at the end as a tangled merge.
@@ -420,8 +419,8 @@ The short form of these rules is in [`CLAUDE.md`](../CLAUDE.md).
 
 ## Responding to PR review comments
 
-Reviews get answered comment by comment, by **whoever owns the pull request — a human contributor
-or an AI agent alike**. When a reviewer (Claude Code — the automated reviewer, see below — or a
+**Whoever owns the pull request** answers reviews comment by comment — a human contributor
+or an AI agent alike. When a reviewer (Claude Code — the automated reviewer, see below — or a
 human) leaves comments, keep working until every comment is resolved, then **reply to each comment
 individually**. A single summary reply on the PR is not enough: each comment thread gets its own
 reply, so the thread that raised a point is the thread that records its resolution.
@@ -433,8 +432,8 @@ Every reply states two things:
   cite the commit or the file/line), or, when you make no change, the specific reason the comment
   does not apply.
 
-A bare "done" or a 👍 is not a reply under this rule; the grounds are what let whoever later reads
-the thread audit the resolution. Keep each reply short and factual — the point is evidence, not
+A bare "done" or a 👍 is not a reply under this rule; the grounds are what let a later reader
+of the thread audit the resolution. Keep each reply short and factual — the point is evidence, not
 narration.
 
 **Every answered comment gets both a reply and a resolved thread** — whether you fixed it or
@@ -452,9 +451,10 @@ open until it is decided.
 ### The automated reviewer (Claude Code, BE-0203)
 
 Once the `claude-review` Environment has a provider credential (a Claude Code subscription token, or an
-Amazon Bedrock role plus a `BEDROCK_MODEL_ID` variable), every pull request from a branch in this repository is reviewed automatically by **Claude Code**, run from the
-[`claude-review`](../.github/workflows/claude-review.yml) workflow: it reviews when a PR opens and
-re-reviews on each push, reviewing against the
+Amazon Bedrock role plus a `BEDROCK_MODEL_ID` variable), **Claude Code** reviews every pull request
+from a branch in this repository automatically, run from the
+[`claude-review`](../.github/workflows/claude-review.yml) workflow. It reviews when a PR opens and
+re-reviews on each push, against the
 [`.github/claude-review-prompt.md`](../.github/claude-review-prompt.md) contract, and posts inline
 line-level comments (with `suggestion` blocks where a fix is mechanical) plus a short summary. Until
 a credential is provisioned the workflow is a dormant green no-op — it posts nothing and never
@@ -521,7 +521,7 @@ surface). The key properties, all consistent with the sibling automations:
 The roadmap is **one directory per item** under [`roadmaps/`](../roadmaps/README.md). Each item lives in
 `roadmaps/<category>/BE-NNNN-<slug>/`, which holds the English file `BE-NNNN-<slug>.md` and its
 Japanese version `BE-NNNN-<slug>-ja.md` (same ID and slug). **BE** stands for *Bajutsu Evolution* and `NNNN`
-is a **zero-padded, 4-digit, monotonically increasing** ID. Every item lives directly under `roadmaps/`
+is a **zero-padded, four-digit, monotonically increasing** ID. Every item lives directly under `roadmaps/`
 in a flat layout: its path is fixed the moment its ID is allocated and never moves (BE-0159 retired the
 per-`Status` folders BE-0078 introduced — `Status` now decides only the index bucket, below).
 
