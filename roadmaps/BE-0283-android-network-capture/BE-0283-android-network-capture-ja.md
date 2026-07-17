@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0283") |
-| 実装 PR | [#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN) |
+| 実装 PR | [#1180](https://github.com/bajutsu-e2e/bajutsu/pull/1180) |
 | トピック | プラットフォーム対応 |
 | 関連 | [BE-0003](../BE-0003-m3-codegen-traces-network-ci/BE-0003-m3-codegen-traces-network-ci-ja.md)、[BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md)、[BE-0245](../BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server-ja.md) |
 <!-- /BE-METADATA -->
