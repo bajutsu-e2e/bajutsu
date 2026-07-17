@@ -4,10 +4,11 @@ model: sonnet
 description: >-
   The authoritative prose norm for Bajutsu's writing — the language-agnostic writing technique both
   languages share (top-down drafting, stating the contribution up front, sentence stress,
-  subject–verb proximity, active voice, cutting filler). Use it whenever you write or revise a BE
-  roadmap item (`*.md` / `*-ja.md`) or a prose document under `docs/`, in either language. It is the
-  umbrella above two language layers: apply `english-document-writing` with it for English prose, and
-  `japanese-document-writing` for Japanese prose.
+  subject–verb proximity, active voice, cutting filler, and paragraph-level argument structure —
+  paragraph writing). Use it whenever you write or revise a BE roadmap item (`*.md` / `*-ja.md`) or a
+  prose document under `docs/`, in either language. It is the umbrella above two language layers:
+  apply `english-document-writing` with it for English prose, and `japanese-document-writing` for
+  Japanese prose.
 ---
 
 <!--
@@ -32,8 +33,8 @@ pass.
   dashes, numbers, and the rest of the English mechanics); for **Japanese**,
   [`japanese-document-writing`](../japanese-document-writing/SKILL.md). Each language layer holds only the
   guidance its own grammar and typography need, and never applies to the other language. Where a
-  language layer overlaps these principles (filler, redundancy, restraint of rhetorical flourish),
-  that layer's specific wording governs for its language.
+  language layer overlaps these principles (filler, redundancy, restraint of rhetorical flourish,
+  paragraph and argument structure), that layer's specific wording governs for its language.
 - **Enforcement stays a review-time norm, not a CI gate.** Judging clarity, emphasis, and argument order
   needs semantic judgment; putting that on the gate would put an LLM on the `run` / CI verdict path,
   which prime directive 1 forbids. It holds the same way the bilingual-docs and DESIGN.md-alignment
@@ -63,11 +64,43 @@ pass.
   "essentially", "it is important to note that", "note that", a bare "now". Keep "thus" /
   "therefore" only where they genuinely signal a conclusion.
 
+## Paragraph structure (both languages)
+
+Paragraph writing: treat the paragraph, not only the sentence, as the unit of argument. A reader
+must be able to follow the case being made paragraph by paragraph, without re-reading to find where
+one point ends and the next begins.
+
+- **One topic per paragraph.** A paragraph that mixes several beats of a narrative (investigating,
+  reporting, verifying, evaluating) is really several paragraphs. Split it so each paragraph carries
+  exactly one step.
+- **Front-load the topic.** A reader who reads only a paragraph's first sentence should know what
+  the paragraph is about. Don't bury the topic after a run-up.
+- **Open on the logical relation to what came before.** Start the paragraph with the connective that
+  states how it relates to the previous one ("therefore", "in fact", "however", "even this example
+  alone shows"), not partway through.
+- **Argue in one direction.** Reach a conclusion, then dispose of objections, then stop — don't
+  restate the conclusion afterward. State it once.
+- **Don't let an aside interrupt the climax.** Handle an anticipated objection (an example that
+  might look contrived, a preemptive caveat) at a paragraph or section boundary, not right after the
+  moment it would otherwise interrupt.
+- **Name a misreading before correcting it.** When a reader is likely to draw the wrong conclusion,
+  state that wrong conclusion explicitly, then give the real one — don't only assert the correct
+  account and leave the misreading unaddressed.
+- **Justify a denial in the same sentence.** When writing "A, not B", give the reason for ruling out
+  B in that sentence rather than leaving it implicit.
+- **Don't preview the payoff.** A number or fact meant to land with impact belongs in the paragraph
+  where it lands, not foreshadowed in an earlier one.
+- **Place forward references at a boundary.** "Covered in a later section" belongs at the end of a
+  paragraph or section, once the point in hand is settled — not dropped mid-argument, where it
+  breaks the reader's flow.
+
 ## Verify your work
 
 After drafting, reread once against this list: does the piece lead with its contribution, does each
 sentence end on its most important element, is the verb near its subject, is every sentence free of
-filler? Then run the same reread under the layer for your language:
+filler, does every paragraph carry exactly one topic announced in its first sentence, and does the
+argument move in one direction per paragraph without restating its conclusion? Then run the same
+reread under the layer for your language:
 [`english-document-writing`](../english-document-writing/SKILL.md) for English,
 [`japanese-document-writing`](../japanese-document-writing/SKILL.md) for Japanese.
 

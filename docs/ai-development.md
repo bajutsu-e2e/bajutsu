@@ -688,8 +688,9 @@ apply equally when reporting on or summarizing work.
   authoritative prose norm for every document here and every BE roadmap item, in both languages:
   the language-agnostic writing technique both languages share (draft top-down, state the
   contribution up front, reserve a sentence's end for its most important element, keep the verb near
-  the subject, prefer the active voice, cut filler). Invoke it *before* writing or revising, not
-  after. It is the umbrella above two language layers: for English prose apply
+  the subject, prefer the active voice, cut filler, and write one topic per paragraph with the
+  argument moving in a single direction — paragraph writing). Invoke it *before* writing or revising,
+  not after. It is the umbrella above two language layers: for English prose apply
   [`english-document-writing`](../.claude/skills/english-document-writing/SKILL.md) with it (serial comma,
   *that* / *which*, dashes, numbers, and the rest of the English mechanics), and for Japanese prose
   the [`japanese-document-writing`](../.claude/skills/japanese-document-writing/SKILL.md) skill (see below).
