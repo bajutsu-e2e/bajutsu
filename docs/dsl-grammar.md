@@ -257,7 +257,7 @@ MockResponse ::= { status?: integer, headers?: map(string,string), body?: string
 A scenario file is YAML, parsed by Bajutsu's loader (`_yaml.py`), with **one deliberate
 deviation** from YAML 1.1:
 
-- **Only `true` / `false` are booleans.** `on` / `off` / `yes` / `no` stay **strings**. This keeps
+- **Only `true` / `false` are booleans.** `on` / `off` / `yes` / `no` stay **strings**. This deviation keeps
   the `capturePolicy` trigger key `on:` a key (not the boolean `True`) and keeps id/label values
   like `on` intact. ([scenarios](scenarios.md#yaml-caveat))
 
@@ -340,7 +340,7 @@ trimmed). Substitution is **type-preserving at the edges**:
 - A string that is **exactly one token** (`"${row.qty}"`) becomes the **raw bound value** (e.g. a
   number stays a number).
 - A token **embedded** in a larger string is spliced in as text (`"item-${row.id}"`).
-- A token whose namespace isn't being substituted **right now is left intact**, so each layer fills
+- A token whose namespace is not being substituted **right now is left intact**, so each layer fills
   only its own namespace.
 
 Namespaces: `params.*` (components, §6.2), `row.*` (data-driven, §6.3), `secrets.*` (declared

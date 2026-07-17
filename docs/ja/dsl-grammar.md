@@ -352,7 +352,7 @@ steps:
 
 ### 6.3 データ駆動シナリオ（`data` / `dataFile`）
 
-`data`（インライン行）か `dataFile`（CSV パス。両者は排他）を持つシナリオは、`${row.<column>}` を置換して **1 行 1 シナリオ**に展開されます（`expand_data`, `scenario/expand.py`）。派生シナリオは `"<name> [row N: col=val, …]"` に改名され、**元の preconditions を保ちます**。そのためどの行でもアプリはまっさらな状態で再インストールされ、テンプレートの `erase` / `reinstall` を継承します。
+`data`（インライン行）か `dataFile`（CSV パス。両者は排他）を持つシナリオは、`${row.<column>}` を置換して **1 行 1 シナリオ**に展開されます（`expand_data`, `scenario/expand.py`）。派生シナリオは `"<name> [row N: col=val, …]"` に改名され、**元の preconditions を保ちます**。そのためどの行も、元の preconditions（`erase` / `reinstall`）を継承した状態でアプリを準備します。
 
 ```yaml
 - name: search returns a result

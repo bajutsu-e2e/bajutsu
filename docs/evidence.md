@@ -2,7 +2,7 @@
 
 # The evidence (Evidence/Trace) subsystem
 
-Evidence capture for a recurring action is expressed as a **repeatedly-firing rule** rather than a one-shot instruction. This ensures the same evidence is collected without AI on every subsequent run.
+Evidence capture for a recurring action is expressed as a **repeatedly-firing rule** rather than a one-shot instruction. The rule ensures the same evidence is collected without AI on every subsequent run.
 
 Implementation: `bajutsu/evidence.py` (instant + Sinks) · `bajutsu/intervals.py` (interval: video / deviceLog / appTrace). Firing is decided on the orchestrator side ([run-loop](run-loop.md#evidence-rule-firing)).
 
@@ -158,7 +158,7 @@ The file is self-contained so a rerun-to-green does not discard it:
 
 | Field | What it answers |
 |---|---|
-| `readiness` | Whether the post-launch readiness gate had passed and on which signal (`readyWhen` / `namespace` / `count`, or `timeout`) — separates "the gate returned before the content" from "the content rendered but the awaited element didn't". `null` on a lane that carried no readiness result. |
+| `readiness` | Whether the post-launch readiness gate had passed and on which signal (`readyWhen` / `namespace` / `count`, or `timeout`) — separates "the gate returned before the content" from "the content rendered but the awaited element did not". `null` on a lane that carried no readiness result. |
 | `trace` | The poll timeline: how many polls, when the tree first became non-empty (`firstNonemptySeconds`, `null` if it never did), and how many elements were present at the timeout — separating "nothing rendered / transient-empty" from "rendered, awaited element absent" from "slow cold-boot render". |
 | `provenance` | A [BE-0049](../roadmaps/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md) stamp (scenario hash, tool version, git revision), so the evidence stays identifiable independently of the run. Its `scenarioHash` fingerprints **this scenario alone**, without the file-level `description` the run manifest's `scenarioHash` folds in when present — so it can diverge from the manifest's hash even for a single-scenario run, not only for a suite/matrix run. |
 | `elements` | The (redacted) element tree at the moment of timeout. |

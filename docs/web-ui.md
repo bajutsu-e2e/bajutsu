@@ -143,8 +143,8 @@ Click **View** (beside the config name) to see the exact config the tabs run fro
 on a **Structured** view — a collapsible key/value tree, with each nested object and list a toggle you
 expand only where you need it — and a **Raw** toggle switches to the verbatim YAML (comments and all).
 Above both, it shows the config's path and — when it came from a Git repository — the source it was
-materialized from: the repository, the `ref` you asked for, and the resolved commit SHA. This matters
-for a Git source, whose active path is an opaque content-addressed cache location
+materialized from: the repository, the `ref` you asked for, and the resolved commit SHA. This provenance
+line matters for a Git source, whose active path is an opaque content-addressed cache location
 (`…/gitsrc/<host>/<owner>/<repo>/<sha>/…`); the provenance line states which commit is actually
 bound, not just the path. The config is shown verbatim: `${secrets.*}` placeholders appear as written
 and are never resolved (they resolve from the server's environment at run time), so the view adds no
@@ -173,7 +173,7 @@ be switched to (there is no checkout to re-materialize); re-upload its config to
 repository. Re-adding an existing name rebinds its source. **Remove** deregisters a project after a
 confirmation; its run history is kept, only the binding is dropped. The `bajutsu project` CLI edits
 the same shared store, so a project added either way appears in both. Registering, removing, and
-switching all rebind a config binding, so in a hosted deployment they are admin actions like binding
+switching all rebind the active config, so in a hosted deployment they are admin actions like binding
 a config — the server enforces that, and a refused action shows inline on the page.
 
 ### Comparing projects
@@ -357,8 +357,8 @@ to step to a transition into or out of it, and hotspots marking where each trans
 runs are listed under the Crawl tab's own **History** sub-tab instead, keyed on the `screenmap.json`
 every crawl streams. Each entry shows the run id and its screen / transition / crash counts, newest
 first. Selecting one reopens that crawl's screen map **read-only** — the same interactive graph, drawn
-from the stored map with no re-crawl — with a **past crawl** badge so it can't be mistaken for a live
-run and the live form disabled while it's shown. Beside the map, the run's `crashes/*.yaml` (a
+from the stored map with no re-crawl — with a **past crawl** badge so it cannot be mistaken for a live
+run and the live form disabled while it is shown. Beside the map, the run's `crashes/*.yaml` (a
 replayable crash) and `flows/*.yaml` (a reachable screen) scenario files are linked directly; each opens
 the raw YAML, ready to run with `bajutsu run`. Switch back to the **Form** sub-tab to return to the
 live crawl form.
@@ -407,8 +407,8 @@ in the [CLI reference](cli.md#crawl).
 **The YAML editor** (shared by all three modes) validates as you type: a debounced check runs the
 same `bajutsu lint` rules and shows line-anchored diagnostics as a gutter marker on each offending
 line and a clickable problems list — click a finding to jump to its line. The scenario JSON Schema
-also drives lightweight key completion (Ctrl/⌘+Space) and hover descriptions. This is deterministic
-and AI-free. Click **Save** to write the scenario. The grammar these checks enforce:
+also drives lightweight key completion (Ctrl/⌘+Space) and hover descriptions. This validation is
+deterministic and AI-free. Click **Save** to write the scenario. The grammar these checks enforce:
 [scenarios](scenarios.md); how selectors are graded: [selectors](selectors.md).
 
 **The determinism audit badge** grades the same live YAML for stability, alongside the lint check.

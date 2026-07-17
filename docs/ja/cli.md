@@ -49,7 +49,7 @@ bajutsu run --target <name> [--scenario <file.yaml>] [options]
 | `--progress / --no-progress` | off | シナリオ / ステップごとの進捗を stderr に流します（`serve` UI が消費します） |
 | `--zip` | off | run の後に `runs/<id>.zip` も書き出します。レポートと証跡をまとめた1つの可搬な成果物で、CI アップロードや共有に使えます。**判定の後**に走るので pass/fail に影響しません。[`export`](#export) 参照 |
 | `--runs-dir` | `runs` | run ツリーを書き出すディレクトリ。作業ディレクトリと出力先を分けられる。`serve` は、アクティブな config が別のツリー（Git チェックアウトやアップロードされたバンドル）からバインドされているとき、そのツリーで走らせつつ run を `serve` のストアに残すためにこれを使います（[BE-0073](../../roadmaps/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload-ja.md)） |
-| `--evidence-store` | "" (環境変数 `BAJUTSU_EVIDENCE_STORE` も可) | run の後に、run ツリー全体をこの URI のオブジェクトストレージへアップロードします。`s3://bucket/prefix`（AWS / R2 / MinIO）または `gs://bucket/prefix`（Google Cloud Storage）を指定します。リモートのレイアウトはローカルと同じ構造を prefix 配下に再現するので（`<prefix><runId>/…`）、アップロード先のパスがクラウドのライフサイクルポリシーを選ぶことになります（main ブランチの証跡は保持し、feature ブランチの証跡は短期で失効させる、など）。**判定の後**に走るので、アップロードが失敗しても警告を出すだけで pass/fail には影響しません。`s3` または `gcs` の extra が必要です（[BE-0110](../../roadmaps/BE-0110-evidence-store-uri/BE-0110-evidence-store-uri-ja.md)） |
+| `--evidence-store` | "" (環境変数 `BAJUTSU_EVIDENCE_STORE` も可) | run の後に、run ツリー全体をこの URI のオブジェクトストレージへアップロードします。`s3://bucket/prefix`（AWS / R2 / MinIO）または `gs://bucket/prefix`（Google Cloud Storage）を指定します。リモートのレイアウトはローカルと同じ構造を prefix 配下に再現するので（`<prefix><runId>/…`）、アップロード先のパスによってクラウドのライフサイクルポリシーが切り替わります（main ブランチの証跡は保持し、feature ブランチの証跡は短期で失効させる、など）。**判定の後**に走るので、アップロードが失敗しても警告を出すだけで pass/fail には影響しません。`s3` または `gcs` の extra が必要です（[BE-0110](../../roadmaps/BE-0110-evidence-store-uri/BE-0110-evidence-store-uri-ja.md)） |
 | `--config` | `bajutsu.config.yaml` | config ファイル |
 | `--project` | "" | [`project add`](#project) で登録したプロジェクトを名前で実行します。保存された config ソースを `--config` の spec に戻して実行する、CI や cron のステップが呼ぶヘッドレスなトリガーで、`POST /api/projects/<name>/run` の CLI 版です（[BE-0225](../../roadmaps/BE-0225-config-project-hub/BE-0225-config-project-hub.md)）。`--config` とは同時に指定できません |
 
@@ -338,7 +338,7 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
 | `--erase / --no-erase` | `--erase` | 起動前に erase（アプリはインストール済みである必要） |
 | `--dismiss-alerts / --no-dismiss-alerts` | `--dismiss-alerts` | クロール中に予期せぬ OS プロンプトを片付ける（クラッシュ誤判定を防ぐ。設定した AI プロバイダを使用し、`ANTHROPIC_API_KEY`、Bedrock なら AWS 認証情報） |
 | `--headed / --no-headed` | アプリの `headless` | web backend: ヘッドレスではなく目に見える（低速再生の）ブラウザでクロールする。省略時はアプリの `headless` 設定に従う |
-| `--language` | config の `ai.language`（`auto`） | ガイドの流れる推論の AI 出力言語。`ja` / `en` / `auto` から選び `ai.language` を上書きする。`auto` はクロールでは英語のまま（[BE-0188](../../roadmaps/BE-0188-configurable-ai-output-language/BE-0188-configurable-ai-output-language-ja.md)） |
+| `--language` | config の `ai.language`（`auto`） | ガイドの流れる推論の AI 出力言語。`ja` / `en` / `auto` から選び `ai.language` を上書きします。`auto` はクロールでは英語のままです（[BE-0188](../../roadmaps/BE-0188-configurable-ai-output-language/BE-0188-configurable-ai-output-language-ja.md)） |
 | `--out` | `runs/<timestamp>` | 画面マップを書き出す run ディレクトリ |
 | `--continue` | オフ | 過去の run（`--out` でその run を指します）を続きから探索します。1 つのブランチだけでなく、未試行の操作が残る**すべて**の画面を再探索します。`--max-screens`/`--max-steps` を上げるとさらに深く進み、`--workers`/`--udid` で continuation を並列に実行します（[BE-0181](../../roadmaps/BE-0181-crawl-continuation/BE-0181-crawl-continuation-ja.md)） |
 | `--config` | `bajutsu.config.yaml` | config |

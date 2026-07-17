@@ -19,7 +19,7 @@ Related: [scenarios](scenarios.md) · [selectors](selectors.md) · [evidence](ev
 def run_scenario(driver, scenario, clock=None, sink=None, on_blocked=None) -> RunResult
 ```
 
-- `driver`: a `base.Driver` (a real driver or `FakeDriver`). The loop depends only on this.
+- `driver`: a `base.Driver` (a real driver or `FakeDriver`). The loop depends only on this interface.
 - `clock`: injected time / sleep (to make waits deterministic in tests). Default `RealClock`
   (`time.monotonic` / `time.sleep`).
 - `sink`: the evidence output target (default `NullSink` = writes nothing) ([evidence](evidence.md)).
@@ -76,7 +76,7 @@ intervals until the condition holds or `timeout` is reached.
 | `for: <sel>` | a matching element appears | **fail** |
 | `until: { gone: <sel> }` | a matching element disappears | **fail** |
 | `until: screenChanged` | `query()` changed from the initial value | **fail** |
-| `until: settled` | the screen is stable (2 consecutive unchanged `query()`s, and there is an element with an id) | **proceed (does not fail)** |
+| `until: settled` | the screen is stable (two consecutive unchanged `query()`s, and there is an element with an id) | **proceed (does not fail)** |
 
 > `settled` is a stabilization hint that "waits for a transition / animation to settle," not a
 > correctness assertion. An empty / collapsed tree (mid-render, or covered by a system alert) is

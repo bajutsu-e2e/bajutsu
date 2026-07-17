@@ -65,8 +65,7 @@ make preflight   # git fetch origin && git rebase origin/main && make check, the
 version of the pre-push routine: it syncs, rebases onto `origin/main`, runs the gate, then prints
 the "definition of done" reminder (both-language docs touched? a test changed with the behavior?
 `Status` flipped if shipping?). It is **advisory and human-initiated** — the pre-push hook already
-*gates* `make check`, so this is the do-it-early version a human runs before they think they are
-done, not a second hard gate. Run it whenever; you don't need to remember the individual steps.
+*gates* `make check`. Run it whenever; you don't need to remember the individual steps.
 
 Rebasing frequently means you meet other sessions' merged work early, when conflicts are a line
 or two — not at the end as a tangled merge.
@@ -420,8 +419,8 @@ The short form of these rules is in [`CLAUDE.md`](../CLAUDE.md).
 
 ## Responding to PR review comments
 
-Reviews get answered comment by comment, by **whoever owns the pull request — a human contributor
-or an AI agent alike**. When a reviewer (Claude Code — the automated reviewer, see below — or a
+**Whoever owns the pull request** answers reviews comment by comment — a human contributor
+or an AI agent alike. When a reviewer (Claude Code — the automated reviewer, see below — or a
 human) leaves comments, keep working until every comment is resolved, then **reply to each comment
 individually**. A single summary reply on the PR is not enough: each comment thread gets its own
 reply, so the thread that raised a point is the thread that records its resolution.
@@ -452,9 +451,10 @@ open until it is decided.
 ### The automated reviewer (Claude Code, BE-0203)
 
 Once the `claude-review` Environment has a provider credential (a Claude Code subscription token, or an
-Amazon Bedrock role plus a `BEDROCK_MODEL_ID` variable), every pull request from a branch in this repository is reviewed automatically by **Claude Code**, run from the
-[`claude-review`](../.github/workflows/claude-review.yml) workflow: it reviews when a PR opens and
-re-reviews on each push, reviewing against the
+Amazon Bedrock role plus a `BEDROCK_MODEL_ID` variable), **Claude Code** reviews every pull request
+from a branch in this repository automatically, run from the
+[`claude-review`](../.github/workflows/claude-review.yml) workflow. It reviews when a PR opens and
+re-reviews on each push, against the
 [`.github/claude-review-prompt.md`](../.github/claude-review-prompt.md) contract, and posts inline
 line-level comments (with `suggestion` blocks where a fix is mechanical) plus a short summary. Until
 a credential is provisioned the workflow is a dormant green no-op — it posts nothing and never

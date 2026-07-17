@@ -2,9 +2,10 @@
 
 # Self-hosting the web UI
 
-> Run the bajutsu web UI ([cli](cli.md#serve)) on hardware you own, reachable by your team over a
-> private Tailscale network, from the self-hosting roadmap
-> ([BE-0016](../roadmaps/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)).
+> The self-hosting roadmap
+> ([BE-0016](../roadmaps/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)) covers running
+> the bajutsu web UI ([cli](cli.md#serve)) on hardware you own, reachable by your team over a
+> private Tailscale network.
 > Two tiers are available today, both made safe to expose by
 > [BE-0051](../roadmaps/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)'s
 > auth + input validation:
@@ -120,8 +121,8 @@ dispatch. Keep the token secret, keep the Mac on a tailnet, and keep the OS patc
 
 The CSRF/Origin check and a **`Host`-header allowlist** run **unconditionally**
 ([BE-0121](../roadmaps/BE-0121-serve-csrf-host-allowlist/BE-0121-serve-csrf-host-allowlist.md)) —
-not only when a token is set. This matters most for the common `make serve` default (loopback, no
-token): a cross-origin `POST` from a page open in another tab is blocked, and a request whose `Host`
+not only when a token is set. Running these checks unconditionally matters most for the common
+`make serve` default (loopback, no token): a cross-origin `POST` from a page open in another tab is blocked, and a request whose `Host`
 does not name a bound interface is refused, so a rebound hostname can't reach a loopback endpoint
 such as `GET /api/apikey`. A non-browser client (no `Origin` header) is unaffected. The
 `Host` allowlist is derived from the interface `serve` binds — the loopback names for a loopback
@@ -170,8 +171,8 @@ arrived over the network.
 
 When `serve` (or the CLI) reads its config from a **private** GitHub repository — a `github:` spec,
 [BE-0063](../roadmaps/BE-0063-git-config-source/BE-0063-git-config-source.md) — it needs a credential
-that grants read access. A public repository needs none. The credential is resolved **per fetch**, so
-rotating it takes effect without a restart, in this order:
+that grants read access. A public repository needs none. The credential is resolved **per fetch** in
+this order (so rotating it takes effect without a restart):
 
 1. a configured **GitHub App installation** (recommended for an unattended host — see below);
 2. a credential entered via the web UI's "From a Git repository" dialog (held in `BAJUTSU_GIT_CONFIG_TOKEN` — see below);

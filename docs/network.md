@@ -33,7 +33,7 @@ A Simulator app runs as a host process and shares the Mac's loopback, so:
 `--no-network` disables the collector. Apps without BajutsuKit simply report nothing (the
 collector stays empty); the feature is opt-in per app.
 
-> This is the in-app path. RocketSim's GUI network inspector and a TLS-intercepting proxy
+> This mechanism is the in-app path. RocketSim's GUI network inspector and a TLS-intercepting proxy
 > were both rejected — the former is not exposed on its CLI (unusable for automated
 > assertions), the latter needs CA install and breaks on pinning. See the design notes.
 
@@ -93,7 +93,7 @@ via the `BAJUTSU_MOCKS` launch env (like `BAJUTSU_COLLECTOR`).
 Network is async, so a step can run before the response lands. Bridge the gap with a wait
 on the UI that reflects the response (e.g. `wait: { until: settled }`, or wait for an
 element the response reveals) **before** the `request` assertion. The SDK POSTs on
-completion, so by the time the UI has updated the exchange is in the collector.
+completion, so by the time the UI has updated, the exchange is in the collector.
 
 ## App contract
 

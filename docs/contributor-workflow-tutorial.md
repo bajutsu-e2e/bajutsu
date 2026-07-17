@@ -55,7 +55,7 @@ hitting a step that occasionally fails on a slow simulator and you think:
 
 > "Bajutsu should retry a step that flakes instead of failing the whole run."
 
-That is deliberately underspecified. Part of what `/ideation` does is *sharpen* it — see the
+That sentence is deliberately underspecified. Part of what `/ideation` does is *sharpen* it — see the
 [worked example](#a-worked-example-a-vague-idea-becomes-a-scoped-proposal) below for the before/after.
 
 ### Step A2 — Run `/ideation` and let it ground itself
@@ -202,8 +202,8 @@ a `Proposal` *accepts* it: this PR will flip it to `Implemented`.
 
 Every open item has a GitHub tracking issue labeled `roadmap-tracking`. The skill checks who is
 assigned: if someone else already holds it, it **stops** and tells you rather than colliding with
-their work; if it is free (or already yours), it self-assigns and continues. This is how parallel
-sessions signal ownership.
+their work; if it is free (or already yours), it self-assigns and continues. This self-assignment is
+how parallel sessions signal ownership.
 
 ### Step B3 — It grounds, plans, and asks before writing code
 

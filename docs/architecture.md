@@ -227,8 +227,8 @@ declared:
 
 Three contracts are enforced:
 
-- **The deterministic core must not import the periphery.** This is prime directives #1 and #3 as a
-  static contract: the verdict/evidence path stays free of the serve, AI and codegen stacks, and
+- **The deterministic core must not import the periphery.** This contract enforces prime directives
+  #1 and #3 statically: the verdict/evidence path stays free of the serve, AI, and codegen stacks, and
   cannot silently grow a dependency on them. A pure element-tree helper a core module needs (e.g.
   `screen_size_from_elements`, `shows_app_ui`) lives in the core (`bajutsu/elements.py`), not in a
   periphery module such as `record.py`; likewise the resolved `ai` block (`AiConfig`) lives in
@@ -245,8 +245,8 @@ Three contracts are enforced:
   `scenario/` off those extras (`include_external_packages` lets it see the external import), on top
   of the periphery contract that already keeps them off `bajutsu.serve`.
 - **The scenario schema and `Driver` Protocol stay a portable inner contract** — independent of the
-  runtime core (`orchestrator/`, `runner/`, `config/`, …) as well as the periphery. This keeps the
-  contract a stable layer a consumer can depend on without pulling the runtime, underpinning
+  runtime core (`orchestrator/`, `runner/`, `config/`, …) as well as the periphery. This independence
+  keeps the contract a stable layer a consumer can depend on without pulling the runtime, underpinning
   cross-version schema reads (BE-0119) and any future split of the periphery from the core.
 
 The check is static analysis on the import graph — no model, nothing on the `run` / CI verdict path
@@ -349,7 +349,7 @@ device (the shared device is reseeded via one channel, so parallel workers would
   Automator (Kotlin) codegen target (BE-0209); an Android e2e CI lane (emulator under KVM,
   `android-e2e.yml`; BE-0208), and adb cannot yet drive the native tab bar, so tab-scoped scenarios
   stay iOS-only until BE-0223 lands (BE-0007). **Id matching** stays verbatim in the driver: where a
-  native id syntax can't reproduce the SPEC id (Android Views `android:id` maps `stable.refresh` →
+  native id syntax cannot reproduce the SPEC id (Android Views `android:id` maps `stable.refresh` →
   `stable_refresh`), the scenario's selector lists **both id forms** and the shared resolver matches
   either as an OR — an explicit scenario-side convention, not a driver-side `.`↔`_` rewrite (BE-0221)
 - Scenario schema (strict validation) and YAML round-trip; `id` / `idMatches` accept a list of OR

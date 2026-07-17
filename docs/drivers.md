@@ -130,7 +130,7 @@ Headless, coordinate-based. For CI (continuous integration). With no semantic ta
 
 ### Tracking the idb version (BE-0005)
 
-idb is the only on-device backend, so a new Simulator runtime an older `idb_companion` can't
+idb is the only on-device backend, so a new Simulator runtime an older `idb_companion` cannot
 drive — or a companion upgrade that reshapes the describe-all JSON — breaks a run without any
 Bajutsu change. The version idb runs against is therefore a tracked, recorded input rather than
 whatever happens to be installed:
@@ -274,7 +274,7 @@ fits the same toolchain as `make check`. Implementation: `drivers/playwright.py`
   memoized, so a `reset_context` (crawl clean start) and a `relaunch` (BE-0077) rebuild the identical
   context — the mode is stable across the browser's whole lifecycle, the same invariant the engine
   and `reduced_motion` already hold. An unknown preset fails loudly with a `ValueError` at driver
-  start. This is **desktop-browser emulation** — a mobile viewport and touch input in a desktop-class
+  start. Device mode is **desktop-browser emulation** — a mobile viewport and touch input in a desktop-class
   browser, exactly what Chrome DevTools' device toolbar does — **not** a real mobile browser on a
   real device or a device cloud; for a real mobile OS the Android backend is the path.
 - **Directional `swipe` scrolls** (BE-0227): the directional form `swipe: { on, direction }` means
@@ -383,7 +383,7 @@ def make_driver(actuator, udid, *, base_url=None, runner_port=None) -> Driver:  
   for PATH-backed actuators; `playwright` is gated on whether its Python package is importable, and
   `fake` is always available.
 - The actuator is fixed **per scenario** and held for that scenario's whole execution (BE-0240), so
-  two drivers never operate one device at once. This narrows the earlier "fixed per invocation" unit
+  two drivers never operate one device at once. Fixing the actuator per scenario narrows the earlier "fixed per invocation" unit
   without relaxing the single-actuator rule: at every instant exactly one actuator acts on the leased
   device, and there is never a mid-scenario driver swap.
 

@@ -4,7 +4,7 @@
 
 > A passing scenario generates a **native test** in a destination framework's own
 > idiom, letting a team run the same flow in their existing CI (continuous integration) — with no
-> bajutsu runtime and no AI at test time. Three targets are supported: **XCUITest (Swift)** for the
+> bajutsu runtime and no AI at test time. bajutsu supports three targets: **XCUITest (Swift)** for the
 > iOS backend, **Playwright (TypeScript)** for the web backend, and **UI Automator (Kotlin)** for
 > the Android backend. The mapping is **purely structural** (AI-independent).
 >

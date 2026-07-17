@@ -30,7 +30,7 @@ Please read [`CLAUDE.md`](CLAUDE.md) before starting. In short:
   the change from the body without reconstructing it from the diff: *what* changed and *why* (the
   motivation/context), a short summary of the key changes (grouped by area when the diff is large),
   how you verified it (e.g. `make check`), and the relevant links (roadmap item, issue) and
-  call-outs (trade-offs, follow-ups, things to look at closely). This is expected of humans and AI
+  call-outs (trade-offs, follow-ups, things to look at closely). This expectation applies to humans and AI
   alike. Bodies stay in English.
 - **Resolve AI PR reviews before stopping, and reply per comment with the grounds.** When an AI
   reviewer (Copilot and the like) leaves comments on a pull request, keep working until every
@@ -46,5 +46,5 @@ Please read [`CLAUDE.md`](CLAUDE.md) before starting. In short:
 - **Write docs as plain technical prose.** State facts and reasons directly, in the register of
   good technical documentation. No literary, story-like, or metaphorical writing, and no
   colloquial filler. Convert rhetorical questions into statements and avoid dramatic punctuation
-  or emphasis used for effect. Japanese documentation uses です・ます調. This applies to English
+  or emphasis used for effect. Japanese documentation uses です・ます調. These rules apply to English
   and Japanese alike, in every doc and every update.

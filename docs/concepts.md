@@ -45,12 +45,12 @@ strictly separated.
 
 ## 3. Determinism first (four concrete mechanisms)
 
-Bajutsu's "deterministic" behavior is enforced by the structure of the code.
+The structure of the code enforces Bajutsu's "deterministic" behavior.
 
-1. **An ambiguous selector fails immediately.** When a single action's target matches 2+
+1. **An ambiguous selector fails immediately.** When a single action's target matches two or more
    elements, Bajutsu raises `AmbiguousSelector` instead of tapping whatever matched first
-   ([selectors](selectors.md#resolution-semantics)). Ruling out non-determinism structurally
-   is the most important of these four mechanisms.
+   ([selectors](selectors.md#resolution-semantics)). Of these four mechanisms, ruling out
+   non-determinism structurally matters most.
 2. **Condition waits only; no fixed sleep.** Waiting polls `query()` until a condition holds.
    A `timeout` is mandatory (no infinite waits) ([run-loop](run-loop.md#waits-condition-waits-only)).
 3. **Start from a clean environment.** Each test, by default, `simctl erase`s before boot/launch,
@@ -103,7 +103,7 @@ by `id`, so scenarios do not change
 
 The tool core, the drivers, and the runner do not depend on any app. To target a new app, you
 change **the app-side preparation (adding identifiers, etc.) and one `targets.<name>` config entry**
-— nothing else. Each app's determinism is guaranteed by the same implementation convention
+— nothing else. The same implementation convention guarantees each app's determinism
 ([onboarding in configuration](configuration.md#onboarding-a-new-target)).
 
 The same move makes Bajutsu **platform-agnostic**: a platform is a **backend** behind the `Driver`

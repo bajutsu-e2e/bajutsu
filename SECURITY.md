@@ -22,7 +22,7 @@ to reproduce the issue — affected commit, steps, and impact.
 ## Scope and notes
 
 Bajutsu is a defensive end-to-end (E2E) testing tool for the iOS Simulator. A few
-project-specific points worth keeping in mind:
+project-specific points are worth keeping in mind:
 
 - **API keys / secrets.** Only the AI paths (`record`, `run --dismiss-alerts`)
   need `ANTHROPIC_API_KEY`. Never commit or share API keys; keep them in `.env`
