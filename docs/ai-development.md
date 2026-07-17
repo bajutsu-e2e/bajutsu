@@ -633,7 +633,11 @@ Each file follows the **Swift-Evolution proposal format** — a metadata block (
 `Author`, `Status`, `Topic`, plus the optional `Implementing PR`, the cross-item links `Related` /
 `Superseded by`, and `Origin`) followed by `## Introduction` / `## Motivation` /
 `## Detailed design` / `## Alternatives considered` / `## Progress` / `## References`. Fill what
-you can and mark unknowns `TBD`. **`Detailed design` enumerates the work MECE** (mutually exclusive,
+you can and mark unknowns `TBD`. **The `-ja.md` file's title — its `# BE-NNNN — <title>` heading —
+is written in Japanese, not copied verbatim from the English file's heading.** Translate it under
+the same rule the rest of the prose follows: no forced translation, so an established term
+(`selector`, `backend`) stays untranslated when a translation would read unnaturally, but the title
+itself is Japanese. **`Detailed design` enumerates the work MECE** (mutually exclusive,
 collectively exhaustive), and **`Progress` is a living section** (BE-0100) — a checklist mirroring
 that breakdown (one `- [ ]` box per unit of work, ticked `- [x]` as it lands) plus a short
 chronological PR-linked log — **kept current as work proceeds**: every PR that advances an item ticks

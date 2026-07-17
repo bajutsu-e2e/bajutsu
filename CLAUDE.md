@@ -174,7 +174,9 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   **never moves**; `Status` (`Implemented` / `In progress` / `Proposal` / `Proposal (deferred)`)
   decides only the index bucket. Name new items with the `BE-XXXX` placeholder — the number is
   allocated **on `main` after merge** (BE-0089). Each file uses the **Swift-Evolution format** with a
-  `<!-- BE-METADATA -->` `| Field | Value |` block; **`Detailed design` enumerates the work MECE**
+  `<!-- BE-METADATA -->` `| Field | Value |` block. **The `-ja.md` file's title (its `# BE-NNNN —
+  <title>` heading) is written in Japanese** — translate it like the rest of the prose, never copy
+  the English heading verbatim. **`Detailed design` enumerates the work MECE**
   and **`Progress` is a living checklist + PR-linked log** kept current as work proceeds (BE-0100).
   Never hand-edit the index tables — run `make roadmap-index` (`make test` fails on drift).
   `tests/test_roadmap_format.py` checks the file shape (BE-0074). **IDs are permanent — never
