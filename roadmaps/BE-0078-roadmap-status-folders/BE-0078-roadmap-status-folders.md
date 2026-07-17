@@ -203,7 +203,7 @@ contributor-workflow refactor, in the same family as BE-0043 / BE-0061 / BE-0074
 ## References
 
 - [`CLAUDE.md`](../../CLAUDE.md) — the roadmap status/folder rules this item revises.
-- [`roadmaps/README.md`](../README.md#adding-a-roadmap-item--be-ids-agents-must-follow) — the
+- [`roadmaps/README.md`](../README.md#adding-a-roadmap-item--be-ids) — the
   prose description of the two-folder model that becomes four.
 - [`docs/ai-development.md`](../../docs/ai-development.md) — the contributor guide's Status→Track
   table and the "moves its directory" lifecycle prose, both updated by this item.
