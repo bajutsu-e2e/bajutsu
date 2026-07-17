@@ -7,9 +7,9 @@
 |---|---|
 | 提案 | [BE-0239](BE-0239-deletable-runs-serve-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0239") |
-| 実装 PR | [#985](https://github.com/bajutsu-e2e/bajutsu/pull/985) _（バックエンド。Web UI は後続）_ |
+| 実装 PR | [#985](https://github.com/bajutsu-e2e/bajutsu/pull/985) _（バックエンド）_、[#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN) _（Web UI）_ |
 | トピック | Web UI のホスティング（クラウド / セルフホスト） |
 <!-- /BE-METADATA -->
 
@@ -185,8 +185,7 @@ Tier-2 の run/CI ゲートの外側に完全に位置します（prime directiv
 - [x] 保持期間の設定と遅延掃除処理
 - [x] `DELETE`・復元・一括削除の API ルート、CSRF と RBAC（ソフトデリート／復元は editor、
       完全削除は admin）、org スコープ
-- [ ] Web UI：行ごとの削除、複数選択、確認ダイアログ、復元／完全削除できるゴミ箱ビュー
-      *（後続 PR）*
+- [x] Web UI：行ごとの削除、複数選択、確認ダイアログ、復元／完全削除できるゴミ箱ビュー
 - [x] ソフトデリート・復元・完全削除の監査ログエントリと `oplog` イベント
 
 **ログ**
@@ -199,6 +198,14 @@ Tier-2 の run/CI ゲートの外側に完全に位置します（prime directiv
   `DELETE`・復元・一括削除ルート（CSRF と editor の RBAC。完全削除の admin 判定は operation 内）、
   監査ログと `oplog`（`run.soft_deleted`・`run.restored`・`run.purged`）です。項目は
   **実装中** のままで、Web UI（ユニット 5）を後続 PR で実装し、その時点で **実装済み** に反転させます。
+- Web UI（ユニット 5）を実装し、項目を **実装済み** に反転しました。Replay の run 履歴と Crawl の
+  run 履歴の両方に、行ごとの削除と複数選択のツールバー（select all と Delete selected）を加え、
+  ソフトデリートの確認ダイアログには保持期間を明記し、トップレベルの **Trash** ビューでソフトデリート
+  済みの run を一覧して **Restore** と admin 限定の **Delete forever** を提供します。これを支える
+  小さな読み取り口として、`GET /api/runs/trash`（org スコープで、先に期限切れのゴミ箱を掃除します）と、
+  確認・Trash の表示に使う `/api/config` の `retentionDays` を加えました。削除 → ゴミ箱 → 復元 →
+  一括削除 → 完全削除の一連を Chromium のスモークテストで確認し、`docs/web-ui.md`（と ja のミラー）に
+  この画面を記載しています。
 
 ## 参考
 

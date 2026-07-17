@@ -87,6 +87,34 @@ def test_stdlib_delete_crawl_run(tmp_path: Path) -> None:
         server.shutdown()
 
 
+def test_stdlib_trash_lists_soft_deleted_runs(tmp_path: Path) -> None:
+    # The Trash view's GET /api/runs/trash (BE-0239 unit 5): a soft-deleted run appears here, keyed
+    # by id, while the live history hides it.
+    state = _state(tmp_path)
+    _run(state, "20260101-000001")
+    _run(state, "20260101-000002")
+    server, port = _serve(state)
+    try:
+        assert _get_json(port, "/api/runs/trash") == []
+        _delete(port, "/api/runs/20260101-000001")
+        trashed = _get_json(port, "/api/runs/trash")
+        assert [r["id"] for r in trashed] == ["20260101-000001"]
+        assert trashed[0]["deletedAt"]  # a deletion timestamp is carried for the view
+        assert [r["id"] for r in _get_json(port, "/api/runs")] == ["20260101-000002"]
+    finally:
+        server.shutdown()
+
+
+def test_fastapi_trash_lists_soft_deleted_runs(tmp_path: Path) -> None:
+    state = _state(tmp_path)
+    _run(state, "20260101-000001")
+    client = TestClient(make_app(state))
+    assert client.get("/api/runs/trash").json() == []
+    client.delete("/api/runs/20260101-000001")
+    trashed = client.get("/api/runs/trash").json()
+    assert [r["id"] for r in trashed] == ["20260101-000001"]
+
+
 def test_fastapi_delete_restore_and_bulk(tmp_path: Path) -> None:
     state = _state(tmp_path)
     for i in range(1, 4):

@@ -15,6 +15,7 @@ from pathlib import Path
 from sqlalchemy import create_engine, select
 
 from bajutsu.serve import operations as ops
+from bajutsu.serve.artifacts import LocalArtifactStore
 from bajutsu.serve.server.db import RunRecord, SqlRepository
 from bajutsu.serve.server.models import AuditLog, Base
 from bajutsu.serve.state import ServeState
@@ -109,6 +110,61 @@ def test_bulk_delete_purge_is_a_strict_boolean(tmp_path: Path) -> None:
     assert (
         state.artifacts.restore_run("r1") is True
     )  # still in the trash — soft-deleted, not purged
+
+
+# --- trashed-runs listing (the Trash view, BE-0239 unit 5) ---
+
+
+def test_trashed_runs_payload_lists_soft_deleted_only(tmp_path: Path) -> None:
+    state = _local_state(tmp_path)
+    _run_dir(state, "r1")
+    _run_dir(state, "r2")
+    ops.delete_run(state, "r1")  # trashed; r2 stays live
+    listed, status = ops.trashed_runs_payload(state)
+    assert status == 200
+    assert [r["id"] for r in listed] == ["r1"]
+    assert listed[0]["deletedAt"]  # a timestamp is stamped
+    assert ops.runs_payload(state)[0][0]["id"] == "r2"  # the live list is the complement
+
+
+def test_trashed_runs_payload_sweeps_expired_before_listing(tmp_path: Path) -> None:
+    # The Trash view never offers an already-expired run as restorable: the lazy sweep runs first, so
+    # a run past the retention window is purged (and gone from the list), matching runs_payload.
+    state = _local_state(tmp_path)
+    state.run_retention_days = 30
+    _run_dir(state, "r1")
+    ops.delete_run(state, "r1")
+    old = (datetime.now(UTC) - timedelta(days=40)).isoformat()
+    (state.runs_dir / ".trash" / "r1" / ".deleted").write_text(old, encoding="utf-8")
+    assert ops.trashed_runs_payload(state)[0] == []
+
+
+def test_trashed_runs_payload_is_org_scoped(tmp_path: Path) -> None:
+    # A soft-deleted run in one org's store is invisible to another org's Trash view (BE-0015 holds
+    # for the trash listing too): the payload reads the actor's org-scoped store, not the default one.
+    # Route each org to its own runs dir through `org_stores`, as a server backend does with prefixes.
+    from bajutsu.serve.state import StoreBundle
+
+    state, repo = _hosted_state(tmp_path)
+    repo.ensure_org("other", slug="other", name="other")
+    repo.upsert_user("ed2", org_id="other", github_login="ed2", email="e2@x", role="editor")
+    bundles = {
+        org: StoreBundle(
+            artifacts=LocalArtifactStore(tmp_path / org / "runs"),
+            scenarios=state.scenarios,
+            baselines=state.baselines,
+            secrets=state.secrets,
+            provider_settings=state.providers.store,
+        )
+        for org in ("default", "other")
+    }
+    state.org_stores = lambda org: bundles[org]
+    repo.record_run(RunRecord(id="r1", org_id="default", status="done", ok=True))
+    (tmp_path / "default" / "runs" / "r1").mkdir(parents=True)
+    (tmp_path / "default" / "runs" / "r1" / "manifest.json").write_text('{"ok": true}')
+    ops.delete_run(state, "r1", actor="editor")
+    assert [r["id"] for r in ops.trashed_runs_payload(state, actor="editor")[0]] == ["r1"]
+    assert ops.trashed_runs_payload(state, actor="ed2")[0] == []  # other org sees nothing
 
 
 # --- scenario-scoped listing (BE-0262) ---

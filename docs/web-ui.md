@@ -54,10 +54,12 @@ default, or the `--port` you passed). The full option list — `--port`, `--conf
 
 ## The layout
 
-The header holds eight top-level tabs: **Record**, **Replay**, **Crawl**, **Author**, **Stats**,
-**Flaky**, **Usage**, and **Coverage**. A ninth, **Metrics**, appears only once a
-[project hub](#switching-between-projects) exists (more than one project registered), since it
-compares projects against each other — see [Comparing projects](#comparing-projects).
+The header holds nine top-level tabs: **Record**, **Replay**, **Crawl**, **Author**, **Stats**,
+**Flaky**, **Usage**, **Coverage**, and **Trash** (soft-deleted runs, restorable within a
+retention window — see [Trash](#trash--restore-or-permanently-delete-a-deleted-run)). A tenth,
+**Metrics**, appears only once a [project hub](#switching-between-projects) exists (more than one
+project registered), since it compares projects against each other — see
+[Comparing projects](#comparing-projects).
 To their right are **Open config** (with the active config's name shown beside it once one is bound,
 and a **View** button to inspect it — see below), **Settings**, and a theme picker that
 follows your system by default. Each tab is a full screen of its own; switching tabs never discards
@@ -309,6 +311,14 @@ report section shows: [reporting](reporting.md).
 **History.** The sub-tab lists past runs, newest first, each with a pass/fail dot and a scenario
 summary. Click one to reopen its report. Use the refresh button to re-list.
 
+**Delete a run** ([BE-0239](../roadmaps/BE-0239-deletable-runs-serve/BE-0239-deletable-runs-serve.md)).
+Each row carries a trash button that moves that run — its report, screenshots, video, and network
+capture — to the [Trash](#trash--restore-or-permanently-delete-a-deleted-run), where it stays
+restorable for the retention window rather than being erased at once. To clear several at once, tick
+the per-row checkboxes (or **select all**) and use **Delete selected** in the bar above the list.
+Both are editor-level actions; a soft-deleted run leaves the history immediately and reappears if you
+restore it.
+
 **Triage a failed run.** When a run fails, a **Triage** button appears in the report bar (both on a
 just-run report and when you reopen a failed run from History) — the `triage` command in the
 browser, so you can ask "why did this fail?" without dropping to a terminal. Click it, then
@@ -363,6 +373,11 @@ replayable crash) and `flows/*.yaml` (a reachable screen) scenario files are lin
 the raw YAML, ready to run with `bajutsu run`. Switch back to the **Form** sub-tab to return to the
 live crawl form.
 
+**Delete a crawl** ([BE-0239](../roadmaps/BE-0239-deletable-runs-serve/BE-0239-deletable-runs-serve.md)).
+Like the Replay History, each crawl row carries a trash button, and a **select all** / **Delete
+selected** bar clears several at once. A deleted crawl moves to the shared
+[Trash](#trash--restore-or-permanently-delete-a-deleted-run), restorable within the retention window.
+
 **Continue a past crawl** ([BE-0181](../roadmaps/BE-0181-crawl-continuation/BE-0181-crawl-continuation.md)).
 When an open past run stopped on a budget with screens still left to explore, a **▸ continue exploring**
 button appears on the map header. Clicking it leaves the read-only history view and continues that run
@@ -375,6 +390,26 @@ driven by accident.
 
 The screen map, the fingerprint that identifies a screen, and the web-vs-iOS differences are covered
 in the [CLI reference](cli.md#crawl).
+
+## Trash — restore or permanently delete a deleted run
+
+**What it does** ([BE-0239](../roadmaps/BE-0239-deletable-runs-serve/BE-0239-deletable-runs-serve.md)).
+Lists the runs a delete from Replay or Crawl History moved to the trash — regular and crawl runs
+share one trash — each with its deletion time. A soft delete is not destructive: the run leaves the
+history lists but its bytes stay, so **Restore** returns it, intact, to the history it came from.
+
+**The retention window.** A trashed run is permanently removed once it has sat in the trash past the
+retention window (`BAJUTSU_RUN_RETENTION_DAYS`, 30 days by default; set it to `0` to keep trash
+until someone deletes it by hand). The purge is lazy — it happens on the next history or trash read,
+not on a background timer — so nothing runs when the server is idle. The header states the window in
+effect.
+
+**Delete forever.** Each trashed run also has a **Delete forever** action that skips the window and
+erases its bytes at once. Being irreversible, it is an **admin**-only action on a hosted deployment
+(a local, single-user `serve` has no roles, so it is always available there) and asks for a
+distinct, emphatic confirmation. Every delete, restore, and permanent purge is written to the audit
+log and emitted as an `oplog` event (`run.soft_deleted` / `run.restored` / `run.purged`), so an
+operator can trace who removed which run and when.
 
 ## Author — capture, edit, and enrich one scenario
 

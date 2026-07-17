@@ -3,7 +3,7 @@
 // largest section — the ~400-line graph lives here, kept together with its panel. Its body only
 // defines; every top-level listener (the form, the graph interaction, the lightbox) is wired by
 // initCrawl(), which the entry module (serve.author.mjs) calls after all sections evaluate.
-import {$, esc, getJSON, setStatus, setBusy, streamJob, cancelJob, appendLine, startJob, openModal, closeModal, loadSims} from './serve.core.mjs';
+import {$, esc, getJSON, setStatus, setBusy, streamJob, cancelJob, appendLine, startJob, openModal, closeModal, loadSims, softDeleteRun, bulkDeleteRuns, trashWindowNote, historySelector} from './serve.core.mjs';
 
 // ---- Crawl: explore the app and watch the screen map grow live ----
 let crawlPoll=null,crawlJobId=null,crawlRunId=null;
@@ -19,16 +19,32 @@ let crawlHistoryRun=null,crawlLiveRun=null;  // crawlLiveRun parks a running cra
 function setCrawlFormDisabled(on){
   $('#panel-crawl').querySelectorAll('input,select,button').forEach(el=>{el.disabled=on});
 }
+// Per-crawl delete + bulk-select (BE-0239). Like the Replay history, the row-open / 🗑-delete /
+// checkbox interactions are delegated once (initCrawl) to the stable `#crawl-history` <ul>, so a
+// re-render never drops them; loadCrawlHistory only rewrites rows and re-syncs. `crawlHistRuns` keeps
+// the last-fetched rows so the delegated open handler can resolve an id back to its run object.
+let crawlSel=null,crawlHistRuns=[];
 async function loadCrawlHistory(){
   const runs=await getJSON('/api/crawl/runs',null);if(!runs)return;
+  crawlHistRuns=runs;
   const tab=$('#crawl-histtab');if(tab)tab.textContent='History'+(runs.length?` (${runs.length})`:'');
   const ul=$('#crawl-history');
-  if(!runs.length){ul.innerHTML='<li class="muted">no crawls yet</li>';return}
-  ul.innerHTML=runs.map(r=>`<li data-id="${esc(r.id)}" data-testid="crawl.history-item"${r.id===crawlHistoryRun?' class="sel"':''}><span class="hid">${esc(r.id)}</span><span class="hsum">${r.screens} screens · ${r.transitions} transitions${r.crashes?' · '+r.crashes+' crashes':''}</span></li>`).join('');
-  ul.querySelectorAll('li[data-id]').forEach(li=>li.addEventListener('click',()=>{
-    const r=runs.find(x=>x.id===li.dataset.id);if(r)viewCrawlRun(r);
-    ul.querySelectorAll('li').forEach(x=>x.classList.remove('sel'));li.classList.add('sel');
-  }));
+  if(!runs.length){ul.innerHTML='<li class="muted">no crawls yet</li>';if(crawlSel)crawlSel.sync();return}
+  ul.innerHTML=runs.map(r=>`<li data-id="${esc(r.id)}" data-testid="crawl.history-item"${r.id===crawlHistoryRun?' class="sel"':''}><input type="checkbox" class="rowck" aria-label="select crawl for deletion" data-testid="crawl.history-select" value="${esc(r.id)}"><span class="hid">${esc(r.id)}</span><span class="hsum">${r.screens} screens · ${r.transitions} transitions${r.crashes?' · '+r.crashes+' crashes':''}</span><button type="button" class="rowdel" title="Delete this crawl" aria-label="Delete crawl" data-testid="crawl.history-delete">&#128465;</button></li>`).join('');
+  if(crawlSel)crawlSel.sync();
+}
+async function deleteCrawlRun(id){
+  if(!window.confirm(`Move crawl ${id} to Trash?\n\nIt is ${trashWindowNote()}.`))return;
+  const d=await softDeleteRun(id);
+  if(d&&d.error)window.alert('Delete failed: '+d.error);
+  loadCrawlHistory();
+}
+async function bulkDeleteCrawl(ids){
+  if(!window.confirm(`Move ${ids.length} crawl${ids.length===1?'':'s'} to Trash?\n\nThey are ${trashWindowNote()}.`))return;
+  const d=await bulkDeleteRuns(ids);
+  if(d&&d.error)window.alert('Delete failed: '+d.error);
+  if(crawlSel)crawlSel.clear();
+  loadCrawlHistory();
 }
 // Link the crash/flow scenario files a run produced — plain links into the existing /runs/<id>/ mount,
 // each opening the raw runnable YAML. Empty groups are omitted; the whole strip hides when there's none.
@@ -563,6 +579,20 @@ function initCrawl(){
   $('#crawl-stop').addEventListener('click',()=>cancelJob(crawlJobId,$('#crawl-stop')));
   document.querySelectorAll('#view-crawl .tab').forEach(t=>t.addEventListener('click',()=>showCrawlTab(t.dataset.tab)));
   $('#crawl-refresh').addEventListener('click',loadCrawlHistory);
+  // Crawl history row interactions delegated once to the stable <ul> (BE-0239): open the past crawl,
+  // or delete it via its 🗑; the checkbox toggles selection (crawlSel) and must not open the run.
+  const crawlUl=$('#crawl-history');
+  crawlUl.addEventListener('click',e=>{
+    if(e.target.closest('.rowck'))return;
+    const li=e.target.closest('li[data-id]');if(!li)return;
+    if(e.target.closest('.rowdel')){deleteCrawlRun(li.dataset.id);return}
+    const r=crawlHistRuns.find(x=>x.id===li.dataset.id);if(r)viewCrawlRun(r);
+    crawlUl.querySelectorAll('li').forEach(x=>x.classList.remove('sel'));li.classList.add('sel');
+  });
+  crawlSel=historySelector({
+    list:crawlUl,allBox:$('#crawlbulk-all'),bar:$('#crawlbulk'),count:$('#crawlbulk-count'),
+    delBtn:$('#crawlbulk-del'),clearBtn:$('#crawlbulk-clear'),onDelete:bulkDeleteCrawl,
+  });
   initGraphInteraction();
   $('#crawl-zoomin').addEventListener('click',()=>{const r=$('#crawl-graph').getBoundingClientRect();zoomBy(1.2,r.left+r.width/2,r.top+r.height/2)});
   $('#crawl-zoomout').addEventListener('click',()=>{const r=$('#crawl-graph').getBoundingClientRect();zoomBy(1/1.2,r.left+r.width/2,r.top+r.height/2)});
