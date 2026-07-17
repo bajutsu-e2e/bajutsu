@@ -70,20 +70,20 @@ preset), the following are enabled:
 - `prefer-tari-tari` — the parallel "〜たり〜たりする" construction
 - `@textlint-ja/textlint-rule-no-insert-dropping-sa` — misuse of inserted / dropped さ
 - `no-mixed-zenkaku-and-hankaku-alphabet` — mixing full-width and half-width alphabet
-- `ja-joyo-or-jinmeiyo-kanji` — flags a kanji that is neither 常用漢字 nor 人名用漢字. This is the
-  single source of truth for the allowed kanji range.
 
-Three related kanji-range rules are pinned in `package.json` but left disabled (`false`) in
+All four kanji-range rules are pinned in `package.json` but left disabled (`false`) in
 `.textlintrc.json`:
 
-- `joyo-kanji` — allows only 常用漢字. It is disabled because it is both redundant with and stricter
-  than `ja-joyo-or-jinmeiyo-kanji`: enabling both makes `joyo-kanji` dominate (any 人名用漢字 the
-  looser rule would allow is still flagged) and produces two findings for the same character.
-  Leaving only `ja-joyo-or-jinmeiyo-kanji` on lets 人名用漢字 through — they legitimately appear in
-  author and contributor names — while still catching truly out-of-range kanji.
+- `ja-joyo-or-jinmeiyo-kanji` (kanji outside 常用漢字 + 人名用漢字) and `joyo-kanji` (kanji outside
+  常用漢字 alone) are disabled because they flag ordinary technical-writing words whose kanji fall
+  outside those sets — 推敲, 繋がる, 敷衍, 罫線, 腑分け, and the like. The `japanese-tech-writing`
+  policy is to clear a finding by revising the prose, not by loosening the config; but these words
+  cannot be reasonably rewritten, so the rule would either stall drafting or force a growing
+  allow-list. Leaving them off keeps the skill's own prose (and the existing Japanese docs) passing
+  textlint, which the policy requires.
 - `ja-kyoiku-kanji` (educational kanji) and `ja-allowed-kanji` (an explicit allow-list) restrict
-  kanji to an even narrower set than 常用漢字, too strict for technical writing. Turn one on
-  individually if a specific need arises.
+  kanji to an even narrower set than 常用漢字, stricter still. Turn one on individually, with an
+  allow-list, only if a specific document needs a bounded kanji set.
 
 ### English
 
@@ -100,6 +100,12 @@ and three moderate `npm audit` findings with no fix available, and `gingerbread`
 unsupported on npm.
 
 ## Changing the rules
+
+Clear a finding by revising the prose, not by loosening the config: textlint takes priority over the
+prose norms, so a rule is not turned off or a threshold raised merely to dodge a finding on text you
+have written (this is the `japanese-tech-writing` policy, and it holds for English prose too). Change
+the config only for structural reasons — adopting or retiring a rule, or stopping a rule from
+double-reporting what another already covers — as with the kanji-range rules above.
 
 Edit `rules` in `.textlintrc.json`. To turn off one rule from the preset, override just that rule by
 name rather than expanding the whole preset:

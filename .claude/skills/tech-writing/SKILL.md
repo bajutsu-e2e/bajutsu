@@ -81,7 +81,8 @@ it through [textlint](https://github.com/textlint/textlint) and **keep revising 
 every finding is gone**. Do not call a piece done with findings still outstanding. textlint is a
 mechanical floor, not a substitute for the norms above — passing it does not mean the piece
 satisfies them. This applies to English and Japanese prose alike; the same config and runtime cover
-both.
+both. When a norm here conflicts with a textlint rule, textlint takes priority: clear the finding by
+revising the prose, not by loosening the config to dodge it.
 
 ### Running it
 
@@ -110,11 +111,10 @@ Edit [`textlint/.textlintrc.json`](textlint/.textlintrc.json) to change what's e
 currently enables `textlint-rule-preset-ja-technical-writing` (the standard Japanese
 technical-writing preset) plus a set of individual rules for English prose and for Japanese prose
 beyond the preset. The full list and why each rule was chosen live in the "The rules enabled today"
-section of [`textlint/README.md`](textlint/README.md); the same file covers how to disable a rule,
-add one, or change a threshold. Tune this file too when a rule's finding conflicts with this
-skill's norms, with `english-tech-writing`'s or `japanese-tech-writing`'s norms, or with a
-convention this repo intentionally allows (full-width/Japanese characters, this repo's own dash
-handling, etc.).
+section of [`textlint/README.md`](textlint/README.md); the same file covers how to add or retire a
+rule. Change the config only for structural reasons — adopting or retiring a rule, or stopping a
+rule from double-reporting what another already covers. Do not loosen a rule or raise a threshold to
+dodge a finding on prose you have written; per the priority above, fix the prose instead.
 
 ## References
 
