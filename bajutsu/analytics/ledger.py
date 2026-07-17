@@ -1,12 +1,12 @@
 """Attributed, persistent AI usage/cost ledger (BE-0196).
 
-`bajutsu.usage` keeps a flat, in-memory token total that dies with the process. This module makes
+`bajutsu.analytics.usage` keeps a flat, in-memory token total that dies with the process. This module makes
 that history durable and attributed: one JSONL line per AI call, tagged with what the tokens were
 spent on (command, provider, model, scenario, step) and priced in dollars where the provider has
 per-token pricing. It is the raw material the usage dashboard reads.
 
 Reporting only — nothing here runs on the deterministic `run` / CI verdict, and recording is
-best-effort: `bajutsu.usage.record` calls `emit` inside a swallow-everything guard, so a full disk
+best-effort: `bajutsu.analytics.usage.record` calls `emit` inside a swallow-everything guard, so a full disk
 never breaks an AI path. Following the operational-logging rules (BE-0055 / BE-0047), the ledger
 stores counts, prices, and labels only — never prompt or response content.
 """
@@ -23,8 +23,8 @@ from pathlib import Path
 from threading import Lock
 from typing import Any
 
+from bajutsu.analytics.usage import TokenUsage, of
 from bajutsu.config import AiConfig
-from bajutsu.usage import TokenUsage, of
 
 # Bump when the on-disk record shape changes incompatibly; readers key off it to stay
 # forward-compatible (an older line is still parseable — see `UsageEvent.from_record`).
@@ -334,7 +334,7 @@ def configure_from_ai_config(ai: AiConfig | None) -> None:
 def emit(raw_usage: Any, *, provider: str | None, model: str | None) -> None:
     """Append one attributed, priced event for *raw_usage* — a no-op when no ledger is configured.
 
-    Called only from `bajutsu.usage.record`, which wraps it in a swallow-everything guard, so this
+    Called only from `bajutsu.analytics.usage.record`, which wraps it in a swallow-everything guard, so this
     stays reporting-only and best-effort: it never influences pass/fail and never propagates.
     """
     ledger = _ACTIVE_LEDGER

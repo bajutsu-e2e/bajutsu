@@ -18,7 +18,6 @@ import logging
 from dataclasses import dataclass
 from typing import Protocol
 
-from bajutsu import usage
 from bajutsu.agents.ai_config import AiConfig
 from bajutsu.agents.claude_backed import ClaudeBackedAgent
 from bajutsu.ai import (
@@ -31,6 +30,7 @@ from bajutsu.ai import (
     TextPart,
     ToolDef,
 )
+from bajutsu.analytics import usage
 from bajutsu.drivers import base
 from bajutsu.elements import screen_size_from_elements
 from bajutsu.evidence.redaction import Redactor

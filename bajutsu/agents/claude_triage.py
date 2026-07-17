@@ -15,7 +15,6 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
-from bajutsu import usage
 from bajutsu.agents.ai_config import AiConfig
 from bajutsu.agents.claude_backed import ClaudeBackedAgent
 from bajutsu.ai import (
@@ -31,6 +30,7 @@ from bajutsu.ai import (
     resolved_provider,
 )
 from bajutsu.ai.prompts import NEVER_JUDGE_BOUNDARY, render_elements
+from bajutsu.analytics import usage
 from bajutsu.evidence.redaction import Redactor
 from bajutsu.triage import (
     FIX_KINDS,

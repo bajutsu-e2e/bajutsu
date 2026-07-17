@@ -176,9 +176,9 @@ turns the element list already fully determines. `--no-screenshot` still forces 
 byte-for-byte unchanged, so `run`, `codegen`, and the report are unaffected.
 
 The end-of-session `AI usage:` line is followed by a per-category breakdown (`plan` / `next_action` /
-`alert-guard`) attributed by call site (`usage.py`, BE-0194), so the effect of a token-saving change
+`alert-guard`) attributed by call site (`analytics/usage.py`, BE-0194), so the effect of a token-saving change
 is measurable. The categories partition every recorded call, so they sum to the running total. The
-breakdown is reporting-only and never touches pass/fail, consistent with the rest of `usage.py`.
+breakdown is reporting-only and never touches pass/fail, consistent with the rest of `analytics/usage.py`.
 
 ## The Claude authoring agent
 

@@ -1,14 +1,14 @@
-"""Tests for token-usage accounting (bajutsu.usage)."""
+"""Tests for token-usage accounting (bajutsu.analytics.usage)."""
 
 from __future__ import annotations
 
 from conftest import FAKE_USAGE_PER_CALL, FakeBackend, FakeBlock, FakeUsage
 
-from bajutsu import usage
 from bajutsu.agents.claude import ClaudeAgent
 from bajutsu.agents.protocols import Observation
+from bajutsu.analytics import usage
+from bajutsu.analytics.usage import TokenUsage
 from bajutsu.drivers import base
-from bajutsu.usage import TokenUsage
 
 
 def _obs() -> Observation:

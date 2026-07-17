@@ -10,10 +10,10 @@ import typer
 
 from bajutsu import device_errors
 from bajutsu import simctl as _simctl
-from bajutsu import usage as _usage
 from bajutsu.agents.claude import MODEL as _RECORD_MODEL
 from bajutsu.agents.factory import make_agent
 from bajutsu.ai import announce_ai
+from bajutsu.analytics import usage as _usage
 from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
     _ai_redactor,

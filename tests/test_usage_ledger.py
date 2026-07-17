@@ -5,9 +5,9 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from bajutsu import usage, usage_ledger
-from bajutsu.usage import TokenUsage
-from bajutsu.usage_ledger import (
+from bajutsu.analytics import ledger as usage_ledger
+from bajutsu.analytics import usage
+from bajutsu.analytics.ledger import (
     LEDGER_SCHEMA_VERSION,
     JsonlLedger,
     Pricing,
@@ -18,6 +18,7 @@ from bajutsu.usage_ledger import (
     pricing_table_from_config,
     read_events,
 )
+from bajutsu.analytics.usage import TokenUsage
 
 
 def test_event_round_trips_through_a_versioned_record() -> None:

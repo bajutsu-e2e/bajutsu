@@ -105,7 +105,7 @@ def test_non_run_path_top_level_modules_are_not_relevant() -> None:
         "bajutsu/analysis/stats.py",
         "bajutsu/analysis/audit.py",
         "bajutsu/analysis/coverage.py",
-        "bajutsu/usage_stats.py",
+        "bajutsu/analytics/stats.py",
         "bajutsu/agents/alerts.py",
         "bajutsu/github.py",
         # The crawl engine core/serialize/__init__ trigger (above), but the periphery siblings in the

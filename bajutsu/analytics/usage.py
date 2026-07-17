@@ -167,13 +167,14 @@ def record(
 def _emit_ledger_event(usage: Any, *, provider: str | None, model: str | None) -> None:
     """Forward the usage to the ledger, swallowing anything it raises (reporting only, BE-0196).
 
-    Imported lazily so `bajutsu.usage` stays free of the ledger's import at module load (the ledger
-    imports `TokenUsage` from here), and so the deterministic core never pulls it in transitively.
+    Imported lazily so `bajutsu.analytics.usage` stays free of the ledger's import at module load
+    (the ledger imports `TokenUsage` from here), and so the deterministic core never pulls it in
+    transitively.
     """
     with contextlib.suppress(Exception):
-        from bajutsu import usage_ledger
+        from bajutsu.analytics import ledger
 
-        usage_ledger.emit(usage, provider=provider, model=model)
+        ledger.emit(usage, provider=provider, model=model)
 
 
 def snapshot() -> TokenUsage:

@@ -10,9 +10,9 @@ from typing import Any
 import yaml
 
 from bajutsu import handoff
-from bajutsu import usage_ledger as _usage_ledger
-from bajutsu import usage_stats as _usage_stats
 from bajutsu.analysis import stats as _stats
+from bajutsu.analytics import ledger as _usage_ledger
+from bajutsu.analytics import stats as _usage_stats
 from bajutsu.config import Config, load_config
 from bajutsu.drivers import base as driver_base
 from bajutsu.scenario import load_scenario_file

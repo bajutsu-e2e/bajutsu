@@ -11,9 +11,9 @@ neutral `AiBackend` seam (BE-0104) changed the shape it wrapped and BE-0249 remo
 
 from __future__ import annotations
 
-from bajutsu import usage
 from bajutsu.agents.ai_config import AiConfig, resolve_model
 from bajutsu.ai import AiBackend, MessageResponse, create_backend, resolved_provider
+from bajutsu.analytics import usage
 from bajutsu.evidence.redaction import Redactor
 
 

@@ -137,7 +137,7 @@ def _install_usage_ledger(eff: Effective, command: str, *, scenario: str | None 
     spent on. Reporting only — never on the deterministic verdict path. `run` does not use this: it
     binds per-scenario at the alert guard so attribution reaches the runner's worker threads.
     """
-    from bajutsu import usage_ledger
+    from bajutsu.analytics import ledger as usage_ledger
 
     usage_ledger.configure_from_ai_config(eff.ai)
     usage_ledger.bind_command(command, scenario=scenario)

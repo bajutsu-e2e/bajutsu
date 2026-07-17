@@ -15,8 +15,8 @@ if TYPE_CHECKING:
 import typer
 
 from bajutsu import device_errors
-from bajutsu import usage as _usage
-from bajutsu import usage_ledger as _usage_ledger
+from bajutsu.analytics import ledger as _usage_ledger
+from bajutsu.analytics import usage as _usage
 from bajutsu.artifact_perms import make_run_dir
 from bajutsu.assertions import GoldenContext
 from bajutsu.backends import select_actuator_for_scenario
