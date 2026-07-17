@@ -164,7 +164,7 @@ Build to the Detailed design, matching the codebase's grain:
   Python core needs no Simulator, so cover the logic in the fast suite.
 - **Docs are bilingual.** If you change a *documented* behavior, update `docs/` **and** its
   `docs/ja/` mirror. Write the Japanese side under the
-  [`japanese-tech-writing`](../japanese-tech-writing/SKILL.md) skill — natural Japanese, not
+  [`japanese-document-writing`](../japanese-document-writing/SKILL.md) skill — natural Japanese, not
   a literal rendering of the English.
 
 ### 7. Review and refine the diff

@@ -82,7 +82,7 @@ def test_every_declared_model_is_known() -> None:
 def test_tiered_skills_declare_a_model() -> None:
     """The skills BE-0103 tiered still declare a non-empty ``model:``, so dropping the default is a
     visible regression rather than a silent drift back to running everything at always-max."""
-    tiered = {"implement-be", "ideation", "japanese-tech-writing"}
+    tiered = {"implement-be", "ideation", "japanese-document-writing"}
     declared = {
         md.parent.name
         for md in _skill_files()
