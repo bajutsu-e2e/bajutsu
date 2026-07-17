@@ -111,7 +111,7 @@ to follow it start to finish.
 - **Spell out an abbreviation or acronym on first use.** Write the full term, with the acronym in
   parentheses right after — "role-based access control (RBAC)" — then the acronym alone for the rest
   of the piece. This holds everywhere a term appears, in a roadmap item as much as in `docs/`.
-  Re-expand it if a long document's later section could plausibly be read on its own.
+  Re-expand the acronym if a long document's later section could plausibly be read on its own.
 - **Define a term where you introduce it, and let a cross-reference only send the reader further.**
   A link is a supplement for a reader who wants depth — for elaboration, the canonical wording of a
   cross-cutting rule, or the record — never a substitute for the context this document needs at
@@ -124,9 +124,9 @@ to follow it start to finish.
 
 An anaphor — a pronoun or demonstrative that points back to something named earlier ("it", "this",
 "that", "the former") instead of renaming it — costs the reader a lookup: the reader must hold the
-earlier antecedent in memory, then resolve the pointer before the sentence means anything. Reserve it
-for an antecedent that is unmistakable and one sentence back; beyond one sentence back, repeat the
-noun.
+earlier antecedent in memory, then resolve the pointer before the sentence means anything. Reserve an
+anaphor for an antecedent that is unmistakable and one sentence back; beyond one sentence back, repeat
+the noun.
 
 - **Repeat the noun once the antecedent is more than one sentence back, or crosses a paragraph, a
   list, or a heading.** By the time the reader reaches a boundary like that, an antecedent introduced

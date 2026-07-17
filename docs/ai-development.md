@@ -706,11 +706,8 @@ apply equally when reporting on or summarizing work.
 - **No omissions; be self-contained.** Follow the `document-writing` skill's
   [self-contained-prose norm](../.claude/skills/document-writing/SKILL.md#self-contained-prose-both-languages):
   a reader who has not read anything else in the repository must be able to follow the document start
-  to finish, with every abbreviation spelled out and every term defined at first use — e.g. role-based
-  access control (RBAC), then the acronym alone. This applies everywhere a term appears, including
-  roadmap items, not only `docs/`. It governs domain content — a term, a step, background the reader
-  needs to follow this document — which is a different concern from the cross-cutting process norm
-  the next bullet covers.
+  to finish, with every abbreviation spelled out and every term defined at first use, everywhere a term
+  appears — including roadmap items, not only `docs/`.
 - **Avoid anaphora that forces the reader to backtrack.** Follow the `document-writing` skill's
   [anaphora norm](../.claude/skills/document-writing/SKILL.md#minimize-anaphora-both-languages):
   repeat the noun instead of reusing a pronoun or demonstrative once the antecedent is more than one
