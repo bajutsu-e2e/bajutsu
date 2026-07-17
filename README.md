@@ -270,7 +270,7 @@ bajutsu/
 ├── trace.py              # inspect a finished run as a text timeline
 ├── triage.py             # self-healing triage: diagnose a failed run, propose a fix
 ├── lint.py               # scenario linter + JSON Schema generation
-├── github.py             # GitHub Actions integration for `run`
+├── github/               # GitHub integration: actions (CI annotations), app (App install token), errors
 ├── mcp/                  # MCP server (tools + resources for agent integration)
 ├── serve/                # local web UI (author + run + reports; Tier 1)
 ├── cli/                  # CLI (typer) — one file per command under cli/commands/
