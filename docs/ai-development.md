@@ -209,7 +209,7 @@ reflect it. Tasks map to one of three tiers along two axes — model and reasoni
 | Tier | Model | Effort | Tasks |
 |---|---|---|---|
 | **Heavy** | `opus` | high | Implementing a BE item (`implement-be`), non-trivial refactors, architecture / design decisions, debugging a failing gate |
-| **Medium** | `sonnet` | moderate | Roadmap ideation / authoring (`ideation`), Japanese technical writing and translation review (`japanese-tech-writing`), PR review |
+| **Medium** | `sonnet` | moderate | Roadmap ideation / authoring (`ideation`), technical writing and translation review (`english-tech-writing`, `japanese-tech-writing`), PR review |
 | **Light** | `haiku` | low or none | Roadmap index regeneration / promote, doc formatting and link fixes, mechanical renames, lockfile / format chores, drafting a first-pass translation before the medium-tier review |
 
 The tier → model-id mapping lives only here, so re-pointing a tier at a new Claude model is a
@@ -225,6 +225,8 @@ harness picks the right model when the skill runs — nothing to remember, still
 - [`propose-and-build`](../.claude/skills/propose-and-build/SKILL.md) → `opus` (Heavy) — it
   implements product code in its Phase B, so it carries the same tier as `implement-be`.
 - [`ideation`](../.claude/skills/ideation/SKILL.md) → `sonnet` (Medium)
+- [`tech-writing`](../.claude/skills/tech-writing/SKILL.md) → `sonnet` (Medium)
+- [`english-tech-writing`](../.claude/skills/english-tech-writing/SKILL.md) → `sonnet` (Medium)
 - [`japanese-tech-writing`](../.claude/skills/japanese-tech-writing/SKILL.md) → `sonnet` (Medium)
 - [`roadmap-filter`](../.claude/skills/roadmap-filter/SKILL.md) → `haiku` (Light) — a read-only
   survey of the roadmap by `Status` (BE-0162): it wraps `make roadmap-status STATUS="…"` so a
@@ -680,12 +682,14 @@ apply equally when reporting on or summarizing work.
 
 - **Follow the [`tech-writing`](../.claude/skills/tech-writing/SKILL.md) skill.** It is the
   authoritative prose norm for every document here and every BE roadmap item, in both languages:
-  language-agnostic writing technique (draft top-down, state the contribution up front, reserve a
-  sentence's end for its most important element, keep the verb near the subject, prefer the active
-  voice, cut filler) plus English-specific mechanics (serial comma, *that* / *which*, dashes,
-  numbers). Invoke it *before* writing or revising, not after. The rules below are the specific
-  expectations this section and that skill share; for Japanese prose, `tech-writing` sits above the
-  [`japanese-tech-writing`](../.claude/skills/japanese-tech-writing/SKILL.md) skill (see below).
+  the language-agnostic writing technique both languages share (draft top-down, state the
+  contribution up front, reserve a sentence's end for its most important element, keep the verb near
+  the subject, prefer the active voice, cut filler). Invoke it *before* writing or revising, not
+  after. It is the umbrella above two language layers: for English prose apply
+  [`english-tech-writing`](../.claude/skills/english-tech-writing/SKILL.md) with it (serial comma,
+  *that* / *which*, dashes, numbers, and the rest of the English mechanics), and for Japanese prose
+  the [`japanese-tech-writing`](../.claude/skills/japanese-tech-writing/SKILL.md) skill (see below).
+  The rules below are the specific expectations this section and those skills share.
 - **Write natural prose.** A Japanese document must read as natural Japanese; an English document
   must read as natural English. A mirror conveys the same content naturally in its own language —
   it is not a word-for-word transliteration of the other.
