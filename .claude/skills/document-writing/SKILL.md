@@ -4,8 +4,8 @@ model: sonnet
 description: >-
   The authoritative prose norm for Bajutsu's writing — the language-agnostic writing technique both
   languages share (top-down drafting, stating the contribution up front, sentence stress,
-  subject–verb proximity, active voice, cutting filler, paragraph-level argument structure —
-  paragraph writing — self-contained prose that never assumes prior reading, and minimizing anaphora
+  subject–verb proximity, active voice, cutting filler, paragraph-level argument structure
+  (paragraph writing), self-contained prose that never assumes prior reading, and minimizing anaphora
   that forces the reader to backtrack). Use it whenever you write or revise a BE roadmap item (`*.md`
   / `*-ja.md`) or a prose document under `docs/`, in either language. It is the umbrella above two
   language layers: apply `english-document-writing` with it for English prose, and
@@ -125,8 +125,8 @@ to follow it start to finish.
 An anaphor — a pronoun or demonstrative that points back to something named earlier ("it", "this",
 "that", "the former") instead of renaming it — costs the reader a lookup: the reader must hold the
 earlier antecedent in memory, then resolve the pointer before the sentence means anything. Reserve an
-anaphor for an antecedent that is unmistakable and one sentence back; beyond one sentence back, repeat
-the noun.
+anaphor for an antecedent that is unmistakable, one sentence back, and within the same paragraph;
+beyond that, or once a paragraph, list, or heading boundary intervenes, repeat the noun.
 
 - **Repeat the noun once the antecedent is more than one sentence back, or crosses a paragraph, a
   list, or a heading.** By the time the reader reaches a boundary like that, an antecedent introduced
