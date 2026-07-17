@@ -286,7 +286,14 @@ jobs:
 
       # Interaction (BE-0281): idb `tap` + `back` end-to-end, on the Stable launch tab so no tab tap
       # idb cannot perform is needed.
+      # continue-on-error: the three scenarios below are independent and unrelated, bundled into one
+      # job purely for cost reasons (see the job header comment) — a normal step failure would skip
+      # every step after it, hiding the other two scenarios' pass/fail signal and artifacts even
+      # though they have nothing to do with the failure. The "Report actuation results" step below
+      # turns any step failure back into a job failure once all three have had a chance to run.
       - name: Run the navigation scenario (idb — tap + back)
+        id: navigation
+        continue-on-error: true
         uses: ./.github/actions/bajutsu-e2e
         with:
           scenarios: demos/showcase/scenarios/navigation.yaml
@@ -298,6 +305,8 @@ jobs:
       # Device control (BE-0281): `setLocation` + clipboard round-trip. simctl-backed, on the launch
       # tab. The iOS twin of android-e2e.yml's device-control coverage (BE-0210).
       - name: Run the device-control scenario (idb — setLocation + clipboard)
+        id: device
+        continue-on-error: true
         uses: ./.github/actions/bajutsu-e2e
         with:
           scenarios: demos/showcase/scenarios/device.yaml
@@ -309,6 +318,8 @@ jobs:
       # Device control (BE-0281): a simctl `push` delivery — iOS-only (no faithful Android-emulator
       # equivalent, so it lives apart from the cross-backend device.yaml, see push.yaml's header).
       - name: Run the push scenario (idb — push notification)
+        id: push
+        continue-on-error: true
         uses: ./.github/actions/bajutsu-e2e
         with:
           scenarios: demos/showcase/scenarios/push.yaml
@@ -316,6 +327,21 @@ jobs:
           config: demos/showcase/showcase.config.yaml
           udid: ${{ steps.sim.outputs.udid }}
           artifact-name: actuation-push-run
+
+      # Re-fail the job if any of the three continue-on-error steps above failed — they need to run
+      # independently of each other, but the job as a whole must still redden so the signal isn't lost.
+      - name: Report actuation results
+        if: always()
+        run: |
+          echo "navigation: ${{ steps.navigation.outcome }}"
+          echo "device:     ${{ steps.device.outcome }}"
+          echo "push:       ${{ steps.push.outcome }}"
+          if [ "${{ steps.navigation.outcome }}" = "failure" ] || \
+             [ "${{ steps.device.outcome }}" = "failure" ] || \
+             [ "${{ steps.push.outcome }}" = "failure" ]; then
+            echo "::error::at least one actuation scenario failed — see the step outcomes above"
+            exit 1
+          fi
 
   # The BE-0006 element-tree golden over idb: pins the normalized accessibility tree for the Stable
   # catalog's list rows, reached on the launch tab so idb needs no tab navigation. Runs the same

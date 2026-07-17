@@ -112,4 +112,4 @@ macOS ランナーは Linux の 10 倍で課金されるため、どの新しい
 - [BE-0221 — 共有ショーケースシナリオが Android で無改変に走ることの保証](../BE-0221-android-scenario-portability-guarantee/BE-0221-android-scenario-portability-guarantee-ja.md)
 - [BE-0218 — E2E Simulator ゲートの安定化](../BE-0218-e2e-simulator-flaky-readiness-actuation/BE-0218-e2e-simulator-flaky-readiness-actuation-ja.md)
 - [BE-0240 — iOS の capability を踏まえた自動アクチュエータ選択](../BE-0240-ios-capability-aware-actuator-selection/BE-0240-ios-capability-aware-actuator-selection-ja.md)
-- `.github/workflows/ios-e2e.yml`、`demos/showcase/scenarios/gestures.yaml`、`demos/showcase/scenarios/device.yaml`、`demos/showcase/scenarios/push.yaml`
+- `.github/workflows/ios-e2e.yml`、`demos/showcase/scenarios/navigation.yaml`、`demos/showcase/scenarios/device.yaml`、`demos/showcase/scenarios/push.yaml`、`demos/showcase/scenarios/search.yaml`、`demos/showcase/scenarios/notices.yaml`

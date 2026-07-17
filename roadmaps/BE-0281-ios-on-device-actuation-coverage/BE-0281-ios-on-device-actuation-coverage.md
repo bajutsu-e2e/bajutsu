@@ -109,4 +109,4 @@ Proposal altitude. The work is MECE along the units below.
 - [BE-0221 — Guarantee shared showcase scenarios run unchanged on Android](../BE-0221-android-scenario-portability-guarantee/BE-0221-android-scenario-portability-guarantee.md)
 - [BE-0218 — Stabilize the E2E Simulator gate](../BE-0218-e2e-simulator-flaky-readiness-actuation/BE-0218-e2e-simulator-flaky-readiness-actuation.md)
 - [BE-0240 — Capability-aware automatic actuator selection for iOS](../BE-0240-ios-capability-aware-actuator-selection/BE-0240-ios-capability-aware-actuator-selection.md)
-- `.github/workflows/ios-e2e.yml`, `demos/showcase/scenarios/gestures.yaml`, `demos/showcase/scenarios/device.yaml`, `demos/showcase/scenarios/push.yaml`
+- `.github/workflows/ios-e2e.yml`, `demos/showcase/scenarios/navigation.yaml`, `demos/showcase/scenarios/device.yaml`, `demos/showcase/scenarios/push.yaml`, `demos/showcase/scenarios/search.yaml`, `demos/showcase/scenarios/notices.yaml`
