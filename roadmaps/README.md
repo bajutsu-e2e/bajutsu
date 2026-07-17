@@ -610,7 +610,9 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 ### Verification & coverage
 
 <!-- GENERATED:proposals-verification -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0282](BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md) | Real-backend network capture, mock, and assertion coverage in CI | Proposal |
 <!-- /GENERATED:proposals-verification -->
 
 ### Authoring experience (record / GUI editor)
