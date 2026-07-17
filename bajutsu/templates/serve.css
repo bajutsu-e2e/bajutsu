@@ -655,6 +655,14 @@ header .appversion .dirty{color:var(--acc);font-weight:700}
 .statshost{flex:1;min-height:0;overflow:auto;margin-top:.6rem}
 /* Author is tiled like Record/Replay/Crawl (BE-0263): initTiling owns the layout via the block-level
    <main> + .tile-root, so there is no fixed grid here — the panes resize/split/swap and persist. */
+/* .rec-stack's own grid-template-rows (line 50) was built for Record's log/gutter/yaml triple, whose
+   middle row really is the --rec-top gutter divider. Author's three .rec-stack panes (au-steps-card,
+   yamlpanel, au-screen-card) have no such gutter between them, so before initTiling() runs — or if it
+   throws, or JS is disabled — the raw grid would squeeze the 2nd child (the YAML editor) into the
+   ~14px --gw gutter row instead of a fair share. Give Author's .rec-stack an explicit, gutter-free
+   fallback split; initTiling() replaces these panes' parent wholesale with .tile-root once it runs, so
+   this rule never fights the JS-driven layout. */
+#view-author .rec-stack{grid-template-rows:1fr 1fr 1fr}
 /* Replay codegen action row: emit selector + Generate button below the run output. */
 .codegen-bar{display:flex;align-items:center;gap:.4em;margin-top:.5em}
 .codegen-bar .savebtn{background:var(--acc);color:var(--on-acc);border:0;border-radius:6px;font-weight:700;padding:.35rem .8rem;font-size:.85em;cursor:pointer}
