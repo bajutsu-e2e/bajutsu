@@ -2,7 +2,7 @@
 
 # The evidence (Evidence/Trace) subsystem
 
-Evidence capture for a recurring action is expressed as a **repeatedly-firing rule** rather than a one-shot instruction. The rule ensures the same evidence is collected without AI on every subsequent run.
+[Evidence](glossary.md#evidence-capturepolicy-trace-triage) capture for a recurring action is expressed as a **repeatedly-firing rule** rather than a one-shot instruction. The rule ensures the same evidence is collected without AI on every subsequent run.
 
 Implementation: `bajutsu/evidence.py` (instant + Sinks) · `bajutsu/intervals.py` (interval: video / deviceLog / appTrace). Firing is decided on the orchestrator side ([run-loop](run-loop.md#evidence-rule-firing)).
 

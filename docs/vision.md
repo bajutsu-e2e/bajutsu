@@ -22,8 +22,9 @@ across every direction below:
 1. **AI is the author and the failure investigator, never the judge.** No future feature may put
    an LLM (large language model) into the Tier-2 `run`/CI (continuous integration) gate. Pass/fail
    stays machine-checkable, always.
-2. **Determinism first.** No fixed sleeps; an ambiguous selector fails fast. Every new platform,
-   host, or authoring tool inherits this — it is not negotiable for reach or convenience.
+2. **Determinism first.** No fixed sleeps; an ambiguous selector fails fast. Every new
+   [platform](glossary.md#driver-backend-actuator-platform), host, or authoring tool inherits this
+   — it is not negotiable for reach or convenience.
 3. **App-agnostic / backend-agnostic.** Per-app and per-platform differences live in config and
    behind the `Driver` / environment seams; the deterministic core stays the same everywhere.
 

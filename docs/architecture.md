@@ -11,7 +11,7 @@ Related: [concepts](concepts.md) · the per-feature pages (linked below)
 
 ## Overview (data flow)
 
-A scenario (authored by AI or by hand) is the shared artifact. `run` replays it deterministically with no AI in the gate. `codegen` and `triage` also consume the scenario.
+A [scenario](glossary.md#scenario-authoring) (authored by AI or by hand) is the shared artifact. `run` replays it deterministically with no AI in the gate. `codegen` and `triage` also consume the scenario.
 Tier 1 (AI — yellow) authors and investigates only; Tier 2 (deterministic — blue) decides pass/fail from machine assertions alone.
 The whole spine is platform-neutral; the only platform-specific seam is the **backend** the orchestrator drives (idb / XCUITest for iOS, adb for Android, playwright for web, … behind one `Driver` interface), so a new platform is a new backend, not a fork of the core.
 

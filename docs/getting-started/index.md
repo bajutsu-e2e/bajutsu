@@ -14,7 +14,7 @@ Related: [cli](../cli.md) · [scenarios](../scenarios.md) · [run-loop](../run-l
 
 Steps 1–3 and 6 below are the same regardless of what you're driving — install, unit tests, read a
 scenario, read the report. Only Steps 4–5 (build/serve the app under test, then run a scenario
-against it) differ by **backend**, because "a platform is a backend" ([concepts](../concepts.md)):
+against it) differ by **[backend](../glossary.md#driver-backend-actuator-platform)**, because "a platform is a backend" ([concepts](../concepts.md)):
 
 - **[iOS track](ios.md)** — finishes on the iOS Simulator via the idb backend. Needs macOS + Xcode.
 - **[Web track](web.md)** — finishes against a browser via the Playwright backend. Runs on any OS

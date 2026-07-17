@@ -56,7 +56,7 @@ class Element(TypedDict):
 
 ### オーサリング表現と実行時表現
 
-- シナリオ YAML 側のセレクタは `scenario/models/selector.py` の `Selector`（pydantic、`idMatches` 等の alias を持つ）です。
+- シナリオ YAML 側の[セレクタ](glossary.md#シナリオのオーサリング)は `scenario/models/selector.py` の `Selector`（pydantic、`idMatches` 等の alias を持つ）です。
 - 解決に渡るのは `drivers/base.py` の `Selector`（TypedDict）です。
 - 変換は `Selector.as_selector()` で行います（`None` を除いて TypedDict 化）。
 

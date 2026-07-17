@@ -436,6 +436,7 @@ Reduce friction for the many parallel sessions working this repo — treat merge
 | [BE-0266](BE-0266-contributor-workflow-tutorial/BE-0266-contributor-workflow-tutorial.md) | Contributor workflow tutorial: a hands-on guide to ideation / implement-be / propose-and-build | Implemented |
 | [BE-0278](BE-0278-tech-writing-skill/BE-0278-tech-writing-skill.md) | A unified technical-writing skill for BE items and prose docs | Implemented |
 | [BE-0284](BE-0284-docs-single-source-of-truth/BE-0284-docs-single-source-of-truth.md) | Consolidate duplicated documentation norms under single sources of truth | Implemented |
+| [BE-0286](BE-0286-glossary-link-requirement/BE-0286-glossary-link-requirement.md) | Link glossary terms to their definitions on first use | Implemented |
 <!-- /GENERATED:implemented-developer-experience -->
 
 ### Codebase quality & technical debt
@@ -601,9 +602,7 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 ### Development infrastructure (contributor workflow)
 
 <!-- GENERATED:proposals-developer-experience -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0286](BE-0286-glossary-link-requirement/BE-0286-glossary-link-requirement.md) | Link glossary terms to their definitions on first use | Proposal |
+
 <!-- /GENERATED:proposals-developer-experience -->
 
 ### Codebase quality & technical debt

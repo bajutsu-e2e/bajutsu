@@ -157,6 +157,13 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   gate: checking that a paragraph of prose still matches the code needs semantic judgment, which
   would put an LLM on the `run` / CI verdict path (prime directive 1) — so it holds the same way as
   the bilingual-docs rule above.
+- **Link glossary terms on first use; don't re-explain them (BE-0286).** When prose in a BE roadmap
+  item or a `docs/` page uses a term defined in [`docs/glossary.md`](docs/glossary.md) in its
+  Bajutsu-specific sense, link its first substantive mention to the term's glossary entry
+  (`glossary.md#anchor`, or `docs/ja/glossary.md#anchor` on the Japanese side) rather than
+  re-explaining the term inline. Like the two rules just above, this is a review-time norm, not a CI
+  gate: deciding whether an ordinary word like *step* or *target* carries its Bajutsu-specific sense
+  needs human judgment, which prime directive 1 keeps off the `run` / CI path.
 - **Documentation style (both languages, every doc and every update).** Write natural prose. **No
   coined terms** (use established technical/ordinary words); **no forced translation** (keep the
   original term — `selector`, `actuator`, `backend` — when a translation reads unnaturally); **no

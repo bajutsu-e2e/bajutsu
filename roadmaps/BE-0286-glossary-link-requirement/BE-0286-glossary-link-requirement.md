@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0286](BE-0286-glossary-link-requirement.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0286") |
+| Implementing PR | [#1179](https://github.com/bajutsu-e2e/bajutsu/pull/1179) |
 | Topic | Development infrastructure (contributor workflow) |
 | Related | [BE-0213](../BE-0213-glossary-and-docs-structure/BE-0213-glossary-and-docs-structure.md) |
 <!-- /BE-METADATA -->
@@ -123,13 +124,18 @@ glossary link retroactively.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] 1. Add the standing convention to `CLAUDE.md` and `docs/ai-development.md` (both languages)
-- [ ] 2. Backfill the identified `docs/` pages (English + `docs/ja/` mirrors) with a glossary link
+- [x] 1. Add the standing convention to `CLAUDE.md` and `docs/ai-development.md` (both languages)
+- [x] 2. Backfill the identified `docs/` pages (English + `docs/ja/` mirrors) with a glossary link
       on first substantive mention of the term each page defines
 
 **Log**
 
-TBD
+- 2026-07-17 — Both units landed. Unit 1 adds the convention as a review-time norm to `CLAUDE.md`'s
+  *Conventions* list (next to the bilingual-docs and BE-0113 norms) and to the *Documentation style*
+  section of `docs/ai-development.md` and its `docs/ja/ai-development.md` mirror. Unit 2 backfills a
+  glossary link on the first substantive mention in `drivers.md`, `cli.md`, `scenarios.md`,
+  `evidence.md`, `recording.md`, `selectors.md`, `architecture.md`, `vision.md`,
+  `getting-started/index.md`, and `getting-started/ios.md`, plus every `docs/ja/` mirror.
 
 ## References
 

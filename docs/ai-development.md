@@ -730,6 +730,18 @@ apply equally when reporting on or summarizing work.
   later edit can miss, and two copies drift into contradiction over time. The short, load-bearing
   prime directives are the deliberate exception: a document that must be self-contained on first
   read keeps a short, accurate copy rather than sending a first-time reader elsewhere.
+- **Link a glossary term on first use rather than re-explaining it (BE-0286).** When prose in a BE
+  roadmap item or a `docs/` page uses a term defined in [`glossary.md`](glossary.md) in its
+  Bajutsu-specific sense, link its first substantive mention to the term's glossary entry
+  (`glossary.md#anchor`, or `ja/glossary.md#anchor` on the Japanese side) instead of restating the
+  definition inline. The anchor is the section that defines the term — for example
+  [`glossary.md#driver-backend-actuator-platform`](glossary.md#driver-backend-actuator-platform) for
+  any of *driver* / *backend* / *actuator* / *platform*. This is the term-level companion to the
+  cross-cutting-norm rule above: point at the one canonical definition rather than growing a second
+  copy that can drift. It is a review-time norm, not a CI gate — most glossary terms (*step*,
+  *target*, *app*, *platform*) are also ordinary English words, so deciding whether a given mention
+  invokes the Bajutsu-specific sense needs human judgment, which prime directive 1 keeps off the
+  `run` / CI path. [`drivers.md`](drivers.md) is the model to follow.
 - **Japanese prose follows the `japanese-document-writing` skill.** Whether you write the Japanese side
   fresh or translate the English mirror into `docs/ja/` (or a roadmap `*-ja.md`), apply
   [`japanese-document-writing`](../.claude/skills/japanese-document-writing/): it is the authoritative style

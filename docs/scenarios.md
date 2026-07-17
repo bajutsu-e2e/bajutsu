@@ -2,7 +2,7 @@
 
 # Scenario specification (authoring reference)
 
-A scenario is Bajutsu's **only persisted artifact**: plain YAML, version-controlled in git and reviewable in a PR. `record` (AI) writes it the first time; humans own and edit it afterward. `run` executes this structure without AI.
+A [scenario](glossary.md#scenario-authoring) is Bajutsu's **only persisted artifact**: plain YAML, version-controlled in git and reviewable in a PR. `record` (AI) writes it the first time; humans own and edit it afterward. `run` executes this structure without AI.
 
 Implementation: `bajutsu/scenario/` (pydantic models under `models/`, `extra="forbid"` rejects unknown keys).
 

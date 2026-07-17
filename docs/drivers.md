@@ -2,7 +2,7 @@
 
 # Driver abstraction, backends, and environment management
 
-> One `Driver` interface, behind which sit the backends — `idb` (iOS Simulator), `adb` (Android
+> One `Driver` interface, behind which sit the [backends](glossary.md#driver-backend-actuator-platform) — `idb` (iOS Simulator), `adb` (Android
 > emulator), `playwright` (web browser), plus the in-memory `fake` for tests — with capability
 > differences absorbed on the abstraction side. A platform-aware registry picks the actuator from
 > the `backend` list; on iOS, launching the app (boot/launch) is handled by a `simctl` wrapper, and

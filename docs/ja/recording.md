@@ -2,7 +2,7 @@
 
 # AI オーサリング（record / Tier 1）
 
-> Tier 1 = AI ライブ操作です。自然言語のゴールから AI がアプリを探索しながら操作し、**決定的シナリオ**
+> [Tier 1](glossary.md#2-つの層) = AI ライブ操作です。自然言語のゴールから AI がアプリを探索しながら操作し、**決定的シナリオ**
 > を書き出します。AI が関与するのはここ（記録時）だけです。生成された YAML は AI 非依存で、以後はユーザーが管理します。
 >
 > 実装: `bajutsu/record.py`（ループ）、`bajutsu/agent_protocols.py` + `bajutsu/agent_factory.py`（抽象 + 構築）、

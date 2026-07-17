@@ -15,7 +15,7 @@
 
 以下のステップ 1〜3 と 6 は、何を操作するかに関わらず共通です。インストール、ユニットテスト、
 シナリオを読む、レポートを読む、という部分です。異なるのはステップ 4〜5（対象アプリのビルドまたは
-配信と、それに対するシナリオの実行）だけで、これは **backend** ごとに変わります。「プラットフォームは
+配信と、それに対するシナリオの実行）だけで、これは **[backend](../glossary.md#driver-backend-actuator-platform)** ごとに変わります。「プラットフォームは
 backend にすぎない」からです（[concepts](../concepts.md)）。
 
 - **[iOS トラック](ios.md)** — idb backend で iOS Simulator 上まで完結します。macOS と Xcode が必要です。
