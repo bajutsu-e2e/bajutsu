@@ -78,11 +78,11 @@ The work breaks down MECE as:
 
 1. **Fix the stale contradiction first.** Update `CONTRIBUTING.md`, `AGENTS.md`, and
    `.github/PULL_REQUEST_TEMPLATE.md` to describe the flat `roadmaps/BE-NNNN-<slug>/` layout,
-   citing BE-0159, and reconcile the five `make check` enumerations against the ten steps
+   citing BE-0159, and reconcile the five `make check` enumerations against the eleven steps
    `CLAUDE.md` lists.
 2. **Fold `.github/claude-review-prompt.md`'s six restated norms into links.** Point each at
    its canonical section in `CLAUDE.md` or `docs/ai-development.md`, or at the
-   `japanese-tech-writing` skill for prose style, instead of re-explaining the rule.
+   `japanese-document-writing` skill for prose style, instead of re-explaining the rule.
 3. **Replace `roadmaps/README.md`'s independent BE-ID restatement with a link** to
    `docs/ai-development.md`'s canonical section, keeping only the one or two sentences a reader
    needs before they reach the index table.

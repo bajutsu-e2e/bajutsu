@@ -82,10 +82,10 @@ directives、docstring のスタイル
 1. **まず矛盾している箇所を直します。** `CONTRIBUTING.md`、`AGENTS.md`、
    `.github/PULL_REQUEST_TEMPLATE.md` を、BE-0159 を引用してフラットな `roadmaps/BE-NNNN-<slug>/`
    構成の記述に更新します。あわせて、5箇所で食い違っている `make check` の列挙を、`CLAUDE.md`
-   の10ステップに合わせます。
+   の11ステップに合わせます。
 2. **`.github/claude-review-prompt.md` の6つの再記述をリンクに畳み込みます。** それぞれを
    `CLAUDE.md` または `docs/ai-development.md` の基準となる記述、あるいは文章スタイルについては
-   `japanese-tech-writing` スキルへ向け、規約を再説明しないようにします。
+   `japanese-document-writing` スキルへ向け、規約を再説明しないようにします。
 3. **`roadmaps/README.md` の独自の BE-ID 規約再記述を、リンクに置き換えます。**
    `docs/ai-development.md` へ向け、インデックス表にたどり着くまでに読者が必要とする1、2文だけを
    残します。
