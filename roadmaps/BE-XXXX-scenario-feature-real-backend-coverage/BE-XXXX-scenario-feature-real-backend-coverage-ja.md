@@ -61,3 +61,4 @@
 - [BE-0030 — パラメータ化した共有ステップ](../BE-0030-parameterized-shared-steps/BE-0030-parameterized-shared-steps-ja.md)
 - [BE-0259 — assert / query のスナップショット再利用](../BE-0259-assert-query-snapshot-reuse/BE-0259-assert-query-snapshot-reuse-ja.md)
 - [BE-0245 — adb 常駐 UI Automator サーバ](../BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server-ja.md)
+- [BE-0281 — iOS CI に実機で操作するテストを加える](../BE-0281-ios-on-device-actuation-coverage/BE-0281-ios-on-device-actuation-coverage-ja.md)

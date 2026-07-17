@@ -50,7 +50,7 @@ every backend that actuates, not adb and web alone. idb can actuate `tap` / `typ
 no iOS CI lane exercises them on a real scenario yet;
 [BE-0281](../BE-0281-ios-on-device-actuation-coverage/BE-0281-ios-on-device-actuation-coverage.md)
 proposes wiring that in, and once it lands this item targets iOS alongside adb and web. The iOS
-lane runs on metered macOS runners, so it lands as non-gating signal first.
+lane runs on metered macOS runners, so it lands as a non-gating signal first.
 
 ## Detailed design
 
@@ -97,3 +97,4 @@ Proposal altitude. The work is MECE along the units below.
 - [BE-0030 — Parameterized shared steps](../BE-0030-parameterized-shared-steps/BE-0030-parameterized-shared-steps.md)
 - [BE-0259 — Assert / query snapshot reuse](../BE-0259-assert-query-snapshot-reuse/BE-0259-assert-query-snapshot-reuse.md)
 - [BE-0245 — adb resident UI Automator server](../BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server.md)
+- [BE-0281 — Add real on-device actuation coverage to the iOS CI](../BE-0281-ios-on-device-actuation-coverage/BE-0281-ios-on-device-actuation-coverage.md)
