@@ -1,16 +1,19 @@
 # Data-driven real-backend coverage (BE-0285): data-driven rows already run for real on adb
 # (demos/showcase/scenarios/data_driven.yaml); this is the web twin, so the feature isn't proven on
 # adb alone. Each row runs in its own clean page (BE-0031), so every row starts with all three list
-# items pending regardless of run order.
+# items pending regardless of run order. Each row also names the other two items, so `expect` can
+# assert they stay untouched — proving the tap actually scoped to just its own row's target rather
+# than, say, a click handler that flips every item.
 description: >-
   Web data-driven — reach home, then tap the row's list item and assert only that item flipped
-  to done, proving ${row.*} substitution and per-row isolation for real on a browser.
+  to done while its two siblings stay pending, proving ${row.*} substitution and per-row
+  isolation for real on a browser.
 scenarios:
-  - name: tapping a list item marks it done
+  - name: tapping a list item marks only that item done
     data:
-      - { n: "1" }
-      - { n: "2" }
-      - { n: "3" }
+      - { n: "1", other1: "2", other2: "3" }
+      - { n: "2", other1: "1", other2: "3" }
+      - { n: "3", other1: "1", other2: "2" }
     steps:
       - tap: { id: onboarding.start }
       - type: { text: "a@b.com", into: { id: auth.email } }
@@ -20,3 +23,5 @@ scenarios:
       - tap: { id: "list.item.${row.n}" }
     expect:
       - value: { sel: { id: "list.state.${row.n}" }, equals: "done" }
+      - value: { sel: { id: "list.state.${row.other1}" }, equals: "pending" }
+      - value: { sel: { id: "list.state.${row.other2}" }, equals: "pending" }

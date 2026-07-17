@@ -1,13 +1,16 @@
 # Dynamic-UI real-backend coverage (BE-0285): the read-count snapshot-identity assumption
 # (BE-0259) assumes two adjacent reads with no actuation between them see the same device state — an
-# assumption only a live, drifting UI can violate. The ticker advances on its own timer, so this wait
-# can pass only against a genuinely live DOM: a frozen FakeDriver would either match instantly (if
-# pre-scripted) or hang to timeout, since nothing ever moves it. (BE-0245's wait-floor premise is
-# Android/adb-specific — a Compose-recomposition poll budget — so it has no web analog and is out of
-# scope here.)
+# assumption only a live, drifting UI can violate. The ticker advances on its own timer, so this
+# scenario can pass only against a genuinely live DOM. Waiting for an *exact* absolute tick count
+# would race the onboarding/login steps' own real latency (the ticker starts at page load, before
+# they run) and would leave the final `expect` racing a second, unretried read against further ticks
+# — so instead it captures the ticker's own value as a live baseline and waits for that specific
+# reading to become `gone` (i.e. for the value to have changed at all), then asserts against the
+# value captured in that same step. (BE-0245's wait-floor premise is Android/adb-specific — a
+# Compose-recomposition poll budget — so it has no web analog and is out of scope here.)
 description: >-
-  Web dynamic UI — reach home, then condition-wait for the live ticker (no tap ever drives it) to
-  reach a value only real wall-clock drift can produce.
+  Web dynamic UI — reach home, capture the live ticker's value, then condition-wait for it to
+  change (no tap ever drives it) and assert against the freshly observed value.
 scenarios:
   - name: a live-ticking display proves reads observe real UI drift
     steps:
@@ -16,6 +19,8 @@ scenarios:
       - type: { text: "pw", into: { id: auth.password } }
       - tap: { id: auth.submit }
       - wait: { for: { id: home.title }, timeout: 5 }
-      - wait: { for: { id: ticker.value, value: "20" }, timeout: 15 }
+        extract: { baseline: { sel: { id: ticker.value } } }
+      - wait: { until: { gone: { id: ticker.value, value: "${vars.baseline}" } }, timeout: 15 }
+        extract: { after: { sel: { id: ticker.value } } }
     expect:
-      - value: { sel: { id: ticker.value }, equals: "20" }
+      - value: { sel: { id: ticker.value }, equals: "${vars.after}" }
