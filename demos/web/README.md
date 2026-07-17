@@ -46,7 +46,7 @@ make -C demos/web e2e-network
 
 It serves `app/`, taps the **Sync account** button (a real `POST /api/sync` carrying an
 `Authorization` header and a `password` body field), and runs the `network`-tagged
-[`scenarios/network.yaml`](scenarios/network.yaml) **with network on**. A [`mocks:`](../showcase/scenarios/network_mock.yaml)
+[`scenarios/network.yaml`](scenarios/network.yaml) **with network on**. A [`mocks:`](scenarios/network.yaml)
 entry answers the POST with `201` (a live server, if one existed, would `404`), so a captured
 exchange with status `201` proves the mock — not the network — served it. The scenario's `request`
 assertion is the deterministic interception/capture check; then
