@@ -3,14 +3,17 @@
 # assumption only a live, drifting UI can violate. The ticker advances on its own timer, so this
 # scenario can pass only against a genuinely live DOM. Waiting for an *exact* absolute tick count
 # would race the onboarding/login steps' own real latency (the ticker starts at page load, before
-# they run) and would leave the final `expect` racing a second, unretried read against further ticks
-# — so instead it captures the ticker's own value as a live baseline and waits for that specific
-# reading to become `gone` (i.e. for the value to have changed at all), then asserts against the
-# value captured in that same step. (BE-0245's wait-floor premise is Android/adb-specific — a
-# Compose-recomposition poll budget — so it has no web analog and is out of scope here.)
+# they run) — so instead it captures the ticker's own value as a live baseline and waits for that
+# specific reading to become `gone` (i.e. for the value to have changed at all). The final check is
+# an inline `assert` step immediately after that wait, not the scenario-level `expect` — `expect` runs
+# only after every step finishes and does its own single, unretried read (`_evaluate_expect` /
+# `_timeout_floor` in bajutsu/orchestrator/loop.py — 0 on this lane), which would race a further tick
+# in the gap; the inline `assert` has no such gap to race. (BE-0245's wait-floor premise is
+# Android/adb-specific — a Compose-recomposition poll budget — so it has no web analog and is out of
+# scope here.)
 description: >-
   Web dynamic UI — reach home, capture the live ticker's value, then condition-wait for it to
-  change (no tap ever drives it) and assert against the freshly observed value.
+  change (no tap ever drives it) and assert against the freshly observed value in the same step.
 scenarios:
   - name: a live-ticking display proves reads observe real UI drift
     steps:
@@ -22,5 +25,5 @@ scenarios:
         extract: { baseline: { sel: { id: ticker.value } } }
       - wait: { until: { gone: { id: ticker.value, value: "${vars.baseline}" } }, timeout: 15 }
         extract: { after: { sel: { id: ticker.value } } }
-    expect:
-      - value: { sel: { id: ticker.value }, equals: "${vars.after}" }
+      - assert:
+          - value: { sel: { id: ticker.value }, equals: "${vars.after}" }

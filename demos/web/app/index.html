@@ -144,13 +144,15 @@
         });
       }
 
-      // The live ticker: advances on its own timer, with no tap ever driving it (BE-0285).
+      // The live ticker: advances on its own timer, with no tap ever driving it (BE-0285). A wide
+      // interval gives the dynamic_ui scenario's condition-wait comfortably more margin against a
+      // tick landing mid-read on a slow CI run, without changing what it proves.
       const ticker = document.querySelector('[data-testid="ticker.value"]');
       let ticks = 0;
       setInterval(() => {
         ticks += 1;
         ticker.textContent = String(ticks);
-      }, 200);
+      }, 2000);
 
       // A two-finger gesture target: classify the live touches as a pinch (distance change) or a
       // rotate (angle change) so a scenario can assert the multiTouch path drove the page.
