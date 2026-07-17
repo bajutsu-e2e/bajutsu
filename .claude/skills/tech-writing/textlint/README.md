@@ -1,7 +1,9 @@
-# textlint config for `japanese-tech-writing`
+# textlint config for `tech-writing`
 
-このディレクトリは、`japanese-tech-writing` スキルが推敲後に走らせる
-[textlint](https://github.com/textlint/textlint) の設定と実行環境を持つ。
+このディレクトリは、`tech-writing` スキルおよびその日本語レイヤーである
+`japanese-tech-writing` スキルが推敲後に走らせる
+[textlint](https://github.com/textlint/textlint) の設定と実行環境を持つ。英語・日本語どちらの
+文章にも、このディレクトリの設定一本で対応する。
 
 ## ファイル
 
@@ -12,7 +14,7 @@
 ## インストール
 
 ```bash
-npm --prefix .claude/skills/japanese-tech-writing/textlint ci --ignore-scripts
+npm --prefix .claude/skills/tech-writing/textlint ci --ignore-scripts
 ```
 
 ## サプライチェーン対策

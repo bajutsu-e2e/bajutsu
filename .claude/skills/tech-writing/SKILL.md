@@ -87,6 +87,50 @@ After drafting, reread once against this list: does the piece lead with its cont
 sentence end on its most important element, is the verb near its subject, is every sentence free of
 filler? For Japanese, run the same reread under [`japanese-tech-writing`](../japanese-tech-writing/SKILL.md).
 
+This reread is a human-judgment pass. It does not replace the mechanical textlint check below —
+run both.
+
+## Mandatory textlint verification after drafting
+
+The norms above guide human judgment; they are not machine-checkable. Once a piece is drafted, run
+it through [textlint](https://github.com/textlint/textlint) and **keep revising and rerunning until
+every finding is gone**. Do not call a piece done with findings still outstanding. textlint is a
+mechanical floor, not a substitute for the norms above — passing it does not mean the piece
+satisfies them. This applies to English and Japanese prose alike; the same config and runtime cover
+both.
+
+### Running it
+
+The config and runtime live in [`textlint/`](textlint/). It needs node and npm (the same
+prerequisite as this repo's other JS checks). From the skill's directory, pass the Markdown file(s)
+you wrote or edited.
+
+```bash
+SKILL_DIR=.claude/skills/tech-writing
+# Fetch dependencies once. npm ci honors package-lock.json exactly and verifies each
+# package's integrity hash (sha512). --ignore-scripts blocks install-time lifecycle
+# scripts (both are supply-chain defenses; see textlint/README.md for why)
+npm --prefix "$SKILL_DIR/textlint" ci --ignore-scripts
+# Verify (pass as many target files as you like)
+npx --prefix "$SKILL_DIR/textlint" textlint \
+  --config "$SKILL_DIR/textlint/.textlintrc.json" \
+  path/to/edited.md
+```
+
+Fix auto-fixable findings with `--fix`, then revise away the rest by hand. Always eyeball the
+result of `--fix` and revert any rewrite that violates the norms above.
+
+### Changing the rules
+
+Edit [`textlint/.textlintrc.json`](textlint/.textlintrc.json) to change what's enforced. It
+currently enables `textlint-rule-preset-ja-technical-writing` (the standard Japanese
+technical-writing preset) plus a set of individual rules for English prose and for Japanese prose
+beyond the preset. The full list and why each rule was chosen live in the "いまの既定ルール"
+section of [`textlint/README.md`](textlint/README.md); the same file covers how to disable a rule,
+add one, or change a threshold. Tune this file too when a rule's finding conflicts with this
+skill's norms, with `japanese-tech-writing`'s norms, or with a convention this repo intentionally
+allows (full-width/Japanese characters, this repo's own dash handling, etc.).
+
 ## References
 
 - Jeffrey Scott Vitter, *Structure + Style = Communication* (The University of Kansas, 2011) — the
