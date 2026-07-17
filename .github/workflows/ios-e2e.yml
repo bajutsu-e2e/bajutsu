@@ -717,7 +717,7 @@ jobs:
   # upstream drift never blocks a merge. Make `E2E` the required check, not the path-gated
   # macOS jobs.
   e2e:
-    name: E2E
+    name: E2E (iOS)
     needs: [changes, smoke, xcuitest, xcuitest-gestures, conformance]
     if: always()
     runs-on: ubuntu-latest
