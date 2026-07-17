@@ -209,7 +209,7 @@ reflect it. Tasks map to one of three tiers along two axes — model and reasoni
 | Tier | Model | Effort | Tasks |
 |---|---|---|---|
 | **Heavy** | `opus` | high | Implementing a BE item (`implement-be`), non-trivial refactors, architecture / design decisions, debugging a failing gate |
-| **Medium** | `sonnet` | moderate | Roadmap ideation / authoring (`ideation`), technical writing and translation review (`english-tech-writing`, `japanese-tech-writing`), PR review |
+| **Medium** | `sonnet` | moderate | Roadmap ideation / authoring (`ideation`), technical writing and translation review (`english-document-writing`, `japanese-document-writing`), PR review |
 | **Light** | `haiku` | low or none | Roadmap index regeneration / promote, doc formatting and link fixes, mechanical renames, lockfile / format chores, drafting a first-pass translation before the medium-tier review |
 
 The tier → model-id mapping lives only here, so re-pointing a tier at a new Claude model is a
@@ -225,9 +225,9 @@ harness picks the right model when the skill runs — nothing to remember, still
 - [`propose-and-build`](../.claude/skills/propose-and-build/SKILL.md) → `opus` (Heavy) — it
   implements product code in its Phase B, so it carries the same tier as `implement-be`.
 - [`ideation`](../.claude/skills/ideation/SKILL.md) → `sonnet` (Medium)
-- [`tech-writing`](../.claude/skills/tech-writing/SKILL.md) → `sonnet` (Medium)
-- [`english-tech-writing`](../.claude/skills/english-tech-writing/SKILL.md) → `sonnet` (Medium)
-- [`japanese-tech-writing`](../.claude/skills/japanese-tech-writing/SKILL.md) → `sonnet` (Medium)
+- [`document-writing`](../.claude/skills/document-writing/SKILL.md) → `sonnet` (Medium)
+- [`english-document-writing`](../.claude/skills/english-document-writing/SKILL.md) → `sonnet` (Medium)
+- [`japanese-document-writing`](../.claude/skills/japanese-document-writing/SKILL.md) → `sonnet` (Medium)
 - [`roadmap-filter`](../.claude/skills/roadmap-filter/SKILL.md) → `haiku` (Light) — a read-only
   survey of the roadmap by `Status` (BE-0162): it wraps `make roadmap-status STATUS="…"` so a
   session lists just the items in one status (e.g. every open `Proposal`), with each item's file
@@ -683,15 +683,15 @@ These rules apply to all documentation — English under `docs/` and the Japanes
 `docs/ja/` — and to every future update, not just new files. Agents must follow them, and they
 apply equally when reporting on or summarizing work.
 
-- **Follow the [`tech-writing`](../.claude/skills/tech-writing/SKILL.md) skill.** It is the
+- **Follow the [`document-writing`](../.claude/skills/document-writing/SKILL.md) skill.** It is the
   authoritative prose norm for every document here and every BE roadmap item, in both languages:
   the language-agnostic writing technique both languages share (draft top-down, state the
   contribution up front, reserve a sentence's end for its most important element, keep the verb near
   the subject, prefer the active voice, cut filler). Invoke it *before* writing or revising, not
   after. It is the umbrella above two language layers: for English prose apply
-  [`english-tech-writing`](../.claude/skills/english-tech-writing/SKILL.md) with it (serial comma,
+  [`english-document-writing`](../.claude/skills/english-document-writing/SKILL.md) with it (serial comma,
   *that* / *which*, dashes, numbers, and the rest of the English mechanics), and for Japanese prose
-  the [`japanese-tech-writing`](../.claude/skills/japanese-tech-writing/SKILL.md) skill (see below).
+  the [`japanese-document-writing`](../.claude/skills/japanese-document-writing/SKILL.md) skill (see below).
   The rules below are the specific expectations this section and those skills share.
 - **Write natural prose.** A Japanese document must read as natural Japanese; an English document
   must read as natural English. A mirror conveys the same content naturally in its own language —
@@ -708,12 +708,12 @@ apply equally when reporting on or summarizing work.
   in parentheses right after — e.g. role-based access control (RBAC) — then the acronym alone is
   fine for the rest of the document. This applies everywhere the term appears, including roadmap
   items, not only `docs/`.
-- **Japanese prose follows the `japanese-tech-writing` skill.** Whether you write the Japanese side
+- **Japanese prose follows the `japanese-document-writing` skill.** Whether you write the Japanese side
   fresh or translate the English mirror into `docs/ja/` (or a roadmap `*-ja.md`), apply
-  [`japanese-tech-writing`](../.claude/skills/japanese-tech-writing/): it is the authoritative style
+  [`japanese-document-writing`](../.claude/skills/japanese-document-writing/): it is the authoritative style
   for Japanese prose in this repo, and a translation must read as natural Japanese under those norms,
   not a literal rendering of the English. It sits beneath the
-  [`tech-writing`](../.claude/skills/tech-writing/SKILL.md) umbrella (above); apply both for Japanese
+  [`document-writing`](../.claude/skills/document-writing/SKILL.md) umbrella (above); apply both for Japanese
   prose.
 - **Japanese documents use 敬体 (the polite *desu/masu* style, ですます調).** Every Japanese file
   under `docs/ja/` and every roadmap `*-ja.md` is written in 敬体, never the plain *da/dearu* style

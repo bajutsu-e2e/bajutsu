@@ -101,7 +101,7 @@ mirror — the bilingual header link, the metadata block (`Proposal` / `Author` 
 index's known topics; `HANDLE` is the author's GitHub handle (defaults from `git config`).
 
 Then **fill the `TBD` sections** with what the discussion produced. Before you draft that prose,
-invoke the [`tech-writing`](../tech-writing/SKILL.md) skill — it is the authoritative norm for BE
+invoke the [`document-writing`](../document-writing/SKILL.md) skill — it is the authoritative norm for BE
 prose in both languages ([BE-0278](../../../roadmaps/BE-0278-tech-writing-skill/BE-0278-tech-writing-skill.md)),
 and it shapes the draft rather than proofreading it, so read it *before* writing, not after. A BE
 item is argued prose: an Introduction that states its contribution up front, a Motivation that moves
@@ -110,8 +110,8 @@ from the known problem to the new result, and a Detailed design that reads clean
 **Localize the Japanese** side (the title, the `トピック`, and the prose) — the scaffolder seeds both
 files from the same English input, so the Japanese is a starting point to rewrite into natural
 Japanese, not a finished translation. Write it under the
-[`japanese-tech-writing`](../japanese-tech-writing/SKILL.md) skill (敬体; the Japanese layer beneath
-`tech-writing`), so both sides meet the same norm. Do **not** add an index row: the generator skips
+[`japanese-document-writing`](../japanese-document-writing/SKILL.md) skill (敬体; the Japanese layer beneath
+`document-writing`), so both sides meet the same norm. Do **not** add an index row: the generator skips
 `BE-XXXX` items, so the committed index stays row-free for the placeholder until CI numbers it.
 
 > Why a placeholder and not a real number: IDs are permanent and monotonic, and several

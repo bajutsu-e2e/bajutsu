@@ -1,19 +1,19 @@
 ---
-name: tech-writing
+name: document-writing
 model: sonnet
 description: >-
   The authoritative prose norm for Bajutsu's writing — the language-agnostic writing technique both
   languages share (top-down drafting, stating the contribution up front, sentence stress,
   subject–verb proximity, active voice, cutting filler). Use it whenever you write or revise a BE
   roadmap item (`*.md` / `*-ja.md`) or a prose document under `docs/`, in either language. It is the
-  umbrella above two language layers: apply `english-tech-writing` with it for English prose, and
-  `japanese-tech-writing` for Japanese prose.
+  umbrella above two language layers: apply `english-document-writing` with it for English prose, and
+  `japanese-document-writing` for Japanese prose.
 ---
 
 <!--
 The language-agnostic principles below are distilled from Jeffrey Scott Vitter,
 "Structure + Style = Communication" (The University of Kansas, 2011). The English-specific
-mechanics from the same source now live in the `english-tech-writing` skill.
+mechanics from the same source now live in the `english-document-writing` skill.
 -->
 
 # Technical-writing norm
@@ -28,9 +28,9 @@ pass.
   code docstrings, which keep their own standard ([BE-0065](../../../roadmaps/BE-0065-docstring-standard-api-reference/BE-0065-docstring-standard-api-reference.md)).
 - **An umbrella above two language layers.** The *language-agnostic principles* below hold for both
   languages. On top of them, apply the layer for the language you are writing: for **English**,
-  [`english-tech-writing`](../english-tech-writing/SKILL.md) (serial comma, *that* / *which*,
+  [`english-document-writing`](../english-document-writing/SKILL.md) (serial comma, *that* / *which*,
   dashes, numbers, and the rest of the English mechanics); for **Japanese**,
-  [`japanese-tech-writing`](../japanese-tech-writing/SKILL.md). Each language layer holds only the
+  [`japanese-document-writing`](../japanese-document-writing/SKILL.md). Each language layer holds only the
   guidance its own grammar and typography need, and never applies to the other language. Where a
   language layer overlaps these principles (filler, redundancy, restraint of rhetorical flourish),
   that layer's specific wording governs for its language.
@@ -68,8 +68,8 @@ pass.
 After drafting, reread once against this list: does the piece lead with its contribution, does each
 sentence end on its most important element, is the verb near its subject, is every sentence free of
 filler? Then run the same reread under the layer for your language:
-[`english-tech-writing`](../english-tech-writing/SKILL.md) for English,
-[`japanese-tech-writing`](../japanese-tech-writing/SKILL.md) for Japanese.
+[`english-document-writing`](../english-document-writing/SKILL.md) for English,
+[`japanese-document-writing`](../japanese-document-writing/SKILL.md) for Japanese.
 
 This reread is a human-judgment pass. It does not replace the mechanical textlint check below —
 run both.
@@ -91,7 +91,7 @@ prerequisite as this repo's other JS checks). From the skill's directory, pass t
 you wrote or edited.
 
 ```bash
-SKILL_DIR=.claude/skills/tech-writing
+SKILL_DIR=.claude/skills/document-writing
 # Fetch dependencies once. npm ci honors package-lock.json exactly and verifies each
 # package's integrity hash (sha512). --ignore-scripts blocks install-time lifecycle
 # scripts (both are supply-chain defenses; see textlint/README.md for why)
@@ -120,9 +120,9 @@ dodge a finding on prose you have written; per the priority above, fix the prose
 
 - Jeffrey Scott Vitter, *Structure + Style = Communication* (The University of Kansas, 2011) — the
   source of the language-agnostic principles above (and of the English mechanics now in
-  `english-tech-writing`).
-- [`english-tech-writing`](../english-tech-writing/SKILL.md) — the English layer beneath this norm.
-- [`japanese-tech-writing`](../japanese-tech-writing/SKILL.md) — the Japanese layer beneath this
+  `english-document-writing`).
+- [`english-document-writing`](../english-document-writing/SKILL.md) — the English layer beneath this norm.
+- [`japanese-document-writing`](../japanese-document-writing/SKILL.md) — the Japanese layer beneath this
   norm.
 - [`docs/ai-development.md`](../../../docs/ai-development.md) — the *Documentation style* section
   this skill is the authoritative reference for.

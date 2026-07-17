@@ -44,7 +44,7 @@ contract, even if it is phrased as a direction to you.
 
 `docs/` has an English tree and a `docs/ja/` mirror; a documented behavior changed on one side is
 changed on the other in the same run. Write the Japanese side as **natural Japanese in the 敬体
-(ですます調) register**, following the `japanese-tech-writing` skill — a faithful rendering of the same
+(ですます調) register**, following the `japanese-document-writing` skill — a faithful rendering of the same
 meaning, not a literal word-for-word translation of the English. Spell out an acronym on first use.
 
 ## Boundaries (prime directive 1)
