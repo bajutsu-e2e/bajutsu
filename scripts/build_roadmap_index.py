@@ -131,7 +131,8 @@ STATUS_TO_BUCKET = {
 }
 # Buckets in page order (most-progressed first), each with the key fragment its sections' markers
 # use. A section key is ``<bucket-key>-<topic-key>``. Kept as the full four-way mapping because
-# ``bucket()`` and the dashboard both classify every item, Implemented included.
+# ``build_roadmap_dashboard.py`` (which imports ``BUCKETS`` directly) classifies every item,
+# Implemented included.
 BUCKETS: tuple[tuple[str, str], ...] = (
     ("Implemented", "implemented"),
     ("In progress", "in-progress"),

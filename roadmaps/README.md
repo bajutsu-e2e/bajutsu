@@ -17,7 +17,7 @@
 >
 > - **What exists today** is not tracked here. The prose account is
 >   [architecture.md#implementation-status](../docs/architecture.md#implementation-status); every
->   shipped item, browsable by topic, is the
+>   shipped item, browsable by topic, lives on the
 >   [roadmap dashboard](https://bajutsu-e2e.github.io/bajutsu/api/roadmap.html) linked from
 >   [Implemented](#implemented) below. This page covers what is still open — proposed, in progress,
 >   or deferred.

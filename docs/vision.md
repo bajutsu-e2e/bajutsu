@@ -9,7 +9,7 @@
 > [`DESIGN.md`](../DESIGN.md). Read this to understand how the pieces fit together, then follow the
 > links for each plan.
 
-Related: [concepts](concepts.md) · [drivers](drivers.md) · [selectors](selectors.md) · [roadmap](../roadmaps/README.md) · [roadmap → Hosting](../roadmaps/README.md#hosting-the-web-ui-cloud--self-hosted)
+Related: [concepts](concepts.md) · [drivers](drivers.md) · [selectors](selectors.md) · [roadmap](../roadmaps/README.md) · [roadmap dashboard → Hosting](https://bajutsu-e2e.github.io/bajutsu/api/roadmap.html)
 
 ---
 
@@ -108,7 +108,7 @@ Web landed before Android, even though Android is architecturally closer to idb:
 macOS and no device emulator, so it fit inside the [`make check`](../CLAUDE.md) / [CI](ci.md) gate
 from day one — proving the core platform-neutral at the lowest possible cost. Android then confirmed
 the same lean / coordinate path on an already-generalized core, on its own emulator-backed gate.
-Full per-platform detail: [drivers](drivers.md), [roadmap → Platform support](../roadmaps/README.md#platform-support).
+Full per-platform detail: [drivers](drivers.md), [roadmap dashboard → Platform support](https://bajutsu-e2e.github.io/bajutsu/api/roadmap.html).
 
 ### 2. Scale & collaboration — from local tool to shared service
 
@@ -145,7 +145,7 @@ without softening the gate.
   inside the directives.
 
 This axis keeps extending — e.g. the ongoing work cataloged under
-[roadmap → Authoring experience](../roadmaps/README.md#authoring-experience-record--gui-editor) —
+[roadmap dashboard → Authoring experience](https://bajutsu-e2e.github.io/bajutsu/api/roadmap.html) —
 but the foundational capability (edit visually, capture without AI, self-heal a failure) is in
 place on all three fronts.
 

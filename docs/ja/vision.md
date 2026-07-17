@@ -8,7 +8,7 @@
 > [`DESIGN.md`](../../DESIGN.md) にあります。ここを読めば各ピースがどう組み合わさるかを掴めます。各計画の詳細は
 > リンク先を参照してください。
 
-関連: [concepts](concepts.md) · [drivers](drivers.md) · [selectors](selectors.md) · [roadmap](../../roadmaps/README-ja.md) · [roadmap → ホスティング](../../roadmaps/README-ja.md#web-ui-のホスティングクラウド--セルフホスト)
+関連: [concepts](concepts.md) · [drivers](drivers.md) · [selectors](selectors.md) · [roadmap](../../roadmaps/README-ja.md) · [ロードマップダッシュボード → ホスティング](https://bajutsu-e2e.github.io/bajutsu/ja/api/roadmap.html)
 
 ---
 
@@ -105,7 +105,7 @@ Android のほうが idb の近い双子であるにもかかわらず、Web が
 [CI](ci.md) ゲートの内側に収まったからです。コアがプラットフォーム中立であることを最小コストで
 証明できました。その後 Android が、一般化済みのコアの上で同じ lean / 座標パスを裏づけました。
 裏づけは自前のエミュレータ付きゲートによります。プラットフォーム別の詳細は [drivers](drivers.md)、
-[roadmap → プラットフォーム対応](../../roadmaps/README-ja.md#プラットフォーム対応) を参照してください。
+[ロードマップダッシュボード → プラットフォーム対応](https://bajutsu-e2e.github.io/bajutsu/ja/api/roadmap.html) を参照してください。
 
 ### 2. Scale & Collaboration：ローカルツールから共有サービスへ
 
@@ -141,7 +141,7 @@ Android のほうが idb の近い双子であるにもかかわらず、Web が
   コミット済みテストを自動で緩めないというガードレールが、これを directive の内側に保ちます。
 
 この軸は今も広がり続けています（例えば
-[roadmap → オーサリング体験](../../roadmaps/README-ja.md#オーサリング体験record--gui-エディタ)
+[ロードマップダッシュボード → オーサリング体験](https://bajutsu-e2e.github.io/bajutsu/ja/api/roadmap.html)
 にある継続中の作業）が、基盤となる能力（画面上での編集、AI なしのキャプチャ、失敗の自己修復）は
 すでに整っています。
 

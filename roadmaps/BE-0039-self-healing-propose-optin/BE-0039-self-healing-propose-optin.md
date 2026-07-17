@@ -44,4 +44,4 @@ The contrast with MagicPod/Autify is the whole point: they optimize for never sh
 
 ## References
 
-[Self-healing triage](../README.md#self-healing-triage)
+[Self-healing triage](https://bajutsu-e2e.github.io/bajutsu/api/roadmap.html) (roadmap dashboard)
