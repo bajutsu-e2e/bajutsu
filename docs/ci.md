@@ -1,6 +1,6 @@
 # Continuous integration
 
-This covers two separate topics:
+This document covers two separate topics:
 
 1. **CI for this repo** — guard the tool itself (`.github/workflows/`).
 2. **Running bajutsu in *your* app's CI** — a composite action + recipe you reuse.
@@ -9,8 +9,8 @@ This covers two separate topics:
 
 | Workflow | Runner | When | What |
 |---|---|---|---|
-| [`ci.yml`](../.github/workflows/ci.yml) (`check` job) | Linux | push to `main`, every PR (pull request) | the full `make check` gate on Python 3.13 — lockfile freshness (`uv lock --check`), formatting (`ruff format --check`), lint (`ruff`), shell lint (`shellcheck`), workflow lint (`actionlint`), types (`mypy bajutsu demos scripts`), and `pytest` with a coverage floor (`--cov-fail-under=89`). The logic layer needs no Simulator, so it's fast and cheap |
-| [`web-e2e.yml`](../.github/workflows/web-e2e.yml) | Linux | manual + push to `main` / PRs touching the core run path, the web backend, the web demo, or deps | the **web (Playwright) backend** smoke — `playwright install chromium`, then `make -C demos/web e2e` runs the `demos/web` scenarios deterministically against a browser. **No Mac / Simulator**, so it proves the core is platform-neutral. Installing Chromium + running a browser is heavy, so it's path-gated (mirroring `ios-e2e.yml`'s relevance rule) rather than run on every PR |
+| [`ci.yml`](../.github/workflows/ci.yml) (`check` job) | Linux | push to `main`, every PR (pull request) | the full `make check` gate on Python 3.13 — lockfile freshness (`uv lock --check`), formatting (`ruff format --check`), lint (`ruff`), shell lint (`shellcheck`), workflow lint (`actionlint`), types (`mypy bajutsu demos scripts`), and `pytest` with a coverage floor (`--cov-fail-under=89`). The logic layer needs no Simulator, so it is fast and cheap |
+| [`web-e2e.yml`](../.github/workflows/web-e2e.yml) | Linux | manual + push to `main` / PRs touching the core run path, the web backend, the web demo, or deps | the **web (Playwright) backend** smoke — `playwright install chromium`, then `make -C demos/web e2e` runs the `demos/web` scenarios deterministically against a browser. **No Mac / Simulator**, so it proves the core is platform-neutral. Installing Chromium + running a browser is heavy, so it is path-gated (mirroring `ios-e2e.yml`'s relevance rule) rather than run on every PR |
 | [`dependency-audit.yml`](../.github/workflows/dependency-audit.yml) | Linux | manual + weekly + push to `main` / PRs touching `pyproject.toml` / `uv.lock` | audit the locked dependency graph (`uv export` → `pip-audit --no-deps`) against the advisory DB. The result is a function of the lockfile and the DB, so it runs on a dependency change and on a weekly schedule that catches advisories newly disclosed against unchanged pins |
 | [`swift.yml`](../.github/workflows/swift.yml) | macOS | push to `main` + PRs touching `BajutsuKit/**` | `swift build` + `swift test` for [BajutsuKit](../BajutsuKit). Unit-tests the pure-Foundation logic (request matching / mock parsing) with no Simulator — the on-device interception itself is covered by `ios-e2e.yml` |
 | [`ios-e2e.yml`](../.github/workflows/ios-e2e.yml) | macOS | manual + every PR + merge queue (required `E2E` check) | the **iOS (idb / XCUITest) backend** lane, six jobs against the showcase: **smoke (idb)** builds the showcase, boots a Simulator, and runs a scenario through the idb backend (driver + simctl + idb); **golden (idb)** runs the BE-0006 element-tree golden over idb (`golden.yaml`) — the iOS twin of `android-e2e.yml`'s `golden (adb)`; **xcuitest (codegen)** generates a native XCUITest from a scenario (`make -C demos/showcase ui-test`) and runs it with `xcodebuild` (no bajutsu / idb / AI at test time); **xcuitest (multi-touch)** runs a pinch/rotate scenario through the full `bajutsu run` path on the XCUITest backend (BE-0019) — two-finger gestures idb cannot actuate; **conformance (idb + xcuitest)** runs the driver conformance suite (BE-0114) on-device against both backends; and **visual (idb)** pixel-compares the Stable catalog against the committed `baselines_ios/` baseline (`make -C demos/showcase e2e-visual`), masking the status bar + the "Liquid Glass" tab bar. The smoke, xcuitest (codegen), xcuitest (multi-touch), and conformance jobs are path-gated by a `changes` detector and feed a single always-reporting `E2E` job — the required check. `golden` and `visual` are gated by the same detector but deliberately excluded from `E2E`'s `needs:`: the element-tree `golden` runs against an upstream `idb_companion` whose drift could redden it independently of any Bajutsu change, and a `visual` pixel baseline is host-specific (the Simulator renderer varies by Xcode / device / OS), so each surfaces a drift as a signal on its own job (visual's captured screenshot uploads as `ios-e2e-visual-run` to re-record the baseline from) rather than blocking a merge. The element-tree golden also runs weekly on idb-monitor, against the latest `idb_companion` |
@@ -25,13 +25,13 @@ identically on a fresh clone via `uv` alone, which is what makes "green locally"
 
 ## Running bajutsu in your app's CI
 
-> bajutsu is pre-release (unpublished). Until it's on PyPI, vendor it (a submodule or a
+> bajutsu is pre-release (unpublished). Until it is on PyPI, vendor it (a submodule or a
 > checkout) and run the action from that checkout — the action runs `uv sync` against
 > bajutsu's `pyproject.toml`.
 
 bajutsu produces CI-ready output: a `junit.xml`, a self-contained `report.html`,
 a `0` / `1` exit code, and — inside Actions — failure **annotations** + a job **summary**
-(see below). On a macOS runner:
+(see below). On a macOS runner, follow these two steps:
 
 1. **Build and install your app** onto a booted Simulator (this varies per app, so it
    stays yours — `xcodebuild` + `xcrun simctl install`).
@@ -79,6 +79,6 @@ No flag needed — it auto-detects the Actions environment.
 - **JUnit**: `junit.xml` is written next to the report; feed it to a test-reporter action
   (e.g. `dorny/test-reporter`) for an inline test view.
 - **Determinism**: use scenario [`mocks`](network.md#deterministic-mocks) to stub the
-  network so runs don't depend on a live server.
+  network so runs do not depend on a live server.
 - **`doctor`**: today it is a convention *score* (non-blocking preflight); a hard
   env/permission runnability gate (idb / idb_companion / Xcode presence) is future work.

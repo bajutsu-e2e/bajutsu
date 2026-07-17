@@ -6,7 +6,7 @@
 > **in-app**: the app reports each exchange to a collector bajutsu runs, and a `request`
 > assertion checks the accumulated exchanges.
 >
-> Implementation: `bajutsu/network.py` (model + collector), `bajutsu/assertions.py`
+> Implementation: `bajutsu/network.py` (model + collector), `bajutsu/assertions/network.py`
 > (`request` eval), the in-app SDK (software development kit) [`BajutsuKit`](../BajutsuKit/README.md).
 
 Related: [scenarios](scenarios.md) · [evidence](evidence.md)
@@ -27,13 +27,13 @@ A Simulator app runs as a host process and shares the Mac's loopback, so:
    matching token (401), so another local process can't inject fabricated exchanges into
    the run's evidence.
 3. The collector keeps the exchanges in memory; a step's `request` assertion is evaluated
-   against them in real time, and they are written to `<sid>/network.json` (redacted) as
+   against them in real time, and bajutsu writes them (redacted) to `<sid>/network.json` as
    scenario evidence.
 
-`--no-network` disables the collector. Apps without BajutsuKit simply report nothing (the
+`--no-network` disables the collector. Apps without BajutsuKit report nothing (the
 collector stays empty); the feature is opt-in per app.
 
-> This is the in-app path. RocketSim's GUI network inspector and a TLS-intercepting proxy
+> This mechanism is the in-app path. RocketSim's GUI network inspector and a TLS-intercepting proxy
 > were both rejected — the former is not exposed on its CLI (unusable for automated
 > assertions), the latter needs CA install and breaks on pinning. See the design notes.
 
@@ -43,7 +43,7 @@ collector stays empty); the feature is opt-in per app.
 are AND-ed. Each plain `request` corresponds to **one** observed exchange: multiple
 `request` assertions in a block are matched **one-to-one** to distinct exchanges — two
 `request` lines need two separate requests. `count` is the exception: it is an explicit
-aggregate (exact when set, otherwise the lone matcher needs ≥ 1).
+aggregate (exact when set, otherwise the lone matcher needs at least one).
 
 ```yaml
 expect:
@@ -90,10 +90,10 @@ via the `BAJUTSU_MOCKS` launch env (like `BAJUTSU_COLLECTOR`).
 
 ## Timing
 
-Network is async, so a step can run before the response lands. Bridge the gap with a wait
+Network I/O is asynchronous, so a step can run before the response lands. Bridge the gap with a wait
 on the UI that reflects the response (e.g. `wait: { until: settled }`, or wait for an
 element the response reveals) **before** the `request` assertion. The SDK POSTs on
-completion, so by the time the UI has updated the exchange is in the collector.
+completion, so by the time the UI has updated, the exchange is in the collector.
 
 ## App contract
 

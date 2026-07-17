@@ -61,7 +61,7 @@ what is already planned, in progress, or deliberately not adopted.
 2. **Ideate with you.** It offers concrete, bounded ideas and asks the questions that sharpen scope —
    who is it for, which tier, what is the *machine-checkable* outcome — pulling in adjacent items as
    reference points.
-3. **Classify each surviving idea** into one of three landings, and says which it chose:
+3. **Classify each surviving idea** into one of three landings, noting which it chose:
    **overlaps an existing item** (augment that item rather than duplicate it), **novel and scoped**
    (draft a new item), or **still unformed** (a bullet under *Unsorted ideas* in both index READMEs,
    to promote later).
@@ -72,7 +72,7 @@ what is already planned, in progress, or deliberately not adopted.
 5. **Verify and (only if you ask) open the PR.** `make check` keeps the gate green even for a
    docs-only change; the PR body notes that CI will allocate the real ID.
 
-Why the placeholder: IDs are permanent and monotonic, and many branches are in flight at once.
+The placeholder exists because IDs are permanent and monotonic, and many branches are in flight at once.
 Picking a number by hand races — two PRs grab the same one. The
 [`roadmap-id`](../.github/workflows/roadmap-id.yml) workflow runs
 [`scripts/allocate_roadmap_ids.py`](../scripts/allocate_roadmap_ids.py) at PR time, claims the next
@@ -90,14 +90,14 @@ deterministic gate (`make check`) is the judge — never an LLM.
    this PR flips it to `Implemented` — so the skill says so up front. An already-`Implemented` or a
    `Proposal (deferred)` item makes it stop and confirm what you actually want.
 2. **Ground in the spec and the code.** It reads the Detailed design and *Alternatives considered*
-   (the latter records paths already rejected, often for directive reasons — don't re-propose them),
+   (the latter records paths already rejected, often for directive reasons — do not re-propose them),
    opens every file the proposal links, checks [implementation status](architecture.md#implementation-status),
    and verifies any prerequisite BE item is not itself still a proposal.
 3. **Set up a focused branch** off the latest `origin/main` (`claude/be-NNNN-<slug>`), staying in
    its lane — only the files this item needs.
 4. **Plan, then confirm before writing code.** A whole roadmap item is large and hard to reverse, so
    it gets your go-ahead on a concrete plan first: the files it will touch, the *machine-checkable*
-   outcome that proves it works (and where AI is and isn't allowed to sit), the tests, the docs that
+   outcome that proves it works (and where AI is and is not allowed to sit), the tests, the docs that
    must move in both languages, and any tension with the prime directives.
 5. **Implement** to the design, matching the codebase grain — strict `mypy`, configured `ruff`,
    condition waits not `sleep`, new knobs in `targets.<name>` config, tests as the regression net,

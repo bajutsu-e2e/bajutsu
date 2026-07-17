@@ -3,7 +3,7 @@
 # レポート（manifest.json / JUnit / CTRF / HTML）
 
 > 1 回の run は、1 つ以上のシナリオ（`list[RunResult]`）を実行します。その結果を 4 つの形式で
-> 書き出します。`manifest.json` が、レポートと CI（継続的インテグレーション）の **単一の真実**です。
+> 書き出します。`manifest.json` が、レポートと CI（継続的インテグレーション）の **唯一の情報源**です。
 >
 > 実装: `bajutsu/report/`（パッケージ。段階で分割: `format` → `manifest` / `richtext` → `rows` / `panels` → `html`）。
 
@@ -87,7 +87,7 @@ step 1 tap: FAIL 一致なし: {...}</failure>
 
 ## ctrf.json
 
-[Common Test Report Format（CTRF）](https://ctrf.io/)への出力です（[BE-0161](../../roadmaps/BE-0161-ctrf-report-export/BE-0161-ctrf-report-export-ja.md)）。CTRF はオープン標準の JSON テストレポートで、`ctrf-io` の GitHub Actions（PR コメントやジョブサマリーの出力ツール）、ツールをまたぐダッシュボード、flaky なテストの分析といった、育ちつつある消費側のエコシステムが、ツールごとのアダプターなしに読めます。JUnit XML が run を名前、所要時間、失敗内容の塊まで削ぎ落とすのに対し、CTRF は Bajutsu の構造化された詳細（ステップごとの結果、エンジンとデバイス、第一級のアタッチメントとしてのアーティファクト）を運びます。これらは JUnit には収まる場所がありません。この出力は **`manifest.json` の純粋な射影**であり、同じデータを `junit.xml` の隣に別の形で並べるだけなので、新しい記帳は生じません。判定より後に書くので判定を動かすこともありません（LLM は関与せず、合否にも影響しません）。
+[Common Test Report Format（CTRF）](https://ctrf.io/)への出力です（[BE-0161](../../roadmaps/BE-0161-ctrf-report-export/BE-0161-ctrf-report-export-ja.md)）。CTRF はオープン標準の JSON テストレポートです。`ctrf-io` の GitHub Actions（PR コメントやジョブサマリーの出力ツール）、ツールをまたぐダッシュボード、flaky なテストの分析といった消費側のエコシステムが育ちつつあり、これらはツールごとのアダプターなしに CTRF を読めます。JUnit XML が run を名前、所要時間、失敗内容の塊まで削ぎ落とすのに対し、CTRF は Bajutsu の構造化された詳細（ステップごとの結果、エンジンとデバイス、第一級のアタッチメントとしてのアーティファクト）を運びます。これらは JUnit には収まる場所がありません。この出力は **`manifest.json` の純粋な射影**であり、同じデータを `junit.xml` の隣に別の形で並べるだけなので、記録が二重になるわけではありません。判定より後に書くので判定を動かすこともありません（LLM は関与せず、合否にも影響しません）。
 
 文書は `{ reportFormat: "CTRF", specVersion, generatedBy, timestamp, results }` で、`results` が `tool` / `summary` / `tests`（＋任意の `environment` / `extra`）を持ちます。
 
@@ -131,20 +131,25 @@ step 1 tap: FAIL 一致なし: {...}</failure>
 ## report.html
 
 人間が見る自己完結 HTML（インライン CSS、外部アセット無し）です。ヘッダには run id と全体 PASS/FAIL、
-その下に **シナリオファイル名**（`source_name`）、さらにファイルレベルの **`description`** があれば
-表示します。各シナリオ行のサマリには **シナリオ名** と、設定があれば横に **シナリオレベルの
-`description`** を表示します。こうして run 全体でシナリオ名 + ファイル名 + description を提示します。
-シナリオ定義とその実行結果は **1 つの Steps タブに統合**され、ラベル付きセクション
-（preconditions / **steps** / **expectations**）ごとにテーブルで描画されます。**steps** テーブル：`#` / `result`（PASS/FAIL ピルを独立カラムで）/
-`action`（色付きバッジ）/ `detail`（対象説明）/ `at` / `view`（スクリーンショット＋**レポート内 element tree
-ビューア**: キャプチャした要素を別タブではなくページ内オーバーレイで開く）/ `reason`。
+その下にシナリオファイル名（`source_name`）、さらにファイルレベルの `description` があれば
+表示します。各シナリオ行のサマリにはシナリオ名と、設定があれば横にシナリオレベルの
+`description` を表示します。こうして run 全体でシナリオ名 + ファイル名 + description を提示します。
+
+シナリオ定義とその実行結果は 1 つの Steps タブに統合され、ラベル付きセクション
+（**preconditions** / **steps** / **expectations**）ごとにテーブルで描画されます。steps テーブル：`#` / `result`（PASS/FAIL ピルを独立カラムで）/
+`action`（色付きバッジ）/ `detail`（対象説明）/ `at` / `view`（スクリーンショット＋レポート内 element tree
+ビューア: キャプチャした要素を別タブではなくページ内オーバーレイで開く）/ `reason`。
 detail 中の識別子（`#home.title`）と定数リテラル（`”text”` や数値）は、控えめなインライントークンで
-描画します。ソリッドな action/assert バッジと視覚的に区別されるため、変数と定数を一目で識別できます。`assert` ステップの複数チェックは**ネストしたテーブル**になり、1 アサーション 1 行で
+描画します。ソリッドな action/assert バッジと視覚的に区別されるため、変数と定数を一目で識別できます。`assert` ステップの複数チェックはネストしたテーブルになり、1 アサーション 1 行で
 `kind` / `target` / `comparison` のセルに分割します（読みにくい `a; b; c` 形式を解消）。実行されなかった
-ステップ（失敗で停止）も skipped として残ります。**観測した通信を時系列で steps に差し込みます**（各々シナリオ開始からのオフセットで配置）。HTTP メソッドを中立バッジ、ステータスを `result` 列に置き、通信の設定（method / endpoint / status / duration / ヘッダ）を detail セル内の**ネストしたテーブル**で表示します。どの通信を出すかはシナリオの `network.filter.domains`（URL ホスト）で絞ります。Network タブは引き続き全件を載せます。**preconditions** テーブルは折りたたみ可（key / value）。
-**expectations** テーブルは並行カラム `result` / `kind`（バッジ）/ `target`（検査対象セレクタ。例:
-`#counter.value`）/ `comparison`（例 `== “2”`）/ `reason`（同じ id/定数トークン）です。**Rich / YAML
-トグル**で同じタブを構造化ビューと生のシナリオ YAML に切り替えられます。
+ステップ（失敗で停止）も skipped として残ります。
+
+観測した通信を時系列で steps に差し込みます（各々シナリオ開始からのオフセットで配置）。HTTP メソッドを中立バッジ、ステータスを `result` 列に置き、通信の設定（method / endpoint / status / duration / ヘッダ）を detail セル内のネストしたテーブルで表示します。どの通信を出すかはシナリオの `network.filter.domains`（URL ホスト）で絞ります。Network タブは引き続き全件を載せます。
+
+preconditions テーブルは折りたたみ可（key / value）。
+expectations テーブルは並行カラム `result` / `kind`（バッジ）/ `target`（検査対象セレクタ。例:
+`#counter.value`）/ `comparison`（例 `== “2”`）/ `reason`（同じ id/定数トークン）です。Rich / YAML
+トグルで同じタブを構造化ビューと生のシナリオ YAML に切り替えられます。
 
 `visual` の expectation は行の下に **baseline と actual のインタラクティブ比較ビュー**を描画します。
 4 モード: **Swipe**（仕切りをドラッグして左右にワイプ）/ **Onion**（スライダーで actual を

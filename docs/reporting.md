@@ -2,7 +2,7 @@
 
 # Reporting (manifest.json / JUnit / CTRF / HTML)
 
-> One run executes one or more scenarios (`list[RunResult]`). Their results are written in four
+> One run executes one or more scenarios (`list[RunResult]`). Bajutsu writes their results in four
 > formats. `manifest.json` is the **single source of truth** for the report and for CI (continuous integration).
 >
 > Implementation: `bajutsu/report/` (a package, split by stage: `format` → `manifest` / `richtext` → `rows` / `panels` → `html`).
@@ -73,7 +73,7 @@ verbatim.
   (`bajutsu.__version__`), `gitRevision` (the commit, present only when the run is inside a git
   checkout), and — when the config came from a Git source ([BE-0063](../roadmaps/BE-0063-git-config-source/BE-0063-git-config-source.md)) —
   `configSource` (`{ host, owner, repo, ref, sha }`, the exact commit a branch-based run executed).
-  It lets accumulated runs be grouped by identity, so a verdict that flips while the fingerprint is
+  It groups accumulated runs by identity, so a verdict that flips while the fingerprint is
   unchanged is **true flakiness** rather than an edited scenario. Pure metadata — like the `idb`
   version block, it never enters `ok`. (`schemaVersion` is `3` or higher once this block can appear — it is `4` today.)
 - `idb` (top, optional): the `idb_companion` / client versions, when idb drove the run (BE-0005).
@@ -87,7 +87,7 @@ verbatim.
 
 ## junit.xml
 
-For CI integration. **1 scenario = 1 `<testcase>`.** A failing scenario gets a `<failure>`, whose
+For CI integration. **one scenario = one `<testcase>`.** A failing scenario gets a `<failure>`, whose
 `text` lists each step / expect's ok/FAIL and reason. On a `--browsers` matrix run the engine is
 keyed into the case (`classname="bajutsu.<engine>"`), so CI sees `chromium.login` and `webkit.login`
 as distinct cases (BE-0076); a single-engine run keeps `classname="bajutsu"`.
@@ -105,13 +105,13 @@ step 1 tap: FAIL no match: {...}</failure>
 ## ctrf.json
 
 The [Common Test Report Format (CTRF)](https://ctrf.io/) export ([BE-0161](../roadmaps/BE-0161-ctrf-report-export/BE-0161-ctrf-report-export.md)):
-an open-standard JSON test report that a growing ecosystem — the `ctrf-io` GitHub Actions
-(PR-comment / job-summary reporters), cross-tool dashboards, flaky-test analytics — reads without
-per-tool adapters. Where JUnit XML strips a run down to name / time / a failure blob, CTRF carries
+an open-standard JSON test report that a growing ecosystem reads without per-tool adapters — the
+`ctrf-io` GitHub Actions (PR-comment / job-summary reporters), cross-tool dashboards, and
+flaky-test analytics. Where JUnit XML strips a run down to name / time / a failure blob, CTRF carries
 Bajutsu's structured detail (per-step outcomes, the engine and device, artifacts as first-class
 attachments) that JUnit has no place for. It is a **pure projection of `manifest.json`** — the same
-data, a new shape beside `junit.xml` — so it adds no bookkeeping, and being written after the verdict
-it cannot move it (no LLM, no effect on pass/fail).
+data, a new shape beside `junit.xml` — so it adds no bookkeeping, and, written after the verdict,
+it cannot change that verdict (no LLM, no effect on pass/fail).
 
 The document is `{ reportFormat: "CTRF", specVersion, generatedBy, timestamp, results }`, where
 `results` holds `tool` / `summary` / `tests` (+ optional `environment` / `extra`):
@@ -174,7 +174,7 @@ A self-contained HTML for humans (inline CSS, no external assets). The header sh
 overall PASS/FAIL, the **scenario file name** under the run id (`source_name`), and the **file-level
 `description`** when present. Each scenario row's summary shows the **scenario name** and, when set,
 the **scenario-level `description`** beside it, so a run surfaces scenario name + file name +
-descriptions throughout. The scenario definition and its execution are **merged into one Steps tab**. It has labelled sections (preconditions / **steps** /
+descriptions throughout. Bajutsu merges the scenario definition and its execution into one **Steps tab**. It has labelled sections (preconditions / **steps** /
 **expectations**), each a table. The **steps** table: `#` / `result` (a PASS/FAIL pill in its own
 column) / `action` (a colored badge) / `detail` (the target description) / `at` / `view` (screenshot +
 an **in-report element-tree viewer**: the captured elements open in an in-page overlay, no new tab) /
@@ -186,8 +186,7 @@ cells (instead of a hard-to-read `a; b; c` line). Steps that never ran (executio
 failure) still appear, marked as skipped. **Observed network exchanges are interleaved into the
 steps** in time order (each placed by its offset from the scenario start): a row with the HTTP method
 as a neutral badge, the status in the `result` column, and the exchange's settings (method / endpoint
-/ status / duration / headers) as a **nested table** in the detail cell. Which requests appear is
-filtered by the scenario's `network.filter.domains` (by URL host); the Network tab still lists them all.
+/ status / duration / headers) as a **nested table** in the detail cell. The scenario's `network.filter.domains` (by URL host) filters which requests appear; the Network tab still lists them all.
 The **preconditions** table is collapsible (key / value).
 The **expectations** table uses parallel columns `result` / `kind` (badge) / `target` (the checked
 selector, e.g. `#counter.value`) / `comparison` (e.g. `== “2”`) / `reason`, with the same id/constant

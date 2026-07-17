@@ -9,7 +9,7 @@ hide:
 Bajutsu (馬術) takes test scenarios written in — or recorded from — natural language, drives your
 app (taps, typing, swipes, waits), and verifies the result with **machine-checkable assertions**.
 Everything but one seam is platform-neutral; that seam is the **backend** that actuates the UI, so
-the same scenario runs on a different target by swapping it.
+swapping that seam runs the same scenario, unchanged, on a different target.
 
 ## The core stance
 
@@ -39,8 +39,8 @@ bajutsu record --target <name> --goal "..." [--out f.yaml]  # Tier 1: AI explore
 bajutsu run    --target <name> [--scenario f.yaml]          # Tier 2: deterministic pass/fail
 ```
 
-The [Getting started tutorial](getting-started/index.md) walks through install → unit tests → scenario →
-device run → report. On a machine without a Mac, the [web track](getting-started/web.md) does the
+The [Getting started tutorial](getting-started/index.md) walks through install, unit tests, scenario authoring, a
+device run, and the report. On a machine without a Mac, the [web track](getting-started/web.md) does the
 same loop against a browser (Playwright backend) — no Xcode or Simulator.
 
 ## Feature highlights

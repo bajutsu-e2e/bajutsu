@@ -41,7 +41,7 @@ class Element(TypedDict):
 
 | フィールド | 意味 | 安定性 |
 |---|---|---|
-| `id` | `accessibilityIdentifier` の完全一致。**リスト**は候補の OR（いずれかに一致）で、1 つのシナリオが複数プラットフォームの id 形を持てる | ★ 第一候補 |
+| `id` | `accessibilityIdentifier` の完全一致。**リスト**は候補の OR（いずれかに一致） | ★ 第一候補 |
 | `idMatches` | id の glob パターン（複数マッチ前提。例 `"list.row.*"`）。**リスト**はいずれかの glob に一致すればよい | 集合操作用 |
 | `label` | `accessibilityLabel` の完全一致 | 補助 / 曖昧解消のみ |
 | `labelMatches` | label の部分一致 / 正規表現（`re.search`） | 補助 |
@@ -52,7 +52,7 @@ class Element(TypedDict):
 
 > `id` / `idMatches` のマッチは `fnmatch.fnmatchcase`（大小区別あり glob）、`labelMatches` は `re.search`（正規表現 / 部分一致）、`traits` は「指定集合 ⊆ 要素のトレイト集合」です。
 
-> `id` / `idMatches` は**候補のリスト**も受け付けます。OR として、要素の id がいずれかの候補に一致（または glob 一致）すればマッチします（BE-0221）。これにより 1 つの共有シナリオがプラットフォームごとに異なる id 表記を持てます（例: Android Views の `android:id` は `.`/`-` を許さないので `id: [stable.refresh, stable_refresh]`）。あるアプリの画面に現れる形は常に一方だけなので決定論的なままで、2 件以上一致すれば従来どおり即失敗します。[scenarios](scenarios.md#プラットフォームをまたぐ-id候補のリストbe-0221) を参照してください。
+> `id` / `idMatches` は**候補のリスト**も受け付けます。OR として、要素の id がいずれかの候補に一致（または glob 一致）すればマッチします（BE-0221）。これにより 1 つの共有シナリオがプラットフォームごとに異なる id 表記を持てます（例: Android Views の `android:id` は `.`/`-` を許さないので `id: [stable.refresh, stable_refresh]`）。あるアプリの画面に現れる形は常に一方だけなので決定的なままで、2 件以上一致すれば従来どおり即失敗します。[scenarios](scenarios.md#プラットフォームをまたぐ-id候補のリストbe-0221) を参照してください。
 
 ### オーサリング表現と実行時表現
 
@@ -74,7 +74,7 @@ class Element(TypedDict):
 
 ### `resolve_unique(elements, sel) -> Element`
 
-**単一アクション用に、ちょうど 1 件へ確定します。** Bajutsu の決定性で最も重要な関数です。
+**単一アクション用に、ちょうど 1 件へ確定します。** 曖昧一致による非決定性をここで断つ、決定性の核となる関数です。
 
 | 候補数 | 挙動 |
 |---|---|
@@ -107,7 +107,7 @@ idb は使える semantic tap を持たないため、抽象側は **常に `que
 
 ## アサーション評価
 
-実装: `bajutsu/assertions.py`。`evaluate(elements, assertions) -> list[AssertionResult]` が各アサーションを評価し、`passed(results)` が AND を取ります。**評価は総関数**で、解決失敗（not-found / ambiguous）も例外でなく「失敗した `AssertionResult`」として返します（そのままレポートに載ります）。
+実装: `bajutsu/assertions/`（`evaluate.py`。BE-0250 で単一モジュールから分割）。`evaluate(elements, assertions) -> list[AssertionResult]` が各アサーションを評価し、`passed(results)` が AND を取ります。**評価は総関数**で、解決失敗（not-found / ambiguous）も例外でなく「失敗した `AssertionResult`」として返します（そのままレポートに載ります）。
 
 ```python
 @dataclass(frozen=True)
@@ -118,7 +118,7 @@ class AssertionResult:
     reason: str      # 失敗理由（ok のとき空）
 ```
 
-種別ごとの仕組み:
+種別ごとの仕組み（全 8 種別）:
 
 | 種別 | 解決 | 判定 |
 |---|---|---|
@@ -131,4 +131,4 @@ class AssertionResult:
 | `selected` | `resolve_unique` | `selected` トレイトが有る |
 | `request` | 観測した通信を照合（要素ツリーではない） | `count` 指定時は `equals`/`atLeast`/…、無指定なら 1 件以上（[network](network.md)） |
 
-> `exists` だけ `find_all`（複数許容）を使い、他の単一要素アサーションは `resolve_unique`（曖昧は失敗）を使います。「2 件あるのに値を検証しようとした」場合も決定的に失敗します。`request` だけが非 UI のアサーションで、要素ではなくキャプチャした HTTP(S) 通信を検査します（全 8 種別）。
+> `exists` だけ `find_all`（複数許容）を使い、他の単一要素アサーションは `resolve_unique`（曖昧は失敗）を使います。「2 件あるのに値を検証しようとした」場合も決定的に失敗します。`request` だけが非 UI のアサーションで、要素ではなくキャプチャした HTTP(S) 通信を検査します。

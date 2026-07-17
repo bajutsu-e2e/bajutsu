@@ -7,7 +7,7 @@
 > 割り当てる様子を確認し、`/implement-be` でマージ済みのプルリクエストまで出荷し終えているはずです。
 > [getting-started チュートリアル](getting-started/index.md)が Bajutsu を *動かす* ための同じ役割を果たすのに対し、
 > このページは Bajutsu を *作る* ための対応物です。リファレンスの各ページが個々の規則の内容を説明するのに対して、
-> このページは順を追って実際にキーボードに手を置いてもらいます。
+> このページは順を追って、実際に手を動かしてもらいます。
 
 関連：[roadmap-workflow](roadmap-workflow.md) · [ai-development](ai-development.md) · [`CONTRIBUTING.md`](../../CONTRIBUTING.md) · [roadmaps/README](../../roadmaps/README-ja.md)
 
@@ -42,8 +42,8 @@ make check            # ゲート。format + lint + typecheck + test。green で
 
 この 2 つは意図的に対をなしていて、片方が[ロードマップ](../../roadmaps/README-ja.md)を満たし、もう片方がそれを
 消化します。「なぜ 1 つではなく 2 つのスキルなのか」という考え方は
-[roadmap-workflow](roadmap-workflow.md#なぜ-1-つではなく-2-つのスキルなのか) にあります。ここでは、ただ両者を
-歩きます。
+[roadmap-workflow](roadmap-workflow.md#なぜ-1-つではなく-2-つのスキルなのか) にあります。ここでは、その両方を
+順にたどります。
 
 ---
 
@@ -51,7 +51,7 @@ make check            # ゲート。format + lint + typecheck + test。green で
 
 ### 手順 A1 — アイデアを持ち込む。粗くてよい
 
-完成した設計は要りません。一文で十分です。この walkthrough では、遅い simulator でときどき失敗する手順に
+完成した設計は要りません。一文で十分です。このチュートリアルでは、遅い simulator でときどき失敗する手順に
 繰り返しぶつかっていて、こう考えたとしましょう。
 
 > 「Bajutsu は、flake する手順を実行全体の失敗にせず、リトライすべきだ」
@@ -125,16 +125,16 @@ gh pr create --reviewer bajutsu-e2e/steering-committee \
 
 PR が開くと、[`roadmap-id`](../../.github/workflows/roadmap-id.yml) ワークフローが
 [`scripts/allocate_roadmap_ids.py`](../../scripts/allocate_roadmap_ids.py) を走らせます。次の空き ID を
-atomically に確保し、`BE-XXXX` を `BE-NNNN` に **すべての箇所** で（ディレクトリ、両ファイル、相互リンク）
+アトミックに確保し、`BE-XXXX` を `BE-NNNN` に **すべての箇所** で（ディレクトリ、両ファイル、相互リンク）
 書き換え、結果をあなたのブランチに push し戻します。そのコミットを pull してください。レビューが済んで提案が
 マージされると、項目は恒久的なパスに `Status: Proposal` で存在し、番号は確定します。この番号がパート B の
 入力になります。
 
 ---
 
-## 実例：vague なアイデアが scoped な提案になる
+## 実例：曖昧なアイデアが、範囲の定まった提案になる
 
-「十分に scoped である」を学ぶ最速の方法は、弱いアイデアとその作り直した形を並べて見ることです。これが、
+「十分に範囲が定まっている」を学ぶ最速の方法は、弱いアイデアとその作り直した形を並べて見ることです。これが、
 手順 A1 の一文に対して `/ideation` の問いがすることです。
 
 **❌ 変更前。詳細を欠いた一文：**
@@ -265,7 +265,7 @@ Ready で開きます。）
 レビューが作り直さないと確信できる設計だったなら、マージを待たずに実装を提案の上に積めたでしょう。代償は
 現実にあります。レビューが *実際に* 提案を変えたら、実装ブランチをやり直します。ですから経験則は単純です。
 
-> **既定は直列。設計が固まっていると確信できるときだけ `propose-and-build` に手を伸ばす。** 設計が本当に
+> **既定は直列です。設計が固まっていると確信できるときだけ `propose-and-build` に手を伸ばします。** 設計が本当に
 > 不確かなときは、直列の経路の「コードの前にレビュー」はオーバーヘッドではなく利点です。
 
 このスキル自体の仕組みは
