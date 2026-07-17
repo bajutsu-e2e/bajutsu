@@ -12,15 +12,15 @@
         "allowEmojiAtEnd": false,
         "forceAppendPeriod": false
       }
+      "ja-no-redundant-expression": true,
+      "no-mix-dearu-desumasu": true,
+      "no-double-negative-ja": true,
+      "ja-no-abusage": true,
+      "no-dropping-the-ra": true,
+      "no-doubled-conjunctive-particle-ga": true,
+      "no-doubled-conjunction": true
     },
-    "ja-no-redundant-expression": true,
     "spellcheck-tech-word": true,
-    "no-mix-dearu-desumasu": true,
-    "no-double-negative-ja": true,
-    "ja-no-abusage": true,
-    "no-dropping-the-ra": true,
-    "no-doubled-conjunctive-particle-ga": true,
-    "no-doubled-conjunction": true,
     "ja-hiragana-keishikimeishi": true,
     "ja-hiragana-fukushi": true,
     "ja-hiragana-hojodoushi": true,
