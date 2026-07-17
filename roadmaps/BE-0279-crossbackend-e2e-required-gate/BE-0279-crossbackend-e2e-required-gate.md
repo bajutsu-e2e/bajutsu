@@ -78,7 +78,7 @@ Proposal altitude. The units are MECE around the aggregators and the ruleset.
 - [x] `E2E (android)` aggregator in `android-e2e.yml` — `needs: [changes, smoke, conformance]`, `if: always()`,
   `golden`/`visual` excluded; the lane converts to the iOS trigger shape (every PR + `merge_group`, a
   `changes` job path-gating the KVM jobs via `scripts/e2e_changes.py` with `E2E_LANE=android`).
-- [x] `E2E (web)` aggregator in `web-e2e.yml` — `needs: [changes, smoke, dogfood, conformance]`, same trigger
+- [x] `E2E (web)` aggregator in `web-e2e.yml` — `needs: [changes, web-e2e, serve-ui-dogfood, web-conformance]`, same trigger
   conversion (`E2E_LANE=web`).
 - [ ] Add the new required check names — `E2E (android)` and `E2E (web)` — to `main`'s
   branch-protection ruleset (human step; out-of-repo administrative state, cannot be a repository
