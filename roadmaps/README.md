@@ -658,7 +658,9 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 ### Development infrastructure (contributor workflow)
 
 <!-- GENERATED:proposals-developer-experience -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0284](BE-0284-docs-single-source-of-truth/BE-0284-docs-single-source-of-truth.md) | Consolidate duplicated documentation norms under single sources of truth | Proposal |
 <!-- /GENERATED:proposals-developer-experience -->
 
 ### Codebase quality & technical debt

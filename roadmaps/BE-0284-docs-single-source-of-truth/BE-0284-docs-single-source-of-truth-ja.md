@@ -1,14 +1,14 @@
-[English](BE-XXXX-docs-single-source-of-truth.md) · **日本語**
+[English](BE-0284-docs-single-source-of-truth.md) · **日本語**
 
-# BE-XXXX — 重複するドキュメント規範を1つの基準ファイルへ集約する
+# BE-0284 — 重複するドキュメント規範を1つの基準ファイルへ集約する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-docs-single-source-of-truth-ja.md) |
+| 提案 | [BE-0284](BE-0284-docs-single-source-of-truth-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0284") |
 | トピック | ドキュメント整備（コントリビューターワークフロー） |
 <!-- /BE-METADATA -->
 
@@ -44,7 +44,7 @@ truth）とします。以下ではこのファイルを「基準ファイル」
   検証している範囲を過小評価します。
 
 この2つの矛盾以外にも、同じ構造がまだ乖離せずに繰り返されています。ロードマップの BE-ID 規約には、
-基準となる記述が `docs/ai-development.md` にあります。プレースホルダー `BE-XXXX`、マージ時の
+基準となる記述が `docs/ai-development.md` にあります。プレースホルダー `BE-0284`、マージ時の
 割り当て、両言語ファイル、インデックスの再生成という規約です。しかし `roadmaps/README.md` は、
 そこへリンクせず全文を再記述しています。PR タイトル・本文・Draft の規約も同様です。
 `docs/ai-development.md` を指す代わりに、`AGENTS.md` でまるごと再説明されています。そして

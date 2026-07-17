@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-docs-single-source-of-truth-ja.md)
+**English** · [日本語](BE-0284-docs-single-source-of-truth-ja.md)
 
-# BE-XXXX — Consolidate duplicated documentation norms under single sources of truth
+# BE-0284 — Consolidate duplicated documentation norms under single sources of truth
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-docs-single-source-of-truth.md) |
+| Proposal | [BE-0284](BE-0284-docs-single-source-of-truth.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0284") |
 | Topic | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
 
@@ -40,7 +40,7 @@ which is the concrete cost of the pattern:
   underestimates what the gate covers.
 
 Beyond those two contradictions, the same pattern repeats without (yet) drifting: the roadmap
-BE-ID conventions (placeholder `BE-XXXX`, allocation on merge, bilingual files, index
+BE-ID conventions (placeholder `BE-0284`, allocation on merge, bilingual files, index
 regeneration) are fully restated in `roadmaps/README.md` rather than linked from
 `docs/ai-development.md`'s canonical section; the PR title/body/Draft conventions are
 fully re-explained in `AGENTS.md` rather than pointed at `docs/ai-development.md`; and
