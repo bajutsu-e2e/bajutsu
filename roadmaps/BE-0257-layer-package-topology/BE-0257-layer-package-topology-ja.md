@@ -139,8 +139,8 @@
 - [x] `bajutsu/codegen/` パッケージ（`__init__` / `common` / `emit` / `playwright` / `uiautomator`）。
 - [x] `bajutsu/crawl/` パッケージ（`__init__` / `core` / `flows` / `guide` / `report` / `repro` /
   `tabs` / `serialize`）。
-- [ ] `bajutsu/github/` パッケージ（`__init__` / `actions` / `app`）。`config_source` と
-  `github_app` の循環を解消します。
+- [x] `bajutsu/github/` パッケージ（`__init__` / `actions` / `app` / `errors`）。`config_source`
+  と `github_app` の循環を解消します。
 - [ ] `bajutsu/agents/` の周辺パッケージ（9個のモジュール）。
 - [ ] `bajutsu/evidence/` と `bajutsu/analysis/` のパッケージ。
 - [ ] `bajutsu/analytics/` パッケージ（`usage` / `ledger` / `stats`）。

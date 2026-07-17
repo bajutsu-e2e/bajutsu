@@ -21,7 +21,7 @@ import urllib.request
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from bajutsu.config_source import GitHubAccessError
+from bajutsu.github.errors import GitHubAccessError
 
 if TYPE_CHECKING:
     from bajutsu.config_source import GitConfigSpec

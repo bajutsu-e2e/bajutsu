@@ -26,6 +26,8 @@ from email.message import Message
 from pathlib import Path
 from typing import Protocol
 
+from bajutsu.github.errors import GitHubAccessError
+
 DEFAULT_CONFIG = "bajutsu.config.yaml"
 
 # The env var serve materializes a UI-entered Git credential into (BE-0224). Deliberately *not*
@@ -175,16 +177,6 @@ class Transport(Protocol):
     def tarball_bytes(self, spec: GitConfigSpec, sha: str) -> bytes: ...
 
 
-class GitHubAccessError(ValueError):
-    """A private-repo credential could not be acquired, or a GitHub API call was rejected (BE-0224).
-
-    Covers both a rejected API call (auth / rate-limit / SSO / not-found) and a failure to *mint* a
-    credential (a broken GitHub App config, a missing key file, the `githubapp` extra absent). A
-    `ValueError` so callers already catching fetch failures (`serve.bind_git_config`, the `--config`
-    diagnostics) surface its message unchanged instead of a raw traceback.
-    """
-
-
 def github_http_error_message(status: int, headers: Message, spec: GitConfigSpec) -> str:
     """Turn a GitHub `HTTPError` into an actionable message that names the *real* cause (BE-0224).
 
@@ -261,7 +253,7 @@ def _github_app_credential(spec: GitConfigSpec) -> str | None:
     """A GitHub App installation token when the App env is configured, else None (BE-0224).
 
     Opt-in and lazy: only an `BAJUTSU_GITHUB_APP_ID` gates the App path — the key is read (and
-    `bajutsu.github_app`, plus `cryptography`, imported) *only* when the id is set, so a stale
+    `bajutsu.github.app`, plus `cryptography`, imported) *only* when the id is set, so a stale
     `…_PRIVATE_KEY_FILE` left in the environment without an id never triggers App auth or a file read.
     With an id but no key, this falls through to `github_token()` rather than half-attempting the App.
     """
@@ -271,7 +263,7 @@ def _github_app_credential(spec: GitConfigSpec) -> str | None:
     private_key = _github_app_private_key()
     if not private_key:
         return None
-    from bajutsu.github_app import installation_token
+    from bajutsu.github.app import installation_token
 
     return installation_token(
         app_id,

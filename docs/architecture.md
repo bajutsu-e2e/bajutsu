@@ -116,7 +116,7 @@ The `bajutsu/` package (Python 3.13+, pydantic v2 / typer / anthropic / pyyaml /
 | `trace.py` | Text timeline over a saved run (the `trace` command) | [cli](cli.md) |
 | `triage.py` | M4 self-heal: rule-based `HeuristicTriageAgent` + structured fixes (`renameId`/`addIndex`/`raiseTimeout`), `--apply`/`--write`/`--rerun` | [cli](cli.md) |
 | `claude_triage.py` | Claude-backed `TriageAgent` (`--ai`, failure screenshot) | [cli](cli.md) |
-| `github.py` | GitHub helpers (CI, continuous integration) | [ci](ci.md) |
+| `github/` | GitHub helpers: `actions` (CI, continuous integration, annotations + job summary), `app` (App installation token for the private-repo config source), `errors` (the shared access error) | [ci](ci.md) |
 | `serve/` | Local web UI (the `serve` command): author / run / reports / triage a failed run | [cli](cli.md) |
 | `mcp/` | MCP server: exposes `run`/`doctor` as tools + run evidence as resources | [cli](cli.md) |
 | `lint.py` | Scenario linter + JSON Schema generation (`lint` / `schema` commands) | [cli](cli.md) |
@@ -148,7 +148,7 @@ flowchart TB
 
     orch["orchestrator/"]
     agentStuff["agent_protocols.py / agent_factory.py /<br/>claude_agent.py / alerts.py"]
-    serveGh["serve/ · github.py<br/>(web UI · CI)"]
+    serveGh["serve/ · github/<br/>(web UI · CI)"]
 
     assertions["assertions/"]
     evidence["evidence.py<br/>+ intervals.py · network.py · visual.py · redaction.py"]
@@ -223,7 +223,8 @@ declared:
 3. **Periphery** — the consumers of the contract, each removable behind an optional extra:
    `serve/`, `mcp/`, the codegen emitters, the AI / agent paths (`agent_protocols.py`, `ai_config.py`,
    `anthropic_client.py`, `record.py`, `enrich.py`, `triage.py`, `crawl/guide.py`, …), and the
-   `github.py` / `notify.py` / `alerts.py` helpers.
+   `github/actions.py` / `notify.py` / `alerts.py` helpers (the rest of `github/` — `app` / `errors`
+   — is core-safe, so `config_source` reaches it without pulling the periphery in).
 
 Three contracts are enforced:
 

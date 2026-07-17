@@ -263,7 +263,7 @@ forbidden_modules = [
     "bajutsu.record_capture",
     "bajutsu.screenshots",
     "bajutsu.crawl.guide",
-    "bajutsu.github",
+    "bajutsu.github.actions",
     "bajutsu.notify",
     "bajutsu.alerts",
 ]

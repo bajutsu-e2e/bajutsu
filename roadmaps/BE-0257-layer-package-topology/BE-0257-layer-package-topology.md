@@ -133,8 +133,8 @@ packaging lands, stage by stage.
 
 - [x] `bajutsu/codegen/` package (`__init__`/`common`/`emit`/`playwright`/`uiautomator`).
 - [x] `bajutsu/crawl/` package (`__init__`/`core`/`flows`/`guide`/`report`/`repro`/`tabs`/`serialize`).
-- [ ] `bajutsu/github/` package (`__init__`/`actions`/`app`), resolving the `config_source` ↔
-  `github_app` cycle.
+- [x] `bajutsu/github/` package (`__init__`/`actions`/`app`/`errors`), resolving the `config_source`
+  ↔ `github_app` cycle.
 - [ ] `bajutsu/agents/` periphery package (nine modules).
 - [ ] `bajutsu/evidence/` and `bajutsu/analysis/` packages.
 - [ ] `bajutsu/analytics/` package (`usage`/`ledger`/`stats`).

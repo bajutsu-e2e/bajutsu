@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 import typer
 
-from bajutsu import device_errors, github
+from bajutsu import device_errors
 from bajutsu import usage as _usage
 from bajutsu import usage_ledger as _usage_ledger
 from bajutsu.artifact_perms import make_run_dir
@@ -33,6 +33,7 @@ from bajutsu.cli._shared import (
     _with_headed,
 )
 from bajutsu.config import WEB_ENGINES, Effective, IosConfig
+from bajutsu.github import actions as github_actions
 from bajutsu.orchestrator import AlertEvent, BlockedHandler, RunResult
 from bajutsu.platform_lifecycle import environment_for
 from bajutsu.report.archive import archive_run_dir
@@ -654,7 +655,7 @@ def _finish(
     warn, never flip the verdict (BE-0060/BE-0110).
     """
     ok = all(r.ok for r in results)
-    github.emit(results, manifest.parent / "report.html")  # annotations + summary in CI
+    github_actions.emit(results, manifest.parent / "report.html")  # annotations + summary in CI
     # Webhook: post-verdict notification (BE-0099).
     if plan.eff.notify:
         from bajutsu import notify
