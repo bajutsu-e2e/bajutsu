@@ -63,21 +63,22 @@ def main(argv: list[str]) -> int:
     if exchange.get("status") != 201:
         _fail(f"expected the mock's 201 status, got {exchange.get('status')!r}")
 
-    # Playwright lowercases request header names, so match case-insensitively.
+    # Playwright lowercases request header names, so match case-insensitively. The failure messages
+    # never echo the header value, body, or the secret literal — a redaction checker that prints the
+    # unmasked content on failure would itself leak it (CodeQL: clear-text logging).
     headers = {str(k).lower(): v for k, v in (exchange.get("requestHeaders") or {}).items()}
-    auth = headers.get("authorization")
-    if auth != _PLACEHOLDER:
-        _fail(f"Authorization header not masked: {auth!r}")
+    if headers.get("authorization") != _PLACEHOLDER:
+        _fail(f"Authorization header not masked to {_PLACEHOLDER}")
     body = exchange.get("requestBody") or ""
     if _BODY_SECRET in body:
         _fail("the password body field leaked its value into network.json")
     if _PLACEHOLDER not in body:
-        _fail(f"the password body field was not masked with {_PLACEHOLDER}: {body!r}")
+        _fail(f"the password body field was not masked to {_PLACEHOLDER}")
 
     # Belt and braces: no raw secret survives anywhere in the persisted file.
-    for secret in (_HEADER_SECRET, _BODY_SECRET):
+    for name, secret in (("Authorization header", _HEADER_SECRET), ("password body", _BODY_SECRET)):
         if secret in raw:
-            _fail(f"raw secret {secret!r} present in network.json")
+            _fail(f"the {name} secret survived unmasked in network.json")
 
     print("redaction check passed: /api/sync captured, mocked, and secrets masked")
     return 0
