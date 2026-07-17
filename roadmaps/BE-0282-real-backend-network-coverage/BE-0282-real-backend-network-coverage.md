@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-real-backend-network-coverage-ja.md)
+**English** · [日本語](BE-0282-real-backend-network-coverage-ja.md)
 
-# BE-XXXX — Real-backend network capture, mock, and assertion coverage in CI
+# BE-0282 — Real-backend network capture, mock, and assertion coverage in CI
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-real-backend-network-coverage.md) |
+| Proposal | [BE-0282](BE-0282-real-backend-network-coverage.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0282") |
 | Topic | Verification & coverage |
 | Related | [BE-0020](../BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback.md), [BE-0027](../BE-0027-mock-server-external/BE-0027-mock-server-external.md), [BE-0003](../BE-0003-m3-codegen-traces-network-ci/BE-0003-m3-codegen-traces-network-ci.md) |
 <!-- /BE-METADATA -->

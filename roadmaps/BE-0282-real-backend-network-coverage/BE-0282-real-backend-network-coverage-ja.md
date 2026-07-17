@@ -1,14 +1,14 @@
-[English](BE-XXXX-real-backend-network-coverage.md) · **日本語**
+[English](BE-0282-real-backend-network-coverage.md) · **日本語**
 
-# BE-XXXX — ネットワークのキャプチャ・モック・アサーションを CI で実バックエンド検証する
+# BE-0282 — ネットワークのキャプチャ・モック・アサーションを CI で実バックエンド検証する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-real-backend-network-coverage-ja.md) |
+| 提案 | [BE-0282](BE-0282-real-backend-network-coverage-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0282") |
 | トピック | 検証とカバレッジ |
 | 関連 | [BE-0020](../BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback-ja.md), [BE-0027](../BE-0027-mock-server-external/BE-0027-mock-server-external-ja.md), [BE-0003](../BE-0003-m3-codegen-traces-network-ci/BE-0003-m3-codegen-traces-network-ci-ja.md) |
 <!-- /BE-METADATA -->
