@@ -29,7 +29,7 @@
       "appropriate_use_of_minus_sign": false,
       "max_arabic_numeral_digits": false
     },
-    "ja-no-mixed-period": {
+    "preset-ja-technical-writing/ja-no-mixed-period": {
       "periodMark": "。",
       "allowPeriodMarks": ["}", "．"],
       "allowEmojiAtEnd": false,
