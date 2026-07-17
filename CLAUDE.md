@@ -71,17 +71,14 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
 
 - **One topic per branch.** Branch off `main` as `claude/<short-topic>` (or `<user>/<topic>`).
   Keep changes small and focused — small PRs merge fast and conflict rarely.
-- **The gate is the contract.** Never push red. The tracked pre-push hook
-  ([`.githooks/pre-push`](.githooks/pre-push)) runs `make check` for you. `core.hooksPath` is a
-  per-clone local setting that clone/pull never carry over, so `make check` (and `make hooks`)
-  re-wires it on every run — the gate self-heals, no manual `git config` needed. Run `make setup`
-  once on a fresh clone; web sessions get it automatically. The deterministic test suite is the
-  regression net — if you change behavior, a test should change with it.
+- **The gate is the contract.** Never push red. The tracked pre-push hook runs `make check` for
+  you; run `make setup` once on a fresh clone (web sessions get it automatically). The
+  deterministic test suite is the regression net — if you change behavior, a test should change
+  with it. Self-heal mechanism: [`docs/ai-development.md`](docs/ai-development.md#never-push-red).
 - **Git defenses are wired the same way (BE-0043).** `make hooks` also self-heals two local git
-  settings that ease parallel work: a `uv.lock` merge driver that **regenerates the lockfile from
-  `pyproject.toml` on conflict** (via [`scripts/merge-uv-lock.sh`](scripts/merge-uv-lock.sh) +
-  [`.gitattributes`](.gitattributes)) instead of line-merging resolver output, and `rerere` so a
-  once-resolved conflict replays automatically. No manual `git config` needed.
+  settings that ease parallel work: a `uv.lock` merge driver and `rerere`. No manual `git config`
+  needed. Mechanism:
+  [`docs/ai-development.md`](docs/ai-development.md#rebase-early-integrate-small-conflicts).
 - **Rebase, don't drift.** Before pushing, `git fetch origin && git rebase origin/main` so you
   integrate others' merged work early and surface conflicts while they're small. `make preflight`
   (BE-0069) does this and runs the gate, then prints the "definition of done" reminder — the
@@ -89,10 +86,10 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
 - **Stay in your lane.** Touch only the files your task needs. If a change must cut across many
   modules (e.g. a driver-API change), say so up front so others can avoid that surface.
 - **Isolate concurrent sessions with worktrees.** Run each session in its own
-  `git worktree` + branch so two agents never edit the same checkout. `make worktree TOPIC=<topic>`
-  (BE-0069) does it — fetches `origin/main` first (so the worktree never branches off a stale ref),
-  creates `../bajutsu-<topic>` on `claude/<topic>` (override with `PREFIX=<user>`), and runs
-  `make setup` in it. Generated/scratch output (`runs/`, `tmp/`, `.venv/`) is gitignored — keep it that way.
+  `git worktree` + branch so two agents never edit the same checkout: `make worktree TOPIC=<topic>`
+  (BE-0069), or `PREFIX=<user>` for a human branch. Generated/scratch output (`runs/`, `tmp/`,
+  `.venv/`) is gitignored — keep it that way. Recipe:
+  [`docs/ai-development.md`](docs/ai-development.md#isolate-concurrent-sessions-with-worktrees).
 - **Right-size the model and reasoning effort (BE-0103).** Match a session's model/effort to the
   task: heavy work (implementing, refactors, design) runs on a capable model at high effort; light
   chores (index regen, link fixes, mechanical renames) downshift. The in-repo skills carry a default
@@ -168,21 +165,17 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   docs — `docs/ja/` and every roadmap `*-ja.md` — are written in **敬体 (ですます調)**, never 常体,
   under the [`japanese-document-writing`](.claude/skills/japanese-document-writing/) skill (above). Full
   guidance: [`docs/ai-development.md`](docs/ai-development.md).
-- **Roadmap items use BE IDs (strict).** Every item is a directory `roadmaps/BE-NNNN-<slug>/`
+- **Roadmap items use BE IDs (strict).** Every item is one directory `roadmaps/BE-NNNN-<slug>/`
   holding **both** language files `BE-NNNN-<slug>.md` and `BE-NNNN-<slug>-ja.md` (`BE` = *Bajutsu
   Evolution*, `NNNN` a zero-padded monotonic ID). The path is fixed when the ID is allocated and
   **never moves**; `Status` (`Implemented` / `In progress` / `Proposal` / `Proposal (deferred)`)
   decides only the index bucket. Name new items with the `BE-XXXX` placeholder — the number is
-  allocated **on `main` after merge** (BE-0089). Each file uses the **Swift-Evolution format** with a
-  `<!-- BE-METADATA -->` `| Field | Value |` block. **The `-ja.md` file's title (its `# BE-NNNN —
-  <title>` heading) is written in Japanese** — translate it like the rest of the prose, never copy
-  the English heading verbatim. **`Detailed design` enumerates the work MECE**
-  and **`Progress` is a living checklist + PR-linked log** kept current as work proceeds (BE-0100).
-  Never hand-edit the index tables — run `make roadmap-index` (`make test` fails on drift).
-  `tests/test_roadmap_format.py` checks the file shape (BE-0074). **IDs are permanent — never
-  renumber.** Full rule (metadata fields, both-way PR links, author handle, reciprocal
-  `Related`/`Superseded by`): [`roadmaps/README.md`](roadmaps/README.md) ·
-  [`docs/ai-development.md`](docs/ai-development.md).
+  allocated **on `main` after merge** (BE-0089), and **IDs are permanent — never renumber.** Never
+  hand-edit the index tables — run `make roadmap-index` (`make test` fails on drift). Full rule
+  (file format, metadata fields, MECE `Detailed design`, living `Progress` checklist, both-way PR
+  links, author handle, reciprocal `Related`/`Superseded by`):
+  [`roadmaps/README.md`](roadmaps/README.md) ·
+  [`docs/ai-development.md`](docs/ai-development.md#roadmap-items-be-ids-strict).
 - Commit messages: imperative, scoped (`feat(run): …`, `fix(record): …`, `docs: …`).
 - **PR titles and bodies are always in English**, regardless of the session language, so the
   history stays readable for every contributor.
