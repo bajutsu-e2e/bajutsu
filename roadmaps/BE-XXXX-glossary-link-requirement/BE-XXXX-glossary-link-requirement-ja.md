@@ -1,0 +1,131 @@
+[English](BE-XXXX-glossary-link-requirement.md) · **日本語**
+
+# BE-XXXX — Link glossary terms to their definitions on first use
+
+<!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
+| 提案 | [BE-XXXX](BE-XXXX-glossary-link-requirement-ja.md) |
+| 提案者 | [@0x0c](https://github.com/0x0c) |
+| 状態 | **提案** |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トピック | Development infrastructure (contributor workflow) |
+| 関連 | [BE-0213](../BE-0213-glossary-and-docs-structure/BE-0213-glossary-and-docs-structure-ja.md) |
+<!-- /BE-METADATA -->
+
+## はじめに
+
+[BE-0213](../BE-0213-glossary-and-docs-structure/BE-0213-glossary-and-docs-structure-ja.md) は、
+あるルールを一度だけ述べました。本提案は、それを恒常的な規約に格上げします。規約の内容はこうです。
+BE ロードマップ項目や `docs/` 配下のページが [`docs/glossary.md`](../../docs/glossary.md)
+（日本語版は [`docs/ja/glossary.md`](../../docs/ja/glossary.md)）の用語を Bajutsu 固有の意味で
+使うときは、そのページの最初の実質的な言及箇所を用語集の該当項目へのリンクにします。用語の説明を
+その場で書き直すことはしません。この規約を `CLAUDE.md` と `docs/ai-development.md` の
+「文書の文体」節に追加し、両ドキュメントがすでに持つバイリンガル文書の規約や DESIGN.md 整合性の
+規約と並べます。あわせて、用語集の項目を説明していながらまだリンクを貼っていない `docs/` 配下の
+ページを埋め戻します。
+
+## 動機
+
+BE-0213 は用語集そのものを作った際、その詳細設計の中でこう書きました。「既存のページは、用語をその場で
+説明し直すのではなく、初出の箇所を用語集の項目にリンクすべきです」。この一文は、用語集を作った PR
+1回限りの編集判断を述べたものです。以後の投稿者が従うべきルールとしては書かれていませんでした。
+`CLAUDE.md` や `docs/ai-development.md` にはなく、1つの項目の詳細設計の中に置かれていたためです。
+このプロジェクトが実際に運用する規約は、その2つの場所に集まっています。
+
+その結果生じている欠落は、数箇所の見落としではなく、ほぼ全面的なものです。`docs/` 配下のトップレベル
+ページ約15件のうち、`glossary.md` にリンクしているのは `overview.md`・`concepts.md`・`index.md`・
+`README.md` の4件だけです。ある用語クラスタを実質的に説明しているページに限ると、リンクは1件もありません。
+`drivers.md` は driver・backend・actuator・platform を説明しています。`cli.md` は target・app・device と
+CLI の各動詞を説明しています。`scenarios.md` は scenario・step・precondition・expect を説明しています。
+`evidence.md` は evidence と `capturePolicy` を、`recording.md` は Tier 1 と `goal` を、`selectors.md` は
+selector・identifier を説明しています。いずれも、それらの語を定義するページを指していません。
+`architecture.md` や `vision.md`、両方の `getting-started` ページも同様で、`docs/ja/` 側も用語ごとに
+同じ欠落を映しています。
+
+ロードマップ側の欠落はさらに徹底しています。英語・日本語それぞれ277件の BE 項目のうち、用語集を作った
+BE-0213 自身を除いて、どの項目も `glossary.md` を参照していません。driver・backend・actuator・platform、
+target・app・device、`trace`・`triage`、`capturePolicy` のいずれかの用語を使っている他の項目も、
+その定義へのリンクを持たないまま書かれています。ただし1ページだけは、この規約をすでに実践しています。
+[`getting-started/web.md`](../../docs/getting-started/web.md) は語彙の初出で `glossary.md` にリンクして
+おり、本提案が求める書き方そのものです。ルールさえ明文化されていれば従うのは難しくないことを、この
+ページが示しています。
+
+このまま放置すれば、同じ種類のずれが繰り返されます。BE-0213 自身の動機は、ページを横並びで棚卸しした
+ときに見つかった具体的なずれでした。`getting-started.md` はシナリオを「test」と呼びました。
+`scenarios.md` は同じものを「scenario」と呼びました。両者の食い違いを止める用語集は、当時まだなかった
+のです。公開ドキュメントサイト（[BE-0093](../BE-0093-public-docs-site/BE-0093-public-docs-site.md)）は
+すでに公開済みで、ページやロードマップ項目は今後も増え続けます。新しいページが `capturePolicy` や
+driver/backend/actuator/platform のクラスタをその都度自分の言葉で説明し直せば、用語集がすでに定めた
+説明から少しずつずれる機会がそのたびに増えます。投稿者やエージェントがすでに探しに来る執筆ルールの
+置き場所にこの規約を書いておくことが、この欠落を今後閉じる方法です。
+
+## 詳細設計
+
+作業は独立した2つの単位に分かれます。
+
+1. **`CLAUDE.md` と `docs/ai-development.md` への規約追加**（両言語）。`docs/ai-development.md` の
+   「文書の文体」節に、既存のバイリンガル文書の規約や
+   [BE-0113](../BE-0113-design-doc-realignment/BE-0113-design-doc-realignment.md) の DESIGN.md 整合性の
+   規約と並べて記載し、その要約を `CLAUDE.md` の「Conventions」一覧にも反映します（隣接する2つの規約が
+   すでにそうしているのと同じ形です）。文言は次の趣旨とします。「BE ロードマップ項目や `docs/` 配下の
+   ページの文章が `docs/glossary.md` で定義された用語を Bajutsu 固有の意味で使うときは、そのページで最初
+   に実質的に言及する箇所を、用語をその場で説明し直すのではなく、用語集の該当項目
+   （`glossary.md#アンカー` または `docs/ja/glossary.md#アンカー`）へのリンクにする」。あわせて、これが
+   CI のゲートではなくレビュー時の規約であることを明記します。隣接する2つの規約がそうである理由と同じで、
+   「step」「target」「app」のような普通の英単語の使用が Bajutsu 固有の意味を指しているかどうかの判断には
+   人間の判断が必要であり、prime directive 1 が意味的な判断を `run` / CI のゲートから遠ざけているためです。
+2. **上記の棚卸しで特定した `docs/` ページの埋め戻し**（両言語）。`drivers.md`、`cli.md`、`scenarios.md`、
+   `evidence.md`、`recording.md`、`selectors.md`、`architecture.md`、`vision.md`、
+   `getting-started/index.md`、`getting-started/ios.md` と、その `docs/ja/` 対訳版が対象です。各ページが
+   説明している用語の最初の実質的な言及箇所に、`getting-started/web.md` がすでに確立している書き方に
+   ならって、用語集の該当項目へのリンクを追加します。
+
+意図的にスコープ外とするのは、既存のロードマップ項目277件です。ほぼ全項目を英語・日本語の両方で修正
+すると、大量のファイルを変更することになります。そのほとんどは完了済みで `Implemented` になっている
+項目です。文書としての体裁を整えるだけの理由でそこまでの規模の変更を行うのは、得られる効果に見合いま
+せん。単位1の規約は今後作成される項目に適用します。`implement-be` の実行やステータス変更など、他の
+理由ですでに編集対象になっている項目であれば適用するのが自然ですが、用語集リンクを追加するためだけに
+既存項目を編集することはしません。
+
+## 検討した代替案
+
+- **`make check` に組み込んだ lint スクリプトでこのルールを機械的に強制する。** 見送りました。
+  `step`・`target`・`app`・`platform` のように、用語集の語の多くは普通の英単語でもあります。機械的な
+  文字列照合では、Bajutsu 固有の意味で使われていない文章にも次々と誤検知し、人間のレビュアが許容できる
+  以上のノイズを生みます。規約だけでは実際に忘れられがちだとわかった段階で、lint 化はそれ自体を独立した
+  提案としてスコープすればよいと考えます。
+- **既存のロードマップ項目277件を、両言語ともいま一斉に修正する。** 見送りました。得られる効果 —
+  ほとんどが完了済みの過去記録である項目内の相互参照が明確になること — は、それだけの規模の差分を正当化
+  しません。新規項目と、他の理由ですでに編集中の項目には規約を適用し、それ以外はそのままにします。
+- **新しい項目を起こす代わりに、この内容を BE-0213 への追記として扱う。** 見送りました。BE-0213 は
+  `Implemented` であり、5つの作業単位からなる完了済みの進捗チェックリストを持っています。今後のすべての
+  文書に恒常的に適用される規約は、すでにチェックリストが閉じている提案への後付けの追記としてよりも、
+  独立した項目として書くほうが読み手にとって明確です。
+
+## 進捗
+
+> 開発の進行に合わせて常に最新の状態に保ってください。チェックリストは *詳細設計* の MECE な
+> 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
+> ともに記録します。
+
+- [ ] 1. `CLAUDE.md` と `docs/ai-development.md` への恒常的な規約の追加（両言語）
+- [ ] 2. 特定した `docs/` ページ（英語版 + `docs/ja/` 対訳版）に、各ページが説明する用語の初出箇所への
+      用語集リンクを埋め戻す
+
+**ログ**
+
+TBD
+
+## 参考
+
+- [BE-0213](../BE-0213-glossary-and-docs-structure/BE-0213-glossary-and-docs-structure-ja.md) —
+  `docs/glossary.md` を作り、初出箇所をリンクするというルールを最初に述べた項目
+- [`docs/glossary.md`](../../docs/glossary.md) ·
+  [`docs/ja/glossary.md`](../../docs/ja/glossary.md) — 本提案のすべてのリンクが指す先のページ
+- [`docs/ai-development.md`](../../docs/ai-development.md) — バイリンガル文書の規約や DESIGN.md
+  整合性の規約と並べて、本提案の規約を追加する「文書の文体」節
+- [BE-0113](../BE-0113-design-doc-realignment/BE-0113-design-doc-realignment.md) — 本提案の運用
+  区分（CI のゲートではなくレビュー時の規約）が従う DESIGN.md 整合性の規約
+- [`docs/getting-started/web.md`](../../docs/getting-started/web.md) — この規約をすでに実践している
+  唯一のページであり、埋め戻し作業の手本
