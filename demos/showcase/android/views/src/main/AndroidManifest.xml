@@ -13,6 +13,7 @@
         android:allowBackup="true"
         android:label="${appLabel}"
         android:supportsRtl="true"
+        android:networkSecurityConfig="@xml/network_security_config"
         android:theme="@style/Theme.Showcase">
         <!-- singleTask so a deeplink lands in the running instance via onNewIntent — and finishes any
              pushed detail Activity above it, matching iOS's "a deeplink pops to root" (SPEC §4). -->
