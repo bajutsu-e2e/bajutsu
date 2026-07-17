@@ -195,7 +195,7 @@ npx --prefix "$SKILL_DIR/textlint" textlint \
 自動修正できる指摘は `--fix` で直したうえで、残りを推敲で潰す。`--fix` の結果は必ず目で確認し、
 規範に反する書き換えは戻す。
 
-### ルールの変更
+### ルールの変え方
 
 ルールは [`textlint/.textlintrc.json`](textlint/.textlintrc.json) を編集して変える。いまは
 `textlint-rule-preset-ja-technical-writing`（日本語の技術文書向けの定番プリセット）を既定設定のまま
