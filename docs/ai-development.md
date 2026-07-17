@@ -668,6 +668,14 @@ at all.
 | `Proposal` | Proposals — under consideration |
 | `Proposal (deferred)` | Deferred — parked |
 
+Only the last three buckets render as a table on the index page (`roadmaps/README.md` /
+`README-ja.md`); an item that reaches `Implemented` drops off the page instead of moving to a
+table there. Every shipped item stays browsable, grouped by Topic with live progress bars, on the
+[roadmap dashboard](https://bajutsu-e2e.github.io/bajutsu/api/roadmap.html) — a page
+`scripts/build_roadmap_dashboard.py` (BE-0094) generates from the same per-item metadata on every
+docs build, published to GitHub Pages. The index page and the dashboard read the identical source,
+so the two can never disagree; the index just narrows its own view to what's still open.
+
 **The code decides the Status — a hard rule.** An item's `Status` tracks whether its implementation
 exists, not a preference to keep the item reading as a forward-looking proposal. An item authored with
 no code is `Proposal`; the PR that **ships its code** sets `Status` to `Implemented` (or `In progress`
@@ -678,7 +686,8 @@ performs, and it binds humans and agents alike. (The one exception is *authoring
 `ideation`-style proposal that ships no code stays `Proposal`, since there is nothing implemented yet.)
 
 As an item advances, **update its Status** and run `make roadmap-index` to regenerate the index (its row
-moves to the right bucket automatically). The directory never moves (BE-0159): the same
+moves to the right bucket automatically, or drops off the page entirely once the Status is
+`Implemented`). The directory never moves (BE-0159): the same
 `roadmaps/BE-NNNN-<slug>/` path holds the item for its whole life, so a promotion no longer rots any link
 into or out of it — the concrete win over the folder scheme, which broke a link every time an item's
 `Status` changed. **`make lint-roadmap`** (in `make check`) still guards cross-links: it fails if any
