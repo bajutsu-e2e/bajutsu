@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0203") |
-| Implementing PR | [#807](https://github.com/bajutsu-e2e/bajutsu/pull/807), [#915](https://github.com/bajutsu-e2e/bajutsu/pull/915), [#916](https://github.com/bajutsu-e2e/bajutsu/pull/916) |
+| Implementing PR | [#807](https://github.com/bajutsu-e2e/bajutsu/pull/807), [#915](https://github.com/bajutsu-e2e/bajutsu/pull/915), [#916](https://github.com/bajutsu-e2e/bajutsu/pull/916), [#1160](https://github.com/bajutsu-e2e/bajutsu/pull/1160) |
 | Topic | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
 
@@ -19,8 +19,9 @@ Every pull request to this repository is reviewed automatically by **GitHub Copi
 it posts inline comments when a PR opens and re-reviews on each push. This item replaces that
 reviewer with **Claude Code**, running from a GitHub Actions workflow on every PR: auto-triggered
 on open and on each push, posting **inline line-level comments** via the action's native
-inline-comment tool — including GitHub *suggested-change* blocks — plus a short summary via a
-scoped `gh pr comment`, exactly the surface Copilot occupies. The gain over Copilot is that Claude Code
+inline-comment tool — including GitHub *suggested-change* blocks. (It initially also posted a
+top-level summary; that was later dropped — see the Progress log — because a fresh summary on every
+re-run left stale, contradictory overviews on the PR.) The gain over Copilot is that Claude Code
 reviews against **this repository's own contract** — the three [prime
 directives](../../CLAUDE.md#prime-directives-do-not-violate), the docstring standard, the
 bilingual-docs rule, the BE-ID lifecycle — which a generic reviewer cannot know.
@@ -94,7 +95,7 @@ runner.
    | Re-review on each new push | `pull_request` with `types: [synchronize]` |
    | Inline line-level comments | `/code-review --comment` (posts inline PR comments) |
    | Suggested changes (one-click apply) | the review prompt asks for a GitHub ```` ```suggestion ```` block wherever a concrete, mechanical fix fits |
-   | A summary of the review | a top-level review summary comment alongside the inline notes |
+   | A summary of the review | shipped as a top-level summary comment alongside the inline notes, then later dropped (see the Progress log) — a fresh summary on every re-run left stale, contradictory overviews |
    | On-demand re-review | an opt-in `@claude review` mention path (below) *in addition to* the auto-trigger |
 
 4. **On-demand re-review (opt-in, additive).** Beyond the auto-trigger, an `issue_comment` /
@@ -195,7 +196,8 @@ runner.
       comments via the action's native tool against the repo contract, minimal permissions,
       concurrency) (item 1)
 - [x] Enforce the advisory guardrail — not a required check, result decoupled from findings (item 2)
-- [x] Reach Copilot parity — inline comments, suggestion blocks, summary (item 3)
+- [x] Reach Copilot parity — inline comments, suggestion blocks, summary (item 3) — the summary was
+      later dropped (see the log below), leaving inline comments and suggestion blocks
 - [x] Add the opt-in `@claude review` on-demand path (item 4)
 - [x] Commit the repo-flavored review prompt (prime directives, lenses, house conventions) (item 5)
 - [x] Scope the credential via an Environment; document the fork limitation (item 6)
@@ -263,6 +265,14 @@ Log:
   finding name a concrete change, and a Japanese-prose-quality convention tied to the
   `japanese-tech-writing` skill. Implementing PR:
   [#916](https://github.com/bajutsu-e2e/bajutsu/pull/916).
+- Dropped the top-level summary comment: the review now posts inline findings only. Because the job
+  re-runs on every push, a fresh summary each time piled up stale, contradictory overviews on the PR.
+  The workflow prompt and the `.github/claude-review-prompt.md` contract no longer ask for a summary,
+  and `Bash(gh pr comment:*)` is removed from the action's `--allowedTools` so withholding the tool
+  enforces the rule. The same change steers the reviewer to raise every finding in one exhaustive pass
+  rather than dribbling new findings across re-runs (and to leave unchanged pre-existing lines settled
+  by omission), cutting the fix-and-wait round-trips an author pays. Implementing PR:
+  [#1160](https://github.com/bajutsu-e2e/bajutsu/pull/1160).
 
 ## References
 
