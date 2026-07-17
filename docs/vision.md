@@ -4,7 +4,7 @@
 
 > The overall direction Bajutsu is heading, and the one constraint every direction must respect.
 > This page gives the strategic overview across the individual roadmap items — including how far
-> each axis has already gotten, not just what's planned; the granular, prioritized backlog is in
+> each axis has already progressed, not just what is planned; the granular, prioritized backlog is in
 > [roadmap](../roadmaps/README.md), and the rationale behind today's design is in
 > [`DESIGN.md`](../DESIGN.md). Read this to understand how the pieces fit together, then follow the
 > links for each plan.
@@ -74,7 +74,7 @@ remaining phase.
 convention** (`accessibilityIdentifier` on iOS, `resource-id` on Android, `data-testid` on the web —
 [concepts §4](concepts.md#4-stable-selectors-prefer-accessibilityidentifier)). Everything else —
 scenario DSL, selector resolution, machine assertions, the orchestrator, evidence, the reporter —
-never names a platform. Adding one means adding a new triple, not forking the core; this is the
+never names a platform. Adding one means adding a new triple, not forking the core; this pattern is the
 same move the design already made for a second iOS actuator (XCUITest).
 
 **The crux is selector portability.** A scenario is portable across platforms only to the extent
@@ -93,7 +93,7 @@ in the scenario. One wrinkle: a platform's native id syntax may not reproduce th
 **verbatim** — Android's `android:id` (Views) allows neither `.` nor `-`, so `stable.refresh`
 surfaces as `stable_refresh`. Rather than a hidden driver-side rewrite, the scenario keeps the
 difference **explicit** with a **list of id candidates** (`id: [stable.refresh, stable_refresh]`,
-matched as an OR) — this is what lets the showcase's shared scenarios run unchanged on both Android
+matched as an OR) — the explicit list is what lets the showcase's shared scenarios run unchanged on both Android
 UI toolkits (BE-0221; see [scenarios](scenarios.md#cross-platform-ids-a-candidate-list-be-0221)).
 
 | Phase | Scope | Status |
@@ -122,7 +122,7 @@ device-worker pool, so a team runs and reviews from a browser.
   running it yourself, on your own hardware, today.
 - **MCP (Model Context Protocol) server** ([BE-0017](../roadmaps/BE-0017-mcp-server/BE-0017-mcp-server.md))
   is implemented: `run`/`doctor` as MCP tools and run evidence as MCP resources, so agents drive
-  Bajutsu directly. This stays on the Tier-1 side of the boundary — agents author and investigate,
+  Bajutsu directly. The MCP server stays on the Tier-1 side of the boundary — agents author and investigate,
   the gate stays deterministic.
 
 ### 3. Authoring & maintenance — lower the cost of owning tests
@@ -140,7 +140,7 @@ without softening the gate.
   baseline). It fits the directives because it is machine-checked, not AI-judged.
 - **Self-healing triage** ([BE-0021](../roadmaps/BE-0021-ai-triage/BE-0021-ai-triage.md)) is
   implemented: AI reads failure evidence and proposes a **minimal diff**, which a human reviews and
-  applies with `--write`. The guardrail (never auto-soften a committed test) is what keeps this
+  applies with `--write`. The guardrail (never auto-soften a committed test) is what keeps self-healing triage
   inside the directives.
 
 This axis keeps extending — e.g. the ongoing work cataloged under
@@ -153,7 +153,7 @@ place on all three fronts.
 ## What stays fixed across all three
 
 Everything in the table below is **shared, deterministic, and platform-/host-neutral**, and it does
-not fork as Bajutsu grows. This is what makes the three axes independent: they extend the edges,
+not fork as Bajutsu grows. This shared core is what makes the three axes independent: they extend the edges,
 not the core.
 
 | Fixed core | Where |
@@ -177,7 +177,7 @@ Web (Playwright), the MCP server, and visual-regression assertions — the near-
 page once recommended — have all landed, along with both the public and self-hosted topologies of
 the scale axis and the GUI editor / non-AI capture piece of the authoring axis. Reach's open item is
 Flutter ([BE-0008](../roadmaps/BE-0008-flutter-support/BE-0008-flutter-support.md)); the other two
-axes keep extending incrementally rather than around one big remaining piece. For what's actually
+axes keep extending incrementally rather than converging on one big remaining piece. For what is
 next, the [roadmap](../roadmaps/README.md) is the prioritized, living backlog — this page explains
 the rationale and direction, not the sequencing. When a roadmap item ships, it moves to the
 [architecture status table](architecture.md#implementation-status); keep the three in sync.

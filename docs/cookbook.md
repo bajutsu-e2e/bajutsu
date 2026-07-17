@@ -2,7 +2,7 @@
 
 # Scenario cookbook
 
-> Task-oriented recipes: "I want to do X" → a complete, runnable scenario. [scenarios](scenarios.md)
+> Task-oriented recipes: "I want to do X", answered by a complete, runnable scenario. [scenarios](scenarios.md)
 > is the grammar reference (every step kind, wait, and assertion); this page is worked examples.
 > Every recipe below is trimmed from a real file the repo's own CI runs — follow the link under
 > each one to see it in full context, including the parts trimmed here for focus.
@@ -20,7 +20,7 @@ uv run bajutsu run --scenario <path-to-file> --target showcase-swiftui --backend
 
 ## Navigate and assert a value changed
 
-The simplest useful shape: land on a screen, act on one element, assert the result. This is the
+The simplest useful shape: land on a screen, act on one element, assert the result. This scenario is the
 showcase's own guided tour — the same scenario [`demos/tour/demo.sh`](../demos/tour/demo.sh) runs,
 then deliberately breaks (an assertion, then a selector) to show a machine assertion catching the
 first and `triage` diagnosing the second.
@@ -105,13 +105,13 @@ machine-checked.
 `dismissAlerts` is an alert **handler**, never an assertion — it never touches the pass/fail
 verdict, only unblocks a step that would otherwise hang on an alert idb can't see into. On Android
 the same scenario runs with no prompt at all (the target config pre-grants the permission), so the
-guard simply stays idle — one scenario, two platforms, no branching. Full file with the
+guard stays idle — one scenario, two platforms, no branching. Full file with the
 platform-parity notes: [`demos/showcase/scenarios/permission.yaml`](../demos/showcase/scenarios/permission.yaml).
 
 ## Mock a network response
 
 `mocks` intercepts a request in-protocol and answers it deterministically — no real server, no
-flaky network, and `request` assertions confirm the mocked call actually happened.
+flaky network, and `request` assertions confirm the mocked call happened.
 
 ```yaml
 - name: log submit answered by a mock, toast appears and clears
@@ -229,10 +229,10 @@ web --config demos/web/demo.config.yaml` (see the [web track](getting-started/we
 
 Every recipe on this page is a real scenario the repo's own CI runs — nothing here is
 illustration-only. The showcase suite ([`demos/showcase/scenarios/`](../demos/showcase/scenarios/))
-has ~25 more covering gestures, multi-touch, device control, visual regression, relaunch/state
+has about 25 more covering gestures, multi-touch, device control, visual regression, relaunch/state
 persistence, and more; [showcase](showcase.md) catalogs the identifiers each screen exposes. The web
 demo ([`demos/web/scenarios/`](../demos/web/scenarios/)) and the web UI's own dogfooding suite
 ([`demos/serve-ui/scenarios/`](../demos/serve-ui/scenarios/)) are worth a look too — the latter is
-itself a good example of testing a fairly complex single-page app. For the full step/wait/assertion
+itself a good example of testing a complex single-page app. For the full step/wait/assertion
 grammar behind every recipe here, see [scenarios](scenarios.md); for the formal EBNF, see
 [dsl-grammar](dsl-grammar.md).

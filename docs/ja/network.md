@@ -19,9 +19,9 @@
 Simulator のアプリはホストプロセスとして動作し、Mac のループバックを共有します。この性質を使い、
 次の流れで観測します。
 
-1. `run` の開始時に、Bajutsu が `127.0.0.1:<port>` で**コレクタ**（`NetworkCollector`）を起動し、
-   その URL を `BAJUTSU_COLLECTOR` 起動環境変数として、加えて run ごとの共有トークンを
-   `BAJUTSU_COLLECTOR_TOKEN` 起動環境変数としてアプリに注入します。
+1. `run` の開始時に、Bajutsu が `127.0.0.1:<port>` で**コレクタ**（`NetworkCollector`）を起動します。
+   その URL を `BAJUTSU_COLLECTOR`、run ごとの共有トークンを `BAJUTSU_COLLECTOR_TOKEN` として、
+   いずれも起動環境変数でアプリに注入します。
 2. アプリ（**BajutsuKit** をリンクしたもの）は `URLProtocol` を組み込み、各リクエストとレスポンスを
    記録してコレクタへ POST します。記録は **TLS（Transport Layer Security、トランスポート層セキュリティ）
    の後段**で行うため（プロキシも CA / certificate authority も使いません）、idb の下でも動作し、
@@ -85,7 +85,7 @@ mocks:
     respond: { status: 201, body: "{\"token\":\"t\"}" }
 ```
 
-最初に一致したルールが採用されます。`match` はリクエスト照合子のリクエスト側フィールド（`method` /
+最初に一致したルールが採用されます。`match` はリクエスト側の照合フィールド（`method` /
 `url` / `urlMatches` / `path` / `pathMatches` / `bodyMatches`）をそのまま使います。モックは観測と同じ
 経路に乗るため、`--network` が必要です。ルールは `BAJUTSU_MOCKS` 起動環境変数を介してアプリに注入します
 （`BAJUTSU_COLLECTOR` と同様です）。
@@ -93,7 +93,7 @@ mocks:
 ## タイミング
 
 ネットワークは非同期なので、レスポンスが届く前に step が動くことがあります。この隙間は、レスポンスを
-反映する UI への待機で埋めます（たとえば `wait: { until: settled }`、あるいはレスポンスが現す要素への
+反映する UI への待機で埋めます（たとえば `wait: { until: settled }`、あるいはレスポンスによって現れる要素への
 待機）。これを `request` アサーションの**前**に置きます。SDK は通信の完了時に POST するので、UI が更新された
 時点では通信はコレクタに入っています。
 

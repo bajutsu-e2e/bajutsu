@@ -73,7 +73,7 @@ misinterpret rather than merely reject; a purely additive optional field needs n
 | `network` | object | none | `{ filter: { domains: [...] } }` — `filter.domains` scopes which observed requests are interleaved into the report's Steps timeline (by URL host; a parent domain matches subdomains). Unset shows all; the Network tab always lists them all ([reporting](reporting.md#reporthtml)) |
 | `mocks` | list | `[]` | Deterministic network stubs — a matching outgoing request gets a canned response instead of hitting the network ([network mocks](#network-mocks-deterministic-stubs)) |
 | `redact` | object | none | Masking applied before evidence is written ([evidence](evidence.md#masking-redact)) |
-| `dismissAlerts` | bool / object | none (on) | The vision **alert guard** — clears OS prompts idb can't see. On by default; `false` disables it, `{ instruction: "tap Allow" }` keeps it on but taps a named button. CLI `--dismiss-alerts`/`--no-dismiss-alerts` overrides ([below](#dismissalerts-the-system-alert-guard)) |
+| `dismissAlerts` | bool / object | none (on) | The vision **alert guard** — clears OS prompts idb cannot see. On by default; `false` disables it, `{ instruction: "tap Allow" }` keeps it on but taps a named button. CLI `--dismiss-alerts`/`--no-dismiss-alerts` overrides ([below](#dismissalerts-the-system-alert-guard)) |
 | `permissions` | dict | `{}` | Declarative OS permission state — `{ <service>: grant \| revoke }` — applied **before the app launches** ([below](#permissions-pre-launch-permission-state)) |
 
 ```yaml
@@ -112,7 +112,7 @@ the launch sequence ([run-loop](run-loop.md#runner-the-run-pipeline)).
 
 ## dismissAlerts (the system-alert guard)
 
-idb cannot see or tap **SpringBoard-level prompts** (iOS "Save Password?", a permission request, "Allow Paste"). These prompts cover the app and collapse its element tree, silently blocking a step. The **alert guard** is a vision-based fallback (`alerts.py`): when a step is blocked, it takes a screenshot, asks Claude where to tap, clears the prompt, and retries the step once ([details](recording.md#dismissing-system-alerts-automatically)). For a `wait` step (`for`/`settled`/`screenChanged`), the guard also watches the already-polled screen and fires **mid-wait** the moment the tree looks collapsed (debounced, cooldown-limited, capped at 2 attempts per wait) — recovering before the wait's own timeout elapses, rather than waiting for the step to fail first (BE-0269).
+idb cannot see or tap **SpringBoard-level prompts** (iOS "Save Password?", a permission request, "Allow Paste"). These prompts cover the app and collapse its element tree, silently blocking a step. The **alert guard** is a vision-based fallback (`alerts.py`): when a step is blocked, it takes a screenshot, asks Claude where to tap, clears the prompt, and retries the step once ([details](recording.md#dismissing-system-alerts-automatically)). For a `wait` step (`for`/`settled`/`screenChanged`), the guard also watches the already-polled screen and fires **mid-wait** the moment the tree looks collapsed (debounced, cooldown-limited, capped at two attempts per wait) — recovering before the wait's own timeout elapses, rather than waiting for the step to fail first (BE-0269).
 
 It is **on by default** and fires **only when a step (or `expect`) is blocked, or — for a guarded `wait` — the polled screen looks blocked**, so a passing scenario never calls the model. It requires `ANTHROPIC_API_KEY`; without one it no-ops and the run continues unaffected. Use `dismissAlerts` to change the behavior per scenario:
 
@@ -203,14 +203,14 @@ A selector identifies **which element** to act on or assert against. Provide one
 
 ### Cross-platform ids: a candidate list (BE-0221)
 
-A scenario is shared across platforms only to the extent its selectors are by `id`, and which app-side attribute satisfies that `id` lives in the driver. But some platforms can't reproduce the SPEC id **verbatim**: Android's `android:id` (the Views toolkit) allows neither `.` nor `-`, so `stable.refresh` surfaces as `stable_refresh` and `search.results-empty` as `search_results_empty`. To keep **one** scenario running unchanged everywhere, give `id` / `idMatches` a **list of candidates** and the match becomes an OR over them:
+A scenario is shared across platforms only to the extent its selectors are by `id`, and the driver decides which app-side attribute satisfies that `id`. But some platforms can't reproduce the SPEC id **verbatim**: Android's `android:id` (the Views toolkit) allows neither `.` nor `-`, so `stable.refresh` surfaces as `stable_refresh` and `search.results-empty` as `search_results_empty`. To keep **one** scenario running unchanged everywhere, give `id` / `idMatches` a **list of candidates** and the match becomes an OR over them:
 
 ```yaml
 - wait: { for: { id: [stable.refresh, stable_refresh] }, timeout: 10 }
 - count: { sel: { idMatches: [stable.row.*, stable_row_*] }, equals: 5 }
 ```
 
-The dotted form matches on iOS and Android Compose (which reproduce it verbatim); the underscore form matches on Android Views. Only one form is ever on screen for a given app, so this stays deterministic: if **both** candidate forms happened to be present at once, the selector is ambiguous and fails fast — an OR never turns a 2+ match into a silent pick. This keeps the id convention **explicit in the scenario**, rather than a hidden driver-side `.`↔`_` rewrite that could conflate distinct ids. The showcase's shared scenarios use this so `showcase-swiftui` / `showcase-compose` / `showcase-views` all run the same files.
+The dotted form matches on iOS and Android Compose (which reproduce it verbatim); the underscore form matches on Android Views. Only one form is ever on screen for a given app, so the selection stays deterministic: if **both** candidate forms happened to be present at once, the selector is ambiguous and fails fast — an OR never turns a two-or-more match into a silent pick. The candidate list keeps the id convention **explicit in the scenario**, rather than a hidden driver-side `.`↔`_` rewrite that could conflate distinct ids. The showcase's shared scenarios use this so `showcase-swiftui` / `showcase-compose` / `showcase-views` all run the same files.
 
 ## Step grammar (`steps`)
 
@@ -283,7 +283,7 @@ tap cannot switch the value deterministically. `selectOption` resolves the `<sel
 same unique-match core every action uses, then sets the option by its **value** (not its visible
 label) and fires a `change` event, so the page reacts exactly as it would to a user's pick. The
 value matches what a `value` assertion reads back from the `<select>`, so a selection is directly
-assertable. This is a web-only action — a `<select>` has no native counterpart on iOS or Android,
+assertable. `selectOption` is a web-only action — a `<select>` has no native counterpart on iOS or Android,
 so those backends fail the step with a clear "unsupported action" reason rather than doing nothing.
 
 ### `swipe`
