@@ -182,8 +182,10 @@ Markdown ファイルを渡す。
 
 ```bash
 SKILL_DIR=.claude/skills/japanese-tech-writing
-# 依存の取得は初回のみ（textlint 本体とルールを package.json の固定版で入れる）
-npm --prefix "$SKILL_DIR/textlint" install
+# 依存の取得は初回のみ。npm ci は package-lock.json を厳守し、各パッケージの
+# 整合性ハッシュ（sha512）を検証する。--ignore-scripts は install 時スクリプトの
+# 実行を止める（いずれもサプライチェーン対策。理由は textlint/README.md）
+npm --prefix "$SKILL_DIR/textlint" ci --ignore-scripts
 # 検証（対象ファイルは何個でも渡せる）
 npx --prefix "$SKILL_DIR/textlint" textlint \
   --config "$SKILL_DIR/textlint/.textlintrc.json" \
