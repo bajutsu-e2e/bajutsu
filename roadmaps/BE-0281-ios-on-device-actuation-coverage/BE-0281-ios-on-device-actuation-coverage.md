@@ -82,7 +82,7 @@ Proposal altitude. The work is MECE along the units below.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [x] iOS idb interaction job (`back`; `tap`/`type`/`swipe`/`scroll`/`doubleTap`/`longPress` stay on
+- [x] iOS idb interaction job (`back`; `type`/`swipe`/`scroll`/`doubleTap`/`longPress` stay on
       XCUITest — idb collapses the native tab bar into one opaque group and cannot reach any tab, a
       constraint the proposal did not anticipate; verified on-device before landing, see the log).
 - [x] XCUITest actuation scenario (`/type` via `search.yaml`, `/swipe` + `/back` via `notices.yaml`

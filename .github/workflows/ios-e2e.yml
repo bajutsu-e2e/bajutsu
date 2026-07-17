@@ -522,8 +522,8 @@ jobs:
     if: needs.changes.outputs.relevant == 'true'
     runs-on: macos-latest
     # Cap the metered macOS job (10x billing): a hung Simulator/runner would otherwise run to the
-    # 6h default. Build + the gesture and permission scenario runs is ~13min, so 25 catches a real
-    # hang with headroom.
+    # 6h default. Build + the gesture, permission, search, and notices scenario runs (BE-0281 added
+    # the latter two) is ~21min, so 25 catches a real hang with headroom.
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
