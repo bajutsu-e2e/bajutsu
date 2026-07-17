@@ -167,7 +167,7 @@ dash here is part of the fixed title format, not Japanese running text).
 The H1 title line is `# BE-NNNN — <Title>` in both files: the ID, a space, an em dash (`—`,
 U+2014) flanked by spaces, then the title. A brand-new item leaves the number undetermined and is
 authored under the literal placeholder directory the `ideation` skill and
-[`README.md`](../README.md#adding-a-roadmap-item--be-ids-agents-must-follow) describe, which CI
+[`README.md`](../README.md#adding-a-roadmap-item--be-ids) describe, which CI
 ([`scripts/allocate_roadmap_ids.py`](../../scripts/allocate_roadmap_ids.py)) rewrites to the real
 number; this template governs everything else about the file.
 
@@ -257,7 +257,7 @@ Japanese mirror) is updated to describe the fenced block. The tree is green unde
 ## References
 
 - [`CLAUDE.md`](../../CLAUDE.md) — the roadmap-item rules this item makes machine-checkable.
-- [`roadmaps/README.md`](../README.md#adding-a-roadmap-item--be-ids-agents-must-follow) — the
+- [`roadmaps/README.md`](../README.md#adding-a-roadmap-item--be-ids) — the
   prose description of the BE format and ID rules.
 - [`.claude/skills/ideation/SKILL.md`](../../.claude/skills/ideation/SKILL.md) — the skill that
   drafts new items from this shape.
