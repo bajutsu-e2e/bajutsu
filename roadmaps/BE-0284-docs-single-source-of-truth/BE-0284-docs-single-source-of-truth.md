@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0284") |
-| Implementing PR | [#PENDING](https://github.com/bajutsu-e2e/bajutsu/pull/PENDING) |
+| Implementing PR | [#1169](https://github.com/bajutsu-e2e/bajutsu/pull/1169) |
 | Topic | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
 
@@ -143,7 +143,7 @@ DESIGN.md-alignment rules, which prime directive 1 keeps off the deterministic g
 
 ### Log
 
-- Consolidated the norms in one pass (PR #PENDING): flat-layout fix in `CONTRIBUTING.md` /
+- Consolidated the norms in one pass (PR #1169): flat-layout fix in `CONTRIBUTING.md` /
   `AGENTS.md` / `.github/PULL_REQUEST_TEMPLATE.md`; the `make check` enumerations in
   `docs/ai-development.md`, `CONTRIBUTING.md`, `AGENTS.md`, and `docs/contributor-workflow-tutorial.md`
   now point at `CLAUDE.md`; `.github/claude-review-prompt.md`'s house-convention norms link their
