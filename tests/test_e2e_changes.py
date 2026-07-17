@@ -62,7 +62,7 @@ def test_run_path_top_level_modules_are_relevant() -> None:
         # runner/pipeline.py and orchestrator/loop.py unconditional imports
         "bajutsu/evidence/core.py",
         # `bajutsu.evidence.core` executes `evidence/__init__.py` on import, same as
-        # `crawl/__init__.py` / `agents/__init__.py` above.
+        # `crawl/__init__.py` / `agents/__init__.py` below.
         "bajutsu/evidence/__init__.py",
         "bajutsu/evidence/redaction.py",
         "bajutsu/evidence/network.py",

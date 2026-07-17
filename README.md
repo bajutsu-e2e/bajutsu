@@ -252,15 +252,17 @@ bajutsu/
 ├── orchestrator/         # deterministic Tier 2 run loop (act → wait → verify)
 ├── runner/               # config + scenarios -> report via a device pool
 ├── report/               # manifest.json + JUnit + interactive HTML
-├── evidence/              # instant + interval captures (core), network observation, visual-regression
-│                          #   comparison, golden element-tree comparison, secret redaction
+├── evidence/              # instant capture (core), interval capture (intervals) via simctl, network
+│                          #   observation, visual-regression comparison, golden element-tree comparison,
+│                          #   secret redaction
 ├── analysis/              # read-only advisory analysis: coverage, determinism audit, run-stats
 ├── config.py             # team defaults × per-target resolution (iOS bundleId / web baseUrl)
 ├── simctl.py             # simctl command layer (iOS environment)
 ├── preflight.py          # environment runnability gate for doctor / CI
 ├── doctor.py             # convention score
 ├── agents/                # AI/agent periphery: protocols + factory, the Claude authoring/enrich/triage
-│                          #   agents, ai_config/anthropic_client, availability, enrich loop, alert guard
+│                          #   agents + their shared claude_backed base, ai_config/anthropic_client,
+│                          #   availability, enrich loop, alert guard
 ├── record.py             # record loop: explore -> emit a scenario
 ├── crawl/                # autonomous breadth-first crawl -> screen map (core + guide/tabs/report/repro/flows)
 ├── analytics/             # token/cost accounting: usage, the attributed ledger, the usage dashboard
