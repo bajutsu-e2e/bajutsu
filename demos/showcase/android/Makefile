@@ -140,7 +140,7 @@ e2e: compose-build views-build
 # emulator reaches at 10.0.2.2 (its host-loopback alias); the scenario points SHOWCASE_API_URL there.
 # Backgrounded and trap-killed so the port never leaks past the run. Not part of `make check` (needs a
 # booted AVD); android-e2e.yml drives it in its own job. Compose only — one toolkit proves the wire.
-E2E_NET_STUB_PORT ?= 8770
+E2E_NET_STUB_PORT := 8770  # must match SHOWCASE_API_URL in demos/showcase/scenarios/network_android.yaml — not override-safe
 e2e-network: compose-build
 	adb wait-for-device
 	cd $(ROOT) && ( python3 demos/showcase/android/net_stub.py $(E2E_NET_STUB_PORT) & \

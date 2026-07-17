@@ -94,9 +94,14 @@ object BajutsuNet {
             .post(payload.toString().toRequestBody(JSON))
             .apply { collectorToken?.let { header("Authorization", "Bearer $it") } }
             .build()
-        // Fire-and-forget: a report must never block or fail the app's own request.
+        // Fire-and-forget: a report must never block or fail the app's own request, but a transport
+        // failure here (collector unreachable, tunnel torn down mid-request) must still leave a trace —
+        // otherwise a `request` assertion just fails with "exchange not observed" and nothing points at
+        // the real cause.
         reportClient.newCall(post).enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) {}
+            override fun onFailure(call: Call, e: IOException) {
+                Log.w(TAG, "failed to POST exchange to the collector", e)
+            }
             override fun onResponse(call: Call, response: Response) = response.close()
         })
     }
@@ -112,6 +117,10 @@ object BajutsuNet {
         // A one-shot or duplex body can be written only once (by the network call itself), so copying
         // it here would corrupt the request; skip those rather than break the app under test.
         if (body.isOneShot() || body.isDuplex()) return null
+        // Bound like the response body (BODY_PEEK_LIMIT): an unknown or large body is skipped rather
+        // than fully materialized into memory just to report it.
+        val length = body.contentLength()
+        if (length < 0 || length > BODY_PEEK_LIMIT) return null
         return runCatching {
             Buffer().also { body.writeTo(it) }.readUtf8().takeIf { it.isNotEmpty() }
         }.getOrNull()

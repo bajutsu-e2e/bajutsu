@@ -15,8 +15,8 @@ package root, and the two hand-rolled readiness loops in `readiness.py`.
 
 The seam serves two commands, so its Protocol is split by command rather than carried as one flat
 surface: `RunEnvironment` is the `run` lease (`start`, `device_catalog`, `relauncher`, `controller`,
-`teardown`, `hook_collector`, the run predicates, and the two device-identity queries
-`resolve_device` / `captures_video`); `CrawlEnvironment` is the `crawl` lease (`has_devices`,
+`teardown`, `hook_collector`, `bridge_collector`, the run predicates, and the two device-identity
+queries `resolve_device` / `captures_video`); `CrawlEnvironment` is the `crawl` lease (`has_devices`,
 `plan_lanes`, and the `crawl_*` methods). Every concrete platform implements both, and `Environment`
 is their union — the full surface a platform class satisfies and `environment_for` returns. The
 `run` pipeline (`runner/pool.py`, `runner/launch.py`) holds its environment as a `RunEnvironment`
