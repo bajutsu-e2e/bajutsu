@@ -76,28 +76,28 @@ one point ends and the next begins.
   reporting, verifying, evaluating) is really several paragraphs. Split it so each paragraph carries
   exactly one step.
 - **Front-load the topic.** A reader who reads only a paragraph's first sentence should know what
-  the paragraph is about. Don't bury the topic after a run-up.
+  the paragraph is about. Do not bury the topic after a run-up.
 - **Open on the logical relation to what came before.** Start the paragraph with the connective that
   states how it relates to the previous one ("therefore", "in fact", "however", "even this example
   alone shows"), not partway through.
-- **Argue in one direction.** Reach a conclusion, then dispose of objections, then stop — don't
+- **Argue in one direction.** Reach a conclusion, then dispose of objections, then stop — do not
   restate the conclusion afterward. State it once.
-- **Don't let an aside interrupt the climax.** Handle an anticipated objection (an example that
+- **Do not let an aside interrupt the climax.** Handle an anticipated objection (an example that
   might look contrived, a preemptive caveat) at a paragraph or section boundary, not right after the
   moment it would otherwise interrupt.
 - **Name a misreading before correcting it.** When a reader is likely to draw the wrong conclusion,
-  state that wrong conclusion explicitly, then give the real one — don't only assert the correct
+  state that wrong conclusion explicitly, then give the real one — do not only assert the correct
   account and leave the misreading unaddressed.
 - **Justify a denial in the same sentence.** When writing "A, not B", give the reason for ruling out
   B in that sentence rather than leaving it implicit.
-- **Don't preview the payoff.** A number or fact meant to land with impact belongs in the paragraph
+- **Do not preview the payoff.** A number or fact meant to land with impact belongs in the paragraph
   where it lands, not foreshadowed in an earlier one.
 - **Place forward references at a boundary.** "Covered in a later section" belongs at the end of a
   paragraph or section, once the point in hand is settled — not dropped mid-argument, where it
   breaks the reader's flow.
-- **Quote the exact claim you're denying.** When you deny or qualify something, name the specific
-  proposition you're ruling out — a vague denial ("not everything is solved") tells the reader
-  nothing; naming the precise claim that's false does.
+- **Quote the exact claim you are denying.** When you deny or qualify something, name the specific
+  proposition you are ruling out — a vague denial ("not everything is solved") tells the reader
+  nothing; naming the precise claim that is false does.
 
 ## Self-contained prose (both languages)
 
@@ -105,7 +105,7 @@ A document must be understandable on its own. A reader who has not read anything
 repository — no other BE item, no other page under `docs/`, no earlier commit — must still be able
 to follow it start to finish.
 
-- **Never assume prior reading.** Don't write as though the reader already read a linked document, an
+- **Never assume prior reading.** Do not write as though the reader already read a linked document, an
   earlier roadmap item, or an earlier section of the same document. Give each piece the background it
   needs in place.
 - **Spell out an abbreviation or acronym on first use.** Write the full term, with the acronym in
@@ -123,9 +123,10 @@ to follow it start to finish.
 ## Minimize anaphora (both languages)
 
 An anaphor — a pronoun or demonstrative that points back to something named earlier ("it", "this",
-"that", "the former") instead of renaming it — costs the reader a lookup: they must hold the earlier
-antecedent in memory, then resolve the pointer before the sentence means anything. Reserve it for an
-antecedent that is unmistakable and one sentence back; beyond that, repeat the noun.
+"that", "the former") instead of renaming it — costs the reader a lookup: the reader must hold the
+earlier antecedent in memory, then resolve the pointer before the sentence means anything. Reserve it
+for an antecedent that is unmistakable and one sentence back; beyond one sentence back, repeat the
+noun.
 
 - **Repeat the noun once the antecedent is more than one sentence back, or crosses a paragraph, a
   list, or a heading.** By the time the reader reaches a boundary like that, an antecedent introduced
@@ -134,7 +135,7 @@ antecedent that is unmistakable and one sentence back; beyond that, repeat the n
 - **Repeat the noun when more than one candidate antecedent is nearby.** A pronoun that could resolve
   to either of two nouns mentioned in the same stretch of prose forces the reader to guess, then
   double back to confirm the match. Name the one intended.
-- **Don't chain an anaphor onto another anaphor.** A "this" that points to a sentence which itself
+- **Do not chain an anaphor onto another anaphor.** A "this" pointing to a sentence that itself
   used "it" makes the reader resolve two pointers instead of one. Resolve each reference to the
   concrete noun, not to the previous pronoun.
 - **Disambiguate in place instead of sending the reader back.** When an abstract phrase's referent is
@@ -155,7 +156,7 @@ repository follow this piece start to finish, with every acronym expanded and ev
 where it is first used?
 
 Reread a fourth time against anaphora: does every pronoun or demonstrative resolve to a single,
-nearby, unambiguous antecedent, with the noun repeated everywhere it doesn't? Then run the same four
+nearby, unambiguous antecedent, with the noun repeated everywhere it does not? Then run the same four
 rereads under the layer for your language: [`english-document-writing`](../english-document-writing/SKILL.md)
 for English, [`japanese-document-writing`](../japanese-document-writing/SKILL.md) for Japanese.
 
