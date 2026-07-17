@@ -449,7 +449,7 @@ Amazon Bedrock のロールと `BEDROCK_MODEL_ID` 変数）が設定されると
 （[`.github/roadmap-refresh-prompt.md`](../../.github/roadmap-refresh-prompt.md)、
 [`.github/docs-refresh-prompt.md`](../../.github/docs-refresh-prompt.md)）、そして**パス許可リスト**
 （`roadmaps/**`、または `docs/**` と `DESIGN.md`。`README*` / `CLAUDE.md` の契約面は意図的に除外します）
-だけです。要点は、いずれも既存の自動化と揃えてあります。
+だけです。どちらも既存の自動化と揃えてあります。
 
 - **設定が揃うまで休止します。** 各実行は、AI プロバイダ（レビュアーが使うのと同じ `claude-review`
   Environment の資格情報）と自動化 App トークン（`roadmap-id.yml` と同じ）の**両方**が揃わない限り、緑の

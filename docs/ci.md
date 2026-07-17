@@ -1,6 +1,6 @@
 # Continuous integration
 
-This covers two separate topics:
+This document covers two separate topics:
 
 1. **CI for this repo** — guard the tool itself (`.github/workflows/`).
 2. **Running bajutsu in *your* app's CI** — a composite action + recipe you reuse.

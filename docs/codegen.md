@@ -2,7 +2,7 @@
 
 # Code generation (codegen)
 
-> A passing scenario can be used to generate a **native test** in a destination framework's own
+> A passing scenario generates a **native test** in a destination framework's own
 > idiom, letting a team run the same flow in their existing CI (continuous integration) — with no
 > bajutsu runtime and no AI at test time. Three targets are supported: **XCUITest (Swift)** for the
 > iOS backend, **Playwright (TypeScript)** for the web backend, and **UI Automator (Kotlin)** for
@@ -122,8 +122,8 @@ Unsupported constructs (`simctl`-level device control like `setLocation` / `push
 `request` assertions, an unknown trait, and coordinate swipes on the Playwright
 target) emit a **`// TODO` line rather than failing** — device-control steps name the `simctl`
 command a reviewer would run. The output is always reviewable and never breaks the generated result.
-The generated file header also states "do not edit by hand; re-generate." This holds for both
-targets.
+The generated file header also states "do not edit by hand; re-generate." This fallback behavior
+holds for all three targets.
 
 ## Playwright (web) target
 

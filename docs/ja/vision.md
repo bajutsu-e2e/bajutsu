@@ -64,7 +64,7 @@ flowchart LR
 （Playwright）、**Android**（adb）backend はいずれも実装済みで end-to-end に検証されています
 （[architecture → 実装状況](architecture.md#実装状況) 参照）。残るは **Flutter** です。
 
-**抽象はすでにプラットフォーム形状をしています。** プラットフォーム固有なのは 3 つの継ぎ目だけです。
+**抽象はすでにプラットフォームの境界に沿った形をしています。** プラットフォーム固有なのは 3 つの継ぎ目だけです。
 UI を駆動する **actuator**（`drivers/idb.py`、`drivers/adb.py` など）、boot / erase / launch を
 担う **environment manager**（iOS の `simctl.py`、Android の対応物）、そして **安定 id の規約**
 （iOS の `accessibilityIdentifier`、Android の `resource-id`、web の `data-testid` —

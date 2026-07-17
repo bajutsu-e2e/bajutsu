@@ -129,7 +129,7 @@ class EvidenceSink(Protocol):
 |---|---|
 | `readiness` | 起動後の準備完了ゲートを通過したか、どのシグナル（`readyWhen` / `namespace` / `count`、あるいは通過せず `timeout`）で通過したかです。「ゲートがコンテンツより先に返った」のか「コンテンツは描画されたが待機対象の要素が現れなかった」のかを切り分けます。準備完了結果を持たないレーンでは `null` になります。 |
 | `trace` | ポーリングの時系列です。何回ポーリングしたか、ツリーが最初に空でなくなった時刻（`firstNonemptySeconds`、一度も空でなくならなければ `null`）、タイムアウト時点で要素がいくつあったかを記録し、「何も描画されなかった / 一時的に空」「描画されたが待機対象の要素が無い」「コールドブートで描画が遅い」を切り分けます。 |
-| `provenance` | [BE-0049](../../roadmaps/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md) のスタンプ（シナリオハッシュ、ツールバージョン、git リビジョン）です。run から独立して証跡を識別できるようにします。この `scenarioHash` は**このシナリオ単体**のフィンガープリントで、run マニフェストの `scenarioHash` が存在すれば取り込むファイルレベルの `description` を含みません。そのため、スイートやマトリクスの run に限らず、単一シナリオの run でもマニフェストのハッシュと一致しないことがあります。 |
+| `provenance` | [BE-0049](../../roadmaps/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md) のスタンプ（シナリオハッシュ、ツールバージョン、git リビジョン）です。run から独立して証跡を識別できるようにします。この `scenarioHash` は**このシナリオ単体**のフィンガープリントです。run マニフェストの `scenarioHash` は、存在すればファイルレベルの `description` を取り込みますが、こちらはそれを含みません。そのため、スイートやマトリクスの run に限らず、単一シナリオの run でもマニフェストのハッシュと一致しないことがあります。 |
 | `elements` | タイムアウトした瞬間の要素ツリー（マスキング済み）です。 |
 
 これは `Artifact(kind="waitDiagnostic", provider="runner")` として記録します。バックエンドの actuator ではなく、run ループが書き出します。

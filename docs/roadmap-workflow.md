@@ -61,7 +61,7 @@ what is already planned, in progress, or deliberately not adopted.
 2. **Ideate with you.** It offers concrete, bounded ideas and asks the questions that sharpen scope —
    who is it for, which tier, what is the *machine-checkable* outcome — pulling in adjacent items as
    reference points.
-3. **Classify each surviving idea** into one of three landings, and says which it chose:
+3. **Classify each surviving idea** into one of three landings, noting which it chose:
    **overlaps an existing item** (augment that item rather than duplicate it), **novel and scoped**
    (draft a new item), or **still unformed** (a bullet under *Unsorted ideas* in both index READMEs,
    to promote later).

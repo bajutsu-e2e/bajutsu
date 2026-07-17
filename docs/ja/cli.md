@@ -41,15 +41,15 @@ bajutsu run --target <name> [--scenario <file.yaml>] [options]
 | `--alert-instruction` | "" | 既定のボタン指示。シナリオ自身の `dismissAlerts.instruction` の下位、ターゲットの `dismissAlerts` config の上位に位置します |
 | `--log-predicate` | "" | `deviceLog` ストリームを絞る NSPredicate（例 subsystem） |
 | `--log-subsystem` | "" | `appTrace` 用の os_log subsystem（既定はアプリの `bundleId`） |
-| `--network / --no-network` | config › ON | `request` アサーション用にアプリの通信を収集。省略時はターゲットの `network` config、次に ON の順で解決（[BE-0177](../../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)）。iOS はアプリに BajutsuKit が必要。web は Playwright でネイティブに観測し、シナリオの `mocks` をその場でスタブする |
-| `--workers` | 1 | デバイスプール上で並列実行する。iOS では `--udid u1,u2,…` が必要で、そのプール数で上限になる。web では `--workers N` だけで N 本の並列ブラウザコンテキストレーンになる（`--udid` 不要、[BE-0054](../../roadmaps/BE-0054-web-backend-completion/BE-0054-web-backend-completion-ja.md)）。各レーンが自前のネットワークコレクタ、インターバル録画、（iOS では）デバイス制御を持つので、network / 動画 / `setLocation` / `push` はシングルデバイス実行と同じく機能する |
-| `--baselines` | シナリオ隣の `baselines/` | `visual` アサーション用のベースライン画像ディレクトリ。`baseline: home.png` はこの中で解決される |
-| `--schemas` | シナリオ隣の `schemas/` | `responseSchema` アサーション用の JSON Schema ファイルのディレクトリ。`schema: items.json` はこの中で解決される（`schema` extra が必要） |
-| `--headed / --no-headed` | アプリの `headless`（既定はヘッドレス） | web backend: ヘッドレスの代わりにブラウザを画面に表示し（低速再生）、実行の各ステップを確認できる（コマンドを実行しているマシン上でウィンドウが開く）。省略時はアプリの `headless` 設定に従う。iOS は無視する |
-| `--progress / --no-progress` | off | シナリオ / ステップごとの進捗を stderr に流す（`serve` UI が消費する） |
-| `--zip` | off | run の後に `runs/<id>.zip` も書き出す。レポートと証跡をまとめた1つの可搬な成果物で、CI アップロードや共有に使える。**判定の後**に走るので pass/fail に影響しない。[`export`](#export) 参照 |
-| `--runs-dir` | `runs` | run ツリーを書き出すディレクトリ。作業ディレクトリと出力先を分けられる。`serve` は、アクティブな config が別のツリー（Git チェックアウトやアップロードされたバンドル）からバインドされているとき、そのツリーで走らせつつ run を `serve` のストアに残すためにこれを使う（[BE-0073](../../roadmaps/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload-ja.md)） |
-| `--evidence-store` | "" (環境変数 `BAJUTSU_EVIDENCE_STORE` も可) | run の後に、run ツリー全体をこの URI のオブジェクトストレージへアップロードする。`s3://bucket/prefix`（AWS / R2 / MinIO）または `gs://bucket/prefix`（Google Cloud Storage）を指定する。リモートのレイアウトはローカルと同じ構造を prefix 配下に再現するので（`<prefix><runId>/…`）、アップロード先のパスがクラウドのライフサイクルポリシーを選ぶことになる（main ブランチの証跡は保持し、feature ブランチの証跡は短期で失効させる、など）。**判定の後**に走るので、アップロードが失敗しても警告を出すだけで pass/fail には影響しない。`s3` または `gcs` の extra が必要（[BE-0110](../../roadmaps/BE-0110-evidence-store-uri/BE-0110-evidence-store-uri-ja.md)） |
+| `--network / --no-network` | config › ON | `request` アサーション用にアプリの通信を収集。省略時はターゲットの `network` config、次に ON の順で解決（[BE-0177](../../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)）。iOS はアプリに BajutsuKit が必要。web は Playwright でネイティブに観測し、シナリオの `mocks` をその場でスタブします |
+| `--workers` | 1 | デバイスプール上で並列実行します。iOS では `--udid u1,u2,…` が必要で、そのプール数で上限になります。web では `--workers N` だけで N 本の並列ブラウザコンテキストレーンになります（`--udid` 不要、[BE-0054](../../roadmaps/BE-0054-web-backend-completion/BE-0054-web-backend-completion-ja.md)）。各レーンが自前のネットワークコレクタ、インターバル録画、（iOS では）デバイス制御を持つので、network / 動画 / `setLocation` / `push` はシングルデバイス実行と同じく機能します |
+| `--baselines` | シナリオ隣の `baselines/` | `visual` アサーション用のベースライン画像ディレクトリ。`baseline: home.png` はこの中で解決されます |
+| `--schemas` | シナリオ隣の `schemas/` | `responseSchema` アサーション用の JSON Schema ファイルのディレクトリ。`schema: items.json` はこの中で解決されます（`schema` extra が必要です） |
+| `--headed / --no-headed` | アプリの `headless`（既定はヘッドレス） | web backend: ヘッドレスの代わりにブラウザを画面に表示し（低速再生）、実行の各ステップを確認できます（コマンドを実行しているマシン上でウィンドウが開きます）。省略時はアプリの `headless` 設定に従います。iOS は無視します |
+| `--progress / --no-progress` | off | シナリオ / ステップごとの進捗を stderr に流します（`serve` UI が消費します） |
+| `--zip` | off | run の後に `runs/<id>.zip` も書き出します。レポートと証跡をまとめた1つの可搬な成果物で、CI アップロードや共有に使えます。**判定の後**に走るので pass/fail に影響しません。[`export`](#export) 参照 |
+| `--runs-dir` | `runs` | run ツリーを書き出すディレクトリ。作業ディレクトリと出力先を分けられる。`serve` は、アクティブな config が別のツリー（Git チェックアウトやアップロードされたバンドル）からバインドされているとき、そのツリーで走らせつつ run を `serve` のストアに残すためにこれを使います（[BE-0073](../../roadmaps/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload-ja.md)） |
+| `--evidence-store` | "" (環境変数 `BAJUTSU_EVIDENCE_STORE` も可) | run の後に、run ツリー全体をこの URI のオブジェクトストレージへアップロードします。`s3://bucket/prefix`（AWS / R2 / MinIO）または `gs://bucket/prefix`（Google Cloud Storage）を指定します。リモートのレイアウトはローカルと同じ構造を prefix 配下に再現するので（`<prefix><runId>/…`）、アップロード先のパスがクラウドのライフサイクルポリシーを選ぶことになります（main ブランチの証跡は保持し、feature ブランチの証跡は短期で失効させる、など）。**判定の後**に走るので、アップロードが失敗しても警告を出すだけで pass/fail には影響しません。`s3` または `gcs` の extra が必要です（[BE-0110](../../roadmaps/BE-0110-evidence-store-uri/BE-0110-evidence-store-uri-ja.md)） |
 | `--config` | `bajutsu.config.yaml` | config ファイル |
 | `--project` | "" | [`project add`](#project) で登録したプロジェクトを名前で実行します。保存された config ソースを `--config` の spec に戻して実行する、CI や cron のステップが呼ぶヘッドレスなトリガーで、`POST /api/projects/<name>/run` の CLI 版です（[BE-0225](../../roadmaps/BE-0225-config-project-hub/BE-0225-config-project-hub.md)）。`--config` とは同時に指定できません |
 
