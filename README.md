@@ -7,7 +7,7 @@
 # Bajutsu
 
 > Natural-language-driven E2E (end-to-end) testing built on a **backend-agnostic driver**: one
-> scenario format and one deterministic runner, where **a platform is just a backend** behind that
+> scenario format and one deterministic runner, where **a platform is a backend** behind that
 > one interface. Swap the backend and the same scenarios run on a different target — the iOS
 > Simulator (idb/XCUITest), a web (Playwright) backend, and an Android (adb) backend are all
 > landed, with Flutter next.
@@ -20,7 +20,7 @@
 > backend** is validated end-to-end on an emulator ([`android-e2e.yml`](.github/workflows/android-e2e.yml)).
 
 Bajutsu takes test scenarios written in (or recorded from) natural language, drives your app —
-taps / typing / swipes / waits — and verifies the result with **machine-checkable assertions**.
+taps / text / swipes / waits — and verifies the result with **machine-checkable assertions**.
 Everything but one seam is platform-neutral: the scenario format, selector resolution, the
 deterministic runner, the evidence subsystem, and the reporter never name a platform. That one seam
 is the **backend** — the driver that actuates the UI. Point the runner at a different backend and
@@ -54,7 +54,7 @@ under [`docs/ja/`](docs/ja/README.md).
   clean environment.
 - **Stable selectors.** Prefer a non-localized, data-derived id — `accessibilityIdentifier`
   on iOS, `data-testid` on the web — over text; coordinates are the last resort.
-- **Stability ladder.** UI actions are attempted most-stable-first (semantic tap by id →
+- **Stability ladder.** Bajutsu attempts UI actions most-stable-first (semantic tap by id →
   coordinate tap → … ), and the chosen backend is the most stable one available.
 - **A platform is a backend.** The deterministic core names no platform; the one platform-specific
   seam is the **backend** (idb / playwright / …) behind the `Driver` interface. Add or swap a

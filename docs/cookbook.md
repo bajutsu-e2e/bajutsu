@@ -2,7 +2,7 @@
 
 # Scenario cookbook
 
-> Task-oriented recipes: "I want to do X" → a complete, runnable scenario. [scenarios](scenarios.md)
+> Task-oriented recipes: "I want to do X", answered by a complete, runnable scenario. [scenarios](scenarios.md)
 > is the grammar reference (every step kind, wait, and assertion); this page is worked examples.
 > Every recipe below is trimmed from a real file the repo's own CI runs — follow the link under
 > each one to see it in full context, including the parts trimmed here for focus.
@@ -111,7 +111,7 @@ platform-parity notes: [`demos/showcase/scenarios/permission.yaml`](../demos/sho
 ## Mock a network response
 
 `mocks` intercepts a request in-protocol and answers it deterministically — no real server, no
-flaky network, and `request` assertions confirm the mocked call actually happened.
+flaky network, and `request` assertions confirm the mocked call happened.
 
 ```yaml
 - name: log submit answered by a mock, toast appears and clears
@@ -233,6 +233,6 @@ has about 25 more covering gestures, multi-touch, device control, visual regress
 persistence, and more; [showcase](showcase.md) catalogs the identifiers each screen exposes. The web
 demo ([`demos/web/scenarios/`](../demos/web/scenarios/)) and the web UI's own dogfooding suite
 ([`demos/serve-ui/scenarios/`](../demos/serve-ui/scenarios/)) are worth a look too — the latter is
-itself a good example of testing a fairly complex single-page app. For the full step/wait/assertion
+itself a good example of testing a complex single-page app. For the full step/wait/assertion
 grammar behind every recipe here, see [scenarios](scenarios.md); for the formal EBNF, see
 [dsl-grammar](dsl-grammar.md).

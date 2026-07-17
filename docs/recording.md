@@ -75,7 +75,7 @@ executed step the loop compares `crawl.screen_identity(...)` — a transition si
 per-element state (a field's fill, a control's enabled/selected flags) so the batch's own fills
 don't look like a transition — against the identity captured before the batch. The moment it changes
 with steps still pending, the rest is abandoned and the loop re-observes ("仕切り直し"). Only the steps
-that actually executed are appended, so the recorded YAML is the same flat, individually-resolved
+that executed are appended, so the recorded YAML is the same flat, individually-resolved
 step list as before — batching only changes *how many model turns* produce it (one observe → model →
 execute-N instead of N single-action turns), never the artifact's shape. The abort check is a
 deterministic comparison, never an LLM judgment.
@@ -152,8 +152,8 @@ whose controls are all addressable the image is confirmatory, not decisive. So `
 **on demand** rather than every turn: the accessibility elements always travel in the per-turn
 message, and the screenshot only when it actually adds information.
 
-The loop decides per turn from two deterministic triggers over the element tree — no model, so this
-stays Tier 1:
+The loop decides per turn from two deterministic triggers over the element tree — no model, so the
+decision stays Tier 1:
 
 - **New-screen.** The current screen's `crawl.screen_identity(...)` signature differs from the
   previous turn's (or it is the first turn) — a view the agent has not seen yet gets the image. This

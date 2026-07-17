@@ -46,7 +46,7 @@ scenarios:
     steps: [...]
 ```
 
-実行中の `bajutsu` が理解できるものより新しい `schema` をシナリオが宣言している場合、読み込みは「未知のフィールド」という分かりにくいエラーではなく、明快なアップグレード手順のメッセージで失敗します。これは、バージョンをまたいでシナリオツリーを読み込むとき（たとえば、固定した Git の ref から config を取得したとき）に生じる状況です。現在のバージョンは `bajutsu/scenario/models/scenario.py` の `SCHEMA_VERSION` です。版上げは読み込みを壊す変更のときだけ行います。以前必須だったフィールドの意味を取り除く変更や、古い `bajutsu` が単に拒否するのではなく誤解してしまう変更が該当し、純粋に追加的なオプションフィールドは版上げを必要としません。
+実行中の `bajutsu` が理解できるものより新しい `schema` をシナリオが宣言している場合、読み込みは「未知のフィールド」という分かりにくいエラーではなく、明快なアップグレード手順のメッセージで失敗します。これは、バージョンをまたいでシナリオツリーを読み込むとき（たとえば、固定した Git の ref から config を取得したとき）に生じる状況です。現在のバージョンは `bajutsu/scenario/models/scenario.py` の `SCHEMA_VERSION` です。版上げは読み込みを壊す変更のときだけ行います。以前必須だったフィールドの意味を取り除く変更や、古い `bajutsu` が単に拒否するのではなく誤解してしまう変更が該当します。純粋に追加的なオプションフィールドは、版上げを必要としません。
 
 ## トップレベル構造（`Scenario`）
 
@@ -89,7 +89,7 @@ scenarios:
 
 | キー | 型 | 既定 | 説明 | 配線 |
 |---|---|---|---|---|
-| `erase` | bool | `false` | 各テスト前にシミュレータ全体を wipe する（`simctl erase`。アプリ、データ、設定を消去する）。既定はオフ。`reinstall` が全 wipe なしでアプリを fresh に保つので、まっさらなデバイスが必要なテストだけ `true` にする | ✅ |
+| `erase` | bool | `false` | 各テスト前にシミュレータ全体を wipe する（`simctl erase`。アプリ、データ、設定を消去する）。既定はオフ。`reinstall` が全 wipe なしでアプリを新規状態に保つので、まっさらなデバイスが必要なテストだけ `true` にする | ✅ |
 | `reinstall` | `clean` \| `overwrite` | `clean` | config が `appPath` を指定したとき、各 run の前にアプリをどう再インストールするか。`clean` は uninstall してから install する（アプリとデータを fresh にする）。`overwrite` は既存アプリに上書き install する（データコンテナは保持する） | ✅ |
 | `launchArgs` | list[str] | `[]` | 起動引数（config の `launchArgs` に追記する） | ✅ |
 | `launchEnv` | dict | `{}` | 起動 env（`SIMCTL_CHILD_*` で注入する。config の `launchEnv` にマージする） | ✅ |
@@ -179,7 +179,7 @@ CLI の `--dismiss-alerts` / `--no-dismiss-alerts` フラグは**全シナリオ
 - count: { sel: { idMatches: [stable.row.*, stable_row_*] }, equals: 5 }
 ```
 
-ドット形は iOS と Android Compose（どちらもそのまま再現します）に、アンダースコア形は Android Views に一致します。あるアプリの画面に現れる形は常に一方だけなので、決定論的なままです。仮に両方の形が同時に画面にあれば、そのセレクタは曖昧として即座に失敗します。OR が 2 件以上の一致を暗黙に 1 つへ絞ることはありません。これにより id 規約はシナリオに**明示的に**残り、別々の id を取り違えかねないドライバ側の暗黙の `.`↔`_` 書き換えに頼りません。showcase の共有シナリオはこれを使い、`showcase-swiftui` / `showcase-compose` / `showcase-views` が同じファイルで走ります。
+ドット形は iOS と Android Compose（どちらもそのまま再現します）に、アンダースコア形は Android Views に一致します。あるアプリの画面に現れる形は常に一方だけなので、決定的なままです。仮に両方の形が同時に画面にあれば、そのセレクタは曖昧として即座に失敗します。OR が 2 件以上の一致を暗黙に 1 つへ絞ることはありません。これにより id 規約はシナリオに**明示的に**残り、別々の id を取り違えかねないドライバ側の暗黙の `.`↔`_` 書き換えに頼りません。showcase の共有シナリオはこれを使い、`showcase-swiftui` / `showcase-compose` / `showcase-views` が同じファイルで走ります。
 
 ## ステップ文法（`steps`）
 
@@ -339,7 +339,7 @@ CLI の `--dismiss-alerts` / `--no-dismiss-alerts` フラグは**全シナリオ
 - type: { text: "${vars.code}", into: { id: auth.otp } }
 ```
 
-`email` はメールで届く 2FA / 検証コードを待ちます。汎用 HTTP メールボックス（`targets.<name>.mailbox` で設定。[configuration](configuration.md#mailbox-emailステップ) 参照）をポーリングし、**ステップ開始後に届いた**メッセージのうち `match` を満たすものが現れるまで待って、その本文から `bodyMatches` の正規表現（最初のキャプチャグループ、無ければマッチ全体）で値を `${vars.<var>}` に取り出します。待機は **`timeout` 必須の条件待機**です（固定 sleep なし）。タイムアウト、本文に正規表現が当たらない一致メッセージ、到達不能 / 2xx 以外のメールボックスは、いずれもきれいなステップ失敗で、黙って誤った値を返すことはありません。対象はステップ開始より新しいメールだけ（メッセージ id で判定するので、以前の run の古いコードには一致しません）で、新着の一致が複数あれば最新を採ります。決定的で LLM 非依存、エンドポイントと認証情報は config 参照の `${secrets.*}` に置くのでシナリオはアプリ非依存のままです（[BE-0046](../../roadmaps/BE-0046-otp-email-steps/BE-0046-otp-email-steps-ja.md)）。
+`email` はメールで届く 2FA / 検証コードを待ちます。汎用 HTTP メールボックス（`targets.<name>.mailbox` で設定。[configuration](configuration.md#mailbox-emailステップ) 参照）をポーリングし、**ステップ開始後に届いた**メッセージのうち `match` を満たすものが現れるまで待って、その本文から `bodyMatches` の正規表現（最初のキャプチャグループ、無ければマッチ全体）で値を `${vars.<var>}` に取り出します。待機は **`timeout` 必須の条件待機**です（固定 sleep なし）。タイムアウト、本文に正規表現が当たらない一致メッセージ、到達不能 / 2xx 以外のメールボックスは、いずれもクリーンなステップ失敗で、黙って誤った値を返すことはありません。対象はステップ開始より新しいメールだけ（メッセージ id で判定するので、以前の run の古いコードには一致しません）で、新着の一致が複数あれば最新を採ります。決定的で LLM 非依存、エンドポイントと認証情報は config 参照の `${secrets.*}` に置くのでシナリオはアプリ非依存のままです（[BE-0046](../../roadmaps/BE-0046-otp-email-steps/BE-0046-otp-email-steps-ja.md)）。
 
 ### デバイス / システム制御（iOS）
 

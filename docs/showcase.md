@@ -45,7 +45,7 @@ make -C demos/showcase ui-test             # the codegen path: scenario → XCUI
 ```
 
 `bajutsu run` / `serve` also build the app on demand via each target's `build` command, so a manual
-build is rarely needed first.
+build is rarely needed.
 
 ## Launch-environment hooks
 

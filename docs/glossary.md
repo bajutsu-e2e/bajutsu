@@ -50,7 +50,7 @@ Assertions also appear inline on a step (`assert:`) and as a wait's `until` cond
 of fields (`id`, `idMatches`, `label`, `labelMatches`, `traits`, `value`, `within`, `index`). An
 **identifier** (the element's stable `id`) is the primary selector field and the one to prefer.
 So the selector is the whole query object; the identifier is one field within it. Resolution is
-deterministic — 0 matches or 2+ matches fail rather than guess. See
+deterministic — zero matches or two-or-more matches fail rather than guess. See
 [selectors](selectors.md); defined by `Selector` in `bajutsu/scenario/models/selector.py`.
 
 **component** — A reusable, parameterized sequence of steps, invoked from a step with `use:` and

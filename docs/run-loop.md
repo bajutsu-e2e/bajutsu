@@ -28,7 +28,7 @@ def run_scenario(driver, scenario, clock=None, sink=None, on_blocked=None) -> Ru
   ([the alert guard](recording.md#dismissing-system-alerts-automatically)). For a `wait` step
   (`for`/`settled`/`screenChanged`), the same handler is also armed **mid-wait** (BE-0269): it fires
   against the already-polled screen as soon as the tree looks collapsed — debounced, cooldown-limited,
-  capped at 2 attempts per wait — so a blocked wait can recover before its own timeout elapses,
+  capped at two attempts per wait — so a blocked wait can recover before its own timeout elapses,
   independent of the end-of-step retry.
 
 ### The flow of one step

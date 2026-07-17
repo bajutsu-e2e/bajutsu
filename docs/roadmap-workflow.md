@@ -90,14 +90,14 @@ deterministic gate (`make check`) is the judge — never an LLM.
    this PR flips it to `Implemented` — so the skill says so up front. An already-`Implemented` or a
    `Proposal (deferred)` item makes it stop and confirm what you actually want.
 2. **Ground in the spec and the code.** It reads the Detailed design and *Alternatives considered*
-   (the latter records paths already rejected, often for directive reasons — don't re-propose them),
+   (the latter records paths already rejected, often for directive reasons — do not re-propose them),
    opens every file the proposal links, checks [implementation status](architecture.md#implementation-status),
    and verifies any prerequisite BE item is not itself still a proposal.
 3. **Set up a focused branch** off the latest `origin/main` (`claude/be-NNNN-<slug>`), staying in
    its lane — only the files this item needs.
 4. **Plan, then confirm before writing code.** A whole roadmap item is large and hard to reverse, so
    it gets your go-ahead on a concrete plan first: the files it will touch, the *machine-checkable*
-   outcome that proves it works (and where AI is and isn't allowed to sit), the tests, the docs that
+   outcome that proves it works (and where AI is and is not allowed to sit), the tests, the docs that
    must move in both languages, and any tension with the prime directives.
 5. **Implement** to the design, matching the codebase grain — strict `mypy`, configured `ruff`,
    condition waits not `sleep`, new knobs in `targets.<name>` config, tests as the regression net,

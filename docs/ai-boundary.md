@@ -23,7 +23,7 @@ sign-in), so "needs an API key" is the wrong unit; "uses Claude" is the honest o
 correct as providers are added.
 
 Everything on the **Claude-free** side runs with **zero configuration** — no credential, no `.env`,
-no login, no AI runtime of any kind. Clone the repo and it works immediately.
+no login, no AI runtime. Clone the repo and it works immediately.
 
 ## The split
 
@@ -86,7 +86,7 @@ coverage.
 
 ## Reaching Claude, when you want it
 
-Any one of these satisfies the "uses Claude" paths (details in [self-hosting](self-hosting.md) and
+Any one of these mechanisms satisfies the "uses Claude" paths (details in [self-hosting](self-hosting.md) and
 [recording](recording.md)):
 
 - **Anthropic API** — set `ANTHROPIC_API_KEY` (or the env var named by `ai.keyEnv`).

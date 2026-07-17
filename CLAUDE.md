@@ -10,7 +10,7 @@
 driver: a **platform is a backend** behind one interface, so the deterministic core is unchanged
 across targets — the **iOS Simulator** (idb/XCUITest), a **web (Playwright)** backend, and an
 **Android (adb)** backend are all landed; Flutter is planned next.
-A scenario (YAML) is the shared hub: AI helps *author* and *investigate*, a deterministic
+A scenario (YAML) is the shared hub: AI helps *author* and *investigate*; a deterministic
 runner decides pass/fail. Python logic core lives in [`bajutsu/`](bajutsu/); the Swift
 test-support package is [`BajutsuKit/`](BajutsuKit/); runnable examples are in [`demos/`](demos/).
 
@@ -66,7 +66,7 @@ gate: `make -C demos/showcase run-swiftui` (requires `make deps` first). Don't b
 
 ## Working in parallel without breaking each other
 
-Several people and agents work this repo at once. The rules below keep sessions from
+Several people and agents work in this repo at once. The rules below keep sessions from
 colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/ai-development.md).
 
 - **One topic per branch.** Branch off `main` as `claude/<short-topic>` (or `<user>/<topic>`).
@@ -191,4 +191,4 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   [`docs/ai-development.md`](docs/ai-development.md#pull-requests-title-and-body).
 - **Always link a PR and its BE item, both ways.** The PR carries the `[BE-NNNN]` prefix and
   references the item; the item records every delivering PR under its `Implementing PR` row (`実装
-  PR`, both languages) — including `In progress` items, updated in the same change the PR lands.
+  PR`, both languages) — including `In progress` items — and the row is updated in the same change that lands the PR.

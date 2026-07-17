@@ -10,8 +10,8 @@ AI エージェントの双方が従う詳しい作業協定は [`CLAUDE.md`](CL
 はじめての方は、Bajutsu が何かを知るために [`README.ja.md`](README.ja.md) を、Bajutsu を *動かす*
 入門として [getting-started チュートリアル](docs/ja/getting-started/index.md) をご覧ください。最初の変更に
 取りかかる準備ができたら、[コントリビューターワークフローチュートリアル](docs/ja/contributor-workflow-tutorial.md)
-が、一つのアイデアを `/ideation` からマージ済みの提案へ、さらに `/implement-be` からマージ済みの PR へと
-辿ります。下のリファレンスに進む前に、そこから始めてください。
+は、一つのアイデアが `/ideation` でマージ済みの提案になり、`/implement-be` でマージ済みの PR になるまでを
+案内します。下のリファレンスに進む前に、そこから始めてください。
 
 ## 開発環境のセットアップ
 
@@ -72,7 +72,7 @@ make check   # lock-check ＋ format-check ＋ lint ＋ lint-sh ＋ lint-actions
   するだけでは足りません。各返信では、対応したこと*と*その根拠を示します。根拠とは、解消にあたる
   具体的な変更（コミットやファイル・行を挙げます）、あるいは変更しない場合はその指摘が当てはまらない
   具体的な理由のことです。
-  「対応しました」や 👍 だけでは足りません。これは人間にも AI にも等しく期待される規範です。詳しくは
+  「対応しました」や 👍 だけでは足りません。詳しくは
   [`docs/ja/ai-development.md`](docs/ja/ai-development.md) を参照してください。
 - このリポジトリは複数のセッションが並行して作業します。worktree、`uv.lock` のマージドライバ、
   その他の並行作業モデルについては [`docs/ai-development.md`](docs/ai-development.md) を参照して

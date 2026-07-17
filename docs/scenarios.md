@@ -73,7 +73,7 @@ misinterpret rather than merely reject; a purely additive optional field needs n
 | `network` | object | none | `{ filter: { domains: [...] } }` — `filter.domains` scopes which observed requests are interleaved into the report's Steps timeline (by URL host; a parent domain matches subdomains). Unset shows all; the Network tab always lists them all ([reporting](reporting.md#reporthtml)) |
 | `mocks` | list | `[]` | Deterministic network stubs — a matching outgoing request gets a canned response instead of hitting the network ([network mocks](#network-mocks-deterministic-stubs)) |
 | `redact` | object | none | Masking applied before evidence is written ([evidence](evidence.md#masking-redact)) |
-| `dismissAlerts` | bool / object | none (on) | The vision **alert guard** — clears OS prompts idb can't see. On by default; `false` disables it, `{ instruction: "tap Allow" }` keeps it on but taps a named button. CLI `--dismiss-alerts`/`--no-dismiss-alerts` overrides ([below](#dismissalerts-the-system-alert-guard)) |
+| `dismissAlerts` | bool / object | none (on) | The vision **alert guard** — clears OS prompts idb cannot see. On by default; `false` disables it, `{ instruction: "tap Allow" }` keeps it on but taps a named button. CLI `--dismiss-alerts`/`--no-dismiss-alerts` overrides ([below](#dismissalerts-the-system-alert-guard)) |
 | `permissions` | dict | `{}` | Declarative OS permission state — `{ <service>: grant \| revoke }` — applied **before the app launches** ([below](#permissions-pre-launch-permission-state)) |
 
 ```yaml
@@ -210,7 +210,7 @@ A scenario is shared across platforms only to the extent its selectors are by `i
 - count: { sel: { idMatches: [stable.row.*, stable_row_*] }, equals: 5 }
 ```
 
-The dotted form matches on iOS and Android Compose (which reproduce it verbatim); the underscore form matches on Android Views. Only one form is ever on screen for a given app, so the selection stays deterministic: if **both** candidate forms happened to be present at once, the selector is ambiguous and fails fast — an OR never turns a 2+ match into a silent pick. This keeps the id convention **explicit in the scenario**, rather than a hidden driver-side `.`↔`_` rewrite that could conflate distinct ids. The showcase's shared scenarios use this so `showcase-swiftui` / `showcase-compose` / `showcase-views` all run the same files.
+The dotted form matches on iOS and Android Compose (which reproduce it verbatim); the underscore form matches on Android Views. Only one form is ever on screen for a given app, so the selection stays deterministic: if **both** candidate forms happened to be present at once, the selector is ambiguous and fails fast — an OR never turns a two-or-more match into a silent pick. The candidate list keeps the id convention **explicit in the scenario**, rather than a hidden driver-side `.`↔`_` rewrite that could conflate distinct ids. The showcase's shared scenarios use this so `showcase-swiftui` / `showcase-compose` / `showcase-views` all run the same files.
 
 ## Step grammar (`steps`)
 
@@ -283,7 +283,7 @@ tap cannot switch the value deterministically. `selectOption` resolves the `<sel
 same unique-match core every action uses, then sets the option by its **value** (not its visible
 label) and fires a `change` event, so the page reacts exactly as it would to a user's pick. The
 value matches what a `value` assertion reads back from the `<select>`, so a selection is directly
-assertable. This is a web-only action — a `<select>` has no native counterpart on iOS or Android,
+assertable. `selectOption` is a web-only action — a `<select>` has no native counterpart on iOS or Android,
 so those backends fail the step with a clear "unsupported action" reason rather than doing nothing.
 
 ### `swipe`
