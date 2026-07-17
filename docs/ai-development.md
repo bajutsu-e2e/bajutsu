@@ -708,7 +708,14 @@ apply equally when reporting on or summarizing work.
   a reader who has not read anything else in the repository must be able to follow the document start
   to finish, with every abbreviation spelled out and every term defined at first use — e.g. role-based
   access control (RBAC), then the acronym alone. This applies everywhere a term appears, including
-  roadmap items, not only `docs/`.
+  roadmap items, not only `docs/`. It governs domain content — a term, a step, background the reader
+  needs to follow this document — which is a different concern from the cross-cutting process norm
+  the next bullet covers.
+- **Avoid anaphora that forces the reader to backtrack.** Follow the `document-writing` skill's
+  [anaphora norm](../.claude/skills/document-writing/SKILL.md#minimize-anaphora-both-languages):
+  repeat the noun instead of reusing a pronoun or demonstrative once the antecedent is more than one
+  sentence back, crosses a paragraph, a list, or a heading, or could plausibly resolve to more than
+  one nearby candidate.
 - **Don't restate a cross-cutting norm — link it (BE-0284).** When a rule spans several documents
   (the gate's step list, the roadmap BE-ID lifecycle, the PR title-and-body shape, this
   documentation style), state it in full in **one** canonical home and point every other mention at

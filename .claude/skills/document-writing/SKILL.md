@@ -5,10 +5,11 @@ description: >-
   The authoritative prose norm for Bajutsu's writing — the language-agnostic writing technique both
   languages share (top-down drafting, stating the contribution up front, sentence stress,
   subject–verb proximity, active voice, cutting filler, paragraph-level argument structure —
-  paragraph writing — and self-contained prose that never assumes prior reading). Use it whenever you
-  write or revise a BE roadmap item (`*.md` / `*-ja.md`) or a prose document under `docs/`, in either
-  language. It is the umbrella above two language layers: apply `english-document-writing` with it for
-  English prose, and `japanese-document-writing` for Japanese prose.
+  paragraph writing — self-contained prose that never assumes prior reading, and minimizing anaphora
+  that forces the reader to backtrack). Use it whenever you write or revise a BE roadmap item (`*.md`
+  / `*-ja.md`) or a prose document under `docs/`, in either language. It is the umbrella above two
+  language layers: apply `english-document-writing` with it for English prose, and
+  `japanese-document-writing` for Japanese prose.
 ---
 
 <!--
@@ -94,6 +95,9 @@ one point ends and the next begins.
 - **Place forward references at a boundary.** "Covered in a later section" belongs at the end of a
   paragraph or section, once the point in hand is settled — not dropped mid-argument, where it
   breaks the reader's flow.
+- **Quote the exact claim you're denying.** When you deny or qualify something, name the specific
+  proposition you're ruling out — a vague denial ("not everything is solved") tells the reader
+  nothing; naming the precise claim that's false does.
 
 ## Self-contained prose (both languages)
 
@@ -108,15 +112,34 @@ to follow it start to finish.
   parentheses right after — "role-based access control (RBAC)" — then the acronym alone for the rest
   of the piece. This holds everywhere a term appears, in a roadmap item as much as in `docs/`.
   Re-expand it if a long document's later section could plausibly be read on its own.
-- **Define a term where you introduce it, even when a fuller definition exists elsewhere.** A link to
-  that fuller definition is a supplement for a reader who wants depth, not a substitute for the
-  context this document needs at the point of first use.
-- **A cross-reference sends the reader further; it never carries the sentence's own meaning.** Link
-  for elaboration, for the canonical wording of a cross-cutting rule, or for the record — never as
-  the only place a fact the current sentence depends on is stated.
+- **Define a term where you introduce it, and let a cross-reference only send the reader further.**
+  A link is a supplement for a reader who wants depth — for elaboration, the canonical wording of a
+  cross-cutting rule, or the record — never a substitute for the context this document needs at
+  first use, and never the only place a fact the current sentence depends on is stated.
 - **No omissions.** Do not skip a step, a definition, or a piece of context because it "should be
   obvious" or "is covered elsewhere". If a reader would have to guess or go looking, the document is
   not yet self-contained.
+
+## Minimize anaphora (both languages)
+
+An anaphor — a pronoun or demonstrative that points back to something named earlier ("it", "this",
+"that", "the former") instead of renaming it — costs the reader a lookup: they must hold the earlier
+antecedent in memory, then resolve the pointer before the sentence means anything. Reserve it for an
+antecedent that is unmistakable and one sentence back; beyond that, repeat the noun.
+
+- **Repeat the noun once the antecedent is more than one sentence back, or crosses a paragraph, a
+  list, or a heading.** By the time the reader reaches a boundary like that, an antecedent introduced
+  before it is no longer active in working memory, so pointing back to it forces a return trip. Name
+  the thing again instead.
+- **Repeat the noun when more than one candidate antecedent is nearby.** A pronoun that could resolve
+  to either of two nouns mentioned in the same stretch of prose forces the reader to guess, then
+  double back to confirm the match. Name the one intended.
+- **Don't chain an anaphor onto another anaphor.** A "this" that points to a sentence which itself
+  used "it" makes the reader resolve two pointers instead of one. Resolve each reference to the
+  concrete noun, not to the previous pronoun.
+- **Disambiguate in place instead of sending the reader back.** When an abstract phrase's referent is
+  not obvious from the immediate context, name it with a parenthetical aside at the point of use
+  rather than leaving the reader to recover it from an earlier passage.
 
 ## Verify your work
 
@@ -129,9 +152,12 @@ its first sentence, and does the argument move in one direction without restatin
 
 Reread a third time against self-containment: could a reader who has not read anything else in the
 repository follow this piece start to finish, with every acronym expanded and every term defined
-where it is first used? Then run the same three rereads under the layer for your language:
-[`english-document-writing`](../english-document-writing/SKILL.md) for English,
-[`japanese-document-writing`](../japanese-document-writing/SKILL.md) for Japanese.
+where it is first used?
+
+Reread a fourth time against anaphora: does every pronoun or demonstrative resolve to a single,
+nearby, unambiguous antecedent, with the noun repeated everywhere it doesn't? Then run the same four
+rereads under the layer for your language: [`english-document-writing`](../english-document-writing/SKILL.md)
+for English, [`japanese-document-writing`](../japanese-document-writing/SKILL.md) for Japanese.
 
 This reread is a human-judgment pass. It does not replace the mechanical textlint check below —
 run both.
