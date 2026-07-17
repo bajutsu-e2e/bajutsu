@@ -1,6 +1,6 @@
 [English](BE-XXXX-ios-on-device-actuation-coverage.md) · **日本語**
 
-# BE-XXXX — 画面を読むだけの iOS CI に実機で操作するテストを加える
+# BE-XXXX — iOS CI に実機で操作するテストを加える
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
@@ -15,7 +15,7 @@
 
 ## はじめに
 
-iOS E2E レーンの idb シナリオ（smoke、golden、visual）は画面を読むだけです。`wait` と `expect` を使い、
+iOS E2E レーンの idb シナリオ（smoke、golden、visual）は画面の表示が正しいかを検査するだけです。`wait` と `expect` を使い、
 `tap` / `type` / `swipe` / `back` やジェスチャのステップを含みません。idb が CI で唯一実際にアクチュエート
 する操作は、conformance ジョブ経由の `tap` です。それ以外のアクチュエータ（`type_text`、`swipe`、
 `scroll`、`back`、`long_press`、`double_tap`、`tap_point`）とデバイスコントロールの一群は、どの iOS レーンでも
