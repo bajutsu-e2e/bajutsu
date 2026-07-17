@@ -303,9 +303,9 @@ bajutsu record --target <name> --goal "<自然言語ゴール>" [--out <file.yam
 | `--backend` | config | actuator 順 |
 | `--erase / --no-erase` | `--erase` | 起動前に erase（アプリはインストール済みである必要） |
 | `--dismiss-alerts` | off | オーサリング中のプロンプトを片付ける（要 API キー） |
-| `--headed / --no-headed` | アプリの `headless` | web backend: ヘッドレスではなく目に見える（低速再生の）ブラウザでオーサリングする。省略時はアプリの `headless` 設定に従う |
+| `--headed / --no-headed` | アプリの `headless` | web backend: ヘッドレスではなく目に見える（低速再生の）ブラウザでオーサリングします。省略時はアプリの `headless` 設定に従います |
 | `--alert-instruction` | "" | 同上の押下指示 |
-| `--language` | config の `ai.language`（`auto`） | 著すプローズ（`from:` 由来、推論）の AI 出力言語。`ja` / `en` / `auto` から選び `ai.language` を上書きする。`auto` はゴールに追従する（[BE-0188](../../roadmaps/BE-0188-configurable-ai-output-language/BE-0188-configurable-ai-output-language-ja.md)） |
+| `--language` | config の `ai.language`（`auto`） | 著すプローズ（`from:` 由来、推論）の AI 出力言語。`ja` / `en` / `auto` から選び `ai.language` を上書きします。`auto` はゴールに追従します（[BE-0188](../../roadmaps/BE-0188-configurable-ai-output-language/BE-0188-configurable-ai-output-language-ja.md)） |
 | `--config` | `bajutsu.config.yaml` | config |
 
 - 内部で `launch_driver` → `record_loop(driver, goal, ClaudeAgent(), ...)` → `dump_scenarios` で書き出します。

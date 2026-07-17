@@ -2,7 +2,7 @@
 
 # Reporting (manifest.json / JUnit / CTRF / HTML)
 
-> One run executes one or more scenarios (`list[RunResult]`). Their results are written in four
+> One run executes one or more scenarios (`list[RunResult]`). Bajutsu writes their results in four
 > formats. `manifest.json` is the **single source of truth** for the report and for CI (continuous integration).
 >
 > Implementation: `bajutsu/report/` (a package, split by stage: `format` → `manifest` / `richtext` → `rows` / `panels` → `html`).
@@ -87,7 +87,7 @@ verbatim.
 
 ## junit.xml
 
-For CI integration. **1 scenario = 1 `<testcase>`.** A failing scenario gets a `<failure>`, whose
+For CI integration. **one scenario = one `<testcase>`.** A failing scenario gets a `<failure>`, whose
 `text` lists each step / expect's ok/FAIL and reason. On a `--browsers` matrix run the engine is
 keyed into the case (`classname="bajutsu.<engine>"`), so CI sees `chromium.login` and `webkit.login`
 as distinct cases (BE-0076); a single-engine run keeps `classname="bajutsu"`.
@@ -174,7 +174,7 @@ A self-contained HTML for humans (inline CSS, no external assets). The header sh
 overall PASS/FAIL, the **scenario file name** under the run id (`source_name`), and the **file-level
 `description`** when present. Each scenario row's summary shows the **scenario name** and, when set,
 the **scenario-level `description`** beside it, so a run surfaces scenario name + file name +
-descriptions throughout. The scenario definition and its execution are **merged into one Steps tab**. It has labelled sections (preconditions / **steps** /
+descriptions throughout. Bajutsu merges the scenario definition and its execution into one **Steps tab**. It has labelled sections (preconditions / **steps** /
 **expectations**), each a table. The **steps** table: `#` / `result` (a PASS/FAIL pill in its own
 column) / `action` (a colored badge) / `detail` (the target description) / `at` / `view` (screenshot +
 an **in-report element-tree viewer**: the captured elements open in an in-page overlay, no new tab) /

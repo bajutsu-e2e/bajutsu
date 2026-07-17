@@ -11,7 +11,7 @@
 > reference it links to for the rules (the gate, branches, BE-ID lifecycle, model tiers, PR template).
 
 The whole design rests on one property: **the deterministic gate is cheap, runs anywhere, and
-mirrors CI exactly.** This is what lets work fan out safely — every branch is independently
+mirrors CI exactly.** This property is what lets work fan out safely — every branch is independently
 verifiable, so "green locally" reliably predicts "green in CI", and the test suite is a
 regression net that catches one session breaking another's feature.
 
@@ -432,8 +432,8 @@ Every reply states two things:
   cite the commit or the file/line), or, when you make no change, the specific reason the comment
   does not apply.
 
-A bare "done" or a 👍 is not a reply under this rule; the grounds are what let whoever later reads
-the thread audit the resolution. Keep each reply short and factual — the point is evidence, not
+A bare "done" or a 👍 is not a reply under this rule; the grounds are what let a later reader
+of the thread audit the resolution. Keep each reply short and factual — the point is evidence, not
 narration.
 
 **Every answered comment gets both a reply and a resolved thread** — whether you fixed it or
@@ -521,7 +521,7 @@ surface). The key properties, all consistent with the sibling automations:
 The roadmap is **one directory per item** under [`roadmaps/`](../roadmaps/README.md). Each item lives in
 `roadmaps/<category>/BE-NNNN-<slug>/`, which holds the English file `BE-NNNN-<slug>.md` and its
 Japanese version `BE-NNNN-<slug>-ja.md` (same ID and slug). **BE** stands for *Bajutsu Evolution* and `NNNN`
-is a **zero-padded, 4-digit, monotonically increasing** ID. Every item lives directly under `roadmaps/`
+is a **zero-padded, four-digit, monotonically increasing** ID. Every item lives directly under `roadmaps/`
 in a flat layout: its path is fixed the moment its ID is allocated and never moves (BE-0159 retired the
 per-`Status` folders BE-0078 introduced — `Status` now decides only the index bucket, below).
 

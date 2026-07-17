@@ -40,7 +40,7 @@ to run. Pass `--scenario <file>` to run a single file instead.
 | `--exclude` | "" | comma list; skip scenarios carrying any of these tags |
 | `--udid` | `booted` | the target Simulator (comma list = a device pool for `--workers`) |
 | `--erase / --no-erase` | scenario › config › off | override every scenario's `preconditions.erase` (wipe the simulator first); omit and it resolves each scenario's value, then the target's `erase` config, then off ([BE-0177](../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md)). The app is reinstalled fresh either way (config `appPath` + `preconditions.reinstall`) |
-| `--dismiss-alerts / --no-dismiss-alerts` | scenario › config › on | override every scenario's `dismissAlerts` — the vision guard that dismisses system alerts idb can't see; omit and it resolves each scenario's value, then the target's `dismissAlerts` config, then on (uses the configured AI provider — `ANTHROPIC_API_KEY`, or AWS credentials for Bedrock; [recording](recording.md#dismissing-system-alerts-automatically)) |
+| `--dismiss-alerts / --no-dismiss-alerts` | scenario › config › on | override every scenario's `dismissAlerts` — the vision guard that dismisses system alerts idb cannot see; omit and it resolves each scenario's value, then the target's `dismissAlerts` config, then on (uses the configured AI provider — `ANTHROPIC_API_KEY`, or AWS credentials for Bedrock; [recording](recording.md#dismissing-system-alerts-automatically)) |
 | `--alert-instruction` | "" | default button instruction, below a scenario's own `dismissAlerts.instruction` and above the target's `dismissAlerts` config |
 | `--log-predicate` | "" | an NSPredicate narrowing the `deviceLog` stream (e.g. subsystem) |
 | `--log-subsystem` | "" | the os_log subsystem for `appTrace` (defaults to the app's `bundleId`) |
@@ -60,7 +60,7 @@ to run. Pass `--scenario <file>` to run a single file instead.
   ([evidence](evidence.md#sinks-where-evidence-goes)).
 - `runId` is `YYYYMMDD-HHMMSS`.
 - Output: `PASS|FAIL  runs/<runId>/manifest.json`. **Exits 0 if every scenario passes, 1 on failure.**
-- When the alert guard actually fires (it is the run's only AI), an `AI usage:` line with the
+- When the alert guard fires (it is the run's only AI), an `AI usage:` line with the
   token totals it consumed is printed to **stderr** after the result, leaving stdout the single
   machine-readable result line. A run that used no AI prints nothing.
 
@@ -679,7 +679,7 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   `--config` also accepts a Git source (`github:owner/repo@ref:path`), and the "Open config" dialog
   has a **From a Git repository** field for the same spec: serve materializes the repo subtree at the
   ref into its cache, binds that config, and serves from the checkout root — so the config's relative
-  `scenarios` / `appPath` / `build` resolve against the fetched tree. This is the self-hosted payoff
+  `scenarios` / `appPath` / `build` resolve against the fetched tree. This Git binding is the self-hosted payoff
   ([BE-0016](../roadmaps/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) Tier A):
   point serve at the team's test repository instead of hand-syncing files, and switch branches in the
   UI rather than redeploying. The file browser stays confined to `--root`; the checkout is a managed

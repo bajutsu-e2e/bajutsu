@@ -5,8 +5,8 @@
 Thanks for your interest in contributing. This page is the entry point for human
 contributors. The detailed working agreement that both humans and AI agents follow lives in
 [`CLAUDE.md`](CLAUDE.md) and its long form [`docs/ai-development.md`](docs/ai-development.md);
-this page orients you and links there rather than repeating the rules, so the two never drift
-apart.
+this page orients you and links there rather than repeating the rules, so the page and the
+working agreement never drift apart.
 
 New to the project? Read [`README.md`](README.md) for what Bajutsu is, and the
 [getting-started tutorial](docs/getting-started/index.md) for a hands-on walkthrough of *running*
@@ -43,7 +43,7 @@ you change behavior, change a test with it — the suite is the regression net t
 other contributor's work.
 
 On-device E2E (macOS + Simulator) is a separate, heavier path and is **not** part of this gate:
-`make -C demos/showcase run-swiftui` (after `make deps`). Don't block core work on it.
+`make -C demos/showcase run-swiftui` (after `make deps`). Do not block core work on it.
 
 ## Branches, commits, and pull requests
 

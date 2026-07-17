@@ -5,7 +5,7 @@
 > 「〇〇をしたい」という目的別のレシピ集です。[scenarios](scenarios.md) が文法のリファレンス
 > （すべてのステップ種別、待機、アサーション）であるのに対し、このページは実例です。以下のレシピは
 > どれも、リポジトリ自身の CI が実際に走らせているファイルから抜き出したもので、説明のためだけに
-> でっち上げたものではありません。各レシピの下のリンクから、ここでは省いた部分も含む全文を見られ
+> 作った架空の例ではありません。各レシピの下のリンクから、ここでは省いた部分も含む全文を見られ
 > ます。
 
 関連: [scenarios](scenarios.md) · [selectors](selectors.md) · [network](network.md) · [Getting started](getting-started/index.md)
@@ -206,7 +206,7 @@ steps:
 ここまでのレシピはどれも iOS の showcase を対象に書きましたが、step/expect の文法自体に iOS 固有の
 ものは何もありません。変わるのはセレクタの背後にある属性だけです（`accessibilityIdentifier` が
 web の `data-testid` に変わりますが、同じセレクタ解決コアを通ります）。web デモの 2 つ目のシナリオも、
-同じ形をしています。画面を移動し、操作を繰り返し、最終的な値をアサーションし、その上で証跡を
+同じ形をしています。画面を移動し、操作を繰り返し、最終的な値をアサーションで確かめ、その上で証跡を
 取得します。
 
 ```yaml
@@ -241,6 +241,6 @@ showcase 一式
 ほどあります。各画面が公開する識別子は [showcase](showcase.md) にカタログがあります。web デモ
 （[`demos/web/scenarios/`](../../demos/web/scenarios/)）と、web UI 自身のドッグフーディング一式
 （[`demos/serve-ui/scenarios/`](../../demos/serve-ui/scenarios/)）も見る価値があります。後者は
-そこそこ複雑な単一ページアプリをテストする実例としても参考になります。ここに出てきたすべての
+ある程度複雑な単一ページアプリをテストする実例としても参考になります。ここに出てきたすべての
 レシピの背後にある step / wait / アサーションの文法全体は [scenarios](scenarios.md) に、形式的な
 EBNF は [dsl-grammar](dsl-grammar.md) にあります。

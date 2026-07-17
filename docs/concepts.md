@@ -13,7 +13,7 @@ Related: [architecture](architecture.md) · [selectors](selectors.md) · [run-lo
 ## 1. AI is the author and the investigator, never the judge
 
 The non-determinism, cost, and latency of an LLM (large language model) must **not enter the CI
-(continuous integration) gate**. This is the top-level constraint, and it directly produces the
+(continuous integration) gate**. This prohibition is the top-level constraint, and it directly produces the
 two-tier structure (below).
 
 | Command | Tier | AI | How pass/fail is decided |
@@ -23,7 +23,7 @@ two-tier structure (below).
 | `codegen` | — | none | structural mapping of a scenario to XCUITest ([codegen](codegen.md)) |
 
 The `run` path contains no `anthropic` call at all. The single exception is `--dismiss-alerts`
-(it visually dismisses OS system alerts); that prepares the environment rather than deciding
+(it visually dismisses OS system alerts); it prepares the environment rather than deciding
 pass/fail, and runs only when explicitly opted in
 ([the alert guard](recording.md#dismissing-system-alerts-automatically)).
 
@@ -60,7 +60,7 @@ The structure of the code enforces Bajutsu's "deterministic" behavior.
    machine assertions are `exists`/`value`/`label`/`count`/`enabled`/`disabled`/`selected`/`request`/`visual`
    ([selectors](selectors.md#assertion-evaluation)).
 
-> Note the scope: stable identifiers only stabilize the **determinism of selection**.
+> The scope is narrow: stable identifiers only stabilize the **determinism of selection**.
 > Flakiness from timing, state, or the network is handled separately by waits, the environment,
 > and `mocks`.
 

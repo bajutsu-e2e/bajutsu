@@ -3,7 +3,7 @@
 # レポート（manifest.json / JUnit / CTRF / HTML）
 
 > 1 回の run は、1 つ以上のシナリオ（`list[RunResult]`）を実行します。その結果を 4 つの形式で
-> 書き出します。`manifest.json` が、レポートと CI（継続的インテグレーション）の **単一の真実**です。
+> 書き出します。`manifest.json` が、レポートと CI（継続的インテグレーション）の **唯一の情報源**です。
 >
 > 実装: `bajutsu/report/`（パッケージ。段階で分割: `format` → `manifest` / `richtext` → `rows` / `panels` → `html`）。
 

@@ -118,7 +118,7 @@ app's os_log subsystem, paired into timed intervals by `parse_app_trace`.)
   to 10s, then kills. `screenrecord` records device-side, so its `Interval` also pulls the finalized
   mp4 off the device on stop and removes the device copy. If the pull fails (the device vanished),
   the sink drops that one artifact with a warning rather than emit a path with no file behind it —
-  it does not fail an otherwise-passing scenario while finalizing interval evidence. Note `adb screenrecord` caps a single recording at ~180s
+  it does not fail an otherwise-passing scenario while finalizing interval evidence. `adb screenrecord` caps a single recording at ~180s
   (the platform default/maximum), so an Android video of a longer scenario ends at that mark; the
   on-device tuning of this cap and of SIGINT finalization is part of the deferred BE-0007 e2e.
 - deviceLog can be narrowed by `--predicate` (NSPredicate) to a subsystem, etc. (the CLI's
@@ -206,7 +206,7 @@ verdict is traceable. Implementation: `bajutsu/assertions/visual.py` `VisualEvid
 
 ## Masking (redact)
 
-Screenshots, logs, and network data can capture PII (personally identifiable information) and tokens. Declare what to mask before writing. Implementation: `scenario/models/evidence.py` `Redact`. Config's `redact` and the scenario's `redact` are merged (union) ([configuration](configuration.md#merging-redact)).
+Screenshots, logs, and network data can capture personally identifiable information (PII) and tokens. Declare what to mask before writing. Implementation: `scenario/models/evidence.py` `Redact`. Config's `redact` and the scenario's `redact` are merged (union) ([configuration](configuration.md#merging-redact)).
 
 ```yaml
 redact:

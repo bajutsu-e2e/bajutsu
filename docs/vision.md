@@ -4,7 +4,7 @@
 
 > The overall direction Bajutsu is heading, and the one constraint every direction must respect.
 > This page gives the strategic overview across the individual roadmap items — including how far
-> each axis has already gotten, not just what's planned; the granular, prioritized backlog is in
+> each axis has already progressed, not just what is planned; the granular, prioritized backlog is in
 > [roadmap](../roadmaps/README.md), and the rationale behind today's design is in
 > [`DESIGN.md`](../DESIGN.md). Read this to understand how the pieces fit together, then follow the
 > links for each plan.
@@ -177,7 +177,7 @@ Web (Playwright), the MCP server, and visual-regression assertions — the near-
 page once recommended — have all landed, along with both the public and self-hosted topologies of
 the scale axis and the GUI editor / non-AI capture piece of the authoring axis. Reach's open item is
 Flutter ([BE-0008](../roadmaps/BE-0008-flutter-support/BE-0008-flutter-support.md)); the other two
-axes keep extending incrementally rather than around one big remaining piece. For what is
+axes keep extending incrementally rather than converging on one big remaining piece. For what is
 next, the [roadmap](../roadmaps/README.md) is the prioritized, living backlog — this page explains
 the rationale and direction, not the sequencing. When a roadmap item ships, it moves to the
 [architecture status table](architecture.md#implementation-status); keep the three in sync.

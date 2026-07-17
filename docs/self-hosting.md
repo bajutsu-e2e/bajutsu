@@ -347,7 +347,7 @@ docker build --build-arg GIT_COMMIT=$(git rev-parse HEAD) -f deploy/self-host/Do
 
 Published ports bind to `BIND_ADDR` (default `127.0.0.1`). For a Mac worker to reach MinIO from
 another host, set `BIND_ADDR` in `.env` to the node's **tailnet IP** — never `0.0.0.0` on a host
-with a public interface, since that would expose the artifacts bucket.
+with a public interface, since a public bind would expose the artifacts bucket.
 
 The artifact/scenario/baseline store — and, since BE-0243, uploaded zip bundles too — is named by
 one URI, `BAJUTSU_SERVER_STORE` (BE-0204) — `s3://bucket/prefix` (S3-compatible; MinIO, as shipped
@@ -360,8 +360,8 @@ install line in [`deploy/self-host/Dockerfile`](../deploy/self-host/Dockerfile)
 
 Upgrading from a deployment that set the older `BAJUTSU_S3_BUCKET` / `BAJUTSU_S3_PREFIX` pair? Fold
 the prefix into the URI's path — `BAJUTSU_S3_BUCKET=bajutsu` + `BAJUTSU_S3_PREFIX=tenant/` becomes
-`BAJUTSU_SERVER_STORE=s3://bajutsu/tenant/` — or existing keys under that prefix stop resolving once
-the prefix is dropped.
+`BAJUTSU_SERVER_STORE=s3://bajutsu/tenant/`; otherwise existing keys under that prefix stop resolving
+once the prefix is dropped.
 
 ### 2. Add GitHub OAuth (optional)
 
@@ -374,7 +374,7 @@ Allowlisted users are **editors** by default (they can run); admins also change 
 (full access); OAuth is the team's per-user login.
 
 Login always requests the `read:org` scope so a user can be mapped to an org by GitHub org
-membership (config `githubOrgs`), so the consent screen mentions organization access either way. A
+membership (config `githubOrgs`); the consent screen therefore mentions organization access either way. A
 single-tenant deploy (no `orgs:` block) just ignores the org info.
 
 ### Operator secrets (the Claude API key)
@@ -612,7 +612,7 @@ retention window, checked opportunistically on the next history read (there is n
 
 The hosted serve emits its own diagnostic trace — **structured JSON, written to stdout, with
 secrets redacted** — so you can follow one user action across the control plane and its workers.
-This is separate from the three log surfaces you already have: the test subject's **evidence**, the
+This trace is separate from the three log surfaces you already have: the test subject's **evidence**, the
 live **run output** stream, and the **audit log** of who-did-what. Aggregating these lines (shipping
 stdout to your log stack) is the deployment's job — the tool only produces them.
 

@@ -273,7 +273,7 @@ against every backend, driving the real driver instance (including code that byp
 
 The contract (`tests/driver_conformance.py`) is the "done" definition a new backend meets:
 
-- an ambiguous selector (2+ matches) fails rather than acting on the first match;
+- an ambiguous selector (two or more matches) fails rather than acting on the first match;
 - a zero-match selector fails rather than reporting success;
 - selector failures share one error type (`SelectorError`), uniform across backends;
 - a unique match acts without error, and `query()` reports the on-screen elements;
@@ -442,4 +442,4 @@ device (the shared device is reseeded via one channel, so parallel workers would
 | `mockServer` (external mock command) | config schema only; the `cmd`/`port` external server is **not implemented** — superseded by scenario `mocks` (declarative in-protocol stubs, implemented) | `config/schema.py` `MockServer` |
 | `appTrace` interval evidence on the **web** backend | `appTrace` is `os_log`/simctl-based (iOS only); the Playwright backend implements the `video` and `deviceLog`-equivalent (console / page-error) interval kinds instead (BE-0054), but has no `appTrace` analogue | `intervals.py` · `drivers/playwright.py` |
 
-These are also flagged inline on the relevant feature pages.
+Both features are also flagged inline on the relevant feature pages.

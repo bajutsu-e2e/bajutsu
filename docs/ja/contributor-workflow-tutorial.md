@@ -7,7 +7,7 @@
 > 割り当てる様子を確認し、`/implement-be` でマージ済みのプルリクエストまで出荷し終えているはずです。
 > [getting-started チュートリアル](getting-started/index.md)が Bajutsu を *動かす* ための同じ役割を果たすのに対し、
 > このページは Bajutsu を *作る* ための対応物です。リファレンスの各ページが個々の規則の内容を説明するのに対して、
-> このページは順を追って実際にキーボードに手を置いてもらいます。
+> このページは順を追って、実際に手を動かしてもらいます。
 
 関連：[roadmap-workflow](roadmap-workflow.md) · [ai-development](ai-development.md) · [`CONTRIBUTING.md`](../../CONTRIBUTING.md) · [roadmaps/README](../../roadmaps/README-ja.md)
 
@@ -42,8 +42,8 @@ make check            # ゲート。format + lint + typecheck + test。green で
 
 この 2 つは意図的に対をなしていて、片方が[ロードマップ](../../roadmaps/README-ja.md)を満たし、もう片方がそれを
 消化します。「なぜ 1 つではなく 2 つのスキルなのか」という考え方は
-[roadmap-workflow](roadmap-workflow.md#なぜ-1-つではなく-2-つのスキルなのか) にあります。ここでは、ただ両者を
-歩きます。
+[roadmap-workflow](roadmap-workflow.md#なぜ-1-つではなく-2-つのスキルなのか) にあります。ここでは、その両方を
+順にたどります。
 
 ---
 
@@ -51,7 +51,7 @@ make check            # ゲート。format + lint + typecheck + test。green で
 
 ### 手順 A1 — アイデアを持ち込む。粗くてよい
 
-完成した設計は要りません。一文で十分です。この walkthrough では、遅い simulator でときどき失敗する手順に
+完成した設計は要りません。一文で十分です。このチュートリアルでは、遅い simulator でときどき失敗する手順に
 繰り返しぶつかっていて、こう考えたとしましょう。
 
 > 「Bajutsu は、flake する手順を実行全体の失敗にせず、リトライすべきだ」
@@ -265,7 +265,7 @@ Ready で開きます。）
 レビューが作り直さないと確信できる設計だったなら、マージを待たずに実装を提案の上に積めたでしょう。代償は
 現実にあります。レビューが *実際に* 提案を変えたら、実装ブランチをやり直します。ですから経験則は単純です。
 
-> **既定は直列。設計が固まっていると確信できるときだけ `propose-and-build` に手を伸ばす。** 設計が本当に
+> **既定は直列です。設計が固まっていると確信できるときだけ `propose-and-build` に手を伸ばします。** 設計が本当に
 > 不確かなときは、直列の経路の「コードの前にレビュー」はオーバーヘッドではなく利点です。
 
 このスキル自体の仕組みは

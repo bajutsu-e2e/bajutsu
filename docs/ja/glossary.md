@@ -18,7 +18,7 @@
 
 ## シナリオのオーサリング
 
-**scenario（シナリオ）**：名前を持つ一つのテストです。`name`、任意の `preconditions`、順序付きの
+**scenario（シナリオ）**：名前を付けた一件のテストケースです。`name`、任意の `preconditions`、順序付きの
 `steps` のリスト、機械チェック可能なアサーションを並べた `expect` のリスト（さらにシナリオ単位の
 `capturePolicy`・`network`・`mocks` など）からなります。Bajutsu が唯一永続化する成果物であり、プルリク
 エストでレビューされる平文の YAML です。定義は `bajutsu/scenario/models/scenario.py` の `Scenario`、
@@ -89,7 +89,7 @@ AND で結合されるフィールドの集合（`id`、`idMatches`、`label`、
 |---|---|
 | **driver** | 抽象的な `Driver` インターフェース（`bajutsu/drivers/base.py` の `Protocol`）です。唯一のプラットフォーム依存の継ぎ目で、どの actuator もこれを実装します。 |
 | **backend** | `--backend` と config の `backend:` が受け付けるユーザー向けのトークンです。platform の別名（`ios`）か、actuator の名前そのもの（`idb`）のどちらかです。「backend」は入力トークンの総称で、解決されて actuator になります。 |
-| **actuator** | 実際に操作（tap / type / swipe / query）を担う具体的なエンジンで、driver が実装するものです。backend のトークンは一つの actuator に解決され、run の開始時に一つに確定して、run のあいだ固定されます。 |
+| **actuator** | 実際に操作（tap / type / swipe / query）を担う具体的なエンジンで、driver が実装するものです。backend のトークンは一つの actuator に解決され、run の開始時に確定して以後は固定されます。 |
 | **platform** | 対象の種類を表す粗いトークン（`ios` / `android` / `web` / `fake`）で、安定度順（最も安定するものが先）の actuator のリストに展開されます。 |
 
 `backend:` のリストは安定度順で書きます。選択は各トークンを actuator に展開し、既知でこのマシンで利用で

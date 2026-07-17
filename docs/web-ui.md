@@ -39,7 +39,7 @@ make serve                                                        # the default 
 make serve ARGS="--config demos/showcase/showcase.config.yaml --port 8766"   # the showcase app
 ```
 
-The showcase config is needed for the showcase app, since the repository has no root
+The showcase app needs the showcase config, since the repository has no root
 `bajutsu.config.yaml`.
 
 Under the hood `make serve` runs `python -m bajutsu serve` — the `bajutsu serve` command the
@@ -133,9 +133,9 @@ three sources:
   `.yml`/`.yaml` config. A hosted deployment hides this source, since a remote user has no
   file-system relationship to the host.
 
-The full behavior of each source — the content-addressed Git cache, the bundle's sandboxing and
-zip-slip hardening, the `--root` confinement — is documented in the
-[CLI reference](cli.md#serve). Only one config is bound at a time; opening another replaces it.
+The full behavior of each source is documented in the [CLI reference](cli.md#serve): the
+content-addressed Git cache, the bundle's sandboxing and zip-slip hardening, and the `--root`
+confinement. Only one config is bound at a time; opening another replaces it.
 
 ### Confirming what is bound
 
@@ -174,7 +174,7 @@ repository. Re-adding an existing name rebinds its source. **Remove** deregister
 confirmation; its run history is kept, only the binding is dropped. The `bajutsu project` CLI edits
 the same shared store, so a project added either way appears in both. Registering, removing, and
 switching all rebind the active config, so in a hosted deployment they are admin actions like binding
-a config — the server enforces that, and a refused action shows inline on the page.
+a config — the server enforces that restriction, and a refused action shows inline on the page.
 
 ### Comparing projects
 
@@ -449,7 +449,7 @@ it groups straight from the provenance stamp on each run row (org-scoped); other
 same records from each run's stored `manifest.json`.
 
 **How to use it.** Open the tab to load the ranking; use the refresh button to recompute it over the
-current run history. A run with no scenario fingerprint or no recorded verdict can't be grouped and
+current run history. A run with no scenario fingerprint or no recorded verdict cannot be grouped and
 is reported as skipped. No device, AI, or run is involved.
 
 **Diagnosing a flaky scenario.** Once this panel names a flaky scenario, the AI cross-run *fix

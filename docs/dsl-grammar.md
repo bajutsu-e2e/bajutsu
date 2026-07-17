@@ -35,7 +35,7 @@ Every mapping rejects keys it does not declare (`_Model`, `scenario/models/_base
 
 ## 2. Grammar at a glance
 
-The **reference graph** below shows which non-terminal references which. It makes visible the recursion and sharing that is harder to trace in the EBNF text: `Selector`'s `within` self-loop, and how `RequestMatch` is shared by the `request` assertion, the `until: { request }` wait, and `Mock.match`. (Actions that carry only scalars and reference no shared non-terminal — `relaunch`, `setLocation`, `push`, `http`, and the device / status-bar steps — are omitted.)
+The **reference graph** below shows which non-terminal references which. It makes visible the recursion and sharing that are harder to trace in the EBNF text: `Selector`'s `within` self-loop, and how `RequestMatch` is shared by the `request` assertion, the `until: { request }` wait, and `Mock.match`. (Actions that carry only scalars and reference no shared non-terminal — `relaunch`, `setLocation`, `push`, `http`, and the device / status-bar steps — are omitted.)
 
 ```mermaid
 graph LR
