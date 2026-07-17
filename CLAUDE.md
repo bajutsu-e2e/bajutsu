@@ -137,16 +137,21 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   BE roadmap item or a prose doc, in either language.** It is the authoritative prose norm:
   language-agnostic technique (draft top-down, state the contribution up front, put a sentence's
   most important element at its end, keep the verb near the subject, prefer the active voice, cut
-  filler) plus English-specific mechanics (serial comma, *that* / *which*, dashes, numbers). Invoke
-  it *before* writing, not after. For Japanese it is the umbrella above `japanese-tech-writing`
-  (next bullet). Like the bilingual-docs rule, it is a review-time norm, not a CI gate.
+  filler). Invoke it *before* writing, not after. It is the umbrella above two language layers —
+  apply `english-tech-writing` with it for English prose, `japanese-tech-writing` for Japanese (both
+  below). Like the bilingual-docs rule, it is a review-time norm, not a CI gate.
+- **Apply the [`english-tech-writing`](.claude/skills/english-tech-writing/) skill whenever you
+  write, translate into, or revise English prose.** It is the English layer beneath
+  [`tech-writing`](.claude/skills/tech-writing/): the English-specific mechanics (serial comma,
+  *that* / *which*, dashes, numbers, formal word choice) that only English grammar and typography
+  need. Apply both for English prose. It never applies to Japanese.
 - **Always follow the [`japanese-tech-writing`](.claude/skills/japanese-tech-writing/) skill
   whenever you generate Japanese — without exception.** This is not limited to `docs/ja/` and
   roadmap `*-ja.md`: it covers *any* Japanese you produce, including freshly written prose,
   translations from English, and revisions/rewrites of existing Japanese. The skill is the
   authoritative style for Japanese prose in this project; invoke it before writing or editing the
   Japanese, not after. It is the Japanese layer beneath the [`tech-writing`](.claude/skills/tech-writing/)
-  umbrella (previous bullet); apply both for Japanese prose.
+  umbrella (above); apply both for Japanese prose.
 - Docs are **bilingual**: English in `docs/`, Japanese mirror in `docs/ja/`. Update both when
   you change a documented behavior.
 - **Keep DESIGN.md and `docs/architecture.md` in step with behavior (BE-0113).** A PR that changes

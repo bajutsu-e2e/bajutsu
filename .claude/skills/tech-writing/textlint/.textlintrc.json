@@ -24,6 +24,18 @@
     "ja-hiragana-keishikimeishi": true,
     "ja-hiragana-fukushi": true,
     "ja-hiragana-hojodoushi": true,
+    "ja-hiraku": {
+      "keishikimeishi": false,
+      "fukushi": false,
+      "hojodoushi": false
+    },
+    "prefer-tari-tari": true,
+    "@textlint-ja/textlint-rule-no-insert-dropping-sa": true,
+    "no-mixed-zenkaku-and-hankaku-alphabet": true,
+    "ja-joyo-or-jinmeiyo-kanji": false,
+    "joyo-kanji": false,
+    "ja-kyoiku-kanji": false,
+    "ja-allowed-kanji": false,
     "general-novel-style-ja": {
       "chars_leading_paragraph": false,
       "no_punctuation_at_closing_quote": true,
@@ -35,6 +47,12 @@
       "appropriate_use_of_choonpu": false,
       "appropriate_use_of_minus_sign": false,
       "max_arabic_numeral_digits": false
-    }
+    },
+    "write-good": true,
+    "stop-words": true,
+    "unexpanded-acronym": true,
+    "abbr-within-parentheses": true,
+    "alex": true,
+    "ukraine": true
   }
 }
