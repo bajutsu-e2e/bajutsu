@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0285") |
+| Implementing PR | [#1184](https://github.com/bajutsu-e2e/bajutsu/pull/1184) |
 | Topic | Verification & coverage |
 | Related | [BE-0031](../BE-0031-data-driven-scenarios/BE-0031-data-driven-scenarios.md), [BE-0033](../BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow.md), [BE-0030](../BE-0030-parameterized-shared-steps/BE-0030-parameterized-shared-steps.md), [BE-0281](../BE-0281-ios-on-device-actuation-coverage/BE-0281-ios-on-device-actuation-coverage.md) |
 <!-- /BE-METADATA -->
@@ -93,10 +94,11 @@ Proposal altitude. The work is MECE along the units below.
 
 **Log**
 
-- 2026-07-17: web slice landed — `demos/web/app/index.html` gained a real multi-element list and a
-  live ticker (no prior demo had either), and `demos/web/scenarios/` gained `extract.yaml`,
-  `foreach.yaml`, `data_driven.yaml`, `relaunch.yaml`, and `dynamic_ui.yaml`, all run against the real
-  Playwright backend. adb equivalents for `extract`/`forEach` and the iOS extension remain.
+- 2026-07-17 ([#1184](https://github.com/bajutsu-e2e/bajutsu/pull/1184)): web slice landed —
+  `demos/web/app/index.html` gained a real multi-element list and a live ticker (no prior demo had
+  either), and `demos/web/scenarios/` gained `extract.yaml`, `foreach.yaml`, `data_driven.yaml`,
+  `relaunch.yaml`, and `dynamic_ui.yaml`, all run against the real Playwright backend. adb
+  equivalents for `extract`/`forEach` and the iOS extension remain.
 
 ## References
 
