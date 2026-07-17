@@ -362,6 +362,7 @@
 <main id="view-author" data-testid="view.author" data-pane="form" hidden>
   <div class="viewswitch" role="tablist" data-testid="author.switch">
     <button class="vstab active" data-pane="form">Form</button>
+    <button class="vstab" data-pane="yaml">YAML</button>
     <button class="vstab" data-pane="screen">Screen</button>
     <button class="vstab" data-pane="steps">Steps</button>
   </div>
@@ -396,6 +397,13 @@
         </div>
       </div>
     </div>
+  </div>
+
+  <div class="gutter" data-var="--rec-left" data-min="260" data-max="640"></div>
+
+  <!-- Steps / YAML editor / screen: the tiler (initTiling) owns their layout on desktop; .rec-stack
+       groups them for the narrow-tier single-column stack (display:contents there). -->
+  <div class="rec-stack">
     <div class="card au-steps-card" data-pane="steps">
       <div class="yamlhead"><span class="ttl">Steps</span><span class="muted" id="au-step-count">0 steps</span></div>
       <ol id="au-steplist" class="au-steplist"></ol>
@@ -446,11 +454,6 @@
         <pre class="codegen-code" id="au-codegen-code" data-testid="author.codegen-code" tabindex="0"></pre>
       </div>
     </div>
-  </div>
-
-  <div class="gutter" data-var="--rec-left" data-min="260" data-max="640"></div>
-
-  <div class="rec-stack">
     <div class="card au-screen-card" data-pane="screen">
       <!-- Capture-only: start / finish a live session. -->
       <div class="au-cap au-btnrow">

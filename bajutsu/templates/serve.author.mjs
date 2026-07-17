@@ -157,6 +157,14 @@ function initTiling(){
     {id:'view-replay',def:{d:'row',k:['controls','log','report'],s:[1,1,2]},sel:{controls:'.left',log:'.logpanel',report:'.report'}},
     {id:'view-record',def:{d:'row',k:['controls',{d:'col',k:['log','yaml'],s:[1,1]}],s:[1,2]},sel:{controls:'.left',log:'.rec-stack .logpanel',yaml:'.rec-stack .yamlpanel',report:'.rec-stack .rec-report-panel'},optional:['report']},
     {id:'view-crawl',def:{d:'row',k:['controls','graph',{d:'col',k:['plan','console'],s:[1,1]}],s:[1,2,1]},sel:{controls:'.left',graph:'.crawl-graph-panel',plan:'.crawl-plan-panel',console:'.crawl-console-panel'}},
+    // Author (BE-0263): the editor gets its own dominant pane, controls + steps stack on the left, the
+    // screen sits on the right. All four panes are always present (nothing shows/hides like Record's
+    // Run-result), so none is optional. controls outweighs steps (3:2, not 1:1): unlike Record/Replay's
+    // '.left', Author's controls card is sized to its content (serve.css .au-controls-card{flex:0 0
+    // auto}, so Run/Load stay reachable without scrolling — see that rule's comment) rather than
+    // flexing to fill whatever the split leaves it. An even split clips the Load button below the
+    // divider on a typical viewport; 3:2 gives the card room for its own natural height.
+    {id:'view-author',def:{d:'row',k:[{d:'col',k:['controls','steps'],s:[3,2]},'yaml','screen'],s:[1,3,2]},sel:{controls:'.left',steps:'.rec-stack .au-steps-card',yaml:'.rec-stack .yamlpanel',screen:'.rec-stack .au-screen-card'}},
   ];
   const leaves=n=>typeof n==='string'?[n]:n.k.flatMap(leaves);
   // A tree is valid when its leaves are unique, all known panels, and include every REQUIRED panel.

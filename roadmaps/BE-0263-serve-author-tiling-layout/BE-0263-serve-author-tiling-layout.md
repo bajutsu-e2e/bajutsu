@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0263](BE-0263-serve-author-tiling-layout.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0263") |
+| Implementing PR | [#1164](https://github.com/bajutsu-e2e/bajutsu/pull/1164) |
 | Topic | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 
@@ -83,11 +84,21 @@ deterministic as the other views.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — register `view-author` in `SPECS` with a default tree + optional panes.
-- [ ] Unit 2 — YAML editor as a first-class resizable pane.
-- [ ] Unit 3 — reconcile markup + drop the redundant `#view-author` fixed grid.
-- [ ] Unit 4 — persistence + validity reuse under `bajutsu-tiles`.
-- [ ] Unit 5 — browser verification + tiler-spec test coverage.
+- [x] Unit 1 — register `view-author` in `SPECS` with a default tree. All four panes are always
+  present, so none is marked `optional` (nothing shows/hides like Record's Run-result pane).
+- [x] Unit 2 — YAML editor as a first-class resizable pane (its own `yaml` leaf, dominant at 3/6 in
+  the default tree).
+- [x] Unit 3 — reconcile markup (steps / YAML / screen moved into `.rec-stack`) + drop the redundant
+  `#view-author` fixed grid; `#view-author` is now block-level like the other tiled views.
+- [x] Unit 4 — persistence + validity reuse under `bajutsu-tiles` (inherited unchanged from the tiler).
+- [x] Unit 5 — browser verification (narrow-tier pane switching + spec-resolution) + tiler-spec test
+  coverage in `tests/serve/test_http_author_ui.py`.
+
+**Log**
+
+- Author registered in `initTiling`'s `SPECS`; markup + CSS reconciled to drop the fixed grid; the
+  YAML editor, steps, and screen become first-class resizable panes.
+  ([#1164](https://github.com/bajutsu-e2e/bajutsu/pull/1164))
 
 ## References
 

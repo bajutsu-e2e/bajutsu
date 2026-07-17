@@ -118,9 +118,15 @@ def test_author_has_shared_steps_list(tmp_path: Path) -> None:
 
 
 def test_author_has_viewswitch(tmp_path: Path) -> None:
-    """Phone-tier pane switcher (Form / Screen / Steps) ships for the Author tab."""
+    """Phone-tier pane switcher (Form / YAML / Screen / Steps) ships for the Author tab.
+
+    The YAML tab (BE-0263) gives the editor its own narrow-tier pane, now that it is a
+    first-class tile pane rather than a card stacked inside the form column.
+    """
     text = _index_text(tmp_path)
     assert 'data-testid="author.switch"' in text
+    for pane in ("form", "yaml", "screen", "steps"):
+        assert f'data-pane="{pane}"' in text, pane
 
 
 # ---------------------------------------------------------------------------
@@ -233,3 +239,28 @@ def test_author_js_wires_save_and_enrich(tmp_path: Path) -> None:
 def test_author_js_wires_codegen(tmp_path: Path) -> None:
     text = _author_js(tmp_path)
     assert "/api/codegen" in text
+
+
+# ---------------------------------------------------------------------------
+# Tiling layout (BE-0263): Author joins Record/Replay/Crawl in initTiling's SPECS,
+# so its panes resize / split / swap and persist, instead of a fixed CSS grid.
+# ---------------------------------------------------------------------------
+
+
+def test_author_registered_in_tiling_specs(tmp_path: Path) -> None:
+    """The tiler's SPECS lists view-author with the editor as its own pane (BE-0263)."""
+    text = _author_js(tmp_path)
+    assert "'view-author'" in text
+    # The four panes the spec addresses, each by the selector the tiler grabs.
+    assert ".rec-stack .yamlpanel" in text
+    assert ".rec-stack .au-steps-card" in text
+    assert ".rec-stack .au-screen-card" in text
+
+
+def test_author_is_block_level_for_tiling(tmp_path: Path) -> None:
+    """The fixed #view-author grid is gone; it is block-level like the other tiled views, so
+    the tiler's .tile-root fills the <main> (BE-0263)."""
+    text = _index_text(tmp_path)
+    assert "#view-author:not([hidden])" in text
+    # The old bespoke fixed-column grid must not linger.
+    assert "#view-author{grid-template-columns" not in text
