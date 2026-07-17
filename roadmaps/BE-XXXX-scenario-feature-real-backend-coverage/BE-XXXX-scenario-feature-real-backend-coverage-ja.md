@@ -10,12 +10,12 @@
 | 状態 | **提案** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | トピック | 検証とカバレッジ |
-| 関連 | [BE-0031](../BE-0031-data-driven-scenarios/BE-0031-data-driven-scenarios-ja.md), [BE-0033](../BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow-ja.md), [BE-0030](../BE-0030-parameterized-shared-steps/BE-0030-parameterized-shared-steps-ja.md) |
+| 関連 | [BE-0031](../BE-0031-data-driven-scenarios/BE-0031-data-driven-scenarios-ja.md), [BE-0033](../BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow-ja.md), [BE-0030](../BE-0030-parameterized-shared-steps/BE-0030-parameterized-shared-steps-ja.md), [BE-0281](../BE-0281-ios-on-device-actuation-coverage/BE-0281-ios-on-device-actuation-coverage-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
 
-シナリオ作成機能には、実バックエンドでは Android でしか動かないものと、どのバックエンドでも動いていないものがあります。`extract` と `forEach`（[BE-0033](../BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow-ja.md)）は、どのデモシナリオにも使われておらず、どのレーンでもアクチュエートされていません。data-driven の行（[BE-0031](../BE-0031-data-driven-scenarios/BE-0031-data-driven-scenarios-ja.md)）と `relaunch` は、adb でしか動いていません。本項目では、これらの機能を複数のバックエンドで動かす実バックエンドのシナリオを用意します。あわせて、`FakeDriver` では表現できない 2 つのタイミングの前提を実際に動かすため、動的に変化する画面の上でそれらのシナリオを走らせます。
+シナリオ作成機能には、実バックエンドでは Android でしか動かないものと、どのバックエンドでも動いていないものがあります。`extract` と `forEach`（[BE-0033](../BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow-ja.md)）は、どのデモシナリオにも使われておらず、どのレーンでもアクチュエートされていません。data-driven の行（[BE-0031](../BE-0031-data-driven-scenarios/BE-0031-data-driven-scenarios-ja.md)）と `relaunch` は、adb でしか動いていません。本項目では、これらの機能を adb、web、iOS で動かす実バックエンドのシナリオを用意します。あわせて、`FakeDriver` では表現できない 2 つのタイミングの前提を実際に動かすため、動的に変化する画面の上でそれらのシナリオを走らせます。
 
 ## 動機
 
@@ -25,13 +25,15 @@
 
 純粋なロジックをデバイス上で再テストしても、価値は加わりません。要点は、実ハードウェアにしか存在しない 2 つの性質（反復中に変化するツリーと、スナップショットのあいだで生じる UI のドリフト）を伴う状況で、これらの機能を実際に動かすことです。
 
+プラットフォームは、1 つのインタフェースの背後にある単なるバックエンドなので、これらの性質は adb と web だけでなく、アクチュエートするすべてのバックエンドで確かめる必要があります。iOS も idb と XCUITest を通じて `tap` / `type` / `swipe` をアクチュエートでき、[BE-0281](../BE-0281-ios-on-device-actuation-coverage/BE-0281-ios-on-device-actuation-coverage-ja.md) が iOS の実アクチュエーションを CI に配線したので、本項目は adb や web と並んで iOS も対象にします。iOS のレーンは課金対象の macOS ランナーで動くため、まずゲート対象外のシグナルとして着地させます。
+
 ## 詳細設計
 
 提案の粒度です。作業は以下の単位に沿って MECE に分かれます。
 
-- **`extract` の再利用シナリオ。** adb と web で、実フィールドの値を `extract` で取り込み、後続のステップに渡し、取り込んだ値が実ツリーの報告と一致することをアサートします。
-- **実リストに対する `forEach`。** adb と web で、複数要素のリストを反復し、要素ごとに操作し、結果をアサートします。凍結した fake では再現できない場面です。
-- **data-driven と `relaunch` の複数バックエンド展開。** data-driven の行と `relaunch` を、adb 以外のバックエンド（web か iOS）でも走らせます。どちらの機能も単一プラットフォームでしか実証されていない状態を解消します。
+- **`extract` の再利用シナリオ。** adb、web、iOS で、実フィールドの値を `extract` で取り込み、後続のステップに渡し、取り込んだ値が実ツリーの報告と一致することをアサートします。
+- **実リストに対する `forEach`。** adb、web、iOS で、複数要素のリストを反復し、要素ごとに操作し、結果をアサートします。凍結した fake では再現できない場面です。
+- **data-driven と `relaunch` の複数バックエンド展開。** data-driven の行と `relaunch` を、web と iOS でも走らせます。どちらの機能も adb だけでしか実証されていない状態を解消します。
 - **動的 UI シナリオ。** 経過時間やカウンタ表示のように変化し続ける要素を持つショーケース画面を動かし、読み取り回数削減のスナップショット同一性の仮定と、待機の下限の仮定を実際に検証します。まず既存のレーンにシグナルとして組み込みます。
 
 ## 検討した代替案
@@ -45,9 +47,9 @@
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] adb + web での `extract` 再利用シナリオ（実フィールド値を後続ステップに渡す）。
-- [ ] adb + web での実複数要素リストに対する `forEach`。
-- [ ] adb 以外の少なくとも 1 つのバックエンドでの data-driven と `relaunch` の検証。
+- [ ] adb + web + iOS での `extract` 再利用シナリオ（実フィールド値を後続ステップに渡す）。
+- [ ] adb + web + iOS での実複数要素リストに対する `forEach`。
+- [ ] web と iOS での data-driven と `relaunch` の検証（adb に加えて）。
 - [ ] 読み取り回数削減のスナップショット同一性と待機の下限の前提を検証する動的 UI シナリオ。
 
 ## 参考

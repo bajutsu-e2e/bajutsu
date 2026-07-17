@@ -10,7 +10,7 @@
 | Status | **Proposal** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | Topic | Verification & coverage |
-| Related | [BE-0031](../BE-0031-data-driven-scenarios/BE-0031-data-driven-scenarios.md), [BE-0033](../BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow.md), [BE-0030](../BE-0030-parameterized-shared-steps/BE-0030-parameterized-shared-steps.md) |
+| Related | [BE-0031](../BE-0031-data-driven-scenarios/BE-0031-data-driven-scenarios.md), [BE-0033](../BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow.md), [BE-0030](../BE-0030-parameterized-shared-steps/BE-0030-parameterized-shared-steps.md), [BE-0281](../BE-0281-ios-on-device-actuation-coverage/BE-0281-ios-on-device-actuation-coverage.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -19,9 +19,9 @@ Several scenario-authoring features run against a real backend only on Android, 
 `extract` and `forEach` ([BE-0033](../BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow.md))
 appear in no demo scenario and are actuated by no lane; data-driven rows
 ([BE-0031](../BE-0031-data-driven-scenarios/BE-0031-data-driven-scenarios.md)) and `relaunch` run
-only on adb. This item authors real-backend scenarios that exercise these features on more than
-one backend, and deliberately drives them over a dynamically-changing screen so two timing
-premises that `FakeDriver` cannot represent get real exercise.
+only on adb. This item authors real-backend scenarios that exercise these features on every
+actuating backend — adb, web, and iOS — and deliberately drives them over a dynamically-changing
+screen so two timing premises that `FakeDriver` cannot represent get real exercise.
 
 ## Motivation
 
@@ -45,16 +45,22 @@ The point is not to re-test the pure logic on a device — that adds nothing. It
 two properties that live only on real hardware: a mutating tree during iteration, and UI drift
 between snapshots.
 
+Because a platform is just a backend behind one interface, these properties must be checked on
+every backend that actuates, not adb and web alone. iOS actuates `tap` / `type` / `swipe` through
+idb and XCUITest, and [BE-0281](../BE-0281-ios-on-device-actuation-coverage/BE-0281-ios-on-device-actuation-coverage.md)
+wires real iOS actuation into CI, so this item targets iOS alongside adb and web. The iOS lane runs
+on metered macOS runners, so it lands as non-gating signal first, the way that sibling work does.
+
 ## Detailed design
 
 Proposal altitude. The work is MECE along the units below.
 
-- **`extract` reuse scenario.** On adb and web, capture a real field's value with `extract` and
-  feed it into a later step, asserting the captured value is what the real tree reported.
-- **`forEach` over a real list.** On adb and web, iterate a multi-element list, act per element,
-  and assert the outcome — the case a frozen fake cannot make real.
-- **Data-driven and `relaunch` symmetry.** Run data-driven rows and `relaunch` on at least one
-  backend beyond adb (web or iOS), so neither feature is proven on a single platform only.
+- **`extract` reuse scenario.** On adb, web, and iOS, capture a real field's value with `extract`
+  and feed it into a later step, asserting the captured value is what the real tree reported.
+- **`forEach` over a real list.** On adb, web, and iOS, iterate a multi-element list, act per
+  element, and assert the outcome — the case a frozen fake cannot make real.
+- **Data-driven and `relaunch` symmetry.** Run data-driven rows and `relaunch` on the web and iOS
+  backends too, so neither feature is proven on adb alone.
 - **Dynamic-UI scenario.** Drive a showcase screen with a live element (an elapsed-time or counter
   display) so the read-count snapshot-identity assumption and the wait floor get real exercise;
   wire it into an existing lane as signal.
@@ -74,9 +80,9 @@ Proposal altitude. The work is MECE along the units below.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] `extract` reuse scenario on adb + web (real field value fed into a later step).
-- [ ] `forEach` over a real multi-element list on adb + web.
-- [ ] Data-driven and `relaunch` symmetry on a backend beyond adb.
+- [ ] `extract` reuse scenario on adb + web + iOS (real field value fed into a later step).
+- [ ] `forEach` over a real multi-element list on adb + web + iOS.
+- [ ] Data-driven and `relaunch` on the web and iOS backends (beyond adb).
 - [ ] Dynamic-UI scenario exercising the read-count snapshot-identity and wait-floor premises.
 
 ## References
