@@ -22,94 +22,41 @@
 #     the other jobs it runs pytest, not the run CLI, so it keeps the dev group.
 # It runs no LLM — a deterministic `run` over fixed scenarios — so it stays within the prime
 # directives, and it is kept off the fast `make check` gate exactly as the idb and web e2e lanes are.
-# Android is not in the branch-protection ruleset (unlike iOS's `E2E`), so these three jobs are
-# independent with no aggregator, the same shape web-e2e.yml has. Each job boots its own AVD; unlike
-# iOS's metered macOS runners (10x billing), Android runs on standard-priced Linux under KVM, so the
-# per-job boot is an acceptable cost for the attribution win. Per-job setup is duplicated the same
-# way ios-e2e.yml duplicates its own — no composite action, no new CI machinery.
+# The lane now carries a REQUIRED status check like iOS's `E2E`: the `E2E (android)` job below
+# `needs` the deterministic host-independent jobs (`smoke`, `conformance`) and always reports (a
+# path-skip is a pass), so it — not the KVM jobs, which are path-gated — is what `main`'s
+# branch-protection ruleset pins. `golden` and `visual` are deliberately NOT part of its `needs:`: a
+# pixel baseline is host-specific (the x86_64 software renderer varies) and the element-tree golden
+# can drift with an upstream dependency, so each stays a per-PR signal that never blocks a merge —
+# the same deterministic-and-host-independent boundary iOS's `E2E` already draws. Each job boots its
+# own AVD; unlike iOS's metered macOS runners (10x billing), Android runs on standard-priced Linux
+# under KVM, so the per-job boot is an acceptable cost for the attribution win. Per-job setup is
+# duplicated the same way ios-e2e.yml duplicates its own — no composite action.
 #
 # The AVD is x86_64 API 34, not the arm64 image the local 2026-07-07 validation used: KVM
 # acceleration on the x86_64 GitHub Linux runner needs an x86_64 system image, and a foreign-arch
 # (arm64) image would fall back to slow software emulation and time the job out. The API level (34)
 # matches the local validation; only the ABI tracks the CI host.
 #
-# Positive-list path filter (mirrors web-e2e.yml and ios-e2e.yml's scripts/e2e_changes.py): only the
-# paths this lane exercises — the adb driver, the run pipeline and scenario loader, the CLI entry
-# points `bajutsu run` wires through, the Android showcase and the shared scenarios, the app-side
-# clipboard SDK the showcase builds in (BajutsuAndroid), the config, and this workflow. Top-level
-# `bajutsu/*.py` modules are allow-listed by name (the adb command layer,
-# the backend registry, the platform lifecycle, the run/assert/codegen path) rather than swept by a
-# `bajutsu/*.py` wildcard, which also caught serve/analytics/crawl modules (stats, audit, usage*,
-# crawl*, …) the emulator jobs never run — burning KVM on, e.g., a serve-only PR;
-# `bajutsu/drivers/adb.py` is listed on its own because the top-level list does not reach into
-# subdirectories. Neither a required check nor gated by a `changes` job, so a plain `paths:`
-# filter is enough: an unrelated PR simply doesn't run it. A new adb-relevant path defaults to NOT
-# triggering — add it here.
+# Because `E2E (android)` is a required check, the lane can't be path-gated at the trigger — a
+# required check skipped by a `paths:` filter stays pending forever and blocks the merge. So it
+# triggers on every PR (and the merge queue) and the `changes` job path-gates the KVM jobs instead,
+# running scripts/e2e_changes.py with E2E_LANE=android (the positive-list of adb-relevant paths — the
+# adb driver + resident channel, the run pipeline and scenario loader, the `bajutsu run` CLI entry,
+# the Android showcase and shared scenarios, the app-side SDKs BajutsuAndroid/BajutsuAndroidUIAutomatorServer,
+# the config, and this workflow — unit-tested in tests/test_e2e_changes.py). A new adb-relevant path
+# defaults to NOT triggering — add it to that module's `android` fragment.
 name: Android E2E (emulator)
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths: &android-paths
-      - 'bajutsu/drivers/adb.py'
-      - 'bajutsu/runner/**'
-      - 'bajutsu/scenario/**'
-      - 'bajutsu/orchestrator/**'
-      # Top-level modules the run / codegen / record path imports (allow-listed by name; kept in
-      # sync with web-e2e.yml and scripts/e2e_changes.py). Excludes serve/analytics/crawl modules.
-      - 'bajutsu/_yaml.py'
-      - 'bajutsu/adb.py'
-      - 'bajutsu/agent_protocols.py'
-      - 'bajutsu/artifact_perms.py'
-      - 'bajutsu/assertions.py'
-      - 'bajutsu/backends.py'
-      - 'bajutsu/capabilities.py'
-      - 'bajutsu/capability_preflight.py'
-      - 'bajutsu/codegen/**'
-      - 'bajutsu/config.py'
-      - 'bajutsu/config_source.py'
-      - 'bajutsu/crawl/core.py'
-      - 'bajutsu/crawl/__init__.py'
-      - 'bajutsu/crawl/serialize.py'
-      - 'bajutsu/device_id.py'
-      - 'bajutsu/dom.py'
-      - 'bajutsu/dotenv.py'
-      - 'bajutsu/elements.py'
-      - 'bajutsu/evidence.py'
-      - 'bajutsu/golden.py'
-      - 'bajutsu/handoff.py'
-      - 'bajutsu/idb_version.py'
-      - 'bajutsu/interp.py'
-      - 'bajutsu/intervals.py'
-      - 'bajutsu/mailbox.py'
-      - 'bajutsu/network.py'
-      - 'bajutsu/platform_lifecycle.py'
-      - 'bajutsu/record.py'
-      - 'bajutsu/redaction.py'
-      - 'bajutsu/run_id.py'
-      - 'bajutsu/simctl.py'
-      - 'bajutsu/totp.py'
-      - 'bajutsu/visual.py'
-      - 'bajutsu/web_network.py'
-      - 'bajutsu/webview.py'
-      - 'bajutsu/cli/commands/run.py'
-      - 'bajutsu/cli/__init__.py'
-      - 'bajutsu/cli/_shared.py'
-      - 'bajutsu/cli/commands/__init__.py'
-      - 'demos/showcase/android/**'
-      - 'demos/showcase/scenarios/**'
-      - 'demos/showcase/showcase.config.yaml'
-      - 'BajutsuAndroid/**'  # the app-side clipboard SDK the showcase APKs build in (BE-0233)
-      - 'BajutsuAndroidUIAutomatorServer/**'  # the resident UI Automator server this lane builds + exercises (BE-0245)
-      - 'bajutsu/adb_resident.py'  # the Python side of the resident channel this lane now exercises (BE-0245)
-      - 'tests/driver_conformance.py'  # the backend-agnostic contract the conformance (adb) job runs (BE-0270)
-      - 'tests/test_driver_conformance_ondevice_android.py'  # the adb conformance harness/module (BE-0270)
-      - 'pyproject.toml'
-      - 'uv.lock'
-      - '.github/workflows/android-e2e.yml'
+  # Trigger on every PR so the `E2E (android)` gate job always reports a status (a required check
+  # that never runs stays pending and blocks merges). The metered KVM jobs themselves are path-gated
+  # by the `changes` job below — a PR that can't affect the adb path skips them and the gate passes.
   pull_request:
-    paths: *android-paths
+  # Also run in the merge queue: `E2E (android)` is a required check, and a required check that never
+  # reports on `merge_group` leaves the queue entry pending until it times out.
+  merge_group:
 
 permissions:
   contents: read
@@ -119,6 +66,29 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Decide whether a KVM run is warranted. The emulator jobs only fire when the PR touches what they
+  # exercise — the adb driver, the run path, the Android showcase and app SDKs, or this workflow. The
+  # decision lives in scripts/e2e_changes.py (E2E_LANE=android) so it is unit-tested — the Android
+  # twin of ios-e2e.yml's `changes` job. The `E2E (android)` aggregator always reports, so an
+  # unrelated PR is neither run nor blocked.
+  changes:
+    name: detect relevant changes
+    runs-on: ubuntu-latest
+    outputs:
+      relevant: ${{ steps.filter.outputs.relevant }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          # Full history so the script's merge-base (three-dot) diff can find the PR's fork point.
+          fetch-depth: 0
+      - name: Detect relevant paths
+        id: filter
+        env:
+          E2E_LANE: android
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+        run: python3 scripts/e2e_changes.py
+
   # The functional heart: run the core scenarios through `bajutsu run` over the adb backend, against
   # both Android UI toolkits (Compose full set + Views Stable-tab subset, BE-0221). This is the "does
   # bajutsu drive Android?" check — the Android twin of ios-e2e.yml's `smoke (idb)` and web-e2e.yml's
@@ -126,6 +96,8 @@ jobs:
   # reads go over the resident channel by default (bajutsu/platform_lifecycle.py).
   smoke:
     name: smoke (adb)
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     # A cold AVD boot + APK builds + the Compose full set and Views subset is ~18min; 30 catches a
     # real hang (a wedged AVD boot or adb) with comfortable headroom.
@@ -234,6 +206,8 @@ jobs:
   # tree. The Android twin of the idb golden ios-e2e.yml now runs per PR.
   golden:
     name: golden (adb)
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     # The golden reruns the Stable-tab scenario twice (resident + dump) against a booted AVD; ~15min
     # end to end, so 25 catches a real hang with headroom.
@@ -328,6 +302,8 @@ jobs:
   # reads run over the resident channel (BE-0245), the adb-specific read path the contract now pins.
   conformance:
     name: conformance (adb)
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     # A cold AVD boot + the Compose + resident-server builds + the contract (a handful of reseeds) is
     # ~15min; 25 catches a real hang (a wedged AVD boot or adb) with headroom.
@@ -422,6 +398,8 @@ jobs:
   # job compares against it. Like ios-e2e.yml's `visual`, this is a signal, not a gate.
   visual:
     name: visual (adb)
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     # A cold AVD boot + the Compose build + one pixel VRT run is ~12min; 25 catches a real hang.
     timeout-minutes: 25
@@ -501,3 +479,36 @@ jobs:
           name: android-e2e-visual-run
           path: runs/
           if-no-files-found: ignore
+
+  # Single required status check for the Android lane — the Android twin of ios-e2e.yml's `E2E`.
+  # Always runs so it reports even when the KVM jobs are skipped (a PR that can't affect the adb
+  # path) — a skipped dependency is a pass; only a real failure or cancellation fails the gate.
+  # `golden` and `visual` are deliberately excluded from `needs:` (see the header): the element-tree
+  # golden can drift with an upstream dependency and a pixel baseline is host-specific, so each stays
+  # a per-PR signal. Make `E2E (android)` the required check, not the path-gated KVM jobs.
+  #
+  # `changes`'s own result is checked too, not just the KVM jobs': `changes` has no `if:`, so it
+  # always runs and never reports `skipped` — but if it *fails* (e.g. a misconfigured `E2E_LANE`,
+  # `scripts/e2e_changes.py` raising on an unrecognized lane), `smoke`/`conformance` are skipped as a
+  # side effect of the failed dependency, not of a genuine path-skip, and a check that only inspected
+  # them would read that as a pass — the required gate reporting green having run nothing.
+  e2e:
+    name: E2E (android)
+    needs: [changes, smoke, conformance]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check E2E results
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          SMOKE: ${{ needs.smoke.result }}
+          CONFORMANCE: ${{ needs.conformance.result }}
+        run: |
+          echo "changes=$CHANGES smoke=$SMOKE conformance=$CONFORMANCE"
+          for result in "$CHANGES" "$SMOKE" "$CONFORMANCE"; do
+            if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
+              echo "E2E (android) failed"
+              exit 1
+            fi
+          done
+          echo "E2E (android) passed (or skipped — no adb-relevant change)"

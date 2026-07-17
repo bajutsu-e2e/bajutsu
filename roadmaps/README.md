@@ -78,6 +78,7 @@ One backend per platform behind the single driver interface ([DESIGN §1](../DES
 | [BE-0245](BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server.md) | Resident UI Automator server for adb reads | Implemented |
 | [BE-0269](BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention.md) | Speed up the system-alert guard's intervention during wait steps | Implemented |
 | [BE-0271](BE-0271-e2e-workflow-structural-parity/BE-0271-e2e-workflow-structural-parity.md) | Structural parity across platform E2E workflows | Implemented |
+| [BE-0279](BE-0279-crossbackend-e2e-required-gate/BE-0279-crossbackend-e2e-required-gate.md) | Align required E2E checks across every backend | Implemented |
 <!-- /GENERATED:implemented-platform -->
 
 ### Driver & backend architecture
@@ -519,7 +520,6 @@ Under consideration — not yet decided. Promote an item to *In progress* once w
 | ID | Item | Status |
 |---|---|---|
 | [BE-0008](BE-0008-flutter-support/BE-0008-flutter-support.md) | Flutter support | Proposal |
-| [BE-0279](BE-0279-crossbackend-e2e-required-gate/BE-0279-crossbackend-e2e-required-gate.md) | Align required E2E checks across every backend | Proposal |
 | [BE-0281](BE-0281-ios-on-device-actuation-coverage/BE-0281-ios-on-device-actuation-coverage.md) | Add real on-device actuation coverage to the iOS CI | Proposal |
 | [BE-0283](BE-0283-android-network-capture/BE-0283-android-network-capture.md) | Network-capture assertions for the Android backend | Proposal |
 <!-- /GENERATED:proposals-platform -->

@@ -1,88 +1,35 @@
-# Real-browser CI for the web (Playwright) backend, on a headless Chromium — two jobs: the demo
-# smoke (BE-0041) drives the demo web app end to end, and the driver conformance suite (BE-0114)
-# runs the backend-agnostic contract against the real driver. Unlike the iOS E2E (ios-e2e.yml) both
-# run on Linux — no Mac, no Simulator — but installing Chromium + running a browser is heavy enough
-# to gate. Neither is a required check, so a path filter is enough: they simply don't run on a PR
-# that can't affect the web path, and an unrelated PR isn't blocked.
+# Real-browser CI for the web (Playwright) backend, on a headless Chromium — three jobs: the demo
+# smoke (BE-0041) drives the demo web app end to end, the serve-UI dogfood (BE-0058) drives Bajutsu's
+# own serve SPA, and the driver conformance suite (BE-0114) runs the backend-agnostic contract
+# against the real driver. Unlike the iOS E2E (ios-e2e.yml) all run on Linux — no Mac, no Simulator —
+# but installing Chromium + running a browser is heavy enough to gate.
 #
-# Positive-list filter (mirrors android-e2e.yml and ios-e2e.yml's scripts/e2e_changes.py): only paths
-# the web jobs actually exercise. Subdirectories are listed explicitly (runner, scenario, drivers,
-# orchestrator for the smoke; serve, templates, serve-ui for the serve-UI dogfood, which drives the
-# served SPA); top-level `bajutsu/*.py` modules are allow-listed by name (the run/assert/codegen
-# path) rather than swept by a `bajutsu/*.py` wildcard, which also caught the serve/analytics/crawl
-# modules (stats, audit, usage*, crawl*, …) that live at the top level but no web job runs. CLI
-# commands are limited to the three entry points the smoke invokes, plus the conformance suite's own
-# files. A new subpackage, top-level module, or CLI command defaults to NOT triggering this
-# workflow — add it here when it becomes web-CI-relevant.
+# The lane now carries a REQUIRED status check like iOS's `E2E`: the `E2E (web)` job below `needs`
+# all three deterministic host-independent jobs (`smoke (playwright)`, `dogfood (serve UI)`,
+# `conformance (playwright)`) and always reports (a path-skip is a pass), so it — not the browser
+# jobs, which are path-gated — is what `main`'s branch-protection ruleset pins. The web lane has no
+# host-specific pixel VRT or upstream-drift golden, so every job it runs meets the
+# deterministic-and-host-independent bar and all three feed the gate.
+#
+# Because `E2E (web)` is a required check, the lane can't be path-gated at the trigger — a required
+# check skipped by a `paths:` filter stays pending forever and blocks the merge. So it triggers on
+# every PR (and the merge queue) and the `changes` job path-gates the browser jobs instead, running
+# scripts/e2e_changes.py with E2E_LANE=web (the positive-list of web-relevant paths — the drivers,
+# the run pipeline and scenario loader, the run/codegen/record CLI entries, the serve backend and its
+# templates for the dogfood, the web + serve-ui demos, the conformance harness, and this workflow —
+# unit-tested in tests/test_e2e_changes.py). A new web-CI-relevant path defaults to NOT triggering —
+# add it to that module's `web` fragment.
 name: Web E2E (Playwright)
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths: &web-paths
-      - 'bajutsu/runner/**'
-      - 'bajutsu/scenario/**'
-      - 'bajutsu/drivers/**'
-      - 'bajutsu/orchestrator/**'
-      # Top-level modules the run / codegen / record path imports (allow-listed by name; kept in
-      # sync with android-e2e.yml and scripts/e2e_changes.py). Excludes serve/analytics/crawl
-      # modules — the serve backend is covered by the 'bajutsu/serve/**' entry below.
-      - 'bajutsu/_yaml.py'
-      - 'bajutsu/adb.py'
-      - 'bajutsu/agent_protocols.py'
-      - 'bajutsu/artifact_perms.py'
-      - 'bajutsu/assertions.py'
-      - 'bajutsu/backends.py'
-      - 'bajutsu/capabilities.py'
-      - 'bajutsu/capability_preflight.py'
-      - 'bajutsu/codegen/**'
-      - 'bajutsu/config.py'
-      - 'bajutsu/config_source.py'
-      - 'bajutsu/crawl/core.py'
-      - 'bajutsu/crawl/__init__.py'
-      - 'bajutsu/crawl/serialize.py'
-      - 'bajutsu/device_id.py'
-      - 'bajutsu/dom.py'
-      - 'bajutsu/dotenv.py'
-      - 'bajutsu/elements.py'
-      - 'bajutsu/evidence.py'
-      - 'bajutsu/golden.py'
-      - 'bajutsu/handoff.py'
-      - 'bajutsu/idb_version.py'
-      - 'bajutsu/interp.py'
-      - 'bajutsu/intervals.py'
-      - 'bajutsu/mailbox.py'
-      - 'bajutsu/network.py'
-      - 'bajutsu/platform_lifecycle.py'
-      - 'bajutsu/record.py'
-      - 'bajutsu/redaction.py'
-      - 'bajutsu/run_id.py'
-      - 'bajutsu/simctl.py'
-      - 'bajutsu/totp.py'
-      - 'bajutsu/visual.py'
-      - 'bajutsu/web_network.py'
-      - 'bajutsu/webview.py'
-      - 'bajutsu/cli/__init__.py'
-      - 'bajutsu/cli/_shared.py'
-      - 'bajutsu/cli/commands/__init__.py'
-      - 'bajutsu/cli/commands/run.py'
-      - 'bajutsu/cli/commands/codegen.py'
-      - 'bajutsu/cli/commands/record.py'
-      # The serve UI dogfood (BE-0058) drives the served SPA, so it is web-CI-relevant whenever the
-      # serve backend or its templates change — not only when the harness itself does.
-      - 'bajutsu/serve/**'
-      - 'bajutsu/templates/**'
-      - 'demos/serve-ui/**'
-      - 'demos/web/**'
-      - 'tests/driver_conformance.py'
-      - 'tests/test_driver_conformance_web.py'
-      - 'pyproject.toml'
-      - 'uv.lock'
-      - 'Makefile'
-      - '.github/workflows/web-e2e.yml'
+  # Trigger on every PR so the `E2E (web)` gate job always reports a status (a required check that
+  # never runs stays pending and blocks merges). The browser jobs themselves are path-gated by the
+  # `changes` job below — a PR that can't affect the web path skips them and the gate passes.
   pull_request:
-    paths: *web-paths
+  # Also run in the merge queue: `E2E (web)` is a required check, and a required check that never
+  # reports on `merge_group` leaves the queue entry pending until it times out.
+  merge_group:
 
 permissions:
   contents: read
@@ -92,8 +39,33 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Decide whether a browser run is warranted. The Chromium jobs only fire when the PR touches what
+  # they exercise — the drivers, the run path, the serve backend and demos, or this workflow. The
+  # decision lives in scripts/e2e_changes.py (E2E_LANE=web) so it is unit-tested — the web twin of
+  # ios-e2e.yml's `changes` job. The `E2E (web)` aggregator always reports, so an unrelated PR is
+  # neither run nor blocked.
+  changes:
+    name: detect relevant changes
+    runs-on: ubuntu-latest
+    outputs:
+      relevant: ${{ steps.filter.outputs.relevant }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          # Full history so the script's merge-base (three-dot) diff can find the PR's fork point.
+          fetch-depth: 0
+      - name: Detect relevant paths
+        id: filter
+        env:
+          E2E_LANE: web
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+        run: python3 scripts/e2e_changes.py
+
   web-e2e:
     name: smoke (playwright)
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     # The web smoke needs only the `web` extra, never the dev group (mypy / pytest / ruff + the
     # gate-only extras). UV_NO_DEV makes every uv call here skip it — both the explicit `uv sync`
@@ -134,6 +106,8 @@ jobs:
   # assertions only.
   serve-ui-dogfood:
     name: dogfood (serve UI)
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     env:
       UV_NO_DEV: "1"
@@ -165,6 +139,8 @@ jobs:
   # smoke above — this job installs the dev group alongside the web extra (no UV_NO_DEV here).
   web-conformance:
     name: conformance (playwright)
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
@@ -191,3 +167,36 @@ jobs:
       # it once, rather than xdist relaunching a browser per worker for these few short tests.
       - name: Driver conformance (Playwright)
         run: uv run --no-sync pytest tests/test_driver_conformance_web.py -m web -n0
+
+  # Single required status check for the web lane — the web twin of ios-e2e.yml's `E2E`. Always runs
+  # so it reports even when the browser jobs are skipped (a PR that can't affect the web path) — a
+  # skipped dependency is a pass; only a real failure or cancellation fails the gate. The web lane
+  # has no host-specific or upstream-drift job to exclude, so all three deterministic jobs feed it.
+  # Make `E2E (web)` the required check, not the path-gated browser jobs.
+  #
+  # `changes`'s own result is checked too, not just the browser jobs': `changes` has no `if:`, so it
+  # always runs and never reports `skipped` — but if it *fails* (e.g. a misconfigured `E2E_LANE`,
+  # `scripts/e2e_changes.py` raising on an unrecognized lane), the browser jobs are skipped as a side
+  # effect of the failed dependency, not of a genuine path-skip, and a check that only inspected them
+  # would read that as a pass — the required gate reporting green having run nothing.
+  e2e:
+    name: E2E (web)
+    needs: [changes, web-e2e, serve-ui-dogfood, web-conformance]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check E2E results
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          SMOKE: ${{ needs.web-e2e.result }}
+          DOGFOOD: ${{ needs.serve-ui-dogfood.result }}
+          CONFORMANCE: ${{ needs.web-conformance.result }}
+        run: |
+          echo "changes=$CHANGES smoke=$SMOKE dogfood=$DOGFOOD conformance=$CONFORMANCE"
+          for result in "$CHANGES" "$SMOKE" "$DOGFOOD" "$CONFORMANCE"; do
+            if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
+              echo "E2E (web) failed"
+              exit 1
+            fi
+          done
+          echo "E2E (web) passed (or skipped — no web-relevant change)"

@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0279](BE-0279-crossbackend-e2e-required-gate.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0279") |
+| Implementing PR | [#1177](https://github.com/bajutsu-e2e/bajutsu/pull/1177) |
 | Topic | Platform support |
 <!-- /BE-METADATA -->
 
@@ -74,11 +75,19 @@ Proposal altitude. The units are MECE around the aggregators and the ruleset.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] `E2E (android)` aggregator in `android-e2e.yml`.
-- [ ] `E2E (web)` aggregator in `web-e2e.yml`.
-- [ ] Add the new required check names to `main`'s branch-protection ruleset (human step).
-- [ ] Document the gate boundary (deterministic + host-independent → required).
-- [ ] Route the sibling items' new jobs into the right aggregator's `needs:`.
+- [x] `E2E (android)` aggregator in `android-e2e.yml` — `needs: [changes, smoke, conformance]`, `if: always()`,
+  `golden`/`visual` excluded; the lane converts to the iOS trigger shape (every PR + `merge_group`, a
+  `changes` job path-gating the KVM jobs via `scripts/e2e_changes.py` with `E2E_LANE=android`).
+- [x] `E2E (web)` aggregator in `web-e2e.yml` — `needs: [changes, web-e2e, serve-ui-dogfood, web-conformance]`, same trigger
+  conversion (`E2E_LANE=web`).
+- [ ] Add the new required check names — `E2E (android)` and `E2E (web)` — to `main`'s
+  branch-protection ruleset (human step; out-of-repo administrative state, cannot be a repository
+  change).
+- [x] Document the gate boundary (deterministic + host-independent → required) in `docs/ci.md` and its
+  `docs/ja/ci.md` mirror, and in each workflow's header.
+- [ ] Route the sibling items' new jobs into the right aggregator's `needs:` — forward-looking: the
+  network / push / WebView / text-editing jobs do not yet exist in the workflows, so each sibling PR
+  adds itself to the correct aggregator when it lands (the aggregators list today's jobs).
 
 ## References
 
