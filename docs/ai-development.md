@@ -187,8 +187,8 @@ capability, and a platform carries one only where it applies:
 
 Two rules keep the set honest. **Every lane is required, per-lane.** A required status check is a
 job `name:` the ruleset pins (above); each lane carries its own always-reporting aggregator
-(`E2E`, `E2E (android)`, `E2E (web)`, BE-0279) that a `changes` job path-gates, so an unrelated PR is
-neither run nor blocked — per-lane aggregators (rather than one aggregator across backends) keep
+(`E2E`, `E2E (android)`, `E2E (web)`, BE-0279) whose heavy jobs a `changes` job path-gates, so an
+unrelated PR is neither run nor blocked — per-lane aggregators (rather than one aggregator across backends) keep
 attribution: a red check names the backend that broke. **Host-specific or upstream-fragile checks
 stay off the required gate.** `visual` is a pixel compare whose baseline varies by renderer, and the
 element-tree `golden` runs against an upstream dependency (`idb_companion`, the on-device server)
