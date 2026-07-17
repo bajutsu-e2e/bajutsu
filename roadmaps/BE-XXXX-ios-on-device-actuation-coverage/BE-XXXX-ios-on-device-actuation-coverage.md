@@ -1,6 +1,6 @@
 **English** · [日本語](BE-XXXX-ios-on-device-actuation-coverage-ja.md)
 
-# BE-XXXX — Turn the read-only iOS CI into real on-device actuation coverage
+# BE-XXXX — Extend the iOS CI from only reading the screen to actuating the app on-device
 
 <!-- BE-METADATA -->
 | Field | Value |
@@ -15,7 +15,7 @@
 
 ## Introduction
 
-The iOS E2E lane's idb scenarios — smoke, golden, visual — are read-only: they use `wait` and
+The iOS E2E lane's idb scenarios — smoke, golden, visual — only read the screen: they use `wait` and
 `expect` and contain no `tap` / `type` / `swipe` / `back` / gesture step. idb's only real action
 actuation in CI is `tap`, via the conformance job. Its other actuators (`type_text`, `swipe`,
 `scroll`, `back`, `long_press`, `double_tap`, `tap_point`) and the whole device-control family are
