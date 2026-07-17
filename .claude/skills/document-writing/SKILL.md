@@ -4,11 +4,11 @@ model: sonnet
 description: >-
   The authoritative prose norm for Bajutsu's writing — the language-agnostic writing technique both
   languages share (top-down drafting, stating the contribution up front, sentence stress,
-  subject–verb proximity, active voice, cutting filler, and paragraph-level argument structure —
-  paragraph writing). Use it whenever you write or revise a BE roadmap item (`*.md` / `*-ja.md`) or a
-  prose document under `docs/`, in either language. It is the umbrella above two language layers:
-  apply `english-document-writing` with it for English prose, and `japanese-document-writing` for
-  Japanese prose.
+  subject–verb proximity, active voice, cutting filler, paragraph-level argument structure —
+  paragraph writing — and self-contained prose that never assumes prior reading). Use it whenever you
+  write or revise a BE roadmap item (`*.md` / `*-ja.md`) or a prose document under `docs/`, in either
+  language. It is the umbrella above two language layers: apply `english-document-writing` with it for
+  English prose, and `japanese-document-writing` for Japanese prose.
 ---
 
 <!--
@@ -34,7 +34,8 @@ pass.
   [`japanese-document-writing`](../japanese-document-writing/SKILL.md). Each language layer holds only the
   guidance its own grammar and typography need, and never applies to the other language. Where a
   language layer overlaps these principles (filler, redundancy, restraint of rhetorical flourish,
-  paragraph and argument structure), that layer's specific wording governs for its language.
+  paragraph and argument structure, self-containment), that layer's specific wording governs for its
+  language.
 - **Enforcement stays a review-time norm, not a CI gate.** Judging clarity, emphasis, and argument order
   needs semantic judgment; putting that on the gate would put an LLM on the `run` / CI verdict path,
   which prime directive 1 forbids. It holds the same way the bilingual-docs and DESIGN.md-alignment
@@ -94,13 +95,41 @@ one point ends and the next begins.
   paragraph or section, once the point in hand is settled — not dropped mid-argument, where it
   breaks the reader's flow.
 
+## Self-contained prose (both languages)
+
+A document must be understandable on its own. A reader who has not read anything else in the
+repository — no other BE item, no other page under `docs/`, no earlier commit — must still be able
+to follow it start to finish.
+
+- **Never assume prior reading.** Don't write as though the reader already read a linked document, an
+  earlier roadmap item, or an earlier section of the same document. Give each piece the background it
+  needs in place.
+- **Spell out an abbreviation or acronym on first use.** Write the full term, with the acronym in
+  parentheses right after — "role-based access control (RBAC)" — then the acronym alone for the rest
+  of the piece. This holds everywhere a term appears, in a roadmap item as much as in `docs/`.
+  Re-expand it if a long document's later section could plausibly be read on its own.
+- **Define a term where you introduce it, even when a fuller definition exists elsewhere.** A link to
+  that fuller definition is a supplement for a reader who wants depth, not a substitute for the
+  context this document needs at the point of first use.
+- **A cross-reference sends the reader further; it never carries the sentence's own meaning.** Link
+  for elaboration, for the canonical wording of a cross-cutting rule, or for the record — never as
+  the only place a fact the current sentence depends on is stated.
+- **No omissions.** Do not skip a step, a definition, or a piece of context because it "should be
+  obvious" or "is covered elsewhere". If a reader would have to guess or go looking, the document is
+  not yet self-contained.
+
 ## Verify your work
 
-After drafting, reread once against this list: does the piece lead with its contribution, does each
-sentence end on its most important element, is the verb near its subject, is every sentence free of
-filler, does every paragraph carry exactly one topic announced in its first sentence, and does the
-argument move in one direction per paragraph without restating its conclusion? Then run the same
-reread under the layer for your language:
+After drafting, reread once against sentence-level technique: does the piece lead with its
+contribution, does each sentence end on its most important element, is the verb near its subject, and
+is every sentence free of filler?
+
+Reread again against paragraph structure: does every paragraph carry exactly one topic announced in
+its first sentence, and does the argument move in one direction without restating its conclusion?
+
+Reread a third time against self-containment: could a reader who has not read anything else in the
+repository follow this piece start to finish, with every acronym expanded and every term defined
+where it is first used? Then run the same three rereads under the layer for your language:
 [`english-document-writing`](../english-document-writing/SKILL.md) for English,
 [`japanese-document-writing`](../japanese-document-writing/SKILL.md) for Japanese.
 

@@ -703,13 +703,12 @@ apply equally when reporting on or summarizing work.
 - **No forced or unnatural translation.** Use the conventional translation of a term. When
   translating it would read unnaturally, keep the original term instead — usually the English word
   (e.g. `selector`, `actuator`, `backend`, `assertion`) rather than a contrived literal rendering.
-- **No omissions; be self-contained.** A reader must be able to understand the document on its own.
-  Spell out an abbreviation the first time it appears, give a term the context it needs, and do not
-  assume the reader has already read another page.
-- **Spell out an acronym the first time it appears.** Write the full term first, with the acronym
-  in parentheses right after — e.g. role-based access control (RBAC) — then the acronym alone is
-  fine for the rest of the document. This applies everywhere the term appears, including roadmap
-  items, not only `docs/`.
+- **No omissions; be self-contained.** Follow the `document-writing` skill's
+  [self-contained-prose norm](../.claude/skills/document-writing/SKILL.md#self-contained-prose-both-languages):
+  a reader who has not read anything else in the repository must be able to follow the document start
+  to finish, with every abbreviation spelled out and every term defined at first use — e.g. role-based
+  access control (RBAC), then the acronym alone. This applies everywhere a term appears, including
+  roadmap items, not only `docs/`.
 - **Don't restate a cross-cutting norm — link it (BE-0284).** When a rule spans several documents
   (the gate's step list, the roadmap BE-ID lifecycle, the PR title-and-body shape, this
   documentation style), state it in full in **one** canonical home and point every other mention at
