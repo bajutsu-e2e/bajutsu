@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0284") |
-| 実装 PR | [#PENDING](https://github.com/bajutsu-e2e/bajutsu/pull/PENDING) |
+| 実装 PR | [#1169](https://github.com/bajutsu-e2e/bajutsu/pull/1169) |
 | トピック | ドキュメント整備（コントリビューターワークフロー） |
 <!-- /BE-METADATA -->
 
@@ -140,7 +140,7 @@ directives、docstring のスタイル
 
 ### ログ
 
-- 一括で集約しました（PR #PENDING）。`CONTRIBUTING.md` / `AGENTS.md` /
+- 一括で集約しました（PR #1169）。`CONTRIBUTING.md` / `AGENTS.md` /
   `.github/PULL_REQUEST_TEMPLATE.md` のフラット構成への修正、`docs/ai-development.md`・
   `CONTRIBUTING.md`・`AGENTS.md`・`docs/contributor-workflow-tutorial.md` の `make check` 記述を
   `CLAUDE.md` へのリンクに統一、`.github/claude-review-prompt.md` の各規範を基準ファイルへリンク、
