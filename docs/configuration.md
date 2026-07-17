@@ -86,7 +86,7 @@ An undefined target raises `KeyError` (the CLI exits with code 2).
 | `ai` | defaults < app (field by field) | the AI paths' provider/model/endpoint/key ([below](#ai-provider-ai-be-0047)); `None` (omitted) = the environment alone decides |
 | `defaults.doctor.idCoverageOk` / `defaults.doctor.idCoverageFail` | defaults | id-coverage thresholds for doctor grading ([below](#configurable-thresholds-defaultsdoctor-be-0024)); default 0.9 / 0.7 |
 
-The `backend` field validator `_norm` normalizes "a single string → a 1-element list" (on both
+The `backend` field validator `_norm` normalizes "a single string → a one-element list" (on both
 defaults / app).
 
 ### Merging redact
@@ -216,8 +216,8 @@ defaults:
   screenshot (if any) during `triage --ai`, read from the run's `runs/` evidence. That image goes to
   the AI provider you configured. Redaction covers the `${secrets.X}`
   *value* wherever it appears in text (network, element tree, logs), not what the app renders on
-  screen. So that this is never a surprise, `record` and `triage --ai` print a one-time warning when
-  the target binds `secrets:`. This is a disclosure, not a mitigation (visual evidence is the point):
+  screen. So that the exposure is never a surprise, `record` and `triage --ai` print a one-time warning when
+  the target binds `secrets:`. This warning is a disclosure, not a mitigation (visual evidence is the point):
   to avoid the exposure entirely, skip AI-driven authoring for a secret-bearing flow, or keep the
   secret off-screen in the app under test.
 - **Usage and cost are recorded to an attributed ledger**
@@ -290,7 +290,7 @@ orgs:
     targets: [demo, checkout]
 ```
 
-At OAuth login a user is assigned their org — an explicit `members` entry first, else a `githubOrgs`
+At OAuth login users are assigned their org — an explicit `members` entry first, else a `githubOrgs`
 match from their GitHub org memberships. Afterward they see only that org's targets, and a run's
 artifacts/scenarios/baselines live under the org's own object-store prefix. A login or target named in
 no org falls into the single `default` org, so a config **without** an `orgs:` block is
@@ -388,7 +388,7 @@ git+https://<host>/<owner>/<repo>.git[@<ref>][#<path>]          # general form (
 
 ## Onboarding a new target
 
-To add a new app, add **app-side preparation and one config entry**. No changes to the tool itself are required.
+To add a new app, add **app-side preparation and one config entry**. The tool itself needs no changes.
 
 1. **Apply the implementation convention** — `accessibilityIdentifier` on key elements (in the
    app's namespace), expose state in label / traits / value, launch hooks, disable animations.
@@ -415,7 +415,7 @@ Three invariants:
 1. **Unique within a screen** — never put the same id twice on one screen
    ([ambiguity detection in selectors](selectors.md#resolution-semantics)). Repeated elements are
    disambiguated by a data-derived key (`list.row.3`). Set operations use `idMatches` + `count`.
-2. **Non-localized, data-derived** — don't use display text in an id (it breaks under translation).
+2. **Non-localized, data-derived** — do not use display text in an id (it breaks under translation).
 3. **Namespace-prefixed** — every id starts with a declared namespace.
 
 The showcase's id catalog is in [showcase](showcase.md) (and, in full, `demos/showcase/SPEC.md`).

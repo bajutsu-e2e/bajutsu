@@ -85,7 +85,9 @@ capturePolicy:
 
 ## 区間証跡（video / deviceLog / appTrace）
 
-実装: `bajutsu/intervals.py`。これらは **子プロセス**であり（iOS は `simctl`、Android は `adb`）、操作前に開始し、ステップが落ち着いてから停止します。プロセス起動は注入可能（`Spawn`）で、テストできます。web は子プロセスを使いません。区間証跡は Playwright ネイティブで、driver が供給します（後述）。（`appTrace` は iOS の区間です。アプリの os_log subsystem に対する `log stream` を、`parse_app_trace` が時刻つきの区間にペアリングします。）
+実装: `bajutsu/intervals.py`。これらは **子プロセス**であり（iOS は `simctl`、Android は `adb`）、操作前に開始し、ステップが落ち着いてから停止します。プロセス起動は注入可能（`Spawn`）で、テストできます。
+
+web は子プロセスを使いません。区間証跡は Playwright ネイティブで、driver が供給します（後述）。`appTrace` も video / deviceLog と同じ区間系です（ペアリングの仕組みは前掲の注を参照）。
 
 > **区間証跡は opt-in です（BE-0028）。** `video` / `deviceLog` / `appTrace` は重いため、シナリオが
 > **その kind を要求したときだけ**記録します。要求の経路は、インライン `capture:` か `capturePolicy` ルール
@@ -99,7 +101,9 @@ capturePolicy:
 | `video` | `simctl io <udid> recordVideo --codec h264` / `adb shell screenrecord` | **SIGINT**（強制 kill だと mp4 が壊れる） | `scenario.mp4` |
 | `deviceLog` | `simctl spawn <udid> log stream --level debug --style compact [--predicate ...]` / `adb logcat -T 1` | SIGTERM | `device.log` |
 
-- iOS は `start_video` / `start_device_log`、Android は `start_screenrecord` / `start_logcat` が `Interval` を返し、`Interval.stop()` がシグナルを送ってファイルを確定します。停止は最大 10s 待ち、超えたら kill します。`screenrecord` はデバイス側に録画するので、その `Interval` は停止時に確定した mp4 を `adb pull` で回収し、デバイス側のコピーを削除します。pull が失敗した場合（デバイスが消えたなど）、Sink は実体のないパスを記録する代わりに、その 1 件だけを警告つきで捨てます（実体のないパスを残しません）。区間証跡の確定処理の I/O で、通過するはずのシナリオを失敗させません。なお `adb screenrecord` は 1 回の録画を約 180 秒（プラットフォームの既定／上限）で打ち切るので、それより長いシナリオの Android 動画はその時点で終わります。この上限と SIGINT による確定の実機での調整は、後続の BE-0007 e2e に含みます。
+- iOS は `start_video` / `start_device_log`、Android は `start_screenrecord` / `start_logcat` が `Interval` を返し、`Interval.stop()` がシグナルを送ってファイルを確定します。停止は最大 10s 待ち、超えたら kill します。
+- `screenrecord` はデバイス側に録画するので、その `Interval` は停止時に確定した mp4 を `adb pull` で回収し、デバイス側のコピーを削除します。pull が失敗した場合（デバイスが消えたなど）、Sink は実体のないパスを記録せず、その 1 件だけを警告つきで捨てます。区間証跡の確定処理の I/O で、通過するはずのシナリオを失敗させません。
+- なお `adb screenrecord` は 1 回の録画を約 180 秒（プラットフォームの既定／上限）で打ち切るので、それより長いシナリオの Android 動画はその時点で終わります。この上限と SIGINT による確定の実機での調整は、後続の BE-0007 e2e に含みます。
 - deviceLog は iOS では `--predicate`（NSPredicate）でサブシステムなどに絞れます（CLI の `--log-predicate`）。`adb logcat` は絞り込みません（logcat の filterspec は別の構文で、後続の knob です）。取得はリングバッファ全体ではなくシナリオの区間を反映するよう、末尾から追従を始めます。
 - `INTERVAL_KINDS = {"video", "deviceLog", "appTrace"}`。orchestrator はこの集合で「区間 / 瞬時」を振り分けます。
 
@@ -129,7 +133,7 @@ class EvidenceSink(Protocol):
 |---|---|
 | `readiness` | 起動後の準備完了ゲートを通過したか、どのシグナル（`readyWhen` / `namespace` / `count`、あるいは通過せず `timeout`）で通過したかです。「ゲートがコンテンツより先に返った」のか「コンテンツは描画されたが待機対象の要素が現れなかった」のかを切り分けます。準備完了結果を持たないレーンでは `null` になります。 |
 | `trace` | ポーリングの時系列です。何回ポーリングしたか、ツリーが最初に空でなくなった時刻（`firstNonemptySeconds`、一度も空でなくならなければ `null`）、タイムアウト時点で要素がいくつあったかを記録し、「何も描画されなかった / 一時的に空」「描画されたが待機対象の要素が無い」「コールドブートで描画が遅い」を切り分けます。 |
-| `provenance` | [BE-0049](../../roadmaps/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md) のスタンプ（シナリオハッシュ、ツールバージョン、git リビジョン）です。run から独立して証跡を識別できるようにします。この `scenarioHash` は**このシナリオ単体**のフィンガープリントで、run マニフェストの `scenarioHash` が存在すれば取り込むファイルレベルの `description` を含みません。そのため、スイートやマトリクスの run に限らず、単一シナリオの run でもマニフェストのハッシュと一致しないことがあります。 |
+| `provenance` | [BE-0049](../../roadmaps/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md) のスタンプ（シナリオハッシュ、ツールバージョン、git リビジョン）です。run から独立して証跡を識別できるようにします。この `scenarioHash` は**このシナリオ単体**のフィンガープリントです。run マニフェストの `scenarioHash` は、存在すればファイルレベルの `description` を取り込みますが、こちらはそれを含みません。そのため、スイートやマトリクスの run に限らず、単一シナリオの run でもマニフェストのハッシュと一致しないことがあります。 |
 | `elements` | タイムアウトした瞬間の要素ツリー（マスキング済み）です。 |
 
 これは `Artifact(kind="waitDiagnostic", provider="runner")` として記録します。バックエンドの actuator ではなく、run ループが書き出します。
@@ -162,7 +166,7 @@ class Artifact:
 
 `visual` アサーションは `VisualEvidence` レコードを生成し、manifest とレポートに反映します。run ディレクトリからの相対パスとして、baseline コピー、実際のスクリーンショット、差分画像（差分が見つかった場合）を持ち、`diff_pct`（差分ピクセルの割合）と `engine`（判定を行った比較エンジン、`"exact"` または `"pixelmatch"`。[BE-0165](../../roadmaps/BE-0165-visual-compare-engines/BE-0165-visual-compare-engines-ja.md)）を記録します。
 
-エンジンはアサーション単位（`compare:`）で選択でき、ターゲットレベルの config（`visualCompare`）にフォールバックします。使用されたエンジンは manifest に記録されるため、各判定がどのアルゴリズムで行われたかを追跡できます。実装: `bajutsu/assertions.py` `VisualEvidence`。
+エンジンはアサーション単位（`compare:`）で選択でき、ターゲットレベルの config（`visualCompare`）にフォールバックします。使用されたエンジンは manifest に記録されるため、各判定がどのアルゴリズムで行われたかを追跡できます。実装: `bajutsu/assertions/visual.py` `VisualEvidence`。
 
 ## マスキング（redact）
 
@@ -177,7 +181,7 @@ redact:
 ```
 
 > **機密ヘッダは既定でマスクされます**（この保護にシナリオ側の `redact:` は不要です）。組み込みの集合は
-> `authorization`・`proxy-authorization`・`cookie`・`set-cookie`・`x-api-key`・`x-auth-token` で、
+> `authorization`、`proxy-authorization`、`cookie`、`set-cookie`、`x-api-key`、`x-auth-token` で、
 > 大文字小文字を区別せずに照合します。`cookie` と `set-cookie` は一つの関心事として扱い、どちらか一方を
 > 指定（または解除）すると両方に適用されます。`redact.headers` に書いたヘッダ名はこの集合に上乗せされる
 > だけで、集合を置き換えることはありません。既定ヘッダの生の値がどうしても必要なとき（認証失敗のデバッグ

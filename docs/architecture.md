@@ -89,7 +89,7 @@ The `bajutsu/` package (Python 3.13+, pydantic v2 / typer / anthropic / pyyaml /
 | `drivers/adb.py` | adb backend (Android; `uiautomator dump` frame-center coordinate tap, the idb-equivalent second platform) | [drivers](drivers.md#adb-android) |
 | `drivers/playwright.py` | Playwright web backend (browser; first slice — deterministic run) | [drivers](drivers.md#playwright-web) |
 | `scenario/` | Scenario schema (strict pydantic validation) + YAML load / dump (package: `models` / `load` / `expand` / `select` / `serialize`) | [scenarios](scenarios.md) |
-| `assertions.py` | Machine assertion evaluation (total function — never raises) | [selectors](selectors.md#assertion-evaluation) |
+| `assertions/` | Machine assertion evaluation (total function — never raises) (package: `evaluate` / `network` / `visual` / `schema` / `_common`, BE-0250) | [selectors](selectors.md#assertion-evaluation) |
 | `orchestrator/` | The deterministic Tier 2 run loop (act → wait → verify) (package: `loop` / `waits` / `substitution` / `evidence_rules` / `actions`) | [run-loop](run-loop.md) |
 | `evidence.py` | Evidence capture (instant / interval) and Sinks | [evidence](evidence.md) |
 | `intervals.py` | Interval evidence (video / deviceLog) as simctl child processes | [evidence](evidence.md#interval-evidence-video--devicelog) |
@@ -130,7 +130,7 @@ The `bajutsu/` package (Python 3.13+, pydantic v2 / typer / anthropic / pyyaml /
 Lower layers are more stable; upper layers depend on lower ones. The core is `drivers/base.py`
 (selector resolution), which every execution path depends on.
 
-![Dependency-layer diagram: cli/ is the user entry point, from which runner/, record.py/crawl/, codegen/, trace.py, and triage.py descend directly (codegen/ and trace.py have no further dependencies drawn). runner/ depends on orchestrator/; record.py/crawl/ depends on the AI agent helpers; triage.py depends on the serve/CI helpers. orchestrator/ and the agent helpers depend on assertions.py and evidence.py, and orchestrator/ additionally depends on config.py, backends.py, and simctl.py. assertions.py depends on scenario/ and evidence.py depends on report/; scenario/, report/, config.py, backends.py, and simctl.py all converge on drivers/base.py, the determinism core, from which drivers/fake, the iOS drivers, and the Playwright driver all derive.](assets/diagrams/architecture-dependency-layers.svg)
+![Dependency-layer diagram: cli/ is the user entry point, from which runner/, record.py/crawl/, codegen/, trace.py, and triage.py descend directly (codegen/ and trace.py have no further dependencies drawn). runner/ depends on orchestrator/; record.py/crawl/ depends on the AI agent helpers; triage.py depends on the serve/CI helpers. orchestrator/ and the agent helpers depend on assertions/ and evidence.py, and orchestrator/ additionally depends on config.py, backends.py, and simctl.py. assertions/ depends on scenario/ and evidence.py depends on report/; scenario/, report/, config.py, backends.py, and simctl.py all converge on drivers/base.py, the determinism core, from which drivers/fake, the iOS drivers, and the Playwright driver all derive.](assets/diagrams/architecture-dependency-layers.svg)
 
 <details>
 <summary>Mermaid source</summary>
@@ -150,7 +150,7 @@ flowchart TB
     agentStuff["agent_protocols.py / agent_factory.py /<br/>claude_agent.py / alerts.py"]
     serveGh["serve/ · github.py<br/>(web UI · CI)"]
 
-    assertions["assertions.py"]
+    assertions["assertions/"]
     evidence["evidence.py<br/>+ intervals.py · network.py · visual.py · redaction.py"]
 
     scenario["scenario/<br/>(interp.py)"]
@@ -215,7 +215,7 @@ notices. The configuration lives in `[tool.importlinter]` in `pyproject.toml`. T
 declared:
 
 1. **Deterministic core** — the path that derives a verdict and evidence with no model and no
-   periphery stack: `orchestrator/`, `runner/`, `drivers/base.py`, `assertions.py`, `evidence.py`,
+   periphery stack: `orchestrator/`, `runner/`, `drivers/base.py`, `assertions/`, `evidence.py`,
    `report/`, `config/`, `scenario/`, `preflight.py` / `capability_preflight.py` /
    `capabilities.py`, `doctor.py`, `lint.py`. It carries the prime directives.
 2. **Contract** — the stable surfaces a consumer depends on: the scenario schema (`scenario/`) and
@@ -227,8 +227,8 @@ declared:
 
 Three contracts are enforced:
 
-- **The deterministic core must not import the periphery.** This is prime directives #1 and #3 as a
-  static contract: the verdict/evidence path stays free of the serve, AI and codegen stacks, and
+- **The deterministic core must not import the periphery.** This contract enforces prime directives
+  #1 and #3 statically: the verdict/evidence path stays free of the serve, AI, and codegen stacks, and
   cannot silently grow a dependency on them. A pure element-tree helper a core module needs (e.g.
   `screen_size_from_elements`, `shows_app_ui`) lives in the core (`bajutsu/elements.py`), not in a
   periphery module such as `record.py`; likewise the resolved `ai` block (`AiConfig`) lives in
@@ -245,8 +245,8 @@ Three contracts are enforced:
   `scenario/` off those extras (`include_external_packages` lets it see the external import), on top
   of the periphery contract that already keeps them off `bajutsu.serve`.
 - **The scenario schema and `Driver` Protocol stay a portable inner contract** — independent of the
-  runtime core (`orchestrator/`, `runner/`, `config/`, …) as well as the periphery. This keeps the
-  contract a stable layer a consumer can depend on without pulling the runtime, underpinning
+  runtime core (`orchestrator/`, `runner/`, `config/`, …) as well as the periphery. This independence
+  keeps the contract a stable layer a consumer can depend on without pulling the runtime, underpinning
   cross-version schema reads (BE-0119) and any future split of the periphery from the core.
 
 The check is static analysis on the import graph — no model, nothing on the `run` / CI verdict path
@@ -273,7 +273,7 @@ against every backend, driving the real driver instance (including code that byp
 
 The contract (`tests/driver_conformance.py`) is the "done" definition a new backend meets:
 
-- an ambiguous selector (2+ matches) fails rather than acting on the first match;
+- an ambiguous selector (two or more matches) fails rather than acting on the first match;
 - a zero-match selector fails rather than reporting success;
 - selector failures share one error type (`SelectorError`), uniform across backends;
 - a unique match acts without error, and `query()` reports the on-screen elements;
@@ -349,7 +349,7 @@ device (the shared device is reseeded via one channel, so parallel workers would
   Automator (Kotlin) codegen target (BE-0209); an Android e2e CI lane (emulator under KVM,
   `android-e2e.yml`; BE-0208), and adb cannot yet drive the native tab bar, so tab-scoped scenarios
   stay iOS-only until BE-0223 lands (BE-0007). **Id matching** stays verbatim in the driver: where a
-  native id syntax can't reproduce the SPEC id (Android Views `android:id` maps `stable.refresh` →
+  native id syntax cannot reproduce the SPEC id (Android Views `android:id` maps `stable.refresh` →
   `stable_refresh`), the scenario's selector lists **both id forms** and the shared resolver matches
   either as an OR — an explicit scenario-side convention, not a driver-side `.`↔`_` rewrite (BE-0221)
 - Scenario schema (strict validation) and YAML round-trip; `id` / `idMatches` accept a list of OR
@@ -442,4 +442,4 @@ device (the shared device is reseeded via one channel, so parallel workers would
 | `mockServer` (external mock command) | config schema only; the `cmd`/`port` external server is **not implemented** — superseded by scenario `mocks` (declarative in-protocol stubs, implemented) | `config/schema.py` `MockServer` |
 | `appTrace` interval evidence on the **web** backend | `appTrace` is `os_log`/simctl-based (iOS only); the Playwright backend implements the `video` and `deviceLog`-equivalent (console / page-error) interval kinds instead (BE-0054), but has no `appTrace` analogue | `intervals.py` · `drivers/playwright.py` |
 
-These are also flagged inline on the relevant feature pages.
+Both features are also flagged inline on the relevant feature pages.

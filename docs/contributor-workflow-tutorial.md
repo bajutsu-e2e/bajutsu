@@ -55,7 +55,7 @@ hitting a step that occasionally fails on a slow simulator and you think:
 
 > "Bajutsu should retry a step that flakes instead of failing the whole run."
 
-That is deliberately underspecified. Part of what `/ideation` does is *sharpen* it — see the
+That sentence is deliberately underspecified. Part of what `/ideation` does is *sharpen* it — see the
 [worked example](#a-worked-example-a-vague-idea-becomes-a-scoped-proposal) below for the before/after.
 
 ### Step A2 — Run `/ideation` and let it ground itself
@@ -115,7 +115,7 @@ gh pr create --reviewer bajutsu-e2e/steering-committee \
   --body "…"
 ```
 
-Note the title carries **no** `[BE-NNNN]` prefix — the id does not exist yet. A PR that *introduces*
+The title carries **no** `[BE-NNNN]` prefix — the id does not exist yet. A PR that *introduces*
 a roadmap item keeps the plain scoped subject.
 
 > **`/ideation` will not auto-open this PR for you.** A proposal is a human checkpoint, so the
@@ -137,7 +137,7 @@ allocated for good. That number is the input to Part B.
 ## A worked example: a vague idea becomes a scoped proposal
 
 The single fastest way to learn "scoped enough" is to see a weak idea and its reshaped form
-side by side. This is what `/ideation`'s questions do to the Step A1 sentence.
+side by side. This side-by-side comparison is what `/ideation`'s questions do to the Step A1 sentence.
 
 **❌ Before — an underspecified one-liner:**
 
@@ -149,7 +149,7 @@ Why a reviewer cannot act on this, and why it brushes a prime directive:
   which fights **determinism first**: a step that only passes on the third attempt is a real signal,
   not noise to paper over.
 - **No trigger.** Retry *what* condition? Any failure, or only a transient, self-clearing blocker?
-  The two are completely different features.
+  The two are different features.
 - **No machine-checkable outcome.** What would a deterministic test assert to prove it works? Unstated.
 
 **✅ After — the shape `/ideation` steers you toward:**
@@ -165,7 +165,7 @@ Why a reviewer cannot act on this, and why it brushes a prime directive:
 > the `run` path.
 
 The reshaped version names its scope, the tier it touches, the exact assertion that proves it, and
-the tension it had with a directive and how it resolved it. That is a spec you can hand to
+the tension it had with a directive and how it resolved it. That reshaped version is a spec you can hand to
 `/implement-be`. (This is, in fact, roughly how the real
 ["retry once after `on_blocked` clears a blocker"](run-loop.md) behavior in the run loop is bounded.)
 
@@ -202,8 +202,8 @@ a `Proposal` *accepts* it: this PR will flip it to `Implemented`.
 
 Every open item has a GitHub tracking issue labeled `roadmap-tracking`. The skill checks who is
 assigned: if someone else already holds it, it **stops** and tells you rather than colliding with
-their work; if it is free (or already yours), it self-assigns and continues. This is how parallel
-sessions signal ownership.
+their work; if it is free (or already yours), it self-assigns and continues. This self-assignment is
+how parallel sessions signal ownership.
 
 ### Step B3 — It grounds, plans, and asks before writing code
 

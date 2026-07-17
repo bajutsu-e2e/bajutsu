@@ -75,7 +75,7 @@ executed step the loop compares `crawl.screen_identity(...)` — a transition si
 per-element state (a field's fill, a control's enabled/selected flags) so the batch's own fills
 don't look like a transition — against the identity captured before the batch. The moment it changes
 with steps still pending, the rest is abandoned and the loop re-observes ("仕切り直し"). Only the steps
-that actually executed are appended, so the recorded YAML is the same flat, individually-resolved
+that executed are appended, so the recorded YAML is the same flat, individually-resolved
 step list as before — batching only changes *how many model turns* produce it (one observe → model →
 execute-N instead of N single-action turns), never the artifact's shape. The abort check is a
 deterministic comparison, never an LLM judgment.
@@ -107,8 +107,8 @@ and never an AI guess. This substrate owns the mechanism and the boundary; the h
 
 `settle_step`: the agent sees a "settled screen" between turns, but deterministic replay is fast
 and may verify before an async transition (e.g. a sheet) has rendered. So it records a **`wait` for
-the first "must-be-present" element in expect**, just before the assertions. This makes the recorded
-scenario self-sufficient without adding implicit timing to `run`.
+the first "must-be-present" element in expect**, just before the assertions. Recording the wait makes
+the recorded scenario self-sufficient without adding implicit timing to `run`.
 
 ### Video capture on mobile targets
 
@@ -152,12 +152,12 @@ whose controls are all addressable the image is confirmatory, not decisive. So `
 **on demand** rather than every turn: the accessibility elements always travel in the per-turn
 message, and the screenshot only when it actually adds information.
 
-The loop decides per turn from two deterministic triggers over the element tree — no model, so this
-stays Tier 1:
+The loop decides per turn from two deterministic triggers over the element tree — no model, so the
+decision stays Tier 1:
 
 - **New-screen.** The current screen's `crawl.screen_identity(...)` signature differs from the
   previous turn's (or it is the first turn) — a view the agent has not seen yet gets the image. This
-  is the same transition signature the batch-abort check uses; it strips per-element interactive
+  transition signature is the same one the batch-abort check uses; it strips per-element interactive
   state (a field's fill, a control's enabled/selected flags), so typing into a field or toggling a
   control on the same view does not force a re-attach — only a genuine view change does.
 - **Degenerate-tree.** The signature took `screen_identity`'s structural path (too few accessibility
@@ -264,7 +264,7 @@ class SystemAlertGuard:
   is enabled. On step failure it clears the prompt and **retries that step exactly once**
   ([run-loop](run-loop.md#run_scenario-running-one-scenario)). For a `wait` step (`for`/`settled`/
   `screenChanged`), the same handler is also armed **mid-wait**: it fires against the already-polled
-  screen as soon as the tree looks collapsed, debounced and cooldown-limited and capped at 2 attempts
+  screen as soon as the tree looks collapsed, debounced, cooldown-limited, and capped at two attempts
   per wait, so a blocked wait can recover before its own timeout elapses instead of only at the
   end-of-step retry (BE-0269). A scenario sets `dismissAlerts: false`
   to opt out or `{ instruction: "tap Allow" }` to name a button; `--dismiss-alerts`/`--no-dismiss-alerts`

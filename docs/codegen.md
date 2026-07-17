@@ -2,9 +2,9 @@
 
 # Code generation (codegen)
 
-> A passing scenario can be used to generate a **native test** in a destination framework's own
+> A passing scenario generates a **native test** in a destination framework's own
 > idiom, letting a team run the same flow in their existing CI (continuous integration) — with no
-> bajutsu runtime and no AI at test time. Three targets are supported: **XCUITest (Swift)** for the
+> bajutsu runtime and no AI at test time. bajutsu supports three targets: **XCUITest (Swift)** for the
 > iOS backend, **Playwright (TypeScript)** for the web backend, and **UI Automator (Kotlin)** for
 > the Android backend. The mapping is **purely structural** (AI-independent).
 >
@@ -121,9 +121,9 @@ the selector at `el("UNSUPPORTED_SELECTOR")` — an honest gap, not a wrong gues
 Unsupported constructs (`simctl`-level device control like `setLocation` / `push`, network
 `request` assertions, an unknown trait, and coordinate swipes on the Playwright
 target) emit a **`// TODO` line rather than failing** — device-control steps name the `simctl`
-command a reviewer would run. The output is always reviewable and never breaks the generated result.
-The generated file header also states "do not edit by hand; re-generate." This holds for both
-targets.
+command a reviewer would run. The output is always reviewable and never fails generation.
+The generated file header also states "do not edit by hand; re-generate." This fallback behavior
+holds for all three targets.
 
 ## Playwright (web) target
 
@@ -135,7 +135,7 @@ Unlike the `run` driver — which walks the DOM and coordinate-clicks the resolv
 matching is byte-for-byte identical to iOS — the emitted test uses Playwright's **semantic locators**
 (`getByTestId` / `getByRole`) and **web-first assertions** (`expect(...).toBeVisible()`). That is
 deliberate: the destination framework *is* the runtime, so the test must speak Playwright's idiom,
-and determinism in the handoff artifact is owned by Playwright's auto-waiting (web-first assertions
+and Playwright's auto-waiting owns determinism in the handoff artifact (web-first assertions
 retry until the test timeout). This mirrors the XCUITest split — idb coordinate-taps at run time, but
 the emitted XCUITest uses `el(id).tap()` and `waitForExistence`.
 

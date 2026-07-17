@@ -130,7 +130,7 @@ Headless, coordinate-based. For CI (continuous integration). With no semantic ta
 
 ### Tracking the idb version (BE-0005)
 
-idb is the only on-device backend, so a new Simulator runtime an older `idb_companion` can't
+idb is the only on-device backend, so a new Simulator runtime an older `idb_companion` cannot
 drive — or a companion upgrade that reshapes the describe-all JSON — breaks a run without any
 Bajutsu change. The version idb runs against is therefore a tracked, recorded input rather than
 whatever happens to be installed:
@@ -143,7 +143,7 @@ whatever happens to be installed:
   load. With no pin declared, `doctor` shows no version line.
 - **Recorded in the manifest.** Every idb-backed run writes the `idb_companion` and idb client
   versions into `manifest.json` (`"idb": { "companion": …, "client": … }`), so any artifact set
-  states exactly which idb produced it. This is provenance only — it never affects pass/fail, so
+  states exactly which idb produced it. The manifest record is provenance only — it never affects pass/fail, so
   the run/CI verdict stays deterministic.
 - **A scheduled compatibility monitor.** `idb-monitor.yml` runs the smoke scenario through idb
   against the latest `idb_companion` on a weekly cadence (separate from the per-PR gate). Because
@@ -172,7 +172,7 @@ abstraction resolves **id → frame center → coordinate tap**, exactly as on i
   mirrors its state value there, SPEC §2.1), and the widget `class` (plus enabled / selected /
   checked state) → `traits`. The local name is matched **exactly** — the driver does no `.`↔`_`
   rewriting, which would conflate distinct ids and erode determinism. Where a platform's native id
-  syntax can't reproduce the SPEC id verbatim (Android Views: `android:id` allows neither `.` nor
+  syntax cannot reproduce the SPEC id verbatim (Android Views: `android:id` allows neither `.` nor
   `-`, so `stable.refresh` surfaces as `stable_refresh`), the scenario carries **both** id forms in
   one selector — `id: [stable.refresh, stable_refresh]` — and the match is an OR over the candidates
   (BE-0221); see [scenarios](scenarios.md#selectors-addressing-an-element).
@@ -185,14 +185,14 @@ abstraction resolves **id → frame center → coordinate tap**, exactly as on i
   [BE-0210](../roadmaps/BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md)):
   the `back` step is the true system back (`input keyevent 4` / `KEYCODE_BACK`) — Android has no
   on-screen back element to tap, unlike iOS's OS back button; `double_tap` issues both taps in **one
-  `adb shell` round-trip** (`input tap … ; input tap …`) so the adb transport round-trip doesn't
+  `adb shell` round-trip** (`input tap … ; input tap …`) so the adb transport round-trip does not
   widen the gap past the platform's double-tap window; and a tap whose target is **not in the current
   viewport** scrolls toward it (a default up-swipe) and re-queries, bounded by a retry count — a
   condition wait, so a selector that never appears still fails deterministically.
 
   > [!NOTE]
   > Scroll-into-view is an **adb-only** recovery today: `idb` / XCUITest / Playwright still fail a
-  > `tap` fast when the target isn't in the initial viewport. So a `tap` on a below-the-fold element
+  > `tap` fast when the target is not in the initial viewport. So a `tap` on a below-the-fold element
   > can pass on Android (after up to a few swipes) yet fail on iOS/web for the same scenario. The
   > portable idiom stays an **explicit `swipe` step** (see `demos/showcase/scenarios/notices.yaml`);
   > the adb auto-scroll is a robustness net, not a substitute for it. Widening it to the other
@@ -274,7 +274,7 @@ fits the same toolchain as `make check`. Implementation: `drivers/playwright.py`
   memoized, so a `reset_context` (crawl clean start) and a `relaunch` (BE-0077) rebuild the identical
   context — the mode is stable across the browser's whole lifecycle, the same invariant the engine
   and `reduced_motion` already hold. An unknown preset fails loudly with a `ValueError` at driver
-  start. This is **desktop-browser emulation** — a mobile viewport and touch input in a desktop-class
+  start. Device mode is **desktop-browser emulation** — a mobile viewport and touch input in a desktop-class
   browser, exactly what Chrome DevTools' device toolbar does — **not** a real mobile browser on a
   real device or a device cloud; for a real mobile OS the Android backend is the path.
 - **Directional `swipe` scrolls** (BE-0227): the directional form `swipe: { on, direction }` means
@@ -383,7 +383,7 @@ def make_driver(actuator, udid, *, base_url=None, runner_port=None) -> Driver:  
   for PATH-backed actuators; `playwright` is gated on whether its Python package is importable, and
   `fake` is always available.
 - The actuator is fixed **per scenario** and held for that scenario's whole execution (BE-0240), so
-  two drivers never operate one device at once. This narrows the earlier "fixed per invocation" unit
+  two drivers never operate one device at once. Fixing the actuator per scenario narrows the earlier "fixed per invocation" unit
   without relaxing the single-actuator rule: at every instant exactly one actuator acts on the leased
   device, and there is never a mid-scenario driver swap.
 
