@@ -54,42 +54,25 @@ On-device E2E (macOS + Simulator) is a separate, heavier path and is **not** par
 - **Commit messages** are imperative and scoped: `feat(run): …`, `fix(record): …`, `docs: …`.
 - **Pull request titles and bodies are always in English**, regardless of the language used while
   working, so the history stays readable for everyone.
-- **Write a thorough PR body — not a one-line restatement of the title.** A reviewer should
-  understand the change from the body without reconstructing it from the diff. Lead with
-  `## Summary` and close with the `make check` verification (the green numbers); the full
-  title-and-body template and its section-by-section guide are in
-  [`docs/ai-development.md`](docs/ai-development.md#pull-requests-title-and-body). This expectation
-  holds for humans and AI alike.
-- When a PR implements a roadmap item, **prefix the title with the ID** in brackets — e.g.
-  `[BE-0017] feat(mcp): add MCP server` — and add a link to the PR in the item's markdown (both
-  language files). PRs with no roadmap item keep the plain scoped title.
-- **Answer reviews comment by comment.** When a reviewer (a human, or an AI reviewer like Copilot)
-  leaves comments, resolve them all and **reply to each comment individually** — never a single
-  summary reply. Each reply states that the comment is addressed *and* the grounds: the concrete
-  change that resolves it (cite the commit or file/line), or, when you make no change, the specific
-  reason it does not apply. A bare "done" or 👍 is not enough. Replying comment by comment is expected of everyone, human
-  and AI alike — see [`docs/ai-development.md`](docs/ai-development.md#responding-to-pr-review-comments).
+- **PR titles and bodies follow one shape** — a thorough body, never a one-line restatement of the
+  title, plus the `[BE-NNNN]` prefix and a back-link when the PR implements a roadmap item. Full
+  convention: [`docs/ai-development.md`](docs/ai-development.md#pull-requests-title-and-body).
+- **Answer reviews comment by comment, with the grounds for each resolution** — never a single
+  summary reply. Full rule: [`docs/ai-development.md`](docs/ai-development.md#responding-to-pr-review-comments).
 - Several sessions work this repo in parallel. For worktrees, the `uv.lock` merge driver, and the
   rest of the parallel-work model, see [`docs/ai-development.md`](docs/ai-development.md).
 
 ## Roadmap items (BE IDs)
 
-Larger features are tracked as **Bajutsu Evolution** items under
-[`roadmaps/`](roadmaps/README.md): one flat directory `roadmaps/BE-NNNN-<slug>/` per item,
-holding an English file and its Japanese version in Swift-Evolution proposal format. The path is
-fixed when the ID is allocated and never moves — BE-0159 retired the per-`Status` folders, so
-`Status` now decides only the index bucket, not the location. IDs are permanent and monotonically
-increasing; the index tables are generated, not hand-edited. Follow the exact procedure (ID
-allocation, both language files, `make roadmap-index`) in
+Larger features are tracked as **Bajutsu Evolution** items under [`roadmaps/`](roadmaps/README.md).
+Follow the exact procedure — directory layout, ID allocation, both language files, format — in
 [`docs/ai-development.md`](docs/ai-development.md#roadmap-items-be-ids-strict).
 
 ## Documentation
 
 Documentation is bilingual: English under [`docs/`](docs/README.md) with a Japanese mirror under
-[`docs/ja/`](docs/ja/README.md). **Update both** when you change a documented behavior. Write
-natural prose in each language, use established technical terms (no coined vocabulary or forced
-translations), and keep each page self-contained. Full guidance:
-[documentation style](docs/ai-development.md#documentation-style-every-document-both-languages).
+[`docs/ja/`](docs/ja/README.md). **Update both** when you change a documented behavior. Full
+guidance: [documentation style](docs/ai-development.md#documentation-style-every-document-both-languages).
 
 ## Principles to preserve (do not violate)
 

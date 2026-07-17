@@ -166,25 +166,17 @@ Prime directive 2 is "determinism first"; hold the *test suite* to it too, not o
 
 ## House conventions the gate can't judge
 
-Each norm below is stated in full at its canonical source; flag a diff that violates it and link
-the reviewer there, rather than re-deriving the rule here.
+Each norm below is stated in full at its canonical source, not here — open the link to see what
+counts as a violation, and flag a diff that violates it there rather than re-deriving the rule.
 
-- **Bilingual docs** ([`docs/ai-development.md`](../docs/ai-development.md#documentation-style-every-document-both-languages)) —
-  a documented behavior changed on only one language side (`docs/` without its `docs/ja/` mirror, or
-  vice versa).
-- **Docstring standard** ([`docs/ai-development.md`](../docs/ai-development.md#code-documentation-comments-docstrings--be-0065)) —
-  the public API surface uses Google-style docstrings that describe meaning, never restating types
-  (BE-0065).
+- **Bilingual docs** — canonical rule: [`docs/ai-development.md`](../docs/ai-development.md#documentation-style-every-document-both-languages).
+- **Docstring standard (BE-0065)** — canonical rule: [`docs/ai-development.md`](../docs/ai-development.md#code-documentation-comments-docstrings--be-0065).
 - **Japanese prose quality.** Any Japanese the PR adds or edits — `docs/ja/`, roadmap `*-ja.md`, or
   Japanese in comments — must follow the
-  [`japanese-document-writing`](../.claude/skills/japanese-document-writing) skill (the canonical
-  Japanese prose norm, mandated by [`CLAUDE.md`](../CLAUDE.md)): 敬体 not 常体, no coined terms, no
-  forced translation, no LLM-ish empty filler, no redundancy. Flag a violation with a concrete
-  rewrite, and judge whether the Japanese reads as if a person wrote it, not a machine.
-- **Roadmap links** ([`docs/ai-development.md`](../docs/ai-development.md#roadmap-items-be-ids-strict)) —
-  a roadmap PR that doesn't link its BE item both ways (the `[BE-NNNN]` title prefix and body
-  reference; the item's `Implementing PR` row), and a `## Progress` section left stale rather than
-  ticked and logged in the same change.
+  [`japanese-document-writing`](../.claude/skills/japanese-document-writing) skill (mandated by
+  [`CLAUDE.md`](../CLAUDE.md)). Flag a violation with a concrete rewrite, and judge whether the
+  Japanese reads as if a person wrote it, not a machine.
+- **Roadmap links** — canonical rule: [`docs/ai-development.md`](../docs/ai-development.md#roadmap-items-be-ids-strict).
 - **Comments explain why, not what** ([`CLAUDE.md`](../CLAUDE.md)), at the surrounding density —
   flag added narration.
 - **Wording / terminology consistency** — flag the same concept named two different ways across the
