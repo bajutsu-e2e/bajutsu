@@ -1,7 +1,7 @@
 # textlint config for `tech-writing`
 
 This directory holds the [textlint](https://github.com/textlint/textlint) config and runtime that
-the `tech-writing` skill — and its Japanese layer `japanese-tech-writing` — run after drafting. One
+the `tech-writing`, `english-tech-writing`, and `japanese-tech-writing` skills run after drafting. One
 config here covers both English and Japanese prose. It is written in English, like the rest of the
 repo's tooling, so a session drafting English-only prose can read it without Japanese fluency.
 
