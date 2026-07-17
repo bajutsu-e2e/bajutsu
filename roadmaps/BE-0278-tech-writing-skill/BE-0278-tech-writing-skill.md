@@ -127,6 +127,15 @@ norm holds exactly the way the bilingual-docs rule and the DESIGN.md-realignment
   Rejected: the two would restate the language-agnostic core (outline first, cut filler, sentence
   stress) twice and drift apart over time. A single umbrella that owns the shared principles and
   defers to each language for its own mechanics keeps one source of truth.
+
+  **Adopted after all ([#1157](https://github.com/bajutsu-e2e/bajutsu/pull/1157)).** The English
+  mechanics were later split into an `english-tech-writing` skill — but *with* the umbrella, not
+  without it, which sidesteps the drift the rejection was about: `tech-writing` still owns the
+  shared language-agnostic core and states it once, while `english-tech-writing` and
+  `japanese-tech-writing` are now symmetric layers that each hold only their own language's
+  mechanics and defer up to it. The trigger was textlint gaining shared English-prose rules under
+  `tech-writing`: with a machine check now covering English too, keeping the English mechanics
+  inside the umbrella (while Japanese had its own layer) was the asymmetry worth removing.
 - **Enforce a subset in CI (a prose linter for filler words, "a lot of", etc.).** Rejected on the
   prime directive: a lexical blocklist is machine-checkable, but the norm's substance (clarity,
   emphasis, argument order) is not, and a partial lint invites treating the unlintable majority as
@@ -151,6 +160,10 @@ Log:
   [#1138](https://github.com/bajutsu-e2e/bajutsu/pull/1138), before this item was numbered.
 - This PR completes the item: it wires `tech-writing` into the BE-authoring skills (`ideation`,
   `propose-and-build`), so the norm is invoked at drafting time, and flips the item to Implemented.
+- [#1157](https://github.com/bajutsu-e2e/bajutsu/pull/1157) later refined the shape: the English
+  mechanics moved out of `tech-writing` into a new `english-tech-writing` layer, making the two
+  language layers symmetric under the umbrella (see *Alternatives considered*). `tech-writing`
+  stays the single owner of the language-agnostic core.
 
 ## References
 

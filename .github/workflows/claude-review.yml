@@ -4,8 +4,9 @@
 # migration; see docs/ai-development.md): on every pull request (open and each push) Claude Code
 # reviews against *this repository's* contract (.github/claude-review-prompt.md — the three prime
 # directives, the docstring standard, the bilingual-docs rule, the BE-ID lifecycle) and posts inline
-# line-level comments plus a short summary, via the action's native inline-comment tool (see the
-# claude_args allowlist below). A maintainer or collaborator can also ask for a fresh pass on demand
+# line-level comments only — no top-level summary, since a fresh one on every push leaves stale,
+# contradictory overviews — via the action's native inline-comment tool (see the claude_args allowlist
+# below). A maintainer or collaborator can also ask for a fresh pass on demand
 # by writing `@claude review` on the PR — that on-demand path is gated to trusted actors
 # (OWNER / MEMBER / COLLABORATOR), so a comment from anyone else is ignored.
 #
@@ -152,12 +153,14 @@ jobs:
           # case-insensitive and strips a trailing `[bot]`, so this covers both actor spellings.
           allowed_bots: "bajutsu-automation-bot"
           # Inline comments post through the action's native tool (the action buffers and posts them);
-          # the summary and diff read go through the narrowly-scoped `gh pr …` commands. The built-in
-          # `/code-review` skill posts via unrestricted `gh` (Bash), which the action sandboxes out —
-          # so we grant exactly these tools instead. Same allowlist the action's own review workflow uses.
+          # the diff read and discussion read go through the narrowly-scoped `gh pr …` commands. The
+          # built-in `/code-review` skill posts via unrestricted `gh` (Bash), which the action sandboxes
+          # out — so we grant exactly these tools instead. We deliberately do NOT grant `gh pr comment`:
+          # the review posts inline findings only, no top-level summary — a fresh summary on every push
+          # leaves stale, contradictory overviews on the PR, so withholding the tool enforces the rule.
           claude_args: |
-            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr comment:*)"
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr diff:*),Bash(gh pr view:*)"
           # On a PR event, review against the repo-flavored contract and post inline via the native
           # tool. On a comment event the prompt is empty, so the action falls through to its default
           # `@claude` mention handling — that is the on-demand `@claude review` path.
-          prompt: ${{ github.event_name == 'pull_request' && format('Review this pull request (#{0}) as an advisory (non-gating) reviewer. Read the review contract at .github/claude-review-prompt.md and follow it exactly, including its "Identify yourself as Claude Code" rule (brand the summary heading and prefix every inline comment so the review reads as Claude Code, since it posts under github-actions[bot]). Read the diff with `gh pr diff {0}`. Post each finding as an inline comment with the mcp__github_inline_comment__create_inline_comment tool, adding a GitHub suggestion block wherever a concrete, mechanical fix fits, then post one short top-level summary with `gh pr comment {0} --body "…"`. If nothing warrants a comment, post only a brief summary saying so. This review is advisory only, never a merge gate.', github.event.pull_request.number) || '' }}
+          prompt: ${{ github.event_name == 'pull_request' && format('Review this pull request (#{0}) as an advisory (non-gating) reviewer. Read the review contract at .github/claude-review-prompt.md and follow it exactly, including its "Identify yourself as Claude Code" rule (prefix every inline comment so the review reads as Claude Code, since it posts under github-actions[bot]). Read the diff with `gh pr diff {0}`. Review the ENTIRE diff exhaustively in this single pass and raise every finding at once, so one round of fixes covers everything — do not dribble findings out across re-runs, and on a re-run comment only on what the latest push changed, never on unchanged lines an earlier pass skipped. Post each finding as an inline comment with the mcp__github_inline_comment__create_inline_comment tool, adding a GitHub suggestion block wherever a concrete, mechanical fix fits. Do NOT post any top-level summary comment — post inline findings only, because a fresh summary on every push leaves stale, contradictory overviews on the PR. If nothing warrants a comment, post nothing. This review is advisory only, never a merge gate.', github.event.pull_request.number) || '' }}

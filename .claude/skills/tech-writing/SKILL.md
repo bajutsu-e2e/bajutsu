@@ -2,17 +2,18 @@
 name: tech-writing
 model: sonnet
 description: >-
-  The authoritative prose norm for Bajutsu's writing — language-agnostic writing technique
-  (top-down drafting, sentence stress, subject–verb proximity, active voice, cutting filler)
-  plus English-specific mechanics (serial comma, that/which, dashes, numbers). Use it whenever
-  you write or revise a BE roadmap item (`*.md` / `*-ja.md`) or a prose document under `docs/`,
-  in either language. For Japanese prose it is the umbrella above `japanese-tech-writing`; apply
-  both, and where they overlap the Japanese skill's specific wording governs.
+  The authoritative prose norm for Bajutsu's writing — the language-agnostic writing technique both
+  languages share (top-down drafting, stating the contribution up front, sentence stress,
+  subject–verb proximity, active voice, cutting filler). Use it whenever you write or revise a BE
+  roadmap item (`*.md` / `*-ja.md`) or a prose document under `docs/`, in either language. It is the
+  umbrella above two language layers: apply `english-tech-writing` with it for English prose, and
+  `japanese-tech-writing` for Japanese prose.
 ---
 
 <!--
-The language-agnostic principles and the English mechanics below are distilled from
-Jeffrey Scott Vitter, "Structure + Style = Communication" (The University of Kansas, 2011).
+The language-agnostic principles below are distilled from Jeffrey Scott Vitter,
+"Structure + Style = Communication" (The University of Kansas, 2011). The English-specific
+mechanics from the same source now live in the `english-tech-writing` skill.
 -->
 
 # Technical-writing norm
@@ -25,12 +26,14 @@ pass.
 - **Scope.** Every BE roadmap item (`roadmaps/BE-*/*.md` and its `*-ja.md` mirror) and every
   document under `docs/` (and the `docs/ja/` mirror), in both languages. It does **not** govern
   code docstrings, which keep their own standard ([BE-0065](../../../roadmaps/BE-0065-docstring-standard-api-reference/BE-0065-docstring-standard-api-reference.md)).
-- **Two layers.** The *language-agnostic principles* below hold for both languages. The *English
-  mechanics* hold for English prose only. For **Japanese** prose, also apply
-  [`japanese-tech-writing`](../japanese-tech-writing/SKILL.md) — it is the Japanese layer beneath
-  this one, and where the two overlap (filler, redundancy, restraint of rhetorical flourish) its
-  specific wording governs. The English mechanics never apply to Japanese: Japanese has its own
-  dash and punctuation rules, already in that skill.
+- **An umbrella above two language layers.** The *language-agnostic principles* below hold for both
+  languages. On top of them, apply the layer for the language you are writing: for **English**,
+  [`english-tech-writing`](../english-tech-writing/SKILL.md) (serial comma, *that* / *which*,
+  dashes, numbers, and the rest of the English mechanics); for **Japanese**,
+  [`japanese-tech-writing`](../japanese-tech-writing/SKILL.md). Each language layer holds only the
+  guidance its own grammar and typography need, and never applies to the other language. Where a
+  language layer overlaps these principles (filler, redundancy, restraint of rhetorical flourish),
+  that layer's specific wording governs for its language.
 - **Enforcement stays a review-time norm, not a CI gate.** Judging clarity, emphasis, and argument order
   needs semantic judgment; putting that on the gate would put an LLM on the `run` / CI verdict path,
   which prime directive 1 forbids. It holds the same way the bilingual-docs and DESIGN.md-alignment
@@ -60,37 +63,65 @@ pass.
   "essentially", "it is important to note that", "note that", a bare "now". Keep "thus" /
   "therefore" only where they genuinely signal a conclusion.
 
-## English-specific mechanics (English prose only)
-
-- **Formal word choice.** Use "many" or "much", not "a lot of". Spell out contractions in formal
-  text. Reserve symbols and abbreviations for formulas; in prose, spell out the word (write "for
-  all", not "∀"; "such that", not "s.t.").
-- **Serial (Oxford) comma.** In a list of three or more items, put a comma before the final "and"
-  or "or": "the driver, the runner, and the reporter".
-- **That vs. which.** Use *that* (no comma) for a restrictive clause that specifies which thing you
-  mean. Use *which* (set off by commas) for a non-restrictive clause that adds information not
-  needed to identify the thing.
-- **No bare "this" / "that" as a noun.** Name what it points to: "this behavior", "that
-  constraint", not a lone "this".
-- **No singular "they" for an unspecified single person.** Reword to the plural ("reviewers raise
-  their hands") or a role, rather than "each reviewer raised their hand".
-- **Dashes.** A hyphen joins a compound adjective ("capability-aware selection"). An en-dash marks a
-  range ("steps 3–7") with no surrounding spaces. An em-dash sets off an aside for emphasis — with a
-  space on each side, per this repo's own convention (Chicago itself specifies no space).
-- **Numbers.** Spell out a positive whole number below ten used as an adjective ("three drivers");
-  use the numeral when it is a noun or ten or above.
-- **Colon.** Introduce a list or an elaboration with a colon only after a complete sentence.
-
 ## Verify your work
 
 After drafting, reread once against this list: does the piece lead with its contribution, does each
 sentence end on its most important element, is the verb near its subject, is every sentence free of
-filler? For Japanese, run the same reread under [`japanese-tech-writing`](../japanese-tech-writing/SKILL.md).
+filler? Then run the same reread under the layer for your language:
+[`english-tech-writing`](../english-tech-writing/SKILL.md) for English,
+[`japanese-tech-writing`](../japanese-tech-writing/SKILL.md) for Japanese.
+
+This reread is a human-judgment pass. It does not replace the mechanical textlint check below —
+run both.
+
+## Mandatory textlint verification after drafting
+
+The norms above guide human judgment; they are not machine-checkable. Once a piece is drafted, run
+it through [textlint](https://github.com/textlint/textlint) and **keep revising and rerunning until
+every finding is gone**. Do not call a piece done with findings still outstanding. textlint is a
+mechanical floor, not a substitute for the norms above — passing it does not mean the piece
+satisfies them. This applies to English and Japanese prose alike; the same config and runtime cover
+both. When a norm here conflicts with a textlint rule, textlint takes priority: clear the finding by
+revising the prose, not by loosening the config to dodge it.
+
+### Running it
+
+The config and runtime live in [`textlint/`](textlint/). It needs node and npm (the same
+prerequisite as this repo's other JS checks). From the skill's directory, pass the Markdown file(s)
+you wrote or edited.
+
+```bash
+SKILL_DIR=.claude/skills/tech-writing
+# Fetch dependencies once. npm ci honors package-lock.json exactly and verifies each
+# package's integrity hash (sha512). --ignore-scripts blocks install-time lifecycle
+# scripts (both are supply-chain defenses; see textlint/README.md for why)
+npm --prefix "$SKILL_DIR/textlint" ci --ignore-scripts
+# Verify (pass as many target files as you like)
+npx --prefix "$SKILL_DIR/textlint" textlint \
+  --config "$SKILL_DIR/textlint/.textlintrc.json" \
+  path/to/edited.md
+```
+
+Fix auto-fixable findings with `--fix`, then revise away the rest by hand. Always eyeball the
+result of `--fix` and revert any rewrite that violates the norms above.
+
+### Changing the rules
+
+Edit [`textlint/.textlintrc.json`](textlint/.textlintrc.json) to change what's enforced. It
+currently enables `textlint-rule-preset-ja-technical-writing` (the standard Japanese
+technical-writing preset) plus a set of individual rules for English prose and for Japanese prose
+beyond the preset. The full list and why each rule was chosen live in the "The rules enabled today"
+section of [`textlint/README.md`](textlint/README.md); the same file covers how to add or retire a
+rule. Change the config only for structural reasons — adopting or retiring a rule, or stopping a
+rule from double-reporting what another already covers. Do not loosen a rule or raise a threshold to
+dodge a finding on prose you have written; per the priority above, fix the prose instead.
 
 ## References
 
 - Jeffrey Scott Vitter, *Structure + Style = Communication* (The University of Kansas, 2011) — the
-  source of the principles and English mechanics above.
+  source of the language-agnostic principles above (and of the English mechanics now in
+  `english-tech-writing`).
+- [`english-tech-writing`](../english-tech-writing/SKILL.md) — the English layer beneath this norm.
 - [`japanese-tech-writing`](../japanese-tech-writing/SKILL.md) — the Japanese layer beneath this
   norm.
 - [`docs/ai-development.md`](../../../docs/ai-development.md) — the *Documentation style* section
