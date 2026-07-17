@@ -172,7 +172,7 @@ Prime directive 2 is "determinism first"; hold the *test suite* to it too, not o
   meaning, never restating types (BE-0065).
 - **Japanese prose quality.** Any Japanese the PR adds or edits — `docs/ja/`, roadmap `*-ja.md`, or
   Japanese in comments — must follow this project's Japanese technical-writing norms (the
-  [`japanese-tech-writing`](../.claude/skills/japanese-tech-writing) skill, mandated by
+  [`japanese-document-writing`](../.claude/skills/japanese-document-writing) skill, mandated by
   [`CLAUDE.md`](../CLAUDE.md)). Flag, with a concrete rewrite: **常体** where docs/roadmap prose must
   be **敬体 (ですます調)**; **coined terms** where an established word exists; **forced/unnatural
   translation** where the original term (`selector`, `backend`, `actuator`) reads better left as-is;

@@ -113,10 +113,10 @@ does not restate those rules, it runs them:
 - Branch `claude/<topic>` off the latest `origin/main`
   (`git fetch origin && git switch -c claude/<topic> origin/main`).
 - Scaffold `roadmaps/BE-XXXX-<slug>/` with `make new-roadmap-item` at `Status: Proposal`,
-  fill the `TBD` sections under the [`tech-writing`](../tech-writing/SKILL.md) skill (the
+  fill the `TBD` sections under the [`document-writing`](../document-writing/SKILL.md) skill (the
   authoritative prose norm for both languages, invoked *before* drafting), and localize the
-  Japanese side under the [`japanese-tech-writing`](../japanese-tech-writing/SKILL.md) skill
-  (敬体; the Japanese layer beneath `tech-writing`, natural Japanese, not a literal rendering).
+  Japanese side under the [`japanese-document-writing`](../japanese-document-writing/SKILL.md) skill
+  (敬体; the Japanese layer beneath `document-writing`, natural Japanese, not a literal rendering).
   Keep the `BE-XXXX` placeholder — the real id is allocated on `main`
   by CI ([`roadmap-id`](../../../.github/workflows/roadmap-id.yml)), never guessed.
 - Run `make check` (roadmap changes are docs-only, but the gate is the contract), then open

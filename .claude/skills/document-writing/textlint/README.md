@@ -1,7 +1,7 @@
-# textlint config for `tech-writing`
+# textlint config for `document-writing`
 
 This directory holds the [textlint](https://github.com/textlint/textlint) config and runtime that
-the `tech-writing`, `english-tech-writing`, and `japanese-tech-writing` skills run after drafting. One
+the `document-writing`, `english-document-writing`, and `japanese-document-writing` skills run after drafting. One
 config here covers both English and Japanese prose. It is written in English, like the rest of the
 repo's tooling, so a session drafting English-only prose can read it without Japanese fluency.
 
@@ -14,7 +14,7 @@ repo's tooling, so a session drafting English-only prose can read it without Jap
 ## Install
 
 ```bash
-npm --prefix .claude/skills/tech-writing/textlint ci --ignore-scripts
+npm --prefix .claude/skills/document-writing/textlint ci --ignore-scripts
 ```
 
 ## Supply-chain defenses
@@ -76,7 +76,7 @@ All four kanji-range rules are pinned in `package.json` but left disabled (`fals
 
 - `ja-joyo-or-jinmeiyo-kanji` (kanji outside 常用漢字 + 人名用漢字) and `joyo-kanji` (kanji outside
   常用漢字 alone) are disabled because they flag ordinary technical-writing words whose kanji fall
-  outside those sets — 推敲, 繋がる, 敷衍, 罫線, 腑分け, and the like. The `japanese-tech-writing`
+  outside those sets — 推敲, 繋がる, 敷衍, 罫線, 腑分け, and the like. The `japanese-document-writing`
   policy is to clear a finding by revising the prose, not by loosening the config; but these words
   cannot be reasonably rewritten, so the rule would either stall drafting or force a growing
   allow-list. Leaving them off keeps the skill's own prose (and the existing Japanese docs) passing
@@ -103,7 +103,7 @@ unsupported on npm.
 
 Clear a finding by revising the prose, not by loosening the config: textlint takes priority over the
 prose norms, so a rule is not turned off or a threshold raised merely to dodge a finding on text you
-have written (this is the `japanese-tech-writing` policy, and it holds for English prose too). Change
+have written (this is the `japanese-document-writing` policy, and it holds for English prose too). Change
 the config only for structural reasons — adopting or retiring a rule, or stopping a rule from
 double-reporting what another already covers — as with the kanji-range rules above.
 

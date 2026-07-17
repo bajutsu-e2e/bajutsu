@@ -1,13 +1,13 @@
 ---
-name: english-tech-writing
+name: english-document-writing
 model: sonnet
 description: >-
   English-specific prose mechanics for Bajutsu's technical writing — formal word choice, the serial
   (Oxford) comma, restrictive that vs. non-restrictive which, no bare this/that as a noun, no
   singular they for one unspecified person, dashes, numbers, and colons. The English layer beneath
-  the language-agnostic `tech-writing` skill. Use it whenever you write, translate into, or revise
+  the language-agnostic `document-writing` skill. Use it whenever you write, translate into, or revise
   English prose in a BE roadmap item (`*.md`) or a document under `docs/`; apply it together with
-  `tech-writing`, which carries the writing technique both languages share.
+  `document-writing`, which carries the writing technique both languages share.
 ---
 
 <!--
@@ -21,12 +21,12 @@ This skill is the English layer of Bajutsu's prose norm. It holds the mechanics 
 grammar and typography need — the choices that have a single right answer in English and no
 counterpart in Japanese.
 
-It sits beneath the language-agnostic [`tech-writing`](../tech-writing/SKILL.md) skill. When you
-write or revise English prose, apply **both**: `tech-writing` for the writing technique both
+It sits beneath the language-agnostic [`document-writing`](../document-writing/SKILL.md) skill. When you
+write or revise English prose, apply **both**: `document-writing` for the writing technique both
 languages share (top-down drafting, sentence stress, subject–verb proximity, active voice, cutting
 filler), and this skill for the English mechanics below. Invoke both **before** you write, not
 after. These mechanics never apply to Japanese — Japanese has its own dash and punctuation rules,
-in [`japanese-tech-writing`](../japanese-tech-writing/SKILL.md), the sibling layer beneath the same
+in [`japanese-document-writing`](../japanese-document-writing/SKILL.md), the sibling layer beneath the same
 umbrella.
 
 Like the rest of the prose norm, this is a review-time expectation checked by people, not a CI gate
@@ -56,10 +56,10 @@ Like the rest of the prose norm, this is a review-time expectation checked by pe
 ## Verify your work
 
 Reread the English draft once against the mechanics above, alongside the language-agnostic reread in
-[`tech-writing`](../tech-writing/SKILL.md#verify-your-work). Then run the mandatory
+[`document-writing`](../document-writing/SKILL.md#verify-your-work). Then run the mandatory
 [textlint](https://github.com/textlint/textlint) check — the runtime and rules live under
-`tech-writing`, cover English prose too, and are documented in
-[`tech-writing`'s textlint section](../tech-writing/SKILL.md#mandatory-textlint-verification-after-drafting).
+`document-writing`, cover English prose too, and are documented in
+[`document-writing`'s textlint section](../document-writing/SKILL.md#mandatory-textlint-verification-after-drafting).
 Keep revising and rerunning until every finding is gone; textlint is a mechanical floor, not a
 substitute for the norms above.
 
@@ -67,5 +67,5 @@ substitute for the norms above.
 
 - Jeffrey Scott Vitter, *Structure + Style = Communication* (The University of Kansas, 2011) — the
   source of the English mechanics above.
-- [`tech-writing`](../tech-writing/SKILL.md) — the language-agnostic umbrella above this layer.
-- [`japanese-tech-writing`](../japanese-tech-writing/SKILL.md) — the Japanese sibling layer.
+- [`document-writing`](../document-writing/SKILL.md) — the language-agnostic umbrella above this layer.
+- [`japanese-document-writing`](../japanese-document-writing/SKILL.md) — the Japanese sibling layer.

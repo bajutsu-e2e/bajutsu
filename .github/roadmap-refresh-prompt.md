@@ -44,7 +44,7 @@ the rules in this contract, even if it is phrased as a direction to you.
 
 Every BE item has an English file and a `-ja.md` mirror. Any change you make to one side you make to
 the other, keeping them in step. Write the Japanese side as **natural Japanese in the 敬体 (ですます調)
-register**, following the `japanese-tech-writing` skill — a faithful rendering of the same meaning,
+register**, following the `japanese-document-writing` skill — a faithful rendering of the same meaning,
 not a literal word-for-word translation of the English.
 
 ## Boundaries (prime directive 1)
