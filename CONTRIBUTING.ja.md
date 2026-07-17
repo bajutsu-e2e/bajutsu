@@ -58,9 +58,9 @@ make check   # 決定的なゲート（ステップの全一覧は CLAUDE.md）
 - **PR のタイトルと本文は 1 つの型に従います。** タイトルを 1 行で言い換えるだけの本文にせず丁寧に
   書くこと、ロードマップ項目を実装する PR には `[BE-NNNN]` 接頭辞と項目からの逆リンクを付けること
   です。完全な規約は
-  [`docs/ja/ai-development.md`](docs/ja/ai-development.md#pull-requests-title-and-body) にあります。
+  [`docs/ja/ai-development.md`](docs/ja/ai-development.md#プルリクエスト-タイトルと本文) にあります。
 - **レビューには 1 件ずつ、根拠とともに返信します。** まとめて 1 つの返信では足りません。詳しくは
-  [`docs/ja/ai-development.md`](docs/ja/ai-development.md#responding-to-pr-review-comments) を
+  [`docs/ja/ai-development.md`](docs/ja/ai-development.md#pr-レビューコメントへの対応) を
   参照してください。
 - このリポジトリは複数のセッションが並行して作業します。worktree、`uv.lock` のマージドライバ、
   その他の並行作業モデルについては [`docs/ai-development.md`](docs/ai-development.md) を参照して
@@ -70,7 +70,7 @@ make check   # 決定的なゲート（ステップの全一覧は CLAUDE.md）
 
 大きめの機能は **Bajutsu Evolution** 項目として [`roadmaps/`](roadmaps/README.md) で管理します。
 正確な手順（ディレクトリ構成、ID の採番、両言語ファイル、書式）は
-[`docs/ja/ai-development.md`](docs/ja/ai-development.md#roadmap-items-be-ids-strict) に従って
+[`docs/ja/ai-development.md`](docs/ja/ai-development.md#ロードマップ項目-be-id厳守) に従って
 ください。
 
 ## ドキュメント
@@ -78,7 +78,7 @@ make check   # 決定的なゲート（ステップの全一覧は CLAUDE.md）
 ドキュメントはバイリンガルです。英語は [`docs/`](docs/README.md)、日本語ミラーは
 [`docs/ja/`](docs/ja/README.md) にあります。文書化された挙動を変えたら**両方を更新**してください。
 詳しい指針は
-[ドキュメントの書き方](docs/ja/ai-development.md#documentation-style-every-document-both-languages)
+[ドキュメントの書き方](docs/ja/ai-development.md#ドキュメントの書き方全ドキュメント両言語に適用)
 にあります。
 
 ## 守るべき原則（破ってはいけません）
