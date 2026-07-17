@@ -31,6 +31,7 @@ term's first mention to its glossary entry instead of re-explaining it inline." 
 described a one-time editorial choice for the PR that introduced the page. It lived inside one
 item's design section, not in `CLAUDE.md` or `docs/ai-development.md`, where this project's working
 conventions actually live — so it was never a rule future contributors could find and follow.
+
 The resulting gap is close to total, not a handful of missed spots. Of the 27 top-level pages
 under `docs/` (excluding `glossary.md` itself), only four — `overview.md`, `concepts.md`,
 `index.md`, and `README.md` — link `glossary.md` at all. Every page that substantively explains a
@@ -41,7 +42,6 @@ scenario / step / precondition / expect. `evidence.md` explains evidence and `ca
 these pages points back to the page that defines those words. `architecture.md`, `vision.md`, and
 both `getting-started/index.md` and `getting-started/ios.md` show the same gap, and `docs/ja/`
 mirrors it term for term.
-term for term.
 
 The roadmap corpus is worse. Of 277 BE items in each language, only BE-0213 itself — the item that
 created the glossary — references it. Every other item that uses a driver / backend / actuator /
