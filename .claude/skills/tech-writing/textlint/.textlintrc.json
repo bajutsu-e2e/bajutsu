@@ -32,8 +32,8 @@
     "prefer-tari-tari": true,
     "@textlint-ja/textlint-rule-no-insert-dropping-sa": true,
     "no-mixed-zenkaku-and-hankaku-alphabet": true,
-    "joyo-kanji": true,
     "ja-joyo-or-jinmeiyo-kanji": true,
+    "joyo-kanji": false,
     "ja-kyoiku-kanji": false,
     "ja-allowed-kanji": false,
     "general-novel-style-ja": {

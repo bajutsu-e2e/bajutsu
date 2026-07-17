@@ -1,8 +1,8 @@
 {
-  "name": "japanese-tech-writing-textlint",
+  "name": "tech-writing-textlint",
   "version": "0.0.0",
   "private": true,
-  "description": "textlint runtime + ruleset for the japanese-tech-writing skill. Pins the tool so `npx --prefix <this dir> textlint` resolves the same versions everywhere.",
+  "description": "textlint runtime + ruleset shared by the tech-writing and japanese-tech-writing skills. Pins the tool so `npx --prefix <this dir> textlint` resolves the same versions everywhere.",
   "devDependencies": {
     "textlint": "15.7.1",
     "textlint-rule-preset-ja-technical-writing": "12.0.2",

@@ -109,7 +109,7 @@ result of `--fix` and revert any rewrite that violates the norms above.
 Edit [`textlint/.textlintrc.json`](textlint/.textlintrc.json) to change what's enforced. It
 currently enables `textlint-rule-preset-ja-technical-writing` (the standard Japanese
 technical-writing preset) plus a set of individual rules for English prose and for Japanese prose
-beyond the preset. The full list and why each rule was chosen live in the "いまの既定ルール"
+beyond the preset. The full list and why each rule was chosen live in the "The rules enabled today"
 section of [`textlint/README.md`](textlint/README.md); the same file covers how to disable a rule,
 add one, or change a threshold. Tune this file too when a rule's finding conflicts with this
 skill's norms, with `english-tech-writing`'s or `japanese-tech-writing`'s norms, or with a
