@@ -698,8 +698,9 @@ apply equally when reporting on or summarizing work.
   authoritative prose norm for every document here and every BE roadmap item, in both languages:
   the language-agnostic writing technique both languages share (draft top-down, state the
   contribution up front, reserve a sentence's end for its most important element, keep the verb near
-  the subject, prefer the active voice, cut filler). Invoke it *before* writing or revising, not
-  after. It is the umbrella above two language layers: for English prose apply
+  the subject, prefer the active voice, cut filler, and write one topic per paragraph with the
+  argument moving in a single direction — paragraph writing). Invoke it *before* writing or revising,
+  not after. It is the umbrella above two language layers: for English prose apply
   [`english-document-writing`](../.claude/skills/english-document-writing/SKILL.md) with it (serial comma,
   *that* / *which*, dashes, numbers, and the rest of the English mechanics), and for Japanese prose
   the [`japanese-document-writing`](../.claude/skills/japanese-document-writing/SKILL.md) skill (see below).
@@ -712,13 +713,16 @@ apply equally when reporting on or summarizing work.
 - **No forced or unnatural translation.** Use the conventional translation of a term. When
   translating it would read unnaturally, keep the original term instead — usually the English word
   (e.g. `selector`, `actuator`, `backend`, `assertion`) rather than a contrived literal rendering.
-- **No omissions; be self-contained.** A reader must be able to understand the document on its own.
-  Spell out an abbreviation the first time it appears, give a term the context it needs, and do not
-  assume the reader has already read another page.
-- **Spell out an acronym the first time it appears.** Write the full term first, with the acronym
-  in parentheses right after — e.g. role-based access control (RBAC) — then the acronym alone is
-  fine for the rest of the document. This applies everywhere the term appears, including roadmap
-  items, not only `docs/`.
+- **No omissions; be self-contained.** Follow the `document-writing` skill's
+  [self-contained-prose norm](../.claude/skills/document-writing/SKILL.md#self-contained-prose-both-languages):
+  a reader who has not read anything else in the repository must be able to follow the document start
+  to finish, with every abbreviation spelled out and every term defined at first use, everywhere a term
+  appears — including roadmap items, not only `docs/`.
+- **Avoid anaphora that forces the reader to backtrack.** Follow the `document-writing` skill's
+  [anaphora norm](../.claude/skills/document-writing/SKILL.md#minimize-anaphora-both-languages):
+  repeat the noun instead of reusing a pronoun or demonstrative once the antecedent is more than one
+  sentence back, crosses a paragraph, a list, or a heading, or could plausibly resolve to more than
+  one nearby candidate.
 - **Don't restate a cross-cutting norm — link it (BE-0284).** When a rule spans several documents
   (the gate's step list, the roadmap BE-ID lifecycle, the PR title-and-body shape, this
   documentation style), state it in full in **one** canonical home and point every other mention at
