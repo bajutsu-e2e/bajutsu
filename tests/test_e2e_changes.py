@@ -1,9 +1,10 @@
-"""Tests for scripts/e2e_changes.py — the E2E relevance filter (ios-e2e.yml's `changes` job).
+"""Tests for scripts/e2e_changes.py — the per-lane E2E relevance filter (each lane's `changes` job).
 
-The on-device macOS jobs bill at 10x, so ios-e2e.yml only fires them when a PR touches what they
-exercise. These tests pin the two pieces: the pure positive-list (`is_relevant`) and — the
-regression this script exists for — that `changed_files` uses a merge-base (three-dot) diff, so a
-PR whose base branch has moved on isn't charged for files it never touched.
+The three E2E lanes (ios / android / web) each carry a required aggregator, so none can be path-gated
+at the trigger; instead this filter decides, per lane, whether the heavy jobs run. These tests pin the
+pieces: the shared run-path core and each lane's own surface (`is_relevant`, keyed by lane), and — the
+regression this script exists for — that `changed_files` uses a merge-base (three-dot) diff, so a PR
+whose base branch has moved on isn't charged for files it never touched.
 """
 
 from __future__ import annotations
@@ -142,6 +143,130 @@ def test_showcase_makefile_is_relevant_but_root_makefile_path_form_matters() -> 
 
 def test_any_relevant_path_amid_irrelevant_ones_triggers() -> None:
     assert is_relevant(["roadmaps/README.md", "docs/foo.md", "BajutsuKit/Sources/x.swift"]) is True
+
+
+# --- Per-lane filters (android / web) ------------------------------------------------------------
+# Each lane shares the run-path core and adds its own driver, app, scenarios, conformance harness, and
+# workflow file. These pin the shared core across lanes and each lane's own surface, including the
+# exclusions that keep a required check from firing on an unrelated change.
+
+
+def test_shared_run_path_is_relevant_on_every_lane() -> None:
+    # The run / codegen / record importable surface (`_RUN_PATH`) is identical across lanes, so a
+    # change to it re-runs all three. Sample the subpackage sweep, a top-level allow-listed module,
+    # the assertions package, and the shared deps.
+    for lane in ("ios", "android", "web"):
+        assert is_relevant(["bajutsu/runner/pipeline.py"], lane) is True, lane
+        assert is_relevant(["bajutsu/interp.py"], lane) is True, lane
+        assert is_relevant(["bajutsu/assertions/evaluate.py"], lane) is True, lane
+        assert is_relevant(["tests/driver_conformance.py"], lane) is True, lane
+        assert is_relevant(["uv.lock"], lane) is True, lane
+
+
+def test_serve_analytics_modules_are_relevant_on_no_lane_except_web_serve() -> None:
+    # The serve/analytics/crawl-periphery modules the E2E never imports must not fire any lane —
+    # except that the web lane *does* exercise the serve backend (the serve-UI dogfood), so
+    # `bajutsu/serve/**` is web-relevant while `bajutsu/stats.py` (analytics) is relevant to none.
+    for lane in ("ios", "android", "web"):
+        assert is_relevant(["bajutsu/stats.py"], lane) is False, lane
+        assert is_relevant(["bajutsu/crawl/report.py"], lane) is False, lane
+    assert is_relevant(["bajutsu/serve/app.py"], "web") is True
+    assert is_relevant(["bajutsu/serve/app.py"], "android") is False
+    assert is_relevant(["bajutsu/serve/app.py"], "ios") is False
+
+
+def test_android_lane_surface() -> None:
+    # Android drives only the adb driver (+ the resident channel), its own showcase and app SDKs, its
+    # own conformance harness, and its own workflow file.
+    assert is_relevant(["bajutsu/drivers/adb.py"], "android") is True
+    assert is_relevant(["bajutsu/adb_resident.py"], "android") is True
+    assert is_relevant(["demos/showcase/android/Makefile"], "android") is True
+    assert is_relevant(["BajutsuAndroid/src/Clipboard.kt"], "android") is True
+    assert is_relevant(["BajutsuAndroidUIAutomatorServer/src/Server.kt"], "android") is True
+    assert is_relevant(["tests/test_driver_conformance_ondevice_android.py"], "android") is True
+    assert is_relevant([".github/workflows/android-e2e.yml"], "android") is True
+    # ...but not another lane's driver, app, or workflow.
+    assert is_relevant(["bajutsu/drivers/playwright.py"], "android") is False
+    assert is_relevant(["BajutsuKit/Sources/x.swift"], "android") is False
+    assert is_relevant([".github/workflows/web-e2e.yml"], "android") is False
+
+
+def test_android_lane_catches_the_adb_drivers_own_dependencies() -> None:
+    # adb.py imports `bajutsu.drivers.base` (the Driver Protocol / selector resolution every driver
+    # subclasses) and `bajutsu.drivers.coordinate_tree` (the read/settle core it shares with idb.py,
+    # BE-0254) — a change to either can change adb's runtime behavior, so both must trigger the
+    # Android lane even though its fragment narrows the rest of `bajutsu/drivers/` to `adb.py` alone.
+    assert is_relevant(["bajutsu/drivers/base.py"], "android") is True
+    assert is_relevant(["bajutsu/drivers/coordinate_tree.py"], "android") is True
+    # base.py is universal — every lane's driver imports it, so it triggers on every lane too.
+    for lane in ("ios", "android", "web"):
+        assert is_relevant(["bajutsu/drivers/base.py"], lane) is True, lane
+
+
+def test_web_lane_surface() -> None:
+    # The web lane exercises every driver, the serve backend + templates (the serve-UI dogfood), the
+    # web + serve-ui demos, its own conformance harness, and its own workflow file.
+    assert is_relevant(["bajutsu/drivers/playwright.py"], "web") is True
+    assert is_relevant(["bajutsu/serve/app.py"], "web") is True
+    assert is_relevant(["bajutsu/templates/report.html"], "web") is True
+    assert is_relevant(["demos/serve-ui/scenario.yaml"], "web") is True
+    assert is_relevant(["demos/web/scenario.yaml"], "web") is True
+    assert is_relevant(["tests/test_driver_conformance_web.py"], "web") is True
+    assert is_relevant([".github/workflows/web-e2e.yml"], "web") is True
+    # ...but not the Android app SDK, the iOS showcase, or another lane's workflow.
+    assert is_relevant(["BajutsuAndroid/src/Clipboard.kt"], "web") is False
+    assert is_relevant(["demos/showcase/ios/swiftui/App.swift"], "web") is False
+    assert is_relevant([".github/workflows/android-e2e.yml"], "web") is False
+
+
+def test_unrecognized_lane_raises_instead_of_silently_substituting() -> None:
+    # E2E_LANE is a literal each workflow hard-codes, not user input, so a typo (e.g. "andorid") is a
+    # config bug that must fail the `changes` job loudly. Silently substituting another lane's filter
+    # is not a safe fallback: no lane is a superset of another (iOS lacks BajutsuAndroid/, adb_resident,
+    # bajutsu/serve/, …), so a mistyped lane could under-trigger and let a required aggregator report
+    # green without ever running that lane's jobs — the very failure mode this guards against.
+    with pytest.raises(ValueError, match="bogus"):
+        is_relevant(["BajutsuKit/Sources/x.swift"], "bogus")
+
+
+def test_main_respects_the_e2e_lane_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # main() reads E2E_LANE and applies that lane's filter end to end: an Android-only change is
+    # relevant to the android lane but not the web lane over the same diff.
+    _init_repo(tmp_path, monkeypatch)
+    _commit(tmp_path, "README.md", "seed")
+    _git(tmp_path, "branch", "pr")
+    main_tip = _commit(tmp_path, "bajutsu/runner/pipeline.py", "unrelated on main")
+    _git(tmp_path, "checkout", "-q", "pr")
+    pr_tip = _commit(tmp_path, "BajutsuAndroid/src/Clipboard.kt", "android app SDK only")
+
+    for lane, expected in (("android", "true"), ("web", "false")):
+        output = tmp_path / f"github_output_{lane}"
+        monkeypatch.setenv("E2E_LANE", lane)
+        monkeypatch.setenv("BASE_SHA", main_tip)
+        monkeypatch.setenv("HEAD_SHA", pr_tip)
+        monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+        assert main() == 0
+        assert output.read_text(encoding="utf-8") == f"relevant={expected}\n", lane
+
+
+def test_main_raises_on_a_misconfigured_e2e_lane(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A mistyped E2E_LANE in a workflow file must fail the `changes` job step (a visibly red job),
+    # not exit 0 having silently applied the wrong lane's filter end to end through main().
+    _init_repo(tmp_path, monkeypatch)
+    _commit(tmp_path, "README.md", "seed")
+    _git(tmp_path, "branch", "pr")
+    main_tip = _commit(tmp_path, "bajutsu/runner/pipeline.py", "unrelated on main")
+    _git(tmp_path, "checkout", "-q", "pr")
+    pr_tip = _commit(tmp_path, "roadmaps/proposals/BE-XXXX-foo/BE-XXXX-foo.md", "roadmap only")
+
+    monkeypatch.setenv("E2E_LANE", "andorid")
+    monkeypatch.setenv("BASE_SHA", main_tip)
+    monkeypatch.setenv("HEAD_SHA", pr_tip)
+    monkeypatch.setenv("GITHUB_OUTPUT", str(tmp_path / "github_output"))
+    with pytest.raises(ValueError, match="andorid"):
+        main()
 
 
 def _git(tmp_path: Path, *args: str) -> str:

@@ -181,19 +181,19 @@ capability, and a platform carries one only where it applies:
 | `smoke` | functional `bajutsu run` over the showcase | ✓ | ✓ | ✓ |
 | `golden` | element-tree (BE-0006) matches the committed baseline | ✓ | ✓ | — |
 | `visual` | pixel VRT against the committed baseline | ✓ | ✓ | — |
-| `conformance` | driver contract (BE-0114) on the real backend | ✓ | *gap* | ✓ |
+| `conformance` | driver contract (BE-0114) on the real backend | ✓ | ✓ | ✓ |
 | `codegen` / `gestures` | native-test output / multi-touch (idb can't) | ✓ | — | — |
 | `fallback` | resident vs `uiautomator dump` read channels agree (BE-0245) | — | ✓ (step) | — |
 
-Two rules keep the set honest. **Only one lane is required.** A required status check is a job
-`name:` the ruleset pins (above); iOS's `E2E` aggregator is the only E2E lane in it, so iOS jobs it
-gates are wired through `needs:` while Android and Web are non-required lanes gated by a `paths:`
-filter alone. **Host-specific or upstream-fragile checks stay off the required gate.** `visual` is a
-pixel compare whose baseline varies by renderer, and the element-tree `golden` runs against an
-upstream `idb_companion` whose drift is out of our control — both run per PR as signals but are
-excluded from the `E2E` gate's `needs:`, so a drift surfaces without blocking merges. A gap in the
-table (Android has no on-device `conformance`) is a real coverage hole to close in its own item, not
-a reason to drop the column.
+Two rules keep the set honest. **Every lane is required, per-lane.** A required status check is a
+job `name:` the ruleset pins (above); each lane carries its own always-reporting aggregator
+(`E2E`, `E2E (android)`, `E2E (web)`, BE-0279) that a `changes` job path-gates, so an unrelated PR is
+neither run nor blocked — per-lane aggregators (rather than one aggregator across backends) keep
+attribution: a red check names the backend that broke. **Host-specific or upstream-fragile checks
+stay off the required gate.** `visual` is a pixel compare whose baseline varies by renderer, and the
+element-tree `golden` runs against an upstream dependency (`idb_companion`, the on-device server)
+whose drift is out of our control — both run per PR as signals but are excluded from each
+aggregator's `needs:`, so a drift surfaces without blocking merges.
 
 ## Right-sizing the model and reasoning effort (BE-0103)
 
