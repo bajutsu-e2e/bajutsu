@@ -156,6 +156,23 @@ def test_package_excludes_vcs_and_build_noise_dirs(tmp_path: Path) -> None:
     assert "src/runs/leftover.log" not in names
 
 
+def test_package_never_zips_the_output_archive_into_itself(tmp_path: Path) -> None:
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "keep.yaml").write_text("scenarios: []")
+    # The output zip commonly lands inside the tree being packaged: `--out` defaults into the
+    # repo root that `--package .=bajutsu` walks. Zipping the archive into itself reads back its
+    # own growing bytes and blows the file up without bound, so it must be skipped.
+    out = src / "package.zip"
+
+    build_package([(src, "src")], out)
+
+    with zipfile.ZipFile(out) as zf:
+        names = set(zf.namelist())
+    assert "src/keep.yaml" in names
+    assert "src/package.zip" not in names
+
+
 # ---------------------------------------------------------------------------
 # verdict_from_manifest
 # ---------------------------------------------------------------------------

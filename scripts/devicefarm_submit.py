@@ -164,13 +164,17 @@ def build_package(entries: Sequence[tuple[Path, str]], out_zip: Path) -> Path:
 
     A directory source is added recursively under its arcname; a file source is added at its
     arcname. Paths under a `_PACKAGE_EXCLUDES` component (VCS/build/cache/scratch noise such as
-    `.git` and `.venv`) and symlinks are skipped. Returns `out_zip`.
+    `.git` and `.venv`), symlinks, and the output archive itself are skipped. Returns `out_zip`.
 
     Raises:
         DeviceFarmError: If any source path does not exist — an incomplete package would fail
             opaquely on the Device Farm host, so fail here instead.
     """
     out_zip.parent.mkdir(parents=True, exist_ok=True)
+    # `--out` commonly lands inside a packaged source (its default sits in the repo root that
+    # `--package .=bajutsu` walks). Skip the archive by resolved path so it never zips itself —
+    # doing so reads back its own growing bytes and balloons the upload without bound.
+    out_resolved = out_zip.resolve()
     with zipfile.ZipFile(out_zip, "w", zipfile.ZIP_DEFLATED) as zf:
         for source, arcname in entries:
             if not source.exists():
@@ -182,6 +186,8 @@ def build_package(entries: Sequence[tuple[Path, str]], out_zip: Path) -> Path:
                     # doesn't zip the whole repo root, and skip symlinks so a link pointing outside
                     # the source tree can't pull in unintended files (mirrors `archive_run_dir`).
                     if any(part in _PACKAGE_EXCLUDES for part in rel.parts):
+                        continue
+                    if path.resolve() == out_resolved:
                         continue
                     if path.is_file() and not path.is_symlink():
                         zf.write(path, f"{arcname}/{rel.as_posix()}")
