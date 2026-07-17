@@ -56,6 +56,8 @@ pass, and it no-ops when `uv` isn't on PATH; bypass a one-off with `git commit -
 When you change behavior, change a test with it — the suite is the contract that protects every
 other session from your change.
 
+The short form of this rule is in [`CLAUDE.md`](../CLAUDE.md).
+
 ## Rebase early, integrate small conflicts
 
 ```bash
@@ -83,6 +85,8 @@ remain (BE-0043), so you don't have to configure them by hand:
 
 Like `core.hooksPath`, these are per-clone local git settings that clone/pull never carry over, so
 `make check` / `make setup` re-wire them every time.
+
+The short form of this rule is in [`CLAUDE.md`](../CLAUDE.md).
 
 ## Isolate concurrent sessions with worktrees
 
@@ -113,6 +117,8 @@ git worktree remove ../bajutsu-<topic>
 
 Generated and scratch output — `runs/`, `tmp/`, `.venv/`, build artifacts — is gitignored on
 purpose; keep it out of commits so worktrees stay independent.
+
+The short form of this rule is in [`CLAUDE.md`](../CLAUDE.md).
 
 ## Stay in your lane
 
