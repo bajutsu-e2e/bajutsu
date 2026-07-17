@@ -19,8 +19,8 @@ Several scenario-authoring features run against a real backend only on Android, 
 `extract` and `forEach` ([BE-0033](../BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow.md))
 appear in no demo scenario and are actuated by no lane; data-driven rows
 ([BE-0031](../BE-0031-data-driven-scenarios/BE-0031-data-driven-scenarios.md)) and `relaunch` run
-only on adb. This item authors real-backend scenarios that exercise these features on every
-actuating backend — adb, web, and iOS — and deliberately drives them over a dynamically-changing
+only on adb. This item authors real-backend scenarios that exercise these features on adb and web
+today, extending to iOS once BE-0281 lands, and deliberately drives them over a dynamically-changing
 screen so two timing premises that `FakeDriver` cannot represent get real exercise.
 
 ## Motivation
@@ -56,12 +56,15 @@ lane runs on metered macOS runners, so it lands as non-gating signal first.
 
 Proposal altitude. The work is MECE along the units below.
 
-- **`extract` reuse scenario.** On adb, web, and iOS, capture a real field's value with `extract`
+- **`extract` reuse scenario.** On adb and web, capture a real field's value with `extract`
   and feed it into a later step, asserting the captured value is what the real tree reported.
-- **`forEach` over a real list.** On adb, web, and iOS, iterate a multi-element list, act per
+- **`forEach` over a real list.** On adb and web, iterate a multi-element list, act per
   element, and assert the outcome — the case a frozen fake cannot make real.
-- **Data-driven and `relaunch` symmetry.** Run data-driven rows and `relaunch` on the web and iOS
-  backends too, so neither feature is proven on adb alone.
+- **Data-driven and `relaunch` symmetry.** Run data-driven rows and `relaunch` on web too, so
+  neither feature is proven on adb alone.
+- **Extend to iOS once BE-0281 lands.** After BE-0281 wires real iOS actuation into CI, run the
+  same `extract` / `forEach` / data-driven / `relaunch` scenarios on iOS, as a non-gating
+  macOS-metered lane.
 - **Dynamic-UI scenario.** Drive a showcase screen with a live element (an elapsed-time or counter
   display) so the read-count snapshot-identity assumption and the wait floor get real exercise;
   wire it into an existing lane as signal.
@@ -81,9 +84,10 @@ Proposal altitude. The work is MECE along the units below.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] `extract` reuse scenario on adb + web + iOS (real field value fed into a later step).
-- [ ] `forEach` over a real multi-element list on adb + web + iOS.
-- [ ] Data-driven and `relaunch` on the web and iOS backends (beyond adb).
+- [ ] `extract` reuse scenario on adb + web (real field value fed into a later step).
+- [ ] `forEach` over a real multi-element list on adb + web.
+- [ ] Data-driven and `relaunch` on web (beyond adb).
+- [ ] Extend the extract / forEach / data-driven / relaunch scenarios to iOS once BE-0281 lands (non-gating macOS lane).
 - [ ] Dynamic-UI scenario exercising the read-count snapshot-identity and wait-floor premises.
 
 ## References
