@@ -35,8 +35,8 @@ pass.
   [`japanese-document-writing`](../japanese-document-writing/SKILL.md). Each language layer holds only the
   guidance its own grammar and typography need, and never applies to the other language. Where a
   language layer overlaps these principles (filler, redundancy, restraint of rhetorical flourish,
-  paragraph and argument structure, self-containment), that layer's specific wording governs for its
-  language.
+  paragraph and argument structure, self-containment, anaphora), that layer's specific wording governs
+  for its language.
 - **Enforcement stays a review-time norm, not a CI gate.** Judging clarity, emphasis, and argument order
   needs semantic judgment; putting that on the gate would put an LLM on the `run` / CI verdict path,
   which prime directive 1 forbids. It holds the same way the bilingual-docs and DESIGN.md-alignment
@@ -156,9 +156,11 @@ repository follow this piece start to finish, with every acronym expanded and ev
 where it is first used?
 
 Reread a fourth time against anaphora: does every pronoun or demonstrative resolve to a single,
-nearby, unambiguous antecedent, with the noun repeated everywhere it does not? Then run the same four
-rereads under the layer for your language: [`english-document-writing`](../english-document-writing/SKILL.md)
-for English, [`japanese-document-writing`](../japanese-document-writing/SKILL.md) for Japanese.
+nearby, unambiguous antecedent, with the noun repeated everywhere it does not?
+
+Then run the same four rereads under the layer for your language:
+[`english-document-writing`](../english-document-writing/SKILL.md) for English,
+[`japanese-document-writing`](../japanese-document-writing/SKILL.md) for Japanese.
 
 This reread is a human-judgment pass. It does not replace the mechanical textlint check below —
 run both.
