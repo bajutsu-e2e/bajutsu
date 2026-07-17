@@ -741,7 +741,7 @@ apply equally when reporting on or summarizing work.
   copy that can drift. It is a review-time norm, not a CI gate — most glossary terms (*step*,
   *target*, *app*, *platform*) are also ordinary English words, so deciding whether a given mention
   invokes the Bajutsu-specific sense needs human judgment, which prime directive 1 keeps off the
-  `run` / CI path. [`getting-started/web.md`](getting-started/web.md) is the model to follow.
+  `run` / CI path. [`drivers.md`](drivers.md) is the model to follow.
 - **Japanese prose follows the `japanese-document-writing` skill.** Whether you write the Japanese side
   fresh or translate the English mirror into `docs/ja/` (or a roadmap `*-ja.md`), apply
   [`japanese-document-writing`](../.claude/skills/japanese-document-writing/): it is the authoritative style
