@@ -35,10 +35,27 @@ hash より広く強い保証になる。版を上げるときは `package.json`
 
 ## いまの既定ルール
 
-`textlint-rule-preset-ja-technical-writing`（日本語の技術文書向けの定番プリセット）に加えて、
-以下の個別ルールを有効にしている。
+有効なルールを、対象言語で三つに分けて示す。`.textlintrc.json` の `rules` も、この
+「共有 → 日本語向け → 英語向け」の順に並べてある。
 
-日本語向け：
+### ルールと対象言語の関係
+
+textlint は、有効なすべてのルールを渡されたすべてのファイルに適用する。ファイルの言語で
+ルールを振り分ける仕組みは使っていない。日本語向けルールの多くは英語だけの文には自然と何も
+指摘せず（例：半角カタカナや漢字のチェックは英文に該当箇所がない）、逆に英語向けルールは
+日本語の文書に含まれる英単語・技術用語・コードに反応することがある。将来、片方の言語で
+ノイズが問題になったら、言語ごとに設定を分ける余地はあるが、いまは一つの設定で両言語を見る。
+
+### 共有（言語非依存）
+
+現状、言語に依存しない textlint ルールは有効にしていない。下記の日本語向けの定番プリセット
+`textlint-rule-preset-ja-technical-writing` は名前のとおり日本語専用である。両言語に等しく効く
+ルール（将来 Markdown 構造やリンク切れの検査などを足す場合）は、このカテゴリに置く。
+
+### 日本語向け
+
+`textlint-rule-preset-ja-technical-writing`（日本語の技術文書向けの定番プリセット）に加えて、
+以下を有効にしている。
 
 - `spellcheck-tech-word` — 技術用語の表記ゆれ（「インターフェース」→「インタフェース」など）
 - `ja-hiragana-keishikimeishi` / `ja-hiragana-fukushi` / `ja-hiragana-hojodoushi` — 形式名詞・
@@ -52,7 +69,12 @@ hash より広く強い保証になる。版を上げるときは `package.json`
 - `no-mixed-zenkaku-and-hankaku-alphabet` — 全角・半角アルファベットの混在
 - `joyo-kanji` / `ja-joyo-or-jinmeiyo-kanji` — 常用漢字・人名用漢字の範囲チェック
 
-英語向け：
+`ja-kyoiku-kanji`（教育漢字）と `ja-allowed-kanji`（許可漢字の明示的な指定）は
+`package.json` に依存として加えたうえで `.textlintrc.json` では無効(`false`)にしている。
+どちらも常用漢字よりさらに狭い範囲に漢字を限定するルールで、技術文書には厳しすぎるため
+既定では無効にしている。必要な場面があれば、個別に `true` にして使う。
+
+### 英語向け
 
 - `write-good` — 受動態・冗長表現など英文スタイルの指摘
 - `stop-words` — filler word・バズワード・決まり文句の検出
@@ -60,11 +82,6 @@ hash より広く強い保証になる。版を上げるときは `package.json`
 - `abbr-within-parentheses` — 括弧内の略語表記の確認
 - `alex` — 性別・人種・宗教などに関する配慮を欠く表現の検出
 - `ukraine` — ウクライナの地名・人名がロシア語風の綴りになっていないかの検出
-
-`ja-kyoiku-kanji`（教育漢字）と `ja-allowed-kanji`（許可漢字の明示的な指定）は
-`package.json` に依存として加えたうえで `.textlintrc.json` では無効(`false`)にしている。
-どちらも常用漢字よりさらに狭い範囲に漢字を限定するルールで、技術文書には厳しすぎるため
-既定では無効にしている。必要な場面があれば、個別に `true` にして使う。
 
 `textlint-rule-ginger`（Ginger 校正 API を使う英文チェック）は導入していない。依存の
 `gingerbread` → `request` → `form-data`/`qs`/`tough-cookie`/`uuid` が `npm audit` で
@@ -88,3 +105,5 @@ critical 2件・moderate 3件（いずれも修正版なし）を報告し、`gi
 
 別のプリセットやルールを足すときは、`package.json` の `devDependencies` に加えてから
 `.textlintrc.json` の `rules` に登録する。版は必ず固定する（どの環境でも同じ指摘になるように）。
+登録位置は対象言語のまとまり（共有・日本語向け・英語向け）に合わせ、上の「いまの既定ルール」の
+一覧にも一行足して、設定と説明がずれないようにする。
