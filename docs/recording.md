@@ -107,8 +107,8 @@ and never an AI guess. This substrate owns the mechanism and the boundary; the h
 
 `settle_step`: the agent sees a "settled screen" between turns, but deterministic replay is fast
 and may verify before an async transition (e.g. a sheet) has rendered. So it records a **`wait` for
-the first "must-be-present" element in expect**, just before the assertions. This makes the recorded
-scenario self-sufficient without adding implicit timing to `run`.
+the first "must-be-present" element in expect**, just before the assertions. Recording the wait makes
+the recorded scenario self-sufficient without adding implicit timing to `run`.
 
 ### Video capture on mobile targets
 
@@ -157,7 +157,7 @@ stays Tier 1:
 
 - **New-screen.** The current screen's `crawl.screen_identity(...)` signature differs from the
   previous turn's (or it is the first turn) — a view the agent has not seen yet gets the image. This
-  is the same transition signature the batch-abort check uses; it strips per-element interactive
+  transition signature is the same one the batch-abort check uses; it strips per-element interactive
   state (a field's fill, a control's enabled/selected flags), so typing into a field or toggling a
   control on the same view does not force a re-attach — only a genuine view change does.
 - **Degenerate-tree.** The signature took `screen_identity`'s structural path (too few accessibility
@@ -264,7 +264,7 @@ class SystemAlertGuard:
   is enabled. On step failure it clears the prompt and **retries that step exactly once**
   ([run-loop](run-loop.md#run_scenario-running-one-scenario)). For a `wait` step (`for`/`settled`/
   `screenChanged`), the same handler is also armed **mid-wait**: it fires against the already-polled
-  screen as soon as the tree looks collapsed, debounced and cooldown-limited and capped at 2 attempts
+  screen as soon as the tree looks collapsed, debounced, cooldown-limited, and capped at two attempts
   per wait, so a blocked wait can recover before its own timeout elapses instead of only at the
   end-of-step retry (BE-0269). A scenario sets `dismissAlerts: false`
   to opt out or `{ instruction: "tap Allow" }` to name a button; `--dismiss-alerts`/`--no-dismiss-alerts`

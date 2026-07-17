@@ -125,16 +125,16 @@ gh pr create --reviewer bajutsu-e2e/steering-committee \
 
 PR が開くと、[`roadmap-id`](../../.github/workflows/roadmap-id.yml) ワークフローが
 [`scripts/allocate_roadmap_ids.py`](../../scripts/allocate_roadmap_ids.py) を走らせます。次の空き ID を
-atomically に確保し、`BE-XXXX` を `BE-NNNN` に **すべての箇所** で（ディレクトリ、両ファイル、相互リンク）
+アトミックに確保し、`BE-XXXX` を `BE-NNNN` に **すべての箇所** で（ディレクトリ、両ファイル、相互リンク）
 書き換え、結果をあなたのブランチに push し戻します。そのコミットを pull してください。レビューが済んで提案が
 マージされると、項目は恒久的なパスに `Status: Proposal` で存在し、番号は確定します。この番号がパート B の
 入力になります。
 
 ---
 
-## 実例：vague なアイデアが scoped な提案になる
+## 実例：曖昧なアイデアが、範囲の定まった提案になる
 
-「十分に scoped である」を学ぶ最速の方法は、弱いアイデアとその作り直した形を並べて見ることです。これが、
+「十分に範囲が定まっている」を学ぶ最速の方法は、弱いアイデアとその作り直した形を並べて見ることです。これが、
 手順 A1 の一文に対して `/ideation` の問いがすることです。
 
 **❌ 変更前。詳細を欠いた一文：**

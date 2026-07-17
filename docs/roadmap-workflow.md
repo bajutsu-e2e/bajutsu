@@ -72,7 +72,7 @@ what is already planned, in progress, or deliberately not adopted.
 5. **Verify and (only if you ask) open the PR.** `make check` keeps the gate green even for a
    docs-only change; the PR body notes that CI will allocate the real ID.
 
-Why the placeholder: IDs are permanent and monotonic, and many branches are in flight at once.
+The placeholder exists because IDs are permanent and monotonic, and many branches are in flight at once.
 Picking a number by hand races — two PRs grab the same one. The
 [`roadmap-id`](../.github/workflows/roadmap-id.yml) workflow runs
 [`scripts/allocate_roadmap_ids.py`](../scripts/allocate_roadmap_ids.py) at PR time, claims the next

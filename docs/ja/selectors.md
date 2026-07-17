@@ -52,7 +52,7 @@ class Element(TypedDict):
 
 > `id` / `idMatches` のマッチは `fnmatch.fnmatchcase`（大小区別あり glob）、`labelMatches` は `re.search`（正規表現 / 部分一致）、`traits` は「指定集合 ⊆ 要素のトレイト集合」です。
 
-> `id` / `idMatches` は**候補のリスト**も受け付けます。OR として、要素の id がいずれかの候補に一致（または glob 一致）すればマッチします（BE-0221）。これにより 1 つの共有シナリオがプラットフォームごとに異なる id 表記を持てます（例: Android Views の `android:id` は `.`/`-` を許さないので `id: [stable.refresh, stable_refresh]`）。あるアプリの画面に現れる形は常に一方だけなので決定論的なままで、2 件以上一致すれば従来どおり即失敗します。[scenarios](scenarios.md#プラットフォームをまたぐ-id候補のリストbe-0221) を参照してください。
+> `id` / `idMatches` は**候補のリスト**も受け付けます。OR として、要素の id がいずれかの候補に一致（または glob 一致）すればマッチします（BE-0221）。これにより 1 つの共有シナリオがプラットフォームごとに異なる id 表記を持てます（例: Android Views の `android:id` は `.`/`-` を許さないので `id: [stable.refresh, stable_refresh]`）。あるアプリの画面に現れる形は常に一方だけなので決定的なままで、2 件以上一致すれば従来どおり即失敗します。[scenarios](scenarios.md#プラットフォームをまたぐ-id候補のリストbe-0221) を参照してください。
 
 ### オーサリング表現と実行時表現
 

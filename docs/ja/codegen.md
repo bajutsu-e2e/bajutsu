@@ -22,9 +22,9 @@ bajutsu codegen <scenario.yaml> --target <name> [--emit xcuitest | playwright | 
 ```
 
 `--emit` は `xcuitest`（既定）、`playwright`、`uiautomator` のいずれかです。`-o -`（既定）なら標準出力に、
-ファイルパスならそのファイルに書き出します。`--emit playwright` は対象が web ターゲットであること
-（`targets.<name>.baseUrl` の設定）を、`--emit uiautomator` は Android ターゲットであること
-（`targets.<name>.package` の設定）を要求し、対応するターゲットでなければ終了コード 2 で終わります。config の
+ファイルパスならそのファイルに書き出します。`--emit playwright` は web ターゲット（`targets.<name>.baseUrl` の設定）を、
+`--emit uiautomator` は Android ターゲット（`targets.<name>.package` の設定）を要求します。
+対応するターゲットでなければ終了コード 2 で終わります。config の
 `launchEnv` は生成テストに引き継がれます（[cli](cli.md#codegen)）。XCUITest では `app.launchEnvironment` に、
 Playwright では `localStorage` のシードに反映され、UI Automator では intent extra として渡されます。
 

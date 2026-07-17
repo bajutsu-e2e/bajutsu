@@ -402,8 +402,8 @@ export BAJUTSU_SECRETS_KEY=…
 テーブルに（上ですでに必須の `BAJUTSU_SECRETS_KEY` を再利用し、新しい鍵は不要で）、write-once かつマスクして
 保存します。セルフホストのデプロイでまだ配線されていないのは、保存済みのシナリオシークレットを**消費**する
 部分です。run はコントロールプレーンのプロセスではなくリモートの Mac ワーカーで実行されるため、保存した値を
-ワーカーが spawn する `bajutsu run` まで届ける部分（および、平文をジョブキューに載せるのか、ワーカー自身が
-復号するのかという信頼境界の判断）は追跡中の follow-up です。Git config ソース用トークンについて
+ワーカーが spawn する `bajutsu run` まで届ける部分は追跡中の follow-up です。平文をジョブキューに載せるのか、
+ワーカー自身が復号するのかという信頼境界の判断も、そこに含まれます。Git config ソース用トークンについて
 [BE-0224](../../roadmaps/BE-0224-github-private-repo-config-auth/BE-0224-github-private-repo-config-auth-ja.md)
 が残しているギャップと同じものです。保存はどちらのバックエンドでも今すぐ動きます。**ローカル**の `serve`
 では、値はプロセスの環境に保持され、spawn される run がそのまま引き継ぎます。

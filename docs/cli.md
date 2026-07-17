@@ -506,7 +506,7 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
   locates the tabs by vision — the same fallback the alert guard uses — and taps each by coordinate,
   still switching tabs before drilling in. (UIKit tab bars, whose tabs idb exposes as individual
   elements, are a planned refinement — for now they fall back to the same vision path.) The AI only
-  chooses *what to try* — screen identity, transitions and crashes stay deterministic, so the crawl
+  chooses *what to try* — screen identity, transitions, and crashes stay deterministic, so the crawl
   is never a verdict (it never gates CI).
 - Output: `<out>/screenmap.json`, a JSON graph of `nodes` (screens — fingerprint, kind, ids,
   candidate actions, plus `blocked` disabled controls), `edges` (transitions), `crashes` (action
@@ -528,7 +528,7 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
 - On completion it also writes one `<out>/crashes/crash-NNN.yaml` per faithfully reproducible crash
   — a **repro scenario** built from the crash's recorded action path, directly runnable by `run`, so
   a discovered crash becomes a committed Tier 2 regression after human review. The conversion is
-  pure, deterministic and model-free (`tap` / `type` / `fill` map to their steps). A path that taps a
+  pure, deterministic, and model-free (`tap` / `type` / `fill` map to their steps). A path that taps a
   normalized coordinate (a vision-located control) has no selector to address, so it emits no
   scenario rather than a lossy one.
 - **Parallel pool** ([BE-0064](../roadmaps/BE-0064-parallel-crawl/BE-0064-parallel-crawl.md)):
@@ -537,7 +537,7 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
   guide's round-trips overlap across devices, so wall-clock time falls roughly with the device count.
   Only *scheduling* becomes concurrent: which worker reaches a screen first is timing-dependent, so
   for an app with its own non-determinism the recorded paths and discovery order can vary run to run,
-  but screen identity, transitions and crashes stay the same deterministic functions of the element
+  but screen identity, transitions, and crashes stay the same deterministic functions of the element
   tree (the crawl is still never a verdict). A wedged device drops its work and the others carry on.
   Default `--workers 1` is the single-worker crawl, unchanged. On **web** the same model runs N
   **browser processes** instead of simulators
@@ -549,7 +549,7 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
 ### How a screen is identified (the fingerprint)
 
 Every screen is reduced to a **fingerprint** — a short, stable identity that lets the crawl tell a
-revisit from a genuinely new screen. This is a pure, deterministic function of the element tree (no
+revisit from a genuinely new screen. This reduction is a pure, deterministic function of the element tree (no
 AI, no screenshot pixels), which is what keeps the screen map reproducible: the same screen always
 hashes to the same value. Each node records both the fingerprint and its `kind`.
 

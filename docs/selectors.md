@@ -120,7 +120,7 @@ failure" (they do not propagate the exception upward).
 ### Centralized regardless of backend
 
 idb exposes no usable semantic tap, so the abstraction **always verifies the candidate count via
-`query()` before** acting, then taps the resolved element's frame center. This makes the "ambiguous =
+`query()` before** acting, then taps the resolved element's frame center. This up-front count check makes the "ambiguous =
 fail" behavior identical across idb / playwright / fake (each driver's `tap` implementation is in
 [drivers](drivers.md)).
 

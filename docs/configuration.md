@@ -216,7 +216,7 @@ defaults:
   screenshot (if any) during `triage --ai`, read from the run's `runs/` evidence. That image goes to
   the AI provider you configured. Redaction covers the `${secrets.X}`
   *value* wherever it appears in text (network, element tree, logs), not what the app renders on
-  screen. So that this is never a surprise, `record` and `triage --ai` print a one-time warning when
+  screen. So that the exposure is never a surprise, `record` and `triage --ai` print a one-time warning when
   the target binds `secrets:`. This is a disclosure, not a mitigation (visual evidence is the point):
   to avoid the exposure entirely, skip AI-driven authoring for a secret-bearing flow, or keep the
   secret off-screen in the app under test.
@@ -290,7 +290,7 @@ orgs:
     targets: [demo, checkout]
 ```
 
-At OAuth login a user is assigned their org — an explicit `members` entry first, else a `githubOrgs`
+At OAuth login users are assigned their org — an explicit `members` entry first, else a `githubOrgs`
 match from their GitHub org memberships. Afterward they see only that org's targets, and a run's
 artifacts/scenarios/baselines live under the org's own object-store prefix. A login or target named in
 no org falls into the single `default` org, so a config **without** an `orgs:` block is

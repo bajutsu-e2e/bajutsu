@@ -19,7 +19,7 @@ Related: [scenarios](scenarios.md) · [configuration](configuration.md) · [code
 
 ## Why two toolkits × two accessibility variants
 
-The showcase makes two axes Bajutsu's design rests on visible:
+The showcase makes visible the two axes on which Bajutsu's design rests:
 
 - **Toolkit axis** (UIKit vs SwiftUI) — the two accessibility-on products (`showcase-swiftui` /
   `showcase-uikit`) expose an *identical* identifier contract, so the shared
@@ -56,7 +56,7 @@ tapping its row. BE-0107 finished the job by retiring `SHOWCASE_TAB`, the last l
 a screen: the app always launches on the Stable tab, and every other tab is reached by tapping the
 native tab bar. Only the XCUITest backend can tap the tab bar (idb collapses it into one opaque
 group), so the tab-crossing scenarios run on `--backend ios`. Every screen beyond the launch tab is
-reached by driving the UI, and a scenario observes the app's own data rather than injecting one.
+reached by driving the UI, and a scenario observes the app's own data rather than relying on an injected data state.
 
 | Variable | Effect |
 |---|---|

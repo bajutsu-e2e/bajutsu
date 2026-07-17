@@ -20,7 +20,7 @@ uv run bajutsu run --scenario <path-to-file> --target showcase-swiftui --backend
 
 ## Navigate and assert a value changed
 
-The simplest useful shape: land on a screen, act on one element, assert the result. This is the
+The simplest useful shape: land on a screen, act on one element, assert the result. This scenario is the
 showcase's own guided tour — the same scenario [`demos/tour/demo.sh`](../demos/tour/demo.sh) runs,
 then deliberately breaks (an assertion, then a selector) to show a machine assertion catching the
 first and `triage` diagnosing the second.
@@ -105,7 +105,7 @@ machine-checked.
 `dismissAlerts` is an alert **handler**, never an assertion — it never touches the pass/fail
 verdict, only unblocks a step that would otherwise hang on an alert idb can't see into. On Android
 the same scenario runs with no prompt at all (the target config pre-grants the permission), so the
-guard simply stays idle — one scenario, two platforms, no branching. Full file with the
+guard stays idle — one scenario, two platforms, no branching. Full file with the
 platform-parity notes: [`demos/showcase/scenarios/permission.yaml`](../demos/showcase/scenarios/permission.yaml).
 
 ## Mock a network response
@@ -229,7 +229,7 @@ web --config demos/web/demo.config.yaml` (see the [web track](getting-started/we
 
 Every recipe on this page is a real scenario the repo's own CI runs — nothing here is
 illustration-only. The showcase suite ([`demos/showcase/scenarios/`](../demos/showcase/scenarios/))
-has ~25 more covering gestures, multi-touch, device control, visual regression, relaunch/state
+has about 25 more covering gestures, multi-touch, device control, visual regression, relaunch/state
 persistence, and more; [showcase](showcase.md) catalogs the identifiers each screen exposes. The web
 demo ([`demos/web/scenarios/`](../demos/web/scenarios/)) and the web UI's own dogfooding suite
 ([`demos/serve-ui/scenarios/`](../demos/serve-ui/scenarios/)) are worth a look too — the latter is

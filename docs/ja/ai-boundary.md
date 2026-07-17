@@ -7,7 +7,7 @@
 > （[BE-0101](../../roadmaps/BE-0101-ai-free-zero-config/BE-0101-ai-free-zero-config-ja.md)）。
 > 同じ線の反対側にある「あなたの AI、あなたのキー、あなたのデータ」という保証
 > （[self-hosting](self-hosting.md)、[BE-0047](../../roadmaps/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md)）
-> の、開発体験の面での相方にあたります。
+> の、開発体験の面で対をなすものです。
 
 関連: [cli](cli.md) · [concepts](concepts.md) · [recording](recording.md) · [self-hosting](self-hosting.md)
 
@@ -19,7 +19,7 @@ Bajutsu はアーキテクチャに明確な線を引いています。決定論
 呼ばず、Claude に到達するのは Tier 1 の作成と調査の経路だけです。軸は、特定の資格情報があるか
 どうかではなく、経路がそもそも Claude を呼ぶかどうかにあります。Claude へは三つの方法で到達できる
 ため（Anthropic API、Amazon Bedrock、ブラウザ経由の OAuth（SSO）でサインインする Anthropic CLI
-`ant`）、「API キーが要る」という枠取りは単位として誤りです。誠実な単位は「Claude を使う」であり、
+`ant`）、「API キーが要る」という捉え方は、区切りの軸として誤りです。正しい軸は「Claude を使う」であり、
 プロバイダが増えても正しいままです。
 
 Claude を使わない側のすべては、設定ゼロで動きます。資格情報も `.env` もログインも、いかなる AI の

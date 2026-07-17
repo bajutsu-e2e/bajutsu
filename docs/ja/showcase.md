@@ -34,7 +34,7 @@ showcase は、Bajutsu の設計が依って立つ 2 つの軸を可視化しま
 
 4 つの `targets.<name>` として [`demos/showcase/showcase.config.yaml`](../../demos/showcase/showcase.config.yaml)
 に登録しています（bundle id は `com.bajutsu.showcase.ios.{swiftui,uikit}[.noax]`、deeplink scheme は
-`showcase{swiftui,uikit}[noax]`）。XcodeGen ＋ xcodebuild でビルドします（`project.yml` が真実の源で、
+`showcase{swiftui,uikit}[noax]`）。XcodeGen ＋ xcodebuild でビルドします（`project.yml` が信頼できる唯一の情報源で、
 `.xcodeproj` / `build/` は gitignore 対象です）。
 
 ```bash
@@ -50,9 +50,11 @@ make -C demos/showcase ui-test             # codegen 経路：シナリオ → X
 ## 起動環境フック
 
 `launchEnv` で注入し、`SIMCTL_CHILD_<NAME>` として渡します（[drivers](drivers.md#simctl-による環境管理)）。
-BE-0079 で、*データ状態*と *push で開く画面*への起動時の近道を取り除きました。カタログは固定で（シードの
+
+BE-0079 で、*データ状態*と *push で開く画面*への起動時ショートカットを取り除きました。カタログは固定で（シードの
 口はありません）、deeplink が詳細へ直接飛ぶこともありません（詳細は行のタップでのみ到達します）。
 BE-0107 では、画面への最後の起動時ショートカットである `SHOWCASE_TAB` を廃止して、この作業を完了しました。
+
 アプリはつねに Stable タブで起動し、ほかのタブへはネイティブのタブバーをタップして移動します。タブバーを
 タップできるのは XCUITest backend だけなので（idb はタブバーを 1 つの不透明なグループにまとめてしまいます）、
 タブをまたぐシナリオは `--backend ios` で実行します。起動タブより先の画面はすべて UI を操作して辿り、

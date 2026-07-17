@@ -58,7 +58,7 @@ On-device E2E (macOS + Simulator) is a separate, heavier path and is **not** par
   understand the change from the body without reconstructing it from the diff: *what* changed and
   *why* (the motivation/context), a short summary of the key changes (grouped by area when the diff
   is large), how you verified it (e.g. `make check`), and the relevant links (roadmap item, issue)
-  and call-outs (trade-offs, follow-ups, anything to look at closely). This holds for humans and AI
+  and call-outs (trade-offs, follow-ups, anything to look at closely). This expectation holds for humans and AI
   alike. Lead with `## Summary` and close with the `make check` verification (the green numbers),
   adding `What changed` / `Prime-directive compliance` / `Scope` / `Notes` as the change warrants;
   the full title-and-body template is in
@@ -70,7 +70,7 @@ On-device E2E (macOS + Simulator) is a separate, heavier path and is **not** par
   leaves comments, resolve them all and **reply to each comment individually** — never a single
   summary reply. Each reply states that the comment is addressed *and* the grounds: the concrete
   change that resolves it (cite the commit or file/line), or, when you make no change, the specific
-  reason it does not apply. A bare "done" or 👍 is not enough. This is expected of everyone, human
+  reason it does not apply. A bare "done" or 👍 is not enough. Replying comment by comment is expected of everyone, human
   and AI alike — see [`docs/ai-development.md`](docs/ai-development.md#responding-to-pr-review-comments).
 - Several sessions work this repo in parallel. For worktrees, the `uv.lock` merge driver, and the
   rest of the parallel-work model, see [`docs/ai-development.md`](docs/ai-development.md).

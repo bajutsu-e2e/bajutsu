@@ -46,8 +46,7 @@ uv run bajutsu run --scenario <path-to-file> --target showcase-swiftui --backend
 
 ## 一覧を検索して絞り込む
 
-フィールドに入力し、結果件数をアサーションで確かめます。あわせて「該当なし」のケースも載せます。
-ハッピーパスと同じくらい大切なケースです。
+フィールドに入力し、結果件数をアサーションで確かめます。あわせて、ハッピーパスと同じくらい大切な「該当なし」のケースも載せます。
 
 ```yaml
 - name: filter narrows the catalog
@@ -236,8 +235,7 @@ web --config demos/web/demo.config.yaml`（[web トラック](getting-started/we
 
 ## これらの出どころ
 
-このページのレシピはどれも、リポジトリ自身の CI が実際に走らせているシナリオです。説明のためだけの
-架空の例は 1 つもありません。showcase 一式
+showcase 一式
 （[`demos/showcase/scenarios/`](../../demos/showcase/scenarios/)）には、ジェスチャ、マルチタッチ、
 デバイス制御、ビジュアルリグレッション、relaunch と状態の永続化などを扱うシナリオがさらに 25 本
 ほどあります。各画面が公開する識別子は [showcase](showcase.md) にカタログがあります。web デモ
