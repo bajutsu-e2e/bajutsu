@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0281](BE-0281-ios-on-device-actuation-coverage.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0281") |
+| Implementing PR | (fill in after PR is opened) |
 | Topic | Platform support |
 | Related | [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md), [BE-0221](../BE-0221-android-scenario-portability-guarantee/BE-0221-android-scenario-portability-guarantee.md), [BE-0218](../BE-0218-e2e-simulator-flaky-readiness-actuation/BE-0218-e2e-simulator-flaky-readiness-actuation.md), [BE-0240](../BE-0240-ios-capability-aware-actuator-selection/BE-0240-ios-capability-aware-actuator-selection.md) |
 <!-- /BE-METADATA -->
@@ -81,10 +82,26 @@ Proposal altitude. The work is MECE along the units below.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] iOS idb interaction job (tap / type / swipe / scroll / back / doubleTap / longPress).
-- [ ] XCUITest actuation scenario (`/type`, `/swipe`, `/back` on the runner channel).
-- [ ] iOS device-control job (`device.yaml` / `push.yaml`), non-gating.
-- [ ] Right-size gating versus signal for the macOS-metered jobs; reuse `ios-e2e.yml`.
+- [x] iOS idb interaction job (`back`; `tap`/`type`/`swipe`/`scroll`/`doubleTap`/`longPress` stay on
+      XCUITest — idb collapses the native tab bar into one opaque group and cannot reach any tab, a
+      constraint the proposal did not anticipate; verified on-device before landing, see the log).
+- [x] XCUITest actuation scenario (`/type` via `search.yaml`, `/swipe` + `/back` via `notices.yaml`
+      on the runner channel — reusing existing shared scenarios rather than a new file).
+- [x] iOS device-control job (`device.yaml` / `push.yaml`), non-gating.
+- [x] Right-size gating versus signal for the macOS-metered jobs; reuse `ios-e2e.yml`.
+
+### Log
+
+- (fill in PR link after opening) — Landed as one new non-gating `actuation (idb)` job
+  (`navigation.yaml` for `back`, `device.yaml` + `push.yaml` for device control) plus two extra runs
+  wired into the existing `xcuitest (multi-touch)` job (`search.yaml` for `/type`, `notices.yaml` for
+  `/swipe` + `/back`) — one metered job added, not two, since idb and XCUITest coverage share a build
+  where possible. Scope narrowed from the original design: idb cannot tap the native tab bar at all
+  (SPEC.md §3, BE-0107), so the interaction job could not run the tab-crossing `gestures.yaml` /
+  `controls.yaml` scenarios over idb as the proposal assumed — confirmed by an on-device run before
+  implementation (`一致なし` on a `Log` tab tap). `type` / `swipe` / `scroll` / `longPress` /
+  `doubleTap` therefore stay proven over idb only by mocked unit tests; closing that gap needs a new
+  tab-free showcase screen, left for a follow-up item.
 
 ## References
 

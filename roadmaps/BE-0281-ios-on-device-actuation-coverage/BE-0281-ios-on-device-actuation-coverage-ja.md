@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0281](BE-0281-ios-on-device-actuation-coverage-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0281") |
+| 実装 PR | （PR オープン後に記入） |
 | トピック | プラットフォーム対応 |
 | 関連 | [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity-ja.md), [BE-0221](../BE-0221-android-scenario-portability-guarantee/BE-0221-android-scenario-portability-guarantee-ja.md), [BE-0218](../BE-0218-e2e-simulator-flaky-readiness-actuation/BE-0218-e2e-simulator-flaky-readiness-actuation-ja.md), [BE-0240](../BE-0240-ios-capability-aware-actuator-selection/BE-0240-ios-capability-aware-actuator-selection-ja.md) |
 <!-- /BE-METADATA -->
@@ -82,10 +83,28 @@ macOS ランナーは Linux の 10 倍で課金されるため、どの新しい
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] iOS idb インタラクションジョブ（tap / type / swipe / scroll / back / doubleTap / longPress）。
-- [ ] XCUITest アクチュエーションシナリオ（ランナーチャネルの `/type`、`/swipe`、`/back`）。
-- [ ] iOS デバイスコントロールジョブ（`device.yaml` / `push.yaml`）、ゲート対象外。
-- [ ] macOS 課金のジョブについてゲートとシグナルの割り当てを適切な大きさに調整し、`ios-e2e.yml` を再利用する。
+- [x] iOS idb インタラクションジョブ（`back`）。`tap`/`type`/`swipe`/`scroll`/`doubleTap`/
+      `longPress` は XCUITest 側に残ります。idb はネイティブのタブバーを 1 つの不透明なグループに
+      畳んでしまい、どのタブにも届きません。提案の想定にはなかった制約で、実装前に実機で確認済み
+      です。詳細はログを参照してください。
+- [x] XCUITest アクチュエーションシナリオ（`/type` は `search.yaml`、`/swipe` + `/back` は `notices.yaml` のランナーチャネルで実行）。
+      新規ファイルではなく既存の共有シナリオを再利用します。
+- [x] iOS デバイスコントロールジョブ（`device.yaml` / `push.yaml`）、ゲート対象外。
+- [x] macOS 課金のジョブについてゲートとシグナルの割り当てを適切な大きさに調整し、`ios-e2e.yml` を再利用する。
+
+### ログ
+
+- （PR オープン後に記入） — ゲート対象外の新規ジョブ `actuation (idb)` を 1 つ着地させました。
+  `back` は `navigation.yaml`、デバイスコントロールは `device.yaml` と `push.yaml` で実行します。
+  それに加えて、既存の `xcuitest (multi-touch)` ジョブに実行を 2 つ追加で配線しました。
+  `/type` は `search.yaml`、`/swipe` + `/back` は `notices.yaml` で実行します。
+  idb と XCUITest のカバレッジは、共有できる箇所でビルドを共有しました。
+  そのため、課金対象の新規ジョブは 2 つではなく 1 つで済んでいます。
+  もとの設計からは範囲を狭めました。idb はネイティブのタブバーをまったくタップできないためです（SPEC.md §3、BE-0107）。
+  提案が想定していたようにタブをまたぐ `gestures.yaml` / `controls.yaml` のシナリオを、idb 上のインタラクションジョブで走らせることはできませんでした。
+  この点は実装に先立つ実機での実行で確かめています（`Log` タブのタップで `一致なし`）。
+  `type` / `swipe` / `scroll` / `longPress` / `doubleTap` は、idb 上ではモックしたユニットテストでしか実証されないままです。
+  このギャップを塞ぐには新しいタブなしの showcase 画面が要ります。後続の項目に残します。
 
 ## 参考
 
