@@ -26,72 +26,20 @@
 **Priority** — `P0` (do next) / `P1` (will do) / `P2` (nice to have) / `P3` (idea stage)
 **Status** — 💡 idea / 📋 planned / 🚧 in progress / ❄️ on hold / ✅ done
 
-## Adding a roadmap item — BE IDs (agents MUST follow)
+## Adding a roadmap item — BE IDs
 
-Every roadmap item is a directory `roadmaps/BE-NNNN-<slug>/` holding the English file
+Every roadmap item is one flat directory `roadmaps/BE-NNNN-<slug>/` holding the English file
 `BE-NNNN-<slug>.md` and its Japanese version `BE-NNNN-<slug>-ja.md` (same ID and slug). **BE**
-stands for *Bajutsu Evolution* and `NNNN` is a **zero-padded, 4-digit, monotonically increasing**
-ID. Every item lives directly under `roadmaps/` in a **flat layout**: its path is fixed the moment
-its ID is allocated and **never moves** (BE-0159 retired the per-`Status` folders BE-0078
-introduced). `Status` is the single source of truth for the **index bucket** an item lists under —
-it no longer decides the item's location.
+stands for *Bajutsu Evolution*; IDs are permanent and monotonically increasing, and `Status`
+decides only which **index bucket** an item lists under below — not its location (BE-0159).
 
-When you add a roadmap item:
-
-1. **Allocate the next ID** = the highest existing `BE-NNNN` + 1, over every item under
-   `roadmaps/`. Find it with:
-   ```bash
-   ls -d roadmaps/BE-*/ | sort | tail -1
-   ```
-   Never reuse, skip, or guess a number. **The norm, though, is to leave it undetermined:** name the
-   item `BE-XXXX-<slug>` (the literal placeholder) and let CI assign the number. The item keeps
-   `BE-XXXX` through review and the merge, and the [`roadmap-id`](../.github/workflows/roadmap-id.yml)
-   workflow runs [`scripts/allocate_roadmap_ids.py`](../scripts/allocate_roadmap_ids.py) **on `main`
-   after the PR merges**, allocating the next free IDs in merge order and committing the rename to
-   `main` (BE-0089). This is what the `ideation` skill does; it keeps the `BE-NNNN` sequence
-   contiguous (a rejected PR never spends a number) and avoids two in-flight branches racing for one.
-   A BE-creation PR therefore carries **no `[BE-NNNN]` title prefix** — the real number is not known
-   until after the merge.
-2. **Create the item directory and both language files** — `Status: Proposal` for a proposal, or
-   `Status: Implemented` when the same PR also ships the implementation (a new item is a proposal
-   first *unless* its code lands with it) — at
-   `roadmaps/BE-NNNN-<slug>/BE-NNNN-<slug>.md` (English) and
-   `roadmaps/BE-NNNN-<slug>/BE-NNNN-<slug>-ja.md` (Japanese, same ID & slug). **Don't hand-edit the
-   index tables below** — they are generated from each item's own metadata. Run `make roadmap-index`
-   (or `python scripts/build_roadmap_index.py`) to regenerate the tables between the `<!-- GENERATED:* -->`
-   markers in **both** index pages. The item's `Status` (its bucket) + `Topic` decide its section, so an
-   item in an existing section needs no manual table edit; the gate (`tests/test_roadmap_index.py`, run by
-   `make test`) fails if the committed index drifts. The first item of a topic to reach a bucket needs a
-   new marked section in the page (the generator names the missing region).
-3. **IDs are permanent.** Never renumber an existing item — not when its status changes, not when
-   it is completed, not when it is removed from a table. A BE ID, once assigned, refers to that
-   item forever.
-
-Each file follows the **Swift-Evolution proposal format**: a metadata block then `## Introduction`
-/ `## Motivation` / `## Detailed design` / `## Alternatives considered` / `## References` (fill
-what you can; mark unknowns `TBD`). The metadata is a fenced `| Field | Value |` table —
-`<!-- BE-METADATA -->` … `<!-- /BE-METADATA -->`, opening with a `| Field | Value |` header row
-(`| 項目 | 値 |` on the Japanese side) and holding `Proposal`, `Author`, `Status`, `Topic` (plus
-`Implementing PR` once shipped and `Origin` last, when applicable); the Japanese mirror uses
-`提案`, `提案者`, `状態`, `トピック`. **Name the author by GitHub handle** —
-`| Author | [@handle](https://github.com/handle) |`, the account of whoever first authored the item
-(for an AI-assisted draft, the person who drove and committed it). `tests/test_roadmap_format.py`
-checks this shape. The **Status** decides only the index bucket: `Implemented` / `In progress` /
-`Proposal` / `Proposal (deferred)`. When an item's status changes — it starts being built, or it
-ships — set its `Status` and regenerate the index (`make roadmap-index`); the item **stays in its
-original directory** (BE-0159), and the table moves it to the matching bucket automatically.
-
-Both language files follow the [`document-writing`](../.claude/skills/document-writing/) skill — the
-authoritative prose norm for BE items and docs. It sets the language-agnostic technique every item
-should meet: draft top-down, state the contribution up front in the Introduction and Motivation,
-reserve the end of each sentence for its most important element, keep the verb near the subject,
-prefer the active voice, and cut filler. Invoke it before you write, not after.
-
-Write the Japanese file (`*-ja.md`) in **敬体 (the polite *desu/masu* style, ですます調)**,
-consistent with `docs/ja/` — never the plain *da/dearu* style (常体). For Japanese, `document-writing`
-sits above the [`japanese-document-writing`](../.claude/skills/japanese-document-writing/) norm; apply
-both, and a translation must read as natural polite Japanese, not a literal rendering of the
-English.
+**The full procedure is the single source of truth in
+[`docs/ai-development.md`](../docs/ai-development.md#roadmap-items-be-ids-strict)** — ID allocation
+(the `BE-XXXX` placeholder, numbered by CI on `main` after merge; BE-0089), the both-language files,
+the Swift-Evolution format and metadata block, the author-by-handle rule, and the `document-writing`
+/ `japanese-document-writing` prose norms. **Don't hand-edit the index tables below** — they are
+generated from each item's own metadata; run `make roadmap-index` to regenerate them (`make test`
+fails if the committed index drifts).
 
 ---
 
@@ -491,6 +439,7 @@ Reduce friction for the many parallel sessions working this repo — treat merge
 | [BE-0230](BE-0230-hands-free-implement-review-loop/BE-0230-hands-free-implement-review-loop.md) | Hands-free implement-review loop: auto-PR and pr-followup polling in implement-be | Implemented |
 | [BE-0266](BE-0266-contributor-workflow-tutorial/BE-0266-contributor-workflow-tutorial.md) | Contributor workflow tutorial: a hands-on guide to ideation / implement-be / propose-and-build | Implemented |
 | [BE-0278](BE-0278-tech-writing-skill/BE-0278-tech-writing-skill.md) | A unified technical-writing skill for BE items and prose docs | Implemented |
+| [BE-0284](BE-0284-docs-single-source-of-truth/BE-0284-docs-single-source-of-truth.md) | Consolidate duplicated documentation norms under single sources of truth | Implemented |
 <!-- /GENERATED:implemented-developer-experience -->
 
 ### Codebase quality & technical debt
@@ -659,9 +608,7 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 ### Development infrastructure (contributor workflow)
 
 <!-- GENERATED:proposals-developer-experience -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0284](BE-0284-docs-single-source-of-truth/BE-0284-docs-single-source-of-truth.md) | Consolidate duplicated documentation norms under single sources of truth | Proposal |
+
 <!-- /GENERATED:proposals-developer-experience -->
 
 ### Codebase quality & technical debt

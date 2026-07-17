@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0284](BE-0284-docs-single-source-of-truth.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0284") |
+| Implementing PR | [#PENDING](https://github.com/bajutsu-e2e/bajutsu/pull/PENDING) |
 | Topic | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
 
@@ -127,18 +128,28 @@ DESIGN.md-alignment rules, which prime directive 1 keeps off the deterministic g
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Fix the stale roadmap-directory-layout references in `CONTRIBUTING.md`, `AGENTS.md`, and
+- [x] Fix the stale roadmap-directory-layout references in `CONTRIBUTING.md`, `AGENTS.md`, and
       `.github/PULL_REQUEST_TEMPLATE.md` to match BE-0159's flat layout.
-- [ ] Reconcile the five divergent `make check` step enumerations to one list, linked from
+- [x] Reconcile the five divergent `make check` step enumerations to one list, linked from
       every other copy.
-- [ ] Fold `.github/claude-review-prompt.md`'s six restated norms into links back to their
+- [x] Fold `.github/claude-review-prompt.md`'s six restated norms into links back to their
       canonical sources.
-- [ ] Replace `roadmaps/README.md`'s independent BE-ID-convention restatement with a link to
+- [x] Replace `roadmaps/README.md`'s independent BE-ID-convention restatement with a link to
       `docs/ai-development.md`.
-- [ ] Shorten `AGENTS.md`'s and `CONTRIBUTING.md`'s full PR-convention and roadmap-convention
+- [x] Shorten `AGENTS.md`'s and `CONTRIBUTING.md`'s full PR-convention and roadmap-convention
       restatements to pointers.
-- [ ] Add a short "don't restate it, link it" line to `docs/ai-development.md`'s documentation
+- [x] Add a short "don't restate it, link it" line to `docs/ai-development.md`'s documentation
       conventions.
+
+### Log
+
+- Consolidated the norms in one pass (PR #PENDING): flat-layout fix in `CONTRIBUTING.md` /
+  `AGENTS.md` / `.github/PULL_REQUEST_TEMPLATE.md`; the `make check` enumerations in
+  `docs/ai-development.md`, `CONTRIBUTING.md`, `AGENTS.md`, and `docs/contributor-workflow-tutorial.md`
+  now point at `CLAUDE.md`; `.github/claude-review-prompt.md`'s house-convention norms link their
+  canonical homes; `roadmaps/README.md`'s BE-ID restatement reduced to a pointer; and the
+  "don't restate it, link it" norm added to `docs/ai-development.md`. Japanese mirrors updated
+  in step.
 
 ## References
 

@@ -77,7 +77,7 @@ the seams the gate can't reach — design and coupling, semantic and data-flow v
 cross-file semantic drift, a type-checking-but-wrong `Protocol` body, injection-shaped bugs in the JS
 templates the gate only syntax-checks, and prose quality. Every lens below targets one of these seams.
 
-## The three prime directives (`CLAUDE.md`) — highest priority
+## The three prime directives ([`CLAUDE.md`](../CLAUDE.md#prime-directives-do-not-violate)) — highest priority
 
 1. **AI authors and investigates, never judges.** Flag any LLM call that reaches the Tier-2
    `run` / CI verdict path. Pass/fail must come only from machine-checkable assertions. An LLM is
@@ -166,23 +166,27 @@ Prime directive 2 is "determinism first"; hold the *test suite* to it too, not o
 
 ## House conventions the gate can't judge
 
-- **Bilingual docs** — a documented behavior changed on only one language side (`docs/` without its
-  `docs/ja/` mirror, or vice versa).
-- **Docstring standard** — the public API surface uses Google-style docstrings that describe
-  meaning, never restating types (BE-0065).
+Each norm below is stated in full at its canonical source; flag a diff that violates it and link
+the reviewer there, rather than re-deriving the rule here.
+
+- **Bilingual docs** ([`docs/ai-development.md`](../docs/ai-development.md#documentation-style-every-document-both-languages)) —
+  a documented behavior changed on only one language side (`docs/` without its `docs/ja/` mirror, or
+  vice versa).
+- **Docstring standard** ([`docs/ai-development.md`](../docs/ai-development.md#code-documentation-comments-docstrings--be-0065)) —
+  the public API surface uses Google-style docstrings that describe meaning, never restating types
+  (BE-0065).
 - **Japanese prose quality.** Any Japanese the PR adds or edits — `docs/ja/`, roadmap `*-ja.md`, or
-  Japanese in comments — must follow this project's Japanese technical-writing norms (the
-  [`japanese-document-writing`](../.claude/skills/japanese-document-writing) skill, mandated by
-  [`CLAUDE.md`](../CLAUDE.md)). Flag, with a concrete rewrite: **常体** where docs/roadmap prose must
-  be **敬体 (ですます調)**; **coined terms** where an established word exists; **forced/unnatural
-  translation** where the original term (`selector`, `backend`, `actuator`) reads better left as-is;
-  **LLM-ish empty filler** (hollow topic sentences, padding like 「〜な点に注意しましょう」 that adds no
-  information); and plain **redundancy**. Judge whether the Japanese reads as if a person wrote it,
-  not a machine.
-- **Roadmap links** — a roadmap PR that doesn't link its BE item both ways (the `[BE-NNNN]` title
-  prefix and body reference; the item's `Implementing PR` row), and a `## Progress` section left
-  stale rather than ticked and logged in the same change.
-- **Comments explain why, not what**, at the surrounding density — flag added narration.
+  Japanese in comments — must follow the
+  [`japanese-document-writing`](../.claude/skills/japanese-document-writing) skill (the canonical
+  Japanese prose norm, mandated by [`CLAUDE.md`](../CLAUDE.md)): 敬体 not 常体, no coined terms, no
+  forced translation, no LLM-ish empty filler, no redundancy. Flag a violation with a concrete
+  rewrite, and judge whether the Japanese reads as if a person wrote it, not a machine.
+- **Roadmap links** ([`docs/ai-development.md`](../docs/ai-development.md#roadmap-items-be-ids-strict)) —
+  a roadmap PR that doesn't link its BE item both ways (the `[BE-NNNN]` title prefix and body
+  reference; the item's `Implementing PR` row), and a `## Progress` section left stale rather than
+  ticked and logged in the same change.
+- **Comments explain why, not what** ([`CLAUDE.md`](../CLAUDE.md)), at the surrounding density —
+  flag added narration.
 - **Wording / terminology consistency** — flag the same concept named two different ways across the
   files the diff touches, an acronym used unexpanded on first appearance, and a PR body or roadmap
   `Progress` claim that doesn't match the diff it describes.

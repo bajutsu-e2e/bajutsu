@@ -26,7 +26,7 @@ You need a working checkout and the gate green, exactly as in
 ```bash
 uv sync --group dev   # .venv (Python 3.13) + deps + dev tools
 make setup            # the above, plus wiring the tracked git hooks (run once on a fresh clone)
-make check            # the gate — format + lint + typecheck + test; must be green
+make check            # the deterministic gate; must be green (full step list in CLAUDE.md)
 ```
 
 `make check` is the **contract**: it mirrors CI exactly, needs no Simulator, and runs anywhere. You

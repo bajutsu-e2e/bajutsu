@@ -34,7 +34,7 @@ The Python core needs no Simulator, so the gate is fast and runs anywhere, Linux
 it **before you call a change done and again before you push**:
 
 ```bash
-make check   # lock-check + format-check + lint + lint-sh + lint-actions + typecheck + test
+make check   # the deterministic gate (full step list in CLAUDE.md)
 ```
 
 It mirrors [CI](.github/workflows/ci.yml) exactly, so "green locally" predicts "green in CI".
@@ -55,14 +55,11 @@ On-device E2E (macOS + Simulator) is a separate, heavier path and is **not** par
 - **Pull request titles and bodies are always in English**, regardless of the language used while
   working, so the history stays readable for everyone.
 - **Write a thorough PR body — not a one-line restatement of the title.** A reviewer should
-  understand the change from the body without reconstructing it from the diff: *what* changed and
-  *why* (the motivation/context), a short summary of the key changes (grouped by area when the diff
-  is large), how you verified it (e.g. `make check`), and the relevant links (roadmap item, issue)
-  and call-outs (trade-offs, follow-ups, anything to look at closely). This expectation holds for humans and AI
-  alike. Lead with `## Summary` and close with the `make check` verification (the green numbers),
-  adding `What changed` / `Prime-directive compliance` / `Scope` / `Notes` as the change warrants;
-  the full title-and-body template is in
-  [`docs/ai-development.md`](docs/ai-development.md#pull-requests-title-and-body).
+  understand the change from the body without reconstructing it from the diff. Lead with
+  `## Summary` and close with the `make check` verification (the green numbers); the full
+  title-and-body template and its section-by-section guide are in
+  [`docs/ai-development.md`](docs/ai-development.md#pull-requests-title-and-body). This expectation
+  holds for humans and AI alike.
 - When a PR implements a roadmap item, **prefix the title with the ID** in brackets — e.g.
   `[BE-0017] feat(mcp): add MCP server` — and add a link to the PR in the item's markdown (both
   language files). PRs with no roadmap item keep the plain scoped title.
@@ -78,12 +75,12 @@ On-device E2E (macOS + Simulator) is a separate, heavier path and is **not** par
 ## Roadmap items (BE IDs)
 
 Larger features are tracked as **Bajutsu Evolution** items under
-[`roadmaps/`](roadmaps/README.md): one directory `roadmaps/<category>/BE-NNNN-<slug>/`
-per item, filed by `Status` into one of four folders (`implemented/` / `in-progress/` /
-`proposals/` / `deferred/`),
-holding an English file and its Japanese version, in Swift-Evolution proposal format. IDs are
-permanent and monotonically increasing; the index tables are generated, not hand-edited. Follow
-the exact procedure (ID allocation, both language files, `make roadmap-index`) in
+[`roadmaps/`](roadmaps/README.md): one flat directory `roadmaps/BE-NNNN-<slug>/` per item,
+holding an English file and its Japanese version in Swift-Evolution proposal format. The path is
+fixed when the ID is allocated and never moves — BE-0159 retired the per-`Status` folders, so
+`Status` now decides only the index bucket, not the location. IDs are permanent and monotonically
+increasing; the index tables are generated, not hand-edited. Follow the exact procedure (ID
+allocation, both language files, `make roadmap-index`) in
 [`docs/ai-development.md`](docs/ai-development.md#roadmap-items-be-ids-strict).
 
 ## Documentation
