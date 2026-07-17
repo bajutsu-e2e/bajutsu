@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-android-network-capture-ja.md)
+**English** · [日本語](BE-0283-android-network-capture-ja.md)
 
-# BE-XXXX — Network-capture assertions for the Android backend
+# BE-0283 — Network-capture assertions for the Android backend
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-android-network-capture.md) |
+| Proposal | [BE-0283](BE-0283-android-network-capture.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0283") |
 | Topic | Platform support |
 | Related | [BE-0003](../BE-0003-m3-codegen-traces-network-ci/BE-0003-m3-codegen-traces-network-ci.md), [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md), [BE-0245](../BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server.md) |
 <!-- /BE-METADATA -->

@@ -578,6 +578,7 @@ Under consideration — not yet decided. Promote an item to *In progress* once w
 | [BE-0008](BE-0008-flutter-support/BE-0008-flutter-support.md) | Flutter support | Proposal |
 | [BE-0279](BE-0279-crossbackend-e2e-required-gate/BE-0279-crossbackend-e2e-required-gate.md) | Align required E2E checks across every backend | Proposal |
 | [BE-0281](BE-0281-ios-on-device-actuation-coverage/BE-0281-ios-on-device-actuation-coverage.md) | Add real on-device actuation coverage to the iOS CI | Proposal |
+| [BE-0283](BE-0283-android-network-capture/BE-0283-android-network-capture.md) | Network-capture assertions for the Android backend | Proposal |
 <!-- /GENERATED:proposals-platform -->
 
 ### Driver & backend architecture
