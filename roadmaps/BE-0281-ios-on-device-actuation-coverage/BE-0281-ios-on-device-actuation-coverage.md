@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0281") |
-| Implementing PR | (fill in after PR is opened) |
+| Implementing PR | [#1181](https://github.com/bajutsu-e2e/bajutsu/pull/1181) |
 | Topic | Platform support |
 | Related | [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md), [BE-0221](../BE-0221-android-scenario-portability-guarantee/BE-0221-android-scenario-portability-guarantee.md), [BE-0218](../BE-0218-e2e-simulator-flaky-readiness-actuation/BE-0218-e2e-simulator-flaky-readiness-actuation.md), [BE-0240](../BE-0240-ios-capability-aware-actuator-selection/BE-0240-ios-capability-aware-actuator-selection.md) |
 <!-- /BE-METADATA -->
@@ -92,7 +92,7 @@ Proposal altitude. The work is MECE along the units below.
 
 ### Log
 
-- (fill in PR link after opening) — Landed as one new non-gating `actuation (idb)` job
+- [#1181](https://github.com/bajutsu-e2e/bajutsu/pull/1181) — Landed as one new non-gating `actuation (idb)` job
   (`navigation.yaml` for `back`, `device.yaml` + `push.yaml` for device control) plus two extra runs
   wired into the existing `xcuitest (multi-touch)` job (`search.yaml` for `/type`, `notices.yaml` for
   `/swipe` + `/back`) — one metered job added, not two, since idb and XCUITest coverage share a build
