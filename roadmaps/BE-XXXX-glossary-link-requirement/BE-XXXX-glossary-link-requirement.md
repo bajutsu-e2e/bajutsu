@@ -79,9 +79,17 @@ The work is two independent units:
 2. **Backfill the `docs/` pages the inventory above identifies**, in both languages: `drivers.md`,
    `cli.md`, `scenarios.md`, `evidence.md`, `recording.md`, `selectors.md`, `architecture.md`,
    `vision.md`, `getting-started/index.md`, and `getting-started/ios.md`, plus their `docs/ja/`
-   mirrors. Each page's first substantive mention of the term it is the home of gains a link to
-   that term's `glossary.md` entry, phrased on the model `getting-started/web.md` already
-   establishes.
+   mirrors. Apply the edits with a small one-off script, not an agent editing each page by hand, to
+   keep the mechanical part of the work cheap. Author a manifest first: one `(file, exact
+   first-mention substring, glossary anchor)` triple per page, drawn directly from the inventory
+   this proposal already produced. Then run a short script that, for each manifest entry, wraps that
+   exact substring in a Markdown link to `glossary.md#anchor` (or `docs/ja/glossary.md#anchor`) on
+   its first occurrence in the file. Judgment about which mention is the substantive one is spent
+   once, authoring the manifest. Applying the manifest is a deterministic string replacement, not
+   per-page reasoning. Hand-check the resulting diff: an exact-substring match can hit the wrong
+   occurrence when a term's spelling repeats earlier on the page. The script is a one-off
+   implementation tool for this backfill, not a permanent addition to `make check` — the convention
+   it applies stays the review-time norm from unit 1.
 
 Out of scope: the 277 existing roadmap items. Sweeping almost the entire corpus, in both languages,
 to add a glossary link would churn many files — most of them closed and `Implemented` — for a
