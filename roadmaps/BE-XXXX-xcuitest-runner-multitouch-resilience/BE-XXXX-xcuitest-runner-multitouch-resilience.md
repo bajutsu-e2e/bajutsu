@@ -50,8 +50,8 @@ looks in the wrong place.
 
 The existing retry seam ([BE-0207](../BE-0207-xcuitest-channel-transient-retry/BE-0207-xcuitest-channel-transient-retry.md))
 does not cover this case, and it was never meant to. That seam absorbs a *transient* blip within a
-single channel call: it retries an eligible request up to three times with a half-second exponential
-backoff, so its whole budget is spent in about one and a half seconds. A runner that is gone for
+single channel call: it attempts an eligible request up to three times in total, with a half-second
+exponential backoff between attempts, so its whole budget is spent in about one and a half seconds. A runner that is gone for
 thirty seconds outlives that budget many times over. The seam is also deliberately conservative about
 writes — it refuses to re-issue a delivered side-effecting request, because re-sending a pinch that
 may already have applied could double-actuate — so it cannot, on its own, paper over a lost gesture
