@@ -101,6 +101,16 @@
 | [BE-0270](BE-0270-android-adb-driver-conformance/BE-0270-android-adb-driver-conformance-ja.md) | adb backend の実機 driver conformance | 実装済み |
 <!-- /GENERATED:implemented-driver-architecture -->
 
+### デバイスクラウド実行
+
+ローカルの Simulator やエミュレータ、ブラウザではなく、ホスト型のデバイスファーム上でシナリオを実行します。共通のプロバイダ抽象の背後に置き、決定的コアのローカル優先の既定とは別の、オプトインの実行ターゲットとして提供します。
+
+<!-- GENERATED:implemented-device-cloud -->
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0235](BE-0235-aws-device-farm-submitter/BE-0235-aws-device-farm-submitter-ja.md) | AWS Device Farm batch submitter | 実装済み |
+<!-- /GENERATED:implemented-device-cloud -->
+
 ### シナリオ記述機能
 
 シナリオが表現できることです。変数と軽量な制御フロー、データ駆動実行、タグと選択実行、秘密変数、再利用可能なパラメータ化ステップ、HTTP / OTP / メールのサイドチャネルステップ、端末や OS の状態を操作するステップ（バックグラウンド化、ステータスバー、タイムゾーン、クリップボード、シェイク、位置情報）を含みます。

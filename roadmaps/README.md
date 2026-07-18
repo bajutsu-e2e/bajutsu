@@ -101,6 +101,16 @@ The backend-agnostic core every platform plugs into: the driver interface and it
 | [BE-0270](BE-0270-android-adb-driver-conformance/BE-0270-android-adb-driver-conformance.md) | Driver conformance for the adb backend on-device | Implemented |
 <!-- /GENERATED:implemented-driver-architecture -->
 
+### Device-cloud execution
+
+Running a scenario on a hosted device farm instead of a local Simulator, emulator, or browser, behind a common provider abstraction — an opt-in execution target beyond the deterministic core's local-first default.
+
+<!-- GENERATED:implemented-device-cloud -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0235](BE-0235-aws-device-farm-submitter/BE-0235-aws-device-farm-submitter.md) | AWS Device Farm batch submitter | Implemented |
+<!-- /GENERATED:implemented-device-cloud -->
+
 ### Scenario authoring features
 
 What a scenario can express: variables and light control flow, data-driven runs, tags and selective runs, secret variables, reusable parameterized steps, HTTP / OTP / email side-channel steps, and device / OS-state control steps (background, status bar, timezone, clipboard, shake, location).
