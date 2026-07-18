@@ -35,4 +35,4 @@
 
 ## 参考
 
-[DESIGN §3.1 / §12](../../DESIGN.md)、[reporting.md](../../docs/ja/reporting.md)、`bajutsu/triage.py`、[自己修復トリアージ](https://bajutsu-e2e.github.io/bajutsu/ja/api/roadmap.html)（ロードマップダッシュボード）
+[DESIGN §3.1 / §12](../../DESIGN.md)、[reporting.md](../../docs/ja/reporting.md)、`bajutsu/triage.py`、[自己修復トリアージ](https://bajutsu-e2e.github.io/bajutsu/api/roadmap.html)（ロードマップダッシュボード）

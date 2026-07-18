@@ -19,7 +19,7 @@
 > - **現状**は、このページでは扱いません。文章によるまとめは
 >   [architecture.md#実装状況](../docs/ja/architecture.md#実装状況) にあります。出荷済みの項目を
 >   トピックごとに一覧できるのは、後述する[実装済み](#実装済み)からリンクしている
->   [ロードマップダッシュボード](https://bajutsu-e2e.github.io/bajutsu/ja/api/roadmap.html)です。
+>   [ロードマップダッシュボード](https://bajutsu-e2e.github.io/bajutsu/api/roadmap.html)です。
 >   このページが扱うのは、まだ終わっていないもの（提案・実装中・保留）です。
 > - 設計の背景（なぜ）は [`DESIGN.md`](../DESIGN.md) にあります。
 > - **全体の戦略的な方向性**は [vision.md](../docs/ja/vision.md) にあります。
@@ -39,7 +39,7 @@
 ## 実装済み
 
 `main` に着地した、出荷済みの項目です。トピックごとに整理され、進捗バーも付いた一覧は
-[ロードマップダッシュボード](https://bajutsu-e2e.github.io/bajutsu/ja/api/roadmap.html)にあります。
+[ロードマップダッシュボード](https://bajutsu-e2e.github.io/bajutsu/api/roadmap.html)にあります。
 このページでは個別には一覧しません。
 
 ## 実装中

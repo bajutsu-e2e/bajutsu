@@ -611,7 +611,7 @@ BE-0159 以降、すべての項目はパスが固定された一つの `roadmap
 最後の 3 つのバケットだけが、インデックスページ（`roadmaps/README.md` / `README-ja.md`）の表として
 描画されます。`実装済み` に達した項目は、その表に移るのではなく、ページから外れます。出荷済みの
 項目は、トピックごとに整理され進捗バーも付いた
-[ロードマップダッシュボード](https://bajutsu-e2e.github.io/bajutsu/ja/api/roadmap.html)で引き続き
+[ロードマップダッシュボード](https://bajutsu-e2e.github.io/bajutsu/api/roadmap.html)で引き続き
 閲覧できます。このページは `scripts/build_roadmap_dashboard.py`（BE-0094）が、ドキュメントの
 ビルドのたびに同じ項目メタデータから生成し、GitHub Pages に公開するものです。インデックスページと
 ダッシュボードは同一のソースを読むため、両者が食い違うことはありません。インデックスは、見せる
