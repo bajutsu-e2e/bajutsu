@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-xcuitest-runner-multitouch-resilience-ja.md)
+**English** · [日本語](BE-0287-xcuitest-runner-multitouch-resilience-ja.md)
 
-# BE-XXXX — XCUITest runner-channel resilience under multi-touch actuation
+# BE-0287 — XCUITest runner-channel resilience under multi-touch actuation
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-xcuitest-runner-multitouch-resilience.md) |
+| Proposal | [BE-0287](BE-0287-xcuitest-runner-multitouch-resilience.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0287") |
 | Topic | Platform support |
 <!-- /BE-METADATA -->
 
