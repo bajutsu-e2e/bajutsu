@@ -550,6 +550,27 @@ def test_android_environment_preinstalled_skip_still_fails_loudly_on_a_missing_a
         env.start(_eff(app_path="/nonexistent/app.apk"), Preconditions())
 
 
+def test_android_environment_boot_ready_skip_still_fails_loudly_on_a_not_booted_device() -> None:
+    # The boot-wait skip trusts the provider's boot_ready claim, but a device that is not actually
+    # booted is not silently tolerated: with the boot poll skipped, the very next real adb call (here
+    # `pm clear`, driven by `erase`) hits the not-ready device and errors, which `start` converts to a
+    # clean DeviceError (BE-0236). The skip never degrades to a silent pass. Symmetric to the
+    # app_preinstalled false-claim test above, covering the other half of the loud-failure comment.
+    import subprocess
+
+    def run(args: list[str]) -> str:
+        if args == adb.pm_clear_cmd("S", "com.bajutsu.showcase.android.compose"):
+            # A not-booted device rejects the command adb tries to run on it.
+            raise subprocess.CalledProcessError(1, args, stderr="error: device offline")
+        if "resolve-activity" in args:
+            return "com.bajutsu.showcase.android.compose/.MainActivity\n"
+        return ""
+
+    env = AndroidEnvironment("adb", "S", adb_run=run, provision=ProvisionProfile(boot_ready=True))
+    with pytest.raises(adb.DeviceError, match="device offline"):
+        env.start(_eff(), Preconditions(erase=True))
+
+
 def test_android_environment_default_profile_boots_and_polls() -> None:
     # The inert default profile (a locally-attached device) preserves today's sequence: the boot poll
     # runs. The skip is opt-in via the provider; nothing else about start() changes (BE-0236).
