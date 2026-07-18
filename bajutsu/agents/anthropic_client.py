@@ -33,7 +33,7 @@ import shutil
 import subprocess
 from typing import Any
 
-from bajutsu.ai_config import AiConfig, resolve_provider
+from bajutsu.agents.ai_config import AiConfig, resolve_provider
 
 ANTHROPIC_KEY_ENV = "ANTHROPIC_API_KEY"
 

@@ -24,8 +24,8 @@ from pathlib import Path
 
 import typer
 
-from bajutsu import audit as _audit
 from bajutsu import device_errors
+from bajutsu.analysis import audit as _audit
 from bajutsu.backends import select_actuator_for_scenario
 from bajutsu.cli._shared import (
     DEFAULT_CONFIG,

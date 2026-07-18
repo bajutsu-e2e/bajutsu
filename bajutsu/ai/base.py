@@ -121,7 +121,7 @@ class MessageResponse:
     """A normalized model response.
 
     ``usage`` is the provider's own token-accounting object, passed through untouched so
-    `bajutsu.usage.record` reads it exactly as before (reporting only — never on the verdict path).
+    `bajutsu.analytics.usage.record` reads it exactly as before (reporting only — never on the verdict path).
     """
 
     content: list[ContentBlock]

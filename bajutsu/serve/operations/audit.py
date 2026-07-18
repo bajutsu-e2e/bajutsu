@@ -1,6 +1,6 @@
 """Determinism-audit serve operation (BE-0145).
 
-Surfaces the static determinism audit (`bajutsu/audit.py`, BE-0049) in the web UI. Like the CLI,
+Surfaces the static determinism audit (`bajutsu/analysis/audit.py`, BE-0049) in the web UI. Like the CLI,
 it is read-only, device-free, and AI-free: it grades each selector on the stability ladder and
 flags over-loose waits and coordinate gestures, but never runs a device, calls a model, or decides
 a verdict. It accepts either inline `yaml` (the editor's live, possibly-unsaved content) or a
@@ -15,7 +15,7 @@ from typing import Any
 
 import yaml
 
-from bajutsu import audit as _audit
+from bajutsu.analysis import audit as _audit
 from bajutsu.scenario import load_scenario_file
 from bajutsu.serve.operations.reads import read_scenario
 from bajutsu.serve.state import ServeState

@@ -26,9 +26,10 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NamedTuple, Protocol, cast
 
-from bajutsu import intervals, simctl
+from bajutsu import simctl
 from bajutsu.dom import QUERY_JS, parse_dom
 from bajutsu.drivers import base
+from bajutsu.evidence import intervals
 
 if TYPE_CHECKING:
     from bajutsu.scenario.models.mocks import Mock

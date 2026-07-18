@@ -24,7 +24,8 @@ from bajutsu.assertions import (
 from bajutsu.backends import capabilities_for
 from bajutsu.config import Effective
 from bajutsu.evidence import Artifact
-from bajutsu.network import NetworkExchange
+from bajutsu.evidence.network import NetworkExchange
+from bajutsu.evidence.redaction import Redactor
 from bajutsu.orchestrator import (
     BlockedHandler,
     Clock,
@@ -35,7 +36,6 @@ from bajutsu.orchestrator import (
     scenario_slug,
 )
 from bajutsu.orchestrator.types import _no_network
-from bajutsu.redaction import Redactor
 from bajutsu.report import git_revision, run_provenance, scenario_render_inputs, write_report
 from bajutsu.runner.mailbox import build_mailbox_reader
 from bajutsu.runner.types import LeaseFn, OnBlockedFor

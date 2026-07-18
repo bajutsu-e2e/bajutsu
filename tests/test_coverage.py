@@ -1,4 +1,4 @@
-"""Tests for the static e2e coverage map (bajutsu/coverage.py, BE-0050).
+"""Tests for the static e2e coverage map (bajutsu/analysis/coverage.py, BE-0050).
 
 Coverage is a pure, device-free, AI-free function of a scenario suite plus the app's declared
 `idNamespaces`: it reports which declared namespaces the suite's selectors touch, which are gaps
@@ -13,8 +13,7 @@ import json
 import pytest
 from typer.testing import CliRunner
 
-from bajutsu.cli import app
-from bajutsu.coverage import (
+from bajutsu.analysis.coverage import (
     ScreenRef,
     coverage,
     endpoint_coverage,
@@ -26,8 +25,9 @@ from bajutsu.coverage import (
     render_screens,
     screen_coverage,
 )
+from bajutsu.cli import app
 from bajutsu.crawl import fingerprint as screen_fingerprint
-from bajutsu.network import NetworkExchange
+from bajutsu.evidence.network import NetworkExchange
 from bajutsu.scenario import load_scenarios
 
 runner = CliRunner()

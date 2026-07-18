@@ -13,7 +13,7 @@ from bajutsu import simctl
 from bajutsu.config import Effective
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.network import NetworkExchange
+from bajutsu.evidence.network import NetworkExchange
 from bajutsu.runner import (
     ReadinessResult,
     device_pool,
@@ -451,7 +451,7 @@ def test_device_pool_web_lease_builds_a_page_hooked_collector(
     """`--network` on web: no up-front HTTP receiver; the lease hooks a collector to the live
     page and threads this scenario's mocks into it (BE-0054). The collector satisfies the
     `Collector` protocol and is stopped on release."""
-    from bajutsu.network import Collector
+    from bajutsu.evidence.network import Collector
 
     fakes: list[_FakeWeb] = []
 

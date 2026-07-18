@@ -107,7 +107,7 @@ def test_response_tool_use_becomes_neutral_block() -> None:
 def test_response_carries_usage_object_untouched() -> None:
     client = FakeAnthropic(FakeBlock("do", {}))
     response = AnthropicBackend(client=client).create_message(_request())
-    # The raw Anthropic usage object flows through so bajutsu.usage.record reads it as before.
+    # The raw Anthropic usage object flows through so bajutsu.analytics.usage.record reads it as before.
     assert response.usage is not None
     assert response.usage.input_tokens == 10
 

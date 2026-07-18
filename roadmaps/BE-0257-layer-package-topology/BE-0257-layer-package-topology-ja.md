@@ -7,9 +7,9 @@
 |---|---|
 | 提案 | [BE-0257](BE-0257-layer-package-topology-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0257") |
-| 実装 PR | [#1045](https://github.com/bajutsu-e2e/bajutsu/pull/1045)、[#1052](https://github.com/bajutsu-e2e/bajutsu/pull/1052)、[#1172](https://github.com/bajutsu-e2e/bajutsu/pull/1172) |
+| 実装 PR | [#1045](https://github.com/bajutsu-e2e/bajutsu/pull/1045)、[#1052](https://github.com/bajutsu-e2e/bajutsu/pull/1052)、[#1172](https://github.com/bajutsu-e2e/bajutsu/pull/1172)、[#1185](https://github.com/bajutsu-e2e/bajutsu/pull/1185) |
 | トピック | コードベース品質・技術的負債 |
 | 関連 | [BE-0112](../BE-0112-layer-boundary-enforcement/BE-0112-layer-boundary-enforcement-ja.md)、[BE-0135](../BE-0135-module-naming-debt/BE-0135-module-naming-debt-ja.md)、[BE-0092](../BE-0092-crawl-coordinator-extraction/BE-0092-crawl-coordinator-extraction-ja.md) |
 <!-- /BE-METADATA -->
@@ -141,9 +141,9 @@
   `tabs` / `serialize`）。
 - [x] `bajutsu/github/` パッケージ（`__init__` / `actions` / `app` / `errors`）。`config_source`
   と `github_app` の循環を解消します。
-- [ ] `bajutsu/agents/` の周辺パッケージ（9個のモジュール）。
-- [ ] `bajutsu/evidence/` と `bajutsu/analysis/` のパッケージ。
-- [ ] `bajutsu/analytics/` パッケージ（`usage` / `ledger` / `stats`）。
+- [x] `bajutsu/agents/` の周辺パッケージ（11個のモジュール）。
+- [x] `bajutsu/evidence/` と `bajutsu/analysis/` のパッケージ。
+- [x] `bajutsu/analytics/` パッケージ（`usage` / `ledger` / `stats`）。
 
 **ログ**
 
@@ -167,6 +167,28 @@
   でき、`config_source` ↔ `github_app` の循環を根本から解消します。あわせて import-linter の
   `bajutsu.github` を `bajutsu.github.actions`（周辺の部分。`app` と `errors` は決定的コアからも安全に
   参照できます）へ向け直し、日英のドキュメントも更新しました。
+- 2026-07-17（[#1185](https://github.com/bajutsu-e2e/bajutsu/pull/1185)）: ステージ 4〜6。1 本の PR に
+  ステージごと 1 コミットの形でまとめて着地しました。ステージ 4 は、AI / エージェントの周辺 11
+  モジュール（`agent_protocols` / `agent_factory` / `claude_agent` / `claude_backed_agent` /
+  `claude_enrich_agent` / `claude_triage` / `ai_config` / `anthropic_client` / `ai_availability` /
+  `enrich` / `alerts`）を `bajutsu/agents/`（`protocols` / `factory` / `claude` / `claude_backed` /
+  `claude_enrich` / `claude_triage` / `ai_config` / `anthropic_client` / `availability` / `enrich` /
+  `alerts`）へ移動し、import-linter の該当 11 件を `bajutsu.agents` 1 件へ集約しました。提案本文が
+  挙げていた元の 9 モジュールの一覧は、提案執筆時点ですでに古いものでした。`agent.py` / `agents.py`
+  は提案が書かれる前に `agent_protocols.py` / `agent_factory.py` へ改名済みで、`claude_backed_agent`
+  と `ai_config` はその後にクラスタへ加わっていたためです。ステージ 5 は `evidence.py` と
+  `intervals` / `network` / `visual` / `golden` / `redaction` を `bajutsu/evidence/`（`core` と
+  周辺モジュール、re-export の `__init__`）へ、`coverage` / `audit` / `stats` を
+  `bajutsu/analysis/`（re-export なし）へ分割しました。`network.py` を `evidence/` の下に置いたことで、
+  `drivers/base.py` がもともと持っていた `TYPE_CHECKING` 専用の `Collector` 参照が、「シナリオスキーマ
+  と Driver Protocol の可搬なインナー契約」契約の `bajutsu.evidence` 全体を禁止するエントリに
+  引っかかるようになりました。名前空間全体を開放するのではなく、その 1 本の import だけを許す
+  `ignore_imports` の例外を 1 件加えて解決しています。ステージ 6 は `usage` / `usage_ledger` /
+  `usage_stats` を `bajutsu/analytics/`（`usage` / `ledger` / `stats`）へ移動しました。3
+  モジュールで完結する最小のクラスタで、import-linter や E2E トリガーの変更は不要でした。各ステージ
+  とも、`Makefile` / `e2e_changes.py` / 日英ドキュメントを新しいパッケージへ向け直し、ステージ
+  1〜3 と同じ扱いにしています。これで本項目の進捗チェックリストが完了し、`状態` を実装済みへ
+  切り替えます。
 
 ## 参考
 

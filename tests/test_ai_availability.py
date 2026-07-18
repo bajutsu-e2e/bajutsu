@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import pytest
 
-from bajutsu import ai_availability
-from bajutsu.anthropic_client import ANT_CLI_MISSING, ANT_CLI_UNAUTHENTICATED
+from bajutsu.agents import availability as ai_availability
+from bajutsu.agents.anthropic_client import ANT_CLI_MISSING, ANT_CLI_UNAUTHENTICATED
 
 
 @pytest.mark.parametrize(

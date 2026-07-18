@@ -13,9 +13,9 @@ deterministic path (BE-0101).
 
 from __future__ import annotations
 
+from bajutsu.agents.ai_config import AiConfig
+from bajutsu.agents.anthropic_client import ANT_CLI_MISSING, ANT_CLI_UNAUTHENTICATED, key_env
 from bajutsu.ai.claude_code import CLI_MISSING as CLAUDE_CODE_CLI_MISSING
-from bajutsu.ai_config import AiConfig
-from bajutsu.anthropic_client import ANT_CLI_MISSING, ANT_CLI_UNAUTHENTICATED, key_env
 
 
 def message(gap: str, ai: AiConfig | None = None) -> str:

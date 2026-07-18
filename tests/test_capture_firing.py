@@ -10,10 +10,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from bajutsu import intervals
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.evidence import Artifact, FileSink
+from bajutsu.evidence import Artifact, FileSink, intervals
 from bajutsu.orchestrator import run_scenario
 from bajutsu.orchestrator.evidence_rules import requested_intervals
 from bajutsu.scenario import Scenario

@@ -6,9 +6,9 @@ import struct
 
 from conftest import FakeBackend, FakeBlock, ShotDriver
 
-from bajutsu.agent_protocols import Proposal
+from bajutsu.agents.alerts import AlertDecision, ClaudeAlertLocator, SystemAlertGuard
+from bajutsu.agents.protocols import Proposal
 from bajutsu.ai.base import AnyTool, ImagePart, TextPart
-from bajutsu.alerts import AlertDecision, ClaudeAlertLocator, SystemAlertGuard
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.orchestrator import AlertEvent, run_scenario
@@ -123,7 +123,7 @@ def test_locator_absent_decision() -> None:
 def test_locator_redacts_instruction_before_send() -> None:
     # BE-0047: the (possibly user-supplied) --alert-instruction is redacted before it reaches the
     # model. The screenshot beside it is sent as-is — images cannot be pixel-masked.
-    from bajutsu.redaction import Redactor
+    from bajutsu.evidence.redaction import Redactor
     from bajutsu.scenario import Redact
 
     backend = _resolve_alert({"present": False})

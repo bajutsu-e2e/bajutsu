@@ -51,9 +51,9 @@ from bajutsu.crawl import repro as crawl_repro
 from bajutsu.crawl.guide import MODEL as _CRAWL_GUIDE_MODEL
 from bajutsu.crawl.guide import Report, make_guide
 from bajutsu.drivers import base
+from bajutsu.evidence.redaction import Redactor
 from bajutsu.platform_lifecycle import CrawlEnvironment, environment_for
 from bajutsu.record import clear_blocking as clear_blocking_overlay
-from bajutsu.redaction import Redactor
 from bajutsu.run_id import new_run_id
 from bajutsu.runner import launch_driver
 from bajutsu.scenario import Preconditions

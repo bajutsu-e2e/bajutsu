@@ -40,7 +40,7 @@ def _downscaled(data: bytes) -> bytes:
     not a correctness requirement: a capture Pillow cannot decode is sent as-is rather than dropped.
     """
     try:
-        from bajutsu.visual import downscale_png
+        from bajutsu.evidence.visual import downscale_png
 
         return downscale_png(data, MAX_IMAGE_LONG_EDGE)
     except ImportError:

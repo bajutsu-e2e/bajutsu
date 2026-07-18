@@ -91,11 +91,8 @@ The `bajutsu/` package (Python 3.13+, pydantic v2 / typer / anthropic / pyyaml /
 | `scenario/` | Scenario schema (strict pydantic validation) + YAML load / dump (package: `models` / `load` / `expand` / `select` / `serialize`) | [scenarios](scenarios.md) |
 | `assertions/` | Machine assertion evaluation (total function — never raises) (package: `evaluate` / `network` / `visual` / `schema` / `_common`, BE-0250) | [selectors](selectors.md#assertion-evaluation) |
 | `orchestrator/` | The deterministic Tier 2 run loop (act → wait → verify) (package: `loop` / `waits` / `substitution` / `evidence_rules` / `actions`) | [run-loop](run-loop.md) |
-| `evidence.py` | Evidence capture (instant / interval) and Sinks | [evidence](evidence.md) |
-| `intervals.py` | Interval evidence (video / deviceLog) as simctl child processes | [evidence](evidence.md#interval-evidence-video--devicelog) |
+| `evidence/` | Evidence capture, split by role (BE-0257): `core` (instant / interval capture and Sinks), `intervals` (video / deviceLog as simctl child processes), `network` (collector + in-protocol deterministic mocks), `visual` (visual-regression image comparison), `golden` (element-tree comparison), `redaction` (labels / headers / fields + secret values) | [evidence](evidence.md) |
 | `report/` | `manifest.json` + JUnit XML + CTRF JSON + interactive HTML (package: `format` / `manifest` / `ctrf` / `rows` / `panels` / `html`) | [reporting](reporting.md) |
-| `network.py` | Network collector + in-protocol deterministic mocks | [evidence](evidence.md) |
-| `redaction.py` | Redaction of evidence (labels / headers / fields + secret values) | [evidence](evidence.md) |
 | `interp.py` | `${ns.key}` interpolation primitive (`params.` / `row.` / `secrets.` / `vars.`) | [scenarios](scenarios.md) |
 | `config/` | Team defaults × per-target resolution (`Effective`) (package: `schema` / `effective` / `resolve` / `accessors`) | [configuration](configuration.md) |
 | `backends.py` | Backend availability check · actuator selection (platform-aware registry: `ios` / `android` / `web` / `fake`) · driver construction | [drivers](drivers.md#backend-selection-and-the-actuator) |
@@ -105,22 +102,18 @@ The `bajutsu/` package (Python 3.13+, pydantic v2 / typer / anthropic / pyyaml /
 | `provision.py` | Config-aware environment installer (BE-0164): resolve a config's backends + AI provider, install only their extras/tools idempotently (`make install`) | — |
 | `runner/` | config + scenarios → report; device pool + launch sequence (package: `pipeline` / `pool` / `launch`) | [run-loop](run-loop.md#runner-the-run-pipeline) |
 | `doctor.py` | Convention score (id coverage, etc.) | [configuration](configuration.md#doctor-the-convention-score) |
-| `agent_protocols.py` · `agent_factory.py` | Authoring Agent abstraction (`Observation`/`Proposal`/`Agent`) + construction of the one SDK-backed agent | [recording](recording.md) |
-| `ai/` | Vendor-neutral AI backend seam (BE-0104): `AiBackend` protocol + normalized request/response types (`base`), provider registry (`registry`), Anthropic reference adapter over `anthropic_client` (`anthropic`) — the Anthropic API, Amazon Bedrock, and the Anthropic CLI `ant` (BE-0163) | [configuration](configuration.md#ai-provider-ai-be-0047) |
-| `claude_agent.py` | The SDK authoring agent (forced tool use · prompt cache); provider-agnostic — Anthropic API / Bedrock / `ant` | [recording](recording.md#the-claude-authoring-agent) |
+| `agents/` | AI / authoring-agent periphery (BE-0257): `protocols` + `factory` (the `Observation`/`Proposal`/`Agent` abstraction + construction of the one SDK-backed agent), `claude` (the authoring agent), `claude_backed` (shared base, BE-0246), `claude_enrich`, `claude_triage`, `ai_config` (provider/model/effort/language resolution), `anthropic_client` (SDK client construction), `availability` (credential-gap messaging), `enrich` (the enrichment loop), `alerts` (system-alert guard) | [recording](recording.md) |
+| `ai/` | Vendor-neutral AI backend seam (BE-0104): `AiBackend` protocol + normalized request/response types (`base`), provider registry (`registry`), Anthropic reference adapter over `agents.anthropic_client` (`anthropic`) — the Anthropic API, Amazon Bedrock, and the Anthropic CLI `ant` (BE-0163) | [configuration](configuration.md#ai-provider-ai-be-0047) |
 | `record.py` | The record loop (observe → propose → execute → emit) | [recording](recording.md#the-record-loop) |
 | `crawl/` | Autonomous breadth-first crawl → screen map: `core` engine + `serialize`, with `guide` / `tabs` / `report` / `repro` / `flows` | [recording](recording.md) |
-| `alerts.py` | System-alert detection / dismissal (vision locator) | [recording](recording.md#dismissing-system-alerts-automatically) |
 | `codegen/` | Scenario → native test generation: XCUITest (Swift), Playwright (TypeScript), UI Automator (Kotlin) | [codegen](codegen.md) |
-| `visual.py` | Visual-regression image comparison (the `visual` assertion) | [evidence](evidence.md) |
 | `trace.py` | Text timeline over a saved run (the `trace` command) | [cli](cli.md) |
 | `triage.py` | M4 self-heal: rule-based `HeuristicTriageAgent` + structured fixes (`renameId`/`addIndex`/`raiseTimeout`), `--apply`/`--write`/`--rerun` | [cli](cli.md) |
-| `claude_triage.py` | Claude-backed `TriageAgent` (`--ai`, failure screenshot) | [cli](cli.md) |
 | `github/` | GitHub helpers: `actions` (CI, continuous integration, annotations + job summary), `app` (App installation token for the private-repo config source), `errors` (the shared access error) | [ci](ci.md) |
 | `serve/` | Local web UI (the `serve` command): author / run / reports / triage a failed run | [cli](cli.md) |
 | `mcp/` | MCP server: exposes `run`/`doctor` as tools + run evidence as resources | [cli](cli.md) |
 | `lint.py` | Scenario linter + JSON Schema generation (`lint` / `schema` commands) | [cli](cli.md) |
-| `audit.py` · `coverage.py` · `stats.py` · `serve/flakiness.py` | Read-only advisory analysis, no device/AI, never gates CI: determinism/flakiness audit (`audit`, BE-0049), scenario id-namespace coverage (`coverage`, BE-0050), the aggregate run-stats dashboard (`stats`, BE-0102), cross-run flakiness ranking (`flakiness`, BE-0220) | [cli](cli.md) |
+| `analysis/` · `serve/flakiness.py` | Read-only advisory analysis (BE-0257), no device/AI, never gates CI: `audit` (determinism/flakiness audit, BE-0049), `coverage` (scenario id-namespace coverage, BE-0050), `stats` (the aggregate run-stats dashboard, BE-0102), plus cross-run flakiness ranking (`flakiness`, BE-0220) | [cli](cli.md) |
 | `cli/` | Typer-based CLI; one file per command in `cli/commands/` (`run`/`project`/`doctor`/`audit`/`coverage`/`stats`/`flakiness`/`export`/`trace`/`report`/`triage`/`record`/`crawl`/`codegen`/`approve`/`serve`/`mcp`/`worker`/`lint`/`schema`) | [cli](cli.md) |
 | `dotenv.py` | Minimal `.env` loader (never overrides an existing var) | [cli](cli.md#environment-variables-env) |
 | `_yaml.py` | YAML loader that keeps `on`/`off`/`yes`/`no` as strings | [scenarios](scenarios.md#yaml-caveat) |
@@ -130,7 +123,7 @@ The `bajutsu/` package (Python 3.13+, pydantic v2 / typer / anthropic / pyyaml /
 Lower layers are more stable; upper layers depend on lower ones. The core is `drivers/base.py`
 (selector resolution), which every execution path depends on.
 
-![Dependency-layer diagram: cli/ is the user entry point, from which runner/, record.py/crawl/, codegen/, trace.py, and triage.py descend directly (codegen/ and trace.py have no further dependencies drawn). runner/ depends on orchestrator/; record.py/crawl/ depends on the AI agent helpers; triage.py depends on the serve/CI helpers. orchestrator/ and the agent helpers depend on assertions/ and evidence.py, and orchestrator/ additionally depends on config.py, backends.py, and simctl.py. assertions/ depends on scenario/ and evidence.py depends on report/; scenario/, report/, config.py, backends.py, and simctl.py all converge on drivers/base.py, the determinism core, from which drivers/fake, the iOS drivers, and the Playwright driver all derive.](assets/diagrams/architecture-dependency-layers.svg)
+![Dependency-layer diagram: cli/ is the user entry point, from which runner/, record.py/crawl/, codegen/, trace.py, and triage.py descend directly (codegen/ and trace.py have no further dependencies drawn). runner/ depends on orchestrator/; record.py/crawl/ depends on the AI agent helpers; triage.py depends on the serve/CI helpers. orchestrator/ and the agent helpers depend on assertions/ and evidence/, and orchestrator/ additionally depends on config.py, backends.py, and simctl.py. assertions/ depends on scenario/ and evidence/ depends on report/; scenario/, report/, config.py, backends.py, and simctl.py all converge on drivers/base.py, the determinism core, from which drivers/fake, the iOS drivers, and the Playwright driver all derive.](assets/diagrams/architecture-dependency-layers.svg)
 
 <details>
 <summary>Mermaid source</summary>
@@ -144,14 +137,14 @@ flowchart TB
     record["record.py / crawl/<br/>(Tier 1 / AI)"]
     codegen["codegen/<br/>(structural)"]
     trace["trace.py<br/>(timeline)"]
-    triage["triage.py / claude_triage.py<br/>(self-heal · advisory)"]
+    triage["triage.py / agents/claude_triage.py<br/>(self-heal · advisory)"]
 
     orch["orchestrator/"]
-    agentStuff["agent_protocols.py / agent_factory.py /<br/>claude_agent.py / alerts.py"]
+    agentStuff["agents/<br/>(protocols · factory · claude · alerts · …)"]
     serveGh["serve/ · github/<br/>(web UI · CI)"]
 
     assertions["assertions/"]
-    evidence["evidence.py<br/>+ intervals.py · network.py · visual.py · redaction.py"]
+    evidence["evidence/<br/>(core + intervals · network · visual · golden · redaction)"]
 
     scenario["scenario/<br/>(interp.py)"]
     report["report/"]
@@ -215,16 +208,16 @@ notices. The configuration lives in `[tool.importlinter]` in `pyproject.toml`. T
 declared:
 
 1. **Deterministic core** — the path that derives a verdict and evidence with no model and no
-   periphery stack: `orchestrator/`, `runner/`, `drivers/base.py`, `assertions/`, `evidence.py`,
+   periphery stack: `orchestrator/`, `runner/`, `drivers/base.py`, `assertions/`, `evidence/`,
    `report/`, `config/`, `scenario/`, `preflight.py` / `capability_preflight.py` /
    `capabilities.py`, `doctor.py`, `lint.py`. It carries the prime directives.
 2. **Contract** — the stable surfaces a consumer depends on: the scenario schema (`scenario/`) and
    the `Driver` Protocol (`drivers/base.py`).
 3. **Periphery** — the consumers of the contract, each removable behind an optional extra:
-   `serve/`, `mcp/`, the codegen emitters, the AI / agent paths (`agent_protocols.py`, `ai_config.py`,
-   `anthropic_client.py`, `record.py`, `enrich.py`, `triage.py`, `crawl/guide.py`, …), and the
-   `github/actions.py` / `notify.py` / `alerts.py` helpers (the rest of `github/` — `app` / `errors`
-   — is core-safe, so `config_source` reaches it without pulling the periphery in).
+   `serve/`, `mcp/`, the codegen emitters, the AI / agent paths (`agents/` — `protocols`, `ai_config`,
+   `anthropic_client`, `enrich`, `alerts`, … — plus `record.py`, `triage.py`, `crawl/guide.py`, …),
+   and the `github/actions.py` / `notify.py` helpers (the rest of `github/` — `app` / `errors` — is
+   core-safe, so `config_source` reaches it without pulling the periphery in).
 
 Three contracts are enforced:
 
@@ -391,7 +384,7 @@ device (the shared device is reseeded via one channel, so parallel workers would
   gate (`preflight.py`: iOS needs the required CLIs + a booted Simulator; web needs Playwright + its
   Chromium browser)
 - The `trace` command (`trace.py`): a text timeline over a saved run (steps + network + appTrace)
-- M4 self-healing triage (`triage.py` + `claude_triage.py`): assemble a failed run's context +
+- M4 self-healing triage (`triage.py` + `agents/claude_triage.py`): assemble a failed run's context +
   a `TriageAgent` diagnosis (rule-based `HeuristicTriageAgent`, or `--ai` Claude with the failure
   screenshot). An agent can propose a structured fix (`renameId` / `addIndex` / `raiseTimeout`);
   `--apply`/`--write` patches the scenario source (diff-previewed, opt-in) and `--rerun` re-runs it
@@ -441,6 +434,6 @@ device (the shared device is reseeded via one channel, so parallel workers would
 | Feature | Status | Location |
 |---|---|---|
 | `mockServer` (external mock command) | config schema only; the `cmd`/`port` external server is **not implemented** — superseded by scenario `mocks` (declarative in-protocol stubs, implemented) | `config/schema.py` `MockServer` |
-| `appTrace` interval evidence on the **web** backend | `appTrace` is `os_log`/simctl-based (iOS only); the Playwright backend implements the `video` and `deviceLog`-equivalent (console / page-error) interval kinds instead (BE-0054), but has no `appTrace` analogue | `intervals.py` · `drivers/playwright.py` |
+| `appTrace` interval evidence on the **web** backend | `appTrace` is `os_log`/simctl-based (iOS only); the Playwright backend implements the `video` and `deviceLog`-equivalent (console / page-error) interval kinds instead (BE-0054), but has no `appTrace` analogue | `evidence/intervals.py` · `drivers/playwright.py` |
 
 Both features are also flagged inline on the relevant feature pages.

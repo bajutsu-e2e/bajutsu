@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from bajutsu.config import Effective
 from bajutsu.drivers import base
 from bajutsu.evidence import EvidenceSink
-from bajutsu.network import Collector
+from bajutsu.evidence.network import Collector
 from bajutsu.orchestrator import BlockedHandler, DeviceControl, RelaunchFn, SkippedCapture
 from bajutsu.scenario import Scenario
 from bajutsu.webview import DomSource

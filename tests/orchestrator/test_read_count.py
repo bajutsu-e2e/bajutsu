@@ -18,8 +18,8 @@ from conftest import el
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver, React
 from bajutsu.evidence import Artifact
-from bajutsu.intervals import Interval
-from bajutsu.network import NetworkExchange
+from bajutsu.evidence.intervals import Interval
+from bajutsu.evidence.network import NetworkExchange
 from bajutsu.orchestrator import run_scenario
 from bajutsu.orchestrator.waits import WaitTrace
 

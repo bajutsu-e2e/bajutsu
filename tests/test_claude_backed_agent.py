@@ -8,9 +8,9 @@ from __future__ import annotations
 
 from conftest import FAKE_USAGE_PER_CALL, FakeBackend, FakeUsage
 
-from bajutsu import usage
+from bajutsu.agents.claude_backed import ClaudeBackedAgent
 from bajutsu.ai.base import MessageResponse
-from bajutsu.claude_backed_agent import ClaudeBackedAgent
+from bajutsu.analytics import usage
 
 
 class _Probe(ClaudeBackedAgent):

@@ -6,9 +6,9 @@
 > then writes out a **deterministic scenario**. AI is involved only here (at record time). The
 > resulting YAML is AI-independent and is owned by the user from that point forward.
 >
-> Implementation: `bajutsu/record.py` (the loop) · `bajutsu/agent_protocols.py` + `bajutsu/agent_factory.py`
-> (the abstraction + construction) · `bajutsu/claude_agent.py` (the SDK authoring agent) ·
-> `bajutsu/alerts.py` (system-alert handling). The breadth-first explorer `bajutsu/crawl/` shares
+> Implementation: `bajutsu/record.py` (the loop) · `bajutsu/agents/protocols.py` + `bajutsu/agents/factory.py`
+> (the abstraction + construction) · `bajutsu/agents/claude.py` (the SDK authoring agent) ·
+> `bajutsu/agents/alerts.py` (system-alert handling). The breadth-first explorer `bajutsu/crawl/` shares
 > the same agent.
 
 Related: [the two tiers in concepts](concepts.md#2-two-tiers-tier-1--tier-2) · [scenarios](scenarios.md) · [run-loop](run-loop.md)
@@ -17,7 +17,7 @@ Related: [the two tiers in concepts](concepts.md#2-two-tiers-tier-1--tier-2) · 
 
 ## The Agent abstraction
 
-A thin Protocol that separates the loop from the model (`agent_protocols.py`). Tests use a scripted fake;
+A thin Protocol that separates the loop from the model (`agents/protocols.py`). Tests use a scripted fake;
 production uses the SDK-backed `ClaudeAgent` (below).
 
 ```python
@@ -122,7 +122,7 @@ carries no `capture` for it.
 ### Leaning the turn payload and bounding its cost (BE-0194)
 
 After the screenshot, the rendered accessibility element tree is the largest per-turn input, so
-`_render` (`claude_agent.py`) keeps it lean without dropping anything the agent can act on:
+`_render` (`agents/claude.py`) keeps it lean without dropping anything the agent can act on:
 
 - **Lossless element-line compaction.** Each element line prints only the fields that carry
   information — every addressing field (`id`, `label`, a non-empty `value`, non-empty `traits`) is
@@ -176,14 +176,14 @@ turns the element list already fully determines. `--no-screenshot` still forces 
 byte-for-byte unchanged, so `run`, `codegen`, and the report are unaffected.
 
 The end-of-session `AI usage:` line is followed by a per-category breakdown (`plan` / `next_action` /
-`alert-guard`) attributed by call site (`usage.py`, BE-0194), so the effect of a token-saving change
+`alert-guard`) attributed by call site (`analytics/usage.py`, BE-0194), so the effect of a token-saving change
 is measurable. The categories partition every recorded call, so they sum to the running total. The
-breakdown is reporting-only and never touches pass/fail, consistent with the rest of `usage.py`.
+breakdown is reporting-only and never touches pass/fail, consistent with the rest of `analytics/usage.py`.
 
 ## The Claude authoring agent
 
-`record` / `crawl` construct one production `agent_protocols.Agent` implementation, `ClaudeAgent`
-(`claude_agent.py`, built by `agent_factory.py`): it talks to the model through the vendor-neutral
+`record` / `crawl` construct one production `agents.protocols.Agent` implementation, `ClaudeAgent`
+(`agents/claude.py`, built by `agents/factory.py`): it talks to the model through the vendor-neutral
 `AiBackend` seam (BE-0104), so the **provider** is a config detail, not a separate agent. The
 resolved `ai.provider` ([configuration](configuration.md#ai-provider-ai-be-0047)) picks:
 
@@ -237,7 +237,7 @@ ClaudeAgent(client=fake_client)    # api: tests
 
 idb's accessibility query is scoped to the foreground app, so **SpringBoard-level prompts** (e.g.
 iOS "Save Password?") are invisible to it; the app's element tree collapses to a single window node
-and the run is silently blocked. `alerts.py` handles clearing these.
+and the run is silently blocked. `agents/alerts.py` handles clearing these.
 
 ```python
 class AlertLocator(Protocol):

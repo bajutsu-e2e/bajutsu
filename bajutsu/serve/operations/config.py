@@ -12,9 +12,9 @@ from typing import Any
 
 import yaml
 
-from bajutsu import _yaml, ai_availability
-from bajutsu.ai import credential_gap, known_providers, resolved_provider
-from bajutsu.ai_config import (
+from bajutsu import _yaml
+from bajutsu.agents import availability as ai_availability
+from bajutsu.agents.ai_config import (
     BEDROCK_MODEL_ENV,
     DEFAULT_LANGUAGE,
     EFFORT_ENV,
@@ -26,7 +26,8 @@ from bajutsu.ai_config import (
     AiConfig,
     normalize_provider,
 )
-from bajutsu.anthropic_client import ANT_BINARY, ANT_CLI_MISSING, ANTHROPIC_KEY_ENV
+from bajutsu.agents.anthropic_client import ANT_BINARY, ANT_CLI_MISSING, ANTHROPIC_KEY_ENV
+from bajutsu.ai import credential_gap, known_providers, resolved_provider
 from bajutsu.config import load_config, resolve
 from bajutsu.config_source import materialize, parse_config_spec, source_provenance
 from bajutsu.serve.helpers import (

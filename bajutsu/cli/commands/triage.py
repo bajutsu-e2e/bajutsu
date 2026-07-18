@@ -13,7 +13,7 @@ import typer
 
 from bajutsu import trace as _trace
 from bajutsu import triage as _triage
-from bajutsu import usage as _usage
+from bajutsu.analytics import usage as _usage
 from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
     _ai_redactor,
@@ -92,7 +92,7 @@ def triage(
             context = replace(context, scenario_yaml=Path(apply).read_text(encoding="utf-8"))
     agent: _triage.TriageAgent
     if ai:
-        from bajutsu.claude_triage import ClaudeTriageAgent
+        from bajutsu.agents.claude_triage import ClaudeTriageAgent
 
         # Resolve the target's `ai` config + redactor when a target is named, so triage uses the
         # configured provider/endpoint and masks the element tree / failure text it sends (BE-0047).
@@ -228,7 +228,7 @@ def _flaky_triage(
         missing = "failing" if not fail_dirs else "passing"
         typer.echo(f"{name}: no {missing} run to contrast — nothing to diagnose as flaky")
         raise typer.Exit(0)
-    from bajutsu.claude_triage import ClaudeCrossRunTriageAgent
+    from bajutsu.agents.claude_triage import ClaudeCrossRunTriageAgent
 
     eff = _ai_effective(config, target_name)
     _require_ai_credential(eff)

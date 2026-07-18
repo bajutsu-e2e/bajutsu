@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from bajutsu.agent_protocols import EnrichmentAgent, EnrichmentProposal, StepContext
+from bajutsu.agents.protocols import EnrichmentAgent, EnrichmentProposal, StepContext
 from bajutsu.drivers import base
 from bajutsu.orchestrator import BlockedHandler, Clock, RealClock
 from bajutsu.orchestrator.types import SelectionState

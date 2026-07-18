@@ -15,6 +15,8 @@ import base64
 import os
 from typing import Any
 
+from bajutsu.agents.ai_config import BEDROCK_MODEL_ENV, AiConfig, resolve_provider
+from bajutsu.agents.anthropic_client import ant_credential_gap, key_env, make_client
 from bajutsu.ai.base import (
     AnyTool,
     ContentBlock,
@@ -25,8 +27,6 @@ from bajutsu.ai.base import (
     TextBlock,
     ToolUseBlock,
 )
-from bajutsu.ai_config import BEDROCK_MODEL_ENV, AiConfig, resolve_provider
-from bajutsu.anthropic_client import ant_credential_gap, key_env, make_client
 
 
 def _part(part: ContentPart) -> dict[str, Any]:

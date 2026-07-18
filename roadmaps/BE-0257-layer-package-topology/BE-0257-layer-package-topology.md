@@ -7,9 +7,9 @@
 |---|---|
 | Proposal | [BE-0257](BE-0257-layer-package-topology.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0257") |
-| Implementing PR | [#1045](https://github.com/bajutsu-e2e/bajutsu/pull/1045), [#1052](https://github.com/bajutsu-e2e/bajutsu/pull/1052), [#1172](https://github.com/bajutsu-e2e/bajutsu/pull/1172) |
+| Implementing PR | [#1045](https://github.com/bajutsu-e2e/bajutsu/pull/1045), [#1052](https://github.com/bajutsu-e2e/bajutsu/pull/1052), [#1172](https://github.com/bajutsu-e2e/bajutsu/pull/1172), [#1185](https://github.com/bajutsu-e2e/bajutsu/pull/1185) |
 | Topic | Codebase quality & technical debt |
 | Related | [BE-0112](../BE-0112-layer-boundary-enforcement/BE-0112-layer-boundary-enforcement.md), [BE-0135](../BE-0135-module-naming-debt/BE-0135-module-naming-debt.md), [BE-0092](../BE-0092-crawl-coordinator-extraction/BE-0092-crawl-coordinator-extraction.md) |
 <!-- /BE-METADATA -->
@@ -135,9 +135,9 @@ packaging lands, stage by stage.
 - [x] `bajutsu/crawl/` package (`__init__`/`core`/`flows`/`guide`/`report`/`repro`/`tabs`/`serialize`).
 - [x] `bajutsu/github/` package (`__init__`/`actions`/`app`/`errors`), resolving the `config_source`
   ↔ `github_app` cycle.
-- [ ] `bajutsu/agents/` periphery package (nine modules).
-- [ ] `bajutsu/evidence/` and `bajutsu/analysis/` packages.
-- [ ] `bajutsu/analytics/` package (`usage`/`ledger`/`stats`).
+- [x] `bajutsu/agents/` periphery package (eleven modules).
+- [x] `bajutsu/evidence/` and `bajutsu/analysis/` packages.
+- [x] `bajutsu/analytics/` package (`usage`/`ledger`/`stats`).
 
 **Log**
 
@@ -161,6 +161,25 @@ packaging lands, stage by stage.
   resolving the `config_source` ↔ `github_app` cycle at its root. Retargeted the core import-linter
   entry from `bajutsu.github` to `bajutsu.github.actions` (the periphery piece; `app`/`errors` stay
   core-safe), and the bilingual docs at the package.
+- 2026-07-17 ([#1185](https://github.com/bajutsu-e2e/bajutsu/pull/1185)): stages 4-6, landed together
+  as one PR with one commit per stage. Stage 4 moved the eleven-module AI/agent periphery cluster
+  (`agent_protocols`/`agent_factory`/`claude_agent`/`claude_backed_agent`/`claude_enrich_agent`/
+  `claude_triage`/`ai_config`/`anthropic_client`/`ai_availability`/`enrich`/`alerts` — the proposal's
+  original nine-module list was stale, since `agent.py`/`agents.py` had already been renamed before
+  the proposal was written and `claude_backed_agent`/`ai_config` joined the cluster since) into
+  `bajutsu/agents/` (`protocols`/`factory`/`claude`/`claude_backed`/`claude_enrich`/`claude_triage`/
+  `ai_config`/`anthropic_client`/`availability`/`enrich`/`alerts`), collapsing the eleven matching
+  import-linter entries to a single `bajutsu.agents`. Stage 5 split `evidence.py` +
+  `intervals`/`network`/`visual`/`golden`/`redaction` into `bajutsu/evidence/` (`core` + siblings, a
+  re-exporting `__init__`) and `coverage`/`audit`/`stats` into `bajutsu/analysis/` (no re-export);
+  packaging `network.py` under `evidence/` pulled `drivers/base.py`'s pre-existing
+  `TYPE_CHECKING`-only `Collector` reference under the "Scenario schema and Driver Protocol" inner
+  contract's whole-namespace `bajutsu.evidence` entry, resolved with one scoped `ignore_imports`
+  exception rather than opening the whole namespace. Stage 6 moved `usage`/`usage_ledger`/
+  `usage_stats` into `bajutsu/analytics/` (`usage`/`ledger`/`stats`) — the smallest, self-contained
+  cluster, needing no import-linter or E2E-trigger changes. Every stage retargeted the
+  `Makefile`/`e2e_changes.py`/bilingual-docs surface at its new package, matching stages 1-3.
+  Completes the item's Progress checklist; flips `Status` to Implemented.
 
 ## References
 

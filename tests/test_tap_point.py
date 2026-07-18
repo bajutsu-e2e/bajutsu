@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 from conftest import FakeBackend, FakeBlock
 
-from bajutsu.claude_agent import ClaudeAgent, proposal_from_call
+from bajutsu.agents.claude import ClaudeAgent, proposal_from_call
 from bajutsu.codegen import to_xcuitest
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
@@ -98,6 +98,6 @@ def test_codegen_marks_tap_point_unsupported() -> None:
 
 
 def _obs() -> object:
-    from bajutsu.agent_protocols import Observation
+    from bajutsu.agents.protocols import Observation
 
     return Observation(goal="switch tabs", screen=[], history=[])

@@ -10,7 +10,7 @@ import time
 from collections.abc import Callable, Sequence
 
 from bajutsu.drivers import base
-from bajutsu.network import NetworkExchange
+from bajutsu.evidence.network import NetworkExchange
 
 # Hook that mutates state in response to an action: react(driver, kind, arg)
 React = Callable[["FakeDriver", str, object], None]

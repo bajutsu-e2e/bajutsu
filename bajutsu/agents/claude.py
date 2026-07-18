@@ -13,8 +13,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from bajutsu import usage
-from bajutsu.agent_protocols import Observation, Proposal
+from bajutsu.agents.ai_config import (
+    AiConfig,
+    language_instruction,
+    resolve_effort,
+)
+from bajutsu.agents.claude_backed import ClaudeBackedAgent
+from bajutsu.agents.protocols import Observation, Proposal
 from bajutsu.ai import (
     AiBackend,
     AnyTool,
@@ -29,13 +34,8 @@ from bajutsu.ai import (
     ToolUseBlock,
 )
 from bajutsu.ai.prompts import render_elements
-from bajutsu.ai_config import (
-    AiConfig,
-    language_instruction,
-    resolve_effort,
-)
-from bajutsu.claude_backed_agent import ClaudeBackedAgent
-from bajutsu.redaction import Redactor
+from bajutsu.analytics import usage
+from bajutsu.evidence.redaction import Redactor
 from bajutsu.scenario import Assertion, Step
 
 MODEL = "claude-opus-4-8"

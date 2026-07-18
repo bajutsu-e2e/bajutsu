@@ -13,7 +13,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from bajutsu.agent_protocols import EnrichmentProposal, StepContext
+from bajutsu.agents.ai_config import AiConfig, language_instruction
+from bajutsu.agents.claude import _TARGET_PROPS, _to_assertion
+from bajutsu.agents.claude_backed import ClaudeBackedAgent
+from bajutsu.agents.protocols import EnrichmentProposal, StepContext
 from bajutsu.ai import (
     AiBackend,
     ContentPart,
@@ -25,11 +28,8 @@ from bajutsu.ai import (
     ToolDef,
 )
 from bajutsu.ai.prompts import render_elements
-from bajutsu.ai_config import AiConfig, language_instruction
-from bajutsu.claude_agent import _TARGET_PROPS, _to_assertion
-from bajutsu.claude_backed_agent import ClaudeBackedAgent
+from bajutsu.evidence.redaction import Redactor
 from bajutsu.record import describe_step, settle_step
-from bajutsu.redaction import Redactor
 from bajutsu.scenario import Scenario
 
 MODEL = "claude-opus-4-8"

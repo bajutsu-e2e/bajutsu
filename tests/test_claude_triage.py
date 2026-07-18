@@ -6,16 +6,16 @@ from typing import Any
 
 from conftest import FakeBackend, FakeBlock
 
-from bajutsu.ai.base import AnyTool, ImagePart, TextPart
-from bajutsu.claude_triage import (
+from bajutsu.agents.claude_triage import (
     ClaudeCrossRunTriageAgent,
     ClaudeTriageAgent,
     _cross_run_user_content,
     _render,
     _render_cross_run,
 )
+from bajutsu.ai.base import AnyTool, ImagePart, TextPart
 from bajutsu.drivers import base
-from bajutsu.redaction import Redactor
+from bajutsu.evidence.redaction import Redactor
 from bajutsu.scenario import Redact
 from bajutsu.triage import CrossRunTriageContext, FailedStep, RunEvidence, TriageContext
 

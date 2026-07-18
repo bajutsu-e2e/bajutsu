@@ -15,8 +15,8 @@ from typing import Protocol
 from bajutsu.assertions import AssertionResult
 from bajutsu.drivers import base
 from bajutsu.evidence import Artifact
+from bajutsu.evidence.network import NetworkExchange
 from bajutsu.mailbox import MailboxMessage
-from bajutsu.network import NetworkExchange
 from bajutsu.scenario import Relaunch
 
 # Returns the network exchanges observed so far (for `request` assertions / waits).

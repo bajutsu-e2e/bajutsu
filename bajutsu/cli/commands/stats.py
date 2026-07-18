@@ -14,7 +14,7 @@ from pathlib import Path
 
 import typer
 
-from bajutsu import stats as _stats
+from bajutsu.analysis import stats as _stats
 from bajutsu.cli._shared import read_manifests
 
 

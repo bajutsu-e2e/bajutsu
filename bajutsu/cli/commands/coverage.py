@@ -17,8 +17,8 @@ from typing import cast
 
 import typer
 
-from bajutsu import coverage as _coverage
 from bajutsu import crawl as _crawl
+from bajutsu.analysis import coverage as _coverage
 from bajutsu.cli._shared import DEFAULT_CONFIG, _load_effective
 from bajutsu.drivers import base
 from bajutsu.scenario import load_scenarios_dir

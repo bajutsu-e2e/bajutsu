@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
 from bajutsu.assertions import match_request
-from bajutsu.network import NetworkExchange
+from bajutsu.evidence.network import NetworkExchange
 
 if TYPE_CHECKING:
     from bajutsu.scenario.models.assertions import RequestMatch

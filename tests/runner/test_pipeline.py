@@ -12,7 +12,7 @@ from bajutsu.config import Effective
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence import NullSink
-from bajutsu.network import NetworkExchange
+from bajutsu.evidence.network import NetworkExchange
 from bajutsu.orchestrator import RunResult
 from bajutsu.runner import (
     Lease,
@@ -38,7 +38,7 @@ def test_scenario_runner_runs_one_in_isolation() -> None:
     The promotion's payoff: the per-scenario runner is unit-testable directly, its shared context
     passed as explicit fields rather than reconstructed from all of `run_all`.
     """
-    from bajutsu.redaction import Redactor
+    from bajutsu.evidence.redaction import Redactor
     from bajutsu.runner.pipeline import _ScenarioRunner
 
     runner = _ScenarioRunner(
@@ -583,7 +583,7 @@ def test_run_and_report_writes_owner_only_artifacts(tmp_path: Path) -> None:
 
 
 def test_write_network_stamps_the_given_provider(tmp_path: Path) -> None:
-    from bajutsu.redaction import Redactor
+    from bajutsu.evidence.redaction import Redactor
     from bajutsu.runner.pipeline import _write_network
 
     ex = NetworkExchange(method="GET", path="/a", status=200)

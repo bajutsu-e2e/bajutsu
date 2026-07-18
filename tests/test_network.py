@@ -9,7 +9,7 @@ import urllib.request
 
 from bajutsu.assertions import EvalContext, evaluate, evaluate_one
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.network import NetworkCollector, NetworkExchange
+from bajutsu.evidence.network import NetworkCollector, NetworkExchange
 from bajutsu.orchestrator import run_scenario
 from bajutsu.scenario import (
     Assertion,

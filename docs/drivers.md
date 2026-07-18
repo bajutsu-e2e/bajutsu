@@ -416,5 +416,5 @@ through an injectable `RunFn`.
 > ([showcase](showcase.md#launch-environment-hooks)).
 
 The `video` / `deviceLog` interval captures also use `simctl io recordVideo` / `simctl spawn log
-stream`, but those live in the evidence subsystem (`intervals.py`)
+stream`, but those live in the evidence subsystem (`evidence/intervals.py`)
 ([evidence](evidence.md#interval-evidence-video--devicelog)).

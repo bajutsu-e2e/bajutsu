@@ -184,4 +184,4 @@ def make_driver(actuator, udid, *, base_url=None, runner_port=None) -> Driver:  
 
 > **launch env の注入**: アプリへ渡す env 変数は、親プロセスに `SIMCTL_CHILD_<NAME>` として設定すると子（アプリ）に `<NAME>` で渡ります。`child_env()` がこの変換を行います。showcase アプリの `SHOWCASE_UITEST` 等の launch hook はこの仕組みを使います（[showcase](showcase.md#起動環境フック)）。
 
-`video` / `deviceLog` の区間録りも `simctl io recordVideo` / `simctl spawn log stream` を使いますが、これらは証跡サブシステム側（`intervals.py`）に置かれています（[evidence](evidence.md#区間証跡video--devicelog--apptrace)）。
+`video` / `deviceLog` の区間録りも `simctl io recordVideo` / `simctl spawn log stream` を使いますが、これらは証跡サブシステム側（`evidence/intervals.py`）に置かれています（[evidence](evidence.md#区間証跡video--devicelog--apptrace)）。

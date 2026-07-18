@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 
 import typer
 
-from bajutsu import ai_config, anthropic_client
+from bajutsu.agents import ai_config, anthropic_client
 from bajutsu.ai import credential_gap
 from bajutsu.backends import ensure_web_runtime, select_actuator
 from bajutsu.config import (
@@ -36,14 +36,14 @@ from bajutsu.config_source import (
     parse_config_spec,
     source_provenance,
 )
+from bajutsu.evidence.redaction import Redactor
 from bajutsu.github import GitHubAccessError
-from bajutsu.redaction import Redactor
 from bajutsu.runner.launch_server import start_launch_server
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from bajutsu.alerts import ClaudeAlertLocator
+    from bajutsu.agents.alerts import ClaudeAlertLocator
     from bajutsu.drivers import base
     from bajutsu.orchestrator import AlertEvent
 
@@ -137,7 +137,7 @@ def _install_usage_ledger(eff: Effective, command: str, *, scenario: str | None 
     spent on. Reporting only — never on the deterministic verdict path. `run` does not use this: it
     binds per-scenario at the alert guard so attribution reaches the runner's worker threads.
     """
-    from bajutsu import usage_ledger
+    from bajutsu.analytics import ledger as usage_ledger
 
     usage_ledger.configure_from_ai_config(eff.ai)
     usage_ledger.bind_command(command, scenario=scenario)
@@ -398,7 +398,7 @@ def _build_alert_locator(eff: Effective, redactor: Redactor) -> ClaudeAlertLocat
     deterministic gate Claude-free. Shared by `run` (one locator across its per-scenario guards) and
     by `_build_alert_guard` (the single-guard `crawl` / `record` path).
     """
-    from bajutsu.alerts import ClaudeAlertLocator
+    from bajutsu.agents.alerts import ClaudeAlertLocator
 
     # The credential is provider-specific: the key named by ai.keyEnv (default ANTHROPIC_API_KEY) for
     # Anthropic, a provider-prefixed model for Bedrock (AWS credentials authenticate there). When it's
@@ -430,7 +430,7 @@ def _build_alert_guard(
     use this: it shares one locator across per-scenario guards and wraps each in usage attribution,
     so it calls `_build_alert_locator` directly.
     """
-    from bajutsu.alerts import SystemAlertGuard
+    from bajutsu.agents.alerts import SystemAlertGuard
 
     locator = _build_alert_locator(eff, redactor)
     if locator is None:

@@ -14,11 +14,11 @@ from __future__ import annotations
 from dataclasses import asdict
 from typing import Any
 
+from bajutsu.analysis.stats import ProjectMetrics, project_metrics
 from bajutsu.serve.artifacts import ArtifactStore
 from bajutsu.serve.operations.reads import _STATS_RUN_LIMIT, run_set_manifests
 from bajutsu.serve.project_registry import ProjectRegistry
 from bajutsu.serve.state import ServeState
-from bajutsu.stats import ProjectMetrics, project_metrics
 
 
 def compare_projects(

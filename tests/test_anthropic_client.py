@@ -1,4 +1,4 @@
-"""Tests for the Anthropic SDK client factory (bajutsu/anthropic_client.py).
+"""Tests for the Anthropic SDK client factory (bajutsu/agents/anthropic_client.py).
 
 The factory constructs the Anthropic SDK client for the resolved provider (api-key / bedrock / ant)
 so the provider is swappable without touching the call sites; the `ant` path reads its bearer token
@@ -14,8 +14,8 @@ import sys
 
 import pytest
 
-from bajutsu import ai_config as aic
-from bajutsu import anthropic_client as ac
+from bajutsu.agents import ai_config as aic
+from bajutsu.agents import anthropic_client as ac
 
 
 def test_make_client_returns_injected_client() -> None:

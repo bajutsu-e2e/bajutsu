@@ -15,8 +15,8 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
+from bajutsu.evidence.visual import downscale_png
 from bajutsu.screenshots import MAX_IMAGE_LONG_EDGE, screenshot_bytes
-from bajutsu.visual import downscale_png
 
 
 def _png(width: int, height: int) -> bytes:

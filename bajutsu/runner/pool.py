@@ -22,7 +22,7 @@ from bajutsu.backends import make_driver as _make_driver
 from bajutsu.config import Effective
 from bajutsu.drivers import base
 from bajutsu.evidence import FileSink
-from bajutsu.network import Collector, NetworkCollector
+from bajutsu.evidence.network import Collector, NetworkCollector
 from bajutsu.orchestrator import DeviceControl, RelaunchFn
 from bajutsu.orchestrator.evidence_rules import requested_intervals
 

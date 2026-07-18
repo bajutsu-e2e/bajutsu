@@ -254,16 +254,7 @@ forbidden_modules = [
     "bajutsu.serve",
     "bajutsu.mcp",
     "bajutsu.codegen",
-    "bajutsu.agent_protocols",
-    "bajutsu.agent_factory",
-    "bajutsu.claude_agent",
-    "bajutsu.claude_backed_agent",
-    "bajutsu.claude_enrich_agent",
-    "bajutsu.claude_triage",
-    "bajutsu.ai_config",
-    "bajutsu.anthropic_client",
-    "bajutsu.ai_availability",
-    "bajutsu.enrich",
+    "bajutsu.agents",
     "bajutsu.triage",
     "bajutsu.record",
     "bajutsu.record_capture",
@@ -271,7 +262,6 @@ forbidden_modules = [
     "bajutsu.crawl.guide",
     "bajutsu.github.actions",
     "bajutsu.notify",
-    "bajutsu.alerts",
 ]
 
 # The deterministic core must also stay free of the hosting-only third-party extras (BE-0129): the
@@ -319,4 +309,14 @@ forbidden_modules = [
     "bajutsu.preflight",
     "bajutsu.doctor",
     "bajutsu.lint",
+]
+# `drivers/base.py`'s `Collector` Protocol reference is a TYPE_CHECKING-only dependency on the
+# network-exchange model every driver reports through — pre-dating BE-0257, when `network.py` was a
+# flat sibling module, not part of `bajutsu.evidence`. Packaging it under `evidence/` pulled this
+# one pre-existing edge under the forbidden entry above; scoping the exception to it (rather than
+# dropping `bajutsu.evidence` from `forbidden_modules`) keeps the contract meaningful for
+# `evidence/core.py` / `intervals.py` / `visual.py` / `golden.py` / `redaction.py`, which the inner
+# contract must still never reach.
+ignore_imports = [
+    "bajutsu.drivers.base -> bajutsu.evidence.network",
 ]

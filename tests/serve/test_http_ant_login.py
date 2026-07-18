@@ -14,9 +14,9 @@ from typing import Any
 import pytest
 from _shared import _get_json, _post, _serve, project
 
-from bajutsu import ai_availability
-from bajutsu import anthropic_client as ac
 from bajutsu import serve as srv
+from bajutsu.agents import anthropic_client as ac
+from bajutsu.agents import availability as ai_availability
 from bajutsu.serve import operations as ops
 
 

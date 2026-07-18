@@ -53,22 +53,30 @@ def test_run_path_top_level_modules_are_relevant() -> None:
         "bajutsu/assertions/schema.py",
         "bajutsu/assertions/_common.py",
         "bajutsu/elements.py",
-        "bajutsu/visual.py",
-        "bajutsu/golden.py",
+        "bajutsu/evidence/visual.py",
+        "bajutsu/evidence/golden.py",
         "bajutsu/codegen/emit.py",
         "bajutsu/record.py",
         "bajutsu/adb.py",
         "bajutsu/simctl.py",
         # runner/pipeline.py and orchestrator/loop.py unconditional imports
-        "bajutsu/evidence.py",
-        "bajutsu/redaction.py",
+        "bajutsu/evidence/core.py",
+        # `bajutsu.evidence.core` executes `evidence/__init__.py` on import, same as
+        # `crawl/__init__.py` / `agents/__init__.py` below.
+        "bajutsu/evidence/__init__.py",
+        "bajutsu/evidence/redaction.py",
+        "bajutsu/evidence/network.py",
         "bajutsu/artifact_perms.py",
         "bajutsu/mailbox.py",
-        "bajutsu/intervals.py",
+        "bajutsu/evidence/intervals.py",
         # record.py unconditionally imports the Agent/EnrichmentAgent protocols from
-        # agent_protocols (record is an E2E verb), mirroring the old agent.py entry. Its sibling
-        # agent_factory (the old agents.py) is deliberately excluded — see the parity test below.
-        "bajutsu/agent_protocols.py",
+        # agents.protocols (record is an E2E verb), mirroring the old agent.py entry (now
+        # agent_protocols.py, packaged by BE-0257). Its sibling agents.factory (the old
+        # agents.py / agent_factory.py) is deliberately excluded — see the parity test below.
+        "bajutsu/agents/protocols.py",
+        # `bajutsu.agents.protocols` executes `agents/__init__.py` on import, same as
+        # `crawl/__init__.py` below.
+        "bajutsu/agents/__init__.py",
         "bajutsu/crawl/core.py",
         # record imports `screen_identity` through the package re-export, so `__init__` is on the
         # on-device import path — and `__init__` unconditionally imports `serialize` too, putting it
@@ -81,11 +89,12 @@ def test_run_path_top_level_modules_are_relevant() -> None:
 
 
 def test_agent_factory_is_not_relevant_by_parity() -> None:
-    # agent_factory.py is the renamed agents.py, which was never on the allow-list: only agent.py
-    # (now agent_protocols.py) was. cli/commands/record.py does import make_agent from it, so an
-    # argument exists for listing it — but that is a trigger-surface change, not a rename, so the
-    # BE-0246 rename keeps exact parity and leaves closing that latent gap to a separate decision.
-    assert is_relevant(["bajutsu/agent_factory.py"]) is False
+    # agents/factory.py (was agent_factory.py, the renamed agents.py) was never on the allow-list:
+    # only agent.py (now agents/protocols.py) was. cli/commands/record.py does import make_agent
+    # from it, so an argument exists for listing it — but that is a trigger-surface change, not a
+    # rename, so the BE-0246/BE-0257 renames keep exact parity and leave closing that latent gap to
+    # a separate decision.
+    assert is_relevant(["bajutsu/agents/factory.py"]) is False
 
 
 def test_non_run_path_top_level_modules_are_not_relevant() -> None:
@@ -93,11 +102,11 @@ def test_non_run_path_top_level_modules_are_not_relevant() -> None:
     # on-device jobs never import it, so touching it must not burn the metered macOS jobs. (PR #936,
     # a serve-only change to bajutsu/stats.py, wrongly fired all four.)
     for module in (
-        "bajutsu/stats.py",
-        "bajutsu/audit.py",
-        "bajutsu/coverage.py",
-        "bajutsu/usage_stats.py",
-        "bajutsu/alerts.py",
+        "bajutsu/analysis/stats.py",
+        "bajutsu/analysis/audit.py",
+        "bajutsu/analysis/coverage.py",
+        "bajutsu/analytics/stats.py",
+        "bajutsu/agents/alerts.py",
         "bajutsu/github.py",
         # The crawl engine core/serialize/__init__ trigger (above), but the periphery siblings in the
         # same package do not — the on-device run never imports them, so `crawl/**` must not be swept
@@ -166,9 +175,10 @@ def test_shared_run_path_is_relevant_on_every_lane() -> None:
 def test_serve_analytics_modules_are_relevant_on_no_lane_except_web_serve() -> None:
     # The serve/analytics/crawl-periphery modules the E2E never imports must not fire any lane —
     # except that the web lane *does* exercise the serve backend (the serve-UI dogfood), so
-    # `bajutsu/serve/**` is web-relevant while `bajutsu/stats.py` (analytics) is relevant to none.
+    # `bajutsu/serve/**` is web-relevant while `bajutsu/analysis/stats.py` (analytics) is relevant
+    # to none.
     for lane in ("ios", "android", "web"):
-        assert is_relevant(["bajutsu/stats.py"], lane) is False, lane
+        assert is_relevant(["bajutsu/analysis/stats.py"], lane) is False, lane
         assert is_relevant(["bajutsu/crawl/report.py"], lane) is False, lane
     assert is_relevant(["bajutsu/serve/app.py"], "web") is True
     assert is_relevant(["bajutsu/serve/app.py"], "android") is False

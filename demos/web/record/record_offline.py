@@ -4,7 +4,7 @@
 plus the live screen, proposes one action at a time, and the loop writes the executed
 steps out as a deterministic scenario that `run` later replays with **no AI**.
 
-In production the agent is `bajutsu.claude_agent.ClaudeAgent` (Claude reads the goal +
+In production the agent is `bajutsu.agents.claude.ClaudeAgent` (Claude reads the goal +
 a screenshot + the accessibility tree) and the driver is the Playwright web backend. To
 keep this demo reproducible without an API key *or* a browser, we inject a deterministic
 stand-in — `KeywordAgent` — that parses the *same* natural-language goal with a few keyword
@@ -30,7 +30,7 @@ import argparse
 import re
 from pathlib import Path
 
-from bajutsu.agent_protocols import Observation, Proposal
+from bajutsu.agents.protocols import Observation, Proposal
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.orchestrator import RunResult, run_scenario

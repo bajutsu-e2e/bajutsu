@@ -3,7 +3,7 @@
 The agent proposes the next action from an observation. The record loop executes
 proposals to advance the app and writes out a deterministic scenario. Keeping the
 agent behind a protocol lets the loop be tested with a scripted fake; the Claude
-implementation lives in claude_agent.py.
+implementation lives in agents/claude.py.
 """
 
 from __future__ import annotations

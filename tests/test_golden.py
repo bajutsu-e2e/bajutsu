@@ -35,13 +35,13 @@ def _el(
 
 class TestCompareElement:
     def test_identical_elements_produce_no_mismatches(self) -> None:
-        from bajutsu.golden import compare_element
+        from bajutsu.evidence.golden import compare_element
 
         el = _el(identifier="ctrl.toggle", label="Toggle", traits=["switch"], value="1")
         assert compare_element(el, el) == []
 
     def test_identifier_mismatch(self) -> None:
-        from bajutsu.golden import compare_element
+        from bajutsu.evidence.golden import compare_element
 
         expected = _el(identifier="ctrl.toggle")
         actual = _el(identifier="ctrl.switch")
@@ -52,7 +52,7 @@ class TestCompareElement:
         assert mismatches[0].actual == "ctrl.switch"
 
     def test_label_mismatch(self) -> None:
-        from bajutsu.golden import compare_element
+        from bajutsu.evidence.golden import compare_element
 
         expected = _el(identifier="ctrl.toggle", label="Toggle")
         actual = _el(identifier="ctrl.toggle", label="Switch")
@@ -61,7 +61,7 @@ class TestCompareElement:
         assert mismatches[0].field == "label"
 
     def test_value_mismatch(self) -> None:
-        from bajutsu.golden import compare_element
+        from bajutsu.evidence.golden import compare_element
 
         expected = _el(identifier="ctrl.toggle", value="1")
         actual = _el(identifier="ctrl.toggle", value="0")
@@ -70,14 +70,14 @@ class TestCompareElement:
         assert mismatches[0].field == "value"
 
     def test_traits_compared_as_set_order_independent(self) -> None:
-        from bajutsu.golden import compare_element
+        from bajutsu.evidence.golden import compare_element
 
         expected = _el(identifier="ctrl.button", traits=["button", "notEnabled"])
         actual = _el(identifier="ctrl.button", traits=["notEnabled", "button"])
         assert compare_element(expected, actual) == []
 
     def test_traits_mismatch(self) -> None:
-        from bajutsu.golden import compare_element
+        from bajutsu.evidence.golden import compare_element
 
         expected = _el(identifier="ctrl.toggle", traits=["switch"])
         actual = _el(identifier="ctrl.toggle", traits=["button"])
@@ -86,7 +86,7 @@ class TestCompareElement:
         assert mismatches[0].field == "traits"
 
     def test_multiple_mismatches_reported(self) -> None:
-        from bajutsu.golden import compare_element
+        from bajutsu.evidence.golden import compare_element
 
         expected = _el(identifier="ctrl.toggle", label="Toggle", value="1")
         actual = _el(identifier="ctrl.switch", label="Switch", value="0")
@@ -105,27 +105,27 @@ SCREEN: Frame = (0.0, 0.0, 393.0, 852.0)
 
 class TestFrameIsSane:
     def test_normal_frame_within_screen(self) -> None:
-        from bajutsu.golden import frame_is_sane
+        from bajutsu.evidence.golden import frame_is_sane
 
         assert frame_is_sane((10.0, 100.0, 200.0, 44.0), SCREEN) is True
 
     def test_zero_width_rejected(self) -> None:
-        from bajutsu.golden import frame_is_sane
+        from bajutsu.evidence.golden import frame_is_sane
 
         assert frame_is_sane((10.0, 100.0, 0.0, 44.0), SCREEN) is False
 
     def test_zero_height_rejected(self) -> None:
-        from bajutsu.golden import frame_is_sane
+        from bajutsu.evidence.golden import frame_is_sane
 
         assert frame_is_sane((10.0, 100.0, 200.0, 0.0), SCREEN) is False
 
     def test_outside_screen_bounds_rejected(self) -> None:
-        from bajutsu.golden import frame_is_sane
+        from bajutsu.evidence.golden import frame_is_sane
 
         assert frame_is_sane((400.0, 0.0, 100.0, 44.0), SCREEN) is False
 
     def test_edge_aligned_accepted(self) -> None:
-        from bajutsu.golden import frame_is_sane
+        from bajutsu.evidence.golden import frame_is_sane
 
         assert frame_is_sane((0.0, 0.0, 393.0, 852.0), SCREEN) is True
 
@@ -137,7 +137,7 @@ class TestFrameIsSane:
 
 class TestCompareGolden:
     def test_all_controls_match(self) -> None:
-        from bajutsu.golden import compare_golden
+        from bajutsu.evidence.golden import compare_golden
 
         golden = {
             "ctrl.toggle": _el(identifier="ctrl.toggle", traits=["switch"], value="1"),
@@ -154,7 +154,7 @@ class TestCompareGolden:
         assert result.frame_failures == []
 
     def test_missing_control_reported(self) -> None:
-        from bajutsu.golden import compare_golden
+        from bajutsu.evidence.golden import compare_golden
 
         golden = {
             "ctrl.toggle": _el(identifier="ctrl.toggle", traits=["switch"]),
@@ -164,7 +164,7 @@ class TestCompareGolden:
         assert result.missing == ["ctrl.toggle"]
 
     def test_field_mismatch_reported(self) -> None:
-        from bajutsu.golden import compare_golden
+        from bajutsu.evidence.golden import compare_golden
 
         golden = {
             "ctrl.toggle": _el(identifier="ctrl.toggle", traits=["switch"]),
@@ -175,7 +175,7 @@ class TestCompareGolden:
         assert result.mismatches[0].field == "traits"
 
     def test_bad_frame_reported(self) -> None:
-        from bajutsu.golden import compare_golden
+        from bajutsu.evidence.golden import compare_golden
 
         golden = {
             "ctrl.toggle": _el(
@@ -203,7 +203,7 @@ class TestCompareGolden:
 
 class TestLoadGolden:
     def test_load_roundtrips_saved_golden(self, tmp_path: Path) -> None:
-        from bajutsu.golden import load_golden, save_golden
+        from bajutsu.evidence.golden import load_golden, save_golden
 
         elements = [
             _el(
@@ -231,7 +231,7 @@ class TestLoadGolden:
         assert loaded["ctrl.button"]["traits"] == ["button"]
 
     def test_save_skips_elements_not_in_ids(self, tmp_path: Path) -> None:
-        from bajutsu.golden import load_golden, save_golden
+        from bajutsu.evidence.golden import load_golden, save_golden
 
         elements = [
             _el(identifier="ctrl.toggle", traits=["switch"]),
@@ -247,7 +247,7 @@ class TestLoadGolden:
     def test_load_validates_element_shape(self, tmp_path: Path) -> None:
         import pytest
 
-        from bajutsu.golden import load_golden
+        from bajutsu.evidence.golden import load_golden
 
         bad = {"ctrl.toggle": {"identifier": "ctrl.toggle"}}
         golden_path = tmp_path / "bad.json"
@@ -259,7 +259,7 @@ class TestLoadGolden:
     def test_load_rejects_bad_frame_length(self, tmp_path: Path) -> None:
         import pytest
 
-        from bajutsu.golden import load_golden
+        from bajutsu.evidence.golden import load_golden
 
         bad = {
             "ctrl.toggle": {
@@ -279,7 +279,7 @@ class TestLoadGolden:
     def test_load_rejects_key_identifier_mismatch(self, tmp_path: Path) -> None:
         import pytest
 
-        from bajutsu.golden import load_golden
+        from bajutsu.evidence.golden import load_golden
 
         bad = {
             "ctrl.toggle": {
@@ -297,7 +297,7 @@ class TestLoadGolden:
             load_golden(golden_path)
 
     def test_saved_json_is_human_readable(self, tmp_path: Path) -> None:
-        from bajutsu.golden import save_golden
+        from bajutsu.evidence.golden import save_golden
 
         elements = [_el(identifier="ctrl.toggle", traits=["switch"])]
         golden_path = tmp_path / "controls.json"
@@ -315,7 +315,7 @@ class TestLoadGolden:
 class TestAssertGoldenTree:
     def test_passes_when_tree_matches_golden(self, tmp_path: Path) -> None:
         from bajutsu.drivers.fake import FakeDriver
-        from bajutsu.golden import assert_golden_tree, save_golden
+        from bajutsu.evidence.golden import assert_golden_tree, save_golden
 
         screen_elements = [
             _el(identifier="ctrl.title", label="Controls"),
@@ -341,7 +341,7 @@ class TestAssertGoldenTree:
 
     def test_reports_mismatches(self, tmp_path: Path) -> None:
         from bajutsu.drivers.fake import FakeDriver
-        from bajutsu.golden import assert_golden_tree, save_golden
+        from bajutsu.evidence.golden import assert_golden_tree, save_golden
 
         golden_elements = [
             _el(identifier="ctrl.title", label="Controls"),
@@ -380,7 +380,7 @@ class TestAssertGoldenTree:
         import pytest
 
         from bajutsu.drivers.fake import FakeDriver
-        from bajutsu.golden import assert_golden_tree, save_golden
+        from bajutsu.evidence.golden import assert_golden_tree, save_golden
 
         golden_path = tmp_path / "controls.json"
         save_golden([_el(identifier="ctrl.toggle")], ["ctrl.toggle"], golden_path)

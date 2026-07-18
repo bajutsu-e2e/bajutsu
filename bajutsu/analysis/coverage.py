@@ -19,10 +19,10 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader
 
+from bajutsu.analysis.audit import referenced_ids
 from bajutsu.assertions import match_request, request_label
-from bajutsu.audit import referenced_ids
 from bajutsu.doctor import namespace_of
-from bajutsu.network import NetworkExchange
+from bajutsu.evidence.network import NetworkExchange
 from bajutsu.scenario import Assertion, RequestMatch, Scenario, Step, WaitRequest
 
 
@@ -382,7 +382,9 @@ def read_observed_ids(runs_dir: Path, run_ids: Iterable[str] | None = None) -> l
 
 # --- HTML report: the dimensions visualized on one self-contained page (BE-0050) ---
 
-_TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
+# The shared Jinja templates live at the package root (`bajutsu/templates/`), one level up now
+# that this module is packaged under `analysis/` (BE-0257).
+_TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates"
 
 
 @functools.lru_cache(maxsize=1)

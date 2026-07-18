@@ -4,7 +4,7 @@
 
 繰り返し発生する動作の[証跡](glossary.md#証跡-capturepolicy-trace-triage)は、単発の指示ではなく **繰り返し発火するルール**として表現します。こうすると、2 回目以降も AI なしで同じ証跡が集まります。
 
-実装: `bajutsu/evidence.py`（瞬時 + Sink）、`bajutsu/intervals.py`（区間: video / deviceLog / appTrace）。発火判定は orchestrator 側（[run-loop](run-loop.md#証跡ルールの発火)）で行います。
+実装: `bajutsu/evidence/core.py`（瞬時 + Sink）、`bajutsu/evidence/intervals.py`（区間: video / deviceLog / appTrace）。発火判定は orchestrator 側（[run-loop](run-loop.md#証跡ルールの発火)）で行います。
 
 関連: [scenarios の capture トークン](scenarios.md#capture-トークン文法) · [reporting](reporting.md)
 
@@ -85,7 +85,7 @@ capturePolicy:
 
 ## 区間証跡（video / deviceLog / appTrace）
 
-実装: `bajutsu/intervals.py`。これらは **子プロセス**であり（iOS は `simctl`、Android は `adb`）、操作前に開始し、ステップが落ち着いてから停止します。プロセス起動は注入可能（`Spawn`）で、テストできます。
+実装: `bajutsu/evidence/intervals.py`。これらは **子プロセス**であり（iOS は `simctl`、Android は `adb`）、操作前に開始し、ステップが落ち着いてから停止します。プロセス起動は注入可能（`Spawn`）で、テストできます。
 
 web は子プロセスを使いません。区間証跡は Playwright ネイティブで、driver が供給します（後述）。`appTrace` も video / deviceLog と同じ区間系です（ペアリングの仕組みは前掲の注を参照）。
 
@@ -188,7 +188,7 @@ redact:
 > など）は、そのヘッダ名を `unmaskHeaders` に書きます。保護を外すのは明示的で目に見える選択であり、
 > `redact:` を書かないだけで外れることはありません。
 
-> redact は証跡の書き出し前に **適用されます**（`redaction.py` `Redactor`）。device log と app trace は key→value パターンでスクラブし、要素ツリーは label が設定済みなら value をマスクします（または埋め込まれた secret をスクラブします）。各 network exchange は構造的にマスクします。ヘッダ値は名前で処理し、url / request / response の body はフリーテキストとして処理するので、クエリパラメータや `token` / `password` の body フィールドも捕捉します。画像（スクリーンショット / video）はマスクできず、そのまま残ります。
+> redact は証跡の書き出し前に **適用されます**（`evidence/redaction.py` `Redactor`）。device log と app trace は key→value パターンでスクラブし、要素ツリーは label が設定済みなら value をマスクします（または埋め込まれた secret をスクラブします）。各 network exchange は構造的にマスクします。ヘッダ値は名前で処理し、url / request / response の body はフリーテキストとして処理するので、クエリパラメータや `token` / `password` の body フィールドも捕捉します。画像（スクリーンショット / video）はマスクできず、そのまま残ります。
 >
 > redact は **secret の入力値** にも及びます。`${secrets.X}` の背後にある実値（環境から解決し、config の `secrets:` で宣言します。[configuration](configuration.md#シークレットsecrets)）は、設定済みの `labels` / `headers` / `fields` だけでなく、証跡に現れる箇所すべてでマスクします。長い値から先にマスクするため、ある値が別の値の部分文字列であっても、部分的な漏れは起きません。
 >

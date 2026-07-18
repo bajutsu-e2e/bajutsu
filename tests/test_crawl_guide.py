@@ -10,8 +10,8 @@ from __future__ import annotations
 from conftest import FakeBackend, FakeBlock, ShotDriver, el
 
 from bajutsu import crawl
+from bajutsu.agents.ai_config import AiConfig
 from bajutsu.ai.base import TextPart
-from bajutsu.ai_config import AiConfig
 from bajutsu.crawl import tabs as crawl_tabs
 from bajutsu.crawl.guide import (
     ClaudeActionProposer,
@@ -22,7 +22,7 @@ from bajutsu.crawl.guide import (
     make_guide,
 )
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.redaction import Redactor
+from bajutsu.evidence.redaction import Redactor
 from bajutsu.scenario import Redact
 
 
