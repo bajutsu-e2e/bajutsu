@@ -761,8 +761,9 @@ def test_main_still_accepts_the_legacy_app_apk_flag(
     apk.write_bytes(b"apk")
     captured: dict[str, Any] = {}
 
-    def _fake_submit(*_args: Any, app_apk: Path, **_kwargs: Any) -> Verdict:
+    def _fake_submit(*_args: Any, app_apk: Path, app_upload_type: str, **_kwargs: Any) -> Verdict:
         captured["app_apk"] = app_apk
+        captured["app_upload_type"] = app_upload_type
         return Verdict(ok=True, passed=1, total=1)
 
     # `_devicefarm_client`/`_HttpTransfer` are called only to build args for the faked
@@ -796,3 +797,5 @@ def test_main_still_accepts_the_legacy_app_apk_flag(
 
     assert exit_code == 0
     assert captured["app_apk"] == apk
+    # The default platform (android) must thread through to the Android app upload type end to end.
+    assert captured["app_upload_type"] == "ANDROID_APP"
