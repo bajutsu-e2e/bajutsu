@@ -765,9 +765,11 @@ def test_main_still_accepts_the_legacy_app_apk_flag(
         captured["app_apk"] = app_apk
         return Verdict(ok=True, passed=1, total=1)
 
+    # `_devicefarm_client`/`_HttpTransfer` are called only to build args for the faked
+    # submit_and_collect; `object` is a callable that yields a throwaway instance, so it stands in.
     monkeypatch.setattr(mod, "submit_and_collect", _fake_submit)
-    monkeypatch.setattr(mod, "_devicefarm_client", lambda: object())
-    monkeypatch.setattr(mod, "_HttpTransfer", lambda: object())
+    monkeypatch.setattr(mod, "_devicefarm_client", object)
+    monkeypatch.setattr(mod, "_HttpTransfer", object)
 
     exit_code = main(
         [
