@@ -1,0 +1,29 @@
+# relaunch real-backend coverage (BE-0285): relaunch already runs for real on adb
+# (demos/showcase/scenarios/relaunch.yaml); this is the web twin. Web `relaunch` re-navigates to
+# baseUrl (a plain page reload in the same browser context) rather than restarting a device process,
+# so it resets in-memory JS state but not cookies/localStorage — this scenario only asserts what a
+# reload actually resets.
+description: >-
+  Web relaunch — increment the counter, relaunch, log back in, and assert the in-memory count
+  reset to 0.
+scenarios:
+  - name: relaunch resets in-memory counter state
+    steps:
+      - tap: { id: onboarding.start }
+      - type: { text: "a@b.com", into: { id: auth.email } }
+      - type: { text: "pw", into: { id: auth.password } }
+      - tap: { id: auth.submit }
+      - wait: { for: { id: home.title }, timeout: 5 }
+      - tap: { id: counter.increment }
+      - tap: { id: counter.increment }
+      - assert:
+          - value: { sel: { id: counter.value }, equals: "2" }
+      - relaunch: {}
+      - wait: { for: { id: onboarding.title }, timeout: 5 }
+      - tap: { id: onboarding.start }
+      - type: { text: "a@b.com", into: { id: auth.email } }
+      - type: { text: "pw", into: { id: auth.password } }
+      - tap: { id: auth.submit }
+      - wait: { for: { id: home.title }, timeout: 5 }
+    expect:
+      - value: { sel: { id: counter.value }, equals: "0" }

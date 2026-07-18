@@ -62,6 +62,29 @@
         Pinch / rotate me
       </div>
       <output data-testid="gesture.status">idle</output>
+
+      <!-- A tiny multi-element list (BE-0285): each item toggles pending -> done independently, and
+           a summary counts how many are done. `list.item.*` (the buttons) and `list.state.*` (the
+           readouts) live in separate id namespaces so a `forEach` selector matching one never
+           accidentally matches the other. -->
+      <div>
+        <button data-testid="list.item.1">Item 1</button>
+        <output data-testid="list.state.1">pending</output>
+      </div>
+      <div>
+        <button data-testid="list.item.2">Item 2</button>
+        <output data-testid="list.state.2">pending</output>
+      </div>
+      <div>
+        <button data-testid="list.item.3">Item 3</button>
+        <output data-testid="list.state.3">pending</output>
+      </div>
+      <output data-testid="list.done.count">0</output>
+
+      <!-- A live ticker (BE-0285): increments on its own wall-clock timer, independent of any tap —
+           a `FakeDriver`'s frozen tree can never move this, so a scenario that condition-waits on it
+           proves a read genuinely observes real UI drift, not a stale cached snapshot. -->
+      <output data-testid="ticker.value">0</output>
     </section>
 
     <script>
@@ -106,6 +129,30 @@
         n += 1;
         counter.value = String(n);
       });
+
+      // The tiny list: each item flips pending -> done once, and the summary counts flips (BE-0285).
+      const listDoneCount = document.querySelector('[data-testid="list.done.count"]');
+      let doneCount = 0;
+      for (const i of [1, 2, 3]) {
+        const item = document.querySelector(`[data-testid="list.item.${i}"]`);
+        const state = document.querySelector(`[data-testid="list.state.${i}"]`);
+        item.addEventListener("click", () => {
+          if (state.textContent === "done") return;
+          state.textContent = "done";
+          doneCount += 1;
+          listDoneCount.textContent = String(doneCount);
+        });
+      }
+
+      // The live ticker: advances on its own timer, with no tap ever driving it (BE-0285). A wide
+      // interval gives the dynamic_ui scenario's condition-wait comfortably more margin against a
+      // tick landing mid-read on a slow CI run, without changing what it proves.
+      const ticker = document.querySelector('[data-testid="ticker.value"]');
+      let ticks = 0;
+      setInterval(() => {
+        ticks += 1;
+        ticker.textContent = String(ticks);
+      }, 2000);
 
       // A two-finger gesture target: classify the live touches as a pinch (distance change) or a
       // rotate (angle change) so a scenario can assert the multiTouch path drove the page.

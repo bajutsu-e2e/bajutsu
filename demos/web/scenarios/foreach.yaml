@@ -1,0 +1,22 @@
+# forEach real-backend coverage (BE-0285): forEach is thoroughly unit-tested against FakeDriver's
+# scripted tree, but never against a real multi-element list. `idMatches` is an fnmatch glob (a
+# literal `.`), so "list.item.*" matches only the three item buttons, never the separately
+# namespaced `list.state.*` readouts.
+description: >-
+  Web forEach — reach home, then iterate every list item and tap it, asserting the real page
+  tallied all three as done.
+scenarios:
+  - name: forEach taps every real list item
+    steps:
+      - tap: { id: onboarding.start }
+      - type: { text: "a@b.com", into: { id: auth.email } }
+      - type: { text: "pw", into: { id: auth.password } }
+      - tap: { id: auth.submit }
+      - wait: { for: { id: home.title }, timeout: 5 }
+      - forEach:
+          sel: { idMatches: "list.item.*" }
+          as: current
+          steps:
+            - tap: { id: "${vars.current}" }
+    expect:
+      - value: { sel: { id: list.done.count }, equals: "3" }

@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0285](BE-0285-scenario-feature-real-backend-coverage-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0285") |
+| 実装 PR | [#1184](https://github.com/bajutsu-e2e/bajutsu/pull/1184) |
 | トピック | 検証とカバレッジ |
 | 関連 | [BE-0031](../BE-0031-data-driven-scenarios/BE-0031-data-driven-scenarios-ja.md), [BE-0033](../BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow-ja.md), [BE-0030](../BE-0030-parameterized-shared-steps/BE-0030-parameterized-shared-steps-ja.md), [BE-0281](../BE-0281-ios-on-device-actuation-coverage/BE-0281-ios-on-device-actuation-coverage-ja.md) |
 <!-- /BE-METADATA -->
@@ -48,11 +49,19 @@
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] adb + web での `extract` 再利用シナリオ（実フィールド値を後続ステップに渡す）。
-- [ ] adb + web での実複数要素リストに対する `forEach`。
-- [ ] web での data-driven と `relaunch` の検証（adb に加えて）。
+- [ ] adb + web での `extract` 再利用シナリオ（実フィールド値を後続ステップに渡す）。web 側は完了しましたが、adb 側は未着手です。
+- [ ] adb + web での実複数要素リストに対する `forEach`。web 側は完了しましたが、adb 側は未着手です。
+- [x] web での data-driven と `relaunch` の検証（adb に加えて）。
 - [ ] BE-0281 の着地後、extract / forEach / data-driven / relaunch のシナリオを iOS へ拡張（ゲート対象外の macOS レーン）。
-- [ ] 読み取り回数削減のスナップショット同一性と待機の下限の前提を検証する動的 UI シナリオ。
+- [x] 読み取り回数削減のスナップショット同一性と待機の下限の前提を検証する動的 UI シナリオ（web）。待機の下限の前提である BE-0245 は adb / Android 固有であり、web に対応する仕組みはありません。
+
+**ログ**
+
+- 2026-07-17（[#1184](https://github.com/bajutsu-e2e/bajutsu/pull/1184)）: web 側の作業が着地しました。
+  `demos/web/app/index.html` に実複数要素リストとライブ更新するティッカーを追加しました（これまでどの
+  デモにもなかった要素です）。`demos/web/scenarios/` に `extract.yaml`、`foreach.yaml`、
+  `data_driven.yaml`、`relaunch.yaml`、`dynamic_ui.yaml` を追加し、すべて実際の Playwright バックエンド
+  に対して実行しました。`extract` / `forEach` の adb 側の対応と iOS への拡張は未着手のまま残っています。
 
 ## 参考
 
