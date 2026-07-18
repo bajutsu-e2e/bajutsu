@@ -62,6 +62,26 @@ def test_unknown_provider_kind_fails_closed() -> None:
         dp.acquire_device(_eff(device_provider=DeviceProvider(kind="firebase-streaming")), "booted")
 
 
+def test_appium_provider_yields_the_configured_endpoint() -> None:
+    # The built-in `appium` provider (BE-0238 Unit 4): a reserved iOS device already sits behind a
+    # fixed Appium / WebDriver endpoint (a self-hosted grid), so the provider hands that endpoint over
+    # as the udid spec, reports the device as already booted with its build installed (a live remote
+    # device the environment must not try to boot / install through simctl), and has nothing to
+    # release (the reservation is the grid's, not this run's).
+    eff = _eff(device_provider=DeviceProvider(kind="appium", endpoint="http://grid.local:4723"))
+    lease = dp.acquire_device(eff, "booted")
+    assert lease.udid_spec == "http://grid.local:4723"  # the endpoint, not the --udid flag
+    assert lease.provision == ProvisionProfile(boot_ready=True, app_preinstalled=True)
+    lease.release()  # no-op, must not raise
+
+
+def test_appium_provider_requires_an_endpoint() -> None:
+    # Fail closed at resolution: an `appium` kind with no endpoint is a config error, not a run that
+    # silently falls back to a local device (mirroring the unknown-kind fail-closed above).
+    with pytest.raises(ValueError, match="device provider 'appium' requires an endpoint"):
+        dp.acquire_device(_eff(device_provider=DeviceProvider(kind="appium")), "booted")
+
+
 def test_registry_is_a_real_extension_point() -> None:
     """Register a fake cloud provider, resolve it, then remove it (global registry)."""
 

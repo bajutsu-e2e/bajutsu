@@ -9,7 +9,7 @@
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0238") |
-| Implementing PR | [#1192](https://github.com/bajutsu-e2e/bajutsu/pull/1192) (Unit 1: XCUITest real-device targeting), [#1193](https://github.com/bajutsu-e2e/bajutsu/pull/1193) (Unit 2: batch packaging), [#1195](https://github.com/bajutsu-e2e/bajutsu/pull/1195) (Unit 3: re-signing / real-device capability preflight) |
+| Implementing PR | [#1192](https://github.com/bajutsu-e2e/bajutsu/pull/1192) (Unit 1: XCUITest real-device targeting), [#1193](https://github.com/bajutsu-e2e/bajutsu/pull/1193) (Unit 2: batch packaging), [#1195](https://github.com/bajutsu-e2e/bajutsu/pull/1195) (Unit 3: re-signing / real-device capability preflight), [#1196](https://github.com/bajutsu-e2e/bajutsu/pull/1196) (Unit 4: live-route Appium-endpoint provider, seam only) |
 | Topic | Device-cloud execution |
 <!-- /BE-METADATA -->
 
@@ -141,6 +141,22 @@ the Simulator through `xcodebuild`; this item generalises target selection to a 
   simctl-backed steps are skipped on a real device. The showcase iOS Device Farm config and the CI
   workflow job still await device-signing infrastructure (an unsigned device `.ipa` cannot be built),
   so they remain a follow-on.
+- Unit 4 ([#1196](https://github.com/bajutsu-e2e/bajutsu/pull/1196)): landed the live-route `DeviceProvider` (seam only), on the
+  BE-0236 provider seam. A new built-in `appium` provider (`deviceProvider.kind: appium`) hands a run
+  the fixed Appium / WebDriver `endpoint` of a reserved iOS device (a self-hosted grid) as its udid
+  spec, reporting the device booted with its build installed — a live remote device Bajutsu never
+  boots or installs through simctl — and nothing to release (the reservation is the grid's). A missing
+  `endpoint` fails closed at resolution, mirroring the unknown-`kind` guard. This is the seam only:
+  driving the endpoint over the Appium / WebDriver protocol is a follow-on transport (the XCUITest
+  backend today speaks a bespoke runner channel, not W3C WebDriver), so the box stays unchecked and
+  the live route is not yet end-to-end runnable. That transport cannot merely layer a WebDriver client
+  on today's path: the udid spec flows unchanged into `XcuitestEnvironment`, whose `_destination()`
+  runs it through `simctl.validated_udid`, and the shared `device_id` charset excludes the `/` in a URL
+  — so a real `http(s)://` endpoint raises `DeviceError: invalid udid` today. The follow-on slice must
+  route this value around the simctl / xcodebuild udid machinery entirely, which structurally cannot
+  carry a URL. The Android environment's `ProvisionProfile` wiring
+  was deliberately not replicated for XCUITest: the real-device path (Unit 1) already skips all simctl
+  bring-up, so honoring the flags there would be unreachable. Off the verdict path; faked, no device.
 
 ## References
 

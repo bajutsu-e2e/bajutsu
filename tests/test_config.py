@@ -362,6 +362,20 @@ def test_device_provider_kind_defaults_to_local() -> None:
     assert provider.kind == "local"
 
 
+def test_appium_provider_endpoint_round_trips_through_config() -> None:
+    # The `endpoint` field on `deviceProvider` must survive the YAML → `load_config` → `resolve`
+    # path; a field-name or alias mismatch in `_Model` (which sets `extra="forbid"`) would only
+    # surface here, not in the direct-construction tests in `test_device_provider.py`.
+    cfg = load_config(
+        "targets: { app: { bundleId: com.example.app,"
+        " deviceProvider: { kind: appium, endpoint: 'http://grid.local:4723' } } }"
+    )
+    provider = resolve(cfg, "app").device_provider
+    assert provider is not None
+    assert provider.kind == "appium"
+    assert provider.endpoint == "http://grid.local:4723"
+
+
 def test_web_app_launch_server_parsed() -> None:
     # `launchServer` declares how to bring up baseUrl's host for a run; readyUrl defaults to None
     # (run falls back to baseUrl), readyTimeout to 30s.
