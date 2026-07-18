@@ -9,7 +9,7 @@
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0238") |
-| 実装 PR | [#1192](https://github.com/bajutsu-e2e/bajutsu/pull/1192)（ユニット 1: XCUITest 実機ターゲティング）、[#1193](https://github.com/bajutsu-e2e/bajutsu/pull/1193)（ユニット 2: batch package 化）、[#1195](https://github.com/bajutsu-e2e/bajutsu/pull/1195)（ユニット 3: 再署名 / 実機ケーパビリティの preflight） |
+| 実装 PR | [#1192](https://github.com/bajutsu-e2e/bajutsu/pull/1192)（ユニット 1: XCUITest 実機ターゲティング）、[#1193](https://github.com/bajutsu-e2e/bajutsu/pull/1193)（ユニット 2: batch package 化）、[#1195](https://github.com/bajutsu-e2e/bajutsu/pull/1195)（ユニット 3: 再署名 / 実機ケーパビリティの preflight）、[#1196](https://github.com/bajutsu-e2e/bajutsu/pull/1196)（ユニット 4: live の経路 Appium endpoint provider、seam のみ） |
 | トピック | デバイスクラウド実行 |
 <!-- /BE-METADATA -->
 
@@ -137,6 +137,17 @@ package 化）、それが両経路の再利用可能な核になります。
   挙動になり、simctl 依存のステップは実機ではスキップされます。showcase の iOS 用 Device Farm 設定と
   CI ワークフローのジョブは、実機の署名基盤（署名なしの実機向け `.ipa` はビルドできません）を引き続き
   待つため、後続に残します。
+- ユニット 4（[#1196](https://github.com/bajutsu-e2e/bajutsu/pull/1196)）：live の経路の `DeviceProvider` を（seam のみ）
+  BE-0236 の provider seam の上に足しました。新しい組み込みの `appium` provider（`deviceProvider.kind:
+  appium`）は、予約済みの iOS デバイスが待つ固定の Appium / WebDriver `endpoint`（セルフホストの grid）を
+  udid spec としてそのまま run に渡し、デバイスは起動済みでビルドも導入済み（simctl で起動もインストールも
+  しない live なリモートデバイス）と報告し、解放する対象は持ちません（予約は grid のものです）。`endpoint`
+  が無ければ解決時に fail-closed で、未知の `kind` のガードと同型です。今回は seam のみで、endpoint を
+  Appium / WebDriver プロトコルで駆動する部分は後続のトランスポート（XCUITest backend は現状 W3C WebDriver
+  ではなく独自の runner チャネルを話します）に残すため、チェックは付けず、live の経路はまだ端から端まで
+  走りません。Android 環境の `ProvisionProfile` 配線は XCUITest には意図的に持ち込みません。実機の経路
+  （ユニット 1）は既に simctl の端末準備を丸ごと飛ばすため、そこでフラグを尊重しても到達しないコードに
+  なるからです。合否判定の経路の外で、fake で、デバイスは不要です。
 
 ## 参考
 
