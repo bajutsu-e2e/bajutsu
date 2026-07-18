@@ -138,7 +138,6 @@ def test_appium_lease_endpoint_reaches_the_udid_machinery_unchanged() -> None:
     # Tie the seam to the boundary above: the endpoint the `appium` provider yields is exactly the
     # value that reaches `_destination` as the udid — the run resolves its lanes against `udid_spec` —
     # so the live route fails closed the same way today, never a silent fall back to a local device.
-    from bajutsu.config import load_config, resolve
     from bajutsu.runner import device_provider as dp
 
     cfg = load_config(
