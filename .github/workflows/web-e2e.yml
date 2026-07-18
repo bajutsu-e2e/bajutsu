@@ -219,7 +219,8 @@ jobs:
   # Single required status check for the web lane — the web twin of ios-e2e.yml's `E2E`. Always runs
   # so it reports even when the browser jobs are skipped (a PR that can't affect the web path) — a
   # skipped dependency is a pass; only a real failure or cancellation fails the gate. The web lane
-  # has no host-specific or upstream-drift job to exclude, so all three deterministic jobs feed it.
+  # has no host-specific or upstream-drift job to exclude, so the other three deterministic jobs
+  # feed it — one exception (`network (playwright)`, landed as signal first — see above).
   # Make `E2E (web)` the required check, not the path-gated browser jobs.
   #
   # `changes`'s own result is checked too, not just the browser jobs': `changes` has no `if:`, so it
