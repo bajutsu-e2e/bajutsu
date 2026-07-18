@@ -6,6 +6,8 @@
 
 # Bajutsu
 
+[![iOS E2E (Simulator)](https://github.com/bajutsu-e2e/bajutsu/actions/workflows/ios-e2e.yml/badge.svg)](https://github.com/bajutsu-e2e/bajutsu/actions/workflows/ios-e2e.yml) [![Android E2E (emulator)](https://github.com/bajutsu-e2e/bajutsu/actions/workflows/android-e2e.yml/badge.svg)](https://github.com/bajutsu-e2e/bajutsu/actions/workflows/android-e2e.yml) [![Web E2E (Playwright)](https://github.com/bajutsu-e2e/bajutsu/actions/workflows/web-e2e.yml/badge.svg)](https://github.com/bajutsu-e2e/bajutsu/actions/workflows/web-e2e.yml)
+
 > Natural-language-driven E2E (end-to-end) testing built on a **backend-agnostic driver**: one
 > scenario format and one deterministic runner, where **a platform is a backend** behind that
 > one interface. Swap the backend and the same scenarios run on a different target — the iOS
