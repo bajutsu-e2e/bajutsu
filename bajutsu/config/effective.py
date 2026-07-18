@@ -257,6 +257,7 @@ class Effective:
                 {
                     "testRunner": at("xcuitest.testRunner", rebased_xcuitest.test_runner),
                     "build": rebased_xcuitest.build,
+                    "deviceType": rebased_xcuitest.device_type,
                 }
             )
         return replace(

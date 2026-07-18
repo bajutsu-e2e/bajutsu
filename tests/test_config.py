@@ -534,6 +534,21 @@ def test_rebased_resolves_xcuitest_test_runner() -> None:
     assert xcuitest.test_runner == "/co/build/Runner.xctestrun"
 
 
+def test_rebased_preserves_xcuitest_device_type() -> None:
+    # Rebasing reconstructs XcuitestConfig to rewrite path fields; deviceType must survive it, or a
+    # `device` target would silently fall back to the Simulator in a checkout/upload run (BE-0238).
+    eff = resolve(
+        load_config(
+            "targets:\n  x:\n    bundleId: com.x\n    xcuitest:\n"
+            "      testRunner: build/Runner.xctestrun\n      deviceType: device\n"
+        ),
+        "x",
+    )
+    xcuitest = _ios(eff.rebased(Path("/co"))).xcuitest
+    assert xcuitest is not None
+    assert xcuitest.device_type == "device"
+
+
 def test_rebased_refuses_a_path_field_escaping_the_checkout() -> None:
     """A config path that climbs out of the checkout (`..` or absolute) is refused — confinement (BE-0051)."""
     for bad in ("../../etc", "/etc/passwd"):
@@ -742,6 +757,35 @@ def test_xcuitest_config_resolves() -> None:
 def test_xcuitest_config_defaults_to_none() -> None:
     cfg = load_config("targets:\n  s:\n    bundleId: com.x\n")
     assert _ios(resolve(cfg, "s")).xcuitest is None
+
+
+def test_xcuitest_device_type_defaults_to_simulator() -> None:
+    # An omitted deviceType keeps the pre-BE-0238 behaviour: drive the Simulator (BE-0019).
+    cfg = load_config(
+        "targets:\n  s:\n    bundleId: com.x\n    xcuitest:\n"
+        "      testRunner: build/Runner.xctestrun\n"
+    )
+    xcuitest = _ios(resolve(cfg, "s")).xcuitest
+    assert xcuitest is not None
+    assert xcuitest.device_type == "simulator"
+
+
+def test_xcuitest_device_type_resolves_device() -> None:
+    cfg = load_config(
+        "targets:\n  s:\n    bundleId: com.x\n    xcuitest:\n"
+        "      testRunner: build/Runner.xctestrun\n      deviceType: device\n"
+    )
+    xcuitest = _ios(resolve(cfg, "s")).xcuitest
+    assert xcuitest is not None
+    assert xcuitest.device_type == "device"
+
+
+def test_xcuitest_device_type_invalid_rejected() -> None:
+    with pytest.raises(ValidationError):
+        load_config(
+            "targets:\n  s:\n    bundleId: com.x\n    xcuitest:\n"
+            "      testRunner: build/Runner.xctestrun\n      deviceType: physical\n"
+        )
 
 
 # --- BE-0024: configurable doctor thresholds ---

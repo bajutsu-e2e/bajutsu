@@ -52,6 +52,14 @@ Accepted and actively being built — a PR is in flight or imminent.
 
 <!-- /GENERATED:in-progress-platform -->
 
+### Device-cloud execution
+
+<!-- GENERATED:in-progress-device-cloud -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0238](BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution.md) | iOS device-cloud execution | In progress |
+<!-- /GENERATED:in-progress-device-cloud -->
+
 ### Verification & coverage
 
 <!-- GENERATED:in-progress-verification -->
@@ -110,7 +118,6 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 | ID | Item | Status |
 |---|---|---|
 | [BE-0237](BE-0237-firebase-device-streaming-adapter/BE-0237-firebase-device-streaming-adapter.md) | Firebase Test Lab / Device Streaming adapter | Proposal |
-| [BE-0238](BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution.md) | iOS device-cloud execution | Proposal |
 <!-- /GENERATED:proposals-device-cloud -->
 
 ### Scenario authoring features

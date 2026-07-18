@@ -52,6 +52,14 @@
 
 <!-- /GENERATED:in-progress-platform -->
 
+### デバイスクラウド実行
+
+<!-- GENERATED:in-progress-device-cloud -->
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0238](BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution-ja.md) | iOS device-cloud execution | 実装中 |
+<!-- /GENERATED:in-progress-device-cloud -->
+
 ### 検証とカバレッジ
 
 <!-- GENERATED:in-progress-verification -->
@@ -110,7 +118,6 @@
 | ID | 項目 | 状態 |
 |---|---|---|
 | [BE-0237](BE-0237-firebase-device-streaming-adapter/BE-0237-firebase-device-streaming-adapter-ja.md) | Firebase Test Lab / Device Streaming adapter | 提案 |
-| [BE-0238](BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution-ja.md) | iOS device-cloud execution | 提案 |
 <!-- /GENERATED:proposals-device-cloud -->
 
 ### シナリオ記述機能
