@@ -27,6 +27,7 @@ Device Farm change does not silently break it.
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import shlex
 import time
@@ -297,8 +298,8 @@ class Transfer(Protocol):
     def upload(self, url: str, path: Path) -> None:
         """PUT the file at `path` to the presigned `url`."""
 
-    def download(self, url: str, dest: Path) -> None:
-        """Download and unpack the artifact at `url` into `dest`."""
+    def download(self, url: str) -> bytes:
+        """Fetch and return the raw bytes of the artifact at `url` (dispatch is `_store_artifact`)."""
 
 
 def _upload_one(
@@ -416,9 +417,31 @@ def submit_and_collect(
     run_arn = scheduled["run"]["arn"]
     _wait_run(client, run_arn, sleep=sleep)
     dest.mkdir(parents=True, exist_ok=True)
-    for artifact in client.list_artifacts(arn=run_arn, type="FILE")["artifacts"]:
-        transfer.download(artifact["url"], dest)
+    for index, artifact in enumerate(client.list_artifacts(arn=run_arn, type="FILE")["artifacts"]):
+        _store_artifact(artifact, transfer.download(artifact["url"]), dest, index=index)
     return verdict_from_manifest(dest)
+
+
+def _store_artifact(artifact: Mapping[str, Any], payload: bytes, dest: Path, *, index: int) -> None:
+    """Store one downloaded Device Farm artifact under `dest`, extracting a zip and writing the rest.
+
+    ``list_artifacts(type="FILE")`` mixes the CUSTOMER_ARTIFACT zip (the ``runs/`` tree holding the
+    manifests the verdict reads) with plain-file artifacts — device and test-spec logs, screenshots.
+    Only the zip is an archive; feeding the rest to `zipfile` raises ``BadZipFile`` and aborts the
+    whole collection. A ``"zip"`` extension is extracted with the zip-slip guard; anything else is
+    written verbatim under ``dest/logs/`` so it is on hand for diagnostics (e.g. the pre_test
+    ``adb devices`` output) without touching the manifest tree the verdict globs. `index` prefixes
+    the log filename because Device Farm artifact names are not unique across a run's jobs.
+    """
+    if artifact.get("extension") == "zip":
+        with zipfile.ZipFile(io.BytesIO(payload)) as zf:
+            _safe_extract(zf, dest)
+        return
+    logs = dest / "logs"
+    logs.mkdir(parents=True, exist_ok=True)
+    name = str(artifact.get("name") or "artifact").replace("/", "_").replace("\\", "_")
+    extension = str(artifact.get("extension") or "txt")
+    (logs / f"{index:03d}-{name}.{extension}").write_bytes(payload)
 
 
 def _devicefarm_client() -> DeviceFarmClient:
@@ -553,14 +576,12 @@ class _HttpTransfer:
         # An explicit timeout keeps a stalled S3 connection from hanging past the poll loops' cap.
         urllib.request.urlopen(request, timeout=300).close()  # noqa: S310 - Device Farm presigned https URL
 
-    def download(self, url: str, dest: Path) -> None:
-        import io
+    def download(self, url: str) -> bytes:
         import urllib.request
 
         with urllib.request.urlopen(url, timeout=300) as response:  # noqa: S310 - Device Farm presigned https URL
-            payload = response.read()
-        with zipfile.ZipFile(io.BytesIO(payload)) as zf:
-            _safe_extract(zf, dest)
+            payload: bytes = response.read()
+        return payload
 
 
 if __name__ == "__main__":

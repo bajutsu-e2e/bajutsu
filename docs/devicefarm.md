@@ -116,6 +116,9 @@ anywhere, with no cloud account) — running it is a manual, human procedure:
 2. Build the showcase Compose debug APK: `make -C demos/showcase/android compose-build`.
 3. Run the submitter (or the workflow) against one scenario, e.g. `scenarios/firstlook.yaml`.
 4. Confirm from the downloaded artifacts that `adb devices` listed the reserved device and the
-   scenario produced a `manifest.json` with the expected verdict.
+   scenario produced a `manifest.json` with the expected verdict. The submitter extracts the
+   CUSTOMER_ARTIFACT zip (the `runs/` tree with the manifests) into the destination and writes
+   Device Farm's plain-file artifacts — the device and test-spec logs that carry the `adb devices`
+   output — under a `logs/` subdirectory alongside it.
 
 Once confirmed for your account, the workflow can run the fuller scenario set on demand.

@@ -11,6 +11,7 @@ seam, and it is replaced by an in-memory fake).
 
 from __future__ import annotations
 
+import io
 import json
 import zipfile
 from pathlib import Path
@@ -23,12 +24,23 @@ from scripts.devicefarm_submit import (
     DeviceFarmError,
     Verdict,
     _safe_extract,
+    _store_artifact,
     build_package,
     main,
     render_test_spec,
     submit_and_collect,
     verdict_from_manifest,
 )
+
+
+def _zip_bytes(members: dict[str, str]) -> bytes:
+    """Build an in-memory zip archive from arcname → text, as Device Farm's CUSTOMER_ARTIFACT is."""
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as zf:
+        for name, text in members.items():
+            zf.writestr(name, text)
+    return buffer.getvalue()
+
 
 # ---------------------------------------------------------------------------
 # render_test_spec
@@ -302,6 +314,54 @@ def test_safe_extract_rejects_a_traversal_member(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# _store_artifact (zip vs. plain-file artifacts from list_artifacts)
+# ---------------------------------------------------------------------------
+
+
+def test_store_artifact_extracts_a_zip_artifact(tmp_path: Path) -> None:
+    # The CUSTOMER_ARTIFACT is a zip of the runs/ tree; it is extracted so the verdict can read the
+    # manifests it holds.
+    dest = tmp_path / "out"
+    dest.mkdir()
+    _store_artifact(
+        {"name": "Customer Artifacts", "type": "CUSTOMER_ARTIFACT", "extension": "zip"},
+        _zip_bytes({"runs/20260714/manifest.json": '{"scenarios": []}'}),
+        dest,
+        index=0,
+    )
+    assert (dest / "runs" / "20260714" / "manifest.json").read_text() == '{"scenarios": []}'
+
+
+def test_store_artifact_writes_a_non_zip_artifact_as_a_file(tmp_path: Path) -> None:
+    # list_artifacts(type="FILE") also returns plain-file logs/screenshots. Feeding one to zipfile
+    # raised BadZipFile and aborted the whole collection; a non-zip must be written verbatim instead.
+    dest = tmp_path / "out"
+    dest.mkdir()
+    _store_artifact(
+        {"name": "Test spec output", "type": "TESTSPEC_OUTPUT", "extension": "txt"},
+        b"adb devices\nemulator-5554\tdevice\n",
+        dest,
+        index=2,
+    )
+    written = list((dest / "logs").glob("*.txt"))
+    assert len(written) == 1
+    assert "adb devices" in written[0].read_text()
+
+
+def test_store_artifact_names_non_zip_files_uniquely_by_index(tmp_path: Path) -> None:
+    # Device Farm artifact names are not unique across a run's jobs; index-prefixing keeps one
+    # job's log from overwriting another's.
+    dest = tmp_path / "out"
+    dest.mkdir()
+    artifact = {"name": "Device Log", "type": "DEVICE_LOG", "extension": "log"}
+    _store_artifact(artifact, b"job-1", dest, index=0)
+    _store_artifact(artifact, b"job-2", dest, index=1)
+    written = sorted((dest / "logs").glob("*.log"))
+    assert len(written) == 2
+    assert {p.read_text() for p in written} == {"job-1", "job-2"}
+
+
+# ---------------------------------------------------------------------------
 # submit_and_collect (fake AWS SDK seam)
 # ---------------------------------------------------------------------------
 
@@ -347,24 +407,44 @@ class _FakeClient:
     def list_artifacts(self, *, arn: str, type: str) -> dict[str, Any]:
         return {
             "artifacts": [
-                {"name": "runs", "type": "CUSTOMER_ARTIFACT", "url": "https://s3/runs.zip"}
+                {
+                    "name": "Customer Artifacts",
+                    "type": "CUSTOMER_ARTIFACT",
+                    "extension": "zip",
+                    "url": "https://s3/runs.zip",
+                }
             ]
         }
 
 
 class _FakeTransfer:
-    """Records uploads; on download, materializes a runs/ tree with the given verdict at `dest`."""
+    """Records uploads; on download returns the artifact bytes.
 
-    def __init__(self, *, downloaded_ok: bool = True) -> None:
+    By default it returns a CUSTOMER_ARTIFACT runs/ zip carrying the given verdict; pass `payloads`
+    to map each url to specific bytes (used to exercise the mixed zip/plain-file collection path).
+    """
+
+    def __init__(
+        self, *, downloaded_ok: bool = True, payloads: dict[str, bytes] | None = None
+    ) -> None:
         self.uploaded: list[str] = []
         self.downloaded_ok = downloaded_ok
+        self.payloads = payloads
 
     def upload(self, url: str, path: Path) -> None:
         self.uploaded.append(url)
 
-    def download(self, url: str, dest: Path) -> None:
-        run = dest / "runs" / "20260714-120000"
-        _write_manifest(run, [("smoke", self.downloaded_ok)])
+    def download(self, url: str) -> bytes:
+        if self.payloads is not None:
+            return self.payloads[url]
+        manifest = json.dumps(
+            {
+                "schemaVersion": 4,
+                "ok": self.downloaded_ok,
+                "scenarios": [{"scenario": "smoke", "ok": self.downloaded_ok}],
+            }
+        )
+        return _zip_bytes({"runs/20260714-120000/manifest.json": manifest})
 
 
 def _submit(client: _FakeClient, transfer: _FakeTransfer, tmp_path: Path) -> Verdict:
@@ -412,6 +492,45 @@ def test_submit_and_collect_reports_bajutsus_verdict_not_device_farms(tmp_path: 
 
     assert not verdict.ok
     assert verdict.failures == ["smoke"]
+
+
+def test_submit_and_collect_handles_mixed_zip_and_log_artifacts(tmp_path: Path) -> None:
+    # A real run returns the CUSTOMER_ARTIFACT zip plus plain-file logs (e.g. the pre_test
+    # `adb devices` output). The zip yields the verdict; the logs are kept for diagnostics and must
+    # not abort collection by being fed to zipfile (which raised BadZipFile).
+    manifest = json.dumps({"scenarios": [{"scenario": "smoke", "ok": True}]})
+    payloads = {
+        "https://s3/runs.zip": _zip_bytes({"runs/r1/manifest.json": manifest}),
+        "https://s3/spec.txt": b"adb devices\nemulator-5554\tdevice\n",
+    }
+
+    class _MixedClient(_FakeClient):
+        def list_artifacts(self, *, arn: str, type: str) -> dict[str, Any]:
+            return {
+                "artifacts": [
+                    {
+                        "name": "Customer Artifacts",
+                        "type": "CUSTOMER_ARTIFACT",
+                        "extension": "zip",
+                        "url": "https://s3/runs.zip",
+                    },
+                    {
+                        "name": "Test spec output",
+                        "type": "TESTSPEC_OUTPUT",
+                        "extension": "txt",
+                        "url": "https://s3/spec.txt",
+                    },
+                ]
+            }
+
+    verdict = _submit(_MixedClient(), _FakeTransfer(payloads=payloads), tmp_path)
+
+    assert verdict.ok
+    out = tmp_path / "out"
+    assert list(out.rglob("manifest.json"))
+    spec_logs = list((out / "logs").glob("*.txt"))
+    assert len(spec_logs) == 1
+    assert "adb devices" in spec_logs[0].read_text()
 
 
 def test_submit_and_collect_fails_loud_on_a_failed_upload(tmp_path: Path) -> None:

@@ -64,6 +64,6 @@ uv run python scripts/devicefarm_submit.py \
 1. `us-west-2` に Device Farm のプロジェクトとデバイスプールを作成し、それぞれの ARN を控えます。
 2. showcase の Compose デバッグ APK をビルドします（`make -C demos/showcase/android compose-build`）。
 3. サブミッター（またはワークフロー）を 1 つのシナリオ、たとえば `scenarios/firstlook.yaml` に対して実行します。
-4. ダウンロードした成果物から、`adb devices` に予約されたデバイスが並んだこと、そしてシナリオが期待どおりの判定を持つ `manifest.json` を生成したことを確認します。
+4. ダウンロードした成果物から、`adb devices` に予約されたデバイスが並んだこと、そしてシナリオが期待どおりの判定を持つ `manifest.json` を生成したことを確認します。サブミッターは CUSTOMER_ARTIFACT の zip（マニフェストを含む `runs/` ツリー）を保存先に展開し、Device Farm のファイル形式の成果物（`adb devices` の出力を含むデバイスログやテスト仕様のログ）はその隣の `logs/` サブディレクトリに書き出します。
 
 自分のアカウントで確認できたら、ワークフローはより広いシナリオ一式を必要に応じて実行できます。
