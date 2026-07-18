@@ -31,7 +31,7 @@ import json
 import shlex
 import time
 import zipfile
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol, cast
@@ -67,6 +67,16 @@ _PACKAGE_EXCLUDES = frozenset(
         "tmp",
         ".DS_Store",
     }
+)
+
+# Device Farm's APPIUM_PYTHON_TEST_PACKAGE validation requires a `requirements.txt` at the package
+# root (alongside a `tests/` directory). Bajutsu is a pyproject/uv project with no such file, and the
+# custom test spec installs it directly (`pip install "$DEVICEFARM_TEST_PACKAGE_PATH"`), so we
+# synthesize an empty one purely to satisfy the structural check rather than pin anything here.
+_REQUIREMENTS_TXT = (
+    "# Present only to satisfy Device Farm's APPIUM_PYTHON_TEST_PACKAGE validation.\n"
+    '# Bajutsu is installed by the custom test spec (pip install "$DEVICEFARM_TEST_PACKAGE_PATH"),\n'
+    "# so no runtime dependencies are pinned here.\n"
 )
 
 
@@ -159,13 +169,20 @@ def render_test_spec(
 # ---------------------------------------------------------------------------
 
 
-def build_package(entries: Sequence[tuple[Path, str]], out_zip: Path) -> Path:
+def build_package(
+    entries: Sequence[tuple[Path, str]],
+    out_zip: Path,
+    *,
+    extra_texts: Mapping[str, str] | None = None,
+) -> Path:
     """Bundle the Bajutsu payload into `out_zip` for upload, one `(source, arcname)` pair per entry.
 
     A directory source is added recursively under its arcname; the arcname `.` packs the directory
     *at the zip root* (no prefix). A file source is added at its arcname. Paths under a
     `_PACKAGE_EXCLUDES` component (VCS/build/cache/scratch noise such as `.git` and `.venv`),
-    symlinks, and the output archive itself are skipped. Returns `out_zip`.
+    symlinks, and the output archive itself are skipped. `extra_texts` maps an arcname to text
+    content written verbatim into the archive — used to synthesize files Device Farm's validation
+    requires but the repo does not carry (a root `requirements.txt`). Returns `out_zip`.
 
     Raises:
         DeviceFarmError: If any source path does not exist — an incomplete package would fail
@@ -198,6 +215,8 @@ def build_package(entries: Sequence[tuple[Path, str]], out_zip: Path) -> Path:
                         zf.write(path, f"{prefix}{rel.as_posix()}")
             else:
                 zf.write(source, arcname)
+        for arc, text in (extra_texts or {}).items():
+            zf.writestr(arc, text)
     return out_zip
 
 
@@ -481,7 +500,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     for raw in args.package_entries:
         src, _, arcname = raw.partition("=")
         entries.append((Path(src), arcname or Path(src).name))
-    build_package(entries, args.out)
+    build_package(entries, args.out, extra_texts={"requirements.txt": _REQUIREMENTS_TXT})
     print(f"wrote package {args.out} and spec {spec_path}")
 
     if args.package_only:

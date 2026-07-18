@@ -177,6 +177,21 @@ def test_package_root_arcname_places_contents_at_the_zip_root(tmp_path: Path) ->
     assert not any(n.startswith(("./", "repo/")) for n in names)
 
 
+def test_package_writes_synthesized_extra_texts_at_their_arcnames(tmp_path: Path) -> None:
+    # Device Farm's APPIUM_PYTHON_TEST_PACKAGE validation requires a root requirements.txt the repo
+    # doesn't carry; build_package synthesizes it from `extra_texts` rather than a real file.
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "keep.yaml").write_text("scenarios: []")
+    out = tmp_path / "package.zip"
+
+    build_package([(src, ".")], out, extra_texts={"requirements.txt": "# empty\n"})
+
+    with zipfile.ZipFile(out) as zf:
+        assert "requirements.txt" in set(zf.namelist())
+        assert zf.read("requirements.txt").decode() == "# empty\n"
+
+
 def test_package_never_zips_the_output_archive_into_itself(tmp_path: Path) -> None:
     src = tmp_path / "src"
     src.mkdir()
@@ -456,3 +471,5 @@ def test_main_package_only_builds_from_source_arcname_entries(tmp_path: Path) ->
         names = set(zf.namelist())
     assert "showcase.config.yaml" in names
     assert "scenarios/smoke.yaml" in names
+    # A root requirements.txt is synthesized so the package clears Device Farm's validation.
+    assert "requirements.txt" in names

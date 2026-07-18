@@ -83,8 +83,12 @@ uv run python scripts/devicefarm_submit.py \
   --package-only
 ```
 
-Each `--package SRC=ARCNAME` adds a file or directory to the test package under `ARCNAME`; the
-scenario / config paths you pass are the paths *inside* the package. Drop `--package-only` and add
+Each `--package SRC=ARCNAME` adds a file or directory to the test package under `ARCNAME` (the
+arcname `.` packs a directory at the package root); the scenario / config paths you pass are the
+paths *inside* the package. Packaging Bajutsu with `--package .=.` puts its `pyproject.toml` and
+`tests/` directory at the root, and the submitter synthesizes an empty root `requirements.txt`, so
+the upload satisfies Device Farm's APPIUM_PYTHON_TEST_PACKAGE validation while the test spec still
+does the real install. Drop `--package-only` and add
 `--project-arn` / `--device-pool-arn` (with AWS credentials configured in the environment) to submit
 the run, poll it to completion, download the artifacts, and print Bajutsu's verdict. The process
 exit code is `0` only when every scenario passed.
