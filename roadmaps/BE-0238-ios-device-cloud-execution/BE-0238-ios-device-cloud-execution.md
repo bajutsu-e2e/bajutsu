@@ -105,7 +105,7 @@ the Simulator through `xcodebuild`; this item generalises target selection to a 
 > (oldest first), linking the PRs.
 
 - [x] XCUITest real-device targeting (generalise BE-0019 beyond the Simulator)
-- [x] Batch packaging for Device Farm (XCTest / Appium-XCUITest)
+- [x] Batch packaging for Device Farm (submitter integration)
 - [ ] Re-signing / entitlement handling (document + preflight degradation)
 - [ ] Live route: Appium-endpoint `DeviceProvider` (follow-on slice)
 - [ ] Tests (faked `xcodebuild`/toolchain boundary) — real-device targeting covered by Unit 1

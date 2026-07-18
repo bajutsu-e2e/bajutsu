@@ -100,7 +100,7 @@ package 化）、それが両経路の再利用可能な核になります。
 > ともに記録します。
 
 - [x] XCUITest の実機ターゲティング（BE-0019 を Simulator の先へ一般化）
-- [x] Device Farm 向けの batch package 化（XCTest / Appium-XCUITest）
+- [x] Device Farm 向けの batch package 化（submitter への統合）
 - [ ] 再署名と entitlement の扱い（記述 + preflight の縮退）
 - [ ] live の経路：Appium endpoint の `DeviceProvider`（後続の slice）
 - [ ] テスト（`xcodebuild` とツールチェインの境界を fake に）— 実機ターゲティングはユニット 1 で担保
