@@ -9,7 +9,7 @@
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0238") |
-| 実装 PR | [#1192](https://github.com/bajutsu-e2e/bajutsu/pull/1192)（ユニット 1: XCUITest 実機ターゲティング）、[#1193](https://github.com/bajutsu-e2e/bajutsu/pull/1193)（ユニット 2: batch package 化）、[#1195](https://github.com/bajutsu-e2e/bajutsu/pull/1195)（ユニット 3: 再署名 / 実機ケーパビリティの preflight）、[#1196](https://github.com/bajutsu-e2e/bajutsu/pull/1196)（ユニット 4: live の経路 Appium endpoint provider、seam のみ） |
+| 実装 PR | [#1192](https://github.com/bajutsu-e2e/bajutsu/pull/1192)（ユニット 1: XCUITest 実機ターゲティング）、[#1193](https://github.com/bajutsu-e2e/bajutsu/pull/1193)（ユニット 2: batch package 化）、[#1195](https://github.com/bajutsu-e2e/bajutsu/pull/1195)（ユニット 3: 再署名 / 実機ケーパビリティの preflight）、[#1196](https://github.com/bajutsu-e2e/bajutsu/pull/1196)（ユニット 4: live の経路 Appium endpoint provider、seam のみ）、[#1197](https://github.com/bajutsu-e2e/bajutsu/pull/1197)（ユニット 5: 境界を fake にしたテスト） |
 | トピック | デバイスクラウド実行 |
 <!-- /BE-METADATA -->
 
@@ -153,7 +153,7 @@ package 化）、それが両経路の再利用可能な核になります。
   `ProvisionProfile` 配線は XCUITest には意図的に持ち込みません。実機の経路
   （ユニット 1）は既に simctl の端末準備を丸ごと飛ばすため、そこでフラグを尊重しても到達しないコードに
   なるからです。合否判定の経路の外で、fake で、デバイスは不要です。
-- ユニット 5（[#XXXX](https://github.com/bajutsu-e2e/bajutsu/pull/XXXX)）：ユニット 1〜4 のあとに残っていた
+- ユニット 5（[#1197](https://github.com/bajutsu-e2e/bajutsu/pull/1197)）：ユニット 1〜4 のあとに残っていた
   テストの穴を埋めました。いずれも純粋で、ゲート上で走ります（Simulator もクラウドも要りません）。ユニット 4 の
   live 経路の境界を実行可能な事実として固定しました。`appium` provider が渡す Appium / WebDriver の endpoint は、
   そのまま `_destination` に流れる udid spec そのものなので、実際の `http(s)://` endpoint は共有の `device_id`
