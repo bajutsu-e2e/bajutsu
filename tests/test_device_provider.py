@@ -9,8 +9,12 @@ resolution of an unknown `kind`, that the registry is a real extension point, an
 
 from __future__ import annotations
 
-import pytest
+from pathlib import Path
 
+import pytest
+from typer.testing import CliRunner
+
+from bajutsu.cli import app
 from bajutsu.config import AndroidConfig, DeviceProvider, Effective
 from bajutsu.platform_lifecycle import ProvisionProfile
 from bajutsu.runner import device_provider as dp
@@ -97,3 +101,80 @@ def test_release_runs_the_lease_teardown() -> None:
         assert released == [True]
     finally:
         dp._PROVIDERS.pop("counting", None)
+
+
+def test_run_warns_and_keeps_its_verdict_when_release_raises(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A provider's `release` raising must warn on stderr, never flip or mask the machine verdict.
+
+    `DeviceLease.release` is an arbitrary callable a third-party cloud adapter supplies, so a
+    teardown that raises is a real possibility. The run calls it in a `finally` after the verdict is
+    decided; the failure is warn-only (like the post-verdict zip/upload steps) — a leaked device is
+    loud on stderr, not a crash. Register a fake provider whose `release` raises, drive the CLI
+    through a stubbed dispatch that returns a passing result, and assert the run still exits PASS (0)
+    with the `"device release failed"` warning. The dispatch stub keeps this device-free (no simctl /
+    adb on the Linux gate); the release path itself is exactly the code under test.
+    """
+    from bajutsu.cli.commands import run as run_cmd
+
+    class _RaisingReleaseProvider:
+        def acquire(self, eff: Effective, requested_udid: str) -> dp.DeviceLease:
+            def _boom() -> None:
+                raise RuntimeError("cloud teardown exploded")
+
+            return dp.DeviceLease(
+                udid_spec=requested_udid, provision=ProvisionProfile(), release=_boom
+            )
+
+    dp.register("raising", _RaisingReleaseProvider())
+
+    # Dispatch returns one passing scenario so `_finish` emits PASS and exits 0 before the `finally`
+    # invokes the raising release — no device is touched.
+    from bajutsu.orchestrator.types import RunResult
+
+    manifest = tmp_path / "runs" / "manifest.json"
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    manifest.write_text("{}", encoding="utf-8")
+    result_row = RunResult(scenario="demo", ok=True, steps=[])
+    monkeypatch.setattr(run_cmd, "_dispatch", lambda plan: ([result_row], manifest))
+    # No CI annotations off a fake manifest (patch the name run.py's `_finish` actually calls).
+    monkeypatch.setattr(run_cmd.github_actions, "emit", lambda *a, **k: None)
+
+    scn = tmp_path / "s.yaml"
+    scn.write_text("- name: demo\n  steps:\n    - tap: { id: home.title }\n", encoding="utf-8")
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        "defaults: { backend: [fake] }\n"
+        "targets:\n"
+        "  demo:\n"
+        "    bundleId: com.example.demo\n"
+        "    idNamespaces: [home]\n"
+        "    deviceProvider: { kind: raising }\n",
+        encoding="utf-8",
+    )
+
+    try:
+        result = CliRunner().invoke(
+            app,
+            [
+                "run",
+                "--scenario",
+                str(scn),
+                "--target",
+                "demo",
+                "--backend",
+                "fake",
+                "--config",
+                str(cfg),
+                "--runs-dir",
+                str(tmp_path / "runs"),
+            ],
+        )
+    finally:
+        dp._PROVIDERS.pop("raising", None)
+
+    assert result.exit_code == 0, result.output  # PASS verdict survives the release failure
+    assert "PASS" in result.output
+    assert "device release failed" in result.output
+    assert "cloud teardown exploded" in result.output

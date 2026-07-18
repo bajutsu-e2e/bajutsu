@@ -202,16 +202,17 @@ adopting」の記述を更新し、デバイスクラウドでの実行が（任
 > 切り落としを実際に動かしテストできる縮小 capability 集合があります。seam 側の準備は整っています。
 > `ProvisionProfile` が自然な受け皿で、preflight（BE-0082）はすでに capability 集合を消費します。
 
-> **スコープ — `run` のみ。** `acquire_device` を配線したのは `bajutsu run` です。`record` と
-> `crawl` は従来どおりの方法でデバイスを解決します。そのため、これらのコマンドが駆動するターゲットに
-> クラウドの `kind` を付けても、そこでは fail-closed にならず無視されます。出荷が `local` だけの間は
-> 無害です（兄弟のクラウドアダプタがこれらのコマンドへ seam を広げます）が、拾い上げられるよう記します。
+> **スコープ — `run` のみ。** `acquire_device` を配線したのは `bajutsu run` です。`record`・
+> `crawl`・`audit --repeat` は従来どおりの方法でデバイスを解決します。そのため、これらのコマンドが
+> 駆動するターゲットにクラウドの `kind` を付けても、そこでは fail-closed にならず無視されます。出荷が
+> `local` だけの間は無害です（兄弟のクラウドアダプタがこれらのコマンドへ seam を広げます）が、拾い
+> 上げられるよう記します。
 
 ### 進捗ログ
 
 - seam・local provider・registry・config の表面・起動待ち省略とインストール省略のフックを、すべて
   `local` の既定の背後に置き、既存のターゲットは 1 バイトも変わりません。レビュー由来の硬化として、
-  セットアップ中のエラーでも lease を解放し、その `release` は warn-only にして provider のteardown が
+  セットアップ中のエラーでも lease を解放し、その `release` は warn-only にして provider の teardown が
   機械判定を覆せないようにしました（判定後の zip / upload の規則に倣います）。`make check` は緑
   （テスト 4414 件、カバレッジ 92%）。PR: [#1189](https://github.com/bajutsu-e2e/bajutsu/pull/1189)。
 

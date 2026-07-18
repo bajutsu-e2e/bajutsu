@@ -209,10 +209,10 @@ new stance.
 > set exists to drive and test the preflight cut. The seam is ready for it: `ProvisionProfile` is the
 > natural carrier, and preflight (BE-0082) already consumes a capability set.
 
-> **Scope — `run` only.** `acquire_device` is wired into `bajutsu run`; `record` and `crawl` still
-> resolve devices the old way. A cloud `kind` on a target those commands drive is therefore ignored
-> there rather than fail-closed. Harmless while only `local` ships (the sibling cloud adapters extend
-> the seam to those commands), but noted so they pick it up.
+> **Scope — `run` only.** `acquire_device` is wired into `bajutsu run`; `record`, `crawl`, and
+> `audit --repeat` still resolve devices the old way. A cloud `kind` on a target those commands
+> drive is therefore ignored there rather than fail-closed. Harmless while only `local` ships (the
+> sibling cloud adapters extend the seam to those commands), but noted so they pick it up.
 
 ### Progress log
 
