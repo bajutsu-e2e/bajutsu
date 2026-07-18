@@ -110,6 +110,14 @@ def test_test_spec_installs_the_requested_python_version() -> None:
     assert "uv venv --python 3.14" in install
 
 
+def test_test_spec_quotes_a_python_version_with_shell_metacharacters() -> None:
+    spec = render_test_spec(
+        ["s.yaml"], target="t", config="c.yaml", python_version="3.13; touch pwned"
+    )
+    install = " ".join(yaml.safe_load(spec)["phases"]["install"]["commands"])
+    assert "'3.13; touch pwned'" in install
+
+
 def test_test_spec_rejects_an_empty_scenario_list() -> None:
     # A spec with no scenario would run nothing and silently "pass" — fail loud instead.
     with pytest.raises(ValueError, match="scenario"):
