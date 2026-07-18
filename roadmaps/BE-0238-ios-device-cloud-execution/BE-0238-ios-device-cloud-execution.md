@@ -9,7 +9,7 @@
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0238") |
-| Implementing PR | [#1192](https://github.com/bajutsu-e2e/bajutsu/pull/1192) (Unit 1: XCUITest real-device targeting); _pending_ (Unit 2: batch packaging) |
+| Implementing PR | [#1192](https://github.com/bajutsu-e2e/bajutsu/pull/1192) (Unit 1: XCUITest real-device targeting); [#1193](https://github.com/bajutsu-e2e/bajutsu/pull/1193) (Unit 2: batch packaging) |
 | Topic | Device-cloud execution |
 <!-- /BE-METADATA -->
 
@@ -119,7 +119,7 @@ the Simulator through `xcodebuild`; this item generalises target selection to a 
   simctl-only preconditions it cannot honour (erase / `appPath` install / permission grants) now
   fail loudly, deferred to Units 2–3. Faked at the `xcodebuild`/toolchain boundary; no Simulator on
   the gate.
-- Unit 2 (_pending_): generalised the *aws-device-farm-submitter* (`scripts/devicefarm_submit.py`)
+- Unit 2 ([#1193](https://github.com/bajutsu-e2e/bajutsu/pull/1193)): generalised the *aws-device-farm-submitter* (`scripts/devicefarm_submit.py`)
   from Android-only to also emit an iOS submission. A `platform` selects the app upload type
   (`ANDROID_APP` / `IOS_APP`) and the per-platform run — iOS drives `bajutsu run --backend xcuitest`
   against the reserved device's `$DEVICEFARM_DEVICE_UDID` (reusing Unit 1's real-device targeting),

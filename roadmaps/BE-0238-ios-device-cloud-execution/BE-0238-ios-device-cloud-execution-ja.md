@@ -9,7 +9,7 @@
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0238") |
-| 実装 PR | [#1192](https://github.com/bajutsu-e2e/bajutsu/pull/1192)（ユニット 1: XCUITest 実機ターゲティング）、_pending_（ユニット 2: batch package 化） |
+| 実装 PR | [#1192](https://github.com/bajutsu-e2e/bajutsu/pull/1192)（ユニット 1: XCUITest 実機ターゲティング）、[#1193](https://github.com/bajutsu-e2e/bajutsu/pull/1193)（ユニット 2: batch package 化） |
 | トピック | デバイスクラウド実行 |
 <!-- /BE-METADATA -->
 
@@ -114,7 +114,7 @@ package 化）、それが両経路の再利用可能な核になります。
   成立しない simctl 依存の前提条件（erase / `appPath` インストール / 権限付与）は明示的に失敗させ、
   ユニット 2〜3 に先送りします。`xcodebuild` とツールチェインの境界を fake にし、ゲートに Simulator は
   不要です。
-- ユニット 2（_pending_）：*aws-device-farm-submitter*（`scripts/devicefarm_submit.py`）を Android 専用から
+- ユニット 2（[#1193](https://github.com/bajutsu-e2e/bajutsu/pull/1193)）：*aws-device-farm-submitter*（`scripts/devicefarm_submit.py`）を Android 専用から
   iOS の投入にも対応させました。`platform` がアプリのアップロード種別（`ANDROID_APP` / `IOS_APP`）と
   プラットフォームごとの実行方法を選びます。iOS は Device Farm が公開する予約端末の
   `$DEVICEFARM_DEVICE_UDID` に対して `bajutsu run --backend xcuitest` を走らせ（ユニット 1 の実機
