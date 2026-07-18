@@ -119,9 +119,13 @@ package 化）、それが両経路の再利用可能な核になります。
   プラットフォームごとの実行方法を選びます。iOS は Device Farm が公開する予約済みのデバイスの
   `$DEVICEFARM_DEVICE_UDID` に対して `bajutsu run --backend xcuitest` を走らせ（ユニット 1 の実機
   ターゲティングを再利用）、Android は従来どおり `--backend adb --udid booted` を使います。Appium-Python の
-  カスタム環境向けテストパッケージとスペックの種別は変更していません。テストは AWS SDK の境界だけを
-  fake にします。showcase の iOS 用 Device Farm 設定と CI ワークフローのジョブは、実機向けの `.ipa` を
-  署名なしにはビルドできないため、ユニット 3（再署名）を待ちます。
+  カスタム環境向けテストパッケージとスペックの種別は変更していません。XCTest / Appium-XCUITest の
+  バンドルを別に作るのではなく、Bajutsu のシナリオ実行をすでに担っている既存の Appium-Python カスタム
+  環境パッケージをあえて再利用し、iOS の実行だけをそこに通す方針です。そのため `build_package` には
+  手を入れず、変更は `render_test_spec` と CLI 側の配線（backend、`--udid`、アップロード種別）に
+  限られます。テストは AWS SDK の境界だけを fake にします。showcase の iOS 用 Device Farm 設定と
+  CI ワークフローのジョブは、実機向けの `.ipa` を署名なしにはビルドできないため、ユニット 3（再署名）を
+  待ちます。
 
 ## 参考
 
