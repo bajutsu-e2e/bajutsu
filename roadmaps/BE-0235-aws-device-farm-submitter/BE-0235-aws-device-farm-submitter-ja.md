@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0235](BE-0235-aws-device-farm-submitter-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0235") |
+| 実装 PR | [#1040](https://github.com/bajutsu-e2e/bajutsu/pull/1040) |
 | トピック | デバイスクラウド実行 |
 <!-- /BE-METADATA -->
 
@@ -102,11 +103,34 @@ iOS の custom mode には追加の制約があります（兄弟項目の *ios-
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] serial 解決の PoC（予約済みデバイスが DF のホストで `resolve_serial` から見える）
-- [ ] package builder（Bajutsu の積荷 + config + シナリオ）
-- [ ] test spec のテンプレート（install / pre_test / test / post_test、artifact を `$DEVICEFARM_LOG_DIR` へ）
-- [ ] 提出と回収のツール（アップロード / ポーリング / ダウンロード / 報告、切り離し、`bajutsu[aws]`）
-- [ ] ドキュメント（AWS の手順：batch のモデル、生 adb の注意、150 分上限、APK のみ）
+- [x] serial 解決の PoC — 仕組み（`pre_test: adb devices` と `--udid booted`）と文書化した手動手順を出荷。
+  経験的な実行には実際の AWS アカウントが要るため、決定的ゲートからは意図的に外した手動手順とする
+  （docs/ja/devicefarm.md）
+- [x] package builder（`build_package`：Bajutsu の積荷 + config + シナリオ → zip）
+- [x] test spec のテンプレート（`render_test_spec`：install / pre_test / test / post_test、artifact を `$DEVICEFARM_LOG_DIR` へ）
+- [x] 提出と回収のツール（`submit_and_collect`：アップロード / ポーリング / ダウンロード / manifest からの合否、切り離し、`bajutsu[aws]`）
+- [x] ドキュメント（AWS の手順：batch のモデル、生 adb の注意、150 分上限、APK のみ）
+
+### 進捗ログ
+
+- `scripts/devicefarm_submit.py` — CI 側のサブミッター。`render_test_spec`、`build_package`、
+  `verdict_from_manifest`（Device Farm の分類ではなく Bajutsu 自身の `manifest.json` から合否を出します）、
+  そして `DeviceFarmClient` / `Transfer` の継ぎ目の裏に置いた `submit_and_collect`（boto3 は遅延 import）。
+  インメモリの fake に対して単体テストします（`tests/test_devicefarm_submit.py`）。
+- `demos/showcase/devicefarm/testspec.yml` — コミット済みの参照用 spec。
+- `.github/workflows/devicefarm.yml` — 手動でオプトイン（`workflow_dispatch`）、OIDC でゲートし、
+  運用者がアカウントを接続するまで休止します。
+- `docs/devicefarm.md`（と `docs/ja/`）、および `ci.md` の表の行。
+- `pyproject.toml` の `aws = ["boto3>=1.34"]` extra。
+- 2026-07-18：実際の AWS Device Farm の実機（`SM-S911U1`、Android 13）でエンドツーエンドに検証しました。
+  `firstlook.yaml` で `bajutsu verdict: PASS (1/1)` となり、`adb devices` が予約デバイスを表示し
+  `--udid booted` がそれを解決しました。これでシリアル解決の実証がもっていた唯一の経験的な未知が解消されます。
+  この手動実行では、インメモリの fake では現れない Device Farm 固有の問題が 7 件見つかり、いずれもサブミッター側で
+  修正しました（PR #1040）。出力の zip を自分自身に取り込まないこと、アップロード失敗時に Device Farm の理由を
+  表に出すこと、`tests/` が入るようにパッケージを zip のルートへ収めること、ルートに `requirements.txt` を合成すること、
+  zip でない成果物を展開せずに保存すること、uv で Python 3.13 を用意すること（ホストは 3.12 までなので、Device Farm が
+  3.13 を提供したら消しやすいよう `_python_bootstrap_commands` に隔離しました）、そして `appPath` を持たない
+  `demos/showcase/devicefarm/showcase.devicefarm.config.yaml` で事前インストール済みのアプリに対して実行することです。
 
 ## 参考
 

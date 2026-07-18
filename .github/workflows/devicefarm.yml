@@ -1,0 +1,119 @@
+# AWS Device Farm batch submit (BE-0235) — manual, opt-in, dormant by default.
+#
+# Device Farm is a *batch* device cloud: it runs your commands on a host that already has `adb`
+# connected to the reserved device. This workflow is the CI-side glue (scripts/devicefarm_submit.py)
+# that ferries Bajutsu there and back — build the showcase Compose APK, package Bajutsu + config +
+# scenarios, upload the payload with a custom-environment test spec that runs `bajutsu run --backend
+# adb`, poll the run, download the artifacts, and surface **Bajutsu's own manifest verdict** (never
+# Device Farm's PASSED/FAILED classification). Bajutsu runs inside Device Farm exactly as locally, so
+# no LLM and no model ever touch the verdict (prime directive 1) — the submitter only schedules the
+# same deterministic run.
+#
+# HARD BOUNDARY: this is `workflow_dispatch` only — it never runs on push or pull_request, so it is
+# not on the merge path and is not a required check. Auth is a short-lived AWS credential minted by
+# exchanging the workflow's GitHub OIDC token for the `AWS_DEVICEFARM_ROLE_ARN` role (no static key),
+# scoped to the `devicefarm` Environment; the project and device-pool ARNs come from repository
+# variables. With any of the three unset the job is a green no-op (a `::notice::`, never red), so it
+# stays dormant until an operator wires the account up. The real-account serial-resolution PoC is a
+# documented human procedure (docs/devicefarm.md), deliberately kept out of the deterministic gate.
+name: Device Farm submit
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'targets.<name> config entry to run against'
+        required: true
+        default: showcase-compose
+      scenarios:
+        description: 'Space-separated scenario paths inside the package (under demos/showcase)'
+        required: true
+        default: scenarios/firstlook.yaml scenarios/controls.yaml
+
+# Minimum the submit needs: read the repo and mint the OIDC token the AWS credential exchange
+# requires. Nothing writes back to the repository.
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  submit:
+    name: device farm submit
+    runs-on: ubuntu-latest
+    # A Device Farm custom-environment execution is capped at 150 minutes; add slack for build,
+    # upload, and download, then fail fast rather than tie up a runner indefinitely.
+    timeout-minutes: 180
+    # Scope the AWS credential to this Environment so an unrelated job can't read it.
+    environment: devicefarm
+    steps:
+      - name: Gate on Device Farm configuration (or no-op)
+        id: gate
+        env:
+          ROLE_ARN: ${{ secrets.AWS_DEVICEFARM_ROLE_ARN }}
+          PROJECT_ARN: ${{ vars.DEVICEFARM_PROJECT_ARN }}
+          DEVICE_POOL_ARN: ${{ vars.DEVICEFARM_DEVICE_POOL_ARN }}
+        run: |
+          # Enable the submit only when ALL three inputs are present — the OIDC role plus both ARNs.
+          # A half-configured Environment stays a dormant no-op rather than running and failing red
+          # (same all-or-nothing shape as claude-review.yml / roadmap-id.yml).
+          if [ -n "$ROLE_ARN" ] && [ -n "$PROJECT_ARN" ] && [ -n "$DEVICE_POOL_ARN" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::AWS_DEVICEFARM_ROLE_ARN secret and DEVICEFARM_PROJECT_ARN / DEVICEFARM_DEVICE_POOL_ARN variables are not all set — the Device Farm submit is dormant (BE-0235). No-op."
+          fi
+
+      - name: Checkout
+        if: steps.gate.outputs.enabled == 'true'
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - name: Set up uv
+        if: steps.gate.outputs.enabled == 'true'
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39  # v8.2.0
+        with:
+          enable-cache: true
+
+      # Gradle needs JDK 17 (demos/showcase/android targets jvmTarget 17), matching android-e2e.yml.
+      - name: Set up JDK 17
+        if: steps.gate.outputs.enabled == 'true'
+        uses: actions/setup-java@0f481fcb613427c0f801b606911222b5b6f3083a  # v5.5.0
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Build the showcase Compose APK
+        if: steps.gate.outputs.enabled == 'true'
+        run: make -C demos/showcase/android compose-build
+
+      - name: Configure AWS credentials (OIDC)
+        if: steps.gate.outputs.enabled == 'true'
+        uses: aws-actions/configure-aws-credentials@517a711dbcd0e402f90c77e7e2f81e849156e31d  # v6.2.2
+        with:
+          role-to-assume: ${{ secrets.AWS_DEVICEFARM_ROLE_ARN }}
+          aws-region: us-west-2
+
+      - name: Submit to Device Farm and collect Bajutsu's verdict
+        if: steps.gate.outputs.enabled == 'true'
+        env:
+          PROJECT_ARN: ${{ vars.DEVICEFARM_PROJECT_ARN }}
+          DEVICE_POOL_ARN: ${{ vars.DEVICEFARM_DEVICE_POOL_ARN }}
+          TARGET: ${{ inputs.target }}
+          SCENARIOS: ${{ inputs.scenarios }}
+        run: |
+          # The APK lands where the android Makefile builds it. Package Bajutsu (as `bajutsu`), the
+          # showcase config, and the scenarios, then submit; the exit code is Bajutsu's verdict.
+          apk="demos/showcase/android/compose/build/outputs/apk/a11y/debug/compose-a11y-debug.apk"
+          args=()
+          for s in $SCENARIOS; do args+=(--scenario "$s"); done
+          uv run --extra aws python scripts/devicefarm_submit.py \
+            "${args[@]}" \
+            --target "$TARGET" \
+            --config showcase.devicefarm.config.yaml \
+            --app-apk "$apk" \
+            --package .=. \
+            --package demos/showcase/devicefarm/showcase.devicefarm.config.yaml=showcase.devicefarm.config.yaml \
+            --package demos/showcase/scenarios=scenarios \
+            --out devicefarm-package.zip \
+            --project-arn "$PROJECT_ARN" \
+            --device-pool-arn "$DEVICE_POOL_ARN" \
+            --dest devicefarm-artifacts

@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0235](BE-0235-aws-device-farm-submitter.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0235") |
+| Implementing PR | [#1040](https://github.com/bajutsu-e2e/bajutsu/pull/1040) |
 | Topic | Device-cloud execution |
 <!-- /BE-METADATA -->
 
@@ -102,11 +103,35 @@ Device Farm change does not silently break it.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Serial-resolution PoC (reserved device visible to `resolve_serial` on the DF host)
-- [ ] Package builder (Bajutsu payload + config + scenarios)
-- [ ] Test-spec template (install/pre_test/test/post_test; artifacts → `$DEVICEFARM_LOG_DIR`)
-- [ ] Submit/collect tooling (upload / poll / download / report; decoupled, `bajutsu[aws]`)
-- [ ] Docs (AWS how-to: batch model, raw-adb caveat, 150-min cap, APK-only)
+- [x] Serial-resolution PoC — the mechanism (`pre_test: adb devices` + `--udid booted`) and a
+  documented manual procedure ship; the empirical run needs a real AWS account, so it is a human
+  procedure deliberately kept off the deterministic gate (docs/devicefarm.md)
+- [x] Package builder (`build_package`: Bajutsu payload + config + scenarios → zip)
+- [x] Test-spec template (`render_test_spec`: install/pre_test/test/post_test; artifacts → `$DEVICEFARM_LOG_DIR`)
+- [x] Submit/collect tooling (`submit_and_collect`: upload / poll / download / manifest verdict; decoupled, `bajutsu[aws]`)
+- [x] Docs (AWS how-to: batch model, raw-adb caveat, 150-min cap, APK-only)
+
+### Progress log
+
+- `scripts/devicefarm_submit.py` — the CI-side submitter: `render_test_spec`, `build_package`,
+  `verdict_from_manifest` (from Bajutsu's own `manifest.json`, never Device Farm's classification),
+  and `submit_and_collect` behind the `DeviceFarmClient` / `Transfer` seams (boto3 lazy-imported).
+  Unit-tested against in-memory fakes (`tests/test_devicefarm_submit.py`).
+- `demos/showcase/devicefarm/testspec.yml` — a checked-in reference spec.
+- `.github/workflows/devicefarm.yml` — manual, opt-in (`workflow_dispatch`), OIDC-gated, dormant
+  until an operator wires up an account.
+- `docs/devicefarm.md` (+ `docs/ja/`) and the `ci.md` table row.
+- `aws = ["boto3>=1.34"]` extra in `pyproject.toml`.
+- 2026-07-18 — end-to-end verified on real AWS Device Farm hardware (`SM-S911U1`, Android 13):
+  `bajutsu verdict: PASS (1/1)` on `firstlook.yaml`, with `adb devices` listing the reserved device
+  and `--udid booted` resolving it. This closes the serial-resolution PoC's one empirical unknown.
+  The manual run surfaced seven real Device-Farm-specific issues the in-memory fakes could not, each
+  fixed in the submitter (PR #1040): never zip the output into itself; surface Device Farm's reason
+  on a failed upload; pack the payload at the zip root so `tests/` is present; synthesize a root
+  `requirements.txt`; download non-zip artifacts without unzipping them; bootstrap Python 3.13 with
+  uv (the host tops out at 3.12, isolated in `_python_bootstrap_commands` for easy removal once
+  Device Farm ships 3.13); and run against the pre-installed app via an `appPath`-less
+  `demos/showcase/devicefarm/showcase.devicefarm.config.yaml`.
 
 ## References
 

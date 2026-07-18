@@ -1,0 +1,24 @@
+# Bajutsu config for the showcase Compose app when it runs on AWS Device Farm (BE-0235).
+#
+# It mirrors the `showcase-compose` target from ../showcase.config.yaml with one deliberate
+# difference: it carries **no `appPath` / `build`**. On Device Farm the app APK is uploaded
+# separately and Device Farm installs it on the reserved device itself, so the adb backend must not
+# try to `adb install` a local file — a None `app_path` is the runner's "run against the
+# already-installed app" path, and `package` alone is enough to clear / launch it. The scenarios,
+# ids, launch env, and pre-granted permission match the local target so the same suite runs
+# unchanged; only the install step differs, which is a per-environment difference and so lives in
+# config (the app-agnostic principle), not in the tool.
+defaults:
+  backend: [android]
+
+targets:
+  showcase-compose:
+    package: com.bajutsu.showcase.android.compose
+    deeplinkScheme: showcasecompose
+    launchEnv: { SHOWCASE_UITEST: "1" }
+    # Pre-granted at launch so the notification prompt never blocks the run (BE-0210), matching the
+    # local target; the shared permission.yaml relies on this to stay deterministic on Android.
+    grantPermissions: [android.permission.POST_NOTIFICATIONS]
+    idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
+    backend: [android]
+    scenarios: scenarios
