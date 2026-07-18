@@ -9,7 +9,7 @@
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0238") |
-| 実装 PR | [#1192](https://github.com/bajutsu-e2e/bajutsu/pull/1192)（ユニット 1: XCUITest 実機ターゲティング）、[#1193](https://github.com/bajutsu-e2e/bajutsu/pull/1193)（ユニット 2: batch package 化）、[#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM)（ユニット 3: 再署名 / 実機ケーパビリティの preflight） |
+| 実装 PR | [#1192](https://github.com/bajutsu-e2e/bajutsu/pull/1192)（ユニット 1: XCUITest 実機ターゲティング）、[#1193](https://github.com/bajutsu-e2e/bajutsu/pull/1193)（ユニット 2: batch package 化）、[#1195](https://github.com/bajutsu-e2e/bajutsu/pull/1195)（ユニット 3: 再署名 / 実機ケーパビリティの preflight） |
 | トピック | デバイスクラウド実行 |
 <!-- /BE-METADATA -->
 
@@ -126,7 +126,7 @@ package 化）、それが両経路の再利用可能な核になります。
   限られます。テストは AWS SDK の境界だけを fake にします。showcase の iOS 用 Device Farm 設定と
   CI ワークフローのジョブは、実機向けの `.ipa` を署名なしにはビルドできないため、ユニット 3（再署名）を
   待ちます。
-- ユニット 3（[#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM)）：実機の iOS（`xcuitest.deviceType: device`）では simctl
+- ユニット 3（[#1195](https://github.com/bajutsu-e2e/bajutsu/pull/1195)）：実機の iOS（`xcuitest.deviceType: device`）では simctl
   依存のケーパビリティが失われることを preflight に教えました。新しい
   `backends.capabilities_for_run(actuator, eff)` が静的な XCUITest のケーパビリティ集合を縮退させ、
   シミュレータにしか届かない `DeviceControl` 一式と simctl-privacy の権限付与を落とします。これにより、

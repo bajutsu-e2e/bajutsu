@@ -9,7 +9,7 @@
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0238") |
-| Implementing PR | [#1192](https://github.com/bajutsu-e2e/bajutsu/pull/1192) (Unit 1: XCUITest real-device targeting), [#1193](https://github.com/bajutsu-e2e/bajutsu/pull/1193) (Unit 2: batch packaging), [#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM) (Unit 3: re-signing / real-device capability preflight) |
+| Implementing PR | [#1192](https://github.com/bajutsu-e2e/bajutsu/pull/1192) (Unit 1: XCUITest real-device targeting), [#1193](https://github.com/bajutsu-e2e/bajutsu/pull/1193) (Unit 2: batch packaging), [#1195](https://github.com/bajutsu-e2e/bajutsu/pull/1195) (Unit 3: re-signing / real-device capability preflight) |
 | Topic | Device-cloud execution |
 <!-- /BE-METADATA -->
 
@@ -130,7 +130,7 @@ the Simulator through `xcodebuild`; this item generalises target selection to a 
   the change is confined to `render_test_spec` and the CLI plumbing (backend, `--udid`, upload type).
   Tests fake only the AWS SDK seam. The showcase iOS Device Farm config and the CI workflow job wait on
   Unit 3 (re-signing), since a device `.ipa` cannot be built unsigned.
-- Unit 3 ([#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM)): taught the preflight that a real iOS device
+- Unit 3 ([#1195](https://github.com/bajutsu-e2e/bajutsu/pull/1195)): taught the preflight that a real iOS device
   (`xcuitest.deviceType: device`) loses the simctl-backed capabilities. A new
   `backends.capabilities_for_run(actuator, eff)` narrows the static XCUITest set — dropping the whole
   `DeviceControl` family and the simctl-privacy permission grants, which reach only the Simulator — so a
