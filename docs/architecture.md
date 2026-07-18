@@ -348,7 +348,7 @@ device (the shared device is reseeded via one channel, so parallel workers would
   Consent, and Control) service for it; `pinch`/`rotate` two-finger multi-touch
   gated on a rooted device (protocol-B `sendevent`, no single-touch fallback; BE-0232); a UI
   Automator (Kotlin) codegen target (BE-0209); an Android e2e CI lane (emulator under KVM,
-  `android-e2e.yml`; BE-0208) that now runs the full shared scenario set — the adb driver reaches
+  `android-e2e.yml`; BE-0208) that now runs the shared scenario set outside the still-excluded mocked-network flows — the adb driver reaches
   every tab by driving the native tab bar with the same cross-backend selector iOS uses (a clickable
   `NavigationBarItem` derives the `button` trait and its child text as `label`; BE-0223), the one
   portability gap that used to hold tab-scoped scenarios out of the lane. **Id matching** stays verbatim in the driver: where a
