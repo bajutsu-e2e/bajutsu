@@ -9,7 +9,7 @@
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0238") |
-| 実装 PR | [#1192](https://github.com/bajutsu-e2e/bajutsu/pull/1192)（ユニット 1: XCUITest 実機ターゲティング）、[#1193](https://github.com/bajutsu-e2e/bajutsu/pull/1193)（ユニット 2: batch package 化）、[#1195](https://github.com/bajutsu-e2e/bajutsu/pull/1195)（ユニット 3: 再署名 / 実機ケーパビリティの preflight）、[#1196](https://github.com/bajutsu-e2e/bajutsu/pull/1196)（ユニット 4: live の経路 Appium endpoint provider、seam のみ）、[#1197](https://github.com/bajutsu-e2e/bajutsu/pull/1197)（ユニット 5: 境界を fake にしたテスト） |
+| 実装 PR | [#1192](https://github.com/bajutsu-e2e/bajutsu/pull/1192)（ユニット 1: XCUITest 実機ターゲティング）、[#1193](https://github.com/bajutsu-e2e/bajutsu/pull/1193)（ユニット 2: batch package 化）、[#1195](https://github.com/bajutsu-e2e/bajutsu/pull/1195)（ユニット 3: 再署名 / 実機ケーパビリティの preflight）、[#1196](https://github.com/bajutsu-e2e/bajutsu/pull/1196)（ユニット 4: live の経路 Appium endpoint provider、seam のみ）、[#1197](https://github.com/bajutsu-e2e/bajutsu/pull/1197)（ユニット 5: 境界を fake にしたテスト）、[#1198](https://github.com/bajutsu-e2e/bajutsu/pull/1198)（ユニット 6: iOS デバイスクラウドの手順） |
 | トピック | デバイスクラウド実行 |
 <!-- /BE-METADATA -->
 
@@ -104,7 +104,7 @@ package 化）、それが両経路の再利用可能な核になります。
 - [x] 再署名と entitlement の扱い（記述 + preflight の縮退）
 - [ ] live の経路：Appium endpoint の `DeviceProvider`（後続の slice）
 - [x] テスト（`xcodebuild` とツールチェインの境界を fake に）— 実機ターゲティングはユニット 1 で担保
-- [ ] ドキュメント（iOS のデバイスクラウドの手順、idb / simctl の理由、再署名の注意）
+- [x] ドキュメント（iOS のデバイスクラウドの手順、idb / simctl の理由、再署名の注意）
 
 **ログ。**
 
@@ -163,6 +163,16 @@ package 化）、それが両経路の再利用可能な核になります。
   アクセサに直接のユニットテスト（device / simulator / ブロック省略 / 非 iOS）を足しました。これまでは間接的に
   しか叩かれていませんでした。加えて `appium` provider の空 endpoint の分岐（falsy だが `None` ではない）を、
   endpoint 欠如の場合とは別の経路として押さえました。
+- ユニット 6（[#1198](https://github.com/bajutsu-e2e/bajutsu/pull/1198)）：iOS のデバイスクラウドの手順
+  （`docs/ios-device-cloud.md` と `docs/ja/` のミラー）を追加しました。work breakdown の *ドキュメント* の
+  ユニットです。このページは、実機で `idb` / `simctl` が構造的にデバイスクラウドと相容れない理由
+  （シミュレータ専用、デーモンの常駐）、BE-0019 バックエンドの `-destination` を実機（ローカル接続の
+  デバイスを含む）へ一般化する再利用可能な `xcuitest.deviceType: device` の核、batch の経路
+  （submitter の仕組みを重複させず `docs/devicefarm.md` へ相互リンク）と seam だけの live の経路
+  （`appium` endpoint provider と、その endpoint がまだエンドツーエンドで動かない理由）、そして実機の
+  注意点（再署名で entitlement が剥がれること、simctl に支えられたデバイス制御と権限付与が preflight で
+  縮退すること）を説明します。mkdocs のナビゲーションにも追加しました。ドキュメントだけで、製品コードの
+  変更はありません。live の経路のトランスポートが、残る最後の未了ボックスです。
 
 ## 参考
 

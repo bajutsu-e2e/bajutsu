@@ -9,7 +9,7 @@
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0238") |
-| Implementing PR | [#1192](https://github.com/bajutsu-e2e/bajutsu/pull/1192) (Unit 1: XCUITest real-device targeting), [#1193](https://github.com/bajutsu-e2e/bajutsu/pull/1193) (Unit 2: batch packaging), [#1195](https://github.com/bajutsu-e2e/bajutsu/pull/1195) (Unit 3: re-signing / real-device capability preflight), [#1196](https://github.com/bajutsu-e2e/bajutsu/pull/1196) (Unit 4: live-route Appium-endpoint provider, seam only), [#1197](https://github.com/bajutsu-e2e/bajutsu/pull/1197) (Unit 5: faked-boundary tests) |
+| Implementing PR | [#1192](https://github.com/bajutsu-e2e/bajutsu/pull/1192) (Unit 1: XCUITest real-device targeting), [#1193](https://github.com/bajutsu-e2e/bajutsu/pull/1193) (Unit 2: batch packaging), [#1195](https://github.com/bajutsu-e2e/bajutsu/pull/1195) (Unit 3: re-signing / real-device capability preflight), [#1196](https://github.com/bajutsu-e2e/bajutsu/pull/1196) (Unit 4: live-route Appium-endpoint provider, seam only), [#1197](https://github.com/bajutsu-e2e/bajutsu/pull/1197) (Unit 5: faked-boundary tests), [#1198](https://github.com/bajutsu-e2e/bajutsu/pull/1198) (Unit 6: iOS device-cloud how-to) |
 | Topic | Device-cloud execution |
 <!-- /BE-METADATA -->
 
@@ -109,7 +109,7 @@ the Simulator through `xcodebuild`; this item generalises target selection to a 
 - [x] Re-signing / entitlement handling (document + preflight degradation)
 - [ ] Live route: Appium-endpoint `DeviceProvider` (follow-on slice)
 - [x] Tests (faked `xcodebuild`/toolchain boundary) — real-device targeting covered by Unit 1
-- [ ] Docs (iOS device-cloud how-to; idb/simctl rationale; re-sign caveats)
+- [x] Docs (iOS device-cloud how-to; idb/simctl rationale; re-sign caveats)
 
 **Log.**
 
@@ -167,6 +167,16 @@ the Simulator through `xcodebuild`; this item generalises target selection to a 
   accessor backing the Unit 3 capability narrowing (device / simulator / omitted-block / non-iOS),
   which had been exercised only indirectly, and covered the `appium` provider's empty-endpoint branch
   (falsy but not `None`), distinct from the missing-endpoint case.
+- Unit 6 ([#1198](https://github.com/bajutsu-e2e/bajutsu/pull/1198)): added the iOS device-cloud how-to
+  (`docs/ios-device-cloud.md` + the `docs/ja/` mirror), the *Docs* unit of the breakdown. The page
+  explains why `idb`/`simctl` are structurally cloud-incompatible on a real device (Simulator-only /
+  daemon-hosting), the reusable `xcuitest.deviceType: device` core that generalises the BE-0019
+  backend's `-destination` to a real device (a locally attached one included), the batch route
+  (cross-linked to `docs/devicefarm.md` rather than duplicating its submitter machinery) and the
+  seam-only live route (the `appium` endpoint provider and why the endpoint is not yet end-to-end
+  runnable), and the real-device caveats (re-signing strips entitlements; the simctl-backed device
+  control and permission grants degrade via the preflight). Added to the mkdocs nav; documentation
+  only, no product-code change. The live-route transport remains the last open box.
 
 ## References
 
