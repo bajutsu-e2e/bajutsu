@@ -145,7 +145,12 @@ package 化）、それが両経路の再利用可能な核になります。
   が無ければ解決時に fail-closed で、未知の `kind` のガードと同型です。今回は seam のみで、endpoint を
   Appium / WebDriver プロトコルで駆動する部分は後続のトランスポート（XCUITest backend は現状 W3C WebDriver
   ではなく独自の runner チャネルを話します）に残すため、チェックは付けず、live の経路はまだ端から端まで
-  走りません。Android 環境の `ProvisionProfile` 配線は XCUITest には意図的に持ち込みません。実機の経路
+  走りません。そのトランスポートは今日の経路の上に WebDriver クライアントを重ねるだけでは実現できません。
+  udid spec はそのまま `XcuitestEnvironment` に流れ、その `_destination()` が `simctl.validated_udid` を
+  通しますが、共有の `device_id` の文字集合は URL の `/` を除くため、実際の `http(s)://` endpoint は現状
+  `DeviceError: invalid udid` を送出します。後続のスライスでは、この値を simctl / xcodebuild の udid 機構
+  ごと迂回させる必要があります（この機構は構造的に URL を運べないためです）。Android 環境の
+  `ProvisionProfile` 配線は XCUITest には意図的に持ち込みません。実機の経路
   （ユニット 1）は既に simctl の端末準備を丸ごと飛ばすため、そこでフラグを尊重しても到達しないコードに
   なるからです。合否判定の経路の外で、fake で、デバイスは不要です。
 

@@ -149,7 +149,12 @@ the Simulator through `xcodebuild`; this item generalises target selection to a 
   `endpoint` fails closed at resolution, mirroring the unknown-`kind` guard. This is the seam only:
   driving the endpoint over the Appium / WebDriver protocol is a follow-on transport (the XCUITest
   backend today speaks a bespoke runner channel, not W3C WebDriver), so the box stays unchecked and
-  the live route is not yet end-to-end runnable. The Android environment's `ProvisionProfile` wiring
+  the live route is not yet end-to-end runnable. That transport cannot merely layer a WebDriver client
+  on today's path: the udid spec flows unchanged into `XcuitestEnvironment`, whose `_destination()`
+  runs it through `simctl.validated_udid`, and the shared `device_id` charset excludes the `/` in a URL
+  — so a real `http(s)://` endpoint raises `DeviceError: invalid udid` today. The follow-on slice must
+  route this value around the simctl / xcodebuild udid machinery entirely, which structurally cannot
+  carry a URL. The Android environment's `ProvisionProfile` wiring
   was deliberately not replicated for XCUITest: the real-device path (Unit 1) already skips all simctl
   bring-up, so honoring the flags there would be unreachable. Off the verdict path; faked, no device.
 
