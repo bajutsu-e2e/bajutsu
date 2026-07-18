@@ -209,7 +209,8 @@ keeps burning macOS minutes on every silent retry.
 - [`bajutsu/drivers/xcuitest.py`](../../bajutsu/drivers/xcuitest.py): `_resolve_handle`, `_actuate`,
   `_with_retry`, and `await_ready` — the resolve/actuate seam this item hardens.
 - [`BajutsuKit/Sources/BajutsuRunner/Router.swift`](../../BajutsuKit/Sources/BajutsuRunner/Router.swift):
-  `handleTap`, which returns `stale` before actuating — the anchor for the no-double-actuation argument.
+  `handleTap` and `handleGesture`, both of which return `stale` before actuating — the anchor for the
+  no-double-actuation argument, covering `pinch` and `rotate` too.
 - [`demos/showcase/scenarios/permission.yaml`](../../demos/showcase/scenarios/permission.yaml):
   the scenario whose first tap exposed the flake.
 - [`.github/workflows/ios-e2e.yml`](../../.github/workflows/ios-e2e.yml): the `E2E (iOS)` gate this
