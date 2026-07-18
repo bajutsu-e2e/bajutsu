@@ -181,6 +181,7 @@ nav:
   - Drivers & platforms:
       - Drivers: drivers.md
       - Network: network.md
+      - iOS on a real device and device cloud: ios-device-cloud.md
   - Evidence & reporting:
       - Evidence: evidence.md
       - Reporting: reporting.md
