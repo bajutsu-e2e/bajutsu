@@ -35,12 +35,13 @@ from bajutsu.cli._shared import (
 from bajutsu.config import WEB_ENGINES, Effective, IosConfig
 from bajutsu.github import actions as github_actions
 from bajutsu.orchestrator import AlertEvent, BlockedHandler, RunResult
-from bajutsu.platform_lifecycle import environment_for
+from bajutsu.platform_lifecycle import ProvisionProfile, environment_for
 from bajutsu.report.archive import archive_run_dir
 from bajutsu.report.manifest import _run_backend
 from bajutsu.run_id import new_run_id
 from bajutsu.runner import device_pool, run_all, run_and_report, run_matrix_and_report
 from bajutsu.runner.build import BuildError, build_if_missing
+from bajutsu.runner.device_provider import acquire_device
 from bajutsu.scenario import (
     DismissAlerts,
     Scenario,
@@ -437,6 +438,9 @@ class _RunPlan:
     backends: list[str]
     udids: list[str]
     workers: int
+    # The device provider's readiness report for this run (BE-0236); the pool threads it to each
+    # environment so a cloud-provisioned device can skip its boot wait / install.
+    provision: ProvisionProfile
     on_blocked_for: Callable[[Scenario], BlockedHandler | None] | None
     baselines_dir: Path
     schemas_dir: Path
@@ -513,6 +517,7 @@ def _dispatch_single(
         log_predicate=plan.log_predicate or None,
         log_subsystem=plan.log_subsystem or _log_subsystem_default(plan.eff),
         secret_values=plan.secret_values,
+        provision=plan.provision,
     )
     try:
         return run_and_report(
@@ -569,6 +574,7 @@ def _dispatch_matrix(
             log_predicate=plan.log_predicate or None,
             log_subsystem=plan.log_subsystem or _log_subsystem_default(eff_e),
             secret_values=plan.secret_values,
+            provision=plan.provision,
         )
         try:
             return run_all(
@@ -880,60 +886,83 @@ def run(
     scenarios, description, source_name, files = _load_scenarios(eff, scenario, target_name)
     scenarios = _filter_scenarios(scenarios, tag, exclude, erase, eff.run_defaults.erase)
     actuator, backends = _select_actuator(backend, eff, engines)
-    # Web has no simctl udid: `--workers N` is N near-free BrowserContext lanes (BE-0054); for idb,
-    # `--udid` is a concrete comma list capped to the pool size. (The "booted" default is unused on
-    # web.) How a device handle resolves is the platform's, behind the Environment seam (BE-0256):
-    # Android via adb, the iOS family via simctl — no `actuator == "adb"` branch here.
-    udids, workers = _resolve_lanes(
-        actuator, udid, workers, environment_for(actuator, udid).resolve_device
-    )
-    _apply_dismiss_alerts(scenarios, dismiss_alerts)
-    on_blocked_for = _alert_guard_factory(scenarios, eff, alert_instruction)
-    # Network collection resolves `--network/--no-network` over the target's `network` config, then on
-    # (BE-0177); the resolved bool baked into mocks and the plan drives collection and `request` waits.
-    network = _resolve_network(network, eff.run_defaults.network)
-    _apply_mocks(scenarios, network)
-    baselines_dir, schemas_dir, gc = _resolve_evidence_dirs(
-        baselines, schemas, goldens, eff, files[0]
-    )
-    plan = _RunPlan(
-        eff=eff,
-        config_source=config_source,
-        target_name=target_name,
-        scenarios=scenarios,
-        description=description,
-        source_name=source_name,
-        engines=engines,
-        actuator=actuator,
-        backends=backends,
-        udids=udids,
-        workers=workers,
-        on_blocked_for=on_blocked_for,
-        baselines_dir=baselines_dir,
-        schemas_dir=schemas_dir,
-        golden_context=gc,
-        secret_bindings=secret_bindings,
-        secret_values=secret_values,
-        run_id=new_run_id(),
-        runs_dir=Path(runs_dir),
-        network=network,
-        log_predicate=log_predicate,
-        log_subsystem=log_subsystem,
-        progress=progress,
-        zip_run=zip_run,
-        evidence_store=evidence_store,
-        upload_exec=upload_exec,
-    )
-    # Install the usage/cost ledger before dispatch (BE-0196). Reporting only — emission is
-    # best-effort and off the deterministic verdict path (prime directive 1). Per-scenario `command`
-    # / `scenario` attribution is bound at the alert guard (`_alert_guard_factory`), which fires
-    # inside the runner's worker threads, so it reaches the worker under `run --workers N`.
-    _usage_ledger.configure_from_ai_config(eff.ai)
-    # Snapshot AI usage before dispatch — the alert guard is the only thing that can spend tokens,
-    # and it fires during dispatch, so `_finish` reports exactly what this run used.
-    before = _usage.snapshot()
-    results, manifest = _dispatch(plan)
-    _finish(plan, results, manifest, before)
+    # Where this target's devices come from is a seam (BE-0236): the provider `acquire` returns the
+    # udid spec the lanes resolve against (the `--udid` flag verbatim for the default local provider,
+    # a reserved serial / endpoint for a device cloud) plus what it already did to the device
+    # (`provision`). Acquired before the `try` so its release runs even on a setup-time error below;
+    # off the run/CI verdict path — no LLM, no assertion input.
+    lease = acquire_device(eff, udid)
+    try:
+        # Web has no simctl udid: `--workers N` is N near-free BrowserContext lanes (BE-0054); for
+        # idb, `--udid` is a concrete comma list capped to the pool size. (The "booted" default is
+        # unused on web.) How a device handle resolves is the platform's, behind the Environment seam
+        # (BE-0256): Android via adb, the iOS family via simctl — no `actuator == "adb"` branch here.
+        udids, workers = _resolve_lanes(
+            actuator,
+            lease.udid_spec,
+            workers,
+            environment_for(actuator, lease.udid_spec).resolve_device,
+        )
+        _apply_dismiss_alerts(scenarios, dismiss_alerts)
+        on_blocked_for = _alert_guard_factory(scenarios, eff, alert_instruction)
+        # Network collection resolves `--network/--no-network` over the target's `network` config,
+        # then on (BE-0177); the resolved bool baked into mocks and the plan drives collection and
+        # `request` waits.
+        network = _resolve_network(network, eff.run_defaults.network)
+        _apply_mocks(scenarios, network)
+        baselines_dir, schemas_dir, gc = _resolve_evidence_dirs(
+            baselines, schemas, goldens, eff, files[0]
+        )
+        plan = _RunPlan(
+            eff=eff,
+            config_source=config_source,
+            target_name=target_name,
+            scenarios=scenarios,
+            description=description,
+            source_name=source_name,
+            engines=engines,
+            actuator=actuator,
+            backends=backends,
+            udids=udids,
+            workers=workers,
+            provision=lease.provision,
+            on_blocked_for=on_blocked_for,
+            baselines_dir=baselines_dir,
+            schemas_dir=schemas_dir,
+            golden_context=gc,
+            secret_bindings=secret_bindings,
+            secret_values=secret_values,
+            run_id=new_run_id(),
+            runs_dir=Path(runs_dir),
+            network=network,
+            log_predicate=log_predicate,
+            log_subsystem=log_subsystem,
+            progress=progress,
+            zip_run=zip_run,
+            evidence_store=evidence_store,
+            upload_exec=upload_exec,
+        )
+        # Install the usage/cost ledger before dispatch (BE-0196). Reporting only — emission is
+        # best-effort and off the deterministic verdict path (prime directive 1). Per-scenario
+        # `command` / `scenario` attribution is bound at the alert guard (`_alert_guard_factory`),
+        # which fires inside the runner's worker threads, so it reaches the worker under `--workers N`.
+        _usage_ledger.configure_from_ai_config(eff.ai)
+        # Snapshot AI usage before dispatch — the alert guard is the only thing that can spend tokens,
+        # and it fires during dispatch, so `_finish` reports exactly what this run used.
+        before = _usage.snapshot()
+        results, manifest = _dispatch(plan)
+        _finish(plan, results, manifest, before)
+    finally:
+        # Hand the device back to its provider (a no-op for the local one), even on failure so a
+        # reserved cloud device is never leaked (BE-0236). Warn-only, never propagate: a provider's
+        # teardown failure must not flip or mask the machine-only verdict, the same rule the
+        # post-verdict zip/upload steps honor — a leaked device is loud on stderr, not a crash.
+        try:
+            lease.release()
+        except Exception as exc:
+            typer.echo(
+                f"warning: device release failed ({exc}); a reserved device may be leaked", err=True
+            )
 
 
 def register(app: typer.Typer) -> None:

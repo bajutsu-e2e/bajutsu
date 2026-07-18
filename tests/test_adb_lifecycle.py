@@ -12,7 +12,7 @@ import pytest
 from bajutsu import adb
 from bajutsu.config import AndroidConfig, Effective
 from bajutsu.drivers.adb import AdbDriver
-from bajutsu.platform_lifecycle import AndroidEnvironment, environment_for
+from bajutsu.platform_lifecycle import AndroidEnvironment, ProvisionProfile, environment_for
 from bajutsu.scenario import Preconditions, Redact
 
 
@@ -503,8 +503,72 @@ def test_android_environment_start_skips_pm_clear_on_overwrite() -> None:
     assert not any("pm clear" in " ".join(c) for c in calls)  # overwrite keeps app data
 
 
+def test_android_environment_start_skips_boot_wait_when_provisioned() -> None:
+    # A device provider that reports the device already booted (a cloud device handed over ready)
+    # lets start() skip the boot-readiness poll — the ProvisionProfile the lease carries, threaded to
+    # the environment (BE-0236). A locally-attached device leaves boot_ready False, so the poll runs.
+    calls: list[list[str]] = []
+    env = AndroidEnvironment(
+        "adb",
+        "S",
+        adb_run=_resolve_activity_run(calls),
+        provision=ProvisionProfile(boot_ready=True),
+    )
+    env.start(_eff(), Preconditions())
+    assert not any("getprop sys.boot_completed" in " ".join(c) for c in calls)
+
+
+def test_android_environment_start_skips_install_when_preinstalled() -> None:
+    # A provider that reports the app already installed lets start() skip the install step, so a
+    # nonexistent local appPath is never even probed (a cloud device already carries the build).
+    calls: list[list[str]] = []
+    env = AndroidEnvironment(
+        "adb",
+        "S",
+        adb_run=_resolve_activity_run(calls),
+        provision=ProvisionProfile(app_preinstalled=True),
+    )
+    env.start(_eff(app_path="/nonexistent/app.apk"), Preconditions())  # would raise if not skipped
+    assert not any("install" in " ".join(c) for c in calls)
+
+
+def test_android_environment_preinstalled_skip_still_fails_loudly_on_a_missing_app() -> None:
+    # The install-skip trusts the provider's app_preinstalled claim, but a genuinely-absent app is
+    # not silently tolerated: with nothing installed and no launcher activity, `am start` →
+    # resolve_activity raises a clean DeviceError (BE-0236). The skip never degrades to a silent pass.
+    def run(args: list[str]) -> str:
+        if "sys.boot_completed" in args:
+            return "1\n"
+        if "resolve-activity" in args:
+            return "No activity found\n"  # the app is not actually on the device
+        return ""
+
+    env = AndroidEnvironment(
+        "adb", "S", adb_run=run, provision=ProvisionProfile(app_preinstalled=True)
+    )
+    with pytest.raises(adb.DeviceError, match="no launcher activity"):
+        env.start(_eff(app_path="/nonexistent/app.apk"), Preconditions())
+
+
+def test_android_environment_default_profile_boots_and_polls() -> None:
+    # The inert default profile (a locally-attached device) preserves today's sequence: the boot poll
+    # runs. The skip is opt-in via the provider; nothing else about start() changes (BE-0236).
+    calls: list[list[str]] = []
+    env = AndroidEnvironment("adb", "S", adb_run=_resolve_activity_run(calls))
+    env.start(_eff(), Preconditions())
+    assert any("getprop sys.boot_completed" in " ".join(c) for c in calls)
+
+
 def test_environment_for_adb_returns_android_environment() -> None:
     assert isinstance(environment_for("adb", "emulator-5554"), AndroidEnvironment)
+
+
+def test_environment_for_threads_the_provision_profile() -> None:
+    # `environment_for` carries the run's ProvisionProfile onto the Android environment, so the pool's
+    # lease-time construction preserves the provider's readiness report (BE-0236).
+    env = environment_for("adb", "S", provision=ProvisionProfile(boot_ready=True))
+    assert isinstance(env, AndroidEnvironment)
+    assert env._provision == ProvisionProfile(boot_ready=True)
 
 
 def test_device_error_keeps_command_and_stderr() -> None:

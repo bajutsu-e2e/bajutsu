@@ -364,7 +364,9 @@ def test_device_pool_resolves_actuator_per_scenario_and_tears_down_its_own_env(
     down — so a stateful backend's resident runner is terminated by the instance that spawned it."""
     created: list[_RecordingEnv] = []
 
-    def fake_env_for(actuator: str, udid: str, env_run: object = None) -> _RecordingEnv:
+    def fake_env_for(
+        actuator: str, udid: str, env_run: object = None, *, provision: object = None
+    ) -> _RecordingEnv:
         env = _RecordingEnv(actuator, udid)
         created.append(env)
         return env

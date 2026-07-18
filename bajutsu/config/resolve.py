@@ -159,6 +159,7 @@ def resolve(config: Config, target: str) -> Effective:
         reserved_namespaces=list(d.reserved_namespaces),
         mock_server=a.mock_server,
         mailbox=a.mailbox,
+        device_provider=a.device_provider,
         setup=a.setup,
         capture=list(d.capture),
         redact=_merge_redact(d.redact, a.redact),

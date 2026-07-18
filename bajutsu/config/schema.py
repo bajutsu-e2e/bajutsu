@@ -90,6 +90,19 @@ class Mailbox(_Model):
     fields: dict[str, str] = Field(default_factory=dict)
 
 
+class DeviceProvider(_Model):
+    """Where a target's devices come from (`targets.<name>.deviceProvider`, BE-0236).
+
+    `kind` selects the provider adapter from the device-provider registry, defaulting to `local` — a
+    locally-attached simulator / emulator / device, exactly today's `--udid` path — so an omitted
+    block is unchanged. A device-cloud `kind` reserves a device off-host and hands the run its serial
+    / endpoint instead. Like the mailbox `kind`, an unknown value fails closed when the run resolves
+    the provider, not here: the deterministic config must not import a cloud SDK (BE-0112).
+    """
+
+    kind: str = "local"
+
+
 class XcuitestConfig(_Model):
     """Per-target XCUITest runner config (`targets.<name>.xcuitest`, BE-0019)."""
 
@@ -306,6 +319,10 @@ class TargetConfig(_Model):
     launch_server: LaunchServer | None = Field(default=None, alias="launchServer")
     deeplink_scheme: str | None = Field(default=None, alias="deeplinkScheme")
     backend: list[str] | None = None
+    # Where this target's devices come from (BE-0236). None = the built-in local provider (today's
+    # `--udid` path), so an existing target is unchanged; a device-cloud `kind` reserves a device
+    # off-host. Validated against the registry at runtime, not here (the core imports no cloud SDK).
+    device_provider: DeviceProvider | None = Field(default=None, alias="deviceProvider")
     device: str | None = None
     locale: str | None = None
     # Capability tokens this target requires of the worker that runs it (BE-0166), added to the

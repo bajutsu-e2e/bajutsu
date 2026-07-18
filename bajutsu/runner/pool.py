@@ -29,6 +29,7 @@ from bajutsu.orchestrator.evidence_rules import requested_intervals
 # `device_control` / `device_relauncher` live with the platform lifecycle now; re-exported so
 # `from bajutsu.runner import device_control, device_relauncher` keeps its import unchanged.
 from bajutsu.platform_lifecycle import (
+    ProvisionProfile,
     RunEnvironment,
     device_control,
     device_relauncher,
@@ -70,6 +71,7 @@ def device_pool(
     log_predicate: str | None = None,
     log_subsystem: str | None = None,
     secret_values: list[str] | None = None,
+    provision: ProvisionProfile | None = None,
     available: Callable[[str], bool] = default_available,
     env_run: simctl.RunFn = simctl._real_run,
     make_driver: Callable[..., base.Driver] = _make_driver,
@@ -97,6 +99,9 @@ def device_pool(
         log_predicate: An `os_log` predicate scoping captured device logs. None captures none.
         log_subsystem: The app log subsystem to capture. None captures none.
         secret_values: Raw secret values to redact from evidence.
+        provision: The device provider's readiness report (BE-0236) — a cloud device handed over
+            already booted / with the app installed lets the environment skip that setup. None (the
+            local provider's inert profile) runs the full per-platform bring-up, unchanged.
         available: Actuator-availability probe, injectable for tests.
         env_run: The subprocess runner for simctl, injectable for tests.
         make_driver: Builds a backend's driver; injectable so a test can supply a read-only
@@ -115,7 +120,9 @@ def device_pool(
     # (availability-only, no scenario) reads them off one environment; nothing below branches on the
     # actuator name.
     pool_actuator = select_actuator(backends, available)
-    pool_env: RunEnvironment = environment_for(pool_actuator, udids[0] if udids else "", env_run)
+    pool_env: RunEnvironment = environment_for(
+        pool_actuator, udids[0] if udids else "", env_run, provision=provision
+    )
     # Resolve the device model / OS once up front (static per device) so each result can name the
     # simulator it ran on in the report; best-effort, so a missing catalog just omits it. A
     # driver-observed platform (web) has no device catalog.
@@ -153,7 +160,7 @@ def device_pool(
         # narrows from "one CLI invocation" to "one scenario execution" — still exactly one actuator
         # on the leased device at any instant, never a mid-scenario swap.
         actuator = select_actuator_for_scenario(backends, scenario, available)
-        lease_env: RunEnvironment = environment_for(actuator, udid, env_run)
+        lease_env: RunEnvironment = environment_for(actuator, udid, env_run, provision=provision)
         # A same-platform, read-only provider for an evidence kind this actuator can't supply
         # (BE-0020), resolved per scenario now that the actuator is. Today `network` is covered by web
         # (native) and both iOS actuators (the app-side `BAJUTSU_COLLECTOR`), so this resolves to

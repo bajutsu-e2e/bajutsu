@@ -17,6 +17,7 @@ from bajutsu.evidence.network import Collector
 from bajutsu.orchestrator import DeviceControl, RelaunchFn
 from bajutsu.platform_lifecycle import readiness
 from bajutsu.platform_lifecycle.device_control import android_device_control
+from bajutsu.platform_lifecycle.protocols import ProvisionProfile
 from bajutsu.scenario import Preconditions, Relaunch, Scenario
 
 logger = logging.getLogger(__name__)
@@ -59,6 +60,7 @@ class AndroidEnvironment:
         adb_run: adb.RunFn = adb._real_run,
         *,
         resident_factory: Callable[[], ResidentServerLike] | None = None,
+        provision: ProvisionProfile | None = None,
     ) -> None:
         self._actuator = actuator
         self._serial = serial
@@ -66,6 +68,9 @@ class AndroidEnvironment:
         # Override the resident-server construction in tests; None uses the real, env-gated default.
         self._resident_factory = resident_factory
         self._resident: ResidentServerLike | None = None
+        # A device provider's readiness report (BE-0236); the inert default is a locally-attached
+        # device, so `start` runs the full boot wait / install unless a cloud provider says otherwise.
+        self._provision = provision or ProvisionProfile()
 
     def resolve_device(self, udid: str) -> str:
         return adb.resolve_serial(udid, self._run)
@@ -85,8 +90,16 @@ class AndroidEnvironment:
         android = require_android(eff)
         e = adb.Env(self._serial, run=self._run)
         try:
-            readiness._await_boot(e)
-            if android.app_path:
+            # A device provider that hands over an already-booted device / an already-installed build
+            # lets us skip the boot wait and the install (BE-0236); the local provider leaves both
+            # flags off, so a locally-attached device runs the full sequence exactly as before. Both
+            # skips still fail loudly if the provider's claim is wrong: a not-actually-booted device
+            # trips the very next `pm clear` / `am start`, and a genuinely-absent app has no launcher
+            # activity, so `am start` → `resolve_activity` raises a clean DeviceError — a false profile
+            # never degrades into a silent pass.
+            if not self._provision.boot_ready:
+                readiness._await_boot(e)
+            if android.app_path and not self._provision.app_preinstalled:
                 if not Path(android.app_path).exists():
                     raise adb.DeviceError(
                         f"appPath not found: {android.app_path} (build the app first)"
