@@ -9,7 +9,7 @@
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0238") |
-| Implementing PR | [#1192](https://github.com/bajutsu-e2e/bajutsu/pull/1192) (Unit 1: XCUITest real-device targeting) |
+| Implementing PR | [#1192](https://github.com/bajutsu-e2e/bajutsu/pull/1192) (Unit 1: XCUITest real-device targeting); _pending_ (Unit 2: batch packaging) |
 | Topic | Device-cloud execution |
 <!-- /BE-METADATA -->
 
@@ -105,7 +105,7 @@ the Simulator through `xcodebuild`; this item generalises target selection to a 
 > (oldest first), linking the PRs.
 
 - [x] XCUITest real-device targeting (generalise BE-0019 beyond the Simulator)
-- [ ] Batch packaging for Device Farm (XCTest / Appium-XCUITest)
+- [x] Batch packaging for Device Farm (XCTest / Appium-XCUITest)
 - [ ] Re-signing / entitlement handling (document + preflight degradation)
 - [ ] Live route: Appium-endpoint `DeviceProvider` (follow-on slice)
 - [ ] Tests (faked `xcodebuild`/toolchain boundary) — real-device targeting covered by Unit 1
@@ -119,6 +119,14 @@ the Simulator through `xcodebuild`; this item generalises target selection to a 
   simctl-only preconditions it cannot honour (erase / `appPath` install / permission grants) now
   fail loudly, deferred to Units 2–3. Faked at the `xcodebuild`/toolchain boundary; no Simulator on
   the gate.
+- Unit 2 (_pending_): generalised the *aws-device-farm-submitter* (`scripts/devicefarm_submit.py`)
+  from Android-only to also emit an iOS submission. A `platform` selects the app upload type
+  (`ANDROID_APP` / `IOS_APP`) and the per-platform run — iOS drives `bajutsu run --backend xcuitest`
+  against the reserved device's `$DEVICEFARM_DEVICE_UDID` (reusing Unit 1's real-device targeting),
+  where Android keeps `--backend adb --udid booted`. The Appium-Python custom-environment test
+  package/spec types are unchanged. Tests fake only the AWS SDK seam. The showcase iOS Device Farm
+  config and the CI workflow job wait on Unit 3 (re-signing), since a device `.ipa` cannot be built
+  unsigned.
 
 ## References
 
