@@ -91,7 +91,7 @@ Proposal altitude. The work is MECE along the units below.
 
 Log:
 
-- Web slice: added a Sync request to the demo app, `demos/web/scenarios/network.yaml` (mocked, captured `POST /api/sync` carrying a secret), a `fields: [password]` redact policy, `demos/web/network/assert_redaction.py`, the `make -C demos/web e2e-network` target, and the non-gating `network (playwright)` CI job. Android gap recorded in the workflow and `docs/architecture.md`. iOS collector real path deferred to a follow-up.
+- [#1183](https://github.com/bajutsu-e2e/bajutsu/pull/1183) — web slice: added a Sync request to the demo app, `demos/web/scenarios/network.yaml` (mocked, captured `POST /api/sync` carrying a secret), a `fields: [password]` redact policy, `demos/web/network/assert_redaction.py`, the `make -C demos/web e2e-network` target, and the non-gating `network (playwright)` CI job. Android gap recorded in the workflow and `docs/architecture.md`. iOS collector real path deferred to a follow-up.
 
 ## References
 
