@@ -99,8 +99,25 @@ attempts. The re-resolution is the condition that separates a snapshot-version r
 element is still there, from a genuine disappearance, in which the element is not, so the gate never
 taps whatever happens to match. Every handle-based actuation (`tap`, `double_tap`, `long_press`,
 `pinch`, and `rotate`) routes through the seam and so inherits the retry; the raw-coordinate
-`tap_point` carries no handle to go stale and is untouched. The attempt bound reuses the BE-0207
-backoff so the whole loop stays sub-second, and a genuinely gone element is not retried for long.
+`tap_point` carries no handle to go stale and is untouched. The attempt bound reuses BE-0207's
+`_MAX_ATTEMPTS` and `_BACKOFF_BASE_SECONDS` (three attempts, a 0.5s then 1.0s exponential backoff), so
+the whole loop stays bounded at a few seconds — not sub-second — and a genuinely gone element is not
+retried for long.
+
+The re-resolution relaxes, on the retry path alone, the backend's "act on exactly the element
+resolved" guarantee, and the proposal states the trade rather than hiding the trade. A re-resolved
+unique match proves that *an* element matches the selector, not that the match is the *same* element
+the first round-trip found: a screen that changed between the two round-trips — a dismissed modal,
+say — could make a different element the sole match for the selector, and the retry would then act on
+that different element. The trade is acceptable, and narrower than the trade first looks. Resolution
+stays on the Python side, so the invariant's purpose — keeping resolution authority out of the
+runner, where an ambiguous predicate could silently pick one of several matches — is untouched; the
+retry acts only on a *unique* Python-side match, never one of several; and re-resolving at the moment
+of acting is exactly what idb does, since idb resolves and taps in one step, so the retry brings
+XCUITest's stale handling into line with the other backends rather than inventing a looser rule. A
+stricter variant — re-actuate only when the re-resolved element also matches the original element's
+identity attributes, not the selector alone — stays open to `implement-be` should the selector-only
+match prove too permissive.
 
 **Unit 2 — Preserve determinism, and never double-actuate.** A re-issued tap after a `stale` reply is
 safe in a way a re-issued tap after a *timeout* is not — the distinction BE-0218 turned on. The runner
@@ -145,9 +162,11 @@ re-resolution retry closes the race regardless of how long the screen takes to s
 
 **Move resolution into the runner, collapsing the two round-trips.** Letting the runner resolve the
 selector at actuation time would remove the snapshot gap, but resolution on the Python side is the
-backend's core invariant: the driver acts on exactly the element the driver resolved, never a
-re-resolved predicate that could match a different element. Moving resolution into the runner would
-trade the stale-race for the ambiguity the deterministic core exists to prevent.
+backend's core invariant: resolution authority stays in Python, never in a runner-side predicate that
+could match one of several elements. The stale retry re-resolves on the Python side and only on a
+unique match (the trade *Detailed design* states in full), so the retry keeps that authority in
+Python; moving resolution into the runner would surrender the authority, trading the stale-race for
+the ambiguity the deterministic core exists to prevent.
 
 **Quarantine or job-retry the check in CI.** Marking `xcuitest (multi-touch)` allowed-to-fail, or
 wrapping the job in a retry, would turn the check green without touching the race — the same reasons
