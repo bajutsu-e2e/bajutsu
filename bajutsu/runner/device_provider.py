@@ -7,8 +7,9 @@ device (booted it, installed the app), and a `release` to hand the device back. 
 the mailbox transport registry (BE-0186): the built-in `local` provider passes the `--udid` string
 through unchanged (today's locally-attached path, byte-for-byte), and an unknown `kind` fails closed
 when the run resolves it. The seam sits upstream of the device pool and entirely off the run/CI
-verdict path — no LLM, no assertion input (prime directive 1). This ships only the `local` reference
-provider; a device-cloud adapter registers its own `kind` (a sibling item), never a branch here.
+verdict path — no LLM, no assertion input (prime directive 1). It ships the `local` reference provider
+and the `appium` live path (a reserved iOS device behind an Appium / WebDriver endpoint, BE-0238); a
+further device-cloud adapter registers its own `kind` (a sibling item), never a branch here.
 """
 
 from __future__ import annotations
@@ -60,6 +61,31 @@ class _LocalProvider:
         return DeviceLease(udid_spec=requested_udid, provision=ProvisionProfile())
 
 
+class _AppiumProvider:
+    """The built-in `appium` provider: the live path to a reserved iOS device (BE-0238 Unit 4).
+
+    A cloud (or a self-hosted grid) already holds an iOS device behind a fixed Appium / WebDriver
+    endpoint, so this provider hands that endpoint over as the udid spec — the address the run's
+    XCUITest / Appium path drives, in place of a simctl udid. The device is a live remote one Bajutsu
+    never boots or installs onto through simctl, so the profile reports it booted with its build
+    already in place; the reservation is the grid's, not this run's, so there is nothing to release.
+    The endpoint is required — a missing one fails closed at resolution, never a silent fall back to a
+    local device. Driving the endpoint over WebDriver is a follow-up transport (this ships the seam).
+    """
+
+    def acquire(self, eff: Effective, requested_udid: str) -> DeviceLease:
+        endpoint = eff.device_provider.endpoint if eff.device_provider is not None else None
+        if not endpoint:
+            raise ValueError(
+                "device provider 'appium' requires an endpoint "
+                "(targets.<name>.deviceProvider.endpoint)"
+            )
+        return DeviceLease(
+            udid_spec=endpoint,
+            provision=ProvisionProfile(boot_ready=True, app_preinstalled=True),
+        )
+
+
 _PROVIDERS: dict[str, DeviceProvider] = {}
 
 
@@ -69,8 +95,9 @@ def register(kind: str, provider: DeviceProvider) -> None:
 
 
 def _ensure_builtins() -> None:
-    """Register the built-in `local` provider on first use (`setdefault` leaves a test override intact)."""
+    """Register the built-in providers on first use (`setdefault` leaves a test override intact)."""
     _PROVIDERS.setdefault("local", _LocalProvider())
+    _PROVIDERS.setdefault("appium", _AppiumProvider())
 
 
 def acquire_device(eff: Effective, requested_udid: str) -> DeviceLease:
