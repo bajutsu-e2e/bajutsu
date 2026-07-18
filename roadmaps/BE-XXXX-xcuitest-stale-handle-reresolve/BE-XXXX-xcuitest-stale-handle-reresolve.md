@@ -195,5 +195,3 @@ keeps burning macOS minutes on every silent retry.
   the scenario whose first tap exposed the flake.
 - [`.github/workflows/ios-e2e.yml`](../../.github/workflows/ios-e2e.yml): the `E2E (iOS)` gate this
   item stabilizes.
-</content>
-</invoke>
