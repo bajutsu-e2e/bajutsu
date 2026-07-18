@@ -744,3 +744,53 @@ def test_main_package_only_renders_an_ios_spec_via_platform_and_app_alias(tmp_pa
     spec = (out.parent / "testspec.yml").read_text(encoding="utf-8")
     assert "--backend xcuitest" in spec
     assert "$DEVICEFARM_DEVICE_UDID" in spec
+
+
+def test_main_still_accepts_the_legacy_app_apk_flag(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # `--app-apk` is the pre-iOS spelling that `.github/workflows/devicefarm.yml` still invokes; the
+    # `--app` rename keeps it as an alias. Drive the submit path (not --package-only) so a regression
+    # that dropped the alias would surface as argparse rejecting a required arg here, and assert the
+    # path it resolves to is forwarded to the upload. The AWS SDK seam is faked (the only mock point).
+    import scripts.devicefarm_submit as mod
+
+    config = tmp_path / "c.yaml"
+    config.write_text("targets: {}")
+    apk = tmp_path / "app.apk"
+    apk.write_bytes(b"apk")
+    captured: dict[str, Any] = {}
+
+    def _fake_submit(*_args: Any, app_apk: Path, **_kwargs: Any) -> Verdict:
+        captured["app_apk"] = app_apk
+        return Verdict(ok=True, passed=1, total=1)
+
+    monkeypatch.setattr(mod, "submit_and_collect", _fake_submit)
+    monkeypatch.setattr(mod, "_devicefarm_client", lambda: object())
+    monkeypatch.setattr(mod, "_HttpTransfer", lambda: object())
+
+    exit_code = main(
+        [
+            "--scenario",
+            "scenarios/smoke.yaml",
+            "--target",
+            "showcase-compose",
+            "--config",
+            "c.yaml",
+            "--app-apk",
+            str(apk),
+            "--package",
+            f"{config}=c.yaml",
+            "--out",
+            str(tmp_path / "package.zip"),
+            "--project-arn",
+            "arn:project/1",
+            "--device-pool-arn",
+            "arn:pool/1",
+            "--dest",
+            str(tmp_path / "out"),
+        ]
+    )
+
+    assert exit_code == 0
+    assert captured["app_apk"] == apk

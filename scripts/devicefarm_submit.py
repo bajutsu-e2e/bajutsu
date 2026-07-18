@@ -46,14 +46,15 @@ import yaml
 _HARD_CAP_SECONDS = 150 * 60
 _POLL_INTERVAL_SECONDS = 30
 
+Platform = Literal["android", "ios"]
+
 # boto3 Device Farm upload types. The test package and spec use the Appium-Python
 # custom-environment types on both platforms; only the app artifact differs — an Android APK
-# (`.aab` is not accepted) or an iOS `.ipa`.
-_APP_UPLOAD_TYPE = {"android": "ANDROID_APP", "ios": "IOS_APP"}
+# (`.aab` is not accepted) or an iOS `.ipa`. Keying by `Platform` lets `mypy --strict` catch a
+# missing or misspelt platform key here rather than silently widening to `dict[str, str]`.
+_APP_UPLOAD_TYPE: dict[Platform, str] = {"android": "ANDROID_APP", "ios": "IOS_APP"}
 _UPLOAD_TEST_PACKAGE = "APPIUM_PYTHON_TEST_PACKAGE"
 _UPLOAD_TEST_SPEC = "APPIUM_PYTHON_TEST_SPEC"
-
-Platform = Literal["android", "ios"]
 
 
 @dataclass(frozen=True)

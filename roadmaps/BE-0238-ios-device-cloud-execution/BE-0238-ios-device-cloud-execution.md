@@ -123,7 +123,7 @@ the Simulator through `xcodebuild`; this item generalises target selection to a 
   from Android-only to also emit an iOS submission. A `platform` selects the app upload type
   (`ANDROID_APP` / `IOS_APP`) and the per-platform run — iOS drives `bajutsu run --backend xcuitest`
   against the reserved device's `$DEVICEFARM_DEVICE_UDID` (reusing Unit 1's real-device targeting),
-  where Android keeps `--backend adb --udid booted`. The Appium-Python custom-environment test
+  whereas Android keeps `--backend adb --udid booted`. The Appium-Python custom-environment test
   package/spec types are unchanged. Tests fake only the AWS SDK seam. The showcase iOS Device Farm
   config and the CI workflow job wait on Unit 3 (re-signing), since a device `.ipa` cannot be built
   unsigned.
