@@ -129,6 +129,13 @@ def test_run_warns_and_keeps_its_verdict_when_release_raises(
 
     dp.register("raising", _RaisingReleaseProvider())
 
+    # Lane resolution runs `environment_for(actuator, ...).resolve_device`, which the fake backend
+    # inherits from the device environment — it shells to `xcrun simctl`. That binary is absent on
+    # the Linux gate, so an unstubbed call raises FileNotFoundError and the run would exit 1 for the
+    # wrong reason. Stub it (as the zero-config run test does) so no simctl/adb touches the gate; the
+    # release path — the code under test — is untouched.
+    monkeypatch.setattr("bajutsu.simctl.resolve_udid", lambda _udid, run=None: "FAKE-UDID")
+
     # Dispatch returns one passing scenario so `_finish` emits PASS and exits 0 before the `finally`
     # invokes the raising release — no device is touched.
     from bajutsu.orchestrator.types import RunResult
