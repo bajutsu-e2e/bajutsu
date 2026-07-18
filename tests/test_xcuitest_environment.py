@@ -117,3 +117,35 @@ def test_start_on_a_real_device_targets_the_device_and_skips_simctl(
 
     assert f"platform=iOS,id={_DEVICE_UDID}" in captured["argv"]
     assert simctl_calls == []  # a real device is never touched through simctl
+
+
+# --- the live-route boundary: an Appium endpoint is not yet a drivable udid (BE-0238 Unit 4) --- #
+
+
+def test_appium_endpoint_is_rejected_by_the_udid_machinery() -> None:
+    # Unit 4 shipped the `appium` DeviceProvider as a seam only: it hands a run the reserved device's
+    # Appium / WebDriver endpoint as the udid spec, but that value flows unchanged into `_destination`,
+    # whose `validated_udid` applies the shared device_id policy — and a URL's `//` is outside that
+    # charset. So a real `http(s)://` endpoint raises `invalid udid` today: the documented reason the
+    # live route is not yet end-to-end runnable, since the follow-on transport must route the endpoint
+    # around the simctl / xcodebuild udid machinery, which structurally cannot carry a URL. Pin the
+    # boundary here — when that transport lands, this test breaks visibly and is the cue to update it.
+    with pytest.raises(simctl.DeviceError, match="invalid udid"):
+        _destination("device", "http://grid.local:4723")
+
+
+def test_appium_lease_endpoint_reaches_the_udid_machinery_unchanged() -> None:
+    # Tie the seam to the boundary above: the endpoint the `appium` provider yields is exactly the
+    # value that reaches `_destination` as the udid — the run resolves its lanes against `udid_spec` —
+    # so the live route fails closed the same way today, never a silent fall back to a local device.
+    from bajutsu.config import load_config, resolve
+    from bajutsu.runner import device_provider as dp
+
+    cfg = load_config(
+        "targets:\n  s:\n    bundleId: com.x\n    xcuitest:\n      deviceType: device\n"
+        "    deviceProvider:\n      kind: appium\n      endpoint: http://grid.local:4723\n"
+    )
+    lease = dp.acquire_device(resolve(cfg, "s"), "booted")
+    assert lease.udid_spec == "http://grid.local:4723"  # the endpoint, not the --udid flag
+    with pytest.raises(simctl.DeviceError, match="invalid udid"):
+        _destination("device", lease.udid_spec)

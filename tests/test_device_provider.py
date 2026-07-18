@@ -82,6 +82,16 @@ def test_appium_provider_requires_an_endpoint() -> None:
         dp.acquire_device(_eff(device_provider=DeviceProvider(kind="appium")), "booted")
 
 
+def test_appium_provider_rejects_an_empty_endpoint() -> None:
+    # An empty endpoint is falsy but not `None`, so it exercises a distinct branch from the missing
+    # one above; it is just as much a config error, so it fails closed the same way rather than
+    # yielding a run with no address to drive.
+    with pytest.raises(ValueError, match="device provider 'appium' requires an endpoint"):
+        dp.acquire_device(
+            _eff(device_provider=DeviceProvider(kind="appium", endpoint="")), "booted"
+        )
+
+
 def test_registry_is_a_real_extension_point() -> None:
     """Register a fake cloud provider, resolve it, then remove it (global registry)."""
 
