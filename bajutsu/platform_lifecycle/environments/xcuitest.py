@@ -1,4 +1,5 @@
-"""The XCUITest lifecycle: simctl device prep then a resident runner on the Simulator (BE-0019).
+"""The XCUITest lifecycle: simctl device prep then a resident runner on the Simulator, or the same
+runner without simctl prep on a real device (BE-0019, real-device targeting BE-0238).
 
 This module also isolates the `.xctestrun` packaging helpers (`_patch_xctestrun_env`) and their
 `plistlib` / `tempfile` / `shlex` imports, which only XCUITest needs, out of the environment modules
@@ -43,8 +44,20 @@ def _allocate_port() -> int:
 _RUNNER_STARTUP_TIMEOUT = 120.0
 
 
+def _destination(device_type: str, udid: str) -> str:
+    """Build the `xcodebuild -destination` for a Simulator or a real device (BE-0238).
+
+    Both run the same `test-without-building`; only the platform differs — the Simulator's
+    `iOS Simulator` vs a real device's `iOS`. `validated_udid` applies the shared device_id policy
+    (chiefly: an id never leads with `-`, which xcodebuild would read as an option) to either id.
+    """
+    platform = "iOS" if device_type == "device" else "iOS Simulator"
+    return f"platform={platform},id={simctl.validated_udid(udid)}"
+
+
 class XcuitestEnvironment(_DeviceEnvironment):
-    """The XCUITest lifecycle: simctl device prep then a resident runner on the Simulator (BE-0019).
+    """The XCUITest lifecycle: simctl device prep then a resident runner on the Simulator, or the
+    same runner without simctl prep on a real device (BE-0019, real-device targeting BE-0238).
 
     The simctl sequence (erase / boot / install) is the same as idb. The difference is how the app is
     driven: instead of launching the app via simctl and actuating via idb CLI, we start an
@@ -69,26 +82,51 @@ class XcuitestEnvironment(_DeviceEnvironment):
         permissions: Mapping[str, str] | None = None,
     ) -> base.Driver:
         ios = require_ios(eff)
-        e = simctl.Env(self._udid, run=self._run)
-        try:
+        xcfg = ios.xcuitest
+        device_type = xcfg.device_type if xcfg is not None else "simulator"
+
+        if device_type == "device":
+            # A real device is not managed through simctl: it is already powered on, its build is
+            # installed out of band, and `simctl privacy` cannot reach it. The simctl-only
+            # preconditions it cannot honour fail loudly here (real-device install / permissions
+            # are BE-0238 Unit 2/3) rather than silently no-op'ing — determinism first.
             if pre.erase:
-                e.shutdown()
-                e.erase()
-            e.boot()
+                raise simctl.DeviceError(
+                    "erase is a simctl operation and does not apply to a real device "
+                    "(xcuitest.deviceType: device)"
+                )
             if ios.app_path:
-                if not Path(ios.app_path).exists():
-                    raise simctl.DeviceError(
-                        f"appPath not found: {ios.app_path} (build the app first)"
-                    )
-                if pre.reinstall == "clean" and not pre.erase:
-                    e.uninstall(ios.bundle_id)
-                e.install(ios.app_path)
-            # Set permission state after install (a fresh install/erase resets TCC grants) but
-            # before the runner launches the app, so a permission prompt never blocks it (BE-0276).
+                raise simctl.DeviceError(
+                    "installing appPath through simctl does not apply to a real device "
+                    "(xcuitest.deviceType: device); install the app and its device-build test "
+                    "runner out of band"
+                )
             if permissions:
-                e.apply_permissions(ios.bundle_id, permissions)
-        except subprocess.CalledProcessError as exc:
-            raise simctl.device_error(exc) from exc
+                raise simctl.DeviceError(
+                    "permission grants use simctl and do not apply to a real device "
+                    "(xcuitest.deviceType: device)"
+                )
+        else:
+            e = simctl.Env(self._udid, run=self._run)
+            try:
+                if pre.erase:
+                    e.shutdown()
+                    e.erase()
+                e.boot()
+                if ios.app_path:
+                    if not Path(ios.app_path).exists():
+                        raise simctl.DeviceError(
+                            f"appPath not found: {ios.app_path} (build the app first)"
+                        )
+                    if pre.reinstall == "clean" and not pre.erase:
+                        e.uninstall(ios.bundle_id)
+                    e.install(ios.app_path)
+                # Set permission state after install (a fresh install/erase resets TCC grants) but
+                # before the runner launches the app, so a prompt never blocks it (BE-0276).
+                if permissions:
+                    e.apply_permissions(ios.bundle_id, permissions)
+            except subprocess.CalledProcessError as exc:
+                raise simctl.device_error(exc) from exc
 
         # The runner launches the app via XCUIApplication.launch(). Preconditions are forwarded
         # through env vars: the runner reads BAJUTSU_LAUNCH_ENV_* and sets them on
@@ -101,7 +139,6 @@ class XcuitestEnvironment(_DeviceEnvironment):
         locale = pre.locale or eff.locale
         launch_args = [*eff.launch_args, *pre.launch_args, *simctl.locale_args(locale)]
 
-        xcfg = ios.xcuitest
         if xcfg is None or xcfg.test_runner is None:
             raise simctl.DeviceError(
                 "xcuitest backend requires xcuitest.testRunner in the target config"
@@ -142,10 +179,9 @@ class XcuitestEnvironment(_DeviceEnvironment):
                     "-xctestrun",
                     str(self._patched_runner),
                     "-destination",
-                    # Validate the udid inline before it lands on the xcodebuild command line
-                    # (belt-and-suspenders: `simctl.Env(self._udid)` above already raised on a bad
-                    # id) — the same defense-in-depth the simctl/idb argv builders apply.
-                    f"platform=iOS Simulator,id={simctl.validated_udid(self._udid)}",
+                    # Simulator vs real device (BE-0238); `_destination` validates the udid inline
+                    # before it lands on the argv, the same defense-in-depth simctl/idb apply.
+                    _destination(device_type, self._udid),
                 ],
                 env={**os.environ, **forwarded},
                 stdout=subprocess.DEVNULL,

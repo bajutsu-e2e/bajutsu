@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0238](BE-0238-ios-device-cloud-execution.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Proposal** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0238") |
+| Implementing PR | [#1192](https://github.com/bajutsu-e2e/bajutsu/pull/1192) (Unit 1: XCUITest real-device targeting) |
 | Topic | Device-cloud execution |
 <!-- /BE-METADATA -->
 
@@ -103,12 +104,21 @@ the Simulator through `xcodebuild`; this item generalises target selection to a 
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] XCUITest real-device targeting (generalise BE-0019 beyond the Simulator)
+- [x] XCUITest real-device targeting (generalise BE-0019 beyond the Simulator)
 - [ ] Batch packaging for Device Farm (XCTest / Appium-XCUITest)
 - [ ] Re-signing / entitlement handling (document + preflight degradation)
 - [ ] Live route: Appium-endpoint `DeviceProvider` (follow-on slice)
-- [ ] Tests (faked `xcodebuild`/toolchain boundary)
+- [ ] Tests (faked `xcodebuild`/toolchain boundary) — real-device targeting covered by Unit 1
 - [ ] Docs (iOS device-cloud how-to; idb/simctl rationale; re-sign caveats)
+
+**Log.**
+
+- Unit 1 ([#1192](https://github.com/bajutsu-e2e/bajutsu/pull/1192)): added `xcuitest.deviceType` (`simulator` default / `device`) and generalised
+  the XCUITest environment's `-destination` to `platform=iOS` for a real device, sharing the same
+  `xcodebuild test-without-building` driving layer. A real device skips simctl device-prep; the
+  simctl-only preconditions it cannot honour (erase / `appPath` install / permission grants) now
+  fail loudly, deferred to Units 2–3. Faked at the `xcodebuild`/toolchain boundary; no Simulator on
+  the gate.
 
 ## References
 
