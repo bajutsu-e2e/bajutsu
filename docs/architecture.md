@@ -417,6 +417,15 @@ device (the shared device is reseeded via one channel, so parallel workers would
   `make check` gate as CI (the `web-e2e` job in `ci.yml`), confirming the deterministic core is
   platform-neutral. Rich-end web capture (network / video / multi-touch) has since shipped
   (BE-0054); a parallel web crawl across N browser processes ([BE-0077](../roadmaps/BE-0077-parallel-web-crawl/BE-0077-parallel-web-crawl.md)) runs on this same gate.
+- The real network path — `page.route` interception, `requestfinished` capture, the `mocked`
+  provenance flag, and redaction of really-captured evidence — is driven against a real browser by
+  the non-gating `network (playwright)` job (`web-e2e.yml`; [BE-0282](../roadmaps/BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md)),
+  which runs `demos/web/scenarios/network.yaml` **with network on** and then asserts the persisted
+  `network.json` masks a captured secret. It lands as signal first, to be promoted to required once
+  stable. The iOS half (wiring `network_mock.yaml` / `network_live.yaml` as a Simulator job) is not
+  yet done; **Android has no network capture at all** — the adb driver declares no `NETWORK`
+  capability and there is no native network monitor to actuate, so that lane is out of scope pending
+  such a monitor, a deliberate boundary rather than an oversight.
 
 ### Validated on an Android emulator (Linux, no Mac)
 

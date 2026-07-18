@@ -8,13 +8,15 @@ Bajutsu の **Playwright** backend（[BE-0041](../../roadmaps/BE-0041-web-playwr
 
 | パス | 役割 |
 |---|---|
-| `app/index.html` | テスト対象アプリ。onboarding → login → counter に加え、ハンドオフデモ用のデバイス検証フロー。素の JS、安定した `data-testid` の id |
+| `app/index.html` | テスト対象アプリ。onboarding → login → counter、`/api/sync` へ POST する Sync ボタン（ネットワークレーンのリクエスト）、加えてハンドオフデモ用のデバイス検証フロー。素の JS、安定した `data-testid` の id |
 | `scenarios/smoke.yaml` | 決定論的なスモークシナリオ（iOS デモと同じ step/expect スキーマ） |
+| `scenarios/network.yaml` | ネットワークスモーク（[BE-0282](../../roadmaps/BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md)）。モックされ、キャプチャされる `POST /api/sync` が秘密情報を運びます。`network` タグを付けてあるので、既定の `e2e`（`--no-network`）はこれを除外します |
+| `network/assert_redaction.py` | 永続化された `network.json` が Sync リクエストの秘密情報をマスクしていることを確認します。run の文法ではアサートできない redaction のギャップを塞ぎます |
 | `record/goals.txt` | `make -C demos/web record` が記述の起点にする自然言語ゴール |
 | `record/record_offline.py` | `record` のオフライン版（API キー不要）。同じループを keyword agent と FakeDriver で回す |
 | `record/record_handoff_offline.py` | human-in-the-loop ハンドオフデモのオフライン版（キー不要）。実際の一時停止・再開を、台本化したエージェントと応答者で回す |
 | `demo.config.yaml` | `targets.web`（`baseUrl` ＋ `scenarios` ＋ `backend: [web]`、`bundleId` なし） |
-| `Makefile` | `web-deps` / `app-serve` / `e2e` / `record` / `record-handoff` / `record-offline` / `record-handoff-offline` |
+| `Makefile` | `web-deps` / `app-serve` / `e2e` / `e2e-network` / `record` / `record-handoff` / `record-offline` / `record-handoff-offline` |
 
 ## 実行
 
@@ -25,6 +27,18 @@ make -C demos/web e2e
 web backend をインストールし（`uv sync --extra web` ＋ `playwright install chromium`）、`app/` を `127.0.0.1:8787` で配信し、スモークシナリオを Playwright backend で実行して、サーバを後始末します。実行は完全に決定論的で、合否はシナリオの機械アサーション（カウンタが `2` を示す）だけから決まり、LLM は関与しません。
 
 手で触る（または Web UI を向ける）には、`make -C demos/web app-serve` を実行し <http://127.0.0.1:8787/index.html> を開きます。
+
+## ネットワークスモーク（BE-0282）
+
+上の既定の `e2e` は `--no-network` で実行するので、実ネットワーク経路を一度も動かしません。ネットワークスモークはその逆で、page.route の介入、`requestfinished` のキャプチャ、`mocked` の来歴フラグ、そして実際にキャプチャした証拠の redaction を動かします。
+
+```bash
+make -C demos/web e2e-network
+```
+
+`app/` を配信し、**Sync account** ボタン（`Authorization` ヘッダと `password` ボディフィールドを運ぶ実際の `POST /api/sync`）をタップして、`network` タグの付いた [`scenarios/network.yaml`](scenarios/network.yaml) を **network を有効にして** 実行します。[`mocks:`](scenarios/network.yaml) のエントリがその POST に `201` で応答するので（実サーバがあれば `404` を返すはずです）、status `201` でキャプチャされた exchange は、ネットワークではなくモックが応答したことの証拠になります。シナリオの `request` アサーションが決定論的な介入・キャプチャの確認で、続いて [`network/assert_redaction.py`](network/assert_redaction.py) が永続化された `network.json` を読み、exchange が `mocked` で `201`、かつ両方の秘密情報がマスクされていなければ失敗します。どこにも LLM はありません。合否はそのアサーションとチェックだけです。
+
+このレーンは [BE-0282](../../roadmaps/BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md) の web 側です。CI ではゲート対象外の `network (playwright)` ジョブとして走ります（まずシグナルとして着地させ、安定を確認してから必須に昇格させます）。**Android には対応物がありません**。adb ドライバは `NETWORK` capability を宣言せず、アクチュエーションの対象になるネイティブのネットワークモニタもないため、Android のネットワークキャプチャはそのモニタが整うまでスコープ外です。これは見落としではなく、意図した境界です。
 
 ## 記録（record）
 
