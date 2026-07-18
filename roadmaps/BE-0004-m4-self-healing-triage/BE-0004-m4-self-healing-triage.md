@@ -35,4 +35,4 @@ Competitors auto-correct during a run; Bajutsu deliberately rejects implicit in-
 
 ## References
 
-[DESIGN §3.1 / §12](../../DESIGN.md), [reporting.md](../../docs/reporting.md), `bajutsu/triage.py`, [Self-healing triage](../README.md#self-healing-triage)
+[DESIGN §3.1 / §12](../../DESIGN.md), [reporting.md](../../docs/reporting.md), `bajutsu/triage.py`, [Self-healing triage](https://bajutsu-e2e.github.io/bajutsu/api/roadmap.html) (roadmap dashboard)

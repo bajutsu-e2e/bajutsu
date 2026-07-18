@@ -7,10 +7,14 @@ Every ``roadmaps/<category>/BE-NNNN-<slug>/`` item already carries the metadata 
 directory — the shared index never needs a hand-edit, removing the single largest merge-conflict
 source (BE-0043). The hand-written section prose outside the markers is preserved untouched.
 
-The index has four top-level buckets, ordered most-progressed first — Implemented / In progress /
-Proposals / Deferred — and each item's bucket is **derived from its ``Status``** (BE-0078), not a
-hand-set ``Track`` field. Inside a bucket, ``Topic`` is the secondary grouping; a topic that has
-items in more than one bucket appears once per bucket, each as its own marked section.
+Every item's bucket is **derived from its ``Status``** (BE-0078), not a hand-set ``Track`` field:
+Implemented / In progress / Proposals / Deferred, most-progressed first. Only the latter three
+render as index-page tables — ``INDEX_BUCKETS`` below. The live roadmap dashboard
+(``scripts/build_roadmap_dashboard.py``, published to GitHub Pages) already lists every Implemented
+item grouped by Topic, so the index page tracks what's still open instead of duplicating that list;
+``BUCKETS`` keeps the full four-way mapping because the dashboard groups by all of them, Implemented
+included. Inside a rendered bucket, ``Topic`` is the secondary grouping; a topic that has items in
+more than one bucket appears once per bucket, each as its own marked section.
 
 Usage::
 
@@ -19,7 +23,7 @@ Usage::
 
 The generated regions are bounded by ``<!-- GENERATED:<key> -->`` /
 ``<!-- /GENERATED:<key> -->`` markers; a section's key is ``<bucket-key>-<topic-key>`` (see
-``BUCKETS`` / ``TOPICS``), and only ``(bucket, topic)`` pairs that actually have an item get a
+``INDEX_BUCKETS`` / ``TOPICS``), and only ``(bucket, topic)`` pairs that actually have an item get a
 section — so adding the first item of a topic to a bucket needs a new marker pair in the page.
 """
 
@@ -126,13 +130,19 @@ STATUS_TO_BUCKET = {
     "Proposal (deferred)": "Deferred",
 }
 # Buckets in page order (most-progressed first), each with the key fragment its sections' markers
-# use. A section key is ``<bucket-key>-<topic-key>``.
+# use. A section key is ``<bucket-key>-<topic-key>``. Kept as the full four-way mapping because
+# ``build_roadmap_dashboard.py`` (which imports ``BUCKETS`` directly) classifies every item,
+# Implemented included.
 BUCKETS: tuple[tuple[str, str], ...] = (
     ("Implemented", "implemented"),
     ("In progress", "in-progress"),
     ("Proposals", "proposals"),
     ("Deferred", "deferred"),
 )
+# The buckets actually rendered as tables on the index page. Implemented is excluded: the roadmap
+# dashboard already lists every shipped item by Topic, so the index page covers only what's still
+# open.
+INDEX_BUCKETS: tuple[tuple[str, str], ...] = tuple(b for b in BUCKETS if b[0] != "Implemented")
 # Every topic, in the order it appears inside a bucket, with its marker key fragment and whether it
 # carries an Origin column. A topic with items in more than one bucket is rendered once per bucket.
 # Topics are feature-focused: they name what a group of items *does*, never a delivery phase (the
@@ -203,12 +213,14 @@ def sections_for(items: list[Item]) -> list[Section]:
 
     Only ``(bucket, topic)`` pairs that actually have an item get a section — so the first item of
     a topic to reach a bucket needs a new marker pair in the page (``replace_region`` will say so),
-    and an emptied section drops out rather than rendering a header with no rows.
+    and an emptied section drops out rather than rendering a header with no rows. Iterates
+    ``INDEX_BUCKETS``, not ``BUCKETS``, so an Implemented item never gets an index-page section — it
+    ships off the page (bound for the dashboard) as soon as its ``Status`` says so.
     """
     present = {(item.bucket, item.topic) for item in items}
     return [
         Section(f"{bucket_key}-{topic_key}", bucket_name, topic, has_origin)
-        for bucket_name, bucket_key in BUCKETS
+        for bucket_name, bucket_key in INDEX_BUCKETS
         for topic, topic_key, has_origin in TOPICS
         if (bucket_name, topic) in present
     ]
@@ -371,11 +383,17 @@ def load_items(roadmap: Path) -> list[Item]:
 
 
 def assign_sections(items: list[Item]) -> dict[str, list[Item]]:
-    """Group items by section key (bucket + topic)."""
+    """Group items by section key (bucket + topic).
+
+    An item whose bucket has no rendered section (Implemented — see ``INDEX_BUCKETS``) is skipped:
+    it has nowhere on the index page to go.
+    """
     sections = sections_for(items)
     by_key: dict[str, list[Item]] = {s.key: [] for s in sections}
     index = {(s.bucket, s.topic): s for s in sections}
     for item in items:
+        if (item.bucket, item.topic) not in index:
+            continue
         by_key[index[(item.bucket, item.topic)].key].append(item)
     return by_key
 
@@ -440,7 +458,8 @@ def required_section_keys(roadmap: Path) -> dict[str, str]:
     Scans **every** item directory — placeholders (``BE-XXXX``) included, unlike ``load_items``,
     which the index render skips. This is what closes the gap that let the missing-section failure
     reach ``main``: a placeholder that introduces a topic into a bucket needs that section to exist
-    *before* the ``roadmap-id`` automation numbers it and the reindex tries to fill the region.
+    *before* the ``roadmap-id`` automation numbers it and the reindex tries to fill the region. An
+    Implemented item needs no section at all — that bucket never renders on the index page.
     """
     required: dict[str, str] = {}
     for d in iter_item_dirs(roadmap):
@@ -451,7 +470,10 @@ def required_section_keys(roadmap: Path) -> dict[str, str]:
                 f"{d.name}: unknown Topic {topic!r}; add it to TOPICS (with a key) so it "
                 "maps to a section"
             )
-        key = f"{BUCKET_KEY_BY_NAME[bucket(fields['Status'])]}-{TOPIC_KEY_BY_NAME[topic]}"
+        item_bucket = bucket(fields["Status"])
+        if item_bucket == "Implemented":
+            continue
+        key = f"{BUCKET_KEY_BY_NAME[item_bucket]}-{TOPIC_KEY_BY_NAME[topic]}"
         required.setdefault(key, d.name)
     return required
 

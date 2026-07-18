@@ -106,6 +106,55 @@ def test_bucket_derives_index_section_from_status() -> None:
     assert bri.bucket("Proposal (deferred)") == "Deferred"
 
 
+def test_index_buckets_excludes_implemented() -> None:
+    # Implemented stays a valid classification bucket in BUCKETS (bucket() and the dashboard both
+    # need it), but it never renders as an index-page table — the dashboard covers it instead.
+    assert dict(bri.BUCKETS)["Implemented"] == "implemented"
+    assert "Implemented" not in dict(bri.INDEX_BUCKETS)
+
+
+def test_sections_for_skips_implemented_items() -> None:
+    items = [
+        bri.Item(
+            id="BE-0001",
+            slug="shipped",
+            bucket="Implemented",
+            topic="Verification & coverage",
+            by_lang={},
+        ),
+        bri.Item(
+            id="BE-0002",
+            slug="open",
+            bucket="Proposals",
+            topic="Verification & coverage",
+            by_lang={},
+        ),
+    ]
+    assert [s.bucket for s in bri.sections_for(items)] == ["Proposals"]
+
+
+def test_assign_sections_drops_implemented_items() -> None:
+    items = [
+        bri.Item(
+            id="BE-0001",
+            slug="shipped",
+            bucket="Implemented",
+            topic="Verification & coverage",
+            by_lang={},
+        ),
+        bri.Item(
+            id="BE-0002",
+            slug="open",
+            bucket="Proposals",
+            topic="Verification & coverage",
+            by_lang={},
+        ),
+    ]
+    by_key = bri.assign_sections(items)
+    assert sum(len(rows) for rows in by_key.values()) == 1
+    assert by_key["proposals-verification"][0].id == "BE-0002"
+
+
 def test_status_display_english() -> None:
     assert bri.status_display("Implemented", "en") == "Implemented"
     assert bri.status_display("In progress", "en") == "In progress"
@@ -241,6 +290,45 @@ def test_every_item_topic_has_a_marked_section() -> None:
     roadmap = Path(__file__).resolve().parent.parent / "roadmaps"
     missing = bri.missing_section_markers(roadmap)
     assert missing == [], "\n".join(missing)
+
+
+_IMPLEMENTED_ITEM = """\
+**English** · [日本語](BE-0999-foo-ja.md)
+
+# BE-0999 — Foo
+
+<!-- BE-METADATA -->
+| Field | Value |
+|---|---|
+| Proposal | [BE-0999](BE-0999-foo.md) |
+| Status | **Implemented** |
+| Topic | codegen coverage |
+<!-- /BE-METADATA -->
+
+## Introduction
+"""
+
+
+def test_required_section_keys_skips_implemented_items(tmp_path: Path) -> None:
+    """An Implemented item needs no marked section — that bucket never renders on the index page."""
+    roadmap = tmp_path / "roadmaps"
+    item = roadmap / "BE-0999-foo"
+    item.mkdir(parents=True)
+    (item / "BE-0999-foo.md").write_text(_IMPLEMENTED_ITEM, encoding="utf-8")
+
+    assert bri.required_section_keys(roadmap) == {}
+
+
+def test_missing_section_markers_ignores_implemented_items(tmp_path: Path) -> None:
+    """No section markers exist anywhere, yet an Implemented item alone reports nothing missing."""
+    roadmap = tmp_path / "roadmaps"
+    item = roadmap / "BE-0999-foo"
+    item.mkdir(parents=True)
+    (item / "BE-0999-foo.md").write_text(_IMPLEMENTED_ITEM, encoding="utf-8")
+    for index_file in ("README.md", "README-ja.md"):
+        (roadmap / index_file).write_text("## Implemented\n", encoding="utf-8")
+
+    assert bri.missing_section_markers(roadmap) == []
 
 
 _PLACEHOLDER_ITEM = """\
