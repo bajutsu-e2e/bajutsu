@@ -414,7 +414,7 @@ device (the shared device is reseeded via one channel, so parallel workers would
   `idb_companion` by running the showcase scenarios, evidence capture, and the triage self-heal
   loop on-device (`make -C demos/showcase run-swiftui`; the `ios-e2e.yml` CI workflow also exercises the idb smoke path).
 - `back` and device control (`setLocation` / clipboard / `push`) on the idb backend, exercised
-  on-device. The `ios-e2e.yml` `actuation (idb)` job runs it per PR
+  on-device. The `ios-e2e.yml` `actuation (idb)` job runs both per PR
   ([BE-0281](../roadmaps/BE-0281-ios-on-device-actuation-coverage/BE-0281-ios-on-device-actuation-coverage.md)).
 - The XCUITest backend's resident runner — element resolution by snapshot handle, semantic tap, and
   the `pinch`/`rotate` multi-touch gestures idb cannot run — confirmed on-device via the `ios-e2e.yml`
