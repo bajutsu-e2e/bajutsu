@@ -239,10 +239,12 @@ class XcuitestDriver:
     # Beyond idb: a semantic tap (by handle, no coordinates), native condition waiting, and the
     # two-finger gestures idb raises UnsupportedAction for. No NETWORK — network evidence comes from
     # the app-side collector (BE-0020 boundary), not the actuator. The whole device-control family
-    # (`DEVICE_CONTROL_ALL`) because xcuitest shares the iOS Simulator lifecycle, which wires a real
-    # simctl-backed `DeviceControl` for its runs too (BE-0128; per-operation tokens since BE-0212).
-    # A class constant so the preflight (BE-0082) reads it via backends.capabilities_for without
-    # constructing a driver.
+    # (`DEVICE_CONTROL_ALL`) and the permission grants because xcuitest shares the iOS Simulator
+    # lifecycle, which wires a real simctl-backed `DeviceControl` for its runs too (BE-0128;
+    # per-operation tokens since BE-0212). This is the *static* set; a real device (`deviceType:
+    # device`) drops the simctl-backed capabilities at run time via `backends.capabilities_for_run`,
+    # since simctl reaches only the Simulator (BE-0238). A class constant so the preflight (BE-0082)
+    # reads it via backends.capabilities_for without constructing a driver.
     CAPABILITIES = (
         frozenset(
             {

@@ -12,7 +12,7 @@ from bajutsu import simctl as _simctl
 from bajutsu.agents import availability as ai_availability
 from bajutsu.ai import credential_gap
 from bajutsu.backends import (
-    capabilities_for,
+    capabilities_for_run,
     resolve_actuators,
     select_actuator,
     select_actuator_for_scenario,
@@ -31,11 +31,13 @@ from bajutsu.drivers import base
 from bajutsu.scenario import load_scenario_file
 
 
-def check_scenarios(scenario_path: Path, actuator: str) -> list[str]:
-    """Check every scenario in *scenario_path* against the backend's capabilities.
+def check_scenarios(scenario_path: Path, capabilities: frozenset[str]) -> list[str]:
+    """Check every scenario in *scenario_path* against a backend capability set.
 
-    Returns one reason per unsupported construct, prefixed with the scenario name. Pure: no
-    device needed — the capability set is a static class constant.
+    Returns one reason per unsupported construct, prefixed with the scenario name. Pure: no device
+    needed. The caller passes the *run-narrowed* set (`capabilities_for_run`), so `doctor` reports the
+    same verdict `run` would — a real iOS device drops the simctl-backed capabilities rather than
+    reporting a `setLocation` scenario as supported (BE-0238).
 
     Note:
         This is a best-effort pre-check on the raw scenario tree. ``use`` components and
@@ -49,10 +51,11 @@ def check_scenarios(scenario_path: Path, actuator: str) -> list[str]:
     """
     text = scenario_path.read_text(encoding="utf-8")
     scenarios = load_scenario_file(text).scenarios
-    caps = capabilities_for(actuator)
     reasons: list[str] = []
     for sc in scenarios:
-        reasons.extend(f"[{sc.name}] {r}" for r in capability_preflight.unsupported(sc, caps))
+        reasons.extend(
+            f"[{sc.name}] {r}" for r in capability_preflight.unsupported(sc, capabilities)
+        )
     return reasons
 
 
@@ -74,10 +77,16 @@ def actuator_resolution_summary(eff: Effective, backends: list[str]) -> list[str
     scenarios_dir = Path(eff.evidence_dirs.scenarios)
     if not scenarios_dir.is_dir():
         return []
+
+    # Narrow per actuator to the run's device target (BE-0238): on a real iOS device the resolver
+    # sees the same reduced set `run` does, so it doesn't route a simctl-only scenario to xcuitest.
+    def caps(actuator: str) -> frozenset[str]:
+        return capabilities_for_run(actuator, eff)
+
     tally: dict[str, list[str]] = {}
     for path in sorted(scenarios_dir.glob("*.yaml")):
         for sc in load_scenario_file(path.read_text(encoding="utf-8")).scenarios:
-            actuator = select_actuator_for_scenario(backends, sc)
+            actuator = select_actuator_for_scenario(backends, sc, caps=caps)
             tally.setdefault(actuator, []).append(sc.name)
     if not tally:
         return []
@@ -127,7 +136,7 @@ def doctor(
         if not scenario_path.is_file():
             typer.echo(f"scenario not found: {scenario}")
             raise typer.Exit(2)
-        cap_reasons = check_scenarios(scenario_path, actuator)
+        cap_reasons = check_scenarios(scenario_path, capabilities_for_run(actuator, eff))
         if cap_reasons:
             cap_failed = True
             typer.echo("capability preflight:")
