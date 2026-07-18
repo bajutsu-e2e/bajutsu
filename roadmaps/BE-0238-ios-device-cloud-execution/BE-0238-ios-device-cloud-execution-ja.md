@@ -116,7 +116,7 @@ package 化）、それが両経路の再利用可能な核になります。
   不要です。
 - ユニット 2（[#1193](https://github.com/bajutsu-e2e/bajutsu/pull/1193)）：*aws-device-farm-submitter*（`scripts/devicefarm_submit.py`）を Android 専用から
   iOS の投入にも対応させました。`platform` がアプリのアップロード種別（`ANDROID_APP` / `IOS_APP`）と
-  プラットフォームごとの実行方法を選びます。iOS は Device Farm が公開する予約端末の
+  プラットフォームごとの実行方法を選びます。iOS は Device Farm が公開する予約済みのデバイスの
   `$DEVICEFARM_DEVICE_UDID` に対して `bajutsu run --backend xcuitest` を走らせ（ユニット 1 の実機
   ターゲティングを再利用）、Android は従来どおり `--backend adb --udid booted` を使います。Appium-Python の
   カスタム環境向けテストパッケージとスペックの種別は変更していません。テストは AWS SDK の境界だけを
