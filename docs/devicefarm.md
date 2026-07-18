@@ -38,8 +38,31 @@ Device Farm change does not silently break the flow.
 - **Per-Appium-command timeout.** Device Farm's per-command Appium timeout does not apply to the
   raw-adb path Bajutsu uses; the 150-minute execution cap is the effective bound.
 
-iOS on Device Farm's custom mode carries extra constraints and is tracked separately (the
-*ios-device-cloud-execution* sibling item), not here.
+iOS on Device Farm runs on real devices, which adds the two constraints in
+[iOS: re-signing and real-device capabilities](#ios-re-signing-and-real-device-capabilities) below.
+
+## iOS: re-signing and real-device capabilities
+
+This shift to a real device changes two things Bajutsu accounts for up front (BE-0238). Both are
+properties of a physical device rather than of Device Farm's classification, so they hold for any
+real iOS device the XCUITest backend drives (`xcuitest.deviceType: device`) — Device Farm or a
+locally attached device.
+
+- **Re-signing strips entitlements.** Device Farm re-signs the uploaded `.ipa` with its own
+  provisioning profile so it installs on the reserved device, and the re-sign drops the entitlements
+  the new profile does not carry — commonly Push (`aps-environment`) and App Groups
+  (`com.apple.security.application-groups`). An app feature that depends on a dropped entitlement
+  (remote-push registration, an App-Group shared container) does not work under the re-signed build,
+  so a scenario that asserts on such a feature should expect the re-signed behavior, not the App
+  Store one.
+- **simctl device control and permissions do not apply.** Bajutsu's iOS device control
+  (`setLocation`, the clipboard steps, `push`, `clearKeychain`, `background` / `foreground`, and the
+  status-bar overrides) and its permission grants are all backed by `simctl`, which reaches only the
+  Simulator — never a physical device. On a real device the XCUITest backend therefore advertises
+  neither, and a scenario that uses one is **skipped by the preflight** (BE-0082) before any device
+  work, with a clear reason, rather than failing late with a `simctl` error mid-run. The on-device
+  capabilities the XCTest runner drives itself — query, elements, screenshots, taps, and two-finger
+  gestures — are unaffected.
 
 ## The test spec
 

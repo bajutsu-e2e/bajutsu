@@ -18,6 +18,7 @@ from bajutsu.config.accessors import (
     require_web,
     web_base_url,
     web_engine,
+    xcuitest_targets_real_device,
 )
 from bajutsu.config.effective import (
     AiConfig,
@@ -84,4 +85,5 @@ __all__ = [
     "resolve",
     "web_base_url",
     "web_engine",
+    "xcuitest_targets_real_device",
 ]

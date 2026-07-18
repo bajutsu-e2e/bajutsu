@@ -839,30 +839,60 @@ def test_current_screen_fake_backend_queries_the_driver(monkeypatch: pytest.Monk
 def test_check_scenarios_flags_an_unsupported_construct(tmp_path: Path) -> None:
     # A pinch needs multiTouch, which idb (single-touch) lacks — check_scenarios reports it, purely,
     # with no device: the capability set is a static class constant.
+    from bajutsu.backends import capabilities_for
     from bajutsu.cli.commands.doctor import check_scenarios
 
     scn = tmp_path / "pinch.yaml"
     scn.write_text(
         "- name: zoom\n  steps:\n    - pinch: { sel: { id: map }, scale: 2.0 }\n", encoding="utf-8"
     )
-    reasons = check_scenarios(scn, "idb")
+    reasons = check_scenarios(scn, capabilities_for("idb"))
     assert len(reasons) == 1
     assert "[zoom]" in reasons[0] and "multiTouch" in reasons[0]
 
 
 def test_check_scenarios_passes_a_supported_scenario(tmp_path: Path) -> None:
+    from bajutsu.backends import capabilities_for
     from bajutsu.cli.commands.doctor import check_scenarios
 
     scn = tmp_path / "ok.yaml"
     scn.write_text("- name: t\n  steps:\n    - tap: { id: home.title }\n", encoding="utf-8")
-    assert check_scenarios(scn, "fake") == []  # the fake backend can perform every gated construct
+    # the fake backend can perform every gated construct
+    assert check_scenarios(scn, capabilities_for("fake")) == []
 
 
 def test_check_scenarios_missing_file_raises(tmp_path: Path) -> None:
+    from bajutsu.backends import capabilities_for
     from bajutsu.cli.commands.doctor import check_scenarios
 
     with pytest.raises(FileNotFoundError):
-        check_scenarios(tmp_path / "nope.yaml", "fake")
+        check_scenarios(tmp_path / "nope.yaml", capabilities_for("fake"))
+
+
+def test_check_scenarios_narrows_on_a_real_ios_device(tmp_path: Path) -> None:
+    # BE-0238 Unit 3: doctor's capability check runs against the run-narrowed capabilities, so a real
+    # iOS device (xcuitest.deviceType: device) reports a setLocation scenario as unsupported — the
+    # same simctl-backed capability the run preflight drops — instead of the stale "supported" the
+    # static set gives. Guards doctor against the drift this item's motivation calls out.
+    from bajutsu.backends import capabilities_for_run
+    from bajutsu.cli.commands.doctor import check_scenarios
+
+    scn = tmp_path / "loc.yaml"
+    scn.write_text(
+        "- name: here\n  steps:\n    - setLocation: { lat: 1.0, lon: 2.0 }\n", encoding="utf-8"
+    )
+    dev = resolve(
+        load_config(
+            "targets: { demo: { bundleId: com.x,"
+            " xcuitest: { deviceType: device, testRunner: Runner.xctestrun } } }"
+        ),
+        "demo",
+    )
+    sim = resolve(load_config("targets: { demo: { bundleId: com.x } }"), "demo")
+    reasons = check_scenarios(scn, capabilities_for_run("xcuitest", dev))
+    assert len(reasons) == 1 and "setLocation" in reasons[0]
+    # The Simulator keeps the simctl-backed capability, so the same scenario is supported there.
+    assert check_scenarios(scn, capabilities_for_run("xcuitest", sim)) == []
 
 
 def test_claude_readiness_reachable_with_a_credential(monkeypatch: pytest.MonkeyPatch) -> None:

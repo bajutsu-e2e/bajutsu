@@ -9,7 +9,7 @@
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0238") |
-| Implementing PR | [#1192](https://github.com/bajutsu-e2e/bajutsu/pull/1192) (Unit 1: XCUITest real-device targeting), [#1193](https://github.com/bajutsu-e2e/bajutsu/pull/1193) (Unit 2: batch packaging) |
+| Implementing PR | [#1192](https://github.com/bajutsu-e2e/bajutsu/pull/1192) (Unit 1: XCUITest real-device targeting), [#1193](https://github.com/bajutsu-e2e/bajutsu/pull/1193) (Unit 2: batch packaging), [#1195](https://github.com/bajutsu-e2e/bajutsu/pull/1195) (Unit 3: re-signing / real-device capability preflight) |
 | Topic | Device-cloud execution |
 <!-- /BE-METADATA -->
 
@@ -106,7 +106,7 @@ the Simulator through `xcodebuild`; this item generalises target selection to a 
 
 - [x] XCUITest real-device targeting (generalise BE-0019 beyond the Simulator)
 - [x] Batch packaging for Device Farm (submitter integration)
-- [ ] Re-signing / entitlement handling (document + preflight degradation)
+- [x] Re-signing / entitlement handling (document + preflight degradation)
 - [ ] Live route: Appium-endpoint `DeviceProvider` (follow-on slice)
 - [ ] Tests (faked `xcodebuild`/toolchain boundary) — real-device targeting covered by Unit 1
 - [ ] Docs (iOS device-cloud how-to; idb/simctl rationale; re-sign caveats)
@@ -130,6 +130,17 @@ the Simulator through `xcodebuild`; this item generalises target selection to a 
   the change is confined to `render_test_spec` and the CLI plumbing (backend, `--udid`, upload type).
   Tests fake only the AWS SDK seam. The showcase iOS Device Farm config and the CI workflow job wait on
   Unit 3 (re-signing), since a device `.ipa` cannot be built unsigned.
+- Unit 3 ([#1195](https://github.com/bajutsu-e2e/bajutsu/pull/1195)): taught the preflight that a real iOS device
+  (`xcuitest.deviceType: device`) loses the simctl-backed capabilities. A new
+  `backends.capabilities_for_run(actuator, eff)` narrows the static XCUITest set — dropping the whole
+  `DeviceControl` family and the simctl-privacy permission grants, which reach only the Simulator — so a
+  scenario that uses device control or a permission grant is skipped up front (BE-0082) with a clear
+  reason instead of failing late with a `simctl` error, the preflight counterpart of Unit 1's loud
+  runtime fail. Documented the Device Farm re-sign in `docs/devicefarm.md` (both languages): it strips
+  entitlements (Push / App Groups), so an app feature depending on one behaves as re-signed, and the
+  simctl-backed steps are skipped on a real device. The showcase iOS Device Farm config and the CI
+  workflow job still await device-signing infrastructure (an unsigned device `.ipa` cannot be built),
+  so they remain a follow-on.
 
 ## References
 
