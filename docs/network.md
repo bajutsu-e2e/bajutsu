@@ -115,4 +115,5 @@ It is inert unless `BAJUTSU_COLLECTOR` is set, captures `URLSession` HTTP(S) onl
 **Android** — link [BajutsuAndroid](../BajutsuAndroid/README.md), call `BajutsuNet.configure(env)` at
 launch (with the launch-env map), and add `BajutsuNet.interceptor()` to the app's `OkHttpClient`. It
 is inert unless `BAJUTSU_COLLECTOR` is set, captures **OkHttp** HTTP(S) only, and is likewise
-**test/debug-only**.
+**test/debug-only** (it records headers/bodies — keep it out of release and use `redact`, the same
+caveat as iOS above).

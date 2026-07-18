@@ -64,7 +64,18 @@ object BajutsuNet {
         val request = chain.request()
         val url = collectorUrl ?: return@Interceptor chain.proceed(request) // not observing
         val startedAt = System.currentTimeMillis()
-        val response = chain.proceed(request)
+        val response =
+            try {
+                chain.proceed(request)
+            } catch (e: IOException) {
+                // The exchange failed at the transport layer (timeout, connection refused, DNS). iOS
+                // reports these too (via didCompleteWithError, status absent), so a `request` assertion
+                // and network.json see the attempt rather than nothing. Report, then rethrow so the
+                // app's own call fails exactly as it would have without the interceptor.
+                runCatching { reportFailure(url, request, System.currentTimeMillis() - startedAt) }
+                    .onFailure { Log.w(TAG, "failed to report failed exchange to the collector", it) }
+                throw e
+            }
         // report() reads the response body (peekBody) and builds JSON — real I/O that can throw (a
         // truncated body, a JSONException). An interceptor that throws fails the app's own call even
         // though the network response was fine, so a report failure must never escape this lambda.
@@ -74,21 +85,38 @@ object BajutsuNet {
     }
 
     private fun report(url: String, request: Request, response: Response, durationMs: Long) {
-        // Field names / shape mirror NetworkExchange (bajutsu/network.py); startedAt is omitted, as on
-        // iOS — the collector timestamps arrival itself.
-        val payload = JSONObject()
-            .put("method", request.method)
-            .put("url", request.url.toString())
-            .put("path", request.url.encodedPath) // path only (no query), for matching
-            .put("status", response.code)
-            .put("durationMs", durationMs.toDouble())
-            .put("requestHeaders", headersJson(request.headers))
-            .put("responseHeaders", headersJson(response.headers))
-        requestBody(request)?.let { payload.put("requestBody", it) }
+        val payload =
+            basePayload(request, durationMs)
+                .put("status", response.code)
+                .put("responseHeaders", headersJson(response.headers))
         // peekBody clones up to the limit without consuming the stream the caller still reads.
         response.peekBody(BODY_PEEK_LIMIT).string().takeIf { it.isNotEmpty() }
             ?.let { payload.put("responseBody", it) }
+        post(url, payload)
+    }
 
+    private fun reportFailure(url: String, request: Request, durationMs: Long) {
+        // No response reached the interceptor, so status/responseHeaders/responseBody are absent —
+        // NetworkExchange accepts a null status, matching iOS's failed-exchange report.
+        post(url, basePayload(request, durationMs))
+    }
+
+    // The request-side payload common to a completed and a failed exchange. Field names / shape mirror
+    // NetworkExchange (bajutsu/evidence/network.py); startedAt is omitted, as on iOS — the collector
+    // timestamps arrival itself.
+    private fun basePayload(request: Request, durationMs: Long): JSONObject {
+        val payload =
+            JSONObject()
+                .put("method", request.method)
+                .put("url", request.url.toString())
+                .put("path", request.url.encodedPath) // path only (no query), for matching
+                .put("durationMs", durationMs.toDouble())
+                .put("requestHeaders", headersJson(request.headers))
+        requestBody(request)?.let { payload.put("requestBody", it) }
+        return payload
+    }
+
+    private fun post(url: String, payload: JSONObject) {
         val post = Request.Builder()
             .url(url)
             .post(payload.toString().toRequestBody(JSON))

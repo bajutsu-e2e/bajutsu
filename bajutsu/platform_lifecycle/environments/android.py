@@ -183,7 +183,16 @@ class AndroidEnvironment:
         # back to the host with `adb reverse` — the injected BAJUTSU_COLLECTOR URL then resolves
         # on-device unchanged (BE-0283). The reverse-direction twin of the resident server's
         # forward_cmd (host → device); here the device reaches out to the host.
-        self._run(adb.reverse_cmd(self._serial, port))
+        try:
+            self._run(adb.reverse_cmd(self._serial, port))
+        except subprocess.CalledProcessError as exc:
+            raise adb.device_error(exc) from exc
+        except OSError as exc:
+            # adb itself could not be run — surface a clean DeviceError, as start() does above,
+            # rather than let a raw OSError escape lease().
+            raise adb.DeviceError(
+                f"could not run adb ({exc}); is Android platform-tools installed and on PATH?"
+            ) from exc
 
         def remove() -> None:
             # Best-effort teardown: a failed remove (the device already gone) must not mask the
@@ -193,7 +202,7 @@ class AndroidEnvironment:
             try:
                 self._run(adb.reverse_remove_cmd(self._serial, port))
             except (subprocess.CalledProcessError, OSError) as exc:
-                logger.debug("adb reverse --remove failed for port %d: %s", port, exc)
+                logger.warning("adb reverse --remove failed for port %d: %s", port, exc)
 
         return remove
 

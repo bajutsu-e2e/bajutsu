@@ -101,6 +101,11 @@ completed exchange to the collector as JSON matching bajutsu's `NetworkExchange`
 client so the report is never itself intercepted. OkHttp is a `compileOnly` dependency here — the app
 brings its own version.
 
+**Test/debug only.** The interceptor records headers and bodies; gate the `configure` call behind a
+debug flag (as shown above) and configure bajutsu's `redact` to mask secrets in the written evidence
+(`network.json`) — the same caveat [BajutsuKit's Safety note](../BajutsuKit/README.md#safety) states
+for iOS.
+
 ## Coverage
 
 Clipboard set / get / clear on the app's primary clip. `get` reads the first clip item coerced to

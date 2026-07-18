@@ -102,6 +102,11 @@ val client = OkHttpClient.Builder()
 インターセプトされないよう、送信には別のクライアントを使います。OkHttp はここでは `compileOnly` の依存
 なので、バージョンは対象アプリが持ち込みます。
 
+**テスト/デバッグ専用です。** インターセプタはヘッダとボディを記録します。`configure` の呼び出しは
+（上記のように）デバッグフラグで守り、bajutsu の `redact` を設定して、`network.json` に書き出す証跡
+から機密情報を隠してください。iOS 向けに [BajutsuKit の Safety note](../BajutsuKit/README.md#safety)
+が述べているのと同じ注意点です。
+
 ## 対応範囲
 
 アプリのプライマリクリップに対する set / get / clear です。`get` は先頭のクリップ項目をテキストに

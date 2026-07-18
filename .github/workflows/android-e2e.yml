@@ -303,6 +303,8 @@ jobs:
   # tap, wait status), so — like the visual job — the resident server is not built (dump suffices).
   network:
     name: network (adb)
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     # A cold AVD boot + the Compose build + one network scenario is ~12min; 25 catches a real hang.
     timeout-minutes: 25

@@ -116,4 +116,5 @@ mocks:
 **Android** — [BajutsuAndroid](../../BajutsuAndroid/README.md) をリンクし、起動時に
 `BajutsuNet.configure(env)` を（起動環境変数のマップとともに）呼び、アプリの `OkHttpClient` に
 `BajutsuNet.interceptor()` を足します。これも `BAJUTSU_COLLECTOR` が設定されていなければ何もせず、
-**OkHttp** の HTTP(S) のみを捕捉し、同じく**テスト/デバッグ専用**です。
+**OkHttp** の HTTP(S) のみを捕捉し、同じく**テスト/デバッグ専用**です（iOS と同様にヘッダとボディを
+記録するので、リリースには含めず `redact` を使ってください）。
