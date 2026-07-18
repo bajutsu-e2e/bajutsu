@@ -9,7 +9,7 @@
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0238") |
-| 実装 PR | [#1192](https://github.com/bajutsu-e2e/bajutsu/pull/1192)（ユニット 1: XCUITest 実機ターゲティング） |
+| 実装 PR | [#1192](https://github.com/bajutsu-e2e/bajutsu/pull/1192)（ユニット 1: XCUITest 実機ターゲティング）、[#1193](https://github.com/bajutsu-e2e/bajutsu/pull/1193)（ユニット 2: batch package 化） |
 | トピック | デバイスクラウド実行 |
 <!-- /BE-METADATA -->
 
@@ -100,7 +100,7 @@ package 化）、それが両経路の再利用可能な核になります。
 > ともに記録します。
 
 - [x] XCUITest の実機ターゲティング（BE-0019 を Simulator の先へ一般化）
-- [ ] Device Farm 向けの batch package 化（XCTest / Appium-XCUITest）
+- [x] Device Farm 向けの batch package 化（submitter への統合）
 - [ ] 再署名と entitlement の扱い（記述 + preflight の縮退）
 - [ ] live の経路：Appium endpoint の `DeviceProvider`（後続の slice）
 - [ ] テスト（`xcodebuild` とツールチェインの境界を fake に）— 実機ターゲティングはユニット 1 で担保
@@ -114,6 +114,18 @@ package 化）、それが両経路の再利用可能な核になります。
   成立しない simctl 依存の前提条件（erase / `appPath` インストール / 権限付与）は明示的に失敗させ、
   ユニット 2〜3 に先送りします。`xcodebuild` とツールチェインの境界を fake にし、ゲートに Simulator は
   不要です。
+- ユニット 2（[#1193](https://github.com/bajutsu-e2e/bajutsu/pull/1193)）：*aws-device-farm-submitter*（`scripts/devicefarm_submit.py`）を Android 専用から
+  iOS の投入にも対応させました。`platform` がアプリのアップロード種別（`ANDROID_APP` / `IOS_APP`）と
+  プラットフォームごとの実行方法を選びます。iOS は Device Farm が公開する予約済みのデバイスの
+  `$DEVICEFARM_DEVICE_UDID` に対して `bajutsu run --backend xcuitest` を走らせ（ユニット 1 の実機
+  ターゲティングを再利用）、Android は従来どおり `--backend adb --udid booted` を使います。Appium-Python の
+  カスタム環境向けテストパッケージとスペックの種別は変更していません。XCTest / Appium-XCUITest の
+  バンドルを別に作るのではなく、Bajutsu のシナリオ実行をすでに担っている既存の Appium-Python カスタム
+  環境パッケージをあえて再利用し、iOS の実行だけをそこに通す方針です。そのため `build_package` には
+  手を入れず、変更は `render_test_spec` と CLI 側の配線（backend、`--udid`、アップロード種別）に
+  限られます。テストは AWS SDK の境界だけを fake にします。showcase の iOS 用 Device Farm 設定と
+  CI ワークフローのジョブは、実機向けの `.ipa` を署名なしにはビルドできないため、ユニット 3（再署名）を
+  待ちます。
 
 ## 参考
 

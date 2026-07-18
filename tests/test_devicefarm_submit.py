@@ -124,6 +124,53 @@ def test_test_spec_rejects_an_empty_scenario_list() -> None:
         render_test_spec([], target="t", config="c.yaml")
 
 
+def test_android_is_the_default_platform_running_over_adb_against_booted() -> None:
+    # The pre-iOS behavior is the default: no platform argument runs the adb backend against the
+    # host's single reserved device (serial `booted`).
+    spec = render_test_spec(["s.yaml"], target="t", config="c.yaml")
+    test_cmds = yaml.safe_load(spec)["phases"]["test"]["commands"]
+    assert all("--backend adb" in c for c in test_cmds)
+    assert all("--udid booted" in c for c in test_cmds)
+
+
+# ---------------------------------------------------------------------------
+# render_test_spec — iOS (XCUITest backend against the reserved real device)
+# ---------------------------------------------------------------------------
+
+
+def test_ios_test_spec_runs_bajutsu_over_xcuitest_for_each_scenario() -> None:
+    # iOS reuses the same custom-environment machinery but drives the XCUITest backend (BE-0019,
+    # generalized to a real device in Unit 1) rather than adb — one `bajutsu run` per scenario.
+    spec = render_test_spec(
+        ["a.yaml", "b.yaml"], target="showcase-swiftui", config="c.yaml", platform="ios"
+    )
+    test_cmds = yaml.safe_load(spec)["phases"]["test"]["commands"]
+    runs = [c for c in test_cmds if "bajutsu" in c and " run " in c]
+    assert len(runs) == 2
+    assert all("--backend xcuitest" in c for c in runs)
+    assert not any("--backend adb" in c for c in runs)
+    assert any("a.yaml" in c for c in runs)
+    assert any("b.yaml" in c for c in runs)
+
+
+def test_ios_test_spec_targets_the_device_farm_device_udid() -> None:
+    # A real-device cloud has no `booted` alias; Device Farm exposes the reserved device's UDID as
+    # $DEVICEFARM_DEVICE_UDID, which the XCUITest backend validates at run time.
+    spec = render_test_spec(["s.yaml"], target="t", config="c.yaml", platform="ios")
+    test_cmds = yaml.safe_load(spec)["phases"]["test"]["commands"]
+    assert all("$DEVICEFARM_DEVICE_UDID" in c for c in test_cmds)
+    assert not any("--udid booted" in c for c in test_cmds)
+
+
+def test_ios_test_spec_probe_is_not_adb() -> None:
+    # The visibility probe proves the reserved device is reachable; on iOS there is no adb, so it
+    # lists devices through the Xcode toolchain instead.
+    spec = render_test_spec(["s.yaml"], target="t", config="c.yaml", platform="ios")
+    pre = " ".join(yaml.safe_load(spec)["phases"]["pre_test"]["commands"])
+    assert "adb devices" not in pre
+    assert "xctrace list devices" in pre
+
+
 # ---------------------------------------------------------------------------
 # The Device Farm config (Device Farm pre-installs the app, so the config carries no appPath)
 # ---------------------------------------------------------------------------
@@ -433,10 +480,12 @@ class _FakeClient:
         self.run_status = run_status
         self.upload_message = upload_message
         self.scheduled: dict[str, Any] | None = None
+        self.upload_types: list[str] = []
         self._n = 0
 
     def create_upload(self, *, projectArn: str, name: str, type: str) -> dict[str, Any]:  # noqa: N803 - boto3 kwargs
         self._n += 1
+        self.upload_types.append(type)
         return {"upload": {"arn": f"arn:upload/{self._n}/{name}", "url": f"https://s3/{name}"}}
 
     def get_upload(self, *, arn: str) -> dict[str, Any]:
@@ -495,7 +544,13 @@ class _FakeTransfer:
         return _zip_bytes({"runs/20260714-120000/manifest.json": manifest})
 
 
-def _submit(client: _FakeClient, transfer: _FakeTransfer, tmp_path: Path) -> Verdict:
+def _submit(
+    client: _FakeClient,
+    transfer: _FakeTransfer,
+    tmp_path: Path,
+    *,
+    app_upload_type: str = "ANDROID_APP",
+) -> Verdict:
     package = tmp_path / "package.zip"
     package.write_bytes(b"zip")
     spec = tmp_path / "testspec.yml"
@@ -507,10 +562,11 @@ def _submit(client: _FakeClient, transfer: _FakeTransfer, tmp_path: Path) -> Ver
         transfer,
         project_arn="arn:project/1",
         device_pool_arn="arn:pool/1",
-        app_apk=apk,
+        app_path=apk,
         package_zip=package,
         spec_yaml=spec,
         dest=tmp_path / "out",
+        app_upload_type=app_upload_type,
         sleep=lambda _: None,
     )
 
@@ -528,6 +584,21 @@ def test_submit_and_collect_uploads_schedules_and_returns_the_manifest_verdict(
     assert client.scheduled is not None
     assert verdict.ok
     assert verdict.passed == 1
+
+
+def test_submit_and_collect_uploads_the_android_app_type_by_default(tmp_path: Path) -> None:
+    # The app is uploaded first; its type defaults to the Android APK type when unspecified.
+    client = _FakeClient()
+    _submit(client, _FakeTransfer(), tmp_path)
+    assert client.upload_types[0] == "ANDROID_APP"
+
+
+def test_submit_and_collect_uploads_the_ios_app_type_when_requested(tmp_path: Path) -> None:
+    # An iOS submission uploads the app as an .ipa; Device Farm rejects an ANDROID_APP .ipa, so the
+    # app upload type must switch with the platform.
+    client = _FakeClient()
+    _submit(client, _FakeTransfer(), tmp_path, app_upload_type="IOS_APP")
+    assert client.upload_types[0] == "IOS_APP"
 
 
 def test_submit_and_collect_reports_bajutsus_verdict_not_device_farms(tmp_path: Path) -> None:
@@ -640,3 +711,91 @@ def test_main_package_only_builds_from_source_arcname_entries(tmp_path: Path) ->
     assert "scenarios/smoke.yaml" in names
     # A root requirements.txt is synthesized so the package clears Device Farm's validation.
     assert "requirements.txt" in names
+
+
+def test_main_package_only_renders_an_ios_spec_via_platform_and_app_alias(tmp_path: Path) -> None:
+    # `--platform ios` renders an XCUITest spec, and `--app` is the platform-neutral alias for
+    # `--app-apk` (the app is an .ipa on iOS, not an APK).
+    config = tmp_path / "c.yaml"
+    config.write_text("targets: {}")
+    out = tmp_path / "package.zip"
+
+    exit_code = main(
+        [
+            "--scenario",
+            "scenarios/smoke.yaml",
+            "--target",
+            "showcase-swiftui",
+            "--config",
+            "c.yaml",
+            "--app",
+            str(tmp_path / "app.ipa"),
+            "--package",
+            f"{config}=c.yaml",
+            "--out",
+            str(out),
+            "--platform",
+            "ios",
+            "--package-only",
+        ]
+    )
+
+    assert exit_code == 0
+    spec = (out.parent / "testspec.yml").read_text(encoding="utf-8")
+    assert "--backend xcuitest" in spec
+    assert "$DEVICEFARM_DEVICE_UDID" in spec
+
+
+def test_main_still_accepts_the_legacy_app_apk_flag(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # `--app-apk` is the pre-iOS spelling that `.github/workflows/devicefarm.yml` still invokes; the
+    # `--app` rename keeps it as an alias. Drive the submit path (not --package-only) so a regression
+    # that dropped the alias would surface as argparse rejecting a required arg here, and assert the
+    # path it resolves to is forwarded to the upload. The AWS SDK seam is faked (the only mock point).
+    import scripts.devicefarm_submit as mod
+
+    config = tmp_path / "c.yaml"
+    config.write_text("targets: {}")
+    apk = tmp_path / "app.apk"
+    apk.write_bytes(b"apk")
+    captured: dict[str, Any] = {}
+
+    def _fake_submit(*_args: Any, app_path: Path, app_upload_type: str, **_kwargs: Any) -> Verdict:
+        captured["app_path"] = app_path
+        captured["app_upload_type"] = app_upload_type
+        return Verdict(ok=True, passed=1, total=1)
+
+    # `_devicefarm_client`/`_HttpTransfer` are called only to build args for the faked
+    # submit_and_collect; `object` is a callable that yields a throwaway instance, so it stands in.
+    monkeypatch.setattr(mod, "submit_and_collect", _fake_submit)
+    monkeypatch.setattr(mod, "_devicefarm_client", object)
+    monkeypatch.setattr(mod, "_HttpTransfer", object)
+
+    exit_code = main(
+        [
+            "--scenario",
+            "scenarios/smoke.yaml",
+            "--target",
+            "showcase-compose",
+            "--config",
+            "c.yaml",
+            "--app-apk",
+            str(apk),
+            "--package",
+            f"{config}=c.yaml",
+            "--out",
+            str(tmp_path / "package.zip"),
+            "--project-arn",
+            "arn:project/1",
+            "--device-pool-arn",
+            "arn:pool/1",
+            "--dest",
+            str(tmp_path / "out"),
+        ]
+    )
+
+    assert exit_code == 0
+    assert captured["app_path"] == apk
+    # The default platform (android) must thread through to the Android app upload type end to end.
+    assert captured["app_upload_type"] == "ANDROID_APP"
