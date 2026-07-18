@@ -122,6 +122,15 @@ iOS の custom mode には追加の制約があります（兄弟項目の *ios-
   運用者がアカウントを接続するまで休止します。
 - `docs/devicefarm.md`（と `docs/ja/`）、および `ci.md` の表の行。
 - `pyproject.toml` の `aws = ["boto3>=1.34"]` extra。
+- 2026-07-18：実際の AWS Device Farm の実機（`SM-S911U1`、Android 13）でエンドツーエンドに検証しました。
+  `firstlook.yaml` で `bajutsu verdict: PASS (1/1)` となり、`adb devices` が予約デバイスを表示し
+  `--udid booted` がそれを解決しました。これでシリアル解決の実証がもっていた唯一の経験的な未知が解消されます。
+  この手動実行では、インメモリの fake では現れない Device Farm 固有の問題が 7 件見つかり、いずれもサブミッター側で
+  修正しました（PR #1040）。出力の zip を自分自身に取り込まないこと、アップロード失敗時に Device Farm の理由を
+  表に出すこと、`tests/` が入るようにパッケージを zip のルートへ収めること、ルートに `requirements.txt` を合成すること、
+  zip でない成果物を展開せずに保存すること、uv で Python 3.13 を用意すること（ホストは 3.12 までなので、Device Farm が
+  3.13 を提供したら消しやすいよう `_python_bootstrap_commands` に隔離しました）、そして `appPath` を持たない
+  `demos/showcase/devicefarm/showcase.devicefarm.config.yaml` で事前インストール済みのアプリに対して実行することです。
 
 ## 参考
 

@@ -122,6 +122,16 @@ Device Farm change does not silently break it.
   until an operator wires up an account.
 - `docs/devicefarm.md` (+ `docs/ja/`) and the `ci.md` table row.
 - `aws = ["boto3>=1.34"]` extra in `pyproject.toml`.
+- 2026-07-18 — end-to-end verified on real AWS Device Farm hardware (`SM-S911U1`, Android 13):
+  `bajutsu verdict: PASS (1/1)` on `firstlook.yaml`, with `adb devices` listing the reserved device
+  and `--udid booted` resolving it. This closes the serial-resolution PoC's one empirical unknown.
+  The manual run surfaced seven real Device-Farm-specific issues the in-memory fakes could not, each
+  fixed in the submitter (PR #1040): never zip the output into itself; surface Device Farm's reason
+  on a failed upload; pack the payload at the zip root so `tests/` is present; synthesize a root
+  `requirements.txt`; download non-zip artifacts without unzipping them; bootstrap Python 3.13 with
+  uv (the host tops out at 3.12, isolated in `_python_bootstrap_commands` for easy removal once
+  Device Farm ships 3.13); and run against the pre-installed app via an `appPath`-less
+  `demos/showcase/devicefarm/showcase.devicefarm.config.yaml`.
 
 ## References
 
