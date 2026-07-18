@@ -43,10 +43,10 @@ iOS on Device Farm runs on real devices, which adds the two constraints in
 
 ## iOS: re-signing and real-device capabilities
 
-This changes two things Bajutsu accounts for up front (BE-0238). Both are properties of a
-physical device rather than of Device Farm's classification, so they hold for any real iOS device
-the XCUITest backend drives (`xcuitest.deviceType: device`) — Device Farm or a locally attached
-device.
+This shift to a real device changes two things Bajutsu accounts for up front (BE-0238). Both are
+properties of a physical device rather than of Device Farm's classification, so they hold for any
+real iOS device the XCUITest backend drives (`xcuitest.deviceType: device`) — Device Farm or a
+locally attached device.
 
 - **Re-signing strips entitlements.** Device Farm re-signs the uploaded `.ipa` with its own
   provisioning profile so it installs on the reserved device, and the re-sign drops the entitlements
