@@ -14,7 +14,7 @@ provider; a device-cloud adapter registers its own `kind` (a sibling item), neve
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Protocol
 
 from bajutsu.config import Effective
@@ -35,7 +35,7 @@ class DeviceLease:
     udid_spec: str
     provision: ProvisionProfile
     # A frozen dataclass may hold a callable field; the run invokes it to hand the device back.
-    release: Callable[[], None] = field(default=lambda: None)
+    release: Callable[[], None] = lambda: None
 
 
 class DeviceProvider(Protocol):
