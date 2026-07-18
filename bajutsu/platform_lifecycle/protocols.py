@@ -90,9 +90,10 @@ from bajutsu.scenario import Preconditions, Scenario
 
 @dataclass(frozen=True)
 class ProvisionProfile:
-    """What a `DeviceProvider` already did to the device before the lease reached the environment (BE-0236).
+    """What a `DeviceProvider` already did to the device the lease hands over.
 
-    A locally-attached device (the default `local` provider) boots and installs the app itself, so
+    Carries the state the provider set up before the lease reached the environment (BE-0236). A
+    locally-attached device (the default `local` provider) boots and installs the app itself, so
     both flags are False and `start` runs the full adb/simctl bring-up unchanged. A device-cloud
     provider that hands over an already-booted device carrying the build sets them, letting the
     environment skip the boot-readiness wait and/or the install — the one difference a cloud target
