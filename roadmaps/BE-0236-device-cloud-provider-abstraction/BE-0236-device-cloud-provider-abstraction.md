@@ -198,7 +198,7 @@ new stance.
   the lease threaded `run` → pool → `environment_for` → `AndroidEnvironment.start` (actual path
   `bajutsu/platform_lifecycle/`, not the proposal's older `runner/platform_lifecycle.py`)
 - [x] Tests (fake provider) — registry resolution, local default, fail-closed, boot/install skip
-- [x] Docs + scope update (DESIGN §1, README "Not adopting", `docs/` both languages)
+- [x] Docs + scope update (DESIGN.md §1's 「やらないこと」 scope-exclusion list, `docs/` both languages)
 
 > **Deferred within Unit 5 — device-control capability degradation.** The third cloud-difference
 > bullet (a provider declaring a reduced device-control capability set so preflight cuts unsupported

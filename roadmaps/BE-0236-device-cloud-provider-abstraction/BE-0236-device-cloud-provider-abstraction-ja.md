@@ -191,7 +191,7 @@ adopting」の記述を更新し、デバイスクラウドでの実行が（任
   `ProvisionProfile` を `run` → pool → `environment_for` → `AndroidEnvironment.start` へ渡して実現します
   （実際のパスは `bajutsu/platform_lifecycle/` で、提案が記す旧 `runner/platform_lifecycle.py` ではありません）
 - [x] テスト（fake の provider）— registry の解決、local の既定、fail-closed、起動待ち省略とインストール省略
-- [x] ドキュメントとスコープ更新（DESIGN §1、README「Not adopting」、`docs/` の両言語）
+- [x] ドキュメントとスコープ更新（DESIGN.md §1 の「やらないこと」のスコープ除外リスト、`docs/` の両言語）
 
 > **Unit 5 のうち先送りした部分 — デバイス制御の capability 縮退。** クラウド差分の 3 つ目
 > （provider が縮小した device-control の capability 集合を宣言し、preflight が未対応アクションを
