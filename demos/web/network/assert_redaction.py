@@ -20,7 +20,7 @@ import sys
 from pathlib import Path
 from typing import Any, NoReturn
 
-from bajutsu.redaction import PLACEHOLDER as _PLACEHOLDER
+from bajutsu.evidence.redaction import PLACEHOLDER as _PLACEHOLDER
 
 # The literal secrets the demo app (demos/web/app/index.html) sends on the Sync request. Kept in
 # sync with that fetch: the header bearer token and the body `password` field value.

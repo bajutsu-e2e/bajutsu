@@ -572,8 +572,7 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 ### Verification & coverage
 
 <!-- GENERATED:proposals-verification -->
-| ID | Item | Status |
-|---|---|---|
+
 <!-- /GENERATED:proposals-verification -->
 
 ### Authoring experience (record / GUI editor)

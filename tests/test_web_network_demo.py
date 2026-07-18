@@ -14,7 +14,7 @@ from pathlib import Path
 
 import yaml
 
-from bajutsu.redaction import PLACEHOLDER, Redactor
+from bajutsu.evidence.redaction import PLACEHOLDER, Redactor
 from bajutsu.scenario import load_scenario_file
 from bajutsu.scenario.models.evidence import Redact
 from demos.web.network.assert_redaction import _BODY_SECRET, _HEADER_SECRET
