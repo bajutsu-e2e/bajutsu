@@ -137,8 +137,8 @@ package 化）、それが両経路の再利用可能な核になります。
   挙動になり、simctl 依存のステップは実機ではスキップされます。showcase の iOS 用 Device Farm 設定と
   CI ワークフローのジョブは、実機の署名基盤（署名なしの実機向け `.ipa` はビルドできません）を引き続き
   待つため、後続に残します。
-- ユニット 4（[#1196](https://github.com/bajutsu-e2e/bajutsu/pull/1196)）：live の経路の `DeviceProvider` を（seam のみ）
-  BE-0236 の provider seam の上に足しました。新しい組み込みの `appium` provider（`deviceProvider.kind:
+- ユニット 4（[#1196](https://github.com/bajutsu-e2e/bajutsu/pull/1196)）：BE-0236 の provider seam の上に、live
+  の経路の `DeviceProvider`（seam のみ）を足しました。新しい組み込みの `appium` provider（`deviceProvider.kind:
   appium`）は、予約済みの iOS デバイスが待つ固定の Appium / WebDriver `endpoint`（セルフホストの grid）を
   udid spec としてそのまま run に渡し、デバイスは起動済みでビルドも導入済み（simctl で起動もインストールも
   しない live なリモートデバイス）と報告し、解放する対象は持ちません（予約は grid のものです）。`endpoint`
