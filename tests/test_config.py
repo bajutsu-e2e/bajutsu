@@ -334,6 +334,34 @@ def test_web_app_device_mode_config_resolves() -> None:
     assert _web(resolve(cfg, "web")).device_mode == "iPhone 13"
 
 
+def test_device_provider_defaults_to_none() -> None:
+    # No deviceProvider = the built-in local device path; Effective carries None so acquire_device
+    # falls back to the `local` provider (BE-0236), leaving every existing target unchanged.
+    cfg = load_config("targets: { app: { bundleId: com.example.app } }")
+    assert resolve(cfg, "app").device_provider is None
+
+
+def test_device_provider_config_resolves() -> None:
+    # A target selects a device provider by `kind`; it resolves straight onto Effective (a per-target
+    # knob, like mailbox). The kind is validated against the registry at runtime, not config load, so
+    # the deterministic core never imports a cloud SDK (BE-0236 / BE-0112).
+    cfg = load_config(
+        "targets: { app: { bundleId: com.example.app, deviceProvider: {kind: firebase-streaming} } }"
+    )
+    provider = resolve(cfg, "app").device_provider
+    assert provider is not None
+    assert provider.kind == "firebase-streaming"
+
+
+def test_device_provider_kind_defaults_to_local() -> None:
+    # A deviceProvider block with no `kind` means the explicit local provider — the same default the
+    # schema carries, so writing the block without a kind is a no-op over omitting it entirely.
+    cfg = load_config("targets: { app: { bundleId: com.example.app, deviceProvider: {} } }")
+    provider = resolve(cfg, "app").device_provider
+    assert provider is not None
+    assert provider.kind == "local"
+
+
 def test_web_app_launch_server_parsed() -> None:
     # `launchServer` declares how to bring up baseUrl's host for a run; readyUrl defaults to None
     # (run falls back to baseUrl), readyTimeout to 30s.

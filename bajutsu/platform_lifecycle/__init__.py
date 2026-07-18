@@ -20,6 +20,7 @@ from bajutsu.platform_lifecycle.factories import environment_for
 from bajutsu.platform_lifecycle.protocols import (
     CrawlEnvironment,
     Environment,
+    ProvisionProfile,
     ReadinessResult,
     RunEnvironment,
 )
@@ -36,6 +37,7 @@ __all__ = [
     "Environment",
     "FakeEnvironment",
     "IosEnvironment",
+    "ProvisionProfile",
     "ReadinessResult",
     "RunEnvironment",
     "WebEnvironment",

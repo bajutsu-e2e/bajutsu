@@ -14,6 +14,7 @@ from bajutsu.config import Effective
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence.network import NetworkExchange
+from bajutsu.platform_lifecycle import ProvisionProfile
 from bajutsu.runner import (
     ReadinessResult,
     device_pool,
@@ -325,9 +326,10 @@ class _RecordingEnv:
     and torn down — enough of the lease seam to prove per-scenario selection and per-lease teardown.
     """
 
-    def __init__(self, actuator: str, udid: str) -> None:
+    def __init__(self, actuator: str, udid: str, provision: object = None) -> None:
         self.actuator = actuator
         self.udid = udid
+        self.provision = provision  # the ProvisionProfile device_pool threaded through (BE-0236)
         self.started = False
         self.torn = False
 
@@ -364,8 +366,10 @@ def test_device_pool_resolves_actuator_per_scenario_and_tears_down_its_own_env(
     down — so a stateful backend's resident runner is terminated by the instance that spawned it."""
     created: list[_RecordingEnv] = []
 
-    def fake_env_for(actuator: str, udid: str, env_run: object = None) -> _RecordingEnv:
-        env = _RecordingEnv(actuator, udid)
+    def fake_env_for(
+        actuator: str, udid: str, env_run: object = None, *, provision: object = None
+    ) -> _RecordingEnv:
+        env = _RecordingEnv(actuator, udid, provision)
         created.append(env)
         return env
 
@@ -395,6 +399,46 @@ def test_device_pool_resolves_actuator_per_scenario_and_tears_down_its_own_env(
         assert xc_env.actuator == "xcuitest" and xc_env.started  # escalated: pinch needs multiTouch
         pinch_lease.release()
         assert xc_env.torn
+    finally:
+        shutdown()
+
+
+def test_device_pool_threads_provision_to_pool_and_lease_environments(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """BE-0236: a `ProvisionProfile` handed to `device_pool` reaches every environment it builds — the
+    representative pool env *and* each per-lease env — so a cloud provider's already-booted /
+    pre-installed device skips the bring-up it doesn't need. Guards against a call site in `pool.py`
+    silently dropping `provision=provision`."""
+    created: list[_RecordingEnv] = []
+
+    def fake_env_for(
+        actuator: str, udid: str, env_run: object = None, *, provision: object = None
+    ) -> _RecordingEnv:
+        env = _RecordingEnv(actuator, udid, provision)
+        created.append(env)
+        return env
+
+    monkeypatch.setattr("bajutsu.runner.pool.environment_for", fake_env_for)
+
+    profile = ProvisionProfile(
+        boot_ready=True, app_preinstalled=True
+    )  # non-default: cloud handover
+    lease, shutdown = device_pool(
+        ["UDID-A"],
+        ["ios"],
+        _eff(),
+        Path("runs"),
+        network=False,
+        available=lambda b: True,
+        env_run=lambda *a, **k: "",
+        provision=profile,
+    )
+    try:
+        assert created[0].provision is profile  # the pool env saw exactly the profile passed in
+        leased = lease(_eff(), _scn("tap"))
+        assert created[-1].provision is profile  # and so did the per-lease env
+        leased.release()
     finally:
         shutdown()
 
