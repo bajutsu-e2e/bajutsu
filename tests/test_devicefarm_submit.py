@@ -117,6 +117,25 @@ def test_test_spec_rejects_an_empty_scenario_list() -> None:
 
 
 # ---------------------------------------------------------------------------
+# The Device Farm config (Device Farm pre-installs the app, so the config carries no appPath)
+# ---------------------------------------------------------------------------
+
+
+def test_devicefarm_config_skips_app_install_for_the_pre_installed_app() -> None:
+    # Device Farm installs the uploaded APK on the reserved device itself, so the config it uploads
+    # must carry no appPath: an appPath makes the adb backend try to `adb install` a file absent from
+    # the test package (the "appPath not found" failure this config avoids). A None app_path is the
+    # runner's existing "run against the already-installed app" path — package is enough to launch.
+    from bajutsu.config import load_config, resolve
+
+    cfg = Path("demos/showcase/devicefarm/showcase.devicefarm.config.yaml")
+    eff = resolve(load_config(cfg.read_text(encoding="utf-8")), "showcase-compose")
+    assert eff.platform_config.app_path is None
+    assert eff.platform_config.package == "com.bajutsu.showcase.android.compose"
+    assert eff.backend == ["android"]
+
+
+# ---------------------------------------------------------------------------
 # build_package
 # ---------------------------------------------------------------------------
 

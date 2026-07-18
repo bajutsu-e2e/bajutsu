@@ -78,13 +78,19 @@ uploaded):
 ```bash
 uv run python scripts/devicefarm_submit.py \
   --scenario scenarios/firstlook.yaml --scenario scenarios/controls.yaml \
-  --target showcase-compose --config showcase.config.yaml \
+  --target showcase-compose --config showcase.devicefarm.config.yaml \
   --app-apk app-debug.apk \
   --package .=. \
-  --package demos/showcase/showcase.config.yaml=showcase.config.yaml \
+  --package demos/showcase/devicefarm/showcase.devicefarm.config.yaml=showcase.devicefarm.config.yaml \
   --package demos/showcase/scenarios=scenarios \
   --package-only
 ```
+
+The run uses `showcase.devicefarm.config.yaml`, a Device-Farm variant of the `showcase-compose`
+target that carries **no `appPath`**: Device Farm installs the uploaded APK on the reserved device
+itself, so the adb backend launches the pre-installed app rather than `adb install`ing a local file
+(a None `app_path` is the runner's "run against the already-installed app" path). This is a
+per-environment difference, so it lives in config, not in the tool.
 
 Each `--package SRC=ARCNAME` adds a file or directory to the test package under `ARCNAME` (the
 arcname `.` packs a directory at the package root); the scenario / config paths you pass are the
