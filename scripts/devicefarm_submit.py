@@ -125,8 +125,8 @@ def _python_bootstrap_commands(python_version: str) -> list[str]:
     return [
         # $HOME is writable (the base pip already defaults to a --user install there).
         "python -m pip install --user --upgrade uv",
-        f"{_UV} python install {python_version}",
-        f"{_UV} venv --python {python_version} {_VENV}",
+        f"{_UV} python install {shlex.quote(python_version)}",
+        f"{_UV} venv --python {shlex.quote(python_version)} {_VENV}",
         # The test package unpacks into $DEVICEFARM_TEST_PACKAGE_PATH; install Bajutsu from it into
         # the 3.13 venv. The adb backend is pure subprocess, so the base install (no extras) suffices.
         f'{_UV} pip install --python {_VENV} "$DEVICEFARM_TEST_PACKAGE_PATH"',
