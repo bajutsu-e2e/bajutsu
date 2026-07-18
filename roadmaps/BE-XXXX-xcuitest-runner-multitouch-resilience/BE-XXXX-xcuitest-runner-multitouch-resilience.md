@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
-| Topic | Driver & backend architecture |
+| Topic | Platform support |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -90,13 +90,13 @@ runner died mid-gesture" message rather than on `actual='idle'`. The distinction
 `delivered` split the retry seam already draws, so this unit extends that seam rather than inventing a
 parallel one.
 
-**Unit 4 — Keep the recovery from absorbing real failures.** Determinism-first
+**Unit 4 — Keep every recovery visible in the record.** Determinism-first
 ([`CLAUDE.md`](../../CLAUDE.md) prime directive 2) forbids smoothing a genuine failure into a pass, so
-the recovery path carries two guardrails. It must never re-apply a delivered write — the
-`_is_retry_eligible` rule stays the gate — and every recovery must log the crash as visibly as the
-retry seam logs a retried blip, so a run that crashed and recovered is never indistinguishable from
-one that never crashed. A recovered run stays reproducible and auditable; a crash that cannot be
-recovered idempotently stays a loud failure.
+a recovery must never pass silently: every recovery logs the crash as visibly as the retry seam logs
+a retried blip, so a run that crashed and recovered is never indistinguishable from one that never
+crashed. A recovered run stays reproducible and auditable; a crash that cannot be recovered
+idempotently stays the loud failure Unit 3 raises. Not re-applying a delivered write is Unit 3's job,
+not this unit's — Unit 4 adds only the observability guarantee.
 
 ## Alternatives considered
 
@@ -131,8 +131,9 @@ because the gesture was lost; more waiting cannot recover an actuation that neve
       the upstream limitation and hand off to Unit 3.
 - [ ] Unit 3 — Detect a mid-run crash past the per-call retry budget and surface it deterministically:
       idempotent recovery for reads / undelivered writes, a distinct runner-crash failure otherwise.
-- [ ] Unit 4 — Guard the recovery: never re-apply a delivered write, and log every recovery as
-      visibly as a retried blip.
+- [ ] Unit 4 — Keep every recovery visible in the record: log each recovery as visibly as a retried
+      blip, so a crashed-and-recovered run is never indistinguishable from one that never crashed
+      (never-re-apply-a-delivered-write is Unit 3's job).
 
 ## References
 
