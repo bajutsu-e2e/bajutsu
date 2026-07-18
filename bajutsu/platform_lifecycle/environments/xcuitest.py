@@ -1,4 +1,5 @@
-"""The XCUITest lifecycle: simctl device prep then a resident runner on the Simulator (BE-0019).
+"""The XCUITest lifecycle: simctl device prep then a resident runner on the Simulator, or the same
+runner without simctl prep on a real device (BE-0019, real-device targeting BE-0238).
 
 This module also isolates the `.xctestrun` packaging helpers (`_patch_xctestrun_env`) and their
 `plistlib` / `tempfile` / `shlex` imports, which only XCUITest needs, out of the environment modules
@@ -55,7 +56,8 @@ def _destination(device_type: str, udid: str) -> str:
 
 
 class XcuitestEnvironment(_DeviceEnvironment):
-    """The XCUITest lifecycle: simctl device prep then a resident runner on the Simulator (BE-0019).
+    """The XCUITest lifecycle: simctl device prep then a resident runner on the Simulator, or the
+    same runner without simctl prep on a real device (BE-0019, real-device targeting BE-0238).
 
     The simctl sequence (erase / boot / install) is the same as idb. The difference is how the app is
     driven: instead of launching the app via simctl and actuating via idb CLI, we start an
