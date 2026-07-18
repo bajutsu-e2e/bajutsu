@@ -9,7 +9,7 @@
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0236") |
-| 実装 PR | _pending_ |
+| 実装 PR | [#1189](https://github.com/bajutsu-e2e/bajutsu/pull/1189) |
 | トピック | デバイスクラウド実行 |
 <!-- /BE-METADATA -->
 
@@ -213,7 +213,7 @@ adopting」の記述を更新し、デバイスクラウドでの実行が（任
   `local` の既定の背後に置き、既存のターゲットは 1 バイトも変わりません。レビュー由来の硬化として、
   セットアップ中のエラーでも lease を解放し、その `release` は warn-only にして provider のteardown が
   機械判定を覆せないようにしました（判定後の zip / upload の規則に倣います）。`make check` は緑
-  （テスト 4414 件、カバレッジ 92%）。PR: _pending_。
+  （テスト 4414 件、カバレッジ 92%）。PR: [#1189](https://github.com/bajutsu-e2e/bajutsu/pull/1189)。
 
 ## 参考
 

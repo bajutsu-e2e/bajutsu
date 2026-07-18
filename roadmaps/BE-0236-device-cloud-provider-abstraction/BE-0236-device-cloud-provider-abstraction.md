@@ -9,7 +9,7 @@
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0236") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#1189](https://github.com/bajutsu-e2e/bajutsu/pull/1189) |
 | Topic | Device-cloud execution |
 <!-- /BE-METADATA -->
 
@@ -220,7 +220,7 @@ new stance.
   `local` default so every existing target is byte-for-byte unchanged. Reviewer-driven hardening:
   the lease releases even on a setup-time error and its `release` is warn-only so a provider teardown
   can never flip the machine verdict (mirrors the post-verdict zip/upload rule). `make check` green
-  (4414 tests, 92% coverage). PR: _pending_.
+  (4414 tests, 92% coverage). PR: [#1189](https://github.com/bajutsu-e2e/bajutsu/pull/1189).
 
 ## References
 
