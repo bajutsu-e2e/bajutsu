@@ -562,7 +562,7 @@ def _submit(
         transfer,
         project_arn="arn:project/1",
         device_pool_arn="arn:pool/1",
-        app_apk=apk,
+        app_path=apk,
         package_zip=package,
         spec_yaml=spec,
         dest=tmp_path / "out",
@@ -761,8 +761,8 @@ def test_main_still_accepts_the_legacy_app_apk_flag(
     apk.write_bytes(b"apk")
     captured: dict[str, Any] = {}
 
-    def _fake_submit(*_args: Any, app_apk: Path, app_upload_type: str, **_kwargs: Any) -> Verdict:
-        captured["app_apk"] = app_apk
+    def _fake_submit(*_args: Any, app_path: Path, app_upload_type: str, **_kwargs: Any) -> Verdict:
+        captured["app_path"] = app_path
         captured["app_upload_type"] = app_upload_type
         return Verdict(ok=True, passed=1, total=1)
 
@@ -796,6 +796,6 @@ def test_main_still_accepts_the_legacy_app_apk_flag(
     )
 
     assert exit_code == 0
-    assert captured["app_apk"] == apk
+    assert captured["app_path"] == apk
     # The default platform (android) must thread through to the Android app upload type end to end.
     assert captured["app_upload_type"] == "ANDROID_APP"
