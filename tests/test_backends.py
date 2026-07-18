@@ -6,6 +6,7 @@ import pytest
 
 from bajutsu.backends import (
     _cost_ordered,
+    capabilities_for_run,
     default_available,
     ensure_web_runtime,
     evidence_backends,
@@ -16,8 +17,9 @@ from bajutsu.backends import (
     select_actuator_cost_first,
     select_actuator_for_scenario,
 )
+from bajutsu.config import Effective, IosConfig, WebConfig, XcuitestConfig
 from bajutsu.drivers import base
-from bajutsu.scenario import Scenario
+from bajutsu.scenario import Redact, Scenario
 
 # A two-actuator iOS platform (idb + a hypothetical second iOS actuator), so the same-platform
 # fallback can be exercised before XCUITest (BE-0019) actually lands. Injected, not the module global.
@@ -423,6 +425,97 @@ def test_capabilities_for_xcuitest_reads_the_driver_constant_without_a_device() 
     assert caps == XcuitestDriver.CAPABILITIES
     assert base.Capability.SEMANTIC_TAP in caps and base.Capability.MULTI_TOUCH in caps
     assert base.Capability.NETWORK not in caps  # network rides on the app-side collector (BE-0020)
+
+
+# --- BE-0238 Unit 3: a real iOS device narrows the static XCUITest capability set -----------------
+
+
+def _ios_eff(*, xcuitest: XcuitestConfig | None = None) -> Effective:
+    """A minimal iOS `Effective`, optionally carrying an `xcuitest` sub-config."""
+    return Effective(
+        target="demo",
+        platform_config=IosConfig(bundle_id="com.example.demo", xcuitest=xcuitest),
+        backend=["ios"],
+        device="iPhone 15",
+        locale="en_US",
+        launch_env={},
+        launch_args=[],
+        id_namespaces=[],
+        reserved_namespaces=[],
+        mock_server=None,
+        setup=None,
+        capture=[],
+        redact=Redact(),
+    )
+
+
+def test_capabilities_for_run_drops_simctl_backed_caps_on_a_real_ios_device() -> None:
+    # A real device is not managed through simctl, so the whole simctl-backed DeviceControl family
+    # and the simctl-privacy permission grants do not apply (BE-0238 Unit 3): preflight must not
+    # advertise them, or a scenario needing one fails late with a simctl error instead of up front.
+    eff = _ios_eff(xcuitest=XcuitestConfig(test_runner="Runner.xctestrun", device_type="device"))
+    caps = capabilities_for_run("xcuitest", eff)
+    assert base.DEVICE_CONTROL_ALL.isdisjoint(caps)
+    assert base.IOS_PERMISSION_CAPABILITIES.isdisjoint(caps)
+    # The on-device capabilities (driven by the XCTest runner, not simctl) survive the narrowing.
+    for cap in (
+        base.Capability.QUERY,
+        base.Capability.ELEMENTS,
+        base.Capability.SCREENSHOT,
+        base.Capability.SEMANTIC_TAP,
+        base.Capability.MULTI_TOUCH,
+    ):
+        assert cap in caps
+
+
+def test_capabilities_for_run_keeps_the_full_set_on_the_simulator() -> None:
+    # The Simulator default (no deviceType, or explicit "simulator") keeps every static capability:
+    # simctl reaches the Simulator, so DeviceControl / permissions still apply.
+    from bajutsu.backends import capabilities_for
+
+    for xcfg in (None, XcuitestConfig(test_runner="Runner.xctestrun", device_type="simulator")):
+        assert capabilities_for_run("xcuitest", _ios_eff(xcuitest=xcfg)) == capabilities_for(
+            "xcuitest"
+        )
+
+
+def test_capabilities_for_run_is_a_noop_for_non_xcuitest_backends() -> None:
+    # The narrowing is XCUITest-only; idb / adb / web read their static set unchanged even when the
+    # (unrelated) target config would look like a real device to a careless check.
+    from bajutsu.backends import capabilities_for
+
+    eff = _ios_eff(xcuitest=XcuitestConfig(test_runner="Runner.xctestrun", device_type="device"))
+    assert capabilities_for_run("idb", eff) == capabilities_for("idb")
+    web = Effective(
+        target="w",
+        platform_config=WebConfig(base_url="https://app.test"),
+        backend=["web"],
+        device="",
+        locale="en_US",
+        launch_env={},
+        launch_args=[],
+        id_namespaces=[],
+        reserved_namespaces=[],
+        mock_server=None,
+        setup=None,
+        capture=[],
+        redact=Redact(),
+    )
+    assert capabilities_for_run("playwright", web) == capabilities_for("playwright")
+
+
+def test_real_device_narrowing_makes_a_device_control_scenario_unsupported() -> None:
+    # End-to-end with the preflight (BE-0082): a setLocation scenario runs on the Simulator but is
+    # skipped up front on a real device, where simctl device control does not apply (BE-0238 Unit 3).
+    from bajutsu import capability_preflight
+
+    scenario = Scenario.model_validate(
+        {"name": "loc", "steps": [{"setLocation": {"lat": 1.0, "lon": 2.0}}]}
+    )
+    sim = _ios_eff(xcuitest=XcuitestConfig(test_runner="Runner.xctestrun", device_type="simulator"))
+    dev = _ios_eff(xcuitest=XcuitestConfig(test_runner="Runner.xctestrun", device_type="device"))
+    assert capability_preflight.unsupported(scenario, capabilities_for_run("xcuitest", sim)) == []
+    assert capability_preflight.unsupported(scenario, capabilities_for_run("xcuitest", dev))
 
 
 # --- BE-0240: capability-aware, cost-ordered per-scenario actuator selection -------------------

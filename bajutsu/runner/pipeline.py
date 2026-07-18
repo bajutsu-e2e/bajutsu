@@ -21,7 +21,7 @@ from bajutsu.assertions import (
     VisualContext,
     VisualEvidence,
 )
-from bajutsu.backends import capabilities_for
+from bajutsu.backends import capabilities_for_run
 from bajutsu.config import Effective
 from bajutsu.evidence import Artifact
 from bajutsu.evidence.network import NetworkExchange
@@ -139,7 +139,7 @@ class _ScenarioRunner:
                 return RunResult(
                     scenario=s.name, ok=False, steps=[], backend="", sid=sid, failure=str(exc)
                 )
-            caps = capabilities_for(actuator)
+            caps = capabilities_for_run(actuator, self.eff)
         if caps is not None and (reasons := capability_preflight.unsupported(s, caps)):
             if self.progress is not None:
                 self.progress(
@@ -301,11 +301,13 @@ def run_all(
     # One mailbox reader for the whole run (it's per-target, not per-device): the `email` step polls
     # it, with ${secrets.*} in the url/headers resolved from the same secret bindings (BE-0046).
     mailbox = build_mailbox_reader(eff.mailbox, bindings or {})
-    # Preflight: a backend's capability set is static, so a scenario that needs a capability the
-    # actuator lacks (e.g. pinch on idb) is failed here — before any device is leased — instead of
-    # mid-run after partial device work (BE-0082). Skipped when no actuator is passed (tests that
-    # drive a lease directly), so the gesture handler's own check still backstops it.
-    caps = capabilities_for(actuator) if actuator is not None else None
+    # Preflight: a backend's capability set is (near-)static, so a scenario that needs a capability
+    # the actuator lacks (e.g. pinch on idb, or simctl device control on a real iOS device — BE-0238)
+    # is failed here — before any device is leased — instead of mid-run after partial device work
+    # (BE-0082). `capabilities_for_run` applies the run's one config-driven narrowing (real-device
+    # XCUITest). Skipped when no actuator is passed (tests that drive a lease directly), so the
+    # gesture handler's own check still backstops it.
+    caps = capabilities_for_run(actuator, eff) if actuator is not None else None
 
     runner = _ScenarioRunner(
         eff=eff,

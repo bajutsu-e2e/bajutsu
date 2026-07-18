@@ -26,6 +26,7 @@ from bajutsu.drivers.fake import FakeDriver
 from bajutsu.drivers.idb import IdbDriver
 
 if TYPE_CHECKING:
+    from bajutsu.config import Effective
     from bajutsu.scenario import Scenario
 
 # Platform token -> its actuators, most-stable-first. `--backend` / config `backend` accept
@@ -189,6 +190,27 @@ def capabilities_for(actuator: str) -> frozenset[str]:
             f"backend {actuator!r} is planned but not implemented yet (see docs/vision.md)"
         )
     raise ValueError(f"unknown backend: {actuator!r}")
+
+
+def capabilities_for_run(actuator: str, eff: Effective) -> frozenset[str]:
+    """The capability set for one run, narrowing the static set to the run's device target (BE-0238).
+
+    `capabilities_for` returns a backend's *static* capabilities. A real iOS device narrows the
+    XCUITest set: the whole simctl-backed `DeviceControl` family and the simctl-privacy permission
+    grants target the Simulator only (simctl cannot reach a physical device), so a
+    `xcuitest.deviceType: device` run advertises neither. Preflight (BE-0082) then skips a scenario
+    that needs one up front, instead of failing late with a simctl error mid-run — the same fail-fast
+    the permission preconditions already get in the XCUITest lifecycle (Unit 1). Every other backend,
+    and the Simulator default, is unchanged.
+    """
+    # Lazy import: `bajutsu.config` imports this module (`resolve` -> `platform_of`), so a top-level
+    # import would close the cycle. By call time config is fully loaded.
+    from bajutsu.config import xcuitest_targets_real_device
+
+    caps = capabilities_for(actuator)
+    if actuator == "xcuitest" and xcuitest_targets_real_device(eff):
+        return caps - base.DEVICE_CONTROL_ALL - base.IOS_PERMISSION_CAPABILITIES
+    return caps
 
 
 def _cost_ordered(actuators: list[str]) -> list[str]:

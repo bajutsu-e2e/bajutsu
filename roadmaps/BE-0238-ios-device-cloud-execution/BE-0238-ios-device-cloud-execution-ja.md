@@ -9,7 +9,7 @@
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0238") |
-| 実装 PR | [#1192](https://github.com/bajutsu-e2e/bajutsu/pull/1192)（ユニット 1: XCUITest 実機ターゲティング）、[#1193](https://github.com/bajutsu-e2e/bajutsu/pull/1193)（ユニット 2: batch package 化） |
+| 実装 PR | [#1192](https://github.com/bajutsu-e2e/bajutsu/pull/1192)（ユニット 1: XCUITest 実機ターゲティング）、[#1193](https://github.com/bajutsu-e2e/bajutsu/pull/1193)（ユニット 2: batch package 化）、[#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM)（ユニット 3: 再署名 / 実機ケーパビリティの preflight） |
 | トピック | デバイスクラウド実行 |
 <!-- /BE-METADATA -->
 
@@ -101,7 +101,7 @@ package 化）、それが両経路の再利用可能な核になります。
 
 - [x] XCUITest の実機ターゲティング（BE-0019 を Simulator の先へ一般化）
 - [x] Device Farm 向けの batch package 化（submitter への統合）
-- [ ] 再署名と entitlement の扱い（記述 + preflight の縮退）
+- [x] 再署名と entitlement の扱い（記述 + preflight の縮退）
 - [ ] live の経路：Appium endpoint の `DeviceProvider`（後続の slice）
 - [ ] テスト（`xcodebuild` とツールチェインの境界を fake に）— 実機ターゲティングはユニット 1 で担保
 - [ ] ドキュメント（iOS のデバイスクラウドの手順、idb / simctl の理由、再署名の注意）
@@ -126,6 +126,17 @@ package 化）、それが両経路の再利用可能な核になります。
   限られます。テストは AWS SDK の境界だけを fake にします。showcase の iOS 用 Device Farm 設定と
   CI ワークフローのジョブは、実機向けの `.ipa` を署名なしにはビルドできないため、ユニット 3（再署名）を
   待ちます。
+- ユニット 3（[#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM)）：実機の iOS（`xcuitest.deviceType: device`）では simctl
+  依存のケーパビリティが失われることを preflight に教えました。新しい
+  `backends.capabilities_for_run(actuator, eff)` が静的な XCUITest のケーパビリティ集合を縮退させ、
+  シミュレータにしか届かない `DeviceControl` 一式と simctl-privacy の権限付与を落とします。これにより、
+  デバイス制御や権限付与を使うシナリオは、実行の途中で `simctl` エラーとして遅れて失敗する代わりに、
+  明確な理由とともに前もって（BE-0082）スキップされます。ユニット 1 の実行時の明示的な失敗に対する
+  preflight 側の対応物です。あわせて Device Farm の再署名を `docs/devicefarm.md`（両言語）に記述しました。
+  再署名はエンタイトルメント（Push / App Groups）を剥がすため、それに依存するアプリの機能は再署名後の
+  挙動になり、simctl 依存のステップは実機ではスキップされます。showcase の iOS 用 Device Farm 設定と
+  CI ワークフローのジョブは、実機の署名基盤（署名なしの実機向け `.ipa` はビルドできません）を引き続き
+  待つため、後続に残します。
 
 ## 参考
 
