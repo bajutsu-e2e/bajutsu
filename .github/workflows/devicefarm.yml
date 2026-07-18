@@ -108,10 +108,10 @@ jobs:
           uv run --extra aws python scripts/devicefarm_submit.py \
             "${args[@]}" \
             --target "$TARGET" \
-            --config showcase.config.yaml \
+            --config showcase.devicefarm.config.yaml \
             --app-apk "$apk" \
             --package .=. \
-            --package demos/showcase/showcase.config.yaml=showcase.config.yaml \
+            --package demos/showcase/devicefarm/showcase.devicefarm.config.yaml=showcase.devicefarm.config.yaml \
             --package demos/showcase/scenarios=scenarios \
             --out devicefarm-package.zip \
             --project-arn "$PROJECT_ARN" \
