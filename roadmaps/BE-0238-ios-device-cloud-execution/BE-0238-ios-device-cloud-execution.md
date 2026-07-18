@@ -9,7 +9,7 @@
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0238") |
-| Implementing PR | _pending_ (Unit 1: XCUITest real-device targeting) |
+| Implementing PR | [#1192](https://github.com/bajutsu-e2e/bajutsu/pull/1192) (Unit 1: XCUITest real-device targeting) |
 | Topic | Device-cloud execution |
 <!-- /BE-METADATA -->
 
@@ -113,7 +113,7 @@ the Simulator through `xcodebuild`; this item generalises target selection to a 
 
 **Log.**
 
-- Unit 1 (_pending_): added `xcuitest.deviceType` (`simulator` default / `device`) and generalised
+- Unit 1 ([#1192](https://github.com/bajutsu-e2e/bajutsu/pull/1192)): added `xcuitest.deviceType` (`simulator` default / `device`) and generalised
   the XCUITest environment's `-destination` to `platform=iOS` for a real device, sharing the same
   `xcodebuild test-without-building` driving layer. A real device skips simctl device-prep; the
   simctl-only preconditions it cannot honour (erase / `appPath` install / permission grants) now

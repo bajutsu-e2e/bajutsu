@@ -9,7 +9,7 @@
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0238") |
-| 実装 PR | _pending_（ユニット 1: XCUITest 実機ターゲティング） |
+| 実装 PR | [#1192](https://github.com/bajutsu-e2e/bajutsu/pull/1192)（ユニット 1: XCUITest 実機ターゲティング） |
 | トピック | デバイスクラウド実行 |
 <!-- /BE-METADATA -->
 
@@ -108,7 +108,7 @@ package 化）、それが両経路の再利用可能な核になります。
 
 **ログ。**
 
-- ユニット 1（_pending_）：`xcuitest.deviceType`（既定 `simulator` / `device`）を追加し、XCUITest
+- ユニット 1（[#1192](https://github.com/bajutsu-e2e/bajutsu/pull/1192)）：`xcuitest.deviceType`（既定 `simulator` / `device`）を追加し、XCUITest
   環境の `-destination` を実機向けに `platform=iOS` へ一般化しました。駆動レイヤ（`xcodebuild
   test-without-building`）は Simulator と実機で共通です。実機は simctl の端末準備を飛ばし、実機では
   成立しない simctl 依存の前提条件（erase / `appPath` インストール / 権限付与）は明示的に失敗させ、
