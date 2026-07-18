@@ -11,31 +11,30 @@
 #
 # Device Farm runs these phases on a host that already has `adb` connected to the reserved device
 # (serial `booted`). Bajutsu runs here exactly as it does locally — the verdict comes from its own
-# manifest, not from Device Farm's PASSED/FAILED classification. Batch-topology caveats (150-minute
-# hard cap, APK-only, raw-adb as a host-toolchain by-product) are documented in docs/devicefarm.md.
+# manifest, not from Device Farm's PASSED/FAILED classification. The install phase bootstraps Python
+# 3.13 with uv because Device Farm's host tops out at 3.12 while Bajutsu requires >= 3.13 (a
+# temporary workaround, removed once Device Farm ships 3.13 — see `_python_bootstrap_commands`).
+# Batch-topology caveats (150-minute hard cap, APK-only, raw-adb as a host-toolchain by-product) are
+# documented in docs/devicefarm.md.
 version: 0.1
 phases:
   install:
     commands:
-    - devicefarm-cli use python 3.13
-    - python -m pip install --upgrade pip
-    # The uploaded test package unpacks into $DEVICEFARM_TEST_PACKAGE_PATH; install Bajutsu from it.
-    # The adb backend is pure subprocess, so the base install (no extras) suffices.
-    - python -m pip install "$DEVICEFARM_TEST_PACKAGE_PATH"
+    - python -m pip install --user --upgrade uv
+    - $HOME/.local/bin/uv python install 3.13
+    - $HOME/.local/bin/uv venv --python 3.13 $HOME/bajutsu-venv
+    - $HOME/.local/bin/uv pip install --python $HOME/bajutsu-venv "$DEVICEFARM_TEST_PACKAGE_PATH"
   pre_test:
     commands:
-    # Prove the reserved device is visible before running (the serial-resolution PoC).
     - adb devices
   test:
     commands:
-    # One `bajutsu run` per scenario, so a failing scenario still leaves a manifest for the others.
-    - bajutsu run --scenario scenarios/firstlook.yaml --target showcase-compose --config
-      showcase.config.yaml --backend adb --udid booted
-    - bajutsu run --scenario scenarios/controls.yaml --target showcase-compose --config
-      showcase.config.yaml --backend adb --udid booted
+    - $HOME/bajutsu-venv/bin/bajutsu run --scenario scenarios/firstlook.yaml --target
+      showcase-compose --config showcase.config.yaml --backend adb --udid booted
+    - $HOME/bajutsu-venv/bin/bajutsu run --scenario scenarios/controls.yaml --target
+      showcase-compose --config showcase.config.yaml --backend adb --udid booted
   post_test:
     commands:
-    # Copy the whole runs/ tree into $DEVICEFARM_LOG_DIR so list_artifacts can return it.
     - cp -r runs "$DEVICEFARM_LOG_DIR"/ || true
 artifacts:
 - $DEVICEFARM_LOG_DIR

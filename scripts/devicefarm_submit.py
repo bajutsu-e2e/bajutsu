@@ -101,6 +101,38 @@ class Verdict:
 # ---------------------------------------------------------------------------
 
 
+# --- Temporary Python 3.13 bootstrap (delete this block once Device Farm ships Python >= 3.13) ---
+# Device Farm's custom-environment host tops out at Python 3.12 (`devicefarm-cli use python` only
+# offers the runtimes Amazon preinstalls), but Bajutsu requires >= 3.13, so a native install fails
+# with "requires a different Python". Until Device Farm ships 3.13, the install phase fetches a
+# standalone interpreter with uv and runs Bajutsu from a venv on it. Removing the workaround is a
+# single localized edit: delete `_python_bootstrap_commands` and these three constants, inline the
+# native install below, and let `_BAJUTSU` fall back to a bare `bajutsu` on PATH.
+_UV = "$HOME/.local/bin/uv"  # where `pip install --user uv` lands on the Device Farm host
+_VENV = "$HOME/bajutsu-venv"
+_BAJUTSU = f"{_VENV}/bin/bajutsu"
+
+
+def _python_bootstrap_commands(python_version: str) -> list[str]:
+    """Install-phase commands that provision `python_version` with uv and install Bajutsu under it.
+
+    Temporary workaround for Device Farm having no Python >= 3.13 (see the block comment above):
+    installs uv with the host's base pip, has uv fetch a standalone interpreter, and installs the
+    uploaded test package into a venv on it. When Device Farm ships 3.13 this collapses back to the
+    native three lines: ``devicefarm-cli use python {version}``, ``pip install --upgrade pip``,
+    ``pip install "$DEVICEFARM_TEST_PACKAGE_PATH"``.
+    """
+    return [
+        # $HOME is writable (the base pip already defaults to a --user install there).
+        "python -m pip install --user --upgrade uv",
+        f"{_UV} python install {python_version}",
+        f"{_UV} venv --python {python_version} {_VENV}",
+        # The test package unpacks into $DEVICEFARM_TEST_PACKAGE_PATH; install Bajutsu from it into
+        # the 3.13 venv. The adb backend is pure subprocess, so the base install (no extras) suffices.
+        f'{_UV} pip install --python {_VENV} "$DEVICEFARM_TEST_PACKAGE_PATH"',
+    ]
+
+
 def render_test_spec(
     scenarios: Sequence[str],
     *,
@@ -119,7 +151,7 @@ def render_test_spec(
         scenarios: Scenario file paths as they appear inside the unpacked test package.
         target: The `targets.<name>` config entry the scenarios run against.
         config: The Bajutsu config path inside the unpacked test package.
-        python_version: The Python the Device Farm host should select for the run.
+        python_version: The Python uv provisions for the run (see `_python_bootstrap_commands`).
 
     Raises:
         ValueError: If `scenarios` is empty — a spec that runs nothing would silently "pass".
@@ -130,7 +162,7 @@ def render_test_spec(
     # quote every splice: an unescaped space or shell metacharacter would otherwise break argument
     # parsing or inject a command onto the Device Farm host running under the OIDC-minted AWS role.
     run_cmds = [
-        "bajutsu run"
+        f"{_BAJUTSU} run"
         f" --scenario {shlex.quote(s)} --target {shlex.quote(target)}"
         f" --config {shlex.quote(config)} --backend adb --udid booted"
         for s in scenarios
@@ -138,15 +170,7 @@ def render_test_spec(
     spec: dict[str, Any] = {
         "version": 0.1,
         "phases": {
-            "install": {
-                "commands": [
-                    f"devicefarm-cli use python {python_version}",
-                    "python -m pip install --upgrade pip",
-                    # The test package unpacks into $DEVICEFARM_TEST_PACKAGE_PATH; install Bajutsu
-                    # from it. The adb backend is pure subprocess, so the base install suffices.
-                    'python -m pip install "$DEVICEFARM_TEST_PACKAGE_PATH"',
-                ]
-            },
+            "install": {"commands": _python_bootstrap_commands(python_version)},
             "pre_test": {
                 "commands": [
                     # Prove the reserved device is visible before running (the serial-resolution PoC).

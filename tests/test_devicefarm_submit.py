@@ -65,12 +65,32 @@ def test_test_spec_runs_bajutsu_over_adb_for_each_scenario() -> None:
         config="showcase.config.yaml",
     )
     test_cmds = yaml.safe_load(spec)["phases"]["test"]["commands"]
-    runs = [c for c in test_cmds if "bajutsu run" in c]
+    runs = [c for c in test_cmds if "bajutsu" in c and " run " in c]
     assert len(runs) == 2
     assert all("--backend adb" in c for c in runs)
     assert all("--target showcase-compose" in c for c in runs)
     assert any("a.yaml" in c for c in runs)
     assert any("b.yaml" in c for c in runs)
+
+
+def test_test_spec_bootstraps_python_with_uv_not_the_device_farm_runtime() -> None:
+    # Device Farm's host tops out at Python 3.12, but Bajutsu requires >=3.13, so the install phase
+    # can't `devicefarm-cli use` a runtime — it must fetch 3.13 with uv instead.
+    spec = render_test_spec(["s.yaml"], target="t", config="c.yaml", python_version="3.13")
+    install = " ".join(yaml.safe_load(spec)["phases"]["install"]["commands"])
+    assert "devicefarm-cli use python" not in install
+    assert "pip install --user" in install and "uv" in install
+    assert "uv python install 3.13" in install
+    assert "uv venv --python 3.13" in install
+    assert "uv pip install" in install and "$DEVICEFARM_TEST_PACKAGE_PATH" in install
+
+
+def test_test_spec_runs_bajutsu_from_the_uv_venv() -> None:
+    # The base runtime can't run Bajutsu, so every `run` must go through the 3.13 venv, not a bare
+    # `bajutsu` that would resolve to nothing (the real failure: `bajutsu: command not found`).
+    spec = render_test_spec(["s.yaml"], target="t", config="c.yaml")
+    test_cmds = yaml.safe_load(spec)["phases"]["test"]["commands"]
+    assert all("bajutsu-venv/bin/bajutsu" in c for c in test_cmds)
 
 
 def test_test_spec_copies_runs_into_the_device_farm_log_dir() -> None:
@@ -83,10 +103,11 @@ def test_test_spec_copies_runs_into_the_device_farm_log_dir() -> None:
     assert "DEVICEFARM_LOG_DIR" in " ".join(doc["artifacts"])
 
 
-def test_test_spec_selects_the_requested_python_version() -> None:
-    spec = render_test_spec(["s.yaml"], target="t", config="c.yaml", python_version="3.13")
+def test_test_spec_installs_the_requested_python_version() -> None:
+    spec = render_test_spec(["s.yaml"], target="t", config="c.yaml", python_version="3.14")
     install = " ".join(yaml.safe_load(spec)["phases"]["install"]["commands"])
-    assert "3.13" in install
+    assert "uv python install 3.14" in install
+    assert "uv venv --python 3.14" in install
 
 
 def test_test_spec_rejects_an_empty_scenario_list() -> None:

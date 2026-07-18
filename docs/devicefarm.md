@@ -48,9 +48,12 @@ Device Farm drives the run from a
 — a YAML file with `install` / `pre_test` / `test` / `post_test` phases of shell commands. The
 submitter renders one that:
 
-1. **install** — selects the Python runtime (`devicefarm-cli use python …`) and `pip install`s
-   Bajutsu from the uploaded test package. The adb backend is pure subprocess, so the base install
-   (no extras) is enough.
+1. **install** — bootstraps Python 3.13 with uv and installs Bajutsu from the uploaded test package
+   into a venv on it. Device Farm's host tops out at Python 3.12 (`devicefarm-cli use python` only
+   offers the runtimes Amazon preinstalls) while Bajutsu requires 3.13, so the phase installs uv with
+   the host's base pip, has uv fetch a standalone 3.13, and installs into that venv. This is a
+   temporary workaround, removed once Device Farm ships 3.13 (see `_python_bootstrap_commands` in the
+   submitter). The adb backend is pure subprocess, so the base install (no extras) is enough.
 2. **pre_test** — runs `adb devices` to prove the reserved device is visible (the serial-resolution
    check).
 3. **test** — one `bajutsu run --backend adb --udid booted` per scenario, so a scenario that fails
