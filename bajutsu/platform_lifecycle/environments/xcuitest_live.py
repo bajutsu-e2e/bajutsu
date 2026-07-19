@@ -94,6 +94,18 @@ class XcuitestLiveEnvironment(_DeviceEnvironment):
             raise base.UnsupportedAction(
                 "extra_env is not yet wired on the live WebDriver route (BE-0238 Slice B)"
             )
+        if pre.deeplink:
+            raise base.UnsupportedAction(
+                "deeplink is not yet wired on the live WebDriver route (BE-0238 Slice B)"
+            )
+        if pre.launch_args:
+            raise base.UnsupportedAction(
+                "launch_args is not yet wired on the live WebDriver route (BE-0238 Slice B)"
+            )
+        if pre.launch_env:
+            raise base.UnsupportedAction(
+                "launch_env is not yet wired on the live WebDriver route (BE-0238 Slice B)"
+            )
         ios = require_ios(eff)
         self._client = WebDriverClient(self._transport_factory(self._endpoint))
         self._client.new_session(
@@ -122,6 +134,12 @@ class XcuitestLiveEnvironment(_DeviceEnvironment):
         # No simctl catalog for a remote grid — a first-class empty map, like a driver-observed
         # platform, so the report simply omits the device model / OS.
         return {}
+
+    def captures_video(self) -> bool:
+        # No simctl interval on the live route; `XcuitestLiveDriver.driver_interval` returns `None`
+        # for every kind in Slice A, including "video". Returning `True` here (the base value) would
+        # have `record` tag a scenario with `capture: [video]` that silently records nothing on replay.
+        return False
 
     def controller(self, eff: Effective) -> DeviceControl | None:
         # simctl device control cannot reach a cloud device; the preflight (Slice C) narrows the

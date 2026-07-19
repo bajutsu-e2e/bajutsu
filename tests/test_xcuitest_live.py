@@ -425,6 +425,33 @@ def test_driver_interval_returns_none_for_all_capture_kinds(tmp_path: Any) -> No
     assert driver.driver_interval("deviceLog", tmp_path / "out.log") is None
 
 
+def test_live_environment_start_raises_on_deeplink() -> None:
+    # `deeplink` is not wired on the live route; the run must fail loudly rather than silently no-op.
+    env = XcuitestLiveEnvironment("xcuitest", _ENDPOINT, transport_factory=lambda _e: _FakeGrid([]))
+    with pytest.raises(base.UnsupportedAction):
+        env.start(_live_eff(), Preconditions(deeplink="myapp://home"))
+
+
+def test_live_environment_start_raises_on_launch_args() -> None:
+    env = XcuitestLiveEnvironment("xcuitest", _ENDPOINT, transport_factory=lambda _e: _FakeGrid([]))
+    with pytest.raises(base.UnsupportedAction):
+        env.start(_live_eff(), Preconditions(launch_args=["--reset"]))
+
+
+def test_live_environment_start_raises_on_launch_env() -> None:
+    env = XcuitestLiveEnvironment("xcuitest", _ENDPOINT, transport_factory=lambda _e: _FakeGrid([]))
+    with pytest.raises(base.UnsupportedAction):
+        env.start(_live_eff(), Preconditions(launch_env={"MODE": "test"}))
+
+
+def test_live_environment_captures_video_is_false() -> None:
+    # The live route has no simctl interval; `XcuitestLiveDriver.driver_interval` returns `None` for
+    # every kind including "video". Inheriting `_DeviceEnvironment.captures_video() -> True` would
+    # have `record` tag a scenario with `capture: [video]` that silently records nothing on replay.
+    env = XcuitestLiveEnvironment("xcuitest", _ENDPOINT, transport_factory=lambda _e: _FakeGrid([]))
+    assert env.captures_video() is False
+
+
 def test_query_raises_webdriver_error_on_null_rect_coordinate() -> None:
     # If a grid returns `null` for a rect coordinate, `float(None)` in `_snapshot` would raise a
     # bare TypeError; the driver should surface it as WebDriverError (an infra failure, not a test
