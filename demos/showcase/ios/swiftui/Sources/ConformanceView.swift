@@ -17,11 +17,31 @@ struct ConformanceView: View {
     /// near-empty a11y tree could satisfy too early).
     static let readyID = "conformance.ready"
 
+    /// The always-present editable field the text-editing and `tap_point` contract invariants act on
+    /// (BE-0280) — mirrors the web `_render` field and the Compose `CONFORMANCE_FIELD_ID`. Present on
+    /// every conformance screen like the marker (not seeded per screen), with a fixed frame so the
+    /// coordinate tap has a known center to aim at.
+    static let fieldID = "conformance.field"
+
+    /// Backs the editable field. The empty placeholder is deliberate: an iOS text field reports its
+    /// placeholder as the accessibility value when empty, which would make the field read non-empty
+    /// before any typing and hide the round-trip length change the contract observes.
+    @State private var fieldText = ""
+
     var body: some View {
         // Duplicates are the point (the ambiguous-selector case), so the row identity is the
         // position, never the identifier — a `\.self` id would collapse repeated identifiers.
         VStack(spacing: 8) {
             Text("ready").accessibilityID(Self.readyID)
+            // The editable field, always present so the text-editing / tap_point invariants have a
+            // real field on every screen. A fixed frame gives the coordinate tap a known center.
+            TextField("", text: $fieldText)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 280, height: 44)
+                .accessibilityID(Self.fieldID)
+                // Mirror the text into the accessibility value so the idb / XCUITest `query()` reads
+                // it back deterministically — the round-trip length change the contract observes.
+                .accessibilityValue(fieldText)
             ForEach(Array(identifiers.enumerated()), id: \.offset) { _, identifier in
                 // A generous, opaque hit area: the conformance contract pinches/rotates one of these
                 // (the MULTI_TOUCH case), and XCUITest's two-finger gestures need real room between

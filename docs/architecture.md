@@ -271,8 +271,12 @@ The contract (`tests/driver_conformance.py`) is the "done" definition a new back
 - a zero-match selector fails rather than reporting success;
 - selector failures share one error type (`SelectorError`), uniform across backends;
 - a unique match acts without error, and `query()` reports the on-screen elements;
-- `capabilities()` matches observed behavior — the `QUERY` / `ELEMENTS` baseline is declared, and
-  multi-touch gestures work exactly when `MULTI_TOUCH` is declared (else raise `UnsupportedAction`);
+- `capabilities()` matches observed behavior — the `QUERY` / `ELEMENTS` baseline is declared,
+  multi-touch gestures work exactly when `MULTI_TOUCH` is declared, and select-all / clipboard copy
+  work exactly when `TEXT_SELECTION` is declared (else each raises `UnsupportedAction`, BE-0280);
+- text editing round-trips on the focused field (typing then deleting reduces its reported length),
+  and `tap_point` — a raw coordinate tap, the alert-dismissal path — focuses the field when aimed at
+  its center, the same observable effect as a semantic tap (BE-0280);
 - `wait_for` is a single-shot check of the current screen, with the shared `wait_until` loop
   turning it into a condition wait with no fixed sleep.
 

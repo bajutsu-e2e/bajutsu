@@ -465,8 +465,11 @@ def test_delete_text_sends_backspaces_over_companion_not_argv(monkeypatch) -> No
 
 def test_select_and_copy_are_unsupported_and_route_to_xcuitest() -> None:
     # idb is coordinate-only, so select-all / copy have no actuation; they fail loudly and point at
-    # codegen→XCUITest, mirroring how multi-touch gestures are refused (BE-0265).
+    # codegen→XCUITest, mirroring how multi-touch gestures are refused (BE-0265). The refusal is
+    # honest: idb does not advertise TEXT_SELECTION, so preflight rejects a `select`/`copy` scenario
+    # before any device work rather than letting it fail late (BE-0280).
     driver = IdbDriver("U", run=lambda a: "[]")
+    assert base.Capability.TEXT_SELECTION not in driver.capabilities()
     with pytest.raises(base.UnsupportedAction, match="XCUITest"):
         driver.select_all()
     with pytest.raises(base.UnsupportedAction, match="XCUITest"):

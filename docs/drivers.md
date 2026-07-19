@@ -55,6 +55,7 @@ resolution, and the **preflight capability check** (below).
 | `conditionWait` | native condition waiting | — | — | ✅ | ✅ |
 | `network` | native network monitoring | — | — | ✅ | — |
 | `multiTouch` | two-finger gestures (pinch / rotate) | — | ✅ | ✅ | ✅ |
+| `textSelection` | select-all + clipboard copy on the focused field | — | ✅ | ✅ | ✅ |
 | `deviceControl.setLocation` | set the simulated GPS location | ✅ | ✅ | — | — |
 | `deviceControl.clipboard` | read / write / clear the clipboard | ✅ | ✅ | — | — |
 | `deviceControl.push` | deliver a push notification | ✅ | — | — | — |
@@ -94,7 +95,9 @@ through (prime directive #2: fail fast and clearly). It is a pure function of (s
 set) — no device, no clock — and per-scenario: only the offending scenarios fail, the rest run.
 
 The check gates only the **hard** requirements the capability set cleanly decides: `pinch` /
-`rotate` need `multiTouch`, a `visual` assertion needs `screenshot`, and each device-control step
+`rotate` need `multiTouch`, `select` / `copy` need `textSelection` (select-all + clipboard copy;
+idb is coordinate-only and refuses both — `delete` / `clear` stay ungated, as every backend backs
+`delete_text`), a `visual` assertion needs `screenshot`, and each device-control step
 needs the token for its own operation — `setLocation` needs `deviceControl.setLocation`, the
 clipboard steps need `deviceControl.clipboard`, `push` needs `deviceControl.push`, and so on
 (BE-0212 split the coarse `deviceControl` family of BE-0128 into these per-operation tokens). Every

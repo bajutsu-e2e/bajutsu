@@ -18,9 +18,20 @@ The invariants (grounded in the `Driver` Protocol and `drivers/base`):
 * Selector failures share one error type (`SelectorError`), uniform across backends.
 * A unique match acts without error.
 * `capabilities()` matches observed behavior — the `QUERY` / `ELEMENTS` baseline is declared,
-  and multi-touch gestures work exactly when `MULTI_TOUCH` is declared (else raise loudly).
+  multi-touch gestures work exactly when `MULTI_TOUCH` is declared (else raise loudly), and
+  select-all / clipboard copy work exactly when `TEXT_SELECTION` is declared (else raise loudly).
+* Text editing round-trips on the focused field: typing then deleting reduces the field's
+  reported length, on every backend that surfaces the field's value.
+* `tap_point` (a raw coordinate tap) focuses the field when aimed at its center — the same
+  observable effect as a semantic tap on it — so the alert-dismissal coordinate tap has a
+  contract, not just a per-backend command test.
 * `wait_for` is a single-shot check of the current screen; the shared `wait_until` loop turns
   it into a condition wait with no fixed sleep.
+
+The text-editing and `tap_point` invariants need a real editable field on the screen, so every
+conformance screen carries one (`FIELD_ID`) alongside the readiness marker — always present, like
+the marker, not seeded per screen. It has a known, queryable frame, so it doubles as the
+known-frame element the coordinate-tap invariant aims at.
 
 This module is not collected by pytest itself (no ``test_`` filename, no ``Test`` class name);
 it is imported by the per-backend suites.
@@ -35,6 +46,25 @@ from typing import Protocol, runtime_checkable
 import pytest
 
 from bajutsu.drivers import base
+
+#: The editable text field present on every conformance screen (BE-0280), alongside the readiness
+#: marker. The text-editing and `tap_point` invariants act on it; each backend's screen realizes it
+#: (the iOS `ConformanceView`, the Compose `ConformanceScreen`, the web `_render`, and — for the
+#: fast gate — the reactive `FakeDriver` the `FakeConformanceHarness` builds). Its `query()` `value`
+#: reflects what has been typed, so the round-trip effect is observable, and its frame is known, so
+#: the coordinate tap has a definite center to aim at.
+FIELD_ID = "conformance.field"
+
+
+def _field_value(driver: base.Driver) -> str:
+    """The current text of the conformance field (empty string when it reports none)."""
+    return base.resolve_unique(driver.query(), {"id": FIELD_ID})["value"] or ""
+
+
+def _field_center(driver: base.Driver) -> base.Point:
+    """The center point of the conformance field's known frame, for a coordinate tap."""
+    x, y, w, h = base.resolve_unique(driver.query(), {"id": FIELD_ID})["frame"]
+    return (x + w / 2, y + h / 2)
 
 
 def element(
@@ -227,6 +257,63 @@ class DriverConformanceContract:
         else:
             with pytest.raises(base.UnsupportedAction):
                 driver.select_option({"id": "sel"}, "opt")
+
+    def test_text_selection_capability_matches_behavior(self, harness: ConformanceHarness) -> None:
+        # capabilities() is a promise (BE-0280): a TEXT_SELECTION backend actuates select-all + copy
+        # without UnsupportedAction; one without it (idb, coordinate-only) refuses both loudly rather
+        # than silently no-op'ing — the same shape as MULTI_TOUCH. `delete_text` / `type_text` are
+        # never gated (every backend backs them), so they must succeed on either side of the branch.
+        driver = harness.with_screen([])  # the field is always present; no seeded buttons needed
+        driver.tap({"id": FIELD_ID})  # focus the field, as the orchestrator does before editing
+        driver.type_text("abc")
+        driver.delete_text(1)  # actuates everywhere, capability-independent
+        if base.Capability.TEXT_SELECTION in driver.capabilities():
+            driver.select_all()  # must not raise
+            driver.copy_selection()  # must not raise
+        else:
+            with pytest.raises(base.UnsupportedAction):
+                driver.select_all()
+            with pytest.raises(base.UnsupportedAction):
+                driver.copy_selection()
+
+    def test_delete_text_reduces_the_field_length(self, harness: ConformanceHarness) -> None:
+        # The round-trip observable effect (BE-0280): typing grows the field, deleting shrinks it.
+        # Measured as deltas, not absolutes, so a value left by an earlier test doesn't matter. A
+        # backend that focuses and types but never surfaces the field's `value` can't observe the
+        # effect — skip there rather than fail, the same tolerance select_option gives a non-<select>.
+        driver = harness.with_screen([])
+        driver.tap({"id": FIELD_ID})
+        before = len(_field_value(driver))
+        driver.type_text("wxyz")
+        typed = len(_field_value(driver))
+        if typed <= before:
+            pytest.skip("backend does not surface the field value; delete effect not observable")
+        driver.delete_text(2)
+        assert len(_field_value(driver)) < typed
+
+    def test_tap_point_focuses_the_field_like_a_semantic_tap(
+        self, harness: ConformanceHarness
+    ) -> None:
+        # tap_point is a raw coordinate tap (the alert-dismissal path, BE-0269); no lane actuated it
+        # under the contract before (BE-0280). Aimed at the field's center, it must focus the field —
+        # the same observable effect as a semantic tap on it: typing afterward lands in the field.
+        driver = harness.with_screen([element(identifier="elsewhere")])
+        # First confirm the field surfaces typed text through the known-good semantic tap, so a
+        # backend that never reports `value` is skipped here rather than at the coordinate-tap
+        # assertion — otherwise a genuinely broken tap_point (field left unfocused, length unchanged
+        # from an empty start) would look identical to "value not observable" and be masked.
+        driver.tap({"id": FIELD_ID})
+        driver.type_text("a")
+        baseline = len(_field_value(driver))
+        if baseline == 0:
+            pytest.skip("backend does not surface the field value; focus effect not observable")
+        # Blur by tapping elsewhere, then re-focus by a raw coordinate tap at the field's center: the
+        # coordinate tap must land on the field, so the following character grows it. A tap_point that
+        # missed would leave the field unfocused and the length unchanged — a failure, not a skip.
+        driver.tap({"id": "elsewhere"})
+        driver.tap_point(_field_center(driver))
+        driver.type_text("z")
+        assert len(_field_value(driver)) > baseline
 
     def test_wait_for_is_single_shot(self, harness: ConformanceHarness) -> None:
         # wait_for reflects the current screen only; the deadline loop lives in wait_until.

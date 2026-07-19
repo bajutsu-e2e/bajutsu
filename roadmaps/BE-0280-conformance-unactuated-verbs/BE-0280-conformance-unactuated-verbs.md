@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0280](BE-0280-conformance-unactuated-verbs.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0280") |
+| Implementing PR | _pending_ |
 | Topic | Driver & backend architecture |
 | Related | [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md), [BE-0270](../BE-0270-android-adb-driver-conformance/BE-0270-android-adb-driver-conformance.md), [BE-0265](../BE-0265-text-editing-steps/BE-0265-text-editing-steps.md), [BE-0269](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention.md) |
 <!-- /BE-METADATA -->
@@ -95,11 +96,26 @@ Proposal altitude. The work is MECE along the units below.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Enumerate the operation contract (text-editing round-trip, `tap_point`, actuate-vs-raise per backend, and whether to add a text-editing capability).
-- [ ] Extend the iOS / Compose / web conformance screens with an editable field and a known-frame element.
-- [ ] Add the new contract test bodies to `tests/driver_conformance.py`.
-- [ ] Wire screen realization into the on-device harnesses.
-- [ ] Confirm capability declarations match actuate-versus-raise behavior per backend.
+- [x] Enumerate the operation contract (text-editing round-trip, `tap_point`, actuate-vs-raise per backend, and whether to add a text-editing capability).
+- [x] Extend the iOS / Compose / web conformance screens with an editable field and a known-frame element.
+- [x] Add the new contract test bodies to `tests/driver_conformance.py`.
+- [x] Wire screen realization into the on-device harnesses.
+- [x] Confirm capability declarations match actuate-versus-raise behavior per backend.
+
+**Log**
+
+- 2026-07-19 — Implemented in one PR (_pending_). A new `Capability.TEXT_SELECTION` token gates
+  `select` / `copy` (select-all + clipboard copy): XCUITest / adb / Playwright / `fake` declare it,
+  idb does not and raises `UnsupportedAction`. The preflight
+  (`capability_preflight.py`) rejects a `select` / `copy` scenario on idb up front, exactly like
+  `selectOption`; `delete` / `clear` stay ungated (`delete_text` is universal). The contract
+  (`tests/driver_conformance.py`) gains three bodies — text-selection actuate-vs-raise, the
+  delete-reduces-length round-trip, and `tap_point` focusing the field like a semantic tap. Each
+  conformance screen (iOS `ConformanceView`, Compose `ConformanceScreen`, web `_render`, and the
+  reactive `FakeConformanceHarness` on the gate) grows one always-present editable field, which — with
+  its known, queryable frame — doubles as the known-frame element the coordinate tap aims at, so no
+  separate frame element is needed. Verified: `make check` green (FakeDriver lane) and the web lane
+  green against real Chromium; the idb / XCUITest / adb lanes verify in the E2E workflows.
 
 ## References
 

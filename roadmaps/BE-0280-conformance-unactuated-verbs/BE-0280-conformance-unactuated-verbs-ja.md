@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0280](BE-0280-conformance-unactuated-verbs-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0280") |
+| 実装 PR | _pending_ |
 | トピック | ドライバとバックエンドのアーキテクチャ |
 | 関連 | [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md), [BE-0270](../BE-0270-android-adb-driver-conformance/BE-0270-android-adb-driver-conformance-ja.md), [BE-0265](../BE-0265-text-editing-steps/BE-0265-text-editing-steps-ja.md), [BE-0269](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention-ja.md) |
 <!-- /BE-METADATA -->
@@ -93,11 +94,26 @@
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] 各操作の不変条件を列挙する（テキスト編集の往復、`tap_point`、バックエンドごとのアクチュエート／送出、テキスト編集 capability を追加するかの判断）。
-- [ ] iOS / Compose / web の適合性画面に編集可能フィールドと既知フレーム要素を加える。
-- [ ] 新しいテスト本体を `tests/driver_conformance.py` に追加する。
-- [ ] 実機ハーネスへ画面実体化を配線する。
-- [ ] capability の宣言がバックエンドごとのアクチュエート／送出の挙動と一致することを確認する。
+- [x] 各操作の不変条件を列挙する（テキスト編集の往復、`tap_point`、バックエンドごとのアクチュエート／送出、テキスト編集 capability を追加するかの判断）。
+- [x] iOS / Compose / web の適合性画面に編集可能フィールドと既知フレーム要素を加える。
+- [x] 新しいテスト本体を `tests/driver_conformance.py` に追加する。
+- [x] 実機ハーネスへ画面実体化を配線する。
+- [x] capability の宣言がバックエンドごとのアクチュエート／送出の挙動と一致することを確認する。
+
+**ログ**
+
+- 2026-07-19 — 1 つの PR（_pending_）で実装しました。新しい `Capability.TEXT_SELECTION` トークンが
+  `select` / `copy`（全選択とクリップボードへのコピー）を門にします。XCUITest / adb / Playwright /
+  `fake` はこれを宣言し、idb は宣言せず `UnsupportedAction` を送出します。preflight
+  （`capability_preflight.py`）は idb 上の `select` / `copy` シナリオを `selectOption` と同様に事前に
+  弾きます。`delete` / `clear` は門にしません（`delete_text` はどのバックエンドも実現できます）。契約
+  （`tests/driver_conformance.py`）にはテスト本体を 3 つ追加しました。テキスト選択のアクチュエート／送出、
+  削除で文字数が減る往復、そして `tap_point` が semantic tap と同じくフィールドをフォーカスすることです。
+  各適合性画面（iOS `ConformanceView`、Compose `ConformanceScreen`、web `_render`、ゲート上では反応する
+  `FakeConformanceHarness`）に、常時存在する編集可能フィールドを 1 つ加えました。このフィールドは既知で
+  問い合わせ可能なフレームを持つため、座標タップが狙う既知フレーム要素を兼ねます。したがって別個のフレーム
+  要素は不要です。検証: `make check` は緑（FakeDriver レーン）、web レーンは実際の Chromium に対して緑
+  です。idb / XCUITest / adb の各レーンは E2E ワークフローで検証されます。
 
 ## 参考
 

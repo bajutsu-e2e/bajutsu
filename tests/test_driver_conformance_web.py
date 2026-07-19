@@ -22,7 +22,7 @@ from collections.abc import Iterator
 from typing import Any
 
 import pytest
-from driver_conformance import ConformanceHarness, DriverConformanceContract
+from driver_conformance import FIELD_ID, ConformanceHarness, DriverConformanceContract
 
 from bajutsu.drivers import base
 from bajutsu.drivers.playwright import PlaywrightDriver
@@ -36,6 +36,16 @@ if importlib.util.find_spec("playwright") is None:
     pytest.skip("Playwright (the web extra) is not installed", allow_module_level=True)
 
 
+# The always-present editable field (BE-0280), the web twin of the iOS `ConformanceView` /
+# Compose `ConformanceScreen` field. Absolutely positioned at a known, off-flow box so its frame
+# stays fixed (the coordinate-tap invariant aims at its center) and it never overlaps the seeded
+# nodes above; a real `<input>` so `QUERY_JS` reads its live `value` for the round-trip invariant.
+_FIELD_HTML = (
+    f'<input data-testid="{FIELD_ID}" '
+    'style="position:absolute;left:8px;top:400px;width:200px;height:40px">'
+)
+
+
 def _render(elements: list[base.Element]) -> str:
     """One HTML page realizing the seeded conformance screen for `QUERY_JS` to read.
 
@@ -44,10 +54,12 @@ def _render(elements: list[base.Element]) -> str:
     real, clickable point) — the seeded ids come through as the driver's element identifiers.
     An element seeded with the `button` trait renders as a `<button>` (which `QUERY_JS` maps back
     to that trait), so the cross-backend `{ label, traits: [button] }` case resolves on Chromium
-    too (BE-0223); every other element stays a plain `<div>`.
+    too (BE-0223); every other element stays a plain `<div>`. The editable conformance field is
+    always appended (BE-0280), like the app-side screens' field, so the text-editing / `tap_point`
+    invariants have a live field regardless of what was seeded.
     """
     nodes = "".join(_node(el) for el in elements)
-    return f"<!doctype html><html><body>{nodes}</body></html>"
+    return f"<!doctype html><html><body>{nodes}{_FIELD_HTML}</body></html>"
 
 
 def _node(el: base.Element) -> str:

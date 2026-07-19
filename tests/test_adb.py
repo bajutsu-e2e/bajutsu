@@ -217,6 +217,7 @@ def test_capabilities_lean_end() -> None:
     # multiTouch is advertised (BE-0232): the two-finger sendevent sweep, so preflight admits
     # `gestures_multitouch`. The root precondition is enforced at actuation time, not in the set.
     assert base.Capability.MULTI_TOUCH in caps
+    assert base.Capability.TEXT_SELECTION in caps  # Ctrl+A / Ctrl+C actuate; idb refuses (BE-0280)
 
 
 def test_driver_interval_routes_video_and_devicelog_to_adb_starters(

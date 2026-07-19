@@ -202,6 +202,7 @@ def test_capabilities_add_semantic_tap_condition_wait_multi_touch_but_not_networ
     assert base.Capability.SEMANTIC_TAP in caps
     assert base.Capability.CONDITION_WAIT in caps
     assert base.Capability.MULTI_TOUCH in caps  # the gestures idb cannot do
+    assert base.Capability.TEXT_SELECTION in caps  # select/copy actuate; idb refuses (BE-0280)
     # Network evidence rides on the app-side collector, not the actuator (proposal: BE-0020 boundary).
     assert base.Capability.NETWORK not in caps
 

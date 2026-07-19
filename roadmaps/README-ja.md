@@ -104,9 +104,7 @@
 ### ドライバとバックエンドのアーキテクチャ
 
 <!-- GENERATED:proposals-driver-architecture -->
-| ID | 項目 | 状態 |
-|---|---|---|
-| [BE-0280](BE-0280-conformance-unactuated-verbs/BE-0280-conformance-unactuated-verbs-ja.md) | 全バックエンド共通のテストを、アクチュエートされていない Driver 操作へ広げる | 提案 |
+
 <!-- /GENERATED:proposals-driver-architecture -->
 
 ### デバイスクラウド実行
