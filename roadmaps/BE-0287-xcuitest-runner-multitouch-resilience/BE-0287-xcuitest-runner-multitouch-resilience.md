@@ -66,12 +66,14 @@ side and need on-device iteration; Unit 3 and Unit 4 harden the Python driver ch
 testable against a simulated transport. The units are ordered by dependency but can land as separate
 pull requests.
 
-**Unit 1 — Characterize the runner crash under two-finger actuation.** Reproduce the failure on a
-Simulator and capture the runner-side diagnostic, so the root cause is known rather than inferred.
-The open question is whether the pinch / rotate actuation itself crashes the XCUITest runner process,
-whether it wedges the loopback HTTP server the runner hosts, or whether the `idb_companion` beneath
-it is the one that dies. Collect the runner's crash log and console output for a reproducing run, and
-record which of the three actually fails. This unit produces a diagnosis, not code.
+**Unit 1 — Characterize the runner crash under two-finger actuation.** Identify the root cause
+deterministically — either through static analysis of the runner source or by reproducing the failure
+on a Simulator and capturing the runner-side diagnostic. The open question is whether the pinch /
+rotate actuation itself crashes the XCUITest runner process, whether it wedges the loopback HTTP
+server the runner hosts, or whether the `idb_companion` beneath it is the one that dies. In practice
+the answer can often be read directly from the source: `HTTPServer`'s serial accept loop and
+backlog-of-1 make the wedge mechanistically inevitable, so a fresh on-device capture is not always
+required to settle which of the three actually fails. This unit produces a diagnosis, not code.
 
 **Unit 2 — Fix the root cause where it lives.** If Unit 1 shows a defect in the runner's own gesture
 handling (the XCUITest side in [`BajutsuKit/`](../../BajutsuKit)), fix it there so the two-finger
