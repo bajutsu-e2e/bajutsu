@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0280") |
-| 実装 PR | _pending_ |
+| 実装 PR | [#1204](https://github.com/bajutsu-e2e/bajutsu/pull/1204) |
 | トピック | ドライバとバックエンドのアーキテクチャ |
 | 関連 | [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md), [BE-0270](../BE-0270-android-adb-driver-conformance/BE-0270-android-adb-driver-conformance-ja.md), [BE-0265](../BE-0265-text-editing-steps/BE-0265-text-editing-steps-ja.md), [BE-0269](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention-ja.md) |
 <!-- /BE-METADATA -->
@@ -102,7 +102,7 @@
 
 **ログ**
 
-- 2026-07-19 — 1 つの PR（_pending_）で実装しました。新しい `Capability.TEXT_SELECTION` トークンが
+- 2026-07-19 — 1 つの PR（[#1204](https://github.com/bajutsu-e2e/bajutsu/pull/1204)）で実装しました。新しい `Capability.TEXT_SELECTION` トークンが
   `select` / `copy`（全選択とクリップボードへのコピー）を門にします。XCUITest / adb / Playwright /
   `fake` はこれを宣言し、idb は宣言せず `UnsupportedAction` を送出します。preflight
   （`capability_preflight.py`）は idb 上の `select` / `copy` シナリオを `selectOption` と同様に事前に
