@@ -129,8 +129,11 @@ The follow-on lands in three slices, each faked at the WebDriver boundary:
   routing that opens the session and skips `xcodebuild`. This slice makes a live run that taps and
   asserts end to end.
 - **Slice B — input and gestures.** Map `swipe`, `scroll`, `type_text`, `delete_text`, `select_all`,
-  `copy_selection`, `pinch`, and `rotate` onto WebDriver actions — the W3C Actions application
-  programming interface (API) or Appium's `mobile:` commands.
+  `copy_selection`, `double_tap`, `long_press`, `tap_point`, `pinch`, and `rotate` onto WebDriver
+  actions — the W3C Actions application programming interface (API) or Appium's `mobile:` commands.
+  `double_tap` and `long_press` share the same `/tap` runner endpoint as plain `tap` today (via
+  extra params), so their WebDriver mapping is a similar-sized piece of work to the other gestures;
+  `tap_point` (the handle-less coordinate tap used for system alerts) maps to the same Actions path.
 - **Slice C — capabilities, config, and docs.** Narrow the live route's run-time capability set to
   what Appium-XCUITest reaches (through `capabilities_for_run`, the Unit 3 mechanism), add a showcase
   target for a live grid, and extend the how-to with the live route.
