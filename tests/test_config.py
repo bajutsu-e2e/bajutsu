@@ -874,6 +874,18 @@ def test_xcuitest_targets_live_endpoint_false_when_provider_has_no_endpoint() ->
     assert xcuitest_targets_live_endpoint(resolve(cfg, "s")) is False
 
 
+def test_xcuitest_targets_live_endpoint_false_for_non_appium_kind_with_http_endpoint() -> None:
+    # Only the `appium` provider kind exposes a reserved iOS device via a WebDriver endpoint — a
+    # non-appium kind that happens to carry an `http(s)://` value must not be mistaken for the live
+    # route; `capabilities_for_run` must not narrow to XcuitestLiveDriver.CAPABILITIES for a run
+    # that will actually take the local / simctl path.
+    cfg = load_config(
+        "targets:\n  s:\n    bundleId: com.x\n"
+        "    deviceProvider:\n      kind: local\n      endpoint: https://grid.example.com/wd/hub\n"
+    )
+    assert xcuitest_targets_live_endpoint(resolve(cfg, "s")) is False
+
+
 # --- BE-0024: configurable doctor thresholds ---
 
 
