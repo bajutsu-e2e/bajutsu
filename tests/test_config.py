@@ -886,6 +886,17 @@ def test_xcuitest_targets_live_endpoint_false_for_non_appium_kind_with_http_endp
     assert xcuitest_targets_live_endpoint(resolve(cfg, "s")) is False
 
 
+def test_xcuitest_targets_live_endpoint_false_for_non_ios_target() -> None:
+    # The live route is an iOS concept (a reserved iOS device behind an Appium endpoint) — an Android
+    # target carrying the same provider shape must stay False, mirroring `xcuitest_targets_real_device`
+    # which also gates on the target being iOS.
+    cfg = load_config(
+        "targets:\n  s:\n    package: com.x\n"
+        "    deviceProvider:\n      kind: appium\n      endpoint: https://grid.example.com/wd/hub\n"
+    )
+    assert xcuitest_targets_live_endpoint(resolve(cfg, "s")) is False
+
+
 # --- BE-0024: configurable doctor thresholds ---
 
 

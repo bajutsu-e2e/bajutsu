@@ -95,7 +95,7 @@ Bajutsu drives that endpoint over a live **W3C WebDriver transport**. The endpoi
 scheme is the routing signal: it is exactly the value the shared `device_id` character set rejects
 (a URL carries a `/`), so it can never collide with a real `simctl` udid, and the run routes it
 **around** the `simctl` / `xcodebuild` udid machinery entirely — that machinery structurally cannot
-carry a URL. A tap-and-assert flow works end to end. The semantic endpoints the local runner drives
+carry a URL. A tap-and-assert flow works end to end. The semantic actions the local runner drives
 natively map onto Appium's XCUITest `mobile:` commands over the endpoint: `tap`, `query`, screenshots,
 condition waits, the input steps (`type` / `delete`, `swipe` / `scroll`), and the two-finger
 `pinch` / `rotate` gestures. As on the local backends, an ambiguous selector still fails **before any
