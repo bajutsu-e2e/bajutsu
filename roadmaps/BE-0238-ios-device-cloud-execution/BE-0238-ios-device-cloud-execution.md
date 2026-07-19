@@ -237,6 +237,24 @@ The follow-on lands in three slices, each faked at the WebDriver boundary:
   runnable), and the real-device caveats (re-signing strips entitlements; the simctl-backed device
   control and permission grants degrade via the preflight). Added to the mkdocs nav; documentation
   only, no product-code change. The live-route transport remains the last open box.
+- Live route Slice A (_pending_): landed the first live-transport slice — the endpoint the `appium`
+  provider yields is now drivable end to end for a tap-and-assert run. A new in-house W3C WebDriver
+  client (`drivers/xcuitest_live.py`, `http.client`-based, its wire injected the same way
+  `XcuitestDriver` injects its transport, so no third-party WebDriver dependency reaches the gate) and
+  an `XcuitestLiveDriver` that reuses the query-resolve-act-by-handle shape: one broad `findElements`
+  builds the `base.Element` list, `resolve_unique` resolves the selector Python-side (an ambiguous
+  selector still fails before any actuation — determinism first), and the tap acts by the WebDriver
+  element id the query returned, standing in for the runner's per-snapshot handle. `environment_for`
+  now recognises an `http(s)://` udid spec (the routing signal — exactly the value the shared
+  `device_id` policy rejects) and returns a new `XcuitestLiveEnvironment`, which opens a WebDriver
+  session against the endpoint and skips simctl / `xcodebuild` entirely; the simctl-backed seam
+  methods (`resolve_device`, device catalog, `DeviceControl` controller, relauncher) are overridden to
+  the live route's shape, since each would otherwise build a `simctl.Env(endpoint)` that rejects the
+  URL. This closes the Unit 4/5 boundary: a real endpoint no longer reaches `_destination`, so the
+  boundary test is updated to assert the new routing. Slice A covers `query` / `tap` / `screenshot` /
+  readiness; input and gestures (Slice B) and the run-time capability narrowing / config / docs
+  (Slice C) remain, so the live-route box stays unchecked. Faked at the WebDriver network boundary; no
+  grid, no device on the gate.
 
 ## References
 

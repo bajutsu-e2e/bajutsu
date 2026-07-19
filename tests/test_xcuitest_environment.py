@@ -119,25 +119,25 @@ def test_start_on_a_real_device_targets_the_device_and_skips_simctl(
     assert simctl_calls == []  # a real device is never touched through simctl
 
 
-# --- the live-route boundary: an Appium endpoint is not yet a drivable udid (BE-0238 Unit 4) --- #
+# --- the live-route boundary: an Appium endpoint routes around the udid machinery (BE-0238) --- #
 
 
-def test_appium_endpoint_is_rejected_by_the_udid_machinery() -> None:
-    # Unit 4 shipped the `appium` DeviceProvider as a seam only: it hands a run the reserved device's
-    # Appium / WebDriver endpoint as the udid spec, but that value flows unchanged into `_destination`,
-    # whose `validated_udid` applies the shared device_id policy — and a URL's `//` is outside that
-    # charset. So a real `http(s)://` endpoint raises `invalid udid` today: the documented reason the
-    # live route is not yet end-to-end runnable, since the follow-on transport must route the endpoint
-    # around the simctl / xcodebuild udid machinery, which structurally cannot carry a URL. Pin the
-    # boundary here — when that transport lands, this test breaks visibly and is the cue to update it.
+def test_destination_still_rejects_a_url_as_a_udid() -> None:
+    # `_destination` itself is unchanged: a URL passed to it directly is still rejected by the shared
+    # device_id policy (its `//` is outside the charset). This is the defense-in-depth guard — the live
+    # route now keeps a real endpoint away from `_destination` entirely (see the routing test below),
+    # so this only fires if a URL ever reached the simctl / xcodebuild udid machinery by mistake.
     with pytest.raises(simctl.DeviceError, match="invalid udid"):
         _destination("device", "http://grid.local:4723")
 
 
-def test_appium_lease_endpoint_reaches_the_udid_machinery_unchanged() -> None:
-    # Tie the seam to the boundary above: the endpoint the `appium` provider yields is exactly the
-    # value that reaches `_destination` as the udid — the run resolves its lanes against `udid_spec` —
-    # so the live route fails closed the same way today, never a silent fall back to a local device.
+def test_appium_lease_endpoint_routes_to_the_live_environment() -> None:
+    # The live transport (Slice A) closes the Unit 4 boundary: the endpoint the `appium` provider
+    # yields no longer flows into `_destination`. `environment_for` recognises the `http(s)://` udid
+    # spec and returns the live WebDriver environment, which drives the reserved device off the simctl
+    # / xcodebuild path — so the endpoint reaches the WebDriver session, never the udid machinery.
+    from bajutsu.platform_lifecycle.environments.xcuitest_live import XcuitestLiveEnvironment
+    from bajutsu.platform_lifecycle.factories import environment_for
     from bajutsu.runner import device_provider as dp
 
     cfg = load_config(
@@ -146,5 +146,7 @@ def test_appium_lease_endpoint_reaches_the_udid_machinery_unchanged() -> None:
     )
     lease = dp.acquire_device(resolve(cfg, "s"), "booted")
     assert lease.udid_spec == "http://grid.local:4723"  # the endpoint, not the --udid flag
-    with pytest.raises(simctl.DeviceError, match="invalid udid"):
-        _destination("device", lease.udid_spec)
+    env = environment_for("xcuitest", lease.udid_spec)
+    assert isinstance(env, XcuitestLiveEnvironment)
+    # The live environment passes the endpoint through instead of resolving it through simctl.
+    assert env.resolve_device(lease.udid_spec) == "http://grid.local:4723"

@@ -8,6 +8,10 @@ from bajutsu.platform_lifecycle.environments.fake import FakeEnvironment
 from bajutsu.platform_lifecycle.environments.ios import IosEnvironment
 from bajutsu.platform_lifecycle.environments.web import WebEnvironment
 from bajutsu.platform_lifecycle.environments.xcuitest import XcuitestEnvironment
+from bajutsu.platform_lifecycle.environments.xcuitest_live import (
+    XcuitestLiveEnvironment,
+    is_webdriver_endpoint,
+)
 from bajutsu.platform_lifecycle.protocols import Environment, ProvisionProfile
 
 
@@ -34,5 +38,10 @@ def environment_for(
     if actuator == "fake":
         return FakeEnvironment(actuator, udid, env_run)
     if actuator == "xcuitest":
+        # A WebDriver endpoint (the `appium` provider's live udid spec) takes the live route: a
+        # WebDriver session against the reserved device, off the simctl / xcodebuild udid machinery
+        # that structurally cannot carry a URL (BE-0238). The URL scheme is the routing signal.
+        if is_webdriver_endpoint(udid):
+            return XcuitestLiveEnvironment(actuator, udid)
         return XcuitestEnvironment(actuator, udid, env_run)
     return IosEnvironment(actuator, udid, env_run)
