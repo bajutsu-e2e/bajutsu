@@ -145,6 +145,8 @@ class WebDriverClient:
         found = self._value(
             "POST", self._session_path("/elements"), {"using": using, "value": value}
         )
+        if not isinstance(found, list):
+            raise WebDriverError(f"elements was not a list: {found!r}")
         return [item[ELEMENT_KEY] for item in found]
 
     def attribute(self, element_id: str, name: str) -> Any:

@@ -22,6 +22,7 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 
 from bajutsu.config import Effective, require_ios
+from bajutsu.crawl import Reset
 from bajutsu.drivers import base
 from bajutsu.drivers.xcuitest_live import (
     WdTransportFn,
@@ -78,6 +79,21 @@ class XcuitestLiveEnvironment(_DeviceEnvironment):
         # A reserved cloud device is booted with its build installed (the provider's ProvisionProfile),
         # so there is no simctl bring-up here — the endpoint never reaches the udid machinery. The
         # bundle id tells Appium which installed app to drive.
+        #
+        # Simctl-backed and not-yet-wired preconditions fail loudly rather than silently no-op'ing
+        # (determinism first — the scenario author must know the option had no effect).
+        if pre.erase:
+            raise base.UnsupportedAction(
+                "erase is a simctl operation and does not apply to the live WebDriver route"
+            )
+        if permissions:
+            raise base.UnsupportedAction(
+                "permission grants use simctl and do not apply to the live WebDriver route"
+            )
+        if extra_env:
+            raise base.UnsupportedAction(
+                "extra_env is not yet wired on the live WebDriver route (BE-0238 Slice B)"
+            )
         ios = require_ios(eff)
         self._client = WebDriverClient(self._transport_factory(self._endpoint))
         self._client.new_session(
@@ -111,6 +127,17 @@ class XcuitestLiveEnvironment(_DeviceEnvironment):
         # simctl device control cannot reach a cloud device; the preflight (Slice C) narrows the
         # device-control capabilities away, and here the runner reads `None` as "no device control".
         return None
+
+    def crawl_reset(self, eff: Effective) -> Reset:
+        # Crawl reset terminates and relaunches the app via simctl in the base; simctl cannot reach a
+        # cloud device. Raise clearly from the closure rather than letting `simctl.Env(endpoint)` crash
+        # with a confusing DeviceError (live-route crawl support is a follow-on slice).
+        def reset(driver: base.Driver) -> None:
+            raise base.UnsupportedAction(
+                "crawl_reset is not yet wired on the live WebDriver route (BE-0238 Slice B)"
+            )
+
+        return reset
 
     def relauncher(
         self,

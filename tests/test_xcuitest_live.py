@@ -352,3 +352,49 @@ def test_live_environment_passes_the_bundle_id_in_the_session_capabilities() -> 
     env.start(_live_eff(), Preconditions())
     always = captured["body"]["capabilities"]["alwaysMatch"]
     assert always["appium:bundleId"] == "com.x"
+
+
+def test_live_environment_start_raises_on_erase() -> None:
+    # `erase` is a simctl operation; the live route has no simctl, so it fails loudly rather than
+    # silently no-op'ing (determinism first — the scenario author must know erase had no effect).
+    env = XcuitestLiveEnvironment("xcuitest", _ENDPOINT, transport_factory=lambda _e: _FakeGrid([]))
+    with pytest.raises(base.UnsupportedAction):
+        env.start(_live_eff(), Preconditions(erase=True))
+
+
+def test_live_environment_start_raises_on_permissions() -> None:
+    env = XcuitestLiveEnvironment("xcuitest", _ENDPOINT, transport_factory=lambda _e: _FakeGrid([]))
+    with pytest.raises(base.UnsupportedAction):
+        env.start(_live_eff(), Preconditions(), permissions={"photos": "allow"})
+
+
+def test_live_environment_start_raises_on_extra_env() -> None:
+    env = XcuitestLiveEnvironment("xcuitest", _ENDPOINT, transport_factory=lambda _e: _FakeGrid([]))
+    with pytest.raises(base.UnsupportedAction):
+        env.start(_live_eff(), Preconditions(), extra_env={"FOO": "bar"})
+
+
+def test_live_environment_crawl_reset_raises_unsupported_action() -> None:
+    # `crawl_reset` would otherwise fall through to the base, which builds `simctl.Env(endpoint)`
+    # — the URL is rejected there with a confusing DeviceError. The override raises clearly instead.
+    env = XcuitestLiveEnvironment("xcuitest", _ENDPOINT, transport_factory=lambda _e: _FakeGrid([]))
+    reset = env.crawl_reset(_live_eff())
+    driver = XcuitestLiveDriver(WebDriverClient(_FakeGrid([])))
+    with pytest.raises(base.UnsupportedAction):
+        reset(driver)
+
+
+def test_find_elements_raises_on_non_list_response() -> None:
+    # If the WebDriver server returns a non-list `value` for `findElements`, we should get a clear
+    # WebDriverError rather than a bare TypeError/KeyError from indexing.
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> tuple[int, Any]:
+        if method == "POST" and path == "/session":
+            return 200, {"value": {"sessionId": "s1", "capabilities": {}}}
+        if method == "POST" and path == "/session/s1/elements":
+            return 200, {"value": "not-a-list"}  # malformed
+        raise AssertionError(f"unexpected {method} {path}")
+
+    client = WebDriverClient(transport)
+    client.new_session({})
+    with pytest.raises(WebDriverError, match="not a list"):
+        client.find_elements("xpath", "//*")
