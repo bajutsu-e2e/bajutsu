@@ -49,7 +49,9 @@ Accepted and actively being built — a PR is in flight or imminent.
 ### Platform support (iOS / Android / Web / Flutter)
 
 <!-- GENERATED:in-progress-platform -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0287](BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience.md) | XCUITest runner-channel resilience under multi-touch actuation | In progress |
 <!-- /GENERATED:in-progress-platform -->
 
 ### Device-cloud execution
@@ -99,7 +101,6 @@ Under consideration — not yet decided. Promote an item to *In progress* once w
 | [BE-0008](BE-0008-flutter-support/BE-0008-flutter-support.md) | Flutter support | Proposal |
 | [BE-0281](BE-0281-ios-on-device-actuation-coverage/BE-0281-ios-on-device-actuation-coverage.md) | Add real on-device actuation coverage to the iOS CI | Proposal |
 | [BE-0283](BE-0283-android-network-capture/BE-0283-android-network-capture.md) | Network-capture assertions for the Android backend | Proposal |
-| [BE-0287](BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience.md) | XCUITest runner-channel resilience under multi-touch actuation | Proposal |
 <!-- /GENERATED:proposals-platform -->
 
 ### Driver & backend architecture

@@ -49,7 +49,9 @@
 ### プラットフォーム対応（iOS / Android / Web / Flutter）
 
 <!-- GENERATED:in-progress-platform -->
-
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0287](BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience-ja.md) | 多点タッチ操作下での XCUITest runner チャネルの耐障害性 | 実装中 |
 <!-- /GENERATED:in-progress-platform -->
 
 ### デバイスクラウド実行
@@ -99,7 +101,6 @@
 | [BE-0008](BE-0008-flutter-support/BE-0008-flutter-support-ja.md) | Flutter 対応 | 提案 |
 | [BE-0281](BE-0281-ios-on-device-actuation-coverage/BE-0281-ios-on-device-actuation-coverage-ja.md) | iOS CI に実機で操作するテストを加える | 提案 |
 | [BE-0283](BE-0283-android-network-capture/BE-0283-android-network-capture-ja.md) | Android バックエンドのネットワークキャプチャアサーション | 提案 |
-| [BE-0287](BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience-ja.md) | 多点タッチ操作下での XCUITest runner チャネルの耐障害性 | 提案 |
 <!-- /GENERATED:proposals-platform -->
 
 ### ドライバとバックエンドのアーキテクチャ

@@ -40,6 +40,22 @@ class XcuitestChannelError(RuntimeError):
     """
 
 
+class XcuitestRunnerCrashError(XcuitestChannelError):
+    """The runner died mid-run: the loopback channel stayed unreachable past the transient-retry budget (BE-0287).
+
+    A crash outlives the BE-0207 retry (a sub-second blip smoother), so it is kept distinct from both a
+    transient blip and a decoded test outcome: it names an honest "the runner crashed" failure, so a
+    lost two-finger gesture never masquerades as an assertion mismatch (`actual='idle'`). `delivered`
+    records whether the failed call had reached the runner, so the crash-recovery layer can tell a
+    safe-to-re-issue read from a write that must not be re-applied.
+    """
+
+    def __init__(self, message: str, *, method: str = "", delivered: bool = False) -> None:
+        super().__init__(message)
+        self.method = method
+        self.delivered = delivered
+
+
 @dataclass(frozen=True)
 class _Reply:
     """A decoded runner response.
@@ -96,6 +112,12 @@ def _timeout_for(method: str) -> float:
 _MAX_ATTEMPTS = 3
 _BACKOFF_BASE_SECONDS = 0.5  # exponential per retry: 0.5s, 1.0s, … between attempts
 
+# How long a mid-run crash-recovery (BE-0287) waits for a crashed runner to come back before failing
+# loudly. A different concern from the transient retry above: the observed flake left the runner gone
+# for ~30s, far beyond the retry's ~1.5s budget, so this is generous enough to ride that out yet still
+# bounded — a runner that is truly gone fails the run rather than hanging it.
+_RECOVERY_TIMEOUT_SECONDS = 60
+
 
 def _to_element(item: Mapping[str, Any]) -> base.Element:
     """Normalize one `GET /elements` item into an `Element`.
@@ -145,7 +167,7 @@ class _TransportFailure(Exception):
 
 
 def _is_retry_eligible(method: str, *, delivered: bool) -> bool:
-    """Whether a failed attempt is safe to re-issue (BE-0207).
+    """Whether a failed attempt is safe to re-issue (BE-0207, BE-0287).
 
     A failure before the request reached the runner is safe for any method — the runner never acted.
     Once the request was delivered, only idempotent reads may be retried; re-sending a side-effecting
@@ -163,8 +185,9 @@ def _with_retry(inner: TransportFn, *, sleep: Callable[[float], None] = time.sle
     Only a `_TransportFailure` is retried, and only when `_is_retry_eligible`; a decoded outcome
     (`stale` / `not-found`) is a `_Reply`, never an exception, so it is returned untouched and never
     retried — retrying an outcome would be the flakiness-by-absorption BE-0049 rejects. On exhaustion
-    the loud `XcuitestChannelError` is raised, so the deterministic verdict is preserved: only a
-    recoverable blip is absorbed. Each retry is logged, so a retried-then-passed run stays visible.
+    the loud `XcuitestRunnerCrashError` (a subclass of `XcuitestChannelError`) is raised, so the
+    deterministic verdict is preserved: only a recoverable blip is absorbed. Each retry is logged, so a
+    retried-then-passed run stays visible.
     """
     logger = logging.getLogger("bajutsu.xcuitest.channel")
 
@@ -176,8 +199,14 @@ def _with_retry(inner: TransportFn, *, sleep: Callable[[float], None] = time.sle
                 if attempt == _MAX_ATTEMPTS or not _is_retry_eligible(
                     method, delivered=exc.delivered
                 ):
-                    raise XcuitestChannelError(
-                        f"runner channel {method} {path} failed: {exc}"
+                    # A blip outlived the transient budget (or a delivered write cannot be re-issued):
+                    # signal it as a crash, tagged so the BE-0287 recovery layer can decide whether the
+                    # call is safe to re-issue. Still an XcuitestChannelError, so a bare `_with_retry`
+                    # (no recovery wrapper) fails just as loudly as before.
+                    raise XcuitestRunnerCrashError(
+                        f"runner channel {method} {path} failed: {exc}",
+                        method=method,
+                        delivered=exc.delivered,
                     ) from exc
                 logger.warning(
                     "runner channel %s %s failed (attempt %d/%d), retrying: %s",
@@ -195,12 +224,102 @@ def _with_retry(inner: TransportFn, *, sleep: Callable[[float], None] = time.sle
     return transport
 
 
+def _await_health(
+    transport: TransportFn,
+    *,
+    timeout: float,
+    poll: float = 0.1,
+    sleep: Callable[[float], None] = time.sleep,
+    clock: Callable[[], float] = time.monotonic,
+) -> bool:
+    """Poll `GET /health` until the runner answers `ready`, returning whether it did within *timeout*.
+
+    A bounded condition wait (no fixed sleep that ignores the condition): `True` the moment the runner
+    is ready, `False` if the deadline passes first. A channel failure while the runner is down is
+    swallowed and re-polled, so "not accepting connections yet" reads as not-ready, not as an error.
+    Shared by `await_ready` (startup) and the crash-recovery layer (mid-run), which differ only in the
+    transport and timeout they poll with.
+    """
+    deadline = clock() + timeout
+    while True:
+        try:
+            if transport("GET", "/health", None).status == "ready":
+                return True
+        except (XcuitestChannelError, _TransportFailure):
+            pass  # runner not accepting connections yet; keep probing until the deadline
+        if clock() >= deadline:
+            return False
+        sleep(poll)
+
+
+def _with_crash_recovery(
+    inner: TransportFn,
+    *,
+    health: Callable[[float], bool],
+    recovery_timeout: float = _RECOVERY_TIMEOUT_SECONDS,
+) -> TransportFn:
+    """Wrap *inner* so a mid-run runner crash surfaces deterministically, not as a lost gesture (BE-0287).
+
+    The BE-0207 retry seam (*inner*) absorbs a sub-second blip; a crash outlives its budget and raises
+    `XcuitestRunnerCrashError`. This layer catches that and decides by the same `delivered` split the
+    seam already draws. An idempotent read — or a write that never reached the runner — waits for the
+    runner to come back (via *health*, the bounded `/health` poll) and re-issues, because re-reading is
+    safe. A write that may already have been delivered is never re-sent (double-actuation risk) and
+    fails with a distinct crash diagnostic, so the run stops on an honest "the runner died mid-gesture"
+    rather than a misleading `actual='idle'`. Every crash — recovered or not — is logged as visibly as
+    the retry seam logs a retried blip (BE-0287 Unit 4), so a crashed-and-recovered run is never
+    indistinguishable from one that never crashed.
+
+    `/health` itself passes straight through: it is the probe recovery leans on, so wrapping it would
+    recurse (and block a startup `await_ready` for the whole recovery window on a runner not yet up).
+    """
+    logger = logging.getLogger("bajutsu.xcuitest.channel")
+
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        if path == "/health":
+            return inner(method, path, body)
+        try:
+            return inner(method, path, body)
+        except XcuitestRunnerCrashError as crash:
+            logger.warning(
+                "runner channel %s %s: the runner became unreachable past the retry budget — a mid-run crash: %s",
+                method,
+                path,
+                crash,
+            )
+            if not _is_retry_eligible(method, delivered=crash.delivered):
+                raise XcuitestRunnerCrashError(
+                    f"runner channel {method} {path} failed after delivery: the runner did not confirm "
+                    "the write, which may have been lost and cannot be safely re-applied (mid-run crash)",
+                    method=method,
+                    delivered=crash.delivered,
+                ) from crash
+            if not health(recovery_timeout):
+                raise XcuitestRunnerCrashError(
+                    f"runner channel {method} {path} failed: the runner crashed mid-run and did not "
+                    f"recover within {recovery_timeout}s",
+                    method=method,
+                    delivered=crash.delivered,
+                ) from crash
+            logger.warning(
+                "runner channel %s %s: the runner recovered from a mid-run crash; re-issuing the idempotent call",
+                method,
+                path,
+            )
+            return inner(method, path, body)
+
+    return transport
+
+
 def _raw_http_transport(host: str, port: int) -> TransportFn:
     """One HTTP attempt to the runner's loopback server, tagging failures for the retry seam (BE-0207).
 
-    A failure while connecting or sending means the request never reached the runner (`delivered`
-    stays `False`); a failure while reading the response means it may have acted (`delivered` is
-    `True`) — `_with_retry` uses that split to decide what is safe to re-issue.
+    A failure while *connecting* means the request never reached the runner (`delivered` stays
+    `False`); once the socket is open, any later failure — a partial send or a response-side timeout —
+    may have reached the runner (`delivered` is `True`). `_with_retry` and the BE-0287 crash-recovery
+    use that split to decide what is safe to re-issue, so the flip is deliberately conservative: a
+    write whose bytes may have started reaching the runner is never re-sent (a double-actuation risk),
+    it fails loudly instead.
     """
 
     def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
@@ -210,12 +329,13 @@ def _raw_http_transport(host: str, port: int) -> TransportFn:
         conn = http.client.HTTPConnection(host, port, timeout=_timeout_for(method))
         delivered = False
         try:  # pragma: no cover - exercised on-device against the real runner, not on the gate
+            conn.connect()  # split from send: a connect failure is safe to re-issue, a send failure isn't
+            delivered = (
+                True  # the socket is open; a later send/read failure may have reached the runner
+            )
             payload = json.dumps(body).encode() if body is not None else None
             headers = {"Content-Type": "application/json"} if payload is not None else {}
             conn.request(method, path, body=payload, headers=headers)
-            delivered = (
-                True  # the request is on the wire; a later failure is a response-side timeout
-            )
             resp = conn.getresponse()
             return _decode(path, resp.status, resp.read())
         except OSError as exc:  # pragma: no cover - see above
@@ -227,8 +347,18 @@ def _raw_http_transport(host: str, port: int) -> TransportFn:
 
 
 def _http_transport(host: str, port: int) -> TransportFn:
-    """The real transport: a bounded-retry channel to the runner's loopback server (BE-0207)."""
-    return _with_retry(_raw_http_transport(host, port))
+    """The real transport: a crash-resilient, bounded-retry channel to the runner's loopback server.
+
+    Two layers over the raw socket: BE-0207's `_with_retry` smooths a sub-second blip, and BE-0287's
+    `_with_crash_recovery` rides out a mid-run crash (idempotent re-issue) or fails loudly on a write it
+    must not re-send. The crash-recovery health poll uses the single-attempt raw transport so probing
+    stays fast, not the retried one.
+    """
+    raw = _raw_http_transport(host, port)
+    return _with_crash_recovery(
+        _with_retry(raw),
+        health=lambda timeout: _await_health(raw, timeout=timeout),
+    )
 
 
 class XcuitestDriver:
@@ -410,15 +540,7 @@ class XcuitestDriver:
         fails loudly (`XcuitestChannelError`) on timeout rather than hanging, so "the runner never
         came up" is a clear run failure.
         """
-        deadline = time.monotonic() + timeout
-        while True:
-            try:
-                if self._transport("GET", "/health", None).status == "ready":
-                    return
-            except XcuitestChannelError:
-                pass  # not accepting connections yet; keep probing until the deadline
-            if time.monotonic() >= deadline:
-                raise XcuitestChannelError(
-                    f"xcuitest runner did not come up within {timeout}s (health never ready)"
-                )
-            time.sleep(poll)
+        if not _await_health(self._transport, timeout=timeout, poll=poll):
+            raise XcuitestChannelError(
+                f"xcuitest runner did not come up within {timeout}s (health never ready)"
+            )

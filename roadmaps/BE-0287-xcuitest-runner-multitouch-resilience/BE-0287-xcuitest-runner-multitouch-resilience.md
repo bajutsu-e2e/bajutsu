@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0287](BE-0287-xcuitest-runner-multitouch-resilience.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0287") |
+| Implementing PR | [#1200](https://github.com/bajutsu-e2e/bajutsu/pull/1200) (Unit 3: mid-run crash detection & recovery; Unit 4: recovery visibility) |
 | Topic | Platform support |
 <!-- /BE-METADATA -->
 
@@ -129,11 +130,19 @@ because the gesture was lost; more waiting cannot recover an actuation that neve
       whether the runner process, its loopback server, or `idb_companion` is the one that dies.
 - [ ] Unit 2 — Fix the root cause in the runner (`BajutsuKit/`) if it is a runner defect, or document
       the upstream limitation and hand off to Unit 3.
-- [ ] Unit 3 — Detect a mid-run crash past the per-call retry budget and surface it deterministically:
+- [x] Unit 3 — Detect a mid-run crash past the per-call retry budget and surface it deterministically:
       idempotent recovery for reads / undelivered writes, a distinct runner-crash failure otherwise.
-- [ ] Unit 4 — Keep every recovery visible in the record: log each recovery as visibly as a retried
+- [x] Unit 4 — Keep every recovery visible in the record: log each recovery as visibly as a retried
       blip, so a crashed-and-recovered run is never indistinguishable from one that never crashed
       (never-re-apply-a-delivered-write is Unit 3's job).
+
+Log:
+
+- [#1200](https://github.com/bajutsu-e2e/bajutsu/pull/1200) — Units 3 & 4: add `XcuitestRunnerCrashError` and a `_with_crash_recovery` seam over the
+  BE-0207 retry — a mid-run crash now waits out the runner and re-issues an idempotent read (or a write
+  that never reached the runner), and fails loudly with a distinct crash diagnostic on a delivered
+  write, logging every crash and recovery. Units 1 & 2 (on-device diagnosis and the `BajutsuKit`
+  root-cause fix) remain open.
 
 ## References
 
