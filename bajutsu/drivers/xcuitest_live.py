@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import Any
 
 from bajutsu.drivers import base
+from bajutsu.evidence import intervals
 
 # The W3C element-reference key: `findElements` returns each element as `{ELEMENT_KEY: "<id>"}`, and
 # every per-element request addresses it by that opaque id — the live counterpart of the runner's
@@ -147,7 +148,12 @@ class WebDriverClient:
         )
         if not isinstance(found, list):
             raise WebDriverError(f"elements was not a list: {found!r}")
-        return [item[ELEMENT_KEY] for item in found]
+        ids: list[str] = []
+        for item in found:
+            if not isinstance(item, Mapping) or ELEMENT_KEY not in item:
+                raise WebDriverError(f"element reply missing {ELEMENT_KEY!r}: {item!r}")
+            ids.append(item[ELEMENT_KEY])
+        return ids
 
     def attribute(self, element_id: str, name: str) -> Any:
         """Return one element attribute (`name` / `label` / `value` / `type` / `enabled` / …)."""
@@ -288,6 +294,12 @@ class XcuitestLiveDriver:
 
     def capabilities(self) -> set[str]:
         return set(self.CAPABILITIES)
+
+    def driver_interval(self, kind: str, path: Path) -> intervals.Interval | None:
+        # Returning None for every kind routes the evidence FileSink through the driver path rather
+        # than the simctl path (which calls `simctl.validated_udid(endpoint)` and crashes on a URL).
+        # In-driver recording over WebDriver actions is Slice B.
+        return None
 
     # --- Slice B: input and gestures are not yet mapped onto WebDriver actions ---
 

@@ -5,7 +5,7 @@ that a self-hosted Appium grid exposes over a W3C WebDriver endpoint. Unit 4 shi
 `DeviceProvider` (the seam that hands a run that endpoint as its udid spec) but not the transport that
 drives it. This slice adds that transport: a minimal in-house W3C WebDriver client, a live driver that
 keeps element resolution Python-side (determinism first), and the `environment_for` routing that
-recognises an `http(s)://` udid spec and opens a WebDriver session instead of running simctl /
+recognizes an `http(s)://` udid spec and opens a WebDriver session instead of running simctl /
 `xcodebuild`. The WebDriver wire is the sanctioned fake point — no grid, no device on the gate.
 """
 
@@ -296,7 +296,7 @@ def test_capabilities_exclude_simctl_backed_and_multitouch() -> None:
 # --- routing: an http(s) endpoint takes the live path --- #
 
 
-def test_is_webdriver_endpoint_recognises_urls() -> None:
+def test_is_webdriver_endpoint_recognizes_urls() -> None:
     assert is_webdriver_endpoint("http://grid.local:4723") is True
     assert is_webdriver_endpoint("https://grid.local/wd/hub") is True
     assert is_webdriver_endpoint("00008030-000A1B2C3D4E") is False
@@ -398,3 +398,28 @@ def test_find_elements_raises_on_non_list_response() -> None:
     client.new_session({})
     with pytest.raises(WebDriverError, match="not a list"):
         client.find_elements("xpath", "//*")
+
+
+def test_find_elements_raises_on_item_missing_element_key() -> None:
+    # A list reply where an item lacks the W3C element-reference key raises WebDriverError, not
+    # a raw KeyError — every malformed reply from this client is a WebDriverError.
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> tuple[int, Any]:
+        if method == "POST" and path == "/session":
+            return 200, {"value": {"sessionId": "s1", "capabilities": {}}}
+        if method == "POST" and path == "/session/s1/elements":
+            return 200, {"value": [{"wrong-key": "e1"}]}  # missing ELEMENT_KEY
+        raise AssertionError(f"unexpected {method} {path}")
+
+    client = WebDriverClient(transport)
+    client.new_session({})
+    with pytest.raises(WebDriverError, match="missing"):
+        client.find_elements("xpath", "//*")
+
+
+def test_driver_interval_returns_none_for_all_capture_kinds(tmp_path: Any) -> None:
+    # `XcuitestLiveDriver` exposes `driver_interval` so the evidence `FileSink` routes through the
+    # driver path rather than the simctl path (which would call `simctl.validated_udid(endpoint)`
+    # and crash on the URL). Each kind returns None — no in-driver recording in Slice A.
+    driver = XcuitestLiveDriver(WebDriverClient(_FakeGrid([])))
+    assert driver.driver_interval("video", tmp_path / "out.mp4") is None
+    assert driver.driver_interval("deviceLog", tmp_path / "out.log") is None

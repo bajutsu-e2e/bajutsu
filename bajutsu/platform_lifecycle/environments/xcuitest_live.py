@@ -8,7 +8,7 @@ the run an `XcuitestLiveDriver` bound to it, and closes the session on teardown.
 
 `environment_for` selects this environment when the xcuitest actuator's udid spec is an `http(s)://`
 endpoint (`is_webdriver_endpoint`). The URL scheme is the routing signal: it is exactly the value the
-shared `device_id` policy rejects, so recognising it up front both selects the live path and keeps
+shared `device_id` policy rejects, so recognizing it up front both selects the live path and keeps
 the endpoint clear of the simctl / xcodebuild udid machinery, which structurally cannot carry a URL.
 That same reason forces the simctl-backed seam methods off: `resolve_device`, the device catalog, the
 `DeviceControl` controller, and the relauncher all build a `simctl.Env(udid)` that would reject the

@@ -116,7 +116,7 @@ environment for a run; when the xcuitest actuator's udid spec is an `http(s)://`
 takes a live path that skips simctl bring-up and the `xcodebuild test-without-building` subprocess
 entirely, opening a WebDriver session against the endpoint, driving it through the live driver, and
 closing the session on teardown. The URL scheme is the routing signal: it is exactly the value
-`validated_udid` rejects, so recognising the scheme up front both selects the live path and replaces
+`validated_udid` rejects, so recognizing the scheme up front both selects the live path and replaces
 the misleading `invalid udid` error. The endpoint therefore never reaches the udid machinery, which
 structurally cannot carry a URL. The BE-0236 `ProvisionProfile` already reports the reserved device
 booted with its build installed, so the live path honours no simctl bring-up flags — the real-device
@@ -245,7 +245,7 @@ The follow-on lands in three slices, each faked at the WebDriver boundary:
   builds the `base.Element` list, `resolve_unique` resolves the selector Python-side (an ambiguous
   selector still fails before any actuation — determinism first), and the tap acts by the WebDriver
   element id the query returned, standing in for the runner's per-snapshot handle. `environment_for`
-  now recognises an `http(s)://` udid spec (the routing signal — exactly the value the shared
+  now recognizes an `http(s)://` udid spec (the routing signal — exactly the value the shared
   `device_id` policy rejects) and returns a new `XcuitestLiveEnvironment`, which opens a WebDriver
   session against the endpoint and skips simctl / `xcodebuild` entirely; the simctl-backed seam
   methods (`resolve_device`, device catalog, `DeviceControl` controller, relauncher) are overridden to
