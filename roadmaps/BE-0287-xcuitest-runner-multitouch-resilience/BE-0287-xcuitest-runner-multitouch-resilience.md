@@ -7,9 +7,9 @@
 |---|---|
 | Proposal | [BE-0287](BE-0287-xcuitest-runner-multitouch-resilience.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0287") |
-| Implementing PR | [#1200](https://github.com/bajutsu-e2e/bajutsu/pull/1200) (Unit 3: mid-run crash detection & recovery; Unit 4: recovery visibility) |
+| Implementing PR | [#1200](https://github.com/bajutsu-e2e/bajutsu/pull/1200) (Unit 3: mid-run crash detection & recovery; Unit 4: recovery visibility), [#1202](https://github.com/bajutsu-e2e/bajutsu/pull/1202) (Units 1 & 2: runner-side diagnosis and the HTTP-server root-cause fix) |
 | Topic | Platform support |
 <!-- /BE-METADATA -->
 
@@ -66,12 +66,14 @@ side and need on-device iteration; Unit 3 and Unit 4 harden the Python driver ch
 testable against a simulated transport. The units are ordered by dependency but can land as separate
 pull requests.
 
-**Unit 1 — Characterize the runner crash under two-finger actuation.** Reproduce the failure on a
-Simulator and capture the runner-side diagnostic, so the root cause is known rather than inferred.
-The open question is whether the pinch / rotate actuation itself crashes the XCUITest runner process,
-whether it wedges the loopback HTTP server the runner hosts, or whether the `idb_companion` beneath
-it is the one that dies. Collect the runner's crash log and console output for a reproducing run, and
-record which of the three actually fails. This unit produces a diagnosis, not code.
+**Unit 1 — Characterize the runner crash under two-finger actuation.** Identify the root cause
+deterministically — either through static analysis of the runner source or by reproducing the failure
+on a Simulator and capturing the runner-side diagnostic. The open question is whether the pinch /
+rotate actuation itself crashes the XCUITest runner process, whether it wedges the loopback HTTP
+server the runner hosts, or whether the `idb_companion` beneath it is the one that dies. In practice
+the answer can often be read directly from the source: `HTTPServer`'s serial accept loop and
+backlog-of-1 make the wedge mechanistically inevitable, so a fresh on-device capture is not always
+required to settle which of the three actually fails. This unit produces a diagnosis, not code.
 
 **Unit 2 — Fix the root cause where it lives.** If Unit 1 shows a defect in the runner's own gesture
 handling (the XCUITest side in [`BajutsuKit/`](../../BajutsuKit)), fix it there so the two-finger
@@ -126,10 +128,19 @@ because the gesture was lost; more waiting cannot recover an actuation that neve
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — Reproduce the crash on a Simulator and capture the runner-side diagnostic; record
-      whether the runner process, its loopback server, or `idb_companion` is the one that dies.
-- [ ] Unit 2 — Fix the root cause in the runner (`BajutsuKit/`) if it is a runner defect, or document
-      the upstream limitation and hand off to Unit 3.
+- [x] Unit 1 — Diagnose which layer dies: the runner *process* stays alive; its loopback HTTP server
+      wedges. `HTTPServer` accepts one connection at a time (a serial accept loop over a `listen`
+      backlog of 1), so a `POST /gesture` that blocks the loop on the main thread (`pinch`/`rotate`)
+      leaves a concurrent `GET /health` or `GET /screenshot` unserved until the backlog fills and the
+      kernel refuses it — the `Connection refused` and ~30 s of refused `/health` both follow from
+      that one cause. Not `idb_companion`.
+- [x] Unit 2 — Fix the root cause in the runner (`BajutsuKit/`): the accept loop now hands each
+      connection to a concurrent queue and the `listen` backlog is widened, so `/health` (which
+      touches no shared state) stays answerable while a gesture holds the main thread — which is
+      exactly what lets Unit 3's health-poll recovery tell "runner busy" from "runner dead".
+      Concurrency made the previously serial `SnapshotStore` reachable from two handlers at once, so
+      it is now lock-guarded. The lost-gesture `actual='idle'` case is an upstream XCUITest/idb
+      multi-touch-delivery limitation, left to Unit 3's idempotent recovery.
 - [x] Unit 3 — Detect a mid-run crash past the per-call retry budget and surface it deterministically:
       idempotent recovery for reads / undelivered writes, a distinct runner-crash failure otherwise.
 - [x] Unit 4 — Keep every recovery visible in the record: log each recovery as visibly as a retried
@@ -143,6 +154,16 @@ Log:
   that never reached the runner), and fails loudly with a distinct crash diagnostic on a delivered
   write, logging every crash and recovery. Units 1 & 2 (on-device diagnosis and the `BajutsuKit`
   root-cause fix) remain open.
+- [#1202](https://github.com/bajutsu-e2e/bajutsu/pull/1202) — Units 1 & 2: diagnose the flake to a wedged loopback server (not a dead process or
+  `idb_companion`) and fix it in `BajutsuKit/`. `HTTPServer` served connections one at a time over a
+  `listen` backlog of 1, so a `pinch`/`rotate` that blocked the accept loop on the main thread starved
+  concurrent `/health` and `/screenshot` polls until the kernel refused them — the source of both the
+  `Connection refused` crash and the ~30 s health outage. The accept loop now dispatches each
+  connection to a concurrent queue and the backlog is widened, keeping `/health` answerable during a
+  gesture (so Unit 3's recovery can tell a busy runner from a dead one); `SnapshotStore`, now
+  reachable concurrently, is lock-guarded. Verified with `swift test` (including
+  `--sanitize=thread`); the diagnosis is from static analysis of the runner source, corroborating the
+  two observed failure signatures rather than a fresh on-device capture.
 
 ## References
 
