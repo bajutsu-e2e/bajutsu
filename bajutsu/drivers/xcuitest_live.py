@@ -90,7 +90,11 @@ def _raw_wd_transport(endpoint: str) -> WdTransportFn:
             raw = resp.read()
             data = json.loads(raw) if raw else {}
             return resp.status, data
-        except (OSError, json.JSONDecodeError) as exc:  # pragma: no cover - see above
+        except (
+            OSError,
+            http.client.HTTPException,
+            json.JSONDecodeError,
+        ) as exc:  # pragma: no cover - see above
             raise WebDriverError(f"WebDriver {method} {path} failed: {exc}") from exc
         finally:
             conn.close()
@@ -254,17 +258,21 @@ class XcuitestLiveDriver:
         if _is_true(self._client.attribute(element_id, "selected")):
             traits.append(base.Trait.SELECTED)
         r = self._client.rect(element_id)
+        try:
+            frame = (
+                float(r.get("x", 0)),
+                float(r.get("y", 0)),
+                float(r.get("width", 0)),
+                float(r.get("height", 0)),
+            )
+        except (TypeError, ValueError) as exc:
+            raise WebDriverError(f"rect had non-numeric coordinate: {r!r}") from exc
         return {
             "identifier": _str_or_none(self._client.attribute(element_id, "name")),
             "label": _str_or_none(self._client.attribute(element_id, "label")),
             "value": _str_or_none(self._client.attribute(element_id, "value")),
             "traits": traits,
-            "frame": (
-                float(r.get("x", 0)),
-                float(r.get("y", 0)),
-                float(r.get("width", 0)),
-                float(r.get("height", 0)),
-            ),
+            "frame": frame,
         }
 
     def query(self) -> list[base.Element]:

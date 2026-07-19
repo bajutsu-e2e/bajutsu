@@ -423,3 +423,27 @@ def test_driver_interval_returns_none_for_all_capture_kinds(tmp_path: Any) -> No
     driver = XcuitestLiveDriver(WebDriverClient(_FakeGrid([])))
     assert driver.driver_interval("video", tmp_path / "out.mp4") is None
     assert driver.driver_interval("deviceLog", tmp_path / "out.log") is None
+
+
+def test_query_raises_webdriver_error_on_null_rect_coordinate() -> None:
+    # If a grid returns `null` for a rect coordinate, `float(None)` in `_snapshot` would raise a
+    # bare TypeError; the driver should surface it as WebDriverError (an infra failure, not a test
+    # outcome), consistent with every other malformed-reply case in this module.
+    grid = _FakeGrid(
+        [
+            {
+                "id": "e1",
+                "name": "btn",
+                "label": "OK",
+                "value": None,
+                "type": "XCUIElementTypeButton",
+                "enabled": "true",
+                "selected": "false",
+                "rect": {"x": None, "y": 0, "width": 10, "height": 10},
+            }
+        ]
+    )
+    client = WebDriverClient(grid)
+    client.new_session({})
+    with pytest.raises(WebDriverError):
+        XcuitestLiveDriver(client).query()
