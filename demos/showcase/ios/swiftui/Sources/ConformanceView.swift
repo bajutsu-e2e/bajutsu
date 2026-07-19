@@ -39,9 +39,13 @@ struct ConformanceView: View {
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 280, height: 44)
                 .accessibilityID(Self.fieldID)
-                // Mirror the text into the accessibility value so the idb / XCUITest `query()` reads
-                // it back deterministically — the round-trip length change the contract observes.
-                .accessibilityValue(fieldText)
+                // No explicit `.accessibilityValue(fieldText)`: a SwiftUI TextField already surfaces
+                // its bound text as its accessibility value natively (as SearchView's field does), so
+                // the idb / XCUITest `query()` reads back the round-trip length change the contract
+                // observes. An explicit `.accessibilityValue` bound to the per-keystroke `fieldText`
+                // made SwiftUI re-create the field's accessibility element on every change, so a
+                // handle resolved just before a keystroke went stale under the element — the contract's
+                // text-selection flow then failed with a stale handle (BE-0280).
             ForEach(Array(identifiers.enumerated()), id: \.offset) { _, identifier in
                 // A generous, opaque hit area: the conformance contract pinches/rotates one of these
                 // (the MULTI_TOUCH case), and XCUITest's two-finger gestures need real room between
