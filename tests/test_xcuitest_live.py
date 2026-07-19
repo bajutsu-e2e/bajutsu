@@ -326,6 +326,24 @@ def _live_eff() -> Any:
     )
 
 
+def _live_eff_with(**kwargs: str) -> Any:
+    """Return a live Effective with target-level launchArgs / launchEnv set."""
+    extra = ""
+    if "launch_args" in kwargs:
+        extra += f'    launchArgs: ["{kwargs["launch_args"]}"]\n'
+    if "launch_env" in kwargs:
+        k, v = next(iter(kwargs["launch_env"].items()))
+        extra += f"    launchEnv:\n      {k}: {v}\n"
+    return resolve(
+        load_config(
+            "targets:\n  s:\n    bundleId: com.x\n    xcuitest:\n      deviceType: device\n"
+            f"{extra}"
+            "    deviceProvider:\n      kind: appium\n      endpoint: http://grid.local:4723\n"
+        ),
+        "s",
+    )
+
+
 def test_live_environment_start_opens_a_session_and_returns_a_live_driver() -> None:
     grid = _FakeGrid([])
     env = XcuitestLiveEnvironment("xcuitest", _ENDPOINT, transport_factory=lambda _endpoint: grid)
@@ -442,6 +460,36 @@ def test_live_environment_start_raises_on_launch_env() -> None:
     env = XcuitestLiveEnvironment("xcuitest", _ENDPOINT, transport_factory=lambda _e: _FakeGrid([]))
     with pytest.raises(base.UnsupportedAction):
         env.start(_live_eff(), Preconditions(launch_env={"MODE": "test"}))
+
+
+def test_live_environment_start_raises_on_eff_launch_args() -> None:
+    # Target-level `launchArgs` in the effective config is silently dropped unless guarded — the same
+    # loud-fail rule that pre.launch_args already applies, extended to the target-level counterpart.
+    eff = resolve(
+        load_config(
+            "targets:\n  s:\n    bundleId: com.x\n    xcuitest:\n      deviceType: device\n"
+            '    launchArgs: ["--test-mode"]\n'
+            "    deviceProvider:\n      kind: appium\n      endpoint: http://grid.local:4723\n"
+        ),
+        "s",
+    )
+    env = XcuitestLiveEnvironment("xcuitest", _ENDPOINT, transport_factory=lambda _e: _FakeGrid([]))
+    with pytest.raises(base.UnsupportedAction):
+        env.start(eff, Preconditions())
+
+
+def test_live_environment_start_raises_on_eff_launch_env() -> None:
+    eff = resolve(
+        load_config(
+            "targets:\n  s:\n    bundleId: com.x\n    xcuitest:\n      deviceType: device\n"
+            "    launchEnv:\n      MODE: test\n"
+            "    deviceProvider:\n      kind: appium\n      endpoint: http://grid.local:4723\n"
+        ),
+        "s",
+    )
+    env = XcuitestLiveEnvironment("xcuitest", _ENDPOINT, transport_factory=lambda _e: _FakeGrid([]))
+    with pytest.raises(base.UnsupportedAction):
+        env.start(eff, Preconditions())
 
 
 def test_live_environment_start_raises_on_locale() -> None:

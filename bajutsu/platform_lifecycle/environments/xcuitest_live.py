@@ -110,6 +110,14 @@ class XcuitestLiveEnvironment(_DeviceEnvironment):
             raise base.UnsupportedAction(
                 "locale is not yet wired on the live WebDriver route (BE-0238 Slice B)"
             )
+        if eff.launch_args:
+            raise base.UnsupportedAction(
+                "launchArgs is not yet wired on the live WebDriver route (BE-0238 Slice B)"
+            )
+        if eff.launch_env:
+            raise base.UnsupportedAction(
+                "launchEnv is not yet wired on the live WebDriver route (BE-0238 Slice B)"
+            )
         ios = require_ios(eff)
         self._client = WebDriverClient(self._transport_factory(self._endpoint))
         self._client.new_session(
