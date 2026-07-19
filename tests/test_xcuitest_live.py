@@ -21,6 +21,7 @@ import pytest
 from bajutsu.config import load_config, resolve
 from bajutsu.drivers import base
 from bajutsu.drivers.xcuitest_live import (
+    BACKSPACE_KEY,
     ELEMENT_KEY,
     WebDriverClient,
     WebDriverError,
@@ -50,13 +51,29 @@ class _FakeGrid:
     def __init__(self, elements: list[dict[str, Any]], *, ready: bool = True) -> None:
         self._elements = elements
         self._ready = ready
+        self._active_id = elements[0]["id"] if elements else "active-el"
         self.session: str | None = None
         self.deleted = False
         self.clicked: list[str] = []
         self.calls: list[tuple[str, str]] = []
+        # Slice B records: each execute/sync gesture as (script, args), each send-keys as (id, text).
+        self.executed: list[tuple[str, Any]] = []
+        self.typed: list[tuple[str, str]] = []
 
     def __call__(self, method: str, path: str, body: Mapping[str, Any] | None) -> tuple[int, Any]:
         self.calls.append((method, path))
+        # The body-carrying Slice B endpoints are handled here (where the body is in scope); every
+        # other route stays in `_route`, whose signature the readiness-failure fake below overrides.
+        if method == "POST" and path == "/session/sess-1/execute/sync":
+            assert body is not None
+            self.executed.append((body["script"], body["args"]))
+            return 200, {"value": None}
+        if method == "GET" and path == "/session/sess-1/element/active":
+            return 200, {"value": {ELEMENT_KEY: self._active_id}}
+        if method == "POST" and (m := re.fullmatch(r"/session/sess-1/element/(.+)/value", path)):
+            assert body is not None
+            self.typed.append((m.group(1), body["text"]))
+            return 200, {"value": None}
         return self._route(method, path)
 
     def _by_id(self, elid: str) -> dict[str, Any]:
@@ -272,25 +289,131 @@ def test_await_ready_times_out_when_the_grid_never_readies() -> None:
         XcuitestLiveDriver(client).await_ready(timeout=0.05, poll=0.01)
 
 
-def test_gestures_are_not_yet_wired(tmp_path: Any) -> None:
-    # Slice A wires query / tap / screenshot; input and gestures land in Slice B, so they refuse
-    # loudly rather than silently no-op'ing (determinism first).
+def _button(elid: str, name: str) -> dict[str, Any]:
+    return {
+        "id": elid,
+        "name": name,
+        "label": name,
+        "value": None,
+        "type": "XCUIElementTypeButton",
+        "enabled": "true",
+        "selected": "false",
+        "rect": _rect(),
+    }
+
+
+def test_tap_point_issues_a_coordinate_mobile_tap() -> None:
+    # The one gesture with no element/handle (system alerts): a raw coordinate tap.
     grid = _FakeGrid([])
     client = WebDriverClient(grid)
     client.new_session({})
+    XcuitestLiveDriver(client).tap_point((10.0, 20.0))
+    assert grid.executed == [("mobile: tap", [{"x": 10.0, "y": 20.0}])]
+
+
+def test_double_tap_resolves_python_side_then_taps_the_handle() -> None:
+    grid = _FakeGrid([_button("e1", "stable.ok")])
+    client = WebDriverClient(grid)
+    client.new_session({})
+    XcuitestLiveDriver(client).double_tap({"id": "stable.ok"})
+    assert grid.executed == [("mobile: doubleTap", [{"elementId": "e1"}])]
+
+
+def test_long_press_passes_the_duration() -> None:
+    grid = _FakeGrid([_button("e1", "stable.ok")])
+    client = WebDriverClient(grid)
+    client.new_session({})
+    XcuitestLiveDriver(client).long_press({"id": "stable.ok"}, 1.5)
+    assert grid.executed == [("mobile: touchAndHold", [{"elementId": "e1", "duration": 1.5}])]
+
+
+def test_swipe_issues_a_drag_from_to() -> None:
+    grid = _FakeGrid([])
+    client = WebDriverClient(grid)
+    client.new_session({})
+    XcuitestLiveDriver(client).swipe((5.0, 10.0), (5.0, 200.0))
+    (script, (arg,)) = grid.executed[0]
+    assert script == "mobile: dragFromToForDuration"
+    assert (arg["fromX"], arg["fromY"], arg["toX"], arg["toY"]) == (5.0, 10.0, 5.0, 200.0)
+    assert arg["duration"] > 0  # a real XCUITest drag needs a duration
+
+
+def test_scroll_is_a_swipe() -> None:
+    grid = _FakeGrid([])
+    client = WebDriverClient(grid)
+    client.new_session({})
+    XcuitestLiveDriver(client).scroll((5.0, 200.0), (5.0, 10.0))
+    (script, (arg,)) = grid.executed[0]
+    assert script == "mobile: dragFromToForDuration"
+    assert (arg["fromX"], arg["fromY"], arg["toX"], arg["toY"]) == (5.0, 200.0, 5.0, 10.0)
+
+
+def test_pinch_velocity_sign_follows_the_scale() -> None:
+    # Appium's `mobile: pinch` requires velocity > 0 to zoom in (scale > 1) and < 0 to zoom out.
+    grid = _FakeGrid([_button("e1", "map")])
+    client = WebDriverClient(grid)
+    client.new_session({})
     driver = XcuitestLiveDriver(client)
-    with pytest.raises(base.UnsupportedAction):
-        driver.type_text("hello")
-    with pytest.raises(base.UnsupportedAction):
-        driver.swipe((0, 0), (1, 1))
+    driver.pinch({"id": "map"}, 2.0)
+    driver.pinch({"id": "map"}, 0.5)
+    (_, (zoom_in,)) = grid.executed[0]
+    (_, (zoom_out,)) = grid.executed[1]
+    assert grid.executed[0][0] == "mobile: pinch"
+    assert zoom_in["scale"] == 2.0 and zoom_in["velocity"] > 0
+    assert zoom_out["scale"] == 0.5 and zoom_out["velocity"] < 0
 
 
-def test_capabilities_exclude_simctl_backed_and_multitouch() -> None:
-    # A live grid reaches neither the simctl device-control family nor the two-finger gestures in
-    # Slice A; the driver advertises only what it drives.
+def test_rotate_passes_the_rotation_in_radians() -> None:
+    grid = _FakeGrid([_button("e1", "dial")])
+    client = WebDriverClient(grid)
+    client.new_session({})
+    XcuitestLiveDriver(client).rotate({"id": "dial"}, 1.57)
+    (script, (arg,)) = grid.executed[0]
+    assert script == "mobile: rotateElement"
+    assert arg["elementId"] == "e1" and arg["rotation"] == 1.57
+
+
+def test_type_text_sends_keys_to_the_active_element() -> None:
+    grid = _FakeGrid([])
+    client = WebDriverClient(grid)
+    client.new_session({})
+    XcuitestLiveDriver(client).type_text("hello")
+    assert grid.typed == [("active-el", "hello")]  # typed into the focused field
+
+
+def test_delete_text_sends_backspaces_to_the_active_element() -> None:
+    grid = _FakeGrid([])
+    client = WebDriverClient(grid)
+    client.new_session({})
+    XcuitestLiveDriver(client).delete_text(3)
+    assert grid.typed == [("active-el", BACKSPACE_KEY * 3)]  # the W3C backspace, once per count
+
+
+def test_select_all_and_copy_are_unsupported_on_the_live_route() -> None:
+    # Neither has a first-class Appium XCUITest command; the local runner does them natively. On the
+    # live route they fail loudly (determinism first) rather than silently no-op'ing.
+    driver = XcuitestLiveDriver(WebDriverClient(_FakeGrid([])))
+    with pytest.raises(base.UnsupportedAction):
+        driver.select_all()
+    with pytest.raises(base.UnsupportedAction):
+        driver.copy_selection()
+
+
+def test_a_gesture_on_an_ambiguous_selector_fails_before_actuation() -> None:
+    grid = _FakeGrid([_button("e1", "dup"), _button("e2", "dup")])
+    client = WebDriverClient(grid)
+    client.new_session({})
+    with pytest.raises(base.AmbiguousSelector):
+        XcuitestLiveDriver(client).double_tap({"id": "dup"})
+    assert grid.executed == []  # resolution fails before any WebDriver actuation
+
+
+def test_capabilities_include_multitouch_but_exclude_simctl_backed() -> None:
+    # Slice B wires the two-finger pinch / rotate, so the live driver now advertises MULTI_TOUCH; the
+    # simctl device-control family still never applies to a real cloud device.
     caps = XcuitestLiveDriver(WebDriverClient(_FakeGrid([]))).capabilities()
     assert base.Capability.SEMANTIC_TAP in caps
-    assert base.Capability.MULTI_TOUCH not in caps
+    assert base.Capability.MULTI_TOUCH in caps
     assert not (caps & base.DEVICE_CONTROL_ALL)
 
 
@@ -444,6 +567,22 @@ def test_find_elements_raises_on_item_missing_element_key() -> None:
     client.new_session({})
     with pytest.raises(WebDriverError, match="missing"):
         client.find_elements("xpath", "//*")
+
+
+def test_active_element_raises_when_the_reply_lacks_the_element_key() -> None:
+    # A malformed active-element reply is an endpoint failure, surfaced as WebDriverError rather than
+    # a bare KeyError — consistent with every other malformed reply from this client.
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> tuple[int, Any]:
+        if method == "POST" and path == "/session":
+            return 200, {"value": {"sessionId": "s1", "capabilities": {}}}
+        if method == "GET" and path == "/session/s1/element/active":
+            return 200, {"value": {"wrong-key": "e1"}}  # missing ELEMENT_KEY
+        raise AssertionError(f"unexpected {method} {path}")
+
+    client = WebDriverClient(transport)
+    client.new_session({})
+    with pytest.raises(WebDriverError, match="missing"):
+        client.active_element()
 
 
 def test_driver_interval_returns_none_for_all_capture_kinds(tmp_path: Any) -> None:
