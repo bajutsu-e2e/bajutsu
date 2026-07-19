@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parent.parent
 SCENARIO_DIR = ROOT / "demos" / "showcase" / "scenarios"
 MENU_DIR = SCENARIO_DIR / "menu"  # the demo menu's tour/features scenarios (non-globbed subdir)
 SHOWCASE_CONFIG = ROOT / "demos" / "showcase" / "showcase.config.yaml"
+LIVE_CONFIG = ROOT / "demos" / "showcase" / "live" / "showcase.live.config.yaml"
 DEMO_CONFIG = ROOT / "demos" / "demo.config.yaml"
 
 # The showcase a11y target's namespaces (SPEC §9); the menu scenarios stay within them.
@@ -53,6 +54,28 @@ def test_showcase_config_resolves() -> None:
     compose = resolve(cfg, "showcase-compose").platform_config
     assert isinstance(compose, AndroidConfig)
     assert compose.package == "com.bajutsu.showcase.android.compose"
+
+
+def test_showcase_live_config_routes_to_the_live_transport() -> None:
+    # The BE-0238 live-route example config resolves and is detected as the live WebDriver route — so
+    # the how-to's `bajutsu run … --config …/showcase.live…` invocation stays valid as the schema
+    # evolves. The endpoint is a placeholder (no grid on the gate), so this only checks resolution and
+    # the run-time capability narrowing, never a live run.
+    from bajutsu.backends import capabilities_for, capabilities_for_run
+    from bajutsu.config import xcuitest_targets_live_endpoint
+    from bajutsu.drivers import base
+
+    cfg = load_config(LIVE_CONFIG.read_text(encoding="utf-8"))
+    eff = resolve(cfg, "showcase-swiftui-live")
+    assert isinstance(eff.platform_config, IosConfig)
+    assert eff.platform_config.bundle_id == "com.bajutsu.showcase.ios.swiftui"
+    assert xcuitest_targets_live_endpoint(eff) is True
+
+    # The narrowing the how-to describes: the WebDriver transport drives neither native text
+    # selection nor the simctl-backed families, so preflight would skip a scenario needing one.
+    dropped = capabilities_for("xcuitest") - capabilities_for_run("xcuitest", eff)
+    assert base.Capability.TEXT_SELECTION in dropped
+    assert dropped >= base.DEVICE_CONTROL_ALL
 
 
 def test_demo_menu_config_declares_the_features_secret() -> None:

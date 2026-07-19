@@ -55,9 +55,7 @@ Accepted and actively being built — a PR is in flight or imminent.
 ### Device-cloud execution
 
 <!-- GENERATED:in-progress-device-cloud -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0238](BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution.md) | iOS device-cloud execution | In progress |
+
 <!-- /GENERATED:in-progress-device-cloud -->
 
 ### Verification & coverage

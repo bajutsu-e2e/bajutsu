@@ -15,6 +15,7 @@ from bajutsu.config import (
     load_config,
     parse_config_dict,
     resolve,
+    xcuitest_targets_live_endpoint,
     xcuitest_targets_real_device,
 )
 
@@ -833,6 +834,44 @@ def test_xcuitest_targets_real_device_false_for_non_ios_target() -> None:
     # deviceType is iOS-only; an Android target can never target a real iOS device through XCUITest.
     cfg = load_config("targets:\n  s:\n    package: com.example.app\n")
     assert xcuitest_targets_real_device(resolve(cfg, "s")) is False
+
+
+# --- BE-0238: the live-endpoint accessor backing the live-route capability narrowing (Slice C) --- #
+
+
+def test_xcuitest_targets_live_endpoint_true_for_http_endpoint() -> None:
+    # A `deviceProvider` handing the run an `http(s)://` endpoint is the live route — the same routing
+    # signal `is_webdriver_endpoint` uses. The Slice C narrowing consults this accessor to drop the
+    # capabilities the WebDriver transport cannot drive (text selection, DeviceControl, permissions).
+    cfg = load_config(
+        "targets:\n  s:\n    bundleId: com.x\n"
+        "    deviceProvider:\n      kind: appium\n      endpoint: https://grid.example.com/wd/hub\n"
+    )
+    assert xcuitest_targets_live_endpoint(resolve(cfg, "s")) is True
+
+
+def test_xcuitest_targets_live_endpoint_false_for_non_http_endpoint() -> None:
+    # A non-URL endpoint is not the live WebDriver route — it would never route past the shared
+    # `device_id` policy, so the narrowing must not apply.
+    cfg = load_config(
+        "targets:\n  s:\n    bundleId: com.x\n"
+        "    deviceProvider:\n      kind: local\n      endpoint: booted\n"
+    )
+    assert xcuitest_targets_live_endpoint(resolve(cfg, "s")) is False
+
+
+def test_xcuitest_targets_live_endpoint_false_when_no_provider() -> None:
+    # The default (no `deviceProvider`) is the locally-attached path, not the live route.
+    cfg = load_config("targets:\n  s:\n    bundleId: com.x\n")
+    assert xcuitest_targets_live_endpoint(resolve(cfg, "s")) is False
+
+
+def test_xcuitest_targets_live_endpoint_false_when_provider_has_no_endpoint() -> None:
+    # A provider with no endpoint cannot be the live WebDriver route; the accessor must not raise.
+    cfg = load_config(
+        "targets:\n  s:\n    bundleId: com.x\n    deviceProvider:\n      kind: local\n"
+    )
+    assert xcuitest_targets_live_endpoint(resolve(cfg, "s")) is False
 
 
 # --- BE-0024: configurable doctor thresholds ---

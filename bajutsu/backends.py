@@ -195,21 +195,35 @@ def capabilities_for(actuator: str) -> frozenset[str]:
 def capabilities_for_run(actuator: str, eff: Effective) -> frozenset[str]:
     """The capability set for one run, narrowing the static set to the run's device target (BE-0238).
 
-    `capabilities_for` returns a backend's *static* capabilities. A real iOS device narrows the
-    XCUITest set: the whole simctl-backed `DeviceControl` family and the simctl-privacy permission
-    grants target the Simulator only (simctl cannot reach a physical device), so a
-    `xcuitest.deviceType: device` run advertises neither. Preflight (BE-0082) then skips a scenario
-    that needs one up front, instead of failing late with a simctl error mid-run — the same fail-fast
-    the permission preconditions already get in the XCUITest lifecycle (Unit 1). Every other backend,
-    and the Simulator default, is unchanged.
+    `capabilities_for` returns a backend's *static* capabilities. Two XCUITest device targets narrow
+    it, each so preflight (BE-0082) skips an unrunnable scenario up front instead of failing late:
+
+    - **A live WebDriver endpoint** (the `appium` device provider) drives a reserved device through
+      Appium's XCUITest `mobile:` commands, not simctl and not the native text selection the local
+      runner does — so it advertises exactly what that transport drives, the live driver's own
+      `CAPABILITIES` (the single source of truth). This is the narrower of the two, dropping text
+      selection on top of the real-device narrowing below.
+    - **A real device via `xcuitest.deviceType: device`** loses the simctl-backed `DeviceControl`
+      family and the simctl-privacy permission grants (simctl cannot reach a physical device), the
+      same fail-fast the permission preconditions already get in the XCUITest lifecycle (Unit 1).
+
+    Every other backend, and the Simulator default, is unchanged.
     """
     # Lazy import: `bajutsu.config` imports this module (`resolve` -> `platform_of`), so a top-level
     # import would close the cycle. By call time config is fully loaded.
-    from bajutsu.config import xcuitest_targets_real_device
+    from bajutsu.config import xcuitest_targets_live_endpoint, xcuitest_targets_real_device
 
     caps = capabilities_for(actuator)
-    if actuator == "xcuitest" and xcuitest_targets_real_device(eff):
-        return caps - base.DEVICE_CONTROL_ALL - base.IOS_PERMISSION_CAPABILITIES
+    if actuator == "xcuitest":
+        if xcuitest_targets_live_endpoint(eff):
+            # The live driver's advertised set *is* the narrowed set — keeping the preflight and the
+            # driver in lockstep, so a capability the WebDriver transport cannot drive can never be
+            # advertised here yet raise `UnsupportedAction` at run time.
+            from bajutsu.drivers.xcuitest_live import XcuitestLiveDriver
+
+            return XcuitestLiveDriver.CAPABILITIES
+        if xcuitest_targets_real_device(eff):
+            return caps - base.DEVICE_CONTROL_ALL - base.IOS_PERMISSION_CAPABILITIES
     return caps
 
 
