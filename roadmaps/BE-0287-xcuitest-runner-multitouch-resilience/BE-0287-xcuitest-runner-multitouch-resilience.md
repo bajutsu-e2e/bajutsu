@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0287") |
-| Implementing PR | [#1200](https://github.com/bajutsu-e2e/bajutsu/pull/1200) (Unit 3: mid-run crash detection & recovery; Unit 4: recovery visibility), _pending_ (Units 1 & 2: runner-side diagnosis and the HTTP-server root-cause fix) |
+| Implementing PR | [#1200](https://github.com/bajutsu-e2e/bajutsu/pull/1200) (Unit 3: mid-run crash detection & recovery; Unit 4: recovery visibility), [#1202](https://github.com/bajutsu-e2e/bajutsu/pull/1202) (Units 1 & 2: runner-side diagnosis and the HTTP-server root-cause fix) |
 | Topic | Platform support |
 <!-- /BE-METADATA -->
 
@@ -152,7 +152,7 @@ Log:
   that never reached the runner), and fails loudly with a distinct crash diagnostic on a delivered
   write, logging every crash and recovery. Units 1 & 2 (on-device diagnosis and the `BajutsuKit`
   root-cause fix) remain open.
-- _pending_ — Units 1 & 2: diagnose the flake to a wedged loopback server (not a dead process or
+- [#1202](https://github.com/bajutsu-e2e/bajutsu/pull/1202) — Units 1 & 2: diagnose the flake to a wedged loopback server (not a dead process or
   `idb_companion`) and fix it in `BajutsuKit/`. `HTTPServer` served connections one at a time over a
   `listen` backlog of 1, so a `pinch`/`rotate` that blocked the accept loop on the main thread starved
   concurrent `/health` and `/screenshot` polls until the kernel refused them — the source of both the
