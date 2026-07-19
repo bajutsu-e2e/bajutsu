@@ -18,9 +18,13 @@ Two pieces live here, both faked at the network boundary so no grid is needed on
   and act on the chosen element by the WebDriver element id the query returned. The element id stands
   in for the runner's per-snapshot handle in the same query-resolve-act-by-handle flow.
 
-This is Slice A: session lifecycle, `query` / `tap` / `screenshot` / readiness. Input and gestures
-(Slice B) and the run-time capability narrowing / config / docs (Slice C) are follow-ons; the input
-actuations refuse loudly until then rather than silently no-op'ing.
+Slice A landed session lifecycle, `query` / `tap` / `screenshot` / readiness. Slice B wires input and
+gestures onto Appium's XCUITest `mobile:` commands (over `POST /execute/sync`), the driver's native
+counterparts of the local runner's semantic endpoints: a coordinate tap, double tap, touch-and-hold,
+drag, pinch, and rotate, plus text entry through W3C send-keys to the active element. `selectAll` and
+`copy` have no first-class Appium XCUITest command — the local runner does them natively — so they
+fail loudly on the live route rather than silently no-op'ing (determinism first). The run-time
+capability narrowing, config, and docs (Slice C) are the remaining follow-on.
 """
 
 from __future__ import annotations
@@ -42,6 +46,18 @@ from bajutsu.evidence import intervals
 # every per-element request addresses it by that opaque id — the live counterpart of the runner's
 # per-snapshot handle.
 ELEMENT_KEY = "element-6066-11e4-a52e-4f735466cecf"
+
+# The W3C key code for backspace: `delete_text` types it once per character to erase, the same run of
+# backspaces the local runner's `/deleteText` issues on the focused field (BE-0265).
+BACKSPACE_KEY = "\ue003"
+
+# A drag needs a wall-clock duration (a real XCUITest swipe is a timed gesture, not an instant jump).
+# The pinch velocity carries the sign Appium's `mobile: pinch` requires — positive to zoom in, negative
+# to zoom out — so its magnitude is fixed and only the sign varies. `mobile: rotateElement` carries
+# direction in `rotation` instead, so its velocity is a fixed positive rate (see the `rotate()` comment).
+_DRAG_DURATION_SECONDS = 0.5
+_PINCH_VELOCITY = 1.0
+_ROTATE_VELOCITY = 1.0
 
 # Per-request socket timeouts, split by idempotency the way the runner channel splits them: a read is
 # tight, a write (a synthesized UI event) gets more headroom on a contended grid. Unlike the runner
@@ -189,6 +205,27 @@ class WebDriverClient:
         value = self._value("GET", "/status", None)
         return bool(value.get("ready")) if isinstance(value, Mapping) else False
 
+    def execute(self, script: str, args: list[Any]) -> Any:
+        """Run an Appium `mobile:` command (`POST /execute/sync`) and return its result.
+
+        The live route's gestures are Appium's XCUITest `mobile:` commands — the native counterparts of
+        the local runner's semantic endpoints — driven through the standard W3C execute-script channel.
+        """
+        return self._value(
+            "POST", self._session_path("/execute/sync"), {"script": script, "args": args}
+        )
+
+    def active_element(self) -> str:
+        """Return the focused element's id (`GET /element/active`), for text entry."""
+        value = self._value("GET", self._session_path("/element/active"), None)
+        if not isinstance(value, Mapping) or ELEMENT_KEY not in value:
+            raise WebDriverError(f"active element reply missing {ELEMENT_KEY!r}: {value!r}")
+        return str(value[ELEMENT_KEY])
+
+    def send_keys(self, element_id: str, text: str) -> None:
+        """Type *text* into the element addressed by *element_id* (`POST /element/{id}/value`)."""
+        self._value("POST", self._session_path(f"/element/{element_id}/value"), {"text": text})
+
 
 def _norm_type(type_: str) -> str:
     """Normalize an XCUITest element type (`XCUIElementTypeButton`) to a common trait (`button`)."""
@@ -210,9 +247,10 @@ class XcuitestLiveDriver:
 
     name = "xcuitest"
 
-    # Only what a live Appium / WebDriver grid reaches in this slice: a semantic tap, condition waits,
-    # and screenshots. The simctl-backed device-control family and permission grants never apply to a
-    # real cloud device, and the two-finger gestures land in Slice B — so none of them are advertised.
+    # What a live Appium / WebDriver grid reaches: a semantic tap, condition waits, screenshots, and —
+    # since Slice B wires them onto `mobile: pinch` / `mobile: rotateElement` — the two-finger gestures
+    # (MULTI_TOUCH). The simctl-backed device-control family and permission grants never apply to a real
+    # cloud device, so they stay unadvertised; the run-time capability narrowing is Slice C.
     CAPABILITIES = frozenset(
         {
             base.Capability.QUERY,
@@ -220,6 +258,7 @@ class XcuitestLiveDriver:
             base.Capability.SCREENSHOT,
             base.Capability.SEMANTIC_TAP,
             base.Capability.CONDITION_WAIT,
+            base.Capability.MULTI_TOUCH,
         }
     )
 
@@ -279,10 +318,18 @@ class XcuitestLiveDriver:
         elements, _ = self._query_with_handles()
         return elements
 
-    def tap(self, sel: base.Selector) -> None:
+    def _resolve_handle(self, sel: base.Selector) -> str:
+        """Resolve *sel* to a single element Python-side and return its WebDriver id.
+
+        The one resolution point every element-targeted gesture shares: an ambiguous selector fails
+        here, before any actuation (determinism first), exactly as the runner-channel driver resolves.
+        """
         elements, handles = self._query_with_handles()
         el = base.resolve_unique(elements, sel)
-        self._client.click(handles[id(el)])
+        return handles[id(el)]
+
+    def tap(self, sel: base.Selector) -> None:
+        self._client.click(self._resolve_handle(sel))
 
     def back(self) -> None:
         # No hardware back on iOS: tap the OS navigation back button, the same element the other iOS
@@ -309,45 +356,83 @@ class XcuitestLiveDriver:
         # In-driver recording over WebDriver actions is Slice B.
         return None
 
-    # --- Slice B: input and gestures are not yet mapped onto WebDriver actions ---
-
-    def _not_yet(self, action: str) -> base.UnsupportedAction:
-        return base.UnsupportedAction(
-            f"{action} is not yet wired on the live WebDriver route (BE-0238 Slice B)"
-        )
+    # --- Slice B: input and gestures, mapped onto Appium's XCUITest `mobile:` commands ---
 
     def tap_point(self, p: base.Point) -> None:
-        raise self._not_yet("tapPoint")
+        # A raw coordinate tap (system alerts and the like), the one path with no element/handle.
+        self._client.execute("mobile: tap", [{"x": p[0], "y": p[1]}])
 
     def double_tap(self, sel: base.Selector) -> None:
-        raise self._not_yet("doubleTap")
+        self._client.execute("mobile: doubleTap", [{"elementId": self._resolve_handle(sel)}])
 
     def long_press(self, sel: base.Selector, duration: float) -> None:
-        raise self._not_yet("longPress")
+        self._client.execute(
+            "mobile: touchAndHold", [{"elementId": self._resolve_handle(sel), "duration": duration}]
+        )
 
     def swipe(self, frm: base.Point, to: base.Point) -> None:
-        raise self._not_yet("swipe")
+        self._client.execute(
+            "mobile: dragFromToForDuration",
+            [
+                {
+                    "fromX": frm[0],
+                    "fromY": frm[1],
+                    "toX": to[0],
+                    "toY": to[1],
+                    "duration": _DRAG_DURATION_SECONDS,
+                }
+            ],
+        )
 
     def scroll(self, frm: base.Point, to: base.Point) -> None:
-        raise self._not_yet("scroll")
+        # A real XCUITest drag scrolls iOS scroll views, so a directional scroll is just a swipe —
+        # the same identity the runner-channel driver keeps.
+        self.swipe(frm, to)
 
     def pinch(self, sel: base.Selector, scale: float) -> None:
-        raise self._not_yet("pinch")
+        # Appium's `mobile: pinch` needs a velocity whose sign matches the scale: positive to zoom in
+        # (scale > 1), negative to zoom out (scale < 1).
+        velocity = _PINCH_VELOCITY if scale >= 1 else -_PINCH_VELOCITY
+        self._client.execute(
+            "mobile: pinch",
+            [{"elementId": self._resolve_handle(sel), "scale": scale, "velocity": velocity}],
+        )
 
     def rotate(self, sel: base.Selector, radians: float) -> None:
-        raise self._not_yet("rotate")
+        # `rotation` carries the signed direction; `velocity` is a rate/magnitude (always positive),
+        # the same convention `XCUIElement.rotate(_:withVelocity:)` uses and codegen/xcuitest.py
+        # emits with a fixed `withVelocity: 1.0`.
+        self._client.execute(
+            "mobile: rotateElement",
+            [
+                {
+                    "elementId": self._resolve_handle(sel),
+                    "rotation": radians,
+                    "velocity": _ROTATE_VELOCITY,
+                }
+            ],
+        )
 
     def type_text(self, text: str) -> None:
-        raise self._not_yet("type")
+        # Type into the focused field, as the runner's `/type` does: W3C send-keys to the active
+        # element (Appium's XCUITest driver focuses the field the scenario tapped first).
+        self._client.send_keys(self._client.active_element(), text)
 
     def delete_text(self, count: int) -> None:
-        raise self._not_yet("deleteText")
+        # A run of backspaces on the focused field (BE-0265) — the W3C backspace key, once per count.
+        self._client.send_keys(self._client.active_element(), BACKSPACE_KEY * count)
 
     def select_all(self) -> None:
-        raise self._not_yet("selectAll")
+        raise base.UnsupportedAction(
+            "selectAll is not reachable over the live Appium / WebDriver route (BE-0238); it has no "
+            "first-class XCUITest command"
+        )
 
     def copy_selection(self) -> None:
-        raise self._not_yet("copy")
+        raise base.UnsupportedAction(
+            "copy is not reachable over the live Appium / WebDriver route (BE-0238); it has no "
+            "first-class XCUITest command"
+        )
 
     def select_option(self, sel: base.Selector, option: str) -> None:
         raise base.UnsupportedAction("selectOption is web-only; iOS has no native <select>")
