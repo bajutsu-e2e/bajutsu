@@ -9,7 +9,7 @@
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0238") |
-| Implementing PR | [#1192](https://github.com/bajutsu-e2e/bajutsu/pull/1192) (Unit 1: XCUITest real-device targeting), [#1193](https://github.com/bajutsu-e2e/bajutsu/pull/1193) (Unit 2: batch packaging), [#1195](https://github.com/bajutsu-e2e/bajutsu/pull/1195) (Unit 3: re-signing / real-device capability preflight), [#1196](https://github.com/bajutsu-e2e/bajutsu/pull/1196) (Unit 4: live-route Appium-endpoint provider, seam only), [#1197](https://github.com/bajutsu-e2e/bajutsu/pull/1197) (Unit 5: faked-boundary tests), [#1198](https://github.com/bajutsu-e2e/bajutsu/pull/1198) (Unit 6: iOS device-cloud how-to) |
+| Implementing PR | [#1192](https://github.com/bajutsu-e2e/bajutsu/pull/1192) (Unit 1: XCUITest real-device targeting), [#1193](https://github.com/bajutsu-e2e/bajutsu/pull/1193) (Unit 2: batch packaging), [#1195](https://github.com/bajutsu-e2e/bajutsu/pull/1195) (Unit 3: re-signing / real-device capability preflight), [#1196](https://github.com/bajutsu-e2e/bajutsu/pull/1196) (Unit 4: live-route Appium-endpoint provider, seam only), [#1197](https://github.com/bajutsu-e2e/bajutsu/pull/1197) (Unit 5: faked-boundary tests), [#1198](https://github.com/bajutsu-e2e/bajutsu/pull/1198) (Unit 6: iOS device-cloud how-to), [#1201](https://github.com/bajutsu-e2e/bajutsu/pull/1201) (Live route Slice A: WebDriver transport) |
 | Topic | Device-cloud execution |
 <!-- /BE-METADATA -->
 
@@ -116,7 +116,7 @@ environment for a run; when the xcuitest actuator's udid spec is an `http(s)://`
 takes a live path that skips simctl bring-up and the `xcodebuild test-without-building` subprocess
 entirely, opening a WebDriver session against the endpoint, driving it through the live driver, and
 closing the session on teardown. The URL scheme is the routing signal: it is exactly the value
-`validated_udid` rejects, so recognising the scheme up front both selects the live path and replaces
+`validated_udid` rejects, so recognizing the scheme up front both selects the live path and replaces
 the misleading `invalid udid` error. The endpoint therefore never reaches the udid machinery, which
 structurally cannot carry a URL. The BE-0236 `ProvisionProfile` already reports the reserved device
 booted with its build installed, so the live path honours no simctl bring-up flags — the real-device
@@ -237,6 +237,24 @@ The follow-on lands in three slices, each faked at the WebDriver boundary:
   runnable), and the real-device caveats (re-signing strips entitlements; the simctl-backed device
   control and permission grants degrade via the preflight). Added to the mkdocs nav; documentation
   only, no product-code change. The live-route transport remains the last open box.
+- Live route Slice A ([#1201](https://github.com/bajutsu-e2e/bajutsu/pull/1201)): landed the first live-transport slice — the endpoint the `appium`
+  provider yields is now drivable end to end for a tap-and-assert run. This slice adds a new in-house W3C WebDriver
+  client (`drivers/xcuitest_live.py`, `http.client`-based, its wire injected the same way
+  `XcuitestDriver` injects its transport, so no third-party WebDriver dependency reaches the gate) and
+  an `XcuitestLiveDriver` that reuses the query-resolve-act-by-handle shape: one broad `findElements`
+  builds the `base.Element` list, `resolve_unique` resolves the selector Python-side (an ambiguous
+  selector still fails before any actuation — determinism first), and the tap acts by the WebDriver
+  element id the query returned, standing in for the runner's per-snapshot handle. `environment_for`
+  now recognizes an `http(s)://` udid spec (the routing signal — exactly the value the shared
+  `device_id` policy rejects) and returns a new `XcuitestLiveEnvironment`, which opens a WebDriver
+  session against the endpoint and skips simctl / `xcodebuild` entirely; the simctl-backed seam
+  methods (`resolve_device`, device catalog, `DeviceControl` controller, relauncher) are overridden to
+  the live route's shape, since each would otherwise build a `simctl.Env(endpoint)` that rejects the
+  URL. This closes the Unit 4/5 boundary: a real endpoint no longer reaches `_destination`, so the
+  boundary test is updated to assert the new routing. Slice A covers `query` / `tap` / `screenshot` /
+  readiness; input and gestures (Slice B) and the run-time capability narrowing / config / docs
+  (Slice C) remain, so the live-route box stays unchecked. Faked at the WebDriver network boundary; no
+  grid, no device on the gate.
 
 ## References
 
