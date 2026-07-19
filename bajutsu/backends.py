@@ -192,33 +192,41 @@ def capabilities_for(actuator: str) -> frozenset[str]:
     raise ValueError(f"unknown backend: {actuator!r}")
 
 
-def capabilities_for_run(actuator: str, eff: Effective) -> frozenset[str]:
+def capabilities_for_run(
+    actuator: str, eff: Effective, udid_spec: str = "booted"
+) -> frozenset[str]:
     """The capability set for one run, narrowing the static set to the run's device target (BE-0238).
 
     `capabilities_for` returns a backend's *static* capabilities. Two XCUITest device targets narrow
     it, each so preflight (BE-0082) skips an unrunnable scenario up front instead of failing late:
 
-    - **A live WebDriver endpoint** (the `appium` device provider) drives a reserved device through
-      Appium's XCUITest `mobile:` commands, not simctl and not the native text selection the local
-      runner does — so it advertises exactly what that transport drives, the live driver's own
-      `CAPABILITIES` (the single source of truth). This is the narrower of the two, dropping text
-      selection on top of the real-device narrowing below.
+    - **A live WebDriver endpoint** drives a reserved device through Appium's XCUITest `mobile:`
+      commands, not simctl and not the native text selection the local runner does — so it advertises
+      exactly what that transport drives, the live driver's own `CAPABILITIES` (the single source of
+      truth). This is the narrower of the two, dropping text selection on top of the real-device
+      narrowing below. The signal is `udid_spec` being a WebDriver URL — the *same* `is_webdriver_endpoint`
+      check `environment_for` routes on, so preflight and routing can never disagree (whether the URL
+      arrives from the `appium` provider's endpoint or a raw `--udid https://…` under any provider).
     - **A real device via `xcuitest.deviceType: device`** loses the simctl-backed `DeviceControl`
       family and the simctl-privacy permission grants (simctl cannot reach a physical device), the
-      same fail-fast the permission preconditions already get in the XCUITest lifecycle (Unit 1).
+      same fail-fast the permission preconditions already get in the XCUITest lifecycle (Unit 1). This
+      keys on config (`deviceType`), which a udid spec cannot express, so it stays an `eff` check.
 
     Every other backend, and the Simulator default, is unchanged.
     """
     # Lazy import: `bajutsu.config` imports this module (`resolve` -> `platform_of`), so a top-level
     # import would close the cycle. By call time config is fully loaded.
-    from bajutsu.config import xcuitest_targets_live_endpoint, xcuitest_targets_real_device
+    from bajutsu.config import xcuitest_targets_real_device
 
     caps = capabilities_for(actuator)
     if actuator == "xcuitest":
-        if xcuitest_targets_live_endpoint(eff):
-            # The live driver's advertised set *is* the narrowed set — keeping the preflight and the
-            # driver in lockstep, so a capability the WebDriver transport cannot drive can never be
-            # advertised here yet raise `UnsupportedAction` at run time.
+        # Route on the resolved udid spec with the very predicate `environment_for` uses, so the
+        # advertised set and the environment actually chosen stay in lockstep — a capability the
+        # WebDriver transport cannot drive can never be advertised here yet raise `UnsupportedAction`
+        # at run time. Lazy import keeps this module clear of the platform-lifecycle layer at import.
+        from bajutsu.platform_lifecycle.environments.xcuitest_live import is_webdriver_endpoint
+
+        if is_webdriver_endpoint(udid_spec):
             from bajutsu.drivers.xcuitest_live import XcuitestLiveDriver
 
             return XcuitestLiveDriver.CAPABILITIES

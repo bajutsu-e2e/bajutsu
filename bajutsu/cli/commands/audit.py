@@ -178,6 +178,9 @@ def _repeat_audit(
                     # Mirror `run`: resolve the actuator per scenario (BE-0240), so the preflight and
                     # the pool's lease agree on the cheapest actuator each repeat runs against.
                     resolve_actuator=lambda scn: select_actuator_for_scenario(backends, scn),
+                    # Keep the preflight's live-route narrowing keyed on the same udid the pool routes
+                    # on (BE-0238), so a WebDriver-URL audit narrows consistently.
+                    lease_udid_spec=udid,
                 )
             )
             for s in scenarios

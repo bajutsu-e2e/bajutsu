@@ -59,13 +59,16 @@ def check_scenarios(scenario_path: Path, capabilities: frozenset[str]) -> list[s
     return reasons
 
 
-def actuator_resolution_summary(eff: Effective, backends: list[str]) -> list[str]:
+def actuator_resolution_summary(
+    eff: Effective, backends: list[str], udid_spec: str = "booted"
+) -> list[str]:
     """How the target's scenarios resolve across a multi-actuator iOS ladder (BE-0240).
 
     Informational only — a pure `capability_preflight` pass with no device — so a user can see, up
     front, that `backend: [ios]` will run most scenarios on the cheap actuator and escalate only the
     few whose steps need the richer one. Empty (nothing to disclose) unless the requested backends
-    resolve to more than one actuator and the target has a scenarios directory to survey.
+    resolve to more than one actuator and the target has a scenarios directory to survey. `udid_spec`
+    keys the live-route narrowing on the same signal `run` does (BE-0238); "booted" is never a URL.
 
     Note:
         Same best-effort caveat as ``check_scenarios``: the raw scenario tree is read without
@@ -81,7 +84,7 @@ def actuator_resolution_summary(eff: Effective, backends: list[str]) -> list[str
     # Narrow per actuator to the run's device target (BE-0238): on a real iOS device the resolver
     # sees the same reduced set `run` does, so it doesn't route a simctl-only scenario to xcuitest.
     def caps(actuator: str) -> frozenset[str]:
-        return capabilities_for_run(actuator, eff)
+        return capabilities_for_run(actuator, eff, udid_spec)
 
     tally: dict[str, list[str]] = {}
     for path in sorted(scenarios_dir.glob("*.yaml")):
@@ -129,14 +132,17 @@ def doctor(
         raise typer.Exit(2)
 
     # Capability preflight: when a scenario file is provided, check whether it uses constructs
-    # the chosen backend can't perform — pure, no device needed (BE-0024).
+    # the chosen backend can't perform — pure, no device needed (BE-0024). The live-route narrowing
+    # (BE-0238) keys on the raw `--udid`: doctor is informational and never resolves the device
+    # provider, so `--udid https://…` discloses the live set, while an `appium` provider's endpoint
+    # (resolved only at run time) is not reflected here.
     cap_failed = False
     if scenario:
         scenario_path = Path(scenario)
         if not scenario_path.is_file():
             typer.echo(f"scenario not found: {scenario}")
             raise typer.Exit(2)
-        cap_reasons = check_scenarios(scenario_path, capabilities_for_run(actuator, eff))
+        cap_reasons = check_scenarios(scenario_path, capabilities_for_run(actuator, eff, udid))
         if cap_reasons:
             cap_failed = True
             typer.echo("capability preflight:")
@@ -146,7 +152,7 @@ def doctor(
 
     # Per-scenario actuator resolution disclosure (BE-0240): when the ladder has more than one iOS
     # actuator, show how the target's scenarios split across them — informational, no device, no gate.
-    summary = actuator_resolution_summary(eff, backends)
+    summary = actuator_resolution_summary(eff, backends, udid)
     if summary:
         for line in summary:
             typer.echo(line)

@@ -95,26 +95,3 @@ def xcuitest_targets_real_device(eff: Effective) -> bool:
         and cfg.xcuitest is not None
         and cfg.xcuitest.device_type == "device"
     )
-
-
-def xcuitest_targets_live_endpoint(eff: Effective) -> bool:
-    """True when the run drives a reserved iOS device over a live WebDriver endpoint (BE-0238).
-
-    An iOS target only — like `xcuitest_targets_real_device` above, a non-iOS target is False. Only
-    the `appium` provider kind exposes a reserved iOS device via a WebDriver endpoint — the same
-    routing signal `is_webdriver_endpoint` uses. A URL is what the shared `device_id` policy rejects,
-    so it never collides with a real device udid. The `kind` guard prevents a non-appium provider
-    that happens to carry an `http(s)://` endpoint from being mistaken for the live route. Consulted
-    by the Slice C capability narrowing: the WebDriver transport drives Appium's XCUITest `mobile:`
-    commands, not simctl and not the native text selection the local runner does, so a live run
-    advertises a narrower set than the local Simulator driver. The scheme check is duplicated (not
-    imported) to keep this config-layer accessor free of a platform-lifecycle import.
-    """
-    if not isinstance(eff.platform_config, IosConfig):
-        return False
-    provider = eff.device_provider
-    return (
-        provider is not None
-        and provider.kind == "appium"
-        and (provider.endpoint or "").startswith(("http://", "https://"))
-    )

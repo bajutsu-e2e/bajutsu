@@ -57,23 +57,29 @@ def test_showcase_config_resolves() -> None:
 
 
 def test_showcase_live_config_routes_to_the_live_transport() -> None:
-    # The BE-0238 live-route example config resolves and is detected as the live WebDriver route — so
-    # the how-to's `bajutsu run … --config …/showcase.live…` invocation stays valid as the schema
-    # evolves. The endpoint is a placeholder (no grid on the gate), so this only checks resolution and
-    # the run-time capability narrowing, never a live run.
+    # The BE-0238 live-route example config resolves, and its `appium` provider surfaces the reserved
+    # device's endpoint as the run's udid spec — the same WebDriver-URL signal `environment_for` routes
+    # on — so the how-to's `bajutsu run … --config …/showcase.live…` invocation stays valid as the
+    # schema evolves. The endpoint is a placeholder (no grid on the gate), so this only checks
+    # resolution and the run-time capability narrowing, never a live run.
     from bajutsu.backends import capabilities_for, capabilities_for_run
-    from bajutsu.config import xcuitest_targets_live_endpoint
     from bajutsu.drivers import base
+    from bajutsu.platform_lifecycle.environments.xcuitest_live import is_webdriver_endpoint
+    from bajutsu.runner.device_provider import acquire_device
 
     cfg = load_config(LIVE_CONFIG.read_text(encoding="utf-8"))
     eff = resolve(cfg, "showcase-swiftui-live")
     assert isinstance(eff.platform_config, IosConfig)
     assert eff.platform_config.bundle_id == "com.bajutsu.showcase.ios.swiftui"
-    assert xcuitest_targets_live_endpoint(eff) is True
 
-    # The narrowing the how-to describes: the WebDriver transport drives neither native text
-    # selection nor the simctl-backed families, so preflight would skip a scenario needing one.
-    dropped = capabilities_for("xcuitest") - capabilities_for_run("xcuitest", eff)
+    # The provider hands the run the endpoint as its udid spec; that URL is the live-route signal.
+    udid_spec = acquire_device(eff, "booted").udid_spec
+    assert is_webdriver_endpoint(udid_spec)
+
+    # The narrowing the how-to describes, keyed on that same udid spec: the WebDriver transport drives
+    # neither native text selection nor the simctl-backed families, so preflight would skip a scenario
+    # needing one.
+    dropped = capabilities_for("xcuitest") - capabilities_for_run("xcuitest", eff, udid_spec)
     assert base.Capability.TEXT_SELECTION in dropped
     assert dropped >= base.DEVICE_CONTROL_ALL
 

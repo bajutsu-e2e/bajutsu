@@ -278,9 +278,11 @@ The follow-on lands in three slices, each faked at the WebDriver boundary:
   `TEXT_SELECTION` (no first-class `mobile:` command for select-all / copy), and, as on any real
   device, the `DeviceControl` family and the simctl-privacy permission grants. A scenario needing one
   is now skipped up front (BE-0082) with a clear reason instead of failing late with
-  `UnsupportedAction` mid-run, the live-route counterpart of Unit 3's real-device narrowing. A new
-  config accessor `xcuitest_targets_live_endpoint` detects the route from the `deviceProvider`'s
-  `http(s)://` endpoint — the same routing signal `is_webdriver_endpoint` uses. `demos/showcase/live/`
+  `UnsupportedAction` mid-run, the live-route counterpart of Unit 3's real-device narrowing.
+  `capabilities_for_run` keys the run's resolved udid spec through `is_webdriver_endpoint` — the very
+  predicate `environment_for` routes on — so preflight and routing can never diverge (an `appium`
+  provider's endpoint and a raw `--udid https://…` under the default local provider narrow
+  identically). `demos/showcase/live/`
   carries a worked example config (the `showcase-swiftui` target with an `appium` provider and no local
   `appPath` / runner), and the how-to's live section (both languages) is rewritten from "seam only" to
   the end-to-end route, documenting the narrowing. Faked at the config / capability boundary; no grid,
