@@ -13,7 +13,7 @@ import json
 import logging
 import subprocess
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from bajutsu import simctl
@@ -104,18 +104,25 @@ def swipe_cmd(udid: str, x1: float, y1: float, x2: float, y2: float) -> list[str
     ]
 
 
-def _send_text_via_companion(udid: str, text: str) -> None:
-    """Send `text` to the focused field over the fb-idb gRPC client (BE-0155).
+# USB HID usage id for the keyboard Delete/Backspace key. fb-idb's `client.key_sequence` sends raw
+# HID key events, so a backspace is this keycode — not the `\b` control character, which fb-idb's
+# text keymap (`idb.common.hid.KEY_MAP`) has no entry for and rejects with "No keycode found for".
+_HID_KEY_DELETE = 42
 
-    fb-idb's `idb ui text` takes the text as a required positional argument, so a secret
-    or OTP typed through the CLI sits on the `idb` process's argv, where a co-tenant on the
-    host could read it via `ps`/`/proc`. The CLI subcommand is only a thin wrapper around
-    `client.text()`, so we call that directly instead: the value travels to `idb_companion`
-    over gRPC and never lands on any command line. Backs both `type` (raw text) and `delete`
-    (backspace control characters).
 
-    Runs its own event loop via `asyncio.run`: the idb driver is synchronous and is only
-    ever called from threads with no running loop (the runner and the crawl workers).
+def _with_companion_client(udid: str, action: Callable[[Any], Awaitable[None]]) -> None:
+    """Connect to `idb_companion` over the fb-idb gRPC client and run `action` on it (BE-0155).
+
+    fb-idb's `idb ui text` takes the text as a required positional argument, so a secret or OTP typed
+    through the CLI sits on the `idb` process's argv, where a co-tenant on the host could read it via
+    `ps`/`/proc`. The CLI subcommands are only thin wrappers around the gRPC `client`, so we call the
+    client directly instead: the value travels to `idb_companion` over gRPC and never lands on any
+    command line. `action` receives the connected client, keeping the connection and event-loop
+    boilerplate here while each caller chooses the right gRPC call (`text` for typing, `key_sequence`
+    for backspaces).
+
+    Runs its own event loop via `asyncio.run`: the idb driver is synchronous and is only ever called
+    from threads with no running loop (the runner and the crawl workers).
     """
     import shutil
 
@@ -135,32 +142,32 @@ def _send_text_via_companion(udid: str, text: str) -> None:
 
     from idb.grpc.management import ClientManager
 
-    async def _send() -> None:
+    async def _run() -> None:
         manager = ClientManager(
             companion_path=companion_path,
             logger=logging.getLogger("bajutsu.idb.companion"),
         )
         async with manager.from_udid(udid=udid) as client:
-            await client.text(text=text)
+            await action(client)
 
-    asyncio.run(_send())
+    asyncio.run(_run())
 
 
 def _type_text_via_companion(udid: str, text: str) -> None:
     """Type `text` into the focused field over the fb-idb gRPC companion path (BE-0155)."""
-    _send_text_via_companion(udid, text)
+    _with_companion_client(udid, lambda client: client.text(text=text))
 
 
 def _delete_text_via_companion(udid: str, count: int) -> None:
     """Backspace `count` times on the focused field over the fb-idb gRPC companion path (BE-0265).
 
-    Sends the backspace control character through the same `client.text()` path `type` uses. Whether
-    the field honors that control character as a hardware backspace is the per-backend build-time
-    triage the proposal calls out; a companion HID key-event call is the fallback if it does not.
-    `select` / `copy` are not offered on idb — it is coordinate-only, so those raise
-    UnsupportedAction and route to XCUITest, mirroring multi-touch.
+    Sends `count` Delete/Backspace HID key events via `client.key_sequence`, not the backspace control
+    character through `client.text()`: fb-idb's text keymap has no entry for that control character and
+    rejects it with "No keycode found for" (BE-0280). The HID key-event path is the hardware backspace
+    the field honors natively. `select` / `copy` are not offered on idb — it is coordinate-only, so
+    those raise UnsupportedAction and route to XCUITest, mirroring multi-touch.
     """
-    _send_text_via_companion(udid, "\b" * count)
+    _with_companion_client(udid, lambda client: client.key_sequence([_HID_KEY_DELETE] * count))
 
 
 def screenshot_cmd(udid: str, path: str) -> list[str]:
