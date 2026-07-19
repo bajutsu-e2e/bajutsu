@@ -51,9 +51,10 @@ ELEMENT_KEY = "element-6066-11e4-a52e-4f735466cecf"
 # backspaces the local runner's `/deleteText` issues on the focused field (BE-0265).
 BACKSPACE_KEY = "\ue003"
 
-# A drag needs a wall-clock duration (a real XCUITest swipe is a timed gesture, not an instant jump);
-# the pinch / rotate velocities carry the sign Appium's `mobile:` commands require — positive to zoom
-# in or rotate one way, negative the other — so the magnitude is fixed and only the sign varies.
+# A drag needs a wall-clock duration (a real XCUITest swipe is a timed gesture, not an instant jump).
+# The pinch velocity carries the sign Appium's `mobile: pinch` requires — positive to zoom in, negative
+# to zoom out — so its magnitude is fixed and only the sign varies. `mobile: rotateElement` carries
+# direction in `rotation` instead, so its velocity is a fixed positive rate (see the `rotate()` comment).
 _DRAG_DURATION_SECONDS = 0.5
 _PINCH_VELOCITY = 1.0
 _ROTATE_VELOCITY = 1.0
