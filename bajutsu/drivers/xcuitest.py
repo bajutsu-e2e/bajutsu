@@ -167,7 +167,7 @@ class _TransportFailure(Exception):
 
 
 def _is_retry_eligible(method: str, *, delivered: bool) -> bool:
-    """Whether a failed attempt is safe to re-issue (BE-0207).
+    """Whether a failed attempt is safe to re-issue (BE-0207, BE-0287).
 
     A failure before the request reached the runner is safe for any method — the runner never acted.
     Once the request was delivered, only idempotent reads may be retried; re-sending a side-effecting
@@ -185,8 +185,9 @@ def _with_retry(inner: TransportFn, *, sleep: Callable[[float], None] = time.sle
     Only a `_TransportFailure` is retried, and only when `_is_retry_eligible`; a decoded outcome
     (`stale` / `not-found`) is a `_Reply`, never an exception, so it is returned untouched and never
     retried — retrying an outcome would be the flakiness-by-absorption BE-0049 rejects. On exhaustion
-    the loud `XcuitestChannelError` is raised, so the deterministic verdict is preserved: only a
-    recoverable blip is absorbed. Each retry is logged, so a retried-then-passed run stays visible.
+    the loud `XcuitestRunnerCrashError` (a subclass of `XcuitestChannelError`) is raised, so the
+    deterministic verdict is preserved: only a recoverable blip is absorbed. Each retry is logged, so a
+    retried-then-passed run stays visible.
     """
     logger = logging.getLogger("bajutsu.xcuitest.channel")
 
