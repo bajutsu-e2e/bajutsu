@@ -9,7 +9,7 @@
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0238") |
-| Implementing PR | [#1192](https://github.com/bajutsu-e2e/bajutsu/pull/1192) (Unit 1: XCUITest real-device targeting), [#1193](https://github.com/bajutsu-e2e/bajutsu/pull/1193) (Unit 2: batch packaging), [#1195](https://github.com/bajutsu-e2e/bajutsu/pull/1195) (Unit 3: re-signing / real-device capability preflight), [#1196](https://github.com/bajutsu-e2e/bajutsu/pull/1196) (Unit 4: live-route Appium-endpoint provider, seam only), [#1197](https://github.com/bajutsu-e2e/bajutsu/pull/1197) (Unit 5: faked-boundary tests), [#1198](https://github.com/bajutsu-e2e/bajutsu/pull/1198) (Unit 6: iOS device-cloud how-to), [#1201](https://github.com/bajutsu-e2e/bajutsu/pull/1201) (Live route Slice A: WebDriver transport), [#PENDING](https://github.com/bajutsu-e2e/bajutsu/pull/PENDING) (Live route Slice B: input and gestures) |
+| Implementing PR | [#1192](https://github.com/bajutsu-e2e/bajutsu/pull/1192) (Unit 1: XCUITest real-device targeting), [#1193](https://github.com/bajutsu-e2e/bajutsu/pull/1193) (Unit 2: batch packaging), [#1195](https://github.com/bajutsu-e2e/bajutsu/pull/1195) (Unit 3: re-signing / real-device capability preflight), [#1196](https://github.com/bajutsu-e2e/bajutsu/pull/1196) (Unit 4: live-route Appium-endpoint provider, seam only), [#1197](https://github.com/bajutsu-e2e/bajutsu/pull/1197) (Unit 5: faked-boundary tests), [#1198](https://github.com/bajutsu-e2e/bajutsu/pull/1198) (Unit 6: iOS device-cloud how-to), [#1201](https://github.com/bajutsu-e2e/bajutsu/pull/1201) (Live route Slice A: WebDriver transport), [#1203](https://github.com/bajutsu-e2e/bajutsu/pull/1203) (Live route Slice B: input and gestures) |
 | Topic | Device-cloud execution |
 <!-- /BE-METADATA -->
 
@@ -255,7 +255,7 @@ The follow-on lands in three slices, each faked at the WebDriver boundary:
   readiness; input and gestures (Slice B) and the run-time capability narrowing / config / docs
   (Slice C) remain, so the live-route box stays unchecked. Faked at the WebDriver network boundary; no
   grid, no device on the gate.
-- Live route Slice B ([#PENDING](https://github.com/bajutsu-e2e/bajutsu/pull/PENDING)): wired the live route's input and
+- Live route Slice B ([#1203](https://github.com/bajutsu-e2e/bajutsu/pull/1203)): wired the live route's input and
   gestures onto Appium's XCUITest `mobile:` commands (over `POST /execute/sync`), the native
   counterparts of the local runner's semantic endpoints — `tap_point` → `mobile: tap`, `double_tap` →
   `mobile: doubleTap`, `long_press` → `mobile: touchAndHold`, `swipe` / `scroll` →
