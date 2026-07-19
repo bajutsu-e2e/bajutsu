@@ -106,6 +106,10 @@ class XcuitestLiveEnvironment(_DeviceEnvironment):
             raise base.UnsupportedAction(
                 "launch_env is not yet wired on the live WebDriver route (BE-0238 Slice B)"
             )
+        if pre.locale:
+            raise base.UnsupportedAction(
+                "locale is not yet wired on the live WebDriver route (BE-0238 Slice B)"
+            )
         ios = require_ios(eff)
         self._client = WebDriverClient(self._transport_factory(self._endpoint))
         self._client.new_session(
@@ -116,7 +120,11 @@ class XcuitestLiveEnvironment(_DeviceEnvironment):
             }
         )
         driver = XcuitestLiveDriver(self._client)
-        driver.await_ready()
+        try:
+            driver.await_ready()
+        except Exception:
+            self._client.delete_session()
+            raise
         return driver
 
     def teardown(self, driver: base.Driver, eff: Effective) -> None:

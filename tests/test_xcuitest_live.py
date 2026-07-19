@@ -444,6 +444,33 @@ def test_live_environment_start_raises_on_launch_env() -> None:
         env.start(_live_eff(), Preconditions(launch_env={"MODE": "test"}))
 
 
+def test_live_environment_start_raises_on_locale() -> None:
+    # `locale` is passed to simctl on the local route; the live route has no simctl, so it fails
+    # loudly rather than silently no-op'ing (determinism first — the same guard as erase/deeplink/etc.)
+    env = XcuitestLiveEnvironment("xcuitest", _ENDPOINT, transport_factory=lambda _e: _FakeGrid([]))
+    with pytest.raises(base.UnsupportedAction):
+        env.start(_live_eff(), Preconditions(locale="ja_JP"))
+
+
+def test_live_environment_start_closes_session_on_await_ready_failure() -> None:
+    # If `await_ready()` raises, the already-open WebDriver session must be closed — `launch_driver`
+    # has no try/finally, and `pool.py` only wires teardown after `start()` succeeds, so a readiness
+    # failure leaks the reserved cloud device's session without the fix.
+    class _FailReadyGrid(_FakeGrid):
+        def _route(self, method: str, path: str) -> tuple[int, Any]:
+            if method == "GET" and path == "/status":
+                return 200, {
+                    "error": "not ready"
+                }  # missing "value" key → WebDriverError immediately
+            return super()._route(method, path)
+
+    grid = _FailReadyGrid([])
+    env = XcuitestLiveEnvironment("xcuitest", _ENDPOINT, transport_factory=lambda _e: grid)
+    with pytest.raises(WebDriverError):
+        env.start(_live_eff(), Preconditions())
+    assert grid.deleted is True  # session must be released even on await_ready failure
+
+
 def test_live_environment_captures_video_is_false() -> None:
     # The live route has no simctl interval; `XcuitestLiveDriver.driver_interval` returns `None` for
     # every kind including "video". Inheriting `_DeviceEnvironment.captures_video() -> True` would
