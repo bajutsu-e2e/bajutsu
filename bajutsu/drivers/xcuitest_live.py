@@ -398,10 +398,12 @@ class XcuitestLiveDriver:
         )
 
     def rotate(self, sel: base.Selector, radians: float) -> None:
-        velocity = _ROTATE_VELOCITY if radians >= 0 else -_ROTATE_VELOCITY
+        # `rotation` carries the signed direction; `velocity` is a rate/magnitude (always positive),
+        # the same convention `XCUIElement.rotate(_:withVelocity:)` uses and codegen/xcuitest.py
+        # emits with a fixed `withVelocity: 1.0`.
         self._client.execute(
             "mobile: rotateElement",
-            [{"elementId": self._resolve_handle(sel), "rotation": radians, "velocity": velocity}],
+            [{"elementId": self._resolve_handle(sel), "rotation": radians, "velocity": _ROTATE_VELOCITY}],
         )
 
     def type_text(self, text: str) -> None:

@@ -363,14 +363,20 @@ def test_pinch_velocity_sign_follows_the_scale() -> None:
     assert zoom_out["scale"] == 0.5 and zoom_out["velocity"] < 0
 
 
-def test_rotate_passes_the_rotation_in_radians() -> None:
+def test_rotate_passes_rotation_and_keeps_velocity_positive() -> None:
+    # `XCUIElement.rotate(_:withVelocity:)` — which `mobile: rotateElement` wraps — takes `rotation`
+    # as a signed direction and `velocity` as a rate/magnitude (always positive, like codegen's fixed
+    # `withVelocity: 1.0`). Unlike `pinch`, the direction is carried by `rotation`, not `velocity`.
     grid = _FakeGrid([_button("e1", "dial")])
     client = WebDriverClient(grid)
     client.new_session({})
-    XcuitestLiveDriver(client).rotate({"id": "dial"}, 1.57)
-    (script, (arg,)) = grid.executed[0]
-    assert script == "mobile: rotateElement"
-    assert arg["elementId"] == "e1" and arg["rotation"] == 1.57
+    driver = XcuitestLiveDriver(client)
+    driver.rotate({"id": "dial"}, 1.57)
+    driver.rotate({"id": "dial"}, -1.57)
+    (_, (clockwise,)) = grid.executed[0]
+    (_, (counter,)) = grid.executed[1]
+    assert clockwise["rotation"] == 1.57 and clockwise["velocity"] > 0
+    assert counter["rotation"] == -1.57 and counter["velocity"] > 0  # direction via rotation, not sign
 
 
 def test_type_text_sends_keys_to_the_active_element() -> None:
