@@ -452,13 +452,14 @@ def test_raw_transport_splits_delivery_on_connect_versus_send(
 
 def _counting(replies: list) -> tuple[TransportFn, list[int]]:
     """A fake inner transport that yields *replies* in order; each item is either a `_Reply` to return
-    or a `_TransportFailure` to raise. `calls[0]` counts how many times it was invoked."""
+    or an `Exception` (e.g. `_TransportFailure`, `XcuitestRunnerCrashError`) to raise. `calls[0]` counts
+    how many times it was invoked."""
     calls = [0]
 
     def inner(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
         calls[0] += 1
         item = replies.pop(0)
-        if isinstance(item, _TransportFailure):
+        if isinstance(item, Exception):
             raise item
         return item
 
@@ -535,21 +536,6 @@ def test_retry_knobs_are_bounded() -> None:
 # Health-polling is faked (`health=lambda _t: ...`) so no wall time is spent waiting for a recovery.
 
 
-def _yielding(items: list) -> tuple[TransportFn, list[int]]:
-    """A fake inner transport that yields *items* in order; an `Exception` item is raised, a `_Reply`
-    is returned. `calls[0]` counts invocations. Like `_counting`, but raises any exception type."""
-    calls = [0]
-
-    def inner(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
-        calls[0] += 1
-        item = items.pop(0)
-        if isinstance(item, Exception):
-            raise item
-        return item
-
-    return inner, calls
-
-
 def _crash(method: str, *, delivered: bool) -> XcuitestRunnerCrashError:
     return XcuitestRunnerCrashError(
         f"runner channel {method} /x failed: refused", method=method, delivered=delivered
@@ -559,7 +545,7 @@ def _crash(method: str, *, delivered: bool) -> XcuitestRunnerCrashError:
 def test_exhausted_transient_retries_raise_a_crash_error_carrying_delivery_info() -> None:
     # The BE-0207 seam now signals exhaustion with the crash error, tagged so the recovery layer can
     # tell a safe-to-re-issue read from a write that must not be re-applied.
-    inner, _calls = _yielding([_TransportFailure("refused", delivered=False)] * _MAX_ATTEMPTS)
+    inner, _calls = _counting([_TransportFailure("refused", delivered=False)] * _MAX_ATTEMPTS)
     with pytest.raises(XcuitestRunnerCrashError) as exc:
         _with_retry(inner, sleep=lambda _s: None)("GET", "/elements", None)
     assert exc.value.method == "GET"
@@ -570,7 +556,7 @@ def test_exhausted_transient_retries_raise_a_crash_error_carrying_delivery_info(
 
 def test_a_read_crash_waits_for_the_runner_then_re_issues() -> None:
     # A read is idempotent, so once the runner is back it is safe to re-issue and continue the run.
-    inner, calls = _yielding([_crash("GET", delivered=True), _Reply(status="ok")])
+    inner, calls = _counting([_crash("GET", delivered=True), _Reply(status="ok")])
     reply = _with_crash_recovery(inner, health=lambda _t: True)("GET", "/elements", None)
     assert reply.status == "ok"
     assert calls[0] == 2  # crashed, then re-issued after the runner recovered
@@ -578,7 +564,7 @@ def test_a_read_crash_waits_for_the_runner_then_re_issues() -> None:
 
 def test_an_undelivered_write_crash_re_issues_after_recovery() -> None:
     # A write that never reached the runner never applied, so re-issuing it after recovery is safe.
-    inner, calls = _yielding([_crash("POST", delivered=False), _Reply(status="ok")])
+    inner, calls = _counting([_crash("POST", delivered=False), _Reply(status="ok")])
     reply = _with_crash_recovery(inner, health=lambda _t: True)(
         "POST", "/gesture", {"kind": "pinch"}
     )
@@ -589,14 +575,14 @@ def test_an_undelivered_write_crash_re_issues_after_recovery() -> None:
 def test_a_delivered_write_crash_is_never_re_issued_and_fails_distinctly() -> None:
     # A delivered write may already have applied; re-sending could double-actuate. Even with the runner
     # recovered (health True), it must fail with a distinct crash diagnostic rather than re-issue.
-    inner, calls = _yielding([_crash("POST", delivered=True), _Reply(status="ok")])
+    inner, calls = _counting([_crash("POST", delivered=True), _Reply(status="ok")])
     with pytest.raises(XcuitestRunnerCrashError, match="POST /gesture"):
         _with_crash_recovery(inner, health=lambda _t: True)("POST", "/gesture", {"kind": "pinch"})
     assert calls[0] == 1  # never re-issued
 
 
 def test_a_read_crash_that_never_recovers_fails_loudly() -> None:
-    inner, calls = _yielding([_crash("GET", delivered=False)])
+    inner, calls = _counting([_crash("GET", delivered=False)])
     with pytest.raises(XcuitestRunnerCrashError, match="did not recover"):
         _with_crash_recovery(inner, health=lambda _t: False)("GET", "/elements", None)
     assert calls[0] == 1  # health never came back, so the read was not re-issued
@@ -606,7 +592,7 @@ def test_a_normal_reply_passes_through_without_probing_health() -> None:
     def _boom(_t: float) -> bool:  # health must not be consulted on the happy path
         raise AssertionError("health probed on a non-crash call")
 
-    inner, calls = _yielding([_Reply(status="ok")])
+    inner, calls = _counting([_Reply(status="ok")])
     reply = _with_crash_recovery(inner, health=_boom)("GET", "/elements", None)
     assert reply.status == "ok"
     assert calls[0] == 1
@@ -615,7 +601,7 @@ def test_a_normal_reply_passes_through_without_probing_health() -> None:
 def test_a_recovery_logs_the_crash_as_visibly_as_a_retried_blip(caplog: Any) -> None:
     # BE-0287 Unit 4: a crashed-and-recovered run must never be indistinguishable from one that never
     # crashed — both the crash and the recovery are logged.
-    inner, _calls = _yielding([_crash("GET", delivered=True), _Reply(status="ok")])
+    inner, _calls = _counting([_crash("GET", delivered=True), _Reply(status="ok")])
     with caplog.at_level("WARNING"):
         _with_crash_recovery(inner, health=lambda _t: True)("GET", "/elements", None)
     joined = " ".join(r.message for r in caplog.records).lower()
@@ -629,7 +615,7 @@ def test_health_is_the_recovery_probe_so_it_never_recurses_into_recovery() -> No
     def _boom(_t: float) -> bool:
         raise AssertionError("health probe triggered a nested recovery")
 
-    inner, calls = _yielding([_crash("GET", delivered=False)])
+    inner, calls = _counting([_crash("GET", delivered=False)])
     with pytest.raises(XcuitestRunnerCrashError):
         _with_crash_recovery(inner, health=_boom)("GET", "/health", None)
     assert calls[0] == 1
@@ -658,7 +644,7 @@ def test_await_health_returns_false_when_the_runner_never_becomes_ready() -> Non
 
 
 def test_await_health_treats_a_transport_failure_as_not_ready_then_recovers() -> None:
-    inner, _calls = _yielding(
+    inner, _calls = _counting(
         [_TransportFailure("refused", delivered=False), _Reply(status="ready")]
     )
     assert _await_health(inner, timeout=1.0, poll=0.0, sleep=lambda _s: None)
