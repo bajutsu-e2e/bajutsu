@@ -49,6 +49,7 @@ class Driver(Protocol):
 | `conditionWait` | ネイティブ条件待機 | — | — | ✅ | ✅ |
 | `network` | ネイティブネットワーク監視 | — | — | ✅ | — |
 | `multiTouch` | 2 本指ジェスチャ（pinch / rotate） | — | ✅ | ✅ | ✅ |
+| `textSelection` | フォーカス中フィールドの全選択とクリップボードへのコピー | — | ✅ | ✅ | ✅ |
 | `deviceControl.setLocation` | 疑似 GPS 位置の設定 | ✅ | ✅ | — | — |
 | `deviceControl.clipboard` | クリップボードの読み取り / 書き込み / クリア | ✅ | ✅ | — | — |
 | `deviceControl.push` | プッシュ通知の配信 | ✅ | — | — | — |
@@ -64,7 +65,7 @@ class Driver(Protocol):
 
 バックエンドの能力集合は静的なので、選んだ actuator が持たない能力をシナリオが必要とするかどうかは、デバイス作業の前に分かります。run の開始時（actuator を選んだ後、最初のデバイスを lease する前）に、runner は各シナリオを actuator の能力と照合し（`bajutsu/capability_preflight.py`）、未対応のシナリオを即座に失敗させます。集約した 1 つの理由（`UnsupportedAction` 相当）を付けて、デバイスを起動して途中で失敗するのを避けます（prime directive #2：速く明確に失敗する）。検査は (シナリオ, 能力集合) の純粋関数で、デバイスも時計も使いません。シナリオ単位なので、未対応のシナリオだけが失敗し、残りは実行されます。
 
-検査は、能力集合で明確に判定できる**真の hard requirement** だけを門にします。`pinch` / `rotate` は `multiTouch`、`visual` アサーションは `screenshot`、そして各デバイス制御ステップは自分の操作に対応するトークンを必要とします。`setLocation` は `deviceControl.setLocation`、クリップボードのステップは `deviceControl.clipboard`、`push` は `deviceControl.push`、という具合です（この操作ごとのトークンへの分割は BE-0212、前掲）。すべての run は `query` と `elements` を必要とします。`relaunch` はここに含みません。`relaunch` は `DeviceControl` ではなく、注入される relauncher で門を通すからです。一方、`conditionWait` は門にしません（run ループはすべての待機を polling で実装するので、どのバックエンドもこのトークンを必要としません）。`network` も門にしません（idb は `network` を公開しませんが、アプリ側の collector で通信を捕捉するため、`request` / `event` / `requestSequence` / `responseSchema` アサーションや `until: { request }` 待機は idb でも動きます）。`gestures.py` の `_require_multi_touch` は、ジェスチャ実行時の多層防御の検査として残します。デバイス制御ステップについても同様に `_need_control` を残し、その run で `DeviceControl` がまったく配線されていない場合（デバイスを固定しない並行 run など）を捕捉します。トークンが操作ごとになったので、一族の一部だけを実現するバックエンド（Android エミュレータの `setLocation` と `clipboard`）は、公開した操作については preflight を通し、残りについては速く失敗します。未対応のステップは一つずつ名指しされ、一族が全か無かで扱われることはありません。
+検査は、能力集合で明確に判定できる**真の hard requirement** だけを門にします。`pinch` / `rotate` は `multiTouch`、`select` / `copy` は `textSelection`（全選択とクリップボードへのコピー。idb は座標専用でどちらも拒否します。`delete` / `clear` はどのバックエンドも `delete_text` を実現できるので門にしません）、`visual` アサーションは `screenshot`、そして各デバイス制御ステップは自分の操作に対応するトークンを必要とします。`setLocation` は `deviceControl.setLocation`、クリップボードのステップは `deviceControl.clipboard`、`push` は `deviceControl.push`、という具合です（この操作ごとのトークンへの分割は BE-0212、前掲）。すべての run は `query` と `elements` を必要とします。`relaunch` はここに含みません。`relaunch` は `DeviceControl` ではなく、注入される relauncher で門を通すからです。一方、`conditionWait` は門にしません（run ループはすべての待機を polling で実装するので、どのバックエンドもこのトークンを必要としません）。`network` も門にしません（idb は `network` を公開しませんが、アプリ側の collector で通信を捕捉するため、`request` / `event` / `requestSequence` / `responseSchema` アサーションや `until: { request }` 待機は idb でも動きます）。`gestures.py` の `_require_multi_touch` は、ジェスチャ実行時の多層防御の検査として残します。デバイス制御ステップについても同様に `_need_control` を残し、その run で `DeviceControl` がまったく配線されていない場合（デバイスを固定しない並行 run など）を捕捉します。トークンが操作ごとになったので、一族の一部だけを実現するバックエンド（Android エミュレータの `setLocation` と `clipboard`）は、公開した操作については preflight を通し、残りについては速く失敗します。未対応のステップは一つずつ名指しされ、一族が全か無かで扱われることはありません。
 
 ## idb
 

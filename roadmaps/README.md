@@ -104,9 +104,7 @@ Under consideration — not yet decided. Promote an item to *In progress* once w
 ### Driver & backend architecture
 
 <!-- GENERATED:proposals-driver-architecture -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0280](BE-0280-conformance-unactuated-verbs/BE-0280-conformance-unactuated-verbs.md) | Extend the driver conformance contract to unactuated Driver operations | Proposal |
+
 <!-- /GENERATED:proposals-driver-architecture -->
 
 ### Device-cloud execution

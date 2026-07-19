@@ -488,6 +488,46 @@ def test_select_option_reason_includes_step_index() -> None:
     assert "selectOption" in reasons[0]
 
 
+# --- textSelection capability gating (select / copy; BE-0280) ---
+
+
+_TEXT = _IDB | {base.Capability.TEXT_SELECTION}
+
+
+@pytest.mark.parametrize(
+    "step",
+    [{"select": {"into": {"id": "field"}}}, {"copy": {}}],
+)
+def test_select_and_copy_require_text_selection(step: dict[str, object]) -> None:
+    # select-all / copy actuate only on a backend that can select natively; idb (coordinate-only,
+    # no TEXT_SELECTION) is rejected up front rather than left to fail late mid-run (BE-0280).
+    sc = _sc(steps=[step])
+    reasons = capability_preflight.unsupported(sc, _IDB)
+    assert reasons and any("textSelection" in r for r in reasons)
+    # A backend advertising TEXT_SELECTION runs it without issue.
+    assert capability_preflight.unsupported(sc, _TEXT) == []
+
+
+def test_delete_and_clear_are_not_gated_by_text_selection() -> None:
+    # Every backend actuates delete_text (a run of backspaces), so delete/clear need no token — idb,
+    # which lacks TEXT_SELECTION, still runs them (BE-0280).
+    sc = _sc(
+        steps=[
+            {"delete": {"into": {"id": "field"}, "count": 3}},
+            {"clear": {"into": {"id": "field"}}},
+        ]
+    )
+    assert capability_preflight.unsupported(sc, _IDB) == []
+
+
+def test_select_reason_includes_step_index() -> None:
+    sc = _sc(steps=[{"tap": {"id": "ok"}}, {"select": {"into": {"id": "field"}}}])
+    reasons = capability_preflight.unsupported(sc, _IDB)
+    assert len(reasons) == 1
+    assert reasons[0].startswith("step 2: ")
+    assert "textSelection" in reasons[0]
+
+
 # --- CLI doctor --scenario integration (BE-0024) ---
 
 

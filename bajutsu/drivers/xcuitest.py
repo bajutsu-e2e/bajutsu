@@ -384,6 +384,7 @@ class XcuitestDriver:
                 base.Capability.SEMANTIC_TAP,
                 base.Capability.CONDITION_WAIT,
                 base.Capability.MULTI_TOUCH,
+                base.Capability.TEXT_SELECTION,
             }
         )
         | base.DEVICE_CONTROL_ALL
