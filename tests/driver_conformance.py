@@ -63,8 +63,8 @@ def _field_value(driver: base.Driver) -> str:
 
 def _field_center(driver: base.Driver) -> base.Point:
     """The center point of the conformance field's known frame, for a coordinate tap."""
-    x, y, w, h = base.resolve_unique(driver.query(), {"id": FIELD_ID})["frame"]
-    return (x + w / 2, y + h / 2)
+    # Route the arithmetic through the shared helper the backends use (BE-0251), not a second copy.
+    return base.frame_center(base.resolve_unique(driver.query(), {"id": FIELD_ID})["frame"])
 
 
 def element(
