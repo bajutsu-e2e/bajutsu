@@ -376,7 +376,9 @@ def test_rotate_passes_rotation_and_keeps_velocity_positive() -> None:
     (_, (clockwise,)) = grid.executed[0]
     (_, (counter,)) = grid.executed[1]
     assert clockwise["rotation"] == 1.57 and clockwise["velocity"] > 0
-    assert counter["rotation"] == -1.57 and counter["velocity"] > 0  # direction via rotation, not sign
+    assert (
+        counter["rotation"] == -1.57 and counter["velocity"] > 0
+    )  # direction via rotation, not sign
 
 
 def test_type_text_sends_keys_to_the_active_element() -> None:

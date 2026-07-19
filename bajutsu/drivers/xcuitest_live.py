@@ -403,7 +403,13 @@ class XcuitestLiveDriver:
         # emits with a fixed `withVelocity: 1.0`.
         self._client.execute(
             "mobile: rotateElement",
-            [{"elementId": self._resolve_handle(sel), "rotation": radians, "velocity": _ROTATE_VELOCITY}],
+            [
+                {
+                    "elementId": self._resolve_handle(sel),
+                    "rotation": radians,
+                    "velocity": _ROTATE_VELOCITY,
+                }
+            ],
         )
 
     def type_text(self, text: str) -> None:
