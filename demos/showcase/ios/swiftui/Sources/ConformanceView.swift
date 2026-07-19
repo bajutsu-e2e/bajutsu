@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit  // UIApplication / UIResponder — dismiss iOS transient UI on a screen reseed (see onChange)
 
 // BE-0114: the on-device realization of a driver-conformance screen. The conformance suite seeds
 // an arbitrary set of accessibility identifiers — duplicated (an ambiguous selector), empty (a
@@ -28,6 +29,10 @@ struct ConformanceView: View {
     /// before any typing and hide the round-trip length change the contract observes.
     @State private var fieldText = ""
 
+    /// Focus on the editable field, so a screen reseed can resign it and dismiss any transient iOS UI
+    /// the previous text-editing test left up (BE-0280) — see the `onChange` teardown below.
+    @FocusState private var fieldFocused: Bool
+
     var body: some View {
         // Duplicates are the point (the ambiguous-selector case), so the row identity is the
         // position, never the identifier — a `\.self` id would collapse repeated identifiers.
@@ -38,6 +43,7 @@ struct ConformanceView: View {
             TextField("", text: $fieldText)
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 280, height: 44)
+                .focused($fieldFocused)
                 .accessibilityID(Self.fieldID)
                 // No explicit `.accessibilityValue(fieldText)`: a SwiftUI TextField already surfaces
                 // its bound text as its accessibility value natively (as SearchView's field does), so
@@ -57,6 +63,19 @@ struct ConformanceView: View {
                     .contentShape(Rectangle())
                     .accessibilityID(identifier)
             }
+        }
+        // A reseed (the suite writing a new spec) means the previous screen's test is done. A
+        // text-editing test leaves iOS transient UI up — the keyboard, and after select-all/copy the
+        // system edit menu (a `PopoverDismissRegion` backdrop) — that floats *above* this view, so
+        // re-rendering the content alone does not clear it; it would obscure the next screen's marker,
+        // and the reseed readiness probe would see only `PopoverDismissRegion` (BE-0280). Resigning the
+        // field and ending editing app-wide dismisses both, deterministically, at the screen boundary —
+        // no fixed sleep, and the backend-agnostic contract stays free of any iOS-specific teardown.
+        .onChange(of: identifiers) {
+            fieldFocused = false
+            UIApplication.shared.sendAction(
+                #selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil
+            )
         }
     }
 }
