@@ -115,6 +115,7 @@ plugins:
             Drivers & platforms: ドライバとプラットフォーム
             Drivers: ドライバ
             Network: ネットワーク
+            iOS on a real device and in a device cloud: iOS を実機とデバイスクラウドで動かす
             Evidence & reporting: evidence とレポート
             Evidence: evidence
             Reporting: レポート
@@ -181,7 +182,7 @@ nav:
   - Drivers & platforms:
       - Drivers: drivers.md
       - Network: network.md
-      - iOS on a real device and device cloud: ios-device-cloud.md
+      - iOS on a real device and in a device cloud: ios-device-cloud.md
   - Evidence & reporting:
       - Evidence: evidence.md
       - Reporting: reporting.md
