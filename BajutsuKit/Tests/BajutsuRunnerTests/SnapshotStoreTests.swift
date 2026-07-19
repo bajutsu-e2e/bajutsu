@@ -79,4 +79,23 @@ final class SnapshotStoreTests: XCTestCase {
         XCTAssertEqual(entries.count, 2)
         XCTAssertNotEqual(entries[0].handle, entries[1].handle)
     }
+
+    // BE-0287: concurrent HTTP handling lets /elements and /tap reach the store
+    // at once, so refreshSnapshot and lookup must be safe to call in parallel.
+    // Without the store's lock this hammering trips a data race (a crash on its
+    // own, a diagnosed race under ThreadSanitizer).
+    func testConcurrentRefreshAndLookupIsSafe() {
+        let store = SnapshotStore()
+        let snapshot = ElementSnapshot(
+            identifier: "x", label: nil, value: nil,
+            traits: [], frame: (0, 0, 1, 1), backingElement: NSObject()
+        )
+        DispatchQueue.concurrentPerform(iterations: 1000) { index in
+            if index.isMultiple(of: 2) {
+                _ = store.refreshSnapshot(elements: [snapshot])
+            } else {
+                _ = store.lookup(handle: "h-1-0")
+            }
+        }
+    }
 }
