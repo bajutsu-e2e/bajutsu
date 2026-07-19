@@ -75,6 +75,61 @@ package 化）、それが両経路の再利用可能な核になります。
 6. **ドキュメント** — iOS のデバイスクラウドの手順（両言語）を置く。`idb` / `simctl` が使えない理由、XCTest と
    Appium の経路、再署名の注意を記す。
 
+### live 経路の transport（後続の slice）
+
+Unit 4 は `appium` の `DeviceProvider`（live の継ぎ目）を着地させ、予約済みの iOS デバイスの固定の
+Appium / WebDriver endpoint を、実行の udid spec として渡します。その endpoint を駆動する transport は
+まだ作られておらず、今日の経路に WebDriver クライアントをかぶせるだけでは実現できません。udid spec は
+そのまま `XcuitestEnvironment` へ流れ、その `_destination()` は値を `simctl.validated_udid` に通し、共有の
+`device_id` の文字集合は URL の `/` を許しません。そのため実在の `http(s)://` endpoint は今日
+`DeviceError: invalid udid` を送出します。以下の設計はこの隙間を塞ぎます。
+
+**WebDriver は runner チャネルではなく Python から話します。** ローカルの XCUITest 経路は、常駐する
+BajutsuKit の runner を独自の loopback HTTP チャネルで駆動します。Appium のグリッドはその runner を
+露出せず、W3C（World Wide Web Consortium）WebDriver の endpoint（Appium の XCUITest driver）だけを
+露出します。そこで live の transport は、グリッドが提供しないポートへ runner チャネルをトンネルするのでは
+なく、遠隔の endpoint へ W3C WebDriver を Python から直接話します。
+
+**要素の解決は Python 側に保ちます。** WebDriver は locator をサーバ側で解決しますが、決定性優先
+（prime directive 2）は、曖昧なセレクタが最初に一致した要素を操作せず即座に失敗するよう、Bajutsu が
+セレクタを Python 側で解決することを求めます。そこで live の driver は既存の `XcuitestDriver` の形を
+そのまま再利用します。画面全体を1つの広い locator（`//*` または iOS の class chain に対する
+`findElements`）で query し、`base.Element` のリストを組み立て、そのリストに対して `resolve_unique` で
+セレクタを解決し、query が返した WebDriver の element id で選ばれた要素を操作します。runner チャネルが
+すでに踏襲している「query して解決し handle で操作する」流れと同じで、runner の per-snapshot handle の
+位置に WebDriver の element id が入ります。
+
+**注入可能な transport の継ぎ目を、最小の自前クライアントで再利用します。** `XcuitestDriver` はすでに
+ワイヤプロトコルを注入可能な transport（`(method, path, body)` を入力に、復号した応答を出力に）として
+受け取り、その要求と応答のロジックはゲート上に Simulator を持たずに fake に対して動きます。live の driver
+は、標準ライブラリの `http.client` の上に組んだ最小の自前 W3C WebDriver クライアントを、同じやり方で
+注入して受け取ります。自前のクライアントは runner チャネル自身の stdlib クライアントと揃い、第三者の
+WebDriver 依存をゲートに持ち込まず、ネットワーク境界の fake の endpoint に対して WebDriver の写像を
+ゲートで動かせます。
+
+**endpoint を simctl と xcodebuild の仕掛けの外へ回します。** `environment_for` は実行の environment を
+選びます。xcuitest actuator の udid spec が `http(s)://` の endpoint のとき、実行は live の経路を採り、
+simctl の bring-up と `xcodebuild test-without-building` のサブプロセスを丸ごと飛ばし、endpoint に対して
+WebDriver のセッションを開き、live の driver でそれを駆動し、teardown でセッションを閉じます。URL の
+スキームがルーティングのシグナルです。URL のスキームはまさに `validated_udid` が弾く値なので、スキームを
+先に認識することが、live の経路の選択と、誤解を招く `invalid udid` エラーの置き換えの両方を担います。
+したがって endpoint は udid の仕掛けに触れません。udid の仕掛けは構造として URL を運べないからです。
+BE-0236 の `ProvisionProfile` はすでに、予約済みのデバイスがビルドを入れて起動済みだと報告するので、
+live の経路は simctl の bring-up のフラグを何も honor しません。実機の経路（Unit 1）はすでにそれらを
+飛ばします。
+
+後続は3つの slice に分けて着地し、いずれも WebDriver の境界で fake にします。
+
+- **slice A — セッションと最小の driver。** 自前の W3C クライアント（セッションの作成と削除）、live の
+  driver の `query`、`tap`、`screenshot`、準備完了待ち、そして `environment_for` のルーティング（セッションを
+  開き `xcodebuild` を飛ばす）を置きます。この slice で、tap して assert する live の実行が端から端まで通ります。
+- **slice B — 入力とジェスチャ。** `swipe`、`scroll`、`type_text`、`delete_text`、`select_all`、
+  `copy_selection`、`pinch`、`rotate` を WebDriver のアクション（W3C の Actions の
+  API（application programming interface）、または Appium の `mobile:` コマンド）へ写像します。
+- **slice C — capability・config・ドキュメント。** live 経路の実行時の capability の集合を、Appium-XCUITest
+  が届く範囲へ縮退させ（`capabilities_for_run`、Unit 3 の仕組み）、live のグリッド向けの showcase target を
+  足し、手順に live 経路を加えます。
+
 ### prime directive への適合
 
 - **AI をゲートに入れない。** 実機の iOS 実行は決定的な XCTest / XCUITest で、合否判定の経路にモデルは

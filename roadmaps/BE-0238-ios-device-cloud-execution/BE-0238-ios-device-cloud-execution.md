@@ -78,6 +78,63 @@ the Simulator through `xcodebuild`; this item generalises target selection to a 
 6. **Docs** — an iOS device-cloud how-to (both languages): why `idb`/`simctl` do not apply, the
    XCTest/Appium routes, and the re-signing caveats.
 
+### Live route transport (follow-on slices)
+
+Unit 4 landed the `appium` `DeviceProvider` — the live seam — which hands a run the fixed Appium /
+WebDriver endpoint of a reserved iOS device as its udid spec. Driving that endpoint is a separate
+transport, still unbuilt, and it cannot merely layer a WebDriver client onto today's path: the udid
+spec flows unchanged into `XcuitestEnvironment`, whose `_destination()` runs it through
+`simctl.validated_udid`, and the shared `device_id` charset excludes the `/` in a URL — so a real
+`http(s)://` endpoint raises `DeviceError: invalid udid` today. The design below closes that gap.
+
+**Speak W3C WebDriver from Python, not the runner channel.** The local XCUITest path drives a
+resident BajutsuKit runner over a bespoke loopback HTTP channel; an Appium grid exposes no such
+runner, only a World Wide Web Consortium (W3C) WebDriver endpoint (Appium's XCUITest driver). So the
+live transport speaks W3C WebDriver to the remote endpoint directly from Python, rather than
+tunnelling the runner channel to a port the grid does not serve.
+
+**Keep element resolution on the Python side.** WebDriver resolves a locator on the server, but
+determinism first (prime directive 2) requires Bajutsu to resolve a selector Python-side so an
+ambiguous selector fails immediately rather than acting on whichever element matched first. The live
+driver therefore reuses the shape of the existing `XcuitestDriver`: query the whole screen with one
+broad locator (`findElements` over `//*` or an iOS class chain), build the `base.Element` list,
+resolve the selector against that list with `resolve_unique`, and act on the chosen element by the
+WebDriver element id the query returned — the same query-resolve-act-by-handle flow the runner
+channel already follows, with the WebDriver element id standing in for the runner's per-snapshot
+handle.
+
+**Reuse the injectable-transport seam, with a minimal in-house client.** `XcuitestDriver` already
+takes its wire protocol as an injectable transport — `(method, path, body)` in, a decoded reply out —
+so its request and response logic runs against a fake with no Simulator on the gate. The live driver
+takes a minimal in-house W3C WebDriver client built on the standard library's `http.client`, injected
+the same way. The in-house client matches the runner channel's own stdlib client, keeps the gate free
+of a third-party WebDriver dependency, and lets the gate exercise the WebDriver mapping against a fake
+endpoint at the network boundary.
+
+**Route the endpoint around the simctl and xcodebuild machinery.** `environment_for` selects the
+environment for a run; when the xcuitest actuator's udid spec is an `http(s)://` endpoint, the run
+takes a live path that skips simctl bring-up and the `xcodebuild test-without-building` subprocess
+entirely, opening a WebDriver session against the endpoint, driving it through the live driver, and
+closing the session on teardown. The URL scheme is the routing signal: it is exactly the value
+`validated_udid` rejects, so recognising the scheme up front both selects the live path and replaces
+the misleading `invalid udid` error. The endpoint therefore never reaches the udid machinery, which
+structurally cannot carry a URL. The BE-0236 `ProvisionProfile` already reports the reserved device
+booted with its build installed, so the live path honours no simctl bring-up flags — the real-device
+path (Unit 1) already skips them.
+
+The follow-on lands in three slices, each faked at the WebDriver boundary:
+
+- **Slice A — session and a minimal driver.** The in-house W3C client (create and delete session),
+  the live driver's `query`, `tap`, `screenshot`, and readiness wait, and the `environment_for`
+  routing that opens the session and skips `xcodebuild`. This slice makes a live run that taps and
+  asserts end to end.
+- **Slice B — input and gestures.** Map `swipe`, `scroll`, `type_text`, `delete_text`, `select_all`,
+  `copy_selection`, `pinch`, and `rotate` onto WebDriver actions — the W3C Actions application
+  programming interface (API) or Appium's `mobile:` commands.
+- **Slice C — capabilities, config, and docs.** Narrow the live route's run-time capability set to
+  what Appium-XCUITest reaches (through `capabilities_for_run`, the Unit 3 mechanism), add a showcase
+  target for a live grid, and extend the how-to with the live route.
+
 ### Prime-directive compliance
 
 - **AI out of the gate.** Real-device iOS execution is deterministic XCTest/XCUITest; no model on the
