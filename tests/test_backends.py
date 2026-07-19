@@ -17,7 +17,7 @@ from bajutsu.backends import (
     select_actuator_cost_first,
     select_actuator_for_scenario,
 )
-from bajutsu.config import Effective, IosConfig, WebConfig, XcuitestConfig
+from bajutsu.config import DeviceProvider, Effective, IosConfig, WebConfig, XcuitestConfig
 from bajutsu.drivers import base
 from bajutsu.scenario import Redact, Scenario
 
@@ -430,8 +430,10 @@ def test_capabilities_for_xcuitest_reads_the_driver_constant_without_a_device() 
 # --- BE-0238 Unit 3: a real iOS device narrows the static XCUITest capability set -----------------
 
 
-def _ios_eff(*, xcuitest: XcuitestConfig | None = None) -> Effective:
-    """A minimal iOS `Effective`, optionally carrying an `xcuitest` sub-config."""
+def _ios_eff(
+    *, xcuitest: XcuitestConfig | None = None, device_provider: DeviceProvider | None = None
+) -> Effective:
+    """A minimal iOS `Effective`, optionally carrying an `xcuitest` sub-config / `deviceProvider`."""
     return Effective(
         target="demo",
         platform_config=IosConfig(bundle_id="com.example.demo", xcuitest=xcuitest),
@@ -446,6 +448,7 @@ def _ios_eff(*, xcuitest: XcuitestConfig | None = None) -> Effective:
         setup=None,
         capture=[],
         redact=Redact(),
+        device_provider=device_provider,
     )
 
 
@@ -539,14 +542,20 @@ def test_capabilities_for_run_narrows_to_the_live_driver_set_on_a_webdriver_endp
 
 def test_capabilities_for_run_narrows_on_a_url_udid_regardless_of_the_provider() -> None:
     # The narrowing keys on the resolved udid spec, the same signal `is_webdriver_endpoint` routes on
-    # — not on `deviceProvider.kind`. A run that reaches the live WebDriver route with a URL udid spec
-    # (e.g. `--udid https://…` under the default local provider) must narrow here too, or preflight
-    # would advertise the full local set and a select/copy scenario would fail late mid-run instead of
-    # being skipped up front — the exact divergence this slice closes.
+    # — not on `deviceProvider.kind`. Two targets whose *only* difference is the provider — the default
+    # `local` (no block) versus an `appium` cloud provider — must narrow identically for the same URL
+    # udid spec. If the local case failed to narrow, a `--udid https://…` run under it would advertise
+    # the full local set and a select/copy scenario would fail late mid-run instead of being skipped up
+    # front — the exact divergence this slice closes.
     from bajutsu.drivers.xcuitest_live import XcuitestLiveDriver
 
-    caps = capabilities_for_run("xcuitest", _ios_eff(), _LIVE_ENDPOINT)
-    assert caps == XcuitestLiveDriver.CAPABILITIES
+    local = capabilities_for_run("xcuitest", _ios_eff(device_provider=None), _LIVE_ENDPOINT)
+    appium = capabilities_for_run(
+        "xcuitest",
+        _ios_eff(device_provider=DeviceProvider(kind="appium", endpoint=_LIVE_ENDPOINT)),
+        _LIVE_ENDPOINT,
+    )
+    assert local == appium == XcuitestLiveDriver.CAPABILITIES
 
 
 def test_live_route_drops_text_selection_and_simctl_backed_caps() -> None:

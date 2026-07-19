@@ -206,7 +206,7 @@ def capabilities_for_run(
       truth). This is the narrower of the two, dropping text selection on top of the real-device
       narrowing below. The signal is `udid_spec` being a WebDriver URL — the *same* `is_webdriver_endpoint`
       check `environment_for` routes on, so preflight and routing can never disagree (whether the URL
-      arrives from the `appium` provider's endpoint or a raw `--udid https://…` under any provider).
+      arrives from the `appium` provider's endpoint or a raw `--udid https://…` under the local provider).
     - **A real device via `xcuitest.deviceType: device`** loses the simctl-backed `DeviceControl`
       family and the simctl-privacy permission grants (simctl cannot reach a physical device), the
       same fail-fast the permission preconditions already get in the XCUITest lifecycle (Unit 1). This

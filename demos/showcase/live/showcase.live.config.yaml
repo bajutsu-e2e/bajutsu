@@ -31,7 +31,6 @@ targets:
     idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
     readyWhen: { id: [stable.row.1, stable_row_1] }
     scenarios: ../scenarios
-    backend: [xcuitest]
     deviceProvider:
       kind: appium
       endpoint: https://grid.example.com/wd/hub   # the reserved device's Appium / WebDriver address
