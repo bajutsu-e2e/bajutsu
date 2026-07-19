@@ -33,6 +33,7 @@ from bajutsu.platform_lifecycle.environments.xcuitest_live import (
 )
 from bajutsu.platform_lifecycle.factories import environment_for
 from bajutsu.scenario import Preconditions
+from bajutsu.scenario.models.scenario import Scenario
 
 _ENDPOINT = "http://grid.local:4723"
 
@@ -400,6 +401,17 @@ def test_live_environment_crawl_reset_raises_unsupported_action() -> None:
     driver = XcuitestLiveDriver(WebDriverClient(_FakeGrid([])))
     with pytest.raises(base.UnsupportedAction):
         reset(driver)
+
+
+def test_live_environment_relauncher_raises_unsupported_action() -> None:
+    # `relauncher()` must not reach simctl (which rejects the URL endpoint). Mirrors the test for
+    # `crawl_reset`, which has the same shape and the same reason for the override.
+    env = XcuitestLiveEnvironment("xcuitest", _ENDPOINT, transport_factory=lambda _e: _FakeGrid([]))
+    eff = _live_eff()
+    driver = XcuitestLiveDriver(WebDriverClient(_FakeGrid([])))
+    relaunch = env.relauncher(eff, Scenario(name="t", steps=[]), driver)
+    with pytest.raises(base.UnsupportedAction):
+        relaunch(None)
 
 
 def test_find_elements_raises_on_non_list_response() -> None:

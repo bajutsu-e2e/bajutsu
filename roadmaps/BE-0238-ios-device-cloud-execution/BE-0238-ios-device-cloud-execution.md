@@ -238,7 +238,7 @@ The follow-on lands in three slices, each faked at the WebDriver boundary:
   control and permission grants degrade via the preflight). Added to the mkdocs nav; documentation
   only, no product-code change. The live-route transport remains the last open box.
 - Live route Slice A ([#1201](https://github.com/bajutsu-e2e/bajutsu/pull/1201)): landed the first live-transport slice — the endpoint the `appium`
-  provider yields is now drivable end to end for a tap-and-assert run. A new in-house W3C WebDriver
+  provider yields is now drivable end to end for a tap-and-assert run. This slice adds a new in-house W3C WebDriver
   client (`drivers/xcuitest_live.py`, `http.client`-based, its wire injected the same way
   `XcuitestDriver` injects its transport, so no third-party WebDriver dependency reaches the gate) and
   an `XcuitestLiveDriver` that reuses the query-resolve-act-by-handle shape: one broad `findElements`
