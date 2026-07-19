@@ -178,6 +178,12 @@ def _repeat_audit(
                     # Mirror `run`: resolve the actuator per scenario (BE-0240), so the preflight and
                     # the pool's lease agree on the cheapest actuator each repeat runs against.
                     resolve_actuator=lambda scn: select_actuator_for_scenario(backends, scn),
+                    # Pass the raw `--udid` as the live-route narrowing signal (BE-0238): a
+                    # `--udid https://…` audits against the live capability set, keeping preflight in
+                    # lockstep with routing. Unlike `run`, `audit --repeat` never calls
+                    # `acquire_device`, so an `appium` provider's endpoint is not reflected here
+                    # unless passed explicitly via `--udid`.
+                    lease_udid_spec=udid,
                 )
             )
             for s in scenarios

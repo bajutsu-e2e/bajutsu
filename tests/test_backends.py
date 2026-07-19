@@ -17,7 +17,7 @@ from bajutsu.backends import (
     select_actuator_cost_first,
     select_actuator_for_scenario,
 )
-from bajutsu.config import Effective, IosConfig, WebConfig, XcuitestConfig
+from bajutsu.config import DeviceProvider, Effective, IosConfig, WebConfig, XcuitestConfig
 from bajutsu.drivers import base
 from bajutsu.scenario import Redact, Scenario
 
@@ -430,8 +430,10 @@ def test_capabilities_for_xcuitest_reads_the_driver_constant_without_a_device() 
 # --- BE-0238 Unit 3: a real iOS device narrows the static XCUITest capability set -----------------
 
 
-def _ios_eff(*, xcuitest: XcuitestConfig | None = None) -> Effective:
-    """A minimal iOS `Effective`, optionally carrying an `xcuitest` sub-config."""
+def _ios_eff(
+    *, xcuitest: XcuitestConfig | None = None, device_provider: DeviceProvider | None = None
+) -> Effective:
+    """A minimal iOS `Effective`, optionally carrying an `xcuitest` sub-config / `deviceProvider`."""
     return Effective(
         target="demo",
         platform_config=IosConfig(bundle_id="com.example.demo", xcuitest=xcuitest),
@@ -446,6 +448,7 @@ def _ios_eff(*, xcuitest: XcuitestConfig | None = None) -> Effective:
         setup=None,
         capture=[],
         redact=Redact(),
+        device_provider=device_provider,
     )
 
 
@@ -516,6 +519,77 @@ def test_real_device_narrowing_makes_a_device_control_scenario_unsupported() -> 
     dev = _ios_eff(xcuitest=XcuitestConfig(test_runner="Runner.xctestrun", device_type="device"))
     assert capability_preflight.unsupported(scenario, capabilities_for_run("xcuitest", sim)) == []
     assert capability_preflight.unsupported(scenario, capabilities_for_run("xcuitest", dev))
+
+
+# --- BE-0238 Slice C: the live WebDriver route narrows to what that transport actually drives -------
+
+# The routing signal for the live route is the *resolved* udid spec being a WebDriver URL — exactly
+# what `is_webdriver_endpoint` (and so `environment_for`) keys on. The `appium` provider surfaces this
+# endpoint as the udid spec, but the narrowing keys on the spec itself, not the provider, so preflight
+# and routing can never disagree (see the URL-udid test below).
+_LIVE_ENDPOINT = "https://grid.example.com/wd/hub"
+
+
+def test_capabilities_for_run_narrows_to_the_live_driver_set_on_a_webdriver_endpoint() -> None:
+    # The live route drives Appium's XCUITest `mobile:` commands, not simctl and not the native text
+    # selection the local runner does — so preflight must advertise exactly what the live driver drives
+    # (its own CAPABILITIES), the single source of truth, rather than the local XCUITest set.
+    from bajutsu.drivers.xcuitest_live import XcuitestLiveDriver
+
+    caps = capabilities_for_run("xcuitest", _ios_eff(), _LIVE_ENDPOINT)
+    assert caps == XcuitestLiveDriver.CAPABILITIES
+
+
+def test_capabilities_for_run_narrows_on_a_url_udid_regardless_of_the_provider() -> None:
+    # The narrowing keys on the resolved udid spec, the same signal `is_webdriver_endpoint` routes on
+    # — not on `deviceProvider.kind`. Two targets whose *only* difference is the provider — the default
+    # `local` (no block) versus an `appium` cloud provider — must narrow identically for the same URL
+    # udid spec. If the local case failed to narrow, a `--udid https://…` run under it would advertise
+    # the full local set and a select/copy scenario would fail late mid-run instead of being skipped up
+    # front — the exact divergence this slice closes.
+    from bajutsu.drivers.xcuitest_live import XcuitestLiveDriver
+
+    local = capabilities_for_run("xcuitest", _ios_eff(device_provider=None), _LIVE_ENDPOINT)
+    appium = capabilities_for_run(
+        "xcuitest",
+        _ios_eff(device_provider=DeviceProvider(kind="appium", endpoint=_LIVE_ENDPOINT)),
+        _LIVE_ENDPOINT,
+    )
+    assert local == appium == XcuitestLiveDriver.CAPABILITIES
+
+
+def test_live_route_drops_text_selection_and_simctl_backed_caps() -> None:
+    # Concretely, the live set loses the three families the WebDriver transport cannot honor: text
+    # selection (no first-class `mobile:` command), the whole DeviceControl family, and the
+    # simctl-privacy permission grants — all of which the local Simulator driver still advertises.
+    caps = capabilities_for_run("xcuitest", _ios_eff(), _LIVE_ENDPOINT)
+    assert base.Capability.TEXT_SELECTION not in caps
+    assert base.DEVICE_CONTROL_ALL.isdisjoint(caps)
+    assert base.IOS_PERMISSION_CAPABILITIES.isdisjoint(caps)
+    # What the live transport does drive survives: a semantic tap, condition waits, screenshots, and
+    # the two-finger gestures (Slice B).
+    for cap in (
+        base.Capability.QUERY,
+        base.Capability.SEMANTIC_TAP,
+        base.Capability.SCREENSHOT,
+        base.Capability.MULTI_TOUCH,
+    ):
+        assert cap in caps
+
+
+def test_live_route_narrowing_makes_a_copy_selection_scenario_unsupported() -> None:
+    # End-to-end with the preflight (BE-0082): a `copy` scenario runs on the local Simulator but is
+    # skipped up front on the live route, whose driver raises UnsupportedAction for select/copy.
+    from bajutsu import capability_preflight
+
+    scenario = Scenario.model_validate(
+        {"name": "cp", "steps": [{"select": {"into": {"id": "field"}}}, {"copy": {}}]}
+    )
+    sim = _ios_eff(xcuitest=XcuitestConfig(test_runner="Runner.xctestrun", device_type="simulator"))
+    assert capability_preflight.unsupported(scenario, capabilities_for_run("xcuitest", sim)) == []
+    assert capability_preflight.unsupported(
+        scenario, capabilities_for_run("xcuitest", _ios_eff(), _LIVE_ENDPOINT)
+    )
 
 
 # --- BE-0240: capability-aware, cost-ordered per-scenario actuator selection -------------------

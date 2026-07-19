@@ -7,9 +7,9 @@
 |---|---|
 | Proposal | [BE-0238](BE-0238-ios-device-cloud-execution.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0238") |
-| Implementing PR | [#1192](https://github.com/bajutsu-e2e/bajutsu/pull/1192) (Unit 1: XCUITest real-device targeting), [#1193](https://github.com/bajutsu-e2e/bajutsu/pull/1193) (Unit 2: batch packaging), [#1195](https://github.com/bajutsu-e2e/bajutsu/pull/1195) (Unit 3: re-signing / real-device capability preflight), [#1196](https://github.com/bajutsu-e2e/bajutsu/pull/1196) (Unit 4: live-route Appium-endpoint provider, seam only), [#1197](https://github.com/bajutsu-e2e/bajutsu/pull/1197) (Unit 5: faked-boundary tests), [#1198](https://github.com/bajutsu-e2e/bajutsu/pull/1198) (Unit 6: iOS device-cloud how-to), [#1201](https://github.com/bajutsu-e2e/bajutsu/pull/1201) (Live route Slice A: WebDriver transport), [#1203](https://github.com/bajutsu-e2e/bajutsu/pull/1203) (Live route Slice B: input and gestures) |
+| Implementing PR | [#1192](https://github.com/bajutsu-e2e/bajutsu/pull/1192) (Unit 1: XCUITest real-device targeting), [#1193](https://github.com/bajutsu-e2e/bajutsu/pull/1193) (Unit 2: batch packaging), [#1195](https://github.com/bajutsu-e2e/bajutsu/pull/1195) (Unit 3: re-signing / real-device capability preflight), [#1196](https://github.com/bajutsu-e2e/bajutsu/pull/1196) (Unit 4: live-route Appium-endpoint provider, seam only), [#1197](https://github.com/bajutsu-e2e/bajutsu/pull/1197) (Unit 5: faked-boundary tests), [#1198](https://github.com/bajutsu-e2e/bajutsu/pull/1198) (Unit 6: iOS device-cloud how-to), [#1201](https://github.com/bajutsu-e2e/bajutsu/pull/1201) (Live route Slice A: WebDriver transport), [#1203](https://github.com/bajutsu-e2e/bajutsu/pull/1203) (Live route Slice B: input and gestures), [#1205](https://github.com/bajutsu-e2e/bajutsu/pull/1205) (Live route Slice C: capability narrowing, showcase target, how-to) |
 | Topic | Device-cloud execution |
 <!-- /BE-METADATA -->
 
@@ -167,7 +167,8 @@ The follow-on lands in three slices, each faked at the WebDriver boundary:
 - [x] XCUITest real-device targeting (generalise BE-0019 beyond the Simulator)
 - [x] Batch packaging for Device Farm (submitter integration)
 - [x] Re-signing / entitlement handling (document + preflight degradation)
-- [ ] Live route: Appium-endpoint `DeviceProvider` (follow-on slice)
+- [x] Live route: Appium-endpoint `DeviceProvider`, driven end to end over a WebDriver transport
+  (Slices A–C)
 - [x] Tests (faked `xcodebuild`/toolchain boundary) — real-device targeting covered by Unit 1
 - [x] Docs (iOS device-cloud how-to; idb/simctl rationale; re-sign caveats)
 
@@ -270,6 +271,24 @@ The follow-on lands in three slices, each faked at the WebDriver boundary:
   `MULTI_TOUCH`, so the driver reports exactly what it drives. Slice C (run-time capability narrowing,
   a showcase live-grid target, and the how-to's live-route section) remains, so the live-route box
   stays unchecked. Faked at the WebDriver network boundary; no grid, no device on the gate.
+- Live route Slice C ([#1205](https://github.com/bajutsu-e2e/bajutsu/pull/1205)): closed the live route — the run-time capability
+  narrowing, a worked showcase config, and the how-to. `capabilities_for_run` now narrows the XCUITest
+  set on a live run to the live driver's own `CAPABILITIES` — the single source of truth, so preflight
+  and the driver stay in lockstep — dropping the three families the WebDriver transport cannot drive:
+  `TEXT_SELECTION` (no first-class `mobile:` command for select-all / copy), and, as on any real
+  device, the `DeviceControl` family and the simctl-privacy permission grants. A scenario needing one
+  is now skipped up front (BE-0082) with a clear reason instead of failing late with
+  `UnsupportedAction` mid-run, the live-route counterpart of Unit 3's real-device narrowing.
+  `capabilities_for_run` keys the run's resolved udid spec through `is_webdriver_endpoint` — the very
+  predicate `environment_for` routes on — so preflight and routing can never diverge (an `appium`
+  provider's endpoint and a raw `--udid https://…` under the default local provider narrow
+  identically). `demos/showcase/live/`
+  carries a worked example config (the `showcase-swiftui` target with an `appium` provider and no local
+  `appPath` / runner), and the how-to's live section (both languages) is rewritten from "seam only" to
+  the end-to-end route, documenting the narrowing. Faked at the config / capability boundary; no grid,
+  no device on the gate. This checks the live-route box; with every unit landed, BE-0238 is
+  Implemented. (The batch route's showcase CI job still awaits device-signing infrastructure — an
+  unsigned device `.ipa` cannot be built — and remains a follow-on outside this item's MECE units.)
 
 ## References
 

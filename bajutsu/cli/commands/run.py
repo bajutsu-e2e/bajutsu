@@ -437,6 +437,9 @@ class _RunPlan:
     actuator: str
     backends: list[str]
     udids: list[str]
+    # The provider's raw udid spec for this run (`lease.udid_spec`): a WebDriver URL routes to the
+    # live XCUITest environment, so the pipeline's preflight narrows to that transport's set (BE-0238).
+    udid_spec: str
     workers: int
     # The device provider's readiness report for this run (BE-0236); the pool threads it to each
     # environment so a cloud-provisioned device can skip its boot wait / install.
@@ -542,6 +545,7 @@ def _dispatch_single(
             config_source=plan.config_source,
             exec_provenance=exec_decision,
             golden_context=plan.golden_context,
+            lease_udid_spec=plan.udid_spec,
         )
     finally:
         shutdown()
@@ -924,6 +928,7 @@ def run(
             actuator=actuator,
             backends=backends,
             udids=udids,
+            udid_spec=lease.udid_spec,
             workers=workers,
             provision=lease.provision,
             on_blocked_for=on_blocked_for,

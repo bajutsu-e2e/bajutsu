@@ -55,9 +55,7 @@
 ### デバイスクラウド実行
 
 <!-- GENERATED:in-progress-device-cloud -->
-| ID | 項目 | 状態 |
-|---|---|---|
-| [BE-0238](BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution-ja.md) | iOS device-cloud execution | 実装中 |
+
 <!-- /GENERATED:in-progress-device-cloud -->
 
 ### 検証とカバレッジ

@@ -91,21 +91,47 @@ reports the device ready with its build in place and has nothing to release, sin
 belongs to the grid. A missing `endpoint` fails closed when the run resolves the provider, mirroring
 the guard on an unknown provider `kind`.
 
-This live route is a **seam only** today — it is **not yet end-to-end runnable**. Driving the
-endpoint over the Appium / WebDriver protocol is a follow-on: the XCUITest backend currently speaks a
-bespoke runner channel rather than W3C WebDriver, so a WebDriver client cannot simply layer onto
-today's path. The obstacle is concrete. The provider's endpoint flows unchanged into the XCUITest
-environment as the run's udid, where `_destination()` runs it through `simctl`'s udid validation, and
-the shared `device_id` character set excludes the `/` in a URL — so a real `https://` endpoint raises
-`DeviceError: invalid udid` right now. The follow-on transport must route the endpoint around the
-`simctl` / `xcodebuild` udid machinery entirely, which structurally cannot carry a URL.
+Bajutsu drives that endpoint over a live **W3C WebDriver transport**. The endpoint's `http(s)://`
+scheme is the routing signal: it is exactly the value the shared `device_id` character set rejects
+(a URL carries a `/`), so it can never collide with a real `simctl` udid, and the run routes it
+**around** the `simctl` / `xcodebuild` udid machinery entirely — that machinery structurally cannot
+carry a URL. A tap-and-assert flow works end to end. The semantic actions the local runner drives
+natively map onto Appium's XCUITest `mobile:` commands over the endpoint: `tap`, `query`, screenshots,
+condition waits, the input steps (`type` / `delete`, `swipe` / `scroll`), and the two-finger
+`pinch` / `rotate` gestures. As on the local backends, an ambiguous selector still fails **before any
+actuation** — the selector resolves in Bajutsu, not on the grid.
+
+What the WebDriver transport cannot drive is narrowed away up front, the same way the real-device
+path narrows the `simctl`-backed families:
+
+- **Native text selection** (`select` / `copy`) has no first-class Appium XCUITest command — the
+  local runner does select-all and clipboard copy natively, but the endpoint exposes no faithful
+  counterpart.
+- **`simctl` device control and permission grants** do not apply on the live route either, exactly
+  as on any other real device (see the caveats below).
+
+So on the live route the preflight ([BE-0082](../roadmaps/BE-0082-capability-preflight-check/BE-0082-capability-preflight-check.md))
+advertises only what the transport actually drives and **skips** a scenario that needs one of the
+narrowed capabilities — with a clear reason, before any device work — rather than failing late with
+`UnsupportedAction` mid-run.
+
+A worked example config lives at
+[`demos/showcase/live/showcase.live.config.yaml`](../demos/showcase/live/showcase.live.config.yaml):
+it mirrors the local `showcase-swiftui` target but carries a `deviceProvider` of kind `appium` and no
+local `appPath` / `xcuitest.testRunner`, since the reserved device already holds the build and the
+live route speaks WebDriver rather than the runner channel. Point its `endpoint` at your own grid,
+then run the shared showcase suite against it:
+
+```bash
+bajutsu run --target showcase-swiftui-live --config demos/showcase/live/showcase.live.config.yaml
+```
 
 ## Real-device caveats: re-signing and capability degradation
 
 Running on a real device rather than the Simulator changes two things Bajutsu accounts for up front.
 Both are properties of physical hardware, not of any one cloud, so they hold for every real device
-the XCUITest backend drives (`xcuitest.deviceType: device`) — Device Farm or a locally attached
-device alike.
+the XCUITest backend drives — whether reached by `xcuitest.deviceType: device` (Device Farm or a
+locally attached device) or over the live WebDriver route above.
 
 - **Re-signing strips entitlements.** A device cloud re-signs the uploaded app with its own
   provisioning profile so it installs on the reserved device, and the re-sign drops the entitlements
