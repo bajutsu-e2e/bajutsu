@@ -39,9 +39,9 @@ final class HTTPServer {
     // answerable while the gesture holds the main thread — that is what lets the
     // driver tell "runner busy" from "runner dead".
     private let connections = DispatchQueue(label: "bajutsu.runner.http.conn", attributes: .concurrent)
-    // Driver calls are sequential and health polls are sporadic, so a handful of
-    // connections is the realistic peak; cap at 8 to prevent GCD thread-pool
-    // exhaustion if polls pile up during a long gesture.
+    // Driver calls are sequential and health polls are sporadic, so the realistic
+    // peak is well under 8 simultaneous handlers; cap at 8 to bound concurrent
+    // handler execution if polls pile up during a long gesture.
     private let connectionSemaphore = DispatchSemaphore(value: 8)
     private(set) var port: UInt16 = 0
 
