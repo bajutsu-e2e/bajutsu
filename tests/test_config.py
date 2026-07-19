@@ -15,6 +15,7 @@ from bajutsu.config import (
     load_config,
     parse_config_dict,
     resolve,
+    xcuitest_targets_real_device,
 )
 
 
@@ -800,6 +801,38 @@ def test_xcuitest_device_type_invalid_rejected() -> None:
             "targets:\n  s:\n    bundleId: com.x\n    xcuitest:\n"
             "      testRunner: build/Runner.xctestrun\n      deviceType: physical\n"
         )
+
+
+# --- BE-0238: the real-device accessor backing the capability narrowing (Unit 3) --- #
+
+
+def test_xcuitest_targets_real_device_true_for_device() -> None:
+    # `xcuitest.deviceType: device` is the one shape that drives a physical device — the accessor the
+    # Unit 3 capability narrowing consults to drop the simctl-backed DeviceControl / permission tokens.
+    cfg = load_config(
+        "targets:\n  s:\n    bundleId: com.x\n    xcuitest:\n      deviceType: device\n"
+    )
+    assert xcuitest_targets_real_device(resolve(cfg, "s")) is True
+
+
+def test_xcuitest_targets_real_device_false_for_simulator() -> None:
+    cfg = load_config(
+        "targets:\n  s:\n    bundleId: com.x\n    xcuitest:\n      deviceType: simulator\n"
+    )
+    assert xcuitest_targets_real_device(resolve(cfg, "s")) is False
+
+
+def test_xcuitest_targets_real_device_false_when_xcuitest_omitted() -> None:
+    # An iOS target with no xcuitest block keeps the Simulator default (BE-0019), so it is not a real
+    # device — the accessor must not raise on the missing block.
+    cfg = load_config("targets:\n  s:\n    bundleId: com.x\n")
+    assert xcuitest_targets_real_device(resolve(cfg, "s")) is False
+
+
+def test_xcuitest_targets_real_device_false_for_non_ios_target() -> None:
+    # deviceType is iOS-only; an Android target can never target a real iOS device through XCUITest.
+    cfg = load_config("targets:\n  s:\n    package: com.example.app\n")
+    assert xcuitest_targets_real_device(resolve(cfg, "s")) is False
 
 
 # --- BE-0024: configurable doctor thresholds ---

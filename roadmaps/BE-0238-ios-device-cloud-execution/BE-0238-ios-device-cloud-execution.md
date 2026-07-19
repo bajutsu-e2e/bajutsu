@@ -9,7 +9,7 @@
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0238") |
-| Implementing PR | [#1192](https://github.com/bajutsu-e2e/bajutsu/pull/1192) (Unit 1: XCUITest real-device targeting), [#1193](https://github.com/bajutsu-e2e/bajutsu/pull/1193) (Unit 2: batch packaging), [#1195](https://github.com/bajutsu-e2e/bajutsu/pull/1195) (Unit 3: re-signing / real-device capability preflight), [#1196](https://github.com/bajutsu-e2e/bajutsu/pull/1196) (Unit 4: live-route Appium-endpoint provider, seam only) |
+| Implementing PR | [#1192](https://github.com/bajutsu-e2e/bajutsu/pull/1192) (Unit 1: XCUITest real-device targeting), [#1193](https://github.com/bajutsu-e2e/bajutsu/pull/1193) (Unit 2: batch packaging), [#1195](https://github.com/bajutsu-e2e/bajutsu/pull/1195) (Unit 3: re-signing / real-device capability preflight), [#1196](https://github.com/bajutsu-e2e/bajutsu/pull/1196) (Unit 4: live-route Appium-endpoint provider, seam only), [#1197](https://github.com/bajutsu-e2e/bajutsu/pull/1197) (Unit 5: faked-boundary tests) |
 | Topic | Device-cloud execution |
 <!-- /BE-METADATA -->
 
@@ -108,7 +108,7 @@ the Simulator through `xcodebuild`; this item generalises target selection to a 
 - [x] Batch packaging for Device Farm (submitter integration)
 - [x] Re-signing / entitlement handling (document + preflight degradation)
 - [ ] Live route: Appium-endpoint `DeviceProvider` (follow-on slice)
-- [ ] Tests (faked `xcodebuild`/toolchain boundary) — real-device targeting covered by Unit 1
+- [x] Tests (faked `xcodebuild`/toolchain boundary) — real-device targeting covered by Unit 1
 - [ ] Docs (iOS device-cloud how-to; idb/simctl rationale; re-sign caveats)
 
 **Log.**
@@ -157,6 +157,16 @@ the Simulator through `xcodebuild`; this item generalises target selection to a 
   carry a URL. The Android environment's `ProvisionProfile` wiring
   was deliberately not replicated for XCUITest: the real-device path (Unit 1) already skips all simctl
   bring-up, so honoring the flags there would be unreachable. Off the verdict path; faked, no device.
+- Unit 5 ([#1197](https://github.com/bajutsu-e2e/bajutsu/pull/1197)): filled the remaining test gaps left after Units 1–4, all
+  pure and on the gate (no Simulator, no cloud). Pinned the Unit 4 live-route boundary as an
+  executable fact: the Appium / WebDriver endpoint the `appium` provider yields is exactly the udid
+  spec that flows into `_destination`, so a real `http(s)://` endpoint is rejected by the shared
+  `device_id` policy (`invalid udid`) today — documenting that the live route is not yet end-to-end
+  runnable, and set to break visibly when the follow-on transport routes the endpoint around the
+  simctl / xcodebuild udid machinery. Added direct unit tests for the `xcuitest_targets_real_device`
+  accessor backing the Unit 3 capability narrowing (device / simulator / omitted-block / non-iOS),
+  which had been exercised only indirectly, and covered the `appium` provider's empty-endpoint branch
+  (falsy but not `None`), distinct from the missing-endpoint case.
 
 ## References
 
