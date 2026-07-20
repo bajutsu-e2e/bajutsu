@@ -144,13 +144,22 @@ With no responder it keeps the old clean, labeled stop.
 **Device reach on a remote serve.** A takeover asks the human to operate the live device, so unlike
 value entry — which completes entirely in the browser — it needs the device within the author's reach.
 On a local `serve` (the Simulator on the same machine) the author operates it directly and the handoff
-pane only coordinates the pause and resume; the browser never drives the device. On a **remote or
-self-hosted** `serve` ([BE-0015](../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)
-/ [BE-0016](../roadmaps/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)) the device is not in
-front of the author, so a device-operation takeover cannot be honored: `respond-human` refuses the
-`acted` resume with a message naming the fallback — **re-record where the device is, or wire the
-test-build bypass** so `run` needs no live takeover. An interactive mirrored device view in the browser
-would lift this constraint, but that surface is out of scope here.
+pane only coordinates the pause and resume; the browser never drives the device. On the **hosted
+`serve`** ([BE-0015](../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), the
+multi-tenant `server` backend) the device runs on a worker the author cannot reach, so a
+device-operation takeover cannot be honored: `respond-human` refuses the `acted` resume with a message
+naming the fallback — **re-record where the device is, or wire the test-build bypass** so `run` needs no
+live takeover. A value handoff and a cancel still work remotely.
+
+The `acted` refusal keys on the hosted-deployment signal, which is the only *certain* "device is not in
+the author's reach" indicator: a **self-hosted `serve`**
+([BE-0016](../roadmaps/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)) exposed to a team
+over a network is *also* a remote case, but a serve cannot reliably tell whether a given client sits at
+the device (a loopback bind is not a sound proxy — it misses SSH forwards and wrongly flags a wildcard
+bind with the author present). So there the same fallback applies **by convention**, not by an enforced
+refusal — do not answer `acted` for an operation you did not perform on a reachable device. Tightening
+this into an enforced signal for the self-hosted case, and an interactive mirrored device view in the
+browser that would lift the constraint entirely, are both follow-up work.
 
 ### Automatic settle-step insertion
 

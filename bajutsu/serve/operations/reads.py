@@ -580,10 +580,16 @@ def respond_human(state: ServeState, job_id: str, body: dict[str, Any]) -> tuple
     response = handoff.HandoffResponse.from_dict(body)
     if state.hosted and response.acted and not response.values:
         # BE-0185 box 3: a takeover asks the human to operate the device directly, but a hosted
-        # (remote) serve's author is not in front of it. Refuse rather than pretend — the browser
-        # cannot drive the device, and this proposal keeps device reach a first-class precondition
-        # instead of assuming it away. The fallback: re-record where the device is, or wire the
-        # test-build bypass so `run` needs no live takeover. A value handoff and a cancel still work.
+        # deployment's author (the multi-tenant `server` backend, BE-0015) is not in front of the
+        # worker's device. Refuse rather than pretend — the browser cannot drive the device, and this
+        # keeps device reach a first-class precondition instead of assuming it away. The fallback:
+        # re-record where the device is, or wire the test-build bypass so `run` needs no live takeover.
+        # A value handoff and a cancel still work. `state.hosted` is the only certain "device is not in
+        # the author's reach" signal we have: it is set solely by the server backend. A self-hosted
+        # local serve reachable over a network (BE-0016) does not set it — detecting that reliably (a
+        # loopback bind is not a sound proxy: it false-negatives on SSH forwards and false-positives on
+        # a wildcard bind with the author present) is a follow-up; there, the docs point the author at
+        # the same fallback.
         return {
             "error": (
                 "device takeover is not available on a remote serve — the device is not within "
