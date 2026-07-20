@@ -12,8 +12,11 @@ public typealias PositionPath = [Int]
 /// Re-deriving by position path alone could land on a different element after a sibling-order change,
 /// so these are the guard that keeps BE-0019's "never silently act on whatever now matches" true —
 /// upgrading stale detection from the generation-only handle scheme to a same-generation attribute match.
-/// `value` is deliberately excluded: a slider or text field's value legitimately changes between the
-/// snapshot and the tap, and matching on it would flag a still-valid element as stale.
+/// `value` and `frame` are deliberately excluded from that match: a slider or text field's value, and an
+/// element's frame while the UI is still settling, both legitimately change between the snapshot and the
+/// tap, so matching on either would flag a still-valid element as stale (frame: BE-0287). `frame` is
+/// still recorded here because the flattened `ElementSnapshot` reports it; it is just not part of the
+/// identity match `attributesMatch` performs.
 public struct RecordedAttributes {
     public let identifier: String?
     public let label: String?

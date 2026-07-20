@@ -102,12 +102,13 @@ final class XcuitestElementProvider: ElementProviding {
     /// Re-derive the live `XCUIElement` for a snapshot backing, or nil if the screen no longer matches.
     ///
     /// Walking the recorded index path is one element resolution, not a re-walk of the whole tree; the
-    /// attribute re-check (`identifier` / `label` / `traits`) guards against a sibling reorder — when at
-    /// least one of identifier or label is set, a reordered sibling will differ on those. Elements that
-    /// carry neither (e.g. icon-only controls with no accessibility identifier or label) are
-    /// indistinguishable by `attributesMatch` alone and rely entirely on the position path for identity.
-    /// Frame is deliberately excluded (BE-0287 #1211): a snapshot taken while the UI is still settling
-    /// can record a frame that legitimately shifts before the tap, causing a false stale.
+    /// attribute re-check (`identifier` / `label` / `traits`) guards against a sibling reorder whenever a
+    /// distinguishing identifier or label is present. Two elements that share the same
+    /// `identifier` / `label` / `traits` — icon-only controls with no accessibility text, or reused
+    /// table/collection cells with a generic label and no per-row identifier — are indistinguishable by
+    /// `attributesMatch`, so a reorder among such siblings is invisible and they rely on the position path
+    /// alone for identity. Frame is deliberately excluded (BE-0287): a snapshot taken while the UI is
+    /// still settling can record a frame that legitimately shifts before the tap, causing a false stale.
     private func liveElement(for backing: PositionPathBacking) -> XCUIElement? {
         let el = element(at: backing.path)
         guard el.exists else { return nil }
