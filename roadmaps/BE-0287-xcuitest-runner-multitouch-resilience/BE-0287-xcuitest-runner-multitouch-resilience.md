@@ -110,7 +110,7 @@ The runner re-derives the live `XCUIElement` from its recorded position path at 
 the recorded attributes before acting ([BE-0105](../BE-0105-xcuitest-single-snapshot-query/BE-0105-xcuitest-single-snapshot-query.md)),
 and that re-check included the element's frame within a one-point tolerance. But a snapshot is taken
 while the UI may still be settling — moving between conformance screens animates the field into place
-— so the same field moved forty-nine points vertically between the snapshot and the tap, and the
+— so the same field moved 49 pt vertically between the snapshot and the tap, and the
 frame re-check read a still-valid element as stale. The fix drops the frame from the identity match:
 the position path together with identifier, label, and traits already distinguishes a genuinely
 different element, and the frame legitimately changes as a layout settles, so matching on it only

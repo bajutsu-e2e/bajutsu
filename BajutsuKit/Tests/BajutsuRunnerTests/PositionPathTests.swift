@@ -106,7 +106,7 @@ final class PositionPathTests: XCTestCase {
 
     func testAttributesMatchIgnoresFrameShift() {
         // A still-settling layout moves an element between snapshot and tap without changing its
-        // identity (BE-0287 #1211: a 49pt vertical shift of the same field was read as stale). Frame
+        // identity (BE-0287: a 49pt vertical shift of the same field was read as stale). Frame
         // is not part of the identity match — identifier / label / traits carry it — so a shift alone
         // must not fail the match.
         XCTAssertTrue(

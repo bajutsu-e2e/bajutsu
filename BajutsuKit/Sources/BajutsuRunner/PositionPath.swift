@@ -98,7 +98,7 @@ public func flattenSnapshot(root: SnapshotNode) -> [ElementSnapshot] {
 /// deliberately excluded. It once guarded against a sibling reordered into the same slot, but a
 /// snapshot is taken while the UI may still be settling (a screen transition animating, a keyboard
 /// pushing content up), so the same element legitimately moves between the snapshot and the tap — a
-/// 49pt vertical shift of an unchanged field was read as stale on-device (BE-0287 #1211). The position
+/// 49pt vertical shift of an unchanged field was read as stale on-device (BE-0287). The position
 /// path plus identifier / label / traits already distinguishes a genuinely different element, so
 /// matching on frame only turned a still-valid element into a false stale.
 public func attributesMatch(
