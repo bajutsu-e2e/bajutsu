@@ -2,7 +2,7 @@
 # (adb) and web-e2e.yml (Playwright) in scope, but unlike them this lane carries the platform's
 # REQUIRED status check: the `E2E` job below always reports (even when the macOS jobs are
 # path-gated skipped), so it — not this file's name — is what `main`'s branch-protection ruleset
-# pins. Eight jobs, against the showcase suite (BE-0079, the single iOS fixture):
+# pins. Seven jobs, against the showcase suite (BE-0079, the single iOS fixture):
 #   - smoke (idb): build the showcase, boot a Simulator, run a scenario through the idb backend
 #     (driver + simctl + idb + real actuation) — the functional heart.
 #   - actuation (idb): real on-device idb actuation beyond the conformance job's `tap` (BE-0281) —
