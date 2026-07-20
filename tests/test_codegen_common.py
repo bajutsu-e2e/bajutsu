@@ -66,3 +66,14 @@ def test_manual_todo_collapses_newlines_to_stay_on_the_comment_line() -> None:
     todo = manual_todo("solve the\nCAPTCHA", "flip\nthe flag")
     assert "\n" not in todo
     assert todo == ("solve the CAPTCHA — wire a deterministic bypass: flip the flag; not generated")
+
+
+def test_manual_todo_collapses_every_line_terminator_to_stay_on_the_comment_line() -> None:
+    # A lone `\r`, a `\r\n`, and the Unicode line/paragraph separators (U+2028 / U+2029) each end a
+    # `//` line comment in JavaScript, Swift, and Kotlin/Java, so any of them in agent-authored text
+    # would spill onto an unprefixed physical line of generated source just as `\n` would (BE-0185).
+    todo = manual_todo("solve the\rCAPTCHA\r\nnow", "flip the flag")
+    assert not (set(todo) & {"\r", "\n", " ", " "})
+    assert todo == (
+        "solve the CAPTCHA now — wire a deterministic bypass: flip the flag; not generated"
+    )

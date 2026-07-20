@@ -155,7 +155,7 @@ Action    ::=
   | { use:         { component: string, with?: map(string,string) } }   # マクロ（§6.2）
   | { if:          <If> }                                               # 条件分岐（capture/extract 不可）
   | { forEach:     <ForEach> }                                          # ループ（capture/extract 不可）
-  | { manual:      { label: string, bypass?: string } }                # `record` 中に記録される人間のテイクオーバー（BE-0185）。決定的な等価物がないため、`bypass` を配線しない限り実行時に明示的に失敗する
+  | { manual:      { label: string, bypass?: string } }                # `record` 中に記録される人による操作の引き取り（BE-0185）。決定的な等価物がないため、`bypass` を配線しない限り実行時に明示的に失敗する
 
 If ::= { condition: <Assertion>, then: list(<Step>), else?: list(<Step>) }
 ForEach ::= { sel: <Selector>, as: string, steps: list(<Step>) }

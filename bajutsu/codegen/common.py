@@ -31,6 +31,16 @@ _EXPECT_COMMENT = "// expect"
 # it stays a `// TODO`. Shared here so a third target inherits the same substring/regex split.
 _RE_METACHARS = set(r".^$*+?{}[]\|()")
 
+# Every character that ends a `//` line comment in the generated targets — a lone `\r`, `\n`, a
+# `\r\n`, and the Unicode line/paragraph separators (U+2028 / U+2029) — so agent-authored free text
+# folded into a `// TODO` reason can never spill onto an unprefixed physical line (BE-0185).
+_LINE_TERMINATORS = re.compile(r"[\r\n  ]+")
+
+
+def _collapse_line_terminators(text: str) -> str:
+    """Fold any run of line terminators into a single space so text stays on one `//` comment line."""
+    return _LINE_TERMINATORS.sub(" ", text)
+
 
 def ident(name: str) -> str:
     """Turn a scenario name into a test-method identifier (`test_`-prefixed, digit-safe).
@@ -104,12 +114,14 @@ def manual_todo(label: str, bypass: str | None) -> str:
     `setLocation` / `push` device-control TODOs — it renders as a labeled `// TODO` naming what to
     wire (`bypass`) or that nothing can (a real CAPTCHA), never a silent skip that would fake a pass.
     """
-    # `label`/`bypass` are agent-authored free text (only secret-masked, never newline-stripped),
-    # so an embedded newline would break out of the `// TODO` comment into a new, unprefixed
-    # physical line of generated source that CI then compiles — collapse newlines to keep the whole
-    # reason on the comment line, mirroring the unescaped-interpolation guard the JS templates use.
-    safe_label = label.replace("\n", " ")
-    safe_bypass = bypass.replace("\n", " ") if bypass else None
+    # `label`/`bypass` are agent-authored free text (only secret-masked, never newline-stripped), so
+    # any line terminator embedded in one would break out of the `// TODO` comment into a new,
+    # unprefixed physical line of generated source that CI then compiles. A `//` line comment ends at
+    # a lone `\r`, a `\r\n`, and the Unicode line/paragraph separators (U+2028 / U+2029) too — not
+    # only `\n` — in JavaScript (ECMA-262 `LineTerminator`), Swift, and Kotlin/Java alike, so collapse
+    # every one to keep the whole reason on the comment line, mirroring `uiautomator.py`'s `_s`.
+    safe_label = _collapse_line_terminators(label)
+    safe_bypass = _collapse_line_terminators(bypass) if bypass else None
     tail = (
         f"wire a deterministic bypass: {safe_bypass}"
         if safe_bypass
