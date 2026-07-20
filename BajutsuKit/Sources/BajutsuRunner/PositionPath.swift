@@ -12,8 +12,11 @@ public typealias PositionPath = [Int]
 /// Re-deriving by position path alone could land on a different element after a sibling-order change,
 /// so these are the guard that keeps BE-0019's "never silently act on whatever now matches" true —
 /// upgrading stale detection from the generation-only handle scheme to a same-generation attribute match.
-/// `value` is deliberately excluded: a slider or text field's value legitimately changes between the
-/// snapshot and the tap, and matching on it would flag a still-valid element as stale.
+/// `value` and `frame` are deliberately excluded from that match: a slider or text field's value, and an
+/// element's frame while the UI is still settling, both legitimately change between the snapshot and the
+/// tap, so matching on either would flag a still-valid element as stale (frame: BE-0287). `frame` is
+/// still recorded here because the flattened `ElementSnapshot` reports it; it is just not part of the
+/// identity match `attributesMatch` performs.
 public struct RecordedAttributes {
     public let identifier: String?
     public let label: String?
@@ -93,28 +96,19 @@ public func flattenSnapshot(root: SnapshotNode) -> [ElementSnapshot] {
 
 /// Whether a re-derived element still matches what was recorded at snapshot time.
 ///
-/// Identifier / label / traits must be equal; the frame must agree within `frameTolerance` so
-/// sub-pixel jitter is not read as a different element. A `false` means the position path now points
-/// at something else, so the caller must return `stale` rather than act on it.
-///
-/// The 1pt default tolerance absorbs sub-point layout rounding (a settled element re-derives to the
-/// same frame within well under a point) while still catching a genuinely different element, whose
-/// origin or size differs by far more. The on-device latency validation is the place to retune it if
-/// real jitter proves larger.
+/// Identity is identifier / label / traits: all three must be equal, or the position path now points
+/// at a different element and the caller must return `stale` rather than act on it. Frame is
+/// deliberately excluded. It once guarded against a sibling reordered into the same slot, but a
+/// snapshot is taken while the UI may still be settling (a screen transition animating, a keyboard
+/// pushing content up), so the same element legitimately moves between the snapshot and the tap — a
+/// 49pt vertical shift of an unchanged field was read as stale on-device (BE-0287). The position
+/// path plus identifier / label / traits already distinguishes a genuinely different element, so
+/// matching on frame only turned a still-valid element into a false stale.
 public func attributesMatch(
     recorded: RecordedAttributes,
-    current: RecordedAttributes,
-    frameTolerance: Double = 1.0
+    current: RecordedAttributes
 ) -> Bool {
-    guard recorded.identifier == current.identifier,
-          recorded.label == current.label,
-          recorded.traits == current.traits else {
-        return false
-    }
-    let a = recorded.frame
-    let b = current.frame
-    return abs(a.x - b.x) <= frameTolerance
-        && abs(a.y - b.y) <= frameTolerance
-        && abs(a.width - b.width) <= frameTolerance
-        && abs(a.height - b.height) <= frameTolerance
+    recorded.identifier == current.identifier
+        && recorded.label == current.label
+        && recorded.traits == current.traits
 }

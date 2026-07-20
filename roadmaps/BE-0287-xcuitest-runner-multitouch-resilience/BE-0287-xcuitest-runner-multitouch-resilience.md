@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0287") |
-| Implementing PR | [#1200](https://github.com/bajutsu-e2e/bajutsu/pull/1200) (Unit 3: mid-run crash detection & recovery; Unit 4: recovery visibility), [#1202](https://github.com/bajutsu-e2e/bajutsu/pull/1202) (Units 1 & 2: runner-side diagnosis and the HTTP-server root-cause fix) |
+| Implementing PR | [#1200](https://github.com/bajutsu-e2e/bajutsu/pull/1200) (Unit 3: mid-run crash detection & recovery; Unit 4: recovery visibility), [#1202](https://github.com/bajutsu-e2e/bajutsu/pull/1202) (Units 1 & 2: runner-side diagnosis and the HTTP-server root-cause fix), [#1211](https://github.com/bajutsu-e2e/bajutsu/pull/1211) (Unit 5: exclude frame from the tap-time attribute re-check) |
 | Topic | Platform support |
 <!-- /BE-METADATA -->
 
@@ -22,7 +22,9 @@ resilient to a crash that happens mid-run: detect that the runner has died, surf
 deterministic runner-crash failure, and — where idempotency allows — recover by waiting for the
 runner to come back, instead of letting a lost pinch or rotate masquerade as an assertion mismatch.
 The change stays inside the xcuitest backend; the runner, the retry seam, and the deterministic
-verdict are the only surfaces it touches.
+verdict are the only surfaces it touches. A follow-on unit closes a second, distinct stale source the
+on-device conformance suite later surfaced: the runner's tap-time attribute re-check read a
+still-settling layout as a vanished element.
 
 ## Motivation
 
@@ -61,10 +63,10 @@ a sub-second blip, and it needs its own mechanism.
 
 ## Detailed design
 
-The work splits into four independent units. Unit 1 and Unit 2 address the root cause on the runner
-side and need on-device iteration; Unit 3 and Unit 4 harden the Python driver channel and are unit-
-testable against a simulated transport. The units are ordered by dependency but can land as separate
-pull requests.
+The work splits into five units. Unit 1 and Unit 2 address the root cause on the runner side and need
+on-device iteration; Unit 3 and Unit 4 harden the Python driver channel and are unit-testable against
+a simulated transport; Unit 5 closes a distinct stale source the on-device conformance suite later
+surfaced. The units are ordered by dependency but can land as separate pull requests.
 
 **Unit 1 — Characterize the runner crash under two-finger actuation.** Identify the root cause
 deterministically — either through static analysis of the runner source or by reproducing the failure
@@ -100,6 +102,21 @@ a retried blip, so a run that crashed and recovered is never indistinguishable f
 crashed. A recovered run stays reproducible and auditable; a crash that cannot be recovered
 idempotently stays the loud failure Unit 3 raises. Not re-applying a delivered write is Unit 3's job,
 not this unit's — Unit 4 adds only the observability guarantee.
+
+**Unit 5 — Stop a still-settling layout from being read as a vanished element.** The on-device
+conformance suite surfaced a second stale source, distinct from the multi-touch crash above: the
+opening `tap` of `test_text_selection` intermittently failed with `element vanished (stale handle)`.
+The runner re-derives the live `XCUIElement` from its recorded position path at tap time and re-checks
+the recorded attributes before acting ([BE-0105](../BE-0105-xcuitest-single-snapshot-query/BE-0105-xcuitest-single-snapshot-query.md)),
+and that re-check included the element's frame within a one-point tolerance. But a snapshot is taken
+while the UI may still be settling — moving between conformance screens animates the field into place
+— so the same field moved 49 pt vertically between the snapshot and the tap, and the
+frame re-check read a still-valid element as stale. The fix drops the frame from the identity match:
+the position path together with identifier, label, and traits already distinguishes a genuinely
+different element, and the frame legitimately changes as a layout settles, so matching on it only
+turned a valid element into a false stale. The generation-based handle scheme and the HTTP-server
+concurrency were both ruled out first — the store's own stale path never fired; every stale came from
+the attribute re-check — so this unit touches only `attributesMatch`, not the runner's transport.
 
 ## Alternatives considered
 
@@ -146,6 +163,10 @@ because the gesture was lost; more waiting cannot recover an actuation that neve
 - [x] Unit 4 — Keep every recovery visible in the record: log each recovery as visibly as a retried
       blip, so a crashed-and-recovered run is never indistinguishable from one that never crashed
       (never-re-apply-a-delivered-write is Unit 3's job).
+- [x] Unit 5 — Exclude the frame from the runner's tap-time attribute re-check (`attributesMatch`), so
+      an element that only moved between the snapshot and the tap — a still-settling layout — is not
+      read as a vanished element. Identifier, label, and traits plus the position path still catch a
+      genuinely different element.
 
 Log:
 
@@ -164,6 +185,16 @@ Log:
   reachable concurrently, is lock-guarded. Verified with `swift test` (including
   `--sanitize=thread`); the diagnosis is from static analysis of the runner source, corroborating the
   two observed failure signatures rather than a fresh on-device capture.
+- [#1211](https://github.com/bajutsu-e2e/bajutsu/pull/1211) — Unit 5: exclude the frame from the
+  runner's tap-time `attributesMatch`. On-device conformance intermittently failed `test_text_selection`'s
+  opening `tap` with `element vanished (stale handle)`; a local reproduction (the full xcuitest
+  conformance suite looped on a Simulator) traced it, not to the generation handle scheme or HTTP
+  concurrency — the store's stale path never fired — but to the attribute re-check reading a
+  still-settling layout as stale: the field moved 49 pt vertically (y 399 → 448) between the snapshot
+  and the tap while its identifier and traits were unchanged, and the 1 pt frame tolerance rejected it.
+  Dropping the frame from `attributesMatch` keeps identity on identifier / label / traits + position
+  path. Verified by looping the suite on-device with the frame excluded (the stale no longer
+  reproduces) and with `swift test`.
 
 ## References
 
