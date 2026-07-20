@@ -190,6 +190,20 @@ def test_devicefarm_config_skips_app_install_for_the_pre_installed_app() -> None
     assert eff.backend == ["android"]
 
 
+def test_devicefarm_ios_config_targets_a_real_device() -> None:
+    # Device Farm installs the uploaded .ipa on the reserved device itself and the XCUITest backend
+    # skips simctl bring-up for real devices, so the config must carry no appPath and must set
+    # deviceType: device — a typo in either silently breaks the batch run.
+    from bajutsu.config import load_config, resolve
+
+    cfg = Path("demos/showcase/devicefarm/showcase.devicefarm.ios.config.yaml")
+    eff = resolve(load_config(cfg.read_text(encoding="utf-8")), "showcase-swiftui")
+    assert eff.platform_config.app_path is None
+    assert eff.platform_config.xcuitest is not None
+    assert eff.platform_config.xcuitest.device_type == "device"
+    assert eff.backend == ["xcuitest"]
+
+
 # ---------------------------------------------------------------------------
 # build_package
 # ---------------------------------------------------------------------------

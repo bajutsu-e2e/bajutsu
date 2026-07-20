@@ -125,6 +125,39 @@ does the real install. Drop `--package-only` and add
 the run, poll it to completion, download the artifacts, and print Bajutsu's verdict. The process
 exit code is `0` only when every scenario passed.
 
+For the iOS showcase, pass `--platform ios` to select the XCUITest backend and the iOS app upload
+type. Build the device-signed `.ipa` and runner first (BE-0288):
+
+```bash
+make -C demos/showcase swiftui-ipa-device    DEVELOPMENT_TEAM=<your-10-char-team-id>
+make -C demos/showcase runner-build-device   DEVELOPMENT_TEAM=<your-10-char-team-id>
+```
+
+Then run the submitter (dry-run with `--package-only`; drop it and add `--project-arn` /
+`--device-pool-arn` to submit):
+
+```bash
+uv run python scripts/devicefarm_submit.py \
+  --platform ios \
+  --scenario scenarios/firstlook.yaml \
+  --target showcase-swiftui \
+  --config showcase.devicefarm.ios.config.yaml \
+  --app demos/showcase/ios/swiftui/build/export-device/BajutsuShowcaseSwiftUI.ipa \
+  --package .=. \
+  --package demos/showcase/devicefarm/showcase.devicefarm.ios.config.yaml=showcase.devicefarm.ios.config.yaml \
+  --package demos/showcase/scenarios=scenarios \
+  --package BajutsuKit/Runner/build/dd-device/Build/Products=. \
+  --package-only
+```
+
+`showcase.devicefarm.ios.config.yaml` sets `xcuitest.deviceType: device` (the XCUITest backend
+drives a physical device instead of a Simulator) and carries no `appPath` (Device Farm installs the
+uploaded `.ipa` on the reserved device itself). The `--package
+BajutsuKit/Runner/build/dd-device/Build/Products=.` line places the device-signed `.xctestrun` and
+its test bundles at the package root, where the config's `testRunner: BajutsuRunner.xctestrun`
+resolves them. The re-signing and simctl caveats described [above](#ios-re-signing-and-real-device-capabilities)
+apply to this run.
+
 ## The GitHub Actions workflow
 
 [`.github/workflows/devicefarm.yml`](https://github.com/bajutsu-e2e/bajutsu/blob/main/.github/workflows/devicefarm.yml)
