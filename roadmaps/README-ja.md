@@ -55,7 +55,9 @@
 ### デバイスクラウド実行
 
 <!-- GENERATED:in-progress-device-cloud -->
-
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0288](BE-0288-ios-device-signing-batch-build/BE-0288-ios-device-signing-batch-build-ja.md) | バッチ経路向け iOS デバイス署名ビルド | 実装中 |
 <!-- /GENERATED:in-progress-device-cloud -->
 
 ### 検証とカバレッジ
