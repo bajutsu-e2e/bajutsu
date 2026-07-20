@@ -157,6 +157,21 @@ def test_respond_human_honors_cancel_over_acted_on_a_hosted_serve(tmp_path: Path
     assert response_from_json(job.proc.stdin.getvalue()).kind == "cancel"
 
 
+def test_respond_human_does_not_refuse_a_bare_resume_on_a_hosted_serve(tmp_path: Path) -> None:
+    # A bare/empty response ({} — nothing acted, no value, no cancel) resolves to kind == "acted"
+    # only as HandoffResponse.kind's fallback, not because a device takeover was attempted. It must
+    # pass through as a plain re-observe, never be refused as a device takeover (which would strand a
+    # paused job on a malformed or empty POST to this public endpoint).
+    scn_dir, cfg, runs = project(tmp_path)
+    state = srv.ServeState(
+        scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path, hosted=True
+    )
+    job = state.register(srv.Job(cmd=["x"], proc=_ProcWithStdin()))
+
+    body, code = respond_human(state, job.id, {})
+    assert code == 200 and body["resumed"] is True  # not refused — a bare resume still lands
+
+
 def test_respond_human_allows_a_value_handoff_on_a_hosted_serve(tmp_path: Path) -> None:
     # A value handoff completes entirely in the browser, so it still works on a hosted serve — only a
     # device-operation takeover needs the device within the author's reach.
