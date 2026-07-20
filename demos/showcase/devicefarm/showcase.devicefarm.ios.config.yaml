@@ -22,6 +22,7 @@
 #     --package .=. \
 #     --package demos/showcase/devicefarm/showcase.devicefarm.ios.config.yaml=showcase.devicefarm.ios.config.yaml \
 #     --package demos/showcase/scenarios=scenarios \
+#     --package BajutsuKit/Runner/build/dd-device/Build/Products=. \
 #     --project-arn ... --device-pool-arn ...
 #
 # Real-device caveats (they hold for any physical device, not just Device Farm):
