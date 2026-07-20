@@ -406,6 +406,77 @@ def test_record_does_not_record_a_human_value_when_the_field_no_longer_resolves(
     assert ("type", "999111") not in driver.actions
 
 
+def test_record_human_value_preserves_the_scenario_name() -> None:
+    # A value handoff must not clobber the caller-supplied scenario name (regression: the derived
+    # placeholder name is a loop-local, not the outer `name` parameter) — BE-0182.
+    driver = FakeDriver([_el("otp", "One-time code", ["textField"])])
+    agent = FakeAgent(
+        [
+            Proposal(
+                needs_human=True,
+                human_prompt="enter the code",
+                human_field=Selector(id="otp"),
+                human_classify="totp",
+                human_var="otp_code",
+            ),
+            Proposal(done=True),
+        ]
+    )
+    handoff = RecordingHandoff([HandoffResponse(values=["999111"])])
+    scenario = record(driver, "log in", agent, name="my-login", handoff=handoff)
+    assert scenario.name == "my-login"
+
+
+def test_record_disambiguates_repeated_human_value_placeholder_names() -> None:
+    # Two idless, unnamed value handoffs in one recording both derive "human_value"; the second gets
+    # a numeric suffix so the two distinct values don't alias onto one ${vars.*} token (BE-0182).
+    driver = FakeDriver([_noid("Code A"), _noid("Code B")])
+    agent = FakeAgent(
+        [
+            Proposal(
+                needs_human=True,
+                human_prompt="first code",
+                human_field=Selector(label="Code A"),
+                human_classify="totp",
+            ),
+            Proposal(
+                needs_human=True,
+                human_prompt="second code",
+                human_field=Selector(label="Code B"),
+                human_classify="totp",
+            ),
+            Proposal(done=True),
+        ]
+    )
+    handoff = RecordingHandoff([HandoffResponse(values=["111"]), HandoffResponse(values=["222"])])
+    scenario = record(driver, "two codes", agent, handoff=handoff)
+    texts = [s.type.text for s in scenario.steps if s.type is not None]
+    assert texts == ["${vars.human_value}", "${vars.human_value_2}"]
+
+
+def test_record_unclassified_human_value_leaves_a_neutral_todo() -> None:
+    # When the agent proposes no classification, the recorded TODO must not assert a totp step it
+    # never chose — it stays neutral so the author picks the right run-time source (BE-0182).
+    driver = FakeDriver([_el("otp", "One-time code", ["textField"])])
+    agent = FakeAgent(
+        [
+            Proposal(
+                needs_human=True,
+                human_prompt="enter the code",
+                human_field=Selector(id="otp"),
+                human_var="mystery",
+            ),
+            Proposal(done=True),
+        ]
+    )
+    handoff = RecordingHandoff([HandoffResponse(values=["999111"])])
+    scenario = record(driver, "log in", agent, handoff=handoff)
+    typed = [s for s in scenario.steps if s.type is not None]
+    assert typed[0].type.text == "${vars.mystery}"
+    assert typed[0].from_ is not None
+    assert "classify" in typed[0].from_ and "a totp step" not in typed[0].from_
+
+
 def test_placeholder_name_sanitizes_and_falls_back() -> None:
     # Pure helper: prefer the suggested name, else the field id, else a generic fallback; keep only
     # identifier-safe characters so the emitted ${vars/secrets.*} token round-trips (BE-0182).
