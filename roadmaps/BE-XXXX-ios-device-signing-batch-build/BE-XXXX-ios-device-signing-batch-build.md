@@ -52,10 +52,11 @@ self-contained and need no cloud account; Unit 5 is an on-hardware proof of conc
 outside the gate.
 
 1. **Device Farm iOS config.** `demos/showcase/devicefarm/showcase.devicefarm.ios.config.yaml`
-   mirrors the local `showcase-swiftui` target with `xcuitest.deviceType: device` and no `appPath` /
-   `build` — Device Farm installs the uploaded `.ipa`, so the run drives the already-installed build.
-   Its `testRunner` points at the device runner inside the uploaded package. This mirrors the Android
-   Device Farm config and the live-route config that already ship.
+   mirrors the local `showcase-swiftui` [target](../../docs/glossary.md#target-app-device) with
+   `xcuitest.deviceType: device` and no `appPath` / `build` — Device Farm installs the uploaded
+   `.ipa`, so the run drives the already-installed build. Its `testRunner` points at the device runner
+   inside the uploaded package. This config mirrors the Android Device Farm config and the live-route
+   config that already ship.
 2. **Signed device app build.** Two `demos/showcase/Makefile` targets: `swiftui-archive-device`
    (`xcodebuild archive` for `generic/platform=iOS`) and `swiftui-ipa-device` (`xcodebuild
    -exportArchive`). Signing is turned on only here, through command-line build settings
