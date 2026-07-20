@@ -442,13 +442,13 @@ def test_record_narrates_a_cancelled_loop_takeover_distinctly_from_no_responder(
         handoff=RecordingHandoff([HandoffResponse(cancelled=True)]),
         report=cancelled.append,
     )
-    assert any("takeover declined" in m for m in cancelled)
+    assert any("takeover not completed" in m for m in cancelled)
     assert not any("could not resolve that target" in m for m in cancelled)
 
     no_responder: list[str] = []
     record(driver, "x", agent, report=no_responder.append)  # no handoff responder
     assert any("could not resolve that target" in m for m in no_responder)
-    assert not any("takeover declined" in m for m in no_responder)
+    assert not any("takeover not completed" in m for m in no_responder)
 
 
 def test_record_emits_a_distinct_message_when_a_value_is_supplied_to_a_loop_takeover() -> None:

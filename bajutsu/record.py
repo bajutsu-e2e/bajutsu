@@ -774,9 +774,9 @@ def record(
                             "record it into; stopping"
                         )
                     elif handoff is not None:
-                        # a responder was present, so a takeover was offered but declined or dismissed
-                        # (cancel or a bare resume) — distinct from having no responder at all
-                        say(f"[{m}] ! takeover declined; stopping")
+                        # a responder was present, so a takeover was offered but not completed (a
+                        # cancel, a bare dismiss, or a timeout) — distinct from having no responder
+                        say(f"[{m}] ! takeover not completed (declined or timed out); stopping")
                     else:
                         say(f"[{m}] ! could not resolve that target on the live screen; stopping")
                     stop = True
