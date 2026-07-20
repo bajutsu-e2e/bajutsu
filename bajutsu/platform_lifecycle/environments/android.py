@@ -47,8 +47,10 @@ class AndroidEnvironment:
     BE-0210) → `am start` (launch env forwarded as intent extras) → deeplink — and returns the `adb`
     driver. The lease-shaping methods mirror the iOS
     `_DeviceEnvironment`, over `adb` instead of `simctl`: the same seam, a different subprocess tool.
-    Network is not observed natively (no `NETWORK` capability), so that path degrades the same honest
-    way iOS's mocked network does. Device control backs the subset the emulator can honor
+    Network is not observed *natively* (the adb driver declares no `NETWORK` capability), but the app
+    reports its own exchanges to the host collector, which `bridge_collector` reaches over `adb reverse`
+    (BE-0283) — the same app-side capture iOS relies on, so a `request` assertion is satisfied without a
+    native monitor. Device control backs the subset the emulator can honor
     (`setLocation`, BE-0211, plus clipboard through the app's in-app receiver, BE-0233); the rest of
     the family stays unsupported.
     """

@@ -25,7 +25,7 @@
 # It runs no LLM — a deterministic `run` over fixed scenarios — so it stays within the prime
 # directives, and it is kept off the fast `make check` gate exactly as the idb and web e2e lanes are.
 # The lane now carries a REQUIRED status check like iOS's `E2E`: the `E2E (android)` job below
-# `needs` the deterministic host-independent jobs (`smoke`, `conformance`) and always reports (a
+# `needs` the deterministic host-independent jobs (`smoke`, `conformance`, `network`) and always reports (a
 # path-skip is a pass), so it — not the KVM jobs, which are path-gated — is what `main`'s
 # branch-protection ruleset pins. `golden` and `visual` are deliberately NOT part of its `needs:`: a
 # pixel baseline is host-specific (the x86_64 software renderer varies) and the element-tree golden
@@ -572,9 +572,12 @@ jobs:
   # Single required status check for the Android lane — the Android twin of ios-e2e.yml's `E2E`.
   # Always runs so it reports even when the KVM jobs are skipped (a PR that can't affect the adb
   # path) — a skipped dependency is a pass; only a real failure or cancellation fails the gate.
-  # `golden` and `visual` are deliberately excluded from `needs:` (see the header): the element-tree
-  # golden can drift with an upstream dependency and a pixel baseline is host-specific, so each stays
-  # a per-PR signal. Make `E2E (android)` the required check, not the path-gated KVM jobs.
+  # `network` joins `smoke`/`conformance` in `needs:`: its pass/fail is a deterministic,
+  # host-independent fact (was the exchange observed?), so a regression there must fail the required
+  # check like the other two — it is path-gated the same way, so a skip is still a pass. `golden` and
+  # `visual` remain deliberately excluded (see the header): the element-tree golden can drift with an
+  # upstream dependency and a pixel baseline is host-specific, so each stays a per-PR signal. Make
+  # `E2E (android)` the required check, not the path-gated KVM jobs.
   #
   # `changes`'s own result is checked too, not just the KVM jobs': `changes` has no `if:`, so it
   # always runs and never reports `skipped` — but if it *fails* (e.g. a misconfigured `E2E_LANE`,
@@ -583,7 +586,7 @@ jobs:
   # them would read that as a pass — the required gate reporting green having run nothing.
   e2e:
     name: E2E (android)
-    needs: [changes, smoke, conformance]
+    needs: [changes, smoke, conformance, network]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -592,9 +595,10 @@ jobs:
           CHANGES: ${{ needs.changes.result }}
           SMOKE: ${{ needs.smoke.result }}
           CONFORMANCE: ${{ needs.conformance.result }}
+          NETWORK: ${{ needs.network.result }}
         run: |
-          echo "changes=$CHANGES smoke=$SMOKE conformance=$CONFORMANCE"
-          for result in "$CHANGES" "$SMOKE" "$CONFORMANCE"; do
+          echo "changes=$CHANGES smoke=$SMOKE conformance=$CONFORMANCE network=$NETWORK"
+          for result in "$CHANGES" "$SMOKE" "$CONFORMANCE" "$NETWORK"; do
             if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
               echo "E2E (android) failed"
               exit 1
