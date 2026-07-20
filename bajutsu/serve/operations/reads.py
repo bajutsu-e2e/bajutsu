@@ -583,7 +583,7 @@ def respond_human(state: ServeState, job_id: str, body: dict[str, Any]) -> tuple
     if job is None:
         return {"error": "no such job"}, 404
     response = handoff.HandoffResponse.from_dict(body)
-    if state.hosted and response.acted and not response.values:
+    if state.hosted and response.kind == "acted":
         # BE-0185 box 3: a takeover asks the human to operate the device directly, but a hosted
         # deployment's author (the multi-tenant `server` backend, BE-0015) is not in front of the
         # worker's device. Refuse rather than pretend — the browser cannot drive the device, and this

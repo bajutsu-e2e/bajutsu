@@ -142,6 +142,21 @@ def test_respond_human_refuses_a_device_takeover_on_a_hosted_serve(tmp_path: Pat
     assert job.proc.stdin.getvalue() == ""  # the takeover never reached the record process
 
 
+def test_respond_human_honors_cancel_over_acted_on_a_hosted_serve(tmp_path: Path) -> None:
+    # A body carrying both cancelled and acted is honored as a cancel (HandoffResponse.kind's
+    # cancel > value > acted precedence), never refused as a device takeover — otherwise the paused
+    # job would be left stuck (409, no stdin write, never resumes to exit).
+    scn_dir, cfg, runs = project(tmp_path)
+    state = srv.ServeState(
+        scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path, hosted=True
+    )
+    job = state.register(srv.Job(cmd=["x"], proc=_ProcWithStdin()))
+
+    body, code = respond_human(state, job.id, {"cancelled": True, "acted": True})
+    assert code == 200 and body["resumed"] is True  # cancel wins — not refused
+    assert response_from_json(job.proc.stdin.getvalue()).kind == "cancel"
+
+
 def test_respond_human_allows_a_value_handoff_on_a_hosted_serve(tmp_path: Path) -> None:
     # A value handoff completes entirely in the browser, so it still works on a hosted serve — only a
     # device-operation takeover needs the device within the author's reach.
