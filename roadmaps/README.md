@@ -49,7 +49,9 @@ Accepted and actively being built — a PR is in flight or imminent.
 ### Platform support (iOS / Android / Web / Flutter)
 
 <!-- GENERATED:in-progress-platform -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0287](BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience.md) | XCUITest runner-channel resilience under multi-touch actuation | In progress |
 <!-- /GENERATED:in-progress-platform -->
 
 ### Device-cloud execution

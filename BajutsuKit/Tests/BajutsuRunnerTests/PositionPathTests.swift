@@ -104,20 +104,26 @@ final class PositionPathTests: XCTestCase {
         )
     }
 
-    func testAttributesMatchWithinFrameTolerance() {
+    func testAttributesMatchIgnoresFrameShift() {
+        // A still-settling layout moves an element between snapshot and tap without changing its
+        // identity (BE-0287 #1211: a 49pt vertical shift of the same field was read as stale). Frame
+        // is not part of the identity match — identifier / label / traits carry it — so a shift alone
+        // must not fail the match.
         XCTAssertTrue(
             attributesMatch(
-                recorded: attrs(frame: (0, 0, 10, 10)),
-                current: attrs(frame: (0.4, 0.4, 10, 10))
+                recorded: attrs(frame: (61, 399, 280, 34)),
+                current: attrs(frame: (61, 448, 280, 34))
             )
         )
     }
 
-    func testAttributesMismatchBeyondFrameTolerance() {
-        XCTAssertFalse(
+    func testAttributesMatchIgnoresFrameSizeChange() {
+        // Even a size change keeps identity when identifier / label / traits agree — the position path
+        // plus those three is what distinguishes a genuinely different element.
+        XCTAssertTrue(
             attributesMatch(
                 recorded: attrs(frame: (0, 0, 10, 10)),
-                current: attrs(frame: (5, 0, 10, 10))
+                current: attrs(frame: (0, 0, 20, 40))
             )
         )
     }
