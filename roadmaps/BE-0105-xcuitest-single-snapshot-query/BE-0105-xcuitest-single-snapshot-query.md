@@ -73,7 +73,10 @@ resolve → handle flow are all **unchanged** — `ElementSnapshot.backingElemen
    stale detection from BE-0019's generation-only scheme (which catches an old-snapshot handle but not a
    same-generation UI change) to an attribute match, preserving "never silently act on whatever now
    matches." A pure index path without the attribute check would risk tapping a different element after a
-   sibling-order change; the verification is what keeps it deterministic-safe.
+   sibling-order change; the verification is what keeps it deterministic-safe. ([BE-0287](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience.md)
+   later narrowed this match to `identifier` / `label` / `traits`, dropping `frame`: a snapshot is taken
+   while the UI may still be settling, so an unchanged element's frame legitimately shifts between the
+   snapshot and the tap, and matching on it read a still-valid element as stale.)
 4. **Driver timeout re-tuning.** Once the query is within target, revert the stopgap socket timeout
    (currently 30 s) to a bounded value in `bajutsu/drivers/xcuitest.py`, so an unresponsive runner still
    fails loudly within a reasonable window rather than hanging for 30 s.

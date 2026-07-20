@@ -25,6 +25,7 @@ from bajutsu.codegen.common import (
     class_name,
     ident,
     is_plain_substring,
+    manual_todo,
     network_unsupported,
     permissions_setup_lines,
     render_test_file,
@@ -276,6 +277,10 @@ def _emit_step(step: Step) -> list[str]:
         return [
             f"// TODO: email(into: {step.email.extract.var}) — poll mailbox + extract; not generated"
         ]
+    if step.manual is not None:
+        # A human takeover (BE-0185): an operation only a human can perform. No generated-test
+        # equivalent — a labeled TODO the author wires (a bypass) or performs, never a silent skip.
+        return [f"// TODO: manual step — {manual_todo(step.manual.label, step.manual.bypass)}"]
     return ["// TODO: unsupported step"]
 
 

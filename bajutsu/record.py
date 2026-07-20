@@ -8,10 +8,11 @@ scenario that `run` later replays with no AI.
 from __future__ import annotations
 
 import logging
+import re
 import time
 from collections.abc import Callable
 
-from bajutsu.agents.protocols import Agent, Observation, Proposal
+from bajutsu.agents.protocols import Agent, HumanValueClass, Observation, Proposal
 from bajutsu.analytics import usage as _usage
 from bajutsu.crawl import screen_identity
 from bajutsu.drivers import base
@@ -20,6 +21,7 @@ from bajutsu.handoff import Handoff, HandoffRequest, HumanHandoffUnavailable
 from bajutsu.orchestrator import BlockedHandler, Clock, RealClock, _action_of, _do_action, _wait
 from bajutsu.orchestrator.types import SelectionState
 from bajutsu.scenario import Assertion, Scenario, Selector, Step
+from bajutsu.scenario.models.actions import bypass_hint
 from bajutsu.screenshots import screenshot_bytes
 
 _logger = logging.getLogger(__name__)
@@ -79,6 +81,8 @@ def describe_step(step: Step) -> str:
         return f"type {step.type.text!r} into {_describe_selector(step.type.into)}"
     if step.wait is not None:
         return f"wait for {_describe_selector(step.wait.for_)}"
+    if step.manual is not None:
+        return f"manual takeover: {step.manual.label}"
     return next((f for f in step.model_dump(exclude_none=True)), "step")
 
 
@@ -140,6 +144,94 @@ def _tokenize_secrets(step: Step, secret_tokens: list[tuple[str, str]]) -> tuple
     return step.model_copy(
         update={"type": step.type.model_copy(update={"text": text})}
     ), substituted
+
+
+def _placeholder_name(name: str | None, field: Selector | None) -> str:
+    """A safe `${vars/secrets.*}` placeholder name for a human-supplied value (BE-0182).
+
+    Prefer the agent's suggested name, else the target field's id, else a generic fallback; keep
+    only identifier-safe characters so the emitted token round-trips through interpolation.
+    """
+    raw = name or (field.first_id() if field is not None else None) or "human_value"
+    cleaned = re.sub(r"\W+", "_", raw).strip("_")
+    return cleaned or "human_value"
+
+
+def _unique_name(base: str, used: set[str]) -> str:
+    """Disambiguate a placeholder name against ones already emitted this recording (BE-0182).
+
+    Two human-value handoffs that derive the same fallback name (e.g. both idless and unnamed)
+    would otherwise alias to one `${vars.*}` token, silently binding two distinct values together.
+    A repeat gets a numeric suffix; `used` is updated with the chosen name.
+    """
+    name = base
+    i = 2
+    while name in used:
+        name = f"{base}_{i}"
+        i += 1
+    used.add(name)
+    return name
+
+
+def _human_value_step(
+    field: Selector, classify: HumanValueClass | None, name: str
+) -> tuple[Step, str]:
+    """The placeholder `type` step recorded for a human value, plus its one-line TODO (BE-0182).
+
+    The literal the human supplied is never written into the artifact: the step carries a
+    `${vars.*}` placeholder — produced at run time by a `totp` / `email` step (BE-0046) — or a
+    `${secrets.*}` placeholder for a declared secret, chosen by the agent's *proposed* `classify`
+    (authoring, not judging; the author confirms and wires it). The `from:` provenance (BE-0044)
+    records the human-value origin and the classification so a report or the GUI editor can show
+    why the step still needs wiring.
+    """
+    if classify == "secret":
+        placeholder = f"${{secrets.{name}}}"
+        todo = f"human value entered during record — declare {name} as a secret ({placeholder})"
+    else:
+        placeholder = f"${{vars.{name}}}"
+        if classify in ("totp", "email"):
+            bridge = "an email step" if classify == "email" else "a totp step"
+            todo = (
+                f"human value entered during record — resolve {placeholder} with {bridge} (BE-0046)"
+            )
+        else:
+            # The agent proposed no (recognized) classification: don't assert a totp step it never
+            # chose — leave a neutral TODO so the author picks the right run-time source.
+            todo = (
+                f"human value entered during record — classify {placeholder} and resolve it "
+                "(a totp / email step, BE-0046, or declare it a secret)"
+            )
+    step = Step.model_validate(
+        {
+            "type": {
+                "into": field.model_dump(exclude_none=True, by_alias=True),
+                "text": placeholder,
+            },
+            "from": todo,
+        }
+    )
+    return step, todo
+
+
+def _manual_takeover_step(label: str, bypass: str | None) -> tuple[Step, str]:
+    """The `manual` marker recorded for a human takeover, plus its one-line TODO (BE-0185).
+
+    An operation the AI could not perform (a CAPTCHA, a biometric prompt): the human acted live and
+    this records a marker of the observed transition, never the raw gesture. `bypass` — proposed by
+    the agent, confirmed by the author — names a deterministic bridge to wire (a test-build flag, a
+    device-control / device-state primitive, BE-0035 / BE-0052) so `run` becomes deterministic; None
+    leaves an honest, unreproducible marker that fails loudly at run time rather than faking a pass.
+    """
+    if bypass:
+        todo = f"human takeover during record — {bypass_hint(bypass)} (BE-0035 / BE-0052)"
+    else:
+        todo = (
+            f"human takeover during record — {bypass_hint(bypass)}; the step fails at "
+            "run time until a bypass is wired or it is handled out of band"
+        )
+    step = Step.model_validate({"manual": {"label": label, "bypass": bypass}, "from": todo})
+    return step, todo
 
 
 def _should_attach(current: str, previous: str | None) -> bool:
@@ -380,6 +472,9 @@ def record(
     # One selection carried across the whole recording, the same contract the run loop threads
     # (BE-0265): a `select` step the agent proposes establishes the selection a later `copy` copies.
     selection = SelectionState()
+    # Placeholder names already emitted for human values this recording (BE-0182), so a second
+    # idless/unnamed handoff doesn't alias onto the first's `${vars.*}` token.
+    used_value_names: set[str] = set()
     plan = _plan_goal(agent, goal, say)
     plan_cursor = 0  # plan steps reached so far — drives the pre-observe "next" hint below
     prev_screen: str | None = (
@@ -466,17 +561,93 @@ def record(
                 )
                 raise HumanHandoffUnavailable(reason)
             say(f"[{n}] ✋ pausing for a human — {reason}")
+            # Name the field the value goes into when the agent flagged one (BE-0182), so the human
+            # knows where the value lands.
+            target = (
+                f"the {_describe_selector(proposal.human_field)} field"
+                if proposal.human_field is not None
+                else ""
+            )
             response = handoff.request(
                 HandoffRequest(
                     reason=reason,
                     screen=_summarize_screen(elements),
-                    target=describe_step(proposal.step) if proposal.step is not None else "",
+                    target=target,
                     screenshot=screenshot,
                 )
             )
             if response.kind == "cancel":
                 say(f"[{n}] ✋ handoff cancelled; stopping")
                 break
+            if response.kind == "value" and proposal.human_field is not None:
+                # The value pattern (BE-0182): type the human's value into the live field so the
+                # recording proceeds, but record a deterministic placeholder step — never the literal
+                # (random/secret). Execute the real value against the app, then append the tokenized
+                # placeholder step with its classified TODO. If the field no longer resolves, fall
+                # through to re-observe rather than record a step that never ran.
+                value = response.values[0]
+                real_step = Step.model_validate(
+                    {
+                        "type": {
+                            "into": proposal.human_field.model_dump(
+                                exclude_none=True, by_alias=True
+                            ),
+                            "text": value,
+                        }
+                    }
+                )
+                if _execute_with_recovery(
+                    driver, real_step, clock, alert_guard, report=report, selection=selection
+                ):
+                    # Reserve the placeholder name only now the type succeeded — a failed resolve
+                    # above records no step, so it must not consume a name (BE-0182). This is a
+                    # local; NOT the outer `name` (the scenario name), which the loop must preserve.
+                    placeholder_name = _unique_name(
+                        _placeholder_name(proposal.human_var, proposal.human_field),
+                        used_value_names,
+                    )
+                    placeholder_step, todo = _human_value_step(
+                        proposal.human_field, proposal.human_classify, placeholder_name
+                    )
+                    steps.append(placeholder_step)
+                    # Narrate the placeholder and the TODO, never the value — the same no-leak
+                    # guarantee the normal typed-secret path keeps (BE-0120).
+                    say(
+                        f"[{len(steps)}] ✋ recorded human value as {describe_step(placeholder_step)}"
+                    )
+                    say(f"[{len(steps)}] 📝 {todo}")
+                    continue
+                # The field did not resolve to a unique element — it vanished, or the agent's
+                # selector is ambiguous (prime directive 2). Either way nothing was typed and no
+                # step is recorded; re-observe rather than record an action that never ran.
+                say(f"[{n}] ✋ could not resolve that field on the live screen; re-observing")
+                continue
+            if response.acted and not response.values:
+                # The takeover pattern (BE-0185): the human operated the device for an operation the
+                # AI cannot perform (a CAPTCHA, a biometric prompt). Record a `manual` marker of the
+                # transition — not the opaque gesture — classified by whether the agent proposed a
+                # deterministic bypass. It fails loudly at run time rather than faking a pass; the
+                # author wires the bypass (BE-0035 / BE-0052) or handles it out of band.
+                # Gate on the explicit `acted` flag, not `kind == "acted"` — `kind` returns "acted"
+                # as its no-cancel/no-value default, so a bare resume (an empty response) must stay a
+                # plain re-observe and never fabricate a run-failing marker for a human who did nothing.
+                # Also require an empty `values`: a response can carry both a value and `acted` (the
+                # two are independent POST-body fields, mutually exclusive only by UI convention), so
+                # when the `kind == "value"` branch above did not fire (no `human_field`) this guard
+                # keeps a supplied value from being silently dropped in favor of a manual marker.
+                # Mask the bypass text the same way `reason` is masked (BE-0120): it is free-form
+                # agent-authored prose, so it could echo a declared secret literal into the recorded
+                # `manual.bypass` value and the narration below.
+                bypass = (
+                    _mask_secrets(proposal.human_bypass, secret_tokens or [])[0]
+                    if proposal.human_bypass
+                    else None
+                )
+                manual_step, todo = _manual_takeover_step(reason, bypass)
+                steps.append(manual_step)
+                say(f"[{len(steps)}] ✋ recorded human takeover as {describe_step(manual_step)}")
+                say(f"[{len(steps)}] 📝 {todo}")
+                continue
             say(f"[{n}] ✋ handoff resolved; re-observing the live screen")
             continue
         plan_tag = (

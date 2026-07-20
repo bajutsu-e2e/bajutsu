@@ -208,6 +208,7 @@ CLI の `--dismiss-alerts` / `--no-dismiss-alerts` フラグは**全シナリオ
 | `http` | `http: { method?, url, headers?, body?, status?, saveBody? }` | HTTP リクエストを送る（テストデータ準備 / Webhook / API）。`status` を検証し、ボディを `${vars.<saveBody>}` に保存する |
 | `totp` | `totp: { secret, into: { var } }` | RFC 6238 の時刻ベースワンタイムパスワード（2FA）をローカルで生成し `${vars.<var>}` に入れる |
 | `email` | `email: { match: { to?, subject?, subjectMatches? }, extract: { var, bodyMatches }, timeout }` | 設定したメールボックスを一致するメッセージが届くまでポーリングし、コードを `${vars.<var>}` に取り出す |
+| `manual` | `manual: { label: "...", bypass?: "..." }` | `record` 中に記録される人による操作の引き取り（BE-0185）。決定的な実行時の等価物がないため、`run` 時に**明示的に失敗する**——合格を偽装しない |
 | `background` | `background: {}` | アプリをバックグラウンドへ送る（Home ボタン） |
 | `foreground` | `foreground: {}` | バックグラウンドのアプリを前面へ復帰する（`simctl launch`。settle 用の sleep なし） |
 | `clearKeychain` | `clearKeychain: {}` | Simulator のキーチェーンをリセットする（保存済みパスワード / 証明書） |
@@ -340,6 +341,17 @@ CLI の `--dismiss-alerts` / `--no-dismiss-alerts` フラグは**全シナリオ
 ```
 
 `email` はメールで届く 2FA / 検証コードを待ちます。汎用 HTTP メールボックス（`targets.<name>.mailbox` で設定。[configuration](configuration.md#mailbox-emailステップ) 参照）をポーリングし、**ステップ開始後に届いた**メッセージのうち `match` を満たすものが現れるまで待って、その本文から `bodyMatches` の正規表現（最初のキャプチャグループ、無ければマッチ全体）で値を `${vars.<var>}` に取り出します。待機は **`timeout` 必須の条件待機**です（固定 sleep なし）。タイムアウト、本文に正規表現が当たらない一致メッセージ、到達不能 / 2xx 以外のメールボックスは、いずれもクリーンなステップ失敗で、黙って誤った値を返すことはありません。対象はステップ開始より新しいメールだけ（メッセージ id で判定するので、以前の run の古いコードには一致しません）で、新着の一致が複数あれば最新を採ります。決定的で LLM 非依存、エンドポイントと認証情報は config 参照の `${secrets.*}` に置くのでシナリオはアプリ非依存のままです（[BE-0046](../../roadmaps/BE-0046-otp-email-steps/BE-0046-otp-email-steps-ja.md)）。
+
+### `manual`
+
+`record` 中に記録される人による操作の引き取りです。
+
+```yaml
+- manual: { label: "ログインの CAPTCHA を解く" }                          # 決定的な等価物なし（本物の CAPTCHA）
+- manual: { label: "Face ID を許可する", bypass: "device-control の生体認証マッチ（BE-0052）" }   # 作者が配線できる橋渡しを名指し
+```
+
+`record` は、詰まりが AI に実行できない**操作**そのもの——CAPTCHA、生体認証のプロンプト、AI が繰り返し解けないジェスチャ——であるとき `manual` ステップを出します。人が実際のデバイスを操作して制御を返し（`acted` ハンドオフ、[recording](recording.md#human-in-the-loop-ハンドオフbe-0179)）、ステップは生のジェスチャではなく観測した遷移のマーカーを記録します。`bypass` を設定すると、そのステップを再生可能にするために作者が配線できるテストビルド用のフラグ、あるいは device-control / device-state プリミティブ（BE-0035 / BE-0052）を名指しします。省略すると、そうした等価物のない引き取り（本物の CAPTCHA）であることを示します。どの codegen ターゲットもこれをラベル付きの `// TODO` として描画します。`manual` ステップは**決して黙って合格しません**。決定的な実行時の等価物がないため、`run` 時には `label` と bypass のヒントを示して `ManualStepRequired` で明示的に失敗します（原則 1・2）。名指しした `bypass` を配線し——そのうえで `manual` ステップを決定的なアクションに置き換え——ることが、作者にとって再生可能なシナリオへの道です（[BE-0185](../../roadmaps/BE-0185-record-human-takeover-step/BE-0185-record-human-takeover-step-ja.md)）。
 
 ### デバイス / システム制御（iOS）
 

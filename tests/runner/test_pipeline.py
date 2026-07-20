@@ -6,9 +6,9 @@ import json
 from pathlib import Path
 
 import pytest
-from _runner import _eff, _el, _failing_lease, _fake_driver, _lease
+from _runner import _eff, _el, _failing_lease, _fake_driver, _ios_eff, _lease
 
-from bajutsu.config import Effective
+from bajutsu.config import Effective, XcuitestConfig
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence import NullSink
@@ -79,6 +79,48 @@ def test_preflight_allows_supported_scenario_on_idb() -> None:
     scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
     results = run_all(_eff(), scenarios, _lease, actuator="idb")
     assert results[0].ok
+
+
+def test_real_device_narrowing_reaches_the_preflight_from_run_all() -> None:
+    # BE-0238 Unit 3: the fixed-`actuator` call site must thread `eff` into `capabilities_for_run`,
+    # so a real iOS device drops the simctl-backed capabilities. A setLocation scenario is skipped up
+    # front (no lease), guarding against a refactor that reintroduces the eff-less `capabilities_for`.
+    scenarios = [
+        Scenario.model_validate(
+            {"name": "loc", "steps": [{"setLocation": {"lat": 1.0, "lon": 2.0}}]}
+        )
+    ]
+
+    def lease_must_not_run(eff: Effective, s: Scenario) -> Lease:
+        raise AssertionError("lease must not be called when the preflight rejects the scenario")
+
+    dev = _ios_eff(xcuitest=XcuitestConfig(test_runner="Runner.xctestrun", device_type="device"))
+    results = run_all(dev, scenarios, lease_must_not_run, actuator="xcuitest")
+    assert len(results) == 1 and not results[0].ok
+    assert results[0].backend == "xcuitest"
+    assert "deviceControl.setLocation" in (results[0].failure or "")
+
+
+def test_simulator_still_leases_a_device_control_scenario_on_xcuitest() -> None:
+    # The narrowing is real-device-only: on the Simulator the same setLocation scenario clears the
+    # preflight and reaches the lease (device work) — the counterpart that proves the wiring narrows
+    # nothing by default. Asserting the lease is reached (not the fake's runtime outcome) keeps the
+    # test about the preflight, not FakeDriver's device-control support.
+    scenarios = [
+        Scenario.model_validate(
+            {"name": "loc", "steps": [{"setLocation": {"lat": 1.0, "lon": 2.0}}]}
+        )
+    ]
+    leased: list[str] = []
+
+    def recording_lease(eff: Effective, s: Scenario) -> Lease:
+        leased.append(s.name)
+        return _lease(eff, s)
+
+    sim = _ios_eff(xcuitest=XcuitestConfig(test_runner="Runner.xctestrun", device_type="simulator"))
+    results = run_all(sim, scenarios, recording_lease, actuator="xcuitest")
+    assert leased == ["loc"]
+    assert "deviceControl.setLocation" not in (results[0].failure or "")
 
 
 def test_resolve_actuator_preflights_per_scenario_and_fails_fast() -> None:

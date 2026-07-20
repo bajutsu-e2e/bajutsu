@@ -55,8 +55,10 @@ class Agent(Protocol):
    build an Observation, and call agent.next_action(). If the agent asks to see the screen
    (need_screenshot) on a text-only turn, re-issue the same observation once with the image attached.
 4. If proposal.needs_human (BE-0179):
-     - hand off to a human via the `handoff` responder; on a value/acted response, re-observe and
-       continue (the human's turn records no step); on cancel, stop. With no responder, raise
+     - hand off to a human via the `handoff` responder; on cancel, stop. On a value response that
+       names the field it goes into (BE-0182), type the value into the live app and record a
+       deterministic placeholder step (below); on any other value/acted response, re-observe and
+       continue (the human's turn records no step). With no responder, raise
        `HumanHandoffUnavailable` — a clean, labeled failure, never a hang or a guess
 5. Execute proposal.steps in order (a batch of one or more actions — see below):
      - each via _execute_with_recovery (on failure with alert_guard, clear and retry once)
@@ -102,6 +104,31 @@ cancelable, so no surface hangs on a human who walked away. With no responder at
 non-interactive or CI invocation — a needs-human turn is a clean, labeled non-zero exit, never a hang
 and never an AI guess. This substrate owns the mechanism and the boundary; the heuristics that raise
 "needs human" and the shape of what a handoff records are the child items' concern.
+
+**Human value entry (BE-0182).** The value child pattern rides on the handoff for the most common
+blocker: a field the agent can locate but cannot know — a one-time password, a 2FA code, a random
+one-off value. The agent flags the field (via `ask_human`, addressing it by id/label) and proposes
+how a real run will supply the value with `classify`: `totp` or `email` (a `${vars.*}` produced by
+the run-time bridge step, BE-0046) or `secret` (a declared `${secrets.*}`). The human types the value
+once; the loop types it into the *live* field so the recording proceeds, but records a **placeholder**
+`type` step — `${vars.*}` / `${secrets.*}`, never the literal (reusing BE-0120's no-leak guarantee) —
+carrying a `from:` provenance line (BE-0044) that both marks the human-value origin and states the
+TODO to wire it. Consistent with prime directive 1, the AI only *proposes* the classification; the
+author confirms and wires it, after which replay is fully deterministic and AI-free.
+
+**Human takeover (BE-0185).** The other child pattern covers a handoff that names no field: the
+blocker is not a value the agent could type but an *operation* it cannot perform — a CAPTCHA, a
+biometric prompt, a gesture the agent repeatedly fails to resolve. The human operates the live device
+and answers "I acted" (the `acted` handoff, BE-0179); `record` records a marker of the observed
+transition, not the raw gesture, as a **`manual` step** ([scenarios](scenarios.md#manual)). The agent
+classifies the marker by whether it can propose a deterministic bypass: a `bypass` names the
+test-build flag or the device-control / device-state primitive (BE-0035 / BE-0052) an author could
+wire to make the step replayable, and its absence marks a takeover with no such equivalent (a real
+CAPTCHA). Every codegen target renders the step as a labeled `// TODO` (BE-0026), and — unlike the
+value pattern, which produces a replayable `type` step — a `manual` step has no deterministic run-time
+equivalent, so at `run` time it **fails loudly** with `ManualStepRequired` rather than faking a pass
+(directives 1 and 2). The marker keys on the explicit `acted` flag, not the handoff's default kind, so
+a bare resume never fabricates a run-failing step.
 
 ### Automatic settle-step insertion
 

@@ -90,7 +90,6 @@ Under consideration — not yet decided. Promote an item to *In progress* once w
 |---|---|---|
 | [BE-0008](BE-0008-flutter-support/BE-0008-flutter-support.md) | Flutter support | Proposal |
 | [BE-0281](BE-0281-ios-on-device-actuation-coverage/BE-0281-ios-on-device-actuation-coverage.md) | Add real on-device actuation coverage to the iOS CI | Proposal |
-| [BE-0287](BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience.md) | XCUITest runner-channel resilience under multi-touch actuation | Proposal |
 <!-- /GENERATED:proposals-platform -->
 
 ### Driver & backend architecture
@@ -98,7 +97,6 @@ Under consideration — not yet decided. Promote an item to *In progress* once w
 <!-- GENERATED:proposals-driver-architecture -->
 | ID | Item | Status |
 |---|---|---|
-| [BE-0280](BE-0280-conformance-unactuated-verbs/BE-0280-conformance-unactuated-verbs.md) | Extend the driver conformance contract to unactuated Driver operations | Proposal |
 <!-- /GENERATED:proposals-driver-architecture -->
 
 ### Device-cloud execution
@@ -108,9 +106,7 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 <!-- GENERATED:proposals-device-cloud -->
 | ID | Item | Status |
 |---|---|---|
-| [BE-0236](BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction.md) | Device-cloud provider abstraction | Proposal |
 | [BE-0237](BE-0237-firebase-device-streaming-adapter/BE-0237-firebase-device-streaming-adapter.md) | Firebase Test Lab / Device Streaming adapter | Proposal |
-| [BE-0238](BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution.md) | iOS device-cloud execution | Proposal |
 <!-- /GENERATED:proposals-device-cloud -->
 
 ### Scenario authoring features
@@ -130,8 +126,6 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 <!-- GENERATED:proposals-authoring -->
 | ID | Item | Status |
 |---|---|---|
-| [BE-0182](BE-0182-record-human-value-prompt/BE-0182-record-human-value-prompt.md) | Human value entry during record (OTP / random / one-off values) | Proposal |
-| [BE-0185](BE-0185-record-human-takeover-step/BE-0185-record-human-takeover-step.md) | Human takeover step during record (CAPTCHA / biometrics / unresolvable gestures) | Proposal |
 <!-- /GENERATED:proposals-authoring -->
 
 ### Surfacing CLI features in the serve Web UI

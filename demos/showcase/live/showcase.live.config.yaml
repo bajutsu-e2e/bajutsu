@@ -1,0 +1,36 @@
+# Bajutsu config for the showcase SwiftUI app on a reserved iOS device behind a live Appium /
+# WebDriver endpoint (BE-0238 live route).
+#
+# It mirrors the `showcase-swiftui` target from ../showcase.config.yaml with two deliberate
+# differences, both of which are per-environment and so live in config (the app-agnostic principle),
+# not in the tool:
+#   * **A `deviceProvider` of kind `appium`.** A self-hosted grid (or a cloud) already holds an iOS
+#     device behind a fixed WebDriver endpoint; the provider hands the run that endpoint as its udid
+#     spec, and Bajutsu drives it over the live WebDriver transport — routed entirely around the
+#     simctl / xcodebuild machinery, which structurally cannot carry a URL. The device is one the grid
+#     boots and installs the build onto, so the run neither boots nor installs through simctl.
+#   * **No `appPath` / `build` and no `xcuitest.testRunner`.** The reserved device already carries the
+#     build, and the live route speaks W3C WebDriver rather than the XCUITest runner channel, so no
+#     local `.app` or `.xctestrun` is assembled.
+#
+# The scenarios, ids, and launch env match the local target so the same suite runs unchanged. What
+# the live WebDriver transport cannot drive is narrowed away up front (BE-0238 Slice C): the
+# `select` / `copy` text-selection steps, the whole `DeviceControl` family, and the simctl-privacy
+# permission grants have no faithful `mobile:` command, so preflight (BE-0082) skips a scenario that
+# needs one rather than failing late — leaving the tap / query / gesture / input flows the endpoint
+# does drive. Point `endpoint` at your own grid before running:
+#   bajutsu run --target showcase-swiftui-live --config demos/showcase/live/showcase.live.config.yaml ...
+defaults:
+  backend: [xcuitest]
+
+targets:
+  showcase-swiftui-live:
+    bundleId: com.bajutsu.showcase.ios.swiftui
+    deeplinkScheme: showcaseswiftui
+    launchEnv: { SHOWCASE_UITEST: "1" }
+    idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
+    readyWhen: { id: [stable.row.1, stable_row_1] }
+    scenarios: ../scenarios
+    deviceProvider:
+      kind: appium
+      endpoint: https://grid.example.com/wd/hub   # the reserved device's Appium / WebDriver address

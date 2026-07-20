@@ -184,6 +184,32 @@ def test_web_rejects_extract_modifier() -> None:
         )
 
 
+def test_manual_step_parses_unreproducible() -> None:
+    # A human-takeover marker (BE-0185) with no deterministic bypass: `bypass` defaults to None.
+    step = Step.model_validate({"manual": {"label": "solve the CAPTCHA"}})
+    assert step.manual is not None
+    assert step.manual.label == "solve the CAPTCHA"
+    assert step.manual.bypass is None
+
+
+def test_manual_step_parses_bypassable() -> None:
+    step = Step.model_validate(
+        {"manual": {"label": "approve Face ID", "bypass": "disable biometrics behind a test flag"}}
+    )
+    assert step.manual is not None
+    assert step.manual.bypass == "disable biometrics behind a test flag"
+
+
+def test_manual_step_requires_label() -> None:
+    with pytest.raises(ValidationError):
+        Step.model_validate({"manual": {}})
+
+
+def test_manual_step_is_one_action() -> None:
+    with pytest.raises(ValidationError):
+        Step.model_validate({"manual": {"label": "x"}, "tap": {"id": "a"}})
+
+
 def test_clear_step_parses() -> None:
     step = Step.model_validate({"clear": {"into": {"id": "form.note"}}})
     assert step.clear is not None

@@ -14,6 +14,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from bajutsu.config.schema import (
+    DeviceProvider,
     LaunchServer,
     Mailbox,
     MockServer,
@@ -171,6 +172,10 @@ class Effective:
     # Generic HTTP mailbox the `email` step polls (`targets.<name>.mailbox`, BE-0046). None = no
     # mailbox configured, so an `email` step fails cleanly.
     mailbox: Mailbox | None = None
+    # Where this target's devices come from (BE-0236). None = the built-in local provider (today's
+    # locally-attached `--udid` path); a device-cloud `kind` reserves a device off-host. Resolved by
+    # `acquire_device` against the provider registry — off the deterministic verdict path.
+    device_provider: DeviceProvider | None = None
     # Evidence directory overrides — scenarios / baselines / schemas / goldens (BE-0252).
     evidence_dirs: EvidenceDirs = field(default_factory=EvidenceDirs)
     # How to bring up baseUrl's host for the run (start/probe/teardown). None = assume it's running.
@@ -252,6 +257,7 @@ class Effective:
                 {
                     "testRunner": at("xcuitest.testRunner", rebased_xcuitest.test_runner),
                     "build": rebased_xcuitest.build,
+                    "deviceType": rebased_xcuitest.device_type,
                 }
             )
         return replace(

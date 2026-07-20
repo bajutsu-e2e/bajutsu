@@ -18,6 +18,7 @@ from bajutsu.config.accessors import (
     require_web,
     web_base_url,
     web_engine,
+    xcuitest_targets_real_device,
 )
 from bajutsu.config.effective import (
     AiConfig,
@@ -36,6 +37,7 @@ from bajutsu.config.schema import (
     AiSettings,
     Config,
     Defaults,
+    DeviceProvider,
     DoctorConfig,
     LaunchServer,
     Mailbox,
@@ -56,6 +58,7 @@ __all__ = [
     "AndroidConfig",
     "Config",
     "Defaults",
+    "DeviceProvider",
     "DoctorConfig",
     "DoctorThresholds",
     "Effective",
@@ -82,4 +85,5 @@ __all__ = [
     "resolve",
     "web_base_url",
     "web_engine",
+    "xcuitest_targets_real_device",
 ]

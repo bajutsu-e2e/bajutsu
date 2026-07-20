@@ -463,10 +463,66 @@ def test_delete_text_sends_backspaces_over_companion_not_argv(monkeypatch) -> No
     assert ran == []  # no subprocess/argv was built
 
 
+def test_delete_text_via_companion_sends_hid_backspaces_not_text_control_char(  # type: ignore[no-untyped-def]
+    monkeypatch,
+) -> None:
+    # BE-0280 regression: delete must send Delete/Backspace HID key events (keycode 42) via
+    # `client.key_sequence`, not the `\b` control character through `client.text()`. fb-idb's text
+    # keymap has no entry for `\b` and raises "No keycode found for" — so the old `text("\b")` path
+    # crashed mid-flow on a real device. Drives the real `_delete_text_via_companion` against a fake
+    # gRPC companion client (the only external dependency the mock rule allows), pinning that it
+    # never touches `text` and issues exactly `count` backspace keycodes.
+    import shutil
+
+    management = pytest.importorskip("idb.grpc.management")  # skip on the gate (no idb extra)
+
+    from bajutsu.drivers import idb as idb_mod
+
+    class _FakeClient:
+        def __init__(self) -> None:
+            self.text_calls: list[str] = []
+            self.key_sequences: list[list[int]] = []
+
+        async def text(self, text: str) -> None:
+            self.text_calls.append(text)
+
+        async def key_sequence(self, key_sequence: list[int]) -> None:
+            self.key_sequences.append(list(key_sequence))
+
+    client = _FakeClient()
+
+    class _FakeConn:
+        async def __aenter__(self) -> _FakeClient:
+            return client
+
+        async def __aexit__(self, *exc: object) -> None:
+            return None
+
+    class _FakeManager:
+        def __init__(self, **_kw: object) -> None:
+            pass
+
+        def from_udid(self, udid: str) -> _FakeConn:
+            return _FakeConn()
+
+    monkeypatch.setattr(shutil, "which", lambda _name: "/usr/bin/idb_companion")
+    monkeypatch.setattr(management, "ClientManager", _FakeManager)
+
+    idb_mod._delete_text_via_companion("U", 3)
+    assert client.key_sequences == [[idb_mod._HID_KEY_DELETE] * 3]  # three backspace HID keys
+    assert client.text_calls == []  # never routes a control char through the text keymap
+
+    idb_mod._type_text_via_companion("U", "hi")
+    assert client.text_calls == ["hi"]  # typing still goes through the text path
+
+
 def test_select_and_copy_are_unsupported_and_route_to_xcuitest() -> None:
     # idb is coordinate-only, so select-all / copy have no actuation; they fail loudly and point at
-    # codegen→XCUITest, mirroring how multi-touch gestures are refused (BE-0265).
+    # codegen→XCUITest, mirroring how multi-touch gestures are refused (BE-0265). The refusal is
+    # honest: idb does not advertise TEXT_SELECTION, so preflight rejects a `select`/`copy` scenario
+    # before any device work rather than letting it fail late (BE-0280).
     driver = IdbDriver("U", run=lambda a: "[]")
+    assert base.Capability.TEXT_SELECTION not in driver.capabilities()
     with pytest.raises(base.UnsupportedAction, match="XCUITest"):
         driver.select_all()
     with pytest.raises(base.UnsupportedAction, match="XCUITest"):

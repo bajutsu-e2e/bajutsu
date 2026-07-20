@@ -728,6 +728,7 @@ class PlaywrightDriver:
             base.Capability.NETWORK,
             base.Capability.MULTI_TOUCH,
             base.Capability.SELECT_OPTION,
+            base.Capability.TEXT_SELECTION,
         }
     )
 

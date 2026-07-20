@@ -21,7 +21,7 @@ from bajutsu.assertions import (
     VisualContext,
     VisualEvidence,
 )
-from bajutsu.backends import capabilities_for
+from bajutsu.backends import capabilities_for_run
 from bajutsu.config import Effective
 from bajutsu.evidence import Artifact
 from bajutsu.evidence.network import NetworkExchange
@@ -105,6 +105,10 @@ class _ScenarioRunner:
     schemas_dir: Path | None = None
     actuator: str | None = None
     golden_context: GoldenContext | None = None
+    # The run's resolved udid spec (the provider's `udid_spec`): a WebDriver URL routes the run to the
+    # live XCUITest environment, so the preflight below narrows to that transport's set — keyed on the
+    # same signal `environment_for` routes on (BE-0238). "booted" (the default) is never a URL.
+    udid_spec: str = "booted"
     # Per-scenario actuator resolver (BE-0240): when set, each scenario's actuator (and thus its
     # capability set for the preflight below) is resolved from the scenario itself, rather than one
     # fixed `actuator` for the whole run. The pool's `lease()` resolves the *same* pure function, so
@@ -139,7 +143,7 @@ class _ScenarioRunner:
                 return RunResult(
                     scenario=s.name, ok=False, steps=[], backend="", sid=sid, failure=str(exc)
                 )
-            caps = capabilities_for(actuator)
+            caps = capabilities_for_run(actuator, self.eff, self.udid_spec)
         if caps is not None and (reasons := capability_preflight.unsupported(s, caps)):
             if self.progress is not None:
                 self.progress(
@@ -249,6 +253,7 @@ def run_all(
     actuator: str | None = None,
     resolve_actuator: Callable[[Scenario], str] | None = None,
     golden_context: GoldenContext | None = None,
+    lease_udid_spec: str = "booted",
 ) -> list[RunResult]:
     """Run every scenario, each on a freshly leased device, and return one result per scenario.
 
@@ -288,6 +293,10 @@ def run_all(
             exclusive with `actuator` (passing both raises): the CLI's single-engine path and `audit`
             pass this, the cross-browser matrix passes `actuator`.
         golden_context: Goldens directory for `golden` assertions (BE-0006). None disables them.
+        lease_udid_spec: The run's resolved udid spec (the provider's `udid_spec`). A WebDriver URL
+            routes the run to the live XCUITest environment, so the preflight narrows to that
+            transport's set (BE-0238) — the same `is_webdriver_endpoint` signal `environment_for`
+            routes on. "booted" (the default) is never a URL, so the local path is unchanged.
 
     Returns:
         One result per scenario, in the same order as `scenarios`.
@@ -301,11 +310,13 @@ def run_all(
     # One mailbox reader for the whole run (it's per-target, not per-device): the `email` step polls
     # it, with ${secrets.*} in the url/headers resolved from the same secret bindings (BE-0046).
     mailbox = build_mailbox_reader(eff.mailbox, bindings or {})
-    # Preflight: a backend's capability set is static, so a scenario that needs a capability the
-    # actuator lacks (e.g. pinch on idb) is failed here — before any device is leased — instead of
-    # mid-run after partial device work (BE-0082). Skipped when no actuator is passed (tests that
-    # drive a lease directly), so the gesture handler's own check still backstops it.
-    caps = capabilities_for(actuator) if actuator is not None else None
+    # Preflight: a backend's capability set is (near-)static, so a scenario that needs a capability
+    # the actuator lacks (e.g. pinch on idb, or simctl device control on a real iOS device — BE-0238)
+    # is failed here — before any device is leased — instead of mid-run after partial device work
+    # (BE-0082). `capabilities_for_run` applies the run's one config-driven narrowing (real-device
+    # XCUITest). Skipped when no actuator is passed (tests that drive a lease directly), so the
+    # gesture handler's own check still backstops it.
+    caps = capabilities_for_run(actuator, eff, lease_udid_spec) if actuator is not None else None
 
     runner = _ScenarioRunner(
         eff=eff,
@@ -325,6 +336,7 @@ def run_all(
         actuator=actuator,
         resolve_actuator=resolve_actuator,
         golden_context=golden_context,
+        udid_spec=lease_udid_spec,
     )
     if workers > 1:
         # >1 hands each worker its own device + per-device resources; the runner is frozen and
@@ -356,6 +368,7 @@ def run_and_report(
     config_source: dict[str, str] | None = None,
     exec_provenance: dict[str, str | None] | None = None,
     golden_context: GoldenContext | None = None,
+    lease_udid_spec: str = "booted",
 ) -> tuple[list[RunResult], Path]:
     """Run the scenarios, then write the run's artifacts under `runs_dir/run_id`.
 
@@ -392,6 +405,7 @@ def run_and_report(
         actuator=actuator,
         resolve_actuator=resolve_actuator,
         golden_context=golden_context,
+        lease_udid_spec=lease_udid_spec,
     )
     manifest = _assemble_report(
         scenarios,

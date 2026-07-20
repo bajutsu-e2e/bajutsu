@@ -7,9 +7,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -17,6 +22,11 @@ import androidx.compose.ui.unit.dp
 // The marker present on every conformance screen, including the empty (zero-match) one — mirrors the
 // iOS ConformanceView.readyID and the on-device harness's _READY_ID (they must stay in step).
 const val CONFORMANCE_READY_ID = "conformance.ready"
+
+// The always-present editable field the text-editing and tap_point contract invariants act on
+// (BE-0280) — mirrors the iOS ConformanceView.fieldID and the web _render field. Present on every
+// conformance screen like the marker, with a fixed size so the coordinate tap has a known center.
+const val CONFORMANCE_FIELD_ID = "conformance.field"
 
 // BE-0114 / BE-0270: the on-device realization of a driver-conformance screen for the adb backend,
 // the Compose twin of the iOS ConformanceView. The conformance suite seeds an arbitrary set of
@@ -41,6 +51,23 @@ fun ConformanceScreen(identifiers: List<String>) {
         // in conformance mode, rather than inferring it from the absence of ids — which a transient,
         // near-empty tree during a relaunch could satisfy too early.
         Text("ready", Modifier.aid(CONFORMANCE_READY_ID))
+        // The editable field, always present so the text-editing / tap_point invariants have a real
+        // field on every screen. A BasicTextField surfaces its content as the node's text (the value
+        // the adb driver reads back); the fixed size gives the coordinate tap a known center.
+        var fieldText by remember { mutableStateOf("") }
+        BasicTextField(
+            value = fieldText,
+            onValueChange = { fieldText = it },
+            // Mirror the text into content-desc: the adb driver maps a node's `text` to `label` and
+            // content-desc to `value`, and the contract reads `value` (as the iOS AXValue and the web
+            // input value do), so without this the typed text would land in `label` and the round-trip
+            // length change the contract observes would be invisible.
+            modifier = Modifier
+                .size(width = 280.dp, height = 44.dp)
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .aid(CONFORMANCE_FIELD_ID)
+                .stateValue(fieldText),
+        )
         // Duplicates are the point (the ambiguous-selector case), so the children are keyed by
         // position (Column's default), never by identifier — keying by id would collapse repeats.
         identifiers.forEach { identifier ->

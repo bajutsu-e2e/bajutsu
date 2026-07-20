@@ -11,7 +11,7 @@ client is injectable for testing.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, get_args
 
 from bajutsu.agents.ai_config import (
     AiConfig,
@@ -19,7 +19,7 @@ from bajutsu.agents.ai_config import (
     resolve_effort,
 )
 from bajutsu.agents.claude_backed import ClaudeBackedAgent
-from bajutsu.agents.protocols import Observation, Proposal
+from bajutsu.agents.protocols import HumanValueClass, Observation, Proposal
 from bajutsu.ai import (
     AiBackend,
     AnyTool,
@@ -36,7 +36,7 @@ from bajutsu.ai import (
 from bajutsu.ai.prompts import render_elements
 from bajutsu.analytics import usage
 from bajutsu.evidence.redaction import Redactor
-from bajutsu.scenario import Assertion, Step
+from bajutsu.scenario import Assertion, Selector, Step
 
 MODEL = "claude-opus-4-8"
 
@@ -97,7 +97,12 @@ not call it when the elements already determine your action.
 - ask_human(prompt): hand off to a human when the next step needs a value you cannot \
 possibly know in a real run (a one-time password, a verification / 2FA code, a CAPTCHA) \
 or an action only a human can perform. The person authoring supplies it and the recording \
-resumes — you never guess.
+resumes — you never guess. When the value goes into a specific field, ALSO address that \
+field (id/label/value/traits) and propose how a real run supplies it with classify (totp/email/secret) \
+and a short name — the recording keeps only a ${vars.*}/${secrets.*} placeholder, never the \
+literal value. For an action only a human can perform, if a deterministic bridge exists \
+(a test-build flag, or a device-control / device-state primitive), name it via bypass so a \
+real run can wire that instead of the human.
 
 Rules:
 - Usually call ONE tool. You MAY call several action tools in one turn ONLY when each is \
@@ -337,7 +342,14 @@ TOOLS: list[ToolDef] = [
         name="ask_human",
         description="Hand off to a human: the next step needs a value you cannot possibly know in a "
         "real run (a one-time password, a verification / 2FA code, a CAPTCHA answer) or an action "
-        "only a human can perform. Never guess or read such a value off the screen.",
+        "only a human can perform. Never guess or read such a value off the screen. When the value "
+        "goes into a specific field, ALSO address that field (id / label / value / traits) and "
+        "propose how a real run will supply it via `classify`: 'totp' (a code from an authenticator "
+        "seed), 'email' (a code delivered to an inbox), or 'secret' (a fixed secret you declare). "
+        "The human types the value once now; the recording keeps only a placeholder, never the "
+        "literal — so name it with `name` (e.g. 'otp_code'). When the operation has no field to "
+        "fill but a deterministic bridge could stand in for it (a test-build flag, or a "
+        "device-control / device-state primitive), ALSO name that bridge via `bypass`.",
         input_schema={
             "type": "object",
             "properties": {
@@ -345,6 +357,27 @@ TOOLS: list[ToolDef] = [
                     "type": "string",
                     "description": "what the human must supply or do, in one short sentence "
                     "(e.g. 'enter the one-time verification code shown on the device')",
+                },
+                **_TARGET_PROPS,
+                "classify": {
+                    "type": "string",
+                    "enum": list(get_args(HumanValueClass)),
+                    "description": "how a real run should supply this value deterministically — "
+                    "'totp'/'email' produce a ${vars.*} via a run-time step (BE-0046), 'secret' a "
+                    "declared ${secrets.*}. A proposal only; the author confirms and wires it.",
+                },
+                "name": {
+                    "type": "string",
+                    "description": "a short placeholder name for the value (e.g. 'otp_code'), used "
+                    "for the recorded ${vars.*} / ${secrets.*} token; omit to derive one",
+                },
+                "bypass": {
+                    "type": "string",
+                    "description": "for an operation only a human can perform (a CAPTCHA, a biometric "
+                    "prompt) with no field to fill: a deterministic bypass a real run could wire — a "
+                    "test-build flag, or a device-control / device-state primitive (BE-0035 / "
+                    "BE-0052). Recorded as a TODO on the manual marker; omit when none exists (a real "
+                    "CAPTCHA), leaving an honest step that fails loudly at run time.",
                 },
                 **_REASON_PROP,
                 **_PLAN_PROP,
@@ -460,6 +493,16 @@ def _target(args: Any) -> dict[str, Any]:
     return sel
 
 
+def _has_target(args: Any) -> bool:
+    """Whether `args` addresses an element at all — `ask_human` may name no field (BE-0182)."""
+    return bool(
+        args.get("id")
+        or args.get("label") is not None
+        or args.get("value") is not None
+        or args.get("traits")
+    )
+
+
 def _provenance(value: str | None) -> dict[str, str]:
     """`{"from": value}` when there is a phrase to record, else `{}` so empty provenance is omitted (BE-0044)."""
     return {"from": value} if value else {}
@@ -520,8 +563,24 @@ def proposal_from_call(name: str, args: dict[str, Any]) -> Proposal:
         return Proposal(done=True, expect=expect, note=note, plan_step=ps)
     if name == "ask_human":
         # A "needs human" turn (BE-0179): the loop hands off to a human and resumes by re-observing.
+        # When the agent also addresses the field the value goes into (BE-0182), carry the target
+        # selector, its proposed classification, and a placeholder name so the loop can type the
+        # value live and record a deterministic ${vars.*} / ${secrets.*} placeholder step. A handoff
+        # that names no field (a CAPTCHA, a takeover) stays a bare re-observe.
+        field = Selector.model_validate(_target(args)) if _has_target(args) else None
+        raw_classify = args.get("classify")
+        classify: HumanValueClass | None = (
+            raw_classify if raw_classify in get_args(HumanValueClass) else None
+        )
         return Proposal(
-            needs_human=True, human_prompt=args.get("prompt") or note, note=note, plan_step=ps
+            needs_human=True,
+            human_prompt=args.get("prompt") or note,
+            human_field=field,
+            human_classify=classify,
+            human_var=args.get("name") or None,
+            human_bypass=args.get("bypass") or None,
+            note=note,
+            plan_step=ps,
         )
     if name == "need_screenshot":
         # An escalation (BE-0192): on a text-only turn the agent asks to see the screen. The loop
@@ -560,10 +619,17 @@ def _combine(subs: list[Proposal]) -> Proposal:
             # tap on a turn the escalation cannot re-issue (e.g. a screenshot was already attached).
             return Proposal(steps=[], need_screenshot=True, note=note, plan_step=plan_step)
         if sub.needs_human:
+            # Forward the value-handoff details (BE-0182) and the takeover bypass (BE-0185) too —
+            # without them the record loop can never reach the value / takeover branch on the live
+            # path (every real turn goes through _combine).
             return Proposal(
                 steps=steps,
                 needs_human=True,
                 human_prompt=sub.human_prompt,
+                human_field=sub.human_field,
+                human_classify=sub.human_classify,
+                human_var=sub.human_var,
+                human_bypass=sub.human_bypass,
                 note=note,
                 plan_step=plan_step,
             )

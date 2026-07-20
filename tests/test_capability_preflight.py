@@ -501,12 +501,53 @@ def test_select_option_reason_includes_step_index() -> None:
     assert "selectOption" in reasons[0]
 
 
+# --- textSelection capability gating (select / copy; BE-0280) ---
+
+
+_TEXT = _IDB | {base.Capability.TEXT_SELECTION}
+
+
+@pytest.mark.parametrize(
+    "step",
+    [{"select": {"into": {"id": "field"}}}, {"copy": {}}],
+)
+def test_select_and_copy_require_text_selection(step: dict[str, object]) -> None:
+    # select-all / copy actuate only on a backend that can select natively; idb (coordinate-only,
+    # no TEXT_SELECTION) is rejected up front rather than left to fail late mid-run (BE-0280).
+    sc = _sc(steps=[step])
+    reasons = capability_preflight.unsupported(sc, _IDB)
+    assert reasons and any("textSelection" in r for r in reasons)
+    # A backend advertising TEXT_SELECTION runs it without issue.
+    assert capability_preflight.unsupported(sc, _TEXT) == []
+
+
+def test_delete_and_clear_are_not_gated_by_text_selection() -> None:
+    # Every backend actuates delete_text (a run of backspaces), so delete/clear need no token — idb,
+    # which lacks TEXT_SELECTION, still runs them (BE-0280).
+    sc = _sc(
+        steps=[
+            {"delete": {"into": {"id": "field"}, "count": 3}},
+            {"clear": {"into": {"id": "field"}}},
+        ]
+    )
+    assert capability_preflight.unsupported(sc, _IDB) == []
+
+
+def test_select_reason_includes_step_index() -> None:
+    sc = _sc(steps=[{"tap": {"id": "ok"}}, {"select": {"into": {"id": "field"}}}])
+    reasons = capability_preflight.unsupported(sc, _IDB)
+    assert len(reasons) == 1
+    assert reasons[0].startswith("step 2: ")
+    assert "textSelection" in reasons[0]
+
+
 # --- CLI doctor --scenario integration (BE-0024) ---
 
 
 def test_doctor_scenario_check_detects_unsupported_capabilities(tmp_path: Path) -> None:
     # A scenario with pinch on an idb backend (no multiTouch) must surface the unsupported
     # capability. Tests the check_scenarios helper used by the CLI.
+    from bajutsu.backends import capabilities_for
     from bajutsu.cli.commands.doctor import check_scenarios
 
     scn_file = tmp_path / "pinch.yaml"
@@ -514,7 +555,7 @@ def test_doctor_scenario_check_detects_unsupported_capabilities(tmp_path: Path) 
         "- name: pinch test\n  steps:\n    - pinch: { sel: { id: map }, scale: 2.0 }\n",
         encoding="utf-8",
     )
-    reasons = check_scenarios(scn_file, "idb")
+    reasons = check_scenarios(scn_file, capabilities_for("idb"))
     assert len(reasons) == 1
     assert "multiTouch" in reasons[0]
     assert "pinch test" in reasons[0]
@@ -522,6 +563,7 @@ def test_doctor_scenario_check_detects_unsupported_capabilities(tmp_path: Path) 
 
 def test_doctor_scenario_check_no_issue_when_supported(tmp_path: Path) -> None:
     # A plain tap scenario on idb — no unsupported capabilities.
+    from bajutsu.backends import capabilities_for
     from bajutsu.cli.commands.doctor import check_scenarios
 
     scn_file = tmp_path / "tap.yaml"
@@ -529,12 +571,13 @@ def test_doctor_scenario_check_no_issue_when_supported(tmp_path: Path) -> None:
         "- name: tap test\n  steps:\n    - tap: { id: ok }\n",
         encoding="utf-8",
     )
-    reasons = check_scenarios(scn_file, "idb")
+    reasons = check_scenarios(scn_file, capabilities_for("idb"))
     assert reasons == []
 
 
 def test_doctor_scenario_check_multiple_scenarios(tmp_path: Path) -> None:
     # Multiple scenarios: only the one with pinch should produce a reason.
+    from bajutsu.backends import capabilities_for
     from bajutsu.cli.commands.doctor import check_scenarios
 
     scn_file = tmp_path / "mixed.yaml"
@@ -547,18 +590,19 @@ def test_doctor_scenario_check_multiple_scenarios(tmp_path: Path) -> None:
         "    - pinch: { sel: { id: map }, scale: 2.0 }\n",
         encoding="utf-8",
     )
-    reasons = check_scenarios(scn_file, "idb")
+    reasons = check_scenarios(scn_file, capabilities_for("idb"))
     assert len(reasons) == 1
     assert "pinch scenario" in reasons[0]
     assert "ok scenario" not in reasons[0]
 
 
 def test_doctor_scenario_check_missing_file(tmp_path: Path) -> None:
+    from bajutsu.backends import capabilities_for
     from bajutsu.cli.commands.doctor import check_scenarios
 
     # A missing scenario file should raise (not silently skip).
     with pytest.raises(FileNotFoundError):
-        check_scenarios(tmp_path / "missing.yaml", "idb")
+        check_scenarios(tmp_path / "missing.yaml", capabilities_for("idb"))
 
 
 def test_doctor_scenario_flag_rejects_directory(

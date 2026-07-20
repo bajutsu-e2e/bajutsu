@@ -9,10 +9,15 @@ implementation lives in agents/claude.py.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Literal, Protocol
 
 from bajutsu.drivers import base
-from bajutsu.scenario import Assertion, Scenario, Step
+from bajutsu.scenario import Assertion, Scenario, Selector, Step
+
+# How a human-supplied value (BE-0182) is resolved deterministically at run time: a `totp` / `email`
+# step (BE-0046) that produces a `${vars.*}`, or a declared `${secrets.*}`. The agent *proposes* one
+# (authoring, not judging); the author confirms and wires it.
+HumanValueClass = Literal["totp", "email", "secret"]
 
 
 @dataclass
@@ -54,6 +59,23 @@ class Proposal:
     # unresolvable target) belong to the child items; this is only the outcome they raise.
     needs_human: bool = False
     human_prompt: str = ""
+    # The value-handoff specialization of `needs_human` (BE-0182): the agent flags the *field* it
+    # cannot fill (an OTP / verification code it can locate but not know) so the loop can type the
+    # human's value into it live and record a deterministic placeholder step. `human_field` is the
+    # target field; `human_classify` is the source the agent *proposes* for the run-time bridge — a
+    # totp / email step (BE-0046) that produces a `${vars.*}`, or a declared `${secrets.*}` — which
+    # the author confirms and wires (the AI proposes, never judges); `human_var` is the suggested
+    # placeholder name. All None on a bare (fieldless) handoff; on the takeover pattern these three
+    # stay None but `human_bypass` (below) carries the proposed bypass.
+    human_field: Selector | None = None
+    human_classify: HumanValueClass | None = None
+    human_var: str | None = None
+    # The takeover specialization of `needs_human` (BE-0185): a *bypass* the agent proposes for an
+    # operation only a human can perform (a CAPTCHA, a biometric prompt). When set, the recorded
+    # `manual` marker names this deterministic bridge to wire — a test-build flag, a device-control
+    # / device-state primitive (BE-0035 / BE-0052) — so `run` can be made deterministic; None (the
+    # default) leaves an honest, unreproducible marker. A proposal only; the author confirms it.
+    human_bypass: str | None = None
     # A fourth turn outcome (BE-0192): on a text-only turn (no screenshot attached) the agent
     # cannot proceed from the element list alone and asks to see the screen. The record loop
     # re-issues the same observation once with the screenshot attached, rather than acting blind.

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from conftest import FakeBackend, FakeBlock, FakeUsage
 
-from bajutsu.agents.claude import ClaudeAgent, proposal_from_call
+from bajutsu.agents.claude import TOOLS, ClaudeAgent, proposal_from_call
 from bajutsu.agents.protocols import Observation
 from bajutsu.ai.base import (
     AnyTool,
@@ -73,9 +73,119 @@ def test_ask_human_proposal() -> None:
     assert proposal.step is None and proposal.done is False
 
 
+def test_ask_human_value_fields_survive_the_live_combine_path() -> None:
+    # BE-0182: the value-handoff fields must reach `record()` through the live agent path
+    # (next_action → _to_proposal → _combine), not only via a direct proposal_from_call. _combine
+    # must forward human_field/human_classify/human_var, or the record value branch is dead code.
+    agent = ClaudeAgent(
+        backend=FakeBackend(
+            FakeBlock(
+                "ask_human",
+                {
+                    "prompt": "enter the one-time code",
+                    "reason": "an OTP the run cannot know",
+                    "id": "login.otp",
+                    "classify": "totp",
+                    "name": "otp_code",
+                },
+            )
+        )
+    )
+    proposal = agent.next_action(_obs())
+    assert proposal.needs_human is True
+    assert proposal.human_field is not None and proposal.human_field.id == "login.otp"
+    assert proposal.human_classify == "totp"
+    assert proposal.human_var == "otp_code"
+
+
+def test_ask_human_takeover_bypass_survives_the_live_combine_path() -> None:
+    # BE-0185: the takeover bypass must reach `record()` through the live agent path (next_action →
+    # _to_proposal → _combine), or the record loop's bypassable-marker branch is dead code.
+    agent = ClaudeAgent(
+        backend=FakeBackend(
+            FakeBlock(
+                "ask_human",
+                {
+                    "prompt": "approve the Face ID prompt",
+                    "reason": "a biometric prompt only a human can clear",
+                    "bypass": "disable biometrics behind a test flag",
+                },
+            )
+        )
+    )
+    proposal = agent.next_action(_obs())
+    assert proposal.needs_human is True
+    assert proposal.human_bypass == "disable biometrics behind a test flag"
+    assert proposal.human_field is None  # a takeover names no field
+
+
+def test_ask_human_top_level_description_teaches_the_bypass_field() -> None:
+    # BE-0185: the top-level description is where ask_human teaches the paired-field pattern (it
+    # already nudges `classify`/`name` for the value case). Without a parallel nudge for the takeover
+    # case the model rarely populates `bypass`, leaving the takeover-bypass classification effectively
+    # dead through the live-agent path — so the top-level text must name `bypass` too.
+    ask_human = next(tool for tool in TOOLS if tool.name == "ask_human")
+    assert "bypass" in ask_human.description
+
+
+def test_system_prompt_teaches_the_bypass_field() -> None:
+    # BE-0185: `SYSTEM_PROMPT` and `TOOLS` ride the same live request, and the model reads the prose
+    # block first — so the paired-field nudge must live in both. The tool description names `bypass`
+    # (above); the prose bullet must too, or the higher-level guidance the model reads first still
+    # only teaches the value case and `bypass` stays unpopulated.
+    from bajutsu.agents.claude import SYSTEM_PROMPT
+
+    assert "bypass" in SYSTEM_PROMPT
+
+
 def test_ask_human_falls_back_to_reason_when_no_prompt() -> None:
     proposal = proposal_from_call("ask_human", {"reason": "an OTP arrives out-of-band"})
     assert proposal.needs_human is True and proposal.human_prompt == "an OTP arrives out-of-band"
+
+
+def test_ask_human_carries_the_value_field_and_classification() -> None:
+    # BE-0182: when the agent flags the field a value goes into (and proposes how to resolve it), the
+    # proposal carries the target selector, the classification, and a placeholder name so the record
+    # loop can type the value live and record a deterministic placeholder step.
+    proposal = proposal_from_call(
+        "ask_human",
+        {
+            "prompt": "enter the one-time code",
+            "reason": "an OTP the run cannot know",
+            "id": "login.otp",
+            "classify": "totp",
+            "name": "otp_code",
+        },
+    )
+    assert proposal.needs_human is True
+    assert proposal.human_field is not None and proposal.human_field.id == "login.otp"
+    assert proposal.human_classify == "totp"
+    assert proposal.human_var == "otp_code"
+
+
+def test_ask_human_ignores_an_unrecognized_classification() -> None:
+    # BE-0182: classify is a proposal, not a verdict — an out-of-vocabulary value narrows to None so
+    # the record loop emits the neutral "classify and resolve" TODO rather than a bogus one.
+    proposal = proposal_from_call(
+        "ask_human",
+        {
+            "prompt": "enter the code",
+            "reason": "cannot know",
+            "id": "login.otp",
+            "classify": "bogus",
+        },
+    )
+    assert proposal.needs_human is True
+    assert proposal.human_field is not None and proposal.human_field.id == "login.otp"
+    assert proposal.human_classify is None
+
+
+def test_ask_human_without_a_field_stays_a_bare_handoff() -> None:
+    # A handoff that names no field (a CAPTCHA, a takeover) carries no value-field details, so the
+    # loop resumes by re-observing rather than recording a placeholder step (BE-0182).
+    proposal = proposal_from_call("ask_human", {"prompt": "solve the CAPTCHA", "reason": "cannot"})
+    assert proposal.needs_human is True
+    assert proposal.human_field is None and proposal.human_classify is None
 
 
 def test_plan_step_flows_through_proposal() -> None:

@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0236](BE-0236-device-cloud-provider-abstraction.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0236") |
+| Implementing PR | [#1189](https://github.com/bajutsu-e2e/bajutsu/pull/1189) |
 | Topic | Device-cloud execution |
 <!-- /BE-METADATA -->
 
@@ -189,13 +190,37 @@ new stance.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] `DeviceProvider` / `DeviceLease` protocol
-- [ ] Local provider (default, no behaviour change)
-- [ ] Provider registry (`kind`-keyed, fail-closed)
-- [ ] Config surface (`deviceProvider` on `targets.<name>`, lazy resolution)
-- [ ] `RunEnvironment` cloud hooks (boot-wait skip / optional install / capability degradation)
-- [ ] Tests (fake provider)
-- [ ] Docs + scope update (DESIGN §1, README "Not adopting")
+- [x] `DeviceProvider` / `DeviceLease` protocol (`bajutsu/runner/device_provider.py`)
+- [x] Local provider (default, no behaviour change) — the `--udid` string passes through unchanged
+- [x] Provider registry (`kind`-keyed, fail-closed) — mirrors the mailbox registry (BE-0186)
+- [x] Config surface (`deviceProvider` on `targets.<name>`, lazy resolution; unknown kind → runtime error)
+- [x] `RunEnvironment` cloud hooks — boot-wait skip + optional install, via a `ProvisionProfile` on
+  the lease threaded `run` → pool → `environment_for` → `AndroidEnvironment.start` (actual path
+  `bajutsu/platform_lifecycle/`, not the proposal's older `runner/platform_lifecycle.py`)
+- [x] Tests (fake provider) — registry resolution, local default, fail-closed, boot/install skip
+- [x] Docs + scope update (DESIGN.md §1's 「やらないこと」 scope-exclusion list, `docs/` both languages)
+
+> **Deferred within Unit 5 — device-control capability degradation.** The third cloud-difference
+> bullet (a provider declaring a reduced device-control capability set so preflight cuts unsupported
+> actions) is intentionally **not** wired in this seam PR. With only the `local` provider shipped,
+> no code path produces a reduced set, so adding the field now would be untested speculative surface
+> — against the house grain of shipping the seam plus one reference adapter (BE-0186). It lands with
+> the first cloud adapter (**firebase-device-streaming-adapter**), where a real reduced capability
+> set exists to drive and test the preflight cut. The seam is ready for it: `ProvisionProfile` is the
+> natural carrier, and preflight (BE-0082) already consumes a capability set.
+
+> **Scope — `run` only.** `acquire_device` is wired into `bajutsu run`; `record`, `crawl`, and
+> `audit --repeat` still resolve devices the old way. A cloud `kind` on a target those commands
+> drive is therefore ignored there rather than fail-closed. Harmless while only `local` ships (the
+> sibling cloud adapters extend the seam to those commands), but noted so they pick it up.
+
+### Progress log
+
+- Seam + local provider + registry + config surface + boot/install skip hooks, all behind the
+  `local` default so every existing target is byte-for-byte unchanged. Reviewer-driven hardening:
+  the lease releases even on a setup-time error and its `release` is warn-only so a provider teardown
+  can never flip the machine verdict (mirrors the post-verdict zip/upload rule). `make check` green
+  (4414 tests, 92% coverage). PR: [#1189](https://github.com/bajutsu-e2e/bajutsu/pull/1189).
 
 ## References
 

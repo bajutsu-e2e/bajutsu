@@ -13,13 +13,14 @@ from bajutsu.handoff import HandoffRequest, HandoffResponse, HumanHandoffUnavail
 from bajutsu.record import (
     _format_elapsed,
     _is_looping,
+    _placeholder_name,
     _should_attach,
     _summarize_screen,
     _tokenize_secrets,
     execute,
     record,
 )
-from bajutsu.scenario import Assertion, Step, dump_scenarios, load_scenarios
+from bajutsu.scenario import Assertion, Selector, Step, dump_scenarios, load_scenarios
 
 
 class FakeAgent:
@@ -194,12 +195,13 @@ class RecordingHandoff:
 
 
 def test_record_hands_off_on_needs_human_then_resumes() -> None:
-    # A "needs human" turn pauses, hands off, and the loop resumes by re-observing — the human's
-    # turn consumes no recorded step, and the next proposed action is recorded as usual (BE-0179).
+    # A "needs human" turn pauses, hands off, and the loop resumes by re-observing; the next
+    # proposed action is recorded as usual (BE-0179). When the human *operated the device* (acted),
+    # BE-0185 records a `manual` takeover marker for that turn — asserted separately below.
     driver = FakeDriver([_el("go", "Go")])
     agent = FakeAgent(
         [
-            Proposal(needs_human=True, human_prompt="enter the one-time password"),
+            Proposal(needs_human=True, human_prompt="solve the CAPTCHA"),
             Proposal(steps=[Step.model_validate({"tap": {"id": "go"}})]),
             Proposal(done=True),
         ]
@@ -208,14 +210,151 @@ def test_record_hands_off_on_needs_human_then_resumes() -> None:
     scenario = record(driver, "log in", agent, handoff=handoff)
 
     assert len(handoff.requests) == 1
-    assert handoff.requests[0].reason == "enter the one-time password"
+    assert handoff.requests[0].reason == "solve the CAPTCHA"
     assert handoff.requests[0].screen  # the current screen summary travels with the request
     assert [s.tap.id for s in scenario.steps if s.tap is not None] == ["go"]
 
 
-def test_record_resumes_after_a_value_response() -> None:
-    # A value response (the headline case — the human supplies an OTP) also resumes by re-observing;
-    # the substrate deliberately does not itself record the value (a child item decides that).
+def test_record_records_a_manual_takeover_marker_on_acted() -> None:
+    # BE-0185: when the human operates the device for an operation the AI cannot (a CAPTCHA), the
+    # loop records a `manual` marker of the transition — not the raw gesture — with a `from:` TODO.
+    # With no proposed bypass it is unreproducible: honest, and it fails loudly at run time.
+    driver = FakeDriver([_el("captcha", "I'm not a robot")])
+    agent = FakeAgent(
+        [
+            Proposal(needs_human=True, human_prompt="solve the CAPTCHA"),
+            Proposal(done=True),
+        ]
+    )
+    handoff = RecordingHandoff([HandoffResponse(acted=True)])
+    scenario = record(driver, "sign up", agent, handoff=handoff)
+
+    manual = [s for s in scenario.steps if s.manual is not None]
+    assert len(manual) == 1
+    assert manual[0].manual.label == "solve the CAPTCHA"
+    assert manual[0].manual.bypass is None  # unreproducible by default
+    assert manual[0].from_ is not None and "no deterministic" in manual[0].from_.lower()
+    # only the observed marker is recorded — never a raw tap standing in for the human's gesture
+    assert not [s for s in scenario.steps if s.tap is not None]
+
+
+def test_record_marks_a_takeover_bypassable_when_the_agent_proposes_one() -> None:
+    # A bypassable operation (biometrics behind a test flag): the agent proposes a bypass, so the
+    # marker carries it and the TODO points at wiring a deterministic bridge (BE-0035 / BE-0052).
+    driver = FakeDriver([_el("faceid", "Approve with Face ID")])
+    agent = FakeAgent(
+        [
+            Proposal(
+                needs_human=True,
+                human_prompt="approve the Face ID prompt",
+                human_bypass="disable biometrics behind a test flag",
+            ),
+            Proposal(done=True),
+        ]
+    )
+    handoff = RecordingHandoff([HandoffResponse(acted=True)])
+    scenario = record(driver, "unlock", agent, handoff=handoff)
+
+    manual = [s for s in scenario.steps if s.manual is not None]
+    assert len(manual) == 1
+    assert manual[0].manual.bypass == "disable biometrics behind a test flag"
+    assert (
+        manual[0].from_ is not None and "disable biometrics behind a test flag" in manual[0].from_
+    )
+
+
+def test_record_masks_a_secret_in_the_takeover_bypass() -> None:
+    # `human_bypass` is free-form agent-authored prose, so a declared secret literal appearing in it
+    # must be masked before it reaches the recorded `manual.bypass` value and the narration — the
+    # same no-leak guarantee the handoff reason keeps (BE-0120 / BE-0185).
+    driver = FakeDriver([_el("faceid", "Approve with Face ID")])
+    agent = FakeAgent(
+        [
+            Proposal(
+                needs_human=True,
+                human_prompt="approve the Face ID prompt",
+                human_bypass="disable biometrics with token s3cr3t",
+            ),
+            Proposal(done=True),
+        ]
+    )
+    handoff = RecordingHandoff([HandoffResponse(acted=True)])
+    lines: list[str] = []
+    scenario = record(
+        driver,
+        "unlock",
+        agent,
+        handoff=handoff,
+        report=lines.append,
+        secret_tokens=[("s3cr3t", "${secrets.OTP}")],
+    )
+
+    manual = [s for s in scenario.steps if s.manual is not None]
+    assert len(manual) == 1
+    assert manual[0].manual.bypass == "disable biometrics with token ${secrets.OTP}"
+    # neither the recorded bypass nor any narrated line carries the literal
+    assert "s3cr3t" not in (manual[0].manual.bypass or "")
+    assert not any("s3cr3t" in line for line in lines)
+    assert any("${secrets.OTP}" in line for line in lines)
+
+
+def test_record_does_not_record_a_marker_for_a_bare_resume() -> None:
+    # `HandoffResponse.kind` returns "acted" as its no-cancel/no-value default, so a bare/empty
+    # response (the human resumed without operating the device) must NOT fabricate a run-failing
+    # `manual` marker — only an explicit `acted=True` is a takeover. Guards against keying the branch
+    # on `kind` instead of the flag.
+    driver = FakeDriver([_el("go", "Go")])
+    agent = FakeAgent(
+        [
+            Proposal(needs_human=True, human_prompt="have a look"),
+            Proposal(steps=[Step.model_validate({"tap": {"id": "go"}})]),
+            Proposal(done=True),
+        ]
+    )
+    handoff = RecordingHandoff([HandoffResponse()])  # acted=False, no values → a bare resume
+    scenario = record(driver, "browse", agent, handoff=handoff)
+    assert not [s for s in scenario.steps if s.manual is not None]
+    assert [s.tap.id for s in scenario.steps if s.tap is not None] == ["go"]
+
+
+def test_record_does_not_record_a_marker_for_a_fieldless_value_response() -> None:
+    # A value response with no named target field still records no step (unchanged from BE-0182):
+    # only an `acted` response is a takeover; a bare value has nowhere to go and just re-observes.
+    driver = FakeDriver([_el("go", "Go")])
+    agent = FakeAgent(
+        [
+            Proposal(needs_human=True, human_prompt="enter the OTP"),
+            Proposal(steps=[Step.model_validate({"tap": {"id": "go"}})]),
+            Proposal(done=True),
+        ]
+    )
+    handoff = RecordingHandoff([HandoffResponse(values=["999111"])])
+    scenario = record(driver, "log in", agent, handoff=handoff)
+    assert not [s for s in scenario.steps if s.manual is not None]
+
+
+def test_record_does_not_fabricate_a_marker_when_a_value_rides_along_with_acted() -> None:
+    # `values` and `acted` are independent POST-body fields (mutually exclusive only by UI
+    # convention), so a response can carry both. With no named field the value branch cannot fire;
+    # the takeover branch must NOT fire either and silently discard the supplied value — guarding
+    # `acted` on an empty `values` keeps a rode-along value from being lost to a `manual` marker.
+    driver = FakeDriver([_el("go", "Go")])
+    agent = FakeAgent(
+        [
+            Proposal(needs_human=True, human_prompt="enter the OTP"),
+            Proposal(steps=[Step.model_validate({"tap": {"id": "go"}})]),
+            Proposal(done=True),
+        ]
+    )
+    handoff = RecordingHandoff([HandoffResponse(values=["999111"], acted=True)])
+    scenario = record(driver, "log in", agent, handoff=handoff)
+    assert not [s for s in scenario.steps if s.manual is not None]
+
+
+def test_record_resumes_after_a_value_response_without_a_target_field() -> None:
+    # A value response with no named target field records no step and just re-observes: BE-0182
+    # records the value only when the handoff names the field it goes into (below); a fieldless
+    # value has nowhere to be typed, so the loop resumes exactly as the bare substrate did.
     driver = FakeDriver([_el("go", "Go")])
     agent = FakeAgent(
         [
@@ -228,6 +367,290 @@ def test_record_resumes_after_a_value_response() -> None:
     scenario = record(driver, "log in", agent, handoff=handoff)
     assert len(handoff.requests) == 1
     assert [s.tap.id for s in scenario.steps if s.tap is not None] == ["go"]
+    assert not [s for s in scenario.steps if s.type is not None]
+
+
+def test_record_records_a_human_value_into_a_vars_placeholder() -> None:
+    # BE-0182: a value handoff that names its target field records a `type` step whose text is a
+    # ${vars.*} placeholder (never the literal), typed live into the field, with a classified TODO in
+    # `from:` provenance pointing at the deterministic run-time bridge (a totp step, BE-0046).
+    driver = FakeDriver([_el("otp", "One-time code", ["textField"])])
+    agent = FakeAgent(
+        [
+            Proposal(
+                needs_human=True,
+                human_prompt="enter the one-time code",
+                human_field=Selector(id="otp"),
+                human_classify="totp",
+                human_var="otp_code",
+            ),
+            Proposal(done=True),
+        ]
+    )
+    handoff = RecordingHandoff([HandoffResponse(values=["999111"])])
+    scenario = record(driver, "log in", agent, handoff=handoff)
+
+    typed = [s for s in scenario.steps if s.type is not None]
+    assert len(typed) == 1
+    assert typed[0].type.into is not None and typed[0].type.into.id == "otp"
+    assert typed[0].type.text == "${vars.otp_code}"
+    assert typed[0].from_ is not None and "totp" in typed[0].from_ and "BE-0046" in typed[0].from_
+
+    # the real value was typed into the LIVE app so the recording could proceed to the next screen
+    assert ("type", "999111") in driver.actions
+    # the literal never lands in the artifact
+    assert "999111" not in dump_scenarios([scenario])
+    # the request named the target field so the human knows where the value goes
+    assert "otp" in handoff.requests[0].target
+
+
+def test_record_records_a_human_value_into_a_secrets_placeholder() -> None:
+    # A value the agent classifies as a static secret becomes a ${secrets.*} placeholder with a
+    # "declare as a secret" TODO, rather than a ${vars.*} the run-time totp/email bridge produces.
+    driver = FakeDriver([_el("token", "API token", ["textField"])])
+    agent = FakeAgent(
+        [
+            Proposal(
+                needs_human=True,
+                human_prompt="paste the API token",
+                human_field=Selector(id="token"),
+                human_classify="secret",
+                human_var="api_token",
+            ),
+            Proposal(done=True),
+        ]
+    )
+    handoff = RecordingHandoff([HandoffResponse(values=["s3cr3t-value"])])
+    scenario = record(driver, "authorize", agent, handoff=handoff)
+    typed = [s for s in scenario.steps if s.type is not None]
+    assert len(typed) == 1
+    assert typed[0].type.text == "${secrets.api_token}"
+    assert typed[0].from_ is not None and "secret" in typed[0].from_
+    assert "s3cr3t-value" not in dump_scenarios([scenario])
+
+
+def test_record_human_value_is_never_narrated() -> None:
+    # The supplied value is random/secret: it is typed live but must not surface in the progress
+    # stream (the terminal, the serve SSE) any more than in the YAML — BE-0182 reuses BE-0120's
+    # no-leak guarantee, and the recorded placeholder is what the watcher sees instead.
+    driver = FakeDriver([_el("otp", "One-time code", ["textField"])])
+    agent = FakeAgent(
+        [
+            Proposal(
+                needs_human=True,
+                human_prompt="enter the code",
+                human_field=Selector(id="otp"),
+                human_classify="totp",
+                human_var="otp_code",
+            ),
+            Proposal(done=True),
+        ]
+    )
+    handoff = RecordingHandoff([HandoffResponse(values=["424242"])])
+    lines: list[str] = []
+    record(driver, "log in", agent, handoff=handoff, report=lines.append)
+    assert not any("424242" in line for line in lines)
+    assert any("${vars.otp_code}" in line for line in lines)
+
+
+def test_record_secret_human_value_is_never_narrated() -> None:
+    # The no-leak narration guarantee is symmetric: a value classified as a secret is masked in the
+    # progress stream just like a ${vars.*} one (BE-0182).
+    driver = FakeDriver([_el("token", "API token", ["textField"])])
+    agent = FakeAgent(
+        [
+            Proposal(
+                needs_human=True,
+                human_prompt="paste the token",
+                human_field=Selector(id="token"),
+                human_classify="secret",
+                human_var="api_token",
+            ),
+            Proposal(done=True),
+        ]
+    )
+    handoff = RecordingHandoff([HandoffResponse(values=["s3cr3t-value"])])
+    lines: list[str] = []
+    record(driver, "authorize", agent, handoff=handoff, report=lines.append)
+    assert not any("s3cr3t-value" in line for line in lines)
+    assert any("${secrets.api_token}" in line for line in lines)
+
+
+def test_record_human_value_email_classification_points_at_an_email_step() -> None:
+    # An 'email' classification records a ${vars.*} placeholder (the value the email step produces at
+    # run time) with a TODO naming the email bridge, distinct from the totp wording (BE-0182/BE-0046).
+    driver = FakeDriver([_el("otp", "Emailed code", ["textField"])])
+    agent = FakeAgent(
+        [
+            Proposal(
+                needs_human=True,
+                human_prompt="enter the emailed code",
+                human_field=Selector(id="otp"),
+                human_classify="email",
+                human_var="email_code",
+            ),
+            Proposal(done=True),
+        ]
+    )
+    handoff = RecordingHandoff([HandoffResponse(values=["707070"])])
+    scenario = record(driver, "log in", agent, handoff=handoff)
+    typed = [s for s in scenario.steps if s.type is not None]
+    assert typed[0].type.text == "${vars.email_code}"
+    assert typed[0].from_ is not None and "email" in typed[0].from_ and "BE-0046" in typed[0].from_
+
+
+def test_record_human_value_derives_a_placeholder_name_from_the_field() -> None:
+    # When the agent proposes no `name`, the placeholder is derived from the field id, sanitized to
+    # an interpolation-safe token (a dotted id's `.` becomes `_`) — BE-0182.
+    driver = FakeDriver([_el("login.otp", "One-time code", ["textField"])])
+    agent = FakeAgent(
+        [
+            Proposal(
+                needs_human=True,
+                human_prompt="enter the code",
+                human_field=Selector(id="login.otp"),
+                human_classify="totp",
+            ),
+            Proposal(done=True),
+        ]
+    )
+    handoff = RecordingHandoff([HandoffResponse(values=["111222"])])
+    scenario = record(driver, "log in", agent, handoff=handoff)
+    typed = [s for s in scenario.steps if s.type is not None]
+    assert typed[0].type.text == "${vars.login_otp}"
+
+
+def test_record_does_not_record_a_human_value_when_the_field_no_longer_resolves() -> None:
+    # If the named field has vanished (or is ambiguous) by the time the human answers, nothing was
+    # typed and no step is recorded — the loop re-observes rather than record an action that never
+    # ran against the app (BE-0182, prime directive 2).
+    driver = FakeDriver([_el("other", "Something else", ["button"])])
+    agent = FakeAgent(
+        [
+            Proposal(
+                needs_human=True,
+                human_prompt="enter the code",
+                human_field=Selector(id="otp"),
+                human_classify="totp",
+                human_var="otp_code",
+            ),
+            Proposal(done=True),
+        ]
+    )
+    handoff = RecordingHandoff([HandoffResponse(values=["999111"])])
+    scenario = record(driver, "log in", agent, handoff=handoff)
+    assert not [s for s in scenario.steps if s.type is not None]
+    assert ("type", "999111") not in driver.actions
+
+
+def test_record_human_value_preserves_the_scenario_name() -> None:
+    # A value handoff must not clobber the caller-supplied scenario name (regression: the derived
+    # placeholder name is a loop-local, not the outer `name` parameter) — BE-0182.
+    driver = FakeDriver([_el("otp", "One-time code", ["textField"])])
+    agent = FakeAgent(
+        [
+            Proposal(
+                needs_human=True,
+                human_prompt="enter the code",
+                human_field=Selector(id="otp"),
+                human_classify="totp",
+                human_var="otp_code",
+            ),
+            Proposal(done=True),
+        ]
+    )
+    handoff = RecordingHandoff([HandoffResponse(values=["999111"])])
+    scenario = record(driver, "log in", agent, name="my-login", handoff=handoff)
+    assert scenario.name == "my-login"
+
+
+def test_record_disambiguates_repeated_human_value_placeholder_names() -> None:
+    # Two idless, unnamed value handoffs in one recording both derive "human_value"; the second gets
+    # a numeric suffix so the two distinct values don't alias onto one ${vars.*} token (BE-0182).
+    driver = FakeDriver([_noid("Code A"), _noid("Code B")])
+    agent = FakeAgent(
+        [
+            Proposal(
+                needs_human=True,
+                human_prompt="first code",
+                human_field=Selector(label="Code A"),
+                human_classify="totp",
+            ),
+            Proposal(
+                needs_human=True,
+                human_prompt="second code",
+                human_field=Selector(label="Code B"),
+                human_classify="totp",
+            ),
+            Proposal(done=True),
+        ]
+    )
+    handoff = RecordingHandoff([HandoffResponse(values=["111"]), HandoffResponse(values=["222"])])
+    scenario = record(driver, "two codes", agent, handoff=handoff)
+    texts = [s.type.text for s in scenario.steps if s.type is not None]
+    assert texts == ["${vars.human_value}", "${vars.human_value_2}"]
+
+
+def test_record_does_not_consume_a_placeholder_name_on_a_failed_resolve() -> None:
+    # A handoff whose field does not resolve records no step and must not reserve its placeholder
+    # name — so the next handoff deriving the same base name gets the un-suffixed token (BE-0182).
+    driver = FakeDriver([_noid("Present")])
+    agent = FakeAgent(
+        [
+            Proposal(
+                needs_human=True,
+                human_prompt="first",
+                human_field=Selector(label="Missing"),  # not on screen → fails to resolve
+                human_classify="totp",
+            ),
+            Proposal(
+                needs_human=True,
+                human_prompt="second",
+                human_field=Selector(label="Present"),
+                human_classify="totp",
+            ),
+            Proposal(done=True),
+        ]
+    )
+    handoff = RecordingHandoff([HandoffResponse(values=["111"]), HandoffResponse(values=["222"])])
+    scenario = record(driver, "codes", agent, handoff=handoff)
+    texts = [s.type.text for s in scenario.steps if s.type is not None]
+    assert texts == [
+        "${vars.human_value}"
+    ]  # not human_value_2 — the failed handoff reserved nothing
+
+
+def test_record_unclassified_human_value_leaves_a_neutral_todo() -> None:
+    # When the agent proposes no classification, the recorded TODO must not assert a totp step it
+    # never chose — it stays neutral so the author picks the right run-time source (BE-0182).
+    driver = FakeDriver([_el("otp", "One-time code", ["textField"])])
+    agent = FakeAgent(
+        [
+            Proposal(
+                needs_human=True,
+                human_prompt="enter the code",
+                human_field=Selector(id="otp"),
+                human_var="mystery",
+            ),
+            Proposal(done=True),
+        ]
+    )
+    handoff = RecordingHandoff([HandoffResponse(values=["999111"])])
+    scenario = record(driver, "log in", agent, handoff=handoff)
+    typed = [s for s in scenario.steps if s.type is not None]
+    assert typed[0].type.text == "${vars.mystery}"
+    assert typed[0].from_ is not None
+    assert "classify" in typed[0].from_ and "a totp step" not in typed[0].from_
+
+
+def test_placeholder_name_sanitizes_and_falls_back() -> None:
+    # Pure helper: prefer the suggested name, else the field id, else a generic fallback; keep only
+    # identifier-safe characters so the emitted ${vars/secrets.*} token round-trips (BE-0182).
+    assert _placeholder_name("otp_code", None) == "otp_code"
+    assert _placeholder_name("  weird name!! ", None) == "weird_name"
+    assert _placeholder_name(None, Selector(id="login.otp")) == "login_otp"
+    assert _placeholder_name(None, None) == "human_value"
+    assert _placeholder_name("!!!", None) == "human_value"
 
 
 def _noid(label: str) -> base.Element:

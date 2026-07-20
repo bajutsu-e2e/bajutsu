@@ -17,6 +17,7 @@ import re
 from typing import Protocol
 
 from bajutsu.scenario import Assertion, Scenario, Step
+from bajutsu.scenario.models.actions import bypass_hint
 
 # Body lines (launch env, launch, steps, the expect block) sit one level inside the test function;
 # the structural braces (`scenario_open` / `scenario_close`) carry their own indent. Both targets
@@ -30,6 +31,16 @@ _EXPECT_COMMENT = "// expect"
 # either — NSPredicate `MATCHES` and `By.text(Pattern)` are full, differently-anchored matches — so
 # it stays a `// TODO`. Shared here so a third target inherits the same substring/regex split.
 _RE_METACHARS = set(r".^$*+?{}[]\|()")
+
+# Every character that ends a `//` line comment in the generated targets — a lone `\r`, `\n`, a
+# `\r\n`, and the Unicode line/paragraph separators (U+2028 / U+2029) — so agent-authored free text
+# folded into a `// TODO` reason can never spill onto an unprefixed physical line (BE-0185).
+_LINE_TERMINATORS = re.compile(r"[\r\n\u2028\u2029]+")
+
+
+def _collapse_line_terminators(text: str) -> str:
+    """Fold any run of line terminators into a single space so text stays on one `//` comment line."""
+    return _LINE_TERMINATORS.sub(" ", text)
 
 
 def ident(name: str) -> str:
@@ -90,6 +101,29 @@ def network_unsupported(subject: str) -> str:
     `until: { request }` wait; only the named backend differs.
     """
     return f"{subject} has no network interception; assert via a mock/proxy; not generated"
+
+
+def manual_todo(label: str, bypass: str | None) -> str:
+    """The `// TODO` reason for a `manual` human-takeover step (BE-0185), shared by every target.
+
+    Args:
+        label: What the human did (the recorded operation, e.g. "solve the CAPTCHA").
+        bypass: A deterministic bridge to wire (a test-build flag, a device-control / device-state
+            primitive) when one exists, or None for an operation with no run-time equivalent.
+
+    An operation only a human can perform has no generated-test form on any backend, so — like the
+    `setLocation` / `push` device-control TODOs — it renders as a labeled `// TODO` naming what to
+    wire (`bypass`) or that nothing can (a real CAPTCHA), never a silent skip that would fake a pass.
+    """
+    # `label`/`bypass` are agent-authored free text (only secret-masked, never newline-stripped), so
+    # any line terminator embedded in one would break out of the `// TODO` comment into a new,
+    # unprefixed physical line of generated source that CI then compiles. JavaScript ends a `//`
+    # comment at U+2028 / U+2029 too (ECMA-262 `LineTerminator`), while Swift and Kotlin/Java end one
+    # only at LF/CR/CRLF; collapsing all of them in this one shared helper is harmless where a target
+    # is stricter and keeps the whole reason on the comment line, mirroring `uiautomator.py`'s `_s`.
+    safe_label = _collapse_line_terminators(label)
+    safe_bypass = _collapse_line_terminators(bypass) if bypass else None
+    return f"{safe_label} — {bypass_hint(safe_bypass)}; not generated"
 
 
 def permissions_setup_lines(scenario: Scenario) -> list[str]:

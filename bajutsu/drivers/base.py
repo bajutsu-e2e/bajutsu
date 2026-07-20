@@ -54,6 +54,11 @@ class Capability:
     MULTI_TOUCH = "multiTouch"  # two-finger gestures (pinch / rotate); idb is single-touch
     WEBVIEW = "webView"  # DOM query/tap inside an embedded WKWebView (BE-0037)
     SELECT_OPTION = "selectOption"  # set a native <select> by value; web only (BE-0191)
+    # `select`/`copy` on the focused field (BE-0265). A backend that can select and copy natively
+    # advertises this; idb, coordinate-only with no select-all handle, does not and raises
+    # UnsupportedAction — the same actuate-or-raise promise as MULTI_TOUCH (BE-0280). `delete` /
+    # `clear` need no token: every backend actuates `delete_text` (a run of backspaces).
+    TEXT_SELECTION = "textSelection"
     # The `DeviceControl` family, one token per operation (BE-0212, split from the coarse
     # `deviceControl` of BE-0128). A backend advertises exactly the operations it can honor, so
     # preflight gates each device-control step on its own operation — the Android emulator backs
@@ -273,6 +278,16 @@ class UnsupportedAction(Exception):
 
     For example, a multi-touch gesture on idb, which is single-touch. The tool surfaces it as a step
     failure with a clear reason rather than letting it pass silently.
+    """
+
+
+class ManualStepRequired(UnsupportedAction):
+    """A recorded `manual` takeover step has no deterministic run-time equivalent (BE-0185).
+
+    Raised at `run` time so a human-takeover marker (a CAPTCHA, a biometric prompt) fails loudly and
+    visibly with its label rather than a silent pass or a hang — the honest boundary for an operation
+    only a human can perform. A subclass of `UnsupportedAction` so the run loop surfaces it as a
+    clean, labeled step failure like any other action the environment cannot perform.
     """
 
 

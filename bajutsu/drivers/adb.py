@@ -552,6 +552,7 @@ class AdbDriver(CoordinateTreeDriver):
                 base.Capability.ELEMENTS,
                 base.Capability.SCREENSHOT,
                 base.Capability.MULTI_TOUCH,
+                base.Capability.TEXT_SELECTION,
                 base.Capability.DC_SET_LOCATION,
                 base.Capability.DC_CLIPBOARD,
             }

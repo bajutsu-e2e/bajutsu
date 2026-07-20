@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0182](BE-0182-record-human-value-prompt.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0182") |
+| Implementing PR | [#1207](https://github.com/bajutsu-e2e/bajutsu/pull/1207) |
 | Topic | Authoring experience (record / GUI editor) |
 | Related | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md), [BE-0044](../BE-0044-scenario-provenance/BE-0044-scenario-provenance.md), [BE-0046](../BE-0046-otp-email-steps/BE-0046-otp-email-steps.md), [BE-0120](../BE-0120-recorded-scenario-secret-tokenization/BE-0120-recorded-scenario-secret-tokenization.md), [BE-0179](../BE-0179-record-human-handoff/BE-0179-record-human-handoff.md) |
 <!-- /BE-METADATA -->
@@ -98,11 +99,30 @@ to reach the device.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Value-blocker detection (heuristic flag + author mark), never a guessed fill.
-- [ ] Value prompt content over the substrate's request/response contract.
-- [ ] Live type of the supplied value with BE-0120 tokenization/masking of the artifact.
-- [ ] Deterministic-output bridge: `${vars.*}` / `${secrets.*}` placeholder + classified TODO (totp / email / secret).
-- [ ] `from:` provenance (BE-0044) marking the human-value origin.
+- [x] Value-blocker detection (heuristic flag), never a guessed fill.
+- [x] Value prompt content over the substrate's request/response contract.
+- [x] Live type of the supplied value with BE-0120 tokenization/masking of the artifact.
+- [x] Deterministic-output bridge: `${vars.*}` / `${secrets.*}` placeholder + classified TODO (totp / email / secret).
+- [x] `from:` provenance (BE-0044) marking the human-value origin.
+
+Deferred to a follow-up (out of this first slice): the *author mark up front* half of value-blocker
+detection — letting the author declare a field as human-supplied ahead of the flow, distinct from the
+agent-raised heuristic shipped here. It needs a config surface (`targets.<name>`) and mirrors how the
+substrate ([BE-0179](../BE-0179-record-human-handoff/BE-0179-record-human-handoff.md)) deferred its
+author-initiated takeover trigger.
+
+**Log**
+
+- Landed the value pattern on the BE-0179 substrate: the agent's `ask_human` tool now addresses the
+  field a value goes into and proposes a `classify` (`totp` / `email` / `secret`) and placeholder
+  `name` ([`bajutsu/agents/claude.py`](../../bajutsu/agents/claude.py)), carried on `Proposal`
+  ([`bajutsu/agents/protocols.py`](../../bajutsu/agents/protocols.py)). On a value response that names
+  a field, the record loop types the real value into the live app and records a placeholder `type`
+  step — `${vars.*}` (a `totp` / `email` run-time bridge, BE-0046) or `${secrets.*}` (a declared
+  secret), never the literal (BE-0120) — with a classified TODO in its `from:` provenance (BE-0044)
+  ([`bajutsu/record.py`](../../bajutsu/record.py)). A handoff that names no field re-observes as
+  before. Fast-suite tests cover the placeholder shape, the live type, the no-leak guarantee, and the
+  no-field fallback; docs updated in both languages.
 
 ## References
 

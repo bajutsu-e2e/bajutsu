@@ -240,6 +240,7 @@ actions in one step is a validation error (`scenario/models/steps.py` `_one_acti
 | `http` | `http: { method?, url, headers?, body?, status?, saveBody? }` | issue an HTTP request (test-data setup / webhook / API); checks `status`, stores the body as `${vars.<saveBody>}` |
 | `totp` | `totp: { secret, into: { var } }` | generate an RFC 6238 time-based one-time password (2FA) locally into `${vars.<var>}` |
 | `email` | `email: { match: { to?, subject?, subjectMatches? }, extract: { var, bodyMatches }, timeout }` | poll the configured mailbox until a matching message arrives, extract a code into `${vars.<var>}` |
+| `manual` | `manual: { label: "...", bypass?: "..." }` | a human takeover recorded during `record` (BE-0185); has no deterministic run-time equivalent, so it **fails loudly** at `run` time — never a silent pass |
 | `background` | `background: {}` | send the app to the background (Home button) |
 | `foreground` | `foreground: {}` | resume a backgrounded app (`simctl launch`, no settle sleep) |
 | `clearKeychain` | `clearKeychain: {}` | reset the Simulator keychain (saved passwords / certificates) |
@@ -416,6 +417,26 @@ clean step failure — never a silent wrong value. Only mail newer than the step
 on message id, so a stale code from an earlier run is never matched), and among new matches the
 newest wins. Deterministic and LLM-free; the endpoint and credentials live in config-referenced
 `${secrets.*}`, so the scenario stays app-agnostic ([BE-0046](../roadmaps/BE-0046-otp-email-steps/BE-0046-otp-email-steps.md)).
+
+### `manual`
+
+A human takeover recorded during `record`.
+
+```yaml
+- manual: { label: "solve the login CAPTCHA" }                          # no deterministic equivalent (a real CAPTCHA)
+- manual: { label: "grant Face ID", bypass: "device-control biometric match (BE-0052)" }   # names the bridge an author could wire
+```
+
+`record` emits a `manual` step when a blocker is an *operation* the AI cannot perform — a CAPTCHA, a
+biometric prompt, a gesture the agent repeatedly fails to resolve. The human operates the live device
+and hands control back (the `acted` handoff, [recording](recording.md#human-in-the-loop-handoff-be-0179));
+the step records a marker of the observed transition, not the raw gesture. `bypass`, when set, names
+the test-build flag or the device-control / device-state primitive (BE-0035 / BE-0052) an author could
+wire to make the step replayable; omitted, it marks a takeover with no such equivalent (a real CAPTCHA).
+Every codegen target renders it as a labeled `// TODO`. A `manual` step is **never a silent pass**: it
+has no deterministic run-time equivalent, so at `run` time it fails loudly with `ManualStepRequired`,
+surfacing `label` and the bypass hint (directives 1 and 2). Wiring the named `bypass` — then replacing
+the `manual` step with the deterministic action — is the author's path to a replayable scenario ([BE-0185](../roadmaps/BE-0185-record-human-takeover-step/BE-0185-record-human-takeover-step.md)).
 
 ### Device & system control (iOS)
 

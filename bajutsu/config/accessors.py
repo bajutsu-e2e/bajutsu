@@ -79,3 +79,19 @@ def android_package(eff: Effective) -> str:
 def idb_version_pin(eff: Effective) -> str | None:
     """The iOS target's declared idb version range (`defaults.idbVersion`), or None when unpinned."""
     return eff.platform_config.idb_version if isinstance(eff.platform_config, IosConfig) else None
+
+
+def xcuitest_targets_real_device(eff: Effective) -> bool:
+    """True when the target drives a real iOS device via XCUITest (`xcuitest.deviceType: device`).
+
+    The Simulator default — and every non-iOS target — is False. Consulted by the capability
+    narrowing that drops the simctl-backed DeviceControl / permission tokens on a real device
+    (BE-0238): simctl reaches only the Simulator, so those capabilities do not apply on a physical
+    device.
+    """
+    cfg = eff.platform_config
+    return (
+        isinstance(cfg, IosConfig)
+        and cfg.xcuitest is not None
+        and cfg.xcuitest.device_type == "device"
+    )

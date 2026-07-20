@@ -90,7 +90,6 @@
 |---|---|---|
 | [BE-0008](BE-0008-flutter-support/BE-0008-flutter-support-ja.md) | Flutter 対応 | 提案 |
 | [BE-0281](BE-0281-ios-on-device-actuation-coverage/BE-0281-ios-on-device-actuation-coverage-ja.md) | iOS CI に実機で操作するテストを加える | 提案 |
-| [BE-0287](BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience-ja.md) | 多点タッチ操作下での XCUITest runner チャネルの耐障害性 | 提案 |
 <!-- /GENERATED:proposals-platform -->
 
 ### ドライバとバックエンドのアーキテクチャ
@@ -98,7 +97,6 @@
 <!-- GENERATED:proposals-driver-architecture -->
 | ID | 項目 | 状態 |
 |---|---|---|
-| [BE-0280](BE-0280-conformance-unactuated-verbs/BE-0280-conformance-unactuated-verbs-ja.md) | 全バックエンド共通のテストを、アクチュエートされていない Driver 操作へ広げる | 提案 |
 <!-- /GENERATED:proposals-driver-architecture -->
 
 ### デバイスクラウド実行
@@ -108,9 +106,7 @@
 <!-- GENERATED:proposals-device-cloud -->
 | ID | 項目 | 状態 |
 |---|---|---|
-| [BE-0236](BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction-ja.md) | Device-cloud provider abstraction | 提案 |
 | [BE-0237](BE-0237-firebase-device-streaming-adapter/BE-0237-firebase-device-streaming-adapter-ja.md) | Firebase Test Lab / Device Streaming adapter | 提案 |
-| [BE-0238](BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution-ja.md) | iOS device-cloud execution | 提案 |
 <!-- /GENERATED:proposals-device-cloud -->
 
 ### シナリオ記述機能
@@ -130,8 +126,6 @@
 <!-- GENERATED:proposals-authoring -->
 | ID | 項目 | 状態 |
 |---|---|---|
-| [BE-0182](BE-0182-record-human-value-prompt/BE-0182-record-human-value-prompt-ja.md) | record 中の人による値入力（OTP・ランダム値・一度きりの値） | 提案 |
-| [BE-0185](BE-0185-record-human-takeover-step/BE-0185-record-human-takeover-step-ja.md) | record 中の人による操作の引き取り（CAPTCHA・生体認証・解決できないジェスチャ） | 提案 |
 <!-- /GENERATED:proposals-authoring -->
 
 ### serve Web UI への CLI 機能の取り込み

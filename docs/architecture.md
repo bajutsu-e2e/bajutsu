@@ -100,7 +100,7 @@ The `bajutsu/` package (Python 3.13+, pydantic v2 / typer / anthropic / pyyaml /
 | `preflight.py` | Runnability gate, per backend (iOS: required CLIs + a booted Simulator; web: Playwright + its Chromium browser) | [configuration](configuration.md) |
 | `requirements.py` | One declarative mapping: backend/capability → pip extra + external-tool probe + install method (BE-0164), shared by `preflight` and `provision` | — |
 | `provision.py` | Config-aware environment installer (BE-0164): resolve a config's backends + AI provider, install only their extras/tools idempotently (`make install`) | — |
-| `runner/` | config + scenarios → report; device pool + launch sequence (package: `pipeline` / `pool` / `launch`) | [run-loop](run-loop.md#runner-the-run-pipeline) |
+| `runner/` | config + scenarios → report; device pool + launch sequence; `device_provider` seam resolves where the run's devices come from — a local pass-through today, cloud adapters later (package: `pipeline` / `pool` / `launch` / `device_provider`) | [run-loop](run-loop.md#runner-the-run-pipeline) |
 | `doctor.py` | Convention score (id coverage, etc.) | [configuration](configuration.md#doctor-the-convention-score) |
 | `agents/` | AI / authoring-agent periphery (BE-0257): `protocols` + `factory` (the `Observation`/`Proposal`/`Agent` abstraction + construction of the one SDK-backed agent), `claude` (the authoring agent), `claude_backed` (shared base, BE-0246), `claude_enrich`, `claude_triage`, `ai_config` (provider/model/effort/language resolution), `anthropic_client` (SDK client construction), `availability` (credential-gap messaging), `enrich` (the enrichment loop), `alerts` (system-alert guard) | [recording](recording.md) |
 | `ai/` | Vendor-neutral AI backend seam (BE-0104): `AiBackend` protocol + normalized request/response types (`base`), provider registry (`registry`), Anthropic reference adapter over `agents.anthropic_client` (`anthropic`) — the Anthropic API, Amazon Bedrock, and the Anthropic CLI `ant` (BE-0163) | [configuration](configuration.md#ai-provider-ai-be-0047) |
@@ -271,8 +271,12 @@ The contract (`tests/driver_conformance.py`) is the "done" definition a new back
 - a zero-match selector fails rather than reporting success;
 - selector failures share one error type (`SelectorError`), uniform across backends;
 - a unique match acts without error, and `query()` reports the on-screen elements;
-- `capabilities()` matches observed behavior — the `QUERY` / `ELEMENTS` baseline is declared, and
-  multi-touch gestures work exactly when `MULTI_TOUCH` is declared (else raise `UnsupportedAction`);
+- `capabilities()` matches observed behavior — the `QUERY` / `ELEMENTS` baseline is declared,
+  multi-touch gestures work exactly when `MULTI_TOUCH` is declared, and select-all / clipboard copy
+  work exactly when `TEXT_SELECTION` is declared (else each raises `UnsupportedAction`, BE-0280);
+- text editing round-trips on the focused field (typing then deleting reduces its reported length),
+  and `tap_point` — a raw coordinate tap, the alert-dismissal path — focuses the field when aimed at
+  its center, the same observable effect as a semantic tap (BE-0280);
 - `wait_for` is a single-shot check of the current screen, with the shared `wait_until` loop
   turning it into a condition wait with no fixed sleep.
 

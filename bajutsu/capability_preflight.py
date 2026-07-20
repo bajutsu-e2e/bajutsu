@@ -14,6 +14,11 @@ The map gates only the **true hard requirements** the capability set cleanly dec
 - `selectOption` needs `selectOption` (BE-0191): a web-only action that sets a native `<select>`;
   iOS / Android backends raise `UnsupportedAction`, so a scenario with this step is rejected before
   any device work on those platforms, exactly like `pinch`/`rotate` on idb.
+- `select` / `copy` need `textSelection` (BE-0280): select-all + clipboard copy on the focused
+  field. idb is coordinate-only with no select-all handle, so it raises `UnsupportedAction` and does
+  not advertise the token — a scenario selecting or copying is rejected up front on idb, exactly
+  like `selectOption`. `delete` / `clear` are not gated: they actuate `delete_text` (a run of
+  backspaces), which every backend backs.
 - a `visual` assertion needs `screenshot`.
 - a device-control step needs the capability token for its own operation (BE-0212 split the coarse
   `deviceControl` of BE-0128 into per-operation tokens): `setLocation` needs
@@ -103,6 +108,19 @@ def _select_option_locations(sc: Scenario) -> list[str]:
     return [path for path, step in _walk_steps(sc.steps) if step.select_option is not None]
 
 
+def _text_selection_locations(sc: Scenario) -> list[str]:
+    """The paths where a `select` or `copy` step appears (BE-0280).
+
+    `delete` / `clear` are excluded: they actuate `delete_text`, which every backend backs, so they
+    need no capability. Only select-all / copy have no idb actuation.
+    """
+    return [
+        path
+        for path, step in _walk_steps(sc.steps)
+        if step.select is not None or step.copy_ is not None
+    ]
+
+
 def _visual_locations(sc: Scenario) -> list[str]:
     """The paths where a visual assertion appears."""
     return [path for path, a in _assertions_with_path(sc) if a.visual is not None]
@@ -159,6 +177,11 @@ _REQUIREMENTS = (
         base.Capability.SELECT_OPTION,
         "selectOption (web <select> switch; not supported on iOS / Android)",
         _select_option_locations,
+    ),
+    _Requirement(
+        base.Capability.TEXT_SELECTION,
+        "select / copy (select-all + clipboard copy; not supported on idb)",
+        _text_selection_locations,
     ),
     _Requirement(
         base.Capability.SCREENSHOT,

@@ -1,21 +1,23 @@
 #!/usr/bin/env python3
-"""AWS Device Farm batch submitter (BE-0235).
+"""AWS Device Farm batch submitter (BE-0235; iOS support BE-0238).
 
 Device Farm is a *batch* device cloud: it does not lend a device to drive over the network — it runs
-*your* commands on a host that already has `adb` connected to the reserved device. So this is not a
-runtime provider (there is no device to acquire); it is CI-side glue that ferries Bajutsu to the
-Device Farm host and back. Bajutsu runs *inside* Device Farm exactly as it does anywhere — the same
-deterministic core, the same pass/fail from machine-checkable assertions — so the verdict this tool
-surfaces comes from **Bajutsu's own manifest**, never from Device Farm's run classification.
+*your* commands on a host that already has the reserved device connected (over `adb` on Android, over
+the Xcode toolchain on iOS). So this is not a runtime provider (there is no device to acquire); it is
+CI-side glue that ferries Bajutsu to the Device Farm host and back. Bajutsu runs *inside* Device Farm
+exactly as it does anywhere — the same deterministic core, the same pass/fail from machine-checkable
+assertions — so the verdict this tool surfaces comes from **Bajutsu's own manifest**, never from
+Device Farm's run classification.
 
 The flow, all outside the deterministic `run`/CI verdict path:
 
-1. `render_test_spec` — the custom-environment test spec that installs deps, runs
-   `bajutsu run --backend adb <scenarios>`, and copies `runs/` into ``$DEVICEFARM_LOG_DIR`` so the
-   artifacts come back.
+1. `render_test_spec` — the custom-environment test spec that installs deps, runs `bajutsu run`
+   (the adb backend on Android, the XCUITest backend on iOS) for each scenario, and copies `runs/`
+   into ``$DEVICEFARM_LOG_DIR`` so the artifacts come back.
 2. `build_package` — bundle the Bajutsu payload (source/wheel + config + scenarios) for upload.
-3. `submit_and_collect` — upload the app APK, the test package, and the spec; schedule the run; poll
-   it to completion; download the artifacts; and derive the verdict via `verdict_from_manifest`.
+3. `submit_and_collect` — upload the app artifact (an Android `.apk` or an iOS `.ipa`), the test
+   package, and the spec; schedule the run; poll it to completion; download the artifacts; and derive
+   the verdict via `verdict_from_manifest`.
 
 The AWS SDK (boto3) is imported lazily and reached only through the `DeviceFarmClient` / `Transfer`
 seams, so this module imports without the ``aws`` extra and its logic is unit-tested against an
@@ -35,7 +37,7 @@ import zipfile
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Protocol, cast
+from typing import Any, Literal, Protocol, cast
 
 import yaml
 
@@ -44,11 +46,41 @@ import yaml
 _HARD_CAP_SECONDS = 150 * 60
 _POLL_INTERVAL_SECONDS = 30
 
-# boto3 Device Farm upload types. The app is an Android APK (`.aab` is not accepted); the test
-# package and spec use the Appium-Python custom-environment types.
-_UPLOAD_APP = "ANDROID_APP"
+Platform = Literal["android", "ios"]
+
+# boto3 Device Farm upload types. The test package and spec use the Appium-Python
+# custom-environment types on both platforms; only the app artifact differs — an Android APK
+# (`.aab` is not accepted) or an iOS `.ipa`. Keying by `Platform` lets `mypy --strict` catch a
+# missing or misspelt platform key here rather than silently widening to `dict[str, str]`.
+_APP_UPLOAD_TYPE: dict[Platform, str] = {"android": "ANDROID_APP", "ios": "IOS_APP"}
 _UPLOAD_TEST_PACKAGE = "APPIUM_PYTHON_TEST_PACKAGE"
 _UPLOAD_TEST_SPEC = "APPIUM_PYTHON_TEST_SPEC"
+
+
+@dataclass(frozen=True)
+class _PlatformRun:
+    """How the Device Farm host reaches the reserved device for one platform.
+
+    `backend` is Bajutsu's ``--backend``; `udid` is the shell-ready ``--udid`` argument spliced into
+    the run command (a fixed alias, or an environment reference the host expands); `probe` runs in
+    `pre_test` to prove the reserved device is visible before the run.
+    """
+
+    backend: str
+    udid: str
+    probe: str
+
+
+# Android resolves the single connected device through adb's `booted` alias; iOS has no such alias,
+# so the XCUITest backend takes the reserved device's UDID that Device Farm exposes as
+# $DEVICEFARM_DEVICE_UDID (double-quoted so the host expands it, and validated by the backend at run
+# time). The probe is the platform's "is the device visible" check (the serial-resolution PoC).
+_PLATFORM_RUN: dict[Platform, _PlatformRun] = {
+    "android": _PlatformRun(backend="adb", udid="booted", probe="adb devices"),
+    "ios": _PlatformRun(
+        backend="xcuitest", udid='"$DEVICEFARM_DEVICE_UDID"', probe="xcrun xctrace list devices"
+    ),
+}
 
 # Noise directories to keep out of the upload. `--package .=.` walks the whole checked-out
 # repo root, which already holds `.git/` and the `uv`-created `.venv/` plus build/test caches and
@@ -138,19 +170,23 @@ def render_test_spec(
     *,
     target: str,
     config: str,
+    platform: Platform = "android",
     python_version: str = "3.13",
 ) -> str:
-    """Render a Device Farm custom-environment test spec that runs the given scenarios over adb.
+    """Render a Device Farm custom-environment test spec that runs the given scenarios.
 
-    The `test` phase runs one `bajutsu run --backend adb` per scenario against the host's reserved
-    device (serial ``booted``), so a scenario that fails still leaves a manifest for the others; the
-    `post_test` phase copies the whole ``runs/`` tree into ``$DEVICEFARM_LOG_DIR`` so `list_artifacts`
-    can return it.
+    The `test` phase runs one `bajutsu run` per scenario against the host's reserved device — over
+    the adb backend on Android (serial ``booted``) or the XCUITest backend on iOS (the
+    ``$DEVICEFARM_DEVICE_UDID`` the host exposes) — so a scenario that fails still leaves a manifest
+    for the others; the `post_test` phase copies the whole ``runs/`` tree into ``$DEVICEFARM_LOG_DIR``
+    so `list_artifacts` can return it.
 
     Args:
         scenarios: Scenario file paths as they appear inside the unpacked test package.
         target: The `targets.<name>` config entry the scenarios run against.
         config: The Bajutsu config path inside the unpacked test package.
+        platform: Which reserved-device platform to target (`_PLATFORM_RUN` picks the backend, the
+            ``--udid`` argument, and the visibility probe).
         python_version: The Python uv provisions for the run (see `_python_bootstrap_commands`).
 
     Raises:
@@ -158,13 +194,16 @@ def render_test_spec(
     """
     if not scenarios:
         raise ValueError("cannot render a test spec with no scenario to run")
+    run = _PLATFORM_RUN[platform]
     # `target`, `config`, and each scenario path trace back to workflow_dispatch text inputs, so
     # quote every splice: an unescaped space or shell metacharacter would otherwise break argument
     # parsing or inject a command onto the Device Farm host running under the OIDC-minted AWS role.
+    # `run.backend` / `run.udid` are fixed, code-controlled tokens (not user input), so they are not
+    # quoted — the iOS `udid` intentionally carries the shell reference the host must expand.
     run_cmds = [
         f"{_BAJUTSU} run"
         f" --scenario {shlex.quote(s)} --target {shlex.quote(target)}"
-        f" --config {shlex.quote(config)} --backend adb --udid booted"
+        f" --config {shlex.quote(config)} --backend {run.backend} --udid {run.udid}"
         for s in scenarios
     ]
     spec: dict[str, Any] = {
@@ -174,7 +213,7 @@ def render_test_spec(
             "pre_test": {
                 "commands": [
                     # Prove the reserved device is visible before running (the serial-resolution PoC).
-                    "adb devices",
+                    run.probe,
                 ]
             },
             "test": {"commands": run_cmds},
@@ -387,19 +426,24 @@ def submit_and_collect(
     *,
     project_arn: str,
     device_pool_arn: str,
-    app_apk: Path,
+    app_path: Path,
     package_zip: Path,
     spec_yaml: Path,
     dest: Path,
+    app_upload_type: str = _APP_UPLOAD_TYPE["android"],
     run_name: str = "bajutsu",
     sleep: Callable[[float], None] = time.sleep,
 ) -> Verdict:
     """Upload the payload, schedule the run, wait for it, download artifacts, and return the verdict.
 
-    Uploads the app APK, the test package, and the test spec (each a create-upload + presigned PUT +
-    poll), schedules a run wiring the three together, waits for completion, downloads the customer
-    artifacts into `dest`, and derives the verdict from the returned ``manifest.json`` tree — always
-    Bajutsu's verdict, never Device Farm's classification.
+    Uploads the app artifact, the test package, and the test spec (each a create-upload + presigned
+    PUT + poll), schedules a run wiring the three together, waits for completion, downloads the
+    customer artifacts into `dest`, and derives the verdict from the returned ``manifest.json`` tree —
+    always Bajutsu's verdict, never Device Farm's classification.
+
+    Args:
+        app_upload_type: The Device Farm upload type for the app artifact (``ANDROID_APP`` for an
+            `.apk`, ``IOS_APP`` for an `.ipa`) — Device Farm rejects a mismatched artifact.
 
     Raises:
         DeviceFarmError: If any upload fails or the run does not complete within the hard cap.
@@ -408,9 +452,9 @@ def submit_and_collect(
         client,
         transfer,
         project_arn=project_arn,
-        name=app_apk.name,
-        upload_type=_UPLOAD_APP,
-        path=app_apk,
+        name=app_path.name,
+        upload_type=app_upload_type,
+        path=app_path,
         sleep=sleep,
     )
     package_arn = _upload_one(
@@ -489,7 +533,7 @@ def _devicefarm_client() -> DeviceFarmClient:
 def main(argv: Sequence[str] | None = None) -> int:
     """Package the payload and, unless ``--package-only``, submit it and print Bajutsu's verdict."""
     parser = argparse.ArgumentParser(
-        description="Submit Bajutsu Android scenarios to AWS Device Farm."
+        description="Submit Bajutsu scenarios (Android or iOS) to AWS Device Farm."
     )
     parser.add_argument(
         "--scenario",
@@ -500,7 +544,20 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument("--target", required=True, help="targets.<name> config entry")
     parser.add_argument("--config", required=True, help="Bajutsu config path inside the package")
-    parser.add_argument("--app-apk", type=Path, required=True, help="the Android APK to install")
+    parser.add_argument(
+        "--platform",
+        choices=["android", "ios"],
+        default="android",
+        help="reserved-device platform (selects the backend, --udid, and app upload type)",
+    )
+    parser.add_argument(
+        "--app",
+        "--app-apk",
+        dest="app",
+        type=Path,
+        required=True,
+        help="the app artifact to install (Android .apk or iOS .ipa)",
+    )
     parser.add_argument(
         "--package",
         required=True,
@@ -537,7 +594,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     spec = render_test_spec(
-        args.scenarios, target=args.target, config=args.config, python_version=args.python_version
+        args.scenarios,
+        target=args.target,
+        config=args.config,
+        platform=args.platform,
+        python_version=args.python_version,
     )
     spec_path = args.out.parent / "testspec.yml"
     spec_path.parent.mkdir(parents=True, exist_ok=True)
@@ -560,10 +621,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         _HttpTransfer(),
         project_arn=args.project_arn,
         device_pool_arn=args.device_pool_arn,
-        app_apk=args.app_apk,
+        app_path=args.app,
         package_zip=args.out,
         spec_yaml=spec_path,
         dest=args.dest,
+        app_upload_type=_APP_UPLOAD_TYPE[args.platform],
     )
     print(f"bajutsu verdict: {'PASS' if verdict.ok else 'FAIL'} ({verdict.passed}/{verdict.total})")
     if verdict.failures:

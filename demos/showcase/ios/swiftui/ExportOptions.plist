@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Export options for the device .ipa (BE-0238 batch route), consumed by `xcodebuild -exportArchive`
+     from the `swiftui-ipa-device` target in ../../Makefile. A development export is enough because AWS
+     Device Farm re-signs the upload with its own provisioning profile. __DEVELOPMENT_TEAM__ is a
+     placeholder the Makefile substitutes from $(DEVELOPMENT_TEAM), so no Team ID is committed; with
+     automatic signing, `-allowProvisioningUpdates` mints the development profile. -->
+<plist version="1.0">
+<dict>
+  <key>method</key>
+  <string>development</string>
+  <key>signingStyle</key>
+  <string>automatic</string>
+  <key>teamID</key>
+  <string>__DEVELOPMENT_TEAM__</string>
+  <key>destination</key>
+  <string>export</string>
+  <key>stripSwiftSymbols</key>
+  <true/>
+</dict>
+</plist>

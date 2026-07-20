@@ -33,6 +33,16 @@ final class HTTPServer {
     private var listenFD: Int32 = -1
     private let lock = NSLock()
     private let queue = DispatchQueue(label: "bajutsu.runner.http")
+    // Each accepted connection is handled here so the accept loop can return to
+    // accept() at once. A long main-thread-bound gesture (BE-0287) must not wedge
+    // the whole server: /health touches no shared state, so it has to stay
+    // answerable while the gesture holds the main thread — that is what lets the
+    // driver tell "runner busy" from "runner dead".
+    private let connections = DispatchQueue(label: "bajutsu.runner.http.conn", attributes: .concurrent)
+    // Driver calls are sequential and health polls are sporadic, so the realistic
+    // peak is well under 8 simultaneous handlers; cap at 8 to bound concurrent
+    // handler execution if polls pile up during a long gesture.
+    private let connectionSemaphore = DispatchSemaphore(value: 8)
     private(set) var port: UInt16 = 0
 
     init(handler: @escaping RequestHandler) {
@@ -63,7 +73,10 @@ final class HTTPServer {
             throw ServerError.bindFailed(errno)
         }
 
-        guard listen(fd, 1) == 0 else {
+        // Backlog of 1 was too small: a burst of driver + health-poll connections
+        // arriving while the accept loop was busy could exhaust it and refuse a
+        // poll outright (BE-0287). Give the kernel room to queue them.
+        guard listen(fd, 16) == 0 else {
             close(fd)
             throw ServerError.listenFailed(errno)
         }
@@ -104,8 +117,13 @@ final class HTTPServer {
                 }
             }
             guard clientFD >= 0 else { break }
-            handleConnection(clientFD)
-            close(clientFD)
+            connections.async { [weak self] in
+                guard let self else { close(clientFD); return }
+                connectionSemaphore.wait()
+                defer { connectionSemaphore.signal() }
+                handleConnection(clientFD)
+                close(clientFD)
+            }
         }
     }
 

@@ -15,6 +15,7 @@ from bajutsu.config import (
     load_config,
     parse_config_dict,
     resolve,
+    xcuitest_targets_real_device,
 )
 
 
@@ -334,6 +335,48 @@ def test_web_app_device_mode_config_resolves() -> None:
     assert _web(resolve(cfg, "web")).device_mode == "iPhone 13"
 
 
+def test_device_provider_defaults_to_none() -> None:
+    # No deviceProvider = the built-in local device path; Effective carries None so acquire_device
+    # falls back to the `local` provider (BE-0236), leaving every existing target unchanged.
+    cfg = load_config("targets: { app: { bundleId: com.example.app } }")
+    assert resolve(cfg, "app").device_provider is None
+
+
+def test_device_provider_config_resolves() -> None:
+    # A target selects a device provider by `kind`; it resolves straight onto Effective (a per-target
+    # knob, like mailbox). The kind is validated against the registry at runtime, not config load, so
+    # the deterministic core never imports a cloud SDK (BE-0236 / BE-0112).
+    cfg = load_config(
+        "targets: { app: { bundleId: com.example.app, deviceProvider: {kind: firebase-streaming} } }"
+    )
+    provider = resolve(cfg, "app").device_provider
+    assert provider is not None
+    assert provider.kind == "firebase-streaming"
+
+
+def test_device_provider_kind_defaults_to_local() -> None:
+    # A deviceProvider block with no `kind` means the explicit local provider — the same default the
+    # schema carries, so writing the block without a kind is a no-op over omitting it entirely.
+    cfg = load_config("targets: { app: { bundleId: com.example.app, deviceProvider: {} } }")
+    provider = resolve(cfg, "app").device_provider
+    assert provider is not None
+    assert provider.kind == "local"
+
+
+def test_appium_provider_endpoint_round_trips_through_config() -> None:
+    # The `endpoint` field on `deviceProvider` must survive the YAML → `load_config` → `resolve`
+    # path; a field-name or alias mismatch in `_Model` (which sets `extra="forbid"`) would only
+    # surface here, not in the direct-construction tests in `test_device_provider.py`.
+    cfg = load_config(
+        "targets: { app: { bundleId: com.example.app,"
+        " deviceProvider: { kind: appium, endpoint: 'http://grid.local:4723' } } }"
+    )
+    provider = resolve(cfg, "app").device_provider
+    assert provider is not None
+    assert provider.kind == "appium"
+    assert provider.endpoint == "http://grid.local:4723"
+
+
 def test_web_app_launch_server_parsed() -> None:
     # `launchServer` declares how to bring up baseUrl's host for a run; readyUrl defaults to None
     # (run falls back to baseUrl), readyTimeout to 30s.
@@ -504,6 +547,21 @@ def test_rebased_resolves_xcuitest_test_runner() -> None:
     xcuitest = _ios(rebased).xcuitest
     assert xcuitest is not None
     assert xcuitest.test_runner == "/co/build/Runner.xctestrun"
+
+
+def test_rebased_preserves_xcuitest_device_type() -> None:
+    # Rebasing reconstructs XcuitestConfig to rewrite path fields; deviceType must survive it, or a
+    # `device` target would silently fall back to the Simulator in a checkout/upload run (BE-0238).
+    eff = resolve(
+        load_config(
+            "targets:\n  x:\n    bundleId: com.x\n    xcuitest:\n"
+            "      testRunner: build/Runner.xctestrun\n      deviceType: device\n"
+        ),
+        "x",
+    )
+    xcuitest = _ios(eff.rebased(Path("/co"))).xcuitest
+    assert xcuitest is not None
+    assert xcuitest.device_type == "device"
 
 
 def test_rebased_refuses_a_path_field_escaping_the_checkout() -> None:
@@ -714,6 +772,67 @@ def test_xcuitest_config_resolves() -> None:
 def test_xcuitest_config_defaults_to_none() -> None:
     cfg = load_config("targets:\n  s:\n    bundleId: com.x\n")
     assert _ios(resolve(cfg, "s")).xcuitest is None
+
+
+def test_xcuitest_device_type_defaults_to_simulator() -> None:
+    # An omitted deviceType keeps the pre-BE-0238 behaviour: drive the Simulator (BE-0019).
+    cfg = load_config(
+        "targets:\n  s:\n    bundleId: com.x\n    xcuitest:\n"
+        "      testRunner: build/Runner.xctestrun\n"
+    )
+    xcuitest = _ios(resolve(cfg, "s")).xcuitest
+    assert xcuitest is not None
+    assert xcuitest.device_type == "simulator"
+
+
+def test_xcuitest_device_type_resolves_device() -> None:
+    cfg = load_config(
+        "targets:\n  s:\n    bundleId: com.x\n    xcuitest:\n"
+        "      testRunner: build/Runner.xctestrun\n      deviceType: device\n"
+    )
+    xcuitest = _ios(resolve(cfg, "s")).xcuitest
+    assert xcuitest is not None
+    assert xcuitest.device_type == "device"
+
+
+def test_xcuitest_device_type_invalid_rejected() -> None:
+    with pytest.raises(ValidationError):
+        load_config(
+            "targets:\n  s:\n    bundleId: com.x\n    xcuitest:\n"
+            "      testRunner: build/Runner.xctestrun\n      deviceType: physical\n"
+        )
+
+
+# --- BE-0238: the real-device accessor backing the capability narrowing (Unit 3) --- #
+
+
+def test_xcuitest_targets_real_device_true_for_device() -> None:
+    # `xcuitest.deviceType: device` is the one shape that drives a physical device — the accessor the
+    # Unit 3 capability narrowing consults to drop the simctl-backed DeviceControl / permission tokens.
+    cfg = load_config(
+        "targets:\n  s:\n    bundleId: com.x\n    xcuitest:\n      deviceType: device\n"
+    )
+    assert xcuitest_targets_real_device(resolve(cfg, "s")) is True
+
+
+def test_xcuitest_targets_real_device_false_for_simulator() -> None:
+    cfg = load_config(
+        "targets:\n  s:\n    bundleId: com.x\n    xcuitest:\n      deviceType: simulator\n"
+    )
+    assert xcuitest_targets_real_device(resolve(cfg, "s")) is False
+
+
+def test_xcuitest_targets_real_device_false_when_xcuitest_omitted() -> None:
+    # An iOS target with no xcuitest block keeps the Simulator default (BE-0019), so it is not a real
+    # device — the accessor must not raise on the missing block.
+    cfg = load_config("targets:\n  s:\n    bundleId: com.x\n")
+    assert xcuitest_targets_real_device(resolve(cfg, "s")) is False
+
+
+def test_xcuitest_targets_real_device_false_for_non_ios_target() -> None:
+    # deviceType is iOS-only; an Android target can never target a real iOS device through XCUITest.
+    cfg = load_config("targets:\n  s:\n    package: com.example.app\n")
+    assert xcuitest_targets_real_device(resolve(cfg, "s")) is False
 
 
 # --- BE-0024: configurable doctor thresholds ---
