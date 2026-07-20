@@ -49,9 +49,7 @@
 ### プラットフォーム対応（iOS / Android / Web / Flutter）
 
 <!-- GENERATED:in-progress-platform -->
-| ID | 項目 | 状態 |
-|---|---|---|
-| [BE-0287](BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience-ja.md) | 多点タッチ操作下での XCUITest runner チャネルの耐障害性 | 実装中 |
+
 <!-- /GENERATED:in-progress-platform -->
 
 ### デバイスクラウド実行

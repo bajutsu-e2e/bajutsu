@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0287](BE-0287-xcuitest-runner-multitouch-resilience.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0287") |
 | Implementing PR | [#1200](https://github.com/bajutsu-e2e/bajutsu/pull/1200) (Unit 3: mid-run crash detection & recovery; Unit 4: recovery visibility), [#1202](https://github.com/bajutsu-e2e/bajutsu/pull/1202) (Units 1 & 2: runner-side diagnosis and the HTTP-server root-cause fix), [#1211](https://github.com/bajutsu-e2e/bajutsu/pull/1211) (Unit 5: exclude frame from the tap-time attribute re-check) |
 | Topic | Platform support |
@@ -163,7 +163,7 @@ because the gesture was lost; more waiting cannot recover an actuation that neve
 - [x] Unit 4 — Keep every recovery visible in the record: log each recovery as visibly as a retried
       blip, so a crashed-and-recovered run is never indistinguishable from one that never crashed
       (never-re-apply-a-delivered-write is Unit 3's job).
-- [ ] Unit 5 — Exclude the frame from the runner's tap-time attribute re-check (`attributesMatch`), so
+- [x] Unit 5 — Exclude the frame from the runner's tap-time attribute re-check (`attributesMatch`), so
       an element that only moved between the snapshot and the tap — a still-settling layout — is not
       read as a vanished element. Identifier, label, and traits plus the position path still catch a
       genuinely different element.
