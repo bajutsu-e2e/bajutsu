@@ -78,6 +78,34 @@ def test_ask_human_falls_back_to_reason_when_no_prompt() -> None:
     assert proposal.needs_human is True and proposal.human_prompt == "an OTP arrives out-of-band"
 
 
+def test_ask_human_carries_the_value_field_and_classification() -> None:
+    # BE-0182: when the agent flags the field a value goes into (and proposes how to resolve it), the
+    # proposal carries the target selector, the classification, and a placeholder name so the record
+    # loop can type the value live and record a deterministic placeholder step.
+    proposal = proposal_from_call(
+        "ask_human",
+        {
+            "prompt": "enter the one-time code",
+            "reason": "an OTP the run cannot know",
+            "id": "login.otp",
+            "classify": "totp",
+            "name": "otp_code",
+        },
+    )
+    assert proposal.needs_human is True
+    assert proposal.human_field is not None and proposal.human_field.id == "login.otp"
+    assert proposal.human_classify == "totp"
+    assert proposal.human_var == "otp_code"
+
+
+def test_ask_human_without_a_field_stays_a_bare_handoff() -> None:
+    # A handoff that names no field (a CAPTCHA, a takeover) carries no value-field details, so the
+    # loop resumes by re-observing rather than recording a placeholder step (BE-0182).
+    proposal = proposal_from_call("ask_human", {"prompt": "solve the CAPTCHA", "reason": "cannot"})
+    assert proposal.needs_human is True
+    assert proposal.human_field is None and proposal.human_classify is None
+
+
 def test_plan_step_flows_through_proposal() -> None:
     assert proposal_from_call("tap", {"id": "a", "reason": "r", "plan_step": 2}).plan_step == 2
     assert (

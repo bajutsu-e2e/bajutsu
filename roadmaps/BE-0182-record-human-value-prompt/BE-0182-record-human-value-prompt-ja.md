@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0182](BE-0182-record-human-value-prompt-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0182") |
+| 実装 PR | _pending_ |
 | トピック | オーサリング体験（record / GUI エディタ） |
 | 関連 | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md), [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md), [BE-0044](../BE-0044-scenario-provenance/BE-0044-scenario-provenance-ja.md), [BE-0046](../BE-0046-otp-email-steps/BE-0046-otp-email-steps-ja.md), [BE-0120](../BE-0120-recorded-scenario-secret-tokenization/BE-0120-recorded-scenario-secret-tokenization-ja.md), [BE-0179](../BE-0179-record-human-handoff/BE-0179-record-human-handoff-ja.md) |
 <!-- /BE-METADATA -->
@@ -97,11 +98,30 @@ record の human-in-the-loop ハンドオフの土台
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] 値の詰まりの検出（ヒューリスティックな印付けと著者の印付け）。値の推測入力は行わない。
-- [ ] 土台の要求と応答の契約に載せた、値のプロンプトの内容。
-- [ ] 供給された値の実際の入力と、成果物に対する BE-0120 のトークン化とマスキング。
-- [ ] 決定論的な出力の橋渡し: `${vars.*}` / `${secrets.*}` のプレースホルダと、分類済みの TODO（totp / email / secret）。
-- [ ] 人による値の出所を示す `from:` 来歴（BE-0044）。
+- [x] 値の詰まりの検出（ヒューリスティックな印付け）。値の推測入力は行わない。
+- [x] 土台の要求と応答の契約に載せた、値のプロンプトの内容。
+- [x] 供給された値の実際の入力と、成果物に対する BE-0120 のトークン化とマスキング。
+- [x] 決定論的な出力の橋渡し: `${vars.*}` / `${secrets.*}` のプレースホルダと、分類済みの TODO（totp / email / secret）。
+- [x] 人による値の出所を示す `from:` 来歴（BE-0044）。
+
+後続へ先送り（この最初のスライスの対象外）: 値の詰まりの検出のうち*著者による事前の印付け*——flow が
+その欄に達する前に、著者が欄を人供給と宣言できるようにする経路で、ここで出荷したエージェント主導の
+ヒューリスティックとは別物です。これには設定（`targets.<name>`）の面が要り、土台
+（[BE-0179](../BE-0179-record-human-handoff/BE-0179-record-human-handoff-ja.md)）が著者主導の操作
+引き取りのトリガを先送りしたのと同じ流儀です。
+
+**ログ**
+
+- BE-0179 の土台の上に値パターンを実装しました。エージェントの `ask_human` ツールは、値の入る先の
+  フィールドを名指しし、`classify`（`totp` / `email` / `secret`）とプレースホルダの `name` を提案する
+  ようになり（[`bajutsu/agents/claude.py`](../../bajutsu/agents/claude.py)）、それらを `Proposal`
+  （[`bajutsu/agents/protocols.py`](../../bajutsu/agents/protocols.py)）が運びます。フィールドを名指し
+  した値応答では、record ループが実際の値をライブのアプリに入力し、プレースホルダの `type` ステップを
+  記録します——`${vars.*}`（実行時の橋渡しである `totp` / `email`、BE-0046）か `${secrets.*}`（宣言
+  済みの secret）で、リテラルではありません（BE-0120）。そのステップの `from:` 来歴（BE-0044）には
+  分類済みの TODO を載せます（[`bajutsu/record.py`](../../bajutsu/record.py)）。フィールドを名指し
+  しないハンドオフは、これまでどおり観測し直します。高速スイートのテストが、プレースホルダの形、ライブ
+  入力、漏らさない保証、フィールド無しの退避を網羅します。ドキュメントは両言語で更新しました。
 
 ## 参考
 

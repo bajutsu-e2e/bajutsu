@@ -132,7 +132,6 @@
 <!-- GENERATED:proposals-authoring -->
 | ID | 項目 | 状態 |
 |---|---|---|
-| [BE-0182](BE-0182-record-human-value-prompt/BE-0182-record-human-value-prompt-ja.md) | record 中の人による値入力（OTP・ランダム値・一度きりの値） | 提案 |
 | [BE-0185](BE-0185-record-human-takeover-step/BE-0185-record-human-takeover-step-ja.md) | record 中の人による操作の引き取り（CAPTCHA・生体認証・解決できないジェスチャ） | 提案 |
 <!-- /GENERATED:proposals-authoring -->
 
