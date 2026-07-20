@@ -55,8 +55,9 @@ outside the gate.
    mirrors the local `showcase-swiftui` [target](../../docs/glossary.md#target-app-device) with
    `xcuitest.deviceType: device` and no `appPath` / `build` — Device Farm installs the uploaded
    `.ipa`, so the run drives the already-installed build. Its `testRunner` points at the device runner
-   inside the uploaded package. This config mirrors the Android Device Farm config and the live-route
-   config that already ship.
+   inside the uploaded package. This config mirrors the Android Device Farm config that already ships,
+   and the live-route pattern documented in
+   [`docs/ios-device-cloud.md`](../../docs/ios-device-cloud.md).
 2. **Signed device app build.** Two `demos/showcase/Makefile` targets: `swiftui-archive-device`
    (`xcodebuild archive` for `generic/platform=iOS`) and `swiftui-ipa-device` (`xcodebuild
    -exportArchive`). Signing is turned on only here, through command-line build settings
