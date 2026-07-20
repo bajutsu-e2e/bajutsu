@@ -116,10 +116,10 @@ def manual_todo(label: str, bypass: str | None) -> str:
     """
     # `label`/`bypass` are agent-authored free text (only secret-masked, never newline-stripped), so
     # any line terminator embedded in one would break out of the `// TODO` comment into a new,
-    # unprefixed physical line of generated source that CI then compiles. A `//` line comment ends at
-    # a lone `\r`, a `\r\n`, and the Unicode line/paragraph separators (U+2028 / U+2029) too — not
-    # only `\n` — in JavaScript (ECMA-262 `LineTerminator`), Swift, and Kotlin/Java alike, so collapse
-    # every one to keep the whole reason on the comment line, mirroring `uiautomator.py`'s `_s`.
+    # unprefixed physical line of generated source that CI then compiles. JavaScript ends a `//`
+    # comment at U+2028 / U+2029 too (ECMA-262 `LineTerminator`), while Swift and Kotlin/Java end one
+    # only at LF/CR/CRLF; collapsing all of them in this one shared helper is harmless where a target
+    # is stricter and keeps the whole reason on the comment line, mirroring `uiautomator.py`'s `_s`.
     safe_label = _collapse_line_terminators(label)
     safe_bypass = _collapse_line_terminators(bypass) if bypass else None
     tail = (
