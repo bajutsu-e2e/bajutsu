@@ -248,7 +248,8 @@ def _offer_takeover(
     The human operates the live device directly — bajutsu never drives — and resumes; this returns the
     (`manual` step, TODO) recording the observed transition when they acted, `"value_dropped"` when the
     human supplied a value that has no field to record into (so the caller can emit a distinct message),
-    or None when they cancelled or the responder timed out, in which case the caller stops.
+    or None when they cancelled, dismissed the pane without acting, or the responder timed out — in
+    which case the caller stops.
     This mirrors the *shape* of the agent-signalled takeover branch in the main loop (BE-0185) — the
     same `request` + `HandoffResponse.kind` precedence — but does not share its code: that branch inlines
     the check to keep its own bypass-masking and value-drop handling. The loop-detected trigger passes
@@ -267,6 +268,11 @@ def _offer_takeover(
         return None
     if response.kind == "value":
         return "value_dropped"
+    # `kind` defaults to "acted" whenever nothing is set, so gate on the explicit flag: a bare resume
+    # (the human dismissed the pane without operating the device) must not fabricate a `manual` marker
+    # for a takeover that never happened — the same guard the needs_human branch keys on the flag for.
+    if not response.acted:
+        return None
     return _manual_takeover_step(reason, bypass)
 
 
@@ -767,6 +773,10 @@ def record(
                             f"[{m}] ! a value was supplied but this takeover has no field to "
                             "record it into; stopping"
                         )
+                    elif handoff is not None:
+                        # a responder was present, so a takeover was offered but declined or dismissed
+                        # (cancel or a bare resume) — distinct from having no responder at all
+                        say(f"[{m}] ! takeover declined; stopping")
                     else:
                         say(f"[{m}] ! could not resolve that target on the live screen; stopping")
                     stop = True

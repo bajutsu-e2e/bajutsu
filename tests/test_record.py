@@ -412,6 +412,45 @@ def test_record_loop_takeover_honors_cancel_over_a_concurrent_acted_flag() -> No
     assert scenario.steps == []  # cancel wins — no fabricated manual marker
 
 
+def test_record_loop_takeover_does_not_fabricate_a_marker_for_a_bare_resume() -> None:
+    # A bare resume — the human dismissed the takeover pane without operating the device
+    # (acted=False, no value, no cancel) — must not fabricate a `manual` marker. HandoffResponse.kind
+    # defaults to "acted" whenever nothing is set, so this branch must gate on the explicit `acted`
+    # flag, not on `kind` alone (mirrors the needs_human path's bare-resume guard).
+    driver = FakeDriver([_el("go", "Go")])
+    agent = FakeAgent([Proposal(steps=[Step.model_validate({"tap": {"id": "ghost"}})])])
+    handoff = RecordingHandoff([HandoffResponse()])  # acted=False, no values, no cancel
+    messages: list[str] = []
+    scenario = record(driver, "x", agent, handoff=handoff, report=messages.append)
+    assert len(handoff.requests) == 1
+    assert scenario.steps == []  # no fabricated marker for a takeover that never happened
+    assert not any("could not resolve that target" in m for m in messages)
+
+
+def test_record_narrates_a_cancelled_loop_takeover_distinctly_from_no_responder() -> None:
+    # When a responder was present but the takeover was declined/cancelled, the narration says so —
+    # distinct from the "could not resolve that target" line, which fires only when no responder was
+    # available to offer a takeover at all, so the author can tell whether one was even offered.
+    driver = FakeDriver([_el("go", "Go")])
+    agent = FakeAgent([Proposal(steps=[Step.model_validate({"tap": {"id": "ghost"}})])])
+
+    cancelled: list[str] = []
+    record(
+        driver,
+        "x",
+        FakeAgent([Proposal(steps=[Step.model_validate({"tap": {"id": "ghost"}})])]),
+        handoff=RecordingHandoff([HandoffResponse(cancelled=True)]),
+        report=cancelled.append,
+    )
+    assert any("takeover declined" in m for m in cancelled)
+    assert not any("could not resolve that target" in m for m in cancelled)
+
+    no_responder: list[str] = []
+    record(driver, "x", agent, report=no_responder.append)  # no handoff responder
+    assert any("could not resolve that target" in m for m in no_responder)
+    assert not any("takeover declined" in m for m in no_responder)
+
+
 def test_record_emits_a_distinct_message_when_a_value_is_supplied_to_a_loop_takeover() -> None:
     # BE-0185: when the human supplies a value to the loop-triggered takeover (which has no target
     # field to record it into), the recording stops with a distinct message — not the generic "could
