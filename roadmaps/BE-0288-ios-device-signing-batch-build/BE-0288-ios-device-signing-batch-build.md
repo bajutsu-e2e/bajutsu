@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-ios-device-signing-batch-build-ja.md)
+**English** · [日本語](BE-0288-ios-device-signing-batch-build-ja.md)
 
-# BE-XXXX — iOS device-signing build for the batch route
+# BE-0288 — iOS device-signing build for the batch route
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-ios-device-signing-batch-build.md) |
+| Proposal | [BE-0288](BE-0288-ios-device-signing-batch-build.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0288") |
 | Topic | Device-cloud execution |
 <!-- /BE-METADATA -->
 

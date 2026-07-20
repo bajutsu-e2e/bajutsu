@@ -113,6 +113,7 @@
 | ID | 項目 | 状態 |
 |---|---|---|
 | [BE-0237](BE-0237-firebase-device-streaming-adapter/BE-0237-firebase-device-streaming-adapter-ja.md) | Firebase Test Lab / Device Streaming adapter | 提案 |
+| [BE-0288](BE-0288-ios-device-signing-batch-build/BE-0288-ios-device-signing-batch-build-ja.md) | バッチ経路向け iOS デバイス署名ビルド | 提案 |
 <!-- /GENERATED:proposals-device-cloud -->
 
 ### シナリオ記述機能

@@ -113,6 +113,7 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 | ID | Item | Status |
 |---|---|---|
 | [BE-0237](BE-0237-firebase-device-streaming-adapter/BE-0237-firebase-device-streaming-adapter.md) | Firebase Test Lab / Device Streaming adapter | Proposal |
+| [BE-0288](BE-0288-ios-device-signing-batch-build/BE-0288-ios-device-signing-batch-build.md) | iOS device-signing build for the batch route | Proposal |
 <!-- /GENERATED:proposals-device-cloud -->
 
 ### Scenario authoring features
