@@ -11,6 +11,7 @@ import logging
 import re
 import time
 from collections.abc import Callable
+from typing import Literal
 
 from bajutsu.agents.protocols import Agent, HumanValueClass, Observation, Proposal
 from bajutsu.analytics import usage as _usage
@@ -242,12 +243,13 @@ def _offer_takeover(
     target: str,
     screenshot: bytes | None,
     bypass: str | None,
-) -> tuple[Step, str] | None:
+) -> tuple[Step, str] | Literal["value_dropped"] | None:
     """Offer a takeover handoff and, if the human operated the device, return its `manual` marker.
 
     The human operates the live device directly — bajutsu never drives — and resumes; this returns the
-    (`manual` step, TODO) recording the observed transition when they acted, or None when they
-    cancelled, supplied only a value, or the responder timed out, in which case the caller stops.
+    (`manual` step, TODO) recording the observed transition when they acted, `"value_dropped"` when the
+    human supplied a value that has no field to record into (so the caller can emit a distinct message),
+    or None when they cancelled or the responder timed out, in which case the caller stops.
     This mirrors the *shape* of the agent-signalled takeover branch in the main loop (BE-0185) — the
     same `request` + acted-check — but does not share its code: that branch inlines the check to keep
     its own bypass-masking and value-drop handling. The loop-detected trigger passes `bypass=None`, so
@@ -263,6 +265,8 @@ def _offer_takeover(
     )
     if response.acted and not response.values:
         return _manual_takeover_step(reason, bypass)
+    if response.values:
+        return "value_dropped"
     return None
 
 
@@ -749,7 +753,7 @@ def record(
                         if handoff is not None
                         else None
                     )
-                    if takeover is not None:
+                    if isinstance(takeover, tuple):
                         manual_step, todo = takeover
                         steps.append(manual_step)
                         say(
@@ -759,7 +763,13 @@ def record(
                         say(f"[{len(steps)}] 📝 {todo}")
                         rebatch = True  # re-observe from the screen the human left
                         break
-                    say(f"[{m}] ! could not resolve that target on the live screen; stopping")
+                    if takeover == "value_dropped":
+                        say(
+                            f"[{m}] ! a value was supplied but this takeover has no field to "
+                            "record it into; stopping"
+                        )
+                    else:
+                        say(f"[{m}] ! could not resolve that target on the live screen; stopping")
                     stop = True
                 else:
                     say(f"[{m}] ! a batched step no longer resolves; re-observing the new screen")

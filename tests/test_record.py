@@ -400,6 +400,21 @@ def test_record_still_stops_on_an_unresolved_target_without_a_handoff() -> None:
     assert not [s for s in scenario.steps if s.manual is not None]
 
 
+def test_record_emits_a_distinct_message_when_a_value_is_supplied_to_a_loop_takeover() -> None:
+    # BE-0185: when the human supplies a value to the loop-triggered takeover (which has no target
+    # field to record it into), the recording stops with a distinct message — not the generic "could
+    # not resolve" one — so the author isn't left wondering why their input had no effect.
+    driver = FakeDriver([_el("go", "Go")])
+    agent = FakeAgent([Proposal(steps=[Step.model_validate({"tap": {"id": "ghost"}})])])
+    handoff = RecordingHandoff([HandoffResponse(values=["something"])])
+    messages: list[str] = []
+    scenario = record(driver, "x", agent, handoff=handoff, report=messages.append)
+    assert len(handoff.requests) == 1
+    assert scenario.steps == []
+    assert any("no field to record it into" in m for m in messages)
+    assert not any("could not resolve that target" in m for m in messages)
+
+
 def test_record_resumes_after_a_value_response_without_a_target_field() -> None:
     # A value response with no named target field records no step and just re-observes: BE-0182
     # records the value only when the handoff names the field it goes into (below); a fieldless
