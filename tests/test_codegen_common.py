@@ -6,6 +6,7 @@ from bajutsu.codegen.common import (
     class_name,
     ident,
     is_plain_substring,
+    manual_todo,
     ms,
     network_unsupported,
 )
@@ -46,4 +47,35 @@ def test_network_unsupported_names_the_subject() -> None:
     )
     assert network_unsupported("the adb backend") == (
         "the adb backend has no network interception; assert via a mock/proxy; not generated"
+    )
+
+
+def test_manual_todo_names_the_bypass_or_its_absence() -> None:
+    assert manual_todo("solve the CAPTCHA", None) == (
+        "solve the CAPTCHA — no deterministic run-time equivalent; not generated"
+    )
+    assert manual_todo("approve Face ID", "disable biometrics via a test flag") == (
+        "approve Face ID — wire a deterministic bypass: "
+        "disable biometrics via a test flag; not generated"
+    )
+
+
+def test_manual_todo_collapses_newlines_to_stay_on_the_comment_line() -> None:
+    # `label`/`bypass` are agent-authored free text, so an embedded newline would otherwise break
+    # out of the `// TODO` comment into a new, unprefixed physical line of generated source (BE-0185).
+    todo = manual_todo("solve the\nCAPTCHA", "flip\nthe flag")
+    assert "\n" not in todo
+    assert todo == ("solve the CAPTCHA — wire a deterministic bypass: flip the flag; not generated")
+
+
+def test_manual_todo_collapses_every_line_terminator_to_stay_on_the_comment_line() -> None:
+    # A lone `\r`, a `\r\n`, and the Unicode line/paragraph separators (U+2028 / U+2029) each end a
+    # `//` line comment in JavaScript, Swift, and Kotlin/Java, so any of them in agent-authored text
+    # would spill onto an unprefixed physical line of generated source just as `\n` would (BE-0185).
+    todo = manual_todo(
+        "solve the\rCAPTCHA\r\nnow" + chr(0x2028) + "next" + chr(0x2029) + "end", "flip the flag"
+    )
+    assert not (set(todo) & {"\r", "\n", chr(0x2028), chr(0x2029)})
+    assert todo == (
+        "solve the CAPTCHA now next end — wire a deterministic bypass: flip the flag; not generated"
     )

@@ -85,6 +85,14 @@ Accepted and actively being built — a PR is in flight or imminent.
 
 <!-- /GENERATED:in-progress-quality-debt -->
 
+### Authoring experience (record / GUI editor)
+
+<!-- GENERATED:in-progress-authoring -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0185](BE-0185-record-human-takeover-step/BE-0185-record-human-takeover-step.md) | Human takeover step during record (CAPTCHA / biometrics / unresolvable gestures) | In progress |
+<!-- /GENERATED:in-progress-authoring -->
+
 ## Proposals
 
 Under consideration — not yet decided. Promote an item to *In progress* once work starts, or to *Implemented* when it ships.
@@ -131,9 +139,7 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 ### Authoring experience (record / GUI editor)
 
 <!-- GENERATED:proposals-authoring -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0185](BE-0185-record-human-takeover-step/BE-0185-record-human-takeover-step.md) | Human takeover step during record (CAPTCHA / biometrics / unresolvable gestures) | Proposal |
+
 <!-- /GENERATED:proposals-authoring -->
 
 ### Surfacing CLI features in the serve Web UI

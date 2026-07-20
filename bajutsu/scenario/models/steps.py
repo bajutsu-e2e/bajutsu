@@ -31,6 +31,7 @@ from bajutsu.scenario.models.actions import (
     Foreground,
     HttpRequest,
     LongPress,
+    Manual,
     OverrideStatusBar,
     Pinch,
     Push,
@@ -138,6 +139,10 @@ class Step(_Model):
     override_status_bar: OverrideStatusBar | None = Field(default=None, alias="overrideStatusBar")
     clear_status_bar: ClearStatusBar | None = Field(default=None, alias="clearStatusBar")
     web: Web | None = None
+    # A human-takeover marker (BE-0185): an operation the AI could not perform, recorded during
+    # `record` and — because it has no deterministic run-time equivalent — failing loudly at `run`
+    # time rather than faking a pass. A leaf action, so it obeys the one-action rule like the rest.
+    manual: Manual | None = None
     if_: If | None = Field(default=None, alias="if")
     for_each: ForEach | None = Field(default=None, alias="forEach")
     capture: list[str] | None = None

@@ -114,8 +114,21 @@ once; the loop types it into the *live* field so the recording proceeds, but rec
 `type` step — `${vars.*}` / `${secrets.*}`, never the literal (reusing BE-0120's no-leak guarantee) —
 carrying a `from:` provenance line (BE-0044) that both marks the human-value origin and states the
 TODO to wire it. Consistent with prime directive 1, the AI only *proposes* the classification; the
-author confirms and wires it, after which replay is fully deterministic and AI-free. A handoff that
-names no field (a CAPTCHA, a takeover) still just re-observes.
+author confirms and wires it, after which replay is fully deterministic and AI-free.
+
+**Human takeover (BE-0185).** The other child pattern covers a handoff that names no field: the
+blocker is not a value the agent could type but an *operation* it cannot perform — a CAPTCHA, a
+biometric prompt, a gesture the agent repeatedly fails to resolve. The human operates the live device
+and answers "I acted" (the `acted` handoff, BE-0179); `record` records a marker of the observed
+transition, not the raw gesture, as a **`manual` step** ([scenarios](scenarios.md#manual)). The agent
+classifies the marker by whether it can propose a deterministic bypass: a `bypass` names the
+test-build flag or the device-control / device-state primitive (BE-0035 / BE-0052) an author could
+wire to make the step replayable, and its absence marks a takeover with no such equivalent (a real
+CAPTCHA). Every codegen target renders the step as a labeled `// TODO` (BE-0026), and — unlike the
+value pattern, which produces a replayable `type` step — a `manual` step has no deterministic run-time
+equivalent, so at `run` time it **fails loudly** with `ManualStepRequired` rather than faking a pass
+(directives 1 and 2). The marker keys on the explicit `acted` flag, not the handoff's default kind, so
+a bare resume never fabricates a run-failing step.
 
 ### Automatic settle-step insertion
 

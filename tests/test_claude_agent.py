@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from conftest import FakeBackend, FakeBlock, FakeUsage
 
-from bajutsu.agents.claude import ClaudeAgent, proposal_from_call
+from bajutsu.agents.claude import TOOLS, ClaudeAgent, proposal_from_call
 from bajutsu.agents.protocols import Observation
 from bajutsu.ai.base import (
     AnyTool,
@@ -96,6 +96,46 @@ def test_ask_human_value_fields_survive_the_live_combine_path() -> None:
     assert proposal.human_field is not None and proposal.human_field.id == "login.otp"
     assert proposal.human_classify == "totp"
     assert proposal.human_var == "otp_code"
+
+
+def test_ask_human_takeover_bypass_survives_the_live_combine_path() -> None:
+    # BE-0185: the takeover bypass must reach `record()` through the live agent path (next_action →
+    # _to_proposal → _combine), or the record loop's bypassable-marker branch is dead code.
+    agent = ClaudeAgent(
+        backend=FakeBackend(
+            FakeBlock(
+                "ask_human",
+                {
+                    "prompt": "approve the Face ID prompt",
+                    "reason": "a biometric prompt only a human can clear",
+                    "bypass": "disable biometrics behind a test flag",
+                },
+            )
+        )
+    )
+    proposal = agent.next_action(_obs())
+    assert proposal.needs_human is True
+    assert proposal.human_bypass == "disable biometrics behind a test flag"
+    assert proposal.human_field is None  # a takeover names no field
+
+
+def test_ask_human_top_level_description_teaches_the_bypass_field() -> None:
+    # BE-0185: the top-level description is where ask_human teaches the paired-field pattern (it
+    # already nudges `classify`/`name` for the value case). Without a parallel nudge for the takeover
+    # case the model rarely populates `bypass`, leaving the takeover-bypass classification effectively
+    # dead through the live-agent path — so the top-level text must name `bypass` too.
+    ask_human = next(tool for tool in TOOLS if tool.name == "ask_human")
+    assert "bypass" in ask_human.description
+
+
+def test_system_prompt_teaches_the_bypass_field() -> None:
+    # BE-0185: `SYSTEM_PROMPT` and `TOOLS` ride the same live request, and the model reads the prose
+    # block first — so the paired-field nudge must live in both. The tool description names `bypass`
+    # (above); the prose bullet must too, or the higher-level guidance the model reads first still
+    # only teaches the value case and `bypass` stays unpopulated.
+    from bajutsu.agents.claude import SYSTEM_PROMPT
+
+    assert "bypass" in SYSTEM_PROMPT
 
 
 def test_ask_human_falls_back_to_reason_when_no_prompt() -> None:

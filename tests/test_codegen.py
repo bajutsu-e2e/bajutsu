@@ -310,3 +310,19 @@ def test_class_name_for() -> None:
     # A Swift `class` name cannot start with a digit, so a digit-leading stem is prefixed `_`
     # (BE-0255 applied the guard uniformly; XCUITest was silently unguarded before).
     assert class_name_for("2fa_flow") == "_2FaFlowUITests"
+
+
+def test_manual_step_is_a_labeled_todo() -> None:
+    # BE-0185: a human-takeover step has no XCUITest equivalent — a labeled TODO naming the operation,
+    # never a silent skip that would fake a pass.
+    code = _gen('- name: x\n  steps:\n    - manual: { label: "solve the CAPTCHA" }\n')
+    assert "// TODO: manual step — solve the CAPTCHA" in code
+    assert "no deterministic run-time equivalent" in code
+
+
+def test_manual_step_bypass_todo_names_the_bridge() -> None:
+    code = _gen(
+        "- name: x\n  steps:\n"
+        '    - manual: { label: "approve Face ID", bypass: "disable biometrics behind a test flag" }\n'
+    )
+    assert "wire a deterministic bypass: disable biometrics behind a test flag" in code

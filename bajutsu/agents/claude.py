@@ -100,7 +100,9 @@ or an action only a human can perform. The person authoring supplies it and the 
 resumes — you never guess. When the value goes into a specific field, ALSO address that \
 field (id/label/value/traits) and propose how a real run supplies it with classify (totp/email/secret) \
 and a short name — the recording keeps only a ${vars.*}/${secrets.*} placeholder, never the \
-literal value.
+literal value. For an action only a human can perform, if a deterministic bridge exists \
+(a test-build flag, or a device-control / device-state primitive), name it via bypass so a \
+real run can wire that instead of the human.
 
 Rules:
 - Usually call ONE tool. You MAY call several action tools in one turn ONLY when each is \
@@ -345,7 +347,9 @@ TOOLS: list[ToolDef] = [
         "propose how a real run will supply it via `classify`: 'totp' (a code from an authenticator "
         "seed), 'email' (a code delivered to an inbox), or 'secret' (a fixed secret you declare). "
         "The human types the value once now; the recording keeps only a placeholder, never the "
-        "literal — so name it with `name` (e.g. 'otp_code').",
+        "literal — so name it with `name` (e.g. 'otp_code'). When the operation has no field to "
+        "fill but a deterministic bridge could stand in for it (a test-build flag, or a "
+        "device-control / device-state primitive), ALSO name that bridge via `bypass`.",
         input_schema={
             "type": "object",
             "properties": {
@@ -366,6 +370,14 @@ TOOLS: list[ToolDef] = [
                     "type": "string",
                     "description": "a short placeholder name for the value (e.g. 'otp_code'), used "
                     "for the recorded ${vars.*} / ${secrets.*} token; omit to derive one",
+                },
+                "bypass": {
+                    "type": "string",
+                    "description": "for an operation only a human can perform (a CAPTCHA, a biometric "
+                    "prompt) with no field to fill: a deterministic bypass a real run could wire — a "
+                    "test-build flag, or a device-control / device-state primitive (BE-0035 / "
+                    "BE-0052). Recorded as a TODO on the manual marker; omit when none exists (a real "
+                    "CAPTCHA), leaving an honest step that fails loudly at run time.",
                 },
                 **_REASON_PROP,
                 **_PLAN_PROP,
@@ -566,6 +578,7 @@ def proposal_from_call(name: str, args: dict[str, Any]) -> Proposal:
             human_field=field,
             human_classify=classify,
             human_var=args.get("name") or None,
+            human_bypass=args.get("bypass") or None,
             note=note,
             plan_step=ps,
         )
@@ -606,8 +619,9 @@ def _combine(subs: list[Proposal]) -> Proposal:
             # tap on a turn the escalation cannot re-issue (e.g. a screenshot was already attached).
             return Proposal(steps=[], need_screenshot=True, note=note, plan_step=plan_step)
         if sub.needs_human:
-            # Forward the value-handoff details (BE-0182) too — without them the record loop can
-            # never reach the value branch on the live path (every real turn goes through _combine).
+            # Forward the value-handoff details (BE-0182) and the takeover bypass (BE-0185) too —
+            # without them the record loop can never reach the value / takeover branch on the live
+            # path (every real turn goes through _combine).
             return Proposal(
                 steps=steps,
                 needs_human=True,
@@ -615,6 +629,7 @@ def _combine(subs: list[Proposal]) -> Proposal:
                 human_field=sub.human_field,
                 human_classify=sub.human_classify,
                 human_var=sub.human_var,
+                human_bypass=sub.human_bypass,
                 note=note,
                 plan_step=plan_step,
             )

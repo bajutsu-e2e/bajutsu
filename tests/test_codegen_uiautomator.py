@@ -408,3 +408,9 @@ def test_cli_emit_uiautomator_without_package_exits(tmp_path: Path) -> None:
     )
     assert r.exit_code == 2
     assert "package" in r.output
+
+
+def test_manual_step_is_a_labeled_todo() -> None:
+    code = _gen('- name: x\n  steps:\n    - manual: { label: "solve the CAPTCHA" }\n')
+    assert "// TODO: manual step — solve the CAPTCHA" in code
+    assert "no deterministic run-time equivalent" in code
