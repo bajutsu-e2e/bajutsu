@@ -80,12 +80,14 @@ swiftui-archive-device:
 	cd $(SWIFTUI) && xcodegen generate
 	cd $(SWIFTUI) && xcodebuild archive -project BajutsuShowcaseSwiftUI.xcodeproj -scheme BajutsuShowcaseSwiftUI \
 		-destination 'generic/platform=iOS' -archivePath build/BajutsuShowcaseSwiftUI.xcarchive \
+		-derivedDataPath build/dd-device \
 		-allowProvisioningUpdates CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM=$(DEVELOPMENT_TEAM)
 
 # The device app .ipa (what Device Farm's IOS_APP upload accepts). ExportOptions.plist is a template
 # whose __DEVELOPMENT_TEAM__ placeholder is substituted here, so the team stays out of the tree.
 swiftui-ipa-device: swiftui-archive-device
 	sed 's/__DEVELOPMENT_TEAM__/$(DEVELOPMENT_TEAM)/' $(SWIFTUI)/ExportOptions.plist > $(SWIFTUI)/build/ExportOptions.plist
+	cd $(SWIFTUI) && rm -rf build/export-device
 	cd $(SWIFTUI) && xcodebuild -exportArchive -archivePath build/BajutsuShowcaseSwiftUI.xcarchive \
 		-exportPath build/export-device -exportOptionsPlist build/ExportOptions.plist -allowProvisioningUpdates
 	@echo "device .ipa: $(SWIFTUI_EXPORT)/BajutsuShowcaseSwiftUI.ipa"
