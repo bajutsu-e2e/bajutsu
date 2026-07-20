@@ -249,7 +249,7 @@ Log から到達するモーダル（4 つの提示様式）：
   `network` 証跡と `mocks` がアプリ無改変で効く（[DESIGN §3.2](../../DESIGN.md)）。
 - **Android** — アプリは **BajutsuAndroid** をリンクし、起動時に `BajutsuNet.configure(launchEnv)` を
   呼び、OkHttp クライアントに `BajutsuNet.interceptor()` を足す（BE-0283）。`network` 証跡は同じように
-  効きます。`mocks` は追随の課題で、捕捉は OkHttp 由来に限られます（`URLSession` 限定という制約の Android 版）。
+  効く。`mocks` は追随の課題で、捕捉は OkHttp 由来に限られる（`URLSession` 限定という制約の Android 版）。
 - エンドポイント：カタログ GET `SHOWCASE_API_URL`（既定 `https://example.com`）、詳細 GET
   `<base>/horses/<id>`、ログ POST `SHOWCASE_HTTP_BASE/post`。各リクエストは状態を該当 `*.status` の
   `accessibilityValue` にミラーするので、シナリオはレスポンスを `wait` してからアサートできる。

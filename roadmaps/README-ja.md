@@ -52,6 +52,14 @@
 
 <!-- /GENERATED:in-progress-platform -->
 
+### デバイスクラウド実行
+
+<!-- GENERATED:in-progress-device-cloud -->
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0288](BE-0288-ios-device-signing-batch-build/BE-0288-ios-device-signing-batch-build-ja.md) | バッチ経路向け iOS デバイス署名ビルド | 実装中 |
+<!-- /GENERATED:in-progress-device-cloud -->
+
 ### 検証とカバレッジ
 
 <!-- GENERATED:in-progress-verification -->
@@ -79,6 +87,14 @@
 
 <!-- /GENERATED:in-progress-quality-debt -->
 
+### オーサリング体験（record / GUI エディタ）
+
+<!-- GENERATED:in-progress-authoring -->
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0185](BE-0185-record-human-takeover-step/BE-0185-record-human-takeover-step-ja.md) | record 中の人による操作の引き取り（CAPTCHA・生体認証・解決できないジェスチャ） | 実装中 |
+<!-- /GENERATED:in-progress-authoring -->
+
 ## 提案
 
 検討中で、まだ決定していません。着手したら *実装中* に、出荷したら *実装済み* に昇格してください。
@@ -95,8 +111,7 @@
 ### ドライバとバックエンドのアーキテクチャ
 
 <!-- GENERATED:proposals-driver-architecture -->
-| ID | 項目 | 状態 |
-|---|---|---|
+
 <!-- /GENERATED:proposals-driver-architecture -->
 
 ### デバイスクラウド実行
@@ -124,8 +139,7 @@
 ### オーサリング体験（record / GUI エディタ）
 
 <!-- GENERATED:proposals-authoring -->
-| ID | 項目 | 状態 |
-|---|---|---|
+
 <!-- /GENERATED:proposals-authoring -->
 
 ### serve Web UI への CLI 機能の取り込み

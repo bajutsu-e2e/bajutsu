@@ -429,9 +429,11 @@ device (the shared device is reseeded via one channel, so parallel workers would
   which runs `demos/web/scenarios/network.yaml` **with network on** and then asserts the persisted
   `network.json` masks a captured secret. It lands as signal first, to be promoted to required once
   stable. The iOS half (wiring `network_mock.yaml` / `network_live.yaml` as a Simulator job) is not
-  yet done; **Android has no network capture at all** — the adb driver declares no `NETWORK`
-  capability and there is no native network monitor to actuate, so that lane is out of scope pending
-  such a monitor, a deliberate boundary rather than an oversight.
+  yet done. Android now has app-side network capture (BE-0283): `BajutsuAndroid`'s OkHttp
+  interceptor reports each exchange to the host collector over an `adb reverse` tunnel, the same
+  app-side-cooperation shape `BajutsuKit` uses on iOS. The adb driver itself still declares no
+  native `NETWORK` capability — there is no native network monitor to actuate — so `network (adb)`
+  (`android-e2e.yml`) validates the app-side path directly rather than through a driver capability.
 
 ### Validated on an Android emulator (Linux, no Mac)
 
