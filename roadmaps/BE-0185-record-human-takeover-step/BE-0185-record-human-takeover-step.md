@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0185](BE-0185-record-human-takeover-step.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0185") |
+| Implementing PR | _pending_ |
 | Topic | Authoring experience (record / GUI editor) |
 | Related | [BE-0012](../BE-0012-action-capture-record/BE-0012-action-capture-record.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md), [BE-0026](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md), [BE-0035](../BE-0035-device-control-primitives/BE-0035-device-control-primitives.md), [BE-0052](../BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md), [BE-0179](../BE-0179-record-human-handoff/BE-0179-record-human-handoff.md) |
 <!-- /BE-METADATA -->
@@ -114,9 +115,18 @@ interactive-mirror surface itself is out of scope here and would be its own item
 - [ ] Takeover trigger on unresolved-target / explicit author request, no element guessing.
 - [ ] Human-operates-the-device handoff with bajutsu not driving; the `serve` pane coordinates the pause/resume only.
 - [ ] Remote/self-hosted `serve` (BE-0015 / BE-0016): require device reach for takeover, with a documented fallback when the device is not reachable.
-- [ ] Resume-by-re-observation recording the observed state transition, not the raw gesture.
-- [ ] Artifact classification: bypassable → placeholder + bypass TODO (BE-0035 / BE-0052).
-- [ ] Artifact classification: unreproducible → explicit non-CI manual marker (codegen `// TODO`, BE-0026; run-time explicit skip/fail).
+- [x] Resume-by-re-observation recording the observed state transition, not the raw gesture.
+- [x] Artifact classification: bypassable → placeholder + bypass TODO (BE-0035 / BE-0052).
+- [x] Artifact classification: unreproducible → explicit non-CI manual marker (codegen `// TODO`, BE-0026; run-time explicit skip/fail).
+
+**Log**
+
+- _pending_ — the artifact core slice: a `manual` step kind that records a human takeover during
+  `record` (the `acted` handoff) as a marker of the observed transition, classified bypassable
+  (a `bypass` the agent proposes → a wiring TODO) or unreproducible (the default), rendered as a
+  labeled `// TODO` by every codegen target, and failing loudly at `run` time (`ManualStepRequired`)
+  rather than faking a pass. Leaves the unresolved-target auto-trigger and the remote-`serve` reach
+  constraint to follow-up slices.
 
 ## References
 

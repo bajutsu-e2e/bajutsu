@@ -20,7 +20,7 @@ from __future__ import annotations
 import re
 
 from bajutsu.assertions import request_label
-from bajutsu.codegen.common import ms, permissions_setup_lines, render_test_file
+from bajutsu.codegen.common import manual_todo, ms, permissions_setup_lines, render_test_file
 from bajutsu.drivers import base
 from bajutsu.scenario import Assertion, Gone, RequestMatch, Scenario, Step
 from bajutsu.scenario.models.assertions import CountMatch, TextMatch, Wait, WaitRequest
@@ -385,6 +385,10 @@ def _emit_step(step: Step) -> list[str]:
         return ["await page.goto(BASE_URL);"]
     if step.assert_ is not None:
         return [line for a in step.assert_ for line in _emit_assertion(a)]
+    if step.manual is not None:
+        # A human takeover (BE-0185): an operation only a human can perform, rendered as a labeled
+        # TODO rather than a silent skip — the same honest boundary the device-control TODOs keep.
+        return [f"// TODO: manual step — {manual_todo(step.manual.label, step.manual.bypass)}"]
     return ["// TODO: unsupported step"]
 
 

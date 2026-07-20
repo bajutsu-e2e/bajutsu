@@ -92,6 +92,26 @@ def network_unsupported(subject: str) -> str:
     return f"{subject} has no network interception; assert via a mock/proxy; not generated"
 
 
+def manual_todo(label: str, bypass: str | None) -> str:
+    """The `// TODO` reason for a `manual` human-takeover step (BE-0185), shared by every target.
+
+    Args:
+        label: What the human did (the recorded operation, e.g. "solve the CAPTCHA").
+        bypass: A deterministic bridge to wire (a test-build flag, a device-control / device-state
+            primitive) when one exists, or None for an operation with no run-time equivalent.
+
+    An operation only a human can perform has no generated-test form on any backend, so — like the
+    `setLocation` / `push` device-control TODOs — it renders as a labeled `// TODO` naming what to
+    wire (`bypass`) or that nothing can (a real CAPTCHA), never a silent skip that would fake a pass.
+    """
+    tail = (
+        f"wire a deterministic bypass: {bypass}"
+        if bypass
+        else "no deterministic run-time equivalent"
+    )
+    return f"{label} — {tail}; not generated"
+
+
 def permissions_setup_lines(scenario: Scenario) -> list[str]:
     """The `// TODO` lines naming each `permissions` entry (BE-0276), one per service.
 

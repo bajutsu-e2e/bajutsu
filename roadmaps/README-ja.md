@@ -85,6 +85,14 @@
 
 <!-- /GENERATED:in-progress-quality-debt -->
 
+### オーサリング体験（record / GUI エディタ）
+
+<!-- GENERATED:in-progress-authoring -->
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0185](BE-0185-record-human-takeover-step/BE-0185-record-human-takeover-step-ja.md) | record 中の人による操作の引き取り（CAPTCHA・生体認証・解決できないジェスチャ） | 実装中 |
+<!-- /GENERATED:in-progress-authoring -->
+
 ## 提案
 
 検討中で、まだ決定していません。着手したら *実装中* に、出荷したら *実装済み* に昇格してください。
@@ -131,9 +139,7 @@
 ### オーサリング体験（record / GUI エディタ）
 
 <!-- GENERATED:proposals-authoring -->
-| ID | 項目 | 状態 |
-|---|---|---|
-| [BE-0185](BE-0185-record-human-takeover-step/BE-0185-record-human-takeover-step-ja.md) | record 中の人による操作の引き取り（CAPTCHA・生体認証・解決できないジェスチャ） | 提案 |
+
 <!-- /GENERATED:proposals-authoring -->
 
 ### serve Web UI への CLI 機能の取り込み

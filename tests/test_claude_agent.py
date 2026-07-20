@@ -98,6 +98,27 @@ def test_ask_human_value_fields_survive_the_live_combine_path() -> None:
     assert proposal.human_var == "otp_code"
 
 
+def test_ask_human_takeover_bypass_survives_the_live_combine_path() -> None:
+    # BE-0185: the takeover bypass must reach `record()` through the live agent path (next_action →
+    # _to_proposal → _combine), or the record loop's bypassable-marker branch is dead code.
+    agent = ClaudeAgent(
+        backend=FakeBackend(
+            FakeBlock(
+                "ask_human",
+                {
+                    "prompt": "approve the Face ID prompt",
+                    "reason": "a biometric prompt only a human can clear",
+                    "bypass": "disable biometrics behind a test flag",
+                },
+            )
+        )
+    )
+    proposal = agent.next_action(_obs())
+    assert proposal.needs_human is True
+    assert proposal.human_bypass == "disable biometrics behind a test flag"
+    assert proposal.human_field is None  # a takeover names no field
+
+
 def test_ask_human_falls_back_to_reason_when_no_prompt() -> None:
     proposal = proposal_from_call("ask_human", {"reason": "an OTP arrives out-of-band"})
     assert proposal.needs_human is True and proposal.human_prompt == "an OTP arrives out-of-band"

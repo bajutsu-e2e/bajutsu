@@ -80,6 +80,8 @@ def describe_step(step: Step) -> str:
         return f"type {step.type.text!r} into {_describe_selector(step.type.into)}"
     if step.wait is not None:
         return f"wait for {_describe_selector(step.wait.for_)}"
+    if step.manual is not None:
+        return f"manual takeover: {step.manual.label}"
     return next((f for f in step.model_dump(exclude_none=True)), "step")
 
 
@@ -208,6 +210,26 @@ def _human_value_step(
             "from": todo,
         }
     )
+    return step, todo
+
+
+def _manual_takeover_step(label: str, bypass: str | None) -> tuple[Step, str]:
+    """The `manual` marker recorded for a human takeover, plus its one-line TODO (BE-0185).
+
+    An operation the AI could not perform (a CAPTCHA, a biometric prompt): the human acted live and
+    this records a marker of the observed transition, never the raw gesture. `bypass` — proposed by
+    the agent, confirmed by the author — names a deterministic bridge to wire (a test-build flag, a
+    device-control / device-state primitive, BE-0035 / BE-0052) so `run` becomes deterministic; None
+    leaves an honest, unreproducible marker that fails loudly at run time rather than faking a pass.
+    """
+    if bypass:
+        todo = f"human takeover during record — wire a deterministic bypass: {bypass} (BE-0035 / BE-0052)"
+    else:
+        todo = (
+            "human takeover during record — no deterministic run-time equivalent; the step fails at "
+            "run time until a bypass is wired or it is handled out of band"
+        )
+    step = Step.model_validate({"manual": {"label": label, "bypass": bypass}, "from": todo})
     return step, todo
 
 
@@ -598,6 +620,20 @@ def record(
                 # selector is ambiguous (prime directive 2). Either way nothing was typed and no
                 # step is recorded; re-observe rather than record an action that never ran.
                 say(f"[{n}] ✋ could not resolve that field on the live screen; re-observing")
+                continue
+            if response.acted:
+                # The takeover pattern (BE-0185): the human operated the device for an operation the
+                # AI cannot perform (a CAPTCHA, a biometric prompt). Record a `manual` marker of the
+                # transition — not the opaque gesture — classified by whether the agent proposed a
+                # deterministic bypass. It fails loudly at run time rather than faking a pass; the
+                # author wires the bypass (BE-0035 / BE-0052) or handles it out of band.
+                # Gate on the explicit `acted` flag, not `kind == "acted"` — `kind` returns "acted"
+                # as its no-cancel/no-value default, so a bare resume (an empty response) must stay a
+                # plain re-observe and never fabricate a run-failing marker for a human who did nothing.
+                manual_step, todo = _manual_takeover_step(reason, proposal.human_bypass)
+                steps.append(manual_step)
+                say(f"[{len(steps)}] ✋ recorded human takeover as {describe_step(manual_step)}")
+                say(f"[{len(steps)}] 📝 {todo}")
                 continue
             say(f"[{n}] ✋ handoff resolved; re-observing the live screen")
             continue

@@ -367,6 +367,14 @@ TOOLS: list[ToolDef] = [
                     "description": "a short placeholder name for the value (e.g. 'otp_code'), used "
                     "for the recorded ${vars.*} / ${secrets.*} token; omit to derive one",
                 },
+                "bypass": {
+                    "type": "string",
+                    "description": "for an operation only a human can perform (a CAPTCHA, a biometric "
+                    "prompt) with no field to fill: a deterministic bypass a real run could wire — a "
+                    "test-build flag, or a device-control / device-state primitive (BE-0035 / "
+                    "BE-0052). Recorded as a TODO on the manual marker; omit when none exists (a real "
+                    "CAPTCHA), leaving an honest step that fails loudly at run time.",
+                },
                 **_REASON_PROP,
                 **_PLAN_PROP,
             },
@@ -566,6 +574,7 @@ def proposal_from_call(name: str, args: dict[str, Any]) -> Proposal:
             human_field=field,
             human_classify=classify,
             human_var=args.get("name") or None,
+            human_bypass=args.get("bypass") or None,
             note=note,
             plan_step=ps,
         )
@@ -606,8 +615,9 @@ def _combine(subs: list[Proposal]) -> Proposal:
             # tap on a turn the escalation cannot re-issue (e.g. a screenshot was already attached).
             return Proposal(steps=[], need_screenshot=True, note=note, plan_step=plan_step)
         if sub.needs_human:
-            # Forward the value-handoff details (BE-0182) too — without them the record loop can
-            # never reach the value branch on the live path (every real turn goes through _combine).
+            # Forward the value-handoff details (BE-0182) and the takeover bypass (BE-0185) too —
+            # without them the record loop can never reach the value / takeover branch on the live
+            # path (every real turn goes through _combine).
             return Proposal(
                 steps=steps,
                 needs_human=True,
@@ -615,6 +625,7 @@ def _combine(subs: list[Proposal]) -> Proposal:
                 human_field=sub.human_field,
                 human_classify=sub.human_classify,
                 human_var=sub.human_var,
+                human_bypass=sub.human_bypass,
                 note=note,
                 plan_step=plan_step,
             )

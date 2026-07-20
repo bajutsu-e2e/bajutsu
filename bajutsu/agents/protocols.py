@@ -69,6 +69,12 @@ class Proposal:
     human_field: Selector | None = None
     human_classify: HumanValueClass | None = None
     human_var: str | None = None
+    # The takeover specialization of `needs_human` (BE-0185): a *bypass* the agent proposes for an
+    # operation only a human can perform (a CAPTCHA, a biometric prompt). When set, the recorded
+    # `manual` marker names this deterministic bridge to wire — a test-build flag, a device-control
+    # / device-state primitive (BE-0035 / BE-0052) — so `run` can be made deterministic; None (the
+    # default) leaves an honest, unreproducible marker. A proposal only; the author confirms it.
+    human_bypass: str | None = None
     # A fourth turn outcome (BE-0192): on a text-only turn (no screenshot attached) the agent
     # cannot proceed from the element list alone and asks to see the screen. The record loop
     # re-issues the same observation once with the screenshot attached, rather than acting blind.

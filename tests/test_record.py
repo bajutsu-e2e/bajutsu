@@ -195,12 +195,13 @@ class RecordingHandoff:
 
 
 def test_record_hands_off_on_needs_human_then_resumes() -> None:
-    # A "needs human" turn pauses, hands off, and the loop resumes by re-observing — the human's
-    # turn consumes no recorded step, and the next proposed action is recorded as usual (BE-0179).
+    # A "needs human" turn pauses, hands off, and the loop resumes by re-observing; the next
+    # proposed action is recorded as usual (BE-0179). When the human *operated the device* (acted),
+    # BE-0185 records a `manual` takeover marker for that turn — asserted separately below.
     driver = FakeDriver([_el("go", "Go")])
     agent = FakeAgent(
         [
-            Proposal(needs_human=True, human_prompt="enter the one-time password"),
+            Proposal(needs_human=True, human_prompt="solve the CAPTCHA"),
             Proposal(steps=[Step.model_validate({"tap": {"id": "go"}})]),
             Proposal(done=True),
         ]
@@ -209,9 +210,92 @@ def test_record_hands_off_on_needs_human_then_resumes() -> None:
     scenario = record(driver, "log in", agent, handoff=handoff)
 
     assert len(handoff.requests) == 1
-    assert handoff.requests[0].reason == "enter the one-time password"
+    assert handoff.requests[0].reason == "solve the CAPTCHA"
     assert handoff.requests[0].screen  # the current screen summary travels with the request
     assert [s.tap.id for s in scenario.steps if s.tap is not None] == ["go"]
+
+
+def test_record_records_a_manual_takeover_marker_on_acted() -> None:
+    # BE-0185: when the human operates the device for an operation the AI cannot (a CAPTCHA), the
+    # loop records a `manual` marker of the transition — not the raw gesture — with a `from:` TODO.
+    # With no proposed bypass it is unreproducible: honest, and it fails loudly at run time.
+    driver = FakeDriver([_el("captcha", "I'm not a robot")])
+    agent = FakeAgent(
+        [
+            Proposal(needs_human=True, human_prompt="solve the CAPTCHA"),
+            Proposal(done=True),
+        ]
+    )
+    handoff = RecordingHandoff([HandoffResponse(acted=True)])
+    scenario = record(driver, "sign up", agent, handoff=handoff)
+
+    manual = [s for s in scenario.steps if s.manual is not None]
+    assert len(manual) == 1
+    assert manual[0].manual.label == "solve the CAPTCHA"
+    assert manual[0].manual.bypass is None  # unreproducible by default
+    assert manual[0].from_ is not None and "no deterministic" in manual[0].from_.lower()
+    # only the observed marker is recorded — never a raw tap standing in for the human's gesture
+    assert not [s for s in scenario.steps if s.tap is not None]
+
+
+def test_record_marks_a_takeover_bypassable_when_the_agent_proposes_one() -> None:
+    # A bypassable operation (biometrics behind a test flag): the agent proposes a bypass, so the
+    # marker carries it and the TODO points at wiring a deterministic bridge (BE-0035 / BE-0052).
+    driver = FakeDriver([_el("faceid", "Approve with Face ID")])
+    agent = FakeAgent(
+        [
+            Proposal(
+                needs_human=True,
+                human_prompt="approve the Face ID prompt",
+                human_bypass="disable biometrics behind a test flag",
+            ),
+            Proposal(done=True),
+        ]
+    )
+    handoff = RecordingHandoff([HandoffResponse(acted=True)])
+    scenario = record(driver, "unlock", agent, handoff=handoff)
+
+    manual = [s for s in scenario.steps if s.manual is not None]
+    assert len(manual) == 1
+    assert manual[0].manual.bypass == "disable biometrics behind a test flag"
+    assert (
+        manual[0].from_ is not None and "disable biometrics behind a test flag" in manual[0].from_
+    )
+
+
+def test_record_does_not_record_a_marker_for_a_bare_resume() -> None:
+    # `HandoffResponse.kind` returns "acted" as its no-cancel/no-value default, so a bare/empty
+    # response (the human resumed without operating the device) must NOT fabricate a run-failing
+    # `manual` marker — only an explicit `acted=True` is a takeover. Guards against keying the branch
+    # on `kind` instead of the flag.
+    driver = FakeDriver([_el("go", "Go")])
+    agent = FakeAgent(
+        [
+            Proposal(needs_human=True, human_prompt="have a look"),
+            Proposal(steps=[Step.model_validate({"tap": {"id": "go"}})]),
+            Proposal(done=True),
+        ]
+    )
+    handoff = RecordingHandoff([HandoffResponse()])  # acted=False, no values → a bare resume
+    scenario = record(driver, "browse", agent, handoff=handoff)
+    assert not [s for s in scenario.steps if s.manual is not None]
+    assert [s.tap.id for s in scenario.steps if s.tap is not None] == ["go"]
+
+
+def test_record_does_not_record_a_marker_for_a_fieldless_value_response() -> None:
+    # A value response with no named target field still records no step (unchanged from BE-0182):
+    # only an `acted` response is a takeover; a bare value has nowhere to go and just re-observes.
+    driver = FakeDriver([_el("go", "Go")])
+    agent = FakeAgent(
+        [
+            Proposal(needs_human=True, human_prompt="enter the OTP"),
+            Proposal(steps=[Step.model_validate({"tap": {"id": "go"}})]),
+            Proposal(done=True),
+        ]
+    )
+    handoff = RecordingHandoff([HandoffResponse(values=["999111"])])
+    scenario = record(driver, "log in", agent, handoff=handoff)
+    assert not [s for s in scenario.steps if s.manual is not None]
 
 
 def test_record_resumes_after_a_value_response_without_a_target_field() -> None:
