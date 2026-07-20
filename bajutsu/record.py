@@ -556,7 +556,7 @@ def record(
             if response.kind == "cancel":
                 say(f"[{n}] ✋ handoff cancelled; stopping")
                 break
-            if response.kind == "value" and proposal.human_field is not None and response.values:
+            if response.kind == "value" and proposal.human_field is not None:
                 # The value pattern (BE-0182): type the human's value into the live field so the
                 # recording proceeds, but record a deterministic placeholder step — never the literal
                 # (random/secret). Execute the real value against the app, then append the tokenized

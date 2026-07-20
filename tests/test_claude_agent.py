@@ -123,6 +123,23 @@ def test_ask_human_carries_the_value_field_and_classification() -> None:
     assert proposal.human_var == "otp_code"
 
 
+def test_ask_human_ignores_an_unrecognized_classification() -> None:
+    # BE-0182: classify is a proposal, not a verdict — an out-of-vocabulary value narrows to None so
+    # the record loop emits the neutral "classify and resolve" TODO rather than a bogus one.
+    proposal = proposal_from_call(
+        "ask_human",
+        {
+            "prompt": "enter the code",
+            "reason": "cannot know",
+            "id": "login.otp",
+            "classify": "bogus",
+        },
+    )
+    assert proposal.needs_human is True
+    assert proposal.human_field is not None and proposal.human_field.id == "login.otp"
+    assert proposal.human_classify is None
+
+
 def test_ask_human_without_a_field_stays_a_bare_handoff() -> None:
     # A handoff that names no field (a CAPTCHA, a takeover) carries no value-field details, so the
     # loop resumes by re-observing rather than recording a placeholder step (BE-0182).
