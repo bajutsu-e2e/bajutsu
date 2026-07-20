@@ -139,6 +139,21 @@ class Copy(_Model):
     """
 
 
+def bypass_hint(bypass: str | None) -> str:
+    """The shared phrase describing a `manual` step's bypass, or its absence (BE-0185).
+
+    Naming what deterministic bridge to wire (`bypass`) or that none exists — the one wording every
+    surface that mentions a takeover's bypass reuses (the run-time FAIL message, the codegen `// TODO`,
+    and the `record` marker's TODO), so a future tweak edits one place, not three. Each caller keeps
+    its own prefix/suffix around this core; only the shared clause lives here.
+    """
+    return (
+        f"wire a deterministic bypass: {bypass}"
+        if bypass
+        else "no deterministic run-time equivalent"
+    )
+
+
 class Manual(_Model):
     """`manual` action — a human-takeover marker recorded during `record` (BE-0185).
 

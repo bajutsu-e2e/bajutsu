@@ -345,7 +345,9 @@ TOOLS: list[ToolDef] = [
         "propose how a real run will supply it via `classify`: 'totp' (a code from an authenticator "
         "seed), 'email' (a code delivered to an inbox), or 'secret' (a fixed secret you declare). "
         "The human types the value once now; the recording keeps only a placeholder, never the "
-        "literal — so name it with `name` (e.g. 'otp_code').",
+        "literal — so name it with `name` (e.g. 'otp_code'). When the operation has no field to "
+        "fill but a deterministic bridge could stand in for it (a test-build flag, or a "
+        "device-control / device-state primitive), ALSO name that bridge via `bypass`.",
         input_schema={
             "type": "object",
             "properties": {

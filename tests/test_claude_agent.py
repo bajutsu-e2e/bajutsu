@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from conftest import FakeBackend, FakeBlock, FakeUsage
 
-from bajutsu.agents.claude import ClaudeAgent, proposal_from_call
+from bajutsu.agents.claude import TOOLS, ClaudeAgent, proposal_from_call
 from bajutsu.agents.protocols import Observation
 from bajutsu.ai.base import (
     AnyTool,
@@ -117,6 +117,15 @@ def test_ask_human_takeover_bypass_survives_the_live_combine_path() -> None:
     assert proposal.needs_human is True
     assert proposal.human_bypass == "disable biometrics behind a test flag"
     assert proposal.human_field is None  # a takeover names no field
+
+
+def test_ask_human_top_level_description_teaches_the_bypass_field() -> None:
+    # BE-0185: the top-level description is where ask_human teaches the paired-field pattern (it
+    # already nudges `classify`/`name` for the value case). Without a parallel nudge for the takeover
+    # case the model rarely populates `bypass`, leaving the takeover-bypass classification effectively
+    # dead through the live-agent path — so the top-level text must name `bypass` too.
+    ask_human = next(tool for tool in TOOLS if tool.name == "ask_human")
+    assert "bypass" in ask_human.description
 
 
 def test_ask_human_falls_back_to_reason_when_no_prompt() -> None:

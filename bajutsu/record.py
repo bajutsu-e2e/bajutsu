@@ -21,6 +21,7 @@ from bajutsu.handoff import Handoff, HandoffRequest, HumanHandoffUnavailable
 from bajutsu.orchestrator import BlockedHandler, Clock, RealClock, _action_of, _do_action, _wait
 from bajutsu.orchestrator.types import SelectionState
 from bajutsu.scenario import Assertion, Scenario, Selector, Step
+from bajutsu.scenario.models.actions import bypass_hint
 from bajutsu.screenshots import screenshot_bytes
 
 _logger = logging.getLogger(__name__)
@@ -223,10 +224,10 @@ def _manual_takeover_step(label: str, bypass: str | None) -> tuple[Step, str]:
     leaves an honest, unreproducible marker that fails loudly at run time rather than faking a pass.
     """
     if bypass:
-        todo = f"human takeover during record — wire a deterministic bypass: {bypass} (BE-0035 / BE-0052)"
+        todo = f"human takeover during record — {bypass_hint(bypass)} (BE-0035 / BE-0052)"
     else:
         todo = (
-            "human takeover during record — no deterministic run-time equivalent; the step fails at "
+            f"human takeover during record — {bypass_hint(bypass)}; the step fails at "
             "run time until a bypass is wired or it is handled out of band"
         )
     step = Step.model_validate({"manual": {"label": label, "bypass": bypass}, "from": todo})

@@ -12,15 +12,11 @@ from __future__ import annotations
 from bajutsu.drivers import base
 from bajutsu.orchestrator.actions._registry import _handler
 from bajutsu.scenario import Step
+from bajutsu.scenario.models.actions import bypass_hint
 
 
 @_handler("manual")
 def _do_manual(_d: object, step: Step, _r: object, _c: object, _b: object) -> None:
     assert step.manual is not None
     m = step.manual
-    hint = (
-        f"wire a deterministic bypass: {m.bypass}"
-        if m.bypass
-        else "no deterministic run-time equivalent"
-    )
-    raise base.ManualStepRequired(f"manual takeover step: {m.label} — {hint}")
+    raise base.ManualStepRequired(f"manual takeover step: {m.label} — {bypass_hint(m.bypass)}")

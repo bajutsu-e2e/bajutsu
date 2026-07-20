@@ -17,6 +17,7 @@ import re
 from typing import Protocol
 
 from bajutsu.scenario import Assertion, Scenario, Step
+from bajutsu.scenario.models.actions import bypass_hint
 
 # Body lines (launch env, launch, steps, the expect block) sit one level inside the test function;
 # the structural braces (`scenario_open` / `scenario_close`) carry their own indent. Both targets
@@ -122,12 +123,7 @@ def manual_todo(label: str, bypass: str | None) -> str:
     # is stricter and keeps the whole reason on the comment line, mirroring `uiautomator.py`'s `_s`.
     safe_label = _collapse_line_terminators(label)
     safe_bypass = _collapse_line_terminators(bypass) if bypass else None
-    tail = (
-        f"wire a deterministic bypass: {safe_bypass}"
-        if safe_bypass
-        else "no deterministic run-time equivalent"
-    )
-    return f"{safe_label} — {tail}; not generated"
+    return f"{safe_label} — {bypass_hint(safe_bypass)}; not generated"
 
 
 def permissions_setup_lines(scenario: Scenario) -> list[str]:
