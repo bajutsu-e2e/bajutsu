@@ -65,7 +65,8 @@ class Proposal:
     # target field; `human_classify` is the source the agent *proposes* for the run-time bridge — a
     # totp / email step (BE-0046) that produces a `${vars.*}`, or a declared `${secrets.*}` — which
     # the author confirms and wires (the AI proposes, never judges); `human_var` is the suggested
-    # placeholder name. All None on a bare (fieldless) handoff or the takeover pattern.
+    # placeholder name. All None on a bare (fieldless) handoff; on the takeover pattern these three
+    # stay None but `human_bypass` (below) carries the proposed bypass.
     human_field: Selector | None = None
     human_classify: HumanValueClass | None = None
     human_var: str | None = None
