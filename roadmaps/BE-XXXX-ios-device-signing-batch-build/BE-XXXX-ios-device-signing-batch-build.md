@@ -79,8 +79,12 @@ outside the gate.
 
 ## Alternatives considered
 
-- **Zip the `.app` instead of exporting an `.ipa`.** Device Farm's `IOS_APP` upload expects an
-  `.ipa`; a bare `.app` zip is not accepted. `archive` + `exportArchive` is the supported path.
+- **Hand-zip the `.app` into an `.ipa` instead of exporting one.** A device `.ipa` is a
+  `Payload/<App>.app` tree zipped and renamed, so hand-packaging the signed `.app` does yield a
+  Device Farm–acceptable upload — the aws-samples iOS demo does exactly this. We still prefer
+  `archive` + `exportArchive`: it captures the signing style and export options as reproducible build
+  settings rather than a manual folder step. (What Device Farm rejects is a bare `.app` zipped
+  *without* the `Payload/` wrapper.)
 - **Commit a Team ID or a provisioning profile.** Rejected — `CLAUDE.md` forbids committed
   credentials, and a profile would tie the demo to one account. The environment-variable
   parameterization keeps the tree credential-free.
@@ -97,10 +101,10 @@ outside the gate.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [x] Unit 1 — Device Farm iOS config (`showcase.devicefarm.ios.config.yaml`)
-- [x] Unit 2 — signed device app build (`swiftui-archive-device` / `swiftui-ipa-device`, `ExportOptions.plist`)
-- [x] Unit 3 — signed device runner build (`runner-build-device`)
-- [x] Unit 4 — credential hygiene (`require_team` guard, placeholder template, gitignored output)
+- [ ] Unit 1 — Device Farm iOS config (`showcase.devicefarm.ios.config.yaml`)
+- [ ] Unit 2 — signed device app build (`swiftui-archive-device` / `swiftui-ipa-device`, `ExportOptions.plist`)
+- [ ] Unit 3 — signed device runner build (`runner-build-device`)
+- [ ] Unit 4 — credential hygiene (`require_team` guard, placeholder template, gitignored output)
 - [ ] Unit 5 — end-to-end Device Farm submission proof of concept (needs Apple Developer + AWS accounts; manual, outside `make check`)
 
 Log:
