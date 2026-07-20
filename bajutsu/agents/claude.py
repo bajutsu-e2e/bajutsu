@@ -98,7 +98,7 @@ not call it when the elements already determine your action.
 possibly know in a real run (a one-time password, a verification / 2FA code, a CAPTCHA) \
 or an action only a human can perform. The person authoring supplies it and the recording \
 resumes — you never guess. When the value goes into a specific field, ALSO address that \
-field (id/label) and propose how a real run supplies it with classify (totp/email/secret) \
+field (id/label/value/traits) and propose how a real run supplies it with classify (totp/email/secret) \
 and a short name — the recording keeps only a ${vars.*}/${secrets.*} placeholder, never the \
 literal value.
 
@@ -606,10 +606,15 @@ def _combine(subs: list[Proposal]) -> Proposal:
             # tap on a turn the escalation cannot re-issue (e.g. a screenshot was already attached).
             return Proposal(steps=[], need_screenshot=True, note=note, plan_step=plan_step)
         if sub.needs_human:
+            # Forward the value-handoff details (BE-0182) too — without them the record loop can
+            # never reach the value branch on the live path (every real turn goes through _combine).
             return Proposal(
                 steps=steps,
                 needs_human=True,
                 human_prompt=sub.human_prompt,
+                human_field=sub.human_field,
+                human_classify=sub.human_classify,
+                human_var=sub.human_var,
                 note=note,
                 plan_step=plan_step,
             )

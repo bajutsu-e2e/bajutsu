@@ -563,10 +563,6 @@ def record(
                 # placeholder step with its classified TODO. If the field no longer resolves, fall
                 # through to re-observe rather than record a step that never ran.
                 value = response.values[0]
-                # A local — NOT the outer `name` (the scenario name), which the loop must preserve.
-                placeholder_name = _unique_name(
-                    _placeholder_name(proposal.human_var, proposal.human_field), used_value_names
-                )
                 real_step = Step.model_validate(
                     {
                         "type": {
@@ -580,6 +576,13 @@ def record(
                 if _execute_with_recovery(
                     driver, real_step, clock, alert_guard, report=report, selection=selection
                 ):
+                    # Reserve the placeholder name only now the type succeeded — a failed resolve
+                    # above records no step, so it must not consume a name (BE-0182). This is a
+                    # local; NOT the outer `name` (the scenario name), which the loop must preserve.
+                    placeholder_name = _unique_name(
+                        _placeholder_name(proposal.human_var, proposal.human_field),
+                        used_value_names,
+                    )
                     placeholder_step, todo = _human_value_step(
                         proposal.human_field, proposal.human_classify, placeholder_name
                     )

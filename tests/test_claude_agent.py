@@ -73,6 +73,31 @@ def test_ask_human_proposal() -> None:
     assert proposal.step is None and proposal.done is False
 
 
+def test_ask_human_value_fields_survive_the_live_combine_path() -> None:
+    # BE-0182: the value-handoff fields must reach `record()` through the live agent path
+    # (next_action → _to_proposal → _combine), not only via a direct proposal_from_call. _combine
+    # must forward human_field/human_classify/human_var, or the record value branch is dead code.
+    agent = ClaudeAgent(
+        backend=FakeBackend(
+            FakeBlock(
+                "ask_human",
+                {
+                    "prompt": "enter the one-time code",
+                    "reason": "an OTP the run cannot know",
+                    "id": "login.otp",
+                    "classify": "totp",
+                    "name": "otp_code",
+                },
+            )
+        )
+    )
+    proposal = agent.next_action(_obs())
+    assert proposal.needs_human is True
+    assert proposal.human_field is not None and proposal.human_field.id == "login.otp"
+    assert proposal.human_classify == "totp"
+    assert proposal.human_var == "otp_code"
+
+
 def test_ask_human_falls_back_to_reason_when_no_prompt() -> None:
     proposal = proposal_from_call("ask_human", {"reason": "an OTP arrives out-of-band"})
     assert proposal.needs_human is True and proposal.human_prompt == "an OTP arrives out-of-band"

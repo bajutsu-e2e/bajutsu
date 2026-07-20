@@ -454,6 +454,35 @@ def test_record_disambiguates_repeated_human_value_placeholder_names() -> None:
     assert texts == ["${vars.human_value}", "${vars.human_value_2}"]
 
 
+def test_record_does_not_consume_a_placeholder_name_on_a_failed_resolve() -> None:
+    # A handoff whose field does not resolve records no step and must not reserve its placeholder
+    # name — so the next handoff deriving the same base name gets the un-suffixed token (BE-0182).
+    driver = FakeDriver([_noid("Present")])
+    agent = FakeAgent(
+        [
+            Proposal(
+                needs_human=True,
+                human_prompt="first",
+                human_field=Selector(label="Missing"),  # not on screen → fails to resolve
+                human_classify="totp",
+            ),
+            Proposal(
+                needs_human=True,
+                human_prompt="second",
+                human_field=Selector(label="Present"),
+                human_classify="totp",
+            ),
+            Proposal(done=True),
+        ]
+    )
+    handoff = RecordingHandoff([HandoffResponse(values=["111"]), HandoffResponse(values=["222"])])
+    scenario = record(driver, "codes", agent, handoff=handoff)
+    texts = [s.type.text for s in scenario.steps if s.type is not None]
+    assert texts == [
+        "${vars.human_value}"
+    ]  # not human_value_2 — the failed handoff reserved nothing
+
+
 def test_record_unclassified_human_value_leaves_a_neutral_todo() -> None:
     # When the agent proposes no classification, the recorded TODO must not assert a totp step it
     # never chose — it stays neutral so the author picks the right run-time source (BE-0182).
