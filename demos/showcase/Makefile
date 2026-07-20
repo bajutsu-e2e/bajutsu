@@ -4,6 +4,7 @@
 .PHONY: build-all \
 	swiftui-gen swiftui-build swiftui-noax-build \
 	uikit-gen uikit-build uikit-noax-build runner-build \
+	swiftui-archive-device swiftui-ipa-device runner-build-device \
 	run-swiftui run-uikit run-swiftui-tabs run-uikit-tabs \
 	run-swiftui-noax run-uikit-noax doctor record ui-test \
 	vrt vrt-approve vrt-swiftui vrt-swiftui-approve vrt-uikit vrt-uikit-approve \
@@ -51,6 +52,58 @@ runner-build:
 	cd $(RUNNER) && xcodebuild build-for-testing -project BajutsuRunner.xcodeproj -scheme BajutsuRunner \
 		-destination 'generic/platform=iOS Simulator' -derivedDataPath build/dd
 	cp $(RUNNER_PRODUCTS)/BajutsuRunner_*.xctestrun $(RUNNER_PRODUCTS)/BajutsuRunner.xctestrun
+
+# ---- Device builds for a device cloud (BE-0238 batch route) ---------------------------------------
+# The builds above are unsigned Simulator products; a real device — AWS Device Farm or a locally
+# attached phone (xcuitest.deviceType: device) — needs a signed device build instead. Signing is
+# parameterized on an Apple Developer team, never hardcoded: pass DEVELOPMENT_TEAM=<10-char Team ID>
+# with that team signed into Xcode, so -allowProvisioningUpdates can mint the development profile.
+# Device Farm re-signs the uploaded .ipa with its own profile, so a development export is enough.
+# The Simulator recipes above are untouched — device signing is turned on only here, via command-line
+# build settings, so `make check` and the Simulator lanes stay unsigned. See docs/ios-device-cloud.md
+# and demos/showcase/devicefarm/showcase.devicefarm.ios.config.yaml.
+SWIFTUI_EXPORT         := $(SWIFTUI)/build/export-device
+RUNNER_DD_DEVICE       := $(RUNNER)/build/dd-device
+RUNNER_DEVICE_PRODUCTS := $(RUNNER_DD_DEVICE)/Build/Products
+
+define require_team
+	@if [ -z "$(DEVELOPMENT_TEAM)" ]; then \
+		echo "error: DEVELOPMENT_TEAM=<Apple Team ID> is required for device builds"; \
+		echo "  e.g. make -C demos/showcase $(MAKECMDGOALS) DEVELOPMENT_TEAM=ABCDE12345"; \
+		exit 1; \
+	fi
+endef
+
+# The device app archive (signed .xcarchive). `archive` — not `build` — is what exportArchive needs.
+swiftui-archive-device:
+	$(require_team)
+	cd $(SWIFTUI) && xcodegen generate
+	cd $(SWIFTUI) && xcodebuild archive -project BajutsuShowcaseSwiftUI.xcodeproj -scheme BajutsuShowcaseSwiftUI \
+		-destination 'generic/platform=iOS' -archivePath build/BajutsuShowcaseSwiftUI.xcarchive \
+		-derivedDataPath build/dd-device \
+		-allowProvisioningUpdates CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM=$(DEVELOPMENT_TEAM)
+
+# The device app .ipa (what Device Farm's IOS_APP upload accepts). ExportOptions.plist is a template
+# whose __DEVELOPMENT_TEAM__ placeholder is substituted here, so the team stays out of the tree.
+swiftui-ipa-device: swiftui-archive-device
+	sed 's/__DEVELOPMENT_TEAM__/$(DEVELOPMENT_TEAM)/' $(SWIFTUI)/ExportOptions.plist > $(SWIFTUI)/build/ExportOptions.plist
+	cd $(SWIFTUI) && rm -rf build/export-device
+	cd $(SWIFTUI) && xcodebuild -exportArchive -archivePath build/BajutsuShowcaseSwiftUI.xcarchive \
+		-exportPath build/export-device -exportOptionsPlist build/ExportOptions.plist -allowProvisioningUpdates
+	@echo "device .ipa: $(SWIFTUI_EXPORT)/BajutsuShowcaseSwiftUI.ipa"
+
+# The device XCUITest runner (signed .xctestrun). The runner project defaults CODE_SIGNING_ALLOWED=NO
+# for the Simulator; a real device requires signing, so override it here only. A separate derivedData
+# path keeps the device .xctestrun from colliding with the Simulator one under the glob below. The
+# .xctestrun's __TESTROOT__ points beside the built products, so package the whole Products dir.
+runner-build-device:
+	$(require_team)
+	cd $(RUNNER) && xcodegen generate
+	cd $(RUNNER) && xcodebuild build-for-testing -project BajutsuRunner.xcodeproj -scheme BajutsuRunner \
+		-destination 'generic/platform=iOS' -derivedDataPath build/dd-device \
+		-allowProvisioningUpdates CODE_SIGNING_ALLOWED=YES CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM=$(DEVELOPMENT_TEAM)
+	cp $(RUNNER_DEVICE_PRODUCTS)/BajutsuRunner_*.xctestrun $(RUNNER_DEVICE_PRODUCTS)/BajutsuRunner.xctestrun
+	@echo "device .xctestrun: $(RUNNER_DEVICE_PRODUCTS)/BajutsuRunner.xctestrun (package its Products dir alongside)"
 
 # Run the shared id-based scenarios against the a11y apps on a booted Simulator. `--backend ios`
 # resolves each scenario through the BE-0240 capability ladder (idb first, cost order — NOT

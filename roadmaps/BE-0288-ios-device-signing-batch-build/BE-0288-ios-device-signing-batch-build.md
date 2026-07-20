@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0288](BE-0288-ios-device-signing-batch-build.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Proposal** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0288") |
+| Implementing PR | [#1209](https://github.com/bajutsu-e2e/bajutsu/pull/1209) |
 | Topic | Device-cloud execution |
 <!-- /BE-METADATA -->
 
@@ -103,11 +104,22 @@ outside the gate.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — Device Farm iOS config (`showcase.devicefarm.ios.config.yaml`)
-- [ ] Unit 2 — signed device app build (`swiftui-archive-device` / `swiftui-ipa-device`, `ExportOptions.plist`)
-- [ ] Unit 3 — signed device runner build (`runner-build-device`)
-- [ ] Unit 4 — credential hygiene (`require_team` guard, placeholder template, gitignored output)
+- [x] Unit 1 — Device Farm iOS config (`showcase.devicefarm.ios.config.yaml`)
+- [x] Unit 2 — signed device app build (`swiftui-archive-device` / `swiftui-ipa-device`, `ExportOptions.plist`)
+- [x] Unit 3 — signed device runner build (`runner-build-device`)
+- [x] Unit 4 — credential hygiene (`require_team` guard, placeholder template, gitignored output)
 - [ ] Unit 5 — end-to-end Device Farm submission proof of concept (needs Apple Developer + AWS accounts; manual, outside `make check`)
+
+Log:
+
+- 2026-07-20 — Landed the four build-tooling units (1–4) in one change ([#1209](https://github.com/bajutsu-e2e/bajutsu/pull/1209)): the Device Farm
+  iOS config (`showcase.devicefarm.ios.config.yaml`), the signed device app and runner targets in
+  `demos/showcase/Makefile` (`swiftui-archive-device` / `swiftui-ipa-device` / `runner-build-device`),
+  and the credential hygiene around them (the `__DEVELOPMENT_TEAM__` `ExportOptions.plist` template
+  and the `require_team` guard). Signing is turned on only on the device command line, so the
+  Simulator recipes and `make check` stay unsigned and unchanged. Unit 5 — the on-hardware Device
+  Farm submission — stays open: it needs an Apple Developer and an AWS account, so it remains a manual
+  proof of concept outside the gate.
 
 ## References
 
