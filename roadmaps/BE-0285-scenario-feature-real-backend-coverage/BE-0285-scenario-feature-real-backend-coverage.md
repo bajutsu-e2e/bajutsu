@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0285") |
-| Implementing PR | [#1184](https://github.com/bajutsu-e2e/bajutsu/pull/1184), [#PENDING](https://github.com/bajutsu-e2e/bajutsu/pull/PENDING) |
+| Implementing PR | [#1184](https://github.com/bajutsu-e2e/bajutsu/pull/1184), [#1214](https://github.com/bajutsu-e2e/bajutsu/pull/1214) |
 | Topic | Verification & coverage |
 | Related | [BE-0031](../BE-0031-data-driven-scenarios/BE-0031-data-driven-scenarios.md), [BE-0033](../BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow.md), [BE-0030](../BE-0030-parameterized-shared-steps/BE-0030-parameterized-shared-steps.md), [BE-0281](../BE-0281-ios-on-device-actuation-coverage/BE-0281-ios-on-device-actuation-coverage.md) |
 <!-- /BE-METADATA -->
@@ -99,7 +99,7 @@ Proposal altitude. The work is MECE along the units below.
   either), and `demos/web/scenarios/` gained `extract.yaml`, `foreach.yaml`, `data_driven.yaml`,
   `relaunch.yaml`, and `dynamic_ui.yaml`, all run against the real Playwright backend. adb
   equivalents for `extract`/`forEach` and the iOS extension remain.
-- 2026-07-21 ([#PENDING](https://github.com/bajutsu-e2e/bajutsu/pull/PENDING)): adb slice landed —
+- 2026-07-21 ([#1214](https://github.com/bajutsu-e2e/bajutsu/pull/1214)): adb slice landed —
   `demos/showcase/scenarios/` gained `extract.yaml` (capture the Log tab's live counter value and
   reuse it) and `foreach.yaml` (iterate the five Stable rows, open each detail so the tree mutates
   between iterations). Both reuse existing showcase instruments (no app change), carry both id forms

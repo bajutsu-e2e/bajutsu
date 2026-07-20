@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0285") |
-| 実装 PR | [#1184](https://github.com/bajutsu-e2e/bajutsu/pull/1184), [#PENDING](https://github.com/bajutsu-e2e/bajutsu/pull/PENDING) |
+| 実装 PR | [#1184](https://github.com/bajutsu-e2e/bajutsu/pull/1184), [#1214](https://github.com/bajutsu-e2e/bajutsu/pull/1214) |
 | トピック | 検証とカバレッジ |
 | 関連 | [BE-0031](../BE-0031-data-driven-scenarios/BE-0031-data-driven-scenarios-ja.md), [BE-0033](../BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow-ja.md), [BE-0030](../BE-0030-parameterized-shared-steps/BE-0030-parameterized-shared-steps-ja.md), [BE-0281](../BE-0281-ios-on-device-actuation-coverage/BE-0281-ios-on-device-actuation-coverage-ja.md) |
 <!-- /BE-METADATA -->
@@ -62,7 +62,7 @@
   デモにもなかった要素です）。`demos/web/scenarios/` に `extract.yaml`、`foreach.yaml`、
   `data_driven.yaml`、`relaunch.yaml`、`dynamic_ui.yaml` を追加し、すべて実際の Playwright バックエンド
   に対して実行しました。`extract` / `forEach` の adb 側の対応と iOS への拡張は未着手のまま残っています。
-- 2026-07-21（[#PENDING](https://github.com/bajutsu-e2e/bajutsu/pull/PENDING)）: adb 側の作業が着地しました。
+- 2026-07-21（[#1214](https://github.com/bajutsu-e2e/bajutsu/pull/1214)）: adb 側の作業が着地しました。
   `demos/showcase/scenarios/` に `extract.yaml`（Log タブのライブなカウンタ値を取り込んで再利用する）と
   `foreach.yaml`（Stable の 5 行を反復し、各行の詳細を開いて反復のあいだにツリーを変化させる）を追加しました。
   どちらも既存のショーケースの部品を再利用し（アプリの変更は不要です）、両方の id 形式（BE-0221）を持つため
