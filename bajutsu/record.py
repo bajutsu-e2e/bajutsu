@@ -248,8 +248,10 @@ def _offer_takeover(
     The human operates the live device directly — bajutsu never drives — and resumes; this returns the
     (`manual` step, TODO) recording the observed transition when they acted, or None when they
     cancelled, supplied only a value, or the responder timed out, in which case the caller stops.
-    Shared shape with the agent-signalled takeover (BE-0185); the loop-detected trigger passes
-    `bypass=None`, so the marker is an honest, unreproducible one that fails loudly at run time.
+    This mirrors the *shape* of the agent-signalled takeover branch in the main loop (BE-0185) — the
+    same `request` + acted-check — but does not share its code: that branch inlines the check to keep
+    its own bypass-masking and value-drop handling. The loop-detected trigger passes `bypass=None`, so
+    the marker is an honest, unreproducible one that fails loudly at run time.
     """
     response = handoff.request(
         HandoffRequest(
