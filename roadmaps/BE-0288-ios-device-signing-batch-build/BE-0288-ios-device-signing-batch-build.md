@@ -9,7 +9,7 @@
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0288") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#1209](https://github.com/bajutsu-e2e/bajutsu/pull/1209) |
 | Topic | Device-cloud execution |
 <!-- /BE-METADATA -->
 
@@ -112,7 +112,7 @@ outside the gate.
 
 Log:
 
-- 2026-07-20 — Landed the four build-tooling units (1–4) in one change (_pending_): the Device Farm
+- 2026-07-20 — Landed the four build-tooling units (1–4) in one change ([#1209](https://github.com/bajutsu-e2e/bajutsu/pull/1209)): the Device Farm
   iOS config (`showcase.devicefarm.ios.config.yaml`), the signed device app and runner targets in
   `demos/showcase/Makefile` (`swiftui-archive-device` / `swiftui-ipa-device` / `runner-build-device`),
   and the credential hygiene around them (the `__DEVELOPMENT_TEAM__` `ExportOptions.plist` template
