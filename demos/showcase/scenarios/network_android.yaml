@@ -10,7 +10,7 @@
 # over `adb reverse`) is the feature under test; the API endpoint is an ordinary app request, so the
 # host-loopback alias is fine for it (unlike the collector, which uses `adb reverse` uniformly).
 - name: refresh issues an observed catalog request (android)
-  tags: [net]
+  tags: [network]
   preconditions:
     launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_API_URL: "http://10.0.2.2:8770" }
   steps:
