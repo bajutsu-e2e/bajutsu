@@ -573,6 +573,11 @@ def respond_human(state: ServeState, job_id: str, body: dict[str, Any]) -> tuple
     The response is written to the job's stdin as the transport-neutral JSON the record loop reads
     (the same contract the terminal uses). `resumed` is False when the job has no live stdin — it
     already finished or was never handoff-capable.
+
+    One response never reaches stdin: a device-operation takeover (`acted`, no values) on a hosted
+    serve is refused with a 409 and `resumed=False` (BE-0185 box 3) — the author is not in front of
+    the worker's device there, so the browser cannot drive it. Value handoffs and cancels still pass
+    through.
     """
     job = state.jobs.get(job_id)
     if job is None:

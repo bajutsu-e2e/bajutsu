@@ -240,7 +240,6 @@ def _offer_takeover(
     *,
     reason: str,
     elements: list[base.Element],
-    target: str,
     screenshot: bytes | None,
     bypass: str | None,
 ) -> tuple[Step, str] | Literal["value_dropped"] | None:
@@ -251,23 +250,24 @@ def _offer_takeover(
     human supplied a value that has no field to record into (so the caller can emit a distinct message),
     or None when they cancelled or the responder timed out, in which case the caller stops.
     This mirrors the *shape* of the agent-signalled takeover branch in the main loop (BE-0185) — the
-    same `request` + acted-check — but does not share its code: that branch inlines the check to keep
-    its own bypass-masking and value-drop handling. The loop-detected trigger passes `bypass=None`, so
-    the marker is an honest, unreproducible one that fails loudly at run time.
+    same `request` + `HandoffResponse.kind` precedence — but does not share its code: that branch inlines
+    the check to keep its own bypass-masking and value-drop handling. The loop-detected trigger passes
+    `bypass=None`, so the marker is an honest, unreproducible one that fails loudly at run time.
     """
     response = handoff.request(
         HandoffRequest(
             reason=reason,
             screen=_summarize_screen(elements),
-            target=target,
             screenshot=screenshot,
         )
     )
-    if response.acted and not response.values:
-        return _manual_takeover_step(reason, bypass)
-    if response.values:
+    # `kind` resolves the precedence once (cancel > value > acted) so a response carrying more than one
+    # field can't bypass a cancel — the same ordering the needs_human takeover branch relies on.
+    if response.kind == "cancel":
+        return None
+    if response.kind == "value":
         return "value_dropped"
-    return None
+    return _manual_takeover_step(reason, bypass)
 
 
 def _should_attach(current: str, previous: str | None) -> bool:
@@ -746,7 +746,6 @@ def record(
                             handoff,
                             reason=takeover_reason,
                             elements=elements,
-                            target="",
                             screenshot=screenshot,
                             bypass=None,
                         )

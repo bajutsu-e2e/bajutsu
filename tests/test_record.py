@@ -400,6 +400,18 @@ def test_record_still_stops_on_an_unresolved_target_without_a_handoff() -> None:
     assert not [s for s in scenario.steps if s.manual is not None]
 
 
+def test_record_loop_takeover_honors_cancel_over_a_concurrent_acted_flag() -> None:
+    # A response carrying both cancelled and acted must be honored as a cancel (HandoffResponse.kind's
+    # precedence: cancel > value > acted), never recorded as an executed takeover — so a future
+    # responder that sets both fields can't silently bypass a cancel with a fabricated `manual` step.
+    driver = FakeDriver([_el("go", "Go")])
+    agent = FakeAgent([Proposal(steps=[Step.model_validate({"tap": {"id": "ghost"}})])])
+    handoff = RecordingHandoff([HandoffResponse(cancelled=True, acted=True)])
+    scenario = record(driver, "x", agent, handoff=handoff)
+    assert len(handoff.requests) == 1
+    assert scenario.steps == []  # cancel wins — no fabricated manual marker
+
+
 def test_record_emits_a_distinct_message_when_a_value_is_supplied_to_a_loop_takeover() -> None:
     # BE-0185: when the human supplies a value to the loop-triggered takeover (which has no target
     # field to record it into), the recording stops with a distinct message — not the generic "could
