@@ -1,0 +1,56 @@
+# Bajutsu config for the showcase SwiftUI app when it runs on AWS Device Farm (BE-0238 batch route).
+#
+# It mirrors the `showcase-swiftui` target from ../showcase.config.yaml with the deliberate,
+# per-environment differences a real device on Device Farm needs — all of which live in config, not
+# in the tool (the app-agnostic principle):
+#   * **`xcuitest.deviceType: device`.** This is the one key that generalizes the XCUITest backend's
+#     `xcodebuild -destination` from a named Simulator to `platform=iOS`, so the same driving layer
+#     runs against the reserved physical device. It also skips the Simulator bring-up (erase, local
+#     install, up-front permission grants) that only `simctl` can perform.
+#   * **No `appPath` / `build`.** Device Farm installs the uploaded `.ipa` on the reserved device
+#     itself, so the run must not try to assemble or install a local `.app`; it drives the
+#     already-installed build (a None `app_path` is the runner's "run against the installed app" path).
+#
+# Submit with the iOS platform selected, which picks the XCUITest backend, the
+# `--udid "$DEVICEFARM_DEVICE_UDID"` argument, and the iOS app upload type:
+#   uv run python scripts/devicefarm_submit.py \
+#     --platform ios \
+#     --scenario scenarios/firstlook.yaml \
+#     --target showcase-swiftui \
+#     --config showcase.devicefarm.ios.config.yaml \
+#     --app <your-device-signed>.ipa \
+#     --package .=. \
+#     --package demos/showcase/devicefarm/showcase.devicefarm.ios.config.yaml=showcase.devicefarm.ios.config.yaml \
+#     --package demos/showcase/scenarios=scenarios \
+#     --project-arn ... --device-pool-arn ...
+#
+# Real-device caveats (they hold for any physical device, not just Device Farm):
+#   * **Re-signing strips entitlements.** Device Farm re-signs the `.ipa` with its own profile, which
+#     drops entitlements the new profile does not carry (commonly Push `aps-environment` and App
+#     Groups). A scenario that asserts on such a feature should expect the re-signed behavior.
+#   * **simctl device control and permission grants do not apply.** On a real device the XCUITest
+#     backend advertises neither, so a scenario that uses one (setLocation, the clipboard steps,
+#     push, clearKeychain, background/foreground, status-bar overrides, or a permission grant) is
+#     skipped by the preflight (BE-0082) with a clear reason, before any device work. Query, elements,
+#     screenshots, taps, and two-finger gestures — driven by the XCTest runner itself — are unaffected.
+defaults:
+  backend: [xcuitest]
+
+targets:
+  showcase-swiftui:
+    bundleId: com.bajutsu.showcase.ios.swiftui
+    deeplinkScheme: showcaseswiftui
+    launchEnv: { SHOWCASE_UITEST: "1" }
+    idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
+    readyWhen: { id: [stable.row.1, stable_row_1] }
+    scenarios: scenarios
+    backend: [xcuitest]
+    xcuitest:
+      deviceType: device
+      # The XCUITest runner channel still drives the batch route, so it needs a device-built, signed
+      # `.xctestrun` — Device Farm re-signs the app `.ipa` but not the test runner. Build it for a real
+      # device with `make -C demos/showcase runner-build-device DEVELOPMENT_TEAM=<Team ID>` (the device
+      # twin of `runner-build`), then package its whole Products dir — the `.xctestrun` references its
+      # test bundles by `__TESTROOT__` beside them — and point `testRunner` at its path inside the
+      # uploaded package. The app `.ipa` comes from `make -C demos/showcase swiftui-ipa-device`.
+      testRunner: BajutsuRunner.xctestrun
