@@ -35,7 +35,7 @@ _RE_METACHARS = set(r".^$*+?{}[]\|()")
 # Every character that ends a `//` line comment in the generated targets — a lone `\r`, `\n`, a
 # `\r\n`, and the Unicode line/paragraph separators (U+2028 / U+2029) — so agent-authored free text
 # folded into a `// TODO` reason can never spill onto an unprefixed physical line (BE-0185).
-_LINE_TERMINATORS = re.compile(r"[\r\n  ]+")
+_LINE_TERMINATORS = re.compile(r"[\r\n\u2028\u2029]+")
 
 
 def _collapse_line_terminators(text: str) -> str:

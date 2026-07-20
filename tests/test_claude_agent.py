@@ -128,6 +128,16 @@ def test_ask_human_top_level_description_teaches_the_bypass_field() -> None:
     assert "bypass" in ask_human.description
 
 
+def test_system_prompt_teaches_the_bypass_field() -> None:
+    # BE-0185: `SYSTEM_PROMPT` and `TOOLS` ride the same live request, and the model reads the prose
+    # block first — so the paired-field nudge must live in both. The tool description names `bypass`
+    # (above); the prose bullet must too, or the higher-level guidance the model reads first still
+    # only teaches the value case and `bypass` stays unpopulated.
+    from bajutsu.agents.claude import SYSTEM_PROMPT
+
+    assert "bypass" in SYSTEM_PROMPT
+
+
 def test_ask_human_falls_back_to_reason_when_no_prompt() -> None:
     proposal = proposal_from_call("ask_human", {"reason": "an OTP arrives out-of-band"})
     assert proposal.needs_human is True and proposal.human_prompt == "an OTP arrives out-of-band"

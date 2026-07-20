@@ -100,7 +100,9 @@ or an action only a human can perform. The person authoring supplies it and the 
 resumes — you never guess. When the value goes into a specific field, ALSO address that \
 field (id/label/value/traits) and propose how a real run supplies it with classify (totp/email/secret) \
 and a short name — the recording keeps only a ${vars.*}/${secrets.*} placeholder, never the \
-literal value.
+literal value. For an action only a human can perform, if a deterministic bridge exists \
+(a test-build flag, or a device-control / device-state primitive), name it via bypass so a \
+real run can wire that instead of the human.
 
 Rules:
 - Usually call ONE tool. You MAY call several action tools in one turn ONLY when each is \
