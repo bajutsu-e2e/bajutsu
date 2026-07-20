@@ -635,7 +635,15 @@ def record(
                 # two are independent POST-body fields, mutually exclusive only by UI convention), so
                 # when the `kind == "value"` branch above did not fire (no `human_field`) this guard
                 # keeps a supplied value from being silently dropped in favor of a manual marker.
-                manual_step, todo = _manual_takeover_step(reason, proposal.human_bypass)
+                # Mask the bypass text the same way `reason` is masked (BE-0120): it is free-form
+                # agent-authored prose, so it could echo a declared secret literal into the recorded
+                # `manual.bypass` value and the narration below.
+                bypass = (
+                    _mask_secrets(proposal.human_bypass, secret_tokens or [])[0]
+                    if proposal.human_bypass
+                    else None
+                )
+                manual_step, todo = _manual_takeover_step(reason, bypass)
                 steps.append(manual_step)
                 say(f"[{len(steps)}] ✋ recorded human takeover as {describe_step(manual_step)}")
                 say(f"[{len(steps)}] 📝 {todo}")

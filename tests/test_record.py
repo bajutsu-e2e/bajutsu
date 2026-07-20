@@ -263,6 +263,41 @@ def test_record_marks_a_takeover_bypassable_when_the_agent_proposes_one() -> Non
     )
 
 
+def test_record_masks_a_secret_in_the_takeover_bypass() -> None:
+    # `human_bypass` is free-form agent-authored prose, so a declared secret literal appearing in it
+    # must be masked before it reaches the recorded `manual.bypass` value and the narration — the
+    # same no-leak guarantee the handoff reason keeps (BE-0120 / BE-0185).
+    driver = FakeDriver([_el("faceid", "Approve with Face ID")])
+    agent = FakeAgent(
+        [
+            Proposal(
+                needs_human=True,
+                human_prompt="approve the Face ID prompt",
+                human_bypass="disable biometrics with token s3cr3t",
+            ),
+            Proposal(done=True),
+        ]
+    )
+    handoff = RecordingHandoff([HandoffResponse(acted=True)])
+    lines: list[str] = []
+    scenario = record(
+        driver,
+        "unlock",
+        agent,
+        handoff=handoff,
+        report=lines.append,
+        secret_tokens=[("s3cr3t", "${secrets.OTP}")],
+    )
+
+    manual = [s for s in scenario.steps if s.manual is not None]
+    assert len(manual) == 1
+    assert manual[0].manual.bypass == "disable biometrics with token ${secrets.OTP}"
+    # neither the recorded bypass nor any narrated line carries the literal
+    assert "s3cr3t" not in (manual[0].manual.bypass or "")
+    assert not any("s3cr3t" in line for line in lines)
+    assert any("${secrets.OTP}" in line for line in lines)
+
+
 def test_record_does_not_record_a_marker_for_a_bare_resume() -> None:
     # `HandoffResponse.kind` returns "acted" as its no-cancel/no-value default, so a bare/empty
     # response (the human resumed without operating the device) must NOT fabricate a run-failing
