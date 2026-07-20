@@ -69,9 +69,16 @@ SERIAL ?= booted
 # a two-finger gesture cannot be approximated — so it requires root (the `e2e` target runs `adb root`)
 # and fails loudly otherwise. Verified on a local arm64 emulator.
 #
+# The scenario-authoring flows `extract` / `foreach` join the lane (BE-0285): the web slice (#1184)
+# proved them on Playwright, and this is their adb twin. `extract` captures the Log counter's live
+# value and reuses it (Log tab, exercised by `relaunch` already); `foreach` iterates the five Stable
+# rows and opens each detail, so the tree mutates between iterations — the push/pop a frozen fake
+# cannot represent (the whole point of BE-0285). Both reuse the Stable/Log instruments the lane
+# already drives, need no app change, and carry both id forms so they run on Views too.
+#
 # Still held out: mocked network (a BE-0007 follow-up).
 E2E_SCENARIOS := smoke firstlook navigation search data_driven relaunch system components modals \
-	controls notices gestures gestures_multitouch permission device
+	controls notices gestures gestures_multitouch permission device extract foreach
 
 # Raise the condition-wait ceiling for this lane only: the CI x86_64 software-rendered emulator
 # presents sheets/covers slower than the shared scenarios' 5s waits allow. A wait returns as soon as
@@ -85,7 +92,7 @@ E2E_WAIT_FLOOR ?= 15
 # true for one toolkit into a guarantee checked for both, on every push/PR. Views runs the subset
 # whose selectors carry both id forms and that is verified on the Views tree; `components` / `modals`
 # stay Compose-only until their id forms and modal timing are confirmed on Views (a BE-0221 follow-up).
-E2E_VIEWS_SCENARIOS := smoke firstlook navigation search data_driven relaunch system
+E2E_VIEWS_SCENARIOS := smoke firstlook navigation search data_driven relaunch system extract foreach
 
 # The wrapper jar IS committed (like any standard Android repo), so a fresh clone builds with no
 # extra step. Only run this to bump the pinned Gradle version — never as part of a build, since it
