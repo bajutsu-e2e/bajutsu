@@ -120,6 +120,12 @@ Log:
   Simulator recipes and `make check` stay unsigned and unchanged. Unit 5 — the on-hardware Device
   Farm submission — stays open: it needs an Apple Developer and an AWS account, so it remains a manual
   proof of concept outside the gate.
+- 2026-07-20 — Documented Unit 5's manual runbook on the [AWS Device Farm](../../docs/devicefarm.md)
+  page (and its Japanese mirror): a new "iOS device-signing proof of concept (manual)" section that
+  walks through creating the project and device pool, building the two device-signed artifacts, and
+  submitting one scenario with `--platform ios`. Unit 5's box stays unchecked — the empirical
+  on-hardware proof still awaits an Apple Developer and an AWS account — but the runbook is now in
+  place for whoever runs it.
 
 ## References
 
