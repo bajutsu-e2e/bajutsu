@@ -104,12 +104,18 @@ def manual_todo(label: str, bypass: str | None) -> str:
     `setLocation` / `push` device-control TODOs — it renders as a labeled `// TODO` naming what to
     wire (`bypass`) or that nothing can (a real CAPTCHA), never a silent skip that would fake a pass.
     """
+    # `label`/`bypass` are agent-authored free text (only secret-masked, never newline-stripped),
+    # so an embedded newline would break out of the `// TODO` comment into a new, unprefixed
+    # physical line of generated source that CI then compiles — collapse newlines to keep the whole
+    # reason on the comment line, mirroring the unescaped-interpolation guard the JS templates use.
+    safe_label = label.replace("\n", " ")
+    safe_bypass = bypass.replace("\n", " ") if bypass else None
     tail = (
-        f"wire a deterministic bypass: {bypass}"
-        if bypass
+        f"wire a deterministic bypass: {safe_bypass}"
+        if safe_bypass
         else "no deterministic run-time equivalent"
     )
-    return f"{label} — {tail}; not generated"
+    return f"{safe_label} — {tail}; not generated"
 
 
 def permissions_setup_lines(scenario: Scenario) -> list[str]:

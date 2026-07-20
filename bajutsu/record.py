@@ -621,7 +621,7 @@ def record(
                 # step is recorded; re-observe rather than record an action that never ran.
                 say(f"[{n}] ✋ could not resolve that field on the live screen; re-observing")
                 continue
-            if response.acted:
+            if response.acted and not response.values:
                 # The takeover pattern (BE-0185): the human operated the device for an operation the
                 # AI cannot perform (a CAPTCHA, a biometric prompt). Record a `manual` marker of the
                 # transition — not the opaque gesture — classified by whether the agent proposed a
@@ -630,6 +630,10 @@ def record(
                 # Gate on the explicit `acted` flag, not `kind == "acted"` — `kind` returns "acted"
                 # as its no-cancel/no-value default, so a bare resume (an empty response) must stay a
                 # plain re-observe and never fabricate a run-failing marker for a human who did nothing.
+                # Also require an empty `values`: a response can carry both a value and `acted` (the
+                # two are independent POST-body fields, mutually exclusive only by UI convention), so
+                # when the `kind == "value"` branch above did not fire (no `human_field`) this guard
+                # keeps a supplied value from being silently dropped in favor of a manual marker.
                 manual_step, todo = _manual_takeover_step(reason, proposal.human_bypass)
                 steps.append(manual_step)
                 say(f"[{len(steps)}] ✋ recorded human takeover as {describe_step(manual_step)}")

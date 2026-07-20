@@ -15,8 +15,12 @@ from bajutsu.scenario import Step
 
 
 @_handler("manual")
-def _do_manual(driver: base.Driver, step: Step, _r: object, _c: object, _b: object) -> None:
+def _do_manual(_d: object, step: Step, _r: object, _c: object, _b: object) -> None:
     assert step.manual is not None
     m = step.manual
-    hint = f"wire the bypass: {m.bypass}" if m.bypass else "no deterministic run-time equivalent"
+    hint = (
+        f"wire a deterministic bypass: {m.bypass}"
+        if m.bypass
+        else "no deterministic run-time equivalent"
+    )
     raise base.ManualStepRequired(f"manual takeover step: {m.label} — {hint}")

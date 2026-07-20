@@ -298,6 +298,24 @@ def test_record_does_not_record_a_marker_for_a_fieldless_value_response() -> Non
     assert not [s for s in scenario.steps if s.manual is not None]
 
 
+def test_record_does_not_fabricate_a_marker_when_a_value_rides_along_with_acted() -> None:
+    # `values` and `acted` are independent POST-body fields (mutually exclusive only by UI
+    # convention), so a response can carry both. With no named field the value branch cannot fire;
+    # the takeover branch must NOT fire either and silently discard the supplied value — guarding
+    # `acted` on an empty `values` keeps a rode-along value from being lost to a `manual` marker.
+    driver = FakeDriver([_el("go", "Go")])
+    agent = FakeAgent(
+        [
+            Proposal(needs_human=True, human_prompt="enter the OTP"),
+            Proposal(steps=[Step.model_validate({"tap": {"id": "go"}})]),
+            Proposal(done=True),
+        ]
+    )
+    handoff = RecordingHandoff([HandoffResponse(values=["999111"], acted=True)])
+    scenario = record(driver, "log in", agent, handoff=handoff)
+    assert not [s for s in scenario.steps if s.manual is not None]
+
+
 def test_record_resumes_after_a_value_response_without_a_target_field() -> None:
     # A value response with no named target field records no step and just re-observes: BE-0182
     # records the value only when the handoff names the field it goes into (below); a fieldless
