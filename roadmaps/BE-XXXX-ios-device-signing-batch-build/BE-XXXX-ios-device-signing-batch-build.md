@@ -109,13 +109,6 @@ outside the gate.
 - [ ] Unit 4 — credential hygiene (`require_team` guard, placeholder template, gitignored output)
 - [ ] Unit 5 — end-to-end Device Farm submission proof of concept (needs Apple Developer + AWS accounts; manual, outside `make check`)
 
-Log:
-
-- 2026-07-20: Units 1–4 authored on branch `claude/devicefarm-ios-config` (commit `7f9b3bb4`) and
-  validated short of signing — both projects resolve the device SDK (`PLATFORM_NAME = iphoneos`), the
-  `require_team` guard fires when `DEVELOPMENT_TEAM` is unset, `ExportOptions.plist` lints, and `make
-  check` is green. Implementing PR: _pending_.
-
 ## References
 
 - [BE-0238 — iOS device-cloud execution](../BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution.md) — the item that deferred this device-signing axis.
