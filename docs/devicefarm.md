@@ -211,28 +211,14 @@ unsigned and runs anywhere, with no Apple or AWS account). Running it is a manua
    the second emits the device-signed `BajutsuRunner.xctestrun` under
    `BajutsuKit/Runner/build/dd-device/Build/Products`. A device build with `DEVELOPMENT_TEAM` unset
    fails fast with a clear message rather than producing an unsigned artifact.
-3. Submit one scenario, e.g. `scenarios/firstlook.yaml`, with the iOS platform selected. Package the
-   runner's whole `Products` directory — the `.xctestrun` references its test bundles by
-   `__TESTROOT__` beside it, so the file alone is not enough:
-
-   ```bash
-   uv run python scripts/devicefarm_submit.py \
-     --platform ios \
-     --scenario scenarios/firstlook.yaml \
-     --target showcase-swiftui \
-     --config showcase.devicefarm.ios.config.yaml \
-     --app demos/showcase/ios/swiftui/build/export-device/BajutsuShowcaseSwiftUI.ipa \
-     --package .=. \
-     --package demos/showcase/devicefarm/showcase.devicefarm.ios.config.yaml=showcase.devicefarm.ios.config.yaml \
-     --package demos/showcase/scenarios=scenarios \
-     --package BajutsuKit/Runner/build/dd-device/Build/Products=. \
-     --project-arn <project-arn> --device-pool-arn <device-pool-arn>
-   ```
-
-   `--platform ios` selects the XCUITest backend, the `IOS_APP` upload type, and the
-   `--udid "$DEVICEFARM_DEVICE_UDID"` argument the reserved device resolves through. Drop the two ARN
-   flags and add `--package-only` first to inspect the package Device Farm will receive without an
-   AWS credential.
+3. Run the submitter against one scenario, e.g. `scenarios/firstlook.yaml`, with the iOS platform
+   selected — the same `--platform ios` command from [Using the submitter](#using-the-submitter)
+   above, with its `--package-only` dry-run flag dropped and `--project-arn <project-arn>
+   --device-pool-arn <device-pool-arn>` added to submit the run. That command already packages the
+   runner's whole `Products` directory (`--package BajutsuKit/Runner/build/dd-device/Build/Products=.`),
+   so the `.xctestrun`'s `__TESTROOT__` test bundles beside it travel with the upload; the file alone
+   is not enough. `--platform ios` selects the XCUITest backend, the `IOS_APP` upload type, and the
+   `--udid "$DEVICEFARM_DEVICE_UDID"` argument the reserved device resolves through.
 4. Confirm from the downloaded artifacts that the scenario produced a `manifest.json` with the
    expected verdict. As on the Android route, the submitter extracts the CUSTOMER_ARTIFACT zip (the
    `runs/` tree with the manifests) into the destination and writes Device Farm's plain-file
