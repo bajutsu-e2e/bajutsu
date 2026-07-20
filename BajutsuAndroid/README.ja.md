@@ -107,6 +107,13 @@ val client = OkHttpClient.Builder()
 から機密情報を隠してください。iOS 向けに [BajutsuKit の Safety note](../BajutsuKit/README.md#safety)
 が述べているのと同じ注意点です。
 
+**クリアテキストの例外設定が必要です。** `BAJUTSU_COLLECTOR` は平文 HTTP の `127.0.0.1` URL であり、
+Android（API 28 以降）は既定でクリアテキスト通信を遮断します（loopback を ATS で除外する iOS とは
+異なります）。テスト/デバッグビルドに `127.0.0.1` へのクリアテキスト例外を `network_security_config`
+で追加してください（設定例は `demos/showcase/android/*/src/main/res/xml/network_security_config.xml`）。
+これがないと、インターセプタの報告 POST は `CLEARTEXT communication to 127.0.0.1 not permitted` で
+失敗し、ログには残るものの他に痕跡はなく、やり取りがコレクタに届きません。
+
 ## 対応範囲
 
 アプリのプライマリクリップに対する set / get / clear です。`get` は先頭のクリップ項目をテキストに

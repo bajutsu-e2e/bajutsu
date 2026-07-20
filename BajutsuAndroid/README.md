@@ -106,6 +106,13 @@ debug flag (as shown above) and configure bajutsu's `redact` to mask secrets in 
 (`network.json`) — the same caveat [BajutsuKit's Safety note](../BajutsuKit/README.md#safety) states
 for iOS.
 
+**Cleartext exception required.** `BAJUTSU_COLLECTOR` is a plain-HTTP `127.0.0.1` URL, and Android
+(API 28+) blocks cleartext traffic by default — unlike iOS, which exempts loopback from ATS. Add a
+`network_security_config` cleartext exception for `127.0.0.1` to your test/debug build (see
+`demos/showcase/android/*/src/main/res/xml/network_security_config.xml` for the pattern), or the
+interceptor's report POST fails with `CLEARTEXT communication to 127.0.0.1 not permitted` — logged but
+otherwise silent, so no exchange ever reaches the collector.
+
 ## Coverage
 
 Clipboard set / get / clear on the app's primary clip. `get` reads the first clip item coerced to
