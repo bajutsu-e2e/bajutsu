@@ -88,9 +88,7 @@ Accepted and actively being built — a PR is in flight or imminent.
 ### Authoring experience (record / GUI editor)
 
 <!-- GENERATED:in-progress-authoring -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0185](BE-0185-record-human-takeover-step/BE-0185-record-human-takeover-step.md) | Human takeover step during record (CAPTCHA / biometrics / unresolvable gestures) | In progress |
+
 <!-- /GENERATED:in-progress-authoring -->
 
 ## Proposals

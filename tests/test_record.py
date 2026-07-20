@@ -351,6 +351,55 @@ def test_record_does_not_fabricate_a_marker_when_a_value_rides_along_with_acted(
     assert not [s for s in scenario.steps if s.manual is not None]
 
 
+def test_record_offers_a_takeover_when_a_target_cannot_be_resolved() -> None:
+    # BE-0185 box 1: the agent proposes an action whose target does not resolve on the live screen —
+    # the motivating case ("could not resolve that target on the live screen; stopping"). Rather than
+    # abandon the recording, the loop — not an LLM, and without guessing which element to act on —
+    # offers a takeover when a responder is present. The human operates the device and resumes, and a
+    # `manual` marker of the transition is recorded (no proposed bypass → unreproducible, so it fails
+    # loudly at run time). The loop then re-observes and records the next action.
+    driver = FakeDriver([_el("go", "Go")])
+    agent = FakeAgent(
+        [
+            Proposal(steps=[Step.model_validate({"tap": {"id": "ghost"}})]),  # no such element
+            Proposal(steps=[Step.model_validate({"tap": {"id": "go"}})]),
+            Proposal(done=True),
+        ]
+    )
+    handoff = RecordingHandoff([HandoffResponse(acted=True)])
+    scenario = record(driver, "get past the gate", agent, handoff=handoff)
+
+    assert len(handoff.requests) == 1  # the unresolved target raised the takeover
+    manual = [s for s in scenario.steps if s.manual is not None]
+    assert len(manual) == 1
+    assert manual[0].manual.bypass is None  # a loop-detected takeover proposes no bypass
+    assert manual[0].from_ is not None and "no deterministic" in manual[0].from_.lower()
+    # the loop resumed and recorded the next action; no fabricated tap stands in for the ghost target
+    assert [s.tap.id for s in scenario.steps if s.tap is not None] == ["go"]
+
+
+def test_record_stops_when_an_unresolved_target_takeover_is_cancelled() -> None:
+    # If the human cancels the takeover offered for an unresolved target, the recording stops cleanly
+    # (as it always did on an unresolved first step) — no `manual` marker for a takeover that never
+    # happened.
+    driver = FakeDriver([_el("go", "Go")])
+    agent = FakeAgent([Proposal(steps=[Step.model_validate({"tap": {"id": "ghost"}})])])
+    handoff = RecordingHandoff([HandoffResponse(cancelled=True)])
+    scenario = record(driver, "x", agent, handoff=handoff)
+    assert len(handoff.requests) == 1
+    assert scenario.steps == []
+
+
+def test_record_still_stops_on_an_unresolved_target_without_a_handoff() -> None:
+    # Unchanged non-interactive / CI behavior: with no responder an unresolved first step just stops
+    # cleanly — it never guesses, hangs, or fabricates a marker.
+    driver = FakeDriver([_el("go", "Go")])
+    agent = FakeAgent([Proposal(steps=[Step.model_validate({"tap": {"id": "ghost"}})])])
+    scenario = record(driver, "x", agent)  # no handoff responder
+    assert scenario.steps == []
+    assert not [s for s in scenario.steps if s.manual is not None]
+
+
 def test_record_resumes_after_a_value_response_without_a_target_field() -> None:
     # A value response with no named target field records no step and just re-observes: BE-0182
     # records the value only when the handoff names the field it goes into (below); a fieldless

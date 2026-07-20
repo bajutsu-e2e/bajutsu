@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0185](BE-0185-record-human-takeover-step.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0185") |
 | Implementing PR | [#1210](https://github.com/bajutsu-e2e/bajutsu/pull/1210) |
 | Topic | Authoring experience (record / GUI editor) |
@@ -112,9 +112,9 @@ interactive-mirror surface itself is out of scope here and would be its own item
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Takeover trigger on unresolved-target / explicit author request, no element guessing.
-- [ ] Human-operates-the-device handoff with bajutsu not driving; the `serve` pane coordinates the pause/resume only.
-- [ ] Remote/self-hosted `serve` (BE-0015 / BE-0016): require device reach for takeover, with a documented fallback when the device is not reachable.
+- [x] Takeover trigger on an unresolved target: the loop (never an LLM) offers a takeover when the agent's target will not resolve, without guessing which element to act on. (A proactive author-initiated interrupt while the loop is progressing — the "explicit author request" variant — is a deliberate follow-up; it needs a live control channel into the record loop and is not required by the motivating case.)
+- [x] Human-operates-the-device handoff with bajutsu not driving; the `serve` pane coordinates the pause/resume only.
+- [x] Remote/self-hosted `serve` (BE-0015 / BE-0016): require device reach for takeover, with a documented fallback when the device is not reachable.
 - [x] Resume-by-re-observation recording the observed state transition, not the raw gesture.
 - [x] Artifact classification: bypassable → placeholder + bypass TODO (BE-0035 / BE-0052).
 - [x] Artifact classification: unreproducible → explicit non-CI manual marker (codegen `// TODO`, BE-0026; run-time explicit skip/fail).
@@ -127,6 +127,14 @@ interactive-mirror surface itself is out of scope here and would be its own item
   labeled `// TODO` by every codegen target, and failing loudly at `run` time (`ManualStepRequired`)
   rather than faking a pass. Leaves the unresolved-target auto-trigger and the remote-`serve` reach
   constraint to follow-up slices.
+- _pending_ — the trigger and reach slices, completing the item. The record loop now *offers* a
+  takeover when the agent's proposed target will not resolve on the live screen (the motivating
+  "could not resolve that target; stopping" dead end), rather than abandoning the recording — the
+  loop raises it, never an LLM, and never guesses which element to act on. On a hosted / remote
+  `serve` a device-operation takeover is refused (`respond-human` returns a clear fallback: re-record
+  where the device is, or wire the test-build bypass), keeping device reach a first-class
+  precondition, while value entry and cancel still work remotely. Docs (`recording.md`, both
+  languages) document both the trigger and the remote constraint.
 
 ## References
 

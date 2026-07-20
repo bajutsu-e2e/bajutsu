@@ -234,6 +234,36 @@ def _manual_takeover_step(label: str, bypass: str | None) -> tuple[Step, str]:
     return step, todo
 
 
+def _offer_takeover(
+    handoff: Handoff,
+    *,
+    reason: str,
+    elements: list[base.Element],
+    target: str,
+    screenshot: bytes | None,
+    bypass: str | None,
+) -> tuple[Step, str] | None:
+    """Offer a takeover handoff and, if the human operated the device, return its `manual` marker.
+
+    The human operates the live device directly — bajutsu never drives — and resumes; this returns the
+    (`manual` step, TODO) recording the observed transition when they acted, or None when they
+    cancelled, supplied only a value, or the responder timed out, in which case the caller stops.
+    Shared shape with the agent-signalled takeover (BE-0185); the loop-detected trigger passes
+    `bypass=None`, so the marker is an honest, unreproducible one that fails loudly at run time.
+    """
+    response = handoff.request(
+        HandoffRequest(
+            reason=reason,
+            screen=_summarize_screen(elements),
+            target=target,
+            screenshot=screenshot,
+        )
+    )
+    if response.acted and not response.values:
+        return _manual_takeover_step(reason, bypass)
+    return None
+
+
 def _should_attach(current: str, previous: str | None) -> bool:
     """Whether this turn's observation should carry a screenshot (BE-0192, vision-on-demand).
 
@@ -689,9 +719,44 @@ def record(
                 driver, proposed, clock, alert_guard, report=report, selection=selection
             ):
                 # The step did not resolve, even after clearing prompts. If nothing in this turn
-                # executed (the length-1 unresolvable case, unchanged from before), stop; otherwise
-                # the plan went stale mid-batch — abort the rest and re-observe next turn.
+                # executed (the first proposed step did not resolve), offer a takeover; otherwise the
+                # plan went stale mid-batch — abort the rest and re-observe next turn.
                 if i == 0:
+                    # The takeover trigger (BE-0185 box 1): the agent's target will not resolve to a
+                    # unique element — the motivating case ("could not resolve that target"). Rather
+                    # than abandon the recording, offer a takeover when a responder is present. The
+                    # loop (not an LLM) raises this and never guesses which element to act on; the
+                    # human operates the device and resumes, and a `manual` marker of the transition
+                    # is recorded (no proposed bypass → unreproducible, so it fails loudly at run time
+                    # until a bypass is wired, BE-0035 / BE-0052). Mask the reason (BE-0120) before it
+                    # travels to the responder, the stream, or the recorded label. Without a responder,
+                    # keep the clean, labeled stop the non-interactive / CI path relies on.
+                    takeover_reason = _mask_secrets(
+                        f"the agent could not resolve the target for: {describe_step(recorded_step)}",
+                        secret_tokens or [],
+                    )[0]
+                    takeover = (
+                        _offer_takeover(
+                            handoff,
+                            reason=takeover_reason,
+                            elements=elements,
+                            target="",
+                            screenshot=screenshot,
+                            bypass=None,
+                        )
+                        if handoff is not None
+                        else None
+                    )
+                    if takeover is not None:
+                        manual_step, todo = takeover
+                        steps.append(manual_step)
+                        say(
+                            f"[{len(steps)}] ✋ recorded human takeover as "
+                            f"{describe_step(manual_step)}"
+                        )
+                        say(f"[{len(steps)}] 📝 {todo}")
+                        rebatch = True  # re-observe from the screen the human left
+                        break
                     say(f"[{m}] ! could not resolve that target on the live screen; stopping")
                     stop = True
                 else:

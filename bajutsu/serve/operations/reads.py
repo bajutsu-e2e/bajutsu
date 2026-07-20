@@ -578,6 +578,20 @@ def respond_human(state: ServeState, job_id: str, body: dict[str, Any]) -> tuple
     if job is None:
         return {"error": "no such job"}, 404
     response = handoff.HandoffResponse.from_dict(body)
+    if state.hosted and response.acted and not response.values:
+        # BE-0185 box 3: a takeover asks the human to operate the device directly, but a hosted
+        # (remote) serve's author is not in front of it. Refuse rather than pretend — the browser
+        # cannot drive the device, and this proposal keeps device reach a first-class precondition
+        # instead of assuming it away. The fallback: re-record where the device is, or wire the
+        # test-build bypass so `run` needs no live takeover. A value handoff and a cancel still work.
+        return {
+            "error": (
+                "device takeover is not available on a remote serve — the device is not within "
+                "your reach here. Re-record where the device is, or wire the test-build bypass so "
+                "the step runs deterministically without a live takeover."
+            ),
+            "resumed": False,
+        }, 409
     resumed = jobs.send_response(job, handoff.response_to_json(response))
     return {"resumed": resumed}, 200
 

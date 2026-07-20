@@ -65,7 +65,8 @@ class Agent(Protocol):
      - on success, push to steps; then re-observe and compare the screen's identity to the one the
        batch was planned against. If it changed with steps still pending, abort the rest and
        re-observe next turn (only the executed prefix is recorded)
-     - a step that does not resolve stops the record if nothing ran this turn, else aborts the batch
+     - a step that does not resolve: if nothing ran this turn, offer a takeover when a responder is
+       present (BE-0185, below), else stop cleanly; if the batch was mid-flight, abort the rest
 6. If proposal.done: insert a settle step (below) if needed, finalize expect, and finish
 7. Return Scenario(name, steps, expect)
 ```
@@ -129,6 +130,27 @@ value pattern, which produces a replayable `type` step — a `manual` step has n
 equivalent, so at `run` time it **fails loudly** with `ManualStepRequired` rather than faking a pass
 (directives 1 and 2). The marker keys on the explicit `acted` flag, not the handoff's default kind, so
 a bare resume never fabricates a run-failing step.
+
+**Takeover triggers.** A takeover starts one of two ways. The agent can *ask* for one when it knows
+it cannot proceed (`proposal.needs_human` with no field). The **loop** also raises one on its own when
+the agent's proposed target will not resolve to a unique element even after the alert guard has
+cleared any covering prompt — the motivating case where `record` used to just print "could not resolve
+that target on the live screen; stopping" and abandon the run. Now, when a responder is present, that
+dead end becomes a takeover offer instead: the loop pauses and hands off, and the human either operates
+the device and resumes (recording a `manual` marker) or cancels (stopping cleanly). The loop — never an
+LLM — raises this, and it never guesses which element to act on; it only asks the human to take over.
+With no responder it keeps the old clean, labeled stop.
+
+**Device reach on a remote serve.** A takeover asks the human to operate the live device, so unlike
+value entry — which completes entirely in the browser — it needs the device within the author's reach.
+On a local `serve` (the Simulator on the same machine) the author operates it directly and the handoff
+pane only coordinates the pause and resume; the browser never drives the device. On a **remote or
+self-hosted** `serve` ([BE-0015](../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)
+/ [BE-0016](../roadmaps/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)) the device is not in
+front of the author, so a device-operation takeover cannot be honored: `respond-human` refuses the
+`acted` resume with a message naming the fallback — **re-record where the device is, or wire the
+test-build bypass** so `run` needs no live takeover. An interactive mirrored device view in the browser
+would lift this constraint, but that surface is out of scope here.
 
 ### Automatic settle-step insertion
 
