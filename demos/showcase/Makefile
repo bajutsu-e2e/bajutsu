@@ -69,7 +69,7 @@ RUNNER_DEVICE_PRODUCTS := $(RUNNER_DD_DEVICE)/Build/Products
 define require_team
 	@if [ -z "$(DEVELOPMENT_TEAM)" ]; then \
 		echo "error: DEVELOPMENT_TEAM=<Apple Team ID> is required for device builds"; \
-		echo "  e.g. make -C demos/showcase swiftui-ipa-device DEVELOPMENT_TEAM=ABCDE12345"; \
+		echo "  e.g. make -C demos/showcase $@ DEVELOPMENT_TEAM=ABCDE12345"; \
 		exit 1; \
 	fi
 endef
