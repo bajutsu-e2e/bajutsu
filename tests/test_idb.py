@@ -529,9 +529,9 @@ def test_type_text_falls_back_to_paste_for_unmappable_characters(  # type: ignor
     # assertion.
     import shutil
 
-    from idb.common.types import HIDDirection, HIDKey, HIDPress
-
     management = pytest.importorskip("idb.grpc.management")  # skip on the gate (no idb extra)
+
+    from idb.common.types import HIDDirection, HIDKey, HIDPress
 
     from bajutsu import simctl
     from bajutsu.drivers import idb as idb_mod
