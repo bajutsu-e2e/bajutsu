@@ -10,17 +10,17 @@
   preconditions:
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
-    - wait: { for: { id: [stable.row.1, stable_row_1] }, timeout: 15 }
+    - wait: { for: { id: [stable.row.1, stable_row_1] }, timeout: 10 }
       capture: [video]
     - forEach:
         sel: { idMatches: ["stable.row.*", "stable_row_*"] }
         as: current
         steps:
           - tap: { id: "${vars.current}" }
-          - wait: { for: { id: [horse.title, horse_title] }, timeout: 15 }
+          - wait: { for: { id: [horse.title, horse_title] }, timeout: 5 }
           - assert:
               - exists: { id: [horse.title, horse_title] }
           - back: {}
-          - wait: { for: { id: [stable.row.1, stable_row_1] }, timeout: 15 }
+          - wait: { for: { id: [stable.row.1, stable_row_1] }, timeout: 5 }
   expect:
     - count: { sel: { idMatches: ["stable.row.*", "stable_row_*"] }, equals: 5 }

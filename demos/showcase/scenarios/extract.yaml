@@ -11,7 +11,7 @@
   steps:
     - tap: { label: "Log", traits: [button] }
       capture: [video]
-    - wait: { for: { id: [log.count, log_count] }, timeout: 15 }
+    - wait: { for: { id: [log.count, log_count] }, timeout: 10 }
     - tap: { id: [log.count, log_count] }
     - tap: { id: [log.count, log_count] }
       extract: { count: { sel: { id: [log.count.value, log_count_value] } } }
