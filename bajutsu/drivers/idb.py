@@ -189,8 +189,15 @@ def _paste_text_via_companion(udid: str, text: str) -> None:
     directly via `send_events`.
 
     Seeds the Simulator pasteboard with `text` via `simctl pbcopy` (Unicode round-trips there without
-    the HID keymap's US-layout limit) and restores its prior content afterward, so this stays
-    invisible to a later `clipboard` assertion — typing is not meant to have a clipboard side effect.
+    the HID keymap's US-layout limit) and leaves it there rather than restoring whatever the
+    pasteboard held before. Restoring immediately after `send_events` returns would race the
+    focused app actually reading the pasteboard for the paste this chord triggers: fb-idb's `hid()`
+    call is only known to ack once idb_companion has drained the HID event stream, not once the
+    Simulator's app process has finished handling it, and that gap is exactly the kind of
+    wall-clock-dependent behavior prime directive 2 (determinism) rules out — restoring too early
+    would silently paste the *old* pasteboard content instead of `text`, intermittently, under
+    exactly the load that makes it hard to catch in CI. A scenario combining a `type` of non-Latin
+    text with a later `clipboard` assertion should account for this.
     """
     from idb.common.types import HIDDirection, HIDKey, HIDPress
 
@@ -200,13 +207,8 @@ def _paste_text_via_companion(udid: str, text: str) -> None:
         HIDPress(action=HIDKey(keycode=_HID_KEY_V), direction=HIDDirection.UP),
         HIDPress(action=HIDKey(keycode=_HID_KEY_LEFT_GUI), direction=HIDDirection.UP),
     ]
-    env = simctl.Env(udid)
-    previous = env.get_clipboard()
-    env.set_clipboard(text)
-    try:
-        _with_companion_client(udid, lambda client: client.send_events(chord))
-    finally:
-        env.set_clipboard(previous)
+    simctl.Env(udid).set_clipboard(text)
+    _with_companion_client(udid, lambda client: client.send_events(chord))
 
 
 def _delete_text_via_companion(udid: str, count: int) -> None:

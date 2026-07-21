@@ -34,6 +34,30 @@ NDJSON = (
 )
 
 
+def _fake_client_manager(client: object) -> type:
+    """A fake fb-idb `ClientManager` whose `from_udid` yields `client` (shared by companion tests).
+
+    Only the connection/manager plumbing is faked here — each test supplies its own `client` with
+    whatever `text` / `send_events` / `key_sequence` behavior it needs.
+    """
+
+    class _FakeConn:
+        async def __aenter__(self) -> object:
+            return client
+
+        async def __aexit__(self, *exc: object) -> None:
+            return None
+
+    class _FakeManager:
+        def __init__(self, **_kw: object) -> None:
+            pass
+
+        def from_udid(self, udid: str) -> _FakeConn:
+            return _FakeConn()
+
+    return _FakeManager
+
+
 def test_parse_describe_all() -> None:
     els = parse_describe_all(FIXTURE)
     assert len(els) == 3
@@ -491,22 +515,8 @@ def test_delete_text_via_companion_sends_hid_backspaces_not_text_control_char(  
 
     client = _FakeClient()
 
-    class _FakeConn:
-        async def __aenter__(self) -> _FakeClient:
-            return client
-
-        async def __aexit__(self, *exc: object) -> None:
-            return None
-
-    class _FakeManager:
-        def __init__(self, **_kw: object) -> None:
-            pass
-
-        def from_udid(self, udid: str) -> _FakeConn:
-            return _FakeConn()
-
     monkeypatch.setattr(shutil, "which", lambda _name: "/usr/bin/idb_companion")
-    monkeypatch.setattr(management, "ClientManager", _FakeManager)
+    monkeypatch.setattr(management, "ClientManager", _fake_client_manager(client))
 
     idb_mod._delete_text_via_companion("U", 3)
     assert client.key_sequences == [[idb_mod._HID_KEY_DELETE] * 3]  # three backspace HID keys
@@ -524,16 +534,15 @@ def test_type_text_falls_back_to_paste_for_unmappable_characters(  # type: ignor
     # for ...")`, always before any key is sent (`text_to_events` builds the whole event list up
     # front). The driver must recover by pasting the whole string — a hardware Cmd+V chord over the
     # same HID channel reaches UIKit's Paste for the focused field (verified on-device) — rather than
-    # crashing the run (prime directive 2). The Simulator pasteboard carries the value there and is
-    # restored to its prior content afterward, so this stays invisible to a later `clipboard`
-    # assertion.
+    # crashing the run (prime directive 2). The pasteboard is left holding `text`, not restored to
+    # whatever it held before: restoring immediately would race the app actually reading it for the
+    # paste, and getting that race wrong would silently deliver stale text instead of `text`.
     import shutil
 
     management = pytest.importorskip("idb.grpc.management")  # skip on the gate (no idb extra)
 
     from idb.common.types import HIDDirection, HIDKey, HIDPress
 
-    from bajutsu import simctl
     from bajutsu.drivers import idb as idb_mod
 
     class _FakeClient:
@@ -550,37 +559,16 @@ def test_type_text_falls_back_to_paste_for_unmappable_characters(  # type: ignor
 
     client = _FakeClient()
 
-    class _FakeConn:
-        async def __aenter__(self) -> _FakeClient:
-            return client
-
-        async def __aexit__(self, *exc: object) -> None:
-            return None
-
-    class _FakeManager:
-        def __init__(self, **_kw: object) -> None:
-            pass
-
-        def from_udid(self, udid: str) -> _FakeConn:
-            return _FakeConn()
-
     monkeypatch.setattr(shutil, "which", lambda _name: "/usr/bin/idb_companion")
-    monkeypatch.setattr(management, "ClientManager", _FakeManager)
+    monkeypatch.setattr(management, "ClientManager", _fake_client_manager(client))
 
-    clipboard = {"value": "previous-clipboard"}
-    monkeypatch.setattr(simctl.Env, "get_clipboard", lambda self: clipboard["value"])
     set_calls: list[str] = []
-
-    def _fake_set_clipboard(self: object, text: str) -> None:
-        set_calls.append(text)
-        clipboard["value"] = text
-
-    monkeypatch.setattr(simctl.Env, "set_clipboard", _fake_set_clipboard)
+    monkeypatch.setattr(simctl.Env, "set_clipboard", lambda self, text: set_calls.append(text))
 
     idb_mod._type_text_via_companion("U", "で")
 
     assert client.text_calls == ["で"]  # the direct HID path is tried first
-    assert set_calls == ["で", "previous-clipboard"]  # seeded with the value, then restored
+    assert set_calls == ["で"]  # seeded with the value; never restored (see docstring for why)
     assert client.sent_events == [
         [
             HIDPress(action=HIDKey(keycode=idb_mod._HID_KEY_LEFT_GUI), direction=HIDDirection.DOWN),

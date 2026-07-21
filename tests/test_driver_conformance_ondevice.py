@@ -33,6 +33,7 @@ from driver_conformance import (
     ConformanceHarness,
     DriverConformanceContract,
     OnDeviceConformanceHarness,
+    _field_value,
 )
 
 from bajutsu import simctl
@@ -136,22 +137,18 @@ class TestIdbDriverConformance(DriverConformanceContract):
         # run. Android's `adb shell input text` has the same Unicode limitation with no such fallback,
         # so this stays idb-only rather than joining the cross-backend contract. `test_idb.py` covers
         # the fallback's internals against a mocked gRPC client; this exercises it against the real
-        # idb_companion + Simulator.
+        # idb_companion + Simulator. The pasteboard is left holding `text`, not restored — see
+        # `_paste_text_via_companion`'s docstring for why restoring it immediately would race the
+        # paste this test is exercising — so this test does not assert anything about clipboard state.
         driver = harness.with_screen([])
         driver.tap({"id": FIELD_ID})
         text = "こんにちは、World!"
-        env = simctl.Env(UDID)
-        previous_clipboard = env.get_clipboard()
-        before = base.resolve_unique(driver.query(), {"id": FIELD_ID})["value"] or ""
+        before = _field_value(driver)
         driver.type_text(text)
-        after = base.resolve_unique(driver.query(), {"id": FIELD_ID})["value"] or ""
+        after = _field_value(driver)
         if len(after) <= len(before):
             pytest.skip("backend does not surface the field value; paste effect not observable")
         assert text in after
-        # The paste is a typing mechanism, not a scenario-visible clipboard write — the Simulator
-        # pasteboard must come back to what it held before, so a later `clipboard` assertion is
-        # unaffected.
-        assert env.get_clipboard() == previous_clipboard
 
 
 class TestXcuitestDriverConformance(DriverConformanceContract):
