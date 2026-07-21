@@ -18,10 +18,9 @@ header .brand{font-weight:700}
 .toptabs{display:flex;align-items:center;gap:.3rem;flex-wrap:wrap}
 /* Config controls (name, Open config, View, project switcher, Settings, theme, Edit): one flex item
    so a narrow header wraps it entirely onto its own row rather than interleaving it with the view
-   tabs above. margin-left:auto right-aligns the whole group on the shared row when there's still room.
-   flex-wrap stays nowrap here (own line as a single row) — it only turns on at the phone breakpoint,
-   where header .cfgname's forced flex-basis:100% relies on it to push the rest below. */
-.cfgctrls{display:flex;align-items:center;gap:.3rem;margin-left:auto}
+   tabs above. flex-wrap stays nowrap here (own line as a single row) — it only turns on at the phone
+   breakpoint, where header .cfgname's forced flex-basis:100% relies on it to push the rest below. */
+.cfgctrls{display:flex;align-items:center;gap:.3rem}
 .toptab{background:var(--bg2);border:1px solid var(--line);color:var(--mut);padding:.25rem .9rem;font:inherit;font-weight:600;font-size:.9em;border-radius:8px;cursor:pointer}
 .toptab:hover{color:var(--fg)}
 .toptab.active{color:var(--on-acc);background:var(--acc);border-color:var(--acc)}
@@ -561,7 +560,7 @@ header .appversion .dirty{color:var(--acc);font-weight:700}
   header .brandcol{flex:1 1 100%}
   .toptab,.cfgbtn{padding:.5rem .9rem;min-height:44px}
   header .cfgname{max-width:100%;flex-basis:100%}
-  .cfgctrls{margin-left:0;flex-wrap:wrap}
+  .cfgctrls{flex-wrap:wrap}
 
   /* Every view becomes one column; its content flows, the switcher selects which pane shows. */
   main{display:block;overflow:visible;padding:.7rem;height:auto;min-height:0}
