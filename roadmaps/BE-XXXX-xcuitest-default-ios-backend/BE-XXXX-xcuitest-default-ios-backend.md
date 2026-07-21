@@ -10,7 +10,7 @@
 | Status | **Proposal** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | Topic | Platform support |
-| Related | [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md), [BE-0240](../BE-0240-ios-capability-aware-actuator-selection/BE-0240-ios-capability-aware-actuator-selection.md) |
+| Related | [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md), [BE-0240](../BE-0240-ios-capability-aware-actuator-selection/BE-0240-ios-capability-aware-actuator-selection.md), [BE-0005](../BE-0005-idb-companion-version-monitoring/BE-0005-idb-companion-version-monitoring.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -81,9 +81,11 @@ simplifies rather than grows.
 ### Unit 2 — Migrate the fixtures and CI lanes
 
 The showcase's `-noax` targets are pinned to idb today because no runner is wired for them; wire the
-generic runner so they run on XCUITest, and re-point the required `smoke (idb)` and `E2E` lanes onto
-XCUITest with the runner prebuilt (`xcuitest.testRunner`) so CI does not pay a per-run build. This
-unit is where the migration is proven in CI, not just asserted.
+generic runner so they run on XCUITest, re-point the required `E2E` lane onto XCUITest, and stand up
+an XCUITest smoke lane alongside the existing `smoke (idb)` — all with the runner prebuilt
+(`xcuitest.testRunner`) so CI does not pay a per-run build. This unit adds the XCUITest coverage and
+proves the migration in CI; retiring the now-duplicated `smoke (idb)` lane is Unit 4's job, once idb
+itself is gone.
 
 ### Unit 3 — Update the idb-assuming surfaces and docs
 
@@ -103,7 +105,8 @@ That surface is the companion-version monitor
 ([BE-0005](../BE-0005-idb-companion-version-monitoring/BE-0005-idb-companion-version-monitoring.md)),
 the crawl vision tab locator that exists only because idb cannot address tabs, the idb branches in
 the shared coordinate-tree read path, and the idb executable's availability wiring. The unit also
-drops the `smoke (idb)` lane, which XCUITest now covers. idb is referenced across roughly 60 modules
+drops the now-redundant `smoke (idb)` lane, whose coverage the XCUITest smoke lane Unit 2 stood up
+already provides. idb is referenced across roughly 60 modules
 and as many tests, so this unit's own breakdown is large; the work is mechanical, though, following
 the failing imports outward from the deleted driver. The proposal fixes the outcome — no idb backend
 remains in the tree — not a line-by-line removal list.
@@ -122,9 +125,10 @@ On a named environment (the Simulator model and the Xcode version), run every sc
 `smoke` and `E2E` lanes cover today on XCUITest, with the runner-reuse amortization in place, and
 confirm each passes on the Simulator. This Simulator run is the PR's merge gate: the change does not
 merge until every scenario is green on XCUITest. The run must also exercise the custom tab-bar shape
-the crawl vision locator handles today — a tab bar with no accessibility identifier and no `tab`
-trait — since Unit 4's deletion of that locator is a regression unless XCUITest is confirmed to
-address it. Record the per-suite wall-clock so the migration's cost is measured, not assumed.
+the crawl vision tab locator handles today — a tab bar with no accessibility identifier and no `tab`
+trait — since Unit 4's deletion of the crawl vision tab locator is a regression unless XCUITest is
+confirmed to address it. Record the per-suite wall-clock so the migration's cost is measured, not
+assumed.
 
 ## Alternatives considered
 
