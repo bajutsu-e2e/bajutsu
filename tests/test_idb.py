@@ -516,6 +516,81 @@ def test_delete_text_via_companion_sends_hid_backspaces_not_text_control_char(  
     assert client.text_calls == ["hi"]  # typing still goes through the text path
 
 
+def test_type_text_falls_back_to_paste_for_unmappable_characters(  # type: ignore[no-untyped-def]
+    monkeypatch,
+) -> None:
+    # fb-idb's HID keymap only covers the US keyboard layout, so typing a Japanese (or other
+    # non-Latin) character makes the real `client.text()` raise a bare `Exception("No keycode found
+    # for ...")`, always before any key is sent (`text_to_events` builds the whole event list up
+    # front). The driver must recover by pasting the whole string — a hardware Cmd+V chord over the
+    # same HID channel reaches UIKit's Paste for the focused field (verified on-device) — rather than
+    # crashing the run (prime directive 2). The Simulator pasteboard carries the value there and is
+    # restored to its prior content afterward, so this stays invisible to a later `clipboard`
+    # assertion.
+    import shutil
+
+    from idb.common.types import HIDDirection, HIDKey, HIDPress
+
+    management = pytest.importorskip("idb.grpc.management")  # skip on the gate (no idb extra)
+
+    from bajutsu import simctl
+    from bajutsu.drivers import idb as idb_mod
+
+    class _FakeClient:
+        def __init__(self) -> None:
+            self.text_calls: list[str] = []
+            self.sent_events: list[list[object]] = []
+
+        async def text(self, text: str) -> None:
+            self.text_calls.append(text)
+            raise Exception(f"No keycode found for {text[0]}")  # mirrors fb-idb's own raise
+
+        async def send_events(self, events: list[object]) -> None:
+            self.sent_events.append(list(events))
+
+    client = _FakeClient()
+
+    class _FakeConn:
+        async def __aenter__(self) -> _FakeClient:
+            return client
+
+        async def __aexit__(self, *exc: object) -> None:
+            return None
+
+    class _FakeManager:
+        def __init__(self, **_kw: object) -> None:
+            pass
+
+        def from_udid(self, udid: str) -> _FakeConn:
+            return _FakeConn()
+
+    monkeypatch.setattr(shutil, "which", lambda _name: "/usr/bin/idb_companion")
+    monkeypatch.setattr(management, "ClientManager", _FakeManager)
+
+    clipboard = {"value": "previous-clipboard"}
+    monkeypatch.setattr(simctl.Env, "get_clipboard", lambda self: clipboard["value"])
+    set_calls: list[str] = []
+
+    def _fake_set_clipboard(self: object, text: str) -> None:
+        set_calls.append(text)
+        clipboard["value"] = text
+
+    monkeypatch.setattr(simctl.Env, "set_clipboard", _fake_set_clipboard)
+
+    idb_mod._type_text_via_companion("U", "で")
+
+    assert client.text_calls == ["で"]  # the direct HID path is tried first
+    assert set_calls == ["で", "previous-clipboard"]  # seeded with the value, then restored
+    assert client.sent_events == [
+        [
+            HIDPress(action=HIDKey(keycode=idb_mod._HID_KEY_LEFT_GUI), direction=HIDDirection.DOWN),
+            HIDPress(action=HIDKey(keycode=idb_mod._HID_KEY_V), direction=HIDDirection.DOWN),
+            HIDPress(action=HIDKey(keycode=idb_mod._HID_KEY_V), direction=HIDDirection.UP),
+            HIDPress(action=HIDKey(keycode=idb_mod._HID_KEY_LEFT_GUI), direction=HIDDirection.UP),
+        ]
+    ]
+
+
 def test_select_and_copy_are_unsupported_and_route_to_xcuitest() -> None:
     # idb is coordinate-only, so select-all / copy have no actuation; they fail loudly and point at
     # codegen→XCUITest, mirroring how multi-touch gestures are refused (BE-0265). The refusal is

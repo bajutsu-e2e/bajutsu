@@ -109,6 +109,12 @@ def swipe_cmd(udid: str, x1: float, y1: float, x2: float, y2: float) -> list[str
 # text keymap (`idb.common.hid.KEY_MAP`) has no entry for and rejects with "No keycode found for".
 _HID_KEY_DELETE = 42
 
+# USB HID usage ids for a hardware Cmd+V chord — the paste fallback below needs a true chord (Cmd
+# held down while V presses), not `key_sequence`'s sequential press-release of each key, so these
+# are sent as raw HIDPress down/up events rather than through `key_sequence`.
+_HID_KEY_LEFT_GUI = 227
+_HID_KEY_V = 25
+
 
 def _with_companion_client(udid: str, action: Callable[[Any], Awaitable[None]]) -> None:
     """Connect to `idb_companion` over the fb-idb gRPC client and run `action` on it (BE-0155).
@@ -154,8 +160,53 @@ def _with_companion_client(udid: str, action: Callable[[Any], Awaitable[None]]) 
 
 
 def _type_text_via_companion(udid: str, text: str) -> None:
-    """Type `text` into the focused field over the fb-idb gRPC companion path (BE-0155)."""
-    _with_companion_client(udid, lambda client: client.text(text=text))
+    """Type `text` into the focused field over the fb-idb gRPC companion path (BE-0155).
+
+    Falls back to `_paste_text_via_companion` for text fb-idb's HID keymap can't encode as key
+    presses. The keymap (`idb.common.hid.KEY_MAP`) only covers the US keyboard layout, so a
+    character outside it (Japanese, Chinese, Korean, emoji, ...) makes `text_to_events` raise a bare
+    `Exception("No keycode found for <char>")` — always *before* any key is sent, since `client.text`
+    builds the full event list up front, so retrying the whole string via paste is safe: no partial
+    input from the failed attempt to reconcile.
+    """
+    try:
+        _with_companion_client(udid, lambda client: client.text(text=text))
+    except Exception as e:
+        if not str(e).startswith("No keycode found for"):
+            raise
+        _paste_text_via_companion(udid, text)
+
+
+def _paste_text_via_companion(udid: str, text: str) -> None:
+    """Type `text` by pasting it, for characters idb's HID text path can't encode (see above).
+
+    idb has no native "paste" gRPC call, but a hardware Cmd+V chord reaches the same UIKit paste
+    behavior a real paste gesture would: `UITextField`/`UITextView` wire Cmd+V to Paste for the
+    focused responder whenever a hardware keyboard is attached, and the fb-idb HID channel idb
+    already drives for `type`/`delete` presents itself as exactly that (verified on-device against a
+    Simulator). The two presses must be a true chord — Cmd held down while V presses — not
+    `key_sequence`'s sequential press-release of each key, so this sends the raw HID down/up events
+    directly via `send_events`.
+
+    Seeds the Simulator pasteboard with `text` via `simctl pbcopy` (Unicode round-trips there without
+    the HID keymap's US-layout limit) and restores its prior content afterward, so this stays
+    invisible to a later `clipboard` assertion — typing is not meant to have a clipboard side effect.
+    """
+    from idb.common.types import HIDDirection, HIDKey, HIDPress
+
+    chord = [
+        HIDPress(action=HIDKey(keycode=_HID_KEY_LEFT_GUI), direction=HIDDirection.DOWN),
+        HIDPress(action=HIDKey(keycode=_HID_KEY_V), direction=HIDDirection.DOWN),
+        HIDPress(action=HIDKey(keycode=_HID_KEY_V), direction=HIDDirection.UP),
+        HIDPress(action=HIDKey(keycode=_HID_KEY_LEFT_GUI), direction=HIDDirection.UP),
+    ]
+    env = simctl.Env(udid)
+    previous = env.get_clipboard()
+    env.set_clipboard(text)
+    try:
+        _with_companion_client(udid, lambda client: client.send_events(chord))
+    finally:
+        env.set_clipboard(previous)
 
 
 def _delete_text_via_companion(udid: str, count: int) -> None:

@@ -29,6 +29,7 @@ from pathlib import Path
 
 import pytest
 from driver_conformance import (
+    FIELD_ID,
     ConformanceHarness,
     DriverConformanceContract,
     OnDeviceConformanceHarness,
@@ -123,6 +124,34 @@ class TestIdbDriverConformance(DriverConformanceContract):
     @pytest.fixture
     def harness(self, _eff: Effective, _idb_driver: base.Driver) -> ConformanceHarness:
         return _OnDeviceHarness("idb", _idb_driver, _spec_path(_eff))
+
+    def test_type_text_pastes_text_the_hid_keymap_cannot_encode(
+        self, harness: ConformanceHarness
+    ) -> None:
+        # idb-only, not part of the shared DriverConformanceContract: fb-idb's HID keymap covers only
+        # the US keyboard layout, so a Japanese character makes the direct `client.text()` path raise
+        # "No keycode found for ..." before any key is sent. The driver recovers by pasting the whole
+        # string — seeding the Simulator pasteboard, then a hardware Cmd+V chord over the same HID
+        # channel (`bajutsu/drivers/idb.py::_paste_text_via_companion`) — rather than crashing the
+        # run. Android's `adb shell input text` has the same Unicode limitation with no such fallback,
+        # so this stays idb-only rather than joining the cross-backend contract. `test_idb.py` covers
+        # the fallback's internals against a mocked gRPC client; this exercises it against the real
+        # idb_companion + Simulator.
+        driver = harness.with_screen([])
+        driver.tap({"id": FIELD_ID})
+        text = "こんにちは、World!"
+        env = simctl.Env(UDID)
+        previous_clipboard = env.get_clipboard()
+        before = base.resolve_unique(driver.query(), {"id": FIELD_ID})["value"] or ""
+        driver.type_text(text)
+        after = base.resolve_unique(driver.query(), {"id": FIELD_ID})["value"] or ""
+        if len(after) <= len(before):
+            pytest.skip("backend does not surface the field value; paste effect not observable")
+        assert text in after
+        # The paste is a typing mechanism, not a scenario-visible clipboard write — the Simulator
+        # pasteboard must come back to what it held before, so a later `clipboard` assertion is
+        # unaffected.
+        assert env.get_clipboard() == previous_clipboard
 
 
 class TestXcuitestDriverConformance(DriverConformanceContract):
