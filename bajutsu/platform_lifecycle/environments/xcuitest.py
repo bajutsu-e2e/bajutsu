@@ -213,6 +213,12 @@ def _resolve_runner(xcfg: XcuitestConfig | None, device_type: str) -> Path:
     test_runner = xcfg.test_runner if xcfg is not None else None
     build = xcfg.build if xcfg is not None else None
 
+    if test_runner is None and build is not None:
+        # `build` only ever refreshes the file at `testRunner` (see below); without that path there
+        # is nowhere for its output to land, so this is a misconfiguration, not a request for the
+        # bundled default. Fail loudly rather than silently ignoring the configured build.
+        raise simctl.DeviceError("xcuitest.build requires xcuitest.testRunner (the path it builds)")
+
     if test_runner is not None:
         runner_path = Path(test_runner)
         if not runner_path.exists() and build:

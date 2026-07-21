@@ -71,6 +71,18 @@ def test_missing_test_runner_without_build_fails(tmp_path: Path) -> None:
         xcuitest._resolve_runner(cfg, "simulator")
 
 
+def test_build_without_a_test_runner_fails_instead_of_using_the_bundle(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # `build` only ever refreshes the file at `testRunner`; without that path configured, silently
+    # falling back to the bundled runner would drop the configured build on the floor.
+    bundle = _products(tmp_path / "bundle")
+    monkeypatch.setattr(xcuitest, "bundled_products_dir", lambda: bundle)
+    cfg = XcuitestConfig.model_validate({"build": "make runner"})
+    with pytest.raises(simctl.DeviceError, match=r"xcuitest\.build requires xcuitest\.testRunner"):
+        xcuitest._resolve_runner(cfg, "simulator")
+
+
 # --- the bundled default tier (no testRunner, no build) --- #
 
 
@@ -162,6 +174,30 @@ def test_materialize_refreshes_on_changed_content(tmp_path: Path) -> None:
     assert second != first
     assert second.is_file()
     assert second.parent != first.parent
+
+
+def test_products_digest_skips_rehashing_an_unchanged_tree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A cheap per-file (size, mtime) signature gates the expensive full-content hash, so a repeat
+    # call against the same unchanged tree (e.g. one materialize() per simulator in a device-pool
+    # run) must not re-read every file's bytes.
+    source = _products(tmp_path / "bundle")
+
+    calls = {"n": 0}
+    real_sha256 = _bundled_runner.hashlib.sha256
+
+    def _counting_sha256(*args: object, **kwargs: object) -> object:
+        calls["n"] += 1
+        return real_sha256(*args, **kwargs)
+
+    monkeypatch.setattr(_bundled_runner.hashlib, "sha256", _counting_sha256)
+
+    first = _bundled_runner._products_digest(source)
+    second = _bundled_runner._products_digest(source)
+
+    assert first == second
+    assert calls["n"] == 1
 
 
 def test_materialize_refreshes_on_same_size_content_change(tmp_path: Path) -> None:

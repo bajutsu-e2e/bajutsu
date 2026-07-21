@@ -29,6 +29,11 @@ _PARTIAL_MARKER = ".partial-"
 # A copytree of the runner products (a handful of small files) never legitimately runs this long;
 # a partial older than this was abandoned by a crash, not left by an in-flight concurrent copy.
 _STALE_PARTIAL_AGE_SECONDS = 5 * 60
+# Gates the expensive full-content hash in `_products_digest`: a cheap per-file (size, mtime) stat
+# is enough to detect that a source tree is unchanged since the last call in this process, which is
+# the common case — the device pool calls `materialize()` once per simulator lane against the same
+# bundled products.
+_digest_cache: dict[Path, tuple[object, str]] = {}
 
 
 def bundled_products_dir() -> Path | None:
@@ -49,15 +54,27 @@ def _products_digest(source: Path) -> str:
     The version string is a static ``0.0.0`` placeholder pre-release (BE-0272), so it cannot detect
     that a wheel shipped updated runner products; digesting the tree can. Hashing each file's bytes
     (not just its path and size) also catches a rebuild that changes content at an unchanged size —
-    e.g. a recompiled binary or a swapped ``Info.plist`` value of equal length.
+    e.g. a recompiled binary or a swapped ``Info.plist`` value of equal length. The cheap per-file
+    (size, mtime) signature gates that hash, so a repeat call against an unchanged tree in this
+    process skips re-reading every byte.
     """
+    files = sorted(p for p in source.rglob("*") if p.is_file())
+    signature = tuple(
+        (str(p.relative_to(source)), p.stat().st_size, p.stat().st_mtime_ns) for p in files
+    )
+    cached = _digest_cache.get(source)
+    if cached is not None and cached[0] == signature:
+        return cached[1]
+
     h = hashlib.sha256()
-    for path in sorted(p for p in source.rglob("*") if p.is_file()):
+    for path in files:
         h.update(str(path.relative_to(source)).encode())
         with path.open("rb") as f:
             for chunk in iter(lambda: f.read(65536), b""):
                 h.update(chunk)
-    return h.hexdigest()[:12]
+    digest = h.hexdigest()[:12]
+    _digest_cache[source] = (signature, digest)
+    return digest
 
 
 def materialize(
