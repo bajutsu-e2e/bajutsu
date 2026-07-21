@@ -29,13 +29,13 @@ test-without-building` process that launches the app, then serves a loopback HTT
 Python driver drives ([BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md)). Starting
 that runner is expensive: the XCTest host boots and the app launches before the runner answers its
 first health check, and a cold start on a loaded continuous-integration (CI) host routinely exceeds
-ten seconds — the driver allows up to 120 seconds for it (`_RUNNER_STARTUP_TIMEOUT` in
+10 seconds — the driver allows up to 120 seconds for it (`_RUNNER_STARTUP_TIMEOUT` in
 `bajutsu/platform_lifecycle/environments/xcuitest.py`).
 
 Today a run pays that cold start for every scenario. The device pool leases a device per scenario
 (`bajutsu/runner/pool.py`), and each lease builds a fresh `XcuitestEnvironment` whose `start()`
-spawns a new runner and whose teardown terminates it on release. A suite of twenty scenarios
-therefore starts and tears down twenty runners, spending several minutes on runner startup alone
+spawns a new runner and whose teardown terminates it on release. A suite of 20 scenarios
+therefore starts and tears down 20 runners, spending several minutes on runner startup alone
 before any assertion runs. This per-scenario cost is the concrete reason the actuator resolver keeps
 idb the cheap default and treats XCUITest as the escalation
 ([BE-0240](../BE-0240-ios-capability-aware-actuator-selection/BE-0240-ios-capability-aware-actuator-selection.md)):
