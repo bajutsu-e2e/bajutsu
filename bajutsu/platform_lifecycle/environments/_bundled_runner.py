@@ -13,6 +13,7 @@ import hashlib
 import os
 import shutil
 import tempfile
+import time
 from pathlib import Path
 
 import bajutsu
@@ -25,6 +26,9 @@ _RUNNER_NAME = "BajutsuRunner.xctestrun"
 # Marks an in-flight copy's temp directory; the sweep below matches on it and never on a real
 # cache directory (whose name is ``{version}-{digest}`` and carries no such marker).
 _PARTIAL_MARKER = ".partial-"
+# A copytree of the runner products (a handful of small files) never legitimately runs this long;
+# a partial older than this was abandoned by a crash, not left by an in-flight concurrent copy.
+_STALE_PARTIAL_AGE_SECONDS = 5 * 60
 
 
 def bundled_products_dir() -> Path | None:
@@ -43,13 +47,16 @@ def _products_digest(source: Path) -> str:
     """Short content digest of *source*, so a rebuilt products tree keys a fresh cache directory.
 
     The version string is a static ``0.0.0`` placeholder pre-release (BE-0272), so it cannot detect
-    that a wheel shipped updated runner products; digesting the tree can. Hashing path + size (not
-    file bytes) keeps it cheap yet still shifts whenever a file is added, removed, or resized.
+    that a wheel shipped updated runner products; digesting the tree can. Hashing each file's bytes
+    (not just its path and size) also catches a rebuild that changes content at an unchanged size —
+    e.g. a recompiled binary or a swapped ``Info.plist`` value of equal length.
     """
     h = hashlib.sha256()
     for path in sorted(p for p in source.rglob("*") if p.is_file()):
         h.update(str(path.relative_to(source)).encode())
-        h.update(str(path.stat().st_size).encode())
+        with path.open("rb") as f:
+            for chunk in iter(lambda: f.read(65536), b""):
+                h.update(chunk)
     return h.hexdigest()[:12]
 
 
@@ -85,14 +92,23 @@ def materialize(
         dest.parent.mkdir(parents=True, exist_ok=True)
         # A hard kill (SIGKILL/OOM) between mkdtemp and the except leaves a `.partial-*` sibling that
         # nothing else sweeps; drop leftovers best-effort before adding another. Only siblings with
-        # the partial prefix match, so real cache directories are never touched.
+        # the partial prefix match, so real cache directories are never touched. The age gate is what
+        # keeps this from racing a concurrent lane's still-copying sibling: a copytree of these few
+        # small files never legitimately takes _STALE_PARTIAL_AGE_SECONDS, so anything that old was
+        # abandoned by a crash, not left mid-copy by another process.
+        now = time.time()
         for stale in dest.parent.glob(f"*{_PARTIAL_MARKER}*"):
-            shutil.rmtree(stale, ignore_errors=True)
+            try:
+                age = now - stale.stat().st_mtime
+            except OSError:
+                continue  # a concurrent sweep or rename already removed it
+            if age > _STALE_PARTIAL_AGE_SECONDS:
+                shutil.rmtree(stale, ignore_errors=True)
         tmp = Path(tempfile.mkdtemp(dir=dest.parent, prefix=f"{dest.name}{_PARTIAL_MARKER}"))
         try:
             shutil.copytree(source, tmp, dirs_exist_ok=True)
             os.replace(tmp, dest)
-        except BaseException:
+        except Exception:
             shutil.rmtree(tmp, ignore_errors=True)
             # A concurrent winner may have already materialized this digest onto *dest* (the
             # rename onto a non-empty directory then fails); take the winner's copy and swallow.

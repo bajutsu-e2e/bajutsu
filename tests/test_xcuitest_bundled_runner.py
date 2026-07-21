@@ -9,7 +9,9 @@ explicit, since its runner must be signed and is not bundled (BE-0288).
 
 from __future__ import annotations
 
+import os
 import plistlib
+import time
 from pathlib import Path
 
 import pytest
@@ -162,20 +164,57 @@ def test_materialize_refreshes_on_changed_content(tmp_path: Path) -> None:
     assert second.parent != first.parent
 
 
+def test_materialize_refreshes_on_same_size_content_change(tmp_path: Path) -> None:
+    # A rebuild that changes a file's bytes while its size stays identical (e.g. a recompiled
+    # binary, or a plist value swapped for another of equal length) must still shift the digest —
+    # hashing path + size alone would miss it and silently reuse the stale cached runner.
+    source = _products(tmp_path / "bundle")
+    cache = tmp_path / "cache"
+
+    first = _bundled_runner.materialize(source, version="1.2.3", cache_root=cache)
+
+    plist_path = source / "BajutsuRunner.xctestrun"
+    plist_path.write_bytes(plist_path.read_bytes()[:-1] + b"\x00")  # same size, different bytes
+    second = _bundled_runner.materialize(source, version="1.2.3", cache_root=cache)
+
+    assert second != first
+    assert second.is_file()
+    assert second.parent != first.parent
+
+
 def test_materialize_sweeps_a_stale_partial(tmp_path: Path) -> None:
     # A hard kill can leave a `.partial-*` temp dir that nothing else cleans; a materialize that
-    # copies must sweep such siblings before creating its own temp dir.
+    # copies must sweep such siblings before creating its own temp dir, once they are old enough
+    # to no longer be a plausibly in-flight concurrent copy.
     source = _products(tmp_path / "bundle")
     cache = tmp_path / "cache"
     cache.mkdir(parents=True)
     stale = cache / f"1.2.3-deadbeef{_bundled_runner._PARTIAL_MARKER}orphan"
     stale.mkdir()
     (stale / "leftover").write_bytes(b"x")
+    old = time.time() - _bundled_runner._STALE_PARTIAL_AGE_SECONDS - 1
+    os.utime(stale, (old, old))
 
     _bundled_runner.materialize(source, version="1.2.3", cache_root=cache)
 
     assert not stale.exists()
     assert not list(cache.glob(f"*{_bundled_runner._PARTIAL_MARKER}*"))
+
+
+def test_materialize_does_not_sweep_a_fresh_partial(tmp_path: Path) -> None:
+    # A partial younger than the staleness threshold could be another lane's in-flight copytree —
+    # sweeping it would corrupt that concurrent process's copy, so it must survive untouched.
+    source = _products(tmp_path / "bundle")
+    cache = tmp_path / "cache"
+    cache.mkdir(parents=True)
+    other_digest = _bundled_runner._products_digest(source) + "-different"
+    fresh = cache / f"1.2.3-{other_digest}{_bundled_runner._PARTIAL_MARKER}inflight"
+    fresh.mkdir()
+    (fresh / "leftover").write_bytes(b"x")
+
+    _bundled_runner.materialize(source, version="1.2.3", cache_root=cache)
+
+    assert fresh.exists()
 
 
 def test_materialize_survives_a_concurrent_winner(
