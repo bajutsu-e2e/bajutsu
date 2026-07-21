@@ -141,6 +141,12 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 
 <!-- /GENERATED:proposals-authoring -->
 
+### Integration & automation (MCP)
+
+<!-- GENERATED:proposals-mcp -->
+
+<!-- /GENERATED:proposals-mcp -->
+
 ### Surfacing CLI features in the serve Web UI
 
 <!-- GENERATED:proposals-serve-cli-features -->

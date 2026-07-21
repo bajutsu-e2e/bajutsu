@@ -141,6 +141,12 @@
 
 <!-- /GENERATED:proposals-authoring -->
 
+### 統合と自動化（MCP）
+
+<!-- GENERATED:proposals-mcp -->
+
+<!-- /GENERATED:proposals-mcp -->
+
 ### serve Web UI への CLI 機能の取り込み
 
 <!-- GENERATED:proposals-serve-cli-features -->
