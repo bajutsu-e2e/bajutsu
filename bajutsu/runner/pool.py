@@ -7,7 +7,9 @@ pool never branches on the actuator name (BE-0009 Phase 0).
 
 from __future__ import annotations
 
+import logging
 import queue
+import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
@@ -42,6 +44,8 @@ from bajutsu.scenario import Scenario, dump_scenario_file, redact_totp_secrets
 from bajutsu.webview import WebViewBridge
 
 __all__ = ["device_control", "device_pool", "device_relauncher"]
+
+_logger = logging.getLogger(__name__)
 
 
 def _alloc_webview_bridge(
@@ -153,6 +157,18 @@ def device_pool(
                 collector.stop()
             raise
 
+    # One warm resident per device, kept across leases so its cold startup is paid once per device
+    # rather than once per scenario (BE-0291) — the same "start it once, reuse it" shape as the
+    # per-device collectors above. Keyed by udid and tagged with the actuator it was started for, so
+    # a scenario that resolves to a *different* actuator on the device tears the warm one down before
+    # the new actuator's environment starts (the one-actuator-per-device rule, BE-0240). Only an
+    # environment that reports `has_reusable_resident()` (the Simulator XCUITest runner) is cached;
+    # every other backend leaves this empty and its per-lease teardown unchanged. Access needs no
+    # lock for the same reason the free queue and collectors don't: a udid is leased exclusively (it
+    # is out of `free` for the whole lease), so this device's entry is only ever touched by that
+    # lease, and `shutdown()` runs after every worker has joined.
+    warm: dict[str, tuple[str, RunEnvironment, base.Driver]] = {}
+
     def lease(eff: Effective, scenario: Scenario) -> Lease:
         udid = free.get()
         # Resolve the actuator for *this* scenario — the cheapest one its own steps can run on
@@ -160,7 +176,19 @@ def device_pool(
         # narrows from "one CLI invocation" to "one scenario execution" — still exactly one actuator
         # on the leased device at any instant, never a mid-scenario swap.
         actuator = select_actuator_for_scenario(backends, scenario, available)
-        lease_env: RunEnvironment = environment_for(actuator, udid, env_run, provision=provision)
+        # Reuse this device's warm resident when the scenario resolves to the same actuator; on an
+        # actuator switch, tear the warm one down before the new actuator's environment starts (the
+        # pool now owns that teardown — BE-0291 Unit 3). A cache miss builds a fresh environment.
+        cached = warm.get(udid)
+        if cached is not None and cached[0] != actuator:
+            _cached_actuator, cached_env, cached_driver = warm.pop(udid)
+            cached_env.teardown(cached_driver, eff)
+            cached = None
+        lease_env: RunEnvironment = (
+            cached[1]
+            if cached is not None
+            else environment_for(actuator, udid, env_run, provision=provision)
+        )
         # A same-platform, read-only provider for an evidence kind this actuator can't supply
         # (BE-0020), resolved per scenario now that the actuator is. Today `network` is covered by web
         # (native) and both iOS actuators (the app-side `BAJUTSU_COLLECTOR`), so this resolves to
@@ -223,6 +251,11 @@ def device_pool(
                 environment=lease_env,
                 permissions=scenario.permissions,
             )
+            # Keep this device's resident warm for the next lease when the environment holds one
+            # (the Simulator XCUITest runner); the next same-actuator lease resumes it instead of
+            # spawning a fresh runner (BE-0291). Every other backend reports False and is not cached.
+            if lease_env.has_reusable_resident():
+                warm[udid] = (actuator, lease_env, driver)
             sink = FileSink(
                 run_dir,
                 udid=udid,
@@ -261,7 +294,13 @@ def device_pool(
                 release_bridge()  # tear the device-side collector tunnel down first (BE-0283)
                 if release_collector is not None:
                     release_collector.stop()
-                lease_env.teardown(driver, eff)
+                # Keep a warm resident alive for the next lease (`end_lease` terminates only the app);
+                # otherwise the ordinary full teardown. This is the same predicate the pool cached the
+                # env on above, so a kept-warm env is exactly one still held in `warm` (BE-0291).
+                if lease_env.has_reusable_resident():
+                    lease_env.end_lease(driver, eff)
+                else:
+                    lease_env.teardown(driver, eff)
                 free.put(udid)
 
             meta = catalog.get(udid, {})
@@ -282,10 +321,34 @@ def device_pool(
             release_bridge()  # a failed launch must not leak the collector tunnel (BE-0283)
             if release_collector is not None:
                 release_collector.stop()
+            # A warm resident whose resume failed must not be reused next lease: drop it and tear it
+            # down so the retry respawns cold rather than reusing a half-broken runner (BE-0291). This
+            # is best-effort cleanup on the failure path — the *original* launch error is what must
+            # propagate (via the `raise` below), so a teardown hiccup is logged, never re-raised.
+            stale = warm.pop(udid, None)
+            if stale is not None:
+                try:
+                    stale[1].teardown(stale[2], eff)
+                except (subprocess.CalledProcessError, OSError) as teardown_exc:
+                    _logger.debug(
+                        "tearing down the stale warm runner on %s after a failed lease failed: %s",
+                        udid,
+                        teardown_exc,
+                    )
             free.put(udid)
             raise
 
     def shutdown() -> None:
+        # The run set is over: terminate every warm resident the pool kept across leases (BE-0291 Unit
+        # 3 — ownership moved from the lease to the pool). An expected teardown failure on one device
+        # (the app already gone, xcrun unreachable) is logged and skipped so the rest — and the
+        # collector sockets below — still come down; a genuine teardown bug still surfaces loudly.
+        for udid, (_actuator, env, driver) in warm.items():
+            try:
+                env.teardown(driver, eff)
+            except (subprocess.CalledProcessError, OSError) as exc:
+                _logger.warning("tearing down the warm runner on %s failed: %s", udid, exc)
+        warm.clear()
         for collector in collectors.values():
             collector.stop()
 

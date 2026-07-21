@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import logging
+import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
@@ -327,7 +329,14 @@ class _RecordingEnv:
     """
 
     def __init__(
-        self, actuator: str, udid: str, provision: object = None, *, fail_start: bool = False
+        self,
+        actuator: str,
+        udid: str,
+        provision: object = None,
+        *,
+        fail_start: bool = False,
+        reusable: bool = False,
+        raise_on_teardown: bool = False,
     ) -> None:
         self.actuator = actuator
         self.udid = udid
@@ -335,6 +344,13 @@ class _RecordingEnv:
         self.started = False
         self.torn = False
         self.fail_start = fail_start
+        # BE-0291: a fake warm resident. `reusable` makes the pool cache and reuse this instance
+        # across leases; the counters record how the pool released it (kept warm vs full teardown).
+        # `raise_on_teardown` mimics an expected simctl teardown failure (the app already gone).
+        self.reusable = reusable
+        self.raise_on_teardown = raise_on_teardown
+        self.start_count = 0
+        self.end_lease_count = 0
         # BE-0283 bridge recording: the port bridged, whether it was already bridged when start ran
         # (i.e. before launch), and whether its teardown thunk fired.
         self.bridged_port: int | None = None
@@ -343,6 +359,7 @@ class _RecordingEnv:
 
     def start(self, eff: Effective, pre: object, **_: object) -> base.Driver:
         self.bridged_before_launch = self.bridged_port is not None
+        self.start_count += 1
         if self.fail_start:
             raise RuntimeError("launch failed")
         self.started = True
@@ -373,8 +390,16 @@ class _RecordingEnv:
     def controller(self, eff: Effective) -> None:
         return None
 
+    def has_reusable_resident(self) -> bool:
+        return self.reusable
+
+    def end_lease(self, driver: base.Driver, eff: Effective) -> None:
+        self.end_lease_count += 1  # kept warm: the pool released the lease without a full teardown
+
     def teardown(self, driver: base.Driver, eff: Effective) -> None:
         self.torn = True
+        if self.raise_on_teardown:
+            raise subprocess.CalledProcessError(1, ["xcrun", "simctl", "terminate"])
 
 
 def test_device_pool_resolves_actuator_per_scenario_and_tears_down_its_own_env(
@@ -418,6 +443,215 @@ def test_device_pool_resolves_actuator_per_scenario_and_tears_down_its_own_env(
         assert xc_env.actuator == "xcuitest" and xc_env.started  # escalated: pinch needs multiTouch
         pinch_lease.release()
         assert xc_env.torn
+    finally:
+        shutdown()
+
+
+def test_device_pool_reuses_a_warm_resident_across_scenarios(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """BE-0291: an environment that holds a warm resident (the Simulator XCUITest runner) is built
+    once per device and reused across every same-actuator lease — the runner's cold startup is paid
+    once per device, not once per scenario. Each release keeps it warm (`end_lease`, not a full
+    teardown); the pool tears it down once at the run-set's end."""
+    created: list[_RecordingEnv] = []
+
+    def fake_env_for(
+        actuator: str, udid: str, env_run: object = None, *, provision: object = None
+    ) -> _RecordingEnv:
+        env = _RecordingEnv(actuator, udid, provision, reusable=True)
+        created.append(env)
+        return env
+
+    monkeypatch.setattr("bajutsu.runner.pool.environment_for", fake_env_for)
+    lease, shutdown = device_pool(
+        ["UDID-A"],
+        ["ios"],
+        _eff(),
+        Path("runs"),
+        network=False,
+        available=lambda b: True,
+        env_run=lambda *a, **k: "",
+    )
+    try:
+        for _ in range(3):
+            lz = lease(_eff(), _scn("s"))
+            lz.release()
+        # created[0] is the pool's representative env (built up front, never leased); after it, ONE
+        # lease environment served all three scenarios — the runner was not respawned per scenario.
+        assert len(created) == 2
+        env = created[1]
+        assert env.start_count == 3  # resumed each lease (same instance), not a fresh spawn
+        assert env.end_lease_count == 3  # every release kept the resident warm
+        assert not env.torn  # never fully torn down mid-run
+    finally:
+        shutdown()
+    assert env.torn  # torn down once at the run-set's end — ownership is the pool's (Unit 3)
+
+
+def test_device_pool_actuator_switch_tears_down_the_warm_resident(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """BE-0291 Unit 3: when the next scenario on a device resolves to a different actuator, the warm
+    resident is torn down before the new actuator's environment starts — the one-actuator-per-device
+    rule (BE-0240) still holds, so a warm runner is never inherited across an actuator switch."""
+    created: list[_RecordingEnv] = []
+
+    def fake_env_for(
+        actuator: str, udid: str, env_run: object = None, *, provision: object = None
+    ) -> _RecordingEnv:
+        env = _RecordingEnv(actuator, udid, provision, reusable=True)
+        created.append(env)
+        return env
+
+    monkeypatch.setattr("bajutsu.runner.pool.environment_for", fake_env_for)
+    pinch = Scenario.model_validate(
+        {"name": "p", "steps": [{"pinch": {"sel": {"id": "m"}, "scale": 2.0}}]}
+    )
+    lease, shutdown = device_pool(
+        ["UDID-A"],
+        ["ios"],
+        _eff(),
+        Path("runs"),
+        network=False,
+        available=lambda b: True,
+        env_run=lambda *a, **k: "",
+    )
+    try:
+        tap = lease(_eff(), _scn("tap"))  # cheapest sufficient for a plain tap → idb
+        tap.release()
+        idb_env = created[
+            1
+        ]  # created[0] is the pool's representative env; [1] is the tap lease env
+        assert idb_env.actuator == "idb" and not idb_env.torn  # kept warm after release
+        pinch_lease = lease(_eff(), pinch)  # pinch needs multiTouch → escalates to xcuitest
+        assert idb_env.torn  # the warm idb env was torn down on the actuator switch
+        xc_env = created[-1]
+        assert (
+            xc_env.actuator == "xcuitest" and len(created) == 3
+        )  # a fresh env for the new actuator
+        pinch_lease.release()
+    finally:
+        shutdown()
+
+
+def test_device_pool_evicts_and_tears_down_a_warm_resident_whose_resume_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """BE-0291: if a warm resident's resume fails, it must not be reused — the pool drops it from the
+    cache and tears it down so the next lease respawns cold rather than reusing a half-broken runner,
+    and the device is returned so a retry can lease it."""
+    created: list[_RecordingEnv] = []
+
+    def fake_env_for(
+        actuator: str, udid: str, env_run: object = None, *, provision: object = None
+    ) -> _RecordingEnv:
+        env = _RecordingEnv(actuator, udid, provision, reusable=True)
+        created.append(env)
+        return env
+
+    monkeypatch.setattr("bajutsu.runner.pool.environment_for", fake_env_for)
+    lease, shutdown = device_pool(
+        ["UDID-A"],
+        ["ios"],
+        _eff(),
+        Path("runs"),
+        network=False,
+        available=lambda b: True,
+        env_run=lambda *a, **k: "",
+    )
+    try:
+        first = lease(_eff(), _scn("a"))
+        first.release()
+        warm_env = created[1]  # cached after the first lease
+        assert not warm_env.torn
+        warm_env.fail_start = True  # its next resume fails
+        warm_env.raise_on_teardown = (
+            True  # and its eviction teardown also errors (logged, not raised)
+        )
+        with pytest.raises(RuntimeError, match="launch failed"):
+            lease(
+                _eff(), _scn("b")
+            )  # the *original* resume failure propagates, not the teardown one
+        assert warm_env.torn  # the stale warm env was evicted from the cache and torn down
+        # The device was returned, and the warm entry dropped, so a retry leases a fresh environment.
+        retry = lease(_eff(), _scn("c"))
+        assert len(created) == 3 and created[2] is not warm_env and created[2].started
+        retry.release()
+    finally:
+        shutdown()
+
+
+def test_device_pool_shutdown_tears_down_every_warm_device_despite_a_failure(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """BE-0291: at the run-set's end the pool tears down every device's warm resident; an expected
+    teardown failure on one device is logged and skipped, so the others still come down."""
+    created: list[_RecordingEnv] = []
+
+    def fake_env_for(
+        actuator: str, udid: str, env_run: object = None, *, provision: object = None
+    ) -> _RecordingEnv:
+        env = _RecordingEnv(
+            actuator, udid, provision, reusable=True, raise_on_teardown=(udid == "UDID-A")
+        )
+        created.append(env)
+        return env
+
+    monkeypatch.setattr("bajutsu.runner.pool.environment_for", fake_env_for)
+    lease, shutdown = device_pool(
+        ["UDID-A", "UDID-B"],
+        ["ios"],
+        _eff(),
+        Path("runs"),
+        network=False,
+        available=lambda b: True,
+        env_run=lambda *a, **k: "",
+    )
+    la = lease(_eff(), _scn("a"))
+    la.release()
+    lb = lease(_eff(), _scn("b"))
+    lb.release()
+    warm_a = next(e for e in created if e.udid == "UDID-A" and e.start_count)
+    warm_b = next(e for e in created if e.udid == "UDID-B" and e.start_count)
+    with caplog.at_level(logging.WARNING, logger="bajutsu.runner.pool"):
+        shutdown()  # UDID-A's teardown raises; it must not abort UDID-B's or the collector cleanup
+    assert warm_a.torn and warm_b.torn  # both warm residents were torn down
+    assert "UDID-A" in caplog.text  # the swallowed teardown failure was logged, not silent
+
+
+def test_device_pool_does_not_cache_a_non_reusable_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """BE-0291: an environment with no warm resident (idb / web / android) is untouched — released by
+    the full teardown, never kept warm, and rebuilt fresh each lease, exactly as before."""
+    created: list[_RecordingEnv] = []
+
+    def fake_env_for(
+        actuator: str, udid: str, env_run: object = None, *, provision: object = None
+    ) -> _RecordingEnv:
+        env = _RecordingEnv(actuator, udid, provision, reusable=False)
+        created.append(env)
+        return env
+
+    monkeypatch.setattr("bajutsu.runner.pool.environment_for", fake_env_for)
+    lease, shutdown = device_pool(
+        ["UDID-A"],
+        ["ios"],
+        _eff(),
+        Path("runs"),
+        network=False,
+        available=lambda b: True,
+        env_run=lambda *a, **k: "",
+    )
+    try:
+        a = lease(_eff(), _scn("a"))
+        a.release()
+        env_a = created[1]  # created[0] is the pool's representative env; [1] is lease a's env
+        assert env_a.torn and env_a.end_lease_count == 0  # full teardown, never kept warm
+        b = lease(_eff(), _scn("b"))
+        assert len(created) == 3  # a fresh environment each lease — no reuse
+        b.release()
     finally:
         shutdown()
 

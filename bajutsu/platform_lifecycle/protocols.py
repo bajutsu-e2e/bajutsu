@@ -53,6 +53,7 @@ query with no gate here (the CLI reads it to decide whether to record during aut
 |-------------------------------|-------------------------------------------------|----------------------------|
 | `observes_network_via_driver` | gates `hook_collector` (may gated-raise if F)   | `runner/pool.py` (`lease`) |
 | `records_video_up_front`      | gates `start`'s `record_video_dir` wiring       | `runner/pool.py` (`lease`) |
+| `has_reusable_resident`       | gates the pool's warm-runner cache (BE-0291)    | `runner/pool.py` (`lease`) |
 | `has_devices`                 | shapes the crawl lane-prep message (not a gate) | `cli/commands/crawl.py`    |
 | `captures_video`              | whether `record` captures video while authoring | `cli/commands/record.py`   |
 
@@ -67,6 +68,9 @@ A new `Environment` (extend `environment_for`) must, at minimum:
    unless `observes_network_via_driver()` returns `True`. `bridge_collector` returns a real teardown
    thunk if the platform's device needs the host collector tunneled to it (Android); `lambda: None`
    otherwise (a Simulator shares the host loopback, and a driver-observed platform never reaches it).
+   `has_reusable_resident` / `end_lease` (BE-0291) default to "no warm resident" (`False` / delegate
+   to `teardown`); implement them only for a platform whose `start` spawns an expensive resident
+   worth amortizing across leases (XCUITest's `xcodebuild` runner).
 2. Implement `CrawlEnvironment` as well: `has_devices`, `plan_lanes`, `crawl_reset`, and the three
    `crawl_*` health methods (return `None` from each the platform lacks). `environment_for` returns
    the union `Environment`, so a platform class must satisfy both surfaces — but the crawl half is
@@ -228,7 +232,35 @@ class RunEnvironment(Protocol):
         """
 
     def teardown(self, driver: base.Driver, eff: Effective) -> None:
-        """Per-release app teardown: terminate the app (device) or close the browser (web)."""
+        """Per-release app teardown: terminate the app (device) or close the browser (web).
+
+        The full teardown, including any resident process the environment owns (XCUITest's
+        `xcodebuild` runner). The pool calls this at the moments it owns runner termination
+        (BE-0291): a run-set's end, an actuator switch on a device, and a warm resident that failed
+        to resume — as well as the ordinary per-lease release of a platform with no warm resident.
+        """
+
+    def has_reusable_resident(self) -> bool:
+        """Whether `start` left a resident process the pool should keep warm across leases (BE-0291).
+
+        A predicate read *after* `start`: `True` means this environment holds a resident (XCUITest's
+        `xcodebuild test-without-building` runner on a Simulator) whose cold startup is worth
+        amortizing, so the pool caches this environment for the device and reuses it — a later
+        same-actuator lease resumes the resident via `start` (app relaunch only) instead of spawning
+        a new one, and the lease releases through `end_lease` rather than `teardown`. Default `False`
+        (no resident to reuse — every platform but the Simulator XCUITest backend), so the pool's
+        cache never activates and the per-lease teardown is unchanged.
+        """
+
+    def end_lease(self, driver: base.Driver, eff: Effective) -> None:
+        """Release one lease while keeping a warm resident alive (BE-0291).
+
+        Called instead of `teardown` when the pool is keeping this environment's resident warm for
+        the next lease on the device: it does the per-scenario cleanup (terminate the app) but leaves
+        the resident running. Default: delegate to `teardown` — a platform with no warm resident
+        (`has_reusable_resident()` is `False`) is never kept warm, so its `end_lease` and `teardown`
+        are the same release.
+        """
 
 
 @runtime_checkable

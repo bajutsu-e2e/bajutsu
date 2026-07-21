@@ -43,6 +43,11 @@ def _allocate_port() -> int:
 # start still returns as soon as /health is ready, so this only raises the ceiling for the cold case.
 _RUNNER_STARTUP_TIMEOUT = 120.0
 
+# Probing a *warm* runner before reuse (BE-0291): a live runner answers /health at once, so this only
+# bounds the wedged case — a runner that crashed after repeated app.launch() cycles (a known failure,
+# docs/architecture.md) must be detected quickly and respawned, not waited on for the cold ceiling.
+_WARM_HEALTH_TIMEOUT = 10.0
+
 
 def _destination(device_type: str, udid: str) -> str:
     """Build the `xcodebuild -destination` for a Simulator or a real device (BE-0238).
@@ -71,6 +76,10 @@ class XcuitestEnvironment(_DeviceEnvironment):
         self._runner_proc: subprocess.Popen[bytes] | None = None
         self._runner_port: int = 0
         self._patched_runner: Path | None = None
+        # BE-0291: True once a Simulator `start` has left a runner the pool should keep warm across
+        # leases. A real-device start (BE-0238) never sets it — warm reuse targets only the Simulator
+        # runner's cold startup — so the pool tears such an environment down per lease, unchanged.
+        self._reusable = False
 
     def start(
         self,
@@ -106,39 +115,35 @@ class XcuitestEnvironment(_DeviceEnvironment):
                     "permission grants use simctl and do not apply to a real device "
                     "(xcuitest.deviceType: device)"
                 )
-        else:
-            e = simctl.Env(self._udid, run=self._run)
-            try:
-                if pre.erase:
-                    e.shutdown()
-                    e.erase()
-                e.boot()
-                if ios.app_path:
-                    if not Path(ios.app_path).exists():
-                        raise simctl.DeviceError(
-                            f"appPath not found: {ios.app_path} (build the app first)"
-                        )
-                    if pre.reinstall == "clean" and not pre.erase:
-                        e.uninstall(ios.bundle_id)
-                    e.install(ios.app_path)
-                # Set permission state after install (a fresh install/erase resets TCC grants) but
-                # before the runner launches the app, so a prompt never blocks it (BE-0276).
-                if permissions:
-                    e.apply_permissions(ios.bundle_id, permissions)
-            except subprocess.CalledProcessError as exc:
-                raise simctl.device_error(exc) from exc
+            return self._spawn_cold(eff, pre, device_type, extra_env, permissions)
+
+        # Simulator: reuse a healthy warm runner across leases (BE-0291). `erase` shuts the Simulator
+        # down (killing the runner), so a scenario that erases forces a cold respawn; a wedged runner
+        # is a cache miss too (Unit 4), costing one extra cold start rather than the run.
+        if not pre.erase and (driver := self._healthy_resident_driver()) is not None:
+            return self._resume_warm(eff, pre, extra_env, permissions, driver)
+        self._discard_runner()  # drop any dead / lingering runner before a fresh spawn
+        return self._spawn_cold(eff, pre, device_type, extra_env, permissions)
+
+    def _spawn_cold(
+        self,
+        eff: Effective,
+        pre: Preconditions,
+        device_type: str,
+        extra_env: Mapping[str, str] | None,
+        permissions: Mapping[str, str] | None,
+    ) -> base.Driver:
+        """Bring the runner up from cold: simctl prep (Simulator only), then spawn `xcodebuild`."""
+        ios = require_ios(eff)
+        if device_type != "device":
+            self._prepare_simulator(eff, pre, permissions, cold=True)
 
         # The runner launches the app via XCUIApplication.launch(). Preconditions are forwarded
         # through env vars: the runner reads BAJUTSU_LAUNCH_ENV_* and sets them on
         # launchEnvironment, BAJUTSU_LAUNCH_ARGS as launchArguments, and opens BAJUTSU_DEEPLINK.
-        launch_env: Mapping[str, str] = {
-            **eff.launch_env,
-            **pre.launch_env,
-            **(extra_env or {}),
-        }
-        locale = pre.locale or eff.locale
-        launch_args = [*eff.launch_args, *pre.launch_args, *simctl.locale_args(locale)]
+        launch_env, launch_args = self._launch_params(eff, pre, extra_env)
 
+        xcfg = ios.xcuitest
         if xcfg is None or xcfg.test_runner is None:
             raise simctl.DeviceError(
                 "xcuitest backend requires xcuitest.testRunner in the target config"
@@ -195,9 +200,110 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # before the runner's server answers /health; on a loaded CI runner that first start well
         # exceeds the 10s default, so give it generous headroom (a warm start still returns at once).
         cast(base.BackendLifecycle, driver).await_ready(timeout=_RUNNER_STARTUP_TIMEOUT)
+        # Only the Simulator runner is kept warm; a real-device runner is torn down per lease.
+        self._reusable = device_type != "device"
         return driver
 
-    def teardown(self, driver: base.Driver, eff: Effective) -> None:
+    def _resume_warm(
+        self,
+        eff: Effective,
+        pre: Preconditions,
+        extra_env: Mapping[str, str] | None,
+        permissions: Mapping[str, str] | None,
+        driver: base.Driver,
+    ) -> base.Driver:
+        """Reuse the live runner: re-prep the device and relaunch the app, skipping the spawn (BE-0291).
+
+        The same app-only restart `device_relauncher` does within a lease — terminate, relaunch with
+        this scenario's env / args / locale, and open its deeplink — now applied across leases, so the
+        runner (which drives whatever app is launched and holds no scenario state) is reused. The
+        caller has already confirmed the runner is healthy (and `_reusable` is already set) and that the
+        scenario does not erase, so the per-scenario device reset (`reinstall` / permissions) still runs
+        before the app launches and a reused runner never weakens the isolation a cold lease gives
+        (Unit 2). `driver` is the channel the health probe already built on the runner's port, returned
+        as-is; the app-readiness wait is launch_driver's, the same as the cold path.
+        """
+        ios = require_ios(eff)
+        self._prepare_simulator(eff, pre, permissions, cold=False)
+        launch_env, launch_args = self._launch_params(eff, pre, extra_env)
+        e = simctl.Env(self._udid, run=self._run)
+        try:
+            e.terminate(ios.bundle_id)
+            e.launch(ios.bundle_id, launch_args, launch_env)
+            if pre.deeplink is not None:
+                e.openurl(pre.deeplink)
+        except subprocess.CalledProcessError as exc:
+            raise simctl.device_error(exc) from exc
+        return driver
+
+    def _prepare_simulator(
+        self,
+        eff: Effective,
+        pre: Preconditions,
+        permissions: Mapping[str, str] | None,
+        *,
+        cold: bool,
+    ) -> None:
+        """The simctl device prep shared by the cold spawn and the warm resume.
+
+        `cold` runs the full device reset (erase → boot); a warm resume skips it — the Simulator is
+        already booted under the live runner, and `erase` would shut it down (so a warm resume never
+        carries erase). Both reinstall the app and (re)apply permissions, so a reused runner starts
+        each scenario from the same known state a cold lease does (BE-0291 Unit 2).
+        """
+        ios = require_ios(eff)
+        e = simctl.Env(self._udid, run=self._run)
+        try:
+            if cold:
+                if pre.erase:
+                    e.shutdown()
+                    e.erase()
+                e.boot()
+            if ios.app_path:
+                if not Path(ios.app_path).exists():
+                    raise simctl.DeviceError(
+                        f"appPath not found: {ios.app_path} (build the app first)"
+                    )
+                if pre.reinstall == "clean" and not pre.erase:
+                    e.uninstall(ios.bundle_id)
+                e.install(ios.app_path)
+            # Set permission state after install (a fresh install/erase resets TCC grants) but
+            # before the app launches, so a prompt never blocks it (BE-0276).
+            if permissions:
+                e.apply_permissions(ios.bundle_id, permissions)
+        except subprocess.CalledProcessError as exc:
+            raise simctl.device_error(exc) from exc
+
+    def _launch_params(
+        self, eff: Effective, pre: Preconditions, extra_env: Mapping[str, str] | None
+    ) -> tuple[dict[str, str], list[str]]:
+        """The launch env and args for this scenario (scenario locale overrides the config default)."""
+        launch_env = {**eff.launch_env, **pre.launch_env, **(extra_env or {})}
+        locale = pre.locale or eff.locale
+        launch_args = [*eff.launch_args, *pre.launch_args, *simctl.locale_args(locale)]
+        return launch_env, launch_args
+
+    def _healthy_resident_driver(self) -> base.Driver | None:
+        """The driver for the warm runner if it is up and answering `/health`, else None (BE-0291 Unit 4).
+
+        A dead process, or a live one that fails a bounded `/health` probe, returns None: the caller
+        respawns cold. The known failure is the runner crashing after repeated `app.launch()` cycles
+        (docs/architecture.md), so this stays cheap and never waits the cold ceiling. The probed driver
+        is returned (not rebuilt) so a warm resume reuses this same channel on the runner's port.
+        """
+        if self._runner_proc is None or self._runner_proc.poll() is not None:
+            return None
+        from bajutsu.drivers.xcuitest import XcuitestChannelError
+
+        driver = backends.make_driver(self._actuator, self._udid, runner_port=self._runner_port)
+        try:
+            cast(base.BackendLifecycle, driver).await_ready(timeout=_WARM_HEALTH_TIMEOUT)
+        except XcuitestChannelError:
+            return None  # wedged / unreachable — treat as a cache miss and respawn
+        return driver
+
+    def _discard_runner(self) -> None:
+        """Terminate the runner process and remove its patched .xctestrun (kills the warm resident)."""
         if self._runner_proc is not None:
             self._runner_proc.terminate()
             try:
@@ -209,6 +315,19 @@ class XcuitestEnvironment(_DeviceEnvironment):
         if self._patched_runner is not None:
             self._patched_runner.unlink(missing_ok=True)
             self._patched_runner = None
+        self._reusable = False
+
+    def has_reusable_resident(self) -> bool:
+        return self._reusable  # BE-0291: a Simulator start left a warm runner the pool should keep
+
+    def end_lease(self, driver: base.Driver, eff: Effective) -> None:
+        # Keep the warm runner alive for the next lease on this device; terminate only the app, the
+        # same per-scenario cleanup a cold lease does (BE-0291). The pool tears the runner down later
+        # (run-set end / actuator switch) via teardown.
+        super().teardown(driver, eff)
+
+    def teardown(self, driver: base.Driver, eff: Effective) -> None:
+        self._discard_runner()
         super().teardown(driver, eff)
 
 
