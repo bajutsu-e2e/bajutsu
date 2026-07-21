@@ -105,7 +105,6 @@
 | ID | 項目 | 状態 |
 |---|---|---|
 | [BE-0008](BE-0008-flutter-support/BE-0008-flutter-support-ja.md) | Flutter 対応 | 提案 |
-| [BE-0281](BE-0281-ios-on-device-actuation-coverage/BE-0281-ios-on-device-actuation-coverage-ja.md) | iOS CI に実機で操作するテストを加える | 提案 |
 <!-- /GENERATED:proposals-platform -->
 
 ### ドライバとバックエンドのアーキテクチャ
