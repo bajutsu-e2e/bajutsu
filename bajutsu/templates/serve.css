@@ -24,8 +24,8 @@ header .brand{font-weight:700}
    flex-wrap lets .viewtabs (flex-basis:100%) always sit on its own line below .cfgctrls, so the
    view tabs are the header's third row (below .brandrow and .cfgctrls) at every width. */
 .toptabs{display:flex;align-items:center;gap:.3rem;flex-wrap:wrap}
-/* Config controls (name, Open config, View, project switcher): one flex item so a narrow header
-   wraps it entirely onto its own row rather than interleaving it with the view tabs. flex-wrap
+/* Config controls (name, Open config, View, project switcher): one flex item so its buttons never
+   interleave with the view tabs — which, per .viewtabs below, now always sit on their own row beneath it. flex-wrap
    stays nowrap here (own line as a single row) — it only turns on at the phone
    breakpoint, where header .cfgname's forced flex-basis:100% relies on it to push the rest below.
    min-width:0 is the standard nested-flex-container fix: without it, .cfgname's white-space:nowrap
