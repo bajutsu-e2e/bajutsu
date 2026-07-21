@@ -46,17 +46,19 @@ to demand per-app integration in exchange, but it does not: the runner is a gene
 launches the target by bundle id (`XCUIApplication(bundleIdentifier:)`), so it drives an arbitrary
 app without touching that app's source.
 
-With capability and fidelity both favoring XCUITest, only one reason kept idb the default: cost.
-The XCUITest runner paid a cold `xcodebuild test-without-building` startup once per scenario, which
-[BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) cited when it rejected replacing
-idb outright and kept the two backends in a cost-ordered ladder with idb on the cheap rung. The
-sibling proposal *Reuse the XCUITest runner across scenarios* removes that cost by keeping one
-runner resident per device and restarting only the app between scenarios, so the startup is paid
-once per device rather than once per scenario. Once that amortization lands, the cost argument for
-idb no longer holds, and idb's only remaining justification is operating where no Xcode toolchain is
-available — idb needs only its command-line tool and companion; XCUITest needs `xcodebuild`. This
-proposal treats that single-environment benefit as not worth a second permanent backend, flips the
-default, and removes idb outright.
+With capability and fidelity both favoring XCUITest, only one reason keeps idb the default: cost.
+The XCUITest runner pays a cold `xcodebuild test-without-building` startup once per scenario, which
+is why the cost-ordered actuator resolver
+([BE-0240](../BE-0240-ios-capability-aware-actuator-selection/BE-0240-ios-capability-aware-actuator-selection.md))
+puts idb first as the cheap default and treats XCUITest as the escalation. The sibling proposal
+*Reuse the XCUITest runner across scenarios* removes that cost by keeping one runner resident per
+device and restarting only the app between scenarios, so the startup is paid once per device rather
+than once per scenario. Once that amortization lands, the cost argument for idb no longer holds, and
+idb's only remaining justification is the reason
+[BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) gave for keeping it in the first
+place: running where no full Xcode toolchain is available, since idb needs only its command-line
+tool and companion while XCUITest needs `xcodebuild`. This proposal treats that single-environment
+benefit as not worth a second permanent backend, flips the default, and removes idb outright.
 
 ## Detailed design
 
@@ -119,10 +121,11 @@ cost is measured, not assumed.
   a second permanent backend once XCUITest is both more capable and no more expensive across a run
   set. Removal is the goal, not a fallback state.
 - **Flip the default without the runner-reuse enabler.** Making XCUITest the default while it still
-  restarts the runner per scenario would pay the full per-scenario cold start on every iOS run — the
-  regression [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) named when it kept
-  idb. The runner-reuse proposal is a hard prerequisite for this reason, and must land before this
-  PR.
+  restarts the runner per scenario would pay the full per-scenario cold start on every iOS run —
+  exactly the cost the cost-ordered actuator resolver
+  ([BE-0240](../BE-0240-ios-capability-aware-actuator-selection/BE-0240-ios-capability-aware-actuator-selection.md))
+  weighs when it keeps idb the cheap default today. The runner-reuse proposal is a hard prerequisite
+  for this reason, and must land before this PR.
 - **Split the migration across several PRs.** Flipping the default, migrating the fixtures, and
   deleting idb could each be a separate PR. This is rejected because every intermediate point leaves
   `main` in a broken state — a flipped default with idb still half-wired, or a deleted idb with a
@@ -145,7 +148,8 @@ cost is measured, not assumed.
 ## References
 
 - [BE-0019 — XCUITest backend](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) — the backend
-  and the cost-ordered ladder, including the *Alternatives considered* entry this proposal revisits.
+  and its stability-ordered ladder, including the *Alternatives considered* entry (idb kept for
+  toolchain-free CI-host availability) this proposal revisits.
 - [BE-0240 — Capability-aware actuator selection](../BE-0240-ios-capability-aware-actuator-selection/BE-0240-ios-capability-aware-actuator-selection.md)
   — the per-scenario resolver this proposal simplifies.
 - [idb issue 767](https://github.com/facebook/idb/issues/767) — idb's accessibility tree drops the

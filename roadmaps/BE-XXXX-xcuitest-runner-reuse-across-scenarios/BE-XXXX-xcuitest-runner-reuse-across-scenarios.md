@@ -77,11 +77,19 @@ includes the actuator because the actuator is resolved per scenario
 ([BE-0240](../BE-0240-ios-capability-aware-actuator-selection/BE-0240-ios-capability-aware-actuator-selection.md)):
 a scenario that resolves to idb must not inherit a warm XCUITest runner, and an XCUITest scenario must not inherit a warm idb runner.
 
+The runner handle lives on the pool, not on a fresh per-lease `XcuitestEnvironment`. Today
+`pool.py`'s `lease()` builds a new environment each time, and `XcuitestEnvironment.start()` inlines
+both the simctl device prep and the runner spawn
+(`bajutsu/platform_lifecycle/environments/xcuitest.py`). This unit separates those two steps: a lease
+with a cached runner runs the device prep and the app relaunch but skips the spawn, taking over the
+process the pool holds, and the spawn happens only on a cache miss. Unit 3 covers the matching
+ownership move — the pool, not the lease, now terminates that process.
+
 ### Unit 2 — App-only handover between same-actuator scenarios
 
-When a lease reuses a warm runner, scenario setup restarts the app rather than the runner, through
-the existing app-only path `device_relauncher` uses within a lease: terminate the app; re-apply the
-scenario's launch environment, launch arguments, and locale; launch again; and wait until ready.
+When a lease reuses a warm runner, scenario setup restarts the app rather than the runner. It uses
+the existing app-only path `device_relauncher` follows within a lease: terminate the app; re-apply
+the scenario's launch environment, launch arguments, and locale; launch again; and wait until ready.
 Preconditions that reset device state (`erase`) and permission grants continue to run through simctl
 before the app launches, so a reused runner never weakens the per-scenario isolation the single-lease
 path gives today.
@@ -117,10 +125,10 @@ scenarios.
 
 - **Flip the iOS default to XCUITest without amortizing startup.** Making XCUITest the default while
   it still restarts the runner per scenario would pay the full per-scenario cold start on every iOS
-  run, which is the exact cost
-  [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) cited when it rejected replacing
-  idb outright and kept the two backends in a cost-ordered ladder. Amortizing the startup first is
-  what lets that default be reconsidered honestly rather than by absorbing a known regression.
+  run — exactly the cost the cost-ordered actuator resolver
+  ([BE-0240](../BE-0240-ios-capability-aware-actuator-selection/BE-0240-ios-capability-aware-actuator-selection.md))
+  weighs when it keeps idb the cheap default today. Amortizing the startup first is what lets that
+  default be reconsidered honestly rather than by absorbing a known regression.
 - **Prebuild the `.xctestrun` and call the problem solved.** Naming a prebuilt test runner in
   `xcuitest.testRunner` removes the `xcodebuild build-for-testing` step from the run path, and this
   item assumes it, but it does not remove the runner's cold *startup* — the XCTest host boot and app
@@ -150,7 +158,7 @@ scenarios.
 ## References
 
 - [BE-0019 — XCUITest backend](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) — the resident
-  runner, the loopback channel, and the cost-ordered ladder this item amortizes.
+  runner and the loopback channel whose per-scenario startup this item amortizes.
 - [BE-0105 — Single-snapshot element query for XCUITest](../BE-0105-xcuitest-single-snapshot-query/BE-0105-xcuitest-single-snapshot-query.md)
   — the query-latency follow-on this item mirrors in method.
 - [BE-0240 — Capability-aware actuator selection](../BE-0240-ios-capability-aware-actuator-selection/BE-0240-ios-capability-aware-actuator-selection.md)
