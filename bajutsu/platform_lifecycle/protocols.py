@@ -42,6 +42,13 @@ A method a platform has no use for is declined in exactly one of three ways, cho
   decline is `lambda: None` — a real, callable teardown thunk that does nothing — rather than `None`
   or a raise, because the caller always calls the returned thunk unconditionally at release.
 
+This taxonomy governs a *capability method a platform has no use for*, so two members sit outside it
+rather than inventing a fourth idiom. A **predicate** answers rather than declines: `has_reusable_resident`
+/ `has_devices` returning `False` is the query's answer (see "Predicate → capability pairing" below),
+not a not-applicable stub. A method with a **meaningful default** is likewise not a decline:
+`end_lease`'s default delegates to `teardown` — the full, real release every platform without a warm
+resident already performs — not a null, a gated raise, or a no-op.
+
 ## Predicate → capability pairing
 
 Two run predicates each gate one capability method, honored at a single runner call site. A third

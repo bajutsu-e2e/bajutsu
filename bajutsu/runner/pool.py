@@ -182,7 +182,20 @@ def device_pool(
         cached = warm.get(udid)
         if cached is not None and cached[0] != actuator:
             _cached_actuator, cached_env, cached_driver = warm.pop(udid)
-            cached_env.teardown(cached_driver, eff)
+            # Guarded like the other two teardown sites (the failed-resume eviction below and
+            # `shutdown()`): if the cached runner already crashed between leases, `_discard_runner()`'s
+            # `terminate()` can raise `ProcessLookupError` (an `OSError`). Left unguarded here — before
+            # the `try` below — it would propagate out of `lease()` with `udid` never returned to
+            # `free`, leaking the device for the rest of the run. An expected teardown failure is
+            # logged, never re-raised; a genuine bug (anything else) still surfaces.
+            try:
+                cached_env.teardown(cached_driver, eff)
+            except (subprocess.CalledProcessError, OSError) as teardown_exc:
+                _logger.warning(
+                    "tearing down the warm runner on %s for an actuator switch failed: %s",
+                    udid,
+                    teardown_exc,
+                )
             cached = None
         lease_env: RunEnvironment = (
             cached[1]
@@ -330,7 +343,10 @@ def device_pool(
                 try:
                     stale[1].teardown(stale[2], eff)
                 except (subprocess.CalledProcessError, OSError) as teardown_exc:
-                    _logger.debug(
+                    # A leaked runner is the same risk here as at the other two teardown sites, so it
+                    # logs at the same `warning` level; the original launch error still propagates via
+                    # the `raise` below, and a single warning line does not drown it.
+                    _logger.warning(
                         "tearing down the stale warm runner on %s after a failed lease failed: %s",
                         udid,
                         teardown_exc,

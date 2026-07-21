@@ -120,6 +120,10 @@ def test_start_on_a_real_device_targets_the_device_and_skips_simctl(
 
     assert f"platform=iOS,id={_DEVICE_UDID}" in captured["argv"]
     assert simctl_calls == []  # a real device is never touched through simctl
+    # A real-device runner is torn down per lease, never kept warm: this is the one guard keeping the
+    # pool's warm cache (runner/pool.py) from reusing a real device's runner across scenarios, so an
+    # inverted condition here would silently skip its per-lease teardown (BE-0291).
+    assert not env.has_reusable_resident()
 
 
 # --- the live-route boundary: an Appium endpoint routes around the udid machinery (BE-0238) --- #
