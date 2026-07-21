@@ -1,0 +1,25 @@
+# On-device network capture over the adb backend (BE-0283): tapping Refresh issues a real GET to
+# SHOWCASE_API_URL/horses over OkHttp; BajutsuAndroid's interceptor reports the exchange to the host
+# collector, which the runner bridges to the emulator with `adb reverse` — the transport this item
+# delivers. The scenario asserts only the deterministic fact — that the request was observed — the
+# same shape as network_live.yaml on iOS.
+#
+# Android-specific because the endpoint URL differs by target: the emulator reaches the host at
+# 10.0.2.2 (its host-loopback alias), so SHOWCASE_API_URL points there, at the throwaway stub the
+# android Makefile's `e2e-network` target runs. Only the *collector* transport (BajutsuNet → host,
+# over `adb reverse`) is the feature under test; the API endpoint is an ordinary app request, so the
+# host-loopback alias is fine for it (unlike the collector, which uses `adb reverse` uniformly).
+- name: refresh issues an observed catalog request (android)
+  tags: [network]
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_API_URL: "http://10.0.2.2:8770" }
+  steps:
+    - wait: { for: { id: [stable.refresh, stable_refresh] }, timeout: 10 }
+      capture: [video, network]
+    - tap: { id: [stable.refresh, stable_refresh] }
+    # The status mirror settles to `done` on any response; wait on it, then confirm the exchange the
+    # interceptor reported (fire-and-forget, so `until: request` polls the collector until it arrives).
+    - wait: { for: { id: [stable.status, stable_status], value: "done" }, timeout: 10 }
+    - wait: { until: { request: { method: GET, pathMatches: "/horses$" } }, timeout: 10 }
+  expect:
+    - request: { method: GET, pathMatches: "/horses$" }

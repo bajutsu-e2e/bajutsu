@@ -6,6 +6,7 @@ import android.view.View
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import androidx.appcompat.app.AppCompatActivity
+import dev.bajutsu.android.BajutsuNet
 
 /**
  * The five-tab main UI (SPEC §5): Stable, Search, Log, Notices, Permissions. Reads the `SHOWCASE_*`
@@ -24,7 +25,12 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        model = AppModel(readLaunchEnv(intent))
+        val launchEnv = readLaunchEnv(intent)
+        // Enable network capture from the injected collector (BE-0283), debug-only like the clipboard
+        // receiver (ShowcaseApp.onCreate) — before any Net call, so the interceptor observes from the
+        // first request.
+        if (BuildConfig.DEBUG) BajutsuNet.configure(launchEnv)
+        model = AppModel(launchEnv)
         intent?.data?.let { model.selectedTab = model.deepLinkTab(it) }
 
         content = FrameLayout(this)
@@ -104,7 +110,11 @@ class MainActivity : AppCompatActivity() {
     // launchEnv (SPEC §3) arrives as string intent extras; read once, defaults live in AppModel.
     private fun readLaunchEnv(intent: Intent?): Map<String, String> {
         val extras = intent?.extras ?: return emptyMap()
-        val keys = listOf("SHOWCASE_UITEST", "SHOWCASE_TAB", "SHOWCASE_API_URL", "SHOWCASE_HTTP_BASE")
+        val keys = listOf(
+            "SHOWCASE_UITEST", "SHOWCASE_TAB", "SHOWCASE_API_URL", "SHOWCASE_HTTP_BASE",
+            // The network collector bajutsu injects (BE-0283); BajutsuNet.configure reads these, AppModel ignores them.
+            "BAJUTSU_COLLECTOR", "BAJUTSU_COLLECTOR_TOKEN",
+        )
         return keys.mapNotNull { key -> extras.getString(key)?.let { key to it } }.toMap()
     }
 }

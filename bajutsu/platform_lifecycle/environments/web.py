@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import cast
 
@@ -78,6 +78,9 @@ class WebEnvironment:
         # A fresh context per lease scopes the traffic; the cast names the web-only collector whose
         # `mocks` param the base Protocol widens to `list[object]`.
         return cast(PlaywrightDriver, driver).network_collector(scenario.mocks)
+
+    def bridge_collector(self, port: int) -> Callable[[], None]:
+        return lambda: None  # web observes via the driver; never reached (no external collector)
 
     def relauncher(
         self,

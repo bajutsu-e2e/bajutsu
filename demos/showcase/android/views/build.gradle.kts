@@ -52,7 +52,8 @@ android {
 }
 
 dependencies {
-    implementation(project(":bajutsu-android")) // clipboard test support (BE-0233)
+    implementation(project(":bajutsu-android")) // clipboard + network test support (BE-0233 / BE-0283)
+    implementation("com.squareup.okhttp3:okhttp:4.12.0") // Net.kt uses OkHttp so BajutsuNet can observe it
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("com.google.android.material:material:1.12.0")
