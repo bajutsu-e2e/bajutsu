@@ -332,7 +332,9 @@ device (the shared device is reseeded via one channel, so parallel workers would
 - The **Android adb backend** (`drivers/adb.py` + `adb.py`): the coordinate driver
   (`uiautomator dump` → frame-center tap), the `AndroidEnvironment` launch sequence, `doctor`
   reporting, interval evidence (`video` via `screenrecord`, `deviceLog` via `logcat`, both through
-  the driver-supplied `driver_interval` seam) plus the mocked-network story reused from iOS, and
+  the driver-supplied `driver_interval` seam) plus in-app **network capture** — `request` assertions
+  over an OkHttp interceptor (`BajutsuAndroid`) reporting to the host collector, bridged to the
+  emulator with `adb reverse` (BE-0283; `mocks` stay a follow-up), and
   fast-gate unit tests over captured XML fixtures; on-device actuation parity with idb — system
   `back`, deeplink, a single-round-trip `doubleTap`, scroll-into-view resolution, and up-front
   runtime-permission grants (BE-0210); a device-control subset — `setLocation` and clipboard
@@ -427,9 +429,11 @@ device (the shared device is reseeded via one channel, so parallel workers would
   which runs `demos/web/scenarios/network.yaml` **with network on** and then asserts the persisted
   `network.json` masks a captured secret. It lands as signal first, to be promoted to required once
   stable. The iOS half (wiring `network_mock.yaml` / `network_live.yaml` as a Simulator job) is not
-  yet done; **Android has no network capture at all** — the adb driver declares no `NETWORK`
-  capability and there is no native network monitor to actuate, so that lane is out of scope pending
-  such a monitor, a deliberate boundary rather than an oversight.
+  yet done. Android now has app-side network capture (BE-0283): `BajutsuAndroid`'s OkHttp
+  interceptor reports each exchange to the host collector over an `adb reverse` tunnel, the same
+  app-side-cooperation shape `BajutsuKit` uses on iOS. The adb driver itself still declares no
+  native `NETWORK` capability — there is no native network monitor to actuate — so `network (adb)`
+  (`android-e2e.yml`) validates the app-side path directly rather than through a driver capability.
 
 ### Validated on an Android emulator (Linux, no Mac)
 

@@ -47,6 +47,30 @@ def test_exchange_parses_json_aliases() -> None:
     assert ex.request_headers["Authorization"] == "secret"
 
 
+def test_android_interceptor_json_shape_parses() -> None:
+    # BE-0283: the wire contract BajutsuNet.kt's OkHttp interceptor must emit. The fast gate can't run
+    # Kotlin, so this pins the exact JSON shape from the Python side — a change to NetworkExchange that
+    # broke the Android reporter would fail here. The on-device e2e is the runtime proof.
+    payload = {
+        "method": "GET",
+        "url": "http://10.0.2.2:8000/horses",
+        "path": "/horses",
+        "status": 200,
+        "durationMs": 8.0,
+        "requestHeaders": {"Authorization": "Bearer demo-secret-abc123"},
+        "responseHeaders": {"Content-Type": "application/json"},
+        "responseBody": "[]",
+    }
+    ex = NetworkExchange.model_validate(json.loads(json.dumps(payload)))
+    assert ex.method == "GET" and ex.path == "/horses" and ex.status == 200
+    assert ex.url == "http://10.0.2.2:8000/horses" and ex.duration_ms == 8.0
+    assert ex.request_headers["Authorization"] == "Bearer demo-secret-abc123"
+    assert ex.response_headers["Content-Type"] == "application/json"
+    assert ex.response_body == "[]" and ex.mocked is False
+    # A `request` assertion the showcase e2e uses then matches it (path + method).
+    assert evaluate_one([], _req(method="GET", path_matches="/horses$"), [ex]).ok
+
+
 def test_request_matches_method_path_status() -> None:
     exs = [_ex("POST", "/login", 200), _ex("GET", "/items", 200)]
     assert evaluate_one(

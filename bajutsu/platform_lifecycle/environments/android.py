@@ -47,8 +47,10 @@ class AndroidEnvironment:
     BE-0210) → `am start` (launch env forwarded as intent extras) → deeplink — and returns the `adb`
     driver. The lease-shaping methods mirror the iOS
     `_DeviceEnvironment`, over `adb` instead of `simctl`: the same seam, a different subprocess tool.
-    Network is not observed natively (no `NETWORK` capability), so that path degrades the same honest
-    way iOS's mocked network does. Device control backs the subset the emulator can honor
+    Network is not observed *natively* (the adb driver declares no `NETWORK` capability), but the app
+    reports its own exchanges to the host collector, which `bridge_collector` reaches over `adb reverse`
+    (BE-0283) — the same app-side capture iOS relies on, so a `request` assertion is satisfied without a
+    native monitor. Device control backs the subset the emulator can honor
     (`setLocation`, BE-0211, plus clipboard through the app's in-app receiver, BE-0233); the rest of
     the family stays unsupported.
     """
@@ -190,6 +192,34 @@ class AndroidEnvironment:
 
     def hook_collector(self, driver: base.Driver, scenario: Scenario) -> Collector:
         raise NotImplementedError("the adb backend does not observe network via the driver")
+
+    def bridge_collector(self, port: int) -> Callable[[], None]:
+        # The emulator's 127.0.0.1 is its own loopback, not the host's, so tunnel the collector port
+        # back to the host with `adb reverse` — the injected BAJUTSU_COLLECTOR URL then resolves
+        # on-device unchanged (BE-0283). The reverse-direction twin of the resident server's
+        # forward_cmd (host → device); here the device reaches out to the host.
+        try:
+            self._run(adb.reverse_cmd(self._serial, port))
+        except subprocess.CalledProcessError as exc:
+            raise adb.device_error(exc) from exc
+        except OSError as exc:
+            # adb itself could not be run — surface a clean DeviceError, as start() does above,
+            # rather than let a raw OSError escape lease().
+            raise adb.DeviceError(
+                f"could not run adb ({exc}); is Android platform-tools installed and on PATH?"
+            ) from exc
+
+        def remove() -> None:
+            # Best-effort teardown: a failed remove (the device already gone) must not mask the
+            # lease's own outcome, so it's swallowed rather than raised — but logged (mirroring
+            # _begin_resident's degrade-with-a-log-line below), so a genuinely stuck tunnel is still
+            # visible to someone debugging a flaky Android lane rather than silently invisible.
+            try:
+                self._run(adb.reverse_remove_cmd(self._serial, port))
+            except (subprocess.CalledProcessError, OSError) as exc:
+                logger.warning("adb reverse --remove failed for port %d: %s", port, exc)
+
+        return remove
 
     def relauncher(
         self,

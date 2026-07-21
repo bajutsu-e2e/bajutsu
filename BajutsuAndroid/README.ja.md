@@ -4,8 +4,8 @@
 
 Android 上の [bajutsu](../) 向けのアプリ内デバイス支援ライブラリです。プラットフォームがアプリ
 プロセスの内側からしか公開しない機能を bajutsu が駆動できるようにする、test/debug 専用の Android
-ライブラリです。現在は**クリップボード**を担い、iOS の [`BajutsuKit`](../BajutsuKit) パッケージに
-対応する Android 版にあたります。
+ライブラリです。**クリップボード**と**ネットワーク捕捉**を担い、iOS の [`BajutsuKit`](../BajutsuKit)
+パッケージに対応する Android 版にあたります。
 
 ## アプリ内支援が要る理由
 
@@ -75,7 +75,50 @@ project(":bajutsu-android").projectDir = file("../../../BajutsuAndroid")
 **test/debug ビルド専用**です。`startClipboard` の呼び出しを `BuildConfig.DEBUG`（または独自の
 テストフラグ）で囲い、リリースビルドで動かないようにしてください。
 
+## ネットワーク捕捉（BE-0283）
+
+`request` / `requestSequence` のアサーションは、iOS と同じアプリ内コレクタのモデルで通信を観測します。
+ネットワーク捕捉を伴うシナリオを走らせるとき、bajutsu はホストの `127.0.0.1:<port>` にコレクタを立て、
+`adb reverse` でエミュレータへ橋渡しし、その URL を `BAJUTSU_COLLECTOR` の intent extra として注入します。
+iOS の `URLProtocol` があらゆる `URLSession` に透過的に割り込むのに対し、Android には全クライアントに届く
+単一の OS レベルの HTTP フックがありません。そこで対象アプリは、自分の OkHttp クライアントに一行を足し、
+起動時に一度だけ報告を有効化します。
+
+```kotlin
+import dev.bajutsu.android.BajutsuNet
+
+// 起動時に一度、すでに読んでいる launch env のマップから（bajutsu がコレクタを注入していなければ
+// 何もしないので、test/debug ビルドでは無条件に呼んでも安全です）:
+BajutsuNet.configure(launchEnv)
+
+// 対象アプリが組み立てる OkHttpClient に:
+val client = OkHttpClient.Builder()
+    .addInterceptor(BajutsuNet.interceptor())
+    .build()
+```
+
+インターセプタは `configure` が `BAJUTSU_COLLECTOR` を見つけるまで不活性です。有効になると、完了した
+やり取りごとに bajutsu の `NetworkExchange` に一致する JSON をコレクタへ POST します。報告自体が
+インターセプトされないよう、送信には別のクライアントを使います。OkHttp はここでは `compileOnly` の依存
+なので、バージョンは対象アプリが持ち込みます。
+
+**テスト/デバッグ専用です。** インターセプタはヘッダとボディを記録します。`configure` の呼び出しは
+（上記のように）デバッグフラグで守り、bajutsu の `redact` を設定して、`network.json` に書き出す証跡
+から機密情報を隠してください。iOS 向けに [BajutsuKit の Safety note](../BajutsuKit/README.md#safety)
+が述べているのと同じ注意点です。
+
+**クリアテキストの例外設定が必要です。** `BAJUTSU_COLLECTOR` は平文 HTTP の `127.0.0.1` URL であり、
+Android（API 28 以降）は既定でクリアテキスト通信を遮断します（loopback を App Transport Security
+（ATS）で除外する iOS とは異なります）。テスト/デバッグビルドに `127.0.0.1` へのクリアテキスト例外を `network_security_config`
+で追加してください（設定例は `demos/showcase/android/*/src/main/res/xml/network_security_config.xml`）。
+これがないと、インターセプタの報告 POST は `CLEARTEXT communication to 127.0.0.1 not permitted` で
+失敗し、ログには残るものの他に痕跡はなく、やり取りがコレクタに届きません。
+
 ## 対応範囲
 
 アプリのプライマリクリップに対する set / get / clear です。`get` は先頭のクリップ項目をテキストに
 変換して読みます。テキスト以外のクリップ内容（画像、intent）は対象外です。
+
+ネットワーク捕捉が見るのは **OkHttp 由来の HTTP(S)** だけで、iOS の `URLSession` に限られた捕捉と同じ
+範囲です。`HttpURLConnection` を直接使う通信、別の HTTP クライアント、`WebView` は対象外です（`WebView`
+は iOS と同じく、別途の追随が要ります）。

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Scoped cleartext exception for the BE-0283 network e2e (demos/showcase/scenarios/network_android.yaml):
+  targetSdk 28+ blocks plaintext HTTP by default, but that scenario exercises two cleartext hosts, both
+  loopback aliases with no certificate to serve:
+    - `10.0.2.2` — SHOWCASE_API_URL, the emulator's host-loopback alias to the throwaway net_stub.py.
+    - `127.0.0.1` — BAJUTSU_COLLECTOR (bajutsu/runner/pool.py), the on-device end of the `adb reverse`
+      tunnel BajutsuNet's interceptor reports each exchange to (bajutsu/platform_lifecycle/
+      environments/android.py `bridge_collector`).
+  Cleartext stays permitted for only those two aliases; every other host keeps the platform default
+  (HTTPS-only, as demos/showcase/scenarios/network_live.yaml exercises).
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">10.0.2.2</domain>
+        <domain includeSubdomains="false">127.0.0.1</domain>
+    </domain-config>
+</network-security-config>

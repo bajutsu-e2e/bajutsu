@@ -14,6 +14,8 @@
 #     channel, so a separate job would rebuild the APK and reboot the AVD to assert the same tree.
 #   - visual (adb): the pixel VRT against the CI-recorded baseline. A pixel baseline is host-specific,
 #     so — like ios-e2e.yml's `visual` and web-e2e.yml's lanes — it is a non-gating signal.
+#   - network (adb): the BE-0283 network-capture assertion — a `request` observes real emulator
+#     traffic reported through BajutsuAndroid's interceptor over the `adb reverse` collector bridge.
 #   - conformance (adb): the BE-0114 driver conformance contract (tests/driver_conformance.py) run
 #     on-device against the adb driver (BE-0270) — the Android twin of ios-e2e.yml's `conformance
 #     (idb + xcuitest)`. It proves the determinism-core invariants (an ambiguous selector fails, a
@@ -23,7 +25,7 @@
 # It runs no LLM — a deterministic `run` over fixed scenarios — so it stays within the prime
 # directives, and it is kept off the fast `make check` gate exactly as the idb and web e2e lanes are.
 # The lane now carries a REQUIRED status check like iOS's `E2E`: the `E2E (android)` job below
-# `needs` the deterministic host-independent jobs (`smoke`, `conformance`) and always reports (a
+# `needs` the deterministic host-independent jobs (`smoke`, `conformance`, `network`) and always reports (a
 # path-skip is a pass), so it — not the KVM jobs, which are path-gated — is what `main`'s
 # branch-protection ruleset pins. `golden` and `visual` are deliberately NOT part of its `needs:`: a
 # pixel baseline is host-specific (the x86_64 software renderer varies) and the element-tree golden
@@ -293,6 +295,93 @@ jobs:
           path: runs/
           if-no-files-found: ignore
 
+  # On-device network capture (BE-0283): a `request` assertion observes real emulator traffic end to
+  # end. The showcase GETs SHOWCASE_API_URL/horses over OkHttp, BajutsuAndroid's interceptor reports
+  # the exchange to the host collector, and the runner bridges that collector to the emulator with
+  # `adb reverse` (the transport this item delivers). `e2e-network` runs a throwaway host stub the
+  # emulator reaches at 10.0.2.2 and points SHOWCASE_API_URL there. Reads are minimal (wait Refresh,
+  # tap, wait status), so — like the visual job — the resident server is not built (dump suffices).
+  network:
+    name: network (adb)
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
+    runs-on: ubuntu-latest
+    # A cold AVD boot + the Compose build + one network scenario is ~12min; 25 catches a real hang.
+    timeout-minutes: 25
+    env:
+      UV_NO_DEV: "1"
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39  # v8.2.0
+        with:
+          enable-cache: true
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@0f481fcb613427c0f801b606911222b5b6f3083a  # v5.5.0
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92  # v6.2.0
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Install the base package (no dev)
+        run: uv sync --no-dev
+
+      # The scenario drives the Compose a11y twin; bajutsu's launch installs it from the config's appPath.
+      - name: Build the Compose showcase APK
+        run: make -C demos/showcase/android compose-build
+
+      - name: Cache AVD
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        id: avd-cache
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-api34-x86_64-pixel6
+
+      - name: Create AVD and generate snapshot for caching
+        if: steps.avd-cache.outputs.cache-hit != 'true'
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          disable-animations: false
+          script: echo "Generated AVD snapshot for caching."
+
+      - name: Run the network-capture scenario (adb)
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          force-avd-creation: false
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          disable-animations: true
+          script: make -C demos/showcase/android e2e-network
+
+      - name: Upload run artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: android-e2e-network-run
+          path: runs/
+          if-no-files-found: ignore
+
   # The driver conformance suite (BE-0114): one backend-agnostic contract, run on-device against the
   # adb driver (BE-0270) — the Android twin of ios-e2e.yml's `conformance (idb + xcuitest)`. It proves
   # the determinism-core invariants (ambiguous selector fails, zero-match fails, capabilities() matches
@@ -483,9 +572,12 @@ jobs:
   # Single required status check for the Android lane — the Android twin of ios-e2e.yml's `E2E`.
   # Always runs so it reports even when the KVM jobs are skipped (a PR that can't affect the adb
   # path) — a skipped dependency is a pass; only a real failure or cancellation fails the gate.
-  # `golden` and `visual` are deliberately excluded from `needs:` (see the header): the element-tree
-  # golden can drift with an upstream dependency and a pixel baseline is host-specific, so each stays
-  # a per-PR signal. Make `E2E (android)` the required check, not the path-gated KVM jobs.
+  # `network` joins `smoke`/`conformance` in `needs:`: its pass/fail is a deterministic,
+  # host-independent fact (was the exchange observed?), so a regression there must fail the required
+  # check like the other two — it is path-gated the same way, so a skip is still a pass. `golden` and
+  # `visual` remain deliberately excluded (see the header): the element-tree golden can drift with an
+  # upstream dependency and a pixel baseline is host-specific, so each stays a per-PR signal. Make
+  # `E2E (android)` the required check, not the path-gated KVM jobs.
   #
   # `changes`'s own result is checked too, not just the KVM jobs': `changes` has no `if:`, so it
   # always runs and never reports `skipped` — but if it *fails* (e.g. a misconfigured `E2E_LANE`,
@@ -494,7 +586,7 @@ jobs:
   # them would read that as a pass — the required gate reporting green having run nothing.
   e2e:
     name: E2E (android)
-    needs: [changes, smoke, conformance]
+    needs: [changes, smoke, conformance, network]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -503,9 +595,10 @@ jobs:
           CHANGES: ${{ needs.changes.result }}
           SMOKE: ${{ needs.smoke.result }}
           CONFORMANCE: ${{ needs.conformance.result }}
+          NETWORK: ${{ needs.network.result }}
         run: |
-          echo "changes=$CHANGES smoke=$SMOKE conformance=$CONFORMANCE"
-          for result in "$CHANGES" "$SMOKE" "$CONFORMANCE"; do
+          echo "changes=$CHANGES smoke=$SMOKE conformance=$CONFORMANCE network=$NETWORK"
+          for result in "$CHANGES" "$SMOKE" "$CONFORMANCE" "$NETWORK"; do
             if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
               echo "E2E (android) failed"
               exit 1

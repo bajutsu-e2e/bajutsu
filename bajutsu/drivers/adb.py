@@ -540,6 +540,11 @@ class AdbDriver(CoordinateTreeDriver):
     # `gestures_multitouch` is admitted on adb; the rooted-device precondition for the two-finger
     # `sendevent` sweep is enforced at actuation time (`_two_finger_gesture`), not in the set, so on a
     # non-rooted device the gesture step fails fast with a clear `UnsupportedAction` (BE-0232).
+    # `network` is deliberately NOT declared here even though adb captures traffic (BE-0283): that
+    # token means *native* driver observation (only Playwright has it), and `capability_preflight`
+    # leaves `network` ungated precisely because the app-side collector satisfies it without a backend
+    # advertising it — the same accommodation idb relies on. Declaring it would wrongly claim native
+    # observation and is not needed for a `request` assertion to run on adb.
     CAPABILITIES = (
         frozenset(
             {

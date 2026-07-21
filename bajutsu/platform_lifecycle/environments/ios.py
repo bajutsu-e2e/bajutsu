@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 import subprocess
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 
 from bajutsu import backends, simctl
@@ -52,6 +52,9 @@ class _DeviceEnvironment:
 
     def hook_collector(self, driver: base.Driver, scenario: Scenario) -> Collector:
         raise NotImplementedError("device backends observe network via an external receiver")
+
+    def bridge_collector(self, port: int) -> Callable[[], None]:
+        return lambda: None  # the Simulator shares the Mac's loopback; nothing to bridge
 
     def relauncher(
         self,

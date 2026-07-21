@@ -535,6 +535,22 @@ def forward_remove_cmd(serial: str, host_port: int) -> list[str]:
     return _adb(serial, "forward", "--remove", f"tcp:{host_port}")
 
 
+def reverse_cmd(serial: str, port: int) -> list[str]:
+    """Tunnel a device-side port back to the same host port, so the app can reach the host collector.
+
+    `adb reverse` is the opposite direction of `forward_cmd` (host → device, for the resident server):
+    here the emulator's `127.0.0.1:<port>` reaches the `NetworkCollector` bajutsu started on the host's
+    loopback (BE-0283). Device and host port are the same, so the injected `BAJUTSU_COLLECTOR` URL
+    (`http://127.0.0.1:<port>`) resolves on-device unchanged — no URL rewrite.
+    """
+    return _adb(serial, "reverse", f"tcp:{port}", f"tcp:{port}")
+
+
+def reverse_remove_cmd(serial: str, port: int) -> list[str]:
+    """Tear down the `adb reverse` for `port`, paired with `reverse_cmd` at lease end."""
+    return _adb(serial, "reverse", "--remove", f"tcp:{port}")
+
+
 def instrument_cmd(serial: str) -> list[str]:
     """Start the resident server by running its blocking `serve()` @Test under `am instrument -w`.
 
