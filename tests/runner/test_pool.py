@@ -945,6 +945,34 @@ def test_pool_terminates_the_warm_runner_when_a_lease_faults(
         shutdown()
 
 
+def test_pool_shutdown_isolates_a_failing_warm_runner_terminate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One wedged runner must not abort run-set-end cleanup (BE-XXXX Unit 3): a `terminate` that
+    raises is caught and logged, so every other device's runner is still terminated."""
+    ledger = _WarmLedger()
+    monkeypatch.setattr("bajutsu.runner.pool.environment_for", _warm_env_for(ledger))
+    lease, shutdown = device_pool(
+        ["UDID-A", "UDID-B"],
+        ["fake"],
+        _eff(),
+        Path("runs"),
+        network=False,
+        available=lambda b: True,
+        env_run=lambda *a, **k: "",
+    )
+    lease(_eff(), _scn("a")).release()
+    lease(_eff(), _scn("b")).release()
+    assert len(ledger.handles) == 2  # two devices, two runners kept warm
+
+    def boom() -> None:
+        raise RuntimeError("terminate blew up")
+
+    ledger.handles[0].terminate = boom  # type: ignore[method-assign]
+    shutdown()  # must not raise despite the first runner's terminate failing
+    assert ledger.handles[1].terminated is True  # the other device's runner was still terminated
+
+
 def test_pool_leaves_non_warm_environments_untouched(monkeypatch: pytest.MonkeyPatch) -> None:
     """A backend whose environment does not implement the warm-runner surface (idb here, via the
     plain recording env) is never adopted and caches nothing — the reuse is XCUITest-only (BE-XXXX)."""

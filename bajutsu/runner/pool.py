@@ -7,6 +7,7 @@ pool never branches on the actuator name (BE-0009 Phase 0).
 
 from __future__ import annotations
 
+import logging
 import queue
 from collections.abc import Callable
 from pathlib import Path
@@ -44,6 +45,8 @@ from bajutsu.scenario import Scenario, dump_scenario_file, redact_totp_secrets
 from bajutsu.webview import WebViewBridge
 
 __all__ = ["device_control", "device_pool", "device_relauncher"]
+
+_logger = logging.getLogger(__name__)
 
 
 def _alloc_webview_bridge(
@@ -88,8 +91,10 @@ def device_pool(
     (interval recordings under `run_dir`), relaunch, and device control are all bound to the leased
     device; `Lease.release()` terminates the app and returns the udid to the pool. A single-device
     run is just a pool of one, so network collection / interval evidence / device control work the
-    same whether `workers` is 1 or N. The only shared state is the thread-safe free-device queue and
-    the read-only collectors map, so leases need no lock.
+    same whether `workers` is 1 or N. The shared state is the thread-safe free-device queue, the
+    read-only collectors map, and the per-device warm-runner cache (BE-XXXX) — the last is mutable,
+    but each udid is touched by only the one lease that holds it (the free queue serializes that), so
+    leases still need no lock.
 
     Args:
         udids: The devices to pool; the web backend ignores these (one browser lane).
@@ -201,10 +206,22 @@ def device_pool(
             # always read it.
             if warm_env is not None:
                 cached = warm_runners.get(udid)
-                if cached is not None and (cached.actuator != actuator or not cached.alive()):
-                    cached.terminate()
-                    warm_runners.pop(udid, None)
-                    cached = None
+                if cached is not None:
+                    if cached.actuator != actuator:
+                        cached.terminate()  # actuator switch (Unit 3) — expected, no warning
+                        warm_runners.pop(udid, None)
+                        cached = None
+                    elif not cached.alive():
+                        # A wedged/dead runner degrades this device back to a cold start; log it so a
+                        # run that silently loses its amortization leaves a trace (Unit 4).
+                        _logger.warning(
+                            "warm XCUITest runner for %s failed its health check; "
+                            "discarding it and cold-starting a fresh one",
+                            udid,
+                        )
+                        cached.terminate()
+                        warm_runners.pop(udid, None)
+                        cached = None
                 warm_env.adopt_runner(cached)
             # Web films the whole scenario only when its capture policy asks for video: Playwright
             # records at context-creation time, so the recording dir must be set before the driver
@@ -326,15 +343,28 @@ def device_pool(
             if warm_env is not None:
                 stale = warm_runners.pop(udid, None) or warm_env.running_handle()
                 if stale is not None:
-                    stale.terminate()
+                    # Best-effort: this handler's job is to never let cleanup starve the pool, so a
+                    # terminate failure must not stop `free.put(udid)` below or mask the original fault.
+                    try:
+                        stale.terminate()
+                    except Exception:
+                        _logger.warning(
+                            "failed to terminate warm runner for %s during fault cleanup",
+                            udid,
+                            exc_info=True,
+                        )
             free.put(udid)
             raise
 
     def shutdown() -> None:
         # Run-set end (BE-XXXX Unit 3): terminate every device's warm runner. No lease is in flight
-        # here, so the map is quiescent.
+        # here, so the map is quiescent. Isolate each terminate — one wedged runner must not abort the
+        # loop and leak the rest, nor skip the collector stops below.
         for handle in warm_runners.values():
-            handle.terminate()
+            try:
+                handle.terminate()
+            except Exception:
+                _logger.warning("failed to terminate a warm runner at shutdown", exc_info=True)
         warm_runners.clear()
         for collector in collectors.values():
             collector.stop()
