@@ -145,6 +145,48 @@ def test_materialize_copies_once_and_reuses(
     assert copies["n"] == 2
 
 
+def test_materialize_survives_a_concurrent_winner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Two lanes on the same host + version race: the loser's os.replace lands on a dest another
+    # process already materialized. It must keep the winner's copy, return the runner, and not leak
+    # its own temp dir.
+    source = _products(tmp_path / "bundle")
+    cache = tmp_path / "cache"
+    dest = cache / "1.2.3"
+
+    def _racing_replace(src: object, dst: object) -> object:
+        # Simulate the winner filling *dest* just before our rename, so os.replace onto a
+        # non-empty directory fails.
+        _products(dest)
+        raise OSError("directory not empty")
+
+    monkeypatch.setattr(_bundled_runner.os, "replace", _racing_replace)
+
+    result = _bundled_runner.materialize(source, version="1.2.3", cache_root=cache)
+    assert result == dest / "BajutsuRunner.xctestrun"
+    assert result.is_file()
+    # No `.partial-*` temp directory is left behind.
+    assert not list(cache.glob("1.2.3.partial-*"))
+
+
+def test_materialize_reraises_a_real_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A failure that is not a lost race (dest never appears) propagates, with the temp dir cleaned.
+    source = _products(tmp_path / "bundle")
+    cache = tmp_path / "cache"
+
+    def _failing_replace(src: object, dst: object) -> object:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(_bundled_runner.os, "replace", _failing_replace)
+
+    with pytest.raises(OSError, match="disk full"):
+        _bundled_runner.materialize(source, version="1.2.3", cache_root=cache)
+    assert not list((cache).glob("1.2.3.partial-*"))
+
+
 def test_bundled_products_dir_absent_by_default() -> None:
     # A source checkout / Linux wheel ships no compiled runner, so resolution treats it as absent.
     assert _bundled_runner.bundled_products_dir() is None

@@ -235,7 +235,12 @@ def _resolve_runner(xcfg: XcuitestConfig | None, device_type: str) -> Path:
             "xcuitest backend requires xcuitest.testRunner in the target config "
             "(no bundled runner is present in this build)"
         )
-    return materialize(products)
+    try:
+        return materialize(products)
+    except OSError as exc:
+        raise simctl.DeviceError(
+            f"failed to materialize the bundled xcuitest runner: {exc}"
+        ) from exc
 
 
 def _patch_xctestrun_env(runner_path: Path, forwarded: Mapping[str, str]) -> Path:

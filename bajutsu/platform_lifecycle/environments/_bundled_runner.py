@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import tempfile
 from pathlib import Path
 
 import bajutsu
@@ -58,12 +59,19 @@ def materialize(
     dest = (cache_root or _cache_root()) / version
     runner = dest / _RUNNER_NAME
     if not runner.is_file():
-        # Copy into a sibling temp dir then rename, so a crash mid-copy never leaves a
-        # half-populated version directory that a later run would mistake for a warm cache.
+        # Copy into a unique per-process temp dir then atomically rename, so a crash mid-copy never
+        # leaves a half-populated version directory, and parallel runs on the same host + version
+        # (the device pool spans simulators) never clobber each other's in-flight copy.
         dest.parent.mkdir(parents=True, exist_ok=True)
-        tmp = dest.with_name(dest.name + ".partial")
-        shutil.rmtree(tmp, ignore_errors=True)
-        shutil.copytree(source, tmp)
-        shutil.rmtree(dest, ignore_errors=True)
-        os.replace(tmp, dest)
+        tmp = Path(tempfile.mkdtemp(dir=dest.parent, prefix=f"{dest.name}.partial-"))
+        try:
+            shutil.copytree(source, tmp, dirs_exist_ok=True)
+            os.replace(tmp, dest)
+        except BaseException:
+            shutil.rmtree(tmp, ignore_errors=True)
+            # A concurrent winner may have already materialized this version onto *dest* (the
+            # rename onto a non-empty directory then fails); take the winner's copy and swallow.
+            if runner.is_file():
+                return runner
+            raise
     return runner
