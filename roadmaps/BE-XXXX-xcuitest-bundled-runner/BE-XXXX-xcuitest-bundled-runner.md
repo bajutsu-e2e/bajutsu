@@ -10,7 +10,7 @@
 | Status | **Proposal** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | Topic | Platform support |
-| Related | [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md), [BE-0288](../BE-0288-ios-device-signing-batch-build/BE-0288-ios-device-signing-batch-build.md) |
+| Related | [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md), [BE-0288](../BE-0288-ios-device-signing-batch-build/BE-0288-ios-device-signing-batch-build.md), [BE-0291](../BE-0291-xcuitest-runner-reuse-across-scenarios/BE-0291-xcuitest-runner-reuse-across-scenarios.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -81,8 +81,11 @@ own directory, so the test bundles beside it must ship together. The bundle ther
 whole built-products directory — the `.xctestrun` plus the runner and host `.app`/`.xctest` bundles
 `xcodebuild build-for-testing` emits — under a package-data directory such as
 `bajutsu/_xcuitest_runner/`, located at runtime by a path relative to the package, exactly as
-`bajutsu/templates/` is. Hatchling includes non-Python files under the `bajutsu` package already
-(the `templates/` assets prove it); the products directory is force-included the same way. Only the
+`bajutsu/templates/` is. Hatchling already packages every non-Python file that lives inside the
+`bajutsu` package tree by default — no explicit `force-include` entry exists for `templates/` in
+`pyproject.toml`. Placing the runner products under `bajutsu/_xcuitest_runner/` before the wheel
+build runs lets that same default packaging pick them up; an explicit `force-include` entry is
+needed only if the release pipeline instead builds them outside the package tree. Only the
 Simulator runner ships. A device runner must be signed with the operator's Apple Developer team
 ([BE-0288](../BE-0288-ios-device-signing-batch-build/BE-0288-ios-device-signing-batch-build.md)),
 which Bajutsu cannot do at release time, so `xcuitest.deviceType: device` keeps requiring an
@@ -99,7 +102,12 @@ materializes the products directory into a per-version writable cache (for examp
 `~/.cache/bajutsu/xcuitest-runner/<version>/`) and resolves `testRunner` to the copy there. The copy
 is keyed by Bajutsu version so an upgrade refreshes it and a warm cache is reused without copying
 again; the existing per-run patched-copy-and-unlink then operates on the cache, never on
-site-packages.
+site-packages. Because the device pool leases multiple devices in parallel within one run set
+([BE-0291](../BE-0291-xcuitest-runner-reuse-across-scenarios/BE-0291-xcuitest-runner-reuse-across-scenarios.md)
+relies on that same concurrency for its per-device runner cache), two leases can reach a cold,
+version-keyed cache directory at once; materialization copies into a temporary directory beside the
+cache and then atomically renames it into place, so a concurrent reader either sees no cache
+directory yet or a fully populated one, never a partial copy.
 
 ### The runner is built and included in Bajutsu's release pipeline
 
@@ -164,8 +172,9 @@ The split follows the fast-gate / on-device boundary BE-0019 already draws.
   explicit runner.
 - [ ] Materialize-to-cache — copy the bundled products into a per-version writable cache and resolve
   `testRunner` to the copy, leaving the per-run patched-copy step untouched.
-- [ ] Packaging — force-include the built Simulator products under the package-data directory and add
-  the release-pipeline build step that produces them; keep the base wheel installable on Linux.
+- [ ] Packaging — place the built Simulator products under the package-data directory before the wheel
+  build runs and add the release-pipeline build step that produces them; keep the base wheel
+  installable on Linux.
 - [ ] doctor / disclosure — report the resolved runner source and surface an Xcode/SDK mismatch with
   the override escape hatch named.
 - [ ] Validation — fast-gate resolution tests (bundled default, override precedence, device error,
