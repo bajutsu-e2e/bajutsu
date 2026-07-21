@@ -12,13 +12,16 @@ from __future__ import annotations
 
 import plistlib
 import subprocess
+from pathlib import Path
 from typing import Any
 
 import pytest
 
 from bajutsu import backends, simctl
 from bajutsu.config import Effective, load_config, resolve
+from bajutsu.drivers.xcuitest import XcuitestChannelError
 from bajutsu.platform_lifecycle.environments.xcuitest import (
+    _WARM_HEALTH_TIMEOUT,
     XcuitestEnvironment,
     _destination,
 )
@@ -117,6 +120,10 @@ def test_start_on_a_real_device_targets_the_device_and_skips_simctl(
 
     assert f"platform=iOS,id={_DEVICE_UDID}" in captured["argv"]
     assert simctl_calls == []  # a real device is never touched through simctl
+    # A real-device runner is torn down per lease, never kept warm: this is the one guard keeping the
+    # pool's warm cache (runner/pool.py) from reusing a real device's runner across scenarios, so an
+    # inverted condition here would silently skip its per-lease teardown (BE-0291).
+    assert not env.has_reusable_resident()
 
 
 # --- the live-route boundary: an Appium endpoint routes around the udid machinery (BE-0238) --- #
@@ -150,3 +157,181 @@ def test_appium_lease_endpoint_routes_to_the_live_environment() -> None:
     assert isinstance(env, XcuitestLiveEnvironment)
     # The live environment passes the endpoint through instead of resolving it through simctl.
     assert env.resolve_device(lease.udid_spec) == "http://grid.local:4723"
+
+
+# --- warm runner reuse across leases on a Simulator (BE-0291) --- #
+#
+# The Simulator's own boot needs Xcode, so it stays off the gate; the `xcodebuild`/toolchain boundary
+# (Popen), the driver factory, and simctl are the sanctioned fake points (as in the BE-0019 tests
+# above). These exercise the reuse *logic* — spawn once, resume, respawn on erase / a wedged runner —
+# without a Simulator.
+
+
+def _sim_eff(*, test_runner: str) -> Effective:
+    cfg = f"targets:\n  s:\n    bundleId: com.x\n    xcuitest:\n      testRunner: {test_runner}\n"
+    return resolve(load_config(cfg), "s")
+
+
+class _FakeProc:
+    """A fake runner process: `poll()` reports liveness, `terminate()`/`kill()` end it."""
+
+    def __init__(self) -> None:
+        self.alive = True
+
+    def poll(self) -> int | None:
+        return None if self.alive else 0
+
+    def terminate(self) -> None:
+        self.alive = False
+
+    def wait(self, timeout: float | None = None) -> int:
+        return 0
+
+    def kill(self) -> None:
+        self.alive = False
+
+
+def _write_runner(tmp_path: Path) -> Path:
+    runner = tmp_path / "Runner.xctestrun"
+    with runner.open("wb") as f:
+        plistlib.dump({"Target": {"TestingEnvironmentVariables": {}}}, f)
+    return runner
+
+
+def _fake_toolchain(
+    monkeypatch: pytest.MonkeyPatch, *, wedged: dict[str, bool] | None = None
+) -> tuple[list[list[str]], list[list[str]], simctl.RunFn]:
+    """Fake Popen (the runner), the driver factory, and simctl; return (popen log, simctl log, run).
+
+    The returned `run` is the fake simctl runner to hand the environment as `env_run`. `wedged`, when
+    given, makes the driver's *warm* health probe (`_WARM_HEALTH_TIMEOUT`) raise while `wedged["v"]`
+    is True, so a test can wedge the reused runner; the cold-startup `await_ready` (the long timeout)
+    always succeeds, so a respawn still comes up.
+    """
+    popen_argvs: list[list[str]] = []
+    simctl_calls: list[list[str]] = []
+
+    def _popen(argv: list[str], **_kw: Any) -> _FakeProc:
+        popen_argvs.append(argv)
+        return _FakeProc()
+
+    class _Driver:
+        def await_ready(self, timeout: float = 10.0) -> None:
+            if wedged is not None and wedged["v"] and timeout == _WARM_HEALTH_TIMEOUT:
+                raise XcuitestChannelError("wedged")
+
+    def _run(argv: list[str], env: object = None) -> subprocess.CompletedProcess[bytes]:
+        simctl_calls.append(argv)
+        return subprocess.CompletedProcess(argv, 0, b"", b"")
+
+    monkeypatch.setattr(subprocess, "Popen", _popen)
+    monkeypatch.setattr(backends, "make_driver", lambda *_a, **_k: _Driver())
+    return popen_argvs, simctl_calls, _run
+
+
+def test_start_reuses_a_healthy_runner_across_leases(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The core amortization: a second lease on the same device resumes the live runner (app relaunch
+    # only) instead of spawning a second `xcodebuild` — the runner's cold startup is paid once.
+    popen_argvs, _, run = _fake_toolchain(monkeypatch)
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    eff = _sim_eff(test_runner=str(_write_runner(tmp_path)))
+    env.start(eff, Preconditions())  # cold: spawn the runner
+    assert env.has_reusable_resident()
+    env.start(eff, Preconditions())  # warm: reuse it
+    assert len(popen_argvs) == 1  # the runner was spawned once and reused (BE-0291)
+
+
+def test_start_respawns_the_runner_when_the_scenario_erases(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # `erase` shuts the Simulator down (killing the runner), so it cannot reuse a warm one — the
+    # scenario respawns cold. The reset still runs before the app launches, keeping isolation (Unit 2).
+    popen_argvs, simctl_calls, run = _fake_toolchain(monkeypatch)
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    eff = _sim_eff(test_runner=str(_write_runner(tmp_path)))
+    env.start(eff, Preconditions())
+    env.start(eff, Preconditions(erase=True))
+    assert len(popen_argvs) == 2  # the erase forced a fresh runner
+    assert any(c[:3] == ["xcrun", "simctl", "erase"] for c in simctl_calls)  # the device was erased
+
+
+def test_start_respawns_a_wedged_runner(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    # BE-0291 Unit 4: a warm runner that fails its bounded /health probe (the known crash after
+    # repeated app.launch() cycles) is a cache miss — the next lease respawns cold rather than losing
+    # the run. One scenario's fault costs one extra cold start.
+    wedged = {"v": False}
+    popen_argvs, _, run = _fake_toolchain(monkeypatch, wedged=wedged)
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    eff = _sim_eff(test_runner=str(_write_runner(tmp_path)))
+    env.start(eff, Preconditions())
+    wedged["v"] = True  # the runner wedges after the first lease
+    env.start(eff, Preconditions())
+    assert len(popen_argvs) == 2  # the wedged runner was discarded and a fresh one spawned
+
+
+def test_end_lease_keeps_the_runner_but_teardown_terminates_it(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # `end_lease` releases a lease while keeping the warm runner (only the app is terminated); the
+    # pool's later `teardown` is what actually kills it (BE-0291 ownership on the pool).
+    _, simctl_calls, run = _fake_toolchain(monkeypatch)
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    eff = _sim_eff(test_runner=str(_write_runner(tmp_path)))
+    driver = env.start(eff, Preconditions())
+    proc = env._runner_proc
+
+    simctl_calls.clear()
+    env.end_lease(driver, eff)
+    assert env._runner_proc is proc and proc is not None and proc.alive  # runner untouched
+    assert env.has_reusable_resident()
+    assert any(
+        c[:3] == ["xcrun", "simctl", "terminate"] for c in simctl_calls
+    )  # only the app ended
+
+    env.teardown(driver, eff)
+    assert env._runner_proc is None and not proc.alive  # teardown kills the runner
+    assert not env.has_reusable_resident()
+
+
+def test_start_respawns_a_dead_runner(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    # BE-0291 Unit 4: a runner whose process has exited (crashed) between leases is discarded before
+    # any /health probe (the `poll()` fast path) — the next lease respawns cold.
+    popen_argvs, _, run = _fake_toolchain(monkeypatch)
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    eff = _sim_eff(test_runner=str(_write_runner(tmp_path)))
+    env.start(eff, Preconditions())
+    assert env._runner_proc is not None
+    env._runner_proc.alive = False  # type: ignore[attr-defined]  # the runner process exited
+    env.start(eff, Preconditions())
+    assert len(popen_argvs) == 2  # the dead runner was discarded and a fresh one spawned
+
+
+def test_warm_resume_reapplies_the_per_scenario_reset(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # BE-0291 Unit 2: a reused runner still gets the full per-scenario reset before the app relaunch —
+    # reinstall, permission grants, terminate + relaunch, and the deeplink — so reuse never weakens
+    # the isolation a cold lease gives. Asserting spawn count alone would miss a skipped reset.
+    popen_argvs, simctl_calls, run = _fake_toolchain(monkeypatch)
+    app = tmp_path / "App.app"
+    app.mkdir()
+    cfg = (
+        f"targets:\n  s:\n    bundleId: com.x\n    appPath: {app}\n"
+        f"    xcuitest:\n      testRunner: {_write_runner(tmp_path)}\n"
+    )
+    eff = resolve(load_config(cfg), "s")
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    env.start(eff, Preconditions())  # cold spawn
+    simctl_calls.clear()
+    env.start(
+        eff, Preconditions(deeplink="myapp://open"), permissions={"camera": "grant"}
+    )  # warm resume
+    assert len(popen_argvs) == 1  # no respawn — the runner was reused
+    verbs = [c[2] for c in simctl_calls if len(c) >= 3 and c[:2] == ["xcrun", "simctl"]]
+    # the per-scenario reset ran on the warm path, before the app relaunch:
+    assert "install" in verbs  # app reinstalled (reinstall=clean → uninstall + install)
+    assert "privacy" in verbs  # the camera permission was granted via `simctl privacy`
+    assert "terminate" in verbs and "launch" in verbs  # the app was restarted
+    assert "openurl" in verbs  # the deeplink was opened

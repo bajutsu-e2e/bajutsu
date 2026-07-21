@@ -98,6 +98,12 @@ class WebEnvironment:
     def teardown(self, driver: base.Driver, eff: Effective) -> None:
         cast(base.BackendLifecycle, driver).close()  # web-only lifecycle, confined to this env
 
+    def has_reusable_resident(self) -> bool:
+        return False  # a browser context per lease, no cross-lease resident to amortize (BE-0291)
+
+    def end_lease(self, driver: base.Driver, eff: Effective) -> None:
+        self.teardown(driver, eff)  # no warm resident: a lease's end is its full teardown
+
     def has_devices(self) -> bool:
         return False  # one browser per lane, no simctl device behind it
 

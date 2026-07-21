@@ -153,3 +153,12 @@ erase (if pre.erase: shutdown → erase) → boot → terminate(bundle) (for a c
   returns `(results, manifest_path)`.
 
 The CLI's `run` calls this `run_and_report` ([cli](cli.md#run)).
+
+> **Warm XCUITest runner (BE-0291).** Each scenario still gets a freshly launched app and a fresh
+> driver (clean isolation), but the XCUITest backend's resident `xcodebuild` runner — whose cold
+> startup is its largest fixed cost — is kept **resident per device across leases** and only the app
+> is relaunched between scenarios, so a suite pays that cold start once per device rather than once
+> per scenario. The pool holds the warm runner keyed by `(udid, actuator)`; a lease that resolves to
+> a different actuator (BE-0240), or a scenario that `erase`s the device, tears it down and respawns,
+> and a runner that fails its bounded `/health` probe is treated as a cache miss (one extra cold
+> start, never a lost run). idb and the other backends spawn no such resident and are unchanged.

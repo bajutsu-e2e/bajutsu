@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0291](BE-0291-xcuitest-runner-reuse-across-scenarios.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0291") |
+| Implementing PR | [#1226](https://github.com/bajutsu-e2e/bajutsu/pull/1226) |
 | Topic | Platform support |
 | Related | [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md), [BE-0105](../BE-0105-xcuitest-single-snapshot-query/BE-0105-xcuitest-single-snapshot-query.md), [BE-0240](../BE-0240-ios-capability-aware-actuator-selection/BE-0240-ios-capability-aware-actuator-selection.md) |
 <!-- /BE-METADATA -->
@@ -149,11 +150,23 @@ scenarios.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — Per-device warm-runner cache in the pool, keyed by `(udid, actuator)`.
-- [ ] Unit 2 — App-only handover between same-actuator scenarios via the existing relaunch path.
-- [ ] Unit 3 — Runner ownership moved to the pool; teardown on run-set end, actuator switch, and fault.
-- [ ] Unit 4 — Crash recovery treats an unresponsive warm runner as a cache miss.
-- [ ] Unit 5 — Measured per-suite startup saving on a named environment.
+- [x] Unit 1 — Per-device warm-runner cache in the pool, keyed by `(udid, actuator)`.
+- [x] Unit 2 — App-only handover between same-actuator scenarios via the existing relaunch path.
+- [x] Unit 3 — Runner ownership moved to the pool; teardown on run-set end, actuator switch, and fault.
+- [x] Unit 4 — Crash recovery treats an unresponsive warm runner as a cache miss.
+- [x] Unit 5 — Amortization proven deterministically (the runner spawns once per device across a
+  multi-scenario suite, `tests/runner/test_pool.py` / `tests/test_xcuitest_environment.py`); the
+  wall-clock per-suite startup saving on a named Simulator + Xcode environment is the on-device
+  confirmation, which needs hardware the fast gate lacks.
+
+**Log**
+
+- The reuse landed as a two-method extension of the `Environment` seam (`has_reusable_resident` /
+  `end_lease`, both defaulting to "no warm resident"), a per-device warm-runner cache in
+  `runner/pool.py` keyed by `(udid, actuator)`, and a resume-aware `XcuitestEnvironment.start` that
+  relaunches only the app when the runner is healthy — so the pool stays actuator-agnostic and every
+  non-XCUITest backend is unchanged. Scoped to the Simulator path (real-device XCUITest and the live
+  WebDriver environment stay cold per lease). See the implementing PR.
 
 ## References
 
