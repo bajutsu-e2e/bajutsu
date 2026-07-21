@@ -7,9 +7,9 @@
 |---|---|
 | Proposal | [BE-0185](BE-0185-record-human-takeover-step.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0185") |
-| Implementing PR | [#1210](https://github.com/bajutsu-e2e/bajutsu/pull/1210) |
+| Implementing PR | [#1210](https://github.com/bajutsu-e2e/bajutsu/pull/1210), [#1212](https://github.com/bajutsu-e2e/bajutsu/pull/1212) |
 | Topic | Authoring experience (record / GUI editor) |
 | Related | [BE-0012](../BE-0012-action-capture-record/BE-0012-action-capture-record.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md), [BE-0026](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md), [BE-0035](../BE-0035-device-control-primitives/BE-0035-device-control-primitives.md), [BE-0052](../BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md), [BE-0179](../BE-0179-record-human-handoff/BE-0179-record-human-handoff.md) |
 <!-- /BE-METADATA -->
@@ -112,9 +112,9 @@ interactive-mirror surface itself is out of scope here and would be its own item
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Takeover trigger on unresolved-target / explicit author request, no element guessing.
-- [ ] Human-operates-the-device handoff with bajutsu not driving; the `serve` pane coordinates the pause/resume only.
-- [ ] Remote/self-hosted `serve` (BE-0015 / BE-0016): require device reach for takeover, with a documented fallback when the device is not reachable.
+- [x] Takeover trigger on an unresolved target: the loop (never an LLM) offers a takeover when the agent's target will not resolve, without guessing which element to act on. (A proactive author-initiated interrupt while the loop is progressing — the "explicit author request" variant — is a deliberate follow-up; it needs a live control channel into the record loop and is not required by the motivating case.)
+- [x] Human-operates-the-device handoff with bajutsu not driving; the `serve` pane coordinates the pause/resume only.
+- [x] Remote `serve`: require device reach for takeover, with a documented fallback when the device is not reachable. The hosted server backend (BE-0015) *enforces* the refusal — it is the only certain "device not in the author's reach" signal. A self-hosted `serve` (BE-0016) exposed over a network is also remote, but a serve cannot reliably tell whether a client sits at the device (a loopback bind is not a sound proxy); there the same fallback applies by documented convention, and an enforced signal for that case is a follow-up.
 - [x] Resume-by-re-observation recording the observed state transition, not the raw gesture.
 - [x] Artifact classification: bypassable → placeholder + bypass TODO (BE-0035 / BE-0052).
 - [x] Artifact classification: unreproducible → explicit non-CI manual marker (codegen `// TODO`, BE-0026; run-time explicit skip/fail).
@@ -127,6 +127,16 @@ interactive-mirror surface itself is out of scope here and would be its own item
   labeled `// TODO` by every codegen target, and failing loudly at `run` time (`ManualStepRequired`)
   rather than faking a pass. Leaves the unresolved-target auto-trigger and the remote-`serve` reach
   constraint to follow-up slices.
+- [#1212](https://github.com/bajutsu-e2e/bajutsu/pull/1212) — the trigger and reach slices, completing the item. The record loop now *offers* a
+  takeover when the agent's proposed target will not resolve on the live screen (the motivating
+  "could not resolve that target; stopping" dead end), rather than abandoning the recording — the
+  loop raises it, never an LLM, and never guesses which element to act on. On a hosted / remote
+  `serve` a device-operation takeover is refused (`respond-human` returns a clear fallback: re-record
+  where the device is, or wire the test-build bypass), keeping device reach a first-class
+  precondition, while value entry and cancel still work remotely. The refusal keys on the hosted
+  signal — the only certain "device out of reach" indicator; the self-hosted-over-a-network case
+  (BE-0016) relies on the same documented fallback by convention, with an enforced signal for it left
+  to a follow-up. Docs (`recording.md`, both languages) document the trigger and the remote constraint.
 
 ## References
 
