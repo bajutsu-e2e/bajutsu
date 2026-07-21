@@ -131,7 +131,10 @@ def test_materialize_copies_once_and_reuses(
 
     first = _bundled_runner.materialize(source, version="1.2.3", cache_root=cache)
     assert first.is_file()
-    assert first == cache / "1.2.3" / "BajutsuRunner.xctestrun"
+    # The cache directory is keyed by version *and* a content digest, so it stays stable for the
+    # same products and reuses the warm copy without recopying.
+    digest = _bundled_runner._products_digest(source)
+    assert first == cache / f"1.2.3-{digest}" / "BajutsuRunner.xctestrun"
     assert copies["n"] == 1
 
     # A warm cache is reused without recopying.
@@ -139,10 +142,40 @@ def test_materialize_copies_once_and_reuses(
     assert second == first
     assert copies["n"] == 1
 
-    # A different version lands in its own directory (an upgrade refreshes it).
-    other = _bundled_runner.materialize(source, version="9.9.9", cache_root=cache)
-    assert other == cache / "9.9.9" / "BajutsuRunner.xctestrun"
-    assert copies["n"] == 2
+
+def test_materialize_refreshes_on_changed_content(tmp_path: Path) -> None:
+    # Updated runner products must land in a fresh directory even when the version string is
+    # unchanged — the pre-release version is a static placeholder (BE-0272), so the content digest
+    # is what detects a rebuild and prevents silently reusing stale products.
+    source = _products(tmp_path / "bundle")
+    cache = tmp_path / "cache"
+
+    first = _bundled_runner.materialize(source, version="1.2.3", cache_root=cache)
+
+    # Add a file to the products tree: the digest shifts, so a new cache directory is used.
+    (source / "Added.bundle").mkdir()
+    (source / "Added.bundle" / "payload").write_bytes(b"x")
+    second = _bundled_runner.materialize(source, version="1.2.3", cache_root=cache)
+
+    assert second != first
+    assert second.is_file()
+    assert second.parent != first.parent
+
+
+def test_materialize_sweeps_a_stale_partial(tmp_path: Path) -> None:
+    # A hard kill can leave a `.partial-*` temp dir that nothing else cleans; a materialize that
+    # copies must sweep such siblings before creating its own temp dir.
+    source = _products(tmp_path / "bundle")
+    cache = tmp_path / "cache"
+    cache.mkdir(parents=True)
+    stale = cache / f"1.2.3-deadbeef{_bundled_runner._PARTIAL_MARKER}orphan"
+    stale.mkdir()
+    (stale / "leftover").write_bytes(b"x")
+
+    _bundled_runner.materialize(source, version="1.2.3", cache_root=cache)
+
+    assert not stale.exists()
+    assert not list(cache.glob(f"*{_bundled_runner._PARTIAL_MARKER}*"))
 
 
 def test_materialize_survives_a_concurrent_winner(
@@ -153,7 +186,7 @@ def test_materialize_survives_a_concurrent_winner(
     # its own temp dir.
     source = _products(tmp_path / "bundle")
     cache = tmp_path / "cache"
-    dest = cache / "1.2.3"
+    dest = cache / f"1.2.3-{_bundled_runner._products_digest(source)}"
 
     def _racing_replace(src: object, dst: object) -> object:
         # Simulate the winner filling *dest* just before our rename, so os.replace onto a
@@ -167,7 +200,7 @@ def test_materialize_survives_a_concurrent_winner(
     assert result == dest / "BajutsuRunner.xctestrun"
     assert result.is_file()
     # No `.partial-*` temp directory is left behind.
-    assert not list(cache.glob("1.2.3.partial-*"))
+    assert not list(cache.glob(f"*{_bundled_runner._PARTIAL_MARKER}*"))
 
 
 def test_materialize_reraises_a_real_failure(
@@ -184,7 +217,7 @@ def test_materialize_reraises_a_real_failure(
 
     with pytest.raises(OSError, match="disk full"):
         _bundled_runner.materialize(source, version="1.2.3", cache_root=cache)
-    assert not list((cache).glob("1.2.3.partial-*"))
+    assert not list(cache.glob(f"*{_bundled_runner._PARTIAL_MARKER}*"))
 
 
 def test_bundled_products_dir_absent_by_default() -> None:

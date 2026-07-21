@@ -9,6 +9,7 @@ wheel stays pure-Python; the bytes ride along as unused data.
 
 from __future__ import annotations
 
+import hashlib
 import os
 import shutil
 import tempfile
@@ -21,6 +22,9 @@ import bajutsu
 # in a plain source checkout and on a Linux wheel, so callers treat "no bundle" as a normal state.
 _BUNDLE_DIR = Path(__file__).resolve().parents[2] / "_xcuitest_runner"
 _RUNNER_NAME = "BajutsuRunner.xctestrun"
+# Marks an in-flight copy's temp directory; the sweep below matches on it and never on a real
+# cache directory (whose name is ``{version}-{digest}`` and carries no such marker).
+_PARTIAL_MARKER = ".partial-"
 
 
 def bundled_products_dir() -> Path | None:
@@ -35,41 +39,62 @@ def _cache_root() -> Path:
     return root / "bajutsu" / "xcuitest-runner"
 
 
+def _products_digest(source: Path) -> str:
+    """Short content digest of *source*, so a rebuilt products tree keys a fresh cache directory.
+
+    The version string is a static ``0.0.0`` placeholder pre-release (BE-0272), so it cannot detect
+    that a wheel shipped updated runner products; digesting the tree can. Hashing path + size (not
+    file bytes) keeps it cheap yet still shifts whenever a file is added, removed, or resized.
+    """
+    h = hashlib.sha256()
+    for path in sorted(p for p in source.rglob("*") if p.is_file()):
+        h.update(str(path.relative_to(source)).encode())
+        h.update(str(path.stat().st_size).encode())
+    return h.hexdigest()[:12]
+
+
 def materialize(
     source: Path,
     *,
     version: str = bajutsu.__version__,
     cache_root: Path | None = None,
 ) -> Path:
-    """Copy *source* products into a per-version writable cache and return the ``.xctestrun`` path.
+    """Copy *source* products into a content-keyed writable cache and return the ``.xctestrun`` path.
 
     The installed wheel's package data is read-only, yet a run patches a copy of the ``.xctestrun``
     beside the products to inject its launch environment, so the runner must sit somewhere writable.
-    The copy is keyed by *version*: an upgrade lands in a new directory, and a warm cache is reused
-    without recopying.
+    The copy is keyed by a digest of *source*'s contents (see ``_products_digest``): updated runner
+    products land in a fresh directory, and a warm cache with the same digest is reused without
+    recopying. *version* rides along in the directory name but no longer drives freshness on its own.
 
     Args:
         source: The products directory to copy (typically ``bundled_products_dir()``).
-        version: Cache key; defaults to the installed Bajutsu version.
+        version: Included in the cache directory name; defaults to the installed Bajutsu version.
         cache_root: Override the cache location (tests inject a ``tmp_path``).
 
     Returns:
         The path to the materialized ``.xctestrun``.
     """
-    dest = (cache_root or _cache_root()) / version
+    root = cache_root or _cache_root()
+    dest = root / f"{version}-{_products_digest(source)}"
     runner = dest / _RUNNER_NAME
     if not runner.is_file():
         # Copy into a unique per-process temp dir then atomically rename, so a crash mid-copy never
-        # leaves a half-populated version directory, and parallel runs on the same host + version
+        # leaves a half-populated cache directory, and parallel runs on the same host + digest
         # (the device pool spans simulators) never clobber each other's in-flight copy.
         dest.parent.mkdir(parents=True, exist_ok=True)
-        tmp = Path(tempfile.mkdtemp(dir=dest.parent, prefix=f"{dest.name}.partial-"))
+        # A hard kill (SIGKILL/OOM) between mkdtemp and the except leaves a `.partial-*` sibling that
+        # nothing else sweeps; drop leftovers best-effort before adding another. Only siblings with
+        # the partial prefix match, so real cache directories are never touched.
+        for stale in dest.parent.glob(f"*{_PARTIAL_MARKER}*"):
+            shutil.rmtree(stale, ignore_errors=True)
+        tmp = Path(tempfile.mkdtemp(dir=dest.parent, prefix=f"{dest.name}{_PARTIAL_MARKER}"))
         try:
             shutil.copytree(source, tmp, dirs_exist_ok=True)
             os.replace(tmp, dest)
         except BaseException:
             shutil.rmtree(tmp, ignore_errors=True)
-            # A concurrent winner may have already materialized this version onto *dest* (the
+            # A concurrent winner may have already materialized this digest onto *dest* (the
             # rename onto a non-empty directory then fails); take the winner's copy and swallow.
             if runner.is_file():
                 return runner
