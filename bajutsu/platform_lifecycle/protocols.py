@@ -51,9 +51,9 @@ resident already performs — not a null, a gated raise, or a no-op.
 
 ## Predicate → capability pairing
 
-Two run predicates each gate one capability method, honored at a single runner call site. A third
+Three run predicates each gate one capability method, honored at a single runner call site. A fourth
 predicate, `has_devices`, is a `crawl`-side flag that shapes the lane-prep message — it gates
-nothing (`plan_lanes` is called unconditionally); a fourth, `captures_video`, is a `record`-side
+nothing (`plan_lanes` is called unconditionally); a fifth, `captures_video`, is a `record`-side
 query with no gate here (the CLI reads it to decide whether to record during authoring):
 
 | Predicate                     | Role                                            | Honored at                 |
