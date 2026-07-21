@@ -522,6 +522,33 @@ def test_android_environment_bridge_collector_teardown_swallows_adb_failure() ->
     remove()  # does not raise
 
 
+def test_android_environment_bridge_collector_setup_failure_raises_clean_device_error() -> None:
+    # A failing `adb reverse` at setup (device gone, too many tunnels) must surface as a clean
+    # DeviceError like every other adb call in the lease path, not a raw CalledProcessError out of
+    # lease(). Mirrors start()'s CalledProcessError conversion.
+    import subprocess
+
+    def run(args: list[str]) -> str:
+        if "reverse" in args:
+            raise subprocess.CalledProcessError(1, args, stderr="error: no devices/emulators found")
+        return ""
+
+    with pytest.raises(adb.DeviceError, match="no devices/emulators found"):
+        AndroidEnvironment("adb", "S", adb_run=run).bridge_collector(41000)
+
+
+def test_android_environment_bridge_collector_raises_clean_device_error_when_adb_is_missing() -> (
+    None
+):
+    # A missing `adb` binary makes the runner raise FileNotFoundError; bridge_collector converts it to
+    # a clean DeviceError, mirroring start()'s missing-adb path.
+    def no_adb(args: list[str]) -> str:
+        raise FileNotFoundError("adb")
+
+    with pytest.raises(adb.DeviceError, match="adb"):
+        AndroidEnvironment("adb", "S", adb_run=no_adb).bridge_collector(41000)
+
+
 def test_android_environment_start_skips_pm_clear_on_overwrite() -> None:
     calls: list[list[str]] = []
     env = AndroidEnvironment("adb", "S", adb_run=_resolve_activity_run(calls))
