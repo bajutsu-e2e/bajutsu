@@ -29,14 +29,17 @@ from pathlib import Path
 
 import pytest
 from driver_conformance import (
+    FIELD_ID,
     ConformanceHarness,
     DriverConformanceContract,
     OnDeviceConformanceHarness,
+    field_value,
 )
 
 from bajutsu import simctl
 from bajutsu.config import Effective, ios_bundle_id, load_config, resolve
 from bajutsu.drivers import base
+from bajutsu.drivers.base import deadline_ticks
 from bajutsu.runner.launch import launch_driver
 
 pytestmark = pytest.mark.ondevice
@@ -123,6 +126,38 @@ class TestIdbDriverConformance(DriverConformanceContract):
     @pytest.fixture
     def harness(self, _eff: Effective, _idb_driver: base.Driver) -> ConformanceHarness:
         return _OnDeviceHarness("idb", _idb_driver, _spec_path(_eff))
+
+    def test_type_text_pastes_text_the_hid_keymap_cannot_encode(
+        self, harness: ConformanceHarness
+    ) -> None:
+        # idb-only, not part of the shared DriverConformanceContract: fb-idb's HID keymap covers only
+        # the US keyboard layout, so a Japanese character makes the direct `client.text()` path raise
+        # "No keycode found for ..." before any key is sent. The driver recovers by pasting the whole
+        # string — seeding the Simulator pasteboard, then a hardware Cmd+V chord over the same HID
+        # channel (`bajutsu/drivers/idb.py::_paste_text_via_companion`) — rather than crashing the
+        # run. Android's `adb shell input text` has the same Unicode limitation with no such fallback,
+        # so this stays idb-only rather than joining the cross-backend contract. `test_idb.py` covers
+        # the fallback's internals against a mocked gRPC client; this exercises it against the real
+        # idb_companion + Simulator. The pasteboard is left holding `text`, not restored — see
+        # `_paste_text_via_companion`'s docstring for why restoring it immediately would race the
+        # paste this test is exercising — so this test does not assert anything about clipboard state.
+        driver = harness.with_screen([])
+        driver.tap({"id": FIELD_ID})
+        text = "こんにちは、World!"
+        before = field_value(driver)
+        driver.type_text(text)
+        # A single immediate read races the same completion gap `_paste_text_via_companion`'s
+        # docstring describes (send_events acks once idb_companion drains the HID stream, not once
+        # the app has finished pasting) — poll with the shared deadline/backoff skeleton (BE-0118,
+        # BE-0256) instead of asserting on the first read.
+        after = before
+        for _ in deadline_ticks(timeout=10.0, poll_init=0.2, poll_max=1.0):
+            after = field_value(driver)
+            if len(after) > len(before):
+                break
+        if len(after) <= len(before):
+            pytest.skip("backend does not surface the field value; paste effect not observable")
+        assert text in after
 
 
 class TestXcuitestDriverConformance(DriverConformanceContract):

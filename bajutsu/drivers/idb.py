@@ -109,6 +109,12 @@ def swipe_cmd(udid: str, x1: float, y1: float, x2: float, y2: float) -> list[str
 # text keymap (`idb.common.hid.KEY_MAP`) has no entry for and rejects with "No keycode found for".
 _HID_KEY_DELETE = 42
 
+# USB HID usage ids for a hardware Cmd+V chord — the paste fallback below needs a true chord (Cmd
+# held down while V presses), not `key_sequence`'s sequential press-release of each key, so these
+# are sent as raw HIDPress down/up events rather than through `key_sequence`.
+_HID_KEY_LEFT_GUI = 227
+_HID_KEY_V = 25
+
 
 def _with_companion_client(udid: str, action: Callable[[Any], Awaitable[None]]) -> None:
     """Connect to `idb_companion` over the fb-idb gRPC client and run `action` on it (BE-0155).
@@ -154,8 +160,77 @@ def _with_companion_client(udid: str, action: Callable[[Any], Awaitable[None]]) 
 
 
 def _type_text_via_companion(udid: str, text: str) -> None:
-    """Type `text` into the focused field over the fb-idb gRPC companion path (BE-0155)."""
-    _with_companion_client(udid, lambda client: client.text(text=text))
+    """Type `text` into the focused field over the fb-idb gRPC companion path (BE-0155).
+
+    Falls back to `_paste_text_via_companion` for text fb-idb's HID keymap can't encode as key
+    presses. The keymap (`idb.common.hid.KEY_MAP`) only covers the US keyboard layout, so a
+    character outside it (Japanese, Chinese, Korean, emoji, ...) makes `text_to_events` raise a bare
+    `Exception("No keycode found for <char>")` — always *before* any key is sent, since `client.text`
+    builds the full event list up front, so retrying the whole string via paste is safe: no partial
+    input from the failed attempt to reconcile. That atomicity is an internal ordering guarantee of
+    fb-idb's `text_to_events` (pinned `>=1.1.0`, no upper bound), not something this driver enforces —
+    if a future release started emitting HID key events incrementally instead of building the whole
+    list up front, mixed Latin/non-Latin text could land stray partial keys ahead of the pasted
+    string, and nothing in the fast suite (only the on-device test drives the real library) would
+    catch that drift.
+    """
+    try:
+        _with_companion_client(udid, lambda client: client.text(text=text))
+    except Exception as e:
+        # Matched on fb-idb's exact current wording (pinned `>=1.1.0`, no upper bound), not a typed
+        # exception of its own — a future fb-idb release rewording this message would make the match
+        # miss silently, re-raising here instead of pasting, bringing back the crash this fallback
+        # exists to prevent. Only the on-device test drives the real library; the fast-suite tests
+        # only mock today's wording, so a drift wouldn't be caught there either.
+        if not str(e).startswith("No keycode found for"):
+            raise
+        _paste_text_via_companion(udid, text)
+
+
+def _paste_text_via_companion(udid: str, text: str) -> None:
+    """Type `text` by pasting it, for characters idb's HID text path can't encode (see above).
+
+    idb has no native "paste" gRPC call, but a hardware Cmd+V chord reaches the same UIKit paste
+    behavior a real paste gesture would: `UITextField`/`UITextView` wire Cmd+V to Paste for the
+    focused responder whenever a hardware keyboard is attached, and the fb-idb HID channel idb
+    already drives for `type`/`delete` presents itself as exactly that (verified on-device against a
+    Simulator). The two presses must be a true chord — Cmd held down while V presses — not
+    `key_sequence`'s sequential press-release of each key, so this sends the raw HID down/up events
+    directly via `send_events`.
+
+    Seeds the Simulator pasteboard with `text` via `simctl pbcopy` (Unicode round-trips there without
+    the HID keymap's US-layout limit) and leaves it there rather than restoring whatever the
+    pasteboard held before. Restoring immediately after `send_events` returns would race the
+    focused app actually reading the pasteboard for the paste this chord triggers: fb-idb's `hid()`
+    call is only known to ack once idb_companion has drained the HID event stream, not once the
+    Simulator's app process has finished handling it, and that gap is exactly the kind of
+    wall-clock-dependent behavior prime directive 2 (determinism) rules out — restoring too early
+    would silently paste the *old* pasteboard content instead of `text`, intermittently, under
+    exactly the load that makes it hard to catch in CI. A scenario combining a `type` of non-Latin
+    text with a later `clipboard` assertion should account for this.
+
+    Accepted trade-off: this reopens, for non-Latin text specifically, a
+    narrower version of the side channel `_with_companion_client` above exists to close for the
+    direct HID path — `text` sits on the Simulator's *global* pasteboard, readable by any other
+    process on the host with `simctl` access to this udid (`xcrun simctl pbpaste --udid <udid>`),
+    for as long as nothing else overwrites it. There is no lower-exposure channel available through
+    idb itself: its HID text path is US-keyboard-only, so any non-Latin `type` has to transit the
+    system pasteboard one way or another. Closing this fully would mean routing typed text through
+    an app-side SDK channel instead (mirroring how BajutsuKit/BajutsuAndroid already provide
+    app-process-only capabilities for network/clipboard, BE-0233) — real new scope, not a
+    same-PR fix. Until then: avoid `type`-ing secrets/OTPs that contain non-Latin characters on the
+    idb backend, since only those fall back to this path.
+    """
+    from idb.common.types import HIDDirection, HIDKey, HIDPress
+
+    chord = [
+        HIDPress(action=HIDKey(keycode=_HID_KEY_LEFT_GUI), direction=HIDDirection.DOWN),
+        HIDPress(action=HIDKey(keycode=_HID_KEY_V), direction=HIDDirection.DOWN),
+        HIDPress(action=HIDKey(keycode=_HID_KEY_V), direction=HIDDirection.UP),
+        HIDPress(action=HIDKey(keycode=_HID_KEY_LEFT_GUI), direction=HIDDirection.UP),
+    ]
+    simctl.Env(udid).set_clipboard(text)
+    _with_companion_client(udid, lambda client: client.send_events(chord))
 
 
 def _delete_text_via_companion(udid: str, count: int) -> None:

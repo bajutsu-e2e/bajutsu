@@ -34,6 +34,30 @@ NDJSON = (
 )
 
 
+def _fake_client_manager(client: object) -> type:
+    """A fake fb-idb `ClientManager` whose `from_udid` yields `client` (shared by companion tests).
+
+    Only the connection/manager plumbing is faked here — each test supplies its own `client` with
+    whatever `text` / `send_events` / `key_sequence` behavior it needs.
+    """
+
+    class _FakeConn:
+        async def __aenter__(self) -> object:
+            return client
+
+        async def __aexit__(self, *exc: object) -> None:
+            return None
+
+    class _FakeManager:
+        def __init__(self, **_kw: object) -> None:
+            pass
+
+        def from_udid(self, udid: str) -> _FakeConn:
+            return _FakeConn()
+
+    return _FakeManager
+
+
 def test_parse_describe_all() -> None:
     els = parse_describe_all(FIXTURE)
     assert len(els) == 3
@@ -491,22 +515,8 @@ def test_delete_text_via_companion_sends_hid_backspaces_not_text_control_char(  
 
     client = _FakeClient()
 
-    class _FakeConn:
-        async def __aenter__(self) -> _FakeClient:
-            return client
-
-        async def __aexit__(self, *exc: object) -> None:
-            return None
-
-    class _FakeManager:
-        def __init__(self, **_kw: object) -> None:
-            pass
-
-        def from_udid(self, udid: str) -> _FakeConn:
-            return _FakeConn()
-
     monkeypatch.setattr(shutil, "which", lambda _name: "/usr/bin/idb_companion")
-    monkeypatch.setattr(management, "ClientManager", _FakeManager)
+    monkeypatch.setattr(management, "ClientManager", _fake_client_manager(client))
 
     idb_mod._delete_text_via_companion("U", 3)
     assert client.key_sequences == [[idb_mod._HID_KEY_DELETE] * 3]  # three backspace HID keys
@@ -514,6 +524,98 @@ def test_delete_text_via_companion_sends_hid_backspaces_not_text_control_char(  
 
     idb_mod._type_text_via_companion("U", "hi")
     assert client.text_calls == ["hi"]  # typing still goes through the text path
+
+
+def test_type_text_falls_back_to_paste_for_unmappable_characters(  # type: ignore[no-untyped-def]
+    monkeypatch,
+) -> None:
+    # fb-idb's HID keymap only covers the US keyboard layout, so typing a Japanese (or other
+    # non-Latin) character makes the real `client.text()` raise a bare `Exception("No keycode found
+    # for ...")`, always before any key is sent (`text_to_events` builds the whole event list up
+    # front). The driver must recover by pasting the whole string — a hardware Cmd+V chord over the
+    # same HID channel reaches UIKit's Paste for the focused field (verified on-device) — rather than
+    # crashing the run (prime directive 2). The pasteboard is left holding `text`, not restored to
+    # whatever it held before: restoring immediately would race the app actually reading it for the
+    # paste, and getting that race wrong would silently deliver stale text instead of `text`.
+    import shutil
+
+    management = pytest.importorskip("idb.grpc.management")  # skip on the gate (no idb extra)
+
+    from idb.common.types import HIDDirection, HIDKey, HIDPress
+
+    from bajutsu.drivers import idb as idb_mod
+
+    class _FakeClient:
+        def __init__(self) -> None:
+            self.text_calls: list[str] = []
+            self.sent_events: list[list[object]] = []
+
+        async def text(self, text: str) -> None:
+            self.text_calls.append(text)
+            raise Exception(f"No keycode found for {text[0]}")  # mirrors fb-idb's own raise
+
+        async def send_events(self, events: list[object]) -> None:
+            self.sent_events.append(list(events))
+
+    client = _FakeClient()
+
+    monkeypatch.setattr(shutil, "which", lambda _name: "/usr/bin/idb_companion")
+    monkeypatch.setattr(management, "ClientManager", _fake_client_manager(client))
+
+    set_calls: list[str] = []
+    monkeypatch.setattr(simctl.Env, "set_clipboard", lambda self, text: set_calls.append(text))
+
+    idb_mod._type_text_via_companion("U", "で")
+
+    assert client.text_calls == ["で"]  # the direct HID path is tried first
+    assert set_calls == ["で"]  # seeded with the value; never restored (see docstring for why)
+    assert client.sent_events == [
+        [
+            HIDPress(action=HIDKey(keycode=idb_mod._HID_KEY_LEFT_GUI), direction=HIDDirection.DOWN),
+            HIDPress(action=HIDKey(keycode=idb_mod._HID_KEY_V), direction=HIDDirection.DOWN),
+            HIDPress(action=HIDKey(keycode=idb_mod._HID_KEY_V), direction=HIDDirection.UP),
+            HIDPress(action=HIDKey(keycode=idb_mod._HID_KEY_LEFT_GUI), direction=HIDDirection.UP),
+        ]
+    ]
+
+
+def test_type_text_reraises_an_unrelated_companion_exception(  # type: ignore[no-untyped-def]
+    monkeypatch,
+) -> None:
+    # The paste fallback must trigger only on the exact "No keycode found for" shape fb-idb raises
+    # for an unmappable character — matching on `startswith` guards against masking an unrelated
+    # companion/connection failure as "needs paste" (prime directive 2: fail loudly, don't paper
+    # over a genuine error with the wrong recovery). A differently worded exception from
+    # `client.text()` must propagate unchanged, and the paste path must never run.
+    import shutil
+
+    management = pytest.importorskip("idb.grpc.management")  # skip on the gate (no idb extra)
+
+    from bajutsu.drivers import idb as idb_mod
+
+    class _FakeClient:
+        def __init__(self) -> None:
+            self.sent_events: list[list[object]] = []
+
+        async def text(self, text: str) -> None:
+            raise Exception("boom")
+
+        async def send_events(self, events: list[object]) -> None:
+            self.sent_events.append(list(events))  # pragma: no cover — must never be reached
+
+    client = _FakeClient()
+
+    monkeypatch.setattr(shutil, "which", lambda _name: "/usr/bin/idb_companion")
+    monkeypatch.setattr(management, "ClientManager", _fake_client_manager(client))
+
+    set_calls: list[str] = []
+    monkeypatch.setattr(simctl.Env, "set_clipboard", lambda self, text: set_calls.append(text))
+
+    with pytest.raises(Exception, match="boom"):
+        idb_mod._type_text_via_companion("U", "hi")
+
+    assert set_calls == []  # the paste fallback never ran
+    assert client.sent_events == []
 
 
 def test_select_and_copy_are_unsupported_and_route_to_xcuitest() -> None:

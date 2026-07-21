@@ -27,6 +27,12 @@ project-specific points are worth keeping in mind:
 - **API keys / secrets.** Only the AI paths (`record`, `run --dismiss-alerts`)
   need `ANTHROPIC_API_KEY`. Never commit or share API keys; keep them in `.env`
   (gitignored). The deterministic `run`/CI gate needs no secrets.
+- **`type` of non-Latin text on the iOS Simulator (idb) backend.** idb's hardware-keyboard
+  text path only encodes US-keyboard-layout characters. A `type` step with non-Latin text
+  falls back to the Simulator's pasteboard instead. The fallback writes the value with
+  `simctl pbcopy` and sends a hardware paste. That pasteboard is readable by any process
+  with `simctl` access to the same Simulator instance. Avoid typing a secret or one-time
+  passcode that contains non-Latin characters on this backend.
 - **Captured evidence.** Run artifacts under `runs/` (screenshots, page sources,
   logs) can contain sensitive data from the app under test. Review them before
   sharing, attaching to a pull request, or uploading to CI.

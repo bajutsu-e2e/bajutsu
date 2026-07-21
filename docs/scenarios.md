@@ -273,6 +273,11 @@ Modifiers:
 > Internally, when `into` is given, the target is `tap`ped before `type_text` (`orchestrator/actions/`
 > `_do_action`).
 
+> On idb (iOS Simulator), typing non-Latin text or emoji falls back to a paste. idb's
+> hardware-keyboard path only encodes the US keyboard layout. The fallback leaves the typed text on
+> the Simulator's pasteboard. A later `clipboard` assertion in the same scenario sees that text, not
+> the prior value.
+
 ### `selectOption`
 
 ```yaml
@@ -487,7 +492,7 @@ are in [selectors](selectors.md#assertion-evaluation).
 - `requestSequence` checks a list of request matchers were **observed in order** ([details below](#requestsequence-ordered-requests)); needs the `--network` run flag.
 - `responseSchema` validates a captured **response body against a JSON Schema** ([details below](#responseschema-json-schema-of-a-response)); needs the `--network` run flag.
 - `visual` pixel-compares a screenshot against a baseline image ([details below](#visual-visual-regression)).
-- `clipboard` reads the device pasteboard (`simctl pbpaste`) and checks **exactly one** of `equals` / `matches` (regex) — the read-back half of `setClipboard`, for verifying a "copy" action. It needs the per-device control channel, so it is unavailable on the fake driver / in parallel runs and fails cleanly there ([BE-0052](../roadmaps/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md)).
+- `clipboard` reads the device pasteboard (`simctl pbpaste`) and checks **exactly one** of `equals` / `matches` (regex) — the read-back half of `setClipboard`, for verifying a "copy" action. It needs the per-device control channel, so it is unavailable on the fake driver / in parallel runs and fails cleanly there ([BE-0052](../roadmaps/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md)). On idb, a preceding non-Latin `type` also leaves its text there — see the `type` section above.
 
 > **Locale caveat**: string comparisons on `label`/`value` and assertions that look at visible
 > text break under translation. Write these against config's fixed locale, and write the selector
