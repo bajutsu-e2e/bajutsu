@@ -6,12 +6,14 @@
 :root{--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace}
 *{box-sizing:border-box}body{margin:0;font:14px/1.5 system-ui,sans-serif;background:var(--bg2);color:var(--fg);display:flex;flex-direction:column;height:100vh;overflow:hidden}
 header{flex:0 0 auto;z-index:10;display:flex;align-items:center;gap:1rem;padding:.55rem 1rem;background:var(--bg);border-bottom:1px solid var(--line)}
-/* Grow to fill the header so the toptabs row it stacks under the brand spans the full width — that
-   lets the theme picker + Edit (which live in that row, right-aligned by margin) line up with the
-   View/Settings buttons instead of floating at the header's vertical centre. */
+/* Grow to fill the header so both rows it stacks (.brandrow, .toptabs) span the full width — that
+   lets each row's own right-aligned control (the theme picker in .brandrow) reach the header's
+   trailing edge instead of floating at the header's vertical centre. */
 header .brandcol{display:flex;flex-direction:column;gap:.4rem;flex:1;min-width:0}
-/* Title and the build badge share a baseline-aligned row so the version sits quietly beside "bajutsu". */
-header .brandrow{display:flex;align-items:baseline;gap:.5rem;min-width:0}
+/* Title and the build badge share a baseline-aligned row so the version sits quietly beside "bajutsu".
+   flex-wrap so the theme picker (added here alongside the title) drops to its own line rather than
+   overflowing when .appversion's admin-gated git info (an unbounded branch name) leaves no room. */
+header .brandrow{display:flex;align-items:baseline;gap:.5rem;flex-wrap:wrap;min-width:0}
 header .brand{font-weight:700}
 /* .toptabs holds exactly two flex items: .cfgctrls (config controls) then .viewtabs (the view tabs).
    flex-wrap so, on a browser too narrow for one line, the second item drops onto its own row as a
@@ -46,14 +48,14 @@ header .brand{font-weight:700}
 .ai-gate{background:var(--bg2);border:1px solid var(--run);color:var(--fg);border-radius:8px;padding:.6rem .8rem;margin-bottom:.7rem;font-size:.88em;line-height:1.4}
 .ai-gate .link{background:none;border:none;color:var(--acc);font:inherit;font-weight:600;padding:0;cursor:pointer;text-decoration:underline}
 /* theme picker (BE-0191) — a native <select> of every registered theme, flanked by a small icon.
-   Sits inside .cfgctrls, in line with the group's other controls; a native control stays
+   Lives in .brandrow beside the "bajutsu" title (a per-session display preference, not a config
+   or view control); `margin-left:auto` right-aligns it there, and a native control stays
    keyboard/screen-reader accessible and, unlike a custom popup, never overlaps the
    tiler/viewswitch controls at any width. */
-/* `margin-block:auto` vertically centres the picker. When .cfgctrls wraps onto more than one internal
-   line (the phone breakpoint), the parent's align-items:center leaves the native <select> a few px
-   low — a form-control cross-size quirk — so auto block margins do the centring instead,
-   keeping it level with the View/Settings buttons. */
-.themepick{display:inline-flex;align-items:center;gap:.4rem;margin-block:auto;cursor:pointer}
+/* `margin-block:auto` vertically centres the picker against .brandrow's align-items:baseline
+   (which otherwise aligns it to the "bajutsu" text baseline instead of the row's true centre) — a
+   form-control cross-size quirk, the same fix this used before it lived in .cfgctrls. */
+.themepick{display:inline-flex;align-items:center;gap:.4rem;margin-left:auto;margin-block:auto;cursor:pointer}
 .themepick .ico{width:15px;height:15px;color:var(--mut);transition:color .15s;flex:none}
 .themepick #theme{max-width:9rem;color:var(--fg);background:var(--bg2);border:1px solid var(--line);border-radius:6px;padding:.2rem 1.4rem .2rem .5rem;font:inherit;cursor:pointer;appearance:none;
   /* Themed chevron drawn as a background so the control tints with the palette, no extra markup. */
