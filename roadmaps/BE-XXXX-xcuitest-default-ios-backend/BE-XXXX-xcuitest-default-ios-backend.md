@@ -88,9 +88,13 @@ unit is where the migration is proven in CI, not just asserted.
 ### Unit 3 — Update the idb-assuming surfaces and docs
 
 Retire the code paths that assume idb is the default: the cost-order branch, the doctor fallback
-that degrades XCUITest to idb, and the capability preflight's idb-first assumptions. Then update the
-documentation that presents idb as the iOS default (`docs/drivers.md` and `docs/getting-started/ios.md`,
-with their Japanese mirrors) to lead with XCUITest.
+that degrades XCUITest to idb, and the capability preflight's idb-first assumptions. `doctor` needs
+explicit attention: it routes its own iOS query to idb precisely because idb reads the accessibility
+tree without a resident runner, and `doctor` runs outside the runner-reuse pool, so it cannot lean on
+that amortization. This unit gives `doctor` a lightweight XCUITest query path — a short-lived runner
+it starts and tears down for the preflight — so the check does not regress into a full per-run
+startup. Then update the documentation that presents idb as the iOS default (`docs/drivers.md` and
+`docs/getting-started/ios.md`, with their Japanese mirrors) to lead with XCUITest.
 
 ### Unit 4 — Remove idb entirely
 
@@ -104,13 +108,23 @@ and as many tests, so this unit's own breakdown is large; the work is mechanical
 the failing imports outward from the deleted driver. The proposal fixes the outcome — no idb backend
 remains in the tree — not a line-by-line removal list.
 
+Two of these deletions carry a caveat. The crawl vision tab locator covers a narrower case than the
+Motivation's opaque-group argument — custom image tabs with no accessibility identifier and no `tab`
+trait — so its removal is gated on Unit 5 confirming XCUITest addresses that case, not only the
+opaque-group one. And BE-0005 (companion-version monitoring), `Implemented` today, has no
+"implemented-then-removed" status in the roadmap taxonomy; this unit marks it `Superseded by` this
+item (with the reciprocal link) and records the disposition in both Progress logs, so BE-0005 stops
+reading as still-true once idb is gone.
+
 ### Unit 5 — Confirm every scenario runs on the Simulator
 
 On a named environment (the Simulator model and the Xcode version), run every scenario the idb
 `smoke` and `E2E` lanes cover today on XCUITest, with the runner-reuse amortization in place, and
 confirm each passes on the Simulator. This Simulator run is the PR's merge gate: the change does not
-merge until every scenario is green on XCUITest. Record the per-suite wall-clock so the migration's
-cost is measured, not assumed.
+merge until every scenario is green on XCUITest. The run must also exercise the custom tab-bar shape
+the crawl vision locator handles today — a tab bar with no accessibility identifier and no `tab`
+trait — since Unit 4's deletion of that locator is a regression unless XCUITest is confirmed to
+address it. Record the per-suite wall-clock so the migration's cost is measured, not assumed.
 
 ## Alternatives considered
 
