@@ -118,4 +118,5 @@ is inert unless `BAJUTSU_COLLECTOR` is set, captures **OkHttp** HTTP(S) only, an
 **test/debug-only** (it records headers/bodies — keep it out of release and use `redact`, the same
 caveat as iOS above). Android also needs a `network_security_config` cleartext exception for
 `127.0.0.1` in the test/debug build (the collector URL is plain HTTP, which API 28+ blocks by default;
-iOS exempts loopback from ATS, so it needs none) — without it the report POST fails silently.
+iOS exempts loopback from App Transport Security (ATS), so it needs none) — without it the report POST
+fails silently.

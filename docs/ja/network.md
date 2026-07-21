@@ -119,5 +119,5 @@ mocks:
 **OkHttp** の HTTP(S) のみを捕捉し、同じく**テスト/デバッグ専用**です（iOS と同様にヘッダとボディを
 記録するので、リリースには含めず `redact` を使ってください）。Android ではさらに、テスト/デバッグ
 ビルドに `127.0.0.1` へのクリアテキスト例外を `network_security_config` で設定する必要があります
-（コレクタの URL は平文 HTTP で、API 28 以降は既定で遮断します。iOS は loopback を ATS で除外するため
-不要です）。これがないと報告 POST は痕跡なく失敗します。
+（コレクタの URL は平文 HTTP で、API 28 以降は既定で遮断します。iOS は loopback を App Transport
+Security（ATS）で除外するため不要です）。これがないと報告 POST は痕跡なく失敗します。
