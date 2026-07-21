@@ -27,9 +27,10 @@
           (admin-gated on a shared deployment). -#}
       <span class="appversion" id="appversion" data-testid="nav.app-version" hidden></span>
       {#- Settings / Edit / theme picker, grouped and right-aligned in .brandrow (beside the "bajutsu"
-          title) rather than among .toptabs's config/view groups below — these are per-session display
-          and operator-credential controls, not config- or view-scoped. Settings and Edit sit to the
-          left of the theme picker, in that order. -#}
+          title) rather than among .toptabs's config/view groups below — the button itself is a
+          per-session/operator entry point, even though the Secrets tab inside the modal it opens does
+          vary with the bound config. Settings and Edit sit to the left of the theme picker, in that
+          order. -#}
       <div class="brandctrls">
         <button class="cfgbtn" id="opensettings" data-testid="nav.settings">Settings</button>
         <button class="cfgbtn" id="opentheme" title="Edit theme" data-testid="nav.open-theme">Edit</button>
