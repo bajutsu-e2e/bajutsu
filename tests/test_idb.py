@@ -579,6 +579,45 @@ def test_type_text_falls_back_to_paste_for_unmappable_characters(  # type: ignor
     ]
 
 
+def test_type_text_reraises_an_unrelated_companion_exception(  # type: ignore[no-untyped-def]
+    monkeypatch,
+) -> None:
+    # The paste fallback must trigger only on the exact "No keycode found for" shape fb-idb raises
+    # for an unmappable character — matching on `startswith` guards against masking an unrelated
+    # companion/connection failure as "needs paste" (prime directive 2: fail loudly, don't paper
+    # over a genuine error with the wrong recovery). A differently worded exception from
+    # `client.text()` must propagate unchanged, and the paste path must never run.
+    import shutil
+
+    management = pytest.importorskip("idb.grpc.management")  # skip on the gate (no idb extra)
+
+    from bajutsu.drivers import idb as idb_mod
+
+    class _FakeClient:
+        def __init__(self) -> None:
+            self.sent_events: list[list[object]] = []
+
+        async def text(self, text: str) -> None:
+            raise Exception("boom")
+
+        async def send_events(self, events: list[object]) -> None:
+            self.sent_events.append(list(events))  # pragma: no cover — must never be reached
+
+    client = _FakeClient()
+
+    monkeypatch.setattr(shutil, "which", lambda _name: "/usr/bin/idb_companion")
+    monkeypatch.setattr(management, "ClientManager", _fake_client_manager(client))
+
+    set_calls: list[str] = []
+    monkeypatch.setattr(simctl.Env, "set_clipboard", lambda self, text: set_calls.append(text))
+
+    with pytest.raises(Exception, match="boom"):
+        idb_mod._type_text_via_companion("U", "hi")
+
+    assert set_calls == []  # the paste fallback never ran
+    assert client.sent_events == []
+
+
 def test_select_and_copy_are_unsupported_and_route_to_xcuitest() -> None:
     # idb is coordinate-only, so select-all / copy have no actuation; they fail loudly and point at
     # codegen→XCUITest, mirroring how multi-touch gestures are refused (BE-0265). The refusal is
