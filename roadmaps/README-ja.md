@@ -142,6 +142,36 @@
 
 <!-- /GENERATED:proposals-authoring -->
 
+### codegen のカバレッジ
+
+<!-- GENERATED:proposals-codegen -->
+
+<!-- /GENERATED:proposals-codegen -->
+
+### 自己修復トリアージ
+
+<!-- GENERATED:proposals-self-healing -->
+
+<!-- /GENERATED:proposals-self-healing -->
+
+### doctor / オンボーディング
+
+<!-- GENERATED:proposals-doctor -->
+
+<!-- /GENERATED:proposals-doctor -->
+
+### 統合と自動化（MCP）
+
+<!-- GENERATED:proposals-mcp -->
+
+<!-- /GENERATED:proposals-mcp -->
+
+### AI プロバイダ設定
+
+<!-- GENERATED:proposals-ai-provider -->
+
+<!-- /GENERATED:proposals-ai-provider -->
+
 ### serve Web UI への CLI 機能の取り込み
 
 <!-- GENERATED:proposals-serve-cli-features -->

@@ -142,6 +142,36 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 
 <!-- /GENERATED:proposals-authoring -->
 
+### codegen coverage
+
+<!-- GENERATED:proposals-codegen -->
+
+<!-- /GENERATED:proposals-codegen -->
+
+### Self-healing triage
+
+<!-- GENERATED:proposals-self-healing -->
+
+<!-- /GENERATED:proposals-self-healing -->
+
+### doctor / onboarding
+
+<!-- GENERATED:proposals-doctor -->
+
+<!-- /GENERATED:proposals-doctor -->
+
+### Integration & automation (MCP)
+
+<!-- GENERATED:proposals-mcp -->
+
+<!-- /GENERATED:proposals-mcp -->
+
+### AI provider configuration
+
+<!-- GENERATED:proposals-ai-provider -->
+
+<!-- /GENERATED:proposals-ai-provider -->
+
 ### Surfacing CLI features in the serve Web UI
 
 <!-- GENERATED:proposals-serve-cli-features -->
