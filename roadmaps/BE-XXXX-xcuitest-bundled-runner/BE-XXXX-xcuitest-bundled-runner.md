@@ -130,14 +130,14 @@ The split follows the fast-gate / on-device boundary BE-0019 already draws.
 ## Alternatives considered
 
 - **Download the runner on demand (Playwright-style).** Build the runner in CI, upload it as a
-  versioned release asset, and have Bajutsu fetch and cache it on first use. This keeps the wheel free
+  versioned release asset, and have Bajutsu fetch and cache it on first use. This approach keeps the wheel free
   of a compiled blob and decouples the runner's release cadence from the wheel's, but it adds a
   network dependency and a download/verify path to first use, and it puts artifact hosting on the
   maintainers. Bundling in the wheel keeps first use offline and self-contained, at the cost of
   carrying inert bytes on non-macOS installs. This alternative remains the natural fallback if the
   wheel-size or Xcode-coupling cost of bundling proves too high.
 - **Build the runner on demand from bundled source.** Ship the runner's Swift source (already in
-  `BajutsuKit/Runner/`) and run `xcodebuild build-for-testing` into a cache on first use. This carries
+  `BajutsuKit/Runner/`) and run `xcodebuild build-for-testing` into a cache on first use. This alternative carries
   no compiled artifact and always matches the host Xcode, but it reintroduces exactly the per-machine
   build this item removes — the first XCUITest run on every fresh clone pays the full build cost. The
   existing `xcuitest.build` knob already covers the opt-in build case; the bundled default exists to
