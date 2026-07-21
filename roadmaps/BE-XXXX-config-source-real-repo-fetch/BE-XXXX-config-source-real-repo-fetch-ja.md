@@ -1,0 +1,79 @@
+[English](BE-XXXX-config-source-real-repo-fetch.md) · **日本語**
+
+# BE-XXXX — Real-repository fetch verification for the config source
+
+<!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
+| 提案 | [BE-XXXX](BE-XXXX-config-source-real-repo-fetch-ja.md) |
+| 提案者 | [@0x0c](https://github.com/0x0c) |
+| 状態 | **提案** |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トピック | Configuration sourcing |
+<!-- /BE-METADATA -->
+
+## はじめに
+
+`config_source.py` の `materialize()` は、チームがローカルのチェックアウトではなくリモート
+リポジトリを `bajutsu` の対象にできるよう、Git ホストから config を取得します。このテスト
+モジュール自身が、「fake transport を注入する…ネットワークや `git` バイナリのいずれも使わない」と
+明言しているとおり、`materialize()` のテストはすべて fake の `Transport` を渡しており、
+`_GitHubTransport` の実際の `urllib.request` ベースの実装が検証されるのは、monkeypatch した
+`urlopen` にデフォルトのエラーを送出させる HTTP エラーマッピングのケースだけです。実際のリポジトリ
+から実際の tarball を取得するテストは1つもありません。本項目はそれを追加します。
+
+## 動機
+
+fake の transport は、`materialize()` が transport から渡されたバイト列をまさしく動く config
+ツリーへ組み立てられることを証明します。これは組み立てロジックに対する実質的で有用な
+カバレッジです。しかし `_GitHubTransport` 自体、すなわち実際の GitHub の tarball URL の
+リダイレクトチェインがまさしくたどられるか、実際のレスポンスの content-type や圧縮が想定どおりに
+扱われるか、実際のレート制限や認証失敗のレスポンスが未処理の例外ではなく正しいエラーへ
+マッピングされるかについては何も証明しません。これは GitHub App のトークンフロー(姉妹提案)
+とまったく同じ形のギャップです。モックは、その作者が「実際のホストはこう返すはずだ」と信じて
+いる内容しか返しません。
+
+## 詳細設計
+
+提案の粒度は次の単位で MECE に分解します。
+
+- **実際の使い捨てテスト用リポジトリ**：小さく安定した、低権限の公開リポジトリ(あるいは、
+  GitHub App 姉妹項目の使い捨て App を再利用してインストールした非公開リポジトリ)を取得対象
+  とします。
+- **ライブ fetch テスト**：そのリポジトリに対して実際の `_GitHubTransport` を通して
+  `materialize()` を駆動するテストを追加します。ネットワークアクセスまたは関連する認証情報が
+  ないときはスキップし、取得した config ツリーが実際のリポジトリの内容と一致することを検証します。
+- **エラー経路も実際に検証する**：可能な場合は、monkeypatch した `HTTPError` だけでなく、
+  意図的に誤った ref や権限のない非公開リポジトリで実際の 404/403 を誘発し、`_fetch` のテストが
+  想定するとおりに実際のエラー面がマッピングされることを確認します。
+- **まず非 gating とする**：
+  [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md)
+  の前例に従い、新しいジョブをまず CI の signal として着地させ、必須化はそのあとで検討します。
+
+## 検討した代替案
+
+- **組み立てロジックが十分にカバーされていることを根拠に、fake transport のテストを信頼する**：
+  組み立てが正しいという前提は、そもそも transport が正しいバイト列を渡していたことを前提と
+  します。実際の transport の実装が、実際のホストからそのバイト列を本当に生成できるかどうかに
+  ついては何も語りません。
+- **GitHub App 統合の項目だけで間接的にカバーする**：その項目はトークンフローを検証するもので
+  あり、本項目はその上に構築される fetch-and-materialize の経路を検証するものです。両方が
+  必要です。動くトークンと壊れた fetch、動く fetch と壊れたトークンは、それぞれ独立して
+  観測しうる失敗モードだからです。
+
+## 進捗
+
+> 開発の進行に合わせて常に最新の状態に保ってください。チェックリストは *詳細設計* の MECE な
+> 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
+> ともに記録します。
+
+- [ ] 実際の使い捨てテスト用リポジトリを取得対象として指定する。
+- [ ] 実際の `_GitHubTransport` を通して `materialize()` を駆動するライブ fetch テストを追加する。
+- [ ] monkeypatch したものだけでなく、実際のエラーレスポンス(404/403)もカバーする。
+- [ ] 非 gating の signal として CI に組み込む。
+
+## 参考
+
+- [BE-0282 — CI における実 backend のネットワーク捕捉・モック・アサーションのカバレッジ](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md)
+- `bajutsu/config_source.py`、`tests/test_config_source.py`、GitHub App の実統合テストを扱う
+  姉妹提案
