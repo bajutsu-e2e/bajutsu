@@ -99,9 +99,13 @@ attempts. The re-resolution is the condition that separates a snapshot-version r
 element is still there, from a genuine disappearance, in which the element is not, so the gate never
 taps whatever happens to match. Every handle-based actuation (`tap`, `double_tap`, `long_press`,
 `pinch`, and `rotate`) routes through the seam and so inherits the retry; the raw-coordinate
-`tap_point` carries no handle to go stale and is untouched. The attempt bound reuses BE-0207's
-`_MAX_ATTEMPTS` and `_BACKOFF_BASE_SECONDS` (three attempts, a 0.5s then 1.0s exponential backoff), so
-the whole loop stays bounded at a few seconds — not sub-second — and a genuinely gone element is not
+`tap_point` carries no handle to go stale and is untouched. The attempt bound is a *dedicated*
+stale-retry constant, held separate from BE-0207's transport-retry `_MAX_ATTEMPTS` /
+`_BACKOFF_BASE_SECONDS` even though it starts at the same values (three attempts, a 0.5s then 1.0s
+exponential backoff): the two loops bound different things — a screen settling between
+`_resolve_handle` and `_actuate` versus a transport blip inside `_with_retry` — so a later re-tune of
+one, such as loosening the transport budget for a slower CI runner, must not silently move the other.
+The whole loop stays bounded at a few seconds — not sub-second — and a genuinely gone element is not
 retried for long.
 
 The re-resolution relaxes, on the retry path alone, the backend's "act on exactly the element
@@ -128,7 +132,8 @@ so a `stale` reply is definitive evidence that no actuation occurred, and re-sen
 gesture twice. A timeout, by contrast, leaves delivery unknown, which is why BE-0218 refused to retry
 a write past its deadline. Determinism is otherwise untouched: no large language model (LLM) enters
 the path, no fixed `sleep` is added (the re-query round-trip is the condition, and the between-attempt
-backoff is the bounded BE-0207 backoff, not a settle delay), and a genuine `stale` disappearance, an
+backoff is the dedicated stale-retry backoff of Unit 1, not a settle delay), and a genuine `stale`
+disappearance, an
 ambiguous re-resolution, and an exhausted attempt budget all stay the loud failures the failures are
 today.
 
@@ -193,8 +198,8 @@ keeps burning macOS minutes on every silent retry.
 ## References
 
 - [BE-0207 — Make the XCUITest runner channel robust to transient timeouts](../BE-0207-xcuitest-channel-transient-retry/BE-0207-xcuitest-channel-transient-retry.md):
-  the transient-blip retry seam whose bounded backoff this item reuses, and the outcome-versus-transport
-  split that keeps a decoded `stale` off the transport retry.
+  the transient-blip retry seam whose bounded-backoff pattern this item mirrors with its own dedicated
+  constant, and the outcome-versus-transport split that keeps a decoded `stale` off the transport retry.
 - [BE-0218 — Stabilize the E2E Simulator gate](../BE-0218-e2e-simulator-flaky-readiness-actuation/BE-0218-e2e-simulator-flaky-readiness-actuation.md):
   the readiness and per-method-timeout work on the same gate, and the delivered-write distinction this
   item's no-double-actuation argument turns on.
