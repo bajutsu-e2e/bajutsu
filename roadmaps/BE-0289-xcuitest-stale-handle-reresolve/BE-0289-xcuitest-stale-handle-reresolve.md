@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-xcuitest-stale-handle-reresolve-ja.md)
+**English** · [日本語](BE-0289-xcuitest-stale-handle-reresolve-ja.md)
 
-# BE-XXXX — Make the XCUITest channel re-resolve a stale actuation handle before failing
+# BE-0289 — Make the XCUITest channel re-resolve a stale actuation handle before failing
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-xcuitest-stale-handle-reresolve.md) |
+| Proposal | [BE-0289](BE-0289-xcuitest-stale-handle-reresolve.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0289") |
 | Topic | Platform support |
 | Related | [BE-0207](../BE-0207-xcuitest-channel-transient-retry/BE-0207-xcuitest-channel-transient-retry.md), [BE-0218](../BE-0218-e2e-simulator-flaky-readiness-actuation/BE-0218-e2e-simulator-flaky-readiness-actuation.md), [BE-0287](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience.md), [BE-0049](../BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md) |
 <!-- /BE-METADATA -->

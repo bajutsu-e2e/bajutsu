@@ -105,6 +105,7 @@ Under consideration — not yet decided. Promote an item to *In progress* once w
 | ID | Item | Status |
 |---|---|---|
 | [BE-0008](BE-0008-flutter-support/BE-0008-flutter-support.md) | Flutter support | Proposal |
+| [BE-0289](BE-0289-xcuitest-stale-handle-reresolve/BE-0289-xcuitest-stale-handle-reresolve.md) | Make the XCUITest channel re-resolve a stale actuation handle before failing | Proposal |
 <!-- /GENERATED:proposals-platform -->
 
 ### Driver & backend architecture
