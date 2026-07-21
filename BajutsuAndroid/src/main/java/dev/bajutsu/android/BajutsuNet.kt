@@ -31,10 +31,13 @@ import java.io.IOException
  * call on a test/debug flag the same way the clipboard receiver is, so a release build never reports.
  */
 object BajutsuNet {
-    @Volatile private var collectorUrl: String? = null
+    // The collector URL and its per-run shared token (`BAJUTSU_COLLECTOR_TOKEN`), as one unit. A single
+    // `@Volatile` reference set with one assignment, so a request racing [configure] can never observe
+    // a URL with a stale/absent token (two separate `@Volatile` fields could, and the tokenless report
+    // would then be 401'd by the collector).
+    private data class CollectorConfig(val url: String, val token: String?)
 
-    /** Per-run shared token (`BAJUTSU_COLLECTOR_TOKEN`) the collector requires on each report POST. */
-    @Volatile private var collectorToken: String? = null
+    @Volatile private var config: CollectorConfig? = null
 
     private const val TAG = "BajutsuNet"
 
@@ -55,14 +58,13 @@ object BajutsuNet {
      */
     fun configure(env: Map<String, String>) {
         val url = env["BAJUTSU_COLLECTOR"] ?: return
-        collectorUrl = url
-        collectorToken = env["BAJUTSU_COLLECTOR_TOKEN"]
+        config = CollectorConfig(url, env["BAJUTSU_COLLECTOR_TOKEN"])
     }
 
     /** The interceptor the app adds to its `OkHttpClient.Builder`; inert until [configure] runs. */
     fun interceptor(): Interceptor = Interceptor { chain ->
         val request = chain.request()
-        val url = collectorUrl ?: return@Interceptor chain.proceed(request) // not observing
+        val cfg = config ?: return@Interceptor chain.proceed(request) // not observing
         val startedAt = System.currentTimeMillis()
         val response =
             try {
@@ -72,19 +74,19 @@ object BajutsuNet {
                 // reports these too (via didCompleteWithError, status absent), so a `request` assertion
                 // and network.json see the attempt rather than nothing. Report, then rethrow so the
                 // app's own call fails exactly as it would have without the interceptor.
-                runCatching { reportFailure(url, request, System.currentTimeMillis() - startedAt) }
+                runCatching { reportFailure(cfg, request, System.currentTimeMillis() - startedAt) }
                     .onFailure { Log.w(TAG, "failed to report failed exchange to the collector", it) }
                 throw e
             }
         // report() reads the response body (peekBody) and builds JSON — real I/O that can throw (a
         // truncated body, a JSONException). An interceptor that throws fails the app's own call even
         // though the network response was fine, so a report failure must never escape this lambda.
-        runCatching { report(url, request, response, System.currentTimeMillis() - startedAt) }
+        runCatching { report(cfg, request, response, System.currentTimeMillis() - startedAt) }
             .onFailure { Log.w(TAG, "failed to report exchange to the collector", it) }
         response
     }
 
-    private fun report(url: String, request: Request, response: Response, durationMs: Long) {
+    private fun report(cfg: CollectorConfig, request: Request, response: Response, durationMs: Long) {
         val payload =
             basePayload(request, durationMs)
                 .put("status", response.code)
@@ -92,13 +94,13 @@ object BajutsuNet {
         // peekBody clones up to the limit without consuming the stream the caller still reads.
         response.peekBody(BODY_PEEK_LIMIT).string().takeIf { it.isNotEmpty() }
             ?.let { payload.put("responseBody", it) }
-        post(url, payload)
+        post(cfg, payload)
     }
 
-    private fun reportFailure(url: String, request: Request, durationMs: Long) {
+    private fun reportFailure(cfg: CollectorConfig, request: Request, durationMs: Long) {
         // No response reached the interceptor, so status/responseHeaders/responseBody are absent —
         // NetworkExchange accepts a null status, matching iOS's failed-exchange report.
-        post(url, basePayload(request, durationMs))
+        post(cfg, basePayload(request, durationMs))
     }
 
     // The request-side payload common to a completed and a failed exchange. Field names / shape mirror
@@ -116,21 +118,28 @@ object BajutsuNet {
         return payload
     }
 
-    private fun post(url: String, payload: JSONObject) {
+    private fun post(cfg: CollectorConfig, payload: JSONObject) {
         val post = Request.Builder()
-            .url(url)
+            .url(cfg.url)
             .post(payload.toString().toRequestBody(JSON))
-            .apply { collectorToken?.let { header("Authorization", "Bearer $it") } }
+            .apply { cfg.token?.let { header("Authorization", "Bearer $it") } }
             .build()
-        // Fire-and-forget: a report must never block or fail the app's own request, but a transport
-        // failure here (collector unreachable, tunnel torn down mid-request) must still leave a trace —
-        // otherwise a `request` assertion just fails with "exchange not observed" and nothing points at
-        // the real cause.
+        // Fire-and-forget: a report must never block or fail the app's own request, but a failure here
+        // must still leave a trace — otherwise a `request` assertion just fails with "exchange not
+        // observed" and nothing points at the real cause. Both a transport failure (collector
+        // unreachable, tunnel torn down mid-request) and a rejection by the collector (a 401 on a
+        // missing/mismatched token, a 5xx) are logged.
         reportClient.newCall(post).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
                 Log.w(TAG, "failed to POST exchange to the collector", e)
             }
-            override fun onResponse(call: Call, response: Response) = response.close()
+
+            override fun onResponse(call: Call, response: Response) {
+                if (!response.isSuccessful) {
+                    Log.w(TAG, "collector rejected the exchange report (HTTP ${response.code})")
+                }
+                response.close()
+            }
         })
     }
 
