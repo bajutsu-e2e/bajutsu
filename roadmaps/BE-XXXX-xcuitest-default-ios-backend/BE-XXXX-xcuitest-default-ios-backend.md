@@ -15,13 +15,15 @@
 
 ## Introduction
 
-Make XCUITest the default iOS backend, and remove idb once its one remaining advantage — running
-without an Xcode toolchain — is no longer needed. Because retiring idb reverses a decision
-[BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) took deliberately, the change is
-staged: first flip the default so every iOS run uses XCUITest unless it opts out, then remove idb
-outright once on-device evidence shows XCUITest covers every scenario idb runs today and the
-toolchain-free path is confirmed unnecessary. The destination is a single iOS backend; the
-intermediate state keeps idb only as an explicit opt-out.
+Make XCUITest the default iOS backend and remove idb entirely, in a single pull request that carries
+the migration through its Simulator verification. Because retiring idb reverses a decision
+[BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) took deliberately, the proposal
+argues the reversal in full: XCUITest is the more capable backend, and once the sibling runner-reuse
+proposal removes its per-scenario startup cost it is no more expensive across a run set, so the one
+advantage idb keeps — running without an Xcode toolchain — no longer justifies a second permanent
+backend. The one PR flips the default, migrates every fixture and CI lane, deletes idb and its
+supporting surface, and confirms on the Simulator that every scenario still runs. The destination is
+a single iOS backend, reached in one change rather than staged across several.
 
 ## Motivation
 
@@ -52,14 +54,16 @@ sibling proposal *Reuse the XCUITest runner across scenarios* removes that cost 
 runner resident per device and restarting only the app between scenarios, so the startup is paid
 once per device rather than once per scenario. Once that amortization lands, the cost argument for
 idb no longer holds, and idb's only remaining justification is operating where no Xcode toolchain is
-available — idb needs only its command-line tool and companion; XCUITest needs `xcodebuild`.
-This proposal flips the default on that basis and sets the condition under which idb is removed
-entirely.
+available — idb needs only its command-line tool and companion; XCUITest needs `xcodebuild`. This
+proposal treats that single-environment benefit as not worth a second permanent backend, flips the
+default, and removes idb outright.
 
 ## Detailed design
 
-The work is staged so the default flip and idb's removal are separable, and so the removal is gated
-on evidence rather than taken on faith.
+All five units land in a single pull request. They are a work breakdown within that one PR, not a
+sequence of separate changes: leaving `main` half-migrated — the default flipped but idb still
+present, or idb deleted but a fixture still pinned to it — is a broken state no merge should land on.
+Unit 5, the Simulator run that confirms every scenario still passes, is the PR's merge gate.
 
 ### Unit 1 — Flip the default to XCUITest
 
@@ -86,51 +90,57 @@ that degrades XCUITest to idb, and the capability preflight's idb-first assumpti
 documentation that presents idb as the iOS default (`docs/drivers.md` and `docs/getting-started/ios.md`,
 with their Japanese mirrors) to lead with XCUITest.
 
-### Unit 4 — Decide and execute idb's end state
+### Unit 4 — Remove idb entirely
 
-Choose between removing idb entirely and keeping it as an explicit opt-out, on the evidence from
-Units 2 and 5 and from a decision on whether the toolchain-free path must survive. Full removal
-deletes `IdbDriver` and the idb-only surface around it — the companion-version monitor
+Delete idb, not deprioritize it. This unit removes `IdbDriver` and the idb-only surface around it.
+That surface is the companion-version monitor
 ([BE-0005](../BE-0005-idb-companion-version-monitoring/BE-0005-idb-companion-version-monitoring.md)),
-the crawl vision tab locator that exists only because idb cannot address tabs, and the idb branches
-in the shared coordinate-tree read path — and drops the `smoke (idb)` lane. Because idb is
-referenced across many modules, this unit is itself broken down when it is scheduled; the proposal
-records the destination and the gate, not a line-by-line removal plan.
+the crawl vision tab locator that exists only because idb cannot address tabs, the idb branches in
+the shared coordinate-tree read path, and the idb executable's availability wiring. The unit also
+drops the `smoke (idb)` lane, which XCUITest now covers. idb is referenced across roughly 60 modules
+and as many tests, so this unit's own breakdown is large; the work is mechanical, though, following
+the failing imports outward from the deleted driver. The proposal fixes the outcome — no idb backend
+remains in the tree — not a line-by-line removal list.
 
-### Unit 5 — On-device parity verification
+### Unit 5 — Confirm every scenario runs on the Simulator
 
-Removal is gated on evidence. On a named environment (the Simulator model and the Xcode version),
-confirm that every scenario the idb `smoke` and `E2E` lanes cover today passes on XCUITest with the
-runner-reuse amortization in place, and record the per-suite wall-clock so the migration's cost is
-measured rather than assumed. A scenario that only idb can run today, if any is found, is a blocker
-that this unit surfaces before Unit 4 proceeds.
+On a named environment (the Simulator model and the Xcode version), run every scenario the idb
+`smoke` and `E2E` lanes cover today on XCUITest, with the runner-reuse amortization in place, and
+confirm each passes on the Simulator. This Simulator run is the PR's merge gate: the change does not
+merge until every scenario is green on XCUITest. Record the per-suite wall-clock so the migration's
+cost is measured, not assumed.
 
 ## Alternatives considered
 
 - **Keep idb as a permanent fallback rather than removing it.** Leaving idb in place as a
-  never-default opt-out is the lowest-risk option and is exactly the intermediate state this proposal
-  passes through. It is rejected as the *destination* because maintaining two iOS backends
-  indefinitely — two read paths, two actuators, two CI lanes — is the standing cost the migration
-  exists to end. The proposal keeps this state as a waypoint, not the goal.
+  never-default opt-out is the lowest-risk option, and it is rejected here. Maintaining two iOS
+  backends indefinitely — two read paths, two actuators, two CI lanes — is the standing cost this
+  migration exists to end, and idb's one advantage (running without an Xcode toolchain) does not earn
+  a second permanent backend once XCUITest is both more capable and no more expensive across a run
+  set. Removal is the goal, not a fallback state.
 - **Flip the default without the runner-reuse enabler.** Making XCUITest the default while it still
   restarts the runner per scenario would pay the full per-scenario cold start on every iOS run — the
   regression [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) named when it kept
-  idb. The runner-reuse proposal is a hard prerequisite for this reason.
-- **Remove idb immediately, without staging.** Deleting idb in one step would drop the toolchain-free
-  path and the required `smoke (idb)` lane before any on-device evidence shows XCUITest covers every
-  idb scenario. Staging the flip ahead of the removal is what makes the removal safe to take.
+  idb. The runner-reuse proposal is a hard prerequisite for this reason, and must land before this
+  PR.
+- **Split the migration across several PRs.** Flipping the default, migrating the fixtures, and
+  deleting idb could each be a separate PR. This is rejected because every intermediate point leaves
+  `main` in a broken state — a flipped default with idb still half-wired, or a deleted idb with a
+  fixture still pinned to it. Doing the whole migration in one PR, gated on the Simulator run in Unit
+  5, keeps `main` correct at every merge; the cost is one large review, which the unit breakdown
+  above is meant to make navigable.
 
 ## Progress
 
 > Keep this current as work proceeds. The checklist mirrors the MECE work breakdown in
 > *Detailed design* (one box per unit of work); the log records what changed and when
-> (oldest first), linking the PRs.
+> (oldest first), linking the PRs. All five units land in one PR, gated on Unit 5.
 
 - [ ] Unit 1 — Flip the iOS default to XCUITest; retire the cost-ordered idb-first selection.
 - [ ] Unit 2 — Migrate the `-noax` fixtures and the `smoke` / `E2E` lanes onto XCUITest.
 - [ ] Unit 3 — Retire the idb-assuming code paths and update the docs to lead with XCUITest.
-- [ ] Unit 4 — Decide and execute idb's end state (full removal or permanent opt-out).
-- [ ] Unit 5 — On-device parity verification with the runner-reuse amortization in place.
+- [ ] Unit 4 — Remove idb entirely (`IdbDriver`, the idb-only modules, and the `smoke (idb)` lane).
+- [ ] Unit 5 — Confirm every scenario passes on the Simulator (the PR's merge gate).
 
 ## References
 
