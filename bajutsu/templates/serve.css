@@ -13,14 +13,28 @@ header .brandcol{display:flex;flex-direction:column;gap:.4rem;flex:1;min-width:0
 /* Title and the build badge share a baseline-aligned row so the version sits quietly beside "bajutsu". */
 header .brandrow{display:flex;align-items:baseline;gap:.5rem;min-width:0}
 header .brand{font-weight:700}
-/* flex-wrap so, on a browser too narrow for one row, .cfgctrls (an atomic flex item) drops onto its
-   own line as a whole instead of splitting mid-group across the view tabs. */
+/* .toptabs holds exactly two flex items: .cfgctrls (config controls) then .viewtabs (the view tabs).
+   flex-wrap so, on a browser too narrow for one line, the second item drops onto its own row as a
+   whole instead of splitting mid-group; .cfgctrls comes first so it's what stays on the shared row. */
 .toptabs{display:flex;align-items:center;gap:.3rem;flex-wrap:wrap}
 /* Config controls (name, Open config, View, project switcher, Settings, theme, Edit): one flex item
    so a narrow header wraps it entirely onto its own row rather than interleaving it with the view
-   tabs above. flex-wrap stays nowrap here (own line as a single row) — it only turns on at the phone
-   breakpoint, where header .cfgname's forced flex-basis:100% relies on it to push the rest below. */
-.cfgctrls{display:flex;align-items:center;gap:.3rem}
+   tabs. flex-wrap stays nowrap here (own line as a single row) — it only turns on at the phone
+   breakpoint, where header .cfgname's forced flex-basis:100% relies on it to push the rest below.
+   min-width:0 is the standard nested-flex-container fix: without it, .cfgname's white-space:nowrap
+   makes its min-content contribution its full (untruncated) path text — which, once .cfgctrls is
+   itself a flex ITEM of .toptabs rather than a direct child, would inflate .cfgctrls's own sizing
+   and overflow the header instead of letting .cfgname's own overflow:hidden ellipsis do its job. */
+.cfgctrls{display:flex;align-items:center;gap:.3rem;min-width:0}
+/* The view tabs (Record, Replay, …): the other .toptabs flex item. Unlike .cfgctrls it has no
+   atomicity to preserve, so it wraps its own buttons onto further lines at any width (matching the
+   pre-existing behavior individual tabs already had) rather than overflowing when it doesn't fit
+   even on a fresh full-width row of its own. */
+.viewtabs{display:flex;align-items:center;gap:.3rem;flex-wrap:wrap;min-width:0}
+/* white-space:nowrap on every pill button/tab: a flex item's default min-width:auto otherwise lets
+   flex-shrink compress it below its label's natural width by wrapping the text onto two lines —
+   an overflowing *group* should wrap onto a new row instead of an individual button's own label. */
+.toptab,.cfgbtn{white-space:nowrap}
 .toptab{background:var(--bg2);border:1px solid var(--line);color:var(--mut);padding:.25rem .9rem;font:inherit;font-weight:600;font-size:.9em;border-radius:8px;cursor:pointer}
 .toptab:hover{color:var(--fg)}
 .toptab.active{color:var(--on-acc);background:var(--acc);border-color:var(--acc)}
@@ -32,12 +46,12 @@ header .brand{font-weight:700}
 .ai-gate{background:var(--bg2);border:1px solid var(--run);color:var(--fg);border-radius:8px;padding:.6rem .8rem;margin-bottom:.7rem;font-size:.88em;line-height:1.4}
 .ai-gate .link{background:none;border:none;color:var(--acc);font:inherit;font-weight:600;padding:0;cursor:pointer;text-decoration:underline}
 /* theme picker (BE-0191) — a native <select> of every registered theme, flanked by a small icon.
-   Sits inside .cfgctrls, which owns the trailing-edge alignment; a native control stays
+   Sits inside .cfgctrls, in line with the group's other controls; a native control stays
    keyboard/screen-reader accessible and, unlike a custom popup, never overlaps the
    tiler/viewswitch controls at any width. */
-/* `margin-block:auto` vertically centres the picker. When the row is taller than one line (the
-   "Open config" button can wrap to two), the parent's align-items:center leaves the native <select>
-   a few px low — a form-control cross-size quirk — so auto block margins do the centring instead,
+/* `margin-block:auto` vertically centres the picker. When .cfgctrls wraps onto more than one internal
+   line (the phone breakpoint), the parent's align-items:center leaves the native <select> a few px
+   low — a form-control cross-size quirk — so auto block margins do the centring instead,
    keeping it level with the View/Settings buttons. */
 .themepick{display:inline-flex;align-items:center;gap:.4rem;margin-block:auto;cursor:pointer}
 .themepick .ico{width:15px;height:15px;color:var(--mut);transition:color .15s;flex:none}

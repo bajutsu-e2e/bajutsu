@@ -28,24 +28,9 @@
       <span class="appversion" id="appversion" data-testid="nav.app-version" hidden></span>
     </div>
     <div class="toptabs">
-      <button class="toptab active" data-view="record" data-testid="nav.record">Record</button>
-      <button class="toptab" data-view="replay" data-testid="nav.replay">Replay</button>
-      <button class="toptab" data-view="crawl" data-testid="nav.crawl">Crawl</button>
-      <button class="toptab" data-view="author" data-testid="nav.author">Author</button>
-      <button class="toptab" data-view="stats" data-testid="nav.stats">Stats</button>
-      <button class="toptab" data-view="flaky" data-testid="nav.flaky">Flaky</button>
-      <button class="toptab" data-view="usage" data-testid="nav.usage">Usage</button>
-      <button class="toptab" data-view="coverage" data-testid="nav.coverage">Coverage</button>
-      <button class="toptab" data-view="metrics" data-testid="nav.metrics" hidden>Metrics</button>
-      {#- Projects page (BE-0275): the hub's home. Unlike the switcher + Metrics tab (a real hub only),
-          it shows for any project count so a single-config `serve` can grow into a hub from its Add
-          form; serve.core.mjs (loadProjects) reveals it whenever there is a project to manage. -#}
-      <button class="toptab" data-view="projects" data-testid="nav.projects-view" hidden>Projects</button>
-      {#- Trash (BE-0239): soft-deleted runs, restorable within the retention window. Always offered —
-          run deletion is available on every deployment. -#}
-      <button class="toptab" data-view="trash" data-testid="nav.trash">Trash</button>
-      {#- Config controls, grouped in their own flex item so they wrap onto their own row as a whole
-          (not interleaved with the view tabs above) once the header no longer fits one line. -#}
+      {#- Config controls come first so, once the header no longer fits one line, this (smaller)
+          group is what stays on the shared first row while .viewtabs (the view tabs, a wider group)
+          wraps onto its own second row as a whole — never interleaved button-by-button. -#}
       <div class="cfgctrls">
         <span class="cfgname" id="cfgname" data-testid="nav.config-name"></span>
         <button class="cfgbtn" id="opencfg" data-testid="nav.open-config">Open config</button>
@@ -80,6 +65,24 @@
           </select>
         </label>
         <button class="cfgbtn" id="opentheme" title="Edit theme" data-testid="nav.open-theme">Edit</button>
+      </div>
+      <div class="viewtabs">
+        <button class="toptab active" data-view="record" data-testid="nav.record">Record</button>
+        <button class="toptab" data-view="replay" data-testid="nav.replay">Replay</button>
+        <button class="toptab" data-view="crawl" data-testid="nav.crawl">Crawl</button>
+        <button class="toptab" data-view="author" data-testid="nav.author">Author</button>
+        <button class="toptab" data-view="stats" data-testid="nav.stats">Stats</button>
+        <button class="toptab" data-view="flaky" data-testid="nav.flaky">Flaky</button>
+        <button class="toptab" data-view="usage" data-testid="nav.usage">Usage</button>
+        <button class="toptab" data-view="coverage" data-testid="nav.coverage">Coverage</button>
+        <button class="toptab" data-view="metrics" data-testid="nav.metrics" hidden>Metrics</button>
+        {#- Projects page (BE-0275): the hub's home. Unlike the switcher + Metrics tab (a real hub only),
+            it shows for any project count so a single-config `serve` can grow into a hub from its Add
+            form; serve.core.mjs (loadProjects) reveals it whenever there is a project to manage. -#}
+        <button class="toptab" data-view="projects" data-testid="nav.projects-view" hidden>Projects</button>
+        {#- Trash (BE-0239): soft-deleted runs, restorable within the retention window. Always offered —
+            run deletion is available on every deployment. -#}
+        <button class="toptab" data-view="trash" data-testid="nav.trash">Trash</button>
       </div>
     </div>
   </div>
