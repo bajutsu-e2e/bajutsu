@@ -198,6 +198,18 @@ def _paste_text_via_companion(udid: str, text: str) -> None:
     would silently paste the *old* pasteboard content instead of `text`, intermittently, under
     exactly the load that makes it hard to catch in CI. A scenario combining a `type` of non-Latin
     text with a later `clipboard` assertion should account for this.
+
+    Accepted trade-off (reviewed on PR #1216): this reopens, for non-Latin text specifically, a
+    narrower version of the side channel `_with_companion_client` above exists to close for the
+    direct HID path — `text` sits on the Simulator's *global* pasteboard, readable by any other
+    process on the host with `simctl` access to this udid (`xcrun simctl pbpaste --udid <udid>`),
+    for as long as nothing else overwrites it. There is no lower-exposure channel available through
+    idb itself: its HID text path is US-keyboard-only, so any non-Latin `type` has to transit the
+    system pasteboard one way or another. Closing this fully would mean routing typed text through
+    an app-side SDK channel instead (mirroring how BajutsuKit/BajutsuAndroid already provide
+    app-process-only capabilities for network/clipboard, BE-0233) — real new scope, not a
+    same-PR fix. Until then: avoid `type`-ing secrets/OTPs that contain non-Latin characters on the
+    idb backend, since only those fall back to this path.
     """
     from idb.common.types import HIDDirection, HIDKey, HIDPress
 
