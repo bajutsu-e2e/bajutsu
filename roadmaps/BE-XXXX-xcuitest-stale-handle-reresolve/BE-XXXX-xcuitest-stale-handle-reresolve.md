@@ -1,6 +1,6 @@
 **English** · [日本語](BE-XXXX-xcuitest-stale-handle-reresolve-ja.md)
 
-# BE-XXXX — Re-resolve a stale actuation handle before failing: a determinism-preserving stale retry for the XCUITest channel
+# BE-XXXX — Make the XCUITest channel re-resolve a stale actuation handle before failing
 
 <!-- BE-METADATA -->
 | Field | Value |

@@ -1,6 +1,6 @@
 [English](BE-XXXX-xcuitest-stale-handle-reresolve.md) · **日本語**
 
-# BE-XXXX — 失敗させる前に stale なアクチュエーションハンドルを解決し直す：XCUITest チャネルの決定論を保つ stale リトライ
+# BE-XXXX — XCUITest チャネルに、失敗させる前に stale なアクチュエーションハンドルを解決し直させる
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
