@@ -20,8 +20,12 @@ from pathlib import Path
 from typing import cast
 
 from bajutsu import backends, simctl
-from bajutsu.config import Effective, require_ios
+from bajutsu.config import Effective, XcuitestConfig, require_ios
 from bajutsu.drivers import base
+from bajutsu.platform_lifecycle.environments._bundled_runner import (
+    bundled_products_dir,
+    materialize,
+)
 from bajutsu.platform_lifecycle.environments.ios import _DeviceEnvironment
 from bajutsu.scenario import Preconditions
 
@@ -139,21 +143,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
         locale = pre.locale or eff.locale
         launch_args = [*eff.launch_args, *pre.launch_args, *simctl.locale_args(locale)]
 
-        if xcfg is None or xcfg.test_runner is None:
-            raise simctl.DeviceError(
-                "xcuitest backend requires xcuitest.testRunner in the target config"
-            )
-        runner_path = xcfg.test_runner
-        if not Path(runner_path).exists():
-            if xcfg.build:
-                try:
-                    subprocess.run(shlex.split(xcfg.build), check=True)
-                except (subprocess.CalledProcessError, OSError) as exc:
-                    raise simctl.DeviceError(
-                        f"xcuitest build command failed: {xcfg.build}"
-                    ) from exc
-            if not Path(runner_path).exists():
-                raise simctl.DeviceError(f"xcuitest testRunner not found: {runner_path}")
+        runner_path = _resolve_runner(xcfg, device_type)
 
         self._runner_port = _allocate_port()
         forwarded = {
@@ -210,6 +200,42 @@ class XcuitestEnvironment(_DeviceEnvironment):
             self._patched_runner.unlink(missing_ok=True)
             self._patched_runner = None
         super().teardown(driver, eff)
+
+
+def _resolve_runner(xcfg: XcuitestConfig | None, device_type: str) -> Path:
+    """Resolve the `.xctestrun` to run: an explicit testRunner, else its build, else the bundle.
+
+    Precedence keeps explicit config above the default. A configured `testRunner` is used, built on
+    demand via `build` when the file is missing. With neither configured, a Simulator run falls back
+    to the wheel-bundled generic runner (BE-XXXX), materialized into a writable cache; a real device
+    instead fails loudly, since its runner must be signed (BE-0288) and is not bundled.
+    """
+    test_runner = xcfg.test_runner if xcfg is not None else None
+    build = xcfg.build if xcfg is not None else None
+
+    if test_runner is not None:
+        runner_path = Path(test_runner)
+        if not runner_path.exists() and build:
+            try:
+                subprocess.run(shlex.split(build), check=True)
+            except (subprocess.CalledProcessError, OSError) as exc:
+                raise simctl.DeviceError(f"xcuitest build command failed: {build}") from exc
+        if not runner_path.exists():
+            raise simctl.DeviceError(f"xcuitest testRunner not found: {test_runner}")
+        return runner_path
+
+    if device_type == "device":
+        raise simctl.DeviceError(
+            "xcuitest.deviceType: device requires an explicit xcuitest.testRunner "
+            "(a real-device runner must be signed and is not bundled; see BE-0288)"
+        )
+    products = bundled_products_dir()
+    if products is None:
+        raise simctl.DeviceError(
+            "xcuitest backend requires xcuitest.testRunner in the target config "
+            "(no bundled runner is present in this build)"
+        )
+    return materialize(products)
 
 
 def _patch_xctestrun_env(runner_path: Path, forwarded: Mapping[str, str]) -> Path:
