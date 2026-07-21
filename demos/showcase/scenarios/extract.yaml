@@ -1,0 +1,23 @@
+# extract real-backend coverage (BE-0285): `extract` is thoroughly unit-tested against FakeDriver's
+# scripted tree, but never against a value a real accessibility tree actually reports. This is the adb
+# twin of demos/web/scenarios/extract.yaml — the same capture-and-reuse, over the Log tab's live
+# counter (`log.count` increments it, `log.count.value` mirrors it) on the real device instead of the
+# DOM. The counter starts at 1 on Compose, Views, and iOS SwiftUI — iOS UIKit's `LogController` starts
+# it at 0 instead — so two taps land it on "3" here (adb).
+# Each id lists both its dotted SPEC form (Compose) and its underscore Android Views form, so the one
+# scenario runs unchanged on either toolkit (BE-0221).
+- name: extract captures the counter's real tree value and feeds a later step
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1" }
+  steps:
+    - tap: { label: "Log", traits: [button] }
+      capture: [video]
+    - wait: { for: { id: [log.count, log_count] }, timeout: 10 }
+    - tap: { id: [log.count, log_count] }
+    - tap: { id: [log.count, log_count] }
+      extract: { count: { sel: { id: [log.count.value, log_count_value] } } }
+    - assert:
+        - value: { sel: { id: [log.count.value, log_count_value] }, equals: "${vars.count}" }
+    - tap: { id: [log.count, log_count] }
+  expect:
+    - value: { sel: { id: [log.count.value, log_count_value] }, equals: "4" }

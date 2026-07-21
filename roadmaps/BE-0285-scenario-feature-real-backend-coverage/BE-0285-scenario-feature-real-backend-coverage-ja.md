@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0285") |
-| 実装 PR | [#1184](https://github.com/bajutsu-e2e/bajutsu/pull/1184) |
+| 実装 PR | [#1184](https://github.com/bajutsu-e2e/bajutsu/pull/1184), [#1214](https://github.com/bajutsu-e2e/bajutsu/pull/1214) |
 | トピック | 検証とカバレッジ |
 | 関連 | [BE-0031](../BE-0031-data-driven-scenarios/BE-0031-data-driven-scenarios-ja.md), [BE-0033](../BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow-ja.md), [BE-0030](../BE-0030-parameterized-shared-steps/BE-0030-parameterized-shared-steps-ja.md), [BE-0281](../BE-0281-ios-on-device-actuation-coverage/BE-0281-ios-on-device-actuation-coverage-ja.md) |
 <!-- /BE-METADATA -->
@@ -49,8 +49,8 @@
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] adb + web での `extract` 再利用シナリオ（実フィールド値を後続ステップに渡す）。web 側は完了しましたが、adb 側は未着手です。
-- [ ] adb + web での実複数要素リストに対する `forEach`。web 側は完了しましたが、adb 側は未着手です。
+- [x] adb + web での `extract` 再利用シナリオ（実フィールド値を後続ステップに渡す）。
+- [x] adb + web での実複数要素リストに対する `forEach`。
 - [x] web での data-driven と `relaunch` の検証（adb に加えて）。
 - [ ] BE-0281 の着地後、extract / forEach / data-driven / relaunch のシナリオを iOS へ拡張（ゲート対象外の macOS レーン）。
 - [x] 読み取り回数削減のスナップショット同一性と待機の下限の前提を検証する動的 UI シナリオ（web）。待機の下限の前提である BE-0245 は adb / Android 固有であり、web に対応する仕組みはありません。
@@ -62,6 +62,12 @@
   デモにもなかった要素です）。`demos/web/scenarios/` に `extract.yaml`、`foreach.yaml`、
   `data_driven.yaml`、`relaunch.yaml`、`dynamic_ui.yaml` を追加し、すべて実際の Playwright バックエンド
   に対して実行しました。`extract` / `forEach` の adb 側の対応と iOS への拡張は未着手のまま残っています。
+- 2026-07-21（[#1214](https://github.com/bajutsu-e2e/bajutsu/pull/1214)）: adb 側の作業が着地しました。
+  `demos/showcase/scenarios/` に `extract.yaml`（Log タブのライブなカウンタ値を取り込んで再利用する）と
+  `foreach.yaml`（Stable の 5 行を反復し、各行の詳細を開いて反復のあいだにツリーを変化させる）を追加しました。
+  どちらも既存のショーケースの部品を再利用し（アプリの変更は不要です）、両方の id 形式（BE-0221）を持つため
+  Compose と Views の双方で動きます。ショーケースの Android Makefile の `E2E_SCENARIOS` /
+  `E2E_VIEWS_SCENARIOS` を通じて adb レーンに加わります。iOS への拡張は引き続き BE-0281 を待ちます。
 
 ## 参考
 

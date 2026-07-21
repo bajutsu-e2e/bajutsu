@@ -1,0 +1,26 @@
+# forEach real-backend coverage (BE-0285): forEach is thoroughly unit-tested against FakeDriver's
+# scripted tree, but never against a real multi-element list on adb. This is the adb twin of
+# demos/web/scenarios/foreach.yaml — it iterates the Stable catalog's five rows and opens each one's
+# detail, so the element tree genuinely mutates between iterations (the push/pop a frozen fake cannot
+# make real), then asserts every row survived the loop. `idMatches` is an fnmatch glob, so
+# ["stable.row.*", "stable_row_*"] matches the five rows on Compose (dotted) or Views (underscore)
+# alike (BE-0221); the identifier the loop binds into ${vars.current} is whichever form the live tree
+# rendered, so the body taps by that exact id with no dual-form list.
+- name: forEach opens every real catalog row
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1" }
+  steps:
+    - wait: { for: { id: [stable.row.1, stable_row_1] }, timeout: 10 }
+      capture: [video]
+    - forEach:
+        sel: { idMatches: ["stable.row.*", "stable_row_*"] }
+        as: current
+        steps:
+          - tap: { id: "${vars.current}" }
+          - wait: { for: { id: [horse.title, horse_title] }, timeout: 5 }
+          - assert:
+              - exists: { id: [horse.title, horse_title] }
+          - back: {}
+          - wait: { for: { id: [stable.row.1, stable_row_1] }, timeout: 5 }
+  expect:
+    - count: { sel: { idMatches: ["stable.row.*", "stable_row_*"] }, equals: 5 }
