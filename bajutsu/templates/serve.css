@@ -13,7 +13,15 @@ header .brandcol{display:flex;flex-direction:column;gap:.4rem;flex:1;min-width:0
 /* Title and the build badge share a baseline-aligned row so the version sits quietly beside "bajutsu". */
 header .brandrow{display:flex;align-items:baseline;gap:.5rem;min-width:0}
 header .brand{font-weight:700}
-.toptabs{display:flex;align-items:center;gap:.3rem}
+/* flex-wrap so, on a browser too narrow for one row, .cfgctrls (an atomic flex item) drops onto its
+   own line as a whole instead of splitting mid-group across the view tabs. */
+.toptabs{display:flex;align-items:center;gap:.3rem;flex-wrap:wrap}
+/* Config controls (name, Open config, View, project switcher, Settings, theme, Edit): one flex item
+   so a narrow header wraps it entirely onto its own row rather than interleaving it with the view
+   tabs above. margin-left:auto right-aligns the whole group on the shared row when there's still room.
+   flex-wrap stays nowrap here (own line as a single row) — it only turns on at the phone breakpoint,
+   where header .cfgname's forced flex-basis:100% relies on it to push the rest below. */
+.cfgctrls{display:flex;align-items:center;gap:.3rem;margin-left:auto}
 .toptab{background:var(--bg2);border:1px solid var(--line);color:var(--mut);padding:.25rem .9rem;font:inherit;font-weight:600;font-size:.9em;border-radius:8px;cursor:pointer}
 .toptab:hover{color:var(--fg)}
 .toptab.active{color:var(--on-acc);background:var(--acc);border-color:var(--acc)}
@@ -25,13 +33,14 @@ header .brand{font-weight:700}
 .ai-gate{background:var(--bg2);border:1px solid var(--run);color:var(--fg);border-radius:8px;padding:.6rem .8rem;margin-bottom:.7rem;font-size:.88em;line-height:1.4}
 .ai-gate .link{background:none;border:none;color:var(--acc);font:inherit;font-weight:600;padding:0;cursor:pointer;text-decoration:underline}
 /* theme picker (BE-0191) — a native <select> of every registered theme, flanked by a small icon.
-   Pushed to the header's trailing edge; a native control stays keyboard/screen-reader accessible
-   and, unlike a custom popup, never overlaps the tiler/viewswitch controls at any width. */
-/* `margin-left:auto` right-aligns it in the toptabs row; `margin-block:auto` vertically centres it.
-   When the row is taller than one line (the "Open config" button can wrap to two), the parent's
-   align-items:center leaves the native <select> a few px low — a form-control cross-size quirk — so
-   auto block margins do the centring instead, keeping it level with the View/Settings buttons. */
-.themepick{display:inline-flex;align-items:center;gap:.4rem;margin-left:auto;margin-block:auto;cursor:pointer}
+   Sits inside .cfgctrls, which owns the trailing-edge alignment; a native control stays
+   keyboard/screen-reader accessible and, unlike a custom popup, never overlaps the
+   tiler/viewswitch controls at any width. */
+/* `margin-block:auto` vertically centres the picker. When the row is taller than one line (the
+   "Open config" button can wrap to two), the parent's align-items:center leaves the native <select>
+   a few px low — a form-control cross-size quirk — so auto block margins do the centring instead,
+   keeping it level with the View/Settings buttons. */
+.themepick{display:inline-flex;align-items:center;gap:.4rem;margin-block:auto;cursor:pointer}
 .themepick .ico{width:15px;height:15px;color:var(--mut);transition:color .15s;flex:none}
 .themepick #theme{max-width:9rem;color:var(--fg);background:var(--bg2);border:1px solid var(--line);border-radius:6px;padding:.2rem 1.4rem .2rem .5rem;font:inherit;cursor:pointer;appearance:none;
   /* Themed chevron drawn as a background so the control tints with the palette, no extra markup. */
@@ -550,10 +559,9 @@ header .appversion .dirty{color:var(--acc);font-weight:700}
   /* Header wraps onto multiple lines instead of forcing a wide single row. */
   header{flex-wrap:wrap;gap:.5rem;padding:.55rem .7rem}
   header .brandcol{flex:1 1 100%}
-  .toptabs{flex-wrap:wrap}
   .toptab,.cfgbtn{padding:.5rem .9rem;min-height:44px}
   header .cfgname{max-width:100%;flex-basis:100%}
-  .themepick{margin-left:0}
+  .cfgctrls{margin-left:0;flex-wrap:wrap}
 
   /* Every view becomes one column; its content flows, the switcher selects which pane shows. */
   main{display:block;overflow:visible;padding:.7rem;height:auto;min-height:0}
