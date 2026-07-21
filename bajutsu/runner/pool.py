@@ -31,6 +31,8 @@ from bajutsu.orchestrator.evidence_rules import requested_intervals
 from bajutsu.platform_lifecycle import (
     ProvisionProfile,
     RunEnvironment,
+    WarmRunner,
+    WarmRunnerEnvironment,
     device_control,
     device_relauncher,
     environment_for,
@@ -153,6 +155,14 @@ def device_pool(
                 collector.stop()
             raise
 
+    # One resident runner kept warm per device across leases (BE-XXXX), keyed by udid — a device holds
+    # exactly one actuator at a time (DESIGN §3.3), and the cached handle records its actuator so a
+    # lease resolving to a different one tears the old runner down first. Only the XCUITest
+    # environment produces a handle; every other backend yields None here and the map stays empty, so
+    # the reuse is confined to XCUITest and every other platform is byte-identical. Each udid is held
+    # by one lease at a time (the free queue), so no two threads touch the same entry concurrently.
+    warm_runners: dict[str, WarmRunner] = {}
+
     def lease(eff: Effective, scenario: Scenario) -> Lease:
         udid = free.get()
         # Resolve the actuator for *this* scenario — the cheapest one its own steps can run on
@@ -161,6 +171,18 @@ def device_pool(
         # on the leased device at any instant, never a mid-scenario swap.
         actuator = select_actuator_for_scenario(backends, scenario, available)
         lease_env: RunEnvironment = environment_for(actuator, udid, env_run, provision=provision)
+        # Warm-runner reuse (BE-XXXX): an XCUITest lease adopts this device's resident runner instead
+        # of paying its cold startup again. A cached runner is reused only when it matches the
+        # resolved actuator and still answers its health check; an actuator switch (Unit 3) or a dead
+        # runner (Unit 4) is torn down here — before the new env starts — and treated as a cache miss.
+        warm_env = lease_env if isinstance(lease_env, WarmRunnerEnvironment) else None
+        if warm_env is not None:
+            cached = warm_runners.get(udid)
+            if cached is not None and (cached.actuator != actuator or not cached.alive()):
+                cached.terminate()
+                warm_runners.pop(udid, None)
+                cached = None
+            warm_env.adopt_runner(cached)
         # A same-platform, read-only provider for an evidence kind this actuator can't supply
         # (BE-0020), resolved per scenario now that the actuator is. Today `network` is covered by web
         # (native) and both iOS actuators (the app-side `BAJUTSU_COLLECTOR`), so this resolves to
@@ -223,6 +245,16 @@ def device_pool(
                 environment=lease_env,
                 permissions=scenario.permissions,
             )
+            # Cache this device's resident runner so the next same-actuator lease adopts it (BE-XXXX).
+            # On reuse this re-stores the same handle; a non-reusable lease (a real device) yields
+            # None, so no stale entry lingers. `release()` deliberately never terminates it — the pool
+            # owns its lifetime now (shutdown / actuator switch / fault), not the lease (Unit 3).
+            if warm_env is not None:
+                handle = warm_env.running_handle()
+                if handle is not None:
+                    warm_runners[udid] = handle
+                else:
+                    warm_runners.pop(udid, None)
             sink = FileSink(
                 run_dir,
                 udid=udid,
@@ -282,10 +314,22 @@ def device_pool(
             release_bridge()  # a failed launch must not leak the collector tunnel (BE-0283)
             if release_collector is not None:
                 release_collector.stop()
+            # A fault forces a fresh runner (BE-XXXX Unit 3): terminate any runner this lease held —
+            # an adopted one now cached, or a fresh spawn that never got cached — so the next lease
+            # does not adopt a runner left in an unknown state.
+            if warm_env is not None:
+                stale = warm_runners.pop(udid, None) or warm_env.running_handle()
+                if stale is not None:
+                    stale.terminate()
             free.put(udid)
             raise
 
     def shutdown() -> None:
+        # Run-set end (BE-XXXX Unit 3): terminate every device's warm runner. No lease is in flight
+        # here, so the map is quiescent.
+        for handle in warm_runners.values():
+            handle.terminate()
+        warm_runners.clear()
         for collector in collectors.values():
             collector.stop()
 

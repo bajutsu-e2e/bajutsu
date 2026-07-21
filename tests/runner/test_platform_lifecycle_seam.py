@@ -625,3 +625,149 @@ def test_xcuitest_environment_forwards_preconditions_to_runner_env(
     assert target_env["BAJUTSU_DEEPLINK"] == "myapp://home"
     # bundle id of the app under test (so one generic runner drives any app)
     assert target_env["BAJUTSU_BUNDLE_ID"] == "com.example.demo"
+
+
+# --- BE-XXXX: warm-runner reuse (the pool keeps one runner alive across leases) ---
+
+
+class _FakeProc:
+    """A fake runner subprocess that records whether it was terminated."""
+
+    def __init__(self) -> None:
+        self.terminated = False
+
+    def poll(self) -> int | None:
+        return None  # still running
+
+    def terminate(self) -> None:
+        self.terminated = True
+
+    def wait(self, timeout: float | None = None) -> int:
+        return 0
+
+    def kill(self) -> None:  # pragma: no cover - only on a wait timeout
+        self.terminated = True
+
+
+class _FakeReadyDriver:
+    name = "xcuitest"
+
+    def await_ready(self, **_: object) -> None:
+        pass
+
+
+def test_xcuitest_environment_reuses_an_adopted_runner_without_respawning(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """On reuse (BE-XXXX Unit 2): `start` skips the spawn (no `xcodebuild` Popen), hands the app over
+    via simctl (terminate then launch), reuses the adopted driver, and keeps the adopted handle."""
+    from typing import cast
+
+    from bajutsu.config import XcuitestConfig
+    from bajutsu.platform_lifecycle.environments.xcuitest import _XcuitestWarmRunner
+
+    monkeypatch.setattr(
+        "subprocess.Popen",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not spawn on reuse")),
+    )
+    calls: list[list[str]] = []
+
+    def fake_run(args: list[str], extra_env: object = None) -> str:
+        calls.append(args)
+        return ""
+
+    proc = _FakeProc()
+    adopted_driver = _FakeReadyDriver()
+    handle = _XcuitestWarmRunner(
+        actuator="xcuitest",
+        proc=cast("object", proc),  # type: ignore[arg-type]
+        port=5555,
+        patched_runner=None,
+        driver=cast("object", adopted_driver),  # type: ignore[arg-type]
+    )
+
+    eff = _ios_eff(xcuitest=XcuitestConfig(test_runner="/does/not/matter"), app_path=None)
+    env = XcuitestEnvironment("xcuitest", "UDID-1", env_run=fake_run)
+    env.adopt_runner(handle)
+    driver = env.start(eff, Preconditions(deeplink="myapp://home"))
+
+    assert driver is adopted_driver  # the warm runner's own driver is reused
+    assert ["xcrun", "simctl", "terminate", "UDID-1", "com.example.demo"] in calls
+    assert any(c[:3] == ["xcrun", "simctl", "launch"] for c in calls)  # app handed over
+    assert any(c[:3] == ["xcrun", "simctl", "openurl"] for c in calls)  # deeplink re-applied
+    assert env.running_handle() is handle  # identity preserved for the pool to re-cache
+
+    # The pool owns the runner now: teardown must leave the process alive across the release.
+    env.teardown(driver, eff)
+    assert proc.terminated is False
+
+
+def test_xcuitest_environment_cold_start_exposes_a_cacheable_handle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A cold spawn under pool ownership (BE-XXXX): `running_handle` exposes the fresh runner for the
+    pool to cache, and `teardown` leaves it alive — the pool, not the lease, terminates it."""
+    import plistlib
+    import tempfile
+
+    from bajutsu.config import XcuitestConfig
+
+    monkeypatch.setattr(
+        "bajutsu.platform_lifecycle.environments.xcuitest._allocate_port", lambda: 40404
+    )
+    proc = _FakeProc()
+    monkeypatch.setattr("subprocess.Popen", lambda *a, **k: proc)
+    monkeypatch.setattr("bajutsu.backends.make_driver", lambda *a, **k: _FakeReadyDriver())
+
+    with tempfile.NamedTemporaryFile(suffix=".xctestrun") as f:
+        plistlib.dump({"__xctestrun_metadata__": {"FormatVersion": 1}, "T": {}}, f)
+        f.flush()
+        eff = _ios_eff(xcuitest=XcuitestConfig(test_runner=f.name), app_path=None)
+        env = XcuitestEnvironment("xcuitest", "UDID-1", env_run=lambda a, extra_env=None: "")
+        env.adopt_runner(None)  # pool owns the runner; nothing to reuse -> cold spawn
+        driver = env.start(eff, Preconditions())
+
+        handle = env.running_handle()
+        assert handle is not None
+        assert handle.actuator == "xcuitest"
+        assert handle.driver is driver
+
+        env.teardown(driver, eff)
+        assert proc.terminated is False  # pool-owned: left warm for the next lease
+
+        handle.terminate()  # the pool terminates it later
+        assert proc.terminated is True
+
+
+def test_xcuitest_environment_real_device_runner_is_never_cached(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A real device has no simctl app relaunch to hand the app over, so its runner is not reusable:
+    `running_handle` returns None and teardown still terminates it — the lifecycle is unchanged (BE-XXXX)."""
+    import plistlib
+    import tempfile
+
+    from bajutsu.config import XcuitestConfig
+
+    monkeypatch.setattr(
+        "bajutsu.platform_lifecycle.environments.xcuitest._allocate_port", lambda: 40405
+    )
+    proc = _FakeProc()
+    monkeypatch.setattr("subprocess.Popen", lambda *a, **k: proc)
+    monkeypatch.setattr("bajutsu.backends.make_driver", lambda *a, **k: _FakeReadyDriver())
+
+    with tempfile.NamedTemporaryFile(suffix=".xctestrun") as f:
+        plistlib.dump({"__xctestrun_metadata__": {"FormatVersion": 1}, "T": {}}, f)
+        f.flush()
+        eff = _ios_eff(
+            xcuitest=XcuitestConfig(test_runner=f.name, deviceType="device"), app_path=None
+        )
+        env = XcuitestEnvironment(
+            "xcuitest", "00008030-DEVICE", env_run=lambda a, extra_env=None: ""
+        )
+        env.adopt_runner(None)  # even under pool ownership, a real-device runner is not reusable
+        driver = env.start(eff, Preconditions())
+
+        assert env.running_handle() is None  # never cached
+        env.teardown(driver, eff)
+        assert proc.terminated is True  # so teardown terminates it here (no leak)

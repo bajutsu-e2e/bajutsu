@@ -23,6 +23,8 @@ from bajutsu.platform_lifecycle.protocols import (
     ProvisionProfile,
     ReadinessResult,
     RunEnvironment,
+    WarmRunner,
+    WarmRunnerEnvironment,
 )
 
 # Only `_await_ready` still needs the flat re-export path: `runner/launch.py` reaches it via
@@ -40,6 +42,8 @@ __all__ = [
     "ProvisionProfile",
     "ReadinessResult",
     "RunEnvironment",
+    "WarmRunner",
+    "WarmRunnerEnvironment",
     "WebEnvironment",
     "XcuitestEnvironment",
     "_await_ready",

@@ -286,3 +286,62 @@ class Environment(RunEnvironment, CrawlEnvironment, Protocol):
     `CrawlEnvironment` for the crawl command). See the module docstring for the "not applicable"
     contract and the "adding a platform" checklist.
     """
+
+
+@runtime_checkable
+class WarmRunner(Protocol):
+    """A resident backend process the pool keeps alive across leases (BE-XXXX; XCUITest today).
+
+    An `xcodebuild test-without-building` runner pays an expensive cold startup, so the pool caches
+    one per device and reuses it while the resolved actuator still matches, rather than spawning one
+    per scenario. The handle is platform-agnostic in the pool — it caches, health-checks, and
+    terminates one without importing the backend's own types. Only the XCUITest environment produces
+    one (`WarmRunnerEnvironment.running_handle`); every other backend yields `None`, so the pool path
+    is inert and byte-identical for idb, adb, web, and fake.
+    """
+
+    actuator: str
+
+    def alive(self) -> bool:
+        """Whether the runner still answers its health check.
+
+        A `False` is treated as a cache miss (BE-XXXX Unit 4): the pool discards the unresponsive
+        runner and lets the next lease spawn a fresh one, so one crash costs a single extra cold
+        start rather than the run.
+        """
+
+    def terminate(self) -> None:
+        """Stop the runner and release its resources.
+
+        Ownership moved from the lease to the pool (BE-XXXX Unit 3): the pool calls this on run-set
+        end, on the next lease resolving to a different actuator, and on a fault — never `release`.
+        """
+
+
+@runtime_checkable
+class WarmRunnerEnvironment(Protocol):
+    """A `RunEnvironment` whose resident runner the pool keeps warm across leases (BE-XXXX).
+
+    Additive and opt-in: the pool detects this at lease time (`isinstance`) and takes ownership of
+    the runner's lifetime. Before `start`, it passes any cached, health-checked handle to
+    `adopt_runner` (or `None` to spawn fresh); after `start`, it reads the current handle back with
+    `running_handle` to cache it. An environment that does not implement this surface (idb, adb, web,
+    fake) is driven exactly as before, so the reuse is confined to XCUITest.
+    """
+
+    def adopt_runner(self, handle: WarmRunner | None) -> None:
+        """Hand ownership of the runner to the pool before `start`.
+
+        Called on every warm-capable lease. A non-`None` *handle* is a live runner to reuse: `start`
+        skips the spawn and hands the app over instead (terminate then relaunch, re-applying the
+        scenario's launch env/args/locale). `None` means spawn fresh. Either way, this instance no
+        longer terminates a reusable runner on `teardown` — the pool does.
+        """
+
+    def running_handle(self) -> WarmRunner | None:
+        """The runner handle for the pool to cache after `start`, or `None` if none is reusable.
+
+        Returns the same handle that was adopted (reuse), a fresh one wrapping a just-spawned runner
+        (cache miss), or `None` where no reusable runner exists — a real device has no simctl app
+        relaunch to hand the app over, so its runner is never cached and its lifecycle is unchanged.
+        """

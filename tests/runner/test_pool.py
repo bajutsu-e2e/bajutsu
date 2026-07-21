@@ -735,6 +735,249 @@ def test_device_pool_releases_resources_when_launch_fails(monkeypatch: pytest.Mo
         shutdown()
 
 
+# --- BE-XXXX: the pool keeps one XCUITest runner warm per device across leases ---
+
+
+class _FakeWarmRunner:
+    """A stand-in for the pool's `WarmRunner`: records health and termination."""
+
+    def __init__(self, actuator: str) -> None:
+        self.actuator = actuator
+        self.alive_flag = True
+        self.terminated = False
+
+    def alive(self) -> bool:
+        return self.alive_flag
+
+    def terminate(self) -> None:
+        self.terminated = True
+
+
+class _WarmLedger:
+    """Shared record across the per-lease environments a pool builds."""
+
+    def __init__(self) -> None:
+        self.spawns = 0
+        self.handles: list[_FakeWarmRunner] = []
+
+
+class _WarmEnv:
+    """A fake warm-runner-capable `RunEnvironment`: spawns a handle on a cache miss, reuses the one
+    the pool hands back (no spawn), and exposes it for caching — enough of the seam to prove the
+    pool's reuse / actuator-switch / crash-recovery / run-set-end lifecycle without a Simulator.
+    """
+
+    def __init__(
+        self, actuator: str, udid: str, ledger: _WarmLedger, provision: object = None
+    ) -> None:
+        self.actuator = actuator
+        self.udid = udid
+        self._ledger = ledger
+        self._adopted: _FakeWarmRunner | None = None
+        self._handle: _FakeWarmRunner | None = None
+        self.pool_owned = False
+        self.torn = False
+
+    # --- WarmRunnerEnvironment ---
+    def adopt_runner(self, handle: _FakeWarmRunner | None) -> None:
+        self.pool_owned = True
+        self._adopted = handle
+
+    def running_handle(self) -> _FakeWarmRunner | None:
+        return self._handle
+
+    # --- the RunEnvironment surface the lease path touches ---
+    def start(self, eff: Effective, pre: object, **_: object) -> base.Driver:
+        if self._adopted is not None:
+            self._handle = self._adopted  # reuse — the cold spawn is skipped
+        else:
+            self._handle = _FakeWarmRunner(self.actuator)  # cache miss — spawn a fresh runner
+            self._ledger.spawns += 1
+            self._ledger.handles.append(self._handle)
+        return FakeDriver([_el("home", "H"), _el("ok", "OK")])  # 2 elems -> ready on count
+
+    def device_catalog(self) -> dict[str, dict[str, str]]:
+        return {}
+
+    def observes_network_via_driver(self) -> bool:
+        return False
+
+    def records_video_up_front(self) -> bool:
+        return False
+
+    def bridge_collector(self, port: int) -> Callable[[], None]:
+        return lambda: None
+
+    def relauncher(
+        self, eff: Effective, scenario: Scenario, driver: base.Driver, **_: object
+    ) -> Callable[[object], None]:
+        return lambda opts: None
+
+    def controller(self, eff: Effective) -> None:
+        return None
+
+    def teardown(self, driver: base.Driver, eff: Effective) -> None:
+        self.torn = True
+
+
+def _warm_env_for(ledger: _WarmLedger) -> Callable[..., _WarmEnv]:
+    def env_for(
+        actuator: str, udid: str, env_run: object = None, *, provision: object = None
+    ) -> _WarmEnv:
+        return _WarmEnv(actuator, udid, ledger, provision)
+
+    return env_for
+
+
+def test_pool_reuses_warm_runner_across_same_actuator_leases(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two same-actuator leases share one resident runner: the second adopts the first's process
+    rather than paying the cold spawn again, and it stays warm across the release (BE-XXXX Unit 1/2)."""
+    ledger = _WarmLedger()
+    monkeypatch.setattr("bajutsu.runner.pool.environment_for", _warm_env_for(ledger))
+    lease, shutdown = device_pool(
+        ["UDID-A"],
+        ["fake"],
+        _eff(),
+        Path("runs"),
+        network=False,
+        available=lambda b: True,
+        env_run=lambda *a, **k: "",
+    )
+    try:
+        lease(_eff(), _scn("a")).release()
+        lease(_eff(), _scn("b")).release()
+        assert ledger.spawns == 1  # the second lease reused the first runner
+        assert len(ledger.handles) == 1
+        assert not ledger.handles[0].terminated  # kept warm across the release, not torn down
+    finally:
+        shutdown()
+    assert ledger.handles[0].terminated  # run-set end terminates it (Unit 3)
+
+
+def test_pool_tears_down_warm_runner_on_actuator_switch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The cache key includes the actuator: a lease resolving to a different actuator tears the
+    cached runner down first and spawns the new actuator's own (BE-XXXX Unit 1/3)."""
+    ledger = _WarmLedger()
+    monkeypatch.setattr("bajutsu.runner.pool.environment_for", _warm_env_for(ledger))
+    pinch = Scenario.model_validate(
+        {"name": "p", "steps": [{"pinch": {"sel": {"id": "m"}, "scale": 2.0}}]}
+    )
+    lease, shutdown = device_pool(
+        ["UDID-A"],
+        ["ios"],
+        _eff(),
+        Path("runs"),
+        network=False,
+        available=lambda b: True,
+        env_run=lambda *a, **k: "",
+    )
+    try:
+        lease(_eff(), _scn("tap")).release()  # a plain tap -> idb
+        assert ledger.handles[0].actuator == "idb" and not ledger.handles[0].terminated
+        lease(_eff(), pinch).release()  # a pinch escalates -> xcuitest
+        assert ledger.handles[0].terminated  # the idb runner was discarded on the switch
+        assert ledger.spawns == 2
+        assert ledger.handles[1].actuator == "xcuitest"
+    finally:
+        shutdown()
+
+
+def test_pool_respawns_when_warm_runner_health_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed health check on a warm runner is a cache miss: the pool discards the dead runner and
+    the next lease spawns a fresh one (BE-XXXX Unit 4)."""
+    ledger = _WarmLedger()
+    monkeypatch.setattr("bajutsu.runner.pool.environment_for", _warm_env_for(ledger))
+    lease, shutdown = device_pool(
+        ["UDID-A"],
+        ["fake"],
+        _eff(),
+        Path("runs"),
+        network=False,
+        available=lambda b: True,
+        env_run=lambda *a, **k: "",
+    )
+    try:
+        lease(_eff(), _scn("a")).release()
+        assert ledger.spawns == 1
+        ledger.handles[0].alive_flag = False  # the runner wedged between leases
+        lease(_eff(), _scn("b")).release()
+        assert ledger.handles[0].terminated  # the dead runner was discarded
+        assert ledger.spawns == 2  # and a fresh one spawned
+    finally:
+        shutdown()
+
+
+def test_pool_terminates_the_warm_runner_when_a_lease_faults(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A fault forces a fresh runner (BE-XXXX Unit 3): a launch failure terminates the runner the
+    faulting lease held, so the next lease never adopts one left in an unknown state."""
+    ledger = _WarmLedger()
+    monkeypatch.setattr("bajutsu.runner.pool.environment_for", _warm_env_for(ledger))
+
+    def boom(*args: object, **kwargs: object) -> tuple[base.Driver, ReadinessResult]:
+        # Spawn a runner (as start would) then fault after it, so a handle exists to clean up.
+        env = kwargs["environment"]
+        env.start(_eff(), None)  # type: ignore[attr-defined]
+        raise simctl.DeviceError("boot failed")
+
+    monkeypatch.setattr("bajutsu.runner.pool.launch_driver", boom)
+    lease, shutdown = device_pool(
+        ["UDID-A"],
+        ["fake"],
+        _eff(),
+        Path("runs"),
+        network=False,
+        available=lambda b: True,
+        env_run=lambda *a, **k: "",
+    )
+    try:
+        with pytest.raises(simctl.DeviceError, match="boot failed"):
+            lease(_eff(), _scn("a"))
+        assert ledger.spawns == 1 and ledger.handles[0].terminated  # the faulting runner was killed
+    finally:
+        shutdown()
+
+
+def test_pool_leaves_non_warm_environments_untouched(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A backend whose environment does not implement the warm-runner surface (idb here, via the
+    plain recording env) is never adopted and caches nothing — the reuse is XCUITest-only (BE-XXXX)."""
+    from bajutsu.platform_lifecycle import WarmRunnerEnvironment
+
+    created: list[_RecordingEnv] = []
+
+    def fake_env_for(
+        actuator: str, udid: str, env_run: object = None, *, provision: object = None
+    ) -> _RecordingEnv:
+        env = _RecordingEnv(actuator, udid, provision)
+        created.append(env)
+        return env
+
+    monkeypatch.setattr("bajutsu.runner.pool.environment_for", fake_env_for)
+    lease, shutdown = device_pool(
+        ["UDID-A"],
+        ["idb"],
+        _eff(),
+        Path("runs"),
+        network=False,
+        available=lambda b: True,
+        env_run=lambda *a, **k: "",
+    )
+    try:
+        leased = lease(_eff(), _scn("a"))
+        assert not isinstance(created[-1], WarmRunnerEnvironment)  # not warm-capable
+        leased.release()
+        assert created[-1].torn  # released via the ordinary per-lease teardown
+    finally:
+        shutdown()
+
+
 def test_device_pool_network_lease_defaults_to_collector_provenance(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
