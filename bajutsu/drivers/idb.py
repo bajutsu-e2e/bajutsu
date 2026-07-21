@@ -167,7 +167,12 @@ def _type_text_via_companion(udid: str, text: str) -> None:
     character outside it (Japanese, Chinese, Korean, emoji, ...) makes `text_to_events` raise a bare
     `Exception("No keycode found for <char>")` — always *before* any key is sent, since `client.text`
     builds the full event list up front, so retrying the whole string via paste is safe: no partial
-    input from the failed attempt to reconcile.
+    input from the failed attempt to reconcile. That atomicity is an internal ordering guarantee of
+    fb-idb's `text_to_events` (pinned `>=1.1.0`, no upper bound), not something this driver enforces —
+    if a future release started emitting HID key events incrementally instead of building the whole
+    list up front, mixed Latin/non-Latin text could land stray partial keys ahead of the pasted
+    string, and nothing in the fast suite (only the on-device test drives the real library) would
+    catch that drift.
     """
     try:
         _with_companion_client(udid, lambda client: client.text(text=text))
