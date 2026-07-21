@@ -189,16 +189,18 @@ jobs:
           artifact-name: smoke-run
 
   # Real on-device idb actuation beyond the conformance job's `tap` (BE-0281): drives the actuators
-  # idb can reach on the Stable launch tab, which the smoke / golden / visual jobs above never do
-  # (they only `wait`/`expect`). idb collapses the native tab bar into one opaque group and can tap no
-  # tab (SPEC.md §3, BE-0107), so the tab-crossing gesture / text scenarios stay on XCUITest (the
-  # `xcuitest (multi-touch)` job below runs them); this job covers the launch-tab surface idb *does*
-  # drive — `back` and device control, unproven on any iOS lane before now:
+  # idb can reach on the Stable launch tab, which the smoke / golden / visual jobs above never tap or
+  # otherwise drive the UI (they only `wait`/`expect`). idb collapses the native tab bar into one
+  # opaque group and cannot tap any tab (SPEC.md §3, BE-0107), so the tab-crossing gesture / text
+  # scenarios stay on XCUITest (the `xcuitest (multi-touch)` job below runs them); this job covers the
+  # launch-tab surface idb *does* drive — `back` and device control, unproven on any iOS lane before
+  # now:
   #   - navigation.yaml: tap a Stable row → push Horse Detail → `back` (the OS back button). idb `tap`
   #     is already the conformance job's contract, but `back` end-to-end over the idb companion is not.
   #   - device.yaml / push.yaml: `setLocation`, clipboard round-trip, and a simctl `push` — the
-  #     device-control family idb advertises via DEVICE_CONTROL_ALL but no iOS lane actuated (only
-  #     Android proved any device control on a real device, BE-0210). All three run on the launch tab.
+  #     device-control family idb advertises via DEVICE_CONTROL_ALL but no iOS lane had exercised it
+  #     (only Android proved any device control on a real device, BE-0210). All three run on the
+  #     launch tab.
   # Deliberately NOT in the `E2E` gate's `needs:` below (like `golden` / `visual`): the Simulator lane
   # has a flakiness history (BE-0218), so new actuation lands as a per-PR signal first and is promoted
   # to the gate only once it proves stable. One build serves all three scenarios (cost discipline: the
@@ -541,7 +543,10 @@ jobs:
   # notices.yaml the `/swipe` + `/back` endpoints of the resident runner — the actuators on-device CI
   # reached only for tap / pinch / rotate before BE-0281. Retains the job's original name
   # (`xcuitest (multi-touch)` is a branch-protection required check) even though it now covers more
-  # than the multi-touch scenario.
+  # than the multi-touch scenario. Unlike the `actuation` job above, these four steps don't get
+  # `continue-on-error` + a summary step: this job feeds the required `E2E` gate, so an early failure
+  # correctly stops the job rather than trading gate strictness for per-scenario signal the way the
+  # non-gating `actuation` job does.
   xcuitest-gestures:
     name: xcuitest (multi-touch)
     needs: changes
