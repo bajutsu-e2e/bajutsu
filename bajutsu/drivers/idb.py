@@ -172,6 +172,11 @@ def _type_text_via_companion(udid: str, text: str) -> None:
     try:
         _with_companion_client(udid, lambda client: client.text(text=text))
     except Exception as e:
+        # Matched on fb-idb's exact current wording (pinned `>=1.1.0`, no upper bound), not a typed
+        # exception of its own — a future fb-idb release rewording this message would make the match
+        # miss silently, re-raising here instead of pasting, bringing back the crash this fallback
+        # exists to prevent. Only the on-device test drives the real library; the fast-suite tests
+        # only mock today's wording, so a drift wouldn't be caught there either.
         if not str(e).startswith("No keycode found for"):
             raise
         _paste_text_via_companion(udid, text)
@@ -199,7 +204,7 @@ def _paste_text_via_companion(udid: str, text: str) -> None:
     exactly the load that makes it hard to catch in CI. A scenario combining a `type` of non-Latin
     text with a later `clipboard` assertion should account for this.
 
-    Accepted trade-off (reviewed on PR #1216): this reopens, for non-Latin text specifically, a
+    Accepted trade-off: this reopens, for non-Latin text specifically, a
     narrower version of the side channel `_with_companion_client` above exists to close for the
     direct HID path — `text` sits on the Simulator's *global* pasteboard, readable by any other
     process on the host with `simctl` access to this udid (`xcrun simctl pbpaste --udid <udid>`),
