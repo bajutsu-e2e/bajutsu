@@ -19,7 +19,7 @@ The XCUITest backend drives every app through one generic runner, yet today ever
 that runner and name its path in config before a single Simulator scenario can run. This item ships
 the prebuilt Simulator runner inside the Bajutsu wheel as package data and resolves `xcuitest` to it
 when the config names none, so `xcuitest.testRunner` and `xcuitest.build` both become optional. A
-run against the Simulator then needs no `make runner-build` and no runner path — the backend works
+run against the Simulator then needs no `make -C demos/showcase runner-build` and no runner path — the backend works
 out of the box — while an explicit `testRunner` or `build` still overrides the bundled default, and
 real-device runs, which need a signed runner Bajutsu cannot ship, stay explicit.
 
@@ -36,7 +36,8 @@ is a shell command that produces one on demand. Both put an app-agnostic artifac
 configuration.
 
 That mismatch surfaces as friction the first time anyone reaches for XCUITest. A user must run
-`make runner-build` (or write an equivalent `xcodebuild build-for-testing` command), find the
+`make -C demos/showcase runner-build` (or write an equivalent `xcodebuild build-for-testing`
+command), find the
 `.xctestrun` deep under a `DerivedData` products directory, and paste that path into every target's
 config — for example `testRunner: ../../BajutsuKit/Runner/build/dd/Build/Products/BajutsuRunner.xctestrun`.
 A fresh clone has no such artifact, so the path a config names does not exist until the build runs,
@@ -61,15 +62,17 @@ unchanged.
 ### Runner resolution gains a bundled default tier
 
 Today [`bajutsu/platform_lifecycle/environments/xcuitest.py`](../../bajutsu/platform_lifecycle/environments/xcuitest.py)
-resolves the runner in two tiers: it uses `xcuitest.testRunner` when the file exists, and otherwise
-runs `xcuitest.build` and expects the command to produce that path, failing loudly when neither
-yields a runner. This item adds a third tier below both. When a Simulator run reaches resolution
-with no usable `testRunner` and no `build`, the environment resolves to the bundled runner instead
-of failing. The precedence stays explicit-over-default: an existing `testRunner` path wins, a
-`build` command wins next, and the bundled runner is the fallback that makes the common case need no
-config at all. Because resolution stays a deterministic file-path decision with no LLM and no fixed
-sleep, prime directives 1 and 2 are untouched, and moving an app-agnostic artifact out of per-target
-config strengthens directive 3 rather than bending it.
+requires `xcuitest.testRunner`: the environment fails immediately when the target names no runner,
+and only once a runner path is named does `xcuitest.build`, when present, run to produce the file if
+that path does not yet exist on disk. So `build` today generates a named-but-missing runner rather
+than standing in for an absent `testRunner`. This item makes `testRunner` optional and adds a
+bundled default beneath it. When a Simulator run reaches resolution with no `testRunner` and no
+`build`, the environment resolves to the bundled runner instead of failing. The precedence stays
+explicit-over-default: a named `testRunner` — built directly, or produced by `build` — wins, and the
+bundled runner is the fallback that makes the common case need no config at all. Because resolution
+stays a deterministic file-path decision with no LLM and no fixed sleep, prime directives 1 and 2
+are untouched, and moving an app-agnostic artifact out of per-target config strengthens directive 3
+rather than bending it.
 
 ### The wheel carries the built Simulator runner as package data
 
