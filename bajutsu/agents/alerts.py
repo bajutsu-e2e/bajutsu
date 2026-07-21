@@ -37,7 +37,9 @@ from bajutsu.evidence.redaction import Redactor
 from bajutsu.orchestrator import AlertEvent
 from bajutsu.screenshots import fraction, png_size, screenshot_bytes
 
-LOCATOR_MODEL = "claude-opus-4-8"
+# Sonnet over Opus: this fires mid-wait (BE-0269), so its round-trip latency is on the run's
+# critical path — a locate-a-button task doesn't need Opus's extra reasoning depth.
+LOCATOR_MODEL = "claude-sonnet-5"
 
 _logger = logging.getLogger(__name__)
 
