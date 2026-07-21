@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-xcuitest-default-ios-backend-ja.md)
+**English** · [日本語](BE-0290-xcuitest-default-ios-backend-ja.md)
 
-# BE-XXXX — Make XCUITest the default iOS backend and retire idb
+# BE-0290 — Make XCUITest the default iOS backend and retire idb
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-xcuitest-default-ios-backend.md) |
+| Proposal | [BE-0290](BE-0290-xcuitest-default-ios-backend.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0290") |
 | Topic | Platform support |
 | Related | [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md), [BE-0240](../BE-0240-ios-capability-aware-actuator-selection/BE-0240-ios-capability-aware-actuator-selection.md), [BE-0005](../BE-0005-idb-companion-version-monitoring/BE-0005-idb-companion-version-monitoring.md) |
 <!-- /BE-METADATA -->

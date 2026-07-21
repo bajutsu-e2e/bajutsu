@@ -1,14 +1,14 @@
-[English](BE-XXXX-xcuitest-default-ios-backend.md) · **日本語**
+[English](BE-0290-xcuitest-default-ios-backend.md) · **日本語**
 
-# BE-XXXX — XCUITest を iOS のデフォルトバックエンドにし、idb を撤去する
+# BE-0290 — XCUITest を iOS のデフォルトバックエンドにし、idb を撤去する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-xcuitest-default-ios-backend-ja.md) |
+| 提案 | [BE-0290](BE-0290-xcuitest-default-ios-backend-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0290") |
 | トピック | プラットフォーム対応 |
 | 関連 | [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend-ja.md), [BE-0240](../BE-0240-ios-capability-aware-actuator-selection/BE-0240-ios-capability-aware-actuator-selection-ja.md), [BE-0005](../BE-0005-idb-companion-version-monitoring/BE-0005-idb-companion-version-monitoring-ja.md) |
 <!-- /BE-METADATA -->

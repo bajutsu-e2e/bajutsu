@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-xcuitest-runner-reuse-across-scenarios-ja.md)
+**English** · [日本語](BE-0291-xcuitest-runner-reuse-across-scenarios-ja.md)
 
-# BE-XXXX — Reuse the XCUITest runner across scenarios to amortize cold startup
+# BE-0291 — Reuse the XCUITest runner across scenarios to amortize cold startup
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-xcuitest-runner-reuse-across-scenarios.md) |
+| Proposal | [BE-0291](BE-0291-xcuitest-runner-reuse-across-scenarios.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0291") |
 | Topic | Platform support |
 | Related | [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md), [BE-0105](../BE-0105-xcuitest-single-snapshot-query/BE-0105-xcuitest-single-snapshot-query.md), [BE-0240](../BE-0240-ios-capability-aware-actuator-selection/BE-0240-ios-capability-aware-actuator-selection.md) |
 <!-- /BE-METADATA -->

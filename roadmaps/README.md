@@ -104,6 +104,8 @@ Under consideration — not yet decided. Promote an item to *In progress* once w
 |---|---|---|
 | [BE-0008](BE-0008-flutter-support/BE-0008-flutter-support.md) | Flutter support | Proposal |
 | [BE-0289](BE-0289-xcuitest-stale-handle-reresolve/BE-0289-xcuitest-stale-handle-reresolve.md) | Make the XCUITest channel re-resolve a stale actuation handle before failing | Proposal |
+| [BE-0290](BE-0290-xcuitest-default-ios-backend/BE-0290-xcuitest-default-ios-backend.md) | Make XCUITest the default iOS backend and retire idb | Proposal |
+| [BE-0291](BE-0291-xcuitest-runner-reuse-across-scenarios/BE-0291-xcuitest-runner-reuse-across-scenarios.md) | Reuse the XCUITest runner across scenarios to amortize cold startup | Proposal |
 <!-- /GENERATED:proposals-platform -->
 
 ### Driver & backend architecture
