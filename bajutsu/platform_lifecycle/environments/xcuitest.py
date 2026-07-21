@@ -307,11 +307,15 @@ class XcuitestEnvironment(_DeviceEnvironment):
             raise simctl.DeviceError(f"failed to start xcodebuild: {exc}") from exc
 
         driver = backends.make_driver(self._actuator, self._udid, runner_port=self._runner_port)
+        # Record the driver before the readiness wait, not after: the `xcodebuild` process is already
+        # live (Popen returned above), so if the cold-start `/health` poll times out
+        # (`XcuitestChannelError`), `running_handle()` must still return a handle wrapping that live
+        # process — otherwise the pool's fault path cannot terminate it and leaks the runner (BE-XXXX).
+        self._driver = driver
         # A cold `xcodebuild test-without-building` spins up the XCTest host and launches the app
         # before the runner's server answers /health; on a loaded CI runner that first start well
         # exceeds the 10s default, so give it generous headroom (a warm start still returns at once).
         cast(base.BackendLifecycle, driver).await_ready(timeout=_RUNNER_STARTUP_TIMEOUT)
-        self._driver = driver
         return driver
 
     def teardown(self, driver: base.Driver, eff: Effective) -> None:

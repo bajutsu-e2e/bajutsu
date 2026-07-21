@@ -171,18 +171,10 @@ def device_pool(
         # on the leased device at any instant, never a mid-scenario swap.
         actuator = select_actuator_for_scenario(backends, scenario, available)
         lease_env: RunEnvironment = environment_for(actuator, udid, env_run, provision=provision)
-        # Warm-runner reuse (BE-XXXX): an XCUITest lease adopts this device's resident runner instead
-        # of paying its cold startup again. A cached runner is reused only when it matches the
-        # resolved actuator and still answers its health check; an actuator switch (Unit 3) or a dead
-        # runner (Unit 4) is torn down here — before the new env starts — and treated as a cache miss.
+        # Whether this lease's env keeps a warm runner (BE-XXXX): only XCUITest does. Pure isinstance
+        # (cannot raise), so the except below can always read it; the actual adopt-or-evict runs
+        # inside the try so a health-check/terminate failure still frees the device.
         warm_env = lease_env if isinstance(lease_env, WarmRunnerEnvironment) else None
-        if warm_env is not None:
-            cached = warm_runners.get(udid)
-            if cached is not None and (cached.actuator != actuator or not cached.alive()):
-                cached.terminate()
-                warm_runners.pop(udid, None)
-                cached = None
-            warm_env.adopt_runner(cached)
         # A same-platform, read-only provider for an evidence kind this actuator can't supply
         # (BE-0020), resolved per scenario now that the actuator is. Today `network` is covered by web
         # (native) and both iOS actuators (the app-side `BAJUTSU_COLLECTOR`), so this resolves to
@@ -200,6 +192,20 @@ def device_pool(
             pass
 
         try:
+            # Adopt this device's warm runner (or evict a stale one) inside the try, so any
+            # `alive()` / `terminate()` failure still returns udid to the free queue via the except
+            # below rather than starving the device (BE-XXXX). A cached runner is reused only when it
+            # matches the resolved actuator and still answers its health check; an actuator switch
+            # (Unit 3) or a dead runner (Unit 4) is torn down here — before the new env starts — and
+            # treated as a cache miss. `warm_env` is a pure isinstance check above, so the except can
+            # always read it.
+            if warm_env is not None:
+                cached = warm_runners.get(udid)
+                if cached is not None and (cached.actuator != actuator or not cached.alive()):
+                    cached.terminate()
+                    warm_runners.pop(udid, None)
+                    cached = None
+                warm_env.adopt_runner(cached)
             # Web films the whole scenario only when its capture policy asks for video: Playwright
             # records at context-creation time, so the recording dir must be set before the driver
             # is built. A device backend records on demand, so it needs no up-front dir.

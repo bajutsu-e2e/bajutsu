@@ -739,6 +739,49 @@ def test_xcuitest_environment_cold_start_exposes_a_cacheable_handle(
         assert proc.terminated is True
 
 
+def test_xcuitest_cold_start_health_timeout_still_exposes_a_terminable_handle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A cold-start `/health` timeout must not orphan the runner (BE-XXXX): the `xcodebuild` process
+    is live as soon as `Popen` returns, so `running_handle` still wraps it even though `await_ready`
+    raised — the pool's fault path terminates it rather than leaking it."""
+    import plistlib
+    import tempfile
+
+    from bajutsu.config import XcuitestConfig
+    from bajutsu.drivers.xcuitest import XcuitestChannelError
+
+    monkeypatch.setattr(
+        "bajutsu.platform_lifecycle.environments.xcuitest._allocate_port", lambda: 40405
+    )
+    proc = _FakeProc()
+    monkeypatch.setattr("subprocess.Popen", lambda *a, **k: proc)
+
+    class _NeverReadyDriver:
+        name = "xcuitest"
+
+        def await_ready(self, **_: object) -> None:
+            raise XcuitestChannelError("cold-start health poll timed out")
+
+    monkeypatch.setattr("bajutsu.backends.make_driver", lambda *a, **k: _NeverReadyDriver())
+
+    with tempfile.NamedTemporaryFile(suffix=".xctestrun") as f:
+        plistlib.dump({"__xctestrun_metadata__": {"FormatVersion": 1}, "T": {}}, f)
+        f.flush()
+        eff = _ios_eff(xcuitest=XcuitestConfig(test_runner=f.name), app_path=None)
+        env = XcuitestEnvironment("xcuitest", "UDID-1", env_run=lambda a, extra_env=None: "")
+        env.adopt_runner(None)  # pool owns the runner; cold spawn
+        with pytest.raises(XcuitestChannelError):
+            env.start(eff, Preconditions())
+
+        handle = env.running_handle()  # the live process must still be reachable to terminate
+        assert handle is not None
+        assert handle.driver.name == "xcuitest"
+
+        handle.terminate()
+        assert proc.terminated is True
+
+
 def test_xcuitest_environment_real_device_runner_is_never_cached(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
