@@ -21,8 +21,8 @@ header .brand{font-weight:700}
    nested .cfgctrls/.viewtabs sizing needed). margin-left:auto right-aligns the whole group. */
 .brandctrls{display:flex;align-items:center;gap:.3rem;flex-wrap:wrap;margin-left:auto}
 /* .toptabs holds exactly two flex items: .cfgctrls (config controls) then .viewtabs (the view tabs).
-   flex-wrap so, on a browser too narrow for one line, the second item drops onto its own row as a
-   whole instead of splitting mid-group; .cfgctrls comes first so it's what stays on the shared row. */
+   flex-wrap lets .viewtabs (flex-basis:100%) always sit on its own line below .cfgctrls, so the
+   view tabs are the header's third row (below .brandrow and .cfgctrls) at every width. */
 .toptabs{display:flex;align-items:center;gap:.3rem;flex-wrap:wrap}
 /* Config controls (name, Open config, View, project switcher): one flex item so a narrow header
    wraps it entirely onto its own row rather than interleaving it with the view tabs. flex-wrap
@@ -33,11 +33,12 @@ header .brand{font-weight:700}
    itself a flex ITEM of .toptabs rather than a direct child, would inflate .cfgctrls's own sizing
    and overflow the header instead of letting .cfgname's own overflow:hidden ellipsis do its job. */
 .cfgctrls{display:flex;align-items:center;gap:.3rem;min-width:0}
-/* The view tabs (Record, Replay, …): the other .toptabs flex item. Unlike .cfgctrls it has no
-   atomicity to preserve, so it wraps its own buttons onto further lines at any width (matching the
-   pre-existing behavior individual tabs already had) rather than overflowing when it doesn't fit
-   even on a fresh full-width row of its own. */
-.viewtabs{display:flex;align-items:center;gap:.3rem;flex-wrap:wrap;min-width:0}
+/* The view tabs (Record, Replay, …): the other .toptabs flex item. flex-basis:100% forces it onto
+   its own line below .cfgctrls, making it the header's third row at every width. Unlike .cfgctrls it
+   has no atomicity to preserve, so it wraps its own buttons onto further lines when it doesn't fit
+   even on a fresh full-width row of its own. The top border + padding is the divider separating this
+   third row from the config controls above; padding-top offsets the border so the tabs don't shift up. */
+.viewtabs{display:flex;align-items:center;gap:.3rem;flex-wrap:wrap;flex-basis:100%;min-width:0;border-top:1px solid var(--line);padding-top:.4rem}
 /* white-space:nowrap on every pill button/tab: a flex item's default min-width:auto otherwise lets
    flex-shrink compress it below its label's natural width by wrapping the text onto two lines —
    an overflowing *group* should wrap onto a new row instead of an individual button's own label. */
