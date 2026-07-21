@@ -37,8 +37,8 @@ configuration.
 
 That mismatch surfaces as friction the first time anyone reaches for XCUITest. A user must run
 `make -C demos/showcase runner-build` (or write an equivalent `xcodebuild build-for-testing`
-command), find the
-`.xctestrun` deep under a `DerivedData` products directory, and paste that path into every target's
+command), find the `.xctestrun` deep under a `DerivedData` products directory, and paste that
+path into every target's
 config — for example `testRunner: ../../BajutsuKit/Runner/build/dd/Build/Products/BajutsuRunner.xctestrun`.
 A fresh clone has no such artifact, so the path a config names does not exist until the build runs,
 and the runner is rebuilt in each new checkout even though the bytes are the same everywhere. The
@@ -81,12 +81,16 @@ own directory, so the test bundles beside it must ship together. The bundle ther
 whole built-products directory — the `.xctestrun` plus the runner and host `.app`/`.xctest` bundles
 `xcodebuild build-for-testing` emits — under a package-data directory such as
 `bajutsu/_xcuitest_runner/`, located at runtime by a path relative to the package, exactly as
-`bajutsu/templates/` is. Hatchling already packages every non-Python file that lives inside the
-`bajutsu` package tree by default — no explicit `force-include` entry exists for `templates/` in
-`pyproject.toml`. Placing the runner products under `bajutsu/_xcuitest_runner/` before the wheel
-build runs lets that same default packaging pick them up; an explicit `force-include` entry is
-needed only if the release pipeline instead builds them outside the package tree. Only the
-Simulator runner ships. A device runner must be signed with the operator's Apple Developer team
+`bajutsu/templates/` is. Hatchling's default wheel packaging is VCS-aware: it silently drops any file
+matched by a `.gitignore` pattern unless `pyproject.toml` sets `artifacts` to pull it back in — a
+different knob from `force-include`, which only covers files living outside the package tree. The
+repository's root `.gitignore` already excludes `build/` and `DerivedData/` at any depth, the very
+names `xcodebuild`'s own output directory carries (as in the `.../Runner/build/dd/Build/Products/...`
+path quoted above), so the release pipeline must either lay the products out under a package-data
+path with no gitignored segment or declare an `artifacts` entry for them; otherwise Hatchling drops
+the runner from the wheel with no error, and the base wheel's Linux install never exercises XCUITest
+to catch the gap. Only the Simulator runner ships. A device runner must be signed with the
+operator's Apple Developer team
 ([BE-0288](../BE-0288-ios-device-signing-batch-build/BE-0288-ios-device-signing-batch-build.md)),
 which Bajutsu cannot do at release time, so `xcuitest.deviceType: device` keeps requiring an
 explicit `testRunner` and reports a clear error when none is given rather than falling back to a
