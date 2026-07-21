@@ -6,9 +6,9 @@
 :root{--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace}
 *{box-sizing:border-box}body{margin:0;font:14px/1.5 system-ui,sans-serif;background:var(--bg2);color:var(--fg);display:flex;flex-direction:column;height:100vh;overflow:hidden}
 header{flex:0 0 auto;z-index:10;display:flex;align-items:center;gap:1rem;padding:.55rem 1rem;background:var(--bg);border-bottom:1px solid var(--line)}
-/* Grow to fill the header so both rows it stacks (.brandrow, .toptabs) span the full width — that
-   lets each row's own right-aligned control (the theme picker in .brandrow) reach the header's
-   trailing edge instead of floating at the header's vertical centre. */
+/* Grow to fill the header so .brandrow spans the full width — that lets its right-aligned
+   .brandctrls group (Settings, Edit, theme picker) reach the header's trailing edge instead of
+   floating at the header's vertical centre. */
 header .brandcol{display:flex;flex-direction:column;gap:.4rem;flex:1;min-width:0}
 /* Title and the build badge share a baseline-aligned row so the version sits quietly beside "bajutsu".
    flex-wrap so .brandctrls (Settings, Edit, theme picker) drops to its own line rather than
