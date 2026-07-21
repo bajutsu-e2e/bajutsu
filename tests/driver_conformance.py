@@ -56,7 +56,7 @@ from bajutsu.drivers import base
 FIELD_ID = "conformance.field"
 
 
-def _field_value(driver: base.Driver) -> str:
+def field_value(driver: base.Driver) -> str:
     """The current text of the conformance field (empty string when it reports none)."""
     return base.resolve_unique(driver.query(), {"id": FIELD_ID})["value"] or ""
 
@@ -283,13 +283,13 @@ class DriverConformanceContract:
         # effect — skip there rather than fail, the same tolerance select_option gives a non-<select>.
         driver = harness.with_screen([])
         driver.tap({"id": FIELD_ID})
-        before = len(_field_value(driver))
+        before = len(field_value(driver))
         driver.type_text("wxyz")
-        typed = len(_field_value(driver))
+        typed = len(field_value(driver))
         if typed <= before:
             pytest.skip("backend does not surface the field value; delete effect not observable")
         driver.delete_text(2)
-        assert len(_field_value(driver)) < typed
+        assert len(field_value(driver)) < typed
 
     def test_tap_point_focuses_the_field_like_a_semantic_tap(
         self, harness: ConformanceHarness
@@ -304,7 +304,7 @@ class DriverConformanceContract:
         # from an empty start) would look identical to "value not observable" and be masked.
         driver.tap({"id": FIELD_ID})
         driver.type_text("a")
-        baseline = len(_field_value(driver))
+        baseline = len(field_value(driver))
         if baseline == 0:
             pytest.skip("backend does not surface the field value; focus effect not observable")
         # Blur by tapping elsewhere, then re-focus by a raw coordinate tap at the field's center: the
@@ -313,7 +313,7 @@ class DriverConformanceContract:
         driver.tap({"id": "elsewhere"})
         driver.tap_point(_field_center(driver))
         driver.type_text("z")
-        assert len(_field_value(driver)) > baseline
+        assert len(field_value(driver)) > baseline
 
     def test_wait_for_is_single_shot(self, harness: ConformanceHarness) -> None:
         # wait_for reflects the current screen only; the deadline loop lives in wait_until.

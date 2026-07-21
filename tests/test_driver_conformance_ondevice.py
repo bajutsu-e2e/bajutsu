@@ -33,12 +33,13 @@ from driver_conformance import (
     ConformanceHarness,
     DriverConformanceContract,
     OnDeviceConformanceHarness,
-    _field_value,
+    field_value,
 )
 
 from bajutsu import simctl
 from bajutsu.config import Effective, ios_bundle_id, load_config, resolve
 from bajutsu.drivers import base
+from bajutsu.drivers.base import deadline_ticks
 from bajutsu.runner.launch import launch_driver
 
 pytestmark = pytest.mark.ondevice
@@ -143,9 +144,17 @@ class TestIdbDriverConformance(DriverConformanceContract):
         driver = harness.with_screen([])
         driver.tap({"id": FIELD_ID})
         text = "こんにちは、World!"
-        before = _field_value(driver)
+        before = field_value(driver)
         driver.type_text(text)
-        after = _field_value(driver)
+        # A single immediate read races the same completion gap `_paste_text_via_companion`'s
+        # docstring describes (send_events acks once idb_companion drains the HID stream, not once
+        # the app has finished pasting) — poll with the shared deadline/backoff skeleton (BE-0118,
+        # BE-0256) instead of asserting on the first read.
+        after = before
+        for _ in deadline_ticks(timeout=10.0, poll_init=0.2, poll_max=1.0):
+            after = field_value(driver)
+            if len(after) > len(before):
+                break
         if len(after) <= len(before):
             pytest.skip("backend does not surface the field value; paste effect not observable")
         assert text in after
