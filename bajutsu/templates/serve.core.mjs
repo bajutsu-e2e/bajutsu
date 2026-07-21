@@ -704,7 +704,10 @@ async function loadScenarioSecrets(){
   const sec=$('#scnsecretsection'),host=$('#scnsecrets-list');if(!sec||!host)return;
   const list=await getJSON('/api/secrets',[]);
   const items=Array.isArray(list)?list:[];
-  host.textContent='';sec.hidden=items.length===0;
+  host.textContent='';
+  // On its own Settings tab the section stays visible; an empty-state line stands in when the bound
+  // config declares no secrets, so the Secrets tab teaches the feature instead of showing a blank body.
+  const empty=$('#scnsecrets-empty');if(empty)empty.hidden=items.length!==0;
   for(const d of items){
     const row=document.createElement('div');row.className='scnsecret';
     row.innerHTML='<label class="keylabel">'+esc(d.name)+'</label>'
@@ -891,12 +894,19 @@ async function saveSettings(){
   // waiting for the modal to reopen or the dropdown to toggle.
   if(provider==='ant')refreshAntLogin();
 }
-// ---- Settings modal: one panel for the provider + API-key controls ----
-function openSettings(){openModal($('#settingsmodal'));$('#apikey').value='';$('#cctoken').value='';setSettingsStatus('','');loadKey();loadCcTok();loadProv();loadScenarioSecrets()}
+// ---- Settings modal: two tabs — the AI provider + API-key controls, and the scenario secrets ----
+// showSettingsTab mirrors the Replay view's showTab (serve.panels.mjs), scoped to the modal so the
+// two .tab idioms don't collide; the AI tab is the entry point openSettings resets to.
+function showSettingsTab(name){
+  document.querySelectorAll('#settingsmodal .tab').forEach(t=>t.classList.toggle('active',t.dataset.settab===name));
+  $('#setpanel-ai').hidden=name!=='ai';$('#setpanel-secrets').hidden=name!=='secrets';
+}
+function openSettings(){openModal($('#settingsmodal'));showSettingsTab('ai');$('#apikey').value='';$('#cctoken').value='';setSettingsStatus('','');loadKey();loadCcTok();loadProv();loadScenarioSecrets()}
 function closeSettings(){closeModal($('#settingsmodal'))}
 $('#opensettings').addEventListener('click',openSettings);
 $('#settingsclose').addEventListener('click',closeSettings);
 $('#settingsmodal').addEventListener('click',e=>{if(e.target===$('#settingsmodal'))closeSettings()});
+document.querySelectorAll('#settingsmodal .tab').forEach(t=>t.addEventListener('click',()=>showSettingsTab(t.dataset.settab)));
 $('#provider').addEventListener('change',renderProv);
 $('#settingssave').addEventListener('click',saveSettings);
 $('#ant-login').addEventListener('click',antLogin);
