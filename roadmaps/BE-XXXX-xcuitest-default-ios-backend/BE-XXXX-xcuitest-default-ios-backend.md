@@ -132,6 +132,17 @@ cost is measured, not assumed.
   fixture still pinned to it. Doing the whole migration in one PR, gated on the Simulator run in Unit
   5, keeps `main` correct at every merge; the cost is one large review, which the unit breakdown
   above is meant to make navigable.
+- **Land Unit 4's idb deletion as a fast-follow after Units 1–3.** A softer split: flip the default
+  and migrate the fixtures first, then delete idb's roughly 60-module surface in a later PR, on the
+  grounds that idb is unused-but-present in between so `main` stays correct. This is rejected for two
+  reasons. First, idb unused-but-present is precisely the *keep idb as a permanent fallback* state
+  the first alternative already rejects: until the follow-up lands, idb stays selectable by `--backend
+  idb` and the `smoke (idb)` lane keeps exercising it, and a deprioritized follow-up tends never to
+  land — so the split risks making the rejected fallback state permanent by default. Second, the
+  deletion is justified *by* Unit 5's Simulator parity evidence: idb is removed because XCUITest is
+  proven to cover every scenario it runs, so separating the deletion from that evidence either strands
+  it in a PR without the proof or duplicates the Simulator run. Bundling keeps "remove idb because
+  parity is proven" a single evidence-gated step.
 
 ## Progress
 
