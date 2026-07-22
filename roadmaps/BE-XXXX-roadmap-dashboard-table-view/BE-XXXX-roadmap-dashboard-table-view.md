@@ -24,9 +24,9 @@ and clicking a column header sorts the whole table by that column, ascending or 
 chosen view persists across visits through the browser's `localStorage`, and the existing search box
 and status-filter chips keep working unchanged in both views. Created and Updated are two columns
 the dashboard has never shown before: each is derived from the item's Git history at build time (the
-earliest and latest commit across both of the item's language files), matching the dashboard's
-existing rule that every fact it shows must trace to a real source rather than a hand-maintained
-field.
+earliest and latest commit across both of the item's language files) rather than added as a new
+hand-set field, so the dashboard need not trust every future edit to keep two dates in sync with the
+truth.
 
 ## Motivation
 
@@ -67,10 +67,14 @@ mutually exclusive, collectively exhaustive (MECE) across these units:
    `--follow` only accepts one path and correctly walks a file's history through the rename every
    item undergoes when CI allocates its real id (`BE-XXXX-<slug>` → `BE-NNNN-<slug>`), and combining
    both files' results is what keeps `updated` correct when only one of the two — say, a
-   Japanese-only wording fix — changes after the other. Every dashboard fact today already traces to
-   a real source — the per-topic progress percentage is derived purely from `Status`, never a
-   hand-set figure — and this keeps that guarantee: no roadmap item file gains a `Created` or
-   `Updated` field a future edit could let drift from the truth. The one prerequisite this adds is
+   Japanese-only wording fix — changes after the other. The dashboard's one firm rule about the data
+   it shows (BE-0094's "Honesty of the data") is to never invent a number with no source in the
+   metadata — true of `Origin`, rendered verbatim when an item sets it, and of the per-topic progress
+   percentage, derived purely from `Status`. A hand-set `Created`/`Updated` pair would not break that
+   rule on day one, but unlike `Origin` — written once at authoring time and rarely revisited — a date
+   pair needs a correct edit on every single future change to the item, making it exactly the kind of
+   field most likely to silently drift from the truth; deriving both from `git log` avoids adding that
+   field at all. The one prerequisite this adds is
    that [`.github/workflows/docs.yml`](../../.github/workflows/docs.yml)'s checkout step must fetch
    full history (`fetch-depth: 0`) instead of its current shallow clone, since `git log` on a
    single-commit checkout would report every item as created and updated on the same day; the
@@ -127,11 +131,11 @@ there enumerates the dashboard's views, update it in the same PR
   toggle keeps both workflows at full strength.
 - **Hand-maintained `Created` / `Updated` metadata fields on each item, updated by the `ideation` and
   `implement-be` skills.** Rejected: it needs a one-time backfill across roughly 300 existing items,
-  and every future edit becomes an opportunity for the field to drift from the file's real history —
-  exactly the class of hand-maintained fact the dashboard has avoided since BE-0094 (the per-topic
-  progress percentage is derived from `Status` alone for the same reason). Deriving both dates from
-  `git log` at build time removes the drift risk entirely, at the cost of a small, recurring increase
-  in the docs workflow's checkout time (full history instead of shallow) on every future build.
+  and — unlike `Origin`, a fact set once at authoring time that rarely goes stale — every future edit
+  becomes an opportunity for a hand-set date pair to drift from the file's real history. Deriving both
+  dates from `git log` at build time removes the drift risk entirely, at the cost of a small, recurring
+  increase in the docs workflow's checkout time (full history instead of shallow) on every future
+  build.
 - **Sort within each topic's card section instead of a flat table.** Rejected: the two motivating
   workflows — "what changed most recently" and "how old is this proposal" — are both roadmap-wide
   questions, and confining sort to one topic at a time would still require opening every section by
