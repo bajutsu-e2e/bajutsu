@@ -111,7 +111,9 @@
 ### ドライバとバックエンドのアーキテクチャ
 
 <!-- GENERATED:proposals-driver-architecture -->
-
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0299](BE-0299-settle-value-condition-wait/BE-0299-settle-value-condition-wait-ja.md) | シナリオ途中の読み取りと idb の settle タイミングに残る読み取り競合を解消する | 提案 |
 <!-- /GENERATED:proposals-driver-architecture -->
 
 ### デバイスクラウド実行
@@ -133,13 +135,17 @@
 ### 検証とカバレッジ
 
 <!-- GENERATED:proposals-verification -->
-
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0298](BE-0298-device-pool-concurrent-real-verification/BE-0298-device-pool-concurrent-real-verification-ja.md) | 並列デバイスプール分離の実機並行検証 | 提案 |
 <!-- /GENERATED:proposals-verification -->
 
 ### オーサリング体験（record / GUI エディタ）
 
 <!-- GENERATED:proposals-authoring -->
-
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0295](BE-0295-record-crawl-real-model-verification/BE-0295-record-crawl-real-model-verification-ja.md) | record と crawl の propose ループに対する実モデル検証 | 提案 |
 <!-- /GENERATED:proposals-authoring -->
 
 ### codegen 網羅性
@@ -149,7 +155,24 @@
 |---|---|---|
 | [BE-0293](BE-0293-codegen-playwright-real-compile/BE-0293-codegen-playwright-real-compile-ja.md) | Playwright（TypeScript）codegen ターゲットの実コンパイル検証 | 提案 |
 | [BE-0294](BE-0294-codegen-uiautomator-real-compile/BE-0294-codegen-uiautomator-real-compile-ja.md) | UI Automator（Kotlin）codegen ターゲットの実コンパイル検証 | 提案 |
+| [BE-0297](BE-0297-codegen-xcuitest-dsl-coverage/BE-0297-codegen-xcuitest-dsl-coverage-ja.md) | XCUITest codegen の実コンパイルカバレッジを DSL 全体へ拡張する | 提案 |
 <!-- /GENERATED:proposals-codegen -->
+
+### 自己修復トリアージ
+
+<!-- GENERATED:proposals-self-healing -->
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0296](BE-0296-triage-ai-real-model-verification/BE-0296-triage-ai-real-model-verification-ja.md) | triage --ai 診断経路の実モデル検証 | 提案 |
+<!-- /GENERATED:proposals-self-healing -->
+
+### AI プロバイダ設定
+
+<!-- GENERATED:proposals-ai-provider -->
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0300](BE-0300-ai-backend-real-api-smoke/BE-0300-ai-backend-real-api-smoke-ja.md) | AI バックエンドアダプタ向けの実 API 契約スモークレーン | 提案 |
+<!-- /GENERATED:proposals-ai-provider -->
 
 ### serve Web UI への CLI 機能の取り込み
 

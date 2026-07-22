@@ -111,7 +111,9 @@ Under consideration — not yet decided. Promote an item to *In progress* once w
 ### Driver & backend architecture
 
 <!-- GENERATED:proposals-driver-architecture -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0299](BE-0299-settle-value-condition-wait/BE-0299-settle-value-condition-wait.md) | Close the read-race gap in mid-scenario reads and idb's settle timing | Proposal |
 <!-- /GENERATED:proposals-driver-architecture -->
 
 ### Device-cloud execution
@@ -133,13 +135,17 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 ### Verification & coverage
 
 <!-- GENERATED:proposals-verification -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0298](BE-0298-device-pool-concurrent-real-verification/BE-0298-device-pool-concurrent-real-verification.md) | Real concurrent-device verification of parallel device-pool isolation | Proposal |
 <!-- /GENERATED:proposals-verification -->
 
 ### Authoring experience (record / GUI editor)
 
 <!-- GENERATED:proposals-authoring -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0295](BE-0295-record-crawl-real-model-verification/BE-0295-record-crawl-real-model-verification.md) | Real-model verification of the record and crawl propose loops | Proposal |
 <!-- /GENERATED:proposals-authoring -->
 
 ### codegen coverage
@@ -149,7 +155,24 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 |---|---|---|
 | [BE-0293](BE-0293-codegen-playwright-real-compile/BE-0293-codegen-playwright-real-compile.md) | Real-compile verification for the Playwright (TypeScript) codegen target | Proposal |
 | [BE-0294](BE-0294-codegen-uiautomator-real-compile/BE-0294-codegen-uiautomator-real-compile.md) | Real-compile verification for the UI Automator (Kotlin) codegen target | Proposal |
+| [BE-0297](BE-0297-codegen-xcuitest-dsl-coverage/BE-0297-codegen-xcuitest-dsl-coverage.md) | Expand XCUITest codegen's real-compile coverage to the full DSL surface | Proposal |
 <!-- /GENERATED:proposals-codegen -->
+
+### Self-healing triage
+
+<!-- GENERATED:proposals-self-healing -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0296](BE-0296-triage-ai-real-model-verification/BE-0296-triage-ai-real-model-verification.md) | Real-model verification of the triage --ai diagnosis path | Proposal |
+<!-- /GENERATED:proposals-self-healing -->
+
+### AI provider configuration
+
+<!-- GENERATED:proposals-ai-provider -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0300](BE-0300-ai-backend-real-api-smoke/BE-0300-ai-backend-real-api-smoke.md) | Real-API contract smoke lane for the AI backend adapters | Proposal |
+<!-- /GENERATED:proposals-ai-provider -->
 
 ### Surfacing CLI features in the serve Web UI
 
