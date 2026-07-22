@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
-| Topic | Hosting the web UI (cloud / self-hosted) |
+| Topic | Verification & coverage |
 | Related | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md) |
 <!-- /BE-METADATA -->
 
@@ -47,16 +47,17 @@ Proposal altitude. The work is MECE along the units below.
   the kind of flakiness this item exists to avoid, over a far more sensitive secret than an OAuth
   client secret. Instead, intercept at the `httpx` transport boundary (`respx` or a custom
   `httpx.MockTransport`) and replay the captured real responses back through the real
-  `GitHubOAuthClient`/`OAuth2Client`/`_fetch_orgs`, so an Authlib call-signature break or a GitHub
-  response-shape change is still caught, with no live network call or credential needed in CI.
+  `GitHubOAuthClient`/`OAuth2Client`/`_fetch_orgs`, so an Authlib call-signature break against that
+  known-real shape is still caught with no live network call or credential needed in CI — though a
+  *future* GitHub response-shape change stays invisible until the fixture is recaptured.
 - **Keep the mocked-client tests as they are.** `FakeOAuthClient`, `_RaisingOAuthClient`, and
   `_PagingClient` already cover the login flow's own logic and its error paths; this item adds a
   captured-real-response fixture alongside them rather than replacing them.
 
 ## Alternatives considered
 
-- **Drive a real, scripted headless browser login in CI.** This was the first design considered
-  here, but the initial authorization `code` can only come from a human completing GitHub's hosted
+- **Drive a real, scripted headless browser login in CI.** This alternative was the first design
+  considered here, but the initial authorization `code` can only come from a human completing GitHub's hosted
   consent page — scripting that from CI means holding and driving a live account's credentials, with
   GitHub's anti-automation defenses (2FA, device verification, CAPTCHA) able to fire unpredictably.
   That is a worse flakiness and secret-handling problem than the one this item sets out to solve.
