@@ -108,8 +108,18 @@ runner already respects, never a fixed sleep.
    projection in `bajutsu/drivers/coordinate_tree.py` keyed to whichever property this step reads —
    stops changing between two consecutive reads, or the same wall-clock deadline elapses, and thread
    it into `_ScreenRead`'s read (`bajutsu/orchestrator/loop.py:101`) so `extract` consumes the
-   settled value rather than whichever one was still propagating when the single read fired. This
-   trades away part of the reason `_ScreenRead`'s read is deferred and taken at most once in the
+   settled value rather than whichever one was still propagating when the single read fired. Because
+   `.get()` caches its result on the first call, this poll has to be selected when `_ScreenRead` is
+   constructed (`bajutsu/orchestrator/loop.py:591`) or on its first call, keyed off whether
+   `interp_step.extract` is set — not inside the `extract` branch's own call
+   (`bajutsu/orchestrator/loop.py:613`), which runs after a `screenChanged` capture's unconditional,
+   non-polling call at line 592 has already populated the cache on a step that carries both. The
+   same reasoning extends to a non-mutating step (`assert_`, `wait`) that also carries `extract`:
+   its own read becomes `_ScreenRead`'s seed (from `assert_`'s read at `bajutsu/orchestrator/loop.py:245`,
+   or `wait`'s settled tree) before `_ScreenRead` is ever constructed, so no decision made at
+   construction time can retroactively poll a seed that already exists — for those step kinds the
+   property-aware poll has to be applied at that earlier read site instead, not inside `_ScreenRead`.
+   This trades away part of the reason `_ScreenRead`'s read is deferred and taken at most once in the
    first place: on adb a screen read (`uiautomator dump`) is the dominant per-step cost, roughly
    2.4 seconds against 0.1–0.3 seconds for the same read on idb, so polling it until stable can
    multiply that cost per `extract` step on a slow-to-settle screen, up to the same wall-clock
@@ -141,11 +151,20 @@ runner already respects, never a fixed sleep.
    `FakeClock`-driven addition to `tests/test_idb.py` confirming `IdbDriver._settle` polls past the
    old fixed-poll cap while the tree keeps moving and gives up at its wall-clock deadline rather than
    at a fixed count, so the conversion is proven by a fast, deterministic test rather than only by
-   on-device reruns. Then confirm the on-device showcase `extract` scenario and the iOS conformance
+   on-device reruns. Then run the on-device showcase `extract` scenario and the iOS conformance
    suite that flaked during this item's own motivation (`test_delete_text_reduces_the_field_length`,
-   `test_tap_point_focuses_the_field_like_a_semantic_tap`) pass repeatedly in CI rather than only
-   after a rerun — the on-device suite's role here is to confirm the real flakes stop reproducing,
-   not to host either regression test above.
+   `test_tap_point_focuses_the_field_like_a_semantic_tap`) repeatedly in CI to confirm the flakes
+   stop reproducing there too — without treating that alone as proof specific to units 1–3. Both
+   named conformance tests drive the Driver directly (`driver.tap()`, `type_text`, `delete_text`,
+   `tap_point`, and a bare `driver.query()` via `field_value`/`_field_center` in
+   `tests/driver_conformance.py:59`–`67`), never through `bajutsu/orchestrator/loop.py`'s
+   `assert`/`extract` steps that units 1–3 change. Unit 4 reaches only the leading
+   `driver.tap({"id": FIELD_ID})` each test performs first, since `_settle()` is invoked solely from
+   `_center()` — the selector-based `tap`/`double_tap`/`long_press` path — never from `type_text`,
+   `delete_text`, `tap_point`, or a bare `query()` (the same holds for `AdbDriver`). Whether that
+   widened margin alone is enough to stop these two tests flaking is exactly what the repeated CI
+   runs test; the on-device showcase `extract` scenario is the one on-device signal that does
+   exercise units 1–3, since running a scenario always goes through the orchestrator.
 
 ## Alternatives considered
 
