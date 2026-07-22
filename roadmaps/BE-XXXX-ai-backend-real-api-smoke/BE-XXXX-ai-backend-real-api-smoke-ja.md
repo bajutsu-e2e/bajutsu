@@ -1,6 +1,6 @@
 [English](BE-XXXX-ai-backend-real-api-smoke.md) · **日本語**
 
-# BE-XXXX — AI backend アダプタ向けの実 API 契約 smoke レーン
+# BE-XXXX — AI バックエンド アダプタ向けの実 API 契約 smoke レーン
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
@@ -14,14 +14,14 @@
 
 ## はじめに
 
-vendor 非依存の AI backend
+ベンダー中立な AI バックエンド
 （[BE-0104](../BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend-ja.md)）に触れる
 テスト、つまり Anthropic API への直接アダプタ、Amazon Bedrock アダプタ、`ant` CLI アダプタ
 （[BE-0163](../BE-0163-ant-cli-oauth-provider/BE-0163-ant-cli-oauth-provider-ja.md)）に触れるテストは
 すべて、手書きの代役（`tests/conftest.py` の `FakeAnthropic` / `FakeBlock`）を経由するだけで、実際の
 サービスを一度も通りません。テストスイートと CI のどちらにも、Bajutsu 自身のアダプタコードを通して
 Anthropic API / Bedrock / `ant` CLI に実際の呼び出しを完了させるものは1つもありません。本項目は、
-opt-in で API キーによりゲートされた、ゲート対象外の smoke レーンを1つ追加し、実際のレスポンスを vendor 非依存の
+opt-in で API キーによりゲートされた、ゲート対象外の smoke レーンを1つ追加し、実際のレスポンスをベンダー中立な
 リクエスト/レスポンス契約へアダプタが正しく変換できることを、モデルを `run` の判定に一切近づける
 ことなく証明します。
 
