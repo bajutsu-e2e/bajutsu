@@ -53,21 +53,29 @@ reads at most once per step. Whichever of these runs right after an action whose
 propagating inherits the exact race `_evaluate_expect` was built to close, without the fix that
 closes it.
 
-The idb settle gap is a difference in tuning, not in mechanism, and sits in the same code path
-BE-0245 already touched on the Android side. `IdbDriver` and `AdbDriver` share a settle wait
-(`bajutsu/drivers/coordinate_tree.py`) that polls until an identifier-and-frame projection of the
-tree — deliberately excluding value, traits, and label — stops changing, so an ordinary data update
-on an otherwise static screen is not mistaken for the motion of a real gesture still landing.
-BE-0245 converted `AdbDriver._settle` from a fixed poll count to a poll bounded by an
-eight-second wall-clock deadline (`bajutsu/drivers/adb.py:230`), specifically because a fast read —
-the resident channel BE-0245 itself introduced — could otherwise collapse the settle window and let
-a still-moving tree pass as settled. `IdbDriver._settle` (`bajutsu/drivers/idb.py:335`–`336`) never
-received the same conversion: it still polls a fixed three times at a fifty-millisecond interval, a
-one-hundred-fifty-millisecond ceiling regardless of how loaded the machine running it is — fifty
-times narrower than the Android side's eight-second budget. A settle projection that excludes value
-already cannot detect a still-propagating value change, which is exactly the gap the paragraph above
-addresses; this second gap is narrower still, in how much margin idb grants even the layout stability
-its own projection is built to detect.
+The idb settle gap is about the polling strategy `_settle` uses, not about what the two backends
+share. `bajutsu/drivers/coordinate_tree.py`'s docstring is explicit that `_settle` itself stays
+per-backend — idb bounds its poll by a fixed read count, adb by a wall-clock deadline, "a genuine
+strategy difference rather than shared tuning" — so `IdbDriver` and `AdbDriver` each keep their own
+`_settle` today, and this item does not propose hoisting the method itself into the shared base.
+What the two backends do share is the projection each `_settle` polls against: `_stable_key`
+(`bajutsu/drivers/coordinate_tree.py:117`) reduces the tree to identifier and frame only,
+deliberately excluding value, traits, and label, so an ordinary data update on an otherwise static
+screen is not mistaken for the motion of a real gesture still landing. BE-0245 converted
+`AdbDriver._settle`'s own strategy from a fixed poll count to a poll bounded by an eight-second
+wall-clock deadline (`bajutsu/drivers/adb.py:230`), specifically because a fast read — the resident
+channel BE-0245 itself introduced — could otherwise collapse the settle window and let a
+still-moving tree pass as settled. `IdbDriver._settle` (`bajutsu/drivers/idb.py:335`–`336`) kept the
+strategy BE-0245 moved away from on the Android side: it still polls a fixed three times at a
+fifty-millisecond interval, a one-hundred-fifty-millisecond ceiling regardless of how loaded the
+machine running it is — fifty times narrower than the Android side's eight-second budget. A fixed
+poll count scales no better on idb than it did on adb before BE-0245, and nothing in the documented
+reason for keeping `_settle` per-backend argues for leaving one backend on a strategy already known
+to run out on a slow machine; unit 4 below asks idb to adopt adb's wall-clock shape while keeping its
+own `_settle` method, the same per-backend split the docstring calls for. A settle projection that
+excludes value already cannot detect a still-propagating value change, which is exactly the gap the
+paragraph above addresses; this second gap is narrower still, in how much margin idb grants even the
+layout stability its own projection is built to detect.
 
 ## Detailed design
 
@@ -87,14 +95,18 @@ runner already respects, never a fixed sleep.
    step-level `assert` gets the same condition wait the trailing `expect` block already has, instead
    of judging a value against one snapshot.
 
-3. **Give `extract`'s read the same forgiveness, on its own terms.** An `extract` step has no
-   assertion to satisfy — it copies a value out of the tree into a variable — so unit 1's
-   pass-or-fail loop does not fit it directly. Add a parallel read that instead polls until the
-   value-bearing projection of the tree it reads (identifier, frame, *and* value — a superset of the
-   settle projection in `bajutsu/drivers/coordinate_tree.py`) stops changing between two consecutive
-   reads, or the same wall-clock deadline elapses, and thread it into `_ScreenRead`'s read
-   (`bajutsu/orchestrator/loop.py:101`) so `extract` consumes the settled value rather than
-   whichever one was still propagating when the single read fired.
+3. **Give `extract`'s read the same forgiveness, on its own terms, keyed to the property it actually
+   reads.** An `extract` step has no assertion to satisfy — it copies a value out of the tree into a
+   variable — so unit 1's pass-or-fail loop does not fit it directly. That value is not always the
+   element's `value`: `_run_extract` reads `el.get(ext.prop)` (`bajutsu/orchestrator/evidence_rules.py:83`)
+   for whatever property the step's `extract` names, so `ext.prop` can be `label` or `traits` as
+   readily as `value` — the item's own motivating case, a counter reflected into a label, extracts
+   `label`, not `value`. Add a parallel read that instead polls until a projection of the tree —
+   identifier, frame, and the specific property `ext.prop` names, a superset of the settle
+   projection in `bajutsu/drivers/coordinate_tree.py` keyed to whichever property this step reads —
+   stops changing between two consecutive reads, or the same wall-clock deadline elapses, and thread
+   it into `_ScreenRead`'s read (`bajutsu/orchestrator/loop.py:101`) so `extract` consumes the
+   settled value rather than whichever one was still propagating when the single read fired.
 
 4. **Convert `IdbDriver._settle` to a wall-clock deadline.** Replace its fixed
    `_SETTLE_MAX_POLLS` / `_SETTLE_POLL_S` loop (`bajutsu/drivers/idb.py:335`–`336`) with the same
@@ -104,22 +116,25 @@ runner already respects, never a fixed sleep.
    pre-action wait, not the runner's post-action read.
 
 5. **Verify against the exact failures this item traces to.** Add a regression test that reproduces
-   the `extract`-after-tap race in `tests/test_driver_conformance_ondevice.py` or an equivalent
-   fast-gate test with a driver double that mirrors a value into the tree one read late, and confirm
-   the on-device showcase `extract` scenario and the iOS conformance suite that flaked during this
-   item's own motivation (`test_delete_text_reduces_the_field_length`,
+   the `extract`-after-tap race in `tests/test_driver_conformance.py`, the `FakeDriver`-based
+   fast-gate suite, with a driver double that mirrors a value into the tree one read late; a double
+   fits that suite naturally, while `tests/test_driver_conformance_ondevice.py` drives only the real
+   iOS Simulator backends and never a double. Then confirm the on-device showcase `extract` scenario
+   and the iOS conformance suite that flaked during this item's own motivation
+   (`test_delete_text_reduces_the_field_length`,
    `test_tap_point_focuses_the_field_like_a_semantic_tap`) pass repeatedly in CI rather than only
-   after a rerun.
+   after a rerun — the on-device suite's role here is to confirm the real flakes stop reproducing,
+   not to host the driver-double regression test.
 
 ## Alternatives considered
 
-- **Make the settle projection in `bajutsu/drivers/coordinate_tree.py` include value everywhere,
-  instead of adding a separate value-aware read for `extract`.** Rejected: that projection is
-  shared by every action's pre-motion settle wait, not only the post-step read `extract` consumes,
-  and its docstring states the reason it excludes value today — an ordinary data update on an
-  otherwise static screen must not trigger extra polls before every action. Widening it would
-  reintroduce exactly that spurious-poll cost on every action, not only the one step that needed the
-  fix.
+- **Make the settle projection in `bajutsu/drivers/coordinate_tree.py` include value, traits, and
+  label everywhere, instead of adding a separate, property-aware read for `extract`.** Rejected:
+  that projection is shared by every action's pre-motion settle wait, not only the post-step read
+  `extract` consumes, and its docstring states the reason it excludes value, traits, and label
+  today — an ordinary data update on an otherwise static screen must not trigger extra polls before
+  every action. Widening it would reintroduce exactly that spurious-poll cost on every action, not
+  only the one step that needed the fix.
 
 - **Duplicate a retry loop at each read call site instead of a shared helper.** Rejected: a
   hand-written poll at `assert`'s call site and another at `extract`'s would let the two drift out of
@@ -139,7 +154,7 @@ runner already respects, never a fixed sleep.
 
 - [ ] Generalize `_evaluate_expect`'s poll into a shared, reusable retry.
 - [ ] Route a mid-scenario `assert` step through that shared retry.
-- [ ] Give `extract`'s read the same forgiveness, on its own terms (a value-aware settle).
+- [ ] Give `extract`'s read the same forgiveness, on its own terms (a property-aware settle).
 - [ ] Convert `IdbDriver._settle` to a wall-clock deadline, matching `AdbDriver._settle`.
 - [ ] Verify against the exact failures this item traces to (regression test + repeated CI runs).
 
