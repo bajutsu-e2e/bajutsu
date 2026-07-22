@@ -751,4 +751,76 @@ def test_wait_guard_warns_once_when_it_gives_up(caplog) -> None:  # type: ignore
     assert sum("gave up" in r.getMessage() for r in caplog.records) == 1
 
 
+# --- live "what am I waiting for" progress ---
+
+
+def test_describe_wait_renders_each_condition() -> None:
+    """describe_wait states the awaited condition in the same wording as the timeout reason, for
+    every wait shape — so the live progress line and a later timeout read consistently."""
+    from bajutsu.orchestrator.waits import describe_wait
+    from bajutsu.scenario import Wait
+
+    def desc(data: dict[str, object]) -> str:
+        return describe_wait(Wait.model_validate(data))
+
+    assert desc({"for": {"id": "home.title"}, "timeout": 1.0}) == "for id='home.title'"
+    assert desc({"until": {"gone": {"id": "spinner"}}, "timeout": 1.0}) == "until gone id='spinner'"
+    assert desc({"until": "settled", "timeout": 1.0}) == "until settled"
+    assert desc({"until": "screenChanged", "timeout": 1.0}) == "until screenChanged"
+    assert (
+        desc({"until": {"request": {"method": "GET", "path": "/login"}}, "timeout": 1.0})
+        == "until request GET /login"
+    )
+
+
+def test_wait_tick_fires_once_even_when_immediately_satisfied() -> None:
+    """A wait that resolves on its first poll must still surface its condition once, so the common
+    fast case is not invisible: the entry tick fires before the first condition check."""
+    from bajutsu.orchestrator.waits import _wait
+    from bajutsu.scenario import Wait
+
+    driver = FakeDriver([el("ready", "R")])  # target already present
+    seen: list[float] = []
+    clock = _LogicalClock()
+    w = Wait.model_validate({"for": {"id": "ready"}, "timeout": 5.0})
+    ok, _reason, _tree = _wait(driver, w, clock, on_tick=seen.append)
+    assert ok
+    assert len(seen) == 1  # only the entry tick — no polling happened
+    assert seen[0] == 5.0  # remaining == the full timeout at entry
+
+
+def test_wait_ticks_count_down_across_a_long_wait() -> None:
+    """While a wait is pending, ticks keep arriving (throttled, ~1s apart) with a shrinking
+    remaining budget, so the run log shows the wait is still blocked and on what."""
+    from bajutsu.orchestrator.waits import _wait
+    from bajutsu.scenario import Wait
+
+    clock = _LogicalClock()
+    seen: list[float] = []
+    w = Wait.model_validate({"for": {"id": "target"}, "timeout": 5.0})
+    # Reveal the target only after 3 logical seconds, so the wait stays pending across several ticks.
+    ok, _reason, _tree = _wait(_slow_render_driver(clock, 3.0), w, clock, on_tick=seen.append)
+    assert ok
+    # Entry tick (5.0) plus ~one per second while pending; throttled, so far fewer than the poll count.
+    assert len(seen) >= 3
+    assert seen[0] == 5.0
+    assert seen == sorted(seen, reverse=True)  # remaining only ever decreases
+    assert all(r >= 0.0 for r in seen)
+
+
+def test_run_scenario_streams_what_the_wait_awaits(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """End to end: with progress wired, a pending wait streams a `waiting <condition>` line naming
+    the awaited selector, not a bare `wait`."""
+    driver = FakeDriver([el("a", "A")])  # the awaited row never appears -> the wait times out
+    lines: list[str] = []
+    result = run_scenario(
+        driver,
+        _scenario({"name": "x", "steps": [{"wait": {"for": {"id": "ready"}, "timeout": 0.3}}]}),
+        clock=FakeClock(),
+        progress=lines.append,
+    )
+    assert not result.ok
+    assert any("waiting for id='ready'" in ln for ln in lines)
+
+
 # --- if / forEach control flow ---

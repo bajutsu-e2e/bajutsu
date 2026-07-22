@@ -5,18 +5,68 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from bajutsu import assertions
 from bajutsu.drivers import base
 from bajutsu.elements import shows_app_ui
 from bajutsu.orchestrator.types import AlertEvent, BlockedHandler, Clock, NetworkSource, _no_network
-from bajutsu.scenario import Gone, Wait, WaitRequest
+from bajutsu.scenario import Gone, Selector, Wait, WaitRequest
 
 _logger = logging.getLogger(__name__)
 
 _POLL = 0.05
 _SETTLE_POLLS = 2  # consecutive unchanged polls that count as "settled"
+
+# Min seconds between live "still waiting …" lines. Waits poll every _POLL (50ms); a per-poll
+# progress line would flood the run log, so the heartbeat below throttles it to a readable cadence.
+_TICK_INTERVAL = 1.0
+
+# Emits a run-log line while a wait is pending; the float is the seconds left before timeout. Bound
+# by the caller (the run loop) to prefix the scenario/step and format the condition.
+WaitTick = Callable[[float], None]
+
+
+def _sel_desc(sel: Selector) -> str:
+    """Render a selector as `key=value` pairs, matching the assertion report's wording."""
+    return ", ".join(f"{k}={v!r}" for k, v in sel.as_selector().items())
+
+
+def describe_wait(w: Wait) -> str:
+    """A human-readable description of what a wait is blocked on, for live progress.
+
+    Mirrors the wording of `_wait`'s timeout reasons — `for <sel>`, `until gone <sel>`,
+    `until request <label>`, `until settled` / `until screenChanged` — so a run log reads
+    consistently whether the wait is still pending or has timed out.
+    """
+    if w.for_ is not None:
+        return f"for {_sel_desc(w.for_)}"
+    if isinstance(w.until, Gone):
+        return f"until gone {_sel_desc(w.until.gone)}"
+    if isinstance(w.until, WaitRequest):
+        return f"until request {assertions.request_label(w.until.request)}"
+    return f"until {w.until}"  # "settled" | "screenChanged"
+
+
+@dataclass
+class _Heartbeat:
+    """Throttled emitter of "still waiting …" lines so a pending wait shows what it awaits.
+
+    Purely a display aid, fed the poll clock via `tick`: it never reads the tree or influences the
+    wait's pass/fail (prime directive 1). The first `tick` always fires, so even a wait that resolves
+    on its first poll surfaces its condition once; later ticks are spaced by `_TICK_INTERVAL`.
+    """
+
+    emit: WaitTick
+    deadline: float
+    _next: float = 0.0  # clock time of the next allowed emit; 0 => fire on the first tick
+
+    def tick(self, now: float) -> None:
+        if now >= self._next:
+            self._next = now + _TICK_INTERVAL
+            self.emit(max(0.0, self.deadline - now))
+
 
 # Mid-wait system-alert guard (BE-0269). A SpringBoard-level prompt collapses the iOS app-scoped tree
 # to bare content (`not shows_app_ui`); rather than let a wait burn its whole timeout before the
@@ -143,27 +193,32 @@ def _wait(
     trace: WaitTrace | None = None,
     on_blocked: BlockedHandler | None = None,
     alerts: list[AlertEvent] | None = None,
+    on_tick: WaitTick | None = None,
 ) -> tuple[bool, str, list[base.Element] | None]:
     """Condition wait. Polls query() (or the observed network) until satisfied instead
-    of a fixed sleep.
+     of a fixed sleep.
 
-    When `trace` is given (a `for` wait only), each poll is recorded into it so a timeout can be
-    diagnosed from artifacts (BE-0231 Unit 1); it never changes the wait's outcome.
+     When `trace` is given (a `for` wait only), each poll is recorded into it so a timeout can be
+     diagnosed from artifacts (BE-0231 Unit 1); it never changes the wait's outcome.
 
-    When `on_blocked` is given, the branches a system alert can *stall* — `for`, `settled`, and
-    `screenChanged` (where a collapsed tree keeps the condition unmet and would otherwise burn the
-    whole timeout) — watch the already-fetched tree for the collapsed-tree signature of a blocking
-    prompt and ask the guard to clear it mid-wait, then resume polling against the *same* `deadline`
-    (BE-0269). The condition check still decides pass/fail; the guard only accelerates recovery, and
-    dismissed alerts are appended to `alerts` (the step's outcome list) for the report. `gone` is
-    *not* guarded: a collapsed tree already satisfies "gone" and returns at once, so no timeout is
-    wasted and there is nothing to accelerate (guarding it would mean redefining "gone" to reject a
-    blank screen). `request` polls the network, not the screen, so it is not guarded either.
+     When `on_blocked` is given, the branches a system alert can *stall* — `for`, `settled`, and
+     `screenChanged` (where a collapsed tree keeps the condition unmet and would otherwise burn the
+     whole timeout) — watch the already-fetched tree for the collapsed-tree signature of a blocking
+     prompt and ask the guard to clear it mid-wait, then resume polling against the *same* `deadline`
+     (BE-0269). The condition check still decides pass/fail; the guard only accelerates recovery, and
+     dismissed alerts are appended to `alerts` (the step's outcome list) for the report. `gone` is
+     *not* guarded: a collapsed tree already satisfies "gone" and returns at once, so no timeout is
+     wasted and there is nothing to accelerate (guarding it would mean redefining "gone" to reject a
+     blank screen). `request` polls the network, not the screen, so it is not guarded either.
 
-    Returns `(ok, reason, tree)` where `tree` is the last screen the wait queried — the settled
-    device state, since nothing actuates in a wait. The caller reuses it as the step's `after`
-    snapshot instead of re-querying (BE-0259). It is `None` for the `request` variant, which polls
-    the observed network rather than the tree, so there is no screen read to hand back.
+    When `on_tick` is given, a throttled "still waiting …" line is emitted while the wait is pending:
+    once on entry — so even an instantly-satisfied wait surfaces its condition — then every
+    `_TICK_INTERVAL` until it resolves. It is display only and never affects the outcome.
+
+     Returns `(ok, reason, tree)` where `tree` is the last screen the wait queried — the settled
+     device state, since nothing actuates in a wait. The caller reuses it as the step's `after`
+     snapshot instead of re-querying (BE-0259). It is `None` for the `request` variant, which polls
+     the observed network rather than the tree, so there is no screen read to hand back.
     """
     timeout = _effective_timeout(w)
     start = clock.now()
@@ -181,6 +236,11 @@ def _wait(
         if on_blocked is not None
         else None
     )
+    hb = _Heartbeat(on_tick, deadline) if on_tick is not None else None
+    if hb is not None:
+        # Fire once up front so the awaited condition is shown even for a wait that resolves on its
+        # first poll (the common fast case), before any per-loop tick has had a chance to run.
+        hb.tick(start)
     if w.for_ is not None:
         target = w.for_.as_selector()
         if trace is not None:
@@ -201,6 +261,8 @@ def _wait(
                 if trace is not None:
                     trace.elements_at_timeout = len(elements)
                 return False, f"wait timeout: for {target} ({timeout}s)", elements
+            if hb is not None:
+                hb.tick(clock.now())
             _adaptive_sleep(clock, t0)
     if isinstance(w.until, Gone):
         # Not guarded (see the docstring): a collapsed tree already satisfies "gone", so this branch
@@ -213,6 +275,8 @@ def _wait(
                 return True, "", elements
             if clock.now() >= deadline:
                 return False, f"wait timeout: gone {target} ({timeout}s)", elements
+            if hb is not None:
+                hb.tick(clock.now())
             _adaptive_sleep(clock, t0)
     if isinstance(w.until, WaitRequest):
         req = w.until.request
@@ -224,9 +288,11 @@ def _wait(
             if clock.now() >= deadline:
                 label = assertions.request_label(req)
                 return False, f"wait timeout: request {label} ({timeout}s)", None
+            if hb is not None:
+                hb.tick(clock.now())
             _adaptive_sleep(clock, t0)
     if w.until == "settled":
-        return _wait_settled(driver, deadline, clock, gate)
+        return _wait_settled(driver, deadline, clock, gate, hb)
     # until == "screenChanged"
     before = driver.query()
     if gate is not None:
@@ -240,6 +306,8 @@ def _wait(
             gate.observe(current)
         if clock.now() >= deadline:
             return False, f"wait timeout: screenChanged ({timeout}s)", current
+        if hb is not None:
+            hb.tick(clock.now())
         _adaptive_sleep(clock, t0)
 
 
@@ -248,6 +316,7 @@ def _wait_settled(
     deadline: float,
     clock: Clock,
     gate: _AlertGuardGate | None = None,
+    hb: _Heartbeat | None = None,
 ) -> tuple[bool, str, list[base.Element]]:
     """Wait until a non-empty screen stops changing (transition/animation finished).
 
@@ -255,8 +324,9 @@ def _wait_settled(
     alert) is never treated as settled. Best-effort: timing out just proceeds with the
     current screen — a settle is a stabilization hint, not a correctness assertion, so
     it never fails the step. When `gate` is given, a screen that stays collapsed (a system alert)
-    is cleared mid-settle rather than burning the whole timeout (BE-0269). Returns the last queried
-    tree so the caller can reuse it as the step's `after` snapshot (BE-0259).
+    is cleared mid-settle rather than burning the whole timeout (BE-0269). When `hb` is given, it
+    emits the throttled "still waiting …" progress line while settling. Returns the last
+    queried tree so the caller can reuse it as the step's `after` snapshot (BE-0259).
     """
     previous = driver.query()
     if gate is not None:
@@ -273,5 +343,7 @@ def _wait_settled(
             stable += 1
         else:
             stable, previous = 0, current
+        if hb is not None:
+            hb.tick(clock.now())
         _adaptive_sleep(clock, t0)
     return True, "", previous
