@@ -1,11 +1,12 @@
 # Build / run targets for the web demo (BE-0041): the Playwright backend driving a tiny static
 # web app. Unlike the iOS demos this needs no Mac and no Simulator — it runs on Linux inside the
 # same toolchain as `make check`. Invoke from anywhere with `make -C demos/web <target>`.
-.PHONY: web-deps app-serve e2e e2e-network record record-handoff record-offline record-handoff-offline
+.PHONY: web-deps app-serve e2e e2e-network codegen-e2e record record-handoff record-offline record-handoff-offline
 
 ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../..)
 APP := $(ROOT)/demos/web/app
 RECORD := $(ROOT)/demos/web/record
+CODEGEN := $(ROOT)/demos/web/codegen
 CONFIG := $(ROOT)/demos/web/demo.config.yaml
 PORT ?= 8787
 
@@ -56,6 +57,25 @@ e2e-network: web-deps
 	cd $(ROOT) && uv run bajutsu run --target web --backend web --config $(CONFIG) \
 		--network --tag network --runs-dir $(NET_RUNS) && \
 	uv run python demos/web/network/assert_redaction.py $(NET_RUNS)
+
+# Real-compile gate for the Playwright codegen target (BE-0293): the web twin of demos/showcase's
+# `ui-test`. Where the string-only tests/test_codegen_playwright.py check the emitted source as text,
+# this proves codegen's actual claim — that the emitted file is a runnable native test. It (1)
+# re-generates the checked-in spec from the smoke scenario, (2) runs the fresh output with the REAL
+# @playwright/test runner against a real Chromium — which transpiles the TypeScript and executes it,
+# so it is a compile *and* a run, not a `tsc --noEmit` syntax check — then (3) fails if the output
+# drifts from the committed fixture, so the emitter and the fixture never silently diverge. The drift
+# check runs LAST so a legitimate emitter change still gets exercised (the run is the point); its
+# failure just asks you to commit the regenerated spec. `webServer` in codegen/playwright.config.ts
+# serves demos/web/app on the baked-in port, so no hand-started server here. Node/npm only (the
+# @playwright/test runner is the destination framework, not our Python backend); no Simulator, no
+# macOS — pure Linux like `e2e`.
+codegen-e2e:
+	cd $(ROOT) && uv run bajutsu codegen demos/web/scenarios/smoke.yaml --target web --emit playwright \
+		--config $(CONFIG) -o $(CODEGEN)/smoke.spec.ts
+	cd $(CODEGEN) && npm ci && npx playwright install --with-deps chromium && npx playwright test
+	cd $(ROOT) && git diff --exit-code HEAD -- demos/web/codegen/smoke.spec.ts \
+		|| { echo "generated spec drifted from the checked-in fixture — commit the regenerated demos/web/codegen/smoke.spec.ts" >&2; exit 1; }
 
 # AI authoring (Tier 1) against the demo web app: real Claude drives the Playwright backend toward
 # a natural-language goal and writes the executed steps out as a deterministic scenario — the web

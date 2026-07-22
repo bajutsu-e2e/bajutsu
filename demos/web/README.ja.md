@@ -16,7 +16,9 @@ Bajutsu の **Playwright** backend（[BE-0041](../../roadmaps/BE-0041-web-playwr
 | `record/record_offline.py` | `record` のオフライン版（API キー不要）。同じループを keyword agent と FakeDriver で回す |
 | `record/record_handoff_offline.py` | human-in-the-loop ハンドオフデモのオフライン版（キー不要）。実際の一時停止・再開を、台本化したエージェントと応答者で回す |
 | `demo.config.yaml` | `targets.web`（`baseUrl` ＋ `scenarios` ＋ `backend: [web]`、`bundleId` なし） |
-| `Makefile` | `web-deps` / `app-serve` / `e2e` / `e2e-network` / `record` / `record-handoff` / `record-offline` / `record-handoff-offline` |
+| `codegen/smoke.spec.ts` | `scenarios/smoke.yaml` から**生成**してチェックインした Playwright テスト。codegen 実コンパイルゲートのフィクスチャ（[BE-0293](../../roadmaps/BE-0293-codegen-playwright-real-compile/BE-0293-codegen-playwright-real-compile-ja.md)）で、iOS 側の `ComponentsUITests.swift` の web 版です |
+| `codegen/package.json`・`codegen/playwright.config.ts` | `@playwright/test` ランナー（Python の `web` extra と同じ Playwright バージョンにピン留め）とその設定。spec に焼き込まれたポートで `app/` を配信します |
+| `Makefile` | `web-deps` / `app-serve` / `e2e` / `e2e-network` / `codegen-e2e` / `record` / `record-handoff` / `record-offline` / `record-handoff-offline` |
 
 ## 実行
 
@@ -39,6 +41,18 @@ make -C demos/web e2e-network
 `app/` を配信し、**Sync account** ボタン（`Authorization` ヘッダと `password` ボディフィールドを運ぶ実際の `POST /api/sync`）をタップして、`network` タグの付いた [`scenarios/network.yaml`](scenarios/network.yaml) を **network を有効にして** 実行します。[`mocks:`](scenarios/network.yaml) のエントリがその POST に `201` で応答するので（実サーバがあれば `404` を返すはずです）、status `201` でキャプチャされた exchange は、ネットワークではなくモックが応答したことの証拠になります。シナリオの `request` アサーションが決定論的な介入・キャプチャの確認で、続いて [`network/assert_redaction.py`](network/assert_redaction.py) が永続化された `network.json` を読み、exchange が `mocked` で `201`、かつ両方の秘密情報がマスクされていなければ失敗します。どこにも LLM はありません。合否はそのアサーションとチェックだけです。
 
 このレーンは [BE-0282](../../roadmaps/BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md) の web 側です。CI では `network (playwright)` ジョブとして走ります。まずシグナルとして着地させましたが、CI で安定を確認できたので、現在は必須の `E2E (web)` ゲートに昇格しています（BE-0282）。**Android にも対応物ができました**（[BE-0283](../../roadmaps/BE-0283-android-network-capture/BE-0283-android-network-capture-ja.md)）。`android-e2e.yml` の `network (adb)` が、BajutsuAndroid のアプリ側インターセプタが `adb reverse` 越しにホスト側コレクタへ報告する形で実エミュレータのトラフィックをキャプチャします。ここでの Playwright のブラウザ内介入とは transport が異なりますが、`request` アサーションによる判定は同じで、このジョブと同様にあちらでもゲートに入っています。
+
+## codegen 実コンパイルゲート（BE-0293）
+
+上の `e2e` は Bajutsu *自身* の Playwright backend を実行時に駆動するもので、codegen の出力には一切触れません。`bajutsu codegen --emit playwright` はこれとは別の経路で、シナリオを単体の `@playwright/test` ファイルへ変換します。チームが自分たちの Playwright CI で、Bajutsu ランタイムも AI も使わずに実行するためのものです。`tests/test_codegen_playwright.py` は出力ソースを文字列として検査しますが、確認できないのは codegen が本来主張していること、すなわち「生成されたファイルが実際に動く本物のネイティブテストである」という点です。このゲートがそのギャップを埋めます。
+
+```bash
+make -C demos/web codegen-e2e
+```
+
+[`scenarios/smoke.yaml`](scenarios/smoke.yaml) から [`codegen/smoke.spec.ts`](codegen/smoke.spec.ts) を再生成し、その出力を実際の `@playwright/test` ランナーで実 Chromium に対して実行します。ランナーは TypeScript をトランスパイルして実行するので、これは `tsc --noEmit` の構文チェックではなく、コンパイル*かつ*実行です。最後に、出力が**チェックイン済みのフィクスチャからドリフトしていれば失敗させます**（エミッタとフィクスチャが黙って乖離しないようにします）。必要なのは Node/npm だけで（ランナーは我々の Python backend ではなく行き先のフレームワークです）、Simulator も macOS も要りません。
+
+これは iOS 側の `xcuitest (codegen)` ゲート（`demos/showcase` の `ui-test`。生成した `ComponentsUITests.swift` を `xcodebuild test` でビルドして実行します）の web 版です。CI では `web-e2e.yml` の `codegen (playwright)` ジョブになります。まず**シグナル**として着地させ（マージはブロックせず報告のみ）、`network (playwright)` がそうだったように、安定を確認してから必須の `E2E (web)` ゲートへ昇格させます（[BE-0293](../../roadmaps/BE-0293-codegen-playwright-real-compile/BE-0293-codegen-playwright-real-compile-ja.md)）。
 
 ## 記録（record）
 

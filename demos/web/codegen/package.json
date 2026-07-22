@@ -1,0 +1,12 @@
+{
+  "name": "bajutsu-web-codegen-e2e",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Real-compile gate for the Playwright codegen target (BE-0293): runs the checked-in bajutsu-generated .spec.ts with the real @playwright/test runner. Pinned to the same Playwright version as the Python `web` extra so the browser build is shared.",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.60.0"
+  }
+}

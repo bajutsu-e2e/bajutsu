@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0293](BE-0293-codegen-playwright-real-compile.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0293") |
+| Implementing PR | [#TBD](https://github.com/bajutsu-e2e/bajutsu/pulls?q=BE-0293) |
 | Topic | codegen coverage |
 <!-- /BE-METADATA -->
 
@@ -78,10 +79,20 @@ Proposal altitude. The work is MECE along the units below.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Emit a `demos/web` scenario's Playwright test and check the generated `.spec.ts` in.
-- [ ] Run it with the real `@playwright/test` runner against a real browser, asserting it passes.
-- [ ] Wire a Makefile target + non-gating `web-e2e.yml` job; promote to required once stable.
-- [ ] Scope the fixture to the DSL surface the XCUITest codegen gate already covers.
+- [x] Emit a `demos/web` scenario's Playwright test and check the generated `.spec.ts` in.
+- [x] Run it with the real `@playwright/test` runner against a real browser, asserting it passes.
+- [x] Wire a Makefile target + non-gating `web-e2e.yml` job; promote to required once stable.
+- [x] Scope the fixture to the DSL surface the XCUITest codegen gate already covers.
+
+Log:
+
+- Generated `demos/web/codegen/smoke.spec.ts` from `scenarios/smoke.yaml` (the `tap` / `type` /
+  `wait` / `exists` / `value` floor the XCUITest codegen gate covers) and checked it in, alongside a
+  pinned `@playwright/test` runner (`codegen/package.json`, `codegen/playwright.config.ts`). Added the
+  `codegen-e2e` Makefile target — re-generate, fail on drift, then run the spec with the real runner
+  against a real Chromium — and the non-gating `codegen (playwright)` signal job in `web-e2e.yml`. The
+  job is deliberately not yet in the required `E2E (web)` aggregator's `needs`; promote it once it
+  proves stable in CI, as `network (playwright)` was.
 
 ## References
 
