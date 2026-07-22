@@ -70,7 +70,26 @@ gh pr checks <PR>
      undecided ones you escalate (see below); never resolve a comment whose question is still
      unanswered.
 
-### 4. Push and report
+### 4. Self-review against the CI review contract
+
+Mirror the CI "Claude review" job locally, before pushing, instead of waiting on its own
+re-review round trip on the next push (BE-0203) — the same discipline
+[`ideation`](../ideation/SKILL.md)'s step 5 applies when drafting a BE proposal from scratch,
+applied here to a fix instead of a fresh draft. Spawn a fresh subagent (Agent tool) that has
+**not** seen this pr-followup session — the actual CI reviewer also runs cold — and give it the
+contract at [`.github/claude-review-prompt.md`](../../../.github/claude-review-prompt.md) plus
+the PR's current state: `gh pr diff <PR>` and `gh pr view <PR> --comments` (both already available
+here, unlike `ideation`'s pre-PR case, so there is no part of the contract to skip). Per the
+contract's own rule, it should flag only what this round's fix newly introduces or leaves
+unaddressed — not re-raise a point already settled in the discussion it just read.
+
+Fix every finding it raises, unless it is a false positive or a deliberate, already-explained
+trade-off (note the rationale and move on) or it calls for a genuine design change (handle it
+under this skill's own Escalation section instead of attempting it). Run `make check` after each
+fix. Re-run the subagent against the updated diff after non-trivial fixes, capped at 3 rounds — if
+it still hasn't converged by then, stop and report what remains rather than looping further.
+
+### 5. Push and report
 
 - Push all fixes in one commit (or logical commits if changes are independent).
 - Report what was fixed and what remains.
