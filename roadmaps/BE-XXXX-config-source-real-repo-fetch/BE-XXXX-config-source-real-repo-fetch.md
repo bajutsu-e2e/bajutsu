@@ -40,7 +40,7 @@ Proposal altitude. The work is MECE along the units below.
   private repository with a dedicated throwaway GitHub App installed) as the fetch target.
   `_GitHubTransport` already works unauthenticated when no token is configured, and GitHub's
   commits/tarball endpoints don't require auth for a public repository, so the public-repo option
-  needs no credential to fetch at all — a PAT there is purely to buy the higher authenticated rate
+  needs no credential to fetch at all — a personal access token (PAT) there is purely to buy the higher authenticated rate
   limit (GitHub's unauthenticated cap is 60 requests/hour, tight on a shared Actions-runner IP) and
   stays optional. Store whichever credential is actually used — a fine-grained,
   read-only PAT scoped to the one repository, or the throwaway App's private key for the
