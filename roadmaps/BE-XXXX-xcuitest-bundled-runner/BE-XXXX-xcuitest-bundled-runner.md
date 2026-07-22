@@ -103,21 +103,25 @@ The installed wheel's package data should be treated as read-only: writing besid
 install and fails outright when site-packages is not writable. Yet the run already writes next to the
 runner — `_patch_xctestrun_env` creates a patched copy of the `.xctestrun` in the runner's own
 directory to inject the `BAJUTSU_*` launch environment. So resolving to the bundled runner first
-materializes the products directory into a per-version writable cache (for example
-`~/.cache/bajutsu/xcuitest-runner/<version>/`) and resolves `testRunner` to the copy there. The copy
-is keyed by Bajutsu version so an upgrade refreshes it and a warm cache is reused without copying
-again; the existing per-run patched-copy-and-unlink then operates on the cache, never on
-site-packages. Because the device pool leases multiple devices in parallel within one run set
+materializes the products directory into a writable cache (for example
+`~/.cache/bajutsu/xcuitest-runner/<hash>/`) and resolves `testRunner` to the copy there. The copy is
+keyed by a content hash of the bundled products, not the Bajutsu version — this repo pins
+`version = "0.0.0"` in `pyproject.toml` with no release workflow that bumps it today, so a
+version-keyed cache would never invalidate on an upgrade; hashing the products themselves
+invalidates whenever the runner actually changes, independent of that version-bumping discipline. A
+warm cache is reused without copying again, and the existing per-run patched-copy-and-unlink then
+operates on the cache, never on site-packages. Because the device pool leases multiple devices in
+parallel within one run set
 ([BE-0291](../BE-0291-xcuitest-runner-reuse-across-scenarios/BE-0291-xcuitest-runner-reuse-across-scenarios.md)
 relies on that same concurrency for its per-device runner cache), two leases can reach a cold,
-version-keyed cache directory at once; materialization copies into a temporary directory beside the
+hash-keyed cache directory at once; materialization copies into a temporary directory beside the
 cache and renames it into place. Renaming a populated directory onto one a concurrent lease already
 populated fails (`ENOTEMPTY`) rather than silently no-oping, so the losing lease must catch that
 error and treat the winner's cache as its own result; the guarantee that matters is that a
 concurrent reader sees no cache directory yet or a fully populated one, never a partial copy.
-Pruning stale version-keyed caches left behind by earlier upgrades is out of scope for this item;
-each copy is a bounded, versioned artifact rather than unbounded growth, and cache eviction can
-follow as a separate item if the accumulated size becomes a real complaint.
+Pruning stale hash-keyed caches left behind by earlier runner builds is out of scope for this item;
+each copy is a bounded artifact rather than unbounded growth, and cache eviction can follow as a
+separate item if the accumulated size becomes a real complaint.
 
 ### The runner is built and included in Bajutsu's release pipeline
 
@@ -139,8 +143,9 @@ The split follows the fast-gate / on-device boundary BE-0019 already draws.
   a config with neither `testRunner` nor `build` resolves to the bundled path; an explicit
   `testRunner` still wins over it; `deviceType: device` with no `testRunner` fails with the clear
   device-runner error rather than resolving to the bundled Simulator runner; the materialize-to-cache
-  step copies once and reuses a warm, version-keyed cache. No test puts a device — or an LLM — on the
-  gate.
+  step copies once and reuses a warm, hash-keyed cache; two concurrent materializations racing a cold
+  cache converge on one populated directory, with the losing lease adopting the winner's copy rather
+  than raising. No test puts a device — or an LLM — on the gate.
 - **On-device (e2e path).** On the heavier `e2e.yml` path, a showcase XCUITest scenario runs with the
   `testRunner` line removed from its target config, proving the backend drives the app through the
   bundled runner with no build step and no runner path.
@@ -180,15 +185,17 @@ The split follows the fast-gate / on-device boundary BE-0019 already draws.
 - [ ] Runner resolution — add the bundled-default tier beneath `testRunner` / `build` in the XCUITest
   environment, with explicit config still overriding and `deviceType: device` still requiring an
   explicit runner.
-- [ ] Materialize-to-cache — copy the bundled products into a per-version writable cache and resolve
-  `testRunner` to the copy, leaving the per-run patched-copy step untouched.
+- [ ] Materialize-to-cache — copy the bundled products into a content-hash-keyed writable cache,
+  handling the concurrent-materialization race, and resolve `testRunner` to the copy, leaving the
+  per-run patched-copy step untouched.
 - [ ] Packaging — place the built Simulator products under the package-data directory before the wheel
   build runs and add the release-pipeline build step that produces them; keep the base wheel
   installable on Linux.
 - [ ] doctor / disclosure — report the resolved runner source and surface an Xcode/SDK mismatch with
   the override escape hatch named.
 - [ ] Validation — fast-gate resolution tests (bundled default, override precedence, device error,
-  cache reuse) and an on-device e2e run with no `testRunner` in config.
+  cache reuse, concurrent-materialization race) and an on-device e2e run with no `testRunner` in
+  config.
 
 ## References
 
