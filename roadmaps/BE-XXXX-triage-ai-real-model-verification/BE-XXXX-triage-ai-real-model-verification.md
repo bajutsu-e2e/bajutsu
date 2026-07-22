@@ -74,6 +74,7 @@ Proposal altitude. The work is MECE along the units below.
 - [ ] Capture a real `triage --ai` diagnosis response as a regression fixture.
 - [ ] Add a key-gated live smoke test running `triage --ai` end-to-end against a real failed run.
 - [ ] Add a dedicated test exercising the real credential-gap check (not a stand-in agent class).
+- [ ] Confirm triage's advisory status is unchanged — this verifies output parsing only.
 
 ## References
 
@@ -81,5 +82,4 @@ Proposal altitude. The work is MECE along the units below.
 - [BE-0282 — Real-backend network capture, mock, and assertion coverage in CI](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md)
 - `bajutsu/agents/claude_triage.py`, `bajutsu/triage.py`, `tests/conftest.py`
   (`FakeBackend` / `FakeBlock`), `tests/test_claude_triage.py`, `tests/test_triage.py`
-  (`_stub_ai_cli`, `_FakeAgent`), the sibling proposal for real-model verification of the record and
-  crawl propose loops
+  (`_stub_ai_cli`, `_FakeAgent`)

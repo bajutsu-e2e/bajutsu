@@ -1,6 +1,6 @@
 [English](BE-XXXX-triage-ai-real-model-verification.md) · **日本語**
 
-# BE-XXXX — Real-model verification of the triage --ai diagnosis path
+# BE-XXXX — triage --ai 診断経路の実モデル検証
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
-| トピック | Self-healing triage |
+| トピック | 自己修復トリアージ |
 <!-- /BE-METADATA -->
 
 ## はじめに
@@ -76,12 +76,13 @@ triage は設計上あくまで advisory(助言)であり、`--apply`/`--write` 
 - [ ] 実際に失敗した run に対して `triage --ai` をエンドツーエンドで実行する、API キーで gate した
   ライブ smoke テストを追加する。
 - [ ] 代役のエージェントクラスではなく、実際の認証情報欠落チェックを検証する専用テストを追加する。
+- [ ] triage の advisory という位置づけが変わっていないことを確認する（検証するのは出力の
+  パースのみ）。
 
 ## 参考
 
-- [BE-0104 — vendor 非依存の AI backend インターフェース](../BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend-ja.md)
-- [BE-0282 — CI における実 backend のネットワーク捕捉・モック・アサーションのカバレッジ](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md)
+- [BE-0104 — ベンダー中立な AI バックエンドインターフェース](../BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend-ja.md)
+- [BE-0282 — ネットワークのキャプチャ・モック・アサーションを CI で実バックエンド検証する](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md)
 - `bajutsu/agents/claude_triage.py`、`bajutsu/triage.py`、`tests/conftest.py`
   (`FakeBackend` / `FakeBlock`)、`tests/test_claude_triage.py`、`tests/test_triage.py`
-  (`_stub_ai_cli`、`_FakeAgent`)、record と crawl の propose ループに対する実モデル検証を扱う
-  姉妹提案
+  (`_stub_ai_cli`、`_FakeAgent`)
