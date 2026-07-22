@@ -10,8 +10,13 @@ logic is exercised against a fake — no Simulator on the gate.
 
 The crux is **element addressing**: resolution stays Python-side (`resolve_unique`), so the driver
 acts on exactly the element it resolved by sending that element's opaque *per-snapshot handle* the
-runner minted — never a re-resolved predicate that could match a different element. A handle that has
-gone stale comes back as `stale` and surfaces as the same vanished-element error idb would raise.
+runner minted — never a re-resolved predicate that could match a different element. A handle can go
+stale when the screen re-snapshots between resolve and actuate (a freshly foregrounded screen still
+settling), so a `stale` reply is treated as a trigger to re-query rather than an immediate failure
+(BE-0289): the actuation is re-issued only while the same selector still resolves Python-side to a
+single element, and fails loudly the moment it resolves to none (`ElementNotFound`) or many
+(`AmbiguousSelector`) — so the retry tolerates a snapshot race without ever absorbing a real
+disappearance.
 
 Selection-wiring (adding `xcuitest` to `backends.IMPLEMENTED` / `make_driver`, plus the device
 availability probe) lands with the runner; today the driver is constructed directly (e.g. in tests)
@@ -111,6 +116,16 @@ def _timeout_for(method: str) -> float:
 # so a genuinely wedged runner is not retried for an unbounded stretch.
 _MAX_ATTEMPTS = 3
 _BACKOFF_BASE_SECONDS = 0.5  # exponential per retry: 0.5s, 1.0s, … between attempts
+
+# Bounded re-resolution retry for a STALE actuation handle (BE-0289), held separate from BE-0207's
+# transport retry above even though it starts at the same values: the two loops bound different things
+# — a screen settling between `_resolve_handle` and `_actuate` versus a transport blip inside
+# `_with_retry` — so a later re-tune of one (e.g. loosening the transport budget for a slower CI
+# runner) must not silently move the other. The re-query round-trip is the condition wait, not a fixed
+# sleep; this backoff only spaces the attempts so the loop stays a few seconds, not sub-second.
+_STALE_MAX_ATTEMPTS = 3
+# exponential per retry: 0.5s, 1.0s, … between re-resolve attempts
+_STALE_BACKOFF_BASE_SECONDS = 0.5
 
 # How long a mid-run crash-recovery (BE-0287) waits for a crashed runner to come back before failing
 # loudly. A different concern from the transient retry above: the observed flake left the runner gone
@@ -397,8 +412,11 @@ class XcuitestDriver:
         transport: TransportFn | None = None,
         host: str = "127.0.0.1",
         port: int = 0,
+        sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         self._transport = transport if transport is not None else _http_transport(host, port)
+        # Injectable so the stale re-resolution backoff (BE-0289) adds no wall time under test.
+        self._sleep = sleep
 
     # --- the channel ---
 
@@ -431,18 +449,29 @@ class XcuitestDriver:
         return handles[id(el)]
 
     def _actuate(self, path: str, body: Mapping[str, Any], sel: base.Selector) -> None:
-        reply = self._transport("POST", path, body)
-        if reply.status == _OK:
-            return
-        if reply.status == _STALE:
-            raise base.ElementNotFound(f"element vanished (stale handle): {sel!r}")
-        if reply.status == _NOT_FOUND:
-            raise base.ElementNotFound(f"no actuatable element for: {sel!r}")
-        # Any other status (e.g. an "error" from a 500 / malformed response) is a runner failure, not
-        # a test outcome — fail loudly rather than masking it as element-not-found.
-        raise XcuitestChannelError(
-            f"runner error actuating {path} (status={reply.status}): {sel!r}"
-        )
+        # A `stale` reply means the screen re-snapshotted between resolve and actuate, so the handle
+        # no longer maps to a live element. The runner returns `stale` *before* touching anything
+        # (Router.swift), so re-issuing cannot double-actuate — re-query and re-actuate while the same
+        # selector still resolves uniquely (BE-0289). Zero/many matches raise ElementNotFound /
+        # AmbiguousSelector out of `_resolve_handle` and fail immediately, spending no further attempts.
+        request: dict[str, Any] = dict(body)
+        for attempt in range(1, _STALE_MAX_ATTEMPTS + 1):
+            reply = self._transport("POST", path, request)
+            if reply.status == _OK:
+                return
+            if reply.status == _STALE:
+                if attempt == _STALE_MAX_ATTEMPTS:
+                    raise base.ElementNotFound(f"element vanished (stale handle): {sel!r}")
+                self._sleep(_STALE_BACKOFF_BASE_SECONDS * 2 ** (attempt - 1))
+                request["handle"] = self._resolve_handle(sel)
+                continue
+            if reply.status == _NOT_FOUND:
+                raise base.ElementNotFound(f"no actuatable element for: {sel!r}")
+            # Any other status (e.g. an "error" from a 500 / malformed response) is a runner failure,
+            # not a test outcome — fail loudly rather than masking it as element-not-found.
+            raise XcuitestChannelError(
+                f"runner error actuating {path} (status={reply.status}): {sel!r}"
+            )
 
     # --- Driver Protocol ---
 

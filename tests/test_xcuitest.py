@@ -20,6 +20,7 @@ from bajutsu.drivers.xcuitest import (
     _MAX_ATTEMPTS,
     _RECOVERY_TIMEOUT_SECONDS,
     _SOCKET_TIMEOUT_SECONDS,
+    _STALE_MAX_ATTEMPTS,
     TransportFn,
     XcuitestChannelError,
     XcuitestDriver,
@@ -59,7 +60,8 @@ def _elements(*els: dict[str, Any]) -> _Reply:
 
 
 def _driver(transport: TransportFn) -> XcuitestDriver:
-    return XcuitestDriver(transport=transport)
+    # No-op sleep so the BE-0289 stale re-resolution backoff adds no wall time on the gate.
+    return XcuitestDriver(transport=transport, sleep=lambda _s: None)
 
 
 def test_driver_satisfies_the_protocol() -> None:
@@ -207,14 +209,86 @@ def test_capabilities_add_semantic_tap_condition_wait_multi_touch_but_not_networ
     assert base.Capability.NETWORK not in caps
 
 
-def test_stale_handle_raises_the_vanished_element_error() -> None:
+# --- BE-0289: a stale handle re-resolves before failing ---------------------------------------------
+# A `stale` reply means the screen re-snapshotted between resolve and actuate, so the handle went
+# stale while the element is still present. The driver re-queries and re-actuates while the selector
+# still resolves uniquely, and fails loudly the moment it does not — tolerating a snapshot race
+# without ever absorbing a real disappearance. The fake transport is scripted per call so each of the
+# four cases pins one half of that honest gate; `_driver` injects a no-op sleep, so the backoff is free.
+
+
+def test_stale_handle_re_resolves_and_recovers_when_the_selector_still_resolves() -> None:
+    # `stale` once, then `ok`: the button is present the whole time (a launch-time snapshot race), so
+    # the re-resolved unique match re-actuates and the tap succeeds.
+    actuations: list[dict[str, Any] | None] = []
+    replies = iter(["stale", "ok"])
+
     def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
         if path == "/elements":
+            return _elements(_el_wire("h-ok", "ok", "OK", traits=["button"]))
+        actuations.append(body)
+        return _Reply(status=next(replies))
+
+    _driver(transport).tap({"id": "ok"})
+    assert actuations == [{"handle": "h-ok"}, {"handle": "h-ok"}]  # re-actuated after re-resolving
+
+
+def test_persistent_stale_exhausts_the_bound_then_fails_loudly() -> None:
+    # The selector keeps resolving uniquely but every actuation is `stale`: the bound is spent and the
+    # driver fails with the vanished-element error rather than retrying forever.
+    actuations = 0
+
+    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+        nonlocal actuations
+        if path == "/elements":
             return _elements(_el_wire("h-ok", "ok", "OK"))
-        return _Reply(status="stale")  # the screen changed under the resolved handle
+        actuations += 1
+        return _Reply(status="stale")
+
+    with pytest.raises(base.ElementNotFound, match="stale handle"):
+        _driver(transport).tap({"id": "ok"})
+    assert actuations == _STALE_MAX_ATTEMPTS  # bounded, not unbounded
+
+
+def test_stale_then_gone_fails_immediately_as_element_not_found() -> None:
+    # A `stale` whose re-query no longer resolves the selector is a genuine disappearance: fail at once
+    # as ElementNotFound, spending no further actuation attempt (never absorb a real vanish, BE-0049).
+    actuations = 0
+    present = iter([True, False])  # resolves once (the first actuate), gone on the re-query
+
+    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+        nonlocal actuations
+        if path == "/elements":
+            return _elements(_el_wire("h-ok", "ok", "OK")) if next(present) else _elements()
+        actuations += 1
+        return _Reply(status="stale")
 
     with pytest.raises(base.ElementNotFound):
         _driver(transport).tap({"id": "ok"})
+    assert actuations == 1  # the re-query found nothing, so no second actuation was issued
+
+
+def test_stale_then_ambiguous_fails_immediately_and_never_re_actuates() -> None:
+    # A `stale` whose re-query resolves to many elements fails as AmbiguousSelector — the gate never
+    # taps whatever happens to match (determinism first).
+    actuations = 0
+    first = iter([True, False])  # unique on the first resolve, ambiguous on the re-query
+
+    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+        nonlocal actuations
+        if path == "/elements":
+            if next(first):
+                return _elements(_el_wire("h1", "dup", "A", traits=["button"]))
+            return _elements(
+                _el_wire("h1", "dup", "A", traits=["button"]),
+                _el_wire("h2", "dup", "B", traits=["button"]),
+            )
+        actuations += 1
+        return _Reply(status="stale")
+
+    with pytest.raises(base.AmbiguousSelector):
+        _driver(transport).tap({"id": "dup"})
+    assert actuations == 1  # ambiguity is loud; no second actuation was issued
 
 
 def test_ambiguous_selector_fails_before_any_actuation_request() -> None:

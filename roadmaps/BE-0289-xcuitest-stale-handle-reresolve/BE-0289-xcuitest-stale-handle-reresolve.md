@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0289](BE-0289-xcuitest-stale-handle-reresolve.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0289") |
+| Implementing PR | [#1266](https://github.com/bajutsu-e2e/bajutsu/pull/1266) |
 | Topic | Platform support |
 | Related | [BE-0207](../BE-0207-xcuitest-channel-transient-retry/BE-0207-xcuitest-channel-transient-retry.md), [BE-0218](../BE-0218-e2e-simulator-flaky-readiness-actuation/BE-0218-e2e-simulator-flaky-readiness-actuation.md), [BE-0287](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience.md), [BE-0049](../BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md) |
 <!-- /BE-METADATA -->
@@ -184,15 +185,15 @@ keeps burning macOS minutes on every silent retry.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — A stale-gated re-resolution retry in `_actuate` / the `_resolve_handle` seam, over
+- [x] Unit 1 — A stale-gated re-resolution retry in `_actuate` / the `_resolve_handle` seam, over
       every handle-based actuation (`tap`, `double_tap`, `long_press`, `pinch`, `rotate`); the
       raw-coordinate `tap_point` untouched.
-- [ ] Unit 2 — Determinism preserved: re-issuing a `stale` write cannot double-actuate (the runner
+- [x] Unit 2 — Determinism preserved: re-issuing a `stale` write cannot double-actuate (the runner
       returns `stale` before it actuates), no LLM, no fixed sleep, and genuine `stale` / ambiguity /
       exhaustion stay loud failures.
-- [ ] Unit 3 — Off-device unit tests for the four cases (recover once, exhaust, immediate
+- [x] Unit 3 — Off-device unit tests for the four cases (recover once, exhaust, immediate
       `ElementNotFound`, immediate `AmbiguousSelector`).
-- [ ] Unit 4 — Documentation aligned (BE-0113): the `xcuitest.py` docstring, and `DESIGN.md` /
+- [x] Unit 4 — Documentation aligned (BE-0113): the `xcuitest.py` docstring, and `DESIGN.md` /
       `docs/architecture.md` where either describes the stale semantics.
 
 ## References
