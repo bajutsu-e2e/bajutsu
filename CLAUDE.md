@@ -92,7 +92,7 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   [`docs/ai-development.md`](docs/ai-development.md#isolate-concurrent-sessions-with-worktrees).
 - **Right-size the model and reasoning effort (BE-0103).** Match a session's model/effort to the
   task: heavy work (implementing, refactors, design) runs on a capable model at high effort; light
-  chores (index regen, link fixes, mechanical renames) downshift. The in-repo skills carry a default
+  chores (a roadmap item's `Status` flip, link fixes, mechanical renames) downshift. The in-repo skills carry a default
   `model:` in their frontmatter, so the economical choice is automatic and still overridable. The
   task→capability matrix and the phase/subagent guidance live in
   [`docs/ai-development.md`](docs/ai-development.md#right-sizing-the-model-and-reasoning-effort-be-0103).
@@ -176,9 +176,10 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   holding **both** language files `BE-NNNN-<slug>.md` and `BE-NNNN-<slug>-ja.md` (`BE` = *Bajutsu
   Evolution*, `NNNN` a zero-padded monotonic ID). The path is fixed when the ID is allocated and
   **never moves**; `Status` (`Implemented` / `In progress` / `Proposal` / `Proposal (deferred)`)
-  decides only the index bucket. Name new items with the `BE-XXXX` placeholder — the number is
-  allocated **on `main` after merge** (BE-0089), and **IDs are permanent — never renumber.** Never
-  hand-edit the index tables — run `make roadmap-index` (`make test` fails on drift). Full rule
+  decides only the [dashboard](https://bajutsu-e2e.github.io/bajutsu/api/roadmap.html) bucket —
+  `roadmaps/README.md` carries no status table to keep in sync. Name new items with the `BE-XXXX`
+  placeholder — the number is allocated **on `main` after merge** (BE-0089), and **IDs are
+  permanent — never renumber.** Full rule
   (file format, metadata fields, MECE `Detailed design`, living `Progress` checklist, both-way PR
   links, author handle, reciprocal `Related`/`Superseded by`):
   [`roadmaps/README.md`](roadmaps/README.md) ·

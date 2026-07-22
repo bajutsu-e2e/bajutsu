@@ -8,7 +8,7 @@ description: >-
   proposal into shipped code. Treats the item's proposal as the spec, self-assigns the item's
   GitHub tracking issue, grounds the work in the prime directives, sets up a focused branch,
   plans and confirms before writing, implements with tests, reviews and refines the diff,
-  flips the item to Implemented (Status + reindex), and proves the gate is
+  flips the item's Status to Implemented, and proves the gate is
   green. The deterministic counterpart to the `ideation` skill: ideation authors proposals,
   this one ships them.
 ---
@@ -204,14 +204,10 @@ The implementing PR is what ships the item, so promote it in this same change:
 1. In **both** language files, set the metadata `Status` to **Implemented**. Add an `Implementing PR:
    [#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN)` row right under `Status` once
    the PR number exists (fill it at step 10 if you don't have it yet).
-2. Regenerate the index:
-   ```bash
-   make roadmap-index     # regenerate the tables in both README index pages
-   ```
-   The item's directory never moves (BE-0159) — every item lives at a permanent flat
-   `roadmaps/BE-NNNN-<slug>/` path, and `Status` decides only the index bucket. `make test` fails
-   if the committed index drifts from an item's `Status`, so this keeps the gate honest. **Never
-   renumber the item**; its ID is permanent.
+2. Nothing else to regenerate: the item's directory never moves (BE-0159) — every item lives at a
+   permanent flat `roadmaps/BE-NNNN-<slug>/` path, and `Status` decides only which bucket the
+   [roadmap dashboard](https://bajutsu-e2e.github.io/bajutsu/api/roadmap.html) shows it under, read
+   straight from the metadata you just edited. **Never renumber the item**; its ID is permanent.
 
 ### 9. Verify — the gate
 
@@ -352,8 +348,8 @@ reviewers, and every genuine decision escalates to the human.
 - [`CLAUDE.md`](../../../CLAUDE.md) · [`DESIGN.md`](../../../DESIGN.md) — the prime
   directives every change must honor.
 - [`docs/ai-development.md`](../../../docs/ai-development.md) — parallel-work rules, the
-  gate, and the strict BE-ID lifecycle (Status ⇒ index bucket, flat one-directory layout, permanent IDs).
-- [`roadmaps/README.md`](../../../roadmaps/README.md) — the index and the per-item format.
+  gate, and the strict BE-ID lifecycle (Status ⇒ dashboard bucket, flat one-directory layout, permanent IDs).
+- [`roadmaps/README.md`](../../../roadmaps/README.md) — how to add a roadmap item and the per-item format.
 - [`pr-followup`](../pr-followup/SKILL.md) — the skill steps 11–12 loop over: after this skill
   opens the Draft PR, a paced `/loop` drives the mechanical tail (CI fixes, review replies) to
   quiet-and-green, running each iteration's `pr-followup` in a fresh subagent, so implement → PR →
