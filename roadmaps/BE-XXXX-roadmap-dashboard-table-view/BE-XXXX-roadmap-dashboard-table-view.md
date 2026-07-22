@@ -101,8 +101,8 @@ mutually exclusive, collectively exhaustive (MECE) across these units:
    `<th>` re-orders the table's `<tr>` elements by that column (string comparison for Title/Topic/
    Status, id-numeric comparison for ID, chronological comparison for Created/Updated), toggling
    ascending/descending on repeat clicks of the same column, and marking the active column and
-   direction with an `aria-sort` attribute. Sorting only reorders already-rendered rows already passed
-   through the status/search filter — it never changes which rows are visible.
+   direction with an `aria-sort` attribute. Sorting only reorders the already-rendered rows that
+   have passed through the status/search filter — it never changes which rows are visible.
 5. **Persisted view choice.** On toggling Cards/Table, write the choice to `localStorage` under a
    dedicated key; on page load, read that key and show the matching view before first render (falling
    back to Cards, the current default, when the key is absent or `localStorage` is unavailable). Like
