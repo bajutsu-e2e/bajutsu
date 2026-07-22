@@ -15,7 +15,7 @@
 ## Introduction
 
 `bajutsu mcp` exposes `bajutsu_run`/`bajutsu_doctor` as MCP tools and run evidence as resources, for
-Claude Desktop/Code integration. Every test in `tests/test_mcp.py` calls `mcp.call_tool(...)` /
+Claude Desktop/Code integration. Most tests in `tests/test_mcp.py` call `mcp.call_tool(...)` /
 `mcp.read_resource(...)` directly on an in-process `FastMCP` instance; `test_cli_mcp_starts_server`
 monkeypatches `create_server` so `.run()` never starts a real server, only records which transport
 string was requested. Nothing in the suite ever serializes a tool call over stdio or SSE and

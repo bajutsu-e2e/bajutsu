@@ -15,7 +15,7 @@
 ## はじめに
 
 `bajutsu mcp` は `bajutsu_run`/`bajutsu_doctor` を MCP のツールとして、run の証跡をリソースとして
-公開し、Claude Desktop / Code との連携に使われます。`tests/test_mcp.py` のすべてのテストは、
+公開し、Claude Desktop / Code との連携に使われます。`tests/test_mcp.py` のほとんどのテストは、
 in-process の `FastMCP` インスタンスに対して `mcp.call_tool(...)` / `mcp.read_resource(...)` を
 直接呼び出しています。`test_cli_mcp_starts_server` は `create_server` を monkeypatch しているため、
 `.run()` は実際のサーバを一度も起動せず、どの transport 文字列が要求されたかを記録するだけです。
