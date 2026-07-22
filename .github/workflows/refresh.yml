@@ -137,7 +137,7 @@ jobs:
       # needs — so authoring is all it can do; the deterministic step below turns the edits into a PR.
       - name: Author the refresh with the Claude Code action
         if: steps.gate.outputs.enabled == 'true'
-        uses: anthropics/claude-code-action@12531344451323133b0493233c759991ac61da12  # v1.0.174
+        uses: anthropics/claude-code-action@1298632ce7736903d02a1435002705aa2a594a6c  # v1.0.175
         env:
           ANTHROPIC_MODEL: ${{ steps.gate.outputs.provider == 'bedrock' && vars.BEDROCK_MODEL_ID || '' }}
         with:
