@@ -18,7 +18,8 @@
 `serve/server/oauth.py`'s `GitHubOAuthClient` wraps Authlib's `OAuth2Client` to drive `serve`'s
 GitHub login. No test in `tests/serve/test_oauth.py` ever instantiates or drives the real class —
 every test substitutes `FakeOAuthClient`, `_RaisingOAuthClient`, or a hand-written `_PagingClient`
-standing in for `httpx`. This item adds a real handshake test against a throwaway GitHub OAuth App.
+standing in for `httpx`. This item captures one real handshake against a throwaway GitHub OAuth App
+and replays it through the real client code.
 
 ## Motivation
 
@@ -26,35 +27,44 @@ The fakes prove `serve`'s login flow correctly calls whatever `GitHubOAuthClient
 prove nothing about whether the real class, wrapping the real Authlib `OAuth2Client` over real
 `httpx`, actually completes a token exchange against GitHub, or whether `_fetch_orgs` parses GitHub's
 real org-list response shape at all, as opposed to the hand-built `_PagingClient`'s stand-in for it.
-A version bump in Authlib changing its token-exchange call signature, a change in
-GitHub's OAuth response shape, or a redirect/cookie-domain misconfiguration would all be invisible to
-this suite, because none of it ever leaves the process — the exact failure mode a mocked-client test
-suite cannot catch by construction.
+A version bump in Authlib changing its token-exchange call signature or a change in GitHub's OAuth
+response shape would both be invisible to this suite, because none of it ever leaves the process —
+the exact failure mode a mocked-client test suite cannot catch by construction.
 
 ## Detailed design
 
 Proposal altitude. The work is MECE along the units below.
 
-- **A throwaway GitHub OAuth App for CI.** Register a minimal test-only OAuth App with its client
-  secret stored as a repository secret, scoped to a disposable test account or organization.
-- **A key-gated live handshake test.** Drive `GitHubOAuthClient` through a real (scripted, headless)
-  authorization-code exchange against that App, skipped when the secret is absent, asserting a real
-  access token comes back and `_fetch_orgs` parses a real single-page org response. A disposable test
-  account realistically won't belong to the 100+ orgs `_fetch_orgs`'s `per_page=100` needs to trigger
-  a second page, so multi-page `Link`-header handling stays covered by the existing `_PagingClient`
-  unit test, not this live path.
-- **Non-gating first.** Land the new job as CI signal, following the precedent in
-  [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md),
-  before considering it required.
+- **A throwaway GitHub OAuth App, captured once.** Register a minimal test-only OAuth App (its
+  client ID/secret used only for a one-time manual capture, never stored in CI). A maintainer
+  manually completes one real authorization-code exchange against it and saves the raw HTTP
+  responses: the token exchange and a representative org-list page.
+- **Replay the captured responses through the real code, not a live CI login.** Getting the initial
+  authorization `code` requires a human completing GitHub's hosted login-and-consent page —
+  scripting that from a CI runner means logging into a live account programmatically, risking
+  GitHub's 2FA/device-verification/CAPTCHA challenges firing unpredictably on CI IPs, exactly the
+  kind of flakiness this item exists to avoid, over a far more sensitive secret than an OAuth client
+  secret. Instead, intercept at the `httpx` transport boundary (`respx` or a custom
+  `httpx.MockTransport`) and replay the captured real responses back through the real
+  `GitHubOAuthClient`/`OAuth2Client`/`_fetch_orgs`, so an Authlib call-signature break or a GitHub
+  response-shape change is still caught, with no live network call or credential needed in CI.
+- **Keep the mocked-client tests as they are.** `FakeOAuthClient`, `_RaisingOAuthClient`, and
+  `_PagingClient` already cover the login flow's own logic and its error paths; this item adds a
+  captured-real-response fixture alongside them rather than replacing them.
 
 ## Alternatives considered
 
+- **Drive a real, scripted headless browser login in CI.** This was the first design considered
+  here, but the initial authorization `code` can only come from a human completing GitHub's hosted
+  consent page — scripting that from CI means holding and driving a live account's credentials, with
+  GitHub's anti-automation defenses (2FA, device verification, CAPTCHA) able to fire unpredictably.
+  That is a worse flakiness and secret-handling problem than the one this item sets out to solve.
 - **Trust the mocked-client tests, since the login flow's own logic is unit-tested.** The flow logic
   being correct for a canned client response says nothing about whether the real Authlib/`httpx`
-  stack actually completes a handshake against GitHub, which is the property this item verifies.
+  stack actually parses what GitHub's real API returns, which is the property this item verifies.
 - **Rely on Authlib's own test suite for the OAuth2Client contract.** Authlib's tests cover Authlib;
   they say nothing about whether `serve`'s own `GitHubOAuthClient` wrapper and `_fetch_orgs` pagination
-  logic correctly drive it against GitHub specifically.
+  logic correctly handle a real GitHub response.
 
 ## Progress
 
@@ -62,9 +72,11 @@ Proposal altitude. The work is MECE along the units below.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Register a throwaway GitHub OAuth App for CI.
-- [ ] Add a key-gated live handshake test for `GitHubOAuthClient` and `_fetch_orgs`.
-- [ ] Wire it into CI as a non-gating signal.
+- [ ] Register a throwaway GitHub OAuth App and manually capture one real token-exchange and
+  org-list response.
+- [ ] Replay the captured responses through the real `GitHubOAuthClient`/`_fetch_orgs` via an
+  `httpx` transport intercept.
+- [ ] Keep the mocked-client tests as they are.
 
 ## References
 
