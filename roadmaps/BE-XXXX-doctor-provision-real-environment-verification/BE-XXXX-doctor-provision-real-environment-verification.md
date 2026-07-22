@@ -38,8 +38,8 @@ never a captured real `xcrun simctl list devices -j` payload — a schema change
 version would silently break `doctor` and the device pool's labeling. `.github/actions/bajutsu-e2e/action.yml`
 already runs `bajutsu doctor` on the iOS lane, but only as a non-blocking convention check
 (`|| echo "doctor: non-blocking (convention score only)"`) that discards the exit code and never
-asserts a grade from the rendered output, so the real `simctl` parsing it exercises is never actually
-checked; Android and web have no doctor step at all.
+asserts anything from the rendered output, so the real `simctl` parsing it exercises is never
+actually checked; Android and web have no doctor step at all.
 
 A single real invocation of `bajutsu doctor` (and, separately, `python -m bajutsu.provision`) inside an
 existing on-device lane closes most of these gaps at once: it exercises the real `simctl` JSON shape
@@ -52,11 +52,13 @@ Proposal altitude. The work is MECE along the units below.
 
 - **Run `bajutsu doctor` for real inside an existing E2E lane.** Add a step to `ios-e2e.yml`
   (and, separately, `android-e2e.yml`/`web-e2e.yml`) that runs the real command against the lane's
-  real environment and asserts it exits 0 with a Ready or Partial grade in its rendered output,
-  exercising `simctl.py`'s real JSON parsing and `preflight.py`'s real tool checks in one pass.
+  real environment and asserts the rendered `environment:` section reports no `✘` (i.e. the
+  environment gate itself doesn't exit 1/2), exercising `simctl.py`'s real JSON parsing and
+  `preflight.py`'s real tool checks in one pass.
 - **Add one deliberately-broken-environment case.** In a job (or job step) with a tool intentionally
   absent or misconfigured (e.g. `PATH` without `idb`), assert `doctor`/`preflight` correctly exits
-  non-zero with a Blocked grade — the fail side no injected-fake test can prove today.
+  non-zero with an `✘` in the rendered `environment:` section — the fail side no injected-fake test
+  can prove today.
 - **Run `python -m bajutsu.provision` for real in a fresh environment.** Add a job (a bare container, or a
   fresh step before the rest of a lane's setup) that runs the real installer end-to-end and asserts
   the tool it targets becomes available, closing the "command string was right" vs. "the real package
@@ -82,14 +84,16 @@ Proposal altitude. The work is MECE along the units below.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Run `bajutsu doctor` for real inside the iOS, Android, and web E2E lanes, asserting a
-  Ready/Partial grade in its output.
-- [ ] Add a deliberately-broken-environment case asserting a Blocked grade.
+- [ ] Run `bajutsu doctor` for real inside the iOS, Android, and web E2E lanes, asserting the
+  `environment:` section reports no `✘`.
+- [ ] Add a deliberately-broken-environment case asserting a non-zero exit with an `✘` in the
+  `environment:` section.
 - [ ] Run `python -m bajutsu.provision` for real in a fresh environment.
 - [ ] Capture a real `simctl list devices -j` payload as a test fixture.
 
 ## References
 
+- [BE-0024 — doctor / onboarding](../BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md) — the topic-anchor item this proposal's onboarding-gate work extends.
 - [BE-0164 — Config-aware environment installer](../BE-0164-config-aware-environment-installer/BE-0164-config-aware-environment-installer.md)
 - [BE-0282 — Real-backend network capture, mock, and assertion coverage in CI](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md)
 - `bajutsu/provision.py`, `bajutsu/preflight.py`, `bajutsu/requirements.py`, `bajutsu/simctl.py`,
