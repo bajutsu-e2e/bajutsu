@@ -30,7 +30,7 @@ real API accepts what Bajutsu sends and returns what the code assumes. A JWT who
 algorithm GitHub rejects in practice, a clock-skew edge case in the `iat`/`exp` claims that only
 shows up against a real clock, or an installation-token response whose real shape has drifted from
 the hand-typed `{"id": 999}` / `{"token": "..."}` fixtures — none of these would be caught by the
-current suite, because none of it ever leaves the process. The private-repo config source is a
+current suite, because none of the exchange ever leaves the process. The private-repo config source is a
 secondary feature (`config_source.py`), but the token flow underneath it is exactly the kind of
 external-integration surface a mock cannot validate by construction: the mock only ever returns
 what the person who wrote it believes GitHub returns.
