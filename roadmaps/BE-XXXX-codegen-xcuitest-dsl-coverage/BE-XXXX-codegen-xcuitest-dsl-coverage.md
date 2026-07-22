@@ -46,7 +46,7 @@ pass.
 
 ## Detailed design
 
-Proposal altitude. The work is MECE along the units below.
+The work breaks down MECE into the units below.
 
 - **Extend the compiled scenario.** Add text-editing (`clear` / `delete` / `select` / `copy`),
   gesture (`longPress`, both `swipe` forms — direction and coordinate `from`/`to` — and `drag`), and
