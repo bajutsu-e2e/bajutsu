@@ -72,13 +72,15 @@ gh pr checks <PR>
 
 ### 4. Self-review against the CI review contract
 
-If step 2 or 3 made a change this iteration, mirror the CI "Claude review" workflow locally,
-before pushing, instead of waiting on its own re-review round trip on the next push (BE-0203) —
-skip this step entirely when nothing changed (e.g. a poll under `implement-be`'s `/loop` where CI
-is already green and no new comments arrived), since there is nothing new to self-review or push.
-Otherwise, apply the same discipline as [`ideation`](../ideation/SKILL.md)'s step 5 — drafting a
-BE proposal from scratch there, a fix to a live PR here. Spawn a fresh subagent (Agent tool — if
-nested
+If step 2 or 3 made a change this iteration, mirror the CI "Claude review" workflow locally before
+pushing whatever hasn't shipped yet. This pays off most directly for step 3's review-comment
+fixes, which wait until step 5's push to go out; a step 2 CI-failure fix already went out with its
+own push, so here this step is an extra local check rather than the round-trip savings it buys for
+step 3 (BE-0203). Skip this step entirely when nothing changed this iteration (e.g. a poll under
+`implement-be`'s `/loop` where CI is already green and no new comments arrived), since there is
+nothing new to self-review or push. Otherwise, apply the same discipline as
+[`ideation`](../ideation/SKILL.md)'s step 5 — drafting a BE proposal from scratch there, a fix to a
+live PR here. Spawn a fresh subagent (Agent tool — if nested
 agent spawning is unavailable in this context, e.g. when this skill is itself already running as a
 subagent, apply the contract inline instead of spawning) that has **not** seen this pr-followup
 session — the actual CI reviewer also runs cold — and give it the contract at

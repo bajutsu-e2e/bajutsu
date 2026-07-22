@@ -128,11 +128,12 @@ fresh subagent (Agent tool) that has **not** seen this ideation conversation —
 also runs cold, with no memory of the authoring discussion, so a subagent that inherited this
 session's context would not reproduce that. Give it exactly two inputs: the contract at
 [`.github/claude-review-prompt.md`](../../../.github/claude-review-prompt.md) and the working
-diff (`git add roadmaps/ && git diff origin/main` — `make new-roadmap-item`'s new files are
-untracked, so a bare `git diff` would omit them entirely; scope the add to `roadmaps/` rather than
-`-A`, since this skill only ever touches that directory and a stray file elsewhere in the tree —
-scratch output, unrelated in-progress work in a parallel worktree — shouldn't get staged along with
-it; there is no PR yet, so nothing to run `gh pr diff` against). Ask it to apply every lens in the
+diff (`git add roadmaps/ && git diff origin/main -- roadmaps/` — `make new-roadmap-item`'s new
+files are untracked, so a bare `git diff` would omit them entirely; scope both the add and the
+diff to `roadmaps/` rather than the whole tree, since this skill only ever touches that directory
+and a stray file elsewhere — scratch output, unrelated in-progress work in a parallel worktree —
+shouldn't get staged or reviewed along with it; there is no PR yet, so nothing to run `gh pr diff`
+against). Ask it to apply every lens in the
 contract and return its findings as a plain list —
 skip the two parts of the contract that need a live PR: "read the existing discussion first" (`gh
 pr view <PR_NUMBER> --comments`, since there is no PR number yet) and posting findings as inline PR
