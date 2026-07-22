@@ -240,6 +240,58 @@ def test_extract_settle_converges_despite_reordered_duplicate_key_elements(
     assert clock.now() < 1.0  # converged in a couple of reads, not polled to the 5s deadline
 
 
+class _NoneEmptyFlipDriver(FakeDriver):
+    """A stable field plus a noise node whose value flips None <-> "" between reads.
+
+    Models an optional accessibility field a backend reports as absent on one read and empty on the
+    next — no meaningful change. The projection must coerce both to the same key, or the flip makes
+    `_extract_stable_key` emit a different tuple each read and the settle never converges.
+    """
+
+    def __init__(self) -> None:
+        super().__init__([el("field", "Name", value="X"), el("noise", value=None)])
+        self._flip = False
+        self.queries = 0
+
+    def query(self) -> list[base.Element]:
+        self.queries += 1
+        self.screen = [
+            el("field", "Name", value="X"),
+            el("noise", value="" if self._flip else None),
+        ]
+        self._flip = not self._flip
+        return super().query()
+
+
+def test_extract_settle_converges_across_none_vs_empty_prop_flip(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(_FLOOR, "5")
+    # A noise node's value flips None <-> "" (absent vs empty) each read while the field is stable.
+    # Coercing the emitted props with `or ""` keeps the key stable, so the settle converges rather
+    # than polling the 5s deadline on a meaningless flip.
+    driver = _NoneEmptyFlipDriver()
+    clock = FakeClock()
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "x",
+                "steps": [
+                    {
+                        "tap": {"id": "field"},
+                        "extract": {"who": {"sel": {"id": "field"}, "prop": "value"}},
+                    },
+                    {"assert": [{"value": {"sel": {"id": "field"}, "equals": "${vars.who}"}}]},
+                ],
+            }
+        ),
+        clock=clock,
+    )
+    assert result.ok, result.failure
+    assert clock.now() < 1.0  # converged, not polled to the 5s deadline on a None/"" flip
+
+
 def _assert_step_scenario() -> object:
     # tap, then a step-level `assert` on a value the tap mirrors in a beat late — the Unit 2 site
     # (distinct from the scenario-level `expect` that test_expect_wait covers).

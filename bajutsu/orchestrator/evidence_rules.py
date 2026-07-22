@@ -83,14 +83,19 @@ def _extract_stable_key(
     property), so the key is a function of the element *set*, not the order the driver returned them
     in: were two elements sharing an identifier and frame — e.g. two unidentified nodes — to come back
     reordered between reads, an (identifier, frame)-only sort would emit a different key for the same
-    screen and the settle would never converge, polling the whole deadline.
+    screen and the settle would never converge, polling the whole deadline. `identifier` and every
+    read property are coerced with `or ""` (absent and empty collapse to the same key), so an optional
+    field a backend reports as `None` on one read and `""` on the next does not spuriously look changed;
+    a genuine `None → real value` change still differs.
     """
     props = sorted({ext.prop for ext in extracts.values()})
     ordered = sorted(
         elements,
         key=lambda e: (e["identifier"] or "", e["frame"], tuple(e.get(p) or "" for p in props)),
     )
-    return tuple((e["identifier"] or "", e["frame"], *(e.get(p) for p in props)) for e in ordered)
+    return tuple(
+        (e["identifier"] or "", e["frame"], *(e.get(p) or "" for p in props)) for e in ordered
+    )
 
 
 def _run_extract(
