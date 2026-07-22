@@ -44,9 +44,9 @@ Proposal altitude. The work is MECE along the units below.
 - **Replay the captured responses through the real code, not a live CI login.** Getting the initial
   authorization `code` requires a human completing GitHub's hosted login-and-consent page —
   scripting that from a CI runner means logging into a live account programmatically, risking
-  GitHub's 2FA/device-verification/CAPTCHA challenges firing unpredictably on CI IPs. That is exactly
-  the kind of flakiness this item exists to avoid, over a far more sensitive secret than an OAuth
-  client secret. Instead, intercept at the `httpx` transport boundary (`respx` or a custom
+  GitHub's 2FA/device-verification/CAPTCHA challenges firing unpredictably on CI IPs — exactly the
+  kind of flakiness this item exists to avoid, and a far more sensitive secret to risk than the
+  OAuth client secret. Instead, intercept at the `httpx` transport boundary (`respx` or a custom
   `httpx.MockTransport`) and replay the captured real responses back through the real
   `GitHubOAuthClient`/`OAuth2Client`/`_fetch_orgs`, so an Authlib call-signature break against that
   known-real shape is still caught with no live network call or credential needed in CI — though a
