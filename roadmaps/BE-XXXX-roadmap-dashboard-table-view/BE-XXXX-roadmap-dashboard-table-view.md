@@ -10,6 +10,7 @@
 | Status | **Proposal** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | Topic | Development infrastructure (contributor workflow) |
+| Related | [BE-0094](../BE-0094-roadmap-status-dashboard/BE-0094-roadmap-status-dashboard.md), [BE-0219](../BE-0219-roadmap-dashboard-search/BE-0219-roadmap-dashboard-search.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -74,7 +75,12 @@ mutually exclusive, collectively exhaustive (MECE) across these units:
    full history (`fetch-depth: 0`) instead of its current shallow clone, since `git log` on a
    single-commit checkout would report every item as created and updated on the same day; the
    trade-off is a small, recurring increase in checkout time on every docs build from then on, not a
-   one-time cost.
+   one-time cost. Running two `git log --follow` subprocesses per item — roughly 600 across the
+   current roadmap — adds a second, related recurring cost; each is a local read over an already
+   fetched history with no network round-trip, so it is expected to stay negligible next to the
+   checkout itself, but if it ever measurably slows the build, collapsing it to one repository-wide
+   `git log --name-status -M` walk that resolves every item's dates in a single pass is the cheaper
+   alternative to reach for.
 2. **View toggle.** Render a two-way control (`Cards` / `Table`) beside the existing `.be-filters`
    row. Both views read from the same rendered item data — the toggle only shows one of two sibling
    containers (`.be-cards-view` / `.be-table-view`) and hides the other; nothing is fetched or
