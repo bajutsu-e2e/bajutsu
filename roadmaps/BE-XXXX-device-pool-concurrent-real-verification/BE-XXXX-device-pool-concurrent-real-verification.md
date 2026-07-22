@@ -15,8 +15,9 @@
 ## Introduction
 
 `runner/pool.py`'s `device_pool` claims a specific isolation guarantee for `--workers N` runs: each
-worker gets its own `udid`, its own `runs/<runId>` directory, and shares no mock port or index with
-any other worker (`DESIGN.md` §3.3). Every test of this guarantee — `tests/runner/test_pool.py` —
+worker leases its own `udid` and writes evidence under its own `run_dir/<scenario_id>` subdirectory
+of the one shared run directory, sharing no mock port or index with any other worker's scenario
+(`DESIGN.md` §3.3). Every test of this guarantee — `tests/runner/test_pool.py` —
 monkeypatches `bajutsu.backends.make_driver` to return `FakeDriver` instances against fabricated
 udids like `"UDID-A"`/`"UDID-B"`. No CI lane ever boots two real Simulators or two real emulators
 concurrently; every job in `ios-e2e.yml`/`android-e2e.yml` boots exactly one device. This item adds
@@ -29,7 +30,8 @@ worker A's resources really are kept separate from worker B's *in the data struc
 manages*. They cannot prove the guarantee holds against real OS-level device and process contention:
 whether two real `simctl`/`adb` invocations targeting different devices ever race on a shared
 resource idb/adb touches outside the pool's own bookkeeping (a shared boot lock, a port collision, an
-artifact path computed before the per-worker directory is fully established), or whether two real
+artifact path computed before a worker's `run_dir/<scenario_id>` subdirectory is fully established),
+or whether two real
 devices' [evidence](../../docs/glossary.md#evidence-capturepolicy-trace-triage) capture ever
 cross-writes under real timing pressure that a synthetic, sequential fake test cannot produce.
 
@@ -40,9 +42,9 @@ Proposal altitude. The work is MECE along the units below.
 - **Boot two real devices concurrently in an existing E2E lane.** Extend `ios-e2e.yml` (two booted
   Simulators) and, separately, `android-e2e.yml` (two booted emulators, resource permitting), running
   `--workers 2` against a scenario set large enough to keep both workers busy simultaneously.
-- **Assert real isolation, not just completion.** Confirm each worker's `runs/<runId>` directory,
-  udid, and evidence artifacts are cleanly separated and that no artifact from one worker appears in
-  the other's directory — the concrete, checkable form of the isolation claim.
+- **Assert real isolation, not just completion.** Confirm each worker's `udid` and its
+  `run_dir/<scenario_id>` subdirectory are cleanly separated and that no artifact from one worker's
+  scenario appears under another's — the concrete, checkable form of the isolation claim.
 - **Land as non-gating signal first.** A concurrent-device lane is more resource-intensive and
   potentially more environment-sensitive than the existing single-device jobs; follow the precedent
   in [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md)
@@ -66,7 +68,7 @@ Proposal altitude. The work is MECE along the units below.
 
 - [ ] Boot two real devices concurrently — Simulators in `ios-e2e.yml`, emulators in
   `android-e2e.yml` (resources permitting) — and run `--workers 2` against both.
-- [ ] Assert per-worker isolation of `runs/<runId>`, udid, and evidence artifacts.
+- [ ] Assert per-worker isolation of `udid` and the `run_dir/<scenario_id>` subdirectory.
 - [ ] Land non-gating first, promote once stable.
 
 ## References
