@@ -85,7 +85,7 @@ unaddressed — not re-raise a point already settled in the discussion it just r
 
 Fix every finding it raises, unless it is a false positive or a deliberate, already-explained
 trade-off (note the rationale and move on) or it calls for a genuine design change (handle it
-under this skill's own Escalation section instead of attempting it). Run `make check` after each
+under this skill's own Escalation section instead of attempting it — noting there is no PR conversation to leave unresolved for a self-review-only finding). Run `make check` after each
 fix. Re-run the subagent against the updated diff after non-trivial fixes, capped at 3 rounds — if
 it still hasn't converged by then, stop and report what remains rather than looping further.
 
