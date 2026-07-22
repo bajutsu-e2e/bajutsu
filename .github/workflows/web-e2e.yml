@@ -183,10 +183,11 @@ jobs:
   # proves stable") and, having proven stable in CI, is now part of the `E2E (web)` aggregator's
   # `needs` below, so a failure here blocks a merge. Same `web` extra and path-gate as the smoke.
   #
-  # Android has no counterpart: the adb driver declares no NETWORK capability and there is no native
-  # network monitor to actuate (observes_network_via_driver is false), so Android network capture is
-  # out of scope pending that monitor. The absence is a deliberate boundary, not an oversight — see
-  # BE-0282 and docs/architecture.md.
+  # Android now has a counterpart (BE-0283): `network (adb)` in android-e2e.yml captures real emulator
+  # traffic through BajutsuAndroid's app-side interceptor reporting to a host collector over `adb
+  # reverse` — a different transport from Playwright's in-browser interception here, but the same
+  # `request`-assertion verdict, and it gates there just as this job now does. See BE-0282, BE-0283,
+  # and docs/architecture.md.
   web-network:
     name: network (playwright)
     needs: changes
