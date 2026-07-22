@@ -181,8 +181,9 @@ lint-pr:
 	uv run python scripts/lint_pr.py
 
 # Filter roadmap (BE) items by Status into one small table — ID / Item / Topic / Path — so an AI
-# session surveys just the rows it needs (e.g. every Proposal) without reading the 700+-line index
-# (BE-0162). Pure and offline: reads roadmaps/ metadata only. The `roadmap-filter` skill wraps this.
+# session surveys just the rows it needs (e.g. every Proposal) without paging through the dashboard's
+# rendered HTML or opening each item file to check its `Status` (BE-0162). Pure and offline: reads
+# roadmaps/ metadata only. The `roadmap-filter` skill wraps this.
 #   make roadmap-status STATUS="Proposal"   # or "In progress" / "Implemented" / "Proposal (deferred)"
 roadmap-status:
 	uv run python scripts/roadmap_query.py --status "$(STATUS)"
