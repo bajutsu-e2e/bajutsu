@@ -10,6 +10,7 @@
 | Status | **Proposal** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | Topic | Authoring experience (record / GUI editor) |
+| Related | [BE-0104](../BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend.md), [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -24,7 +25,7 @@ to the transport-level adapter check proposed separately (real-API contract smok
 
 ## Motivation
 
-The sibling AI-backend item asks "does the adapter round-trip with the real service at all" — a
+The related AI-backend adapter proposal asks "does the adapter round-trip with the real service at all" — a
 transport question. This item asks a different one: "given a genuine record/crawl prompt, does a
 real model's response actually parse into the propose-loop's action schema" — a semantic question
 about the specific prompts and schemas `record` and `crawl` use, which a hand-built `FakeBlock`
@@ -35,7 +36,7 @@ credential-gap error message, never supply one to test the real proposal path. N
 
 This gap matters more here than for a generic AI call, because `record`'s output is the scenario
 file itself — the one artifact the deterministic `run` gate trusts completely once written
-(prime directive #1: AI authors, never judges). A real model producing a proposal that the parser
+(prime directive 1: AI authors, never judges). A real model producing a proposal that the parser
 silently drops or mis-maps would degrade what gets written into that trusted artifact, and nothing
 in the current suite would notice.
 
@@ -57,7 +58,7 @@ Proposal altitude. The work is MECE along the units below.
   them rather than replacing them.
 - **No change to the judge boundary.** Both additions verify that AI *authoring* output parses
   correctly; neither introduces a model call anywhere near `run`'s deterministic verdict
-  (prime directive #1) — the new tests live entirely in the periphery test surface `record`/`crawl`
+  (prime directive 1) — the new tests live entirely in the periphery test surface `record`/`crawl`
   already occupy.
 
 ## Alternatives considered
@@ -88,5 +89,4 @@ Proposal altitude. The work is MECE along the units below.
 - `bajutsu/agents/claude.py`, `bajutsu/crawl/guide.py`, `bajutsu/crawl/tabs.py`,
   `tests/conftest.py` (`FakeBackend` / `FakeBlock`), `tests/test_claude_agent.py`,
   `tests/test_crawl_guide.py`, `tests/test_crawl_tabs.py`, `tests/test_crawl_lanes.py`,
-  `tests/test_crawl.py`, the sibling proposal for a real-API contract smoke lane for the AI backend
-  adapters
+  `tests/test_crawl.py`
