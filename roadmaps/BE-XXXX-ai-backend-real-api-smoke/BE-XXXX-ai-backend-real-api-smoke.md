@@ -51,13 +51,16 @@ Proposal altitude. The work is MECE along the units below.
   `AnthropicBackend` with a trivial prompt and a forced `tool_choice`, gated via `pytest.mark.skipif`
   on a dedicated opt-in flag (e.g. `BAJUTSU_LIVE_AI_SMOKE=1`) in addition to `ANTHROPIC_API_KEY` (or
   the Bedrock/`ant` equivalent credential) — key presence alone isn't a safe gate, since contributor
-  sessions that already export the key for `record`/`triage` (per `CLAUDE.md`) would otherwise fire a
-  real, paid call on an ordinary `make check`. The test only checks that the adapter's normalized
+  sessions that already export the key for `record` (per `CLAUDE.md`) or for `triage --agent claude`
+  (`bajutsu/cli/commands/triage.py`) would otherwise fire a real, paid call on an ordinary
+  `make check`. The test only checks that the adapter's normalized
   `MessageResponse`/`ToolUseBlock` shape comes back populated and parses — never anything about what
   the model chose to say, keeping this a wire-contract check and not a model-quality judgment.
 - **One CI lane per adapter, opt-in and non-gating.** A workflow job per adapter (direct API, Bedrock,
   `ant`) that supplies the real credential from repository secrets and runs the live-call test,
-  following the same non-gating-signal-first precedent as
+  triggered only via `workflow_dispatch` — never `pull_request`, which would expose the credential to
+  a fork-triggered run — mirroring the hard boundary already documented in
+  `.github/workflows/devicefarm.yml`. This follows the same non-gating-signal-first precedent as
   [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md).
 - **Record the ones left uncovered.** Not every credential is realistically available in CI (e.g. a
   live Bedrock role); where a lane can't be wired, say so explicitly in the item's Progress log rather
