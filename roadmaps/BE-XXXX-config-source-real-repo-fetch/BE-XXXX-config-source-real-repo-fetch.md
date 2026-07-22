@@ -28,15 +28,15 @@ into a working config tree — real and useful coverage of the composition logic
 about `_GitHubTransport` itself: whether a real GitHub tarball URL's redirect chain is followed
 correctly, whether the real response's content-type or compression is handled as assumed, or whether
 a real rate-limit or auth-failure response is mapped to the right error rather than an
-unhandled exception. This is the same shape of gap as the GitHub App token flow (a sibling proposal):
-a mock only ever returns what its author believes the real host returns.
+unhandled exception. The same gap shows up in the GitHub App token flow: a mock only ever returns
+what its author believes the real host returns.
 
 ## Detailed design
 
 Proposal altitude. The work is MECE along the units below.
 
-- **A real disposable test repository.** Use a small, stable, low-privilege public (or App-installed
-  private, reusing the sibling GitHub App item's throwaway App) repository as the fetch target.
+- **A real disposable test repository.** Use a small, stable, low-privilege public (or a dedicated
+  throwaway GitHub App installed on a private repository) repository as the fetch target.
 - **A live fetch test.** Drive `materialize()` through the real `_GitHubTransport` against that
   repository, skipped when network access or the relevant credential is unavailable, asserting the
   fetched config tree matches what's actually in the repository.
@@ -52,7 +52,7 @@ Proposal altitude. The work is MECE along the units below.
 - **Trust the fake-transport tests, since the composition logic is thoroughly covered.** Composition
   correctness assumes the transport handed it correct bytes in the first place; it says nothing
   about whether the real transport implementation actually produces those bytes from a real host.
-- **Cover this indirectly through the GitHub App integration item alone.** That item verifies the
+- **Cover this indirectly through a GitHub App token-flow integration test alone.** That verifies the
   token flow; this item verifies the fetch-and-materialize path built on top of it. Both are needed —
   a working token with a broken fetch, or a working fetch with a broken token, are each independently
   observable failure modes.
@@ -71,5 +71,4 @@ Proposal altitude. The work is MECE along the units below.
 ## References
 
 - [BE-0282 — Real-backend network capture, mock, and assertion coverage in CI](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md)
-- `bajutsu/config_source.py`, `tests/test_config_source.py`, the sibling proposal for a real GitHub
-  App integration test
+- `bajutsu/config_source.py`, `tests/test_config_source.py`
