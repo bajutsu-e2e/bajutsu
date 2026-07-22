@@ -97,7 +97,15 @@ The literal `BE-XXXX` is intentional — **you never pick the number by hand.** 
 monotonic, and many branches are in flight at once; hand-picking races two PRs onto the same number.
 CI allocates it at merge time (Step A5).
 
-### Step A4 — Verify and open the proposal PR
+### Step A4 — Self-review, verify, and open the proposal PR
+
+Before committing, mirror the CI "Claude review" workflow locally rather than waiting for it to
+catch anything on the PR: a fresh subagent, blind to the authoring conversation the same way the
+actual CI reviewer is, applies the contract at
+[`.github/claude-review-prompt.md`](../.github/claude-review-prompt.md) to the staged diff and
+fixes every finding — except a false positive or an already-explained trade-off (noted and left
+as-is), or one that calls for a genuine design change (escalated to you instead); capped at 3
+rounds. See [`ideation`](../.claude/skills/ideation/SKILL.md) step 5 for the exact procedure.
 
 The gate stays green even for a docs-only change:
 

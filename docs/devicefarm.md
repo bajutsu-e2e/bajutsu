@@ -187,3 +187,46 @@ anywhere, with no cloud account) — running it is a manual, human procedure:
    output — under a `logs/` subdirectory alongside it.
 
 Once confirmed for your account, the workflow can run the fuller scenario set on demand.
+
+## The iOS device-signing proof of concept (manual)
+
+iOS adds an unknown the Android route never faces: the batch upload must carry a **signed device
+build**. Device Farm installs the app on a physical device, so it needs a device `.ipa` rather than
+the unsigned Simulator `.app` the Simulator lanes emit, and the XCUITest runner must already carry a
+device-valid signature because Device Farm re-signs the app but not the runner (BE-0288). Proving the
+iOS route end to end therefore needs both an **Apple Developer account** — to sign the build — and an
+**AWS Device Farm account**, so it is **not** part of the deterministic `make check` gate (which stays
+unsigned and runs anywhere, with no Apple or AWS account). Running it is a manual, human procedure:
+
+1. Create a Device Farm project and a device pool of iOS devices in `us-west-2`; note their ARNs.
+2. Build the two device-signed artifacts, passing your 10-character Apple Team ID (with that team
+   signed into Xcode, so `-allowProvisioningUpdates` can mint the development profile):
+
+   ```bash
+   make -C demos/showcase swiftui-ipa-device    DEVELOPMENT_TEAM=<your-10-char-team-id>
+   make -C demos/showcase runner-build-device   DEVELOPMENT_TEAM=<your-10-char-team-id>
+   ```
+
+   The first emits the app `.ipa` at `demos/showcase/ios/swiftui/build/export-device/BajutsuShowcaseSwiftUI.ipa`;
+   the second emits the device-signed `BajutsuRunner.xctestrun` under
+   `BajutsuKit/Runner/build/dd-device/Build/Products`. A device build with `DEVELOPMENT_TEAM` unset
+   fails fast with a clear message rather than producing an unsigned artifact.
+3. Run the submitter against one scenario, e.g. `scenarios/firstlook.yaml`, with the iOS platform
+   selected — the same `--platform ios` command from [Using the submitter](#using-the-submitter)
+   above, with its `--package-only` dry-run flag dropped and `--project-arn <project-arn>
+   --device-pool-arn <device-pool-arn>` added to submit the run. That command already packages the
+   runner's whole `Products` directory (`--package BajutsuKit/Runner/build/dd-device/Build/Products=.`),
+   so the `.xctestrun`'s `__TESTROOT__` test bundles beside it travel with the upload; the file alone
+   is not enough. `--platform ios` selects the XCUITest backend, the `IOS_APP` upload type, and the
+   `--udid "$DEVICEFARM_DEVICE_UDID"` argument the reserved device resolves through.
+4. Confirm from the downloaded artifacts that the scenario produced a `manifest.json` with the
+   expected verdict. As on the Android route, the submitter extracts the CUSTOMER_ARTIFACT zip (the
+   `runs/` tree with the manifests) into the destination and writes Device Farm's plain-file
+   artifacts under a `logs/` subdirectory alongside it. Read the verdict from Bajutsu's own
+   `manifest.json`, never from Device Farm's PASSED/FAILED classification. Expect the re-signed
+   behavior for any feature that depends on a dropped entitlement, and expect a scenario using
+   `simctl`-backed device control or a permission grant to be skipped by the preflight — the two
+   [real-device caveats](#ios-re-signing-and-real-device-capabilities) above.
+
+Once confirmed for your account, the workflow can run the fuller iOS scenario set on demand, the same
+way it does for Android.
