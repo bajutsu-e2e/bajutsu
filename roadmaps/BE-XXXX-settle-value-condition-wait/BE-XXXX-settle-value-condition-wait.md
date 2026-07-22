@@ -138,8 +138,8 @@ runner already respects, never a fixed sleep.
    all, so the added polling lands only on the steps that ask for it.
 
 4. **Convert `IdbDriver._settle` to a wall-clock deadline.** Replace its fixed
-   `_SETTLE_MAX_POLLS` / `_SETTLE_POLL_S` loop (`bajutsu/drivers/idb.py:392`–`398`) with the same
-   deadline-bounded shape `AdbDriver._settle` already uses (`bajutsu/drivers/adb.py:302`–`309`), so
+   `_SETTLE_MAX_POLLS` / `_SETTLE_POLL_S` loop (`bajutsu/drivers/idb.py:393`–`400`) with the same
+   deadline-bounded shape `AdbDriver._settle` already uses (`bajutsu/drivers/adb.py:303`–`311`), so
    idb's settle wait scales with how slow the machine running it actually is instead of a fixed
    budget tuned for a fast one. This unit is independent of units 1–3: it fixes the driver's
    pre-action wait, not the runner's post-action read. Once it ships, the two `_settle` methods poll
