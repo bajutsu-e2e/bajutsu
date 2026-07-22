@@ -16,8 +16,8 @@
 
 `agents/alerts.py`'s system-alert guard exists to stop a live AI operation from acting
 blindly into an unexpected system dialog (a permission prompt, a crash sheet) on a real device —
-it backs not only `record` but also the deterministic `run --dismiss-alerts` path
-(`bajutsu/cli/commands/run.py`) and `crawl` (`_build_alert_guard` in `bajutsu/cli/_shared.py`).
+it backs not only `record` and `crawl` — which share one `_build_alert_guard`
+(`bajutsu/cli/_shared.py`) — but also the deterministic `run --dismiss-alerts` path (`bajutsu/cli/commands/run.py`).
 Every test that exercises it supplies a hand-built `AlertDecision` or a canned `FakeBlock` tool-use
 response with coordinates the test author typed in — never a real screenshot judged by a real model.
 This item adds a real-model check of the guard's actual job: given a genuine alert on a genuine
