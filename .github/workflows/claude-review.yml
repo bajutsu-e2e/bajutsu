@@ -156,7 +156,7 @@ jobs:
           # the multi-line value.
           PRIOR=$(gh api --paginate "repos/$REPO/pulls/$PR/comments" \
             --jq '.[] | select(.body | startswith("🤖 **Claude Code**")) | "- " + .path + ":" + ((.line // .original_line // 0)|tostring) + " — " + (.body|split("\n")[0])' \
-            2>/dev/null | head -c 32000 || true)
+            | head -c 32000 || true)
           if [ -n "$PRIOR" ]; then
             printf -v PRIOR_SECTION '%s\n%s' \
               'The following findings are ALREADY posted as inline comments on this PR. Do NOT repeat, restate, or re-post any of them — match by file and line and by substance, and treat them as settled. Every OTHER real issue you find anywhere in the diff you must still raise, even on code an earlier pass overlooked.' \
