@@ -35,7 +35,9 @@ pass every test in the current suite, because the suite never puts anything on t
 Proposal altitude. The work is MECE along the units below.
 
 - **Spin up a real server process.** Start `bajutsu mcp` as an actual subprocess (or in-process
-  server bound to a real transport) rather than monkeypatching `create_server`.
+  server bound to a real transport) rather than monkeypatching `create_server`. The client waits on
+  a condition — the server's readiness signal, or its first request actually completing — rather
+  than a fixed `sleep`, before it starts talking to the process (prime directive 2).
 - **Connect with a real MCP client.** Use the `mcp` SDK's client to list tools, call
   `bajutsu_run`/`bajutsu_doctor`, and read a resource over the real transport (stdio to start, since
   it needs no network), asserting the round-trip produces the same result the in-process tests
@@ -61,8 +63,10 @@ Proposal altitude. The work is MECE along the units below.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Start a real `bajutsu mcp` server process (or in-process server on a real transport).
+- [ ] Start a real `bajutsu mcp` server process (or in-process server on a real transport), gated on
+  a readiness condition wait rather than a fixed `sleep`.
 - [ ] Connect with the real `mcp` SDK client and round-trip a tool call and a resource read.
+- [ ] Keep the in-process tests as they are.
 - [ ] Wire it into CI as a required check.
 
 ## References

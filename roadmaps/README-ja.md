@@ -141,7 +141,7 @@
 
 <!-- /GENERATED:proposals-authoring -->
 
-### 統合と自動化（MCP）
+### 統合と自動化（MCP 化）
 
 <!-- GENERATED:proposals-mcp -->
 
