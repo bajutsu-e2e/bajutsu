@@ -89,8 +89,8 @@ Log:
 - Generated `demos/web/codegen/smoke.spec.ts` from `scenarios/smoke.yaml` (the `tap` / `type` /
   `wait` / `exists` / `value` floor the XCUITest codegen gate covers) and checked it in, alongside a
   pinned `@playwright/test` runner (`codegen/package.json`, `codegen/playwright.config.ts`). Added the
-  `codegen-e2e` Makefile target — re-generate, fail on drift, then run the spec with the real runner
-  against a real Chromium — and the non-gating `codegen (playwright)` signal job in `web-e2e.yml`. The
+  `codegen-e2e` Makefile target — re-generate, run the spec with the real runner against a real
+  Chromium, then fail on drift — and the non-gating `codegen (playwright)` signal job in `web-e2e.yml`. The
   job is deliberately not yet in the required `E2E (web)` aggregator's `needs`; promote it once it
   proves stable in CI, as `network (playwright)` was.
 

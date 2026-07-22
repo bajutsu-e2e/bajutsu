@@ -89,8 +89,8 @@ Playwright API からドリフトしたエミッタの変更は、`tests/test_co
 - `scenarios/smoke.yaml`（XCUITest 向け codegen ゲートがカバーする `tap` / `type` / `wait` /
   `exists` / `value` の床）から `demos/web/codegen/smoke.spec.ts` を生成してチェックインし、あわせて
   ピン留めした `@playwright/test` ランナー（`codegen/package.json`、`codegen/playwright.config.ts`）
-  を追加しました。`codegen-e2e` Makefile ターゲット（再生成し、ドリフトで失敗させ、実ランナーで実
-  Chromium に対して spec を実行する）と、`web-e2e.yml` のゲート対象外の signal ジョブ
+  を追加しました。`codegen-e2e` Makefile ターゲット（再生成し、実ランナーで実 Chromium に対して
+  spec を実行してから、ドリフトで失敗させる）と、`web-e2e.yml` のゲート対象外の signal ジョブ
   `codegen (playwright)` を追加しました。このジョブは意図的にまだ必須の `E2E (web)` アグリゲータの
   `needs` には入れていません。`network (playwright)` がそうだったように、CI で安定を確認してから
   昇格させます。
