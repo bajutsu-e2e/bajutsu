@@ -36,7 +36,10 @@ what its author believes the real host returns.
 Proposal altitude. The work is MECE along the units below.
 
 - **A real disposable test repository.** Use a small, stable, low-privilege public (or a dedicated
-  throwaway GitHub App installed on a private repository) repository as the fetch target.
+  throwaway GitHub App installed on a private repository) repository as the fetch target. Store its
+  credential — a fine-grained personal access token (PAT) scoped read-only to that one repository for
+  the public-repo option, or the throwaway App's private key for the private-repo option — as a
+  dedicated repository secret; whoever owns the test repository (or the App) rotates it.
 - **A live fetch test.** Drive `materialize()` through the real `_GitHubTransport` against that
   repository, skipped when network access or the relevant credential is unavailable, asserting the
   fetched config tree matches what's actually in the repository.
