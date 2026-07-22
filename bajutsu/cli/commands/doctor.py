@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import subprocess
 from pathlib import Path
 
@@ -29,7 +30,6 @@ from bajutsu.config import (
 )
 from bajutsu.doctor import DoctorProbeError, probe_screen, render, score
 from bajutsu.drivers import base
-from bajutsu.idb_version import parse_version
 from bajutsu.platform_lifecycle.environments.xcuitest import (
     bundled_runner_toolchain_note,
     effective_device_type,
@@ -106,20 +106,25 @@ def actuator_resolution_summary(
     return lines
 
 
+# The dotted version number in a tool's `--version` banner, e.g. `16.0` in `Xcode 16.0`.
+_VERSION_RE = re.compile(r"\d+(?:\.\d+)+")
+
+
 def _tool_version(cmd: list[str]) -> str | None:
     """Run a version-printing tool and return its dotted version, or `None` when unavailable.
 
-    Reuses `idb_version.parse_version` to pull the number out of e.g. `Xcode 16.0`, and reads stderr
-    as well as stdout because `xcodebuild -version` can print there. Any failure — an absent tool on a
-    non-macOS host, no Xcode, or a non-zero exit (`check=True` raises `CalledProcessError`, a
-    `SubprocessError`) — yields `None` so a stray number in an error banner can't be read as a
-    version, and the bundled-runner mismatch note (BE-0292) simply doesn't fire.
+    Pulls the number out of e.g. `Xcode 16.0`, and reads stderr as well as stdout because
+    `xcodebuild -version` can print there. Any failure — an absent tool on a non-macOS host, no
+    Xcode, or a non-zero exit (`check=True` raises `CalledProcessError`, a `SubprocessError`) —
+    yields `None` so a stray number in an error banner can't be read as a version, and the
+    bundled-runner mismatch note (BE-0292) simply doesn't fire.
     """
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=15, check=True)
     except (OSError, subprocess.SubprocessError):
         return None
-    return parse_version(proc.stdout + proc.stderr)
+    m = _VERSION_RE.search(proc.stdout + proc.stderr)
+    return m.group(0) if m else None
 
 
 def _host_toolchain() -> tuple[str | None, str | None]:
