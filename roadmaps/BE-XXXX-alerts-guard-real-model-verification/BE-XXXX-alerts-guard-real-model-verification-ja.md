@@ -10,7 +10,7 @@
 | 状態 | **提案** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | トピック | 検証とカバレッジ |
-| 関連 | [BE-0295](../BE-0295-record-crawl-real-model-verification/BE-0295-record-crawl-real-model-verification-ja.md) |
+| 関連 | [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md), [BE-0295](../BE-0295-record-crawl-real-model-verification/BE-0295-record-crawl-real-model-verification-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
@@ -23,12 +23,12 @@
 座標を打ち込んだだけの `FakeBlock` による tool-use レスポンスを与えており、実モデルが実際の
 スクリーンショットを見て判断したものではありません。本項目は、このガードが本来果たすべき役割、
 すなわち本物のアラートが表示された本物の画面に対して、Claude が dismiss（閉じる）コントロールを
-まさしく特定できるかどうかの実モデル検証を追加します。
+正しく特定できるかどうかの実モデル検証を追加します。
 
 ## 動機
 
 `tests/test_alerts.py` の `StubLocator` と `FakeBackend(FakeBlock("resolve_alert", ...))` は、
-このガードのコードが、受け取った `AlertDecision` をまさしくアクションへ配線していることを証明します。
+このガードのコードが、受け取った `AlertDecision` を正しくアクションへ配線していることを証明します。
 これは配線に対する実質的で有用な検証です。しかし、このガードが本来主張する安全性は別の話です。
 実デバイスから捕捉した本物のアラートダイアログを実際に視覚モデルへ与えたとき、その判断が、隣にある
 破壊的な「削除」ボタンなどではなく、正しい dismiss の座標へ確実に着地するかどうかは何も証明しません。
