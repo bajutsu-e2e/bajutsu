@@ -81,7 +81,7 @@ Playwright API からドリフトしたエミッタの変更は、`tests/test_co
 
 - [x] `demos/web` のシナリオから Playwright テストを生成し、生成された `.spec.ts` をチェックインする。
 - [x] 実際の `@playwright/test` ランナーで実ブラウザに対して実行し、成功することを検証する。
-- [x] Makefile ターゲットとゲート対象外の `web-e2e.yml` ジョブを追加し、安定後に必須化する。
+- [ ] Makefile ターゲットとゲート対象外の `web-e2e.yml` ジョブを追加し、安定後に必須化する。
 - [x] フィクスチャの範囲を、XCUITest 向け codegen ゲートがすでにカバーする DSL 表面に揃える。
 
 ログ：

@@ -81,7 +81,7 @@ Proposal altitude. The work is MECE along the units below.
 
 - [x] Emit a `demos/web` scenario's Playwright test and check the generated `.spec.ts` in.
 - [x] Run it with the real `@playwright/test` runner against a real browser, asserting it passes.
-- [x] Wire a Makefile target + non-gating `web-e2e.yml` job; promote to required once stable.
+- [ ] Wire a Makefile target + non-gating `web-e2e.yml` job; promote to required once stable.
 - [x] Scope the fixture to the DSL surface the XCUITest codegen gate already covers.
 
 Log:
