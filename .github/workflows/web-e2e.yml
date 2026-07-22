@@ -6,13 +6,14 @@
 # (ios-e2e.yml) all run on Linux — no Mac, no Simulator — but installing Chromium + running a browser
 # is heavy enough to gate.
 #
-# The lane carries a REQUIRED status check like iOS's `E2E`: the `E2E (web)` job below `needs` the
-# three stable deterministic host-independent jobs (`smoke (playwright)`, `dogfood (serve UI)`,
-# `conformance (playwright)`) and always reports (a path-skip is a pass), so it — not the browser
-# jobs, which are path-gated — is what `main`'s branch-protection ruleset pins. The web lane has no
-# host-specific pixel VRT or upstream-drift golden. The network job (`network (playwright)`) is the
-# one exception to "every job feeds the gate": it lands as SIGNAL first (BE-0282), so it is
-# deliberately absent from the aggregator's `needs` until it proves stable.
+# The lane carries a REQUIRED status check like iOS's `E2E`: the `E2E (web)` job below `needs` all
+# four stable deterministic host-independent jobs (`smoke (playwright)`, `dogfood (serve UI)`,
+# `conformance (playwright)`, `network (playwright)`) and always reports (a path-skip is a pass), so
+# it — not the browser jobs, which are path-gated — is what `main`'s branch-protection ruleset pins.
+# The web lane has no host-specific pixel VRT or upstream-drift golden, so every job feeds the gate.
+# The network job (`network (playwright)`) landed as SIGNAL first (BE-0282) and, having proven stable
+# in CI, is now promoted into the aggregator's `needs` — the web twin of android-e2e.yml's already-
+# gating `network (adb)`.
 #
 # Because `E2E (web)` is a required check, the lane can't be path-gated at the trigger — a required
 # check skipped by a `paths:` filter stays pending forever and blocks the merge. So it triggers on
@@ -178,15 +179,15 @@ jobs:
   # masks the Sync request's secret (demos/web/network/assert_redaction.py). Keyless — the verdict is
   # the scenario's deterministic `request` assertion plus that check, no model anywhere.
   #
-  # This job lands as SIGNAL, not a required check (BE-0282: "land as signal first, promote to
-  # required only once it proves stable"): it is deliberately absent from the `E2E (web)`
-  # aggregator's `needs` below, so a failure here does not block a merge yet. Same `web` extra and
-  # path-gate as the smoke; promote it into the aggregator once it has proven stable.
+  # This job landed as SIGNAL first (BE-0282: "land as signal first, promote to required only once it
+  # proves stable") and, having proven stable in CI, is now part of the `E2E (web)` aggregator's
+  # `needs` below, so a failure here blocks a merge. Same `web` extra and path-gate as the smoke.
   #
-  # Android has no counterpart: the adb driver declares no NETWORK capability and there is no native
-  # network monitor to actuate (observes_network_via_driver is false), so Android network capture is
-  # out of scope pending that monitor. The absence is a deliberate boundary, not an oversight — see
-  # BE-0282 and docs/architecture.md.
+  # Android now has a counterpart (BE-0283): `network (adb)` in android-e2e.yml captures real emulator
+  # traffic through BajutsuAndroid's app-side interceptor reporting to a host collector over `adb
+  # reverse` — a different transport from Playwright's in-browser interception here, but the same
+  # `request`-assertion verdict, and it gates there just as this job now does. See BE-0282, BE-0283,
+  # and docs/architecture.md.
   web-network:
     name: network (playwright)
     needs: changes
@@ -219,8 +220,8 @@ jobs:
   # Single required status check for the web lane — the web twin of ios-e2e.yml's `E2E`. Always runs
   # so it reports even when the browser jobs are skipped (a PR that can't affect the web path) — a
   # skipped dependency is a pass; only a real failure or cancellation fails the gate. The web lane
-  # has no host-specific or upstream-drift job to exclude, so the other three deterministic jobs
-  # feed it — one exception (`network (playwright)`, landed as signal first — see above).
+  # has no host-specific or upstream-drift job to exclude, so all four deterministic jobs feed it
+  # (`network (playwright)` was promoted from signal to gate once stable — see above).
   # Make `E2E (web)` the required check, not the path-gated browser jobs.
   #
   # `changes`'s own result is checked too, not just the browser jobs': `changes` has no `if:`, so it
@@ -230,7 +231,7 @@ jobs:
   # would read that as a pass — the required gate reporting green having run nothing.
   e2e:
     name: E2E (web)
-    needs: [changes, web-e2e, serve-ui-dogfood, web-conformance]
+    needs: [changes, web-e2e, serve-ui-dogfood, web-conformance, web-network]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -240,9 +241,10 @@ jobs:
           SMOKE: ${{ needs.web-e2e.result }}
           DOGFOOD: ${{ needs.serve-ui-dogfood.result }}
           CONFORMANCE: ${{ needs.web-conformance.result }}
+          NETWORK: ${{ needs.web-network.result }}
         run: |
-          echo "changes=$CHANGES smoke=$SMOKE dogfood=$DOGFOOD conformance=$CONFORMANCE"
-          for result in "$CHANGES" "$SMOKE" "$DOGFOOD" "$CONFORMANCE"; do
+          echo "changes=$CHANGES smoke=$SMOKE dogfood=$DOGFOOD conformance=$CONFORMANCE network=$NETWORK"
+          for result in "$CHANGES" "$SMOKE" "$DOGFOOD" "$CONFORMANCE" "$NETWORK"; do
             if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
               echo "E2E (web) failed"
               exit 1

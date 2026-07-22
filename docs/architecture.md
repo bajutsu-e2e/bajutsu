@@ -428,10 +428,11 @@ device (the shared device is reseeded via one channel, so parallel workers would
   (BE-0054); a parallel web crawl across N browser processes ([BE-0077](../roadmaps/BE-0077-parallel-web-crawl/BE-0077-parallel-web-crawl.md)) runs on this same gate.
 - The real network path — `page.route` interception, `requestfinished` capture, the `mocked`
   provenance flag, and redaction of really-captured evidence — is driven against a real browser by
-  the non-gating `network (playwright)` job (`web-e2e.yml`; [BE-0282](../roadmaps/BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md)),
+  the `network (playwright)` job (`web-e2e.yml`; [BE-0282](../roadmaps/BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md)),
   which runs `demos/web/scenarios/network.yaml` **with network on** and then asserts the persisted
-  `network.json` masks a captured secret. It lands as signal first, to be promoted to required once
-  stable. The iOS half (wiring `network_mock.yaml` / `network_live.yaml` as a Simulator job) is not
+  `network.json` masks a captured secret. It landed as signal first and, having proven stable in CI,
+  now feeds the required `E2E (web)` gate. The iOS half (wiring `network_mock.yaml` /
+  `network_live.yaml` as a Simulator job) is not
   yet done. Android now has app-side network capture (BE-0283): `BajutsuAndroid`'s OkHttp
   interceptor reports each exchange to the host collector over an `adb reverse` tunnel, the same
   app-side-cooperation shape `BajutsuKit` uses on iOS. The adb driver itself still declares no
