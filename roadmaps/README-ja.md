@@ -202,7 +202,9 @@
 ### config の取得元
 
 <!-- GENERATED:proposals-config-sourcing -->
-
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0302](BE-0302-config-source-real-repo-fetch/BE-0302-config-source-real-repo-fetch-ja.md) | config source の実リポジトリ fetch 検証 | 提案 |
 <!-- /GENERATED:proposals-config-sourcing -->
 
 ### セキュリティ強化

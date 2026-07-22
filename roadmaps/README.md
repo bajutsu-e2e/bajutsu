@@ -202,7 +202,9 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 ### Configuration sourcing
 
 <!-- GENERATED:proposals-config-sourcing -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0302](BE-0302-config-source-real-repo-fetch/BE-0302-config-source-real-repo-fetch.md) | Real-repository fetch verification for the config source | Proposal |
 <!-- /GENERATED:proposals-config-sourcing -->
 
 ### Security hardening
