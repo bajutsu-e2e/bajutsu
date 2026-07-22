@@ -98,7 +98,7 @@ prime directive 3 のもとで app-agnostic を保てます。`BajutsuKit` は i
 組み込みを新たに要求しません。どの作業単位も `run`／CI の判定の近くに LLM を置かず、固定の `sleep` を
 足しません。どの待ちも条件待ちのままで、いまはより正確に判定できる条件が使えるようになります。
 
-シグナルは、既存の `clock` と並んで `_await_ready` と `_wait_settled` へ渡す読み取り専用の入力として
+シグナルは、`_await_ready` と `_wait_settled` へ渡す読み取り専用の入力として
 決定性コアへ届きます。値の出どころは、コレクタが Python 側に蓄える遷移レコードです。正確な seam——
 バックエンドが広告する `Driver` の capability にするか、2 つの待ち関数へ渡すコレクタへの問い合わせに
 するか——は実装へ委ねますが、1 つの制約を課します。readiness と settle のコアはシグナルを読み取りとして

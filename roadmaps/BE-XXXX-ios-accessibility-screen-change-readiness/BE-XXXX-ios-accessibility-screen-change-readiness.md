@@ -99,8 +99,7 @@ required to link the SDK. No unit puts an LLM anywhere near the `run`/CI verdict
 fixed `sleep`: every wait remains a condition wait, now with a more accurate condition available.
 
 The signal reaches the deterministic core as a read-only input threaded into `_await_ready` and
-`_wait_settled` alongside their existing `clock`, read from the transition records the collector
-accumulates Python-side. The exact seam — a `Driver` capability the backend advertises, or a
+`_wait_settled`, read from the transition records the collector accumulates Python-side. The exact seam — a `Driver` capability the backend advertises, or a
 collector query passed into the two wait functions — is deferred to implementation, under one
 constraint: the readiness and settle core consults the signal only as a read, and never gains a
 write-path or verdict-path dependency on the network-capture collector state it already stays
