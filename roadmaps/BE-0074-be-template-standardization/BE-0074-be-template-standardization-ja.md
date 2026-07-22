@@ -130,7 +130,6 @@ Alternatives considered / References）です。この形は [`CLAUDE.md`](../..
 | Proposal | [BE-NNNN](BE-NNNN-<slug>.md) |
 | 提案者 | [@handle](https://github.com/handle) |
 | Status | **Proposal** |
-| Track | [Proposals](../README.md#proposals) |
 | Topic | <one of the index topics> |
 <!-- /BE-METADATA -->
 
@@ -223,6 +222,12 @@ H1 のタイトル行は両ファイルとも `# BE-NNNN — <タイトル>` と
 - [x] 出荷済み。上記の *実装 PR* を参照してください。（テンプレートはのちに
   [BE-0100](../BE-0100-roadmap-progress-tracking-template/BE-0100-roadmap-progress-tracking-template-ja.md)
   が五セクションから六セクションへ拡張し、この `進捗` セクションと `関連` / `無効化` の欄を加えました。）
+- **後日の注記：** 本項目が現在形で描く索引表の仕組み（`scripts/build_roadmap_index.py` を「索引の生成器」
+  と呼ぶ記述、はじめにで名指しされている生成済みの索引表、メタデータのフェンスが比較対象とする
+  `<!-- GENERATED:* -->` マーカー規約）は
+  [#1257](https://github.com/bajutsu-e2e/bajutsu/pull/1257) で撤去されました。ロードマップダッシュボードが
+  その索引表の役割を引き継ぎ、`scripts/build_roadmap_index.py` は今では純粋なメタデータパーサーです。
+  以下に出てくるそれらの記述は、本項目を書いた当時の設計文脈として読んでください。現在の挙動ではありません。
 
 ## 参考
 

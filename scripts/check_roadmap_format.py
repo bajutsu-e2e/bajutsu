@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Deterministic format check for roadmap (BE) item files — the body counterpart to the index check
-in ``tests/test_roadmap_index.py`` (BE-0074).
+"""Deterministic format check for roadmap (BE) item files — the body counterpart to the metadata
+checks in ``tests/test_roadmap_index.py`` (BE-0074).
 
 Every item is a pair of files, ``BE-NNNN-<slug>.md`` and ``BE-NNNN-<slug>-ja.md``, that share one
 fixed shape: a bilingual header link, a ``# BE-NNNN — …`` title, a fenced metadata block, and the
@@ -40,7 +40,7 @@ ROADMAP = Path(__file__).resolve().parent.parent / "roadmaps"
 # Canonical metadata field order, per language. Required fields are always present; the optional
 # ones (Implementing PR, Related, Superseded by, Origin) may be absent but, when present, keep their
 # slot. Related / Superseded by record cross-item links (BE-0100); Track was retired in BE-0078 —
-# the index bucket is now derived from Status, the lone hand-set lifecycle field. Tracking issue
+# the dashboard bucket is now derived from Status, the lone hand-set lifecycle field. Tracking issue
 # (BE-0139) is required and mechanical — a pure function of the id — sitting right after Status.
 ORDER_EN = [
     "Proposal",

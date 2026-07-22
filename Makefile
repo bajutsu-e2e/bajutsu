@@ -11,16 +11,13 @@ setup: hooks
 # existing clones too — `check` runs it before every gate, right when it matters. Idempotent:
 #   - core.hooksPath    -> the tracked hooks dir (pre-push gate + commit-msg scope check, BE-0069)
 #   - merge.uv-lock     -> regenerate uv.lock from pyproject.toml on conflict (BE-0043)
-#   - merge.roadmap-index -> regenerate the roadmap index tables on conflict (BE-0043)
 #   - rerere            -> replay a once-resolved conflict automatically (BE-0043)
 hooks:
 	@[ -d .githooks ] && git config core.hooksPath .githooks && echo "hooks: core.hooksPath -> .githooks" || true
 	@git config merge.uv-lock.name "regenerate uv.lock from pyproject.toml" \
 	  && git config merge.uv-lock.driver "./scripts/merge-uv-lock.sh %A" \
-	  && git config merge.roadmap-index.name "row-merge the roadmap index tables" \
-	  && git config merge.roadmap-index.driver "./scripts/merge-roadmap-index.sh %O %A %B" \
 	  && git config rerere.enabled true \
-	  && echo "hooks: uv.lock + roadmap-index merge drivers + rerere wired"
+	  && echo "hooks: uv.lock merge driver + rerere wired"
 
 # Config-aware one-command bootstrap (BE-0164): the base toolchain (`setup`) PLUS exactly the
 # backend deps a project's config needs — not "idb unconditionally", not "everything". Meant to run
@@ -68,7 +65,7 @@ preflight:
 	@./scripts/preflight.sh
 
 # Shell scripts the gate lints. pre-push has no .sh suffix, so they're listed explicitly.
-SHELL_SCRIPTS := .githooks/pre-push .githooks/commit-msg scripts/serve.sh scripts/install.sh scripts/worktree.sh scripts/preflight.sh scripts/merge-uv-lock.sh scripts/merge-roadmap-index.sh .claude/hooks/session-start.sh demos/tour/demo.sh
+SHELL_SCRIPTS := .githooks/pre-push .githooks/commit-msg scripts/serve.sh scripts/install.sh scripts/worktree.sh scripts/preflight.sh scripts/merge-uv-lock.sh .claude/hooks/session-start.sh demos/tour/demo.sh
 
 # Modules whose public surface has migrated to the Google-style docstring standard (BE-0065),
 # enforced by `lint-docstrings`. This list GROWS module-by-module as more migrate; keep it the
@@ -183,15 +180,10 @@ new-roadmap-item:
 lint-pr:
 	uv run python scripts/lint_pr.py
 
-# Regenerate the roadmap index tables (README.md / README-ja.md) from each BE item's own
-# metadata, so a roadmap PR only touches its own directory (BE-0043). The committed result is
-# enforced by tests/test_roadmap_index.py — part of `make test`, so the gate fails on drift.
-roadmap-index:
-	uv run python scripts/build_roadmap_index.py
-
 # Filter roadmap (BE) items by Status into one small table — ID / Item / Topic / Path — so an AI
-# session surveys just the rows it needs (e.g. every Proposal) without reading the 700+-line index
-# (BE-0162). Pure and offline: reads roadmaps/ metadata only. The `roadmap-filter` skill wraps this.
+# session surveys just the rows it needs (e.g. every Proposal) without paging through the dashboard's
+# rendered HTML or opening each item file to check its `Status` (BE-0162). Pure and offline: reads
+# roadmaps/ metadata only. The `roadmap-filter` skill wraps this.
 #   make roadmap-status STATUS="Proposal"   # or "In progress" / "Implemented" / "Proposal (deferred)"
 roadmap-status:
 	uv run python scripts/roadmap_query.py --status "$(STATUS)"
