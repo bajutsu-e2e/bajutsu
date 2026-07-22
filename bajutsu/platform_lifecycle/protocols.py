@@ -70,8 +70,10 @@ A new `Environment` (extend `environment_for`) must, at minimum:
 
 1. Implement the full `RunEnvironment` surface: `start` (the per-run bring-up returning a launched
    driver), `relauncher`, `controller` (return `None` if none), `teardown`, `device_catalog`
-   (return `{}` if none), `resolve_device`, `captures_video`, and the two run predicates
-   (`observes_network_via_driver`, `records_video_up_front`). `hook_collector` may gated-raise
+   (return `{}` if none), `resolve_device`, `captures_video`, `prestarted_intervals` (the captures
+   `start` began before launch for the sink to adopt; `[]` if none — the pool calls it every lease),
+   and the two run predicates (`observes_network_via_driver`, `records_video_up_front`).
+   `hook_collector` may gated-raise
    unless `observes_network_via_driver()` returns `True`. `bridge_collector` returns a real teardown
    thunk if the platform's device needs the host collector tunneled to it (Android); `lambda: None`
    otherwise (a Simulator shares the host loopback, and a driver-observed platform never reaches it).
