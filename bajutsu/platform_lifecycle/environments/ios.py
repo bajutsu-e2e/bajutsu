@@ -14,6 +14,7 @@ from bajutsu import backends, simctl
 from bajutsu.config import Effective, require_ios
 from bajutsu.crawl import AliveCheck, ClearBlocking, Recover, Reset
 from bajutsu.drivers import base
+from bajutsu.evidence import intervals
 from bajutsu.evidence.network import Collector
 from bajutsu.orchestrator import DeviceControl, RelaunchFn
 from bajutsu.platform_lifecycle import readiness
@@ -30,13 +31,45 @@ class _DeviceEnvironment:
     method (catalog, relaunch, control, teardown, the external-receiver network strategy) lives here.
     """
 
-    def __init__(self, actuator: str, udid: str, env_run: simctl.RunFn = simctl._real_run) -> None:
+    def __init__(
+        self,
+        actuator: str,
+        udid: str,
+        env_run: simctl.RunFn = simctl._real_run,
+        *,
+        spawn: intervals.Spawn = intervals._spawn,
+    ) -> None:
         self._actuator = actuator
         self._udid = udid
         self._run = env_run
+        # How pre-launch interval processes are spawned (simctl recordVideo); injectable for tests.
+        self._spawn = spawn
+        # A video recording begun before the app launched, for the sink to adopt (BE video timing).
+        self._prestarted_video: intervals.Interval | None = None
 
     def resolve_device(self, udid: str) -> str:
         return simctl.resolve_udid(udid, self._run)
+
+    def prestarted_intervals(self) -> list[intervals.Interval]:
+        """Interval captures begun during `start()`, before the app launched, for the sink to adopt.
+
+        Empty on a backend that records on demand; the simctl family fills it with the scenario video
+        started before launch so the app's cold start is recorded rather than missed.
+        """
+        return [self._prestarted_video] if self._prestarted_video is not None else []
+
+    def _prestart_video(self, record_video_dir: Path | None) -> None:
+        """Begin the scenario video (simctl recordVideo) before the app launches; None records nothing.
+
+        The recording writes to a temp file under `record_video_dir`; the sink adopts it at scenario
+        start and relocates it to the artifact path on stop (`intervals.adopt`). Filed under the udid
+        so concurrent device lanes writing into the shared dir never collide.
+        """
+        if record_video_dir is None:
+            return
+        self._prestarted_video = intervals.start_video(
+            self._udid, record_video_dir / f"prestart-{self._udid}.mp4", spawn=self._spawn
+        )
 
     def captures_video(self) -> bool:
         return True  # a simctl-backed device records a scenario-wide video via a simctl interval
@@ -120,6 +153,12 @@ class IosEnvironment(_DeviceEnvironment):
     of dumping a traceback.
     """
 
+    def records_video_up_front(self) -> bool:
+        # Begin recording before the app launches so its cold start is captured; the sink adopts the
+        # running interval (`_prestart_video` / `prestarted_intervals`). The pool reads this to wire
+        # `record_video_dir` into `start`. The fake / XCUITest bases keep the on-demand default.
+        return True
+
     def start(
         self,
         eff: Effective,
@@ -157,6 +196,9 @@ class IosEnvironment(_DeviceEnvironment):
                 **pre.launch_env,
                 **(extra_env or {}),
             }
+            # Start the scenario video now — after the device is booted and the app installed, but
+            # before it launches — so the recording spans the app's cold start rather than missing it.
+            self._prestart_video(record_video_dir)
             locale = pre.locale or eff.locale  # scenario locale overrides the app/config default
             e.launch(
                 ios.bundle_id,

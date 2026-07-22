@@ -100,6 +100,7 @@ from typing import Literal, Protocol, runtime_checkable
 from bajutsu.config import Effective
 from bajutsu.crawl import AliveCheck, ClearBlocking, Recover, Reset
 from bajutsu.drivers import base
+from bajutsu.evidence import intervals
 from bajutsu.evidence.network import Collector
 from bajutsu.orchestrator import DeviceControl, RelaunchFn
 from bajutsu.scenario import Preconditions, Scenario
@@ -196,8 +197,18 @@ class RunEnvironment(Protocol):
         receiver the app reports to (the device backends). Gates `hook_collector`."""
 
     def records_video_up_front(self) -> bool:
-        """Whether video capture must be wired before launch (web's context records at creation)
-        rather than on demand (simctl). Gates `start`'s `record_video_dir` handling."""
+        """Whether video capture must be wired before launch — so the app's cold start is recorded —
+        rather than on demand after launch. True for web (its context records at creation) and for
+        the device backends (they start recording before the app launches). Gates `start`'s
+        `record_video_dir` handling, and thus whether `prestarted_intervals` can be non-empty."""
+
+    def prestarted_intervals(self) -> list[intervals.Interval]:
+        """Interval captures `start` began before the app launched, for the sink to adopt and finalize.
+
+        A device backend starts the scenario video before launch so the cold start is recorded, then
+        hands the running capture over here for the sink to adopt (`intervals.adopt`) rather than
+        start a fresh one on demand. Empty on a backend that records on demand or wires its up-front
+        recording through the driver instead (web binds it to the browser context)."""
 
     def hook_collector(self, driver: base.Driver, scenario: Scenario) -> Collector:
         """The page-hooked collector for a driver-observed platform, with this scenario's mocks wired

@@ -382,6 +382,9 @@ class _RecordingEnv:
     def records_video_up_front(self) -> bool:
         return False
 
+    def prestarted_intervals(self) -> list[object]:
+        return []  # this fake records on demand: nothing begun before launch
+
     def relauncher(
         self, eff: Effective, scenario: Scenario, driver: base.Driver, **_: object
     ) -> Callable[[object], None]:

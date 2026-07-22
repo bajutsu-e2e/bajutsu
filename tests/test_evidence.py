@@ -274,6 +274,39 @@ def test_filesink_dispatches_adb_driver_intervals_end_to_end(
     assert any("pull" in c for c in ran) and any("rm" in c for c in ran)
 
 
+def test_filesink_adopts_a_prestarted_video_instead_of_starting_one(tmp_path: Path) -> None:
+    # A device backend starts its video before launch; the sink must adopt that running interval for
+    # the "video" kind (relocating it to the artifact path on stop) rather than ask the driver /
+    # simctl to start a fresh one after launch — the other kinds still start on demand.
+    from bajutsu.evidence import FileSink, intervals
+
+    temp = tmp_path / "_video_tmp" / "prestart-SER.mp4"
+    temp.parent.mkdir(parents=True)
+    temp.write_bytes(b"clip")
+
+    class _Proc:
+        def stop(self, sig: int, timeout: float) -> None:
+            pass
+
+    prestarted = intervals.start_video("SER", temp, spawn=lambda argv, out: _Proc())
+
+    asked: list[str] = []
+
+    def driver_interval(kind: str, path: Path) -> intervals.Interval | None:
+        asked.append(kind)  # a prestarted kind must never reach the on-demand provider
+        return intervals.Interval(kind=kind, path=path, provider="adb")
+
+    sink = FileSink(
+        tmp_path, udid="SER", driver_interval=driver_interval, prestarted_intervals=[prestarted]
+    )
+    started = sink.start_scenario_intervals("00-s", ["video", "deviceLog"])
+
+    assert asked == ["deviceLog"]  # video adopted; only deviceLog started on demand
+    assert [iv.kind for iv in started] == ["video", "deviceLog"]
+    assert started[0].stop() == tmp_path / "00-s" / "scenario.mp4"
+    assert (tmp_path / "00-s" / "scenario.mp4").read_bytes() == b"clip" and not temp.exists()
+
+
 def test_finish_scenario_intervals_drops_a_failed_stop_but_finishes_the_rest(
     tmp_path: Path,
 ) -> None:

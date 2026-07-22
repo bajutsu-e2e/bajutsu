@@ -263,6 +263,7 @@ class FileSink:
         redact: Redact | None = None,
         secrets: list[str] | None = None,
         driver_interval: Callable[[str, Path], intervals.Interval | None] | None = None,
+        prestarted_intervals: list[intervals.Interval] | None = None,
         readiness: ReadinessResult | None = None,
         provenance: Mapping[str, object] | None = None,
     ) -> None:
@@ -274,6 +275,10 @@ class FileSink:
         # When set (a web or Android lane), interval evidence comes from this driver-supplied provider
         # instead of the simctl starters below — the device pool injects the driver's `driver_interval`.
         self.driver_interval = driver_interval
+        # Captures the environment already began before the app launched (a device backend's video, so
+        # the cold-start frames are recorded); the sink adopts the running one at scenario start rather
+        # than starting a fresh one on demand. Keyed by kind — at most one per kind.
+        self._prestarted = {iv.kind: iv for iv in (prestarted_intervals or [])}
         # The launch readiness outcome and the run's BE-0049 provenance, folded into a first-wait
         # timeout diagnostic so the failure is decidable from artifacts alone (BE-0231 Unit 1).
         self.readiness = readiness
@@ -315,50 +320,52 @@ class FileSink:
     ) -> list[intervals.Interval]:
         """Start the whole-scenario recordings under <scenario_id>/.
 
-        A driver-supplied lane records via the injected `driver_interval` provider (Playwright-native
-        on web, adb `screenrecord`/`logcat` on Android); otherwise the simctl starters drive iOS,
-        which need a `udid`.
+        A kind the environment already began before launch (a device backend's video, `_prestarted`)
+        is adopted rather than started, so the recording spans the app launch; the finalized file is
+        relocated here on stop. Otherwise a driver-supplied lane records via the injected
+        `driver_interval` provider (Playwright-native on web, adb `screenrecord`/`logcat` on Android),
+        and failing that the simctl starters drive iOS, which need a `udid`.
         """
         if not kinds:
             return []
+        if not (self._prestarted or self.driver_interval is not None or self.udid is not None):
+            return []  # no lane can record: skip without creating an empty scenario dir
         scenario_dir = self.run_dir / scenario_id
-        if self.driver_interval is not None:
-            scenario_dir.mkdir(parents=True, exist_ok=True)
-            driver_started: list[intervals.Interval] = []
-            for token in kinds:
-                kind = token.partition(".")[0]
-                interval = self.driver_interval(kind, scenario_dir / _interval_filename(kind))
-                if interval is not None:
-                    driver_started.append(interval)
-            return driver_started
-        if self.udid is None:
-            return []
         scenario_dir.mkdir(parents=True, exist_ok=True)
         started: list[intervals.Interval] = []
         for token in kinds:
             kind = token.partition(".")[0]
-            if kind == "video":
-                started.append(
-                    intervals.start_video(self.udid, scenario_dir / _interval_filename("video"))
-                )
-            elif kind == "deviceLog":
-                started.append(
-                    intervals.start_device_log(
-                        self.udid,
-                        scenario_dir / _interval_filename("deviceLog"),
-                        self.log_predicate,
-                    )
-                )
-            elif kind == "appTrace" and self.log_subsystem:
-                started.append(
-                    intervals.start_app_trace(
-                        self.udid,
-                        scenario_dir / _interval_filename("appTrace"),
-                        scenario_dir / "appTrace.json",
-                        self.log_subsystem,
-                    )
-                )
+            target = scenario_dir / _interval_filename(kind)
+            pre = self._prestarted.get(kind)
+            if pre is not None:
+                started.append(intervals.adopt(pre, target))
+            elif self.driver_interval is not None:
+                # A driver-supplied lane owns every kind it records; one it declines (None) is simply
+                # absent — it must never fall through to the simctl starters (they would run against a
+                # non-simctl device, e.g. an Android serial).
+                interval = self.driver_interval(kind, target)
+                if interval is not None:
+                    started.append(interval)
+            elif self.udid is not None:
+                interval = self._start_simctl_interval(kind, target, scenario_dir)
+                if interval is not None:
+                    started.append(interval)
         return started
+
+    def _start_simctl_interval(
+        self, kind: str, target: Path, scenario_dir: Path
+    ) -> intervals.Interval | None:
+        """Start one simctl interval capture (iOS), or None for a kind this lane does not record."""
+        assert self.udid is not None
+        if kind == "video":
+            return intervals.start_video(self.udid, target)
+        if kind == "deviceLog":
+            return intervals.start_device_log(self.udid, target, self.log_predicate)
+        if kind == "appTrace" and self.log_subsystem:
+            return intervals.start_app_trace(
+                self.udid, target, scenario_dir / "appTrace.json", self.log_subsystem
+            )
+        return None
 
     def finish_scenario_intervals(
         self, scenario_id: str, started: list[intervals.Interval]

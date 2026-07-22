@@ -288,6 +288,36 @@ def test_android_environment_start_runs_the_adb_sequence() -> None:
     assert any("action.VIEW -d showcasecompose://permissions" in j for j in joined)
 
 
+def test_android_environment_starts_screenrecord_before_launching_the_app(tmp_path) -> None:
+    # The video must begin before `am start` so the app's cold start is recorded; the running
+    # screenrecord is exposed for the sink to adopt rather than started on demand after launch.
+    events: list[str] = []
+
+    def run(args: list[str]) -> str:
+        if "sys.boot_completed" in args:
+            return "1\n"
+        if "resolve-activity" in args:
+            return "com.bajutsu.showcase.android.compose/.MainActivity\n"
+        if "am start" in " ".join(args):
+            events.append("launch")
+        return ""
+
+    class _Proc:
+        def stop(self, sig: int, timeout: float) -> None:
+            pass
+
+    def spawn(argv: list[str], stdout_path: object) -> _Proc:
+        events.append("record")
+        return _Proc()
+
+    env = AndroidEnvironment("adb", "emulator-5554", adb_run=run, spawn=spawn)  # type: ignore[arg-type]
+    env.start(_eff(), Preconditions(), record_video_dir=tmp_path)
+
+    assert events == ["record", "launch"]  # recording began before the app launched
+    started = env.prestarted_intervals()
+    assert len(started) == 1 and started[0].kind == "video"
+
+
 def test_android_environment_start_grants_configured_permissions_after_clear() -> None:
     # BE-0210: runtime permissions are granted up front (`pm grant`) so a permission prompt never
     # blocks the run — deterministic, no timing on the run path. It must run AFTER `pm clear` (which
