@@ -71,7 +71,7 @@ what is already planned, in progress, or deliberately not adopted.
    The literal `BE-XXXX` placeholder is intentional — **IDs are never guessed by hand.**
 5. **Self-review against the CI review contract.** A fresh subagent — blind to the authoring
    conversation, mirroring the CI reviewer's own cold start — applies the same contract the
-   "Claude review" GitHub Actions job uses
+   "Claude review" GitHub Actions workflow uses
    ([`.github/claude-review-prompt.md`](../.github/claude-review-prompt.md), BE-0203) to the
    staged diff. Every finding gets fixed, except a false positive or an already-explained
    trade-off (noted and left as-is) and a finding that calls for a genuine design change

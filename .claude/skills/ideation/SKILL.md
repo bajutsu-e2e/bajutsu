@@ -128,14 +128,17 @@ fresh subagent (Agent tool) that has **not** seen this ideation conversation —
 also runs cold, with no memory of the authoring discussion, so a subagent that inherited this
 session's context would not reproduce that. Give it exactly two inputs: the contract at
 [`.github/claude-review-prompt.md`](../../../.github/claude-review-prompt.md) and the working
-diff (`git add roadmaps/ && git diff origin/main` — `make new-roadmap-item`'s new files are untracked, so
-a bare `git diff` would omit them entirely; there is no PR yet, so nothing to run `gh pr diff`
-against). Ask it to apply every lens in the contract and return its findings as a plain list —
+diff (`git add roadmaps/ && git diff origin/main` — `make new-roadmap-item`'s new files are
+untracked, so a bare `git diff` would omit them entirely; scope the add to `roadmaps/` rather than
+`-A`, since this skill only ever touches that directory and a stray file elsewhere in the tree —
+scratch output, unrelated in-progress work in a parallel worktree — shouldn't get staged along with
+it; there is no PR yet, so nothing to run `gh pr diff` against). Ask it to apply every lens in the
+contract and return its findings as a plain list —
 skip the two parts of the contract that need a live PR: "read the existing discussion first" (`gh
 pr view <PR_NUMBER> --comments`, since there is no PR number yet) and posting findings as inline PR
 comments.
 
-Unlike the CI job — which only posts comments, since prime directive 1 keeps a reviewer from also
+Unlike the CI workflow — which only posts comments, since prime directive 1 keeps a reviewer from also
 being the judge on the Tier-2 gate — this pass has no gate to stay off: fix every finding it
 raises directly in the files before moving on, unless a finding is a false positive or a
 deliberate, already-explained trade-off, in which case note the rationale and move on rather than
@@ -143,7 +146,7 @@ forcing a fix; escalate to the user instead of attempting it if a finding calls 
 design change (the same valve `pr-followup` uses for a review comment that "requires a fundamental
 design change"). Re-run the subagent against the updated diff after non-trivial fixes, and repeat
 until a pass comes back empty (an empty pass is a complete review, per the contract's own closing
-rule — "when nothing warrants a comment, post nothing"). "Advisory" describes the CI job's
+rule — "when nothing warrants a comment, post nothing"). "Advisory" describes the CI workflow's
 relationship to the merge gate, not license to leave a real finding unfixed here. Cap this at 3
 rounds — an LLM-based reviewer is not fully deterministic and could keep surfacing a fresh marginal
 finding each round, possibly one its own previous fix introduced; if the 3rd round still returns

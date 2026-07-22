@@ -72,7 +72,7 @@ gh pr checks <PR>
 
 ### 4. Self-review against the CI review contract
 
-Mirror the CI "Claude review" job locally, before pushing, instead of waiting on its own
+Mirror the CI "Claude review" workflow locally, before pushing, instead of waiting on its own
 re-review round trip on the next push (BE-0203) — the same discipline
 [`ideation`](../ideation/SKILL.md)'s step 5 applies when drafting a BE proposal from scratch,
 applied here to a fix instead of a fresh draft. Spawn a fresh subagent (Agent tool) that has

@@ -122,7 +122,7 @@ does not restate those rules, it runs them:
 - Self-review the staged diff against the CI review contract (`ideation` step 5): a fresh
   subagent, blind to the authoring conversation, applies
   [`.github/claude-review-prompt.md`](../../../.github/claude-review-prompt.md) — the same
-  contract the "Claude review" GitHub Actions job uses — and every finding gets fixed before
+  contract the "Claude review" GitHub Actions workflow uses — and every finding gets fixed before
   moving on.
 - Run `make check` (roadmap changes are docs-only, but the gate is the contract), then open
   **PR #1** with a plain scoped title (`docs(roadmap): …`) and **no** `[BE-…]` prefix — a
