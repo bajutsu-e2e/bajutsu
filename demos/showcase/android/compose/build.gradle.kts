@@ -17,6 +17,10 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
+        // The instrumentation runner for the generated UI Automator codegen test (BE-0294), the
+        // Android twin of the checked-in XCUITest fixture. Only the a11y flavor carries the ids the
+        // test queries by name, so `make -C demos/showcase/android e2e-codegen` runs it there.
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     // SPEC §8: the ACCESSIBLE twin. `a11y` defines BuildConfig.ACCESSIBLE (Modifier.aid attaches a
@@ -67,4 +71,12 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-core")
     implementation("androidx.compose.runtime:runtime")
+
+    // The generated UI Automator codegen test (BE-0294) drives UiDevice / UiObject2 and asserts with
+    // JUnit — the same androidx.test + UI Automator stack the resident server uses (BE-0245), plus
+    // androidx.test:core for the ApplicationProvider the generated `launch(...)` reads.
+    androidTestImplementation("androidx.test:core:1.6.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.0")
 }

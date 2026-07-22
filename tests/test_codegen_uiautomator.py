@@ -428,3 +428,47 @@ def test_runtime_only_constructs_fail_loudly() -> None:
             "        steps:\n"
             "          - tap: { id: '${vars.row}' }\n"
         )
+
+
+# The checked-in UI Automator codegen fixture (BE-0294): the Android twin of the committed XCUITest
+# fixture. The on-device `uiautomator (codegen)` CI job proves the generated Kotlin compiles and
+# passes against a real emulator; these two fast-gate tests are its deterministic complement, catching
+# a drifted fixture in `make check` without a Simulator — no LLM, no device.
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+_FIXTURE_SCENARIO = _REPO_ROOT / "demos/showcase/scenarios/codegen_android.yaml"
+_FIXTURE_KT = (
+    _REPO_ROOT / "demos/showcase/android/compose/src/androidTest/java/CodegenAndroidUITest.kt"
+)
+_SHOWCASE_CONFIG = _REPO_ROOT / "demos/showcase/showcase.config.yaml"
+
+
+def test_android_codegen_fixture_has_no_todo() -> None:
+    # A `// TODO` marks a step the emitter could not translate faithfully; the generated test would
+    # then compile but skip that step (or not compile at all). The fixture is scoped to the surface
+    # that maps fully, so its checked-in .kt must carry none.
+    assert "// TODO" not in _FIXTURE_KT.read_text(encoding="utf-8")
+
+
+def test_android_codegen_fixture_is_up_to_date(tmp_path: Path) -> None:
+    # Regenerate through the same CLI path `make -C demos/showcase/android e2e-codegen` uses (same
+    # scenario, target, and `-o` stem) and compare byte-for-byte: an emitter or config change that
+    # alters the generated Kotlin reddens the gate until the committed fixture is regenerated, so a
+    # stale check-in can never silently diverge from what CI would build.
+    out = tmp_path / _FIXTURE_KT.name
+    result = runner.invoke(
+        app,
+        [
+            "codegen",
+            str(_FIXTURE_SCENARIO),
+            "--emit",
+            "uiautomator",
+            "--target",
+            "showcase-compose",
+            "--config",
+            str(_SHOWCASE_CONFIG),
+            "-o",
+            str(out),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert out.read_text(encoding="utf-8") == _FIXTURE_KT.read_text(encoding="utf-8")

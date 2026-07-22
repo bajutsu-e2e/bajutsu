@@ -5,7 +5,7 @@
 # `run` / `doctor` land with the BE-0007 adb backend; until then these targets only build.
 .PHONY: build-all wrapper \
 	compose-build compose-noax-build views-build views-noax-build e2e e2e-network e2e-golden e2e-fallback \
-	e2e-visual e2e-conformance clean
+	e2e-visual e2e-conformance e2e-codegen clean
 
 HERE := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 GRADLEW := $(HERE)/gradlew
@@ -222,6 +222,23 @@ e2e-conformance: compose-build
 	adb root && adb wait-for-device
 	cd $(ROOT) && BAJUTSU_CONFORMANCE_SERIAL=$(SERIAL) \
 		uv run pytest tests/test_driver_conformance_ondevice_android.py -m ondevice -n0 -v
+
+# The codegen output path: a scenario -> native UI Automator (Kotlin) test, compiled and run by
+# Gradle's connectedAndroidTest with no bajutsu runtime / adb driver / AI at test time (BE-0294) —
+# the Android twin of the iOS `make -C demos/showcase ui-test` target. Re-generates the checked-in
+# CodegenAndroidUITest.kt from the scenario first (so a stale check-in cannot mask an emitter or UI
+# Automator API drift), then `connectedA11yDebugAndroidTest` builds the app + instrumentation APKs,
+# installs both, and runs the generated test against the booted emulator. Compose only, matching the
+# XCUITest gate's single-toolkit scope; the a11y flavor carries the ids the test queries by name. Not
+# part of `make check`: it needs a booted AVD, so android-e2e.yml drives it in its own
+# `uiautomator (codegen)` job (a separate AVD boot).
+CODEGEN_SCENARIO := codegen_android
+CODEGEN_KT := demos/showcase/android/compose/src/androidTest/java/CodegenAndroidUITest.kt
+e2e-codegen:
+	cd $(ROOT) && uv run bajutsu codegen demos/showcase/scenarios/$(CODEGEN_SCENARIO).yaml \
+		--emit uiautomator --target showcase-compose --config $(CONFIG) -o $(CODEGEN_KT)
+	adb wait-for-device
+	cd $(HERE) && $(GRADLEW) :compose:connectedA11yDebugAndroidTest
 
 clean:
 	rm -rf $(HERE)/build $(HERE)/compose/build $(HERE)/views/build $(HERE)/.gradle

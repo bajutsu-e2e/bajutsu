@@ -195,6 +195,9 @@ def test_android_lane_surface() -> None:
     assert is_relevant(["BajutsuAndroidUIAutomatorServer/src/Server.kt"], "android") is True
     assert is_relevant(["tests/test_driver_conformance_ondevice_android.py"], "android") is True
     assert is_relevant([".github/workflows/android-e2e.yml"], "android") is True
+    # The `uiautomator (codegen)` job (BE-0294) regenerates its test with `bajutsu codegen`, so the
+    # codegen CLI command is android-relevant — the one CLI command besides `run` this lane drives.
+    assert is_relevant(["bajutsu/cli/commands/codegen.py"], "android") is True
     # ...but not another lane's driver, app, or workflow.
     assert is_relevant(["bajutsu/drivers/playwright.py"], "android") is False
     assert is_relevant(["BajutsuKit/Sources/x.swift"], "android") is False

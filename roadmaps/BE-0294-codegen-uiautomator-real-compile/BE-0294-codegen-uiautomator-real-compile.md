@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0294](BE-0294-codegen-uiautomator-real-compile.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0294") |
+| Implementing PR | [#1282](https://github.com/bajutsu-e2e/bajutsu/pull/1282) |
 | Topic | codegen coverage |
 <!-- /BE-METADATA -->
 
@@ -72,10 +73,17 @@ Proposal altitude. The work is MECE along the units below.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Emit a showcase scenario's UI Automator test and check the generated `.kt` file in.
-- [ ] Build it with Gradle and run it against the emulator, asserting it passes.
-- [ ] Wire a non-gating `android-e2e.yml` job; promote to required once stable.
-- [ ] Scope the fixture to the DSL surface the XCUITest codegen gate already covers.
+- [x] Emit a showcase scenario's UI Automator test and check the generated `.kt` file in.
+- [x] Build it with Gradle and run it against the emulator, asserting it passes.
+- [x] Wire a non-gating `android-e2e.yml` job; promote to required once stable.
+- [x] Scope the fixture to the DSL surface the XCUITest codegen gate already covers.
+
+Log:
+
+- Landed the `codegen_android.yaml` fixture, its checked-in `CodegenAndroidUITest.kt`, the compose
+  module's `androidTest` wiring, the `e2e-codegen` Makefile target, and the non-gating
+  `uiautomator (codegen)` job. A fast-gate test asserts the fixture emits no `// TODO` and matches
+  the committed `.kt` byte-for-byte.
 
 ## References
 
