@@ -318,7 +318,11 @@ device (the shared device is reseeded via one channel, so parallel workers would
   gestures, and reading the XCTest automation snapshot (which descends into group containers, so it
   renders a fully-expanded element tree). The generic runner (`XCUIApplication(bundleIdentifier:)`)
   drives an arbitrary app by bundle id with no app-side integration; it needs Xcode's `xcodebuild`
-  (BE-0019)
+  (BE-0019). A Simulator target needs no runner config at all: when neither `xcuitest.testRunner` nor
+  `xcuitest.build` is named, the environment resolves to the Simulator runner bundled in the wheel as
+  package data, materialized into a content-hash-keyed writable cache on first use — an explicit
+  `testRunner`/`build` still overrides it, and `deviceType: device` still requires an explicit signed
+  runner (BE-0292)
 - The **Playwright web backend** (`drivers/playwright.py`): a deterministic `run` against a browser
   on the Linux gate (`demos/web`), raised to the rich end of the capability model (BE-0054) — native
   `network` observation + stubbing (`page.route()`), `video` and `deviceLog`-equivalent console /

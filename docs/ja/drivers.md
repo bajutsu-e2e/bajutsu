@@ -78,7 +78,7 @@ class Driver(Protocol):
 - `select` / `copy`: フォーカス中フィールドのネイティブなテキスト選択です。
 - `screenshot`: `simctl io screenshot`。
 
-> 汎用の runner は `XCUIApplication(bundleIdentifier:)` を使うので、アプリ側の協力なしにインストール済みの任意のアプリを駆動します。target は事前ビルドの runner を `xcuitest.testRunner` で指定し、showcase の config は `make runner-build` でこれをビルドします。この backend は `make -C demos/showcase run-swiftui` ＋ `ios-e2e.yml` CI ワークフローで**実機検証済みです**（iPhone 17 Pro、最近の iOS）。XCUITest backend は pip extra を必要とせず、`xcodebuild` は Xcode が供給します。
+> 汎用の runner は `XCUIApplication(bundleIdentifier:)` を使うので、アプリ側の協力なしにインストール済みの任意のアプリを駆動します。Simulator の実行は runner の config を一切必要としません。target が `xcuitest.testRunner` も `xcuitest.build` も指定しないときは、wheel にパッケージデータとして同梱された Simulator 用 runner に解決します（BE-0292）。明示的な `testRunner` や `build` は依然としてこの既定より優先し、`deviceType: device` は引き続き明示的な署名済み runner を必要とします。署名済み runner はオペレーターのチーム向けに Bajutsu が同梱できないためです。この backend は `make -C demos/showcase run-swiftui` ＋ `ios-e2e.yml` CI ワークフローで**実機検証済みです**（iPhone 17 Pro、最近の iOS）。XCUITest backend は pip extra を必要とせず、`xcodebuild` は Xcode が供給します。
 
 ## adb（Android）
 
