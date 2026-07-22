@@ -119,6 +119,11 @@ does not restate those rules, it runs them:
   (敬体; the Japanese layer beneath `document-writing`, natural Japanese, not a literal rendering).
   Keep the `BE-XXXX` placeholder — the real id is allocated on `main`
   by CI ([`roadmap-id`](../../../.github/workflows/roadmap-id.yml)), never guessed.
+- Self-review the staged diff against the CI review contract (`ideation` step 5): a fresh
+  subagent, blind to the authoring conversation, applies
+  [`.github/claude-review-prompt.md`](../../../.github/claude-review-prompt.md) — the same
+  contract the "Claude review" GitHub Actions job uses — and every finding gets fixed before
+  moving on.
 - Run `make check` (roadmap changes are docs-only, but the gate is the contract), then open
   **PR #1** with a plain scoped title (`docs(roadmap): …`) and **no** `[BE-…]` prefix — a
   BE-creation branch never encodes an id, so [`scripts/lint_pr.py`](../../../scripts/lint_pr.py)

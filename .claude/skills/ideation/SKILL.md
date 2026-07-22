@@ -144,7 +144,10 @@ design change (the same valve `pr-followup` uses for a review comment that "requ
 design change"). Re-run the subagent against the updated diff after non-trivial fixes, and repeat
 until a pass comes back empty (an empty pass is a complete review, per the contract's own closing
 rule — "when nothing warrants a comment, post nothing"). "Advisory" describes the CI job's
-relationship to the merge gate, not license to leave a real finding unfixed here.
+relationship to the merge gate, not license to leave a real finding unfixed here. Cap this at 3
+rounds — an LLM-based reviewer is not fully deterministic and could keep surfacing a fresh marginal
+finding each round, possibly one its own previous fix introduced; if the 3rd round still returns
+findings, stop and let the user make the final call instead of looping further.
 
 ### 6. Verify
 
