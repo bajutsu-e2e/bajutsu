@@ -45,6 +45,7 @@ make -C demos/showcase swiftui-build       # SwiftUI a11y プロダクトを Sim
 make -C demos/showcase run-swiftui         # ビルド → インストール → 起動中 Simulator に対し bajutsu run（XCUITest）
 make -C demos/showcase doctor              # アクセシビリティ A/B：a11y は Ready、-noax は Blocked
 make -C demos/showcase ui-test             # codegen 経路：シナリオ → XCUITest → xcodebuild test
+make -C demos/showcase/android e2e-codegen # Android 版：シナリオ → UI Automator → connectedAndroidTest（起動済みエミュレータが必要、BE-0294）
 ```
 
 `bajutsu run` / `serve` は各ターゲットの `build` コマンドでアプリを必要時にビルドするので、先に手動で

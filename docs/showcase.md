@@ -44,6 +44,7 @@ make -C demos/showcase swiftui-build       # compile the SwiftUI a11y product fo
 make -C demos/showcase run-swiftui         # build → install → bajutsu run (XCUITest) against a booted Simulator
 make -C demos/showcase doctor              # the accessibility A/B: a11y grades Ready, -noax Blocked
 make -C demos/showcase ui-test             # the codegen path: scenario → XCUITest → xcodebuild test
+make -C demos/showcase/android e2e-codegen # the Android twin: scenario → UI Automator → connectedAndroidTest (needs a booted emulator, BE-0294)
 ```
 
 `bajutsu run` / `serve` also build the app on demand via each target's `build` command, so a manual

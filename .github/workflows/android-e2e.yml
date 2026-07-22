@@ -22,15 +22,20 @@
 #     zero-match fails, `capabilities()` matches behavior, condition-backed waits) hold on the real
 #     actuator, which smoke/golden/visual cannot cover (they drive unambiguous selectors only). Unlike
 #     the other jobs it runs pytest, not the run CLI, so it keeps the dev group.
+#   - uiautomator (codegen) (adb): the codegen output path (BE-0294) — generate a native UI Automator
+#     (Kotlin) test from a scenario and run it with Gradle's connectedAndroidTest, no bajutsu / adb
+#     driver / AI at test time. The Android twin of ios-e2e.yml's `xcuitest (codegen)`; a non-gating
+#     signal first (the signal-then-required precedent of BE-0282), promoted to the gate once stable.
 # It runs no LLM — a deterministic `run` over fixed scenarios — so it stays within the prime
 # directives, and it is kept off the fast `make check` gate exactly as the iOS and web e2e lanes are.
 # The lane now carries a REQUIRED status check like iOS's `E2E`: the `E2E (android)` job below
 # `needs` the deterministic host-independent jobs (`smoke`, `conformance`, `network`) and always reports (a
 # path-skip is a pass), so it — not the KVM jobs, which are path-gated — is what `main`'s
-# branch-protection ruleset pins. `golden` and `visual` are deliberately NOT part of its `needs:`: a
-# pixel baseline is host-specific (the x86_64 software renderer varies) and the element-tree golden
-# can drift with an upstream dependency, so each stays a per-PR signal that never blocks a merge —
-# the same deterministic-and-host-independent boundary iOS's `E2E` already draws. Each job boots its
+# branch-protection ruleset pins. `golden`, `visual`, and `codegen` are deliberately NOT part of its
+# `needs:`: a pixel baseline is host-specific (the x86_64 software renderer varies), the element-tree
+# golden can drift with an upstream dependency, and the codegen lane lands as a per-PR signal first
+# (BE-0294), so each stays a per-PR signal that never blocks a merge — the same
+# deterministic-and-host-independent boundary iOS's `E2E` already draws. Each job boots its
 # own AVD; unlike iOS's metered macOS runners (10x billing), Android runs on standard-priced Linux
 # under KVM, so the per-job boot is an acceptable cost for the attribution win. Per-job setup is
 # duplicated the same way ios-e2e.yml duplicates its own — no composite action.
@@ -44,7 +49,8 @@
 # required check skipped by a `paths:` filter stays pending forever and blocks the merge. So it
 # triggers on every PR (and the merge queue) and the `changes` job path-gates the KVM jobs instead,
 # running scripts/e2e_changes.py with E2E_LANE=android (the positive-list of adb-relevant paths — the
-# adb driver + resident channel, the run pipeline and scenario loader, the `bajutsu run` CLI entry,
+# adb driver + resident channel, the run pipeline and scenario loader, the `bajutsu run` and (for the
+# codegen lane, BE-0294) `bajutsu codegen` CLI entries,
 # the Android showcase and shared scenarios, the app-side SDKs BajutsuAndroid/BajutsuAndroidUIAutomatorServer,
 # the config, and this workflow — unit-tested in tests/test_e2e_changes.py). A new adb-relevant path
 # defaults to NOT triggering — add it to that module's `android` fragment.
@@ -569,15 +575,107 @@ jobs:
           path: runs/
           if-no-files-found: ignore
 
+  # The codegen output path (BE-0294): a scenario -> native UI Automator (Kotlin) test, compiled and
+  # run by Gradle's connectedAndroidTest with no bajutsu / adb driver / AI at test time. This is the
+  # Android twin of ios-e2e.yml's `xcuitest (codegen)` — the claim codegen makes about its UI Automator
+  # target, which the string-only unit suite (tests/test_codegen_uiautomator.py) cannot prove: it
+  # checks the emitted text, never whether the Kotlin parses or the referenced androidx.test.uiautomator
+  # APIs exist at the pinned version. `make e2e-codegen` re-generates the checked-in test, builds the
+  # a11y app + instrumentation APKs, installs both, and runs the generated test against the emulator.
+  codegen:
+    name: uiautomator (codegen)
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
+    runs-on: ubuntu-latest
+    # A cold AVD boot + the Compose app + instrumentation builds + one generated test is ~15min; 25
+    # catches a real hang (a wedged AVD boot or a stuck instrumentation) with headroom.
+    timeout-minutes: 25
+    # `make e2e-codegen` re-generates the test with `uv run bajutsu codegen`, whose auto-sync would
+    # otherwise pull the dev group (mypy / pytest / ruff). Codegen needs only the base package, so skip
+    # dev for every uv invocation here — the Linux `check` gate owns that tooling (mirrors the iOS
+    # `xcuitest (codegen)` job).
+    env:
+      UV_NO_DEV: "1"
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990  # v8.3.2
+        with:
+          enable-cache: true
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95  # v5.6.0
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92  # v6.2.0
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Cache AVD
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        id: avd-cache
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-api34-x86_64-pixel6
+
+      - name: Create AVD and generate snapshot for caching
+        if: steps.avd-cache.outputs.cache-hit != 'true'
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          disable-animations: false
+          script: echo "Generated AVD snapshot for caching."
+
+      # `e2e-codegen` regenerates the .kt, then `connectedA11yDebugAndroidTest` builds/installs the app +
+      # instrumentation APKs and runs the generated test against the one booted emulator.
+      - name: Codegen + run native UI Automator test (adb)
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          force-avd-creation: false
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          disable-animations: true
+          script: make -C demos/showcase/android e2e-codegen
+
+      - name: Upload androidTest report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: android-e2e-codegen-report
+          path: |
+            demos/showcase/android/compose/build/reports/androidTests/
+            demos/showcase/android/compose/build/outputs/androidTest-results/
+          if-no-files-found: ignore
+
   # Single required status check for the Android lane — the Android twin of ios-e2e.yml's `E2E`.
   # Always runs so it reports even when the KVM jobs are skipped (a PR that can't affect the adb
   # path) — a skipped dependency is a pass; only a real failure or cancellation fails the gate.
   # `network` joins `smoke`/`conformance` in `needs:`: its pass/fail is a deterministic,
   # host-independent fact (was the exchange observed?), so a regression there must fail the required
-  # check like the other two — it is path-gated the same way, so a skip is still a pass. `golden` and
-  # `visual` remain deliberately excluded (see the header): the element-tree golden can drift with an
-  # upstream dependency and a pixel baseline is host-specific, so each stays a per-PR signal. Make
-  # `E2E (android)` the required check, not the path-gated KVM jobs.
+  # check like the other two — it is path-gated the same way, so a skip is still a pass. `golden`,
+  # `visual`, and `codegen` remain deliberately excluded (see the header): the element-tree golden can
+  # drift with an upstream dependency, a pixel baseline is host-specific, and the newly-wired codegen
+  # lane lands as a per-PR signal first (BE-0294, the signal-then-required precedent of BE-0282) — it
+  # is promoted into `needs:` only once stable. Each stays a per-PR signal. Make `E2E (android)` the
+  # required check, not the path-gated KVM jobs.
   #
   # `changes`'s own result is checked too, not just the KVM jobs': `changes` has no `if:`, so it
   # always runs and never reports `skipped` — but if it *fails* (e.g. a misconfigured `E2E_LANE`,

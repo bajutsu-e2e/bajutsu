@@ -1,0 +1,27 @@
+# Codegen source for the UI Automator (Kotlin) target — the Android twin of components.yaml (the
+# XCUITest codegen source). `bajutsu codegen --emit uiautomator` transpiles this into a native UI
+# Automator test (demos/showcase/android/compose/src/androidTest/…/CodegenAndroidUITest.kt, run by
+# `make -C demos/showcase/android e2e-codegen`). Every step maps structurally to UI Automator — tap /
+# type / wait / assert value / assert exists / count — so the generated test needs no bajutsu runtime,
+# adb driver, or AI at test time. It matches the XCUITest codegen floor (tap / wait / type / basic
+# assertions); it does not exceed it.
+#
+# Unlike the cross-backend scenarios (search.yaml and friends), which reach the tab bar with the
+# shared `{ label, traits: [button] }` selector, this fixture addresses the Search tab by its id
+# (`Modifier.aid("search")`, RootScreen.kt). The UI Automator emitter renders only a single-field
+# selector; a compound `label` + `traits` has no faithful BySelector and would emit a `// TODO`, so
+# the tab tap must be a bare id here. Compose only, matching the XCUITest gate's single-toolkit scope.
+- name: search filters the catalog
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1" }
+  steps:
+    - tap: { id: search }
+    - wait: { for: { id: search.field }, timeout: 10 }
+    - wait: { for: { id: search.row.1 }, timeout: 5 }
+    - type: { text: "Horse 5", into: { id: search.field } }
+    - wait: { for: { id: search.row.5 }, timeout: 5 }
+    - wait: { until: { gone: { id: search.row.1 } }, timeout: 5 }
+  expect:
+    - value: { sel: { id: search.count }, equals: "1" }
+    - exists: { id: search.row.5 }
+    - count: { sel: { idMatches: "search.row.*" }, equals: 1 }

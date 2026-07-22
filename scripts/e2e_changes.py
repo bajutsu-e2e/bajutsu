@@ -74,10 +74,11 @@ _RUN_PATH = (
 )
 
 # Each lane adds its own driver, app, scenarios, conformance harness, and workflow file on top of
-# `_RUN_PATH`. The lane differences are real: iOS and web codegen/record scenarios (so their CLI
-# commands are relevant) while the Android lane runs only `bajutsu run`; iOS and web exercise every
-# driver while Android touches only `drivers/adb.py` (+ the resident channel); each lane owns its
-# showcase surface, its conformance harness module, and its own workflow file.
+# `_RUN_PATH`. The lane differences are real: iOS and web relay both codegen and record CLI
+# commands, the Android lane relays `bajutsu run` and (for its `uiautomator (codegen)` job, BE-0294)
+# `bajutsu codegen` but not `record`; iOS and web exercise every driver while Android touches only
+# `drivers/adb.py` (+ the resident channel); each lane owns its showcase surface, its conformance
+# harness module, and its own workflow file.
 _LANE_PATHS: dict[str, str] = {
     "ios": (
         r"|bajutsu/drivers/"
@@ -105,6 +106,10 @@ _LANE_PATHS: dict[str, str] = {
         r"|bajutsu/drivers/adb\.py$"
         r"|bajutsu/drivers/coordinate_tree\.py$"
         r"|bajutsu/adb_resident\.py$"
+        # The `uiautomator (codegen)` job (BE-0294) regenerates its test with `bajutsu codegen`, so a
+        # change to that CLI command is android-relevant — unlike `bajutsu run`, which the other jobs
+        # drive (the shared `_RUN_PATH` already sweeps the `bajutsu/codegen/` emitter package itself).
+        r"|bajutsu/cli/commands/codegen\.py$"
         r"|demos/showcase/android/"
         r"|demos/showcase/scenarios/"
         r"|demos/showcase/showcase\.config\.yaml$"

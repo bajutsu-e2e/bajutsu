@@ -346,5 +346,19 @@ own gaps.
   UI Automator. The CLI derives it from the output filename (the `-o` stem) or, absent that, the
   scenario filename.
 
-The live run on the showcase (`make -C demos/showcase ui-test`) is in
-[showcase](showcase.md).
+## Real-compile verification
+
+The unit suites check the emitted text as a string; they do not prove the generated file builds or
+that the referenced APIs still exist at the pinned SDK version. Each device target closes that gap
+with a checked-in fixture that CI regenerates, compiles, and runs against a real device:
+
+- **XCUITest** — `make -C demos/showcase ui-test` re-generates `ComponentsUITests.swift` from a
+  scenario and runs it with `xcodebuild test` on the iOS lane (a required check).
+- **UI Automator** — `make -C demos/showcase/android e2e-codegen` re-generates
+  `CodegenAndroidUITest.kt` from `codegen_android.yaml` and runs it with Gradle's
+  `connectedAndroidTest` against the booted emulator on the Android lane (BE-0294), a non-gating
+  signal first, promoted to the gate once stable. Because it regenerates the checked-in `.kt` before
+  building, a stale check-in cannot mask an emitter or `androidx.test.uiautomator` API drift.
+
+Both run with no bajutsu runtime, no driver of ours, and no AI at test time — the codegen output path
+exactly as a downstream team would run it. See [showcase](showcase.md) for the live runs.
