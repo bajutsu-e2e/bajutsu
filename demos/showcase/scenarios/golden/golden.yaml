@@ -6,7 +6,10 @@
 #   - adb (Android): android-e2e runs it against the Compose Stable catalog with
 #     `--goldens goldens_android/` (goldens_android/lists.json), recorded on the emulator (BE-0208 unit 4).
 # The default goldens/ beside this scenario (goldens/lists.json) holds the tree recorded by the
-# retired idb backend (BE-0290) — the BE-0079 discharged sample's role.
+# retired idb backend (BE-0290) — the BE-0079 discharged sample's role. Since idb was retired the
+# `golden (xcuitest)` lane runs this scenario on XCUITest, whose tree differs field-for-field from
+# idb's, so this baseline must be re-recorded from an on-device XCUITest run (`--backend ios`) — a
+# deferred Unit 5 step, not a plain re-run.
 # The Log tab's Entry-control golden runs on XCUITest (golden_xcuitest.yaml → controls.json) since
 # SHOWCASE_TAB was retired (BE-0107), so the Log tab is reached by tapping the native tab bar.
 #
