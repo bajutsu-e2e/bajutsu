@@ -30,8 +30,8 @@ manages*. They cannot prove the guarantee holds against real OS-level device and
 whether two real `simctl`/`adb` invocations targeting different devices ever race on a shared
 resource idb/adb touches outside the pool's own bookkeeping (a shared boot lock, a port collision, an
 artifact path computed before the per-worker directory is fully established), or whether two real
-devices' evidence capture ever cross-writes under real timing pressure that a synthetic, sequential
-fake test cannot produce.
+devices' [evidence](../../docs/glossary.md#evidence-capturepolicy-trace-triage) capture ever
+cross-writes under real timing pressure that a synthetic, sequential fake test cannot produce.
 
 ## Detailed design
 

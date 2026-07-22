@@ -16,7 +16,7 @@
 
 `runner/pool.py` の `device_pool` は、`--workers N` による実行に対して特定の分離保証を主張して
 います。各ワーカーは固有の `udid` を持ち、固有の `runs/<runId>` ディレクトリを持ち、他のどの
-ワーカーともモックのポートやインデックスを共有しない、というものです(`DESIGN.md` §3.3)。この
+ワーカーともモックのポートや索引を共有しない、というものです(`DESIGN.md` §3.3)。この
 保証に対するテストである `tests/runner/test_pool.py` は、`bajutsu.backends.make_driver` を
 monkeypatch して、`"UDID-A"`/`"UDID-B"` のような架空の udid に対する `FakeDriver` インスタンスを
 返すようにしているだけです。実際の Simulator を2台、あるいは実際のエミュレータを2台同時に起動
