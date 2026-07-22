@@ -10,7 +10,7 @@
 | Status | **Proposal** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | Topic | Hosting the web UI (cloud / self-hosted) |
-| Related | [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md) |
+| Related | [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -40,11 +40,13 @@ own hosted Postgres instance — which is the worst possible time to discover a 
 
 Proposal altitude. The work is MECE along the units below.
 
-- **A Postgres service container in CI.** Add a `postgres` service to CI's `check` job
-  (`ci.yml`) — today the only test job, running the full suite including `tests/serve/` — the
-  standard GitHub Actions pattern, so a real (if ephemeral) Postgres instance is available for
-  the duration of the job. Note this means every PR, not only ones touching `serve`, would wait
-  on the container.
+- **A dedicated Postgres CI job, not an addition to `check`.** `ci.yml` defines exactly one test
+  job, `check`, already part of `main`'s required checks; folding a `postgres` service into it
+  directly would gate every PR on container startup and any dialect-specific failure from day one,
+  with no non-gating stage actually achievable. Instead, add a new job — mirroring BE-0282's
+  `network (playwright)` job in `web-e2e.yml`, not a change to an existing required job — with a
+  `postgres` service container, the standard GitHub Actions pattern, so a real (if ephemeral)
+  Postgres instance is available for the duration of that job alone.
 - **Run the existing migration test suite against it too.** Parametrize (or duplicate)
   `test_db_migrations.py`'s upgrade/downgrade tests to run against both SQLite and the new Postgres
   service, reusing the same assertions rather than writing a second spec.
@@ -74,13 +76,14 @@ Proposal altitude. The work is MECE along the units below.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Add a Postgres service container to the `serve` CI job.
+- [ ] Add a dedicated Postgres CI job with a service container (not a change to `check`).
 - [ ] Run the migration upgrade/downgrade tests and the wider DB-touching test suite against it.
 - [ ] Wire it into CI as a non-gating signal, promote to required once stable.
 
 ## References
 
 - [BE-0282 — Real-backend network capture, mock, and assertion coverage in CI](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md)
+- [BE-0015 — Public hosting of the web UI](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)
 - `bajutsu/serve/server/migrations/`, `tests/serve/test_db_migrations.py`,
   `tests/serve/test_db_models.py`, `tests/serve/test_db_repository.py`, `tests/serve/test_oauth.py`,
-  `tests/serve/test_import_guard.py`, `.github/workflows/ci.yml`
+  `tests/serve/test_import_guard.py`, `.github/workflows/ci.yml`, `.github/workflows/web-e2e.yml`
