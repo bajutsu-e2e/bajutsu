@@ -10,6 +10,7 @@
 | 状態 | **提案** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | トピック | 検証とカバレッジ |
+| 関連 | [BE-0295](../BE-0295-record-crawl-real-model-verification/BE-0295-record-crawl-real-model-verification-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
@@ -79,4 +80,5 @@
 ## 参考
 
 - [BE-0282 — ネットワークのキャプチャ・モック・アサーションを CI で実バックエンド検証する](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md)
+- [BE-0295 — record と crawl の propose ループに対する実モデル検証](../BE-0295-record-crawl-real-model-verification/BE-0295-record-crawl-real-model-verification-ja.md)
 - `bajutsu/agents/alerts.py`、`tests/test_alerts.py`（`StubLocator`、`FakeBackend`/`FakeBlock`）

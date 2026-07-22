@@ -10,6 +10,7 @@
 | Status | **Proposal** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | Topic | Verification & coverage |
+| Related | [BE-0295](../BE-0295-record-crawl-real-model-verification/BE-0295-record-crawl-real-model-verification.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -74,4 +75,5 @@ Proposal altitude. The work is MECE along the units below.
 ## References
 
 - [BE-0282 — Real-backend network capture, mock, and assertion coverage in CI](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md)
+- [BE-0295 — Real-model verification of the record and crawl propose loops](../BE-0295-record-crawl-real-model-verification/BE-0295-record-crawl-real-model-verification.md)
 - `bajutsu/agents/alerts.py`, `tests/test_alerts.py` (`StubLocator`, `FakeBackend`/`FakeBlock`)
