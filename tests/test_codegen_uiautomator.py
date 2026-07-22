@@ -414,3 +414,17 @@ def test_manual_step_is_a_labeled_todo() -> None:
     code = _gen('- name: x\n  steps:\n    - manual: { label: "solve the CAPTCHA" }\n')
     assert "// TODO: manual step — solve the CAPTCHA" in code
     assert "no deterministic run-time equivalent" in code
+
+
+def test_runtime_only_constructs_fail_loudly() -> None:
+    # BE-0297: the fail-loudly guard lives in the shared walk (common.py), so `if` / `forEach` /
+    # `extract` are rejected identically here as for XCUITest — never a silent no-op stub.
+    with pytest.raises(CodegenError, match="`forEach` control-flow step"):
+        _gen(
+            "- name: x\n  steps:\n"
+            "    - forEach:\n"
+            "        sel: { idMatches: 'row.*' }\n"
+            "        as: row\n"
+            "        steps:\n"
+            "          - tap: { id: '${vars.row}' }\n"
+        )

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from bajutsu.codegen import class_name_for, to_xcuitest
+import pytest
+
+from bajutsu.codegen import CodegenError, class_name_for, to_xcuitest
 from bajutsu.scenario import load_scenarios
 
 
@@ -326,3 +328,38 @@ def test_manual_step_bypass_todo_names_the_bridge() -> None:
         '    - manual: { label: "approve Face ID", bypass: "disable biometrics behind a test flag" }\n'
     )
     assert "wire a deterministic bypass: disable biometrics behind a test flag" in code
+
+
+# BE-0297: `if` / `forEach` / `extract` are evaluated at run time against the live tree, so no target
+# can translate them to a static test. Codegen fails loudly at generation time rather than emitting a
+# silent no-op stub that would quietly drop the branch, the loop body, or the capture.
+def test_if_step_fails_loudly() -> None:
+    with pytest.raises(CodegenError, match="`if` control-flow step"):
+        _gen(
+            "- name: x\n  steps:\n"
+            "    - if:\n"
+            "        condition: { exists: { id: banner } }\n"
+            "        then:\n"
+            "          - tap: { id: banner.dismiss }\n"
+        )
+
+
+def test_for_each_step_fails_loudly() -> None:
+    with pytest.raises(CodegenError, match="`forEach` control-flow step"):
+        _gen(
+            "- name: x\n  steps:\n"
+            "    - forEach:\n"
+            "        sel: { idMatches: 'row.*' }\n"
+            "        as: row\n"
+            "        steps:\n"
+            "          - tap: { id: '${vars.row}' }\n"
+        )
+
+
+def test_extract_capture_fails_loudly() -> None:
+    with pytest.raises(CodegenError, match="`extract` capture"):
+        _gen(
+            "- name: x\n  steps:\n"
+            "    - tap: { id: total }\n"
+            "      extract: { amount: { sel: { id: total }, prop: value } }\n"
+        )

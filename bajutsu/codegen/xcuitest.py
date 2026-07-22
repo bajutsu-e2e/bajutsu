@@ -13,9 +13,11 @@ Selectors map their compound forms too (BE-0026): a single id/label/idMatches/la
 keeps its readable helper, while value / traits / index (or several fields together) compose
 one NSPredicate query, a negative index counting from the live `count`. Only a `labelMatches`
 regex, a `within` (geometric) scope, or an unknown trait stays unsupported.
-Unsupported constructs emit a `// TODO` line rather than failing, so the output is
-always reviewable. (pinch / rotate need multi-touch, which idb cannot drive at run
-time — XCUITest is their on-device home.)
+A device-family or network construct with no on-device XCUITest form emits a labeled
+`// TODO` rather than failing, so the output is always reviewable; a runtime-only
+construct the shared walk cannot translate at all (`if` / `forEach` / `extract`) fails
+loudly with a `CodegenError` instead of a silent no-op stub (BE-0297). (pinch / rotate
+need multi-touch, which idb cannot drive at run time — XCUITest is their on-device home.)
 """
 
 from __future__ import annotations

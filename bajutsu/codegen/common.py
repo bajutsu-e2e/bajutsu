@@ -19,6 +19,18 @@ from typing import Protocol
 from bajutsu.scenario import Assertion, Scenario, Step
 from bajutsu.scenario.models.actions import bypass_hint
 
+
+class CodegenError(ValueError):
+    """A codegen request that cannot be fulfilled.
+
+    Raised at generation time (never a silent stub): an unknown emit, an emit on the wrong target
+    (Playwright needs a web target, UI Automator an Android target), or a scenario construct no
+    target can translate faithfully (`if` / `forEach` control flow or an `extract` capture, BE-0297).
+    Both transports — the `codegen` CLI and the serve `/api/codegen` endpoint — translate it into
+    their own error surface.
+    """
+
+
 # Body lines (launch env, launch, steps, the expect block) sit one level inside the test function;
 # the structural braces (`scenario_open` / `scenario_close`) carry their own indent. Both targets
 # comment in C-style, so the `// expect` divider is shared.
@@ -182,6 +194,29 @@ class CodeGenerator(Protocol):
         """The lines after the last scenario (class/describe close)."""
 
 
+# `if` / `forEach` / `extract` are evaluated at run time against the live UI tree — a branch on the
+# current state, a loop over the live match set, a capture of a resolved element's property. A static
+# generated test has no runtime to reproduce that, so no target emits them (they fell through to a
+# no-op `// TODO` stub before BE-0297). Silently dropping a whole branch or loop body is exactly the
+# degradation the determinism-first directive forbids, so codegen refuses loudly at generation time
+# and names `bajutsu run` as the faithful path — rather than emitting a test that quietly does less.
+_RUNTIME_ONLY_HINT = "codegen has no runtime to evaluate it; run the scenario with `bajutsu run`"
+
+
+def _reject_runtime_only(step: Step) -> None:
+    """Fail loudly on a runtime-only construct no target can translate to a static test (BE-0297)."""
+    if step.if_ is not None:
+        raise CodegenError(
+            f"codegen does not support the `if` control-flow step — {_RUNTIME_ONLY_HINT}"
+        )
+    if step.for_each is not None:
+        raise CodegenError(
+            f"codegen does not support the `forEach` control-flow step — {_RUNTIME_ONLY_HINT}"
+        )
+    if step.extract is not None:
+        raise CodegenError(f"codegen does not support the `extract` capture — {_RUNTIME_ONLY_HINT}")
+
+
 def _scenario_lines(
     scenario: Scenario, app_launch_env: dict[str, str], gen: CodeGenerator
 ) -> list[str]:
@@ -191,6 +226,7 @@ def _scenario_lines(
     body.append(gen.launch_line())
     body.append("")
     for step in scenario.steps:
+        _reject_runtime_only(step)
         body.extend(gen.step_lines(step))
     if scenario.expect:
         body.append("")
