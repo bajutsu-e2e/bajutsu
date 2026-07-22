@@ -20,7 +20,7 @@
 Kotlin の構文エラーや、実際の `androidx.test.uiautomator` API と食い違う呼び出しがあっても、
 テストスイート全体を素通りします。これは3つの codegen ターゲットのうちもっとも手薄な状態です。XCUITest
 には必須の `xcodebuild test` ジョブがあり、Playwright にも別途、同水準の実コンパイル検証が提案
-されているのに対し、UI Automator には ゲーティングの有無を問わず実コンパイル検証が一切ありません。本項目はそのゲートを追加し、
+されているのに対し、UI Automator にはゲーティングの有無を問わず実コンパイル検証が一切ありません。本項目はそのゲートを追加し、
 `android-e2e.yml` が conformance suite 向けにすでに用意しているエミュレータと Gradle ツールチェインを
 再利用します。
 
