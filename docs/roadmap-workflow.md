@@ -55,7 +55,8 @@ Invoke it with `/ideation` when you want to brainstorm what Bajutsu could do nex
 idea into a BE item. It is a **sounding board**, not a blank page: every suggestion is anchored to
 what is already planned, in progress, or deliberately not adopted.
 
-1. **Ground in the existing roadmap.** It reads the [roadmap index](../roadmaps/README.md),
+1. **Ground in the existing roadmap.** It reads [`roadmaps/README.md`](../roadmaps/README.md) (what's
+   already out of scope, unsorted ideas awaiting a BE number),
    [`architecture.md#implementation-status`](architecture.md#implementation-status) (so it does not
    "propose" something already shipped), and the BE items near your topic.
 2. **Ideate with you.** It offers concrete, bounded ideas and asks the questions that sharpen scope —
@@ -63,8 +64,8 @@ what is already planned, in progress, or deliberately not adopted.
    reference points.
 3. **Classify each surviving idea** into one of three landings, noting which it chose:
    **overlaps an existing item** (augment that item rather than duplicate it), **novel and scoped**
-   (draft a new item), or **still unformed** (a bullet under *Unsorted ideas* in both index READMEs,
-   to promote later).
+   (draft a new item), or **still unformed** (a bullet under *Unsorted ideas* in both language
+   READMEs, to promote later).
 4. **Draft the new item with a placeholder ID.** `make new-roadmap-item SLUG=… TITLE="…"` scaffolds
    `roadmaps/BE-XXXX-<slug>/` with both language files in the canonical Swift-Evolution
    format; the skill fills the `TBD` sections and rewrites the Japanese side into natural Japanese.
@@ -115,9 +116,9 @@ deterministic gate (`make check`) is the judge — never an LLM.
    agents. These are *authoring aids*: they advise the author and never judge, so directive #1 holds
    and no LLM touches the `run`/CI path.
 7. **Flip the item to Implemented.** In both language files set `Status: Implemented` and add the
-   `Implementing PR` line, then `make roadmap-index` regenerates the tables. The directory never moves
-   (BE-0159) — only the `Status` and its index bucket change. `make test` fails if the committed index
-   drifts.
+   `Implementing PR` line — nothing else to regenerate, since the dashboard reads `Status` straight
+   off the item's metadata. The directory never moves (BE-0159): only the `Status` and its dashboard
+   bucket change.
 8. **Verify — the gate.** `make check` must be green; never push red. If correctness genuinely
    depends on a Simulator/browser run, the [`verify`](../.claude/skills) skill drives it rather than
    claiming it works untested.
@@ -138,7 +139,8 @@ bounded by that spec is far easier to review than a freehand change. The loop is
 ## See also
 
 - [ai-development](ai-development.md) — the parallel-work rules, the gate, and the **strict BE-ID
-  lifecycle** (`Status` ⇒ index bucket, flat one-directory layout, permanent IDs) both skills depend on.
-- [roadmaps/README](../roadmaps/README.md) — the index of every BE item and the per-item proposal format.
+  lifecycle** (`Status` ⇒ dashboard bucket, flat one-directory layout, permanent IDs) both skills depend on.
+- [roadmaps/README](../roadmaps/README.md) — how to add a roadmap item, what's already out of scope,
+  and unsorted ideas awaiting a BE number.
 - [concepts](concepts.md) — the determinism and AI-boundary principles the prime directives encode.
 - [`CLAUDE.md`](../CLAUDE.md) — the working agreement the prime directives come from.

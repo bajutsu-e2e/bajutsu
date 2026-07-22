@@ -77,8 +77,8 @@ class RemoteTip:
 def parse_porcelain(output: str) -> list[Change]:
     """The changed paths in ``git status --porcelain`` output.
 
-    Handles the shapes a refresh actually produces — modified/added/deleted files (``make
-    roadmap-index`` rewrites tracked files in place; the agent's ``Write`` creates untracked ones).
+    Handles the shapes a refresh actually produces — modified/added/deleted files (the agent's ``Edit``
+    rewrites tracked ones in place; its ``Write`` creates untracked ones).
     Read with ``core.quotePath=false`` (see ``_git_status``) so non-ASCII paths arrive literal, not
     octal-escaped.
 

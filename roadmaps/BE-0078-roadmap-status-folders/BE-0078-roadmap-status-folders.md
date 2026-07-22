@@ -199,6 +199,11 @@ contributor-workflow refactor, in the same family as BE-0043 / BE-0061 / BE-0074
 ## Progress
 
 - [x] Shipped — see the *Implementing PR* above.
+- **Historical note:** this item's bucket-from-`Status` design still holds, but the render target
+  it describes — the four `## Implemented` / `## In progress` / `## Proposals` / `## Deferred`
+  headings and their `<!-- GENERATED:* -->` marker pairs in `README.md` / `README-ja.md` — was
+  retired by [#1257](https://github.com/bajutsu-e2e/bajutsu/pull/1257) in favor of the roadmap
+  dashboard, which classifies every item into the same four buckets this item defines.
 
 ## References
 

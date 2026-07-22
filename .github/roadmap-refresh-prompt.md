@@ -16,13 +16,9 @@ never silently lags the code:
 - **`Implementing PR`** — add or extend the `Implementing PR` row (both languages) with the PR(s)
   that delivered the code, when a merged PR references the item but the row doesn't list it.
 
-After changing any field that affects the index buckets (notably `Status`), run
-`make roadmap-index` so the committed tables in both README index pages match — the deterministic
-gate fails otherwise.
-
 ## Hard path allowlist
 
-You may edit **only** files under `roadmaps/**` (BE item files and the generated index). Never touch
+You may edit **only** files under `roadmaps/**` (BE item files). Never touch
 product code (`bajutsu/`, `BajutsuKit/`, tests, config, demos), docs, or the top-level contract files
 — a deterministic step discards any out-of-allowlist edit before the PR is opened, so straying only
 wastes the run.

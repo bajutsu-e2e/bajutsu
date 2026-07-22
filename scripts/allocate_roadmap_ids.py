@@ -11,10 +11,7 @@ slug, so the order is stable across runs and machines — it:
 1. allocates the next ID — the smallest free number above every ID already taken (see ``used_ids``),
    incrementing per item;
 2. ``git mv``\\ s the directory and its files, replacing ``BE-XXXX`` with ``BE-NNNN``;
-3. rewrites ``BE-XXXX`` -> ``BE-NNNN`` inside those files;
-4. fixes the index-table rows in ``README.md`` / ``README-ja.md`` — any line that references the
-   unique path ``BE-XXXX-<slug>`` gets its ``BE-XXXX`` rewritten, which covers both the link text
-   and the path.
+3. rewrites ``BE-XXXX`` -> ``BE-NNNN`` inside those files.
 
 Allocation runs on ``main`` in merge order, so the ``BE-NNNN`` sequence is contiguous by
 construction and a number is never burned by a rejected proposal (BE-0089). It is a no-op when there
@@ -37,7 +34,6 @@ from roadmap_ids import PLACEHOLDER, is_placeholder_dir, iter_item_dirs, numbere
 
 ROADMAP = Path("roadmaps")
 PATH_ITEM_RE = re.compile(r"/BE-(\d{4})-[^/]+/")  # id of an item's directory in a path
-INDEX_FILES = ("README.md", "README-ja.md")
 
 
 def working_tree_ids() -> set[int]:
@@ -128,24 +124,9 @@ def allocate() -> list[tuple[str, str]]:
     return allocations
 
 
-def rewrite_index_tables(allocations: list[tuple[str, str]]) -> None:
-    """Renumber the index-table rows, keyed by the slug-qualified path (unique per item)."""
-    for name in INDEX_FILES:
-        index = ROADMAP / name
-        lines = index.read_text(encoding="utf-8").splitlines(keepends=True)
-        for i, line in enumerate(lines):
-            for slug, new_token in allocations:
-                if f"{PLACEHOLDER}-{slug}" in line:
-                    lines[i] = lines[i].replace(PLACEHOLDER, new_token)
-        index.write_text("".join(lines), encoding="utf-8")
-
-
 def main() -> int:
-    allocations = allocate()
-    if not allocations:
+    if not allocate():
         print("No BE-XXXX placeholder items found; nothing to allocate.")
-        return 0
-    rewrite_index_tables(allocations)
     return 0
 
 
