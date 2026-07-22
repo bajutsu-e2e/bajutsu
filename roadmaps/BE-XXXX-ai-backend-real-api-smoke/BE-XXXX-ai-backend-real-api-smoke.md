@@ -47,17 +47,17 @@ that costs a handful of tokens is enough to prove the plumbing.
 
 Proposal altitude. The work is MECE along the units below.
 
-- **A minimal live-call test, key-gated.** Add a test that calls `AnthropicBackend` with a trivial
-  prompt and a forced `tool_choice`, skipped via `pytest.mark.skipif` when `ANTHROPIC_API_KEY` (or the
-  Bedrock/`ant` equivalent credential) is absent — so `make check` stays keyless and green on every
-  contributor's machine, exactly as it is today.
+- **A minimal live-call test, key-gated, asserting the contract only.** Add a test that calls
+  `AnthropicBackend` with a trivial prompt and a forced `tool_choice`, skipped via
+  `pytest.mark.skipif` when `ANTHROPIC_API_KEY` (or the Bedrock/`ant` equivalent credential) is
+  absent — so `make check` stays keyless and green on every contributor's machine, exactly as it is
+  today. The test only checks that the adapter's normalized `MessageResponse`/`ToolUseBlock` shape
+  comes back populated and parses — never anything about what the model chose to say, keeping this a
+  wire-contract check and not a model-quality judgment.
 - **One CI lane per adapter, opt-in and non-gating.** A workflow job per adapter (direct API, Bedrock,
   `ant`) that supplies the real credential from repository secrets and runs the live-call test,
   following the same non-gating-signal-first precedent as
   [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md).
-- **Assert the contract, not the content.** The test only checks that the adapter's normalized
-  `MessageResponse`/`ToolUseBlock` shape comes back populated and parses — never anything about what
-  the model chose to say, keeping this a wire-contract check and not a model-quality judgment.
 - **Record the ones left uncovered.** Not every credential is realistically available in CI (e.g. a
   live Bedrock role); where a lane can't be wired, say so explicitly in the item's Progress log rather
   than let the gap pass as covered.
