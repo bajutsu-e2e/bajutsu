@@ -10,7 +10,7 @@
 | Status | **Proposal** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | Topic | Hosting the web UI (cloud / self-hosted) |
-| Related | [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md) |
+| Related | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -24,9 +24,9 @@ standing in for `httpx`. This item adds a real handshake test against a throwawa
 
 The fakes prove `serve`'s login flow correctly calls whatever `GitHubOAuthClient` returns; they
 prove nothing about whether the real class, wrapping the real Authlib `OAuth2Client` over real
-`httpx`, actually completes a token exchange against GitHub, or whether `_fetch_orgs`'s pagination
-logic holds up against GitHub's real paginated response headers rather than the hand-built
-`_PagingClient`'s. A version bump in Authlib changing its token-exchange call signature, a change in
+`httpx`, actually completes a token exchange against GitHub, or whether `_fetch_orgs` parses GitHub's
+real org-list response shape at all, as opposed to the hand-built `_PagingClient`'s stand-in for it.
+A version bump in Authlib changing its token-exchange call signature, a change in
 GitHub's OAuth response shape, or a redirect/cookie-domain misconfiguration would all be invisible to
 this suite, because none of it ever leaves the process — the exact failure mode a mocked-client test
 suite cannot catch by construction.
@@ -39,7 +39,10 @@ Proposal altitude. The work is MECE along the units below.
   secret stored as a repository secret, scoped to a disposable test account or organization.
 - **A key-gated live handshake test.** Drive `GitHubOAuthClient` through a real (scripted, headless)
   authorization-code exchange against that App, skipped when the secret is absent, asserting a real
-  access token comes back and `_fetch_orgs` parses a real paginated response.
+  access token comes back and `_fetch_orgs` parses a real single-page org response. A disposable test
+  account realistically won't belong to the 100+ orgs `_fetch_orgs`'s `per_page=100` needs to trigger
+  a second page, so multi-page `Link`-header handling stays covered by the existing `_PagingClient`
+  unit test, not this live path.
 - **Non-gating first.** Land the new job as CI signal, following the precedent in
   [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md),
   before considering it required.

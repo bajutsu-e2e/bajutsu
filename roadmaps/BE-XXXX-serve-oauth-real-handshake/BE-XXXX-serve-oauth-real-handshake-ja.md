@@ -10,7 +10,7 @@
 | 状態 | **提案** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | トピック | Web UI のホスティング（クラウド / セルフホスト） |
-| 関連 | [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md) |
+| 関連 | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md), [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
@@ -26,9 +26,8 @@
 これらの fake は、`serve` のログインフローが `GitHubOAuthClient` の返す内容をまさしく呼び出して
 いることを証明します。しかし、証明できないことがあります。実際の Authlib `OAuth2Client` を
 実際の `httpx` の上でラップした実際のクラスが、GitHub に対して本当にトークン交換を完了できるか
-という点です。あるいは、`_fetch_orgs` のページネーションロジックが、手組みの `_PagingClient`
-ではなく GitHub の実際のページネーションレスポンスヘッダーに対しても成立するかという点も
-証明されません。Authlib のバージョンアップに
+という点です。あるいは、`_fetch_orgs` が手組みの `_PagingClient` の代役ではなく GitHub の実際の
+org 一覧レスポンス形状をそもそもパースできるかという点も証明されません。Authlib のバージョンアップに
 よるトークン交換の呼び出しシグネチャの変更、GitHub の OAuth レスポンス形状の変更、または
 リダイレクト/Cookieのドメイン設定ミスは、いずれもこのテストスイートからは見えません。処理が
 プロセスの外に一度も出ないからです。これはまさに、モック化されたクライアントによるテストスイート
@@ -44,7 +43,10 @@
 - **API キーで gate したライブハンドシェイクテスト**：その App に対して実際の(スクリプト化された
   ヘッドレスの)認可コード交換で `GitHubOAuthClient` を駆動するテストを追加します。secret が
   ないときはスキップし、実際のアクセストークンが返ってくること、そして `_fetch_orgs` が実際の
-  ページネーションレスポンスをまさしくパースできることを検証します。
+  単一ページの org レスポンスをまさしくパースできることを検証します。使い捨てのテストアカウントが
+  `_fetch_orgs` の `per_page=100` が2ページ目をトリガーするのに必要な100件超の組織に実際に所属する
+  ことは現実的ではないため、複数ページにまたがる `Link` ヘッダーの処理は、このライブ経路ではなく
+  既存の `_PagingClient` ユニットテストのカバレッジのまま維持します。
 - **まずゲート対象外とする**：
   [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md)
   の前例に従い、新しいジョブをまず CI のシグナルとして着地させ、必須化はそのあとで検討します。
