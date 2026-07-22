@@ -35,12 +35,14 @@ inject `which`/`booted_count`/`web_pkg` callables by hand, so no test confirms t
 its Chromium download) rather than merely reacting correctly to a hand-fed boolean. And
 `simctl.py`'s `booted_udids`/`device_catalog` parsers are tested against JSON literals typed by hand,
 never a captured real `xcrun simctl list devices -j` payload — a schema change in a future Xcode
-version would silently break `doctor` and the device pool's labeling, since no CI lane calls
-`bajutsu doctor` at all today (`.github/actions/boot-simulator/action.yml` calls `simctl` directly in
-bash, bypassing Bajutsu's own parser entirely).
+version would silently break `doctor` and the device pool's labeling. `.github/actions/bajutsu-e2e/action.yml`
+already runs `bajutsu doctor` on the iOS lane, but only as a non-blocking convention check
+(`|| echo "doctor: non-blocking (convention score only)"`) that skips `--json` and asserts no verdict,
+so the real `simctl` parsing it exercises is never actually checked; Android and web have no doctor
+step at all.
 
 A single real invocation of `bajutsu doctor --json` (and, separately, `bajutsu provision`) inside an
-existing on-device lane closes most of this at once: it exercises the real `simctl` JSON shape
+existing on-device lane closes most of these gaps at once: it exercises the real `simctl` JSON shape
 through the real parser, the real tool-presence checks through the real gate, and — paired with a
 deliberately broken variant — proves the gate actually distinguishes ready from not-ready.
 
@@ -92,5 +94,6 @@ Proposal altitude. The work is MECE along the units below.
 - [BE-0282 — Real-backend network capture, mock, and assertion coverage in CI](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md)
 - `bajutsu/provision.py`, `bajutsu/preflight.py`, `bajutsu/requirements.py`, `bajutsu/simctl.py`,
   `tests/test_provision.py`, `tests/test_preflight.py`, `tests/test_requirements.py`,
-  `tests/test_simctl.py`, `.github/actions/boot-simulator/action.yml`,
-  `.github/workflows/ios-e2e.yml`, `.github/workflows/web-e2e.yml`, `.github/workflows/android-e2e.yml`
+  `tests/test_simctl.py`, `.github/actions/bajutsu-e2e/action.yml`,
+  `.github/actions/boot-simulator/action.yml`, `.github/workflows/ios-e2e.yml`,
+  `.github/workflows/web-e2e.yml`, `.github/workflows/android-e2e.yml`

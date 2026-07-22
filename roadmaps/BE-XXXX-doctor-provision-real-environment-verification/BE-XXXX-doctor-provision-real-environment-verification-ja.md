@@ -16,7 +16,7 @@
 
 オンボーディングのゲート、すなわちバックエンドのツール群をインストールする `provision.py`、
 `doctor` が報告する実行可能ゲートを担う `preflight.py`/`requirements.py`、そしてその両方を支える
-`simctl.py` の JSON パーサ(`booted_udids`、`device_catalog`)は、いずれも注入された fake だけで
+`simctl.py` の JSON パーサ（`booted_udids`、`device_catalog`）は、いずれも注入された fake だけで
 テストされています。正しいコマンド文字列が組み立てられたことを検証するモック化された
 `subprocess.run`、monkeypatch された `shutil.which`、さらに `xcrun simctl list devices -j` の
 代役を務める手書きの JSON リテラルです。これらが CI で実際に動かされることは一度もありません。
@@ -28,21 +28,23 @@
 3つのギャップは1つの根本原因と1つの解決策を共有しています。`provision.py` のテストは
 `("brew", "install", "facebook/fb/idb-companion")` のようなコマンドが*組み立てられた*ことだけを
 検証し、実際の `brew` がそれを受け付けたことは検証しません。しかも実際の E2E ワークフロー
-(`ios-e2e.yml`、`web-e2e.yml`、`android-e2e.yml`)はいずれも、`bajutsu provision` を呼ぶのではなく
+（`ios-e2e.yml`、`web-e2e.yml`、`android-e2e.yml`）はいずれも、`bajutsu provision` を呼ぶのではなく
 同等のインストールコマンドを直接手書きしているため、インストーラ自身のコマンド構築コードは
 どこでも実際に実行されることがありません。`preflight.py` のテストは `which`/`booted_count`/
-`web_pkg` を手動で注入するコールバブルに頼っているため、このゲートが「手渡しの boolean にまさしく
-反応する」ことを超えて、本当に壊れた環境(Xcode のライセンス未同意、Chromium 未ダウンロードの
-Playwright など)で実際に*失敗する*ことを確認するテストはありません。そして `simctl.py` の
+`web_pkg` を手動で注入する `callable` に頼っているため、このゲートが「手渡しの boolean にまさしく
+反応する」ことを超えて、本当に壊れた環境（Xcode のライセンス未同意、Chromium 未ダウンロードの
+Playwright など）で実際に*失敗する*ことを確認するテストはありません。そして `simctl.py` の
 `booted_udids`/`device_catalog` パーサは手書きの JSON リテラルに対してテストされているだけで、
 実際に捕捉した `xcrun simctl list devices -j` の出力に対してではありません。将来の Xcode の
-バージョンでスキーマが変われば、`doctor` とデバイスプールのラベリングは静かに壊れます。今日
-`bajutsu doctor` を呼び出す CI レーンが1つも存在しないためです
-(`.github/actions/boot-simulator/action.yml` は bash から `simctl` を直接呼んでおり、Bajutsu 自身の
-パーサを完全に迂回しています)。
+バージョンでスキーマが変われば、`doctor` とデバイスプールのラベリングは静かに壊れます。
+`.github/actions/bajutsu-e2e/action.yml` はすでに iOS レーンで `bajutsu doctor` を実行して
+いますが、それは非ブロッキングの慣習チェック（`|| echo "doctor: non-blocking (convention
+score only)"`）にすぎず、`--json` も渡さず判定のアサーションもしていないため、そこで動く実際の
+`simctl` パースは実際には一度も検証されていません。Android と web にはそもそも doctor の
+ステップ自体が存在しません。
 
-既存の実機レーンの中で `bajutsu doctor --json`(および別途 `bajutsu provision`)を一度実際に呼び
-出すだけで、このほとんどが一度に埋まります。実際の `simctl` の JSON 形状を実際のパーサに通し、
+既存の実機レーンの中で `bajutsu doctor --json`（および別途 `bajutsu provision`）を一度実際に呼び
+出すだけで、このギャップのほとんどが一度に埋まります。実際の `simctl` の JSON 形状を実際のパーサに通し、
 実際のツール有無チェックを実際のゲートに通し、さらに意図的に壊した版と対にすることで、このゲートが
 準備完了と未完了を実際に区別できることまで証明できます。
 
@@ -54,8 +56,8 @@ Playwright など)で実際に*失敗する*ことを確認するテストはあ
   `ios-e2e.yml`（および別途 `android-e2e.yml`/`web-e2e.yml`）に、そのレーンの実際の環境に対して本物のコマンドを実行し、
   Ready/Partial の判定を検証するステップを追加します。これにより `simctl.py` の実際の JSON
   パースと `preflight.py` の実際のツールチェックを一度に検証します。
-- **意図的に壊した環境のケースを1つ追加する**：ツールを意図的に欠落させる、または誤設定した(例：`idb` を
-  含まない `PATH`)ジョブ(またはジョブのステップ)で、`doctor`/`preflight` が Blocked をまさしく
+- **意図的に壊した環境のケースを1つ追加する**：ツールを意図的に欠落させる、または誤設定した（例：`idb` を
+  含まない `PATH`）ジョブ（またはジョブのステップ）で、`doctor`/`preflight` が Blocked をまさしく
   報告することを検証します。これは、注入された fake によるテストでは今日証明できない失敗側です。
 - **新しい環境で `bajutsu provision` を実際に実行する**：ベアなコンテナ、またはレーンのセットアップ
   前段の新しいステップとして、実際のインストーラをエンドツーエンドで実行し、対象のツールが利用
@@ -93,5 +95,6 @@ Playwright など)で実際に*失敗する*ことを確認するテストはあ
 - [BE-0282 — ネットワークのキャプチャ・モック・アサーションを CI で実バックエンド検証する](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md)
 - `bajutsu/provision.py`、`bajutsu/preflight.py`、`bajutsu/requirements.py`、`bajutsu/simctl.py`、
   `tests/test_provision.py`、`tests/test_preflight.py`、`tests/test_requirements.py`、
-  `tests/test_simctl.py`、`.github/actions/boot-simulator/action.yml`、
-  `.github/workflows/ios-e2e.yml`、`.github/workflows/web-e2e.yml`、`.github/workflows/android-e2e.yml`
+  `tests/test_simctl.py`、`.github/actions/bajutsu-e2e/action.yml`、
+  `.github/actions/boot-simulator/action.yml`、`.github/workflows/ios-e2e.yml`、
+  `.github/workflows/web-e2e.yml`、`.github/workflows/android-e2e.yml`
