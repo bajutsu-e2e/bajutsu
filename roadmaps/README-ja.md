@@ -141,7 +141,7 @@
 
 <!-- /GENERATED:proposals-authoring -->
 
-### codegen のカバレッジ
+### codegen 網羅性
 
 <!-- GENERATED:proposals-codegen -->
 

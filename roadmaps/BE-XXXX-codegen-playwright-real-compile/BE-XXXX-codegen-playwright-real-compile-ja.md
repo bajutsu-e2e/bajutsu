@@ -1,6 +1,6 @@
 [English](BE-XXXX-codegen-playwright-real-compile.md) · **日本語**
 
-# BE-XXXX — Real-compile verification for the Playwright (TypeScript) codegen target
+# BE-XXXX — Playwright（TypeScript）codegen ターゲットの実コンパイル検証
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
-| トピック | codegen coverage |
+| トピック | codegen 網羅性 |
 <!-- /BE-METADATA -->
 
 ## はじめに
@@ -34,7 +34,7 @@ codegen がすでに持つ実コンパイルゲート（`ios-e2e.yml` の `xcuit
 Playwright API からドリフトしたエミッタの変更は、`tests/test_codegen_playwright.py` の 453 行すべてを
 素通りし、ユーザーが生成されたファイルを実際に動かして初めて表面化します。
 
-このギャップを埋める workflow や Makefile ターゲットは今のところ存在しません。`demos/web` 自体の
+このギャップを埋めるワークフローや Makefile ターゲットは今のところ存在しません。`demos/web` 自体の
 `e2e` ターゲットは、codegen の出力を経由せず Bajutsu 自身のドライバ層から直接 Playwright backend を
 駆動しており、この検証の代わりにはなりません。XCUITest 向け codegen はすでにこの型を実証済みです。
 `demos/showcase/Makefile` の `ui-test` ターゲットが Swift ファイルを生成し、`xcodegen` でビルドし、
@@ -80,14 +80,14 @@ Playwright API からドリフトしたエミッタの変更は、`tests/test_co
 
 - [ ] `demos/web` のシナリオから Playwright テストを生成し、生成された `.spec.ts` をチェックインする。
 - [ ] 実際の `@playwright/test` ランナーで実ブラウザに対して実行し、成功することを検証する。
-- [ ] Makefile ターゲットと非 gating の `web-e2e.yml` ジョブを追加し、安定後に必須化する。
+- [ ] Makefile ターゲットとゲート対象外の `web-e2e.yml` ジョブを追加し、安定後に必須化する。
 - [ ] フィクスチャの範囲を、XCUITest 向け codegen ゲートがすでにカバーする DSL 表面に揃える。
 
 ## 参考
 
-- [BE-0083 — codegen エミッタを共有の走査ロジックへ統一](../BE-0083-codegen-emitter-unification/BE-0083-codegen-emitter-unification-ja.md)
-- [BE-0054 — web backend の完成（リッチな機能と並列実行）](../BE-0054-web-backend-completion/BE-0054-web-backend-completion-ja.md)
-- [BE-0282 — CI における実 backend のネットワーク捕捉・モック・アサーションのカバレッジ](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md)
+- [BE-0083 — codegen の emitter を共通のシナリオ走査へ統一する](../BE-0083-codegen-emitter-unification/BE-0083-codegen-emitter-unification-ja.md)
+- [BE-0054 — Web backend の完成（リッチな capability と並列実行）](../BE-0054-web-backend-completion/BE-0054-web-backend-completion-ja.md)
+- [BE-0282 — ネットワークのキャプチャ・モック・アサーションを CI で実バックエンド検証する](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md)
 - `bajutsu/codegen/playwright.py`、`tests/test_codegen_playwright.py`、
   `demos/showcase/Makefile`（`ui-test` ターゲット、XCUITest 側の前例）、
   `.github/workflows/ios-e2e.yml`（`xcuitest (codegen)` ジョブ）
