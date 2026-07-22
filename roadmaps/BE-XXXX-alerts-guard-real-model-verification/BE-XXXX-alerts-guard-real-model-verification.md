@@ -58,7 +58,7 @@ Proposal altitude. The work is MECE along the units below.
   guard acts on whatever `AlertDecision` it is handed; it says nothing about whether a real model
   reliably produces the *correct* decision when looking at a real alert, which is the actual safety
   property at stake.
-- **Treat this as covered by `record`'s general live-usage testing.** No such testing exists today —
+- **Treat the safety gap as already covered by `record`'s general live-usage testing.** No such testing exists today —
   `record` itself has no real-model CI coverage — so there is no existing net this item could ride on.
 
 ## Progress
