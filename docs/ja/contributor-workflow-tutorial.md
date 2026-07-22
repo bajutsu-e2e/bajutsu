@@ -96,7 +96,15 @@ make new-roadmap-item SLUG=retry-flaky-step TITLE="Bounded retry for transiently
 単調で、多数のブランチが同時に進行しているため、手で番号を選ぶと 2 つの PR が同じ番号を奪い合います。CI が
 マージ時に割り当てます（手順 A5）。
 
-### 手順 A4 — 検証し、提案 PR を開く
+### 手順 A4 — セルフレビューし、検証し、提案 PR を開く
+
+コミットする前に、CI の「Claude review」ワークフローをローカルで再現します。この起草の会話を見ていない
+新規サブエージェントに、CI のレビュアーが起草の経緯を知らない状態からレビューするのと同じ条件で、
+[`.github/claude-review-prompt.md`](../../.github/claude-review-prompt.md) の契約をステージ済みの差分に
+適用させ、見つかった指摘をすべて直します。誤検知や説明済みのトレードオフは理由を書き添えて見送り、設計
+そのものに関わる指摘は直そうとせずユーザーにエスカレーションします。3 回繰り返しても収束しない場合も、
+ユーザーに判断を仰ぎます。手順の詳細は [`ideation`](../../.claude/skills/ideation/SKILL.md) の手順 5 を
+参照してください。
 
 docs だけの変更でも、ゲートは green のままです。
 
