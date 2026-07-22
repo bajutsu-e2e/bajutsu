@@ -14,7 +14,8 @@
 
 ## はじめに
 
-`triage --ai` の自己修復経路（`agents/claude_triage.py`）は、失敗した run の証跡（失敗時の
+`triage --ai` の自己修復経路（`agents/claude_triage.py`）は、失敗した run の
+[証跡](../../docs/ja/glossary.md#証跡-capturepolicy-trace-triage)（失敗時の
 スクリーンショットを含む）を Claude へ送り、そのレスポンスを構造化された診断と、該当する場合は
 提案される修正（`renameId` / `addIndex` / `raiseTimeout`）へパースします。このパース処理に触れる
 テストはすべて `FakeBackend(FakeBlock(...))` で駆動されています。CLI レベルのテストはさらに一歩

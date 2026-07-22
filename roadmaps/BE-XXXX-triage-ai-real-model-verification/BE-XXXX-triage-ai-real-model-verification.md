@@ -14,7 +14,8 @@
 
 ## Introduction
 
-`triage --ai`'s self-heal path (`agents/claude_triage.py`) sends a failed run's evidence — including
+`triage --ai`'s self-heal path (`agents/claude_triage.py`) sends a failed run's
+[evidence](../../docs/glossary.md#evidence-capturepolicy-trace-triage) — including
 the failure screenshot — to Claude and parses the response into a structured diagnosis and, when
 applicable, a proposed fix (`renameId` / `addIndex` / `raiseTimeout`). Every test that exercises this
 parsing drives it with `FakeBackend(FakeBlock(...))`; the CLI-level test goes a step further and
