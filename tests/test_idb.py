@@ -6,7 +6,6 @@ import subprocess
 
 import pytest
 
-import bajutsu.drivers.idb as idb_driver_mod
 from bajutsu import simctl
 from bajutsu.drivers import base
 from bajutsu.drivers.idb import (
@@ -679,7 +678,7 @@ def test_settle_keeps_polling_past_the_old_count_until_frames_stop(
     # that moves for MORE reads than the old 3-poll cap, then rests, still settles on the resting
     # frame. The old count-bound would have returned a still-moving frame and tapped a stale point.
     clock = _Clock()
-    monkeypatch.setattr(idb_driver_mod, "time", clock)
+    monkeypatch.setattr("bajutsu.drivers.idb.time", clock)
     # Cache a resting frame, then move for 5 reads (past the old cap of 3) before two equal reads.
     seq = [_two_element_tree(y) for y in (100, 110, 130, 150, 165, 170, 170)]
     run, _ = _scripted(seq)
@@ -700,7 +699,7 @@ def test_settle_gives_up_at_the_wall_clock_deadline_when_never_stable(
     # A screen that never stops moving must not spin forever: the poll is bounded by a wall-clock
     # deadline (independent of read cost), after which _settle returns the latest tree (BE-0299).
     clock = _Clock()
-    monkeypatch.setattr(idb_driver_mod, "time", clock)
+    monkeypatch.setattr("bajutsu.drivers.idb.time", clock)
     counter = [0]
     driver = IdbDriver("U", run=_moving_run(counter))  # type: ignore[arg-type]
     driver._SETTLE_POLL_S = 0.1
