@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0297](BE-0297-codegen-xcuitest-dsl-coverage-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0297") |
+| 実装 PR | [#1278](https://github.com/bajutsu-e2e/bajutsu/pull/1278) |
 | トピック | codegen 網羅性 |
 <!-- /BE-METADATA -->
 
@@ -83,8 +84,18 @@ XCTest API の使い方を壊しうるのに、既存のテストはすべて文
 
 - [ ] コンパイル対象のシナリオにテキスト編集、ジェスチャ、複合セレクタのステップを追加する。
 - [ ] `pinch` / `rotate` のマルチタッチ codegen 出力をコンパイルして実行する。
-- [ ] `forEach` / `if` / `extract` の codegen を、実装してコンパイルするか生成時に明示的に失敗させるかで解決する。
+- [x] `forEach` / `if` / `extract` の codegen を、実装してコンパイルするか生成時に明示的に失敗させるかで解決する。
 - [ ] 新規部分をまずゲート対象外として着地させ、安定後に必須化する。
+
+**ログ**
+
+- `forEach` / `if` / `extract` の codegen を、上記の第二案（生成時に明示的に失敗させる）で解決しました。
+  共有のシナリオ走査（`bajutsu/codegen/common.py`、BE-0083）が、これらの実行時専用の構文に対して生成時に
+  `CodegenError` を送出するようになり、3つの emitter（XCUITest / Playwright / UI Automator）が
+  何もしない `// TODO` スタブを静かに生成する代わりに、一貫して拒否します。`web` コンテキストステップ
+  （3つめの制御構文アクション）は本項目が名指しした対象の外にあり、従来どおり未対応の `// TODO` 経路に
+  意図的に残します。残る作業単位――コンパイル対象シナリオの拡張、`pinch` / `rotate` のコンパイル、
+  段階的なゲート対象外での着地――はいずれも実機 Simulator の CI 作業であり、後続の PR で着地させます。
 
 ## 参考
 

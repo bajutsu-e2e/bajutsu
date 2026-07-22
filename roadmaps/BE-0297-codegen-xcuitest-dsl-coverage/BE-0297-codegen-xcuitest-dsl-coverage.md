@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0297](BE-0297-codegen-xcuitest-dsl-coverage.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0297") |
+| Implementing PR | [#1278](https://github.com/bajutsu-e2e/bajutsu/pull/1278) |
 | Topic | codegen coverage |
 <!-- /BE-METADATA -->
 
@@ -82,8 +83,19 @@ The work breaks down MECE into the units below.
 
 - [ ] Extend the compiled scenario with text-editing, gesture, and compound-selector steps.
 - [ ] Compile and run `pinch` / `rotate` multi-touch codegen output.
-- [ ] Resolve `forEach` / `if` / `extract` codegen: implement and compile, or fail loudly at generation time.
+- [x] Resolve `forEach` / `if` / `extract` codegen: implement and compile, or fail loudly at generation time.
 - [ ] Land new slices non-gating first, promote once stable.
+
+**Log**
+
+- Resolved `forEach` / `if` / `extract` codegen by failing loudly (the second option above): the shared
+  scenario walk (`bajutsu/codegen/common.py`, BE-0083) now raises `CodegenError` at generation time
+  for these runtime-only constructs, so all three emitters (XCUITest / Playwright / UI Automator)
+  refuse them uniformly instead of emitting a silent no-op `// TODO` stub. The `web` context step
+  (the third control-flow action) is deliberately left on its pre-existing unsupported-`// TODO` path,
+  outside this item's named scope. The remaining units — extending the compiled scenario, compiling
+  `pinch` / `rotate`, and the incremental non-gating rollout — are on-device Simulator CI work and
+  land in a follow-up PR.
 
 ## References
 

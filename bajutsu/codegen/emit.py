@@ -7,6 +7,7 @@ generator + filename each format uses. Both transports — the `codegen` CLI com
 
 from __future__ import annotations
 
+from bajutsu.codegen.common import CodegenError
 from bajutsu.codegen.playwright import describe_name_for, to_playwright
 from bajutsu.codegen.uiautomator import class_name_for as uiautomator_class_name_for
 from bajutsu.codegen.uiautomator import to_uiautomator
@@ -14,13 +15,12 @@ from bajutsu.codegen.xcuitest import class_name_for, to_xcuitest
 from bajutsu.config import Effective, android_package, web_base_url
 from bajutsu.scenario import Scenario
 
+# `CodegenError` now lives in `common` (the shared walk raises it too, BE-0297); re-exported here so
+# `bajutsu.codegen.emit.CodegenError` — the path both transports import — is unchanged.
+__all__ = ["EMIT_TARGETS", "CodegenError", "generate_test"]
+
 # The emit formats `codegen` supports; the order the CLI's `--emit` help lists them in.
 EMIT_TARGETS = ("xcuitest", "playwright", "uiautomator")
-
-
-class CodegenError(ValueError):
-    """A codegen request that cannot be fulfilled: an unknown emit, or an emit on the wrong target
-    (Playwright needs a web target, UI Automator an Android target)."""
 
 
 def generate_test(
@@ -34,7 +34,8 @@ def generate_test(
 
     Raises:
         CodegenError: *emit* is not a known format, it is ``playwright`` on a target with no web
-            base URL, or ``uiautomator`` on a target with no Android package.
+            base URL, ``uiautomator`` on a target with no Android package, or a scenario uses a
+            runtime-only construct no target can translate (``if`` / ``forEach`` / ``extract``).
     """
     if emit not in EMIT_TARGETS:
         raise CodegenError(f"unsupported emit: {emit} (one of {', '.join(EMIT_TARGETS)})")

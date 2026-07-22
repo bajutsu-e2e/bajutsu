@@ -11,8 +11,10 @@ the destination framework is the runtime, so the test must speak its idiom, and 
 in the handoff artifact is owned by Playwright's auto-waiting (the same split the XCUITest
 emitter makes). The only fixed timings emitted are gesture durations.
 
-Unsupported constructs emit a `// TODO` line rather than failing, so the output is always
-reviewable.
+A construct with no faithful Playwright form emits a `// TODO` line rather than failing, so the
+output is always reviewable; a runtime-only construct the shared walk cannot translate at all
+(`if` / `forEach` / `extract`) fails loudly with a `CodegenError` instead of a silent no-op stub
+(BE-0297).
 """
 
 from __future__ import annotations
