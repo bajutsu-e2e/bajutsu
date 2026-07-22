@@ -46,12 +46,14 @@ occur. `_evaluate_expect` (`bajutsu/orchestrator/loop.py:69`) evaluates a scenar
 `expect` block as a condition wait: it re-reads the tree and re-evaluates the block's assertions
 until they pass or a wall-clock deadline elapses, precisely because — in that function's own
 docstring, added by BE-0245 — "a value an action mirrors into the tree can land a beat after the
-action returns." Every other read that follows an action takes exactly one snapshot instead. A
-mid-scenario `assert` step reads the tree once (`bajutsu/orchestrator/loop.py:245`); an `extract`
-step reads it once more, through `_ScreenRead` (`bajutsu/orchestrator/loop.py:101`), which by design
-reads at most once per step. Whichever of these runs right after an action whose result is still
-propagating inherits the exact race `_evaluate_expect` was built to close, without the fix that
-closes it.
+action returns." Every other non-retrying read that follows an action takes exactly one snapshot
+instead — a `wait` step is not among them, since its own condition wait (`_wait`,
+`bajutsu/orchestrator/waits.py:137`) already polls `query()` until satisfied and so does not inherit
+this race. A mid-scenario `assert` step reads the tree once (`bajutsu/orchestrator/loop.py:245`); an
+`extract` step reads it once more, through `_ScreenRead` (`bajutsu/orchestrator/loop.py:101`), which
+by design reads at most once per step. Whichever of these runs right after an action whose result is
+still propagating inherits the exact race `_evaluate_expect` was built to close, without the fix
+that closes it.
 
 The idb settle gap is about the polling strategy `_settle` uses, not about what the two backends
 share. `bajutsu/drivers/coordinate_tree.py`'s docstring is explicit that `_settle` itself stays
@@ -106,7 +108,14 @@ runner already respects, never a fixed sleep.
    projection in `bajutsu/drivers/coordinate_tree.py` keyed to whichever property this step reads —
    stops changing between two consecutive reads, or the same wall-clock deadline elapses, and thread
    it into `_ScreenRead`'s read (`bajutsu/orchestrator/loop.py:101`) so `extract` consumes the
-   settled value rather than whichever one was still propagating when the single read fired.
+   settled value rather than whichever one was still propagating when the single read fired. This
+   trades away part of the reason `_ScreenRead`'s read is deferred and taken at most once in the
+   first place: on adb a screen read (`uiautomator dump`) is the dominant per-step cost, roughly
+   2.4 seconds against 0.1–0.3 seconds for the same read on idb, so polling it until stable can
+   multiply that cost per `extract` step on a slow-to-settle screen, up to the same wall-clock
+   deadline. This unit accepts that cost only where a step's `extract` actually consumes the read —
+   `_ScreenRead`'s laziness already means a plain `assert`/`tap` step with no consumer never reads at
+   all, so the added polling lands only on the steps that ask for it.
 
 4. **Convert `IdbDriver._settle` to a wall-clock deadline.** Replace its fixed
    `_SETTLE_MAX_POLLS` / `_SETTLE_POLL_S` loop (`bajutsu/drivers/idb.py:335`–`336`) with the same
@@ -119,12 +128,16 @@ runner already respects, never a fixed sleep.
    the `extract`-after-tap race in `tests/test_driver_conformance.py`, the `FakeDriver`-based
    fast-gate suite, with a driver double that mirrors a value into the tree one read late; a double
    fits that suite naturally, while `tests/test_driver_conformance_ondevice.py` drives only the real
-   iOS Simulator backends and never a double. Then confirm the on-device showcase `extract` scenario
-   and the iOS conformance suite that flaked during this item's own motivation
-   (`test_delete_text_reduces_the_field_length`,
+   iOS Simulator backends and never a double. Give unit 4's own conversion the same deterministic
+   proof BE-0245 added for the analogous adb change (`tests/test_adb.py:963`–`1024`): a
+   `FakeClock`-driven addition to `tests/test_idb.py` confirming `IdbDriver._settle` polls past the
+   old fixed-poll cap while the tree keeps moving and gives up at its wall-clock deadline rather than
+   at a fixed count, so the conversion is proven by a fast, deterministic test rather than only by
+   on-device reruns. Then confirm the on-device showcase `extract` scenario and the iOS conformance
+   suite that flaked during this item's own motivation (`test_delete_text_reduces_the_field_length`,
    `test_tap_point_focuses_the_field_like_a_semantic_tap`) pass repeatedly in CI rather than only
    after a rerun — the on-device suite's role here is to confirm the real flakes stop reproducing,
-   not to host the driver-double regression test.
+   not to host either regression test above.
 
 ## Alternatives considered
 
@@ -156,7 +169,8 @@ runner already respects, never a fixed sleep.
 - [ ] Route a mid-scenario `assert` step through that shared retry.
 - [ ] Give `extract`'s read the same forgiveness, on its own terms (a property-aware settle).
 - [ ] Convert `IdbDriver._settle` to a wall-clock deadline, matching `AdbDriver._settle`.
-- [ ] Verify against the exact failures this item traces to (regression test + repeated CI runs).
+- [ ] Verify against the exact failures this item traces to (extract-race regression test, a
+      `FakeClock`-driven `tests/test_idb.py` addition for unit 4, and repeated on-device CI runs).
 
 ## References
 
