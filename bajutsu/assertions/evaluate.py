@@ -19,7 +19,7 @@ from bajutsu.assertions._common import (
     AssertionResult,
     _compile,
     _resolve_one,
-    _sel_str,
+    sel_str,
 )
 from bajutsu.assertions.network import (
     _assign_requests,
@@ -86,19 +86,19 @@ def _eval_exists(elements: list[base.Element], a: Exists) -> AssertionResult:
     ok = found != a.negate
     want = "absent" if a.negate else "present"
     reason = "" if ok else f"expected {want} but was {'present' if found else 'absent'}"
-    return AssertionResult(ok, "exists", f"{want}: {_sel_str(a.sel)}", reason)
+    return AssertionResult(ok, "exists", f"{want}: {sel_str(a.sel)}", reason)
 
 
 def _eval_text(elements: list[base.Element], kind: str, a: TextMatch) -> AssertionResult:
     el, err = _resolve_one(elements, a.sel)
-    detail_base = f"{kind}: {_sel_str(a.sel)}"
+    detail_base = f"{kind}: {sel_str(a.sel)}"
     if el is None:
         return AssertionResult(False, kind, detail_base, err)
     actual = el["value"] if kind == "value" else el["label"]
     op, expected = _text_op(a)
     ok = _text_cmp(actual, op, expected)
     reason = "" if ok else f"expected {op}={expected!r} but actual={actual!r}"
-    return AssertionResult(ok, kind, f"{kind} {op}={expected!r}: {_sel_str(a.sel)}", reason)
+    return AssertionResult(ok, kind, f"{kind} {op}={expected!r}: {sel_str(a.sel)}", reason)
 
 
 def _text_op(a: TextMatch) -> tuple[str, str]:
@@ -125,7 +125,7 @@ def _eval_count(elements: list[base.Element], a: CountMatch) -> AssertionResult:
     op, k = _count_op(a)
     ok = {"equals": n == k, "atLeast": n >= k, "atMost": n <= k}[op]
     reason = "" if ok else f"expected count {op}={k} but n={n}"
-    return AssertionResult(ok, "count", f"count {op}={k}: {_sel_str(a.sel)}", reason)
+    return AssertionResult(ok, "count", f"count {op}={k}: {sel_str(a.sel)}", reason)
 
 
 def _count_op(a: CountMatch) -> tuple[str, int]:
@@ -139,7 +139,7 @@ def _count_op(a: CountMatch) -> tuple[str, int]:
 
 def _eval_state(elements: list[base.Element], kind: str, sel: Selector) -> AssertionResult:
     el, err = _resolve_one(elements, sel)
-    detail = f"{kind}: {_sel_str(sel)}"
+    detail = f"{kind}: {sel_str(sel)}"
     if el is None:
         return AssertionResult(False, kind, detail, err)
     traits = el["traits"]

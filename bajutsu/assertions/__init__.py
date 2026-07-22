@@ -14,7 +14,7 @@ image-preprocessing subsystem (`visual`), and JSON-Schema loading/validation (`s
 
 from __future__ import annotations
 
-from bajutsu.assertions._common import AssertionResult
+from bajutsu.assertions._common import AssertionResult, sel_str
 from bajutsu.assertions.evaluate import (
     EvalContext,
     GoldenContext,
@@ -39,4 +39,5 @@ __all__ = [
     "match_request",
     "passed",
     "request_label",
+    "sel_str",
 ]

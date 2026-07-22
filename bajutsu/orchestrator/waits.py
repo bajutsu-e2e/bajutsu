@@ -12,7 +12,7 @@ from bajutsu import assertions
 from bajutsu.drivers import base
 from bajutsu.elements import shows_app_ui
 from bajutsu.orchestrator.types import AlertEvent, BlockedHandler, Clock, NetworkSource, _no_network
-from bajutsu.scenario import Gone, Selector, Wait, WaitRequest
+from bajutsu.scenario import Gone, Wait, WaitRequest
 
 _logger = logging.getLogger(__name__)
 
@@ -28,22 +28,18 @@ _TICK_INTERVAL = 1.0
 WaitTick = Callable[[float], None]
 
 
-def _sel_desc(sel: Selector) -> str:
-    """Render a selector as `key=value` pairs, matching the assertion report's wording."""
-    return ", ".join(f"{k}={v!r}" for k, v in sel.as_selector().items())
-
-
 def describe_wait(w: Wait) -> str:
     """A human-readable description of what a wait is blocked on, for live progress.
 
-    Mirrors the wording of `_wait`'s timeout reasons — `for <sel>`, `until gone <sel>`,
-    `until request <label>`, `until settled` / `until screenChanged` — so a run log reads
-    consistently whether the wait is still pending or has timed out.
+    Renders the condition as `key=value` — `for id='home.title'`, `until gone id='spinner'`,
+    `until request GET /login`, `until settled` / `until screenChanged` — reusing the assertion
+    report's `sel_str` so a pending line and an assertion detail render a selector the same way.
+    (`_wait`'s timeout reason prints the raw selector dict, so it is not byte-identical to this.)
     """
     if w.for_ is not None:
-        return f"for {_sel_desc(w.for_)}"
+        return f"for {assertions.sel_str(w.for_)}"
     if isinstance(w.until, Gone):
-        return f"until gone {_sel_desc(w.until.gone)}"
+        return f"until gone {assertions.sel_str(w.until.gone)}"
     if isinstance(w.until, WaitRequest):
         return f"until request {assertions.request_label(w.until.request)}"
     return f"until {w.until}"  # "settled" | "screenChanged"
@@ -196,29 +192,29 @@ def _wait(
     on_tick: WaitTick | None = None,
 ) -> tuple[bool, str, list[base.Element] | None]:
     """Condition wait. Polls query() (or the observed network) until satisfied instead
-     of a fixed sleep.
+    of a fixed sleep.
 
-     When `trace` is given (a `for` wait only), each poll is recorded into it so a timeout can be
-     diagnosed from artifacts (BE-0231 Unit 1); it never changes the wait's outcome.
+    When `trace` is given (a `for` wait only), each poll is recorded into it so a timeout can be
+    diagnosed from artifacts (BE-0231 Unit 1); it never changes the wait's outcome.
 
-     When `on_blocked` is given, the branches a system alert can *stall* — `for`, `settled`, and
-     `screenChanged` (where a collapsed tree keeps the condition unmet and would otherwise burn the
-     whole timeout) — watch the already-fetched tree for the collapsed-tree signature of a blocking
-     prompt and ask the guard to clear it mid-wait, then resume polling against the *same* `deadline`
-     (BE-0269). The condition check still decides pass/fail; the guard only accelerates recovery, and
-     dismissed alerts are appended to `alerts` (the step's outcome list) for the report. `gone` is
-     *not* guarded: a collapsed tree already satisfies "gone" and returns at once, so no timeout is
-     wasted and there is nothing to accelerate (guarding it would mean redefining "gone" to reject a
-     blank screen). `request` polls the network, not the screen, so it is not guarded either.
+    When `on_blocked` is given, the branches a system alert can *stall* — `for`, `settled`, and
+    `screenChanged` (where a collapsed tree keeps the condition unmet and would otherwise burn the
+    whole timeout) — watch the already-fetched tree for the collapsed-tree signature of a blocking
+    prompt and ask the guard to clear it mid-wait, then resume polling against the *same* `deadline`
+    (BE-0269). The condition check still decides pass/fail; the guard only accelerates recovery, and
+    dismissed alerts are appended to `alerts` (the step's outcome list) for the report. `gone` is
+    *not* guarded: a collapsed tree already satisfies "gone" and returns at once, so no timeout is
+    wasted and there is nothing to accelerate (guarding it would mean redefining "gone" to reject a
+    blank screen). `request` polls the network, not the screen, so it is not guarded either.
 
     When `on_tick` is given, a throttled "still waiting …" line is emitted while the wait is pending:
     once on entry — so even an instantly-satisfied wait surfaces its condition — then every
     `_TICK_INTERVAL` until it resolves. It is display only and never affects the outcome.
 
-     Returns `(ok, reason, tree)` where `tree` is the last screen the wait queried — the settled
-     device state, since nothing actuates in a wait. The caller reuses it as the step's `after`
-     snapshot instead of re-querying (BE-0259). It is `None` for the `request` variant, which polls
-     the observed network rather than the tree, so there is no screen read to hand back.
+    Returns `(ok, reason, tree)` where `tree` is the last screen the wait queried — the settled
+    device state, since nothing actuates in a wait. The caller reuses it as the step's `after`
+    snapshot instead of re-querying (BE-0259). It is `None` for the `request` variant, which polls
+    the observed network rather than the tree, so there is no screen read to hand back.
     """
     timeout = _effective_timeout(w)
     start = clock.now()
