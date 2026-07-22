@@ -1,4 +1,4 @@
-"""Tests for the wheel-bundled XCUITest runner resolution (BE-XXXX).
+"""Tests for the wheel-bundled XCUITest runner resolution (BE-0292).
 
 BE-0019 required `xcuitest.testRunner` (or a `build` command) in config; this adds a third,
 lowest-priority tier — a runner shipped in the wheel — so a Simulator run with neither configured
@@ -298,3 +298,80 @@ def test_materialize_reraises_a_real_failure(
 def test_bundled_products_dir_absent_by_default() -> None:
     # A source checkout / Linux wheel ships no compiled runner, so resolution treats it as absent.
     assert _bundled_runner.bundled_products_dir() is None
+
+
+# --- runner_source: the same precedence, disclosed without acting on it (BE-0292) --- #
+
+
+def test_runner_source_reports_bundled(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    bundle = _products(tmp_path / "bundle")
+    monkeypatch.setattr(xcuitest, "bundled_products_dir", lambda: bundle)
+    assert xcuitest.runner_source(None, "simulator") == "bundled (wheel-shipped Simulator runner)"
+
+
+def test_runner_source_reports_no_bundle_present(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(xcuitest, "bundled_products_dir", lambda: None)
+    assert xcuitest.runner_source(None, "simulator") == (
+        "none: no bundled runner in this build (set xcuitest.testRunner)"
+    )
+
+
+def test_runner_source_reports_device_requires_test_runner(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(xcuitest, "bundled_products_dir", lambda: _products(tmp_path / "bundle"))
+    assert xcuitest.runner_source(None, "device") == (
+        "none: xcuitest.deviceType: device requires an explicit testRunner"
+    )
+
+
+def test_runner_source_reports_an_existing_test_runner(tmp_path: Path) -> None:
+    runner = tmp_path / "Explicit.xctestrun"
+    runner.write_bytes(b"")
+    cfg = XcuitestConfig.model_validate({"testRunner": str(runner)})
+    assert xcuitest.runner_source(cfg, "simulator") == f"testRunner: {runner}"
+
+
+def test_runner_source_reports_a_missing_test_runner_with_build(tmp_path: Path) -> None:
+    runner = tmp_path / "Built.xctestrun"
+    cfg = XcuitestConfig.model_validate({"testRunner": str(runner), "build": "make runner"})
+    assert xcuitest.runner_source(cfg, "simulator") == (
+        f"testRunner: {runner} (missing, built on demand via: make runner)"
+    )
+
+
+def test_runner_source_reports_a_missing_test_runner_without_build(tmp_path: Path) -> None:
+    runner = tmp_path / "nope.xctestrun"
+    cfg = XcuitestConfig.model_validate({"testRunner": str(runner)})
+    assert xcuitest.runner_source(cfg, "simulator") == (
+        f"testRunner: {runner} (missing, no build configured)"
+    )
+
+
+def test_runner_source_reports_build_without_test_runner_as_misconfigured() -> None:
+    cfg = XcuitestConfig.model_validate({"build": "make runner"})
+    assert xcuitest.runner_source(cfg, "simulator") == (
+        "misconfigured: xcuitest.build requires xcuitest.testRunner"
+    )
+
+
+def test_runner_source_never_runs_build_or_materializes(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The whole point of `runner_source` is to disclose without acting: it must not shell out to a
+    # configured `build`, nor materialize the bundled runner into the cache.
+    bundle = _products(tmp_path / "bundle")
+    monkeypatch.setattr(xcuitest, "bundled_products_dir", lambda: bundle)
+
+    def _boom(*args: object, **kwargs: object) -> object:
+        raise AssertionError("runner_source must not run build or materialize")
+
+    monkeypatch.setattr(xcuitest.subprocess, "run", _boom)
+    monkeypatch.setattr(xcuitest, "materialize", _boom)
+
+    assert xcuitest.runner_source(None, "simulator") == "bundled (wheel-shipped Simulator runner)"
+    missing = tmp_path / "missing.xctestrun"
+    cfg = XcuitestConfig.model_validate({"testRunner": str(missing), "build": "make runner"})
+    assert xcuitest.runner_source(cfg, "simulator") == (
+        f"testRunner: {missing} (missing, built on demand via: make runner)"
+    )

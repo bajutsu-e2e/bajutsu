@@ -367,6 +367,31 @@ def _resolve_runner(xcfg: XcuitestConfig | None, device_type: str) -> Path:
         ) from exc
 
 
+def runner_source(xcfg: XcuitestConfig | None, device_type: str) -> str:
+    """Which runner-resolution tier a target would use, without acting on it (BE-0292).
+
+    Mirrors `_resolve_runner`'s precedence (an explicit `testRunner`, else its `build`, else the
+    bundled default) as a side-effect-free check, so `doctor` can disclose the source without
+    running a configured `build` command or materializing the bundled runner into the cache.
+    """
+    test_runner = xcfg.test_runner if xcfg is not None else None
+    build = xcfg.build if xcfg is not None else None
+
+    if test_runner is None and build is not None:
+        return "misconfigured: xcuitest.build requires xcuitest.testRunner"
+    if test_runner is not None:
+        if Path(test_runner).exists():
+            return f"testRunner: {test_runner}"
+        if build:
+            return f"testRunner: {test_runner} (missing, built on demand via: {build})"
+        return f"testRunner: {test_runner} (missing, no build configured)"
+    if device_type == "device":
+        return "none: xcuitest.deviceType: device requires an explicit testRunner"
+    if bundled_products_dir() is None:
+        return "none: no bundled runner in this build (set xcuitest.testRunner)"
+    return "bundled (wheel-shipped Simulator runner)"
+
+
 def _patch_xctestrun_env(runner_path: Path, forwarded: Mapping[str, str]) -> Path:
     """Write a copy of the .xctestrun with *forwarded* merged into each target's env.
 

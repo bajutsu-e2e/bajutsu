@@ -224,7 +224,7 @@ docs-serve: roadmap-dashboard
 docs-diagrams:
 	uv run python scripts/render_diagrams.py
 
-# Build the generic XCUITest Simulator runner into the package (BE-XXXX), so a wheel built after
+# Build the generic XCUITest Simulator runner into the package (BE-0292), so a wheel built after
 # this ships it and `xcuitest.testRunner` becomes optional. macOS + Xcode only, run at release
 # time — NOT part of `check` (the deterministic gate runs anywhere and never touches the runner).
 # The whole products directory is copied so the `.xctestrun`'s `__TESTROOT__` still resolves beside

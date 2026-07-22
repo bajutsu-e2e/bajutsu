@@ -23,11 +23,13 @@ from bajutsu.config import (
     android_package,
     idb_version_pin,
     ios_bundle_id,
+    require_ios,
     web_base_url,
     web_engine,
 )
 from bajutsu.doctor import DoctorProbeError, probe_screen, render, score
 from bajutsu.drivers import base
+from bajutsu.platform_lifecycle.environments.xcuitest import runner_source
 from bajutsu.scenario import load_scenario_file
 
 
@@ -99,6 +101,20 @@ def actuator_resolution_summary(
     return lines
 
 
+def xcuitest_runner_summary(eff: Effective, actuator: str) -> list[str]:
+    """Which runner-resolution tier the target's xcuitest config would use (BE-0292).
+
+    Informational only — `runner_source` is a pure precedence check, so this discloses the source
+    without running a configured `build` command or materializing the bundled runner. Empty for any
+    actuator other than `xcuitest`, since no other backend resolves a runner this way.
+    """
+    if actuator != "xcuitest":
+        return []
+    xcfg = require_ios(eff).xcuitest
+    device_type = xcfg.device_type if xcfg is not None else "simulator"
+    return [f"xcuitest runner: {runner_source(xcfg, device_type)}"]
+
+
 def doctor(
     target_name: str = typer.Option(..., "--target"),
     udid: str = typer.Option("booted"),
@@ -156,6 +172,12 @@ def doctor(
     if summary:
         for line in summary:
             typer.echo(line)
+        typer.echo("")
+
+    # Which runner tier an xcuitest target resolves to (BE-0292): bundled, testRunner, or build —
+    # informational, no device, no gate.
+    for line in xcuitest_runner_summary(eff, actuator):
+        typer.echo(line)
         typer.echo("")
 
     # Runnability gate: the CLIs (+ a booted Simulator) the actuator needs. Fail fast here
