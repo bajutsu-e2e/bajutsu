@@ -45,7 +45,9 @@ deps-check:
 	@command -v xcodegen >/dev/null 2>&1 && echo "xcodegen: ok" || echo "xcodegen: MISSING (make deps)"
 	@command -v xcrun >/dev/null 2>&1 && echo "xcrun (Xcode): ok" || echo "xcrun (Xcode): MISSING (install Xcode)"
 
-# Launch the web UI, installing the configured backend's deps on demand (see scripts/serve.sh).
+# Launch the web UI, installing the configured backend's deps on demand (see scripts/serve.sh). On
+# macOS it also stages the bundled XCUITest Simulator runner (BE-0292) when a source checkout ships
+# none, so XCUITest works out of the box; set BAJUTSU_SKIP_RUNNER_BUNDLE=1 to skip that.
 # Pass flags through ARGS, e.g. `make serve ARGS="--port 8766"`.
 serve:
 	@./scripts/serve.sh $(ARGS)
