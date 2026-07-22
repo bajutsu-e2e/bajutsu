@@ -287,6 +287,49 @@ def test_extract_settle_ignores_unrelated_animating_text(monkeypatch: pytest.Mon
     assert clock.now() < 1.0  # converged; unrelated animating text did not hold the settle open
 
 
+class _NeverRestingTargetDriver(FakeDriver):
+    """The extract target's own value changes on every read — it never rests."""
+
+    def __init__(self) -> None:
+        super().__init__([el("field", "Name", value="0")])
+        self._tick = 0
+        self.queries = 0
+
+    def query(self) -> list[base.Element]:
+        self.queries += 1
+        self._tick += 1
+        self.screen = [el("field", "Name", value=str(self._tick))]
+        return super().query()
+
+
+def test_extract_settle_gives_up_at_the_deadline_when_target_never_rests(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(_FLOOR, "1")
+    # The target's own value changes every read, so the settle never converges: it must fall back to
+    # best-effort at the wall-clock deadline (the fail-loud/traceable path) rather than spin forever.
+    # Mirrors the driver-level test_settle_gives_up_at_the_wall_clock_deadline_when_never_stable.
+    driver = _NeverRestingTargetDriver()
+    clock = FakeClock()
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "x",
+                "steps": [
+                    {
+                        "tap": {"id": "field"},
+                        "extract": {"who": {"sel": {"id": "field"}, "prop": "value"}},
+                    }
+                ],
+            }
+        ),
+        clock=clock,
+    )
+    assert result.ok, result.failure  # the extract still binds a best-effort value, not a failure
+    assert clock.now() >= 1.0  # polled to the deadline, then gave up via the fallback branch
+
+
 def _assert_step_scenario() -> object:
     # tap, then a step-level `assert` on a value the tap mirrors in a beat late — the Unit 2 site
     # (distinct from the scenario-level `expect` that test_expect_wait covers).
