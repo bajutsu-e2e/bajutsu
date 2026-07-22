@@ -38,13 +38,14 @@ Proposal altitude. The work is MECE along the units below.
 - **A throwaway GitHub OAuth App, captured once.** Register a minimal test-only OAuth App (its
   client ID/secret used only for a one-time manual capture, never stored in CI). A maintainer
   manually completes one real authorization-code exchange against it and saves the raw HTTP
-  responses: the token exchange and a representative org-list page.
+  responses — the token exchange and a representative org-list page — with the real access token and
+  any real login/org identifiers replaced by fixture values before the responses are committed.
 - **Replay the captured responses through the real code, not a live CI login.** Getting the initial
   authorization `code` requires a human completing GitHub's hosted login-and-consent page —
   scripting that from a CI runner means logging into a live account programmatically, risking
-  GitHub's 2FA/device-verification/CAPTCHA challenges firing unpredictably on CI IPs, exactly the
-  kind of flakiness this item exists to avoid, over a far more sensitive secret than an OAuth client
-  secret. Instead, intercept at the `httpx` transport boundary (`respx` or a custom
+  GitHub's 2FA/device-verification/CAPTCHA challenges firing unpredictably on CI IPs. That is exactly
+  the kind of flakiness this item exists to avoid, over a far more sensitive secret than an OAuth
+  client secret. Instead, intercept at the `httpx` transport boundary (`respx` or a custom
   `httpx.MockTransport`) and replay the captured real responses back through the real
   `GitHubOAuthClient`/`OAuth2Client`/`_fetch_orgs`, so an Authlib call-signature break or a GitHub
   response-shape change is still caught, with no live network call or credential needed in CI.
