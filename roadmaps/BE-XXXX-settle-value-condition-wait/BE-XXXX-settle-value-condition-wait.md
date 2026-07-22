@@ -70,7 +70,7 @@ channel BE-0245 itself introduced — could otherwise collapse the settle window
 still-moving tree pass as settled. `IdbDriver._settle` (`bajutsu/drivers/idb.py:335`–`336`) kept the
 strategy BE-0245 moved away from on the Android side: it still polls a fixed three times at a
 50-millisecond interval, a 150-millisecond ceiling regardless of how loaded the
-machine running it is — 50 times narrower than the Android side's eight-second budget. A fixed
+machine running it is — roughly 53 times narrower than the Android side's eight-second budget. A fixed
 poll count scales no better on idb than it did on adb before BE-0245, and nothing in the documented
 reason for keeping `_settle` per-backend argues for leaving one backend on a strategy already known
 to run out on a slow machine; unit 4 below asks idb to adopt adb's wall-clock shape while keeping its
