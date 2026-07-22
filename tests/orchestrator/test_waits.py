@@ -801,8 +801,9 @@ def test_wait_ticks_count_down_across_a_long_wait() -> None:
     # Reveal the target only after 3 logical seconds, so the wait stays pending across several ticks.
     ok, _reason, _tree = _wait(_slow_render_driver(clock, 3.0), w, clock, on_tick=seen.append)
     assert ok
-    # Entry tick (5.0) plus ~one per second while pending; throttled, so far fewer than the poll count.
-    assert len(seen) >= 3
+    # Entry tick (5.0) plus ~one per second while pending. The upper bound is the real guard: a lost
+    # _TICK_INTERVAL gate would emit on every ~50ms poll and balloon `seen` to dozens of entries.
+    assert 3 <= len(seen) <= 6
     assert seen[0] == 5.0
     assert seen == sorted(seen, reverse=True)  # remaining only ever decreases
     assert all(r >= 0.0 for r in seen)
@@ -855,7 +856,8 @@ def test_wait_ticks_fire_for_every_non_for_branch() -> None:
         ),
     }
     for label, seen in cases.items():
-        assert len(seen) >= 2, f"{label}: expected entry + in-loop ticks, got {seen}"
+        # Upper bound guards the throttle: a lost _TICK_INTERVAL gate would emit per ~50ms poll.
+        assert 2 <= len(seen) <= 8, f"{label}: expected entry + throttled in-loop ticks, got {seen}"
         assert seen[0] == 5.0, f"{label}: entry tick should report the full timeout"
         assert seen == sorted(seen, reverse=True), (
             f"{label}: remaining must only decrease, got {seen}"
