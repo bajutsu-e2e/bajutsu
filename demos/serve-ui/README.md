@@ -40,7 +40,7 @@ make -C demos/serve-ui e2e
 This installs the web backend (`uv sync --extra web` + `playwright install chromium`), launches
 `bajutsu serve` (bound to the [web demo](../web)'s config so its dropdowns have a real app + scenario
 to show), drives the Web UI through the Playwright backend with the Tier-A scenarios, and tears serve
-down. We start serve directly rather than via `make serve` because the dogfood is web-only — no idb
+down. We start serve directly rather than via `make serve` because the dogfood is web-only — no XCUITest runner
 companion or iOS actuator is involved.
 
 To poke the Web UI by hand, `make -C demos/serve-ui serve-ui` and open <http://127.0.0.1:8799/>.

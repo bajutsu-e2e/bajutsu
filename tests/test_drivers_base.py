@@ -15,8 +15,8 @@ from bajutsu.drivers import base
 class LateDriver:
     """A stub driver whose selector matches only after `appear_after` single-shot checks.
 
-    Simulates an element that renders slightly after the call — the case idb's old bespoke
-    loop handled and Playwright's single check did not. `poll=0` keeps the test instant.
+    Simulates an element that renders slightly after the call — the case the base settle
+    loop handles and Playwright's single check did not. `poll=0` keeps the test instant.
     """
 
     name = "late"

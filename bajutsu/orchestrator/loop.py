@@ -165,7 +165,7 @@ class _ScreenRead:
     """A step's post-step screen read, taken at most once and cached (BE-0234 Unit 2).
 
     On the adb backend a screen read (`uiautomator dump`) is the dominant per-step cost — ~2.4s
-    against ~0.1-0.3s for the same read on idb — so the end-of-step read is deferred until a
+    against ~0.1-0.3s for a lighter read channel — so the end-of-step read is deferred until a
     consumer actually needs it: a `screenChanged` capture, an `extract`, or a `wait`-timeout
     diagnostic. A plain `tap`/`assert` step with none of these under a `NullSink` never reads.
     When it is read, the tree also seeds the next step's `before` — nothing actuates between a

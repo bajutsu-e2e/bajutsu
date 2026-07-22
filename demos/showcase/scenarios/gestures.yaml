@@ -1,7 +1,7 @@
 # Gestures (SPEC §5.3): the Log tab's dedicated long-press and double-tap targets, each
 # mirroring its result to an a11y value. Runs identically against showcase-swiftui and
-# showcase-uikit. Both gestures are driveable by idb; pinch / rotate are multi-touch
-# (XCUITest-only) and are not exercised here.
+# showcase-uikit. Both gestures are single-touch; pinch / rotate are multi-touch
+# and are not exercised here.
 #
 # The targets sit below the form's fold, and a SwiftUI List renders off-screen rows lazily
 # (they are absent from the accessibility tree until scrolled in), so the scenario scrolls

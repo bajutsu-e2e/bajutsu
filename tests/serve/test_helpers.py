@@ -318,7 +318,7 @@ def test_list_crawl_runs_empty_dir(tmp_path: Path) -> None:
 
 
 def test_run_command_builder() -> None:
-    cmd = srv.run_command("s.yaml", "demo", backend="idb", udid="U", config="c.yaml")
+    cmd = srv.run_command("s.yaml", "demo", backend="xcuitest", udid="U", config="c.yaml")
     assert cmd[:6] == [sys.executable, "-m", "bajutsu", "run", "--scenario", "s.yaml"]
     # erase defaults to None: no flag, so each scenario's preconditions.erase decides.
     # --progress is always passed so the run streams scenario/step lines into the run log.
@@ -329,7 +329,7 @@ def test_run_command_builder() -> None:
         "c.yaml",
         "--progress",
         "--backend",
-        "idb",
+        "xcuitest",
         "--udid",
         "U",
     ]
@@ -455,7 +455,7 @@ def test_record_command_builder() -> None:
         "out.yaml",
         "demo",
         "tap Increment",
-        backend="idb",
+        backend="xcuitest",
         udid="U",
         config="c.yaml",
     )
@@ -463,7 +463,7 @@ def test_record_command_builder() -> None:
     assert cmd[6:12] == ["--target", "demo", "--goal", "tap Increment", "--config", "c.yaml"]
     # The AI provider is inherited from the serve env (BE-0163), never passed as a flag.
     assert "--agent" not in cmd
-    assert cmd[cmd.index("--backend") + 1] == "idb" and cmd[cmd.index("--udid") + 1] == "U"
+    assert cmd[cmd.index("--backend") + 1] == "xcuitest" and cmd[cmd.index("--udid") + 1] == "U"
     # erase / dismiss default to None (the CLI defaults — record erases and dismisses): no flag.
     assert "--erase" not in cmd and "--no-erase" not in cmd and "--no-dismiss-alerts" not in cmd
     # Explicit overrides mirror run_command.
@@ -481,7 +481,7 @@ def test_crawl_command_builder() -> None:
     cmd = srv.crawl_command(
         "demo",
         out="runs/20260619-1",
-        backend="idb",
+        backend="xcuitest",
         udid="U",
         max_screens=10,
         max_steps=30,
@@ -494,7 +494,7 @@ def test_crawl_command_builder() -> None:
     assert cmd[cmd.index("--max-steps") + 1] == "30"
     # The AI provider is inherited from the serve env (BE-0163), never passed as a flag.
     assert "--agent" not in cmd
-    assert cmd[cmd.index("--backend") + 1] == "idb" and cmd[cmd.index("--udid") + 1] == "U"
+    assert cmd[cmd.index("--backend") + 1] == "xcuitest" and cmd[cmd.index("--udid") + 1] == "U"
     # erase defaults to None (the CLI default — crawl erases): no flag forced either way.
     assert "--erase" not in cmd and "--no-erase" not in cmd
     # headed mirrors run_command: None = no flag, True/False force the web browser visible/headless.
@@ -597,10 +597,10 @@ def test_list_simulators_parses_and_orders() -> None:
 @pytest.mark.parametrize(
     ("value", "ok"),
     [
-        ("idb", True),
+        ("xcuitest", True),
         ("ios", True),
         ("ios,fake", True),  # comma list of known tokens
-        ("idb,bogus", False),  # one unknown token -> reject
+        ("xcuitest,bogus", False),  # one unknown token -> reject
         ("rm -rf /", False),  # free text -> reject
     ],
 )

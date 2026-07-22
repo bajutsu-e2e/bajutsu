@@ -150,7 +150,7 @@ class RunResult:
     failure: str | None = None
     # Scenario-level artifacts (the always-on screen recording, etc.).
     artifacts: list[Artifact] = field(default_factory=list)
-    # Which backend (actuator) drove this scenario: "idb" / "fake".
+    # Which backend (actuator) drove this scenario: "xcuitest" / "fake".
     backend: str = ""
     # The web rendering engine this result was produced on — "chromium" / "firefox" / "webkit"
     # — set only on a `--browsers` cross-engine run (BE-0076). Empty for iOS and any single-engine

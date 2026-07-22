@@ -37,12 +37,12 @@ verbatim.
 {
   "runId": "20260605-101530",
   "ok": true,
-  "backend": "idb",
+  "backend": "xcuitest",
   "scenarios": [
     {
       "scenario": "onboard, log in, and increment the counter",
       "ok": true,
-      "backend": "idb",
+      "backend": "xcuitest",
       "steps": [
         {
           "index": 5, "action": "tap", "ok": true, "reason": "",
@@ -61,7 +61,7 @@ verbatim.
 ```
 
 - `ok` (top): true if every scenario is ok.
-- `backend`: the actuator that drove the run (`idb`, or `fake` in tests). One actuator is fixed
+- `backend`: the actuator that drove the run (`xcuitest`, or `fake` in tests). One actuator is fixed
   per run, so the top-level value is normally a single name; each scenario also carries its own
   `backend` ([drivers](drivers.md#backend-selection-and-the-actuator)).
 - `steps[].duration_s`: each step's timing (the `actionLog`-equivalent information).
@@ -74,9 +74,11 @@ verbatim.
   checkout), and — when the config came from a Git source ([BE-0063](../roadmaps/BE-0063-git-config-source/BE-0063-git-config-source.md)) —
   `configSource` (`{ host, owner, repo, ref, sha }`, the exact commit a branch-based run executed).
   It groups accumulated runs by identity, so a verdict that flips while the fingerprint is
-  unchanged is **true flakiness** rather than an edited scenario. Pure metadata — like the `idb`
-  version block, it never enters `ok`. (`schemaVersion` is `3` or higher once this block can appear — it is `4` today.)
-- `idb` (top, optional): the `idb_companion` / client versions, when idb drove the run (BE-0005).
+  unchanged is **true flakiness** rather than an edited scenario. Pure metadata — it never enters
+  `ok`. (`schemaVersion` is `3` or higher once this block can appear — it is `4` today.)
+- `idb` (top, optional, legacy): older manifests may carry an `idb_companion` / client version
+  block (BE-0005). It was retired with the idb backend (BE-0290) and is no longer written; an old
+  manifest that still has it loads fine, since an unknown top-level key is ignored.
 - `matrix` (top, optional): the cross-browser engine × scenario grid, present only on a
   `bajutsu run --browsers` run ([BE-0076](../roadmaps/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md)).
   `scenarios` stays the flat result list, each entry tagged with its `engine`; `matrix` is
@@ -214,9 +216,9 @@ Device Log / App Trace remain separate tabs.
 ## Write API
 
 ```python
-def write_report(run_dir, run_id, results, definitions=None, sources=None, source_name=None, description=None, idb_versions=None, provenance=None) -> Path  # all 4 formats; definitions = per-scenario dict, sources = raw YAML, source_name = scenario file name, description = file-level description; idb_versions = idb provenance (BE-0005), provenance = run-identity stamp (BE-0049)
+def write_report(run_dir, run_id, results, definitions=None, sources=None, source_name=None, description=None, provenance=None) -> Path  # all 4 formats; definitions = per-scenario dict, sources = raw YAML, source_name = scenario file name, description = file-level description; provenance = run-identity stamp (BE-0049)
 def write_html_and_junit(run_dir, run_id, results, definitions=None, sources=None, source_name=None, description=None, provenance=None) -> None  # the regenerable half (report.html + junit.xml + ctrf.json), leaving manifest.json untouched — used by re-render; provenance feeds the CTRF tool/environment fields
-def manifest_dict(run_id, results, *, source_name=None, idb_versions=None, provenance=None) -> dict  # the versioned render model (schemaVersion); the manifest source (for tests / inspection)
+def manifest_dict(run_id, results, *, source_name=None, provenance=None) -> dict  # the versioned render model (schemaVersion); the manifest source (for tests / inspection)
 def run_provenance(scenario_yaml, *, git_revision, config_source=None) -> dict  # the run-identity stamp: scenarioHash + toolVersion + optional gitRevision (BE-0049) + optional configSource (BE-0063)
 def ctrf_json(run_id, results, *, provenance=None) -> dict  # the CTRF projection of the result model (BE-0161); provenance feeds tool.version / environment.commit
 def junit_xml(results) -> str

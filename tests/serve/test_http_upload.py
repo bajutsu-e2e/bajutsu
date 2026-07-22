@@ -24,7 +24,7 @@ from bajutsu import serve as srv
 from bajutsu.serve import handler as handler_mod
 
 _CONFIG = (
-    "defaults: { backend: [idb] }\n"
+    "defaults: { backend: [ios] }\n"
     "targets:\n"
     "  demo: { bundleId: com.example.demo, scenarios: ./scenarios }\n"
 )
@@ -214,7 +214,7 @@ def test_run_off_bundle_never_builds_from_uploaded_config(tmp_path: Path) -> Non
     # An uploaded config that declares a `build` must never have it executed on the host (DESIGN §1):
     # the bundle ships a prebuilt binary, so only one process — the run — is ever spawned.
     cfg = (
-        "defaults: { backend: [idb] }\n"
+        "defaults: { backend: [ios] }\n"
         "targets:\n"
         "  demo:\n"
         "    bundleId: com.example.demo\n"

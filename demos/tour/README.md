@@ -4,7 +4,7 @@
 
 The whole Bajutsu lifecycle in one command, on a real iOS Simulator — and **fully
 deterministic: no LLM, no API key**. `run` and `triage` never use AI, so the only thing you
-need is a Mac with a booted Simulator (idb auto-installs).
+need is a Mac with Xcode and a booted Simulator.
 
 ```bash
 make -C demos tour                   # or, directly:
@@ -31,7 +31,7 @@ that the scenario is already authored — there's no Claude step, so no API key.
 ## No Mac? The same story on a fake device (zero setup)
 
 The identical author → run → modify → diagnose lifecycle also runs against an in-memory
-[`FakeDriver`](../../bajutsu/drivers/fake.py) — no Simulator, no idb, no API key, on Linux/CI in
+[`FakeDriver`](../../bajutsu/drivers/fake.py) — no Simulator, no Xcode, no API key, on Linux/CI in
 seconds:
 
 ```bash

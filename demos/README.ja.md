@@ -17,13 +17,13 @@ iOS のデモはどれも同じフィクスチャ、showcase 群（[`showcase/`]
 
 | デモ | コマンド | 何を証明するか | 何が必要か |
 |---|---|---|---|
-| **[tour](tour/README.ja.md)** | `make -C demos tour` | ライフサイクル全体（run → 改変 → 診断（`triage`））を実機 Simulator 上で完全に決定論的に | macOS + Simulator（idb は自動インストール）。**APIキー不要** |
+| **[tour](tour/README.ja.md)** | `make -C demos tour` | ライフサイクル全体（run → 改変 → 診断（`triage`））を実機 Simulator 上で完全に決定論的に | macOS + Xcode + Simulator。**APIキー不要** |
 | **[features](features/README.ja.md)** | `make -C demos features` | シナリオ著作の機能（タグ、パラメータ化された共有ステップ、シークレット）を実機 Simulator 上で | macOS + Simulator。**APIキー不要** |
 | **[webui](showcase/WEBUI.ja.md)** | `make -C demos webui` | **Web UI** が Simulator を操作し、あらゆる証跡を収集: スクリーンショット、動画、ログ、通信（観測＋モック）、ビジュアルリグレッション、システムアラート突破 | macOS + Simulator。APIキーはシステムアラート部分のみ |
 | **[record](showcase/README.ja.md)** | `make -C demos record` | 起動中アプリに対する**本物の Claude** による著作、続けて改変 → 自己修復ループ | macOS + Simulator + Claude（CLI または APIキー） |
 
 > **Mac / Simulator が無い場合は？** `tour` の物語全体は、メモリ上の仮想デバイスに対しても動きます。
-> Simulator も idb も APIキーも要らず、Linux/CI で数秒です: `uv run python demos/tour/tour.py`（機能
+> Simulator も Xcode も APIキーも要らず、Linux/CI で数秒です: `uv run python demos/tour/tour.py`（機能
 > ショーケースは `uv run python demos/showcase/run_demo.py`）。[`tour/README.ja.md`](tour/README.ja.md)
 > を参照してください。これらは素早い最初の一歩で、上記の `make` ターゲットが実機での本番です。
 

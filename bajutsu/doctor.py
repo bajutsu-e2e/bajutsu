@@ -179,12 +179,12 @@ def probe_screen(
     """Query the current screen's elements to score, backend by backend (shared, BE-0199).
 
     Web (Playwright) navigates a fresh browser to the target's baseUrl (the `launch` equivalent)
-    and scores that page, tearing the browser down after; iOS reads the accessibility tree on the
-    booted Simulator (no runner needed even for xcuitest, which falls back to idb, BE-0019), and
-    Android whatever is on the attached device, at the resolved udid.
+    and scores that page, tearing the browser down after; iOS brings up a short-lived XCUITest runner
+    on the booted Simulator, scores the launched app's tree, then tears the runner down (BE-0290);
+    Android reads whatever is on the attached device, at the resolved udid.
 
     Args:
-        actuator: the selected backend (idb / xcuitest / playwright / adb / fake).
+        actuator: the selected backend (xcuitest / playwright / adb / fake).
         udid: the device to target; a comma-list (the /api/run parallel format) is narrowed to its
             first entry, since doctor scores one screen.
         eff: the resolved target config (supplies the web baseUrl / browser knobs).
@@ -224,14 +224,19 @@ def probe_screen(
         # The fake driver needs no device, so it must not touch simctl — resolving a udid would
         # shell out to `xcrun` and fail on a host without Xcode (e.g. the Linux gate).
         return make_driver("fake", _first_udid(udid)).query()
-    # xcuitest needs a running runner to query, but doctor only scores the current screen — idb can
-    # read the same accessibility tree without a runner (BE-0019).
-    query_actuator = "idb" if actuator == "xcuitest" else actuator
     first = _first_udid(udid)
+    if actuator == "xcuitest":
+        # idb read the tree with no runner (BE-0019); with idb retired (BE-0290), doctor brings a
+        # short-lived XCUITest runner up, scores the launched app's tree, and tears it down — outside
+        # the runner-reuse pool, so it never regresses into a persistent per-run startup. Lazy import:
+        # `platform_lifecycle` imports `namespace_of` from this module, so a top-level one would cycle.
+        from bajutsu.platform_lifecycle.read_session import ios_read_session
+
+        with ios_read_session(first, eff, simctl_run) as ios_driver:
+            return ios_driver.query()
     # How the device handle resolves is the platform's, behind the Environment seam (BE-0256): the
-    # iOS family via simctl (threading serve's host-safe runner), Android via adb. Imported lazily —
-    # `platform_lifecycle` imports `namespace_of` from this module, so a top-level import would cycle.
+    # Android family via adb, at the resolved udid. Lazy import for the same import-cycle reason.
     from bajutsu.platform_lifecycle import environment_for
 
     resolved = environment_for(actuator, first, simctl_run).resolve_device(first)
-    return make_driver(query_actuator, resolved).query()
+    return make_driver(actuator, resolved).query()

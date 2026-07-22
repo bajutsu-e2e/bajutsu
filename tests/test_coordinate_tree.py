@@ -1,36 +1,20 @@
-"""Cross-backend tests for the shared `CoordinateTreeDriver` read path (BE-0254).
+"""Tests for the shared `CoordinateTreeDriver` read path (BE-0254).
 
-`IdbDriver` and `AdbDriver` inherit their transient-empty retry, exponential backoff, and stable-key
-projection from `CoordinateTreeDriver`. These parametrize one set of assertions across *both* real
-subclasses — driving each backend's actual `_describe` through an injected `run` returning that
-backend's native dump text — so a future change to the base class is verified against idb and adb at
-once, not against each driver's own copy of the test. Per-backend specifics (idb's companion-reset
-wedge recovery, adb's wall-clock settle and scroll-into-view) stay in `test_idb.py` / `test_adb.py`.
+`AdbDriver` inherits its transient-empty retry, exponential backoff, and stable-key projection from
+`CoordinateTreeDriver` — driving its actual `_describe` through an injected `run` returning UI
+Automator's native dump text, so a change to the base class is verified against a real subclass, not
+against a copy of the test. Adb-specific behavior (wall-clock settle, scroll-into-view) stays in
+`test_adb.py`.
 """
 
 from __future__ import annotations
 
-import json
 from collections.abc import Callable
 
 import pytest
 
 from bajutsu.drivers.adb import AdbDriver
 from bajutsu.drivers.coordinate_tree import CoordinateTreeDriver
-from bajutsu.drivers.idb import IdbDriver
-
-
-def _idb_tree(n: int) -> str:
-    """idb describe-all JSON for a tree of `n` plain button elements (each with real geometry)."""
-    items = [
-        {
-            "AXUniqueId": f"e{i}",
-            "type": "Button",
-            "frame": {"x": 0, "y": i * 10, "width": 10, "height": 10},
-        }
-        for i in range(n)
-    ]
-    return json.dumps(items)
 
 
 def _adb_tree(n: int) -> str:
@@ -43,24 +27,9 @@ def _adb_tree(n: int) -> str:
     return f'<hierarchy rotation="0">{nodes}</hierarchy>'
 
 
-# One factory per backend: given the sequence of element-counts each successive describe should
+# A factory for the backend: given the sequence of element-counts each successive describe should
 # yield (holding the last once exhausted), build the real driver over an injected run and a call
 # counter. `_EMPTY_BACKOFF_S = 0` keeps the retry loop from sleeping in the test.
-def _idb_backend(counts: list[int]) -> tuple[CoordinateTreeDriver, list[int]]:
-    seq = [_idb_tree(n) for n in counts]
-    calls = [0]
-
-    def run(args: list[str]) -> str:
-        if "describe-all" in args:
-            calls[0] += 1
-            return seq.pop(0) if len(seq) > 1 else seq[0]
-        return ""
-
-    driver = IdbDriver("U", run=run)
-    driver._EMPTY_BACKOFF_S = 0
-    return driver, calls
-
-
 def _adb_backend(counts: list[int]) -> tuple[CoordinateTreeDriver, list[int]]:
     seq = [_adb_tree(n) for n in counts]
     calls = [0]
@@ -78,7 +47,7 @@ def _adb_backend(counts: list[int]) -> tuple[CoordinateTreeDriver, list[int]]:
 
 BackendFactory = Callable[[list[int]], tuple[CoordinateTreeDriver, list[int]]]
 
-_BACKENDS = pytest.mark.parametrize("backend", [_idb_backend, _adb_backend], ids=["idb", "adb"])
+_BACKENDS = pytest.mark.parametrize("backend", [_adb_backend], ids=["adb"])
 
 
 @_BACKENDS

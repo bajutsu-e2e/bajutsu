@@ -7,8 +7,8 @@ from bajutsu import requirements as req
 
 def test_remedy_renders_each_install_method_as_a_command() -> None:
     assert req.remedy(req.Extra("web")) == "`uv sync --extra web`"
-    assert req.remedy(req.Brew("facebook/fb/idb-companion")) == (
-        "`brew install facebook/fb/idb-companion`"
+    assert req.remedy(req.Brew("android-platform-tools")) == (
+        "`brew install android-platform-tools`"
     )
     assert req.remedy(req.Playwright("firefox")) == "`uv run playwright install firefox`"
     # A Manual method carries the full prose remedy (no auto-install), returned verbatim.
@@ -17,11 +17,10 @@ def test_remedy_renders_each_install_method_as_a_command() -> None:
     )
 
 
-def test_idb_backend_needs_the_extra_and_the_companion_formula() -> None:
-    r = req.BACKENDS["idb"]
-    assert r.extra == "idb"
-    companion = next(t for t in r.tools if t.exe == "idb_companion")
-    assert companion.install == req.Brew("facebook/fb/idb-companion")
+def test_adb_backend_needs_the_platform_tools_formula() -> None:
+    r = req.BACKENDS["adb"]
+    adb_tool = next(t for t in r.tools if t.exe == "adb")
+    assert adb_tool.install == req.Brew("android-platform-tools")
 
 
 def test_web_backend_needs_the_web_extra_and_no_static_browser_tool() -> None:

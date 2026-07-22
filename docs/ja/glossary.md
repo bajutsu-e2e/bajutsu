@@ -88,17 +88,17 @@ AND で結合されるフィールドの集合（`id`、`idMatches`、`label`、
 | 語 | 意味 |
 |---|---|
 | **driver** | 抽象的な `Driver` インターフェース（`bajutsu/drivers/base.py` の `Protocol`）です。唯一のプラットフォーム依存の継ぎ目で、どの actuator もこれを実装します。 |
-| **backend** | `--backend` と config の `backend:` が受け付けるユーザー向けのトークンです。platform の別名（`ios`）か、actuator の名前そのもの（`idb`）のどちらかです。「backend」は入力トークンの総称で、解決されて actuator になります。 |
+| **backend** | `--backend` と config の `backend:` が受け付けるユーザー向けのトークンです。platform の別名（`ios`）か、actuator の名前そのもの（`xcuitest`）のどちらかです。「backend」は入力トークンの総称で、解決されて actuator になります。 |
 | **actuator** | 実際に操作（tap / type / swipe / query）を担う具体的なエンジンで、driver が実装するものです。backend のトークンは一つの actuator に解決され、run の開始時に確定して以後は固定されます。 |
 | **platform** | 対象の種類を表す粗いトークン（`ios` / `android` / `web` / `fake`）で、安定度順（最も安定するものが先）の actuator のリストに展開されます。 |
 
 `backend:` のリストは安定度順で書きます。選択は各トークンを actuator に展開し、既知でこのマシンで利用で
 きる最初の一つを選びます。現在コードに組み込まれている platform から actuator への対応は次のとおりです
-（五つの actuator はすべて `IMPLEMENTED` に含まれます）。
+（四つの actuator はすべて `IMPLEMENTED` に含まれます）。
 
 | platform | actuator（安定度順） | 利用可否の条件 |
 |---|---|---|
-| `ios` | `xcuitest`、次に `idb` | `xcuitest` は `xcodebuild`、`idb` は `idb` 実行ファイルが必要 |
+| `ios` | `xcuitest` | `xcodebuild` が必要 |
 | `android` | `adb` | `adb` 実行ファイルが必要 |
 | `web` | `playwright` | `playwright` の Python パッケージが必要 |
 | `fake` | `fake` | 常に利用可能（インメモリ。テスト用） |
@@ -106,8 +106,8 @@ AND で結合されるフィールドの集合（`id`、`idMatches`、`label`、
 > **`adb` は予定ではなく実装済みです。** Android の actuator（`adb`）は組み込み済みで、現在の
 > `IMPLEMENTED` に含まれ、エミュレータ上で end-to-end に検証されています（[architecture →
 > 実装状況](architecture.md#実装状況)、[vision → reach](vision.md#1-reachより多くのプラットフォームと面)）。
-> iOS では `xcuitest` と `idb` の両方が実装済みです。リストは安定度順なので、`xcodebuild` が使える
-> ときは `xcuitest` が選ばれ、`idb` がフォールバックになります（BE-0019）。
+> iOS では `xcuitest` が唯一の actuator です（`--backend ios` はこれに解決されます）。かつての
+> `idb` バックエンドは BE-0290 で廃止されました。
 
 インターフェースと actuator ごとの capability の違いは [drivers](drivers.md) を参照してください。
 

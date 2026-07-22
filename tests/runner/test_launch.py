@@ -1,15 +1,22 @@
-"""Tests for device bring-up (launch_driver) and readiness polling (_await_ready)."""
+"""Tests for device bring-up (launch_driver) and readiness polling (_await_ready).
+
+The iOS bring-up drives XCUITest, the sole iOS backend (BE-0290): a run does
+the simctl device prep (shutdown / erase / boot / install / permissions) and then launches the app
+through the `xcodebuild` runner — there is no `simctl launch` verb. The
+device tests mock the runner spawn so they exercise the simctl prep sequence off-device.
+"""
 
 from __future__ import annotations
 
+import plistlib
 import subprocess
 from pathlib import Path
 
 import pytest
-from _runner import _eff, _el, _ios_eff
+from _runner import _el, _ios_eff
 
 from bajutsu import simctl
-from bajutsu.config import require_ios
+from bajutsu.config import XcuitestConfig, require_ios
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.runner import (
@@ -17,87 +24,6 @@ from bajutsu.runner import (
     launch_driver,
 )
 from bajutsu.scenario import Preconditions
-
-
-def test_launch_driver_shuts_down_before_erase(monkeypatch: pytest.MonkeyPatch) -> None:
-    """erase requires a shut-down device, so the sequence is shutdown -> erase -> boot."""
-    calls: list[list[str]] = []
-
-    def fake_run(args: list[str], extra_env: object = None) -> str:
-        calls.append(args)
-        return ""
-
-    ready = FakeDriver([_el("home.title", "H"), _el("ok", "OK")])  # 2 elems -> ready immediately
-    monkeypatch.setattr("bajutsu.backends.make_driver", lambda actuator, udid: ready)
-
-    launch_driver("UDID-1", _eff(), "idb", Preconditions(erase=True), env_run=fake_run)
-
-    verbs = [c[2] for c in calls if c[:2] == ["xcrun", "simctl"]]
-    assert verbs.index("shutdown") < verbs.index("erase") < verbs.index("boot")
-    assert verbs.index("boot") < verbs.index("launch")  # boot before launching the app
-
-
-def test_launch_driver_injects_extra_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    """extra_env (e.g. the device's collector url) reaches the app via the launch child env."""
-    calls: list[tuple[list[str], object]] = []
-
-    def fake_run(args: list[str], extra_env: object = None) -> str:
-        calls.append((args, extra_env))
-        return ""
-
-    ready = FakeDriver([_el("home.title", "H"), _el("ok", "OK")])
-    monkeypatch.setattr("bajutsu.backends.make_driver", lambda actuator, udid: ready)
-
-    launch_driver(
-        "UDID-1",
-        _eff(),
-        "idb",
-        Preconditions(erase=False),
-        env_run=fake_run,
-        extra_env={"BAJUTSU_COLLECTOR": "http://127.0.0.1:7"},
-    )
-
-    _, launch_env = next(c for c in calls if "launch" in c[0])
-    assert launch_env.get("SIMCTL_CHILD_BAJUTSU_COLLECTOR") == "http://127.0.0.1:7"
-
-
-def test_launch_driver_applies_permissions_before_launch(monkeypatch: pytest.MonkeyPatch) -> None:
-    """BE-0276: `permissions` runs after terminate (a fresh install/erase resets TCC grants) but
-    before the app's own launch, so a permission prompt never blocks the run."""
-    calls: list[list[str]] = []
-
-    def fake_run(args: list[str], extra_env: object = None) -> str:
-        calls.append(args)
-        return ""
-
-    ready = FakeDriver([_el("home.title", "H"), _el("ok", "OK")])
-    monkeypatch.setattr("bajutsu.backends.make_driver", lambda actuator, udid: ready)
-
-    launch_driver(
-        "UDID-1",
-        _eff(),
-        "idb",
-        Preconditions(erase=False),
-        env_run=fake_run,
-        permissions={"camera": "grant", "location": "revoke"},
-    )
-
-    verbs = [c[2] for c in calls if c[:2] == ["xcrun", "simctl"]]
-    assert verbs.index("privacy") < verbs.index("launch")
-    bundle_id = require_ios(_eff()).bundle_id
-    assert ["xcrun", "simctl", "privacy", "UDID-1", "grant", "camera", bundle_id] in calls
-
-
-def test_launch_driver_applies_no_permissions_when_unset(monkeypatch: pytest.MonkeyPatch) -> None:
-    calls: list[list[str]] = []
-    monkeypatch.setattr(
-        "bajutsu.backends.make_driver",
-        lambda actuator, udid: FakeDriver([_el("home.title", "H"), _el("ok", "OK")]),
-    )
-    launch_driver(
-        "UDID-1", _eff(), "idb", Preconditions(erase=False), env_run=_recording_run(calls)
-    )
-    assert not any(c[:3] == ["xcrun", "simctl", "privacy"] for c in calls)
 
 
 def _recording_run(calls: list[list[str]]):
@@ -108,16 +34,80 @@ def _recording_run(calls: list[list[str]]):
     return fake_run
 
 
-def _launch_recording(
-    monkeypatch: pytest.MonkeyPatch, app_path: str, pre: Preconditions
-) -> list[list[str]]:
-    calls: list[list[str]] = []
+def _xcuitest_eff(tmp_path: Path, **ios_kwargs: object) -> object:
+    """An iOS `Effective` wired to a real (empty) `.xctestrun` so `start` gets past its runner check."""
+    runner = tmp_path / "Runner.xctestrun"
+    with runner.open("wb") as f:
+        plistlib.dump({"__xctestrun_metadata__": {"FormatVersion": 1}, "T": {}}, f)
+    return _ios_eff(xcuitest=XcuitestConfig(test_runner=str(runner)), **ios_kwargs)
+
+
+def _mock_runner_spawn(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Stub the `xcodebuild` runner spawn and its driver so a launch exercises only the simctl prep."""
     monkeypatch.setattr(
-        "bajutsu.backends.make_driver",
-        lambda actuator, udid: FakeDriver([_el("home.title", "H"), _el("ok", "OK")]),
+        "bajutsu.platform_lifecycle.environments.xcuitest._allocate_port", lambda: 54321
     )
-    launch_driver("UDID-1", _ios_eff(app_path=app_path), "idb", pre, env_run=_recording_run(calls))
+
+    class _FakePopen:
+        def __init__(self, cmd: list[str], **kwargs: object) -> None:
+            pass
+
+        def terminate(self) -> None:
+            pass
+
+        def wait(self, timeout: float | None = None) -> int:
+            return 0
+
+    monkeypatch.setattr("subprocess.Popen", _FakePopen)
+
+    class _ReadyFake(FakeDriver):
+        # The XCUITest lifecycle probes the runner via `await_ready` before returning; the fake has
+        # no runner, so this is a no-op. `query()` still returns the ready screen for `_await_ready`.
+        def await_ready(self, timeout: float = 0.0) -> None:
+            return None
+
+    ready = _ReadyFake([_el("home.title", "H"), _el("ok", "OK")])  # 2 elems -> ready immediately
+    monkeypatch.setattr("bajutsu.backends.make_driver", lambda *a, **k: ready)
+
+
+def _launch_recording(
+    monkeypatch: pytest.MonkeyPatch, eff: object, pre: Preconditions, **kwargs: object
+) -> list[list[str]]:
+    _mock_runner_spawn(monkeypatch)
+    calls: list[list[str]] = []
+    launch_driver("UDID-1", eff, "xcuitest", pre, env_run=_recording_run(calls), **kwargs)
     return calls
+
+
+def test_launch_driver_shuts_down_before_erase(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """erase requires a shut-down device, so the sequence is shutdown -> erase -> boot."""
+    calls = _launch_recording(monkeypatch, _xcuitest_eff(tmp_path), Preconditions(erase=True))
+    verbs = [c[2] for c in calls if c[:2] == ["xcrun", "simctl"]]
+    assert verbs.index("shutdown") < verbs.index("erase") < verbs.index("boot")
+
+
+def test_launch_driver_applies_permissions_after_boot(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """BE-0276: `permissions` runs after boot (a fresh install/erase resets TCC grants) but before
+    the runner launches the app, so a permission prompt never blocks the run."""
+    calls = _launch_recording(
+        monkeypatch,
+        _xcuitest_eff(tmp_path),
+        Preconditions(erase=False),
+        permissions={"camera": "grant", "location": "revoke"},
+    )
+    bundle_id = require_ios(_ios_eff()).bundle_id
+    assert ["xcrun", "simctl", "privacy", "UDID-1", "grant", "camera", bundle_id] in calls
+
+
+def test_launch_driver_applies_no_permissions_when_unset(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    calls = _launch_recording(monkeypatch, _xcuitest_eff(tmp_path), Preconditions(erase=False))
+    assert not any(c[:3] == ["xcrun", "simctl", "privacy"] for c in calls)
 
 
 def test_launch_driver_reinstall_clean_uninstalls_then_installs(
@@ -126,7 +116,8 @@ def test_launch_driver_reinstall_clean_uninstalls_then_installs(
     """Default `reinstall: clean` removes the app then installs it fresh before each run."""
     app = tmp_path / "X.app"
     app.mkdir()
-    calls = _launch_recording(monkeypatch, str(app), Preconditions(erase=False))  # reinstall=clean
+    eff = _xcuitest_eff(tmp_path, app_path=str(app))
+    calls = _launch_recording(monkeypatch, eff, Preconditions(erase=False))  # reinstall=clean
     verbs = [c[2] for c in calls if c[:2] == ["xcrun", "simctl"]]
     assert "uninstall" in verbs and "install" in verbs
     assert verbs.index("uninstall") < verbs.index("install")  # remove, then install fresh
@@ -139,9 +130,8 @@ def test_launch_driver_reinstall_overwrite_installs_without_uninstall(
     """`reinstall: overwrite` installs over the existing app (no uninstall, keeps data)."""
     app = tmp_path / "X.app"
     app.mkdir()
-    calls = _launch_recording(
-        monkeypatch, str(app), Preconditions(erase=False, reinstall="overwrite")
-    )
+    eff = _xcuitest_eff(tmp_path, app_path=str(app))
+    calls = _launch_recording(monkeypatch, eff, Preconditions(erase=False, reinstall="overwrite"))
     verbs = [c[2] for c in calls if c[:2] == ["xcrun", "simctl"]]
     assert "install" in verbs and "uninstall" not in verbs
 
@@ -152,22 +142,30 @@ def test_launch_driver_erase_skips_uninstall(
     """An `erase` already wiped the app, so `clean` skips the redundant uninstall and installs."""
     app = tmp_path / "X.app"
     app.mkdir()
-    calls = _launch_recording(monkeypatch, str(app), Preconditions(erase=True))  # reinstall=clean
+    eff = _xcuitest_eff(tmp_path, app_path=str(app))
+    calls = _launch_recording(monkeypatch, eff, Preconditions(erase=True))  # reinstall=clean
     verbs = [c[2] for c in calls if c[:2] == ["xcrun", "simctl"]]
     assert "erase" in verbs and "install" in verbs and "uninstall" not in verbs
 
 
-def test_launch_driver_errors_on_missing_app_path(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_launch_driver_errors_on_missing_app_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """A configured appPath that doesn't exist fails with a clear, actionable DeviceError."""
-    eff = _ios_eff(app_path="/nope/X.app")
-    monkeypatch.setattr("bajutsu.backends.make_driver", lambda actuator, udid: FakeDriver([]))
+    _mock_runner_spawn(monkeypatch)
+    eff = _xcuitest_eff(tmp_path, app_path="/nope/X.app")
     with pytest.raises(simctl.DeviceError) as excinfo:
-        launch_driver("UDID-1", eff, "idb", Preconditions(erase=False), env_run=_recording_run([]))
+        launch_driver(
+            "UDID-1", eff, "xcuitest", Preconditions(erase=False), env_run=_recording_run([])
+        )
     assert "appPath not found" in str(excinfo.value)
 
 
-def test_launch_driver_surfaces_failing_erase_as_device_error() -> None:
+def test_launch_driver_surfaces_failing_erase_as_device_error(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """A simctl failure becomes a clean DeviceError (exit 2 at the CLI), not a traceback."""
+    _mock_runner_spawn(monkeypatch)
 
     def fake_run(args: list[str], extra_env: object = None) -> str:
         if args[:3] == ["xcrun", "simctl", "erase"]:
@@ -180,7 +178,13 @@ def test_launch_driver_surfaces_failing_erase_as_device_error() -> None:
         return ""
 
     with pytest.raises(simctl.DeviceError) as excinfo:
-        launch_driver("UDID-1", _eff(), "idb", Preconditions(erase=True), env_run=fake_run)
+        launch_driver(
+            "UDID-1",
+            _xcuitest_eff(tmp_path),
+            "xcuitest",
+            Preconditions(erase=True),
+            env_run=fake_run,
+        )
     msg = str(excinfo.value)
     assert "exit 149" in msg
     assert "Booted" in msg  # simctl's actionable stderr is carried through
@@ -369,7 +373,7 @@ def test_await_ready_positional_only_selector_falls_back_to_count(
 
 
 def test_await_ready_ignores_off_namespace_home_screen(monkeypatch: pytest.MonkeyPatch) -> None:
-    # The dominant smoke flake: on a slow cold boot idb queries SpringBoard (the Home screen's app
+    # The dominant smoke flake: on a slow cold boot the driver queries SpringBoard (the Home screen's app
     # icons) before the app foregrounds. Those are 2+ *off-namespace* elements, which the bare count
     # heuristic wrongly accepts as "ready" — so the first scenario step then races the real launch and
     # times out. With declared idNamespaces, readiness must wait for an element that belongs to the app.

@@ -274,7 +274,7 @@ def _ai_effective(config: str, target_name: str) -> Effective:
     return Effective(
         target="",
         platform_config=IosConfig(),
-        backend=["idb"],
+        backend=["ios"],
         device="",
         locale="",
         launch_env={},

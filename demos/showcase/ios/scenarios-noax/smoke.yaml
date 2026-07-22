@@ -1,7 +1,7 @@
 # -noax twin of scenarios/smoke.yaml. Same flow — launch on the Stable tab and confirm the seeded
 # catalog rendered — but this build carries no identifiers, so rows are addressed by their visible
-# name ("Horse N", the `Text(horse.name)` StableView renders). Run over XCUITest (`--backend ios`):
-# idb collapses the tab bar and can't reach a -noax element by label.
+# name ("Horse N", the `Text(horse.name)` StableView renders). Run over XCUITest (`--backend ios`),
+# which reaches a -noax element by its visible label (a coordinate backend could not).
 #
 # The a11y twin asserts three things: the catalog is exactly five rows (`count: { idMatches:
 # stable.row.* }`), `stable.row.1` exists, and the empty state is absent. There is no visible mirror

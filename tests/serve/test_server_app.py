@@ -75,7 +75,7 @@ def test_scenario_secrets_delegate_to_operations(
     (scn_dir / "smoke.yaml").write_text(SCENARIO, encoding="utf-8")
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "defaults: { backend: [idb] }\n"
+        "defaults: { backend: [ios] }\n"
         "targets:\n"
         f"  demo: {{ bundleId: com.example.demo, scenarios: {scn_dir}, secrets: [LOGIN_PASSWORD] }}\n",
         encoding="utf-8",
@@ -221,7 +221,7 @@ def test_compose_route_binds_like_stdlib(tmp_path: Path) -> None:
     )
     (tmp_path / "runs").mkdir()
     client = _client(state)
-    config = b"defaults: { backend: [idb] }\ntargets:\n  demo: { bundleId: com.example.demo, scenarios: ./scenarios }\n"
+    config = b"defaults: { backend: [ios] }\ntargets:\n  demo: { bundleId: com.example.demo, scenarios: ./scenarios }\n"
     scenarios = _zip({"scenarios/smoke.yaml": b"- name: a\n  steps: []\n"})
     config_sha = client.post(
         "/api/artifacts/config",

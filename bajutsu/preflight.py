@@ -15,8 +15,7 @@ import shutil
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from bajutsu import idb_version, requirements
-from bajutsu.idb_version import IdbVersions
+from bajutsu import requirements
 
 Which = Callable[[str], str | None]
 Probe = Callable[[], bool]
@@ -66,14 +65,14 @@ def config_checks(
     """Whether the resolved target carries the config the selected backend needs to launch.
 
     The web (`playwright`) backend needs a `baseUrl` to navigate to; the Android (`adb`) backend a
-    `package`; the iOS (`idb`) backend a `bundleId`. Config parsing already rejects a target with
+    `package`; the iOS (`xcuitest`) backend a `bundleId`. Config parsing already rejects a target with
     *none* (`_need_target`), but a target can still carry the *wrong* field for the backend it is run
     on — an iOS target with only a `baseUrl`, a web target with only a `bundleId` — which would
     otherwise surface as a confusing downstream launch/navigate failure. This catches it up front
     with a remedy naming the target. `fake` needs neither.
 
     Args:
-        backend: The selected actuator (`idb` / `adb` / `playwright` / `fake`).
+        backend: The selected actuator (`xcuitest` / `adb` / `playwright` / `fake`).
         target: The resolved target's name, used in the remedy string.
         bundle_id: The target's `bundleId` (empty when unset).
         base_url: The target's `baseUrl` (None when unset).
@@ -103,9 +102,9 @@ def runnability(
 ) -> list[Check]:
     """The runnability checks for `backend`, chosen by its platform family. The web
     (`playwright`) backend needs the Playwright package and the selected engine's browser
-    (`web_engine`, BE-0076); the iOS (`idb`) backend needs Xcode's `xcrun`, the backend's CLIs, and
-    (when `booted_count` is given) a booted Simulator. `fake` needs nothing. The web probes are
-    injectable so the checks stay testable without a real Playwright install."""
+    (`web_engine`, BE-0076); the iOS (`xcuitest`) backend needs Xcode's `xcrun`, the backend's tools
+    (`xcodebuild`), and (when `booted_count` is given) a booted Simulator. `fake` needs nothing. The
+    web probes are injectable so the checks stay testable without a real Playwright install."""
     if backend == "fake":
         return []
     if backend == "playwright":
@@ -188,60 +187,21 @@ def _web_runnability(engine: str, web_pkg: Probe, web_browser: BrowserProbe) -> 
     ]
 
 
-def idb_version_check(expected: str | None, versions: IdbVersions) -> Check | None:
-    """Compare the installed `idb_companion` against the config-declared range (BE-0005).
-
-    None `expected` means no pin is declared, so there is no line to show. An unreadable installed
-    version (idb absent / unparseable) fails the check rather than guessing — the same fail-loudly
-    stance as a missing tool. This is a `doctor` pre-flight signal, never a run pass/fail gate."""
-    if expected is None:
-        return None
-    installed = versions.companion
-    if installed is None:
-        return Check("idb_companion version", False, f"expected {expected}, installed unknown")
-    ok = idb_version.satisfies(installed, expected)
-    return Check("idb_companion version", ok, f"{installed} (expected {expected})")
-
-
 def doctor_environment_checks(
     backend: str,
     *,
     booted_count: Callable[[], int],
     web_engine: str,
-    ios_pin: str | None,
     which: Which = shutil.which,
-    idb_probe: Callable[[], IdbVersions] = idb_version.probe,
 ) -> list[Check]:
     """The environment checks `doctor` reports for `backend`, shared by the CLI and serve (BE-0199).
 
-    Runnability plus the two doctor-specific augmentations both surfaces must report the same way,
-    so the CLI and the serve panel never drift on how thoroughly they answer "is this target
-    healthy?": xcuitest also needs idb (it falls back to idb for the screen query, BE-0019), and a
-    declared idb version pin (`defaults.idbVersion`) is reported against the installed companion so
-    a compatibility break surfaces here, not as a confusing downstream failure (BE-0005).
-
-    Args:
-        ios_pin: the declared idb_companion version range, or None when no pin is declared.
-        idb_probe: reads the installed idb versions; injectable so the pin check stays testable
-            without idb installed. Called only when a pin is declared and the companion is present.
+    Just the runnability checks: with idb retired (BE-0290), XCUITest is the sole iOS backend, so
+    there is no cheaper actuator to merge in and no idb_companion version pin to report. The wrapper
+    is kept so the CLI and the serve panel stay on one shared entry point and never drift on how they
+    answer "is this target healthy?".
     """
-    checks = runnability(backend, which=which, booted_count=booted_count, web_engine=web_engine)
-    if backend == "xcuitest":
-        seen = {c.name for c in checks}
-        checks.extend(
-            c
-            for c in runnability("idb", which=which, booted_count=booted_count)
-            if c.name not in seen
-        )
-    # Only probe the version when a pin exists *and* the companion is present — runnability already
-    # reports a missing companion, so probing it would spawn a doomed subprocess and print a
-    # redundant "installed unknown" line.
-    companion_ok = any(c.name == "idb_companion" and c.ok for c in checks)
-    if backend == "idb" and ios_pin is not None and companion_ok:
-        version_check = idb_version_check(ios_pin, idb_probe())
-        if version_check is not None:
-            checks.append(version_check)
-    return checks
+    return runnability(backend, which=which, booted_count=booted_count, web_engine=web_engine)
 
 
 def passed(checks: list[Check]) -> bool:

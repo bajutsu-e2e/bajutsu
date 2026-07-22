@@ -203,8 +203,8 @@ def test_android_lane_surface() -> None:
 
 def test_android_lane_catches_the_adb_drivers_own_dependencies() -> None:
     # adb.py imports `bajutsu.drivers.base` (the Driver Protocol / selector resolution every driver
-    # subclasses) and `bajutsu.drivers.coordinate_tree` (the read/settle core it shares with idb.py,
-    # BE-0254) — a change to either can change adb's runtime behavior, so both must trigger the
+    # subclasses) and `bajutsu.drivers.coordinate_tree` (the read/settle core, BE-0254) — a change
+    # to either can change adb's runtime behavior, so both must trigger the
     # Android lane even though its fragment narrows the rest of `bajutsu/drivers/` to `adb.py` alone.
     assert is_relevant(["bajutsu/drivers/base.py"], "android") is True
     assert is_relevant(["bajutsu/drivers/coordinate_tree.py"], "android") is True

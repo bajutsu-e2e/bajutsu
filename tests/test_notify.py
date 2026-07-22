@@ -40,7 +40,9 @@ def _endpoint(
 
 def test_build_summary_all_pass() -> None:
     results = [_res("login", True), _res("checkout", True)]
-    s = build_summary(results, run_id="20260630-120000", source_name="smoke.yaml", backend="idb")
+    s = build_summary(
+        results, run_id="20260630-120000", source_name="smoke.yaml", backend="xcuitest"
+    )
     assert s.ok is True
     assert s.total == 2
     assert s.passed == 2
@@ -55,7 +57,7 @@ def test_build_summary_with_failures() -> None:
         _res("checkout", False, "value mismatch"),
         _res("pay", False, "timeout"),
     ]
-    s = build_summary(results, run_id="r1", source_name="smoke.yaml", backend="idb")
+    s = build_summary(results, run_id="r1", source_name="smoke.yaml", backend="xcuitest")
     assert s.ok is False
     assert s.total == 3
     assert s.passed == 1
@@ -76,14 +78,18 @@ def test_build_summary_failure_cap() -> None:
 def test_build_summary_report_url() -> None:
     results = [_res("s", True)]
     s = build_summary(
-        results, run_id="r1", source_name="s.yaml", backend="idb", report_url="https://host/runs/r1"
+        results,
+        run_id="r1",
+        source_name="s.yaml",
+        backend="xcuitest",
+        report_url="https://host/runs/r1",
     )
     assert s.report_url == "https://host/runs/r1"
 
 
 def test_build_summary_duration() -> None:
     results = [_res("a", True, duration=2.5), _res("b", True, duration=3.5)]
-    s = build_summary(results, run_id="r1", source_name="s.yaml", backend="idb")
+    s = build_summary(results, run_id="r1", source_name="s.yaml", backend="xcuitest")
     assert s.duration_s == 6.0
 
 
@@ -99,7 +105,7 @@ def test_should_fire_failure_on_fail() -> None:
         passed=0,
         failed=1,
         source_name="s",
-        backend="idb",
+        backend="xcuitest",
         duration_s=1.0,
         failures=[],
         failures_remaining=0,
@@ -118,7 +124,7 @@ def test_should_fire_failure_on_pass() -> None:
         passed=1,
         failed=0,
         source_name="s",
-        backend="idb",
+        backend="xcuitest",
         duration_s=1.0,
         failures=[],
         failures_remaining=0,
@@ -137,7 +143,7 @@ def test_should_fire_always() -> None:
         passed=1,
         failed=0,
         source_name="s",
-        backend="idb",
+        backend="xcuitest",
         duration_s=1.0,
         failures=[],
         failures_remaining=0,
@@ -156,7 +162,7 @@ def test_should_fire_change_no_prior() -> None:
         passed=1,
         failed=0,
         source_name="s",
-        backend="idb",
+        backend="xcuitest",
         duration_s=1.0,
         failures=[],
         failures_remaining=0,
@@ -175,7 +181,7 @@ def test_should_fire_change_same_verdict() -> None:
         passed=1,
         failed=0,
         source_name="s",
-        backend="idb",
+        backend="xcuitest",
         duration_s=1.0,
         failures=[],
         failures_remaining=0,
@@ -194,7 +200,7 @@ def test_should_fire_change_flipped() -> None:
         passed=0,
         failed=1,
         source_name="s",
-        backend="idb",
+        backend="xcuitest",
         duration_s=1.0,
         failures=[],
         failures_remaining=0,
@@ -213,7 +219,7 @@ def test_should_fire_recovery_flipped() -> None:
         passed=1,
         failed=0,
         source_name="s",
-        backend="idb",
+        backend="xcuitest",
         duration_s=1.0,
         failures=[],
         failures_remaining=0,
@@ -232,7 +238,7 @@ def test_should_fire_multiple_events() -> None:
         passed=1,
         failed=1,
         source_name="s",
-        backend="idb",
+        backend="xcuitest",
         duration_s=1.0,
         failures=[FailureSummary(scenario="checkout", failure="err", duration_s=1.0)],
         failures_remaining=0,
@@ -288,7 +294,7 @@ def test_render_slack_pass() -> None:
         passed=5,
         failed=0,
         source_name="smoke.yaml",
-        backend="idb",
+        backend="xcuitest",
         duration_s=12.3,
         failures=[],
         failures_remaining=0,
@@ -310,7 +316,7 @@ def test_render_slack_fail_with_url() -> None:
         passed=1,
         failed=2,
         source_name="smoke.yaml",
-        backend="idb",
+        backend="xcuitest",
         duration_s=8.0,
         failures=[
             FailureSummary(scenario="checkout", failure="value mismatch", duration_s=2.0),
@@ -335,7 +341,7 @@ def test_render_slack_fail_no_url() -> None:
         passed=0,
         failed=1,
         source_name="s.yaml",
-        backend="idb",
+        backend="xcuitest",
         duration_s=1.0,
         failures=[FailureSummary(scenario="s", failure="err", duration_s=1.0)],
         failures_remaining=0,
@@ -424,7 +430,7 @@ def test_emit_fires_on_failure(monkeypatch: Any) -> None:
         results,
         run_id="r1",
         source_name="smoke.yaml",
-        backend="idb",
+        backend="xcuitest",
         endpoints=[_endpoint(on=["failure"])],
         bindings={},
         runs_dir=Path("/nonexistent"),
@@ -448,7 +454,7 @@ def test_emit_noop_on_pass(monkeypatch: Any) -> None:
         results,
         run_id="r1",
         source_name="s.yaml",
-        backend="idb",
+        backend="xcuitest",
         endpoints=[_endpoint(on=["failure"])],
         bindings={},
         runs_dir=Path("/nonexistent"),
@@ -474,7 +480,7 @@ def test_emit_url_interpolation(monkeypatch: Any) -> None:
         results,
         run_id="r1",
         source_name="s.yaml",
-        backend="idb",
+        backend="xcuitest",
         endpoints=[_endpoint(on=["failure"], url="${secrets.HOOK}")],
         bindings={"secrets.HOOK": "https://resolved.hook/post"},
         runs_dir=Path("/nonexistent"),
@@ -519,7 +525,7 @@ def test_emit_targets_filter_excludes_unrelated_failures(monkeypatch: Any) -> No
         results,
         run_id="r1",
         source_name="s.yaml",
-        backend="idb",
+        backend="xcuitest",
         endpoints=[_endpoint(on=["failure"], targets=["login"])],
         bindings={},
         runs_dir=Path("/nonexistent"),
@@ -545,7 +551,7 @@ def test_emit_targets_filter_fires_when_targeted_fails(monkeypatch: Any) -> None
         results,
         run_id="r1",
         source_name="s.yaml",
-        backend="idb",
+        backend="xcuitest",
         endpoints=[_endpoint(on=["failure"], targets=["checkout"])],
         bindings={},
         runs_dir=Path("/nonexistent"),
@@ -567,7 +573,7 @@ def test_emit_targets_filter_skips_when_no_match(monkeypatch: Any) -> None:
         results,
         run_id="r1",
         source_name="s.yaml",
-        backend="idb",
+        backend="xcuitest",
         endpoints=[_endpoint(on=["always"], targets=["payment"])],
         bindings={},
         runs_dir=Path("/nonexistent"),
@@ -624,7 +630,7 @@ def test_emit_delivery_failure_returns_false(monkeypatch: Any) -> None:
         results,
         run_id="r1",
         source_name="s.yaml",
-        backend="idb",
+        backend="xcuitest",
         endpoints=[_endpoint(on=["failure"])],
         bindings={},
         runs_dir=Path("/nonexistent"),
@@ -666,7 +672,7 @@ def test_emit_unresolved_url_skips(monkeypatch: Any) -> None:
         results,
         run_id="r1",
         source_name="s.yaml",
-        backend="idb",
+        backend="xcuitest",
         endpoints=[_endpoint(on=["failure"], url="${secrets.MISSING}")],
         bindings={},
         runs_dir=Path("/nonexistent"),
@@ -692,7 +698,7 @@ def test_emit_mixed_start_and_failure(monkeypatch: Any) -> None:
         results,
         run_id="r1",
         source_name="s.yaml",
-        backend="idb",
+        backend="xcuitest",
         endpoints=[_endpoint(on=["start", "failure"])],
         bindings={},
         runs_dir=Path("/nonexistent"),

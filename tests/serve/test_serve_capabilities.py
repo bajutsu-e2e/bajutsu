@@ -32,7 +32,7 @@ def test_can_serve_is_a_subset_test() -> None:
     # A worker may run a job only when it advertises every token the job requires.
     assert cap.can_serve(["platform:ios", "ios18"], ["platform:ios", "ios18", "ipad"])
     assert not cap.can_serve(["ios18"], ["platform:ios", "ios17"])  # ios18 ⊄ ios17-only worker
-    assert not cap.can_serve(["platform:web"], ["platform:ios"])  # web ⊄ idb worker
+    assert not cap.can_serve(["platform:web"], ["platform:ios"])  # web ⊄ iOS worker
 
 
 def test_empty_requirement_is_servable_by_anyone() -> None:

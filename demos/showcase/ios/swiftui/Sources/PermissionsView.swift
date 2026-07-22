@@ -5,7 +5,7 @@ import UserNotifications
 
 // Tab: Permissions (SPEC §5.4 / §7) — the OS-integration screen. It owns the two deliberate
 // OS-level alerts (notification + location prompts, both SpringBoard/out-of-process), and a
-// System section: an in-app Copy → Paste pasteboard round-trip that idb can drive and assert.
+// System section: an in-app Copy → Paste pasteboard round-trip that the backend can drive and assert.
 // (Reading a pasteboard seeded by another process trips iOS's paste-permission prompt; a value
 // this app itself wrote reads back silently, so the round-trip stays deterministic.)
 // Nothing here runs at launch; the prompts fire only on explicit taps.
@@ -41,7 +41,7 @@ struct PermissionsView: View {
                 }
 
                 // Pasteboard round-trip (SPEC §5.4): Copy writes a known string, Paste reads it
-                // back into sys.paste.value — pasteboard state idb's app-scoped query cannot see.
+                // back into sys.paste.value — pasteboard state the backend's app-scoped query cannot see.
                 Section("System") {
                     Button("Copy") { UIPasteboard.general.string = "bajutsu-clip" }
                         .accessibilityID("sys.copy")
@@ -57,8 +57,8 @@ struct PermissionsView: View {
         }
     }
 
-    // Raises the SpringBoard notification prompt — idb cannot see it; the run's vision
-    // alert guard / dismissAlerts clears it.
+    // Raises the SpringBoard notification prompt — out-of-process, so an in-app accessibility query
+    // cannot see it; the run's vision alert guard / dismissAlerts clears it.
     private func requestNotifications() {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge]) { granted, _ in
             Task { @MainActor in

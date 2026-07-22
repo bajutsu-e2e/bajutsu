@@ -107,7 +107,7 @@ Driven via `launchEnv` ([DESIGN §6.1](../../DESIGN.md)). All are read once at l
 
 > There is **no auth gate**: the app launches straight into the tab UI, always on the Stable tab.
 > Every other tab is reached by tapping the native tab bar, which the XCUITest backend does by
-> label (BE-0107 retired the `SHOWCASE_TAB` launch shortcut; idb cannot tap the tab bar). The
+> label (BE-0107 retired the `SHOWCASE_TAB` launch shortcut, which the retired idb backend needed because it could not tap the tab bar, BE-0290). The
 > catalog is **fixed** at five horses — there is no launch-env seed knob (BE-0079): a scenario
 > observes the app's own data, it cannot inject a data state. Likewise there is no launch-env
 > shortcut onto a *pushed* screen (see §4).
@@ -174,7 +174,7 @@ A `NavigationStack` (SwiftUI) / `UINavigationController` (UIKit). Catalog list w
 - `horse.fetch` — button: GET detail (`/horses/<id>`); `horse.status` value `loading`→`done`/`error`
 - `horse.status` — value as above
 - `horse.favorite` — toggle; `selected` trait reflects state; mirrored to `horse.favorite.value` (`on`/`off`)
-- **Back** — the standard system back button (pushed by the navigation stack). idb drives it by its OS-provided id `BackButton`; there is no app-defined back id.
+- **Back** — the standard system back button (pushed by the navigation stack). The backend drives it by its OS-provided id `BackButton`; there is no app-defined back id.
 
 ### 5.2 Tab: Search — `search` namespace
 
@@ -190,8 +190,8 @@ A training-log composer exercising every input control and every modal style.
 
 - `log.note` — multiline text field
 - `log.count` — stepper for a numeric count; `log.count.value` mirrors the number
-- `log.intense` — a button-backed toggle "Intense" (a plain Toggle/UISwitch does not flip under idb on iOS 26); `log.intense.value` = `on`/`off`
-- `log.segment.<one|two|three>` — a button-backed segmented control (a native `Picker(.segmented)` / `UISegmentedControl` does not switch under idb on iOS 26); the selected button carries the `selected` trait and the choice mirrors to `log.segment.value` (`one`/`two`/`three`, default `one`)
+- `log.intense` — a button-backed toggle "Intense" (the retired idb backend could not flip a native Toggle/UISwitch on iOS 26, BE-0290); `log.intense.value` = `on`/`off`
+- `log.segment.<one|two|three>` — a button-backed segmented control (the retired idb backend could not switch a native `Picker(.segmented)` / `UISegmentedControl` on iOS 26, BE-0290); the selected button carries the `selected` trait and the choice mirrors to `log.segment.value` (`one`/`two`/`three`, default `one`)
 - `log.submit` — button: POST to `SHOWCASE_HTTP_BASE` + `/post` with the note/count as JSON; on success shows `log.toast` (auto-dismiss ~1.2 s → exercises `wait until gone`) and appends a row
 - `log.status` — value `idle`/`loading`/`done`/`error`
 - `log.row.<n>` — submitted entries
@@ -205,7 +205,7 @@ them into view first):
 Modals reachable from Log (the four presentation styles):
 - `log.openFilter` → **sheet** with detents: `log.sheet.title`, `log.sheet.apply`, `log.sheet.close`
 - `log.openGallery` → **fullScreenCover**: `log.cover.title`, `log.cover.close`
-- `log.openDelete` → **action sheet** (a custom overlay of plain buttons, not a confirmationDialog / UIAlertController, whose actions idb cannot drive on iOS 26): choices `log.dialog.archive`, `log.dialog.delete` (destructive), `log.dialog.cancel`; result mirrored to `log.dialog.value` (`none`/`archive`/`delete`)
+- `log.openDelete` → **action sheet** (a custom overlay of plain buttons, not a confirmationDialog / UIAlertController, whose actions the retired idb backend could not drive on iOS 26, BE-0290): choices `log.dialog.archive`, `log.dialog.delete` (destructive), `log.dialog.cancel`; result mirrored to `log.dialog.value` (`none`/`archive`/`delete`)
 - `log.toast` — the transient toast described above
 
 ### 5.4 Tab: Permissions — `perm`, `sys` namespaces (**the OS-integration screen**)
@@ -214,13 +214,13 @@ A `NavigationStack` (SwiftUI) / `UINavigationController` (UIKit). **The one scre
 intentionally raises OS-level alerts** (§7) — promoted to a top-level tab so the alert-guard
 flow is reached directly — plus a System section with an in-app pasteboard round-trip.
 
-- `perm.requestNotif` — button → `UNUserNotificationCenter.requestAuthorization`. Raises the **SpringBoard notification prompt** (out-of-process; idb cannot see it — cleared by the run's vision alert guard, or tapped "Allow" via `dismissAlerts`).
+- `perm.requestNotif` — button → `UNUserNotificationCenter.requestAuthorization`. Raises the **SpringBoard notification prompt** (out-of-process; an in-app accessibility query cannot see it — cleared by the run's vision alert guard, or tapped "Allow" via `dismissAlerts`).
 - `perm.notif.value` — `notDetermined`/`authorized`/`denied`
 - `perm.notif.authorized` — element shown only once granted (gives the run a positive condition to wait for)
 - `perm.requestLocation` — button → `CLLocationManager.requestWhenInUseAuthorization`. Raises the **system location prompt** (also SpringBoard).
 - `perm.location.value` — `notDetermined`/`authorizedWhenInUse`/`denied`
 
-**System** — an in-app pasteboard round-trip, mirroring state idb's app-scoped query cannot
+**System** — an in-app pasteboard round-trip, mirroring state the backend's app-scoped query cannot
 otherwise observe. It stays in-app because reading a pasteboard seeded by another process trips
 iOS's paste-permission prompt; a value this app itself wrote reads back silently:
 - `sys.copy` — button that writes a known string (`bajutsu-clip`) to the pasteboard
@@ -243,7 +243,7 @@ navigation, scroll, and crawl scenarios.
 **Notice Detail** (pushed by tapping a Notices row):
 - `notice.detail.title` — the notice's title (the screen's identifying element; the nav title carries no id)
 - `notice.detail.body` — the notice's body text
-- **Back** — the standard system back button; idb drives it by its OS-provided id `BackButton` (see §5.1).
+- **Back** — the standard system back button; the backend drives it by its OS-provided id `BackButton` (see §5.1).
 
 ## 6. Networking
 
@@ -271,7 +271,7 @@ Uses the standard in-app collector integration (iOS: BajutsuKit; Android: Bajuts
 - **No launch-time prompts.** The app never requests notification/location authorization at
   startup — only on explicit taps inside the **Permissions** tab (§5.4).
 - **The deliberate alerts** live only on the **Permissions** tab: the notification prompt and the
-  location prompt. Both are SpringBoard (out-of-process) — invisible to idb's app-scoped query —
+  location prompt. Both are SpringBoard (out-of-process) — invisible to any in-app accessibility query —
   so they are the canonical fixture for the run's **vision alert guard** / `dismissAlerts`
   ([`permission.yaml`](scenarios/permission.yaml) is this fixture's scenario).
 

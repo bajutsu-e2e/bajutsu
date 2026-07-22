@@ -1,8 +1,9 @@
 # Controls: the Log tab's button-backed segmented control mirrors its selection to an a11y
 # value, so a scenario picks a segment and asserts log.segment.value (the same value-mirror
 # idiom the Intense toggle uses — the `selected` trait the buttons also carry is a VoiceOver
-# affordance, not what idb asserts). A native segmented control (Picker(.segmented) /
-# UISegmentedControl) does not switch under idb on iOS 26, hence the plain buttons. The section
+# affordance, not what the run asserts). A native segmented control (Picker(.segmented) /
+# UISegmentedControl) could not be switched by the retired idb backend on iOS 26 (BE-0290), hence the
+# plain buttons. The section
 # sits near the bottom (below Modals + Gestures), so walk down with swipes anchored on each
 # section's still-visible top control until the segment is on-screen.
 - name: segmented control mirrors the selected choice

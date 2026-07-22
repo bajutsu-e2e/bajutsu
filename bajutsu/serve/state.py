@@ -206,6 +206,10 @@ class CaptureSession:
     steps: list[Step] = field(default_factory=list)
     screenshot_path: Path = field(default_factory=lambda: Path(os.devnull))
     prev_fingerprint: str = ""
+    # Releases whatever backs `driver` when the session ends — for XCUITest the `xcodebuild` runner
+    # subprocess, which dropping the session would otherwise leak (BE-0290). Default is a no-op so a
+    # session built without one (older callers, tests) is still safe to close.
+    teardown: Callable[[], None] = field(default=lambda: None)
 
 
 @dataclass

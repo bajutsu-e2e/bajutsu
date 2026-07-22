@@ -7,7 +7,7 @@
 #   make record     on-device — AI authoring with real Claude, then modify + triage
 #
 # Every demo drives the single iOS fixture, the showcase suite (demos/showcase/) — the SwiftUI
-# accessibility product — on a booted Simulator via idb. "tour"/"features"/"offline" use no LLM
+# accessibility product — on a booted Simulator via XCUITest. "tour"/"features"/"offline" use no LLM
 # and no API key (`run` and `triage` are fully deterministic) but need a Mac + Simulator; the
 # zero-setup version that needs neither is the fake-driver script `uv run python demos/tour/tour.py`
 # (see demos/tour/README.md).
@@ -21,7 +21,7 @@ CONFIG := $(ROOT)/demos/demo.config.yaml
 help:
 	@echo "Bajutsu demos — pick one (full map: demos/README.md):"
 	@echo ""
-	@echo "  On-device, deterministic (no LLM / API key; needs macOS + Simulator, idb auto-installs):"
+	@echo "  On-device, deterministic (no LLM / API key; needs macOS + Xcode + Simulator):"
 	@echo "    make tour       Run -> modify -> diagnose on a real Simulator (the headline story)."
 	@echo "    make features   The scenario-feature showcase (tags, shared steps, secrets)."
 	@echo "    make offline    Both of the above."
@@ -49,13 +49,13 @@ tour:
 features: app-build
 	cd $(ROOT) && PASSWORD="$${PASSWORD:-s3cr3t}" uv run bajutsu run \
 		--scenario demos/showcase/scenarios/menu/features.yaml --target showcase-swiftui --config $(CONFIG) \
-		--backend idb --no-network --tag smoke --exclude slow
+		--backend ios --no-network --tag smoke --exclude slow
 
 offline: tour features
 
 # --- On-device, AI-assisted --------------------------------------------------
 # Launch the Web UI bound to the showcase config — the guided tour in demos/showcase/WEBUI.md.
-# Wraps the repo-root `make serve` (installs the idb backend's deps on demand). The Web UI builds
+# Wraps the repo-root `make serve` (installs the configured backend's deps on demand). The Web UI builds
 # + installs the app itself when its binary is missing. Override the port via PORT=8766.
 PORT ?= 8765
 webui:

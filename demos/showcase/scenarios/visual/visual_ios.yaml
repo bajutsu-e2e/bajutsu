@@ -1,8 +1,8 @@
-# Visual regression (VRT) assertion, iOS idb path — the committed pixel-snapshot twin of the golden
-# element-tree check (golden/golden.yaml on idb) and of visual_android.yaml, giving iOS the same
+# Visual regression (VRT) assertion, iOS XCUITest path — the committed pixel-snapshot twin of the golden
+# element-tree check (golden/golden.yaml) and of visual_android.yaml, giving iOS the same
 # committed VRT coverage Android has. Scope is the launch (Stable) tab only: it is the tab the app
-# launches on, so idb reaches it with no tab-bar navigation (the multi-screen local VRT demo,
-# ../visual.yaml, uses XCUITest for the other tabs and keeps its baselines local/gitignored).
+# launches on, so the backend reaches it with no tab-bar navigation (the multi-screen local VRT demo,
+# ../visual.yaml, covers the other tabs and keeps its baselines local/gitignored).
 #
 # Unlike the element-tree golden, a pixel baseline is host-specific — the Simulator's renderer varies
 # by Xcode / device / OS — so this baseline is committed under baselines_ios/ and is recorded for the

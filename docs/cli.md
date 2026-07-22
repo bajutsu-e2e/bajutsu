@@ -15,7 +15,7 @@ Related: [run-loop](run-loop.md) · [recording](recording.md) · [codegen](codeg
 
 - Every command loads `.env` first (`_bootstrap`, below).
 - Missing config / undefined app / no actuator → prints a message and exits with **code 2**.
-- `--backend` is a comma-separated list (e.g. `idb`). Empty uses config's `backend`. It checks
+- `--backend` is a comma-separated list (e.g. `ios`). Empty uses config's `backend`. It checks
   availability in order and the **first usable one is the actuator**
   ([drivers](drivers.md#backend-selection-and-the-actuator)).
 
@@ -40,7 +40,7 @@ to run. Pass `--scenario <file>` to run a single file instead.
 | `--exclude` | "" | comma list; skip scenarios carrying any of these tags |
 | `--udid` | `booted` | the target Simulator (comma list = a device pool for `--workers`) |
 | `--erase / --no-erase` | scenario › config › off | override every scenario's `preconditions.erase` (wipe the simulator first); omit and it resolves each scenario's value, then the target's `erase` config, then off ([BE-0177](../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md)). The app is reinstalled fresh either way (config `appPath` + `preconditions.reinstall`) |
-| `--dismiss-alerts / --no-dismiss-alerts` | scenario › config › on | override every scenario's `dismissAlerts` — the vision guard that dismisses system alerts idb cannot see; omit and it resolves each scenario's value, then the target's `dismissAlerts` config, then on (uses the configured AI provider — `ANTHROPIC_API_KEY`, or AWS credentials for Bedrock; [recording](recording.md#dismissing-system-alerts-automatically)) |
+| `--dismiss-alerts / --no-dismiss-alerts` | scenario › config › on | override every scenario's `dismissAlerts` — the vision guard that dismisses system alerts the iOS backend cannot see; omit and it resolves each scenario's value, then the target's `dismissAlerts` config, then on (uses the configured AI provider — `ANTHROPIC_API_KEY`, or AWS credentials for Bedrock; [recording](recording.md#dismissing-system-alerts-automatically)) |
 | `--alert-instruction` | "" | default button instruction, below a scenario's own `dismissAlerts.instruction` and above the target's `dismissAlerts` config |
 | `--log-predicate` | "" | an NSPredicate narrowing the `deviceLog` stream (e.g. subsystem) |
 | `--log-subsystem` | "" | the os_log subsystem for `appTrace` (defaults to the app's `bundleId`) |
@@ -65,7 +65,7 @@ to run. Pass `--scenario <file>` to run a single file instead.
   machine-readable result line. A run that used no AI prints nothing.
 
 ```bash
-bajutsu run --target showcase-swiftui --udid <UDID> --backend idb --no-erase            # the app's whole scenarios dir
+bajutsu run --target showcase-swiftui --udid <UDID> --backend ios --no-erase            # the app's whole scenarios dir
 bajutsu run --scenario demos/showcase/scenarios/smoke.yaml --target showcase-swiftui --no-erase   # one file
 ```
 
@@ -97,8 +97,8 @@ A **runnability gate** + the **convention score** for the current screen (AI-ind
 bajutsu doctor --target <name> [--udid booted] [--backend ...] [--config ...]
 ```
 
-- First the env gate (`preflight.py`): the required CLIs for the actuator (`xcrun`; `idb` /
-  `idb_companion` for idb) and a **booted Simulator**, printed as a ✓/✗ checklist. A missing
+- First the env gate (`preflight.py`): the required CLIs for the actuator (`xcrun` / `xcodebuild`
+  for XCUITest) and a **booted Simulator**, printed as a ✓/✗ checklist. A missing
   check **exits 1** (fail fast with a fixable hint).
 - Then `query()`s via the actuator and renders `score(elements, idNamespaces)`. **Exits 1 when
   the grade is Blocked, 0 otherwise.**
@@ -352,7 +352,7 @@ source is a safe no-op.
 ```bash
 bajutsu triage [<run-dir>] [--scenario <substr>] [--runs runs] [--ai]
 bajutsu triage [<run-dir>] --ai --apply <scenario-file> [--write] \
-               [--rerun --target <name> [--backend idb] [--udid <udid>]]
+               [--rerun --target <name> [--backend ios] [--udid <udid>]]
 ```
 
 - Defaults to the latest run under `runs/`. **Exits 0** when the run has no failed scenario.
@@ -500,11 +500,11 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
   email, a password meeting the rules, all of a form's fields in one fill) to enable controls whose
   precondition isn't obvious, plus operations on id-less elements, narrating its reasoning into the
   run log. The AI also handles a **tab
-  bar whose individual tabs the accessibility tree can't address** — idb surfaces a SwiftUI TabView
-  as a single "Tab Bar" group with no per-tab identifiers, so the bar is visible but its tabs can't
+  bar whose individual tabs the accessibility tree can't address** — the iOS accessibility tree can
+  surface a SwiftUI TabView as a single "Tab Bar" group with no per-tab identifiers, so the bar is visible but its tabs can't
   be tapped by selector. When that bar is present (and no tab is already addressable by id), it
   locates the tabs by vision — the same fallback the alert guard uses — and taps each by coordinate,
-  still switching tabs before drilling in. (UIKit tab bars, whose tabs idb exposes as individual
+  still switching tabs before drilling in. (UIKit tab bars, whose tabs the accessibility tree exposes as individual
   elements, are a planned refinement — for now they fall back to the same vision path.) The AI only
   chooses *what to try* — screen identity, transitions, and crashes stay deterministic, so the crawl
   is never a verdict (it never gates CI).
@@ -785,8 +785,8 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   swiftui-build`) to build on demand from the UI without a manual build first.
 - A **History** list under the controls shows past runs (newest first, with a pass/fail dot and
   scenario summary); click one to reopen its report. `GET /api/runs` backs it.
-- The run subprocess inherits the launch environment (the venv `bin` is prepended to `PATH` so
-  the `idb` client resolves). Run it from the project root so `bajutsu.config.yaml` resolves.
+- The run subprocess inherits the launch environment (the venv `bin` is prepended to `PATH`). Run
+  it from the project root so `bajutsu.config.yaml` resolves.
 - **Input validation on `/api/run`.** The scenario must be an existing `*.yaml` **inside the
   selected app's scenarios dir** (no arbitrary host paths or `..` traversal), and `backend` / `udid`
   must be known tokens, not free text — so a request can't run an arbitrary file or smuggle

@@ -1,20 +1,16 @@
 """Shared read/settle core for the coordinate-based device backends (BE-0254).
 
-`IdbDriver` (iOS Simulator via idb) and `AdbDriver` (Android via adb + UI Automator) both dump an
-accessibility tree from the device, normalize it into `Element`s, and act by tapping a resolved
-frame's center. Their determinism-sensitive read path — the transient-empty retry, the exponential
-backoff, the stable-key projection, and the not-found resolve loop — is identical, so it lives here
-once: a fix to the transient-empty heuristic (tightening the backoff cap, changing `_READY_MIN`
-after a new flake is diagnosed) is made in one place and both backends inherit it, rather than the
-two read paths silently drifting apart.
+A coordinate-based backend dumps an accessibility tree from the device, normalizes it into
+`Element`s, and acts by tapping a resolved frame's center. `AdbDriver` (Android via adb + UI
+Automator) is the current one; the determinism-sensitive read path — the transient-empty retry, the
+exponential backoff, the stable-key projection, and the not-found resolve loop — lives here rather
+than in a subclass, so a fix to the transient-empty heuristic (tightening the backoff cap, changing
+`_READY_MIN` after a new flake is diagnosed) is made once and any future coordinate backend inherits
+it. (Until BE-0290 retired idb, its `IdbDriver` shared this same core.)
 
 A subclass supplies only its own tree source (`_describe`) and keeps whatever is genuinely
-backend-specific: its actuators, and its own `_settle`. The two `_settle` methods now poll the same
-`_stable_key` projection on the same wall-clock-deadline shape (idb adopted it in BE-0299 Unit 4,
-adb in BE-0245), differing only in their deadline and poll-interval constants; folding them into one
-`_settle` here is a natural follow-up now that the shapes match. It is left per-backend for now to
-keep BE-0299 Unit 4 scoped to idb — each backend keeps and tests its own `_settle` — rather than
-restructuring adb's settle in the same change.
+backend-specific: its actuators, and its own `_settle` (adb bounds the poll by a wall-clock
+deadline, BE-0245), which therefore is not hoisted here.
 """
 
 from __future__ import annotations
@@ -53,8 +49,8 @@ class CoordinateTreeDriver(ABC):
     def _describe(self) -> list[base.Element]:
         """Read the device's accessibility tree once and normalize it into Elements.
 
-        The one seam between the shared read path and the backend-specific dump: idb's
-        `ui describe-all` + JSON parse, adb's `uiautomator dump` + XML parse.
+        The one seam between the shared read path and the backend-specific dump: adb's
+        `uiautomator dump` + XML parse (a coordinate backend supplies its own here).
         """
 
     def query(self) -> list[base.Element]:
@@ -63,8 +59,8 @@ class CoordinateTreeDriver(ABC):
         A degenerate result is retried a bounded number of times once a richer tree has been seen on
         this device (see `_is_transient_empty`), so a single-shot assertion or wait does not act on
         the transient snapshot; a screen that has only ever been sparse is returned as-is (never
-        masked). A subclass that layers a backend-specific recovery on top (idb's companion reset)
-        overrides this and drives `_read_settled_tree` / `_record_tree` itself.
+        masked). A subclass that layers a backend-specific recovery on top overrides this and drives
+        `_read_settled_tree` / `_record_tree` itself.
         """
         return self._record_tree(self._read_settled_tree())
 
@@ -72,7 +68,7 @@ class CoordinateTreeDriver(ABC):
         """Read once, retrying a transient-empty tree with exponential backoff.
 
         Stops early on an unrecoverable empty (`_is_unrecoverable_empty`) so a backend does not burn
-        the backoff loop on a read that a same-source re-read can never clear (idb's
+        the backoff loop on a read that a same-source re-read can never clear (an
         accessibility-bridge wedge, BE-0231 Unit 6) — the caller (`query`) handles that case.
         """
         els = self._describe()
@@ -100,7 +96,7 @@ class CoordinateTreeDriver(ABC):
     def _is_unrecoverable_empty(self, els: list[base.Element]) -> bool:
         """Whether a degenerate read is one a same-source re-read can never clear.
 
-        Default: none. A subclass whose device has such a failure mode (idb's accessibility-bridge
+        Default: none. A subclass whose device has such a failure mode (an accessibility-bridge
         wedge) overrides this so `_read_settled_tree` yields it promptly to `query`'s recovery path
         rather than spending the backoff loop on a read that cannot recover.
         """

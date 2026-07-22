@@ -15,12 +15,12 @@ def _write_run(runs: Path, run_id: str, *, ok: bool = True) -> Path:
     manifest = {
         "runId": run_id,
         "ok": ok,
-        "backend": "idb",
+        "backend": "xcuitest",
         "scenarios": [
             {
                 "scenario": "s",
                 "ok": ok,
-                "backend": "idb",
+                "backend": "xcuitest",
                 "steps": [
                     {
                         "index": 0,
@@ -78,8 +78,8 @@ def _write_run(runs: Path, run_id: str, *, ok: bool = True) -> Path:
 
 def test_trace_run_renders_timeline(tmp_path: Path) -> None:
     out = trace.trace_run(_write_run(tmp_path / "runs", "20260101-000000"))
-    assert "bajutsu trace · run 20260101-000000 · PASS · driver: idb" in out
-    assert "▸ s   PASS   [idb]" in out
+    assert "bajutsu trace · run 20260101-000000 · PASS · driver: xcuitest" in out
+    assert "▸ s   PASS   [xcuitest]" in out
     # Chronological interleave: tap (0.0s) → net (0.4s) → wait (0.7s).
     assert out.index("✓ tap") < out.index("net  GET") < out.index("✓ wait")
     assert "https://example.com → 200" in out
@@ -150,12 +150,12 @@ def test_trace_groups_from_over_the_full_plan_not_only_executed_steps(tmp_path: 
             {
                 "runId": "20260101-000000",
                 "ok": True,
-                "backend": "idb",
+                "backend": "xcuitest",
                 "scenarios": [
                     {
                         "scenario": "s",
                         "ok": True,
-                        "backend": "idb",
+                        "backend": "xcuitest",
                         "steps": [
                             {"index": 0, "action": "tap", "ok": True, "started_at": 0.0},
                             {"index": 2, "action": "tap", "ok": True, "started_at": 0.5},

@@ -1,7 +1,8 @@
 """Tests for the CLI error/loading paths (the device paths need a Simulator).
 
-The sandbox has no idb on PATH, so backend selection fails cleanly with exit code
-2 — which lets us drive run/doctor right up to the device boundary.
+These exercise the config / target / credential error paths, which exit cleanly (code 2) before any
+device work — so they run anywhere, with or without Xcode. The one backend-availability test forces
+an unknown backend explicitly rather than leaning on the host's toolchain.
 """
 
 from __future__ import annotations
@@ -37,7 +38,7 @@ def _write(tmp_path: Path) -> tuple[Path, Path]:
     empty_dir.mkdir()
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "defaults: { backend: [idb] }\n"
+        "defaults: { backend: [ios] }\n"
         "targets:\n"
         f"  demo: {{ bundleId: com.example.demo, idNamespaces: [home], scenarios: {scn_dir} }}\n"
         "  bare: { bundleId: com.example.bare, idNamespaces: [home] }\n"
@@ -775,7 +776,7 @@ def test_doctor_non_web_target_on_playwright_exits_cleanly() -> None:
     assert exc.value.exit_code == 2
 
 
-def test_doctor_xcuitest_falls_back_to_idb_for_screen_query(
+def test_doctor_xcuitest_uses_a_short_lived_runner_for_screen_query(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from bajutsu.cli.commands.doctor import _current_screen
@@ -797,7 +798,7 @@ def test_doctor_xcuitest_falls_back_to_idb_for_screen_query(
         capture=[],
         redact=Redact(),
     )
-    made: list[tuple[str, str]] = []
+    built: list[str] = []
     el: base.Element = {
         "identifier": "ok",
         "label": "OK",
@@ -806,24 +807,34 @@ def test_doctor_xcuitest_falls_back_to_idb_for_screen_query(
         "frame": (0.0, 0.0, 10.0, 10.0),
     }
 
-    class FakeDriver:
-        name = "idb"
+    class _FakeDriver:
+        name = "xcuitest"
 
         def query(self) -> list[base.Element]:
             return [el]
 
-    def fake_make_driver(actuator: str, udid: str, **kw: object) -> FakeDriver:
-        made.append((actuator, udid))
-        return FakeDriver()
+    class _FakeEnv:
+        def __init__(self, udid: str) -> None:
+            built.append(udid)
 
-    # The CLI's _current_screen is a thin adapter over doctor.probe_screen (BE-0199), so the
-    # xcuitest→idb fallback and udid resolution now live there; patch at that shared location.
-    monkeypatch.setattr("bajutsu.doctor.make_driver", fake_make_driver)
+        def start(self, *_a: object, **_k: object) -> _FakeDriver:
+            return _FakeDriver()
+
+        def teardown(self, *_a: object, **_k: object) -> None:
+            pass
+
+    # Earlier iOS read the tree with no runner; now (BE-0290) the shared probe brings a
+    # short-lived XCUITest runner up. `_current_screen` is a thin adapter over doctor.probe_screen
+    # (BE-0199), which resolves the udid then builds that runner via the read-session seam.
     monkeypatch.setattr("bajutsu.simctl.resolve_udid", lambda u, run=None: "FAKE-UDID")
+    monkeypatch.setattr(
+        "bajutsu.platform_lifecycle.read_session.environment_for",
+        lambda actuator, udid, env_run=None, **_k: _FakeEnv(udid),
+    )
 
     elements = _current_screen("xcuitest", "booted", eff)
     assert elements == [el]
-    assert made == [("idb", "FAKE-UDID")]
+    assert built == ["FAKE-UDID"]  # the runner was built for the resolved udid
 
 
 def test_xcuitest_runner_summary_reports_the_resolved_source(tmp_path: Path) -> None:
@@ -948,18 +959,20 @@ def test_current_screen_fake_backend_queries_the_driver(monkeypatch: pytest.Monk
 
 
 def test_check_scenarios_flags_an_unsupported_construct(tmp_path: Path) -> None:
-    # A pinch needs multiTouch, which idb (single-touch) lacks — check_scenarios reports it, purely,
-    # with no device: the capability set is a static class constant.
+    # A selectOption (native <select>) needs the web-only selectOption capability, which xcuitest
+    # lacks — check_scenarios reports it, purely, with no device: the capability set is a static
+    # class constant.
     from bajutsu.backends import capabilities_for
     from bajutsu.cli.commands.doctor import check_scenarios
 
-    scn = tmp_path / "pinch.yaml"
+    scn = tmp_path / "select.yaml"
     scn.write_text(
-        "- name: zoom\n  steps:\n    - pinch: { sel: { id: map }, scale: 2.0 }\n", encoding="utf-8"
+        "- name: pick\n  steps:\n    - selectOption: { sel: { id: theme }, option: dark }\n",
+        encoding="utf-8",
     )
-    reasons = check_scenarios(scn, capabilities_for("idb"))
+    reasons = check_scenarios(scn, capabilities_for("xcuitest"))
     assert len(reasons) == 1
-    assert "[zoom]" in reasons[0] and "multiTouch" in reasons[0]
+    assert "[pick]" in reasons[0] and "selectOption" in reasons[0]
 
 
 def test_check_scenarios_passes_a_supported_scenario(tmp_path: Path) -> None:

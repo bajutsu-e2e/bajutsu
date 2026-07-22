@@ -44,7 +44,7 @@ def launch_driver(
     Args:
         udid: The booted Simulator's udid; the web backend ignores it (one browser lane).
         eff: The resolved target config (bundle id / baseUrl, launch env/args, app path, locale).
-        actuator: The selected actuator (`idb` / `playwright` / `fake`).
+        actuator: The selected actuator (`xcuitest` / `adb` / `playwright` / `fake`).
         preconditions: The scenario's preconditions (erase, reinstall mode, locale, deeplink, extra
             launch env/args). None applies the defaults.
         env_run: The subprocess runner for simctl, injectable for tests (iOS only).

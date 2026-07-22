@@ -4,7 +4,7 @@ import BajutsuRunner
 /// The concrete `ElementProviding` (BE-0019): the only XCTest-touching piece of the runner.
 ///
 /// Walks `XCUIApplication` into the normalized `Element` shape the Python driver expects
-/// (identifier / label / value / traits / frame, matching what `bajutsu/drivers/idb.py`
+/// (identifier / label / value / traits / frame, matching what the backend-agnostic `Element`
 /// produces) and actuates the exact `XCUIElement` a snapshot handle maps back to.
 ///
 /// BE-0105 makes the query cheap: instead of materializing an `XCUIElement` per node and reading
@@ -21,7 +21,7 @@ final class XcuitestElementProvider: ElementProviding {
     }
 
     func queryElements() -> [ElementSnapshot] {
-        // One accessibility round-trip for the whole attribute-bearing tree; the tabs idb collapses
+        // One accessibility round-trip for the whole attribute-bearing tree; the tabs a coordinate backend collapses
         // into an opaque "Tab Bar" group surface here as individual buttons, the point of the richer
         // actuator. A snapshot failure yields an empty screen rather than a crash — the run fails
         // loudly downstream when nothing resolves.
@@ -180,7 +180,7 @@ private func traitTokens(
     return out
 }
 
-/// Map `XCUIElement.ElementType` to the same lower-camel token idb derives from its AX type
+/// Map `XCUIElement.ElementType` to the same lower-camel token the backend-agnostic trait vocabulary uses
 /// (`AXButton` -> `button`), so a `traits:` selector resolves identically across backends.
 private func typeName(_ t: XCUIElement.ElementType) -> String {
     switch t {

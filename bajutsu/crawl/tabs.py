@@ -2,7 +2,7 @@
 
 A tab bar is usually exposed in the tree as a `tab`-trait button with an identifier, and the
 crawl taps those directly (`candidate_actions` orders them tabs-first). But some apps build a
-custom tab bar from images with no identifier and no `tab` trait, so idb's query can't address
+custom tab bar from images with no identifier and no `tab` trait, so the accessibility tree can't address
 the individual tabs — the same blind spot the system-alert guard ([`alerts.py`](alerts.py))
 works around. When the tree exposes no tabs, this locator takes a screenshot, asks Claude vision
 for the tab bar items, and returns each as a normalized [0,1] coordinate the crawl turns into a
@@ -54,14 +54,14 @@ class TabLocator(Protocol):
     def locate(self, screenshot_png: bytes) -> list[TabTarget]: ...
 
 
-# The accessibility label iOS auto-assigns a tab bar. idb surfaces a SwiftUI `TabView` as a single
+# The accessibility label iOS auto-assigns a tab bar. iOS surfaces a SwiftUI `TabView` as a single
 # container carrying this label (observed: no identifier, trait `group`) with no per-tab children —
 # so the bar is on screen and tappable, but its individual tabs can't be addressed from the tree.
 _TAB_BAR_LABEL = "tab bar"
 
 
 def _is_tab(element: base.Element) -> bool:
-    """Whether an element is a tab control idb named as such (`tab`, or a `tabBar` container)."""
+    """Whether an element is a tab control named as such (`tab`, or a `tabBar` container)."""
     traits = element.get("traits") or []
     return "tab" in traits or "tabBar" in traits
 
@@ -79,24 +79,24 @@ def addressable_tabs(elements: list[base.Element]) -> bool:
 
 
 def _uikit_addressable_tabs(_elements: list[base.Element]) -> bool:
-    """UIKit tab bar — provisional stub, the single place to complete once we have real idb data.
+    """UIKit tab bar — provisional stub, the single place to complete once we have real UIKit tab-bar data.
 
     Unlike SwiftUI's opaque "Tab Bar" group, a UIKit `UITabBar` exposes each tab as its own element
     (likely a `button` with the tab's title as its label, possibly an identifier), so its tabs are
     usually addressable by selector and the deterministic guide / proposer can tap them without
-    vision. We haven't yet confirmed idb's exact representation, so this recognizes nothing for now
-    (leaving the vision fallback in charge). To complete UIKit support: capture an
-    `idb ui describe-all` of a UIKit tab bar, then recognize its tab elements here (by trait / label
+    vision. We haven't yet confirmed its exact representation, so this recognizes nothing for now
+    (leaving the vision fallback in charge). To complete UIKit support: capture the accessibility
+    tree of a UIKit tab bar, then recognize its tab elements here (by trait / label
     / id) — `addressable_tabs` and `needs_vision_tabs` pick the result up automatically.
     """
-    return False  # TODO(BE-0038): recognize UIKit UITabBarButton elements once idb output is known
+    return False  # TODO(BE-0038): recognize UIKit UITabBarButton elements once its tree output is known
 
 
 def tab_bar_present(elements: list[base.Element]) -> bool:
     """Whether a tab bar is on screen at all.
 
     A tab / tabBar element, or the container iOS labels "Tab Bar" (its auto-assigned accessibility
-    label) — how idb surfaces a SwiftUI TabView, as a lone `group` with that label and no
+    label) — how iOS surfaces a SwiftUI TabView, as a lone `group` with that label and no
     addressable per-tab children.
     """
     for el in elements:

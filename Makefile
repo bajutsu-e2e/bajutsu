@@ -20,19 +20,19 @@ hooks:
 	  && echo "hooks: uv.lock merge driver + rerere wired"
 
 # Config-aware one-command bootstrap (BE-0164): the base toolchain (`setup`) PLUS exactly the
-# backend deps a project's config needs — not "idb unconditionally", not "everything". Meant to run
-# right after `git clone`, the same moment `make setup` does. Pass a config or a forced backend
-# through ARGS, e.g. `make install ARGS="--config demos/showcase/showcase.config.yaml"`. With no
-# config in cwd it installs nothing beyond the base (the dev gate needs no backend).
+# backend deps a project's config needs — not "every backend unconditionally", not "everything".
+# Meant to run right after `git clone`, the same moment `make setup` does. Pass a config or a forced
+# backend through ARGS, e.g. `make install ARGS="--config demos/showcase/showcase.config.yaml"`. With
+# no config in cwd it installs nothing beyond the base (the dev gate needs no backend).
 install: setup
 	@./scripts/install.sh $(ARGS)
 
-# Install the external tools the idb backend needs (idempotent). Superseded by `make install`
-# (config-aware); kept as the idb-forced shortcut. The `idb` extra + the `idb_companion` formula
-# come from the one requirements mapping via the installer (BE-0164), so the Brewfile now holds
-# only the sample-app build tool (xcodegen), which is not a bajutsu backend requirement.
+# Install the external tools an on-device iOS run needs (idempotent). Superseded by `make install`
+# (config-aware); kept as the iOS-forced shortcut. The iOS backend (XCUITest) needs only Xcode's
+# `xcodebuild` (a system tool, no pip extra); the Brewfile holds the sample-app build tool
+# (xcodegen), which is not a bajutsu backend requirement.
 deps:
-	@./scripts/install.sh --backend idb
+	@./scripts/install.sh --backend ios
 	@if command -v brew >/dev/null 2>&1; then \
 	  brew bundle --file=Brewfile; \
 	else \
@@ -41,11 +41,11 @@ deps:
 
 # Verify the required tools are on PATH without installing anything.
 deps-check:
-	@command -v idb_companion >/dev/null 2>&1 && echo "idb_companion: ok" || echo "idb_companion: MISSING (make deps)"
+	@command -v xcodebuild >/dev/null 2>&1 && echo "xcodebuild (Xcode): ok" || echo "xcodebuild (Xcode): MISSING (install Xcode)"
 	@command -v xcodegen >/dev/null 2>&1 && echo "xcodegen: ok" || echo "xcodegen: MISSING (make deps)"
 	@command -v xcrun >/dev/null 2>&1 && echo "xcrun (Xcode): ok" || echo "xcrun (Xcode): MISSING (install Xcode)"
 
-# Launch the web UI, installing the idb backend's deps on demand (see scripts/serve.sh).
+# Launch the web UI, installing the configured backend's deps on demand (see scripts/serve.sh).
 # Pass flags through ARGS, e.g. `make serve ARGS="--port 8766"`.
 serve:
 	@./scripts/serve.sh $(ARGS)
@@ -70,7 +70,7 @@ SHELL_SCRIPTS := .githooks/pre-push .githooks/commit-msg scripts/serve.sh script
 # Modules whose public surface has migrated to the Google-style docstring standard (BE-0065),
 # enforced by `lint-docstrings`. This list GROWS module-by-module as more migrate; keep it the
 # allowlist (not an ignore list) so an unmigrated module never accidentally falls under the gate.
-DOCSTRING_PATHS := bajutsu/ai bajutsu/drivers bajutsu/assertions bajutsu/evidence/network.py bajutsu/runner bajutsu/scenario bajutsu/mcp bajutsu/cli bajutsu/doctor.py bajutsu/analysis/audit.py bajutsu/analysis/coverage.py bajutsu/analysis/stats.py bajutsu/trace.py bajutsu/triage.py bajutsu/report bajutsu/evidence/core.py bajutsu/idb_version.py bajutsu/evidence/intervals.py bajutsu/evidence/redaction.py bajutsu/config.py bajutsu/config_source.py bajutsu/codegen/xcuitest.py bajutsu/codegen/common.py bajutsu/codegen/playwright.py bajutsu/backends.py bajutsu/capability_preflight.py bajutsu/requirements.py bajutsu/provision.py bajutsu/crawl/core.py bajutsu/crawl/serialize.py bajutsu/crawl/guide.py bajutsu/crawl/tabs.py bajutsu/agents/protocols.py bajutsu/agents/factory.py bajutsu/agents/claude.py bajutsu/agents/claude_backed.py bajutsu/agents/claude_triage.py bajutsu/agents/alerts.py bajutsu/agents/ai_config.py bajutsu/agents/anthropic_client.py bajutsu/record.py bajutsu/screenshots.py bajutsu/evidence/visual.py bajutsu/web_network.py bajutsu/from_grouping.py
+DOCSTRING_PATHS := bajutsu/ai bajutsu/drivers bajutsu/assertions bajutsu/evidence/network.py bajutsu/runner bajutsu/scenario bajutsu/mcp bajutsu/cli bajutsu/doctor.py bajutsu/analysis/audit.py bajutsu/analysis/coverage.py bajutsu/analysis/stats.py bajutsu/trace.py bajutsu/triage.py bajutsu/report bajutsu/evidence/core.py bajutsu/evidence/intervals.py bajutsu/evidence/redaction.py bajutsu/config.py bajutsu/config_source.py bajutsu/codegen/xcuitest.py bajutsu/codegen/common.py bajutsu/codegen/playwright.py bajutsu/backends.py bajutsu/capability_preflight.py bajutsu/requirements.py bajutsu/provision.py bajutsu/crawl/core.py bajutsu/crawl/serialize.py bajutsu/crawl/guide.py bajutsu/crawl/tabs.py bajutsu/agents/protocols.py bajutsu/agents/factory.py bajutsu/agents/claude.py bajutsu/agents/claude_backed.py bajutsu/agents/claude_triage.py bajutsu/agents/alerts.py bajutsu/agents/ai_config.py bajutsu/agents/anthropic_client.py bajutsu/record.py bajutsu/screenshots.py bajutsu/evidence/visual.py bajutsu/web_network.py bajutsu/from_grouping.py
 
 # Run the suite with a coverage floor — a regression that quietly drops coverage fails the gate.
 # The JSON report is a gitignored side artifact CI renders into its job summary (scripts/coverage_summary.py).

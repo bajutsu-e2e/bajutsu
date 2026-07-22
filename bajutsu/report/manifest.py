@@ -8,7 +8,6 @@ from dataclasses import asdict
 from xml.etree import ElementTree as ET
 
 from bajutsu import __version__
-from bajutsu.idb_version import IdbVersions
 from bajutsu.orchestrator import RunResult, scenario_slug
 
 
@@ -37,9 +36,9 @@ def git_revision() -> str | None:
 def _run_backend(results: list[RunResult]) -> str:
     """The actuator(s) that drove the run, joined ordered-unique.
 
-    Usually a single name, but since BE-0240 resolves the actuator per scenario, a `backend: [ios]`
-    run legitimately mixes `idb` and `xcuitest` — those distinct per-scenario backends are joined
-    here (e.g. ``"idb, xcuitest"``).
+    Usually a single name. BE-0240 resolves the actuator per scenario, so a multi-actuator platform
+    could mix distinct per-scenario backends, which are joined here (e.g. ``"a, b"``); iOS is a
+    single actuator today (XCUITest), so an iOS run reports one name.
     """
     names = dict.fromkeys(r.backend for r in results if r.backend)  # ordered-unique
     return ", ".join(names)
@@ -47,7 +46,8 @@ def _run_backend(results: list[RunResult]) -> str:
 
 # The render model's version. Bump when a field the report needs is added, so an older run can be
 # detected and its newer-only sections shown as "not captured" rather than failing (BE-0068).
-# v2 (BE-0005): optional top-level "idb" version provenance.
+# v2 (BE-0005): optional top-level "idb" version provenance — retired with idb (BE-0290); no longer
+#   written, but old manifests may still carry it (an unknown top-level key is ignored on load).
 # v3 (BE-0049): optional top-level "provenance" block (scenario hash + tool/git version).
 # v4 (BE-0076): optional top-level "matrix" block (engine x scenario aggregate of per-engine verdicts).
 SCHEMA_VERSION = 4
@@ -119,7 +119,6 @@ def manifest_dict(
     results: list[RunResult],
     *,
     source_name: str | None = None,
-    idb_versions: IdbVersions | None = None,
     provenance: dict[str, object] | None = None,
 ) -> dict[str, object]:
     """Build the manifest — the run's canonical, versioned render model (BE-0068).
@@ -129,9 +128,7 @@ def manifest_dict(
     `sourceName` is the label the report's YAML toggle shows, persisted here so a re-render can
     recover it.
 
-    `idb_versions`, when the run used the idb backend, records the `idb_companion` / client versions
-    it was driven against — provenance only, so it never enters `ok` (BE-0005). `provenance` is the
-    run-identity stamp from `run_provenance` (BE-0049), likewise never part of the verdict.
+    `provenance` is the run-identity stamp from `run_provenance` (BE-0049), never part of the verdict.
     """
     manifest: dict[str, object] = {
         "schemaVersion": SCHEMA_VERSION,
@@ -141,12 +138,6 @@ def manifest_dict(
         "sourceName": source_name,
         "scenarios": [asdict(r) for r in results],
     }
-    # Only record the block when at least one version is known: a `{companion: null, client: null}`
-    # block carries no provenance and is indistinguishable from "not captured", so omit it.
-    if idb_versions is not None and (
-        idb_versions.companion is not None or idb_versions.client is not None
-    ):
-        manifest["idb"] = {"companion": idb_versions.companion, "client": idb_versions.client}
     if provenance:
         manifest["provenance"] = provenance
     # The engine x scenario matrix for a `--browsers` run (BE-0076), a pure aggregation of the

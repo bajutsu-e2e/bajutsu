@@ -106,13 +106,10 @@ runner-build-device:
 	@echo "device .xctestrun: $(RUNNER_DEVICE_PRODUCTS)/BajutsuRunner.xctestrun (package its Products dir alongside)"
 
 # Run the shared id-based scenarios against the a11y apps on a booted Simulator. `--backend ios`
-# resolves each scenario through the BE-0240 capability ladder (idb first, cost order — NOT
-# "XCUITest preferred" despite the platform's stability order used elsewhere), escalating to
-# XCUITest only for a construct the preflight can detect (e.g. `pinch`/`rotate`). Tapping the
-# native tab bar by id is not such a construct — idb's `describe-all` collapses the whole tab bar
-# into one opaque group no matter what the preflight sees in the step — so `scenarios/tabs.yaml`
-# is tagged `xcuitest` and excluded here; `run-swiftui-tabs`/`run-uikit-tabs` below run it on its
-# own, forced onto XCUITest. Prereqs: a booted simulator, `make runner-build`.
+# resolves to XCUITest, the sole iOS backend since idb was retired (BE-0290). `scenarios/tabs.yaml`
+# stays tagged `xcuitest` and excluded here — a legacy split from when a coordinate backend could not
+# reach the tab bar — and `run-swiftui-tabs`/`run-uikit-tabs` below run it on its own; both paths run
+# on XCUITest now. Prereqs: a booted simulator, `make runner-build`.
 SIM ?= $(shell xcrun simctl list devices booted | grep -oE '[0-9A-F-]{36}' | head -1)
 
 run-swiftui: swiftui-build runner-build
@@ -129,7 +126,7 @@ run-uikit-tabs: uikit-build runner-build
 		--udid $(SIM) --backend xcuitest --config $(CONFIG)
 
 # The -noax twin of run-swiftui/run-uikit: the same flows from ios/scenarios-noax (config-bound), by
-# visible label + on-screen mirror text, forced onto XCUITest — idb collapses the tab bar and cannot
+# visible label + on-screen mirror text, run on XCUITest — a coordinate backend collapsed the tab bar and could not
 # reach a -noax element by label, and this app-level need is not a per-scenario capability the [ios]
 # ladder can detect, so we pin `--backend xcuitest` rather than let it resolve. The UIKit run drops the
 # `swiftui`-tagged scenarios (the SHOWCASE_GESTURES pinch/rotate screen and the SwiftUI-recorded
@@ -142,18 +139,18 @@ run-uikit-noax: uikit-noax-build runner-build
 
 # The accessibility A/B: doctor grades the a11y app Ready and the no-a11y app Blocked.
 doctor: swiftui-build swiftui-noax-build
-	cd $(ROOT) && uv run bajutsu doctor --target showcase-swiftui      --udid $(SIM) --backend idb --config $(CONFIG)
-	cd $(ROOT) && uv run bajutsu doctor --target showcase-swiftui-noax --udid $(SIM) --backend idb --config $(CONFIG)
+	cd $(ROOT) && uv run bajutsu doctor --target showcase-swiftui      --udid $(SIM) --backend ios --config $(CONFIG)
+	cd $(ROOT) && uv run bajutsu doctor --target showcase-swiftui-noax --udid $(SIM) --backend ios --config $(CONFIG)
 
 # AI authoring against the no-a11y app — record falls down the stability ladder (DESIGN §5).
 # Needs ANTHROPIC_API_KEY. GOAL overrides the first non-comment line of record/goals.txt.
 GOAL ?= $(shell grep -vE '^[[:space:]]*#|^[[:space:]]*$$' $(HERE)/record/goals.txt | head -1)
 record: swiftui-noax-build
-	cd $(ROOT) && uv run bajutsu record --target showcase-swiftui-noax --udid $(SIM) --backend idb \
+	cd $(ROOT) && uv run bajutsu record --target showcase-swiftui-noax --udid $(SIM) --backend ios \
 		--config $(CONFIG) --goal "$(GOAL)"
 
 # Generate a native XCUITest from the representative codegen scenario and run it via
-# xcodebuild (no bajutsu runtime / idb / AI at test time — the codegen output path).
+# xcodebuild (no bajutsu runtime or AI at test time — the codegen output path).
 # Generates against the SwiftUI a11y app, whose identifiers the test queries by name.
 ui-test:
 	cd $(ROOT) && uv run bajutsu codegen demos/showcase/scenarios/components.yaml --target showcase-swiftui \
@@ -194,7 +191,7 @@ vrt-uikit-approve: vrt-uikit
 
 # Committed iOS pixel VRT (parity with android/Makefile's e2e-visual + baselines_android). Unlike the
 # `vrt` demo above — every screen, XCUITest, local gitignored baselines — this is one screen (the
-# Stable catalog on the launch tab, so idb needs no tab navigation), compared to a committed baseline
+# Stable catalog on the launch tab, so no tab navigation is needed), compared to a committed baseline
 # under scenarios/visual/baselines_ios/. It runs on the path-gated, non-required ios-e2e.yml lane (the
 # iOS twin of android-e2e.yml's e2e-visual): a pixel baseline is host-specific (Simulator renderer
 # varies by Xcode / device / OS), so drift surfaces on that lane rather than blocking PRs on the
@@ -203,10 +200,10 @@ vrt-uikit-approve: vrt-uikit
 # are masked in the scenario.
 BASELINES_IOS_VRT = $(HERE)/scenarios/visual/baselines_ios
 e2e-visual: swiftui-build
-	cd $(ROOT) && uv run --extra idb --extra visual bajutsu run \
+	cd $(ROOT) && uv run --extra visual bajutsu run \
 		--scenario demos/showcase/scenarios/visual/visual_ios.yaml \
 		--baselines $(BASELINES_IOS_VRT) \
-		--target showcase-swiftui --udid $(SIM) --backend idb --config $(CONFIG)
+		--target showcase-swiftui --udid $(SIM) --backend ios --config $(CONFIG)
 # Run the VRT first so `approve` (which promotes the *latest* run under runs/) always sees this
 # scenario's run, never some other target's leftover. The `-` ignores its expected non-zero exit
 # when the baseline is missing/drifted — that failure is exactly what we are approving away, the same

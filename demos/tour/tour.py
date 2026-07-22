@@ -1,4 +1,4 @@
-"""The whole Bajutsu story, with zero setup — no Simulator, no idb, no API key.
+"""The whole Bajutsu story, with zero setup — no Simulator, no Xcode, no API key.
 
 This is the same four-phase lifecycle as the on-device demo (`demos/record/demo.sh`),
 run end to end against an in-memory `FakeDriver` so it works anywhere — Linux, CI, a fresh

@@ -70,7 +70,7 @@ struct HorseDetailView: View {
     private var horse: Horse? { model.horse(id: id) }
 
     var body: some View {
-        // The standard system back button (pushed by the NavigationStack) pops back; idb drives
+        // The standard system back button (pushed by the NavigationStack) pops back; the backend drives
         // it by its built-in id `BackButton`. No custom back control.
         Form {
             Section {

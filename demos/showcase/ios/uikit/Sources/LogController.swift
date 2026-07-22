@@ -61,7 +61,7 @@ final class LogController: UIViewController {
         updateCountMirror()
         let stepperRow = makeRow(countLabel, stepper)
 
-        // A button-backed toggle (not a UISwitch — idb can't flip one on iOS 26) shown as a
+        // A button-backed toggle (not a UISwitch — the retired idb backend couldn't flip one on iOS 26, BE-0290) shown as a
         // checkbox, the same look as the SwiftUI Label("Intense", systemImage: "checkmark.square").
         intenseButton.setTitle(" Intense", for: .normal)
         intenseButton.contentHorizontalAlignment = .leading
@@ -203,8 +203,8 @@ final class LogController: UIViewController {
         intenseValueLabel.accessibilityStateValue(intense ? "on" : "off")
     }
 
-    // A button-backed segmented control (not a UISegmentedControl — idb's tap does not switch a
-    // native one on iOS 26). Each choice is a checkable button whose `selected` trait reflects the
+    // A button-backed segmented control (not a UISegmentedControl — the retired idb backend's tap did not switch a
+    // native one on iOS 26, BE-0290). Each choice is a checkable button whose `selected` trait reflects the
     // current pick, the same idiom as the Intense toggle; the selection mirrors to log.segment.value.
     private func makeSegmentedControl() -> UIStackView {
         let row = UIStackView()
@@ -303,7 +303,7 @@ final class LogController: UIViewController {
     }
 
     /// 3) Action sheet: a custom overlay of plain buttons (not UIAlertController, whose action
-    /// buttons idb cannot reliably drive on iOS 26). Plain UIButtons resolve uniquely; result
+    /// buttons the retired idb backend could not reliably drive on iOS 26, BE-0290). Plain UIButtons resolve uniquely; result
     /// mirrors to log.dialog.value.
     private func openDelete() {
         let titleLabel = UILabel()

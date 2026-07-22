@@ -107,13 +107,13 @@ services:
       minio-init: { condition: service_completed_successfully }
       migrate: { condition: service_completed_successfully }
 
-  # Optional Linux web (Playwright) worker (BE-0173), off by default so an idb-only single-tenant
+  # Optional Linux web (Playwright) worker (BE-0173), off by default so an iOS-only single-tenant
   # deploy is unchanged. Enable it to run a web-backend worker as a container:
   # docker compose --profile web-worker up -d --build
   # WARNING: until BE-0166 lands, `/api/worker/lease` leases the oldest queued job with no
-  # backend/capability filtering, so a MIXED pool (this web worker + Mac idb workers) can hand a web
-  # worker an idb job (and vice versa), which then fails. Keep the pool homogeneous per backend —
-  # run either idb workers or web workers against a control plane, not both — until BE-0166 routes by
+  # backend/capability filtering, so a MIXED pool (this web worker + Mac iOS workers) can hand a web
+  # worker an iOS job (and vice versa), which then fails. Keep the pool homogeneous per backend —
+  # run either iOS workers or web workers against a control plane, not both — until BE-0166 routes by
   # backend.
   # It leases web jobs over HTTP and — per BE-0160 — holds NO object-store credentials; it needs only
   # the control-plane URL and the same operator token the control plane uses (BAJUTSU_SERVE_TOKEN,

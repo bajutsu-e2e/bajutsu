@@ -242,10 +242,10 @@ def record(
             alert_guard=alert_guard,
             secret_tokens=_secret_tokens(eff),
             # Whether to record a scenario-wide screen video while authoring is the platform's to
-            # answer, behind the Environment seam (BE-0256): the simctl-backed devices (idb, xcuitest)
-            # record via a simctl interval, web captures by other means during replay, and the fake
-            # actuator has no device. Asking the seam fixes xcuitest, which `actuator == "idb"` used to
-            # skip silently.
+            # answer, behind the Environment seam (BE-0256): the simctl-backed device (xcuitest)
+            # records via a simctl interval, web captures by other means during replay, and the fake
+            # actuator has no device. Asking the seam is what fixes xcuitest, which a per-actuator
+            # name test historically skipped silently.
             capture_video=environment_for(actuator, udid).captures_video(),
             report=say,
             # A "needs human" turn hands off to this responder; with no responder (CI, non-interactive)

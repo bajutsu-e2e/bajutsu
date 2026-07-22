@@ -11,7 +11,6 @@ from bajutsu.backends import IMPLEMENTED, resolve_actuators
 from bajutsu.config import (
     Effective,
     android_package,
-    idb_version_pin,
     ios_bundle_id,
     load_config,
     resolve,
@@ -101,13 +100,11 @@ def doctor_check(
         # Xcode (and so tests can inject the device list). Only the iOS family uses it.
         return len(simctl.booted_udids(run=state.simctl))
 
-    # The shared assembly gives the panel the same env checks the CLI reports — including the
-    # xcuitest→idb merge and the idb version-pin check the serve panel used to lack (BE-0199).
+    # The shared assembly gives the panel the same env checks the CLI reports (BE-0199).
     env_checks = preflight.doctor_environment_checks(
         actuator,
         booted_count=booted_count,
         web_engine=web_engine(eff),
-        ios_pin=idb_version_pin(eff),
     )
     all_checks = cfg_checks + env_checks
     ok = preflight.passed(all_checks)

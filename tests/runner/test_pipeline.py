@@ -58,26 +58,27 @@ def test_scenario_runner_runs_one_in_isolation() -> None:
 
 
 def test_preflight_fails_unsupported_scenario_before_leasing() -> None:
-    # A pinch needs multiTouch, which idb lacks — the preflight fails the scenario up front, so the
-    # lease (device work) is never reached (BE-0082).
+    # A selectOption (native <select>) needs the web-only selectOption capability, which xcuitest
+    # lacks — the preflight fails the scenario up front, so the lease (device work) is never reached
+    # (BE-0082).
     scenarios = [
         Scenario.model_validate(
-            {"name": "z", "steps": [{"pinch": {"sel": {"id": "m"}, "scale": 2.0}}]}
+            {"name": "z", "steps": [{"selectOption": {"sel": {"id": "m"}, "option": "x"}}]}
         )
     ]
 
     def lease_must_not_run(eff: Effective, s: Scenario) -> Lease:
         raise AssertionError("lease must not be called when the preflight rejects the scenario")
 
-    results = run_all(_eff(), scenarios, lease_must_not_run, actuator="idb")
+    results = run_all(_eff(), scenarios, lease_must_not_run, actuator="xcuitest")
     assert len(results) == 1 and not results[0].ok
-    assert results[0].backend == "idb"
-    assert "multiTouch" in (results[0].failure or "")
+    assert results[0].backend == "xcuitest"
+    assert "selectOption" in (results[0].failure or "")
 
 
-def test_preflight_allows_supported_scenario_on_idb() -> None:
+def test_preflight_allows_supported_scenario_on_xcuitest() -> None:
     scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
-    results = run_all(_eff(), scenarios, _lease, actuator="idb")
+    results = run_all(_eff(), scenarios, _lease, actuator="xcuitest")
     assert results[0].ok
 
 
@@ -125,19 +126,19 @@ def test_simulator_still_leases_a_device_control_scenario_on_xcuitest() -> None:
 
 def test_resolve_actuator_preflights_per_scenario_and_fails_fast() -> None:
     # BE-0240: with a per-scenario resolver, the scenario's own actuator decides the capability set.
-    # A pinch resolved to idb fails the preflight up front (idb lacks multiTouch) — no lease.
+    # A selectOption resolved to xcuitest fails the preflight up front (xcuitest lacks it) — no lease.
     scenarios = [
         Scenario.model_validate(
-            {"name": "z", "steps": [{"pinch": {"sel": {"id": "m"}, "scale": 2.0}}]}
+            {"name": "z", "steps": [{"selectOption": {"sel": {"id": "m"}, "option": "x"}}]}
         )
     ]
 
     def lease_must_not_run(eff: Effective, s: Scenario) -> Lease:
         raise AssertionError("lease must not be called when the preflight rejects the scenario")
 
-    results = run_all(_eff(), scenarios, lease_must_not_run, resolve_actuator=lambda s: "idb")
+    results = run_all(_eff(), scenarios, lease_must_not_run, resolve_actuator=lambda s: "xcuitest")
     assert len(results) == 1 and not results[0].ok
-    assert results[0].backend == "idb" and "multiTouch" in (results[0].failure or "")
+    assert results[0].backend == "xcuitest" and "selectOption" in (results[0].failure or "")
 
 
 def test_resolve_actuator_escalates_to_a_capable_actuator() -> None:
@@ -165,7 +166,9 @@ def test_run_all_rejects_both_actuator_and_resolve_actuator() -> None:
     # both is a caller bug, failed loudly rather than silently letting the resolver win.
     scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
     with pytest.raises(ValueError, match="not both"):
-        run_all(_eff(), scenarios, _lease, actuator="idb", resolve_actuator=lambda s: "idb")
+        run_all(
+            _eff(), scenarios, _lease, actuator="xcuitest", resolve_actuator=lambda s: "xcuitest"
+        )
 
 
 def test_resolve_actuator_no_available_actuator_fails_cleanly() -> None:
@@ -174,7 +177,7 @@ def test_resolve_actuator_no_available_actuator_fails_cleanly() -> None:
     scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
 
     def resolver(s: Scenario) -> str:
-        raise RuntimeError("no available actuator among ['xcuitest', 'idb']")
+        raise RuntimeError("no available actuator among ['xcuitest']")
 
     def lease_must_not_run(eff: Effective, s: Scenario) -> Lease:
         raise AssertionError("lease must not be called when no actuator is available")

@@ -242,7 +242,7 @@
           <label><input type="checkbox" id="erasedev"> erase device first
             <span class="hint">Wipe the whole simulator (simctl erase &mdash; all apps, data, settings) before each scenario. Off (default) leaves it to each scenario's <code>preconditions.erase</code>; the app is reinstalled fresh either way.</span></label>
           <label><input type="checkbox" id="nodismiss"> disable alert-dismiss
-            <span class="hint">The alert guard is on by default: Claude vision dismisses unexpected system prompts (Save Password, notification permission) that idb can't see or tap (needs ANTHROPIC_API_KEY). Check to force it off for this run; a scenario can also set <code>dismissAlerts</code> itself.</span></label>
+            <span class="hint">The alert guard is on by default: Claude vision dismisses unexpected system prompts (Save Password, notification permission) that a scenario's own steps can't see or tap (needs ANTHROPIC_API_KEY). Check to force it off for this run; a scenario can also set <code>dismissAlerts</code> itself.</span></label>
         </div>
         <div class="checks webonly">
           <label><input type="checkbox" id="headed" data-testid="replay.headed"> show browser (headed)

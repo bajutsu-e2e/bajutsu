@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0290](BE-0290-xcuitest-default-ios-backend.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0290") |
+| Implementing PR | [#1279](https://github.com/bajutsu-e2e/bajutsu/pull/1279) |
 | Topic | Platform support |
 | Related | [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md), [BE-0240](../BE-0240-ios-capability-aware-actuator-selection/BE-0240-ios-capability-aware-actuator-selection.md), [BE-0005](../BE-0005-idb-companion-version-monitoring/BE-0005-idb-companion-version-monitoring.md) |
 <!-- /BE-METADATA -->
@@ -168,10 +169,10 @@ assumed.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs. All five units land in one PR, gated on Unit 5.
 
-- [ ] Unit 1 — Flip the iOS default to XCUITest; retire the cost-ordered idb-first selection.
-- [ ] Unit 2 — Migrate the `-noax` fixtures and the `smoke` / `E2E` lanes onto XCUITest.
-- [ ] Unit 3 — Retire the idb-assuming code paths and update the docs to lead with XCUITest.
-- [ ] Unit 4 — Remove idb entirely (`IdbDriver`, the idb-only modules, and the `smoke (idb)` lane).
+- [x] Unit 1 — Flip the iOS default to XCUITest; retire the cost-ordered idb-first selection.
+- [x] Unit 2 — Migrate the `-noax` fixtures and the `smoke` / `E2E` lanes onto XCUITest.
+- [x] Unit 3 — Retire the idb-assuming code paths and update the docs to lead with XCUITest.
+- [x] Unit 4 — Remove idb entirely (`IdbDriver`, the idb-only modules, and the `smoke (idb)` lane).
 - [ ] Unit 5 — Confirm every scenario passes on the Simulator (the PR's merge gate).
 
 ## References

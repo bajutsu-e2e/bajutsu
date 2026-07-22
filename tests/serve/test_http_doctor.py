@@ -10,8 +10,16 @@ from bajutsu import serve as srv
 
 
 def test_doctor_returns_checks_for_target(tmp_path: Path) -> None:
-    """POST /api/doctor with a valid target returns preflight checks."""
-    _scn_dir, cfg, runs = project(tmp_path)
+    """POST /api/doctor with a valid target returns preflight checks.
+
+    Uses the `fake` backend so the response shape is asserted without depending on a real device
+    (an iOS target would probe a live screen where Xcode is present, hanging the gate on a Mac)."""
+    _scn_dir, _cfg, runs = project(tmp_path)
+    cfg = tmp_path / "fake.config.yaml"
+    cfg.write_text(
+        "defaults: { backend: [fake] }\ntargets:\n  demo: { bundleId: com.example.demo }\n",
+        encoding="utf-8",
+    )
     state = srv.ServeState(config=cfg, runs_dir=runs, cwd=tmp_path)
     server, port = _serve(state)
     try:

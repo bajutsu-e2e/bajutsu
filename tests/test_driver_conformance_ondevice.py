@@ -1,13 +1,13 @@
-"""Run the driver conformance contract (BE-0114) against the on-device backends (idb + XCUITest).
+"""Run the driver conformance contract (BE-0114) against the on-device iOS backend (XCUITest).
 
 Unlike the FakeDriver suite (browser-free, on the fast Linux gate) and the Playwright suite (web
-CI), this drives the real iOS Simulator backends: idb via idb_companion, XCUITest via the resident
-BajutsuRunner. The point of the suite is to catch drift on a backend's *own* query / act code,
-which only surfaces against the real actuator — so it needs a booted Simulator with the showcase
-a11y app installed (and, for XCUITest, the built runner). It runs in the on-device E2E path
-(`ios-e2e.yml`), never in `make check`: an `ondevice` pytest marker (deselected by the gate's default
-`-m 'not web and not ondevice'`) keeps it out even when the idb extra is installed, and a
-module-level skip drops it whenever `BAJUTSU_CONFORMANCE_UDID` is unset — the fast gate's state.
+CI), this drives the real iOS Simulator backend: XCUITest via the resident BajutsuRunner. The point
+of the suite is to catch drift on the backend's *own* query / act code, which only surfaces against
+the real actuator — so it needs a booted Simulator with the showcase a11y app installed and the
+built runner. It runs in the on-device E2E path (`ios-e2e.yml`), never in `make check`: an
+`ondevice` pytest marker (deselected by the gate's default `-m 'not web and not ondevice'`) keeps it
+out, and a module-level skip drops it whenever `BAJUTSU_CONFORMANCE_UDID` is unset — the fast gate's
+state.
 
 Each conformance screen is realized on-device by writing a spec file the app polls (BE-0114): the
 app launches into conformance mode (SHOWCASE_CONFORMANCE) and re-renders exactly the identifiers
@@ -29,17 +29,14 @@ from pathlib import Path
 
 import pytest
 from driver_conformance import (
-    FIELD_ID,
     ConformanceHarness,
     DriverConformanceContract,
     OnDeviceConformanceHarness,
-    field_value,
 )
 
 from bajutsu import simctl
 from bajutsu.config import Effective, ios_bundle_id, load_config, resolve
 from bajutsu.drivers import base
-from bajutsu.drivers.base import deadline_ticks
 from bajutsu.runner.launch import launch_driver
 
 pytestmark = pytest.mark.ondevice
@@ -57,7 +54,7 @@ if not _udid:
 UDID: str = _udid  # narrowed by the skip above; a plain str for the fixtures below
 
 _CONFIG_PATH = Path("demos/showcase/showcase.config.yaml")
-_TARGET = "showcase-swiftui"  # the a11y app: its identifiers surface for both idb and XCUITest
+_TARGET = "showcase-swiftui"  # the a11y app: its identifiers surface for XCUITest
 
 
 class _OnDeviceHarness(OnDeviceConformanceHarness):
@@ -111,53 +108,9 @@ _CONFORMANCE_ENV = {"SHOWCASE_UITEST": "1", "SHOWCASE_CONFORMANCE": ""}
 
 
 @pytest.fixture(scope="module")
-def _idb_driver(_eff: Effective) -> base.Driver:
-    driver, _readiness = launch_driver(UDID, _eff, "idb", extra_env=_CONFORMANCE_ENV)
-    return driver
-
-
-@pytest.fixture(scope="module")
 def _xcuitest_driver(_eff: Effective) -> base.Driver:
     driver, _readiness = launch_driver(UDID, _eff, "xcuitest", extra_env=_CONFORMANCE_ENV)
     return driver
-
-
-class TestIdbDriverConformance(DriverConformanceContract):
-    @pytest.fixture
-    def harness(self, _eff: Effective, _idb_driver: base.Driver) -> ConformanceHarness:
-        return _OnDeviceHarness("idb", _idb_driver, _spec_path(_eff))
-
-    def test_type_text_pastes_text_the_hid_keymap_cannot_encode(
-        self, harness: ConformanceHarness
-    ) -> None:
-        # idb-only, not part of the shared DriverConformanceContract: fb-idb's HID keymap covers only
-        # the US keyboard layout, so a Japanese character makes the direct `client.text()` path raise
-        # "No keycode found for ..." before any key is sent. The driver recovers by pasting the whole
-        # string — seeding the Simulator pasteboard, then a hardware Cmd+V chord over the same HID
-        # channel (`bajutsu/drivers/idb.py::_paste_text_via_companion`) — rather than crashing the
-        # run. Android's `adb shell input text` has the same Unicode limitation with no such fallback,
-        # so this stays idb-only rather than joining the cross-backend contract. `test_idb.py` covers
-        # the fallback's internals against a mocked gRPC client; this exercises it against the real
-        # idb_companion + Simulator. The pasteboard is left holding `text`, not restored — see
-        # `_paste_text_via_companion`'s docstring for why restoring it immediately would race the
-        # paste this test is exercising — so this test does not assert anything about clipboard state.
-        driver = harness.with_screen([])
-        driver.tap({"id": FIELD_ID})
-        text = "こんにちは、World!"
-        before = field_value(driver)
-        driver.type_text(text)
-        # A single immediate read races the same completion gap `_paste_text_via_companion`'s
-        # docstring describes (send_events acks once idb_companion drains the HID stream, not once
-        # the app has finished pasting) — poll with the shared deadline/backoff skeleton (BE-0118,
-        # BE-0256) instead of asserting on the first read.
-        after = before
-        for _ in deadline_ticks(timeout=10.0, poll_init=0.2, poll_max=1.0):
-            after = field_value(driver)
-            if len(after) > len(before):
-                break
-        if len(after) <= len(before):
-            pytest.skip("backend does not surface the field value; paste effect not observable")
-        assert text in after
 
 
 class TestXcuitestDriverConformance(DriverConformanceContract):

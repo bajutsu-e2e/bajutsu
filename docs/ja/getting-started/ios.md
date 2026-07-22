@@ -2,7 +2,8 @@
 
 # Getting started（iOS トラック）
 
-> [Getting started](index.md) のループを **iOS Simulator** 上で idb [backend](../glossary.md#driver-backend-actuator-platform) を使って完結させます。
+> [Getting started](index.md) のループを **iOS Simulator** 上で XCUITest [backend](../glossary.md#driver-backend-actuator-platform) を使って完結させます
+> （[BE-0290](../../../roadmaps/BE-0290-xcuitest-default-ios-backend/BE-0290-xcuitest-default-ios-backend-ja.md) で idb を撤去して以来、iOS の唯一の backend です）。
 > macOS と Xcode が必要です。Mac がないマシンでは、代わりに[web トラック](web.md)を辿ってください。
 > Xcode も Simulator も要らず、同じループをブラウザに対して辿れます。
 
@@ -18,7 +19,7 @@
 | 目的 | 必要なもの |
 |---|---|
 | ステップ 1〜3（共通） | macOS or Linux、Python 3.13（[uv](https://github.com/astral-sh/uv) で管理） |
-| 以下のステップ 4〜5 | **Xcode** 入り macOS（iOS Simulator）、[XcodeGen](https://github.com/yonaskolb/XcodeGen)（showcase のビルド用）、**idb** backend（`brew install facebook/fb/idb-companion`） |
+| 以下のステップ 4〜5 | **Xcode** 入り macOS（iOS Simulator と、XCUITest backend が駆動する `xcodebuild`）、[XcodeGen](https://github.com/yonaskolb/XcodeGen)（showcase のビルド用）。追加の `brew` インストールや pip extra は不要で、XCUITest backend は Xcode だけで動きます |
 
 ## ステップ 4：ショーケースアプリをビルドする
 
@@ -36,16 +37,19 @@ gitignore 済みで、`project.yml` が正です）。launch-env フックと識
 
 ## ステップ 5：Simulator 上でシナリオを走らせる
 
-Simulator を boot し、idb backend が使える状態にします。
+Simulator を boot します。
 
 ```bash
 xcrun simctl boot "iPhone 15"                 # または Xcode > Open Developer Tool > Simulator から
-brew install facebook/fb/idb-companion        # idb backend（初回のみ）
-uv sync --extra idb                           # idb の python クライアント
 ```
 
-一発で通す経路は `make` ターゲットです。ビルドしたばかりのアプリを install し、smoke シナリオと
-`doctor` チェックを booted デバイスで実行します。
+XCUITest backend は、**事前ビルドしたオンデバイスの runner**（target の `xcuitest.testRunner`）
+を通してアプリを駆動します。showcase の config はその runner を配線し、下の一発 `make` ターゲット
+の一部として（`make runner-build`）ビルドまで済ませるので、追加でインストールするものはありません。
+Xcode だけで十分です。
+
+一発で通す経路は `make` ターゲットです。runner をビルドし、ビルドしたばかりのアプリを install し、
+smoke シナリオと `doctor` チェックを booted デバイスで実行します。
 
 ```bash
 make -C demos/showcase run-swiftui
@@ -54,7 +58,7 @@ make -C demos/showcase run-swiftui
 あるいは CLI を直接叩くこともできます（上と同じ手順を書き下したものです）。
 
 ```bash
-uv run bajutsu run --scenario demos/showcase/scenarios/smoke.yaml --target showcase-swiftui --backend idb --udid booted --no-erase
+uv run bajutsu run --scenario demos/showcase/scenarios/smoke.yaml --target showcase-swiftui --backend ios --udid booted --no-erase
 ```
 
 各フラグの意味は次のとおりです。
@@ -62,7 +66,7 @@ uv run bajutsu run --scenario demos/showcase/scenarios/smoke.yaml --target showc
 - `--target showcase-swiftui` は [`demos/showcase/showcase.config.yaml`](../../../demos/showcase/showcase.config.yaml) の `targets.showcase-swiftui` を選びます
   （bundle id、launch env、許可された id 名前空間を含みます）。ツール自体はアプリ非依存で、アプリ
   ごとの差分はすべて config に置きます（[configuration](../configuration.md)）。
-- `--backend idb` で actuator を選び、`--udid booted` で現在 boot 中の Simulator を対象にします。
+- `--backend ios` で iOS の actuator（XCUITest。`--backend xcuitest` と明示することもできます）を選び、`--udid booted` で現在 boot 中の Simulator を対象にします。
 - `--no-erase` は最初に `simctl erase` をかけず、install 済みのアプリをそのまま使います。
 
 成功すると、次のような行が出ます。
@@ -74,7 +78,7 @@ PASS  runs/20260610-120000/manifest.json
 `run` は **全シナリオ合格で終了コード 0、いずれか失敗で 1** を返し、この終了コードが CI（継続的
 インテグレーション）ゲートになります（[run-loop](../run-loop.md)）。
 
-> 環境の問題（booted Simulator が無い、idb が未インストールなど）に当たったら、まず
+> 環境の問題（booted Simulator が無い、Xcode のコマンドラインツールが無いなど）に当たったら、まず
 > `uv run bajutsu doctor --target showcase-swiftui` を走らせてください。必要な CLI と booted デバイスの ✓/✗
 > チェックリストを表示し、続けて現在の画面が識別子規約にどれだけ従っているかを採点します
 > （[configuration](../configuration.md#doctor規約充足度スコア)）。

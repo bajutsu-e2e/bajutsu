@@ -2,7 +2,7 @@
 
 # ツアー：実機 Simulator で run、改変、診断
 
-Bajutsu のライフサイクル全体を、コマンド一つで、実機 iOS Simulator 上で動かします。しかも**完全に決定論的で、LLM も APIキーも不要**です。`run` と `triage` は AI を一切使わないので、必要なのは起動中の Simulator のある Mac だけです（idb は自動インストール）。
+Bajutsu のライフサイクル全体を、コマンド一つで、実機 iOS Simulator 上で動かします。しかも**完全に決定論的で、LLM も APIキーも不要**です。`run` と `triage` は AI を一切使わないので、必要なのは Xcode と起動中の Simulator のある Mac だけです。
 
 ```bash
 make -C demos tour                   # または直接:
@@ -29,7 +29,7 @@ make -C demos tour                   # または直接:
 ## Mac が無い場合は？ 同じ物語を仮想デバイスで（セットアップ不要）
 
 まったく同じ 著作 → run → 改変 → 診断 のライフサイクルが、メモリ上の
-[`FakeDriver`](../../bajutsu/drivers/fake.py) に対しても動きます。Simulator も idb も APIキーも要らず、
+[`FakeDriver`](../../bajutsu/drivers/fake.py) に対しても動きます。Simulator も Xcode も APIキーも要らず、
 Linux/CI で数秒です。
 
 ```bash

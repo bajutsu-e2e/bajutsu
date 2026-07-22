@@ -47,15 +47,15 @@ def test_web_workers_floored_at_one() -> None:
     assert workers == 1
 
 
-def test_idb_resolves_each_udid_in_the_comma_list() -> None:
-    udids, workers = _resolve_lanes("idb", udid="A, B ,C", workers=5, resolve_udid=_resolve)
+def test_xcuitest_resolves_each_udid_in_the_comma_list() -> None:
+    udids, workers = _resolve_lanes("xcuitest", udid="A, B ,C", workers=5, resolve_udid=_resolve)
     assert udids == ["resolved:A", "resolved:B", "resolved:C"]
     # workers is capped to the pool size (3 devices), even though 5 were requested.
     assert workers == 3
 
 
-def test_idb_single_device_is_serial() -> None:
-    udids, workers = _resolve_lanes("idb", udid="only", workers=4, resolve_udid=_resolve)
+def test_xcuitest_single_device_is_serial() -> None:
+    udids, workers = _resolve_lanes("xcuitest", udid="only", workers=4, resolve_udid=_resolve)
     assert udids == ["resolved:only"]
     assert workers == 1
 

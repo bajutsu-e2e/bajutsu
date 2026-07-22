@@ -12,7 +12,6 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from bajutsu import idb_version
 from bajutsu.drivers import base
 from bajutsu.scenario import DismissAlerts, Redact
 
@@ -241,7 +240,7 @@ class NotifyEndpoint(_Model):
 class Defaults(_Model):
     """Team-wide defaults under `defaults:`, overlaid by each target (see `resolve`)."""
 
-    backend: list[str] = Field(default_factory=lambda: ["idb"])
+    backend: list[str] = Field(default_factory=lambda: ["ios"])
     # Team-wide default platform (ios / android / web), overridable per target. None derives each
     # target's platform from its backend (BE-0009 Slice 4), so an existing config is unchanged.
     platform: str | None = None
@@ -257,10 +256,6 @@ class Defaults(_Model):
     reserved_namespaces: list[str] = Field(default_factory=list, alias="reservedNamespaces")
     # Configurable doctor thresholds (BE-0024). Always present; defaults to DoctorConfig() (0.9/0.7).
     doctor: DoctorConfig = Field(default_factory=DoctorConfig)
-    # Expected idb version range (e.g. ">=1.1.8" or ">=1.1.0,<2.0.0"). Environment-level, not
-    # per-app: the pin is the same whichever target a scenario drives. `doctor` reports the
-    # installed companion against it; None = no pin declared (BE-0005).
-    idb_version: str | None = Field(default=None, alias="idbVersion")
     visual_compare: Literal["exact", "pixelmatch"] | None = Field(
         default=None, alias="visualCompare"
     )
@@ -278,17 +273,6 @@ class Defaults(_Model):
     @classmethod
     def _valid_platform(cls, v: str | None) -> str | None:
         return _check_platform(v)
-
-    @field_validator("idb_version")
-    @classmethod
-    def _valid_idb_version(cls, v: str | None) -> str | None:
-        # Reject a malformed pin at load time (fail loudly, the right place) rather than letting it
-        # surface as a crash when `doctor` later compares against it (BE-0005).
-        if v is not None and not idb_version.is_valid_spec(v):
-            raise ValueError(
-                f"invalid idbVersion {v!r}: use a constraint like '>=1.1.8' or '>=1.1.0,<2.0.0'"
-            )
-        return v
 
 
 class TargetConfig(_Model):

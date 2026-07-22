@@ -1,7 +1,7 @@
 # Runtime notification permission (notDetermined → authorized), shared across iOS and Android. The
 # steps and assertions are identical on both; only the grant *mechanism* differs, and it lives in the
 # target config, not this scenario:
-#   - iOS (idb / XCUITest): there is no deterministic pre-grant (simctl can't grant notifications), so
+#   - iOS (XCUITest): there is no deterministic pre-grant (simctl can't grant notifications), so
 #     the out-of-process SpringBoard prompt is handled by the vision alert guard — `dismissAlerts` here
 #     taps "Allow" to grant. This is an AI path (needs Claude via the api-key / claude-code / ant
 #     provider), so on iOS the scenario is not deterministic.
@@ -29,7 +29,7 @@
     - assert:
         - value: { sel: { id: perm.notif.value }, equals: "notDetermined" }
     - tap: { id: perm.requestNotif }
-    # iOS: the prompt covers the app and collapses idb's tree, so this wait times out and the alert
+    # iOS: the prompt covers the app and collapses the app's a11y tree, so this wait times out and the alert
     # guard taps "Allow"; the retry then sees the granted state. Android: pre-granted, so the positive
     # node appears immediately with no dialog and the guard stays idle.
     - wait: { for: { id: perm.notif.authorized }, timeout: 10 }

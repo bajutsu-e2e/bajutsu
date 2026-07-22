@@ -15,7 +15,7 @@
 # lists both id forms — `id: [stable.refresh, stable_refresh]` — matching whichever the tree renders
 # (BE-0221); the id convention stays explicit in the scenario, never a hidden driver transform.
 defaults:
-  backend: [idb]
+  backend: [ios]
   device: "iPhone 17 Pro"
   reservedNamespaces: []   # no shared cross-screen ids; the back is the OS BackButton (DESIGN §7.3)
 
@@ -35,13 +35,11 @@ targets:
     appPath: ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app
     build: make swiftui-build
     scenarios: scenarios
-    # Capability-aware per-scenario selection (BE-0240): the ladder runs each scenario on the cheapest
-    # actuator its own steps can use — idb by default, escalating to XCUITest only where a construct
-    # needs it (here, gestures_multitouch.yaml's pinch/rotate), in one invocation with no --backend.
+    # `[ios]` resolves to XCUITest, the sole iOS backend since idb was retired (BE-0290). Its generic
+    # runner drives this a11y app by bundle id, so the whole suite — including
+    # gestures_multitouch.yaml's pinch/rotate and the driver conformance contract (BE-0114) — runs on
+    # identifier-bearing elements in one invocation with no --backend.
     backend: [ios]
-    # XCUITest backend (BE-0019): the same generic runner also drives this a11y app, so the driver
-    # conformance suite (BE-0114) can run its contract against XCUITest on identifier-bearing
-    # elements — `bajutsu run --target showcase-swiftui --backend xcuitest ...`.
     xcuitest:
       testRunner: ../../BajutsuKit/Runner/build/dd/Build/Products/BajutsuRunner.xctestrun
       build: make runner-build
@@ -71,16 +69,14 @@ targets:
     idNamespaces: []   # honest: this build exposes no identifiers
     appPath: ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUINoAx.app
     build: make swiftui-noax-build
-    backend: [idb]   # idb + vision (BE-0176): crawl drives this -noax app with no XCUITest runner
+    backend: [ios]   # XCUITest, the sole iOS backend (BE-0290); its runner reaches labels
     scenarios: ios/scenarios-noax
     # The `-noax` twin of the shared `scenarios/` suite: the same flows, but every step addresses
     # elements by their visible label (never an identifier — this build has none) and every assertion
-    # reads the on-screen mirror `Text` instead of the a11y value the -noax tree drops. Run over
-    # XCUITest (`--backend ios`/`xcuitest`): idb's describe-all collapses the tab bar and cannot reach
-    # a `-noax` element by label, so the [ios] ladder can't auto-escalate a plain label tap — this need
-    # is app-level, not a scenario capability the preflight can detect (BE-0223-style, not BE-0240).
-    # XCUITest backend (BE-0019) stays wired for explicit `--backend xcuitest`: the generic runner
-    # reaches elements idb's tree can't (e.g. a TabView's tabs) by label, where idb needs vision.
+    # reads the on-screen mirror `Text` instead of the a11y value the -noax tree drops. `[ios]`
+    # resolves to XCUITest, whose automation snapshot descends into the tab bar and reaches a `-noax`
+    # element (including a TabView's tabs) by label — the case a coordinate backend could not address
+    # without vision (BE-0290 retired idb, which needed that vision path).
     xcuitest:
       testRunner: ../../BajutsuKit/Runner/build/dd/Build/Products/BajutsuRunner.xctestrun
       build: make runner-build
@@ -94,9 +90,8 @@ targets:
     appPath: ios/uikit/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseUIKit.app
     build: make uikit-build
     scenarios: scenarios
-    # Capability-aware per-scenario selection (BE-0240), as for showcase-swiftui: idb by default,
-    # escalating to XCUITest only for the scenarios whose steps need it. The a11y UIKit scenarios
-    # cross tabs by tapping the native tab bar (BE-0107); the generic XCUITest runner stays wired.
+    # `[ios]` resolves to XCUITest (BE-0290), as for showcase-swiftui. The a11y UIKit scenarios cross
+    # tabs by tapping the native tab bar (BE-0107), which the generic XCUITest runner drives.
     backend: [ios]
     xcuitest:
       testRunner: ../../BajutsuKit/Runner/build/dd/Build/Products/BajutsuRunner.xctestrun
@@ -110,13 +105,13 @@ targets:
     idNamespaces: []
     appPath: ios/uikit/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseUIKitNoAx.app
     build: make uikit-noax-build
-    backend: [idb]   # idb + vision (BE-0176): crawl drives this -noax app with no XCUITest runner
+    backend: [ios]   # XCUITest, the sole iOS backend (BE-0290); its runner reaches labels
     scenarios: ios/scenarios-noax
     # Same `ios/scenarios-noax` suite as showcase-swiftui-noax — the label/visible-text twin of the
     # shared `scenarios/` flows, run over XCUITest. The UIKit `-noax` app renders the identical visible
     # mirror strings (AppModel + *Controller labels), so the one suite drives both `-noax` toolkits.
-    # XCUITest backend (BE-0019) stays wired for explicit `--backend xcuitest`: the generic runner
-    # drives the -noax UITabBar tabs by label, which idb's describe-all collapses into an opaque group.
+    # XCUITest drives the -noax UITabBar tabs by label — a coordinate backend collapsed them into one
+    # opaque group (BE-0290 retired idb, which hit that limit).
     xcuitest:
       testRunner: ../../BajutsuKit/Runner/build/dd/Build/Products/BajutsuRunner.xctestrun
       build: make runner-build

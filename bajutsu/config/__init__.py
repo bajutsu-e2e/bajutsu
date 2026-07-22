@@ -11,7 +11,6 @@ from __future__ import annotations
 
 from bajutsu.config.accessors import (
     android_package,
-    idb_version_pin,
     ios_bundle_id,
     require_android,
     require_ios,
@@ -75,7 +74,6 @@ __all__ = [
     "WebConfig",
     "XcuitestConfig",
     "android_package",
-    "idb_version_pin",
     "ios_bundle_id",
     "load_config",
     "parse_config_dict",

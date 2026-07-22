@@ -19,7 +19,7 @@ web-deps:
 	cd $(ROOT) && uv sync --extra web && uv run playwright install chromium
 
 # Launch the serve Web UI under test for manual poking. We start serve directly (not `make serve`,
-# which installs the idb companion) because the dogfood is web-only — no iOS actuator is involved.
+# which installs the iOS backend deps) because the dogfood is web-only — no iOS actuator is involved.
 # Ctrl-C to stop. --root confines the in-UI file browser to this directory; --runs points at the
 # committed crawl-history fixture so the Crawl History tab shows the past run the dogfood reopens.
 serve-ui:

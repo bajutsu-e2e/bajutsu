@@ -5,18 +5,19 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from bajutsu import preflight
-from bajutsu.idb_version import IdbVersions
 
 
 def _which(present: set[str]) -> Callable[[str], str | None]:
     return lambda exe: f"/usr/bin/{exe}" if exe in present else None
 
 
-def test_config_checks_idb_requires_bundle_id() -> None:
-    ok = preflight.config_checks("idb", target="demo", bundle_id="com.example.demo", base_url=None)
+def test_config_checks_ios_requires_bundle_id() -> None:
+    ok = preflight.config_checks(
+        "xcuitest", target="demo", bundle_id="com.example.demo", base_url=None
+    )
     assert [c.name for c in ok] == ["target bundleId"] and preflight.passed(ok)
 
-    missing = preflight.config_checks("idb", target="demo", bundle_id="", base_url=None)
+    missing = preflight.config_checks("xcuitest", target="demo", bundle_id="", base_url=None)
     assert not preflight.passed(missing)
     assert "set targets.demo.bundleId" in missing[0].detail
 
@@ -34,29 +35,6 @@ def test_config_checks_web_requires_base_url() -> None:
 
 def test_config_checks_fake_needs_nothing() -> None:
     assert preflight.config_checks("fake", target="t", bundle_id="", base_url=None) == []
-
-
-def test_idb_all_present_passes() -> None:
-    checks = preflight.runnability(
-        "idb", which=_which({"xcrun", "idb", "idb_companion"}), booted_count=lambda: 1
-    )
-    assert [c.name for c in checks] == ["xcrun", "idb", "idb_companion", "Simulator booted"]
-    assert preflight.passed(checks)
-
-
-def test_missing_companion_fails_with_hint() -> None:
-    checks = preflight.runnability("idb", which=_which({"xcrun", "idb"}), booted_count=lambda: 1)
-    assert not preflight.passed(checks)
-    companion = next(c for c in checks if c.name == "idb_companion")
-    assert not companion.ok and "brew install" in companion.detail
-
-
-def test_no_booted_simulator_fails() -> None:
-    checks = preflight.runnability(
-        "idb", which=_which({"xcrun", "idb", "idb_companion"}), booted_count=lambda: 0
-    )
-    assert not preflight.passed(checks)
-    assert not next(c for c in checks if c.name == "Simulator booted").ok
 
 
 def test_fake_backend_needs_nothing() -> None:
@@ -114,28 +92,15 @@ def test_web_missing_browser_fails_with_hint() -> None:
     assert not browser.ok and "playwright install firefox" in browser.detail
 
 
-def test_idb_version_check_skipped_when_no_pin() -> None:
-    # No declared range → no line in doctor (the pin is optional).
-    assert preflight.idb_version_check(None, IdbVersions(companion="1.1.8", client="1.1.8")) is None
+# --- iOS (xcuitest) — the sole iOS backend since BE-0290 ---
 
 
-def test_idb_version_check_passes_when_in_range() -> None:
-    check = preflight.idb_version_check(">=1.1.8", IdbVersions(companion="1.2.0", client=None))
-    assert check is not None and check.ok
-    assert "1.2.0" in check.detail and ">=1.1.8" in check.detail
-
-
-def test_idb_version_check_fails_below_range() -> None:
-    check = preflight.idb_version_check(">=1.1.8", IdbVersions(companion="1.1.7", client=None))
-    assert check is not None and not check.ok
-    assert "1.1.7" in check.detail and ">=1.1.8" in check.detail
-
-
-def test_idb_version_check_fails_when_companion_unknown() -> None:
-    # idb_companion not found / unreadable: can't confirm the pin, so report not-ok, don't guess.
-    check = preflight.idb_version_check(">=1.1.8", IdbVersions(companion=None, client=None))
-    assert check is not None and not check.ok
-    assert "unknown" in check.detail
+def test_xcuitest_all_present_passes() -> None:
+    checks = preflight.runnability(
+        "xcuitest", which=_which({"xcrun", "xcodebuild"}), booted_count=lambda: 1
+    )
+    assert [c.name for c in checks] == ["xcrun", "xcodebuild", "Simulator booted"]
+    assert preflight.passed(checks)
 
 
 def test_xcuitest_needs_xcrun_and_xcodebuild() -> None:
@@ -146,30 +111,19 @@ def test_xcuitest_needs_xcrun_and_xcodebuild() -> None:
     assert preflight.passed(checks)
 
 
-def test_xcuitest_doctor_includes_idb_tools() -> None:
-    # doctor falls back to idb for the screen query, so both xcuitest and idb tools must be checked.
-    # Simulate the merge that doctor() does.
-    xcuitest_checks = preflight.runnability(
-        "xcuitest", which=_which({"xcrun", "xcodebuild"}), booted_count=lambda: 1
-    )
-    idb_checks = preflight.runnability(
-        "idb", which=_which({"xcrun", "idb", "idb_companion"}), booted_count=lambda: 1
-    )
-    seen = {c.name for c in xcuitest_checks}
-    merged = xcuitest_checks + [c for c in idb_checks if c.name not in seen]
-    names = [c.name for c in merged]
-    assert "xcodebuild" in names
-    assert "idb" in names
-    assert "idb_companion" in names
-    assert names.count("xcrun") == 1  # deduped
-    assert names.count("Simulator booted") == 1  # deduped
-
-
 def test_xcuitest_missing_xcodebuild_fails() -> None:
     checks = preflight.runnability("xcuitest", which=_which({"xcrun"}), booted_count=lambda: 1)
     assert not preflight.passed(checks)
     xcodebuild = next(c for c in checks if c.name == "xcodebuild")
     assert not xcodebuild.ok and "Xcode" in xcodebuild.detail
+
+
+def test_no_booted_simulator_fails() -> None:
+    checks = preflight.runnability(
+        "xcuitest", which=_which({"xcrun", "xcodebuild"}), booted_count=lambda: 0
+    )
+    assert not preflight.passed(checks)
+    assert not next(c for c in checks if c.name == "Simulator booted").ok
 
 
 # --- Android (adb) ---
@@ -200,73 +154,23 @@ def test_adb_missing_binary_or_device_fails() -> None:
 
 def test_render_marks_pass_and_fail() -> None:
     out = preflight.render(
-        preflight.runnability("idb", which=_which({"xcrun"}), booted_count=lambda: 0)
+        preflight.runnability("xcuitest", which=_which({"xcrun"}), booted_count=lambda: 0)
     )
-    assert "✓ xcrun" in out and "✗ idb" in out
+    assert "✓ xcrun" in out and "✗ xcodebuild" in out
 
 
 # --- shared doctor environment-check assembly (BE-0199) ---
 
 
-def test_doctor_environment_checks_xcuitest_merges_idb_tools() -> None:
-    # The shared assembly the CLI and serve both call must merge idb's tools into the xcuitest set
-    # (doctor falls back to idb for the screen query), deduping the shared checks.
+def test_doctor_environment_checks_is_the_runnability_set() -> None:
+    # iOS is a single actuator (BE-0290), so there is no cheaper actuator to merge and no version
+    # pin to report — the shared assembly is just the backend's runnability checks, the same for CLI and serve.
+    which = _which({"xcrun", "xcodebuild"})
     checks = preflight.doctor_environment_checks(
-        "xcuitest",
-        booted_count=lambda: 1,
-        web_engine="chromium",
-        ios_pin=None,
-        which=_which({"xcrun", "xcodebuild", "idb", "idb_companion"}),
+        "xcuitest", booted_count=lambda: 1, web_engine="chromium", which=which
+    )
+    assert checks == preflight.runnability(
+        "xcuitest", which=which, booted_count=lambda: 1, web_engine="chromium"
     )
     names = [c.name for c in checks]
-    assert "xcodebuild" in names and "idb" in names and "idb_companion" in names
-    assert names.count("xcrun") == 1 and names.count("Simulator booted") == 1
-
-
-def test_doctor_environment_checks_appends_idb_version_pin() -> None:
-    # A declared pin is reported against the installed companion when the companion is present.
-    checks = preflight.doctor_environment_checks(
-        "idb",
-        booted_count=lambda: 1,
-        web_engine="chromium",
-        ios_pin=">=1.1.8",
-        which=_which({"xcrun", "idb", "idb_companion"}),
-        idb_probe=lambda: IdbVersions(companion="1.2.0", client=None),
-    )
-    version = next(c for c in checks if c.name == "idb_companion version")
-    assert version.ok and "1.2.0" in version.detail
-
-
-def test_doctor_environment_checks_skips_pin_when_companion_absent() -> None:
-    # No companion → runnability already reports it; probing the version would only add a redundant
-    # "installed unknown" line and spawn a doomed subprocess, so the pin check is skipped.
-    probed = False
-
-    def probe() -> IdbVersions:
-        nonlocal probed
-        probed = True
-        return IdbVersions(companion=None, client=None)
-
-    checks = preflight.doctor_environment_checks(
-        "idb",
-        booted_count=lambda: 1,
-        web_engine="chromium",
-        ios_pin=">=1.1.8",
-        which=_which({"xcrun", "idb"}),  # no idb_companion
-        idb_probe=probe,
-    )
-    assert not any(c.name == "idb_companion version" for c in checks)
-    assert not probed  # never even probed the version
-
-
-def test_doctor_environment_checks_skips_pin_for_non_idb_backend() -> None:
-    # The pin is an idb concern; xcuitest merges idb tools but does not add the version line.
-    checks = preflight.doctor_environment_checks(
-        "xcuitest",
-        booted_count=lambda: 1,
-        web_engine="chromium",
-        ios_pin=">=1.1.8",
-        which=_which({"xcrun", "xcodebuild", "idb", "idb_companion"}),
-        idb_probe=lambda: IdbVersions(companion="1.2.0", client=None),
-    )
-    assert not any(c.name == "idb_companion version" for c in checks)
+    assert "xcodebuild" in names and "Simulator booted" in names

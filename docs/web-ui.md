@@ -31,7 +31,8 @@ list, the [CLI reference](cli.md) is the source of truth.
 
 In a repository checkout, start the server with `make serve` — the one-step path. `make serve`
 ([`scripts/serve.sh`](https://github.com/bajutsu-e2e/bajutsu/blob/main/scripts/serve.sh)) provisions
-the iOS backend's on-demand dependencies (the idb client and `idb_companion`) and then runs the
+the configured backend's on-demand dependencies (for an iOS target, the XCUITest runner via
+`make -C demos/showcase runner-build`, on top of Xcode's `xcodebuild`) and then runs the
 server; without them, iOS runs fail with `no available actuator`. Pass flags through `ARGS`:
 
 ```bash
@@ -45,7 +46,7 @@ The showcase app needs the showcase config, since the repository has no root
 Under the hood `make serve` runs `python -m bajutsu serve` — the `bajutsu serve` command the
 [CLI reference](cli.md#serve) documents. If you installed Bajutsu outside a checkout (so there is no
 `make`), run `bajutsu serve` (or `python -m bajutsu serve`) directly; you are then responsible for
-the backend's dependencies yourself — the idb client and `idb_companion` for an iOS target (a web /
+the backend's dependencies yourself — the XCUITest runner (and Xcode) for an iOS target (a web /
 Playwright target does not need them). Either way the server does not open a browser for you: it
 binds `127.0.0.1`, so once it is running, open the printed URL yourself (`http://127.0.0.1:8765` by
 default, or the `--port` you passed). The full option list — `--port`, `--config`, `--root`,
@@ -65,7 +66,7 @@ and a **View** button to inspect it — see below), **Settings**, and a theme pi
 follows your system by default. Each tab is a full screen of its own; switching tabs never discards
 what another tab was doing.
 
-Some forms change with the backend. Against the iOS Simulator (idb) you see a **Device** picker,
+Some forms change with the backend. Against the iOS Simulator (XCUITest) you see a **Device** picker,
 a **Simulators** multi-select, and an **erase device first** option; against a web target (Playwright
 / Chromium) those give way to a **show browser (headed)** option. The rest of each tab is the same
 across backends. The **Replay** tab also carries a **History** list of past runs (see below).

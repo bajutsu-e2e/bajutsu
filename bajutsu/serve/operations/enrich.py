@@ -71,23 +71,23 @@ def start_enrich(
     if err:
         return err
     # An explicit body `backend` is passed through as-is: a single actuator stays a hard pin, while
-    # a platform token like `ios` is still cost-ordered by the selector (idb over the alias head
-    # XCUITest); otherwise the target's full backend list is used, cost-ordered the same way (BE-0267).
+    # a platform token like `ios` is still cost-ordered by the selector; otherwise the target's full
+    # backend list is used, cost-ordered the same way (BE-0267).
     backends_list = [backend] if backend else list(target_cfg.backend or config.defaults.backend)
     if not udid:
         udid = "booted"
 
     factory = driver_factory or _default_driver_factory
-    driver = factory(target, backends_list, udid)
+    driver, teardown = factory(resolve(config, target), backends_list, udid)
 
     from bajutsu.agents.enrich import enrich
 
     try:
         proposal = enrich(driver, matched, agent, with_screenshot=False)
     finally:
-        close = getattr(driver, "close", None)
-        if callable(close):
-            close()
+        # Tears down whatever backs the driver — for XCUITest the `xcodebuild` runner subprocess,
+        # which a plain `close()` would leave running (BE-0290).
+        teardown()
 
     return {
         "ok": True,

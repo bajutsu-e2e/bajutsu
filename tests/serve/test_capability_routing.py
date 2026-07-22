@@ -49,15 +49,15 @@ def test_ipad_job_never_offered_to_an_iphone_only_worker() -> None:
     assert leased is not None and leased.id == "ipad-job"
 
 
-def test_web_and_idb_jobs_never_cross() -> None:
+def test_web_and_ios_jobs_never_cross() -> None:
     repo = _repo()
     repo.enqueue_job("web-job", "o", {}, capabilities=["platform:web"])
-    repo.enqueue_job("idb-job", "o", {}, capabilities=["platform:ios"])
-    # The web worker gets the web job, never the idb one.
+    repo.enqueue_job("ios-job", "o", {}, capabilities=["platform:ios"])
+    # The web worker gets the web job, never the iOS one.
     web = repo.lease_job("web-worker", ["platform:web"])
     assert web is not None and web.id == "web-job"
-    idb = repo.lease_job("mac-worker", ["platform:ios"])
-    assert idb is not None and idb.id == "idb-job"
+    ios = repo.lease_job("mac-worker", ["platform:ios"])
+    assert ios is not None and ios.id == "ios-job"
 
 
 def test_lease_skips_an_unservable_older_job_for_a_servable_younger_one() -> None:

@@ -109,11 +109,8 @@ _PLATFORM_IDENTIFIER: dict[str, tuple[str, str]] = {
 }
 
 
-def _platform_config(platform: str, a: TargetConfig, d: Defaults) -> PlatformConfig:
-    """Build the platform-specific sub-config for the resolved platform (BE-0126).
-
-    iOS knobs come from the target except `idb_version`, an environment-level default (BE-0005).
-    """
+def _platform_config(platform: str, a: TargetConfig) -> PlatformConfig:
+    """Build the platform-specific sub-config for the resolved platform (BE-0126)."""
     if platform == "web":
         return WebConfig(
             base_url=a.base_url,
@@ -134,7 +131,6 @@ def _platform_config(platform: str, a: TargetConfig, d: Defaults) -> PlatformCon
         app_path=a.app_path,
         build=a.build,
         xcuitest=a.xcuitest,
-        idb_version=d.idb_version,
     )
 
 
@@ -147,7 +143,7 @@ def resolve(config: Config, target: str) -> Effective:
     backend = a.backend or d.backend
     return Effective(
         target=target,
-        platform_config=_platform_config(_effective_platform(a, d, backend), a, d),
+        platform_config=_platform_config(_effective_platform(a, d, backend), a),
         launch_server=a.launch_server,
         ready_when=a.ready_when,
         backend=backend,

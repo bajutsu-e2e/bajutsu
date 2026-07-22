@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from bajutsu.config import load_config
+from bajutsu.config import load_config, resolve
 from bajutsu.evidence.redaction import Redactor
 from bajutsu.serve.operations._common import (
     _default_driver_factory,
@@ -50,40 +50,49 @@ def start_capture(
     if err:
         return err
     # An explicit body `backend` is passed through as-is: a single actuator stays a hard pin, while
-    # a platform token like `ios` is still cost-ordered by the selector (idb over the alias head
-    # XCUITest); otherwise the target's full backend list is used, cost-ordered the same way (BE-0267).
+    # a platform token like `ios` is still cost-ordered by the selector; otherwise the target's full
+    # backend list is used, cost-ordered the same way (BE-0267).
     backends_list = [backend] if backend else list(target_cfg.backend or config.defaults.backend)
     if not udid:
         udid = "booted"
 
     factory = driver_factory or _default_driver_factory
-    driver = factory(target, backends_list, udid)
-    elements = driver.query()
+    driver, teardown = factory(resolve(config, target), backends_list, udid)
+    # From bring-up until the session owns `teardown`, a failed query/screenshot (a real failure mode
+    # for a freshly-launched XCUITest runner) must still stop the runner — otherwise the `xcodebuild`
+    # subprocess leaks, the very thing BE-0290 set out to prevent. Once the CaptureSession is stored,
+    # ownership passes to it (finish_capture / close_capture tear it down), so the guard ends there.
+    try:
+        elements = driver.query()
 
-    from bajutsu.elements import screen_size_from_elements
+        from bajutsu.elements import screen_size_from_elements
 
-    screen_size = screen_size_from_elements(elements)
-    namespaces: list[str] = list(target_cfg.id_namespaces)
+        screen_size = screen_size_from_elements(elements)
+        namespaces: list[str] = list(target_cfg.id_namespaces)
 
-    # Deliberately outside the `ArtifactStore` seam (BE-0258): a capture session is a live,
-    # in-process object whose driver and HTTP handler share the same process for its lifetime,
-    # not a stored run, so `state.runs_dir` (always local to whichever host holds the live
-    # driver) stays correct here even when `state.artifacts` is an object-storage-backed store.
-    shot_dir = state.runs_dir / "_capture"
-    shot_dir.mkdir(parents=True, exist_ok=True)
-    shot_path = shot_dir / "screen.png"
-    driver.screenshot(str(shot_path))
+        # Deliberately outside the `ArtifactStore` seam (BE-0258): a capture session is a live,
+        # in-process object whose driver and HTTP handler share the same process for its lifetime,
+        # not a stored run, so `state.runs_dir` (always local to whichever host holds the live
+        # driver) stays correct here even when `state.artifacts` is an object-storage-backed store.
+        shot_dir = state.runs_dir / "_capture"
+        shot_dir.mkdir(parents=True, exist_ok=True)
+        shot_path = shot_dir / "screen.png"
+        driver.screenshot(str(shot_path))
 
-    state.capture = CaptureSession(
-        driver=driver,
-        target=target,
-        elements=elements,
-        screen_size=screen_size,
-        namespaces=namespaces,
-        redactor=redactor,
-        actor=actor,
-        screenshot_path=shot_path,
-    )
+        state.capture = CaptureSession(
+            driver=driver,
+            target=target,
+            elements=elements,
+            screen_size=screen_size,
+            namespaces=namespaces,
+            redactor=redactor,
+            actor=actor,
+            screenshot_path=shot_path,
+            teardown=teardown,
+        )
+    except Exception:
+        teardown()  # stop the runner (BE-0290); the session never took ownership
+        raise
     return {"ok": True, "screenSize": list(screen_size)}, 200
 
 
@@ -194,6 +203,7 @@ def finish_capture(
 
     org, forbidden = _resolve_org_or_forbid(state, session.target, actor)
     if forbidden:
+        session.teardown()  # release the driver's runner even on the forbidden path (BE-0290)
         state.capture = None
         return forbidden
 
@@ -201,16 +211,21 @@ def finish_capture(
     from bajutsu.scenario.serialize import dump_scenario_file
 
     scenario = Scenario(name="captured", steps=list(session.steps))
-    yaml_text = dump_scenario_file([scenario])
-
     scope = state.for_org(org).scenarios.scope(session.target)
     saved: str | None = None
-    if scope is not None:
-        authored = scope.authored("captured")
-        ref = authored.save[1] if authored.save else authored.out
-        saved = scope.save(ref, yaml_text)
-
-    state.capture = None
+    # The serialize + save below does disk / object-storage I/O that can raise (disk full, storage
+    # error, a serialization edge). Run the teardown and session drop in `finally` so a failed save
+    # still stops the runner and clears `state.capture` — otherwise the runner leaks and the orphaned
+    # session blocks (or is silently overwritten by) the next start_capture (BE-0290).
+    try:
+        yaml_text = dump_scenario_file([scenario])
+        if scope is not None:
+            authored = scope.authored("captured")
+            ref = authored.save[1] if authored.save else authored.out
+            saved = scope.save(ref, yaml_text)
+    finally:
+        session.teardown()  # stop the driver's runner subprocess before dropping the session (BE-0290)
+        state.capture = None
     return {"ok": True, "path": saved, "yaml": yaml_text}, 200
 
 
@@ -247,11 +262,13 @@ def close_capture(
     """End a live session without saving a scenario — the live Edit picker's teardown (BE-0262).
 
     finish_capture is save-and-close; this is the close half, for a picking session that produced no
-    scenario to persist. Teardown mirrors finish's (drop the session; the driver is released with it,
-    as the Driver protocol has no generic quit), so a live Edit session cannot leak a driver.
+    scenario to persist. Teardown mirrors finish's: run the session's teardown (stopping the driver's
+    runner, BE-0290) and drop it, so a live Edit session cannot leak a driver or its runner.
     """
-    _session, err = _active_session(state, actor)
+    session, err = _active_session(state, actor)
     if err:
         return err
+    if session is not None:
+        session.teardown()
     state.capture = None
     return {"ok": True}, 200

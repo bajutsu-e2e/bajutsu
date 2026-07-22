@@ -33,7 +33,7 @@ const val CONFORMANCE_FIELD_ID = "conformance.field"
 // identifiers — duplicated (an ambiguous selector), empty (a zero-match), or unique — and each
 // becomes one clickable, gestureable element carrying that identifier as its resource-id (via
 // testTag) and as its visible label. That drives the adb driver through the *same* backend-agnostic
-// contract (tests/driver_conformance.py) as FakeDriver, Playwright, idb, and XCUITest, against the
+// contract (tests/driver_conformance.py) as FakeDriver, Playwright, and XCUITest, against the
 // driver's real query / act code rather than the shared base alone. Reached only when the
 // SHOWCASE_CONFORMANCE launch env is set (see AppModel / RootScreen), so the normal observe-only app
 // (BE-0079) is untouched; the suite reseeds the screen by re-launching with a new SHOWCASE_CONFORMANCE

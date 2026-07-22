@@ -1,15 +1,14 @@
 """Backend selection and driver construction.
 
 A backend token names either a **platform** (`ios` / `android` / `web` / `fake`) or a
-concrete **actuator** (e.g. `idb`). A platform expands to its actuators in stability order;
+concrete **actuator** (e.g. `xcuitest`). A platform expands to its actuators in stability order;
 the chosen actuator is the first one that is implemented and available in this environment.
 
-So `--backend ios` (or `backend: [ios]` in config) resolves to `xcuitest` when available,
-falling back to `idb` — without the scenario or config changing. A platform not yet backed by
-any actuator (declared in `KNOWN_ACTUATORS` but not `IMPLEMENTED`, e.g. a future Flutter
-bridge) can still be requested; it fails with a clear "not implemented yet" instead of a
-generic error. Unknown tokens are skipped (forward-compat: an older build can run a config
-that lists a future backend).
+So `--backend ios` (or `backend: [ios]` in config) resolves to `xcuitest` — without the scenario
+or config changing. A platform not yet backed by any actuator (declared in `KNOWN_ACTUATORS` but
+not `IMPLEMENTED`, e.g. a future Flutter bridge) can still be requested; it fails with a clear
+"not implemented yet" instead of a generic error. Unknown tokens are skipped (forward-compat: an
+older build can run a config that lists a future backend).
 
 See `docs/vision.md` for the per-platform actuator/environment/id design.
 """
@@ -23,7 +22,6 @@ from typing import TYPE_CHECKING
 
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.drivers.idb import IdbDriver
 
 if TYPE_CHECKING:
     from bajutsu.config import Effective
@@ -32,7 +30,7 @@ if TYPE_CHECKING:
 # Platform token -> its actuators, most-stable-first. `--backend` / config `backend` accept
 # either a platform token (these keys) or a bare actuator name (the values below).
 PLATFORMS: dict[str, tuple[str, ...]] = {
-    "ios": ("xcuitest", "idb"),  # XCUITest preferred, idb fallback (BE-0019)
+    "ios": ("xcuitest",),  # XCUITest is the sole iOS backend (BE-0290; idb retired)
     "android": ("adb",),
     "web": ("playwright",),
     "fake": ("fake",),
@@ -44,10 +42,9 @@ PLATFORMS: dict[str, tuple[str, ...]] = {
 # than a `reversed(PLATFORMS[...])`: a future platform with 3+ actuators need not have the two be
 # exact reverses. Only platforms whose cost order differs from their stability order need an entry;
 # `select_actuator_for_scenario` falls back to the resolved order for any platform absent here.
-# For iOS, idb (no Xcode toolchain, no per-lease runner) is cheapest; XCUITest is the escalation.
-COST_ORDER: dict[str, tuple[str, ...]] = {
-    "ios": ("idb", "xcuitest"),
-}
+# Empty since BE-0290 retired idb: iOS now has one actuator, so no platform's cost order differs
+# from its stability order. A future multi-actuator platform re-populates this table.
+COST_ORDER: dict[str, tuple[str, ...]] = {}
 
 # Every actuator the registry knows about (implemented or planned), de-duplicated in order.
 KNOWN_ACTUATORS: tuple[str, ...] = tuple(
@@ -56,11 +53,12 @@ KNOWN_ACTUATORS: tuple[str, ...] = tuple(
 
 # Actuators with a driver today. Requesting a planned-but-absent one gives a
 # "not implemented yet" error instead of a generic failure.
-IMPLEMENTED: frozenset[str] = frozenset({"idb", "fake", "playwright", "xcuitest", "adb"})
+IMPLEMENTED: frozenset[str] = frozenset({"fake", "playwright", "xcuitest", "adb"})
 
 # Which executable backs each actuator (the coarse availability check). `fake` needs none;
-# `playwright` is a Python package (probed by import), not a PATH executable.
-_EXECUTABLE = {"idb": "idb", "adb": "adb"}
+# `playwright` is a Python package (probed by import), not a PATH executable; `xcuitest` is gated
+# on `xcodebuild` in `default_available`.
+_EXECUTABLE = {"adb": "adb"}
 
 
 def _playwright_available() -> bool:
@@ -124,14 +122,14 @@ def ensure_web_runtime(backends: list[str], browser: str = "chromium") -> None:
     """Provision the web backend (and the requested engine) on demand.
 
     When a `web`/`playwright` backend is requested but the Playwright package is absent
-    (e.g. the venv currently carries the idb extra, as after `make serve`), install it
-    *additively* — `uv pip install` so it doesn't evict idb. Then, whether or not the package was
-    just added, install the engine this run needs (`playwright install <browser>`). `playwright
-    install` is idempotent — a present browser is a fast no-op and a missing one is fetched — so a
-    `firefox` / `webkit` run pulls its binary on first use without disturbing Chromium (BE-0076).
+    (e.g. the venv carries only the base install), install it *additively* — `uv pip install` so it
+    doesn't evict another backend's extra. Then, whether or not the package was just added, install
+    the engine this run needs (`playwright install <browser>`). `playwright install` is idempotent —
+    a present browser is a fast no-op and a missing one is fetched — so a `firefox` / `webkit` run
+    pulls its binary on first use without disturbing Chromium (BE-0076).
 
-    A no-op unless web is requested; mirrors how `make serve` provisions idb on demand. The
-    deterministic run/CI gate drives the fake backend and never reaches this.
+    A no-op unless web is requested; mirrors how `make serve` provisions a backend's deps on demand.
+    The deterministic run/CI gate drives the fake backend and never reaches this.
     """
     if "playwright" not in resolve_actuators(backends):
         return
@@ -161,12 +159,10 @@ def ensure_web_runtime(backends: list[str], browser: str = "chromium") -> None:
 def capabilities_for(actuator: str) -> frozenset[str]:
     """The static capability set a backend advertises.
 
-    Read without constructing a driver, so the preflight (BE-0082) needs no device (idb)
+    Read without constructing a driver, so the preflight (BE-0082) needs no device (Simulator)
     or browser (playwright). Same source as `Driver.capabilities()`: each driver's
     `CAPABILITIES` class constant.
     """
-    if actuator == "idb":
-        return IdbDriver.CAPABILITIES
     if actuator == "fake":
         return FakeDriver.CAPABILITIES
     if actuator == "playwright":
@@ -176,8 +172,8 @@ def capabilities_for(actuator: str) -> frozenset[str]:
 
         return PlaywrightDriver.CAPABILITIES
     if actuator == "xcuitest":
-        # The richer iOS actuator's capabilities are readable before its runner is wired into
-        # selection (BE-0019): reading the class constant constructs no driver and starts no runner.
+        # The iOS actuator's capabilities are readable without bringing its runner up: reading the
+        # class constant constructs no driver and starts no runner.
         from bajutsu.drivers.xcuitest import XcuitestDriver
 
         return XcuitestDriver.CAPABILITIES
@@ -280,8 +276,9 @@ def select_actuator_cost_first(
 
     A live serve capture/enrich session drives one device and needs no capability escalation — only
     the cheapest actuator it can actually bring up. This is `select_actuator_for_scenario` without
-    the scenario: cost order (cheapest first) over the resolved candidates, first available wins, so
-    `[ios]` selects idb (no runner) rather than the alias head XCUITest (which serve never starts).
+    the scenario: cost order (cheapest first) over the resolved candidates, first available wins. With
+    `COST_ORDER` empty (BE-0290 retired idb, so no platform has a cost order differing from stability),
+    this now returns the first available candidate in the resolved order — `[ios]` selects XCUITest.
 
     A single resolved candidate is a hard pin: it delegates to `select_actuator`, keeping its
     planned/absent diagnostics and any explicit-actuator error (e.g. XCUITest's runner requirement),
@@ -309,7 +306,9 @@ def select_actuator_for_scenario(
     An explicit single-actuator request (or a single-actuator platform) is a hard pin with no
     capability escalation, exactly like `select_actuator` and consistent with `--backend <one>`
     behaving like `--udid` (DESIGN §3.3): this scenario-aware selection only activates when the
-    requested backends resolve to more than one candidate (`backend: [ios]` / `[idb, xcuitest]`).
+    requested backends resolve to more than one candidate. Since BE-0290 retired idb, iOS is a single
+    actuator and always takes the hard-pin path; the escalation logic stays for a future
+    multi-actuator platform (`backend: [<a>, <b>]`).
 
     When candidates are available but none is sufficient, the **richest** available one is returned
     so the caller's preflight fails it with the fewest-gap (most informative) reasons; when none is
@@ -344,8 +343,6 @@ def make_driver(
     The adb backend reads through `fetch_hierarchy` (the resident-server channel, BE-0245) when one is
     supplied, else via `uiautomator dump`; every other actuator ignores it.
     """
-    if actuator == "idb":
-        return IdbDriver(udid)
     if actuator == "adb":
         from bajutsu.drivers.adb import AdbDriver
 
@@ -391,7 +388,7 @@ def _platform_of(actuator: str, platforms: dict[str, tuple[str, ...]]) -> str | 
 
 
 def platform_of(actuator: str) -> str | None:
-    """The platform an actuator belongs to (`idb` -> `ios`, `playwright` -> `web`), or None if unknown.
+    """The platform an actuator belongs to (`xcuitest` -> `ios`, `playwright` -> `web`), or None if unknown.
 
     Lets config derive a target's platform from its backend (BE-0009 Slice 4).
     """
@@ -409,7 +406,7 @@ def evidence_backends(
     Returns the remaining available actuators on the actuator's own platform, in `backends` order
     (deduped, the actuator excluded). Eligibility is *same system under test*: only a same-platform
     backend observes the
-    same running app, so a cross-platform token (e.g. `web` for an `idb` run) is never a provider.
+    same running app, so a cross-platform token (e.g. `web` for an iOS run) is never a provider.
     `platforms` is injectable so the resolver is unit-testable before a platform has two actuators.
     """
     platform = _platform_of(actuator, platforms)

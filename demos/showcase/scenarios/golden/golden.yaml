@@ -1,14 +1,17 @@
 # Golden element-tree assertions (BE-0006): pin the normalized representation of the Stable catalog's
 # list rows so a drift surfaces as a failing check, not a silent field regression. The Stable tab is
-# the launch tab, so every backend reaches it with no tab navigation. This one scenario runs on two
-# backends, each against its own baseline of the same name (`lists.json`) resolved from a different
-# `--goldens` dir, because each backend renders a distinct accessibility tree:
-#   - idb (iOS): the weekly idb-monitor runs it against the latest idb_companion, from the default
-#     goldens/ beside this scenario (goldens/lists.json) — the BE-0079 discharged sample's role.
+# the launch tab, so every backend reaches it with no tab navigation. This one scenario resolves a
+# baseline of the same name (`lists.json`) from a different `--goldens` dir per backend, because each
+# backend renders a distinct accessibility tree:
 #   - adb (Android): android-e2e runs it against the Compose Stable catalog with
 #     `--goldens goldens_android/` (goldens_android/lists.json), recorded on the emulator (BE-0208 unit 4).
+# The default goldens/ beside this scenario (goldens/lists.json) holds the tree recorded by the
+# retired idb backend (BE-0290) — the BE-0079 discharged sample's role. Since idb was retired the
+# `golden (xcuitest)` lane runs this scenario on XCUITest, whose tree differs field-for-field from
+# idb's, so this baseline must be re-recorded from an on-device XCUITest run (`--backend ios`) — a
+# deferred Unit 5 step, not a plain re-run.
 # The Log tab's Entry-control golden runs on XCUITest (golden_xcuitest.yaml → controls.json) since
-# SHOWCASE_TAB was retired (BE-0107) and idb can no longer reach the Log tab.
+# SHOWCASE_TAB was retired (BE-0107), so the Log tab is reached by tapping the native tab bar.
 #
 # Comparison is per-field, not whole-dict: exact for identifier / label / value, set-equal for traits,
 # and a tolerant sanity check on frame (see bajutsu/golden.py) — which is also why one adb baseline

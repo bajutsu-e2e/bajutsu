@@ -73,7 +73,7 @@ misinterpret rather than merely reject; a purely additive optional field needs n
 | `network` | object | none | `{ filter: { domains: [...] } }` — `filter.domains` scopes which observed requests are interleaved into the report's Steps timeline (by URL host; a parent domain matches subdomains). Unset shows all; the Network tab always lists them all ([reporting](reporting.md#reporthtml)) |
 | `mocks` | list | `[]` | Deterministic network stubs — a matching outgoing request gets a canned response instead of hitting the network ([network mocks](#network-mocks-deterministic-stubs)) |
 | `redact` | object | none | Masking applied before evidence is written ([evidence](evidence.md#masking-redact)) |
-| `dismissAlerts` | bool / object | none (on) | The vision **alert guard** — clears OS prompts idb cannot see. On by default; `false` disables it, `{ instruction: "tap Allow" }` keeps it on but taps a named button. CLI `--dismiss-alerts`/`--no-dismiss-alerts` overrides ([below](#dismissalerts-the-system-alert-guard)) |
+| `dismissAlerts` | bool / object | none (on) | The vision **alert guard** — clears OS prompts the iOS backend cannot see. On by default; `false` disables it, `{ instruction: "tap Allow" }` keeps it on but taps a named button. CLI `--dismiss-alerts`/`--no-dismiss-alerts` overrides ([below](#dismissalerts-the-system-alert-guard)) |
 | `permissions` | dict | `{}` | Declarative OS permission state — `{ <service>: grant \| revoke }` — applied **before the app launches** ([below](#permissions-pre-launch-permission-state)) |
 
 ```yaml
@@ -112,7 +112,7 @@ the launch sequence ([run-loop](run-loop.md#runner-the-run-pipeline)).
 
 ## dismissAlerts (the system-alert guard)
 
-idb cannot see or tap **SpringBoard-level prompts** (iOS "Save Password?", a permission request, "Allow Paste"). These prompts cover the app and collapse its element tree, silently blocking a step. The **alert guard** is a vision-based fallback (`alerts.py`): when a step is blocked, it takes a screenshot, asks Claude where to tap, clears the prompt, and retries the step once ([details](recording.md#dismissing-system-alerts-automatically)). For a `wait` step (`for`/`settled`/`screenChanged`), the guard also watches the already-polled screen and fires **mid-wait** the moment the tree looks collapsed (debounced, cooldown-limited, capped at two attempts per wait) — recovering before the wait's own timeout elapses, rather than waiting for the step to fail first (BE-0269).
+The iOS backend cannot see or tap **SpringBoard-level prompts** (iOS "Save Password?", a permission request, "Allow Paste"). These prompts cover the app and collapse its element tree, silently blocking a step. The **alert guard** is a vision-based fallback (`alerts.py`): when a step is blocked, it takes a screenshot, asks Claude where to tap, clears the prompt, and retries the step once ([details](recording.md#dismissing-system-alerts-automatically)). For a `wait` step (`for`/`settled`/`screenChanged`), the guard also watches the already-polled screen and fires **mid-wait** the moment the tree looks collapsed (debounced, cooldown-limited, capped at two attempts per wait) — recovering before the wait's own timeout elapses, rather than waiting for the step to fail first (BE-0269).
 
 It is **on by default** and fires **only when a step (or `expect`) is blocked, or — for a guarded `wait` — the polled screen looks blocked**, so a passing scenario never calls the model. It requires `ANTHROPIC_API_KEY`; without one it no-ops and the run continues unaffected. Use `dismissAlerts` to change the behavior per scenario:
 
@@ -225,8 +225,8 @@ actions in one step is a validation error (`scenario/models/steps.py` `_one_acti
 | `type` | `type: { text: "...", into?: <Selector>, submit?: <bool> }` | with `into`, focuses first |
 | `clear` | `clear: { into: <Selector> }` | focus the field and remove its entire current content; web context raises |
 | `delete` | `delete: { into: <Selector>, count: <int> }` | focus the field and delete `count` characters from the end (`count > 0`); web context raises |
-| `select` | `select: { into: <Selector>, mode?: "all" }` | focus the field and select its content (`mode` default `all`); idb / web context raise — codegen routes to XCUITest |
-| `copy` | `copy: {}` | copy the active selection to the clipboard; requires a prior `select`; idb / web context raise |
+| `select` | `select: { into: <Selector>, mode?: "all" }` | focus the field and select its content (`mode` default `all`); the web context raises — the iOS (XCUITest) backend supports it natively, and codegen emits the native equivalent |
+| `copy` | `copy: {}` | copy the active selection to the clipboard; requires a prior `select`; the web context raises — the iOS (XCUITest) backend supports it natively |
 | `selectOption` | `selectOption: { sel: <Selector>, option: "..." }` | set a web `<select>` to the option with this value; web only (iOS / Android raise) |
 | `swipe` | `swipe: { on: <Selector>, direction: up\|down\|left\|right }` or `swipe: { from: [x,y], to: [x,y] }` | selector form and coordinate form cannot mix; the directional form **scrolls** |
 | `drag` | `drag: { on: <Selector>, direction: up\|down\|left\|right, amount?: <frac> }` | a real pointer **drag** of the element (a handle / divider / slider), not a scroll |
@@ -272,11 +272,6 @@ Modifiers:
 
 > Internally, when `into` is given, the target is `tap`ped before `type_text` (`orchestrator/actions/`
 > `_do_action`).
-
-> On idb (iOS Simulator), typing non-Latin text or emoji falls back to a paste. idb's
-> hardware-keyboard path only encodes the US keyboard layout. The fallback leaves the typed text on
-> the Simulator's pasteboard. A later `clipboard` assertion in the same scenario sees that text, not
-> the prior value.
 
 ### `selectOption`
 
@@ -331,7 +326,7 @@ scrolls and moves handles, so the two coincide.
 - rotate: { sel: { id: gest.rotate }, radians: 1.57 }  # >0 clockwise (radians)
 ```
 
-`scale` must be **> 0** (a validation error otherwise). `pinch` / `rotate` require multi-touch: on the idb backend they fail with a "needs multiTouch" reason. Their primary target is the generated XCUITest (`pinch(withScale:)` / `rotate(_:)`). `doubleTap` runs on idb (two taps). (real file: [`demos/showcase/scenarios/gestures.yaml`](../demos/showcase/scenarios/gestures.yaml))
+`scale` must be **> 0** (a validation error otherwise). `pinch` / `rotate` require multi-touch, which the iOS (XCUITest) backend and the generated XCUITest (`pinch(withScale:)` / `rotate(_:)`) both provide; a backend without it fails with a "needs multiTouch" reason. `doubleTap` runs everywhere (two taps). (real file: [`demos/showcase/scenarios/gestures.yaml`](../demos/showcase/scenarios/gestures.yaml))
 
 ### `wait` (condition wait)
 
@@ -492,7 +487,7 @@ are in [selectors](selectors.md#assertion-evaluation).
 - `requestSequence` checks a list of request matchers were **observed in order** ([details below](#requestsequence-ordered-requests)); needs the `--network` run flag.
 - `responseSchema` validates a captured **response body against a JSON Schema** ([details below](#responseschema-json-schema-of-a-response)); needs the `--network` run flag.
 - `visual` pixel-compares a screenshot against a baseline image ([details below](#visual-visual-regression)).
-- `clipboard` reads the device pasteboard (`simctl pbpaste`) and checks **exactly one** of `equals` / `matches` (regex) — the read-back half of `setClipboard`, for verifying a "copy" action. It needs the per-device control channel, so it is unavailable on the fake driver / in parallel runs and fails cleanly there ([BE-0052](../roadmaps/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md)). On idb, a preceding non-Latin `type` also leaves its text there — see the `type` section above.
+- `clipboard` reads the device pasteboard (`simctl pbpaste`) and checks **exactly one** of `equals` / `matches` (regex) — the read-back half of `setClipboard`, for verifying a "copy" action. It needs the per-device control channel, so it is unavailable on the fake driver / in parallel runs and fails cleanly there ([BE-0052](../roadmaps/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md)).
 
 > **Locale caveat**: string comparisons on `label`/`value` and assertions that look at visible
 > text break under translation. Write these against config's fixed locale, and write the selector

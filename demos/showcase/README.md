@@ -53,7 +53,7 @@ gitignored.
 
 ## Run (on a booted Simulator)
 
-Prereqs: a booted Simulator, `brew install facebook/fb/idb-companion`, `uv sync --extra idb`.
+Prereqs: Xcode, a booted Simulator, and the XCUITest runner (`make -C demos/showcase runner-build`).
 
 ```bash
 # run — the shared id-based scenarios, against either a11y toolkit (same scenarios):
@@ -70,9 +70,9 @@ make -C demos/showcase record
 Or drive `bajutsu` directly, always passing this suite's config:
 
 ```bash
-bajutsu run --target showcase-swiftui --backend idb --config demos/showcase/showcase.config.yaml
+bajutsu run --target showcase-swiftui --backend ios --config demos/showcase/showcase.config.yaml
 bajutsu run --target showcase-swiftui --scenario demos/showcase/scenarios/modals.yaml \
-    --backend idb --config demos/showcase/showcase.config.yaml
+    --backend ios --config demos/showcase/showcase.config.yaml
 ```
 
 ## What's here
@@ -82,7 +82,7 @@ bajutsu run --target showcase-swiftui --scenario demos/showcase/scenarios/modals
 | [`SPEC.md`](SPEC.md) | the screen-by-screen contract (the spec) |
 | [`WEBUI.md`](WEBUI.md) | the Web UI tour — drive a Simulator from the browser, collect every evidence type |
 | [`ios/swiftui/`](ios/swiftui), [`ios/uikit/`](ios/uikit) | the two iOS codebases (xcodegen `project.yml`, two targets each) |
-| [`ios/scenarios-noax/`](ios/scenarios-noax) | the `-noax` twin of `scenarios/` — the same flows by visible label + on-screen mirror text, run over XCUITest (`--backend ios`), which idb's a11y tree can't reach |
+| [`ios/scenarios-noax/`](ios/scenarios-noax) | the `-noax` twin of `scenarios/` — the same flows by visible label + on-screen mirror text, run over XCUITest (`--backend ios`), which reaches them by label (a coordinate backend could not) |
 | [`android/`](android/) | the four Android twins (Compose × Views, BE-0007 preparation) |
 | [`showcase.config.yaml`](showcase.config.yaml) | the eight iOS + Android `targets.<name>` entries |
 | [`scenarios/`](scenarios) | shared id-based `run` scenarios (drive every a11y app, iOS and Android alike) |
@@ -96,8 +96,8 @@ shared suite cannot drive them. `ios/scenarios-noax/` is the label/visible-text 
 `scenarios/` flow, same behaviour, but every step addresses elements by their **visible label** and
 every assertion reads the on-screen **mirror `Text`** the app also renders (e.g. `Text("Segment:
 \(segment)")`, `Text(favorite ? "Favorited" : "Not favorited")`) instead of the dropped a11y value.
-It runs over XCUITest (`make -C demos/showcase run-swiftui-noax` / `run-uikit-noax`) because idb
-collapses the tab bar and cannot reach a `-noax` element by label. The same suite drives both `-noax`
+It runs over XCUITest (`make -C demos/showcase run-swiftui-noax` / `run-uikit-noax`), which reaches
+each `-noax` element by its visible label (a coordinate backend could not). The same suite drives both `-noax`
 toolkits: the visible mirror strings are identical (`AppModel` + the `*Controller`/`*View` labels).
 
 Not every `scenarios/` file has a twin, by design:

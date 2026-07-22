@@ -19,9 +19,6 @@ dependencies = [
 # is an opt-in extra, not a base dependency — the base install stays AI-free (BE-0111). Imported
 # lazily, only when a model is actually called; the import guard locks it off the default path.
 ai = ["anthropic>=0.50"]
-# The idb backend shells out to the `idb` client; idb_companion is a separate
-# `brew install facebook/fb/idb-companion`.
-idb = ["fb-idb>=1.1.0"]
 # The web backend drives a headless browser via Playwright (BE-0041). Imported lazily, only when
 # a browser is actually started — never on the default path (the import guard locks this). The
 # Chromium binary is a separate `playwright install chromium` (see demos/web), not a pip dep.
@@ -42,7 +39,10 @@ worker = []
 # control plane (`server`/`db`/`oauth`), the cloud SDKs (`cloud` — unneeded since BE-0160 made the
 # worker credential-free), and the AI SDK (`ai`, opt-in only for the authoring/investigation paths).
 worker-web = ["bajutsu[web,visual,schema]"]
-worker-idb = ["bajutsu[idb,visual,schema]"]
+# The iOS (XCUITest) worker needs no backend pip extra — `xcodebuild` is a system tool — so its
+# closure is just the run-reached `visual` / `schema` extras (idb + its `fb-idb` client retired,
+# BE-0290).
+worker-ios = ["bajutsu[visual,schema]"]
 # The hosted-backend control plane (`serve --backend=server`): the FastAPI app that serves the
 # same SPA + API over the swap-in seams. Imported only when the server backend is selected, never
 # on the default path (the import guard in tests/serve/test_import_guard.py locks this).
@@ -188,8 +188,8 @@ convention = "google"
 [tool.pytest.ini_options]
 # The two conformance suites that need a real backend stay out of the fast gate (BE-0114): `not
 # web` drops the browser-driven suite (real Chromium + the `web` extra; runs in `web-e2e.yml`,
-# `-m web`), and `not ondevice` drops the idb / XCUITest suite (a booted Simulator; runs in
-# `e2e.yml`). Deselecting by marker (not just importorskip) means each stays out even when its extra
+# `-m web`), and `not ondevice` drops the iOS (XCUITest) suite (a booted Simulator; runs in
+# `ios-e2e.yml`). Deselecting by marker (not just importorskip) means each stays out even when its extra
 # happens to be installed locally — so the gate is hermetic regardless of the venv's state.
 addopts = "-n auto -m 'not web and not ondevice'"
 markers = [
@@ -217,7 +217,6 @@ module = [
     "botocore.*",
     "google.cloud.*",
     "authlib.*",
-    "idb.*",
     "playwright.*",
     "jsonschema",
     "jsonschema.*",

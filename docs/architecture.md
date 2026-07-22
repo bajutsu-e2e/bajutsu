@@ -13,9 +13,9 @@ Related: [concepts](concepts.md) · the per-feature pages (linked below)
 
 A [scenario](glossary.md#scenario-authoring) (authored by AI or by hand) is the shared artifact. `run` replays it deterministically with no AI in the gate. `codegen` and `triage` also consume the scenario.
 Tier 1 (AI — yellow) authors and investigates only; Tier 2 (deterministic — blue) decides pass/fail from machine assertions alone.
-The whole spine is platform-neutral; the only platform-specific seam is the **backend** the orchestrator drives (idb / XCUITest for iOS, adb for Android, playwright for web, … behind one `Driver` interface), so a new platform is a new backend, not a fork of the core.
+The whole spine is platform-neutral; the only platform-specific seam is the **backend** the orchestrator drives (XCUITest for iOS, adb for Android, playwright for web, … behind one `Driver` interface), so a new platform is a new backend, not a fork of the core.
 
-![Data-flow diagram: a natural-language goal or hand edit produces a Scenario YAML; Tier 2's Orchestrator runs it deterministically through the backend-agnostic Driver API against idb, XCUITest, adb, or Playwright; the verdict feeds the Reporter and, on failure, triage, which may suggest scenario edits.](assets/diagrams/architecture-data-flow.svg)
+![Data-flow diagram: a natural-language goal or hand edit produces a Scenario YAML; Tier 2's Orchestrator runs it deterministically through the backend-agnostic Driver API against XCUITest, adb, or Playwright; the verdict feeds the Reporter and, on failure, triage, which may suggest scenario edits.](assets/diagrams/architecture-data-flow.svg)
 
 <details>
 <summary>Mermaid source</summary>
@@ -36,12 +36,10 @@ flowchart TB
     subgraph tier2["Tier 2 · Deterministic run — no AI in the CI gate"]
         orch["Orchestrator<br/>observe → act → verify"]
         driver["Backend-agnostic Driver API<br/>tap · type · swipe · wait · query · screenshot"]
-        idb["idb backend<br/>📱 iOS Simulator (simctl)"]
-        xcuitest["XCUITest backend<br/>📱 iOS (resident runner)"]
+        xcuitest["XCUITest backend<br/>📱 iOS Simulator (resident runner)"]
         adb["adb backend<br/>🤖 Android"]
         pw["playwright backend<br/>🌐 web browser"]
         orch --> driver
-        driver --> idb
         driver --> xcuitest
         driver --> adb
         driver --> pw
@@ -82,11 +80,10 @@ The `bajutsu/` package (Python 3.13+, pydantic v2 / typer / anthropic / pyyaml /
 | Module | Role | Page |
 |---|---|---|
 | `drivers/base.py` | Driver Protocol + shared types (`Element`/`Selector`/`Point`) + **selector resolution** (the determinism core) | [selectors](selectors.md) / [drivers](drivers.md) |
-| `drivers/coordinate_tree.py` | `CoordinateTreeDriver` — the shared transient-empty retry / stable-key settle / `_resolve` / `wait_for` base class the two coordinate backends (idb, adb) inherit (BE-0254) | [drivers](drivers.md#idb) |
+| `drivers/coordinate_tree.py` | `CoordinateTreeDriver` — the shared transient-empty retry / stable-key settle / `_resolve` / `wait_for` base class the coordinate backend (adb) inherits (BE-0254) | [drivers](drivers.md#adb-android) |
 | `drivers/fake.py` | In-memory `FakeDriver` (for tests without a device) | [drivers](drivers.md#fakedriver) |
-| `drivers/idb.py` | idb backend (iOS Simulator; headless, coordinate tap) | [drivers](drivers.md#idb) |
-| `drivers/xcuitest.py` | XCUITest backend (iOS; ahead of idb in the stability-order ladder — semantic tap, native condition-wait, and multi-touch via a resident on-device runner, idb the headless fallback; BE-0019) | [drivers](drivers.md#backend-selection-and-the-actuator) |
-| `drivers/adb.py` | adb backend (Android; `uiautomator dump` frame-center coordinate tap, the idb-equivalent second platform) | [drivers](drivers.md#adb-android) |
+| `drivers/xcuitest.py` | XCUITest backend (iOS; the sole iOS backend since BE-0290 retired idb — semantic tap, native condition-wait, text selection, and multi-touch via a resident on-device runner; BE-0019) | [drivers](drivers.md#xcuitest-ios) |
+| `drivers/adb.py` | adb backend (Android; `uiautomator dump` frame-center coordinate tap) | [drivers](drivers.md#adb-android) |
 | `drivers/playwright.py` | Playwright web backend (browser; first slice — deterministic run) | [drivers](drivers.md#playwright-web) |
 | `scenario/` | Scenario schema (strict pydantic validation) + YAML load / dump (package: `models` / `load` / `expand` / `select` / `serialize`) | [scenarios](scenarios.md) |
 | `assertions/` | Machine assertion evaluation (total function — never raises) (package: `evaluate` / `network` / `visual` / `schema` / `_common`, BE-0250) | [selectors](selectors.md#assertion-evaluation) |
@@ -155,7 +152,7 @@ flowchart TB
     base["drivers/base.py<br/>the determinism core (Element / Selector / resolve_unique)"]
 
     fake["drivers/fake"]
-    ios["drivers/idb · xcuitest · adb"]
+    ios["drivers/xcuitest · adb"]
     pw["drivers/playwright"]
 
     cli --> runner
@@ -193,7 +190,7 @@ flowchart TB
 
 - `orchestrator/` depends only on `base.Driver` and **is not coupled to any concrete driver**.
   That is why it can be tested with `FakeDriver` without a device, while in production the same
-  loop drives idb (iOS) or playwright (web).
+  loop drives XCUITest (iOS) or playwright (web).
 - `runner/` provides the factory that launches the app and returns a ready driver,
   decoupling the loop from a real device.
 - `scenario/` (the pydantic authoring model) and `drivers/base.py` (the runtime TypedDict)
@@ -283,7 +280,7 @@ The contract (`tests/driver_conformance.py`) is the "done" definition a new back
 To add a backend to the suite, implement a `ConformanceHarness` (given a screen, return a driver
 showing it) and subclass `DriverConformanceContract`; pytest then runs the inherited contract
 against it. `FakeDriver` runs on the fast Linux gate (`make check`); Playwright runs in the web CI
-job, idb / XCUITest under the iOS on-device E2E path (`ios-e2e.yml`), and the **adb backend** on a
+job, XCUITest under the iOS on-device E2E path (`ios-e2e.yml`), and the **adb backend** on a
 booted Android emulator (`android-e2e.yml`'s `conformance (adb)` job, BE-0270) — the same contract,
 no second spec. Each harness realizes a screen its own way: `FakeDriver` takes the elements directly,
 Playwright renders them as HTML, and the on-device harnesses launch the showcase app into conformance
@@ -311,16 +308,16 @@ device (the shared device is reseeded via one channel, so parallel workers would
 
 - Selector resolution and ambiguity detection (the determinism core)
 - Platform-aware backend registry: `--backend` / `backend:` accept `ios` / `android` / `web` /
-  `fake` tokens, each expanding to its actuators (`backends.py`) — `ios` expands to `xcuitest` and
-  `idb`. A multi-actuator platform is resolved **per scenario** in cost order (BE-0240): each
-  scenario runs on the cheapest actuator its own steps can use, escalating only where a construct
-  needs a capability the cheap one lacks
-- The **XCUITest backend** (`drivers/xcuitest.py`): the richer iOS actuator — a resident on-device
-  runner (`BajutsuKit`) driven over a loopback HTTP channel, adding semantic (identifier) tap, a
-  native condition-wait, and the `pinch`/`rotate` multi-touch gestures idb cannot perform
-  (`UnsupportedAction`). idb is the cheap per-scenario default (no Xcode toolchain, no resident
-  runner); a scenario escalates to XCUITest only when its steps need a capability idb lacks (BE-0240),
-  and XCUITest is also the sole actuator on hosts where an explicit `--backend xcuitest` is pinned
+  `fake` tokens, each expanding to its actuators (`backends.py`) — `ios` expands to `xcuitest`, the
+  sole iOS actuator since BE-0290 retired idb (`--backend ios` and `--backend xcuitest` are
+  equivalent). A platform with more than one actuator would resolve **per scenario** in cost order
+  (BE-0240); with iOS now single-actuator, no platform's cost order differs from its stability order
+- The **XCUITest backend** (`drivers/xcuitest.py`): the sole iOS actuator (BE-0290) — a resident
+  on-device runner (`BajutsuKit`) driven over a loopback HTTP channel, providing semantic
+  (identifier) tap, a native condition-wait, text selection, and the `pinch`/`rotate` multi-touch
+  gestures, and reading the XCTest automation snapshot (which descends into group containers, so it
+  renders a fully-expanded element tree). The generic runner (`XCUIApplication(bundleIdentifier:)`)
+  drives an arbitrary app by bundle id with no app-side integration; it needs Xcode's `xcodebuild`
   (BE-0019)
 - The **Playwright web backend** (`drivers/playwright.py`): a deterministic `run` against a browser
   on the Linux gate (`demos/web`), raised to the rich end of the capability model (BE-0054) — native
@@ -335,7 +332,7 @@ device (the shared device is reseeded via one channel, so parallel workers would
   the driver-supplied `driver_interval` seam) plus in-app **network capture** — `request` assertions
   over an OkHttp interceptor (`BajutsuAndroid`) reporting to the host collector, bridged to the
   emulator with `adb reverse` (BE-0283; `mocks` stay a follow-up), and
-  fast-gate unit tests over captured XML fixtures; on-device actuation parity with idb — system
+  fast-gate unit tests over captured XML fixtures; on-device actuation fidelity — system
   `back`, deeplink, a single-round-trip `doubleTap`, scroll-into-view resolution, and up-front
   runtime-permission grants (BE-0210); a device-control subset — `setLocation` and clipboard
   read/write/clear, gated by per-operation capability tokens (BE-0211 / BE-0212), the clipboard
@@ -372,7 +369,7 @@ device (the shared device is reseeded via one channel, so parallel workers would
   condition is a machine assertion), and `extract` (capture an element's value / label / identifier
   into `${vars.*}`)
 - DSL text-editing steps (BE-0265): `clear` / `delete` / `select` / `copy` close the gap left by
-  `type` on every backend (adb, Playwright, XCUITest, fake); idb and the web context raise
+  `type` on every backend (adb, Playwright, XCUITest, fake); the web context raises
   `UnsupportedAction` for `select`/`copy` (codegen routes those to XCUITest instead), and the web
   context raises for `clear`/`delete` too. A cross-step `SelectionState` enforces the
   copy-requires-a-prior-select precondition, verified only through the existing `clipboard`
@@ -388,7 +385,7 @@ device (the shared device is reseeded via one channel, so parallel workers would
   on-device): `request` assertions, `wait: { until: request }`, and offline stubbed responses
 - Reporting (`manifest.json` / `junit.xml` / `ctrf.json` / `report.html`)
 - Config resolution (defaults × targets, redact merge) and actuator selection
-- The `simctl` command layer · the idb output parser · the `doctor` score + per-backend runnability
+- The `simctl` command layer · the XCUITest automation-snapshot parser · the `doctor` score + per-backend runnability
   gate (`preflight.py`: iOS needs the required CLIs + a booted Simulator; web needs Playwright + its
   Chromium browser)
 - The `trace` command (`trace.py`): a text timeline over a saved run (steps + network + appTrace)
@@ -409,16 +406,18 @@ device (the shared device is reseeded via one channel, so parallel workers would
 
 ### Validated on a real Simulator (iPhone 17 Pro, recent iOS)
 
-- The idb backend's subprocess execution — `describe-all` parsing, frame-center tap / text /
-  swipe, and the simctl launch sequencing — confirmed against the installed `idb` /
-  `idb_companion` by running the showcase scenarios, evidence capture, and the triage self-heal
-  loop on-device (`make -C demos/showcase run-swiftui`; the `ios-e2e.yml` CI workflow also exercises the idb smoke path).
-- `back` and device control (`setLocation` / clipboard / `push`) on the idb backend, exercised
-  on-device. The `ios-e2e.yml` `actuation (idb)` job runs both per PR
+- The XCUITest backend's resident runner (`BajutsuKit`) — reading the XCTest automation snapshot,
+  element resolution by snapshot handle, semantic (identifier) tap, text / swipe, the simctl launch
+  sequencing, and the `simctl io` screenshot — confirmed against Xcode's `xcodebuild` by running the
+  showcase scenarios, evidence capture, and the triage self-heal loop on-device
+  (`make -C demos/showcase run-swiftui`; the `ios-e2e.yml` CI workflow exercises the smoke path). Since
+  [BE-0290](../roadmaps/BE-0290-xcuitest-default-ios-backend/BE-0290-xcuitest-default-ios-backend.md)
+  retired idb, XCUITest is the only iOS backend under this path.
+- `back` and device control (`setLocation` / clipboard / `push`) on the XCUITest backend, exercised
+  on-device per PR by `ios-e2e.yml`
   ([BE-0281](../roadmaps/BE-0281-ios-on-device-actuation-coverage/BE-0281-ios-on-device-actuation-coverage.md)).
-- The XCUITest backend's resident runner — element resolution by snapshot handle, semantic tap, and
-  the `pinch`/`rotate` multi-touch gestures idb cannot run — confirmed on-device via the `ios-e2e.yml`
-  `xcuitest (multi-touch)` job (`demos/showcase/scenarios/gestures_multitouch.yaml`, `--backend xcuitest`).
+- The `pinch`/`rotate` multi-touch gestures — confirmed on-device via the `ios-e2e.yml`
+  `xcuitest (multi-touch)` job (`demos/showcase/scenarios/gestures_multitouch.yaml`, `--backend ios`).
 
 ### Validated in a browser (Linux, no Mac)
 
@@ -442,10 +441,10 @@ device (the shared device is reseeded via one channel, so parallel workers would
 ### Validated on an Android emulator (Linux, no Mac)
 
 - The adb backend's subprocess execution — `uiautomator dump` parsing, frame-center tap, the
-  `AndroidEnvironment` launch sequence, actuation-fidelity parity with idb, and the `pinch`/`rotate`
+  `AndroidEnvironment` launch sequence, on-device actuation fidelity, and the `pinch`/`rotate`
   multi-touch and device-control slices — is confirmed against a booted x86_64 API 34 AVD under KVM
   (`android-e2e.yml`; BE-0208), driving both the Compose and Views showcase builds over the same
-  shared scenarios idb runs, plus a golden element-tree check and a pixel visual-regression baseline
+  shared scenarios iOS runs, plus a golden element-tree check and a pixel visual-regression baseline
   for the Compose catalog. The lane also builds the resident UI Automator server
   ([BE-0245](../roadmaps/BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server.md)),
   so those reads run over the resident channel (`GET /source` over `adb forward`, replacing the

@@ -57,12 +57,12 @@ def _write_run(
     manifest = {
         "runId": "r",
         "ok": ok,
-        "backend": "idb",
+        "backend": "xcuitest",
         "scenarios": [
             {
                 "scenario": "s",
                 "ok": ok,
-                "backend": "idb",
+                "backend": "xcuitest",
                 "steps": [
                     {
                         "index": 0,
@@ -223,7 +223,7 @@ def test_cli_triage_apply_no_fix_is_advisory(tmp_path: Path) -> None:
 
 
 def test_rerun_command_builder() -> None:
-    cmd = _rerun_command("s.yaml", "demo", "idb", "DEAD-BEEF", "cfg.yaml")
+    cmd = _rerun_command("s.yaml", "demo", "xcuitest", "DEAD-BEEF", "cfg.yaml")
     assert cmd[1:] == [
         "-m",
         "bajutsu",
@@ -236,7 +236,7 @@ def test_rerun_command_builder() -> None:
         "cfg.yaml",
         "--no-erase",
         "--backend",
-        "idb",
+        "xcuitest",
         "--udid",
         "DEAD-BEEF",
     ]
@@ -277,7 +277,7 @@ def test_cli_rerun_after_write(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
             "--target",
             "demo",
             "--backend",
-            "idb",
+            "xcuitest",
         ],
     )
     assert r.exit_code == 0

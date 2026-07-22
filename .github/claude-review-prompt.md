@@ -116,7 +116,7 @@ future maintenance cost concretely, not as a general "this could be cleaner":
   and now forces two modules to move together, a new hidden dependency, or logic that must be edited
   in two places to stay correct.
 - **A leak in the backend-agnostic `Driver` abstraction** — the deterministic core taking on
-  knowledge of a specific backend (idb / Playwright / Android). This is the "platform is a backend"
+  knowledge of a specific backend (XCUITest / Playwright / Android). This is the "platform is a backend"
   seam from `CLAUDE.md`'s "What this is" section — distinct from prime directive 3, which covers
   per-app (not per-backend) agnosticism; a leak here makes every future backend harder to add.
 - **Premature abstraction** introduced before a second caller justifies it, and **duplicated logic**

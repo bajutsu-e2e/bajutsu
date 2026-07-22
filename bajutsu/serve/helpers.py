@@ -24,7 +24,7 @@ from bajutsu.scenario import load_scenario_file
 from bajutsu.serve.capabilities import required_capabilities
 from bajutsu.serve.orgs import OrgConfig, load_serve_config
 
-# Tokens a `--backend` may name: a platform (ios/android/web/fake) or a known actuator (idb/…).
+# Tokens a `--backend` may name: a platform (ios/android/web/fake) or a known actuator (xcuitest/…).
 _VALID_BACKENDS = frozenset(PLATFORMS) | frozenset(KNOWN_ACTUATORS)
 # A run id is a single safe path segment (timestamps like 20260610-153045): alphanumeric start,
 # then [A-Za-z0-9._-]. Blocks "..", path separators, and absolute paths, so a client-supplied run
@@ -431,7 +431,7 @@ def valid_backend(backend: str) -> bool:
 def valid_udid(udid: str) -> bool:
     """Whether `udid` is a comma-list of safe device tokens (the shared `device_id` policy, e.g. a
     UUID, a serial, or `booted`), so a serve client can't pass surprising free text through to the
-    run argv — in particular a leading `-` that idb/xcrun would read as an option."""
+    run argv — in particular a leading `-` that xcrun/adb would read as an option."""
     tokens = [t.strip() for t in udid.split(",") if t.strip()]
     return bool(tokens) and all(is_valid_device_id(t) for t in tokens)
 

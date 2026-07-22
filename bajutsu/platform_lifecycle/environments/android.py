@@ -1,4 +1,4 @@
-"""The Android emulator lifecycle via `adb` (the adb backend's environment) — idb's twin."""
+"""The Android emulator lifecycle via `adb` (the adb backend's environment)."""
 
 from __future__ import annotations
 
@@ -42,7 +42,7 @@ class ResidentServerLike(Protocol):
 
 
 class AndroidEnvironment:
-    """The Android emulator lifecycle via `adb` (the adb backend's environment) — idb's twin.
+    """The Android emulator lifecycle via `adb` (the adb backend's environment).
 
     `start` runs the adb sequence — boot-readiness wait → optional APK (re)install → `pm clear` for a
     clean state (the `erase` equivalent) → `am force-stop` → runtime-permission pre-grant (`pm grant`,

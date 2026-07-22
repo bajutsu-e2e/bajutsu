@@ -82,17 +82,17 @@ easy to blur, so here is the whole relationship in one place. The source of trut
 | Term | What it is |
 |---|---|
 | **driver** | The abstract `Driver` interface (a `Protocol` in `bajutsu/drivers/base.py`) — the single platform-specific seam. Every actuator implements it. |
-| **backend** | The user-facing token accepted by `--backend` and config `backend:`. It is *either* a platform alias (`ios`) *or* a bare actuator name (`idb`). "backend" is the umbrella word for the input token; it resolves to an actuator. |
+| **backend** | The user-facing token accepted by `--backend` and config `backend:`. It is *either* a platform alias (`ios`) *or* a bare actuator name (`xcuitest`). "backend" is the umbrella word for the input token; it resolves to an actuator. |
 | **actuator** | The concrete engine that actually performs actions (tap / type / swipe / query) — what a driver implements. Selection resolves a backend token to one actuator, and the chosen actuator is fixed once at the start of a run and held for the whole run. |
 | **platform** | A coarse token naming a class of target — `ios` / `android` / `web` / `fake` — that expands to an ordered, most-stable-first list of actuators. |
 
 The `backend:` list is written most-stable-first; selection expands each token to its actuators
 and picks the first one that is both known and available on this machine. Platform → actuator, as
-wired in code today (all five actuators are in `IMPLEMENTED`):
+wired in code today (all four actuators are in `IMPLEMENTED`):
 
 | Platform | Actuator(s), most-stable-first | Availability gate |
 |---|---|---|
-| `ios` | `xcuitest`, then `idb` | `xcuitest` needs `xcodebuild`; `idb` needs the `idb` executable |
+| `ios` | `xcuitest` | needs `xcodebuild` |
 | `android` | `adb` | needs the `adb` executable |
 | `web` | `playwright` | needs the `playwright` Python package |
 | `fake` | `fake` | always available (in-memory; for tests) |
@@ -100,8 +100,8 @@ wired in code today (all five actuators are in `IMPLEMENTED`):
 > **`adb` is implemented, not planned.** The Android actuator (`adb`) is wired and in the
 > `IMPLEMENTED` set today, validated end-to-end on an emulator ([architecture → implementation
 > status](architecture.md#implementation-status), [vision → reach](vision.md#1-reach--more-platforms-and-surfaces)).
-> On iOS both `xcuitest` and `idb` are implemented; the list is most-stable-first, so `xcuitest`
-> is selected when `xcodebuild` is available and `idb` is the fallback (BE-0019).
+> On iOS, `xcuitest` is the sole actuator (`--backend ios` resolves to it); the earlier `idb`
+> backend was retired in BE-0290.
 
 See [drivers](drivers.md) for the interface and per-actuator capability differences.
 

@@ -1,7 +1,7 @@
 """Web backend (Playwright, Chromium — headless by default, headed on request).
 
 Walks the DOM into normalized Elements and acts by coordinate-clicking the resolved
-frame center — the *same* path idb uses. The browser has a native semantic click
+frame center — the same coordinate path the device backends take. The browser has a native semantic click
 (`get_by_test_id().click()`), but using it would route matching through Playwright's
 own engine and diverge from the determinism core; instead every action resolves through
 the shared `base.resolve_unique` / `find_all` against a `query()` snapshot, so a scenario
@@ -643,7 +643,7 @@ class PlaywrightDriver:
     @_wedge_guard
     def type_text(self, text: str) -> None:
         # The orchestrator taps `into` before this (see _do_type), focusing the field — same
-        # contract idb relies on, so typing always lands in the just-focused element.
+        # contract every backend relies on, so typing always lands in the just-focused element.
         self._page.keyboard.type(text)
 
     @_wedge_guard
@@ -698,7 +698,7 @@ class PlaywrightDriver:
     def wait_for(self, sel: base.Selector) -> bool:
         # Single-shot by contract (BE-0118): delegates to the shared base.default_wait_for so the
         # four backends share one body; the deadline poll lives in base.wait_until, so the timeout
-        # is honoured on Web exactly as on idb (BE-0251).
+        # is honoured on Web exactly as on the other backends (BE-0251).
         return base.default_wait_for(self, sel)
 
     @_wedge_guard

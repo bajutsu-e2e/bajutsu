@@ -46,7 +46,7 @@ SERIAL ?= booted
 # on a non-rooted device it falls back to `input tap` unchanged. Verified on a local arm64 emulator.
 #
 # The runtime-permission flow `permission` joins the lane (BE-0208 unit 6, exercising BE-0210's
-# up-front grant). This is the *same* permission.yaml the idb lane runs: the grant mechanism is in
+# up-front grant). This is the *same* permission.yaml the iOS lane runs: the grant mechanism is in
 # config, not the scenario, so one file serves both. showcase-compose grants POST_NOTIFICATIONS up
 # front (`grantPermissions` → `pm grant`), so the RequestPermission contract short-circuits to granted
 # with no dialog; the scenario's `dismissAlerts` guard therefore never fires here — no LLM, no fixed
@@ -55,7 +55,7 @@ SERIAL ?= booted
 #
 # The device-control flow `device` joins the lane (BE-0208 unit 5): it overrides the GPS location
 # (`emu geo fix`) and round-trips the clipboard, then re-asserts the settled screen. This is the *same*
-# device.yaml the idb lane runs — `setLocation` and the clipboard are advertised by every device
+# device.yaml the iOS lane runs — `setLocation` and the clipboard are advertised by every device
 # backend (clipboard via simctl on iOS, the in-app BajutsuAndroid receiver on Android, BE-0233), so one
 # file is preflight-clean on iOS and Android alike (the iOS-only `push` half lives in push.yaml). It
 # runs on the Stable launch tab, needing no tab-bar navigation. `cmd clipboard` is a no-op on-device,
@@ -120,7 +120,7 @@ views-noax-build:
 # bajutsu's launch installs it from the config's appPath — then runs each passing scenario with a
 # clean state (the default erase = `pm clear`): Compose over the full set, Views over the id-form-
 # verified subset. Not part of `make check`: it needs a booted AVD, so it is driven by
-# .github/workflows/android-e2e.yml (Linux + KVM), the Android twin of the idb and web e2e lanes.
+# .github/workflows/android-e2e.yml (Linux + KVM), the Android twin of the iOS and web e2e lanes.
 # `adb root` restarts adbd as root so the `gestures` double-tap can write /dev/input via `sendevent`
 # (the google_apis image allows it; the driver falls back to `input tap` when it cannot). `wait-for-
 # device` blocks until the restarted adbd reconnects before the first scenario runs. Both act on the
@@ -165,10 +165,10 @@ e2e-network: compose-build
 			--target showcase-compose --udid $(SERIAL) --backend android --config $(CONFIG) )
 
 # On-device golden element-tree assertion (BE-0006, BE-0208 unit 4) for the Compose a11y twin over
-# adb. This runs the *same* golden.yaml the idb lane runs; only the baseline dir differs. The adb tree
-# differs from idb's and XCUITest's (each backend renders a distinct accessibility tree), so the
+# adb. This runs the *same* golden.yaml the iOS lane runs; only the baseline dir differs. The adb tree
+# differs from XCUITest's (each backend renders a distinct accessibility tree), so the
 # Compose baseline — of the same name, lists.json — lives in its own dir,
-# demos/showcase/scenarios/golden/goldens_android/, selected with `--goldens` (the idb lane uses the
+# demos/showcase/scenarios/golden/goldens_android/, selected with `--goldens` (the iOS lane uses the
 # default goldens/ beside the scenario). The comparison is field-level with a tolerant frame check
 # (bajutsu/evidence/golden.py), so the baseline recorded on the local arm64 emulator also passes on the CI
 # x86_64 one: identity / label / traits are stable across the ABI, only the density-scaled frame
@@ -209,7 +209,7 @@ e2e-visual: compose-build
 		--target showcase-compose --udid $(SERIAL) --backend android --config $(CONFIG)
 
 # On-device driver conformance (BE-0114 / BE-0270) for the adb backend: run the *same* backend-
-# agnostic contract (tests/driver_conformance.py) the idb / XCUITest / Playwright / FakeDriver suites
+# agnostic contract (tests/driver_conformance.py) the XCUITest / Playwright / FakeDriver suites
 # run, against the Compose a11y twin. Unlike the other e2e targets this drives pytest, not the run
 # CLI, so it needs the dev group (the CI job's `uv sync` keeps it); `launch_driver` installs the APK
 # (built here) and boots the app straight into ConformanceScreen. `adb root` matches the `e2e` target:

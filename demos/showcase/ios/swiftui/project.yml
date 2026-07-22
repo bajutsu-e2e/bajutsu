@@ -72,7 +72,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.bajutsu.showcase.ios.swiftui.noax
   # Native XCUITest host for the codegen output (SPEC §5.4): `bajutsu codegen` writes
   # UITests/ComponentsUITests.swift, which runs against the a11y app via the `UITests`
-  # scheme below — no bajutsu runtime, idb, or AI at test time.
+  # scheme below — no bajutsu runtime or AI at test time.
   BajutsuShowcaseSwiftUIUITests:
     type: bundle.ui-testing
     platform: iOS

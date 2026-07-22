@@ -21,13 +21,13 @@ Every iOS demo drives the same fixture: the **showcase** suite ([`showcase/`](sh
 
 | Demo | Command | What it proves | What it needs |
 |---|---|---|---|
-| **[tour](tour/README.md)** | `make -C demos tour` | The whole lifecycle — run → modify → diagnose (`triage`) — on a real Simulator, fully deterministic | macOS + Simulator (idb auto-installs). **No API key** |
+| **[tour](tour/README.md)** | `make -C demos tour` | The whole lifecycle — run → modify → diagnose (`triage`) — on a real Simulator, fully deterministic | macOS + Xcode + Simulator. **No API key** |
 | **[features](showcase/README.md)** | `make -C demos features` | The scenario-authoring features (tags, parameterized shared steps, secrets) on a real Simulator | macOS + Simulator. **No API key** |
 | **[webui](showcase/WEBUI.md)** | `make -C demos webui` | The **Web UI** driving a Simulator and collecting every evidence type: screenshots, video, logs, network (observed + mocked), visual regression, system-alert handling | macOS + Simulator; an API key for the system-alert part only |
 | **[record](showcase/README.md)** | `make -C demos record` | AI authoring with **real Claude** against a booted app, then the modify-and-self-heal loop | macOS + Simulator + Claude (CLI or API key) |
 
 > **No Mac / Simulator?** The whole `tour` story also runs against an in-memory fake device —
-> no Simulator, idb, or API key, on Linux/CI in seconds: `uv run python demos/tour/tour.py`. See
+> no Simulator, no Xcode, or API key, on Linux/CI in seconds: `uv run python demos/tour/tour.py`. See
 > [`tour/README.md`](tour/README.md). This is the fast first look; the `make` targets above
 > are the real thing on a device.
 

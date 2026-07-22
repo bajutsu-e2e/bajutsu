@@ -18,22 +18,22 @@ import pytest
 from bajutsu.serve.operations.composition import CompositionError, materialize_composition
 
 _SCENARIOS_CONFIG = (
-    "defaults: { backend: [idb] }\n"
+    "defaults: { backend: [ios] }\n"
     "targets:\n"
     "  demo: { bundleId: com.example.demo, scenarios: ./scenarios }\n"
 )
 _FULL_CONFIG = (
-    "defaults: { backend: [idb] }\n"
+    "defaults: { backend: [ios] }\n"
     "targets:\n"
     "  demo: { bundleId: com.example.demo, scenarios: ./scenarios, appPath: ./build/Demo.app }\n"
 )
 _IPA_CONFIG = (
-    "defaults: { backend: [idb] }\n"
+    "defaults: { backend: [ios] }\n"
     "targets:\n"
     "  demo: { bundleId: com.example.demo, appPath: ./build/Demo.ipa }\n"
 )
 _NO_ARTIFACTS_CONFIG = (
-    "defaults: { backend: [idb] }\ntargets:\n  demo: { bundleId: com.example.demo }\n"
+    "defaults: { backend: [ios] }\ntargets:\n  demo: { bundleId: com.example.demo }\n"
 )
 
 

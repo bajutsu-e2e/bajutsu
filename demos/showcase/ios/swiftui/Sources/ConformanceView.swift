@@ -4,7 +4,7 @@ import UIKit  // UIApplication / UIResponder — dismiss iOS transient UI on a s
 // BE-0114: the on-device realization of a driver-conformance screen. The conformance suite seeds
 // an arbitrary set of accessibility identifiers — duplicated (an ambiguous selector), empty (a
 // zero-match), or unique — and each becomes one tappable, gestureable element carrying that
-// identifier. That lets the idb and XCUITest backends be driven through the *same* backend-agnostic
+// identifier. That lets the XCUITest backend be driven through the *same* backend-agnostic
 // contract as FakeDriver and Playwright, against each driver's real query / act code rather than
 // the shared base alone. Reached only when the SHOWCASE_CONFORMANCE launch env is set (see
 // AppModel), so the normal observe-only app (BE-0079) never renders it; the suite reseeds a new
@@ -47,7 +47,7 @@ struct ConformanceView: View {
                 .accessibilityID(Self.fieldID)
                 // No explicit `.accessibilityValue(fieldText)`: a SwiftUI TextField already surfaces
                 // its bound text as its accessibility value natively (as SearchView's field does), so
-                // the idb / XCUITest `query()` reads back the round-trip length change the contract
+                // the XCUITest `query()` reads back the round-trip length change the contract
                 // observes. An explicit `.accessibilityValue` bound to the per-keystroke `fieldText`
                 // made SwiftUI re-create the field's accessibility element on every change, so a
                 // handle resolved just before a keystroke went stale under the element — the contract's

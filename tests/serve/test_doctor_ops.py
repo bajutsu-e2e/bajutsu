@@ -66,14 +66,14 @@ def test_fake_backend_passes_all_checks(tmp_path: Path) -> None:
 
 
 def test_ios_backend_reports_config_check(tmp_path: Path) -> None:
-    # idb backend needs a bundleId — with it set, that config check passes.
+    # The iOS backend (XCUITest) needs a bundleId — with it set, that config check passes.
     state = _state(
         tmp_path,
-        "defaults: { backend: [idb] }\ntargets:\n  demo: { bundleId: com.demo }\n",
+        "defaults: { backend: [xcuitest] }\ntargets:\n  demo: { bundleId: com.demo }\n",
     )
     payload, status = ops.doctor_check(state, {"target": "demo"})
     assert status == 200
-    assert payload["backend"] == "idb"
+    assert payload["backend"] == "xcuitest"
     config_checks = [c for c in payload["checks"] if "bundleId" in c["name"]]
     assert config_checks
     assert all(c["ok"] for c in config_checks)
@@ -107,10 +107,10 @@ def test_playwright_backend_with_base_url_passes_config_check(tmp_path: Path) ->
     assert all(c["ok"] for c in config_checks)
 
 
-def test_xcuitest_panel_reports_idb_tools(tmp_path: Path) -> None:
-    # BE-0199 reconciliation: the serve panel now uses the shared check assembly, so an xcuitest
-    # target reports the merged idb tools (doctor falls back to idb for the screen query) — the
-    # same set the CLI reports, where the panel used to silently show less.
+def test_xcuitest_panel_reports_xcode_tools(tmp_path: Path) -> None:
+    # BE-0199 reconciliation: the serve panel uses the shared check assembly, so an xcuitest target
+    # reports the same set the CLI reports — XCUITest's own tools (xcrun + xcodebuild), iOS being a
+    # single actuator (BE-0290).
     state = _state(
         tmp_path,
         "defaults: { backend: [xcuitest] }\ntargets:\n  demo: { bundleId: com.demo }\n",
@@ -118,7 +118,7 @@ def test_xcuitest_panel_reports_idb_tools(tmp_path: Path) -> None:
     payload, status = ops.doctor_check(state, {"target": "demo"})
     assert status == 200
     names = {c["name"] for c in payload["checks"]}
-    assert {"idb", "idb_companion"} <= names
+    assert "xcodebuild" in names
 
 
 def test_current_screen_maps_probe_error_to_value_error(tmp_path: Path) -> None:
@@ -164,7 +164,7 @@ def test_check_shape_has_name_ok_detail(tmp_path: Path) -> None:
     """Every check in the response has the expected keys."""
     state = _state(
         tmp_path,
-        "defaults: { backend: [idb] }\ntargets:\n  demo: { bundleId: com.demo }\n",
+        "defaults: { backend: [xcuitest] }\ntargets:\n  demo: { bundleId: com.demo }\n",
     )
     payload, status = ops.doctor_check(state, {"target": "demo"})
     assert status == 200
@@ -207,10 +207,10 @@ def test_invalid_udid_rejected(tmp_path: Path) -> None:
 
 
 def test_backend_override_selects_actuator(tmp_path: Path) -> None:
-    # The config declares idb, but the request overrides to fake.
+    # The config declares xcuitest, but the request overrides to fake.
     state = _state(
         tmp_path,
-        "defaults: { backend: [idb] }\ntargets:\n  demo: { bundleId: com.demo }\n",
+        "defaults: { backend: [xcuitest] }\ntargets:\n  demo: { bundleId: com.demo }\n",
     )
     payload, status = ops.doctor_check(
         state,
@@ -225,23 +225,23 @@ def test_comma_list_backend_resolves_first_implemented(tmp_path: Path) -> None:
     # A comma-list backend (like the CLI's --backend) is split, not treated as one token.
     state = _state(
         tmp_path,
-        "defaults: { backend: [idb] }\ntargets:\n  demo: { bundleId: com.demo }\n",
+        "defaults: { backend: [xcuitest] }\ntargets:\n  demo: { bundleId: com.demo }\n",
     )
     payload, status = ops.doctor_check(
         state,
-        {"target": "demo", "backend": "fake,idb"},
+        {"target": "demo", "backend": "fake,xcuitest"},
         screen_query=lambda actuator, udid, eff: [],
     )
     assert status == 200
     assert payload["backend"] == "fake"
 
 
-def test_idb_reports_booted_simulator_check(tmp_path: Path) -> None:
+def test_ios_reports_booted_simulator_check(tmp_path: Path) -> None:
     # doctor reports whether a Simulator is booted, reading it through state.simctl so the
     # Linux gate never shells out to a real xcrun.
     state = _state(
         tmp_path,
-        "defaults: { backend: [idb] }\ntargets:\n  demo: { bundleId: com.demo }\n",
+        "defaults: { backend: [xcuitest] }\ntargets:\n  demo: { bundleId: com.demo }\n",
     )
     state.simctl = lambda args, extra_env=None: '{"devices": {}}'  # no booted device
     payload, status = ops.doctor_check(state, {"target": "demo"})

@@ -2,7 +2,7 @@
 
 The driver actuates over a loopback HTTP channel to a resident XCTest runner. The runner itself is a
 later, on-device slice; here the request/response logic is exercised against an injected fake
-transport (mirroring how the idb driver injects a fake `run`), so nothing on the gate needs a
+transport (mirroring how the adb driver injects a fake `run`), so nothing on the gate needs a
 Simulator. Resolution stays Python-side, so the key property is that the driver acts on **exactly**
 the element it resolved, addressed by that element's per-snapshot handle.
 """
@@ -116,7 +116,7 @@ def test_tap_resolves_unique_then_sends_that_elements_snapshot_handle() -> None:
 
 def test_back_taps_the_os_back_button() -> None:
     # iOS has no hardware back: `back` resolves and taps the OS navigation back button
-    # (identifier "BackButton"), the same element idb taps — BE-0210.
+    # (identifier "BackButton") — BE-0210.
     sent: list[tuple[str, str, dict[str, Any] | None]] = []
 
     def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
@@ -203,8 +203,8 @@ def test_capabilities_add_semantic_tap_condition_wait_multi_touch_but_not_networ
     caps = _driver(lambda m, p, b: _Reply(status="ok")).capabilities()
     assert base.Capability.SEMANTIC_TAP in caps
     assert base.Capability.CONDITION_WAIT in caps
-    assert base.Capability.MULTI_TOUCH in caps  # the gestures idb cannot do
-    assert base.Capability.TEXT_SELECTION in caps  # select/copy actuate; idb refuses (BE-0280)
+    assert base.Capability.MULTI_TOUCH in caps  # two-finger gestures
+    assert base.Capability.TEXT_SELECTION in caps  # select/copy actuate (BE-0280)
     # Network evidence rides on the app-side collector, not the actuator (proposal: BE-0020 boundary).
     assert base.Capability.NETWORK not in caps
 

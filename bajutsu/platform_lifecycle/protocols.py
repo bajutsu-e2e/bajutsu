@@ -181,10 +181,11 @@ class RunEnvironment(Protocol):
         """Whether `record` captures a scenario-wide screen video while authoring on this platform.
 
         A distinct axis from `records_video_up_front` (which asks *when* capture is wired, not
-        *whether* the platform can capture at all): the simctl-backed device platforms (idb,
-        xcuitest) record via a simctl interval, web captures by other means during replay, and the
-        fake backend has no device to record. The `record` command reads this instead of spelling
-        out `actuator == "idb"`, which silently never captured under xcuitest (BE-0256).
+        *whether* the platform can capture at all): the simctl-backed device platform (xcuitest)
+        records via a simctl interval, web captures by other means during replay, and the fake
+        backend has no device to record. The `record` command reads this instead of a
+        per-actuator name test, which historically special-cased the coordinate backend and silently
+        never captured under xcuitest (BE-0256).
         """
 
     def device_catalog(self) -> dict[str, dict[str, str]]:

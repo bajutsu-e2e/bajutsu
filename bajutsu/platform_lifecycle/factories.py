@@ -5,7 +5,6 @@ from __future__ import annotations
 from bajutsu import simctl
 from bajutsu.platform_lifecycle.environments.android import AndroidEnvironment
 from bajutsu.platform_lifecycle.environments.fake import FakeEnvironment
-from bajutsu.platform_lifecycle.environments.ios import IosEnvironment
 from bajutsu.platform_lifecycle.environments.web import WebEnvironment
 from bajutsu.platform_lifecycle.environments.xcuitest import XcuitestEnvironment
 from bajutsu.platform_lifecycle.environments.xcuitest_live import (
@@ -44,4 +43,6 @@ def environment_for(
         if is_webdriver_endpoint(udid):
             return XcuitestLiveEnvironment(actuator, udid)
         return XcuitestEnvironment(actuator, udid, env_run)
-    return IosEnvironment(actuator, udid, env_run)
+    # Every implemented actuator is handled above; an unknown one reaching here is a caller bug
+    # (selection should have rejected it). Fail loudly rather than silently mis-routing.
+    raise ValueError(f"no environment for actuator: {actuator!r}")

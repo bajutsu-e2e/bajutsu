@@ -21,50 +21,66 @@ from bajutsu.config import DeviceProvider, Effective, IosConfig, WebConfig, Xcui
 from bajutsu.drivers import base
 from bajutsu.scenario import Redact, Scenario
 
-# A two-actuator iOS platform (idb + a hypothetical second iOS actuator), so the same-platform
-# fallback can be exercised before XCUITest (BE-0019) actually lands. Injected, not the module global.
-_PLATFORMS = {"ios": ("idb", "xcuitest"), "web": ("playwright",), "fake": ("fake",)}
+# A synthetic two-actuator platform (a "lean" actuator with no native network plus a "rich" one that
+# has it), so the same-platform evidence fallback can be exercised even though every real platform is
+# single-actuator today (iOS collapsed to XCUITest, BE-0290). Injected, not the
+# module global.
+_PLATFORMS = {"multi": ("lean", "rich"), "web": ("playwright",), "fake": ("fake",)}
 
 
 def _caps(actuator: str) -> frozenset[str]:
-    # idb/fake have no native network; xcuitest/playwright do.
+    # `lean`/`fake` have no native network; `rich`/`playwright` do.
     network = frozenset({base.Capability.NETWORK})
-    return network if actuator in ("xcuitest", "playwright") else frozenset()
+    return network if actuator in ("rich", "playwright") else frozenset()
 
 
 # --- BE-0020: read-only evidence fallback resolution (pure layer) ---
 
 
 def test_evidence_backends_keeps_only_same_platform_available_siblings() -> None:
-    # web is a different platform than the idb actuator, so it is never an evidence provider; the
-    # same-platform sibling (xcuitest) is, and the actuator itself is excluded.
-    got = evidence_backends(["ios", "web"], "idb", available=lambda b: True, platforms=_PLATFORMS)
-    assert got == ["xcuitest"]
+    # web is a different platform than the `lean` actuator, so it is never an evidence provider; the
+    # same-platform sibling (`rich`) is, and the actuator itself is excluded.
+    got = evidence_backends(
+        ["multi", "web"], "lean", available=lambda b: True, platforms=_PLATFORMS
+    )
+    assert got == ["rich"]
 
 
-def test_evidence_backends_includes_xcuitest_when_available() -> None:
-    # With xcuitest implemented (BE-0019), it is a same-platform evidence provider for idb.
-    assert evidence_backends(["ios", "web"], "idb", available=lambda b: True) == ["xcuitest"]
+def test_evidence_backends_includes_the_available_same_platform_sibling() -> None:
+    # The same-platform sibling is an evidence provider when it is available.
+    got = evidence_backends(
+        ["multi", "web"], "lean", available=lambda b: True, platforms=_PLATFORMS
+    )
+    assert got == ["rich"]
 
 
-def test_evidence_backends_empty_when_xcuitest_unavailable() -> None:
-    # Without Xcode, xcuitest is implemented but not available — no evidence provider on iOS.
-    assert evidence_backends(["ios", "web"], "idb", available=lambda b: b != "xcuitest") == []
+def test_evidence_backends_empty_when_sibling_unavailable() -> None:
+    # The sibling is known but not available — no evidence provider on that platform.
+    got = evidence_backends(
+        ["multi", "web"], "lean", available=lambda b: b != "rich", platforms=_PLATFORMS
+    )
+    assert got == []
+
+
+def test_evidence_backends_empty_on_a_single_actuator_platform() -> None:
+    # A real single-actuator platform (iOS is XCUITest-only since BE-0290) has no same-platform
+    # sibling, so it exposes no evidence provider — read straight from the module PLATFORMS.
+    assert evidence_backends(["ios", "web"], "xcuitest", available=lambda b: True) == []
 
 
 def test_resolve_picks_the_first_same_platform_provider_for_the_gap() -> None:
     chosen, skipped = resolve_evidence_providers(
-        ["ios", "web"], "idb", available=lambda b: True, caps=_caps, platforms=_PLATFORMS
+        ["multi", "web"], "lean", available=lambda b: True, caps=_caps, platforms=_PLATFORMS
     )
-    assert chosen == {"network": "xcuitest"}  # web (cross-platform) is ineligible
+    assert chosen == {"network": "rich"}  # web (cross-platform) is ineligible
     assert skipped == {}
 
 
 def test_resolve_skips_the_gap_when_no_same_platform_provider() -> None:
     # Only a cross-platform backend has network -> recorded as skipped, never a cross-platform pick.
-    plats = {"ios": ("idb",), "web": ("playwright",), "fake": ("fake",)}
+    plats = {"multi": ("lean",), "web": ("playwright",), "fake": ("fake",)}
     chosen, skipped = resolve_evidence_providers(
-        ["ios", "web"], "idb", available=lambda b: True, caps=_caps, platforms=plats
+        ["multi", "web"], "lean", available=lambda b: True, caps=_caps, platforms=plats
     )
     assert chosen == {}
     assert "network" in skipped
@@ -79,7 +95,7 @@ def test_resolve_no_gap_when_the_actuator_has_the_capability_natively() -> None:
 
 def test_resolve_skips_an_unavailable_provider() -> None:
     chosen, skipped = resolve_evidence_providers(
-        ["ios"], "idb", available=lambda b: b != "xcuitest", caps=_caps, platforms=_PLATFORMS
+        ["multi"], "lean", available=lambda b: b != "rich", caps=_caps, platforms=_PLATFORMS
     )
     assert chosen == {} and "network" in skipped
 
@@ -102,13 +118,6 @@ def test_plain_fake_advertises_no_network() -> None:
     from bajutsu.drivers.fake import FakeDriver
 
     assert base.Capability.NETWORK not in FakeDriver().capabilities()
-
-
-def test_idb_exposes_no_evidence_provider_surface() -> None:
-    # idb has no native network, so it must not expose network_collector (read-only fallback surface).
-    from bajutsu.drivers.idb import IdbDriver
-
-    assert not hasattr(IdbDriver, "network_collector")
 
 
 # --- BE-0141: backend lifecycle Protocol conformance ---
@@ -152,11 +161,10 @@ def test_xcuitest_driver_provides_await_ready() -> None:
 @pytest.mark.parametrize(
     ("order", "expected"),
     [
-        (["idb"], "idb"),
+        (["xcuitest"], "xcuitest"),
         # unknown backends are never selected, even when reported "available"
-        (["bogus", "idb"], "idb"),
-        # a platform token expands to its actuators, most-stable-first (ios -> xcuitest, idb);
-        # with everything reported "available", the preferred actuator wins (BE-0019).
+        (["bogus", "xcuitest"], "xcuitest"),
+        # a platform token expands to its actuators; iOS is XCUITest-only since BE-0290.
         (["ios"], "xcuitest"),
         (["fake"], "fake"),
     ],
@@ -165,12 +173,10 @@ def test_select_actuator_picks_first_known_available(order: list[str], expected:
     assert select_actuator(order, available=lambda b: True) == expected
 
 
-def test_ios_prefers_xcuitest_but_falls_back_to_idb() -> None:
-    # BE-0019 Slice 1: ios resolves xcuitest-first, but the driver does not exist yet, so xcuitest is
-    # never available and a real `--backend ios` run still selects idb — no scenario/config change.
-    # When a future slice lands the driver, the same ordering picks xcuitest with nothing else moving.
-    assert resolve_actuators(["ios"]) == ["xcuitest", "idb"]
-    assert select_actuator(["ios"], available=lambda a: a == "idb") == "idb"
+def test_ios_resolves_to_xcuitest() -> None:
+    # iOS is a single actuator (BE-0290), so `[ios]` resolves to XCUITest alone and
+    # selects it when available — no scenario/config change.
+    assert resolve_actuators(["ios"]) == ["xcuitest"]
     assert select_actuator(["ios"], available=lambda a: True) == "xcuitest"
 
 
@@ -201,17 +207,16 @@ def test_resolve_actuators_expands_platforms() -> None:
     # Platform tokens expand to their actuators; bare actuators and unknowns pass through.
     assert resolve_actuators(["ios", "android", "web", "fake"]) == [
         "xcuitest",
-        "idb",
         "adb",
         "playwright",
         "fake",
     ]
-    assert resolve_actuators(["idb", "bogus"]) == ["idb", "bogus"]
+    assert resolve_actuators(["xcuitest", "bogus"]) == ["xcuitest", "bogus"]
 
 
 def test_select_none_available_raises() -> None:
     with pytest.raises(RuntimeError):
-        select_actuator(["idb"], available=lambda b: False)
+        select_actuator(["xcuitest"], available=lambda b: False)
 
 
 def test_select_android_actuator_when_available() -> None:
@@ -230,7 +235,7 @@ def test_select_planned_backend_reports_not_implemented(monkeypatch: pytest.Monk
     # The "recognized but not implemented yet" path still guards a future planned actuator: with adb
     # dropped from IMPLEMENTED it is recognized (in PLATFORMS) yet has no driver, so the message
     # points at the platform-reach design in vision.md rather than a generic "no available actuator".
-    monkeypatch.setattr("bajutsu.backends.IMPLEMENTED", frozenset({"idb", "fake"}))
+    monkeypatch.setattr("bajutsu.backends.IMPLEMENTED", frozenset({"xcuitest", "fake"}))
     with pytest.raises(RuntimeError, match="not implemented yet"):
         select_actuator(["android"])
 
@@ -251,15 +256,6 @@ def test_playwright_availability_gated_on_package(monkeypatch: pytest.MonkeyPatc
 def test_fake_is_always_available() -> None:
     # The fake backend needs no executable, so it selects without any device tooling.
     assert select_actuator(["fake"]) == "fake"
-
-
-def test_make_driver() -> None:
-    # idb actuates by coordinates (resolving each element's frame center), so it
-    # does not advertise a semantic tap.
-    idb = make_driver("idb", "U")
-    assert idb.name == "idb"
-    assert base.Capability.QUERY in idb.capabilities()
-    assert base.Capability.SEMANTIC_TAP not in idb.capabilities()
 
 
 def test_make_driver_fake() -> None:
@@ -339,7 +335,7 @@ def test_make_driver_adb() -> None:
 
     driver = make_driver("adb", "emulator-5554")
     assert isinstance(driver, AdbDriver)
-    # The lean end, alongside idb: no semantic tap, no native network.
+    # The lean, coordinate-based backend: no semantic tap, no native network.
     assert base.Capability.SEMANTIC_TAP not in driver.capabilities()
     assert base.Capability.SCREENSHOT in driver.capabilities()
 
@@ -348,7 +344,7 @@ def test_make_driver_planned_backend(monkeypatch: pytest.MonkeyPatch) -> None:
     # A recognized-but-unimplemented actuator raises NotImplementedError (distinct from an
     # outright-unknown token), so the message can point at vision.md's reach design. Every real
     # actuator now has a driver, so a synthetic "future" token in KNOWN_ACTUATORS stands in.
-    monkeypatch.setattr("bajutsu.backends.KNOWN_ACTUATORS", ("idb", "future"))
+    monkeypatch.setattr("bajutsu.backends.KNOWN_ACTUATORS", ("xcuitest", "future"))
     with pytest.raises(NotImplementedError, match="not implemented yet"):
         make_driver("future", "U")
 
@@ -483,12 +479,12 @@ def test_capabilities_for_run_keeps_the_full_set_on_the_simulator() -> None:
 
 
 def test_capabilities_for_run_is_a_noop_for_non_xcuitest_backends() -> None:
-    # The narrowing is XCUITest-only; idb / adb / web read their static set unchanged even when the
+    # The narrowing is XCUITest-only; adb / web read their static set unchanged even when the
     # (unrelated) target config would look like a real device to a careless check.
     from bajutsu.backends import capabilities_for
 
     eff = _ios_eff(xcuitest=XcuitestConfig(test_runner="Runner.xctestrun", device_type="device"))
-    assert capabilities_for_run("idb", eff) == capabilities_for("idb")
+    assert capabilities_for_run("adb", eff) == capabilities_for("adb")
     web = Effective(
         target="w",
         platform_config=WebConfig(base_url="https://app.test"),
@@ -593,70 +589,119 @@ def test_live_route_narrowing_makes_a_copy_selection_scenario_unsupported() -> N
 
 
 # --- BE-0240: capability-aware, cost-ordered per-scenario actuator selection -------------------
+#
+# iOS collapsed to a single actuator (BE-0290), so the cost-ordering / escalation mechanism no
+# longer has a real multi-actuator
+# platform. It is still exercised here against a synthetic two-actuator platform — a `lean` actuator
+# with no multiTouch plus a `rich` one that has it, `lean` cheapest — so the logic stays covered for a
+# future multi-actuator platform, alongside a test that real iOS now collapses to a hard pin.
 
 _TAP = Scenario.model_validate({"name": "tap", "steps": [{"tap": {"id": "ok"}}]})
 _PINCH = Scenario.model_validate(
     {"name": "pinch", "steps": [{"pinch": {"sel": {"id": "m"}, "scale": 2.0}}]}
 )
 
+_MULTI_PLATFORMS = {"multi": ("rich", "lean"), "web": ("playwright",), "fake": ("fake",)}
+_MULTI_COST_ORDER = {"multi": ("lean", "rich")}  # lean cheapest; stability order is rich-first
 
-def test_cost_ordered_reverses_ios_stability_order() -> None:
-    # `[ios]` resolves in stability order (xcuitest, idb); cost order is the reverse (idb cheapest).
-    assert _cost_ordered(list(resolve_actuators(["ios"]))) == ["idb", "xcuitest"]
+
+def _multi_caps(actuator: str) -> frozenset[str]:
+    # Both back the baseline read path (query + elements); only `rich` drives two-finger gestures —
+    # `lean` does not, the way a leaner actuator lacks what a richer one has.
+    base_caps = {base.Capability.QUERY, base.Capability.ELEMENTS}
+    return frozenset(base_caps | ({base.Capability.MULTI_TOUCH} if actuator == "rich" else set()))
+
+
+@pytest.fixture
+def _multi(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Point the module's platform/cost/known tables at the synthetic two-actuator platform."""
+    monkeypatch.setattr("bajutsu.backends.PLATFORMS", _MULTI_PLATFORMS)
+    monkeypatch.setattr("bajutsu.backends.COST_ORDER", _MULTI_COST_ORDER)
+    # KNOWN_ACTUATORS / IMPLEMENTED are derived at import, so selection (and its planned-vs-available
+    # diagnostic) gates on the synthetic names.
+    monkeypatch.setattr("bajutsu.backends.KNOWN_ACTUATORS", ("rich", "lean", "playwright", "fake"))
+    monkeypatch.setattr(
+        "bajutsu.backends.IMPLEMENTED", frozenset({"rich", "lean", "playwright", "fake"})
+    )
+
+
+@pytest.mark.usefixtures("_multi")
+def test_cost_ordered_reorders_to_cheapest_first() -> None:
+    # `[multi]` resolves in stability order (rich, lean); cost order puts the cheapest (lean) first.
+    assert _cost_ordered(list(resolve_actuators(["multi"]))) == ["lean", "rich"]
     # An unranked platform (no COST_ORDER entry) keeps its resolved order.
     assert _cost_ordered(["playwright"]) == ["playwright"]
 
 
+def test_ios_cost_order_is_a_noop_single_actuator() -> None:
+    # Real iOS is XCUITest-only since BE-0290, so there is nothing to reorder.
+    assert _cost_ordered(list(resolve_actuators(["ios"]))) == ["xcuitest"]
+
+
+@pytest.mark.usefixtures("_multi")
 def test_select_for_scenario_prefers_the_cheapest_sufficient_actuator() -> None:
-    # A plain tap needs nothing idb lacks, so the cheapest (idb) is chosen even though XCUITest is
+    # A plain tap needs nothing `lean` lacks, so the cheapest (lean) is chosen even though `rich` is
     # available and more capable — cost wins when both suffice.
-    assert select_actuator_for_scenario(["ios"], _TAP, available=lambda a: True) == "idb"
+    got = select_actuator_for_scenario(["multi"], _TAP, available=lambda a: True, caps=_multi_caps)
+    assert got == "lean"
 
 
+@pytest.mark.usefixtures("_multi")
 def test_select_for_scenario_escalates_only_when_the_cheap_actuator_cannot_run_it() -> None:
-    # A pinch needs multiTouch, which idb lacks — so selection escalates to the richer XCUITest.
-    assert select_actuator_for_scenario(["ios"], _PINCH, available=lambda a: True) == "xcuitest"
+    # A pinch needs multiTouch, which `lean` lacks — so selection escalates to the richer `rich`.
+    got = select_actuator_for_scenario(
+        ["multi"], _PINCH, available=lambda a: True, caps=_multi_caps
+    )
+    assert got == "rich"
 
 
+@pytest.mark.usefixtures("_multi")
 def test_select_for_scenario_returns_richest_available_when_none_suffices() -> None:
-    # A pinch with only idb available: no candidate is sufficient, so the richest *available* one is
-    # returned (idb here) — the caller's preflight then fails it with idb's gaps, not a crash.
-    only_idb = select_actuator_for_scenario(["ios"], _PINCH, available=lambda a: a == "idb")
-    assert only_idb == "idb"
+    # A pinch with only `lean` available: no candidate suffices, so the richest *available* one is
+    # returned (lean here) — the caller's preflight then fails it with lean's gaps, not a crash.
+    got = select_actuator_for_scenario(
+        ["multi"], _PINCH, available=lambda a: a == "lean", caps=_multi_caps
+    )
+    assert got == "lean"
 
 
 def test_select_for_scenario_pin_never_escalates() -> None:
-    # An explicit single-actuator request is a hard pin: even a pinch stays on idb (no capability
-    # escalation), consistent with `select_actuator`. The preflight, not selection, rejects it.
-    assert select_actuator_for_scenario(["idb"], _PINCH, available=lambda a: True) == "idb"
+    # An explicit single-actuator request is a hard pin: even a pinch stays on that actuator (no
+    # capability escalation), consistent with `select_actuator`. The preflight, not selection, rejects.
+    assert select_actuator_for_scenario(["adb"], _PINCH, available=lambda a: True) == "adb"
 
 
+@pytest.mark.usefixtures("_multi")
 def test_select_for_scenario_raises_when_nothing_available() -> None:
     # No candidate available at all reuses `select_actuator`'s precise error (raised, not swallowed).
     with pytest.raises(RuntimeError, match="no available actuator"):
-        select_actuator_for_scenario(["ios"], _TAP, available=lambda a: False)
+        select_actuator_for_scenario(["multi"], _TAP, available=lambda a: False, caps=_multi_caps)
 
 
 # --- BE-0267: scenario-free, cost-ordered selection (serve capture/enrich) ---------------------
 
 
+@pytest.mark.usefixtures("_multi")
 def test_cost_first_prefers_the_cheapest_available_actuator() -> None:
-    # No scenario: `[ios]` picks the cheapest available actuator (idb), never the alias head XCUITest.
-    assert select_actuator_cost_first(["ios"], available=lambda a: True) == "idb"
+    # No scenario: `[multi]` picks the cheapest available actuator (lean), never the alias head `rich`.
+    assert select_actuator_cost_first(["multi"], available=lambda a: True) == "lean"
 
 
+@pytest.mark.usefixtures("_multi")
 def test_cost_first_escalates_when_the_cheap_actuator_is_unavailable() -> None:
-    # idb absent: the next cost-ordered candidate (XCUITest) wins — cost order, not capability.
-    assert select_actuator_cost_first(["ios"], available=lambda a: a == "xcuitest") == "xcuitest"
+    # lean absent: the next cost-ordered candidate (`rich`) wins — cost order, not capability.
+    assert select_actuator_cost_first(["multi"], available=lambda a: a == "rich") == "rich"
 
 
 def test_cost_first_single_actuator_is_a_hard_pin() -> None:
-    # An explicit single actuator delegates to `select_actuator` — a hard pin, no reordering.
-    assert select_actuator_cost_first(["idb"], available=lambda a: True) == "idb"
+    # An explicit single actuator delegates to `select_actuator` — a hard pin, no reordering. `[ios]`
+    # collapses to the single XCUITest actuator the same way since BE-0290.
     assert select_actuator_cost_first(["xcuitest"], available=lambda a: True) == "xcuitest"
+    assert select_actuator_cost_first(["ios"], available=lambda a: True) == "xcuitest"
 
 
+@pytest.mark.usefixtures("_multi")
 def test_cost_first_raises_when_nothing_available() -> None:
     # None available reuses `select_actuator`'s precise error (raised, not swallowed).
     with pytest.raises(RuntimeError, match="no available actuator"):
-        select_actuator_cost_first(["ios"], available=lambda a: False)
+        select_actuator_cost_first(["multi"], available=lambda a: False)

@@ -1,8 +1,8 @@
 """Tests for the adb backend: uiautomator dump parsing, commands, coordinate tap, transient retry.
 
-The adb driver is the twin of idb, so these mirror `test_idb.py`: the selector mapping over captured
-`uiautomator dump` XML, frame-centre taps, the transient-empty retry, and ambiguous-fails-fast — all
-over an injected `run`, no device needed (BE-0007 Unit 7, fast gate).
+These cover the adb driver's selector mapping over captured `uiautomator dump` XML, frame-centre
+taps, the transient-empty retry, and ambiguous-fails-fast — all over an injected `run`, no device
+needed (BE-0007 Unit 7, fast gate).
 """
 
 from __future__ import annotations
@@ -41,7 +41,7 @@ UI hierarchy dumped to: /dev/tty"""
 NULL_ROOT = "null root node returned by UiTestAutomationBridge.\n"
 
 # The dump is the full view hierarchy, so a structural container (the root FrameLayout) is a node
-# too — one more than the three leaf elements, unlike idb's accessibility-only set.
+# too — one more than the three leaf elements, unlike an accessibility-only set.
 FIXTURE_ELEMENT_COUNT = 4
 
 
@@ -211,13 +211,13 @@ def test_tap_on_ambiguous_selector_fails_fast() -> None:
 
 def test_capabilities_lean_end() -> None:
     caps = AdbDriver("U", run=lambda a: "").capabilities()
-    assert base.Capability.SEMANTIC_TAP not in caps  # coordinate actuation, like idb
+    assert base.Capability.SEMANTIC_TAP not in caps  # coordinate actuation
     assert base.Capability.NETWORK not in caps  # no native monitor
     assert base.Capability.SCREENSHOT in caps
     # multiTouch is advertised (BE-0232): the two-finger sendevent sweep, so preflight admits
     # `gestures_multitouch`. The root precondition is enforced at actuation time, not in the set.
     assert base.Capability.MULTI_TOUCH in caps
-    assert base.Capability.TEXT_SELECTION in caps  # Ctrl+A / Ctrl+C actuate; idb refuses (BE-0280)
+    assert base.Capability.TEXT_SELECTION in caps  # Ctrl+A / Ctrl+C actuate (BE-0280)
 
 
 def test_driver_interval_routes_video_and_devicelog_to_adb_starters(
@@ -431,7 +431,7 @@ def test_scroll_delegates_to_a_real_drag() -> None:
 
 
 def test_type_text_passes_value_over_stdin_not_argv(monkeypatch: pytest.MonkeyPatch) -> None:
-    # BE-0155 parity with idb: a typed value (which may be a secret / OTP) goes to `adb shell` on
+    # BE-0155: a typed value (which may be a secret / OTP) goes to `adb shell` on
     # stdin, never in the adb argv where `ps` could read it.
     calls: list[tuple[list[str], str]] = []
 
@@ -1035,7 +1035,7 @@ def test_checked_serial_accepts_real_serials() -> None:
 def test_checked_serial_rejects_injection() -> None:
     # A serial that could inject an adb option (leading `-`) or reach argv with a shell
     # metacharacter / space is rejected. adb keeps its own error type (`adb.DeviceError`, an
-    # exit-2 device fault) even though the underlying policy is shared with idb/serve.
+    # exit-2 device fault) even though the underlying policy is shared with serve.
     for bad in ["-s", "--help", "a b", "a;b", "", "x" * 129]:
         with pytest.raises(adb.DeviceError, match="invalid device serial"):
             adb._adb(bad, "devices")

@@ -31,7 +31,7 @@ def _web(eff: Effective) -> WebConfig:
 
 CONFIG_YAML = """
 defaults:
-  backend: [idb]
+  backend: [ios]
   device: "iPhone 15"
   locale: ja_JP
   capture: [screenshot.after, elements, actionLog]
@@ -53,7 +53,7 @@ targets:
 def test_resolve_sample() -> None:
     eff = resolve(load_config(CONFIG_YAML), "sample")
     assert _ios(eff).bundle_id == "com.bajutsu.sample"
-    assert eff.backend == ["idb"]  # from defaults
+    assert eff.backend == ["ios"]  # from defaults
     assert eff.device == "iPhone 15"
     assert eff.locale == "ja_JP"
     assert eff.launch_env == {"SAMPLE_UITEST": "1"}
@@ -61,24 +61,6 @@ def test_resolve_sample() -> None:
     assert eff.reserved_namespaces == ["auth", "nav"]
     assert eff.mock_server is not None and eff.mock_server.port == 8080
     assert eff.setup == "./scenarios/sample/_setup.yaml"
-
-
-def test_idb_version_pin_resolves_from_defaults() -> None:
-    # The expected idb version range is environment-level (next to other backend settings in
-    # defaults), not per-app — the pin is the same whichever target a scenario drives (BE-0005).
-    cfg = load_config('defaults:\n  idbVersion: ">=1.1.8"\ntargets:\n  s:\n    bundleId: com.x\n')
-    assert _ios(resolve(cfg, "s")).idb_version == ">=1.1.8"
-
-
-def test_idb_version_pin_defaults_to_none() -> None:
-    cfg = load_config("targets:\n  s:\n    bundleId: com.x\n")
-    assert _ios(resolve(cfg, "s")).idb_version is None
-
-
-def test_malformed_idb_version_pin_is_rejected_at_load() -> None:
-    # A typo'd pin must fail loudly at config load, not crash `doctor` when it compares against it.
-    with pytest.raises(ValidationError):
-        load_config('defaults:\n  idbVersion: "1.1.8"\ntargets:\n  s:\n    bundleId: com.x\n')
 
 
 def test_redact_is_merged() -> None:
@@ -204,17 +186,17 @@ def test_ai_block_keys_in_config_are_rejected() -> None:
 
 
 def test_backend_single_string_normalized() -> None:
-    cfg = load_config("defaults: { backend: idb }\ntargets: { x: { bundleId: com.x } }")
-    assert resolve(cfg, "x").backend == ["idb"]
+    cfg = load_config("defaults: { backend: xcuitest }\ntargets: { x: { bundleId: com.x } }")
+    assert resolve(cfg, "x").backend == ["xcuitest"]
 
 
 def test_app_overrides_defaults() -> None:
     cfg = load_config(
         "defaults: { backend: [fake], device: 'iPhone 15' }\n"
-        "targets: { x: { bundleId: com.x, backend: idb, locale: en_US } }"
+        "targets: { x: { bundleId: com.x, backend: xcuitest, locale: en_US } }"
     )
     eff = resolve(cfg, "x")
-    assert eff.backend == ["idb"]  # app override
+    assert eff.backend == ["xcuitest"]  # app override
     assert eff.device == "iPhone 15"  # falls through to defaults
     assert eff.locale == "en_US"
 
@@ -227,7 +209,7 @@ def test_unknown_app_raises() -> None:
 def test_minimal_defaults() -> None:
     cfg = load_config("targets: { x: { bundleId: com.x } }")
     eff = resolve(cfg, "x")
-    assert eff.backend == ["idb"]
+    assert eff.backend == ["ios"]  # the default (BE-0290)
     assert eff.device == "iPhone 15"
     assert eff.capture == ["screenshot.after", "elements", "actionLog"]
     assert _ios(eff).app_path is None  # absent unless configured
@@ -596,7 +578,7 @@ def test_rebased_without_confinement_keeps_paths_outside_the_root() -> None:
 def test_platform_explicit_resolves_into_effective() -> None:
     # An explicit `platform` on the target is authoritative and reaches Effective.
     cfg = load_config(
-        "targets:\n  s:\n    platform: ios\n    bundleId: com.x\n    backend: [idb]\n"
+        "targets:\n  s:\n    platform: ios\n    bundleId: com.x\n    backend: [ios]\n"
     )
     assert resolve(cfg, "s").platform == "ios"
 
@@ -612,10 +594,10 @@ def test_platform_defaults_apply_when_target_omits_it() -> None:
 
 def test_platform_derived_from_backend_when_unset() -> None:
     # With no explicit platform anywhere, it's derived from the backend (today's implicit behavior),
-    # so existing configs are unchanged: playwright -> web, idb -> ios.
+    # so existing configs are unchanged: playwright -> web, xcuitest -> ios.
     web = load_config("targets:\n  s:\n    baseUrl: https://app.test\n    backend: [playwright]\n")
     assert resolve(web, "s").platform == "web"
-    ios = load_config("targets:\n  s:\n    bundleId: com.x\n    backend: [idb]\n")
+    ios = load_config("targets:\n  s:\n    bundleId: com.x\n    backend: [xcuitest]\n")
     assert resolve(ios, "s").platform == "ios"
 
 
@@ -638,7 +620,7 @@ def test_ios_target_yields_ios_sub_config() -> None:
     cfg = load_config(
         "targets:\n  s:\n    platform: ios\n    bundleId: com.x\n"
         "    deeplinkScheme: myscheme\n    appPath: build/Demo.app\n"
-        "    build: make app\n    backend: [idb]\n"
+        "    build: make app\n    backend: [ios]\n"
     )
     eff = resolve(cfg, "s")
     assert eff.platform == "ios"
@@ -704,20 +686,10 @@ def test_web_target_carries_no_ios_fields() -> None:
 
 
 def test_ios_target_carries_no_web_fields() -> None:
-    cfg = load_config("targets:\n  s:\n    bundleId: com.x\n    backend: [idb]\n")
+    cfg = load_config("targets:\n  s:\n    bundleId: com.x\n    backend: [ios]\n")
     eff = resolve(cfg, "s")
     assert not isinstance(eff.platform_config, WebConfig)
     assert not hasattr(eff.platform_config, "base_url")
-
-
-def test_idb_version_default_resolves_onto_ios_config() -> None:
-    # The idb version pin is an environment-level default that resolves onto the iOS sub-config.
-    cfg = load_config(
-        "defaults:\n  idbVersion: '>=1.1.8'\ntargets:\n  s:\n    bundleId: com.x\n    backend: [idb]\n"
-    )
-    eff = resolve(cfg, "s")
-    assert isinstance(eff.platform_config, IosConfig)
-    assert eff.platform_config.idb_version == ">=1.1.8"
 
 
 def test_rebased_rebases_app_path_inside_ios_config() -> None:

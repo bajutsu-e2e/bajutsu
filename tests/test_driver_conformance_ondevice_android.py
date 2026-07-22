@@ -5,7 +5,7 @@ The adb backend is the one shipped driver the contract never ran against: the An
 cannot exercise the contract's ambiguous- and zero-match cases — exactly where a determinism-core
 divergence hides (an ambiguous adb selector tapping the first match, a prime-directive-2 violation,
 would pass every existing Android job). This module closes that gap the way the iOS module does for
-idb / XCUITest, driving the adb driver's *own* query / act code (over both the resident channel,
+XCUITest, driving the adb driver's *own* query / act code (over both the resident channel,
 BE-0245, and the id-form matching of BE-0221) rather than the shared base alone. It runs in the
 Android E2E path (`android-e2e.yml`), never in `make check`: an `ondevice` pytest marker (deselected
 by the gate's default `-m 'not web and not ondevice'`) keeps it out even where adb is on PATH, and a

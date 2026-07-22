@@ -1,6 +1,6 @@
 """XCUITest backend — semantic actuation over a loopback HTTP channel (BE-0019).
 
-Unlike idb (a subprocess CLI that taps frame-centre coordinates), XCUITest actuates from a resident
+Unlike a coordinate-CLI backend that taps frame-centre coordinates, XCUITest actuates from a resident
 XCTest runner living on the Simulator, so Python and that runner talk over a small `127.0.0.1`
 channel — the same loopback pattern `network.py` already uses, in the Python→runner direction. This
 module is the **Python side** of that channel: it builds the requests, parses the responses, and maps
@@ -381,8 +381,8 @@ class XcuitestDriver:
 
     name = "xcuitest"
 
-    # Beyond idb: a semantic tap (by handle, no coordinates), native condition waiting, and the
-    # two-finger gestures idb raises UnsupportedAction for. No NETWORK — network evidence comes from
+    # Capabilities: a semantic tap (by handle, no coordinates), native condition waiting, and
+    # two-finger gestures. No NETWORK — network evidence comes from
     # the app-side collector (BE-0020 boundary), not the actuator. The whole device-control family
     # (`DEVICE_CONTROL_ALL`) and the permission grants because xcuitest shares the iOS Simulator
     # lifecycle, which wires a real simctl-backed `DeviceControl` for its runs too (BE-0128;
@@ -517,9 +517,8 @@ class XcuitestDriver:
         )
 
     def back(self) -> None:
-        # iOS has no hardware back: tap the OS navigation back button, the same element idb taps, so
-        # `back` behaves identically across the iOS backends. Reuses `tap` rather than re-issuing the
-        # actuate call, mirroring idb's `back` (BE-0210).
+        # iOS has no hardware back: tap the OS navigation back button. Reuses `tap` rather than
+        # re-issuing the actuate call (BE-0210).
         self.tap({"id": base.OS_BACK_BUTTON})
 
     def type_text(self, text: str) -> None:
