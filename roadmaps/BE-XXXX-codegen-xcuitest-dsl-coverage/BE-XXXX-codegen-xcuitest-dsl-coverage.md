@@ -24,12 +24,14 @@ fixture so the gate proves what the emitter actually implements, not just its si
 
 ## Motivation
 
-`tests/test_codegen_xcuitest.py` exercises far more of the emitter than the CI compile step does:
+`tests/test_codegen.py` exercises far more of the emitter than the CI compile step does:
 the text-editing steps `clear` / `delete` / `select` / `copy`
 ([BE-0265](../BE-0265-text-editing-steps/BE-0265-text-editing-steps.md)), `longPress` / `swipe` /
-`drag` gestures, coordinate swipes, compound selectors with `traits` and `index`, and `within`. All
-of these are checked only as substrings of the generated Swift, never compiled. Two gaps are sharper
-still. `pinch` / `rotate` multi-touch emits real `.pinch(withScale:)` / `.rotate(...)` XCTest calls
+`drag` gestures, coordinate swipes, and compound selectors with `traits` and `index`. All of these
+are checked only as substrings of the generated Swift, never compiled. (`within`, a geometric
+frame-containment constraint, stays unsupported by design — `_query()` returns `UNSUPPORTED_SELECTOR`
+for it rather than real Swift — so it has no compiled coverage to add and sits outside this item's
+scope.) Two gaps are sharper still. `pinch` / `rotate` multi-touch emits real `.pinch(withScale:)` / `.rotate(...)` XCTest calls
 (`xcuitest.py:169-178`) that are never compiled or run against a device anywhere in the repository —
 not even the on-device conformance suite exercises the codegen emitter's version of these calls, only
 the driver's own. And `forEach` / `if` control flow and `extract` have no emitter handling at all:
@@ -46,7 +48,7 @@ pass.
 Proposal altitude. The work is MECE along the units below.
 
 - **Extend the compiled scenario.** Add text-editing (`clear` / `delete` / `select` / `copy`),
-  gesture (`longPress` / `swipe` / `drag`), and compound-selector (`traits` + `index`, `within`) steps
+  gesture (`longPress` / `swipe` / `drag`), and compound-selector (`traits` + `index`) steps
   to `components.yaml` or a sibling scenario compiled by the same `xcuitest (codegen)` job, so the
   generated Swift for each construct is actually built and run.
 - **Compile and run `pinch` / `rotate`.** Add a multi-touch scenario to the compiled set, reusing the
@@ -86,6 +88,6 @@ Proposal altitude. The work is MECE along the units below.
 - [BE-0265 — Text-editing steps: select, clear, delete, copy](../BE-0265-text-editing-steps/BE-0265-text-editing-steps.md)
 - [BE-0083 — Unify the codegen emitters behind a shared scenario walk](../BE-0083-codegen-emitter-unification/BE-0083-codegen-emitter-unification.md)
 - [BE-0282 — Real-backend network capture, mock, and assertion coverage in CI](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md)
-- `bajutsu/codegen/xcuitest.py`, `tests/test_codegen_xcuitest.py`,
+- `bajutsu/codegen/xcuitest.py`, `tests/test_codegen.py`,
   `demos/showcase/scenarios/components.yaml`, `.github/workflows/ios-e2e.yml`
   (`xcuitest (codegen)` and `xcuitest (multi-touch)` jobs)
