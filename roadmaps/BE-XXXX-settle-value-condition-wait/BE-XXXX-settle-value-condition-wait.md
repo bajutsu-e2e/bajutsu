@@ -69,8 +69,8 @@ wall-clock deadline (`bajutsu/drivers/adb.py:230`), specifically because a fast 
 channel BE-0245 itself introduced — could otherwise collapse the settle window and let a
 still-moving tree pass as settled. `IdbDriver._settle` (`bajutsu/drivers/idb.py:335`–`336`) kept the
 strategy BE-0245 moved away from on the Android side: it still polls a fixed three times at a
-fifty-millisecond interval, a one-hundred-fifty-millisecond ceiling regardless of how loaded the
-machine running it is — fifty times narrower than the Android side's eight-second budget. A fixed
+50-millisecond interval, a 150-millisecond ceiling regardless of how loaded the
+machine running it is — 50 times narrower than the Android side's eight-second budget. A fixed
 poll count scales no better on idb than it did on adb before BE-0245, and nothing in the documented
 reason for keeping `_settle` per-backend argues for leaving one backend on a strategy already known
 to run out on a slow machine; unit 4 below asks idb to adopt adb's wall-clock shape while keeping its
@@ -118,11 +118,19 @@ runner already respects, never a fixed sleep.
    all, so the added polling lands only on the steps that ask for it.
 
 4. **Convert `IdbDriver._settle` to a wall-clock deadline.** Replace its fixed
-   `_SETTLE_MAX_POLLS` / `_SETTLE_POLL_S` loop (`bajutsu/drivers/idb.py:335`–`336`) with the same
-   deadline-bounded shape `AdbDriver._settle` already uses (`bajutsu/drivers/adb.py:230`–`231`), so
+   `_SETTLE_MAX_POLLS` / `_SETTLE_POLL_S` loop (`bajutsu/drivers/idb.py:392`–`398`) with the same
+   deadline-bounded shape `AdbDriver._settle` already uses (`bajutsu/drivers/adb.py:302`–`309`), so
    idb's settle wait scales with how slow the machine running it actually is instead of a fixed
    budget tuned for a fast one. This unit is independent of units 1–3: it fixes the driver's
-   pre-action wait, not the runner's post-action read.
+   pre-action wait, not the runner's post-action read. Once it ships, the two `_settle` methods poll
+   the same `_stable_key` projection on the same wall-clock-deadline shape, differing only in their
+   deadline and poll-interval constants — exactly what `coordinate_tree.py`'s docstring calls "shared
+   tuning," not the "genuine strategy difference" it currently gives as the reason `_settle` stays
+   per-backend. This unit updates that docstring in the same change so it stops asserting a
+   difference this conversion removes; whether to go further and hoist `_settle` itself into
+   `CoordinateTreeDriver` is left to the implementation, since idb's `query()` still recovers from an
+   accessibility-bridge wedge (`_AX_RESET_RETRIES`) that adb's does not, and that interaction is
+   worth weighing before merging the two methods into one.
 
 5. **Verify against the exact failures this item traces to.** Add a regression test that reproduces
    the `extract`-after-tap race in `tests/test_driver_conformance.py`, the `FakeDriver`-based
