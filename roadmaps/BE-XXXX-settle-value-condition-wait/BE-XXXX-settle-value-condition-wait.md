@@ -95,18 +95,28 @@ runner already respects, never a fixed sleep.
 2. **Route a mid-scenario `assert` step through that shared retry.** Replace the single
    `driver.query()` at `bajutsu/orchestrator/loop.py:245` with a call into unit 1's helper, so a
    step-level `assert` gets the same condition wait the trailing `expect` block already has, instead
-   of judging a value against one snapshot.
+   of judging a value against one snapshot. Keep building the same stripped `step_ctx` this call site
+   already builds before evaluating (`bajutsu/orchestrator/loop.py:246`–`249`, BE-0250 Unit 2): a
+   step-level assert drops `visual`/`schema` from `ctx` since no per-step screenshot is taken, and
+   `_evaluate_expect` takes `ctx` as a plain parameter rather than stripping it itself, so this unit
+   passes the stripped `step_ctx` into the shared helper — not the unstripped `ctx` — to avoid
+   silently reintroducing stale `visual`/`responseSchema` input.
 
-3. **Give `extract`'s read the same forgiveness, on its own terms, keyed to the property it actually
-   reads.** An `extract` step has no assertion to satisfy — it copies a value out of the tree into a
-   variable — so unit 1's pass-or-fail loop does not fit it directly. That value is not always the
-   element's `value`: `_run_extract` reads `el.get(ext.prop)` (`bajutsu/orchestrator/evidence_rules.py:83`)
-   for whatever property the step's `extract` names, so `ext.prop` can be `label` or `traits` as
-   readily as `value` — the item's own motivating case, a counter reflected into a label, extracts
-   `label`, not `value`. Add a parallel read that instead polls until a projection of the tree —
-   identifier, frame, and the specific property `ext.prop` names, a superset of the settle
-   projection in `bajutsu/drivers/coordinate_tree.py` keyed to whichever property this step reads —
-   stops changing between two consecutive reads, or the same wall-clock deadline elapses, and thread
+3. **Give `extract`'s read the same forgiveness, on its own terms, keyed to the properties it
+   actually reads.** An `extract` step has no assertion to satisfy — it copies a value out of the
+   tree into a variable — so unit 1's pass-or-fail loop does not fit it directly. A step's `extract`
+   is not one property but a dict of named extracts (`_run_extract` takes
+   `extracts: Mapping[str, Extract]`, `bajutsu/orchestrator/evidence_rules.py:72`), each with its own
+   selector and its own property: `el.get(ext.prop)` (`bajutsu/orchestrator/evidence_rules.py:83`)
+   reads whatever property that one extract names (`ext.prop`'s three options are `value`, `label`,
+   and `identifier`), so `ext.prop` can be `label` just as readily as `value` — the item's own
+   motivating case, a counter reflected into a label, extracts
+   `label`, not `value` — and a step naming several extracts can pull different properties off
+   different elements. Add a parallel read that instead polls until a projection of the tree —
+   identifier, frame, and the union of every (selector, `ext.prop`) pair the step's `extract` names,
+   a superset of the settle projection in `bajutsu/drivers/coordinate_tree.py` keyed to every
+   property any of this step's extracts reads, not only one — stops changing between two consecutive
+   reads, or the same wall-clock deadline elapses, and thread
    it into `_ScreenRead`'s read (`bajutsu/orchestrator/loop.py:101`) so `extract` consumes the
    settled value rather than whichever one was still propagating when the single read fired. Because
    `.get()` caches its result on the first call, this poll has to be selected when `_ScreenRead` is
@@ -170,11 +180,13 @@ runner already respects, never a fixed sleep.
 
 - **Make the settle projection in `bajutsu/drivers/coordinate_tree.py` include value, traits, and
   label everywhere, instead of adding a separate, property-aware read for `extract`.** Rejected:
-  that projection is shared by every action's pre-motion settle wait, not only the post-step read
+  that projection is shared by every selector-based action's pre-motion settle wait (`_settle()`
+  fires only from `_center()`, backing `tap`/`double_tap`/`long_press` — never `type_text`,
+  `delete_text`, `tap_point`, or a bare `query()`, as unit 5 traces), not only the post-step read
   `extract` consumes, and its docstring states the reason it excludes value, traits, and label
   today — an ordinary data update on an otherwise static screen must not trigger extra polls before
-  every action. Widening it would reintroduce exactly that spurious-poll cost on every action, not
-  only the one step that needed the fix.
+  a selector-based action. Widening it would reintroduce exactly that spurious-poll cost on every
+  selector-based action, not only the one step that needed the fix.
 
 - **Duplicate a retry loop at each read call site instead of a shared helper.** Rejected: a
   hand-written poll at `assert`'s call site and another at `extract`'s would let the two drift out of
