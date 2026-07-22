@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0292") |
-| Implementing PR | [#1221](https://github.com/bajutsu-e2e/bajutsu/pull/1221), [#NNNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNNN) |
+| Implementing PR | [#1221](https://github.com/bajutsu-e2e/bajutsu/pull/1221), [#1276](https://github.com/bajutsu-e2e/bajutsu/pull/1276) |
 | Topic | Platform support |
 | Related | [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md), [BE-0288](../BE-0288-ios-device-signing-batch-build/BE-0288-ios-device-signing-batch-build.md), [BE-0291](../BE-0291-xcuitest-runner-reuse-across-scenarios/BE-0291-xcuitest-runner-reuse-across-scenarios.md) |
 <!-- /BE-METADATA -->
@@ -212,7 +212,7 @@ Log:
   materialize-to-cache, and packaging, with fast-gate tests. Also added `doctor --target`'s
   resolved-runner-source disclosure (`runner_source` / `xcuitest_runner_summary`), but deliberately
   scoped the Xcode/SDK-mismatch half out as a separate follow-up.
-- [#NNNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNNN) — completed the two deferred halves: the
+- [#1276](https://github.com/bajutsu-e2e/bajutsu/pull/1276) — completed the two deferred halves: the
   doctor Xcode/SDK-mismatch disclosure (`build-info.json` recorded by `make runner-bundle`, compared
   against the host toolchain, escape hatch named) and the on-device bundled-path e2e (a
   `testRunner`-free `showcase.bundled-runner.config.yaml` run through `smoke.yaml` on both the SwiftUI
