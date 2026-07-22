@@ -16,7 +16,7 @@ smallest app that still exercises `record`, `crawl`, and `run` together.
   identical identifier contract, so the one [`scenarios/`](scenarios) set drives both.
 - **The roadmap items:** [BE-0045](../../roadmaps/BE-0045-dogfood-showcase-apps/BE-0045-dogfood-showcase-apps.md)
   records the rationale for the showcase suite; [BE-0079](../../roadmaps/BE-0079-consolidate-demos-on-showcase/BE-0079-consolidate-demos-on-showcase.md)
-  completed the consolidation onto it (see [`roadmaps`](../../roadmaps/README.md) for the full index).
+  completed the consolidation onto it (see [`roadmaps`](../../roadmaps/README.md) for how the roadmap works).
 
 ## The four products
 

@@ -1,10 +1,9 @@
-"""Tests for the roadmap index generator (scripts/build_roadmap_index.py).
+"""Tests for the roadmap metadata loader (scripts/build_roadmap_index.py).
 
-The generator regenerates the marker-delimited table bodies in roadmaps/README.md and
-README-ja.md from each BE item's own metadata, so a roadmap PR only touches its own directory
-(BE-0043). These tests pin the pure pieces — metadata parsing, per-language row rendering, and
-marker-region replacement — plus an end-to-end build over a temporary roadmap tree, and finally
-assert the committed index is already up to date (the same check the gate runs).
+The loader reads each BE item's own metadata into a plain in-memory model — consumed by the roadmap
+dashboard generator and a handful of other roadmap tools. These tests pin the pure pieces — metadata
+parsing, status-to-bucket classification, and duplicate-id detection — plus loading the real,
+committed roadmap tree end to end.
 """
 
 from __future__ import annotations
@@ -97,8 +96,8 @@ def test_parse_metadata_japanese_fields() -> None:
     assert fields["由来"] == "両社"
 
 
-def test_bucket_derives_index_section_from_status() -> None:
-    # Status is the lone lifecycle field; the index bucket is derived from it, not a hand-set Track
+def test_bucket_derives_classification_from_status() -> None:
+    # Status is the lone lifecycle field; the bucket is derived from it, not a hand-set Track
     # (retired in BE-0078) — so folder and bucket can never disagree.
     assert bri.bucket("Implemented") == "Implemented"
     assert bri.bucket("In progress") == "In progress"
@@ -106,151 +105,18 @@ def test_bucket_derives_index_section_from_status() -> None:
     assert bri.bucket("Proposal (deferred)") == "Deferred"
 
 
-def test_index_buckets_excludes_implemented() -> None:
-    # Implemented stays a valid classification bucket in BUCKETS (bucket() and the dashboard both
-    # need it), but it never renders as an index-page table — the dashboard covers it instead.
-    assert dict(bri.BUCKETS)["Implemented"] == "implemented"
-    assert "Implemented" not in dict(bri.INDEX_BUCKETS)
-
-
-def test_sections_for_skips_implemented_items() -> None:
-    items = [
-        bri.Item(
-            id="BE-0001",
-            slug="shipped",
-            bucket="Implemented",
-            topic="Verification & coverage",
-            by_lang={},
-        ),
-        bri.Item(
-            id="BE-0002",
-            slug="open",
-            bucket="Proposals",
-            topic="Verification & coverage",
-            by_lang={},
-        ),
-    ]
-    assert [s.bucket for s in bri.sections_for(items)] == ["Proposals"]
-
-
-def test_assign_sections_drops_implemented_items() -> None:
-    items = [
-        bri.Item(
-            id="BE-0001",
-            slug="shipped",
-            bucket="Implemented",
-            topic="Verification & coverage",
-            by_lang={},
-        ),
-        bri.Item(
-            id="BE-0002",
-            slug="open",
-            bucket="Proposals",
-            topic="Verification & coverage",
-            by_lang={},
-        ),
-    ]
-    by_key = bri.assign_sections(items)
-    assert sum(len(rows) for rows in by_key.values()) == 1
-    assert by_key["proposals-verification"][0].id == "BE-0002"
-
-
-def test_status_display_english() -> None:
-    assert bri.status_display("Implemented", "en") == "Implemented"
-    assert bri.status_display("In progress", "en") == "In progress"
-    assert bri.status_display("Proposal", "en") == "Proposal"
-    assert bri.status_display("Proposal (deferred)", "en") == "Deferred"
-
-
-def test_status_display_japanese() -> None:
-    assert bri.status_display("実装済み", "ja") == "実装済み"
-    assert bri.status_display("実装中", "ja") == "実装中"
-    assert bri.status_display("提案", "ja") == "提案"
-    assert bri.status_display("提案（保留）", "ja") == "保留"
-
-
-def test_render_row_english_with_origin() -> None:
-    entry = bri.Entry(
-        id="BE-0029",
-        slug="visual-regression-assertions",
-        title="Visual-regression assertions",
-        status="Implemented",
-        origin="Both",
-    )
-    row = bri.render_row(entry, "en", has_origin=True)
-    assert row == (
-        "| [BE-0029](BE-0029-visual-regression-assertions/"
-        "BE-0029-visual-regression-assertions.md) "
-        "| Visual-regression assertions | Implemented | Both |"
-    )
-
-
-def test_render_row_english_without_origin() -> None:
-    entry = bri.Entry(
-        id="BE-0001",
-        slug="m1-deterministic-runner",
-        title="Deterministic runner (M1)",
-        status="Implemented",
-        origin=None,
-    )
-    row = bri.render_row(entry, "en", has_origin=False)
-    assert row == (
-        "| [BE-0001](BE-0001-m1-deterministic-runner/"
-        "BE-0001-m1-deterministic-runner.md) | Deterministic runner (M1) | Implemented |"
-    )
-
-
-def test_render_row_japanese_links_to_ja_file() -> None:
-    entry = bri.Entry(
-        id="BE-0029",
-        slug="visual-regression-assertions",
-        title="ビジュアル回帰アサーション",
-        status="実装済み",
-        origin="両社",
-    )
-    row = bri.render_row(entry, "ja", has_origin=True)
-    assert row == (
-        "| [BE-0029](BE-0029-visual-regression-assertions/"
-        "BE-0029-visual-regression-assertions-ja.md) "
-        "| ビジュアル回帰アサーション | 実装済み | 両社 |"
-    )
-
-
-def test_replace_region_swaps_only_marked_body() -> None:
-    text = (
-        "intro prose\n"
-        "| ID | Item | Status |\n"
-        "|---|---|---|\n"
-        "<!-- GENERATED:demo -->\n"
-        "| old row |\n"
-        "<!-- /GENERATED:demo -->\n"
-        "trailing prose\n"
-    )
-    out = bri.replace_region(text, "demo", "| new row 1 |\n| new row 2 |")
-    assert "old row" not in out
-    assert "| new row 1 |\n| new row 2 |" in out
-    # markers and surrounding prose are preserved
-    assert "intro prose" in out
-    assert "trailing prose" in out
-    assert "<!-- GENERATED:demo -->" in out
-    assert "<!-- /GENERATED:demo -->" in out
-
-
-def test_replace_region_missing_marker_raises() -> None:
+def test_bucket_rejects_unknown_status() -> None:
     import pytest
 
-    with pytest.raises(ValueError, match="absent"):
-        bri.replace_region("no markers here\n", "demo", "| x |")
+    with pytest.raises(ValueError, match="unknown status"):
+        bri.bucket("Something else")
 
 
-def test_committed_index_is_up_to_date() -> None:
-    """The gate: every committed index table already matches generated output."""
-    roadmap = Path(__file__).resolve().parent.parent / "roadmaps"
-    stale = bri.stale_files(roadmap)
-    assert stale == [], (
-        "roadmap index is out of date; run `python scripts/build_roadmap_index.py` "
-        f"and commit: {stale}"
-    )
+def test_tracking_issue_url_is_a_pure_function_of_the_id() -> None:
+    url = bri.tracking_issue_url("BE-0139")
+    assert url.startswith("https://github.com/bajutsu-e2e/bajutsu/issues")
+    assert "roadmap-tracking" in url
+    assert "BE-0139" in url
 
 
 def test_duplicate_ids_flags_collisions(tmp_path: Path) -> None:
@@ -264,7 +130,7 @@ def test_duplicate_ids_flags_collisions(tmp_path: Path) -> None:
 
 
 def test_load_items_rejects_duplicate_ids(tmp_path: Path) -> None:
-    """The index build refuses a tree with a duplicate id instead of rendering two rows."""
+    """The loader refuses a tree with a duplicate id instead of loading two items for it."""
     import pytest
 
     roadmap = tmp_path / "roadmaps"
@@ -280,124 +146,12 @@ def test_no_duplicate_be_ids() -> None:
     assert bri.duplicate_ids(roadmap) == {}, "duplicate BE IDs found in roadmaps/"
 
 
-def test_every_item_topic_has_a_marked_section() -> None:
-    """The gate: every item — placeholders included — has its (bucket, topic) marker pair.
-
-    Guards the failure mode where a ``BE-XXXX`` placeholder introduces a topic into a bucket with no
-    marked section: the render skips the placeholder, so nothing complains until the roadmap-id
-    automation numbers it on main and the reindex hits the absent region. This catches it at PR time.
-    """
+def test_load_items_loads_the_committed_roadmap_tree() -> None:
+    """The gate: every committed item parses, and its Topic is one of the known topics (BE-0074)."""
     roadmap = Path(__file__).resolve().parent.parent / "roadmaps"
-    missing = bri.missing_section_markers(roadmap)
-    assert missing == [], "\n".join(missing)
-
-
-_IMPLEMENTED_ITEM = """\
-**English** · [日本語](BE-0999-foo-ja.md)
-
-# BE-0999 — Foo
-
-<!-- BE-METADATA -->
-| Field | Value |
-|---|---|
-| Proposal | [BE-0999](BE-0999-foo.md) |
-| Status | **Implemented** |
-| Topic | codegen coverage |
-<!-- /BE-METADATA -->
-
-## Introduction
-"""
-
-
-def test_required_section_keys_skips_implemented_items(tmp_path: Path) -> None:
-    """An Implemented item needs no marked section — that bucket never renders on the index page."""
-    roadmap = tmp_path / "roadmaps"
-    item = roadmap / "BE-0999-foo"
-    item.mkdir(parents=True)
-    (item / "BE-0999-foo.md").write_text(_IMPLEMENTED_ITEM, encoding="utf-8")
-
-    assert bri.required_section_keys(roadmap) == {}
-
-
-def test_missing_section_markers_ignores_implemented_items(tmp_path: Path) -> None:
-    """No section markers exist anywhere, yet an Implemented item alone reports nothing missing."""
-    roadmap = tmp_path / "roadmaps"
-    item = roadmap / "BE-0999-foo"
-    item.mkdir(parents=True)
-    (item / "BE-0999-foo.md").write_text(_IMPLEMENTED_ITEM, encoding="utf-8")
-    for index_file in ("README.md", "README-ja.md"):
-        (roadmap / index_file).write_text("## Implemented\n", encoding="utf-8")
-
-    assert bri.missing_section_markers(roadmap) == []
-
-
-_PLACEHOLDER_ITEM = """\
-**English** · [日本語](BE-XXXX-foo-ja.md)
-
-# BE-XXXX — Foo
-
-<!-- BE-METADATA -->
-| Field | Value |
-|---|---|
-| Proposal | [BE-XXXX](BE-XXXX-foo.md) |
-| Status | **Proposal** |
-| Topic | codegen coverage |
-<!-- /BE-METADATA -->
-
-## Introduction
-"""
-
-
-def _write_index_pages(roadmap: Path, *, with_section: bool) -> None:
-    section = (
-        "\n### codegen coverage\n\n"
-        "<!-- GENERATED:proposals-codegen -->\n\n<!-- /GENERATED:proposals-codegen -->\n"
-        if with_section
-        else ""
-    )
-    for index_file in ("README.md", "README-ja.md"):
-        (roadmap / index_file).write_text(f"## Proposals\n{section}", encoding="utf-8")
-
-
-def test_missing_section_markers_flags_placeholder_without_section(tmp_path: Path) -> None:
-    """A placeholder whose topic has no marked section in a bucket is reported for both pages."""
-    roadmap = tmp_path / "roadmaps"
-    item = roadmap / "BE-XXXX-foo"
-    item.mkdir(parents=True)
-    (item / "BE-XXXX-foo.md").write_text(_PLACEHOLDER_ITEM, encoding="utf-8")
-    _write_index_pages(roadmap, with_section=False)
-
-    missing = bri.missing_section_markers(roadmap)
-    assert len(missing) == 2  # one per index page
-    assert all("proposals-codegen" in report and "BE-XXXX-foo" in report for report in missing)
-
-
-def test_missing_section_markers_passes_when_section_present(tmp_path: Path) -> None:
-    """With the marker pair present in both pages the placeholder's section is satisfied."""
-    roadmap = tmp_path / "roadmaps"
-    item = roadmap / "BE-XXXX-foo"
-    item.mkdir(parents=True)
-    (item / "BE-XXXX-foo.md").write_text(_PLACEHOLDER_ITEM, encoding="utf-8")
-    _write_index_pages(roadmap, with_section=True)
-
-    assert bri.missing_section_markers(roadmap) == []
-
-
-def test_missing_section_markers_flags_unpaired_opening_marker(tmp_path: Path) -> None:
-    """An opening marker without its closing partner is not a usable section — still reported.
-
-    A lone ``<!-- GENERATED:key -->`` would fool an opening-only scan but crash ``replace_region``.
-    """
-    roadmap = tmp_path / "roadmaps"
-    item = roadmap / "BE-XXXX-foo"
-    item.mkdir(parents=True)
-    (item / "BE-XXXX-foo.md").write_text(_PLACEHOLDER_ITEM, encoding="utf-8")
-    for index_file in ("README.md", "README-ja.md"):
-        (roadmap / index_file).write_text(
-            "## Proposals\n\n### codegen coverage\n\n<!-- GENERATED:proposals-codegen -->\n",
-            encoding="utf-8",
-        )
-
-    missing = bri.missing_section_markers(roadmap)
-    assert len(missing) == 2
-    assert all("proposals-codegen" in report for report in missing)
+    items = bri.load_items(roadmap)
+    assert items, "expected at least one roadmap item"
+    for item in items:
+        assert item.bucket in dict(bri.BUCKETS)
+        assert item.topic in bri.KNOWN_TOPICS
+        assert "en" in item.by_lang and "ja" in item.by_lang
