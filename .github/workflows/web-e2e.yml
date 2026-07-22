@@ -179,10 +179,9 @@ jobs:
   # masks the Sync request's secret (demos/web/network/assert_redaction.py). Keyless — the verdict is
   # the scenario's deterministic `request` assertion plus that check, no model anywhere.
   #
-  # This job lands as SIGNAL, not a required check (BE-0282: "land as signal first, promote to
-  # required only once it proves stable"): it is deliberately absent from the `E2E (web)`
-  # aggregator's `needs` below, so a failure here does not block a merge yet. Same `web` extra and
-  # path-gate as the smoke; promote it into the aggregator once it has proven stable.
+  # This job landed as SIGNAL first (BE-0282: "land as signal first, promote to required only once it
+  # proves stable") and, having proven stable in CI, is now part of the `E2E (web)` aggregator's
+  # `needs` below, so a failure here blocks a merge. Same `web` extra and path-gate as the smoke.
   #
   # Android has no counterpart: the adb driver declares no NETWORK capability and there is no native
   # network monitor to actuate (observes_network_via_driver is false), so Android network capture is
