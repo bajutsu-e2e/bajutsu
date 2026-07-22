@@ -43,7 +43,14 @@ from bajutsu.orchestrator.types import (
     _no_network,
     scenario_slug,
 )
-from bajutsu.orchestrator.waits import WaitTrace, _adaptive_sleep, _timeout_floor, _wait
+from bajutsu.orchestrator.waits import (
+    WaitTick,
+    WaitTrace,
+    _adaptive_sleep,
+    _timeout_floor,
+    _wait,
+    describe_wait,
+)
 from bajutsu.scenario import Assertion, Email, Extract, ForEach, If, Scenario, Selector, Step
 from bajutsu.webview import DomSource, WebContextDriver
 
@@ -287,6 +294,7 @@ def _run_step_body(
     selection: SelectionState | None = None,
     on_blocked: BlockedHandler | None = None,
     alerts: list[AlertEvent] | None = None,
+    on_wait_tick: WaitTick | None = None,
 ) -> tuple[bool, str, list[AssertionResult], list[base.Element] | None]:
     """Execute one step's effect, returning (ok, reason, assertion_results, snapshot).
 
@@ -312,6 +320,7 @@ def _run_step_body(
                 trace=wait_trace,
                 on_blocked=on_blocked,
                 alerts=alerts,
+                on_tick=on_wait_tick,
             )
             return ok, reason, [], tree
         if kind == "email":
@@ -623,6 +632,17 @@ def _run_steps(
             # (BE-0231 Unit 1); the on_blocked retry gets a fresh trace so the diagnostic reflects the
             # attempt that actually failed.
             wait_trace = WaitTrace() if kind == "wait" and interp_step.wait is not None else None
+            # A wait blocks silently for its whole timeout; stream a "still waiting <condition>" line
+            # so the run log shows what it is blocked on, live. Only when progress is wired.
+            wait_tick: WaitTick | None = None
+            if progress is not None and kind == "wait" and interp_step.wait is not None:
+                desc = describe_wait(interp_step.wait)
+                prefix = f"{sid} · step {idx + 1}"
+
+                def wait_tick(remaining: float, _desc: str = desc, _prefix: str = prefix) -> None:
+                    assert progress is not None
+                    progress(f"{_prefix}: waiting {_desc} ({remaining:.0f}s left)")
+
             ok, reason, results, snapshot = _run_step_body(
                 active_driver,
                 interp_step,
@@ -638,6 +658,7 @@ def _run_steps(
                 selection=selection,
                 on_blocked=on_blocked,
                 alerts=outcome.alerts,
+                on_wait_tick=wait_tick,
             )
             if not ok and on_blocked is not None:
                 event = on_blocked(active_driver)
@@ -660,6 +681,7 @@ def _run_steps(
                         ctx,
                         wait_trace=wait_trace,
                         selection=selection,
+                        on_wait_tick=wait_tick,
                     )
             outcome.ok, outcome.reason, outcome.assertion_results = ok, reason, results
             outcome.duration_s = clock.now() - start

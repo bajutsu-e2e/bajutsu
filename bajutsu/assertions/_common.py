@@ -37,7 +37,11 @@ class AssertionResult:
     visual: VisualEvidence | None = None  # set only for `visual` assertions
 
 
-def _sel_str(sel: Selector) -> str:
+def sel_str(sel: Selector) -> str:
+    """Render a selector as `key=value` pairs for report/progress detail.
+
+    Shared by the assertion report and the wait progress line so the two never drift.
+    """
     return ", ".join(f"{k}={v!r}" for k, v in sel.as_selector().items())
 
 

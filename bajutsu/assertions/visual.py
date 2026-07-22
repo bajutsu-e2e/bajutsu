@@ -11,7 +11,7 @@ import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from bajutsu.assertions._common import AssertionResult, _resolve_one, _sel_str
+from bajutsu.assertions._common import AssertionResult, _resolve_one, sel_str
 from bajutsu.drivers import base
 from bajutsu.scenario import (
     ExcludeRegion,
@@ -170,7 +170,7 @@ def _prepare_visual_comparison(
             False,
             "visual",
             detail,
-            f"element has an empty frame: {_sel_str(a.element)}",
+            f"element has an empty frame: {sel_str(a.element)}",
             visual=ev,
         )
     ctx.diff_dir.mkdir(parents=True, exist_ok=True)
@@ -208,7 +208,7 @@ def _resolve_masks(
         if el is None:
             continue  # matched nothing — nothing on screen to hide
         masks.append(_frame_to_px(el["frame"], scale))
-        masked_selectors.append(_sel_str(r.selector))
+        masked_selectors.append(sel_str(r.selector))
     if crop is not None:
         masks = [_shift(m, crop.x, crop.y) for m in masks]
     return masks, masked_selectors
