@@ -72,6 +72,14 @@ class _DeviceEnvironment:
     def teardown(self, driver: base.Driver, eff: Effective) -> None:
         simctl.Env(self._udid, run=self._run).terminate(require_ios(eff).bundle_id)
 
+    def has_reusable_resident(self) -> bool:
+        # idb / fake spawn no resident to amortize; XcuitestEnvironment overrides (BE-0291).
+        return False
+
+    def end_lease(self, driver: base.Driver, eff: Effective) -> None:
+        # No warm resident here, so a lease's end is just its full teardown (BE-0291).
+        self.teardown(driver, eff)
+
     def has_devices(self) -> bool:
         return True
 

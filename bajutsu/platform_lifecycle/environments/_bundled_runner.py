@@ -1,4 +1,4 @@
-"""Locate and materialize the wheel-bundled generic XCUITest Simulator runner (BE-XXXX).
+"""Locate and materialize the wheel-bundled generic XCUITest Simulator runner (BE-0292).
 
 The XCUITest runner is app-agnostic (BE-0019): one built ``.xctestrun`` plus its products drives
 whatever app a run targets. Shipping that runner as wheel package data lets ``xcuitest.testRunner``

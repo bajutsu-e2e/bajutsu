@@ -263,6 +263,14 @@ class AndroidEnvironment:
             self._resident = None
         adb.Env(self._serial, run=self._run).force_stop(require_android(eff).package)
 
+    def has_reusable_resident(self) -> bool:
+        # The UI Automator read channel (BE-0245) is torn down per lease; amortizing it across leases
+        # is out of scope for BE-0291 (which targets the XCUITest runner's cold startup).
+        return False
+
+    def end_lease(self, driver: base.Driver, eff: Effective) -> None:
+        self.teardown(driver, eff)  # no warm resident kept: a lease's end is its full teardown
+
     def has_devices(self) -> bool:
         return True
 
