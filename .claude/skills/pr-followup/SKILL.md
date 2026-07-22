@@ -70,7 +70,31 @@ gh pr checks <PR>
      undecided ones you escalate (see below); never resolve a comment whose question is still
      unanswered.
 
-### 4. Push and report
+### 4. Self-review against the CI review contract
+
+If step 2 or 3 made a change this iteration, mirror the CI "Claude review" workflow locally before
+pushing whatever hasn't shipped yet, following [`ideation`](../ideation/SKILL.md) step 5's
+procedure exactly, with three differences. First, give the subagent a local `git diff` against the
+PR's remote branch instead of a fresh diff against `origin/main` — unlike `gh pr diff <PR>`, which
+only shows what GitHub's remote head already has, a local diff sees this iteration's not-yet-pushed
+fixes — and stage whatever step 2 or 3 touched first (`git add <paths>`), the same guard `ideation`
+applies to its own new files, so a file this iteration newly introduced doesn't stay untracked and
+skip the diff entirely. Second, don't scope that diff to `roadmaps/` — unlike `ideation`, whose
+fixes only ever land there, this skill's fixes can land anywhere the CI failure or review comment
+points to. Third, give the subagent `gh pr view <PR> --comments` for the discussion (there is a
+live PR here, unlike `ideation`'s pre-PR case), and route a genuine design-change finding to this
+skill's own Escalation section instead of `ideation`'s, reporting it directly in this iteration's
+summary rather than leaving a review thread open, since there is no PR conversation to leave
+unresolved for a self-review-only finding. Run `make check` after every fix, the same as steps 2
+and 3.
+
+This step pays off most directly for step 3's review-comment fixes, which wait until step 5's push
+to go out; a step 2 CI-failure fix already went out with its own push, so here this step is an
+extra local check rather than the round-trip savings it buys for step 3 (BE-0203). Skip it entirely
+when nothing changed this iteration (e.g. a poll under `implement-be`'s `/loop` where CI is already
+green and no new comments arrived), since there is nothing new to self-review or push.
+
+### 5. Push and report
 
 - Push all fixes in one commit (or logical commits if changes are independent).
 - Report what was fixed and what remains.
