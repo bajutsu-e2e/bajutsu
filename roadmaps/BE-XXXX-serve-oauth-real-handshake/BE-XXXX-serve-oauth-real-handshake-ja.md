@@ -1,6 +1,6 @@
 [English](BE-XXXX-serve-oauth-real-handshake.md) · **日本語**
 
-# BE-XXXX — Real OAuth handshake verification for serve's GitHub login
+# BE-XXXX — serve の GitHub ログインに対する実 OAuth ハンドシェイク検証
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
@@ -9,7 +9,8 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
-| トピック | Hosting the web UI (cloud / self-hosted) |
+| トピック | Web UI のホスティング（クラウド / セルフホスト） |
+| 関連 | [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
@@ -44,9 +45,9 @@
   ヘッドレスの)認可コード交換で `GitHubOAuthClient` を駆動するテストを追加します。secret が
   ないときはスキップし、実際のアクセストークンが返ってくること、そして `_fetch_orgs` が実際の
   ページネーションレスポンスをまさしくパースできることを検証します。
-- **まず非 gating とする**：
+- **まずゲート対象外とする**：
   [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md)
-  の前例に従い、新しいジョブをまず CI の signal として着地させ、必須化はそのあとで検討します。
+  の前例に従い、新しいジョブをまず CI のシグナルとして着地させ、必須化はそのあとで検討します。
 
 ## 検討した代替案
 
@@ -68,11 +69,10 @@
 - [ ] CI 専用の使い捨て GitHub OAuth App を登録する。
 - [ ] `GitHubOAuthClient` と `_fetch_orgs` に対する、API キーで gate したライブハンドシェイクテスト
   を追加する。
-- [ ] 非 gating の signal として CI に組み込む。
+- [ ] ゲート対象外のシグナルとして CI に組み込む。
 
 ## 参考
 
-- [BE-0282 — CI における実 backend のネットワーク捕捉・モック・アサーションのカバレッジ](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md)
+- [BE-0282 — ネットワークのキャプチャ・モック・アサーションを CI で実バックエンド検証する](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md)
 - `bajutsu/serve/server/oauth.py`、`tests/serve/test_oauth.py`
-  (`FakeOAuthClient`、`_RaisingOAuthClient`、`_PagingClient`)、GitHub App の実統合テストを扱う
-  姉妹提案
+  (`FakeOAuthClient`、`_RaisingOAuthClient`、`_PagingClient`)

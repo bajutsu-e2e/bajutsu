@@ -10,6 +10,7 @@
 | Status | **Proposal** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | Topic | Hosting the web UI (cloud / self-hosted) |
+| Related | [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -66,5 +67,4 @@ Proposal altitude. The work is MECE along the units below.
 
 - [BE-0282 — Real-backend network capture, mock, and assertion coverage in CI](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md)
 - `bajutsu/serve/server/oauth.py`, `tests/serve/test_oauth.py`
-  (`FakeOAuthClient`, `_RaisingOAuthClient`, `_PagingClient`), the sibling proposal for a real
-  GitHub App integration test
+  (`FakeOAuthClient`, `_RaisingOAuthClient`, `_PagingClient`)
