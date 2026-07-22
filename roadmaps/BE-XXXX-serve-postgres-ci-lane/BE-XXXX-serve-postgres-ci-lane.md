@@ -10,6 +10,7 @@
 | Status | **Proposal** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | Topic | Hosting the web UI (cloud / self-hosted) |
+| Related | [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -51,7 +52,7 @@ Proposal altitude. The work is MECE along the units below.
 - **Non-gating first.** Land the new job as CI signal, following the precedent in
   [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md): a
   first-time Postgres service container can hit its own teething problems (image-pull hiccups,
-  connection timing, a dialect edge case the SQLite-only suite has never exercised) independent of
+  connection timing, and a dialect edge case the SQLite-only suite has never exercised) independent of
   ordinary flakiness, so it earns required status only once it proves stable.
 
 ## Alternatives considered
