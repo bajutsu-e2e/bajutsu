@@ -289,8 +289,9 @@ things:
 2. **Spawn a subagent** (the `Agent` tool) and give it [`pr-followup`](../pr-followup/SKILL.md)'s
    steps directly in its prompt (point it at that skill file to follow) — the `Skill` tool runs
    only in the main conversation, so a subagent cannot invoke `/pr-followup` itself. Its task for
-   the PR: assess CI and review comments, make targeted fixes, run `make check`, push, reply to and
-   resolve threads, and **return a short structured summary** — what it changed, whether it pushed,
+   the PR: assess CI and review comments, make targeted fixes, self-review the fix against the CI
+   review contract, run `make check`, push, reply to and resolve threads, and **return a short
+   structured summary** — what it changed, whether it pushed,
    the resulting CI/review state, and whether it hit `pr-followup`'s design-change escalation. The
    fresh context is what keeps the implement transcript out of the expensive work (step 11).
 3. **Read the summary and evaluate the stop conditions** below. The loop layer owns the
