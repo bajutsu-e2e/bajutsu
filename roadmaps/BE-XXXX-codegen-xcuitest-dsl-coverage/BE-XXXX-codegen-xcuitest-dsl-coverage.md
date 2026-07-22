@@ -32,7 +32,7 @@ are checked only as substrings of the generated Swift, never compiled. (`within`
 frame-containment constraint, stays unsupported by design — `_query()` returns `UNSUPPORTED_SELECTOR`
 for it rather than real Swift — so it has no compiled coverage to add and sits outside this item's
 scope.) Two gaps are sharper still. `pinch` / `rotate` multi-touch emits real `.pinch(withScale:)` / `.rotate(...)` XCTest calls
-(`xcuitest.py:169-178`) that are never compiled or run against a device anywhere in the repository —
+(`xcuitest.py:169-180`) that are never compiled or run against a device anywhere in the repository —
 not even the on-device conformance suite exercises the codegen emitter's version of these calls, only
 the driver's own. And `forEach` / `if` control flow and `extract` have no emitter handling at all:
 they fall through to a generic `// TODO: unsupported step` comment
