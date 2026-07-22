@@ -48,9 +48,11 @@ Proposal altitude. The work is MECE along the units below.
   Also run the wider DB-touching suite (`test_db_models.py`, `test_db_repository.py`,
   and `test_oauth.py`'s persistence tests) against Postgres, since dialect-specific column/constraint
   behavior can surface there even when the migration itself succeeds.
-- **Land as required, not signal-only.** Unlike a real-device lane, a Postgres service container adds
-  no flakiness risk beyond the existing SQLite job's; there is no reason for this one to start
-  non-gating.
+- **Non-gating first.** Land the new job as CI signal, following the precedent in
+  [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md): a
+  first-time Postgres service container can hit its own teething problems (image-pull hiccups,
+  connection timing, a dialect edge case the SQLite-only suite has never exercised) independent of
+  ordinary flakiness, so it earns required status only once it proves stable.
 
 ## Alternatives considered
 
@@ -71,10 +73,11 @@ Proposal altitude. The work is MECE along the units below.
 
 - [ ] Add a Postgres service container to the `serve` CI job.
 - [ ] Run the migration upgrade/downgrade tests and the wider DB-touching test suite against it.
-- [ ] Land the lane as a required check.
+- [ ] Wire it into CI as a non-gating signal, promote to required once stable.
 
 ## References
 
+- [BE-0282 — Real-backend network capture, mock, and assertion coverage in CI](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md)
 - `bajutsu/serve/server/migrations/`, `tests/serve/test_db_migrations.py`,
   `tests/serve/test_db_models.py`, `tests/serve/test_db_repository.py`, `tests/serve/test_oauth.py`,
   `tests/serve/test_import_guard.py`, `.github/workflows/ci.yml`
