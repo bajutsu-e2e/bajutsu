@@ -176,9 +176,10 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   holding **both** language files `BE-NNNN-<slug>.md` and `BE-NNNN-<slug>-ja.md` (`BE` = *Bajutsu
   Evolution*, `NNNN` a zero-padded monotonic ID). The path is fixed when the ID is allocated and
   **never moves**; `Status` (`Implemented` / `In progress` / `Proposal` / `Proposal (deferred)`)
-  decides only the index bucket. Name new items with the `BE-XXXX` placeholder — the number is
-  allocated **on `main` after merge** (BE-0089), and **IDs are permanent — never renumber.** Never
-  hand-edit the index tables — run `make roadmap-index` (`make test` fails on drift). Full rule
+  decides only the [dashboard](https://bajutsu-e2e.github.io/bajutsu/api/roadmap.html) bucket —
+  `roadmaps/README.md` carries no status table to keep in sync. Name new items with the `BE-XXXX`
+  placeholder — the number is allocated **on `main` after merge** (BE-0089), and **IDs are
+  permanent — never renumber.** Full rule
   (file format, metadata fields, MECE `Detailed design`, living `Progress` checklist, both-way PR
   links, author handle, reciprocal `Related`/`Superseded by`):
   [`roadmaps/README.md`](roadmaps/README.md) ·

@@ -204,14 +204,10 @@ The implementing PR is what ships the item, so promote it in this same change:
 1. In **both** language files, set the metadata `Status` to **Implemented**. Add an `Implementing PR:
    [#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN)` row right under `Status` once
    the PR number exists (fill it at step 10 if you don't have it yet).
-2. Regenerate the index:
-   ```bash
-   make roadmap-index     # regenerate the tables in both README index pages
-   ```
-   The item's directory never moves (BE-0159) — every item lives at a permanent flat
-   `roadmaps/BE-NNNN-<slug>/` path, and `Status` decides only the index bucket. `make test` fails
-   if the committed index drifts from an item's `Status`, so this keeps the gate honest. **Never
-   renumber the item**; its ID is permanent.
+2. Nothing else to regenerate: the item's directory never moves (BE-0159) — every item lives at a
+   permanent flat `roadmaps/BE-NNNN-<slug>/` path, and `Status` decides only which bucket the
+   [roadmap dashboard](https://bajutsu-e2e.github.io/bajutsu/api/roadmap.html) shows it under, read
+   straight from the metadata you just edited. **Never renumber the item**; its ID is permanent.
 
 ### 9. Verify — the gate
 

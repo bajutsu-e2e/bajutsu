@@ -115,9 +115,9 @@ deterministic gate (`make check`) is the judge — never an LLM.
    agents. These are *authoring aids*: they advise the author and never judge, so directive #1 holds
    and no LLM touches the `run`/CI path.
 7. **Flip the item to Implemented.** In both language files set `Status: Implemented` and add the
-   `Implementing PR` line, then `make roadmap-index` regenerates the tables. The directory never moves
-   (BE-0159) — only the `Status` and its index bucket change. `make test` fails if the committed index
-   drifts.
+   `Implementing PR` line — nothing else to regenerate, since the dashboard reads `Status` straight
+   off the item's metadata. The directory never moves (BE-0159): only the `Status` and its dashboard
+   bucket change.
 8. **Verify — the gate.** `make check` must be green; never push red. If correctness genuinely
    depends on a Simulator/browser run, the [`verify`](../.claude/skills) skill drives it rather than
    claiming it works untested.
