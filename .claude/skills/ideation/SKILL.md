@@ -144,13 +144,17 @@ raises directly in the files before moving on, unless a finding is a false posit
 deliberate, already-explained trade-off, in which case note the rationale and move on rather than
 forcing a fix; escalate to the user instead of attempting it if a finding calls for a genuine
 design change (the same valve `pr-followup` uses for a review comment that "requires a fundamental
-design change"). Re-run the subagent against the updated diff after non-trivial fixes, and repeat
-until a pass comes back empty (an empty pass is a complete review, per the contract's own closing
-rule — "when nothing warrants a comment, post nothing"). "Advisory" describes the CI workflow's
-relationship to the merge gate, not license to leave a real finding unfixed here. Cap this at 3
-rounds — an LLM-based reviewer is not fully deterministic and could keep surfacing a fresh marginal
-finding each round, possibly one its own previous fix introduced; if the 3rd round still returns
-findings, stop and let the user make the final call instead of looping further.
+design change"). Re-run the subagent against the updated diff after non-trivial fixes, carrying
+forward this round's dismissed findings (with their rationale) into the next round's prompt — the
+new subagent is spawned fresh each round with no memory of earlier dispositions, so without this a
+dismissed false positive or trade-off would simply get re-flagged every round and never let the
+pass come back empty. Repeat until a pass comes back empty (an empty pass is a complete review,
+per the contract's own closing rule — "when nothing warrants a comment, post nothing"). "Advisory"
+describes the CI workflow's relationship to the merge gate, not license to leave a real finding
+unfixed here. Cap this at 3 rounds — an LLM-based reviewer is not fully deterministic and could
+keep surfacing a fresh marginal finding each round, possibly one its own previous fix introduced;
+if the 3rd round still returns findings, stop and let the user make the final call instead of
+looping further.
 
 ### 6. Verify
 
