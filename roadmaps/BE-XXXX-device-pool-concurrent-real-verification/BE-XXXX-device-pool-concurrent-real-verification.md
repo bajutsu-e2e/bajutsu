@@ -64,8 +64,8 @@ Proposal altitude. The work is MECE along the units below.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Boot two real Simulators concurrently in `ios-e2e.yml` and run `--workers 2`.
-- [ ] Extend to two real emulators in `android-e2e.yml`, resources permitting.
+- [ ] Boot two real devices concurrently — Simulators in `ios-e2e.yml`, emulators in
+  `android-e2e.yml` (resources permitting) — and run `--workers 2` against both.
 - [ ] Assert per-worker isolation of `runs/<runId>`, udid, and evidence artifacts.
 - [ ] Land non-gating first, promote once stable.
 
