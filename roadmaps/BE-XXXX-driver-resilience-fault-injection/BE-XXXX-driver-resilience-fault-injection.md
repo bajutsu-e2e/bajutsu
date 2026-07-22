@@ -21,8 +21,8 @@ idb's and adb's mid-transition near-empty element tree; its tests fabricate a sy
 sequence (`[3, 1, 3]`) with the backoff zeroed out. The XCUITest channel's crash-recovery and retry
 path ([BE-0207](../BE-0207-xcuitest-channel-transient-retry/BE-0207-xcuitest-channel-transient-retry.md),
 [BE-0287](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience.md))
-exists for a killed or frozen resident runner; its tests raise a synthetic exception from a Python
-lambda. The on-device conformance suite, which does run for real, never exercises either path: its
+exists for a killed or frozen resident runner; its tests raise a synthetic exception from a nested
+closure. The on-device conformance suite, which does run for real, never exercises either path: its
 screens are pre-seeded and waited-for-ready, so the transient-empty branch is never hit, and no job
 deliberately kills the runner mid-action. This item adds real-fault-injection coverage for both.
 
@@ -76,6 +76,7 @@ Proposal altitude. The work is MECE along the units below.
 - [ ] Add real transient-empty fault injection for idb/adb, non-gating first.
 - [ ] Add real crash-recovery fault injection for XCUITest, non-gating first.
 - [ ] Promote each to required once stable.
+- [ ] Keep the existing synthetic-fixture unit tests as the fast, deterministic control-flow check.
 
 ## References
 
