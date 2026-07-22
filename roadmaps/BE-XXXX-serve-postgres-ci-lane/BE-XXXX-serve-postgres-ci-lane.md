@@ -50,9 +50,10 @@ Proposal altitude. The work is MECE along the units below.
 - **Run the existing migration test suite against it too.** Parametrize (or duplicate)
   `test_db_migrations.py`'s upgrade/downgrade tests to run against both SQLite and the new Postgres
   service, reusing the same assertions rather than writing a second spec.
-  Also run the wider DB-touching suite (`test_db_models.py`, `test_db_repository.py`,
-  and `test_oauth.py`'s persistence tests) against Postgres, since dialect-specific column/constraint
-  behavior can surface there even when the migration itself succeeds.
+  Also run the DB-touching suite across all of `tests/serve/` (`test_db_models.py`,
+  `test_db_repository.py`, and `test_oauth.py`'s persistence tests, among the roughly two dozen
+  files that call `create_engine("sqlite://")`) against Postgres, since dialect-specific
+  column/constraint behavior can surface there even when the migration itself succeeds.
 - **Non-gating first.** Land the new job as CI signal, following the precedent in
   [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md): a
   first-time Postgres service container can hit its own teething problems (image-pull hiccups,
