@@ -36,7 +36,7 @@ a differently-shaped response than the direct API path assumes. `test_make_clien
 the gap precisely: it asserts `isinstance(client, AnthropicBedrock)` with fake AWS credentials and
 never calls `.messages.create`.
 
-This is not a request to relax prime directive #1. The `run` / CI verdict must stay free of any model
+This item is not a request to relax prime directive #1. The `run` / CI verdict must stay free of any model
 call, and this item touches none of that path — `ai/anthropic.py`, `agents/anthropic_client.py`, and
 `ai/registry.py` are periphery, behind the AI extra, and the deterministic core does not import them.
 What is missing is coverage of the periphery's own contract with the vendor it wraps, at the cheapest
