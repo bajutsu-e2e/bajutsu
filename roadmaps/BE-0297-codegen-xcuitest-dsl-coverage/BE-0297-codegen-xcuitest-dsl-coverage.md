@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-codegen-xcuitest-dsl-coverage-ja.md)
+**English** · [日本語](BE-0297-codegen-xcuitest-dsl-coverage-ja.md)
 
-# BE-XXXX — Expand XCUITest codegen's real-compile coverage to the full DSL surface
+# BE-0297 — Expand XCUITest codegen's real-compile coverage to the full DSL surface
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-codegen-xcuitest-dsl-coverage.md) |
+| Proposal | [BE-0297](BE-0297-codegen-xcuitest-dsl-coverage.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0297") |
 | Topic | codegen coverage |
 <!-- /BE-METADATA -->
 

@@ -1,14 +1,14 @@
-[English](BE-XXXX-codegen-xcuitest-dsl-coverage.md) · **日本語**
+[English](BE-0297-codegen-xcuitest-dsl-coverage.md) · **日本語**
 
-# BE-XXXX — XCUITest codegen の実コンパイルカバレッジを DSL 全体へ拡張する
+# BE-0297 — XCUITest codegen の実コンパイルカバレッジを DSL 全体へ拡張する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-codegen-xcuitest-dsl-coverage-ja.md) |
+| 提案 | [BE-0297](BE-0297-codegen-xcuitest-dsl-coverage-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0297") |
 | トピック | codegen 網羅性 |
 <!-- /BE-METADATA -->
 
