@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import subprocess
@@ -134,9 +135,13 @@ class AndroidEnvironment:
             # Start the scenario video now — the device is up and the app installed, but not yet
             # launched — so the recording spans the app's cold start rather than missing it.
             self._prestart_video(record_video_dir)
-            e.launch(android.package, launch_env)
-            if pre.deeplink is not None:
-                e.open_url(pre.deeplink, android.package)
+            try:
+                e.launch(android.package, launch_env)
+                if pre.deeplink is not None:
+                    e.open_url(pre.deeplink, android.package)
+            except BaseException:
+                self._stop_prestarted_video()  # a failed launch must not leak the screenrecord
+                raise
         except subprocess.CalledProcessError as exc:
             raise adb.device_error(exc) from exc
         except OSError as exc:
@@ -225,6 +230,22 @@ class AndroidEnvironment:
             spawn=self._spawn,
             run=self._run,
         )
+
+    def _stop_prestarted_video(self) -> None:
+        """Finalize and discard a pre-started recording after a *failed* launch.
+
+        Only the failure path calls this: on success the sink adopts the running interval. A launch
+        that fails after `_prestart_video` would otherwise leave `screenrecord` running — leaking the
+        local `adb shell` client and the device-side recording (up to its ~180s cap) plus the temp
+        file — so stop it (finalizing the device side) and drop the orphan file. Best-effort: a
+        cleanup error must not mask the launch error being re-raised.
+        """
+        interval = self._prestarted_video
+        if interval is None:
+            return
+        self._prestarted_video = None
+        with contextlib.suppress(Exception):
+            interval.stop().unlink(missing_ok=True)
 
     def hook_collector(self, driver: base.Driver, scenario: Scenario) -> Collector:
         raise NotImplementedError("the adb backend does not observe network via the driver")

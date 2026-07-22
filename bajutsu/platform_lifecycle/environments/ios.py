@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import subprocess
 from collections.abc import Callable, Mapping
 from pathlib import Path
@@ -70,6 +71,22 @@ class _DeviceEnvironment:
         self._prestarted_video = intervals.start_video(
             self._udid, record_video_dir / f"prestart-{self._udid}.mp4", spawn=self._spawn
         )
+
+    def _stop_prestarted_video(self) -> None:
+        """Finalize and discard a pre-started recording after a *failed* launch.
+
+        Only the failure path calls this: on success the sink adopts the running interval. A launch
+        that fails after `_prestart_video` would otherwise leave `recordVideo` running — an orphaned
+        session wedges every later capture on the same simulator (`start_video`'s own warning) — so
+        stop it and drop the orphan temp file. Best-effort: a cleanup error must not mask the launch
+        error being re-raised.
+        """
+        interval = self._prestarted_video
+        if interval is None:
+            return
+        self._prestarted_video = None
+        with contextlib.suppress(Exception):
+            interval.stop().unlink(missing_ok=True)
 
     def captures_video(self) -> bool:
         return True  # a simctl-backed device records a scenario-wide video via a simctl interval
@@ -200,13 +217,17 @@ class IosEnvironment(_DeviceEnvironment):
             # before it launches — so the recording spans the app's cold start rather than missing it.
             self._prestart_video(record_video_dir)
             locale = pre.locale or eff.locale  # scenario locale overrides the app/config default
-            e.launch(
-                ios.bundle_id,
-                [*eff.launch_args, *pre.launch_args, *simctl.locale_args(locale)],
-                launch_env,
-            )
-            if pre.deeplink is not None:
-                e.openurl(pre.deeplink)
+            try:
+                e.launch(
+                    ios.bundle_id,
+                    [*eff.launch_args, *pre.launch_args, *simctl.locale_args(locale)],
+                    launch_env,
+                )
+                if pre.deeplink is not None:
+                    e.openurl(pre.deeplink)
+            except BaseException:
+                self._stop_prestarted_video()  # a failed launch must not leave recordVideo running
+                raise
         except subprocess.CalledProcessError as exc:
             raise simctl.device_error(exc) from exc
         return backends.make_driver(self._actuator, self._udid)

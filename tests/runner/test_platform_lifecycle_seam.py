@@ -201,6 +201,31 @@ def test_ios_start_records_video_before_launching_the_app(tmp_path: Path) -> Non
     assert len(started) == 1 and started[0].kind == "video"
 
 
+def test_ios_start_stops_the_prestarted_video_when_launch_fails(tmp_path: Path) -> None:
+    import signal
+    import subprocess
+
+    # A launch failure after the recording started must finalize it, not leave `recordVideo` running
+    # (an orphaned session wedges every later capture on the simulator).
+    stopped: list[int] = []
+
+    def fake_run(args: list[str], extra_env: object = None) -> str:
+        if args[:3] == ["xcrun", "simctl", "launch"]:
+            raise subprocess.CalledProcessError(1, args, output="", stderr="boom")
+        return ""
+
+    class _Proc:
+        def stop(self, sig: int, timeout: float) -> None:
+            stopped.append(sig)
+
+    env = IosEnvironment("idb", "UDID", env_run=fake_run, spawn=lambda argv, out: _Proc())
+    with pytest.raises(simctl.DeviceError):
+        env.start(_ios_eff(), Preconditions(), record_video_dir=tmp_path)
+
+    assert stopped == [signal.SIGINT]  # the recording was finalized, not leaked
+    assert env.prestarted_intervals() == []
+
+
 def test_devices_record_no_video_up_front_without_a_record_dir() -> None:
     # With no record dir (video not requested), `start` begins no recording and the sink records on
     # demand exactly as before — the up-front path is gated on the pool wiring the dir through.
