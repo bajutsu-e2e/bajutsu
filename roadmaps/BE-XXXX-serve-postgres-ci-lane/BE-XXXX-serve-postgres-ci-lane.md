@@ -40,9 +40,11 @@ own hosted Postgres instance — which is the worst possible time to discover a 
 
 Proposal altitude. The work is MECE along the units below.
 
-- **A Postgres service container in CI.** Add a `postgres` service to the `serve` test job
-  (`ci.yml`), the standard GitHub Actions pattern, so a real (if ephemeral) Postgres instance is
-  available for the duration of the job.
+- **A Postgres service container in CI.** Add a `postgres` service to CI's `check` job
+  (`ci.yml`) — today the only test job, running the full suite including `tests/serve/` — the
+  standard GitHub Actions pattern, so a real (if ephemeral) Postgres instance is available for
+  the duration of the job. Note this means every PR, not only ones touching `serve`, would wait
+  on the container.
 - **Run the existing migration test suite against it too.** Parametrize (or duplicate)
   `test_db_migrations.py`'s upgrade/downgrade tests to run against both SQLite and the new Postgres
   service, reusing the same assertions rather than writing a second spec.
