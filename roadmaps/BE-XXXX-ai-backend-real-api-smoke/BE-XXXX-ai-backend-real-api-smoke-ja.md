@@ -21,7 +21,7 @@ vendor 非依存の AI backend
 すべて、手書きの代役（`tests/conftest.py` の `FakeAnthropic` / `FakeBlock`）を経由するだけで、実際の
 サービスを一度も通りません。テストスイートと CI のどちらにも、Bajutsu 自身のアダプタコードを通して
 Anthropic API / Bedrock / `ant` CLI に実際の呼び出しを完了させるものは1つもありません。本項目は、
-opt-in で API キーにより gate された、ゲート対象外の smoke レーンを1つ追加し、実際のレスポンスを vendor 非依存の
+opt-in で API キーによりゲートされた、ゲート対象外の smoke レーンを1つ追加し、実際のレスポンスを vendor 非依存の
 リクエスト/レスポンス契約へアダプタが正しく変換できることを、モデルを `run` の判定に一切近づける
 ことなく証明します。
 
