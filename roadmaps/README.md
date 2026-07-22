@@ -156,7 +156,9 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 ### Self-healing triage
 
 <!-- GENERATED:proposals-self-healing -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0296](BE-0296-triage-ai-real-model-verification/BE-0296-triage-ai-real-model-verification.md) | Real-model verification of the triage --ai diagnosis path | Proposal |
 <!-- /GENERATED:proposals-self-healing -->
 
 ### Surfacing CLI features in the serve Web UI

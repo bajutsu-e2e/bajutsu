@@ -156,7 +156,9 @@
 ### 自己修復トリアージ
 
 <!-- GENERATED:proposals-self-healing -->
-
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0296](BE-0296-triage-ai-real-model-verification/BE-0296-triage-ai-real-model-verification-ja.md) | triage --ai 診断経路の実モデル検証 | 提案 |
 <!-- /GENERATED:proposals-self-healing -->
 
 ### serve Web UI への CLI 機能の取り込み

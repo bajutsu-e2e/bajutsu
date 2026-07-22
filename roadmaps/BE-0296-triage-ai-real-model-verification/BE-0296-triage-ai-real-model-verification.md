@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-triage-ai-real-model-verification-ja.md)
+**English** · [日本語](BE-0296-triage-ai-real-model-verification-ja.md)
 
-# BE-XXXX — Real-model verification of the triage --ai diagnosis path
+# BE-0296 — Real-model verification of the triage --ai diagnosis path
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-triage-ai-real-model-verification.md) |
+| Proposal | [BE-0296](BE-0296-triage-ai-real-model-verification.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0296") |
 | Topic | Self-healing triage |
 <!-- /BE-METADATA -->
 
