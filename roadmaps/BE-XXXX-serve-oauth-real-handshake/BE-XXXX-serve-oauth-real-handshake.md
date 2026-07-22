@@ -45,7 +45,7 @@ Proposal altitude. The work is MECE along the units below.
 - **Replay the captured responses through the real code, not a live CI login.** Getting the initial
   authorization `code` requires a human completing GitHub's hosted login-and-consent page —
   scripting that from a CI runner means logging into a live account programmatically, risking
-  GitHub's 2FA/device-verification/CAPTCHA challenges firing unpredictably on CI IPs — exactly the
+  GitHub's 2FA, device-verification, and CAPTCHA challenges firing unpredictably on CI IPs — exactly the
   kind of flakiness this item exists to avoid, and a far more sensitive secret to risk than the
   OAuth client secret. Instead, intercept at the `httpx` transport boundary (`respx` or a custom
   `httpx.MockTransport`) and replay the captured real responses back through the real
@@ -62,7 +62,8 @@ Proposal altitude. The work is MECE along the units below.
   considered here, but the initial authorization `code` can only come from a human completing GitHub's hosted
   login-and-consent page — scripting that from CI means holding and driving a live account's credentials, with
   GitHub's anti-automation defenses (2FA, device verification, CAPTCHA) able to fire unpredictably.
-  That is a worse flakiness and secret-handling problem than the one this item sets out to solve.
+  That approach carries a worse flakiness and secret-handling problem than the one this item sets
+  out to solve.
 - **Trust the mocked-client tests, since the login flow's own logic is unit-tested.** The flow logic
   being correct for a canned client response says nothing about whether the real Authlib/`httpx`
   stack actually parses what GitHub's real API returns, which is the property this item verifies.
