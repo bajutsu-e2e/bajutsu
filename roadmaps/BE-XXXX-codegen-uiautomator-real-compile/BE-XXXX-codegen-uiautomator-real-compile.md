@@ -19,8 +19,8 @@ workflow, Makefile target, or Gradle build ever compiles the generated file. Eve
 `tests/test_codegen_uiautomator.py` checks the emitted source as a string, so a Kotlin syntax error
 or a call that no longer matches the real `androidx.test.uiautomator` API would pass the whole
 suite. This is the weakest of the three codegen targets: unlike XCUITest (a gating `xcodebuild test`
-job) and unlike Playwright (proposed as a sibling item to this one), UI Automator has no real-compile
-check of any kind, gating or not. This item adds one, reusing the emulator and Gradle toolchain
+job) and unlike Playwright (a comparable real-compile check proposed separately), UI Automator has no
+real-compile check of any kind, gating or not. This item adds one, reusing the emulator and Gradle toolchain
 `android-e2e.yml` already sets up for the conformance suite.
 
 ## Motivation
@@ -83,5 +83,4 @@ Proposal altitude. The work is MECE along the units below.
 - [BE-0208 — Android on-device e2e in CI (emulator via KVM)](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci.md)
 - [BE-0083 — Unify the codegen emitters behind a shared scenario walk](../BE-0083-codegen-emitter-unification/BE-0083-codegen-emitter-unification.md)
 - [BE-0282 — Real-backend network capture, mock, and assertion coverage in CI](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md)
-- `bajutsu/codegen/uiautomator.py`, `tests/test_codegen_uiautomator.py`, `.github/workflows/android-e2e.yml`,
-  the sibling proposal for the Playwright codegen target (real-compile verification)
+- `bajutsu/codegen/uiautomator.py`, `tests/test_codegen_uiautomator.py`, `.github/workflows/android-e2e.yml`

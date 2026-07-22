@@ -1,6 +1,6 @@
 [English](BE-XXXX-codegen-uiautomator-real-compile.md) · **日本語**
 
-# BE-XXXX — Real-compile verification for the UI Automator (Kotlin) codegen target
+# BE-XXXX — UI Automator（Kotlin）codegen ターゲットの実コンパイル検証
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
@@ -9,18 +9,18 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
-| トピック | codegen coverage |
+| トピック | codegen 網羅性 |
 <!-- /BE-METADATA -->
 
 ## はじめに
 
 `bajutsu codegen --emit uiautomator` はシナリオを Kotlin の UI Automator テストへ変換しますが、
-生成されたファイルをコンパイルする workflow や Makefile ターゲット、Gradle ビルドのいずれも存在しません。
+生成されたファイルをコンパイルするワークフローや Makefile ターゲット、Gradle ビルドのいずれも存在しません。
 `tests/test_codegen_uiautomator.py` の全アサーションは出力ソースを文字列として検査するだけなので、
 Kotlin の構文エラーや、実際の `androidx.test.uiautomator` API と食い違う呼び出しがあっても、
 テストスイート全体を素通りします。これは3つの codegen ターゲットのうちもっとも手薄な状態です。XCUITest
-には必須の `xcodebuild test` ジョブがあり、Playwright にも本項目の姉妹提案があるのに対し、UI Automator
-には gating か非 gating かを問わず実コンパイル検証が一切ありません。本項目はそのゲートを追加し、
+には必須の `xcodebuild test` ジョブがあり、Playwright にも別途、同水準の実コンパイル検証が提案
+されているのに対し、UI Automator には ゲーティングの有無を問わず実コンパイル検証が一切ありません。本項目はそのゲートを追加し、
 `android-e2e.yml` が conformance suite 向けにすでに用意しているエミュレータと Gradle ツールチェインを
 再利用します。
 
@@ -75,15 +75,14 @@ Automator サーバをすでにビルドしています
 
 - [ ] ショーケースのシナリオから UI Automator テストを生成し、生成された `.kt` ファイルをチェックインする。
 - [ ] Gradle でビルドし、エミュレータに対して実行して成功することを検証する。
-- [ ] 非 gating の `android-e2e.yml` ジョブを追加し、安定後に必須化する。
+- [ ] ゲート対象外の `android-e2e.yml` ジョブを追加し、安定後に必須化する。
 - [ ] フィクスチャの範囲を、XCUITest 向け codegen ゲートがすでにカバーする DSL 表面に揃える。
 
 ## 参考
 
 - [BE-0209 — Android codegen エミッタ（Espresso / UI Automator）](../BE-0209-android-codegen-emitter/BE-0209-android-codegen-emitter-ja.md)
-- [BE-0208 — CI における Android 実機相当 e2e（KVM 上のエミュレータ）](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci-ja.md)
-- [BE-0083 — codegen エミッタを共有の走査ロジックへ統一](../BE-0083-codegen-emitter-unification/BE-0083-codegen-emitter-unification-ja.md)
-- [BE-0282 — CI における実 backend のネットワーク捕捉・モック・アサーションのカバレッジ](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md)
+- [BE-0208 — Android の実機 e2e を CI に配線する（KVM 経由のエミュレータ）](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci-ja.md)
+- [BE-0083 — codegen の emitter を共通のシナリオ走査へ統一する](../BE-0083-codegen-emitter-unification/BE-0083-codegen-emitter-unification-ja.md)
+- [BE-0282 — ネットワークのキャプチャ・モック・アサーションを CI で実バックエンド検証する](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md)
 - `bajutsu/codegen/uiautomator.py`、`tests/test_codegen_uiautomator.py`、
-  `.github/workflows/android-e2e.yml`、Playwright 向け codegen ターゲットの実コンパイル検証を
-  扱う姉妹提案
+  `.github/workflows/android-e2e.yml`
