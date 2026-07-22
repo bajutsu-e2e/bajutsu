@@ -44,7 +44,7 @@ Playwright API からドリフトしたエミッタの変更は、`tests/test_co
 
 ## 詳細設計
 
-提案の粒度は次の単位で MECE に分解します。
+提案の粒度です。作業は以下の単位に沿って MECE に分かれます。
 
 - **生成してフィクスチャとして固定する**：`bajutsu codegen --emit playwright` で `demos/web` の
   シナリオから Playwright テストを生成し、XCUITest ターゲットの `ComponentsUITests.swift` と同様に、
