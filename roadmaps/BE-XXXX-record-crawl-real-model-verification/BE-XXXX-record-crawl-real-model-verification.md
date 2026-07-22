@@ -21,7 +21,7 @@ model's structured, tool-use proposal into Bajutsu's own action schema. Every te
 this parsing constructs `ClaudeAgent`/the crawl agents with `FakeBackend(FakeBlock(...))` — a
 response shaped exactly the way the test's author expects, never a response a real model actually
 produced. This item adds a real-model check for the parsing itself, distinct from and complementary
-to the transport-level adapter check proposed separately (real-API contract smoke lane).
+to a transport-level adapter check proposed separately.
 
 ## Motivation
 
