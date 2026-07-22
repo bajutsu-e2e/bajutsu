@@ -240,37 +240,32 @@ def test_extract_settle_converges_despite_reordered_duplicate_key_elements(
     assert clock.now() < 1.0  # converged in a couple of reads, not polled to the 5s deadline
 
 
-class _NoneEmptyFlipDriver(FakeDriver):
-    """A stable field plus a noise node whose value flips None <-> "" between reads.
+class _AnimatingNoiseDriver(FakeDriver):
+    """A stable extract target plus an unrelated element whose text animates on every read.
 
-    Models an optional accessibility field a backend reports as absent on one read and empty on the
-    next — no meaningful change. The projection must coerce both to the same key, or the flip makes
-    `_extract_stable_key` emit a different tuple each read and the settle never converges.
+    Models a live-updating label elsewhere on the screen — a timer, a counter, a "Loading…"
+    animation. It never stops changing, so a whole-screen prop projection would never converge; a
+    target-scoped one settles as soon as the extract's own target is quiet.
     """
 
     def __init__(self) -> None:
-        super().__init__([el("field", "Name", value="X"), el("noise", value=None)])
-        self._flip = False
+        super().__init__([el("field", "Name", value="X"), el("timer", value="0")])
+        self._tick = 0
         self.queries = 0
 
     def query(self) -> list[base.Element]:
         self.queries += 1
-        self.screen = [
-            el("field", "Name", value="X"),
-            el("noise", value="" if self._flip else None),
-        ]
-        self._flip = not self._flip
+        self._tick += 1
+        self.screen = [el("field", "Name", value="X"), el("timer", value=str(self._tick))]
         return super().query()
 
 
-def test_extract_settle_converges_across_none_vs_empty_prop_flip(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_extract_settle_ignores_unrelated_animating_text(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(_FLOOR, "5")
-    # A noise node's value flips None <-> "" (absent vs empty) each read while the field is stable.
-    # Coercing the emitted props with `or ""` keeps the key stable, so the settle converges rather
-    # than polling the 5s deadline on a meaningless flip.
-    driver = _NoneEmptyFlipDriver()
+    # A `timer` element animates its value every read while the extract target (`field`) is stable.
+    # The projection is scoped to the target's read property, so the settle converges at once rather
+    # than polling the whole 5s deadline waiting for an element the step never reads to go quiet.
+    driver = _AnimatingNoiseDriver()
     clock = FakeClock()
     result = run_scenario(
         driver,
@@ -289,7 +284,7 @@ def test_extract_settle_converges_across_none_vs_empty_prop_flip(
         clock=clock,
     )
     assert result.ok, result.failure
-    assert clock.now() < 1.0  # converged, not polled to the 5s deadline on a None/"" flip
+    assert clock.now() < 1.0  # converged; unrelated animating text did not hold the settle open
 
 
 def _assert_step_scenario() -> object:

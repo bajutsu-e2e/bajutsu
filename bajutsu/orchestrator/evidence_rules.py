@@ -72,30 +72,35 @@ def _kind_of(token: str) -> str:
 def _extract_stable_key(
     elements: list[base.Element], extracts: Mapping[str, Extract]
 ) -> tuple[object, ...]:
-    """A settle projection for `extract`: identifier + frame + every property the extracts read.
+    """A settle projection for `extract`: whole-screen layout plus each target's read property.
 
-    A superset of the driver-side settle projection (`_stable_key` in `coordinate_tree.py`, which is
-    identifier + frame only): it also carries each element's value for every distinct `ext.prop`
-    (`value` / `label` / `identifier`) any of this step's extracts names, so an `extract` polls until
-    the property it actually copies out stops changing — not only until the layout stops moving. Keyed
-    to the union of the step's `ext.prop`s so a step extracting `label` waits on `label`, not `value`
-    (BE-0299 Unit 3). Elements are sorted by the full projected row (identifier, frame, and every read
-    property), so the key is a function of the element *set*, not the order the driver returned them
-    in: were two elements sharing an identifier and frame — e.g. two unidentified nodes — to come back
-    reordered between reads, an (identifier, frame)-only sort would emit a different key for the same
-    screen and the settle would never converge, polling the whole deadline. `identifier` and every
-    read property are coerced with `or ""` (absent and empty collapse to the same key), so an optional
-    field a backend reports as `None` on one read and `""` on the next does not spuriously look changed;
-    a genuine `None → real value` change still differs.
+    Two halves. The **layout** half is the driver-side settle projection (`_stable_key` in
+    `coordinate_tree.py`): every element's identifier and frame, sorted — a whole-screen resolve
+    stability check that a text-only animation (which does not move layout) leaves quiet. The
+    **target** half carries, per extract, only the property that extract copies out (`ext.prop`) on
+    the element its selector resolves to — scoped to the target, so an `extract` polls until *the
+    value it actually reads* stops changing, not until every live-updating label elsewhere on the
+    screen (a timer, a "Loading…" animation) happens to be quiet, which would burn the whole deadline
+    on every extract step on such a screen (BE-0299 Unit 3).
+
+    When a target does not resolve to exactly one element — a screen still mid-transition — the target
+    half falls back to the whole-screen projection of that property, so the settle keeps polling until
+    the selector resolves uniquely rather than reading a half-rendered screen. Both halves are sorted
+    and every value is coerced with `or ""`, so the key is a function of the element *set* (not the
+    order the driver returned it in) and an optional field reported as `None` on one read and `""` on
+    the next does not look changed; a genuine `None → real value` change still differs.
     """
-    props = sorted({ext.prop for ext in extracts.values()})
-    ordered = sorted(
-        elements,
-        key=lambda e: (e["identifier"] or "", e["frame"], tuple(e.get(p) or "" for p in props)),
-    )
-    return tuple(
-        (e["identifier"] or "", e["frame"], *(e.get(p) or "" for p in props)) for e in ordered
-    )
+    layout = tuple(sorted((e["identifier"] or "", e["frame"]) for e in elements))
+    targets: list[tuple[str, tuple[str, ...]]] = []
+    for name, ext in sorted(extracts.items()):
+        matched = base.find_all(elements, ext.sel.as_selector())
+        projected: tuple[str, ...]
+        if len(matched) == 1:
+            projected = (matched[0].get(ext.prop) or "",)
+        else:  # not uniquely resolvable yet: keep polling on the whole-screen prop until it is
+            projected = tuple(sorted((e.get(ext.prop) or "") for e in elements))
+        targets.append((name, projected))
+    return (layout, tuple(targets))
 
 
 def _run_extract(
