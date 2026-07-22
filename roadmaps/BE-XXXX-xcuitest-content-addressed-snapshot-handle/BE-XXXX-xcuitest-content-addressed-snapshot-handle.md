@@ -28,8 +28,9 @@ screen changed between the resolve and the actuation. This item proposes to deri
 deterministically from the element's stable identity (its identifier, label, and traits)
 instead of from a per-call counter, so an element that is still on screen keeps the same handle
 across snapshots and the handle stays valid no matter how many extra snapshots the runner takes. The
-change is confined to the runner's `SnapshotStore`; the Python channel and the runner's HTTP router
-are untouched, because a handle stays an opaque string to every consumer.
+behavioral change is confined to the runner's `SnapshotStore`; the Python channel and the runner's
+HTTP router keep their logic (only their doc comments realign, BE-0113), because a handle stays an
+opaque string to every consumer.
 
 ## Motivation
 
@@ -158,9 +159,14 @@ prefix, and the concurrency test still passes — so the content derivation neit
 today that "Each `refreshSnapshot` replaces the previous snapshot: all prior handles become stale",
 which is the exact behavior this item changes; rewrite the comment to describe content-addressed
 handles and the condition under which a handle is still stale (its element left the screen or changed
-content). Update [`DESIGN.md`](../../DESIGN.md) and [`docs/architecture.md`](../../docs/architecture.md)
-if either describes the runner's handle staleness semantics, so the prose account matches the
-behavior.
+identity). The Python side of the same channel narrates the old model too and must move with the code
+(cross-file drift is what BE-0113 forbids): the [`bajutsu/drivers/xcuitest.py`](../../bajutsu/drivers/xcuitest.py)
+module docstring calls the handle a "per-snapshot handle" that "can go stale when the screen
+re-snapshots between resolve and actuate", and [`bajutsu/drivers/xcuitest_live.py`](../../bajutsu/drivers/xcuitest_live.py)
+twice calls the WebDriver element id the runner's "per-snapshot handle"; realign all three to the
+content-addressed model (stable across a re-snapshot of an unchanged screen). Update
+[`DESIGN.md`](../../DESIGN.md) and [`docs/architecture.md`](../../docs/architecture.md) if either
+describes the runner's handle staleness semantics, so the prose account matches the behavior.
 
 Two follow-ups are known and deliberately left out of scope. The set of ever-issued handles grows
 for the life of the runner process, so a very long run accumulates handle strings monotonically; the
@@ -222,8 +228,9 @@ actuation precision because the runner acts through the `backingElement`, not th
       handle `.found`) plus a companion for the in-snapshot tiebreak (content-identical elements get
       distinct handles); the existing tests (`.stale` on a real change, `.notFound`, `h-` prefix,
       concurrency) kept and still passing.
-- [ ] Unit 4 — Documentation aligned (BE-0113): the `SnapshotStore` comment, and `DESIGN.md` /
-      `docs/architecture.md` where either describes handle staleness.
+- [ ] Unit 4 — Documentation aligned (BE-0113): the `SnapshotStore` comment, the `xcuitest.py` and
+      `xcuitest_live.py` "per-snapshot handle" docstrings, and `DESIGN.md` / `docs/architecture.md`
+      where either describes handle staleness.
 
 ## References
 
