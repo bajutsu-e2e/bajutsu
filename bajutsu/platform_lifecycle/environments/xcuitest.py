@@ -190,7 +190,15 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # A cold `xcodebuild test-without-building` spins up the XCTest host and launches the app
         # before the runner's server answers /health; on a loaded CI runner that first start well
         # exceeds the 10s default, so give it generous headroom (a warm start still returns at once).
-        cast(base.BackendLifecycle, driver).await_ready(timeout=_RUNNER_STARTUP_TIMEOUT)
+        # If it never answers, discard the just-spawned runner before re-raising: the run path would
+        # reclaim the orphan on the next spawn, but a single-use environment (doctor / serve via
+        # read_session) never spawns again, so an unguarded failure here leaks the xcodebuild
+        # subprocess — the leak BE-0290 set out to prevent.
+        try:
+            cast(base.BackendLifecycle, driver).await_ready(timeout=_RUNNER_STARTUP_TIMEOUT)
+        except Exception:
+            self._discard_runner()
+            raise
         # Only the Simulator runner is kept warm; a real-device runner is torn down per lease.
         self._reusable = device_type != "device"
         return driver

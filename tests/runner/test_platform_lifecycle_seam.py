@@ -548,6 +548,52 @@ def test_xcuitest_environment_teardown_stops_runner(monkeypatch: pytest.MonkeyPa
     assert ["xcrun", "simctl", "terminate", "UDID-1", "com.example.demo"] in calls
 
 
+def test_spawn_cold_discards_runner_when_await_ready_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    # BE-0290: a runner that spawns but never answers /health must be discarded before start() raises
+    # — a single-use environment (doctor / serve via read_session) never spawns again to reclaim it,
+    # so an unguarded failure here would orphan the xcodebuild subprocess.
+    import plistlib
+    import tempfile
+
+    from bajutsu.config import XcuitestConfig
+
+    monkeypatch.setattr(
+        "bajutsu.platform_lifecycle.environments.xcuitest._allocate_port", lambda: 12345
+    )
+    terminated: list[bool] = []
+
+    class FakePopen:
+        def __init__(self, cmd: list[str], **kwargs: object) -> None:
+            pass
+
+        def terminate(self) -> None:
+            terminated.append(True)
+
+        def wait(self, timeout: float | None = None) -> int:
+            return 0
+
+    monkeypatch.setattr("subprocess.Popen", FakePopen)
+
+    class _BoomDriver:
+        name = "xcuitest"
+
+        def await_ready(self, **_kw: object) -> None:
+            raise simctl.DeviceError("runner never became ready")
+
+    monkeypatch.setattr("bajutsu.backends.make_driver", lambda *a, **k: _BoomDriver())
+
+    with tempfile.NamedTemporaryFile(suffix=".xctestrun") as f:
+        plistlib.dump({"__xctestrun_metadata__": {"FormatVersion": 1}, "T": {}}, f)
+        f.flush()
+        eff = _ios_eff(xcuitest=XcuitestConfig(test_runner=f.name), app_path=None)
+        xe = XcuitestEnvironment("xcuitest", "UDID-1", env_run=lambda _a, _e=None: "")
+        with pytest.raises(simctl.DeviceError, match="never became ready"):
+            xe.start(eff, Preconditions())
+
+    assert terminated == [True]  # the runner that never became ready was discarded, not orphaned
+    assert xe._runner_proc is None  # _discard_runner cleared the handle
+
+
 def test_xcuitest_environment_forwards_preconditions_to_runner_env(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
