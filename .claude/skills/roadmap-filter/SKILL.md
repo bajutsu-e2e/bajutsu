@@ -3,8 +3,9 @@ name: roadmap-filter
 model: haiku
 description: >-
   List roadmap (BE) items filtered by their Status, so a session can survey everything that is a
-  Proposal (or In progress / Implemented / Proposal (deferred)) without reading the 700+-line
-  roadmaps/README.md. Use when you need an overview of the roadmap in one status — e.g. "what
+  Proposal (or In progress / Implemented / Proposal (deferred)) without paging through the roadmap
+  dashboard's rendered HTML or opening each item file to check its Status. Use when you need an
+  overview of the roadmap in one status — e.g. "what
   proposals are open?", "which items are in progress?", "list the deferred ones" — or to find the
   file path of items in a status before opening them. Takes one status argument and returns a table
   of ID / Item / Topic / Path. Read-only: it surveys the roadmap, it never authors, implements, or
@@ -18,9 +19,10 @@ so you can pick the items to open in full — it never authors, implements, or e
 
 ## What it does
 
-`roadmaps/README.md` is the full index (700+ lines across four status buckets and many topics).
-When you only need the items in one status, run the deterministic query instead of reading the
-whole index into context:
+The [roadmap dashboard](https://bajutsu-e2e.github.io/bajutsu/api/roadmap.html) lists every item
+across four status buckets and many topics, as rendered HTML — more than a session that only needs
+one status wants to page through. When you only need the items in one status, run the deterministic
+query instead:
 
 ```bash
 make roadmap-status STATUS="Proposal"

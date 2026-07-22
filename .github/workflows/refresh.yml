@@ -119,8 +119,7 @@ jobs:
         with:
           enable-cache: true
 
-      # The agent may run `make roadmap-index`, and the in-job gate below runs `make check`; both need
-      # the dev environment present.
+      # The in-job gate below runs `make check`, which needs the dev environment present.
       - name: Install dependencies
         if: steps.gate.outputs.enabled == 'true'
         run: uv sync --group dev

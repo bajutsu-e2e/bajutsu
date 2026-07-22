@@ -36,8 +36,8 @@ jobs:
       branch: chore/roadmap-refresh
       contract: .github/roadmap-refresh-prompt.md
       title: "chore(roadmap): refresh BE Status/Progress/Implementing PR"
-      # Roadmap items and the generated index only.
+      # Roadmap items only.
       allow: |
         roadmaps/**
-      # Read the repo and merged-PR history, edit BE files, regenerate the index. No push/PR tools.
-      allowed_tools: "Read,Grep,Glob,Edit,Write,Bash(gh pr list:*),Bash(gh pr view:*),Bash(git log:*),Bash(make roadmap-index)"
+      # Read the repo and merged-PR history, edit BE files. No push/PR tools.
+      allowed_tools: "Read,Grep,Glob,Edit,Write,Bash(gh pr list:*),Bash(gh pr view:*),Bash(git log:*)"

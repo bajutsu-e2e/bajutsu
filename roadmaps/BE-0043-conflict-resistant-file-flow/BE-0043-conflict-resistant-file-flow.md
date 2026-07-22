@@ -91,6 +91,12 @@ Mechanisms 1 and 3 alone cover most of the measured top conflict sources (roadma
 ## Progress
 
 - [x] Shipped — see the *Implementing PR* above.
+- **Historical note:** mechanism 1's generated `README.md` / `README-ja.md` index tables and their
+  `merge=roadmap-index` git merge driver were retired by
+  [#1257](https://github.com/bajutsu-e2e/bajutsu/pull/1257): the roadmap dashboard now covers what
+  those tables did, so there is no longer a shared generated file there to conflict on, and the
+  merge driver was removed rather than left wired to nothing. Mechanisms 2–4 (file splits, the
+  `uv.lock` merge driver, `rerere`, small PRs) are unaffected.
 
 ## References
 
