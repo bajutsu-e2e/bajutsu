@@ -18,7 +18,9 @@ toolchain as `make check`.
 | `record/record_offline.py` | the offline, API-key-free twin of `record` — the same loop, a keyword agent + FakeDriver |
 | `record/record_handoff_offline.py` | the offline, key-free twin of the human-in-the-loop handoff demo — the real pause/resume with a scripted agent + responder |
 | `demo.config.yaml` | `targets.web` with `baseUrl` + `scenarios` + `backend: [web]` (no `bundleId`) |
-| `Makefile` | `web-deps` / `app-serve` / `e2e` / `e2e-network` / `record` / `record-handoff` / `record-offline` / `record-handoff-offline` |
+| `codegen/smoke.spec.ts` | the checked-in Playwright test **generated** from `scenarios/smoke.yaml` — the codegen real-compile gate's fixture ([BE-0293](../../roadmaps/BE-0293-codegen-playwright-real-compile/BE-0293-codegen-playwright-real-compile.md)), the web twin of the iOS `ComponentsUITests.swift` |
+| `codegen/package.json` · `codegen/playwright.config.ts` | the `@playwright/test` runner (pinned to the Python `web` extra's Playwright version) and its config — serves `app/` on the spec's baked-in port |
+| `Makefile` | `web-deps` / `app-serve` / `e2e` / `e2e-network` / `codegen-e2e` / `record` / `record-handoff` / `record-offline` / `record-handoff-offline` |
 
 ## Run it
 
@@ -62,6 +64,32 @@ counterpart** ([BE-0283](../../roadmaps/BE-0283-android-network-capture/BE-0283-
 interceptor reporting to a host collector over `adb reverse` — a different transport from Playwright's
 in-browser interception here, but the same `request`-assertion verdict, and it gates there just as
 this job now does.
+
+## Codegen real-compile gate (BE-0293)
+
+`e2e` above drives the app through Bajutsu's *own* Playwright backend at runtime — it never touches
+codegen output. `bajutsu codegen --emit playwright` is a separate path that turns a scenario into a
+standalone `@playwright/test` file a team runs in their own Playwright CI, with no Bajutsu runtime and
+no AI. `tests/test_codegen_playwright.py` checks the emitted source as a string; what it cannot check
+is codegen's actual claim — that the emitted file is a real, runnable native test. This gate closes
+that gap:
+
+```bash
+make -C demos/web codegen-e2e
+```
+
+It re-generates [`codegen/smoke.spec.ts`](codegen/smoke.spec.ts) from
+[`scenarios/smoke.yaml`](scenarios/smoke.yaml), runs the fresh output with the real
+`@playwright/test` runner against a real Chromium — which transpiles the TypeScript and executes it,
+so it is a compile *and* a run, not a `tsc --noEmit` syntax check — then **fails if the output drifts
+from the checked-in fixture** (so the emitter and the fixture never silently diverge). Node/npm only
+(the runner is the destination framework, not our Python backend); no Simulator, no macOS.
+
+This is the web twin of the iOS `xcuitest (codegen)` gate (`demos/showcase`'s `ui-test`, which builds
+and runs a generated `ComponentsUITests.swift` with `xcodebuild test`). In CI it is the
+`codegen (playwright)` job in `web-e2e.yml`; it lands as **signal** first — reporting but not blocking
+a merge — to be promoted into the required `E2E (web)` gate once stable, exactly as `network
+(playwright)` was ([BE-0293](../../roadmaps/BE-0293-codegen-playwright-real-compile/BE-0293-codegen-playwright-real-compile.md)).
 
 ## Record it
 
