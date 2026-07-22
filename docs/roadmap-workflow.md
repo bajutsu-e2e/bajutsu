@@ -74,7 +74,7 @@ what is already planned, in progress, or deliberately not adopted.
    "Claude review" GitHub Actions workflow uses
    ([`.github/claude-review-prompt.md`](../.github/claude-review-prompt.md), BE-0203) to the
    staged diff. Every finding gets fixed, except a false positive or an already-explained
-   trade-off (noted and left as-is) and a finding that calls for a genuine design change
+   trade-off (noted and left as-is), or a finding that calls for a genuine design change
    (escalated to you instead of attempted); capped at 3 rounds, escalating to you if it still
    hasn't converged by then.
 6. **Verify and (only if you ask) open the PR.** `make check` keeps the gate green even for a

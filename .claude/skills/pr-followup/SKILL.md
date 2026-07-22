@@ -73,33 +73,29 @@ gh pr checks <PR>
 ### 4. Self-review against the CI review contract
 
 If step 2 or 3 made a change this iteration, mirror the CI "Claude review" workflow locally before
-pushing whatever hasn't shipped yet. This pays off most directly for step 3's review-comment
-fixes, which wait until step 5's push to go out; a step 2 CI-failure fix already went out with its
-own push, so here this step is an extra local check rather than the round-trip savings it buys for
-step 3 (BE-0203). Skip this step entirely when nothing changed this iteration (e.g. a poll under
-`implement-be`'s `/loop` where CI is already green and no new comments arrived), since there is
-nothing new to self-review or push. Otherwise, apply the same discipline as
-[`ideation`](../ideation/SKILL.md)'s step 5 — drafting a BE proposal from scratch there, a fix to a
-live PR here. Spawn a fresh subagent (Agent tool — if nested
-agent spawning is unavailable in this context, e.g. when this skill is itself already running as a
-subagent, apply the contract inline instead of spawning) that has **not** seen this pr-followup
-session — the actual CI reviewer also runs cold — and give it the contract at
-[`.github/claude-review-prompt.md`](../../../.github/claude-review-prompt.md) plus the PR's
-current state: `gh pr diff <PR>` and `gh pr view <PR> --comments`. Unlike the live CI review this
-mirrors, tell it explicitly to return its findings as a plain list rather than post them via the
-contract's inline-comment tool — this is a private, pre-push pass, not the actual review, and
-nothing here should land as a real PR comment. Per the contract's own rule, it should flag only
-what this round's fix newly introduces or leaves unaddressed — not re-raise a point already
-settled in the discussion it just read.
+pushing whatever hasn't shipped yet, following the same procedure as
+[`ideation`](../ideation/SKILL.md) step 5: spawn a fresh subagent — cold, blind to this session, the
+same way the actual CI reviewer is — against the contract at
+[`.github/claude-review-prompt.md`](../../../.github/claude-review-prompt.md); fix every finding
+unless it's a false positive or an already-explained trade-off (note the rationale and move on);
+carry forward a round's dismissed findings into the next round's prompt so a fresh subagent doesn't
+re-raise an already-settled one; capped at 3 rounds, reporting what remains if it still hasn't
+converged by then. The two differences from `ideation`'s version: give the subagent the PR's live
+state instead of a fresh diff — `gh pr diff <PR>` and `gh pr view <PR> --comments` — and tell it
+explicitly to return findings as a plain list rather than post them via the contract's
+inline-comment tool, since this is a private pre-push pass, not the actual review. Route a genuine
+design-change finding to this skill's own Escalation section instead of `ideation`'s — noting there
+is no PR conversation to leave unresolved for a self-review-only finding.
 
-Fix every finding it raises, unless it is a false positive or a deliberate, already-explained
-trade-off (note the rationale and move on) or it calls for a genuine design change (handle it
-under this skill's own Escalation section instead of attempting it — noting there is no PR
-conversation to leave unresolved for a self-review-only finding). Run `make check` after each fix.
-Re-run the subagent against the updated diff after non-trivial fixes, carrying forward this
-round's dismissed findings (with their rationale) into the next round's prompt so a fresh subagent
-doesn't re-raise an already-settled false positive or trade-off — capped at 3 rounds; if it still
-hasn't converged by then, stop and report what remains rather than looping further.
+This step pays off most directly for step 3's review-comment fixes, which wait until step 5's push
+to go out; a step 2 CI-failure fix already went out with its own push, so here this step is an
+extra local check rather than the round-trip savings it buys for step 3 (BE-0203). Skip it entirely
+when nothing changed this iteration (e.g. a poll under `implement-be`'s `/loop` where CI is already
+green and no new comments arrived), since there is nothing new to self-review or push. Skip it too
+if nested agent spawning is unavailable in this context (e.g. this skill is itself already running
+as a subagent) — don't fall back to reviewing the fix inline in the same session that just wrote
+it: that session can't be blind to the rationale it just used the way a genuinely cold reviewer is,
+so an inline pass would not catch what this step exists to catch.
 
 ### 5. Push and report
 
