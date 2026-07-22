@@ -14,7 +14,7 @@
 
 ## はじめに
 
-`agents/alerts.py` の system-alert guard は、ライブの AI 操作が実デバイス上で予期しない
+`agents/alerts.py` のシステムアラートガードは、ライブの AI 操作が実デバイス上で予期しない
 システムダイアログ（権限プロンプト、クラッシュ時のシート）へ盲目的に作用してしまうのを止めるために
 存在します。`record` だけでなく、決定的な `run --dismiss-alerts` 経路（`bajutsu/cli/commands/run.py`）
 と `crawl`（`bajutsu/cli/_shared.py` の `_build_alert_guard`）も、このガードを利用します。
