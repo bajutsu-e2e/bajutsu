@@ -52,12 +52,16 @@ Proposal altitude. The work is MECE along the units below.
 - **Cover the error path for real too.** Where feasible, provoke a real 404/403 (a deliberately wrong
   ref or an unauthorized private repo) rather than only a monkeypatched `HTTPError`, confirming the
   real error surface maps the way `_GitHubTransport`'s tests assume.
-- **Non-gating first.** Land the new job as CI signal, following the precedent in
-  [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md),
-  before considering it required. Trigger it on `push` to `main` (or `schedule`), never
-  `pull_request` — mirroring the trigger restriction `roadmap-id.yml` already relies on to keep its
-  `AUTOMATION_BOT_PRIVATE_KEY`/`AUTOMATION_BOT_APP_ID` secrets away from a fork-triggered run — so the
-  private-repo option's App credential gets the same protection.
+- **Non-gating, permanently.** Land the new job as CI signal, following BE-0282's precedent of
+  landing new backend coverage as signal first. Unlike BE-0282's own `network (playwright)` job,
+  though — which needs no secret and so safely triggers on every `pull_request`, including a fork's
+  — this job needs a real credential and triggers only on `push` to `main` (or `schedule`), never
+  `pull_request`, mirroring the trigger restriction `roadmap-id.yml` already relies on to keep its
+  `AUTOMATION_BOT_PRIVATE_KEY`/`AUTOMATION_BOT_APP_ID` secrets away from a fork-triggered run. A check
+  that only runs after merge reports against `main`'s commit, not a PR's head SHA, so it structurally
+  cannot become a required status check the way BE-0282's job could: this is the design's permanent
+  shape, not a step toward requiring it later, since the only way to change that would be exposing
+  the credential to a PR-triggered run.
 
 ## Alternatives considered
 
