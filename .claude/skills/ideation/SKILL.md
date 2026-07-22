@@ -128,10 +128,11 @@ fresh subagent (Agent tool) that has **not** seen this ideation conversation —
 also runs cold, with no memory of the authoring discussion, so a subagent that inherited this
 session's context would not reproduce that. Give it exactly two inputs: the contract at
 [`.github/claude-review-prompt.md`](../../../.github/claude-review-prompt.md) and the working
-diff (`git diff origin/main` — there is no PR yet, so nothing to run `gh pr diff` against). Ask
-it to apply every lens in the contract and return its findings as a plain list — skip the two
-parts of the contract that need a live PR: "read the existing discussion first" (`gh pr view
-<PR_NUMBER> --comments`, since there is no PR number yet) and posting findings as inline PR
+diff (`git add -A && git diff origin/main` — `make new-roadmap-item`'s new files are untracked, so
+a bare `git diff` would omit them entirely; there is no PR yet, so nothing to run `gh pr diff`
+against). Ask it to apply every lens in the contract and return its findings as a plain list —
+skip the two parts of the contract that need a live PR: "read the existing discussion first" (`gh
+pr view <PR_NUMBER> --comments`, since there is no PR number yet) and posting findings as inline PR
 comments.
 
 Unlike the CI job — which only posts comments, since prime directive 1 keeps a reviewer from also
