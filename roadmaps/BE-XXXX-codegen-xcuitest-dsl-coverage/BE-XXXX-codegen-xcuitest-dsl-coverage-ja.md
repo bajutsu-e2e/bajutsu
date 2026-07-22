@@ -48,7 +48,8 @@ XCTest API の使い方を壊しうるのに、既存のテストはすべて文
 提案の粒度です。作業は以下の単位に沿って MECE に分かれます。
 
 - **コンパイル対象のシナリオを拡張する**：テキスト編集(`clear` / `delete` / `select` / `copy`)、
-  ジェスチャ(`longPress` / `swipe` / `drag`)、複合セレクタ(`traits` + `index`)の各
+  ジェスチャ(`longPress`、`swipe` の両形式(方向指定と `from`/`to` の座標指定)、`drag`)、
+  複合セレクタ(`traits` + `index`)の各
   ステップを `components.yaml`、または同じ `xcuitest (codegen)` ジョブでコンパイルされる姉妹
   シナリオに追加し、各構文に対応する生成 Swift コードが実際にビルドされて実行されるようにします。
 - **`pinch` / `rotate` をコンパイルして実行する**：ドライバレベルの `xcuitest (multi-touch)` ジョブ

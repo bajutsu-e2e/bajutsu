@@ -20,7 +20,7 @@ The XCUITest codegen target is the one real-compile success story among the thre
 `xcodebuild test`. But that scenario, by its own header comment, deliberately covers only a narrow
 slice — `tap` (by label, by traits, by id), `wait`, `type`, and basic assertions — leaving most of
 what `bajutsu/codegen/xcuitest.py` emits unreachable by any compiler. This item expands the compiled
-fixture so the gate proves what the emitter actually implements, not just its simplest quarter.
+fixture so the gate proves what the emitter actually implements, not just its simplest corner.
 
 ## Motivation
 
@@ -31,8 +31,9 @@ the text-editing steps `clear` / `delete` / `select` / `copy`
 are checked only as substrings of the generated Swift, never compiled. (`within`, a geometric
 frame-containment constraint, stays unsupported by design — `_query()` returns `UNSUPPORTED_SELECTOR`
 for it rather than real Swift — so it has no compiled coverage to add and sits outside this item's
-scope.) Two gaps are sharper still. `pinch` / `rotate` multi-touch emits real `.pinch(withScale:)` / `.rotate(...)` XCTest calls
-(`xcuitest.py:169-180`) that are never compiled or run against a device anywhere in the repository —
+scope.) Two gaps are sharper still. `pinch` / `rotate` multi-touch emits real
+`.pinch(withScale:)` / `.rotate(...)` XCTest calls (`xcuitest.py:169-180`) that are never compiled
+or run against a device anywhere in the repository —
 not even the on-device conformance suite exercises the codegen emitter's version of these calls, only
 the driver's own. And `forEach` / `if` control flow and `extract` have no emitter handling at all:
 they fall through to a generic `// TODO: unsupported step` comment
@@ -48,9 +49,10 @@ pass.
 Proposal altitude. The work is MECE along the units below.
 
 - **Extend the compiled scenario.** Add text-editing (`clear` / `delete` / `select` / `copy`),
-  gesture (`longPress` / `swipe` / `drag`), and compound-selector (`traits` + `index`) steps
-  to `components.yaml` or a sibling scenario compiled by the same `xcuitest (codegen)` job, so the
-  generated Swift for each construct is actually built and run.
+  gesture (`longPress`, both `swipe` forms — direction and coordinate `from`/`to` — and `drag`), and
+  compound-selector (`traits` + `index`) steps to `components.yaml` or a sibling scenario compiled by
+  the same `xcuitest (codegen)` job, so the generated Swift for each construct is actually built and
+  run.
 - **Compile and run `pinch` / `rotate`.** Add a multi-touch scenario to the compiled set, reusing the
   showcase gestures screen the driver-level `xcuitest (multi-touch)` job already exercises, so the
   *emitted* `.pinch(withScale:)` / `.rotate(...)` calls are compiled and run, not only the driver's own.
