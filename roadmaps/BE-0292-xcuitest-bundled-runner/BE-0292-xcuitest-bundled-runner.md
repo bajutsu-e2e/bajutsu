@@ -196,9 +196,11 @@ The split follows the fast-gate / on-device boundary BE-0019 already draws.
   the override escape hatch named. The "report the resolved runner source" half shipped (`doctor
   --target` prints `xcuitest runner: bundled (wheel-shipped Simulator runner)` / `testRunner:
   <path>`); the Xcode/SDK-mismatch half stays unimplemented, scoped out as its own follow-up.
-- [x] Validation — fast-gate resolution tests (bundled default, override precedence, device error,
-  cache reuse, concurrent-materialization race) and an on-device e2e run with no `testRunner` in
-  config.
+- [ ] Validation — fast-gate resolution tests (bundled default, override precedence, device error,
+  cache reuse, concurrent-materialization race) shipped and pass; the on-device e2e run with no
+  `testRunner` in config does not — the showcase config still sets `testRunner` for every target,
+  and `ios-e2e.yml` still runs `make -C demos/showcase runner-build`, so the bundled path is
+  unexercised on a Simulator. Left open as its own follow-up.
 
 Log:
 

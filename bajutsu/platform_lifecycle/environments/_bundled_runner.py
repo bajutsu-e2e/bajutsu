@@ -125,7 +125,10 @@ def materialize(
                 shutil.rmtree(stale, ignore_errors=True)
         tmp = Path(tempfile.mkdtemp(dir=dest.parent, prefix=f"{dest.name}{_PARTIAL_MARKER}"))
         try:
-            shutil.copytree(source, tmp, dirs_exist_ok=True)
+            # symlinks=True: an Xcode build-for-testing product can embed a `.framework`'s
+            # `Versions/Current`-style symlink; copying it as a symlink preserves that structure
+            # instead of dereferencing (and potentially duplicating or failing on) its target.
+            shutil.copytree(source, tmp, dirs_exist_ok=True, symlinks=True)
             os.replace(tmp, dest)
         except Exception:
             shutil.rmtree(tmp, ignore_errors=True)

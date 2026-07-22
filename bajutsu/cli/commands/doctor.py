@@ -176,8 +176,9 @@ def doctor(
 
     # Which runner tier an xcuitest target resolves to (BE-0292): bundled, testRunner, or build —
     # informational, no device, no gate.
-    for line in xcuitest_runner_summary(eff, actuator):
-        typer.echo(line)
+    if runner_summary := xcuitest_runner_summary(eff, actuator):
+        for line in runner_summary:
+            typer.echo(line)
         typer.echo("")
 
     # Runnability gate: the CLIs (+ a booted Simulator) the actuator needs. Fail fast here
