@@ -69,6 +69,40 @@ def _kind_of(token: str) -> str:
     return token.partition(".")[0]
 
 
+def _extract_stable_key(
+    elements: list[base.Element], extracts: Mapping[str, Extract]
+) -> tuple[object, ...]:
+    """A settle projection for `extract`: whole-screen layout plus each target's read property.
+
+    Two halves. The **layout** half is the driver-side settle projection (`_stable_key` in
+    `coordinate_tree.py`): every element's identifier and frame, sorted — a whole-screen resolve
+    stability check that a text-only animation (which does not move layout) leaves quiet. The
+    **target** half carries, per extract, only the property that extract copies out (`ext.prop`) on
+    the element its selector resolves to — scoped to the target, so an `extract` polls until *the
+    value it actually reads* stops changing, not until every live-updating label elsewhere on the
+    screen (a timer, a "Loading…" animation) happens to be quiet, which would burn the whole deadline
+    on every extract step on such a screen (BE-0299 Unit 3).
+
+    When a target does not resolve to exactly one element — a screen still mid-transition — the target
+    half falls back to the whole-screen projection of that property, so the settle keeps polling until
+    the selector resolves uniquely rather than reading a half-rendered screen. Both halves are sorted
+    and every value is coerced with `or ""`, so the key is a function of the element *set* (not the
+    order the driver returned it in) and an optional field reported as `None` on one read and `""` on
+    the next does not look changed; a genuine `None → real value` change still differs.
+    """
+    layout = tuple(sorted((e["identifier"] or "", e["frame"]) for e in elements))
+    targets: list[tuple[str, tuple[str, ...]]] = []
+    for name, ext in sorted(extracts.items()):
+        matched = base.find_all(elements, ext.sel.as_selector())
+        projected: tuple[str, ...]
+        if len(matched) == 1:
+            projected = (matched[0].get(ext.prop) or "",)
+        else:  # not uniquely resolvable yet: keep polling on the whole-screen prop until it is
+            projected = tuple(sorted((e.get(ext.prop) or "") for e in elements))
+        targets.append((name, projected))
+    return (layout, tuple(targets))
+
+
 def _run_extract(
     elements: list[base.Element],
     extracts: Mapping[str, Extract],
