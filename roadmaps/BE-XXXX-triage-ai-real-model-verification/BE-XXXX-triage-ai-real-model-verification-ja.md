@@ -14,9 +14,9 @@
 
 ## はじめに
 
-`triage --ai` の自己修復経路(`agents/claude_triage.py`)は、失敗した run の証跡(失敗時の
-スクリーンショットを含む)を Claude へ送り、そのレスポンスを構造化された診断と、該当する場合は
-提案される修正(`renameId` / `addIndex` / `raiseTimeout`)へパースします。このパース処理に触れる
+`triage --ai` の自己修復経路（`agents/claude_triage.py`）は、失敗した run の証跡（失敗時の
+スクリーンショットを含む）を Claude へ送り、そのレスポンスを構造化された診断と、該当する場合は
+提案される修正（`renameId` / `addIndex` / `raiseTimeout`）へパースします。このパース処理に触れる
 テストはすべて `FakeBackend(FakeBlock(...))` で駆動されています。CLI レベルのテストはさらに一歩
 進んで、triage のエージェントクラス自体を、固定の `Triage` オブジェクトを返すだけの手組みの
 `_FakeAgent` に置き換え、AI backend を完全に迂回しています。本項目は、この診断パース処理自体に
@@ -25,16 +25,16 @@
 ## 動機
 
 `tests/test_claude_triage.py` の fake は、作者が「診断レスポンスはこう見えるはずだ」と想定する
-形にきっちり整形されています。`tests/test_triage.py` の `_stub_ai_cli`(CLI の `--ai` テストを
-支える)はさらに踏み込み、`ClaudeCrossRunTriageAgent` を `_FakeAgent` に差し替えるため、認証情報
-欠落時の経路(`_require_ai_credential`)すら実行されず、スタブに置き換えられています。実モデルが
+形にきっちり整形されています。`tests/test_triage.py` の `_stub_ai_cli`（CLI の `--ai` テストを
+支える）はさらに踏み込み、`ClaudeCrossRunTriageAgent` を `_FakeAgent` に差し替えるため、認証情報
+欠落時の経路（`_require_ai_credential`）すら実行されず、スタブに置き換えられています。実モデルが
 実際の失敗スクリーンショットと実際の run の証跡を見て、`Triage` スキーマへ実際にパースできる
 診断 JSON を生成すること、あるいは提案される修正のカテゴリ列挙が実モデルに提示された選択肢と
 一致することを、テストスイートのどこも確認していません。
 
-triage は設計上あくまで advisory(助言)であり、`--apply`/`--write` は常に差分をプレビューして
-から人間がその結果をレビューします(`DESIGN.md` のロードマップにおける M4。prime directive 1に
-より、これは `run` ゲートから完全に切り離されています)。この advisory という位置づけこそが、
+triage は設計上あくまで advisory（助言）であり、`--apply`/`--write` は常に差分をプレビューして
+から人間がその結果をレビューします（`DESIGN.md` のロードマップにおける M4。prime directive 1に
+より、これは `run` ゲートから完全に切り離されています）。この advisory という位置づけこそが、
 このギャップを放置せず埋めるべき理由です。パーサが実モデルの修正提案を静かに落とす、あるいは
 カテゴリを誤ってマッピングすれば、人間がレビューできる形のまさしく型付けされた提案を出すという、
 この AI 機能の価値そのものが損なわれます。
@@ -48,7 +48,7 @@ triage は設計上あくまで advisory(助言)であり、`--apply`/`--write` 
   できるフィクスチャとして追加します。
 - **API キーで gate したライブ smoke テスト**：実際の失敗した run に対して実際の認証情報で
   `triage --ai` をエンドツーエンドで実行し、結果が妥当な `Triage` オブジェクトへパースでき、
-  (修正が提案される場合は)その修正が整形式であることを検証する `pytest.mark.skipif` gated の
+  （修正が提案される場合は）その修正が整形式であることを検証する `pytest.mark.skipif` gated の
   テストを追加します。
 - **認証情報が欠落したときの経路を、代役のエージェントクラスではなく実際に検証する**：`_stub_ai_cli` は
   エージェントクラスの差し替えとは別に `_require_ai_credential` 自体も monkeypatch するため、
@@ -85,5 +85,5 @@ triage は設計上あくまで advisory(助言)であり、`--apply`/`--write` 
 - [BE-0104 — ベンダー中立な AI バックエンドインターフェース](../BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend-ja.md)
 - [BE-0282 — ネットワークのキャプチャ・モック・アサーションを CI で実バックエンド検証する](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md)
 - `bajutsu/agents/claude_triage.py`、`bajutsu/triage.py`、`tests/conftest.py`
-  (`FakeBackend` / `FakeBlock`)、`tests/test_claude_triage.py`、`tests/test_triage.py`
-  (`_stub_ai_cli`、`_FakeAgent`)
+  （`FakeBackend` / `FakeBlock`）、`tests/test_claude_triage.py`、`tests/test_triage.py`
+  （`_stub_ai_cli`、`_FakeAgent`）
