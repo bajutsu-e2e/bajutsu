@@ -69,14 +69,14 @@ jobs:
 
       - name: Set up uv
         if: steps.gate.outputs.enabled == 'true'
-        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39  # v8.2.0
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990  # v8.3.2
         with:
           enable-cache: true
 
       # Gradle needs JDK 17 (demos/showcase/android targets jvmTarget 17), matching android-e2e.yml.
       - name: Set up JDK 17
         if: steps.gate.outputs.enabled == 'true'
-        uses: actions/setup-java@0f481fcb613427c0f801b606911222b5b6f3083a  # v5.5.0
+        uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95  # v5.6.0
         with:
           distribution: temurin
           java-version: '17'
