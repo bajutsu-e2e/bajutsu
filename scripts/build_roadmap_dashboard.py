@@ -2,13 +2,14 @@
 """Generate the roadmap status dashboard page for the docs site (BE-XXXX).
 
 The roadmap's source of truth is the per-item metadata under ``roadmaps/<category>/BE-NNNN-<slug>/``
-— the same metadata the index generator (``build_roadmap_index.py``) reads. This renders that live
-metadata as a single self-contained HTML dashboard, ``docs/api/roadmap.md``, that the existing
-MkDocs site publishes to GitHub Pages: cards grouped by category (Topic), each card carrying its own
-status (Implemented / In progress / Proposal / Deferred) and linking to its item on GitHub. Each
-category shows a progress figure — the share of its items that are Implemented — and a stacked bar
-of its full status composition, and fully-implemented categories are grouped separately under
-Completed.
+— read through the shared loader in ``build_roadmap_index.py``. This renders that live metadata as a
+single self-contained HTML dashboard, ``docs/api/roadmap.md``, that the existing MkDocs site
+publishes to GitHub Pages: cards grouped by category (Topic), each card carrying its own status
+(Implemented / In progress / Proposal / Deferred) and linking to its item on GitHub. Each category
+shows a progress figure — the share of its items that are Implemented — and a stacked bar of its
+full status composition, and fully-implemented categories are grouped separately under Completed.
+This dashboard is the only place any item's status is browsable — ``roadmaps/README.md`` /
+``README-ja.md`` carry no generated status tables of their own.
 
 Like the generated API reference (``site/``), the page is a **build artifact, never committed**: it
 is regenerated from the live tree on every docs build, so it can never drift from the roadmap and is
@@ -371,8 +372,9 @@ _INTRO = (
     "grouped separately under Completed. Categories start collapsed to a progress overview — click a "
     "heading to expand it, toggle the status chips on and off, or type in the search box to narrow the "
     "cards by id, title, topic, or status. Each card links to its "
-    "full proposal on GitHub. The full index with both languages "
-    "lives in [`roadmaps/README.md`](https://github.com/bajutsu-e2e/bajutsu/blob/main/roadmaps/README.md).\n\n"
+    "full proposal on GitHub. This dashboard is the only status view — for what a roadmap item is "
+    "and how to add one, see [`roadmaps/README.md`]"
+    "(https://github.com/bajutsu-e2e/bajutsu/blob/main/roadmaps/README.md) (both languages).\n\n"
 )
 
 

@@ -12,9 +12,9 @@ into one command both a human and an AI invoke identically::
 It writes ``roadmaps/BE-XXXX-<slug>/`` with ``BE-XXXX-<slug>.md`` and its ``-ja.md`` mirror,
 each pre-filled with the header link, the metadata block, and the six sections seeded with ``TBD`` —
 ``Progress`` (BE-0100) seeded with its living-checklist skeleton rather than a bare ``TBD``.
-It deliberately does **not** add an index row: the index generator skips ``BE-XXXX`` items, so the
-committed tables stay row-free for the placeholder and ``make check`` is green locally; the
-``roadmap-id`` workflow allocates the number and regenerates the index on the PR.
+It deliberately does **not** allocate a real id up front: the placeholder stays ``BE-XXXX`` through
+authoring and review, and the ``roadmap-id`` workflow renames it to the next free ``BE-NNNN`` on
+``main`` after the PR merges (BE-0089).
 """
 
 from __future__ import annotations

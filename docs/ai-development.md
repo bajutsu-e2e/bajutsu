@@ -217,7 +217,7 @@ reflect it. Tasks map to one of three tiers along two axes — model and reasoni
 |---|---|---|---|
 | **Heavy** | `opus` | high | Implementing a BE item (`implement-be`), non-trivial refactors, architecture / design decisions, debugging a failing gate |
 | **Medium** | `sonnet` | moderate | Roadmap ideation / authoring (`ideation`), technical writing and translation review (`english-document-writing`, `japanese-document-writing`), PR review |
-| **Light** | `haiku` | low or none | Roadmap index regeneration / promote, doc formatting and link fixes, mechanical renames, lockfile / format chores, drafting a first-pass translation before the medium-tier review |
+| **Light** | `haiku` | low or none | Flipping a roadmap item's `Status`, doc formatting and link fixes, mechanical renames, lockfile / format chores, drafting a first-pass translation before the medium-tier review |
 
 The tier → model-id mapping lives only here, so re-pointing a tier at a new Claude model is a
 one-line change in one place. The model ids above are Claude Code aliases (`opus` / `sonnet` /
@@ -238,7 +238,8 @@ harness picks the right model when the skill runs — nothing to remember, still
 - [`roadmap-filter`](../.claude/skills/roadmap-filter/SKILL.md) → `haiku` (Light) — a read-only
   survey of the roadmap by `Status` (BE-0162): it wraps `make roadmap-status STATUS="…"` so a
   session lists just the items in one status (e.g. every open `Proposal`), with each item's file
-  path to open next, instead of reading the 700+-line `roadmaps/README.md` into context.
+  path to open next, instead of paging through the dashboard's rendered HTML or opening each item
+  file to check its `Status`.
 
 Most light-tier chores aren't skills, so that tier is otherwise reached interactively or by subagent
 delegation, below — `roadmap-filter` is the exception, since its whole job is one light,
@@ -535,7 +536,7 @@ The roadmap is **one directory per item** under [`roadmaps/`](../roadmaps/README
 Japanese version `BE-NNNN-<slug>-ja.md` (same ID and slug). **BE** stands for *Bajutsu Evolution* and `NNNN`
 is a **zero-padded, four-digit, monotonically increasing** ID. Every item lives directly under `roadmaps/`
 in a flat layout: its path is fixed the moment its ID is allocated and never moves (BE-0159 retired the
-per-`Status` folders BE-0078 introduced — `Status` now decides only the index bucket, below).
+per-`Status` folders BE-0078 introduced — `Status` now decides only the dashboard bucket, below).
 
 When you add a roadmap item:
 
@@ -547,14 +548,10 @@ When you add a roadmap item:
    Never reuse, skip, or guess a number.
 2. **Create the item directory and both language files** directly under `roadmaps/` with `Status: Proposal` (a new item is always a
    proposal first) — `roadmaps/BE-NNNN-<slug>/BE-NNNN-<slug>.md`
-   (English) and `roadmaps/BE-NNNN-<slug>/BE-NNNN-<slug>-ja.md` (Japanese, same ID & slug). **Do not
-   hand-edit the index tables** — they are generated from each item's own metadata. Run
-   `make roadmap-index` (or `python scripts/build_roadmap_index.py`) to regenerate the tables between the
-   `<!-- GENERATED:* -->` markers in **both** index pages ([en](../roadmaps/README.md), [ja](../roadmaps/README-ja.md)).
-   The item's `Status` (its bucket) + `Topic` decide which section it lands in, so an item in an existing
-   section needs no manual table edit; `tests/test_roadmap_index.py` (run by `make test`) fails if the
-   committed index drifts. The first item of a topic to reach a bucket needs its own marked section (the
-   generator names the missing region).
+   (English) and `roadmaps/BE-NNNN-<slug>/BE-NNNN-<slug>-ja.md` (Japanese, same ID & slug). Nothing
+   else needs editing: the [roadmap dashboard](https://bajutsu-e2e.github.io/bajutsu/api/roadmap.html)
+   reads the item's `Status` + `Topic` straight off its metadata on every docs build, so there is no
+   index table anywhere in [en](../roadmaps/README.md) / [ja](../roadmaps/README-ja.md) to keep in sync.
 3. **IDs are permanent.** Never renumber an existing item — not when its status changes, not when
    it is completed, not when it is removed from a table. A BE ID, once assigned, refers to that
    item forever.
@@ -565,8 +562,8 @@ Drafting with the `BE-XXXX` placeholder is the norm: an item keeps `BE-XXXX` thr
 review, and the merge itself, and a **BE-creation PR carries no `[BE-NNNN]` prefix at all** — its
 title stays a plain scoped subject, since the real number is not known until after the merge. The
 merge is a push to `main`, which triggers the `roadmap-id` workflow; it runs the allocator against
-`main`, renames each placeholder to the next free `BE-NNNN`, commits the rename and regenerated index
-directly to `main`, and comments the allocated id on the merged PR. Because allocation runs in merge
+`main`, renames each placeholder to the next free `BE-NNNN`, commits the rename directly to `main`,
+and comments the allocated id on the merged PR. Because allocation runs in merge
 order on `main`, the `BE-NNNN` sequence is **contiguous by construction** — a rejected PR never
 merges, so it never spends a number.
 
@@ -656,25 +653,23 @@ fields keep their canonical order, but not that a breakdown is genuinely exhaust
 **Name the author by GitHub handle** —
 `* Author: [@handle](https://github.com/handle)`, the account of whoever first authored the item
 (for an AI-assisted draft, the person who drove and committed it). The **Status** field is the single
-source of truth for the index bucket an item appears under (BE-0078). It does **not** decide the item's
-location: since BE-0159 every item lives in one flat `roadmaps/BE-NNNN-<slug>/` directory whose path is
-permanent, so `Status` and directory can never disagree because the directory does not depend on `Status`
-at all.
+source of truth for the dashboard bucket an item appears under (BE-0078). It does **not** decide the
+item's location: since BE-0159 every item lives in one flat `roadmaps/BE-NNNN-<slug>/` directory whose
+path is permanent, so `Status` and directory can never disagree because the directory does not depend
+on `Status` at all.
 
-| Status | Index bucket |
+| Status | Dashboard bucket |
 |---|---|
 | `Implemented` | Implemented — shipped |
 | `In progress` | In progress — accepted, actively being built |
 | `Proposal` | Proposals — under consideration |
 | `Proposal (deferred)` | Deferred — parked |
 
-Only the last three buckets render as a table on the index page (`roadmaps/README.md` /
-`README-ja.md`); an item that reaches `Implemented` drops off the page instead of moving to a
-table there. Every shipped item stays browsable, grouped by Topic with live progress bars, on the
+Every item, in every bucket, is browsable, grouped by Topic with live progress bars, on the
 [roadmap dashboard](https://bajutsu-e2e.github.io/bajutsu/api/roadmap.html) — a page
 `scripts/build_roadmap_dashboard.py` (BE-0094) generates from the same per-item metadata on every
-docs build, published to GitHub Pages. The index page and the dashboard read the identical source,
-so the two can never disagree; the index just narrows its own view to what's still open.
+docs build, published to GitHub Pages. `roadmaps/README.md` / `README-ja.md` carry no generated
+status table of their own; the dashboard is the one place an item's status is browsable.
 
 **The code decides the Status — a hard rule.** An item's `Status` tracks whether its implementation
 exists, not a preference to keep the item reading as a forward-looking proposal. An item authored with
@@ -685,9 +680,8 @@ that is exactly the promotion the [`implement-be`](../.claude/skills/implement-b
 performs, and it binds humans and agents alike. (The one exception is *authoring* a new item: an
 `ideation`-style proposal that ships no code stays `Proposal`, since there is nothing implemented yet.)
 
-As an item advances, **update its Status** and run `make roadmap-index` to regenerate the index (its row
-moves to the right bucket automatically, or drops off the page entirely once the Status is
-`Implemented`). The directory never moves (BE-0159): the same
+As an item advances, **update its Status**; the dashboard picks up the new bucket on its next
+regeneration, with nothing else to edit. The directory never moves (BE-0159): the same
 `roadmaps/BE-NNNN-<slug>/` path holds the item for its whole life, so a promotion no longer rots any link
 into or out of it — the concrete win over the folder scheme, which broke a link every time an item's
 `Status` changed. **`make lint-roadmap`** (in `make check`) still guards cross-links: it fails if any

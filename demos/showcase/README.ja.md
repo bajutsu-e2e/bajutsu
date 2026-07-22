@@ -15,7 +15,7 @@ showcase は Bajutsu の次世代 dogfood 対象です。**同じアプリを 2 
   [`scenarios/`](scenarios) 集が両方を駆動します。
 - **ロードマップ項目：** [BE-0045](../../roadmaps/BE-0045-dogfood-showcase-apps/BE-0045-dogfood-showcase-apps-ja.md)
   が showcase 群の根拠を記録しています。[BE-0079](../../roadmaps/BE-0079-consolidate-demos-on-showcase/BE-0079-consolidate-demos-on-showcase-ja.md)
-  が showcase への統合を完了させました（索引全体は [`roadmaps`](../../roadmaps/README-ja.md) を参照してください）。
+  が showcase への統合を完了させました（ロードマップの仕組みは [`roadmaps`](../../roadmaps/README-ja.md) を参照してください）。
 
 ## 4 つのプロダクト
 
