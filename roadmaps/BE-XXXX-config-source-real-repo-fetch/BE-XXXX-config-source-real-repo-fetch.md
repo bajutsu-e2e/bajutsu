@@ -45,7 +45,7 @@ Proposal altitude. The work is MECE along the units below.
   fetched config tree matches what's actually in the repository.
 - **Cover the error path for real too.** Where feasible, provoke a real 404/403 (a deliberately wrong
   ref or an unauthorized private repo) rather than only a monkeypatched `HTTPError`, confirming the
-  real error surface maps the way `_fetch`'s tests assume.
+  real error surface maps the way `_GitHubTransport`'s tests assume.
 - **Non-gating first.** Land the new job as CI signal, following the precedent in
   [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md),
   before considering it required.
