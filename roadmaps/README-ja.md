@@ -105,6 +105,7 @@
 | [BE-0008](BE-0008-flutter-support/BE-0008-flutter-support-ja.md) | Flutter 対応 | 提案 |
 | [BE-0289](BE-0289-xcuitest-stale-handle-reresolve/BE-0289-xcuitest-stale-handle-reresolve-ja.md) | 操作対象への参照が古くなっても、失敗として扱う前に XCUITest のしくみで指定し直す | 提案 |
 | [BE-0290](BE-0290-xcuitest-default-ios-backend/BE-0290-xcuitest-default-ios-backend-ja.md) | XCUITest を iOS のデフォルトバックエンドにし、idb を撤去する | 提案 |
+| [BE-0292](BE-0292-xcuitest-bundled-runner/BE-0292-xcuitest-bundled-runner-ja.md) | XCUITest ランナーを同梱して testRunner を省略可能にする | 提案 |
 <!-- /GENERATED:proposals-platform -->
 
 ### ドライバとバックエンドのアーキテクチャ
@@ -140,6 +141,15 @@
 <!-- GENERATED:proposals-authoring -->
 
 <!-- /GENERATED:proposals-authoring -->
+
+### codegen 網羅性
+
+<!-- GENERATED:proposals-codegen -->
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0293](BE-0293-codegen-playwright-real-compile/BE-0293-codegen-playwright-real-compile-ja.md) | Playwright（TypeScript）codegen ターゲットの実コンパイル検証 | 提案 |
+| [BE-0294](BE-0294-codegen-uiautomator-real-compile/BE-0294-codegen-uiautomator-real-compile-ja.md) | UI Automator（Kotlin）codegen ターゲットの実コンパイル検証 | 提案 |
+<!-- /GENERATED:proposals-codegen -->
 
 ### serve Web UI への CLI 機能の取り込み
 
