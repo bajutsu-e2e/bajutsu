@@ -10,7 +10,7 @@ scaffolding, format checking) that each need one slice of the same fields.
 Every item's bucket is **derived from its ``Status``** (BE-0078), not a hand-set ``Track`` field:
 Implemented / In progress / Proposals / Deferred, most-progressed first. The roadmap's index pages
 (``roadmaps/README.md`` / ``README-ja.md``) used to carry a generated table per bucket; that table is
-retired (BE-XXXX) in favor of the dashboard, which already lists every item — Implemented included —
+retired in favor of the dashboard, which already lists every item — Implemented included —
 grouped by Topic with filterable status chips, so there is nothing left for this module to write back
 to the index pages. It is purely a read side now.
 """
