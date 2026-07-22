@@ -60,7 +60,8 @@ Proposal altitude. The work is MECE along the units below.
   `ant`) that supplies the real credential from repository secrets and runs the live-call test,
   triggered only via `workflow_dispatch` — never `pull_request`, which would expose the credential to
   a fork-triggered run — mirroring the hard boundary already documented in
-  `.github/workflows/devicefarm.yml`. This follows the same non-gating-signal-first precedent as
+  `.github/workflows/devicefarm.yml`. This per-adapter lane design follows the same
+  non-gating-signal-first precedent as
   [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md).
 - **Record the ones left uncovered.** Not every credential is realistically available in CI (e.g. a
   live Bedrock role); where a lane can't be wired, say so explicitly in the item's Progress log rather
