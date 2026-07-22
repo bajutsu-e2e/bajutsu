@@ -18,8 +18,8 @@
 ([BE-0238](../BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution.md)) drive a
 device-cloud route over the W3C WebDriver protocol against Appium, for the
 [BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction.md)
-device-provider seam. Its own test module docstring says both are "faked at the network boundary so
-no grid is needed on the gate" — every test drives a synthetic transport, never a real Appium grid.
+device provider seam. The driver module's own docstring says both are "faked at the network boundary
+so no grid is needed on the gate" — every test drives a synthetic transport, never a real Appium grid.
 No CI lane exercises the real wire format, session lifecycle, or `mobile:` command semantics this
 backend depends on. This item adds one.
 
@@ -59,7 +59,7 @@ Proposal altitude. The work is MECE along the units below.
   Correct JSON construction says nothing about whether a real Appium server accepts it, which is the
   actual claim this backend makes.
 - **Defer real verification until a concrete device-cloud provider adopts this route.** The route
-  already exists and is reachable through the device-provider seam today; leaving it unverified until
+  already exists and is reachable through the device provider seam today; leaving it unverified until
   a specific provider integration lands means any interim regression ships silently, with no lane to
   catch it.
 
