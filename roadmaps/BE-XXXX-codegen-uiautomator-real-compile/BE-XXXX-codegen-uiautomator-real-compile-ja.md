@@ -52,7 +52,7 @@ Automator サーバをすでにビルドしています
   に対して実行し、成功することを検証します。
 - **CI に組み込む**：`xcuitest (codegen)` と同様の `android-e2e.yml` のジョブを追加します。
   [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md)
-  の前例にならい、まず非 gating の signal として着地させ、安定を確認してから必須化します。
+  の前例にならい、まずゲート対象外のシグナルとして着地させ、安定を確認してから必須化します。
 - **XCUITest の水準に合わせ、それを超えない**：フィクスチャシナリオの範囲を、XCUITest 向け codegen
   ゲートがカバーする DSL 表面（`tap` / `wait` / `type` / 基本的なアサーション）に揃え、3つの
   ターゲットすべてが同じ実コンパイルの床から始まるようにします。
