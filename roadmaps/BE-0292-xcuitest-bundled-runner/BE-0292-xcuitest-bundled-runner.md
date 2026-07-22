@@ -7,9 +7,9 @@
 |---|---|
 | Proposal | [BE-0292](BE-0292-xcuitest-bundled-runner.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0292") |
-| Implementing PR | [#1221](https://github.com/bajutsu-e2e/bajutsu/pull/1221) |
+| Implementing PR | [#1221](https://github.com/bajutsu-e2e/bajutsu/pull/1221), [#1276](https://github.com/bajutsu-e2e/bajutsu/pull/1276) |
 | Topic | Platform support |
 | Related | [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md), [BE-0288](../BE-0288-ios-device-signing-batch-build/BE-0288-ios-device-signing-batch-build.md), [BE-0291](../BE-0291-xcuitest-runner-reuse-across-scenarios/BE-0291-xcuitest-runner-reuse-across-scenarios.md) |
 <!-- /BE-METADATA -->
@@ -192,15 +192,19 @@ The split follows the fast-gate / on-device boundary BE-0019 already draws.
 - [x] Packaging — place the built Simulator products under the package-data directory before the wheel
   build runs and add the release-pipeline build step that produces them; keep the base wheel
   installable on Linux.
-- [ ] doctor / disclosure — report the resolved runner source and surface an Xcode/SDK mismatch with
-  the override escape hatch named. The "report the resolved runner source" half shipped (`doctor
-  --target` prints `xcuitest runner: bundled (wheel-shipped Simulator runner)` / `testRunner:
-  <path>`); the Xcode/SDK-mismatch half stays unimplemented, scoped out as its own follow-up.
-- [ ] Validation — fast-gate resolution tests (bundled default, override precedence, device error,
-  cache reuse, concurrent-materialization race) shipped and pass; the on-device e2e run with no
-  `testRunner` in config does not — the showcase config still sets `testRunner` for every target,
-  and `ios-e2e.yml` still runs `make -C demos/showcase runner-build`, so the bundled path is
-  unexercised on a Simulator. Left open as its own follow-up.
+- [x] doctor / disclosure — report the resolved runner source and surface an Xcode/SDK mismatch with
+  the override escape hatch named. Both halves ship: `doctor --target` prints `xcuitest runner:
+  bundled (wheel-shipped Simulator runner)` / `testRunner: <path>`, and when the target resolves to
+  the bundled runner it adds a `⚠` line if the host Xcode / Simulator SDK major differs from the
+  toolchain `make runner-bundle` recorded (`build-info.json`), naming `xcuitest.testRunner` /
+  `xcuitest.build` as the escape hatch.
+- [x] Validation — fast-gate resolution tests (bundled default, override precedence, device error,
+  cache reuse, concurrent-materialization race) plus the build-info / toolchain-mismatch disclosure
+  are unit-tested; the on-device e2e run now exercises the bundled path — the `xcuitest (multi-touch)`
+  job stages the runner with `make runner-bundle` and runs `smoke.yaml` against a config with no
+  `testRunner` (`showcase.bundled-runner.config.yaml`) on both the SwiftUI and UIKit a11y apps,
+  proving the app-agnostic bundled runner drives either toolkit with no runner-build and no runner
+  path.
 
 Log:
 
@@ -208,6 +212,11 @@ Log:
   materialize-to-cache, and packaging, with fast-gate tests. Also added `doctor --target`'s
   resolved-runner-source disclosure (`runner_source` / `xcuitest_runner_summary`), but deliberately
   scoped the Xcode/SDK-mismatch half out as a separate follow-up.
+- [#1276](https://github.com/bajutsu-e2e/bajutsu/pull/1276) — completed the two deferred halves: the
+  doctor Xcode/SDK-mismatch disclosure (`build-info.json` recorded by `make runner-bundle`, compared
+  against the host toolchain, escape hatch named) and the on-device bundled-path e2e (a
+  `testRunner`-free `showcase.bundled-runner.config.yaml` run through `smoke.yaml` on both the SwiftUI
+  and UIKit a11y apps after `make runner-bundle`). Flips the item to Implemented.
 
 ## References
 

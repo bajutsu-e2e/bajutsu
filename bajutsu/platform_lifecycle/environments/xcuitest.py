@@ -15,7 +15,7 @@ import shlex
 import socket
 import subprocess
 import tempfile
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Literal, cast
 
@@ -24,6 +24,7 @@ from bajutsu.config import Effective, XcuitestConfig, require_ios
 from bajutsu.drivers import base
 from bajutsu.platform_lifecycle.environments._bundled_runner import (
     bundled_products_dir,
+    bundled_runner_build_info,
     materialize,
 )
 from bajutsu.platform_lifecycle.environments.ios import _DeviceEnvironment
@@ -424,6 +425,71 @@ def runner_source(xcfg: XcuitestConfig | None, device_type: str) -> str:
     if bundled_products_dir() is None:
         return "none: no bundled runner in this build (set xcuitest.testRunner)"
     return "bundled (wheel-shipped Simulator runner)"
+
+
+def _major(version: str) -> str:
+    """The leading numeric component of a version like ``16.0`` or ``18.2`` — its major."""
+    return version.split(".", 1)[0].strip()
+
+
+def bundled_runner_toolchain_warning(
+    build_info: Mapping[str, str] | None,
+    host_xcode: str | None,
+    host_sdk: str | None,
+) -> str | None:
+    """Warn when the host toolchain differs from the one the bundled runner was built against.
+
+    The bundled runner is a compiled artifact tied to the Xcode and Simulator SDK it was built with
+    (BE-0292); a host on a different major version can fail to launch it with an opaque `xcodebuild`
+    error. Comparing majors keys the warning to that breaking case while staying quiet across the
+    point releases that stay compatible. Returns a one-line message naming the `testRunner` / `build`
+    overrides as the escape hatch, or `None` when there is nothing recorded, nothing on the host to
+    compare, or the majors agree. Pure disclosure: no gate, no LLM (prime directive 1).
+    """
+    if not build_info:
+        return None
+
+    def _mismatch(label: str, built: str | None, host: str | None) -> str | None:
+        if built and host and _major(built) != _major(host):
+            return f"{label} {built} (bundled runner) vs {host} (host)"
+        return None
+
+    mismatches = [
+        m
+        for m in (
+            _mismatch("Xcode", build_info.get("xcode"), host_xcode),
+            _mismatch("iphonesimulator SDK", build_info.get("sdk"), host_sdk),
+        )
+        if m
+    ]
+    if not mismatches:
+        return None
+    return (
+        "bundled runner toolchain mismatch: "
+        + "; ".join(mismatches)
+        + " — if it fails to launch, set xcuitest.testRunner or xcuitest.build to build a "
+        "matching runner"
+    )
+
+
+def bundled_runner_toolchain_note(
+    xcfg: XcuitestConfig | None,
+    device_type: str,
+    host_toolchain: Callable[[], tuple[str | None, str | None]],
+) -> str | None:
+    """A toolchain-mismatch note, but only when the target resolves to the bundled runner (BE-0292).
+
+    Shares `_classify_runner`'s precedence so the note is confined to the bundled tier; an explicit
+    `testRunner` or a device target (whose runner is not the bundled one) never warns. `host_toolchain`
+    is a `() -> (xcode, sdk)` probe called lazily — only after the tier gate passes — so a target with
+    an explicit runner pays no subprocess cost. Delegates the version comparison to
+    `bundled_runner_toolchain_warning`.
+    """
+    tier, _, _ = _classify_runner(xcfg, device_type)
+    if tier != "bundled":
+        return None
+    host_xcode, host_sdk = host_toolchain()
+    return bundled_runner_toolchain_warning(bundled_runner_build_info(), host_xcode, host_sdk)
 
 
 def _patch_xctestrun_env(runner_path: Path, forwarded: Mapping[str, str]) -> Path:

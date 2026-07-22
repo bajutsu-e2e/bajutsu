@@ -220,12 +220,18 @@ docs-diagrams:
 # this ships it and `xcuitest.testRunner` becomes optional. macOS + Xcode only, run at release
 # time — NOT part of `check` (the deterministic gate runs anywhere and never touches the runner).
 # The whole products directory is copied so the `.xctestrun`'s `__TESTROOT__` still resolves beside
-# its test bundles. The output is gitignored and force-included via pyproject `artifacts`.
+# its test bundles. The output is gitignored and force-included via pyproject `artifacts`. A
+# build-info.json records the Xcode / Simulator SDK the runner was built against, so `doctor` can warn
+# when the host toolchain differs from it (BE-0292) rather than surfacing an opaque xcodebuild error.
 runner-bundle:
 	$(MAKE) -C demos/showcase runner-build
 	rm -rf bajutsu/_xcuitest_runner
 	mkdir -p bajutsu/_xcuitest_runner
 	cp -R BajutsuKit/Runner/build/dd/Build/Products/. bajutsu/_xcuitest_runner/
+	printf '{"xcode": "%s", "sdk": "%s"}\n' \
+		"$$(xcodebuild -version | awk 'NR==1 {print $$2}')" \
+		"$$(xcodebuild -version -sdk iphonesimulator SDKVersion 2>/dev/null | tr -d '[:space:]')" \
+		> bajutsu/_xcuitest_runner/build-info.json
 
 # Showcase build / on-device targets live with the fixture (demos/showcase/, the single iOS app):
 #   make -C demos/showcase swiftui-build|uikit-build|run-swiftui|doctor|record|ui-test|vrt
