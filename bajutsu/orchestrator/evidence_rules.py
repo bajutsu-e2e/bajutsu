@@ -79,10 +79,17 @@ def _extract_stable_key(
     (`value` / `label` / `identifier`) any of this step's extracts names, so an `extract` polls until
     the property it actually copies out stops changing — not only until the layout stops moving. Keyed
     to the union of the step's `ext.prop`s so a step extracting `label` waits on `label`, not `value`
-    (BE-0299 Unit 3). Elements are ordered by (identifier, frame) so the key is read-order-stable.
+    (BE-0299 Unit 3). Elements are sorted by the full projected row (identifier, frame, and every read
+    property), so the key is a function of the element *set*, not the order the driver returned them
+    in: were two elements sharing an identifier and frame — e.g. two unidentified nodes — to come back
+    reordered between reads, an (identifier, frame)-only sort would emit a different key for the same
+    screen and the settle would never converge, polling the whole deadline.
     """
     props = sorted({ext.prop for ext in extracts.values()})
-    ordered = sorted(elements, key=lambda e: (e["identifier"] or "", e["frame"]))
+    ordered = sorted(
+        elements,
+        key=lambda e: (e["identifier"] or "", e["frame"], tuple(e.get(p) or "" for p in props)),
+    )
     return tuple((e["identifier"] or "", e["frame"], *(e.get(p) for p in props)) for e in ordered)
 
 

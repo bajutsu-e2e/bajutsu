@@ -185,6 +185,61 @@ def test_extract_projection_covers_every_read_prop(monkeypatch: pytest.MonkeyPat
     assert result.ok, result.failure
 
 
+class _SwappedDuplicateKeyDriver(FakeDriver):
+    """A stable field plus two unidentified same-frame nodes returned in swapped order each read.
+
+    The two noise nodes share an identifier (`None`) and a frame but differ in `value` — a
+    duplicate-key pair. Their order flips between reads, as a real tree can reorder unidentified
+    siblings. The extract target (`field`) never changes, so the settle must still converge: the
+    projection has to key on the element *set*, not the read order, or the flipping noise makes the
+    key differ every read and the poll burns the whole deadline.
+    """
+
+    def __init__(self) -> None:
+        self._field = el("field", "Name", value="X")
+        self._a = el(None, value="A", frame=(0.0, 0.0, 5.0, 5.0))
+        self._b = el(None, value="B", frame=(0.0, 0.0, 5.0, 5.0))
+        super().__init__([self._field, self._a, self._b])
+        self._flip = False
+        self.queries = 0
+
+    def query(self) -> list[base.Element]:
+        self.queries += 1
+        noise = [self._a, self._b] if self._flip else [self._b, self._a]
+        self._flip = not self._flip
+        self.screen = [self._field, *noise]
+        return super().query()
+
+
+def test_extract_settle_converges_despite_reordered_duplicate_key_elements(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(_FLOOR, "5")
+    # The field is stable, so the extract value is correct either way — what this pins is convergence:
+    # an (identifier, frame)-only sort would emit a different key each read as the noise flips, so the
+    # settle would poll the full 5s deadline. Keying on the full projected row settles at once.
+    driver = _SwappedDuplicateKeyDriver()
+    clock = FakeClock()
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "x",
+                "steps": [
+                    {
+                        "tap": {"id": "field"},
+                        "extract": {"who": {"sel": {"id": "field"}, "prop": "value"}},
+                    },
+                    {"assert": [{"value": {"sel": {"id": "field"}, "equals": "${vars.who}"}}]},
+                ],
+            }
+        ),
+        clock=clock,
+    )
+    assert result.ok, result.failure
+    assert clock.now() < 1.0  # converged in a couple of reads, not polled to the 5s deadline
+
+
 def _assert_step_scenario() -> object:
     # tap, then a step-level `assert` on a value the tap mirrors in a beat late — the Unit 2 site
     # (distinct from the scenario-level `expect` that test_expect_wait covers).
