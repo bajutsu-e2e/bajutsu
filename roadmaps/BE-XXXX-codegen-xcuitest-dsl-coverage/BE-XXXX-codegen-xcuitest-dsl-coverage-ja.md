@@ -47,16 +47,16 @@ XCTest API の使い方を壊しうるのに、既存のテストはすべて文
 
 提案の粒度です。作業は以下の単位に沿って MECE に分かれます。
 
-- **コンパイル対象のシナリオを拡張する**：テキスト編集(`clear` / `delete` / `select` / `copy`)、
-  ジェスチャ(`longPress`、`swipe` の両形式(方向指定と `from`/`to` の座標指定)、`drag`)、
-  複合セレクタ(`traits` + `index`)の各
+- **コンパイル対象のシナリオを拡張する**：テキスト編集（`clear` / `delete` / `select` / `copy`）、
+  ジェスチャ（`longPress`、`swipe` の両形式（方向指定と `from`/`to` の座標指定）、`drag`）、
+  複合セレクタ（`traits` + `index`）の各
   ステップを `components.yaml`、または同じ `xcuitest (codegen)` ジョブでコンパイルされる姉妹
   シナリオに追加し、各構文に対応する生成 Swift コードが実際にビルドされて実行されるようにします。
 - **`pinch` / `rotate` をコンパイルして実行する**：ドライバレベルの `xcuitest (multi-touch)` ジョブ
   がすでに使っているショーケースのジェスチャ画面を再利用し、マルチタッチのシナリオをコンパイル対象
   に加えます。これにより、ドライバ自身の呼び出しだけでなく、*生成された* `.pinch(withScale:)` /
   `.rotate(...)` 呼び出し自体がコンパイルされ、実行されます。
-- **`forEach` / `if` / `extract` の codegen を決める：実装するか、明示的に非対応と宣言するか**：
+- **`forEach` / `if` / `extract` の codegen を決める：実装するか、明示的に非対応と宣言するか**。
   現状ではこれらは静かに TODO コメントへ縮退しています。実際の Swift 制御構文を生成してコンパイルし、
   実行するか、あるいは生成時にエミッタが明確な「codegen 非対応」エラーを送出するようにするか、
   どちらの解決でもこのギャップは埋まります。今のまま静かに縮退させ続けることだけは解決になりません。
@@ -72,7 +72,7 @@ XCTest API の使い方を壊しうるのに、既存のテストはすべて文
   失敗モードです。
 - **カバーされていない構文ごとに、完全に独立したコンパイル済みシナリオを追加する**：粒度は細かく
   なりますが、従量制の macOS ランナー上で実機 Simulator ジョブを新設するたびにコストがかさみます。
-  追加分を既存の `components.yaml`(または1つの姉妹ファイル)にまとめることで、増加する CI コストを
+  追加分を既存の `components.yaml`（または1つの姉妹ファイル）にまとめることで、増加する CI コストを
   相応の範囲に抑えられます。
 
 ## 進捗
@@ -93,4 +93,4 @@ XCTest API の使い方を壊しうるのに、既存のテストはすべて文
 - [BE-0282 — ネットワークのキャプチャ・モック・アサーションを CI で実バックエンド検証する](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md)
 - `bajutsu/codegen/xcuitest.py`、`tests/test_codegen.py`、`tests/test_gestures.py`、
   `demos/showcase/scenarios/components.yaml`、`.github/workflows/ios-e2e.yml`
-  (`xcuitest (codegen)` と `xcuitest (multi-touch)` の各ジョブ)
+  （`xcuitest (codegen)` と `xcuitest (multi-touch)` の各ジョブ）
