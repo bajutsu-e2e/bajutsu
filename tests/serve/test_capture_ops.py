@@ -324,6 +324,30 @@ def test_finish_saves_yaml(tmp_path: Path) -> None:
     assert state.capture is None  # session cleared
 
 
+def test_finish_capture_tears_down_runner_when_save_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # BE-0290: finish_capture serializes + saves the scenario (disk / object-storage I/O that can
+    # raise) before dropping the session. A save failure must still stop the runner and clear
+    # state.capture — otherwise the runner leaks and the orphaned session blocks the next capture.
+    state = _state_with_config(tmp_path)
+    torn: list[bool] = []
+    ops.start_capture(
+        state,
+        {"target": "demo"},
+        driver_factory=lambda _e, _b, _u: (FakeDriver(_screen()), lambda: torn.append(True)),
+    )
+
+    def boom(_scenarios: object) -> str:
+        raise OSError("disk full")
+
+    monkeypatch.setattr("bajutsu.scenario.serialize.dump_scenario_file", boom)
+    with pytest.raises(OSError, match="disk full"):
+        ops.finish_capture(state, {"target": "demo"})
+    assert torn == [True]  # runner torn down despite the save failure
+    assert state.capture is None  # session not left orphaned
+
+
 def test_finish_capture_no_session(tmp_path: Path) -> None:
     state = _state_with_config(tmp_path)
     payload, status = ops.finish_capture(state, {})

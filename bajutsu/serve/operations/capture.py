@@ -211,17 +211,21 @@ def finish_capture(
     from bajutsu.scenario.serialize import dump_scenario_file
 
     scenario = Scenario(name="captured", steps=list(session.steps))
-    yaml_text = dump_scenario_file([scenario])
-
     scope = state.for_org(org).scenarios.scope(session.target)
     saved: str | None = None
-    if scope is not None:
-        authored = scope.authored("captured")
-        ref = authored.save[1] if authored.save else authored.out
-        saved = scope.save(ref, yaml_text)
-
-    session.teardown()  # stop the driver's runner subprocess before dropping the session (BE-0290)
-    state.capture = None
+    # The serialize + save below does disk / object-storage I/O that can raise (disk full, storage
+    # error, a serialization edge). Run the teardown and session drop in `finally` so a failed save
+    # still stops the runner and clears `state.capture` — otherwise the runner leaks and the orphaned
+    # session blocks (or is silently overwritten by) the next start_capture (BE-0290).
+    try:
+        yaml_text = dump_scenario_file([scenario])
+        if scope is not None:
+            authored = scope.authored("captured")
+            ref = authored.save[1] if authored.save else authored.out
+            saved = scope.save(ref, yaml_text)
+    finally:
+        session.teardown()  # stop the driver's runner subprocess before dropping the session (BE-0290)
+        state.capture = None
     return {"ok": True, "path": saved, "yaml": yaml_text}, 200
 
 
