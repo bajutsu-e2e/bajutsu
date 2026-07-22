@@ -38,8 +38,9 @@ Proposal altitude. The work is MECE along the units below.
 - **A throwaway GitHub OAuth App, captured once.** Register a minimal test-only OAuth App (its
   client ID/secret used only for a one-time manual capture, never stored in CI). A maintainer
   manually completes one real authorization-code exchange against it and saves the raw HTTP
-  responses — the token exchange and a representative org-list page — with the real access token and
-  any real login/org identifiers replaced by fixture values before the responses are committed.
+  responses — the token exchange, the user-identity lookup, and a representative org-list page —
+  with the real access token and any real login/org identifiers replaced by fixture values before
+  the responses are committed.
 - **Replay the captured responses through the real code, not a live CI login.** Getting the initial
   authorization `code` requires a human completing GitHub's hosted login-and-consent page —
   scripting that from a CI runner means logging into a live account programmatically, risking
@@ -74,8 +75,8 @@ Proposal altitude. The work is MECE along the units below.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Register a throwaway GitHub OAuth App and manually capture one real token-exchange and
-  org-list response.
+- [ ] Register a throwaway GitHub OAuth App and manually capture one real token-exchange,
+  user-identity, and org-list response.
 - [ ] Replay the captured responses through the real `GitHubOAuthClient`/`_fetch_orgs` via an
   `httpx` transport intercept.
 - [ ] Keep the mocked-client tests as they are.
