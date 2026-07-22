@@ -16,8 +16,8 @@
 
 `agents/alerts.py` のシステムアラートガードは、ライブの AI 操作が実デバイス上で予期しない
 システムダイアログ（権限プロンプト、クラッシュ時のシート）へ盲目的に作用してしまうのを止めるために
-存在します。`record` だけでなく、決定的な `run --dismiss-alerts` 経路（`bajutsu/cli/commands/run.py`）
-と `crawl`（`bajutsu/cli/_shared.py` の `_build_alert_guard`）も、このガードを利用します。
+存在します。`record` と `crawl` は同じ `_build_alert_guard`（`bajutsu/cli/_shared.py`）を共有しており、
+決定的な `run --dismiss-alerts` 経路（`bajutsu/cli/commands/run.py`）も、このガードを利用します。
 これに触れるテストはすべて、手組みの `AlertDecision` か、テスト作者が
 座標を打ち込んだだけの `FakeBlock` による tool-use レスポンスを与えており、実モデルが実際の
 スクリーンショットを見て判断したものではありません。本項目は、このガードが本来果たすべき役割、
