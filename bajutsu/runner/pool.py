@@ -219,9 +219,10 @@ def device_pool(
             pass
 
         try:
-            # Web films the whole scenario only when its capture policy asks for video: Playwright
-            # records at context-creation time, so the recording dir must be set before the driver
-            # is built. A device backend records on demand, so it needs no up-front dir.
+            # Film the whole scenario only when its capture policy asks for video, and only where
+            # capture is wired before launch (so the app's cold start is recorded): web binds it to
+            # the browser context at creation, a device backend starts recording before the app
+            # launches. Either way the temp dir must exist before the driver is built.
             record_video_dir: Path | None = None
             if lease_env.records_video_up_front() and "video" in requested_intervals(scenario):
                 record_video_dir = run_dir / "_video_tmp"
@@ -277,9 +278,12 @@ def device_pool(
                 redact=eff.redact,
                 secrets=secret_values,
                 # A web or Android lane supplies its own interval evidence (Playwright console / page
-                # errors; adb screenrecord / logcat); idb has no such method, so this is None there
-                # and the simctl path is used.
+                # errors; adb logcat — Android's video now takes the prestart/adopt path below); idb
+                # has no such method, so this is None there and the simctl path is used.
                 driver_interval=getattr(driver, "driver_interval", None),
+                # Video the environment already began before the app launched (a device backend, so
+                # the cold start is recorded); the sink adopts it instead of starting one on demand.
+                prestarted_intervals=lease_env.prestarted_intervals(),
                 # Carried so a first-wait timeout diagnostic can state whether the readiness gate had
                 # passed and on which signal, stamped with this scenario's BE-0049 provenance so the
                 # evidence survives a rerun-to-green (BE-0231 Unit 1). The `scenarioHash` here

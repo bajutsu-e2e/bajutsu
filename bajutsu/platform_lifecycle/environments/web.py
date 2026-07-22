@@ -10,6 +10,7 @@ from bajutsu import backends, simctl
 from bajutsu.config import Effective, require_web
 from bajutsu.crawl import AliveCheck, ClearBlocking, Recover, Reset
 from bajutsu.drivers import base
+from bajutsu.evidence import intervals
 from bajutsu.evidence.network import Collector
 from bajutsu.orchestrator import DeviceControl, RelaunchFn
 from bajutsu.platform_lifecycle import readiness
@@ -71,6 +72,11 @@ class WebEnvironment:
 
     def records_video_up_front(self) -> bool:
         return True  # Playwright records at context-creation, before the scenario runs
+
+    def prestarted_intervals(self) -> list[intervals.Interval]:
+        # Web's up-front recording is bound to the browser context and adopted through the driver's
+        # `driver_interval("video")`, not handed to the sink as a pre-started interval — none here.
+        return []
 
     def hook_collector(self, driver: base.Driver, scenario: Scenario) -> Collector:
         from bajutsu.drivers.playwright import PlaywrightDriver

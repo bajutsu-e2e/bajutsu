@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import subprocess
@@ -13,6 +14,7 @@ from bajutsu import adb, backends
 from bajutsu.config import Effective, require_android
 from bajutsu.crawl import AliveCheck, ClearBlocking, Recover, Reset
 from bajutsu.drivers import base
+from bajutsu.evidence import intervals
 from bajutsu.evidence.network import Collector
 from bajutsu.orchestrator import DeviceControl, RelaunchFn
 from bajutsu.platform_lifecycle import readiness
@@ -63,10 +65,15 @@ class AndroidEnvironment:
         *,
         resident_factory: Callable[[], ResidentServerLike] | None = None,
         provision: ProvisionProfile | None = None,
+        spawn: intervals.Spawn = intervals._spawn,
     ) -> None:
         self._actuator = actuator
         self._serial = serial
         self._run = adb_run
+        # How pre-launch interval processes are spawned (adb screenrecord); injectable for tests.
+        self._spawn = spawn
+        # A video recording begun before the app launched, for the sink to adopt (video timing).
+        self._prestarted_video: intervals.Interval | None = None
         # Override the resident-server construction in tests; None uses the real, env-gated default.
         self._resident_factory = resident_factory
         self._resident: ResidentServerLike | None = None
@@ -125,9 +132,16 @@ class AndroidEnvironment:
                 **pre.launch_env,
                 **(extra_env or {}),
             }
-            e.launch(android.package, launch_env)
-            if pre.deeplink is not None:
-                e.open_url(pre.deeplink, android.package)
+            # Start the scenario video now — the device is up and the app installed, but not yet
+            # launched — so the recording spans the app's cold start rather than missing it.
+            self._prestart_video(record_video_dir)
+            try:
+                e.launch(android.package, launch_env)
+                if pre.deeplink is not None:
+                    e.open_url(pre.deeplink, android.package)
+            except BaseException:
+                self._stop_prestarted_video()  # a failed launch must not leak the screenrecord
+                raise
         except subprocess.CalledProcessError as exc:
             raise adb.device_error(exc) from exc
         except OSError as exc:
@@ -188,7 +202,50 @@ class AndroidEnvironment:
         return False  # no native network monitor — the same mocked story as iOS
 
     def records_video_up_front(self) -> bool:
-        return False  # screenrecord records on demand via driver_interval, not up front like web
+        # Begin `screenrecord` before the app launches so its cold start is captured; the sink adopts
+        # the running interval (`_prestart_video` / `prestarted_intervals`) instead of the driver's
+        # on-demand `driver_interval("video")`. The pool reads this to wire `record_video_dir` in.
+        return True
+
+    def prestarted_intervals(self) -> list[intervals.Interval]:
+        """Interval captures begun during `start()`, before the app launched, for the sink to adopt.
+
+        Holds the scenario video started before launch (the adb twin of the iOS path), so the app's
+        cold start is recorded; empty when no video was requested.
+        """
+        return [self._prestarted_video] if self._prestarted_video is not None else []
+
+    def _prestart_video(self, record_video_dir: Path | None) -> None:
+        """Begin the scenario video (`adb screenrecord`) before the app launches; None records nothing.
+
+        The device-side recording is adopted by the sink at scenario start and pulled to the artifact
+        path on stop (`intervals.adopt` wrapping `start_screenrecord`'s pull). Filed under the serial
+        so concurrent device lanes writing into the shared dir never collide.
+        """
+        if record_video_dir is None:
+            return
+        self._prestarted_video = intervals.start_screenrecord(
+            self._serial,
+            record_video_dir / f"prestart-{self._serial}.mp4",
+            spawn=self._spawn,
+            run=self._run,
+        )
+
+    def _stop_prestarted_video(self) -> None:
+        """Finalize and discard a pre-started recording after a *failed* launch.
+
+        Only the failure path calls this: on success the sink adopts the running interval. A launch
+        that fails after `_prestart_video` would otherwise leave `screenrecord` running — leaking the
+        local `adb shell` client and the device-side recording (up to its ~180s cap) plus the temp
+        file — so stop it (finalizing the device side) and drop the orphan file. Best-effort: a
+        cleanup error must not mask the launch error being re-raised.
+        """
+        interval = self._prestarted_video
+        if interval is None:
+            return
+        self._prestarted_video = None
+        with contextlib.suppress(Exception):
+            interval.stop().unlink(missing_ok=True)
 
     def hook_collector(self, driver: base.Driver, scenario: Scenario) -> Collector:
         raise NotImplementedError("the adb backend does not observe network via the driver")

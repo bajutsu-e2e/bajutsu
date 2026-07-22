@@ -7,6 +7,8 @@ asserted without a device, the Android peer of `test_simctl.py`.
 
 from __future__ import annotations
 
+import subprocess
+
 import pytest
 
 from bajutsu import adb
@@ -286,6 +288,62 @@ def test_android_environment_start_runs_the_adb_sequence() -> None:
     assert any("pm clear com.bajutsu.showcase.android.compose" in j for j in joined)
     assert any("--es SHOWCASE_UITEST 1" in j for j in joined)
     assert any("action.VIEW -d showcasecompose://permissions" in j for j in joined)
+
+
+def test_android_environment_starts_screenrecord_before_launching_the_app(tmp_path) -> None:
+    # The video must begin before `am start` so the app's cold start is recorded; the running
+    # screenrecord is exposed for the sink to adopt rather than started on demand after launch.
+    events: list[str] = []
+
+    def run(args: list[str]) -> str:
+        if "sys.boot_completed" in args:
+            return "1\n"
+        if "resolve-activity" in args:
+            return "com.bajutsu.showcase.android.compose/.MainActivity\n"
+        if "am start" in " ".join(args):
+            events.append("launch")
+        return ""
+
+    class _Proc:
+        def stop(self, sig: int, timeout: float) -> None:
+            pass
+
+    def spawn(argv: list[str], stdout_path: object) -> _Proc:
+        events.append("record")
+        return _Proc()
+
+    env = AndroidEnvironment("adb", "emulator-5554", adb_run=run, spawn=spawn)  # type: ignore[arg-type]
+    env.start(_eff(), Preconditions(), record_video_dir=tmp_path)
+
+    assert events == ["record", "launch"]  # recording began before the app launched
+    started = env.prestarted_intervals()
+    assert len(started) == 1 and started[0].kind == "video"
+
+
+def test_android_environment_stops_the_prestarted_video_when_launch_fails(tmp_path) -> None:
+    # A launch failure after the recording started must finalize it, not leak the local `adb shell`
+    # client and the device-side `screenrecord` (which would otherwise run to its ~180s cap).
+    stopped: list[int] = []
+
+    def run(args: list[str]) -> str:
+        if "sys.boot_completed" in args:
+            return "1\n"
+        if "resolve-activity" in args:
+            return "com.bajutsu.showcase.android.compose/.MainActivity\n"
+        if "am start" in " ".join(args):
+            raise subprocess.CalledProcessError(1, args, output="", stderr="boom")
+        return ""
+
+    class _Proc:
+        def stop(self, sig: int, timeout: float) -> None:
+            stopped.append(sig)
+
+    env = AndroidEnvironment("adb", "emulator-5554", adb_run=run, spawn=lambda argv, out: _Proc())  # type: ignore[arg-type]
+    with pytest.raises(adb.DeviceError):
+        env.start(_eff(), Preconditions(), record_video_dir=tmp_path)
+
+    assert stopped  # the screenrecord was stopped, not left running
+    assert env.prestarted_intervals() == []
 
 
 def test_android_environment_start_grants_configured_permissions_after_clear() -> None:

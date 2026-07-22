@@ -76,6 +76,26 @@ def test_start_video_lifecycle() -> None:
     assert proc.stopped_timeout == intervals._VIDEO_FINALIZE_TIMEOUT
 
 
+def test_adopt_finalizes_then_relocates_to_target(tmp_path: Path) -> None:
+    # A device backend starts recording before launch into a temp path; the sink adopts the running
+    # interval and, on stop, finalizes it (real signal/timeout) and moves the file to the artifact
+    # path. Prove the wrapped stop runs and the finalized file lands at the target.
+    proc = FakeProc()
+    temp = tmp_path / "_tmp" / "prestart-UDID.mp4"
+    temp.parent.mkdir()
+    temp.write_bytes(b"clip")
+    running = intervals.start_video("UDID", temp, spawn=lambda argv, out: proc)
+
+    target = tmp_path / "scenario" / "scenario.mp4"
+    adopted = intervals.adopt(running, target)
+    assert adopted.kind == "video" and adopted.path == target
+
+    assert adopted.stop() == target
+    assert proc.stopped_with == signal.SIGINT  # the wrapped interval's real finalize still runs
+    assert proc.stopped_timeout == intervals._VIDEO_FINALIZE_TIMEOUT
+    assert target.read_bytes() == b"clip" and not temp.exists()  # moved, not copied
+
+
 def test_start_device_log_lifecycle() -> None:
     calls: list[tuple[list[str], Path | None]] = []
     proc = FakeProc()

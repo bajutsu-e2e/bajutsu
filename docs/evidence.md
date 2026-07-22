@@ -127,6 +127,14 @@ app's os_log subsystem, paired into timed intervals by `parse_app_trace`.)
   ring buffer.
 - `INTERVAL_KINDS = {"video", "deviceLog", "appTrace"}`. The orchestrator uses this set to split
   "interval / instant."
+- **The scenario-wide `video` begins before the app launches**, so the recording spans the app's
+  cold start rather than missing it. On a device backend the environment's `start` starts recording
+  (after the device is booted and the app installed, but before `simctl launch` / `am start`) and
+  hands the running `Interval` back through `prestarted_intervals`; the sink *adopts* it at scenario
+  start (`intervals.adopt`) instead of starting a fresh one, and on stop finalizes it and relocates
+  the file to `scenario.mp4`. Web wires the same up-front capture into the browser context at
+  creation. This is gated by `records_video_up_front`; a scenario that requests no `video` starts
+  none.
 
 ## Sinks (where evidence goes)
 
@@ -142,8 +150,10 @@ class EvidenceSink(Protocol):
 | `NullSink` (default) | writes nothing (keeps a run side-effect-free) |
 | `FileSink(run_dir, udid, log_predicate)` | writes under `run_dir/<step_id>/` |
 
-Interval captures come from the driver's `driver_interval` provider when it supplies one (web's
-Playwright-native console / video, Android's `adb` screenrecord / logcat); otherwise `FileSink`
+A capture the environment already began before launch (a device backend's `video`) is *adopted*
+rather than started — the sink relocates its finalized file into the scenario dir on stop. Otherwise
+interval captures come from the driver's `driver_interval` provider when it supplies one (web's
+Playwright-native console / video, Android's `adb` logcat); failing that `FileSink`
 takes the simctl path, which it skips when `udid` is absent. The CLI's `run` uses
 `FileSink(runs/<runId>, udid=..., log_predicate=...)` ([cli](cli.md#run)).
 

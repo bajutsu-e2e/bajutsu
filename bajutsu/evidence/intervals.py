@@ -18,6 +18,7 @@ import contextlib
 import json
 import logging
 import re
+import shutil
 import signal
 import subprocess
 import time
@@ -163,6 +164,28 @@ class Interval:
     def stop(self) -> Path:
         self._proc.stop(self._stop_signal, self._stop_timeout)
         return self._transform(self.path) if self._transform is not None else self.path
+
+
+def adopt(interval: Interval, target: Path) -> Interval:
+    """Wrap an already-running interval so `stop()` finalizes it, then relocates its file to `target`.
+
+    A device backend starts its video *before* the app launches, so the cold-start frames are
+    captured; that recording writes to a temporary path. The sink adopts the running capture at
+    scenario start and, on stop, moves the finalized file to the scenario's artifact path — the real
+    finalize (the wrapped interval's stop signal and timeout) still runs, this only redirects the
+    result. The web lane finalizes in place instead; this is the device twin of that adopt-on-stop
+    shape.
+    """
+
+    def relocate(_: Path) -> Path:
+        finalized = interval.stop()
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(finalized), str(target))
+        return target
+
+    return Interval(
+        kind=interval.kind, path=target, provider=interval.provider, _transform=relocate
+    )
 
 
 def start_video(udid: str, path: Path, spawn: Spawn = _spawn) -> Interval:

@@ -15,6 +15,7 @@ from _runner import _eff, _ios_eff, _web_eff
 from bajutsu import simctl
 from bajutsu.drivers import base
 from bajutsu.platform_lifecycle import (
+    AndroidEnvironment,
     FakeEnvironment,
     IosEnvironment,
     WebEnvironment,
@@ -174,11 +175,72 @@ def test_network_observation_strategy_is_per_platform() -> None:
     assert FakeEnvironment("fake", "UDID").observes_network_via_driver() is False
 
 
-def test_only_web_records_video_up_front() -> None:
-    # Playwright records at context-creation, so the dir must exist before launch; simctl records on
-    # demand, so the device backends need no up-front dir.
+def test_ios_start_records_video_before_launching_the_app(tmp_path: Path) -> None:
+    # The video must begin before `simctl launch` so the app's cold start is recorded; the running
+    # recording is exposed for the sink to adopt rather than started on demand after launch.
+    events: list[str] = []
+
+    def fake_run(args: list[str], extra_env: object = None) -> str:
+        if args[:3] == ["xcrun", "simctl", "launch"]:
+            events.append("launch")
+        return ""
+
+    class _Proc:
+        def stop(self, sig: int, timeout: float) -> None:
+            pass
+
+    def spawn(argv: list[str], stdout_path: object) -> _Proc:
+        events.append("record")
+        return _Proc()
+
+    env = IosEnvironment("idb", "UDID", env_run=fake_run, spawn=spawn)  # type: ignore[arg-type]
+    env.start(_ios_eff(), Preconditions(), record_video_dir=tmp_path)
+
+    assert events == ["record", "launch"]  # recording began before the app launched
+    started = env.prestarted_intervals()
+    assert len(started) == 1 and started[0].kind == "video"
+
+
+def test_ios_start_stops_the_prestarted_video_when_launch_fails(tmp_path: Path) -> None:
+    import signal
+    import subprocess
+
+    # A launch failure after the recording started must finalize it, not leave `recordVideo` running
+    # (an orphaned session wedges every later capture on the simulator).
+    stopped: list[int] = []
+
+    def fake_run(args: list[str], extra_env: object = None) -> str:
+        if args[:3] == ["xcrun", "simctl", "launch"]:
+            raise subprocess.CalledProcessError(1, args, output="", stderr="boom")
+        return ""
+
+    class _Proc:
+        def stop(self, sig: int, timeout: float) -> None:
+            stopped.append(sig)
+
+    env = IosEnvironment("idb", "UDID", env_run=fake_run, spawn=lambda argv, out: _Proc())
+    with pytest.raises(simctl.DeviceError):
+        env.start(_ios_eff(), Preconditions(), record_video_dir=tmp_path)
+
+    assert stopped == [signal.SIGINT]  # the recording was finalized, not leaked
+    assert env.prestarted_intervals() == []
+
+
+def test_devices_record_no_video_up_front_without_a_record_dir() -> None:
+    # With no record dir (video not requested), `start` begins no recording and the sink records on
+    # demand exactly as before — the up-front path is gated on the pool wiring the dir through.
+    env = IosEnvironment("idb", "UDID", env_run=lambda args, extra_env=None: "")
+    env.start(_ios_eff(), Preconditions())
+    assert env.prestarted_intervals() == []
+
+
+def test_devices_and_web_record_video_up_front_but_the_fake_does_not() -> None:
+    # Video capture is wired before launch so the app's cold start is recorded: web binds it to the
+    # browser context at creation, and the device backends start recording before the app launches.
+    # The fake backend has no device to record, so it stays on the on-demand default.
     assert WebEnvironment("playwright").records_video_up_front() is True
-    assert IosEnvironment("idb", "UDID").records_video_up_front() is False
+    assert IosEnvironment("idb", "UDID").records_video_up_front() is True
+    assert AndroidEnvironment("adb", "SER").records_video_up_front() is True
     assert FakeEnvironment("fake", "UDID").records_video_up_front() is False
 
 
