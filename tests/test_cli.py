@@ -900,7 +900,7 @@ def test_tool_version_degrades_on_failure_and_reads_stderr(
 
 
 def test_xcuitest_runner_summary_warns_on_a_bundled_toolchain_mismatch(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     # BE-0292: a target with no testRunner resolves to the bundled runner, so doctor appends a
     # mismatch warning when the host Xcode major differs from the toolchain the bundle recorded.
@@ -910,8 +910,8 @@ def test_xcuitest_runner_summary_warns_on_a_bundled_toolchain_mismatch(
     from bajutsu.scenario import Redact
 
     # A non-None products dir makes `runner_source` report the bundled tier for the first line; the
-    # note's own tier check keys on the empty XcuitestConfig (no testRunner), not on this stub.
-    monkeypatch.setattr(xc, "bundled_products_dir", lambda: object())
+    # note's own tier check keys on the empty XcuitestConfig (no testRunner), not on this path.
+    monkeypatch.setattr(xc, "bundled_products_dir", lambda: tmp_path)
     monkeypatch.setattr(xc, "bundled_runner_build_info", lambda: {"xcode": "16.0", "sdk": "18.0"})
     monkeypatch.setattr(doctor, "_host_toolchain", lambda: ("15.4", "18.0"))
     eff = Effective(
