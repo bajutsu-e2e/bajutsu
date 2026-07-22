@@ -141,13 +141,6 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 <!-- GENERATED:proposals-authoring -->
 
 <!-- /GENERATED:proposals-authoring -->
-
-### AI provider configuration
-
-<!-- GENERATED:proposals-ai-provider -->
-
-<!-- /GENERATED:proposals-ai-provider -->
-
 ### codegen coverage
 
 <!-- GENERATED:proposals-codegen -->
