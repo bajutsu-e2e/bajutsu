@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-serve-postgres-ci-lane-ja.md)
+**English** · [日本語](BE-0309-serve-postgres-ci-lane-ja.md)
 
-# BE-XXXX — Real-Postgres CI lane for the serve database layer
+# BE-0309 — Real-Postgres CI lane for the serve database layer
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-serve-postgres-ci-lane.md) |
+| Proposal | [BE-0309](BE-0309-serve-postgres-ci-lane.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0309") |
 | Topic | Verification & coverage |
 | Related | [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) |
 <!-- /BE-METADATA -->
