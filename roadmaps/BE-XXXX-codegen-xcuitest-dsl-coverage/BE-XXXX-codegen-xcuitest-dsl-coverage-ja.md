@@ -1,6 +1,6 @@
 [English](BE-XXXX-codegen-xcuitest-dsl-coverage.md) · **日本語**
 
-# BE-XXXX — Expand XCUITest codegen's real-compile coverage to the full DSL surface
+# BE-XXXX — XCUITest codegen の実コンパイルカバレッジを DSL 全体へ拡張する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
-| トピック | codegen coverage |
+| トピック | codegen 網羅性 |
 <!-- /BE-METADATA -->
 
 ## はじめに
@@ -57,7 +57,7 @@ XCTest API の使い方を壊しうるのに、既存のテストはすべて文
   現状ではこれらは静かに TODO コメントへ縮退しています。実際の Swift 制御構文を生成してコンパイルし、
   実行するか、あるいは生成時にエミッタが明確な「codegen 非対応」エラーを送出するようにするか、
   どちらの解決でもこのギャップは埋まります。今のまま静かに縮退させ続けることだけは解決になりません。
-- **段階的に着地させ、新規部分はまず非 gating とする**：既存の `components.yaml` の範囲は必須の
+- **段階的に着地させ、新規部分はまずゲート対象外とする**：既存の `components.yaml` の範囲は必須の
   ままとし、追加分（または姉妹シナリオ）は新たにコンパイルする構文が安定するまで非 gating の
   signal として拡張し、安定を確認してから必須ジョブへ組み込みます。
 
@@ -81,13 +81,13 @@ XCTest API の使い方を壊しうるのに、既存のテストはすべて文
 - [ ] コンパイル対象のシナリオにテキスト編集、ジェスチャ、複合セレクタのステップを追加する。
 - [ ] `pinch` / `rotate` のマルチタッチ codegen 出力をコンパイルして実行する。
 - [ ] `forEach` / `if` / `extract` の codegen を、実装してコンパイルするか生成時に明示的に失敗させるかで解決する。
-- [ ] 新規部分をまず非 gating として着地させ、安定後に必須化する。
+- [ ] 新規部分をまずゲート対象外として着地させ、安定後に必須化する。
 
 ## 参考
 
 - [BE-0265 — テキスト編集ステップ: select・clear・delete・copy](../BE-0265-text-editing-steps/BE-0265-text-editing-steps-ja.md)
-- [BE-0083 — codegen エミッタを共有の走査ロジックへ統一](../BE-0083-codegen-emitter-unification/BE-0083-codegen-emitter-unification-ja.md)
-- [BE-0282 — CI における実 backend のネットワーク捕捉・モック・アサーションのカバレッジ](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md)
+- [BE-0083 — codegen の emitter を共通のシナリオ走査へ統一する](../BE-0083-codegen-emitter-unification/BE-0083-codegen-emitter-unification-ja.md)
+- [BE-0282 — ネットワークのキャプチャ・モック・アサーションを CI で実バックエンド検証する](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md)
 - `bajutsu/codegen/xcuitest.py`、`tests/test_codegen_xcuitest.py`、
   `demos/showcase/scenarios/components.yaml`、`.github/workflows/ios-e2e.yml`
   (`xcuitest (codegen)` と `xcuitest (multi-touch)` の各ジョブ)
