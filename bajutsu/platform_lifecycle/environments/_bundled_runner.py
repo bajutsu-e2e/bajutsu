@@ -13,6 +13,7 @@ import hashlib
 import os
 import shutil
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -35,6 +36,12 @@ _STALE_PARTIAL_AGE_SECONDS = 5 * 60
 # bundled products.
 _DigestSignature = tuple[tuple[str, int, int], ...]
 _digest_cache: dict[Path, tuple[_DigestSignature, str]] = {}
+# Serializes the check-compute-store in `_products_digest`. `materialize()` runs once per simulator
+# lane, fanned out concurrently (`ThreadPoolExecutor` in the runner pipeline, a thread per udid in
+# serve jobs), so on a cold cache every lane would otherwise race the empty dict and each pay the
+# full SHA-256 read. Holding the lock across the read lets the first lane populate the cache and the
+# rest reuse it — the redundant hashing the cache exists to avoid, avoided on the first call too.
+_digest_lock = threading.Lock()
 
 
 def bundled_products_dir() -> Path | None:
@@ -65,19 +72,21 @@ def _products_digest(source: Path) -> str:
     signature = tuple(
         (str(p.relative_to(source)), (st := p.stat()).st_size, st.st_mtime_ns) for p in files
     )
-    cached = _digest_cache.get(source)
-    if cached is not None and cached[0] == signature:
-        return cached[1]
+    # Under the lock so a cold-cache fan-out hashes once, not once per lane (see `_digest_lock`).
+    with _digest_lock:
+        cached = _digest_cache.get(source)
+        if cached is not None and cached[0] == signature:
+            return cached[1]
 
-    h = hashlib.sha256()
-    for path in files:
-        h.update(str(path.relative_to(source)).encode())
-        with path.open("rb") as f:
-            for chunk in iter(lambda: f.read(65536), b""):
-                h.update(chunk)
-    digest = h.hexdigest()[:12]
-    _digest_cache[source] = (signature, digest)
-    return digest
+        h = hashlib.sha256()
+        for path in files:
+            h.update(str(path.relative_to(source)).encode())
+            with path.open("rb") as f:
+                for chunk in iter(lambda: f.read(65536), b""):
+                    h.update(chunk)
+        digest = h.hexdigest()[:12]
+        _digest_cache[source] = (signature, digest)
+        return digest
 
 
 def materialize(
