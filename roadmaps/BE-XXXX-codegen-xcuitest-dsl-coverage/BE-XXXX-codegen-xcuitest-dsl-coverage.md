@@ -67,7 +67,7 @@ The work breaks down MECE into the units below.
 ## Alternatives considered
 
 - **Leave the current narrow scenario as-is and rely on the string-based unit tests for the rest.**
-  This is the status quo this item addresses; a substring match cannot catch a real Swift compile
+  This status quo is what this item addresses; a substring match cannot catch a real Swift compile
   error or a real XCTest API misuse, which is exactly the failure mode a compiled scenario exists to
   catch.
 - **Write a second, fully separate compiled scenario per uncovered construct.** More granular, but
