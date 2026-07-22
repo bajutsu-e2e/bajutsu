@@ -1,6 +1,6 @@
 [English](BE-XXXX-ai-backend-real-api-smoke.md) · **日本語**
 
-# BE-XXXX — AI バックエンド アダプタ向けの実 API 契約 smoke レーン
+# BE-XXXX — AI バックエンドアダプタ向けの実 API 契約 smoke レーン
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
