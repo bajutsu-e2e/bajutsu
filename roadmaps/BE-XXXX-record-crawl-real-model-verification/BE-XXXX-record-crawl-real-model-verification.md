@@ -21,11 +21,12 @@ model's structured, tool-use proposal into Bajutsu's own action schema. Every te
 this parsing constructs `ClaudeAgent`/the crawl agents with `FakeBackend(FakeBlock(...))` — a
 response shaped exactly the way the test's author expects, never a response a real model actually
 produced. This item adds a real-model check for the parsing itself, distinct from and complementary
-to a transport-level adapter check proposed separately.
+to the transport-level adapter check proposed in
+[PR #1233](https://github.com/bajutsu-e2e/bajutsu/pull/1233).
 
 ## Motivation
 
-The related AI-backend adapter proposal asks "does the adapter round-trip with the real service at all" — a
+[PR #1233](https://github.com/bajutsu-e2e/bajutsu/pull/1233)'s proposal asks "does the adapter round-trip with the real service at all" — a
 transport question. This item asks a different one: "given a genuine record/crawl prompt, does a
 real model's response actually parse into the propose-loop's action schema" — a semantic question
 about the specific prompts and schemas `record` and `crawl` use, which a hand-built `FakeBlock`
@@ -34,8 +35,8 @@ to touching a real credential, and do the opposite: they delete `ANTHROPIC_API_K
 credential-gap error message, never supply one to test the real proposal path. No CI job runs
 `record` or `crawl` against a real device with a real API key at any point.
 
-This gap matters more here than for a generic AI call, because `record`'s output is the scenario
-file itself — the one artifact the deterministic `run` gate trusts completely once written
+This gap matters more here than for a generic AI call, because `record`'s output is the [scenario
+file](../../docs/glossary.md#scenario-authoring) itself — the one artifact the deterministic `run` gate trusts completely once written
 (prime directive 1: AI authors, never judges). A real model producing a proposal that the parser
 silently drops or mis-maps would degrade what gets written into that trusted artifact, and nothing
 in the current suite would notice.
@@ -86,6 +87,7 @@ Proposal altitude. The work is MECE along the units below.
 
 - [BE-0104 — Vendor-neutral AI backend interface](../BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend.md)
 - [BE-0282 — Real-backend network capture, mock, and assertion coverage in CI](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md)
+- [PR #1233 — a real-API contract smoke lane for the AI backend adapters](https://github.com/bajutsu-e2e/bajutsu/pull/1233)
 - `bajutsu/agents/claude.py`, `bajutsu/crawl/guide.py`, `bajutsu/crawl/tabs.py`,
   `tests/conftest.py` (`FakeBackend` / `FakeBlock`), `tests/test_claude_agent.py`,
   `tests/test_crawl_guide.py`, `tests/test_crawl_tabs.py`, `tests/test_crawl_lanes.py`,
