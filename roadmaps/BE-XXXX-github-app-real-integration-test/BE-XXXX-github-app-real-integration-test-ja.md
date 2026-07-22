@@ -1,6 +1,6 @@
 [English](BE-XXXX-github-app-real-integration-test.md) · **日本語**
 
-# BE-XXXX — Real integration test for the GitHub App config-source token flow
+# BE-XXXX — GitHub App の config source トークンフローに対する実統合テスト
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
-| トピック | Configuration sourcing |
+| トピック | config の取得元 |
 <!-- /BE-METADATA -->
 
 ## はじめに
@@ -21,7 +21,7 @@
 の交換は手書きの `fake_fetch` だけで駆動されており、`_fetch` の HTTP エラーマッピングは
 `urllib.request.urlopen` を monkeypatch してデフォルトのエラーを送出させることでテストされています。
 このフローを実際の GitHub App のインストールに対して完了させるテストや CI ジョブは、
-1つもありません。本項目はそれを追加します。
+1つもありません。本項目は、そのテストと CI ジョブを追加します。
 
 ## 動機
 
@@ -50,9 +50,9 @@ sourcing」トピックの実リポジトリ取得を扱う別項目でカバー
 - **実際のレスポンス形状を検証する**：実際のインストールトークンのレスポンスが、
   `installation_token` が現在返している型へまさしくパースできることを確認し、手書きのフィクスチャ
   では検出できないスキーマのドリフトを捉えます。
-- **まず非 gating とする**：
+- **まずゲート対象外とする**：
   [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md)
-  の前例に従い、新しいジョブをまず CI の signal として着地させ、必須化はそのあとで検討します。
+  の前例に従い、新しいジョブをまず CI のシグナルとして着地させ、必須化はそのあとで検討します。
 
 ## 検討した代替案
 
@@ -73,10 +73,11 @@ sourcing」トピックの実リポジトリ取得を扱う別項目でカバー
 - [ ] 使い捨てのテスト用リポジトリにスコープした、CI 専用の GitHub App を登録する。
 - [ ] JWT → インストールトークン → fetch という一連の流れを検証する、API キーで gate したライブ
   統合テストを追加する。
-- [ ] 非 gating の signal として CI に組み込む。
+- [ ] 実際のインストールトークンのレスポンスが `installation_token` が現在返している型へ
+  パースできることを確認する。
+- [ ] ゲート対象外のシグナルとして CI に組み込む。
 
 ## 参考
 
-- [BE-0282 — CI における実 backend のネットワーク捕捉・モック・アサーションのカバレッジ](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md)
-- `bajutsu/github/app.py`、`tests/test_github_app.py`、config source の実リポジトリ取得検証を
-  扱う姉妹提案
+- [BE-0282 — ネットワークのキャプチャ・モック・アサーションを CI で実バックエンド検証する](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md)
+- `bajutsu/github/app.py`、`tests/test_github_app.py`

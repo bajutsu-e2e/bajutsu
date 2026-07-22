@@ -69,10 +69,10 @@ Proposal altitude. The work is MECE along the units below.
 
 - [ ] Register a throwaway GitHub App for CI, scoped to a disposable test repository.
 - [ ] Add a key-gated live integration test for the JWT → installation-token → fetch chain.
+- [ ] Confirm the real installation-token response parses into the type `installation_token` returns today.
 - [ ] Wire it into CI as a non-gating signal.
 
 ## References
 
 - [BE-0282 — Real-backend network capture, mock, and assertion coverage in CI](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md)
-- `bajutsu/github/app.py`, `tests/test_github_app.py`, the sibling proposal for real-repository
-  fetch verification of the config source
+- `bajutsu/github/app.py`, `tests/test_github_app.py`
