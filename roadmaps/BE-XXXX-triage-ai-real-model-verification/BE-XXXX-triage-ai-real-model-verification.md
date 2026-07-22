@@ -33,7 +33,7 @@ JSON that actually parses into the `Triage` schema, or that a proposed fix's cat
 what the real model is prompted to choose from.
 
 Triage is advisory by design — `--apply`/`--write` always diff-previews before touching a scenario,
-and a human reviews the result (M4 in `DESIGN.md`'s roadmap; prime directive #1 keeps this off the
+and a human reviews the result (M4 in `DESIGN.md`'s roadmap; prime directive 1 keeps this off the
 `run` gate entirely). That advisory framing is exactly why this gap is worth closing rather than
 leaving alone: a parser that silently drops a real model's fix proposal, or mis-maps its category,
 degrades the one AI-touching feature whose whole value proposition is producing an actionable,
@@ -49,9 +49,10 @@ Proposal altitude. The work is MECE along the units below.
 - **A key-gated live smoke test.** Add a `pytest.mark.skipif`-gated test that runs `triage --ai`
   end-to-end against a real failed run with a real credential, asserting the result parses into a
   valid `Triage` object with a well-formed fix (when one is proposed).
-- **Exercise the credential-gap path for real, not via a stand-in agent class.** `_stub_ai_cli`'s
-  substitution of the whole agent class means `--ai`'s actual credential check is never itself
-  exercised by that test; keep a dedicated test that drives the real gap-detection code path.
+- **Exercise the credential-gap path for real, not via a stand-in agent class.** `_stub_ai_cli`
+  separately monkeypatches `_require_ai_credential` itself (not just the agent class), so `--ai`'s
+  actual credential check is never exercised by that test; keep a dedicated test that drives the
+  real gap-detection code path.
 - **No change to triage's advisory status.** This item verifies AI output parses correctly; it does
   not change `--apply`/`--write`'s diff-preview-then-human-review flow or put a model call on any
   deterministic verdict path.
