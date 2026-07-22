@@ -10,6 +10,7 @@
 | 状態 | **提案** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | トピック | 統合と自動化（MCP 化） |
+| 関連 | [BE-0017](../BE-0017-mcp-server/BE-0017-mcp-server-ja.md), [BE-0018](../BE-0018-evidence-as-mcp-resources/BE-0018-evidence-as-mcp-resources-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
