@@ -16,7 +16,7 @@
 
 `drivers/xcuitest_live.py`'s `WebDriverClient` and `XcuitestLiveDriver`
 ([BE-0238](../BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution.md)) drive a
-device-cloud route over the W3C WebDriver protocol against Appium, for the
+device-cloud route over the World Wide Web Consortium (W3C) WebDriver protocol against Appium, for the
 [BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction.md)
 device provider seam. The driver module's own docstring says both are "faked at the network boundary
 so no grid is needed on the gate" — every test drives a synthetic transport, never a real Appium grid.
