@@ -808,7 +808,61 @@ def test_wait_ticks_count_down_across_a_long_wait() -> None:
     assert all(r >= 0.0 for r in seen)
 
 
-def test_run_scenario_streams_what_the_wait_awaits(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_wait_ticks_fire_for_every_non_for_branch() -> None:
+    """The heartbeat must stream from `settled` / `gone` / `request` / `screenChanged` too, not only
+    `for`: each branch keeps polling a never-satisfied condition to its deadline, so the entry tick
+    plus in-loop ticks fire. Guards against a branch silently dropping `hb.tick`."""
+    from bajutsu.orchestrator.waits import _wait
+    from bajutsu.scenario import Wait
+
+    class Churning:  # a new tree every poll -> never settles / never "changes back" -> loops to deadline
+        name = "churning"
+
+        def __init__(self) -> None:
+            self._n = 0
+
+        def query(self) -> list[base.Element]:
+            self._n += 1
+            return [el(f"row{self._n}", "R")]
+
+    class Static:  # a constant tree: `gone` never vanishes and `screenChanged` never differs
+        name = "static"
+
+        def query(self) -> list[base.Element]:
+            return [el("spinner", "S")]
+
+    def ticks(w: Wait, driver: base.Driver, network: object = None) -> list[float]:
+        clock = _LogicalClock()
+        seen: list[float] = []
+        if network is None:
+            _wait(driver, w, clock, on_tick=seen.append)
+        else:
+            _wait(driver, w, clock, network=network, on_tick=seen.append)  # type: ignore[arg-type]
+        return seen
+
+    cases = {
+        "settled": ticks(Wait.model_validate({"until": "settled", "timeout": 5.0}), Churning()),  # type: ignore[arg-type]
+        "gone": ticks(
+            Wait.model_validate({"until": {"gone": {"id": "spinner"}}, "timeout": 5.0}), Static()
+        ),  # type: ignore[arg-type]
+        "screenChanged": ticks(
+            Wait.model_validate({"until": "screenChanged", "timeout": 5.0}), Static()
+        ),  # type: ignore[arg-type]
+        "request": ticks(
+            Wait.model_validate({"until": {"request": {"path": "/never"}}, "timeout": 5.0}),
+            Static(),  # type: ignore[arg-type]
+            network=list,  # a no-op network source: always zero observed exchanges
+        ),
+    }
+    for label, seen in cases.items():
+        assert len(seen) >= 2, f"{label}: expected entry + in-loop ticks, got {seen}"
+        assert seen[0] == 5.0, f"{label}: entry tick should report the full timeout"
+        assert seen == sorted(seen, reverse=True), (
+            f"{label}: remaining must only decrease, got {seen}"
+        )
+
+
+def test_run_scenario_streams_what_the_wait_awaits() -> None:
     """End to end: with progress wired, a pending wait streams a `waiting <condition>` line naming
     the awaited selector, not a bare `wait`."""
     driver = FakeDriver([el("a", "A")])  # the awaited row never appears -> the wait times out
