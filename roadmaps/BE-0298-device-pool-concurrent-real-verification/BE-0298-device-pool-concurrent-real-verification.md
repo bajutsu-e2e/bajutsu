@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-device-pool-concurrent-real-verification-ja.md)
+**English** · [日本語](BE-0298-device-pool-concurrent-real-verification-ja.md)
 
-# BE-XXXX — Real concurrent-device verification of parallel device-pool isolation
+# BE-0298 — Real concurrent-device verification of parallel device-pool isolation
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-device-pool-concurrent-real-verification.md) |
+| Proposal | [BE-0298](BE-0298-device-pool-concurrent-real-verification.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0298") |
 | Topic | Verification & coverage |
 | Related | [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md) |
 <!-- /BE-METADATA -->

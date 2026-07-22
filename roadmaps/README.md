@@ -133,7 +133,9 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 ### Verification & coverage
 
 <!-- GENERATED:proposals-verification -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0298](BE-0298-device-pool-concurrent-real-verification/BE-0298-device-pool-concurrent-real-verification.md) | Real concurrent-device verification of parallel device-pool isolation | Proposal |
 <!-- /GENERATED:proposals-verification -->
 
 ### Authoring experience (record / GUI editor)

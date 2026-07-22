@@ -133,7 +133,9 @@
 ### 検証とカバレッジ
 
 <!-- GENERATED:proposals-verification -->
-
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0298](BE-0298-device-pool-concurrent-real-verification/BE-0298-device-pool-concurrent-real-verification-ja.md) | 並列デバイスプール分離の実機並行検証 | 提案 |
 <!-- /GENERATED:proposals-verification -->
 
 ### オーサリング体験（record / GUI エディタ）
