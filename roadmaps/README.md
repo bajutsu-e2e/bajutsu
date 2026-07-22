@@ -169,7 +169,9 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 ### Integration & automation (MCP)
 
 <!-- GENERATED:proposals-mcp -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0301](BE-0301-mcp-real-wire-protocol-test/BE-0301-mcp-real-wire-protocol-test.md) | Real wire-protocol round-trip test for the MCP server | Proposal |
 <!-- /GENERATED:proposals-mcp -->
 
 ### AI provider configuration

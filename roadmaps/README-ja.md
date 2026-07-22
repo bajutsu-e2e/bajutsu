@@ -169,7 +169,9 @@
 ### 統合と自動化（MCP 化）
 
 <!-- GENERATED:proposals-mcp -->
-
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0301](BE-0301-mcp-real-wire-protocol-test/BE-0301-mcp-real-wire-protocol-test-ja.md) | MCP サーバの実ワイヤプロトコル round-trip テスト | 提案 |
 <!-- /GENERATED:proposals-mcp -->
 
 ### AI プロバイダ設定

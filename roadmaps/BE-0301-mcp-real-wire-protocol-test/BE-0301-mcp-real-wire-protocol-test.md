@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-mcp-real-wire-protocol-test-ja.md)
+**English** · [日本語](BE-0301-mcp-real-wire-protocol-test-ja.md)
 
-# BE-XXXX — Real wire-protocol round-trip test for the MCP server
+# BE-0301 — Real wire-protocol round-trip test for the MCP server
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-mcp-real-wire-protocol-test.md) |
+| Proposal | [BE-0301](BE-0301-mcp-real-wire-protocol-test.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0301") |
 | Topic | Integration & automation (MCP) |
 | Related | [BE-0017](../BE-0017-mcp-server/BE-0017-mcp-server.md), [BE-0018](../BE-0018-evidence-as-mcp-resources/BE-0018-evidence-as-mcp-resources.md) |
 <!-- /BE-METADATA -->
