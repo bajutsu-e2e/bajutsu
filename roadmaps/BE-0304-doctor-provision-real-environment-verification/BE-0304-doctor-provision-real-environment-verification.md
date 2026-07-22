@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-doctor-provision-real-environment-verification-ja.md)
+**English** · [日本語](BE-0304-doctor-provision-real-environment-verification-ja.md)
 
-# BE-XXXX — Real-environment verification for the onboarding gate (doctor, preflight, provision)
+# BE-0304 — Real-environment verification for the onboarding gate (doctor, preflight, provision)
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-doctor-provision-real-environment-verification.md) |
+| Proposal | [BE-0304](BE-0304-doctor-provision-real-environment-verification.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0304") |
 | Topic | doctor / onboarding |
 <!-- /BE-METADATA -->
 

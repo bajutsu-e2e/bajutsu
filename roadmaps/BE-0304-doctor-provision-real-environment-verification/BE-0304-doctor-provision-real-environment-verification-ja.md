@@ -1,14 +1,14 @@
-[English](BE-XXXX-doctor-provision-real-environment-verification.md) · **日本語**
+[English](BE-0304-doctor-provision-real-environment-verification.md) · **日本語**
 
-# BE-XXXX — オンボーディングゲート（doctor・preflight・provision）の実環境検証
+# BE-0304 — オンボーディングゲート（doctor・preflight・provision）の実環境検証
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-doctor-provision-real-environment-verification-ja.md) |
+| 提案 | [BE-0304](BE-0304-doctor-provision-real-environment-verification-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0304") |
 | トピック | doctor / オンボーディング |
 <!-- /BE-METADATA -->
 
