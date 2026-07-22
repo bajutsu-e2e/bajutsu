@@ -86,7 +86,7 @@ which you're choosing and why:
 
 ### 4. Draft a new BE item — leave the ID undetermined (`BE-XXXX`)
 
-**Never invent a BE number.** Allocation is CI's job (step 6). Scaffold the item with the
+**Never invent a BE number.** Allocation is CI's job (step 7). Scaffold the item with the
 command rather than authoring the files by hand — it emits the literal `BE-XXXX` placeholder,
 the exact canonical format, and skips the index (so the gate stays green locally):
 
@@ -119,12 +119,33 @@ Japanese, not a finished translation. Write it under the
 > same one. The `roadmap-id` workflow assigns the next free IDs deterministically at PR
 > time, so authoring stays conflict-free.
 
-### 5. Verify
+### 5. Self-review against the CI review contract — before committing
+
+Mirror the same review the "Claude review" GitHub Actions job runs on every PR (BE-0203), but
+locally, before anything is committed — closing the gap between "the roadmap item reads fine to
+its own author" and "the reviewer that sees it cold, on the PR, finds nothing to flag." Spawn a
+fresh subagent (Agent tool) that has **not** seen this ideation conversation — the CI reviewer
+also runs cold, with no memory of the authoring discussion, so a subagent that inherited this
+session's context would not reproduce that. Give it exactly two inputs: the contract at
+[`.github/claude-review-prompt.md`](../../../.github/claude-review-prompt.md) and the working
+diff (`git diff origin/main` — there is no PR yet, so nothing to run `gh pr diff` against). Ask
+it to apply every lens in the contract and return its findings as a plain list; there is no PR to
+post inline comments to, so skip that half of the contract.
+
+Unlike the CI job — which only posts comments, since prime directive 1 keeps a reviewer from also
+being the judge on the Tier-2 gate — this pass has no gate to stay off: fix every finding it
+raises directly in the files before moving on. Re-run the subagent against the updated diff after
+non-trivial fixes, and repeat until a pass comes back empty (an empty pass is a complete review,
+per the contract's own closing rule — "when nothing warrants a comment, post nothing"). "Advisory"
+describes the CI job's relationship to the merge gate, not license to leave a real finding unfixed
+here.
+
+### 6. Verify
 
 Run `make check` before finishing — roadmap changes are docs-only, but keeping the gate
 green is the contract. (It needs no Simulator and runs on Linux.)
 
-### 6. Open the PR (only when the user is happy)
+### 7. Open the PR (only when the user is happy)
 
 Work on the session's designated branch. Commit with a scoped message
 (`docs(roadmap): …`), push, and — **only if the user asked for a PR** — open it. The PR
