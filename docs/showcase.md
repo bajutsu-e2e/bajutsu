@@ -35,7 +35,9 @@ The showcase makes visible the two axes on which Bajutsu's design rests:
 Registered as four `targets.<name>` in [`demos/showcase/showcase.config.yaml`](../demos/showcase/showcase.config.yaml)
 (bundle ids `com.bajutsu.showcase.ios.{swiftui,uikit}[.noax]`, deeplink schemes `showcase{swiftui,uikit}[noax]`).
 Built with XcodeGen + xcodebuild (`project.yml` is the source of truth; `.xcodeproj` / `build/` are
-gitignored).
+gitignored). A fifth target, `showcase-swiftui-bundled`, runs the same SwiftUI app with no
+`xcuitest:` sub-config, so a Simulator run resolves to the wheel-bundled runner (BE-0292) instead of
+the locally built one — `bajutsu doctor --target showcase-swiftui-bundled` reports the runner source.
 
 ```bash
 make -C demos/showcase swiftui-build       # compile the SwiftUI a11y product for the Simulator

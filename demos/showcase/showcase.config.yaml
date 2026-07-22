@@ -46,6 +46,23 @@ targets:
       testRunner: ../../BajutsuKit/Runner/build/dd/Build/Products/BajutsuRunner.xctestrun
       build: make runner-build
 
+  # ---- SwiftUI, same app, exercises the BE-0292 bundled XCUITest runner ----------
+  # A twin of showcase-swiftui with no `xcuitest:` block: a Simulator run for this target has
+  # no testRunner and no build, so it resolves to the wheel-bundled runner (`bajutsu doctor
+  # --target showcase-swiftui-bundled` reports `xcuitest runner: bundled`) instead of the
+  # locally built BajutsuKit/Runner product. Kept separate from showcase-swiftui so the driver
+  # conformance suite (BE-0114) above keeps exercising the locally built runner unchanged.
+  showcase-swiftui-bundled:
+    bundleId: com.bajutsu.showcase.ios.swiftui
+    deeplinkScheme: showcaseswiftui
+    launchEnv: { SHOWCASE_UITEST: "1" }
+    idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
+    readyWhen: { id: [stable.row.1, stable_row_1] }
+    appPath: ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app
+    build: make swiftui-build
+    scenarios: scenarios
+    backend: [ios]
+
   # ---- SwiftUI, accessibility OFF (the `record` / `doctor`-Blocked target) -------
   showcase-swiftui-noax:
     bundleId: com.bajutsu.showcase.ios.swiftui.noax
