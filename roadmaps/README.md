@@ -105,6 +105,7 @@ Under consideration — not yet decided. Promote an item to *In progress* once w
 | [BE-0008](BE-0008-flutter-support/BE-0008-flutter-support.md) | Flutter support | Proposal |
 | [BE-0289](BE-0289-xcuitest-stale-handle-reresolve/BE-0289-xcuitest-stale-handle-reresolve.md) | Make the XCUITest channel re-resolve a stale actuation handle before failing | Proposal |
 | [BE-0290](BE-0290-xcuitest-default-ios-backend/BE-0290-xcuitest-default-ios-backend.md) | Make XCUITest the default iOS backend and retire idb | Proposal |
+| [BE-0292](BE-0292-xcuitest-bundled-runner/BE-0292-xcuitest-bundled-runner.md) | Bundle the XCUITest runner so testRunner is optional | Proposal |
 <!-- /GENERATED:proposals-platform -->
 
 ### Driver & backend architecture
@@ -140,6 +141,15 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 <!-- GENERATED:proposals-authoring -->
 
 <!-- /GENERATED:proposals-authoring -->
+
+### codegen coverage
+
+<!-- GENERATED:proposals-codegen -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0293](BE-0293-codegen-playwright-real-compile/BE-0293-codegen-playwright-real-compile.md) | Real-compile verification for the Playwright (TypeScript) codegen target | Proposal |
+| [BE-0294](BE-0294-codegen-uiautomator-real-compile/BE-0294-codegen-uiautomator-real-compile.md) | Real-compile verification for the UI Automator (Kotlin) codegen target | Proposal |
+<!-- /GENERATED:proposals-codegen -->
 
 ### Surfacing CLI features in the serve Web UI
 
