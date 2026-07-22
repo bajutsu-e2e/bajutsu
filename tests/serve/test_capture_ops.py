@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from _shared import project
 
 from bajutsu.drivers import base
@@ -182,6 +183,26 @@ def test_start_capture_explicit_alias_backend_resolves(tmp_path: Path) -> None:
     )
     assert status == 200
     assert seen == ["xcuitest"]
+
+
+def test_start_capture_tears_down_runner_when_bring_up_fails(tmp_path: Path) -> None:
+    # BE-0290: if the driver's query/screenshot raises before the session is stored (a real failure
+    # mode for a freshly-launched XCUITest runner), teardown must still run so the runner subprocess
+    # is not leaked — the session never took ownership. Mirrors enrich.py's try/finally guard.
+    state = _state_with_config(tmp_path)
+    torn: list[bool] = []
+
+    class _BoomDriver:
+        def query(self) -> list[base.Element]:
+            raise RuntimeError("runner boom")
+
+    def factory(_eff: object, _b: list[str], _u: str) -> tuple[object, object]:
+        return _BoomDriver(), (lambda: torn.append(True))
+
+    with pytest.raises(RuntimeError, match="runner boom"):
+        ops.start_capture(state, {"target": "demo"}, driver_factory=factory)
+    assert torn == [True]  # the runner was torn down
+    assert state.capture is None  # no session left behind
 
 
 # ---------------------------------------------------------------------------

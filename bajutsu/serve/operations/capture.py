@@ -58,33 +58,41 @@ def start_capture(
 
     factory = driver_factory or _default_driver_factory
     driver, teardown = factory(resolve(config, target), backends_list, udid)
-    elements = driver.query()
+    # From bring-up until the session owns `teardown`, a failed query/screenshot (a real failure mode
+    # for a freshly-launched XCUITest runner) must still stop the runner — otherwise the `xcodebuild`
+    # subprocess leaks, the very thing BE-0290 set out to prevent. Once the CaptureSession is stored,
+    # ownership passes to it (finish_capture / close_capture tear it down), so the guard ends there.
+    try:
+        elements = driver.query()
 
-    from bajutsu.elements import screen_size_from_elements
+        from bajutsu.elements import screen_size_from_elements
 
-    screen_size = screen_size_from_elements(elements)
-    namespaces: list[str] = list(target_cfg.id_namespaces)
+        screen_size = screen_size_from_elements(elements)
+        namespaces: list[str] = list(target_cfg.id_namespaces)
 
-    # Deliberately outside the `ArtifactStore` seam (BE-0258): a capture session is a live,
-    # in-process object whose driver and HTTP handler share the same process for its lifetime,
-    # not a stored run, so `state.runs_dir` (always local to whichever host holds the live
-    # driver) stays correct here even when `state.artifacts` is an object-storage-backed store.
-    shot_dir = state.runs_dir / "_capture"
-    shot_dir.mkdir(parents=True, exist_ok=True)
-    shot_path = shot_dir / "screen.png"
-    driver.screenshot(str(shot_path))
+        # Deliberately outside the `ArtifactStore` seam (BE-0258): a capture session is a live,
+        # in-process object whose driver and HTTP handler share the same process for its lifetime,
+        # not a stored run, so `state.runs_dir` (always local to whichever host holds the live
+        # driver) stays correct here even when `state.artifacts` is an object-storage-backed store.
+        shot_dir = state.runs_dir / "_capture"
+        shot_dir.mkdir(parents=True, exist_ok=True)
+        shot_path = shot_dir / "screen.png"
+        driver.screenshot(str(shot_path))
 
-    state.capture = CaptureSession(
-        driver=driver,
-        target=target,
-        elements=elements,
-        screen_size=screen_size,
-        namespaces=namespaces,
-        redactor=redactor,
-        actor=actor,
-        screenshot_path=shot_path,
-        teardown=teardown,
-    )
+        state.capture = CaptureSession(
+            driver=driver,
+            target=target,
+            elements=elements,
+            screen_size=screen_size,
+            namespaces=namespaces,
+            redactor=redactor,
+            actor=actor,
+            screenshot_path=shot_path,
+            teardown=teardown,
+        )
+    except Exception:
+        teardown()  # stop the runner (BE-0290); the session never took ownership
+        raise
     return {"ok": True, "screenSize": list(screen_size)}, 200
 
 
