@@ -148,6 +148,12 @@
 | [BE-0295](BE-0295-record-crawl-real-model-verification/BE-0295-record-crawl-real-model-verification-ja.md) | record と crawl の propose ループに対する実モデル検証 | 提案 |
 <!-- /GENERATED:proposals-authoring -->
 
+### doctor / オンボーディング
+
+<!-- GENERATED:proposals-doctor -->
+
+<!-- /GENERATED:proposals-doctor -->
+
 ### codegen 網羅性
 
 <!-- GENERATED:proposals-codegen -->

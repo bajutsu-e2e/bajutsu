@@ -148,6 +148,12 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 | [BE-0295](BE-0295-record-crawl-real-model-verification/BE-0295-record-crawl-real-model-verification.md) | Real-model verification of the record and crawl propose loops | Proposal |
 <!-- /GENERATED:proposals-authoring -->
 
+### doctor / onboarding
+
+<!-- GENERATED:proposals-doctor -->
+
+<!-- /GENERATED:proposals-doctor -->
+
 ### codegen coverage
 
 <!-- GENERATED:proposals-codegen -->
