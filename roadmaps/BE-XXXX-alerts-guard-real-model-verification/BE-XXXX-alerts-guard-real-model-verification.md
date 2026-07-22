@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
-| Topic | Authoring experience (record / GUI editor) |
+| Topic | Verification & coverage |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -47,10 +47,10 @@ Proposal altitude. The work is MECE along the units below.
   frame — not merely that a decision was returned.
 - **Land as a non-gating signal first.** Following the precedent in
   [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md),
-  wire this into the `record`-touching CI lane as signal before considering it a required check.
-- **No change to the guard's role in the loop.** This item verifies the guard's real accuracy; it
-  does not change where the guard sits (Tier 1, live AI operation) or put it anywhere near the
-  deterministic `run` verdict (prime directive 1).
+  wire this into a CI lane touching the guard's callers as signal before considering it a required
+  check. This item verifies the guard's real accuracy only; it does not change where the guard sits
+  (Tier 1, live AI operation) or put it anywhere near the deterministic `run` verdict
+  (prime directive 1).
 
 ## Alternatives considered
 
@@ -70,7 +70,6 @@ Proposal altitude. The work is MECE along the units below.
 - [ ] Capture a real-alert fixture set from the showcase app, including a destructive-control case.
 - [ ] Add a key-gated live test asserting the guard locates the correct dismiss control.
 - [ ] Wire it into CI as a non-gating signal.
-- [ ] Confirm the guard's role in the loop stays unchanged — this verifies accuracy only.
 
 ## References
 
