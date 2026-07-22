@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-ai-backend-real-api-smoke-ja.md)
+**English** · [日本語](BE-0300-ai-backend-real-api-smoke-ja.md)
 
-# BE-XXXX — Real-API contract smoke lane for the AI backend adapters
+# BE-0300 — Real-API contract smoke lane for the AI backend adapters
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-ai-backend-real-api-smoke.md) |
+| Proposal | [BE-0300](BE-0300-ai-backend-real-api-smoke.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0300") |
 | Topic | AI provider configuration |
 <!-- /BE-METADATA -->
 

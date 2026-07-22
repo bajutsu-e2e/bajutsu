@@ -1,14 +1,14 @@
-[English](BE-XXXX-ai-backend-real-api-smoke.md) · **日本語**
+[English](BE-0300-ai-backend-real-api-smoke.md) · **日本語**
 
-# BE-XXXX — AI バックエンドアダプタ向けの実 API 契約スモークレーン
+# BE-0300 — AI バックエンドアダプタ向けの実 API 契約スモークレーン
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-ai-backend-real-api-smoke-ja.md) |
+| 提案 | [BE-0300](BE-0300-ai-backend-real-api-smoke-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0300") |
 | トピック | AI プロバイダ設定 |
 <!-- /BE-METADATA -->
 
