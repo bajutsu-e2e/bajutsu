@@ -91,6 +91,6 @@ XCTest API の使い方を壊しうるのに、既存のテストはすべて文
 - [BE-0265 — テキスト編集ステップ: select・clear・delete・copy](../BE-0265-text-editing-steps/BE-0265-text-editing-steps-ja.md)
 - [BE-0083 — codegen の emitter を共通のシナリオ走査へ統一する](../BE-0083-codegen-emitter-unification/BE-0083-codegen-emitter-unification-ja.md)
 - [BE-0282 — ネットワークのキャプチャ・モック・アサーションを CI で実バックエンド検証する](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md)
-- `bajutsu/codegen/xcuitest.py`、`tests/test_codegen.py`、
+- `bajutsu/codegen/xcuitest.py`、`tests/test_codegen.py`、`tests/test_gestures.py`、
   `demos/showcase/scenarios/components.yaml`、`.github/workflows/ios-e2e.yml`
   (`xcuitest (codegen)` と `xcuitest (multi-touch)` の各ジョブ)

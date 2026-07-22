@@ -90,6 +90,6 @@ Proposal altitude. The work is MECE along the units below.
 - [BE-0265 — Text-editing steps: select, clear, delete, copy](../BE-0265-text-editing-steps/BE-0265-text-editing-steps.md)
 - [BE-0083 — Unify the codegen emitters behind a shared scenario walk](../BE-0083-codegen-emitter-unification/BE-0083-codegen-emitter-unification.md)
 - [BE-0282 — Real-backend network capture, mock, and assertion coverage in CI](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md)
-- `bajutsu/codegen/xcuitest.py`, `tests/test_codegen.py`,
+- `bajutsu/codegen/xcuitest.py`, `tests/test_codegen.py`, `tests/test_gestures.py`,
   `demos/showcase/scenarios/components.yaml`, `.github/workflows/ios-e2e.yml`
   (`xcuitest (codegen)` and `xcuitest (multi-touch)` jobs)
