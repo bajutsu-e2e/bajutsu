@@ -142,6 +142,12 @@
 
 <!-- /GENERATED:proposals-authoring -->
 
+### AI プロバイダ設定
+
+<!-- GENERATED:proposals-ai-provider -->
+
+<!-- /GENERATED:proposals-ai-provider -->
+
 ### codegen 網羅性
 
 <!-- GENERATED:proposals-codegen -->
