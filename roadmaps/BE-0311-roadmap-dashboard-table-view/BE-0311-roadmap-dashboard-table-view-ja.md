@@ -1,14 +1,14 @@
-[English](BE-XXXX-roadmap-dashboard-table-view.md) · **日本語**
+[English](BE-0311-roadmap-dashboard-table-view.md) · **日本語**
 
-# BE-XXXX — ロードマップダッシュボードへのソート可能なテーブル表示の追加
+# BE-0311 — ロードマップダッシュボードへのソート可能なテーブル表示の追加
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-roadmap-dashboard-table-view-ja.md) |
+| 提案 | [BE-0311](BE-0311-roadmap-dashboard-table-view-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0311") |
 | トピック | 開発基盤（コントリビュータ体験） |
 | 関連 | [BE-0094](../BE-0094-roadmap-status-dashboard/BE-0094-roadmap-status-dashboard-ja.md)、[BE-0219](../BE-0219-roadmap-dashboard-search/BE-0219-roadmap-dashboard-search-ja.md) |
 <!-- /BE-METADATA -->
@@ -63,7 +63,7 @@
    コマンドが報告するもっとも古い行（各ファイルの最初のコミット）、`updated` はもっとも新しい行（いずれかの
    ファイルの最新のコミット）です。2つのファイルを別々に、それぞれ `--follow` 付きで実行するのは意図的な
    設計です。`--follow` は1つのパスしか受け付けませんが、CI が実際の ID を割り当てる際に全項目が経る
-   リネーム（`BE-XXXX-<slug>` → `BE-NNNN-<slug>`）を越えて、そのファイルの履歴を正しく追跡できます。
+   リネーム（`BE-0311-<slug>` → `BE-NNNN-<slug>`）を越えて、そのファイルの履歴を正しく追跡できます。
    さらに両方のファイルの結果を合わせることで、たとえば日本語側だけの表現の修正のように、2つのうち
    片方だけが更新された場合にも `updated` を正しく保てます。ダッシュボードがデータについて守っている
    唯一の原則（BE-0094 の「データの正直さ」）は、メタデータに根拠のない数値を作り出さないことです。

@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-roadmap-dashboard-table-view-ja.md)
+**English** · [日本語](BE-0311-roadmap-dashboard-table-view-ja.md)
 
-# BE-XXXX — Sortable table view for the roadmap dashboard
+# BE-0311 — Sortable table view for the roadmap dashboard
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-roadmap-dashboard-table-view.md) |
+| Proposal | [BE-0311](BE-0311-roadmap-dashboard-table-view.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0311") |
 | Topic | Development infrastructure (contributor workflow) |
 | Related | [BE-0094](../BE-0094-roadmap-status-dashboard/BE-0094-roadmap-status-dashboard.md), [BE-0219](../BE-0219-roadmap-dashboard-search/BE-0219-roadmap-dashboard-search.md) |
 <!-- /BE-METADATA -->
@@ -65,7 +65,7 @@ mutually exclusive, collectively exhaustive (MECE) across these units:
    oldest line either command reports (each file's first commit), `updated` is the newest (either
    file's most recent commit). Running the two files separately, each with `--follow`, is deliberate:
    `--follow` only accepts one path and correctly walks a file's history through the rename every
-   item undergoes when CI allocates its real id (`BE-XXXX-<slug>` → `BE-NNNN-<slug>`), and combining
+   item undergoes when CI allocates its real id (`BE-0311-<slug>` → `BE-NNNN-<slug>`), and combining
    both files' results is what keeps `updated` correct when only one of the two — say, a
    Japanese-only wording fix — changes after the other. The dashboard's one firm rule about the data
    it shows (BE-0094's "Honesty of the data") is to never invent a number with no source in the
