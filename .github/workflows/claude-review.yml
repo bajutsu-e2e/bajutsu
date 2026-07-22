@@ -155,7 +155,7 @@ jobs:
           # `printf -v` (not a heredoc, whose column-0 body would close this YAML block scalar) builds
           # the multi-line value.
           PRIOR=$(gh api --paginate "repos/$REPO/pulls/$PR/comments" \
-            --jq '.[] | "- " + .path + ":" + ((.line // .original_line // 0)|tostring) + " — " + (.body|split("\n")[0])' \
+            --jq '.[] | select(.body | startswith("🤖 **Claude Code**")) | "- " + .path + ":" + ((.line // .original_line // 0)|tostring) + " — " + (.body|split("\n")[0])' \
             2>/dev/null | head -c 32000 || true)
           if [ -n "$PRIOR" ]; then
             printf -v PRIOR_SECTION '%s\n%s' \
