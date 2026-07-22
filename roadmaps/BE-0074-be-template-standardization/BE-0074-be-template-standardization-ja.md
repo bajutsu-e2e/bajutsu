@@ -130,7 +130,6 @@ Alternatives considered / References）です。この形は [`CLAUDE.md`](../..
 | Proposal | [BE-NNNN](BE-NNNN-<slug>.md) |
 | 提案者 | [@handle](https://github.com/handle) |
 | Status | **Proposal** |
-| Track | [Proposals](../README.md#proposals) |
 | Topic | <one of the index topics> |
 <!-- /BE-METADATA -->
 
