@@ -69,7 +69,15 @@ what is already planned, in progress, or deliberately not adopted.
    `roadmaps/BE-XXXX-<slug>/` with both language files in the canonical Swift-Evolution
    format; the skill fills the `TBD` sections and rewrites the Japanese side into natural Japanese.
    The literal `BE-XXXX` placeholder is intentional — **IDs are never guessed by hand.**
-5. **Verify and (only if you ask) open the PR.** `make check` keeps the gate green even for a
+5. **Self-review against the CI review contract.** A fresh subagent — blind to the authoring
+   conversation, mirroring the CI reviewer's own cold start — applies the same contract the
+   "Claude review" GitHub Actions workflow uses
+   ([`.github/claude-review-prompt.md`](../.github/claude-review-prompt.md), BE-0203) to the
+   staged diff. Every finding gets fixed, except a false positive or an already-explained
+   trade-off (noted and left as-is), or a finding that calls for a genuine design change
+   (escalated to you instead of attempted); capped at 3 rounds, escalating to you if it still
+   hasn't converged by then.
+6. **Verify and (only if you ask) open the PR.** `make check` keeps the gate green even for a
    docs-only change; the PR body notes that CI will allocate the real ID.
 
 The placeholder exists because IDs are permanent and monotonic, and many branches are in flight at once.

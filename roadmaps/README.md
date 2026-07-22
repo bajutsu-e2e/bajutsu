@@ -105,12 +105,15 @@ Under consideration — not yet decided. Promote an item to *In progress* once w
 | [BE-0008](BE-0008-flutter-support/BE-0008-flutter-support.md) | Flutter support | Proposal |
 | [BE-0289](BE-0289-xcuitest-stale-handle-reresolve/BE-0289-xcuitest-stale-handle-reresolve.md) | Make the XCUITest channel re-resolve a stale actuation handle before failing | Proposal |
 | [BE-0290](BE-0290-xcuitest-default-ios-backend/BE-0290-xcuitest-default-ios-backend.md) | Make XCUITest the default iOS backend and retire idb | Proposal |
+| [BE-0292](BE-0292-xcuitest-bundled-runner/BE-0292-xcuitest-bundled-runner.md) | Bundle the XCUITest runner so testRunner is optional | Proposal |
 <!-- /GENERATED:proposals-platform -->
 
 ### Driver & backend architecture
 
 <!-- GENERATED:proposals-driver-architecture -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0299](BE-0299-settle-value-condition-wait/BE-0299-settle-value-condition-wait.md) | Close the read-race gap in mid-scenario reads and idb's settle timing | Proposal |
 <!-- /GENERATED:proposals-driver-architecture -->
 
 ### Device-cloud execution
@@ -132,14 +135,36 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 ### Verification & coverage
 
 <!-- GENERATED:proposals-verification -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0298](BE-0298-device-pool-concurrent-real-verification/BE-0298-device-pool-concurrent-real-verification.md) | Real concurrent-device verification of parallel device-pool isolation | Proposal |
 <!-- /GENERATED:proposals-verification -->
 
 ### Authoring experience (record / GUI editor)
 
 <!-- GENERATED:proposals-authoring -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0295](BE-0295-record-crawl-real-model-verification/BE-0295-record-crawl-real-model-verification.md) | Real-model verification of the record and crawl propose loops | Proposal |
 <!-- /GENERATED:proposals-authoring -->
+
+### codegen coverage
+
+<!-- GENERATED:proposals-codegen -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0293](BE-0293-codegen-playwright-real-compile/BE-0293-codegen-playwright-real-compile.md) | Real-compile verification for the Playwright (TypeScript) codegen target | Proposal |
+| [BE-0294](BE-0294-codegen-uiautomator-real-compile/BE-0294-codegen-uiautomator-real-compile.md) | Real-compile verification for the UI Automator (Kotlin) codegen target | Proposal |
+| [BE-0297](BE-0297-codegen-xcuitest-dsl-coverage/BE-0297-codegen-xcuitest-dsl-coverage.md) | Expand XCUITest codegen's real-compile coverage to the full DSL surface | Proposal |
+<!-- /GENERATED:proposals-codegen -->
+
+### Self-healing triage
+
+<!-- GENERATED:proposals-self-healing -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0296](BE-0296-triage-ai-real-model-verification/BE-0296-triage-ai-real-model-verification.md) | Real-model verification of the triage --ai diagnosis path | Proposal |
+<!-- /GENERATED:proposals-self-healing -->
 
 ### Integration & automation (MCP)
 
