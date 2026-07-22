@@ -35,7 +35,10 @@ showcase は、Bajutsu の設計が依って立つ 2 つの軸を可視化しま
 4 つの `targets.<name>` として [`demos/showcase/showcase.config.yaml`](../../demos/showcase/showcase.config.yaml)
 に登録しています（bundle id は `com.bajutsu.showcase.ios.{swiftui,uikit}[.noax]`、deeplink scheme は
 `showcase{swiftui,uikit}[noax]`）。XcodeGen ＋ xcodebuild でビルドします（`project.yml` が信頼できる唯一の情報源で、
-`.xcodeproj` / `build/` は gitignore 対象です）。
+`.xcodeproj` / `build/` は gitignore 対象です）。5 つめのターゲット `showcase-swiftui-bundled` は同じ SwiftUI
+アプリを使いますが、`xcuitest:` の設定を持ちません。そのため Simulator 上の実行はローカルビルドのランナーで
+はなく、wheel に同梱されたランナー（BE-0292）に解決されます。`bajutsu doctor --target
+showcase-swiftui-bundled` を実行すると、実際にどちらのランナーが使われているかを確認できます。
 
 ```bash
 make -C demos/showcase swiftui-build       # SwiftUI a11y プロダクトを Simulator 向けにコンパイル
