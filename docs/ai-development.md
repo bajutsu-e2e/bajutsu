@@ -467,13 +467,19 @@ re-reviews on each push, against the
 [`.github/claude-review-prompt.md`](../.github/claude-review-prompt.md) contract, and posts inline
 line-level comments (with `suggestion` blocks where a fix is mechanical) — inline findings only, no
 top-level summary, since the job re-runs on every push and a fresh summary each time would leave stale,
-contradictory overviews on the PR. It aims to raise every finding in one pass rather than dribbling
-them out across re-runs. Until
+contradictory overviews on the PR. To stop it repeating the same findings on every push while still
+missing nothing, each run reads the **full diff** (so no changed line goes unreviewed) and is also
+handed every finding **already posted** on the PR (via the API, no PR-head checkout), with instruction
+never to re-post one — it dedupes by suppressing repeats, not by narrowing what it looks at, so a
+genuinely new issue is still raised even on code an earlier run overlooked. Until
 a credential is provisioned the workflow is a dormant green no-op — it posts nothing and never
 blocks — so no review appearing on a PR yet just means the Environment isn't configured. The
 prompt points the reviewer at *this repository's* contract — the three
 [prime directives](../CLAUDE.md#prime-directives-do-not-violate), the docstring standard, the
-bilingual-docs rule, the BE-ID lifecycle — so it catches what a generic reviewer cannot.
+bilingual-docs rule, the BE-ID lifecycle — so it catches what a generic reviewer cannot. It runs on
+Opus (not the action's default Sonnet) for sharper severity triage, and posts only `issue`,
+`suggestion`, and `question` findings — `nitpick` and `praise` are suppressed so an advisory review
+that re-runs on every push doesn't accrete low-value noise.
 
 It is **advisory, never a gate.** It is deliberately not a required status check, and its job result
 is decoupled from its findings (a review that found issues is a *successful* review, so the job goes
