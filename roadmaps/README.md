@@ -138,8 +138,28 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 ### Authoring experience (record / GUI editor)
 
 <!-- GENERATED:proposals-authoring -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0295](BE-0295-record-crawl-real-model-verification/BE-0295-record-crawl-real-model-verification.md) | Real-model verification of the record and crawl propose loops | Proposal |
 <!-- /GENERATED:proposals-authoring -->
+
+### codegen coverage
+
+<!-- GENERATED:proposals-codegen -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0293](BE-0293-codegen-playwright-real-compile/BE-0293-codegen-playwright-real-compile.md) | Real-compile verification for the Playwright (TypeScript) codegen target | Proposal |
+| [BE-0294](BE-0294-codegen-uiautomator-real-compile/BE-0294-codegen-uiautomator-real-compile.md) | Real-compile verification for the UI Automator (Kotlin) codegen target | Proposal |
+| [BE-0297](BE-0297-codegen-xcuitest-dsl-coverage/BE-0297-codegen-xcuitest-dsl-coverage.md) | Expand XCUITest codegen's real-compile coverage to the full DSL surface | Proposal |
+<!-- /GENERATED:proposals-codegen -->
+
+### Self-healing triage
+
+<!-- GENERATED:proposals-self-healing -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0296](BE-0296-triage-ai-real-model-verification/BE-0296-triage-ai-real-model-verification.md) | Real-model verification of the triage --ai diagnosis path | Proposal |
+<!-- /GENERATED:proposals-self-healing -->
 
 ### Surfacing CLI features in the serve Web UI
 

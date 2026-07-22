@@ -138,8 +138,28 @@
 ### オーサリング体験（record / GUI エディタ）
 
 <!-- GENERATED:proposals-authoring -->
-
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0295](BE-0295-record-crawl-real-model-verification/BE-0295-record-crawl-real-model-verification-ja.md) | record と crawl の propose ループに対する実モデル検証 | 提案 |
 <!-- /GENERATED:proposals-authoring -->
+
+### codegen 網羅性
+
+<!-- GENERATED:proposals-codegen -->
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0293](BE-0293-codegen-playwright-real-compile/BE-0293-codegen-playwright-real-compile-ja.md) | Playwright（TypeScript）codegen ターゲットの実コンパイル検証 | 提案 |
+| [BE-0294](BE-0294-codegen-uiautomator-real-compile/BE-0294-codegen-uiautomator-real-compile-ja.md) | UI Automator（Kotlin）codegen ターゲットの実コンパイル検証 | 提案 |
+| [BE-0297](BE-0297-codegen-xcuitest-dsl-coverage/BE-0297-codegen-xcuitest-dsl-coverage-ja.md) | XCUITest codegen の実コンパイルカバレッジを DSL 全体へ拡張する | 提案 |
+<!-- /GENERATED:proposals-codegen -->
+
+### 自己修復トリアージ
+
+<!-- GENERATED:proposals-self-healing -->
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0296](BE-0296-triage-ai-real-model-verification/BE-0296-triage-ai-real-model-verification-ja.md) | triage --ai 診断経路の実モデル検証 | 提案 |
+<!-- /GENERATED:proposals-self-healing -->
 
 ### serve Web UI への CLI 機能の取り込み
 
