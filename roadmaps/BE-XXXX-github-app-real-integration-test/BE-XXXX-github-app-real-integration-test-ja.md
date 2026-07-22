@@ -10,6 +10,7 @@
 | 状態 | **提案** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | トピック | config の取得元 |
+| 関連 | [BE-0224](../BE-0224-github-private-repo-config-auth/BE-0224-github-private-repo-config-auth-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
@@ -19,7 +20,7 @@
 取得する)で支えています。JWT の署名自体は、実際の `cryptography`(実際の RSA 鍵、実際の RS256
 署名検証)に対して正しくテストされています。しかしネットワーク側は違います。`installation_token`
 の交換は手書きの `fake_fetch` だけで駆動されており、`_fetch` の HTTP エラーマッピングは
-`urllib.request.urlopen` を monkeypatch してデフォルトのエラーを送出させることでテストされています。
+`urllib.request.urlopen` を monkeypatch してあらかじめ用意したエラーを送出させることでテストされています。
 このフローを実際の GitHub App のインストールに対して完了させるテストや CI ジョブは、
 1つもありません。本項目は、そのテストと CI ジョブを追加します。
 
@@ -31,7 +32,7 @@ GitHub が拒否するクレーム形状やアルゴリズムの JWT、実際の
 クレームのクロックスキューの境界ケース、あるいは手書きの `{"id": 999}` / `{"token": "..."}`
 というフィクスチャから実際の形状がドリフトしたインストールトークンのレスポンス、これらのいずれも
 現行のテストスイートでは検出できません。処理がプロセスの外に一度も出ないからです。非公開
-リポジトリ向け config source は periphery の機能です(`config_source.py`。「Configuration
+リポジトリ向け config source は副次的な機能です(`config_source.py`。「Configuration
 sourcing」トピックの実リポジトリ取得を扱う別項目でカバーします)が、その背後にあるトークン
 フローは、まさにモックが構造上検証できない外部統合の領域です。モックは、それを書いた人が
 「GitHub はこう返すはずだ」と信じている内容しか返さないからです。
@@ -57,7 +58,7 @@ sourcing」トピックの実リポジトリ取得を扱う別項目でカバー
 ## 検討した代替案
 
 - **エラーマッピングのロジックがユニットテストされていることを根拠に、モック化された HTTP
-  テストを信頼する**：デフォルトの `HTTPError` に対してエラーマッピングが正しいことは、GitHub の実際の
+  テストを信頼する**：あらかじめ用意した `HTTPError` に対してエラーマッピングが正しいことは、GitHub の実際の
   API が実際にその形でそのエラーを返すかどうかや、そのエラーを引き起こす JWT がそもそも
   受理される点については何も語りません。
 - **使い捨ての App を用意せず、GitHub の公開ドキュメントに記載された想定形状に対してのみ

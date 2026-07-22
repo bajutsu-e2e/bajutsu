@@ -10,6 +10,7 @@
 | Status | **Proposal** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | Topic | Configuration sourcing |
+| Related | [BE-0224](../BE-0224-github-private-repo-config-auth/BE-0224-github-private-repo-config-auth.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -30,7 +31,7 @@ algorithm GitHub rejects in practice, a clock-skew edge case in the `iat`/`exp` 
 shows up against a real clock, or an installation-token response whose real shape has drifted from
 the hand-typed `{"id": 999}` / `{"token": "..."}` fixtures — none of these would be caught by the
 current suite, because none of it ever leaves the process. The private-repo config source is a
-periphery feature (`config_source.py`, gated behind the `Configuration sourcing` topic's own
+secondary feature (`config_source.py`, gated behind the `Configuration sourcing` topic's own
 real-repo-fetch item), but the token flow underneath it is exactly the kind of external-integration
 surface a mock cannot validate by construction: the mock only ever returns what the person who wrote
 it believes GitHub returns.
