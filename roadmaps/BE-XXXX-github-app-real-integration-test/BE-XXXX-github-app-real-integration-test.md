@@ -16,7 +16,7 @@
 ## Introduction
 
 `github/app.py` backs the private-repo config source with a GitHub App installation-token flow: sign
-a JWT, exchange it for an installation token, use the token to fetch config. The JWT signing itself
+a JSON Web Token (JWT), exchange it for an installation token, use the token to fetch config. The JWT signing itself
 is genuinely tested against real `cryptography` (a real RSA key, a real RS256 signature
 verification). The network leg is not: `installation_token`'s exchange is driven entirely by a
 hand-written `fake_fetch`, and `_fetch`'s HTTP-error mapping is tested by monkeypatching
