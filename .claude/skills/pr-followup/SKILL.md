@@ -74,13 +74,15 @@ gh pr checks <PR>
 
 If step 2 or 3 made a change this iteration, mirror the CI "Claude review" workflow locally before
 pushing whatever hasn't shipped yet, following [`ideation`](../ideation/SKILL.md) step 5's
-procedure exactly, with two differences: give the subagent a local `git diff` against the PR's
+procedure exactly, with three differences: give the subagent a local `git diff` against the PR's
 remote branch (so it sees this iteration's not-yet-pushed fixes — unlike `gh pr diff <PR>`, which
 only shows what GitHub's remote head already has) plus `gh pr view <PR> --comments` for the
-discussion, instead of a fresh diff; and route a genuine design-change finding to this skill's own
-Escalation section instead of `ideation`'s, reporting it directly in this iteration's summary
-rather than leaving a review thread open, since there is no PR conversation to leave unresolved
-for a self-review-only finding. Run `make check` after every fix, the same as steps 2 and 3.
+discussion, instead of a fresh diff, and **not** scoped to `roadmaps/` — unlike `ideation`, whose
+fixes only ever land there, this skill's fixes can land anywhere the CI failure or review comment
+points to; route a genuine design-change finding to this skill's own Escalation section instead of
+`ideation`'s, reporting it directly in this iteration's summary rather than leaving a review thread
+open, since there is no PR conversation to leave unresolved for a self-review-only finding. Run
+`make check` after every fix, the same as steps 2 and 3.
 
 This step pays off most directly for step 3's review-comment fixes, which wait until step 5's push
 to go out; a step 2 CI-failure fix already went out with its own push, so here this step is an
