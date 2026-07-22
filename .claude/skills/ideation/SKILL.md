@@ -121,7 +121,7 @@ Japanese, not a finished translation. Write it under the
 
 ### 5. Self-review against the CI review contract — before committing
 
-Mirror the same review the "Claude review" GitHub Actions job runs on every PR (BE-0203), but
+Mirror the same review the "Claude review" GitHub Actions workflow runs on every PR (BE-0203), but
 locally, before anything is committed — closing the gap between "the roadmap item reads fine to
 its own author" and "the reviewer that sees it cold, on the PR, finds nothing to flag." Spawn a
 fresh subagent (Agent tool) that has **not** seen this ideation conversation — the CI reviewer
