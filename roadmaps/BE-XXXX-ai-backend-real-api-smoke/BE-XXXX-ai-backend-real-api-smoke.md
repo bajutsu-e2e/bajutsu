@@ -36,7 +36,7 @@ a differently-shaped response than the direct API path assumes. `test_make_clien
 the gap precisely: it asserts `isinstance(client, AnthropicBedrock)` with fake AWS credentials and
 never calls `.messages.create`.
 
-This item is not a request to relax prime directive #1. The `run` / CI verdict must stay free of any model
+This item is not a request to relax prime directive 1. The `run` / CI verdict must stay free of any model
 call, and this item touches none of that path — `ai/anthropic.py`, `agents/anthropic_client.py`, and
 `ai/registry.py` are periphery, behind the AI extra, and the deterministic core does not import them.
 What is missing is coverage of the periphery's own contract with the vendor it wraps, at the cheapest
@@ -48,12 +48,13 @@ that costs a handful of tokens is enough to prove the plumbing.
 Proposal altitude. The work is MECE along the units below.
 
 - **A minimal live-call test, key-gated, asserting the contract only.** Add a test that calls
-  `AnthropicBackend` with a trivial prompt and a forced `tool_choice`, skipped via
-  `pytest.mark.skipif` when `ANTHROPIC_API_KEY` (or the Bedrock/`ant` equivalent credential) is
-  absent — so `make check` stays keyless and green on every contributor's machine, exactly as it is
-  today. The test only checks that the adapter's normalized `MessageResponse`/`ToolUseBlock` shape
-  comes back populated and parses — never anything about what the model chose to say, keeping this a
-  wire-contract check and not a model-quality judgment.
+  `AnthropicBackend` with a trivial prompt and a forced `tool_choice`, gated via `pytest.mark.skipif`
+  on a dedicated opt-in flag (e.g. `BAJUTSU_LIVE_AI_SMOKE=1`) in addition to `ANTHROPIC_API_KEY` (or
+  the Bedrock/`ant` equivalent credential) — key presence alone isn't a safe gate, since contributor
+  sessions that already export the key for `record`/`triage` (per `CLAUDE.md`) would otherwise fire a
+  real, paid call on an ordinary `make check`. The test only checks that the adapter's normalized
+  `MessageResponse`/`ToolUseBlock` shape comes back populated and parses — never anything about what
+  the model chose to say, keeping this a wire-contract check and not a model-quality judgment.
 - **One CI lane per adapter, opt-in and non-gating.** A workflow job per adapter (direct API, Bedrock,
   `ant`) that supplies the real credential from repository secrets and runs the live-call test,
   following the same non-gating-signal-first precedent as
@@ -79,7 +80,7 @@ Proposal altitude. The work is MECE along the units below.
 > (oldest first), linking the PRs.
 
 - [ ] Add a key-gated, minimal live-call test for the direct Anthropic API adapter.
-- [ ] Add the same for the Bedrock adapter.
+- [ ] Add the same for the Bedrock adapter, or record explicitly why it can't run in CI (e.g. a live Bedrock role).
 - [ ] Add the same for the `ant`-CLI adapter, or record explicitly why it can't run in CI.
 - [ ] Wire non-gating, opt-in CI lanes per adapter.
 
