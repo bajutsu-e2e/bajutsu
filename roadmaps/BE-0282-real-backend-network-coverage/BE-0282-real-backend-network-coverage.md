@@ -92,7 +92,7 @@ Proposal altitude. The work is MECE along the units below.
 Log:
 
 - [#1183](https://github.com/bajutsu-e2e/bajutsu/pull/1183) — web slice: added a Sync request to the demo app, `demos/web/scenarios/network.yaml` (mocked, captured `POST /api/sync` carrying a secret), a `fields: [password]` redact policy, `demos/web/network/assert_redaction.py`, the `make -C demos/web e2e-network` target, and the non-gating `network (playwright)` CI job. Android gap recorded in the workflow and `docs/architecture.md`. iOS collector real path deferred to a follow-up.
-- [#1267](https://github.com/bajutsu-e2e/bajutsu/pull/1267) — promoted the `network (playwright)` job from signal into the required `E2E (web)` gate after it proved stable in CI (0 failures over the last 50 runs), the web twin of android-e2e.yml's already-gating `network (adb)`. Updated `docs/architecture.md` and its Japanese mirror in step.
+- [#1267](https://github.com/bajutsu-e2e/bajutsu/pull/1267) — promoted the `network (playwright)` job from signal into the required `E2E (web)` gate after it proved stable in CI (0 failures over the last 50 runs), the web twin of android-e2e.yml's already-gating `network (adb)`. Updated the docs that describe the job in step — `docs/architecture.md`, `docs/ci.md`, `demos/web/README.md`, and each one's Japanese mirror — to drop the "non-gating / signal first" wording.
 
 ## References
 

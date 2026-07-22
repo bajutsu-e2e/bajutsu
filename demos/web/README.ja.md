@@ -38,7 +38,7 @@ make -C demos/web e2e-network
 
 `app/` を配信し、**Sync account** ボタン（`Authorization` ヘッダと `password` ボディフィールドを運ぶ実際の `POST /api/sync`）をタップして、`network` タグの付いた [`scenarios/network.yaml`](scenarios/network.yaml) を **network を有効にして** 実行します。[`mocks:`](scenarios/network.yaml) のエントリがその POST に `201` で応答するので（実サーバがあれば `404` を返すはずです）、status `201` でキャプチャされた exchange は、ネットワークではなくモックが応答したことの証拠になります。シナリオの `request` アサーションが決定論的な介入・キャプチャの確認で、続いて [`network/assert_redaction.py`](network/assert_redaction.py) が永続化された `network.json` を読み、exchange が `mocked` で `201`、かつ両方の秘密情報がマスクされていなければ失敗します。どこにも LLM はありません。合否はそのアサーションとチェックだけです。
 
-このレーンは [BE-0282](../../roadmaps/BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md) の web 側です。CI ではゲート対象外の `network (playwright)` ジョブとして走ります（まずシグナルとして着地させ、安定を確認してから必須に昇格させます）。**Android には対応物がありません**。adb ドライバは `NETWORK` capability を宣言せず、アクチュエーションの対象になるネイティブのネットワークモニタもないため、Android のネットワークキャプチャはそのモニタが整うまでスコープ外です。これは見落としではなく、意図した境界です。
+このレーンは [BE-0282](../../roadmaps/BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md) の web 側です。CI では `network (playwright)` ジョブとして走ります。まずシグナルとして着地させましたが、CI で安定を確認できたので、現在は必須の `E2E (web)` ゲートに昇格しています（BE-0282）。**Android にも対応物ができました**（[BE-0283](../../roadmaps/BE-0283-android-network-capture/BE-0283-android-network-capture-ja.md)）。`android-e2e.yml` の `network (adb)` が、BajutsuAndroid のアプリ側インターセプタが `adb reverse` 越しにホスト側コレクタへ報告する形で実エミュレータのトラフィックをキャプチャします。ここでの Playwright のブラウザ内介入とは transport が異なりますが、`request` アサーションによる判定は同じで、このジョブと同様にあちらでもゲートに入っています。
 
 ## 記録（record）
 

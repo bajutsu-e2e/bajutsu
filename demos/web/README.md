@@ -55,10 +55,13 @@ fails unless the exchange is `mocked`, is `201`, and has both secrets masked. No
 verdict is the assertion plus that check.
 
 This lane is the web half of [BE-0282](../../roadmaps/BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md).
-It runs in CI as the non-gating `network (playwright)` job (signal first, promoted to required once
-stable). **Android has no counterpart**: the adb driver declares no `NETWORK` capability and there
-is no native network monitor to actuate, so Android network capture is out of scope pending that
-monitor — a deliberate boundary, not an oversight.
+It runs in CI as the `network (playwright)` job, which landed as signal first and, having proven
+stable in CI, is now promoted into the required `E2E (web)` gate (BE-0282). **Android now has a
+counterpart** ([BE-0283](../../roadmaps/BE-0283-android-network-capture/BE-0283-android-network-capture.md)):
+`network (adb)` in `android-e2e.yml` captures real emulator traffic through BajutsuAndroid's app-side
+interceptor reporting to a host collector over `adb reverse` — a different transport from Playwright's
+in-browser interception here, but the same `request`-assertion verdict, and it gates there just as
+this job now does.
 
 ## Record it
 
