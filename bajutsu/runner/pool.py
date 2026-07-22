@@ -278,8 +278,8 @@ def device_pool(
                 redact=eff.redact,
                 secrets=secret_values,
                 # A web or Android lane supplies its own interval evidence (Playwright console / page
-                # errors; adb screenrecord / logcat); idb has no such method, so this is None there
-                # and the simctl path is used.
+                # errors; adb logcat — Android's video now takes the prestart/adopt path below); idb
+                # has no such method, so this is None there and the simctl path is used.
                 driver_interval=getattr(driver, "driver_interval", None),
                 # Video the environment already began before the app launched (a device backend, so
                 # the cold start is recorded); the sink adopts it instead of starting one on demand.
