@@ -180,7 +180,7 @@ jobs:
 
       - name: Run the advisory Claude review
         if: steps.gate.outputs.provider != 'none'
-        uses: anthropics/claude-code-action@12531344451323133b0493233c759991ac61da12  # v1.0.174
+        uses: anthropics/claude-code-action@1298632ce7736903d02a1435002705aa2a594a6c  # v1.0.175
         env:
           # Bedrock needs an explicit model id (a Bedrock inference-profile id); set it as the
           # `BEDROCK_MODEL_ID` Environment variable alongside the role ARN — point it at an Opus
