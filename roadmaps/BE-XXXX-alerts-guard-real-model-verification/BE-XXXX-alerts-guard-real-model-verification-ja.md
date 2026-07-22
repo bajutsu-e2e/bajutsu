@@ -11,7 +11,6 @@
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | トピック | 検証とカバレッジ |
 | 関連 | [BE-0295](../BE-0295-record-crawl-real-model-verification/BE-0295-record-crawl-real-model-verification-ja.md) |
-| 関連 | [BE-0295](../BE-0295-record-crawl-real-model-verification/BE-0295-record-crawl-real-model-verification-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
