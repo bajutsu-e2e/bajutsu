@@ -153,6 +153,12 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 | [BE-0294](BE-0294-codegen-uiautomator-real-compile/BE-0294-codegen-uiautomator-real-compile.md) | Real-compile verification for the UI Automator (Kotlin) codegen target | Proposal |
 <!-- /GENERATED:proposals-codegen -->
 
+### Self-healing triage
+
+<!-- GENERATED:proposals-self-healing -->
+
+<!-- /GENERATED:proposals-self-healing -->
+
 ### Surfacing CLI features in the serve Web UI
 
 <!-- GENERATED:proposals-serve-cli-features -->

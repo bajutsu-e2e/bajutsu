@@ -153,6 +153,12 @@
 | [BE-0294](BE-0294-codegen-uiautomator-real-compile/BE-0294-codegen-uiautomator-real-compile-ja.md) | UI Automator（Kotlin）codegen ターゲットの実コンパイル検証 | 提案 |
 <!-- /GENERATED:proposals-codegen -->
 
+### 自己修復トリアージ
+
+<!-- GENERATED:proposals-self-healing -->
+
+<!-- /GENERATED:proposals-self-healing -->
+
 ### serve Web UI への CLI 機能の取り込み
 
 <!-- GENERATED:proposals-serve-cli-features -->
