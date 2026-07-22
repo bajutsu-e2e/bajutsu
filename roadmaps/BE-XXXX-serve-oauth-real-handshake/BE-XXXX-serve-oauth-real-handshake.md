@@ -39,8 +39,9 @@ Proposal altitude. The work is MECE along the units below.
   client ID/secret used only for a one-time manual capture, never stored in CI). A maintainer
   manually completes one real authorization-code exchange against it and saves the raw HTTP
   responses — the token exchange, the user-identity lookup, and a representative org-list page —
-  with the real access token and any real login/org identifiers replaced by fixture values before
-  the responses are committed.
+  with the real access token and every real identifying field in the responses (login, org
+  identifiers, numeric user id, email, name, avatar URL, and any other PII GitHub returns)
+  replaced by fixture values before the responses are committed.
 - **Replay the captured responses through the real code, not a live CI login.** Getting the initial
   authorization `code` requires a human completing GitHub's hosted login-and-consent page —
   scripting that from a CI runner means logging into a live account programmatically, risking
@@ -59,7 +60,7 @@ Proposal altitude. The work is MECE along the units below.
 
 - **Drive a real, scripted headless browser login in CI.** This alternative was the first design
   considered here, but the initial authorization `code` can only come from a human completing GitHub's hosted
-  consent page — scripting that from CI means holding and driving a live account's credentials, with
+  login-and-consent page — scripting that from CI means holding and driving a live account's credentials, with
   GitHub's anti-automation defenses (2FA, device verification, CAPTCHA) able to fire unpredictably.
   That is a worse flakiness and secret-handling problem than the one this item sets out to solve.
 - **Trust the mocked-client tests, since the login flow's own logic is unit-tested.** The flow logic
