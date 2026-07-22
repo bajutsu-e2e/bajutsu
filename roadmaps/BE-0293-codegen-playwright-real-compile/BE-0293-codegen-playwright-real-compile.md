@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0293](BE-0293-codegen-playwright-real-compile.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Implemented** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0293") |
 | Implementing PR | [#1277](https://github.com/bajutsu-e2e/bajutsu/pull/1277) |
 | Topic | codegen coverage |

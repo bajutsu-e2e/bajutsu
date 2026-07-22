@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0293](BE-0293-codegen-playwright-real-compile-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **実装済み** |
+| 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0293") |
 | 実装 PR | [#1277](https://github.com/bajutsu-e2e/bajutsu/pull/1277) |
 | トピック | codegen 網羅性 |
