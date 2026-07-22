@@ -86,15 +86,12 @@ def test_ids_on_git_ref_reads_ref_and_degrades(
 # --- allocate (end-to-end over a throwaway git repo) -----------------------------
 
 
-def test_allocate_rewrites_index(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_allocate_renames_placeholder_end_to_end(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     roadmap = tmp_path / "roadmaps"
     _make_item(roadmap, "BE-XXXX-demo-feature")  # the placeholder to allocate
     _make_item(roadmap, "BE-0003-existing")  # floor from the working tree
-    (roadmap / "README.md").write_text(
-        "| [demo](BE-XXXX-demo-feature/BE-XXXX-demo-feature.md) | Proposal |\n",
-        encoding="utf-8",
-    )
-    (roadmap / "README-ja.md").write_text("no rows here\n", encoding="utf-8")
     _git_init(tmp_path, monkeypatch)
     # origin/main is unavailable (no remote) -> {}; the next free id above the working-tree max (3).
 
@@ -105,9 +102,6 @@ def test_allocate_rewrites_index(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     assert not (roadmap / "BE-XXXX-demo-feature").exists()
     assert "BE-0004" in allocated.read_text(encoding="utf-8")
     assert "BE-XXXX" not in allocated.read_text(encoding="utf-8")
-    # The index row that named the placeholder path is renumbered (path + link text).
-    index = (roadmap / "README.md").read_text(encoding="utf-8")
-    assert "BE-0004-demo-feature" in index and "BE-XXXX" not in index
 
 
 def test_placeholder_dirs_orders_by_slug(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

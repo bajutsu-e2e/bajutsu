@@ -253,6 +253,13 @@ Japanese mirror) is updated to describe the fenced block. The tree is green unde
 - [x] Shipped — see the *Implementing PR* above. (The template was later extended from five sections
   to six by [BE-0100](../BE-0100-roadmap-progress-tracking-template/BE-0100-roadmap-progress-tracking-template.md),
   which added this `Progress` section and the `Related` / `Superseded by` fields.)
+- **Historical note:** the index-table mechanism this item describes in present tense —
+  `scripts/build_roadmap_index.py` as "the index generator", the generated index tables it names in
+  the Introduction, and the `<!-- GENERATED:* -->` marker convention the metadata fence is compared
+  to — was retired by [#1257](https://github.com/bajutsu-e2e/bajutsu/pull/1257): the roadmap
+  dashboard now covers what those tables did, and `build_roadmap_index.py` is purely a metadata
+  parser today. Read those mentions below as the design context this item was written against, not
+  current behavior.
 
 ## References
 

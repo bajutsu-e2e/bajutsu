@@ -301,6 +301,12 @@ and [BE-0078](../BE-0078-roadmap-status-folders/BE-0078-roadmap-status-folders.m
 ## Progress
 
 - [x] Shipped — see the *Implementing PR* above.
+- **Historical note:** the illustrative workflow snippet above still shows a
+  `python3 scripts/build_roadmap_index.py  # add the now-numbered rows` step. That call was retired
+  by [#1257](https://github.com/bajutsu-e2e/bajutsu/pull/1257) along with the generated `README.md` /
+  `README-ja.md` index tables it used to update — the `roadmap-id` workflow no longer runs it, since
+  there is nothing left for it to add a row to. The allocation mechanism this item describes
+  (claim, rename, push) is otherwise unaffected.
 
 ## References
 
