@@ -199,7 +199,7 @@ class RunEnvironment(Protocol):
     def records_video_up_front(self) -> bool:
         """Whether video capture must be wired before launch — so the app's cold start is recorded —
         rather than on demand after launch. True for web (its context records at creation) and for
-        the device backends (they start recording before the app launches). Gates `start`'s
+        the idb and Android backends (they start recording before the app launches). Gates `start`'s
         `record_video_dir` handling, and thus whether `prestarted_intervals` can be non-empty."""
 
     def prestarted_intervals(self) -> list[intervals.Interval]:

@@ -323,7 +323,7 @@ class FileSink:
         A kind the environment already began before launch (a device backend's video, `_prestarted`)
         is adopted rather than started, so the recording spans the app launch; the finalized file is
         relocated here on stop. Otherwise a driver-supplied lane records via the injected
-        `driver_interval` provider (Playwright-native on web, adb `screenrecord`/`logcat` on Android),
+        `driver_interval` provider (Playwright-native on web, adb `logcat` on Android),
         and failing that the simctl starters drive iOS, which need a `udid`.
         """
         if not kinds:
