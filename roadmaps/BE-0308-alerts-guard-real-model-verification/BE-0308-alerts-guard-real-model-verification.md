@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-alerts-guard-real-model-verification-ja.md)
+**English** · [日本語](BE-0308-alerts-guard-real-model-verification-ja.md)
 
-# BE-XXXX — Real-model verification of the system-alert guard
+# BE-0308 — Real-model verification of the system-alert guard
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-alerts-guard-real-model-verification.md) |
+| Proposal | [BE-0308](BE-0308-alerts-guard-real-model-verification.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0308") |
 | Topic | Verification & coverage |
 | Related | [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md), [BE-0295](../BE-0295-record-crawl-real-model-verification/BE-0295-record-crawl-real-model-verification.md) |
 <!-- /BE-METADATA -->

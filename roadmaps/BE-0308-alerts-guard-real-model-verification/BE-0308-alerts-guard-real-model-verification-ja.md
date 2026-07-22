@@ -1,14 +1,14 @@
-[English](BE-XXXX-alerts-guard-real-model-verification.md) · **日本語**
+[English](BE-0308-alerts-guard-real-model-verification.md) · **日本語**
 
-# BE-XXXX — システムアラートガードの実モデル検証
+# BE-0308 — システムアラートガードの実モデル検証
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-alerts-guard-real-model-verification-ja.md) |
+| 提案 | [BE-0308](BE-0308-alerts-guard-real-model-verification-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0308") |
 | トピック | 検証とカバレッジ |
 | 関連 | [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md), [BE-0295](../BE-0295-record-crawl-real-model-verification/BE-0295-record-crawl-real-model-verification-ja.md) |
 <!-- /BE-METADATA -->
