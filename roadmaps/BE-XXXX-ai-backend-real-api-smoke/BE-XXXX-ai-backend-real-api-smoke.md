@@ -51,7 +51,7 @@ Proposal altitude. The work is MECE along the units below.
   `AnthropicBackend` with a trivial prompt and a forced `tool_choice`, gated via `pytest.mark.skipif`
   on a dedicated opt-in flag (e.g. `BAJUTSU_LIVE_AI_SMOKE=1`) in addition to `ANTHROPIC_API_KEY` (or
   the Bedrock/`ant` equivalent credential) — key presence alone isn't a safe gate, since contributor
-  sessions that already export the key for `record` (per `CLAUDE.md`) or for `triage --agent claude`
+  sessions that already export the key for `record` (per `CLAUDE.md`) or for `triage --ai`
   (`bajutsu/cli/commands/triage.py`) would otherwise fire a real, paid call on an ordinary
   `make check`. The test only checks that the adapter's normalized
   `MessageResponse`/`ToolUseBlock` shape comes back populated and parses — never anything about what
