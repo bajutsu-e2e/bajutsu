@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-settle-value-condition-wait-ja.md)
+**English** · [日本語](BE-0299-settle-value-condition-wait-ja.md)
 
-# BE-XXXX — Close the read-race gap in mid-scenario reads and idb's settle timing
+# BE-0299 — Close the read-race gap in mid-scenario reads and idb's settle timing
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-settle-value-condition-wait.md) |
+| Proposal | [BE-0299](BE-0299-settle-value-condition-wait.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0299") |
 | Topic | Driver & backend architecture |
 | Related | [BE-0245](../BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server.md), [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md) |
 <!-- /BE-METADATA -->

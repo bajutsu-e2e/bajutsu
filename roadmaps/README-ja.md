@@ -111,7 +111,9 @@
 ### ドライバとバックエンドのアーキテクチャ
 
 <!-- GENERATED:proposals-driver-architecture -->
-
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0299](BE-0299-settle-value-condition-wait/BE-0299-settle-value-condition-wait-ja.md) | シナリオ途中の読み取りと idb の settle タイミングに残る読み取り競合を解消する | 提案 |
 <!-- /GENERATED:proposals-driver-architecture -->
 
 ### デバイスクラウド実行

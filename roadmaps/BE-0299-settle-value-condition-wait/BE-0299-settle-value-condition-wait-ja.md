@@ -1,14 +1,14 @@
-[English](BE-XXXX-settle-value-condition-wait.md) · **日本語**
+[English](BE-0299-settle-value-condition-wait.md) · **日本語**
 
-# BE-XXXX — シナリオ途中の読み取りと idb の settle タイミングに残る読み取り競合を解消する
+# BE-0299 — シナリオ途中の読み取りと idb の settle タイミングに残る読み取り競合を解消する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-settle-value-condition-wait-ja.md) |
+| 提案 | [BE-0299](BE-0299-settle-value-condition-wait-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0299") |
 | トピック | ドライバとバックエンドのアーキテクチャ |
 | 関連 | [BE-0245](../BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server-ja.md)、[BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md) |
 <!-- /BE-METADATA -->

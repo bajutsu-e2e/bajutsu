@@ -111,7 +111,9 @@ Under consideration — not yet decided. Promote an item to *In progress* once w
 ### Driver & backend architecture
 
 <!-- GENERATED:proposals-driver-architecture -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0299](BE-0299-settle-value-condition-wait/BE-0299-settle-value-condition-wait.md) | Close the read-race gap in mid-scenario reads and idb's settle timing | Proposal |
 <!-- /GENERATED:proposals-driver-architecture -->
 
 ### Device-cloud execution
