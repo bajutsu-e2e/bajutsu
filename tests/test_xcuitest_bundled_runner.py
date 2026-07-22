@@ -375,3 +375,107 @@ def test_runner_source_never_runs_build_or_materializes(
     assert xcuitest.runner_source(cfg, "simulator") == (
         f"testRunner: {missing} (missing, built on demand via: make runner)"
     )
+
+
+# --- build-info: the toolchain the bundled runner was built against (BE-0292) --- #
+
+
+def test_build_info_reads_recorded_metadata(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    bundle = _products(tmp_path / "bundle")
+    (bundle / "build-info.json").write_text('{"xcode": "16.0", "sdk": "18.0"}')
+    monkeypatch.setattr(_bundled_runner, "bundled_products_dir", lambda: bundle)
+    assert _bundled_runner.bundled_runner_build_info() == {"xcode": "16.0", "sdk": "18.0"}
+
+
+def test_build_info_is_none_without_a_bundle(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(_bundled_runner, "bundled_products_dir", lambda: None)
+    assert _bundled_runner.bundled_runner_build_info() is None
+
+
+def test_build_info_is_none_when_absent_or_malformed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # An older bundle predating this metadata (file absent) and a corrupt file both mean "nothing to
+    # compare"; both collapse to None so the mismatch note simply doesn't fire.
+    bundle = _products(tmp_path / "bundle")
+    monkeypatch.setattr(_bundled_runner, "bundled_products_dir", lambda: bundle)
+    assert _bundled_runner.bundled_runner_build_info() is None
+    (bundle / "build-info.json").write_text("}{ not json")
+    assert _bundled_runner.bundled_runner_build_info() is None
+    # Valid JSON that isn't an object (a scalar / array) is also "nothing to compare".
+    (bundle / "build-info.json").write_text("42")
+    assert _bundled_runner.bundled_runner_build_info() is None
+
+
+def test_build_info_coerces_non_string_values(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # A field written as a JSON number must reach the version comparison as a string, not an int.
+    bundle = _products(tmp_path / "bundle")
+    monkeypatch.setattr(_bundled_runner, "bundled_products_dir", lambda: bundle)
+    (bundle / "build-info.json").write_text('{"xcode": 16, "sdk": 18.0}')
+    assert _bundled_runner.bundled_runner_build_info() == {"xcode": "16", "sdk": "18.0"}
+
+
+# --- toolchain mismatch: a pure disclosure the doctor summary appends (BE-0292) --- #
+
+
+def test_toolchain_warning_is_none_without_build_info() -> None:
+    assert xcuitest.bundled_runner_toolchain_warning(None, "16.0", "18.0") is None
+
+
+def test_toolchain_warning_is_none_when_majors_agree() -> None:
+    # A point-release difference stays compatible, so it must not warn.
+    info = {"xcode": "16.0", "sdk": "18.0"}
+    assert xcuitest.bundled_runner_toolchain_warning(info, "16.2", "18.4") is None
+
+
+def test_toolchain_warning_flags_an_xcode_major_mismatch() -> None:
+    info = {"xcode": "16.0", "sdk": "18.0"}
+    warning = xcuitest.bundled_runner_toolchain_warning(info, "15.4", "18.0")
+    assert warning is not None
+    assert "Xcode 16.0 (bundled runner) vs 15.4 (host)" in warning
+    # Names the escape hatch so a mismatched host has a concrete next step.
+    assert "xcuitest.testRunner" in warning and "xcuitest.build" in warning
+
+
+def test_toolchain_warning_flags_an_sdk_major_mismatch() -> None:
+    info = {"xcode": "16.0", "sdk": "18.0"}
+    warning = xcuitest.bundled_runner_toolchain_warning(info, "16.0", "17.5")
+    assert warning is not None
+    assert "iphonesimulator SDK 18.0 (bundled runner) vs 17.5 (host)" in warning
+
+
+def test_toolchain_warning_is_none_when_host_is_unknown() -> None:
+    # A non-macOS host (or one without Xcode) probes to None; with nothing to compare, stay quiet.
+    info = {"xcode": "16.0", "sdk": "18.0"}
+    assert xcuitest.bundled_runner_toolchain_warning(info, None, None) is None
+
+
+def test_toolchain_note_fires_only_for_the_bundled_tier(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(
+        xcuitest, "bundled_runner_build_info", lambda: {"xcode": "16.0", "sdk": "18.0"}
+    )
+
+    def mismatch() -> tuple[str | None, str | None]:
+        return ("15.4", "18.0")
+
+    # Bundled tier (no testRunner, simulator): the mismatch note is disclosed.
+    note = xcuitest.bundled_runner_toolchain_note(None, "simulator", mismatch)
+    assert note is not None and "Xcode 16.0 (bundled runner) vs 15.4 (host)" in note
+
+    # An explicit testRunner resolves to that runner, not the bundle — so no note; the probe is never
+    # even called, so a raising stub proves the tier gate short-circuits before any subprocess.
+    def _unreachable() -> tuple[str | None, str | None]:
+        raise AssertionError("host toolchain must not be probed off the bundled tier")
+
+    runner = tmp_path / "Explicit.xctestrun"
+    runner.write_bytes(b"")
+    cfg = XcuitestConfig.model_validate({"testRunner": str(runner)})
+    assert xcuitest.bundled_runner_toolchain_note(cfg, "simulator", _unreachable) is None
+    # A device target's runner is signed and not bundled — so no bundled-runner note either.
+    assert xcuitest.bundled_runner_toolchain_note(None, "device", _unreachable) is None

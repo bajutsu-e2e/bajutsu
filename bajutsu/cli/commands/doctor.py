@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import typer
@@ -29,7 +30,9 @@ from bajutsu.config import (
 )
 from bajutsu.doctor import DoctorProbeError, probe_screen, render, score
 from bajutsu.drivers import base
+from bajutsu.idb_version import parse_version
 from bajutsu.platform_lifecycle.environments.xcuitest import (
+    bundled_runner_toolchain_note,
     effective_device_type,
     runner_source,
 )
@@ -104,17 +107,48 @@ def actuator_resolution_summary(
     return lines
 
 
+def _tool_version(cmd: list[str]) -> str | None:
+    """Run a version-printing tool and return its dotted version, or `None` when unavailable.
+
+    Reuses `idb_version.parse_version` to pull the number out of e.g. `Xcode 16.0`, and reads stderr
+    as well as stdout because `xcodebuild -version` can print there. Any failure — an absent tool on a
+    non-macOS host, no Xcode, or a non-zero exit (`check=True` raises `CalledProcessError`, a
+    `SubprocessError`) — yields `None` so a stray number in an error banner can't be read as a
+    version, and the bundled-runner mismatch note (BE-0292) simply doesn't fire.
+    """
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=15, check=True)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return parse_version(proc.stdout + proc.stderr)
+
+
+def _host_toolchain() -> tuple[str | None, str | None]:
+    """The host's active Xcode version and Simulator SDK version, each `None` when unavailable."""
+    xcode = _tool_version(["xcodebuild", "-version"])
+    sdk = _tool_version(["xcrun", "--sdk", "iphonesimulator", "--show-sdk-version"])
+    return xcode, sdk
+
+
 def xcuitest_runner_summary(eff: Effective, actuator: str) -> list[str]:
     """Which runner-resolution tier the target's xcuitest config would use (BE-0292).
 
     Informational only — `runner_source` is a pure precedence check, so this discloses the source
-    without running a configured `build` command or materializing the bundled runner. Empty for any
-    actuator other than `xcuitest`, since no other backend resolves a runner this way.
+    without running a configured `build` command or materializing the bundled runner. When the target
+    resolves to the bundled runner, a second line warns if the host Xcode / Simulator SDK differs from
+    the toolchain that runner was built against, naming the `testRunner` / `build` escape hatch.
+    Empty for any actuator other than `xcuitest`, since no other backend resolves a runner this way.
     """
     if actuator != "xcuitest":
         return []
     xcfg = require_ios(eff).xcuitest
-    return [f"xcuitest runner: {runner_source(xcfg, effective_device_type(xcfg))}"]
+    device_type = effective_device_type(xcfg)
+    lines = [f"xcuitest runner: {runner_source(xcfg, device_type)}"]
+    # Pass the probe, not its result: the note calls it only for the bundled tier, so a target with an
+    # explicit testRunner spawns no xcodebuild/xcrun.
+    if note := bundled_runner_toolchain_note(xcfg, device_type, _host_toolchain):
+        lines.append(f"  ⚠ {note}")
+    return lines
 
 
 def doctor(

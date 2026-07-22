@@ -10,6 +10,7 @@ wheel stays pure-Python; the bytes ride along as unused data.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import shutil
 import tempfile
@@ -24,6 +25,10 @@ import bajutsu
 # in a plain source checkout and on a Linux wheel, so callers treat "no bundle" as a normal state.
 _BUNDLE_DIR = Path(__file__).resolve().parents[2] / "_xcuitest_runner"
 _RUNNER_NAME = "BajutsuRunner.xctestrun"
+# The toolchain metadata `make runner-bundle` records beside the products: the Xcode and Simulator
+# SDK versions the runner was built against, so `doctor` can warn when the host toolchain differs
+# from them rather than letting the mismatch surface as an opaque `xcodebuild` launch failure.
+_BUILD_INFO_NAME = "build-info.json"
 # Marks an in-flight copy's temp directory; the sweep below matches on it and never on a real
 # cache directory (whose name is ``{version}-{digest}`` and carries no such marker).
 _PARTIAL_MARKER = ".partial-"
@@ -47,6 +52,29 @@ _digest_lock = threading.Lock()
 def bundled_products_dir() -> Path | None:
     """Return the packaged runner products directory if this build ships one, else ``None``."""
     return _BUNDLE_DIR if (_BUNDLE_DIR / _RUNNER_NAME).is_file() else None
+
+
+def bundled_runner_build_info() -> dict[str, str] | None:
+    """The toolchain metadata recorded beside the bundled runner, or ``None`` when unavailable.
+
+    Returns the ``{"xcode": ..., "sdk": ...}`` map ``make runner-bundle`` wrote (see
+    ``_BUILD_INFO_NAME``). ``None`` covers every "nothing to compare" case a caller treats alike: no
+    bundle, an older bundle built before this metadata was recorded, or a file that fails to parse.
+    Values are coerced to strings so a malformed field can't reach the version comparison as a
+    non-string.
+    """
+    products = bundled_products_dir()
+    if products is None:
+        return None
+    try:
+        raw = json.loads((products / _BUILD_INFO_NAME).read_text())
+    except (OSError, ValueError):
+        return None
+    if not isinstance(raw, dict):
+        return None
+    # JSON object keys are always strings; coerce only the values so a malformed field (e.g. a number)
+    # can't reach the version comparison as a non-string.
+    return {k: str(v) for k, v in raw.items()}
 
 
 def _cache_root() -> Path:

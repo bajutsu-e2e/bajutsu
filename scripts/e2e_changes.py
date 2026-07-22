@@ -86,7 +86,8 @@ _LANE_PATHS: dict[str, str] = {
         r"|BajutsuKit/"
         r"|demos/showcase/ios/swiftui/"
         r"|demos/showcase/ios/uikit/"
-        r"|demos/showcase/showcase\.config\.yaml$"
+        # The main config and the BE-0292 bundled-runner config the `xcuitest (multi-touch)` job runs.
+        r"|demos/showcase/showcase(?:\.[^/]+)?\.config\.yaml$"
         r"|demos/showcase/scenarios/"
         r"|Makefile$"
         # The showcase's own Makefile (`e2e-visual` and friends) — the top-level `Makefile$` above is

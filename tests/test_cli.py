@@ -864,6 +864,79 @@ def test_xcuitest_runner_summary_empty_for_other_actuators() -> None:
     assert xcuitest_runner_summary(eff, "idb") == []
 
 
+def test_tool_version_degrades_on_failure_and_reads_stderr(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # BE-0292: the host toolchain probe must degrade to None on any failure (so the mismatch note
+    # doesn't fire on a non-macOS host) and must read stderr (xcodebuild -version prints there).
+    import subprocess as sp
+
+    from bajutsu.cli.commands import doctor
+
+    def _raise(*args: object, **kwargs: object) -> object:
+        raise OSError("no such tool")
+
+    monkeypatch.setattr(doctor.subprocess, "run", _raise)
+    assert doctor._tool_version(["missing-tool"]) is None
+
+    def _nonzero(*args: object, **kwargs: object) -> object:
+        # check=True turns this into CalledProcessError; a stray "1.2" must NOT be read as a version.
+        raise sp.CalledProcessError(1, "cmd", output="error near 1.2", stderr="")
+
+    monkeypatch.setattr(doctor.subprocess, "run", _nonzero)
+    assert doctor._tool_version(["failing-tool"]) is None
+
+    def _junk(*args: object, **kwargs: object) -> sp.CompletedProcess[str]:
+        return sp.CompletedProcess([], 0, stdout="no version here", stderr="")
+
+    monkeypatch.setattr(doctor.subprocess, "run", _junk)
+    assert doctor._tool_version(["quiet-tool"]) is None
+
+    def _stderr_only(*args: object, **kwargs: object) -> sp.CompletedProcess[str]:
+        return sp.CompletedProcess([], 0, stdout="", stderr="Xcode 16.0")
+
+    monkeypatch.setattr(doctor.subprocess, "run", _stderr_only)
+    assert doctor._tool_version(["xcodebuild"]) == "16.0"
+
+
+def test_xcuitest_runner_summary_warns_on_a_bundled_toolchain_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # BE-0292: a target with no testRunner resolves to the bundled runner, so doctor appends a
+    # mismatch warning when the host Xcode major differs from the toolchain the bundle recorded.
+    from bajutsu.cli.commands import doctor
+    from bajutsu.config import XcuitestConfig
+    from bajutsu.platform_lifecycle.environments import xcuitest as xc
+    from bajutsu.scenario import Redact
+
+    # A non-None products dir makes `runner_source` report the bundled tier for the first line; the
+    # note's own tier check keys on the empty XcuitestConfig (no testRunner), not on this stub.
+    monkeypatch.setattr(xc, "bundled_products_dir", lambda: object())
+    monkeypatch.setattr(xc, "bundled_runner_build_info", lambda: {"xcode": "16.0", "sdk": "18.0"})
+    monkeypatch.setattr(doctor, "_host_toolchain", lambda: ("15.4", "18.0"))
+    eff = Effective(
+        target="app",
+        platform_config=IosConfig(bundle_id="com.example.demo", xcuitest=XcuitestConfig()),
+        backend=["xcuitest"],
+        device="",
+        locale="en_US",
+        launch_env={},
+        launch_args=[],
+        id_namespaces=[],
+        reserved_namespaces=[],
+        mock_server=None,
+        setup=None,
+        capture=[],
+        redact=Redact(),
+    )
+    lines = doctor.xcuitest_runner_summary(eff, "xcuitest")
+    assert lines[0] == "xcuitest runner: bundled (wheel-shipped Simulator runner)"
+    assert len(lines) == 2
+    assert "⚠" in lines[1]
+    assert "Xcode 16.0 (bundled runner) vs 15.4 (host)" in lines[1]
+    assert "xcuitest.testRunner" in lines[1]
+
+
 def test_current_screen_fake_backend_queries_the_driver(monkeypatch: pytest.MonkeyPatch) -> None:
     # For a non-xcuitest actuator, `doctor` scores whatever the driver's query() returns. The fake
     # backend needs no device, so resolving the udid is the only thing to stub away.
