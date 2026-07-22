@@ -39,9 +39,12 @@ what the person who wrote it believes GitHub returns.
 
 Proposal altitude. The work is MECE along the units below.
 
-- **A throwaway GitHub App for CI.** Register a minimal test-only GitHub App installed on a
-  disposable or low-privilege test repository, with its private key stored as a repository secret —
-  scoped to nothing beyond what `installation_token` needs.
+- **A throwaway GitHub App for CI.** Register a minimal test-only GitHub App — scoped to nothing
+  beyond what `installation_token` needs — installed on a disposable or low-privilege test
+  repository, with its private key stored as a repository secret.
+  [BE-0302](../BE-0302-config-source-real-repo-fetch/BE-0302-config-source-real-repo-fetch.md)'s
+  private-repo-fetch option needs the same kind of throwaway App on the same kind of repository;
+  reuse one App/repository pair across both items rather than standing up two.
 - **A key-gated live integration test.** Add a test that runs the real `_app_jwt` →
   `installation_token` → `_fetch` chain against that real App and repository, skipped when the
   secret is absent so `make check` stays green and credential-free for every contributor.

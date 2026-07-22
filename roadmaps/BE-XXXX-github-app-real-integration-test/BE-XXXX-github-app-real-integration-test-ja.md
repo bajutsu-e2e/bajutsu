@@ -43,6 +43,9 @@ GitHub が拒否するクレーム形状やアルゴリズムの JWT、実際の
 - **CI 専用の使い捨て GitHub App**：使い捨て、あるいは低権限のテスト用リポジトリにインストール
   した、テスト専用の最小限の GitHub App を登録し、その秘密鍵をリポジトリの secret として保存
   します。`installation_token` が必要とする以上の権限は一切持たせません。
+  [BE-0302](../BE-0302-config-source-real-repo-fetch/BE-0302-config-source-real-repo-fetch-ja.md)
+  の非公開リポジトリ版オプションも、同じ種類の使い捨て App を同じ種類のリポジトリに必要とします。
+  2つ用意するのではなく、App とリポジトリの組を両項目で使い回します。
 - **秘密鍵で gate したライブ統合テスト**：実際の `_app_jwt` → `installation_token` → `_fetch`
   という一連の流れを、その実際の App と実際のリポジトリに対して実行するテストを追加します。
   secret がないときはスキップし、`make check` はどの contributor の環境でも認証情報不要のまま
