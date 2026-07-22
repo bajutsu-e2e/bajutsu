@@ -48,9 +48,10 @@ Proposal altitude. The work is MECE along the units below.
 - **A key-gated live integration test.** Add a test that runs the real `_app_jwt` →
   `installation_token` → `_fetch` chain against that real App and repository, skipped when the
   secret is absent so `make check` stays green and credential-free for every contributor.
-- **Assert the real response shape.** Confirm the real access-tokens response is still a JSON
-  object carrying the `id` / `token` fields the flow reads through `_json_field`, catching a schema
-  drift the hand-typed fixtures would not.
+- **Assert the real response shapes.** Confirm the real installation-lookup response still carries
+  the `id` field and the real access-tokens response the `token` field — the two fields the flow
+  reads through `_json_field` from two distinct endpoints — catching a schema drift the hand-typed
+  fixtures would not.
 - **Non-gating first.** Land the new job as CI signal, following the precedent in
   [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md),
   before considering it required.
@@ -72,7 +73,8 @@ Proposal altitude. The work is MECE along the units below.
 
 - [ ] Register a throwaway GitHub App for CI, scoped to a disposable test repository.
 - [ ] Add a key-gated live integration test for the JWT → installation-token → fetch chain.
-- [ ] Confirm the real access-tokens response still carries the `id` / `token` fields the flow reads.
+- [ ] Confirm the real installation-lookup and access-tokens responses still carry the `id` and
+  `token` fields the flow reads.
 - [ ] Wire it into CI as a non-gating signal.
 
 ## References
