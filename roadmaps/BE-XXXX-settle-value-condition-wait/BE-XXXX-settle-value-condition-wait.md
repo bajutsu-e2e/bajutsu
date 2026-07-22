@@ -1,0 +1,153 @@
+**English** · [日本語](BE-XXXX-settle-value-condition-wait-ja.md)
+
+# BE-XXXX — Close the read-race gap in mid-scenario reads and idb's settle timing
+
+<!-- BE-METADATA -->
+| Field | Value |
+|---|---|
+| Proposal | [BE-XXXX](BE-XXXX-settle-value-condition-wait.md) |
+| Author | [@0x0c](https://github.com/0x0c) |
+| Status | **Proposal** |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Topic | Driver & backend architecture |
+| Related | [BE-0245](../BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server.md), [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md) |
+<!-- /BE-METADATA -->
+
+## Introduction
+
+This item closes two related gaps in how Bajutsu's coordinate-based device backends — the iOS
+Simulator over idb, Android over adb — observe the screen shortly after a
+[step](../../docs/glossary.md#scenario-authoring) changes it. First, a step's `assert` and
+`extract` each read the accessibility tree exactly once and never retry, so a result the action
+mirrors into the tree a beat late — a counter reflected into a label, a field's edited text — can be
+missed outright. Second, the idb [driver](../../docs/glossary.md#driver-backend-actuator-platform)'s
+pre-action settle wait is bounded by a fixed number of polls rather than by elapsed time, so it grants
+far less margin than the equivalent Android wait once the machine running it is slow or loaded.
+Neither gap is new: [BE-0245](../BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server.md)
+diagnosed and fixed the same class of race at one read site — a scenario's trailing `expect` block —
+and converted the Android settle wait from a fixed poll count to a wall-clock deadline. This item
+carries both fixes the rest of the way: to every mid-scenario read, and to the idb settle wait.
+
+## Motivation
+
+Follow-up work on pull request #1221 (bundling the XCUITest Simulator runner) hit both gaps directly,
+in CI runs unrelated to that change. A showcase scenario's `extract` step captured a Log tab
+counter's value right after the second of two taps and got the value from before that tap, not
+after it; the scenario's later `assert` step then failed by comparing the captured value against the
+live, correct one. The same commit's iOS Simulator conformance suite failed a different assertion on
+three consecutive reruns of the same commit — a field's text length after a delete, then an element
+the suite expected to be focusable, then the field again — three unrelated-looking symptoms of one
+underlying race rather than three separate bugs. None of these lanes exercise the changed code; only
+continuous integration (CI)'s slower, more loaded machine reproduced the race, while a local run did
+not.
+
+Bajutsu already has the right fix for this race; it is just not applied everywhere the race can
+occur. `_evaluate_expect` (`bajutsu/orchestrator/loop.py:69`) evaluates a scenario's trailing
+`expect` block as a condition wait: it re-reads the tree and re-evaluates the block's assertions
+until they pass or a wall-clock deadline elapses, precisely because — in that function's own
+docstring, added by BE-0245 — "a value an action mirrors into the tree can land a beat after the
+action returns." Every other read that follows an action takes exactly one snapshot instead. A
+mid-scenario `assert` step reads the tree once (`bajutsu/orchestrator/loop.py:245`); an `extract`
+step reads it once more, through `_ScreenRead` (`bajutsu/orchestrator/loop.py:101`), which by design
+reads at most once per step. Whichever of these runs right after an action whose result is still
+propagating inherits the exact race `_evaluate_expect` was built to close, without the fix that
+closes it.
+
+The idb settle gap is a difference in tuning, not in mechanism, and sits in the same code path
+BE-0245 already touched on the Android side. `IdbDriver` and `AdbDriver` share a settle wait
+(`bajutsu/drivers/coordinate_tree.py`) that polls until an identifier-and-frame projection of the
+tree — deliberately excluding value, traits, and label — stops changing, so an ordinary data update
+on an otherwise static screen is not mistaken for the motion of a real gesture still landing.
+BE-0245 converted `AdbDriver._settle` from a fixed poll count to a poll bounded by an
+eight-second wall-clock deadline (`bajutsu/drivers/adb.py:230`), specifically because a fast read —
+the resident channel BE-0245 itself introduced — could otherwise collapse the settle window and let
+a still-moving tree pass as settled. `IdbDriver._settle` (`bajutsu/drivers/idb.py:335`–`336`) never
+received the same conversion: it still polls a fixed three times at a fifty-millisecond interval, a
+one-hundred-fifty-millisecond ceiling regardless of how loaded the machine running it is — fifty
+times narrower than the Android side's eight-second budget. A settle projection that excludes value
+already cannot detect a still-propagating value change, which is exactly the gap the paragraph above
+addresses; this second gap is narrower still, in how much margin idb grants even the layout stability
+its own projection is built to detect.
+
+## Detailed design
+
+Every unit below reuses the pattern BE-0245 already established rather than inventing a new one: a
+bounded poll on a wall-clock deadline, honoring the same wait-floor knob every condition wait in the
+runner already respects, never a fixed sleep.
+
+### Work breakdown (MECE)
+
+1. **Generalize `_evaluate_expect`'s poll into a shared, reusable retry.** Extract its
+   read-evaluate-repeat-until-passed-or-deadline loop out of its current, `expect`-specific shape
+   into a helper parameterized on which assertions to evaluate, so a second call site can reuse it
+   without duplicating the loop.
+
+2. **Route a mid-scenario `assert` step through that shared retry.** Replace the single
+   `driver.query()` at `bajutsu/orchestrator/loop.py:245` with a call into unit 1's helper, so a
+   step-level `assert` gets the same condition wait the trailing `expect` block already has, instead
+   of judging a value against one snapshot.
+
+3. **Give `extract`'s read the same forgiveness, on its own terms.** An `extract` step has no
+   assertion to satisfy — it copies a value out of the tree into a variable — so unit 1's
+   pass-or-fail loop does not fit it directly. Add a parallel read that instead polls until the
+   value-bearing projection of the tree it reads (identifier, frame, *and* value — a superset of the
+   settle projection in `bajutsu/drivers/coordinate_tree.py`) stops changing between two consecutive
+   reads, or the same wall-clock deadline elapses, and thread it into `_ScreenRead`'s read
+   (`bajutsu/orchestrator/loop.py:101`) so `extract` consumes the settled value rather than
+   whichever one was still propagating when the single read fired.
+
+4. **Convert `IdbDriver._settle` to a wall-clock deadline.** Replace its fixed
+   `_SETTLE_MAX_POLLS` / `_SETTLE_POLL_S` loop (`bajutsu/drivers/idb.py:335`–`336`) with the same
+   deadline-bounded shape `AdbDriver._settle` already uses (`bajutsu/drivers/adb.py:230`–`231`), so
+   idb's settle wait scales with how slow the machine running it actually is instead of a fixed
+   budget tuned for a fast one. This unit is independent of units 1–3: it fixes the driver's
+   pre-action wait, not the runner's post-action read.
+
+5. **Verify against the exact failures this item traces to.** Add a regression test that reproduces
+   the `extract`-after-tap race in `tests/test_driver_conformance_ondevice.py` or an equivalent
+   fast-gate test with a driver double that mirrors a value into the tree one read late, and confirm
+   the on-device showcase `extract` scenario and the iOS conformance suite that flaked during this
+   item's own motivation (`test_delete_text_reduces_the_field_length`,
+   `test_tap_point_focuses_the_field_like_a_semantic_tap`) pass repeatedly in CI rather than only
+   after a rerun.
+
+## Alternatives considered
+
+- **Make the settle projection in `bajutsu/drivers/coordinate_tree.py` include value everywhere,
+  instead of adding a separate value-aware read for `extract`.** Rejected: that projection is
+  shared by every action's pre-motion settle wait, not only the post-step read `extract` consumes,
+  and its docstring states the reason it excludes value today — an ordinary data update on an
+  otherwise static screen must not trigger extra polls before every action. Widening it would
+  reintroduce exactly that spurious-poll cost on every action, not only the one step that needed the
+  fix.
+
+- **Duplicate a retry loop at each read call site instead of a shared helper.** Rejected: a
+  hand-written poll at `assert`'s call site and another at `extract`'s would let the two drift out of
+  sync the next time the shared logic needs a fix — the same reason `_evaluate_expect`'s loop is
+  worth factoring out once rather than copied.
+
+- **Raise `IdbDriver`'s fixed poll count or interval instead of converting to a wall-clock
+  deadline.** Rejected: a larger fixed budget still runs out on a machine slower than whatever
+  motivated the new constants, the exact failure mode BE-0245 replaced on the Android side with a
+  deadline that scales with the machine actually running it.
+
+## Progress
+
+> Keep this current as work proceeds. The checklist mirrors the MECE work breakdown in
+> *Detailed design* (one box per unit of work); the log records what changed and when
+> (oldest first), linking the PRs.
+
+- [ ] Generalize `_evaluate_expect`'s poll into a shared, reusable retry.
+- [ ] Route a mid-scenario `assert` step through that shared retry.
+- [ ] Give `extract`'s read the same forgiveness, on its own terms (a value-aware settle).
+- [ ] Convert `IdbDriver._settle` to a wall-clock deadline, matching `AdbDriver._settle`.
+- [ ] Verify against the exact failures this item traces to (regression test + repeated CI runs).
+
+## References
+
+[BE-0245 — Resident UI Automator server for adb reads](../BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server.md),
+[BE-0114 — Driver conformance suite](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md),
+[`bajutsu/orchestrator/loop.py`](../../bajutsu/orchestrator/loop.py),
+[`bajutsu/drivers/coordinate_tree.py`](../../bajutsu/drivers/coordinate_tree.py),
+[`bajutsu/drivers/idb.py`](../../bajutsu/drivers/idb.py),
+[`bajutsu/drivers/adb.py`](../../bajutsu/drivers/adb.py)
