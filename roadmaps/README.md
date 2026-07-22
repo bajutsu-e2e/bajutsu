@@ -150,6 +150,12 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 | [BE-0293](BE-0293-codegen-playwright-real-compile/BE-0293-codegen-playwright-real-compile.md) | Real-compile verification for the Playwright (TypeScript) codegen target | Proposal |
 <!-- /GENERATED:proposals-codegen -->
 
+### Self-healing triage
+
+<!-- GENERATED:proposals-self-healing -->
+
+<!-- /GENERATED:proposals-self-healing -->
+
 ### Surfacing CLI features in the serve Web UI
 
 <!-- GENERATED:proposals-serve-cli-features -->

@@ -150,6 +150,12 @@
 | [BE-0293](BE-0293-codegen-playwright-real-compile/BE-0293-codegen-playwright-real-compile-ja.md) | Playwright（TypeScript）codegen ターゲットの実コンパイル検証 | 提案 |
 <!-- /GENERATED:proposals-codegen -->
 
+### 自己修復トリアージ
+
+<!-- GENERATED:proposals-self-healing -->
+
+<!-- /GENERATED:proposals-self-healing -->
+
 ### serve Web UI への CLI 機能の取り込み
 
 <!-- GENERATED:proposals-serve-cli-features -->
