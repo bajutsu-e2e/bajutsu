@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-xcuitest-live-real-grid-verification-ja.md)
+**English** · [日本語](BE-0303-xcuitest-live-real-grid-verification-ja.md)
 
-# BE-XXXX — Real-grid verification of the XCUITest live device-cloud route
+# BE-0303 — Real-grid verification of the XCUITest live device-cloud route
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-xcuitest-live-real-grid-verification.md) |
+| Proposal | [BE-0303](BE-0303-xcuitest-live-real-grid-verification.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0303") |
 | Topic | Device-cloud execution |
 <!-- /BE-METADATA -->
 
