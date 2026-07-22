@@ -2,10 +2,3 @@
 # resolver output (BE-0043). The `uv-lock` driver is wired by `make hooks` / `make setup`
 # (scripts/merge-uv-lock.sh); without it git falls back to the default merge, which is harmless.
 uv.lock merge=uv-lock
-
-# Regenerate the roadmap index tables from each BE item's metadata on a merge conflict instead
-# of line-merging the generated tables (BE-0043). The `roadmap-index` driver is wired by
-# `make hooks` / `make setup` (scripts/merge-roadmap-index.sh); without it git falls back to the
-# default merge, which is harmless.
-roadmaps/README.md merge=roadmap-index
-roadmaps/README-ja.md merge=roadmap-index

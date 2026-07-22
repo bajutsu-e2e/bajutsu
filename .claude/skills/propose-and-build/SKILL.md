@@ -63,7 +63,7 @@ defines how the implementation branch **adopts** the id afterward.
                                     │
                                     ▼
    #2: rebase onto origin/main · rewrite BE-XXXX→BE-NNNN in the diff · retarget base→main
-       · run implement-be steps 8–10 (flip Status, Implementing PR row, reindex, gate, [BE-NNNN] title)
+       · run implement-be steps 8–10 (flip Status, Implementing PR row, gate, [BE-NNNN] title)
 ```
 
 The stack exists **only while PR #1 is open**. Once the proposal merges and the id is
@@ -182,15 +182,15 @@ implementation branch, in order:
 4. **Now that `BE-NNNN` exists, run the id-dependent `implement-be` steps:**
    - Self-assign the tracking issue (`implement-be` step 2 — it exists now).
    - Run `implement-be` steps 8–10: flip `Status: Implemented` + add the `Implementing PR`
-     row in **both** language files, ticking the `Progress` boxes; `make roadmap-index`;
-     `make check`; mark PR #2 ready (`gh pr ready`); and add the `[BE-NNNN]` title prefix so
+     row in **both** language files, ticking the `Progress` boxes; `make check`; mark PR #2
+     ready (`gh pr ready`); and add the `[BE-NNNN]` title prefix so
      [`pr-title`](../../../.github/workflows/pr-title.yml) is satisfied once the branch encodes
      the id.
 
 ## Machine-checkable outcome
 
 The skill is a procedure, so the deterministic outcome is the existing gate applied to whatever
-PR #2 produces: `make check` green after the hand-off, the roadmap index reflecting
+PR #2 produces: `make check` green after the hand-off, the roadmap dashboard reflecting
 `Status: Implemented`, and — enforced by CI's `pr-title` check once the post-hand-off branch
 encodes `BE-NNNN` — the matching `[BE-NNNN]` title prefix. No new checker is added; correctness
 reduces to the already-gated `implement-be` end state plus the ordering discipline above.

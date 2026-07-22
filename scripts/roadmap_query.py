@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Filter roadmap (BE) items by ``Status`` and print one table for an AI session (BE-0162).
 
-``roadmaps/README.md`` is the full index — 700+ lines across four status buckets — so a session
-that only needs, say, the open proposals otherwise reads hundreds of irrelevant rows into context.
-This projects each item's own metadata (the authoritative source the index generator reads, not the
-rendered tables) into just the rows for one status, with the file path to open next::
+The [roadmap dashboard](https://bajutsu-e2e.github.io/bajutsu/api/roadmap.html) lists every item
+across all four status buckets, which is more than a session that only needs, say, the open
+proposals wants to read into context. This projects each item's own metadata (the authoritative
+source the dashboard itself reads) into just the rows for one status, with the file path to open
+next::
 
     python scripts/roadmap_query.py --status Proposal
 
@@ -31,8 +32,8 @@ from roadmap_ids import PLACEHOLDER, iter_item_dirs, numbered_match
 
 ROADMAP = Path("roadmaps")
 
-# The canonical statuses, in lifecycle order (most-progressed first) — the same set the index buckets
-# derive from. A CLI argument is matched case-insensitively against these.
+# The canonical statuses, in lifecycle order (most-progressed first) — the same set the dashboard's
+# buckets derive from. A CLI argument is matched case-insensitively against these.
 VALID_STATUSES: tuple[str, ...] = tuple(STATUS_TO_BUCKET)
 
 # The item's H1 title after the em dash. Accepts only the two valid id shapes — a numbered

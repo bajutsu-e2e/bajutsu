@@ -6,8 +6,8 @@ that can bypass `main`'s branch protection. That commit lands with no PR and no 
 check standing in its way, so this guard is the only gate on it, and it checks two things:
 
 - **Blast radius (BE-0089).** The legitimate commit is always the same narrow mechanical shape (a
-  `BE-XXXX` → `BE-NNNN` rename plus the regenerated index, all under `roadmaps/`); the guard fails
-  if it touches anything outside `roadmaps/`, capping any misuse of the high-value token.
+  `BE-XXXX` → `BE-NNNN` rename, all under `roadmaps/`); the guard fails if it touches anything
+  outside `roadmaps/`, capping any misuse of the high-value token.
 - **Format conformance (BE-0149).** Renumbering is the first moment a placeholder's shape becomes
   checkable, and it happens on this ungated path — so the guard also runs the stdlib format check
   over the renumbered tree. A placeholder that drifted out of shape while it sat in review (as
