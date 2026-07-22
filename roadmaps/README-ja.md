@@ -169,7 +169,9 @@
 ### AI プロバイダ設定
 
 <!-- GENERATED:proposals-ai-provider -->
-
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0300](BE-0300-ai-backend-real-api-smoke/BE-0300-ai-backend-real-api-smoke-ja.md) | AI バックエンドアダプタ向けの実 API 契約スモークレーン | 提案 |
 <!-- /GENERATED:proposals-ai-provider -->
 
 ### serve Web UI への CLI 機能の取り込み

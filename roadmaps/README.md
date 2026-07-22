@@ -169,7 +169,9 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 ### AI provider configuration
 
 <!-- GENERATED:proposals-ai-provider -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0300](BE-0300-ai-backend-real-api-smoke/BE-0300-ai-backend-real-api-smoke.md) | Real-API contract smoke lane for the AI backend adapters | Proposal |
 <!-- /GENERATED:proposals-ai-provider -->
 
 ### Surfacing CLI features in the serve Web UI
