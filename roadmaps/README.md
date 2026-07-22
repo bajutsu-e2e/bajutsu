@@ -141,6 +141,7 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 <!-- GENERATED:proposals-authoring -->
 
 <!-- /GENERATED:proposals-authoring -->
+
 ### codegen coverage
 
 <!-- GENERATED:proposals-codegen -->
@@ -148,6 +149,12 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 |---|---|---|
 | [BE-0293](BE-0293-codegen-playwright-real-compile/BE-0293-codegen-playwright-real-compile.md) | Real-compile verification for the Playwright (TypeScript) codegen target | Proposal |
 <!-- /GENERATED:proposals-codegen -->
+
+### AI provider configuration
+
+<!-- GENERATED:proposals-ai-provider -->
+
+<!-- /GENERATED:proposals-ai-provider -->
 
 ### Surfacing CLI features in the serve Web UI
 

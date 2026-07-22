@@ -141,6 +141,7 @@
 <!-- GENERATED:proposals-authoring -->
 
 <!-- /GENERATED:proposals-authoring -->
+
 ### codegen 網羅性
 
 <!-- GENERATED:proposals-codegen -->
@@ -148,6 +149,12 @@
 |---|---|---|
 | [BE-0293](BE-0293-codegen-playwright-real-compile/BE-0293-codegen-playwright-real-compile-ja.md) | Playwright（TypeScript）codegen ターゲットの実コンパイル検証 | 提案 |
 <!-- /GENERATED:proposals-codegen -->
+
+### AI プロバイダ設定
+
+<!-- GENERATED:proposals-ai-provider -->
+
+<!-- /GENERATED:proposals-ai-provider -->
 
 ### serve Web UI への CLI 機能の取り込み
 
