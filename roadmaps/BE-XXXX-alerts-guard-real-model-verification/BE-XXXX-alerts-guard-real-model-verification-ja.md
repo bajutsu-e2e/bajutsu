@@ -1,6 +1,6 @@
 [English](BE-XXXX-alerts-guard-real-model-verification.md) · **日本語**
 
-# BE-XXXX — Real-model verification of the system-alert guard
+# BE-XXXX — システムアラートガードの実モデル検証
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
-| トピック | Authoring experience (record / GUI editor) |
+| トピック | オーサリング体験（record / GUI エディタ） |
 <!-- /BE-METADATA -->
 
 ## はじめに
@@ -45,7 +45,7 @@
 - **API キーで gate したライブ検証テスト**：各フィクスチャに対して、実際の認証情報でガードの
   実際の視覚処理経路を呼び出し、返ってきた座標が正しい dismiss コントロールの frame 内に収まって
   いることを検証します。単に何らかの決定が返ってきたことだけを確認するのではありません。
-- **まず非 gating の signal として着地させる**：
+- **まずゲート対象外のシグナルとして着地させる**：
   [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md)
   の前例に従い、`record` に触れる CI レーンへ signal としてまず組み込み、必須チェックにするのは
   そのあとで検討します。
@@ -60,8 +60,8 @@
   *正しい*決定を出すかどうかについては何も語りません。それこそがここで問われている安全性の
   性質です。
 - **`record` の一般的なライブ利用テストでカバーされているとみなす**：そのようなテストは現状
-  存在しません。`record` 自体に実モデルによる CI カバレッジがないためです(record/crawl の実モデル
-  検証を扱う姉妹提案を参照)。したがって本項目が乗れる既存の安全網はありません。
+  存在しません。`record` 自体に実モデルによる CI カバレッジがないためです。したがって本項目が
+  乗れる既存の安全網はありません。
 
 ## 進捗
 
@@ -73,10 +73,10 @@
   含むケースを1つ以上含める)。
 - [ ] ガードが正しい dismiss コントロールを特定できることを検証する、API キーで gate したライブ
   テストを追加する。
-- [ ] 非 gating の signal として CI に組み込む。
+- [ ] ゲート対象外のシグナルとして CI に組み込む。
+- [ ] ループにおけるガードの役割が変わっていないことを確認する（検証するのは精度のみ）。
 
 ## 参考
 
-- [BE-0282 — CI における実 backend のネットワーク捕捉・モック・アサーションのカバレッジ](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md)
-- `bajutsu/agents/alerts.py`、`tests/test_alerts.py`(`_FixedLocator`、`FakeBackend`/`FakeBlock`)、
-  record と crawl の propose ループに対する実モデル検証を扱う姉妹提案
+- [BE-0282 — ネットワークのキャプチャ・モック・アサーションを CI で実バックエンド検証する](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md)
+- `bajutsu/agents/alerts.py`、`tests/test_alerts.py`(`_FixedLocator`、`FakeBackend`/`FakeBlock`)

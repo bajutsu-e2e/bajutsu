@@ -57,8 +57,7 @@ Proposal altitude. The work is MECE along the units below.
   reliably produces the *correct* decision when looking at a real alert, which is the actual safety
   property at stake.
 - **Treat this as covered by `record`'s general live-usage testing.** No such testing exists today —
-  `record` itself has no real-model CI coverage (see the sibling proposal on record/crawl real-model
-  verification) — so there is no existing net this item could ride on.
+  `record` itself has no real-model CI coverage — so there is no existing net this item could ride on.
 
 ## Progress
 
@@ -69,9 +68,9 @@ Proposal altitude. The work is MECE along the units below.
 - [ ] Capture a real-alert fixture set from the showcase app, including a destructive-control case.
 - [ ] Add a key-gated live test asserting the guard locates the correct dismiss control.
 - [ ] Wire it into CI as a non-gating signal.
+- [ ] Confirm the guard's role in the loop stays unchanged — this verifies accuracy only.
 
 ## References
 
 - [BE-0282 — Real-backend network capture, mock, and assertion coverage in CI](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md)
-- `bajutsu/agents/alerts.py`, `tests/test_alerts.py` (`_FixedLocator`, `FakeBackend`/`FakeBlock`),
-  the sibling proposal for real-model verification of the record and crawl propose loops
+- `bajutsu/agents/alerts.py`, `tests/test_alerts.py` (`_FixedLocator`, `FakeBackend`/`FakeBlock`)
