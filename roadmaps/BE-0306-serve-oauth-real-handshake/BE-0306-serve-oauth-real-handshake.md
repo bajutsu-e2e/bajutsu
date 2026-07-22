@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-serve-oauth-real-handshake-ja.md)
+**English** · [日本語](BE-0306-serve-oauth-real-handshake-ja.md)
 
-# BE-XXXX — Real OAuth handshake verification for serve's GitHub login
+# BE-0306 — Real OAuth handshake verification for serve's GitHub login
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-serve-oauth-real-handshake.md) |
+| Proposal | [BE-0306](BE-0306-serve-oauth-real-handshake.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0306") |
 | Topic | Verification & coverage |
 | Related | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md) |
 <!-- /BE-METADATA -->
