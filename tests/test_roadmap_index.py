@@ -147,7 +147,7 @@ def test_no_duplicate_be_ids() -> None:
 
 
 def test_load_items_loads_the_committed_roadmap_tree() -> None:
-    """The gate: every committed item parses, and its Topic maps to a known section (BE-0074)."""
+    """The gate: every committed item parses, and its Topic is one of the known topics (BE-0074)."""
     roadmap = Path(__file__).resolve().parent.parent / "roadmaps"
     items = bri.load_items(roadmap)
     assert items, "expected at least one roadmap item"

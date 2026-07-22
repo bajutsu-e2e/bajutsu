@@ -92,7 +92,7 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   [`docs/ai-development.md`](docs/ai-development.md#isolate-concurrent-sessions-with-worktrees).
 - **Right-size the model and reasoning effort (BE-0103).** Match a session's model/effort to the
   task: heavy work (implementing, refactors, design) runs on a capable model at high effort; light
-  chores (index regen, link fixes, mechanical renames) downshift. The in-repo skills carry a default
+  chores (a roadmap item's `Status` flip, link fixes, mechanical renames) downshift. The in-repo skills carry a default
   `model:` in their frontmatter, so the economical choice is automatic and still overridable. The
   task→capability matrix and the phase/subagent guidance live in
   [`docs/ai-development.md`](docs/ai-development.md#right-sizing-the-model-and-reasoning-effort-be-0103).

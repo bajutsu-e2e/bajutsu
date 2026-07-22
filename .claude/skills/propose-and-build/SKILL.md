@@ -63,7 +63,7 @@ defines how the implementation branch **adopts** the id afterward.
                                     │
                                     ▼
    #2: rebase onto origin/main · rewrite BE-XXXX→BE-NNNN in the diff · retarget base→main
-       · run implement-be steps 8–10 (flip Status, Implementing PR row, reindex, gate, [BE-NNNN] title)
+       · run implement-be steps 8–10 (flip Status, Implementing PR row, gate, [BE-NNNN] title)
 ```
 
 The stack exists **only while PR #1 is open**. Once the proposal merges and the id is

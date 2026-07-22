@@ -217,7 +217,7 @@ reflect it. Tasks map to one of three tiers along two axes — model and reasoni
 |---|---|---|---|
 | **Heavy** | `opus` | high | Implementing a BE item (`implement-be`), non-trivial refactors, architecture / design decisions, debugging a failing gate |
 | **Medium** | `sonnet` | moderate | Roadmap ideation / authoring (`ideation`), technical writing and translation review (`english-document-writing`, `japanese-document-writing`), PR review |
-| **Light** | `haiku` | low or none | Roadmap index regeneration / promote, doc formatting and link fixes, mechanical renames, lockfile / format chores, drafting a first-pass translation before the medium-tier review |
+| **Light** | `haiku` | low or none | Flipping a roadmap item's `Status`, doc formatting and link fixes, mechanical renames, lockfile / format chores, drafting a first-pass translation before the medium-tier review |
 
 The tier → model-id mapping lives only here, so re-pointing a tier at a new Claude model is a
 one-line change in one place. The model ids above are Claude Code aliases (`opus` / `sonnet` /
@@ -238,7 +238,8 @@ harness picks the right model when the skill runs — nothing to remember, still
 - [`roadmap-filter`](../.claude/skills/roadmap-filter/SKILL.md) → `haiku` (Light) — a read-only
   survey of the roadmap by `Status` (BE-0162): it wraps `make roadmap-status STATUS="…"` so a
   session lists just the items in one status (e.g. every open `Proposal`), with each item's file
-  path to open next, instead of reading the 700+-line `roadmaps/README.md` into context.
+  path to open next, instead of paging through the dashboard's rendered HTML or opening each item
+  file to check its `Status`.
 
 Most light-tier chores aren't skills, so that tier is otherwise reached interactively or by subagent
 delegation, below — `roadmap-filter` is the exception, since its whole job is one light,

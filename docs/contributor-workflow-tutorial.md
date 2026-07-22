@@ -66,8 +66,8 @@ In your session, invoke the skill:
 /ideation
 ```
 
-It is a **sounding board**, not a blank page. Before it proposes anything it reads the
-[roadmap index](../roadmaps/README.md), the
+It is a **sounding board**, not a blank page. Before it proposes anything it reads
+[`roadmaps/README.md`](../roadmaps/README.md) (what's already out of scope, unsorted ideas), the
 [implementation-status table](architecture.md#implementation-status) (so it never "proposes"
 something already shipped), and the BE items near your topic. Then it ideates *with* you — offering
 bounded shapes and asking the questions that sharpen scope: who is it for, which tier does it touch,
@@ -302,7 +302,7 @@ piece in depth:
   pre-push hook, worktrees, the strict BE-ID lifecycle, model tiers, and the PR title/body template.
 - [`CONTRIBUTING.md`](../CONTRIBUTING.md) — the human-contributor entry point and the environment
   setup.
-- [roadmaps/README](../roadmaps/README.md) — the index of every BE item and the per-item proposal
-  format you will fill in.
+- [roadmaps/README](../roadmaps/README.md) — how to add a roadmap item, what's already out of scope,
+  and unsorted ideas awaiting a BE number.
 - [`CLAUDE.md`](../CLAUDE.md) — the working agreement and the three prime directives every change
   honors.

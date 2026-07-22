@@ -8,7 +8,7 @@ description: >-
   proposal into shipped code. Treats the item's proposal as the spec, self-assigns the item's
   GitHub tracking issue, grounds the work in the prime directives, sets up a focused branch,
   plans and confirms before writing, implements with tests, reviews and refines the diff,
-  flips the item to Implemented (Status + reindex), and proves the gate is
+  flips the item's Status to Implemented, and proves the gate is
   green. The deterministic counterpart to the `ideation` skill: ideation authors proposals,
   this one ships them.
 ---
@@ -348,8 +348,8 @@ reviewers, and every genuine decision escalates to the human.
 - [`CLAUDE.md`](../../../CLAUDE.md) · [`DESIGN.md`](../../../DESIGN.md) — the prime
   directives every change must honor.
 - [`docs/ai-development.md`](../../../docs/ai-development.md) — parallel-work rules, the
-  gate, and the strict BE-ID lifecycle (Status ⇒ index bucket, flat one-directory layout, permanent IDs).
-- [`roadmaps/README.md`](../../../roadmaps/README.md) — the index and the per-item format.
+  gate, and the strict BE-ID lifecycle (Status ⇒ dashboard bucket, flat one-directory layout, permanent IDs).
+- [`roadmaps/README.md`](../../../roadmaps/README.md) — how to add a roadmap item and the per-item format.
 - [`pr-followup`](../pr-followup/SKILL.md) — the skill steps 11–12 loop over: after this skill
   opens the Draft PR, a paced `/loop` drives the mechanical tail (CI fixes, review replies) to
   quiet-and-green, running each iteration's `pr-followup` in a fresh subagent, so implement → PR →
