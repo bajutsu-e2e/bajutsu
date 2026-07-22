@@ -166,6 +166,12 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 | [BE-0296](BE-0296-triage-ai-real-model-verification/BE-0296-triage-ai-real-model-verification.md) | Real-model verification of the triage --ai diagnosis path | Proposal |
 <!-- /GENERATED:proposals-self-healing -->
 
+### Integration & automation (MCP)
+
+<!-- GENERATED:proposals-mcp -->
+
+<!-- /GENERATED:proposals-mcp -->
+
 ### AI provider configuration
 
 <!-- GENERATED:proposals-ai-provider -->

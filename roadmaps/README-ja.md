@@ -166,6 +166,12 @@
 | [BE-0296](BE-0296-triage-ai-real-model-verification/BE-0296-triage-ai-real-model-verification-ja.md) | triage --ai 診断経路の実モデル検証 | 提案 |
 <!-- /GENERATED:proposals-self-healing -->
 
+### 統合と自動化（MCP 化）
+
+<!-- GENERATED:proposals-mcp -->
+
+<!-- /GENERATED:proposals-mcp -->
+
 ### AI プロバイダ設定
 
 <!-- GENERATED:proposals-ai-provider -->
