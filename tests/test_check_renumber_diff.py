@@ -1,10 +1,10 @@
 """Tests for the merge-time renumber guard (BE-0089, BE-0149).
 
 The `roadmap-id` workflow's bypass token can push past `main`'s branch protection, so the legitimate
-commit is always the same narrow shape: a `BE-XXXX` → `BE-NNNN` rename plus the regenerated index,
-all under `roadmaps/`. The guard caps the blast radius of that token by failing if the staged commit
-touches anything outside `roadmaps/`, and (BE-0149) also runs the roadmap format check over the
-renumbered tree so a placeholder that drifted out of shape can't land red on `main`.
+commit is always the same narrow shape: a `BE-XXXX` → `BE-NNNN` rename, all under `roadmaps/`. The
+guard caps the blast radius of that token by failing if the staged commit touches anything outside
+`roadmaps/`, and (BE-0149) also runs the roadmap format check over the renumbered tree so a
+placeholder that drifted out of shape can't land red on `main`.
 """
 
 from __future__ import annotations

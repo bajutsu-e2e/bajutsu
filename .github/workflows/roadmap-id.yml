@@ -89,10 +89,6 @@ jobs:
             exit 0
           fi
 
-          # The index generator skips a BE-XXXX item, so a newly-numbered row appears only after the
-          # rename; regenerate here so the commit lands a complete, gate-green index.
-          python3 scripts/build_roadmap_index.py
-
           git add -A
           git commit -m "docs(roadmap): allocate BE IDs for merged placeholder items"
           # Gate the bypass-token commit before it lands on main: cap its blast radius to roadmaps/

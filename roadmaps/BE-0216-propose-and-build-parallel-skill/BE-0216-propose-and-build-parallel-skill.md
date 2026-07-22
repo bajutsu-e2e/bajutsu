@@ -229,6 +229,10 @@ discipline the SKILL.md encodes.
   (frontmatter + Phase A / Phase B / hand-off / guardrails), cross-link the `ideation` and
   `implement-be` skills both ways, and document the three-skill triangle in
   `docs/ai-development.md` (+ `docs/ja/` mirror) and the skill-tier list.
+- [#1257](https://github.com/bajutsu-e2e/bajutsu/pull/1257) — Retire `make roadmap-index` from the
+  hand-off's step 8–10 list above: the roadmap dashboard now covers what the generated README index
+  tables did, so there is nothing left to regenerate there. The rest of the hand-off (rebase, id
+  rewrite, base retarget, `Status` flip) is unaffected.
 
 ## References
 
