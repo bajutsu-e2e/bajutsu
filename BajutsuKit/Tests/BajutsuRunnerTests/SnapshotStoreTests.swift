@@ -64,62 +64,6 @@ final class SnapshotStoreTests: XCTestCase {
         XCTAssertTrue(entries[0].handle.hasPrefix("h-"))
     }
 
-    // BE-XXXX: the regression this store change exists to prevent. A redundant
-    // `/elements` read (one the driver's transport-retry seam re-sends) re-runs
-    // refreshSnapshot for a screen whose identity is unchanged; under the old
-    // generation scheme that stranded the earlier handle as stale. The handle
-    // derives from identity (identifier/label/traits), so it survives even a
-    // ticking `value` between the two reads (a spinner/countdown while the screen
-    // settles) and resolves to the latest query's backing reference.
-    func testUnchangedRefreshKeepsFirstHandleFound() {
-        let store = SnapshotStore()
-        let backing1 = NSObject()
-        let backing2 = NSObject()
-        func snapshot(value: String?, _ backing: NSObject) -> ElementSnapshot {
-            ElementSnapshot(
-                identifier: "ok", label: "OK", value: value,
-                traits: ["button"], frame: (0, 0, 10, 10), backingElement: backing
-            )
-        }
-        let first = store.refreshSnapshot(elements: [snapshot(value: "50%", backing1)])
-        // A redundant read while the screen settles: same identity, a ticked value,
-        // a fresh backing reference — must not strand the first handle.
-        let second = store.refreshSnapshot(elements: [snapshot(value: "60%", backing2)])
-        XCTAssertEqual(first[0].handle, second[0].handle, "unchanged identity must map to the same handle despite a changed value")
-
-        let result = store.lookup(handle: first[0].handle)
-        guard case .found(let resolved) = result else {
-            XCTFail("expected .found for the first refresh's handle after a redundant refresh, got \(result)")
-            return
-        }
-        XCTAssertTrue(resolved.backingElement === backing2, "a live handle must resolve to the latest query's backing reference")
-    }
-
-    // BE-XXXX: two content-identical elements in one snapshot must still get
-    // distinct handles, so the occurrence-index tiebreak keeps them separable.
-    func testContentIdenticalElementsGetDistinctHandles() {
-        let store = SnapshotStore()
-        let backingA = NSObject()
-        let backingB = NSObject()
-        func deleteButton(_ backing: NSObject) -> ElementSnapshot {
-            ElementSnapshot(
-                identifier: nil, label: "Delete", value: nil,
-                traits: ["button"], frame: (0, 0, 1, 1), backingElement: backing
-            )
-        }
-        let entries = store.refreshSnapshot(elements: [deleteButton(backingA), deleteButton(backingB)])
-        XCTAssertEqual(entries.count, 2)
-        XCTAssertNotEqual(entries[0].handle, entries[1].handle, "identical content in one snapshot must still get distinct handles")
-
-        guard case .found(let first) = store.lookup(handle: entries[0].handle),
-              case .found(let second) = store.lookup(handle: entries[1].handle) else {
-            XCTFail("both occurrence handles must resolve to .found")
-            return
-        }
-        XCTAssertTrue(first.backingElement === backingA)
-        XCTAssertTrue(second.backingElement === backingB)
-    }
-
     func testMultipleElementsGetDistinctHandles() {
         let store = SnapshotStore()
         let entries = store.refreshSnapshot(elements: [

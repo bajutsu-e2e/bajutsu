@@ -16,7 +16,7 @@ Two pieces live here, both faked at the network boundary so no grid is needed on
   screen with one broad locator, build the `base.Element` list, resolve the selector Python-side with
   `resolve_unique` (so an ambiguous selector fails immediately — determinism first, prime directive 2)
   and act on the chosen element by the WebDriver element id the query returned. The element id stands
-  in for the runner's opaque handle in the same query-resolve-act-by-handle flow.
+  in for the runner's per-snapshot handle in the same query-resolve-act-by-handle flow.
 
 Slice A landed session lifecycle, `query` / `tap` / `screenshot` / readiness. Slice B wires input and
 gestures onto Appium's XCUITest `mobile:` commands (over `POST /execute/sync`), the driver's native
@@ -44,7 +44,7 @@ from bajutsu.evidence import intervals
 
 # The W3C element-reference key: `findElements` returns each element as `{ELEMENT_KEY: "<id>"}`, and
 # every per-element request addresses it by that opaque id — the live counterpart of the runner's
-# opaque handle.
+# per-snapshot handle.
 ELEMENT_KEY = "element-6066-11e4-a52e-4f735466cecf"
 
 # The W3C key code for backspace: `delete_text` types it once per character to erase, the same run of
