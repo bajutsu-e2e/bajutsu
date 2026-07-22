@@ -1,6 +1,6 @@
 [English](BE-XXXX-ai-backend-real-api-smoke.md) · **日本語**
 
-# BE-XXXX — Real-API contract smoke lane for the AI backend adapters
+# BE-XXXX — AI backend アダプタ向けの実 API 契約 smoke レーン
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
-| トピック | AI provider configuration |
+| トピック | AI プロバイダ設定 |
 <!-- /BE-METADATA -->
 
 ## はじめに
@@ -21,7 +21,7 @@ vendor 非依存の AI backend
 すべて、手書きの代役（`tests/conftest.py` の `FakeAnthropic` / `FakeBlock`）を経由するだけで、実際の
 サービスを一度も通りません。テストスイートと CI のどちらにも、Bajutsu 自身のアダプタコードを通して
 Anthropic API / Bedrock / `ant` CLI に実際の呼び出しを完了させるものは1つもありません。本項目は、
-opt-in / API キー gated / 非 gating な smoke レーンを1つ追加し、実際のレスポンスを vendor 非依存の
+opt-in で API キーにより gate された、ゲート対象外の smoke レーンを1つ追加し、実際のレスポンスを vendor 非依存の
 リクエスト/レスポンス契約へアダプタが正しく変換できることを、モデルを `run` の判定に一切近づける
 ことなく証明します。
 
@@ -43,7 +43,7 @@ opt-in / API キー gated / 非 gating な smoke レーンを1つ追加し、実
 `agents/anthropic_client.py`、`ai/registry.py` はいずれも periphery で、AI extra の背後にあり、
 決定的コアはこれらを import しません。欠けているのは、periphery 自身が包むベンダーとの契約に対する
 カバレッジであり、しかももっとも安価な水準で足ります。実呼び出しはトランスポートとスキーマの検証で
-あって意味論的な検証ではないため、わずかなトークン数で済む最小限のプロンプトで配管を証明できます。
+あって意味論的な検証ではないため、わずかなトークン数で済む最小限のプロンプトで配線を証明できます。
 
 ## 詳細設計
 
@@ -53,11 +53,11 @@ opt-in / API キー gated / 非 gating な smoke レーンを1つ追加し、実
   プロンプトと強制的な `tool_choice` を渡すテストを追加します。`ANTHROPIC_API_KEY`（または
   Bedrock / `ant` 相当の認証情報）がないときは `pytest.mark.skipif` でスキップし、`make check`
   は今と変わらずキー不要のまま、どの contributor の環境でも green になります。
-- **アダプタごとに1つ、opt-in かつ非 gating の CI レーン**：直接 API / Bedrock / `ant` それぞれに
-  対して、リポジトリの secrets から実際の認証情報を渡してライブ呼び出しテストを実行する workflow
+- **アダプタごとに1つ、opt-in かつゲート対象外の CI レーン**：直接 API / Bedrock / `ant` それぞれに
+  対して、リポジトリの secrets から実際の認証情報を渡してライブ呼び出しテストを実行するワークフロー
   ジョブを用意します。
   [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md)
-  と同じ、非 gating の signal を先に着地させる前例に従います。
+  と同じ、まずゲート対象外のシグナルとして着地させる前例に従います。
 - **契約を検証し、内容は検証しない**：アダプタが正規化した `MessageResponse` /
   `ToolUseBlock` の形が空でなく返り、パースできることだけを確認するテストです。モデルが何を選んで話したか
   は問わず、あくまで配線の契約検証にとどめます。モデルの品質を判断するものではありません。
@@ -85,13 +85,13 @@ opt-in / API キー gated / 非 gating な smoke レーンを1つ追加し、実
 - [ ] 直接 Anthropic API アダプタ向けに、API キーで gate した最小限のライブ呼び出しテストを追加する。
 - [ ] Bedrock アダプタにも同様のテストを追加する。
 - [ ] `ant` CLI アダプタにも同様のテストを追加する。困難な場合はその理由を明示する。
-- [ ] アダプタごとに opt-in / 非 gating の CI レーンを組み込む。
+- [ ] アダプタごとに opt-in かつゲート対象外の CI レーンを組み込む。
 
 ## 参考
 
-- [BE-0104 — vendor 非依存の AI backend インターフェース](../BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend-ja.md)
-- [BE-0163 — Claude Code CLI のオーサリング backend を `ant` CLI OAuth AI provider へ置き換え](../BE-0163-ant-cli-oauth-provider/BE-0163-ant-cli-oauth-provider-ja.md)
-- [BE-0282 — CI における実 backend のネットワーク捕捉・モック・アサーションのカバレッジ](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md)
+- [BE-0104 — ベンダー中立な AI バックエンドインターフェース](../BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend-ja.md)
+- [BE-0163 — Claude Code CLI バックエンドを `ant` CLI の OAuth プロバイダに置き換える](../BE-0163-ant-cli-oauth-provider/BE-0163-ant-cli-oauth-provider-ja.md)
+- [BE-0282 — ネットワークのキャプチャ・モック・アサーションを CI で実バックエンド検証する](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md)
 - `bajutsu/ai/anthropic.py`、`bajutsu/agents/anthropic_client.py`、`bajutsu/ai/registry.py`、
   `tests/conftest.py`(`FakeAnthropic` / `FakeBlock`)、`tests/test_ai_anthropic_adapter.py`、
   `tests/test_anthropic_client.py`、`tests/test_ai_backend.py`
