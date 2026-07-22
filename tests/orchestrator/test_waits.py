@@ -755,8 +755,8 @@ def test_wait_guard_warns_once_when_it_gives_up(caplog) -> None:  # type: ignore
 
 
 def test_describe_wait_renders_each_condition() -> None:
-    """describe_wait states the awaited condition in the same wording as the timeout reason, for
-    every wait shape — so the live progress line and a later timeout read consistently."""
+    """describe_wait renders every wait shape in the live-progress wording — selectors as
+    `key=value`, which differs from `_wait`'s timeout reason (a raw selector dict)."""
     from bajutsu.orchestrator.waits import describe_wait
     from bajutsu.scenario import Wait
 
