@@ -1,11 +1,11 @@
 # Self-contained config for the top-level demo menu (the `tour` and `features` targets in
 # demos/Makefile). Runs the showcase SwiftUI accessibility app (demos/showcase/ios/swiftui/) on a
-# booted Simulator via idb, and pins `appPath` so `bajutsu run` installs the freshly-built app
+# booted Simulator via XCUITest, and pins `appPath` so `bajutsu run` installs the freshly-built app
 # automatically before each scenario. It mirrors the canonical demos/showcase/showcase.config.yaml
 # entry for showcase-swiftui, adding only the demo-specific `secrets` knob the `features` tour
 # uses to show masked-secret redaction.
 defaults:
-  backend: [idb]   # platform token -> the idb actuator today (see docs/drivers.md)
+  backend: [ios]   # platform token -> the XCUITest actuator (see docs/drivers.md)
   device: "iPhone 17 Pro"
   capture: [screenshot.after, elements, actionLog]
 targets:
@@ -22,6 +22,11 @@ targets:
     # (demos/), not the run's cwd (BE-0242).
     appPath: showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app
     build: make -C demos/showcase swiftui-build
+    # The XCUITest runner (`make -C demos/showcase runner-build`); path relative to this config's
+    # directory (demos/), like appPath above.
+    xcuitest:
+      testRunner: ../BajutsuKit/Runner/build/dd/Build/Products/BajutsuRunner.xctestrun
+      build: make -C demos/showcase runner-build
     # The canonical showcase scenarios; the menu's own tour/features scenarios live under the
     # non-globbed scenarios/menu/ subdir and are passed explicitly via --scenario.
     scenarios: showcase/scenarios

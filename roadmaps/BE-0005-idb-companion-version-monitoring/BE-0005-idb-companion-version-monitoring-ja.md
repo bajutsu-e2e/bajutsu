@@ -11,6 +11,7 @@
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0005") |
 | 実装 PR | [#227](https://github.com/bajutsu-e2e/bajutsu/pull/227) |
 | トピック | プラットフォーム対応 |
+| 無効化 | [BE-0290](../BE-0290-xcuitest-default-ios-backend/BE-0290-xcuitest-default-ios-backend-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
@@ -43,6 +44,7 @@ idb を実行する相手のバージョンを、暗黙の前提ではなく、r
 ## 進捗
 
 - [x] 出荷済み。上記の *実装 PR* を参照してください。
+- [x] [BE-0290](../BE-0290-xcuitest-default-ios-backend/BE-0290-xcuitest-default-ios-backend-ja.md) により無効化されました。idb を撤去したため、本項目が追加した `idb_companion` のバージョン監視（`idb_version` モジュール、manifest の `idb` プロヴェナンスブロック、`defaults.idbVersion` のピン）は削除されました。idb が消えると、これらのバージョンを生成するものはなくなります。
 
 ## 参考
 

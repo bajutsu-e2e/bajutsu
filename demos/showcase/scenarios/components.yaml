@@ -1,15 +1,15 @@
 # Codegen source (SPEC §5.4): a representative slice that `bajutsu codegen` transpiles into
 # a native XCUITest (demos/showcase/ios/swiftui/UITests/ComponentsUITests.swift, run by
 # `make -C demos/showcase ui-test`). Every step maps structurally to XCUITest — tap / type /
-# wait / assert exists / assert value — so the generated test needs no bajutsu runtime, idb,
+# wait / assert exists / assert value — so the generated test needs no bajutsu runtime
 # or AI at test time.
 #
 # The flows deliberately stay on plain buttons, a text field, and value assertions — the
-# surfaces XCUITest drives unambiguously. Two showcase controls that idb handles fine are
-# *not* in the codegen slice because XCUITest addresses them differently: a SwiftUI Toggle's
+# surfaces XCUITest drives unambiguously. Two showcase controls that a coordinate backend handled
+# fine are *not* in the codegen slice because XCUITest addresses them differently: a SwiftUI Toggle's
 # row-center tap doesn't flip under a coordinate tap, and a confirmationDialog renders its
 # buttons as duplicate tree elements (XCUITest's single-match lookup then fails). Both are
-# exercised by the idb scenarios (modals.yaml) instead.
+# exercised by the shared `run` scenarios (modals.yaml) instead.
 - name: filter sheet opens then closes
   preconditions:
     launchEnv: { SHOWCASE_UITEST: "1" }

@@ -17,7 +17,6 @@ from bajutsu.drivers import base
 from bajutsu.platform_lifecycle import (
     AndroidEnvironment,
     FakeEnvironment,
-    IosEnvironment,
     WebEnvironment,
     XcuitestEnvironment,
     environment_for,
@@ -26,7 +25,6 @@ from bajutsu.scenario import Preconditions, Relaunch, Scenario
 
 
 def test_environment_for_selects_by_actuator() -> None:
-    assert isinstance(environment_for("idb", "UDID"), IosEnvironment)
     assert isinstance(environment_for("xcuitest", "UDID"), XcuitestEnvironment)
     assert isinstance(environment_for("playwright", "UDID"), WebEnvironment)
     assert isinstance(environment_for("fake", "UDID"), FakeEnvironment)
@@ -38,7 +36,7 @@ def test_every_environment_satisfies_both_lease_surfaces() -> None:
     # (and the combined `Environment`), which is what lets `environment_for` feed either consumer.
     from bajutsu.platform_lifecycle import CrawlEnvironment, Environment, RunEnvironment
 
-    for actuator in ("idb", "xcuitest", "playwright", "fake", "adb"):
+    for actuator in ("xcuitest", "playwright", "fake", "adb"):
         env = environment_for(actuator, "UDID")
         assert isinstance(env, RunEnvironment)
         assert isinstance(env, CrawlEnvironment)
@@ -46,10 +44,10 @@ def test_every_environment_satisfies_both_lease_surfaces() -> None:
 
 
 def test_captures_video_is_true_for_the_simctl_backed_devices() -> None:
-    # The `record` bug BE-0256 fixes: idb *and* xcuitest share the same simctl-backed device, so both
-    # can record a scenario-wide video — `actuator == "idb"` silently skipped xcuitest. A platform
-    # that genuinely cannot record (fake: no device; web: captured by other means) stays False.
-    assert environment_for("idb", "UDID").captures_video() is True
+    # The `record` bug BE-0256 fixes: the simctl-backed iOS device (xcuitest) can record a
+    # scenario-wide video, so `captures_video` reads it from the Environment seam rather than a
+    # per-actuator name test. A platform that genuinely cannot record (fake: no device; web: captured
+    # by other means) stays False.
     assert environment_for("xcuitest", "UDID").captures_video() is True
     assert environment_for("fake", "UDID").captures_video() is False
     assert environment_for("playwright", "UDID").captures_video() is False
@@ -67,7 +65,7 @@ def test_resolve_device_routes_through_the_platform_resolver(
 
     monkeypatch.setattr(adb, "resolve_serial", lambda serial, run=None: f"adb:{serial}")
 
-    assert environment_for("idb", "UDID").resolve_device("booted") == "simctl:booted"
+    assert environment_for("xcuitest", "UDID").resolve_device("booted") == "simctl:booted"
     assert environment_for("xcuitest", "UDID").resolve_device("booted") == "simctl:booted"
     assert environment_for("adb", "UDID").resolve_device("emulator-5554") == "adb:emulator-5554"
     assert environment_for("playwright", "UDID").resolve_device("anything") == "anything"
@@ -161,7 +159,9 @@ def test_ios_environment_surfaces_a_failing_step_as_device_error() -> None:
         return ""
 
     with pytest.raises(simctl.DeviceError):
-        IosEnvironment("idb", "UDID", env_run=fake_run).start(_eff(), Preconditions(erase=True))
+        XcuitestEnvironment("xcuitest", "UDID", env_run=fake_run).start(
+            _eff(), Preconditions(erase=True)
+        )
 
 
 # --- The lease-shaping capabilities the pool used to branch on `is_web` for (BE-0009 Slice 2) --- #
@@ -171,76 +171,19 @@ def test_network_observation_strategy_is_per_platform() -> None:
     # Web observes by hooking the live driver/page; the device backends use an external receiver the
     # app reports to. This capability — not the actuator name — is what the pool branches on now.
     assert WebEnvironment("playwright").observes_network_via_driver() is True
-    assert IosEnvironment("idb", "UDID").observes_network_via_driver() is False
+    assert XcuitestEnvironment("xcuitest", "UDID").observes_network_via_driver() is False
     assert FakeEnvironment("fake", "UDID").observes_network_via_driver() is False
-
-
-def test_ios_start_records_video_before_launching_the_app(tmp_path: Path) -> None:
-    # The video must begin before `simctl launch` so the app's cold start is recorded; the running
-    # recording is exposed for the sink to adopt rather than started on demand after launch.
-    events: list[str] = []
-
-    def fake_run(args: list[str], extra_env: object = None) -> str:
-        if args[:3] == ["xcrun", "simctl", "launch"]:
-            events.append("launch")
-        return ""
-
-    class _Proc:
-        def stop(self, sig: int, timeout: float) -> None:
-            pass
-
-    def spawn(argv: list[str], stdout_path: object) -> _Proc:
-        events.append("record")
-        return _Proc()
-
-    env = IosEnvironment("idb", "UDID", env_run=fake_run, spawn=spawn)  # type: ignore[arg-type]
-    env.start(_ios_eff(), Preconditions(), record_video_dir=tmp_path)
-
-    assert events == ["record", "launch"]  # recording began before the app launched
-    started = env.prestarted_intervals()
-    assert len(started) == 1 and started[0].kind == "video"
-
-
-def test_ios_start_stops_the_prestarted_video_when_launch_fails(tmp_path: Path) -> None:
-    import signal
-    import subprocess
-
-    # A launch failure after the recording started must finalize it, not leave `recordVideo` running
-    # (an orphaned session wedges every later capture on the simulator).
-    stopped: list[int] = []
-
-    def fake_run(args: list[str], extra_env: object = None) -> str:
-        if args[:3] == ["xcrun", "simctl", "launch"]:
-            raise subprocess.CalledProcessError(1, args, output="", stderr="boom")
-        return ""
-
-    class _Proc:
-        def stop(self, sig: int, timeout: float) -> None:
-            stopped.append(sig)
-
-    env = IosEnvironment("idb", "UDID", env_run=fake_run, spawn=lambda argv, out: _Proc())
-    with pytest.raises(simctl.DeviceError):
-        env.start(_ios_eff(), Preconditions(), record_video_dir=tmp_path)
-
-    assert stopped == [signal.SIGINT]  # the recording was finalized, not leaked
-    assert env.prestarted_intervals() == []
-
-
-def test_devices_record_no_video_up_front_without_a_record_dir() -> None:
-    # With no record dir (video not requested), `start` begins no recording and the sink records on
-    # demand exactly as before — the up-front path is gated on the pool wiring the dir through.
-    env = IosEnvironment("idb", "UDID", env_run=lambda args, extra_env=None: "")
-    env.start(_ios_eff(), Preconditions())
-    assert env.prestarted_intervals() == []
 
 
 def test_devices_and_web_record_video_up_front_but_the_fake_does_not() -> None:
     # Video capture is wired before launch so the app's cold start is recorded: web binds it to the
-    # browser context at creation, and the device backends start recording before the app launches.
-    # The fake backend has no device to record, so it stays on the on-demand default.
+    # browser context at creation, and Android starts recording before the app launches. XCUITest's
+    # app launch lives inside the xcodebuild runner spawn, a separate path that still records on
+    # demand (no regression — idb, the only backend with the up-front path, is retired by BE-0290).
+    # The fake backend has no device to record, so it stays on the on-demand default too.
     assert WebEnvironment("playwright").records_video_up_front() is True
-    assert IosEnvironment("idb", "UDID").records_video_up_front() is True
     assert AndroidEnvironment("adb", "SER").records_video_up_front() is True
+    assert XcuitestEnvironment("xcuitest", "UDID").records_video_up_front() is False
     assert FakeEnvironment("fake", "UDID").records_video_up_front() is False
 
 
@@ -252,8 +195,8 @@ def test_device_catalog_is_empty_for_web_and_read_for_devices() -> None:
     catalog = json.dumps(
         {"devices": {"com.apple.CoreSimulator.SimRuntime.iOS-17-2": [{"udid": "U", "name": "X"}]}}
     )
-    seen = IosEnvironment(
-        "idb",
+    seen = XcuitestEnvironment(
+        "xcuitest",
         "U",
         env_run=lambda args, extra_env=None: catalog if args == simctl.list_devices_cmd() else "",
     ).device_catalog()
@@ -321,7 +264,7 @@ def test_device_teardown_terminates_the_app() -> None:
 
     from bajutsu.drivers.fake import FakeDriver
 
-    IosEnvironment("idb", "UDID-1", env_run=fake_run).teardown(FakeDriver([]), _eff())
+    XcuitestEnvironment("xcuitest", "UDID-1", env_run=fake_run).teardown(FakeDriver([]), _eff())
     assert ["xcrun", "simctl", "terminate", "UDID-1", "com.example.demo"] in calls
 
 
@@ -336,7 +279,7 @@ def test_crawl_health_seams_are_web_only() -> None:
     assert web.crawl_aliveness() is not None
     assert web.crawl_recover() is not None
     assert web.crawl_dialog_clearer() is not None
-    for device in (IosEnvironment("idb", "U"), FakeEnvironment("fake", "U")):
+    for device in (XcuitestEnvironment("xcuitest", "U"), FakeEnvironment("fake", "U")):
         assert device.crawl_aliveness() is None
         assert device.crawl_recover() is None
         assert device.crawl_dialog_clearer() is None
@@ -418,7 +361,7 @@ def test_device_crawl_reset_relaunches_the_app(monkeypatch: pytest.MonkeyPatch) 
 
     from bajutsu.drivers.fake import FakeDriver
 
-    IosEnvironment("idb", "U-1", env_run=fake_run).crawl_reset(_eff())(FakeDriver([]))
+    XcuitestEnvironment("xcuitest", "U-1", env_run=fake_run).crawl_reset(_eff())(FakeDriver([]))
     assert ["xcrun", "simctl", "terminate", "U-1", "com.example.demo"] in calls
     assert any(a[:3] == ["xcrun", "simctl", "launch"] and "U-1" in a for a in calls)
 
@@ -430,14 +373,16 @@ def test_plan_lanes_sizes_web_and_device_pools() -> None:
     assert web.plan_lanes("booted", 3) == ["web", "web", "web"]
     assert web.plan_lanes("booted", 0) == ["web"]  # at least one lane
 
-    device = IosEnvironment("idb", "")  # explicit udids resolve to themselves (no simctl call)
+    device = XcuitestEnvironment(
+        "xcuitest", ""
+    )  # explicit udids resolve to themselves (no simctl call)
     assert device.plan_lanes("U1,U2", 5) == ["U1", "U2"]  # capped to the pool
     assert device.plan_lanes("U1,U2,U3", 2) == ["U1", "U2"]  # capped to the workers
 
 
 def test_only_device_platforms_have_devices() -> None:
     assert WebEnvironment("playwright").has_devices() is False
-    assert IosEnvironment("idb", "U").has_devices() is True
+    assert XcuitestEnvironment("xcuitest", "U").has_devices() is True
     assert FakeEnvironment("fake", "U").has_devices() is True
 
 
@@ -525,8 +470,8 @@ def test_xcuitest_environment_start_launches_runner_and_creates_driver(
 def test_xcuitest_environment_applies_permissions_before_the_runner_launches(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # BE-0276: xcuitest shares the same simctl-backed pre-launch sequence as idb, so `permissions`
-    # runs before the xcodebuild runner process (and thus the app) ever starts.
+    # BE-0276: xcuitest's simctl-backed pre-launch sequence applies `permissions` before the
+    # xcodebuild runner process (and thus the app) ever starts.
     from bajutsu.config import XcuitestConfig
 
     simctl_calls: list[list[str]] = []

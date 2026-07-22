@@ -69,8 +69,9 @@ class XcuitestEnvironment(_DeviceEnvironment):
     """The XCUITest lifecycle: simctl device prep then a resident runner on the Simulator, or the
     same runner without simctl prep on a real device (BE-0019, real-device targeting BE-0238).
 
-    The simctl sequence (erase / boot / install) is the same as idb. The difference is how the app is
-    driven: instead of launching the app via simctl and actuating via idb CLI, we start an
+    The simctl sequence (erase / boot / install) is the standard iOS Simulator prep. The difference from
+    the previous coordinate-CLI approach is how the app is driven: instead of launching the app via
+    simctl and actuating over a coordinate CLI, we start an
     `xcodebuild test-without-building` subprocess that runs the BajutsuRunner XCTest target — the
     runner launches the app, starts an HTTP server on localhost, and Python drives it through the
     `XcuitestDriver` channel.
@@ -175,7 +176,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
                     str(self._patched_runner),
                     "-destination",
                     # Simulator vs real device (BE-0238); `_destination` validates the udid inline
-                    # before it lands on the argv, the same defense-in-depth simctl/idb apply.
+                    # before it lands on the argv, the same defense-in-depth simctl applies.
                     _destination(device_type, self._udid),
                 ],
                 env={**os.environ, **forwarded},

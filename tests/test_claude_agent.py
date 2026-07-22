@@ -574,7 +574,7 @@ def test_finish_label_contains_for_valueless_counter() -> None:
 def test_authored_valueless_selectors_resolve_uniquely() -> None:
     """A scenario authored against a no-id/no-value screen must produce selectors that the
     deterministic driver resolves to exactly one element — the half `run` replays without AI."""
-    # The home screen as idb reports it for a value-less no-id app: a label-only count text
+    # The home screen as the accessibility tree reports it for a value-less no-id app: a label-only count text
     # and a "+" button, plus two unlabeled fields distinguished only by placeholder/position.
     screen = [
         _vel("Count: 2", ["staticText"]),

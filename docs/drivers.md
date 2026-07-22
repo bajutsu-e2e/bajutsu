@@ -2,13 +2,13 @@
 
 # Driver abstraction, backends, and environment management
 
-> One `Driver` interface, behind which sit the [backends](glossary.md#driver-backend-actuator-platform) — `idb` (iOS Simulator), `adb` (Android
+> One `Driver` interface, behind which sit the [backends](glossary.md#driver-backend-actuator-platform) — `xcuitest` (iOS Simulator), `adb` (Android
 > emulator), `playwright` (web browser), plus the in-memory `fake` for tests — with capability
 > differences absorbed on the abstraction side. A platform-aware registry picks the actuator from
 > the `backend` list; on iOS, launching the app (boot/launch) is handled by a `simctl` wrapper, and
 > on Android by the twin `adb` wrapper.
 >
-> Implementation: `bajutsu/drivers/` (`base.py` / `idb.py` / `adb.py` / `playwright.py` / `fake.py`) ·
+> Implementation: `bajutsu/drivers/` (`base.py` / `xcuitest.py` / `adb.py` / `playwright.py` / `fake.py`) ·
 > `bajutsu/backends.py` · `bajutsu/simctl.py` · `bajutsu/adb.py`.
 
 Related: [selectors](selectors.md) (resolution) · [the stability ladder](concepts.md#5-the-stability-ladder) · [run-loop](run-loop.md)
@@ -46,16 +46,16 @@ class Driver(Protocol):
 The set of tokens returned by `capabilities()`, used for actuator selection, evidence fallback
 resolution, and the **preflight capability check** (below).
 
-| Capability | Meaning | idb | adb | playwright | fake |
+| Capability | Meaning | xcuitest | adb | playwright | fake |
 |---|---|:--:|:--:|:--:|:--:|
 | `query` | element-tree query | ✅ | ✅ | ✅ | ✅ |
 | `elements` | element-dump evidence | ✅ | ✅ | ✅ | ✅ |
 | `screenshot` | screenshot | ✅ | ✅ | ✅ | ✅ |
-| `semanticTap` | tap directly by id/label (no coordinates) | — | — | ✅ | ✅ |
-| `conditionWait` | native condition waiting | — | — | ✅ | ✅ |
+| `semanticTap` | tap directly by id/label (no coordinates) | ✅ | — | ✅ | ✅ |
+| `conditionWait` | native condition waiting | ✅ | — | ✅ | ✅ |
 | `network` | native network monitoring | — | — | ✅ | — |
-| `multiTouch` | two-finger gestures (pinch / rotate) | — | ✅ | ✅ | ✅ |
-| `textSelection` | select-all + clipboard copy on the focused field | — | ✅ | ✅ | ✅ |
+| `multiTouch` | two-finger gestures (pinch / rotate) | ✅ | ✅ | ✅ | ✅ |
+| `textSelection` | select-all + clipboard copy on the focused field | ✅ | ✅ | ✅ | ✅ |
 | `deviceControl.setLocation` | set the simulated GPS location | ✅ | ✅ | — | — |
 | `deviceControl.clipboard` | read / write / clear the clipboard | ✅ | ✅ | — | — |
 | `deviceControl.push` | deliver a push notification | ✅ | — | — | — |
@@ -65,24 +65,23 @@ resolution, and the **preflight capability check** (below).
 
 > The `deviceControl.*` tokens are the `DeviceControl` family split per operation (BE-0212, from the
 > coarse `deviceControl` of BE-0128), so a backend can advertise exactly the operations it can
-> honor. idb backs the whole family; the Android emulator backs `setLocation` + `clipboard` only
-> (its `push` / keychain / status-bar / app-lifecycle operations have no faithful equivalent), which
-> the split makes expressible without green-lighting the rest.
+> honor. XCUITest backs the whole family through `simctl`; the Android emulator backs
+> `setLocation` + `clipboard` only (its `push` / keychain / status-bar / app-lifecycle operations have
+> no faithful equivalent), which the split makes expressible without green-lighting the rest.
 
-> idb and adb sit at the **lean end**, both actuating by **frame-center coordinates** — they expose
-> no semantic tap, so the run loop resolves a unique element via `query()` and taps its center. On
-> idb, `pinch` / `rotate` raise `UnsupportedAction` (single-touch); on iOS those go through codegen →
-> XCUITest. adb advertises `query` / `elements` / `screenshot`, `multiTouch` (a rooted-device
-> `sendevent` two-finger sweep; BE-0232), plus the emulator-backed device-control subset
-> `deviceControl.setLocation` + `deviceControl.clipboard` (BE-0211); the rest of the device-control
-> family has no faithful emulator equivalent and stays unadvertised. The `fake` driver
-> advertises a
-> richer
-> capability set (semanticTap / conditionWait / multiTouch) purely to exercise those code paths in
-> tests. The `playwright` (web) driver advertises `semanticTap` / `conditionWait` (Playwright has
-> both natively), `network` — the **first backend with native network**, observing and stubbing
-> traffic in-process with no app-side cooperation — and `multiTouch`, synthesizing pinch / rotate via
-> the Chromium DevTools protocol's `Input.dispatchTouchEvent` (BE-0054).
+> adb sits at the **lean end**, actuating by **frame-center coordinates** — it exposes no semantic
+> tap, so the run loop resolves a unique element via `query()` and taps its center. XCUITest, by
+> contrast, sits at the rich end: it taps directly by identifier, waits on native conditions, and
+> performs `pinch` / `rotate` natively. adb advertises `query` / `elements` / `screenshot`,
+> `multiTouch` (a rooted-device `sendevent` two-finger sweep; BE-0232), plus the emulator-backed
+> device-control subset `deviceControl.setLocation` + `deviceControl.clipboard` (BE-0211); the rest
+> of the device-control family has no faithful emulator equivalent and stays unadvertised. The
+> `fake` driver advertises a richer capability set (semanticTap / conditionWait / multiTouch) purely
+> to exercise those code paths in tests. The `playwright` (web) driver advertises `semanticTap` /
+> `conditionWait` (Playwright has both natively), `network` — the **first backend with native
+> network**, observing and stubbing traffic in-process with no app-side cooperation — and
+> `multiTouch`, synthesizing pinch / rotate via the Chromium DevTools protocol's
+> `Input.dispatchTouchEvent` (BE-0054).
 
 ### Preflight capability check (BE-0082)
 
@@ -96,15 +95,15 @@ set) — no device, no clock — and per-scenario: only the offending scenarios 
 
 The check gates only the **hard** requirements the capability set cleanly decides: `pinch` /
 `rotate` need `multiTouch`, `select` / `copy` need `textSelection` (select-all + clipboard copy;
-idb is coordinate-only and refuses both — `delete` / `clear` stay ungated, as every backend backs
-`delete_text`), a `visual` assertion needs `screenshot`, and each device-control step
+the web context is coordinate-only for these and refuses both — `delete` / `clear` stay ungated, as
+every backend backs `delete_text`), a `visual` assertion needs `screenshot`, and each device-control step
 needs the token for its own operation — `setLocation` needs `deviceControl.setLocation`, the
 clipboard steps need `deviceControl.clipboard`, `push` needs `deviceControl.push`, and so on
 (BE-0212 split the coarse `deviceControl` family of BE-0128 into these per-operation tokens). Every
 run needs `query` + `elements`. It deliberately does **not** gate `conditionWait` (the run loop
-polls for every wait, so no backend needs the token) or `network` (idb captures traffic through the
-app-side collector despite not advertising `network`, so `request` / `event` / `requestSequence` /
-`responseSchema` assertions and `until: { request }` waits run on idb). `gestures.py`'s
+polls for every wait, so no backend needs the token) or `network` (XCUITest captures traffic through
+the app-side collector despite not advertising `network`, so `request` / `event` / `requestSequence` /
+`responseSchema` assertions and `until: { request }` waits run on iOS). `gestures.py`'s
 `_require_multi_touch` stays as a defense-in-depth check at gesture time, and `_need_control` stays
 as the equivalent for device-control steps — catching the case where the specific run has no
 `DeviceControl` wired at all, e.g. a parallel run with no pinned device. Because the tokens are
@@ -112,51 +111,38 @@ per-operation, a backend that supports only part of the family (the Android emul
 + `clipboard`) passes preflight for what it advertises and fails fast for the rest, each unsupported
 step named individually — rather than the family being all-or-nothing.
 
-## idb
+## XCUITest (iOS)
 
-Headless, coordinate-based. For CI (continuous integration). With no semantic tap, the abstraction resolves
-**id → frame center → coordinate tap**. Implementation: `drivers/idb.py`.
+The **sole iOS backend** since [BE-0290](../roadmaps/BE-0290-xcuitest-default-ios-backend/BE-0290-xcuitest-default-ios-backend.md)
+retired idb. It reads the **XCTest automation snapshot** through a **resident on-device runner**
+(`BajutsuKit`) driven over a loopback HTTP channel, and drives an arbitrary app by bundle id with no
+app-side integration. Implementation: `drivers/xcuitest.py`. It sits at the rich end of the
+capability model — semantic tap, native condition waiting, multi-touch, and text selection — rather
+than resolving through frame-center coordinates. Needs Xcode's `xcodebuild`.
 
-- `query()`: normalizes `idb ui describe-all --udid <udid> --json` via `parse_describe_all`
-  (handles both a JSON array and newline-delimited JSON, absorbing `AXLabel`/`AXValue`/`AXUniqueId`, etc.).
-- `tap(sel)`: `_resolve` to confirm uniqueness (**retries not-found, fails ambiguity fast**: a
-  real-device tree can be transiently empty during transitions) → `idb ui tap` (integer
-  coordinates) at the frame center.
-- `screenshot`: idb's own frame capture is unreliable, so it uses **`simctl io screenshot`**.
-- `swipe`: adds `--duration 0.2` to make it a real drag (an instantaneous swipe is not recognized
-  as a pan by SwiftUI).
+- `query()`: reads the XCTest automation snapshot and maps each element to an `Element`. The
+  snapshot **descends into group containers**, so — unlike a coordinate backend's flat frame dump —
+  it renders a **fully-expanded element tree** (`AXLabel`/`AXValue`/accessibility identifier
+  mapped to `label`/`value`/`id`).
+- `tap(sel)`: `_resolve` confirms uniqueness (**retries not-found, fails ambiguity fast**: a
+  real-device tree can be transiently empty during transitions), then taps the element **directly by
+  its accessibility identifier** — a semantic tap, no coordinates (BE-0289 re-resolves a stale
+  snapshot handle and re-actuates only on a still-unique match).
+- `wait_for`: uses the runner's native condition waiting.
+- `pinch` / `rotate`: two-finger multi-touch gestures performed natively by the runner.
+- `select` / `copy`: native text selection on the focused field.
+- `screenshot`: `simctl io screenshot`.
 
-> The describe-all JSON key names follow fb-idb's output and are **validated on-device** against
-> fb-idb (iPhone 17 Pro, recent iOS) via `make -C demos/showcase run-swiftui` + the `ios-e2e.yml` CI workflow; re-check them only
-> if the installed idb version changes the schema (the note atop `idb.py`). The idb client is
-> `uv sync --extra idb`; `idb_companion` is `brew install facebook/fb/idb-companion`.
-
-### Tracking the idb version (BE-0005)
-
-idb is the only on-device backend, so a new Simulator runtime an older `idb_companion` cannot
-drive — or a companion upgrade that reshapes the describe-all JSON — breaks a run without any
-Bajutsu change. The version idb runs against is therefore a tracked, recorded input rather than
-whatever happens to be installed:
-
-- **Pin a range in config.** `defaults.idbVersion` holds a constraint like `">=1.1.8"` or
-  `">=1.1.0,<2.0.0"` (environment-level — the same pin regardless of which target a scenario
-  drives). `bajutsu doctor` reports the installed `idb_companion` against it, e.g.
-  `✓ idb_companion version: 1.1.8 (expected >=1.1.8)`, so a mismatch surfaces in the pre-flight
-  checklist instead of as a confusing downstream failure. A malformed pin is rejected at config
-  load. With no pin declared, `doctor` shows no version line.
-- **Recorded in the manifest.** Every idb-backed run writes the `idb_companion` and idb client
-  versions into `manifest.json` (`"idb": { "companion": …, "client": … }`), so any artifact set
-  states exactly which idb produced it. The manifest record is provenance only — it never affects pass/fail, so
-  the run/CI verdict stays deterministic.
-- **A scheduled compatibility monitor.** `idb-monitor.yml` runs the smoke scenario through idb
-  against the latest `idb_companion` on a weekly cadence (separate from the per-PR gate). Because
-  the smoke run goes through `parse_describe_all` → Element normalization, a schema or behaviour
-  drift fails it loudly there, on a cadence we control, rather than being discovered ad hoc.
+> The generic runner uses `XCUIApplication(bundleIdentifier:)`, so it drives any installed app with
+> no app-side cooperation. The target names its prebuilt runner in `xcuitest.testRunner`; the
+> showcase config builds it via `make runner-build`. The backend is **validated on-device**
+> (iPhone 17 Pro, recent iOS) via `make -C demos/showcase run-swiftui` + the `ios-e2e.yml` CI
+> workflow. The XCUITest backend needs no pip extra — Xcode supplies `xcodebuild`.
 
 ## adb (Android)
 
-Headless, coordinate-based — the **architectural twin of idb**. With no semantic tap, the
-abstraction resolves **id → frame center → coordinate tap**, exactly as on iOS. Implementation:
+Headless, coordinate-based — the only coordinate backend. With no semantic tap, the
+abstraction resolves **id → frame center → coordinate tap**. Implementation:
 `drivers/adb.py` + `bajutsu/adb.py` (roadmap
 [BE-0007](../roadmaps/BE-0007-android-backend/BE-0007-android-backend.md)).
 
@@ -179,8 +165,8 @@ abstraction resolves **id → frame center → coordinate tap**, exactly as on i
   `-`, so `stable.refresh` surfaces as `stable_refresh`), the scenario carries **both** id forms in
   one selector — `id: [stable.refresh, stable_refresh]` — and the match is an OR over the candidates
   (BE-0221); see [scenarios](scenarios.md#selectors-addressing-an-element).
-- `tap(sel)`: `_resolve` confirms uniqueness (**retries not-found, fails ambiguity fast** — like
-  idb, a mid-transition dump is a transient null-root that is retried, and a 2+ match fails
+- `tap(sel)`: `_resolve` confirms uniqueness (**retries not-found, fails ambiguity fast** — a
+  mid-transition dump is a transient null-root that is retried, and a 2+ match fails
   immediately) → `adb shell input tap` at the frame center. `swipe` adds a finite duration so it is a
   real drag; `long_press` is a same-point swipe held for the duration; `type_text` is `input text`
   (spaces sent as its `%s` escape).
@@ -194,7 +180,7 @@ abstraction resolves **id → frame center → coordinate tap**, exactly as on i
   condition wait, so a selector that never appears still fails deterministically.
 
   > [!NOTE]
-  > Scroll-into-view is an **adb-only** recovery today: `idb` / XCUITest / Playwright still fail a
+  > Scroll-into-view is an **adb-only** recovery today: XCUITest / Playwright still fail a
   > `tap` fast when the target is not in the initial viewport. So a `tap` on a below-the-fold element
   > can pass on Android (after up to a few swipes) yet fail on iOS/web for the same scenario. The
   > portable idiom stays an **explicit `swipe` step** (see `demos/showcase/scenarios/notices.yaml`);
@@ -237,7 +223,7 @@ abstraction resolves **id → frame center → coordinate tap**, exactly as on i
   silent no-op, and since Android 10 only the foreground app / default IME may touch the clipboard —
   so bajutsu sends an ordered `am broadcast` that a receiver inside the app handles from the app
   process (base64 both ways, so the argv needs no quoting; a missing receiver fails loudly rather
-  than reading an empty clip). adb still advertises `clipboard` because, like idb's over simctl, the
+  than reading an empty clip). adb still advertises `clipboard` because, like XCUITest's over simctl, the
   backend can drive it given a cooperating app. See [`BajutsuAndroid`](../BajutsuAndroid/README.md).
 
 > The XML attribute names follow UI Automator's `uiautomator dump` schema. The Views `android:id`
@@ -258,7 +244,7 @@ fits the same toolchain as `make check`. Implementation: `drivers/playwright.py`
   pure parser (`parse_dom`) maps each to an `Element`. The id convention is the web equivalent of
   iOS accessibilityIdentifier: `data-testid` → `Selector.id`, ARIA `role` (or tag) → `traits`,
   accessible name / `aria-label` / text → `label`, input `value` → `value`.
-- `tap(sel)`: like idb, it resolves a **unique** element through the shared
+- `tap(sel)`: like the adb backend, it resolves a **unique** element through the shared
   `resolve_unique`/`find_all` against a `query()` snapshot and clicks the **frame center** by
   coordinate (`page.mouse.click`). It deliberately does **not** use Playwright's own
   `get_by_test_id().click()`, so selector semantics stay byte-identical to every other backend.
@@ -342,43 +328,43 @@ Implementation: `bajutsu/backends.py`.
 
 ```python
 PLATFORMS = {                              # a platform token expands to its actuators (stability order)
-    "ios":     ("xcuitest", "idb"),        #   most capable first (BE-0019)
+    "ios":     ("xcuitest",),              #   the sole iOS actuator since BE-0290 retired idb
     "android": ("adb",),                   #   planned
     "web":     ("playwright",),            #   implemented (BE-0041)
     "fake":    ("fake",),                  #   the in-memory test/demo driver
 }
-COST_ORDER = {"ios": ("idb", "xcuitest")}  # cheapest first (BE-0240); idb has no toolchain/runner cost
-IMPLEMENTED = {"idb", "fake", "playwright", "xcuitest"}  # actuators with a driver today
+COST_ORDER: dict[str, tuple[str, ...]] = {}  # empty: no platform's cost order differs from its stability order
+IMPLEMENTED = {"fake", "playwright", "xcuitest"}  # actuators with a driver today
 
 def default_available(actuator) -> bool:   # implemented + backing tool present (playwright: package import; fake: always)
 def resolve_actuators(backends) -> list:   # expand each token (platform or actuator) to actuators
 def select_actuator(backends, available) -> str:  # first implemented + available, in stability order
 def select_actuator_cost_first(backends, available) -> str:  # cheapest available, no scenario in hand (BE-0267)
 def select_actuator_for_scenario(backends, scenario, available, caps) -> str:  # cheapest available + sufficient (BE-0240)
-def make_driver(actuator, udid, *, base_url=None, runner_port=None) -> Driver:  # "xcuitest"→XcuitestDriver, "idb"→IdbDriver, "playwright"→PlaywrightDriver, "fake"→FakeDriver
+def make_driver(actuator, udid, *, base_url=None, runner_port=None) -> Driver:  # "xcuitest"→XcuitestDriver, "playwright"→PlaywrightDriver, "fake"→FakeDriver
 ```
 
 - A **backend token** is either a **platform** (`ios` / `android` / `web` / `fake`) or a concrete
-  **actuator** (e.g. `idb`). A platform with more than one actuator is resolved **per scenario**
-  (BE-0240): `--backend ios` (or `backend: [ios]`) runs each scenario on the *cheapest* actuator its
-  own steps can use — `idb` by default, escalating to XCUITest only for a scenario whose constructs
-  need a capability idb lacks (e.g. `pinch`/`rotate` → `multiTouch`). idb's capability set is a strict
-  subset of XCUITest's, so no scenario needs idb *specifically* — idb is preferred only for cost.
+  **actuator** (e.g. `xcuitest`). Each platform today resolves to a single actuator — `ios` to
+  `xcuitest` (BE-0290 retired idb, so `--backend ios` and `--backend xcuitest` are equivalent),
+  `android` to `adb`, `web` to `playwright`. The machinery for a **multi-actuator** platform
+  (per-scenario resolution in cost order; BE-0240) stays in place for a future platform, but no
+  platform exercises it today.
 - Two orderings answer two questions. **Stability order** (`PLATFORMS`, most-capable-first;
   [concepts](concepts.md#5-the-stability-ladder)) drives `select_actuator` — the availability-only
   pick used where no scenario is in hand yet and cost doesn't matter (`doctor`, the pool's up-front
   setup, an explicit single-actuator pin). **Cost order** (`COST_ORDER`, cheapest-first) drives both
   `select_actuator_for_scenario` and `select_actuator_cost_first`, which share a candidate-resolution
-  prefix (`_cost_ordered_available`). `select_actuator_for_scenario` additionally reuses
-  `capability_preflight.unsupported` (BE-0082) against each candidate's capability set and returns the
-  first that is both available and sufficient for that scenario's steps. `select_actuator_cost_first`
-  is the same cost-first pick with no scenario to check against — used where a live session needs the
-  cheapest actuator it can bring up without capability escalation (serve's Author-tab **Capture** and
-  **Enrich**; BE-0267 — the earlier stability-order pick there raised on an `[ios]`-config target
-  since serve never starts an XCUITest runner). Both delegate to `select_actuator` (keeping its
-  diagnostics) whenever the resolved candidates collapse to one — an explicit single-actuator request
-  never escalates (a hard pin, like `--udid`). If none is available, `RuntimeError` (the CLI exits
-  with code 2).
+  prefix (`_cost_ordered_available`); with `COST_ORDER` now empty, a platform's cost order is just
+  its stability order, so these fall through to a single candidate. `select_actuator_for_scenario`
+  additionally reuses `capability_preflight.unsupported` (BE-0082) against each candidate's capability
+  set and returns the first that is both available and sufficient for that scenario's steps.
+  `select_actuator_cost_first` is the same cost-first pick with no scenario to check against — used
+  where a live session needs the cheapest actuator it can bring up without capability escalation
+  (serve's Author-tab **Capture** and **Enrich**; BE-0267). Both delegate to `select_actuator`
+  (keeping its diagnostics) whenever the resolved candidates collapse to one — which, with every
+  platform single-actuator today, is always the case. If none is available, `RuntimeError` (the CLI
+  exits with code 2).
 - `web` resolves to `playwright` and `android` resolves to `adb`, both **implemented**
   ([vision → reach](vision.md#1-reach--more-platforms-and-surfaces)). Truly unknown tokens are
   skipped (forward-compat: an older build can run a config that lists a future backend).

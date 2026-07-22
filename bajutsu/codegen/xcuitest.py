@@ -1,8 +1,8 @@
 """Generate a native XCUITest (Swift) from a recorded scenario.
 
 A passing scenario is the deterministic source of truth; emitting XCUITest lets a
-team run the same flow in their existing Xcode / XCTest CI — no bajutsu runtime,
-idb, or AI at test time, and XCUITest waits for hittability itself. The mapping is
+team run the same flow in their existing Xcode / XCTest CI — no bajutsu runtime
+or AI at test time, and XCUITest waits for hittability itself. The mapping is
 purely structural (no AI).
 
 Coverage: tap (by id or label) / doubleTap / type / longPress / swipe
@@ -16,8 +16,7 @@ regex, a `within` (geometric) scope, or an unknown trait stays unsupported.
 A device-family or network construct with no on-device XCUITest form emits a labeled
 `// TODO` rather than failing, so the output is always reviewable; a runtime-only
 construct the shared walk cannot translate at all (`if` / `forEach` / `extract`) fails
-loudly with a `CodegenError` instead of a silent no-op stub (BE-0297). (pinch / rotate
-need multi-touch, which idb cannot drive at run time — XCUITest is their on-device home.)
+loudly with a `CodegenError` instead of a silent no-op stub (BE-0297).
 """
 
 from __future__ import annotations
@@ -218,16 +217,16 @@ def _emit_step(step: Step) -> list[str]:
         return ['app.typeKey("c", modifierFlags: .command)']
     if step.back is not None:
         # iOS has no hardware back; the generated XCUITest taps the OS navigation back button, the
-        # same element the idb/XCUITest drivers tap at runtime. Reuse the shared constant so codegen
-        # cannot drift from the drivers if the id ever changes (BE-0210).
+        # same element the XCUITest driver taps at runtime. Reuse the shared constant so codegen
+        # cannot drift from the driver if the id ever changes (BE-0210).
         return [f"{_element({'id': base.OS_BACK_BUTTON})}.tap()"]
     if step.swipe is not None:
         sw = step.swipe
         if sw.on is not None and sw.direction is not None:
             return [f"{_element(sw.on.as_selector())}.{_SWIFT_DIRECTION[sw.direction]}()"]
         if sw.from_ is not None and sw.to is not None:
-            # A coordinate drag via XCUICoordinate (BE-0025), mirroring the idb backend's short
-            # press duration so SwiftUI reads it as a pan, not an instantaneous flick.
+            # A coordinate drag via XCUICoordinate (BE-0025), using a short press duration so
+            # SwiftUI reads it as a pan, not an instantaneous flick.
             (fx, fy), (tx, ty) = sw.from_, sw.to
             return [f"coord({fx}, {fy}).press(forDuration: 0.1, thenDragTo: coord({tx}, {ty}))"]
         return ["// TODO: coordinate swipe (from/to) is not generated"]

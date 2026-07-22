@@ -329,7 +329,7 @@ def _with_headed(eff: Effective, headed: bool | None) -> Effective:
 
 
 def _log_subsystem_default(eff: Effective) -> str:
-    """The default idb log subsystem — the iOS bundle id, or empty for a non-iOS target (BE-0126).
+    """The default iOS log subsystem — the iOS bundle id, or empty for a non-iOS target (BE-0126).
 
     The device-log predicate scopes to the app's bundle id; a web target has no such subsystem.
     """

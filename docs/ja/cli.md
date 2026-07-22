@@ -14,7 +14,7 @@
 
 - 全コマンドの前に `.env` を読み込みます（`_bootstrap`、下記）。
 - config が無い / アプリ未定義 / actuator 無し → メッセージを出して **終了コード 2**。
-- `--backend` はカンマ区切り（例 `idb`）。空なら config の `backend` を使います。先頭から
+- `--backend` はカンマ区切り（例 `ios`）。空なら config の `backend` を使います。先頭から
   順に可用性を確認し、**最初に使えるものが actuator** になります（[drivers](drivers.md#バックエンド選択と-actuator)）。
 
 ## `run`
@@ -37,7 +37,7 @@ bajutsu run --target <name> [--scenario <file.yaml>] [options]
 | `--exclude` | "" | カンマ区切り。これらの tag のいずれかを持つシナリオをスキップ |
 | `--udid` | `booted` | 対象 Simulator（カンマ区切り = `--workers` 用のデバイスプール） |
 | `--erase / --no-erase` | シナリオ › config › off | 各シナリオの `preconditions.erase`（シム全体を wipe）を上書き。省略時は各シナリオの値、次にターゲットの `erase` config、次に off の順で解決（[BE-0177](../../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)）。アプリはどちらでも毎回 fresh に再インストール（config `appPath` + `preconditions.reinstall`） |
-| `--dismiss-alerts / --no-dismiss-alerts` | シナリオ › config › ON | 各シナリオの `dismissAlerts` を上書きします。idb から見えないシステムアラートを視覚で消すガードです。省略時は各シナリオの値、次にターゲットの `dismissAlerts` config、次に ON の順で解決します（設定した AI プロバイダを使用。`ANTHROPIC_API_KEY`、Bedrock なら AWS 認証情報。[recording](recording.md#システムアラートの自動対処)） |
+| `--dismiss-alerts / --no-dismiss-alerts` | シナリオ › config › ON | 各シナリオの `dismissAlerts` を上書きします。iOS バックエンドから見えないシステムアラートを視覚で消すガードです。省略時は各シナリオの値、次にターゲットの `dismissAlerts` config、次に ON の順で解決します（設定した AI プロバイダを使用。`ANTHROPIC_API_KEY`、Bedrock なら AWS 認証情報。[recording](recording.md#システムアラートの自動対処)） |
 | `--alert-instruction` | "" | 既定のボタン指示。シナリオ自身の `dismissAlerts.instruction` の下位、ターゲットの `dismissAlerts` config の上位に位置します |
 | `--log-predicate` | "" | `deviceLog` ストリームを絞る NSPredicate（例 subsystem） |
 | `--log-subsystem` | "" | `appTrace` 用の os_log subsystem（既定はアプリの `bundleId`） |
@@ -61,7 +61,7 @@ bajutsu run --target <name> [--scenario <file.yaml>] [options]
   かった run では何も出力しません。
 
 ```bash
-bajutsu run --target showcase-swiftui --udid <UDID> --backend idb --no-erase            # アプリのシナリオディレクトリ全体
+bajutsu run --target showcase-swiftui --udid <UDID> --backend ios --no-erase            # アプリのシナリオディレクトリ全体
 bajutsu run --scenario demos/showcase/scenarios/smoke.yaml --target showcase-swiftui --no-erase   # 単一ファイル
 ```
 
@@ -86,8 +86,8 @@ bajutsu project rm <name>                       # プロジェクトを登録解
 bajutsu doctor --target <name> [--udid booted] [--backend ...] [--config ...]
 ```
 
-- まず env ゲート（`preflight.py`）: actuator が必要とする CLI（`xcrun`、idb なら `idb` /
-  `idb_companion`）と**起動済みシミュレータ**を ✓/✗ チェックリストで表示します。不足があれば**終了 1**（直し方ヒント付きで即失敗）。
+- まず env ゲート（`preflight.py`）: actuator が必要とする CLI（XCUITest なら `xcrun` / `xcodebuild`）
+  と**起動済みシミュレータ**を ✓/✗ チェックリストで表示します。不足があれば**終了 1**（直し方ヒント付きで即失敗）。
 - 次に actuator で `query()` し、`score(elements, idNamespaces)` を表示します。**grade が Blocked で 1、それ以外 0**。
 
 ## `audit`
@@ -238,7 +238,7 @@ diff をレビューして opt-in した時のみ適用され、断片が source
 ```bash
 bajutsu triage [<run-dir>] [--scenario <substr>] [--runs runs] [--ai]
 bajutsu triage [<run-dir>] --ai --apply <scenario-file> [--write] \
-               [--rerun --target <name> [--backend idb] [--udid <udid>]]
+               [--rerun --target <name> [--backend ios] [--udid <udid>]]
 ```
 
 - 既定は `runs/` 直下の最新 run。失敗シナリオが無ければ**終了 0**。
@@ -369,11 +369,11 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
   まず画面を決定的に検査し、その操作を Claude に渡して**組合せ**を
   考えさせ、有効化条件が自明でない操作要素のために**現実的な入力**（正しいメール形式、規約を満たすパスワード、
   フォーム全欄の一括入力など）や id 無し要素への操作を提案し、その推論を run ログに流します。
-  AI は**個々のタブをツリーで指定できないタブバー**にも対応します。idb は SwiftUI の TabView を
-  「Tab Bar」というラベルの group 1個（タブごとの id 無し）として返すため、バーは見えてもタブをセレクタで
+  AI は**個々のタブをツリーで指定できないタブバー**にも対応します。iOS のアクセシビリティツリーは SwiftUI の TabView を
+  「Tab Bar」というラベルの group 1個（タブごとの id 無し）として返すことがあり、その場合はバーは見えてもタブをセレクタで
   タップできません。そうしたバーがあり（かつ id で指定できるタブが無い）場合に、システムアラートガードと同じ要領で
   画像認識（vision）から位置を割り出し、各タブを座標でタップします（タブを優先して切り替えてから先の画面へ進む方針は同じ）。
-  （UIKit のタブバー、つまり idb が各タブを個別要素として返すものは今後の対応予定で、現状は同じ vision 経路にフォールバックします。）
+  （UIKit のタブバー、つまりアクセシビリティツリーが各タブを個別要素として返すものは今後の対応予定で、現状は同じ vision 経路にフォールバックします。）
   AI は「何を試すか」を選ぶだけで、画面同一性、遷移、クラッシュ判定は決定的のままです。よって crawl は合否を下さず、
   CI ゲートにもなりません。
 - 出力: `<out>/screenmap.json`。`nodes`（画面。fingerprint、種別、id、候補アクション、`blocked` 無効操作要素を持つ）、
@@ -626,7 +626,7 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   手動ビルド無しに UI からオンデマンドでビルドできます。
 - 操作 UI の下の **History** リストに過去の run（新しい順、pass/fail ドット、シナリオ要約）が並び、
   クリックでそのレポートを再表示します。`GET /api/runs` が裏側です。
-- run サブプロセスは起動環境を継承します（venv の `bin` を `PATH` 先頭に付与し `idb` クライアントを解決）。
+- run サブプロセスは起動環境を継承します（venv の `bin` を `PATH` 先頭に付与）。
   `bajutsu.config.yaml` が解決するようプロジェクトルートから実行してください。
 - **`/api/run` の入力検証。** scenario は**選択中アプリの scenarios dir 内**に実在する `*.yaml` でなければ
   なりません（任意のホストパスや `..` トラバーサル不可）。`backend` / `udid` も既知のトークンに限定され、

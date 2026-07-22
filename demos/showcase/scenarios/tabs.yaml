@@ -6,14 +6,16 @@
 # ids themselves (`stable`, `search`, `log`, `notice`, `perm`) have no '.'/'-', so they need no
 # dual id-form (BE-0221): the one literal id matches Compose/Views unchanged.
 #
-# iOS needs `--backend xcuitest` explicitly: idb's `describe-all` collapses the native tab bar
-# into one opaque group regardless of accessibility identifiers (SPEC.md §3, BE-0107), so the
-# `[ios]` capability ladder (BE-0240) cannot auto-escalate a plain `tap: { id, traits }` the way it
-# does for a detected construct like `pinch`/`rotate` — there is nothing in the step for the
-# preflight to key on. `tags: [xcuitest]` marks that here so `run-swiftui`/`run-uikit`'s bulk
-# `[ios]`-ladder invocation (demos/showcase/Makefile) can `--exclude` it instead of failing on
-# idb; `run-swiftui-tabs`/`run-uikit-tabs` run it on its own with `--backend xcuitest`. Android's
-# `backend: [android]` is a single-actuator pin (no ladder ambiguity), so it needs no such carve-out.
+# `[ios]` now resolves to XCUITest (BE-0290), which taps the native tab bar by label, so this flow
+# runs on the iOS backend like any other. The `tags: [xcuitest]` here is a legacy split: it dates
+# from when `[ios]` could resolve to the retired coordinate idb backend, whose `describe-all`
+# collapsed the tab bar into one opaque group regardless of accessibility identifiers (SPEC.md §3,
+# BE-0107), which the `[ios]` capability ladder (BE-0240) could not auto-escalate for a plain
+# `tap: { id, traits }` the way it does for a detected construct like `pinch`/`rotate` — there is
+# nothing in the step for the preflight to key on. The tag lets `run-swiftui`/`run-uikit`'s bulk
+# `[ios]` invocation (demos/showcase/Makefile) `--exclude` it, and `run-swiftui-tabs`/`run-uikit-tabs`
+# run it on its own. Android's `backend: [android]` is a single-actuator pin (no ladder ambiguity),
+# so it needs no such carve-out.
 - name: switch tabs by id
   tags: [xcuitest]
   preconditions:

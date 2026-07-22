@@ -10,9 +10,10 @@
 #   * **No `appPath` / `build`.** Device Farm installs the uploaded `.ipa` on the reserved device
 #     itself, so the run must not try to assemble or install a local `.app`; it drives the
 #     already-installed build (a None `app_path` is the runner's "run against the installed app" path).
-#   * **`backend: [xcuitest]`, not the local target's `[ios]` ladder.** idb has no real-device reach, so
-#     the capability-aware ladder cannot escalate from it here; XCUITest is the only backend a real
-#     device offers, so the target pins it directly instead of letting the ladder choose.
+#   * **`backend: [xcuitest]`, not the local target's `[ios]` ladder.** The retired idb backend
+#     (BE-0290) had no real-device reach, so the capability-aware ladder could not escalate from it here;
+#     XCUITest is the only backend a real device offers, so the target pins it directly instead of
+#     letting the ladder choose.
 #
 # Submit with the iOS platform selected, which picks the XCUITest backend, the
 # `--udid "$DEVICEFARM_DEVICE_UDID"` argument, and the iOS app upload type:

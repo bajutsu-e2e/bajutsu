@@ -104,7 +104,7 @@ def worker(
         "ios",
         "--platform",
         help="Comma-list of platforms this worker can drive (ios / web / android) — the backend "
-        "axis it advertises for capability routing (BE-0166). A Mac idb worker is 'ios'; the "
+        "axis it advertises for capability routing (BE-0166). A Mac iOS worker is 'ios'; the "
         "Playwright container is 'web'.",
     ),
     capabilities: str = typer.Option(

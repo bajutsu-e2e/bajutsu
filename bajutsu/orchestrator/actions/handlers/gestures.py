@@ -50,10 +50,10 @@ def _scroll_gesture(
 
 def _require_multi_touch(driver: base.Driver, action: str) -> None:
     """Fail clearly before a two-finger gesture if the actuator can't do multi-touch
-    (e.g. idb), rather than emitting a single-touch approximation that silently passes."""
+    (e.g. a single-touch backend), rather than emitting a single-touch approximation that silently passes."""
     if base.Capability.MULTI_TOUCH not in driver.capabilities():
         raise base.UnsupportedAction(
-            f"{action} requires a multi-touch capable backend (idb supports single touch only; use codegen→XCUITest instead)"
+            f"{action} requires a multi-touch capable backend; this backend supports single touch only"
         )
 
 

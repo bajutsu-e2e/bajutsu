@@ -742,7 +742,7 @@ def test_capabilities() -> None:
     assert (
         base.Capability.MULTI_TOUCH in caps
     )  # two-finger gestures via CDP touch synthesis (BE-0054)
-    assert base.Capability.TEXT_SELECTION in caps  # Ctrl+A / Ctrl+C actuate; idb refuses (BE-0280)
+    assert base.Capability.TEXT_SELECTION in caps  # Ctrl+A / Ctrl+C actuate (BE-0280)
 
 
 def test_importing_module_does_not_load_playwright() -> None:

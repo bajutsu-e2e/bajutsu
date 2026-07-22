@@ -8,7 +8,7 @@ once, as an executable contract, and runs the *same* test body against every bac
 The contract is the definition a new backend meets: implement `ConformanceHarness` for the
 backend, subclass `DriverConformanceContract`, and pytest collects the inherited test bodies
 against it. `tests/test_driver_conformance.py` does this for `FakeDriver` on the fast Linux
-gate; the Playwright (web CI) and idb / XCUITest (on-device E2E) harnesses plug into the same
+gate; the Playwright (web CI) and XCUITest (on-device E2E) harnesses plug into the same
 contract without a second spec.
 
 The invariants (grounded in the `Driver` Protocol and `drivers/base`):
@@ -260,7 +260,7 @@ class DriverConformanceContract:
 
     def test_text_selection_capability_matches_behavior(self, harness: ConformanceHarness) -> None:
         # capabilities() is a promise (BE-0280): a TEXT_SELECTION backend actuates select-all + copy
-        # without UnsupportedAction; one without it (idb, coordinate-only) refuses both loudly rather
+        # without UnsupportedAction; one without it (a coordinate-only backend) refuses both loudly rather
         # than silently no-op'ing — the same shape as MULTI_TOUCH. `delete_text` / `type_text` are
         # never gated (every backend backs them), so they must succeed on either side of the branch.
         driver = harness.with_screen([])  # the field is always present; no seeded buttons needed

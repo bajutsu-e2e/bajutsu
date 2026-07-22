@@ -2,31 +2,30 @@
 
 # iOS on a real device and in a device cloud
 
-A device cloud runs iOS on **real hardware** — there is no Simulator on the far side. Bajutsu's two
-iOS [backends](glossary.md#driver-backend-actuator-platform) cannot reach that hardware, so reaching
-a device cloud takes real new code rather than a configuration switch. This page explains why the
-existing backends fall short, the one change that fixes it — making the XCUITest backend drive a real
-device — and the two routes that change opens: a **batch** route through AWS Device Farm and a
+A device cloud runs iOS on **real hardware** — there is no Simulator on the far side. Bajutsu's
+iOS [backend](glossary.md#driver-backend-actuator-platform) targets the Simulator, so it cannot
+reach that hardware, and reaching a device cloud takes real new code rather than a configuration
+switch. This page explains why the Simulator-bound backend falls short, the one change that fixes
+it — making the XCUITest backend drive a real device — and the two routes that change opens: a
+**batch** route through AWS Device Farm and a
 **live** route through a reserved device behind an Appium endpoint. The same real-device work also
 lets Bajutsu drive a **locally attached** iPhone or iPad, which was effectively Simulator-only before.
 
-## Why idb and simctl do not reach a real device
+## Why the Simulator backend does not reach a real device
 
-The gap is structural, not a missing option. Bajutsu's two iOS backends each depend on something a
-real-device cloud does not provide.
+The gap is structural, not a missing option. The iOS backend, driving the Simulator, depends on
+something a real-device cloud does not provide.
 
 - **`simctl` drives the Simulator only.** It is the command-line control surface for Apple's iOS
   Simulator, so it has nothing to target on a cloud that runs physical devices — there is no
-  simulator there to command.
-- **`idb` needs a Mac-resident `idb_companion` daemon.** The idb backend talks to a companion process
-  running on the Mac host. A managed cloud macOS host offers a limited shell and does not let you run
-  an arbitrary long-lived daemon, so the companion the backend depends on cannot be started.
+  simulator there to command. The XCUITest backend leans on `simctl` for the Simulator bring-up
+  (erase, install, permission grants) around each run, none of which a physical device offers.
 
 What the clouds *do* speak on iOS is Apple's own **XCTest**, and on AWS Device Farm also **Appium's
 XCUITest driver**. Both build on the same XCUITest machinery that Bajutsu's
 [XCUITest backend (BE-0019)](../roadmaps/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md)
 already drives through `xcodebuild`. The path forward is therefore to generalize that backend to a
-real device, not to write a third iOS backend from scratch.
+real device, not to write a new iOS backend from scratch.
 
 ## The reusable core: XCUITest real-device targeting
 

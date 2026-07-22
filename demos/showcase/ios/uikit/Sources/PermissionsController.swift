@@ -5,7 +5,7 @@ import UserNotifications
 /// Permissions (SPEC §5.4 / §7) — the OS-integration screen. It owns the two deliberate
 /// OS-level alerts (both fire only on explicit taps here, never at launch: the canonical
 /// fixture for the run's vision alert guard / dismissAlerts), plus a System section: an in-app
-/// Copy → Paste pasteboard round-trip idb can drive and assert. (Reading a pasteboard seeded by
+/// Copy → Paste pasteboard round-trip the backend can drive and assert. (Reading a pasteboard seeded by
 /// another process trips iOS's paste-permission prompt; a value this app wrote reads back
 /// silently, so the round-trip stays deterministic.)
 final class PermissionsController: UIViewController, CLLocationManagerDelegate {
@@ -47,7 +47,7 @@ final class PermissionsController: UIViewController, CLLocationManagerDelegate {
         locationValueLabel.accessibilityID("perm.location.value")
 
         // Pasteboard round-trip (SPEC §5.4): Copy writes a known string, Paste reads it back
-        // into sys.paste.value — pasteboard state idb's app-scoped query cannot see.
+        // into sys.paste.value — pasteboard state the backend's app-scoped query cannot see.
         let copy = UIButton(type: .system, primaryAction: UIAction(title: "Copy") { _ in
             UIPasteboard.general.string = "bajutsu-clip"
         })

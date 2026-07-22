@@ -1,9 +1,9 @@
 name: bajutsu E2E
 description: >-
-  Run bajutsu scenarios against an already-booted Simulator with the idb backend,
+  Run bajutsu scenarios against an already-booted Simulator with the XCUITest backend,
   then upload the run (report.html, screenshots, video, network.json) as an artifact.
-  The caller is responsible for building and installing the app first (build varies per
-  app); this action owns the bajutsu-specific part (idb setup, doctor, run, artifacts).
+  The caller is responsible for building and installing the app (and the XCUITest runner)
+  first; this action owns the bajutsu-specific part (doctor, run, artifacts).
 
 inputs:
   scenarios:
@@ -25,7 +25,7 @@ inputs:
   backend:
     description: Actuator backend.
     required: false
-    default: idb
+    default: xcuitest
   config:
     description: Path to bajutsu.config.yaml.
     required: false
@@ -38,22 +38,13 @@ inputs:
 runs:
   using: composite
   steps:
-    # Skip Homebrew's auto-update (re-fetching every tap on each run costs minutes) and the
-    # post-install cleanup; the `brew list` guard already short-circuits when idb-companion is
-    # present, so these only speed the actual install.
-    - name: Install idb_companion
+    # The XCUITest backend needs no pip extra (its runner is driven over HTTP, and `xcodebuild` is a
+    # system tool that ships with Xcode on the macOS runner) — so the run path is the base install.
+    # --no-dev: never the dev group (mypy / pytest / ruff and the gate-only extras
+    # bedrock/server/worker/db/oauth/mcp); those belong to the Linux `check` gate.
+    - name: Sync dependencies
       shell: bash
-      env:
-        HOMEBREW_NO_AUTO_UPDATE: "1"
-        HOMEBREW_NO_INSTALL_CLEANUP: "1"
-      run: brew list facebook/fb/idb-companion >/dev/null 2>&1 || brew install facebook/fb/idb-companion
-
-    # --no-dev: the run path needs only the idb backend, never the dev group (mypy / pytest /
-    # ruff and the gate-only extras bedrock/server/worker/db/oauth/mcp). Those belong to the
-    # Linux `check` gate; pulling them here installed ~80 extra packages for nothing.
-    - name: Sync dependencies (idb backend)
-      shell: bash
-      run: uv sync --extra idb --no-dev
+      run: uv sync --no-dev
 
     # Inputs go through env: so the shell sees them as data, not as script text spliced in
     # before parsing (the GitHub Actions ${{ }} injection pattern). See BE-0123.

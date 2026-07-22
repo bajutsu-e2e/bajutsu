@@ -119,8 +119,8 @@ def device_pool(
     """
     # Actuator selection is now per scenario (BE-0240): `lease()` resolves the cheapest actuator each
     # scenario can run on. Pool-level facts (device catalog, network-observation strategy, the
-    # pre-started collectors) are *platform*-level — identical for every actuator on the platform (idb
-    # and XCUITest share the simctl Simulator lifecycle) — so a representative `pool_actuator`
+    # pre-started collectors) are *platform*-level — identical for every actuator on the platform — so a
+    # representative `pool_actuator`
     # (availability-only, no scenario) reads them off one environment; nothing below branches on the
     # actuator name.
     pool_actuator = select_actuator(backends, available)
@@ -278,8 +278,8 @@ def device_pool(
                 redact=eff.redact,
                 secrets=secret_values,
                 # A web or Android lane supplies its own interval evidence (Playwright console / page
-                # errors; adb logcat — Android's video now takes the prestart/adopt path below); idb
-                # has no such method, so this is None there and the simctl path is used.
+                # errors; adb logcat — Android's video now takes the prestart/adopt path below); the
+                # iOS backend has no such method, so this is None there and the simctl path is used.
                 driver_interval=getattr(driver, "driver_interval", None),
                 # Video the environment already began before the app launched (a device backend, so
                 # the cold start is recorded); the sink adopts it instead of starting one on demand.

@@ -58,7 +58,7 @@ final class NoticeDetailController: UIViewController {
         super.viewDidLoad()
         title = notice.title
         navigationItem.largeTitleDisplayMode = .never  // inline title, like the SwiftUI detail
-        // The standard system back button pops back; idb drives it by its built-in id `BackButton`.
+        // The standard system back button pops back; the backend drives it by its built-in id `BackButton`.
 
         let titleLabel = UILabel()
         titleLabel.text = notice.title

@@ -19,8 +19,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 
 // BE-0232: the Compose realization of the two-finger gesture screen, mirroring the iOS GestureView
-// (BE-0019). Pinch and rotate are the one class of actuation the single-touch backends (idb) cannot
-// perform, and on adb they need a rooted `sendevent` sweep; each target flips its mirrored a11y value
+// (BE-0019). Pinch and rotate are the one class of actuation a single-touch backend (like the retired
+// idb backend, BE-0290) cannot perform, and on adb they need a rooted `sendevent` sweep; each target flips its mirrored a11y value
 // once its gesture is recognized, so the shared `gestures_multitouch` run can assert the actuation
 // landed rather than merely not erroring. Reached only when the SHOWCASE_GESTURES launch env is set
 // (see AppModel / RootScreen), so the normal five-tab app (BE-0079) never renders it. A flat, scroll-

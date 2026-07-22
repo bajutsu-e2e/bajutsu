@@ -64,13 +64,13 @@ flowchart LR
 
 The `Driver` / environment / id-convention seams were built to be replaced, not just configured, so
 **the same deterministic core drives iOS, Android, and the Web** today, with each platform adding
-only its own actuator + environment + stable-id convention. **iOS** (idb / XCUITest), **web**
+only its own actuator + environment + stable-id convention. **iOS** (XCUITest), **web**
 (Playwright), and **Android** (adb) backends have all landed and are validated end-to-end (see
 [architecture → implementation status](architecture.md#implementation-status)); **Flutter** is the
 remaining phase.
 
 **The abstraction is already platform-shaped.** Only three seams are platform-specific: the
-**actuator** (drives the UI — `drivers/idb.py`, `drivers/adb.py`, …), the **environment manager**
+**actuator** (drives the UI — `drivers/xcuitest.py`, `drivers/adb.py`, …), the **environment manager**
 (boot / erase / launch — `simctl.py` on iOS, its Android counterpart), and the **stable-id
 convention** (`accessibilityIdentifier` on iOS, `resource-id` on Android, `data-testid` on the web —
 [concepts §4](concepts.md#4-stable-selectors-prefer-accessibilityidentifier)). Everything else —
@@ -101,10 +101,10 @@ UI toolkits (BE-0221; see [scenarios](scenarios.md#cross-platform-ids-a-candidat
 |---|---|---|
 | Shared abstractions | Platform-aware backend registry + `Environment` Protocol | Implemented ([BE-0042](../roadmaps/BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md), [BE-0009](../roadmaps/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md)) |
 | Web | Playwright; runs on the existing Linux gate, no Mac / emulator | Implemented ([BE-0041](../roadmaps/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md), [BE-0054](../roadmaps/BE-0054-web-backend-completion/BE-0054-web-backend-completion.md)) |
-| Android | adb + UI Automator, the coordinate-driven twin of idb | Implemented ([BE-0007](../roadmaps/BE-0007-android-backend/BE-0007-android-backend.md), [BE-0208](../roadmaps/BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci.md), [BE-0209](../roadmaps/BE-0209-android-codegen-emitter/BE-0209-android-codegen-emitter.md)) |
+| Android | adb + UI Automator, a coordinate-driven backend | Implemented ([BE-0007](../roadmaps/BE-0007-android-backend/BE-0007-android-backend.md), [BE-0208](../roadmaps/BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci.md), [BE-0209](../roadmaps/BE-0209-android-codegen-emitter/BE-0209-android-codegen-emitter.md)) |
 | Flutter / hybrids | Cross-rendered UIs need a semantics bridge, not a new OS actuator | Planned ([BE-0008](../roadmaps/BE-0008-flutter-support/BE-0008-flutter-support.md)) |
 
-Web landed before Android, even though Android is architecturally closer to idb: Web needed no
+Web landed before Android, even though Android is architecturally closer to a coordinate backend: Web needed no
 macOS and no device emulator, so it fit inside the [`make check`](../CLAUDE.md) / [CI](ci.md) gate
 from day one — proving the core platform-neutral at the lowest possible cost. Android then confirmed
 the same lean / coordinate path on an already-generalized core, on its own emulator-backed gate.

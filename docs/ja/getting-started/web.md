@@ -16,7 +16,7 @@
 
 Bajutsu の看板の主張は**「プラットフォームは backend にすぎない」**です。決定的コア、シナリオ形式、
 レポーターは、UI を実際に操作する backend が何であっても同じです。[iOS トラック](ios.md)は
-Simulator（`idb` backend）で完結しますが、これには Xcode 入りの Mac が必要です。このトラックは
+Simulator（`XCUITest` backend）で完結しますが、これには Xcode 入りの Mac が必要です。このトラックは
 同じループをブラウザ（`web` / Playwright backend）で完結させます。ブラウザなら Linux でも Windows
 でも macOS でも同じように動きます。これは、Bajutsu 自身の web デモを Linux のゲート上で動かしている
 のと同じ backend です（[`demos/web`](../../../demos/web/README.md)）。
@@ -101,7 +101,7 @@ uv run bajutsu run --scenario demos/web/scenarios/smoke.yaml --target web --back
   （その `baseUrl` とシナリオディレクトリ）を選びます。ツール自体はアプリ非依存で、target ごとの差分は
   すべて config に置かれます（[configuration](../configuration.md)）。
 - `--backend web` は actuator を選びます。Chromium を操作する Playwright エンジンです。Xcode も
-  idb も Simulator も関わりません。
+  Simulator も関わりません。
 - `--scenario` を省くと target のシナリオディレクトリ全体を実行します（`make -C demos/web e2e` が
   行っているのがこれです）。
 

@@ -53,7 +53,7 @@ _RUN_PATH = (
     r"|bajutsu/(?:"
     r"_yaml|adb|artifact_perms|backends|capabilities|capability_preflight"
     r"|config|config_source|device_id|dom|dotenv|elements"
-    r"|handoff|idb_version|interp|mailbox|platform_lifecycle|record"
+    r"|handoff|interp|mailbox|platform_lifecycle|record"
     r"|run_id|screenshots|simctl|totp|web_network|webview"
     r")\.py$"
     r"|bajutsu/crawl/(?:core|serialize|__init__)\.py$"

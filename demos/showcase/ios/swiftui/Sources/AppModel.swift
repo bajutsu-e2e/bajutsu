@@ -53,7 +53,7 @@ final class AppModel: ObservableObject {
     // Two-finger gesture mode (BE-0019): a test-only affordance gated on the SHOWCASE_GESTURES
     // launch env, mirroring conformance above. When set, the app renders a flat, scroll-free
     // pinch/rotate screen so the on-device `xcuitest (multi-touch)` run can resolve and actuate the
-    // targets without depending on scroll — two-finger gestures are the one class idb cannot drive.
+    // targets without depending on scroll — two-finger gestures are the one class the retired idb backend could not drive (BE-0290).
     let gesturesMode: Bool
 
     let animationsDisabled: Bool

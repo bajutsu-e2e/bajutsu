@@ -73,7 +73,7 @@ AliveCheck = Callable[[base.Driver, list[base.Element]], bool]
 Recover = Callable[[base.Driver], None]
 # Builds one extra worker's `(driver, reset)` lane. The engine calls it *inside that worker's own
 # thread*, so a thread-affine driver (Playwright's sync API, BE-0077) is created on the very thread
-# that drives it; idb is thread-agnostic, so this is also where the run pool builds its lanes.
+# that drives it; the iOS backend is thread-agnostic, so this is also where the run pool builds its lanes.
 WorkerFactory = Callable[[], "tuple[base.Driver, Reset]"]
 
 

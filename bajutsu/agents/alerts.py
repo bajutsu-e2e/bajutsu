@@ -1,6 +1,6 @@
 """System-alert guard — detect and dismiss OS prompts the app cannot see.
 
-idb's accessibility query is scoped to the foreground app, so SpringBoard-level
+The iOS accessibility query is scoped to the foreground app, so SpringBoard-level
 prompts (e.g. the iOS "Save Password?" alert) are invisible to it and silently
 block a run: the app's element tree collapses to a single window node. This guard
 takes a screenshot, asks a vision locator where to tap, and taps it by coordinate.

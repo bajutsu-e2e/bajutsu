@@ -254,7 +254,7 @@ def test_start_run_carries_the_active_project_id_onto_the_job(tmp_path: Path) ->
 def _file_config(path: Path, target: str = "demo") -> Path:
     """A minimal, loadable config file so `bind_config` accepts it when a project is activated."""
     path.write_text(
-        f"defaults: {{ backend: [idb] }}\ntargets:\n  {target}: {{ bundleId: com.example.{target} }}\n",
+        f"defaults: {{ backend: [ios] }}\ntargets:\n  {target}: {{ bundleId: com.example.{target} }}\n",
         encoding="utf-8",
     )
     return path
@@ -472,7 +472,7 @@ def _scenarios_zip() -> bytes:
 
 def _composed_config() -> bytes:
     return (
-        b"defaults: { backend: [idb] }\n"
+        b"defaults: { backend: [ios] }\n"
         b"targets:\n  demo: { bundleId: com.example.demo, scenarios: ./scenarios }\n"
     )
 

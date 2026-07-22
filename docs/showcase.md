@@ -39,7 +39,7 @@ gitignored).
 
 ```bash
 make -C demos/showcase swiftui-build       # compile the SwiftUI a11y product for the Simulator
-make -C demos/showcase run-swiftui         # build → install → bajutsu run (idb) against a booted Simulator
+make -C demos/showcase run-swiftui         # build → install → bajutsu run (XCUITest) against a booted Simulator
 make -C demos/showcase doctor              # the accessibility A/B: a11y grades Ready, -noax Blocked
 make -C demos/showcase ui-test             # the codegen path: scenario → XCUITest → xcodebuild test
 ```
@@ -54,8 +54,8 @@ BE-0079 removed the launch-env shortcuts to a *data state* and to a *pushed scre
 fixed (no seed knob), and a deeplink no longer jumps onto a detail — a detail is reached only by
 tapping its row. BE-0107 finished the job by retiring `SHOWCASE_TAB`, the last launch-env shortcut to
 a screen: the app always launches on the Stable tab, and every other tab is reached by tapping the
-native tab bar. Only the XCUITest backend can tap the tab bar (idb collapses it into one opaque
-group), so the tab-crossing scenarios run on `--backend ios`. Every screen beyond the launch tab is
+native tab bar. The XCUITest backend taps the native tab bar's individual tabs, so the tab-crossing
+scenarios run on `--backend ios`. Every screen beyond the launch tab is
 reached by driving the UI, and a scenario observes the app's own data rather than relying on an injected data state.
 
 | Variable | Effect |

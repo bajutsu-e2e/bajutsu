@@ -1,9 +1,9 @@
-"""adb backend (headless, coordinate-based) — the architectural twin of idb.
+"""adb backend (headless, coordinate-based).
 
 Parses `uiautomator dump` XML into normalized Elements and acts via `adb shell input tap/swipe/text`.
-adb has no semantic tap, so a tap resolves the target's frame center first — the same frame-center
-round-trip idb performs. Like idb's near-empty tree during a SwiftUI transition, `uiautomator dump`
-intermittently yields a null-root/empty result mid-transition, so this reuses idb's
+adb has no semantic tap, so a tap resolves the target's frame center first — a coordinate
+round-trip. Like a device tree that goes near-empty during a screen transition, `uiautomator dump`
+intermittently yields a null-root/empty result mid-transition, so this reuses the shared
 *resolve-with-retry, fail-ambiguity-fast* discipline unchanged: retry a bounded number of times, and
 still fail immediately on an ambiguous (2+) match rather than tapping whatever matched first.
 
@@ -22,7 +22,7 @@ A `clickable` node also carries the `button` trait, and a clickable node with no
 (a clickable `android.view.View` whose caption lives in a child `TextView`) resolves the shared
 cross-backend tab selector `{ label, traits: [button] }` (BE-0107), the same way iOS reaches a tab:
 the adb driver catching up to that established contract (BE-0223). Here `button` means *tappable*
-(the node responds to a tap), which is broader than idb's `button`, derived from the widget type
+(the node responds to a tap), which is broader than a `button` trait derived from the widget type
 itself — so a bare `traits: [button]` matches any tappable row or container; pair it with a `label`
 (as every shared scenario does) to address one control.
 """
@@ -81,7 +81,7 @@ def _strip_pkg(resource_id: str) -> str | None:
 
 
 def _norm_class(class_name: str) -> str:
-    """Widget class to a trait token: `android.widget.Button` → `button` (idb's `_norm_type` shape)."""
+    """Widget class to a trait token: `android.widget.Button` → `button`."""
     simple = class_name.rsplit(".", 1)[-1]
     return simple[:1].lower() + simple[1:] if simple else simple
 
@@ -135,7 +135,7 @@ def _traits(node: ET.Element) -> list[str]:
     # A clickable node is tappable, so it carries the button trait — the shared cross-backend tab
     # selector `{ label, traits: [button] }` (BE-0107) resolves on adb because a Compose
     # NavigationBarItem dumps as a clickable `android.view.View`, whose class alone ("view") never
-    # yields it (BE-0223). Note this `button` means "tappable", broader than idb's, which comes from
+    # yields it (BE-0223). Note this `button` means "tappable", broader than a `button` derived from
     # the widget type — so a bare `traits: [button]` matches any tappable node; pair it with a label.
     # Guarded so a widget already mapped to `button` by class (a Views Button) is not tagged twice.
     if node.get("clickable") == "true" and base.Trait.BUTTON not in out:
@@ -206,9 +206,9 @@ class AdbDriver(CoordinateTreeDriver):
     """Driver implementation for the Android emulator via adb + UI Automator.
 
     The transient-empty retry, exponential backoff, stable-key projection, and not-found resolve loop
-    live in `CoordinateTreeDriver` (shared with `IdbDriver`); this class supplies adb's own describe
-    (`uiautomator dump` / resident channel + XML), its wall-clock `_settle`, the scroll-into-view and
-    `sendevent` paths, and its actuators.
+    live in `CoordinateTreeDriver` (the reusable coordinate-backend core); this class supplies adb's
+    own describe (`uiautomator dump` / resident channel + XML), its wall-clock `_settle`, the
+    scroll-into-view and `sendevent` paths, and its actuators.
     """
 
     name = "adb"
@@ -490,7 +490,7 @@ class AdbDriver(CoordinateTreeDriver):
     def type_text(self, text: str) -> None:
         # Feed the `input text` command to `adb shell` over stdin, not on the argv, so a secret / OTP
         # never lands in the adb process command line where `ps` could read it (BE-0155). Routed
-        # through a class-level attribute so tests can patch it, mirroring idb's `_run_text`.
+        # through a class-level attribute so tests can patch it.
         self._run_text(adb.shell_cmd(self.serial), adb.text_script(text))
 
     @staticmethod
@@ -518,8 +518,8 @@ class AdbDriver(CoordinateTreeDriver):
 
         The device pool hands this to the `FileSink` so the same backend-independent `capture` policy
         that drives the simctl providers on iOS drives the adb ones here — Android is not `simctl`, so
-        it routes through this driver-supplied seam rather than the sink's simctl path (idb, which has
-        no such method, leaves the seam None and takes the simctl path). `video` records via
+        it routes through this driver-supplied seam rather than the sink's simctl path (the iOS backend,
+        which has no such method, leaves the seam None and takes the simctl path). `video` records via
         `screenrecord` (pulled off the device on stop); `deviceLog` streams `logcat`. `appTrace` has
         no adb analogue, so it returns None.
         """
@@ -529,11 +529,11 @@ class AdbDriver(CoordinateTreeDriver):
             return intervals.start_logcat(self.serial, path)
         return None
 
-    # No semantic tap and no native network monitoring — the lean end of the capability model,
-    # alongside idb. Of the device-control family it advertises only `setLocation` + `clipboard`:
+    # No semantic tap and no native network monitoring — the lean end of the capability model.
+    # Of the device-control family it advertises only `setLocation` + `clipboard`:
     # `setLocation` over the emulator console (BE-0211), `clipboard` over an ordered `am broadcast`
-    # to the app's in-app receiver (BajutsuAndroid, BE-0233) — like idb, whose clipboard rides
-    # simctl, adb declares it because the backend can drive it given a cooperating app. The
+    # to the app's in-app receiver (BajutsuAndroid, BE-0233); adb declares it because the backend can
+    # drive it given a cooperating app. The
     # per-operation tokens (BE-0212) let it declare exactly that subset, so preflight admits those
     # steps and fails the rest fast. A class constant so the preflight (BE-0082) reads it via
     # `backends.capabilities_for` with no device. `multiTouch` is declared statically here too, so
@@ -543,7 +543,7 @@ class AdbDriver(CoordinateTreeDriver):
     # `network` is deliberately NOT declared here even though adb captures traffic (BE-0283): that
     # token means *native* driver observation (only Playwright has it), and `capability_preflight`
     # leaves `network` ungated precisely because the app-side collector satisfies it without a backend
-    # advertising it — the same accommodation idb relies on. Declaring it would wrongly claim native
+    # advertising it — the same accommodation the iOS backend relies on. Declaring it would wrongly claim native
     # observation and is not needed for a `request` assertion to run on adb.
     CAPABILITIES = (
         frozenset(

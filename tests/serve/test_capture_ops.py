@@ -69,7 +69,7 @@ def test_start_capture_opens_session(tmp_path: Path) -> None:
     driver = FakeDriver(screen)
 
     payload, status = ops.start_capture(
-        state, {"target": "demo"}, driver_factory=lambda _t, _b, _u: driver
+        state, {"target": "demo"}, driver_factory=lambda _e, _b, _u: (driver, lambda: None)
     )
     assert status == 200
     assert payload["ok"] is True
@@ -82,9 +82,13 @@ def test_start_capture_rejects_second_session(tmp_path: Path) -> None:
     state = _state_with_config(tmp_path)
     driver = FakeDriver(_screen())
 
-    ops.start_capture(state, {"target": "demo"}, driver_factory=lambda _t, _b, _u: driver)
+    ops.start_capture(
+        state, {"target": "demo"}, driver_factory=lambda _e, _b, _u: (driver, lambda: None)
+    )
     payload, status = ops.start_capture(
-        state, {"target": "demo"}, driver_factory=lambda _t, _b, _u: FakeDriver(_screen())
+        state,
+        {"target": "demo"},
+        driver_factory=lambda _e, _b, _u: (FakeDriver(_screen()), lambda: None),
     )
     assert status == 409
     assert "already active" in payload["error"]
@@ -98,15 +102,15 @@ def test_start_capture_requires_config(tmp_path: Path) -> None:
 
 
 def _ios_state(tmp_path: Path) -> ServeState:
-    """A ServeState whose `ios` target declares `backend: [ios]` (multi-actuator, BE-0267)."""
+    """A ServeState whose `ios` target declares `backend: [ios]` (BE-0267)."""
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "defaults: { backend: [idb] }\n"
+        "defaults: { backend: [ios] }\n"
         "targets:\n"
         f"  ios: {{ bundleId: com.example.ios, backend: [ios], scenarios: {scn_dir} }}\n"
-        f"  idb_only: {{ bundleId: com.example.idb, backend: [idb], scenarios: {scn_dir} }}\n",
+        f"  xcuitest_only: {{ bundleId: com.example.x, backend: [xcuitest], scenarios: {scn_dir} }}\n",
         encoding="utf-8",
     )
     runs = tmp_path / "runs"
@@ -114,36 +118,40 @@ def _ios_state(tmp_path: Path) -> ServeState:
     return ServeState(runs_dir=runs, config=cfg, scenarios_dir=scn_dir, cwd=tmp_path)
 
 
-def test_start_capture_ios_target_resolves_to_idb(tmp_path: Path) -> None:
-    # A `[ios]` target must select the cheapest bring-able actuator (idb), not the alias head
-    # XCUITest — serve never starts an XCUITest runner (BE-0267). The recording factory resolves
-    # the backends list it receives the same way the default factory does.
+def _tuple_factory(seen: list[str]) -> object:
+    """A recording factory that resolves the backends list the way the default factory does."""
     from bajutsu import backends
 
-    seen: list[str] = []
-
-    def factory(_target: str, backends_list: list[str], _udid: str) -> FakeDriver:
+    def factory(_eff: object, backends_list: list[str], _udid: str) -> tuple[FakeDriver, object]:
         seen.append(backends.select_actuator_cost_first(backends_list, available=lambda a: True))
-        return FakeDriver(_screen())
+        return FakeDriver(_screen()), (lambda: None)
 
+    return factory
+
+
+def test_start_capture_ios_target_resolves_to_xcuitest(tmp_path: Path) -> None:
+    # A `[ios]` target selects XCUITest — the sole iOS actuator (BE-0290).
+    seen: list[str] = []
     state = _ios_state(tmp_path)
-    _payload, status = ops.start_capture(state, {"target": "ios"}, driver_factory=factory)
+    _payload, status = ops.start_capture(
+        state, {"target": "ios"}, driver_factory=_tuple_factory(seen)
+    )
     assert status == 200
-    assert seen == ["idb"]
+    assert seen == ["xcuitest"]
 
 
 def test_start_capture_single_actuator_target_unchanged(tmp_path: Path) -> None:
     # A single-actuator target is a hard pin: capture hands the factory exactly its backend list.
     seen: list[list[str]] = []
 
-    def factory(_target: str, backends_list: list[str], _udid: str) -> FakeDriver:
+    def factory(_eff: object, backends_list: list[str], _udid: str) -> tuple[FakeDriver, object]:
         seen.append(backends_list)
-        return FakeDriver(_screen())
+        return FakeDriver(_screen()), (lambda: None)
 
     state = _ios_state(tmp_path)
-    _payload, status = ops.start_capture(state, {"target": "idb_only"}, driver_factory=factory)
+    _payload, status = ops.start_capture(state, {"target": "xcuitest_only"}, driver_factory=factory)
     assert status == 200
-    assert seen == [["idb"]]
+    assert seen == [["xcuitest"]]
 
 
 def test_start_capture_explicit_body_backend_wins(tmp_path: Path) -> None:
@@ -152,36 +160,28 @@ def test_start_capture_explicit_body_backend_wins(tmp_path: Path) -> None:
     # branch (BE-0267) that target-driven tests never reach.
     seen: list[list[str]] = []
 
-    def factory(_target: str, backends_list: list[str], _udid: str) -> FakeDriver:
+    def factory(_eff: object, backends_list: list[str], _udid: str) -> tuple[FakeDriver, object]:
         seen.append(backends_list)
-        return FakeDriver(_screen())
+        return FakeDriver(_screen()), (lambda: None)
 
     state = _ios_state(tmp_path)
     _payload, status = ops.start_capture(
-        state, {"target": "ios", "backend": "idb"}, driver_factory=factory
+        state, {"target": "ios", "backend": "xcuitest"}, driver_factory=factory
     )
     assert status == 200
-    assert seen == [["idb"]]
+    assert seen == [["xcuitest"]]
 
 
-def test_start_capture_explicit_alias_backend_is_cost_ordered(tmp_path: Path) -> None:
-    # An explicit alias like `backend: "ios"` still goes through cost ordering, not a hard pin:
-    # the override branch hands the factory `["ios"]`, which cost-orders to idb — proving the
-    # override preserves ordering, not just a passthrough (BE-0267).
-    from bajutsu import backends
-
+def test_start_capture_explicit_alias_backend_resolves(tmp_path: Path) -> None:
+    # An explicit alias like `backend: "ios"` still goes through the selector, not a raw passthrough:
+    # the override branch hands the factory `["ios"]`, which resolves to XCUITest (BE-0267, BE-0290).
     seen: list[str] = []
-
-    def factory(_target: str, backends_list: list[str], _udid: str) -> FakeDriver:
-        seen.append(backends.select_actuator_cost_first(backends_list, available=lambda a: True))
-        return FakeDriver(_screen())
-
     state = _ios_state(tmp_path)
     _payload, status = ops.start_capture(
-        state, {"target": "idb_only", "backend": "ios"}, driver_factory=factory
+        state, {"target": "xcuitest_only", "backend": "ios"}, driver_factory=_tuple_factory(seen)
     )
     assert status == 200
-    assert seen == ["idb"]
+    assert seen == ["xcuitest"]
 
 
 # ---------------------------------------------------------------------------
@@ -193,7 +193,9 @@ def test_mark_tap_resolves_and_actuates(tmp_path: Path) -> None:
     state = _state_with_config(tmp_path)
     screen = _screen()
     driver = FakeDriver(screen)
-    ops.start_capture(state, {"target": "demo"}, driver_factory=lambda _t, _b, _u: driver)
+    ops.start_capture(
+        state, {"target": "demo"}, driver_factory=lambda _e, _b, _u: (driver, lambda: None)
+    )
 
     payload, status = ops.mark_capture(
         state,
@@ -229,7 +231,9 @@ def test_mark_tap_ambiguous_returns_feedback(tmp_path: Path) -> None:
     ]
     state = _state_with_config(tmp_path)
     driver = FakeDriver(dup_screen)
-    ops.start_capture(state, {"target": "demo"}, driver_factory=lambda _t, _b, _u: driver)
+    ops.start_capture(
+        state, {"target": "demo"}, driver_factory=lambda _e, _b, _u: (driver, lambda: None)
+    )
 
     payload, status = ops.mark_capture(state, {"kind": "tap", "point": [0.5, 0.3]})
     assert status == 200
@@ -256,7 +260,7 @@ def test_mark_type_with_redaction(tmp_path: Path) -> None:
     ops.start_capture(
         state,
         {"target": "demo"},
-        driver_factory=lambda _t, _b, _u: driver,
+        driver_factory=lambda _e, _b, _u: (driver, lambda: None),
         redactor=Redactor(Redact(fields=["password"]), values=["s3cret"]),
     )
 
@@ -284,7 +288,9 @@ def test_finish_saves_yaml(tmp_path: Path) -> None:
     state = _state_with_config(tmp_path)
     screen = _screen()
     driver = FakeDriver(screen)
-    ops.start_capture(state, {"target": "demo"}, driver_factory=lambda _t, _b, _u: driver)
+    ops.start_capture(
+        state, {"target": "demo"}, driver_factory=lambda _e, _b, _u: (driver, lambda: None)
+    )
 
     # Mark two taps
     ops.mark_capture(state, {"kind": "tap", "point": [0.3, 0.2]})  # auth.email
@@ -315,7 +321,9 @@ def test_resolve_pick_returns_selector_without_side_effects(tmp_path: Path) -> N
     # returned selector to the YAML). This is what keeps the live path off the verdict path.
     state = _state_with_config(tmp_path)
     driver = FakeDriver(_screen())
-    ops.start_capture(state, {"target": "demo"}, driver_factory=lambda _t, _b, _u: driver)
+    ops.start_capture(
+        state, {"target": "demo"}, driver_factory=lambda _e, _b, _u: (driver, lambda: None)
+    )
     before = list(driver.actions)  # start already took the initial screenshot
 
     payload, status = ops.resolve_capture_pick(
@@ -348,7 +356,9 @@ def test_resolve_pick_ambiguous_returns_feedback(tmp_path: Path) -> None:
     ]
     state = _state_with_config(tmp_path)
     driver = FakeDriver(dup_screen)
-    ops.start_capture(state, {"target": "demo"}, driver_factory=lambda _t, _b, _u: driver)
+    ops.start_capture(
+        state, {"target": "demo"}, driver_factory=lambda _e, _b, _u: (driver, lambda: None)
+    )
 
     payload, status = ops.resolve_capture_pick(state, {"point": [0.5, 0.3]})
     assert status == 200
@@ -369,7 +379,10 @@ def test_resolve_pick_rejects_another_users_session(tmp_path: Path) -> None:
     state = _state_with_config(tmp_path)
     driver = FakeDriver(_screen())
     ops.start_capture(
-        state, {"target": "demo"}, actor="alice", driver_factory=lambda _t, _b, _u: driver
+        state,
+        {"target": "demo"},
+        actor="alice",
+        driver_factory=lambda _e, _b, _u: (driver, lambda: None),
     )
     payload, status = ops.resolve_capture_pick(state, {"point": [0.5, 0.41]}, actor="bob")
     assert status == 403
@@ -384,7 +397,9 @@ def test_resolve_pick_rejects_another_users_session(tmp_path: Path) -> None:
 def test_close_capture_tears_down_without_saving(tmp_path: Path) -> None:
     state = _state_with_config(tmp_path)
     driver = FakeDriver(_screen())
-    ops.start_capture(state, {"target": "demo"}, driver_factory=lambda _t, _b, _u: driver)
+    ops.start_capture(
+        state, {"target": "demo"}, driver_factory=lambda _e, _b, _u: (driver, lambda: None)
+    )
 
     payload, status = ops.close_capture(state, {})
     assert status == 200
@@ -403,7 +418,10 @@ def test_close_capture_rejects_another_users_session(tmp_path: Path) -> None:
     state = _state_with_config(tmp_path)
     driver = FakeDriver(_screen())
     ops.start_capture(
-        state, {"target": "demo"}, actor="alice", driver_factory=lambda _t, _b, _u: driver
+        state,
+        {"target": "demo"},
+        actor="alice",
+        driver_factory=lambda _e, _b, _u: (driver, lambda: None),
     )
     payload, status = ops.close_capture(state, {}, actor="bob")
     assert status == 403

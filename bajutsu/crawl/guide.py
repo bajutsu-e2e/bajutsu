@@ -84,7 +84,7 @@ def ai_guide(
     on de-dup), narrating its reasoning via `report`.
 
     When `tab_locator` is set and a tab bar is present whose individual tabs the tree can't address
-    (idb surfaces a SwiftUI TabView as one "Tab Bar" group with no per-tab ids), it locates the
+    (iOS surfaces a SwiftUI TabView as one "Tab Bar" group with no per-tab ids), it locates the
     tabs by vision — the same fallback the alert guard uses — and prepends a coordinate tap per tab,
     so the crawl still switches tabs first.
     """

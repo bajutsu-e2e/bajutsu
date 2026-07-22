@@ -34,7 +34,7 @@ struct NoticeDetailView: View {
     private var notice: Notice? { model.notice(id: id) }
 
     var body: some View {
-        // The standard system back button pops back; idb drives it by its built-in id `BackButton`.
+        // The standard system back button pops back; the backend drives it by its built-in id `BackButton`.
         Form {
             Text(notice?.title ?? "Notice \(id)")
                 .font(.title2)

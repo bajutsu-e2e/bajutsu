@@ -168,7 +168,7 @@ def test_shutdown_is_idempotent() -> None:
 def test_command_builders_reject_unvalidated_udid() -> None:
     # Each builder validates the udid inline, so a direct builder call (bypassing Env, as
     # serve does with bootstatus_cmd) can't smuggle an option-injecting / metacharacter id into
-    # xcrun argv — the same guarantee idb.py's builders give.
+    # xcrun argv — the same guarantee every argv builder gives.
     for builder in (simctl.erase_cmd, simctl.boot_cmd, simctl.bootstatus_cmd, simctl.pbpaste_cmd):
         with pytest.raises(simctl.DeviceError, match="invalid udid"):
             builder("-rf; rm")

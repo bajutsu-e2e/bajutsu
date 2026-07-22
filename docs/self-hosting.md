@@ -30,7 +30,7 @@ it will not run from a headless daemon. Every choice below follows from that:
   interactive login after a cold boot before auto-login proceeds).
 - **Disable sleep** so the session stays alive: `sudo pmset -a sleep 0 disablesleep 1`.
 
-These constraints are specific to the **iOS Simulator (idb)** backend. The **web (Playwright)**
+These constraints are specific to the **iOS Simulator (XCUITest)** backend. The **web (Playwright)**
 backend runs a headless browser and needs none of them — it can serve from any Mac or Linux host
 (including the Tier B node), so a web-only deployment skips this section.
 
@@ -41,10 +41,11 @@ backend runs a headless browser and needs none of them — it can serve from any
 > on demand. Install the backend's **runtime closure** — the single extra that names everything a run
 > reaches, including the `visual` (screenshot) and `schema` (`responseSchema`) assertion deps
 > (BE-0173): for the web (Playwright) backend, `uv sync --extra worker-web && playwright install
-> chromium`; for the iOS Simulator (idb) backend, `make deps` (the `idb` client + `idb_companion` +
-> xcodegen) then `uv sync --extra worker-idb`. Installing the backend extra alone (`web` / `idb`)
-> under-installs — such a run fails lazily at assertion time — and skipping it entirely makes runs
-> fail at dispatch with `no available actuator`.
+> chromium`; for the iOS Simulator (XCUITest) backend, `uv sync --extra worker-ios` (the XCUITest
+> backend needs no backend pip extra — Xcode supplies `xcodebuild`, and the target supplies its
+> prebuilt `xcuitest.testRunner` — so `worker-ios` is just the `visual` + `schema` assertion deps).
+> Installing a bare backend extra (e.g. `web`) under-installs — such a run fails lazily at assertion
+> time — and skipping the closure entirely makes runs fail at dispatch with `no available actuator`.
 
 `bajutsu serve --emit-launchagent` prints a launchd plist matching the serve flags you pass, then
 exits without starting a server. Pick a strong token and write the plist into your LaunchAgents:
@@ -69,10 +70,10 @@ Two settings the emitted plist leaves out, both added under `EnvironmentVariable
 - **`ANTHROPIC_API_KEY`** — needed for the AI paths (`record`, `--dismiss-alerts`); it isn't baked
   in for you. (For the Bedrock provider, set `BAJUTSU_AI_PROVIDER` / `BAJUTSU_BEDROCK_MODEL` and the
   AWS credentials here instead.)
-- **`PATH`** — for the idb backend only. launchd starts the agent with a minimal `PATH`, and bajutsu
-  locates `idb` / `idb_companion` through `PATH`, so without it a run fails with
-  `no available actuator` even after `make deps`. Include Homebrew's bin and the venv's bin. (The web
-  backend finds Playwright by import, not `PATH`, so it needs no `PATH` entry.)
+- **`PATH`** — for the iOS (XCUITest) backend only. launchd starts the agent with a minimal `PATH`,
+  and bajutsu locates `xcodebuild` / `xcrun` / `simctl` through `PATH`, so without it a run fails with
+  `no available actuator`. Include the Xcode command-line tools' bin, Homebrew's bin, and the venv's
+  bin. (The web backend finds Playwright by import, not `PATH`, so it needs no `PATH` entry.)
 
 PlistBuddy makes both edits without hand-editing XML (run from the repo root so `.venv` resolves):
 
@@ -241,7 +242,7 @@ user in one default org) and supports **multiple orgs** once you declare them in
 *[Multiple orgs](#multiple-orgs)* below. The ready-to-run stack is in
 [`deploy/self-host/`](../deploy/self-host/) (compose + Dockerfile + `.env.example`).
 
-![Tier B topology diagram: team laptops reach the Linux control-plane node (bajutsu serve --asgi --backend=server, Postgres, MinIO) over HTTPS via Tailscale or Caddy; the control plane dispatches jobs over HTTP to a pool of bare-metal Mac idb workers and, over the same Tailscale tailnet, to containerized Linux web (Playwright/Chromium) workers, both returning results to the control plane.](assets/diagrams/self-hosting-tier-b-topology.svg)
+![Tier B topology diagram: team laptops reach the Linux control-plane node (bajutsu serve --asgi --backend=server, Postgres, MinIO) over HTTPS via Tailscale or Caddy; the control plane dispatches jobs over HTTP to a pool of bare-metal Mac iOS (XCUITest) workers and, over the same Tailscale tailnet, to containerized Linux web (Playwright/Chromium) workers, both returning results to the control plane.](assets/diagrams/self-hosting-tier-b-topology.svg)
 
 <details>
 <summary>Mermaid source</summary>
@@ -251,7 +252,7 @@ user in one default org) and supports **multiple orgs** once you declare them in
 flowchart TB
     laptops(["team laptops"])
     control["Linux node — docker compose<br/>bajutsu serve --asgi --backend=server<br/>postgres · minio<br/>[+ Linux web worker container(s)]"]
-    macWorker["Mac worker × N (bare)<br/>bajutsu worker (idb)<br/>bajutsu run · Simulator"]
+    macWorker["Mac worker × N (bare)<br/>bajutsu worker (iOS · XCUITest)<br/>bajutsu run · Simulator"]
     webWorker["Linux web worker (web)<br/>bajutsu worker · Chromium"]
 
     laptops -->|"HTTPS (Tailscale tailnet,<br/>or Caddy at a hostname)"| control
@@ -264,12 +265,12 @@ flowchart TB
 </details>
 
 The Linux control plane is cheap; the **Mac workers** carry the Simulator runs and are the scarce
-part. The fleet is **heterogeneous by backend**: a Mac idb worker runs **bare metal** because it needs
+part. The fleet is **heterogeneous by backend**: a Mac iOS worker runs **bare metal** because it needs
 the Aqua GUI session for the iOS Simulator (exactly like Tier A), while a **Linux web (Playwright)
 worker runs headless in a container** (BE-0173) — the web backend has no GUI-session constraint. Both
 lease from the same control plane over HTTP; the web-worker container needs **no cloud SDK or
 object-store secrets** (BE-0160), only the control-plane URL and a token. Running a mixed fleet is
-optional — an idb-only deploy is the default and unchanged; add web workers when you host web runs
+optional — an iOS-only deploy is the default and unchanged; add web workers when you host web runs
 ([§ Add a Linux web worker](#5-add-a-linux-web-worker-container-optional)).
 
 **Config sources are deployment-aware (BE-0108).** The "Open config" dialog binds the active config
@@ -424,8 +425,9 @@ the value is held in the process environment and a spawned run inherits it direc
 ### 3. Run a Mac worker
 
 On each Mac (the same Aqua-session setup as Tier A — auto-login, `caffeinate`/`pmset`), install the
-idb worker's runtime closure `bajutsu[worker-idb]` (the `idb` backend plus the `visual` / `schema`
-assertion deps a run reaches, BE-0173) and point it at the control plane over the tailnet:
+iOS worker's runtime closure `bajutsu[worker-ios]` (the iOS (XCUITest) worker needs no backend pip
+extra, so this is just the `visual` / `schema` assertion deps a run reaches, BE-0173) and point it at
+the control plane over the tailnet:
 
 ```bash
 export BAJUTSU_SERVER_URL=http://<linux-node>.<tailnet>.ts.net:8765
@@ -458,7 +460,7 @@ node on the private tailnet.
 
 The web (Playwright) backend runs headless on Linux, so its worker is a **container** rather than a
 bare-metal Mac (BE-0173). The compose stack ships an optional `worker-web` service, **off by default**
-(behind a profile), so an idb-only deploy is unchanged. Enable it — on the Linux node or any other
+(behind a profile), so an iOS-only deploy is unchanged. Enable it — on the Linux node or any other
 Docker host that can reach the control plane — with:
 
 ```bash
@@ -490,7 +492,7 @@ docker run -d --rm \
   bajutsu-worker-web
 ```
 
-A web worker leases only **web** jobs and a Mac idb worker only **idb** jobs — the pool routes by
+A web worker leases only **web** jobs and a Mac iOS worker only **iOS** jobs — the pool routes by
 capability, so a mixed-backend fleet is safe (see [capability-routed
 queues](#capability-routed-queues-be-0166) below).
 
@@ -508,7 +510,7 @@ token the job requires. Routing decides *which* idle worker picks a job up — i
 deterministic `run` verdict.
 
 - **A worker's advertised set** comes from its `--platform` (the backend axis: `platform:ios` for a
-  Mac idb worker, `platform:web` for the Playwright container), plus — for an iOS worker — the
+  Mac iOS worker, `platform:web` for the Playwright container), plus — for an iOS worker — the
   installed Simulator inventory (an `iosNN` token per runtime, and `iphone` / `ipad` device classes).
   Pin extra tokens with `--capabilities` or `$BAJUTSU_WORKER_CAPABILITIES` (comma/space separated),
   e.g. `bajutsu worker --platform ios --capabilities ios18,ipad`. The web-worker container bakes in

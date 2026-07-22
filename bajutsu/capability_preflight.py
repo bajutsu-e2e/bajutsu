@@ -1,24 +1,28 @@
 """Preflight capability check (BE-0082).
 
 Every backend declares what it can do via `Driver.capabilities()`. A scenario can ask for an
-action the chosen backend can't perform — a two-finger pinch on idb (single-touch). Before this
-check, the only gate was `gestures.py`'s `_require_multi_touch`, fired mid-run, so a scenario
+action the chosen backend can't perform — e.g. a two-finger pinch on a single-touch backend. Before
+this check, the only gate was `gestures.py`'s `_require_multi_touch`, fired mid-run, so a scenario
 whose last step needed an unsupported capability ran every earlier step on a device first, then
 failed late. `unsupported()` moves that check up front: it is a pure function of (scenario,
 capability set), so the runner can fail a scenario *before* any device work, deterministically and
 with one aggregated message (prime directive #2: fail fast and clearly).
+
+Several gates below were written for idb, the one backend that lacked `multiTouch` and
+`textSelection`. With idb retired (BE-0290), no current backend lacks either, so those gates no
+longer reject any scenario in practice; they stay because the check is capability-driven, not
+backend-specific, and a future backend may reintroduce the gap.
 
 The map gates only the **true hard requirements** the capability set cleanly decides:
 
 - `pinch` / `rotate` need `multiTouch`.
 - `selectOption` needs `selectOption` (BE-0191): a web-only action that sets a native `<select>`;
   iOS / Android backends raise `UnsupportedAction`, so a scenario with this step is rejected before
-  any device work on those platforms, exactly like `pinch`/`rotate` on idb.
+  any device work on those platforms.
 - `select` / `copy` need `textSelection` (BE-0280): select-all + clipboard copy on the focused
-  field. idb is coordinate-only with no select-all handle, so it raises `UnsupportedAction` and does
-  not advertise the token — a scenario selecting or copying is rejected up front on idb, exactly
-  like `selectOption`. `delete` / `clear` are not gated: they actuate `delete_text` (a run of
-  backspaces), which every backend backs.
+  field. A backend with no select-all handle raises `UnsupportedAction` and does not advertise the
+  token, so a scenario selecting or copying is rejected up front. `delete` / `clear` are not gated:
+  they actuate `delete_text` (a run of backspaces), which every backend backs.
 - a `visual` assertion needs `screenshot`.
 - a device-control step needs the capability token for its own operation (BE-0212 split the coarse
   `deviceControl` of BE-0128 into per-operation tokens): `setLocation` needs
@@ -38,10 +42,10 @@ Deliberately **not** gated (an audit of what each construct actually depends on,
 - `conditionWait` — the orchestrator implements every wait by polling `query()` / the network
   collector (`orchestrator/waits.py`), so no backend needs the capability; gating it would reject
   scenarios that run fine.
-- `network` — idb does not advertise `network` (that token means *native* observation, which
-  Playwright has), yet idb still captures traffic through the app-side collector, so a `request` /
-  `event` / `requestSequence` / `responseSchema` assertion or `until: { request }` wait runs on
-  idb. Gating on the capability would wrongly reject those.
+- `network` — the iOS (XCUITest) and Android backends do not advertise `network` (that token means
+  *native* observation, which Playwright has), yet they still capture traffic through the app-side
+  collector, so a `request` / `event` / `requestSequence` / `responseSchema` assertion or
+  `until: { request }` wait runs on them. Gating on the capability would wrongly reject those.
 """
 
 from __future__ import annotations
@@ -112,7 +116,7 @@ def _text_selection_locations(sc: Scenario) -> list[str]:
     """The paths where a `select` or `copy` step appears (BE-0280).
 
     `delete` / `clear` are excluded: they actuate `delete_text`, which every backend backs, so they
-    need no capability. Only select-all / copy have no idb actuation.
+    need no capability. Only select-all / copy depend on the `textSelection` capability.
     """
     return [
         path
@@ -180,7 +184,7 @@ _REQUIREMENTS = (
     ),
     _Requirement(
         base.Capability.TEXT_SELECTION,
-        "select / copy (select-all + clipboard copy; not supported on idb)",
+        "select / copy (select-all + clipboard copy; not supported by this backend)",
         _text_selection_locations,
     ),
     _Requirement(

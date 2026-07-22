@@ -105,7 +105,7 @@ def test_http_open_local_config_from_subdir_binds_config_dir(tmp_path: Path) -> 
     )
     cfg = proj / "bajutsu.config.yaml"
     cfg.write_text(
-        "defaults: { backend: [idb] }\n"
+        "defaults: { backend: [ios] }\n"
         "targets:\n  demo: { bundleId: com.example.demo, scenarios: scn }\n",  # relative to the config
         encoding="utf-8",
     )
@@ -143,7 +143,7 @@ def test_http_open_config_from_git_binds_checkout(tmp_path: Path, monkeypatch) -
     )
     git_cfg = checkout / "bajutsu.config.yaml"
     git_cfg.write_text(
-        "defaults: { backend: [idb] }\n"
+        "defaults: { backend: [ios] }\n"
         "targets:\n  fromgit: { bundleId: com.example.fromgit, scenarios: e2e }\n",
         encoding="utf-8",
     )
@@ -209,7 +209,7 @@ def test_http_config_content_uses_restricted_loader_and_stays_json_safe(tmp_path
     # reads state.config directly (no schema re-validation), so a tricky file exercises both.
     _, _, runs = project(tmp_path)
     cfg = tmp_path / "tricky.yaml"
-    cfg.write_text("on: 1\nreleased: 2020-01-02\ndefaults: { backend: [idb] }\n", encoding="utf-8")
+    cfg.write_text("on: 1\nreleased: 2020-01-02\ndefaults: { backend: [ios] }\n", encoding="utf-8")
     server, port = _serve(srv.ServeState(config=cfg, runs_dir=runs, cwd=tmp_path))
     try:
         d = _get_json(port, "/api/config/content")  # would raise on a 500 (non-JSON-safe payload)

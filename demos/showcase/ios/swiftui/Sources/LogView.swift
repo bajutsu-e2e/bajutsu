@@ -2,7 +2,7 @@ import SwiftUI
 
 // Training-log composer: exercises every input control and all four modal styles
 // (sheet, fullScreenCover, confirmationDialog, auto-dismissing toast). In-app modals
-// are visible to idb; the toast exercises `wait until gone`.
+// are visible to the backend; the toast exercises `wait until gone`.
 struct LogView: View {
     @EnvironmentObject var model: AppModel
 
@@ -43,8 +43,8 @@ struct LogView: View {
                         .accessibilityID("log.count.value")
                         .accessibilityStateValue(String(count))
 
-                    // A button-backed toggle (not a SwiftUI Toggle): on iOS 26 idb's tap does
-                    // not flip a Toggle's switch, but a Button toggles reliably — the same
+                    // A button-backed toggle (not a SwiftUI Toggle): on iOS 26 the retired idb backend's tap did
+                    // not flip a Toggle's switch (BE-0290), but a Button toggles reliably — the same
                     // pattern horse.favorite uses. `selected` trait reflects the state.
                     Button {
                         intense.toggle()
@@ -101,8 +101,8 @@ struct LogView: View {
                         .accessibilityStateValue(String(doubleTaps))
                 }
 
-                // A button-backed segmented control (not a SwiftUI Picker(.segmented): idb's
-                // tap does not switch a native segmented control on iOS 26). Each choice is a
+                // A button-backed segmented control (not a SwiftUI Picker(.segmented): the retired idb backend's
+                // tap did not switch a native segmented control on iOS 26, BE-0290). Each choice is a
                 // Button whose `selected` trait reflects the current pick, the same idiom as the
                 // Intense toggle; the selection mirrors to log.segment.value. Kept below the
                 // modals/gestures so those sections' scroll positions are unchanged.
@@ -166,7 +166,7 @@ struct LogView: View {
             .padding()
         }
         // Action sheet: a ZStack overlay of choices. Not a SwiftUI confirmationDialog (its
-        // buttons render as DUPLICATE accessibility elements on iOS 26, defeating idb's
+        // buttons render as DUPLICATE accessibility elements on iOS 26, defeating a
         // single-match tap) and not a second `.sheet` (one view honours only one `.sheet`, so
         // it would silently not present alongside the filter sheet). Plain Buttons resolve
         // uniquely; result mirrors to log.dialog.value.

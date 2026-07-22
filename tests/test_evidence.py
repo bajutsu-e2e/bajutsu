@@ -17,7 +17,7 @@ class _StubInterval:
     """A finished recording, standing in for the subprocess-backed `Interval` (an external
     boundary): `finish_scenario_intervals` only needs `stop()` / `kind` / `provider`."""
 
-    def __init__(self, path: Path, kind: str = "deviceLog", provider: str = "idb") -> None:
+    def __init__(self, path: Path, kind: str = "deviceLog", provider: str = "xcuitest") -> None:
         self._path = path
         self.kind = kind
         self.provider = provider

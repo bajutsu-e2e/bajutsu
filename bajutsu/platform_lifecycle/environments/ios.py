@@ -1,17 +1,16 @@
-"""The device-style lifecycle: the iOS Simulator (`simctl`) backend and its shared base.
+"""The device-style lifecycle base shared by the simctl family.
 
-`_DeviceEnvironment` holds every lease-shaping method the simctl family (iOS, XCUITest, fake) share;
-`IosEnvironment` adds the idb backend's `start` sequence.
+`_DeviceEnvironment` holds every lease-shaping method the simctl family (XCUITest, fake) share; each
+concrete environment adds only its own `start` sequence.
 """
 
 from __future__ import annotations
 
 import contextlib
-import subprocess
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
-from bajutsu import backends, simctl
+from bajutsu import simctl
 from bajutsu.config import Effective, require_ios
 from bajutsu.crawl import AliveCheck, ClearBlocking, Recover, Reset
 from bajutsu.drivers import base
@@ -21,7 +20,7 @@ from bajutsu.orchestrator import DeviceControl, RelaunchFn
 from bajutsu.platform_lifecycle import readiness
 from bajutsu.platform_lifecycle.device_control import device_control
 from bajutsu.platform_lifecycle.relaunchers import device_relauncher
-from bajutsu.scenario import Preconditions, Scenario
+from bajutsu.scenario import Scenario
 
 
 class _DeviceEnvironment:
@@ -123,7 +122,7 @@ class _DeviceEnvironment:
         simctl.Env(self._udid, run=self._run).terminate(require_ios(eff).bundle_id)
 
     def has_reusable_resident(self) -> bool:
-        # idb / fake spawn no resident to amortize; XcuitestEnvironment overrides (BE-0291).
+        # fake spawns no resident to amortize; XcuitestEnvironment overrides (BE-0291).
         return False
 
     def end_lease(self, driver: base.Driver, eff: Effective) -> None:
@@ -160,74 +159,3 @@ class _DeviceEnvironment:
 
     def crawl_dialog_clearer(self) -> ClearBlocking | None:
         return None  # OS prompts are handled by the optional alert guard, wired by the CLI
-
-
-class IosEnvironment(_DeviceEnvironment):
-    """The iOS Simulator lifecycle via `simctl` (the idb backend's environment).
-
-    `erase` needs a shut-down device, so an erase run shuts down first (shutdown → erase → boot);
-    any `simctl` step that fails is surfaced as a clean `simctl.DeviceError` so the CLI exits 2 instead
-    of dumping a traceback.
-    """
-
-    def records_video_up_front(self) -> bool:
-        # Begin recording before the app launches so its cold start is captured; the sink adopts the
-        # running interval (`_prestart_video` / `prestarted_intervals`). The pool reads this to wire
-        # `record_video_dir` into `start`. The fake / XCUITest bases keep the on-demand default.
-        return True
-
-    def start(
-        self,
-        eff: Effective,
-        pre: Preconditions,
-        *,
-        extra_env: Mapping[str, str] | None = None,
-        record_video_dir: Path | None = None,
-        permissions: Mapping[str, str] | None = None,
-    ) -> base.Driver:
-        ios = require_ios(eff)
-        e = simctl.Env(self._udid, run=self._run)
-        try:
-            if pre.erase:
-                e.shutdown()  # erase only works on a shut-down device
-                e.erase()
-            e.boot()
-            # A configured .app is reinstalled before each run so every scenario starts from a
-            # known-good binary. `clean` (default) uninstalls first (fresh app + data); `overwrite`
-            # installs over the existing app. After an `erase` the app is gone, so skip the uninstall.
-            if ios.app_path:
-                if not Path(ios.app_path).exists():
-                    raise simctl.DeviceError(
-                        f"appPath not found: {ios.app_path} (build the app first)"
-                    )
-                if pre.reinstall == "clean" and not pre.erase:
-                    e.uninstall(ios.bundle_id)
-                e.install(ios.app_path)
-            e.terminate(ios.bundle_id)  # clean start so readiness reflects the new launch
-            # Set permission state after install (a fresh install/erase resets TCC grants) but
-            # before launch, so a permission prompt never blocks the scenario (BE-0276).
-            if permissions:
-                e.apply_permissions(ios.bundle_id, permissions)
-            launch_env: Mapping[str, str] = {
-                **eff.launch_env,
-                **pre.launch_env,
-                **(extra_env or {}),
-            }
-            # Start the scenario video now — after the device is booted and the app installed, but
-            # before it launches — so the recording spans the app's cold start rather than missing it.
-            self._prestart_video(record_video_dir)
-            locale = pre.locale or eff.locale  # scenario locale overrides the app/config default
-            try:
-                e.launch(
-                    ios.bundle_id,
-                    [*eff.launch_args, *pre.launch_args, *simctl.locale_args(locale)],
-                    launch_env,
-                )
-                if pre.deeplink is not None:
-                    e.openurl(pre.deeplink)
-            except BaseException:
-                self._stop_prestarted_video()  # a failed launch must not leave recordVideo running
-                raise
-        except subprocess.CalledProcessError as exc:
-            raise simctl.device_error(exc) from exc
-        return backends.make_driver(self._actuator, self._udid)

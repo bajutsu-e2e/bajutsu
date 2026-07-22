@@ -11,11 +11,11 @@
 > Natural-language-driven E2E (end-to-end) testing built on a **backend-agnostic driver**: one
 > scenario format and one deterministic runner, where **a platform is a backend** behind that
 > one interface. Swap the backend and the same scenarios run on a different target — the iOS
-> Simulator (idb/XCUITest), a web (Playwright) backend, and an Android (adb) backend are all
+> Simulator (XCUITest), a web (Playwright) backend, and an Android (adb) backend are all
 > landed, with Flutter next.
 > **Status: pre-alpha.** The deterministic core, the AI authoring loop (`record` / `crawl`),
 > the evidence subsystem, codegen, and self-healing triage are all implemented and
-> unit-tested (no Simulator needed). The iOS **idb/XCUITest backends** are **validated
+> unit-tested (no Simulator needed). The iOS **XCUITest backend** is **validated
 > end-to-end on a real Simulator** — scenarios, evidence capture, and the triage self-heal loop
 > all run on-device. The **web (Playwright) backend** runs a deterministic `run` against a
 > browser on the Linux gate ([`demos/web`](demos/web/README.md)), and the **Android (adb)
@@ -26,7 +26,7 @@ taps / text / swipes / waits — and verifies the result with **machine-checkabl
 Everything but one seam is platform-neutral: the scenario format, selector resolution, the
 deterministic runner, the evidence subsystem, and the reporter never name a platform. That one seam
 is the **backend** — the driver that actuates the UI. Point the runner at a different backend and
-the same scenario runs on a different target: the **iOS Simulator** (idb), a **browser**
+the same scenario runs on a different target: the **iOS Simulator** (XCUITest), a **browser**
 (Playwright), or **Android** (adb), with **Flutter** next. Choosing a platform is choosing a
 backend, not adopting a different tool.
 
@@ -59,7 +59,7 @@ under [`docs/ja/`](docs/ja/README.md).
 - **Stability ladder.** Bajutsu attempts UI actions most-stable-first (semantic tap by id →
   coordinate tap → … ), and the chosen backend is the most stable one available.
 - **A platform is a backend.** The deterministic core names no platform; the one platform-specific
-  seam is the **backend** (idb / playwright / …) behind the `Driver` interface. Add or swap a
+  seam is the **backend** (xcuitest / playwright / …) behind the `Driver` interface. Add or swap a
   backend and the same scenario format, runner, and CLI target a new platform unchanged —
   per-target and per-platform differences live only in config and the chosen backend.
 - **Evidence as rules.** "Capture on every X" is normalized into reusable rules so the
@@ -67,7 +67,7 @@ under [`docs/ja/`](docs/ja/README.md).
 
 ## Architecture
 
-![Data-flow diagram: a natural-language goal or hand edit produces a Scenario YAML; Tier 2's Orchestrator runs it deterministically through the backend-agnostic Driver API against idb, XCUITest, adb, or Playwright; the verdict feeds the Reporter and, on failure, triage, which may suggest scenario edits.](docs/assets/diagrams/architecture-data-flow.svg)
+![Data-flow diagram: a natural-language goal or hand edit produces a Scenario YAML; Tier 2's Orchestrator runs it deterministically through the backend-agnostic Driver API against XCUITest, adb, or Playwright; the verdict feeds the Reporter and, on failure, triage, which may suggest scenario edits.](docs/assets/diagrams/architecture-data-flow.svg)
 
 Entry points share the scenario format: `record` and `crawl` (AI authoring / exploration),
 `run` (deterministic replay), and `codegen` (emit a native test). The full breakdown — module
@@ -95,7 +95,7 @@ Implemented and covered by tests (run without a Simulator):
 - **Reporting** (`manifest.json` + JUnit XML + self-contained interactive HTML)
 - **Config resolution** (team defaults × per-target; iOS `bundleId` or web `baseUrl`) and
   **backend selection** (stability order)
-- **simctl command layer**, **idb output parsers**, the **Playwright web driver**, the **adb driver**
+- **simctl command layer**, the **XCUITest channel** (the resident runner's `/elements` snapshot), the **Playwright web driver**, the **adb driver**
   (`uiautomator dump` parsing), and the **doctor** convention score + environment preflight
 - **AI authoring**: `record` (goal-directed) and `crawl` (breadth-first screen map) — the Agent
   abstraction with two backends (Anthropic API + Claude Code) + system-alert guard
@@ -112,10 +112,11 @@ Implemented and covered by tests (run without a Simulator):
 
 Validated on a real Simulator (iPhone 17 Pro, recent iOS):
 
-- The idb backend's subprocess execution — `describe-all` parsing, frame-center
-  tap / text / swipe, and the simctl launch sequencing — confirmed against the installed
-  `idb` / `idb_companion` by running the `showcase` scenarios, evidence capture, and the
-  triage self-heal loop on-device.
+- The XCUITest backend — the resident runner's `/elements` snapshot of the XCTest automation
+  tree, semantic tap / text / multi-touch / text selection driven by bundle id, and the simctl
+  launch sequencing — confirmed by running the `showcase` scenarios, evidence capture, and the
+  triage self-heal loop on-device via the XCUITest runner (built from the repo with Xcode's
+  `xcodebuild`).
 
 Validated in a browser (Linux, no Mac):
 
@@ -126,9 +127,9 @@ Validated in a browser (Linux, no Mac):
 Validated on an Android emulator (Linux, no Mac):
 
 - The adb backend's `uiautomator dump` parsing, frame-center tap, and launch sequencing —
-  actuation-fidelity parity with idb — are confirmed against a booted emulator (API 34, under KVM)
-  in [`android-e2e.yml`](.github/workflows/android-e2e.yml), driving the same shared scenarios idb
-  runs.
+  actuation-fidelity parity with XCUITest — are confirmed against a booted emulator (API 34, under KVM)
+  in [`android-e2e.yml`](.github/workflows/android-e2e.yml), driving the same shared scenarios
+  XCUITest runs.
 
 Not yet wired: the external `mockServer` command (superseded by in-scenario `mocks`); the
 Flutter backend (planned). See
@@ -138,7 +139,7 @@ Flutter backend (planned). See
 
 - Python 3.13 (managed via [uv](https://github.com/astral-sh/uv)) — the deterministic core and
   the whole gate run anywhere, Linux included
-- **For iOS:** macOS with Xcode (the iOS Simulator) plus `idb` / `idb_companion`
+- **For iOS:** macOS with Xcode (the iOS Simulator and `xcodebuild`) — the XCUITest runner builds from the repo
 - **For web:** any OS with Playwright's Chromium (`playwright install chromium`) — no Mac needed
 
 ## Setup
@@ -155,8 +156,8 @@ make install               # base PLUS exactly the backends your config needs (c
 `make setup` is the config-agnostic floor the deterministic gate needs. `make install` builds on it:
 it reads your `--config` (pass one via `make install ARGS="--config demos/showcase/showcase.config.yaml"`),
 resolves which backends its `targets.*` actually use plus whether an AI provider is configured, and
-installs only those pip extras and external tools (the `idb` client + `idb_companion` for iOS,
-Playwright's browser for web, the `anthropic` SDK when AI is configured) — idempotently, so it is
+installs only those pip extras and external tools (the XCUITest runner built via Xcode's
+`xcodebuild` for iOS, Playwright's browser for web, the `anthropic` SDK when AI is configured) — idempotently, so it is
 safe to re-run. With no config in the working directory it installs nothing beyond the base. The
 requirements it draws from live in one mapping ([`bajutsu/requirements.py`](bajutsu/requirements.py)),
 shared with `doctor`'s pre-flight so the two never drift.
@@ -186,9 +187,9 @@ bajutsu schema                                            # print the JSON Schem
 `trace` (inspect a finished run), `triage` (diagnose a failure), and `worker` (lease queued runs
 for the hosted backend) round out the set — see the [CLI reference](docs/cli.md).
 
-> `make serve` (or `scripts/serve.sh`) wraps `bajutsu serve` and installs the idb
+> `make serve` (or `scripts/serve.sh`) wraps `bajutsu serve` and installs the configured
 > backend's dependencies on demand, so a fresh checkout will not hit
-> `no available actuator among ['idb']`. Pass flags via `make serve ARGS="--port 8766"`.
+> `no available actuator among ['xcuitest']`. Pass flags via `make serve ARGS="--port 8766"`.
 
 Per-app (and per-platform) settings live in a config file you pass with `--config`; the demos
 ship ready-to-run ones (e.g. [`demos/showcase/showcase.config.yaml`](demos/showcase/showcase.config.yaml),
@@ -197,12 +198,12 @@ the web by `baseUrl`:
 
 ```yaml
 defaults:
-  backend: [idb]            # stability order; first available backend is the actuator
+  backend: [ios]            # stability order; first available backend is the actuator
   device: "iPhone 17 Pro"
   locale: en_US
 
 targets:
-  showcase-swiftui:         # iOS app — driven on the Simulator via idb
+  showcase-swiftui:         # iOS app — driven on the Simulator via XCUITest
     bundleId: com.bajutsu.showcase.ios.swiftui
     deeplinkScheme: showcaseswiftui
     launchEnv: { SHOWCASE_UITEST: "1" }
@@ -246,7 +247,7 @@ See [`CLAUDE.md`](CLAUDE.md) and [`CONTRIBUTING.md`](CONTRIBUTING.md) for the wo
 
 ```
 bajutsu/
-├── drivers/              # Driver protocol + selector resolution (determinism core); fake / idb (iOS) / playwright (web)
+├── drivers/              # Driver protocol + selector resolution (determinism core); fake / xcuitest (iOS) / playwright (web) / adb (Android)
 ├── backends.py           # platform-aware backend registry + driver construction (stability order)
 ├── scenario/             # scenario schema (models), YAML load/round-trip, expansion, JSON Schema
 ├── assertions.py         # machine-checkable assertion evaluation

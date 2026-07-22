@@ -1,8 +1,8 @@
 # Golden element-tree assertion (BE-0006), XCUITest path: pin the normalized representation of
 # the Log tab's Entry controls — a text field, a value-mirrored stepper/toggle, and buttons.
-# The Log tab is reached by tapping the native tab bar, which only the XCUITest backend can do
-# (idb collapses the tab bar into one opaque group), so this golden runs with `--backend ios`
-# and its recorded tree is XCUITest's — distinct from the idb goldens in golden.yaml (BE-0107).
+# The Log tab is reached by tapping the native tab bar, which XCUITest does by label
+# (the retired idb backend collapsed the tab bar into one opaque group, BE-0290), so this golden runs
+# with `--backend ios` and its recorded tree is XCUITest's — distinct from golden.yaml's tree (BE-0107).
 #
 # Comparison is per-field, not whole-dict: exact for identifier / label / value, set-equal
 # for traits, and a tolerant sanity check on frame (see bajutsu/golden.py). Re-record with the

@@ -1,5 +1,5 @@
 # On-device Android e2e (Linux + KVM) — the third backend's lane, the Android twin of the iOS
-# `ios-e2e.yml` (macOS / idb) and `web-e2e.yml` (Linux / Playwright). It boots an AVD under KVM on a
+# `ios-e2e.yml` (macOS / XCUITest) and `web-e2e.yml` (Linux / Playwright). It boots an AVD under KVM on a
 # Linux runner and drives the showcase over `--backend android` (the adb driver, BE-0007), asserting
 # deterministic pass/fail. Like the iOS and web lanes, the work is split into per-concern jobs so a
 # red check names the capability that broke from the checks list alone, not one bundled pass/fail:
@@ -18,12 +18,12 @@
 #     traffic reported through BajutsuAndroid's interceptor over the `adb reverse` collector bridge.
 #   - conformance (adb): the BE-0114 driver conformance contract (tests/driver_conformance.py) run
 #     on-device against the adb driver (BE-0270) — the Android twin of ios-e2e.yml's `conformance
-#     (idb + xcuitest)`. It proves the determinism-core invariants (an ambiguous selector fails, a
+#     (xcuitest)`. It proves the determinism-core invariants (an ambiguous selector fails, a
 #     zero-match fails, `capabilities()` matches behavior, condition-backed waits) hold on the real
 #     actuator, which smoke/golden/visual cannot cover (they drive unambiguous selectors only). Unlike
 #     the other jobs it runs pytest, not the run CLI, so it keeps the dev group.
 # It runs no LLM — a deterministic `run` over fixed scenarios — so it stays within the prime
-# directives, and it is kept off the fast `make check` gate exactly as the idb and web e2e lanes are.
+# directives, and it is kept off the fast `make check` gate exactly as the iOS and web e2e lanes are.
 # The lane now carries a REQUIRED status check like iOS's `E2E`: the `E2E (android)` job below
 # `needs` the deterministic host-independent jobs (`smoke`, `conformance`, `network`) and always reports (a
 # path-skip is a pass), so it — not the KVM jobs, which are path-gated — is what `main`'s
@@ -93,7 +93,7 @@ jobs:
 
   # The functional heart: run the core scenarios through `bajutsu run` over the adb backend, against
   # both Android UI toolkits (Compose full set + Views Stable-tab subset, BE-0221). This is the "does
-  # bajutsu drive Android?" check — the Android twin of ios-e2e.yml's `smoke (idb)` and web-e2e.yml's
+  # bajutsu drive Android?" check — the Android twin of ios-e2e.yml's `smoke (xcuitest)` and web-e2e.yml's
   # `smoke (playwright)`. Builds both a11y APKs and the resident UI Automator server (BE-0245) so the
   # reads go over the resident channel by default (bajutsu/platform_lifecycle.py).
   smoke:
@@ -205,7 +205,7 @@ jobs:
   # catalog. Runs the golden over the resident channel (server APKs built below, so it is on by
   # default, BE-0245), then re-runs it with BAJUTSU_ADB_RESIDENT=0 (`e2e-fallback`) so the
   # `uiautomator dump` fallback is exercised too and the golden proves both channels yield the same
-  # tree. The Android twin of the idb golden ios-e2e.yml now runs per PR.
+  # tree. The Android twin of the iOS golden ios-e2e.yml now runs per PR.
   golden:
     name: golden (adb)
     needs: changes
@@ -383,7 +383,7 @@ jobs:
           if-no-files-found: ignore
 
   # The driver conformance suite (BE-0114): one backend-agnostic contract, run on-device against the
-  # adb driver (BE-0270) — the Android twin of ios-e2e.yml's `conformance (idb + xcuitest)`. It proves
+  # adb driver (BE-0270) — the Android twin of ios-e2e.yml's `conformance (xcuitest)`. It proves
   # the determinism-core invariants (ambiguous selector fails, zero-match fails, capabilities() matches
   # behavior, condition-backed waits) hold on the real actuator, which smoke/golden/visual cannot cover
   # (they drive unambiguous selectors only). `launch_driver` boots the showcase straight into

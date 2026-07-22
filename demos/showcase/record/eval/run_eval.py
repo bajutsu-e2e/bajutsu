@@ -14,7 +14,7 @@ expected operations (`grade.py`), and reports:
 5) to measure stability, not just accuracy. This never runs in the deterministic gate (it needs a
 device and calls an LLM); it's an opt-in measurement, like the on-device E2E path.
 
-    uv sync --extra idb            # idb client (once); + a booted Simulator with the -noax app built
+    make -C demos/showcase runner-build   # the XCUITest runner (once); + a booted Simulator with the -noax app built
     export ANTHROPIC_API_KEY=...
     make -C demos/showcase swiftui-noax-build
     uv run python demos/showcase/record/eval/run_eval.py --reps 3
@@ -89,7 +89,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--target", default="showcase-swiftui-noax", help="the -noax target to author against"
     )
-    parser.add_argument("--backend", default="idb")
+    parser.add_argument("--backend", default="ios")
     parser.add_argument("--config", type=Path, default=_DEFAULT_CONFIG)
     parser.add_argument("--udid", default="", help="Simulator udid (default: the booted one)")
     parser.add_argument("--reps", type=int, default=1, help="runs per case — >1 measures stability")

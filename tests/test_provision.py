@@ -13,11 +13,12 @@ from bajutsu.requirements import Brew, Extra, Playwright, Tool
 # --- plan(): resolve exactly what a config's backends + AI provider need ---------------------
 
 
-def test_plan_idb_target_needs_the_idb_extra_and_the_companion() -> None:
-    cfg = load_config("targets:\n  demo:\n    bundleId: com.example.demo\n    backend: [idb]\n")
+def test_plan_ios_target_needs_xcodebuild_and_no_extra() -> None:
+    # iOS is XCUITest-only (BE-0290): it needs Xcode's `xcodebuild` and no pip extra.
+    cfg = load_config("targets:\n  demo:\n    bundleId: com.example.demo\n    backend: [ios]\n")
     p = provision.plan(cfg)
-    assert p.extras == ("idb",)
-    assert Tool("idb_companion", Brew("facebook/fb/idb-companion")) in p.tools
+    assert p.extras == ()
+    assert any(t.exe == "xcodebuild" for t in p.tools)
 
 
 def test_plan_web_target_includes_the_configured_engine_browser() -> None:
@@ -38,24 +39,23 @@ def test_plan_fake_target_installs_nothing() -> None:
 def test_plan_dedupes_across_targets() -> None:
     cfg = load_config(
         "targets:\n"
-        "  a:\n    bundleId: com.example.a\n    backend: [idb]\n"
-        "  b:\n    bundleId: com.example.b\n    backend: [idb]\n"
+        "  a:\n    bundleId: com.example.a\n    backend: [ios]\n"
+        "  b:\n    bundleId: com.example.b\n    backend: [ios]\n"
     )
     p = provision.plan(cfg)
-    assert p.extras == ("idb",)
-    assert [t.exe for t in p.tools].count("idb_companion") == 1
+    assert [t.exe for t in p.tools].count("xcodebuild") == 1  # shared tool listed once
 
 
 def test_plan_detects_a_configured_ai_provider() -> None:
     cfg = load_config(
         "defaults:\n  ai:\n    provider: api-key\n"
-        "targets:\n  demo:\n    bundleId: com.example.demo\n    backend: [idb]\n"
+        "targets:\n  demo:\n    bundleId: com.example.demo\n    backend: [ios]\n"
     )
     assert "ai" in provision.plan(cfg).extras
 
 
 def test_plan_without_ai_config_omits_the_ai_extra() -> None:
-    cfg = load_config("targets:\n  demo:\n    bundleId: com.example.demo\n    backend: [idb]\n")
+    cfg = load_config("targets:\n  demo:\n    bundleId: com.example.demo\n    backend: [ios]\n")
     assert "ai" not in provision.plan(cfg).extras
 
 
@@ -76,15 +76,14 @@ def test_plan_no_targets_still_detects_a_defaults_ai_provider() -> None:
 
 
 def test_plan_for_backends_forces_a_specific_backend() -> None:
-    # The `make deps` path: provision the idb backend regardless of any config.
-    p = provision.plan_for_backends(["idb"])
-    assert p.extras == ("idb",)
-    assert Tool("idb_companion", Brew("facebook/fb/idb-companion")) in p.tools
+    # The `make deps` path: provision the given backend regardless of any config.
+    p = provision.plan_for_backends(["web"])
+    assert p.extras == ("web",)
 
 
 def test_plan_for_backends_includes_android_adb() -> None:
     # `android` resolves to the `adb` actuator (BE-0007): its one tool is the platform-tools `adb`
-    # binary, provisioned via Homebrew like `idb_companion`.
+    # binary, provisioned via Homebrew.
     p = provision.plan_for_backends(["android"])
     assert Tool("adb", Brew("android-platform-tools")) in p.tools
 
@@ -99,13 +98,13 @@ def _captured() -> tuple[list[tuple[str, ...]], provision.Runner]:
 
 def test_provision_syncs_the_needed_extras() -> None:
     ran, run = _captured()
-    provision.provision(provision.InstallPlan(("idb", "web"), ()), run=run)
-    assert ran == [("uv", "sync", "--extra", "idb", "--extra", "web")]
+    provision.provision(provision.InstallPlan(("visual", "web"), ()), run=run)
+    assert ran == [("uv", "sync", "--extra", "visual", "--extra", "web")]
 
 
 def test_provision_skips_a_tool_already_on_path() -> None:
     ran, run = _captured()
-    plan = provision.InstallPlan((), (Tool("idb_companion", Brew("facebook/fb/idb-companion")),))
+    plan = provision.InstallPlan((), (Tool("adb", Brew("android-platform-tools")),))
     report = provision.provision(
         plan, which=lambda exe: f"/opt/{exe}", run=run, system=lambda: "Darwin"
     )
@@ -114,22 +113,22 @@ def test_provision_skips_a_tool_already_on_path() -> None:
 
 def test_provision_brew_installs_a_missing_tool_on_macos() -> None:
     ran, run = _captured()
-    plan = provision.InstallPlan((), (Tool("idb_companion", Brew("facebook/fb/idb-companion")),))
+    plan = provision.InstallPlan((), (Tool("adb", Brew("android-platform-tools")),))
     provision.provision(
         plan,
         which=lambda exe: "/usr/bin/brew" if exe == "brew" else None,
         run=run,
         system=lambda: "Darwin",
     )
-    assert ("brew", "install", "facebook/fb/idb-companion") in ran
+    assert ("brew", "install", "android-platform-tools") in ran
 
 
 def test_provision_reports_manual_when_brew_is_unavailable() -> None:
     ran, run = _captured()
-    plan = provision.InstallPlan((), (Tool("idb_companion", Brew("facebook/fb/idb-companion")),))
+    plan = provision.InstallPlan((), (Tool("adb", Brew("android-platform-tools")),))
     report = provision.provision(plan, which=lambda _exe: None, run=run, system=lambda: "Linux")
     assert ran == []
-    assert report.manual == (requirements.remedy(Brew("facebook/fb/idb-companion")),)
+    assert report.manual == (requirements.remedy(Brew("android-platform-tools")),)
 
 
 def test_provision_always_runs_the_idempotent_playwright_installer() -> None:
@@ -158,13 +157,14 @@ def test_provision_reports_a_manual_only_tool_when_missing() -> None:
 
 
 def test_provision_extra_backed_tool_is_covered_by_the_extras_sync() -> None:
-    # `idb`'s client comes from the extra, so the Extra-backed tool needs no separate action.
+    # An Extra-backed tool (its client comes from a pip extra) needs no separate install action —
+    # the extras sync covers it; only a Brew-backed tool triggers a `brew install`.
     ran, run = _captured()
     plan = provision.InstallPlan(
-        ("idb",),
+        ("web",),
         (
-            Tool("idb", Extra("idb")),
-            Tool("idb_companion", Brew("facebook/fb/idb-companion")),
+            Tool("playwright", Extra("web")),
+            Tool("adb", Brew("android-platform-tools")),
         ),
     )
     provision.provision(
@@ -174,8 +174,8 @@ def test_provision_extra_backed_tool_is_covered_by_the_extras_sync() -> None:
         system=lambda: "Darwin",
     )
     assert ran == [
-        ("uv", "sync", "--extra", "idb"),
-        ("brew", "install", "facebook/fb/idb-companion"),
+        ("uv", "sync", "--extra", "web"),
+        ("brew", "install", "android-platform-tools"),
     ]
 
 
@@ -189,19 +189,19 @@ def test_load_missing_explicit_config_exits(tmp_path: Path) -> None:
 
 def test_load_reads_an_existing_config(tmp_path: Path) -> None:
     cfg_path = tmp_path / "bajutsu.config.yaml"
-    cfg_path.write_text("targets:\n  demo:\n    bundleId: com.example.demo\n    backend: [idb]\n")
+    cfg_path.write_text("targets:\n  demo:\n    bundleId: com.example.demo\n    backend: [ios]\n")
     cfg = provision._load(str(cfg_path))
     assert "demo" in cfg.targets
 
 
 def test_main_dry_run_prints_the_plan_without_installing(tmp_path: Path) -> None:
     cfg_path = tmp_path / "bajutsu.config.yaml"
-    cfg_path.write_text("targets:\n  demo:\n    bundleId: com.example.demo\n    backend: [idb]\n")
+    cfg_path.write_text("targets:\n  demo:\n    bundleId: com.example.demo\n    backend: [ios]\n")
     assert provision.main(["--config", str(cfg_path), "--dry-run"]) == 0
 
 
 def test_main_forced_backend_dry_run(tmp_path: Path) -> None:
-    assert provision.main(["--backend", "idb", "--dry-run"]) == 0
+    assert provision.main(["--backend", "android", "--dry-run"]) == 0
 
 
 def test_main_empty_config_installs_nothing(tmp_path: Path) -> None:

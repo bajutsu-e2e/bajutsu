@@ -2,7 +2,7 @@
 # round-trip the clipboard, then re-assert the settled screen. The steps drive the device, not the app
 # UI, so the flow runs on the Stable catalog (the launch tab, no tab-bar navigation) and re-asserts the
 # app stays there. `setLocation` and the clipboard are the device-control operations every device
-# backend now honors — simctl on iOS (idb / XCUITest), `emu geo fix` plus the in-app BajutsuAndroid
+# backend now honors — simctl on iOS (XCUITest), `emu geo fix` plus the in-app BajutsuAndroid
 # receiver on Android (adb, BE-0211 / BE-0233) — so this one file is preflight-clean on all of them
 # (BE-0212) and runs unchanged on iOS and Android. Each id lists both its dotted SPEC form (iOS /
 # Compose) and its underscore form (Android Views), so the selector resolves whichever tree renders

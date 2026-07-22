@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from bajutsu.config import load_config
+from bajutsu.config import load_config, resolve
 from bajutsu.evidence.redaction import Redactor
 from bajutsu.serve.operations._common import (
     _default_driver_factory,
@@ -50,14 +50,14 @@ def start_capture(
     if err:
         return err
     # An explicit body `backend` is passed through as-is: a single actuator stays a hard pin, while
-    # a platform token like `ios` is still cost-ordered by the selector (idb over the alias head
-    # XCUITest); otherwise the target's full backend list is used, cost-ordered the same way (BE-0267).
+    # a platform token like `ios` is still cost-ordered by the selector; otherwise the target's full
+    # backend list is used, cost-ordered the same way (BE-0267).
     backends_list = [backend] if backend else list(target_cfg.backend or config.defaults.backend)
     if not udid:
         udid = "booted"
 
     factory = driver_factory or _default_driver_factory
-    driver = factory(target, backends_list, udid)
+    driver, teardown = factory(resolve(config, target), backends_list, udid)
     elements = driver.query()
 
     from bajutsu.elements import screen_size_from_elements
@@ -83,6 +83,7 @@ def start_capture(
         redactor=redactor,
         actor=actor,
         screenshot_path=shot_path,
+        teardown=teardown,
     )
     return {"ok": True, "screenSize": list(screen_size)}, 200
 
@@ -194,6 +195,7 @@ def finish_capture(
 
     org, forbidden = _resolve_org_or_forbid(state, session.target, actor)
     if forbidden:
+        session.teardown()  # release the driver's runner even on the forbidden path (BE-0290)
         state.capture = None
         return forbidden
 
@@ -210,6 +212,7 @@ def finish_capture(
         ref = authored.save[1] if authored.save else authored.out
         saved = scope.save(ref, yaml_text)
 
+    session.teardown()  # stop the driver's runner subprocess before dropping the session (BE-0290)
     state.capture = None
     return {"ok": True, "path": saved, "yaml": yaml_text}, 200
 
@@ -247,11 +250,13 @@ def close_capture(
     """End a live session without saving a scenario — the live Edit picker's teardown (BE-0262).
 
     finish_capture is save-and-close; this is the close half, for a picking session that produced no
-    scenario to persist. Teardown mirrors finish's (drop the session; the driver is released with it,
-    as the Driver protocol has no generic quit), so a live Edit session cannot leak a driver.
+    scenario to persist. Teardown mirrors finish's: run the session's teardown (stopping the driver's
+    runner, BE-0290) and drop it, so a live Edit session cannot leak a driver or its runner.
     """
-    _session, err = _active_session(state, actor)
+    session, err = _active_session(state, actor)
     if err:
         return err
+    if session is not None:
+        session.teardown()
     state.capture = None
     return {"ok": True}, 200

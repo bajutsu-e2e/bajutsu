@@ -201,7 +201,7 @@ def test_org_prefix_namespaces_non_default_orgs() -> None:
 
 
 def test_device_args_parses_and_validates() -> None:
-    assert ops._device_args({"backend": "idb", "udid": "U1"}) == ("idb", "U1", None)
+    assert ops._device_args({"backend": "xcuitest", "udid": "U1"}) == ("xcuitest", "U1", None)
     assert ops._device_args({}) == ("", "", None)  # both omitted is fine
     _b, _u, err = ops._device_args({"backend": "nonsense"})
     assert err == ({"error": "unknown backend: nonsense"}, 400)

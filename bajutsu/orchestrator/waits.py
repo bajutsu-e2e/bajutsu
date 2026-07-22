@@ -18,7 +18,7 @@ _logger = logging.getLogger(__name__)
 _POLL = 0.05
 _SETTLE_POLLS = 2  # consecutive unchanged polls that count as "settled"
 
-# Mid-wait system-alert guard (BE-0269). A SpringBoard-level prompt collapses idb's app-scoped tree
+# Mid-wait system-alert guard (BE-0269). A SpringBoard-level prompt collapses the iOS app-scoped tree
 # to bare content (`not shows_app_ui`); rather than let a wait burn its whole timeout before the
 # end-of-step guard looks, watch the already-fetched poll tree and ask the guard to clear it early.
 # A hair above _SETTLE_POLLS: a false positive here costs a real AI-vision call, not a cheap re-poll.
@@ -75,7 +75,7 @@ def _exists(elements: list[base.Element], sel: base.Selector) -> bool:
 def _adaptive_sleep(clock: Clock, before: float) -> None:
     """Sleep only the remainder of _POLL after subtracting time already spent (e.g. in query).
 
-    When `driver.query()` is backed by a subprocess (idb describe-all ≈ 100-300ms), the call
+    When `driver.query()` is backed by a subprocess (a device-tree dump ≈ 100-300ms or more), the call
     itself already provides sufficient delay and an additional fixed sleep is wasteful."""
     elapsed = clock.now() - before
     remaining = _POLL - elapsed

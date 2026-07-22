@@ -2,27 +2,28 @@
 # (adb) and web-e2e.yml (Playwright) in scope, but unlike them this lane carries the platform's
 # REQUIRED status check: the `E2E` job below always reports (even when the macOS jobs are
 # path-gated skipped), so it — not this file's name — is what `main`'s branch-protection ruleset
-# pins. Seven jobs, against the showcase suite (BE-0079, the single iOS fixture):
-#   - smoke (idb): build the showcase, boot a Simulator, run a scenario through the idb backend
-#     (driver + simctl + idb + real actuation) — the functional heart.
-#   - actuation (idb): real on-device idb actuation beyond the conformance job's `tap` (BE-0281) —
-#     `back` and device control (setLocation / clipboard / push) on the Stable launch tab, the
-#     surface idb reaches. Deliberately NOT part of the `E2E` gate's `needs:` (like `golden` /
-#     `visual`): new actuation lands as a per-PR signal first (Simulator flakiness, BE-0218) and is
-#     promoted to the gate only once stable.
-#   - golden (idb): the BE-0006 element-tree golden over idb, the iOS twin of android-e2e.yml's
-#     `golden (adb)`. Like `visual`, deliberately NOT part of the `E2E` gate's `needs:` — the tree
-#     golden is deterministic, but `idb_companion` upstream drift could redden it independently of
-#     any Bajutsu change, so a drift surfaces here as a per-PR signal without blocking a merge.
+# pins. Seven jobs, all on the XCUITest backend (the resident BajutsuRunner), against the showcase
+# suite (BE-0079, the single iOS fixture):
+#   - smoke (xcuitest): build the showcase, boot a Simulator, run a scenario through the XCUITest
+#     backend (driver + simctl + the resident runner + real actuation) — the functional heart.
+#   - actuation (xcuitest): real on-device XCUITest actuation beyond the conformance job's `tap`
+#     (BE-0281) — `back` and device control (setLocation / clipboard / push) on the Stable launch
+#     tab. Deliberately NOT part of the `E2E` gate's `needs:` (like `golden` / `visual`): new
+#     actuation lands as a per-PR signal first (Simulator flakiness, BE-0218) and is promoted to
+#     the gate only once stable.
+#   - golden (xcuitest): the BE-0006 element-tree golden over XCUITest, the iOS twin of
+#     android-e2e.yml's `golden (adb)`. Like `visual`, deliberately NOT part of the `E2E` gate's
+#     `needs:` — the tree golden is deterministic and host-independent, so a drift surfaces here as
+#     a per-PR signal without blocking a merge.
 #   - xcuitest (codegen): generate a native XCUITest from a scenario and run it with
-#     xcodebuild — no bajutsu / idb / AI at test time (the codegen output path).
+#     xcodebuild — no bajutsu / AI at test time (the codegen output path).
 #   - xcuitest (multi-touch): a pinch/rotate scenario through the full `bajutsu run` path on the
-#     XCUITest backend (BE-0019) — two-finger gestures idb cannot actuate. Also runs the runner
-#     channel's `/type` (search.yaml) and `/swipe` + `/back` (notices.yaml) actuation (BE-0281),
-#     tab-crossing scenarios idb cannot reach.
-#   - conformance (idb + xcuitest): the driver conformance suite (BE-0114) on-device against both
-#     iOS backends.
-#   - visual (idb): the iOS twin of android-e2e.yml's `visual` — a pixel VRT of the Stable
+#     XCUITest backend (BE-0019) — two-finger gestures. Also runs the runner channel's `/type`
+#     (search.yaml) and `/swipe` + `/back` (notices.yaml) actuation (BE-0281), tab-crossing
+#     scenarios.
+#   - conformance (xcuitest): the driver conformance suite (BE-0114) on-device against the XCUITest
+#     backend.
+#   - visual (xcuitest): the iOS twin of android-e2e.yml's `visual` — a pixel VRT of the Stable
 #     catalog against the committed `baselines_ios/` baseline. Deliberately NOT part of the `E2E`
 #     gate's `needs:` (see that job below) — a pixel baseline is host-specific (the Simulator
 #     renderer varies by Xcode / device / OS), so a drift surfaces here as a signal, never
@@ -31,9 +32,7 @@
 # The SwiftUI a11y product is the smoke / golden / codegen / visual subject; the UIKit twin shares
 # the identifier contract, so one toolkit suffices for the gate.
 # The BE-0006 element-tree goldens live on the showcase
-# (demos/showcase/scenarios/golden/, ported in BE-0079's retirement, split by backend in BE-0107).
-# The idb golden now runs both per PR (the `golden` job here) and weekly (idb-monitor, against the
-# latest idb_companion — a forward-looking check the per-PR job does not replace).
+# (demos/showcase/scenarios/golden/, ported in BE-0079's retirement).
 # Runs on every relevant PR and on demand (the Actions tab / `gh workflow run ios-e2e.yml`).
 name: iOS E2E (Simulator)
 
@@ -84,11 +83,11 @@ jobs:
         run: python3 scripts/e2e_changes.py
 
   smoke:
-    name: smoke (idb)
+    name: smoke (xcuitest)
     needs: changes
     if: needs.changes.outputs.relevant == 'true'
     runs-on: macos-latest
-    # Cap the metered macOS job (10x billing): a hung Simulator/idb would otherwise run to the
+    # Cap the metered macOS job (10x billing): a hung Simulator/runner would otherwise run to the
     # 6h default. Typical end-to-end is ~10min, so 25 catches a real hang with comfortable headroom.
     timeout-minutes: 25
     # BE-0231 unit 4: a cold-boot CI Simulator sometimes renders the first Stable row later than the
@@ -151,27 +150,22 @@ jobs:
           restore-keys: |
             xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-
 
-      # Fetch the idb backend's deps concurrently with the app build: idb_companion (brew, ~20s) and
-      # the idb Python extra are both independent of the build, so backgrounding them hides their
-      # cost under the ~2.5min build instead of paying it serially before the run. The composite
-      # action's idempotent `brew list || install` / `uv sync` then no-op. `wait` surfaces a
-      # background failure, and a build failure exits first under `set -e` (run scenarios is skipped).
-      - name: Build the showcase app (fetch idb deps concurrently)
-        env:
-          HOMEBREW_NO_AUTO_UPDATE: "1"
-          HOMEBREW_NO_INSTALL_CLEANUP: "1"
+      # The resident XCUITest runner builds into its own DerivedData dir; cache it separately
+      # (keyed on the runner's Swift sources + project spec) so `runner-build` is incremental too.
+      - name: Cache DerivedData (runner)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: BajutsuKit/Runner/build/dd
+          key: xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-${{ hashFiles('BajutsuKit/**/*.swift', 'BajutsuKit/Runner/project.yml') }}
+          restore-keys: |
+            xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-
+
+      # Build the a11y app AND the resident XCUITest runner (both needed by the XCUITest backend).
+      # The bajutsu-e2e action's own `uv sync --no-dev` covers the Python deps, so no dep fetch here.
+      - name: Build the app + runner
         run: |
-          brew list facebook/fb/idb-companion >/dev/null 2>&1 || brew install facebook/fb/idb-companion &
-          brew_pid=$!
-          uv sync --extra idb --no-dev &
-          sync_pid=$!
-          # If the build fails, `set -e` exits the step before the waits; the trap stops the
-          # background fetches so they don't keep burning metered minutes or trail confusing logs.
-          trap 'kill "$brew_pid" "$sync_pid" 2>/dev/null || true' EXIT
           make -C demos/showcase swiftui-build
-          wait "$brew_pid"
-          wait "$sync_pid"
-          trap - EXIT  # success: the fetches finished, so don't kill on the normal exit
+          make -C demos/showcase runner-build
 
       - name: Wait for the Simulator
         run: xcrun simctl bootstatus "${{ steps.sim.outputs.udid }}" -b
@@ -184,34 +178,32 @@ jobs:
         with:
           scenarios: demos/showcase/scenarios/smoke.yaml
           target: showcase-swiftui
+          backend: xcuitest
           config: demos/showcase/showcase.config.yaml
           udid: ${{ steps.sim.outputs.udid }}
           artifact-name: smoke-run
 
-  # Real on-device idb actuation beyond the conformance job's `tap` (BE-0281): drives the actuators
-  # idb can reach on the Stable launch tab, which the smoke / golden / visual jobs above never tap or
-  # otherwise drive the UI (they only `wait`/`expect`). idb collapses the native tab bar into one
-  # opaque group and cannot tap any tab (SPEC.md §3, BE-0107), so the tab-crossing gesture / text
-  # scenarios stay on XCUITest (the `xcuitest (multi-touch)` job below runs them); this job covers the
-  # launch-tab surface idb *does* drive — `back` and device control, unproven on any iOS lane before
-  # now:
-  #   - navigation.yaml: tap a Stable row → push Horse Detail → `back` (the OS back button). idb `tap`
-  #     is already the conformance job's contract, but `back` end-to-end over the idb companion is not.
+  # Real on-device XCUITest actuation beyond the conformance job's `tap` (BE-0281): drives `back` and
+  # device control on the Stable launch tab, which the smoke / golden / visual jobs above never tap or
+  # otherwise drive the UI (they only `wait`/`expect`). The tab-crossing gesture / text scenarios run
+  # in the `xcuitest (multi-touch)` job below; this job covers the launch-tab actuation surface —
+  # `back` and device control:
+  #   - navigation.yaml: tap a Stable row → push Horse Detail → `back` (the OS back button). `tap` is
+  #     already the conformance job's contract, but `back` end-to-end through the resident runner is not.
   #   - device.yaml / push.yaml: `setLocation`, clipboard round-trip, and a simctl `push` — the
-  #     device-control family idb advertises via DEVICE_CONTROL_ALL but no iOS lane had exercised it
-  #     (only Android proved any device control on a real device, BE-0210). All three run on the
-  #     launch tab.
+  #     device-control family, the iOS twin of Android's device control (BE-0210). All three run on
+  #     the launch tab.
   # Deliberately NOT in the `E2E` gate's `needs:` below (like `golden` / `visual`): the Simulator lane
   # has a flakiness history (BE-0218), so new actuation lands as a per-PR signal first and is promoted
   # to the gate only once it proves stable. One build serves all three scenarios (cost discipline: the
   # macOS runner bills at 10x) — split the interaction and device-control halves into their own jobs
   # if one is promoted to the gate ahead of the other.
   actuation:
-    name: actuation (idb)
+    name: actuation (xcuitest)
     needs: changes
     if: needs.changes.outputs.relevant == 'true'
     runs-on: macos-latest
-    # Cap the metered macOS job (10x billing): a hung Simulator/idb would otherwise run to the 6h
+    # Cap the metered macOS job (10x billing): a hung Simulator/runner would otherwise run to the 6h
     # default. Build + three short scenario runs is ~12min, so 25 catches a real hang with headroom.
     timeout-minutes: 25
     # Raise the wait floor so a cold-boot Simulator has budget to render the first Stable row before
@@ -263,22 +255,22 @@ jobs:
           restore-keys: |
             xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-
 
-      # Fetch the idb backend's deps concurrently with the app build (both independent of it). A
-      # build failure exits first under `set -e`; the trap stops the background fetches.
-      - name: Build the showcase app (fetch idb deps concurrently)
-        env:
-          HOMEBREW_NO_AUTO_UPDATE: "1"
-          HOMEBREW_NO_INSTALL_CLEANUP: "1"
+      # The resident XCUITest runner builds into its own DerivedData dir; cache it separately
+      # (keyed on the runner's Swift sources + project spec) so `runner-build` is incremental too.
+      - name: Cache DerivedData (runner)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: BajutsuKit/Runner/build/dd
+          key: xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-${{ hashFiles('BajutsuKit/**/*.swift', 'BajutsuKit/Runner/project.yml') }}
+          restore-keys: |
+            xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-
+
+      # Build the a11y app AND the resident XCUITest runner (both needed by the XCUITest backend).
+      # The bajutsu-e2e action's own `uv sync --no-dev` covers the Python deps, so no dep fetch here.
+      - name: Build the app + runner
         run: |
-          brew list facebook/fb/idb-companion >/dev/null 2>&1 || brew install facebook/fb/idb-companion &
-          brew_pid=$!
-          uv sync --extra idb --no-dev &
-          sync_pid=$!
-          trap 'kill "$brew_pid" "$sync_pid" 2>/dev/null || true' EXIT
           make -C demos/showcase swiftui-build
-          wait "$brew_pid"
-          wait "$sync_pid"
-          trap - EXIT
+          make -C demos/showcase runner-build
 
       - name: Wait for the Simulator
         run: xcrun simctl bootstatus "${{ steps.sim.outputs.udid }}" -b
@@ -286,46 +278,48 @@ jobs:
       - name: Install the app
         run: xcrun simctl install "${{ steps.sim.outputs.udid }}" "demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
 
-      # Interaction (BE-0281): idb `tap` + `back` end-to-end, on the Stable launch tab so no tab tap
-      # idb cannot perform is needed.
+      # Interaction (BE-0281): `tap` + `back` end-to-end, on the Stable launch tab.
       # continue-on-error: the three scenarios below are independent and unrelated, bundled into one
       # job purely for cost reasons (see the job header comment) — a normal step failure would skip
       # every step after it, hiding the other two scenarios' pass/fail signal and artifacts even
       # though they have nothing to do with the failure. The "Report actuation results" step below
       # turns any step failure back into a job failure once all three have had a chance to run.
-      - name: Run the navigation scenario (idb — tap + back)
+      - name: Run the navigation scenario (xcuitest — tap + back)
         id: navigation
         continue-on-error: true
         uses: ./.github/actions/bajutsu-e2e
         with:
           scenarios: demos/showcase/scenarios/navigation.yaml
           target: showcase-swiftui
+          backend: xcuitest
           config: demos/showcase/showcase.config.yaml
           udid: ${{ steps.sim.outputs.udid }}
           artifact-name: actuation-navigation-run
 
       # Device control (BE-0281): `setLocation` + clipboard round-trip. simctl-backed, on the launch
       # tab. The iOS twin of android-e2e.yml's device-control coverage (BE-0210).
-      - name: Run the device-control scenario (idb — setLocation + clipboard)
+      - name: Run the device-control scenario (xcuitest — setLocation + clipboard)
         id: device
         continue-on-error: true
         uses: ./.github/actions/bajutsu-e2e
         with:
           scenarios: demos/showcase/scenarios/device.yaml
           target: showcase-swiftui
+          backend: xcuitest
           config: demos/showcase/showcase.config.yaml
           udid: ${{ steps.sim.outputs.udid }}
           artifact-name: actuation-device-run
 
       # Device control (BE-0281): a simctl `push` delivery — iOS-only (no faithful Android-emulator
       # equivalent, so it lives apart from the cross-backend device.yaml, see push.yaml's header).
-      - name: Run the push scenario (idb — push notification)
+      - name: Run the push scenario (xcuitest — push notification)
         id: push
         continue-on-error: true
         uses: ./.github/actions/bajutsu-e2e
         with:
           scenarios: demos/showcase/scenarios/push.yaml
           target: showcase-swiftui
+          backend: xcuitest
           config: demos/showcase/showcase.config.yaml
           udid: ${{ steps.sim.outputs.udid }}
           artifact-name: actuation-push-run
@@ -345,23 +339,18 @@ jobs:
             exit 1
           fi
 
-  # The BE-0006 element-tree golden over idb: pins the normalized accessibility tree for the Stable
-  # catalog's list rows, reached on the launch tab so idb needs no tab navigation. Runs the same
-  # golden.yaml the weekly idb-monitor runs, now also per PR — the iOS twin of android-e2e.yml's
-  # `golden (adb)` job. Deliberately NOT in the `e2e` gate's `needs:` (like `visual`): the tree
-  # golden is deterministic and host-independent, but `idb_companion` is an upstream dependency whose
-  # drift could redden it independently of any Bajutsu change, so a golden drift surfaces here as a
-  # per-PR signal without blocking merges. The weekly idb-monitor golden stays — its purpose is
-  # forward-looking (running against the latest idb_companion), which this per-PR job does not
-  # replace. The Log-tab control golden lives in golden_xcuitest.yaml (BE-0107); idb cannot tap to
-  # the Log tab, so only the launch-tab golden.yaml runs on idb here.
+  # The BE-0006 element-tree golden over XCUITest: pins the normalized accessibility tree for the
+  # Stable catalog's list rows, reached on the launch tab. Runs golden.yaml per PR — the iOS twin of
+  # android-e2e.yml's `golden (adb)` job. Deliberately NOT in the `e2e` gate's `needs:` (like
+  # `visual`): the tree golden is deterministic and host-independent, so a golden drift surfaces
+  # here as a per-PR signal without blocking merges.
   golden:
-    name: golden (idb)
+    name: golden (xcuitest)
     needs: changes
     if: needs.changes.outputs.relevant == 'true'
     runs-on: macos-latest
     # A cold Xcode build (~2.5min) + a fresh Simulator boot (~80s) + the golden run is well under
-    # this; 25 catches a hung Simulator/idb on the metered macOS runner with comfortable headroom.
+    # this; 25 catches a hung Simulator/runner on the metered macOS runner with comfortable headroom.
     timeout-minutes: 25
     # Raise the wait floor so a cold-boot Simulator has budget to render the first Stable row before
     # the scenario's own 10s first-wait — the same knob the `smoke` job above and the Android lane use.
@@ -412,22 +401,22 @@ jobs:
           restore-keys: |
             xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-
 
-      # Fetch the idb backend's deps concurrently with the app build (both independent of it). A
-      # build failure exits first under `set -e`; the trap stops the background fetches.
-      - name: Build the showcase app (fetch idb deps concurrently)
-        env:
-          HOMEBREW_NO_AUTO_UPDATE: "1"
-          HOMEBREW_NO_INSTALL_CLEANUP: "1"
+      # The resident XCUITest runner builds into its own DerivedData dir; cache it separately
+      # (keyed on the runner's Swift sources + project spec) so `runner-build` is incremental too.
+      - name: Cache DerivedData (runner)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: BajutsuKit/Runner/build/dd
+          key: xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-${{ hashFiles('BajutsuKit/**/*.swift', 'BajutsuKit/Runner/project.yml') }}
+          restore-keys: |
+            xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-
+
+      # Build the a11y app AND the resident XCUITest runner (both needed by the XCUITest backend).
+      # The bajutsu-e2e action's own `uv sync --no-dev` covers the Python deps, so no dep fetch here.
+      - name: Build the app + runner
         run: |
-          brew list facebook/fb/idb-companion >/dev/null 2>&1 || brew install facebook/fb/idb-companion &
-          brew_pid=$!
-          uv sync --extra idb --no-dev &
-          sync_pid=$!
-          trap 'kill "$brew_pid" "$sync_pid" 2>/dev/null || true' EXIT
           make -C demos/showcase swiftui-build
-          wait "$brew_pid"
-          wait "$sync_pid"
-          trap - EXIT
+          make -C demos/showcase runner-build
 
       - name: Wait for the Simulator
         run: xcrun simctl bootstatus "${{ steps.sim.outputs.udid }}" -b
@@ -435,21 +424,22 @@ jobs:
       - name: Install the app
         run: xcrun simctl install "${{ steps.sim.outputs.udid }}" "demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
 
-      # Runs golden.yaml over idb; the scenario compares against its default goldens/ baseline (the
-      # idb tree), a field-level tolerant compare (bajutsu/golden.py) that is ABI-stable.
+      # Runs golden.yaml over XCUITest; the scenario compares against its goldens/ baseline, a
+      # field-level tolerant compare (bajutsu/golden.py) that is ABI-stable.
       - name: Run golden scenarios (BE-0006)
         uses: ./.github/actions/bajutsu-e2e
         with:
           scenarios: demos/showcase/scenarios/golden/golden.yaml
           target: showcase-swiftui
+          backend: xcuitest
           config: demos/showcase/showcase.config.yaml
           udid: ${{ steps.sim.outputs.udid }}
           artifact-name: ios-golden-run
 
   # The codegen output path: a scenario -> native XCUITest, compiled and run by xcodebuild
-  # with no bajutsu / idb / AI at test time. This is the claim M3 makes about codegen, so CI
-  # has to exercise the generated Swift natively (not just the idb runtime above). It runs
-  # against the SwiftUI a11y app, whose identifiers the generated test queries by name.
+  # with no bajutsu / AI at test time. This is the claim M3 makes about codegen, so CI
+  # has to exercise the generated Swift natively (not just the XCUITest runtime the other jobs
+  # use). It runs against the SwiftUI a11y app, whose identifiers the generated test queries by name.
   xcuitest:
     name: xcuitest (codegen)
     needs: changes
@@ -514,7 +504,7 @@ jobs:
 
       # `make -C demos/showcase ui-test` re-generates ComponentsUITests.swift from the scenario,
       # regenerates the project, then `xcodebuild test`s it against the SwiftUI a11y app — no
-      # bajutsu / idb / AI at test time.
+      # bajutsu / AI at test time.
       - name: Codegen + run native XCUITest
         run: make -C demos/showcase ui-test SIM=${{ steps.sim.outputs.udid }}
 
@@ -527,29 +517,25 @@ jobs:
           if-no-files-found: ignore
 
   # A pinch/rotate scenario run through the full `bajutsu run` path on the XCUITest backend
-  # (BE-0019): two-finger gestures idb cannot actuate — idb is single-touch and raises
-  # UnsupportedAction. This exercises the actuator end to end (resident runner, /gesture endpoint,
-  # snapshot-handle addressing) via the run loop, not just the driver contract the conformance job
-  # runs. The idb graceful-degradation fallback is not re-proved on-device here: the registry's
-  # select-and-fall-through is covered deterministically by the fast-gate unit tests (an injected
-  # availability fn), and the idb actuation path by the `smoke (idb)` job above — a macOS runner
-  # always has xcodebuild, so xcuitest never actually degrades to idb here to observe.
+  # (BE-0019): two-finger gestures actuated through the resident runner's /gesture endpoint and
+  # snapshot-handle addressing. This exercises the actuator end to end via the run loop, not just
+  # the driver contract the conformance job runs.
   #
   # Also runs the deterministic scenario from `permission.yaml` (BE-0276) and the runner-channel
-  # actuation scenarios search.yaml + notices.yaml (BE-0281): each taps a tab-bar item idb can never
-  # resolve (see docs/showcase.md), so all need the same forced-XCUITest treatment as the multi-touch
-  # scenario above — this job's Simulator/app/runner build already pays for that, so each is one extra
-  # `bajutsu run` rather than a whole new job. search.yaml exercises the `/type` endpoint and
-  # notices.yaml the `/swipe` + `/back` endpoints of the resident runner — the actuators on-device CI
-  # reached only for tap / pinch / rotate before BE-0281. Finally, two smoke runs prove the
-  # bundled-runner path (BE-0292): the same resident runner resolved from the wheel bundle rather than
-  # a config `testRunner`, against both the SwiftUI and UIKit a11y apps (the runner is app-agnostic,
-  # BE-0019), showing a Simulator run needs no runner-build and no runner path. Retains the job's
-  # original name (`xcuitest (multi-touch)` is a branch-protection required check) even though it now
-  # covers more than the multi-touch scenario. Unlike the `actuation` job above, these steps don't get
-  # `continue-on-error` + a summary step: this job feeds the required `E2E` gate, so an early failure
-  # correctly stops the job rather than trading gate strictness for per-scenario signal the way the
-  # non-gating `actuation` job does.
+  # actuation scenarios search.yaml + notices.yaml (BE-0281): each taps a tab-bar item a coordinate
+  # backend can never resolve (see docs/showcase.md), so all need the same forced-XCUITest treatment
+  # as the multi-touch scenario above — this job's Simulator/app/runner build already pays for that,
+  # so each is one extra `bajutsu run` rather than a whole new job. search.yaml exercises the `/type`
+  # endpoint and notices.yaml the `/swipe` + `/back` endpoints of the resident runner — the actuators
+  # on-device CI reached only for tap / pinch / rotate before BE-0281. Finally, two smoke runs prove
+  # the bundled-runner path (BE-0292): the same resident runner resolved from the wheel bundle rather
+  # than a config `testRunner`, against both the SwiftUI and UIKit a11y apps (the runner is
+  # app-agnostic, BE-0019), showing a Simulator run needs no runner-build and no runner path. Retains
+  # the job's original name (`xcuitest (multi-touch)` is a branch-protection required check) even
+  # though it now covers more than the multi-touch scenario. Unlike the `actuation` job above, these
+  # steps don't get `continue-on-error` + a summary step: this job feeds the required `E2E` gate, so
+  # an early failure correctly stops the job rather than trading gate strictness for per-scenario
+  # signal the way the non-gating `actuation` job does.
   xcuitest-gestures:
     name: xcuitest (multi-touch)
     needs: changes
@@ -616,8 +602,8 @@ jobs:
 
       # The UIKit twin builds into its own DerivedData dir; cache it separately (keyed on the UIKit
       # app's Swift sources + project spec) so the bundled-runner smoke run below (BE-0292) reuses an
-      # incremental build. This app is otherwise built only by the non-gating idb jobs on SwiftUI, so
-      # its cache never collides with the `-app-` SwiftUI cache above.
+      # incremental build. This app is otherwise built only by the non-gating jobs (which run on
+      # SwiftUI), so its cache never collides with the `-app-` SwiftUI cache above.
       - name: Cache DerivedData (uikit)
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
@@ -626,29 +612,17 @@ jobs:
           restore-keys: |
             xcode-dd-uikit-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-
 
-      # Build the a11y apps (SwiftUI + UIKit) and stage the resident XCUITest runner; fetch idb's deps
-      # concurrently so the bajutsu-e2e action's idb_companion install / uv sync no-op. The trap stops
-      # the background fetches if a build fails first (mirrors the smoke / conformance jobs).
-      # `make runner-bundle` (BE-0292) builds the runner (its own `runner-build` step) AND stages it
-      # into bajutsu/_xcuitest_runner/, so it serves both the testRunner-based scenarios (which read
-      # the built .xctestrun) and the bundled-runner smoke runs below (which resolve to the staged copy
-      # with no testRunner path) — no separate runner-build line needed.
-      - name: Build the apps, build + bundle the runner (fetch idb deps concurrently)
-        env:
-          HOMEBREW_NO_AUTO_UPDATE: "1"
-          HOMEBREW_NO_INSTALL_CLEANUP: "1"
+      # Build the a11y apps (SwiftUI + UIKit) and stage the resident XCUITest runner. `make
+      # runner-bundle` (BE-0292) builds the runner (its own `runner-build` step) AND stages it into
+      # bajutsu/_xcuitest_runner/, so it serves both the testRunner-based scenarios (which read the
+      # built .xctestrun) and the bundled-runner smoke runs below (which resolve to the staged copy
+      # with no testRunner path) — no separate runner-build line needed. The bajutsu-e2e action's own
+      # `uv sync --no-dev` covers the Python deps, so no dep fetch here.
+      - name: Build the apps + bundle the runner
         run: |
-          brew list facebook/fb/idb-companion >/dev/null 2>&1 || brew install facebook/fb/idb-companion &
-          brew_pid=$!
-          uv sync --extra idb --no-dev &
-          sync_pid=$!
-          trap 'kill "$brew_pid" "$sync_pid" 2>/dev/null || true' EXIT
           make -C demos/showcase swiftui-build
           make -C demos/showcase uikit-build
           make runner-bundle
-          wait "$brew_pid"
-          wait "$sync_pid"
-          trap - EXIT
 
       - name: Wait for the Simulator
         run: xcrun simctl bootstatus "${{ steps.sim.outputs.udid }}" -b
@@ -670,14 +644,12 @@ jobs:
 
       # The `permissions` field (BE-0276) on-device: reached via the same Simulator/app/runner this
       # job already built for the multi-touch scenario above, so it costs one more `bajutsu run`
-      # rather than a whole new job. Forced onto XCUITest, like the multi-touch scenario, because
-      # `permission.yaml` taps the "Permissions" tab bar item — idb collapses the tab bar into one
-      # opaque group and can never resolve that tap (docs/showcase.md), regardless of backend cost
-      # order. `--exclude ai` drops the file's notification scenario (its iOS grant path needs the
-      # vision `dismissAlerts` guard, so it stays out of this deterministic gate — prime directive
-      # 1) and keeps only `location`, which `simctl privacy grant` pre-grants before launch with no
-      # prompt. android-e2e.yml's `smoke (adb)` job already runs both scenarios in permission.yaml
-      # unchanged (adb's tab bar has no such limitation), so this is the iOS twin of that coverage.
+      # rather than a whole new job. `permission.yaml` taps the "Permissions" tab bar item, behind
+      # the native tab bar (docs/showcase.md). `--exclude ai` drops the file's notification scenario
+      # (its iOS grant path needs the vision `dismissAlerts` guard, so it stays out of this
+      # deterministic gate — prime directive 1) and keeps only `location`, which `simctl privacy
+      # grant` pre-grants before launch with no prompt. android-e2e.yml's `smoke (adb)` job already
+      # runs both scenarios in permission.yaml unchanged, so this is the iOS twin of that coverage.
       - name: Run the permission scenario (xcuitest)
         uses: ./.github/actions/bajutsu-e2e
         with:
@@ -691,10 +663,10 @@ jobs:
 
       # XCUITest actuation on the runner channel (BE-0281): the `/type`, `/swipe`, and `/back`
       # endpoints of the resident BajutsuRunner, which on-device CI reached only for tap / pinch /
-      # rotate before now. Both scenarios open with a tab tap idb cannot resolve (they filter the
-      # Search list / walk the Notices list, screens behind the native tab bar), so they belong on
-      # XCUITest — reached via this job's already-built runner and app for one more `bajutsu run`
-      # each, the same cost-sharing the permission scenario above uses rather than a whole new job.
+      # rotate before now. Both scenarios open with a tab tap (they filter the Search list / walk
+      # the Notices list, screens behind the native tab bar), reached via this job's already-built
+      # runner and app for one more `bajutsu run` each, the same cost-sharing the permission
+      # scenario above uses rather than a whole new job.
       #   - search.yaml: `/type` into the Search field, then assert the filtered count.
       #   - notices.yaml: `/swipe` to walk an off-screen row into view, then `/back` from
       #     the pushed Notice Detail. The Notices List is XCUITest's reliable scroll surface (the Log
@@ -748,14 +720,14 @@ jobs:
           artifact-name: xcuitest-bundled-uikit-run
 
   # The driver conformance suite (BE-0114): one backend-agnostic contract, run on-device against
-  # BOTH iOS backends — idb (idb_companion) and XCUITest (the resident BajutsuRunner). It proves
-  # the determinism-core invariants (ambiguous selector fails, zero-match fails, capabilities()
-  # matches behavior, condition-backed waits) hold identically on the real actuators, not just
-  # FakeDriver (fast gate) and Playwright (web CI). `launch_driver` brings each backend up itself,
-  # so this job only needs the app + runner built and a booted Simulator; the `ondevice` pytest
-  # marker (deselected by the gate's default) means the same contract file runs here unchanged.
+  # the XCUITest backend (the resident BajutsuRunner). It proves the determinism-core invariants
+  # (ambiguous selector fails, zero-match fails, capabilities() matches behavior, condition-backed
+  # waits) hold on the real actuator, not just FakeDriver (fast gate) and Playwright (web CI).
+  # `launch_driver` brings the backend up itself, so this job only needs the app + runner built and
+  # a booted Simulator; the `ondevice` pytest marker (deselected by the gate's default) means the
+  # same contract file runs here unchanged.
   conformance:
-    name: conformance (idb + xcuitest)
+    name: conformance (xcuitest)
     needs: changes
     if: needs.changes.outputs.relevant == 'true'
     runs-on: macos-latest
@@ -816,43 +788,37 @@ jobs:
           restore-keys: |
             xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-
 
-      # Build the a11y app AND the resident XCUITest runner; fetch idb's deps concurrently. Unlike
-      # the smoke job, the venv here keeps the dev group (pytest) — this job runs the suite through
-      # pytest, not the codegen CLI. The trap stops the background fetches if a build fails first.
-      - name: Build the app + runner (fetch idb deps concurrently)
-        env:
-          HOMEBREW_NO_AUTO_UPDATE: "1"
-          HOMEBREW_NO_INSTALL_CLEANUP: "1"
+      # Build the a11y app AND the resident XCUITest runner; sync the venv concurrently. Unlike the
+      # smoke job, the venv here keeps the dev group (pytest) — this job runs the suite through
+      # pytest, not the codegen CLI. The trap stops the background sync if a build fails first.
+      - name: Build the app + runner
         run: |
-          brew list facebook/fb/idb-companion >/dev/null 2>&1 || brew install facebook/fb/idb-companion &
-          brew_pid=$!
-          uv sync --extra idb &
+          uv sync &
           sync_pid=$!
-          trap 'kill "$brew_pid" "$sync_pid" 2>/dev/null || true' EXIT
+          trap 'kill "$sync_pid" 2>/dev/null || true' EXIT
           make -C demos/showcase swiftui-build
           make -C demos/showcase runner-build
-          wait "$brew_pid"
           wait "$sync_pid"
           trap - EXIT
 
       - name: Wait for the Simulator
         run: xcrun simctl bootstatus "${{ steps.sim.outputs.udid }}" -b
 
-      # `launch_driver` erases/installs/launches per backend, so no explicit install here. `-m
+      # `launch_driver` erases/installs/launches the backend, so no explicit install here. `-m
       # ondevice` overrides the repo default (`-m 'not web and not ondevice'`) to select exactly the
-      # on-device suite; BAJUTSU_CONFORMANCE_UDID both routes the backends and un-skips the module.
+      # on-device suite; BAJUTSU_CONFORMANCE_UDID both routes the backend and un-skips the module.
       # `-n0` overrides the default `-n auto`: the suite reseeds one shared Simulator via a single
       # spec file the app polls, so parallel workers would clobber each other's screen — run serially.
-      - name: Run the conformance suite (idb + xcuitest)
+      - name: Run the conformance suite (xcuitest)
         env:
           BAJUTSU_CONFORMANCE_UDID: ${{ steps.sim.outputs.udid }}
         run: uv run pytest tests/test_driver_conformance_ondevice.py -m ondevice -n0 -v
 
   # On-device iOS visual-regression (VRT): the iOS twin of android-e2e.yml's `e2e-visual`. Boots a
   # Simulator, builds the SwiftUI showcase, and runs the committed pixel VRT
-  # (`make -C demos/showcase e2e-visual`) over the idb backend, comparing the Stable catalog against
-  # the committed baselines_ios/ baseline. Deterministic (a pixel compare, no LLM), so it stays
-  # within the prime directives.
+  # (`make -C demos/showcase e2e-visual`) over the XCUITest backend, comparing the Stable catalog
+  # against the committed baselines_ios/ baseline. Deterministic (a pixel compare, no LLM), so it
+  # stays within the prime directives.
   #
   # Gated by the same `changes` job as the functional jobs above, but deliberately NOT part of the
   # `e2e` gate's `needs:` below: a pixel baseline is host-specific — the Simulator renderer varies
@@ -861,12 +827,12 @@ jobs:
   # from (see demos/showcase/scenarios/visual/baselines_ios/README.md), the same bootstrap the
   # Android baseline used.
   visual:
-    name: visual (idb)
+    name: visual (xcuitest)
     needs: changes
     if: needs.changes.outputs.relevant == 'true'
     runs-on: macos-latest
     # A cold Xcode build (~2.5min) + a fresh Simulator boot (~80s) + the VRT run is well under this;
-    # 25 catches a hung Simulator/idb on the metered macOS runner with comfortable headroom.
+    # 25 catches a hung Simulator/runner on the metered macOS runner with comfortable headroom.
     timeout-minutes: 25
     # Raise the wait floor so a cold-boot Simulator has budget to render the first Stable row before
     # the scenario's own 10s first-wait — the same knob the `smoke` job above and the Android lane use.
@@ -925,31 +891,36 @@ jobs:
           restore-keys: |
             xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-
 
-      # Fetch the idb backend's deps concurrently with the app build (both independent of it): the
-      # idb_companion brew formula and the idb + visual Python extras. The `make e2e-visual` step then
-      # finds the build up to date and the extras synced. A build failure exits first under `set -e`;
-      # the trap stops the background fetches so they don't trail on a metered runner.
-      - name: Build the showcase app (fetch idb + visual deps concurrently)
-        env:
-          HOMEBREW_NO_AUTO_UPDATE: "1"
-          HOMEBREW_NO_INSTALL_CLEANUP: "1"
+      # The resident XCUITest runner builds into its own DerivedData dir; cache it separately
+      # (keyed on the runner's Swift sources + project spec) so `runner-build` is incremental too.
+      - name: Cache DerivedData (runner)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: BajutsuKit/Runner/build/dd
+          key: xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-${{ hashFiles('BajutsuKit/**/*.swift', 'BajutsuKit/Runner/project.yml') }}
+          restore-keys: |
+            xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-
+
+      # Sync the visual Python extra concurrently with the app + runner build (the extra is
+      # independent of the build): the pixel-compare deps `make e2e-visual` needs. A build failure
+      # exits first under `set -e`; the trap stops the background sync so it doesn't trail on a
+      # metered runner.
+      - name: Build the app + runner (fetch visual deps concurrently)
         run: |
-          brew list facebook/fb/idb-companion >/dev/null 2>&1 || brew install facebook/fb/idb-companion &
-          brew_pid=$!
-          uv sync --extra idb --extra visual --no-dev &
+          uv sync --extra visual --no-dev &
           sync_pid=$!
-          trap 'kill "$brew_pid" "$sync_pid" 2>/dev/null || true' EXIT
+          trap 'kill "$sync_pid" 2>/dev/null || true' EXIT
           make -C demos/showcase swiftui-build
-          wait "$brew_pid"
+          make -C demos/showcase runner-build
           wait "$sync_pid"
           trap - EXIT
 
       - name: Wait for the Simulator
         run: xcrun simctl bootstatus "${{ steps.sim.outputs.udid }}" -b
 
-      # Run the committed pixel VRT over idb. `make e2e-visual` (demos/showcase/Makefile) installs the
-      # freshly-built app, drives the Stable catalog on the launch tab (no XCUITest tab navigation),
-      # and pixel-compares it against baselines_ios/stable.png with the status bar + tab bar masked.
+      # Run the committed pixel VRT over XCUITest. `make e2e-visual` (demos/showcase/Makefile)
+      # installs the freshly-built app, drives the Stable catalog on the launch tab, and
+      # pixel-compares it against baselines_ios/stable.png with the status bar + tab bar masked.
       - name: Run the visual regression (VRT, pixel snapshot)
         run: make -C demos/showcase e2e-visual SIM=${{ steps.sim.outputs.udid }}
 
@@ -964,9 +935,9 @@ jobs:
   # Single required status check for E2E. Always runs so it reports even when the macOS
   # jobs are skipped (docs-only PRs) — a skipped dependency is a pass; only a real
   # failure or cancellation fails the gate. `actuation`, `golden`, and `visual` are deliberately
-  # excluded from `needs:` (see each job's comment) so newly-wired idb actuation (BE-0281), a
-  # host-specific pixel drift, or an idb_companion upstream drift never blocks a merge. Make `E2E`
-  # the required check, not the path-gated macOS jobs.
+  # excluded from `needs:` (see each job's comment) so newly-wired actuation (BE-0281) or a
+  # host-specific pixel drift never blocks a merge. Make `E2E` the required check, not the
+  # path-gated macOS jobs.
   e2e:
     name: E2E (iOS)
     needs: [changes, smoke, xcuitest, xcuitest-gestures, conformance]

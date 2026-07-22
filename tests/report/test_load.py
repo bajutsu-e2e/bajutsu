@@ -47,7 +47,7 @@ def _result() -> RunResult:
         ],
         failure="pay missing",
         artifacts=[Artifact("network.json", "network", "collector")],
-        backend="idb",
+        backend="xcuitest",
         device="UDID-1",
         device_name="iPhone 17 Pro",
         device_runtime="iOS 26",
@@ -77,7 +77,7 @@ def test_loads_a_legacy_manifest_without_schema_version() -> None:
     legacy = {
         "runId": "old",
         "ok": True,
-        "backend": "idb",
+        "backend": "xcuitest",
         "scenarios": [{"scenario": "smoke", "ok": True, "steps": []}],
     }
     [r] = results_from_manifest(legacy)

@@ -66,7 +66,7 @@ body:
       value: |
         - OS: (e.g. macOS 15.4 / Linux)
         - iOS Simulator: (e.g. iOS 18.2)
-        - idb / idb_companion: (version, if known)
+        - Xcode / xcodebuild: (version, if known)
         - Python / uv: (e.g. 3.13 / uv 0.5.x)
         - Target (`targets.<name>`):
         - Bajutsu version / commit:

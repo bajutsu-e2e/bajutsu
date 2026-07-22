@@ -78,7 +78,7 @@ def test_device_pool_per_device_resources(monkeypatch: pytest.MonkeyPatch) -> No
 
     lease, shutdown = device_pool(
         ["UDID-A", "UDID-B"],
-        ["idb"],
+        ["fake"],
         _eff(),
         Path("runs"),
         network=True,
@@ -101,13 +101,10 @@ def test_device_pool_per_device_resources(monkeypatch: pytest.MonkeyPatch) -> No
         assert any(
             c[0] == ["xcrun", "simctl", "location", "UDID-A", "set", "35.0,139.0"] for c in calls
         )
-        # Each app launched pointing at its own device's collector url.
-        launch_envs = [e for args, e in calls if "launch" in args]
-        urls = {e.get("SIMCTL_CHILD_BAJUTSU_COLLECTOR") for e in launch_envs}
-        assert urls == {
-            f"http://127.0.0.1:{la.collector.port}",
-            f"http://127.0.0.1:{lb.collector.port}",
-        }
+        # Each device's own collector url is forwarded to its lease as the launch env (how it
+        # reaches the app is the backend's concern — the fake backend launches no process, so this
+        # asserts the per-device wiring, not a simctl child-env, which the relauncher test covers).
+        assert la.collector.port != lb.collector.port
     finally:
         if la is not None:
             la.release()
@@ -130,7 +127,7 @@ def test_device_pool_wires_readiness_and_provenance_into_the_sink(
     )
     lease, shutdown = device_pool(
         ["UDID-A"],
-        ["idb"],
+        ["fake"],
         _eff(),
         Path("runs"),
         available=lambda b: True,
@@ -172,7 +169,7 @@ def test_device_pool_labels_leased_simulator(monkeypatch: pytest.MonkeyPatch) ->
     )
     lease, shutdown = device_pool(
         ["UDID-A"],
-        ["idb"],
+        ["fake"],
         _eff(),
         Path("runs"),
         available=lambda b: True,
@@ -193,7 +190,7 @@ def test_device_pool_single_device_keeps_full_features(monkeypatch: pytest.Monke
     )
     lease, shutdown = device_pool(
         ["UDID-1"],
-        ["idb"],
+        ["fake"],
         _eff(),
         Path("runs"),
         network=True,
@@ -226,7 +223,7 @@ def test_device_pool_no_network_has_no_collector(monkeypatch: pytest.MonkeyPatch
     )
     lease, shutdown = device_pool(
         ["UDID-1"],
-        ["idb"],
+        ["fake"],
         _eff(),
         Path("runs"),
         network=False,
@@ -272,7 +269,7 @@ def test_device_pool_stops_started_collectors_when_one_fails(
     with pytest.raises(OSError, match="port in use"):
         device_pool(
             ["UDID-A", "UDID-B"],
-            ["idb"],
+            ["fake"],
             _eff(),
             Path("runs"),
             network=True,
@@ -405,12 +402,22 @@ class _RecordingEnv:
             raise subprocess.CalledProcessError(1, ["xcrun", "simctl", "terminate"])
 
 
+# A per-scenario actuator resolver standing in for BE-0240: it returns one of two *real* actuators
+# keyed off the scenario, so the pool's env lifecycle is exercised across an actuator change even
+# though every real platform is single-actuator (BE-0290). A plain tap →
+# `adb`, a pinch → `xcuitest`; both are known to `capabilities_for`, and the pool treats them as an
+# opaque pair — it is the switch, not the platforms, that this drives.
+def _fake_resolve(backends: list[str], scenario: object, available: object = None) -> str:
+    steps = getattr(scenario, "steps", [])
+    return "xcuitest" if any(getattr(s, "pinch", None) is not None for s in steps) else "adb"
+
+
 def test_device_pool_resolves_actuator_per_scenario_and_tears_down_its_own_env(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """BE-0240: each scenario leases the cheapest actuator its own steps can run on (idb for a plain
-    tap, xcuitest for a pinch), and the environment that *starts* a lease is the one that tears it
-    down — so a stateful backend's resident runner is terminated by the instance that spawned it."""
+    """BE-0240: each scenario leases the actuator its own steps resolve to, and the environment that
+    *starts* a lease is the one that tears it down — so a stateful backend's resident runner is
+    terminated by the instance that spawned it."""
     created: list[_RecordingEnv] = []
 
     def fake_env_for(
@@ -421,6 +428,7 @@ def test_device_pool_resolves_actuator_per_scenario_and_tears_down_its_own_env(
         return env
 
     monkeypatch.setattr("bajutsu.runner.pool.environment_for", fake_env_for)
+    monkeypatch.setattr("bajutsu.runner.pool.select_actuator_for_scenario", _fake_resolve)
 
     pinch = Scenario.model_validate(
         {"name": "p", "steps": [{"pinch": {"sel": {"id": "m"}, "scale": 2.0}}]}
@@ -436,14 +444,14 @@ def test_device_pool_resolves_actuator_per_scenario_and_tears_down_its_own_env(
     )
     try:
         tap_lease = lease(_eff(), _scn("tap"))
-        idb_env = created[-1]  # the lease env, not the pool env
-        assert idb_env.actuator == "idb" and idb_env.started  # cheapest sufficient for a plain tap
+        adb_env = created[-1]  # the lease env, not the pool env
+        assert adb_env.actuator == "adb" and adb_env.started
         tap_lease.release()
-        assert idb_env.torn  # the SAME instance that started tears down (BE-0240)
+        assert adb_env.torn  # the SAME instance that started tears down (BE-0240)
 
         pinch_lease = lease(_eff(), pinch)
         xc_env = created[-1]
-        assert xc_env.actuator == "xcuitest" and xc_env.started  # escalated: pinch needs multiTouch
+        assert xc_env.actuator == "xcuitest" and xc_env.started  # resolved to the other actuator
         pinch_lease.release()
         assert xc_env.torn
     finally:
@@ -508,6 +516,7 @@ def test_device_pool_actuator_switch_tears_down_the_warm_resident(
         return env
 
     monkeypatch.setattr("bajutsu.runner.pool.environment_for", fake_env_for)
+    monkeypatch.setattr("bajutsu.runner.pool.select_actuator_for_scenario", _fake_resolve)
     pinch = Scenario.model_validate(
         {"name": "p", "steps": [{"pinch": {"sel": {"id": "m"}, "scale": 2.0}}]}
     )
@@ -521,14 +530,14 @@ def test_device_pool_actuator_switch_tears_down_the_warm_resident(
         env_run=lambda *a, **k: "",
     )
     try:
-        tap = lease(_eff(), _scn("tap"))  # cheapest sufficient for a plain tap → idb
+        tap = lease(_eff(), _scn("tap"))  # resolves to the cheap actuator
         tap.release()
-        idb_env = created[
+        adb_env = created[
             1
         ]  # created[0] is the pool's representative env; [1] is the tap lease env
-        assert idb_env.actuator == "idb" and not idb_env.torn  # kept warm after release
-        pinch_lease = lease(_eff(), pinch)  # pinch needs multiTouch → escalates to xcuitest
-        assert idb_env.torn  # the warm idb env was torn down on the actuator switch
+        assert adb_env.actuator == "adb" and not adb_env.torn  # kept warm after release
+        pinch_lease = lease(_eff(), pinch)  # resolves to the other actuator
+        assert adb_env.torn  # the warm resident was torn down on the actuator switch
         xc_env = created[-1]
         assert (
             xc_env.actuator == "xcuitest" and len(created) == 3
@@ -626,7 +635,7 @@ def test_device_pool_shutdown_tears_down_every_warm_device_despite_a_failure(
 def test_device_pool_does_not_cache_a_non_reusable_environment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """BE-0291: an environment with no warm resident (idb / web / android) is untouched — released by
+    """BE-0291: an environment with no warm resident (web / android) is untouched — released by
     the full teardown, never kept warm, and rebuilt fresh each lease, exactly as before."""
     created: list[_RecordingEnv] = []
 
@@ -882,7 +891,7 @@ def test_device_pool_uses_a_resolved_network_fallback(monkeypatch: pytest.Monkey
     ex = NetworkExchange(method="GET", path="/items", status=200)
     lease, shutdown = device_pool(
         ["UDID-A"],
-        ["idb"],
+        ["fake"],
         _eff(),
         Path("runs"),
         network=True,
@@ -948,7 +957,7 @@ def test_device_pool_releases_resources_when_launch_fails(monkeypatch: pytest.Mo
 
     lease, shutdown = device_pool(
         ["UDID-A"],
-        ["idb"],
+        ["fake"],
         _eff(),
         Path("runs"),
         network=True,
@@ -983,7 +992,7 @@ def test_device_pool_network_lease_defaults_to_collector_provenance(
     )
     lease, shutdown = device_pool(
         ["UDID-A"],
-        ["idb"],
+        ["fake"],
         _eff(),
         Path("runs"),
         network=True,

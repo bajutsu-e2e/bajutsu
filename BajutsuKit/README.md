@@ -13,7 +13,7 @@ each exchange (method / url / path / status / headers / bodies / timing) and POS
 the collector.
 
 Compared to a proxy: it sees traffic after TLS (no CA install, no certificate-pinning
-conflict), it works under idb (backend-agnostic), and bajutsu reads the exchanges
+conflict), it works under any backend (backend-agnostic), and bajutsu reads the exchanges
 programmatically (unlike RocketSim's GUI-only network inspector).
 
 ## Integrate

@@ -14,8 +14,8 @@ Want the same story with zero setup first (no Mac/Simulator)? Run the
 ## Prerequisites
 
 - macOS with Xcode and a Simulator you can boot (`open -a Simulator`).
-- The idb backend — the Web UI installs it on demand, but you can pre-install:
-  `brew install facebook/fb/idb-companion && uv sync --extra idb`.
+- The XCUITest runner — the Web UI builds it on demand, but you can pre-build:
+  `make -C demos/showcase runner-build`.
 - For the system-alert part only: `ANTHROPIC_API_KEY` (env or a gitignored `.env`). Everything
   else is fully deterministic and needs no key.
 
@@ -33,8 +33,8 @@ which points the Web UI at the showcase apps and their scenarios in [`scenarios/
 Open the printed URL.
 
 > Always start the Web UI via `make serve` (never a bare `bajutsu serve`): the wrapper installs
-> the idb client + companion on demand, so a fresh checkout doesn't fail with
-> `no available actuator among ['idb']`.
+> the backend's deps on demand, so a fresh checkout doesn't fail with
+> `no available actuator among ['xcuitest']`.
 
 ## The tour
 
@@ -81,7 +81,7 @@ screens but not pixel-identically, so each keeps its own baseline set.
 
 ### 4. System alerts — punching through a SpringBoard prompt
 
-idb's accessibility query only sees the foreground app, so an iOS system prompt (a permission
+The iOS backend's accessibility query only sees the foreground app, so an iOS system prompt (a permission
 dialog) silently blocks a run. With **Dismiss alerts** enabled (the default; needs
 `ANTHROPIC_API_KEY`), run [`permission.yaml`](scenarios/permission.yaml): the Permissions tab
 raises the notification / location prompts, and when one blocks a step the guard screenshots it,

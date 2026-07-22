@@ -70,8 +70,8 @@ fun LogScreen(model: AppModel) {
                 }
                 Text("Count: ${model.logCount}", Modifier.aid("log.count.value").stateValue(model.logCount.toString()))
 
-                // A button-backed toggle (parity with iOS: a native switch does not flip under idb on
-                // iOS 26). `selected` reflects state; value mirrors on/off.
+                // A button-backed toggle (parity with iOS: the retired idb backend could not flip a native
+                // switch on iOS 26, BE-0290). `selected` reflects state; value mirrors on/off.
                 TextButton(
                     onClick = { model.logIntense = !model.logIntense },
                     modifier = Modifier.aid("log.intense").selectedState(model.logIntense),
@@ -181,7 +181,7 @@ fun LogScreen(model: AppModel) {
     }
 
     // Action sheet: a custom overlay of plain buttons (parity with iOS — a confirmationDialog's actions
-    // render as duplicate elements under idb on iOS 26). It renders inside the main composition, so the
+    // render as duplicate elements on iOS 26, which the retired idb backend could not drive, BE-0290). It renders inside the main composition, so the
     // root testTagsAsResourceId already reaches it. The scrim consumes taps (empty detectTapGestures) so
     // controls beneath the "modal" are not actuable while it is shown. Result mirrors to log.dialog.value.
     if (model.logShowDialog) {

@@ -4,7 +4,7 @@
 over an ordered `am broadcast` to an in-app receiver (BajutsuAndroid), because since Android 10 only
 the foreground app / default IME may touch the clipboard — `cmd clipboard` answers "No shell command
 implementation" on-device, a silent no-op. The backend still advertises `clipboard` (it can drive it
-given a cooperating app, as idb's clipboard rides simctl). `push` / `clearKeychain` / the status-bar
+given a cooperating app, as the iOS clipboard rides simctl). `push` / `clearKeychain` / the status-bar
 overrides / app lifecycle have no faithful equivalent and stay unsupported. Fast gate over an
 injected `adb` runner (no device): command shape, the broadcast result parse (base64 + loud-fail on
 no receiver), the clipboard round-trip against a fake receiver, that the supported subset delegates
@@ -234,7 +234,7 @@ def test_preflight_rejects_unsupported_steps_on_adb(step: dict[str, object]) -> 
 # --- the CI-lane scenario itself: device.yaml exercises the emulator subset (BE-0208 unit 5) ---
 # device.yaml is the single cross-backend device-environment scenario — `setLocation` and the
 # clipboard are advertised by every device backend (clipboard via simctl on iOS, the BajutsuAndroid
-# in-app receiver on Android, BE-0233), so one file runs on iOS (idb / XCUITest) and Android (adb)
+# in-app receiver on Android, BE-0233), so one file runs on iOS (XCUITest) and Android (adb)
 # alike. The iOS-only `push` half lives in push.yaml, kept out of this shared file because adb does not
 # advertise `deviceControl.push` (asserted below), so the shared scenario stays preflight-clean on Android.
 

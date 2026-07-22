@@ -2,7 +2,8 @@
 
 # Getting started — iOS track
 
-> Finishes the [Getting started](index.md) loop on an **iOS Simulator** via the idb [backend](../glossary.md#driver-backend-actuator-platform). Needs
+> Finishes the [Getting started](index.md) loop on an **iOS Simulator** via the XCUITest [backend](../glossary.md#driver-backend-actuator-platform)
+> (the sole iOS backend since [BE-0290](../../roadmaps/BE-0290-xcuitest-default-ios-backend/BE-0290-xcuitest-default-ios-backend.md) retired idb). Needs
 > macOS + Xcode. On a machine without a Mac, follow the [web track](web.md) instead — the same
 > loop against a browser, no Xcode or Simulator required.
 
@@ -18,7 +19,7 @@ scenario) — they need nothing Mac-specific. This page picks up at Step 4.
 | For… | You need |
 |---|---|
 | Steps 1–3 (shared) | macOS or Linux, Python 3.13 (managed via [uv](https://github.com/astral-sh/uv)) |
-| Steps 4–5 below | macOS with **Xcode** (the iOS Simulator), [XcodeGen](https://github.com/yonaskolb/XcodeGen) (to build the showcase), and the **idb** backend (`brew install facebook/fb/idb-companion`) |
+| Steps 4–5 below | macOS with **Xcode** (the iOS Simulator + `xcodebuild`, which the XCUITest backend drives) and [XcodeGen](https://github.com/yonaskolb/XcodeGen) (to build the showcase). No extra `brew` install or pip extra — the XCUITest backend needs only Xcode |
 
 ## Step 4 — Build the showcase app
 
@@ -36,16 +37,19 @@ the launch-env hooks and the identifier catalog.
 
 ## Step 5 — Run a scenario on a Simulator
 
-Boot a Simulator and make sure the idb backend is available:
+Boot a Simulator:
 
 ```bash
 xcrun simctl boot "iPhone 15"                 # or boot one from Xcode > Open Developer Tool > Simulator
-brew install facebook/fb/idb-companion        # the idb backend (one-time)
-uv sync --extra idb                           # the idb python client
 ```
 
-The one-shot path is the `make` target, which installs the freshly built app and runs the smoke
-scenario plus a `doctor` check on the booted device:
+The XCUITest backend drives the app through a **prebuilt on-device runner** (the target's
+`xcuitest.testRunner`). The showcase config wires that runner and builds it for you as part of the
+one-shot `make` target below (`make runner-build`), so there is nothing extra to install — Xcode
+alone is enough.
+
+The one-shot path is the `make` target, which builds the runner, installs the freshly built app,
+and runs the smoke scenario plus a `doctor` check on the booted device:
 
 ```bash
 make -C demos/showcase run-swiftui
@@ -54,7 +58,7 @@ make -C demos/showcase run-swiftui
 Or drive the CLI directly (the same steps, written out):
 
 ```bash
-uv run bajutsu run --scenario demos/showcase/scenarios/smoke.yaml --target showcase-swiftui --backend idb --udid booted --no-erase
+uv run bajutsu run --scenario demos/showcase/scenarios/smoke.yaml --target showcase-swiftui --backend ios --udid booted --no-erase
 ```
 
 What the flags mean:
@@ -62,7 +66,8 @@ What the flags mean:
 - `--target showcase-swiftui` selects `targets.showcase-swiftui` from [`demos/showcase/showcase.config.yaml`](../../demos/showcase/showcase.config.yaml)
   (bundle id, launch env, allowed id namespaces). The tool itself is app-agnostic; all per-target
   differences live in config ([configuration](../configuration.md)).
-- `--backend idb` picks the actuator; `--udid booted` targets the currently booted Simulator.
+- `--backend ios` picks the iOS actuator (XCUITest; `--backend xcuitest` names it explicitly);
+  `--udid booted` targets the currently booted Simulator.
 - `--no-erase` keeps the already-installed app instead of `simctl erase`-ing first.
 
 On success you'll see a line like:
@@ -74,7 +79,7 @@ PASS  runs/20260610-120000/manifest.json
 `run` **exits 0 when every scenario passes, 1 on any failure**, and that exit code is the CI (continuous integration) gate
 ([run-loop](../run-loop.md)).
 
-> Hit an environment problem (no booted Simulator, idb not installed)? Run
+> Hit an environment problem (no booted Simulator, Xcode command-line tools missing)? Run
 > `uv run bajutsu doctor --target showcase-swiftui` first — it prints a ✓/✗ checklist of the required CLIs and
 > a booted device, then scores how well the current screen follows the identifier convention
 > ([configuration](../configuration.md#doctor-the-convention-score)).

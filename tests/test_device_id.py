@@ -1,7 +1,7 @@
 """Tests for the shared device-id validator (`bajutsu.device_id`).
 
-`is_valid_device_id` is the single policy that adb (`_checked_serial`), idb (`_validated_udid`),
-and serve (`valid_udid`) all reference. These pin the unified charset / first-character / length
+`is_valid_device_id` is the single policy that adb (`_checked_serial`) and serve (`valid_udid`)
+both reference. These pin the unified charset / first-character / length
 rules — in particular the security invariant that an id may never start with `-` (argv option
 injection) — so the one definition can't drift.
 """

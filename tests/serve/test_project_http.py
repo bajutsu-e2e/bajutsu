@@ -39,7 +39,7 @@ def _second_config(tmp_path: Path) -> Path:
     `bind_config`-loadable file (its `root` is `tmp_path`)."""
     cfg = tmp_path / "other.config.yaml"
     cfg.write_text(
-        "defaults: { backend: [idb] }\ntargets:\n  demo: { bundleId: com.example.two }\n",
+        "defaults: { backend: [ios] }\ntargets:\n  demo: { bundleId: com.example.two }\n",
         encoding="utf-8",
     )
     return cfg

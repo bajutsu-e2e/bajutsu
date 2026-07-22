@@ -82,7 +82,7 @@ final class StableController: UIViewController, UITableViewDataSource, UITableVi
 
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         // SPEC §5.1: an empty catalog shows a single placeholder row (stable.empty). A cell
-        // surfaces to idb where tableView.backgroundView does not on iOS 26.
+        // surfaces to the backend where tableView.backgroundView does not on iOS 26.
         horses.isEmpty ? 1 : horses.count
     }
 

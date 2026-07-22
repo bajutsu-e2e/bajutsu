@@ -8,7 +8,7 @@
 
 **Bajutsu** (馬術) is a natural-language-driven **E2E testing tool** built on a backend-agnostic
 driver: a **platform is a backend** behind one interface, so the deterministic core is unchanged
-across targets — the **iOS Simulator** (idb/XCUITest), a **web (Playwright)** backend, and an
+across targets — the **iOS Simulator** (XCUITest), a **web (Playwright)** backend, and an
 **Android (adb)** backend are all landed; Flutter is planned next.
 A scenario (YAML) is the shared hub: AI helps *author* and *investigate*; a deterministic
 runner decides pass/fail. Python logic core lives in [`bajutsu/`](bajutsu/); the Swift
@@ -58,8 +58,8 @@ gate: `make -C demos/showcase run-swiftui` (requires `make deps` first). Don't b
 - `mypy` is **strict** and `ruff` is configured in [`pyproject.toml`](pyproject.toml) — match
   the existing style. Fullwidth/Japanese characters in strings are intentional (RUF001 is off).
 - **Always launch the web UI with `make serve`** — never `bajutsu serve` / `python -m bajutsu
-  serve` directly. `make serve` ([`scripts/serve.sh`](scripts/serve.sh)) installs the idb
-  backend's deps on demand (the idb client + `idb_companion`), which a bare `serve` skips —
+  serve` directly. `make serve` ([`scripts/serve.sh`](scripts/serve.sh)) installs the configured
+  backend's deps on demand (for the web backend, Playwright's browser), which a bare `serve` skips —
   leaving runs to fail with `no available actuator`. Pass flags through `ARGS`, e.g.
   `make serve ARGS="--config demos/showcase/showcase.config.yaml --port 8766"` (the showcase config
   is needed for the showcase app, since the repo has no root `bajutsu.config.yaml`).

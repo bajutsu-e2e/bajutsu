@@ -45,14 +45,13 @@ def device_error(exc: subprocess.CalledProcessError) -> DeviceError:
 
 
 def validated_udid(udid: str) -> str:
-    """Return `udid` if it is safe to place on an `xcrun simctl` / `idb` argv, else raise.
+    """Return `udid` if it is safe to place on an `xcrun simctl` argv, else raise.
 
     The shared entry point for the simctl family of argv builders — this module's own builders,
     plus the simctl argv assembled in `intervals.py` (evidence capture) and
     `platform_lifecycle.environments.xcuitest` (the xcodebuild destination). Public (unlike adb's
     per-module `_checked_serial`) precisely
-    because that argv-building is spread across modules; idb keeps its own copy as a separate
-    backend. The check is the shared `device_id` policy — chiefly that an id never leads with `-`,
+    because that argv-building is spread across modules. The check is the shared `device_id` policy — chiefly that an id never leads with `-`,
     which simctl would read as an option (argv option injection from an untrusted `--udid` / config).
 
     Raises:
@@ -234,7 +233,7 @@ def _real_run(args: list[str], extra_env: Mapping[str, str] | None = None) -> st
 def resolve_udid(udid: str, run: RunFn = _real_run) -> str:
     """Resolve the simctl alias "booted" to a concrete UDID.
 
-    simctl accepts "booted", but the idb CLI requires a real
+    simctl accepts "booted", but downstream steps need a concrete
     UDID, so the run pipeline resolves it once up front. A concrete UDID passes
     through unchanged; "booted" picks the single booted device (the first if
     several). Falls back to "booted" if resolution fails (no booted device).
@@ -293,8 +292,8 @@ class Env:
 
     def __init__(self, udid: str, run: RunFn = _real_run) -> None:
         # Validate at construction so a bad --udid fails fast at the object boundary (the builders
-        # below also validate, so this is belt-and-suspenders — the same posture idb's IdbDriver
-        # takes for its own udid).
+        # below also validate, so this is belt-and-suspenders — the same posture the device drivers
+        # take for their own udid).
         self.udid = validated_udid(udid)
         self._run = run
 

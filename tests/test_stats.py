@@ -66,14 +66,14 @@ def test_by_run_is_chronological_and_carries_the_point() -> None:
     stats = _stats.aggregate_runs(
         [
             _manifest("20260103-000000", ok=True, backend="fake"),
-            _manifest("20260101-000000", ok=False, backend="idb"),
+            _manifest("20260101-000000", ok=False, backend="xcuitest"),
         ]
     )
     assert [p.run_id for p in stats.by_run] == ["20260101-000000", "20260103-000000"]
     first = stats.by_run[0]
     assert first.day == "2026-01-01"
     assert first.ok is False
-    assert first.backend == "idb"
+    assert first.backend == "xcuitest"
 
 
 def test_by_day_rolls_up_pass_rate() -> None:
@@ -99,12 +99,12 @@ def test_custom_run_id_has_no_day() -> None:
 def test_volume_by_backend() -> None:
     stats = _stats.aggregate_runs(
         [
-            _manifest("20260101-000000", ok=True, backend="idb"),
-            _manifest("20260102-000000", ok=True, backend="idb"),
+            _manifest("20260101-000000", ok=True, backend="xcuitest"),
+            _manifest("20260102-000000", ok=True, backend="xcuitest"),
             _manifest("20260103-000000", ok=True, backend="fake"),
         ]
     )
-    assert stats.by_backend == {"fake": 1, "idb": 2}
+    assert stats.by_backend == {"fake": 1, "xcuitest": 2}
 
 
 def test_run_duration_sums_scenario_durations() -> None:
@@ -316,7 +316,7 @@ def test_render_html_emits_drilldown_deep_links() -> None:
                 _manifest(
                     "20260101-000000",
                     ok=False,
-                    backend="idb",
+                    backend="xcuitest",
                     scenarios=[{"scenario": "checkout", "ok": False, "failure": "timeout"}],
                 )
             ]
@@ -326,7 +326,7 @@ def test_render_html_emits_drilldown_deep_links() -> None:
     # Hotspot, day, and backend rows all carry the deep link to the matching run.
     assert 'href="/?tab=history&amp;runs=20260101-000000&amp;label=checkout"' in html
     assert "runs=20260101-000000&amp;label=day%202026-01-01" in html
-    assert "runs=20260101-000000&amp;label=backend%20idb" in html
+    assert "runs=20260101-000000&amp;label=backend%20xcuitest" in html
     # Still self-contained — the links are plain anchors, no script.
     assert "<script" not in html
 
@@ -368,7 +368,7 @@ def test_render_html_standalone_export_has_no_drilldown_links() -> None:
                 _manifest(
                     "20260101-000000",
                     ok=False,
-                    backend="idb",
+                    backend="xcuitest",
                     scenarios=[{"scenario": "checkout", "ok": False, "failure": "timeout"}],
                 )
             ]
@@ -378,7 +378,7 @@ def test_render_html_standalone_export_has_no_drilldown_links() -> None:
     assert "runs=" not in html
     assert 'class="drill"' not in html
     # The underlying data still renders — just without the links.
-    assert "checkout" in html and "idb" in html
+    assert "checkout" in html and "xcuitest" in html
 
 
 def test_render_html_no_link_when_run_id_absent() -> None:
@@ -394,8 +394,8 @@ def test_render_text_summarizes_headline() -> None:
     text = _stats.render(
         _stats.aggregate_runs(
             [
-                _manifest("20260101-000000", ok=True, backend="idb"),
-                _manifest("20260102-000000", ok=False, backend="idb"),
+                _manifest("20260101-000000", ok=True, backend="xcuitest"),
+                _manifest("20260102-000000", ok=False, backend="xcuitest"),
             ]
         )
     )

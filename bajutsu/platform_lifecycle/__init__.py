@@ -13,7 +13,6 @@ from __future__ import annotations
 from bajutsu.platform_lifecycle.device_control import android_device_control, device_control
 from bajutsu.platform_lifecycle.environments.android import AndroidEnvironment
 from bajutsu.platform_lifecycle.environments.fake import FakeEnvironment
-from bajutsu.platform_lifecycle.environments.ios import IosEnvironment
 from bajutsu.platform_lifecycle.environments.web import WebEnvironment
 from bajutsu.platform_lifecycle.environments.xcuitest import XcuitestEnvironment
 from bajutsu.platform_lifecycle.factories import environment_for
@@ -36,7 +35,6 @@ __all__ = [
     "CrawlEnvironment",
     "Environment",
     "FakeEnvironment",
-    "IosEnvironment",
     "ProvisionProfile",
     "ReadinessResult",
     "RunEnvironment",

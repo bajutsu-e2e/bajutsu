@@ -2,7 +2,7 @@
 # Built by `make docs` (`mkdocs build --strict`) — a separate, heavier path kept out of the
 # deterministic `make check` gate, like on-device E2E. mkdocstrings reads each public symbol's typed
 # signature and docstring statically (via griffe), so the build imports none of the lazy/optional
-# backends (playwright, fb-idb, fastapi, redis, boto3) — no mocking needed.
+# backends (playwright, fastapi, redis, boto3) — no mocking needed.
 #
 # Links that escape docs/ (../DESIGN.md, ../roadmaps/…) are rewritten to absolute GitHub URLs at
 # build time by the scripts/docs_repo_links.py hook, so the in-repo source keeps its GitHub-readable

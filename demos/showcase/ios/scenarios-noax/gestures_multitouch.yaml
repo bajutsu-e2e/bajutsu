@@ -1,5 +1,5 @@
 # -noax twin of scenarios/gestures_multitouch.yaml. Pinch and rotate — two-finger actuation, which
-# only XCUITest performs (idb is single-touch), so this twin is a natural fit for the -noax XCUITest
+# only XCUITest performs (the retired idb backend was single-touch, BE-0290), so this twin is a natural fit for the -noax XCUITest
 # path. The targets ("Pinch me" / "Rotate me") and their result mirrors ("pinched"/"rotated") are
 # plain visible text, addressed by label.
 #

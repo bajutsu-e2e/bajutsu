@@ -42,7 +42,7 @@ class RunPoint:
     passed: int  # scenarios that passed in this run
     total: int  # scenarios in this run
     duration_s: float  # the run's wall-clock, summed from its scenarios' durations
-    backend: str  # the actuator that drove the run ("idb" / "fake" / …)
+    backend: str  # the actuator that drove the run ("xcuitest" / "fake" / …)
 
 
 @dataclass(frozen=True)

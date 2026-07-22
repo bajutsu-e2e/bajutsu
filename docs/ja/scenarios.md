@@ -64,7 +64,7 @@ scenarios:
 | `network` | object | なし | `{ filter: { domains: [...] } }`。`filter.domains` は、レポートの Steps タイムラインに差し込む通信を URL ホストで絞る（親ドメインはサブドメインに一致）。未指定なら全件を表示する。Network タブは常に全件を表示する（[reporting](reporting.md#reporthtml)） |
 | `mocks` | list | `[]` | 決定的なネットワークスタブ。一致する送信リクエストには、ネットワークへ行かず定型レスポンスを返す（[ネットワークモック](#ネットワークモック決定的スタブ)） |
 | `redact` | object | なし | 証跡を書き出す前に適用するマスク（[evidence](evidence.md#マスキングredact)） |
-| `dismissAlerts` | bool / object | なし（ON） | 視覚ベースの **アラートガード**。idb から見えない OS プロンプトを片付ける。既定は ON。`false` で無効化し、`{ instruction: "tap Allow" }` なら ON のまま指定したボタンを押す。CLI の `--dismiss-alerts`/`--no-dismiss-alerts` が上書きする（[下記](#dismissalertsシステムアラートガード)） |
+| `dismissAlerts` | bool / object | なし（ON） | 視覚ベースの **アラートガード**。iOS バックエンドから見えない OS プロンプトを片付ける。既定は ON。`false` で無効化し、`{ instruction: "tap Allow" }` なら ON のまま指定したボタンを押す。CLI の `--dismiss-alerts`/`--no-dismiss-alerts` が上書きする（[下記](#dismissalertsシステムアラートガード)） |
 | `permissions` | dict | `{}` | 宣言的な OS 権限の状態（`{ <service>: grant \| revoke }`）。**アプリの起動前**に適用する（[下記](#permissions起動前の権限状態)） |
 
 ```yaml
@@ -101,7 +101,7 @@ scenarios:
 
 ## dismissAlerts（システムアラートガード）
 
-idb は **SpringBoard レベルのプロンプト**（iOS の "Save Password?"、権限リクエスト、"Allow Paste" など）を見ることも tap することもできません。これらのプロンプトはアプリを覆って要素ツリーを潰し、ステップを静かにブロックします。**アラートガード**は視覚ベースのフォールバック（`alerts.py`）です。ステップがブロックされるとスクリーンショットを撮り、Claude にどこを tap するか尋ね、プロンプトを片付けてからそのステップを 1 回再試行します（[詳細](recording.md#システムアラートの自動対処)）。`wait` ステップ（`for`/`settled`/`screenChanged`）では、ガードはすでにポーリング済みの画面も監視し、ツリーが潰れて見えた時点で **wait の途中でも**発火します（デバウンスとクールダウンを挟み、1 回の wait につき最大 2 回まで）。wait 自体のタイムアウトを待たず、ステップが失敗する前に回復できます（BE-0269）。
+iOS バックエンドは **SpringBoard レベルのプロンプト**（iOS の "Save Password?"、権限リクエスト、"Allow Paste" など）を見ることも tap することもできません。これらのプロンプトはアプリを覆って要素ツリーを潰し、ステップを静かにブロックします。**アラートガード**は視覚ベースのフォールバック（`alerts.py`）です。ステップがブロックされるとスクリーンショットを撮り、Claude にどこを tap するか尋ね、プロンプトを片付けてからそのステップを 1 回再試行します（[詳細](recording.md#システムアラートの自動対処)）。`wait` ステップ（`for`/`settled`/`screenChanged`）では、ガードはすでにポーリング済みの画面も監視し、ツリーが潰れて見えた時点で **wait の途中でも**発火します（デバウンスとクールダウンを挟み、1 回の wait につき最大 2 回まで）。wait 自体のタイムアウトを待たず、ステップが失敗する前に回復できます（BE-0269）。
 
 これは **既定で ON** で、**ステップ（または `expect`）がブロックされたとき、あるいはガード対象の `wait` でポーリング中の画面がブロックされて見えたとき**に発火します。そのため、成功するシナリオはモデルを呼びません。`ANTHROPIC_API_KEY` が必要ですが、無くても no-op になるだけで run には影響しません。シナリオごとに動作を変えるには `dismissAlerts` を使います。
 
@@ -193,8 +193,8 @@ CLI の `--dismiss-alerts` / `--no-dismiss-alerts` フラグは**全シナリオ
 | `type` | `type: { text: "...", into?: <Selector>, submit?: <bool> }` | `into` 指定時は先にフォーカスする |
 | `clear` | `clear: { into: <Selector> }` | フィールドをフォーカスして現在の内容をすべて削除する。web コンテキストは非対応 |
 | `delete` | `delete: { into: <Selector>, count: <int> }` | フィールドをフォーカスして末尾から `count` 文字削除する（`count > 0`）。web コンテキストは非対応 |
-| `select` | `select: { into: <Selector>, mode?: "all" }` | フィールドをフォーカスして内容を選択する（`mode` 既定 `all`）。idb / web コンテキストは非対応で、codegen 経由の XCUITest に誘導する |
-| `copy` | `copy: {}` | 選択中の内容をクリップボードへコピーする。事前の `select` が必要。idb / web コンテキストは非対応 |
+| `select` | `select: { into: <Selector>, mode?: "all" }` | フィールドをフォーカスして内容を選択する（`mode` 既定 `all`）。web コンテキストは非対応。iOS（XCUITest）バックエンドはネイティブに対応し、codegen もネイティブの等価物を出力する |
+| `copy` | `copy: {}` | 選択中の内容をクリップボードへコピーする。事前の `select` が必要。web コンテキストは非対応。iOS（XCUITest）バックエンドはネイティブに対応する |
 | `selectOption` | `selectOption: { sel: <Selector>, option: "..." }` | web の `<select>` をこの value を持つ option に合わせる。web 専用（iOS / Android は失敗する） |
 | `swipe` | `swipe: { on: <Selector>, direction: up\|down\|left\|right }` または `swipe: { from: [x,y], to: [x,y] }` | セレクタ形と座標形は混在できない。方向指定形式は**スクロール**する |
 | `drag` | `drag: { on: <Selector>, direction: up\|down\|left\|right, amount?: <frac> }` | 要素そのものを**ドラッグ**する（ハンドル／仕切り／スライダー）。スクロールではない |
@@ -240,11 +240,6 @@ CLI の `--dismiss-alerts` / `--no-dismiss-alerts` フラグは**全シナリオ
 
 > 実装上は、`into` を指定すると内部で対象を `tap` してから `type_text` します（`orchestrator/actions/` の `_do_action`）。
 
-> idb（iOS Simulator）バックエンドで非ラテン文字や絵文字を入力すると、ペーストにフォールバックします。
-> idb のハードウェアキーボード経由の入力は、US キーボード配列の文字しか送信できません。
-> このフォールバックは、入力した文字列を Simulator のペーストボードに残します。
-> 同じシナリオ内の後続の `clipboard` アサーションは、直前の値ではなくこの文字列を読み取ります。
-
 ### `selectOption`
 
 ```yaml
@@ -281,7 +276,7 @@ CLI の `--dismiss-alerts` / `--no-dismiss-alerts` フラグは**全シナリオ
 - rotate: { sel: { id: gest.rotate }, radians: 1.57 }  # >0 clockwise (radians)
 ```
 
-`scale` は **> 0** が必須です（違反は検証エラー）。`pinch` / `rotate` はマルチタッチが必要で、idb バックエンドでは "needs multiTouch" の理由で失敗します。主な実行先は生成された XCUITest（`pinch(withScale:)` / `rotate(_:)`）です。`doubleTap` は idb で動作します（2 回タップ）。（[`demos/showcase/scenarios/gestures.yaml`](../../demos/showcase/scenarios/gestures.yaml) 実物）
+`scale` は **> 0** が必須です（違反は検証エラー）。`pinch` / `rotate` はマルチタッチが必要で、iOS（XCUITest）バックエンドと生成された XCUITest（`pinch(withScale:)` / `rotate(_:)`）のどちらも備えています。マルチタッチのないバックエンドは "needs multiTouch" の理由で失敗します。`doubleTap` はどこでも動作します（2 回タップ）。（[`demos/showcase/scenarios/gestures.yaml`](../../demos/showcase/scenarios/gestures.yaml) 実物）
 
 ### `wait`（条件待機）
 
@@ -400,7 +395,7 @@ CLI の `--dismiss-alerts` / `--no-dismiss-alerts` フラグは**全シナリオ
 - `requestSequence` は複数の request マッチャが **順序どおりに観測された**かを検証します（[下記](#requestsequence順序付きリクエスト)）。`--network` 実行フラグが必要です。
 - `responseSchema` は捕捉した **レスポンスボディが JSON Schema に適合する**かを検証します（[下記](#responseschemaレスポンスの-json-schema)）。`--network` 実行フラグが必要です。
 - `visual` はスクリーンショットを baseline 画像とピクセル比較します（[下記](#visualビジュアルリグレッション)）。
-- `clipboard` はデバイスのペーストボードを `simctl pbpaste` で読み戻し、`equals` / `matches`（正規表現）の **いずれか 1 つ**を検証します。`setClipboard` の読み戻し側で、「コピー」操作の検証に使います。デバイスごとの制御チャネルが必要なため、fake ドライバや並列実行では利用できず、その場合はクリーンに失敗します（[BE-0052](../../roadmaps/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake-ja.md)）。idb では、直前に非ラテン文字を `type` していると、その文字列も読み戻されます（上記の `type` の節を参照）。
+- `clipboard` はデバイスのペーストボードを `simctl pbpaste` で読み戻し、`equals` / `matches`（正規表現）の **いずれか 1 つ**を検証します。`setClipboard` の読み戻し側で、「コピー」操作の検証に使います。デバイスごとの制御チャネルが必要なため、fake ドライバや並列実行では利用できず、その場合はクリーンに失敗します（[BE-0052](../../roadmaps/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake-ja.md)）。
 
 > **ロケール注意**: `label`/`value` の文字列比較や、可視テキストを見るアサーションは翻訳で壊れます。これらは config の固定 locale を前提に書き、セレクタ自体は `id` で書いてください。
 

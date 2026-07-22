@@ -1,6 +1,6 @@
 """The single declarative source of truth for what each backend/capability needs (BE-0164).
 
-One mapping of backend family (`idb` / `playwright` / `xcuitest` / `fake`) and optional
+One mapping of backend family (`xcuitest` / `adb` / `playwright` / `fake`) and optional
 capability (`ai` / `visual` / `mcp`) to: the pip extra to sync and the external tools to have on
 PATH, each with how to install it when missing (a Homebrew formula, a `playwright install
 <browser>`, a pip extra, or a manual-only hint). ``preflight``'s remedy strings and the
@@ -95,20 +95,12 @@ def playwright_browser(engine: str) -> Tool:
     return Tool(engine, Playwright(engine))
 
 
-# Backend actuator (bajutsu.backends actuator names) -> what it needs. `idb`'s python client comes
-# from the `idb` extra (so `preflight` probes it as an Extra tool); `idb_companion` is the separate
-# Homebrew formula. The web browser is engine-specific, so it is not listed here (see
-# `playwright_browser`). `adb` (Android, BE-0007) needs the platform-tools `adb` binary; the emulator
-# is only needed to *boot* an AVD, not to drive a running device, so it is not listed. `fake` needs
-# nothing.
+# Backend actuator (bajutsu.backends actuator names) -> what it needs. `xcuitest` (iOS, BE-0290 —
+# the sole iOS backend) needs Xcode's `xcodebuild`. The web browser is engine-specific, so it is not
+# listed here (see `playwright_browser`). `adb` (Android, BE-0007) needs the platform-tools `adb`
+# binary; the emulator is only needed to *boot* an AVD, not to drive a running device, so it is not
+# listed. `fake` needs nothing.
 BACKENDS: dict[str, Requirement] = {
-    "idb": Requirement(
-        extra="idb",
-        tools=(
-            Tool("idb", Extra("idb")),
-            Tool("idb_companion", Brew("facebook/fb/idb-companion")),
-        ),
-    ),
     "adb": Requirement(tools=(Tool("adb", Brew("android-platform-tools")),)),
     "playwright": Requirement(extra="web"),
     "xcuitest": Requirement(

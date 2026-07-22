@@ -1,4 +1,4 @@
-"""Driver abstraction — the linchpin shared by every backend (idb / fake).
+"""Driver abstraction — the linchpin shared by every backend, real or fake.
 
 Frozen first because everything else depends on it:
 - common types Point / Element / Selector
@@ -28,7 +28,7 @@ def _compile(pattern: str) -> re.Pattern[str]:
 
 
 # The iOS navigation bar's OS-provided back button (accessibility identifier "BackButton"). iOS has
-# no hardware/system back, so both iOS backends (idb / XCUITest) navigate back by tapping it — a
+# no hardware/system back, so the iOS backend (XCUITest) navigates back by tapping it — a
 # platform convention, not app-specific — so the id lives in one shared place (BE-0210).
 OS_BACK_BUTTON = "BackButton"
 
@@ -51,11 +51,13 @@ class Capability:
     NETWORK = "network"  # native network monitoring
     SCREENSHOT = "screenshot"
     ELEMENTS = "elements"
-    MULTI_TOUCH = "multiTouch"  # two-finger gestures (pinch / rotate); idb is single-touch
+    MULTI_TOUCH = (
+        "multiTouch"  # two-finger gestures (pinch / rotate); a single-touch backend lacks it
+    )
     WEBVIEW = "webView"  # DOM query/tap inside an embedded WKWebView (BE-0037)
     SELECT_OPTION = "selectOption"  # set a native <select> by value; web only (BE-0191)
     # `select`/`copy` on the focused field (BE-0265). A backend that can select and copy natively
-    # advertises this; idb, coordinate-only with no select-all handle, does not and raises
+    # advertises this; a coordinate-only backend with no select-all handle does not and raises
     # UnsupportedAction — the same actuate-or-raise promise as MULTI_TOUCH (BE-0280). `delete` /
     # `clear` need no token: every backend actuates `delete_text` (a run of backspaces).
     TEXT_SELECTION = "textSelection"
@@ -101,7 +103,7 @@ def permission_capability(service: str) -> str:
 
 
 # The whole `DeviceControl` family as a set of per-operation tokens (BE-0212). A backend that backs
-# the entire family (idb / xcuitest, via the iOS Simulator lifecycle) advertises this in one shot;
+# the entire family (xcuitest, via the iOS Simulator lifecycle) advertises this in one shot;
 # one that backs a subset (Android) lists only its operations' tokens.
 DEVICE_CONTROL_ALL = frozenset(
     {
@@ -116,7 +118,7 @@ DEVICE_CONTROL_ALL = frozenset(
 
 # The permission services iOS's `simctl privacy` backs — every vocabulary entry but `notifications`
 # (iOS notification authorization is not part of TCC — Transparency, Consent, and Control — the
-# database `simctl privacy` drives). Shared by idb and xcuitest, which both wire a real
+# database `simctl privacy` drives). Provided by xcuitest, which wires a real
 # simctl-backed `DeviceControl` via the iOS Simulator lifecycle (mirrors `DEVICE_CONTROL_ALL`).
 IOS_PERMISSION_CAPABILITIES = frozenset(
     permission_capability(s) for s in PERMISSION_SERVICES if s != "notifications"
@@ -128,7 +130,7 @@ ANDROID_PERMISSION_CAPABILITIES = frozenset(permission_capability(s) for s in PE
 
 
 class Element(TypedDict):
-    """A single on-screen element, normalized from idb output."""
+    """A single on-screen element, normalized from a device backend's output."""
 
     identifier: str | None
     label: str | None
@@ -176,11 +178,11 @@ class Driver(Protocol):
     """Common interface for every backend.
 
     Actions (tap/type/swipe/wait/query) are performed by the actuator only. On a
-    backend without semantic tap (e.g. idb), the abstraction resolves the frame
+    backend without semantic tap (a coordinate-only backend), the abstraction resolves the frame
     center via query() / resolve_unique() and taps by coordinates.
     """
 
-    # Backend identifier (e.g. "idb", "fake"). Recorded in the run
+    # Backend identifier (e.g. "xcuitest", "fake"). Recorded in the run
     # manifest and shown in the report so a run says which actuator drove it.
     name: str
 
@@ -209,7 +211,7 @@ class Driver(Protocol):
     # `tap` first, the same contract `type_text` relies on) — BE-0265. `delete_text` removes `count`
     # characters from the end (backspace-equivalent); `select_all` selects the whole content;
     # `copy_selection` copies the active selection to the clipboard. A backend that can't select or
-    # copy natively (idb is single-touch / coordinate-only) raises UnsupportedAction rather than
+    # copy natively (a single-touch / coordinate-only backend) raises UnsupportedAction rather than
     # faking it, mirroring the multi-touch gestures — codegen→XCUITest is the iOS path.
     def delete_text(self, count: int) -> None: ...
     def select_all(self) -> None: ...
@@ -231,8 +233,8 @@ class EvidenceProvider(Protocol):
     """A read-only evidence source from a non-actuator backend (BE-0020).
 
     A multi-backend run keeps actuation on the one actuator and may consult another same-platform
-    backend *read-only* to fill an evidence gap the actuator lacks (e.g. idb has no native network,
-    so a second iOS actuator supplies it). The narrow surface — `capabilities` plus observation
+    backend *read-only* to fill an evidence gap the actuator lacks (e.g. a backend with no native
+    network capture, so a same-platform backend supplies it). The narrow surface — `capabilities` plus observation
     methods only, never `tap` / `type` / `swipe` / `wait` / `query` — makes "the fallback never
     actuates" a type-level fact rather than a convention.
     """
@@ -249,13 +251,12 @@ class BackendLifecycle(Protocol):
 
     A run launches, tears down, and resets a backend, but those steps are platform-shaped: the web
     (Playwright) backend navigates / closes / resets a browser context, the XCUITest backend waits
-    for its on-device runner to answer, and idb needs none of them (its boot / erase / install
-    sequence lives outside the driver in `simctl`). The four hooks are therefore split disjointly
+    for its on-device runner to answer, and the fake backend needs none of them. The four hooks are therefore split disjointly
     across backends — no single driver implements all four — so this is a *typing umbrella* for the
     call sites, not a conformance target: the `platform_lifecycle` environments reach each hook through
     `cast(BackendLifecycle, driver)` under the platform invariant that already scopes the driver,
     which turns "the hook exists" into a mypy-checked fact (a renamed or dropped hook fails
-    `make check` instead of at runtime) without forcing idb to stub no-op methods. `@runtime_checkable`
+    `make check` instead of at runtime) without forcing a lifecycle-free backend to stub no-op methods. `@runtime_checkable`
     mirrors `EvidenceProvider`, but a structural `isinstance` holds only for a class implementing the
     whole set — which the concrete drivers, owning disjoint subsets, deliberately do not.
     """
@@ -276,7 +277,7 @@ class SelectorError(Exception):
 class UnsupportedAction(Exception):
     """The actuator backend cannot perform this action.
 
-    For example, a multi-touch gesture on idb, which is single-touch. The tool surfaces it as a step
+    For example, a multi-touch gesture on a single-touch backend. The tool surfaces it as a step
     failure with a clear reason rather than letting it pass silently.
     """
 

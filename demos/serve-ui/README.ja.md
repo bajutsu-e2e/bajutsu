@@ -40,7 +40,7 @@ make -C demos/serve-ui e2e
 これは web backend（`uv sync --extra web` ＋ `playwright install chromium`）を入れ、`bajutsu serve` を起動し
 （[web デモ](../web)の config を読ませ、ドロップダウンに実在のアプリとシナリオが並ぶようにします）、Tier A の
 シナリオで Web UI を Playwright backend から駆動し、serve を畳みます。serve は `make serve` ではなく直接起動
-します。dogfood は Web 限定で、idb companion も iOS の actuator も関わらないからです。
+します。dogfood は Web 限定で、XCUITest ランナーも iOS の actuator も関わらないからです。
 
 Web UI を手で触るには、`make -C demos/serve-ui serve-ui` を実行して <http://127.0.0.1:8799/> を開きます。
 

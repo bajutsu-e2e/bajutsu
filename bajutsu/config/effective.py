@@ -52,7 +52,7 @@ class AiConfig:
 
 @dataclass(frozen=True)
 class IosConfig:
-    """iOS (idb / XCUITest) target knobs (BE-0126). On `Effective` only when `platform == "ios"`."""
+    """iOS (XCUITest) target knobs (BE-0126). On `Effective` only when `platform == "ios"`."""
 
     bundle_id: str = ""
     deeplink_scheme: str | None = None
@@ -63,9 +63,6 @@ class IosConfig:
     build: str | None = None
     # XCUITest runner config (BE-0019): prebuilt test runner path and/or build command.
     xcuitest: XcuitestConfig | None = None
-    # Expected idb version range (e.g. ">=1.1.8"); `doctor` checks the installed companion against
-    # it. None = no pin declared. Environment-level, so resolved straight from defaults (BE-0005).
-    idb_version: str | None = None
 
 
 @dataclass(frozen=True)

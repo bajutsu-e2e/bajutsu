@@ -4,7 +4,7 @@
 # equivalent — adb does not advertise `deviceControl.push`, so preflight (bajutsu/capability_preflight.py)
 # rejects a `push` step on the adb backend before any device work. The cross-backend half (setLocation
 # + clipboard) lives in device.yaml; this file carries only the iOS-specific push and so runs on the
-# idb / XCUITest backends alone. Making push work on the Android emulator is a separate roadmap item.
+# iOS XCUITest backend alone. Making push work on the Android emulator is a separate roadmap item.
 #   bajutsu run --scenario push.yaml --target showcase-swiftui ...
 - name: receive a push notification
   tags: [system]

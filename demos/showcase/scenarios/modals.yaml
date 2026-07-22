@@ -1,6 +1,6 @@
 # Modals: the Log tab exercises all four presentation styles — a detented sheet, a
 # full-screen cover, an action sheet (confirmationDialog), and the form controls.
-# In-app modals are visible to idb (unlike the OS alerts in permission.yaml).
+# In-app modals are visible to the backend (unlike the OS alerts in permission.yaml).
 - name: open and dismiss the detented sheet
   preconditions:
     launchEnv: { SHOWCASE_UITEST: "1" }

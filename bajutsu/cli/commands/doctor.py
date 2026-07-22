@@ -22,7 +22,6 @@ from bajutsu.cli._shared import DEFAULT_CONFIG, _backends, _load_effective
 from bajutsu.config import (
     Effective,
     android_package,
-    idb_version_pin,
     ios_bundle_id,
     require_ios,
     web_base_url,
@@ -231,7 +230,6 @@ def doctor(
         actuator,
         booted_count=booted_count,
         web_engine=web_engine(eff),
-        ios_pin=idb_version_pin(eff),
     )
     checks = cfg_checks + env_checks
     if checks:

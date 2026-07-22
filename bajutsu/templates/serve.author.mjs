@@ -34,7 +34,7 @@ initProjectsView();
 // show only for an iOS backend, web controls (the headed/show-browser toggle) only for web. The
 // backend is fixed per app by config (no UI override), so each panel follows the selected app's
 // backend (data-backend) and shows only that platform's controls. Applies to Record/Replay/Crawl.
-function isIosBackend(v){v=(v||'').trim().toLowerCase();return v===''||v==='idb'||v==='ios'||v==='xcuitest';}
+function isIosBackend(v){v=(v||'').trim().toLowerCase();return v===''||v==='ios'||v==='xcuitest';}
 function isAndroidBackend(v){v=(v||'').trim().toLowerCase();return v==='adb'||v==='android'||v==='uiautomator';}
 function appBackend(appSel){const a=$(appSel),o=a&&a.selectedOptions&&a.selectedOptions[0];return (o&&o.dataset.backend)||'';}
 function syncPlatform(panelSel,appSel){

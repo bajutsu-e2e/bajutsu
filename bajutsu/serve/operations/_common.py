@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
+from bajutsu.config import Effective
 from bajutsu.drivers import base as driver_base
 from bajutsu.serve.authz import _target_forbidden
 from bajutsu.serve.helpers import (
@@ -11,6 +13,12 @@ from bajutsu.serve.helpers import (
     valid_udid,
 )
 from bajutsu.serve.state import ServeState
+
+# A live capture/enrich driver paired with the teardown that releases whatever backs it. Some
+# backends leave nothing to release once the driver is dropped (idb was such a backend); XCUITest
+# owns an `xcodebuild` runner subprocess that the session must tear down explicitly (BE-0290), so
+# the factory returns the teardown alongside the driver rather than relying on drop/`close()`.
+DriverSession = tuple[driver_base.Driver, Callable[[], None]]
 
 
 def _device_args(body: dict[str, Any]) -> tuple[str, str, tuple[Any, int] | None]:
@@ -38,11 +46,29 @@ def _resolve_org_or_forbid(
     return org, None
 
 
-def _default_driver_factory(target: str, backends_list: list[str], udid: str) -> driver_base.Driver:
+def _close_quietly(driver: driver_base.Driver) -> None:
+    """Release a driver that owns no separate resource: call its `close()` if it has one."""
+    close = getattr(driver, "close", None)
+    if callable(close):
+        close()
+
+
+def _default_driver_factory(eff: Effective, backends_list: list[str], udid: str) -> DriverSession:
+    """Bring up a live driver for a capture/enrich session, paired with its teardown.
+
+    Cost-ordered like the run ladder (BE-0240, BE-0267): the cheapest bring-able actuator over the
+    whole backend list. With idb retired (BE-0290), `[ios]` resolves to XCUITest, which needs an
+    `xcodebuild` runner — so the iOS path brings a short-lived runner up (outside the runner-reuse
+    pool) and returns a teardown that stops it, rather than leaking the subprocess when the session
+    ends. Every other backend leaves nothing to stop beyond an optional `close()`.
+    """
     from bajutsu import backends
 
-    # Cost-ordered like the run ladder (BE-0240, BE-0267): a live capture/enrich session picks the
-    # cheapest bring-able actuator over the whole backend list — idb for `[ios]`, not the alias head
-    # XCUITest, whose runner serve never starts.
     actuator = backends.select_actuator_cost_first(backends_list or ["fake"])
-    return backends.make_driver(actuator, udid)
+    if actuator == "xcuitest":
+        from bajutsu.platform_lifecycle.read_session import open_ios_read_driver
+
+        driver, env = open_ios_read_driver(udid, eff)
+        return driver, lambda: env.teardown(driver, eff)
+    driver = backends.make_driver(actuator, udid)
+    return driver, lambda: _close_quietly(driver)

@@ -259,13 +259,13 @@ def test_test_extra_carries_bajutsu_surplus() -> None:
         ok=True,
         steps=[],
         expect_results=[AssertionResult(ok=True, kind="exists", detail="home.title")],
-        backend="idb",
+        backend="xcuitest",
         sid="00-s",
         expect_alerts=[AlertEvent(label="Not Now")],
         skipped_captures=[SkippedCapture(kind="network", reason="no eligible backend")],
     )
     extra = ctrf_json("20260704-101500", [r])["results"]["tests"][0]["extra"]  # type: ignore[index]
-    assert extra["backend"] == "idb"
+    assert extra["backend"] == "xcuitest"
     assert extra["sid"] == "00-s"
     assert extra["expect"] == [{"ok": True, "kind": "exists", "detail": "home.title", "reason": ""}]
     assert extra["expectAlerts"] == [{"label": "Not Now"}]

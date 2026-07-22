@@ -42,7 +42,7 @@ def _bake(run_dir: Path) -> None:
                 )
             ],
             expect_results=[AssertionResult(ok=True, kind="exists", detail="home.title")],
-            backend="idb",
+            backend="xcuitest",
         )
     ]
     run_dir.mkdir(parents=True, exist_ok=True)

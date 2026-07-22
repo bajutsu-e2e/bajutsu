@@ -11,7 +11,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
-from bajutsu import capability_preflight, idb_version
+from bajutsu import capability_preflight
 from bajutsu.artifact_perms import make_run_dir, restrict_file
 from bajutsu.assertions import (
     AssertionResult,
@@ -283,7 +283,7 @@ def run_all(
         baselines_dir: Baseline images for `visual` assertions. None disables visual comparison.
         schemas_dir: Directory the `responseSchema` assertions' schema files resolve against. None
             disables them.
-        actuator: The single selected actuator (e.g. `idb` / `playwright`); when given, each scenario
+        actuator: The single selected actuator (e.g. `xcuitest` / `playwright`); when given, each scenario
             is preflighted against its static capability set and failed up front if it needs a
             capability the actuator lacks (BE-0082). None skips the fixed preflight (a lease driven
             directly in tests, or when `resolve_actuator` chooses per scenario instead).
@@ -311,8 +311,8 @@ def run_all(
     # it, with ${secrets.*} in the url/headers resolved from the same secret bindings (BE-0046).
     mailbox = build_mailbox_reader(eff.mailbox, bindings or {})
     # Preflight: a backend's capability set is (near-)static, so a scenario that needs a capability
-    # the actuator lacks (e.g. pinch on idb, or simctl device control on a real iOS device — BE-0238)
-    # is failed here — before any device is leased — instead of mid-run after partial device work
+    # the actuator lacks (e.g. simctl device control on a real iOS device — BE-0238) is failed
+    # here — before any device is leased — instead of mid-run after partial device work
     # (BE-0082). `capabilities_for_run` applies the run's one config-driven narrowing (real-device
     # XCUITest). Skipped when no actuator is passed (tests that drive a lease directly), so the
     # gesture handler's own check still backstops it.
@@ -373,8 +373,7 @@ def run_and_report(
     """Run the scenarios, then write the run's artifacts under `runs_dir/run_id`.
 
     Wraps `run_all` and persists the report: `manifest.json`, JUnit XML, and the executed
-    `scenario.yaml` (so a run is re-runnable / reviewable). idb toolchain versions are recorded as
-    provenance only when idb actually drove the run — never a pass/fail input (BE-0005).
+    `scenario.yaml` (so a run is re-runnable / reviewable).
 
     Beyond `run_all`'s arguments, `runs_dir` + `run_id` locate this run's artifact directory
     (`runs_dir/run_id`), `source_name` / `description` are recorded in the report, and
@@ -521,7 +520,7 @@ def _assemble_report(
     """Write the run's report artifacts under `run_dir` from its (possibly engine-tagged) results.
 
     The shared report-writing tail of `run_and_report` and `run_matrix_and_report`: the executed
-    `scenario.yaml`, the idb/provenance stamps, and `manifest.json` / `junit.xml` / `report.html`,
+    `scenario.yaml`, the provenance stamps, and `manifest.json` / `junit.xml` / `report.html`,
     then the final secret-value scrub.
     """
     # Snapshot for evidence with literal `totp.secret` seeds masked (BE-0152) — a `${secrets.*}`
@@ -537,11 +536,6 @@ def _assemble_report(
     scenario_path.write_text(scenario_yaml, encoding="utf-8")
     # The scenario copy can hold masked-but-sensitive text — owner-only, umask-independent (BE-0131).
     restrict_file(scenario_path)
-    # Record the idb versions this run was driven against, but only when idb actually drove it —
-    # provenance for the artifact set, never a pass/fail input (BE-0005). Non-idb runs probe nothing.
-    # idb-by-name is fine while idb is the only backend with a toolchain version; when a second
-    # backend needs versions, generalize this to a `Driver.provenance()` hook instead of a name test.
-    idb_versions = idb_version.probe() if any(r.backend == "idb" for r in results) else None
     # Stamp the run's identity (scenario fingerprint + tool/git version) so accumulated runs can be
     # grouped to tell true flakiness from an edited scenario (BE-0049); pure metadata, never a verdict.
     provenance = run_provenance(
@@ -560,7 +554,6 @@ def _assemble_report(
         sources,
         source_name=source_name,
         description=description,
-        idb_versions=idb_versions,
         provenance=provenance,
     )
     # Final safety net: scrub any literal secret value that reached a run-level artifact

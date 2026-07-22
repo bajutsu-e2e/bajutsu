@@ -2,12 +2,12 @@
 
 A device id — an Android serial (`emulator-5554`, `192.168.1.5:5555`), an iOS Simulator UDID
 (`A1B2C3D4-1122-3344-5566-77889900AABB`), or the `booted` alias — flows from `--udid` / config
-into a subprocess command line: `adb -s <id>`, `idb --udid <id>`, `xcrun simctl … <id>`. The
+into a subprocess command line: `adb -s <id>`, `xcrun simctl … <id>`. The
 security invariant behind every backend's check is the same, and it is the reason this validator
 exists: **an id must never start with `-`**, or the CLI it is handed to would read it as an option
 (`-rf`, `--config`) — argv option injection from an untrusted `--udid` / config value.
 
-This used to be spelled out three slightly different ways (adb's `_SERIAL`, idb's `_UDID_RE`,
+This used to be spelled out several slightly different ways (adb's `_SERIAL`,
 serve's `_UDID_RE`), differing in charset, length cap, and first-character rule. They now all
 reference the single policy defined here, so "valid device id" has exactly one definition.
 
@@ -22,8 +22,8 @@ Policy:
       sit well under it, while a pathologically long argument is rejected).
     - matched against the **whole** string (anchored both ends).
 
-Callers keep their own error type: adb raises `adb.DeviceError`, idb raises `simctl.DeviceError`,
-and serve returns a bool. The single thing they share is this predicate.
+Callers keep their own error type: adb raises `adb.DeviceError`, the simctl family raises
+`simctl.DeviceError`, and serve returns a bool. The single thing they share is this predicate.
 """
 
 from __future__ import annotations

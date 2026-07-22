@@ -11,6 +11,7 @@
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0005") |
 | Implementing PR | [#227](https://github.com/bajutsu-e2e/bajutsu/pull/227) |
 | Topic | Platform support |
+| Superseded by | [BE-0290](../BE-0290-xcuitest-default-ios-backend/BE-0290-xcuitest-default-ios-backend.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -43,6 +44,7 @@ Nothing here introduces fixed sleeps or non-deterministic selection: the monitor
 ## Progress
 
 - [x] Shipped — see the *Implementing PR* above.
+- [x] Superseded by [BE-0290](../BE-0290-xcuitest-default-ios-backend/BE-0290-xcuitest-default-ios-backend.md): idb was retired, so the `idb_companion` version monitor it added (the `idb_version` module, the manifest `idb` provenance block, and the `defaults.idbVersion` pin) was removed. Nothing produces those versions once idb is gone.
 
 ## References
 

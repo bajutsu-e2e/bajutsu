@@ -855,7 +855,7 @@ def test_crawl_exposes_the_live_plan_via_on_event() -> None:
 
 
 def test_crawl_plans_and_explores_a_vision_located_tab() -> None:
-    """A SwiftUI tab bar idb can't address is reached via a coordinate tab tap from the guide (the
+    """A SwiftUI tab bar the accessibility tree can't address is reached via a coordinate tab tap from the guide (the
     vision fallback). That planned tab must surface in the live plan (the frontier a watcher sees)
     and drive a real transition edge — exactly like an id-based action, since a coordinate tap is
     deterministic to replay."""
@@ -1320,7 +1320,7 @@ def test_action_targets_empty_without_dimensions() -> None:
 # --- `bajutsu crawl` CLI option validation (BE-0117) ---
 #
 # These drive the option-validation and dispatch branches that fail before any device work — they
-# need no live actuator. iOS backend selection fails cleanly in the sandbox (no idb on PATH), which
+# need no live actuator. iOS backend selection fails cleanly in the sandbox (no XCUITest tooling on PATH), which
 # is how the "unavailable backend" branch is reached.
 
 from pathlib import Path  # noqa: E402

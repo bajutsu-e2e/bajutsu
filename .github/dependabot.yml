@@ -14,7 +14,7 @@ updates:
       actions:
         patterns: ["*"]
 
-  # Python dependencies (pyproject.toml: runtime + dev/idb extras).
+  # Python dependencies (pyproject.toml: runtime + dev extras).
   - package-ecosystem: pip
     directory: /
     schedule:

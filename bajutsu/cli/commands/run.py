@@ -539,8 +539,9 @@ def _dispatch_single(
             baselines_dir=plan.baselines_dir,
             schemas_dir=plan.schemas_dir,
             # Per-scenario actuator selection (BE-0240): the pipeline preflights, and the pool leases,
-            # the cheapest actuator each scenario can run on — a single `[idb]`/`[web]` pin still
-            # collapses to that one actuator, `[ios]` escalates only the scenarios that need it.
+            # the cheapest actuator each scenario can run on — a single `[xcuitest]`/`[web]` pin still
+            # collapses to that one actuator; a multi-actuator platform escalates only the scenarios
+            # that need it (iOS is single-actuator since BE-0290, so `[ios]` collapses too).
             resolve_actuator=lambda s: select_actuator_for_scenario(plan.backends, s),
             config_source=plan.config_source,
             exec_provenance=exec_decision,

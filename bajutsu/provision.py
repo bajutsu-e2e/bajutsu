@@ -2,7 +2,7 @@
 
 Reads a project's effective config, resolves which backends its ``targets.*`` actually use and
 whether an AI provider is configured, and installs exactly the pip extras and external tools those
-need — not "idb unconditionally" and not "everything". A local, developer-invoked bootstrap step:
+need — not "every backend unconditionally" and not "everything". A local, developer-invoked bootstrap step:
 it never runs on a hosted or uploaded-config path (the boundary BE-0090 closed), runs before any
 scenario, and is never part of a pass/fail decision (prime directive #1).
 
@@ -47,8 +47,8 @@ def _echo(msg: str) -> None:
 class InstallPlan:
     """The extras and external tools a config resolves to needing.
 
-    ``tools`` may include Extra-backed entries (e.g. the `idb` client): those are covered by the
-    ``extras`` sync, so ``provision`` takes no separate action for them.
+    ``tools`` may include Extra-backed entries (e.g. the web `playwright` package): those are covered
+    by the ``extras`` sync, so ``provision`` takes no separate action for them.
     """
 
     extras: tuple[str, ...]
@@ -82,7 +82,7 @@ def plan(config: Config, *, ai_configured: bool | None = None) -> InstallPlan:
 def plan_for_backends(backends: list[str], *, ai: bool = False) -> InstallPlan:
     """Resolve what an explicit list of backend tokens needs, independent of any config.
 
-    The ``make deps`` path: provision the idb backend regardless of what a project's config selects.
+    The ``make deps`` path: provision the given backends regardless of what a project's config selects.
     """
     pairs = (
         (actuator, "chromium" if actuator == "playwright" else None)
@@ -213,7 +213,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--backend",
         action="append",
-        help="force a backend regardless of config (repeatable); e.g. --backend idb",
+        help="force a backend regardless of config (repeatable); e.g. --backend ios",
     )
     parser.add_argument("--dry-run", action="store_true", help="print the plan without installing")
     args = parser.parse_args(argv)

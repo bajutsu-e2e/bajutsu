@@ -244,46 +244,73 @@ def test_probe_screen_fake_backend_never_touches_simctl() -> None:
     assert probe_screen("fake", "booted", eff, simctl_run=boom) == []  # fake's screen starts empty
 
 
-def test_probe_screen_xcuitest_queries_over_idb(monkeypatch: pytest.MonkeyPatch) -> None:
-    # xcuitest has no runner in doctor, so the probe reads the tree over idb (BE-0019).
-    made: list[tuple[str, str]] = []
-    monkeypatch.setattr(
-        "bajutsu.doctor.make_driver",
-        lambda actuator, udid, **kw: made.append((actuator, udid)) or _RecordingDriver(),
-    )
+class _FakeReadEnv:
+    """A stand-in XCUITest environment for doctor's short-lived read: records the udid it was built
+    for, returns a recording driver from `start`, and notes teardown."""
+
+    def __init__(self, udid: str, torn: list[str]) -> None:
+        self._udid = udid
+        self._torn = torn
+
+    def start(self, *_a: object, **_k: object) -> _RecordingDriver:
+        return _RecordingDriver()
+
+    def teardown(self, *_a: object, **_k: object) -> None:
+        self._torn.append(self._udid)
+
+
+def _patch_read_env(monkeypatch: pytest.MonkeyPatch, built: list[str], torn: list[str]) -> None:
+    def fake_env_for(
+        actuator: str, udid: str, env_run: object = None, **_k: object
+    ) -> _FakeReadEnv:
+        built.append(udid)
+        return _FakeReadEnv(udid, torn)
+
+    monkeypatch.setattr("bajutsu.platform_lifecycle.read_session.environment_for", fake_env_for)
+
+
+def test_probe_screen_xcuitest_uses_a_short_lived_runner(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Earlier iOS read the tree with no runner (BE-0019); now (BE-0290) doctor brings a
+    # short-lived XCUITest runner up, scores its tree, and tears it down.
+    built: list[str] = []
+    torn: list[str] = []
+    _patch_read_env(monkeypatch, built, torn)
     eff = resolve(load_config("targets: { demo: { bundleId: com.x } }"), "demo")
     elements = probe_screen("xcuitest", "DEV-1", eff)
     assert [e["identifier"] for e in elements] == ["probe.ok"]
-    assert made == [("idb", "DEV-1")]  # queried over idb, at the concrete udid
+    assert built == ["DEV-1"] and torn == ["DEV-1"]  # runner brought up and torn down
 
 
 def test_probe_screen_routes_udid_resolution_through_injected_simctl(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # "booted" is resolved to a concrete udid via the injected simctl_run — the seam serve uses to
-    # stay host-safe and tests use to avoid shelling out.
-    made: list[tuple[str, str]] = []
-    monkeypatch.setattr(
-        "bajutsu.doctor.make_driver",
-        lambda actuator, udid, **kw: made.append((actuator, udid)) or _RecordingDriver(),
-    )
+    # stay host-safe and tests use to avoid shelling out — before the short-lived runner is built.
+    built: list[str] = []
+    torn: list[str] = []
+    _patch_read_env(monkeypatch, built, torn)
     eff = resolve(load_config("targets: { demo: { bundleId: com.x } }"), "demo")
-    probe_screen("idb", "booted", eff, simctl_run=lambda _c, _e=None: _booted_json("BOOTED-9"))
-    assert made == [("idb", "BOOTED-9")]
+    probe_screen("xcuitest", "booted", eff, simctl_run=lambda _c, _e=None: _booted_json("BOOTED-9"))
+    assert built == ["BOOTED-9"]
 
 
 def test_probe_screen_takes_the_first_udid_of_a_comma_list(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # doctor scores one screen; a "A,B" parallel-worker list must target only the first device.
+    # doctor scores one screen; a "A,B" parallel-worker list must target only the first device. The
+    # Android path reads through `make_driver` at the resolved udid.
     made: list[tuple[str, str]] = []
     monkeypatch.setattr(
         "bajutsu.doctor.make_driver",
         lambda actuator, udid, **kw: made.append((actuator, udid)) or _RecordingDriver(),
     )
-    eff = resolve(load_config("targets: { demo: { bundleId: com.x } }"), "demo")
-    probe_screen("idb", "A,B", eff)
-    assert made == [("idb", "A")]
+    monkeypatch.setattr(
+        "bajutsu.platform_lifecycle.environments.android.AndroidEnvironment.resolve_device",
+        lambda self, udid: udid,
+    )
+    eff = resolve(load_config("targets: { demo: { bundleId: com.x, package: com.x } }"), "demo")
+    probe_screen("adb", "A,B", eff)
+    assert made == [("adb", "A")]
 
 
 def test_probe_screen_web_without_base_url_raises_probe_error() -> None:

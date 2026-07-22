@@ -23,7 +23,7 @@ def _png(width: int, height: int) -> bytes:
 
 
 def test_needs_vision_tabs_only_for_an_unaddressable_tab_bar() -> None:
-    # SwiftUI TabView as idb surfaces it: a lone group labelled "Tab Bar", no id, no per-tab child.
+    # SwiftUI TabView as the accessibility tree surfaces it: a lone group labelled "Tab Bar", no id, no per-tab child.
     bar = [el(label="Tab Bar", traits=["group"]), el(identifier="home.start", traits=["button"])]
     assert crawl_tabs.tab_bar_present(bar) is True
     assert crawl_tabs.addressable_tabs(bar) is False

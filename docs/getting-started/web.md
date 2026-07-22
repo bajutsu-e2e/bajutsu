@@ -16,7 +16,7 @@ backend needs. This page picks up at Step 4.
 
 Bajutsu's headline claim is **"a platform is a backend"**: the deterministic core, the scenario
 format, and the reporter are identical regardless of which backend actuates the UI. The
-[iOS track](ios.md) finishes on a Simulator (the `idb` backend), which needs a Mac with Xcode. This
+[iOS track](ios.md) finishes on a Simulator (the `XCUITest` backend), which needs a Mac with Xcode. This
 track finishes the same loop against a browser (the `web` / Playwright backend), which runs on
 Linux, Windows, or macOS alike — the exact backend that drives Bajutsu's own web demo on the Linux
 gate ([`demos/web`](../../demos/web/README.md)).
@@ -101,7 +101,7 @@ What the flags mean:
 - `--target web` selects `targets.web` from [`demos/web/demo.config.yaml`](../../demos/web/demo.config.yaml)
   (its `baseUrl` and scenarios dir). The tool itself is app-agnostic; all per-target differences
   live in config ([configuration](../configuration.md)).
-- `--backend web` picks the actuator: the Playwright engine driving Chromium. No Xcode, no idb, no
+- `--backend web` picks the actuator: the Playwright engine driving Chromium. No Xcode, no
   Simulator is involved.
 - Omit `--scenario` to run the target's whole scenarios directory (what `make -C demos/web e2e`
   does).

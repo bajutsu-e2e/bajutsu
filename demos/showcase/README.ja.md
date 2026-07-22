@@ -52,7 +52,7 @@ gitignore 済みです。
 
 ## 実行（起動済み Simulator 上）
 
-前提：起動済み Simulator、`brew install facebook/fb/idb-companion`、`uv sync --extra idb`。
+前提：起動済み Simulator、Xcode、XCUITest ランナー（`make -C demos/showcase runner-build`）。pip の extra は不要です。
 
 ```bash
 # run — 共有の id ベースシナリオを、どちらの a11y ツールキットにも（同じシナリオで）:
@@ -69,9 +69,9 @@ make -C demos/showcase record
 または `bajutsu` を直接駆動します（常にこの群の config を渡す）:
 
 ```bash
-bajutsu run --target showcase-swiftui --backend idb --config demos/showcase/showcase.config.yaml
+bajutsu run --target showcase-swiftui --backend ios --config demos/showcase/showcase.config.yaml
 bajutsu run --target showcase-swiftui --scenario demos/showcase/scenarios/modals.yaml \
-    --backend idb --config demos/showcase/showcase.config.yaml
+    --backend ios --config demos/showcase/showcase.config.yaml
 ```
 
 ## ここにあるもの
@@ -81,7 +81,7 @@ bajutsu run --target showcase-swiftui --scenario demos/showcase/scenarios/modals
 | [`SPEC.md`](SPEC.md) | 画面ごとの契約（仕様書） |
 | [`WEBUI.ja.md`](WEBUI.ja.md) | Web UI ツアー。ブラウザから Simulator を操作し、あらゆる証跡を収集する |
 | [`ios/swiftui/`](ios/swiftui)、[`ios/uikit/`](ios/uikit) | 2 つの iOS コードベース（xcodegen `project.yml`、各 2 ターゲット） |
-| [`ios/scenarios-noax/`](ios/scenarios-noax) | `scenarios/` の `-noax` 版。同じ操作を可視ラベルと画面上のミラーテキストで表現し、XCUITest（`--backend ios`）で実行。idb の a11y ツリーでは届かない `-noax` ターゲットを駆動 |
+| [`ios/scenarios-noax/`](ios/scenarios-noax) | `scenarios/` の `-noax` 版。同じ操作を可視ラベルと画面上のミラーテキストで表現し、XCUITest（`--backend ios`）で実行。ラベルで到達できる（座標ベースのバックエンドでは届かない）`-noax` ターゲットを駆動 |
 | [`android/`](android/) | Android 版の 4 プロダクト（Compose × Views、BE-0007 の準備） |
 | [`showcase.config.yaml`](showcase.config.yaml) | iOS と Android を合わせた 8 つの `targets.<name>` エントリ |
 | [`scenarios/`](scenarios) | 共有の id ベース `run` シナリオ（iOS と Android の両方の a11y アプリを駆動） |
@@ -95,8 +95,8 @@ bajutsu run --target showcase-swiftui --scenario demos/showcase/scenarios/modals
 `scenarios/` の各操作に 1 対 1 で対応し、動作は同じですが、各ステップは要素を**可視ラベル**で指定し、
 各アサーションはアプリが同時に描画する画面上の**ミラー `Text`**（たとえば `Text("Segment: \(segment)")`、
 `Text(favorite ? "Favorited" : "Not favorited")`）を読みます。落ちてしまう a11y value の代わりです。
-idb はタブバーを 1 つの不透明なグループに畳んでしまい `-noax` の要素にラベルで到達できないため、この
-スイートは XCUITest で実行します（`make -C demos/showcase run-swiftui-noax` / `run-uikit-noax`）。可視の
+このスイートは、各 `-noax` 要素にその可視ラベルで到達できる（座標ベースのバックエンドでは届かない）
+XCUITest で実行します（`make -C demos/showcase run-swiftui-noax` / `run-uikit-noax`）。可視の
 ミラー文字列は `AppModel` と各 `*Controller`/`*View` のラベルで一致するので、1 つのスイートが `-noax` の
 両方の toolkit を駆動します。
 

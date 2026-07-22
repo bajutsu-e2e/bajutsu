@@ -41,10 +41,10 @@ the id `horse.favorite` satisfies an expected `favorite`.
 ## Running it
 
 **On-device (the real measurement)** — needs a Mac, a booted Simulator with the `-noax` app built,
-the idb client, and `ANTHROPIC_API_KEY`:
+the XCUITest runner, and `ANTHROPIC_API_KEY`:
 
 ```bash
-uv sync --extra idb
+make -C demos/showcase runner-build
 export ANTHROPIC_API_KEY=...
 make -C demos/showcase swiftui-noax-build     # or uikit-noax-build
 uv run python demos/showcase/record/eval/run_eval.py --reps 5

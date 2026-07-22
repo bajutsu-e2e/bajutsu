@@ -29,7 +29,7 @@ def project(tmp_path: Path) -> tuple[Path, Path, Path]:
     (scn_dir / "smoke.yaml").write_text(SCENARIO, encoding="utf-8")
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "defaults: { backend: [idb] }\ntargets:\n"
+        "defaults: { backend: [ios] }\ntargets:\n"
         f"  demo: {{ bundleId: com.example.demo, scenarios: {scn_dir} }}\n"
         "  other: { bundleId: com.example.other }\n",
         encoding="utf-8",

@@ -18,7 +18,7 @@ one closer to the test wins).
 ```yaml
 defaults:                       # shared across all targets
   platform: ios                 # team-wide default platform (ios/android/web); omit to derive it from each target's backend
-  backend: [ios]                # ordered list of platforms (ios/android/web/fake) or actuators (idb); a single string is also OK
+  backend: [ios]                # ordered list of platforms (ios/android/web/fake) or actuators (xcuitest); a single string is also OK
   device:  "iPhone 15"
   locale:  en_US
   capture: [screenshot.after, elements, actionLog]
@@ -71,7 +71,7 @@ An undefined target raises `KeyError` (the CLI exits with code 2).
 | `launch_server` | app | optional `launchServer: {cmd, readyUrl, readyTimeout, cwd, env}` — bring up `baseUrl`'s host for the run, then tear it down: probe `readyUrl` (default `baseUrl`), reuse it if already serving, else run `cmd` and wait until ready (a condition wait, never a fixed sleep). The web analogue of `build` ([BE-0059](../roadmaps/BE-0059-launch-target-server/BE-0059-launch-target-server.md)). For an **uploaded** bundle in `serve`, the host never runs `cmd` directly — `serve --upload-exec` governs it (see [self-hosting](self-hosting.md#uploaded-config-command-execution-be-0090)); a `sandbox` run needs the extra fields `dockerImage` (a Docker image reference, e.g. `node:20-slim`) **or** `dockerfile` (a bundle-relative path built with `docker build`) — exactly one — plus `port` (the in-container listen port, published to a loopback host port) ([BE-0090](../roadmaps/BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md)) |
 | `run_defaults.dismiss_alerts` / `.erase` / `.network` | app | per-app defaults for run-behavior settings otherwise set per scenario or on a CLI flag ([BE-0177](../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md)). `dismissAlerts` takes the scenario form (`false`, or `{ enabled, instruction }`) and defaults the alert guard; `erase` defaults `preconditions.erase`; `network` defaults collecting the app's network exchanges. Each resolves **flag > scenario > this > built-in** (guard on, erase off, network on), mirroring `--headed`/`headless`: `bajutsu run --dismiss-alerts/--no-dismiss-alerts`, `--erase/--no-erase`, `--network/--no-network` (and `--alert-instruction`) still override for one run |
 | `deeplink_scheme` | app | the scheme used by the preconditions' deeplink |
-| `backend` | app ?? defaults | stability-ordered list of platforms (`ios`/`android`/`web`/`fake`) or actuators (`idb`); a single string is listified ([drivers](drivers.md#backend-selection-and-the-actuator)) |
+| `backend` | app ?? defaults | stability-ordered list of platforms (`ios`/`android`/`web`/`fake`) or actuators (`xcuitest`); a single string is listified ([drivers](drivers.md#backend-selection-and-the-actuator)) |
 | `device` / `locale` | app ?? defaults | `locale` is applied at launch (`simctl` launch args) |
 | `launch_env` / `launch_args` | app | merged/appended by preconditions at run time |
 | `ready_when` | app | optional `readyWhen: { id: … }` — a selector the launch waits for before the run starts, instead of the default "the app rendered any 2+ elements". Use it for an app whose first interactive screen is a modal over always-present chrome (the element-count heuristic can return before the modal presents). Its `id` / `idMatches` accept an OR candidate list like a scenario selector (`readyWhen: { id: [stable.row.1, stable_row_1] }`, BE-0221), so one `readyWhen` covers a target whose native id syntax differs. A condition wait, never a fixed sleep. Set it only when **every** scenario for the target starts on that same screen; when first screens vary per scenario, lead each scenario with a `wait` step instead |
@@ -427,7 +427,7 @@ Implementation: `bajutsu/doctor.py`. **AI-independent and deterministic.** It an
 `query()` (the CLI uses the screen obtained via the actuator) and produces a score.
 
 > `doctor` runs a **runnability gate** first (`preflight.py`), then the score. The gate checks what
-> the chosen backend needs: the iOS (idb) backend needs the CLIs `xcrun` and `idb` / `idb_companion`
+> the chosen backend needs: the iOS (XCUITest) backend needs `xcodebuild` / `xcrun`
 > plus a booted Simulator; the web (Playwright) backend needs the Playwright package and its Chromium
 > browser (`uv sync --extra web` + `playwright install chromium`). It then scores the current screen:
 > for a web target it navigates a fresh browser to the target's `baseUrl` and scores that page; for

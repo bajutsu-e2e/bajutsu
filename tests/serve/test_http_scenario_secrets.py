@@ -36,7 +36,7 @@ def _project_with_secrets(tmp_path: Path, *, demo_secrets: str, other_secrets: s
     cfg = tmp_path / "bajutsu.config.yaml"
     other = f", secrets: {other_secrets}" if other_secrets else ""
     cfg.write_text(
-        "defaults: { backend: [idb] }\n"
+        "defaults: { backend: [ios] }\n"
         "targets:\n"
         f"  demo: {{ bundleId: com.example.demo, scenarios: {scn_dir}, secrets: {demo_secrets} }}\n"
         f"  other: {{ bundleId: com.example.other{other} }}\n",

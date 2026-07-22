@@ -13,7 +13,6 @@ from typing import Any
 
 from jinja2 import Environment, FileSystemLoader
 
-from bajutsu.idb_version import IdbVersions
 from bajutsu.orchestrator import RunResult
 from bajutsu.report.ctrf import ctrf_json
 from bajutsu.report.format import _fmt_duration
@@ -154,14 +153,12 @@ def write_report(
     sources: list[str] | None = None,
     source_name: str | None = None,
     description: str | None = None,
-    idb_versions: IdbVersions | None = None,
     provenance: dict[str, object] | None = None,
 ) -> Path:
     """Write manifest.json (the versioned render model), junit.xml, and report.html under run_dir.
 
     `definitions` / `sources`, aligned with `results`, feed the report's merged Result tab and its
-    Rich/YAML toggle. `idb_versions` records the idb provenance (BE-0005); `provenance` is the
-    run-identity stamp (BE-0049).
+    Rich/YAML toggle. `provenance` is the run-identity stamp (BE-0049).
 
     Returns:
         The manifest.json path.
@@ -174,7 +171,6 @@ def write_report(
                 run_id,
                 results,
                 source_name=source_name,
-                idb_versions=idb_versions,
                 provenance=provenance,
             ),
             ensure_ascii=False,

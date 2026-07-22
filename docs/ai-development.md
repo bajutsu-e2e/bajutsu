@@ -168,7 +168,7 @@ edit to the ruleset.
 ### The per-platform E2E job set
 
 Each backend has one on-device E2E workflow — [`ios-e2e.yml`](../.github/workflows/ios-e2e.yml)
-(macOS / idb + XCUITest), [`android-e2e.yml`](../.github/workflows/android-e2e.yml) (Linux+KVM /
+(macOS / XCUITest), [`android-e2e.yml`](../.github/workflows/android-e2e.yml) (Linux+KVM /
 adb), [`web-e2e.yml`](../.github/workflows/web-e2e.yml) (Linux / Playwright). They share a job
 vocabulary so a reviewer reads the same shape across platforms and a new backend has a shape to
 match, rather than one bundled pass/fail per lane. The functional heart every lane carries is
@@ -182,7 +182,7 @@ capability, and a platform carries one only where it applies:
 | `golden` | element-tree (BE-0006) matches the committed baseline | ✓ | ✓ | — |
 | `visual` | pixel VRT against the committed baseline | ✓ | ✓ | — |
 | `conformance` | driver contract (BE-0114) on the real backend | ✓ | ✓ | ✓ |
-| `codegen` / `gestures` | native-test output / multi-touch (idb can't) | ✓ | — | — |
+| `codegen` / `gestures` | native-test output / multi-touch | ✓ | — | — |
 | `fallback` | resident vs `uiautomator dump` read channels agree (BE-0245) | — | ✓ (step) | — |
 
 Two rules keep the set honest. **Every lane is required, per-lane.** A required status check is a
@@ -191,8 +191,8 @@ job `name:` the ruleset pins (above); each lane carries its own always-reporting
 unrelated PR is neither run nor blocked — per-lane aggregators (rather than one aggregator across backends) keep
 attribution: a red check names the backend that broke. **Host-specific or upstream-fragile checks
 stay off the required gate.** `visual` is a pixel compare whose baseline varies by renderer, and the
-element-tree `golden` runs against an upstream dependency (`idb_companion`, the on-device server)
-whose drift is out of our control — both run per PR as signals but are excluded from each
+element-tree `golden` can drift with an upstream on-device dependency
+out of our control — both run per PR as signals but are excluded from each
 aggregator's `needs:`, so a drift surfaces without blocking merges.
 
 ## Right-sizing the model and reasoning effort (BE-0103)

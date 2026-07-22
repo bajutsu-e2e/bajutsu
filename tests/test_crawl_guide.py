@@ -109,7 +109,7 @@ class _FakeTabLocator:
 
 
 def test_ai_guide_uses_vision_tabs_only_for_an_unaddressable_tab_bar() -> None:
-    """When idb surfaces the tab bar as one opaque container (a `group` labelled "Tab Bar", no
+    """When the accessibility tree surfaces the tab bar as one opaque container (a `group` labelled "Tab Bar", no
     per-tab ids), the vision locator supplies a coordinate tap per tab, ordered first so the crawl
     switches tabs before drilling in. When the tabs are already addressable by id — or there is no
     tab bar — the locator is skipped entirely."""

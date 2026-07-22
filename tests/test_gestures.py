@@ -1,21 +1,17 @@
 """Gesture primitives: doubleTap / pinch / rotate across the DSL, drivers,
 orchestrator (capability gating), and codegen.
 
-pinch / rotate need multi-touch; a single-touch actuator (idb) must fail the step
-with a clear reason rather than silently approximating, and the only on-device path
-for those gestures is the generated XCUITest.
+pinch / rotate need multi-touch; a single-touch actuator must fail the step
+with a clear reason rather than silently approximating.
 """
 
 from __future__ import annotations
-
-import json
 
 import pytest
 
 from bajutsu.codegen import to_xcuitest
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.drivers.idb import IdbDriver, tap_cmd
 from bajutsu.orchestrator import run_scenario
 from bajutsu.scenario import load_scenarios
 
@@ -84,27 +80,6 @@ def test_orchestrator_dispatches_back() -> None:
     result = run_scenario(driver, scenario)
     assert result.ok, result.failure
     assert driver.actions == [("back", None)]
-
-
-def test_idb_back_taps_the_os_back_button() -> None:
-    # iOS has no hardware/system back; navigating back means tapping the OS-provided nav back
-    # button (identifier "BackButton"), which is exactly what the shared scenarios did before the
-    # `back` step existed — so idb's `back` preserves that behavior.
-    button: dict[str, object] = {
-        "AXUniqueId": "BackButton",
-        "frame": {"x": 0, "y": 0, "width": 60, "height": 40},
-    }
-
-    calls: list[list[str]] = []
-
-    def run(args: list[str]) -> str:
-        if "describe-all" in args:
-            return json.dumps([button])
-        calls.append(args)
-        return ""
-
-    IdbDriver("U", run=run).back()
-    assert calls == [tap_cmd("U", 30, 20)]  # centre of the back button
 
 
 # --- swipe amount: how far a directional scroll travels ---
@@ -223,36 +198,27 @@ def test_drag_requires_on_and_direction() -> None:
 # --- Capability gating: a single-touch actuator declines pinch / rotate ---
 
 
+class _SingleTouchFake(FakeDriver):
+    """A fake driver that advertises no MULTI_TOUCH, standing in for a single-touch backend.
+
+    Every real backend advertises multiTouch (BE-0290), so the orchestrator's
+    capability gate is exercised against this stand-in rather than a concrete driver.
+    """
+
+    def capabilities(self) -> set[str]:
+        return super().capabilities() - {base.Capability.MULTI_TOUCH}
+
+
 def test_pinch_fails_without_multitouch_capability() -> None:
-    driver = IdbDriver("U", run=lambda a: "[]")  # idb advertises no MULTI_TOUCH
+    win: base.Element = {"identifier": "a", "label": None, "traits": [], "value": None,
+                         "frame": (0.0, 0.0, 100.0, 40.0)}  # fmt: skip
+    driver = _SingleTouchFake(screen=[win])
     scenario = load_scenarios("- name: g\n  steps:\n    - pinch: { sel: { id: a }, scale: 2.0 }\n")[
         0
     ]
     result = run_scenario(driver, scenario)
     assert not result.ok
     assert "multi-touch" in (result.failure or "")
-
-
-def test_idb_double_tap_is_two_taps() -> None:
-    calls: list[list[str]] = []
-
-    def run(args: list[str]) -> str:
-        if "describe-all" in args:
-            return '[{"AXUniqueId":"a","frame":{"x":0,"y":0,"width":100,"height":40}}]'
-        calls.append(args)
-        return ""
-
-    IdbDriver("U", run=run).double_tap({"id": "a"})
-    assert calls == [tap_cmd("U", 50, 20), tap_cmd("U", 50, 20)]
-
-
-def test_idb_pinch_rotate_unsupported() -> None:
-    driver = IdbDriver("U", run=lambda a: "[]")
-    with pytest.raises(base.UnsupportedAction):
-        driver.pinch({"id": "a"}, 2.0)
-    with pytest.raises(base.UnsupportedAction):
-        driver.rotate({"id": "a"}, 1.57)
-    assert base.Capability.MULTI_TOUCH not in driver.capabilities()
 
 
 # --- codegen -> XCUITest ---

@@ -323,7 +323,7 @@ def _execute(plan: _CrawlPlan, guide: crawl_engine.Guide, report: Report) -> cra
         raise typer.Exit(2) from None
 
     # Extra lanes are built lazily *inside their own worker thread* (BE-0077): a Playwright browser
-    # must be created on the thread that drives it, and idb is thread-agnostic so this is harmless
+    # must be created on the thread that drives it, and the iOS backend is thread-agnostic so this is harmless
     # for iOS. A factory's own launch failure is surfaced by the engine after join.
     def lane_factory(u: str) -> crawl_engine.WorkerFactory:
         return lambda: build_lane(u)

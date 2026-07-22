@@ -55,7 +55,7 @@ class TapPoint(_Model):
 
     The bottom rung of the stability ladder (DESIGN §5), for a control the accessibility tree does
     not expose as an addressable element — most notably a tab-bar tab on an app with no accessibility
-    ids, which `idb` collapses into one opaque group. `record`'s agent locates it in the screenshot
+    ids, which iOS's accessibility tree collapses into one opaque group. `record`'s agent locates it in the screenshot
     and emits its center here; `run` replays it against the current screen size. `x`/`y` are fractions
     of the app window (top-left origin), so the tap survives a resolution change a raw-pixel tap would
     not — but it is still coordinate-based and unverifiable by selector, so prefer a real selector

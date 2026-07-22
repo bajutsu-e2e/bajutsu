@@ -7,7 +7,7 @@ goes through an injectable runner so the device-touching part stays thin and swa
 the same shape as `simctl.py`.
 
 adb carries everything an operation needs in its argv (intent extras included), so the runner is
-the plain ``argv -> stdout`` form the idb driver uses, not simctl's ``(argv, env)`` — no launch env
+the plain ``argv -> stdout`` form, not simctl's ``(argv, env)`` — no launch env
 is forwarded through the parent process.
 """
 
@@ -408,7 +408,7 @@ def keyevent_cmd(serial: str, keycode: int) -> list[str]:
     """Inject a hardware/system key event (`input keyevent <code>`).
 
     The system back button (`KEYCODE_BACK`) has no on-screen element to tap — unlike iOS, whose OS
-    back button idb resolves and taps — so it is actuated as a key event rather than a coordinate.
+    back button is an on-screen element — so it is actuated as a key event rather than a coordinate.
     """
     return _adb(serial, "shell", "input", "keyevent", str(keycode))
 
@@ -448,8 +448,7 @@ def text_script(text: str) -> str:
     """The device-side `input text` command line, safe to feed to `adb shell` over stdin.
 
     Fed on stdin — not as an `adb` argv token — so a secret / OTP typed by a scenario never appears
-    in the host process's command line where `ps` could read it (BE-0155 parity with idb, which
-    passes typed text to `idb ui text` on stdin for the same reason). Spaces become `input`'s `%s`
+    in the host process's command line where `ps` could read it (BE-0155). Spaces become `input`'s `%s`
     escape (it splits its argument on spaces), and the result is single-quoted for the device shell.
     """
     return f"input text {shlex.quote(text.replace(' ', '%s'))}"

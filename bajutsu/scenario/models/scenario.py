@@ -55,7 +55,7 @@ class DismissAlerts(_Model):
     """Per-scenario control of the system-alert guard.
 
     The vision-based dismissal of OS prompts (e.g. iOS "Save Password?", a permission request) that
-    idb cannot see or tap. The guard is ON by default and fires only when a step (or `expect`) is blocked: it
+    the app-scoped accessibility tree cannot see or tap. The guard is ON by default and fires only when a step (or `expect`) is blocked: it
     screenshots, asks the locator where to tap, taps the prompt away, and retries once.
     Two on-disk forms (the bare boolean is shorthand for `{ enabled: <bool> }`):
         dismissAlerts: false                  — disable the guard for this scenario

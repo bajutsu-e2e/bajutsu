@@ -183,7 +183,7 @@ def test_http_api_key_honours_key_env_from_config(
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
         "defaults:\n"
-        "  backend: [idb]\n"
+        "  backend: [ios]\n"
         "  ai:\n"
         "    keyEnv: MY_CUSTOM_KEY\n"
         "targets:\n"
@@ -224,7 +224,7 @@ def test_http_api_key_rejects_unsafe_key_env(
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
         "defaults:\n"
-        "  backend: [idb]\n"
+        "  backend: [ios]\n"
         "  ai:\n"
         "    keyEnv: PATH\n"
         "targets:\n"

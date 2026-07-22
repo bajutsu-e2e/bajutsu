@@ -152,7 +152,7 @@ Actions タブや PR の checks 一覧でレビュアーの目に入るのは、
 
 ### プラットフォームごとの E2E ジョブ構成
 
-バックエンドごとに実機・実環境の E2E ワークフローが 1 つあります。[`ios-e2e.yml`](../../.github/workflows/ios-e2e.yml)（macOS / idb + XCUITest）、[`android-e2e.yml`](../../.github/workflows/android-e2e.yml)（Linux+KVM / adb）、[`web-e2e.yml`](../../.github/workflows/web-e2e.yml)（Linux / Playwright）です。これらはジョブの語彙を共有しており、レビュアーはプラットフォームをまたいで同じ形を読み、新しいバックエンドも合わせるべき形を得られます。レーンごとに 1 つの束ねた合否を返すのではありません。
+バックエンドごとに実機・実環境の E2E ワークフローが 1 つあります。[`ios-e2e.yml`](../../.github/workflows/ios-e2e.yml)（macOS / XCUITest）、[`android-e2e.yml`](../../.github/workflows/android-e2e.yml)（Linux+KVM / adb）、[`web-e2e.yml`](../../.github/workflows/web-e2e.yml)（Linux / Playwright）です。これらはジョブの語彙を共有しており、レビュアーはプラットフォームをまたいで同じ形を読み、新しいバックエンドも合わせるべき形を得られます。レーンごとに 1 つの束ねた合否を返すのではありません。
 
 どのレーンも備える機能面の核が **smoke** です。実バックエンド上で showcase のシナリオを `bajutsu run` で回し、決定的に合否を判定します（「bajutsu はそのプラットフォームを操作できるか」）。ほかのジョブは特定の機能を確認するもので、そのプラットフォームに当てはまる場合だけ備えます。
 
@@ -162,7 +162,7 @@ Actions タブや PR の checks 一覧でレビュアーの目に入るのは、
 | `golden` | element ツリー（BE-0006）が committed ベースラインと一致するか | ✓ | ✓ | — |
 | `visual` | committed ベースラインに対するピクセル VRT | ✓ | ✓ | — |
 | `conformance` | 実バックエンド上のドライバ契約（BE-0114） | ✓ | ✓ | ✓ |
-| `codegen` / `gestures` | ネイティブテスト出力 / マルチタッチ（idb は不可） | ✓ | — | — |
+| `codegen` / `gestures` | ネイティブテスト出力 / マルチタッチ | ✓ | — | — |
 | `fallback` | resident と `uiautomator dump` の読み取り経路が一致するか（BE-0245） | — | ✓（ステップ） | — |
 
 この構成を健全に保つ規則が 2 つあります。**どのレーンも、レーンごとに必須です。** 必須ステータスチェックは
@@ -171,7 +171,7 @@ Actions タブや PR の checks 一覧でレビュアーの目に入るのは、
 パスゲートするので、無関係な PR は走りもブロックもされません。バックエンドを一つの集約ジョブにまとめず、レーンごとに分けているのは
 切り分けを保つためです。赤いチェックが壊れたバックエンドを名指しします。**ホスト依存や upstream に脆いチェックは
 必須ゲートから外します。** `visual` はレンダラによってベースラインが変わるピクセル比較であり、element ツリーの
-`golden` は upstream 依存（`idb_companion` などの実機側サーバ）に対して走るため、その変化は制御外です。どちらも
+`golden` は upstream の実機側依存によってドリフトしうるため、その変化は制御外です。どちらも
 PR ごとにシグナルとして走らせますが、各集約ジョブの `needs:` からは除外するので、ドリフトはマージを止めずに
 表れます。
 
