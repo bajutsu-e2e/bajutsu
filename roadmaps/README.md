@@ -139,7 +139,9 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 ### Authoring experience (record / GUI editor)
 
 <!-- GENERATED:proposals-authoring -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0295](BE-0295-record-crawl-real-model-verification/BE-0295-record-crawl-real-model-verification.md) | Real-model verification of the record and crawl propose loops | Proposal |
 <!-- /GENERATED:proposals-authoring -->
 
 ### codegen coverage

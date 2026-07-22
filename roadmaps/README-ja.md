@@ -139,7 +139,9 @@
 ### オーサリング体験（record / GUI エディタ）
 
 <!-- GENERATED:proposals-authoring -->
-
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0295](BE-0295-record-crawl-real-model-verification/BE-0295-record-crawl-real-model-verification-ja.md) | record と crawl の propose ループに対する実モデル検証 | 提案 |
 <!-- /GENERATED:proposals-authoring -->
 
 ### codegen 網羅性
