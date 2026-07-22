@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-codegen-playwright-real-compile-ja.md)
+**English** · [日本語](BE-0293-codegen-playwright-real-compile-ja.md)
 
-# BE-XXXX — Real-compile verification for the Playwright (TypeScript) codegen target
+# BE-0293 — Real-compile verification for the Playwright (TypeScript) codegen target
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-codegen-playwright-real-compile.md) |
+| Proposal | [BE-0293](BE-0293-codegen-playwright-real-compile.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0293") |
 | Topic | codegen coverage |
 <!-- /BE-METADATA -->
 

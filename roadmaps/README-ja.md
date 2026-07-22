@@ -145,7 +145,9 @@
 ### codegen 網羅性
 
 <!-- GENERATED:proposals-codegen -->
-
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0293](BE-0293-codegen-playwright-real-compile/BE-0293-codegen-playwright-real-compile-ja.md) | Playwright（TypeScript）codegen ターゲットの実コンパイル検証 | 提案 |
 <!-- /GENERATED:proposals-codegen -->
 
 ### serve Web UI への CLI 機能の取り込み

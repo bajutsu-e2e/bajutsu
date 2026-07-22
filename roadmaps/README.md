@@ -145,7 +145,9 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 ### codegen coverage
 
 <!-- GENERATED:proposals-codegen -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0293](BE-0293-codegen-playwright-real-compile/BE-0293-codegen-playwright-real-compile.md) | Real-compile verification for the Playwright (TypeScript) codegen target | Proposal |
 <!-- /GENERATED:proposals-codegen -->
 
 ### Surfacing CLI features in the serve Web UI
