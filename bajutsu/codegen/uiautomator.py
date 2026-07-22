@@ -15,7 +15,9 @@ Only a single-field selector (`id` / `label` / `value` / `idMatches` / `labelMat
 `BySelector`; a compound selector (`traits` / `within` / `index`, or several fields together) has
 no faithful single-selector form and emits a `// TODO`. Constructs the adb backend cannot drive —
 the device-control family, multi-touch beyond pinch, and every network assertion — emit a labeled
-`// TODO` naming why, never a wrong guess, so the output is always reviewable.
+`// TODO` naming why, never a wrong guess, so the output is always reviewable. A runtime-only
+construct the shared walk cannot translate at all (`if` / `forEach` / `extract`) fails loudly with
+a `CodegenError` instead of a silent no-op stub (BE-0297).
 """
 
 from __future__ import annotations
