@@ -10,6 +10,7 @@
 | Status | **Proposal** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | Topic | Configuration sourcing |
+| Related | [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source.md), [BE-0224](../BE-0224-github-private-repo-config-auth/BE-0224-github-private-repo-config-auth.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -35,11 +36,16 @@ what its author believes the real host returns.
 
 Proposal altitude. The work is MECE along the units below.
 
-- **A real disposable test repository.** Use a small, stable, low-privilege public (or a dedicated
-  throwaway GitHub App installed on a private repository) repository as the fetch target. Store its
-  credential — a fine-grained personal access token (PAT) scoped read-only to that one repository for
-  the public-repo option, or the throwaway App's private key for the private-repo option — as a
-  dedicated repository secret; whoever owns the test repository (or the App) rotates it.
+- **A real disposable test repository.** Use a small, stable, low-privilege public repository (or a
+  private repository with a dedicated throwaway GitHub App installed) as the fetch target.
+  `_GitHubTransport` already works unauthenticated when no token is configured, and GitHub's
+  commits/tarball endpoints don't require auth for a public repository, so the public-repo option
+  needs no credential to fetch at all — a PAT there is purely to buy the higher authenticated rate
+  limit (GitHub's unauthenticated cap is 60 requests/hour, tight on a shared Actions-runner IP) and
+  stays optional. Store whichever credential is actually used — a fine-grained,
+  read-only PAT scoped to the one repository, or the throwaway App's private key for the
+  private-repo option — as a dedicated repository secret; whoever owns the test repository (or the
+  App) rotates it.
 - **A live fetch test.** Drive `materialize()` through the real `_GitHubTransport` against that
   repository, skipped when network access or the relevant credential is unavailable, asserting the
   fetched config tree matches what's actually in the repository.
@@ -48,7 +54,10 @@ Proposal altitude. The work is MECE along the units below.
   real error surface maps the way `_GitHubTransport`'s tests assume.
 - **Non-gating first.** Land the new job as CI signal, following the precedent in
   [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md),
-  before considering it required.
+  before considering it required. Trigger it on `push` to `main` (or `schedule`), never
+  `pull_request` — mirroring the trigger restriction `roadmap-id.yml` already relies on to keep its
+  `AUTOMATION_BOT_PRIVATE_KEY`/`AUTOMATION_BOT_APP_ID` secrets away from a fork-triggered run — so the
+  private-repo option's App credential gets the same protection.
 
 ## Alternatives considered
 
@@ -73,5 +82,7 @@ Proposal altitude. The work is MECE along the units below.
 
 ## References
 
+- [BE-0063 — Load config (and its scenario tree) from a Git repository + ref](../BE-0063-git-config-source/BE-0063-git-config-source.md)
+- [BE-0224 — Granting private-repository access for the GitHub config source](../BE-0224-github-private-repo-config-auth/BE-0224-github-private-repo-config-auth.md)
 - [BE-0282 — Real-backend network capture, mock, and assertion coverage in CI](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md)
-- `bajutsu/config_source.py`, `tests/test_config_source.py`
+- `bajutsu/config_source.py`, `tests/test_config_source.py`, `.github/workflows/roadmap-id.yml`
