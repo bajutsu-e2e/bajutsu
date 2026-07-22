@@ -17,7 +17,7 @@ import subprocess
 import tempfile
 from collections.abc import Mapping
 from pathlib import Path
-from typing import cast
+from typing import Literal, cast
 
 from bajutsu import backends, simctl
 from bajutsu.config import Effective, XcuitestConfig, require_ios
@@ -320,6 +320,33 @@ class XcuitestEnvironment(_DeviceEnvironment):
         super().teardown(driver, eff)
 
 
+_RunnerTier = Literal["misconfigured", "explicit", "device", "bundled"]
+
+
+def _classify_runner(
+    xcfg: XcuitestConfig | None, device_type: str
+) -> tuple[_RunnerTier, str | None, str | None]:
+    """Which runner-resolution tier applies: an explicit testRunner, else build, else the bundle.
+
+    The one place the precedence lives, so `_resolve_runner` (which acts on the tier) and
+    `runner_source` (which only discloses it, BE-0292) can't drift apart. Returns the tier plus
+    `(test_runner, build)` when the tier is `"explicit"` (both `None` otherwise, since only that
+    tier needs them).
+    """
+    test_runner = xcfg.test_runner if xcfg is not None else None
+    build = xcfg.build if xcfg is not None else None
+    if test_runner is None and build is not None:
+        # `build` only ever refreshes the file at `testRunner` (see below); without that path there
+        # is nowhere for its output to land, so this is a misconfiguration, not a request for the
+        # bundled default.
+        return "misconfigured", None, None
+    if test_runner is not None:
+        return "explicit", test_runner, build
+    if device_type == "device":
+        return "device", None, None
+    return "bundled", None, None
+
+
 def _resolve_runner(xcfg: XcuitestConfig | None, device_type: str) -> Path:
     """Resolve the `.xctestrun` to run: an explicit testRunner, else its build, else the bundle.
 
@@ -328,16 +355,14 @@ def _resolve_runner(xcfg: XcuitestConfig | None, device_type: str) -> Path:
     to the wheel-bundled generic runner (BE-0292), materialized into a writable cache; a real device
     instead fails loudly, since its runner must be signed (BE-0288) and is not bundled.
     """
-    test_runner = xcfg.test_runner if xcfg is not None else None
-    build = xcfg.build if xcfg is not None else None
+    tier, test_runner, build = _classify_runner(xcfg, device_type)
 
-    if test_runner is None and build is not None:
-        # `build` only ever refreshes the file at `testRunner` (see below); without that path there
-        # is nowhere for its output to land, so this is a misconfiguration, not a request for the
-        # bundled default. Fail loudly rather than silently ignoring the configured build.
+    if tier == "misconfigured":
+        # Fail loudly rather than silently ignoring the configured build.
         raise simctl.DeviceError("xcuitest.build requires xcuitest.testRunner (the path it builds)")
 
-    if test_runner is not None:
+    if tier == "explicit":
+        assert test_runner is not None  # guaranteed by _classify_runner's "explicit" tier
         runner_path = Path(test_runner)
         if not runner_path.exists() and build:
             try:
@@ -348,7 +373,7 @@ def _resolve_runner(xcfg: XcuitestConfig | None, device_type: str) -> Path:
             raise simctl.DeviceError(f"xcuitest testRunner not found: {test_runner}")
         return runner_path
 
-    if device_type == "device":
+    if tier == "device":
         raise simctl.DeviceError(
             "xcuitest.deviceType: device requires an explicit xcuitest.testRunner "
             "(a real-device runner must be signed and is not bundled; see BE-0288)"
@@ -370,22 +395,22 @@ def _resolve_runner(xcfg: XcuitestConfig | None, device_type: str) -> Path:
 def runner_source(xcfg: XcuitestConfig | None, device_type: str) -> str:
     """Which runner-resolution tier a target would use, without acting on it (BE-0292).
 
-    Mirrors `_resolve_runner`'s precedence (an explicit `testRunner`, else its `build`, else the
-    bundled default) as a side-effect-free check, so `doctor` can disclose the source without
-    running a configured `build` command or materializing the bundled runner into the cache.
+    Shares `_resolve_runner`'s precedence via `_classify_runner` rather than re-deriving it, so
+    `doctor` can disclose the source without running a configured `build` command or materializing
+    the bundled runner into the cache.
     """
-    test_runner = xcfg.test_runner if xcfg is not None else None
-    build = xcfg.build if xcfg is not None else None
+    tier, test_runner, build = _classify_runner(xcfg, device_type)
 
-    if test_runner is None and build is not None:
+    if tier == "misconfigured":
         return "misconfigured: xcuitest.build requires xcuitest.testRunner"
-    if test_runner is not None:
+    if tier == "explicit":
+        assert test_runner is not None  # guaranteed by _classify_runner's "explicit" tier
         if Path(test_runner).exists():
             return f"testRunner: {test_runner}"
         if build:
             return f"testRunner: {test_runner} (missing, built on demand via: {build})"
         return f"testRunner: {test_runner} (missing, no build configured)"
-    if device_type == "device":
+    if tier == "device":
         return "none: xcuitest.deviceType: device requires an explicit testRunner"
     if bundled_products_dir() is None:
         return "none: no bundled runner in this build (set xcuitest.testRunner)"

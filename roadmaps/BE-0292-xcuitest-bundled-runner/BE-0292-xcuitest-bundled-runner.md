@@ -194,8 +194,8 @@ The split follows the fast-gate / on-device boundary BE-0019 already draws.
   installable on Linux.
 - [ ] doctor / disclosure — report the resolved runner source and surface an Xcode/SDK mismatch with
   the override escape hatch named. The "report the resolved runner source" half shipped (`doctor
-  --target` prints `xcuitest runner: bundled` / `testRunner: <path>`); the Xcode/SDK-mismatch half
-  stays unimplemented, scoped out as its own follow-up.
+  --target` prints `xcuitest runner: bundled (wheel-shipped Simulator runner)` / `testRunner:
+  <path>`); the Xcode/SDK-mismatch half stays unimplemented, scoped out as its own follow-up.
 - [x] Validation — fast-gate resolution tests (bundled default, override precedence, device error,
   cache reuse, concurrent-materialization race) and an on-device e2e run with no `testRunner` in
   config.

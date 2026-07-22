@@ -59,8 +59,10 @@ def _products_digest(source: Path) -> str:
     process skips re-reading every byte.
     """
     files = sorted(p for p in source.rglob("*") if p.is_file())
+    # One stat() per file, not two: the (size, mtime) pair is the whole point of the cheap gate
+    # above, so paying two syscalls per file to build it would undercut it.
     signature = tuple(
-        (str(p.relative_to(source)), p.stat().st_size, p.stat().st_mtime_ns) for p in files
+        (str(p.relative_to(source)), (st := p.stat()).st_size, st.st_mtime_ns) for p in files
     )
     cached = _digest_cache.get(source)
     if cached is not None and cached[0] == signature:
