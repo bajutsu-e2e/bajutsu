@@ -142,6 +142,12 @@
 
 <!-- /GENERATED:proposals-authoring -->
 
+### codegen 網羅性
+
+<!-- GENERATED:proposals-codegen -->
+
+<!-- /GENERATED:proposals-codegen -->
+
 ### serve Web UI への CLI 機能の取り込み
 
 <!-- GENERATED:proposals-serve-cli-features -->
