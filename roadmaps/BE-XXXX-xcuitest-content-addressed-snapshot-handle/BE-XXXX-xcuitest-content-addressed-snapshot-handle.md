@@ -25,7 +25,7 @@ element was seen rather than the *content* of the element itself. One redundant 
 which the transport-retry seam re-sends whenever a read looks like it blipped — is therefore enough
 to advance the generation and strand a handle the client is about to use, even though nothing on the
 screen changed between the resolve and the actuation. This item proposes to derive the handle
-deterministically from the element's content (its identifier, label, value, and traits)
+deterministically from the element's stable identity (its identifier, label, and traits)
 instead of from a per-call counter, so an element that is still on screen keeps the same handle
 across snapshots and the handle stays valid no matter how many extra snapshots the runner takes. The
 change is confined to the runner's `SnapshotStore`; the Python channel and the runner's HTTP router
@@ -100,26 +100,33 @@ The work splits into four units. Unit 1 changes how a handle is derived; Unit 2 
 off-device; Unit 4 keeps the documentation in step. The units are ordered by dependency but can land
 as separate pull requests.
 
-**Unit 1 — Derive the handle from element content, not from a generation counter.** In
+**Unit 1 — Derive the handle from stable element identity, not from a generation counter.** In
 `SnapshotStore`, replace the `h-<generation>-<index>` scheme with a handle derived deterministically
-from the element's stable identity — its `identifier`, `label`, `value`, and `traits`. Two fields the
+from the element's stable identity — its `identifier`, `label`, and `traits`. Three fields the
 snapshot also carries are deliberately excluded from the derivation. The `backingElement` is excluded
 because every `queryElements` call returns a fresh object reference for the same on-screen element, so
 including the reference would make the handle change on every snapshot — the very defect this item
-removes. The `frame` is excluded because a screen settling after a transition is exactly when the
-runner re-snapshots, and a frame that shifts by a sub-pixel between two interleaved reads would give
-one unchanged element two different handles and reopen the race in the window this item targets; the
-frame also buys no actuation precision, because a handle resolves to a `backingElement` and the runner
-acts through that reference, never through the stored frame. `refreshSnapshot` still clears and
-rebuilds `currentElements` on every call, so the stored `backingElement` a handle resolves to is
-always the latest query's reference; the only change is that the *key* is now the content handle, so
-an element with unchanged identity maps to the same handle string across snapshots. A redundant
-`GET /elements` therefore re-issues the identical handle for an unchanged element, and the
-interleaving in *Motivation* can no longer strand it: whichever snapshot the client's handle came
-from, the handle is still a live key so long as the element is on screen. Two on-screen elements can
-share identical content (two buttons both labeled `Delete` with no identifier, say); to keep their
-handles distinct, append an occurrence index to collisions *within a single snapshot* in query order,
-so the first occurrence keeps the bare content handle and later occurrences take a suffixed variant.
+removes. The `value` and the `frame` are both excluded because both change while a screen settles,
+which is exactly when the runner re-snapshots: a `frame` shifts by a sub-pixel as a transition
+animates, and a `value` ticks as a loading label resolves, a countdown counts, or a spinner spins.
+Including either would give one unchanged element a new handle on each of two interleaved reads and
+reopen the race in the window this item targets, and neither buys actuation precision, because a
+handle resolves to a `backingElement` and the runner acts through that reference, never through the
+stored `value` or `frame`. The choice is not new to the package: `attributesMatch` in
+[`BajutsuKit/Sources/BajutsuRunner/PositionPath.swift`](../../BajutsuKit/Sources/BajutsuRunner/PositionPath.swift)
+already defines element identity as `identifier` / `label` / `traits`, excluding `value` and `frame`
+for the same settling reason ([BE-0287](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience.md)),
+so the content handle reuses the package's existing identity notion rather than inventing a second
+one. `refreshSnapshot` still clears and rebuilds `currentElements` on every call, so the stored
+`backingElement` a handle resolves to is always the latest query's reference; the only change is that
+the *key* is now the identity handle, so an element with unchanged identity maps to the same handle
+string across snapshots. A redundant `GET /elements` therefore re-issues the identical handle for an
+unchanged element, and the interleaving in *Motivation* can no longer strand it: whichever snapshot
+the client's handle came from, the handle is still a live key so long as the element is on screen. Two
+on-screen elements can share identical identity (two buttons both labeled `Delete` with no
+identifier, say); to keep their handles distinct, append an occurrence index to collisions *within a
+single snapshot* in query order, so the first occurrence keeps the bare identity handle and later
+occurrences take a suffixed variant.
 
 **Unit 2 — Preserve the `stale`-versus-`notFound` distinction.** BE-0289's retry branches on the
 runner's reply: a `stale` reply triggers a re-resolution, whereas a `not-found` reply fails
@@ -188,14 +195,16 @@ exactly while its element is on screen, which is a statement about content, not 
 snapshots have elapsed. Content addressing states that invariant directly, and it needs no tuning
 parameter that a slower runner could outrun.
 
-**Include the element's frame in the handle key.** Keying on position as well would let two
-content-identical elements at different positions take distinct handles without an occurrence index,
-but it reopens the exact race this item closes: a screen settling after a transition re-snapshots
-repeatedly, and a frame that shifts between two interleaved reads gives one unchanged element two
-handles, so the redundant read strands the handle again in the very window the item targets. The
-occurrence-index tiebreak already distinguishes content-identical elements within a snapshot, and the
-frame buys no actuation precision because the runner acts through the `backingElement`, not the stored
-frame, so the frame earns nothing the design needs at the cost the design exists to avoid.
+**Include the element's `frame` or `value` in the handle key.** Keying on position or on the live
+value as well would let two identity-identical elements take distinct handles without an occurrence
+index, but it reopens the exact race this item closes: a screen settling after a transition
+re-snapshots repeatedly, and either a `frame` that shifts or a `value` that ticks (a loading label, a
+countdown, a spinner) between two interleaved reads gives one unchanged element two handles, so the
+redundant read strands the handle again in the very window the item targets. The occurrence-index
+tiebreak already distinguishes identity-identical elements within a snapshot, and neither field buys
+actuation precision because the runner acts through the `backingElement`, not the stored `value` or
+`frame`; both earn nothing the design needs at the cost the design exists to avoid. The package's
+`attributesMatch` (BE-0287) already excludes both for the same reason.
 
 ## Progress
 
@@ -203,9 +212,10 @@ frame, so the frame earns nothing the design needs at the cost the design exists
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — Content-derived handle in `SnapshotStore` (`identifier` / `label` / `value` /
-      `traits`; `backingElement` and `frame` both excluded), `currentElements` still rebuilt each
-      refresh, with an in-snapshot occurrence-index tiebreak for identical content.
+- [ ] Unit 1 — Identity-derived handle in `SnapshotStore` (`identifier` / `label` / `traits`;
+      `backingElement`, `value`, and `frame` all excluded, matching `attributesMatch` / BE-0287),
+      `currentElements` still rebuilt each refresh, with an in-snapshot occurrence-index tiebreak for
+      identity-identical elements.
 - [ ] Unit 2 — `stale`-versus-`notFound` distinction preserved via an ever-issued-handle set, so the
       runner's three-way router branch and BE-0289's driver retry keep working.
 - [ ] Unit 3 — Off-device Swift unit tests: the regression case (unchanged re-refresh keeps the first
