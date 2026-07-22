@@ -14,17 +14,19 @@
 
 ## はじめに
 
-`agents/alerts.py` の system-alert guard は、`record` によるライブの AI 操作が、実デバイス上で
-予期しないシステムダイアログ(権限プロンプト、クラッシュ時のシート)へ盲目的に作用してしまうのを
-止めるために存在します。これに触れるテストはすべて、手組みの `AlertDecision` か、テスト作者が
+`agents/alerts.py` の system-alert guard は、ライブの AI 操作が実デバイス上で予期しない
+システムダイアログ（権限プロンプト、クラッシュ時のシート）へ盲目的に作用してしまうのを止めるために
+存在します。`record` だけでなく、決定的な `run --dismiss-alerts` 経路（`bajutsu/cli/commands/run.py`）
+と `crawl`（`bajutsu/cli/_shared.py` の `_build_alert_guard`）も、このガードを利用します。
+これに触れるテストはすべて、手組みの `AlertDecision` か、テスト作者が
 座標を打ち込んだだけの `FakeBlock` による tool-use レスポンスを与えており、実モデルが実際の
 スクリーンショットを見て判断したものではありません。本項目は、このガードが本来果たすべき役割、
-すなわち本物のアラートが表示された本物の画面に対して、Claude が dismiss(閉じる)コントロールを
+すなわち本物のアラートが表示された本物の画面に対して、Claude が dismiss（閉じる）コントロールを
 まさしく特定できるかどうかの実モデル検証を追加します。
 
 ## 動機
 
-`tests/test_alerts.py` の `_FixedLocator` と `FakeBackend(FakeBlock("resolve_alert", ...))` は、
+`tests/test_alerts.py` の `StubLocator` と `FakeBackend(FakeBlock("resolve_alert", ...))` は、
 このガードのコードが、受け取った `AlertDecision` をまさしくアクションへ配線していることを証明します。
 これは配線に対する実質的で有用な検証です。しかし、このガードが本来主張する安全性は別の話です。
 実デバイスから捕捉した本物のアラートダイアログを見た実際の視覚対応呼び出しが、隣にある破壊的な
@@ -38,8 +40,8 @@
 提案の粒度は次の単位で MECE に分解します。
 
 - **本物のアラートによるフィクスチャ一式を用意する**：ショーケースアプリ上の実際のシステム
-  アラートのスクリーンショットを捕捉します(最低限、権限プロンプトを1つ。再現できるならクラッシュ
-  /エラーシートも)。少なくとも1つは、近くに破壊的なコントロールがあるダイアログを含め、
+  アラートのスクリーンショットを捕捉します（最低限、権限プロンプトを1つ。再現できるならクラッシュ
+  /エラーシートも）。少なくとも1つは、近くに破壊的なコントロールがあるダイアログを含め、
   フィクスチャ一式が「*何らかの*ボタンを見つけた」と「*正しい*ボタンを見つけた」を区別できる
   ようにします。
 - **API キーで gate したライブ検証テスト**：各フィクスチャに対して、実際の認証情報でガードの
@@ -50,7 +52,7 @@
   の前例に従い、`record` に触れる CI レーンへ signal としてまず組み込み、必須チェックにするのは
   そのあとで検討します。
 - **ループにおけるガードの役割は変えない**：本項目が検証するのはガードの実際の精度であり、
-  ガードの位置づけ(Tier 1、ライブの AI 操作)を変えたり、決定的な `run` の判定にガードを近づけたり
+  ガードの位置づけ（Tier 1、ライブの AI 操作）を変えたり、決定的な `run` の判定にガードを近づけたり
   することはありません(prime directive 1)。
 
 ## 検討した代替案
@@ -79,4 +81,4 @@
 ## 参考
 
 - [BE-0282 — ネットワークのキャプチャ・モック・アサーションを CI で実バックエンド検証する](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md)
-- `bajutsu/agents/alerts.py`、`tests/test_alerts.py`(`_FixedLocator`、`FakeBackend`/`FakeBlock`)
+- `bajutsu/agents/alerts.py`、`tests/test_alerts.py`（`StubLocator`、`FakeBackend`/`FakeBlock`）

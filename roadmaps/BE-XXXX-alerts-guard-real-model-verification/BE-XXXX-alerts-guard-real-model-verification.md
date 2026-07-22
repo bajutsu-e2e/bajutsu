@@ -14,8 +14,10 @@
 
 ## Introduction
 
-`agents/alerts.py`'s system-alert guard exists to stop `record`'s live AI operation from acting
-blindly into an unexpected system dialog (a permission prompt, a crash sheet) on a real device.
+`agents/alerts.py`'s system-alert guard exists to stop a live AI operation from acting
+blindly into an unexpected system dialog (a permission prompt, a crash sheet) on a real device —
+it backs not only `record` but also the deterministic `run --dismiss-alerts` path
+(`bajutsu/cli/commands/run.py`) and `crawl` (`_build_alert_guard` in `bajutsu/cli/_shared.py`).
 Every test that exercises it supplies a hand-built `AlertDecision` or a canned `FakeBlock` tool-use
 response with coordinates the test author typed in — never a real screenshot judged by a real model.
 This item adds a real-model check of the guard's actual job: given a genuine alert on a genuine
@@ -23,7 +25,7 @@ screen, does Claude locate the dismiss control correctly.
 
 ## Motivation
 
-`tests/test_alerts.py`'s `_FixedLocator` and `FakeBackend(FakeBlock("resolve_alert", ...))` prove the
+`tests/test_alerts.py`'s `StubLocator` and `FakeBackend(FakeBlock("resolve_alert", ...))` prove the
 guard's code correctly plumbs whatever `AlertDecision` it receives through to an action — a real and
 useful check of the wiring. It proves nothing about the guard's actual safety claim: that a real
 vision-capable call, looking at a real alert dialog captured from a real device, reliably lands on
@@ -48,7 +50,7 @@ Proposal altitude. The work is MECE along the units below.
   wire this into the `record`-touching CI lane as signal before considering it a required check.
 - **No change to the guard's role in the loop.** This item verifies the guard's real accuracy; it
   does not change where the guard sits (Tier 1, live AI operation) or put it anywhere near the
-  deterministic `run` verdict (prime directive #1).
+  deterministic `run` verdict (prime directive 1).
 
 ## Alternatives considered
 
@@ -73,4 +75,4 @@ Proposal altitude. The work is MECE along the units below.
 ## References
 
 - [BE-0282 — Real-backend network capture, mock, and assertion coverage in CI](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md)
-- `bajutsu/agents/alerts.py`, `tests/test_alerts.py` (`_FixedLocator`, `FakeBackend`/`FakeBlock`)
+- `bajutsu/agents/alerts.py`, `tests/test_alerts.py` (`StubLocator`, `FakeBackend`/`FakeBlock`)
