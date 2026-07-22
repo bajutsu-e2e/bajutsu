@@ -47,7 +47,7 @@ Proposal altitude. The work is MECE along the units below.
   frame — not merely that a decision was returned.
 - **Land as a non-gating signal first.** Following the precedent in
   [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md),
-  wire this into a CI lane touching the guard's callers as signal before considering it a required
+  wire the live test into a CI lane touching the guard's callers as signal before considering it a required
   check. This item verifies the guard's real accuracy only; it does not change where the guard sits
   (Tier 1, live AI operation) or put it anywhere near the deterministic `run` verdict
   (prime directive 1).
