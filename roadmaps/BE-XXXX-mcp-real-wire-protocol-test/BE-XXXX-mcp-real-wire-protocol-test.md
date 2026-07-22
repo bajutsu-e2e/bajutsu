@@ -46,8 +46,12 @@ Proposal altitude. The work is MECE along the units below.
 - **Keep the in-process tests as they are.** They remain the right tool for testing the tool
   functions' own logic; this item adds the wire-level layer underneath them rather than replacing
   them.
-- **Land as a required check.** A local stdio round-trip needs no external service and carries no
-  flakiness risk beyond the existing suite's — there is no reason to stage this as non-gating first.
+- **Non-gating first.** Spawning a real subprocess and doing IPC over stdio carries more
+  timing-sensitive surface than the current in-process calls — process-spawn latency and pipe
+  buffering under CI resource contention — even with a readiness condition wait instead of a fixed
+  `sleep`. Land it as CI signal, following the precedent in
+  [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md),
+  and promote it once stable.
 
 ## Alternatives considered
 
@@ -68,9 +72,10 @@ Proposal altitude. The work is MECE along the units below.
   a readiness condition wait rather than a fixed `sleep`.
 - [ ] Connect with the real `mcp` SDK client and round-trip a tool call and a resource read.
 - [ ] Keep the in-process tests as they are.
-- [ ] Wire it into CI as a required check.
+- [ ] Wire it into CI as a non-gating signal, promote to required once stable.
 
 ## References
 
+- [BE-0282 — Real-backend network capture, mock, and assertion coverage in CI](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md)
 - `bajutsu/mcp/tools.py`, `bajutsu/mcp/resources.py`, `tests/test_mcp.py`
   (`test_cli_mcp_starts_server`)
