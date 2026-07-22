@@ -9,9 +9,12 @@ after a new flake is diagnosed) is made in one place and both backends inherit i
 two read paths silently drifting apart.
 
 A subclass supplies only its own tree source (`_describe`) and keeps whatever is genuinely
-backend-specific: its actuators, and its own `_settle`. `_settle` deliberately stays per-backend —
-idb bounds the poll by a fixed read count, adb by a wall-clock deadline (BE-0245), a genuine
-strategy difference rather than shared tuning — so it is not hoisted here.
+backend-specific: its actuators, and its own `_settle`. The two `_settle` methods now poll the same
+`_stable_key` projection on the same wall-clock-deadline shape (idb adopted it in BE-0299 Unit 4,
+adb in BE-0245), differing only in their deadline and poll-interval constants; folding them into one
+`_settle` here is a natural follow-up now that the shapes match. It is left per-backend for now to
+keep BE-0299 Unit 4 scoped to idb — each backend keeps and tests its own `_settle` — rather than
+restructuring adb's settle in the same change.
 """
 
 from __future__ import annotations

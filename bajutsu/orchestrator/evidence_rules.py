@@ -69,6 +69,23 @@ def _kind_of(token: str) -> str:
     return token.partition(".")[0]
 
 
+def _extract_stable_key(
+    elements: list[base.Element], extracts: Mapping[str, Extract]
+) -> tuple[object, ...]:
+    """A settle projection for `extract`: identifier + frame + every property the extracts read.
+
+    A superset of the driver-side settle projection (`_stable_key` in `coordinate_tree.py`, which is
+    identifier + frame only): it also carries each element's value for every distinct `ext.prop`
+    (`value` / `label` / `identifier`) any of this step's extracts names, so an `extract` polls until
+    the property it actually copies out stops changing — not only until the layout stops moving. Keyed
+    to the union of the step's `ext.prop`s so a step extracting `label` waits on `label`, not `value`
+    (BE-0299 Unit 3). Elements are ordered by (identifier, frame) so the key is read-order-stable.
+    """
+    props = sorted({ext.prop for ext in extracts.values()})
+    ordered = sorted(elements, key=lambda e: (e["identifier"] or "", e["frame"]))
+    return tuple((e["identifier"] or "", e["frame"], *(e.get(p) for p in props)) for e in ordered)
+
+
 def _run_extract(
     elements: list[base.Element],
     extracts: Mapping[str, Extract],

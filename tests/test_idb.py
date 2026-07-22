@@ -6,6 +6,7 @@ import subprocess
 
 import pytest
 
+import bajutsu.drivers.idb as idb_driver_mod
 from bajutsu import simctl
 from bajutsu.drivers import base
 from bajutsu.drivers.idb import (
@@ -631,14 +632,25 @@ def test_select_and_copy_are_unsupported_and_route_to_xcuitest() -> None:
         driver.copy_selection()
 
 
-def test_settle_gives_up_after_max_polls() -> None:
-    # Frames change on every read; _settle gives up after the bound.
-    counter = [0]
+class _Clock:
+    """A fake monotonic clock: `sleep` advances it, so a wall-clock deadline is deterministic."""
+
+    def __init__(self) -> None:
+        self.t = 0.0
+
+    def monotonic(self) -> float:
+        return self.t
+
+    def sleep(self, seconds: float) -> None:
+        self.t += seconds
+
+
+def _moving_run(counter: list[int]) -> object:
+    """A run() whose every describe-all returns a fresh y offset, so the frame key never repeats."""
 
     def run(args: list[str]) -> str:
         if "describe-all" in args:
             counter[0] += 1
-            # Each call returns a tree with a unique y offset so the key never repeats.
             y = float(counter[0])
             return (
                 f'[{{"AXUniqueId":"a","AXLabel":"A","type":"Button",'
@@ -646,14 +658,67 @@ def test_settle_gives_up_after_max_polls() -> None:
             )
         return ""
 
-    driver = IdbDriver("U", run=run)
-    driver._SETTLE_POLL_S = 0
+    return run
 
-    driver.query()  # cache (counter = 1, y = 1)
+
+def _two_element_tree(y: float) -> str:
+    # A two-element tree (>= _READY_MIN) so a moving frame is never mistaken for a transient-empty
+    # read and retried by the shared backoff — only element "a" moves; "b" is a static anchor.
+    return (
+        f'[{{"AXUniqueId":"a","AXLabel":"A","type":"Button",'
+        f'"frame":{{"x":0,"y":{y},"width":100,"height":40}}}},'
+        f'{{"AXUniqueId":"b","AXLabel":"B","type":"Button",'
+        f'"frame":{{"x":0,"y":500,"width":100,"height":40}}}}]'
+    )
+
+
+def test_settle_keeps_polling_past_the_old_count_until_frames_stop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # BE-0299 Unit 4: the settle window is bounded by wall-clock, not a fixed read count — so a frame
+    # that moves for MORE reads than the old 3-poll cap, then rests, still settles on the resting
+    # frame. The old count-bound would have returned a still-moving frame and tapped a stale point.
+    clock = _Clock()
+    monkeypatch.setattr(idb_driver_mod, "time", clock)
+    # Cache a resting frame, then move for 5 reads (past the old cap of 3) before two equal reads.
+    seq = [_two_element_tree(y) for y in (100, 110, 130, 150, 165, 170, 170)]
+    run, _ = _scripted(seq)
+    driver = IdbDriver("U", run=run)
+    driver._SETTLE_POLL_S = 0.05
+    driver._SETTLE_DEADLINE_S = 2.0
+
+    driver.query()  # cache the resting (y=100) key
+    tree = driver._settle()
+    # Settled on the resting frame (y=170), not any moving frame — proves it polled past the old cap.
+    assert tree[0]["frame"] == (0.0, 170.0, 100.0, 40.0)
+    assert clock.t < driver._SETTLE_DEADLINE_S  # returned on stability, before the deadline
+
+
+def test_settle_gives_up_at_the_wall_clock_deadline_when_never_stable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A screen that never stops moving must not spin forever: the poll is bounded by a wall-clock
+    # deadline (independent of read cost), after which _settle returns the latest tree (BE-0299).
+    clock = _Clock()
+    monkeypatch.setattr(idb_driver_mod, "time", clock)
+    counter = [0]
+    driver = IdbDriver("U", run=_moving_run(counter))  # type: ignore[arg-type]
+    driver._SETTLE_POLL_S = 0.1
+    driver._SETTLE_DEADLINE_S = 0.5
+
+    driver.query()  # cache the first frame
     before = counter[0]
     driver._settle()
-    # 1 initial (y=2, mismatches cache y=1) + _SETTLE_MAX_POLLS polls (y=3,4,5 — each differs)
-    assert counter[0] - before == 1 + IdbDriver._SETTLE_MAX_POLLS
+    assert clock.t >= driver._SETTLE_DEADLINE_S  # bounded by the deadline, then it stops
+    assert 3 < (counter[0] - before) <= 8  # more than the old 3-poll cap, but bounded by wall-clock
+
+
+def test_settle_defaults_bound_by_wall_clock_not_read_count() -> None:
+    # BE-0299 Unit 4: the class pins a wall-clock deadline and a small non-zero poll interval, the
+    # same shape AdbDriver adopted in BE-0245 — no fixed poll count remains.
+    assert IdbDriver._SETTLE_DEADLINE_S > 0
+    assert IdbDriver._SETTLE_POLL_S > 0
+    assert not hasattr(IdbDriver, "_SETTLE_MAX_POLLS")
 
 
 def test_settle_ignores_volatile_field_changes() -> None:

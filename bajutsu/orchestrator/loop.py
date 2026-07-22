@@ -11,6 +11,7 @@ import logging
 import subprocess
 from collections.abc import Callable, Mapping
 from dataclasses import replace
+from functools import partial
 
 from bajutsu import assertions, interp
 from bajutsu.assertions import AssertionResult, EvalContext
@@ -20,6 +21,7 @@ from bajutsu.mailbox import extract_value, select
 from bajutsu.orchestrator.actions import _action_of, _do_action, _step_label
 from bajutsu.orchestrator.evidence_rules import (
     _collect_captures,
+    _extract_stable_key,
     _kind_of,
     _run_extract,
     requested_intervals,
@@ -42,7 +44,7 @@ from bajutsu.orchestrator.types import (
     scenario_slug,
 )
 from bajutsu.orchestrator.waits import WaitTrace, _adaptive_sleep, _timeout_floor, _wait
-from bajutsu.scenario import Assertion, Email, ForEach, If, Scenario, Selector, Step
+from bajutsu.scenario import Assertion, Email, Extract, ForEach, If, Scenario, Selector, Step
 from bajutsu.webview import DomSource, WebContextDriver
 
 _logger = logging.getLogger(__name__)
@@ -66,15 +68,15 @@ _READ_ONCE_KINDS = frozenset(
 )
 
 
-def _evaluate_expect(
+def _poll_asserts(
     driver: base.Driver,
-    expect: list[Assertion],
+    asserts: list[Assertion],
     network: NetworkSource,
     clock: Clock,
     *,
     ctx: EvalContext,
-) -> list[AssertionResult]:
-    """Evaluate `expect` as a condition wait: re-read the tree until it passes or the deadline.
+) -> tuple[list[AssertionResult], list[base.Element]]:
+    """Evaluate `asserts` as a condition wait: re-read the tree until it passes or the deadline.
 
     Polling `query()` until `passed()` — bounded by a wall-clock deadline, never a fixed sleep — is
     what keeps a fast read (the resident channel, ~0.1s) no more flaky than a slow one (`uiautomator
@@ -86,16 +88,77 @@ def _evaluate_expect(
     where the race lives. Only the UI tree goes stale, so only it is re-read; the caller takes the
     screenshot and reads the clipboard once, and the poll ends the moment nothing a tree re-read
     could fix is still failing (`_READ_ONCE_KINDS`).
+
+    Returns the final results and the last tree read, so a step-level caller can reuse that settled
+    tree as its `after` snapshot instead of re-querying (BE-0299 Unit 1 / BE-0259).
     """
     deadline = clock.now() + _timeout_floor()
     while True:
         t0 = clock.now()
-        results = assertions.evaluate(driver.query(), expect, network(), ctx=ctx)
+        tree = driver.query()
+        results = assertions.evaluate(tree, asserts, network(), ctx=ctx)
         if assertions.passed(results) or clock.now() >= deadline:
-            return results
+            return results, tree
         if all(r.ok or r.kind in _READ_ONCE_KINDS for r in results):
-            return results  # only read-once assertions are left failing; a tree re-read can't help
+            return results, tree  # only read-once assertions are left failing; a re-read can't help
         _adaptive_sleep(clock, t0)
+
+
+def _evaluate_expect(
+    driver: base.Driver,
+    expect: list[Assertion],
+    network: NetworkSource,
+    clock: Clock,
+    *,
+    ctx: EvalContext,
+) -> list[AssertionResult]:
+    """Evaluate the trailing `expect` block as a condition wait (BE-0245), via `_poll_asserts`.
+
+    The scenario-level `expect` needs only the assertion results, not the settled tree, so it drops
+    the tree `_poll_asserts` also returns.
+    """
+    results, _ = _poll_asserts(driver, expect, network, clock, ctx=ctx)
+    return results
+
+
+def _settle_extract_read(
+    driver: base.Driver,
+    extracts: Mapping[str, Extract],
+    clock: Clock,
+    *,
+    initial: list[base.Element] | None = None,
+) -> list[base.Element]:
+    """Read the post-step tree, polling until the properties `extract` reads stop changing.
+
+    An `extract` has no assertion to satisfy — it copies a value out — so this is the settle-shaped
+    sibling of `_poll_asserts`: it stops when two consecutive reads share the extract projection
+    (`_extract_stable_key`), or the same wall-clock deadline (`BAJUTSU_MIN_WAIT_TIMEOUT`) elapses.
+    With no wait floor the budget is zero, so it reads exactly once — today's single-read behavior on
+    every lane that does not set the floor (BE-0299 Unit 3).
+
+    `initial`, when given, is the seed a non-mutating step (`assert` / `wait`) already settled on: it
+    is taken as the first sample so the poll refines that seed in place rather than re-reading it,
+    which is why this is applied at that earlier read site — the seed short-circuits `_ScreenRead`, so
+    the poll cannot live there for a seeded step. A mutating step passes no seed and reads fresh.
+    """
+    deadline = clock.now() + _timeout_floor()
+    tree = initial if initial is not None else driver.query()
+    key = _extract_stable_key(tree, extracts)
+    while clock.now() < deadline:
+        t0 = clock.now()
+        next_tree = driver.query()
+        next_key = _extract_stable_key(next_tree, extracts)
+        if next_key == key:
+            return next_tree
+        tree, key = next_tree, next_key
+        _adaptive_sleep(clock, t0)
+    # Deadline hit while the extract projection was still moving: return the latest read (best-effort,
+    # like the driver `_settle`), and say so, so a later assert failing on a still-propagating value is
+    # traceable to an un-settled extract rather than looking inexplicable (BE-0299 Unit 3).
+    _logger.debug(
+        "extract settle: projection still changing at the wait deadline; using latest read"
+    )
+    return tree
 
 
 class _ScreenRead:
@@ -113,18 +176,34 @@ class _ScreenRead:
     consumer then reuses it instead of issuing a second identical query (BE-0259). A seeded read is
     not a runner-issued read — `queried` stays False — so the BE-0234 read-count yardstick keeps
     counting only the queries this class actually performs.
+
+    `read` overrides the default `query()` for the first, uncached read: a step whose `extract` will
+    consume the tree passes a property-aware settle poll here (`_settle_extract_read`), so the value
+    it copies out is a settled one rather than whichever was still propagating when a single read
+    fired (BE-0299 Unit 3). It is mutually exclusive with `seed` — a seeded step is refined at its
+    earlier read site instead — and only fires on a genuine read, so `queried` still reflects one.
     """
 
-    def __init__(self, driver: base.Driver, seed: list[base.Element] | None = None) -> None:
+    def __init__(
+        self,
+        driver: base.Driver,
+        seed: list[base.Element] | None = None,
+        *,
+        read: Callable[[], list[base.Element]] | None = None,
+    ) -> None:
+        # A seed short-circuits `.get()`, so a `read` passed alongside one would be silently dropped —
+        # fail loudly instead (the two are mutually exclusive by construction; see the class docstring).
+        assert not (seed is not None and read is not None), "seed and read are mutually exclusive"
         self._driver = driver
         self._tree = seed
         self._available = seed is not None
         self._queried = False
+        self._read = read
 
     def get(self) -> list[base.Element]:
-        """The post-step tree: the seed if one was given, else read once and cached."""
+        """The post-step tree: the seed if one was given, else read once (via `read`) and cached."""
         if not self._available:
-            self._tree = self._driver.query()
+            self._tree = self._read() if self._read is not None else self._driver.query()
             self._available = True
             self._queried = True
         assert (
@@ -242,12 +321,14 @@ def _run_step_body(
         if kind == "assert_":
             assert step.assert_ is not None
             clip = _clipboard_for(step.assert_, control)
-            tree = driver.query()
             # A step-level assert sees only golden + clipboard: no per-step screenshot is taken, so
             # `visual` / `responseSchema` have no fresh input here (they run at scenario `expect`).
             # Drop them from the bundled context to preserve that behavior (BE-0250 Unit 2).
             step_ctx = replace(ctx or EvalContext(), visual=None, schema=None, clipboard=clip)
-            results = assertions.evaluate(tree, step.assert_, network(), ctx=step_ctx)
+            # A condition wait, not a single snapshot: a value the prior action mirrors into the tree
+            # a beat late is caught, the same race the trailing `expect` already closes (BE-0299
+            # Unit 2). Zero-budget (no wait floor) reads exactly once, as before.
+            results, tree = _poll_asserts(driver, step.assert_, network, clock, ctx=step_ctx)
             ok = assertions.passed(results)
             return ok, "" if ok else _fail_reason(results), results, tree
         _do_action(driver, step, relaunch, control, bindings, selection)
@@ -588,7 +669,25 @@ def _run_steps(
             # non-mutating step (`assert`/`wait`) hands back the tree it already settled on, so the
             # read reuses that snapshot rather than issuing a second identical query (BE-0259);
             # `snapshot` is None for mutating/tree-less steps, restoring the fresh post-step read.
-            screen = _ScreenRead(active_driver, seed=snapshot)
+            #
+            # An `extract` on this step consumes the read, so it must observe a value that has stopped
+            # propagating, not whichever one the single read caught (BE-0299 Unit 3). Gated on
+            # `outcome.ok`, matching where the extract actually runs (below), so a failed step never
+            # pays the poll for a value it will not read. A mutating step (or `wait until: request`,
+            # which hands back no tree) has no seed, so the property-aware read is deferred into
+            # `_ScreenRead` and fires only when a consumer needs the tree; `partial` binds this step's
+            # driver/extracts now, not a later iteration's. A seeded non-mutating step cannot poll
+            # there — the seed short-circuits `.get()` — so it is refined here, at that earlier read
+            # site, before `_ScreenRead` reuses it (keeping `queried` False for it).
+            read: Callable[[], list[base.Element]] | None = None
+            if outcome.ok and interp_step.extract:
+                if snapshot is None:
+                    read = partial(_settle_extract_read, active_driver, interp_step.extract, clock)
+                else:
+                    snapshot = _settle_extract_read(
+                        active_driver, interp_step.extract, clock, initial=snapshot
+                    )
+            screen = _ScreenRead(active_driver, seed=snapshot, read=read)
             screen_changed = before is not None and screen.get() != before
 
             # An unconditional first-wait diagnostic on a `for`-wait timeout: capturePolicy may not

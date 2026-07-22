@@ -326,14 +326,19 @@ class IdbDriver(CoordinateTreeDriver):
 
     The transient-empty retry, exponential backoff, stable-key projection, and not-found resolve loop
     live in `CoordinateTreeDriver` (shared with `AdbDriver`); this class supplies idb's own describe
-    (`ui describe-all` + JSON), its fixed-count `_settle`, the accessibility-bridge-wedge recovery,
-    and its actuators.
+    (`ui describe-all` + JSON), its wall-clock-bounded `_settle`, the accessibility-bridge-wedge
+    recovery, and its actuators.
     """
 
     name = "idb"
 
-    _SETTLE_MAX_POLLS = 3  # extra reads after initial comparison when frames are moving
-    _SETTLE_POLL_S = 0.05  # interval between settle reads; describe-all provides natural spacing
+    # The settle poll is bounded by elapsed time, not a fixed read count (BE-0299 Unit 4), matching
+    # `AdbDriver`: a fixed count grants far less margin once the machine running it is slow or loaded
+    # (three ~50 ms polls ≈ 150 ms, ~53x narrower than the Android side's 8 s), so a still-moving tree
+    # can pass as settled on a loaded CI host. A stable screen still settles in one read (the first
+    # `query()` matches the cached key); only a genuinely-animating screen polls.
+    _SETTLE_DEADLINE_S = 8.0  # ceiling on waiting for the tree to stop moving (spans an animation)
+    _SETTLE_POLL_S = 0.05  # inter-read cadence; describe-all's own latency provides natural spacing
     _AX_RESET_RETRIES = 3  # companion-connection resets on a persistent accessibility-bridge wedge
 
     def __init__(self, udid: str, run: RunFn = _real_run) -> None:
@@ -378,19 +383,23 @@ class IdbDriver(CoordinateTreeDriver):
         return self._is_ax_bridge_wedged(els)
 
     def _settle(self) -> list[base.Element]:
-        """Wait until the tree's identifier-frame projection is unchanged, or give up.
+        """Wait until the tree's identifier-frame projection stops changing, or give up.
 
-        Compares (identifier, frame) only — ignoring volatile value, traits,
-        label — so data changes on a static screen do not trigger extra polls.
-        The first call (no cached key) returns immediately; a cached-match
-        also returns in one query.  Only a cache miss starts the bounded poll.
+        Compares (identifier, frame) only — ignoring volatile value, traits, label — so data changes
+        on a static screen do not trigger extra polls. The first call (no cached key) returns
+        immediately; a cached-match also returns in one query. Only a cache miss starts the poll,
+        which is bounded by a wall-clock deadline rather than a fixed read count (BE-0299 Unit 4), so
+        it spans a real animation whatever the read costs — the same shape `AdbDriver._settle` adopted
+        in BE-0245, and for the same reason: a fixed poll count runs out on a slow/loaded machine and
+        lets a still-moving tree pass as settled.
         """
         prev_key = self._last_stable_key
         tree = self.query()
         key = self._last_stable_key
         if prev_key is None or key == prev_key:
             return tree
-        for _ in range(self._SETTLE_MAX_POLLS):
+        deadline = time.monotonic() + self._SETTLE_DEADLINE_S
+        while time.monotonic() < deadline:
             time.sleep(self._SETTLE_POLL_S)
             tree = self.query()
             new_key = self._last_stable_key

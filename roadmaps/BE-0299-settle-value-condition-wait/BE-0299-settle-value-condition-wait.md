@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0299](BE-0299-settle-value-condition-wait.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0299") |
+| Implementing PR | [#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN) |
 | Topic | Driver & backend architecture |
 | Related | [BE-0245](../BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server.md), [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md) |
 <!-- /BE-METADATA -->
@@ -204,12 +205,13 @@ runner already respects, never a fixed sleep.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Generalize `_evaluate_expect`'s poll into a shared, reusable retry.
-- [ ] Route a mid-scenario `assert` step through that shared retry.
-- [ ] Give `extract`'s read the same forgiveness, on its own terms (a property-aware settle).
-- [ ] Convert `IdbDriver._settle` to a wall-clock deadline, matching `AdbDriver._settle`.
-- [ ] Verify against the exact failures this item traces to (extract-race regression test, a
-      `FakeClock`-driven `tests/test_idb.py` addition for unit 4, and repeated on-device CI runs).
+- [x] Generalize `_evaluate_expect`'s poll into a shared, reusable retry (`_poll_asserts`).
+- [x] Route a mid-scenario `assert` step through that shared retry.
+- [x] Give `extract`'s read the same forgiveness, on its own terms (a property-aware settle).
+- [x] Convert `IdbDriver._settle` to a wall-clock deadline, matching `AdbDriver._settle`.
+- [x] Verify against the exact failures this item traces to (extract-race regression test in
+      `tests/orchestrator/test_extract_settle.py`, a `FakeClock`-driven `tests/test_idb.py`
+      addition for unit 4; repeated on-device CI runs remain the on-device signal).
 
 ## References
 
