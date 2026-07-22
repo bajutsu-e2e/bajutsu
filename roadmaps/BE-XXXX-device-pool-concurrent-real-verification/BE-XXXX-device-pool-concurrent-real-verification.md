@@ -16,8 +16,10 @@
 
 `runner/pool.py`'s `device_pool` claims a specific isolation guarantee for `--workers N` runs: each
 worker leases its own `udid` and writes evidence under its own `run_dir/<scenario_id>` subdirectory
-of the one shared run directory, sharing no mock port or index with any other worker's scenario
-(`DESIGN.md` §3.3). Every test of this guarantee — `tests/runner/test_pool.py` —
+of the one shared run directory (`run_dir = runs_dir / run_id` in `runner/pipeline.py`), sharing no
+mock port or index with any other worker's scenario — the no-shared-state invariant `DESIGN.md` §3.3
+states, even though that section's own `runs/<runId>`-per-worker wording predates today's shared
+`run_dir` layout. Every test of this guarantee — `tests/runner/test_pool.py` —
 monkeypatches `bajutsu.backends.make_driver` to return `FakeDriver` instances against fabricated
 udids like `"UDID-A"`/`"UDID-B"`. No CI lane ever boots two real Simulators or two real emulators
 concurrently; every job in `ios-e2e.yml`/`android-e2e.yml` boots exactly one device. This item adds
@@ -74,5 +76,5 @@ Proposal altitude. The work is MECE along the units below.
 ## References
 
 - [BE-0282 — Real-backend network capture, mock, and assertion coverage in CI](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md)
-- `bajutsu/runner/pool.py`, `tests/runner/test_pool.py`, `.github/workflows/ios-e2e.yml`,
+- `bajutsu/runner/pool.py`, `bajutsu/runner/pipeline.py`, `tests/runner/test_pool.py`, `.github/workflows/ios-e2e.yml`,
   `.github/workflows/android-e2e.yml`, `DESIGN.md` §3.3 (parallel execution and isolation)
