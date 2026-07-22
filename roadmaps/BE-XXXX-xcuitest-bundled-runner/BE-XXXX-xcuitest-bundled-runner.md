@@ -19,9 +19,10 @@ The XCUITest backend drives every app through one generic runner, yet today ever
 that runner and name its path in config before a single Simulator scenario can run. This item ships
 the prebuilt Simulator runner inside the Bajutsu wheel as package data and resolves `xcuitest` to it
 when the config names none, so `xcuitest.testRunner` and `xcuitest.build` both become optional. A
-run against the Simulator then needs no `make -C demos/showcase runner-build` and no runner path — the backend works
-out of the box — while an explicit `testRunner` or `build` still overrides the bundled default, and
-real-device runs, which need a signed runner Bajutsu cannot ship, stay explicit.
+run against the Simulator then needs no `make -C demos/showcase runner-build` and no runner
+path — the backend works out of the box — while an explicit `testRunner` or `build` still overrides
+the bundled default, and real-device runs, which need a signed runner Bajutsu cannot ship, stay
+explicit.
 
 ## Motivation
 
@@ -110,8 +111,13 @@ site-packages. Because the device pool leases multiple devices in parallel withi
 ([BE-0291](../BE-0291-xcuitest-runner-reuse-across-scenarios/BE-0291-xcuitest-runner-reuse-across-scenarios.md)
 relies on that same concurrency for its per-device runner cache), two leases can reach a cold,
 version-keyed cache directory at once; materialization copies into a temporary directory beside the
-cache and then atomically renames it into place, so a concurrent reader either sees no cache
-directory yet or a fully populated one, never a partial copy.
+cache and renames it into place. Renaming a populated directory onto one a concurrent lease already
+populated fails (`ENOTEMPTY`) rather than silently no-oping, so the losing lease must catch that
+error and treat the winner's cache as its own result; the guarantee that matters is that a
+concurrent reader sees no cache directory yet or a fully populated one, never a partial copy.
+Pruning stale version-keyed caches left behind by earlier upgrades is out of scope for this item;
+each copy is a bounded, versioned artifact rather than unbounded growth, and cache eviction can
+follow as a separate item if the accumulated size becomes a real complaint.
 
 ### The runner is built and included in Bajutsu's release pipeline
 
