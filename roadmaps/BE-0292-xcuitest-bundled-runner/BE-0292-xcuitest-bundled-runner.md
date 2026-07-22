@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0292](BE-0292-xcuitest-bundled-runner.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Implemented** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0292") |
 | Implementing PR | [#1221](https://github.com/bajutsu-e2e/bajutsu/pull/1221) |
 | Topic | Platform support |

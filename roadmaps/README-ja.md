@@ -49,7 +49,9 @@
 ### プラットフォーム対応（iOS / Android / Web / Flutter）
 
 <!-- GENERATED:in-progress-platform -->
-
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0292](BE-0292-xcuitest-bundled-runner/BE-0292-xcuitest-bundled-runner-ja.md) | XCUITest ランナーを同梱して testRunner を省略可能にする | 実装中 |
 <!-- /GENERATED:in-progress-platform -->
 
 ### デバイスクラウド実行

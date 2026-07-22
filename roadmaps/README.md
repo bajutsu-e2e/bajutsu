@@ -49,7 +49,9 @@ Accepted and actively being built — a PR is in flight or imminent.
 ### Platform support (iOS / Android / Web / Flutter)
 
 <!-- GENERATED:in-progress-platform -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0292](BE-0292-xcuitest-bundled-runner/BE-0292-xcuitest-bundled-runner.md) | Bundle the XCUITest runner so testRunner is optional | In progress |
 <!-- /GENERATED:in-progress-platform -->
 
 ### Device-cloud execution
