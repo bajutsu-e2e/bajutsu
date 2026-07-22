@@ -96,7 +96,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
     ) -> base.Driver:
         ios = require_ios(eff)
         xcfg = ios.xcuitest
-        device_type = xcfg.device_type if xcfg is not None else "simulator"
+        device_type = effective_device_type(xcfg)
 
         if device_type == "device":
             # A real device is not managed through simctl: it is already powered on, its build is
@@ -318,6 +318,15 @@ class XcuitestEnvironment(_DeviceEnvironment):
     def teardown(self, driver: base.Driver, eff: Effective) -> None:
         self._discard_runner()
         super().teardown(driver, eff)
+
+
+def effective_device_type(xcfg: XcuitestConfig | None) -> str:
+    """The target's `xcuitest.deviceType`, defaulting to `"simulator"` when unconfigured.
+
+    The one place this default lives, so `XcuitestEnvironment.start` and `runner_source`'s caller
+    (BE-0292's doctor disclosure) read the same value instead of each re-deriving it.
+    """
+    return xcfg.device_type if xcfg is not None else "simulator"
 
 
 _RunnerTier = Literal["misconfigured", "explicit", "device", "bundled"]

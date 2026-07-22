@@ -29,7 +29,10 @@ from bajutsu.config import (
 )
 from bajutsu.doctor import DoctorProbeError, probe_screen, render, score
 from bajutsu.drivers import base
-from bajutsu.platform_lifecycle.environments.xcuitest import runner_source
+from bajutsu.platform_lifecycle.environments.xcuitest import (
+    effective_device_type,
+    runner_source,
+)
 from bajutsu.scenario import load_scenario_file
 
 
@@ -111,8 +114,7 @@ def xcuitest_runner_summary(eff: Effective, actuator: str) -> list[str]:
     if actuator != "xcuitest":
         return []
     xcfg = require_ios(eff).xcuitest
-    device_type = xcfg.device_type if xcfg is not None else "simulator"
-    return [f"xcuitest runner: {runner_source(xcfg, device_type)}"]
+    return [f"xcuitest runner: {runner_source(xcfg, effective_device_type(xcfg))}"]
 
 
 def doctor(
