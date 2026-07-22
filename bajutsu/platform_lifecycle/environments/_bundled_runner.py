@@ -33,7 +33,8 @@ _STALE_PARTIAL_AGE_SECONDS = 5 * 60
 # is enough to detect that a source tree is unchanged since the last call in this process, which is
 # the common case — the device pool calls `materialize()` once per simulator lane against the same
 # bundled products.
-_digest_cache: dict[Path, tuple[object, str]] = {}
+_DigestSignature = tuple[tuple[str, int, int], ...]
+_digest_cache: dict[Path, tuple[_DigestSignature, str]] = {}
 
 
 def bundled_products_dir() -> Path | None:
