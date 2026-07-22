@@ -1,6 +1,6 @@
 .PHONY: setup hooks install deps deps-check serve worktree preflight test lint lint-docstrings lint-imports format format-check typecheck \
         lock-check lint-sh lint-actions lint-js lint-roadmap lint-pr check new-roadmap-item \
-        roadmap-status roadmap-dashboard docs docs-serve docs-diagrams
+        roadmap-status roadmap-dashboard docs docs-serve docs-diagrams runner-bundle
 
 # One-command bootstrap for a fresh clone (cross-platform; the dev gate needs no
 # Simulator). Installs the Python toolchain and wires the tracked git hooks.
@@ -215,6 +215,17 @@ docs-serve: roadmap-dashboard
 # a mermaid fence; the rendered SVGs are committed, so a plain `make docs` never needs Node.
 docs-diagrams:
 	uv run python scripts/render_diagrams.py
+
+# Build the generic XCUITest Simulator runner into the package (BE-0292), so a wheel built after
+# this ships it and `xcuitest.testRunner` becomes optional. macOS + Xcode only, run at release
+# time — NOT part of `check` (the deterministic gate runs anywhere and never touches the runner).
+# The whole products directory is copied so the `.xctestrun`'s `__TESTROOT__` still resolves beside
+# its test bundles. The output is gitignored and force-included via pyproject `artifacts`.
+runner-bundle:
+	$(MAKE) -C demos/showcase runner-build
+	rm -rf bajutsu/_xcuitest_runner
+	mkdir -p bajutsu/_xcuitest_runner
+	cp -R BajutsuKit/Runner/build/dd/Build/Products/. bajutsu/_xcuitest_runner/
 
 # Showcase build / on-device targets live with the fixture (demos/showcase/, the single iOS app):
 #   make -C demos/showcase swiftui-build|uikit-build|run-swiftui|doctor|record|ui-test|vrt

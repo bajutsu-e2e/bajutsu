@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0292](BE-0292-xcuitest-bundled-runner.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0292") |
+| Implementing PR | [#1221](https://github.com/bajutsu-e2e/bajutsu/pull/1221) |
 | Topic | Platform support |
 | Related | [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md), [BE-0288](../BE-0288-ios-device-signing-batch-build/BE-0288-ios-device-signing-batch-build.md), [BE-0291](../BE-0291-xcuitest-runner-reuse-across-scenarios/BE-0291-xcuitest-runner-reuse-across-scenarios.md) |
 <!-- /BE-METADATA -->
@@ -182,20 +183,31 @@ The split follows the fast-gate / on-device boundary BE-0019 already draws.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Runner resolution — add the bundled-default tier beneath `testRunner` / `build` in the XCUITest
+- [x] Runner resolution — add the bundled-default tier beneath `testRunner` / `build` in the XCUITest
   environment, with explicit config still overriding and `deviceType: device` still requiring an
   explicit runner.
-- [ ] Materialize-to-cache — copy the bundled products into a content-hash-keyed writable cache,
+- [x] Materialize-to-cache — copy the bundled products into a content-hash-keyed writable cache,
   handling the concurrent-materialization race, and resolve `testRunner` to the copy, leaving the
   per-run patched-copy step untouched.
-- [ ] Packaging — place the built Simulator products under the package-data directory before the wheel
+- [x] Packaging — place the built Simulator products under the package-data directory before the wheel
   build runs and add the release-pipeline build step that produces them; keep the base wheel
   installable on Linux.
 - [ ] doctor / disclosure — report the resolved runner source and surface an Xcode/SDK mismatch with
-  the override escape hatch named.
+  the override escape hatch named. The "report the resolved runner source" half shipped (`doctor
+  --target` prints `xcuitest runner: bundled (wheel-shipped Simulator runner)` / `testRunner:
+  <path>`); the Xcode/SDK-mismatch half stays unimplemented, scoped out as its own follow-up.
 - [ ] Validation — fast-gate resolution tests (bundled default, override precedence, device error,
-  cache reuse, concurrent-materialization race) and an on-device e2e run with no `testRunner` in
-  config.
+  cache reuse, concurrent-materialization race) shipped and pass; the on-device e2e run with no
+  `testRunner` in config does not — the showcase config still sets `testRunner` for every target,
+  and `ios-e2e.yml` still runs `make -C demos/showcase runner-build`, so the bundled path is
+  unexercised on a Simulator. Left open as its own follow-up.
+
+Log:
+
+- [#1221](https://github.com/bajutsu-e2e/bajutsu/pull/1221) — implemented runner resolution,
+  materialize-to-cache, and packaging, with fast-gate tests. Also added `doctor --target`'s
+  resolved-runner-source disclosure (`runner_source` / `xcuitest_runner_summary`), but deliberately
+  scoped the Xcode/SDK-mismatch half out as a separate follow-up.
 
 ## References
 

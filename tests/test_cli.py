@@ -826,6 +826,44 @@ def test_doctor_xcuitest_falls_back_to_idb_for_screen_query(
     assert made == [("idb", "FAKE-UDID")]
 
 
+def test_xcuitest_runner_summary_reports_the_resolved_source(tmp_path: Path) -> None:
+    # BE-0292: doctor discloses which runner tier an xcuitest target would use, without acting on
+    # it (no build run, no cache materialized) — pure config inspection.
+    from bajutsu.cli.commands.doctor import xcuitest_runner_summary
+    from bajutsu.config import XcuitestConfig
+    from bajutsu.scenario import Redact
+
+    runner = tmp_path / "Runner.xctestrun"
+    runner.write_bytes(b"")
+    eff = Effective(
+        target="app",
+        platform_config=IosConfig(
+            bundle_id="com.example.demo",
+            xcuitest=XcuitestConfig(test_runner=str(runner)),
+        ),
+        backend=["xcuitest"],
+        device="",
+        locale="en_US",
+        launch_env={},
+        launch_args=[],
+        id_namespaces=[],
+        reserved_namespaces=[],
+        mock_server=None,
+        setup=None,
+        capture=[],
+        redact=Redact(),
+    )
+    assert xcuitest_runner_summary(eff, "xcuitest") == [f"xcuitest runner: testRunner: {runner}"]
+
+
+def test_xcuitest_runner_summary_empty_for_other_actuators() -> None:
+    # No other backend resolves a runner this way, so there is nothing to disclose.
+    from bajutsu.cli.commands.doctor import xcuitest_runner_summary
+
+    eff = resolve(load_config("targets: { demo: { bundleId: com.x } }"), "demo")
+    assert xcuitest_runner_summary(eff, "idb") == []
+
+
 def test_current_screen_fake_backend_queries_the_driver(monkeypatch: pytest.MonkeyPatch) -> None:
     # For a non-xcuitest actuator, `doctor` scores whatever the driver's query() returns. The fake
     # backend needs no device, so resolving the udid is the only thing to stub away.

@@ -122,6 +122,11 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["bajutsu"]
+# The generic XCUITest Simulator runner is built into bajutsu/_xcuitest_runner/ by the release
+# step (`make runner-bundle`) and is gitignored, so force-include it as an artifact — otherwise
+# hatchling would honor .gitignore and drop it. The glob no-ops when the directory is absent (a
+# source checkout / Linux wheel), so the base wheel stays pure-Python. (BE-0292)
+artifacts = ["bajutsu/_xcuitest_runner/**"]
 
 [tool.ruff]
 line-length = 100

@@ -53,6 +53,10 @@ demos/tour/scenario.yaml
 demos/showcase/ios/*/*.xcodeproj/
 demos/showcase/ios/*/build/
 BajutsuKit/Runner/*.xcodeproj/
+# Wheel-bundled generic XCUITest runner (BE-0292): built into the package by `make runner-bundle`
+# at release time and force-included via pyproject `artifacts`; the compiled products are never
+# committed (regenerated per Xcode/SDK), so ignore them here.
+bajutsu/_xcuitest_runner/
 .claude/launch.json
 DerivedData/
 *.xcuserstate
