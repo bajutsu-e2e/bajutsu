@@ -134,10 +134,13 @@ than resolving through frame-center coordinates. Needs Xcode's `xcodebuild`.
 - `screenshot`: `simctl io screenshot`.
 
 > The generic runner uses `XCUIApplication(bundleIdentifier:)`, so it drives any installed app with
-> no app-side cooperation. The target names its prebuilt runner in `xcuitest.testRunner`; the
-> showcase config builds it via `make runner-build`. The backend is **validated on-device**
-> (iPhone 17 Pro, recent iOS) via `make -C demos/showcase run-swiftui` + the `ios-e2e.yml` CI
-> workflow. The XCUITest backend needs no pip extra — Xcode supplies `xcodebuild`.
+> no app-side cooperation. A Simulator run needs no runner config at all: when a target names neither
+> `xcuitest.testRunner` nor `xcuitest.build`, it resolves to the Simulator runner bundled in the wheel
+> as package data (BE-0292) — an explicit `testRunner` or `build` still overrides that default, and
+> `deviceType: device` still requires an explicit signed runner, since Bajutsu cannot ship one signed
+> for the operator's team. The backend is **validated on-device** (iPhone 17 Pro, recent iOS) via
+> `make -C demos/showcase run-swiftui` + the `ios-e2e.yml` CI workflow. The XCUITest backend needs no
+> pip extra — Xcode supplies `xcodebuild`.
 
 ## adb (Android)
 
