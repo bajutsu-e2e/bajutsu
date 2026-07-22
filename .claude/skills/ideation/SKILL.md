@@ -86,7 +86,7 @@ which you're choosing and why:
 
 ### 4. Draft a new BE item — leave the ID undetermined (`BE-XXXX`)
 
-**Never invent a BE number.** Allocation is CI's job (step 6). Scaffold the item with the
+**Never invent a BE number.** Allocation is CI's job (step 7). Scaffold the item with the
 command rather than authoring the files by hand — it emits the literal `BE-XXXX` placeholder,
 the exact canonical format, and skips the index (so the gate stays green locally):
 
@@ -119,12 +119,50 @@ Japanese, not a finished translation. Write it under the
 > same one. The `roadmap-id` workflow assigns the next free IDs deterministically at PR
 > time, so authoring stays conflict-free.
 
-### 5. Verify
+### 5. Self-review against the CI review contract — before committing
+
+Mirror the same review the "Claude review" GitHub Actions workflow runs on every PR (BE-0203), but
+locally, before anything is committed — closing the gap between "the roadmap item reads fine to
+its own author" and "the reviewer that sees it cold, on the PR, finds nothing to flag." Spawn a
+fresh subagent (Agent tool) that has **not** seen this ideation conversation — the CI reviewer
+also runs cold, with no memory of the authoring discussion, so a subagent that inherited this
+session's context would not reproduce that. Give it exactly two inputs: the contract at
+[`.github/claude-review-prompt.md`](../../../.github/claude-review-prompt.md) and the working
+diff. Stage new files first with `git add roadmaps/` — `make new-roadmap-item`'s output starts out
+untracked, so a bare `git diff` would omit it entirely — then run `git diff origin/main --
+roadmaps/`. Scope both the add and the diff to `roadmaps/` rather than the whole tree: this skill
+only ever touches that directory, and a stray file elsewhere — scratch output, unrelated
+in-progress work in a parallel worktree — shouldn't get staged or reviewed along with it. There is
+no PR yet, so nothing to run `gh pr diff` against. Ask it to apply every lens in the contract and
+return its findings as a plain list — skip the two parts of the contract that need a live PR:
+"read the existing discussion first" (`gh
+pr view <PR_NUMBER> --comments`, since there is no PR number yet) and posting findings as inline PR
+comments.
+
+Unlike the CI workflow — which only posts comments, since prime directive 1 keeps a reviewer from also
+being the judge on the Tier-2 gate — this pass has no gate to stay off: fix every finding it
+raises directly in the files before moving on, unless a finding is a false positive or a
+deliberate, already-explained trade-off, in which case note the rationale and move on rather than
+forcing a fix; escalate to the user instead of attempting it if a finding calls for a genuine
+design change (the same valve `pr-followup` uses for a review comment that asks for a fundamental
+design change). Re-run the subagent against the updated diff after non-trivial fixes, carrying
+forward this round's dismissed findings (with their rationale) into the next round's prompt — the
+new subagent is spawned fresh each round with no memory of earlier dispositions, so without this a
+dismissed false positive or trade-off would simply get re-flagged every round and never let the
+pass come back empty. Repeat until a pass comes back empty (an empty pass is a complete review,
+per the contract's own closing rule — "when nothing warrants a comment, post nothing"). "Advisory"
+describes the CI workflow's relationship to the merge gate, not license to leave a real finding
+unfixed here. Cap this at 3 rounds — an LLM-based reviewer is not fully deterministic and could
+keep surfacing a fresh marginal finding each round, possibly one its own previous fix introduced;
+if the 3rd round still returns findings, stop and let the user make the final call instead of
+looping further.
+
+### 6. Verify
 
 Run `make check` before finishing — roadmap changes are docs-only, but keeping the gate
 green is the contract. (It needs no Simulator and runs on Linux.)
 
-### 6. Open the PR (only when the user is happy)
+### 7. Open the PR (only when the user is happy)
 
 Work on the session's designated branch. Commit with a scoped message
 (`docs(roadmap): …`), push, and — **only if the user asked for a PR** — open it. The PR

@@ -148,6 +148,7 @@ Running a scenario on a hosted device farm instead of a local Simulator, emulato
 | ID | Item | Status |
 |---|---|---|
 | [BE-0293](BE-0293-codegen-playwright-real-compile/BE-0293-codegen-playwright-real-compile.md) | Real-compile verification for the Playwright (TypeScript) codegen target | Proposal |
+| [BE-0294](BE-0294-codegen-uiautomator-real-compile/BE-0294-codegen-uiautomator-real-compile.md) | Real-compile verification for the UI Automator (Kotlin) codegen target | Proposal |
 <!-- /GENERATED:proposals-codegen -->
 
 ### AI provider configuration

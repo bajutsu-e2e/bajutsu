@@ -148,6 +148,7 @@
 | ID | 項目 | 状態 |
 |---|---|---|
 | [BE-0293](BE-0293-codegen-playwright-real-compile/BE-0293-codegen-playwright-real-compile-ja.md) | Playwright（TypeScript）codegen ターゲットの実コンパイル検証 | 提案 |
+| [BE-0294](BE-0294-codegen-uiautomator-real-compile/BE-0294-codegen-uiautomator-real-compile-ja.md) | UI Automator（Kotlin）codegen ターゲットの実コンパイル検証 | 提案 |
 <!-- /GENERATED:proposals-codegen -->
 
 ### AI プロバイダ設定
