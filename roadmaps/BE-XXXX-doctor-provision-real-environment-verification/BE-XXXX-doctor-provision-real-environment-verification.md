@@ -94,6 +94,7 @@ Proposal altitude. The work is MECE along the units below.
 ## References
 
 - [BE-0024 — doctor / onboarding](../BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md) — the topic-anchor item this proposal's onboarding-gate work extends.
+- [BE-0024 — doctor / onboarding](../BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md) — the topic-anchor item this proposal's onboarding-gate work extends.
 - [BE-0164 — Config-aware environment installer](../BE-0164-config-aware-environment-installer/BE-0164-config-aware-environment-installer.md)
 - [BE-0282 — Real-backend network capture, mock, and assertion coverage in CI](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md)
 - `bajutsu/provision.py`, `bajutsu/preflight.py`, `bajutsu/requirements.py`, `bajutsu/simctl.py`,
