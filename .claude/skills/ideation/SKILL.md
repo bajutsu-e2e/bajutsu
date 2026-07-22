@@ -144,8 +144,8 @@ being the judge on the Tier-2 gate — this pass has no gate to stay off: fix ev
 raises directly in the files before moving on, unless a finding is a false positive or a
 deliberate, already-explained trade-off, in which case note the rationale and move on rather than
 forcing a fix; escalate to the user instead of attempting it if a finding calls for a genuine
-design change (the same valve `pr-followup` uses for a review comment that "requires a fundamental
-design change"). Re-run the subagent against the updated diff after non-trivial fixes, carrying
+design change (the same valve `pr-followup` uses for a review comment that asks for a fundamental
+design change). Re-run the subagent against the updated diff after non-trivial fixes, carrying
 forward this round's dismissed findings (with their rationale) into the next round's prompt — the
 new subagent is spawned fresh each round with no memory of earlier dispositions, so without this a
 dismissed false positive or trade-off would simply get re-flagged every round and never let the
