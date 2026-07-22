@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-ios-accessibility-screen-change-readiness-ja.md)
+**English** · [日本語](BE-0310-ios-accessibility-screen-change-readiness-ja.md)
 
-# BE-XXXX — Use iOS accessibility screen-change notifications to make the readiness and settle waits more accurate
+# BE-0310 — Use iOS accessibility screen-change notifications to make the readiness and settle waits more accurate
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-ios-accessibility-screen-change-readiness.md) |
+| Proposal | [BE-0310](BE-0310-ios-accessibility-screen-change-readiness.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0310") |
 | Topic | Platform support |
 | Related | [BE-0218](../BE-0218-e2e-simulator-flaky-readiness-actuation/BE-0218-e2e-simulator-flaky-readiness-actuation.md), [BE-0087](../BE-0087-idb-action-settle/BE-0087-idb-action-settle.md), [BE-0233](../BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity.md), [BE-0299](../BE-0299-settle-value-condition-wait/BE-0299-settle-value-condition-wait.md) |
 <!-- /BE-METADATA -->
