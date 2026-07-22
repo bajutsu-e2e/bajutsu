@@ -1,6 +1,6 @@
 [English](BE-XXXX-doctor-provision-real-environment-verification.md) · **日本語**
 
-# BE-XXXX — Real-environment verification for the onboarding gate (doctor, preflight, provision)
+# BE-XXXX — オンボーディングゲート（doctor・preflight・provision）の実環境検証
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
-| トピック | doctor / onboarding |
+| トピック | doctor / オンボーディング |
 <!-- /BE-METADATA -->
 
 ## はじめに
@@ -27,7 +27,7 @@
 
 3つのギャップは1つの根本原因と1つの解決策を共有しています。`provision.py` のテストは
 `("brew", "install", "facebook/fb/idb-companion")` のようなコマンドが*組み立てられた*ことだけを
-検証し、実際の `brew` がそれを受け付けたことは検証しません。しかも実際の E2E workflow
+検証し、実際の `brew` がそれを受け付けたことは検証しません。しかも実際の E2E ワークフロー
 (`ios-e2e.yml`、`web-e2e.yml`、`android-e2e.yml`)はいずれも、`bajutsu provision` を呼ぶのではなく
 同等のインストールコマンドを直接手書きしているため、インストーラ自身のコマンド構築コードは
 どこでも実際に実行されることがありません。`preflight.py` のテストは `which`/`booted_count`/
@@ -81,16 +81,16 @@ Playwright など)で実際に*失敗する*ことを確認するテストはあ
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] iOS の E2E レーン内で `bajutsu doctor --json` を実際に実行し、Ready/Partial の判定を検証する。
-- [ ] Android と web の E2E レーンにも拡張する。
+- [ ] iOS・Android・web の E2E レーン内で `bajutsu doctor --json` を実際に実行し、Ready/Partial
+  の判定を検証する。
 - [ ] 意図的に壊した環境のケースを追加し、Blocked の判定を検証する。
 - [ ] 新しい環境で `bajutsu provision` を実際に実行する。
 - [ ] 実際の `simctl list devices -j` の出力をテストフィクスチャとして捕捉する。
 
 ## 参考
 
-- [BE-0164 — config を踏まえた環境インストーラ](../BE-0164-config-aware-environment-installer/BE-0164-config-aware-environment-installer-ja.md)
-- [BE-0282 — CI における実 backend のネットワーク捕捉・モック・アサーションのカバレッジ](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md)
+- [BE-0164 — config を踏まえた環境インストーラー](../BE-0164-config-aware-environment-installer/BE-0164-config-aware-environment-installer-ja.md)
+- [BE-0282 — ネットワークのキャプチャ・モック・アサーションを CI で実バックエンド検証する](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md)
 - `bajutsu/provision.py`、`bajutsu/preflight.py`、`bajutsu/requirements.py`、`bajutsu/simctl.py`、
   `tests/test_provision.py`、`tests/test_preflight.py`、`tests/test_requirements.py`、
   `tests/test_simctl.py`、`.github/actions/boot-simulator/action.yml`、

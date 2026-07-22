@@ -80,8 +80,8 @@ Proposal altitude. The work is MECE along the units below.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Run `bajutsu doctor --json` for real inside the iOS E2E lane, asserting a Ready/Partial verdict.
-- [ ] Extend to the Android and web E2E lanes.
+- [ ] Run `bajutsu doctor --json` for real inside the iOS, Android, and web E2E lanes, asserting a
+  Ready/Partial verdict.
 - [ ] Add a deliberately-broken-environment case asserting a Blocked verdict.
 - [ ] Run `bajutsu provision` for real in a fresh environment.
 - [ ] Capture a real `simctl list devices -j` payload as a test fixture.
