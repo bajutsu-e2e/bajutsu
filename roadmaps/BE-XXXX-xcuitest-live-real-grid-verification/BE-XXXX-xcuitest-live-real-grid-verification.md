@@ -31,8 +31,7 @@ whether a real Appium server actually accepts that JSON, whether session creatio
 the driver assumes under a real grid's timing, or whether the `mobile:` extension commands the driver
 relies on are supported the way the client code expects on the grid provider actually in use. Because
 this route exists specifically as an opt-in path to real device-cloud hardware
-([BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction.md),
-[BE-0237](../BE-0237-firebase-device-streaming-adapter/BE-0237-firebase-device-streaming-adapter.md)),
+([BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction.md)),
 a mock of the very protocol it exists to speak cannot validate the one property that matters: that it
 actually works against a real grid.
 
@@ -78,7 +77,6 @@ Proposal altitude. The work is MECE along the units below.
 
 - [BE-0238 — iOS device-cloud execution](../BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution.md)
 - [BE-0236 — Device-cloud provider abstraction](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction.md)
-- [BE-0237 — Firebase Test Lab / Device Streaming adapter](../BE-0237-firebase-device-streaming-adapter/BE-0237-firebase-device-streaming-adapter.md)
 - [BE-0282 — Real-backend network capture, mock, and assertion coverage in CI](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md)
 - `bajutsu/drivers/xcuitest_live.py` (`WebDriverClient`, `XcuitestLiveDriver`),
   `tests/test_xcuitest_live.py`
