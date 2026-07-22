@@ -1,5 +1,5 @@
 .PHONY: setup hooks install deps deps-check serve worktree preflight test lint lint-docstrings lint-imports format format-check typecheck \
-        lock-check lint-sh lint-actions lint-js lint-roadmap lint-pr check new-roadmap-item roadmap-index \
+        lock-check lint-sh lint-actions lint-js lint-roadmap lint-pr check new-roadmap-item \
         roadmap-status roadmap-dashboard docs docs-serve docs-diagrams runner-bundle
 
 # One-command bootstrap for a fresh clone (cross-platform; the dev gate needs no
