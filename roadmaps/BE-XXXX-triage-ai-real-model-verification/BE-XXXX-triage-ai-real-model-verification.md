@@ -32,7 +32,7 @@ a real model, looking at a real failure screenshot and a real run's evidence, pr
 JSON that actually parses into the `Triage` schema, or that a proposed fix's category enum matches
 what the real model is prompted to choose from.
 
-Triage is advisory by design — `--apply`/`--write` always diff-previews before touching a scenario,
+Triage is advisory by design — `--apply`/`--write` is always diff-previewed before touching a scenario,
 and a human reviews the result (M4 in `DESIGN.md`'s roadmap; prime directive 1 keeps this off the
 `run` gate entirely). That advisory framing is exactly why this gap is worth closing rather than
 leaving alone: a parser that silently drops a real model's fix proposal, or mis-maps its category,
