@@ -10,7 +10,7 @@
 | Status | **Proposal** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | Topic | Configuration sourcing |
-| Related | [BE-0224](../BE-0224-github-private-repo-config-auth/BE-0224-github-private-repo-config-auth.md) |
+| Related | [BE-0224](../BE-0224-github-private-repo-config-auth/BE-0224-github-private-repo-config-auth.md), [BE-0302](../BE-0302-config-source-real-repo-fetch/BE-0302-config-source-real-repo-fetch.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -29,7 +29,7 @@ The signing math is solid and this item does not touch it. What it cannot prove 
 real API accepts what Bajutsu sends and returns what the code assumes. A JWT whose claim shape or
 algorithm GitHub rejects in practice, a clock-skew edge case in the `iat`/`exp` claims that only
 shows up against a real clock, or an installation-token response whose real shape has drifted from
-current suite, because none of the exchange ever leaves the process. The private-repo config source is a
+the hand-typed `{"id": 999}` / `{"token": "..."}` fixtures — none of these would be caught by the
 current suite, because none of the exchange ever leaves the process. The private-repo config source is a
 secondary feature (`config_source.py`), but the token flow underneath it is exactly the kind of
 external-integration surface a mock cannot validate by construction: the mock only ever returns
@@ -75,4 +75,5 @@ Proposal altitude. The work is MECE along the units below.
 ## References
 
 - [BE-0282 — Real-backend network capture, mock, and assertion coverage in CI](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md)
+- [BE-0302 — Real-repository fetch verification for the config source](../BE-0302-config-source-real-repo-fetch/BE-0302-config-source-real-repo-fetch.md)
 - `bajutsu/github/app.py`, `tests/test_github_app.py`

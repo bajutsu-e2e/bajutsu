@@ -10,7 +10,7 @@
 | 状態 | **提案** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | トピック | config の取得元 |
-| 関連 | [BE-0224](../BE-0224-github-private-repo-config-auth/BE-0224-github-private-repo-config-auth-ja.md) |
+| 関連 | [BE-0224](../BE-0224-github-private-repo-config-auth/BE-0224-github-private-repo-config-auth-ja.md), [BE-0302](../BE-0302-config-source-real-repo-fetch/BE-0302-config-source-real-repo-fetch-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
@@ -80,4 +80,5 @@ GitHub が拒否するクレーム形状やアルゴリズムの JWT、実際の
 ## 参考
 
 - [BE-0282 — ネットワークのキャプチャ・モック・アサーションを CI で実バックエンド検証する](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md)
+- [BE-0302 — config source の実リポジトリ fetch 検証](../BE-0302-config-source-real-repo-fetch/BE-0302-config-source-real-repo-fetch-ja.md)
 - `bajutsu/github/app.py`、`tests/test_github_app.py`
