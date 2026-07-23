@@ -23,8 +23,8 @@ commits, and PR text per the conventions below.
 This is the counterpart to [`ideation`](../ideation/SKILL.md): that skill *authors* a BE
 proposal, this one *ships* it. When the author is confident enough to write the proposal and
 its implementation at once, [`propose-and-build`](../propose-and-build/SKILL.md) runs both in
-parallel as a temporary two-PR stack and hands off to this skill's steps 8–10 once the id is
-allocated.
+one BE-creation PR, reusing this skill's steps 3–9 against the still-placeholder item (CI
+allocates the id when the PR merges).
 
 ## Prime directives (these bound every line you write)
 
@@ -356,8 +356,8 @@ reviewers, and every genuine decision escalates to the human.
   followup is one automated flow.
 - [`ideation`](../ideation/SKILL.md) — the upstream skill that authors the proposal this one builds.
 - [`propose-and-build`](../propose-and-build/SKILL.md) — composes `ideation` + this skill for a
-  small, settled item: author the proposal and implement it in parallel as a temporary two-PR
-  stack, then hand off to this skill's steps 8–10 once the id is allocated.
+  small, settled item: author the proposal and implement it together in one BE-creation PR,
+  reusing this skill's steps 3–9 against the still-placeholder item (CI allocates the id on merge).
 - The built-in **`simplify`** / **`code-review`** / **`verify`** skills — the authoring aids
   steps 7 and 9 lean on. They advise the author; only `make check` judges.
 - **pr-review-toolkit** (`@claude-plugins-official`, Anthropic-official) — the specialized
