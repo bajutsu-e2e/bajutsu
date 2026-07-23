@@ -89,9 +89,10 @@ To dismiss the prompt rather than accept it, the same step targets the dismissiv
   alert element and taps it through the same native accessibility tap XCUITest already uses
   elsewhere for an in-app element — no screenshot, no vision model.
 - **Fail-fast on zero or multiple matches.** No alert within `timeout` fails the step with a clear
-  message; more than one button matching the label fails as ambiguous — the same rule an ordinary
-  selector already follows ([selectors](../../docs/selectors.md)), applied here to the alert's
-  button instead of an app element.
+  message; more than one button matching the label fails as ambiguous **unless** `index` selects the
+  nth of them — exactly the rule an ordinary selector already follows ([selectors](../../docs/selectors.md)),
+  applied here to the alert's button instead of an app element. (`index` is a last resort for an alert
+  as for any element; a label normally resolves a prompt button uniquely.)
 - **Capability token + preflight.** Advertise a capability naming this step, following the
   per-operation preflight pattern
   ([BE-0128](../BE-0128-device-step-capability-preflight/BE-0128-device-step-capability-preflight.md)),
