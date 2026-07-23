@@ -199,3 +199,7 @@ To dismiss the prompt rather than accept it, the same step targets the dismissiv
   vision guard this item complements.
 - `BajutsuKit/Runner/Sources/RunnerUITest.swift` — the existing `XCUIApplication(bundleIdentifier:)`
   construction this item extends with a second, SpringBoard-scoped handle.
+- Sibling proposal `rename-dismiss-alerts-to-alert-handling` (`alertHandling`) — the proposal to
+  rename the reactive `dismissAlerts` guard this item stands beside and refers to throughout; a
+  reader adopting `dismissAlerts` here should know it is being deprecated in favor of `alertHandling`.
+  The two proposals' docs should contrast the reactive guard against the explicit step in one place.
