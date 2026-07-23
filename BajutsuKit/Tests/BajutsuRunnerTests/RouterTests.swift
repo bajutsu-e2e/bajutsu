@@ -48,6 +48,28 @@ final class RouterTests: XCTestCase {
         XCTAssertNotNil(first["handle"] as? String)
     }
 
+    func testElementsReportsEmptyWhenTheSnapshotRaisesAnException() {
+        // The read-path guard: an `app.snapshot()` that raises while the UI is in flux must not abort
+        // the resident runner. The Router catches it and answers an empty screen (the run then fails
+        // loudly downstream when nothing resolves), never a crash → connection refused.
+        let provider = FakeElementProvider()
+        provider.elementsToReturn = [
+            ElementSnapshot(
+                identifier: "home.title", label: "Home", value: nil,
+                traits: ["staticText"], frame: (0, 0, 10, 10), backingElement: NSObject()
+            ),
+        ]
+        provider.queryRaises = NSException(
+            name: .internalInconsistencyException, reason: "snapshot failed while UI in flux", userInfo: nil
+        )
+        let router = makeRouter(provider)
+
+        let response = router.handle(HTTPRequest(method: "GET", path: "/elements", body: nil))
+        let json = parseJSON(response)
+        XCTAssertEqual(json?["status"] as? String, "ok")
+        XCTAssertEqual((json?["elements"] as? [[String: Any]])?.count, 0)  // empty screen, not a crash
+    }
+
     // MARK: - /tap
 
     func testTapWithValidHandleCallsProvider() throws {
@@ -102,6 +124,32 @@ final class RouterTests: XCTestCase {
         let tapResponse = router.handle(HTTPRequest(method: "POST", path: "/tap", body: tapBody))
         XCTAssertEqual(parseJSON(tapResponse)?["status"] as? String, "stale")
         XCTAssertEqual(provider.tapCalls.count, 0)
+    }
+
+    func testTapReportsStaleWhenTheInteractionRaisesAnException() throws {
+        // The runner-survival guard: XCUITest raises an NSException when an element vanishes mid-tap
+        // ("No matches found"). Uncaught it would abort the resident runner; the Router must catch it
+        // and answer "stale" (so the Python side re-resolves and retries) rather than let it escape.
+        let provider = FakeElementProvider()
+        provider.elementsToReturn = [
+            ElementSnapshot(
+                identifier: "ok", label: nil, value: nil,
+                traits: ["button"], frame: (0, 0, 10, 10), backingElement: NSObject()
+            ),
+        ]
+        provider.tapRaises = NSException(
+            name: .internalInconsistencyException,
+            reason: "No matches found for Element at index 2", userInfo: nil
+        )
+        let router = makeRouter(provider)
+
+        let elemResponse = router.handle(HTTPRequest(method: "GET", path: "/elements", body: nil))
+        let handle = (parseJSON(elemResponse)?["elements"] as? [[String: Any]])?.first?["handle"] as? String
+        let tapBody = try JSONSerialization.data(withJSONObject: ["handle": handle!])
+
+        let tapResponse = router.handle(HTTPRequest(method: "POST", path: "/tap", body: tapBody))
+        XCTAssertEqual(parseJSON(tapResponse)?["status"] as? String, "stale")
+        XCTAssertEqual(provider.tapCalls.count, 1)  // the interaction was attempted, then caught
     }
 
     func testTapWithDoubleTapPassesTapsCount() throws {

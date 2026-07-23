@@ -177,11 +177,15 @@ class _FakeProc:
 
     def __init__(self) -> None:
         self.alive = True
+        self.terminated = (
+            False  # observed by the mid-run-crash test (a dead runner is not signalled)
+        )
 
     def poll(self) -> int | None:
         return None if self.alive else 0
 
     def terminate(self) -> None:
+        self.terminated = True
         self.alive = False
 
     def wait(self, timeout: float | None = None) -> int:
@@ -306,6 +310,42 @@ def test_start_respawns_a_dead_runner(monkeypatch: pytest.MonkeyPatch, tmp_path:
     env._runner_proc.alive = False  # type: ignore[attr-defined]  # the runner process exited
     env.start(eff, Preconditions())
     assert len(popen_argvs) == 2  # the dead runner was discarded and a fresh one spawned
+
+
+def test_discarding_a_crashed_runner_warns_and_does_not_signal_it(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # The diagnostic seam: a runner that exited on its own (the known app.launch()-cycle crash) is
+    # discarded without a terminate() — the pid is already reaped — and logs a mid-run-crash warning
+    # so a run that died on a `Connection refused` shows *why* the channel went away.
+    _, _, run = _fake_toolchain(monkeypatch)
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
+    proc = env._runner_proc
+    assert proc is not None
+    proc.alive = False  # type: ignore[attr-defined]  # the runner crashed mid-run
+    with caplog.at_level("WARNING"):
+        env._discard_runner()
+    assert not proc.terminated  # type: ignore[attr-defined]  # a dead process is never signalled
+    assert "exited on its own" in caplog.text
+
+
+def test_runner_output_is_captured_when_the_env_var_is_set(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # BAJUTSU_XCUITEST_RUNNER_LOG opts into capturing the runner's stdout/stderr to a file, so the
+    # crash is diagnosable; the crash warning then points at that file rather than telling the user
+    # how to enable it. Off (the default), no file is opened and `_runner_log` stays None.
+    _, _, run = _fake_toolchain(monkeypatch)
+    log_dir = tmp_path / "runner-logs"
+    monkeypatch.setenv("BAJUTSU_XCUITEST_RUNNER_LOG", str(log_dir))
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
+    assert env._runner_log is not None and env._runner_log.parent == log_dir
+    assert env._runner_log.exists()  # the sink file was opened for the spawn
+    assert (
+        "see" in env._runner_log_hint()
+    )  # the hint points at the captured log, not at the env var
 
 
 def test_warm_resume_reapplies_the_per_scenario_reset(

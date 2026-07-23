@@ -71,7 +71,10 @@ def test_ios_backend_reports_config_check(tmp_path: Path) -> None:
         tmp_path,
         "defaults: { backend: [xcuitest] }\ntargets:\n  demo: { bundleId: com.demo }\n",
     )
-    payload, status = ops.doctor_check(state, {"target": "demo"})
+    # Stub the live screen so the check assembly never spawns a real runner — otherwise a locally
+    # staged bundled runner (`make runner-bundle`) would have the probe launch xcodebuild and hang
+    # (the same reason the playwright config-check test stubs its screen).
+    payload, status = ops.doctor_check(state, {"target": "demo"}, screen_query=lambda *a: [])
     assert status == 200
     assert payload["backend"] == "xcuitest"
     config_checks = [c for c in payload["checks"] if "bundleId" in c["name"]]
@@ -115,7 +118,9 @@ def test_xcuitest_panel_reports_xcode_tools(tmp_path: Path) -> None:
         tmp_path,
         "defaults: { backend: [xcuitest] }\ntargets:\n  demo: { bundleId: com.demo }\n",
     )
-    payload, status = ops.doctor_check(state, {"target": "demo"})
+    # Stub the live screen (see test_ios_backend_reports_config_check) so a staged bundled runner
+    # can't turn this tool-name check into a real xcodebuild spawn.
+    payload, status = ops.doctor_check(state, {"target": "demo"}, screen_query=lambda *a: [])
     assert status == 200
     names = {c["name"] for c in payload["checks"]}
     assert "xcodebuild" in names
@@ -166,7 +171,9 @@ def test_check_shape_has_name_ok_detail(tmp_path: Path) -> None:
         tmp_path,
         "defaults: { backend: [xcuitest] }\ntargets:\n  demo: { bundleId: com.demo }\n",
     )
-    payload, status = ops.doctor_check(state, {"target": "demo"})
+    # Stub the live screen (see test_ios_backend_reports_config_check) so a staged bundled runner
+    # can't turn this shape check into a real xcodebuild spawn.
+    payload, status = ops.doctor_check(state, {"target": "demo"}, screen_query=lambda *a: [])
     assert status == 200
     for check in payload["checks"]:
         assert set(check.keys()) == {"name", "ok", "detail"}
