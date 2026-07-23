@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0311](BE-0311-roadmap-dashboard-table-view-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0311") |
+| 実装 PR | [#1306](https://github.com/bajutsu-e2e/bajutsu/pull/1306) |
 | トピック | 開発基盤（コントリビュータ体験） |
 | 関連 | [BE-0094](../BE-0094-roadmap-status-dashboard/BE-0094-roadmap-status-dashboard-ja.md)、[BE-0219](../BE-0219-roadmap-dashboard-search/BE-0219-roadmap-dashboard-search-ja.md) |
 <!-- /BE-METADATA -->
@@ -149,15 +150,15 @@
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] `Item` への Git 履歴由来の `created` / `updated` の追加と、`docs.yml` の checkout の
+- [x] `Item` への Git 履歴由来の `created` / `updated` の追加と、`docs.yml` の checkout の
       `fetch-depth: 0` への変更。
-- [ ] 既存のフィルタ行の隣に表示モード切り替え（`Cards` / `Table`）を描画する。
-- [ ] テーブルのマークアップ: 項目ごとに1行、6つのソート可能なカラム、テーブル上部にトピックごとの
+- [x] 既存のフィルタ行の隣に表示モード切り替え（`Cards` / `Table`）を描画する。
+- [x] テーブルのマークアップ: 項目ごとに1行、6つのソート可能なカラム、テーブル上部にトピックごとの
       進捗帯を維持する。
-- [ ] 各カラム見出しへのクライアントサイドソートの配線。既存の検索・ステータスフィルタと組み合わせる。
-- [ ] `localStorage` による表示モードの永続化（デフォルトは Cards）。
-- [ ] ライトテーマ・ダークテーマ両方のスタイリング。
-- [ ] `tests/test_roadmap_dashboard.py` へのテスト追加。
+- [x] 各カラム見出しへのクライアントサイドソートの配線。既存の検索・ステータスフィルタと組み合わせる。
+- [x] `localStorage` による表示モードの永続化（デフォルトは Cards）。
+- [x] ライトテーマ・ダークテーマ両方のスタイリング。
+- [x] `tests/test_roadmap_dashboard.py` へのテスト追加。
 
 ## 参考
 

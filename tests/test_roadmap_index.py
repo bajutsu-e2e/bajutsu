@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 _MODULE_PATH = Path(__file__).resolve().parent.parent / "scripts" / "build_roadmap_index.py"
 _spec = importlib.util.spec_from_file_location("build_roadmap_index", _MODULE_PATH)
@@ -155,3 +157,69 @@ def test_load_items_loads_the_committed_roadmap_tree() -> None:
         assert item.bucket in dict(bri.BUCKETS)
         assert item.topic in bri.KNOWN_TOPICS
         assert "en" in item.by_lang and "ja" in item.by_lang
+
+
+class _FakeProc:
+    def __init__(self, stdout: str, returncode: int = 0) -> None:
+        self.stdout = stdout
+        self.returncode = returncode
+
+
+def test_git_dates_combines_both_files_and_normalises_to_utc(monkeypatch: Any) -> None:
+    """created/updated are the oldest/newest commit across both files, every stamp in UTC (BE-0311).
+
+    A ``+09:00`` stamp must be compared as its UTC instant, not lexically — 19:22:34+09:00 is
+    10:22:34Z, earlier than a 12:00Z stamp the same day — so the min/max come out chronological.
+    """
+    per_file = {
+        "en.md": "2026-07-17T19:22:34+09:00\n2026-07-10T00:00:00+00:00\n",
+        "ja.md": "2026-07-20T12:00:00+00:00\n2026-07-12T00:00:00+00:00\n",
+    }
+
+    def fake_run(cmd: list[str], **_kw: Any) -> _FakeProc:
+        path = cmd[-1]
+        for suffix, out in per_file.items():
+            if path.endswith(suffix):
+                return _FakeProc(out)
+        return _FakeProc("")
+
+    monkeypatch.setattr(bri.subprocess, "run", fake_run)
+    created, updated = bri._git_dates([Path("a/en.md"), Path("a/ja.md")])
+    assert created == "2026-07-10T00:00:00+00:00"
+    assert updated == "2026-07-20T12:00:00+00:00"
+
+
+def test_git_dates_normalises_a_non_utc_offset(monkeypatch: Any) -> None:
+    """A lone non-UTC stamp is returned as its UTC instant, so the dashboard sort stays correct."""
+    monkeypatch.setattr(
+        bri.subprocess, "run", lambda *a, **k: _FakeProc("2026-07-17T19:22:34+09:00\n")
+    )
+    created, updated = bri._git_dates([Path("x.md")])
+    assert created == updated == "2026-07-17T10:22:34+00:00"
+
+
+def test_git_dates_returns_none_when_history_is_empty(monkeypatch: Any) -> None:
+    """No commits (a shallow clone, an uncommitted file) yields no invented date."""
+    monkeypatch.setattr(bri.subprocess, "run", lambda *a, **k: _FakeProc(""))
+    assert bri._git_dates([Path("x.md")]) == (None, None)
+
+
+def test_git_dates_survives_missing_git(monkeypatch: Any) -> None:
+    """No ``git`` on PATH is tolerated: the dashboard renders dateless rather than crashing."""
+
+    def boom(*_a: Any, **_k: Any) -> _FakeProc:
+        raise FileNotFoundError
+
+    monkeypatch.setattr(bri.subprocess, "run", boom)
+    assert bri._git_dates([Path("x.md")]) == (None, None)
+
+
+def test_load_items_with_dates_are_opt_in() -> None:
+    """with_dates fills created/updated as aware UTC ISO (or None); the default leaves them None."""
+    roadmap = Path(__file__).resolve().parent.parent / "roadmaps"
+    for item in bri.load_items(roadmap, with_dates=True):
+        for stamp in (item.created, item.updated):
+            if stamp is not None:
+                assert datetime.fromisoformat(stamp).tzinfo is not None
+    # Off by default, so the tools that don't render dates skip the per-item git log calls.
+    assert all(i.created is None and i.updated is None for i in bri.load_items(roadmap))

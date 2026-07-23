@@ -14,6 +14,7 @@ import importlib.util
 import re
 import sys
 from pathlib import Path
+from typing import Any
 
 _ROOT = Path(__file__).resolve().parent.parent
 _MODULE_PATH = _ROOT / "scripts" / "build_roadmap_dashboard.py"
@@ -25,6 +26,26 @@ _spec.loader.exec_module(brd)
 
 _ITEMS = brd.bri.load_items(_ROOT / "roadmaps")
 _PAGE = brd.build_page(_ITEMS)
+
+
+def _sample_item(title: str = "T", **over: Any) -> Any:
+    """A synthetic item for render tests — independent of Git history and the committed tree.
+
+    Reuses the loaded model's real classes; ``over`` sets extra Item fields (e.g. ``created`` /
+    ``updated``) so each test declares only what it exercises.
+    """
+    entry_cls = type(_ITEMS[0].by_lang["en"])
+    item_cls = type(_ITEMS[0])
+    return item_cls(
+        id="BE-9999",
+        slug="x",
+        bucket="Proposals",
+        topic=_ITEMS[0].topic,
+        by_lang={
+            "en": entry_cls(id="BE-9999", slug="x", title=title, status="Proposal", origin=None)
+        },
+        **over,
+    )
 
 
 def test_every_committed_item_is_rendered() -> None:
@@ -126,7 +147,10 @@ def test_every_card_carries_its_topic() -> None:
     """Each card exposes its Topic as ``data-topic`` so search can match it without scraping markup."""
     for item in _ITEMS:
         assert f'data-topic="{html.escape(item.topic)}"' in _PAGE
-    assert _PAGE.count("data-topic=") == len(_ITEMS)
+    # Table rows (BE-0311) also carry data-topic, so count only within the cards view — the portion
+    # before the table container — to keep this pinned to the cards.
+    cards_view = _PAGE.split('class="be-table-view', 1)[0]
+    assert cards_view.count("data-topic=") == len(_ITEMS)
 
 
 def test_fully_implemented_categories_are_separated() -> None:
@@ -175,25 +199,68 @@ def test_emit_script_is_the_tagless_filter_js() -> None:
     assert ".be-check" in js and "querySelectorAll" in js
 
 
+def test_table_view_renders_one_row_per_item() -> None:
+    """The table view (BE-0311) is one ``<tr>`` per item under six sortable column headers."""
+    assert _PAGE.count('class="be-row"') == len(_ITEMS)
+    for key, _label in brd._TABLE_COLUMNS:
+        assert f'data-sort-key="{key}"' in _PAGE
+    # Exactly one header row: six columns, no more (a second table would double the count).
+    assert _PAGE.count("data-sort-key=") == len(brd._TABLE_COLUMNS) == 6
+
+
+def test_table_rows_mirror_card_status_and_topic() -> None:
+    """Each row carries the same status/topic attributes as its card, so one filter drives both."""
+    table_view = _PAGE.split('class="be-table-view', 1)[-1]
+    for item in _ITEMS:
+        row = (
+            f'<tr class="be-row" data-status="{item.bucket}" data-topic="{html.escape(item.topic)}"'
+        )
+        assert row in table_view, f"{item.by_lang['en'].id} row missing or mis-tagged"
+    assert table_view.count('class="be-row"') == len(_ITEMS)
+
+
+def test_view_toggle_and_both_containers_present() -> None:
+    """A Cards/Table toggle sits beside the filters, with a container for each view (BE-0311)."""
+    assert 'class="be-viewtoggle"' in _PAGE
+    assert 'data-view="cards"' in _PAGE and 'data-view="table"' in _PAGE
+    assert 'class="be-cards-view"' in _PAGE
+    # The table view ships hidden so the no-JS page shows only Cards, exactly as it does today.
+    assert 'class="be-table-view is-hidden"' in _PAGE
+
+
+def test_table_headers_are_sortable_and_wired() -> None:
+    """Every header is sortable (``aria-sort``) and the script wires a click handler over them.
+
+    Machine-checkable outcome for the sort (BE-0311): each ``<th>`` carries ``aria-sort`` and the
+    filter script selects ``th[data-sort-key]`` and listens for a click, so a header press reorders
+    the rows. Matched loosely so a harmless reformat of the script doesn't break the test.
+    """
+    assert _PAGE.count('aria-sort="none"') >= len(brd._TABLE_COLUMNS)
+    assert "th[data-sort-key]" in _PAGE
+    assert re.search(r"""addEventListener\(\s*['"]click['"]\s*,\s*sortBy\s*\)""", _PAGE)
+
+
+def test_date_columns_render_iso_dates() -> None:
+    """The Created/Updated cells show the ``YYYY-MM-DD`` day and sort on the full UTC ISO stamp.
+
+    Pinned with a synthetic item carrying known dates, so it holds regardless of the checkout's Git
+    depth (a shallow ``make test`` clone can't derive real per-item dates); the real page's dates
+    come from ``git log`` only in the full-history docs build.
+    """
+    sample = _sample_item(created="2026-01-02T03:04:05+00:00", updated="2026-07-08T09:10:11+00:00")
+    out = brd.render_html([sample])
+    assert 'data-sort="2026-01-02T03:04:05+00:00">2026-01-02<' in out
+    assert 'data-sort="2026-07-08T09:10:11+00:00">2026-07-08<' in out
+
+
+def test_missing_dates_render_a_placeholder() -> None:
+    """An item with no derivable dates (shallow clone, uncommitted) renders a ``—`` empty cell."""
+    out = brd.render_html([_sample_item()])
+    assert '<td class="be-date" data-sort="">—</td>' in out
+
+
 def test_html_is_escaped() -> None:
     """Titles flow through html.escape, so a stray angle bracket can't break the markup."""
-    entry_cls = type(_ITEMS[0].by_lang["en"])
-    item_cls = type(_ITEMS[0])
-    sample = item_cls(
-        id="BE-9999",
-        slug="x",
-        bucket="Proposals",
-        topic=_ITEMS[0].topic,
-        by_lang={
-            "en": entry_cls(
-                id="BE-9999",
-                slug="x",
-                title="a <script> & b",
-                status="Proposal",
-                origin=None,
-            )
-        },
-    )
-    out = brd.render_html([sample])
+    out = brd.render_html([_sample_item(title="a <script> & b")])
     assert "a &lt;script&gt; &amp; b" in out
     assert "<script>" not in out
