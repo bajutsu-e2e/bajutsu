@@ -52,7 +52,7 @@ The work breaks into four MECE units.
 
 **Unit 1 — a read-only server-info endpoint.** Add `GET /api/server` → `ops.server_settings(state)`
 (a new operation beside `config_info` in `bajutsu/serve/operations/config.py`, registered in the
-shared route table so both backends dispatch it, BE-0253). It assembles a JSON view of the running
+shared route table so both backends dispatch it, [BE-0253](../BE-0253-serve-route-registry-unification/BE-0253-serve-route-registry-unification.md)). It assembles a JSON view of the running
 server's resolved configuration: the deployment mode (local vs hosted), the bound config and its
 source/provenance (reusing what `config_info` / `config_content` already compute), the backends this
 server can run, the runs and baselines directories, the soft-delete retention window, the

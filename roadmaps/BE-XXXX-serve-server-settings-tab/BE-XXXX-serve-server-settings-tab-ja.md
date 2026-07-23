@@ -53,7 +53,7 @@ macOS 以外向けのウィールは同梱しません。XCUITest が iOS の唯
 
 **単位 1 — 読み取り専用のサーバ情報エンドポイント。** `GET /api/server` → `ops.server_settings(state)`
 を追加します（`bajutsu/serve/operations/config.py` の `config_info` の隣に新設し、両バックエンドが
-ディスパッチできるよう共有のルートテーブルに登録します。BE-0253）。起動中サーバの解決済み設定を
+ディスパッチできるよう共有のルートテーブルに登録します。[BE-0253](../BE-0253-serve-route-registry-unification/BE-0253-serve-route-registry-unification-ja.md)）。起動中サーバの解決済み設定を
 JSON として組み立てます。含めるのは、デプロイ形態（ローカルかホスト型か）、束縛した config と
 その取得元および provenance（`config_info` や `config_content` がすでに算出しているものを再利用）、この
 サーバが実行できるバックエンド、実行結果と baseline の保存ディレクトリ、ソフト削除の保持期間、
