@@ -389,7 +389,16 @@ def test_only_device_platforms_have_devices() -> None:
 # --- BE-0019: XcuitestEnvironment ---
 
 
-def test_xcuitest_environment_requires_test_runner_in_config() -> None:
+def test_xcuitest_environment_requires_test_runner_in_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # With no testRunner configured, resolution falls back to the wheel-bundled runner (BE-0292);
+    # this test asserts the *no-bundle* case, so stub the bundle probe to None — otherwise a dev who
+    # has staged the bundle locally (`make runner-bundle`) would have `start()` spawn a real runner
+    # instead of raising, making the gate depend on the ambient tree.
+    monkeypatch.setattr(
+        "bajutsu.platform_lifecycle.environments.xcuitest.bundled_products_dir", lambda: None
+    )
     xe = XcuitestEnvironment("xcuitest", "UDID", env_run=lambda a, extra_env=None: "")
     with pytest.raises(simctl.DeviceError, match="testRunner"):
         xe.start(_eff(), Preconditions())
@@ -526,6 +535,9 @@ def test_xcuitest_environment_teardown_stops_runner(monkeypatch: pytest.MonkeyPa
     terminated = []
 
     class FakeProc:
+        def poll(self) -> int | None:
+            return None  # alive: _discard_runner then terminates it
+
         def terminate(self) -> None:
             terminated.append(True)
 
@@ -565,6 +577,9 @@ def test_spawn_cold_discards_runner_when_await_ready_fails(monkeypatch: pytest.M
     class FakePopen:
         def __init__(self, cmd: list[str], **kwargs: object) -> None:
             pass
+
+        def poll(self) -> int | None:
+            return None  # alive: the await_ready failure path discards it via terminate()
 
         def terminate(self) -> None:
             terminated.append(True)

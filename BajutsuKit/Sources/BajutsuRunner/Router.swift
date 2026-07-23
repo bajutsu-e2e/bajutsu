@@ -1,4 +1,5 @@
 import Foundation
+import ObjCExceptionCatcher
 
 final class Router {
     private let provider: ElementProviding
@@ -25,9 +26,9 @@ final class Router {
         case ("POST", "/deleteText"):
             return handleDeleteText(request)
         case ("POST", "/selectAll"):
-            return tapResultResponse(onMain(self.provider.selectAll))
+            return tapResultResponse(onMainCatching(self.provider.selectAll))
         case ("POST", "/copy"):
-            return tapResultResponse(onMain(self.provider.copySelection))
+            return tapResultResponse(onMainCatching(self.provider.copySelection))
         case ("GET", "/screenshot"):
             return handleScreenshot()
         default:
@@ -70,7 +71,7 @@ final class Router {
         if let rawPoint = json["point"] as? [Any], rawPoint.count == 2,
            let px = (rawPoint[0] as? NSNumber)?.doubleValue,
            let py = (rawPoint[1] as? NSNumber)?.doubleValue {
-            let result = onMain { self.provider.tapPoint(x: px, y: py) }
+            let result = onMainCatching { self.provider.tapPoint(x: px, y: py) }
             return tapResultResponse(result)
         }
 
@@ -83,7 +84,7 @@ final class Router {
 
         switch store.lookup(handle: handle) {
         case .found(let snapshot):
-            let result = onMain {
+            let result = onMainCatching {
                 self.provider.tap(backingElement: snapshot.backingElement, taps: taps, duration: duration)
             }
             return tapResultResponse(result)
@@ -112,7 +113,7 @@ final class Router {
 
         switch store.lookup(handle: handle) {
         case .found(let snapshot):
-            let result = onMain {
+            let result = onMainCatching {
                 self.provider.gesture(
                     backingElement: snapshot.backingElement, kind: kind, scale: scale, radians: radians
                 )
@@ -138,7 +139,7 @@ final class Router {
               let ty = (rawTo[1] as? NSNumber)?.doubleValue else {
             return .error(400, "missing or invalid from/to coordinates")
         }
-        let result = onMain { self.provider.swipe(fromX: fx, fromY: fy, toX: tx, toY: ty) }
+        let result = onMainCatching { self.provider.swipe(fromX: fx, fromY: fy, toX: tx, toY: ty) }
         return tapResultResponse(result)
     }
 
@@ -150,7 +151,7 @@ final class Router {
         guard let text = json["text"] as? String else {
             return .error(400, "missing text")
         }
-        let result = onMain { self.provider.typeText(text) }
+        let result = onMainCatching { self.provider.typeText(text) }
         return tapResultResponse(result)
     }
 
@@ -162,7 +163,7 @@ final class Router {
         guard let count = (json["count"] as? NSNumber)?.intValue, count > 0 else {
             return .error(400, "missing or non-positive count")
         }
-        return tapResultResponse(onMain { self.provider.deleteText(count: count) })
+        return tapResultResponse(onMainCatching { self.provider.deleteText(count: count) })
     }
 
     private func handleScreenshot() -> HTTPResponse {
@@ -185,5 +186,26 @@ final class Router {
         var result: T!
         DispatchQueue.main.sync { result = work() }
         return result
+    }
+
+    /// Run an actuation on the main thread, catching a raised `NSException` as `.stale`.
+    ///
+    /// An `XCUIElement` interaction raises an `NSException` when the element fails to resolve at
+    /// action time — "No matches found", the normal race when the screen shifts between the snapshot
+    /// and the tap. Uncaught it unwinds past Swift and aborts the resident runner's serve loop, so
+    /// every later request gets "connection refused"; `continueAfterFailure` does not help, because
+    /// this is a raised exception, not a recorded soft failure. Catching it and reporting `.stale`
+    /// lets the Python side re-resolve the selector and retry (the same handling a real stale handle
+    /// gets, BE-0289) while the runner stays up.
+    private func onMainCatching(_ work: @escaping () -> TapResult) -> TapResult {
+        onMain {
+            var result = TapResult.stale
+            do {
+                try ObjCExceptionCatcher.catchException { result = work() }
+                return result
+            } catch {
+                return .stale
+            }
+        }
     }
 }

@@ -9,8 +9,12 @@ final class RunnerUITest: XCTestCase {
         // The runner is a resident server handling many operations over one long-lived test method,
         // so a single soft XCUITest failure (e.g. a pinch/rotate on a small element that XCUITest
         // flags but still performs) must not end the test and tear the server down — that would
-        // leave every later request with "connection refused". Keep serving; a genuinely failed
-        // operation still surfaces to the Python side through its response status.
+        // leave every later request with "connection refused". This covers only *recorded* soft
+        // failures; a *raised* NSException (an element interaction that fails to resolve, "No matches
+        // found", when the screen shifts mid-tap) unwinds past this and aborts the runner regardless.
+        // The Router catches that at the actuation boundary (`onMainCatching`) and reports it as a
+        // stale miss, so the two together keep the runner serving; a genuinely failed operation still
+        // surfaces to the Python side through its response status.
         continueAfterFailure = true
     }
 

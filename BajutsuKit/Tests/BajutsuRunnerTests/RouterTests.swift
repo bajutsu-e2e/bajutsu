@@ -104,6 +104,32 @@ final class RouterTests: XCTestCase {
         XCTAssertEqual(provider.tapCalls.count, 0)
     }
 
+    func testTapReportsStaleWhenTheInteractionRaisesAnException() throws {
+        // The runner-survival guard: XCUITest raises an NSException when an element vanishes mid-tap
+        // ("No matches found"). Uncaught it would abort the resident runner; the Router must catch it
+        // and answer "stale" (so the Python side re-resolves and retries) rather than let it escape.
+        let provider = FakeElementProvider()
+        provider.elementsToReturn = [
+            ElementSnapshot(
+                identifier: "ok", label: nil, value: nil,
+                traits: ["button"], frame: (0, 0, 10, 10), backingElement: NSObject()
+            ),
+        ]
+        provider.tapRaises = NSException(
+            name: .internalInconsistencyException,
+            reason: "No matches found for Element at index 2", userInfo: nil
+        )
+        let router = makeRouter(provider)
+
+        let elemResponse = router.handle(HTTPRequest(method: "GET", path: "/elements", body: nil))
+        let handle = (parseJSON(elemResponse)?["elements"] as? [[String: Any]])?.first?["handle"] as? String
+        let tapBody = try JSONSerialization.data(withJSONObject: ["handle": handle!])
+
+        let tapResponse = router.handle(HTTPRequest(method: "POST", path: "/tap", body: tapBody))
+        XCTAssertEqual(parseJSON(tapResponse)?["status"] as? String, "stale")
+        XCTAssertEqual(provider.tapCalls.count, 1)  // the interaction was attempted, then caught
+    }
+
     func testTapWithDoubleTapPassesTapsCount() throws {
         let provider = FakeElementProvider()
         provider.elementsToReturn = [
