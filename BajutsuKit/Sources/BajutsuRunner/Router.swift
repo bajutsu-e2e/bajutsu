@@ -197,6 +197,12 @@ final class Router {
     /// this is a raised exception, not a recorded soft failure. Catching it and reporting `.stale`
     /// lets the Python side re-resolve the selector and retry (the same handling a real stale handle
     /// gets, BE-0289) while the runner stays up.
+    ///
+    /// `.stale` is safe for the driver's retried actuations (tap/gesture): XCUITest resolves the
+    /// element — and raises if it is gone — before synthesizing any event, so a caught interaction
+    /// failure precedes any side effect and the re-resolve-and-retry cannot double-actuate. The
+    /// coordinate/keyboard actuations the driver does not retry (`tapPoint`/`swipe`/`type`/…) simply
+    /// surface `.stale` as a loud failure, so they carry no double-actuation risk either.
     private func onMainCatching(_ work: @escaping () -> TapResult) -> TapResult {
         onMain {
             var result = TapResult.stale

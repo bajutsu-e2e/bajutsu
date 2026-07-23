@@ -449,11 +449,15 @@ class XcuitestDriver:
         return handles[id(el)]
 
     def _actuate(self, path: str, body: Mapping[str, Any], sel: base.Selector) -> None:
-        # A `stale` reply means the screen re-snapshotted between resolve and actuate, so the handle
-        # no longer maps to a live element. The runner returns `stale` *before* touching anything
-        # (Router.swift), so re-issuing cannot double-actuate — re-query and re-actuate while the same
-        # selector still resolves uniquely (BE-0289). Zero/many matches raise ElementNotFound /
-        # AmbiguousSelector out of `_resolve_handle` and fail immediately, spending no further attempts.
+        # A `stale` reply means the handle no longer maps to a live element, from one of two
+        # pre-actuation points: the runner's `store.lookup` returns `stale` before touching anything
+        # when the screen re-snapshotted, or the interaction itself raised an element-resolution
+        # failure ("No matches found") that the runner catches and reports as `stale`
+        # (Router.onMainCatching). Both precede event synthesis — XCUITest resolves the element, and
+        # raises if it is gone, *before* it synthesizes the tap/gesture — so re-issuing cannot
+        # double-actuate. Re-query and re-actuate while the same selector still resolves uniquely
+        # (BE-0289). Zero/many matches raise ElementNotFound / AmbiguousSelector out of
+        # `_resolve_handle` and fail immediately, spending no further attempts.
         request: dict[str, Any] = dict(body)
         for attempt in range(1, _STALE_MAX_ATTEMPTS + 1):
             reply = self._transport("POST", path, request)
