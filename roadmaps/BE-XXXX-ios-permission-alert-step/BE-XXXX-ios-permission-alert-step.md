@@ -122,13 +122,20 @@ To dismiss the prompt rather than accept it, the same step targets the dismissiv
   (`demos/showcase/scenarios/permission_system_alert.yaml`), not a new scenario inside the existing
   `permission.yaml`: `permission.yaml`'s notification scenario is already tagged `ai` so the iOS
   smoke lane can `--exclude ai` it, while Android's `smoke (adb)` job runs every scenario in that
-  file **unchanged**, with no exclusion wired at all — a new `handleSystemAlert` scenario dropped into the
-  same file would fail Android's required job at preflight, since only the iOS (XCUITest) backend
-  declares the capability. A separate file sidesteps that: the new scenario requests notification
-  authorization mid-flow and taps "Allow" through `handleSystemAlert`, tagged `xcuitest` the same way
-  `demos/showcase/scenarios/tabs.yaml` tags an iOS-only scenario, so the local bulk
-  `run-swiftui`/`run-uikit` targets' existing `--exclude xcuitest` skips it exactly as it already
-  skips `tabs.yaml`.
+  file **unchanged** — a new `handleSystemAlert` scenario dropped into the same file would fail
+  Android's required job at preflight, since only the iOS (XCUITest) backend declares the capability.
+  A separate file sidesteps that, and the boundaries then split by mechanism rather than by one tag:
+  Android's `smoke (adb)` job runs a **fixed scenario list** from `demos/showcase/android/Makefile`,
+  so a file that list never names is never picked up there — the file separation, not any tag, is
+  what keeps the fixture off the Android lane. The fixture must also stay out of the local bulk
+  `run-swiftui`/`run-uikit` iOS runs, which discover every scenario file and do not reset
+  per-scenario permission state (so the `notDetermined` prompt the step needs is not guaranteed):
+  give it a **dedicated** exclusion tag (e.g. `systemalert`) that those two targets add to their
+  `--exclude`, rather than reusing `tabs.yaml`'s `xcuitest` tag. `xcuitest` is a legacy carve-out
+  from when `[ios]` could resolve to the retired idb backend (per `tabs.yaml`'s header and
+  `demos/showcase/Makefile`) and a documented removal candidate, so riding it would silently
+  un-exclude this fixture the day that tag is retired; a purpose-named tag keeps the fixture's
+  exclusion independent of that legacy split's removal.
 - **CI wiring.** A tag alone never adds a file to a CI job — every `ios-e2e.yml` job that runs a
   scenario names its file explicitly, with no directory scan and no tag-based inclusion anywhere in
   CI. Add an explicit `scenarios: demos/showcase/scenarios/permission_system_alert.yaml` step to the
@@ -180,8 +187,9 @@ To dismiss the prompt rather than accept it, the same step targets the dismissiv
 - [ ] Capability token + preflight (iOS-only advertisement).
 - [ ] codegen — native XCUITest idiom on iOS; labeled `// TODO` on Android and web.
 - [ ] Docs (scenarios.md + ja, DSL grammar) and a new, iOS-only showcase fixture file
-      (`permission_system_alert.yaml`, tagged `xcuitest`), never added to the shared
-      `permission.yaml` that Android's `smoke (adb)` job runs unchanged.
+      (`permission_system_alert.yaml`), never added to the shared `permission.yaml` that Android's
+      `smoke (adb)` job runs unchanged; a dedicated exclusion tag (e.g. `systemalert`) keeps it out
+      of the local bulk `run-swiftui`/`run-uikit` runs without riding the legacy `xcuitest` tag.
 - [ ] CI wiring — an explicit `scenarios:` step for the new fixture in the `xcuitest (multi-touch)`
       job (`ios-e2e.yml`); a tag alone adds nothing to a CI job.
 - [ ] Tests — schema, preflight, SpringBoard resolution (zero/one/many matches), codegen snippet.
