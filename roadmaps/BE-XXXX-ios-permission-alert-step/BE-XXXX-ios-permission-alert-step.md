@@ -21,7 +21,7 @@ judged by a vision model — at the exact point in a scenario where the author e
 appear. iOS presents a permission request (location, camera, contacts, and the rest) as a
 SpringBoard-level alert: SpringBoard is the iOS home-screen process that also owns system-wide UI
 chrome, including these prompts, so the alert lives outside the app under test's own process and
-its accessibility tree. A scenario has two existing ways to reach such a prompt today, and neither
+its accessibility tree. A scenario has two existing ways to handle such a prompt today, and neither
 fits the case this item targets: a scenario that wants to trigger the permission request itself and
 then act on the prompt, deterministically, at that specific step. `handleSystemAlert` closes that gap.
 
@@ -95,7 +95,8 @@ To dismiss the prompt rather than accept it, the same step targets the dismissiv
 - **Capability token + preflight.** Advertise a capability naming this step, following the
   per-operation preflight pattern
   ([BE-0128](../BE-0128-device-step-capability-preflight/BE-0128-device-step-capability-preflight.md)),
-  and have only the iOS (XCUITest) backend declare it. The Android (adb) backend already dumps
+  and have only the iOS (XCUITest) [backend](../../docs/glossary.md#driver-backend-actuator-platform)
+  declare it. The Android (adb) backend already dumps
   whatever window is topmost, including a system permission dialog, so an ordinary `tap` step
   already reaches it there today; the web (Playwright) backend has no OS-level permission prompt at
   all. A scenario naming `handleSystemAlert` against either backend fails preflight before any device
