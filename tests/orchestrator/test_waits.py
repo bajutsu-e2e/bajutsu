@@ -159,6 +159,44 @@ def test_wait_settled_ignores_a_transition_from_before_the_wait_started() -> Non
     assert clock.now() > 0.0  # polled the tree (fell back), not the instant signal-path return
 
 
+def test_wait_settled_picks_up_a_transition_that_arrives_mid_wait() -> None:
+    """A transition whose fire-and-forget report lands mid-wait — the canonical tap → navigate →
+    settled case, where `viewDidAppear` fires only after the appearance animation, so its POST
+    arrives a few hundred ms into the wait, not at entry — switches the wait onto the signal path
+    rather than committing to tree-diff for the whole duration. Mirrors the readiness gate's
+    mid-poll pickup (`test_await_ready_catches_a_transition_that_arrives_mid_poll`)."""
+
+    class Churning:  # a new tree each poll, so the tree-diff path never settles on its own —
+        name = "churning"  # isolating the signal pickup as the only thing that can end the wait
+
+        def __init__(self) -> None:
+            self._n = 0
+
+        def query(self) -> list[base.Element]:
+            self._n += 1
+            return [el(f"row{self._n}", "R")]
+
+    events: list[tuple[ScreenTransition, float]] = []
+    injected = False
+
+    def on_sleep(t: float) -> None:
+        nonlocal injected
+        if not injected and t >= 0.2:  # the report lands well into the wait, not at entry
+            events.append((ScreenTransition(kind="screenChanged"), t))
+            injected = True
+
+    clock = FakeClock(on_sleep)
+    w = Wait.model_validate({"until": "settled", "timeout": 5.0})
+    ok, reason, _tree = _wait(Churning(), w, clock, transitions=lambda: events)  # type: ignore[arg-type]
+    assert ok and reason == ""
+    assert injected  # the transition really arrived mid-wait, after tree-diff had been polling
+    # Settled only after the quiescence window elapsed since that mid-wait transition — proof the
+    # wait switched to the signal path, not the never-settling tree-diff (which would run to the 5s
+    # deadline on a churning screen).
+    assert clock.now() >= events[-1][1] + _TRANSITION_QUIESCENCE
+    assert clock.now() < 5.0  # ended via the signal, well before the deadline
+
+
 def test_wait_settled_signal_waits_out_the_quiescence_window() -> None:
     """A transition just observed must not settle instantly — the wait holds out for
     `_TRANSITION_QUIESCENCE` of silence first."""

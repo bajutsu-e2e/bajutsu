@@ -353,15 +353,18 @@ def _wait_settled(
     When `transitions` has reported a screen-transition event *since this wait began*
     (`events[-1][1] >= start`), settled is a positive signal — no further transition reported for
     `_TRANSITION_QUIESCENCE` — rather than an inference from tree reads; see
-    `_wait_settled_by_signal`. The since-start guard mirrors the one the readiness gate applies to the
-    same signal (BE-0310): a transition left over from a *prior* step (the collector is
-    scenario-scoped, not per-wait) predates `start`, so it is ignored rather than settling this wait
-    instantly and missing the current step's own transition — which, POSTed fire-and-forget from the
-    app, may not have landed when the wait starts. When no transition has been reported since `start`
-    (the app doesn't link the observer, or its report is still in flight), this falls through to the
-    original tree-diff behavior, which waits the animation out: a blank/collapsed tree (e.g. a screen
-    mid-render, or one covered by a system alert) is never treated as settled, and settled is two
-    consecutive unchanged polls with an identified element. Both paths are best-effort: timing out
+    `_wait_settled_by_signal`. This is re-checked on every poll, not only at entry: `viewDidAppear`'s
+    report is POSTed fire-and-forget *after* the appearance animation, so for the canonical
+    tap → navigate → `settled` step it lands a few hundred ms into the wait, not before it — the wait
+    switches onto the signal path the instant that report arrives, mirroring the readiness gate's
+    per-tick re-read. The since-start guard mirrors the one the readiness gate applies to the same
+    signal (BE-0310): a transition left over from a *prior* step (the collector is scenario-scoped,
+    not per-wait) predates `start`, so it is ignored rather than settling this wait instantly and
+    missing the current step's own transition. Until a since-start transition is observed (the app
+    doesn't link the observer, or its report is still in flight), this runs the original tree-diff
+    behavior, which waits the animation out: a blank/collapsed tree (e.g. a screen mid-render, or one
+    covered by a system alert) is never treated as settled, and settled is two consecutive unchanged
+    polls with an identified element. Both paths are best-effort: timing out
     just proceeds with the current screen — a settle is a stabilization hint, not a correctness
     assertion, so it never fails the step. When `gate` is given, a screen that stays collapsed (a
     system alert) is cleared mid-settle rather than burning the whole timeout (BE-0269). When `hb` is
@@ -372,16 +375,22 @@ def _wait_settled(
     recovery is a decided outcome the caller (the run loop) fails the step on, so polling toward
     settled would only delay a failure that best-effort settling would otherwise mask.
     """
-    events = transitions()
-    if events and events[-1][1] >= start:
-        return _wait_settled_by_signal(
-            driver, deadline, clock, gate, hb, transitions, events[-1][1], on_interrupt_poll
-        )
     previous = driver.query()
     if gate is not None:
         gate.observe(previous)
     stable = 0
     while stable < _SETTLE_POLLS:
+        # A qualifying transition can land mid-wait, not only before it: `viewDidAppear`'s
+        # fire-and-forget report arrives *after* the appearance animation, so for the canonical
+        # tap → navigate → `settled` step it lands a few hundred ms into this wait rather than at
+        # entry. Re-consult every poll — like the readiness gate — and switch to the signal path the
+        # instant a since-start transition appears; until then the tree-diff loop below waits the
+        # animation out. A left-over transition from a prior step predates `start`, so it is ignored.
+        events = transitions()
+        if events and events[-1][1] >= start:
+            return _wait_settled_by_signal(
+                driver, deadline, clock, gate, hb, transitions, events[-1][1], on_interrupt_poll
+            )
         if clock.now() >= deadline:
             return True, "", previous
         t0 = clock.now()
