@@ -94,7 +94,21 @@ explicit `members` entry or a member of a `githubOrgs`-listed GitHub organizatio
 configured `orgs:` block; every other login is rejected with the existing "user not allowed" response
 that `BAJUTSU_OAUTH_ALLOWED_USERS` produces today. A successful sign-in is granted the viewer role at
 minimum. `BAJUTSU_OAUTH_ALLOWED_USERS` and `BAJUTSU_OAUTH_VIEWERS` are retired — the organization's own
-roster, not a separate list, is now the allowlist. A `members`-only tenant (an `orgs:` block with
+roster, not a separate list, is now the allowlist.
+
+`org_for_identity` cannot signal this rejection on its own: it returns a plain `str`, and both a
+login that legitimately resolves to the shared `default` org and a login that matches nothing fall
+through to the same `DEFAULT_ORG` sentinel ([`bajutsu/serve/orgs.py`](../../bajutsu/serve/orgs.py)).
+The gate therefore needs its own match check — the same `members`/`githubOrgs` test
+`org_for_identity` already performs, exposed as a plain yes/no — run *before* `org_for_identity` is
+ever called for that login: a login the gate accepts always matches something, so `org_for_identity`
+never falls through to `default` for it, and a login the gate rejects never reaches
+`org_for_identity` at all. One consequence follows directly: for any deployment with an `orgs:`
+block, the `default` org — today's catch-all landing spot for an unmatched login — becomes
+unreachable through OAuth sign-in, because a login that would have landed there is now rejected
+before placement is ever computed.
+
+A `members`-only tenant (an `orgs:` block with
 `members` but no `githubOrgs`) now gates sign-in on that `members` listing for the first time — today,
 `members` only decides which org an already-allowed login lands in, while `BAJUTSU_OAUTH_ALLOWED_USERS`
 alone decides whether sign-in succeeds at all. A deployment with no `orgs:` block at all has no
@@ -109,9 +123,9 @@ it still gates sign-in on a deployment with OAuth configured but no database wir
 mints a session for the identity at the end of `oauth_callback` regardless of `state.repository`.
 Folding the new org/Team gate into `_org_for_login` as-is would remove the only gate that deployment
 has once `BAJUTSU_OAUTH_ALLOWED_USERS` retires, admitting every GitHub user. The rejection therefore
-stays at that same top-level position — `org_for_identity` computed, and accept/reject decided, before
-the database block — with `_org_for_login`'s call inside that block left to decide only *which* org to
-persist, not whether to reject.
+stays at that same top-level position — the match check (above) computed, and accept/reject decided,
+before the database block — with `_org_for_login`'s call inside that block left to decide only
+*which* org to persist for an already-accepted login, not whether to reject.
 
 This makes sign-in itself depend on a live call to GitHub's `/user/orgs` for any login that isn't an
 explicit `members` entry (`_fetch_orgs`, [`bajutsu/serve/server/oauth.py`](../../bajutsu/serve/server/oauth.py))
@@ -274,9 +288,11 @@ with.
 - [ ] Extend `OrgConfig` with the `editorTeam` field and its config-schema documentation.
 - [ ] Add the `GET /user/teams` lookup (direct membership only) and the `BAJUTSU_OAUTH_ADMIN_TEAM`
       environment variable.
-- [ ] Fold the organization-membership sign-in gate into `org_for_identity`/`_org_for_login`, keeping
-      the rejection at the top of `oauth_callback` — before the `if state.repository is not None:`
-      block — so an OAuth-configured but database-less deployment still gates sign-in; retire
+- [ ] Add a plain match/no-match check (the same `members`/`githubOrgs` test `org_for_identity`
+      already performs) for the sign-in gate to call before `org_for_identity` — `org_for_identity`'s
+      `str` return can't distinguish "matches nothing" from "legitimately resolves to `default`."
+      Keep the rejection at the top of `oauth_callback` — before the `if state.repository is not
+      None:` block — so an OAuth-configured but database-less deployment still gates sign-in; retire
       `BAJUTSU_OAUTH_ALLOWED_USERS` and `BAJUTSU_OAUTH_VIEWERS`.
 - [ ] Replace `role_for()`'s login-list resolution with the organization/Team resolution above; retire
       `BAJUTSU_OAUTH_ADMINS`.
