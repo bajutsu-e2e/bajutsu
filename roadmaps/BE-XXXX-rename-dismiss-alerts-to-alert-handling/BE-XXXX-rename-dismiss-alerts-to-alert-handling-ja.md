@@ -83,11 +83,12 @@ CLI も改名にならいます。`bajutsu run --alert-handling` / `--no-alert-h
   （`bajutsu/config/schema.py`。`bajutsu/config/effective.py` / `bajutsu/config/resolve.py` を
   通じて表に出ます）に同じ `dismissAlerts` キーで置かれています。同じ要領で `alertHandling` に
   改名し、`dismissAlerts` を受理エイリアスとして残します。
-- **CLI フラグ。** `--alert-handling` / `--no-alert-handling` を run と record の正規フラグにし、
-  `--dismiss-alerts` / `--no-dismiss-alerts` は同じオプションに対応づける隠れた非推奨エイリアスとして
-  残すので、既存の呼び出しや CI もそのまま動きます。`--alert-instruction` はすでにアラートに中立な
-  読み方なので、そのままにします。`run` ケーパビリティの `claude_flag`（`bajutsu/capabilities.py`）を
-  正規の綴り `--alert-handling` に更新します。
+- **CLI フラグ。** `--alert-handling` / `--no-alert-handling` を、このフラグを現在持つ3つのコマンド
+  すべて——`run`、`record`、`crawl`——の正規フラグにし、`--dismiss-alerts` / `--no-dismiss-alerts` は
+  同じオプションに対応づける隠れた非推奨エイリアスとして残すので、既存の呼び出しや CI もそのまま
+  動きます。`--alert-instruction`（これも3コマンドすべてにあります）はすでにアラートに中立な読み方
+  なので、そのままにします。`run` ケーパビリティの `claude_flag`（`bajutsu/capabilities.py`）を正規の
+  綴り `--alert-handling` に更新します。
 - **非推奨の告知。** 旧来の `dismissAlerts` キーまたは `--dismiss-alerts` フラグが使われたときに、
   新しい名前を指す非推奨通知を一度だけ出します。通知は authoring / CLI 経路のログ行であり、決定的な
   `run` の判定経路には一切置きません（第一原則）。エイリアスは正規の名前とまったく同じ挙動なので、
@@ -102,8 +103,8 @@ CLI も改名にならいます。`bajutsu run --alert-handling` / `--no-alert-h
   対の `handleSystemAlert` 提案のドキュメントと足並みを揃え、名前で衝突させるのではなく、2つの機能を役割
   （反応的なガードと明示的なステップ）で同じ場所で対比します。
 - **テスト。** 正規の `alertHandling` と `dismissAlerts` エイリアスがどちらも同じモデルにパースされる
-  こと、どちらのキーでも config デフォルトが効くこと、両方の CLI フラグ、ダンプが新しいキーを出力する
-  こと、旧来の綴りで非推奨通知が出ることを検証します。
+  こと、どちらのキーでも config デフォルトが効くこと、`run`・`record`・`crawl` それぞれで両方の CLI
+  フラグが効くこと、ダンプが新しいキーを出力すること、旧来の綴りで非推奨通知が出ることを検証します。
 
 ## 検討した代替案
 
@@ -133,7 +134,7 @@ CLI も改名にならいます。`bajutsu run --alert-handling` / `--no-alert-h
 
 - [ ] シナリオスキーマ — `AlertHandling` / `alertHandling`、`dismissAlerts` を入力エイリアスとして維持。
 - [ ] config デフォルトの面 — `alertHandling` キー、`dismissAlerts` エイリアス。
-- [ ] CLI フラグ — `--alert-handling` を正規に、`--dismiss-alerts` を隠れた非推奨エイリアスに。ケーパビリティの `claude_flag`。
+- [ ] CLI フラグ — `--alert-handling` を `run`/`record`/`crawl` の正規に、`--dismiss-alerts` を隠れた非推奨エイリアスに。ケーパビリティの `claude_flag`。
 - [ ] 旧来のキー / フラグに対する非推奨の告知（authoring / CLI 経路のみ）。
 - [ ] ドキュメント — `docs/` + `docs/ja/` の全言及を改名（各言語 10 ファイル）、見出し slug 変更で
       切れるアンカーリンクを修正、エイリアスを注記、`handleSystemAlert` と対比。
@@ -149,4 +150,5 @@ CLI も改名にならいます。`bajutsu run --alert-handling` / `--no-alert-h
 - [BE-0276 — シナリオ単位の宣言的な権限状態](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state-ja.md) ——
   ガードの決定的な起動前の対の仕組み。ガード自身のドキュメントがすでにこれと対比しています。
 - `bajutsu/scenario/models/scenario.py`（`DismissAlerts`）、`bajutsu/agents/alerts.py`、
-  `bajutsu/cli/commands/run.py`、`bajutsu/capabilities.py` —— 改名が触れる面。
+  `bajutsu/cli/commands/run.py`、`bajutsu/cli/commands/record.py`、`bajutsu/cli/commands/crawl.py`、
+  `bajutsu/config/schema.py`、`bajutsu/capabilities.py` —— 改名が触れる面。

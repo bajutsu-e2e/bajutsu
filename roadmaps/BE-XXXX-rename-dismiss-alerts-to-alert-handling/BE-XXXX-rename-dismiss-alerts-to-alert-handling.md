@@ -83,9 +83,10 @@ flag, and `--dismiss-alerts` / `--no-dismiss-alerts` keeps working as a hidden, 
   (`bajutsu/config/schema.py`, surfaced through `bajutsu/config/effective.py` /
   `bajutsu/config/resolve.py`) under the same `dismissAlerts` key. Rename it to `alertHandling` the
   same way, with `dismissAlerts` kept as an accepted alias.
-- **CLI flags.** Make `--alert-handling` / `--no-alert-handling` the canonical run and record flags,
-  and keep `--dismiss-alerts` / `--no-dismiss-alerts` as hidden, deprecated aliases that map to the
-  same option so existing invocations and CI still work. `--alert-instruction` already reads as
+- **CLI flags.** Make `--alert-handling` / `--no-alert-handling` the canonical flag on all three
+  commands that carry it today — `run`, `record`, and `crawl` — and keep `--dismiss-alerts` /
+  `--no-dismiss-alerts` as hidden, deprecated aliases that map to the same option so existing
+  invocations and CI still work. `--alert-instruction` (also on all three) already reads as
   alert-neutral, so it stays as is. Update the `run` capability's `claude_flag`
   (`bajutsu/capabilities.py`) to the canonical `--alert-handling` spelling.
 - **Deprecation signal.** Emit a one-time deprecation notice when the old `dismissAlerts` key or
@@ -103,8 +104,9 @@ flag, and `--dismiss-alerts` / `--no-dismiss-alerts` keeps working as a hidden, 
   `handleSystemAlert` proposal's docs so the two features are contrasted by role (reactive guard versus
   explicit step) in the same place, rather than left to collide by name.
 - **Tests.** Cover both the canonical `alertHandling` and the `dismissAlerts` alias parsing to the
-  same model; the config default under either key; both CLI flag spellings; a dump emitting the new
-  key; and the deprecation notice firing on the old spelling.
+  same model; the config default under either key; both CLI flag spellings on each of `run`,
+  `record`, and `crawl`; a dump emitting the new key; and the deprecation notice firing on the old
+  spelling.
 
 ## Alternatives considered
 
@@ -136,7 +138,7 @@ flag, and `--dismiss-alerts` / `--no-dismiss-alerts` keeps working as a hidden, 
 
 - [ ] Scenario schema — `AlertHandling` / `alertHandling`, `dismissAlerts` kept as an input alias.
 - [ ] Config-default surface — `alertHandling` key with `dismissAlerts` alias.
-- [ ] CLI flags — `--alert-handling` canonical, `--dismiss-alerts` hidden deprecated alias; capability `claude_flag`.
+- [ ] CLI flags — `--alert-handling` canonical on `run`/`record`/`crawl`, `--dismiss-alerts` hidden deprecated alias; capability `claude_flag`.
 - [ ] Deprecation signal on the old key / flag (authoring / CLI path only).
 - [ ] Docs — rename every mention across `docs/` + `docs/ja/` (ten files each side), fix the anchor
       links the heading-slug change breaks, note the alias, contrast with `handleSystemAlert`.
@@ -153,4 +155,5 @@ flag, and `--dismiss-alerts` / `--no-dismiss-alerts` keeps working as a hidden, 
 - [BE-0276 — Declarative per-scenario permission state](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state.md) —
   the deterministic pre-launch complement to the guard, which the guard's own docs already contrast against.
 - `bajutsu/scenario/models/scenario.py` (`DismissAlerts`), `bajutsu/agents/alerts.py`,
-  `bajutsu/cli/commands/run.py`, `bajutsu/capabilities.py` — the surfaces the rename touches.
+  `bajutsu/cli/commands/run.py`, `bajutsu/cli/commands/record.py`, `bajutsu/cli/commands/crawl.py`,
+  `bajutsu/config/schema.py`, `bajutsu/capabilities.py` — the surfaces the rename touches.
