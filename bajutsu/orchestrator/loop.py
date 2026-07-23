@@ -550,17 +550,23 @@ class _InterruptGuard:
         """Check the entries against one poll's tree (the per-tick hook a `wait` calls)."""
         self._fire_once(elements)
 
-    def clear_before_act(self, seed: list[base.Element]) -> None:
+    def clear_before_act(self, seed: list[base.Element]) -> list[base.Element]:
         """Before a UI act, clear any matching interstitial, re-reading until settled or capped.
 
         `seed` is the pre-action tree the loop already read for the step (a `screenChanged` step's
         `before`, or the one extra query an interrupts-declaring scenario pays for a bare act). Each
         fired recovery actuates, so the new screen is re-read and re-checked — the loop a `wait` gets
         for free from its own polling.
+
+        Returns the settled pre-act tree — the last one read, so it reflects the screen *after* any
+        interstitial was cleared. The caller re-baselines its `screenChanged` `before` from it, so a
+        recovery's own screen mutation is not misattributed to the step's action (the return is `seed`
+        unchanged when nothing fired).
         """
         elements = seed
         while self.failure is None and self._fire_once(elements):
             elements = self.driver.query()
+        return elements
 
 
 def _run_if(
@@ -751,9 +757,11 @@ def _run_steps(
             if guard is not None and kind != "wait":
                 # Reuse the `before` tree when the loop already read it (a `screenChanged` step),
                 # else one extra query — the one read an interrupts-declaring scenario pays for a
-                # bare act, counted into the BE-0234 yardstick.
+                # bare act, counted into the BE-0234 yardstick. Re-baseline `before` from the settled
+                # post-recovery tree so a cleared interstitial's own screen change is not later
+                # misattributed to this step's action by the `screenChanged` capture decision.
                 if before is not None:
-                    guard.clear_before_act(before)
+                    before = guard.clear_before_act(before)
                 else:
                     guard.clear_before_act(active_driver.query())
                     total_reads += 1

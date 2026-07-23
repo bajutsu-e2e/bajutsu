@@ -12,13 +12,42 @@ from _orch import FakeClock, _scenario
 from conftest import el
 
 from bajutsu.config import load_config, resolve
+from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
+from bajutsu.evidence import Artifact, intervals
 from bajutsu.orchestrator import run_scenario
 from bajutsu.scenario import Interrupt, Scenario, dump_scenarios, load_scenarios
 
 
 def _interrupt(condition: dict[str, object], steps: list[dict[str, object]]) -> Interrupt:
     return Interrupt.model_validate({"condition": condition, "steps": steps})
+
+
+class _RecordingSink:
+    """A minimal sink that records the instant-capture kinds fired per step (BE-0314 screenChanged)."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, list[str]]] = []
+
+    def capture(
+        self,
+        driver: base.Driver,
+        step_id: str,
+        kinds: list[str],
+        *,
+        elements: list[base.Element] | None = None,
+    ) -> list[Artifact]:
+        if kinds:
+            self.calls.append((step_id, kinds))
+        return []
+
+    def start_scenario_intervals(self, sid: str, kinds: list[str]) -> list[intervals.Interval]:
+        return []
+
+    def finish_scenario_intervals(
+        self, sid: str, started: list[intervals.Interval]
+    ) -> list[Artifact]:
+        return []
 
 
 # --- schema (Units 1) ---------------------------------------------------------------------------
@@ -203,6 +232,40 @@ def test_recovery_step_failure_fails_the_step_loudly() -> None:
     )
     assert not result.ok
     assert "does.not.exist" in (result.failure or "")
+
+
+# --- screenChanged capture is not misattributed to the step (Unit 3) ----------------------------
+
+
+def test_cleared_interstitial_is_not_misattributed_as_the_steps_screen_change() -> None:
+    """A `screenChanged` policy must not fire on the recovery's own screen change, only the step's."""
+
+    def react(d: FakeDriver, kind: str, arg: object) -> None:
+        # The recovery clears the overlay (a real screen change); the `go` tap changes nothing.
+        if kind == "tap" and getattr(arg, "get", lambda _k: None)("id") == "ov.close":
+            d.screen = [el("go", "Go", ["button"])]
+
+    driver = FakeDriver([el("ov.close", "X", ["button"]), el("go", "Go", ["button"])], react=react)
+    sink = _RecordingSink()
+    run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "x",
+                "steps": [{"tap": {"id": "go"}}],
+                "capturePolicy": [
+                    {"on": {"event": "screenChanged"}, "capture": ["screenshot.before"]}
+                ],
+            }
+        ),
+        clock=FakeClock(),
+        sink=sink,
+        interrupts=[_interrupt({"exists": {"id": "ov.close"}}, [{"tap": {"id": "ov.close"}}])],
+    )
+    # step0 is the `go` tap; its `before` is re-baselined to the post-recovery tree, so its own
+    # (no-op) action fires no screenChanged capture — only the always-on baseline.
+    step0 = [kinds for sid, kinds in sink.calls if sid == "x/step0"]
+    assert step0 == [["screenshot.after", "elements"]]
 
 
 # --- config-then-scenario order (Units 1/2) -----------------------------------------------------
