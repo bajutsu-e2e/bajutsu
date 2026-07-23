@@ -6,7 +6,7 @@
 	uikit-gen uikit-build uikit-noax-build runner-build \
 	swiftui-archive-device swiftui-ipa-device runner-build-device \
 	run-swiftui run-uikit run-swiftui-tabs run-uikit-tabs \
-	run-swiftui-noax run-uikit-noax doctor record ui-test \
+	run-swiftui-noax run-uikit-noax doctor record ui-test ui-test-coverage \
 	vrt vrt-approve vrt-swiftui vrt-swiftui-approve vrt-uikit vrt-uikit-approve \
 	e2e-visual e2e-visual-approve clean
 
@@ -162,6 +162,35 @@ ui-test:
 	cd $(SWIFTUI) && xcodebuild test -project BajutsuShowcaseSwiftUI.xcodeproj -scheme UITests \
 		-destination 'platform=iOS Simulator,id=$(SIM)' -derivedDataPath build/dd \
 		-retry-tests-on-failure -test-iterations 3
+
+# BE-0297: compile-and-run the DSL constructs the required `ui-test` slice (components.yaml) never
+# reaches — text-editing, gestures, multi-touch, and the coordinate-swipe / element-drag /
+# compound-selector constructs of codegen_extra.yaml. The first three scenarios are already proven
+# on-device by `bajutsu run` (the gestures / multi-touch e2e jobs), so only the *emitted* Swift is
+# newly under test. Generated files are gitignored (generation-only); this lands as a non-gating CI
+# step until the compiled slice proves stable, then folds into the required job (Unit 4). Runs only
+# the coverage classes (`-only-testing`, an allow-list keyed on the `Coverage*` output names below,
+# robust to any Components rename) — the required `ui-test` above owns the Components class. Each class
+# name is the `bajutsu codegen` transform of its `-o` stem (`CoverageExtra` -> `CoverageextraUITests`).
+# No `-retry-tests-on-failure` here (unlike `ui-test`): this is the deliberately-unstable slice, so a
+# retry would mask the very flakiness this signal exists to surface, and burn 10x-metered minutes doing it.
+UITESTS := $(SWIFTUI)/UITests
+ui-test-coverage:
+	cd $(ROOT) && uv run bajutsu codegen demos/showcase/scenarios/text_editing.yaml --target showcase-swiftui \
+		--config $(CONFIG) -o $(UITESTS)/CoverageTextEditing.swift
+	cd $(ROOT) && uv run bajutsu codegen demos/showcase/scenarios/gestures.yaml --target showcase-swiftui \
+		--config $(CONFIG) -o $(UITESTS)/CoverageGestures.swift
+	cd $(ROOT) && uv run bajutsu codegen demos/showcase/scenarios/gestures_multitouch.yaml --target showcase-swiftui \
+		--config $(CONFIG) -o $(UITESTS)/CoverageMultitouch.swift
+	cd $(ROOT) && uv run bajutsu codegen demos/showcase/scenarios/codegen_extra.yaml --target showcase-swiftui \
+		--config $(CONFIG) -o $(UITESTS)/CoverageExtra.swift
+	cd $(SWIFTUI) && xcodegen generate
+	cd $(SWIFTUI) && xcodebuild test -project BajutsuShowcaseSwiftUI.xcodeproj -scheme UITests \
+		-destination 'platform=iOS Simulator,id=$(SIM)' -derivedDataPath build/dd \
+		-only-testing:BajutsuShowcaseSwiftUIUITests/CoveragetexteditingUITests \
+		-only-testing:BajutsuShowcaseSwiftUIUITests/CoveragegesturesUITests \
+		-only-testing:BajutsuShowcaseSwiftUIUITests/CoveragemultitouchUITests \
+		-only-testing:BajutsuShowcaseSwiftUIUITests/CoverageextraUITests
 
 # Visual regression demo — every screen, for BOTH a11y toolkits. The two render the same
 # screens but not pixel-identically, so each keeps its own baseline dir (gitignored, regenerate

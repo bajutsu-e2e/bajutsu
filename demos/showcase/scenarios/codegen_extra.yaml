@@ -1,0 +1,26 @@
+# Codegen-only coverage (BE-0297): the three DSL constructs no proven on-device scenario reaches —
+# a coordinate `swipe` (from/to), an element-anchored `drag`, and a compound `traits` + `index`
+# selector. Their Swift translation is already unit-tested (tests/test_codegen.py); this scenario
+# exists so the emitted Swift is also *compiled and run* by the non-gating `ui-test-coverage`
+# codegen step, closing the compile gap for the last constructs alongside the reused text-editing /
+# gesture / multi-touch scenarios.
+#
+# Grounded on the Log tab (the same screen gestures.yaml drives), so every element reference is one
+# a proven scenario already resolves on-device. The gestures are non-destructive: a coordinate drag
+# and an element swipe on a control that scrolls rather than navigates, and a compound selector used
+# only to wait for a button that always exists.
+- name: coordinate swipe, element drag, and compound traits-index compile and run
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1" }
+  steps:
+    - tap: { label: "Log", traits: [button] }
+      capture: [video]
+    - wait: { for: { id: log.submit }, timeout: 10 }
+    # element-anchored drag (BE-0227): emits the same swipeX() primitive a directional swipe does.
+    - drag: { on: { id: log.submit }, direction: up }
+    # coordinate swipe (BE-0025): a pure-coordinate drag via XCUICoordinate, element-independent.
+    - swipe: { from: [120, 400], to: [120, 220] }
+    # compound traits + index (BE-0026): the first button in the tree — always present, non-destructive.
+    - wait: { for: { traits: [button], index: 0 }, timeout: 5 }
+  expect:
+    - exists: { id: log.submit }

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from bajutsu.codegen import CodegenError, class_name_for, to_xcuitest
@@ -363,3 +365,36 @@ def test_extract_capture_fails_loudly() -> None:
             "    - tap: { id: total }\n"
             "      extract: { amount: { sel: { id: total }, prop: value } }\n"
         )
+
+
+# BE-0297 Unit 1/2/4: the scenarios the non-gating `ui-test-coverage` codegen step compiles on-device
+# (demos/showcase/Makefile). The macOS compile is the real proof, but it is expensive and off the fast
+# gate, so this pins the Linux-checkable half: every coverage fixture must stay codegen-able (no
+# CodegenError, no silent `unsupported`/UNSUPPORTED_SELECTOR degradation) and keep emitting the very
+# XCTest primitives the compiled slice exists to exercise. A scenario edit that breaks codegen then
+# fails here, in seconds, instead of only in the metered Simulator job.
+_COVERAGE_DIR = Path(__file__).resolve().parents[1] / "demos" / "showcase" / "scenarios"
+# (construct, source scenario, a distinguishing emitted Swift primitive)
+_COVERAGE_CASES = [
+    ("select/copy (Cmd+A / Cmd+C)", "text_editing.yaml", 'typeKey("a", modifierFlags: .command)'),
+    ("delete key", "text_editing.yaml", "XCUIKeyboardKey.delete.rawValue"),
+    ("longPress", "gestures.yaml", ".press(forDuration:"),
+    ("directional swipe", "gestures.yaml", ".swipeUp()"),
+    ("pinch", "gestures_multitouch.yaml", ".pinch(withScale: 2.0"),
+    ("rotate", "gestures_multitouch.yaml", ".rotate(1.0"),
+    ("coordinate swipe (drag)", "codegen_extra.yaml", "thenDragTo: coord("),
+    ("compound traits+index", "codegen_extra.yaml", ".element(boundBy: 0)"),
+]
+
+
+@pytest.mark.parametrize(("construct", "scenario", "primitive"), _COVERAGE_CASES)
+def test_coverage_scenarios_emit_their_construct(
+    construct: str, scenario: str, primitive: str
+) -> None:
+    scenarios = load_scenarios((_COVERAGE_DIR / scenario).read_text(encoding="utf-8"))
+    code = to_xcuitest(scenarios, class_name_for(scenario.removesuffix(".yaml")), {})
+    # No construct in the compiled slice may degrade to a silent/unsupported stub — that is the exact
+    # gap BE-0297 closes; a labeled device-state `// TODO` (clipboard / simctl) is a different thing.
+    assert "UNSUPPORTED_SELECTOR" not in code
+    assert "// TODO: unsupported" not in code
+    assert primitive in code, f"{construct}: expected {primitive!r} in generated Swift"

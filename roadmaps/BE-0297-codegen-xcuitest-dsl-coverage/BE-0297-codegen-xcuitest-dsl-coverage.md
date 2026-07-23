@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0297") |
-| Implementing PR | [#1278](https://github.com/bajutsu-e2e/bajutsu/pull/1278) |
+| Implementing PR | [#1278](https://github.com/bajutsu-e2e/bajutsu/pull/1278), [#1315](https://github.com/bajutsu-e2e/bajutsu/pull/1315) |
 | Topic | codegen coverage |
 <!-- /BE-METADATA -->
 
@@ -81,10 +81,11 @@ The work breaks down MECE into the units below.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Extend the compiled scenario with text-editing, gesture, and compound-selector steps.
-- [ ] Compile and run `pinch` / `rotate` multi-touch codegen output.
+- [x] Extend the compiled scenario with text-editing, gesture, and compound-selector steps.
+- [x] Compile and run `pinch` / `rotate` multi-touch codegen output.
 - [x] Resolve `forEach` / `if` / `extract` codegen: implement and compile, or fail loudly at generation time.
-- [ ] Land new slices non-gating first, promote once stable.
+- [ ] Land new slices non-gating first, promote once stable. *(non-gating step landed; promotion to
+  the required gate, once the compiled slice proves stable, is the remaining follow-up.)*
 
 **Log**
 
@@ -93,9 +94,20 @@ The work breaks down MECE into the units below.
   for these runtime-only constructs, so all three emitters (XCUITest / Playwright / UI Automator)
   refuse them uniformly instead of emitting a silent no-op `// TODO` stub. The `web` context step
   (the third control-flow action) is deliberately left on its pre-existing unsupported-`// TODO` path,
-  outside this item's named scope. The remaining units — extending the compiled scenario, compiling
-  `pinch` / `rotate`, and the incremental non-gating rollout — are on-device Simulator CI work and
-  land in a follow-up PR.
+  outside this item's named scope.
+- Landed the compiled coverage for the remaining constructs as a **non-gating** codegen step. A new
+  `ui-test-coverage` target (`demos/showcase/Makefile`) generates native XCUITest from scenarios
+  already proven on-device by `bajutsu run` — `text_editing.yaml` (`select` / `copy` / `clear` /
+  `delete`), `gestures.yaml` (`longPress`, directional `swipe`, `drag`), `gestures_multitouch.yaml`
+  (`pinch` / `rotate`) — plus a small `codegen_extra.yaml` for the three constructs no proven
+  scenario reaches (a coordinate `swipe`, an element-anchored `drag`, and a compound `traits` +
+  `index` selector), so the *emitted* Swift for each is compiled and run, not only string-matched.
+  The `xcuitest (codegen)` job runs it after the required `components.yaml` step with
+  `continue-on-error` (like `actuation` / `golden`), skipping the committed Components class so only
+  the new slice runs there; the generated files are gitignored. `tests/test_codegen.py` pins the
+  Linux-checkable half — every coverage fixture stays codegen-able and emits its construct's
+  primitive. The last box — promoting the slice into the required gate once it proves stable on the
+  metered Simulator lane — is the remaining follow-up, so the item stays `In progress`.
 
 ## References
 
@@ -103,5 +115,6 @@ The work breaks down MECE into the units below.
 - [BE-0083 — Unify the codegen emitters behind a shared scenario walk](../BE-0083-codegen-emitter-unification/BE-0083-codegen-emitter-unification.md)
 - [BE-0282 — Real-backend network capture, mock, and assertion coverage in CI](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md)
 - `bajutsu/codegen/xcuitest.py`, `tests/test_codegen.py`, `tests/test_gestures.py`,
-  `demos/showcase/scenarios/components.yaml`, `.github/workflows/ios-e2e.yml`
+  `demos/showcase/scenarios/components.yaml`, `demos/showcase/scenarios/codegen_extra.yaml`,
+  `demos/showcase/Makefile` (`ui-test-coverage`), `.github/workflows/ios-e2e.yml`
   (`xcuitest (codegen)` and `xcuitest (multi-touch)` jobs)
