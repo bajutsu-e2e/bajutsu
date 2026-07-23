@@ -1,14 +1,14 @@
-[English](BE-XXXX-xcuitest-cold-spawn-resilience.md) · **日本語**
+[English](BE-0319-xcuitest-cold-spawn-resilience.md) · **日本語**
 
-# BE-XXXX — XCUITest のコールド runner 起動を診断可能で自己修復的にする
+# BE-0319 — XCUITest のコールド runner 起動を診断可能で自己修復的にする
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-xcuitest-cold-spawn-resilience-ja.md) |
+| 提案 | [BE-0319](BE-0319-xcuitest-cold-spawn-resilience-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0319") |
 | トピック | Platform support |
 | 関連 | [BE-0207](../BE-0207-xcuitest-channel-transient-retry/BE-0207-xcuitest-channel-transient-retry-ja.md), [BE-0218](../BE-0218-e2e-simulator-flaky-readiness-actuation/BE-0218-e2e-simulator-flaky-readiness-actuation-ja.md), [BE-0287](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience-ja.md) |
 <!-- /BE-METADATA -->
