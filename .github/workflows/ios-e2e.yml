@@ -284,11 +284,11 @@ jobs:
         run: xcrun simctl install "${{ steps.sim.outputs.udid }}" "demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
 
       # Interaction (BE-0281): `tap` + `back` end-to-end, on the Stable launch tab.
-      # continue-on-error: the three scenarios below are independent and unrelated, bundled into one
+      # continue-on-error: the four scenarios below are independent and unrelated, bundled into one
       # job purely for cost reasons (see the job header comment) — a normal step failure would skip
-      # every step after it, hiding the other two scenarios' pass/fail signal and artifacts even
+      # every step after it, hiding the other three scenarios' pass/fail signal and artifacts even
       # though they have nothing to do with the failure. The "Report actuation results" step below
-      # turns any step failure back into a job failure once all three have had a chance to run.
+      # turns any step failure back into a job failure once all four have had a chance to run.
       - name: Run the navigation scenario (xcuitest — tap + back)
         id: navigation
         continue-on-error: true
