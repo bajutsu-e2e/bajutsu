@@ -233,6 +233,24 @@ def test_recovery_step_failure_fails_the_step_loudly() -> None:
     assert not result.ok
 
 
+def test_recovery_failure_before_the_act_skips_the_steps_own_action() -> None:
+    """A pre-act recovery failure is a decided outcome: the step's own action must not still run
+    against the screen a failed recovery left broken."""
+
+    driver = FakeDriver([el("ov.close", "X", ["button"]), el("go", "Go", ["button"])])
+    result = run_scenario(
+        driver,
+        _scenario({"name": "g", "steps": [{"tap": {"id": "go"}}]}),
+        clock=FakeClock(),
+        interrupts=[
+            _interrupt({"exists": {"id": "ov.close"}}, [{"tap": {"id": "does.not.exist"}}])
+        ],
+    )
+    assert not result.ok
+    assert "does.not.exist" in (result.failure or "")
+    assert ("tap", {"id": "go"}) not in driver.actions
+
+
 def test_recovery_failure_mid_wait_ends_the_wait_immediately() -> None:
     """A recovery failure decided on the first poll must not poll on toward a long wait timeout.
 
@@ -261,7 +279,6 @@ def test_recovery_failure_mid_wait_ends_the_wait_immediately() -> None:
     assert not result.ok
     assert "does.not.exist" in (result.failure or "")
     assert sleep_calls == []
-    assert "does.not.exist" in (result.failure or "")
 
 
 # --- screenChanged capture is not misattributed to the step (Unit 3) ----------------------------

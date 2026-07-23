@@ -786,53 +786,64 @@ def _run_steps(
                     assert progress is not None
                     progress(f"{_prefix}: waiting {_desc} ({remaining:.0f}s left)")
 
-            ok, reason, results, snapshot = _run_step_body(
-                active_driver,
-                interp_step,
-                kind,
-                clock,
-                network,
-                relaunch,
-                bindings,
-                control,
-                mailbox,
-                ctx,
-                wait_trace=wait_trace,
-                selection=selection,
-                on_blocked=on_blocked,
-                alerts=outcome.alerts,
-                on_wait_tick=wait_tick,
-                on_interrupt_poll=guard.observe if guard is not None else None,
-            )
-            if not ok and on_blocked is not None:
-                event = on_blocked(active_driver)
-                if event is not None:
-                    outcome.alerts.append(event)
-                    wait_trace = WaitTrace() if wait_trace is not None else None
-                    # The retry is the end-of-step "one more shot": it does not re-arm the mid-wait
-                    # guard (no on_blocked passed), so a step's AI-vision calls stay bounded at
-                    # _GUARD_MAX_ATTEMPTS (mid-wait) + 1 (this end-of-step dismiss).
-                    ok, reason, results, snapshot = _run_step_body(
-                        active_driver,
-                        interp_step,
-                        kind,
-                        clock,
-                        network,
-                        relaunch,
-                        bindings,
-                        control,
-                        mailbox,
-                        ctx,
-                        wait_trace=wait_trace,
-                        selection=selection,
-                        on_wait_tick=wait_tick,
-                        on_interrupt_poll=guard.observe if guard is not None else None,
-                    )
-            # A failure inside an interrupt's own recovery `steps` fails the step loudly, rather than
-            # being swallowed while the run continues against a screen the recovery left broken
-            # (determinism first). It overrides a step that otherwise passed.
             if guard is not None and guard.failure is not None:
-                ok, reason = False, guard.failure
+                # The pre-act clear already decided the outcome (a recovery step failed): skip the
+                # step's own action rather than poke a screen the failed recovery left broken —
+                # symmetric with how a wait's `on_interrupt_poll` aborts the poll instead of running
+                # on. The rest of the pipeline below (evidence capture, outcome bookkeeping) still
+                # runs unchanged, exactly as it does for any other failed step.
+                ok, reason, snapshot = False, guard.failure, None
+                results: list[AssertionResult] = []
+            else:
+                ok, reason, results, snapshot = _run_step_body(
+                    active_driver,
+                    interp_step,
+                    kind,
+                    clock,
+                    network,
+                    relaunch,
+                    bindings,
+                    control,
+                    mailbox,
+                    ctx,
+                    wait_trace=wait_trace,
+                    selection=selection,
+                    on_blocked=on_blocked,
+                    alerts=outcome.alerts,
+                    on_wait_tick=wait_tick,
+                    on_interrupt_poll=guard.observe if guard is not None else None,
+                )
+                if not ok and on_blocked is not None:
+                    event = on_blocked(active_driver)
+                    if event is not None:
+                        outcome.alerts.append(event)
+                        wait_trace = WaitTrace() if wait_trace is not None else None
+                        # The retry is the end-of-step "one more shot": it does not re-arm the mid-wait
+                        # guard (no on_blocked passed), so a step's AI-vision calls stay bounded at
+                        # _GUARD_MAX_ATTEMPTS (mid-wait) + 1 (this end-of-step dismiss).
+                        ok, reason, results, snapshot = _run_step_body(
+                            active_driver,
+                            interp_step,
+                            kind,
+                            clock,
+                            network,
+                            relaunch,
+                            bindings,
+                            control,
+                            mailbox,
+                            ctx,
+                            wait_trace=wait_trace,
+                            selection=selection,
+                            on_wait_tick=wait_tick,
+                            on_interrupt_poll=guard.observe if guard is not None else None,
+                        )
+                # A failure inside an interrupt's own recovery `steps` fails the step loudly, rather
+                # than being swallowed while the run continues against a screen the recovery left
+                # broken (determinism first). It overrides a step that otherwise passed — this is the
+                # wait path's version of the pre-act short-circuit above (guard.failure can newly
+                # become True during `_run_step_body`'s `on_interrupt_poll` calls).
+                if guard is not None and guard.failure is not None:
+                    ok, reason = False, guard.failure
             outcome.ok, outcome.reason, outcome.assertion_results = ok, reason, results
             outcome.duration_s = clock.now() - start
 
