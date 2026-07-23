@@ -422,7 +422,7 @@ class XcuitestDriver:
     # --- the channel ---
 
     def _query_with_handles(self) -> tuple[list[base.Element], dict[int, str]]:
-        """A snapshot plus a map from each element's object identity to its per-snapshot handle.
+        """A snapshot plus a map from each element's object identity to its handle.
 
         Keyed by `id()` of the returned dicts: `resolve_unique` returns one of these very objects, so
         the resolved element's handle is an O(1) identity lookup — the element is acted on by the
