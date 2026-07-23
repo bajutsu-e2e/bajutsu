@@ -96,6 +96,13 @@ that `BAJUTSU_OAUTH_ALLOWED_USERS` produces today. A successful sign-in is grant
 minimum. `BAJUTSU_OAUTH_ALLOWED_USERS` and `BAJUTSU_OAUTH_VIEWERS` are retired — the organization's own
 roster, not a separate list, is now the allowlist.
 
+That "at minimum" is a real downgrade for every current editor, not just a rewording:
+`role_for` ([`bajutsu/serve/authz.py`](../../bajutsu/serve/authz.py)) defaults an allowlisted login to
+editor today, unless it is explicitly in `BAJUTSU_OAUTH_VIEWERS` — so every scenario author is an
+editor by default now. This item flips that base role to viewer; users who are implicit editors
+today lose write access on their next login unless a deployment adds them to `editorTeam` first,
+the same kind of adoption step as the `orgs:`-block requirement above.
+
 `org_for_identity` cannot signal this rejection on its own: it returns a plain `str`, and both a
 login that legitimately resolves to the shared `default` org and a login that matches nothing fall
 through to the same `DEFAULT_ORG` sentinel ([`bajutsu/serve/orgs.py`](../../bajutsu/serve/orgs.py)).
@@ -185,6 +192,15 @@ way as `editorTeam`), replaces the `BAJUTSU_OAUTH_ADMINS` login list. Scoping ad
 and introducing a separate, higher tier for cross-org operations above that — is a materially larger
 change, tracked as a possible future item rather than folded into this one (see *Alternatives
 considered*).
+
+Because the admin-Team check runs only after a login clears the organization-membership gate (the
+same ordering *Write access* states for `editorTeam`), a `BAJUTSU_OAUTH_ADMIN_TEAM` member whose
+GitHub organization isn't reachable through any tenant's `githubOrgs`/`members` — an ops-only GitHub
+organization no `orgs:` entry lists, say — is rejected at sign-in before the admin Team is ever
+consulted, losing sign-in entirely rather than gaining admin. Naming the admin Team independently of
+any tenant org, as this section does, only works in practice when that admin is also a member of
+some configured tenant org (through `members` or `githubOrgs`); this item adds no separate path
+around the organization-membership gate for admins, so a deployment must ensure that overlap itself.
 
 ### Revocation reflects on the next login, unchanged
 

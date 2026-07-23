@@ -98,6 +98,14 @@ Bajutsu テナントの下には、もう1段細かい単位があります。**
 には、最低でも viewer ロールを付与します。`BAJUTSU_OAUTH_ALLOWED_USERS` と `BAJUTSU_OAUTH_VIEWERS`
 は廃止します。別のリストではなく、Organization 自身の名簿が許可リストになるからです。
 
+「最低でも」という表現は、単なる言い回しではありません。今日の editor すべてにとって実質的な
+降格です。`role_for`（[`bajutsu/serve/authz.py`](../../bajutsu/serve/authz.py)）は、許可リストに
+載った login を今日デフォルトで editor にします。例外は、`BAJUTSU_OAUTH_VIEWERS` に明示されて
+いる場合だけです。つまり、scenario の書き手は今日、デフォルトで editor です。この項目は、この
+基底ロールを viewer へ反転させます。今日 editor である user は、`editorTeam` へあらかじめ
+登録されない限り、次回ログインで書き込み権限を失います。これは、上で述べた `orgs:` ブロックの
+宣言と同種の、採用時の対応です。
+
 `org_for_identity` は、この拒否を単独では伝えられません。`str` を返す関数です。正当に `default`
 へ解決する login と、一致しない login は、同じ `DEFAULT_ORG` の値になります
 （[`bajutsu/serve/orgs.py`](../../bajutsu/serve/orgs.py)）。そのため判定には、それ自身の一致
@@ -197,6 +205,17 @@ login が「どの org に属すか」だけだからです。ここでは、取
 と同じ `"<GitHub organization>/<team slug>"` の形であり、同じ方法で確認します。admin 自体を org
 ごとに絞り、その上に org を跨ぐ操作のためのさらに上位の階層を新設することは、これよりずっと大きな
 変更です。この項目には折り込まず、将来の別の提案に委ねます（「検討した代替案」を参照してください）。
+
+admin Team の確認は、login が Organization メンバーシップのゲートを通過した後にのみ走ります。
+これは「書き込み権限は…」が `editorTeam` について述べているのと同じ順序です。そのため、
+`BAJUTSU_OAUTH_ADMIN_TEAM` のメンバーであっても注意が必要です。その GitHub Organization が、
+どのテナントの `githubOrgs`/`members` からも参照されていないとします。例えば、どの `orgs:`
+エントリにも載らない運用専用の GitHub Organization にいる場合です。この場合、admin Team が
+参照される前に、サインインそのもので拒否されます。admin になるはずが、サインインを失います。
+この節が述べるように、admin Team をテナント org と独立に名付けても、実際にはその admin が
+設定済みのテナント org のメンバーである場合にしか機能しません。その所属は、`members` か
+`githubOrgs` のいずれかを通じます。この項目は、Organization メンバーシップのゲートを admin
+だけ迂回する経路を追加しません。そのため、この重なりを確保するのはデプロイ側の責任です。
 
 ### 失権は次回ログインで反映される、これまでと変わらない
 
