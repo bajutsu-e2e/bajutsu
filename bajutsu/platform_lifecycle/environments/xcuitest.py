@@ -226,6 +226,18 @@ class XcuitestEnvironment(_DeviceEnvironment):
         try:
             cast(base.BackendLifecycle, driver).await_ready(timeout=_RUNNER_STARTUP_TIMEOUT)
         except Exception:
+            # Say *why* the runner never answered /health before discarding it. `_discard_runner`
+            # reports the captured output only when the process died on its own (a crash, poll() is
+            # not None); a runner still alive but that never bound its port — the app under test hung
+            # at launch, or xcodebuild was slow to bring up the XCTest host — otherwise vanishes
+            # behind a bare "did not come up" with no clue which. Emitting the hint here covers that
+            # hang case too, so a startup timeout always points at the captured runner log (or, when
+            # capture is off, how to turn it on) instead of only recording that the channel never came.
+            _logger.warning(
+                "xcuitest runner never answered /health within %ss%s",
+                _RUNNER_STARTUP_TIMEOUT,
+                self._runner_log_hint(),
+            )
             self._discard_runner()
             raise
         # Only the Simulator runner is kept warm; a real-device runner is torn down per lease.
