@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-xcuitest-content-addressed-snapshot-handle-ja.md)
+**English** · [日本語](BE-0312-xcuitest-content-addressed-snapshot-handle-ja.md)
 
-# BE-XXXX — Derive XCUITest actuation handles from element identity so an unchanged screen keeps its handles valid
+# BE-0312 — Derive XCUITest actuation handles from element identity so an unchanged screen keeps its handles valid
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-xcuitest-content-addressed-snapshot-handle.md) |
+| Proposal | [BE-0312](BE-0312-xcuitest-content-addressed-snapshot-handle.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0312") |
 | Topic | Platform support |
 | Related | [BE-0289](../BE-0289-xcuitest-stale-handle-reresolve/BE-0289-xcuitest-stale-handle-reresolve.md), [BE-0207](../BE-0207-xcuitest-channel-transient-retry/BE-0207-xcuitest-channel-transient-retry.md), [BE-0287](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience.md), [BE-0049](../BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md) |
 <!-- /BE-METADATA -->
