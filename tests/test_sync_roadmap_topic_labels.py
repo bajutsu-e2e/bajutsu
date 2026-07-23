@@ -114,7 +114,7 @@ def test_path_topic_labels_is_empty_for_an_unmapped_path() -> None:
 
 
 def test_path_topic_labels_exact_and_suffix_rules() -> None:
-    assert labels.path_topic_labels("Makefile") == {"topic:dev-infra"}
+    assert labels.path_topic_labels("Makefile") == {"topic:contribution"}
     assert labels.path_topic_labels("BajutsuKit/Sources/x.swift") == {"topic:platform"}
 
 
