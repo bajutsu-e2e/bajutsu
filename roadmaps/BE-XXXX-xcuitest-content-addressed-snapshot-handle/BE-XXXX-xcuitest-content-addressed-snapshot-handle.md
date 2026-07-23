@@ -136,8 +136,8 @@ occurrences take a suffixed variant.
 runner's reply: a `stale` reply triggers a re-resolution, whereas a `not-found` reply fails
 immediately, so the two must stay distinguishable after the handle scheme changes. The generation
 counter is what tells them apart today — `lookup` parses the handle, and a well-formed handle whose
-generation is not current reads as `stale` while an unparseable handle reads as `notFound`. Content
-handles carry no generation to parse, so `SnapshotStore` records the set of handles it has ever
+generation is not current reads as `stale` while an unparseable handle reads as `notFound`.
+Identity-derived handles carry no generation to parse, so `SnapshotStore` records the set of handles it has ever
 issued and `lookup` returns `.found` when the handle is a live key, `.stale` when the handle was
 issued before but is not a live key (the element it named has left the screen or changed identity),
 and `.notFound` when the handle was never issued (a malformed or fabricated string). The runner's
@@ -188,7 +188,7 @@ BE-0207's transport-retry seam would delete the specific trigger in *Motivation*
 re-opening the transient-blip flake BE-0207 shipped to close: a genuine sub-second transport blip on
 a read would once again fail the step outright. The retry is also not the only conceivable source of
 an extra snapshot — any future runner behavior that re-snapshots would reintroduce the flake — so
-removing the retry treats one symptom rather than the cause. Content-addressed handles make a
+removing the retry treats one symptom rather than the cause. Identity-derived handles make a
 redundant snapshot harmless regardless of where the snapshot comes from.
 
 **Rely on BE-0289's re-resolution retry alone.** *Motivation* shows why the retry cannot recover this
@@ -201,7 +201,7 @@ the client, and this item removes the manufactured race at the source.
 from the last few generations as live would paper over the interleaving without changing the scheme,
 but it only widens an arbitrary window rather than fixing the mismatch: a handle should be valid
 exactly while its element is on screen, which is a statement about identity, not about how many
-snapshots have elapsed. Content addressing states that invariant directly, and it needs no tuning
+snapshots have elapsed. Deriving the handle from identity states that invariant directly, and it needs no tuning
 parameter that a slower runner could outrun.
 
 **Include the element's `frame` or `value` in the handle key.** Keying on position or on the live
