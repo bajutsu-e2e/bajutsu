@@ -93,11 +93,12 @@ prime-directive-driven guardrails on *when* to use it.
                                     │
                                     ▼
    one branch: claude/<topic>   base: main
-     roadmaps/BE-XXXX-<slug>/  @ Status: Implemented   (placeholder id, Implementing PR row)
-     code + tests against the proposal spec            (BE-XXXX only inside the item's own files)
+     roadmaps/BE-XXXX-<slug>/  @ Status: Implemented   (placeholder id; BE-XXXX only
+     code + tests against the proposal spec             inside the item's own files)
      plain scoped title, NO [BE-…] prefix
                                     │
-                                    │  reviewed as one PR, then merged by a human
+                                    │  human opens the PR; the Implementing PR row's number
+                                    │  is filled in a follow-up push, then it is merged
                                     ▼
    roadmap-id allocates BE-NNNN on main (BE-0089)
      · renames BE-XXXX-<slug>/ → BE-NNNN-<slug>/
@@ -129,7 +130,9 @@ finished item.
    ground-in-the-code, plan-and-confirm, implement-with-tests, and review-the-diff steps. Then run
    its promotion steps **now**, because `Status` and the PR number do not depend on the id: flip
    `Status: Implemented` and tick the `Progress` boxes in both language files, keeping the `BE-XXXX`
-   placeholder, and add the `Implementing PR` row referencing this PR's own number. Two steps stay
+   placeholder, and add the `Implementing PR` row — filling its number in a follow-up push once the
+   human has opened the PR (below), since the PR number does not exist during Phase B, the way
+   `implement-be` step 8 defers the fill to step 10. Two steps stay
    deferred because they need a number or an issue that exists only after merge: the `[BE-NNNN]` title
    prefix (the PR keeps a plain scoped title), and the tracking-issue self-assign (the
    [BE-0109](../BE-0109-roadmap-tracking-issues/BE-0109-roadmap-tracking-issues.md) issue is created

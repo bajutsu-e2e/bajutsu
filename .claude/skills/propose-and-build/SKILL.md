@@ -66,11 +66,12 @@ survive the merge as a stale reference on `main`.
                                     │
                                     ▼
    one branch: claude/<topic>   base: main
-     roadmaps/BE-XXXX-<slug>/  @ Status: Implemented   (placeholder id, Implementing PR row)
-     code + tests against the proposal spec            (BE-XXXX only inside the item's own files)
+     roadmaps/BE-XXXX-<slug>/  @ Status: Implemented   (placeholder id; BE-XXXX only
+     code + tests against the proposal spec             inside the item's own files)
      plain scoped title, NO [BE-…] prefix
                                     │
-                                    │  reviewed as one PR, then merged by a human
+                                    │  human opens the PR; the Implementing PR row's number
+                                    │  is filled in a follow-up push, then it is merged
                                     ▼
    roadmap-id allocates BE-NNNN on main (BE-0089)
      · renames BE-XXXX-<slug>/ → BE-NNNN-<slug>/
@@ -148,8 +149,9 @@ not-yet-allocated id:
 
 - Flip the item's `Status` to `Implemented` and tick the `Progress` boxes in **both** language
   files, keeping the `BE-XXXX` placeholder — the allocator rewrites it on merge.
-- Add the `Implementing PR` row (in both languages) referencing this PR's own number, right after
-  the `Tracking issue` row, once the PR exists.
+- Add the `Implementing PR` row (in both languages) right after the `Tracking issue` row. The PR
+  number does not exist until the human opens the PR (below), so fill the row's number in a
+  follow-up push once the PR is open — the way `implement-be` step 8 defers the fill to step 10.
 
 Two `implement-be` steps stay deferred because they need a number or an issue that exists only after
 merge:
