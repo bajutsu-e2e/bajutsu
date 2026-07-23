@@ -36,8 +36,8 @@ XcuitestChannelError: xcuitest runner did not come up within 120.0s (health neve
 ```
 
 The module-scoped fixture that launches the runner failed once, and all 14 conformance tests then
-errored at setup, sinking the whole (required) job. The captured log carries a single repeated
-line for the full budget:
+errored at setup, sinking the whole (required) job. The captured log carries a pair of lines for
+the full budget:
 
 ```
 runner channel GET /health failed (attempt 1/3), retrying: [Errno 61] Connection refused
@@ -111,7 +111,8 @@ The work breaks into five independent units.
    gate,
    preserving the "flakiness is never tolerated by absorption" stance of
    [BE-0049](../BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md). The
-   single retry applies only to the cold spawn, never to the warm-reuse path (BE-0291).
+   single retry applies only to the cold spawn, never to the warm-reuse path
+   ([BE-0291](../BE-0291-xcuitest-runner-reuse-across-scenarios/BE-0291-xcuitest-runner-reuse-across-scenarios.md)).
 
 5. **Off-device tests over the spawn/wait seam.** Factor the "await readiness with a liveness check
    and a bounded retry" logic into a helper that takes an injectable process handle and spawn
