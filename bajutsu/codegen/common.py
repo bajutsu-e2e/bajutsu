@@ -154,6 +154,23 @@ def permissions_setup_lines(scenario: Scenario) -> list[str]:
     ]
 
 
+def interrupts_setup_lines(scenario: Scenario) -> list[str]:
+    """The `// TODO` lines naming each `interrupts` handler (BE-0314), one per entry.
+
+    No native XCUITest / Espresso / Playwright construct maps onto "check this condition
+    opportunistically throughout the whole test," so — like `permissions_setup_lines` — this renders
+    a labeled `// TODO` naming the field and each entry's condition rather than a silent skip. Only a
+    scenario's own `interrupts` are visible to codegen (the walk sees the scenario, not the resolved
+    config), matching how `permissions_setup_lines` emits only `scenario.permissions`.
+    """
+    return [
+        f"// TODO: interrupts[{i}] "
+        f"{_collapse_line_terminators(str(entry.condition.model_dump(by_alias=True, exclude_none=True, exclude_defaults=True)))}"
+        " — bajutsu checks this opportunistically at run time; not generated"
+        for i, entry in enumerate(scenario.interrupts)
+    ]
+
+
 class CodeGenerator(Protocol):
     """The target-specific parts of a generated test file.
 

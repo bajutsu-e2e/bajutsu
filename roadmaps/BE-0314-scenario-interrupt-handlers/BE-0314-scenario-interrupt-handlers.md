@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0314](BE-0314-scenario-interrupt-handlers.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0314") |
+| Implementing PR | [#1316](https://github.com/bajutsu-e2e/bajutsu/pull/1316) |
 | Topic | Scenario authoring features |
 | Related | [BE-0033](../BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow.md), [BE-0269](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention.md), [BE-0276](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state.md), [BE-0310](../BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness.md) |
 <!-- /BE-METADATA -->
@@ -186,18 +187,29 @@ scenario's `vars.*` bindings, the same as `if`'s `then`/`else` do today.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — scenario and config schema (`interrupts: list[Interrupt]`), config-then-scenario
+- [x] Unit 1 — scenario and config schema (`interrupts: list[Interrupt]`), config-then-scenario
       resolution order.
-- [ ] Unit 2 — opportunistic condition check reusing already-fetched trees in `_run_steps` and
+- [x] Unit 2 — opportunistic condition check reusing already-fetched trees in `_run_steps` and
       `_wait`.
-- [ ] Unit 3 — on a match, run the entry's `steps` via the existing `_ExecSteps` machinery, then
+- [x] Unit 3 — on a match, run the entry's `steps` via the existing `_ExecSteps` machinery, then
       resume the interrupted step (wait: same deadline; act: one re-attempt).
-- [ ] Unit 4 — re-entrancy cap per entry, with a clean fallback to the step's ordinary outcome.
-- [ ] Unit 5 — codegen labeled TODO for the field.
-- [ ] Unit 6 — docs (scenarios.md + ja) with an `if` / `interrupts` / `dismissAlerts` / `permissions`
+- [x] Unit 4 — re-entrancy cap per entry, with a clean fallback to the step's ordinary outcome.
+- [x] Unit 5 — codegen labeled TODO for the field.
+- [x] Unit 6 — docs (scenarios.md + ja) with an `if` / `interrupts` / `dismissAlerts` / `permissions`
       comparison, and a showcase fixture.
-- [ ] Unit 7 — tests (schema, ordering, wait- and act-step matches, re-entrancy cap, `vars.*`
+- [x] Unit 7 — tests (schema, ordering, wait- and act-step matches, re-entrancy cap, `vars.*`
       sharing).
+
+**Log**
+
+- [#1316](https://github.com/bajutsu-e2e/bajutsu/pull/1316) — implemented all seven units: the
+  `Interrupt` schema on `Scenario` / `TargetConfig` threaded through `RunDefaults` / `resolve`
+  (config-then-scenario order); `_InterruptGuard` in `bajutsu/orchestrator/loop.py` (per-step
+  re-entrancy cap, conditions interpolated once, recovery via the existing `exec_steps` seam, a
+  `running_recovery` flag suppressing re-entrant checks) plus the `on_interrupt_poll` hook on
+  `_wait` / `_wait_settled`; a codegen labeled `// TODO` per entry; docs (en + ja) with the
+  `if` / `interrupts` / `dismissAlerts` / `permissions` comparison and a showcase fixture. Covered
+  by `tests/orchestrator/test_interrupts.py`.
 
 ## References
 

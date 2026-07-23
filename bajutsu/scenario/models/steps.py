@@ -91,6 +91,20 @@ class ForEach(_Model):
     steps: list[Step] = Field(default_factory=list)
 
 
+class Interrupt(_Model):
+    """A handler for an interstitial screen that can appear at an unpredictable point (BE-0314).
+
+    ``condition`` is the same assertion the ``if`` step evaluates; the runner checks it
+    opportunistically against trees it has already fetched (a ``wait``'s poll tick, an act step's
+    pre-action read), wherever in the step sequence the screen happens to surface, and runs
+    ``steps`` to clear it when it matches. The steps share the enclosing scenario's ``vars.*``, the
+    same as ``if``'s branches do.
+    """
+
+    condition: Assertion
+    steps: list[Step] = Field(default_factory=list)
+
+
 class Web(_Model):
     """Enter the web context: resolve a native WebView host, then run inner steps against its DOM.
 
@@ -176,6 +190,7 @@ class Step(_Model):
 
 If.model_rebuild()
 ForEach.model_rebuild()
+Interrupt.model_rebuild()
 Web.model_rebuild()
 
 # The action field names, derived from the model so a new action is declared in exactly one

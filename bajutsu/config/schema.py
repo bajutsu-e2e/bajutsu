@@ -13,7 +13,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from bajutsu.drivers import base
-from bajutsu.scenario import DismissAlerts, Redact
+from bajutsu.scenario import DismissAlerts, Interrupt, Redact
 
 # Playwright rendering engines a web target can drive (BE-0076). Chromium is the default,
 # preserving today's single-engine behaviour; all three run headless on Linux.
@@ -368,6 +368,11 @@ class TargetConfig(_Model):
     dismiss_alerts: DismissAlerts | None = Field(default=None, alias="dismissAlerts")
     erase: bool | None = None  # default for preconditions.erase (built-in: off)
     network: bool | None = None  # collect the app's network exchanges (built-in: on)
+    # App-wide interstitial-screen handlers (BE-0314): the same `{ condition, steps }` shape a
+    # scenario's `interrupts` uses, applied to every scenario for this target. A scenario's own
+    # `interrupts` is appended after these (config entries checked first), mirroring how
+    # `dismissAlerts` layers a config default under a per-scenario value. Empty = no app-wide handler.
+    interrupts: list[Interrupt] = Field(default_factory=list)
 
     @field_validator("backend", mode="before")
     @classmethod

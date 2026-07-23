@@ -25,6 +25,7 @@ from bajutsu.assertions import request_label
 from bajutsu.codegen.common import (
     class_name,
     ident,
+    interrupts_setup_lines,
     is_plain_substring,
     manual_todo,
     network_unsupported,
@@ -381,8 +382,8 @@ class _XcuitestGen:
 
     def setup_lines(self, scenario: Scenario) -> list[str]:
         # XCUITest has no network-interception surface, so there is no pre-launch observer to
-        # install beyond the `permissions` TODO (BE-0276) below.
-        return permissions_setup_lines(scenario)
+        # install beyond the `permissions` (BE-0276) and `interrupts` (BE-0314) TODOs below.
+        return permissions_setup_lines(scenario) + interrupts_setup_lines(scenario)
 
     def launch_env_line(self, key: str, value: str) -> str:
         return f"app.launchEnvironment[{_s(key)}] = {_s(value)}"

@@ -191,6 +191,7 @@ def _wait(
     on_blocked: BlockedHandler | None = None,
     alerts: list[AlertEvent] | None = None,
     on_tick: WaitTick | None = None,
+    on_interrupt_poll: Callable[[list[base.Element]], bool] | None = None,
 ) -> tuple[bool, str, list[base.Element] | None]:
     """Condition wait. Polls query() (or the observed network) until satisfied instead
     of a fixed sleep.
@@ -207,6 +208,17 @@ def _wait(
     *not* guarded: a collapsed tree already satisfies "gone" and returns at once, so no timeout is
     wasted and there is nothing to accelerate (guarding it would mean redefining "gone" to reject a
     blank screen). `request` polls the network, not the screen, so it is not guarded either.
+
+    When `on_interrupt_poll` is given, it is called with each poll's already-fetched tree — after
+    the wait's own condition is checked, so it fires only while the wait is still blocked — so a
+    scenario's `interrupts` handlers can clear an interstitial screen mid-wait (BE-0314). Like the
+    alert guard, it rides on the poll the wait already performs (zero extra query) and resumes
+    against the *same* `deadline`; the `gone`/`request` branches are not hooked (a collapsed tree
+    already satisfies `gone`, and `request` polls the network, not the screen). A `True` return ends
+    the wait immediately (skipping the `deadline` check) rather than burning the rest of the
+    timeout: an interrupt's own recovery `steps` can fail, and that failure is already decided by
+    the first poll that hits it, so polling on would only turn a fast, loud failure into a slow one.
+    The caller (the run loop) knows the real reason and overrides the placeholder this returns.
 
     When `on_tick` is given, a throttled "still waiting …" line is emitted while the wait is pending:
     once on entry — so even an instantly-satisfied wait surfaces its condition — then every
@@ -254,6 +266,8 @@ def _wait(
                 return True, "", elements
             if gate is not None:
                 gate.observe(elements)
+            if on_interrupt_poll is not None and on_interrupt_poll(elements):
+                return False, "interrupt recovery failed", elements
             if clock.now() >= deadline:
                 if trace is not None:
                     trace.elements_at_timeout = len(elements)
@@ -289,7 +303,7 @@ def _wait(
                 hb.tick(clock.now())
             _adaptive_sleep(clock, t0)
     if w.until == "settled":
-        return _wait_settled(driver, deadline, clock, gate, hb)
+        return _wait_settled(driver, deadline, clock, gate, hb, on_interrupt_poll)
     # until == "screenChanged"
     before = driver.query()
     if gate is not None:
@@ -301,6 +315,8 @@ def _wait(
             return True, "", current
         if gate is not None:
             gate.observe(current)
+        if on_interrupt_poll is not None and on_interrupt_poll(current):
+            return False, "interrupt recovery failed", current
         if clock.now() >= deadline:
             return False, f"wait timeout: screenChanged ({timeout}s)", current
         if hb is not None:
@@ -314,6 +330,7 @@ def _wait_settled(
     clock: Clock,
     gate: _AlertGuardGate | None = None,
     hb: _Heartbeat | None = None,
+    on_interrupt_poll: Callable[[list[base.Element]], bool] | None = None,
 ) -> tuple[bool, str, list[base.Element]]:
     """Wait until a non-empty screen stops changing (transition/animation finished).
 
@@ -324,6 +341,10 @@ def _wait_settled(
     is cleared mid-settle rather than burning the whole timeout (BE-0269). When `hb` is given, it
     emits the throttled "still waiting …" progress line while settling. Returns the last
     queried tree so the caller can reuse it as the step's `after` snapshot (BE-0259).
+
+    A `True` from `on_interrupt_poll` ends the settle immediately (BE-0314) — a failed interrupt
+    recovery is a decided outcome the caller (the run loop) fails the step on, so polling toward
+    settled would only delay a failure that best-effort settling would otherwise mask.
     """
     previous = driver.query()
     if gate is not None:
@@ -336,6 +357,8 @@ def _wait_settled(
         current = driver.query()
         if gate is not None:
             gate.observe(current)
+        if on_interrupt_poll is not None and on_interrupt_poll(current):
+            return False, "interrupt recovery failed", current
         if current == previous and any(el["identifier"] for el in current):
             stable += 1
         else:

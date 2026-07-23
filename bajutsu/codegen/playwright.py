@@ -22,7 +22,13 @@ from __future__ import annotations
 import re
 
 from bajutsu.assertions import request_label
-from bajutsu.codegen.common import manual_todo, ms, permissions_setup_lines, render_test_file
+from bajutsu.codegen.common import (
+    interrupts_setup_lines,
+    manual_todo,
+    ms,
+    permissions_setup_lines,
+    render_test_file,
+)
 from bajutsu.drivers import base
 from bajutsu.scenario import Assertion, Gone, RequestMatch, Scenario, Step
 from bajutsu.scenario.models.assertions import CountMatch, TextMatch, Wait, WaitRequest
@@ -513,7 +519,7 @@ class _PlaywrightGen:
         # (BE-0276) has no browser equivalent (no TCC/pm-style OS permission model), so it is always
         # a TODO when present, regardless of the target this scenario also runs on.
         lines = list(_RECORDER_SETUP) if _scenario_uses_network(scenario) else []
-        return lines + permissions_setup_lines(scenario)
+        return lines + permissions_setup_lines(scenario) + interrupts_setup_lines(scenario)
 
     def launch_env_line(self, key: str, value: str) -> str:
         return f"await page.addInitScript(() => localStorage.setItem({_ts(key)}, {_ts(value)}));"

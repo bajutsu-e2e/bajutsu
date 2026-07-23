@@ -15,7 +15,7 @@ from bajutsu.scenario.models._base import _Model
 from bajutsu.scenario.models.assertions import Assertion
 from bajutsu.scenario.models.evidence import CaptureRule, Network, Redact
 from bajutsu.scenario.models.mocks import Mock
-from bajutsu.scenario.models.steps import Step
+from bajutsu.scenario.models.steps import Interrupt, Step
 
 # The grant/revoke actions a `permissions` entry may take (BE-0276); the service side of the
 # vocabulary (`PERMISSION_SERVICES`) lives in `drivers.base` since every backend's capability
@@ -90,6 +90,13 @@ class Scenario(_Model):
     # (validated below against the vocabulary) rather than a `Literal`-keyed dict, so it stays
     # assignable to the `Mapping[str, str]` the platform-lifecycle `start()` seam expects.
     permissions: dict[str, str] = Field(default_factory=dict)
+    # Handlers for interstitial screens that surface at an unpredictable point (BE-0314): each entry
+    # names a `condition` (the assertion DSL `if` uses) and the `steps` that clear it. The runner
+    # checks each opportunistically against trees it has already fetched, wherever the screen appears
+    # — so an author need not predict the one spot to place an `if`. Appended to the target config's
+    # own `interrupts` (config entries first), mirroring how `dismissAlerts` layers config under
+    # scenario. Empty (the default) means no scenario-level handler, so it prunes from a dump.
+    interrupts: list[Interrupt] = Field(default_factory=list)
     data: list[dict[str, str]] | None = None
     data_file: str | None = Field(default=None, alias="dataFile")
     preconditions: Preconditions = Field(default_factory=Preconditions)
