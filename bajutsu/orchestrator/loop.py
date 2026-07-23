@@ -741,7 +741,13 @@ def _run_steps(
             # `before` is needed only for a `screenChanged` policy. Reuse the previous step's
             # post-step tree when we have one (same device state — nothing actuated in between), so
             # the read drops to (near) zero across the scenario; only the first step, or a step after
-            # one that took no read, reads a fresh `before` (BE-0234 Unit 2).
+            # one that took no read, reads a fresh `before` (BE-0234 Unit 2). `before_is_fresh` tracks
+            # which case this was, for the interrupt guard below: a tree just read this iteration is
+            # current, but `prev_after` is a snapshot from the *previous* step's boundary — valid for
+            # BE-0234's "nothing we actuated in between" assumption, not proof against an interstitial
+            # that appeared asynchronously since (a timer/network overlay), which is exactly the case
+            # `interrupts` exists to catch.
+            before_is_fresh = False
             if not wants_screen_changed:
                 before = None
             elif prev_after is not None:
@@ -749,28 +755,31 @@ def _run_steps(
             else:
                 before = active_driver.query()
                 total_reads += 1
+                before_is_fresh = True
             # A fresh interrupt guard per step (BE-0314), so its re-entrancy cap resets each step. A
-            # bare act clears any interstitial up front — reusing the `before` tree when we have one,
-            # else one extra query (paid only by interrupt-declaring scenarios). A `wait` instead
-            # hooks the guard into its own polling (`on_interrupt_poll` below), riding the poll tree
-            # at zero extra cost. Only the step guard queries here; the recovery `steps` it runs go
-            # through `exec_steps`, sharing the counter/outcomes/bindings like `if`'s branches.
+            # bare act clears any interstitial up front — reusing `before` only when it is a tree just
+            # read this iteration (zero extra cost); a carried-over `prev_after` snapshot, or no tree
+            # at all, costs one extra query (paid only by interrupt-declaring scenarios) so the guard
+            # checks the live screen rather than a possibly-stale one. A `wait` instead hooks the guard
+            # into its own polling (`on_interrupt_poll` below), riding the poll tree at zero extra cost.
+            # Only the step guard queries here; the recovery `steps` it runs go through `exec_steps`,
+            # sharing the counter/outcomes/bindings like `if`'s branches.
             guard = (
                 _InterruptGuard(interrupts, active_driver, network, bindings, _run_recovery)
                 if interrupts and not running_recovery
                 else None
             )
             if guard is not None and kind != "wait":
-                # Reuse the `before` tree when the loop already read it (a `screenChanged` step),
-                # else one extra query — the one read an interrupts-declaring scenario pays for a
-                # bare act, counted into the BE-0234 yardstick. Re-baseline `before` from the settled
-                # post-recovery tree so a cleared interstitial's own screen change is not later
-                # misattributed to this step's action by the `screenChanged` capture decision.
-                if before is not None:
+                # Re-baseline `before` from the settled post-recovery tree either way, so a cleared
+                # interstitial's own screen change is not later misattributed to this step's action by
+                # the `screenChanged` capture decision.
+                if before is not None and before_is_fresh:
                     before = guard.clear_before_act(before)
                 else:
-                    guard.clear_before_act(active_driver.query())
+                    before_read = guard.clear_before_act(active_driver.query())
                     total_reads += 1
+                    if before is not None:
+                        before = before_read
             # A `for` wait records its poll timeline so a timeout is diagnosable from artifacts
             # (BE-0231 Unit 1); the on_blocked retry gets a fresh trace so the diagnostic reflects the
             # attempt that actually failed.

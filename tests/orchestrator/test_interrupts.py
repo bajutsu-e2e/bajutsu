@@ -315,6 +315,61 @@ def test_cleared_interstitial_is_not_misattributed_as_the_steps_screen_change() 
     assert step0 == [["screenshot.after", "elements"]]
 
 
+def test_pre_act_guard_reads_fresh_not_a_stale_prev_after_snapshot() -> None:
+    """The pre-act check must catch an overlay that appears after the previous step's read.
+
+    On a `screenChanged`-policy step, `before` can be the *previous* step's post-step tree
+    (`prev_after`), reused under BE-0234's "nothing we actuated in between" assumption. That
+    assumption doesn't cover an interstitial that surfaces asynchronously (a timer/network
+    overlay) in the gap between the previous step's read and this step's pre-act check — exactly
+    the case `interrupts` exists to catch. The guard must read the live screen there, not trust a
+    carried-over snapshot that predates the overlay.
+    """
+
+    def react(d: FakeDriver, kind: str, arg: object) -> None:
+        if kind == "tap" and getattr(arg, "get", lambda _k: None)("id") == "overlay.close":
+            d.screen = [e for e in d.screen if e["identifier"] != "overlay.close"]
+
+    driver = FakeDriver(
+        [el("go", "Go", ["button"]), el("home.button", "Home", ["button"])], react=react
+    )
+
+    calls = {"n": 0, "triggered": False}
+    original_query = driver.query
+
+    def counting_query() -> list[base.Element]:
+        calls["n"] += 1
+        # The 1st call is step 0's `before`; the 2nd is step 0's post-step read (becomes step 1's
+        # `prev_after`). From the 3rd call on (step 1's pre-act guard check onward), an overlay
+        # "appears" once — simulating it surfacing in the gap `prev_after` cannot see.
+        if calls["n"] >= 3 and not calls["triggered"]:
+            calls["triggered"] = True
+            driver.screen = [*driver.screen, el("overlay.close", "X", ["button"])]
+        return original_query()
+
+    driver.query = counting_query  # type: ignore[method-assign]
+
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "stale-before",
+                "capturePolicy": [
+                    {"on": {"event": "screenChanged"}, "capture": ["screenshot.before"]}
+                ],
+                "steps": [{"tap": {"id": "go"}}, {"tap": {"id": "home.button"}}],
+            }
+        ),
+        clock=FakeClock(),
+        interrupts=[
+            _interrupt({"exists": {"id": "overlay.close"}}, [{"tap": {"id": "overlay.close"}}])
+        ],
+    )
+    assert result.ok, result.failure
+    taps = [a.get("id") for k, a in driver.actions if k == "tap"]
+    assert taps == ["go", "overlay.close", "home.button"]  # caught mid-gap, then step 1 proceeded
+
+
 # --- config-then-scenario order (Units 1/2) -----------------------------------------------------
 
 
