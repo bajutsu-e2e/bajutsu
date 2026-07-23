@@ -106,12 +106,16 @@ This makes sign-in itself depend on a live call to GitHub's `/user/orgs` for any
 explicit `members` entry (`_fetch_orgs`, [`bajutsu/serve/server/oauth.py`](../../bajutsu/serve/server/oauth.py))
 — a dependency that doesn't exist today, since `BAJUTSU_OAUTH_ALLOWED_USERS` alone decides sign-in and
 needs no GitHub API call to succeed. `_fetch_orgs` already fails open to an empty org list on a
-non-200 response, a network failure, or an unparseable body, which today only sends the login to the
-`default` org; under this item, the same failure makes a `githubOrgs`-only login fail the sign-in gate
-outright, for as long as the outage lasts. This item accepts that new availability trade-off rather
-than adding retry or caching logic to the org-membership fetch: an explicit `members` entry is
-unaffected (it never calls the GitHub API), and a `githubOrgs`-only login can simply sign in again once
-GitHub's API is reachable.
+non-200 response or an unparseable body, which today only sends the login to the `default` org; under
+this item, the same failure makes a `githubOrgs`-only login fail the sign-in gate outright, for as long
+as the outage lasts. (A genuine network failure is a separate, pre-existing case: it propagates out of
+`_fetch_orgs` uncaught, through `fetch_identity`, to `oauth_callback`'s own exception handler, which
+already fails the whole exchange with a 502 today, for every login — unaffected by this item either
+way.) This item accepts that new non-200/parse-error trade-off rather than adding retry or caching
+logic to the org-membership fetch: an explicit `members` entry is
+unaffected either way — `fetch_identity` still calls `/user/orgs` for every login, but
+`org_for_identity`'s explicit `members` match returns before ever consulting the fetched list — and a
+`githubOrgs`-only login can simply sign in again once GitHub's API is reachable.
 
 ### Write access follows membership in one flat GitHub Team
 
