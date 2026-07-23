@@ -487,6 +487,24 @@ def test_await_ready_screenchanged_signal_beats_the_ladder(monkeypatch: pytest.M
     assert driver.calls == 0  # satisfied before ever needing a tree read
 
 
+def test_await_ready_readywhen_outranks_the_screenchanged_signal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A `readyWhen` target that also links the observer must keep its guarantee: an earlier
+    # base-screen transition must NOT preempt the modal readyWhen waits for, or the first step races
+    # the modal (the exact flake readyWhen exists to close). The signal is present from the start,
+    # but readiness must hold out for the readyWhen element, which only the 3rd read reveals.
+    _install_bounded_clock(monkeypatch)
+    chrome = [_el("home.title", "H"), _el("tab", "T")]  # base screen, no modal yet
+    target = _el("onboarding.start", "Start")
+    driver = _ScriptedDriver([chrome, chrome, [*chrome, target]])  # modal appears on the 3rd read
+    live = [(ScreenTransition(kind="screenChanged"), 0.0)]  # a base-screen transition, since start
+    result = _await_ready(driver, ready_sel={"id": "onboarding.start"}, transitions=lambda: live)  # type: ignore[arg-type]
+    assert result.ready is True
+    assert result.signal == "readyWhen"  # held for the modal, did not fire on the base transition
+    assert driver.calls >= 3
+
+
 def test_await_ready_ignores_a_transition_that_predates_this_wait(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

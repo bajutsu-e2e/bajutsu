@@ -264,9 +264,10 @@ adb の harness はその代わりに、新しい `SHOWCASE_CONFORMANCE` の int
 - **画面遷移シグナル**（BE-0310、iOS）: `BajutsuKit` のオプトインの `BajutsuScreen` observer が、観測した
   `UIAccessibility.screenChangedNotification` をそれぞれコレクタの `/transitions` エンドポイントへ報告します。
   同じプロセスにあるネットワーク通信のストアとは独立しています。起動直後の readiness ゲート（`_await_ready`）は、
-  BE-0218 の梯子の上に新設した最上段として、このシグナルを参照します。`settled` 待ちは、ツリー差分のポーリングに
-  代えて、このシグナルを静止の窓によるデバウンスとして参照します。observer を組み込まない（あるいはまだ
-  遷移していない）ターゲットでは、どちらもツリー差分の挙動のまま変わりません。フェイクのシグナル源で
+  BE-0218 の namespace／要素数のヒューリスティックの上に新設した段として、このシグナルを参照します。ただし明示的な
+  `readyWhen` はそれより上位で、base 画面の遷移が `readyWhen` の待つモーダルを先取りすることはありません。`settled`
+  待ちは、ツリー差分のポーリングに代えて、このシグナルを静止の窓によるデバウンスとして参照します。observer を
+  組み込まない（あるいはまだ遷移していない）ターゲットでは、どちらもツリー差分の挙動のまま変わりません。フェイクのシグナル源で
   高速ゲートのテストは済んでいますが、UIKit と SwiftUI の双方でのオンデバイス確認はこの項目自身のゲートであり、
   [`demos/showcase/BE-0310-screen-transition-verification.ja.md`](../../demos/showcase/BE-0310-screen-transition-verification.ja.md)
   で追っています。

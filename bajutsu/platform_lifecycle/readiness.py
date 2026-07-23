@@ -56,15 +56,20 @@ def _await_ready(
 
     Readiness is decided by the strongest signal available, in order:
 
-    - `transitions` (BE-0310): an app linking `BajutsuKit`'s screen-transition observer that has
-      reported a `UIAccessibility.screenChangedNotification` since this wait started — a positive
-      signal from the transition itself, strongest because it needs no heuristic. A target that
-      doesn't link the SDK (or whose cold-launch first screen posts no notification — an open
-      empirical question this rung doesn't assume either way) reports none, and falls through
-      unchanged to the rungs below.
     - `ready_sel` (a target's `readyWhen`): wait for that element to appear — the signal for an app
       whose first interactive screen is a modal over always-present chrome, where a count heuristic
-      would return before the modal presents.
+      would return before the modal presents. This is an explicit author declaration of the exact
+      element to wait for, so it outranks even the `transitions` signal below (BE-0310): for a
+      `readyWhen` target that also links `BajutsuKit`, an earlier *base-screen* transition must not
+      preempt the modal `readyWhen` is there to wait for — that would reintroduce the very race
+      `readyWhen` exists to close.
+    - `transitions` (BE-0310): an app linking `BajutsuKit`'s screen-transition observer that has
+      reported a `UIAccessibility.screenChangedNotification` since this wait started — a positive
+      signal from the transition itself, needing no heuristic, so it outranks the namespace/count
+      heuristics below. Consulted only when no `readyWhen` match selector is set (see above). A target
+      that doesn't link the SDK (or whose cold-launch first screen posts no notification — an open
+      empirical question this rung doesn't assume either way) reports none, and falls through
+      unchanged to the rungs below.
     - `id_namespaces` (a target's `idNamespaces`): wait for any element whose id belongs to a declared
       namespace. On a slow cold boot the device query can return SpringBoard (the Home screen's app
       icons) before the app foregrounds — 2+ *off-namespace* elements that a bare count would wrongly
@@ -92,12 +97,15 @@ def _await_ready(
         "readyWhen" if match_sel is not None else "namespace" if declared else "count"
     )
     for _ in base.deadline_ticks(timeout, poll_init, poll_max):
-        # Only a transition received since this wait started counts — one left over from a prior
-        # launch (a mid-scenario relaunch reuses the same collector) must not satisfy readiness for
-        # a launch it predates. A collector only ever appends in receive order, so the most recent
-        # transition is always its last element: if that one doesn't clear `start`, none do.
+        # A `readyWhen` match selector keeps its guarantee: the transition shortcut applies only when
+        # none is set, so an earlier base-screen transition can't preempt the modal `readyWhen` waits
+        # for. The signal still outranks the namespace/count heuristics below. Only a transition
+        # received since this wait started counts — one left over from a prior launch (a mid-scenario
+        # relaunch reuses the same collector) must not satisfy readiness for a launch it predates. A
+        # collector only ever appends in receive order, so the most recent transition is always its
+        # last element: if that one doesn't clear `start`, none do.
         reported = transitions()
-        if reported and reported[-1][1] >= start:
+        if match_sel is None and reported and reported[-1][1] >= start:
             # Diagnostic only (BE-0310 Unit 5): confirms the signal actually decided readiness on a
             # real device, so on-device verification needs no extra instrumentation to observe it.
             _logger.debug("readiness satisfied by the screenChanged signal")
