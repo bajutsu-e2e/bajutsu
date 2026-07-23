@@ -15,7 +15,7 @@
 
 ## Introduction
 
-This item adds `permissionAlert`, a new scenario step that taps an iOS permission-prompt button
+This item adds `systemAlert`, a new scenario step that taps an iOS permission-prompt button
 deterministically — by a native accessibility query against the prompt itself, never a screenshot
 judged by a vision model — at the exact point in a scenario where the author expects the prompt to
 appear. iOS presents a permission request (location, camera, contacts, and the rest) as a
@@ -23,7 +23,7 @@ SpringBoard-level alert: SpringBoard is the iOS home-screen process that also ow
 chrome, including these prompts, so the alert lives outside the app under test's own process and
 its accessibility tree. A scenario has two existing ways to reach such a prompt today, and neither
 fits the case this item targets: a scenario that wants to trigger the permission request itself and
-then act on the prompt, deterministically, at that specific step. `permissionAlert` closes that gap.
+then act on the prompt, deterministically, at that specific step. `systemAlert` closes that gap.
 
 ## Motivation
 
@@ -43,7 +43,7 @@ follows — deterministically, with no AI call. Pre-launch `permissions` cannot 
 because the request only fires once the app makes it, mid-scenario; the only tool left for that
 moment is the vision guard, `dismissAlerts: { instruction: "tap Allow" }`. BE-0276 already named
 this gap when it proposed `permissions`, calling a mid-flow step "a possible future extension, not
-part of this item." `permissionAlert` is that extension. The author already knows which prompt appears
+part of this item." `systemAlert` is that extension. The author already knows which prompt appears
 and which button it needs at that point in the scenario, so the same reasoning BE-0276 used to move
 a known, pre-launch permission off the vision guard applies again here: a known, mid-flow prompt has
 no reason to route through an AI call, when a native accessibility query resolves the same button
@@ -55,7 +55,7 @@ unambiguous button or fails clearly, never a coordinate guess that can miss a mo
 
 Proposal altitude. The work is MECE along the units below.
 
-- **Scenario schema.** A new step action, `permissionAlert: { sel: <Selector>, timeout: <sec> }`,
+- **Scenario schema.** A new step action, `systemAlert: { sel: <Selector>, timeout: <sec> }`,
   following the `sel:`-wrapped shape `longPress` and `pinch` already use. `sel` accepts only the
   label-based `Selector` fields — `label`, `labelMatches`, `index` — and rejects `id`, `idMatches`,
   `traits`, and `within` at parse time: a SpringBoard alert button carries no app-assigned
@@ -63,7 +63,7 @@ Proposal altitude. The work is MECE along the units below.
   is required, exactly as it is for `wait`: a condition wait needs an explicit bound, and the shared
   scenarios' timeout floor applies to it the same way it applies to every other wait in the runner.
 - **iOS (XCUITest) runner support.** `BajutsuKit/Runner/Sources/RunnerUITest.swift` already builds
-  an `XCUIApplication(bundleIdentifier:)` handle for the app under test; a `permissionAlert` step adds a
+  an `XCUIApplication(bundleIdentifier:)` handle for the app under test; a `systemAlert` step adds a
   second, on-demand handle for `com.apple.springboard` — SpringBoard's own bundle identifier —
   queried only when this step runs, so every other selector and query path stays scoped to the app
   under test exactly as it is today. The step resolves the button by label within SpringBoard's
@@ -79,7 +79,7 @@ Proposal altitude. The work is MECE along the units below.
   and have only the iOS (XCUITest) backend declare it. The Android (adb) backend already dumps
   whatever window is topmost, including a system permission dialog, so an ordinary `tap` step
   already reaches it there today; the web (Playwright) backend has no OS-level permission prompt at
-  all. A scenario naming `permissionAlert` against either backend fails preflight before any device
+  all. A scenario naming `systemAlert` against either backend fails preflight before any device
   work, named individually, never at runtime.
 - **codegen.** iOS XCUITest codegen emits the native idiom directly: wait for
   `XCUIApplication(bundleIdentifier: "com.apple.springboard").buttons["Allow"]` to exist, bounded by
@@ -88,24 +88,30 @@ Proposal altitude. The work is MECE along the units below.
   dropping it. Android and web codegen emit a labeled `// TODO`,
   consistent with [BE-0026](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md)
   and BE-0276's precedent for a field neither backend's native test framework can express. Unlike
-  `permissions`, where bajutsu itself applies the field before launch on every backend, `permissionAlert`
+  `permissions`, where bajutsu itself applies the field before launch on every backend, `systemAlert`
   is a mid-flow step whose native idiom only the iOS (XCUITest) framework can express — hence the
   split.
 - **Docs + fixture.** Document the step in [`docs/scenarios.md`](../../docs/scenarios.md) and its
-  Japanese mirror, and the DSL grammar. Add the fixture as its **own** scenario file
-  (`demos/showcase/scenarios/permission_alert.yaml`), not a new scenario inside the existing
+  Japanese mirror, and the DSL grammar. `docs/scenarios.md` already has a "dismissAlerts (the
+  system-alert guard)" section, so the new step's documentation must contrast the two by role
+  explicitly rather than let a reader conflate them: `dismissAlerts` is the reactive, AI-driven
+  *guard* that fires only when a step is already blocked, and `systemAlert` is the deterministic,
+  native *step* the author places where the prompt is expected. Both act on the same kind of
+  OS-level alert, and stating that shared target alongside their opposite mechanisms is what keeps
+  the near-identical names from misleading. Add the fixture as its **own** scenario file
+  (`demos/showcase/scenarios/permission_system_alert.yaml`), not a new scenario inside the existing
   `permission.yaml`: `permission.yaml`'s notification scenario is already tagged `ai` so the iOS
   smoke lane can `--exclude ai` it, while Android's `smoke (adb)` job runs every scenario in that
-  file **unchanged**, with no exclusion wired at all — a new `permissionAlert` scenario dropped into the
+  file **unchanged**, with no exclusion wired at all — a new `systemAlert` scenario dropped into the
   same file would fail Android's required job at preflight, since only the iOS (XCUITest) backend
   declares the capability. A separate file sidesteps that: the new scenario requests notification
-  authorization mid-flow and taps "Allow" through `permissionAlert`, tagged `xcuitest` the same way
+  authorization mid-flow and taps "Allow" through `systemAlert`, tagged `xcuitest` the same way
   `demos/showcase/scenarios/tabs.yaml` tags an iOS-only scenario, so the local bulk
   `run-swiftui`/`run-uikit` targets' existing `--exclude xcuitest` skips it exactly as it already
   skips `tabs.yaml`.
 - **CI wiring.** A tag alone never adds a file to a CI job — every `ios-e2e.yml` job that runs a
   scenario names its file explicitly, with no directory scan and no tag-based inclusion anywhere in
-  CI. Add an explicit `scenarios: demos/showcase/scenarios/permission_alert.yaml` step to the
+  CI. Add an explicit `scenarios: demos/showcase/scenarios/permission_system_alert.yaml` step to the
   `xcuitest (multi-touch)` job, the same job that already runs `permission.yaml` through its own
   explicit step — this new scenario's Simulator, app, and runner build are already paid for there, so
   it costs one more `bajutsu run` rather than a new job.
@@ -121,19 +127,19 @@ Proposal altitude. The work is MECE along the units below.
   all ([`docs/scenarios.md`](../../docs/scenarios.md)) — that invariant is part of its value. Making
   it fire at an author-chosen point would mean either faking a blocked step to trigger it, or
   breaking the "never calls the model on a passing scenario" guarantee for every scenario that uses
-  it. A dedicated step keeps that guarantee intact for `dismissAlerts` and gives `permissionAlert` its
+  it. A dedicated step keeps that guarantee intact for `dismissAlerts` and gives `systemAlert` its
   own, simpler contract: deterministic, and unconditional at the point it appears in `steps`.
 - **Add a `system: true` scope to the general `Selector`, so `tap` / `wait` / `assert` reach
   SpringBoard directly.** Rejected for this item. Every step and assertion resolves through one
   shared `Selector`-resolution path; threading a SpringBoard-versus-app distinction through all of
   them, for a need that arises at one specific point in a scenario, widens the change's surface far
-  past what the need justifies. A dedicated `permissionAlert` action keeps the change contained to one
+  past what the need justifies. A dedicated `systemAlert` action keeps the change contained to one
   new step implementation, with no risk to the selector-resolution path every other step already
   relies on.
 - **Cover every SpringBoard-level alert (a save-password prompt, a paste-permission prompt, a crash
   sheet), not only a permission prompt.** Deferred. A permission prompt is the concrete, common case
   a scenario author hits when testing a request flow, and the underlying SpringBoard query mechanism
-  does not distinguish an alert's origin, so nothing here forecloses widening `permissionAlert` to any
+  does not distinguish an alert's origin, so nothing here forecloses widening `systemAlert` to any
   SpringBoard alert later. Scoping the first version to permission prompts keeps this proposal small
   enough to review and land as one unit.
 - **Cache the vision guard's coordinates from one run and replay them.** Rejected. It still needs a
@@ -148,13 +154,13 @@ Proposal altitude. The work is MECE along the units below.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Scenario schema — `permissionAlert` step, label-based `Selector` subset, required `timeout`.
+- [ ] Scenario schema — `systemAlert` step, label-based `Selector` subset, required `timeout`.
 - [ ] iOS (XCUITest) runner support — on-demand SpringBoard `XCUIApplication` handle, native tap.
 - [ ] Fail-fast on zero or multiple matching alert buttons.
 - [ ] Capability token + preflight (iOS-only advertisement).
 - [ ] codegen — native XCUITest idiom on iOS; labeled `// TODO` on Android and web.
 - [ ] Docs (scenarios.md + ja, DSL grammar) and a new, iOS-only showcase fixture file
-      (`permission_alert.yaml`, tagged `xcuitest`), never added to the shared
+      (`permission_system_alert.yaml`, tagged `xcuitest`), never added to the shared
       `permission.yaml` Android's `smoke (adb)` job runs unchanged.
 - [ ] CI wiring — an explicit `scenarios:` step for the new fixture in the `xcuitest (multi-touch)`
       job (`ios-e2e.yml`); a tag alone adds nothing to a CI job.
