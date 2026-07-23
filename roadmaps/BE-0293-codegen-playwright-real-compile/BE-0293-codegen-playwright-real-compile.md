@@ -7,9 +7,9 @@
 |---|---|
 | Proposal | [BE-0293](BE-0293-codegen-playwright-real-compile.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0293") |
-| Implementing PR | [#1277](https://github.com/bajutsu-e2e/bajutsu/pull/1277) |
+| Implementing PR | [#1277](https://github.com/bajutsu-e2e/bajutsu/pull/1277), [#PLACEHOLDER](https://github.com/bajutsu-e2e/bajutsu/pull/PLACEHOLDER) |
 | Topic | codegen coverage |
 <!-- /BE-METADATA -->
 
@@ -81,7 +81,7 @@ Proposal altitude. The work is MECE along the units below.
 
 - [x] Emit a `demos/web` scenario's Playwright test and check the generated `.spec.ts` in.
 - [x] Run it with the real `@playwright/test` runner against a real browser, asserting it passes.
-- [ ] Wire a Makefile target + non-gating `web-e2e.yml` job; promote to required once stable.
+- [x] Wire a Makefile target + non-gating `web-e2e.yml` job; promote to required once stable.
 - [x] Scope the fixture to the DSL surface the XCUITest codegen gate already covers.
 
 Log:
@@ -93,6 +93,11 @@ Log:
   Chromium, then fail on drift — and the non-gating `codegen (playwright)` signal job in `web-e2e.yml`. The
   job is deliberately not yet in the required `E2E (web)` aggregator's `needs`; promote it once it
   proves stable in CI, as `network (playwright)` was.
+- Promoted the `codegen (playwright)` job from signal to required: added `web-codegen` to the
+  `E2E (web)` aggregator's `needs` and its failure-check loop, so a codegen real-compile failure now
+  blocks a merge — the web twin of `ios-e2e.yml`'s already-gating `xcuitest (codegen)`. It had proven
+  stable across every `web-e2e` run since it landed, following the same signal-then-required path
+  `network (playwright)` took (BE-0282). This closes the item.
 
 ## References
 

@@ -7,9 +7,9 @@
 |---|---|
 | 提案 | [BE-0293](BE-0293-codegen-playwright-real-compile-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0293") |
-| 実装 PR | [#1277](https://github.com/bajutsu-e2e/bajutsu/pull/1277) |
+| 実装 PR | [#1277](https://github.com/bajutsu-e2e/bajutsu/pull/1277)、[#PLACEHOLDER](https://github.com/bajutsu-e2e/bajutsu/pull/PLACEHOLDER) |
 | トピック | codegen 網羅性 |
 <!-- /BE-METADATA -->
 
@@ -81,7 +81,7 @@ Playwright API からドリフトしたエミッタの変更は、`tests/test_co
 
 - [x] `demos/web` のシナリオから Playwright テストを生成し、生成された `.spec.ts` をチェックインする。
 - [x] 実際の `@playwright/test` ランナーで実ブラウザに対して実行し、成功することを検証する。
-- [ ] Makefile ターゲットとゲート対象外の `web-e2e.yml` ジョブを追加し、安定後に必須化する。
+- [x] Makefile ターゲットとゲート対象外の `web-e2e.yml` ジョブを追加し、安定後に必須化する。
 - [x] フィクスチャの範囲を、XCUITest 向け codegen ゲートがすでにカバーする DSL 表面に揃える。
 
 ログ：
@@ -94,6 +94,11 @@ Playwright API からドリフトしたエミッタの変更は、`tests/test_co
   `codegen (playwright)` を追加しました。このジョブは意図的にまだ必須の `E2E (web)` アグリゲータの
   `needs` には入れていません。`network (playwright)` がそうだったように、CI で安定を確認してから
   昇格させます。
+- `codegen (playwright)` ジョブを signal から必須へ昇格させました。`E2E (web)` アグリゲータの
+  `needs` とその失敗判定ループに `web-codegen` を追加し、codegen の実コンパイル失敗がマージを
+  ブロックするようにしました。`ios-e2e.yml` のすでに必須である `xcuitest (codegen)` の web 版に
+  当たります。着地以降の `web-e2e` の全実行で安定していたため、`network (playwright)` がたどった
+  signal → 必須の経路（BE-0282）に倣いました。これで本項目は完了します。
 
 ## 参考
 
