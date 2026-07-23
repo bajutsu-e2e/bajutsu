@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0314") |
-| 実装 PR | _未定_ |
+| 実装 PR | [#1316](https://github.com/bajutsu-e2e/bajutsu/pull/1316) |
 | トピック | シナリオ記述機能 |
 | 関連 | [BE-0033](../BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow-ja.md)、[BE-0269](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention-ja.md)、[BE-0276](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state-ja.md)、[BE-0310](../BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness-ja.md) |
 <!-- /BE-METADATA -->
@@ -189,6 +189,17 @@ scenario:
 - [x] Unit 6 — ドキュメント（scenarios.md および英語版）に `if`・`interrupts`・`dismissAlerts`・
       `permissions` の対比を加え、showcase フィクスチャを追加する。
 - [x] Unit 7 — テスト（スキーマ、連結順序、wait と act それぞれでの一致、再入上限、`vars.*` の共有）。
+
+**ログ**
+
+- [#1316](https://github.com/bajutsu-e2e/bajutsu/pull/1316) — 7 つのユニットをすべて実装しました。
+  `Scenario` と `TargetConfig` に `Interrupt` スキーマを追加し、`RunDefaults` と `resolve` を通して
+  config 側を先にする順序で解決します。`bajutsu/orchestrator/loop.py` の `_InterruptGuard`（ステップ
+  ごとの再入上限、条件は 1 回だけ補間、既存の `exec_steps` の仕組みでリカバリを実行、再入チェックを
+  抑止する `running_recovery` フラグ）と、`_wait` / `_wait_settled` の `on_interrupt_poll` フックを
+  追加します。codegen はエントリごとにラベル付きの `// TODO` を出力します。ドキュメント（英語・日本語）
+  に `if`・`interrupts`・`dismissAlerts`・`permissions` の対比表と showcase フィクスチャを加えます。
+  `tests/orchestrator/test_interrupts.py` で検証します。
 
 ## 参考
 
