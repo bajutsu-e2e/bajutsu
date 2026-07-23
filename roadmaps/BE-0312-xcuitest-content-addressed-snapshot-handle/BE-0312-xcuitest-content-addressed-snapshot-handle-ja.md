@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0312](BE-0312-xcuitest-content-addressed-snapshot-handle-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0312") |
+| 実装 PR | [#1297](https://github.com/bajutsu-e2e/bajutsu/pull/1297) |
 | トピック | プラットフォーム対応 |
 | 関連 | [BE-0289](../BE-0289-xcuitest-stale-handle-reresolve/BE-0289-xcuitest-stale-handle-reresolve-ja.md), [BE-0207](../BE-0207-xcuitest-channel-transient-retry/BE-0207-xcuitest-channel-transient-retry-ja.md), [BE-0287](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience-ja.md), [BE-0049](../BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md) |
 <!-- /BE-METADATA -->
@@ -210,17 +211,17 @@ BE-0207 が塞ぐために入れた一過性のブレの不安定さが再び開
 > （もれなく重なりなく、作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を
 > プルリクエストへのリンクとともに記録します。
 
-- [ ] Unit 1 — `SnapshotStore` で同一性から導いた参照（`identifier`／`label`／`traits`。
+- [x] Unit 1 — `SnapshotStore` で同一性から導いた参照（`identifier`／`label`／`traits`。
       `backingElement`・`value`・`frame` をすべて除く。`attributesMatch`／BE-0287 と一致）。
       `currentElements` は取り直しのたびに作り直し、1つのスナップショットの中で同一性が一致する
       場合は出現番号で区別する。
-- [ ] Unit 2 — これまでに発行した参照の集合で `stale` と `notFound` の区別を保ち、runner の3分岐
+- [x] Unit 2 — これまでに発行した参照の集合で `stale` と `notFound` の区別を保ち、runner の3分岐
       ルータと BE-0289 のドライバのやり直しをそのまま動かす。
-- [ ] Unit 3 — 実機なしの Swift ユニットテスト。回帰の場合（変わらない取り直しで最初の参照が
+- [x] Unit 3 — 実機なしの Swift ユニットテスト。回帰の場合（変わらない取り直しで最初の参照が
       `.found` のまま）に加え、スナップショット内タイブレークの対になるテスト（同一性が一致する要素が別々の
       参照を得る）。既存のテスト（本当の変化での `.stale`、`.notFound`、`h-` 接頭辞、並行実行）は
       そのまま残し、なお通り続ける。
-- [ ] Unit 4 — 文書を実際の動きに合わせる（BE-0113）。`SnapshotStore` の説明、`xcuitest.py` と
+- [x] Unit 4 — 文書を実際の動きに合わせる（BE-0113）。`SnapshotStore` の説明、`xcuitest.py` と
       `xcuitest_live.py` の「per-snapshot handle」説明、参照の古さを述べているなら `DESIGN.md` と
       `docs/architecture.md`。
 

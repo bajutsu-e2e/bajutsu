@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0312](BE-0312-xcuitest-content-addressed-snapshot-handle.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0312") |
+| Implementing PR | [#1297](https://github.com/bajutsu-e2e/bajutsu/pull/1297) |
 | Topic | Platform support |
 | Related | [BE-0289](../BE-0289-xcuitest-stale-handle-reresolve/BE-0289-xcuitest-stale-handle-reresolve.md), [BE-0207](../BE-0207-xcuitest-channel-transient-retry/BE-0207-xcuitest-channel-transient-retry.md), [BE-0287](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience.md), [BE-0049](../BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md) |
 <!-- /BE-METADATA -->
@@ -221,17 +222,17 @@ actuation precision because the runner acts through the `backingElement`, not th
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — Identity-derived handle in `SnapshotStore` (`identifier` / `label` / `traits`;
+- [x] Unit 1 — Identity-derived handle in `SnapshotStore` (`identifier` / `label` / `traits`;
       `backingElement`, `value`, and `frame` all excluded, matching `attributesMatch` / BE-0287),
       `currentElements` still rebuilt each refresh, with an in-snapshot occurrence-index tiebreak for
       identity-identical elements.
-- [ ] Unit 2 — `stale`-versus-`notFound` distinction preserved via an ever-issued-handle set, so the
+- [x] Unit 2 — `stale`-versus-`notFound` distinction preserved via an ever-issued-handle set, so the
       runner's three-way router branch and BE-0289's driver retry keep working.
-- [ ] Unit 3 — Off-device Swift unit tests: the regression case (unchanged re-refresh keeps the first
+- [x] Unit 3 — Off-device Swift unit tests: the regression case (unchanged re-refresh keeps the first
       handle `.found`) plus a companion for the in-snapshot tiebreak (identity-identical elements get
       distinct handles); the existing tests (`.stale` on a real change, `.notFound`, `h-` prefix,
       concurrency) kept and still passing.
-- [ ] Unit 4 — Documentation aligned (BE-0113): the `SnapshotStore` comment, the `xcuitest.py` and
+- [x] Unit 4 — Documentation aligned (BE-0113): the `SnapshotStore` comment, the `xcuitest.py` and
       `xcuitest_live.py` "per-snapshot handle" docstrings, and `DESIGN.md` / `docs/architecture.md`
       where either describes handle staleness.
 

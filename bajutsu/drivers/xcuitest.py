@@ -9,14 +9,15 @@ failures onto the shared `Driver` exceptions. The runner itself (a generic XCTes
 logic is exercised against a fake — no Simulator on the gate.
 
 The crux is **element addressing**: resolution stays Python-side (`resolve_unique`), so the driver
-acts on exactly the element it resolved by sending that element's opaque *per-snapshot handle* the
-runner minted — never a re-resolved predicate that could match a different element. A handle can go
-stale when the screen re-snapshots between resolve and actuate (a freshly foregrounded screen still
-settling), so a `stale` reply is treated as a trigger to re-query rather than an immediate failure
-(BE-0289): the actuation is re-issued only while the same selector still resolves Python-side to a
-single element, and fails loudly the moment it resolves to none (`ElementNotFound`) or many
-(`AmbiguousSelector`) — so the retry tolerates a snapshot race without ever absorbing a real
-disappearance.
+acts on exactly the element it resolved by sending that element's opaque *handle* the runner minted —
+never a re-resolved predicate that could match a different element. The runner derives that handle
+from the element's identity (identifier / label / traits), so a re-snapshot of an unchanged screen
+re-issues the *identical* handle; a handle goes stale only when the element leaves the screen or
+changes identity (BE-0312). A `stale` reply is still treated as a trigger to re-query rather than an
+immediate failure (BE-0289): the actuation is re-issued only while the same selector still resolves
+Python-side to a single element, and fails loudly the moment it resolves to none (`ElementNotFound`)
+or many (`AmbiguousSelector`) — so the retry tolerates a transient `stale` without ever absorbing a
+real disappearance.
 
 Selection-wiring (adding `xcuitest` to `backends.IMPLEMENTED` / `make_driver`, plus the device
 availability probe) lands with the runner; today the driver is constructed directly (e.g. in tests)
@@ -421,7 +422,7 @@ class XcuitestDriver:
     # --- the channel ---
 
     def _query_with_handles(self) -> tuple[list[base.Element], dict[int, str]]:
-        """A snapshot plus a map from each element's object identity to its per-snapshot handle.
+        """A snapshot plus a map from each element's object identity to its handle.
 
         Keyed by `id()` of the returned dicts: `resolve_unique` returns one of these very objects, so
         the resolved element's handle is an O(1) identity lookup — the element is acted on by the
