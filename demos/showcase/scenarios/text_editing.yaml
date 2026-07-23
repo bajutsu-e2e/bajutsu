@@ -1,0 +1,53 @@
+# Text-editing steps: select the field's text and copy it to the clipboard, then clear it and delete
+# from its end — the fixture for `select`, `copy`, `clear`, and `delete`, none of which any other
+# showcase scenario exercised (every text flow so far only `type`d). All four run on the Search field,
+# whose match count mirrors to the `search.count` a11y value and whose own value reflects the typed
+# text, so each edit is observable: the catalog "Horse 1".."Horse 5" is filtered by a case-insensitive
+# substring (AppModel.horses(matching:)), so "Horse 3" narrows to one row while an empty — or any
+# "Horse "-prefix — query matches all five. `copy` has no text of its own: it copies whatever the
+# preceding `select` left selected, so the two run as a pair and the copied text is read back through
+# the `clipboard` assertion.
+#
+# iOS-only (XCUITest), like push.yaml is iOS-only for a device reason: the Compose / Views trees do
+# not expose an editable field's text as the element's `value`, so on Android `clear` — which reads
+# that value's length and backspaces it (orchestrator/actions/handlers/gestures.py) — is a no-op, and
+# the per-edit `value` checks have nothing to read. XCUITest surfaces the field value, so all four
+# actuators are both functional and observable there, on the SwiftUI and UIKit a11y apps alike. (adb
+# still backs `select` / `copy` / `delete` themselves, so a count-only Android twin is a later option.)
+#   bajutsu run --scenario text_editing.yaml --target showcase-swiftui ...
+- name: select and copy the field text, then clear and delete it
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1" }
+  steps:
+    - tap: { label: "Search", traits: [button] }
+      capture: [video]
+    - wait: { for: { id: search.field }, timeout: 10 }
+    - type: { text: "Horse 3", into: { id: search.field } }
+    - wait: { for: { id: search.row.3 }, timeout: 5 }
+    - assert:
+        - value: { sel: { id: search.count }, equals: "1" }
+        - value: { sel: { id: search.field }, equals: "Horse 3" }
+    # select-all then copy: whatever `select` highlights is what `copy` puts on the clipboard.
+    - select: { into: { id: search.field }, mode: all }
+    - copy: {}
+    - assert:
+        - clipboard: { equals: "Horse 3" }
+    # clear empties the field, so the query matches the whole catalog again — all five rows return.
+    - clear: { into: { id: search.field } }
+    - wait: { for: { id: search.row.1 }, timeout: 5 }
+    - assert:
+        - value: { sel: { id: search.count }, equals: "5" }
+    # re-populate, then delete just the trailing digit: "Horse 2" (one match) becomes "Horse " (all
+    # five), proving `delete` removes exactly `count` characters from the end rather than all of them.
+    - type: { text: "Horse 2", into: { id: search.field } }
+    - wait: { for: { id: search.row.2 }, timeout: 5 }
+    - assert:
+        - value: { sel: { id: search.count }, equals: "1" }
+        - value: { sel: { id: search.field }, equals: "Horse 2" }
+    - delete: { into: { id: search.field }, count: 1 }
+    - wait: { for: { id: search.row.5 }, timeout: 5 }
+  expect:
+    - value: { sel: { id: search.count }, equals: "5" }
+    - value: { sel: { id: search.field }, equals: "Horse " }
+    # the clipboard still holds what `copy` put there — clear and delete touch the field, not it.
+    - clipboard: { equals: "Horse 3" }

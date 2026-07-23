@@ -76,6 +76,11 @@ SERIAL ?= booted
 # cannot represent (the whole point of BE-0285). Both reuse the Stable/Log instruments the lane
 # already drives, need no app change, and carry both id forms so they run on Views too.
 #
+# The text-editing flow (select/copy/clear/delete, text_editing.yaml) is deliberately absent: the
+# Compose / Views trees do not expose an editable field's text as its `value`, so `clear` is a no-op
+# and the per-edit checks have nothing to read here. That scenario is iOS-only (see its header); a
+# count-only Android twin for select/copy/delete is a possible follow-up.
+#
 # Observed network capture lands in its own `e2e-network` target below (BE-0283); mocked network
 # (deterministic stub responses) stays a follow-up.
 E2E_SCENARIOS := smoke firstlook navigation search data_driven relaunch system components modals \
