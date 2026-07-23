@@ -162,20 +162,21 @@ final class BE0310ScreenTransitionSignalUITests: XCTestCase {
             listener.transitionCount, coldLaunchCount,
             "navigation push did not report a screen-transition event"
         )
-        let afterPush = listener.transitionCount
 
         app.navigationBars.buttons.firstMatch.tap()  // OS back button
         XCTAssertTrue(app.descendants(matching: .any)["stable.row.3"].waitForExistence(timeout: 5))
         settle()
 
-        // Modal presentation: the Log tab's detented sheet (mirrors demos/showcase/scenarios/modals.yaml).
+        // Tab switch: activate the Log tab (mirrors demos/showcase/scenarios/tabs.yaml).
+        let beforeTabSwitch = listener.transitionCount  // baseline after the pop settled, so the
+        // assertion below isolates the tab switch from the pop's own transition above.
         app.descendants(matching: .any)
             .matching(NSPredicate(format: "label == %@ AND elementType == %ld", "Log", XCUIElement.ElementType.button.rawValue))
             .firstMatch.tap()
         XCTAssertTrue(app.descendants(matching: .any)["log.openFilter"].waitForExistence(timeout: 10))
         settle()
         let afterTabSwitch = listener.transitionCount
-        XCTAssertGreaterThan(afterTabSwitch, afterPush, "tab switch did not report a screen-transition event")
+        XCTAssertGreaterThan(afterTabSwitch, beforeTabSwitch, "tab switch did not report a screen-transition event")
 
         app.descendants(matching: .any)["log.openFilter"].tap()
         XCTAssertTrue(app.descendants(matching: .any)["log.sheet.title"].waitForExistence(timeout: 5))
