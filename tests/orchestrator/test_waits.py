@@ -790,21 +790,22 @@ def test_wait_tick_fires_once_even_when_immediately_satisfied() -> None:
 
 
 def test_wait_ticks_count_down_across_a_long_wait() -> None:
-    """While a wait is pending, ticks keep arriving (throttled, ~1s apart) with a shrinking
+    """While a wait is pending, ticks keep arriving (throttled, ~5s apart) with a shrinking
     remaining budget, so the run log shows the wait is still blocked and on what."""
     from bajutsu.orchestrator.waits import _wait
     from bajutsu.scenario import Wait
 
     clock = _LogicalClock()
     seen: list[float] = []
-    w = Wait.model_validate({"for": {"id": "target"}, "timeout": 5.0})
-    # Reveal the target only after 3 logical seconds, so the wait stays pending across several ticks.
-    ok, _reason, _tree = _wait(_slow_render_driver(clock, 3.0), w, clock, on_tick=seen.append)
+    w = Wait.model_validate({"for": {"id": "target"}, "timeout": 30.0})
+    # Reveal the target only after 17 logical seconds, so the wait stays pending across several
+    # 5s-throttled ticks (entry at 30.0, then ~25/20/15 left).
+    ok, _reason, _tree = _wait(_slow_render_driver(clock, 17.0), w, clock, on_tick=seen.append)
     assert ok
-    # Entry tick (5.0) plus ~one per second while pending. The upper bound is the real guard: a lost
+    # Entry tick (30.0) plus ~one per 5s while pending. The upper bound is the real guard: a lost
     # _TICK_INTERVAL gate would emit on every ~50ms poll and balloon `seen` to dozens of entries.
     assert 3 <= len(seen) <= 6
-    assert seen[0] == 5.0
+    assert seen[0] == 30.0
     assert seen == sorted(seen, reverse=True)  # remaining only ever decreases
     assert all(r >= 0.0 for r in seen)
 
@@ -842,23 +843,24 @@ def test_wait_ticks_fire_for_every_non_for_branch() -> None:
         return seen
 
     cases = {
-        "settled": ticks(Wait.model_validate({"until": "settled", "timeout": 5.0}), Churning()),  # type: ignore[arg-type]
+        "settled": ticks(Wait.model_validate({"until": "settled", "timeout": 20.0}), Churning()),  # type: ignore[arg-type]
         "gone": ticks(
-            Wait.model_validate({"until": {"gone": {"id": "spinner"}}, "timeout": 5.0}), Static()
+            Wait.model_validate({"until": {"gone": {"id": "spinner"}}, "timeout": 20.0}), Static()
         ),  # type: ignore[arg-type]
         "screenChanged": ticks(
-            Wait.model_validate({"until": "screenChanged", "timeout": 5.0}), Static()
+            Wait.model_validate({"until": "screenChanged", "timeout": 20.0}), Static()
         ),  # type: ignore[arg-type]
         "request": ticks(
-            Wait.model_validate({"until": {"request": {"path": "/never"}}, "timeout": 5.0}),
+            Wait.model_validate({"until": {"request": {"path": "/never"}}, "timeout": 20.0}),
             Static(),  # type: ignore[arg-type]
             network=list,  # a no-op network source: always zero observed exchanges
         ),
     }
     for label, seen in cases.items():
         # Upper bound guards the throttle: a lost _TICK_INTERVAL gate would emit per ~50ms poll.
+        # A 20s timeout with a 5s cadence yields the entry tick plus ~three in-loop ticks.
         assert 2 <= len(seen) <= 8, f"{label}: expected entry + throttled in-loop ticks, got {seen}"
-        assert seen[0] == 5.0, f"{label}: entry tick should report the full timeout"
+        assert seen[0] == 20.0, f"{label}: entry tick should report the full timeout"
         assert seen == sorted(seen, reverse=True), (
             f"{label}: remaining must only decrease, got {seen}"
         )

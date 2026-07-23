@@ -21,7 +21,8 @@ _SETTLE_POLLS = 2  # consecutive unchanged polls that count as "settled"
 
 # Min seconds between live "still waiting …" lines. Waits poll every _POLL (50ms); a per-poll
 # progress line would flood the run log, so the heartbeat below throttles it to a readable cadence.
-_TICK_INTERVAL = 1.0
+# 5s keeps the countdown legible rather than a per-second scroll.
+_TICK_INTERVAL = 5.0
 
 # Emits a run-log line while a wait is pending; the float is the seconds left before timeout. Bound
 # by the caller (the run loop) to prefix the scenario/step and format the condition.
