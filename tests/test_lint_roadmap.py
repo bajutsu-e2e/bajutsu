@@ -229,4 +229,3 @@ def test_generated_dashboard_page_is_excluded_from_the_docs_scan(tmp_path: Path)
         "roadmaps/BE-9002-target/BE-9002-target.md)\n",
     )
     assert lr.docs_broken_links(roadmap) == []
-    assert lr.docs_broken_links(roadmap) == []
