@@ -111,7 +111,7 @@ The work breaks into five independent units.
    gate,
    preserving the "flakiness is never tolerated by absorption" stance of
    [BE-0049](../BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md). The
-   The single retry applies only to the cold spawn, never to the warm-reuse path (BE-0291).
+   single retry applies only to the cold spawn, never to the warm-reuse path (BE-0291).
 
 5. **Off-device tests over the spawn/wait seam.** Factor the "await readiness with a liveness check
    and a bounded retry" logic into a helper that takes an injectable process handle and spawn
