@@ -10,7 +10,7 @@
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0065") |
 | Implementing PR | [#232](https://github.com/bajutsu-e2e/bajutsu/pull/232) |
-| Topic | Development infrastructure (contributor workflow) |
+| Topic | Contributor workflow |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -204,10 +204,10 @@ style* rule already uses.
 - **Do nothing.** The status quo: an implicit, undocumented prose convention and no rendered API
   surface. Rejected — the convention drifts, and the growing public API has no map for human or
   agent readers.
-- **A dedicated new roadmap topic.** Filed instead under *Development infrastructure (contributor
-  workflow)* — the [BE-0043](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md)
-  topic — since it is about how contributors and agents understand the code, following the precedent
-  of not splitting a topic for a single item.
+- **A dedicated new roadmap topic.** Filed instead under *Contributor workflow* — the
+  [BE-0043](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md) topic —
+  since it is about how contributors and agents understand the code, following the precedent of not
+  splitting a topic for a single item.
 
 ## Progress
 
@@ -218,7 +218,7 @@ style* rule already uses.
 - [CLAUDE.md](../../CLAUDE.md) — Conventions (comments explain *why*; bilingual docs; code
   comments in English) and the Prime directives this respects (no LLM in the gate).
 - [BE-0043 — Conflict-resistant file flow](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md)
-  — the *Development infrastructure* precedent: generated docs as artifacts, small conflict-free PRs.
+  — the *Contributor workflow* precedent: generated docs as artifacts, small conflict-free PRs.
 - [`docs/ai-development.md`](../../docs/ai-development.md) — where the standard will live;
   [`docs/README.md`](../../docs/README.md) — "code comments / docstrings are in English".
 - [`bajutsu/drivers/base.py`](../../bajutsu/drivers/base.py),

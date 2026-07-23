@@ -10,7 +10,7 @@
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0156") |
 | Implementing PR | [#612](https://github.com/bajutsu-e2e/bajutsu/pull/612), [#817](https://github.com/bajutsu-e2e/bajutsu/pull/817) |
-| Topic | Development infrastructure (contributor workflow) |
+| Topic | Contributor workflow |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -25,7 +25,7 @@ status other than `Implemented`) gets relabeled to match.
 
 The roadmap already groups every item under one of 23 topics
 ([`scripts/build_roadmap_index.py`](../../scripts/build_roadmap_index.py)'s `TOPICS`
-tuple — e.g. "Backend expansion (iOS actuators)", "Integration & automation (MCP)",
+tuple — e.g. "Backend expansion (iOS actuators)", "Integration & automation",
 "Security hardening"), and the index pages render items grouped by topic. But that grouping
 only becomes visible once someone opens the item file and reads its metadata block, or
 waits for the next index regeneration. On the GitHub PR list itself — where reviewers

@@ -10,7 +10,7 @@
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0103") |
 | Implementing PR | [#441](https://github.com/bajutsu-e2e/bajutsu/pull/441) |
-| Topic | Development infrastructure (contributor workflow) |
+| Topic | Contributor workflow |
 | Related | [BE-0069](../BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails.md), [BE-0043](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md) |
 <!-- /BE-METADATA -->
 

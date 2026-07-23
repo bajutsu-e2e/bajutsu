@@ -10,7 +10,7 @@
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0159") |
 | Implementing PR | [#628](https://github.com/bajutsu-e2e/bajutsu/pull/628) (1/2), [#631](https://github.com/bajutsu-e2e/bajutsu/pull/631) (2/2) |
-| Topic | Development infrastructure (contributor workflow) |
+| Topic | Contributor workflow |
 | Related | [BE-0078](../BE-0078-roadmap-status-folders/BE-0078-roadmap-status-folders.md), [BE-0096](../BE-0096-docs-roadmap-link-integrity/BE-0096-docs-roadmap-link-integrity.md), [BE-0109](../BE-0109-roadmap-tracking-issues/BE-0109-roadmap-tracking-issues.md), [BE-0149](../BE-0149-roadmap-placeholder-format-guardrail/BE-0149-roadmap-placeholder-format-guardrail.md), [BE-0154](../BE-0154-roadmap-promote-base-sha/BE-0154-roadmap-promote-base-sha.md) |
 <!-- /BE-METADATA -->
 

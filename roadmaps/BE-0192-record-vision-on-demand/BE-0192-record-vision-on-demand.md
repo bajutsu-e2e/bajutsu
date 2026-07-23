@@ -10,7 +10,7 @@
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0192") |
 | Implementing PR | [#785](https://github.com/bajutsu-e2e/bajutsu/pull/785) |
-| Topic | Authoring experience (record / GUI editor) |
+| Topic | Authoring experience |
 <!-- /BE-METADATA -->
 
 ## Introduction

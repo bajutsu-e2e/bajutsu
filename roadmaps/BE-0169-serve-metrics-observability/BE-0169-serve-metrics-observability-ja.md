@@ -10,7 +10,7 @@
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0169") |
 | 実装 PR | [#719](https://github.com/bajutsu-e2e/bajutsu/pull/719) |
-| トピック | Web UI のホスティング（クラウド / セルフホスト） |
+| トピック | Web UI のホスティング |
 | 関連 | [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md), [BE-0055](../BE-0055-operational-logging/BE-0055-operational-logging-ja.md) |
 | 由来 | [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md) |
 <!-- /BE-METADATA -->

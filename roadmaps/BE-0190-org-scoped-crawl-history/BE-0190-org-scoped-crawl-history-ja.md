@@ -10,7 +10,7 @@
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0190") |
 | 実装 PR | [#781](https://github.com/bajutsu-e2e/bajutsu/pull/781) |
-| トピック | Web UI のホスティング（クラウド / セルフホスト） |
+| トピック | Web UI のホスティング |
 | 関連 | [BE-0180](../BE-0180-crawl-history-viewer/BE-0180-crawl-history-viewer-ja.md) |
 | 由来 | [BE-0180](../BE-0180-crawl-history-viewer/BE-0180-crawl-history-viewer-ja.md) のレビュー |
 <!-- /BE-METADATA -->

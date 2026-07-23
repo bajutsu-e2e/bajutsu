@@ -10,7 +10,7 @@
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0100") |
 | 実装 PR | [#415](https://github.com/bajutsu-e2e/bajutsu/pull/415) |
-| トピック | 開発基盤（コントリビュータ体験） |
+| トピック | コントリビューターワークフロー |
 | 関連 | [BE-0074](../BE-0074-be-template-standardization/BE-0074-be-template-standardization-ja.md) |
 <!-- /BE-METADATA -->
 

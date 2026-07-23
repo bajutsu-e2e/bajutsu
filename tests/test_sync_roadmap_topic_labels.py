@@ -41,8 +41,8 @@ def _item_text(topic: str, *, status: str = "Proposal") -> str:
 # Two real topics from the canonical list; their labels are derived from the same mapping the code
 # uses (`label_for_topic`), so the expected labels can't drift from the source of truth if a topic's
 # key changes. The `assert` fails loudly if either topic name is ever removed/renamed in TOPICS.
-_KNOWN_TOPIC = "Development infrastructure (contributor workflow)"
-_OTHER_TOPIC = "Integration & automation (MCP)"
+_KNOWN_TOPIC = "Contributor workflow"
+_OTHER_TOPIC = "Integration & automation"
 assert _KNOWN_TOPIC in labels.TOPIC_KEY_BY_NAME and _OTHER_TOPIC in labels.TOPIC_KEY_BY_NAME
 _KNOWN_LABEL = labels.label_for_topic(_KNOWN_TOPIC)
 _OTHER_LABEL = labels.label_for_topic(_OTHER_TOPIC)

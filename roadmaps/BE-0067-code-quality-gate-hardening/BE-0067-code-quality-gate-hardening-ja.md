@@ -10,7 +10,7 @@
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0067") |
 | 実装 PR | [#170](https://github.com/bajutsu-e2e/bajutsu/pull/170) |
-| トピック | 開発基盤（コントリビュータ体験） |
+| トピック | コントリビューターワークフロー |
 <!-- /BE-METADATA -->
 
 ## はじめに
@@ -107,7 +107,7 @@ Dependabot の security updates を有効にするのが、合わせ技として
 - **いま `tests/` を mypy に加える**：見送り。数百件の指摘が出るため、緩和した per-module 設定を伴う
   集中した後続作業とします。
 - **まず Proposal として書く（`BE-XXXX` プレースホルダ）**：ここでは不要。本作業は同じ変更で実装済みな
-  ので、*開発基盤* のトピックに実装済みとして直接置き、[BE-0043](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow-ja.md)
+  ので、*コントリビューターワークフロー* のトピックに実装済みとして直接置き、[BE-0043](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow-ja.md)
   の姉妹項目とします。
 - **advanced な CodeQL ワークフローをコミットする**（Python のみ、または4言語すべて）：却下。リポジトリの
   default setup と競合し、Python のみだと default setup 無効化後に他言語の網羅を落とし、4言語すべてだと
@@ -123,6 +123,6 @@ Dependabot の security updates を有効にするのが、合わせ技として
 
 - [CLAUDE.md](../../CLAUDE.md) — 契約としてのゲート。`make check` を CI と pre-push フックが反映します。
 - [BE-0043 — コンフリクトに強いファイル流動](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow-ja.md)
-  — 本項目が拡張する、コントリビュータ体験の姉妹項目（自己修復フック、索引の生成）。
+  — 本項目が拡張する、コントリビューターワークフローの姉妹項目（自己修復フック、索引の生成）。
 - [.github/workflows/ci.yml](../../.github/workflows/ci.yml)、[Makefile](../../Makefile)、[pyproject.toml](../../pyproject.toml)
   — 本項目が強化するゲート。

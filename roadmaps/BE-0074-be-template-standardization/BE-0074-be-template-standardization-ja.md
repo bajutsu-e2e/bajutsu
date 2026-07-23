@@ -10,7 +10,7 @@
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0074") |
 | 実装 PR | [#197](https://github.com/bajutsu-e2e/bajutsu/pull/197) |
-| トピック | 開発基盤（コントリビュータ体験） |
+| トピック | コントリビューターワークフロー |
 | 関連 | [BE-0100](../BE-0100-roadmap-progress-tracking-template/BE-0100-roadmap-progress-tracking-template-ja.md) |
 <!-- /BE-METADATA -->
 
@@ -240,6 +240,6 @@ H1 のタイトル行は両ファイルとも `# BE-NNNN — <タイトル>` と
   `tests/test_roadmap_index.py` —— 本項目が囲みブロックを軸に再定義するメタデータパーサと、本体に対して倣う
   索引への既存の「生成して検査する」扱い。
 - [BE-0043 —— 衝突に強いファイルフロー](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow-ja.md)
-  —— 「不変条件を機械検査にかける」を確立した、コントリビュータ体験の兄弟項目。
+  —— 「不変条件を機械検査にかける」を確立した、コントリビューターワークフローの兄弟項目。
 - [BE-0069 —— 実行可能なコントリビュータガードレール](../BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails-ja.md)
   —— 近縁の手続きのコマンド化の項目。別物として保ちます。

@@ -60,7 +60,7 @@ def valid_roadmap_item_en(id_token: str = "BE-XXXX", slug: str = "a-thing") -> s
         "| Author | [@0x0c](https://github.com/0x0c) |\n"
         "| Status | **Proposal** |\n"
         f"| Tracking issue | [Search]({tracking_issue_url(id_token)}) |\n"
-        "| Topic | Development infrastructure (contributor workflow) |\n"
+        "| Topic | Contributor workflow |\n"
         "<!-- /BE-METADATA -->\n\n"
         f"{body}\n\n## Progress\n\nTBD\n\n## References\n\nTBD\n"
     )
@@ -79,7 +79,7 @@ def valid_roadmap_item_ja(id_token: str = "BE-XXXX", slug: str = "a-thing") -> s
         "| 提案者 | [@0x0c](https://github.com/0x0c) |\n"
         "| 状態 | **提案** |\n"
         f"| トラッキング Issue | [検索]({tracking_issue_url(id_token)}) |\n"
-        "| トピック | 開発基盤（コントリビュータ体験） |\n"
+        "| トピック | コントリビューターワークフロー |\n"
         "<!-- /BE-METADATA -->\n\n"
         f"{body}\n\n## 進捗\n\nTBD\n\n## 参考\n\nTBD\n"
     )

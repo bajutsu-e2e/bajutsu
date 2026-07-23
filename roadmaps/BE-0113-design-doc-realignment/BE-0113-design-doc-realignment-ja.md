@@ -10,7 +10,7 @@
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0113") |
 | 実装 PR | [#565](https://github.com/bajutsu-e2e/bajutsu/pull/565) |
-| トピック | 開発基盤（コントリビュータ体験） |
+| トピック | コントリビューターワークフロー |
 | 関連 | [BE-0010](../BE-0010-update-scope-statement/BE-0010-update-scope-statement-ja.md), [BE-0027](../BE-0027-mock-server-external/BE-0027-mock-server-external-ja.md), [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend-ja.md) |
 <!-- /BE-METADATA -->
 

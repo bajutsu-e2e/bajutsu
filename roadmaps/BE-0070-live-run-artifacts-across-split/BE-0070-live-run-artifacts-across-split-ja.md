@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案（保留）** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0070") |
-| トピック | Web UI のホスティング（クラウド / セルフホスト） |
+| トピック | Web UI のホスティング |
 <!-- /BE-METADATA -->
 
 ## はじめに

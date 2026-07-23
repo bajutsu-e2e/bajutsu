@@ -10,7 +10,7 @@
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0090") |
 | Implementing PR | [#335](https://github.com/bajutsu-e2e/bajutsu/pull/335), [#336](https://github.com/bajutsu-e2e/bajutsu/pull/336) |
-| Topic | Hosting the web UI (cloud / self-hosted) |
+| Topic | Hosting the web UI |
 <!-- /BE-METADATA -->
 
 ## Introduction
