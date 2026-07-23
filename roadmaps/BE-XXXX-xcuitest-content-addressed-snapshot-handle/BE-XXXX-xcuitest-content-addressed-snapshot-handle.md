@@ -103,7 +103,10 @@ as separate pull requests.
 
 **Unit 1 — Derive the handle from stable element identity, not from a generation counter.** In
 `SnapshotStore`, replace the `h-<generation>-<index>` scheme with a handle derived deterministically
-from the element's stable identity — its `identifier`, `label`, and `traits`. Three fields the
+from the element's stable identity — its `identifier`, `label`, and `traits`. The handle keeps its
+`h-` prefix as an opaque-handle namespace, so only the part after the prefix changes — from a
+generation and index to an identity encoding (e.g. `h-<identity-hash>`); the prefix is deliberately
+preserved so nothing downstream that keys off it (a test, a log filter) breaks. Three fields the
 snapshot also carries are deliberately excluded from the derivation. The `backingElement` is excluded
 because every `queryElements` call returns a fresh object reference for the same on-screen element, so
 including the reference would make the handle change on every snapshot — the very defect this item
