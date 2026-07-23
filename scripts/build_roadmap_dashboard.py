@@ -113,13 +113,22 @@ _ORIGIN_LINK_RE = re.compile(r"\[(?P<text>[^\]]+)\]\((?P<path>[^)\s]+)\)")
 
 
 def _render_origin(origin: str, item_dir: str) -> str:
-    """Render an ``Origin`` field as safe HTML, resolving any embedded item-relative link."""
+    """Render an ``Origin`` field as safe HTML, resolving any embedded item-relative link.
+
+    ``Origin`` is free-form author text: a link target is usually item-relative (see above), but an
+    absolute one (e.g. an issue URL) is left verbatim rather than run through ``posixpath.normpath``,
+    which would mangle it into a nonsensical ``roadmaps/<item>/https:/...`` path.
+    """
     parts: list[str] = []
     pos = 0
     for m in _ORIGIN_LINK_RE.finditer(origin):
         parts.append(html.escape(origin[pos : m.start()]))
-        resolved = posixpath.normpath(f"roadmaps/{item_dir}/{m.group('path')}")
-        href = html.escape(f"{REPO_BLOB}/{resolved}")
+        path = m.group("path")
+        if "://" in path or path.startswith("/"):
+            href = html.escape(path)
+        else:
+            resolved = posixpath.normpath(f"roadmaps/{item_dir}/{path}")
+            href = html.escape(f"{REPO_BLOB}/{resolved}")
         parts.append(f'<a href="{href}">{html.escape(m.group("text"))}</a>')
         pos = m.end()
     parts.append(html.escape(origin[pos:]))

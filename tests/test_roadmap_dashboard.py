@@ -334,3 +334,17 @@ def test_origin_plain_text_is_escaped_with_no_markup() -> None:
     """An ``Origin`` with no markdown link (most items) renders as plain escaped text."""
     card = _card_for_origin("MagicPod & <competitors>")
     assert '<span class="be-origin">MagicPod &amp; &lt;competitors&gt;</span>' in card
+
+
+def test_origin_absolute_link_is_left_verbatim() -> None:
+    """An ``Origin`` link to an absolute URL (e.g. an issue) must not be treated as item-relative.
+
+    Running it through the same ``posixpath.normpath(f"roadmaps/{item_dir}/...")`` resolution as an
+    item-relative target would mangle ``https://`` into ``https:/`` and prefix it with
+    ``roadmaps/<item>/``, producing a broken href.
+    """
+    card = _card_for_origin("[#123](https://github.com/bajutsu-e2e/bajutsu/issues/123)")
+    assert (
+        '<span class="be-origin"><a href="https://github.com/bajutsu-e2e/bajutsu/issues/123">'
+        "#123</a></span>" in card
+    )
