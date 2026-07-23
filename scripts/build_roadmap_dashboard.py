@@ -426,7 +426,7 @@ _STYLE = """
 .be-title{font-size:13px;line-height:1.35}
 .be-origin{font-size:11px;color:#888}
 .be-issue{align-self:flex-start;font-size:10px;font-weight:600;color:#666;text-decoration:none;
-  border:1px solid rgba(128,128,128,.55);border-radius:4px;padding:0 .35rem}
+  border:1px solid rgba(128,128,128,.55);border-radius:4px;padding:0 .35rem;white-space:nowrap}
 .be-issue:hover{color:inherit;border-color:currentColor}
 .be-viewtoggle{display:inline-flex;margin:0 0 1.2rem;border:1px solid rgba(128,128,128,.35);
   border-radius:8px;overflow:hidden}
