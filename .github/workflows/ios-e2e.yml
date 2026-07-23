@@ -329,7 +329,7 @@ jobs:
           udid: ${{ steps.sim.outputs.udid }}
           artifact-name: actuation-push-run
 
-      # Text editing (BE-0221 dual-form ids): `select` + `copy` round-trip the Search field's text
+      # Text editing (iOS-only, single-form ids): `select` + `copy` round-trip the Search field's text
       # through the clipboard, then `delete` + `clear` edit it down — the four editing actuators no
       # other scenario drove. Crosses to the Search tab (see text_editing.yaml's header).
       - name: Run the text-editing scenario (xcuitest — select/copy/delete/clear)
