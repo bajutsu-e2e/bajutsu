@@ -106,6 +106,10 @@ Not every `scenarios/` file has a twin, by design:
   build has none of; its flows (filter sheet, gallery, search) are already covered by `modals.yaml`
   and `search.yaml` twins.
 - **`visual.yaml` / `golden/`** — pixel/tree baselines are id- and image-specific, a separate concern.
+- **`text_editing.yaml`** — once text is typed the Search field drops its placeholder, so a `-noax`
+  run cannot re-address it by the visible "Search horses" label for the follow-up `select` / `clear`
+  / `delete`; the id suite already covers all four editing actuators on both a11y toolkits (and on
+  Android over adb).
 
 Two twins are **SwiftUI-only** (`tags: [swiftui]`, excluded by `run-uikit-noax`): `gestures_multitouch`
 (the `SHOWCASE_GESTURES` pinch/rotate screen exists in SwiftUI + Compose, not UIKit — the same gap the

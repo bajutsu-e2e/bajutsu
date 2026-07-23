@@ -183,19 +183,23 @@ jobs:
           udid: ${{ steps.sim.outputs.udid }}
           artifact-name: smoke-run
 
-  # Real on-device XCUITest actuation beyond the conformance job's `tap` (BE-0281): drives `back` and
-  # device control on the Stable launch tab, which the smoke / golden / visual jobs above never tap or
-  # otherwise drive the UI (they only `wait`/`expect`). The tab-crossing gesture / text scenarios run
-  # in the `xcuitest (multi-touch)` job below; this job covers the launch-tab actuation surface —
-  # `back` and device control:
+  # Real on-device XCUITest actuation beyond the conformance job's `tap` (BE-0281): drives `back`,
+  # device control, and text editing that the smoke / golden / visual jobs above never reach (they
+  # only `wait`/`expect`). The proven tab-crossing gesture / text scenarios (search.yaml,
+  # notices.yaml) live in the `xcuitest (multi-touch)` job below, which feeds the required `E2E` gate;
+  # this job is the non-gating landing pad where newer actuation earns its stability first:
   #   - navigation.yaml: tap a Stable row → push Horse Detail → `back` (the OS back button). `tap` is
   #     already the conformance job's contract, but `back` end-to-end through the resident runner is not.
   #   - device.yaml / push.yaml: `setLocation`, clipboard round-trip, and a simctl `push` — the
-  #     device-control family, the iOS twin of Android's device control (BE-0210). All three run on
-  #     the launch tab.
+  #     device-control family, the iOS twin of Android's device control (BE-0210). Both run on the
+  #     launch tab.
+  #   - text_editing.yaml: `select` + `copy` (⌘A / ⌘C), then `delete` and `clear` on the Search field,
+  #     with the copied text read back through the `clipboard` assertion — the four text-editing
+  #     actuators no other scenario drove. It crosses to the Search tab, so once stable it can move up
+  #     to the multi-touch job beside search.yaml.
   # Deliberately NOT in the `E2E` gate's `needs:` below (like `golden` / `visual`): the Simulator lane
   # has a flakiness history (BE-0218), so new actuation lands as a per-PR signal first and is promoted
-  # to the gate only once it proves stable. One build serves all three scenarios (cost discipline: the
+  # to the gate only once it proves stable. One build serves all four scenarios (cost discipline: the
   # macOS runner bills at 10x) — split the interaction and device-control halves into their own jobs
   # if one is promoted to the gate ahead of the other.
   actuation:
@@ -204,11 +208,12 @@ jobs:
     if: needs.changes.outputs.relevant == 'true'
     runs-on: macos-latest
     # Cap the metered macOS job (10x billing): a hung Simulator/runner would otherwise run to the 6h
-    # default. Build + three short scenario runs is ~12min, so 25 catches a real hang with headroom.
+    # default. Build + four short scenario runs is ~14min, so 25 catches a real hang with headroom.
     timeout-minutes: 25
     # Raise the wait floor so a cold-boot Simulator has budget to render the first Stable row before
-    # navigation/device/push's own 10s first-wait — the same knob the `smoke` job above and the Android
-    # lane use. A condition wait returns the instant the row appears, so this is a ceiling, not a sleep.
+    # navigation/device/push/text_editing's own 10s first-wait — the same knob the `smoke` job above
+    # and the Android lane use. A condition wait returns the instant the row appears, so this is a
+    # ceiling, not a sleep.
     env:
       BAJUTSU_MIN_WAIT_TIMEOUT: "20"
     steps:
@@ -324,17 +329,34 @@ jobs:
           udid: ${{ steps.sim.outputs.udid }}
           artifact-name: actuation-push-run
 
-      # Re-fail the job if any of the three continue-on-error steps above failed — they need to run
+      # Text editing (BE-0221 dual-form ids): `select` + `copy` round-trip the Search field's text
+      # through the clipboard, then `delete` + `clear` edit it down — the four editing actuators no
+      # other scenario drove. Crosses to the Search tab (see text_editing.yaml's header).
+      - name: Run the text-editing scenario (xcuitest — select/copy/delete/clear)
+        id: text_editing
+        continue-on-error: true
+        uses: ./.github/actions/bajutsu-e2e
+        with:
+          scenarios: demos/showcase/scenarios/text_editing.yaml
+          target: showcase-swiftui
+          backend: xcuitest
+          config: demos/showcase/showcase.config.yaml
+          udid: ${{ steps.sim.outputs.udid }}
+          artifact-name: actuation-text-editing-run
+
+      # Re-fail the job if any of the continue-on-error steps above failed — they need to run
       # independently of each other, but the job as a whole must still redden so the signal isn't lost.
       - name: Report actuation results
         if: always()
         run: |
-          echo "navigation: ${{ steps.navigation.outcome }}"
-          echo "device:     ${{ steps.device.outcome }}"
-          echo "push:       ${{ steps.push.outcome }}"
+          echo "navigation:   ${{ steps.navigation.outcome }}"
+          echo "device:       ${{ steps.device.outcome }}"
+          echo "push:         ${{ steps.push.outcome }}"
+          echo "text_editing: ${{ steps.text_editing.outcome }}"
           if [ "${{ steps.navigation.outcome }}" = "failure" ] || \
              [ "${{ steps.device.outcome }}" = "failure" ] || \
-             [ "${{ steps.push.outcome }}" = "failure" ]; then
+             [ "${{ steps.push.outcome }}" = "failure" ] || \
+             [ "${{ steps.text_editing.outcome }}" = "failure" ]; then
             echo "::error::at least one actuation scenario failed — see the step outcomes above"
             exit 1
           fi

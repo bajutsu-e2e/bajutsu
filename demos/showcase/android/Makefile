@@ -76,10 +76,16 @@ SERIAL ?= booted
 # cannot represent (the whole point of BE-0285). Both reuse the Stable/Log instruments the lane
 # already drives, need no app change, and carry both id forms so they run on Views too.
 #
+# The text-editing flow `text_editing` joins the lane too: `select` + `copy` (Ctrl+A / Ctrl+C over
+# adb) round-trip the Search field's text through the clipboard, then `delete` (KEYCODE_DEL) and
+# `clear` edit it down — the four editing actions no other scenario drove. It reuses the Search
+# instruments the lane already exercises and carries both id forms, but stays Compose-only for now
+# (like `components` / `modals`) until the field-value read-back is confirmed on the Views tree.
+#
 # Observed network capture lands in its own `e2e-network` target below (BE-0283); mocked network
 # (deterministic stub responses) stays a follow-up.
 E2E_SCENARIOS := smoke firstlook navigation search data_driven relaunch system components modals \
-	controls notices gestures gestures_multitouch permission device extract foreach
+	controls notices gestures gestures_multitouch permission device extract foreach text_editing
 
 # Raise the condition-wait ceiling for this lane only: the CI x86_64 software-rendered emulator
 # presents sheets/covers slower than the shared scenarios' 5s waits allow. A wait returns as soon as

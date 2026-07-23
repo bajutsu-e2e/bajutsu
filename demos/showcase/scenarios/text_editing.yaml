@@ -1,0 +1,57 @@
+# Text-editing steps: select the field's text and copy it to the clipboard, then delete from its
+# end and clear it entirely — the fixture for `select`, `copy`, `delete`, and `clear`, none of which
+# any other showcase scenario exercised (every text flow so far only `type`d). All four run on the
+# Search field, whose match count is mirrored to an a11y value (`search.count`), so each edit's
+# effect is observable off the field itself: the catalog is "Horse 1".."Horse 5" filtered by a
+# case-insensitive substring (AppModel.horses(matching:)), so "Horse 3" narrows to one row while any
+# "Horse "-prefix — or an empty query — matches all five. `copy` has no text of its own: it copies
+# whatever the preceding `select` left selected, so the two run as a pair and the copied text is read
+# back through the `clipboard` assertion (device.yaml proves that read works on both backends). All
+# four actions are implemented on iOS (XCUITest — ⌘A / ⌘C / the delete key) and Android (adb — Ctrl+A
+# / Ctrl+C / KEYCODE_DEL); `select` and `copy` need the `textSelection` capability, which both the
+# xcuitest and adb backends advertise, so this one file is preflight-clean and runs unchanged on
+# every a11y target. Each id lists both its dotted SPEC form (iOS / Compose) and its underscore
+# Android Views form, so the selector resolves whichever tree renders (BE-0221).
+#
+# No -noax twin: after text is typed the field no longer carries its placeholder, so a -noax run
+# cannot re-address it by the visible "Search horses" label for the follow-up select/clear/delete —
+# the same reason extract.yaml and foreach.yaml have no -noax twin. The id-based file already covers
+# both iOS a11y toolkits (XCUITest) and both Android a11y toolkits (adb) on real backends.
+#   bajutsu run --scenario text_editing.yaml --target showcase-swiftui ...
+#   bajutsu run --scenario text_editing.yaml --target showcase-compose --backend android ...
+- name: select and copy the field text, then delete and clear it
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1" }
+  steps:
+    - tap: { label: "Search", traits: [button] }
+      capture: [video]
+    - wait: { for: { id: [search.field, search_field] }, timeout: 10 }
+    - type: { text: "Horse 3", into: { id: [search.field, search_field] } }
+    - wait: { for: { id: [search.row.3, search_row_3] }, timeout: 5 }
+    - assert:
+        - value: { sel: { id: [search.count, search_count] }, equals: "1" }
+        - value: { sel: { id: [search.field, search_field] }, equals: "Horse 3" }
+    # select-all then copy: whatever `select` highlights is what `copy` puts on the clipboard.
+    - select: { into: { id: [search.field, search_field] }, mode: all }
+    - copy: {}
+    - assert:
+        - clipboard: { equals: "Horse 3" }
+    # clear empties the field, so the query matches the whole catalog again — all five rows return.
+    - clear: { into: { id: [search.field, search_field] } }
+    - wait: { for: { id: [search.row.1, search_row_1] }, timeout: 5 }
+    - assert:
+        - value: { sel: { id: [search.count, search_count] }, equals: "5" }
+    # re-populate, then delete just the trailing digit: "Horse 2" (one match) becomes "Horse " (all
+    # five), proving `delete` removes exactly `count` characters from the end rather than all of them.
+    - type: { text: "Horse 2", into: { id: [search.field, search_field] } }
+    - wait: { for: { id: [search.row.2, search_row_2] }, timeout: 5 }
+    - assert:
+        - value: { sel: { id: [search.count, search_count] }, equals: "1" }
+        - value: { sel: { id: [search.field, search_field] }, equals: "Horse 2" }
+    - delete: { into: { id: [search.field, search_field] }, count: 1 }
+    - wait: { for: { id: [search.row.5, search_row_5] }, timeout: 5 }
+  expect:
+    - value: { sel: { id: [search.count, search_count] }, equals: "5" }
+    - value: { sel: { id: [search.field, search_field] }, equals: "Horse " }
+    # the clipboard still holds what `copy` put there — delete and clear touch the field, not it.
+    - clipboard: { equals: "Horse 3" }
