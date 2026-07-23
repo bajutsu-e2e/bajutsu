@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-ios-permission-alert-step-ja.md)
+**English** · [日本語](BE-0316-ios-permission-alert-step-ja.md)
 
-# BE-XXXX — Explicit mid-flow step for iOS permission-prompt alerts
+# BE-0316 — Explicit mid-flow step for iOS permission-prompt alerts
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-ios-permission-alert-step.md) |
+| Proposal | [BE-0316](BE-0316-ios-permission-alert-step.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0316") |
 | Topic | Scenario authoring features |
 | Related | [BE-0276](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state.md), [BE-0128](../BE-0128-device-step-capability-preflight/BE-0128-device-step-capability-preflight.md), [BE-0026](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md) |
 <!-- /BE-METADATA -->

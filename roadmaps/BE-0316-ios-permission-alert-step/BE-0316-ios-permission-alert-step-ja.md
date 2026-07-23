@@ -1,14 +1,14 @@
-[English](BE-XXXX-ios-permission-alert-step.md) · **日本語**
+[English](BE-0316-ios-permission-alert-step.md) · **日本語**
 
-# BE-XXXX — iOS の権限プロンプトを明示的に操作する mid-flow ステップ
+# BE-0316 — iOS の権限プロンプトを明示的に操作する mid-flow ステップ
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-ios-permission-alert-step-ja.md) |
+| 提案 | [BE-0316](BE-0316-ios-permission-alert-step-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0316") |
 | トピック | シナリオ記述機能 |
 | 関連 | [BE-0276](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state-ja.md)、[BE-0128](../BE-0128-device-step-capability-preflight/BE-0128-device-step-capability-preflight-ja.md)、[BE-0026](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax-ja.md) |
 <!-- /BE-METADATA -->

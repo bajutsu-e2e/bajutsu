@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-rename-dismiss-alerts-to-alert-handling-ja.md)
+**English** · [日本語](BE-0317-rename-dismiss-alerts-to-alert-handling-ja.md)
 
-# BE-XXXX — Rename the dismissAlerts guard to alertHandling to match its grant-or-dismiss behavior
+# BE-0317 — Rename the dismissAlerts guard to alertHandling to match its grant-or-dismiss behavior
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-rename-dismiss-alerts-to-alert-handling.md) |
+| Proposal | [BE-0317](BE-0317-rename-dismiss-alerts-to-alert-handling.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0317") |
 | Topic | Scenario authoring features |
 | Related | [BE-0269](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention.md), [BE-0276](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state.md) |
 <!-- /BE-METADATA -->
