@@ -189,9 +189,9 @@ final class BE0310ScreenTransitionSignalUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["log.sheet.title"].waitForNonExistence(timeout: 5))
         settle()
 
-        // Not-covered case (documented, not asserted strictly): an in-place data update. The
-        // proposal expects at most `layoutChangedNotification`, often nothing — record what
-        // actually happens rather than assuming it.
+        // Not-covered case — asserted strictly: an in-place data update. The proposal expects at
+        // most `layoutChangedNotification`, often nothing, so this fails loudly if the toggle
+        // reports a transition (unlike the cold-launch case above, which only records).
         let beforeToggle = listener.transitionCount
         app.descendants(matching: .any)["log.intense"].tap()
         settle()
