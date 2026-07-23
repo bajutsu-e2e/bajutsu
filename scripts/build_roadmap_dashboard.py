@@ -216,11 +216,13 @@ def _progress_strip(by_topic: dict[str, list[Any]]) -> str:
 
 
 def render_html(items: list[Any]) -> str:
-    """Render the dashboard body: search box, status filter, category sections, empty-state region.
+    """Render the dashboard body: filters, Cards/Table toggle, card sections, table, empty region.
 
-    Sections are category-major (by Topic); each item card carries its own status (colour + badge),
-    and each category shows a progress figure derived purely from the Status field — the share of its
-    items that are Implemented — beside a stacked bar of the full status composition.
+    Both views render the same items (BE-0311): the card view is category-major (by Topic), each
+    card carrying its own status (colour + badge) and each category a progress figure derived purely
+    from the Status field — the share of its items Implemented — beside a stacked bar of the full
+    composition; the table view lays every item out as one sortable row. The toggle shows one and
+    hides the other; the search box and status filter narrow both alike.
     """
     by_bucket: dict[str, list[Any]] = {name: [] for name, _key in bri.BUCKETS}
     by_topic: dict[str, list[Any]] = {topic: [] for topic, _key, _origin in bri.TOPICS}
