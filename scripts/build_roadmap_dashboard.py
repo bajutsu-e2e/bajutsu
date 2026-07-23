@@ -404,8 +404,11 @@ _STYLE = """
 # query matched nothing, its matches are hidden by the status chips, or (no query) every chip is off or
 # the on chips have no items. The collapsed state is applied by JS, never baked into the markup, so with scripting
 # off every status is on, every category open, the empty-state region empty, and the page fully
-# readable. Each heading also toggles its own category. Nothing fetches or computes — it only shows and
-# hides already-rendered markup.
+# readable. Each heading also toggles its own category. Nothing fetches or computes; the filters only
+# show and hide already-rendered markup. Two more affordances share this same script (BE-0311): the
+# Cards/Table toggle shows one already-rendered view and hides the other, persisting the choice in
+# localStorage; and clicking a table column header reorders the already-rendered <tbody> rows in
+# place (ascending/descending on repeat clicks) without touching which rows the filters above show.
 _SCRIPT = """
 <script>
 (function(){
