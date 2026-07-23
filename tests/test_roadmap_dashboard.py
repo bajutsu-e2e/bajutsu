@@ -61,13 +61,16 @@ def test_each_card_links_to_its_tracking_issue_search() -> None:
     """Each card carries an additive "Issue" pill linking to its id's tracking-issue search (BE-0139).
 
     The pill is a second link beside the proposal one, built from the id alone (no network), so the
-    per-item count matches the card count and each url is the one the id predicts.
+    per-item count matches the card count and each url is the one the id predicts. Table rows
+    (BE-0311) carry the same pill, so this is scoped to the cards view to keep the count pinned to
+    cards alone.
     """
-    assert _PAGE.count('class="be-issue"') == len(_ITEMS)
+    cards_view = _PAGE.split('class="be-table-view', 1)[0]
+    assert cards_view.count('class="be-issue"') == len(_ITEMS)
     for item in _ITEMS:
         en = item.by_lang["en"]
         url = html.escape(brd.bri.tracking_issue_url(en.id))
-        assert f'<a class="be-issue" href="{url}"' in _PAGE, f"{en.id} issue link missing"
+        assert f'<a class="be-issue" href="{url}"' in cards_view, f"{en.id} issue link missing"
 
 
 def test_every_nonempty_category_renders_a_section() -> None:
@@ -217,6 +220,22 @@ def test_table_rows_mirror_card_status_and_topic() -> None:
         )
         assert row in table_view, f"{item.by_lang['en'].id} row missing or mis-tagged"
     assert table_view.count('class="be-row"') == len(_ITEMS)
+
+
+def test_table_rows_link_to_their_tracking_issue_search() -> None:
+    """Each row carries the same additive "Issue" pill the card does (BE-0139 parity, BE-0311).
+
+    A trailing, unsortable column after the six sortable ones, so it doesn't shift their indices.
+    """
+    table_view = _PAGE.split('class="be-table-view', 1)[-1]
+    assert table_view.count('class="be-issue"') == len(_ITEMS)
+    for item in _ITEMS:
+        en = item.by_lang["en"]
+        url = html.escape(brd.bri.tracking_issue_url(en.id))
+        assert f'<a class="be-issue" href="{url}"' in table_view, (
+            f"{en.id} table issue link missing"
+        )
+    assert "<th>Issue</th>" in table_view
 
 
 def test_view_toggle_and_both_containers_present() -> None:

@@ -155,6 +155,9 @@ def _row(item: Any) -> str:
     en = item.by_lang["en"]
     color = BUCKET_COLOR[item.bucket]
     label = BUCKET_LABEL[item.bucket]
+    # The same additive tracking-issue link the card carries (BE-0139); a trailing, non-sortable
+    # column, so it lines up after the six sortable ones without shifting their th/td indices.
+    issue_url = html.escape(bri.tracking_issue_url(en.id))
     return (
         f'<tr class="be-row" data-status="{html.escape(item.bucket)}" '
         f'data-topic="{html.escape(item.topic)}" data-search="{_search_text(item)}">'
@@ -166,6 +169,8 @@ def _row(item: Any) -> str:
         f"{html.escape(label)}</span></td>"
         f"{_date_cell(item.created)}"
         f"{_date_cell(item.updated)}"
+        f'<td><a class="be-issue" href="{issue_url}" title="Search GitHub for this item&#39;s '
+        'tracking issue (may have no results)">Issue</a></td>'
         "</tr>"
     )
 
@@ -182,12 +187,18 @@ _TABLE_COLUMNS: tuple[tuple[str, str], ...] = (
 
 
 def _table(items: list[Any]) -> str:
-    """The flat sortable table (BE-0311): one row per item in id order, six sortable columns."""
+    """The flat sortable table (BE-0311): one row per item in id order, six sortable columns.
+
+    A trailing, unsortable "Issue" column follows the six (BE-0139 parity with the card's pill);
+    appending it after every sortable ``th`` keeps their 0-based indices — which the sort script
+    reads off ``th[data-sort-key]``'s position — unchanged.
+    """
     heads = "".join(
         f'<th data-sort-key="{key}" aria-sort="none" role="columnheader" tabindex="0">'
         f"{html.escape(label)}</th>"
         for key, label in _TABLE_COLUMNS
     )
+    heads += "<th>Issue</th>"
     rows = "".join(_row(it) for it in sorted(items, key=lambda it: it.id))
     return f'<table class="be-table"><thead><tr>{heads}</tr></thead><tbody>{rows}</tbody></table>'
 
@@ -383,14 +394,15 @@ _STYLE = """
 .be-table{width:100%;border-collapse:collapse;font-size:13px}
 .be-table th,.be-table td{text-align:left;padding:.4rem .6rem;
   border-bottom:1px solid rgba(128,128,128,.2);vertical-align:top}
-.be-table th{cursor:pointer;user-select:none;white-space:nowrap;font-size:12px}
-.be-table th:hover{background:rgba(128,128,128,.1)}
+.be-table th{user-select:none;white-space:nowrap;font-size:12px}
+.be-table th[data-sort-key]{cursor:pointer}
+.be-table th[data-sort-key]:hover{background:rgba(128,128,128,.1)}
 .be-table th[aria-sort="ascending"]::after{content:" ▲";font-size:9px}
 .be-table th[aria-sort="descending"]::after{content:" ▼";font-size:9px}
 .be-table tbody tr:hover{background:rgba(128,128,128,.08)}
-.be-table a{color:inherit;font-weight:600;text-decoration:underline;
+.be-row-title a{color:inherit;font-weight:600;text-decoration:underline;
   text-decoration-color:rgba(128,128,128,.5)}
-.be-table a:hover{text-decoration-color:currentColor}
+.be-row-title a:hover{text-decoration-color:currentColor}
 .be-date{white-space:nowrap;font-variant-numeric:tabular-nums;color:#888}
 </style>
 """
