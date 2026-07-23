@@ -83,18 +83,28 @@ def _search_text(item: Any) -> str:
     return html.escape(f"{en.id} {en.title} {item.topic} {item.bucket}".lower())
 
 
+def _issue_pill(item_id: str) -> str:
+    """The additive "Issue" pill linking to an item's BE-0109 tracking-issue search (BE-0139).
+
+    Shared verbatim by the card and its table row (BE-0311) so the two can't silently drift apart —
+    the link is a search that can legitimately return zero results (a "born implemented" item never
+    opened a tracking issue), hence "Issue" rather than a promise of a guaranteed issue.
+    """
+    url = html.escape(bri.tracking_issue_url(item_id))
+    return (
+        f'<a class="be-issue" href="{url}" title="Search GitHub for this item&#39;s '
+        'tracking issue (may have no results)">Issue</a>'
+    )
+
+
 def _card(item: Any) -> str:
     en = item.by_lang["en"]
     color = BUCKET_COLOR[item.bucket]
     label = BUCKET_LABEL[item.bucket]
     origin = f'<span class="be-origin">{html.escape(en.origin)}</span>' if en.origin else ""
     # The card's primary click target stays the proposal file (the whole main link); the Issue pill is
-    # an additive second link to the item's BE-0109 tracking issue, built from its id alone. The two
-    # are sibling <a>s under a <div> rather than one nested in the other, since nested anchors are
-    # invalid HTML. The link is a search that can legitimately return zero results (a "born
-    # implemented" item never opened a tracking issue), so it is labelled "Issue" and titled as a
-    # search, not a guaranteed issue (BE-0139).
-    issue_url = html.escape(bri.tracking_issue_url(en.id))
+    # an additive second link, built from the id alone. The two are sibling <a>s under a <div> rather
+    # than one nested in the other, since nested anchors are invalid HTML.
     return (
         f'<div class="be-card" data-status="{html.escape(item.bucket)}" '
         f'data-topic="{html.escape(item.topic)}" data-search="{_search_text(item)}" '
@@ -107,8 +117,7 @@ def _card(item: Any) -> str:
         f'<span class="be-title">{html.escape(en.title)}</span>'
         f"{origin}"
         "</a>"
-        f'<a class="be-issue" href="{issue_url}" title="Search GitHub for this item&#39;s '
-        'tracking issue (may have no results)">Issue</a>'
+        f"{_issue_pill(en.id)}"
         "</div>"
     )
 
@@ -155,9 +164,6 @@ def _row(item: Any) -> str:
     en = item.by_lang["en"]
     color = BUCKET_COLOR[item.bucket]
     label = BUCKET_LABEL[item.bucket]
-    # The same additive tracking-issue link the card carries (BE-0139); a trailing, non-sortable
-    # column, so it lines up after the six sortable ones without shifting their th/td indices.
-    issue_url = html.escape(bri.tracking_issue_url(en.id))
     return (
         f'<tr class="be-row" data-status="{html.escape(item.bucket)}" '
         f'data-topic="{html.escape(item.topic)}" data-search="{_search_text(item)}">'
@@ -169,8 +175,9 @@ def _row(item: Any) -> str:
         f"{html.escape(label)}</span></td>"
         f"{_date_cell(item.created)}"
         f"{_date_cell(item.updated)}"
-        f'<td><a class="be-issue" href="{issue_url}" title="Search GitHub for this item&#39;s '
-        'tracking issue (may have no results)">Issue</a></td>'
+        # The same additive tracking-issue pill the card carries; a trailing, non-sortable column,
+        # so it lines up after the six sortable ones without shifting their th/td indices.
+        f"<td>{_issue_pill(en.id)}</td>"
         "</tr>"
     )
 
