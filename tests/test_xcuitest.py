@@ -663,6 +663,30 @@ def test_a_read_crash_that_never_recovers_fails_loudly() -> None:
     assert calls[0] == 1  # health never came back, so the read was not re-issued
 
 
+def test_a_reissue_that_crashes_again_is_recovered_within_budget() -> None:
+    # BE-0287: the observed flake crashes on back-to-back /screenshot calls — the runner comes back,
+    # the re-issue crashes again, it comes back once more, then succeeds. The recovery must ride out
+    # more than one consecutive crash (single-shot recovery would fail the run on the second crash).
+    inner, calls = _counting(
+        [_crash("GET", delivered=True), _crash("GET", delivered=True), _Reply(status="ok")]
+    )
+    reply = _with_crash_recovery(inner, health=lambda _t: True)("GET", "/screenshot", None)
+    assert reply.status == "ok"
+    assert calls[0] == 3  # crashed, recovered+re-issued, crashed again, recovered, then succeeded
+
+
+def test_a_runner_that_never_stabilizes_fails_past_the_recovery_budget() -> None:
+    # A runner that crashes on every re-issue is not a single flake; after `max_recoveries` consecutive
+    # crashes the run fails loudly (distinct from the health-never-came-back "did not recover" path),
+    # rather than looping forever.
+    inner, calls = _counting([_crash("GET", delivered=False)] * 3)
+    with pytest.raises(XcuitestRunnerCrashError, match="past the 2-recovery budget"):
+        _with_crash_recovery(inner, health=lambda _t: True, max_recoveries=2)(
+            "GET", "/elements", None
+        )
+    assert calls[0] == 3  # the initial call plus max_recoveries re-issues, all crashing
+
+
 def test_a_normal_reply_passes_through_without_probing_health() -> None:
     def _boom(_t: float) -> bool:  # health must not be consulted on the happy path
         raise AssertionError("health probed on a non-crash call")
