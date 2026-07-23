@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-serve-server-settings-tab-ja.md)
+**English** · [日本語](BE-0318-serve-server-settings-tab-ja.md)
 
-# BE-XXXX — Show the running server's configuration and bundled iOS test-runner status in a serve Settings tab
+# BE-0318 — Show the running server's configuration and bundled iOS test-runner status in a serve Settings tab
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-serve-server-settings-tab.md) |
+| Proposal | [BE-0318](BE-0318-serve-server-settings-tab.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0318") |
 | Topic | Surfacing CLI features in the serve Web UI |
 <!-- /BE-METADATA -->
 

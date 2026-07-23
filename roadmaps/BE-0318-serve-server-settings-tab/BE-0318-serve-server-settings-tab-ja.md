@@ -1,14 +1,14 @@
-[English](BE-XXXX-serve-server-settings-tab.md) · **日本語**
+[English](BE-0318-serve-server-settings-tab.md) · **日本語**
 
-# BE-XXXX — 起動中サーバの設定と同梱 iOS テストランナーの配置状態を serve の Settings タブに表示する
+# BE-0318 — 起動中サーバの設定と同梱 iOS テストランナーの配置状態を serve の Settings タブに表示する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-serve-server-settings-tab-ja.md) |
+| 提案 | [BE-0318](BE-0318-serve-server-settings-tab-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0318") |
 | トピック | serve Web UI への CLI 機能の取り込み |
 <!-- /BE-METADATA -->
 
