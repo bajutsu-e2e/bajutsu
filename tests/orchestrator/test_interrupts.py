@@ -231,6 +231,36 @@ def test_recovery_step_failure_fails_the_step_loudly() -> None:
         ],
     )
     assert not result.ok
+
+
+def test_recovery_failure_mid_wait_ends_the_wait_immediately() -> None:
+    """A recovery failure decided on the first poll must not poll on toward a long wait timeout.
+
+    Before the interrupt guard's failure could short-circuit a wait's own poll loop, a recovery
+    failure discovered on the first poll still let `for`/`settled`/`screenChanged` keep polling
+    all the way to their own `timeout` — the verdict was still correct (the guard's failure
+    overrides once the step returns), but "fail loudly" became "fail loudly, slowly": a long
+    `timeout:` turned a decided failure into a real-time stall. `on_interrupt_poll` now returns a
+    bool the wait checks alongside its deadline, so the wait ends on the very poll the recovery
+    failed, before any `_adaptive_sleep` — `sleep_calls` stays empty, not filled with ~2000
+    entries toward a 100s timeout.
+    """
+    sleep_calls: list[float] = []
+
+    driver = FakeDriver([el("ov.close", "X", ["button"])])  # target never appears
+    result = run_scenario(
+        driver,
+        _scenario(
+            {"name": "d", "steps": [{"wait": {"for": {"id": "home.title"}, "timeout": 100}}]}
+        ),
+        clock=FakeClock(sleep_calls.append),
+        interrupts=[
+            _interrupt({"exists": {"id": "ov.close"}}, [{"tap": {"id": "does.not.exist"}}])
+        ],
+    )
+    assert not result.ok
+    assert "does.not.exist" in (result.failure or "")
+    assert sleep_calls == []
     assert "does.not.exist" in (result.failure or "")
 
 

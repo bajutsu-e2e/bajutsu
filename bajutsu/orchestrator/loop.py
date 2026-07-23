@@ -305,7 +305,7 @@ def _run_step_body(
     on_blocked: BlockedHandler | None = None,
     alerts: list[AlertEvent] | None = None,
     on_wait_tick: WaitTick | None = None,
-    on_interrupt_poll: Callable[[list[base.Element]], None] | None = None,
+    on_interrupt_poll: Callable[[list[base.Element]], bool] | None = None,
 ) -> tuple[bool, str, list[AssertionResult], list[base.Element] | None]:
     """Execute one step's effect, returning (ok, reason, assertion_results, snapshot).
 
@@ -546,9 +546,15 @@ class _InterruptGuard:
             fired = True
         return fired
 
-    def observe(self, elements: list[base.Element]) -> None:
-        """Check the entries against one poll's tree (the per-tick hook a `wait` calls)."""
+    def observe(self, elements: list[base.Element]) -> bool:
+        """Check the entries against one poll's tree; return whether the wait should abort now.
+
+        A `True` return means a recovery step just failed (`self.failure` is now set): the outcome
+        is already decided, so `_wait`/`_wait_settled` end the poll immediately instead of burning
+        the rest of the timeout on a wait that can no longer pass — the caller (the run loop) reads
+        `self.failure` for the real reason once `_run_step_body` returns (BE-0314)."""
         self._fire_once(elements)
+        return self.failure is not None
 
     def clear_before_act(self, seed: list[base.Element]) -> list[base.Element]:
         """Before a UI act, clear any matching interstitial, re-reading until settled or capped.
