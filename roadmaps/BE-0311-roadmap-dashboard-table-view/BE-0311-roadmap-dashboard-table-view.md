@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0311](BE-0311-roadmap-dashboard-table-view.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0311") |
 | Topic | Development infrastructure (contributor workflow) |
 | Related | [BE-0094](../BE-0094-roadmap-status-dashboard/BE-0094-roadmap-status-dashboard.md), [BE-0219](../BE-0219-roadmap-dashboard-search/BE-0219-roadmap-dashboard-search.md) |
@@ -151,16 +151,16 @@ there enumerates the dashboard's views, update it in the same PR
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Git-derived `created` / `updated` dates on `Item`, and `docs.yml` checkout switched to
+- [x] Git-derived `created` / `updated` dates on `Item`, and `docs.yml` checkout switched to
       `fetch-depth: 0`.
-- [ ] View toggle (`Cards` / `Table`) rendered beside the existing filter row.
-- [ ] Table markup: one row per item, six sortable columns, per-topic progress strip retained above
+- [x] View toggle (`Cards` / `Table`) rendered beside the existing filter row.
+- [x] Table markup: one row per item, six sortable columns, per-topic progress strip retained above
       the table.
-- [ ] Client-side sort wired to each column header, composing with the existing search/status
+- [x] Client-side sort wired to each column header, composing with the existing search/status
       filters.
-- [ ] Persisted view choice via `localStorage`, defaulting to Cards.
-- [ ] Styling for both light and dark themes.
-- [ ] Tests in `tests/test_roadmap_dashboard.py`.
+- [x] Persisted view choice via `localStorage`, defaulting to Cards.
+- [x] Styling for both light and dark themes.
+- [x] Tests in `tests/test_roadmap_dashboard.py`.
 
 ## References
 

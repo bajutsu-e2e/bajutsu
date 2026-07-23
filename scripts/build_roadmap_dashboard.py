@@ -73,6 +73,16 @@ def _item_href(item: Any) -> str:
     return f"{REPO_BLOB}/roadmaps/{name}/{name}.md"
 
 
+def _search_text(item: Any) -> str:
+    """The escaped, lower-cased id/title/topic/status a card and its row both filter on (BE-0219).
+
+    Emitted as ``data-search`` on both, so the filter script reads one ready-made string instead of
+    scraping the markup — and the card and its table row always match on the same tokens.
+    """
+    en = item.by_lang["en"]
+    return html.escape(f"{en.id} {en.title} {item.topic} {item.bucket}".lower())
+
+
 def _card(item: Any) -> str:
     en = item.by_lang["en"]
     color = BUCKET_COLOR[item.bucket]
@@ -87,7 +97,7 @@ def _card(item: Any) -> str:
     issue_url = html.escape(bri.tracking_issue_url(en.id))
     return (
         f'<div class="be-card" data-status="{html.escape(item.bucket)}" '
-        f'data-topic="{html.escape(item.topic)}" '
+        f'data-topic="{html.escape(item.topic)}" data-search="{_search_text(item)}" '
         f'style="border-left-color:{color}">'
         f'<a class="be-card-main" href="{_item_href(item)}">'
         '<span class="be-card-top">'
@@ -112,6 +122,97 @@ def _progress_bar(counts: dict[str, int], total: int) -> str:
         if counts[name]
     )
     return f'<div class="be-bar">{segments}</div>'
+
+
+def _topic_progress(cat_items: list[Any]) -> tuple[dict[str, int], int, int]:
+    """A topic's per-bucket counts, item total, and implemented-share percentage — one derivation.
+
+    Shared by the card sections and the table view's progress strip so both show the same figure
+    (BE-0311); the percentage is purely a function of Status, so it always has a source of truth.
+    """
+    counts = {name: sum(1 for it in cat_items if it.bucket == name) for name, _key in bri.BUCKETS}
+    total = len(cat_items)
+    return counts, total, round(100 * counts["Implemented"] / total)
+
+
+def _date_cell(iso: str | None) -> str:
+    """A Created/Updated cell (BE-0311): the day for a reader, the full UTC ISO for the sort.
+
+    ``data-sort`` holds the UTC timestamp (or "" when unknown) so the client sort is a plain,
+    correct string comparison; the visible text is just the ``YYYY-MM-DD`` day.
+    """
+    if not iso:
+        return '<td class="be-date" data-sort="">—</td>'
+    return f'<td class="be-date" data-sort="{html.escape(iso)}">{html.escape(iso[:10])}</td>'
+
+
+def _row(item: Any) -> str:
+    """One table row mirroring the item's card: same status/topic attributes, plus the two dates.
+
+    ``data-search`` carries the same id/title/topic/status text the card exposes, so the search box
+    and status chips filter rows with no separate matching logic (BE-0311).
+    """
+    en = item.by_lang["en"]
+    color = BUCKET_COLOR[item.bucket]
+    label = BUCKET_LABEL[item.bucket]
+    return (
+        f'<tr class="be-row" data-status="{html.escape(item.bucket)}" '
+        f'data-topic="{html.escape(item.topic)}" data-search="{_search_text(item)}">'
+        # id column sorts on the zero-padded number ("0311"), so the string compare is numeric.
+        f'<td data-sort="{html.escape(en.id[3:])}">'
+        f'<a href="{_item_href(item)}" style="color:{color}">{html.escape(en.id)}</a></td>'
+        f'<td class="be-row-title">{html.escape(en.title)}</td>'
+        f"<td>{html.escape(item.topic)}</td>"
+        f'<td><span class="be-badge" style="color:{color};border-color:{color}">'
+        f"{html.escape(label)}</span></td>"
+        f"{_date_cell(item.created)}"
+        f"{_date_cell(item.updated)}"
+        "</tr>"
+    )
+
+
+# The six sortable columns, in render order: (data-sort-key, header label).
+_TABLE_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("id", "ID"),
+    ("title", "Title"),
+    ("topic", "Topic"),
+    ("status", "Status"),
+    ("created", "Created"),
+    ("updated", "Updated"),
+)
+
+
+def _table(items: list[Any]) -> str:
+    """The flat sortable table (BE-0311): one row per item in id order, six sortable columns."""
+    heads = "".join(
+        f'<th data-sort-key="{key}" aria-sort="none" role="columnheader" tabindex="0">'
+        f"{html.escape(label)}</th>"
+        for key, label in _TABLE_COLUMNS
+    )
+    rows = "".join(_row(it) for it in sorted(items, key=lambda it: it.id))
+    return f'<table class="be-table"><thead><tr>{heads}</tr></thead><tbody>{rows}</tbody></table>'
+
+
+def _progress_strip(by_topic: dict[str, list[Any]]) -> str:
+    """A compact per-topic progress list above the table, keeping Cards view's progress figure.
+
+    Reuses :func:`_progress_bar` and the same implemented-share percentage the card sections show,
+    so the table view doesn't drop the per-topic progress a reader relies on (BE-0311).
+    """
+    entries = ""
+    for topic, _key, _origin in bri.TOPICS:
+        cat_items = by_topic[topic]
+        if not cat_items:
+            continue
+        counts, total, pct = _topic_progress(cat_items)
+        entries += (
+            '<div class="be-strip-row">'
+            f'<span class="be-strip-name">{html.escape(topic)}</span>'
+            f'<span class="be-strip-pct">{pct}%</span>'
+            f"{_progress_bar(counts, total)}"
+            "</div>"
+        )
+    return f'<div class="be-strip">{entries}</div>'
 
 
 def render_html(items: list[Any]) -> str:
@@ -161,10 +262,8 @@ def render_html(items: list[Any]) -> str:
         cat_items = by_topic[topic]
         if not cat_items:
             continue
-        counts = {name: sum(1 for it in cat_items if it.bucket == name) for name, _k in bri.BUCKETS}
-        total = len(cat_items)
+        counts, total, pct = _topic_progress(cat_items)
         implemented = counts["Implemented"]
-        pct = round(100 * implemented / total)
         cards = "".join(_card(it) for it in sorted(cat_items, key=lambda it: it.id))
         section = (
             '<section class="be-cat">'
@@ -202,8 +301,23 @@ def render_html(items: list[Any]) -> str:
     # the DOM at all times (empty = collapsed via `:empty`, so no layout cost and no-JS shows nothing);
     # the script only ever mutates its text, never its presence — the reliable pattern for an
     # `aria-live` status region to announce. The message text is set via textContent, never as markup.
+    # A two-way Cards/Table toggle beside the filters (BE-0311). Both views read the same rendered
+    # items — the toggle only shows one sibling container and hides the other; nothing is recomputed.
+    # Cards is the default and the only view without JavaScript (the table container ships hidden).
+    toggle = (
+        '<div class="be-viewtoggle" role="group" aria-label="Choose layout">'
+        '<button type="button" class="be-view-btn is-active" data-view="cards" '
+        'aria-pressed="true">Cards</button>'
+        '<button type="button" class="be-view-btn" data-view="table" '
+        'aria-pressed="false">Table</button>'
+        "</div>"
+    )
+    cards_view = f'<div class="be-cards-view">{groups}</div>'
+    table_view = (
+        f'<div class="be-table-view is-hidden">{_progress_strip(by_topic)}{_table(items)}</div>'
+    )
     empty = '<div class="be-empty" role="status"></div>'
-    return f'<div class="be-dash">{filters}{groups}{empty}</div>'
+    return f'<div class="be-dash">{filters}{toggle}{cards_view}{table_view}{empty}</div>'
 
 
 _STYLE = """
@@ -223,7 +337,8 @@ _STYLE = """
 .be-filter{display:inline-flex;align-items:center;gap:.45rem;cursor:pointer;user-select:none;opacity:.5}
 .be-filter.is-active{opacity:1;background:rgba(128,128,128,.1)}
 .be-check{width:15px;height:15px;margin:0;cursor:pointer;flex:none}
-.be-group.is-hidden,.be-cat.is-hidden,.be-card.is-hidden{display:none}
+.be-group.is-hidden,.be-cat.is-hidden,.be-card.is-hidden,.be-row.is-hidden,
+  .be-cards-view.is-hidden,.be-table-view.is-hidden{display:none}
 .be-group-head{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;
   color:#888;border-bottom:1px solid rgba(128,128,128,.2);padding-bottom:.3rem;margin:1.6rem 0 .6rem}
 .be-cat{margin:1.6rem 0}
@@ -252,6 +367,28 @@ _STYLE = """
 .be-issue{align-self:flex-start;font-size:10px;color:#888;text-decoration:none;
   border:1px solid rgba(128,128,128,.3);border-radius:4px;padding:0 .35rem}
 .be-issue:hover{color:inherit;border-color:currentColor}
+.be-viewtoggle{display:inline-flex;margin:0 0 1.2rem;border:1px solid rgba(128,128,128,.35);
+  border-radius:8px;overflow:hidden}
+.be-view-btn{font:inherit;font-size:13px;padding:.3rem .9rem;border:0;background:transparent;
+  color:inherit;cursor:pointer}
+.be-view-btn+.be-view-btn{border-left:1px solid rgba(128,128,128,.35)}
+.be-view-btn.is-active{background:rgba(128,128,128,.18);font-weight:600}
+.be-strip{display:flex;flex-direction:column;gap:.35rem;margin:0 0 1.2rem}
+.be-strip-row{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(120px,180px);
+  align-items:center;gap:.6rem;font-size:12px}
+.be-strip-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.be-strip-pct{color:#888;font-variant-numeric:tabular-nums}
+.be-table-view{overflow-x:auto}
+.be-table{width:100%;border-collapse:collapse;font-size:13px}
+.be-table th,.be-table td{text-align:left;padding:.4rem .6rem;
+  border-bottom:1px solid rgba(128,128,128,.2);vertical-align:top}
+.be-table th{cursor:pointer;user-select:none;white-space:nowrap;font-size:12px}
+.be-table th:hover{background:rgba(128,128,128,.1)}
+.be-table th[aria-sort="ascending"]::after{content:" ▲";font-size:9px}
+.be-table th[aria-sort="descending"]::after{content:" ▼";font-size:9px}
+.be-table tbody tr:hover{background:rgba(128,128,128,.08)}
+.be-table a{text-decoration:none;font-weight:600}
+.be-date{white-space:nowrap;font-variant-numeric:tabular-nums;color:#888}
 </style>
 """
 
@@ -273,20 +410,16 @@ _SCRIPT = """
   var search=document.querySelector('.be-search');
   var checks=document.querySelectorAll('.be-check');
   var cards=document.querySelectorAll('.be-card');
+  var rows=document.querySelectorAll('.be-row');
   var cats=document.querySelectorAll('.be-cat');
   var groups=document.querySelectorAll('.be-group');
   var empty=document.querySelector('.be-empty');
   var on={};
   checks.forEach(function(c){ on[c.getAttribute('data-filter')]=c.checked; });
-  // The searchable text of each card, lower-cased once: id + title + topic + status.
-  var hay=[];
-  cards.forEach(function(c){
-    var id=c.querySelector('.be-id'), title=c.querySelector('.be-title');
-    hay.push([
-      id?id.textContent:'', title?title.textContent:'',
-      c.getAttribute('data-topic')||'', c.getAttribute('data-status')||''
-    ].join(' ').toLowerCase());
-  });
+  // Each card and row carries its searchable text (id + title + topic + status, lower-cased) in
+  // data-search, so the filter reads it ready-made instead of scraping markup. Cached once here.
+  var cardHay=[]; cards.forEach(function(c){ cardHay.push(c.getAttribute('data-search')||''); });
+  var rowHay=[]; rows.forEach(function(r){ rowHay.push(r.getAttribute('data-search')||''); });
   function terms(){
     return (search?search.value:'').toLowerCase().split(/\\s+/).filter(Boolean);
   }
@@ -295,15 +428,24 @@ _SCRIPT = """
     var head=cat.querySelector('.be-cat-head');
     if(head) head.setAttribute('aria-expanded', String(!collapsed));
   }
+  // Cards and rows are the same items in two layouts, so one predicate drives both: a status chip
+  // and the query. Counts and the empty-state message come from the cards (the canonical set), so a
+  // row never double-counts; the rows just mirror each card's visibility.
   function apply(){
     var allOn=Object.keys(on).every(function(s){ return on[s]; });
     var q=terms(), hasQuery=q.length>0, matched=0, shown=0;
+    function shows(hay, status){
+      return on[status] && q.every(function(t){ return hay.indexOf(t)>=0; });
+    }
     cards.forEach(function(c, i){
-      var match=q.every(function(t){ return hay[i].indexOf(t)>=0; });
+      var match=q.every(function(t){ return cardHay[i].indexOf(t)>=0; });
       if(match) matched++;
       var visible=on[c.getAttribute('data-status')] && match;
       if(visible) shown++;
       c.classList.toggle('is-hidden', !visible);
+    });
+    rows.forEach(function(r, i){
+      r.classList.toggle('is-hidden', !shows(rowHay[i], r.getAttribute('data-status')));
     });
     cats.forEach(function(cat){
       var hasMatch=!!cat.querySelector('.be-card:not(.is-hidden)');
@@ -350,6 +492,68 @@ _SCRIPT = """
       if(e.key==='Enter'||e.key===' '){ e.preventDefault(); toggle(); }
     });
   });
+
+  // Table sort: clicking (or Enter/Space on) a header reorders the tbody rows by that column,
+  // toggling ascending/descending on repeat clicks and marking the active column with aria-sort.
+  // It only reorders already-rendered rows — hidden ones keep their is-hidden class — so it never
+  // changes which rows the filter above is showing. Columns with a data-sort attribute compare on
+  // it (id numeric via zero-padding, dates as UTC ISO); the rest compare on the cell's text.
+  var table=document.querySelector('.be-table');
+  var tbody=table?table.querySelector('tbody'):null;
+  var ths=table?table.querySelectorAll('th[data-sort-key]'):[];
+  var sortIdx=null, sortDir=1;
+  function cellVal(row, idx){
+    var td=row.children[idx];
+    if(!td) return '';
+    var s=td.getAttribute('data-sort');
+    return (s!==null?s:(td.textContent||'')).trim().toLowerCase();
+  }
+  ths.forEach(function(th, idx){
+    function sortBy(){
+      sortDir=(sortIdx===idx)?-sortDir:1;
+      sortIdx=idx;
+      var arr=Array.prototype.slice.call(tbody.children);
+      arr.sort(function(a, b){
+        var va=cellVal(a, idx), vb=cellVal(b, idx);
+        if(va<vb) return -sortDir;
+        if(va>vb) return sortDir;
+        return 0;
+      });
+      arr.forEach(function(r){ tbody.appendChild(r); });
+      ths.forEach(function(h){ h.setAttribute('aria-sort', 'none'); });
+      th.setAttribute('aria-sort', sortDir>0?'ascending':'descending');
+    }
+    th.addEventListener('click', sortBy);
+    th.addEventListener('keydown', function(e){
+      if(e.key==='Enter'||e.key===' '){ e.preventDefault(); sortBy(); }
+    });
+  });
+
+  // Cards/Table toggle, persisted in localStorage so the choice survives visits. Defaults to Cards
+  // (the no-JS view) when the key is absent or storage is unavailable; the try/catch keeps a locked
+  // -down browser from breaking the toggle.
+  var viewBtns=document.querySelectorAll('.be-view-btn');
+  var cardsView=document.querySelector('.be-cards-view');
+  var tableView=document.querySelector('.be-table-view');
+  var VIEW_KEY='bajutsu-roadmap-view';
+  function setView(v){
+    var isTable=v==='table';
+    if(cardsView) cardsView.classList.toggle('is-hidden', isTable);
+    if(tableView) tableView.classList.toggle('is-hidden', !isTable);
+    viewBtns.forEach(function(b){
+      var active=b.getAttribute('data-view')===v;
+      b.classList.toggle('is-active', active);
+      b.setAttribute('aria-pressed', String(active));
+    });
+    try{ localStorage.setItem(VIEW_KEY, v); }catch(e){}
+  }
+  viewBtns.forEach(function(b){
+    b.addEventListener('click', function(){ setView(b.getAttribute('data-view')); });
+  });
+  var savedView='cards';
+  try{ if(localStorage.getItem(VIEW_KEY)==='table') savedView='table'; }catch(e){}
+  setView(savedView);
+
   apply();
 })();
 </script>
@@ -371,7 +575,9 @@ _INTRO = (
     "every docs build, so it always reflects the committed roadmap. Fully-implemented categories are "
     "grouped separately under Completed. Categories start collapsed to a progress overview — click a "
     "heading to expand it, toggle the status chips on and off, or type in the search box to narrow the "
-    "cards by id, title, topic, or status. Each card links to its "
+    "cards by id, title, topic, or status. Switch between the card grid and a sortable table with the "
+    "Cards / Table toggle — the table lists every item as a row with sortable Created and Updated "
+    "columns, and the search and status filters narrow both views alike. Each card links to its "
     "full proposal on GitHub. This dashboard is the only status view — for what a roadmap item is "
     "and how to add one, see [`roadmaps/README.md`]"
     "(https://github.com/bajutsu-e2e/bajutsu/blob/main/roadmaps/README.md) (both languages).\n\n"
@@ -409,7 +615,7 @@ def main(argv: list[str]) -> int:
         sys.stdout.write(filter_script())
         return 0
     try:
-        items = bri.load_items(bri.ROADMAP)
+        items = bri.load_items(bri.ROADMAP, with_dates=True)
     except ValueError as exc:
         print(exc, file=sys.stderr)
         return 1

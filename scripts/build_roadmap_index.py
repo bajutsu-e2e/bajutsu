@@ -18,8 +18,11 @@ to the index pages. It is purely a read side now.
 from __future__ import annotations
 
 import re
+import subprocess
 import sys
+from collections.abc import Iterable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 # Import the shared id-shape predicate whether this file is run as ``python3 scripts/…`` (scripts/
@@ -158,13 +161,20 @@ class Entry:
 
 @dataclass(frozen=True)
 class Item:
-    """A roadmap item: its identity, bucket + Topic, and per-language render fields."""
+    """A roadmap item: its identity, bucket + Topic, and per-language render fields.
+
+    ``created`` / ``updated`` are UTC ISO-8601 timestamps derived from the item's Git history
+    (BE-0311), populated only when :func:`load_items` is called ``with_dates=True`` — ``None``
+    otherwise, so the tools that don't need them pay no ``git`` cost.
+    """
 
     id: str
     slug: str
     bucket: str  # derived from the English Status (BE-0078)
     topic: str  # canonical (English) topic
     by_lang: dict[str, Entry]
+    created: str | None = None
+    updated: str | None = None
 
 
 def parse_metadata(text: str) -> tuple[str, dict[str, str]]:
@@ -213,13 +223,52 @@ def duplicate_ids(roadmap: Path) -> dict[str, list[str]]:
     return {be_id: paths for be_id, paths in by_id.items() if len(paths) > 1}
 
 
-def load_items(roadmap: Path) -> list[Item]:
+def _git_dates(paths: Iterable[Path]) -> tuple[str | None, str | None]:
+    """The (created, updated) UTC ISO-8601 timestamps across an item's files' Git history (BE-0311).
+
+    Deriving these from ``git log`` rather than a hand-set metadata field avoids the drift a date
+    pair would otherwise accrue on every future edit. Each path is walked separately with
+    ``--follow`` (which accepts one path only) so history survives the ``BE-XXXX`` → ``BE-NNNN``
+    rename CI does at id allocation; the two files' commit dates are then combined — ``created`` is
+    the oldest, ``updated`` the newest — so a Japanese-only fix still moves ``updated``. Every
+    timestamp is normalised to UTC so lexical min/max and the dashboard's string sort are
+    chronological. Returns ``(None, None)`` when Git yields nothing — a shallow clone, an
+    uncommitted file, or no ``git`` on PATH — rather than inventing a date.
+    """
+    stamps: list[str] = []
+    for path in paths:
+        try:
+            proc = subprocess.run(
+                ["git", "log", "--follow", "--format=%aI", "--", str(path)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        except FileNotFoundError:
+            return None, None
+        if proc.returncode != 0:
+            continue
+        for line in proc.stdout.splitlines():
+            line = line.strip()
+            if line:
+                stamps.append(datetime.fromisoformat(line).astimezone(UTC).isoformat())
+    if not stamps:
+        return None, None
+    return min(stamps), max(stamps)
+
+
+def load_items(roadmap: Path, *, with_dates: bool = False) -> list[Item]:
     """Read every BE item directory into an Item with per-language render fields.
 
     Items live under one flat ``roadmaps/BE-NNNN-<slug>/`` directory (BE-0159), so the link a
     consumer renders to an item is just its directory name. Refuses a tree with duplicate ids, so a
     number reused across two items fails the build. A ``BE-XXXX`` placeholder is skipped: it is not
     numbered yet, so it has nowhere stable to link to.
+
+    Args:
+        with_dates: When true, derive each item's ``created`` / ``updated`` from its files' Git
+            history (BE-0311). Off by default so the tools that don't render dates skip the per-item
+            ``git log`` calls entirely.
     """
     if dupes := duplicate_ids(roadmap):
         detail = "; ".join(f"{be_id}: {', '.join(paths)}" for be_id, paths in sorted(dupes.items()))
@@ -232,9 +281,11 @@ def load_items(roadmap: Path) -> list[Item]:
         item_id, slug = f"BE-{match.group(1)}", match.group(2)
 
         by_lang: dict[str, Entry] = {}
+        paths: list[Path] = []
         item_bucket = topic = ""
         for lang in LANGS:
             path = d / f"{item_id}-{slug}{lang.suffix}.md"
+            paths.append(path)
             title, fields = parse_metadata(path.read_text(encoding="utf-8"))
             by_lang[lang.code] = Entry(
                 id=item_id,
@@ -251,5 +302,16 @@ def load_items(roadmap: Path) -> list[Item]:
                 f"{item_id}: unknown Topic {topic!r}; add it to TOPICS (with a key) so it "
                 "maps to a section"
             )
-        items.append(Item(id=item_id, slug=slug, bucket=item_bucket, topic=topic, by_lang=by_lang))
+        created, updated = _git_dates(paths) if with_dates else (None, None)
+        items.append(
+            Item(
+                id=item_id,
+                slug=slug,
+                bucket=item_bucket,
+                topic=topic,
+                by_lang=by_lang,
+                created=created,
+                updated=updated,
+            )
+        )
     return items
