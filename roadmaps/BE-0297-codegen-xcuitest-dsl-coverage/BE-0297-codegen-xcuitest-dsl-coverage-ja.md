@@ -82,10 +82,11 @@ XCTest API の使い方を壊しうるのに、既存のテストはすべて文
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] コンパイル対象のシナリオにテキスト編集、ジェスチャ、複合セレクタのステップを追加する。
-- [ ] `pinch` / `rotate` のマルチタッチ codegen 出力をコンパイルして実行する。
+- [x] コンパイル対象のシナリオにテキスト編集、ジェスチャ、複合セレクタのステップを追加する。
+- [x] `pinch` / `rotate` のマルチタッチ codegen 出力をコンパイルして実行する。
 - [x] `forEach` / `if` / `extract` の codegen を、実装してコンパイルするか生成時に明示的に失敗させるかで解決する。
-- [ ] 新規部分をまずゲート対象外として着地させ、安定後に必須化する。
+- [ ] 新規部分をまずゲート対象外として着地させ、安定後に必須化する。*（ゲート対象外のステップは着地済みで、
+  コンパイル対象が安定してから必須ゲートへ昇格させるのが残りの後続作業です。）*
 
 **ログ**
 
@@ -94,8 +95,20 @@ XCTest API の使い方を壊しうるのに、既存のテストはすべて文
   `CodegenError` を送出するようになり、3つの emitter（XCUITest / Playwright / UI Automator）が
   何もしない `// TODO` スタブを静かに生成する代わりに、一貫して拒否します。`web` コンテキストステップ
   （3つめの制御構文アクション）は本項目が名指しした対象の外にあり、従来どおり未対応の `// TODO` 経路に
-  意図的に残します。残る作業単位――コンパイル対象シナリオの拡張、`pinch` / `rotate` のコンパイル、
-  段階的なゲート対象外での着地――はいずれも実機 Simulator の CI 作業であり、後続の PR で着地させます。
+  意図的に残します。
+- 残る構文のコンパイル済みカバレッジを、**ゲート対象外**の codegen ステップとして着地させました。新しい
+  `ui-test-coverage` ターゲット（`demos/showcase/Makefile`）が、すでに `bajutsu run` で実機を通過している
+  シナリオ――`text_editing.yaml`（`select` / `copy` / `clear` / `delete`）、`gestures.yaml`（`longPress`・
+  方向指定 `swipe`・`drag`）、`gestures_multitouch.yaml`（`pinch` / `rotate`）――に加え、どの実証済み
+  シナリオも触れていない3構文（座標指定の `swipe`、要素アンカーの `drag`、`traits` + `index` の複合
+  セレクタ）を集めた小さな `codegen_extra.yaml` から、ネイティブ XCUITest を生成します。これにより、各構文の
+  *生成された* Swift が、文字列一致だけでなく実際にコンパイルされ実行されます。`xcuitest (codegen)` ジョブは
+  必須の `components.yaml` ステップの後段でこれを `continue-on-error`（`actuation` / `golden` と同じ非ゲート
+  思想）で実行し、コミット済みの Components クラスを除外して新規スライスだけを走らせます。生成ファイルは
+  gitignore 対象です。`tests/test_codegen.py` が Linux で検証できる半分――各カバレッジ・フィクスチャが
+  codegen 可能な状態を保ち、その構文のプリミティブを出力すること――を固定します。最後のボックス、すなわち
+  従量制の Simulator レーンでスライスの安定を確認してから必須ゲートへ昇格させることが残りの後続作業のため、
+  項目は `In progress` のままとします。
 
 ## 参考
 
@@ -103,5 +116,6 @@ XCTest API の使い方を壊しうるのに、既存のテストはすべて文
 - [BE-0083 — codegen の emitter を共通のシナリオ走査へ統一する](../BE-0083-codegen-emitter-unification/BE-0083-codegen-emitter-unification-ja.md)
 - [BE-0282 — ネットワークのキャプチャ・モック・アサーションを CI で実バックエンド検証する](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md)
 - `bajutsu/codegen/xcuitest.py`、`tests/test_codegen.py`、`tests/test_gestures.py`、
-  `demos/showcase/scenarios/components.yaml`、`.github/workflows/ios-e2e.yml`
+  `demos/showcase/scenarios/components.yaml`、`demos/showcase/scenarios/codegen_extra.yaml`、
+  `demos/showcase/Makefile`（`ui-test-coverage`）、`.github/workflows/ios-e2e.yml`
   （`xcuitest (codegen)` と `xcuitest (multi-touch)` の各ジョブ）

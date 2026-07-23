@@ -52,6 +52,10 @@ demos/tour/scenario.yaml
 # iOS showcase suite (XcodeGen-generated projects + build output)
 demos/showcase/ios/*/*.xcodeproj/
 demos/showcase/ios/*/build/
+# Codegen coverage output (BE-0297): the non-gating `ui-test-coverage` step regenerates these from
+# proven scenarios on every run — generation-only, never committed (the required ComponentsUITests
+# .swift is the only tracked generated UITest).
+demos/showcase/ios/swiftui/UITests/Coverage*.swift
 BajutsuKit/Runner/*.xcodeproj/
 # Wheel-bundled generic XCUITest runner (BE-0292): built into the package by `make runner-bundle`
 # at release time and force-included via pyproject `artifacts`; the compiled products are never
