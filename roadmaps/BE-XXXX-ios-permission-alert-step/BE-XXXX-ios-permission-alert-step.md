@@ -41,10 +41,14 @@ Between those two sits a case neither handles well: a scenario that wants to tes
 itself — tap the button that triggers the permission request, then grant or deny the prompt that
 follows — deterministically, with no AI call. Pre-launch `permissions` cannot cover this case,
 because the request only fires once the app makes it, mid-scenario; the only tool left for that
-moment is the vision guard, `dismissAlerts: { instruction: "tap Allow" }`. BE-0276 already named
-this gap when it proposed `permissions`, calling a mid-flow step "a possible future extension, not
-part of this item." `handleSystemAlert` is that extension. The author already knows which prompt appears
-and which button it needs at that point in the scenario, so the same reasoning BE-0276 used to move
+moment is the vision guard, `dismissAlerts: { instruction: "tap Allow" }`. BE-0276 itself pointed at
+mid-flow permission work as a future direction, but the step it deferred is a different mechanism: an
+imperative `setPermissions` step that would set or revoke TCC (Transparency, Consent, and Control)
+state mid-scenario through `simctl privacy` — to revoke and re-exercise a denied path — never tapping
+a prompt. `handleSystemAlert` answers the same mid-flow moment from the other side: rather than setting
+permission state programmatically, it taps the visible SpringBoard prompt the request raises. The
+author already knows which prompt appears and which button it needs at that point in the scenario, so
+the same reasoning BE-0276 used to move
 a known, pre-launch permission off the vision guard applies again here: a known, mid-flow prompt has
 no reason to route through an AI call, when a native accessibility query resolves the same button
 deterministically, at less cost, and with a machine-checkable result — a step that either taps one
@@ -185,8 +189,8 @@ To dismiss the prompt rather than accept it, the same step targets the dismissiv
 ## References
 
 - [BE-0276 — Declarative per-scenario permission state](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state.md) —
-  names the mid-flow step this item builds as a future extension, and the pre-launch complement it
-  builds alongside.
+  the pre-launch, deterministic complement to the reactive guard; it deferred an imperative mid-flow
+  state-setting step (`simctl privacy`), a different mechanism from this item's prompt-tapping.
 - [BE-0128 — Preflight-gate device-control steps](../BE-0128-device-step-capability-preflight/BE-0128-device-step-capability-preflight.md) —
   the per-operation preflight pattern this item follows.
 - [BE-0026 — Shrink unsupported syntax](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md) —
