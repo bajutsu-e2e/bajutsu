@@ -16,6 +16,7 @@ import shlex
 import socket
 import subprocess
 import tempfile
+from collections import deque
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import IO, Literal, cast
@@ -352,8 +353,10 @@ class XcuitestEnvironment(_DeviceEnvironment):
             return f" (set {_RUNNER_LOG_ENV} to a directory to capture the runner's output)"
         tail = ""
         try:
-            lines = self._runner_log.read_text(errors="replace").splitlines()
-            tail = "\n".join(lines[-_RUNNER_LOG_TAIL_LINES:])
+            # Keep only the last N lines without materializing the whole (high-volume) capture: deque
+            # streams the file line by line and drops all but its tail.
+            with self._runner_log.open(errors="replace") as fh:
+                tail = "".join(deque(fh, maxlen=_RUNNER_LOG_TAIL_LINES)).rstrip("\n")
         except OSError:
             pass  # the log may not exist yet on a spawn that failed before writing
         return f"; see {self._runner_log}" + (f"\n{tail}" if tail else "")
