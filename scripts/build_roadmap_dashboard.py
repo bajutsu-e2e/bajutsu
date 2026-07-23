@@ -376,8 +376,8 @@ _STYLE = """
 .be-badge{font-size:10px;border:1px solid;border-radius:4px;padding:0 .35rem;white-space:nowrap}
 .be-title{font-size:13px;line-height:1.35}
 .be-origin{font-size:11px;color:#888}
-.be-issue{align-self:flex-start;font-size:10px;color:#888;text-decoration:none;
-  border:1px solid rgba(128,128,128,.3);border-radius:4px;padding:0 .35rem}
+.be-issue{align-self:flex-start;font-size:10px;font-weight:600;color:#666;text-decoration:none;
+  border:1px solid rgba(128,128,128,.55);border-radius:4px;padding:0 .35rem}
 .be-issue:hover{color:inherit;border-color:currentColor}
 .be-viewtoggle{display:inline-flex;margin:0 0 1.2rem;border:1px solid rgba(128,128,128,.35);
   border-radius:8px;overflow:hidden}
