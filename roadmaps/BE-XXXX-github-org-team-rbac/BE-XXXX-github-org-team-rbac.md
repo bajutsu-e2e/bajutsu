@@ -102,6 +102,17 @@ alone decides whether sign-in succeeds at all. A deployment with no `orgs:` bloc
 adopting this item requires such a deployment to declare an `orgs:` block (a `members` listing or a
 `githubOrgs` entry), or it loses sign-in entirely.
 
+This gate must run unconditionally, not only inside the `if state.repository is not None:` block
+`_org_for_login` currently lives in ([`bajutsu/serve/authz.py`](../../bajutsu/serve/authz.py)). Today,
+the `BAJUTSU_OAUTH_ALLOWED_USERS` rejection sits at the top of `oauth_callback`, before that block, so
+it still gates sign-in on a deployment with OAuth configured but no database wired — that deployment
+mints a session for the identity at the end of `oauth_callback` regardless of `state.repository`.
+Folding the new org/Team gate into `_org_for_login` as-is would remove the only gate that deployment
+has once `BAJUTSU_OAUTH_ALLOWED_USERS` retires, admitting every GitHub user. The rejection therefore
+stays at that same top-level position — `org_for_identity` computed, and accept/reject decided, before
+the database block — with `_org_for_login`'s call inside that block left to decide only *which* org to
+persist, not whether to reject.
+
 This makes sign-in itself depend on a live call to GitHub's `/user/orgs` for any login that isn't an
 explicit `members` entry (`_fetch_orgs`, [`bajutsu/serve/server/oauth.py`](../../bajutsu/serve/server/oauth.py))
 — a dependency that doesn't exist today, since `BAJUTSU_OAUTH_ALLOWED_USERS` alone decides sign-in and
@@ -263,7 +274,9 @@ with.
 - [ ] Extend `OrgConfig` with the `editorTeam` field and its config-schema documentation.
 - [ ] Add the `GET /user/teams` lookup (direct membership only) and the `BAJUTSU_OAUTH_ADMIN_TEAM`
       environment variable.
-- [ ] Fold the organization-membership sign-in gate into `org_for_identity`/`_org_for_login`; retire
+- [ ] Fold the organization-membership sign-in gate into `org_for_identity`/`_org_for_login`, keeping
+      the rejection at the top of `oauth_callback` — before the `if state.repository is not None:`
+      block — so an OAuth-configured but database-less deployment still gates sign-in; retire
       `BAJUTSU_OAUTH_ALLOWED_USERS` and `BAJUTSU_OAUTH_VIEWERS`.
 - [ ] Replace `role_for()`'s login-list resolution with the organization/Team resolution above; retire
       `BAJUTSU_OAUTH_ADMINS`.
