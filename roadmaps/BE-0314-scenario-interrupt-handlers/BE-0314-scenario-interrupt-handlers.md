@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-scenario-interrupt-handlers-ja.md)
+**English** · [日本語](BE-0314-scenario-interrupt-handlers-ja.md)
 
-# BE-XXXX — Deterministic interrupt handlers for unpredictable interstitial screens
+# BE-0314 — Deterministic interrupt handlers for unpredictable interstitial screens
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-scenario-interrupt-handlers.md) |
+| Proposal | [BE-0314](BE-0314-scenario-interrupt-handlers.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0314") |
 | Topic | Scenario authoring features |
 | Related | [BE-0033](../BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow.md), [BE-0269](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention.md), [BE-0276](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state.md), [BE-0310](../BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness.md) |
 <!-- /BE-METADATA -->

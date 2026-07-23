@@ -1,14 +1,14 @@
-[English](BE-XXXX-scenario-interrupt-handlers.md) · **日本語**
+[English](BE-0314-scenario-interrupt-handlers.md) · **日本語**
 
-# BE-XXXX — 出現タイミングの読めない割り込み画面を決定論的に処理する
+# BE-0314 — 出現タイミングの読めない割り込み画面を決定論的に処理する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-scenario-interrupt-handlers-ja.md) |
+| 提案 | [BE-0314](BE-0314-scenario-interrupt-handlers-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0314") |
 | トピック | シナリオ記述機能 |
 | 関連 | [BE-0033](../BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow-ja.md)、[BE-0269](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention-ja.md)、[BE-0276](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state-ja.md)、[BE-0310](../BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness-ja.md) |
 <!-- /BE-METADATA -->
