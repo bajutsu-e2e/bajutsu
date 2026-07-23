@@ -315,7 +315,9 @@ def _wait(
                 hb.tick(clock.now())
             _adaptive_sleep(clock, t0)
     if w.until == "settled":
-        return _wait_settled(driver, deadline, clock, gate, hb, transitions, on_interrupt_poll)
+        return _wait_settled(
+            driver, deadline, clock, gate, hb, transitions, on_interrupt_poll, start
+        )
     # until == "screenChanged"
     before = driver.query()
     if gate is not None:
@@ -344,25 +346,26 @@ def _wait_settled(
     hb: _Heartbeat | None = None,
     transitions: TransitionSource = _no_transitions,
     on_interrupt_poll: Callable[[list[base.Element]], bool] | None = None,
+    start: float = 0.0,
 ) -> tuple[bool, str, list[base.Element]]:
     """Wait until a non-empty screen stops changing (transition/animation finished).
 
-    When `transitions` has reported at least one screen-transition event (BE-0310), settled is a
-    positive signal — no further transition reported for `_TRANSITION_QUIESCENCE` — rather than an
-    inference from tree reads; see `_wait_settled_by_signal`. This check is scenario-wide, not
-    scoped to this one wait: once any screen-transition event has ever been observed (the app
-    linked the observer and something transitioned), every later `settled` wait in the same scenario
-    uses the signal path, even for a step whose own transition the signal happens not to cover (a
-    custom transition bypassing the standard containers, per the proposal's own documented boundary)
-    — such a step settles on whatever quiescence already held from an earlier, unrelated
-    transition, with no tree-diff cross-check. Otherwise (no transition ever observed) this keeps
-    the original tree-diff behavior unchanged: a blank/collapsed tree (e.g. a screen mid-render, or
-    one covered by a system alert) is never treated as settled, and settled is two consecutive
-    unchanged polls with an identified element. Both paths are best-effort: timing out just proceeds
-    with the current screen — a settle is a stabilization hint, not a correctness assertion, so
-    it never fails the step. When `gate` is given, a screen that stays collapsed (a system alert)
-    is cleared mid-settle rather than burning the whole timeout (BE-0269). When `hb` is given, it
-    emits the throttled "still waiting …" progress line while settling. Returns the last
+    When `transitions` has reported a screen-transition event *since this wait began*
+    (`events[-1][1] >= start`), settled is a positive signal — no further transition reported for
+    `_TRANSITION_QUIESCENCE` — rather than an inference from tree reads; see
+    `_wait_settled_by_signal`. The since-start guard mirrors the one the readiness gate applies to the
+    same signal (BE-0310): a transition left over from a *prior* step (the collector is
+    scenario-scoped, not per-wait) predates `start`, so it is ignored rather than settling this wait
+    instantly and missing the current step's own transition — which, POSTed fire-and-forget from the
+    app, may not have landed when the wait starts. When no transition has been reported since `start`
+    (the app doesn't link the observer, or its report is still in flight), this falls through to the
+    original tree-diff behavior, which waits the animation out: a blank/collapsed tree (e.g. a screen
+    mid-render, or one covered by a system alert) is never treated as settled, and settled is two
+    consecutive unchanged polls with an identified element. Both paths are best-effort: timing out
+    just proceeds with the current screen — a settle is a stabilization hint, not a correctness
+    assertion, so it never fails the step. When `gate` is given, a screen that stays collapsed (a
+    system alert) is cleared mid-settle rather than burning the whole timeout (BE-0269). When `hb` is
+    given, it emits the throttled "still waiting …" progress line while settling. Returns the last
     queried tree so the caller can reuse it as the step's `after` snapshot (BE-0259).
 
     A `True` from `on_interrupt_poll` ends the settle immediately (BE-0314) — a failed interrupt
@@ -370,7 +373,7 @@ def _wait_settled(
     settled would only delay a failure that best-effort settling would otherwise mask.
     """
     events = transitions()
-    if events:
+    if events and events[-1][1] >= start:
         return _wait_settled_by_signal(
             driver, deadline, clock, gate, hb, transitions, events[-1][1], on_interrupt_poll
         )

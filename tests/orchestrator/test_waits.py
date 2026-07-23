@@ -144,16 +144,19 @@ def test_wait_settled_proceeds_on_blank_screen() -> None:
 # --- BE-0310: the screen-transition signal, consulted from the `settled` wait ---
 
 
-def test_wait_settled_signal_settles_instantly_when_already_quiescent() -> None:
-    """When the signal is available and the last transition already predates the quiescence
-    window, the screen is settled without needing to poll the tree more than once."""
+def test_wait_settled_ignores_a_transition_from_before_the_wait_started() -> None:
+    """A transition observed before this settle wait began — e.g. left over from a prior step, since
+    the collector is scenario-scoped, not per-wait — must not be treated as authoritative: taking it
+    would settle instantly and miss the current step's own (still in-flight, fire-and-forget)
+    transition. The wait falls back to the tree-diff path, which waits the screen out. Mirrors the
+    since-start guard the readiness gate applies to the same signal (BE-0310)."""
     driver = FakeDriver([el("a", "A")])
     clock = FakeClock()
-    old = [(ScreenTransition(kind="screenChanged"), -1.0 - _TRANSITION_QUIESCENCE)]
+    stale = [(ScreenTransition(kind="screenChanged"), -1.0 - _TRANSITION_QUIESCENCE)]
     w = Wait.model_validate({"until": "settled", "timeout": 2.0})
-    ok, reason, _tree = _wait(driver, w, clock, transitions=lambda: old)  # type: ignore[arg-type]
+    ok, reason, _tree = _wait(driver, w, clock, transitions=lambda: stale)  # type: ignore[arg-type]
     assert ok and reason == ""
-    assert clock.now() == 0.0  # no waiting needed
+    assert clock.now() > 0.0  # polled the tree (fell back), not the instant signal-path return
 
 
 def test_wait_settled_signal_waits_out_the_quiescence_window() -> None:
@@ -235,16 +238,20 @@ def test_wait_settled_falls_back_to_tree_diff_when_no_transitions_reported() -> 
 
 def test_wait_settled_via_run_scenario_threads_the_signal() -> None:
     """End-to-end: `run_scenario`'s `transitions` reaches the settled wait (the plumbing this item
-    adds through `_run_steps` / `_run_step_body` / `_wait`)."""
+    adds through `_run_steps` / `_run_step_body` / `_wait`). A transition reported "now" — since the
+    wait began — takes the signal path; a fresh one on every read never quiesces, so the wait runs to
+    its deadline (best-effort) instead of the tree-diff fallback's instant settle on this static
+    screen, which is what proves the signal, not the fallback, decided it."""
     driver = FakeDriver([el("home", "Home")])
-    old = [(ScreenTransition(kind="screenChanged"), -1.0 - _TRANSITION_QUIESCENCE)]
+    clock = FakeClock()
     result = run_scenario(
         driver,
         _scenario({"name": "x", "steps": [{"wait": {"until": "settled", "timeout": 2.0}}]}),
-        clock=FakeClock(),
-        transitions=lambda: old,
+        clock=clock,
+        transitions=lambda: [(ScreenTransition(kind="screenChanged"), clock.now())],
     )
     assert result.ok and result.steps[0].ok
+    assert clock.now() >= 2.0  # ran to the deadline via the signal path, not the tree-diff fallback
 
 
 def test_wait_skips_sleep_when_query_exceeds_poll_interval() -> None:

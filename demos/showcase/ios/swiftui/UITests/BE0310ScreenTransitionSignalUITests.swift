@@ -26,7 +26,11 @@ private final class TransitionListener {
     private var listenFD: Int32 = -1
     private let lock = NSLock()
     private let queue = DispatchQueue(label: "be0310.transition-listener")
-    private(set) var transitionCount = 0
+    // Read on the main thread (the test methods) but written on `queue`; both go through `lock`, so a
+    // read has a happens-before edge on the last increment and never observes a stale count. Reading
+    // it without the lock would be a data race — `settle()`'s sleep establishes no memory barrier.
+    private var _transitionCount = 0
+    var transitionCount: Int { lock.withLock { _transitionCount } }
 
     @discardableResult
     func start() throws -> UInt16 {
@@ -105,7 +109,7 @@ private final class TransitionListener {
             }
         }
         if firstLine.hasPrefix("POST") && firstLine.contains("/transitions") {
-            lock.withLock { transitionCount += 1 }
+            lock.withLock { _transitionCount += 1 }
         }
         respond(fd)
     }
