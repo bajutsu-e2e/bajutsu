@@ -54,6 +54,26 @@ Proposal altitude. The work is MECE along the units below. The guiding constrain
 existing scenario, config, or command line may break: every renamed surface keeps the old spelling
 as an accepted, deprecated alias.
 
+The canonical spelling and the deprecated alias parse to the same guard, so both scenarios below are
+equivalent:
+
+```yaml
+# canonical (new)
+- name: grant the notification prompt
+  alertHandling: { instruction: "tap Allow" }
+  steps: [ ... ]
+
+# deprecated dismissAlerts alias — still accepted, emits a one-time deprecation notice
+- name: grant the notification prompt
+  dismissAlerts: { instruction: "tap Allow" }
+  steps: [ ... ]
+
+# the bare-boolean form is unchanged; alertHandling: false turns the guard off for one scenario
+```
+
+The CLI mirrors the rename: `bajutsu run --alert-handling` / `--no-alert-handling` is the canonical
+flag, and `--dismiss-alerts` / `--no-dismiss-alerts` keeps working as a hidden, deprecated alias.
+
 - **Scenario schema.** Rename the `DismissAlerts` model and the `Scenario.dismiss_alerts` field to
   `AlertHandling` / `alert_handling`, with the YAML key `alertHandling` as the canonical alias and
   `dismissAlerts` kept as an additional accepted input alias (Pydantic `AliasChoices`), so a

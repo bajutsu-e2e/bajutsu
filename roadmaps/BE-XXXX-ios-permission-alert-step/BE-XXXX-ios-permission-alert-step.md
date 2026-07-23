@@ -55,6 +55,20 @@ unambiguous button or fails clearly, never a coordinate guess that can miss a mo
 
 Proposal altitude. The work is MECE along the units below.
 
+A scenario testing the request-and-grant flow reads like this — fire the OS permission request, then
+tap the SpringBoard prompt's button, deterministically and with no vision model:
+
+```yaml
+- name: grant the notification prompt mid-flow
+  steps:
+    - tap: { id: perm.requestNotif }                              # fires the OS permission request
+    - handleSystemAlert: { sel: { label: "Allow" }, timeout: 5 }  # tap the prompt's button by label
+    - wait: { for: { id: perm.notif.authorized }, timeout: 5 }    # request granted, app state updates
+```
+
+To dismiss the prompt rather than accept it, the same step targets the dismissive button
+(`handleSystemAlert: { sel: { label: "Don't Allow" }, timeout: 5 }`).
+
 - **Scenario schema.** A new step action, `handleSystemAlert: { sel: <Selector>, timeout: <sec> }`,
   following the `sel:`-wrapped shape `longPress` and `pinch` already use. `sel` accepts only the
   label-based `Selector` fields — `label`, `labelMatches`, `index` — and rejects `id`, `idMatches`,
