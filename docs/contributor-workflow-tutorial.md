@@ -265,20 +265,25 @@ latency — the dead time between "proposal opened" and "id allocated" — is pu
 /propose-and-build
 ```
 
-It composes the same two skills, but runs authoring and implementation **in parallel** as a temporary
-two-PR stack — the proposal PR first, the implementation PR stacked on it. From your side as the
-contributor, the hand-off looks like this:
+It composes the same two skills, but authors and implements together on **one branch**, landing them
+as a single BE-creation PR that carries the roadmap item, the code, and the tests at once. From your
+side as the contributor, it looks like this:
 
-1. You author the proposal and build the implementation at the same time, on two branches.
-2. The proposal PR merges and CI allocates the real `BE-NNNN`, exactly as in Step A5.
-3. The skill **rebases the implementation branch**, rewrites its `BE-XXXX` references to the allocated
-   `BE-NNNN`, retargets it onto `main`, and runs `/implement-be`'s promotion + gate steps — so the
-   stack collapses into an ordinary `implement-be`-shaped PR.
+1. You author the proposal and build the implementation on the same branch. The item keeps the
+   `BE-XXXX` placeholder and reaches `Status: Implemented` in the PR, because `Status` and the PR
+   number do not depend on the not-yet-allocated id.
+2. You open one PR — a BE-creation PR with a plain scoped title, no `[BE-NNNN]` prefix.
+3. A human merges it, and CI allocates the real `BE-NNNN`, exactly as in Step A5 — renaming the item
+   directory and rewriting `BE-XXXX` → `BE-NNNN` inside the item's own files. The item lands numbered
+   and Implemented with no post-merge fixup.
 
-Take our worked example: *if* "bounded retry for transiently-blocked steps" had been small and
-settled enough — a design you were confident review would not reshape — you could have stacked the
-implementation on the proposal instead of waiting for the merge. The cost is real: if review *does*
-change the proposal, you rework the implementation branch. So the rule of thumb is simple —
+The one rule to respect is that the `BE-XXXX` placeholder must appear nowhere but the item's own
+files: the allocator rewrites only that directory, so an id written into code or a comment would land
+stale on `main`. Take our worked example: *if* "bounded retry for transiently-blocked steps" had been
+small and settled enough — a design you were confident review would not reshape — you could have
+proposed and built it in one PR instead of waiting for the merge. The cost is real: one PR fuses the
+design checkpoint with code review, so if review *does* change the proposal, you rework the code in
+the same PR. So the rule of thumb is simple —
 
 > **Serial by default. Reach for `propose-and-build` only when you are confident the design is
 > settled.** When a design is genuinely uncertain, the serial path's "review before code" is a
@@ -293,7 +298,7 @@ this section is the *when*, from a contributor's seat.
 ## Where to go next
 
 You now have the full contribution loop: idea → `/ideation` → merged proposal → `/implement-be` →
-merged PR, and you know when to collapse it with `/propose-and-build`. The reference pages cover each
+merged PR, and you know when to fold it into a single PR with `/propose-and-build`. The reference pages cover each
 piece in depth:
 
 - [roadmap-workflow](roadmap-workflow.md) — the conceptual overview of the two-skill loop and *why*
