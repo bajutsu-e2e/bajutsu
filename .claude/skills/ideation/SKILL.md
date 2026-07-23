@@ -31,7 +31,7 @@ If the user asks you to implement an idea, don't switch hats mid-session: point 
 existing BE item from its ID) and keep this session to authoring the proposal — or, when the
 item is small and its design is already settled, to
 [`propose-and-build`](../propose-and-build/SKILL.md), which authors the proposal and implements
-it in parallel as a temporary two-PR stack. The only files *this* skill touches are under
+it together in one BE-creation PR. The only files *this* skill touches are under
 `roadmaps/` (plus the index the generator regenerates).
 
 ## Prime directives (these bound every idea)

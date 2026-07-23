@@ -10,7 +10,7 @@
 
 > **New to contributing? Start with the [contributor workflow tutorial](contributor-workflow-tutorial.md)** —
 > a hands-on, step-by-step walkthrough that runs one idea through this whole loop (and shows when to
-> collapse it with `propose-and-build`). This page is the conceptual overview behind it.
+> fold it into a single PR with `propose-and-build`). This page is the conceptual overview behind it.
 
 Bajutsu's roadmap is not a backlog you skim past — it is the **shared hub** for planning, the same
 way a scenario YAML is the shared hub for a test. A feature is first written down as a BE

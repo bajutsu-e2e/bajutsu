@@ -276,23 +276,26 @@ ship, or both:
 - [`implement-be`](../.claude/skills/implement-be/SKILL.md) — **ship a numbered item.** Takes an
   already-allocated `BE-NNNN`, treats its proposal as the spec, implements it with tests, flips
   the item to `Status: Implemented`, and proves `make check` green.
-- [`propose-and-build`](../.claude/skills/propose-and-build/SKILL.md) — **both, stacked.**
+- [`propose-and-build`](../.claude/skills/propose-and-build/SKILL.md) — **both, in one PR.**
   Composes the other two for a small, settled item the author is ready to build now: it authors
-  the proposal *and* implements it in parallel, landing them as a temporary two-PR stack (the
-  proposal PR first, the implementation PR second). Once the proposal merges and the id is
-  allocated, a hand-off rebases the implementation branch, rewrites its `BE-XXXX` references to
-  the allocated `BE-NNNN`, retargets it onto `main`, and runs `implement-be`'s promotion + gate
-  steps — so the stack collapses into an ordinary `implement-be`-shaped PR.
+  the proposal *and* implements it on a single branch, landing them as one BE-creation PR that
+  carries the roadmap item, the code, and the tests together. The item keeps the `BE-XXXX`
+  placeholder and reaches `Status: Implemented` in the PR — `Status` and the PR number do not
+  depend on the id — and CI allocates the real `BE-NNNN` on merge, rewriting the placeholder
+  inside the item's own files
+  ([BE-0089](../roadmaps/BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation.md)).
+  The one invariant is that the placeholder id appears nowhere but the item's own files, because
+  the allocator rewrites only that directory.
 
 **Picking one.** The serial `ideation` → merge → allocate → `implement-be` path is the default:
 it forces a design to clear review before code is written, and it keeps the `BE-NNNN` sequence
 contiguous by only spending a number on an item that ships
 ([BE-0089](../roadmaps/BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation.md)).
 Reach for `propose-and-build` only when that path's latency is pure overhead — a small,
-well-scoped item whose design the author does not expect review to reshape. The parallelism buys
-the dead time between "proposal opened" and "id allocated"; it costs rework on the
-implementation branch if review changes the proposal, so fall back to the serial path whenever a
-design is genuinely uncertain.
+well-scoped item whose design the author does not expect review to reshape. One PR fuses the
+design checkpoint with code review, so merging it accepts the proposal and the implementation at
+once; that is honest for a settled design but costs a rework if review reshapes the proposal, so
+fall back to the serial path whenever a design is genuinely uncertain.
 
 ## Pull requests: title and body
 
