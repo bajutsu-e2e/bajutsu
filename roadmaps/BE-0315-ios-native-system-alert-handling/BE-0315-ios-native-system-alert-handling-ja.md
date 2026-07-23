@@ -1,14 +1,14 @@
-[English](BE-XXXX-ios-native-system-alert-handling.md) · **日本語**
+[English](BE-0315-ios-native-system-alert-handling.md) · **日本語**
 
-# BE-XXXX — ネイティブの XCUITest で iOS のシステムアラートを決定論的に検知して閉じる
+# BE-0315 — ネイティブの XCUITest で iOS のシステムアラートを決定論的に検知して閉じる
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-ios-native-system-alert-handling-ja.md) |
+| 提案 | [BE-0315](BE-0315-ios-native-system-alert-handling-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0315") |
 | トピック | プラットフォーム対応 |
 | 関連 | [BE-0177](../BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md), [BE-0269](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention-ja.md), [BE-0276](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state-ja.md), [BE-0290](../BE-0290-xcuitest-default-ios-backend/BE-0290-xcuitest-default-ios-backend-ja.md), [BE-0308](../BE-0308-alerts-guard-real-model-verification/BE-0308-alerts-guard-real-model-verification-ja.md), [BE-0314](../BE-0314-scenario-interrupt-handlers/BE-0314-scenario-interrupt-handlers-ja.md) |
 <!-- /BE-METADATA -->
