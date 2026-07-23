@@ -8,6 +8,7 @@ from pathlib import Path
 from bajutsu import simctl
 from bajutsu.config import Effective
 from bajutsu.drivers import base
+from bajutsu.evidence.network import TransitionSource, _no_transitions
 
 # Readiness polling lives with the platform lifecycle now (BE-0009 Phase 0); re-exported here so
 # `from bajutsu.runner import _await_ready` and the crawl path keep their import unchanged.
@@ -32,6 +33,7 @@ def launch_driver(
     record_video_dir: Path | None = None,
     environment: RunEnvironment | None = None,
     permissions: Mapping[str, str] | None = None,
+    transitions: TransitionSource = _no_transitions,
 ) -> tuple[base.Driver, ReadinessResult]:
     """Bring a device up, launch the app under config + scenario env, and return a ready driver.
 
@@ -58,6 +60,9 @@ def launch_driver(
             so the instance that starts the resident runner is the one that terminates it (BE-0240).
         permissions: The scenario's `permissions` field (BE-0276), applied before the app process
             starts. None (or a platform with no mechanism) applies nothing.
+        transitions: The screen-transition signal (BE-0310) `_await_ready` consults as its strongest
+            readiness rung; the default reports none, so a caller that doesn't pass one keeps the
+            unchanged BE-0218 fallback ladder.
 
     Returns:
         The driver bound to the launched app (already polled until its UI has rendered), paired with
@@ -74,5 +79,5 @@ def launch_driver(
     driver = env.start(
         eff, pre, extra_env=extra_env, record_video_dir=record_video_dir, permissions=permissions
     )
-    readiness = _await_ready(driver, ready_sel=eff.ready_when)
+    readiness = _await_ready(driver, ready_sel=eff.ready_when, transitions=transitions)
     return driver, readiness

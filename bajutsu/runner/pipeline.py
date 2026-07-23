@@ -24,7 +24,7 @@ from bajutsu.assertions import (
 from bajutsu.backends import capabilities_for_run
 from bajutsu.config import Effective
 from bajutsu.evidence import Artifact
-from bajutsu.evidence.network import NetworkExchange
+from bajutsu.evidence.network import NetworkExchange, _no_transitions
 from bajutsu.evidence.redaction import Redactor
 from bajutsu.orchestrator import (
     BlockedHandler,
@@ -209,6 +209,11 @@ class _ScenarioRunner:
                 ctx=EvalContext(visual=vc, schema=sc, golden=gc_with_screen),
                 mailbox=self.mailbox,
                 webview_bridge=lz.webview_bridge,
+                transitions=(
+                    lz.collector.transitions_snapshot_timed
+                    if lz.collector is not None
+                    else _no_transitions
+                ),
                 # Config-level interrupts first, then the scenario's own (BE-0314): an app-wide
                 # interstitial handler composes with a per-scenario addition, the config-then-scenario
                 # order the dismissAlerts default already follows.

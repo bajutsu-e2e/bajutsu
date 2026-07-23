@@ -60,3 +60,17 @@ expect:
   - request: { method: GET, status: 200 }            # at least one matching exchange
   - request: { method: POST, pathMatches: "^/login", count: 1 }
 ```
+
+## Screen-transition observation (BE-0310)
+
+`BajutsuNet.startIfEnabled()` also activates `BajutsuScreen`, which observes
+`UIAccessibility.screenChangedNotification` — the notification UIKit posts automatically
+after a standard container transition completes (a navigation push/pop, a modal
+presentation/dismissal, a tab switch), covering SwiftUI's `NavigationStack` too, since it
+is `UINavigationController`-backed underneath. Each observed transition is reported to the
+collector's `/transitions` endpoint, giving bajutsu's post-launch readiness gate and the
+`settled` wait a positive signal in place of tree-diff polling. Like network capture, it is
+inert unless `BAJUTSU_COLLECTOR` is set and needs no app-screen change: it never observes a
+notification an app must post by hand (e.g. `UIAccessibility.pageScrolledNotification`). A
+target that does not link BajutsuKit is unaffected — both waits keep their tree-diff
+fallback.

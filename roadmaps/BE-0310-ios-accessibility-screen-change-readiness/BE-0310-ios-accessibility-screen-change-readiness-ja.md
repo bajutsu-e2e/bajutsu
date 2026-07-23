@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0310](BE-0310-ios-accessibility-screen-change-readiness-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0310") |
 | トピック | Platform support |
 | 関連 | [BE-0218](../BE-0218-e2e-simulator-flaky-readiness-actuation/BE-0218-e2e-simulator-flaky-readiness-actuation-ja.md), [BE-0087](../BE-0087-idb-action-settle/BE-0087-idb-action-settle-ja.md), [BE-0233](../BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity-ja.md), [BE-0299](../BE-0299-settle-value-condition-wait/BE-0299-settle-value-condition-wait-ja.md) |
@@ -205,11 +205,16 @@ prime directive 3 のもとで app-agnostic を保てます。`BajutsuKit` は i
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] 作業単位 1 — `BajutsuKit` でアクセシビリティの画面遷移通知を観測する（オプトイン）。
-- [ ] 作業単位 2 — 既存のコレクタチャネルを通じてシグナルをプロセス外へ報告する。
-- [ ] 作業単位 3 — `_await_ready` からシグナルを参照し、BE-0218 のツリー差分の梯子をフォールバックにする。
-- [ ] 作業単位 4 — `_wait_settled` からシグナルを参照し、ツリー差分の挙動をフォールバックにする。
+- [x] 作業単位 1 — `BajutsuKit` でアクセシビリティの画面遷移通知を観測する（オプトイン）。
+- [x] 作業単位 2 — 既存のコレクタチャネルを通じてシグナルをプロセス外へ報告する。
+- [x] 作業単位 3 — `_await_ready` からシグナルを参照し、BE-0218 のツリー差分の梯子をフォールバックにする。
+- [x] 作業単位 4 — `_wait_settled` からシグナルを参照し、ツリー差分の挙動をフォールバックにする。
 - [ ] 作業単位 5 — シグナルが UIKit と SwiftUI の双方で発火することをシミュレータで確認する（ゲート）。
+  作業単位 1〜4 は実装済みで、高速な Linux ゲートでカバーしています（フェイクの遷移シグナル源が
+  シミュレータの代わりを務めます）。この作業単位は経験的なオンデバイス限定の確認であり、Mac と
+  シミュレータを持つ人による実行が必要です。手順と XCUITest スキャフォールドは
+  [`demos/showcase/BE-0310-screen-transition-verification.ja.md`](../../demos/showcase/BE-0310-screen-transition-verification.ja.md)
+  にあります。
 
 ## 参考
 

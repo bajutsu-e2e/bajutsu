@@ -136,7 +136,7 @@ class ReadinessResult:
     """
 
     ready: bool
-    signal: Literal["readyWhen", "namespace", "count", "timeout"]
+    signal: Literal["screenChanged", "readyWhen", "namespace", "count", "timeout"]
     elapsed_s: float
 
 

@@ -12,7 +12,7 @@ from bajutsu.config import Effective, XcuitestConfig
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence import NullSink
-from bajutsu.evidence.network import NetworkExchange
+from bajutsu.evidence.network import NetworkExchange, ScreenTransition
 from bajutsu.orchestrator import RunResult
 from bajutsu.runner import (
     Lease,
@@ -650,6 +650,9 @@ class _ConstantCollector:
 
     def snapshot_timed(self) -> list[tuple[NetworkExchange, float]]:
         return [(e, 0.0) for e in self._ex]
+
+    def transitions_snapshot_timed(self) -> list[tuple[ScreenTransition, float]]:
+        return []
 
     def clear(self) -> None:
         pass

@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0310](BE-0310-ios-accessibility-screen-change-readiness.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0310") |
 | Topic | Platform support |
 | Related | [BE-0218](../BE-0218-e2e-simulator-flaky-readiness-actuation/BE-0218-e2e-simulator-flaky-readiness-actuation.md), [BE-0087](../BE-0087-idb-action-settle/BE-0087-idb-action-settle.md), [BE-0233](../BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity.md), [BE-0299](../BE-0299-settle-value-condition-wait/BE-0299-settle-value-condition-wait.md) |
@@ -209,11 +209,15 @@ independent of today.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — Observe the `UIAccessibility` screen-change notification in `BajutsuKit`, opt-in gated.
-- [ ] Unit 2 — Report the signal out of process through the existing collector channel.
-- [ ] Unit 3 — Consult the signal from `_await_ready`, with the BE-0218 tree-diff ladder as fallback.
-- [ ] Unit 4 — Consult the signal from `_wait_settled`, with the tree-diff behavior as fallback.
+- [x] Unit 1 — Observe the `UIAccessibility` screen-change notification in `BajutsuKit`, opt-in gated.
+- [x] Unit 2 — Report the signal out of process through the existing collector channel.
+- [x] Unit 3 — Consult the signal from `_await_ready`, with the BE-0218 tree-diff ladder as fallback.
+- [x] Unit 4 — Consult the signal from `_wait_settled`, with the tree-diff behavior as fallback.
 - [ ] Unit 5 — Confirm on the Simulator that the signal fires across UIKit and SwiftUI (the gate).
+  Units 1–4 are implemented and covered by the fast Linux gate (a fake transition source stands in
+  for the Simulator); this Unit is the empirical, on-device-only confirmation and needs a human with
+  a Mac + Simulator to run it. Procedure and an XCUITest scaffold:
+  [`demos/showcase/BE-0310-screen-transition-verification.md`](../../demos/showcase/BE-0310-screen-transition-verification.md).
 
 ## References
 

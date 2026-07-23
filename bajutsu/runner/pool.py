@@ -24,7 +24,7 @@ from bajutsu.backends import make_driver as _make_driver
 from bajutsu.config import Effective
 from bajutsu.drivers import base
 from bajutsu.evidence import FileSink
-from bajutsu.evidence.network import Collector, NetworkCollector
+from bajutsu.evidence.network import Collector, NetworkCollector, _no_transitions
 from bajutsu.orchestrator import DeviceControl, RelaunchFn
 from bajutsu.orchestrator.evidence_rules import requested_intervals
 
@@ -264,6 +264,14 @@ def device_pool(
                 # runner) must be terminated by the instance that spawned it (BE-0240).
                 environment=lease_env,
                 permissions=scenario.permissions,
+                # The screen-transition signal (BE-0310): only the app-side collector receives it (an
+                # app linking BajutsuKit's observer reports to it), so a driver-observed platform or a
+                # scenario with no collector keeps the default (no signal, tree-diff fallback).
+                transitions=(
+                    collector.transitions_snapshot_timed
+                    if isinstance(collector, NetworkCollector)
+                    else _no_transitions
+                ),
             )
             # Keep this device's resident warm for the next lease when the environment holds one
             # (the Simulator XCUITest runner); the next same-actuator lease resumes it instead of

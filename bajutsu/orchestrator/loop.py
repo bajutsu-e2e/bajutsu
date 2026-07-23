@@ -17,6 +17,7 @@ from bajutsu import assertions, interp
 from bajutsu.assertions import AssertionResult, EvalContext
 from bajutsu.drivers import base
 from bajutsu.evidence import Artifact, EvidenceSink, NullSink, intervals
+from bajutsu.evidence.network import TransitionSource, _no_transitions
 from bajutsu.mailbox import extract_value, select
 from bajutsu.orchestrator.actions import _action_of, _do_action, _step_label
 from bajutsu.orchestrator.evidence_rules import (
@@ -305,6 +306,7 @@ def _run_step_body(
     on_blocked: BlockedHandler | None = None,
     alerts: list[AlertEvent] | None = None,
     on_wait_tick: WaitTick | None = None,
+    transitions: TransitionSource = _no_transitions,
     on_interrupt_poll: Callable[[list[base.Element]], bool] | None = None,
 ) -> tuple[bool, str, list[AssertionResult], list[base.Element] | None]:
     """Execute one step's effect, returning (ok, reason, assertion_results, snapshot).
@@ -333,6 +335,7 @@ def _run_step_body(
                 on_blocked=on_blocked,
                 alerts=alerts,
                 on_tick=on_wait_tick,
+                transitions=transitions,
                 on_interrupt_poll=on_interrupt_poll,
             )
             return ok, reason, [], tree
@@ -374,6 +377,7 @@ def run_scenario(
     ctx: EvalContext | None = None,
     mailbox: MailboxReader | None = None,
     webview_bridge: DomSource | None = None,
+    transitions: TransitionSource = _no_transitions,
     interrupts: list[Interrupt] | None = None,
 ) -> RunResult:
     """Run one scenario deterministically, firing capturePolicy rules into `sink`.
@@ -385,6 +389,10 @@ def run_scenario(
 
     If a step fails and `on_blocked` clears a blocking condition (e.g. dismisses a
     system alert), the step is retried once before being recorded as a failure.
+
+    `transitions` (BE-0310) is the read-only screen-transition signal a `wait until: settled` step
+    consults in place of tree-diff polling; the default reports none, so a caller that doesn't pass
+    one (most callers, and every non-iOS backend) sees the unchanged tree-diff behavior.
     """
     clock = clock or RealClock()
     sink = sink or NullSink()
@@ -421,6 +429,7 @@ def run_scenario(
             mailbox,
             ctx,
             webview_bridge,
+            transitions,
             interrupts,
         )
         if failure is None and scenario.expect:
@@ -634,6 +643,7 @@ def _run_steps(
     mailbox: MailboxReader | None = None,
     ctx: EvalContext | None = None,
     webview_bridge: DomSource | None = None,
+    transitions: TransitionSource = _no_transitions,
     interrupts: list[Interrupt] | None = None,
 ) -> str | None:
     """Run the step loop, appending outcomes; return the failure string or None.
@@ -820,6 +830,7 @@ def _run_steps(
                     on_blocked=on_blocked,
                     alerts=outcome.alerts,
                     on_wait_tick=wait_tick,
+                    transitions=transitions,
                     on_interrupt_poll=guard.observe if guard is not None else None,
                 )
                 if guard is not None and guard.failure is not None:
@@ -849,6 +860,7 @@ def _run_steps(
                             wait_trace=wait_trace,
                             selection=selection,
                             on_wait_tick=wait_tick,
+                            transitions=transitions,
                             on_interrupt_poll=guard.observe if guard is not None else None,
                         )
                 # A failure inside an interrupt's own recovery `steps` fails the step loudly, rather

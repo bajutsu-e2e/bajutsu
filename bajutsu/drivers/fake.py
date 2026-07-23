@@ -10,7 +10,7 @@ import time
 from collections.abc import Callable, Sequence
 
 from bajutsu.drivers import base
-from bajutsu.evidence.network import NetworkExchange
+from bajutsu.evidence.network import NetworkExchange, ScreenTransition
 
 # Hook that mutates state in response to an action: react(driver, kind, arg)
 React = Callable[["FakeDriver", str, object], None]
@@ -32,6 +32,9 @@ class FakeNetworkCollector:
 
     def snapshot_timed(self) -> list[tuple[NetworkExchange, float]]:
         return list(self._items)
+
+    def transitions_snapshot_timed(self) -> list[tuple[ScreenTransition, float]]:
+        return []  # the fake driver seeds no screen-transition events (BE-0310)
 
     def clear(self) -> None:
         self._items.clear()

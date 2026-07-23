@@ -7,7 +7,10 @@ from conftest import el
 
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.orchestrator import run_scenario
+from bajutsu.evidence.network import ScreenTransition
+from bajutsu.orchestrator import _wait, run_scenario
+from bajutsu.orchestrator.waits import _TRANSITION_QUIESCENCE
+from bajutsu.scenario import Wait
 
 
 def test_wait_for_appears() -> None:
@@ -138,10 +141,96 @@ def test_wait_settled_proceeds_on_blank_screen() -> None:
     assert result.ok and result.steps[0].ok
 
 
+# --- BE-0310: the screen-transition signal, consulted from the `settled` wait ---
+
+
+def test_wait_settled_signal_settles_instantly_when_already_quiescent() -> None:
+    """When the signal is available and the last transition already predates the quiescence
+    window, the screen is settled without needing to poll the tree more than once."""
+    driver = FakeDriver([el("a", "A")])
+    clock = FakeClock()
+    old = [(ScreenTransition(kind="screenChanged"), -1.0 - _TRANSITION_QUIESCENCE)]
+    w = Wait.model_validate({"until": "settled", "timeout": 2.0})
+    ok, reason, _tree = _wait(driver, w, clock, transitions=lambda: old)  # type: ignore[arg-type]
+    assert ok and reason == ""
+    assert clock.now() == 0.0  # no waiting needed
+
+
+def test_wait_settled_signal_waits_out_the_quiescence_window() -> None:
+    """A transition just observed must not settle instantly — the wait holds out for
+    `_TRANSITION_QUIESCENCE` of silence first."""
+    driver = FakeDriver([el("a", "A")])
+    clock = FakeClock()
+    fresh = [(ScreenTransition(kind="screenChanged"), 0.0)]
+    w = Wait.model_validate({"until": "settled", "timeout": 2.0})
+    ok, reason, _tree = _wait(driver, w, clock, transitions=lambda: fresh)  # type: ignore[arg-type]
+    assert ok and reason == ""
+    assert clock.now() >= _TRANSITION_QUIESCENCE
+
+
+def test_wait_settled_signal_restarts_the_window_on_a_new_transition() -> None:
+    """A fresh transition arriving mid-wait pushes settlement out further: the debounce is 'no
+    further transition for the quiescence window since the LATEST one', not a fixed timer
+    started from the first."""
+    driver = FakeDriver([el("a", "A")])
+    events: list[tuple[ScreenTransition, float]] = [(ScreenTransition(kind="screenChanged"), 0.0)]
+    injected = False
+
+    def on_sleep(t: float) -> None:
+        nonlocal injected
+        if not injected and t >= _TRANSITION_QUIESCENCE / 2:
+            events.append((ScreenTransition(kind="screenChanged"), t))
+            injected = True
+
+    clock = FakeClock(on_sleep)
+    w = Wait.model_validate({"until": "settled", "timeout": 2.0})
+    ok, reason, _tree = _wait(driver, w, clock, transitions=lambda: events)  # type: ignore[arg-type]
+    assert ok and reason == ""
+    assert injected  # the mid-wait injection actually happened
+    # Settled only after quiescence elapsed since the SECOND (later) transition.
+    assert clock.now() >= events[-1][1] + _TRANSITION_QUIESCENCE
+
+
+def test_wait_settled_falls_back_to_tree_diff_when_no_transitions_reported() -> None:
+    """No signal reported (the app doesn't link BajutsuKit, or hasn't transitioned yet): the wait
+    keeps its original two-consecutive-unchanged-reads behavior, unaffected by BE-0310."""
+    driver = FakeDriver([el("home", "Home", ["button"])])
+
+    def on_sleep(t: float) -> None:
+        if t < 0.15:  # a transition still in progress: the frame keeps moving
+            driver.screen = [
+                {
+                    "identifier": "home",
+                    "label": "Home",
+                    "traits": ["button"],
+                    "value": None,
+                    "frame": (t, 0.0, 10.0, 10.0),
+                }
+            ]
+
+    clock = FakeClock(on_sleep)
+    w = Wait.model_validate({"until": "settled", "timeout": 2.0})
+    ok, reason, _tree = _wait(driver, w, clock, transitions=list)  # type: ignore[arg-type]
+    assert ok and reason == ""
+
+
+def test_wait_settled_via_run_scenario_threads_the_signal() -> None:
+    """End-to-end: `run_scenario`'s `transitions` reaches the settled wait (the plumbing this item
+    adds through `_run_steps` / `_run_step_body` / `_wait`)."""
+    driver = FakeDriver([el("home", "Home")])
+    old = [(ScreenTransition(kind="screenChanged"), -1.0 - _TRANSITION_QUIESCENCE)]
+    result = run_scenario(
+        driver,
+        _scenario({"name": "x", "steps": [{"wait": {"until": "settled", "timeout": 2.0}}]}),
+        clock=FakeClock(),
+        transitions=lambda: old,
+    )
+    assert result.ok and result.steps[0].ok
+
+
 def test_wait_skips_sleep_when_query_exceeds_poll_interval() -> None:
     """When query() takes longer than _POLL, additional sleep is skipped."""
-    from bajutsu.orchestrator import _POLL, _wait
-    from bajutsu.scenario import Wait
+    from bajutsu.orchestrator import _POLL
 
     sleeps: list[float] = []
 

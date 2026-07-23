@@ -213,6 +213,9 @@ def test_web_hook_collector_wires_the_scenarios_mocks() -> None:
         def snapshot_timed(self) -> list[object]:
             return []
 
+        def transitions_snapshot_timed(self) -> list[object]:
+            return []
+
         def clear(self) -> None:
             pass
 

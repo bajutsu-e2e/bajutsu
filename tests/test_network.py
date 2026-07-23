@@ -9,7 +9,7 @@ import urllib.request
 
 from bajutsu.assertions import EvalContext, evaluate, evaluate_one
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.evidence.network import NetworkCollector, NetworkExchange
+from bajutsu.evidence.network import NetworkCollector, NetworkExchange, ScreenTransition
 from bajutsu.orchestrator import run_scenario
 from bajutsu.scenario import (
     Assertion,
@@ -513,6 +513,84 @@ def test_collector_snapshot_timed_records_receive_order() -> None:
     timed = c.snapshot_timed()
     assert [t for _, t in timed] == [1.0, 2.5]  # receive times preserved
     assert [ex.path for ex, _ in timed] == ["/a", "/b"]  # in arrival order
+
+
+def _post_transition(port: int, token: str, kind: str = "screenChanged") -> int:
+    """POST one screen-transition event to the collector's /transitions endpoint (BE-0310)."""
+    body = json.dumps({"kind": kind}).encode()
+    req = urllib.request.Request(
+        f"http://127.0.0.1:{port}/transitions",
+        data=body,
+        method="POST",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    with urllib.request.urlopen(req) as resp:
+        return int(resp.status)
+
+
+def test_collector_transitions_endpoint_is_independent_of_exchanges() -> None:
+    """Screen-transition events (BE-0310) land in their own store, alongside network exchanges,
+    with the same token auth and receiver — never mixing with `snapshot()`."""
+    c = NetworkCollector()
+    port = c.start()
+    try:
+        assert _post_report(port, c.token) == 204
+        assert _post_transition(port, c.token) == 204
+        assert len(c.snapshot()) == 1  # the exchange only
+        transitions = c.transitions_snapshot_timed()
+        assert len(transitions) == 1
+        assert transitions[0][0].kind == "screenChanged"
+    finally:
+        c.stop()
+
+
+def test_collector_transitions_endpoint_rejects_bad_token() -> None:
+    c = NetworkCollector()
+    port = c.start()
+    try:
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{port}/transitions",
+            data=json.dumps({"kind": "screenChanged"}).encode(),
+            method="POST",
+            headers={"Authorization": "Bearer wrong-token"},
+        )
+        try:
+            urllib.request.urlopen(req)
+            raised = False
+        except urllib.error.HTTPError as err:
+            raised = err.code == 401
+            err.close()
+        assert raised
+        assert c.transitions_snapshot_timed() == []
+    finally:
+        c.stop()
+
+
+def test_collector_clear_drops_both_exchanges_and_transitions() -> None:
+    c = NetworkCollector()
+    c.add({"method": "GET", "path": "/a", "status": 200})
+    c.add_transition({"kind": "screenChanged"})
+    assert c.snapshot() and c.transitions_snapshot_timed()
+    c.clear()
+    assert c.snapshot() == [] and c.transitions_snapshot_timed() == []
+
+
+def test_collector_add_transition_ignores_invalid_data() -> None:
+    """A malformed payload (validation error) is silently dropped, matching `add`'s
+    forward-compatible behavior."""
+    c = NetworkCollector()
+    c.add_transition({"kind": {"nested": True}})  # kind must be a str — triggers ValidationError
+    assert c.transitions_snapshot_timed() == []
+
+
+def test_collector_transitions_snapshot_timed_records_receive_order() -> None:
+    times = iter([1.0, 2.5])
+    c = NetworkCollector(now=lambda: next(times))
+    c.add_transition({"kind": "screenChanged"})
+    c.add_transition({"kind": "screenChanged"})
+    timed = c.transitions_snapshot_timed()
+    assert [t for _, t in timed] == [1.0, 2.5]
+    assert all(isinstance(tr, ScreenTransition) for tr, _ in timed)
 
 
 def test_orchestrator_request_assertion_step() -> None:
