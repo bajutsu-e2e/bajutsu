@@ -48,6 +48,28 @@ final class RouterTests: XCTestCase {
         XCTAssertNotNil(first["handle"] as? String)
     }
 
+    func testElementsReportsEmptyWhenTheSnapshotRaisesAnException() {
+        // The read-path guard: an `app.snapshot()` that raises while the UI is in flux must not abort
+        // the resident runner. The Router catches it and answers an empty screen (the run then fails
+        // loudly downstream when nothing resolves), never a crash → connection refused.
+        let provider = FakeElementProvider()
+        provider.elementsToReturn = [
+            ElementSnapshot(
+                identifier: "home.title", label: "Home", value: nil,
+                traits: ["staticText"], frame: (0, 0, 10, 10), backingElement: NSObject()
+            ),
+        ]
+        provider.queryRaises = NSException(
+            name: .internalInconsistencyException, reason: "snapshot failed while UI in flux", userInfo: nil
+        )
+        let router = makeRouter(provider)
+
+        let response = router.handle(HTTPRequest(method: "GET", path: "/elements", body: nil))
+        let json = parseJSON(response)
+        XCTAssertEqual(json?["status"] as? String, "ok")
+        XCTAssertEqual((json?["elements"] as? [[String: Any]])?.count, 0)  // empty screen, not a crash
+    }
+
     // MARK: - /tap
 
     func testTapWithValidHandleCallsProvider() throws {

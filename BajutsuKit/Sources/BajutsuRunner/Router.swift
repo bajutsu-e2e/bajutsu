@@ -41,7 +41,10 @@ final class Router {
     }
 
     private func handleElements() -> HTTPResponse {
-        let elements = onMain { self.provider.queryElements() }
+        // A raised snapshot failure (UI in flux) maps to an empty screen, the same as the provider's
+        // `try? app.snapshot()` handles a *thrown* one (BE-0105): the run fails loudly downstream when
+        // nothing resolves, and the runner keeps serving rather than aborting on the raise.
+        let elements = caughtOnMain([]) { self.provider.queryElements() }
         let entries = store.refreshSnapshot(elements: elements)
         let jsonElements: [[String: Any]] = entries.map { entry in
             var dict: [String: Any] = [
@@ -167,7 +170,7 @@ final class Router {
     }
 
     private func handleScreenshot() -> HTTPResponse {
-        guard let png = onMain(self.provider.screenshot) else {
+        guard let png = caughtOnMain(Data?.none, self.provider.screenshot) else {
             return .error(500, "screenshot failed")
         }
         return .png(png)
@@ -188,36 +191,38 @@ final class Router {
         return result
     }
 
-    /// Run an actuation on the main thread, catching a raised `NSException` as `.stale`.
+    /// Run `work` on the main thread, returning `fallback` if it raises an `NSException`.
     ///
-    /// An `XCUIElement` interaction raises an `NSException` when the element fails to resolve at
-    /// action time — "No matches found", the normal race when the screen shifts between the snapshot
-    /// and the tap. Uncaught it unwinds past Swift and aborts the resident runner's serve loop, so
-    /// every later request gets "connection refused"; `continueAfterFailure` does not help, because
-    /// this is a raised exception, not a recorded soft failure. Catching it and reporting `.stale`
-    /// lets the Python side re-resolve the selector and retry (the same handling a real stale handle
-    /// gets, BE-0289) while the runner stays up.
+    /// An `XCUIElement` interaction — or an `app.snapshot()` query — raises an `NSException` when the
+    /// UI is in flux ("No matches found", a failed/timed-out snapshot). Uncaught it unwinds past Swift
+    /// and aborts the resident runner's serve method, so every later request gets "connection
+    /// refused"; `continueAfterFailure` does not help, because this is a raised exception, not a
+    /// recorded soft failure. Catching it here keeps the runner serving and reports a deterministic
+    /// fallback the caller turns into a normal reply. The caught reason (the XCUITest diagnostic the
+    /// shim preserves) goes to the runner's stderr, which `BAJUTSU_XCUITEST_RUNNER_LOG` captures.
+    private func caughtOnMain<T>(_ fallback: T, _ work: @escaping () -> T) -> T {
+        onMain {
+            var result = fallback
+            do {
+                try ObjCExceptionCatcher.catchException { result = work() }
+            } catch {
+                FileHandle.standardError.write(
+                    Data("bajutsu runner: handler raised, reporting fallback: \(error.localizedDescription)\n".utf8)
+                )
+                return fallback
+            }
+            return result
+        }
+    }
+
+    /// A caught actuation, reported as `.stale` on a raised interaction failure.
     ///
     /// `.stale` is safe for the driver's retried actuations (tap/gesture): XCUITest resolves the
     /// element — and raises if it is gone — before synthesizing any event, so a caught interaction
-    /// failure precedes any side effect and the re-resolve-and-retry cannot double-actuate. The
-    /// coordinate/keyboard actuations the driver does not retry (`tapPoint`/`swipe`/`type`/…) simply
+    /// failure precedes any side effect and the re-resolve-and-retry (BE-0289) cannot double-actuate.
+    /// The coordinate/keyboard actuations the driver does not retry (`tapPoint`/`swipe`/`type`/…)
     /// surface `.stale` as a loud failure, so they carry no double-actuation risk either.
     private func onMainCatching(_ work: @escaping () -> TapResult) -> TapResult {
-        onMain {
-            var result = TapResult.stale
-            do {
-                try ObjCExceptionCatcher.catchException { result = work() }
-                return result
-            } catch {
-                // Surface the caught XCUITest diagnostic ("No matches found …") on the runner's
-                // stderr, so BAJUTSU_XCUITEST_RUNNER_LOG records *why* the actuation was reported
-                // stale rather than discarding the reason the catcher preserved.
-                FileHandle.standardError.write(
-                    Data("bajutsu runner: actuation raised, reporting stale: \(error.localizedDescription)\n".utf8)
-                )
-                return .stale
-            }
-        }
+        caughtOnMain(.stale, work)
     }
 }

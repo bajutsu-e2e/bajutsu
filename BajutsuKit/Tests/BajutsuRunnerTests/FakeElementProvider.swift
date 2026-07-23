@@ -8,6 +8,9 @@ final class FakeElementProvider: ElementProviding {
     // When set, `tap` raises this NSException instead of returning — standing in for the XCUITest
     // "No matches found" interaction failure the runner must survive (the Router catches it as stale).
     var tapRaises: NSException?
+    // When set, `queryElements` raises this — standing in for an `app.snapshot()` that raises while
+    // the UI is in flux (the Router catches it as an empty screen, not a runner crash).
+    var queryRaises: NSException?
 
     var tapCalls: [(backingElement: AnyObject, taps: Int, duration: TimeInterval)] = []
     var tapPointCalls: [(x: Double, y: Double)] = []
@@ -18,7 +21,10 @@ final class FakeElementProvider: ElementProviding {
     var selectAllCalls = 0
     var copyCalls = 0
 
-    func queryElements() -> [ElementSnapshot] { elementsToReturn }
+    func queryElements() -> [ElementSnapshot] {
+        if let exception = queryRaises { exception.raise() }
+        return elementsToReturn
+    }
 
     func tap(backingElement: AnyObject, taps: Int, duration: TimeInterval) -> TapResult {
         tapCalls.append((backingElement, taps, duration))
