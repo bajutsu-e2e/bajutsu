@@ -172,7 +172,14 @@ async function setReport(id,ok,repSel){
   // Offer "Triage" only on a failed run — the "why did this fail?" the Replay/History view asks
   // right where the red report is (BE-0147). A passed run has nothing to diagnose.
   const triageBtn=ok===false?`<button class="repbtn" id="triagebtn" data-testid="replay.triage">🔧 Triage</button>`:'';
+  // Replay's #report IS its tiled panel, so the drag grip (.tile-grip) and size readout (.tile-size)
+  // are direct children the tiling engine owns. innerHTML would wipe them, and the grip — created
+  // once at init, unlike the rebuild-healed .tile-size — would never return, leaving the report panel
+  // un-draggable. Detach and re-attach them around the rewrite. (Record's #rec-report is nested inside
+  // its gripped panel, so it has none of these and this is a no-op there.)
+  const gripped=[...rep.querySelectorAll(':scope>.tile-grip,:scope>.tile-size')];
   rep.innerHTML=`<div class="repbar"><a class="repdl" href="/runs/${esc(id)}/archive.zip" download>⬇ download .zip</a><a class="repopen" href="/runs/${esc(id)}/report.html" target="_blank" rel="noopener">open full report ↗</a>${triageBtn}</div><div class="triagepanel" id="triagepanel" data-testid="replay.triage-panel" hidden></div><div class="rephost"></div>`;
+  gripped.forEach(el=>rep.appendChild(el));
   if(ok===false)$('#triagebtn').addEventListener('click',()=>openTriage(id));
   const host=rep.querySelector('.rephost');
   let html;
