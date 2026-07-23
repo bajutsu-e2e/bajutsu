@@ -22,7 +22,7 @@ from bajutsu.config.schema import (
     XcuitestConfig,
 )
 from bajutsu.drivers import base
-from bajutsu.scenario import DismissAlerts, Redact
+from bajutsu.scenario import DismissAlerts, Interrupt, Redact
 
 
 @dataclass(frozen=True)
@@ -131,6 +131,9 @@ class RunDefaults:
     dismiss_alerts: DismissAlerts | None = None
     erase: bool = False
     network: bool = True
+    # App-wide interstitial-screen handlers (BE-0314), prepended to a scenario's own `interrupts`.
+    # Empty when the target config declares none.
+    interrupts: list[Interrupt] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

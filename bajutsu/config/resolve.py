@@ -178,6 +178,7 @@ def resolve(config: Config, target: str) -> Effective:
             dismiss_alerts=a.dismiss_alerts,
             erase=a.erase if a.erase is not None else False,
             network=a.network if a.network is not None else True,
+            interrupts=list(a.interrupts),
         ),
     )
 

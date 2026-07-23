@@ -260,6 +260,21 @@ def test_permissions_field_emits_a_labeled_todo_per_service() -> None:
     assert "// TODO: permissions.location (revoke)" in code
 
 
+def test_interrupts_field_emits_a_labeled_todo_per_entry() -> None:
+    # `interrupts` (BE-0314) has no native "check this condition throughout the test" construct, so —
+    # like `permissions` — it stays a labeled TODO naming the field and each entry's condition, rather
+    # than a silent skip that would fake a pass.
+    code = _gen(
+        "- name: x\n  interrupts:\n"
+        "    - condition: { exists: { id: att.dialog } }\n"
+        "      steps:\n        - tap: { id: att.allow }\n"
+        "  steps:\n    - tap: { id: a }\n"
+    )
+    assert "// TODO: interrupts[0]" in code
+    assert "att.dialog" in code
+    assert "checks this opportunistically at run time" in code
+
+
 def test_request_assertion_emits_labeled_todo() -> None:
     # XCUITest has no network interception, so a `request` assertion stays a TODO — but a labeled one
     # naming the endpoint and why, like the device-control steps, not a bare "unsupported" (BE-0026).

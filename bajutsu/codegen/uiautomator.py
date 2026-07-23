@@ -28,6 +28,7 @@ from bajutsu.assertions import request_label
 from bajutsu.codegen.common import (
     class_name,
     ident,
+    interrupts_setup_lines,
     is_plain_substring,
     manual_todo,
     ms,
@@ -391,7 +392,11 @@ class _UiAutomatorGen:
     def setup_lines(self, scenario: Scenario) -> list[str]:
         # The mutable extras map the launch-env lines fill and `launch(extras)` consumes; always
         # emitted so a relaunch step can re-launch with the same env even when there is none.
-        return ["val extras = mutableMapOf<String, String>()", *permissions_setup_lines(scenario)]
+        return [
+            "val extras = mutableMapOf<String, String>()",
+            *permissions_setup_lines(scenario),
+            *interrupts_setup_lines(scenario),
+        ]
 
     def launch_env_line(self, key: str, value: str) -> str:
         return f"extras[{_s(key)}] = {_s(value)}"

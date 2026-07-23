@@ -209,6 +209,10 @@ class _ScenarioRunner:
                 ctx=EvalContext(visual=vc, schema=sc, golden=gc_with_screen),
                 mailbox=self.mailbox,
                 webview_bridge=lz.webview_bridge,
+                # Config-level interrupts first, then the scenario's own (BE-0314): an app-wide
+                # interstitial handler composes with a per-scenario addition, the config-then-scenario
+                # order the dismissAlerts default already follows.
+                interrupts=[*self.eff.run_defaults.interrupts, *s.interrupts],
             )
             result.sid = sid  # the evidence-dir slug, so the matrix links to the real dir (BE-0076)
             result.device = lz.udid  # attribute the scenario to the device that ran it

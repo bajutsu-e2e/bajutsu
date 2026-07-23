@@ -75,6 +75,7 @@ misinterpret rather than merely reject; a purely additive optional field needs n
 | `redact` | object | none | Masking applied before evidence is written ([evidence](evidence.md#masking-redact)) |
 | `dismissAlerts` | bool / object | none (on) | The vision **alert guard** — clears OS prompts the iOS backend cannot see. On by default; `false` disables it, `{ instruction: "tap Allow" }` keeps it on but taps a named button. CLI `--dismiss-alerts`/`--no-dismiss-alerts` overrides ([below](#dismissalerts-the-system-alert-guard)) |
 | `permissions` | dict | `{}` | Declarative OS permission state — `{ <service>: grant \| revoke }` — applied **before the app launches** ([below](#permissions-pre-launch-permission-state)) |
+| `interrupts` | list | `[]` | Handlers for an interstitial screen that surfaces at an **unpredictable** point — each `{ condition, steps }`, checked opportunistically wherever the screen appears ([below](#interrupts-handling-unpredictable-interstitial-screens)) |
 
 ```yaml
 - name: filter narrows the catalog
@@ -175,6 +176,70 @@ fails preflight the same way, named individually.
 `permissions` has no app-level XCUITest / Espresso equivalent, so `codegen` emits a labeled
 `// TODO` per service rather than generating code for it — bajutsu applies the field itself, before
 the generated test's own launch step.
+
+## interrupts (handling unpredictable interstitial screens)
+
+An `if` step ([below](#conditional-steps-if)) checks its condition at **one point** in the step
+sequence — the right tool when you know exactly which step precedes the screen you are branching on.
+It is the wrong tool when a screen's appearance is not tied to any one step: an onboarding overlay, a
+tutorial, or an in-tree permission prompt can each surface a few steps earlier or later than
+expected, or not at all, depending on account state, network timing, or an A/B cohort. A single `if`
+only catches the screen when it appears exactly where the `if` sits; every other timing slips through
+and fails the rest of the scenario against a screen it was not written to expect.
+
+`interrupts` handles that case. Each entry names a `condition` — the same assertion DSL `if` uses —
+and the `steps` that clear the screen. The runner checks each entry **opportunistically**, against a
+tree it has already fetched (a `wait`'s poll tick, an act step's pre-action read), wherever in the
+sequence the screen happens to appear, and runs the entry's `steps` when the condition matches. After
+the handler runs, the interrupted step resumes where it left off — a `wait` keeps polling toward its
+original timeout, an act step takes its action — so an author no longer has to predict the one spot to
+place an `if`.
+
+```yaml
+# config.yaml — an app-wide default: this app's onboarding screen, on every scenario
+targets:
+  myapp:
+    interrupts:
+      - condition: { exists: { id: onboarding.skip } }
+        steps:
+          - tap: { id: onboarding.skip }
+```
+
+```yaml
+# scenario.yaml — this scenario's own addition, appended to the config-level list
+- name: log in
+  interrupts:
+    - condition: { exists: { id: att.dialog } }   # App Tracking Transparency prompt
+      steps:
+        - tap: { id: att.allow }
+  steps:
+    - tap:  { id: login.button }
+    - wait: { for: { id: home.title }, timeout: 10 }   # an interstitial mid-flow is cleared, then this passes
+```
+
+An `interrupts` list set at the **config** level (`targets.<name>.interrupts`) is an app-wide
+default; a scenario's own `interrupts` is **appended** to it, config entries checked first — the same
+config-then-scenario layering `dismissAlerts` follows. An entry's `steps` share the enclosing
+scenario's `vars.*` bindings, exactly as `if`'s branches do. If a handler's own `steps` never clear
+its `condition` (a broken selector, a screen that re-renders identically), the entry fires only a
+small bounded number of times per step and then the step falls back to its ordinary outcome (pass,
+fail, or timeout) — a mis-set entry fails the step cleanly rather than hanging the run.
+
+The check is the deterministic assertion DSL, never a model call, so `interrupts` adds no AI to the
+`run` verdict. That is the difference from `dismissAlerts`: the alert guard is the vision path
+reserved for out-of-process system prompts the accessibility tree **cannot see**, while `interrupts`
+handles a screen the tree **can** see with a machine-checkable condition. When to reach for which:
+
+| Field | For | Timing | Mechanism |
+|---|---|---|---|
+| `if` | a screen at a **known** point in the sequence | one scripted check | deterministic (assertion DSL) |
+| `interrupts` | a screen at an **unpredictable** point, visible in the tree | checked opportunistically throughout | deterministic (assertion DSL) |
+| `dismissAlerts` | an **out-of-process** system prompt the tree cannot see | reactive, when a step or wait is blocked | AI vision (`ANTHROPIC_API_KEY`) |
+| `permissions` | an OS permission prompt you can avoid outright | pre-launch, before the app starts | deterministic device mutation |
+
+No native XCUITest / Espresso / Playwright construct maps onto "check this condition opportunistically
+throughout the whole test," so `codegen` emits a labeled `// TODO` naming the field and each
+configured condition rather than generating code for it — `bajutsu run` is the faithful path.
 
 ## Selectors (addressing an element)
 

@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 import subprocess
 from collections.abc import Callable, Mapping
-from dataclasses import replace
+from dataclasses import dataclass, field, replace
 from functools import partial
 
 from bajutsu import assertions, interp
@@ -51,7 +51,17 @@ from bajutsu.orchestrator.waits import (
     _wait,
     describe_wait,
 )
-from bajutsu.scenario import Assertion, Email, Extract, ForEach, If, Scenario, Selector, Step
+from bajutsu.scenario import (
+    Assertion,
+    Email,
+    Extract,
+    ForEach,
+    If,
+    Interrupt,
+    Scenario,
+    Selector,
+    Step,
+)
 from bajutsu.webview import DomSource, WebContextDriver
 
 _logger = logging.getLogger(__name__)
@@ -295,6 +305,7 @@ def _run_step_body(
     on_blocked: BlockedHandler | None = None,
     alerts: list[AlertEvent] | None = None,
     on_wait_tick: WaitTick | None = None,
+    on_interrupt_poll: Callable[[list[base.Element]], None] | None = None,
 ) -> tuple[bool, str, list[AssertionResult], list[base.Element] | None]:
     """Execute one step's effect, returning (ok, reason, assertion_results, snapshot).
 
@@ -308,7 +319,8 @@ def _run_step_body(
     calling this function. ``wait_trace``, when given for a wait step, records the poll timeline so a
     timeout is diagnosable from artifacts (BE-0231 Unit 1). ``on_blocked``/``alerts``, when given for
     a wait step, are passed through to ``_wait``'s mid-wait alert guard (BE-0269); other step kinds
-    ignore them."""
+    ignore them. ``on_interrupt_poll``, when given for a wait step, is passed to ``_wait`` so a
+    scenario's ``interrupts`` handlers can clear an interstitial screen mid-wait (BE-0314)."""
     try:
         if kind == "wait":
             assert step.wait is not None
@@ -321,6 +333,7 @@ def _run_step_body(
                 on_blocked=on_blocked,
                 alerts=alerts,
                 on_tick=on_wait_tick,
+                on_interrupt_poll=on_interrupt_poll,
             )
             return ok, reason, [], tree
         if kind == "email":
@@ -361,6 +374,7 @@ def run_scenario(
     ctx: EvalContext | None = None,
     mailbox: MailboxReader | None = None,
     webview_bridge: DomSource | None = None,
+    interrupts: list[Interrupt] | None = None,
 ) -> RunResult:
     """Run one scenario deterministically, firing capturePolicy rules into `sink`.
 
@@ -407,6 +421,7 @@ def run_scenario(
             mailbox,
             ctx,
             webview_bridge,
+            interrupts,
         )
         if failure is None and scenario.expect:
             expect = _interp_asserts(scenario.expect, live_bindings)
@@ -469,6 +484,85 @@ class _StepCounter:
         return idx
 
 
+# Consecutive fires of the *same* interrupt entry allowed within one step's resolution (BE-0314). A
+# mis-set entry — a condition its own `steps` never clear — must not hang the run, so after this many
+# fires it goes inert and the step falls back to its ordinary outcome. In the spirit of BE-0269's
+# `_GUARD_MAX_ATTEMPTS`: a small fixed ceiling that turns "the recovery didn't take" into a clean
+# step failure/timeout rather than an infinite loop.
+_INTERRUPT_MAX_FIRES = 3
+
+
+@dataclass
+class _InterruptGuard:
+    """Checks a scenario's `interrupts` handlers against already-fetched trees mid-step (BE-0314).
+
+    Analogous to `waits._AlertGuardGate`, but for in-tree interstitial screens the assertion DSL can
+    see (not out-of-process system alerts): each entry's `condition` is evaluated against a tree the
+    loop already holds — a `wait`'s poll tick, or an act step's pre-action read — and its `steps` run
+    to clear the screen when it matches, wherever in the sequence it surfaced. It is the deterministic
+    trigger only; `condition` is a machine predicate, never a model call (prime directive 1).
+
+    One guard is built per step, so `_fires` — the per-entry consecutive-fire counter — resets each
+    step; an entry that keeps matching (its recovery didn't clear it) goes inert at
+    `_INTERRUPT_MAX_FIRES` and the step falls through to its ordinary outcome. A non-matching entry
+    resets its own counter, so "consecutive" stays honest. `failure` records a recovery step's
+    failure so the caller fails the step loudly rather than swallowing it (determinism first).
+    """
+
+    interrupts: list[Interrupt]
+    driver: base.Driver
+    network: NetworkSource
+    bindings: dict[str, str]
+    run_recovery: _ExecSteps
+    _fires: dict[int, int] = field(default_factory=dict)
+    failure: str | None = None
+    # Conditions interpolated once against the step's bindings (below), not per poll: `observe` runs
+    # every wait tick, and re-interpolating a `${...}`-free condition there re-serializes it each time
+    # for no change. The bindings a guard sees are the step's, fixed for its lifetime.
+    _conditions: list[Assertion] = field(init=False)
+
+    def __post_init__(self) -> None:
+        self._conditions = [
+            _interp_asserts([e.condition], self.bindings)[0] for e in self.interrupts
+        ]
+
+    def _fire_once(self, elements: list[base.Element]) -> bool:
+        """Run one pass over the entries against `elements`; return whether any recovery ran."""
+        fired = False
+        net = self.network()
+        for i, condition in enumerate(self._conditions):
+            if self.failure is not None:
+                return fired
+            if self._fires.get(i, 0) >= _INTERRUPT_MAX_FIRES:
+                continue
+            if not assertions.passed(assertions.evaluate(elements, [condition], net)):
+                self._fires[i] = 0
+                continue
+            self._fires[i] = self._fires.get(i, 0) + 1
+            failure = self.run_recovery(self.interrupts[i].steps, self.driver)
+            if failure is not None:
+                self.failure = failure
+                return fired
+            fired = True
+        return fired
+
+    def observe(self, elements: list[base.Element]) -> None:
+        """Check the entries against one poll's tree (the per-tick hook a `wait` calls)."""
+        self._fire_once(elements)
+
+    def clear_before_act(self, seed: list[base.Element]) -> None:
+        """Before a UI act, clear any matching interstitial, re-reading until settled or capped.
+
+        `seed` is the pre-action tree the loop already read for the step (a `screenChanged` step's
+        `before`, or the one extra query an interrupts-declaring scenario pays for a bare act). Each
+        fired recovery actuates, so the new screen is re-read and re-checked — the loop a `wait` gets
+        for free from its own polling.
+        """
+        elements = seed
+        while self.failure is None and self._fire_once(elements):
+            elements = self.driver.query()
+
+
 def _run_if(
     driver: base.Driver,
     if_block: If,
@@ -528,6 +622,7 @@ def _run_steps(
     mailbox: MailboxReader | None = None,
     ctx: EvalContext | None = None,
     webview_bridge: DomSource | None = None,
+    interrupts: list[Interrupt] | None = None,
 ) -> str | None:
     """Run the step loop, appending outcomes; return the failure string or None.
 
@@ -545,6 +640,20 @@ def _run_steps(
     # the next `before` reads fresh, and a `web` block resets it (the tree is a different driver's).
     prev_after: list[base.Element] | None = None
     total_reads = 0  # runner-issued screen reads, the BE-0234 read-count yardstick (Unit 1)
+    # True while an interrupt's own recovery steps run (BE-0314). Those steps go through `exec_steps`
+    # too, so without this an interrupt whose recovery targets the very screen its `condition` matches
+    # would re-trigger itself on each recovery step and recurse without end. Suppressing the guard
+    # while recovery runs also keeps a run's interrupt handling to the outermost screen, not the
+    # handlers reacting to each other mid-recovery.
+    running_recovery = False
+
+    def _run_recovery(steps: list[Step], active_driver: base.Driver) -> str | None:
+        nonlocal running_recovery
+        running_recovery = True
+        try:
+            return exec_steps(steps, active_driver)
+        finally:
+            running_recovery = False
 
     def exec_steps(steps: list[Step], active_driver: base.Driver) -> str | None:
         nonlocal prev_after, total_reads
@@ -628,6 +737,26 @@ def _run_steps(
             else:
                 before = active_driver.query()
                 total_reads += 1
+            # A fresh interrupt guard per step (BE-0314), so its re-entrancy cap resets each step. A
+            # bare act clears any interstitial up front — reusing the `before` tree when we have one,
+            # else one extra query (paid only by interrupt-declaring scenarios). A `wait` instead
+            # hooks the guard into its own polling (`on_interrupt_poll` below), riding the poll tree
+            # at zero extra cost. Only the step guard queries here; the recovery `steps` it runs go
+            # through `exec_steps`, sharing the counter/outcomes/bindings like `if`'s branches.
+            guard = (
+                _InterruptGuard(interrupts, active_driver, network, bindings, _run_recovery)
+                if interrupts and not running_recovery
+                else None
+            )
+            if guard is not None and kind != "wait":
+                # Reuse the `before` tree when the loop already read it (a `screenChanged` step),
+                # else one extra query — the one read an interrupts-declaring scenario pays for a
+                # bare act, counted into the BE-0234 yardstick.
+                if before is not None:
+                    guard.clear_before_act(before)
+                else:
+                    guard.clear_before_act(active_driver.query())
+                    total_reads += 1
             # A `for` wait records its poll timeline so a timeout is diagnosable from artifacts
             # (BE-0231 Unit 1); the on_blocked retry gets a fresh trace so the diagnostic reflects the
             # attempt that actually failed.
@@ -659,6 +788,7 @@ def _run_steps(
                 on_blocked=on_blocked,
                 alerts=outcome.alerts,
                 on_wait_tick=wait_tick,
+                on_interrupt_poll=guard.observe if guard is not None else None,
             )
             if not ok and on_blocked is not None:
                 event = on_blocked(active_driver)
@@ -682,7 +812,13 @@ def _run_steps(
                         wait_trace=wait_trace,
                         selection=selection,
                         on_wait_tick=wait_tick,
+                        on_interrupt_poll=guard.observe if guard is not None else None,
                     )
+            # A failure inside an interrupt's own recovery `steps` fails the step loudly, rather than
+            # being swallowed while the run continues against a screen the recovery left broken
+            # (determinism first). It overrides a step that otherwise passed.
+            if guard is not None and guard.failure is not None:
+                ok, reason = False, guard.failure
             outcome.ok, outcome.reason, outcome.assertion_results = ok, reason, results
             outcome.duration_s = clock.now() - start
 

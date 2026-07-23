@@ -59,6 +59,15 @@ targets:
     appPath: ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app
     build: make swiftui-build
     scenarios: scenarios
+    # App-wide interstitial handler (BE-0314): an onboarding overlay this app could show at an
+    # unpredictable point, cleared wherever it surfaces. This config-level list is prepended to each
+    # scenario's own `interrupts` (config entries checked first) — see scenarios/interrupts.yaml for
+    # the scenario-level counterpart. Illustrative on this app, which renders no such overlay, so the
+    # handler stays inert; it demonstrates the config/scenario layering the field composes.
+    interrupts:
+      - condition: { exists: { id: [notice.onboarding.skip, notice_onboarding_skip] } }
+        steps:
+          - tap: { id: [notice.onboarding.skip, notice_onboarding_skip] }
     backend: [ios]
 
   # ---- SwiftUI, accessibility OFF (the `record` / `doctor`-Blocked target) -------

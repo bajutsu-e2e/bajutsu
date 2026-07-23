@@ -1,0 +1,30 @@
+# interrupts (BE-0314): declarative handlers for a screen that can surface at an unpredictable
+# point in a run. Unlike an `if` — which checks one spot in the step sequence — an `interrupts`
+# entry is checked opportunistically against trees the runner has already fetched (a `wait`'s poll
+# tick, an act step's pre-action read), wherever the screen happens to appear, and its `steps` clear
+# it before the interrupted step resumes.
+#
+# The showcase app has no genuinely-unpredictable overlay to script against, so this file is a
+# syntax demo: the `interrupts` entry below stays inert on the real app (its `condition` never
+# matches), and the underlying stable→horse→favorite flow is the one from firstlook.yaml. Were the
+# `notice.promo.dismiss` overlay to appear at any point mid-flow, the handler would tap it away and
+# the flow would carry on — the point `interrupts` makes over a single `if`. Each id carries both its
+# dotted SPEC form (iOS / Compose) and its underscore Android Views form so one scenario runs
+# unchanged on every target (BE-0221). The config-level counterpart — an app-wide onboarding-skip
+# handler that composes with this scenario's own list — is on the `showcase-swiftui-bundled` target
+# in showcase.config.yaml.
+- name: a mid-flow overlay is cleared wherever it appears
+  interrupts:
+    - condition: { exists: { id: [notice.promo.dismiss, notice_promo_dismiss] } }
+      steps:
+        - tap: { id: [notice.promo.dismiss, notice_promo_dismiss] }
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1" }
+  steps:
+    - wait: { for: { id: [stable.row.1, stable_row_1] }, timeout: 10 }
+      capture: [video]
+    - tap: { id: [stable.row.1, stable_row_1] }
+    - wait: { for: { id: [horse.favorite, horse_favorite] }, timeout: 5 }
+    - tap: { id: [horse.favorite, horse_favorite] }
+  expect:
+    - value: { sel: { id: [horse.favorite.value, horse_favorite_value] }, equals: "on" }

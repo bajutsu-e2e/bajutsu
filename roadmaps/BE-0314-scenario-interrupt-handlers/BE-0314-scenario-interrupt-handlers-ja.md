@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0314](BE-0314-scenario-interrupt-handlers-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0314") |
+| 実装 PR | _未定_ |
 | トピック | シナリオ記述機能 |
 | 関連 | [BE-0033](../BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow-ja.md)、[BE-0269](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention-ja.md)、[BE-0276](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state-ja.md)、[BE-0310](../BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness-ja.md) |
 <!-- /BE-METADATA -->
@@ -178,16 +179,16 @@ scenario:
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] Unit 1 — シナリオと config のスキーマ（`interrupts: list[Interrupt]`）、config 側を先にする
+- [x] Unit 1 — シナリオと config のスキーマ（`interrupts: list[Interrupt]`）、config 側を先にする
       連結順序。
-- [ ] Unit 2 — `_run_steps` と `_wait` で、取得済みのツリーに乗せる機会的な条件チェック。
-- [ ] Unit 3 — 一致時に既存の `_ExecSteps` の仕組みでエントリの `steps` を実行し、割り込まれたステップを
+- [x] Unit 2 — `_run_steps` と `_wait` で、取得済みのツリーに乗せる機会的な条件チェック。
+- [x] Unit 3 — 一致時に既存の `_ExecSteps` の仕組みでエントリの `steps` を実行し、割り込まれたステップを
       再開する（wait は同じ deadline へ、act 系は1回だけ再試行）。
-- [ ] Unit 4 — エントリごとの再入回数上限と、ステップの通常の結果へのきれいなフォールバック。
-- [ ] Unit 5 — codegen のラベル付き TODO。
-- [ ] Unit 6 — ドキュメント（scenarios.md および英語版）に `if`・`interrupts`・`dismissAlerts`・
+- [x] Unit 4 — エントリごとの再入回数上限と、ステップの通常の結果へのきれいなフォールバック。
+- [x] Unit 5 — codegen のラベル付き TODO。
+- [x] Unit 6 — ドキュメント（scenarios.md および英語版）に `if`・`interrupts`・`dismissAlerts`・
       `permissions` の対比を加え、showcase フィクスチャを追加する。
-- [ ] Unit 7 — テスト（スキーマ、連結順序、wait と act それぞれでの一致、再入上限、`vars.*` の共有）。
+- [x] Unit 7 — テスト（スキーマ、連結順序、wait と act それぞれでの一致、再入上限、`vars.*` の共有）。
 
 ## 参考
 

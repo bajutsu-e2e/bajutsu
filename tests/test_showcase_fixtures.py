@@ -55,6 +55,12 @@ def test_showcase_config_resolves() -> None:
     assert isinstance(compose, AndroidConfig)
     assert compose.package == "com.bajutsu.showcase.android.compose"
 
+    # BE-0314: the bundled twin carries an app-wide `interrupts` handler, surfaced on the resolved
+    # config as a config-level default the run prepends to each scenario's own list.
+    bundled = resolve(cfg, "showcase-swiftui-bundled")
+    assert len(bundled.run_defaults.interrupts) == 1
+    assert bundled.run_defaults.interrupts[0].condition.exists is not None
+
 
 def test_showcase_live_config_routes_to_the_live_transport() -> None:
     # The BE-0238 live-route example config resolves, and its `appium` provider surfaces the reserved
