@@ -32,6 +32,8 @@ from __future__ import annotations
 import argparse
 import html
 import importlib.util
+import posixpath
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -66,10 +68,14 @@ BUCKET_LABEL: dict[str, str] = {
 }
 
 
+def _item_dir_name(en: Any) -> str:
+    """An item's flat ``roadmaps/`` directory name (``BE-NNNN-slug``, BE-0159)."""
+    return f"{en.id}-{en.slug}"
+
+
 def _item_href(item: Any) -> str:
     """The GitHub URL of an item's English markdown file (flat ``roadmaps/`` path, BE-0159)."""
-    en = item.by_lang["en"]
-    name = f"{en.id}-{en.slug}"
+    name = _item_dir_name(item.by_lang["en"])
     return f"{REPO_BLOB}/roadmaps/{name}/{name}.md"
 
 
@@ -97,11 +103,47 @@ def _issue_pill(item_id: str) -> str:
     )
 
 
+# An ``Origin`` field is free text, sometimes a markdown link to another item written relative to
+# *its own* directory (e.g. ``[BE-0014](../BE-0014-record-demarcation/BE-0014-record-demarcation.md)``
+# — correct from inside ``roadmaps/<this-item>/``, meaningless once embedded verbatim in this page,
+# which lives under ``docs/api/``). Resolving it into an absolute GitHub URL at render time, rather
+# than reproducing the raw relative text, keeps the link real without ever landing a stray
+# ``roadmaps/**``-shaped path in the generated file for ``lint-roadmap`` to flag as broken.
+_ORIGIN_LINK_RE = re.compile(r"\[(?P<text>[^\]]+)\]\((?P<path>[^)\s]+)\)")
+
+
+def _render_origin(origin: str, item_dir: str) -> str:
+    """Render an ``Origin`` field as safe HTML, resolving any embedded item-relative link.
+
+    ``Origin`` is free-form author text: a link target is usually item-relative (see above), but an
+    absolute one (e.g. an issue URL) is left verbatim rather than run through ``posixpath.normpath``,
+    which would mangle it into a nonsensical ``roadmaps/<item>/https:/...`` path.
+    """
+    parts: list[str] = []
+    pos = 0
+    for m in _ORIGIN_LINK_RE.finditer(origin):
+        parts.append(html.escape(origin[pos : m.start()]))
+        path = m.group("path")
+        if "://" in path or path.startswith("/"):
+            href = html.escape(path)
+        else:
+            resolved = posixpath.normpath(f"roadmaps/{item_dir}/{path}")
+            href = html.escape(f"{REPO_BLOB}/{resolved}")
+        parts.append(f'<a href="{href}">{html.escape(m.group("text"))}</a>')
+        pos = m.end()
+    parts.append(html.escape(origin[pos:]))
+    return "".join(parts)
+
+
 def _card(item: Any) -> str:
     en = item.by_lang["en"]
     color = BUCKET_COLOR[item.bucket]
     label = BUCKET_LABEL[item.bucket]
-    origin = f'<span class="be-origin">{html.escape(en.origin)}</span>' if en.origin else ""
+    origin = (
+        f'<span class="be-origin">{_render_origin(en.origin, _item_dir_name(en))}</span>'
+        if en.origin
+        else ""
+    )
     # The card's primary click target stays the proposal file (the whole main link); the Issue pill is
     # an additive second link, built from the id alone. The two are sibling <a>s under a <div> rather
     # than one nested in the other, since nested anchors are invalid HTML.
@@ -593,7 +635,7 @@ _INTRO = (
     "[`roadmap-tracking`]"
     "(https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+is%3Aopen+label%3Aroadmap-tracking): "
     "`no:assignee` for the unclaimed backlog, `assignee:<user>` for one person's plate. See "
-    "[BE-0109](https://github.com/bajutsu-e2e/bajutsu/blob/main/roadmaps/implemented/"
+    "[BE-0109](https://github.com/bajutsu-e2e/bajutsu/blob/main/roadmaps/"
     "BE-0109-roadmap-tracking-issues/BE-0109-roadmap-tracking-issues.md) for how the sync works.\n\n"
     "Live view of every roadmap (BE) item, grouped by category — each category showing the share of "
     "its items already implemented, and each card its own status. Regenerated from item metadata on "

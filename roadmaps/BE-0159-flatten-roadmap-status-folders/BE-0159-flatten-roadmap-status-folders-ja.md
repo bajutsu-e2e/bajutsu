@@ -10,7 +10,7 @@
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0159") |
 | 実装 PR | [#628](https://github.com/bajutsu-e2e/bajutsu/pull/628)（1/2）、[#631](https://github.com/bajutsu-e2e/bajutsu/pull/631)（2/2） |
-| トピック | 開発基盤（コントリビュータ体験） |
+| トピック | コントリビューターワークフロー |
 | 関連 | [BE-0078](../BE-0078-roadmap-status-folders/BE-0078-roadmap-status-folders-ja.md)、[BE-0096](../BE-0096-docs-roadmap-link-integrity/BE-0096-docs-roadmap-link-integrity-ja.md)、[BE-0109](../BE-0109-roadmap-tracking-issues/BE-0109-roadmap-tracking-issues-ja.md)、[BE-0149](../BE-0149-roadmap-placeholder-format-guardrail/BE-0149-roadmap-placeholder-format-guardrail-ja.md)、[BE-0154](../BE-0154-roadmap-promote-base-sha/BE-0154-roadmap-promote-base-sha-ja.md) |
 <!-- /BE-METADATA -->
 

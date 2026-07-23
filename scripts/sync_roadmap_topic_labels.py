@@ -96,13 +96,13 @@ PATH_TOPIC_PREFIX_RULES: tuple[tuple[str, str], ...] = (
     ("overrides/", "serve-cli-features"),
     ("deploy/", "hosting"),
     ("demos/", "dogfood"),
-    (".github/", "dev-infra"),
-    (".githooks/", "dev-infra"),
-    ("scripts/", "dev-infra"),
+    (".github/", "contribution"),
+    (".githooks/", "contribution"),
+    ("scripts/", "contribution"),
 )
 # Whole-path (exact) rules, for tracked top-level files that aren't a tree.
 PATH_TOPIC_EXACT_RULES: tuple[tuple[str, str], ...] = (
-    ("Makefile", "dev-infra"),
+    ("Makefile", "contribution"),
     ("bajutsu/cli/commands/record.py", "record"),
 )
 # File-suffix rules, same contribution model — Swift sources are the iOS platform test-support

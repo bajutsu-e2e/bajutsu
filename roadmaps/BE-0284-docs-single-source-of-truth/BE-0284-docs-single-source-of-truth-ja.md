@@ -10,7 +10,7 @@
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0284") |
 | 実装 PR | [#1169](https://github.com/bajutsu-e2e/bajutsu/pull/1169) |
-| トピック | ドキュメント整備（コントリビューターワークフロー） |
+| トピック | コントリビューターワークフロー |
 <!-- /BE-METADATA -->
 
 ## はじめに

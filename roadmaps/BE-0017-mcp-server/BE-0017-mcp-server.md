@@ -10,7 +10,7 @@
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0017") |
 | Implementing PR | [#44](https://github.com/bajutsu-e2e/bajutsu/pull/44) |
-| Topic | Integration & automation (MCP) |
+| Topic | Integration & automation |
 <!-- /BE-METADATA -->
 
 ## Introduction

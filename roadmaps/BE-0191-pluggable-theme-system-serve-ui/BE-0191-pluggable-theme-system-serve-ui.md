@@ -10,7 +10,7 @@
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0191") |
 | Implementing PR | [#826](https://github.com/bajutsu-e2e/bajutsu/pull/826), [#837](https://github.com/bajutsu-e2e/bajutsu/pull/837), [#855](https://github.com/bajutsu-e2e/bajutsu/pull/855), [#859](https://github.com/bajutsu-e2e/bajutsu/pull/859), [#881](https://github.com/bajutsu-e2e/bajutsu/pull/881), [#883](https://github.com/bajutsu-e2e/bajutsu/pull/883), [#900](https://github.com/bajutsu-e2e/bajutsu/pull/900) |
-| Topic | Authoring experience (record / GUI editor) |
+| Topic | Authoring experience |
 <!-- /BE-METADATA -->
 
 ## Introduction

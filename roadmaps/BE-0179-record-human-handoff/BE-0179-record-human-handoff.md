@@ -10,7 +10,7 @@
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0179") |
 | Implementing PR | [#735](https://github.com/bajutsu-e2e/bajutsu/pull/735) |
-| Topic | Authoring experience (record / GUI editor) |
+| Topic | Authoring experience |
 | Related | [BE-0011](../BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md), [BE-0012](../BE-0012-action-capture-record/BE-0012-action-capture-record.md), [BE-0014](../BE-0014-record-demarcation/BE-0014-record-demarcation.md), [BE-0039](../BE-0039-self-healing-propose-optin/BE-0039-self-healing-propose-optin.md), [BE-0044](../BE-0044-scenario-provenance/BE-0044-scenario-provenance.md), [BE-0046](../BE-0046-otp-email-steps/BE-0046-otp-email-steps.md), [BE-0098](../BE-0098-unified-authoring-surface/BE-0098-unified-authoring-surface.md), [BE-0120](../BE-0120-recorded-scenario-secret-tokenization/BE-0120-recorded-scenario-secret-tokenization.md) |
 <!-- /BE-METADATA -->
 

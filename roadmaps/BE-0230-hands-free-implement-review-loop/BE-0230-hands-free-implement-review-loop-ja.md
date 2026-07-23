@@ -10,7 +10,7 @@
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0230") |
 | 実装 PR | [#932](https://github.com/bajutsu-e2e/bajutsu/pull/932) |
-| トピック | 開発基盤（コントリビュータ体験） |
+| トピック | コントリビューターワークフロー |
 | 関連 | [BE-0089](../BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation-ja.md) |
 <!-- /BE-METADATA -->
 

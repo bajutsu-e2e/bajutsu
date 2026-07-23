@@ -20,7 +20,7 @@ nri = importlib.util.module_from_spec(_spec)
 sys.modules[_spec.name] = nri
 _spec.loader.exec_module(nri)
 
-_TOPIC = "Development infrastructure (contributor workflow)"
+_TOPIC = "Contributor workflow"
 
 
 def _scaffold(tmp_path: Path, **kw: str) -> Path:

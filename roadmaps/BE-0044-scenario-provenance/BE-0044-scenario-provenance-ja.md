@@ -10,7 +10,7 @@
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0044") |
 | 実装 PR | [#235](https://github.com/bajutsu-e2e/bajutsu/pull/235)（スキーマ、record、lint）、[#264](https://github.com/bajutsu-e2e/bajutsu/pull/264)（trace + レポート表示） |
-| トピック | オーサリング体験（record / GUI エディタ） |
+| トピック | オーサリング体験 |
 | 由来 | BE-0002 の follow-up（来歴はそこで「軽いままの後続作業」として先送りされた） |
 <!-- /BE-METADATA -->
 

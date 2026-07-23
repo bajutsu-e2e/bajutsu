@@ -10,7 +10,7 @@
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0286") |
 | 実装 PR | [#1179](https://github.com/bajutsu-e2e/bajutsu/pull/1179) |
-| トピック | 開発基盤（コントリビュータ体験） |
+| トピック | コントリビューターワークフロー |
 | 関連 | [BE-0213](../BE-0213-glossary-and-docs-structure/BE-0213-glossary-and-docs-structure-ja.md) |
 <!-- /BE-METADATA -->
 

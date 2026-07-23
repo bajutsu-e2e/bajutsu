@@ -37,6 +37,12 @@ ROADMAP = Path(__file__).resolve().parent.parent / "roadmaps"
 # Markdown outside roadmaps/ that links *into* it and so rots on promotion the same way item bodies
 # do (BE-0096): every page under docs/, plus the repo-root README/CLAUDE files.
 TOP_LEVEL_DOCS = ("README.md", "README.ja.md", "CLAUDE.md")
+# Excluded from that scan: the generated roadmap dashboard (build_roadmap_dashboard.py). It is a
+# build artifact regenerated from live metadata on every docs build (never committed, so it cannot
+# rot on promotion the way authored prose can), and it deliberately links every item via an absolute
+# GitHub blob URL rather than a repo-relative path — a convention this checker's relative-file
+# resolution was never meant to validate.
+_EXCLUDED_DOCS = frozenset({"docs/api/roadmap.md"})
 
 # A markdown link target that names another item's file: a ``BE-NNNN-slug/BE-NNNN-slug[-ja].md``
 # path (always reached via ``../`` from a sibling item). The bilingual header link is a bare
@@ -85,7 +91,7 @@ def _docs_files(repo: Path) -> list[Path]:
     ``README*`` / ``CLAUDE.md`` (BE-0096). These rot on promotion just like item bodies do."""
     files = sorted((repo / "docs").rglob("*.md"))
     files.extend(p for name in TOP_LEVEL_DOCS if (p := repo / name).is_file())
-    return files
+    return [p for p in files if p.relative_to(repo).as_posix() not in _EXCLUDED_DOCS]
 
 
 def _suggest(

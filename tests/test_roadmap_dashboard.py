@@ -283,3 +283,68 @@ def test_html_is_escaped() -> None:
     out = brd.render_html([_sample_item(title="a <script> & b")])
     assert "a &lt;script&gt; &amp; b" in out
     assert "<script>" not in out
+
+
+def _card_for_origin(origin: str) -> str:
+    """Render a single synthetic card carrying the given ``Origin`` field value."""
+    entry_cls = type(_ITEMS[0].by_lang["en"])
+    item_cls = type(_ITEMS[0])
+    sample = item_cls(
+        id="BE-9999",
+        slug="x",
+        bucket="Proposals",
+        topic=_ITEMS[0].topic,
+        by_lang={
+            "en": entry_cls(id="BE-9999", slug="x", title="t", status="Proposal", origin=origin)
+        },
+    )
+    return brd._card(sample)
+
+
+def test_origin_item_link_resolves_to_an_absolute_github_url() -> None:
+    """An ``Origin`` markdown link, written relative to *its own* item directory (e.g.
+    ``[BE-0014](../BE-0014-record-demarcation/BE-0014-record-demarcation.md)``), must not survive
+    verbatim into the generated page: that relative path only resolves from inside
+    ``roadmaps/<that other item>/``, not from this page's own location. It must instead render as a
+    real anchor pointing at the item's absolute GitHub URL — the same convention ``_item_href`` uses
+    for the card's own link — so no stray ``roadmaps/**``-shaped relative path ever lands in the
+    generated file for ``lint-roadmap`` to flag as broken.
+    """
+    card = _card_for_origin(
+        "[BE-0014](../BE-0014-record-demarcation/BE-0014-record-demarcation.md)"
+    )
+    expected_href = (
+        "https://github.com/bajutsu-e2e/bajutsu/blob/main/"
+        "roadmaps/BE-0014-record-demarcation/BE-0014-record-demarcation.md"
+    )
+    assert f'<span class="be-origin"><a href="{expected_href}">BE-0014</a></span>' in card
+    assert "../BE-0014" not in card
+
+
+def test_origin_prose_around_a_link_is_preserved_and_escaped() -> None:
+    """Prose surrounding an ``Origin`` link (e.g. "Review of ...") survives, html-escaped."""
+    card = _card_for_origin(
+        "Review of [BE-0180](../BE-0180-crawl-history-viewer/BE-0180-crawl-history-viewer.md) <x>"
+    )
+    assert "Review of <a href=" in card
+    assert ">BE-0180</a> &lt;x&gt;</span>" in card
+
+
+def test_origin_plain_text_is_escaped_with_no_markup() -> None:
+    """An ``Origin`` with no markdown link (most items) renders as plain escaped text."""
+    card = _card_for_origin("MagicPod & <competitors>")
+    assert '<span class="be-origin">MagicPod &amp; &lt;competitors&gt;</span>' in card
+
+
+def test_origin_absolute_link_is_left_verbatim() -> None:
+    """An ``Origin`` link to an absolute URL (e.g. an issue) must not be treated as item-relative.
+
+    Running it through the same ``posixpath.normpath(f"roadmaps/{item_dir}/...")`` resolution as an
+    item-relative target would mangle ``https://`` into ``https:/`` and prefix it with
+    ``roadmaps/<item>/``, producing a broken href.
+    """
+    card = _card_for_origin("[#123](https://github.com/bajutsu-e2e/bajutsu/issues/123)")
+    assert (
+        '<span class="be-origin"><a href="https://github.com/bajutsu-e2e/bajutsu/issues/123">'
+        "#123</a></span>" in card
+    )

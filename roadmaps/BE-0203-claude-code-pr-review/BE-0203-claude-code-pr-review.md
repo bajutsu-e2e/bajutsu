@@ -10,7 +10,7 @@
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0203") |
 | Implementing PR | [#807](https://github.com/bajutsu-e2e/bajutsu/pull/807), [#915](https://github.com/bajutsu-e2e/bajutsu/pull/915), [#916](https://github.com/bajutsu-e2e/bajutsu/pull/916), [#1160](https://github.com/bajutsu-e2e/bajutsu/pull/1160) |
-| Topic | Development infrastructure (contributor workflow) |
+| Topic | Contributor workflow |
 <!-- /BE-METADATA -->
 
 ## Introduction

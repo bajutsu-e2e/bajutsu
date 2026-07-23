@@ -10,7 +10,7 @@
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0185") |
 | Implementing PR | [#1210](https://github.com/bajutsu-e2e/bajutsu/pull/1210), [#1212](https://github.com/bajutsu-e2e/bajutsu/pull/1212) |
-| Topic | Authoring experience (record / GUI editor) |
+| Topic | Authoring experience |
 | Related | [BE-0012](../BE-0012-action-capture-record/BE-0012-action-capture-record.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md), [BE-0026](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md), [BE-0035](../BE-0035-device-control-primitives/BE-0035-device-control-primitives.md), [BE-0052](../BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md), [BE-0179](../BE-0179-record-human-handoff/BE-0179-record-human-handoff.md) |
 <!-- /BE-METADATA -->
 

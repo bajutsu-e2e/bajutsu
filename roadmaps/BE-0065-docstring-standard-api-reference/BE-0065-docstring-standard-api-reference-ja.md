@@ -10,7 +10,7 @@
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0065") |
 | 実装 PR | [#232](https://github.com/bajutsu-e2e/bajutsu/pull/232) |
-| トピック | 開発基盤（コントリビュータ体験） |
+| トピック | コントリビューターワークフロー |
 <!-- /BE-METADATA -->
 
 ## はじめに
@@ -196,10 +196,10 @@ class Selector(TypedDict, total=False):
   公開 API の面に絞ります。
 - **何もしない。** 現状維持です。暗黙で明文化されていない散文の規範と、描画された API の面が無いまま
   です。却下します。規範は揺らぎ、増えていく公開 API には、人にもエージェントにも地図がありません。
-- **専用の新トピックを設ける。** 代わりに *開発基盤（コントリビュータ体験）* の下
+- **専用の新トピックを設ける。** 代わりに *コントリビューターワークフロー*
   （[BE-0043](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow-ja.md)
-  のトピック）に置きます。コントリビュータとエージェントがコードを理解する話だからであり、単一の項目の
-  ためにトピックを切らない先例にならいます。
+  のトピック）の下に置きます。コントリビュータとエージェントがコードを理解する話だからであり、単一の
+  項目のためにトピックを切らない先例にならいます。
 
 ## 進捗
 
@@ -210,7 +210,7 @@ class Selector(TypedDict, total=False):
 - [CLAUDE.md](../../CLAUDE.md)：Conventions（コメントは *why*、ドキュメントは日英、コードコメントは
   英語）と、本項目が守る prime directive（ゲートに LLM を入れない）。
 - [BE-0043 — コンフリクトに強いファイル流動](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow-ja.md)：
-  *開発基盤* の先例。成果物としての生成ドキュメント、衝突しない小さな PR。
+  *コントリビューターワークフロー* の先例。成果物としての生成ドキュメント、衝突しない小さな PR。
 - [`docs/ja/ai-development.md`](../../docs/ja/ai-development.md)：規範の置き場所。
   [`docs/ja/README.md`](../../docs/ja/README.md)：「コードコメントと docstring は英語」。
 - [`bajutsu/drivers/base.py`](../../bajutsu/drivers/base.py)、[`bajutsu/cli/`](../../bajutsu/cli/)、

@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal (deferred)** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0070") |
-| Topic | Hosting the web UI (cloud / self-hosted) |
+| Topic | Hosting the web UI |
 <!-- /BE-METADATA -->
 
 ## Introduction

@@ -10,7 +10,7 @@
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0098") |
 | 実装 PR | [#651](https://github.com/bajutsu-e2e/bajutsu/pull/651) |
-| トピック | オーサリング体験（record / GUI エディタ） |
+| トピック | オーサリング体験 |
 | 由来 | [BE-0014](../BE-0014-record-demarcation/BE-0014-record-demarcation-ja.md) |
 <!-- /BE-METADATA -->
 

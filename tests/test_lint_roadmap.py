@@ -210,4 +210,22 @@ def test_top_level_readme_and_claude_md_covered(tmp_path: Path) -> None:
     assert {b.source.name for b in broken} == {"README.md", "README.ja.md", "CLAUDE.md"}
     assert all(b.suggestion == "roadmaps/BE-9002-target/BE-9002-target.md" for b in broken)
     assert lr.fix_links(roadmap) == 3
+
+
+def test_generated_dashboard_page_is_excluded_from_the_docs_scan(tmp_path: Path) -> None:
+    """``docs/api/roadmap.md`` (build_roadmap_dashboard.py) is never linted here.
+
+    It is a build artifact regenerated from live metadata on every docs build (never committed, so
+    it cannot rot on promotion the way authored prose can), and it deliberately links items via an
+    absolute GitHub blob URL rather than a repo-relative path — a convention this checker's
+    relative-file resolution was never meant to validate.
+    """
+    roadmap = tmp_path / "roadmaps"
+    _write_item(roadmap, "BE-9002-target")
+    _write_doc(
+        tmp_path,
+        "docs/api/roadmap.md",
+        "[BE-9002](https://github.com/bajutsu-e2e/bajutsu/blob/main/"
+        "roadmaps/BE-9002-target/BE-9002-target.md)\n",
+    )
     assert lr.docs_broken_links(roadmap) == []

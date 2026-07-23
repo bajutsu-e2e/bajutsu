@@ -10,7 +10,7 @@
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0069") |
 | Implementing PR | [#243](https://github.com/bajutsu-e2e/bajutsu/pull/243) |
-| Topic | Development infrastructure (contributor workflow) |
+| Topic | Contributor workflow |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -24,7 +24,7 @@ agent reliably follows from prose, but a command anyone can run. This is purely 
 infrastructure: it adds no LLM, never runs inside `run`, and does not touch the deterministic gate,
 so the Prime directives ([CLAUDE.md](../../CLAUDE.md)) hold by construction.
 
-This continues the *Development infrastructure* line.
+This continues the *Contributor workflow* line.
 [BE-0043](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md)
 turned a hand-edited **shared ledger** (the roadmap index) into a generated artifact;
 [BE-0067](../BE-0067-code-quality-gate-hardening/BE-0067-code-quality-gate-hardening.md)
@@ -206,8 +206,8 @@ Each phase is a small, independent PR (the parallel-work model, BE-0043).
   matches every other contributor entrypoint in the repo, needs no packaging, and keeps developer
   tooling out of the shipped `bajutsu` CLI surface. A consolidated dev CLI can come later if the
   target count grows.
-- **A dedicated new roadmap topic.** Filed instead under *Development infrastructure (contributor
-  workflow)* — the BE-0043 topic — following the precedent
+- **A dedicated new roadmap topic.** Filed instead under *Contributor workflow* — the BE-0043
+  topic — following the precedent
   ([BE-0065](../BE-0065-docstring-standard-api-reference/BE-0065-docstring-standard-api-reference.md))
   of not splitting a topic for a single item.
 
@@ -224,7 +224,7 @@ Each phase is a small, independent PR (the parallel-work model, BE-0043).
 - [CLAUDE.md](../../CLAUDE.md) — the prose procedures these commands replace, and the Prime
   directives this respects (no LLM in the gate; developer-facing only).
 - [BE-0043 — Conflict-resistant file flow](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md)
-  — turning a hand-edited ledger into a generated artifact; the *Development infrastructure*
+  — turning a hand-edited ledger into a generated artifact; the *Contributor workflow*
   precedent.
 - [BE-0067 — Code-quality gate hardening](../BE-0067-code-quality-gate-hardening/BE-0067-code-quality-gate-hardening.md)
   — CI mirrors `make check` by construction (single source of truth); `scripts/` under `mypy`.

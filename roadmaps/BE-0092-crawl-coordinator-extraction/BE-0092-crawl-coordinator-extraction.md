@@ -25,7 +25,7 @@ changes. It is the maintainability counterpart to [BE-0064](../BE-0064-parallel-
 and [BE-0077](../BE-0077-parallel-web-crawl/BE-0077-parallel-web-crawl.md), which added
 the concurrency this proposal reorganizes. Because it is a behavior-preserving internal refactor of
 production code rather than a behavior or performance change, it is filed under *Codebase quality &
-technical debt* — distinct from *Development infrastructure*
+technical debt* — distinct from *Contributor workflow*
 ([BE-0067](../BE-0067-code-quality-gate-hardening/BE-0067-code-quality-gate-hardening.md)),
 which covers the tooling contributors use to work on this repo, not `bajutsu/`'s own internal
 structure.

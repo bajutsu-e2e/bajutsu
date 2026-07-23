@@ -10,7 +10,7 @@
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0089") |
 | 実装 PR | [#359](https://github.com/bajutsu-e2e/bajutsu/pull/359)、[#436](https://github.com/bajutsu-e2e/bajutsu/pull/436)（無効化した claims/repair 機構を撤去） |
-| トピック | 開発基盤（コントリビュータ体験） |
+| トピック | コントリビューターワークフロー |
 <!-- /BE-METADATA -->
 
 ## はじめに

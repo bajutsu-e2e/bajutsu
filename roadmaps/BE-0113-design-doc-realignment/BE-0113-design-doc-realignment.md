@@ -10,7 +10,7 @@
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0113") |
 | Implementing PR | [#565](https://github.com/bajutsu-e2e/bajutsu/pull/565) |
-| Topic | Development infrastructure (contributor workflow) |
+| Topic | Contributor workflow |
 | Related | [BE-0010](../BE-0010-update-scope-statement/BE-0010-update-scope-statement.md), [BE-0027](../BE-0027-mock-server-external/BE-0027-mock-server-external.md), [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) |
 <!-- /BE-METADATA -->
 

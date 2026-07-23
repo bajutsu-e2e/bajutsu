@@ -10,7 +10,7 @@
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0016") |
 | Implementing PR | [#103](https://github.com/bajutsu-e2e/bajutsu/pull/103), [#154](https://github.com/bajutsu-e2e/bajutsu/pull/154), [#365](https://github.com/bajutsu-e2e/bajutsu/pull/365), [#367](https://github.com/bajutsu-e2e/bajutsu/pull/367), [#507](https://github.com/bajutsu-e2e/bajutsu/pull/507), [#674](https://github.com/bajutsu-e2e/bajutsu/pull/674) |
-| Topic | Hosting the web UI (cloud / self-hosted) |
+| Topic | Hosting the web UI |
 | Related | [BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md) |
 <!-- /BE-METADATA -->
 
