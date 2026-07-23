@@ -349,11 +349,17 @@ def _wait_settled(
 
     When `transitions` has reported at least one screen-transition event (BE-0310), settled is a
     positive signal — no further transition reported for `_TRANSITION_QUIESCENCE` — rather than an
-    inference from tree reads; see `_wait_settled_by_signal`. Otherwise this keeps the original
-    tree-diff behavior unchanged: a blank/collapsed tree (e.g. a screen mid-render, or one covered by
-    a system alert) is never treated as settled, and settled is two consecutive unchanged polls with
-    an identified element. Both paths are best-effort: timing out just proceeds with the
-    current screen — a settle is a stabilization hint, not a correctness assertion, so
+    inference from tree reads; see `_wait_settled_by_signal`. This check is scenario-wide, not
+    scoped to this one wait: once any screen-transition event has ever been observed (the app
+    linked the observer and something transitioned), every later `settled` wait in the same scenario
+    uses the signal path, even for a step whose own transition the signal happens not to cover (a
+    custom transition bypassing the standard containers, per the proposal's own documented boundary)
+    — such a step settles on whatever quiescence already held from an earlier, unrelated
+    transition, with no tree-diff cross-check. Otherwise (no transition ever observed) this keeps
+    the original tree-diff behavior unchanged: a blank/collapsed tree (e.g. a screen mid-render, or
+    one covered by a system alert) is never treated as settled, and settled is two consecutive
+    unchanged polls with an identified element. Both paths are best-effort: timing out just proceeds
+    with the current screen — a settle is a stabilization hint, not a correctness assertion, so
     it never fails the step. When `gate` is given, a screen that stays collapsed (a system alert)
     is cleared mid-settle rather than burning the whole timeout (BE-0269). When `hb` is given, it
     emits the throttled "still waiting …" progress line while settling. Returns the last

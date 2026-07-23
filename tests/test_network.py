@@ -544,6 +544,25 @@ def test_collector_transitions_endpoint_is_independent_of_exchanges() -> None:
         c.stop()
 
 
+def test_collector_transitions_endpoint_accepts_a_batch() -> None:
+    """A JSON list POSTed to /transitions is accepted record-by-record, matching the /report
+    endpoint's documented "single record or a batch" support."""
+    c = NetworkCollector()
+    port = c.start()
+    try:
+        body = json.dumps([{"kind": "screenChanged"}, {"kind": "screenChanged"}]).encode()
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{port}/transitions",
+            data=body,
+            method="POST",
+            headers={"Authorization": f"Bearer {c.token}"},
+        )
+        urllib.request.urlopen(req).read()
+        assert len(c.transitions_snapshot_timed()) == 2
+    finally:
+        c.stop()
+
+
 def test_collector_transitions_endpoint_rejects_bad_token() -> None:
     c = NetworkCollector()
     port = c.start()

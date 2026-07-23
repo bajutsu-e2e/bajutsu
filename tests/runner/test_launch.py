@@ -501,6 +501,28 @@ def test_await_ready_ignores_a_transition_that_predates_this_wait(
     assert result.signal == "count"  # fell through to the ladder, not the stale signal
 
 
+def test_await_ready_catches_a_transition_that_arrives_mid_poll(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The signal need not be present on the very first tick: a transition that arrives after a
+    # couple of polls (the app is still mid-launch when the gate starts polling) must still
+    # satisfy readiness on a later tick, not just an immediately-available one.
+    _install_bounded_clock(monkeypatch)
+    driver = _ScriptedDriver([[]])  # never renders enough elements for the ladder to catch it
+    calls = {"n": 0}
+
+    def transitions() -> list[tuple[ScreenTransition, float]]:
+        calls["n"] += 1
+        if calls["n"] < 3:
+            return []
+        return [(ScreenTransition(kind="screenChanged"), 0.0)]
+
+    result = _await_ready(driver, timeout=1.0, transitions=transitions)  # type: ignore[arg-type]
+    assert result.ready is True
+    assert result.signal == "screenChanged"
+    assert calls["n"] >= 3  # took more than one poll for the signal to appear
+
+
 def test_await_ready_with_no_transitions_keeps_the_ladder_unchanged(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

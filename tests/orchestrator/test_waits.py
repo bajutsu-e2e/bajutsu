@@ -191,6 +191,25 @@ def test_wait_settled_signal_restarts_the_window_on_a_new_transition() -> None:
     assert clock.now() >= events[-1][1] + _TRANSITION_QUIESCENCE
 
 
+def test_wait_settled_signal_hits_the_deadline_while_still_awaiting_quiescence() -> None:
+    """A transition that keeps arriving (quiescence never elapses) must not hang the wait: it
+    proceeds best-effort once the step's own deadline passes, exactly like the tree-diff
+    fallback's own timeout behavior — the deadline still bounds the signal path."""
+    driver = FakeDriver([el("a", "A")])
+    clock = FakeClock()
+
+    def transitions() -> list[tuple[ScreenTransition, float]]:
+        # A transition "just observed" on every call: the quiescence window never elapses.
+        return [(ScreenTransition(kind="screenChanged"), clock.now())]
+
+    w = Wait.model_validate(
+        {"until": "settled", "timeout": 0.1}
+    )  # shorter than the quiescence window
+    ok, reason, _tree = _wait(driver, w, clock, transitions=transitions)  # type: ignore[arg-type]
+    assert ok and reason == ""  # best-effort: proceeds, never fails the step
+    assert clock.now() >= 0.1  # gave up at the deadline, not before
+
+
 def test_wait_settled_falls_back_to_tree_diff_when_no_transitions_reported() -> None:
     """No signal reported (the app doesn't link BajutsuKit, or hasn't transitioned yet): the wait
     keeps its original two-consecutive-unchanged-reads behavior, unaffected by BE-0310."""
@@ -685,6 +704,36 @@ def test_wait_settled_guard_fires_on_a_collapsed_screen() -> None:
     assert alerts == [AlertEvent(label="OK")]
     assert tree == [el("home", "Home")]
     assert clock.now() < 2.0  # cleared and settled quickly, not the full 30s
+
+
+def test_wait_settled_signal_guard_fires_on_a_collapsed_screen() -> None:
+    """BE-0269's mid-wait alert guard still fires in the signal-based settle path (BE-0310), not
+    only the tree-diff fallback above: a collapsed screen during the quiescence wait is cleared
+    instead of silently waiting out the whole window collapsed."""
+    from bajutsu.orchestrator.types import AlertEvent
+    from bajutsu.orchestrator.waits import _wait
+    from bajutsu.scenario import Wait
+
+    driver = _CollapsingDriver([el("home", "Home")])
+    calls = {"n": 0}
+
+    def on_blocked(d: object) -> AlertEvent:
+        calls["n"] += 1
+        d.cleared = True  # type: ignore[attr-defined]
+        return AlertEvent(label="OK")
+
+    alerts: list[AlertEvent] = []
+    clock = _LogicalClock()
+    fresh = [(ScreenTransition(kind="screenChanged"), 0.0)]
+    w = Wait.model_validate({"until": "settled", "timeout": 30.0})
+    ok, _reason, tree = _wait(
+        driver, w, clock, on_blocked=on_blocked, alerts=alerts, transitions=lambda: fresh
+    )
+    assert ok  # a settle never fails the step
+    assert calls["n"] == 1
+    assert alerts == [AlertEvent(label="OK")]
+    assert tree == [el("home", "Home")]  # revealed once the guard cleared it
+    assert clock.now() < 2.0  # cleared well inside the signal path's own quiescence window
 
 
 def test_run_scenario_guard_fires_during_a_wait_step() -> None:

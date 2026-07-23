@@ -28,6 +28,7 @@ import time
 from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Protocol, runtime_checkable
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -71,8 +72,11 @@ class ScreenTransition(BaseModel):
 # Returns the screen-transition events observed so far, each with the collector's receive time
 # (its own monotonic clock, the same domain the readiness gate and the `settled` wait already poll
 # in) — for `_await_ready` / `_wait_settled` (BE-0310) to consult as a read-only signal. Mirrors
-# `orchestrator.types.NetworkSource`'s shape, kept here (not in `orchestrator`) since the readiness
-# gate lives in `platform_lifecycle`, outside the orchestrator package.
+# `Collector.snapshot_timed()`'s shape (below), not the untimed `orchestrator.types.NetworkSource`:
+# both readiness and settled need the receive time itself (to bound "since this wait started" /
+# compute the quiescence window), unlike a `request` assertion, which only needs exchange content.
+# Kept here (not in `orchestrator`) since the readiness gate lives in `platform_lifecycle`, outside
+# the orchestrator package.
 TransitionSource = Callable[[], list[tuple[ScreenTransition, float]]]
 
 
@@ -239,10 +243,12 @@ def _make_handler(collector: NetworkCollector) -> type[BaseHTTPRequestHandler]:
                 return
             # /transitions (BE-0310) carries screen-transition events; every other path keeps the
             # original network-exchange behavior, so an app not yet linking the transition observer
-            # is unaffected.
+            # is unaffected. Compare on the path component alone (urlsplit drops a query string),
+            # so an unexpected `?...` suffix still routes correctly instead of silently falling
+            # through to `add` and being stored as a bogus network exchange.
             add = (
                 collector.add_transition
-                if self.path.rstrip("/") == "/transitions"
+                if urlsplit(self.path).path.rstrip("/") == "/transitions"
                 else collector.add
             )
             # Accept a single record or a batch (list).
