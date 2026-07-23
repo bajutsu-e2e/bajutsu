@@ -33,9 +33,9 @@
 この欠落が最も鋭く現れるのが、iOS テストランナーです。
 [BE-0292](../BE-0292-xcuitest-bundled-runner/BE-0292-xcuitest-bundled-runner-ja.md) 以降、
 `xcuitest.testRunner` を指定しない iOS [シミュレータ](../../docs/ja/glossary.md#target-app-device)
-実行は、ウィールにパッケージデータとして同梱される汎用 XCUITest ランナーへフォールバックします。
-ただしそれは、ウィールが実際にランナーを同梱している場合にかぎられ、素のソースチェックアウトや
-macOS 以外向けのウィールは同梱しません。XCUITest が iOS の唯一のバックエンドになった今
+実行は、wheel に package data として同梱される汎用 XCUITest ランナーへフォールバックします。
+ただしそれは、wheel が実際にランナーを同梱している場合にかぎられ、素のソースチェックアウトや
+macOS 以外向けの wheel は同梱しません。XCUITest が iOS の唯一のバックエンドになった今
 （[BE-0290](../BE-0290-xcuitest-default-ios-backend/BE-0290-xcuitest-default-ios-backend-ja.md)）、
 このランナーが配置されているかどうかが、iOS シミュレータ実行を開始できるかどうかそのものを
 左右します。今のところ、ランナーが配置済みかを知る唯一の手段は、実行を始めて結果を見ることです。
@@ -46,7 +46,7 @@ macOS 以外向けのウィールは同梱しません。XCUITest が iOS の唯
 ## 詳細設計
 
 構造上、Tier-1 の読み取り専用で、AI に依存しません。この機能は、解決済みの `ServeState` を読み、
-同梱ランナーの有無をウィール上で探索するだけです。表示するものは実行ごとのシグナルではないため、
+同梱ランナーの有無を wheel 上で探索するだけです。表示するものは実行ごとのシグナルではないため、
 決定的な `run` / CI ゲートには一切触れません（プライムディレクティブ 1）。
 
 作業は MECE な 4 つの単位に分かれます。
@@ -137,7 +137,7 @@ Secrets タブの隣に 3 つめのタブ（`data-settab="server"`、パネル `
 ## 参考
 
 - [BE-0292](../BE-0292-xcuitest-bundled-runner/BE-0292-xcuitest-bundled-runner-ja.md) — 汎用 XCUITest
-  シミュレータランナーをウィールに同梱する。このタブが可視化する `_bundled_runner` の探索元。
+  シミュレータランナーを wheel に同梱する。このタブが可視化する `_bundled_runner` の探索元。
 - [BE-0290](../BE-0290-xcuitest-default-ios-backend/BE-0290-xcuitest-default-ios-backend-ja.md) —
   XCUITest を iOS の唯一のバックエンドにする。ゆえにランナーの有無が iOS シミュレータ実行すべてを
   左右する。
