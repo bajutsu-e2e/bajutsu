@@ -96,11 +96,15 @@ Bajutsu テナントの下には、もう1段細かい単位があります。**
 挙げた GitHub Organization のメンバーである login です。それ以外の login は、`BAJUTSU_OAUTH_ALLOWED_USERS`
 が今日返しているのと同じ「許可されていない user」という応答で拒否します。サインインに成功した login
 には、最低でも viewer ロールを付与します。`BAJUTSU_OAUTH_ALLOWED_USERS` と `BAJUTSU_OAUTH_VIEWERS`
-は廃止します。別のリストではなく、Organization 自身の名簿が許可リストになるからです。`orgs:` ブロッ
-クに `githubOrgs` を持たないデプロイもあります（`members` だけのテナント、または `orgs:` ブロック
-自体を持たないデプロイです）。このデプロイでは、サインインの許可は今日と同じく `members` の列挙だけ
-で決まります。この項目が変えるのは、一致しない login のデフォルトの扱いです。「default org に落ち
-着く」から「拒否する」に変えるのであり、`members` という仕組みそのものは変えません。
+は廃止します。別のリストではなく、Organization 自身の名簿が許可リストになるからです。
+
+`members` だけのテナント（`orgs:` ブロックに `members` はあるが `githubOrgs` がない場合）は、この
+`members` の列挙で初めてサインインを制御します。今日の `members` は、すでに許可された login がどの
+org に属すかを決めるだけです。サインインが成功するかどうかは、`BAJUTSU_OAUTH_ALLOWED_USERS` だけが
+決めています。`orgs:` ブロック自体を持たないデプロイには、頼れる `members` の列挙がありません。その
+ため、`BAJUTSU_OAUTH_ALLOWED_USERS` を廃止すれば、すべての login が拒否されます。この項目を採用する
+デプロイは、`orgs:` ブロックを宣言しない限り、サインインの手段を失います。ブロックの中身は、
+`members` の列挙か `githubOrgs` のエントリです。
 
 これにより、サインインそのものが GitHub の `/user/orgs` への呼び出しの成功に依存します。対象は、
 `members` に明示登録されていない login です（`_fetch_orgs`、

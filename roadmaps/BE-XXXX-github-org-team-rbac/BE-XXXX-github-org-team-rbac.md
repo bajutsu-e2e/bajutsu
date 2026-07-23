@@ -94,10 +94,13 @@ explicit `members` entry or a member of a `githubOrgs`-listed GitHub organizatio
 configured `orgs:` block; every other login is rejected with the existing "user not allowed" response
 that `BAJUTSU_OAUTH_ALLOWED_USERS` produces today. A successful sign-in is granted the viewer role at
 minimum. `BAJUTSU_OAUTH_ALLOWED_USERS` and `BAJUTSU_OAUTH_VIEWERS` are retired — the organization's own
-roster, not a separate list, is now the allowlist. A deployment with no `githubOrgs` entry in its
-`orgs:` block (a `members`-only tenant, or no `orgs:` block at all) keeps gating sign-in on the
-`members` listing exactly as it does today; this item changes the *default* outcome for an unlisted
-login from "falls back to the default org" to "rejected," not the `members` mechanism itself.
+roster, not a separate list, is now the allowlist. A `members`-only tenant (an `orgs:` block with
+`members` but no `githubOrgs`) now gates sign-in on that `members` listing for the first time — today,
+`members` only decides which org an already-allowed login lands in, while `BAJUTSU_OAUTH_ALLOWED_USERS`
+alone decides whether sign-in succeeds at all. A deployment with no `orgs:` block at all has no
+`members` listing to fall back to, so retiring `BAJUTSU_OAUTH_ALLOWED_USERS` there rejects every login;
+adopting this item requires such a deployment to declare an `orgs:` block (a `members` listing or a
+`githubOrgs` entry), or it loses sign-in entirely.
 
 This makes sign-in itself depend on a live call to GitHub's `/user/orgs` for any login that isn't an
 explicit `members` entry (`_fetch_orgs`, [`bajutsu/serve/server/oauth.py`](../../bajutsu/serve/server/oauth.py))
