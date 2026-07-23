@@ -159,9 +159,8 @@ def _row(item: Any) -> str:
         f'<tr class="be-row" data-status="{html.escape(item.bucket)}" '
         f'data-topic="{html.escape(item.topic)}" data-search="{_search_text(item)}">'
         # id column sorts on the zero-padded number ("0311"), so the string compare is numeric.
-        f'<td data-sort="{html.escape(en.id[3:])}">'
-        f'<a href="{_item_href(item)}" style="color:{color}">{html.escape(en.id)}</a></td>'
-        f'<td class="be-row-title">{html.escape(en.title)}</td>'
+        f'<td data-sort="{html.escape(en.id[3:])}">{html.escape(en.id)}</td>'
+        f'<td class="be-row-title"><a href="{_item_href(item)}">{html.escape(en.title)}</a></td>'
         f"<td>{html.escape(item.topic)}</td>"
         f'<td><span class="be-badge" style="color:{color};border-color:{color}">'
         f"{html.escape(label)}</span></td>"
@@ -389,7 +388,9 @@ _STYLE = """
 .be-table th[aria-sort="ascending"]::after{content:" ▲";font-size:9px}
 .be-table th[aria-sort="descending"]::after{content:" ▼";font-size:9px}
 .be-table tbody tr:hover{background:rgba(128,128,128,.08)}
-.be-table a{text-decoration:none;font-weight:600}
+.be-table a{color:inherit;font-weight:600;text-decoration:underline;
+  text-decoration-color:rgba(128,128,128,.5)}
+.be-table a:hover{text-decoration-color:currentColor}
 .be-date{white-space:nowrap;font-variant-numeric:tabular-nums;color:#888}
 </style>
 """
