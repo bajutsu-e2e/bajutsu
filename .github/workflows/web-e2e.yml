@@ -8,15 +8,16 @@
 # Simulator — but installing Chromium + running a browser is heavy enough to gate.
 #
 # The lane carries a REQUIRED status check like iOS's `E2E`: the `E2E (web)` job below `needs` the
-# four stable deterministic host-independent jobs (`smoke (playwright)`, `dogfood (serve UI)`,
-# `conformance (playwright)`, `network (playwright)`) and always reports (a path-skip is a pass), so
-# it — not the browser jobs, which are path-gated — is what `main`'s branch-protection ruleset pins.
-# The web lane has no host-specific pixel VRT or upstream-drift golden, so every stable job feeds the
-# gate. The network job (`network (playwright)`) landed as SIGNAL first (BE-0282) and, having proven
-# stable in CI, is now promoted into the aggregator's `needs` — the web twin of android-e2e.yml's
-# already-gating `network (adb)`. The codegen job (`codegen (playwright)`, BE-0293) is the newest, so
-# it lands as SIGNAL — it runs and reports but is deliberately NOT in the aggregator's `needs` yet;
-# promote it into `needs` once it proves stable, exactly as `network (playwright)` was.
+# five stable deterministic host-independent jobs (`smoke (playwright)`, `dogfood (serve UI)`,
+# `conformance (playwright)`, `network (playwright)`, `codegen (playwright)`) and always reports (a
+# path-skip is a pass), so it — not the browser jobs, which are path-gated — is what `main`'s
+# branch-protection ruleset pins. The web lane has no host-specific pixel VRT or upstream-drift
+# golden, so every stable job feeds the gate. Both the network job (`network (playwright)`, BE-0282)
+# and the codegen job (`codegen (playwright)`, BE-0293) landed as SIGNAL first and, having proven
+# stable in CI, are now promoted into the aggregator's `needs` — the network job the web twin of
+# android-e2e.yml's already-gating `network (adb)`, the codegen job the web twin of ios-e2e.yml's
+# already-gating `xcuitest (codegen)`. A new browser job lands as SIGNAL (outside `needs`) and is
+# promoted into `needs` only once it proves stable, exactly as these two were.
 #
 # Because `E2E (web)` is a required check, the lane can't be path-gated at the trigger — a required
 # check skipped by a `paths:` filter stays pending forever and blocks the merge. So it triggers on
@@ -232,9 +233,10 @@ jobs:
   # Playwright version as the Python `web` extra (1.60.0), so its Chromium build matches the cached
   # one. UV_NO_DEV: the codegen CLI needs only the base package, never the dev group.
   #
-  # This lands as SIGNAL first (the precedent BE-0282's `network (playwright)` set: land as signal,
-  # promote to required only once stable) — it is deliberately NOT in the `E2E (web)` aggregator's
-  # `needs` below, so a failure here does not yet block a merge. Same `web` path-gate as the others.
+  # This landed as SIGNAL first (the precedent BE-0282's `network (playwright)` set: land as signal,
+  # promote to required only once stable) and, having proven stable in CI, is now promoted into the
+  # `E2E (web)` aggregator's `needs` below, so a failure here blocks a merge. Same `web` path-gate as
+  # the others.
   web-codegen:
     name: codegen (playwright)
     needs: changes
@@ -271,8 +273,9 @@ jobs:
   # Single required status check for the web lane — the web twin of ios-e2e.yml's `E2E`. Always runs
   # so it reports even when the browser jobs are skipped (a PR that can't affect the web path) — a
   # skipped dependency is a pass; only a real failure or cancellation fails the gate. The web lane
-  # has no host-specific or upstream-drift job to exclude, so all four deterministic jobs feed it
-  # (`network (playwright)` was promoted from signal to gate once stable — see above).
+  # has no host-specific or upstream-drift job to exclude, so all five deterministic jobs feed it
+  # (`network (playwright)` and `codegen (playwright)` were each promoted from signal to gate once
+  # stable — see above).
   # Make `E2E (web)` the required check, not the path-gated browser jobs.
   #
   # `changes`'s own result is checked too, not just the browser jobs': `changes` has no `if:`, so it
@@ -282,7 +285,7 @@ jobs:
   # would read that as a pass — the required gate reporting green having run nothing.
   e2e:
     name: E2E (web)
-    needs: [changes, web-e2e, serve-ui-dogfood, web-conformance, web-network]
+    needs: [changes, web-e2e, serve-ui-dogfood, web-conformance, web-network, web-codegen]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -293,9 +296,10 @@ jobs:
           DOGFOOD: ${{ needs.serve-ui-dogfood.result }}
           CONFORMANCE: ${{ needs.web-conformance.result }}
           NETWORK: ${{ needs.web-network.result }}
+          CODEGEN: ${{ needs.web-codegen.result }}
         run: |
-          echo "changes=$CHANGES smoke=$SMOKE dogfood=$DOGFOOD conformance=$CONFORMANCE network=$NETWORK"
-          for result in "$CHANGES" "$SMOKE" "$DOGFOOD" "$CONFORMANCE" "$NETWORK"; do
+          echo "changes=$CHANGES smoke=$SMOKE dogfood=$DOGFOOD conformance=$CONFORMANCE network=$NETWORK codegen=$CODEGEN"
+          for result in "$CHANGES" "$SMOKE" "$DOGFOOD" "$CONFORMANCE" "$NETWORK" "$CODEGEN"; do
             if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
               echo "E2E (web) failed"
               exit 1
