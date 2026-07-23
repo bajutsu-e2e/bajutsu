@@ -110,7 +110,7 @@ XCUITest で実行します（`make -C demos/showcase run-swiftui-noax` / `run-u
   実行では後続の `select`／`clear`／`delete` でフィールドを可視ラベル「Search horses」で再指定できません。
   また（`push.yaml` と同様に）iOS 専用です。Compose／Views のツリーは編集可能フィールドのテキストを
   要素の `value` に出さず、`clear` はこの値を読み、各編集もこの値で検証するためです。したがって 4 つの
-  編集アクチュエータは XCUITest 上の SwiftUI／UIKit の a11y アプリで覆っています。
+  編集アクチュエータは XCUITest 上の SwiftUI／UIKit の a11y アプリで覆われています。
 
 2 つの対応物は **SwiftUI 専用**です（`tags: [swiftui]`、`run-uikit-noax` が除外します）。`gestures_multitouch`
 （`SHOWCASE_GESTURES` の pinch/rotate 画面は SwiftUI と Compose にはありますが UIKit にはありません。a11y の
