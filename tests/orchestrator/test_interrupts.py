@@ -16,6 +16,7 @@ from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence import Artifact, intervals
 from bajutsu.orchestrator import run_scenario
+from bajutsu.orchestrator.types import AlertEvent
 from bajutsu.scenario import Interrupt, Scenario, dump_scenarios, load_scenarios
 
 
@@ -279,6 +280,42 @@ def test_recovery_failure_mid_wait_ends_the_wait_immediately() -> None:
     assert not result.ok
     assert "does.not.exist" in (result.failure or "")
     assert sleep_calls == []
+
+
+def test_recovery_failure_mid_wait_skips_the_end_of_step_alert_guard() -> None:
+    """A decided mid-wait recovery failure must not also fire the *outer* step's alert-guard retry.
+
+    The recovery's own failing tap is an ordinary step, so it goes through the standard
+    `on_blocked` retry once, like any failing step — that one call is expected and unrelated to
+    this fix. What must NOT also happen is the *outer* wait step's own post-`_run_step_body`
+    check firing a second, redundant `on_blocked` call: `_run_step_body` returns not-ok once the
+    wait aborts on the guard's failure signal, and without a check ahead of that retry, the bare
+    not-ok status would trigger a second AI-vision dismiss attempt (and a possible full step
+    retry) against a screen the failed recovery already left broken — symmetric with the pre-act
+    short-circuit that skips the step's own action for the same reason. So the total stays at 1,
+    not 2.
+    """
+    calls = {"n": 0}
+
+    def on_blocked(_driver: object) -> AlertEvent:
+        calls["n"] += 1
+        return AlertEvent(label="Not Now")
+
+    driver = FakeDriver([el("ov.close", "X", ["button"])])  # target never appears
+    result = run_scenario(
+        driver,
+        _scenario({"name": "d", "steps": [{"wait": {"for": {"id": "home.title"}, "timeout": 5}}]}),
+        clock=FakeClock(),
+        on_blocked=on_blocked,
+        interrupts=[
+            _interrupt({"exists": {"id": "ov.close"}}, [{"tap": {"id": "does.not.exist"}}])
+        ],
+    )
+    assert not result.ok
+    assert "does.not.exist" in (result.failure or "")
+    # 1 call: the recovery step's own retry. Not 2: the outer wait step's decided failure must not
+    # also trigger the end-of-step alert-guard retry.
+    assert calls["n"] == 1
 
 
 # --- screenChanged capture is not misattributed to the step (Unit 3) ----------------------------

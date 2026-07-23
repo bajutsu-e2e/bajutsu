@@ -822,7 +822,12 @@ def _run_steps(
                     on_wait_tick=wait_tick,
                     on_interrupt_poll=guard.observe if guard is not None else None,
                 )
-                if not ok and on_blocked is not None:
+                if guard is not None and guard.failure is not None:
+                    # A mid-wait recovery failure is a decided outcome — fail on it now rather than
+                    # firing the end-of-step alert-guard dismiss/retry against the screen the failed
+                    # recovery left, symmetric with the pre-act short-circuit above.
+                    ok, reason = False, guard.failure
+                elif not ok and on_blocked is not None:
                     event = on_blocked(active_driver)
                     if event is not None:
                         outcome.alerts.append(event)
