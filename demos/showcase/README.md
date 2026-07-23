@@ -108,8 +108,9 @@ Not every `scenarios/` file has a twin, by design:
 - **`visual.yaml` / `golden/`** — pixel/tree baselines are id- and image-specific, a separate concern.
 - **`text_editing.yaml`** — once text is typed the Search field drops its placeholder, so a `-noax`
   run cannot re-address it by the visible "Search horses" label for the follow-up `select` / `clear`
-  / `delete`; the id suite already covers all four editing actuators on both a11y toolkits (and on
-  Android over adb).
+  / `delete`. It is also iOS-only (like `push.yaml`): the Compose / Views trees do not expose an
+  editable field's text as its `value`, which `clear` reads and the edits are checked against, so all
+  four editing actuators are covered on the SwiftUI and UIKit a11y apps under XCUITest.
 
 Two twins are **SwiftUI-only** (`tags: [swiftui]`, excluded by `run-uikit-noax`): `gestures_multitouch`
 (the `SHOWCASE_GESTURES` pinch/rotate screen exists in SwiftUI + Compose, not UIKit — the same gap the
