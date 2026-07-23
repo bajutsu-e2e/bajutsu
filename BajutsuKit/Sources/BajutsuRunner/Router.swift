@@ -210,6 +210,12 @@ final class Router {
                 try ObjCExceptionCatcher.catchException { result = work() }
                 return result
             } catch {
+                // Surface the caught XCUITest diagnostic ("No matches found …") on the runner's
+                // stderr, so BAJUTSU_XCUITEST_RUNNER_LOG records *why* the actuation was reported
+                // stale rather than discarding the reason the catcher preserved.
+                FileHandle.standardError.write(
+                    Data("bajutsu runner: actuation raised, reporting stale: \(error.localizedDescription)\n".utf8)
+                )
                 return .stale
             }
         }
