@@ -17,14 +17,16 @@
 
 When the on-device XCUITest runner fails to come up from a cold `xcodebuild test-without-building`,
 the driver polls `GET /health` for the full 120-second startup budget and then fails with `health
-never ready` — carrying no evidence of why. The runner's `xcodebuild` output is discarded to
-`/dev/null`, and the wait never checks whether that process has already exited, so a launch that
-died at second three still burns the remaining 117 seconds against a port nothing is listening on.
-This item makes the cold spawn **diagnosable** (capture the runner's output and surface it on
-failure), **fail fast** (abort the moment the `xcodebuild` process dies rather than polling a dead
-port for two minutes), and **self-healing** against a one-off cold-start blip (retry the spawn once
-before failing loudly) — without weakening the verdict: a genuinely broken build fails both
-attempts and still stops the gate.
+never ready` — and, by default, carries no evidence of why. PR
+[#1299](https://github.com/bajutsu-e2e/bajutsu/pull/1299) laid the groundwork: an **opt-in**
+capture of the runner's `xcodebuild` output (`BAJUTSU_XCUITEST_RUNNER_LOG`) whose tail rides a
+mid-run-crash *warning*. This item finishes that work and makes the cold spawn **diagnosable** by
+default (capture on by default for the cold-spawn path, and the tail folded into the failing
+`XcuitestChannelError` rather than a separate warning), **fail fast** (abort the moment the
+`xcodebuild` process dies rather than polling a dead port for the remaining two minutes), and
+**self-healing** against a one-off cold-start blip (retry the spawn once before failing loudly) —
+without weakening the verdict: a genuinely broken build fails both attempts and still stops the
+gate.
 
 ## Motivation
 
@@ -50,20 +52,25 @@ opened its port: the XCTest host launched by `xcodebuild test-without-building` 
 point of binding the socket. Sibling xcuitest lanes on the same commit built and ran, so this is
 not a code regression; it is a cold-start blip of the XCTest host inside a loaded CI Simulator.
 
-Two properties of the current cold spawn (`XcuitestEnvironment._spawn_cold` in
-`bajutsu/platform_lifecycle/environments/xcuitest.py`) turn that blip into an undiagnosable,
-maximally slow failure:
+PR #1299 already captures the runner's output and reads a bounded tail of it
+(`_open_runner_output` / `_runner_log_hint` in `XcuitestEnvironment`,
+`bajutsu/platform_lifecycle/environments/xcuitest.py`). Three gaps remain that keep this exact CI
+flake undiagnosable and maximally slow:
 
-1. **The runner's output is a black hole.** The spawn runs
-   `subprocess.Popen(["xcodebuild", "test-without-building", …], stdout=subprocess.DEVNULL,
-   stderr=subprocess.DEVNULL)`. When the runner never answers, there is no trace to tell a
-   code-signing failure from an app crash from a wedged Simulator — the one artifact that would
-   explain the failure is thrown away.
-2. **The wait ignores a dead process.** The cold spawn blocks in `driver.await_ready`, which polls
-   `/health` for the whole 120 seconds; nothing interleaves a check of the `xcodebuild` handle
-   (`self._runner_proc`) that the environment — not the driver — holds. Even when `xcodebuild`
-   exits early, the wait keeps probing a port nothing owns until the budget elapses, so the
-   fastest-to-diagnose failure (the process is already gone) becomes the slowest.
+1. **The capture is opt-in and defaults to `DEVNULL`.** `_open_runner_output` captures only when
+   `BAJUTSU_XCUITEST_RUNNER_LOG` names a directory; unset — as it is on CI — the runner spawns into
+   `DEVNULL`, exactly as before. So the *first* flake, the one that fails the run, is captured
+   nowhere; a human must set the variable and wait for the blip to recur. The diagnostic that
+   matters is the one for the failure you already have.
+2. **The tail rides a warning, not the failure.** `_runner_log_hint` is emitted by `_discard_runner`
+   as a `warning` log line, while the run-failing `XcuitestChannelError: health never ready` carries
+   none of it. The cause and the failure land in different places, so reading the failure still does
+   not tell you why.
+3. **The wait still ignores a dead process.** `_discard_runner` does check `self._runner_proc.poll()`
+   — but only during teardown, *after* `await_ready` has already spun for the full 120 seconds.
+   Nothing interleaves that check into the health-poll wait, so a runner that dies at second three
+   still burns the remaining 117 seconds probing a port nothing owns; the fastest-to-diagnose
+   failure (the process is already gone) stays the slowest.
 
 The result mirrors the flaky-gate cost that
 [BE-0207](../BE-0207-xcuitest-channel-transient-retry/BE-0207-xcuitest-channel-transient-retry.md)
@@ -79,28 +86,31 @@ process itself**, which is the failure mode here. This item fills that gap.
 
 ## Detailed design
 
-The work breaks into five independent units.
+The work breaks into five independent units. Units 1 and 2 build directly on PR #1299's capture
+seam (`_open_runner_output` / `_runner_log_hint`); units 3–5 are new.
 
-1. **Capture the runner's `xcodebuild` output.** Redirect the `test-without-building` subprocess's
-   stdout and stderr to a per-spawn log file under the run's temporary/evidence area instead of
-   `DEVNULL`. The file is the primary diagnostic and is retained on a failed spawn. On success it
-   costs one small file that teardown can prune.
+1. **Default the runner-output capture on for the cold-spawn path.** #1299 captures only when
+   `BAJUTSU_XCUITEST_RUNNER_LOG` is set. Make the cold spawn capture by default — to the run's
+   temporary/evidence area — so the first CI flake is diagnosable without a human pre-arming the
+   variable, and keep the existing variable as an override for the capture directory. On success
+   the capture costs one small file that teardown can prune.
 
-2. **Surface the captured output on startup failure.** When the startup wait fails — whether by
-   timeout or by the dead-process check of unit 3 — read a bounded tail of the captured log and
-   include it in the `XcuitestChannelError` message. The CI log then shows *why* the runner never
-   answered, not merely that it did not. Quoting the tail verbatim keeps the path deterministic,
-   with no LLM involved (prime directive 1).
+2. **Fold the captured tail into the startup-failure error.** Today `_runner_log_hint`'s tail
+   reaches only the `_discard_runner` warning. When the startup wait fails — whether by timeout or
+   by the dead-process check of unit 3 — include that bounded tail in the `XcuitestChannelError`
+   message itself, so the run-failing error shows *why* the runner never answered, not merely that
+   it did not. Quoting the tail verbatim keeps the path deterministic, with no LLM involved (prime
+   directive 1).
 
-3. **Fail fast on a dead runner process.** Today the cold spawn waits by calling
-   `driver.await_ready`, a thin wrapper over the shared `_await_health` poll. Route the cold-spawn
-   wait instead through the liveness-aware helper of unit 5: between health probes it checks the
-   `xcodebuild` handle (`self._runner_proc.poll()`) that the environment owns, and the moment that
-   returns a non-`None` exit code it aborts immediately with a distinct diagnostic (the exit code
-   plus the unit-2 tail) rather than polling `Connection refused` for the remaining budget. Leave
-   `_await_health` itself unchanged, so the crash-recovery path (`bajutsu/drivers/xcuitest.py`)
-   that also calls it is untouched: it drives a resident runner over the channel and holds no local
-   subprocess to poll, so the mid-run BE-0287 behavior is preserved.
+3. **Fail fast on a dead runner process during the wait.** #1299's `self._runner_proc.poll()` check
+   lives in `_discard_runner` — teardown, reached only after `await_ready` has spun the full budget.
+   Interleave the same check into the cold-spawn startup wait through a liveness-aware helper (unit
+   5): between health probes it polls the `xcodebuild` handle the environment owns, and the moment
+   `poll()` returns a non-`None` exit code it aborts immediately with a distinct diagnostic (the
+   exit code plus the unit-2 tail) rather than polling `Connection refused` for the remaining
+   budget. Leave `_await_health` itself unchanged, so the crash-recovery path
+   (`bajutsu/drivers/xcuitest.py`) that also calls it is untouched: it drives a resident runner over
+   the channel and holds no local subprocess to poll, so the mid-run BE-0287 behavior is preserved.
 
 4. **Retry the cold spawn once.** A cold XCTest-host launch that never opens its port is a
    transient infrastructure blip — the same class BE-0207 absorbs at the transport layer. On the
@@ -134,6 +144,10 @@ The work breaks into five independent units.
   fix.
 - **An unbounded spawn retry.** Retrying without a bound would absorb a real, repeatable failure
   and mask a broken build, exactly the absorption BE-0049 rejects. Bounded to a single retry.
+- **Leave the capture opt-in, as #1299 left it.** Requiring an operator to pre-set
+  `BAJUTSU_XCUITEST_RUNNER_LOG` means the flake that fails the gate — the first occurrence — is
+  never captured; only a later reproduction is. Defaulting the capture on for the cold-spawn path
+  (unit 1) captures the failure you already have. Rejected in favor of on-by-default.
 - **Stream `xcodebuild` output live to the CI log** instead of a file. Live streaming interleaves
   with pytest's captured output and is noisy on the success path; a captured file, tailed only on
   failure, gives the same diagnostic while staying quiet when the runner comes up.
@@ -144,8 +158,8 @@ The work breaks into five independent units.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — capture the runner's `xcodebuild` output to a per-spawn log file.
-- [ ] Unit 2 — surface a bounded tail of the captured log in the startup-failure error.
+- [ ] Unit 1 — default the runner-output capture on for the cold-spawn path (builds on #1299).
+- [ ] Unit 2 — fold the captured tail into the `XcuitestChannelError` startup-failure message.
 - [ ] Unit 3 — fail fast when the `xcodebuild` process exits during the cold-spawn wait.
 - [ ] Unit 4 — retry the cold spawn once before failing loudly.
 - [ ] Unit 5 — off-device tests over the spawn/wait seam.
@@ -157,5 +171,6 @@ The work breaks into five independent units.
 - [BE-0287 — XCUITest runner-channel resilience under multi-touch actuation](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience.md)
 - [BE-0290 — Make XCUITest the default iOS backend and retire idb](../BE-0290-xcuitest-default-ios-backend/BE-0290-xcuitest-default-ios-backend.md)
 - [BE-0049 — Determinism and flakiness audit](../BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md)
-- `bajutsu/platform_lifecycle/environments/xcuitest.py` — `_spawn_cold`, `_discard_runner` (the cold spawn and its teardown).
+- [PR #1299](https://github.com/bajutsu-e2e/bajutsu/pull/1299) — the opt-in runner-output capture this item builds on.
+- `bajutsu/platform_lifecycle/environments/xcuitest.py` — `_spawn_cold`, `_open_runner_output`, `_runner_log_hint`, `_discard_runner` (the cold spawn, its output capture, and its teardown).
 - `bajutsu/drivers/xcuitest.py` — `await_ready`, `_await_health`, `_with_retry` (the startup wait and the channel retry seam).
