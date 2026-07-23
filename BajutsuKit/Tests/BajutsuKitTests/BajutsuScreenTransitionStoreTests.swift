@@ -4,9 +4,9 @@ import XCTest
 @testable import BajutsuKit
 
 /// Unit tests for the screen-transition store — the part of BE-0310 that is pure
-/// Foundation and needs no Simulator (mirrors `BajutsuMocksTests`). The notification
-/// observer itself (`BajutsuScreen`) needs a live `UIAccessibility` notification, so it
-/// is confirmed on-device instead (BE-0310 Unit 5).
+/// Foundation and needs no Simulator (mirrors `BajutsuMocksTests`). The appearance hook
+/// itself (`BajutsuScreen`'s `viewDidAppear` swizzle) needs a live view-controller
+/// transition, so it is confirmed on-device instead (BE-0310 Unit 5).
 final class BajutsuScreenTransitionStoreTests: XCTestCase {
     func testRecordAppendsInOrder() {
         let store = BajutsuScreenTransitionStore.shared

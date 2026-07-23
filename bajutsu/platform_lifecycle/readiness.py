@@ -63,12 +63,12 @@ def _await_ready(
       `readyWhen` target that also links `BajutsuKit`, an earlier *base-screen* transition must not
       preempt the modal `readyWhen` is there to wait for — that would reintroduce the very race
       `readyWhen` exists to close.
-    - `transitions` (BE-0310): an app linking `BajutsuKit`'s screen-transition observer that has
-      reported a `UIAccessibility.screenChangedNotification` since this wait started — a positive
-      signal from the transition itself, needing no heuristic, so it outranks the namespace/count
-      heuristics below. Consulted only when no `readyWhen` match selector is set (see above). A target
-      that doesn't link the SDK (or whose cold-launch first screen posts no notification — an open
-      empirical question this rung doesn't assume either way) reports none, and falls through
+    - `transitions` (BE-0310): an app linking `BajutsuKit`'s screen-transition observer (a
+      `UIViewController.viewDidAppear` hook) that has reported a completed appearance since this wait
+      started — a positive signal from the transition itself, needing no heuristic, so it outranks the
+      namespace/count heuristics below. Consulted only when no `readyWhen` match selector is set (see
+      above). A target that doesn't link the SDK (or whose cold-launch first screen reports nothing)
+      reports none, and falls through
       unchanged to the rungs below.
     - `id_namespaces` (a target's `idNamespaces`): wait for any element whose id belongs to a declared
       namespace. On a slow cold boot the device query can return SpringBoard (the Home screen's app

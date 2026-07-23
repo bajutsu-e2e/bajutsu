@@ -400,9 +400,11 @@ device (the shared device is reseeded via one channel, so parallel workers would
   element trees / network exchanges before they are written
 - Network observation + **deterministic mocks** (scenario `mocks` → in-protocol stubs, validated
   on-device): `request` assertions, `wait: { until: request }`, and offline stubbed responses
-- The **screen-transition signal** (BE-0310, iOS): an opt-in `BajutsuScreen` observer in
-  `BajutsuKit` reports each `UIAccessibility.screenChangedNotification` to the collector's
-  `/transitions` endpoint, independent of the network-exchange store it shares a process with. The
+- The **screen-transition signal** (BE-0310, iOS): an opt-in `BajutsuScreen` in `BajutsuKit`
+  swizzles `UIViewController.viewDidAppear(_:)` and reports each completed view-controller
+  appearance to the collector's `/transitions` endpoint (UIKit and SwiftUI alike, since
+  every `NavigationStack` push, sheet presentation, and tab switch is `UIHostingController`-backed),
+  independent of the network-exchange store it shares a process with. The
   post-launch readiness gate (`_await_ready`) consults it as a new rung above the BE-0218
   namespace/count heuristics (an explicit `readyWhen` still outranks it, so a base-screen transition
   never preempts the modal `readyWhen` waits for), and the `settled` wait consults it as a

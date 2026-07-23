@@ -4,8 +4,8 @@
 
 これは、
 [BE-0310](../../roadmaps/BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness-ja.md)
-がゲート（作業単位5）として名指ししているオンデバイスでの確認です。`UIAccessibility.screenChangedNotification`
-が、showcase の両ツールキットで実際に発火するかを確かめます。対象は、readiness ゲートと `settled` 待ちが
+がゲート（作業単位5）として名指ししているオンデバイスでの確認です。`BajutsuScreen` の `viewDidAppear`
+swizzle が、showcase の両ツールキットで実際に遷移を報告するかを確かめます。対象は、readiness ゲートと `settled` 待ちが
 新たに参照する遷移と、意図して覆わない2つのケースです。高速ゲート（`make check`）はシミュレータを一切
 動かさないため、この手順は Mac 上で手動により実行してください。実行し終えたら、結果をこのファイル
 （またはこの項目にリンクした後続のコメント）に記録してください。
@@ -24,18 +24,18 @@
 
 `showcase-swiftui` と `showcase-uikit` の**両方**について、次を確認します。
 
-1. **cold launch から最初の画面へ。** 作業単位3が挙げた未解決の問いです。アプリの最初の画面は、そもそも
-   この通知を投げるのでしょうか。これは前の画面からの**変化**ではないため、投げない可能性があります。
-   どちらの結果であっても記録してください。ここで「投げない」という結果が出ても退行ではありません。
-   提案どおり、readiness はその瞬間だけ BE-0218 の梯子を使い続けます。
+1. **cold launch から最初の画面へ。** 最初の画面の `viewDidAppear` は発火するはずで、cold launch でも
+   readiness にシグナルを与えます。最初のビューコントローラも、後続の push やタブ切り替えと同じように出現するからです。
+   結果を記録してください。もし報告されなくても退行ではなく、提案どおり readiness はその瞬間だけ
+   BE-0218 の梯子を使い続けるだけです。
 2. **ナビゲーションの push。** `stable.row.3` から Horse Detail へ、
    [`navigation.yaml`](scenarios/navigation.yaml) が示すとおりです。
 3. **モーダルの提示。** Log タブの detented sheet、[`modals.yaml`](scenarios/modals.yaml) が示すとおりです。
 4. **タブの切り替え。** [`tabs.yaml`](scenarios/tabs.yaml) が示すとおりです。
 5. **意図して覆わないケース。** フォールバックの役割を証拠から確かめます。
    - 画面遷移を伴わない**画面内のデータ更新**です。Log タブの「Intense」トグル（`log.intense`）が対象で、
-     ナビゲーションなしにアクセシビリティの値だけを更新します。提案は、投げられるとしてもせいぜい
-     `UIAccessibility.layoutChangedNotification` で、自動では何も投げないことが多いと見込んでいます。
+     ナビゲーションなしにアクセシビリティの値だけを更新します。新しいビューコントローラを提示しないため、
+     `viewDidAppear` は発火せず、何も報告されません。
    - **標準コンテナを迂回するカスタム遷移**です。どちらの showcase アプリにも、今日この形で作られた画面は
      ありません。コードレビューではなく経験的にこのケースを確かめたいなら、使い捨ての
      `UIView.transition(with:duration:options:animations:)`(UIKit)や独自の `AnyTransition`(SwiftUI)を

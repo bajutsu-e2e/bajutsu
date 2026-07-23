@@ -10,10 +10,11 @@ exchanges in memory so a step's `request` assertion can be evaluated in real tim
 dumps them to `network.json` as scenario evidence.
 
 The same receiver also accepts screen-transition reports on `/transitions`
-(BE-0310): the opt-in `BajutsuScreen` observer in `BajutsuKit` POSTs one record per
-observed `UIAccessibility.screenChangedNotification`. They are kept in an independent
-store from the network exchanges — the readiness gate and the `settled` wait read only
-this one, never network-capture state, so the two stay independent as documented.
+(BE-0310): the opt-in `BajutsuScreen` observer in `BajutsuKit` (a
+`UIViewController.viewDidAppear` hook) POSTs one record per completed appearance. They are
+kept in an independent store from the network exchanges — the readiness gate and the
+`settled` wait read only this one, never network-capture state, so the two stay independent
+as documented.
 
 The in-app side that captures and POSTs the exchanges is a separate Swift package
 (`BajutsuKit`); this module is only the bajutsu-side receiver and data model.

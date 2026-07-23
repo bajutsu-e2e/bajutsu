@@ -63,14 +63,18 @@ expect:
 
 ## Screen-transition observation (BE-0310)
 
-`BajutsuNet.startIfEnabled()` also activates `BajutsuScreen`, which observes
-`UIAccessibility.screenChangedNotification` — the notification UIKit posts automatically
-after a standard container transition completes (a navigation push/pop, a modal
-presentation/dismissal, a tab switch), covering SwiftUI's `NavigationStack` too, since it
-is `UINavigationController`-backed underneath. Each observed transition is reported to the
-collector's `/transitions` endpoint, giving bajutsu's post-launch readiness gate and the
-`settled` wait a positive signal in place of tree-diff polling. Like network capture, it is
-inert unless `BAJUTSU_COLLECTOR` is set and needs no app-screen change: it never observes a
-notification an app must post by hand (e.g. `UIAccessibility.pageScrolledNotification`). A
-target that does not link BajutsuKit is unaffected — both waits keep their tree-diff
-fallback.
+`BajutsuNet.startIfEnabled()` also activates `BajutsuScreen`, which swizzles
+`UIViewController.viewDidAppear(_:)` (the same `method_exchangeImplementations` idiom
+`BajutsuURLProtocol.swift` already uses). Every completed view-controller appearance reports
+a transition to the collector's `/transitions` endpoint. Because `viewDidAppear` fires only
+after the appearance transition settles, it matches the timing readiness wants, and it covers
+UIKit and SwiftUI equally: a `NavigationStack` push, a `.sheet` / `.fullScreenCover`
+presentation, and a tab switch are each backed by a `UIHostingController` whose
+`viewDidAppear` fires when the transition finishes. This gives bajutsu's post-launch
+readiness gate and the `settled` wait a positive signal in place of tree-diff polling. The
+one boundary: an in-place SwiftUI view swap *within* a single hosting controller (no new
+controller presented) posts no appearance — but that is a within-screen update, not a
+container transition, and is the same case BE-0299 already documents as out of scope. Like
+network capture, it is inert unless `BAJUTSU_COLLECTOR` is set and needs no app-screen
+change: it hooks a framework method, never app screen code. A target that does not link
+BajutsuKit is unaffected — both waits keep their tree-diff fallback.

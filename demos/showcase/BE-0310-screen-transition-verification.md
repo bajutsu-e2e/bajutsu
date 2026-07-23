@@ -4,9 +4,9 @@
 
 This is the on-device confirmation
 [BE-0310](../../roadmaps/BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness.md)
-names as its gate (Unit 5): whether `UIAccessibility.screenChangedNotification` actually fires, on
-both showcase toolkits, for the transitions the readiness gate and the `settled` wait now consult —
-and whether it stays silent for the two cases it deliberately does not cover. The fast gate
+names as its gate (Unit 5): whether `BajutsuScreen`'s `viewDidAppear` swizzle actually reports a
+transition, on both showcase toolkits, for the transitions the readiness gate and the `settled` wait
+now consult — and whether it stays silent for the two cases it deliberately does not cover. The fast gate
 (`make check`) runs no Simulator, so this procedure is run by hand on a Mac; record the outcome in
 this file (or a linked follow-up comment on the item) once you have.
 
@@ -23,17 +23,17 @@ this file (or a linked follow-up comment on the item) once you have.
 
 For **both** `showcase-swiftui` and `showcase-uikit`:
 
-1. **Cold launch → first screen.** The open question Unit 3 names: does the app's very first
-   screen post the notification at all (it is not a *change* from a prior screen)? Record whichever
-   way it goes — a "no" here is not a regression; it only means readiness keeps using the BE-0218
-   ladder for that one moment, per the proposal.
+1. **Cold launch → first screen.** The first screen's `viewDidAppear` should fire, giving
+   readiness a signal at cold launch too — the first view controller appears just as a later push
+   or tab switch does. Record the outcome; if it does not report, that is not a regression, only
+   that readiness keeps using the BE-0218 ladder for that one moment, per the proposal.
 2. **Navigation push** (`stable.row.3` → Horse Detail, [`navigation.yaml`](scenarios/navigation.yaml)).
 3. **Modal presentation** (Log tab → detented sheet, [`modals.yaml`](scenarios/modals.yaml)).
 4. **Tab switch** ([`tabs.yaml`](scenarios/tabs.yaml)).
 5. **Not covered, by design — confirm the fallback's role from evidence:**
    - An **in-place data update** with no screen change: the Log tab's "Intense" toggle
-     (`log.intense`), which mirrors state to an accessibility value with no navigation. The
-     proposal expects at most `UIAccessibility.layoutChangedNotification`, often nothing.
+     (`log.intense`), which mirrors state to an accessibility value with no navigation. It presents
+     no new view controller, so `viewDidAppear` never fires and nothing is reported.
    - A **custom transition bypassing the standard containers**: neither showcase app has a screen
      built this way today. If you want to close this sub-case empirically rather than by code
      inspection, add a throwaway `UIView.transition(with:duration:options:animations:)` (UIKit) or

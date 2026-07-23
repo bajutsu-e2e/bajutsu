@@ -19,13 +19,17 @@
 This item gives Bajutsu's iOS backend a positive signal for *when a screen transition has finished*,
 so the two places that today only *infer* it — the post-launch readiness gate and the `settled`
 wait — can act on the transition itself rather than on a guess derived from repeated screen reads.
-The signal comes from an accessibility notification iOS already posts when a standard container
-transition completes (`UIAccessibility.screenChangedNotification`), observed by an opt-in addition to
-the `BajutsuKit` test-support package that every target links identically. Because that notification
-is posted by UIKit's container machinery — which backs `UINavigationController`, `UITabBarController`,
-and modal presentation directly, and `SwiftUI`'s `NavigationStack` beneath the surface — the signal
-covers UIKit and SwiftUI apps through one mechanism at the container-transition granularity, with no
-change to the app under test. When a
+The signal comes from an opt-in addition to the `BajutsuKit` test-support package that every target
+links identically: it hooks UIKit's `UIViewController.viewDidAppear`, which fires *after* a
+completed appearance transition. (The proposal first aimed to observe the accessibility notification
+iOS posts on such a transition, `UIAccessibility.screenChangedNotification`; that symbol proved to be
+outbound-only — a `UIAccessibility.post(...)` enum case, not an observable `NSNotification.Name` — so
+the appearance hook, weighed in *Alternatives considered* below, is what ships.) Because
+`UINavigationController`, `UITabBarController`, and modal presentation each drive a view-controller
+appearance directly, and `SwiftUI`'s `NavigationStack`, `.sheet`/`.fullScreenCover`, and tab switches
+each present a `UIHostingController` beneath the surface, the hook covers UIKit and SwiftUI apps
+through one mechanism at the container-transition granularity, with no change to the app under test.
+When a
 target does not link `BajutsuKit`, both gates fall back to today's tree-diff polling unchanged, so
 the change is a strengthening for apps that opt in, never a new requirement for apps that do not.
 
@@ -54,9 +58,12 @@ navigation push or pop, a modal presentation or dismissal, a tab switch — UIKi
 `UIAccessibility.screenChangedNotification` so VoiceOver can reset focus to the new screen. The
 notification fires *after* the transition settles, by the accessibility contract's own design, which
 is precisely the event the readiness gate and the `settled` wait are trying to reconstruct from tree
-diffs. Observing the notification directly replaces an inference with the fact it was approximating.
+diffs. Capturing that completion directly replaces an inference with the fact it was approximating.
+(The notification is what named the event; the shipping observation reads the same completion through
+`UIViewController.viewDidAppear`, because that notification proved not to be an observable
+`NSNotification.Name` — see *Detailed design* unit 1 and *Alternatives considered*.)
 
-Bajutsu can observe that notification without asking any app to change its screen code, because the
+Bajutsu can capture that completion without asking any app to change its screen code, because the
 project already has the mechanism and the policy for exactly this shape of capability.
 [BE-0233](../BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity.md) established the
 standing design policy that a capability reachable only from inside the app process is realized
@@ -108,17 +115,20 @@ independent of today.
 
 ### Work breakdown (MECE)
 
-1. **Observe the accessibility screen-change notification in `BajutsuKit`.** Add an opt-in observer
-   that registers for `UIAccessibility.screenChangedNotification` on the main run loop and records a
-   monotonic timestamp and a running counter into a small observable store — the same in-app-store
-   shape `BajutsuExchangeStore` already uses for network exchanges. The observer subscribes only to
-   the notification UIKit's container machinery posts *automatically*, which is the whole basis for
-   needing no app-screen change; a notification an app must post by hand (such as
-   `UIAccessibility.pageScrolledNotification`, whose page-description argument the app supplies) is
-   deliberately excluded, since subscribing to it would observe nothing without the per-app
-   cooperation this item rejects. Gate activation on an injected launch environment variable exactly as `BajutsuNet` gates
-   on `BAJUTSU_COLLECTOR`, so an app that links `BajutsuKit` but runs outside a Bajutsu run observes
-   nothing. This unit touches only `BajutsuKit`, never the app under test's screen code.
+1. **Observe completed view-controller appearances in `BajutsuKit`.** Add an opt-in hook that
+   swizzles `UIViewController.viewDidAppear(_:)` — reusing the `method_exchangeImplementations`
+   idiom `BajutsuURLProtocol` already uses — and records a monotonic timestamp and a running counter
+   into a small observable store, the same in-app-store shape `BajutsuExchangeStore` already uses for
+   network exchanges. The hook fires on the appearances UIKit's container machinery drives
+   *automatically* (a navigation push/pop, a modal presentation, a tab switch), which is the whole
+   basis for needing no app-screen change. (The proposal first named
+   `UIAccessibility.screenChangedNotification` as the source, but that symbol is outbound-only — an
+   enum case for `UIAccessibility.post(...)`, not an observable `NSNotification.Name` — so the
+   appearance hook weighed in *Alternatives considered* is what implements this unit; it stays at the
+   same container-transition granularity.) Gate activation on an injected launch environment variable
+   exactly as `BajutsuNet` gates on `BAJUTSU_COLLECTOR`, so an app that links `BajutsuKit` but runs
+   outside a Bajutsu run observes nothing. This unit touches only `BajutsuKit`, never the app under
+   test's screen code.
 
 2. **Report the signal out of process through the existing collaboration channel.** Surface the
    observed transitions to Bajutsu the same way network capture already surfaces exchanges: report
@@ -172,12 +182,21 @@ independent of today.
 ## Alternatives considered
 
 - **Swizzle `UIViewController.viewDidAppear` instead of observing the accessibility notification.**
-  Method swizzling on `UIViewController` would hook UIKit's per-controller lifecycle with no app code
-  change, but it does not reach SwiftUI on equal terms: a SwiftUI view is a value type with no shared
-  view-controller base class to swizzle, so the hook would fire only at the `UIHostingController`
-  boundary and miss transitions within one hosting controller. The requirement that the signal cover
-  UIKit and SwiftUI equally rules this out; the accessibility notification is posted by the shared
-  container machinery both frameworks sit on, so it covers both through one observer.
+  *Adopted — this is what shipped.* The original plan was to observe
+  `UIAccessibility.screenChangedNotification`, but that symbol proved to be outbound-only: iOS vends
+  `.screenChanged` as an enum case for `UIAccessibility.post(notification:argument:)` (the app→VoiceOver
+  direction), not as an observable `NSNotification.Name`, so there is no public notification to
+  subscribe to (the code that tried to failed to compile). This bullet had set the swizzle aside for a
+  feared SwiftUI gap — "the hook fires only at the `UIHostingController` boundary and misses transitions
+  within one hosting controller" — but that fear was overstated for the *container* transitions this
+  item targets: a `NavigationStack` push, a `.sheet` / `.fullScreenCover` presentation, and a tab switch
+  each present a `UIHostingController` whose `viewDidAppear` fires, so the hook covers UIKit and SwiftUI
+  equally at the container-transition granularity. The genuine gap — an in-place SwiftUI view swap
+  within one hosting controller — is a within-screen update, not a container transition, and is the
+  same out-of-scope case as the next bullet and
+  [BE-0299](../BE-0299-settle-value-condition-wait/BE-0299-settle-value-condition-wait.md). With the
+  notification route unavailable, this hook is the remaining public-API mechanism that needs no
+  app-screen change.
 
 - **Add a per-screen `.onAppear` (SwiftUI) / lifecycle call (UIKit) that reports to the SDK.**
   Asking each screen to announce its own appearance would cover SwiftUI's within-hosting-controller
@@ -210,7 +229,9 @@ independent of today.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [x] Unit 1 — Observe the `UIAccessibility` screen-change notification in `BajutsuKit`, opt-in gated.
+- [x] Unit 1 — Observe completed view-controller appearances (a `viewDidAppear` swizzle) in
+  `BajutsuKit`, opt-in gated. (Shipped via the appearance hook, not the accessibility notification the
+  proposal first named — see the log below and *Alternatives considered*.)
 - [x] Unit 2 — Report the signal out of process through the existing collector channel.
 - [x] Unit 3 — Consult the signal from `_await_ready`, with the BE-0218 tree-diff ladder as fallback.
 - [x] Unit 4 — Consult the signal from `_wait_settled`, with the tree-diff behavior as fallback.
@@ -219,6 +240,18 @@ independent of today.
   for the Simulator); this Unit is the empirical, on-device-only confirmation and needs a human with
   a Mac + Simulator to run it. Procedure and an XCUITest scaffold:
   [`demos/showcase/BE-0310-screen-transition-verification.md`](../../demos/showcase/BE-0310-screen-transition-verification.md).
+
+Log (oldest first):
+
+- Mechanism pivot during implementation: the item's premise was to *observe*
+  `UIAccessibility.screenChangedNotification`, but that symbol is outbound-only (a
+  `UIAccessibility.post(...)` enum case, not an observable `NSNotification.Name`), so no public
+  notification exists to subscribe to. Unit 1 instead swizzles `UIViewController.viewDidAppear` — the
+  alternative weighed in *Alternatives considered*, whose SwiftUI reach turned out to cover the
+  container transitions this item targets (NavigationStack / modal / tab each present a
+  `UIHostingController` that appears). The wire contract, the Python collector, and units 2–4 are
+  unchanged; only the iOS observation mechanism differs. Unit 5's on-device confirmation is what
+  proves the appearance hook fires as assumed across both toolkits.
 
 ## References
 

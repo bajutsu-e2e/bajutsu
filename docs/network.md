@@ -36,8 +36,8 @@ A Simulator app runs as a host process and shares the Mac's loopback, so:
 collector stays empty); the feature is opt-in per app.
 
 The same collector, on iOS, also receives screen-transition events on a separate `/transitions`
-endpoint (BE-0310): `BajutsuKit`'s `BajutsuScreen` observer reports each
-`UIAccessibility.screenChangedNotification` there, kept in its own store independent of the
+endpoint (BE-0310): `BajutsuKit`'s `BajutsuScreen` swizzles `UIViewController.viewDidAppear(_:)`
+and reports each completed view-controller appearance there, kept in its own store independent of the
 network exchanges above. That signal is not a `request`-assertion concern — the post-launch
 readiness gate and the `settled` wait consult it instead; see [run-loop](run-loop.md#waits-condition-waits-only).
 
