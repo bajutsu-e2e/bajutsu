@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0310") |
+| 実装 PR | [#1309](https://github.com/bajutsu-e2e/bajutsu/pull/1309) |
 | トピック | Platform support |
 | 関連 | [BE-0218](../BE-0218-e2e-simulator-flaky-readiness-actuation/BE-0218-e2e-simulator-flaky-readiness-actuation-ja.md), [BE-0087](../BE-0087-idb-action-settle/BE-0087-idb-action-settle-ja.md), [BE-0233](../BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity-ja.md), [BE-0299](../BE-0299-settle-value-condition-wait/BE-0299-settle-value-condition-wait-ja.md) |
 <!-- /BE-METADATA -->
