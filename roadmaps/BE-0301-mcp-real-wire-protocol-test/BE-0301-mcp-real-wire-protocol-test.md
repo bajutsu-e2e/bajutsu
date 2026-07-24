@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0301](BE-0301-mcp-real-wire-protocol-test.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0301") |
+| Implementing PR | _pending_ |
 | Topic | Integration & automation |
 | Related | [BE-0017](../BE-0017-mcp-server/BE-0017-mcp-server.md), [BE-0018](../BE-0018-evidence-as-mcp-resources/BE-0018-evidence-as-mcp-resources.md) |
 <!-- /BE-METADATA -->
@@ -68,11 +69,29 @@ Proposal altitude. The work is MECE along the units below.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Start a real `bajutsu mcp` server process (or in-process server on a real transport), gated on
+- [x] Start a real `bajutsu mcp` server process (or in-process server on a real transport), gated on
   a readiness condition wait rather than a fixed `sleep`.
-- [ ] Connect with the real `mcp` SDK client and round-trip a tool call and a resource read.
-- [ ] Keep the in-process tests as they are.
-- [ ] Wire it into CI as a non-gating signal, promote to required once stable.
+- [x] Connect with the real `mcp` SDK client and round-trip a tool call and a resource read.
+- [x] Keep the in-process tests as they are.
+- [x] Wire it into CI as a non-gating signal, promote to required once stable.
+
+**Log**
+
+- `tests/test_mcp_wire.py` starts `bajutsu mcp --transport stdio` as a real subprocess and drives it
+  with the `mcp` SDK's `fastmcp.Client` over stdio. The client's `initialize` handshake is the
+  readiness condition (no fixed `sleep`). Over the wire it lists tools (asserting both
+  `bajutsu_doctor`/`bajutsu_run` are advertised with their input schemas), round-trips a
+  `bajutsu_doctor` and a `bajutsu_run` call, and reads a `bajutsu://runs/{run_id}/manifest.json`
+  resource. It also round-trips the wildcard-template resource (`artifact/{path*}`, the URI most
+  exposed to encoding quirks), asserts the non-string tool params serialize with their JSON-schema
+  types (`erase` boolean, `workers` integer), and covers the error path — a missing resource and a
+  tool call missing its required argument, each asserted to come back as a JSON-RPC error frame
+  carrying the server's message, a serialization path distinct from a successful call. The
+  subprocess uses the `fake` backend, so both tool calls run real, device-free logic — the same
+  backend the gate drives. The in-process `tests/test_mcp.py` is unchanged. Scope is the `stdio`
+  transport; the `sse` transport's distinct framing is a deliberate follow-up. The suite is marked
+  `mcp_wire` (pyproject `addopts` deselects it from the fast gate) and runs in the non-gating
+  `mcp-wire.yml` lane, to be promoted to required once stable — the precedent BE-0282 set.
 
 ## References
 

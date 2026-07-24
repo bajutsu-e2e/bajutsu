@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0301](BE-0301-mcp-real-wire-protocol-test-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0301") |
+| 実装 PR | _pending_ |
 | トピック | 統合と自動化 |
 | 関連 | [BE-0017](../BE-0017-mcp-server/BE-0017-mcp-server-ja.md), [BE-0018](../BE-0018-evidence-as-mcp-resources/BE-0018-evidence-as-mcp-resources-ja.md) |
 <!-- /BE-METADATA -->
@@ -70,11 +71,31 @@ stdio のフレーミングのバグ、これらはいずれも現行のテス�
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] 実際の `bajutsu mcp` サーバプロセス（または実際の transport 上の in-process サーバ）を、
+- [x] 実際の `bajutsu mcp` サーバプロセス（または実際の transport 上の in-process サーバ）を、
   準備完了の条件待機つきで起動する。
-- [ ] 実際の `mcp` SDK クライアントで接続し、ツール呼び出しとリソース読み取りを round-trip する。
-- [ ] in-process のテストはそのまま残す。
-- [ ] ゲート対象外のシグナルとして CI に組み込み、安定後に必須化する。
+- [x] 実際の `mcp` SDK クライアントで接続し、ツール呼び出しとリソース読み取りを round-trip する。
+- [x] in-process のテストはそのまま残す。
+- [x] ゲート対象外のシグナルとして CI に組み込み、安定後に必須化する。
+
+**ログ**
+
+- `tests/test_mcp_wire.py` は `bajutsu mcp --transport stdio` を実際のサブプロセスとして起動し、
+  `mcp` SDK の `fastmcp.Client` で stdio 越しに駆動します。クライアントの `initialize`
+  ハンドシェイクが準備完了の条件待機となります（固定の `sleep` はありません）。ワイヤ越しに
+  ツール一覧を取得して `bajutsu_doctor`/`bajutsu_run` の両方が入力スキーマつきで広告されることを
+  確認し、`bajutsu_doctor` と `bajutsu_run` の呼び出しを round-trip し、
+  `bajutsu://runs/{run_id}/manifest.json` リソースを読み取ります。さらに、ワイルドカードの
+  テンプレートリソース（`artifact/{path*}`。エンコーディングの癖が最も出やすい URI です）を
+  round-trip し、文字列でないツール引数が JSON スキーマの型のまま広告されること（`erase` は
+  boolean、`workers` は integer）を確認し、エラー経路——存在しないリソースと、必須引数を欠いた
+  ツール呼び出し——が、サーバのメッセージを載せた JSON-RPC のエラーフレームとして返ることを
+  確認します。成功時とは別のシリアライゼーション経路です。サブプロセスは `fake`
+  バックエンドを使うため、どちらのツール呼び出しもデバイス不要の実ロジックを走らせます——
+  ゲートが駆動するのと同じバックエンドです。in-process の `tests/test_mcp.py` は変更していません。
+  対象は `stdio` transport で、`sse` transport の異なるフレーミングは意図的に後続とします。
+  スイートには `mcp_wire` マーカーを付け（pyproject の `addopts` が高速ゲートから除外します）、
+  ゲート対象外の `mcp-wire.yml` レーンで実行し、安定を確認してから必須化します——
+  BE-0282 が示した前例に従います。
 
 ## 参考
 
