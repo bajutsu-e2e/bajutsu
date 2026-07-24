@@ -125,6 +125,12 @@ command a reviewer would run. The output is always reviewable and never fails ge
 The generated file header also states "do not edit by hand; re-generate." This fallback behavior
 holds for all three targets.
 
+One family of constructs is the exception: `if`, `forEach`, and `extract` each evaluate against a
+live UI tree at run time — a branch on the current state, a loop over the live match set, a capture
+of a resolved element's property — which a static generated test has no runtime to reproduce.
+Rather than a silent no-op stub, all three targets raise a `CodegenError` at generation time and
+name `bajutsu run` as the faithful path for a scenario that uses them (BE-0297).
+
 ## Playwright (web) target
 
 `--emit playwright` renders a scenario as a **Playwright test in TypeScript** (`@playwright/test`),
@@ -354,6 +360,10 @@ with a checked-in fixture that CI regenerates, compiles, and runs against a real
 
 - **XCUITest** — `make -C demos/showcase ui-test` re-generates `ComponentsUITests.swift` from a
   scenario and runs it with `xcodebuild test` on the iOS lane (a required check).
+- **Playwright** — `make -C demos/web codegen-e2e` re-generates `codegen/smoke.spec.ts` from
+  `scenarios/smoke.yaml` and runs it with the real `@playwright/test` runner against a real Chromium
+  on the web lane (BE-0293), a required check (`codegen (playwright)` in `web-e2e.yml`) since it
+  proved stable in CI.
 - **UI Automator** — `make -C demos/showcase/android e2e-codegen` re-generates
   `CodegenAndroidUITest.kt` from `codegen_android.yaml` and runs it with Gradle's
   `connectedAndroidTest` against the booted emulator on the Android lane (BE-0294), a non-gating

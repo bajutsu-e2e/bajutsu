@@ -372,6 +372,14 @@ device (the shared device is reseeded via one channel, so parallel workers would
 - DSL control flow & data capture: conditional `if` and `forEach` loops (deterministic; the
   condition is a machine assertion), and `extract` (capture an element's value / label / identifier
   into `${vars.*}`)
+- DSL `interrupts` (BE-0314): a config-level (app-wide default) and scenario-level (appended) list
+  of `{ condition, steps }` entries, checked opportunistically — reusing the assertion-DSL
+  `condition` shape `if` already uses — against the tree a `screenChanged`-policy step or a `wait`
+  poll has already fetched, for a screen that can surface at an unpredictable point (an onboarding
+  step, a permission prompt the accessibility tree can see) rather than one known spot in the step
+  sequence; on a match, runs the entry's `steps` then resumes the interrupted step (a `wait` keeps
+  its original deadline; an act step retries once), with a re-entrancy cap falling back to the
+  step's ordinary outcome
 - DSL text-editing steps (BE-0265): `clear` / `delete` / `select` / `copy` close the gap left by
   `type` on every backend (adb, Playwright, XCUITest, fake); the web context raises
   `UnsupportedAction` for `select`/`copy` (codegen routes those to XCUITest instead), and the web
