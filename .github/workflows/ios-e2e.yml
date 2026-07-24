@@ -284,37 +284,41 @@ jobs:
   # Deliberately NOT in the `E2E` gate's `needs:` below (like `golden` / `visual`): the Simulator lane
   # has a flakiness history (BE-0218), so new actuation lands as a per-PR signal first and is promoted
   # to the gate only once it proves stable.
-  # Interaction + device control (BE-0281): four independent, unrelated scenarios that once shared
-  # one job "purely for cost reasons" — the `build` job now stages the products, so the reason to
-  # bundle is gone. Each scenario is its own matrix leg: a leg is a whole job, so GitHub's "Re-run
-  # failed jobs" reruns only the scenario that failed and never the ones that already passed, and no
-  # single leg comes near the timeout. `fail-fast: false` keeps a failing leg from cancelling its
-  # siblings — the property the old continue-on-error + "Report actuation results" bundle emulated
-  # by hand. Kept out of the `e2e` gate's `needs:` (below), unchanged from the bundle it replaces.
-  #   - navigation:   `tap` + `back` end-to-end, on the Stable launch tab.
-  #   - device:       setLocation + clipboard round-trip (simctl), on the launch tab — the iOS twin
-  #                   of android-e2e.yml's device-control coverage (BE-0210).
-  #   - push:         a simctl `push` delivery — iOS-only (no faithful Android-emulator equivalent,
-  #                   so it lives apart from the cross-backend device.yaml, see push.yaml's header).
-  #   - text_editing: `select` + `copy` round-trip the Search field's text through the clipboard,
-  #                   then `delete` + `clear` edit it down (iOS-only single-form ids, Search tab).
+  # SPIKE (not merge-bound): step-level parallelism instead of the sibling matrix branch's per-scenario
+  # jobs — run the four actuation scenarios concurrently on ONE runner via the native 2026-06-25
+  # `parallel:` step group, each scenario on its own freshly booted Simulator.
+  #
+  # `parallel:` runs each step in the group as a background step with an implicit wait at the end
+  # (docs: workflow-syntax "Running steps in parallel"); the group fails if any sub-step fails. The
+  # group step carries NO `name:` — a first attempt with `- name: … / parallel:` startup_failed the
+  # workflow; the correct shape is a bare `- parallel:` with the sub-steps directly under it.
+  #
+  # Determinism note: the four scenarios all drive UI, so they cannot share one Simulator
+  # concurrently (the `conformance` job runs pytest `-n0` for exactly this reason). Hence one freshly
+  # booted Simulator per scenario — trading the matrix branch's N runners (N× 10x-billed macOS
+  # minutes + N acquisitions) for N Simulators on one runner (RAM/CPU + N cold runner spawns). bajutsu
+  # is invoked inline so the one `uv sync` runs before the fan-out, not four times concurrently on one
+  # venv.
+  #
+  # Why still a spike, not a merge candidate:
+  #   - `actionlint` 1.7.12 (the repo's pinned, required check) does not understand `parallel:`
+  #     (upstream rhysd/actionlint#693-695 are open; no released version supports it), so this is
+  #     pushed with `--no-verify` and its `actionlint` check stays red — GitHub runs the workflow,
+  #     the lint gate does not pass.
+  #   - one job means "Re-run failed jobs" reruns every scenario, not just the failed one — the
+  #     per-scenario re-run the matrix branch buys is lost.
+  #   - four cold XCUITest runners spawning at once likely stresses the `/selectAll timed out`
+  #     cold-runner flakiness the isolated text_editing matrix leg already hit.
   actuation:
-    name: actuation (xcuitest)
+    name: actuation (xcuitest, step-parallel spike)
     needs: [changes, build]
     if: needs.changes.outputs.relevant == 'true'
     runs-on: macos-latest
-    # No build here (the `build` job staged the products) — boot + one short scenario run is ~4min,
-    # so 15 catches a real hang on the metered macOS runner with headroom.
-    timeout-minutes: 15
-    # Raise the wait floor so a cold-boot Simulator has budget to render the first Stable row before
-    # the scenario's own 10s first-wait — the same knob the `smoke` job above and the Android lane
-    # use. A condition wait returns the instant the row appears, so this is a ceiling, not a sleep.
+    # Four cold Simulators + four concurrent runners is heavier than the matrix leg's one-of-each;
+    # 25 gives the fan-out headroom while still catching a real hang on the metered macOS runner.
+    timeout-minutes: 25
     env:
       BAJUTSU_MIN_WAIT_TIMEOUT: "20"
-    strategy:
-      fail-fast: false
-      matrix:
-        scenario: [navigation, device, push, text_editing]
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
 
@@ -330,21 +334,57 @@ jobs:
       - name: Unpack the build products
         run: tar -xpf ios-build.tar
 
-      - name: Wait for the Simulator
-        run: xcrun simctl bootstatus "${{ steps.toolchain.outputs.udid }}" -b
+      # One Simulator per parallel scenario: reuse the toolchain's booted device as Sim 1 and create
+      # three more of the same iPhone device type, then boot + install the app on all four. The four
+      # udids go to $GITHUB_ENV so the parallel run steps below each target their own device.
+      - name: Provision four Simulators (one per scenario)
+        run: |
+          set -euo pipefail
+          sim1="${{ steps.toolchain.outputs.udid }}"
+          devtype=$(xcrun simctl list devices -j | jq -r --arg u "$sim1" '[.devices[][] | select(.udid==$u)] | first | .deviceTypeIdentifier')
+          udids=("$sim1")
+          for n in 2 3 4; do
+            u=$(xcrun simctl create "spike-iphone-$n" "$devtype")
+            xcrun simctl boot "$u"
+            udids+=("$u")
+          done
+          app="demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
+          for u in "${udids[@]}"; do
+            xcrun simctl bootstatus "$u" -b
+            xcrun simctl install "$u" "$app"
+          done
+          {
+            echo "SIM_1=${udids[0]}"
+            echo "SIM_2=${udids[1]}"
+            echo "SIM_3=${udids[2]}"
+            echo "SIM_4=${udids[3]}"
+          } >> "$GITHUB_ENV"
 
-      - name: Install the app
-        run: xcrun simctl install "${{ steps.toolchain.outputs.udid }}" "demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
+      # Sync once, before the fan-out: four concurrent `uv sync` on one venv would race.
+      - name: Sync dependencies (once)
+        run: uv sync --no-dev
 
-      - name: Run the ${{ matrix.scenario }} scenario (xcuitest)
-        uses: ./.github/actions/bajutsu-e2e
+      # The spike's core: the native `parallel:` group runs the four scenarios concurrently, each as
+      # a background step on its own Simulator, with an implicit wait at the end (the group fails if
+      # any sub-step fails). The group step takes no `name:` — a bare `- parallel:` with the
+      # sub-steps directly under it, per the workflow-syntax docs.
+      - parallel:
+          - name: navigation (Sim 1 — tap + back)
+            run: uv run --no-sync bajutsu run --scenario demos/showcase/scenarios/navigation.yaml --target showcase-swiftui --backend xcuitest --config demos/showcase/showcase.config.yaml --udid "$SIM_1" --no-erase --runs-dir runs/navigation
+          - name: device (Sim 2 — setLocation + clipboard)
+            run: uv run --no-sync bajutsu run --scenario demos/showcase/scenarios/device.yaml --target showcase-swiftui --backend xcuitest --config demos/showcase/showcase.config.yaml --udid "$SIM_2" --no-erase --runs-dir runs/device
+          - name: push (Sim 3 — push notification)
+            run: uv run --no-sync bajutsu run --scenario demos/showcase/scenarios/push.yaml --target showcase-swiftui --backend xcuitest --config demos/showcase/showcase.config.yaml --udid "$SIM_3" --no-erase --runs-dir runs/push
+          - name: text_editing (Sim 4 — select/copy/delete/clear)
+            run: uv run --no-sync bajutsu run --scenario demos/showcase/scenarios/text_editing.yaml --target showcase-swiftui --backend xcuitest --config demos/showcase/showcase.config.yaml --udid "$SIM_4" --no-erase --runs-dir runs/text_editing
+
+      - name: Upload run artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
-          scenarios: demos/showcase/scenarios/${{ matrix.scenario }}.yaml
-          target: showcase-swiftui
-          backend: xcuitest
-          config: demos/showcase/showcase.config.yaml
-          udid: ${{ steps.toolchain.outputs.udid }}
-          artifact-name: actuation-${{ matrix.scenario }}-run
+          name: actuation-parallel-run
+          path: runs/
+          if-no-files-found: ignore
 
   # The BE-0006 element-tree golden over XCUITest: pins the normalized accessibility tree for the
   # Stable catalog's list rows, reached on the launch tab. Runs golden.yaml per PR — the iOS twin of
