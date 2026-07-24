@@ -8,10 +8,12 @@ adapter's translation lands as a populated, parseable neutral `MessageResponse` 
 schema check, never a claim about what the model chose to say.
 
 They are signal-first, not a gate (the BE-0282 precedent): each is deselected from the fast suite by
-the `live` marker (pyproject `addopts` `not live`, opt in with `-m live`) *and* skipped whenever its
-provider has no credential, so `make check` stays hermetic even when a contributor's `ANTHROPIC_API_KEY`
-is exported for `record` / `triage --ai`. No LLM ever touches the `run` / CI verdict (prime directive
-1): these exercise the AI *authoring* periphery alone, on a manual `workflow_dispatch` lane.
+the `live` marker (pyproject `addopts` `not live`, opt in with `-m live`) *and* skips itself from
+inside the test body whenever its provider has no credential — the gap check is lazy so it never
+runs a credential probe at collection time — so `make check` stays hermetic even when a contributor's
+`ANTHROPIC_API_KEY` is exported for `record` / `triage --ai`. No LLM ever touches the `run` / CI
+verdict (prime directive 1): these exercise the AI *authoring* periphery alone, on a manual
+`workflow_dispatch` lane.
 
 The deterministic self-checks below (driven by `FakeAnthropic`, unmarked so they run in the gate) keep
 the wire-contract assertion honest, so a live run genuinely validates rather than passing vacuously.
@@ -99,18 +101,17 @@ def test_wire_contract_rejects_an_empty_response() -> None:
 # --- Key-gated live smoke (real provider) --------------------------------------------------------
 
 
-def _requires_credential(provider: str) -> pytest.MarkDecorator:
-    """Skip unless *provider* can authenticate — `credential_gap` returns its missing reason or None."""
-    gap = credential_gap(AiConfig(provider=provider))
-    return pytest.mark.skipif(
-        gap is not None,
-        reason=f"real-API smoke is signal-first (BE-0300); {provider} unavailable: {gap}",
-    )
-
-
 def _run_live_smoke(provider: str) -> None:
-    """Drive the real *provider*'s adapter once and assert its wire contract (never model quality)."""
+    """Drive the real *provider*'s adapter once and assert its wire contract (never model quality).
+
+    The credential check is lazy — a `credential_gap` probe can shell out to a provider CLI, so it
+    must fire only when a `-m live` run actually selects this test, never at collection time (which
+    a bare `make check` still does even though the `live` marker deselects the test afterward).
+    """
     ai = AiConfig(provider=provider)
+    gap = credential_gap(ai)
+    if gap is not None:
+        pytest.skip(f"real-API smoke is signal-first (BE-0300); {provider} unavailable: {gap}")
     backend = create_backend(ai)
     response = backend.create_message(_request(resolve_model(_SMOKE_MODEL, ai)))
     _assert_wire_contract(response)
@@ -118,18 +119,15 @@ def _run_live_smoke(provider: str) -> None:
 
 
 @pytest.mark.live
-@_requires_credential("api-key")
 def test_direct_anthropic_api_adapter_wire_contract() -> None:
     _run_live_smoke("api-key")
 
 
 @pytest.mark.live
-@_requires_credential("bedrock")
 def test_bedrock_adapter_wire_contract() -> None:
     _run_live_smoke("bedrock")
 
 
 @pytest.mark.live
-@_requires_credential("ant")
 def test_ant_cli_adapter_wire_contract() -> None:
     _run_live_smoke("ant")
