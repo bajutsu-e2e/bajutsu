@@ -85,7 +85,7 @@ so it is a compile *and* a run, not a `tsc --noEmit` syntax check — then **fai
 from the checked-in fixture** (so the emitter and the fixture never silently diverge). Node/npm only
 (the runner is the destination framework, not our Python backend); no Simulator, no macOS.
 
-This is the web twin of the iOS `xcuitest (codegen)` gate (`demos/showcase`'s `ui-test`, which builds
+This is the web twin of the iOS `codegen (xcuitest)` gate (`demos/showcase`'s `ui-test`, which builds
 and runs a generated `ComponentsUITests.swift` with `xcodebuild test`). In CI it is the
 `codegen (playwright)` job in `web-e2e.yml`; it lands as **signal** first — reporting but not blocking
 a merge — to be promoted into the required `E2E (web)` gate once stable, exactly as `network

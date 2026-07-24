@@ -1,7 +1,7 @@
 # Bajutsu config for the BE-0292 bundled-runner e2e check. Identical to the two a11y iOS targets in
 # showcase.config.yaml EXCEPT that neither carries an `xcuitest` block: with no `testRunner` and no
 # `build`, a Simulator run falls through to the wheel-bundled generic runner (BE-0292). The
-# `xcuitest (multi-touch)` job runs `smoke.yaml` against both targets with `--backend xcuitest` after
+# `bundled-runner (xcuitest)` job runs `smoke.yaml` against both targets with `--backend xcuitest` after
 # `make runner-bundle`, proving the bundled runner drives an app with no runner path and no build
 # step. The runner is app-agnostic (BE-0019), so covering both SwiftUI and UIKit shows one bundled
 # runner drives either toolkit. Kept separate from showcase.config.yaml so its explicit-testRunner
