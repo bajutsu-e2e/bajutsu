@@ -103,6 +103,7 @@ _LANE_PATHS: dict[str, str] = {
         r"|\.github/workflows/ios-e2e\.yml$"
         r"|\.github/actions/bajutsu-e2e/"
         r"|\.github/actions/boot-simulator/"
+        r"|\.github/actions/setup-ios-toolchain/"
     ),
     "android": (
         # Only the adb driver and the Python side of the resident UI Automator channel (BE-0245) this

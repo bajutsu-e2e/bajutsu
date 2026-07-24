@@ -1,10 +1,11 @@
 name: Set up the iOS toolchain
 description: >-
-  The five steps every ios-e2e.yml macOS job starts with, in one place: select Xcode, install uv,
+  The steps every ios-e2e.yml macOS job starts with, in one place: select Xcode, install uv,
   install xcodegen, start booting a Simulator (asynchronously, so the boot overlaps the caller's own
-  build step), and resolve the active Xcode build version for a DerivedData cache key. Callers still
-  own their own checkout (a local action needs the repo present to resolve) and their own DerivedData
-  caching + build, since those vary per job (app only / app + runner / app + runner + UIKit).
+  build step — set `boot: 'false'` on a build-only job to skip it), and resolve the active Xcode
+  build version for a DerivedData cache key. Callers still own their own checkout (a local action
+  needs the repo present to resolve); the build-once job owns the DerivedData caching + build, and
+  every consumer job downloads the products it staged.
 
 inputs:
   device-type:
@@ -14,6 +15,13 @@ inputs:
       iPhone.
     required: false
     default: ""
+  boot:
+    description: >-
+      Start booting a Simulator. 'true' (default) starts an async boot the caller waits on before
+      actuating. Set 'false' for a job that only builds (the build-once job): compiling needs no
+      Simulator, so skipping the boot frees the runner's CoreSimulator work — `udid` is then empty.
+    required: false
+    default: "true"
 
 outputs:
   udid:
@@ -49,9 +57,11 @@ runs:
 
     # Start the boot before the caller's build step so a fresh boot's ~80s overlaps with it.
     # `wait: false` returns once the boot is initiated; the caller blocks on "booted" itself
-    # right before installing/actuating.
+    # right before installing/actuating. Skipped when `boot: 'false'` (the build-once job builds the
+    # host-independent products and never touches a Simulator).
     - name: Boot a Simulator
       id: boot
+      if: inputs.boot != 'false'
       uses: ./.github/actions/boot-simulator
       with:
         wait: "false"

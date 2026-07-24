@@ -144,6 +144,14 @@ def test_only_e2e_workflow_is_relevant() -> None:
     assert is_relevant([".github/workflows/ci.yml"]) is False
 
 
+def test_ios_composite_actions_are_relevant() -> None:
+    # The macOS jobs share three composite actions; a change to any of them (e.g. the build-once
+    # job's `boot: false` toggle in setup-ios-toolchain) must trigger the lane it feeds.
+    assert is_relevant([".github/actions/setup-ios-toolchain/action.yml"]) is True
+    assert is_relevant([".github/actions/bajutsu-e2e/action.yml"]) is True
+    assert is_relevant([".github/actions/boot-simulator/action.yml"]) is True
+
+
 def test_showcase_makefile_is_relevant_but_root_makefile_path_form_matters() -> None:
     # The showcase's own Makefile drives the `visual` job's `e2e-visual` target; the root
     # `Makefile$` alternative doesn't reach into subdirectories, so it needs its own entry.
