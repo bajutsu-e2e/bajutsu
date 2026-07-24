@@ -1,0 +1,60 @@
+# Real-API contract smoke for the AI backend adapters (BE-0300) — manual, opt-in, dormant by default.
+#
+# tests/test_ai_backend_live_smoke.py calls a real provider through Bajutsu's own adapter code
+# (`bajutsu.ai.anthropic.AnthropicBackend`) with a trivial forced-tool prompt and asserts only that
+# the reply lands as a populated, parseable neutral `MessageResponse` — a transport-and-schema check,
+# never a claim about what the model said. Every other adapter test drives a hand-written
+# `FakeAnthropic`, so nothing else re-observes the live API's actual shape. No LLM touches the `run` /
+# CI verdict (prime directive 1): this exercises the AI *authoring* periphery alone.
+#
+# HARD BOUNDARY: `workflow_dispatch` only — never on push or pull_request, so a fork-triggered run can
+# never see the credential (the boundary .github/workflows/devicefarm.yml already draws). It is not a
+# required check; following the BE-0282 precedent it lands as a non-gating signal.
+#
+# Auth is the `ANTHROPIC_API_KEY` repository secret, scoped to the `ai-smoke` Environment. With it
+# unset the live test skips itself (`credential_gap` reports the missing key) and the job is a green
+# no-op, so the lane stays dormant until an operator wires the secret up. Only the direct Anthropic
+# API adapter is wired here: Bedrock needs a live AWS role and `ant` a signed-in OAuth CLI seat,
+# neither realistically available as a CI secret — the item's Progress log records that gap. Their
+# tests still run locally / manually via `pytest -m live` when the credential is present.
+name: AI backend smoke
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  direct-api:
+    name: smoke (direct Anthropic API)
+    runs-on: ubuntu-latest
+    # A single Anthropic call needs little; bound it so a hung live request can't run to
+    # Actions' 6h default and hold the ai-smoke Environment lock.
+    timeout-minutes: 15
+    environment: ai-smoke
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990  # v8.3.2
+        with:
+          enable-cache: true
+
+      # The dev group already pulls in `bajutsu[ai,...]` (the anthropic SDK) plus pytest — the same
+      # gate env `ci.yml` installs — so `--group dev` alone covers the live smoke's needs. No
+      # Simulator or browser extra is added; those stay out of the dev group.
+      - name: Install the gate env (includes the AI extra + test tooling)
+        run: uv sync --group dev
+
+      # `-m live` overrides the default `-m 'not ... and not live'` (pyproject addopts) so the suite —
+      # deselected everywhere else — actually runs here. `-n0` overrides `-n auto`: a single real call
+      # gains nothing from xdist workers. With the key unset the test skips and the job stays green.
+      - name: Real-API wire contract (direct Anthropic API)
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: uv run --no-sync pytest tests/test_ai_backend_live_smoke.py -m live -n0 -v
