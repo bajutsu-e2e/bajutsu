@@ -289,7 +289,7 @@ class SystemAlertGuard:
   wait につき最大 2 回まで）。wait 自体のタイムアウトを待たず、末尾の再試行より前に回復できます（BE-0269）。
   シナリオ側で `alertHandling: false` で無効化、`{ instruction: "tap Allow" }` でボタンを指定できます。
   `--alert-handling`/`--no-alert-handling` は全シナリオを上書きし、`--alert-instruction "..."` は既定指示を設定します。
-- `record --alert-handling`: opt-in です（オーサリング時はまだシナリオが無いため）。割り込むプロンプトを片付け、
+- `record --alert-handling`: 既定で ON です（オーサリング時はまだシナリオが無いため）。割り込むプロンプトを片付け、
   エージェントに常にクリーンな画面を見せます。**dismissal は環境操作であって記録ステップではありません**
   （リプレイ側は各シナリオの `alertHandling` で対処します）。
 

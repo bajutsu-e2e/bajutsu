@@ -327,7 +327,7 @@ class SystemAlertGuard:
   end-of-step retry (BE-0269). A scenario sets `alertHandling: false`
   to opt out or `{ instruction: "tap Allow" }` to name a button; `--alert-handling`/`--no-alert-handling`
   overrides every scenario and `--alert-instruction "..."` sets a default instruction.
-- `record --alert-handling`: opt-in (authoring has no scenario yet). Clears prompts that interrupt
+- `record --alert-handling`: on by default (authoring has no scenario yet). Clears prompts that interrupt
   authoring so the agent always sees a clean screen. **A dismissal is an environment operation, not a
   recorded step** (replay handles it via each scenario's `alertHandling`).
 

@@ -302,7 +302,7 @@ bajutsu record --target <name> --goal "<自然言語ゴール>" [--out <file.yam
 | `--udid` | `booted` | 対象 Simulator |
 | `--backend` | config | actuator 順 |
 | `--erase / --no-erase` | `--erase` | 起動前に erase（アプリはインストール済みである必要） |
-| `--alert-handling` | off | オーサリング中のプロンプトを片付ける（要 API キー） |
+| `--alert-handling` | on | オーサリング中のプロンプトを片付ける（要 API キー） |
 | `--headed / --no-headed` | アプリの `headless` | web backend: ヘッドレスではなく目に見える（低速再生の）ブラウザでオーサリングします。省略時はアプリの `headless` 設定に従います |
 | `--alert-instruction` | "" | 同上の押下指示 |
 | `--language` | config の `ai.language`（`auto`） | 著すプローズ（`from:` 由来、推論）の AI 出力言語。`ja` / `en` / `auto` から選び `ai.language` を上書きします。`auto` はゴールに追従します（[BE-0188](../../roadmaps/BE-0188-configurable-ai-output-language/BE-0188-configurable-ai-output-language-ja.md)） |

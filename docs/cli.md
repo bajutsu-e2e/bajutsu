@@ -419,7 +419,7 @@ bajutsu record --target <name> --goal "<natural-language goal>" [--out <file.yam
 | `--udid` | `booted` | the target Simulator |
 | `--backend` | config | actuator order |
 | `--erase / --no-erase` | `--erase` | erase before launch (the app must be installed) |
-| `--alert-handling` | off | clear prompts during authoring (needs an API key) |
+| `--alert-handling` | on | clear prompts during authoring (needs an API key) |
 | `--headed / --no-headed` | app `headless` | web backend: author against a visible (headed, slow-motion) browser instead of headless; omit to use the app's `headless` config |
 | `--alert-instruction` | "" | the press instruction for the above |
 | `--language` | config `ai.language` (`auto`) | AI output language for the authored prose (`from:` provenance, reasoning) — `ja` / `en` / `auto`; overrides `ai.language`, `auto` follows the goal ([BE-0188](../roadmaps/BE-0188-configurable-ai-output-language/BE-0188-configurable-ai-output-language.md)) |
