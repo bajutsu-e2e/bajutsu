@@ -60,7 +60,8 @@ concurrency:
 # Capture the XCUITest runner subprocess's stdout/stderr (folded together) on every on-device job.
 # Without it the runner's output goes to DEVNULL, so a startup timeout ("xcuitest runner did not come
 # up within Ns") is undiagnosable — we can't tell a crash from a hang from a slow XCTest host, and a
-# *mid-run* runner crash (the known app.launch()-cycle crash) leaves no trace of what the runner did.
+# *mid-run* runner crash (see `_MAX_WARM_REUSES` in `bajutsu/platform_lifecycle/environments/xcuitest.py`
+# for what this repeatedly surfaced on this PR's CI runs) leaves no trace of what the runner did.
 # With capture on, a startup-timeout warning carries the log's tail inline
 # (bajutsu/platform_lifecycle/environments/xcuitest.py), and the file itself is retained for any
 # failure. The directory sits *under* `runs/` on purpose: every on-device job already uploads `runs/`

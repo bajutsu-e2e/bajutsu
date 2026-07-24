@@ -36,9 +36,9 @@ _logger = logging.getLogger(__name__)
 
 # Set to a directory to capture the runner subprocess's combined stdout/stderr, one file per cold
 # spawn. Off by default (the output is discarded): a passing run is silent and high-volume, but a
-# mid-run crash — the known app.launch()-cycle crash (docs/architecture.md) — is otherwise visible
-# only as a `Connection refused` with no cause. A diagnostic aid for isolating that crash, not a
-# behavior change: unset, the runner is spawned exactly as before.
+# mid-run crash — see `_MAX_WARM_REUSES` below for what this repeatedly surfaced in CI — is
+# otherwise visible only as a `Connection refused` with no cause. A diagnostic aid for isolating
+# that crash, not a behavior change: unset, the runner is spawned exactly as before.
 _RUNNER_LOG_ENV = "BAJUTSU_XCUITEST_RUNNER_LOG"
 
 # Lines of captured runner output to fold into the crash warning — enough to show the tail of an
@@ -64,18 +64,26 @@ def _allocate_port() -> int:
 _RUNNER_STARTUP_TIMEOUT = 120.0
 
 # Probing a *warm* runner before reuse (BE-0291): a live runner answers /health at once, so this only
-# bounds the wedged case — a runner that crashed after repeated app.launch() cycles (a known failure,
-# docs/architecture.md) must be detected quickly and respawned, not waited on for the cold ceiling.
+# bounds the wedged case — a runner that crashed after repeated app.launch() cycles must be detected
+# quickly and respawned, not waited on for the cold ceiling.
 _WARM_HEALTH_TIMEOUT = 10.0
 
-# The resident runner crashes after a handful of app.launch() cycles (docs/architecture.md): each warm
-# reuse re-attaches the XCTest automation session to a freshly launched app, and the session
-# (DTServiceHub) destabilizes after several. The BE-0291 warm probe is only *reactive* — it detects a
-# runner that has *already* crashed, so the crash still lands mid-scenario and fails it. Bounding the
-# reuse count makes the respawn *proactive*: after this many warm reuses, `start` respawns the runner
-# cold (a fresh XCTest session) before the next launch can tip it over, so a run never hits the
-# mid-scenario crash. A cold spawn resets the count. Kept below "a handful" with headroom; overridable
-# per lane for on-device tuning without a code change. 0 disables warm reuse entirely (always cold).
+# CI observation, not a documented platform limit: this PR's own `golden` / `visual` /
+# `xcuitest (multi-touch)` lanes crashed the resident runner mid-run on nearly every attempt, on
+# CI hardware only — never reproduced locally on a real Mac across dozens of runs, including the
+# exact same multi-scenario sequences these lanes exercise. The most likely cause, since it appeared
+# only alongside BE-0310, is `BajutsuScreen`'s `viewDidAppear` hook doing JSON-encode-and-POST work
+# synchronously on the main thread on every screen appearance — new work in a callback the XCTest
+# accessibility bridge is already timing-sensitive around on slower/contended CI hosts. That work is
+# now dispatched off the main thread (`BajutsuNet.postJSON`), which should remove the cause directly.
+# This bound stays as defense-in-depth for the reactive case the BE-0291 warm probe only detects
+# after the fact — each warm reuse re-attaches the XCTest automation session to a freshly launched
+# app, and that session can still destabilize after enough cycles even without the crash this PR
+# introduced. Bounding the reuse count makes the respawn *proactive*: after this many warm reuses,
+# `start` respawns the runner cold (a fresh XCTest session) before the next launch can tip it over,
+# so a run never hits the mid-scenario crash. A cold spawn resets the count. Kept below "a handful"
+# with headroom; overridable per lane for on-device tuning without a code change. 0 disables warm
+# reuse entirely (always cold).
 _MAX_WARM_REUSES = 3
 _MAX_WARM_REUSES_ENV = "BAJUTSU_XCUITEST_MAX_WARM_REUSES"
 
@@ -415,10 +423,11 @@ class XcuitestEnvironment(_DeviceEnvironment):
         if self._runner_proc is not None:
             exited = self._runner_proc.poll()
             if exited is not None:
-                # The process is already gone — it exited on its own, not at our request. This is the
-                # known app.launch()-cycle crash (docs/architecture.md); log it (with the captured
-                # output when enabled) so a run that died on a `Connection refused` shows *why* the
-                # channel vanished, not only that it did. No terminate(): the pid is already reaped.
+                # The process is already gone — it exited on its own, not at our request (see
+                # `_MAX_WARM_REUSES` above for the mid-run crash this guards against). Log it (with
+                # the captured output when enabled) so a run that died on a `Connection refused` shows
+                # *why* the channel vanished, not only that it did. No terminate(): the pid is already
+                # reaped.
                 _logger.warning(
                     "xcuitest runner exited on its own (code %s) — a mid-run crash%s",
                     exited,

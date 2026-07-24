@@ -141,7 +141,9 @@ _SYSTEM_ALERT_POLL_SECONDS = 0.2
 
 # How many *consecutive* mid-run crashes the recovery layer rides out before failing loudly. Recovery
 # re-issues an idempotent call once the runner is back; a runner that crashes *again* on that re-issue
-# — the DTServiceHub / app.launch()-cycle flake observed crashing on back-to-back `/screenshot` calls —
+# — observed crashing on back-to-back `/screenshot` calls on CI only, once BE-0310 added the
+# `viewDidAppear` hook's per-appearance report (see `_MAX_WARM_REUSES` in
+# `platform_lifecycle/environments/xcuitest.py` for the likely root cause and its direct fix) —
 # used to propagate uncaught and fail the run on the second crash. Retrying the recovery a bounded
 # number of times rides out a runner that flaps across a few calls, while a runner that never
 # stabilizes still fails the run rather than looping forever. Each attempt re-uses `recovery_timeout`
@@ -295,11 +297,11 @@ def _with_crash_recovery(
     `XcuitestRunnerCrashError`. This layer catches that and decides by the same `delivered` split the
     seam already draws. An idempotent read — or a write that never reached the runner — waits for the
     runner to come back (via *health*, the bounded `/health` poll) and re-issues, because re-reading is
-    safe. The re-issue is itself protected: a runner that crashes *again* on the re-issued call (the
-    DTServiceHub / app.launch()-cycle flake that crashes on back-to-back calls) is recovered anew, up to
-    `max_recoveries` consecutive crashes, so a flapping runner is ridden out instead of failing the run
-    on the second crash. A write that may already have been delivered is never re-sent (double-actuation
-    risk) and fails with a distinct crash diagnostic, so the run stops on an honest "the runner died
+    safe. The re-issue is itself protected: a runner that crashes *again* on the re-issued call is
+    recovered anew, up to `max_recoveries` consecutive crashes, so a flapping runner is ridden out
+    instead of failing the run on the second crash. A write that may already have been delivered is
+    never re-sent (double-actuation risk) and fails with a distinct crash diagnostic, so the run
+    stops on an honest "the runner died
     mid-gesture" rather than a misleading `actual='idle'`. Every crash — recovered or not — is logged as
     visibly as the retry seam logs a retried blip (BE-0287 Unit 4), so a crashed-and-recovered run is
     never indistinguishable from one that never crashed.

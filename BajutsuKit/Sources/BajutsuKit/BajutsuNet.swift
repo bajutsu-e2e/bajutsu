@@ -84,15 +84,25 @@ public enum BajutsuNet {
     /// POST a JSON payload to the collector, fire-and-forget, bearer-authenticated with the
     /// per-run token. Shared by `report` above and `BajutsuScreen`'s transition report, so the
     /// request-construction boilerplate (headers, auth, serialization) is written once.
+    ///
+    /// Serialization and the `dataTask` handoff are dispatched off the caller's thread. `report`
+    /// above already isn't guaranteed to run on the main thread, but `BajutsuScreen`'s caller,
+    /// `viewDidAppear`, always is — and unlike an intercepted network exchange, an appearance
+    /// report sits directly in a UIKit/SwiftUI lifecycle callback the accessibility bridge
+    /// depends on to observe the UI settling. Keeping this off that thread avoids adding new
+    /// main-thread work to a callback XCTest's automation session is already timing-sensitive
+    /// around.
     static func postJSON(_ payload: [String: Any], to url: URL, token: String?, session: URLSession) {
-        guard let data = try? JSONSerialization.data(withJSONObject: payload) else { return }
-        var req = URLRequest(url: url)
-        req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        if let token {
-            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        DispatchQueue.global(qos: .utility).async {
+            guard let data = try? JSONSerialization.data(withJSONObject: payload) else { return }
+            var req = URLRequest(url: url)
+            req.httpMethod = "POST"
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            if let token {
+                req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            }
+            req.httpBody = data
+            session.dataTask(with: req).resume()  // fire-and-forget
         }
-        req.httpBody = data
-        session.dataTask(with: req).resume()  // fire-and-forget
     }
 }
