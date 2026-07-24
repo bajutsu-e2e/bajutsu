@@ -29,6 +29,7 @@ from bajutsu.scenario.models.actions import (
     Drag,
     Email,
     Foreground,
+    HandleSystemAlert,
     HttpRequest,
     LongPress,
     Manual,
@@ -152,6 +153,7 @@ class Step(_Model):
     foreground: Foreground | None = None
     override_status_bar: OverrideStatusBar | None = Field(default=None, alias="overrideStatusBar")
     clear_status_bar: ClearStatusBar | None = Field(default=None, alias="clearStatusBar")
+    handle_system_alert: HandleSystemAlert | None = Field(default=None, alias="handleSystemAlert")
     web: Web | None = None
     # A human-takeover marker (BE-0185): an operation the AI could not perform, recorded during
     # `record` and — because it has no deterministic run-time equivalent — failing loudly at `run`

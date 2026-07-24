@@ -64,6 +64,14 @@ public protocol ElementProviding: AnyObject {
     /// Copy the active selection to the clipboard (BE-0265).
     func copySelection() -> TapResult
 
+    /// Snapshot the buttons of a presented iOS SpringBoard system alert (a permission prompt),
+    /// empty when none is up (BE-0316). The alert is out of the app's process, so this queries a
+    /// second, on-demand SpringBoard handle rather than the app under test.
+    func querySystemAlertButtons() -> [ElementSnapshot]
+
+    /// Tap the SpringBoard alert button identified by its backing reference (BE-0316).
+    func tapSystemAlertButton(backingElement: AnyObject) -> TapResult
+
     /// Capture a screenshot as PNG data.
     func screenshot() -> Data?
 }

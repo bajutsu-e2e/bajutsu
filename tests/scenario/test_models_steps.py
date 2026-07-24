@@ -249,3 +249,48 @@ def test_copy_step_parses() -> None:
 def test_text_editing_steps_are_one_action() -> None:
     with pytest.raises(ValidationError):
         Step.model_validate({"copy": {}, "clear": {"into": {"id": "a"}}})
+
+
+# --- handleSystemAlert (BE-0316) -----------------------------------------------------------------
+
+
+def test_handle_system_alert_parses_with_label_selector() -> None:
+    step = Step.model_validate({"handleSystemAlert": {"sel": {"label": "Allow"}, "timeout": 5}})
+    assert step.handle_system_alert is not None
+    assert step.handle_system_alert.sel.label == "Allow"
+    assert step.handle_system_alert.timeout == 5.0
+
+
+def test_handle_system_alert_accepts_labelmatches_and_index() -> None:
+    for sel in ({"labelMatches": "Allo.*"}, {"label": "OK", "index": 1}):
+        step = Step.model_validate({"handleSystemAlert": {"sel": sel, "timeout": 5}})
+        assert step.handle_system_alert is not None
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        {"id": "perm.allow"},
+        {"idMatches": "perm.*"},
+        {"traits": ["button"]},
+        {"value": "Allow"},
+        {"within": {"label": "Alert"}},
+    ],
+)
+def test_handle_system_alert_rejects_non_label_selector_fields(field: dict[str, object]) -> None:
+    # A SpringBoard alert button carries only its visible text, so any id/trait/value/within field is
+    # a scenario error caught at parse time (§6.2), not a match that can never succeed at run time.
+    with pytest.raises(ValidationError, match="handleSystemAlert sel accepts only"):
+        Step.model_validate({"handleSystemAlert": {"sel": field, "timeout": 5}})
+
+
+def test_handle_system_alert_requires_timeout() -> None:
+    with pytest.raises(ValidationError):
+        Step.model_validate({"handleSystemAlert": {"sel": {"label": "Allow"}}})
+
+
+def test_handle_system_alert_is_one_action() -> None:
+    with pytest.raises(ValidationError):
+        Step.model_validate(
+            {"handleSystemAlert": {"sel": {"label": "Allow"}, "timeout": 5}, "tap": {"id": "a"}}
+        )

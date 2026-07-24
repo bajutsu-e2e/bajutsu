@@ -99,6 +99,7 @@ final class ComponentsUITests: XCTestCase {
 | `type`（`into` なし） | `app.typeText(...)` |
 | `swipe { on, direction }` | `.swipeUp/Down/Left/Right()` |
 | `swipe { from, to }` | `coord(x1, y1).press(forDuration: 0.1, thenDragTo: coord(x2, y2))`（`XCUICoordinate` のドラッグ。BE-0025） |
+| `handleSystemAlert` | `XCTAssertTrue(XCUIApplication(bundleIdentifier: "com.apple.springboard").buttons["…"].waitForExistence(timeout:))` + `.tap()`。ネイティブな SpringBoard の書き方で、ステップの `timeout` を引き継ぐ（BE-0316） |
 | `wait { for }` | `XCTAssertTrue(el(...).waitForExistence(timeout:))` |
 | `wait { until: gone }` | `.waitForNonExistence(timeout:)` |
 | `wait { until: screenChanged/settled }` | コメント（XCUITest は hittability を自動待機） |
@@ -198,6 +199,7 @@ test.describe('Components', () => {
 | `wait { until: screenChanged/settled }` | コメント（Playwright は自動待機） |
 | `relaunch` | `await page.goto(BASE_URL)` |
 | `pinch` / `rotate` | `// TODO`（マルチタッチ。web backend は駆動しない） |
+| `handleSystemAlert` | `// TODO`（iOS 専用。web に OS レベルのプロンプトは無い） |
 
 ### アサーションのマッピング（Playwright、web-first `expect`）
 
@@ -321,6 +323,7 @@ class ComponentsUITest {
 | `wait { until: screenChanged/settled }` | `device.waitForIdle(<ms>L)`。`findObject` は auto-wait しないので、裸コメントではなく実際の条件待機にする |
 | `relaunch` | `launch(extras)`（起動 intent を再発行） |
 | `doubleTap` / `rotate` | `// TODO`（対応する UI Automator ジェスチャが無い） |
+| `handleSystemAlert` | `// TODO`（iOS 専用。Android ではシステムダイアログを直接 tap する） |
 
 ### アサーションのマッピング（UI Automator）
 

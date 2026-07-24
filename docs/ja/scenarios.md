@@ -123,6 +123,35 @@ iOS バックエンドは **SpringBoard レベルのプロンプト**（iOS の 
 
 CLI の `--dismiss-alerts` / `--no-dismiss-alerts` フラグは**全シナリオを上書き**します（無指定ならシナリオごとの既定が使われます）。`--alert-instruction` は既定のボタン指示を設定するもので、シナリオ自身の `instruction` が優先されます。（[`demos/showcase/scenarios/permission.yaml`](../../demos/showcase/scenarios/permission.yaml) 実物）
 
+## handleSystemAlert（決定的なシステムアラートステップ）
+
+上記の `dismissAlerts` は**リアクティブなガード**です。ステップがすでにブロックされたときにだけ発火し、どこを tap するかを視覚モデルが判断します。`handleSystemAlert` はその対極にあります。プロンプトが現れると見込んだ地点に作者が明示的に置く**決定的なステップ**で、プロンプトのボタンをネイティブなアクセシビリティ照会で tap します。**スクリーンショットもモデル呼び出しもありません**（[BE-0316](../../roadmaps/BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step-ja.md)）。リクエストと許可の流れ自体をテストしたいときに使います。OS の権限リクエストを発火させ、続いて現れるプロンプトを決定的に許可または拒否します。
+
+```yaml
+- name: grant the notification prompt mid-flow
+  steps:
+    - tap: { id: perm.requestNotif }                              # OS の権限リクエストを発火させる
+    - handleSystemAlert: { sel: { label: "Allow" }, timeout: 5 }  # プロンプトのボタンを label で tap する
+    - wait: { for: { id: perm.notif.authorized }, timeout: 5 }    # 許可され、アプリの状態が更新される
+```
+
+許可ではなく拒否するには、拒否側のボタンを指定します（`handleSystemAlert: { sel: { label: "Don't Allow" }, timeout: 5 }`）。
+
+- **`sel` は label 系のみです。** SpringBoard のアラートボタンは、アプリが割り当てた identifier も trait も value も持たず、見えているテキストしか持ちません。そのため `sel` は `label` / `labelMatches` / `index` を受け付け、`id` / `idMatches` / `traits` / `value` / `within` はパース時に拒否します。
+- **`timeout` は必須です。** `wait` とまったく同じで、プロンプトを待つ条件待機には明示的な上限が要ります。ステップはプロンプトを待ち込んでから tap します。固定の sleep はありません。
+- **0 件・複数件は即座に失敗します。** `timeout` 以内にプロンプトが現れなければステップは失敗します。label に一致するボタンが複数あるときは、`index` が n 番目を選ぶ場合を除いて曖昧として失敗します。あらゆる[セレクタ](selectors.md)が従う規則を、アラートのボタンに当てはめたものです。
+- **iOS（XCUITest）専用です。** この能力を宣言するのは iOS バックエンドだけなので、Android や web バックエンドに対して `handleSystemAlert` を指定したシナリオは、デバイスを操作する前の **preflight** で失敗します。Android はシステムダイアログを通常の要素ツリーに出すため、そこでは素の `tap` で届きます。web バックエンドには OS レベルのプロンプト自体がありません。
+
+`handleSystemAlert` と、隣り合う 2 つのアラート系フィールドのどちらを選ぶかの目安を次に示します。
+
+| フィールド | 用途 | タイミング | 仕組み |
+|---|---|---|---|
+| `permissions` | そもそも避けられる OS 権限プロンプト | 起動前、アプリが動き出す前 | 決定的なデバイス操作 |
+| `handleSystemAlert` | **既知の**、途中で tap するつもりのプロンプト | 作者が置いた明示的なステップ | 決定的（ネイティブなアクセシビリティ tap） |
+| `dismissAlerts` | ツリーに見えない**想定外**のプロセス外プロンプト | ステップや wait がブロックされたときに反応 | AI 視覚（`ANTHROPIC_API_KEY`） |
+
+（[`demos/showcase/scenarios/permission_system_alert.yaml`](../../demos/showcase/scenarios/permission_system_alert.yaml) 実物）
+
 ## permissions（起動前の権限状態）
 
 `dismissAlerts` は権限プロンプトが**現れた後**にしか反応せず、できるのは tap だけです。権限を**取り消す**ことも、アプリが既知の状態から起動することを保証することもできません。権限があらかじめわかっている場合、`permissions` を使えば**アプリのプロセスが起動する前**にその状態を設定できるため、プロンプトはそもそも現れません。モデルを一切呼ばない、決定的でマシンチェック可能なデバイス操作です（[BE-0276](../../roadmaps/BE-0276-scenario-permission-state/BE-0276-scenario-permission-state-ja.md)）。
@@ -182,7 +211,8 @@ targets:
 |---|---|---|---|
 | `if` | ステップ列の**わかっている**位置に出る画面 | 台本どおりの 1 回の判定 | 決定的（アサーション DSL） |
 | `interrupts` | **予測できない**位置に出る、ツリーに見える画面 | 全体を通して随時判定 | 決定的（アサーション DSL） |
-| `dismissAlerts` | ツリーに見えない**プロセス外**のシステムプロンプト | ステップや wait がブロックされたときに反応 | AI 視覚（`ANTHROPIC_API_KEY`） |
+| `handleSystemAlert` | 途中で tap するつもりの**既知の**プロセス外プロンプト | 作者が置いた明示的なステップ | 決定的（ネイティブなアクセシビリティ tap） |
+| `dismissAlerts` | ツリーに見えない**想定外**のプロセス外プロンプト | ステップや wait がブロックされたときに反応 | AI 視覚（`ANTHROPIC_API_KEY`） |
 | `permissions` | そもそも避けられる OS 権限プロンプト | 起動前、アプリが動き出す前 | 決定的なデバイス操作 |
 
 「この条件をテスト全体を通して随時判定する」に対応するネイティブな XCUITest / Espresso / Playwright の構文はありません。そのため `codegen` はコードを生成する代わりに、フィールドと設定された各条件を名指ししたラベル付きの `// TODO` を出力します。`bajutsu run` が忠実に実行する経路です。
@@ -242,6 +272,7 @@ targets:
 | `drag` | `drag: { on: <Selector>, direction: up\|down\|left\|right, amount?: <frac> }` | 要素そのものを**ドラッグ**する（ハンドル／仕切り／スライダー）。スクロールではない |
 | `pinch` | `pinch: { sel: <Selector>, scale: <num> }` | 2 本指の拡縮。`scale > 0`（`>1` で拡大, `<1` で縮小） |
 | `rotate` | `rotate: { sel: <Selector>, radians: <num> }` | 2 本指の回転。`>0` で時計回り |
+| `handleSystemAlert` | `handleSystemAlert: { sel: <Selector>, timeout: <sec> }` | iOS SpringBoard の権限プロンプトのボタンを決定的に tap する（[下記](#handlesystemalert決定的なシステムアラートステップ)）。iOS（XCUITest）専用。`sel` は `label` / `labelMatches` / `index` のみ受け付ける |
 | `wait` | `wait: { for\|until: ..., timeout: <sec> }` | 条件待機（下記） |
 | `assert` | `assert: [ <Assertion>... ]` | ステップ途中の中間検証 |
 | `relaunch` | `relaunch: { env?: {...}, args?: [...] }` | アプリを terminate + 再起動し（launch env/args を再適用し、指定分で上書き）、ready まで待つ |

@@ -192,6 +192,11 @@ _REQUIREMENTS = (
         "visual assertion",
         _visual_locations,
     ),
+    _Requirement(
+        base.Capability.HANDLE_SYSTEM_ALERT,
+        "handleSystemAlert (iOS system-alert tap; iOS XCUITest only)",
+        _step_locations(lambda s: s.handle_system_alert is not None),
+    ),
     *(
         _Requirement(token, f"{label} (device control)", _step_locations(matches))
         for token, label, matches in _DEVICE_CONTROL_OPS

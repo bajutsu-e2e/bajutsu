@@ -109,13 +109,17 @@ runner-build-device:
 # resolves to XCUITest, the sole iOS backend since idb was retired (BE-0290). `scenarios/tabs.yaml`
 # stays tagged `xcuitest` and excluded here — a legacy split from when a coordinate backend could not
 # reach the tab bar — and `run-swiftui-tabs`/`run-uikit-tabs` below run it on its own; both paths run
-# on XCUITest now. Prereqs: a booted simulator, `make runner-build`.
+# on XCUITest now. `permission_system_alert.yaml` (BE-0316) is tagged `systemalert` and excluded too:
+# these bulk runs discover every scenario file and do not reset per-scenario permission state, so the
+# `notDetermined` prompt its handleSystemAlert step needs is not guaranteed here (its own iOS CI job
+# installs a fresh app for it). A dedicated tag keeps it out without riding the legacy `xcuitest` tag.
+# Prereqs: a booted simulator, `make runner-build`.
 SIM ?= $(shell xcrun simctl list devices booted | grep -oE '[0-9A-F-]{36}' | head -1)
 
 run-swiftui: swiftui-build runner-build
-	cd $(ROOT) && uv run bajutsu run --target showcase-swiftui --udid $(SIM) --backend ios --exclude xcuitest --config $(CONFIG)
+	cd $(ROOT) && uv run bajutsu run --target showcase-swiftui --udid $(SIM) --backend ios --exclude xcuitest,systemalert --config $(CONFIG)
 run-uikit: uikit-build runner-build
-	cd $(ROOT) && uv run bajutsu run --target showcase-uikit --udid $(SIM) --backend ios --exclude xcuitest --config $(CONFIG)
+	cd $(ROOT) && uv run bajutsu run --target showcase-uikit --udid $(SIM) --backend ios --exclude xcuitest,systemalert --config $(CONFIG)
 
 # scenarios/tabs.yaml on its own, forced onto XCUITest (see the comment above run-swiftui/run-uikit).
 run-swiftui-tabs: swiftui-build runner-build

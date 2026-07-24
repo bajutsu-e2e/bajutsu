@@ -389,6 +389,12 @@ def _emit_step(step: Step) -> list[str]:
         return ["// TODO: multi-touch (pinch) is not generated for web"]
     if step.rotate is not None:
         return ["// TODO: multi-touch (rotate) is not generated for web"]
+    if step.handle_system_alert is not None:
+        # An iOS SpringBoard permission prompt (BE-0316); the web has no OS-level prompt, so there is
+        # nothing to generate — a labeled TODO, like the multi-touch fallbacks above.
+        return [
+            "// TODO: handleSystemAlert — iOS-only; the web has no OS-level prompt; not generated"
+        ]
     if step.relaunch is not None:
         return ["await page.goto(BASE_URL);"]
     if step.assert_ is not None:

@@ -50,6 +50,40 @@ class Rotate(_Model):
     radians: float
 
 
+# The label-based Selector fields a SpringBoard alert button can actually carry (Python field
+# names); every other field (id/idMatches/traits/value/within) could never match one — the alert
+# lives outside the app's accessibility tree, so it has no app-assigned identifier, trait, or value.
+_SYSTEM_ALERT_SEL_FIELDS = frozenset({"label", "label_matches", "index"})
+
+
+class HandleSystemAlert(_Model):
+    """`handleSystemAlert` action — tap a button on an iOS SpringBoard permission prompt (BE-0316).
+
+    A permission alert lives outside the app's accessibility tree (SpringBoard owns it), so it
+    carries no app-assigned identifier, trait set, or value — only its visible text. `sel` therefore
+    accepts the label-based fields alone (`label` / `labelMatches` / `index`) and rejects the rest at
+    parse time. `timeout` bounds the condition wait for the prompt, required exactly as `wait`'s is.
+    """
+
+    sel: Selector
+    timeout: float
+
+    @model_validator(mode="after")
+    def _label_only_selector(self) -> Self:
+        disallowed = sorted(
+            f for f in self.sel.model_fields_set if f not in _SYSTEM_ALERT_SEL_FIELDS
+        )
+        if disallowed:
+            # Name each rejected field by the alias the author writes (idMatches, not id_matches),
+            # read from the Selector model itself so this can't drift from the real aliases.
+            aliases = ", ".join(Selector.model_fields[f].alias or f for f in disallowed)
+            raise ValueError(
+                "handleSystemAlert sel accepts only label / labelMatches / index — "
+                f"a SpringBoard alert button carries no {aliases} (§6.2)"
+            )
+        return self
+
+
 class TapPoint(_Model):
     """`tapPoint` action — tap a screen location by normalized coordinates (0..1), not a selector.
 

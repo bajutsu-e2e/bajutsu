@@ -451,3 +451,14 @@ def test_manual_step_is_a_labeled_todo() -> None:
     code = _gen('- name: x\n  steps:\n    - manual: { label: "solve the CAPTCHA" }\n')
     assert "// TODO: manual step — solve the CAPTCHA" in code
     assert "no deterministic run-time equivalent" in code
+
+
+def test_handle_system_alert_is_todo() -> None:
+    # BE-0316 is an iOS SpringBoard concept; the web has no OS-level prompt, so codegen emits a
+    # labeled TODO rather than the catch-all "unsupported step".
+    code = _gen(
+        "- name: x\n  steps:\n    - handleSystemAlert: { sel: { label: Allow }, timeout: 5 }\n"
+    )
+    assert "// TODO: handleSystemAlert" in code
+    assert "iOS-only" in code
+    assert "unsupported step" not in code

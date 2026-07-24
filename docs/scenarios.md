@@ -137,6 +137,51 @@ per-scenario default applies); `--alert-instruction` sets a default button instr
 scenario's own `instruction` overrides. (real file:
 [`demos/showcase/scenarios/permission.yaml`](../demos/showcase/scenarios/permission.yaml))
 
+## handleSystemAlert (the deterministic system-alert step)
+
+`dismissAlerts` above is a **reactive guard**: it fires only when a step is already blocked, and it
+decides where to tap with a vision model. `handleSystemAlert` is its opposite — an explicit,
+**deterministic step** the author places at the exact point a prompt is expected, which taps the
+prompt's button by a native accessibility query, with **no screenshot and no model**
+([BE-0316](../roadmaps/BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step.md)). Reach
+for it to test a request-and-grant flow itself: fire the OS permission request, then grant or deny the
+prompt that follows, deterministically.
+
+```yaml
+- name: grant the notification prompt mid-flow
+  steps:
+    - tap: { id: perm.requestNotif }                              # fires the OS permission request
+    - handleSystemAlert: { sel: { label: "Allow" }, timeout: 5 }  # tap the prompt's button by label
+    - wait: { for: { id: perm.notif.authorized }, timeout: 5 }    # request granted, app state updates
+```
+
+To dismiss the prompt rather than accept it, target the dismissive button
+(`handleSystemAlert: { sel: { label: "Don't Allow" }, timeout: 5 }`).
+
+- **`sel` is label-based only.** A SpringBoard alert button carries no app-assigned identifier, trait,
+  or value — only its visible text — so `sel` accepts `label` / `labelMatches` / `index` and rejects
+  `id` / `idMatches` / `traits` / `value` / `within` at parse time.
+- **`timeout` is required**, exactly as for `wait`: a condition wait for the prompt needs an explicit
+  bound. The step waits the prompt in, then taps — no fixed sleep.
+- **Fail-fast on zero or many.** No prompt within `timeout` fails the step; more than one button
+  matching the label fails as ambiguous **unless** `index` selects the nth — the same rule every
+  [selector](selectors.md) follows, applied to the alert's buttons.
+- **iOS (XCUITest) only.** Only that backend declares the capability, so a scenario naming
+  `handleSystemAlert` against the Android or web backend fails **preflight**, before any device work.
+  Android surfaces a system dialog in its ordinary element tree, so a plain `tap` reaches it there;
+  the web backend has no OS-level prompt at all.
+
+When to reach for `handleSystemAlert` versus the two alert fields it stands beside:
+
+| Field | For | Timing | Mechanism |
+|---|---|---|---|
+| `permissions` | an OS permission prompt you can avoid outright | pre-launch, before the app starts | deterministic device mutation |
+| `handleSystemAlert` | a **known** mid-flow prompt you mean to tap | an explicit step where you place it | deterministic (native accessibility tap) |
+| `dismissAlerts` | an **unexpected** out-of-process prompt the tree cannot see | reactive, when a step or wait is blocked | AI vision (`ANTHROPIC_API_KEY`) |
+
+(real file:
+[`demos/showcase/scenarios/permission_system_alert.yaml`](../demos/showcase/scenarios/permission_system_alert.yaml))
+
 ## permissions (pre-launch permission state)
 
 `dismissAlerts` reacts to a permission prompt only *after* it appears, and only by tapping it —
@@ -234,7 +279,8 @@ handles a screen the tree **can** see with a machine-checkable condition. When t
 |---|---|---|---|
 | `if` | a screen at a **known** point in the sequence | one scripted check | deterministic (assertion DSL) |
 | `interrupts` | a screen at an **unpredictable** point, visible in the tree | checked opportunistically throughout | deterministic (assertion DSL) |
-| `dismissAlerts` | an **out-of-process** system prompt the tree cannot see | reactive, when a step or wait is blocked | AI vision (`ANTHROPIC_API_KEY`) |
+| `handleSystemAlert` | a **known** out-of-process prompt you mean to tap mid-flow | an explicit step where you place it | deterministic (native accessibility tap) |
+| `dismissAlerts` | an **unexpected** out-of-process prompt the tree cannot see | reactive, when a step or wait is blocked | AI vision (`ANTHROPIC_API_KEY`) |
 | `permissions` | an OS permission prompt you can avoid outright | pre-launch, before the app starts | deterministic device mutation |
 
 No native XCUITest / Espresso / Playwright construct maps onto "check this condition opportunistically
@@ -297,6 +343,7 @@ actions in one step is a validation error (`scenario/models/steps.py` `_one_acti
 | `drag` | `drag: { on: <Selector>, direction: up\|down\|left\|right, amount?: <frac> }` | a real pointer **drag** of the element (a handle / divider / slider), not a scroll |
 | `pinch` | `pinch: { sel: <Selector>, scale: <num> }` | two-finger magnify; `scale > 0` (`>1` zooms in, `<1` out) |
 | `rotate` | `rotate: { sel: <Selector>, radians: <num> }` | two-finger rotation; `>0` is clockwise |
+| `handleSystemAlert` | `handleSystemAlert: { sel: <Selector>, timeout: <sec> }` | tap a button on an iOS SpringBoard permission prompt, deterministically ([below](#handlesystemalert-the-deterministic-system-alert-step)); iOS (XCUITest) only. `sel` accepts only `label` / `labelMatches` / `index` |
 | `wait` | `wait: { for\|until: ..., timeout: <sec> }` | condition wait (below) |
 | `assert` | `assert: [ <Assertion>... ]` | mid-step verification |
 | `relaunch` | `relaunch: { env?: {...}, args?: [...] }` | terminate + relaunch the app (re-applying launch env/args, plus the given overrides), then wait until ready |

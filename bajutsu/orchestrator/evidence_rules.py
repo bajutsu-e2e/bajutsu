@@ -17,7 +17,12 @@ _BASELINE_INSTANT = ("screenshot.after", "elements")
 # (BE-0028): recorded only when a scenario actually requests the kind (see requested_intervals).
 _SCENARIO_INTERVALS = ("video", "deviceLog", "appTrace")
 
-_DSL_ACTION = {"long_press": "longPress", "double_tap": "doubleTap", "assert_": "assert"}
+_DSL_ACTION = {
+    "long_press": "longPress",
+    "double_tap": "doubleTap",
+    "assert_": "assert",
+    "handle_system_alert": "handleSystemAlert",
+}
 
 
 def _primary_selector(step: Step) -> Selector | None:
@@ -35,6 +40,8 @@ def _primary_selector(step: Step) -> Selector | None:
         return step.pinch.sel
     if step.rotate is not None:
         return step.rotate.sel
+    if step.handle_system_alert is not None:
+        return step.handle_system_alert.sel
     return None
 
 

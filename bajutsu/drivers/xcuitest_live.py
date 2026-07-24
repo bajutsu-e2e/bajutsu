@@ -437,6 +437,14 @@ class XcuitestLiveDriver:
     def select_option(self, sel: base.Selector, option: str) -> None:
         raise base.UnsupportedAction("selectOption is web-only; iOS has no native <select>")
 
+    def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
+        # BE-0316 targets the resident-runner XCUITest backend's SpringBoard query channel, which a
+        # live Appium / WebDriver grid does not expose here; this backend does not advertise the
+        # capability, so preflight rejects the step and this is only the mid-run backstop.
+        raise base.UnsupportedAction(
+            "handleSystemAlert is served by the resident-runner XCUITest backend; not on the live grid"
+        )
+
     # --- lifecycle ---
 
     def await_ready(self, timeout: float = 10.0, poll: float = 0.1) -> None:

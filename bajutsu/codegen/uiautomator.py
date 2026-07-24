@@ -235,6 +235,12 @@ def _device_control_todo(step: Step) -> str:
     if step.manual is not None:
         # A human takeover (BE-0185): no generated-test equivalent — a labeled TODO, not a silent skip.
         return f"// TODO: manual step — {manual_todo(step.manual.label, step.manual.bypass)}"
+    if step.handle_system_alert is not None:
+        # An iOS SpringBoard prompt (BE-0316); no Android equivalent — a system dialog is reached by
+        # an ordinary tap there. A labeled TODO, consistent with the device-family fallbacks above.
+        return (
+            "// TODO: handleSystemAlert — iOS-only (tap the system dialog directly); not generated"
+        )
     return "// TODO: unsupported step"
 
 

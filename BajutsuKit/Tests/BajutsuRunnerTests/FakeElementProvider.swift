@@ -20,6 +20,9 @@ final class FakeElementProvider: ElementProviding {
     var deleteTextCalls: [Int] = []
     var selectAllCalls = 0
     var copyCalls = 0
+    // The SpringBoard alert buttons `/systemAlert/query` returns, and the taps it records (BE-0316).
+    var systemAlertButtons: [ElementSnapshot] = []
+    var systemAlertTapCalls: [AnyObject] = []
 
     func queryElements() -> [ElementSnapshot] {
         if let exception = queryRaises { exception.raise() }
@@ -64,6 +67,15 @@ final class FakeElementProvider: ElementProviding {
 
     func copySelection() -> TapResult {
         copyCalls += 1
+        return tapResult
+    }
+
+    func querySystemAlertButtons() -> [ElementSnapshot] {
+        systemAlertButtons
+    }
+
+    func tapSystemAlertButton(backingElement: AnyObject) -> TapResult {
+        systemAlertTapCalls.append(backingElement)
         return tapResult
     }
 

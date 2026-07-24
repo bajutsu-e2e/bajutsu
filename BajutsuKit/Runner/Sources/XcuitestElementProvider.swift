@@ -13,8 +13,22 @@ import BajutsuRunner
 /// tree. The trade-off is that snapshot nodes are values, not tappable elements, so each element's
 /// backing is its root-relative position path; `tap` / `gesture` re-derive the live `XCUIElement`
 /// from that path and re-verify its attributes, returning `.stale` if the screen has shifted under it.
+/// Backs a SpringBoard alert button by its ordinal within `springboard.alerts.buttons` (BE-0316).
+///
+/// The out-of-process alert is not part of the app snapshot the `PositionPathBacking` walk records,
+/// so its buttons address by ordinal instead: `querySystemAlertButtons` reads them in order, and
+/// `tapSystemAlertButton` re-derives the same live element by that ordinal. A permission prompt
+/// carries a fixed, small set of buttons, so the ordinal is stable between the query and the tap.
+private final class SystemAlertButtonBacking {
+    let ordinal: Int
+    init(ordinal: Int) { self.ordinal = ordinal }
+}
+
 final class XcuitestElementProvider: ElementProviding {
     private let app: XCUIApplication
+    // A second, on-demand handle for SpringBoard — which owns the out-of-process permission prompt
+    // (BE-0316) — built lazily so every other query and tap stays scoped to the app under test.
+    private lazy var springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
 
     init(app: XCUIApplication) {
         self.app = app
@@ -90,6 +104,34 @@ final class XcuitestElementProvider: ElementProviding {
     func copySelection() -> TapResult {
         // Cmd+C copies the active selection to the clipboard, read back by the `clipboard` assertion.
         app.typeKey("c", modifierFlags: .command)
+        return .ok
+    }
+
+    func querySystemAlertButtons() -> [ElementSnapshot] {
+        // Read the buttons of whatever SpringBoard alert is up, in order; empty when no alert is
+        // present (`count` == 0), which the Python driver polls against the step's timeout. A
+        // permission prompt has a couple of buttons, so reading each one's label/frame directly
+        // (rather than one whole-tree snapshot) is cheap, and the ordinal is the tappable backing.
+        let buttons = springboard.alerts.buttons
+        let count = buttons.count
+        return (0..<count).map { i in
+            let button = buttons.element(boundBy: i)
+            return ElementSnapshot(
+                identifier: nil,
+                label: nonEmpty(button.label),
+                value: nil,
+                traits: ["button"],  // base.Trait.BUTTON
+                frame: frameTuple(button.frame),
+                backingElement: SystemAlertButtonBacking(ordinal: i)
+            )
+        }
+    }
+
+    func tapSystemAlertButton(backingElement: AnyObject) -> TapResult {
+        guard let backing = backingElement as? SystemAlertButtonBacking else { return .notFound }
+        let button = springboard.alerts.buttons.element(boundBy: backing.ordinal)
+        guard button.exists else { return .stale }  // the alert dismissed itself between query and tap
+        button.tap()
         return .ok
     }
 
