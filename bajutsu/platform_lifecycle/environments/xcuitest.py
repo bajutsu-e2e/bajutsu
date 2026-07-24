@@ -578,9 +578,20 @@ class XcuitestEnvironment(_DeviceEnvironment):
         failed cold attempt passes `keep=True` so the full log survives as evidence past the 20-line
         tail in the error; an explicit `BAJUTSU_XCUITEST_RUNNER_LOG` directory is always kept, since
         the operator asked for it (BE-0319 unit 1).
+
+        A kept default capture is logged here at the moment it is kept: `_spawn_cold_with_retry`
+        folds a failed attempt's path into the raised error only when *every* attempt fails: a retry
+        that then succeeds raises nothing, so without this line that attempt's file becomes untracked
+        the instant this environment's `_runner_log` moves on to the next attempt — orphaned in
+        `_DEFAULT_RUNNER_LOG_DIR` with nothing pointing at it.
         """
-        if self._runner_log is not None and self._runner_log_ephemeral and not keep:
-            self._runner_log.unlink(missing_ok=True)
+        if self._runner_log is not None and self._runner_log_ephemeral:
+            if keep:
+                _logger.info(
+                    "xcuitest runner: kept a failed attempt's capture → %s", self._runner_log
+                )
+            else:
+                self._runner_log.unlink(missing_ok=True)
         self._runner_log = None
 
     def has_reusable_resident(self) -> bool:

@@ -459,6 +459,30 @@ def test_an_explicit_capture_directory_is_kept_on_teardown(
     assert log.exists()  # an operator-chosen directory is kept, never pruned
 
 
+def test_a_kept_default_capture_is_logged_at_the_moment_it_is_kept(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # A retry that then succeeds never raises, so `_spawn_cold_with_retry`'s folded diagnostics (only
+    # built when *every* attempt fails) never mention the failed attempt's own capture. Without this
+    # info line, that file becomes untracked the instant `_runner_log` moves on to the next attempt —
+    # orphaned in `_DEFAULT_RUNNER_LOG_DIR` with nothing pointing at it.
+    _, _, run = _fake_toolchain(monkeypatch)
+    monkeypatch.delenv("BAJUTSU_XCUITEST_RUNNER_LOG", raising=False)
+    monkeypatch.setattr(
+        "bajutsu.platform_lifecycle.environments.xcuitest._DEFAULT_RUNNER_LOG_DIR",
+        tmp_path / "default-logs",
+    )
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
+    log = env._runner_log
+    assert log is not None and log.exists()
+    with caplog.at_level("INFO"):
+        env._discard_runner(warn_on_crash=False, keep_log=True)  # the failed-attempt discard path
+    assert log.exists()  # kept, not pruned — same as a repeatable failure's evidence
+    assert "kept a failed attempt's capture" in caplog.text
+    assert str(log) in caplog.text  # discoverable: the path is named, not just "kept something"
+
+
 def test_runner_log_hint_shows_the_bounded_tail_of_the_capture(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
