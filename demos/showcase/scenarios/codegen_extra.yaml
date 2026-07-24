@@ -22,5 +22,9 @@
     - swipe: { from: [120, 400], to: [120, 220] }
     # compound traits + index (BE-0026): the first button in the tree — always present, non-destructive.
     - wait: { for: { traits: [button], index: 0 }, timeout: 5 }
+    # the two scrolls above can push log.submit out of the tree briefly; wait for the exact
+    # element `expect` checks below (the convention every other scenario in this repo follows),
+    # not just an unrelated sentinel, so the assertion isn't a race against the list settling.
+    - wait: { for: { id: log.submit }, timeout: 5 }
   expect:
     - exists: { id: log.submit }
