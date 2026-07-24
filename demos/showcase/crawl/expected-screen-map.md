@@ -40,7 +40,7 @@ is stable across runs.
 - **Modals** are reached-and-dismissed cycles off the Log node — a crawl should record the
   open edge and recognize the returned-to state by fingerprint rather than re-exploring it.
 - **Permissions** is the one node whose actions raise out-of-process OS alerts (SPEC §7).
-  A crawl reaching it should rely on the alert guard (`--dismiss-alerts`) exactly as `run` does;
+  A crawl reaching it should rely on the alert guard (`--alert-handling`) exactly as `run` does;
   the alert is not a crawl-discoverable screen.
 
 ## What the no-a11y variant should show instead

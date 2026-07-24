@@ -96,7 +96,7 @@ record: web-deps
 	if [ "$$ready" -ne 1 ]; then echo "demo server did not answer on port $(PORT) within the readiness timeout" >&2; exit 1; fi; \
 	mkdir -p $(ROOT)/tmp; \
 	cd $(ROOT) && uv run bajutsu record --target web --backend web --config $(CONFIG) \
-		--goal "$(GOAL)" --out "$(OUT)" --no-erase --no-dismiss-alerts
+		--goal "$(GOAL)" --out "$(OUT)" --no-erase --no-alert-handling
 
 # Human-in-the-loop handoff demo (BE-0179): a HEADED record you drive alongside the AI. The agent
 # opens device verification, recognizes it cannot know the out-of-band one-time code, and hands off
@@ -115,7 +115,7 @@ record-handoff: web-deps
 	if [ "$$ready" -ne 1 ]; then echo "demo server did not answer on port $(PORT) within the readiness timeout" >&2; exit 1; fi; \
 	mkdir -p $(ROOT)/tmp; \
 	cd $(ROOT) && uv run bajutsu record --target web --backend web --config $(CONFIG) \
-		--goal "$(HANDOFF_GOAL)" --out "$(HANDOFF_OUT)" --headed --no-erase --no-dismiss-alerts
+		--goal "$(HANDOFF_GOAL)" --out "$(HANDOFF_OUT)" --headed --no-erase --no-alert-handling
 
 # The offline, API-key-free twin of `record`: the same record loop driven by a deterministic
 # keyword agent against an in-memory FakeDriver (no browser, no model), so it's reproducible in the
