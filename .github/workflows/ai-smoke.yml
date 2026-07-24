@@ -45,10 +45,11 @@ jobs:
         with:
           enable-cache: true
 
-      # The live smoke needs the `ai` extra (the anthropic SDK) alongside pytest from the dev group;
-      # nothing else (no Simulator, no browser).
-      - name: Install the AI extra + test tooling
-        run: uv sync --extra ai --group dev
+      # The dev group already pulls in `bajutsu[ai,...]` (the anthropic SDK) plus pytest — the same
+      # gate env `ci.yml` installs — so `--group dev` alone covers the live smoke's needs. No
+      # Simulator or browser extra is added; those stay out of the dev group.
+      - name: Install the gate env (includes the AI extra + test tooling)
+        run: uv sync --group dev
 
       # `-m live` overrides the default `-m 'not ... and not live'` (pyproject addopts) so the suite —
       # deselected everywhere else — actually runs here. `-n0` overrides `-n auto`: a single real call
