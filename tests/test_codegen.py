@@ -436,6 +436,18 @@ def test_handle_system_alert_plain_substring_labelmatches_emits_contains() -> No
     assert "TODO" not in code
 
 
+def test_handle_system_alert_negative_index_offsets_from_count() -> None:
+    # A negative index counts from the end at runtime (resolve_unique), which XCUITest expresses as
+    # `element(boundBy: count + index)` — `element(boundBy: -1)` is invalid Swift. Mirrors `_element`.
+    code = _gen(
+        "- name: x\n  steps:\n"
+        "    - handleSystemAlert: { sel: { label: OK, index: -1 }, timeout: 5 }\n"
+    )
+    buttons = 'XCUIApplication(bundleIdentifier: "com.apple.springboard").buttons.matching(NSPredicate(format: "label == %@", "OK"))'
+    assert f"{buttons}.element(boundBy: {buttons}.count - 1)" in code
+    assert "boundBy: -1" not in code
+
+
 def test_handle_system_alert_regex_labelmatches_is_todo() -> None:
     # A real regex has no faithful NSPredicate form (the same limit `_predicate` hits), so it
     # degrades to a labeled TODO rather than a wrong CONTAINS substring match.

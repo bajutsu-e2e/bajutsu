@@ -187,6 +187,10 @@ def _system_alert_element(sel: base.Selector) -> str | None:
     index = sel.get("index")
     if index is None:
         return f"{buttons}.firstMatch"
+    if index < 0:
+        # A negative index counts from the end (`candidates[i]` in drivers/base.py); `boundBy:` takes
+        # no negative literal, so offset from the live `count`, exactly as `_element` does.
+        return f"{buttons}.element(boundBy: {buttons}.count - {-index})"
     return f"{buttons}.element(boundBy: {index})"
 
 
