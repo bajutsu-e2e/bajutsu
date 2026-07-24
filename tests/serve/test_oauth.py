@@ -259,6 +259,10 @@ def test_fetch_orgs_is_non_fatal_on_error() -> None:
 
     assert _fetch_orgs(_PagingClient([_FakeResponse(403, [])]), {}) == []
     assert _fetch_orgs(_PagingClient([_FakeResponse(200, ValueError("bad json"))]), {}) == []
+    # A 200 whose body isn't a list (e.g. a GitHub error payload shaped as an object) is non-fatal too.
+    assert (
+        _fetch_orgs(_PagingClient([_FakeResponse(200, {"message": "bad credentials"})]), {}) == []
+    )
 
 
 def _team(org: str, slug: str) -> dict[str, object]:
@@ -292,3 +296,7 @@ def test_fetch_teams_fails_closed_to_empty_on_error() -> None:
     assert _fetch_teams(_PagingClient([_FakeResponse(200, ValueError("bad json"))]), {}) == []
     # A malformed item (missing organization/slug) is skipped, not fatal.
     assert _fetch_teams(_PagingClient([_FakeResponse(200, [{"slug": "x"}])]), {}) == []
+    # A 200 whose body isn't a list never grants a role — the fail-closed direction matters most here.
+    assert (
+        _fetch_teams(_PagingClient([_FakeResponse(200, {"message": "bad credentials"})]), {}) == []
+    )

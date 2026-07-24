@@ -712,6 +712,18 @@ def test_auth_gate_mirrors_stdlib(tmp_path: Path) -> None:
     assert fresh.get("/api/runs", headers={"Authorization": "Bearer s3cret"}).status_code == 200
 
 
+def test_bearer_narrows_to_worker_paths_once_oauth_configured_fastapi(tmp_path: Path) -> None:
+    # BE-0313 parity with the stdlib handler (tests/serve/test_http_auth.py): once OAuth is
+    # configured on the FastAPI backend, the shared Bearer token authorizes only worker traffic.
+    state = _state(tmp_path, token="s3cret")
+    state.auth.oauth = _FakeOAuth("alice")
+    client = TestClient(make_app(state))
+    headers = {"Authorization": "Bearer s3cret"}
+    assert client.get("/api/runs", headers=headers).status_code == 401
+    worker = client.post("/api/worker/lease", json={"worker_id": "w1"}, headers=headers)
+    assert worker.status_code != 401  # the gate admitted it; the route may still 200/400 downstream
+
+
 def test_metrics_route_serves_prometheus_text(tmp_path: Path) -> None:
     # Parity with the stdlib handler: the FastAPI shell serves the same rendered metrics behind the
     # same auth gate (BE-0169). A token makes /metrics require a credential like every other route.

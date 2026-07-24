@@ -122,7 +122,15 @@ def test_bearer_token_narrows_to_worker_paths_once_oauth_is_configured() -> None
     auth = SessionManager(token="s3cret", oauth=_StubOAuth())
     for path in _WORKER_PATHS:
         assert gate.is_authorized(auth, "Bearer s3cret", None, path=path) is True
-    for path in ("/api/config", "/api/run", "/api/runs", "/api/apikey"):
+    for path in (
+        "/api/config",
+        "/api/run",
+        "/api/runs",
+        "/api/apikey",
+        # A non-upload /api/runs/ path (an editor action, not worker traffic) must not match the
+        # upload-urls shape check — only the exact "/upload-urls" suffix is worker traffic.
+        "/api/runs/20260101-000000/restore",
+    ):
         assert gate.is_authorized(auth, "Bearer s3cret", None, path=path) is False
     # A valid session cookie still authorizes a non-worker path (the human OAuth session).
     sid = auth.issue_session("alice")

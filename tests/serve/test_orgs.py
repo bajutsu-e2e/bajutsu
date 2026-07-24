@@ -117,6 +117,17 @@ def test_identity_matches_org_rejects_everyone_without_an_orgs_block() -> None:
     assert identity_matches_org(orgs, "alice", ["any-gh"]) is False
 
 
+def test_identity_matches_org_handles_an_org_literally_named_default() -> None:
+    # identity_matches_org exists precisely because org_for_identity(...) != DEFAULT_ORG would
+    # wrongly reject a deployment that names an org "default" — its members legitimately resolve to
+    # that sentinel string, which the naive check would confuse with "matched nothing."
+    _, orgs = load_serve_config(
+        "targets:\n  demo: { bundleId: com.x }\norgs:\n  default:\n    members: [alice]\n"
+    )
+    assert identity_matches_org(orgs, "alice", []) is True
+    assert identity_matches_org(orgs, "stranger", []) is False
+
+
 def test_editor_team_parses_from_editor_team_alias() -> None:
     # BE-0313: `editorTeam` on an org names the flat Team whose members are editors.
     _, orgs = load_serve_config(

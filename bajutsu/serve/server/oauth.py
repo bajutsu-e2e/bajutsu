@@ -128,10 +128,11 @@ def _fetch_orgs(client: object, headers: dict[str, str]) -> list[str]:
 def _fetch_teams(client: object, headers: dict[str, str]) -> list[str]:
     """Every GitHub Team the user is a *direct* member of, as `"<github-org>/<team-slug>"`, following
     pagination. Team membership grants the editor/admin role (BE-0313), so — the opposite failure
-    direction from `_fetch_orgs` — any failure yields no teams, which leaves the user at viewer
-    (fail closed) rather than granting write access on a lookup that didn't actually confirm it.
-    `/user/teams` lists a child Team distinct from its parent, so a later exact-match check stays
-    flat by construction: only the configured Team matches, never a nested one beneath it."""
+    direction from `_fetch_orgs` — a failure never *invents* a team: a failure on the first page
+    yields no teams (viewer, fail closed), and a failure partway through pagination keeps only the
+    teams already confirmed from earlier pages, never granting one that wasn't actually returned by
+    GitHub. `/user/teams` lists a child Team distinct from its parent, so a later exact-match check
+    stays flat by construction: only the configured Team matches, never a nested one beneath it."""
     teams: list[str] = []
     for t in _paginate(client, headers, f"{_TEAMS}?per_page=100"):
         org = t.get("organization")
