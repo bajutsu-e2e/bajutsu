@@ -33,6 +33,9 @@ jobs:
   direct-api:
     name: smoke (direct Anthropic API)
     runs-on: ubuntu-latest
+    # A single Anthropic call needs little; bound it so a hung live request can't run to
+    # Actions' 6h default and hold the ai-smoke Environment lock.
+    timeout-minutes: 15
     environment: ai-smoke
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0

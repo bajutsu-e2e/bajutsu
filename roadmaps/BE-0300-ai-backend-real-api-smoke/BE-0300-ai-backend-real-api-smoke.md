@@ -87,7 +87,7 @@ Proposal altitude. The work is MECE along the units below.
 - [x] Add a key-gated, minimal live-call test for the direct Anthropic API adapter.
 - [x] Add the same for the Bedrock adapter, or record explicitly why it can't run in CI (e.g. a live Bedrock role).
 - [x] Add the same for the `ant`-CLI adapter, or record explicitly why it can't run in CI.
-- [x] Wire non-gating, opt-in CI lanes per adapter.
+- [x] Wire a non-gating, opt-in CI lane for the direct Anthropic API adapter; the Bedrock and `ant` CI lanes stay deferred (no live AWS role / OAuth CLI seat as a CI secret), as the log records.
 
 **Log**
 
