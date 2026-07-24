@@ -9,7 +9,7 @@
 #
 # HARD BOUNDARY: `workflow_dispatch` only — never on push or pull_request, so a fork-triggered run can
 # never see the credential (the boundary .github/workflows/devicefarm.yml already draws). It is not a
-# required check; following the BE-0282 / BE-0301 precedent it lands as a non-gating signal.
+# required check; following the BE-0282 precedent it lands as a non-gating signal.
 #
 # Auth is the `ANTHROPIC_API_KEY` repository secret, scoped to the `ai-smoke` Environment. With it
 # unset the live test skips itself (`credential_gap` reports the missing key) and the job is a green
