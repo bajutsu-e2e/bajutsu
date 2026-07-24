@@ -384,11 +384,22 @@ hand-maintained login list:
 - **Admin** follows one server-wide GitHub Team, `BAJUTSU_OAUTH_ADMIN_TEAM` (written
   `"<github-org>/<team-slug>"`), whose members also change server settings (config / API key /
   provider). Admin is a single deployment-wide tier, so name a Team whose members you trust across
-  every org.
+  every org. An admin still has to clear the sign-in gate above first: `BAJUTSU_OAUTH_ADMIN_TEAM` is
+  checked only after a login already matches some `orgs:` entry, so the Team's GitHub organization
+  must itself appear in some org's `githubOrgs` (or its members listed under `members`) — otherwise
+  the intended admin is turned away at sign-in before the admin Team is ever consulted.
 
 Membership is re-read on every login, so leaving a GitHub org or Team takes effect at the affected
 user's next sign-in — no server-side list to edit. Login always requests the `read:org` scope to read
 these memberships, so the consent screen mentions organization access.
+
+**Upgrading from the login lists.** Two things change beyond the role-source swap: sign-in now admits
+*everyone* in a configured `githubOrgs`/`members` entry, not just the logins that were on the old
+`BAJUTSU_OAUTH_ALLOWED_USERS` — if that allowlist was narrower than the org's full membership, tighten
+`orgs:` before switching, or the org gate alone will widen who can sign in. And
+`BAJUTSU_OAUTH_ALLOWED_USERS` / `_ADMINS` / `_VIEWERS` are simply ignored now, so re-declare every
+admin and editor as a Team membership before cutting over — anyone not yet covered by `editorTeam` or
+`BAJUTSU_OAUTH_ADMIN_TEAM` drops to viewer on their next login.
 
 Once OAuth is configured, the shared token narrows to **worker traffic only**: it authorizes the
 worker control-plane routes (the `/api/worker/*` endpoints and the run evidence-upload URL request)
