@@ -12,13 +12,19 @@ import secrets
 from typing import Any
 
 from bajutsu.serve.helpers import load_serve_config_file
-from bajutsu.serve.orgs import org_for_identity, org_for_target
-from bajutsu.serve.state import _DEFAULT_ORG, ServeState
+from bajutsu.serve.orgs import identity_matches_org, org_for_identity, org_for_target
+from bajutsu.serve.state import ServeState
 
 
 def login(state: ServeState, token: str) -> tuple[Any, int, str | None]:
     """Validate the shared token and, on success, mint a session id for the shell to set as a
-    cookie. Returns ``(payload, status, session_id | None)``."""
+    cookie. Returns ``(payload, status, session_id | None)``.
+
+    Disabled once GitHub OAuth is configured (BE-0313): a human then signs in exclusively through
+    `/api/oauth/login`, so the token no longer buys a human session — it authorizes only worker
+    traffic. Without OAuth (the single-Mac token deployment) this path is unchanged."""
+    if state.auth.oauth is not None:
+        return {"error": "token login disabled"}, 404, None
     if not state.auth.check_token(token):
         return {"error": "invalid token"}, 401, None
     return {"ok": True}, 200, state.auth.issue_session()
@@ -37,10 +43,11 @@ def oauth_login(state: ServeState) -> tuple[Any, int, str | None]:
 def oauth_callback(
     state: ServeState, code: str, state_param: str, state_cookie: str
 ) -> tuple[Any, int, str | None]:
-    """Complete GitHub OAuth (BE-0015 7b-2): verify the CSRF state (the query value must match the
-    cookie), exchange the code for a GitHub identity (login + org memberships), check the login
-    against the allowlist, persist the user under their resolved org, and on success mint a session
-    bound to that login. Returns ``(payload, status, session_id | None)``."""
+    """Complete GitHub OAuth (BE-0015 7b-2, BE-0313): verify the CSRF state (the query value must
+    match the cookie), exchange the code for a GitHub identity (login + org + Team memberships), gate
+    sign-in on GitHub org membership, persist the user under their resolved org with a Team-derived
+    role, and on success mint a session bound to that login. Returns
+    ``(payload, status, session_id | None)``."""
     if state.auth.oauth is None:
         return {"error": "oauth not configured"}, 404, None
     if not (state_param and state_cookie and secrets.compare_digest(state_param, state_cookie)):
@@ -54,33 +61,38 @@ def oauth_callback(
     if identity is None or not identity.login:
         return {"error": "oauth exchange failed"}, 403, None
     login = identity.login
-    if login not in state.auth.oauth_allowed_users:
+    # Read the config-declared org model once, for both the sign-in gate and the org/role
+    # resolution below (BE-0313). Sign-in is gated on GitHub org membership: a login matching no
+    # `members`/`githubOrgs` entry is turned away — the org roster is now the allowlist. This runs
+    # at the top level, before the database block, so an OAuth-configured but database-less
+    # deployment still gates sign-in rather than admitting every GitHub user.
+    parsed = load_serve_config_file(state.config)
+    orgs = parsed[1] if parsed is not None else {}
+    if not identity_matches_org(orgs, login, identity.orgs):
         return {"error": "user not allowed"}, 403, None
     if state.repository is not None:
         # Persist the identity into the system of record, so audit entries and RBAC can reference
         # the user. The org comes from the config-declared org model — an explicit member listing or
-        # the user's GitHub org membership — defaulting to the single `default` org. email is unknown
-        # from this scope, so we store GitHub's canonical no-reply form (valid + unique per login).
-        org = _org_for_login(state, login, identity.orgs)
+        # the user's GitHub org membership. email is unknown from this scope, so we store GitHub's
+        # canonical no-reply form (valid + unique per login).
+        org = org_for_identity(orgs, login, identity.orgs)
+        oc = orgs.get(org)
+        editor_team = oc.editor_team if oc is not None else None
         state.repository.ensure_org(org, slug=org, name=org)
         state.repository.upsert_user(
             login,
             org_id=org,
             github_login=login,
             email=f"{login}@users.noreply.github.com",
-            # Recompute the role from the env policy on every login, so changing the policy takes
-            # effect on next login without a data migration (BE-0015 7c-2).
-            role=role_for(login, admins=state.auth.oauth_admins, viewers=state.auth.oauth_viewers),
+            # Recompute the role from GitHub Team membership on every login, so leaving a Team takes
+            # effect on next login without a data migration (BE-0015 7c-2, BE-0313).
+            role=role_for(
+                teams=identity.teams,
+                editor_team=editor_team,
+                admin_team=state.auth.oauth_admin_team,
+            ),
         )
     return {"ok": True, "user": login}, 200, state.auth.issue_session(identity=login)
-
-
-def _org_for_login(state: ServeState, login: str, github_orgs: list[str]) -> str:
-    """The org to assign *login* at OAuth login, from the config-declared org model (BE-0015
-    multi-tenancy): an explicit member listing or a matching GitHub org from *github_orgs*. The
-    single `default` org when no `orgs:` block maps them."""
-    parsed = load_serve_config_file(state.config)
-    return org_for_identity(parsed[1], login, github_orgs) if parsed is not None else _DEFAULT_ORG
 
 
 def _target_forbidden(state: ServeState, org: str, target: str) -> bool:
@@ -160,14 +172,16 @@ _EDITOR_PATHS = frozenset(
 )
 
 
-def role_for(login: str, *, admins: frozenset[str], viewers: frozenset[str]) -> str:
-    """The role for *login* under the env policy: admin if listed, viewer if listed, else editor
-    (the default — an allowlisted user can run). Recomputed on every login (BE-0015 7c-2)."""
-    if login in admins:
+def role_for(*, teams: list[str], editor_team: str | None, admin_team: str | None) -> str:
+    """The role for a login from its GitHub Team memberships (BE-0313): admin if a member of the
+    server-wide *admin_team*, editor if a member of the resolved org's *editor_team*, else viewer
+    (the base role every signed-in user gets). *teams* are `"<github-org>/<team-slug>"` direct
+    memberships; an unset team never matches. Recomputed on every login (BE-0015 7c-2)."""
+    if admin_team is not None and admin_team in teams:
         return "admin"
-    if login in viewers:
-        return "viewer"
-    return "editor"
+    if editor_team is not None and editor_team in teams:
+        return "editor"
+    return "viewer"
 
 
 def required_role(method: str, path: str) -> str | None:

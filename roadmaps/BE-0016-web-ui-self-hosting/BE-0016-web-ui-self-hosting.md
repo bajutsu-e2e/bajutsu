@@ -137,8 +137,11 @@ are in [`deploy/self-host/`](../../deploy/self-host/) and
   stateful service on a named volume. The Mac worker is **not** containerized: it needs the Aqua
   graphical user interface (GUI) session, exactly like Tier A, and runs `bajutsu worker`.
 - **Identity and roles.** GitHub OAuth (open authorization) in the app itself (not a separate
-  identity provider), with an allowlist and three roles — admin / editor / viewer (role-based access
-  control, RBAC).
+  identity provider), with three roles — admin / editor / viewer (role-based access control, RBAC).
+  [BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac.md) derives these from GitHub
+  organization and Team membership rather than a hand-maintained login allowlist: org membership gates
+  sign-in and grants viewer, the org's `editorTeam` grants editor, and one server-wide admin Team
+  grants admin.
 - **Multi-org isolation.** Declaring an `orgs:` block in the mounted config turns the same backend
   multi-tenant: each user is scoped to their org by GitHub login or GitHub-org membership (the login
   requests the `read:org` scope), sees only that org's targets, and a cross-org run / scenario /

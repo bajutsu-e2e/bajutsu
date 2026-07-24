@@ -178,7 +178,10 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
 
         def _authorized(self) -> bool:
             return gate.is_authorized(
-                state.auth, self.headers.get("Authorization", ""), self._session_value()
+                state.auth,
+                self.headers.get("Authorization", ""),
+                self._session_value(),
+                path=urlparse(self.path).path,
             )
 
         def _gate(self) -> bool:

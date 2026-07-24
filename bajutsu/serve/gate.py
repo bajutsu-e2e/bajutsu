@@ -40,6 +40,19 @@ _LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 # UI can load, the OAuth round-trip, and the login endpoint itself.
 _OPEN_GET_PATHS = ("/", "/index.html", "/api/oauth/login", "/api/oauth/callback")
 _LOGIN_PATH = "/api/login"
+_WORKER_PREFIX = "/api/worker/"
+
+
+def _is_worker_route(path: str) -> bool:
+    """Whether *path* is a control-plane route a worker authenticates to with the shared token
+    (BE-0313). Once OAuth is configured the token authorizes only these — never a human session or
+    another endpoint. Beyond the `/api/worker/*` routes (lease / heartbeat / result / artifact-urls /
+    scenario-url), a worker also requests evidence upload URLs at `POST /api/runs/{id}/upload-urls`
+    (BE-0257), which sits outside that prefix — so it is matched by shape here, the same way
+    `required_role` already treats it as worker traffic with no role gate."""
+    return path.startswith(_WORKER_PREFIX) or (
+        path.startswith("/api/runs/") and path.endswith("/upload-urls")
+    )
 
 
 def _is_frontend_module(path: str) -> bool:
@@ -96,10 +109,25 @@ def is_open(method: str, path: str) -> bool:
     )
 
 
-def is_authorized(auth: SessionManager, authorization: str, session_value: str | None) -> bool:
-    """A request is authorized by a valid `Authorization: Bearer <token>` header (API clients) or a
-    valid session cookie (the browser, after POST /api/login)."""
-    if authorization.startswith("Bearer ") and auth.check_token(authorization[len("Bearer ") :]):
+def is_authorized(
+    auth: SessionManager, authorization: str, session_value: str | None, *, path: str
+) -> bool:
+    """A request is authorized by a valid `Authorization: Bearer <token>` header or a valid session
+    cookie (the browser, after signing in).
+
+    Once GitHub OAuth is configured, the shared token narrows to worker traffic (BE-0313): a valid
+    Bearer token authorizes only the `/api/worker/*` routes, closing the operator-credential reach
+    over every other endpoint that carried no identity to check a role for. Without OAuth (the
+    single-Mac token deployment) the Bearer token still authorizes any endpoint, unchanged.
+    """
+    # A valid Bearer token authorizes when OAuth is off (it reaches everything) or, once OAuth is on,
+    # only on a worker route. Otherwise fall through to the session check — a Bearer request usually
+    # carries no session, so a non-worker request with OAuth configured is denied here.
+    if (
+        authorization.startswith("Bearer ")
+        and auth.check_token(authorization[len("Bearer ") :])
+        and (auth.oauth is None or _is_worker_route(path))
+    ):
         return True
     return session_value is not None and auth.valid_session(session_value)
 

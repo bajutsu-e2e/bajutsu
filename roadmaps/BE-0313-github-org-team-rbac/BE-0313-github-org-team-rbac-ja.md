@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0313](BE-0313-github-org-team-rbac-ja.md) |
 | 提案者 | [@paihu](https://github.com/paihu) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0313") |
 | トピック | Web UI のホスティング |
 | 関連 | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md), [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md), [BE-0051](../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting-ja.md), [BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub-ja.md) |
@@ -326,28 +326,28 @@ RBAC は適用されません（`state.repository is None` のときは常に `f
 > （Mutually Exclusive Collectively Exhaustive）な作業分解（作業の単位ごとに1つ）に対応し、ログ
 > には変更内容と時期（古い順）を PR へのリンクとともに記録します。
 
-- [ ] `OrgConfig` に `editorTeam` フィールドと、その config スキーマの説明を追加する。
-- [ ] `GET /user/teams` の照会（直接のメンバーシップのみ）と、環境変数 `BAJUTSU_OAUTH_ADMIN_TEAM` を
+- [x] `OrgConfig` に `editorTeam` フィールドと、その config スキーマの説明を追加する。
+- [x] `GET /user/teams` の照会（直接のメンバーシップのみ）と、環境変数 `BAJUTSU_OAUTH_ADMIN_TEAM` を
       追加する。
-- [ ] サインインの判定が呼ぶ、単純な一致するかどうかのチェックを追加する（`org_for_identity` が
+- [x] サインインの判定が呼ぶ、単純な一致するかどうかのチェックを追加する（`org_for_identity` が
       すでに行っている `members` や `githubOrgs` の判定と同じもの）。`org_for_identity` の `str`
       という戻り値だけでは、「何にも一致しない」ことと「正当に `default` へ解決した」ことを区別
       できません。拒否は `oauth_callback` の先頭（`if state.repository is not None:` ブロックより
       前）で行う。これにより、OAuth を設定していてもデータベースを配線していないデプロイで、
       サインインが素通りしないようにする。あわせて `BAJUTSU_OAUTH_ALLOWED_USERS` と
       `BAJUTSU_OAUTH_VIEWERS` を廃止する。
-- [ ] `role_for()` のログインリストによる判定を、上記の Organization と Team による判定に置き換え、
+- [x] `role_for()` のログインリストによる判定を、上記の Organization と Team による判定に置き換え、
       `BAJUTSU_OAUTH_ADMINS` を廃止する。
-- [ ] トークンによる `POST /api/login` の Cookie 経路を、そのデプロイで「OAuth を設定していない」
+- [x] トークンによる `POST /api/login` の Cookie 経路を、そのデプロイで「OAuth を設定していない」
       場合に限定する。
-- [ ] OAuth を設定した場合に、`gate.is_authorized` の Bearer トークン判定を `/api/worker/*` の
+- [x] OAuth を設定した場合に、`gate.is_authorized` の Bearer トークン判定を `/api/worker/*` の
       ルートに絞る。対象ファイルは `bajutsu/serve/gate.py`。stdlib ハンドラと FastAPI アプリ、
       両方の呼び出し箇所を揃える。Cookie ログインの廃止と合わせて、他のすべてのエンドポイントに
       対する直接の Bearer RBAC バイパスを
       閉じる。
-- [ ] `docs/architecture.md` と BE-0015、BE-0016 からの相互参照（両言語）を更新する。ログインリスト
-      に代わる、Organization と Team に基づく RBAC の説明にする。
-- [ ] テストを追加する。1つ目は、Organization メンバーシップによるサインインの許可判定です。許可と
+- [x] 設定とセルフホスティングのドキュメント、および BE-0015、BE-0016 からの相互参照（両言語）を
+      更新する。ログインリストに代わる、Organization と Team に基づく RBAC の説明にする。
+- [x] テストを追加する。1つ目は、Organization メンバーシップによるサインインの許可判定です。許可と
       拒否の両方を確認します。2つ目は、偽装した `Teams API` に対する editor Team と admin Team の
       判定です。ページネーションされた Team 一覧の場合と、照会が失敗して viewer に解決する場合を
       含みます。3つ目は、admin 限定の `GET` の例外が admin のままであることの確認です。4つ目は、

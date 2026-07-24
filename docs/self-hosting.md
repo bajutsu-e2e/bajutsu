@@ -364,19 +364,39 @@ the prefix into the URI's path — `BAJUTSU_S3_BUCKET=bajutsu` + `BAJUTSU_S3_PRE
 `BAJUTSU_SERVER_STORE=s3://bajutsu/tenant/`; otherwise existing keys under that prefix stop resolving
 once the prefix is dropped.
 
-### 2. Add GitHub OAuth (optional)
+### 2. Add GitHub OAuth (optional) {#github-oauth}
 
 The shared token (`BAJUTSU_SERVE_TOKEN`) alone is enough for a couple of operators. For per-user
 browser login, create a GitHub OAuth app (callback `https://<your-host>/api/oauth/callback`) and set
-in `.env`: `BAJUTSU_OAUTH_GITHUB_CLIENT_ID` / `_SECRET` / `_REDIRECT_URI`, plus the allowlist
-`BAJUTSU_OAUTH_ALLOWED_USERS` (and optionally `BAJUTSU_OAUTH_ADMINS` / `BAJUTSU_OAUTH_VIEWERS`).
-Allowlisted users are **editors** by default (they can run); admins also change server settings
-(config / API key / provider); viewers are read-only. The token stays the operator/CI credential
-(full access); OAuth is the team's per-user login.
+in `.env`: `BAJUTSU_OAUTH_GITHUB_CLIENT_ID` / `_SECRET` / `_REDIRECT_URI`.
 
-Login always requests the `read:org` scope so a user can be mapped to an org by GitHub org
-membership (config `githubOrgs`); the consent screen therefore mentions organization access either way. A
-single-tenant deploy (no `orgs:` block) just ignores the org info.
+Once OAuth is configured, access follows **GitHub organization and Team membership**
+([BE-0313](../roadmaps/BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac.md)) rather than a
+hand-maintained login list:
+
+- **Sign-in and the viewer role** follow org membership. A user may sign in only as a member of a
+  configured org — an explicit `members` entry or a member of a `githubOrgs`-listed GitHub org (see
+  [`orgs:`](configuration.md#orgs-orgs-the-multi-tenant-server-backend)) — and a successful sign-in
+  grants **viewer** (read-only). A login that matches no org is turned away, so an OAuth deployment
+  must declare an `orgs:` block.
+- **Editor** follows the org's `editorTeam`: a direct member of that one flat GitHub Team may run,
+  record, and edit scenarios.
+- **Admin** follows one server-wide GitHub Team, `BAJUTSU_OAUTH_ADMIN_TEAM` (written
+  `"<github-org>/<team-slug>"`), whose members also change server settings (config / API key /
+  provider). Admin is a single deployment-wide tier, so name a Team whose members you trust across
+  every org.
+
+Membership is re-read on every login, so leaving a GitHub org or Team takes effect at the affected
+user's next sign-in — no server-side list to edit. Login always requests the `read:org` scope to read
+these memberships, so the consent screen mentions organization access.
+
+Once OAuth is configured, the shared token narrows to **worker traffic only**: it authorizes the
+worker control-plane routes (the `/api/worker/*` endpoints and the run evidence-upload URL request)
+and nothing else. The browser token-login endpoint
+(`POST /api/login`) is disabled — a human signs in exclusively through GitHub OAuth — and a raw
+`Authorization: Bearer <token>` no longer reaches any non-worker endpoint. A deployment that scripted
+non-worker endpoints with the token loses that path once OAuth is on. Without OAuth (the single-Mac,
+private-network shape) the token is unchanged and still reaches everything.
 
 ### Operator secrets (the Claude API key)
 

@@ -122,6 +122,7 @@ def make_app(state: ServeState) -> FastAPI:
             state.auth,
             request.headers.get("authorization", ""),
             request.cookies.get(_SESSION_COOKIE),
+            path=request.url.path,
         )
 
     def _actor(request: Request) -> str | None:

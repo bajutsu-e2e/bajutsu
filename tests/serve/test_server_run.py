@@ -242,7 +242,7 @@ def test_build_state_local_has_no_oauth(tmp_path: Path) -> None:
     # OAuth is server-only; local never has it (token auth only), so behavior is unchanged.
     state = _state(tmp_path)
     assert state.auth.oauth is None
-    assert state.auth.oauth_allowed_users == frozenset()
+    assert state.auth.oauth_admin_team is None
 
 
 def test_build_state_server_wires_oauth_when_configured(
@@ -258,7 +258,6 @@ def test_build_state_server_wires_oauth_when_configured(
     monkeypatch.setenv(
         "BAJUTSU_OAUTH_GITHUB_REDIRECT_URI", "https://app.example/api/oauth/callback"
     )
-    monkeypatch.setenv("BAJUTSU_OAUTH_ALLOWED_USERS", "alice, bob")
     _scn, cfg, runs = project(tmp_path)
     state = srv._build_state(
         runs_dir=runs,
@@ -271,17 +270,16 @@ def test_build_state_server_wires_oauth_when_configured(
         backend="server",
     )
     assert isinstance(state.auth.oauth, GitHubOAuthClient)
-    assert state.auth.oauth_allowed_users == frozenset({"alice", "bob"})
 
 
-def test_build_state_server_parses_the_rbac_role_policy(
+def test_build_state_server_parses_the_admin_team(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # BE-0313: the admin role is one server-wide GitHub Team, named by BAJUTSU_OAUTH_ADMIN_TEAM.
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
     monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
-    monkeypatch.setenv("BAJUTSU_OAUTH_ADMINS", "root, ops")
-    monkeypatch.setenv("BAJUTSU_OAUTH_VIEWERS", "guest")
+    monkeypatch.setenv("BAJUTSU_OAUTH_ADMIN_TEAM", "acme-gh/ops")
     _scn, cfg, runs = project(tmp_path)
     state = srv._build_state(
         runs_dir=runs,
@@ -293,8 +291,7 @@ def test_build_state_server_parses_the_rbac_role_policy(
         token=None,
         backend="server",
     )
-    assert state.auth.oauth_admins == frozenset({"root", "ops"})
-    assert state.auth.oauth_viewers == frozenset({"guest"})
+    assert state.auth.oauth_admin_team == "acme-gh/ops"
 
 
 def test_build_state_server_parses_the_per_user_quota(

@@ -74,17 +74,59 @@ def test_is_open_covers_the_login_ui_login_endpoint_and_frontend_modules() -> No
 
 def test_is_authorized_by_bearer_token() -> None:
     auth = SessionManager(token="s3cret")
-    assert gate.is_authorized(auth, "Bearer s3cret", None) is True
-    assert gate.is_authorized(auth, "Bearer wrong", None) is False
-    assert gate.is_authorized(auth, "", None) is False
+    assert gate.is_authorized(auth, "Bearer s3cret", None, path="/api/runs") is True
+    assert gate.is_authorized(auth, "Bearer wrong", None, path="/api/runs") is False
+    assert gate.is_authorized(auth, "", None, path="/api/runs") is False
 
 
 def test_is_authorized_by_session_cookie() -> None:
     auth = SessionManager(token="s3cret")
     sid = auth.issue_session()
-    assert gate.is_authorized(auth, "", sid) is True
-    assert gate.is_authorized(auth, "", "not-a-session") is False
-    assert gate.is_authorized(auth, "", None) is False
+    assert gate.is_authorized(auth, "", sid, path="/api/runs") is True
+    assert gate.is_authorized(auth, "", "not-a-session", path="/api/runs") is False
+    assert gate.is_authorized(auth, "", None, path="/api/runs") is False
+
+
+class _StubOAuth:
+    """A minimal non-None `oauth` so `SessionManager.oauth` reads as configured (BE-0313)."""
+
+    def authorize_url(self, state: str) -> str:
+        return ""
+
+    def fetch_identity(self, code: str):  # type: ignore[no-untyped-def]
+        return None
+
+
+_WORKER_PATHS = (
+    "/api/worker/lease",
+    "/api/worker/heartbeat",
+    "/api/worker/result",
+    "/api/worker/artifact-urls",
+    "/api/worker/scenario-url",
+    # A worker also requests evidence upload URLs here (BE-0257), outside the /api/worker/ prefix.
+    "/api/runs/20260101-000000/upload-urls",
+)
+
+
+def test_bearer_token_authorizes_any_path_without_oauth() -> None:
+    # The single-Mac token deployment (no OAuth): the shared token still reaches every endpoint.
+    auth = SessionManager(token="s3cret")
+    assert gate.is_authorized(auth, "Bearer s3cret", None, path="/api/config") is True
+    for path in _WORKER_PATHS:
+        assert gate.is_authorized(auth, "Bearer s3cret", None, path=path) is True
+
+
+def test_bearer_token_narrows_to_worker_paths_once_oauth_is_configured() -> None:
+    # BE-0313: once OAuth is configured the token authorizes only worker traffic, closing the direct
+    # Bearer bypass on every other endpoint.
+    auth = SessionManager(token="s3cret", oauth=_StubOAuth())
+    for path in _WORKER_PATHS:
+        assert gate.is_authorized(auth, "Bearer s3cret", None, path=path) is True
+    for path in ("/api/config", "/api/run", "/api/runs", "/api/apikey"):
+        assert gate.is_authorized(auth, "Bearer s3cret", None, path=path) is False
+    # A valid session cookie still authorizes a non-worker path (the human OAuth session).
+    sid = auth.issue_session("alice")
+    assert gate.is_authorized(auth, "Bearer s3cret", sid, path="/api/run") is True
 
 
 def test_actor_for_returns_the_session_identity() -> None:

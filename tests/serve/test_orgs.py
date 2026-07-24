@@ -7,6 +7,7 @@ from __future__ import annotations
 import pytest
 
 from bajutsu.serve.orgs import (
+    identity_matches_org,
     load_serve_config,
     org_for_identity,
     org_for_target,
@@ -98,6 +99,36 @@ def test_org_for_identity_falls_back_to_default() -> None:
     # No explicit membership and no matching GitHub org → the default org.
     assert org_for_identity(orgs, "stranger", ["unrelated-gh"]) == "default"
     assert org_for_identity(orgs, "stranger", []) == "default"
+
+
+def test_identity_matches_org_gates_sign_in() -> None:
+    # BE-0313: the sign-in gate — an explicit member or a `githubOrgs` match belongs; anyone else
+    # is turned away. Unlike org_for_identity, this can't confuse "matched nothing" with "default".
+    _, orgs = load_serve_config(IDENTITY_YAML)
+    assert identity_matches_org(orgs, "alice", []) is True  # explicit member
+    assert identity_matches_org(orgs, "dave", ["acme-gh"]) is True  # githubOrgs match
+    assert identity_matches_org(orgs, "stranger", ["unrelated-gh"]) is False
+    assert identity_matches_org(orgs, "stranger", []) is False
+
+
+def test_identity_matches_org_rejects_everyone_without_an_orgs_block() -> None:
+    # No `orgs:` block → an empty mapping → nobody matches, so an OAuth deployment must declare one.
+    _, orgs = load_serve_config("targets:\n  demo: { bundleId: com.x }\n")
+    assert identity_matches_org(orgs, "alice", ["any-gh"]) is False
+
+
+def test_editor_team_parses_from_editor_team_alias() -> None:
+    # BE-0313: `editorTeam` on an org names the flat Team whose members are editors.
+    _, orgs = load_serve_config(
+        "targets:\n  demo: { bundleId: com.x }\n"
+        "orgs:\n  acme:\n    githubOrgs: [acme-gh]\n    editorTeam: acme-gh/scenario-maintainers\n"
+    )
+    assert orgs["acme"].editor_team == "acme-gh/scenario-maintainers"
+    # Absent by default.
+    _, plain = load_serve_config(
+        "targets:\n  demo: { bundleId: com.x }\norgs:\n  acme:\n    githubOrgs: [acme-gh]\n"
+    )
+    assert plain["acme"].editor_team is None
 
 
 def test_malformed_orgs_block_fails_loudly() -> None:

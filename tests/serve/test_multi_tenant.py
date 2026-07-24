@@ -108,31 +108,34 @@ def test_no_orgs_block_keeps_a_single_tenant(tmp_path: Path) -> None:
 
 
 class _FakeOAuthClient:
-    def __init__(self, login: str, orgs: list[str] | None = None) -> None:
+    def __init__(
+        self, login: str, orgs: list[str] | None = None, teams: list[str] | None = None
+    ) -> None:
         self._login = login
         self._orgs = orgs or []
+        self._teams = teams or []
 
     def authorize_url(self, state: str) -> str:
         return f"https://github.test/?state={state}"
 
     def fetch_identity(self, code: str) -> Identity | None:
-        return Identity(login=self._login, orgs=list(self._orgs))
+        return Identity(login=self._login, orgs=list(self._orgs), teams=list(self._teams))
 
 
 def test_oauth_login_assigns_the_org_from_config(tmp_path: Path) -> None:
     # A login resolves to its config org and is persisted there, so later requests scope to it.
     state = _state(tmp_path)
     state.auth.oauth = _FakeOAuthClient("bob")
-    state.auth.oauth_allowed_users = frozenset({"bob"})
     _payload, status, sid = ops.oauth_callback(state, code="ok", state_param="s", state_cookie="s")
     assert status == 200 and sid is not None
     assert state.repository is not None
     assert state.repository.user_org("bob") == "globex"
-    # And a brand-new allowlisted login with no org membership lands in the default org.
+    # BE-0313: a login in no org's `members`/`githubOrgs` is now rejected at sign-in, not landed in
+    # the default org — the org roster is the allowlist.
     state.auth.oauth = _FakeOAuthClient("carol")
-    state.auth.oauth_allowed_users = frozenset({"carol"})
-    ops.oauth_callback(state, code="ok", state_param="s", state_cookie="s")
-    assert state.repository.user_org("carol") == "default"
+    _payload, status, sid = ops.oauth_callback(state, code="ok", state_param="s", state_cookie="s")
+    assert status == 403 and sid is None
+    assert state.repository.user_org("carol") is None
 
 
 def test_oauth_login_assigns_the_org_from_github_org_membership(tmp_path: Path) -> None:
@@ -150,10 +153,7 @@ def test_oauth_login_assigns_the_org_from_github_org_membership(tmp_path: Path) 
         runs_dir=tmp_path / "runs",
         config=cfg,
         repository=repo,
-        auth=srv.SessionManager(
-            oauth=_FakeOAuthClient("dave", orgs=["acme-gh"]),
-            oauth_allowed_users=frozenset({"dave"}),
-        ),
+        auth=srv.SessionManager(oauth=_FakeOAuthClient("dave", orgs=["acme-gh"])),
     )
     _payload, status, sid = ops.oauth_callback(state, code="ok", state_param="s", state_cookie="s")
     assert status == 200 and sid is not None
