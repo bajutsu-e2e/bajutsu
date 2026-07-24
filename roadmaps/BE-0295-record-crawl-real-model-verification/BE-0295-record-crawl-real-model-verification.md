@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0295](BE-0295-record-crawl-real-model-verification.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0295") |
+| Implementing PR | _pending_ |
 | Topic | Authoring experience |
 | Related | [BE-0104](../BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend.md), [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md) |
 <!-- /BE-METADATA -->
@@ -80,8 +81,18 @@ Proposal altitude. The work is MECE along the units below.
 
 - [ ] Capture real `record` propose-step responses as regression fixtures.
 - [ ] Capture real `crawl` navigation-step responses as regression fixtures.
-- [ ] Add a key-gated live smoke test for `record`'s propose loop.
-- [ ] Add a key-gated live smoke test for `crawl`'s navigation loop.
+- [x] Add a key-gated live smoke test for `record`'s propose loop.
+- [x] Add a key-gated live smoke test for `crawl`'s navigation loop.
+
+**Log**
+
+- Landed the two key-gated live smoke tests first, signal-first (the BE-0282 precedent):
+  `tests/test_real_model_smoke.py` drives `ClaudeAgent.next_action` and `ClaudeActionProposer.propose`
+  against a real model over a committed showcase golden screen (no Simulator; only the model call is
+  live), asserting each real response parses into the propose loop's action schema. They skip when no
+  AI credential is configured, so the gate stays hermetic. Deterministic `FakeBackend` self-checks in
+  the same file keep the loader and the validity assertions honest, so a live run validates for real.
+  The two fixture-capture units remain, needing a real credential to record the responses.
 
 ## References
 
