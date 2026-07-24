@@ -127,7 +127,7 @@ scenario:
    元のステップの通常の結果（成功・失敗・タイムアウト）にそのままフォールバックします。BE-0269 の
    `_GUARD_MAX_ATTEMPTS` / `_GUARD_COOLDOWN` と同じ形を踏襲することで、設定を誤った条件は実行を止まらせず、
    そのステップを明確に失敗させます。
-5. **codegen。** 「このシナリオ全体を通じて条件を機会をとらえてチェックし続ける」という挙動に対応するネイティブな
+5. **codegen。** 「このシナリオ全体を通じて、機会をとらえて条件をチェックし続ける」という挙動に対応するネイティブな
    XCUITest・Espresso・Playwright の構文はありません。
    [BE-0026](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax-ja.md) と BE-0276 が
    すでにアプリレベルの対応物を持たないフィールドに対して行っているのと同じ形で、フィールド名と各 `condition`
