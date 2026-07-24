@@ -401,6 +401,14 @@ these memberships, so the consent screen mentions organization access.
 admin and editor as a Team membership before cutting over — anyone not yet covered by `editorTeam` or
 `BAJUTSU_OAUTH_ADMIN_TEAM` drops to viewer on their next login.
 
+A third thing: disabling `POST /api/login` stops **minting** new token-cookie sessions once OAuth is
+configured, but it doesn't invalidate one already issued — a browser that logged in with the shared
+token before OAuth was turned on keeps that session's full, unchecked access (a token-minted session
+carries no identity, so the role gate never applies to it) until it expires on its own
+(`BAJUTSU_SESSION_TTL`, seven days by default). A deployment moving from token-only to OAuth should
+rotate the session store (or otherwise force-clear existing cookies) at cutover, rather than count on
+the seven-day window to close it.
+
 Once OAuth is configured, the shared token narrows to **worker traffic only**: it authorizes the
 worker control-plane routes (the `/api/worker/*` endpoints and the run evidence-upload URL request)
 and nothing else. The browser token-login endpoint
