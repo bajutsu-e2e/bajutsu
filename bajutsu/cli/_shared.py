@@ -402,17 +402,21 @@ def _build_alert_locator(eff: Effective, redactor: Redactor) -> ClaudeAlertLocat
 
     # The credential is provider-specific: the key named by ai.keyEnv (default ANTHROPIC_API_KEY) for
     # Anthropic, a provider-prefixed model for Bedrock (AWS credentials authenticate there). When it's
-    # absent we don't construct the locator at all — the guard no-ops rather than falling back.
+    # absent we don't construct the locator at all — the vision fallback no-ops rather than falling back.
+    # Only the *vision* fallback needs the credential; the iOS XCUITest native alert path (BE-0315)
+    # still clears the common system prompts without one, so the note names the vision fallback, not
+    # "the whole guard", to avoid implying the run has no alert handling at all.
     gap = credential_gap(eff.ai)
     if gap == "anthropic-key":
         typer.echo(
             f"note: dismiss-alerts is on but ${anthropic_client.key_env(eff.ai)} is unset — "
-            "the alert guard will no-op"
+            "the vision alert guard will no-op (iOS still clears common prompts natively)"
         )
     elif gap == "bedrock-model":
         typer.echo(
             "note: dismiss-alerts is on but no Bedrock model id is set "
-            "(ai.model / BAJUTSU_BEDROCK_MODEL) — the alert guard will no-op"
+            "(ai.model / BAJUTSU_BEDROCK_MODEL) — the vision alert guard will no-op "
+            "(iOS still clears common prompts natively)"
         )
     if gap is not None:
         return None

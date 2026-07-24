@@ -844,3 +844,23 @@ def test_handle_system_alert_reports_a_vanished_button_as_not_found() -> None:
 
     with pytest.raises(base.ElementNotFound, match="vanished"):
         _driver(transport).handle_system_alert({"label": "Allow"}, timeout=5.0)
+
+
+# --- system_alert_labels (BE-0315): the reactive guard's non-blocking presence read ----------------
+
+
+def test_system_alert_labels_reads_button_labels_from_the_query() -> None:
+    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+        assert (method, path) == ("POST", "/systemAlert/query")
+        return _elements(
+            _el_wire("h-deny", label="Don't Allow", traits=["button"]),
+            _el_wire("h-allow", label="Allow", traits=["button"]),
+        )
+
+    assert _driver(transport).system_alert_labels() == ["Don't Allow", "Allow"]
+
+
+def test_system_alert_labels_returns_empty_when_no_alert_is_up() -> None:
+    # An empty `/systemAlert/query` (no alert, or a caught proxy-in-flux query) reads as no labels,
+    # which the reactive guard treats as "no alert this poll" and re-checks next interval (BE-0315).
+    assert _driver(lambda m, p, b: _elements()).system_alert_labels() == []

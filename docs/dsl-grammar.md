@@ -111,10 +111,12 @@ Preconditions ::= {
   setup?:      string,                      # a reusable prelude file (§6.4)
 }
 
-# ── DismissAlerts (vision alert guard; on by default) ──────────────────
+# ── DismissAlerts (reactive system-alert guard; on by default) ─────────
+# Native SpringBoard query + tap on XCUITest (no model, reusing BE-0316); AI-vision fallback (BE-0315).
 DismissAlerts ::= boolean                                   # shorthand for { enabled: <bool> }
                | { enabled?: boolean,                       # default true
-                   instruction?: string }                   # button to tap (else dismiss)
+                   instruction?: string | [string],         # [labels] = native; "text" = vision (else dismiss)
+                   pollInterval?: number }                   # native poll cadence, seconds (default 1)
 
 Permissions ::= map(PermissionService, PermissionAction)    # applied before the app launches
 PermissionService ::= "location" | "camera" | "microphone" | "contacts"

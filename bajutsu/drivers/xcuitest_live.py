@@ -445,6 +445,11 @@ class XcuitestLiveDriver:
             "handleSystemAlert is served by the resident-runner XCUITest backend; not on the live grid"
         )
 
+    def system_alert_labels(self) -> list[str]:
+        # The SpringBoard query channel is a resident-runner capability the live grid does not expose;
+        # this backend does not advertise HANDLE_SYSTEM_ALERT, so the reactive native path never runs.
+        return []
+
     # --- lifecycle ---
 
     def await_ready(self, timeout: float = 10.0, poll: float = 0.1) -> None:

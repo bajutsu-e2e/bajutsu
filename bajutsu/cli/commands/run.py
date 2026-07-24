@@ -34,7 +34,12 @@ from bajutsu.cli._shared import (
 )
 from bajutsu.config import WEB_ENGINES, Effective, IosConfig
 from bajutsu.github import actions as github_actions
-from bajutsu.orchestrator import AlertEvent, BlockedHandler, RunResult
+from bajutsu.orchestrator import (
+    DEFAULT_ALERT_POLL_INTERVAL,
+    AlertEvent,
+    AlertGuardConfig,
+    RunResult,
+)
 from bajutsu.platform_lifecycle import ProvisionProfile, environment_for
 from bajutsu.report.archive import archive_run_dir
 from bajutsu.report.manifest import _run_backend
@@ -42,6 +47,7 @@ from bajutsu.run_id import new_run_id
 from bajutsu.runner import device_pool, run_all, run_and_report, run_matrix_and_report
 from bajutsu.runner.build import BuildError, build_if_missing
 from bajutsu.runner.device_provider import acquire_device
+from bajutsu.runner.types import AlertGuardFor
 from bajutsu.scenario import (
     DismissAlerts,
     Scenario,
@@ -312,25 +318,43 @@ def _select_actuator(backend: str, eff: Effective, engines: list[str]) -> tuple[
 def _apply_dismiss_alerts(scenarios: list[Scenario], dismiss_alerts: bool | None) -> None:
     """Apply the `--dismiss-alerts` / `--no-dismiss-alerts` override to every scenario's guard.
 
-    Preserves any per-scenario instruction; a no-op when the flag is unset (each scenario's own
-    `dismissAlerts`, default on, decides). Mirrors the `--erase` override.
+    Preserves any per-scenario button policy and poll interval; a no-op when the flag is unset (each
+    scenario's own `dismissAlerts`, default on, decides). Mirrors the `--erase` override.
     """
     if dismiss_alerts is None:
         return
     for s in scenarios:
-        instr = s.dismiss_alerts.instruction if s.dismiss_alerts else None
-        s.dismiss_alerts = DismissAlerts(enabled=dismiss_alerts, instruction=instr)
+        prev = s.dismiss_alerts
+        s.dismiss_alerts = DismissAlerts(
+            enabled=dismiss_alerts,
+            instruction=prev.instruction if prev else None,
+            pollInterval=prev.poll_interval if prev else None,
+        )
+
+
+def _vision_instruction(instruction: str | list[str] | None) -> str | None:
+    """The vision locator's free-text instruction from a resolved `dismissAlerts` button policy.
+
+    A free-text string passes through unchanged (the legacy form). A candidate-label list — the
+    deterministic native form — becomes a hint the vision fallback can still act on when the native
+    path could not name a button ("Tap the button labeled one of, in order: Allow, OK").
+    """
+    if isinstance(instruction, list):
+        return "Tap the button labeled one of, in order: " + ", ".join(instruction)
+    return instruction
 
 
 def _alert_guard_factory(
     scenarios: list[Scenario], eff: Effective, alert_instruction: str
-) -> Callable[[Scenario], BlockedHandler | None] | None:
+) -> AlertGuardFor | None:
     """Build a per-scenario alert-guard factory, or None when no scenario wants a guard.
 
-    The vision locator is shared (one client); each scenario gets its own guard so its instruction
-    applies. Best-effort: the vision guard reaches Claude through the configured AI provider
-    (BE-0053/BE-0047), so a missing/insufficient credential prints a note and no-ops — never a client
-    that would fall back to a hosted default, so the deterministic gate still runs Claude-free.
+    Each scenario gets its own `AlertGuardConfig`: the deterministic native path (BE-0315, reusing
+    BE-0316's `handle_system_alert`), plus the shared vision locator as the fallback. The native path
+    runs credential-free, so a guard is built even without an `ANTHROPIC_API_KEY`; only the vision
+    fallback is gated on the credential (BE-0053/BE-0047) — a missing one prints a note and makes the
+    fallback a no-op, never a client that falls back to a hosted default, so the deterministic gate
+    still runs Claude-free.
     """
 
     # A scenario's guard is on when its own `dismissAlerts` says so, else the target config's, else the
@@ -347,39 +371,55 @@ def _alert_guard_factory(
         return None
     from bajutsu.agents.alerts import SystemAlertGuard
 
-    # One shared locator across the per-scenario guards (one client), None when the credential is
-    # missing (the shared helper prints the note and no-ops, so the guard never falls back). Mask the
-    # (possibly user-supplied) alert instruction before it reaches the model (BE-0047).
+    # One shared vision locator across the per-scenario guards (one client), None when the credential
+    # is missing (the shared helper prints the note; the fallback then no-ops, never a hosted
+    # fallback). Mask the (possibly user-supplied) alert instruction before it reaches the model (BE-0047).
     redactor = _ai_redactor(eff)
     locator = _build_alert_locator(eff, redactor)
     default_instruction = alert_instruction or None
 
-    # The button label resolves scenario > `--alert-instruction` > target config > built-in dismissive
-    # (BE-0177): a scenario's own wins, then the run-wide flag default, then the app default, then None
-    # (the guard's built-in). `--alert-instruction` stays a *default* the scenario overrides, as before.
-    target_instruction = (
-        eff.run_defaults.dismiss_alerts.instruction if eff.run_defaults.dismiss_alerts else None
-    )
+    # The button policy resolves scenario > `--alert-instruction` > target config > built-in
+    # dismissive (BE-0177); the poll interval resolves scenario > target > built-in (no CLI flag).
+    target_da = eff.run_defaults.dismiss_alerts
+    target_instruction = target_da.instruction if target_da else None
+    target_interval = target_da.poll_interval if target_da else None
 
-    def _guard_for(s: Scenario) -> BlockedHandler | None:
-        if locator is None:
-            return None  # no usable AI credential: the guard no-ops, never a hosted fallback
+    def _guard_for(s: Scenario) -> AlertGuardConfig | None:
         if not _enabled(s):
             return None
-        scenario_instruction = s.dismiss_alerts.instruction if s.dismiss_alerts else None
+        scenario_da = s.dismiss_alerts
         # Trailing `or None` normalizes an empty instruction (e.g. config `instruction: ""`) to the
-        # guard's built-in default, matching how `default_instruction` drops an empty --alert-instruction.
+        # default dismissive policy, matching how `default_instruction` drops an empty --alert-instruction.
+        scenario_instruction = scenario_da.instruction if scenario_da else None
         instruction = scenario_instruction or default_instruction or target_instruction or None
-        handler = SystemAlertGuard(locator, instruction).dismiss
+        labels = list(instruction) if isinstance(instruction, list) else []
 
-        # Attribute the guard's AI tokens/cost to this scenario (BE-0196). The handler fires inside
-        # the runner's `ThreadPoolExecutor` worker, so the scope must be entered *there* — a contextvar
-        # bound on the main thread would not reach the worker under `run --workers N`.
-        def _attributed(driver: base.Driver) -> AlertEvent | None:
+        scenario_interval = scenario_da.poll_interval if scenario_da else None
+        poll_interval = (
+            scenario_interval
+            if scenario_interval is not None
+            else target_interval
+            if target_interval is not None
+            else DEFAULT_ALERT_POLL_INTERVAL
+        )
+
+        # None when the credential is missing: the vision fallback then no-ops (never a hosted default).
+        handler = (
+            SystemAlertGuard(locator, _vision_instruction(instruction)).dismiss
+            if locator is not None
+            else None
+        )
+
+        def vision(driver: base.Driver) -> AlertEvent | None:
+            if handler is None:
+                return None  # no usable AI credential: the vision fallback no-ops
+            # Attribute the vision guard's AI tokens/cost to this scenario (BE-0196). It fires inside
+            # the runner's `ThreadPoolExecutor` worker, so the scope must be entered *there* — a
+            # contextvar bound on the main thread would not reach the worker under `run --workers N`.
             with _usage_ledger.attributed(command="run", scenario=s.name):
                 return handler(driver)
 
-        return _attributed
+        return AlertGuardConfig(vision=vision, labels=labels, poll_interval=poll_interval)
 
     return _guard_for
 
@@ -444,7 +484,7 @@ class _RunPlan:
     # The device provider's readiness report for this run (BE-0236); the pool threads it to each
     # environment so a cloud-provisioned device can skip its boot wait / install.
     provision: ProvisionProfile
-    on_blocked_for: Callable[[Scenario], BlockedHandler | None] | None
+    alert_guard_for: AlertGuardFor | None
     baselines_dir: Path
     schemas_dir: Path
     golden_context: GoldenContext | None
@@ -529,7 +569,7 @@ def _dispatch_single(
             lease,
             plan.runs_dir,
             plan.run_id,
-            on_blocked_for=plan.on_blocked_for,
+            alert_guard_for=plan.alert_guard_for,
             workers=plan.workers,
             bindings=plan.secret_bindings,
             secret_values=plan.secret_values,
@@ -586,7 +626,7 @@ def _dispatch_matrix(
                 eff_e,
                 plan.scenarios,
                 lease,
-                on_blocked_for=plan.on_blocked_for,
+                alert_guard_for=plan.alert_guard_for,
                 workers=plan.workers,
                 run_dir=engine_run_dir,
                 bindings=plan.secret_bindings,
@@ -909,7 +949,7 @@ def run(
             environment_for(actuator, lease.udid_spec).resolve_device,
         )
         _apply_dismiss_alerts(scenarios, dismiss_alerts)
-        on_blocked_for = _alert_guard_factory(scenarios, eff, alert_instruction)
+        alert_guard_for = _alert_guard_factory(scenarios, eff, alert_instruction)
         # Network collection resolves `--network/--no-network` over the target's `network` config,
         # then on (BE-0177); the resolved bool baked into mocks and the plan drives collection and
         # `request` waits.
@@ -932,7 +972,7 @@ def run(
             udid_spec=lease.udid_spec,
             workers=workers,
             provision=lease.provision,
-            on_blocked_for=on_blocked_for,
+            alert_guard_for=alert_guard_for,
             baselines_dir=baselines_dir,
             schemas_dir=schemas_dir,
             golden_context=gc,

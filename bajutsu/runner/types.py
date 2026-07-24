@@ -12,17 +12,17 @@ from bajutsu.config import Effective
 from bajutsu.drivers import base
 from bajutsu.evidence import EvidenceSink
 from bajutsu.evidence.network import Collector
-from bajutsu.orchestrator import BlockedHandler, DeviceControl, RelaunchFn, SkippedCapture
+from bajutsu.orchestrator import AlertGuardConfig, DeviceControl, RelaunchFn, SkippedCapture
 from bajutsu.scenario import Scenario
 from bajutsu.webview import DomSource
 
 # Builds the in-scenario relaunch function for a scenario (given its live driver).
 RelaunchFactory = Callable[[Effective, Scenario, base.Driver], RelaunchFn]
 
-# Selects the alert-guard handler for one scenario (None = no guard for it). The CLI sets this
-# so each scenario's `dismissAlerts` (default on, optional instruction) decides whether — and
-# how — the vision guard runs; the orchestrator stays oblivious to the per-scenario choice.
-OnBlockedFor = Callable[[Scenario], BlockedHandler | None]
+# Selects the alert-guard config for one scenario (None = no guard for it). The CLI sets this so
+# each scenario's `dismissAlerts` (default on, optional button policy / poll interval) decides
+# whether — and how — the guard runs; the orchestrator stays oblivious to the per-scenario choice.
+AlertGuardFor = Callable[[Scenario], AlertGuardConfig | None]
 
 
 @dataclass

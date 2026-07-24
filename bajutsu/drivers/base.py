@@ -231,6 +231,12 @@ class Driver(Protocol):
     # HANDLE_SYSTEM_ALERT capability raises UnsupportedAction; preflight (capability_preflight.py)
     # rejects the scenario before any device work, so this raise is only the mid-run backstop.
     def handle_system_alert(self, sel: Selector, timeout: float) -> None: ...
+    # A single, non-blocking read of the SpringBoard alert's button labels — [] when no alert is up
+    # (BE-0315). The reactive `dismissAlerts` guard polls this to learn whether a prompt is showing
+    # and which buttons it offers, then taps a policy-named one via `handle_system_alert`. It shares
+    # the HANDLE_SYSTEM_ALERT capability (a backend without it returns []), so it never adds a route
+    # of its own — the query is BE-0316's `/systemAlert/query`, read here without the tap.
+    def system_alert_labels(self) -> list[str]: ...
     # Single-shot by contract (BE-0118): whether `sel` matches the *current* screen,
     # checked once. A backend never loops here — the shared `wait_until` owns the
     # deadline poll, so a caller's timeout means the same real seconds on every backend.

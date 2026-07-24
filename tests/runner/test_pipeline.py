@@ -231,10 +231,10 @@ def test_run_all_releases_after_each_scenario() -> None:
     assert released == ["a", "b"]  # release runs after every scenario, including the last
 
 
-def test_run_all_on_blocked_for_selects_per_scenario() -> None:
+def test_run_all_alert_guard_for_selects_per_scenario() -> None:
     # The factory picks each scenario's guard from its dismissAlerts: the guarded scenario
     # recovers from a blocked tap and passes; the one that disabled it fails.
-    from bajutsu.orchestrator import AlertEvent, BlockedHandler
+    from bajutsu.orchestrator import AlertEvent, AlertGuardConfig
 
     scenarios = [
         Scenario.model_validate(
@@ -250,11 +250,11 @@ def test_run_all_on_blocked_for_selects_per_scenario() -> None:
         d.screen = [_el("later", "Later", ["button"])]  # "dismiss the alert": target appears
         return AlertEvent(label="x")
 
-    def on_blocked_for(s: Scenario) -> BlockedHandler | None:
+    def alert_guard_for(s: Scenario) -> AlertGuardConfig | None:
         cfg = s.dismiss_alerts
-        return None if cfg is not None and not cfg.enabled else recover
+        return None if cfg is not None and not cfg.enabled else AlertGuardConfig(vision=recover)
 
-    results = run_all(_eff(), scenarios, _lease, on_blocked_for=on_blocked_for)
+    results = run_all(_eff(), scenarios, _lease, alert_guard_for=alert_guard_for)
     assert [r.ok for r in results] == [True, False]
 
 

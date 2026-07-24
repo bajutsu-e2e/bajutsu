@@ -8,7 +8,7 @@ import pytest
 
 from bajutsu import simctl
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.orchestrator import run_scenario
+from bajutsu.orchestrator import AlertGuardConfig, run_scenario
 from bajutsu.scenario import Foreground, Push, Scenario, SetClipboard, SetLocation, Step
 
 # --- pure command builders ---
@@ -347,7 +347,10 @@ def test_clipboard_expect_retry_rereads_after_on_blocked() -> None:
         }
     )
     result = run_scenario(
-        FakeDriver([el("a", "A", ["button"])]), scn, control=ctrl, on_blocked=on_blocked
+        FakeDriver([el("a", "A", ["button"])]),
+        scn,
+        control=ctrl,
+        alert_guard=AlertGuardConfig(vision=on_blocked),
     )
     assert result.ok  # first read STALE failed, on_blocked fired, re-read COUPON123 passed
 

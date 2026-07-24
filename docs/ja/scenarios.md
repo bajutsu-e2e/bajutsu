@@ -64,7 +64,7 @@ scenarios:
 | `network` | object | なし | `{ filter: { domains: [...] } }`。`filter.domains` は、レポートの Steps タイムラインに差し込む通信を URL ホストで絞る（親ドメインはサブドメインに一致）。未指定なら全件を表示する。Network タブは常に全件を表示する（[reporting](reporting.md#reporthtml)） |
 | `mocks` | list | `[]` | 決定的なネットワークスタブ。一致する送信リクエストには、ネットワークへ行かず定型レスポンスを返す（[ネットワークモック](#ネットワークモック決定的スタブ)） |
 | `redact` | object | なし | 証跡を書き出す前に適用するマスク（[evidence](evidence.md#マスキングredact)） |
-| `dismissAlerts` | bool / object | なし（ON） | 視覚ベースの **アラートガード**。iOS バックエンドから見えない OS プロンプトを片付ける。既定は ON。`false` で無効化し、`{ instruction: "tap Allow" }` なら ON のまま指定したボタンを押す。CLI の `--dismiss-alerts`/`--no-dismiss-alerts` が上書きする（[下記](#dismissalertsシステムアラートガード)） |
+| `dismissAlerts` | bool / object | なし（ON） | リアクティブな **アラートガード**。iOS バックエンドから見えない OS プロンプトを、XCUITest ではネイティブに（モデルなし、BE-0316 を再利用）片付け、vision をフォールバックにする。既定は ON。`false` で無効化し、`{ instruction: ["Allow"] }` なら ON のまま指定したボタンを押し、`{ pollInterval: 2 }` でネイティブのポーリング間隔を変える。CLI の `--dismiss-alerts`/`--no-dismiss-alerts` が上書きする（[下記](#dismissalertsシステムアラートガード)） |
 | `permissions` | dict | `{}` | 宣言的な OS 権限の状態（`{ <service>: grant \| revoke }`）。**アプリの起動前**に適用する（[下記](#permissions起動前の権限状態)） |
 | `interrupts` | list | `[]` | **予測できない時点**で現れる差し込み画面のハンドラ。各エントリは `{ condition, steps }` で、画面が現れた場所を問わず随時判定する（[下記](#interrupts予測できない差し込み画面への対処)） |
 
@@ -102,30 +102,34 @@ scenarios:
 
 ## dismissAlerts（システムアラートガード）
 
-iOS バックエンドは **SpringBoard レベルのプロンプト**（iOS の "Save Password?"、権限リクエスト、"Allow Paste" など）を見ることも tap することもできません。これらのプロンプトはアプリを覆って要素ツリーを潰し、ステップを静かにブロックします。**アラートガード**は視覚ベースのフォールバック（`alerts.py`）です。ステップがブロックされるとスクリーンショットを撮り、Claude にどこを tap するか尋ね、プロンプトを片付けてからそのステップを 1 回再試行します（[詳細](recording.md#システムアラートの自動対処)）。`wait` ステップ（`for`/`settled`/`screenChanged`）では、ガードはすでにポーリング済みの画面も監視し、ツリーが潰れて見えた時点で **wait の途中でも**発火します（デバウンスとクールダウンを挟み、1 回の wait につき最大 2 回まで）。wait 自体のタイムアウトを待たず、ステップが失敗する前に回復できます（BE-0269）。
+iOS バックエンドは **SpringBoard レベルのプロンプト**（通知や App Tracking Transparency のリクエスト、"Allow Paste" など）を見ることも tap することもできません。これらのプロンプトはアプリを覆って要素ツリーを潰し、ステップを静かにブロックします。**アラートガード**がこれをリアクティブに片付けます。iOS の XCUITest バックエンドでは**決定論的なネイティブ経路**をとります（BE-0315）。BE-0316 の SpringBoard 照会を再利用してアラートが提示するボタンを把握し、方針が名指しするボタンを押します。スクリーンショットもモデルへの往復も使わないため、頻出するプロンプトを 0.1 秒を大きく下回る時間で片付け、`ANTHROPIC_API_KEY` が**なくても**動作します。ネイティブ経路が対処できない場合（capability を持たないバックエンド、または方針が label を名指しできないアラート）は、**vision guard**（`alerts.py`）にフォールバックします。これはモデルがどこを tap するか読み取るためのスクリーンショットです（[詳細](recording.md#システムアラートの自動対処)）。`wait` ステップ（`for`/`settled`/`screenChanged`）では、ガードは **wait の途中でも**発火します。ネイティブ経路は独自の間隔（既定は 1 秒）で SpringBoard をポーリングし、vision フォールバックはすでにポーリング済みの画面を監視してツリーが潰れて見えたら発火します（デバウンスとクールダウンを挟み、1 回の wait につき最大 2 回まで）。wait 自体のタイムアウトを待たず、ステップが失敗する前に回復できます（BE-0269）。
 
-これは **既定で ON** で、**ステップ（または `expect`）がブロックされたとき、あるいはガード対象の `wait` でポーリング中の画面がブロックされて見えたとき**に発火します。そのため、成功するシナリオはモデルを呼びません。`ANTHROPIC_API_KEY` が必要ですが、無くても no-op になるだけで run には影響しません。シナリオごとに動作を変えるには `dismissAlerts` を使います。
+これは **既定で ON** で、**ステップ（または `expect`）がブロックされたとき、あるいはガード対象の `wait` でネイティブのポーリングがアラートを見つけたとき（またはポーリング中の画面がブロックされて見えたとき）**に発火します。そのため、成功するシナリオは余計な処理をしません（ネイティブ照会はモデル呼び出しではありません）。vision フォールバックには `ANTHROPIC_API_KEY` が必要ですが、無くてもネイティブ経路が名指しできるプロンプトはそのまま片付けます。シナリオごとに動作を変えるには `dismissAlerts` を使います。
 
 | 形 | 意味 |
 |---|---|
 | （省略） | ON。**最も無害な**ボタンを押す（"Not Now" / "Don't Allow" / "Cancel"） |
 | `dismissAlerts: false` | このシナリオでは無効 |
-| `dismissAlerts: { instruction: "tap Allow" }` | ON のまま、instruction が指すボタンを押す。たとえば権限を**許可**する場合 |
+| `dismissAlerts: { instruction: ["Allow", "OK"] }` | ON。ネイティブ経路がこれらのうちアラートに存在する最初の label を押す。たとえば権限を**許可**する場合 |
+| `dismissAlerts: { instruction: "tap Allow" }` | ON。**vision** guard が解釈する自由文字列（正確な label を要するネイティブ経路は、既定の無害な label 群にフォールバックする） |
+| `dismissAlerts: { pollInterval: 2 }` | ON。ネイティブの presence 照会を既定の 1 秒ではなく 2 秒間隔でポーリングする |
 | `dismissAlerts: { enabled: false }` | 無効（`false` を明示的なオブジェクトで書いた形） |
 
 ```yaml
 - name: grant notification permission
-  dismissAlerts: { instruction: "tap Allow" }   # accept the prompt instead of dismissing it
+  dismissAlerts: { instruction: ["Allow"] }   # accept the prompt instead of dismissing it
   steps:
     - tap:  { id: sys.requestNotif }
     - wait: { for: { id: sys.notif.authorized }, timeout: 4 }   # the guard taps Allow, then this passes
 ```
 
-CLI の `--dismiss-alerts` / `--no-dismiss-alerts` フラグは**全シナリオを上書き**します（無指定ならシナリオごとの既定が使われます）。`--alert-instruction` は既定のボタン指示を設定するもので、シナリオ自身の `instruction` が優先されます。（[`demos/showcase/scenarios/permission.yaml`](../../demos/showcase/scenarios/permission.yaml) 実物）
+`instruction` は、ネイティブ経路が決定論的に解決する候補 label のリストです（アラートに存在する最初の label を、それを持つボタンがちょうど 1 つのときにだけ押します）。素の文字列は、vision guard が解釈する従来の自由文字列の形です。CLI の `--dismiss-alerts` / `--no-dismiss-alerts` フラグは**全シナリオを上書き**します（無指定ならシナリオごとの既定が使われます）。`--alert-instruction` は既定のボタン指示を設定するもので、シナリオ自身の `instruction` が優先されます。（[`demos/showcase/scenarios/permission.yaml`](../../demos/showcase/scenarios/permission.yaml) 実物）
+
+このリアクティブなガードと、下記のプロアクティブな `handleSystemAlert` ステップは、いまや**同じ**ネイティブの SpringBoard 機構（BE-0316 の照会と tap）を共有します。違うのは*いつ*発火するかだけです。ガードはプロンプトが現れた場所で自動的に、ステップは作者が置いた 1 か所で発火します。
 
 ## handleSystemAlert（決定的なシステムアラートステップ）
 
-上記の `dismissAlerts` は**リアクティブなガード**です。ステップがすでにブロックされたときにだけ発火し、どこを tap するかを視覚モデルが判断します。`handleSystemAlert` はその対極にあります。プロンプトが現れると見込んだ地点に作者が明示的に置く**決定的なステップ**で、プロンプトのボタンをネイティブなアクセシビリティ照会で tap します。**スクリーンショットもモデル呼び出しもありません**（[BE-0316](../../roadmaps/BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step-ja.md)）。リクエストと許可の流れ自体をテストしたいときに使います。OS の権限リクエストを発火させ、続いて現れるプロンプトを決定的に許可または拒否します。
+上記の `dismissAlerts` は**リアクティブなガード**です。プロンプトが現れた場所で自動的に発火します。`handleSystemAlert` はそのプロアクティブな対の一方です。プロンプトが現れると見込んだ地点に作者が明示的に置く**決定的なステップ**で、プロンプトのボタンをネイティブなアクセシビリティ照会で tap します。**スクリーンショットもモデル呼び出しもありません**（[BE-0316](../../roadmaps/BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step-ja.md)）。リクエストと許可の流れ自体をテストしたいときに使います。OS の権限リクエストを発火させ、続いて現れるプロンプトを決定的に許可または拒否します。
 
 ```yaml
 - name: grant the notification prompt mid-flow
@@ -148,7 +152,7 @@ CLI の `--dismiss-alerts` / `--no-dismiss-alerts` フラグは**全シナリオ
 |---|---|---|---|
 | `permissions` | そもそも避けられる OS 権限プロンプト | 起動前、アプリが動き出す前 | 決定的なデバイス操作 |
 | `handleSystemAlert` | **既知の**、途中で tap するつもりのプロンプト | 作者が置いた明示的なステップ | 決定的（ネイティブなアクセシビリティ tap） |
-| `dismissAlerts` | ツリーに見えない**想定外**のプロセス外プロンプト | ステップや wait がブロックされたときに反応 | AI 視覚（`ANTHROPIC_API_KEY`） |
+| `dismissAlerts` | ツリーに見えない**想定外**のプロセス外プロンプト | ステップや wait がブロックされたときに反応 | XCUITest ではネイティブの SpringBoard 照会（モデルなし、BE-0316 を再利用）。AI 視覚はフォールバック |
 
 （[`demos/showcase/scenarios/permission_system_alert.yaml`](../../demos/showcase/scenarios/permission_system_alert.yaml) 実物）
 
@@ -212,7 +216,7 @@ targets:
 | `if` | ステップ列の**わかっている**位置に出る画面 | 台本どおりの 1 回の判定 | 決定的（アサーション DSL） |
 | `interrupts` | **予測できない**位置に出る、ツリーに見える画面 | 全体を通して随時判定 | 決定的（アサーション DSL） |
 | `handleSystemAlert` | 途中で tap するつもりの**既知の**プロセス外プロンプト | 作者が置いた明示的なステップ | 決定的（ネイティブなアクセシビリティ tap） |
-| `dismissAlerts` | ツリーに見えない**想定外**のプロセス外プロンプト | ステップや wait がブロックされたときに反応 | AI 視覚（`ANTHROPIC_API_KEY`） |
+| `dismissAlerts` | ツリーに見えない**想定外**のプロセス外プロンプト | ステップや wait がブロックされたときに反応 | XCUITest ではネイティブの SpringBoard 照会（モデルなし、BE-0316 を再利用）。AI 視覚はフォールバック |
 | `permissions` | そもそも避けられる OS 権限プロンプト | 起動前、アプリが動き出す前 | 決定的なデバイス操作 |
 
 「この条件をテスト全体を通して随時判定する」に対応するネイティブな XCUITest / Espresso / Playwright の構文はありません。そのため `codegen` はコードを生成する代わりに、フィールドと設定された各条件を名指ししたラベル付きの `// TODO` を出力します。`bajutsu run` が忠実に実行する経路です。

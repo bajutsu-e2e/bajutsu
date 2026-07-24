@@ -15,7 +15,9 @@ from bajutsu.orchestrator.actions import _action_of, _do_action
 from bajutsu.orchestrator.loop import run_scenario
 from bajutsu.orchestrator.substitution import _interp_asserts, _interp_step
 from bajutsu.orchestrator.types import (
+    DEFAULT_ALERT_POLL_INTERVAL,
     AlertEvent,
+    AlertGuardConfig,
     BlockedHandler,
     Clock,
     DeviceControl,
@@ -32,8 +34,10 @@ from bajutsu.orchestrator.types import (
 from bajutsu.orchestrator.waits import _POLL, _wait
 
 __all__ = [
+    "DEFAULT_ALERT_POLL_INTERVAL",
     "_POLL",
     "AlertEvent",
+    "AlertGuardConfig",
     "BlockedHandler",
     "Clock",
     "DeviceControl",

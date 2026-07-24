@@ -1,17 +1,29 @@
 **English** · [日本語](BE-0315-ios-native-system-alert-handling-ja.md)
 
-# BE-0315 — Detect and dismiss iOS system alerts deterministically with native XCUITest
+# BE-0315 — Make the reactive alert guard deterministic and native, reusing BE-0316's SpringBoard path
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
 | Proposal | [BE-0315](BE-0315-ios-native-system-alert-handling.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0315") |
+| Implementing PR | [#PLACEHOLDER](https://github.com/bajutsu-e2e/bajutsu/pull/PLACEHOLDER) |
 | Topic | Platform support |
-| Related | [BE-0177](../BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md), [BE-0269](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention.md), [BE-0276](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state.md), [BE-0290](../BE-0290-xcuitest-default-ios-backend/BE-0290-xcuitest-default-ios-backend.md), [BE-0308](../BE-0308-alerts-guard-real-model-verification/BE-0308-alerts-guard-real-model-verification.md), [BE-0314](../BE-0314-scenario-interrupt-handlers/BE-0314-scenario-interrupt-handlers.md) |
+| Related | [BE-0177](../BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md), [BE-0269](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention.md), [BE-0276](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state.md), [BE-0290](../BE-0290-xcuitest-default-ios-backend/BE-0290-xcuitest-default-ios-backend.md), [BE-0308](../BE-0308-alerts-guard-real-model-verification/BE-0308-alerts-guard-real-model-verification.md), [BE-0314](../BE-0314-scenario-interrupt-handlers/BE-0314-scenario-interrupt-handlers.md), [BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step.md) |
 <!-- /BE-METADATA -->
+
+> **Reconciled with BE-0316 (shipped during implementation).** BE-0316 landed the native SpringBoard
+> primitive — a `handleSystemAlert` *step*, the `handle_system_alert` driver method, the
+> `/systemAlert/query` + `/systemAlert/tap` runner routes, and the `HANDLE_SYSTEM_ALERT` capability.
+> BE-0316 deliberately kept `dismissAlerts` the reactive vision guard, recording that it would not
+> make the deterministic mechanism reactive so that "a passing scenario never calls the model" held.
+> BE-0315 is exactly that reactive counterpart, and it resolves that tension: a native SpringBoard
+> query is **not** a model call, so the invariant still holds. This implementation therefore **reuses**
+> BE-0316's primitive (adding only a thin non-blocking `system_alert_labels()` read over the existing
+> `/systemAlert/query`) rather than adding a parallel API; its contribution is the automatic reactive
+> guard, the deterministic button policy, the poll-interval knob, and demoting vision to a fallback.
 
 ## Introduction
 
@@ -79,28 +91,26 @@ verification. Each unit is backend-agnostic at the interface and iOS-specific on
 implementation, so prime directive 3 (per-app and per-platform differences stay behind the driver
 interface) holds throughout.
 
+> **As implemented (reconciled with BE-0316).** Units 1 and 2 below were the proposal's plan for a
+> presence query and a dismiss action *before* BE-0316 shipped the same SpringBoard plumbing. The
+> implementation reuses BE-0316 instead — see the reconciliation banner at the top. What actually
+> landed: a thin `Driver.system_alert_labels()` reading BE-0316's `/systemAlert/query` (Unit 1), and
+> the guard tapping through BE-0316's `handle_system_alert` under `HANDLE_SYSTEM_ALERT` (Unit 2). No
+> new runner route, dismiss action, or capability token was added. Units 3–5 landed as written.
+
 1. **A deterministic system-alert presence query, exposed through the `Driver` interface.** Add a
    backend-agnostic driver method that reports whether a system alert is showing and, when one is,
-   the labels of its buttons. The XCUITest backend answers it by holding a second
-   `XCUIApplication(bundleIdentifier: "com.apple.springboard")` — a proxy, not a launch, so it is
-   cheap — and reading `springboard.alerts.firstMatch`: `.exists` gives the deterministic
-   present/absent answer, and the alert's descendant buttons give the labels. The command reaches the
-   Swift runner over the existing loopback HTTP/JSON transport (`BajutsuRunner/Router.swift`), which
-   dispatches on `(method, path)`; the query adds one route and one `ElementProviding` method. This
-   signal reports a fact and never decides pass/fail, so it stays clear of prime directive 1.
+   the labels of its buttons. *(As implemented: `system_alert_labels()` reads BE-0316's existing
+   `/systemAlert/query` — the second `com.apple.springboard` `XCUIApplication` BE-0316 already holds —
+   rather than adding a new route; it returns the button labels, `[]` when none is up.)* This signal
+   reports a fact and never decides pass/fail, so it stays clear of prime directive 1.
 
-2. **A deterministic dismiss-by-label action.** Add a driver method that dismisses the current system
-   alert by tapping a named button, implemented on XCUITest as `springboard.alerts.buttons[label].tap()`.
-   The action is a new runner route, a new `ElementProviding` method, a Python `XcuitestDriver` method,
-   and a new capability token alongside the existing ones in `bajutsu/drivers/base.py`. A label-addressed
-   native tap is necessary because a deterministic dismiss cannot pick a tap coordinate on its own —
-   choosing that coordinate is exactly what the existing coordinate tap (`tap_point`) leans on the
-   vision call to supply — and a hard-coded offset would break across device sizes and button
-   layouts. The native `springboard.alerts.buttons[label]` element resolves the button by its label
-   wherever it sits. To keep determinism first (prime
-   directive 2), the dismiss action must resolve the named label to exactly one button and fail
-   loudly on zero or multiple matches — mirroring the driver's `resolve_unique` / `AmbiguousSelector`
-   contract — rather than tapping whichever button the query happens to resolve to first.
+2. **A deterministic dismiss-by-label action.** Dismiss the current system alert by tapping a named
+   button, resolved to exactly one match and failing loudly on zero or multiple (the
+   `resolve_unique` / `AmbiguousSelector` contract, prime directive 2) rather than tapping whichever
+   button matched first. *(As implemented: the guard taps through BE-0316's `handle_system_alert`
+   — a label selector resolved by `resolve_unique` and tapped via `/systemAlert/tap` — under the
+   `HANDLE_SYSTEM_ALERT` capability, so no parallel dismiss route or capability token was added.)*
 
 3. **Evolve the existing `DismissAlerts.instruction` into a deterministic button policy.** The
    `dismissAlerts` scenario field already lets an author name the button to press:
@@ -186,19 +196,24 @@ interface) holds throughout.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — deterministic system-alert presence query through the `Driver` interface; XCUITest
-      implementation via a second `com.apple.springboard` `XCUIApplication` and `springboard.alerts`.
-- [ ] Unit 2 — deterministic dismiss-by-label action (runner route, `ElementProviding` method, Python
-      driver method, capability token).
-- [ ] Unit 3 — evolve `DismissAlerts.instruction` from a vision-interpreted string into a deterministic
-      label form, reconciled three-way with the existing `instruction` and BE-0314's `interrupts` field
-      so the vocabularies converge on one grammar rather than sprawl.
-- [ ] Unit 4 — poll the native check on an independent interval in `_AlertGuardGate` (default one
+- [x] Unit 1 — deterministic system-alert presence query. **Reused from BE-0316**: rather than a new
+      route, a thin non-blocking `Driver.system_alert_labels()` reads BE-0316's existing
+      `/systemAlert/query` (the second `com.apple.springboard` `XCUIApplication` BE-0316 already holds)
+      and returns the alert's button labels, `[]` when none is up.
+- [x] Unit 2 — deterministic dismiss-by-label action. **Reused from BE-0316**: the guard taps through
+      BE-0316's `handle_system_alert` (label selector + `/systemAlert/tap`, resolved by `resolve_unique`)
+      under the `HANDLE_SYSTEM_ALERT` capability, so no parallel dismiss route or capability was added.
+- [x] Unit 3 — evolve `DismissAlerts.instruction` from a vision-interpreted string into a `str |
+      list[str]`: a candidate-label list is the deterministic native form, the free-text string stays
+      the vision form. Reconciled with the existing `instruction`, BE-0314's `interrupts`, and BE-0316's
+      `handleSystemAlert` selector rather than growing another vocabulary.
+- [x] Unit 4 — poll the native check on an independent interval in `_AlertGuardGate` (default one
       second, overridable through the `dismissAlerts` precedence per BE-0177) and dismiss on the first
       positive (decoupled from `_POLL`; no per-tick query, no debounce/cooldown/max-attempts), demoting
       the vision guard to a fallback and keeping backends without the capability unchanged.
-- [ ] Unit 5 — on-device verification against a real notification/ATT prompt; off-device tests for the
-      backend-agnostic wiring.
+- [x] Unit 5 — on-device verification against a real notification prompt (native grant, credential-free);
+      off-device tests for the guard policy, gate native path, the `system_alert_labels` channel, and
+      the config wiring.
 
 ## References
 

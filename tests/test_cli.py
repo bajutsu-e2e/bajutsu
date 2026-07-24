@@ -537,7 +537,7 @@ def test_run_dismiss_alerts_notes_no_op_without_credential(
     cfg, scn = _fake_run(tmp_path)
     r = runner.invoke(app, _run_argv(cfg, scn, tmp_path))
     assert r.exit_code == 0
-    assert "the alert guard will no-op" in r.output
+    assert "the vision alert guard will no-op" in r.output
 
 
 def test_run_dismiss_alerts_bedrock_note_without_a_model(

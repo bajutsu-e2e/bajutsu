@@ -10,6 +10,7 @@ import typer
 
 from bajutsu.cli.commands.run import (
     _alert_guard_factory,
+    _apply_dismiss_alerts,
     _expand_file,
     _filter_scenarios,
     _load_scenarios,
@@ -18,9 +19,11 @@ from bajutsu.cli.commands.run import (
     _resolve_lanes,
     _resolve_network,
     _resolve_secrets,
+    _vision_instruction,
 )
 from bajutsu.config import Effective, load_config, resolve
-from bajutsu.scenario import load_scenarios
+from bajutsu.orchestrator import DEFAULT_ALERT_POLL_INTERVAL
+from bajutsu.scenario import Scenario, load_scenarios
 
 
 def _resolve(udid: str) -> str:
@@ -279,15 +282,73 @@ def test_resolve_network_falls_back_to_target_then_builtin() -> None:
     )  # no flag, target on (the resolve() built-in default)
 
 
-def test_alert_guard_factory_noop_without_credential(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Guard on by default, but with no AI credential the factory hands back a per-scenario guard
-    # that no-ops (returns None) rather than a hosted fallback — the deterministic gate runs AI-free.
+def test_alert_guard_factory_vision_noop_without_credential(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Guard on by default. With no AI credential the native path (BE-0315) still runs credential-free,
+    # so the factory hands back a real per-scenario guard — but its *vision fallback* no-ops rather
+    # than reaching a hosted default, so on a backend without the native capability the guard clears
+    # nothing and the deterministic gate stays AI-free.
+    from bajutsu.drivers.fake import FakeDriver
+    from bajutsu.orchestrator import AlertGuardConfig
+
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("BAJUTSU_AI_PROVIDER", raising=False)
     scenarios = load_scenarios(_one_scenario("a"))
     factory = _alert_guard_factory(scenarios, _eff(), "")
     assert factory is not None
-    assert factory(scenarios[0]) is None
+    guard = factory(scenarios[0])
+    assert isinstance(guard, AlertGuardConfig)
+    # No native capability + no credential → the vision fallback no-ops, so nothing is dismissed.
+    assert guard(FakeDriver([])) is None
+
+
+def _tap_scenario(name: str, dismiss: dict[str, object] | None = None) -> Scenario:
+    body: dict[str, object] = {"name": name, "steps": [{"tap": {"id": "x"}}]}
+    if dismiss is not None:
+        body["dismissAlerts"] = dismiss
+    return Scenario.model_validate(body)
+
+
+def test_alert_guard_factory_resolves_native_labels_and_poll_interval() -> None:
+    # BE-0315: a scenario's candidate-label list and pollInterval reach the AlertGuardConfig — the
+    # wiring that makes the deterministic native path actually fire with the author's button policy.
+    s = _tap_scenario("a", {"instruction": ["Allow", "OK"], "pollInterval": 2})
+    guard = _alert_guard_factory([s], _eff(), "")(s)  # type: ignore[misc]
+    assert guard is not None
+    assert guard.labels == ["Allow", "OK"]
+    assert guard.poll_interval == 2.0
+
+
+def test_alert_guard_factory_poll_interval_precedence() -> None:
+    # scenario > target > built-in default (BE-0177 / BE-0315).
+    eff = _eff(dismissAlerts="{ pollInterval: 3 }")
+    s_override = _tap_scenario("a", {"pollInterval": 5})
+    assert _alert_guard_factory([s_override], eff, "")(s_override).poll_interval == 5.0  # type: ignore[misc,union-attr]
+    s_plain = _tap_scenario("b")
+    assert _alert_guard_factory([s_plain], eff, "")(s_plain).poll_interval == 3.0  # type: ignore[misc,union-attr]
+    assert (
+        _alert_guard_factory([s_plain], _eff(), "")(s_plain).poll_interval  # type: ignore[misc,union-attr]
+        == DEFAULT_ALERT_POLL_INTERVAL
+    )
+
+
+def test_vision_instruction_renders_a_label_list_and_passes_a_string_through() -> None:
+    assert (
+        _vision_instruction(["Allow", "OK"]) == "Tap the button labeled one of, in order: Allow, OK"
+    )
+    assert _vision_instruction("tap Allow") == "tap Allow"
+    assert _vision_instruction(None) is None
+
+
+def test_apply_dismiss_alerts_preserves_the_button_policy_and_interval() -> None:
+    # The --no-dismiss-alerts flip must keep both the label policy and the poll interval (BE-0315).
+    s = _tap_scenario("a", {"instruction": ["Allow"], "pollInterval": 2})
+    _apply_dismiss_alerts([s], False)
+    assert s.dismiss_alerts is not None
+    assert s.dismiss_alerts.enabled is False
+    assert s.dismiss_alerts.instruction == ["Allow"]
+    assert s.dismiss_alerts.poll_interval == 2.0
 
 
 # --- _resolve_evidence_dirs: baselines/schemas dirs plus the golden context (only when it exists)
