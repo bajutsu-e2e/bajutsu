@@ -77,13 +77,17 @@ touches a device, never calls an LLM, and never gates CI.
   flagged. `bajutsu impact` emits both forms: a CI pipeline consumes the JSON; a developer reads the
   list.
 
-- **Determinism and soundness.** Every figure is a deterministic function of the diff and the
+- **Determinism and soundness.** Every output is a deterministic function of the diff and the
   scenarios: the same inputs always yield the same affected set, with no model and no judgment call.
-  Soundness, however, is bounded. The scan catches a change that edits a stable id's own line; it
-  cannot catch a change that alters behavior without touching any id literal — a handler's logic, a
-  shared helper, a network response shape. Such a change is *unattributable*: it maps to no id in the
-  reverse index. The design names this limit rather than hiding it, because how CI treats an
-  unattributable change is the whole safety question below.
+  Soundness, however, is bounded in both directions. In the false-negative direction: the scan catches
+  a change that edits a stable id's own line; it cannot catch a change that alters behavior without
+  touching any id literal — a handler's logic, a shared helper, a network response shape. Such a
+  change is *unattributable*: it maps to no id in the reverse index. In the false-positive direction:
+  a short or common id that happens to appear in a comment or in an unrelated changed line will widen
+  the affected set beyond the truly-affected steps. Over-selection is the safe direction for CI — no
+  affected step is silently skipped — though a developer may see a handful of false positives. The
+  design names both limits rather than hiding them, because how CI treats an unattributable change is
+  the whole safety question below.
 
 - **CI use — a mechanism, with a safe policy.** The tool provides the affected set; a team chooses how
   aggressively to act on it. Two safeguards keep even the aggressive choice sound:
