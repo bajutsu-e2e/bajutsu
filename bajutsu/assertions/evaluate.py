@@ -70,9 +70,10 @@ class EvalContext:
     text already read for the block. Bundling replaces the four loose keyword-only parameters that
     were threaded in lockstep through `evaluate` -> `evaluate_one` -> `run_scenario` ->
     `_run_step_body` -> the runner, so a new context-bearing kind adds a field here instead of a
-    parameter at every layer. `clipboard` stays a resolved value, not a reader: the read is gated
-    and performed once per block by the runner's `_clipboard_for`, so bundling never turns it into a
-    per-step read.
+    parameter at every layer. `clipboard` stays a resolved value here, not a reader: `evaluate`
+    compares against whatever pasteboard text the caller resolved. The runner refreshes that value
+    across a condition wait via `_clipboard_reader` (a `copy`'s pasteboard write can land a beat
+    after the actuator returns), but that re-reading lives in the runner's poll, not in `evaluate`.
     """
 
     visual: VisualContext | None = None

@@ -93,19 +93,25 @@ def _poll_asserts(
     clock: Clock,
     *,
     ctx: EvalContext,
+    clipboard: Callable[[], str | None] | None = None,
 ) -> tuple[list[AssertionResult], list[base.Element]]:
-    """Evaluate `asserts` as a condition wait: re-read the tree until it passes or the deadline.
+    """Evaluate `asserts` as a condition wait: re-read until it passes or the deadline.
 
-    Polling `query()` until `passed()` — bounded by a wall-clock deadline, never a fixed sleep — is
-    what keeps a fast read (the resident channel, ~0.1s) no more flaky than a slow one (`uiautomator
-    dump`, ~2.4s, which incidentally waited out an action's async-mirrored value: a value an action
-    mirrors into the tree can land a beat after the action returns, as Compose recomposes the
-    `content-desc` asynchronously). The wait budget is the lane's wait floor
-    (`BAJUTSU_MIN_WAIT_TIMEOUT`), the same knob every other condition wait honors — so it is zero
-    (a single read, today's behavior) on lanes that don't set it, and the Android e2e lane's 15s
-    where the race lives. Only the UI tree goes stale, so only it is re-read; the caller takes the
-    screenshot and reads the clipboard once, and the poll ends the moment nothing a tree re-read
-    could fix is still failing (`_READ_ONCE_KINDS`).
+    Polling until `passed()` — bounded by a wall-clock deadline, never a fixed sleep — is what keeps
+    a fast read (the resident channel, ~0.1s) no more flaky than a slow one (`uiautomator dump`,
+    ~2.4s, which incidentally waited out an action's async-mirrored value: a value an action mirrors
+    into the tree can land a beat after the action returns, as Compose recomposes the `content-desc`
+    asynchronously). The wait budget is the lane's wait floor (`BAJUTSU_MIN_WAIT_TIMEOUT`), the same
+    knob every other condition wait honors — so it is zero (a single read, today's behavior) on lanes
+    that don't set it, and the e2e lanes' window where the race lives.
+
+    The UI tree is re-read every cycle. The clipboard is the tree's device-side twin of that race:
+    the pasteboard write a `copy` issues can land a beat after the actuator returns, so when
+    `clipboard` (a re-reader) is given it is refreshed each cycle too — a warm pasteboard on a lane
+    that seeded it earlier read fast, but a cold one (the first pasteboard access on a freshly booted
+    Simulator) can lag the write. The screenshot and the tree-independent network / visual kinds stay
+    read-once, so the poll still ends the moment nothing a re-read could fix is still failing
+    (`_READ_ONCE_KINDS`, minus `clipboard` while it is being refreshed).
 
     Returns the final results and the last tree read, so a step-level caller can reuse that settled
     tree as its `after` snapshot instead of re-querying (BE-0299 Unit 1 / BE-0259).
@@ -113,11 +119,21 @@ def _poll_asserts(
     deadline = clock.now() + _timeout_floor()
     while True:
         t0 = clock.now()
+        if clipboard is not None:
+            ctx = replace(ctx, clipboard=clipboard())
         tree = driver.query()
         results = assertions.evaluate(tree, asserts, network(), ctx=ctx)
         if assertions.passed(results) or clock.now() >= deadline:
             return results, tree
-        if all(r.ok or r.kind in _READ_ONCE_KINDS for r in results):
+        # A re-read can still satisfy a failing `clipboard` assertion while we are refreshing it, so
+        # it no longer counts as read-once; the other read-once kinds keep their early exit.
+        if all(
+            r.ok
+            or (
+                r.kind in _READ_ONCE_KINDS and not (clipboard is not None and r.kind == "clipboard")
+            )
+            for r in results
+        ):
             return results, tree  # only read-once assertions are left failing; a re-read can't help
         _adaptive_sleep(clock, t0)
 
@@ -129,13 +145,14 @@ def _evaluate_expect(
     clock: Clock,
     *,
     ctx: EvalContext,
+    clipboard: Callable[[], str | None] | None = None,
 ) -> list[AssertionResult]:
     """Evaluate the trailing `expect` block as a condition wait (BE-0245), via `_poll_asserts`.
 
     The scenario-level `expect` needs only the assertion results, not the settled tree, so it drops
     the tree `_poll_asserts` also returns.
     """
-    results, _ = _poll_asserts(driver, expect, network, clock, ctx=ctx)
+    results, _ = _poll_asserts(driver, expect, network, clock, ctx=ctx, clipboard=clipboard)
     return results
 
 
@@ -240,19 +257,30 @@ class _ScreenRead:
         return self._queried
 
 
-def _clipboard_for(block: list[Assertion], control: DeviceControl | None) -> str | None:
-    """The device pasteboard, read once when `block` has a `clipboard` assertion; None otherwise.
+def _read_clipboard(control: DeviceControl) -> str | None:
+    """The device pasteboard, or None when the read itself fails (`simctl pbpaste` errored).
 
-    None when no `clipboard` assertion is present, when no device-control channel is available
-    (fake driver / parallel run), or when the read itself fails (`simctl pbpaste` errored). In every
-    None case a `clipboard` assertion fails cleanly via `evaluate` rather than aborting the run —
-    the read is a verification input, not a scenario step."""
-    if control is None or not any(a.clipboard is not None for a in block):
-        return None
+    A failed read is None so a `clipboard` assertion fails cleanly via `evaluate` rather than
+    aborting the run — the read is a verification input, not a scenario step."""
     try:
         return control.get_clipboard()
     except (OSError, subprocess.CalledProcessError):
         return None
+
+
+def _clipboard_reader(
+    block: list[Assertion], control: DeviceControl | None
+) -> Callable[[], str | None] | None:
+    """A pasteboard re-reader for `_poll_asserts`, or None when `block` has no clipboard assertion.
+
+    The pasteboard is not tree-derived, but it *does* change over wall-clock after a `copy`
+    propagates — the write `copy` issues can land a beat after the actuator returns, exactly as an
+    action's async-mirrored tree value can (BE-0299). So a clipboard assertion needs re-reading, not
+    the read-once treatment a purely tree-independent input gets. None (no reader) when there is no
+    clipboard assertion or no control channel, leaving the read-once path unchanged."""
+    if control is None or not any(a.clipboard is not None for a in block):
+        return None
+    return lambda: _read_clipboard(control)
 
 
 def _do_email(
@@ -345,15 +373,25 @@ def _run_step_body(
             return ok, reason, [], None
         if kind == "assert_":
             assert step.assert_ is not None
-            clip = _clipboard_for(step.assert_, control)
             # A step-level assert sees only golden + clipboard: no per-step screenshot is taken, so
             # `visual` / `responseSchema` have no fresh input here (they run at scenario `expect`).
-            # Drop them from the bundled context to preserve that behavior (BE-0250 Unit 2).
-            step_ctx = replace(ctx or EvalContext(), visual=None, schema=None, clipboard=clip)
+            # Drop them from the bundled context to preserve that behavior (BE-0250 Unit 2). The
+            # clipboard is left None here: `_poll_asserts` reads it via the reader below, on the
+            # first cycle and every cycle after — seeding it too would just be a discarded read.
+            step_ctx = replace(ctx or EvalContext(), visual=None, schema=None, clipboard=None)
             # A condition wait, not a single snapshot: a value the prior action mirrors into the tree
             # a beat late is caught, the same race the trailing `expect` already closes (BE-0299
-            # Unit 2). Zero-budget (no wait floor) reads exactly once, as before.
-            results, tree = _poll_asserts(driver, step.assert_, network, clock, ctx=step_ctx)
+            # Unit 2). The clipboard is refreshed each cycle too, so a `copy` whose pasteboard write
+            # propagates late (a cold Simulator's first pasteboard access) is caught the same way.
+            # Zero-budget (no wait floor) reads exactly once, as before.
+            results, tree = _poll_asserts(
+                driver,
+                step.assert_,
+                network,
+                clock,
+                ctx=step_ctx,
+                clipboard=_clipboard_reader(step.assert_, control),
+            )
             ok = assertions.passed(results)
             return ok, "" if ok else _fail_reason(results), results, tree
         _do_action(driver, step, relaunch, control, bindings, selection)
@@ -434,11 +472,18 @@ def run_scenario(
         )
         if failure is None and scenario.expect:
             expect = _interp_asserts(scenario.expect, live_bindings)
-            clip = _clipboard_for(expect, control)
+            # The clipboard is read by the reader inside `_poll_asserts` (first cycle and every
+            # cycle after), so no seed read here — seeding `ctx.clipboard` would only be discarded.
+            clip_reader = _clipboard_reader(expect, control)
             if ctx.visual is not None:
                 driver.screenshot(str(ctx.visual.screenshot_path))
             expect_results = _evaluate_expect(
-                driver, expect, network, clock, ctx=replace(ctx, clipboard=clip)
+                driver,
+                expect,
+                network,
+                clock,
+                ctx=replace(ctx, clipboard=None),
+                clipboard=clip_reader,
             )
             if not assertions.passed(expect_results) and on_blocked is not None:
                 event = on_blocked(driver)
@@ -446,11 +491,16 @@ def run_scenario(
                     expect_alerts.append(event)
                     if ctx.visual is not None:
                         driver.screenshot(str(ctx.visual.screenshot_path))
-                    # Re-read the clipboard too: clearing the block may have let the app update the
-                    # pasteboard, so the retry must compare against the fresh value, not the stale one.
-                    clip = _clipboard_for(expect, control)
+                    # The retry re-reads the clipboard through the same reader: clearing the block
+                    # may have let the app update the pasteboard, so the poll compares against the
+                    # fresh value each cycle, not a stale pre-block one.
                     expect_results = _evaluate_expect(
-                        driver, expect, network, clock, ctx=replace(ctx, clipboard=clip)
+                        driver,
+                        expect,
+                        network,
+                        clock,
+                        ctx=replace(ctx, clipboard=None),
+                        clipboard=clip_reader,
                     )  # retry once
             if not assertions.passed(expect_results):
                 failure = "expect: " + _fail_reason(expect_results)

@@ -352,6 +352,94 @@ def test_clipboard_expect_retry_rereads_after_on_blocked() -> None:
     assert result.ok  # first read STALE failed, on_blocked fired, re-read COUPON123 passed
 
 
+# --- clipboard as a condition wait: a `copy` whose pasteboard write propagates late ---
+#
+# A `clipboard` assertion reads a device-side value, not the UI tree, but the pasteboard the write a
+# `copy` issues lands on can lag the actuator's return — the first pasteboard access on a freshly
+# booted Simulator does exactly this, where a lane that seeded the pasteboard earlier read fast. So
+# the clipboard is re-read across the same wait budget the tree condition wait uses (BE-0299), not
+# read once. These pin that it waits when a budget exists and stays single-shot when it does not.
+
+_FLOOR = "BAJUTSU_MIN_WAIT_TIMEOUT"
+
+
+class _StepClock:
+    """Advance logical time on sleep; `on_sleep` mutates the world over time (mirrors _orch)."""
+
+    def __init__(self, on_sleep: object = None) -> None:
+        self._t = 0.0
+        self.on_sleep = on_sleep
+
+    def now(self) -> float:
+        return self._t
+
+    def sleep(self, seconds: float) -> None:
+        self._t += seconds
+        if callable(self.on_sleep):
+            self.on_sleep(self._t)
+
+
+def test_clipboard_assertion_waits_for_a_late_copy(monkeypatch: pytest.MonkeyPatch) -> None:
+    from conftest import el
+
+    monkeypatch.setenv(_FLOOR, "5")  # the lane floor gives the clipboard assert a wait budget
+    ctrl = _RecordingControl()
+    ctrl.clipboard_value = ""  # cold pasteboard: the copy has not propagated on the first read
+
+    def on_sleep(t: float) -> None:
+        if t >= 0.1:  # the copy lands one poll later, as a fast read on a cold Simulator observes
+            ctrl.clipboard_value = "Horse 3"
+
+    scn = Scenario.model_validate(
+        {"name": "s", "steps": [{"assert": [{"clipboard": {"equals": "Horse 3"}}]}]}
+    )
+    result = run_scenario(
+        FakeDriver([el("a", "A", ["button"])]), scn, control=ctrl, clock=_StepClock(on_sleep)
+    )
+    assert result.ok, result.failure
+
+
+def test_clipboard_assertion_is_single_shot_without_a_wait_floor() -> None:
+    # Zero regression off a budgeted lane: with no floor the budget is zero, so a clipboard assert
+    # that does not already hold fails on the first read exactly as before — no poll, no wall clock.
+    from conftest import el
+
+    ctrl = _RecordingControl()
+    ctrl.clipboard_value = ""
+    clock = _StepClock()
+    scn = Scenario.model_validate(
+        {"name": "s", "steps": [{"assert": [{"clipboard": {"equals": "Horse 3"}}]}]}
+    )
+    result = run_scenario(FakeDriver([el("a", "A", ["button"])]), scn, control=ctrl, clock=clock)
+    assert not result.ok
+    assert clock.now() == 0.0
+    assert "clipboard" in (result.failure or "")
+
+
+def test_clipboard_expect_waits_for_a_late_copy(monkeypatch: pytest.MonkeyPatch) -> None:
+    from conftest import el
+
+    monkeypatch.setenv(_FLOOR, "5")
+    ctrl = _RecordingControl()
+    ctrl.clipboard_value = ""
+
+    def on_sleep(t: float) -> None:
+        if t >= 0.1:
+            ctrl.clipboard_value = "Horse 3"
+
+    scn = Scenario.model_validate(
+        {
+            "name": "s",
+            "steps": [{"tap": {"id": "a"}}],
+            "expect": [{"clipboard": {"equals": "Horse 3"}}],
+        }
+    )
+    result = run_scenario(
+        FakeDriver([el("a", "A", ["button"])]), scn, control=ctrl, clock=_StepClock(on_sleep)
+    )
+    assert result.ok, result.failure
+
+
 def test_set_clipboard_without_control_fails_cleanly() -> None:
     scn = Scenario(name="s", steps=[Step(set_clipboard=SetClipboard(text="x"))])
     result = run_scenario(FakeDriver(), scn)

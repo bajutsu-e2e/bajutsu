@@ -284,20 +284,37 @@ jobs:
   # Deliberately NOT in the `E2E` gate's `needs:` below (like `golden` / `visual`): the Simulator lane
   # has a flakiness history (BE-0218), so new actuation lands as a per-PR signal first and is promoted
   # to the gate only once it proves stable.
+  # Interaction + device control (BE-0281): four independent, unrelated scenarios that once shared
+  # one job "purely for cost reasons" — the `build` job now stages the products, so the reason to
+  # bundle is gone. Each scenario is its own matrix leg: a leg is a whole job, so GitHub's "Re-run
+  # failed jobs" reruns only the scenario that failed and never the ones that already passed, and no
+  # single leg comes near the timeout. `fail-fast: false` keeps a failing leg from cancelling its
+  # siblings — the property the old continue-on-error + "Report actuation results" bundle emulated
+  # by hand. Kept out of the `e2e` gate's `needs:` (below), unchanged from the bundle it replaces.
+  #   - navigation:   `tap` + `back` end-to-end, on the Stable launch tab.
+  #   - device:       setLocation + clipboard round-trip (simctl), on the launch tab — the iOS twin
+  #                   of android-e2e.yml's device-control coverage (BE-0210).
+  #   - push:         a simctl `push` delivery — iOS-only (no faithful Android-emulator equivalent,
+  #                   so it lives apart from the cross-backend device.yaml, see push.yaml's header).
+  #   - text_editing: `select` + `copy` round-trip the Search field's text through the clipboard,
+  #                   then `delete` + `clear` edit it down (iOS-only single-form ids, Search tab).
   actuation:
     name: actuation (xcuitest)
     needs: [changes, build]
     if: needs.changes.outputs.relevant == 'true'
     runs-on: macos-latest
-    # No build here (the `build` job staged the products) — boot + four short scenario runs is
-    # ~8min, so 20 catches a real hang on the metered macOS runner with headroom.
-    timeout-minutes: 20
+    # No build here (the `build` job staged the products) — boot + one short scenario run is ~4min,
+    # so 15 catches a real hang on the metered macOS runner with headroom.
+    timeout-minutes: 15
     # Raise the wait floor so a cold-boot Simulator has budget to render the first Stable row before
-    # navigation/device/push/text_editing's own 10s first-wait — the same knob the `smoke` job above
-    # and the Android lane use. A condition wait returns the instant the row appears, so this is a
-    # ceiling, not a sleep.
+    # the scenario's own 10s first-wait — the same knob the `smoke` job above and the Android lane
+    # use. A condition wait returns the instant the row appears, so this is a ceiling, not a sleep.
     env:
       BAJUTSU_MIN_WAIT_TIMEOUT: "20"
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [navigation, device, push, text_editing]
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
 
@@ -319,83 +336,15 @@ jobs:
       - name: Install the app
         run: xcrun simctl install "${{ steps.toolchain.outputs.udid }}" "demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
 
-      # Interaction (BE-0281): `tap` + `back` end-to-end, on the Stable launch tab.
-      # continue-on-error: the four scenarios below are independent and unrelated, bundled into one
-      # job purely for cost reasons — a normal step failure would skip every step after it, hiding
-      # the other three scenarios' pass/fail signal and artifacts even though they have nothing to do
-      # with the failure. The "Report actuation results" step below turns any step failure back into
-      # a job failure once all four have had a chance to run.
-      - name: Run the navigation scenario (xcuitest — tap + back)
-        id: navigation
-        continue-on-error: true
+      - name: Run the ${{ matrix.scenario }} scenario (xcuitest)
         uses: ./.github/actions/bajutsu-e2e
         with:
-          scenarios: demos/showcase/scenarios/navigation.yaml
+          scenarios: demos/showcase/scenarios/${{ matrix.scenario }}.yaml
           target: showcase-swiftui
           backend: xcuitest
           config: demos/showcase/showcase.config.yaml
           udid: ${{ steps.toolchain.outputs.udid }}
-          artifact-name: actuation-navigation-run
-
-      # Device control (BE-0281): `setLocation` + clipboard round-trip. simctl-backed, on the launch
-      # tab. The iOS twin of android-e2e.yml's device-control coverage (BE-0210).
-      - name: Run the device-control scenario (xcuitest — setLocation + clipboard)
-        id: device
-        continue-on-error: true
-        uses: ./.github/actions/bajutsu-e2e
-        with:
-          scenarios: demos/showcase/scenarios/device.yaml
-          target: showcase-swiftui
-          backend: xcuitest
-          config: demos/showcase/showcase.config.yaml
-          udid: ${{ steps.toolchain.outputs.udid }}
-          artifact-name: actuation-device-run
-
-      # Device control (BE-0281): a simctl `push` delivery — iOS-only (no faithful Android-emulator
-      # equivalent, so it lives apart from the cross-backend device.yaml, see push.yaml's header).
-      - name: Run the push scenario (xcuitest — push notification)
-        id: push
-        continue-on-error: true
-        uses: ./.github/actions/bajutsu-e2e
-        with:
-          scenarios: demos/showcase/scenarios/push.yaml
-          target: showcase-swiftui
-          backend: xcuitest
-          config: demos/showcase/showcase.config.yaml
-          udid: ${{ steps.toolchain.outputs.udid }}
-          artifact-name: actuation-push-run
-
-      # Text editing (iOS-only, single-form ids): `select` + `copy` round-trip the Search field's text
-      # through the clipboard, then `delete` + `clear` edit it down — the four editing actuators no
-      # other scenario drove. Crosses to the Search tab (see text_editing.yaml's header).
-      - name: Run the text-editing scenario (xcuitest — select/copy/delete/clear)
-        id: text_editing
-        continue-on-error: true
-        uses: ./.github/actions/bajutsu-e2e
-        with:
-          scenarios: demos/showcase/scenarios/text_editing.yaml
-          target: showcase-swiftui
-          backend: xcuitest
-          config: demos/showcase/showcase.config.yaml
-          udid: ${{ steps.toolchain.outputs.udid }}
-          artifact-name: actuation-text-editing-run
-
-      # Re-fail the job if any of the continue-on-error steps above failed — they need to run
-      # independently of each other, but the job as a whole must still redden so the signal isn't lost.
-      - name: Report actuation results
-        if: always()
-        run: |
-          echo "navigation:   ${{ steps.navigation.outcome }}"
-          echo "device:       ${{ steps.device.outcome }}"
-          echo "push:         ${{ steps.push.outcome }}"
-          echo "text_editing: ${{ steps.text_editing.outcome }}"
-          if [ "${{ steps.navigation.outcome }}" = "failure" ] || \
-             [ "${{ steps.device.outcome }}" = "failure" ] || \
-             [ "${{ steps.push.outcome }}" = "failure" ] || \
-             [ "${{ steps.text_editing.outcome }}" = "failure" ]; then
-            echo "::error::at least one actuation scenario failed — see the step outcomes above"
-            exit 1
-          fi
+          artifact-name: actuation-${{ matrix.scenario }}-run
 
   # The BE-0006 element-tree golden over XCUITest: pins the normalized accessibility tree for the
   # Stable catalog's list rows, reached on the launch tab. Runs golden.yaml per PR — the iOS twin of
@@ -594,9 +543,38 @@ jobs:
     needs: [changes, build]
     if: needs.changes.outputs.relevant == 'true'
     runs-on: macos-latest
-    # No build here (the `build` job staged the products) — boot + two short scenario runs is ~6min,
+    # No build here (the `build` job staged the products) — boot + one short scenario run is ~4min,
     # so 15 catches a real hang on the metered macOS runner with headroom.
     timeout-minutes: 15
+    # The two permission scenarios are independent; one leg each means a re-run touches only the one
+    # that failed. `fail-fast: false` keeps a failing leg from cancelling its sibling. The `e2e`
+    # gate `needs: permission` sees this job's aggregate result — failure if either leg failed — so
+    # the required check is unchanged by the split (a matrix job is still one job to `needs:`).
+    #   - permission.yaml (exclude ai): the `permissions` field on-device. `--exclude ai` drops the
+    #     file's notification scenario (its iOS grant path needs the vision `dismissAlerts` guard, so
+    #     it stays out of this deterministic gate — prime directive 1) and keeps only `location`,
+    #     which `simctl privacy grant` pre-grants before launch with no prompt. android-e2e.yml's
+    #     `smoke (adb)` job already runs both scenarios in permission.yaml unchanged, so this is the
+    #     iOS twin of that coverage.
+    #   - permission_system_alert.yaml: the `handleSystemAlert` step. It fires the
+    #     notification-permission request, then taps the SpringBoard prompt's "Allow" button by a
+    #     native accessibility query — no vision model, so this is the deterministic counterpart to
+    #     permission.yaml's `dismissAlerts` grant (which the leg above excludes as `ai`). Its own
+    #     file, not a scenario in permission.yaml: only the iOS (XCUITest) backend declares the
+    #     capability, so a scenario in the shared file would fail android-e2e.yml's required
+    #     `smoke (adb)` job at preflight.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # `exclude_tags` (not `exclude`, a reserved matrix key) feeds the action's `exclude`
+          # input; "" runs every scenario in the file, exactly as the default did.
+          - scenario: permission
+            exclude_tags: ai
+            artifact: permission-run
+          - scenario: permission_system_alert
+            exclude_tags: ""
+            artifact: permission-system-alert-run
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
 
@@ -618,26 +596,16 @@ jobs:
       - name: Install the app
         run: xcrun simctl install "${{ steps.toolchain.outputs.udid }}" "demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
 
-      - name: Run the permission scenario (xcuitest)
+      - name: Run the ${{ matrix.scenario }} scenario (xcuitest)
         uses: ./.github/actions/bajutsu-e2e
         with:
-          scenarios: demos/showcase/scenarios/permission.yaml
-          exclude: ai
+          scenarios: demos/showcase/scenarios/${{ matrix.scenario }}.yaml
+          exclude: ${{ matrix.exclude_tags }}
           target: showcase-swiftui
           backend: xcuitest
           config: demos/showcase/showcase.config.yaml
           udid: ${{ steps.toolchain.outputs.udid }}
-          artifact-name: permission-run
-
-      - name: Run the system-alert scenario (xcuitest — handleSystemAlert)
-        uses: ./.github/actions/bajutsu-e2e
-        with:
-          scenarios: demos/showcase/scenarios/permission_system_alert.yaml
-          target: showcase-swiftui
-          backend: xcuitest
-          config: demos/showcase/showcase.config.yaml
-          udid: ${{ steps.toolchain.outputs.udid }}
-          artifact-name: permission-system-alert-run
+          artifact-name: ${{ matrix.artifact }}
 
   # XCUITest actuation on the runner channel (BE-0281): the `/type` and `/swipe` + `/back`
   # endpoints of the resident BajutsuRunner, which on-device CI reached only for tap / pinch /
@@ -653,9 +621,20 @@ jobs:
     needs: [changes, build]
     if: needs.changes.outputs.relevant == 'true'
     runs-on: macos-latest
-    # No build here (the `build` job staged the products) — boot + two short scenario runs is ~6min,
+    # No build here (the `build` job staged the products) — boot + one short scenario run is ~4min,
     # so 15 catches a real hang on the metered macOS runner with headroom.
     timeout-minutes: 15
+    # One leg per scenario so a re-run touches only the one that failed; `fail-fast: false` keeps a
+    # failing leg from cancelling its sibling. The `e2e` gate `needs: runner-actuation` sees the
+    # aggregate result, so the required check is unchanged by the split.
+    #   - search.yaml: `/type` into the Search field, then assert the filtered count.
+    #   - notices.yaml: `/swipe` to walk an off-screen row into view, then `/back` from the pushed
+    #     Notice Detail. The Notices List is XCUITest's reliable scroll surface (the Log Form's deep
+    #     rows are not, see gestures_multitouch.yaml's header).
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [search, notices]
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
 
@@ -677,25 +656,15 @@ jobs:
       - name: Install the app
         run: xcrun simctl install "${{ steps.toolchain.outputs.udid }}" "demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
 
-      - name: Run the search scenario (xcuitest — /type)
+      - name: Run the ${{ matrix.scenario }} scenario (xcuitest — runner channel)
         uses: ./.github/actions/bajutsu-e2e
         with:
-          scenarios: demos/showcase/scenarios/search.yaml
+          scenarios: demos/showcase/scenarios/${{ matrix.scenario }}.yaml
           target: showcase-swiftui
           backend: xcuitest
           config: demos/showcase/showcase.config.yaml
           udid: ${{ steps.toolchain.outputs.udid }}
-          artifact-name: runner-actuation-search-run
-
-      - name: Run the notices scenario (xcuitest — /swipe + /back)
-        uses: ./.github/actions/bajutsu-e2e
-        with:
-          scenarios: demos/showcase/scenarios/notices.yaml
-          target: showcase-swiftui
-          backend: xcuitest
-          config: demos/showcase/showcase.config.yaml
-          udid: ${{ steps.toolchain.outputs.udid }}
-          artifact-name: runner-actuation-notices-run
+          artifact-name: runner-actuation-${{ matrix.scenario }}-run
 
   # The bundled-runner path (BE-0292): the same resident runner, but resolved from the wheel
   # bundle instead of a config `testRunner`. Uses showcase.bundled-runner.config.yaml, whose
@@ -706,14 +675,30 @@ jobs:
   # it is the steadiest proof; running it on both toolkits shows the one app-agnostic bundled runner
   # (BE-0019) drives SwiftUI and UIKit alike. Forced onto XCUITest since the bundled runner is the
   # point. Feeds the required `E2E` gate directly (no continue-on-error), like `gestures` above.
+  # One leg per toolkit means a re-run installs and drives only the toolkit that failed — no
+  # reinstalling both apps to re-prove the one that passed. `fail-fast: false` keeps a failing leg
+  # from cancelling its sibling; the `e2e` gate `needs: bundled-runner` sees the aggregate result,
+  # so the required check is unchanged.
   bundled-runner:
     name: bundled-runner (xcuitest)
     needs: [changes, build]
     if: needs.changes.outputs.relevant == 'true'
     runs-on: macos-latest
-    # No build here (the `build` job staged the apps + bundled runner) — boot + two smoke runs on
-    # two toolkits is ~8min, so 15 catches a real hang on the metered macOS runner with headroom.
+    # No build here (the `build` job staged the apps + bundled runner) — boot + one smoke run is
+    # ~4min, so 15 catches a real hang on the metered macOS runner with headroom.
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - toolkit: swiftui
+            target: showcase-swiftui
+            app: BajutsuShowcaseSwiftUI
+            artifact: bundled-runner-swiftui-run
+          - toolkit: uikit
+            target: showcase-uikit
+            app: BajutsuShowcaseUIKit
+            artifact: bundled-runner-uikit-run
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
 
@@ -732,30 +717,18 @@ jobs:
       - name: Wait for the Simulator
         run: xcrun simctl bootstatus "${{ steps.toolchain.outputs.udid }}" -b
 
-      - name: Install the apps
-        run: |
-          xcrun simctl install "${{ steps.toolchain.outputs.udid }}" "demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
-          xcrun simctl install "${{ steps.toolchain.outputs.udid }}" "demos/showcase/ios/uikit/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseUIKit.app"
+      - name: Install the app
+        run: xcrun simctl install "${{ steps.toolchain.outputs.udid }}" "demos/showcase/ios/${{ matrix.toolkit }}/build/dd/Build/Products/Debug-iphonesimulator/${{ matrix.app }}.app"
 
-      - name: Run smoke on the bundled runner (xcuitest — SwiftUI, no testRunner)
+      - name: Run smoke on the bundled runner (xcuitest — ${{ matrix.toolkit }}, no testRunner)
         uses: ./.github/actions/bajutsu-e2e
         with:
           scenarios: demos/showcase/scenarios/smoke.yaml
-          target: showcase-swiftui
+          target: ${{ matrix.target }}
           backend: xcuitest
           config: demos/showcase/showcase.bundled-runner.config.yaml
           udid: ${{ steps.toolchain.outputs.udid }}
-          artifact-name: bundled-runner-swiftui-run
-
-      - name: Run smoke on the bundled runner (xcuitest — UIKit, no testRunner)
-        uses: ./.github/actions/bajutsu-e2e
-        with:
-          scenarios: demos/showcase/scenarios/smoke.yaml
-          target: showcase-uikit
-          backend: xcuitest
-          config: demos/showcase/showcase.bundled-runner.config.yaml
-          udid: ${{ steps.toolchain.outputs.udid }}
-          artifact-name: bundled-runner-uikit-run
+          artifact-name: ${{ matrix.artifact }}
 
   # The driver conformance suite (BE-0114): one backend-agnostic contract, run on-device against
   # the XCUITest backend (the resident BajutsuRunner). It proves the determinism-core invariants
