@@ -675,12 +675,10 @@ jobs:
   # it is the steadiest proof; running it on both toolkits shows the one app-agnostic bundled runner
   # (BE-0019) drives SwiftUI and UIKit alike. Forced onto XCUITest since the bundled runner is the
   # point. Feeds the required `E2E` gate directly (no continue-on-error), like `gestures` above.
-  # smoke.yaml runs identically on every target (it only asserts the fixed Stable catalog), so it is
-  # the steadiest proof; running it on both toolkits shows the one app-agnostic bundled runner
-  # (BE-0019) drives SwiftUI and UIKit alike. One leg per toolkit means a re-run installs and drives
-  # only the toolkit that failed — no reinstalling both apps to re-prove the one that passed.
-  # `fail-fast: false` keeps a failing leg from cancelling its sibling; the `e2e` gate
-  # `needs: bundled-runner` sees the aggregate result, so the required check is unchanged.
+  # One leg per toolkit means a re-run installs and drives only the toolkit that failed — no
+  # reinstalling both apps to re-prove the one that passed. `fail-fast: false` keeps a failing leg
+  # from cancelling its sibling; the `e2e` gate `needs: bundled-runner` sees the aggregate result,
+  # so the required check is unchanged.
   bundled-runner:
     name: bundled-runner (xcuitest)
     needs: [changes, build]
