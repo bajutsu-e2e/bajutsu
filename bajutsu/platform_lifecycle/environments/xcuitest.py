@@ -68,6 +68,28 @@ _RUNNER_STARTUP_TIMEOUT = 120.0
 # docs/architecture.md) must be detected quickly and respawned, not waited on for the cold ceiling.
 _WARM_HEALTH_TIMEOUT = 10.0
 
+# The resident runner crashes after a handful of app.launch() cycles (docs/architecture.md): each warm
+# reuse re-attaches the XCTest automation session to a freshly launched app, and the session
+# (DTServiceHub) destabilizes after several. The BE-0291 warm probe is only *reactive* — it detects a
+# runner that has *already* crashed, so the crash still lands mid-scenario and fails it. Bounding the
+# reuse count makes the respawn *proactive*: after this many warm reuses, `start` respawns the runner
+# cold (a fresh XCTest session) before the next launch can tip it over, so a run never hits the
+# mid-scenario crash. A cold spawn resets the count. Kept below "a handful" with headroom; overridable
+# per lane for on-device tuning without a code change. 0 disables warm reuse entirely (always cold).
+_MAX_WARM_REUSES = 3
+_MAX_WARM_REUSES_ENV = "BAJUTSU_XCUITEST_MAX_WARM_REUSES"
+
+
+def _max_warm_reuses() -> int:
+    """The warm-reuse budget before a proactive cold respawn, from the env override or the default."""
+    raw = os.environ.get(_MAX_WARM_REUSES_ENV)
+    if not raw:
+        return _MAX_WARM_REUSES
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return _MAX_WARM_REUSES
+
 
 def _destination(device_type: str, udid: str) -> str:
     """Build the `xcodebuild -destination` for a Simulator or a real device (BE-0238).
@@ -104,6 +126,10 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # leases. A real-device start (BE-0238) never sets it — warm reuse targets only the Simulator
         # runner's cold startup — so the pool tears such an environment down per lease, unchanged.
         self._reusable = False
+        # How many times the current runner has been reused warm (BE-0287): reset on a cold spawn,
+        # incremented on each warm resume, and capped by `_max_warm_reuses()` so the runner is
+        # respawned cold before it accumulates enough app.launch() cycles to crash mid-scenario.
+        self._warm_reuses = 0
 
     def start(
         self,
@@ -143,10 +169,17 @@ class XcuitestEnvironment(_DeviceEnvironment):
 
         # Simulator: reuse a healthy warm runner across leases (BE-0291). `erase` shuts the Simulator
         # down (killing the runner), so a scenario that erases forces a cold respawn; a wedged runner
-        # is a cache miss too (Unit 4), costing one extra cold start rather than the run.
-        if not pre.erase and (driver := self._healthy_resident_driver()) is not None:
+        # is a cache miss too (Unit 4), costing one extra cold start rather than the run. The reuse
+        # budget (`_max_warm_reuses`) forces a cold respawn *before* the runner accumulates enough
+        # app.launch() cycles to crash mid-scenario (BE-0287) — a proactive refresh, checked before the
+        # health probe so a spent runner skips straight to a cold spawn.
+        if (
+            not pre.erase
+            and self._warm_reuses < _max_warm_reuses()
+            and (driver := self._healthy_resident_driver()) is not None
+        ):
             return self._resume_warm(eff, pre, extra_env, permissions, driver)
-        self._discard_runner()  # drop any dead / lingering runner before a fresh spawn
+        self._discard_runner()  # drop any dead / lingering / reuse-spent runner before a fresh spawn
         return self._spawn_cold(eff, pre, device_type, extra_env, permissions)
 
     def _spawn_cold(
@@ -242,6 +275,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
             raise
         # Only the Simulator runner is kept warm; a real-device runner is torn down per lease.
         self._reusable = device_type != "device"
+        self._warm_reuses = 0  # a fresh XCTest session: the app.launch()-cycle count starts over
         return driver
 
     def _resume_warm(
@@ -274,6 +308,9 @@ class XcuitestEnvironment(_DeviceEnvironment):
                 e.openurl(pre.deeplink)
         except subprocess.CalledProcessError as exc:
             raise simctl.device_error(exc) from exc
+        self._warm_reuses += (
+            1  # one more app.launch() cycle on this runner (toward the reuse budget)
+        )
         return driver
 
     def _prepare_simulator(
