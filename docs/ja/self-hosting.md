@@ -353,7 +353,7 @@ prefix を URI のパスに畳み込んでください。`BAJUTSU_S3_BUCKET=baju
 組み合わせは `BAJUTSU_SERVER_STORE=s3://bajutsu/tenant/` になります。prefix を畳み込まずに設定すると、
 その prefix 配下にあった既存のキーが解決できなくなります。
 
-### 2. GitHub OAuth を足す（任意） {#github-oauth}
+### 2. GitHub OAuth を足す（任意）
 
 オペレータが数人なら共有トークン（`BAJUTSU_SERVE_TOKEN`）だけで十分です。ユーザごとのブラウザログインには、
 GitHub OAuth アプリを作り（callback は `https://<your-host>/api/oauth/callback`）、`.env` に

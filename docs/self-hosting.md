@@ -364,7 +364,7 @@ the prefix into the URI's path — `BAJUTSU_S3_BUCKET=bajutsu` + `BAJUTSU_S3_PRE
 `BAJUTSU_SERVER_STORE=s3://bajutsu/tenant/`; otherwise existing keys under that prefix stop resolving
 once the prefix is dropped.
 
-### 2. Add GitHub OAuth (optional) {#github-oauth}
+### 2. Add GitHub OAuth (optional)
 
 The shared token (`BAJUTSU_SERVE_TOKEN`) alone is enough for a couple of operators. For per-user
 browser login, create a GitHub OAuth app (callback `https://<your-host>/api/oauth/callback`) and set

@@ -303,7 +303,7 @@ Once GitHub OAuth is configured, org membership also decides access
 requires membership in a configured org — through `members` or `githubOrgs` — and grants the
 **viewer** role. A direct member of the org's `editorTeam` is promoted to **editor**; a member of the
 one server-wide admin Team (`BAJUTSU_OAUTH_ADMIN_TEAM`, see
-[Self-hosting](self-hosting.md#github-oauth)) is **admin**. `editorTeam` is one flat Team, written as
+[Self-hosting](self-hosting.md#2-add-github-oauth-optional)) is **admin**. `editorTeam` is one flat Team, written as
 `"<github-org>/<team-slug>"`; a nested Team beneath it does not match. An OAuth deployment therefore
 must declare an `orgs:` block, or every login is turned away.
 

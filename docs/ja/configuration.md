@@ -163,7 +163,7 @@ orgs:
 
 OAuth ログイン時にユーザは自分の org に割り当てられます（まず明示の `members`、無ければ GitHub org メンバーシップからの `githubOrgs` 一致）。以後はその org の targets だけが見え、run の artifacts／scenarios／baselines はその org 専用のオブジェクトストレージ prefix の下に置かれます。どの org にも挙げられていない target は単一の `default` org に入るので、`orgs:` ブロックの**無い** config はシングルテナントです。CLI とローカルの `serve` は `orgs:` を一切参照しません。
 
-GitHub OAuth を構成すると、org メンバーシップがアクセスも決めます（[BE-0313](../../roadmaps/BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac-ja.md)）。サインインには構成済みの org への所属（`members` または `githubOrgs`）が必要で、成功すると **viewer** ロールが付きます。org の `editorTeam` の直接メンバーは **editor** に昇格し、サーバ全体で 1 つの管理 Team（`BAJUTSU_OAUTH_ADMIN_TEAM`。[セルフホスティング](self-hosting.md#github-oauth)を参照）のメンバーは **admin** になります。`editorTeam` は 1 つのフラットな Team で、`"<github-org>/<team-slug>"` の形で書きます。その下にネストした Team は一致しません。したがって OAuth を使う構成では `orgs:` ブロックの宣言が必須で、無ければすべての login が拒否されます。
+GitHub OAuth を構成すると、org メンバーシップがアクセスも決めます（[BE-0313](../../roadmaps/BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac-ja.md)）。サインインには構成済みの org への所属（`members` または `githubOrgs`）が必要で、成功すると **viewer** ロールが付きます。org の `editorTeam` の直接メンバーは **editor** に昇格し、サーバ全体で 1 つの管理 Team（`BAJUTSU_OAUTH_ADMIN_TEAM`。[セルフホスティング](self-hosting.md#2-github-oauth-を足す任意)を参照）のメンバーは **admin** になります。`editorTeam` は 1 つのフラットな Team で、`"<github-org>/<team-slug>"` の形で書きます。その下にネストした Team は一致しません。したがって OAuth を使う構成では `orgs:` ブロックの宣言が必須で、無ければすべての login が拒否されます。
 
 ## CLI からの選択
 
