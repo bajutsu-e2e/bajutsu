@@ -161,6 +161,21 @@ def test_testrunner_override_survives_an_unresolvable_target(
     assert payload["iosRunner"]["override"] is True
 
 
+def test_unloadable_config_reads_as_no_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A wholesale load failure (not a single target's resolve) falls back to no override (BE-0318),
+    # so a broken config reads as "no override" rather than 500-ing the whole tab.
+    _no_bundle(monkeypatch)
+
+    def _boom(_text: str) -> object:
+        raise ValueError("bad config")
+
+    monkeypatch.setattr(config_ops, "load_config", _boom)
+    payload, _ = ops.server_settings(_state(tmp_path))
+    assert payload["iosRunner"]["override"] is False
+
+
 def test_testrunner_override_true_when_any_target_pins_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
