@@ -106,8 +106,9 @@ opt-in で API キーによりゲートされた、ゲート対象外のスモ�
 - opt-in のゲートには、設計が例として挙げた `BAJUTSU_LIVE_AI_SMOKE` 環境変数ではなく **`live` の
   pytest マーカー**を用います。このマーカーは既定で高速スイートから除外されるため（`addopts` の
   `not live`）、contributor が `ANTHROPIC_API_KEY` を export していても `make check` は構造として密閉の
-  ままです。兄弟項目の BE-0295 が実モデルスモークで確立したのと同じ前例です。実行は `-m live` で opt-in
-  します。
+  ままです。`live` マーカーを導入するのは本 PR が初めてです（`main` の `addopts` は `-m 'not web and
+  not ondevice'`）。兄弟項目の BE-0295 も実モデルスモークを *提案* していますが、こちらは除外マーカー
+  ではなく `pytest.mark.skipif` によるゲートです。実行は `-m live` で opt-in します。
 - `.github/workflows/ai-smoke.yml` は**直接 Anthropic API** のレーンだけを配線します。起動は
   `workflow_dispatch` のみで（push / PR では動かないため、フォークからの実行が認証情報を目にすることは
   ありません。`devicefarm.yml` と同じ境界です）、`ai-smoke` の Environment にスコープした
