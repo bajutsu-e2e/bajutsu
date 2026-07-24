@@ -186,3 +186,15 @@ def _do_rotate(driver: base.Driver, step: Step, _r: object, _c: object, _b: obje
     assert step.rotate is not None
     _require_multi_touch(driver, "rotate")
     driver.rotate(step.rotate.sel.as_selector(), step.rotate.radians)
+
+
+@_handler("handle_system_alert")
+def _do_handle_system_alert(
+    driver: base.Driver, step: Step, _r: object, _c: object, _b: object
+) -> None:
+    # Tap an iOS SpringBoard permission prompt deterministically (BE-0316). Preflight has already
+    # rejected the step on any backend without HANDLE_SYSTEM_ALERT; the driver raises UnsupportedAction
+    # as the mid-run backstop, so no extra capability guard is needed here (mirrors select_option).
+    assert step.handle_system_alert is not None
+    hsa = step.handle_system_alert
+    driver.handle_system_alert(hsa.sel.as_selector(), hsa.timeout)

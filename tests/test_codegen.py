@@ -413,3 +413,35 @@ def test_coverage_scenarios_emit_their_construct(
     assert "UNSUPPORTED_SELECTOR" not in code
     assert "// TODO: unsupported" not in code
     assert primitive in code, f"{construct}: expected {primitive!r} in generated Swift"
+
+
+def test_handle_system_alert_emits_springboard_wait_and_tap() -> None:
+    # BE-0316: the native XCUITest idiom — wait for the SpringBoard prompt's button (bounded by the
+    # step's own timeout), then tap it. No screenshot, no vision model.
+    code = _gen(
+        "- name: x\n  steps:\n    - handleSystemAlert: { sel: { label: Allow }, timeout: 5 }\n"
+    )
+    assert 'XCUIApplication(bundleIdentifier: "com.apple.springboard").buttons["Allow"]' in code
+    assert ".waitForExistence(timeout: 5.0)" in code
+    assert 'buttons["Allow"].tap()' in code
+    assert "TODO" not in code  # a native emit, never a fallback
+
+
+def test_handle_system_alert_plain_substring_labelmatches_emits_contains() -> None:
+    code = _gen(
+        "- name: x\n  steps:\n"
+        "    - handleSystemAlert: { sel: { labelMatches: Allow }, timeout: 5 }\n"
+    )
+    assert 'buttons.matching(NSPredicate(format: "label CONTAINS %@", "Allow"))' in code
+    assert "TODO" not in code
+
+
+def test_handle_system_alert_regex_labelmatches_is_todo() -> None:
+    # A real regex has no faithful NSPredicate form (the same limit `_predicate` hits), so it
+    # degrades to a labeled TODO rather than a wrong CONTAINS substring match.
+    code = _gen(
+        "- name: x\n  steps:\n"
+        "    - handleSystemAlert: { sel: { labelMatches: 'Allo.*' }, timeout: 5 }\n"
+    )
+    assert "// TODO: handleSystemAlert" in code
+    assert "springboard" not in code.split("// TODO: handleSystemAlert")[1][:80]

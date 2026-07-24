@@ -61,6 +61,12 @@ class Capability:
     # UnsupportedAction — the same actuate-or-raise promise as MULTI_TOUCH (BE-0280). `delete` /
     # `clear` need no token: every backend actuates `delete_text` (a run of backspaces).
     TEXT_SELECTION = "textSelection"
+    # Tap a button on an out-of-process iOS SpringBoard permission prompt by a native accessibility
+    # query, deterministically (BE-0316). Only the resident-runner XCUITest backend advertises it:
+    # SpringBoard alert access is an on-device XCUITest capability, not a simctl operation, so it is a
+    # top-level token like MULTI_TOUCH rather than a `deviceControl.*` one. Android reaches a system
+    # dialog through an ordinary `tap`, and the web backend has no OS-level prompt, so neither needs it.
+    HANDLE_SYSTEM_ALERT = "handleSystemAlert"
     # The `DeviceControl` family, one token per operation (BE-0212, split from the coarse
     # `deviceControl` of BE-0128). A backend advertises exactly the operations it can honor, so
     # preflight gates each device-control step on its own operation — the Android emulator backs
@@ -220,6 +226,11 @@ class Driver(Protocol):
     # a `<select>` has no native counterpart on iOS / Android, so those backends raise
     # UnsupportedAction (BE-0191).
     def select_option(self, sel: Selector, option: str) -> None: ...
+    # Tap a button on an out-of-process iOS SpringBoard permission prompt (BE-0316), resolving `sel`
+    # (label-based only) against the alert's buttons within `timeout`. A backend without the
+    # HANDLE_SYSTEM_ALERT capability raises UnsupportedAction; preflight (capability_preflight.py)
+    # rejects the scenario before any device work, so this raise is only the mid-run backstop.
+    def handle_system_alert(self, sel: Selector, timeout: float) -> None: ...
     # Single-shot by contract (BE-0118): whether `sel` matches the *current* screen,
     # checked once. A backend never loops here — the shared `wait_until` owns the
     # deadline poll, so a caller's timeout means the same real seconds on every backend.

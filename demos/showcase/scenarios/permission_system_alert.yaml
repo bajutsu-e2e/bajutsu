@@ -1,0 +1,32 @@
+# handleSystemAlert (BE-0316): the deterministic, native counterpart to permission.yaml's vision
+# `dismissAlerts` grant of the same notification prompt. It fires the OS notification-permission
+# request, then taps the SpringBoard prompt's "Allow" button by a native accessibility query — no
+# screenshot, no vision model, no Claude API key — so the whole flow stays deterministic (prime
+# directive 1: AI never decides pass/fail). `dismissAlerts: false` proves it: with the vision guard
+# off, a handleSystemAlert that failed to tap would fail the run rather than be rescued by the guard,
+# so this scenario genuinely exercises the new step.
+#
+# iOS (XCUITest) only. Only that backend declares the handleSystemAlert capability, so this file is
+# kept off every other lane by mechanism, not by one tag:
+#   - Android's `smoke (adb)` job runs a fixed scenario list (demos/showcase/android/Makefile) that
+#     never names this file, so it is never picked up there — the file separation from the shared
+#     permission.yaml (which Android runs unchanged) is what keeps it off that required job.
+#   - The local bulk run-swiftui / run-uikit runs discover every scenario file and do not reset
+#     per-scenario permission state, so the notDetermined prompt this step needs is not guaranteed
+#     there; the dedicated `systemalert` tag (not the legacy `xcuitest` tag) keeps it out of them.
+- name: grant the notification prompt with handleSystemAlert
+  tags: [systemalert]
+  dismissAlerts: false
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1" }
+  steps:
+    - tap: { label: "Permissions", traits: [button] }
+      capture: [video]
+    - wait: { for: { id: perm.requestNotif }, timeout: 10 }
+    - assert:
+        - value: { sel: { id: perm.notif.value }, equals: "notDetermined" }
+    - tap: { id: perm.requestNotif }                              # fires the OS permission request
+    - handleSystemAlert: { sel: { label: "Allow" }, timeout: 10 }  # tap the prompt's button by label
+    - wait: { for: { id: perm.notif.authorized }, timeout: 10 }   # request granted, app state updates
+  expect:
+    - value: { sel: { id: perm.notif.value }, equals: "authorized" }

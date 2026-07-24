@@ -69,6 +69,39 @@ def test_orchestrator_dispatches_gestures() -> None:
     assert kinds == ["double_tap", "pinch", "rotate"]
 
 
+# --- handleSystemAlert: the orchestrator dispatches to the driver (BE-0316) ---
+
+
+def _button(label: str) -> base.Element:
+    return {
+        "identifier": None,
+        "label": label,
+        "traits": ["button"],
+        "value": None,
+        "frame": (0.0, 0.0, 100.0, 40.0),
+    }
+
+
+def test_orchestrator_dispatches_handle_system_alert() -> None:
+    driver = FakeDriver(screen=[])
+    driver.system_alert_buttons = [_button("Allow"), _button("Don't Allow")]
+    scenario = load_scenarios(
+        "- name: a\n  steps:\n    - handleSystemAlert: { sel: { label: Allow }, timeout: 5 }\n"
+    )[0]
+    result = run_scenario(driver, scenario)
+    assert result.ok, result.failure
+    assert ("handle_system_alert", ({"label": "Allow"}, 5.0)) in driver.actions
+
+
+def test_handle_system_alert_fails_the_step_when_no_prompt_appears() -> None:
+    driver = FakeDriver(screen=[])  # no system_alert_buttons seeded → the prompt never appears
+    scenario = load_scenarios(
+        "- name: a\n  steps:\n    - handleSystemAlert: { sel: { label: Allow }, timeout: 5 }\n"
+    )[0]
+    result = run_scenario(driver, scenario)
+    assert not result.ok  # fails loudly, never a silent pass (prime directive 2)
+
+
 # --- back: a cross-backend navigation step (BE-0210) ---
 
 

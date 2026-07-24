@@ -156,6 +156,40 @@ def _element(sel: base.Selector) -> str:
     return f"{query}.element(boundBy: {index})"
 
 
+# SpringBoard owns the out-of-process permission prompt (BE-0316), so its button lives on a second
+# XCUIApplication handle, not the app under test — the exact idiom a hand-written XCUITest uses.
+_SPRINGBOARD = 'XCUIApplication(bundleIdentifier: "com.apple.springboard")'
+
+
+def _system_alert_element(sel: base.Selector) -> str | None:
+    """A Swift expression resolving to one SpringBoard alert button, or None (→ TODO) (BE-0316).
+
+    `sel` is the label-based subset the schema enforces (label / labelMatches / index): a bare label
+    is the idiomatic subscript, otherwise a predicate narrows the buttons query and `index` (or
+    `firstMatch`) picks one — mirroring `_element`'s discipline, rooted at SpringBoard's buttons. A
+    `labelMatches` that is a real regex has no faithful NSPredicate form (the same limit `_predicate`
+    hits), so it returns None rather than a wrong `CONTAINS` substring match.
+    """
+    buttons = f"{_SPRINGBOARD}.buttons"
+    if set(sel) == {"label"}:
+        return f"{buttons}[{_s(sel['label'])}]"
+    if "label" in sel:
+        buttons = (
+            f"{buttons}.matching(NSPredicate(format: {_s('label == %@')}, {_s(sel['label'])}))"
+        )
+    elif "labelMatches" in sel:
+        pattern = sel["labelMatches"]
+        if not is_plain_substring(pattern):  # a real regex — no faithful NSPredicate form
+            return None
+        buttons = (
+            f"{buttons}.matching(NSPredicate(format: {_s('label CONTAINS %@')}, {_s(pattern)}))"
+        )
+    index = sel.get("index")
+    if index is None:
+        return f"{buttons}.firstMatch"
+    return f"{buttons}.element(boundBy: {index})"
+
+
 def _count_expr(sel: base.Selector) -> str:
     if set(sel) == {"idMatches"}:
         return f"matchingId({_s(base.id_candidates(sel['idMatches'])[0])}).count"
@@ -183,6 +217,20 @@ def _emit_step(step: Step) -> list[str]:
     if step.long_press is not None:
         return [
             f"{_element(step.long_press.sel.as_selector())}.press(forDuration: {step.long_press.duration})"
+        ]
+    if step.handle_system_alert is not None:
+        # Wait for the SpringBoard prompt's button (bounded by the step's own timeout), then tap it —
+        # exactly how a hand-written XCUITest clears a permission alert (BE-0316). Native idiom, no
+        # screenshot, no vision model; the required timeout carries into the generated wait.
+        hsa = step.handle_system_alert
+        el = _system_alert_element(hsa.sel.as_selector())
+        if el is None:  # a real-regex labelMatches has no faithful NSPredicate form
+            return [
+                "// TODO: handleSystemAlert — labelMatches regex has no NSPredicate form; not generated"
+            ]
+        return [
+            f'XCTAssertTrue({el}.waitForExistence(timeout: {hsa.timeout}), "wait for system alert")',
+            f"{el}.tap()",
         ]
     if step.type is not None:
         lines = []

@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0316](BE-0316-ios-permission-alert-step.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0316") |
+| Implementing PR | [#PR](https://github.com/bajutsu-e2e/bajutsu/pull/PR) |
 | Topic | Scenario authoring features |
 | Related | [BE-0276](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state.md), [BE-0128](../BE-0128-device-step-capability-preflight/BE-0128-device-step-capability-preflight.md), [BE-0026](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md) |
 <!-- /BE-METADATA -->
@@ -183,18 +184,26 @@ To dismiss the prompt rather than accept it, the same step targets the dismissiv
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Scenario schema — `handleSystemAlert` step, label-based `Selector` subset, required `timeout`.
-- [ ] iOS (XCUITest) runner support — on-demand SpringBoard `XCUIApplication` handle, native tap.
-- [ ] Fail-fast on zero or multiple matching alert buttons.
-- [ ] Capability token + preflight (iOS-only advertisement).
-- [ ] codegen — native XCUITest idiom on iOS; labeled `// TODO` on Android and web.
-- [ ] Docs (scenarios.md + ja, DSL grammar) and a new, iOS-only showcase fixture file
+- [x] Scenario schema — `handleSystemAlert` step, label-based `Selector` subset, required `timeout`.
+- [x] iOS (XCUITest) runner support — on-demand SpringBoard `XCUIApplication` handle, native tap.
+- [x] Fail-fast on zero or multiple matching alert buttons.
+- [x] Capability token + preflight (iOS-only advertisement).
+- [x] codegen — native XCUITest idiom on iOS; labeled `// TODO` on Android and web.
+- [x] Docs (scenarios.md + ja, DSL grammar) and a new, iOS-only showcase fixture file
       (`permission_system_alert.yaml`), never added to the shared `permission.yaml` that Android's
       `smoke (adb)` job runs unchanged; a dedicated exclusion tag (e.g. `systemalert`) keeps it out
       of the local bulk `run-swiftui`/`run-uikit` runs without riding the legacy `xcuitest` tag.
-- [ ] CI wiring — an explicit `scenarios:` step for the new fixture in the `xcuitest (multi-touch)`
+- [x] CI wiring — an explicit `scenarios:` step for the new fixture in the `xcuitest (multi-touch)`
       job (`ios-e2e.yml`); a tag alone adds nothing to a CI job.
-- [ ] Tests — schema, preflight, SpringBoard resolution (zero/one/many matches), codegen snippet.
+- [x] Tests — schema, preflight, SpringBoard resolution (zero/one/many matches), codegen snippet.
+
+**Design note (resolution stays Python-side).** The runner exposes two endpoints —
+`POST /systemAlert/query` (snapshot the SpringBoard alert's buttons, each with a handle) and
+`POST /systemAlert/tap` (tap one by handle) — and the Python driver polls the query to the step's
+`timeout`, then runs the label-based selector through the shared `resolve_unique`. Resolution therefore
+uses the same zero / ambiguous / index discipline every selector follows, and it is covered by the
+fast Python gate (no Simulator) against a fake button list; the on-device Swift path is exercised by
+the `xcuitest (multi-touch)` CI job.
 
 ## References
 

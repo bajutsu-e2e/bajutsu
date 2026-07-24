@@ -635,3 +635,46 @@ def test_doctor_scenario_flag_rejects_directory(
     )
     assert r.exit_code == 2
     assert "scenario not found" in r.output
+
+
+# --- handleSystemAlert (BE-0316) -----------------------------------------------------------------
+
+
+def test_handle_system_alert_requires_the_capability() -> None:
+    sc = _sc(steps=[{"handleSystemAlert": {"sel": {"label": "Allow"}, "timeout": 5}}])
+    # _LEAN_IOS does not advertise the token, standing in for a backend that lacks it.
+    reasons = capability_preflight.unsupported(sc, _LEAN_IOS)
+    assert reasons and any("handleSystemAlert" in r and "step 1" in r for r in reasons)
+    assert (
+        capability_preflight.unsupported(sc, _LEAN_IOS | {base.Capability.HANDLE_SYSTEM_ALERT})
+        == []
+    )
+
+
+def test_handle_system_alert_passes_on_xcuitest_but_fails_on_android_and_web() -> None:
+    from bajutsu.drivers.adb import AdbDriver
+    from bajutsu.drivers.playwright import PlaywrightDriver
+    from bajutsu.drivers.xcuitest import XcuitestDriver
+
+    sc = _sc(steps=[{"handleSystemAlert": {"sel": {"label": "Allow"}, "timeout": 5}}])
+    assert base.Capability.HANDLE_SYSTEM_ALERT in XcuitestDriver.CAPABILITIES
+    assert capability_preflight.unsupported(sc, set(XcuitestDriver.CAPABILITIES)) == []
+    for driver in (AdbDriver, PlaywrightDriver):
+        assert base.Capability.HANDLE_SYSTEM_ALERT not in driver.CAPABILITIES
+        reasons = capability_preflight.unsupported(sc, set(driver.CAPABILITIES))
+        assert any("handleSystemAlert" in r for r in reasons)
+
+
+def test_handle_system_alert_nested_in_if_branch_is_detected() -> None:
+    sc = _sc(
+        steps=[
+            {
+                "if": {
+                    "condition": {"exists": {"id": "perm.requestNotif"}},
+                    "then": [{"handleSystemAlert": {"sel": {"label": "Allow"}, "timeout": 5}}],
+                }
+            }
+        ]
+    )
+    reasons = capability_preflight.unsupported(sc, _LEAN_IOS)
+    assert any("handleSystemAlert" in r for r in reasons)

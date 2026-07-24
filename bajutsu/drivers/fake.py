@@ -52,6 +52,9 @@ class FakeDriver:
         exchanges: Sequence[NetworkExchange] | None = None,
     ) -> None:
         self.screen: list[base.Element] = list(screen) if screen is not None else []
+        # The SpringBoard alert buttons `handle_system_alert` resolves over (BE-0316); tests seed
+        # this to stand in for the out-of-process prompt the real backend queries on-device.
+        self.system_alert_buttons: list[base.Element] = []
         self._react = react
         self.actions: list[tuple[str, object]] = []  # log of performed actions
         # When given (even empty), this fake is a network-capable evidence provider (BE-0020): it
@@ -115,6 +118,14 @@ class FakeDriver:
         base.resolve_unique(self.screen, sel)
         self._record("select_option", (sel, option))
 
+    def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
+        # Resolve `sel` over the seeded alert buttons with the same discipline the real backend uses
+        # (BE-0316): zero → ElementNotFound, ambiguous → AmbiguousSelector, `index` picks the nth.
+        if not self.system_alert_buttons:
+            raise base.ElementNotFound(f"no system alert appeared within {timeout}s: {sel!r}")
+        base.resolve_unique(self.system_alert_buttons, sel)
+        self._record("handle_system_alert", (sel, timeout))
+
     def wait_for(self, sel: base.Selector) -> bool:
         return len(base.find_all(self.screen, sel)) >= 1
 
@@ -134,6 +145,7 @@ class FakeDriver:
             base.Capability.MULTI_TOUCH,
             base.Capability.SELECT_OPTION,
             base.Capability.TEXT_SELECTION,
+            base.Capability.HANDLE_SYSTEM_ALERT,
         }
     )
 

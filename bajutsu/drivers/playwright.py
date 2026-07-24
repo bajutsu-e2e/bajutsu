@@ -694,6 +694,13 @@ class PlaywrightDriver:
         if result == "no-option":
             raise base.ElementNotFound(f"selectOption: no option with value {option!r}: {sel!r}")
 
+    def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
+        # BE-0316 is an iOS SpringBoard concept: the web backend has no OS-level permission prompt at
+        # all, so it never advertises the capability and preflight rejects the step. Mid-run backstop.
+        raise base.UnsupportedAction(
+            "handleSystemAlert is iOS-only; the web backend has no OS-level permission prompt"
+        )
+
     @_wedge_guard
     def wait_for(self, sel: base.Selector) -> bool:
         # Single-shot by contract (BE-0118): delegates to the shared base.default_wait_for so the

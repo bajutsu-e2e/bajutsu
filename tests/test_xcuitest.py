@@ -723,3 +723,100 @@ def test_await_health_treats_a_transport_failure_as_not_ready_then_recovers() ->
         [_TransportFailure("refused", delivered=False), _Reply(status="ready")]
     )
     assert _await_health(inner, timeout=1.0, poll=0.0, sleep=lambda _s: None)
+
+
+# --- handle_system_alert (BE-0316) ---------------------------------------------------------------
+# The SpringBoard permission-prompt tap. Resolution stays Python-side over the buttons the runner
+# returns from `/systemAlert/query`, so the same zero / ambiguous / index discipline every selector
+# follows decides which button is tapped — proven here against a fake transport, no Simulator.
+
+
+def _alert_transport(
+    *button_batches: list[dict[str, Any]],
+) -> tuple[TransportFn, list[tuple[str, str, dict[str, Any] | None]]]:
+    """A transport whose `/systemAlert/query` yields each batch in turn (last repeats), recording taps.
+
+    Successive batches let a test model the prompt appearing only on a later poll; a single batch
+    (the common case) just answers every query with it.
+    """
+    sent: list[tuple[str, str, dict[str, Any] | None]] = []
+    batches = iter(button_batches)
+    current = next(batches, [])
+
+    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+        nonlocal current
+        if path == "/systemAlert/query":
+            batch = current
+            current = next(batches, current)  # advance; the last batch repeats
+            return _elements(*batch)
+        sent.append((method, path, body))
+        return _Reply(status="ok")
+
+    return transport, sent
+
+
+def test_handle_system_alert_resolves_the_labelled_button_and_taps_its_handle() -> None:
+    transport, sent = _alert_transport(
+        [
+            _el_wire("h-allow", label="Allow", traits=["button"]),
+            _el_wire("h-deny", label="Don't Allow", traits=["button"]),
+        ]
+    )
+    _driver(transport).handle_system_alert({"label": "Allow"}, timeout=5.0)
+    assert sent == [("POST", "/systemAlert/tap", {"handle": "h-allow"})]
+
+
+def test_handle_system_alert_ambiguous_label_fails_without_index() -> None:
+    transport, sent = _alert_transport(
+        [
+            _el_wire("h-a", label="OK", traits=["button"]),
+            _el_wire("h-b", label="OK", traits=["button"]),
+        ]
+    )
+    with pytest.raises(base.AmbiguousSelector):
+        _driver(transport).handle_system_alert({"label": "OK"}, timeout=5.0)
+    assert sent == []  # no tap on an ambiguous match
+
+
+def test_handle_system_alert_index_disambiguates_multiple_matches() -> None:
+    transport, sent = _alert_transport(
+        [
+            _el_wire("h-a", label="OK", traits=["button"]),
+            _el_wire("h-b", label="OK", traits=["button"]),
+        ]
+    )
+    _driver(transport).handle_system_alert({"label": "OK", "index": 1}, timeout=5.0)
+    assert sent == [("POST", "/systemAlert/tap", {"handle": "h-b"})]
+
+
+def test_handle_system_alert_no_alert_within_timeout_fails() -> None:
+    transport, sent = _alert_transport([])  # the prompt never appears
+    with pytest.raises(base.ElementNotFound, match="no system alert appeared"):
+        _driver(transport).handle_system_alert({"label": "Allow"}, timeout=0.0)
+    assert sent == []
+
+
+def test_handle_system_alert_waits_for_a_prompt_that_appears_on_a_later_poll() -> None:
+    # Empty first, then the prompt — the condition wait rides the interval (no-op sleep) rather than
+    # failing on the first empty read.
+    transport, sent = _alert_transport([], [_el_wire("h-allow", label="Allow", traits=["button"])])
+    _driver(transport).handle_system_alert({"label": "Allow"}, timeout=5.0)
+    assert sent == [("POST", "/systemAlert/tap", {"handle": "h-allow"})]
+
+
+def test_handle_system_alert_present_but_no_label_match_fails() -> None:
+    transport, sent = _alert_transport([_el_wire("h-deny", label="Don't Allow", traits=["button"])])
+    with pytest.raises(base.ElementNotFound):
+        _driver(transport).handle_system_alert({"label": "Allow"}, timeout=0.0)
+    assert sent == []
+
+
+def test_handle_system_alert_reports_a_vanished_button_as_not_found() -> None:
+    # The alert dismissed itself between query and tap: the tap reply is not "ok".
+    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+        if path == "/systemAlert/query":
+            return _elements(_el_wire("h-allow", label="Allow", traits=["button"]))
+        return _Reply(status="stale")
+
+    with pytest.raises(base.ElementNotFound, match="vanished"):
+        _driver(transport).handle_system_alert({"label": "Allow"}, timeout=5.0)

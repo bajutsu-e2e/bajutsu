@@ -134,6 +134,11 @@ _STALE_BACKOFF_BASE_SECONDS = 0.5
 # bounded — a runner that is truly gone fails the run rather than hanging it.
 _RECOVERY_TIMEOUT_SECONDS = 60
 
+# How often `handle_system_alert` re-queries SpringBoard while waiting for the permission prompt to
+# appear (BE-0316). A fixed inter-poll interval bounded by the step's own `timeout` — a condition
+# wait, not a fixed up-front sleep: the loop returns the instant the alert's buttons are present.
+_SYSTEM_ALERT_POLL_SECONDS = 0.2
+
 
 def _to_element(item: Mapping[str, Any]) -> base.Element:
     """Normalize one `GET /elements` item into an `Element`.
@@ -401,6 +406,7 @@ class XcuitestDriver:
                 base.Capability.CONDITION_WAIT,
                 base.Capability.MULTI_TOUCH,
                 base.Capability.TEXT_SELECTION,
+                base.Capability.HANDLE_SYSTEM_ALERT,
             }
         )
         | base.DEVICE_CONTROL_ALL
@@ -428,7 +434,16 @@ class XcuitestDriver:
         the resolved element's handle is an O(1) identity lookup — the element is acted on by the
         exact handle the runner minted for it, never re-resolved on the runner side.
         """
-        reply = self._transport("GET", "/elements", None)
+        return self._parse_elements(self._transport("GET", "/elements", None))
+
+    @staticmethod
+    def _parse_elements(reply: _Reply) -> tuple[list[base.Element], dict[int, str]]:
+        """Turn a runner element reply into elements plus an identity→handle map (BE-0105).
+
+        Shared by the app-tree query (`/elements`) and the SpringBoard alert query
+        (`/systemAlert/query`, BE-0316): both mint a handle per element the same way, so both feed
+        `resolve_unique` and then act by the exact handle the runner minted.
+        """
         elements: list[base.Element] = []
         handles: dict[int, str] = {}
         for item in reply.elements or []:
@@ -520,6 +535,32 @@ class XcuitestDriver:
         raise base.UnsupportedAction(
             "selectOption は <select> を持つ web バックエンド専用; iOS ネイティブに <select> はない"
         )
+
+    def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
+        # Tap a SpringBoard permission-prompt button deterministically (BE-0316). The alert is
+        # out-of-process, so the runner queries a second, on-demand `XCUIApplication` for
+        # `com.apple.springboard` and mints a handle per alert button, exactly as it does for the
+        # app's own tree. Resolution stays Python-side in `resolve_unique`, so the same zero /
+        # ambiguous / index discipline every selector follows decides which button is tapped — no
+        # screenshot, no vision model. Poll the query to a deadline: the prompt only appears once the
+        # app makes the request, so a condition wait (no fixed sleep) waits it in without a bound guess.
+        deadline = time.monotonic() + timeout
+        while True:
+            buttons, handles = self._parse_elements(
+                self._transport("POST", "/systemAlert/query", {})
+            )
+            if buttons:
+                break
+            if time.monotonic() >= deadline:
+                raise base.ElementNotFound(f"no system alert appeared within {timeout}s: {sel!r}")
+            self._sleep(_SYSTEM_ALERT_POLL_SECONDS)
+        el = base.resolve_unique(buttons, sel)
+        reply = self._transport("POST", "/systemAlert/tap", {"handle": handles[id(el)]})
+        if reply.status != _OK:
+            # The alert vanished between query and tap (dismissed itself, or the button moved off).
+            raise base.ElementNotFound(
+                f"system alert button vanished before tap (status={reply.status}): {sel!r}"
+            )
 
     def back(self) -> None:
         # iOS has no hardware back: tap the OS navigation back button. Reuses `tap` rather than

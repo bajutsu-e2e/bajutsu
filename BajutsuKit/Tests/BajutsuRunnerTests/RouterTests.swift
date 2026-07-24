@@ -423,6 +423,76 @@ final class RouterTests: XCTestCase {
         XCTAssertEqual(provider.copyCalls, 1)
     }
 
+    // MARK: - /systemAlert (BE-0316)
+
+    func testSystemAlertQueryReturnsButtonsWithHandles() {
+        let provider = FakeElementProvider()
+        provider.systemAlertButtons = [
+            ElementSnapshot(
+                identifier: nil, label: "Allow", value: nil,
+                traits: ["button"], frame: (0, 0, 100, 44), backingElement: NSObject()
+            ),
+            ElementSnapshot(
+                identifier: nil, label: "Don't Allow", value: nil,
+                traits: ["button"], frame: (0, 44, 100, 44), backingElement: NSObject()
+            ),
+        ]
+        let router = makeRouter(provider)
+        let response = router.handle(HTTPRequest(method: "POST", path: "/systemAlert/query", body: nil))
+        let json = parseJSON(response)
+        XCTAssertEqual(json?["status"] as? String, "ok")
+        let elements = json?["elements"] as? [[String: Any]]
+        XCTAssertEqual(elements?.count, 2)
+        XCTAssertEqual(elements?.first?["label"] as? String, "Allow")
+        XCTAssertNotNil(elements?.first?["handle"] as? String)
+    }
+
+    func testSystemAlertQueryEmptyWhenNoAlert() {
+        let provider = FakeElementProvider()  // no buttons seeded → no alert up
+        let router = makeRouter(provider)
+        let response = router.handle(HTTPRequest(method: "POST", path: "/systemAlert/query", body: nil))
+        XCTAssertEqual((parseJSON(response)?["elements"] as? [[String: Any]])?.count, 0)
+    }
+
+    func testSystemAlertTapWithValidHandleCallsProvider() throws {
+        let provider = FakeElementProvider()
+        let backing = NSObject()
+        provider.systemAlertButtons = [
+            ElementSnapshot(
+                identifier: nil, label: "Allow", value: nil,
+                traits: ["button"], frame: (0, 0, 100, 44), backingElement: backing
+            ),
+        ]
+        let router = makeRouter(provider)
+
+        let queryResponse = router.handle(
+            HTTPRequest(method: "POST", path: "/systemAlert/query", body: nil)
+        )
+        let handle = (parseJSON(queryResponse)?["elements"] as? [[String: Any]])?.first?["handle"] as? String
+        XCTAssertNotNil(handle)
+
+        let tapBody = try JSONSerialization.data(withJSONObject: ["handle": handle!])
+        let tapResponse = router.handle(
+            HTTPRequest(method: "POST", path: "/systemAlert/tap", body: tapBody)
+        )
+        XCTAssertEqual(parseJSON(tapResponse)?["status"] as? String, "ok")
+        XCTAssertEqual(provider.systemAlertTapCalls.count, 1)
+        XCTAssertTrue(provider.systemAlertTapCalls[0] === backing)
+    }
+
+    func testSystemAlertTapWithUnknownHandleReturnsNotFound() throws {
+        let router = makeRouter()
+        let tapBody = try JSONSerialization.data(withJSONObject: ["handle": "h-never-issued"])
+        let response = router.handle(HTTPRequest(method: "POST", path: "/systemAlert/tap", body: tapBody))
+        XCTAssertEqual(parseJSON(response)?["status"] as? String, "not-found")
+    }
+
+    func testSystemAlertTapMissingHandleReturns400() {
+        let router = makeRouter()
+        let response = router.handle(HTTPRequest(method: "POST", path: "/systemAlert/tap", body: nil))
+        XCTAssertEqual(response.statusCode, 400)
+    }
+
     // MARK: - unknown route
 
     func testUnknownRouteReturns404() {

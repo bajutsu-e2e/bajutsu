@@ -99,6 +99,7 @@ the selector at `el("UNSUPPORTED_SELECTOR")` — an honest gap, not a wrong gues
 | `type` (no `into`) | `app.typeText(...)` |
 | `swipe { on, direction }` | `.swipeUp/Down/Left/Right()` |
 | `swipe { from, to }` | `coord(x1, y1).press(forDuration: 0.1, thenDragTo: coord(x2, y2))` — an `XCUICoordinate` drag (BE-0025) |
+| `handleSystemAlert` | `XCTAssertTrue(XCUIApplication(bundleIdentifier: "com.apple.springboard").buttons["…"].waitForExistence(timeout:))` + `.tap()` — the native SpringBoard idiom, carrying the step's `timeout` (BE-0316) |
 | `wait { for }` | `XCTAssertTrue(el(...).waitForExistence(timeout:))` |
 | `wait { until: gone }` | `.waitForNonExistence(timeout:)` |
 | `wait { until: screenChanged/settled }` | a comment (XCUITest auto-waits for hittability) |
@@ -195,6 +196,7 @@ test.describe('Components', () => {
 | `wait { until: screenChanged/settled }` | a comment (Playwright auto-waits) |
 | `relaunch` | `await page.goto(BASE_URL)` |
 | `pinch` / `rotate` | `// TODO` (multi-touch; the web backend does not drive it) |
+| `handleSystemAlert` | `// TODO` (iOS-only; the web has no OS-level prompt) |
 
 ### Assertion mapping (Playwright, web-first `expect`)
 
@@ -321,6 +323,7 @@ same limit the XCUITest emitter hits for NSPredicate `MATCHES`), so it stays a `
 | `wait { until: screenChanged/settled }` | `device.waitForIdle(<ms>L)` — `findObject` does not auto-wait, so this is a real condition wait, not a bare comment |
 | `relaunch` | `launch(extras)` (re-issues the launch intent) |
 | `doubleTap` / `rotate` | `// TODO` (no UI Automator gesture) |
+| `handleSystemAlert` | `// TODO` (iOS-only; tap the system dialog directly on Android) |
 
 ### Assertion mapping (UI Automator)
 

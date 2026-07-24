@@ -4,6 +4,9 @@ import ObjCExceptionCatcher
 final class Router {
     private let provider: ElementProviding
     private let store = SnapshotStore()
+    // A separate handle store for SpringBoard alert buttons (BE-0316), so their handles never
+    // collide with the app tree's and a `/systemAlert/query` never disturbs the app snapshot.
+    private let alertStore = SnapshotStore()
 
     init(provider: ElementProviding) {
         self.provider = provider
@@ -29,6 +32,10 @@ final class Router {
             return tapResultResponse(onMainCatching(self.provider.selectAll))
         case ("POST", "/copy"):
             return tapResultResponse(onMainCatching(self.provider.copySelection))
+        case ("POST", "/systemAlert/query"):
+            return handleSystemAlertQuery()
+        case ("POST", "/systemAlert/tap"):
+            return handleSystemAlertTap(request)
         case ("GET", "/screenshot"):
             return handleScreenshot()
         default:
@@ -45,6 +52,41 @@ final class Router {
         // `try? app.snapshot()` handles a *thrown* one (BE-0105): the run fails loudly downstream when
         // nothing resolves, and the runner keeps serving rather than aborting on the raise.
         let elements = caughtOnMain([]) { self.provider.queryElements() }
+        return elementsResponse(store: store, elements: elements)
+    }
+
+    // The SpringBoard system-alert query (BE-0316): the same element+handle contract as `/elements`,
+    // but sourced from the out-of-process permission prompt and keyed into `alertStore`. Empty when no
+    // alert is up, so the Python driver polls it against the step's timeout — a condition wait.
+    private func handleSystemAlertQuery() -> HTTPResponse {
+        let elements = caughtOnMain([]) { self.provider.querySystemAlertButtons() }
+        return elementsResponse(store: alertStore, elements: elements)
+    }
+
+    private func handleSystemAlertTap(_ request: HTTPRequest) -> HTTPResponse {
+        guard let body = request.body,
+              let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any] else {
+            return .error(400, "missing or invalid JSON body")
+        }
+        guard let handle = json["handle"] as? String else {
+            return .error(400, "missing handle")
+        }
+        switch alertStore.lookup(handle: handle) {
+        case .found(let snapshot):
+            let result = onMainCatching {
+                self.provider.tapSystemAlertButton(backingElement: snapshot.backingElement)
+            }
+            return tapResultResponse(result)
+        case .stale:
+            return .json(200, ["status": "stale"])
+        case .notFound:
+            return .json(200, ["status": "not-found"])
+        }
+    }
+
+    /// Serialize a fresh element snapshot into the `{status, elements:[…handle…]}` reply both the app
+    /// tree (`/elements`) and the SpringBoard alert (`/systemAlert/query`) share (BE-0316).
+    private func elementsResponse(store: SnapshotStore, elements: [ElementSnapshot]) -> HTTPResponse {
         let entries = store.refreshSnapshot(elements: elements)
         let jsonElements: [[String: Any]] = entries.map { entry in
             var dict: [String: Any] = [

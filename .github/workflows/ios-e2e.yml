@@ -707,6 +707,23 @@ jobs:
           udid: ${{ steps.sim.outputs.udid }}
           artifact-name: xcuitest-permission-run
 
+      # The `handleSystemAlert` step (BE-0316) on-device: fires the notification-permission request,
+      # then taps the SpringBoard prompt's "Allow" button by a native accessibility query — no vision
+      # model, so this is the deterministic counterpart to permission.yaml's `dismissAlerts` grant
+      # (which the step above excludes as `ai`). Its own file, not a scenario in permission.yaml: only
+      # the iOS (XCUITest) backend declares the capability, so a scenario in the shared file would fail
+      # android-e2e.yml's required `smoke (adb)` job at preflight. Reached via this job's already-built
+      # Simulator/app/runner for one more `bajutsu run`, the same cost-sharing as the scenarios above.
+      - name: Run the system-alert scenario (xcuitest — handleSystemAlert)
+        uses: ./.github/actions/bajutsu-e2e
+        with:
+          scenarios: demos/showcase/scenarios/permission_system_alert.yaml
+          target: showcase-swiftui
+          backend: xcuitest
+          config: demos/showcase/showcase.config.yaml
+          udid: ${{ steps.sim.outputs.udid }}
+          artifact-name: xcuitest-system-alert-run
+
       # XCUITest actuation on the runner channel (BE-0281): the `/type`, `/swipe`, and `/back`
       # endpoints of the resident BajutsuRunner, which on-device CI reached only for tap / pinch /
       # rotate before now. Both scenarios open with a tab tap (they filter the Search list / walk

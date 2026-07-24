@@ -472,3 +472,14 @@ def test_android_codegen_fixture_is_up_to_date(tmp_path: Path) -> None:
     )
     assert result.exit_code == 0, result.output
     assert out.read_text(encoding="utf-8") == _FIXTURE_KT.read_text(encoding="utf-8")
+
+
+def test_handle_system_alert_is_todo() -> None:
+    # BE-0316 is iOS-only; Android reaches a system dialog with an ordinary tap, so codegen emits a
+    # labeled TODO rather than the catch-all "unsupported step".
+    code = _gen(
+        "- name: x\n  steps:\n    - handleSystemAlert: { sel: { label: Allow }, timeout: 5 }\n"
+    )
+    assert "// TODO: handleSystemAlert" in code
+    assert "iOS-only" in code
+    assert "unsupported step" not in code
