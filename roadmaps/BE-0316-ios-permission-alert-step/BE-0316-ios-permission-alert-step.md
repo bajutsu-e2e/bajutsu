@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0316") |
-| Implementing PR | [#PR](https://github.com/bajutsu-e2e/bajutsu/pull/PR) |
+| Implementing PR | [#1324](https://github.com/bajutsu-e2e/bajutsu/pull/1324) |
 | Topic | Scenario authoring features |
 | Related | [BE-0276](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state.md), [BE-0128](../BE-0128-device-step-capability-preflight/BE-0128-device-step-capability-preflight.md), [BE-0026](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md) |
 <!-- /BE-METADATA -->
