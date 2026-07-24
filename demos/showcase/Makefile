@@ -171,13 +171,14 @@ ui-test:
 # reaches — text-editing, gestures, multi-touch, and the coordinate-swipe / element-drag /
 # compound-selector constructs of codegen_extra.yaml. The first three scenarios are already proven
 # on-device by `bajutsu run` (the gestures / multi-touch e2e jobs), so only the *emitted* Swift is
-# newly under test. Generated files are gitignored (generation-only); this lands as a non-gating CI
-# step until the compiled slice proves stable, then folds into the required job (Unit 4). Runs only
-# the coverage classes (`-only-testing`, an allow-list keyed on the `Coverage*` output names below,
-# robust to any Components rename) — the required `ui-test` above owns the Components class. Each class
-# name is the `bajutsu codegen` transform of its `-o` stem (`CoverageExtra` -> `CoverageextraUITests`).
-# No `-retry-tests-on-failure` here (unlike `ui-test`): this is the deliberately-unstable slice, so a
-# retry would mask the very flakiness this signal exists to surface, and burn 10x-metered minutes doing it.
+# newly under test. Generated files are gitignored (generation-only); this now folds into the
+# required `xcuitest (codegen)` job (BE-0297 Unit 4), having proven stable as a non-gating signal
+# first. Runs only the coverage classes (`-only-testing`, an allow-list keyed on the `Coverage*`
+# output names below, robust to any Components rename) — the required `ui-test` above owns the
+# Components class. Each class name is the `bajutsu codegen` transform of its `-o` stem
+# (`CoverageExtra` -> `CoverageextraUITests`).
+# No `-retry-tests-on-failure` here (unlike `ui-test`): a retry would mask a genuine flake in this
+# newly-gating slice rather than surfacing it for investigation, and burn 10x-metered minutes doing it.
 UITESTS := $(SWIFTUI)/UITests
 ui-test-coverage:
 	cd $(ROOT) && uv run bajutsu codegen demos/showcase/scenarios/text_editing.yaml --target showcase-swiftui \
