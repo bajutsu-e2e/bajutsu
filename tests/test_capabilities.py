@@ -54,8 +54,8 @@ def test_every_command_lands_in_a_claude_help_panel() -> None:
 
 def test_flag_gated_commands_name_the_flag_that_reaches_claude() -> None:
     # A Claude-free command with a Claude path behind a flag must record that flag, so the docs /
-    # help can say `triage --ai` and `run --dismiss-alerts` rather than mislabel the command.
+    # help can say `triage --ai` and `run --alert-handling` rather than mislabel the command.
     assert capabilities.by_command("triage").claude_flag == "--ai"
-    assert capabilities.by_command("run").claude_flag == "--dismiss-alerts"
+    assert capabilities.by_command("run").claude_flag == "--alert-handling"
     # An always-Claude command has no flip flag.
     assert capabilities.by_command("record").claude_flag is None

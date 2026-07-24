@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0317](BE-0317-rename-dismiss-alerts-to-alert-handling-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0317") |
+| 実装 PR | _保留中_ |
 | トピック | シナリオ記述機能 |
 | 関連 | [BE-0269](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention-ja.md)、[BE-0276](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state-ja.md) |
 <!-- /BE-METADATA -->

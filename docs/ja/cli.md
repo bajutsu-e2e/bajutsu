@@ -19,7 +19,7 @@
 
 ## `run`
 
-シナリオを **決定的に実行**します。合否は機械判定のみです。唯一の AI コンポーネントは**アラートガード**（シナリオごとに既定 ON）で、ステップをブロックした OS プロンプトを片付けるためだけに動作します。詳しくは [`dismissAlerts`](scenarios.md#dismissalertsシステムアラートガード) を参照してください。
+シナリオを **決定的に実行**します。合否は機械判定のみです。唯一の AI コンポーネントは**アラートガード**（シナリオごとに既定 ON）で、ステップをブロックした OS プロンプトを片付けるためだけに動作します。詳しくは [`alertHandling`](scenarios.md#alerthandlingシステムアラートガード) を参照してください。
 
 ```bash
 bajutsu run --target <name> [--scenario <file.yaml>] [options]
@@ -37,8 +37,8 @@ bajutsu run --target <name> [--scenario <file.yaml>] [options]
 | `--exclude` | "" | カンマ区切り。これらの tag のいずれかを持つシナリオをスキップ |
 | `--udid` | `booted` | 対象 Simulator（カンマ区切り = `--workers` 用のデバイスプール） |
 | `--erase / --no-erase` | シナリオ › config › off | 各シナリオの `preconditions.erase`（シム全体を wipe）を上書き。省略時は各シナリオの値、次にターゲットの `erase` config、次に off の順で解決（[BE-0177](../../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)）。アプリはどちらでも毎回 fresh に再インストール（config `appPath` + `preconditions.reinstall`） |
-| `--dismiss-alerts / --no-dismiss-alerts` | シナリオ › config › ON | 各シナリオの `dismissAlerts` を上書きします。iOS バックエンドから見えないシステムアラートを視覚で消すガードです。省略時は各シナリオの値、次にターゲットの `dismissAlerts` config、次に ON の順で解決します（設定した AI プロバイダを使用。`ANTHROPIC_API_KEY`、Bedrock なら AWS 認証情報。[recording](recording.md#システムアラートの自動対処)） |
-| `--alert-instruction` | "" | 既定のボタン指示。シナリオ自身の `dismissAlerts.instruction` の下位、ターゲットの `dismissAlerts` config の上位に位置します |
+| `--alert-handling / --no-alert-handling` | シナリオ › config › ON | 各シナリオの `alertHandling` を上書きします。iOS バックエンドから見えないシステムアラートを視覚で消すガードです。省略時は各シナリオの値、次にターゲットの `alertHandling` config、次に ON の順で解決します（設定した AI プロバイダを使用。`ANTHROPIC_API_KEY`、Bedrock なら AWS 認証情報。[recording](recording.md#システムアラートの自動対処)） |
+| `--alert-instruction` | "" | 既定のボタン指示。シナリオ自身の `alertHandling.instruction` の下位、ターゲットの `alertHandling` config の上位に位置します |
 | `--log-predicate` | "" | `deviceLog` ストリームを絞る NSPredicate（例 subsystem） |
 | `--log-subsystem` | "" | `appTrace` 用の os_log subsystem（既定はアプリの `bundleId`） |
 | `--network / --no-network` | config › ON | `request` アサーション用にアプリの通信を収集。省略時はターゲットの `network` config、次に ON の順で解決（[BE-0177](../../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)）。iOS はアプリに BajutsuKit が必要。web は Playwright でネイティブに観測し、シナリオの `mocks` をその場でスタブします |
@@ -302,7 +302,7 @@ bajutsu record --target <name> --goal "<自然言語ゴール>" [--out <file.yam
 | `--udid` | `booted` | 対象 Simulator |
 | `--backend` | config | actuator 順 |
 | `--erase / --no-erase` | `--erase` | 起動前に erase（アプリはインストール済みである必要） |
-| `--dismiss-alerts` | off | オーサリング中のプロンプトを片付ける（要 API キー） |
+| `--alert-handling` | off | オーサリング中のプロンプトを片付ける（要 API キー） |
 | `--headed / --no-headed` | アプリの `headless` | web backend: ヘッドレスではなく目に見える（低速再生の）ブラウザでオーサリングします。省略時はアプリの `headless` 設定に従います |
 | `--alert-instruction` | "" | 同上の押下指示 |
 | `--language` | config の `ai.language`（`auto`） | 著すプローズ（`from:` 由来、推論）の AI 出力言語。`ja` / `en` / `auto` から選び `ai.language` を上書きします。`auto` はゴールに追従します（[BE-0188](../../roadmaps/BE-0188-configurable-ai-output-language/BE-0188-configurable-ai-output-language-ja.md)） |
@@ -336,7 +336,7 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
 | `--workers` | `1` | 同時に動かすワーカー数。1 つの画面マップを共有する。iOS は同数のシミュレータ（[BE-0064](../../roadmaps/BE-0064-parallel-crawl/BE-0064-parallel-crawl-ja.md)、`--udid` のデバイス数で上限）、web は同数のブラウザプロセス（[BE-0077](../../roadmaps/BE-0077-parallel-web-crawl/BE-0077-parallel-web-crawl-ja.md)）。`1` はシングルワーカーのクロール |
 | `--backend` | config | actuator 順 |
 | `--erase / --no-erase` | `--erase` | 起動前に erase（アプリはインストール済みである必要） |
-| `--dismiss-alerts / --no-dismiss-alerts` | `--dismiss-alerts` | クロール中に予期せぬ OS プロンプトを片付ける（クラッシュ誤判定を防ぐ。設定した AI プロバイダを使用し、`ANTHROPIC_API_KEY`、Bedrock なら AWS 認証情報） |
+| `--alert-handling / --no-alert-handling` | `--alert-handling` | クロール中に予期せぬ OS プロンプトを片付ける（クラッシュ誤判定を防ぐ。設定した AI プロバイダを使用し、`ANTHROPIC_API_KEY`、Bedrock なら AWS 認証情報） |
 | `--headed / --no-headed` | アプリの `headless` | web backend: ヘッドレスではなく目に見える（低速再生の）ブラウザでクロールする。省略時はアプリの `headless` 設定に従う |
 | `--language` | config の `ai.language`（`auto`） | ガイドの流れる推論の AI 出力言語。`ja` / `en` / `auto` から選び `ai.language` を上書きします。`auto` はクロールでは英語のままです（[BE-0188](../../roadmaps/BE-0188-configurable-ai-output-language/BE-0188-configurable-ai-output-language-ja.md)） |
 | `--out` | `runs/<timestamp>` | 画面マップを書き出す run ディレクトリ |
@@ -455,7 +455,7 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
   「壊れて見えるか」をモデルが判断することはありません。
 - **OS アラートではなくダイアログ。** web に OS プロンプトはなく、JS ダイアログ（`alert` / `confirm` /
   `beforeunload`）があります。これらは固定のモデル非依存ポリシー（dismiss）で自動処理し、`alerts` に記録します。
-  iOS の vision アラートガードの置き換えです。`--dismiss-alerts` と vision 経路は iOS 専用で、`--headed` は
+  iOS の vision アラートガードの置き換えです。`--alert-handling` と vision 経路は iOS 専用で、`--headed` は
   web で有効です（可視ブラウザでクロールを見られます）。
 
 ## `codegen`

@@ -27,7 +27,7 @@ class Capability:
 
     `uses_claude` classifies the command's *default* path. `claude_flag`, when set, names the flag
     that flips an otherwise-Claude-free command onto the Claude path (`triage --ai`,
-    `run --dismiss-alerts`) — the path-granularity the classification is expressed at; it is None
+    `run --alert-handling`) — the path-granularity the classification is expressed at; it is None
     when no flag changes the classification.
     """
 
@@ -42,7 +42,7 @@ CAPABILITIES: tuple[Capability, ...] = (
     Capability("record", uses_claude=True),
     Capability("crawl", uses_claude=True),
     Capability("triage", uses_claude=False, claude_flag="--ai"),
-    Capability("run", uses_claude=False, claude_flag="--dismiss-alerts"),
+    Capability("run", uses_claude=False, claude_flag="--alert-handling"),
     Capability("doctor", uses_claude=False),
     Capability("codegen", uses_claude=False),
     Capability("trace", uses_claude=False),

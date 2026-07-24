@@ -21,7 +21,7 @@ Related: [run-loop](run-loop.md) · [recording](recording.md) · [codegen](codeg
 
 ## `run`
 
-Runs a scenario **deterministically**; pass/fail is machine-only. The only AI component is the **alert guard** (on by default per scenario), which fires only to clear an OS prompt that blocked a step — see [`dismissAlerts`](scenarios.md#dismissalerts-the-system-alert-guard).
+Runs a scenario **deterministically**; pass/fail is machine-only. The only AI component is the **alert guard** (on by default per scenario), which fires only to clear an OS prompt that blocked a step — see [`alertHandling`](scenarios.md#alerthandling-the-system-alert-guard).
 
 ```bash
 bajutsu run --target <name> [--scenario <file.yaml>] [options]
@@ -40,8 +40,8 @@ to run. Pass `--scenario <file>` to run a single file instead.
 | `--exclude` | "" | comma list; skip scenarios carrying any of these tags |
 | `--udid` | `booted` | the target Simulator (comma list = a device pool for `--workers`) |
 | `--erase / --no-erase` | scenario › config › off | override every scenario's `preconditions.erase` (wipe the simulator first); omit and it resolves each scenario's value, then the target's `erase` config, then off ([BE-0177](../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md)). The app is reinstalled fresh either way (config `appPath` + `preconditions.reinstall`) |
-| `--dismiss-alerts / --no-dismiss-alerts` | scenario › config › on | override every scenario's `dismissAlerts` — the vision guard that dismisses system alerts the iOS backend cannot see; omit and it resolves each scenario's value, then the target's `dismissAlerts` config, then on (uses the configured AI provider — `ANTHROPIC_API_KEY`, or AWS credentials for Bedrock; [recording](recording.md#dismissing-system-alerts-automatically)) |
-| `--alert-instruction` | "" | default button instruction, below a scenario's own `dismissAlerts.instruction` and above the target's `dismissAlerts` config |
+| `--alert-handling / --no-alert-handling` | scenario › config › on | override every scenario's `alertHandling` — the vision guard that dismisses system alerts the iOS backend cannot see; omit and it resolves each scenario's value, then the target's `alertHandling` config, then on (uses the configured AI provider — `ANTHROPIC_API_KEY`, or AWS credentials for Bedrock; [recording](recording.md#dismissing-system-alerts-automatically)) |
+| `--alert-instruction` | "" | default button instruction, below a scenario's own `alertHandling.instruction` and above the target's `alertHandling` config |
 | `--log-predicate` | "" | an NSPredicate narrowing the `deviceLog` stream (e.g. subsystem) |
 | `--log-subsystem` | "" | the os_log subsystem for `appTrace` (defaults to the app's `bundleId`) |
 | `--network / --no-network` | config › on | collect the app's network exchanges for `request` assertions; omit and it resolves the target's `network` config, then on ([BE-0177](../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md)). iOS needs BajutsuKit in the app; web observes natively via Playwright, and stubs scenario `mocks` in-process |
@@ -419,7 +419,7 @@ bajutsu record --target <name> --goal "<natural-language goal>" [--out <file.yam
 | `--udid` | `booted` | the target Simulator |
 | `--backend` | config | actuator order |
 | `--erase / --no-erase` | `--erase` | erase before launch (the app must be installed) |
-| `--dismiss-alerts` | off | clear prompts during authoring (needs an API key) |
+| `--alert-handling` | off | clear prompts during authoring (needs an API key) |
 | `--headed / --no-headed` | app `headless` | web backend: author against a visible (headed, slow-motion) browser instead of headless; omit to use the app's `headless` config |
 | `--alert-instruction` | "" | the press instruction for the above |
 | `--language` | config `ai.language` (`auto`) | AI output language for the authored prose (`from:` provenance, reasoning) — `ja` / `en` / `auto`; overrides `ai.language`, `auto` follows the goal ([BE-0188](../roadmaps/BE-0188-configurable-ai-output-language/BE-0188-configurable-ai-output-language.md)) |
@@ -458,7 +458,7 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
 | `--workers` | `1` | crawl with this many workers at once, sharing one screen map: across this many simulators on iOS ([BE-0064](../roadmaps/BE-0064-parallel-crawl/BE-0064-parallel-crawl.md), capped to the `--udid` devices) or this many browser processes on web ([BE-0077](../roadmaps/BE-0077-parallel-web-crawl/BE-0077-parallel-web-crawl.md)). `1` = single-worker crawl |
 | `--backend` | config | actuator order |
 | `--erase / --no-erase` | `--erase` | erase before launch (the app must be installed) |
-| `--dismiss-alerts / --no-dismiss-alerts` | `--dismiss-alerts` | dismiss unexpected OS prompts while crawling (so they aren't read as crashes; uses the configured AI provider — `ANTHROPIC_API_KEY`, or AWS credentials for Bedrock) |
+| `--alert-handling / --no-alert-handling` | `--alert-handling` | dismiss unexpected OS prompts while crawling (so they aren't read as crashes; uses the configured AI provider — `ANTHROPIC_API_KEY`, or AWS credentials for Bedrock) |
 | `--headed / --no-headed` | app `headless` | web backend: crawl a visible (headed, slow-motion) browser instead of headless; omit to use the app's `headless` config |
 | `--language` | config `ai.language` (`auto`) | AI output language for the guide's streamed reasoning — `ja` / `en` / `auto`; overrides `ai.language`, `auto` stays English for crawl ([BE-0188](../roadmaps/BE-0188-configurable-ai-output-language/BE-0188-configurable-ai-output-language.md)) |
 | `--out` | `runs/<timestamp>` | run dir the screen map is written into |
@@ -598,7 +598,7 @@ engine is platform-neutral, so `bajutsu crawl --target <web-app> --backend web` 
   event, a status number, an empty element set) — no model judges whether the page "looks broken".
 - **Dialogs instead of OS alerts.** The web has no OS prompts; it has JS dialogs (`alert` /
   `confirm` / `beforeunload`). They are auto-handled by a fixed, model-free policy (dismiss) and
-  recorded in `alerts`, replacing the iOS vision alert guard. `--dismiss-alerts` and the vision
+  recorded in `alerts`, replacing the iOS vision alert guard. `--alert-handling` and the vision
   path are iOS-only; `--headed` applies (watch the crawl in a visible browser).
 
 ## `codegen`

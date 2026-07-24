@@ -71,7 +71,7 @@ def test_parse_verdict_extracts_manifest_from_final_line() -> None:
 
     # run's stdout may carry a leading note line (e.g. the alert-guard credential note);
     # the verdict is always the last non-empty line: "PASS|FAIL  <manifest path>".
-    stdout = "note: dismiss-alerts is on but ANTHROPIC_API_KEY is unset\nPASS  runs/20260101-000000/manifest.json\n"
+    stdout = "note: alert-handling is on but ANTHROPIC_API_KEY is unset\nPASS  runs/20260101-000000/manifest.json\n"
     assert _parse_verdict(stdout) == "runs/20260101-000000/manifest.json"
 
 

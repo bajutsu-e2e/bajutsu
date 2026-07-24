@@ -392,7 +392,7 @@ device (the shared device is reseeded via one channel, so parallel workers would
 - DSL `handleSystemAlert` (BE-0316): a deterministic, iOS-only step that taps a SpringBoard
   permission-prompt button by a native accessibility query (the runner's second, on-demand
   SpringBoard handle) — resolution stays Python-side in `resolve_unique`, so it is the determinism-first
-  counterpart to the reactive vision `dismissAlerts` guard; only the XCUITest backend declares the
+  counterpart to the reactive vision `alertHandling` guard; only the XCUITest backend declares the
   capability, so Android and web fail preflight
 - Evidence: instant (`screenshot`/`elements`/`actionLog`) + interval (`video`/`deviceLog`/`appTrace`)
   + the network collector (`network.json`) + **visual regression** (`visual` vs. a baseline; the

@@ -24,7 +24,7 @@ uv sync --group dev   # .venv + dependencies + dev tools
 make setup            # the above, plus wiring the tracked git hooks (run once on a fresh clone)
 ```
 
-Only the AI paths (`record`, `run --dismiss-alerts`) need an API key: copy
+Only the AI paths (`record`, `run --alert-handling`) need an API key: copy
 [`.env.example`](.env.example) to `.env` (gitignored) and set `ANTHROPIC_API_KEY`. The
 deterministic gate below needs no secrets and no Simulator.
 

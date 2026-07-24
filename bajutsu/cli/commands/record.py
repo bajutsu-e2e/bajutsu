@@ -28,6 +28,7 @@ from bajutsu.cli._shared import (
     _start_launch_server_or_exit,
     _warn_onscreen_secrets,
     _with_headed,
+    resolve_alert_handling_flag,
 )
 from bajutsu.cli.handoff import make_handoff
 from bajutsu.config import WEB_ENGINES, Effective
@@ -111,10 +112,16 @@ def record(
     erase: bool = typer.Option(
         True, "--erase/--no-erase", help="erase the device before launching (app must be installed)"
     ),
-    dismiss_alerts: bool = typer.Option(
-        True,
+    alert_handling: bool | None = typer.Option(
+        None,
+        "--alert-handling/--no-alert-handling",
+        help="handle unexpected OS prompts while authoring (on by default; uses the same API key)",
+    ),
+    dismiss_alerts: bool | None = typer.Option(
+        None,
         "--dismiss-alerts/--no-dismiss-alerts",
-        help="dismiss unexpected OS prompts while authoring (on by default; uses the same API key)",
+        hidden=True,
+        help="deprecated alias for --alert-handling (BE-0317)",
     ),
     max_steps: int = typer.Option(
         30,
@@ -196,7 +203,8 @@ def record(
     authoring_agent = make_agent(ai=eff.ai, redactor=redactor)
     actuator, _ = _select_actuator_or_exit(backend, eff, [])
     alert_guard = None
-    if dismiss_alerts:
+    # On by default while authoring; the shared resolver folds in the deprecated --dismiss-alerts.
+    if resolve_alert_handling_flag(alert_handling, dismiss_alerts, default=True):
         alert_guard = _build_alert_guard(eff, redactor, alert_instruction)
     # Web has no simctl udid (launch_driver ignores it for playwright); resolving "booted" would
     # shell out to simctl and crash off-macOS, so skip it for the web backend.

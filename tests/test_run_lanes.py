@@ -243,25 +243,25 @@ def test_filter_scenarios_erase_flag_beats_scenario_and_target() -> None:
 
 def test_alert_guard_factory_none_when_all_disabled() -> None:
     scenarios = load_scenarios(
-        "- name: a\n  dismissAlerts: false\n" + "  steps:\n    - tap: { id: home.title }\n"
+        "- name: a\n  alertHandling: false\n" + "  steps:\n    - tap: { id: home.title }\n"
     )
     assert _alert_guard_factory(scenarios, _eff(), "") is None
 
 
 def test_alert_guard_factory_none_when_target_disables() -> None:
-    # BE-0177: a scenario with no dismissAlerts inherits the target config's `dismissAlerts: false`,
+    # BE-0177: a scenario with no alertHandling inherits the target config's `alertHandling: false`,
     # so the factory builds no guard at all (the enabled bit resolves scenario > target > built-in on).
     scenarios = load_scenarios(_one_scenario("a"))
-    assert _alert_guard_factory(scenarios, _eff(dismissAlerts="false"), "") is None
+    assert _alert_guard_factory(scenarios, _eff(alertHandling="false"), "") is None
 
 
 def test_alert_guard_factory_scenario_reenables_over_target() -> None:
-    # BE-0177: a scenario's explicit `dismissAlerts: true` wins over the target's `false`, so a guard
+    # BE-0177: a scenario's explicit `alertHandling: true` wins over the target's `false`, so a guard
     # is still built (it no-ops here only because the test env has no AI credential).
     scenarios = load_scenarios(
-        "- name: a\n  dismissAlerts: true\n  steps:\n    - tap: { id: home.title }\n"
+        "- name: a\n  alertHandling: true\n  steps:\n    - tap: { id: home.title }\n"
     )
-    assert _alert_guard_factory(scenarios, _eff(dismissAlerts="false"), "") is not None
+    assert _alert_guard_factory(scenarios, _eff(alertHandling="false"), "") is not None
 
 
 # --- _resolve_network: --network/--no-network flag > target `network` config > built-in on (BE-0177)

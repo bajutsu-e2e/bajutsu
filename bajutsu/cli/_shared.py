@@ -10,7 +10,7 @@ import json
 import os
 from dataclasses import replace
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, overload
 
 import typer
 
@@ -36,6 +36,7 @@ from bajutsu.config_source import (
     parse_config_spec,
     source_provenance,
 )
+from bajutsu.deprecations import warn_once
 from bajutsu.evidence.redaction import Redactor
 from bajutsu.github import GitHubAccessError
 from bajutsu.runner.launch_server import start_launch_server
@@ -46,6 +47,34 @@ if TYPE_CHECKING:
     from bajutsu.agents.alerts import ClaudeAlertLocator
     from bajutsu.drivers import base
     from bajutsu.orchestrator import AlertEvent
+
+
+@overload
+def resolve_alert_handling_flag(
+    alert_handling: bool | None, dismiss_alerts: bool | None, *, default: bool
+) -> bool: ...
+@overload
+def resolve_alert_handling_flag(
+    alert_handling: bool | None, dismiss_alerts: bool | None, *, default: None = None
+) -> bool | None: ...
+def resolve_alert_handling_flag(
+    alert_handling: bool | None, dismiss_alerts: bool | None, *, default: bool | None = None
+) -> bool | None:
+    """Merge the canonical `--alert-handling` with the deprecated `--dismiss-alerts` alias (BE-0317).
+
+    The canonical flag wins when both are given; using the alias earns a one-time deprecation notice.
+    When neither is set, *default* decides: `run` leaves it None (each scenario's own value applies),
+    while `record` and `crawl` pass `default=True` (the guard is on while authoring / crawling).
+    Shared by all three so the alias behaves identically on each.
+    """
+    if dismiss_alerts is not None:
+        warn_once(
+            "cli.dismiss-alerts",
+            "--dismiss-alerts is deprecated; use --alert-handling "
+            "(--dismiss-alerts is still accepted for now).",
+        )
+    resolved = alert_handling if alert_handling is not None else dismiss_alerts
+    return default if resolved is None else resolved
 
 
 def _secret_values(eff: Effective) -> list[str]:
@@ -406,12 +435,12 @@ def _build_alert_locator(eff: Effective, redactor: Redactor) -> ClaudeAlertLocat
     gap = credential_gap(eff.ai)
     if gap == "anthropic-key":
         typer.echo(
-            f"note: dismiss-alerts is on but ${anthropic_client.key_env(eff.ai)} is unset — "
+            f"note: alert-handling is on but ${anthropic_client.key_env(eff.ai)} is unset — "
             "the alert guard will no-op"
         )
     elif gap == "bedrock-model":
         typer.echo(
-            "note: dismiss-alerts is on but no Bedrock model id is set "
+            "note: alert-handling is on but no Bedrock model id is set "
             "(ai.model / BAJUTSU_BEDROCK_MODEL) — the alert guard will no-op"
         )
     if gap is not None:
