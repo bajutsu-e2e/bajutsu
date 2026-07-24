@@ -92,7 +92,9 @@ stdio のフレーミングのバグ、これらはいずれも現行のテス�
   確認します。成功時とは別のシリアライゼーション経路です。サブプロセスは `fake`
   バックエンドを使うため、`bajutsu_doctor` はサーバプロセス内でデバイス不要の実ドライバクエリを
   走らせます。`bajutsu_run` は実際の `bajutsu run` サブプロセスを起動しますが、その verdict は
-  対象環境に依存します（device 解決にプラットフォームの CLI が要り、Linux ホストには存在しません）。
+  対象環境に依存します。fake actuator 自体はデバイスを必要としませんが、run が actuator に到達するのは
+  udid/device 解決のステップを経てからで、このステップは `fake` バックエンドでも `xcrun` を呼び出すため、
+  `xcrun` が存在しない Linux ホストでは例外を送出します。
   そのため run の round-trip では、verdict の**行**が整形された形のまま transport を往復すること——
   検証対象のワイヤ特性——を確認し、run 自体の合否は問いません。in-process の `tests/test_mcp.py`
   は変更していません。

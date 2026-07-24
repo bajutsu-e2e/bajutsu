@@ -10,10 +10,13 @@ fails here rather than passing silently.
 
 The subprocess uses the ``fake`` backend, so ``bajutsu_doctor`` runs a real driver query in the
 server process — device-free, so its computed result round-trips on any host. ``bajutsu_run``
-spawns a real ``bajutsu run`` subprocess whose verdict depends on the target environment (its
-device resolution needs the platform CLIs, absent on the Linux CI host); the test therefore asserts
-that its verdict *line* round-trips in well-formed shape, which is the wire property under test, not
-that the run itself passes.
+spawns a real ``bajutsu run`` subprocess whose verdict depends on the target environment: the
+fake *actuator* itself needs no device, but the run reaches it only after its udid/device
+resolution step, and ``_resolve_lanes`` (``bajutsu/cli/commands/run.py``) resolves the udid via the
+platform CLI ``xcrun`` for every actuator except ``playwright`` — including ``fake`` — so on the
+Linux CI host, where ``xcrun`` is absent, that step raises before the fake actuator ever runs and
+the run cannot complete. The test therefore asserts that the verdict *line* round-trips in
+well-formed shape, which is the wire property under test, not that the run itself passes.
 
 Scope is the ``stdio`` transport (it needs no network); the ``sse`` transport's distinct framing is
 a deliberate follow-up (see the item's Progress log). Marked ``mcp_wire`` so it stays out of the
@@ -160,10 +163,12 @@ def test_wire_round_trips_the_doctor_tool(wire: dict[str, Any]) -> None:
 
 def test_wire_round_trips_the_run_tool(wire: dict[str, Any]) -> None:
     # `bajutsu_run` spawns a real `bajutsu run` subprocess and returns its verdict; the wire property
-    # under test is that the verdict line survives the transport, not the run's own pass/fail (which
-    # needs the platform CLIs — present on macOS, absent on the Linux CI host). The first token is
-    # always PASS or FAIL, and the deterministic two-space `PASS|FAIL  <manifest>` shape means a PASS
-    # carries a manifest path — so the verdict line's structure round-tripped intact either way.
+    # under test is that the verdict line survives the transport, not the run's own pass/fail. The
+    # run's udid/device-resolution step shells out to `xcrun` for the fake backend too (see the
+    # module docstring), so it can complete on macOS but not on the Linux CI host — hence we assert
+    # only the verdict line's shape. The first token is always PASS or FAIL, and the deterministic
+    # two-space `PASS|FAIL  <manifest>` shape means a PASS carries a manifest path — so the verdict
+    # line's structure round-tripped intact either way.
     verdict_line = wire["run_text"].splitlines()[0]
     token = verdict_line.split()[0]
     assert token in {"PASS", "FAIL"}
@@ -196,4 +201,8 @@ def test_wire_propagates_a_resource_error(wire: dict[str, Any]) -> None:
 def test_wire_propagates_a_tool_argument_error(wire: dict[str, Any]) -> None:
     # Omitting the required `target` is rejected by schema validation and reported as a JSON-RPC
     # error — the bad-argument path a real client hits, distinct from the resource error above.
-    assert "validation" in wire["bad_argument_error"].lower()
+    # Anchor on the rejected field name (`target`) rather than the word "validation": the latter
+    # comes from the SDK/pydantic error template, so an SDK or pydantic upgrade could rephrase it
+    # even though the wire behavior is unchanged, whereas the missing field is what the frame
+    # actually reports. `_capture_error` already proves an error frame round-tripped.
+    assert "target" in wire["bad_argument_error"].lower()

@@ -32,6 +32,11 @@ jobs:
   wire:
     name: wire (stdio)
     runs-on: ubuntu-latest
+    # A real subprocess driven over stdio can hang before writing its first frame (crash on stderr,
+    # never answer the `initialize` handshake), and `_drive()` awaits it with no per-call timeout —
+    # so cap the job well under GitHub's 6-hour default to fail such a hang loudly in minutes. The
+    # round-trip completes in seconds; 10 minutes is generous headroom (prime directive 2).
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
 
