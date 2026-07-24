@@ -208,17 +208,31 @@ def _config_overrides_ios_runner(state: ServeState) -> bool:
     *any* of them sets a runner, since such a target never falls back to the bundled one. No config
     bound, no iOS target, or a config that fails to load reads as no override (the tab then shows the
     bundled-runner state unqualified); a load failure is logged at debug, matching ``active_key_env``.
+
+    Each target's ``resolve`` is guarded on its own: one unresolvable target must not mask a pinned
+    runner on another (the row is the tab's sharpest signal), so a per-target failure is logged and
+    skipped rather than collapsing the whole answer to ``False``.
     """
     if state.config is None:
         return False
     try:
         cfg = load_config(state.config.read_text(encoding="utf-8"))
-        return any(xcuitest_pins_runner(resolve(cfg, name)) for name in cfg.targets)
     except Exception:
         logging.getLogger(__name__).debug(
-            "cannot resolve the xcuitest.testRunner override from config", exc_info=True
+            "cannot load config to check the xcuitest.testRunner override", exc_info=True
         )
         return False
+    for name in cfg.targets:
+        try:
+            if xcuitest_pins_runner(resolve(cfg, name)):
+                return True
+        except Exception:
+            logging.getLogger(__name__).debug(
+                "cannot resolve target %r to check the xcuitest.testRunner override",
+                name,
+                exc_info=True,
+            )
+    return False
 
 
 def _ios_runner_status(state: ServeState) -> dict[str, Any]:

@@ -137,7 +137,31 @@ def test_testrunner_override_is_reflected(tmp_path: Path, monkeypatch: pytest.Mo
     assert payload["iosRunner"]["override"] is True
 
 
-def test_testrunner_override_false_when_only_some_targets_lack_it(
+def test_testrunner_override_survives_an_unresolvable_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # One target that fails to resolve must not mask a pinned runner on another (BE-0318): the
+    # per-target resolve is guarded, so a raise on the first target is skipped, not fatal to the row.
+    _no_bundle(monkeypatch)
+    config_text = (
+        "defaults: { backend: [ios] }\n"
+        "targets:\n"
+        "  broken: { bundleId: com.example.broken }\n"
+        "  pinned: { bundleId: com.example.pinned }\n"
+    )
+
+    def fake_resolve(cfg: object, name: str) -> str:
+        if name == "broken":
+            raise ValueError("unresolvable target")
+        return name  # a sentinel the patched pins-checker recognizes
+
+    monkeypatch.setattr(config_ops, "resolve", fake_resolve)
+    monkeypatch.setattr(config_ops, "xcuitest_pins_runner", lambda eff: eff == "pinned")
+    payload, _ = ops.server_settings(_state(tmp_path, config_text))
+    assert payload["iosRunner"]["override"] is True
+
+
+def test_testrunner_override_true_when_any_target_pins_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # Any iOS target with an explicit testRunner flips the server-wide flag to True (BE-0318).
