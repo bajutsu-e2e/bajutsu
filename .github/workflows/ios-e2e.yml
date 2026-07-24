@@ -370,13 +370,13 @@ jobs:
       # sub-steps directly under it, per the workflow-syntax docs.
       - parallel:
           - name: navigation (Sim 1 — tap + back)
-            run: uv run --no-sync bajutsu run --scenario demos/showcase/scenarios/navigation.yaml --target showcase-swiftui --backend xcuitest --config demos/showcase/showcase.config.yaml --udid "$SIM_1" --no-erase
+            run: uv run --no-sync bajutsu run --scenario demos/showcase/scenarios/navigation.yaml --target showcase-swiftui --backend xcuitest --config demos/showcase/showcase.config.yaml --udid "$SIM_1" --no-erase --runs-dir runs/navigation
           - name: device (Sim 2 — setLocation + clipboard)
-            run: uv run --no-sync bajutsu run --scenario demos/showcase/scenarios/device.yaml --target showcase-swiftui --backend xcuitest --config demos/showcase/showcase.config.yaml --udid "$SIM_2" --no-erase
+            run: uv run --no-sync bajutsu run --scenario demos/showcase/scenarios/device.yaml --target showcase-swiftui --backend xcuitest --config demos/showcase/showcase.config.yaml --udid "$SIM_2" --no-erase --runs-dir runs/device
           - name: push (Sim 3 — push notification)
-            run: uv run --no-sync bajutsu run --scenario demos/showcase/scenarios/push.yaml --target showcase-swiftui --backend xcuitest --config demos/showcase/showcase.config.yaml --udid "$SIM_3" --no-erase
+            run: uv run --no-sync bajutsu run --scenario demos/showcase/scenarios/push.yaml --target showcase-swiftui --backend xcuitest --config demos/showcase/showcase.config.yaml --udid "$SIM_3" --no-erase --runs-dir runs/push
           - name: text_editing (Sim 4 — select/copy/delete/clear)
-            run: uv run --no-sync bajutsu run --scenario demos/showcase/scenarios/text_editing.yaml --target showcase-swiftui --backend xcuitest --config demos/showcase/showcase.config.yaml --udid "$SIM_4" --no-erase
+            run: uv run --no-sync bajutsu run --scenario demos/showcase/scenarios/text_editing.yaml --target showcase-swiftui --backend xcuitest --config demos/showcase/showcase.config.yaml --udid "$SIM_4" --no-erase --runs-dir runs/text_editing
 
       - name: Upload run artifacts
         if: always()
