@@ -341,7 +341,7 @@ jobs:
         run: |
           set -euo pipefail
           sim1="${{ steps.toolchain.outputs.udid }}"
-          devtype=$(xcrun simctl list devicetypes -j | jq -r '[.devicetypes[] | select(.productFamily=="iPhone") | .identifier] | last')
+          devtype=$(xcrun simctl list devices -j | jq -r --arg u "$sim1" '[.devices[][] | select(.udid==$u)] | first | .deviceTypeIdentifier')
           udids=("$sim1")
           for n in 2 3 4; do
             u=$(xcrun simctl create "spike-iphone-$n" "$devtype")
