@@ -380,6 +380,9 @@ def _alert_guard_factory(
 
     # The button policy resolves scenario > `--alert-instruction` > target config > built-in
     # dismissive (BE-0177); the poll interval resolves scenario > target > built-in (no CLI flag).
+    # NB: only a *list* instruction populates the native `labels`; a free-text `--alert-instruction`
+    # feeds the vision fallback only, so on a native-capable backend (XCUITest) the default-dismissive
+    # native tap pre-empts it — to grant natively, use a per-scenario `instruction: [labels]`.
     target_da = eff.run_defaults.dismiss_alerts
     target_instruction = target_da.instruction if target_da else None
     target_interval = target_da.poll_interval if target_da else None
