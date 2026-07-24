@@ -7,9 +7,9 @@
 |---|---|
 | 提案 | [BE-0297](BE-0297-codegen-xcuitest-dsl-coverage-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0297") |
-| 実装 PR | [#1278](https://github.com/bajutsu-e2e/bajutsu/pull/1278)、[#1315](https://github.com/bajutsu-e2e/bajutsu/pull/1315) |
+| 実装 PR | [#1278](https://github.com/bajutsu-e2e/bajutsu/pull/1278)、[#1315](https://github.com/bajutsu-e2e/bajutsu/pull/1315)、[#1332](https://github.com/bajutsu-e2e/bajutsu/pull/1332) |
 | トピック | codegen 網羅性 |
 <!-- /BE-METADATA -->
 
@@ -85,8 +85,7 @@ XCTest API の使い方を壊しうるのに、既存のテストはすべて文
 - [x] コンパイル対象のシナリオにテキスト編集、ジェスチャ、複合セレクタのステップを追加する。
 - [x] `pinch` / `rotate` のマルチタッチ codegen 出力をコンパイルして実行する。
 - [x] `forEach` / `if` / `extract` の codegen を、実装してコンパイルするか生成時に明示的に失敗させるかで解決する。
-- [ ] 新規部分をまずゲート対象外として着地させ、安定後に必須化する。*（ゲート対象外のステップは着地済みで、
-  コンパイル対象が安定してから必須ゲートへ昇格させるのが残りの後続作業です。）*
+- [x] 新規部分をまずゲート対象外として着地させ、安定後に必須化する。
 
 **ログ**
 
@@ -109,6 +108,11 @@ XCTest API の使い方を壊しうるのに、既存のテストはすべて文
   codegen 可能な状態を保ち、その構文のプリミティブを出力すること――を固定します。最後のボックス、すなわち
   従量制の Simulator レーンでスライスの安定を確認してから必須ゲートへ昇格させることが残りの後続作業のため、
   項目は `In progress` のままとします。
+- カバレッジ・スライスを必須ゲートへ昇格させ、最後の作業単位を完了しました。`.github/workflows/ios-e2e.yml`
+  の `Codegen coverage` ステップから `continue-on-error`（および警告のみを出すフラグステップ）を外したので、
+  拡張 DSL 面のコンパイルや実行が失敗すると、必須の `components.yaml` ステップと並んで `xcuitest (codegen)`
+  ジョブと `E2E` ゲートが落ちるようになりました。このスライスは着地以降、実行されたすべての run で
+  ゲート対象外のシグナルとして緑を保ち、ゲート入りに足る安定を示しました。これで項目は `実装済み` です。
 
 ## 参考
 

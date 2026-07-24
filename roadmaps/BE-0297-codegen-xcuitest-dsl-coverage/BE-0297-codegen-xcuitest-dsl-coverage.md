@@ -7,9 +7,9 @@
 |---|---|
 | Proposal | [BE-0297](BE-0297-codegen-xcuitest-dsl-coverage.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0297") |
-| Implementing PR | [#1278](https://github.com/bajutsu-e2e/bajutsu/pull/1278), [#1315](https://github.com/bajutsu-e2e/bajutsu/pull/1315) |
+| Implementing PR | [#1278](https://github.com/bajutsu-e2e/bajutsu/pull/1278), [#1315](https://github.com/bajutsu-e2e/bajutsu/pull/1315), [#1332](https://github.com/bajutsu-e2e/bajutsu/pull/1332) |
 | Topic | codegen coverage |
 <!-- /BE-METADATA -->
 
@@ -84,8 +84,7 @@ The work breaks down MECE into the units below.
 - [x] Extend the compiled scenario with text-editing, gesture, and compound-selector steps.
 - [x] Compile and run `pinch` / `rotate` multi-touch codegen output.
 - [x] Resolve `forEach` / `if` / `extract` codegen: implement and compile, or fail loudly at generation time.
-- [ ] Land new slices non-gating first, promote once stable. *(non-gating step landed; promotion to
-  the required gate, once the compiled slice proves stable, is the remaining follow-up.)*
+- [x] Land new slices non-gating first, promote once stable.
 
 **Log**
 
@@ -108,6 +107,12 @@ The work breaks down MECE into the units below.
   Linux-checkable half — every coverage fixture stays codegen-able and emits its construct's
   primitive. The last box — promoting the slice into the required gate once it proves stable on the
   metered Simulator lane — is the remaining follow-up, so the item stays `In progress`.
+- Promoted the coverage slice into the required gate, completing the last unit: the `Codegen
+  coverage` step in `.github/workflows/ios-e2e.yml` drops `continue-on-error` (and its warning-only
+  flag step), so a compile or run failure of the extended DSL surface now fails the `xcuitest
+  (codegen)` job and the `E2E` gate alongside the required `components.yaml` step. The slice ran
+  green as a non-gating signal across every run it executed since it landed, so it earned the gate.
+  The item is now `Implemented`.
 
 ## References
 

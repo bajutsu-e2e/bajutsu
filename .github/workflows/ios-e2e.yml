@@ -20,10 +20,10 @@
 #     `needs:` — the tree golden is deterministic and host-independent, so a drift surfaces here as
 #     a per-PR signal without blocking a merge.
 #   - codegen (xcuitest): generate a native XCUITest from a scenario and run it with
-#     xcodebuild — no bajutsu / AI at test time (the codegen output path). Its required step
-#     compiles components.yaml; a trailing non-gating step (BE-0297) also compiles the wider DSL
-#     surface (text-editing / gestures / multi-touch / coordinate-swipe / drag / compound selectors)
-#     reusing scenarios already proven on-device, promoted into the gate once the slice is stable.
+#     xcodebuild — no bajutsu / AI at test time (the codegen output path). It compiles
+#     components.yaml and (BE-0297) the wider DSL surface (text-editing / gestures / multi-touch /
+#     coordinate-swipe / drag / compound selectors), reusing scenarios already proven on-device;
+#     both steps gate the job, the wider slice having proven stable as a non-gating signal first.
 #   - gestures (xcuitest): a pinch/rotate scenario through the full `bajutsu run` path on the
 #     XCUITest backend (BE-0019) — two-finger gestures, the one class of actuation the retired idb
 #     backend could not drive.
@@ -462,23 +462,11 @@ jobs:
       # BE-0297 Unit 1/2/4: compile-and-run the DSL constructs components.yaml never reaches
       # (text-editing / gestures / multi-touch / coordinate-swipe / drag / compound selectors),
       # reusing scenarios already proven on-device by `bajutsu run` so only the emitted Swift is
-      # newly under test. continue-on-error keeps this a non-gating per-PR signal (like `actuation`
-      # / `golden`): the required Components step above owns this job's `E2E`-gate verdict, and the
-      # newly compiled slice is promoted into the gate only once it proves stable. The DerivedData
-      # cache makes this second build incremental over the Components build.
-      - name: Codegen coverage (non-gating) — extended DSL surface
-        id: codegen_coverage
-        continue-on-error: true
+      # newly under test. This slice is gating (BE-0297 Unit 4): it ran green as a non-gating signal
+      # first (continue-on-error), and now folds into the job's `E2E`-gate verdict alongside the
+      # Components step above. The DerivedData cache makes this second build incremental over it.
+      - name: Codegen coverage — extended DSL surface
         run: make -C demos/showcase ui-test-coverage SIM=${{ steps.toolchain.outputs.udid }}
-
-      # continue-on-error keeps the job green, so surface a failure as a PR annotation rather than
-      # letting it vanish — the non-gating slice's whole purpose is a visible per-PR signal (the
-      # `actuation` job likewise re-reports its continue-on-error steps). Not a job failure: the
-      # slice is promoted into the required gate only once it is stable (BE-0297 Unit 4).
-      - name: Flag coverage failure (non-gating)
-        if: steps.codegen_coverage.outcome == 'failure'
-        run: |
-          echo "::warning title=Codegen coverage (BE-0297)::The non-gating extended-DSL codegen slice failed to compile or run — see the 'Codegen coverage' step. Not gating; investigate before promoting it into the required gate."
 
       - name: Upload xcresult
         if: always()

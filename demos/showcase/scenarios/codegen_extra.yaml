@@ -22,5 +22,12 @@
     - swipe: { from: [120, 400], to: [120, 220] }
     # compound traits + index (BE-0026): the first button in the tree — always present, non-destructive.
     - wait: { for: { traits: [button], index: 0 }, timeout: 5 }
+    # log.submit sits near the top of the Log tab's Form (LogView.swift); the two upward scrolls
+    # above can push it past the top edge and out of the tree entirely — not a settling race, a
+    # deterministic over-scroll (confirmed in CI: even a plain wait for it timed out). Scroll back
+    # down by more than the combined distance of both prior gestures before the expect below checks
+    # the exact element every other scenario in this repo waits on.
+    - swipe: { from: [120, 220], to: [120, 600] }
+    - wait: { for: { id: log.submit }, timeout: 5 }
   expect:
     - exists: { id: log.submit }
