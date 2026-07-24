@@ -304,6 +304,10 @@ adb の harness はその代わりに、新しい `SHOWCASE_CONFORMANCE` の int
 
 - adb バックエンドの subprocess 実行（`uiautomator dump` パース、フレーム中心の tap、`AndroidEnvironment` の起動シーケンス、on-device の actuation fidelity、`pinch`/`rotate` のマルチタッチとデバイス制御のスライスを含む）を、KVM 上で起動した x86_64 API 34 AVD に対して確認しています（`android-e2e.yml`、BE-0208）。iOS が走らせるのと同じ共有シナリオを Compose と Views 両方の showcase ビルドで駆動し、Compose カタログの golden 要素ツリー検査とピクセル単位のビジュアルリグレッション baseline も併せて確認しています。このレーンは常駐 UI Automator サーバ（[BE-0245](../../roadmaps/BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server-ja.md)）もビルドするので、これらの読み取りは既定で常駐チャネル（`adb forward` 越しの `GET /source`。1 回約 2.4 秒の `uiautomator dump` 起動を置き換えます）を通り、`uiautomator dump` 経路はダンプへフォールバックさせた golden の実行で守ります。
 
+### 実 Postgres で検証済み（Linux で動作、Mac 不要）
+
+- serve の DB 層の Alembic migration を、一時的な `postgres:16` サービスコンテナに対して実行します（`migrations (postgres)` ジョブ、`serve-db.yml`、[BE-0309](../../roadmaps/BE-0309-serve-postgres-ci-lane/BE-0309-serve-postgres-ci-lane-ja.md)）。対象には、migration 0010 の `dialect.name == "postgresql"` による foreign-key 分岐や、`models.py` といくつかの migration が Postgres でのみ選ぶ `JSONB` カラムのバリアントが含まれます。このジョブは `tests/serve/test_db_migrations.py` の upgrade/downgrade のアサーションを再実行します。テストは両方の方言でパラメータ化してあるため、高速な `check` ゲートは SQLite を、このレーンは `postgres` マーカーの裏で Postgres を検証し、その方言固有のコードに、ホステッドな運用が実際に対象とする方言での初めてのカバレッジを与えます。BE-0282 の前例に従い、まずシグナルとして着地させており、必須チェックにはまだしていません。DB に触れる広いテストスイート（テストごとにインメモリの SQLite エンジンを作る約 20 数ファイル）は、当面 SQLite に対してのみ実行します。共有 Postgres に対して実行するには、テストごとの分離を先に後付けする必要があり、後続のスライスとします。
+
 ### 未配線（スキーマ/フラグはあるが実行時に効かない）
 
 | 機能 | 現状 | 場所 |
