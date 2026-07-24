@@ -150,12 +150,21 @@ def test_initial_migration_matches_the_orm_schema(migration_db_url) -> None:
     from alembic import command
 
     command.upgrade(_alembic_config(), "head")
-    migrated = _schema_signature(create_engine(migration_db_url))
+    migrated_engine = create_engine(migration_db_url)
+    try:
+        migrated = _schema_signature(migrated_engine)
+    finally:
+        # Dispose before `_reset_schema` drops the Postgres `public` schema, so this test invocation
+        # fully owns its connections and no pooled connection lingers during the DDL.
+        migrated_engine.dispose()
 
     _reset_schema(migration_db_url)
     fresh = create_engine(migration_db_url)
-    Base.metadata.create_all(fresh)
-    assert migrated == _schema_signature(fresh)
+    try:
+        Base.metadata.create_all(fresh)
+        assert migrated == _schema_signature(fresh)
+    finally:
+        fresh.dispose()
 
 
 @pytest.mark.parametrize("migration_db_url", _DIALECTS, indirect=True)
@@ -166,7 +175,9 @@ def test_downgrade_base_removes_the_tables(migration_db_url) -> None:
     command.upgrade(cfg, "head")
     command.downgrade(cfg, "base")
 
-    remaining = set(inspect(create_engine(migration_db_url)).get_table_names()) - {
-        "alembic_version"
-    }
+    engine = create_engine(migration_db_url)
+    try:
+        remaining = set(inspect(engine).get_table_names()) - {"alembic_version"}
+    finally:
+        engine.dispose()
     assert remaining == set()
