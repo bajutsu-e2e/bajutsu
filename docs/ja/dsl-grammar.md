@@ -92,7 +92,7 @@ Scenario ::= {
   network?:        <Network>,
   mocks?:          list(<Mock>),            # 既定 []
   redact?:         <Redact>,
-  dismissAlerts?:  <DismissAlerts>,         # アラートガード; 未指定で ON
+  alertHandling?:  <AlertHandling>,         # アラートガード; 未指定で ON
   permissions?:    <Permissions>,           # 起動前の OS 権限状態; 既定 {}
 }
 
@@ -109,8 +109,8 @@ Preconditions ::= {
   setup?:      string,                      # 再利用プレリュードファイル（§6.4）
 }
 
-# ── DismissAlerts（視覚アラートガード; 既定 ON）────────────────────────
-DismissAlerts ::= boolean                                   # { enabled: <bool> } の短縮形
+# ── AlertHandling（視覚アラートガード; 既定 ON）────────────────────────
+AlertHandling ::= boolean                                   # { enabled: <bool> } の短縮形
                | { enabled?: boolean,                       # 既定 true
                    instruction?: string }                   # 押すボタン（無指定なら dismiss）
 
@@ -292,13 +292,13 @@ MockResponse ::= { status?: integer, headers?: map(string,string), body?: string
 |---|---|
 | `Scenario.tags` / `expect` / `capturePolicy` / `mocks` | `[]` |
 | `Scenario.preconditions` | `{}`（= `erase: false`, `reinstall: clean`） |
-| `Scenario.dismissAlerts` | 未指定（アラートガード ON; プロンプトを dismiss） |
+| `Scenario.alertHandling` | 未指定（アラートガード ON; プロンプトを dismiss） |
 | `Scenario.permissions` | `{}`（起動前の権限状態を適用しない） |
 | `Preconditions.erase` | `false` |
 | `Preconditions.reinstall` | `clean` |
 | `Preconditions.launchArgs` | `[]` |
 | `Preconditions.launchEnv` | `{}` |
-| `DismissAlerts.enabled` | `true` |
+| `AlertHandling.enabled` | `true` |
 | `TypeText.submit` | `false` |
 | `Exists.negate` | `false` |
 | `MockResponse.status` | `200` |

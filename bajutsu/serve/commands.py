@@ -30,7 +30,7 @@ def run_command(
     udid: str = "",
     workers: int = 1,
     erase: bool | None = None,
-    dismiss_alerts: bool | None = None,
+    alert_handling: bool | None = None,
     config: str = "bajutsu.config.yaml",
     baselines: str = "",
     headed: bool | None = None,
@@ -52,9 +52,9 @@ def run_command(
 ) -> list[str]:
     """The ``python -m bajutsu run ...`` argv for a launch request.  ``udid`` may be a comma
     list and ``workers > 1`` runs those devices as a parallel pool (capped to the pool size by
-    the CLI).  ``erase`` / ``dismiss_alerts`` / ``headed`` / ``network`` are overrides: True/False
+    the CLI).  ``erase`` / ``alert_handling`` / ``headed`` / ``network`` are overrides: True/False
     force the flag on/off, None omits it so the CLI's own default applies — for ``erase`` /
-    ``dismiss_alerts`` that means each scenario's preconditions.erase / dismissAlerts, for
+    ``alert_handling`` that means each scenario's preconditions.erase / alertHandling, for
     ``headed`` the target's ``headless`` config, and for ``network`` the ``--network`` default (on).
     ``runs_dir`` (when set) points the run's output tree elsewhere via ``--runs-dir`` — an uploaded
     bundle runs from its own extracted dir (the working directory) but must still write its run into
@@ -81,7 +81,7 @@ def run_command(
             # --workers 1 is the CLI default; omit it (a single device isn't a pool).
             "workers": workers if workers > 1 else None,
             "erase": erase,
-            "dismiss_alerts": dismiss_alerts,
+            "alert_handling": alert_handling,
             "headed": headed,
             "baselines": baselines,
             "runs_dir": runs_dir,
@@ -112,14 +112,14 @@ def record_command(
     backend: str = "",
     udid: str = "",
     erase: bool | None = None,
-    dismiss_alerts: bool | None = None,
+    alert_handling: bool | None = None,
     headed: bool | None = None,
     config: str = "bajutsu.config.yaml",
     upload_exec: str = "",
 ) -> list[str]:
     """The ``python -m bajutsu record --out OUT --target … --goal …`` argv for an authoring request —
-    the Tier-1 record loop the Record tab drives.  ``erase`` / ``dismiss_alerts`` mirror
-    ``run_command`` (None leaves the CLI default — record erases and dismisses by default), and
+    the Tier-1 record loop the Record tab drives.  ``erase`` / ``alert_handling`` mirror
+    ``run_command`` (None leaves the CLI default — record erases and handles alerts by default), and
     ``out`` is the ``*.yaml`` the recorded scenario is written to. The AI provider is inherited from
     the serve process's environment (`BAJUTSU_AI_PROVIDER`, BE-0163)."""
     cmd = [
@@ -146,7 +146,7 @@ def record_command(
             "backend": backend,
             "udid": udid,
             "erase": erase,
-            "dismiss_alerts": dismiss_alerts,
+            "alert_handling": alert_handling,
             "headed": headed,
             "upload_exec": upload_exec,
         },
@@ -164,7 +164,7 @@ def crawl_command(
     max_screens: int = 50,
     max_steps: int = 200,
     erase: bool | None = None,
-    dismiss_alerts: bool | None = None,
+    alert_handling: bool | None = None,
     headed: bool | None = None,
     config: str = "bajutsu.config.yaml",
     resume_src: str = "",
@@ -210,7 +210,7 @@ def crawl_command(
             "udid": udid,
             "workers": workers if workers > 1 else None,
             "erase": False if resuming else erase,
-            "dismiss_alerts": dismiss_alerts,
+            "alert_handling": alert_handling,
             "headed": headed,
             "upload_exec": upload_exec,
             "resume_src": resume_src if resuming else "",

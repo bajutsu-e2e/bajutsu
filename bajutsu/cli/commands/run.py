@@ -31,6 +31,7 @@ from bajutsu.cli._shared import (
     _select_actuator_or_exit,
     _start_launch_server_or_exit,
     _with_headed,
+    resolve_alert_handling_flag,
 )
 from bajutsu.config import WEB_ENGINES, Effective, IosConfig
 from bajutsu.github import actions as github_actions
@@ -43,7 +44,7 @@ from bajutsu.runner import device_pool, run_all, run_and_report, run_matrix_and_
 from bajutsu.runner.build import BuildError, build_if_missing
 from bajutsu.runner.device_provider import acquire_device
 from bajutsu.scenario import (
-    DismissAlerts,
+    AlertHandling,
     Scenario,
     apply_setups,
     contained_ref,
@@ -309,17 +310,17 @@ def _select_actuator(backend: str, eff: Effective, engines: list[str]) -> tuple[
     return actuator, backends
 
 
-def _apply_dismiss_alerts(scenarios: list[Scenario], dismiss_alerts: bool | None) -> None:
-    """Apply the `--dismiss-alerts` / `--no-dismiss-alerts` override to every scenario's guard.
+def _apply_alert_handling(scenarios: list[Scenario], alert_handling: bool | None) -> None:
+    """Apply the `--alert-handling` / `--no-alert-handling` override to every scenario's guard.
 
     Preserves any per-scenario instruction; a no-op when the flag is unset (each scenario's own
-    `dismissAlerts`, default on, decides). Mirrors the `--erase` override.
+    `alertHandling`, default on, decides). Mirrors the `--erase` override.
     """
-    if dismiss_alerts is None:
+    if alert_handling is None:
         return
     for s in scenarios:
-        instr = s.dismiss_alerts.instruction if s.dismiss_alerts else None
-        s.dismiss_alerts = DismissAlerts(enabled=dismiss_alerts, instruction=instr)
+        instr = s.alert_handling.instruction if s.alert_handling else None
+        s.alert_handling = AlertHandling(enabled=alert_handling, instruction=instr)
 
 
 def _alert_guard_factory(
@@ -333,14 +334,14 @@ def _alert_guard_factory(
     that would fall back to a hosted default, so the deterministic gate still runs Claude-free.
     """
 
-    # A scenario's guard is on when its own `dismissAlerts` says so, else the target config's, else the
-    # built-in on (BE-0177). The `--dismiss-alerts` flag is already baked onto the scenario by
-    # `_apply_dismiss_alerts`, so it needs no separate check here.
+    # A scenario's guard is on when its own `alertHandling` says so, else the target config's, else the
+    # built-in on (BE-0177). The `--alert-handling` flag is already baked onto the scenario by
+    # `_apply_alert_handling`, so it needs no separate check here.
     def _enabled(s: Scenario) -> bool:
-        if s.dismiss_alerts is not None:
-            return s.dismiss_alerts.enabled
-        if eff.run_defaults.dismiss_alerts is not None:
-            return eff.run_defaults.dismiss_alerts.enabled
+        if s.alert_handling is not None:
+            return s.alert_handling.enabled
+        if eff.run_defaults.alert_handling is not None:
+            return eff.run_defaults.alert_handling.enabled
         return True
 
     if not any(_enabled(s) for s in scenarios):
@@ -358,7 +359,7 @@ def _alert_guard_factory(
     # (BE-0177): a scenario's own wins, then the run-wide flag default, then the app default, then None
     # (the guard's built-in). `--alert-instruction` stays a *default* the scenario overrides, as before.
     target_instruction = (
-        eff.run_defaults.dismiss_alerts.instruction if eff.run_defaults.dismiss_alerts else None
+        eff.run_defaults.alert_handling.instruction if eff.run_defaults.alert_handling else None
     )
 
     def _guard_for(s: Scenario) -> BlockedHandler | None:
@@ -366,7 +367,7 @@ def _alert_guard_factory(
             return None  # no usable AI credential: the guard no-ops, never a hosted fallback
         if not _enabled(s):
             return None
-        scenario_instruction = s.dismiss_alerts.instruction if s.dismiss_alerts else None
+        scenario_instruction = s.alert_handling.instruction if s.alert_handling else None
         # Trailing `or None` normalizes an empty instruction (e.g. config `instruction: ""`) to the
         # guard's built-in default, matching how `default_instruction` drops an empty --alert-instruction.
         instruction = scenario_instruction or default_instruction or target_instruction or None
@@ -747,11 +748,17 @@ def run(
         help="override every scenario's preconditions.erase (default: per-scenario)",
     ),
     # --- Alerts, capture & logging ---
+    alert_handling: bool | None = typer.Option(
+        None,
+        "--alert-handling/--no-alert-handling",
+        help="override every scenario's alertHandling (default: per-scenario, on; needs the "
+        "configured AI provider — ANTHROPIC_API_KEY, or AWS credentials for Bedrock)",
+    ),
     dismiss_alerts: bool | None = typer.Option(
         None,
         "--dismiss-alerts/--no-dismiss-alerts",
-        help="override every scenario's dismissAlerts (default: per-scenario, on; needs the "
-        "configured AI provider — ANTHROPIC_API_KEY, or AWS credentials for Bedrock)",
+        hidden=True,
+        help="deprecated alias for --alert-handling (BE-0317)",
     ),
     alert_instruction: str = typer.Option(
         "", "--alert-instruction", help="default button instruction (a scenario's own wins)"
@@ -866,7 +873,7 @@ def run(
     """Run a scenario deterministically.
 
     Pass/fail is machine-only; the sole AI is the alert guard (on by default per scenario), which
-    only fires to clear an OS prompt that blocked a step — see each scenario's `dismissAlerts`.
+    only fires to clear an OS prompt that blocked a step — see each scenario's `alertHandling`.
     """
     # `--project` names a registered project; resolve its config source into the ordinary `--config`
     # spec so the rest of the run path is unchanged — a project only says where the config comes from.
@@ -908,7 +915,9 @@ def run(
             workers,
             environment_for(actuator, lease.udid_spec).resolve_device,
         )
-        _apply_dismiss_alerts(scenarios, dismiss_alerts)
+        _apply_alert_handling(
+            scenarios, resolve_alert_handling_flag(alert_handling, dismiss_alerts)
+        )
         on_blocked_for = _alert_guard_factory(scenarios, eff, alert_instruction)
         # Network collection resolves `--network/--no-network` over the target's `network` config,
         # then on (BE-0177); the resolved bool baked into mocks and the plan drives collection and

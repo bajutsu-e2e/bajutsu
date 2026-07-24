@@ -35,39 +35,63 @@ def test_preconditions_reinstall_validated() -> None:
         )
 
 
-def test_dismiss_alerts_default_unset() -> None:
+def test_alert_handling_default_unset() -> None:
     # On by default, but kept None when unset so a dumped scenario stays clean.
     s = Scenario.model_validate({"name": "x", "steps": [{"tap": {"id": "a"}}]})
-    assert s.dismiss_alerts is None
-    assert "dismissAlerts" not in dump_scenarios([s])
+    assert s.alert_handling is None
+    assert "alertHandling" not in dump_scenarios([s])
 
 
-def test_dismiss_alerts_bool_and_object_forms() -> None:
+def test_alert_handling_bool_and_object_forms() -> None:
     off = Scenario.model_validate(
-        {"name": "x", "dismissAlerts": False, "steps": [{"tap": {"id": "a"}}]}
+        {"name": "x", "alertHandling": False, "steps": [{"tap": {"id": "a"}}]}
     )
-    assert off.dismiss_alerts is not None
-    assert off.dismiss_alerts.enabled is False  # bare bool is shorthand for {enabled: <bool>}
+    assert off.alert_handling is not None
+    assert off.alert_handling.enabled is False  # bare bool is shorthand for {enabled: <bool>}
 
     instr = Scenario.model_validate(
         {
             "name": "x",
-            "dismissAlerts": {"instruction": "tap Allow"},
+            "alertHandling": {"instruction": "tap Allow"},
             "steps": [{"tap": {"id": "a"}}],
         }
     )
-    assert instr.dismiss_alerts is not None
-    assert instr.dismiss_alerts.enabled is True  # object form stays on unless enabled: false
-    assert instr.dismiss_alerts.instruction == "tap Allow"
+    assert instr.alert_handling is not None
+    assert instr.alert_handling.enabled is True  # object form stays on unless enabled: false
+    assert instr.alert_handling.instruction == "tap Allow"
 
     # The object form round-trips (the bool form normalizes to {enabled: false}).
     rt = load_scenarios(dump_scenarios([instr]))[0]
-    assert rt.dismiss_alerts is not None and rt.dismiss_alerts.instruction == "tap Allow"
+    assert rt.alert_handling is not None and rt.alert_handling.instruction == "tap Allow"
 
     with pytest.raises(ValidationError):  # extra="forbid" rejects unknown keys
         Scenario.model_validate(
-            {"name": "x", "dismissAlerts": {"bogus": 1}, "steps": [{"tap": {"id": "a"}}]}
+            {"name": "x", "alertHandling": {"bogus": 1}, "steps": [{"tap": {"id": "a"}}]}
         )
+
+
+def test_dismiss_alerts_alias_parses_and_dumps_canonical(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # BE-0317: the deprecated `dismissAlerts` key parses to the same model as `alertHandling`, and a
+    # dump emits the canonical name — so an old scenario keeps working but is rewritten on save.
+    import logging
+
+    from bajutsu import deprecations
+
+    deprecations._emitted.discard("scenario.dismissAlerts")  # so the one-time notice fires here
+    with caplog.at_level(logging.WARNING, logger="bajutsu.deprecations"):
+        s = Scenario.model_validate(
+            {
+                "name": "x",
+                "dismissAlerts": {"instruction": "tap Allow"},
+                "steps": [{"tap": {"id": "a"}}],
+            }
+        )
+    assert s.alert_handling is not None and s.alert_handling.instruction == "tap Allow"
+    dumped = dump_scenarios([s])
+    assert "alertHandling" in dumped and "dismissAlerts" not in dumped
+    assert any("dismissAlerts" in r.message and "deprecated" in r.message for r in caplog.records)
 
 
 def test_permissions_default_unset() -> None:

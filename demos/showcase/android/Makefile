@@ -49,7 +49,7 @@ SERIAL ?= booted
 # up-front grant). This is the *same* permission.yaml the iOS lane runs: the grant mechanism is in
 # config, not the scenario, so one file serves both. showcase-compose grants POST_NOTIFICATIONS up
 # front (`grantPermissions` → `pm grant`), so the RequestPermission contract short-circuits to granted
-# with no dialog; the scenario's `dismissAlerts` guard therefore never fires here — no LLM, no fixed
+# with no dialog; the scenario's `alertHandling` guard therefore never fires here — no LLM, no fixed
 # sleep on the CI lane (on iOS, where notifications can't be pre-granted, that guard taps "Allow"
 # instead). Verified on a local arm64 emulator.
 #

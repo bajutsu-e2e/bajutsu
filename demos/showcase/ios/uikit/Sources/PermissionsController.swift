@@ -4,7 +4,7 @@ import UserNotifications
 
 /// Permissions (SPEC §5.4 / §7) — the OS-integration screen. It owns the two deliberate
 /// OS-level alerts (both fire only on explicit taps here, never at launch: the canonical
-/// fixture for the run's vision alert guard / dismissAlerts), plus a System section: an in-app
+/// fixture for the run's vision alert guard / alertHandling), plus a System section: an in-app
 /// Copy → Paste pasteboard round-trip the backend can drive and assert. (Reading a pasteboard seeded by
 /// another process trips iOS's paste-permission prompt; a value this app wrote reads back
 /// silently, so the round-trip stays deterministic.)

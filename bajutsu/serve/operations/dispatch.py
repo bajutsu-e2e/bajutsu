@@ -69,6 +69,12 @@ def _bool_flag(body: dict[str, Any], key: str) -> bool | None:
     return value if isinstance(value, bool) else None
 
 
+def _alert_handling_flag(body: dict[str, Any]) -> bool | None:
+    """The `alertHandling` request flag, accepting the deprecated `dismissAlerts` key (BE-0317)."""
+    canonical = _bool_flag(body, "alertHandling")
+    return canonical if canonical is not None else _bool_flag(body, "dismissAlerts")
+
+
 def _register_and_dispatch(
     state: ServeState, job: Job
 ) -> tuple[Job | None, tuple[Any, int] | None]:
@@ -156,7 +162,7 @@ def start_run(
         udid=udid,
         workers=_int(body.get("workers"), 1),
         erase=_bool_flag(body, "erase"),
-        dismiss_alerts=_bool_flag(body, "dismissAlerts"),
+        alert_handling=_alert_handling_flag(body),
         config=config_arg,
         # An uploaded bundle is self-contained: omit --baselines so its config's `baselines` drives
         # (resolved against the bundle cwd), like the rest of its relative paths (BE-0073).
@@ -264,7 +270,7 @@ def start_record(
         backend=backend,
         udid=udid,
         erase=_bool_flag(body, "erase"),
-        dismiss_alerts=_bool_flag(body, "dismissAlerts"),
+        alert_handling=_alert_handling_flag(body),
         headed=_bool_flag(body, "headed"),
         config=config_arg,
         upload_exec=state.upload_exec if state.upload is not None else "",
@@ -344,7 +350,7 @@ def start_crawl(
         max_screens=_int(body.get("maxScreens"), 50),
         max_steps=_int(body.get("maxSteps"), 200),
         erase=_bool_flag(body, "erase"),
-        dismiss_alerts=_bool_flag(body, "dismissAlerts"),
+        alert_handling=_alert_handling_flag(body),
         headed=_bool_flag(body, "headed"),
         config=str(cfg),
         resume_src=resume_src if resuming else "",

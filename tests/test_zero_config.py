@@ -106,7 +106,7 @@ def _fake_config(tmp_path: Path) -> tuple[Path, Path]:
 def test_run_alert_guard_degrades_to_a_no_op_without_a_credential(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`run`'s alert guard (its `--dismiss-alerts` Claude path, on by default) **degrades to a
+    """`run`'s alert guard (its `--alert-handling` Claude path, on by default) **degrades to a
     no-op** with no credential — it never fails closed on "no AI credential" and never constructs a
     client (the fixture fails if the SDK or an agent is built).
 

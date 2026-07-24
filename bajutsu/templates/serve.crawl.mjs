@@ -87,7 +87,7 @@ async function continuePastRun(runId){
     target:$('#crawl-target').value,udid:crawlPickedUdids().join(',')||'booted',
     workers:parseInt($('#crawl-workers').value,10)||1,
     maxScreens:parseInt($('#crawl-maxscreens').value,10)||50,maxSteps:parseInt($('#crawl-maxsteps').value,10)||200,
-    dismissAlerts:$('#crawl-nodismiss').checked?false:undefined,headed:$('#crawl-headed').checked||undefined,
+    alertHandling:$('#crawl-nodismiss').checked?false:undefined,headed:$('#crawl-headed').checked||undefined,
     runId:runId,continue:true})});
   const {jobId,runId:started,error}=await r.json();
   if(error){setStatus($('#crawl-status'),error,'ng');setBusy($('#crawl-go'),$('#crawl-stop'),false);return;}
@@ -463,7 +463,7 @@ async function resumePruned(src,key){
   const r=await fetch('/api/crawl',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
     target:$('#crawl-target').value,udid:crawlPickedUdids()[0]||'booted',  // a resume is a single-branch walk
     maxScreens:parseInt($('#crawl-maxscreens').value,10)||50,maxSteps:parseInt($('#crawl-maxsteps').value,10)||200,
-    dismissAlerts:$('#crawl-nodismiss').checked?false:undefined,headed:$('#crawl-headed').checked||undefined,
+    alertHandling:$('#crawl-nodismiss').checked?false:undefined,headed:$('#crawl-headed').checked||undefined,
     runId:runId,resumeSrc:src,resumeKey:key})});
   const {jobId,runId:started,error}=await r.json();
   if(error){setStatus($('#crawl-status'),error,'ng');setBusy($('#crawl-go'),$('#crawl-stop'),false);return}
@@ -556,7 +556,7 @@ function initCrawl(){
         workers:parseInt($('#crawl-workers').value,10)||1,
         maxScreens:parseInt($('#crawl-maxscreens').value,10)||50,maxSteps:parseInt($('#crawl-maxsteps').value,10)||200,
         erase:$('#crawl-erase').checked,
-        dismissAlerts:$('#crawl-nodismiss').checked?false:undefined,headed:$('#crawl-headed').checked||undefined},
+        alertHandling:$('#crawl-nodismiss').checked?false:undefined,headed:$('#crawl-headed').checked||undefined},
       onStart:d=>{crawlJobId=d.jobId;crawlRunId=d.runId;},
       onLog:line=>{
         appendLine($('#crawl-out'),line);

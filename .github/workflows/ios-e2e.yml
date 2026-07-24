@@ -558,7 +558,7 @@ jobs:
   # so both need the same forced-XCUITest treatment. Feeds the required `E2E` gate directly (no
   # continue-on-error), like `gestures` above.
   #   - permission.yaml: the `permissions` field on-device. `--exclude ai` drops the file's
-  #     notification scenario (its iOS grant path needs the vision `dismissAlerts` guard, so it
+  #     notification scenario (its iOS grant path needs the vision `alertHandling` guard, so it
   #     stays out of this deterministic gate — prime directive 1) and keeps only `location`, which
   #     `simctl privacy grant` pre-grants before launch with no prompt. android-e2e.yml's
   #     `smoke (adb)` job already runs both scenarios in permission.yaml unchanged, so this is the
@@ -566,7 +566,7 @@ jobs:
   #   - permission_system_alert.yaml: the `handleSystemAlert` step. It fires the
   #     notification-permission request, then taps the SpringBoard prompt's "Allow" button by a
   #     native accessibility query — no vision model, so this is the deterministic counterpart to
-  #     permission.yaml's `dismissAlerts` grant (which the step above excludes as `ai`). Its own
+  #     permission.yaml's `alertHandling` grant (which the step above excludes as `ai`). Its own
   #     file, not a scenario in permission.yaml: only the iOS (XCUITest) backend declares the
   #     capability, so a scenario in the shared file would fail android-e2e.yml's required
   #     `smoke (adb)` job at preflight.

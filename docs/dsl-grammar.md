@@ -94,7 +94,7 @@ Scenario ::= {
   network?:        <Network>,
   mocks?:          list(<Mock>),            # default []
   redact?:         <Redact>,
-  dismissAlerts?:  <DismissAlerts>,         # alert guard; on when unset
+  alertHandling?:  <AlertHandling>,         # alert guard; on when unset
   permissions?:    <Permissions>,           # pre-launch OS permission state; default {}
 }
 
@@ -111,8 +111,8 @@ Preconditions ::= {
   setup?:      string,                      # a reusable prelude file (§6.4)
 }
 
-# ── DismissAlerts (vision alert guard; on by default) ──────────────────
-DismissAlerts ::= boolean                                   # shorthand for { enabled: <bool> }
+# ── AlertHandling (vision alert guard; on by default) ──────────────────
+AlertHandling ::= boolean                                   # shorthand for { enabled: <bool> }
                | { enabled?: boolean,                       # default true
                    instruction?: string }                   # button to tap (else dismiss)
 
@@ -304,13 +304,13 @@ Omitted optional keys take these values (so a minimal scenario is just `name` + 
 |---|---|
 | `Scenario.tags` / `expect` / `capturePolicy` / `mocks` | `[]` |
 | `Scenario.preconditions` | `{}` (i.e. `erase: false`, `reinstall: clean`) |
-| `Scenario.dismissAlerts` | unset (alert guard on; dismiss the prompt) |
+| `Scenario.alertHandling` | unset (alert guard on; dismiss the prompt) |
 | `Scenario.permissions` | `{}` (no pre-launch permission state applied) |
 | `Preconditions.erase` | `false` |
 | `Preconditions.reinstall` | `clean` |
 | `Preconditions.launchArgs` | `[]` |
 | `Preconditions.launchEnv` | `{}` |
-| `DismissAlerts.enabled` | `true` |
+| `AlertHandling.enabled` | `true` |
 | `TypeText.submit` | `false` |
 | `Exists.negate` | `false` |
 | `MockResponse.status` | `200` |

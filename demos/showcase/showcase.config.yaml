@@ -140,7 +140,7 @@ targets:
     launchEnv: { SHOWCASE_UITEST: "1" }
     # Granted up front (`pm grant`) at lease time, so the notification prompt never blocks the run
     # (BE-0210); the shared permission.yaml relies on this on Android to stay deterministic — no dialog
-    # appears, so its `dismissAlerts` guard no-ops (on iOS, which can't pre-grant, that guard grants).
+    # appears, so its `alertHandling` guard no-ops (on iOS, which can't pre-grant, that guard grants).
     grantPermissions: [android.permission.POST_NOTIFICATIONS]
     idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
     appPath: android/compose/build/outputs/apk/a11y/debug/compose-a11y-debug.apk

@@ -67,7 +67,7 @@ The emitted plist:
 
 Two settings the emitted plist leaves out, both added under `EnvironmentVariables`:
 
-- **`ANTHROPIC_API_KEY`** — needed for the AI paths (`record`, `--dismiss-alerts`); it isn't baked
+- **`ANTHROPIC_API_KEY`** — needed for the AI paths (`record`, `--alert-handling`); it isn't baked
   in for you. (For the Bedrock provider, set `BAJUTSU_AI_PROVIDER` / `BAJUTSU_BEDROCK_MODEL` and the
   AWS credentials here instead.)
 - **`PATH`** — for the iOS (XCUITest) backend only. launchd starts the agent with a minimal `PATH`,
@@ -471,7 +471,7 @@ the control plane over the tailnet:
 ```bash
 export BAJUTSU_SERVER_URL=http://<linux-node>.<tailnet>.ts.net:8765
 export BAJUTSU_TOKEN=…         # the same operator token the control plane uses
-export ANTHROPIC_API_KEY=…     # only if scenarios use the AI paths (record / --dismiss-alerts)
+export ANTHROPIC_API_KEY=…     # only if scenarios use the AI paths (record / --alert-handling)
 bajutsu worker
 ```
 

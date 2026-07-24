@@ -3,11 +3,11 @@
 # (and the "Granted" text the app renders once authorized).
 #
 # Non-deterministic on iOS, exactly like the a11y twin: the SpringBoard prompt is out-of-process and
-# is cleared by the vision alert guard (`dismissAlerts`), an AI path — so this twin is NOT a
+# is cleared by the vision alert guard (`alertHandling`), an AI path — so this twin is NOT a
 # deterministic gate on iOS. It is kept for 1:1 correspondence with the shared suite, not as a CI gate.
 - name: grant notification permission
   tags: [permission, system]
-  dismissAlerts: { instruction: "tap Allow" }
+  alertHandling: { instruction: "tap Allow" }
   preconditions:
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:

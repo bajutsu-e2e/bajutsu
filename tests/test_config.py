@@ -1021,14 +1021,14 @@ def test_scalar_root_containing_orgs_raises_validationerror_not_attributeerror()
         load_config("orgs\n")
 
 
-# --- BE-0177: per-target run-behavior defaults (dismissAlerts / erase / network) ---
+# --- BE-0177: per-target run-behavior defaults (alertHandling / erase / network) ---
 
 
 def test_run_behavior_defaults_when_unset() -> None:
-    # An unset target resolves to the built-in defaults: guard on (dismiss_alerts None → on with the
+    # An unset target resolves to the built-in defaults: guard on (alert_handling None → on with the
     # default instruction), erase off, network on.
     eff = resolve(load_config("targets:\n  s:\n    bundleId: com.x\n"), "s")
-    assert eff.run_defaults.dismiss_alerts is None
+    assert eff.run_defaults.alert_handling is None
     assert eff.run_defaults.erase is False
     assert eff.run_defaults.network is True
 
@@ -1040,21 +1040,30 @@ def test_target_erase_and_network_resolve() -> None:
     assert eff.run_defaults.network is False
 
 
-def test_target_dismiss_alerts_bool_shorthand() -> None:
+def test_target_alert_handling_bool_shorthand() -> None:
     # The bare-boolean on-disk form is coerced to `{ enabled: <bool> }`, as on a scenario.
+    eff = resolve(
+        load_config("targets:\n  s:\n    bundleId: com.x\n    alertHandling: false\n"), "s"
+    )
+    assert eff.run_defaults.alert_handling is not None
+    assert eff.run_defaults.alert_handling.enabled is False
+    assert eff.run_defaults.alert_handling.instruction is None
+
+
+def test_target_alert_handling_object_form() -> None:
+    cfg = load_config(
+        "targets:\n  s:\n    bundleId: com.x\n    alertHandling: { instruction: Allow }\n"
+    )
+    eff = resolve(cfg, "s")
+    assert eff.run_defaults.alert_handling is not None
+    assert eff.run_defaults.alert_handling.enabled is True  # object form keeps the guard on
+    assert eff.run_defaults.alert_handling.instruction == "Allow"
+
+
+def test_target_dismiss_alerts_alias_still_resolves() -> None:
+    # BE-0317: the deprecated `dismissAlerts` config key resolves to the same default as `alertHandling`.
     eff = resolve(
         load_config("targets:\n  s:\n    bundleId: com.x\n    dismissAlerts: false\n"), "s"
     )
-    assert eff.run_defaults.dismiss_alerts is not None
-    assert eff.run_defaults.dismiss_alerts.enabled is False
-    assert eff.run_defaults.dismiss_alerts.instruction is None
-
-
-def test_target_dismiss_alerts_object_form() -> None:
-    cfg = load_config(
-        "targets:\n  s:\n    bundleId: com.x\n    dismissAlerts: { instruction: Allow }\n"
-    )
-    eff = resolve(cfg, "s")
-    assert eff.run_defaults.dismiss_alerts is not None
-    assert eff.run_defaults.dismiss_alerts.enabled is True  # object form keeps the guard on
-    assert eff.run_defaults.dismiss_alerts.instruction == "Allow"
+    assert eff.run_defaults.alert_handling is not None
+    assert eff.run_defaults.alert_handling.enabled is False

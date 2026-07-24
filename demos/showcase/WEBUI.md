@@ -88,7 +88,7 @@ raises the notification / location prompts, and when one blocks a step the guard
 asks Claude vision where the dismiss button is, taps it, and the step retries. The report's steps
 table shows a **"system alert dismissed"** row with the alert's label. This is the one place AI
 assists a `run` — and it only *acts on the device*, never on the verdict. A scenario can set
-`dismissAlerts: { instruction: "tap Allow" }` to grant instead of dismiss.
+`alertHandling: { instruction: "tap Allow" }` to grant instead of dismiss.
 
 ### 5. Video and device logs
 
