@@ -22,8 +22,10 @@ split into two testable pieces:
   modules are allow-listed by name — only the ones that path actually imports — because the top level
   also holds serve/analytics/crawl modules (stats, audit, coverage, usage*, crawl*, alerts, github,
   …) the E2E never touches; a bare ``bajutsu/*.py`` glob swept those in and burned the jobs on, e.g.,
-  a serve-only PR. A new subpackage, top-level module, or CLI command defaults to NOT triggering —
-  add its pattern to ``_RUN_PATH`` (all lanes) or the lane's own fragment.
+  a serve-only PR. Each lane's own ``bajutsu/drivers/*.py`` file(s) are likewise allow-listed by
+  name, not swept as a directory, so a lane fires only on the driver module its own backend actually
+  imports. A new subpackage, top-level module, driver module, or CLI command defaults to NOT
+  triggering — add its pattern to ``_RUN_PATH`` (all lanes) or the lane's own fragment.
 
 Invoked by each workflow with ``BASE_SHA`` / ``HEAD_SHA`` in the environment and ``E2E_LANE`` naming
 the lane (``ios`` — the default — / ``android`` / ``web``); it writes ``relevant=true|false`` to
