@@ -39,8 +39,13 @@ GOLDENS = ROOT / "demos" / "showcase" / "scenarios" / "golden" / "goldens"
 RECORD_GOAL = "Turn the Intense option on, then submit the log"
 
 # `credential_gap()` returns the missing-credential reason, or None when a real model can be reached
-# (BE-0047). None → run the live smoke; a reason → skip, keeping the gate credential-free.
-_GAP = credential_gap()
+# (BE-0047). None → run the live smoke; a reason → skip, keeping the gate credential-free. It runs at
+# import time, so a misconfigured `ai.provider` (an unregistered name raises `ValueError` in
+# `registry._provider_name`) must skip these signal-first tests, never fail collection.
+try:
+    _GAP: str | None = credential_gap()
+except ValueError as exc:
+    _GAP = f"provider misconfigured: {exc}"
 _requires_credential = pytest.mark.skipif(
     _GAP is not None,
     reason=f"real-model smoke is signal-first (BE-0282); no AI credential: {_GAP}",
@@ -67,10 +72,15 @@ def _assert_parses_to_record_action(proposal: Proposal) -> None:
 
 
 def _assert_parses_to_crawl_actions(proposal: guide.Proposal) -> None:
-    """The real crawl response mapped to at least one replayable action, each with a stable selector."""
+    """The real crawl response mapped to at least one replayable action, each addressable on screen."""
     assert proposal.actions, "real crawl response parsed into no replayable action"
     for action in proposal.actions:
-        assert action.key, f"crawl action has no stable selector: {action}"
+        # `action.key` is never empty — it falls back to `@{label}#…` even with no selector — so
+        # assert a genuine addressing source instead: an id, a label, a tap_point coordinate, or a
+        # fill's fields. A bare key would pass on an action nothing can actually replay.
+        assert action.target or action.label or action.point or action.fields, (
+            f"crawl action has no genuine selector source: {action}"
+        )
 
 
 # --- Deterministic harness self-checks (no model; always run) -----------------------------------
