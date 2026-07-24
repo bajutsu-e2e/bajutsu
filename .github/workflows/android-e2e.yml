@@ -24,7 +24,7 @@
 #     the other jobs it runs pytest, not the run CLI, so it keeps the dev group.
 #   - uiautomator (codegen) (adb): the codegen output path (BE-0294) — generate a native UI Automator
 #     (Kotlin) test from a scenario and run it with Gradle's connectedAndroidTest, no bajutsu / adb
-#     driver / AI at test time. The Android twin of ios-e2e.yml's `xcuitest (codegen)`; a non-gating
+#     driver / AI at test time. The Android twin of ios-e2e.yml's `codegen (xcuitest)`; a non-gating
 #     signal first (the signal-then-required precedent of BE-0282), promoted to the gate once stable.
 # It runs no LLM — a deterministic `run` over fixed scenarios — so it stays within the prime
 # directives, and it is kept off the fast `make check` gate exactly as the iOS and web e2e lanes are.
@@ -577,7 +577,7 @@ jobs:
 
   # The codegen output path (BE-0294): a scenario -> native UI Automator (Kotlin) test, compiled and
   # run by Gradle's connectedAndroidTest with no bajutsu / adb driver / AI at test time. This is the
-  # Android twin of ios-e2e.yml's `xcuitest (codegen)` — the claim codegen makes about its UI Automator
+  # Android twin of ios-e2e.yml's `codegen (xcuitest)` — the claim codegen makes about its UI Automator
   # target, which the string-only unit suite (tests/test_codegen_uiautomator.py) cannot prove: it
   # checks the emitted text, never whether the Kotlin parses or the referenced androidx.test.uiautomator
   # APIs exist at the pinned version. `make e2e-codegen` re-generates the checked-in test, builds the
@@ -593,7 +593,7 @@ jobs:
     # `make e2e-codegen` re-generates the test with `uv run bajutsu codegen`, whose auto-sync would
     # otherwise pull the dev group (mypy / pytest / ruff). Codegen needs only the base package, so skip
     # dev for every uv invocation here — the Linux `check` gate owns that tooling (mirrors the iOS
-    # `xcuitest (codegen)` job).
+    # `codegen (xcuitest)` job).
     env:
       UV_NO_DEV: "1"
     steps:

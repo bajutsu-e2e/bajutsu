@@ -1,6 +1,6 @@
 # Multi-touch gestures (SPEC §5.3): pinch and rotate — two-finger actuation. The retired idb backend
 # was single-touch (BE-0290) and raised UnsupportedAction (BE-0019); XCUITest drives multi-touch. The e2e
-# `xcuitest (multi-touch)` job runs it with `--backend xcuitest`; adb drives it too now (BE-0232), over
+# `gestures (xcuitest)` job runs it with `--backend xcuitest`; adb drives it too now (BE-0232), over
 # a rooted-device two-slot `sendevent` sweep, so it also runs on the Android e2e lane (`--backend android`).
 #
 # The SHOWCASE_GESTURES launch env swaps the app for a flat, scroll-free pinch/rotate screen (see the

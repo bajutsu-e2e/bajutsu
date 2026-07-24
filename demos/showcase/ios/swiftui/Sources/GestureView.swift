@@ -3,7 +3,7 @@ import SwiftUI
 // BE-0019: the on-device realization of a two-finger gesture screen. Pinch and rotate are the one
 // class of actuation the retired idb backend could not perform (it was single-touch and raised UnsupportedAction, BE-0290), so they
 // are the honest proof that the XCUITest actuator drives elements end to end. Each target flips its
-// mirrored a11y value once its gesture is recognized, so the `xcuitest (multi-touch)` run can assert
+// mirrored a11y value once its gesture is recognized, so the `gestures (xcuitest)` run can assert
 // the actuation landed. Reached only when the SHOWCASE_GESTURES launch env is set (see AppModel), so
 // the normal observe-only app (BE-0079) never renders it. The screen is a flat VStack — no scroll —
 // so both targets are always in the accessibility tree; XCUITest's swipe-to-scroll on a deep Form

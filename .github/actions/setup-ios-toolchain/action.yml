@@ -1,0 +1,66 @@
+name: Set up the iOS toolchain
+description: >-
+  The five steps every ios-e2e.yml macOS job starts with, in one place: select Xcode, install uv,
+  install xcodegen, start booting a Simulator (asynchronously, so the boot overlaps the caller's own
+  build step), and resolve the active Xcode build version for a DerivedData cache key. Callers still
+  own their own checkout (a local action needs the repo present to resolve) and their own DerivedData
+  caching + build, since those vary per job (app only / app + runner / app + runner + UIKit).
+
+inputs:
+  device-type:
+    description: >-
+      Passed through to the boot-simulator action's own `device-type` — pin one exact Simulator
+      model (the pixel-VRT job's baseline is geometry-specific). Empty (default): any pre-installed
+      iPhone.
+    required: false
+    default: ""
+
+outputs:
+  udid:
+    description: >-
+      The Simulator's UDID. Booting was started with `wait: false`, so it is not necessarily
+      finished yet — block on `xcrun simctl bootstatus "$udid" -b` before installing/actuating.
+    value: ${{ steps.boot.outputs.udid }}
+  xcode-version:
+    description: The active Xcode build version, for a DerivedData cache key.
+    value: ${{ steps.xcode.outputs.ver }}
+
+runs:
+  using: composite
+  steps:
+    - name: Select Xcode
+      uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90  # v1.7.0
+      with:
+        xcode-version: latest-stable
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990  # v8.3.2
+      with:
+        enable-cache: true
+
+    # Skip Homebrew's auto-update (re-fetching every tap on each run costs minutes) and the
+    # post-install cleanup; rely on the runner image's pre-installed Homebrew state for xcodegen.
+    - name: Install xcodegen
+      shell: bash
+      env:
+        HOMEBREW_NO_AUTO_UPDATE: "1"
+        HOMEBREW_NO_INSTALL_CLEANUP: "1"
+      run: brew install xcodegen
+
+    # Start the boot before the caller's build step so a fresh boot's ~80s overlaps with it.
+    # `wait: false` returns once the boot is initiated; the caller blocks on "booted" itself
+    # right before installing/actuating.
+    - name: Boot a Simulator
+      id: boot
+      uses: ./.github/actions/boot-simulator
+      with:
+        wait: "false"
+        device-type: ${{ inputs.device-type }}
+
+    # The DerivedData cache must not cross Xcode upgrades: a different Xcode's compiled modules
+    # cause stale-artifact build failures. Capture the active Xcode build version for the caller's
+    # cache key.
+    - name: Resolve Xcode version (for the cache key)
+      id: xcode
+      shell: bash
+      run: echo "ver=$(xcodebuild -version | tr '\n ' '--')" >> "$GITHUB_OUTPUT"

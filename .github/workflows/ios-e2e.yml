@@ -2,8 +2,12 @@
 # (adb) and web-e2e.yml (Playwright) in scope, but unlike them this lane carries the platform's
 # REQUIRED status check: the `E2E` job below always reports (even when the macOS jobs are
 # path-gated skipped), so it — not this file's name — is what `main`'s branch-protection ruleset
-# pins. Seven jobs, all on the XCUITest backend (the resident BajutsuRunner), against the showcase
-# suite (BE-0079, the single iOS fixture):
+# pins. Ten jobs, all on the XCUITest backend (the resident BajutsuRunner), against the showcase
+# suite (BE-0079, the single iOS fixture). Each macOS job starts with the same five-step bootstrap
+# (select Xcode, install uv, install xcodegen, start booting a Simulator, resolve the Xcode
+# version for a cache key) via the `setup-ios-toolchain` composite action, then does its own
+# DerivedData caching and build — those vary per job (app only / app + runner / app + runner +
+# UIKit), so they stay job-local rather than folded into the shared action:
 #   - smoke (xcuitest): build the showcase, boot a Simulator, run a scenario through the XCUITest
 #     backend (driver + simctl + the resident runner + real actuation) — the functional heart.
 #   - actuation (xcuitest): real on-device XCUITest actuation beyond the conformance job's `tap`
@@ -15,15 +19,26 @@
 #     android-e2e.yml's `golden (adb)`. Like `visual`, deliberately NOT part of the `E2E` gate's
 #     `needs:` — the tree golden is deterministic and host-independent, so a drift surfaces here as
 #     a per-PR signal without blocking a merge.
-#   - xcuitest (codegen): generate a native XCUITest from a scenario and run it with
+#   - codegen (xcuitest): generate a native XCUITest from a scenario and run it with
 #     xcodebuild — no bajutsu / AI at test time (the codegen output path). Its required step
 #     compiles components.yaml; a trailing non-gating step (BE-0297) also compiles the wider DSL
 #     surface (text-editing / gestures / multi-touch / coordinate-swipe / drag / compound selectors)
 #     reusing scenarios already proven on-device, promoted into the gate once the slice is stable.
-#   - xcuitest (multi-touch): a pinch/rotate scenario through the full `bajutsu run` path on the
-#     XCUITest backend (BE-0019) — two-finger gestures. Also runs the runner channel's `/type`
-#     (search.yaml) and `/swipe` + `/back` (notices.yaml) actuation (BE-0281), tab-crossing
-#     scenarios.
+#   - gestures (xcuitest): a pinch/rotate scenario through the full `bajutsu run` path on the
+#     XCUITest backend (BE-0019) — two-finger gestures, the one class of actuation the retired idb
+#     backend could not drive.
+#   - permission (xcuitest): the deterministic `permissions` field (BE-0276) — location, which
+#     `simctl privacy grant` pre-grants before launch with no prompt — and the `handleSystemAlert`
+#     step (BE-0316), which taps the SpringBoard notification-permission prompt's "Allow" button by
+#     a native accessibility query. Both need the forced-XCUITest treatment a coordinate backend
+#     can never resolve (tapping the tab bar item behind it, see docs/showcase.md).
+#   - runner-actuation (xcuitest): the resident runner channel's actuation beyond tap / pinch /
+#     rotate (BE-0281) — `/type` (search.yaml) and `/swipe` + `/back` (notices.yaml),
+#     tab-crossing scenarios.
+#   - bundled-runner (xcuitest): the bundled-runner path (BE-0292) — the same resident runner
+#     resolved from the wheel bundle rather than a config `testRunner`, against both the SwiftUI
+#     and UIKit a11y apps (the runner is app-agnostic, BE-0019), proving a Simulator run needs no
+#     runner-build and no runner path.
 #   - conformance (xcuitest): the driver conformance suite (BE-0114) on-device against the XCUITest
 #     backend.
 #   - visual (xcuitest): the iOS twin of android-e2e.yml's `visual` — a pixel VRT of the Stable
@@ -32,8 +47,14 @@
 #     renderer varies by Xcode / device / OS), so a drift surfaces here as a signal, never
 #     blocking a merge, the same rationale android-e2e.yml's `visual` and web-e2e.yml's jobs
 #     follow for their own non-required lanes.
+#   - gestures, permission, runner-actuation, and bundled-runner used to be one job
+#     (`xcuitest-gestures`, display name `xcuitest (multi-touch)`) that grew concern by concern
+#     (BE-0276, BE-0281, BE-0292, BE-0316) well past its original multi-touch-only name; each now
+#     boots and builds independently, trading the old job's shared-build cost saving for a job name
+#     and a failure signal that map onto one concern each.
 # The SwiftUI a11y product is the smoke / golden / codegen / visual subject; the UIKit twin shares
-# the identifier contract, so one toolkit suffices for the gate.
+# the identifier contract, so one toolkit suffices for the gate (bundled-runner is the exception —
+# it deliberately runs both toolkits to prove the runner is app-agnostic).
 # The BE-0006 element-tree goldens live on the showcase
 # (demos/showcase/scenarios/golden/, ported in BE-0079's retirement).
 # Runs on every relevant PR and on demand (the Actions tab / `gh workflow run ios-e2e.yml`).
@@ -120,52 +141,22 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
 
-      - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90  # v1.7.0
-        with:
-          xcode-version: latest-stable
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990  # v8.3.2
-        with:
-          enable-cache: true
-
-      # Skip Homebrew's auto-update (re-fetching every tap on each run costs minutes) and the
-      # post-install cleanup; rely on the runner image's pre-installed Homebrew state for xcodegen.
-      - name: Install xcodegen
-        env:
-          HOMEBREW_NO_AUTO_UPDATE: "1"
-          HOMEBREW_NO_INSTALL_CLEANUP: "1"
-        run: brew install xcodegen
-
-      # Start the boot first so it runs concurrently with the app build below — the first
-      # boot of a fresh Simulator costs ~80s and does not depend on the build. `wait: 'false'`
-      # returns once the boot is initiated; we block on "booted" (the wait step) right before
-      # installing the app.
-      - name: Boot a Simulator
-        id: sim
-        uses: ./.github/actions/boot-simulator
-        with:
-          wait: "false"
-
-      # The DerivedData cache must not cross Xcode upgrades: a different Xcode's compiled modules
-      # cause stale-artifact build failures. Capture the active Xcode build version for the cache key.
-      - name: Resolve Xcode version (for the cache key)
-        id: xcode
-        run: echo "ver=$(xcodebuild -version | tr '\n ' '--')" >> "$GITHUB_OUTPUT"
+      - name: Set up the iOS toolchain
+        id: toolchain
+        uses: ./.github/actions/setup-ios-toolchain
 
       # Cache the showcase app's DerivedData so `swiftui-build` is incremental across runs, matching
-      # the xcuitest job. Keyed on Xcode + the app's Swift sources + project spec; the `-app-` infix
-      # keeps this app-scheme cache from colliding with the xcuitest job's UITests-scheme cache that
+      # the codegen job. Keyed on Xcode + the app's Swift sources + project spec; the `-app-` infix
+      # keeps this app-scheme cache from colliding with the codegen job's UITests-scheme cache that
       # writes the same DerivedData path. restore-keys warm compiled modules on a partial source
       # change; a miss just rebuilds cold, so the cache only ever speeds the build, never its result.
       - name: Cache DerivedData (app)
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: demos/showcase/ios/swiftui/build/dd
-          key: xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-${{ hashFiles('BajutsuKit/**/*.swift', 'demos/showcase/ios/swiftui/**/*.swift', 'demos/showcase/ios/swiftui/**/project.yml') }}
+          key: xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-${{ hashFiles('BajutsuKit/**/*.swift', 'demos/showcase/ios/swiftui/**/*.swift', 'demos/showcase/ios/swiftui/**/project.yml') }}
           restore-keys: |
-            xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-
+            xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-
 
       # The resident XCUITest runner builds into its own DerivedData dir; cache it separately
       # (keyed on the runner's Swift sources + project spec) so `runner-build` is incremental too.
@@ -173,9 +164,9 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: BajutsuKit/Runner/build/dd
-          key: xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-${{ hashFiles('BajutsuKit/**/*.swift', 'BajutsuKit/Runner/project.yml') }}
+          key: xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-${{ hashFiles('BajutsuKit/**/*.swift', 'BajutsuKit/Runner/project.yml') }}
           restore-keys: |
-            xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-
+            xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-
 
       # Build the a11y app AND the resident XCUITest runner (both needed by the XCUITest backend).
       # The bajutsu-e2e action's own `uv sync --no-dev` covers the Python deps, so no dep fetch here.
@@ -185,10 +176,10 @@ jobs:
           make -C demos/showcase runner-build
 
       - name: Wait for the Simulator
-        run: xcrun simctl bootstatus "${{ steps.sim.outputs.udid }}" -b
+        run: xcrun simctl bootstatus "${{ steps.toolchain.outputs.udid }}" -b
 
       - name: Install the app
-        run: xcrun simctl install "${{ steps.sim.outputs.udid }}" "demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
+        run: xcrun simctl install "${{ steps.toolchain.outputs.udid }}" "demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
 
       - name: Run smoke scenarios
         uses: ./.github/actions/bajutsu-e2e
@@ -197,13 +188,13 @@ jobs:
           target: showcase-swiftui
           backend: xcuitest
           config: demos/showcase/showcase.config.yaml
-          udid: ${{ steps.sim.outputs.udid }}
+          udid: ${{ steps.toolchain.outputs.udid }}
           artifact-name: smoke-run
 
   # Real on-device XCUITest actuation beyond the conformance job's `tap` (BE-0281): drives `back`,
   # device control, and text editing that the smoke / golden / visual jobs above never reach (they
   # only `wait`/`expect`). The proven tab-crossing gesture / text scenarios (search.yaml,
-  # notices.yaml) live in the `xcuitest (multi-touch)` job below, which feeds the required `E2E` gate;
+  # notices.yaml) live in the `runner-actuation` job below, which feeds the required `E2E` gate;
   # this job is the non-gating landing pad where newer actuation earns its stability first:
   #   - navigation.yaml: tap a Stable row → push Horse Detail → `back` (the OS back button). `tap` is
   #     already the conformance job's contract, but `back` end-to-end through the resident runner is not.
@@ -213,7 +204,7 @@ jobs:
   #   - text_editing.yaml: `select` + `copy` (⌘A / ⌘C), then `delete` and `clear` on the Search field,
   #     with the copied text read back through the `clipboard` assertion — the four text-editing
   #     actuators no other scenario drove. It crosses to the Search tab, so once stable it can move up
-  #     to the multi-touch job beside search.yaml.
+  #     to the runner-actuation job beside search.yaml.
   # Deliberately NOT in the `E2E` gate's `needs:` below (like `golden` / `visual`): the Simulator lane
   # has a flakiness history (BE-0218), so new actuation lands as a per-PR signal first and is promoted
   # to the gate only once it proves stable. One build serves all four scenarios (cost discipline: the
@@ -236,36 +227,9 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
 
-      - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90  # v1.7.0
-        with:
-          xcode-version: latest-stable
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990  # v8.3.2
-        with:
-          enable-cache: true
-
-      - name: Install xcodegen
-        env:
-          HOMEBREW_NO_AUTO_UPDATE: "1"
-          HOMEBREW_NO_INSTALL_CLEANUP: "1"
-        run: brew install xcodegen
-
-      # Start the boot first so it runs concurrently with the app build below (a fresh boot is ~80s
-      # and does not depend on the build). `wait: 'false'` returns once boot is initiated; the wait
-      # step blocks on "booted" right before installing the app.
-      - name: Boot a Simulator
-        id: sim
-        uses: ./.github/actions/boot-simulator
-        with:
-          wait: "false"
-
-      # The DerivedData cache must not cross Xcode upgrades: a different Xcode's compiled modules
-      # cause stale-artifact build failures. Capture the active Xcode build version for the cache key.
-      - name: Resolve Xcode version (for the cache key)
-        id: xcode
-        run: echo "ver=$(xcodebuild -version | tr '\n ' '--')" >> "$GITHUB_OUTPUT"
+      - name: Set up the iOS toolchain
+        id: toolchain
+        uses: ./.github/actions/setup-ios-toolchain
 
       # Cache the showcase app's DerivedData so `swiftui-build` is incremental across runs, sharing
       # the `-app-` scheme cache the smoke / golden / visual jobs use. A miss just rebuilds cold.
@@ -273,9 +237,9 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: demos/showcase/ios/swiftui/build/dd
-          key: xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-${{ hashFiles('BajutsuKit/**/*.swift', 'demos/showcase/ios/swiftui/**/*.swift', 'demos/showcase/ios/swiftui/**/project.yml') }}
+          key: xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-${{ hashFiles('BajutsuKit/**/*.swift', 'demos/showcase/ios/swiftui/**/*.swift', 'demos/showcase/ios/swiftui/**/project.yml') }}
           restore-keys: |
-            xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-
+            xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-
 
       # The resident XCUITest runner builds into its own DerivedData dir; cache it separately
       # (keyed on the runner's Swift sources + project spec) so `runner-build` is incremental too.
@@ -283,9 +247,9 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: BajutsuKit/Runner/build/dd
-          key: xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-${{ hashFiles('BajutsuKit/**/*.swift', 'BajutsuKit/Runner/project.yml') }}
+          key: xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-${{ hashFiles('BajutsuKit/**/*.swift', 'BajutsuKit/Runner/project.yml') }}
           restore-keys: |
-            xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-
+            xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-
 
       # Build the a11y app AND the resident XCUITest runner (both needed by the XCUITest backend).
       # The bajutsu-e2e action's own `uv sync --no-dev` covers the Python deps, so no dep fetch here.
@@ -295,10 +259,10 @@ jobs:
           make -C demos/showcase runner-build
 
       - name: Wait for the Simulator
-        run: xcrun simctl bootstatus "${{ steps.sim.outputs.udid }}" -b
+        run: xcrun simctl bootstatus "${{ steps.toolchain.outputs.udid }}" -b
 
       - name: Install the app
-        run: xcrun simctl install "${{ steps.sim.outputs.udid }}" "demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
+        run: xcrun simctl install "${{ steps.toolchain.outputs.udid }}" "demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
 
       # Interaction (BE-0281): `tap` + `back` end-to-end, on the Stable launch tab.
       # continue-on-error: the four scenarios below are independent and unrelated, bundled into one
@@ -315,7 +279,7 @@ jobs:
           target: showcase-swiftui
           backend: xcuitest
           config: demos/showcase/showcase.config.yaml
-          udid: ${{ steps.sim.outputs.udid }}
+          udid: ${{ steps.toolchain.outputs.udid }}
           artifact-name: actuation-navigation-run
 
       # Device control (BE-0281): `setLocation` + clipboard round-trip. simctl-backed, on the launch
@@ -329,7 +293,7 @@ jobs:
           target: showcase-swiftui
           backend: xcuitest
           config: demos/showcase/showcase.config.yaml
-          udid: ${{ steps.sim.outputs.udid }}
+          udid: ${{ steps.toolchain.outputs.udid }}
           artifact-name: actuation-device-run
 
       # Device control (BE-0281): a simctl `push` delivery — iOS-only (no faithful Android-emulator
@@ -343,7 +307,7 @@ jobs:
           target: showcase-swiftui
           backend: xcuitest
           config: demos/showcase/showcase.config.yaml
-          udid: ${{ steps.sim.outputs.udid }}
+          udid: ${{ steps.toolchain.outputs.udid }}
           artifact-name: actuation-push-run
 
       # Text editing (iOS-only, single-form ids): `select` + `copy` round-trip the Search field's text
@@ -358,7 +322,7 @@ jobs:
           target: showcase-swiftui
           backend: xcuitest
           config: demos/showcase/showcase.config.yaml
-          udid: ${{ steps.sim.outputs.udid }}
+          udid: ${{ steps.toolchain.outputs.udid }}
           artifact-name: actuation-text-editing-run
 
       # Re-fail the job if any of the continue-on-error steps above failed — they need to run
@@ -399,36 +363,9 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
 
-      - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90  # v1.7.0
-        with:
-          xcode-version: latest-stable
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990  # v8.3.2
-        with:
-          enable-cache: true
-
-      - name: Install xcodegen
-        env:
-          HOMEBREW_NO_AUTO_UPDATE: "1"
-          HOMEBREW_NO_INSTALL_CLEANUP: "1"
-        run: brew install xcodegen
-
-      # Start the boot first so it runs concurrently with the app build below (a fresh boot is ~80s
-      # and does not depend on the build). `wait: 'false'` returns once boot is initiated; the wait
-      # step blocks on "booted" right before installing the app.
-      - name: Boot a Simulator
-        id: sim
-        uses: ./.github/actions/boot-simulator
-        with:
-          wait: "false"
-
-      # The DerivedData cache must not cross Xcode upgrades: a different Xcode's compiled modules
-      # cause stale-artifact build failures. Capture the active Xcode build version for the cache key.
-      - name: Resolve Xcode version (for the cache key)
-        id: xcode
-        run: echo "ver=$(xcodebuild -version | tr '\n ' '--')" >> "$GITHUB_OUTPUT"
+      - name: Set up the iOS toolchain
+        id: toolchain
+        uses: ./.github/actions/setup-ios-toolchain
 
       # Cache the showcase app's DerivedData so `swiftui-build` is incremental across runs, sharing
       # the `-app-` scheme cache the smoke / visual jobs use. A miss just rebuilds cold.
@@ -436,9 +373,9 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: demos/showcase/ios/swiftui/build/dd
-          key: xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-${{ hashFiles('BajutsuKit/**/*.swift', 'demos/showcase/ios/swiftui/**/*.swift', 'demos/showcase/ios/swiftui/**/project.yml') }}
+          key: xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-${{ hashFiles('BajutsuKit/**/*.swift', 'demos/showcase/ios/swiftui/**/*.swift', 'demos/showcase/ios/swiftui/**/project.yml') }}
           restore-keys: |
-            xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-
+            xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-
 
       # The resident XCUITest runner builds into its own DerivedData dir; cache it separately
       # (keyed on the runner's Swift sources + project spec) so `runner-build` is incremental too.
@@ -446,9 +383,9 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: BajutsuKit/Runner/build/dd
-          key: xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-${{ hashFiles('BajutsuKit/**/*.swift', 'BajutsuKit/Runner/project.yml') }}
+          key: xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-${{ hashFiles('BajutsuKit/**/*.swift', 'BajutsuKit/Runner/project.yml') }}
           restore-keys: |
-            xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-
+            xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-
 
       # Build the a11y app AND the resident XCUITest runner (both needed by the XCUITest backend).
       # The bajutsu-e2e action's own `uv sync --no-dev` covers the Python deps, so no dep fetch here.
@@ -458,10 +395,10 @@ jobs:
           make -C demos/showcase runner-build
 
       - name: Wait for the Simulator
-        run: xcrun simctl bootstatus "${{ steps.sim.outputs.udid }}" -b
+        run: xcrun simctl bootstatus "${{ steps.toolchain.outputs.udid }}" -b
 
       - name: Install the app
-        run: xcrun simctl install "${{ steps.sim.outputs.udid }}" "demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
+        run: xcrun simctl install "${{ steps.toolchain.outputs.udid }}" "demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
 
       # Runs golden.yaml over XCUITest; the scenario compares against its goldens/ baseline, a
       # field-level tolerant compare (bajutsu/golden.py) that is ABI-stable.
@@ -472,15 +409,15 @@ jobs:
           target: showcase-swiftui
           backend: xcuitest
           config: demos/showcase/showcase.config.yaml
-          udid: ${{ steps.sim.outputs.udid }}
+          udid: ${{ steps.toolchain.outputs.udid }}
           artifact-name: ios-golden-run
 
   # The codegen output path: a scenario -> native XCUITest, compiled and run by xcodebuild
   # with no bajutsu / AI at test time. This is the claim M3 makes about codegen, so CI
   # has to exercise the generated Swift natively (not just the XCUITest runtime the other jobs
   # use). It runs against the SwiftUI a11y app, whose identifiers the generated test queries by name.
-  xcuitest:
-    name: xcuitest (codegen)
+  codegen:
+    name: codegen (xcuitest)
     needs: changes
     if: needs.changes.outputs.relevant == 'true'
     runs-on: macos-latest
@@ -495,57 +432,32 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
 
-      - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90  # v1.7.0
-        with:
-          xcode-version: latest-stable
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990  # v8.3.2
-        with:
-          enable-cache: true
-
-      # Skip Homebrew's auto-update (re-fetching every tap on each run costs minutes) and the
-      # post-install cleanup; rely on the runner image's pre-installed Homebrew state for xcodegen.
-      - name: Install xcodegen
-        env:
-          HOMEBREW_NO_AUTO_UPDATE: "1"
-          HOMEBREW_NO_INSTALL_CLEANUP: "1"
-        run: brew install xcodegen
-
-      # The DerivedData cache must not cross Xcode upgrades: a different Xcode's compiled modules
-      # cause stale-artifact build failures. Capture the active Xcode build version for the cache key.
-      - name: Resolve Xcode version (for the cache key)
-        id: xcode
-        run: echo "ver=$(xcodebuild -version | tr '\n ' '--')" >> "$GITHUB_OUTPUT"
+      - name: Set up the iOS toolchain
+        id: toolchain
+        uses: ./.github/actions/setup-ios-toolchain
 
       # Cache xcodebuild DerivedData so the UITest build is incremental across runs. Keyed on the
       # Xcode version + Swift sources + project spec; the restore-keys fallback warms the cache
       # (compiled modules) when only sources change, scoped to the same Xcode, and a miss simply
-      # rebuilds cold — so the cache only ever speeds the build, never changes its result.
+      # rebuilds cold — so the cache only ever speeds the build, never changes its result. No
+      # `-app-` infix (unlike the smoke / golden / etc. cache above): this job builds the UITests
+      # scheme into the same DerivedData path, so its cache must never collide with theirs.
       - name: Cache DerivedData
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: demos/showcase/ios/swiftui/build/dd
-          key: xcode-dd-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-${{ hashFiles('BajutsuKit/**/*.swift', 'demos/showcase/ios/swiftui/**/*.swift', 'demos/showcase/ios/swiftui/**/project.yml') }}
+          key: xcode-dd-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-${{ hashFiles('BajutsuKit/**/*.swift', 'demos/showcase/ios/swiftui/**/*.swift', 'demos/showcase/ios/swiftui/**/project.yml') }}
           restore-keys: |
-            xcode-dd-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-
-
-      # Start the boot before the codegen build so the ~80s first boot overlaps with it.
-      # `wait: 'false'` returns once the boot is initiated; no explicit wait is needed because
-      # `xcodebuild test` blocks on the destination becoming ready when it reaches the test
-      # phase, by which point the boot has finished.
-      - name: Boot a Simulator
-        id: sim
-        uses: ./.github/actions/boot-simulator
-        with:
-          wait: "false"
+            xcode-dd-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-
 
       # `make -C demos/showcase ui-test` re-generates ComponentsUITests.swift from the scenario,
       # regenerates the project, then `xcodebuild test`s it against the SwiftUI a11y app — no
-      # bajutsu / AI at test time.
+      # bajutsu / AI at test time. No explicit "Wait for the Simulator" step (unlike the jobs that
+      # install/actuate directly and follow the toolchain action's `udid` note): `xcodebuild test`
+      # blocks on the destination becoming ready when it reaches the test phase, by which point the
+      # boot the toolchain action started has finished.
       - name: Codegen + run native XCUITest
-        run: make -C demos/showcase ui-test SIM=${{ steps.sim.outputs.udid }}
+        run: make -C demos/showcase ui-test SIM=${{ steps.toolchain.outputs.udid }}
 
       # BE-0297 Unit 1/2/4: compile-and-run the DSL constructs components.yaml never reaches
       # (text-editing / gestures / multi-touch / coordinate-swipe / drag / compound selectors),
@@ -557,7 +469,7 @@ jobs:
       - name: Codegen coverage (non-gating) — extended DSL surface
         id: codegen_coverage
         continue-on-error: true
-        run: make -C demos/showcase ui-test-coverage SIM=${{ steps.sim.outputs.udid }}
+        run: make -C demos/showcase ui-test-coverage SIM=${{ steps.toolchain.outputs.udid }}
 
       # continue-on-error keeps the job green, so surface a failure as a PR annotation rather than
       # letting it vanish — the non-gating slice's whole purpose is a visible per-PR signal (the
@@ -579,76 +491,34 @@ jobs:
   # A pinch/rotate scenario run through the full `bajutsu run` path on the XCUITest backend
   # (BE-0019): two-finger gestures actuated through the resident runner's /gesture endpoint and
   # snapshot-handle addressing. This exercises the actuator end to end via the run loop, not just
-  # the driver contract the conformance job runs.
-  #
-  # Also runs the deterministic scenario from `permission.yaml` (BE-0276) and the runner-channel
-  # actuation scenarios search.yaml + notices.yaml (BE-0281): each taps a tab-bar item a coordinate
-  # backend can never resolve (see docs/showcase.md), so all need the same forced-XCUITest treatment
-  # as the multi-touch scenario above — this job's Simulator/app/runner build already pays for that,
-  # so each is one extra `bajutsu run` rather than a whole new job. search.yaml exercises the `/type`
-  # endpoint and notices.yaml the `/swipe` + `/back` endpoints of the resident runner — the actuators
-  # on-device CI reached only for tap / pinch / rotate before BE-0281. Finally, two smoke runs prove
-  # the bundled-runner path (BE-0292): the same resident runner resolved from the wheel bundle rather
-  # than a config `testRunner`, against both the SwiftUI and UIKit a11y apps (the runner is
-  # app-agnostic, BE-0019), showing a Simulator run needs no runner-build and no runner path. Retains
-  # the job's original name (`xcuitest (multi-touch)` is a branch-protection required check) even
-  # though it now covers more than the multi-touch scenario. Unlike the `actuation` job above, these
-  # steps don't get `continue-on-error` + a summary step: this job feeds the required `E2E` gate, so
-  # an early failure correctly stops the job rather than trading gate strictness for per-scenario
-  # signal the way the non-gating `actuation` job does.
-  xcuitest-gestures:
-    name: xcuitest (multi-touch)
+  # the driver contract the conformance job runs — the one class of actuation the retired idb
+  # backend could not drive (BE-0290). Feeds the required `E2E` gate directly (no
+  # continue-on-error): unlike the non-gating `actuation` job, an early failure here should stop
+  # the job rather than trade gate strictness for a per-scenario signal.
+  gestures:
+    name: gestures (xcuitest)
     needs: changes
     if: needs.changes.outputs.relevant == 'true'
     runs-on: macos-latest
     # Cap the metered macOS job (10x billing): a hung Simulator/runner would otherwise run to the
-    # 6h default. Build + the gesture, permission, search, and notices scenario runs (BE-0281 added
-    # the latter two), plus the UIKit build and the two bundled-runner smoke runs (BE-0292), is
-    # ~27min, so 35 catches a real hang while keeping a comfortable buffer.
-    timeout-minutes: 35
+    # 6h default. Build + the gesture scenario run is ~12min, so 20 catches a real hang with headroom.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
 
-      - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90  # v1.7.0
-        with:
-          xcode-version: latest-stable
+      - name: Set up the iOS toolchain
+        id: toolchain
+        uses: ./.github/actions/setup-ios-toolchain
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990  # v8.3.2
-        with:
-          enable-cache: true
-
-      - name: Install xcodegen
-        env:
-          HOMEBREW_NO_AUTO_UPDATE: "1"
-          HOMEBREW_NO_INSTALL_CLEANUP: "1"
-        run: brew install xcodegen
-
-      - name: Boot a Simulator
-        id: sim
-        uses: ./.github/actions/boot-simulator
-        with:
-          wait: "false"
-
-      # The DerivedData cache must not cross Xcode upgrades: a different Xcode's compiled modules
-      # cause stale-artifact build failures. Capture the active Xcode build version for the cache key.
-      - name: Resolve Xcode version (for the cache key)
-        id: xcode
-        run: echo "ver=$(xcodebuild -version | tr '\n ' '--')" >> "$GITHUB_OUTPUT"
-
-      # Cache the showcase app's DerivedData so `swiftui-build` is incremental across runs, matching
-      # the xcuitest job. Keyed on Xcode + the app's Swift sources + project spec; the `-app-` infix
-      # keeps this app-scheme cache from colliding with the xcuitest job's UITests-scheme cache that
-      # writes the same DerivedData path. restore-keys warm compiled modules on a partial source
-      # change; a miss just rebuilds cold, so the cache only ever speeds the build, never its result.
+      # Cache the showcase app's DerivedData so `swiftui-build` is incremental across runs, sharing
+      # the `-app-` scheme cache the smoke / golden / visual jobs use. A miss just rebuilds cold.
       - name: Cache DerivedData (app)
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: demos/showcase/ios/swiftui/build/dd
-          key: xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-${{ hashFiles('BajutsuKit/**/*.swift', 'demos/showcase/ios/swiftui/**/*.swift', 'demos/showcase/ios/swiftui/**/project.yml') }}
+          key: xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-${{ hashFiles('BajutsuKit/**/*.swift', 'demos/showcase/ios/swiftui/**/*.swift', 'demos/showcase/ios/swiftui/**/project.yml') }}
           restore-keys: |
-            xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-
+            xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-
 
       # The resident XCUITest runner builds into its own DerivedData dir; cache it separately
       # (keyed on the runner's Swift sources + project spec) so `runner-build` is incremental too.
@@ -656,41 +526,22 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: BajutsuKit/Runner/build/dd
-          key: xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-${{ hashFiles('BajutsuKit/**/*.swift', 'BajutsuKit/Runner/project.yml') }}
+          key: xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-${{ hashFiles('BajutsuKit/**/*.swift', 'BajutsuKit/Runner/project.yml') }}
           restore-keys: |
-            xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-
+            xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-
 
-      # The UIKit twin builds into its own DerivedData dir; cache it separately (keyed on the UIKit
-      # app's Swift sources + project spec) so the bundled-runner smoke run below (BE-0292) reuses an
-      # incremental build. This app is otherwise built only by the non-gating jobs (which run on
-      # SwiftUI), so its cache never collides with the `-app-` SwiftUI cache above.
-      - name: Cache DerivedData (uikit)
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
-        with:
-          path: demos/showcase/ios/uikit/build/dd
-          key: xcode-dd-uikit-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-${{ hashFiles('BajutsuKit/**/*.swift', 'demos/showcase/ios/uikit/**/*.swift', 'demos/showcase/ios/uikit/**/project.yml') }}
-          restore-keys: |
-            xcode-dd-uikit-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-
-
-      # Build the a11y apps (SwiftUI + UIKit) and stage the resident XCUITest runner. `make
-      # runner-bundle` (BE-0292) builds the runner (its own `runner-build` step) AND stages it into
-      # bajutsu/_xcuitest_runner/, so it serves both the testRunner-based scenarios (which read the
-      # built .xctestrun) and the bundled-runner smoke runs below (which resolve to the staged copy
-      # with no testRunner path) — no separate runner-build line needed. The bajutsu-e2e action's own
-      # `uv sync --no-dev` covers the Python deps, so no dep fetch here.
-      - name: Build the apps + bundle the runner
+      # Build the a11y app AND the resident XCUITest runner (both needed by the XCUITest backend).
+      # The bajutsu-e2e action's own `uv sync --no-dev` covers the Python deps, so no dep fetch here.
+      - name: Build the app + runner
         run: |
           make -C demos/showcase swiftui-build
-          make -C demos/showcase uikit-build
-          make runner-bundle
+          make -C demos/showcase runner-build
 
       - name: Wait for the Simulator
-        run: xcrun simctl bootstatus "${{ steps.sim.outputs.udid }}" -b
+        run: xcrun simctl bootstatus "${{ steps.toolchain.outputs.udid }}" -b
 
-      - name: Install the apps
-        run: |
-          xcrun simctl install "${{ steps.sim.outputs.udid }}" "demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
-          xcrun simctl install "${{ steps.sim.outputs.udid }}" "demos/showcase/ios/uikit/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseUIKit.app"
+      - name: Install the app
+        run: xcrun simctl install "${{ steps.toolchain.outputs.udid }}" "demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
 
       - name: Run the multi-touch scenario (xcuitest)
         uses: ./.github/actions/bajutsu-e2e
@@ -699,17 +550,74 @@ jobs:
           target: showcase-swiftui
           backend: xcuitest
           config: demos/showcase/showcase.config.yaml
-          udid: ${{ steps.sim.outputs.udid }}
-          artifact-name: xcuitest-gestures-run
+          udid: ${{ steps.toolchain.outputs.udid }}
+          artifact-name: gestures-run
 
-      # The `permissions` field (BE-0276) on-device: reached via the same Simulator/app/runner this
-      # job already built for the multi-touch scenario above, so it costs one more `bajutsu run`
-      # rather than a whole new job. `permission.yaml` taps the "Permissions" tab bar item, behind
-      # the native tab bar (docs/showcase.md). `--exclude ai` drops the file's notification scenario
-      # (its iOS grant path needs the vision `dismissAlerts` guard, so it stays out of this
-      # deterministic gate — prime directive 1) and keeps only `location`, which `simctl privacy
-      # grant` pre-grants before launch with no prompt. android-e2e.yml's `smoke (adb)` job already
-      # runs both scenarios in permission.yaml unchanged, so this is the iOS twin of that coverage.
+  # The deterministic permission surface (BE-0276, BE-0316): each scenario taps a tab-bar item
+  # behind the native tab bar (docs/showcase.md), a target a coordinate backend can never resolve,
+  # so both need the same forced-XCUITest treatment. Feeds the required `E2E` gate directly (no
+  # continue-on-error), like `gestures` above.
+  #   - permission.yaml: the `permissions` field on-device. `--exclude ai` drops the file's
+  #     notification scenario (its iOS grant path needs the vision `dismissAlerts` guard, so it
+  #     stays out of this deterministic gate — prime directive 1) and keeps only `location`, which
+  #     `simctl privacy grant` pre-grants before launch with no prompt. android-e2e.yml's
+  #     `smoke (adb)` job already runs both scenarios in permission.yaml unchanged, so this is the
+  #     iOS twin of that coverage.
+  #   - permission_system_alert.yaml: the `handleSystemAlert` step. It fires the
+  #     notification-permission request, then taps the SpringBoard prompt's "Allow" button by a
+  #     native accessibility query — no vision model, so this is the deterministic counterpart to
+  #     permission.yaml's `dismissAlerts` grant (which the step above excludes as `ai`). Its own
+  #     file, not a scenario in permission.yaml: only the iOS (XCUITest) backend declares the
+  #     capability, so a scenario in the shared file would fail android-e2e.yml's required
+  #     `smoke (adb)` job at preflight.
+  permission:
+    name: permission (xcuitest)
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
+    runs-on: macos-latest
+    # Cap the metered macOS job (10x billing): a hung Simulator/runner would otherwise run to the
+    # 6h default. Build + two short scenario runs is ~12min, so 20 catches a real hang with headroom.
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - name: Set up the iOS toolchain
+        id: toolchain
+        uses: ./.github/actions/setup-ios-toolchain
+
+      # Cache the showcase app's DerivedData so `swiftui-build` is incremental across runs, sharing
+      # the `-app-` scheme cache the smoke / golden / visual jobs use. A miss just rebuilds cold.
+      - name: Cache DerivedData (app)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: demos/showcase/ios/swiftui/build/dd
+          key: xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-${{ hashFiles('BajutsuKit/**/*.swift', 'demos/showcase/ios/swiftui/**/*.swift', 'demos/showcase/ios/swiftui/**/project.yml') }}
+          restore-keys: |
+            xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-
+
+      # The resident XCUITest runner builds into its own DerivedData dir; cache it separately
+      # (keyed on the runner's Swift sources + project spec) so `runner-build` is incremental too.
+      - name: Cache DerivedData (runner)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: BajutsuKit/Runner/build/dd
+          key: xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-${{ hashFiles('BajutsuKit/**/*.swift', 'BajutsuKit/Runner/project.yml') }}
+          restore-keys: |
+            xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-
+
+      # Build the a11y app AND the resident XCUITest runner (both needed by the XCUITest backend).
+      # The bajutsu-e2e action's own `uv sync --no-dev` covers the Python deps, so no dep fetch here.
+      - name: Build the app + runner
+        run: |
+          make -C demos/showcase swiftui-build
+          make -C demos/showcase runner-build
+
+      - name: Wait for the Simulator
+        run: xcrun simctl bootstatus "${{ steps.toolchain.outputs.udid }}" -b
+
+      - name: Install the app
+        run: xcrun simctl install "${{ steps.toolchain.outputs.udid }}" "demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
+
       - name: Run the permission scenario (xcuitest)
         uses: ./.github/actions/bajutsu-e2e
         with:
@@ -718,16 +626,9 @@ jobs:
           target: showcase-swiftui
           backend: xcuitest
           config: demos/showcase/showcase.config.yaml
-          udid: ${{ steps.sim.outputs.udid }}
-          artifact-name: xcuitest-permission-run
+          udid: ${{ steps.toolchain.outputs.udid }}
+          artifact-name: permission-run
 
-      # The `handleSystemAlert` step (BE-0316) on-device: fires the notification-permission request,
-      # then taps the SpringBoard prompt's "Allow" button by a native accessibility query — no vision
-      # model, so this is the deterministic counterpart to permission.yaml's `dismissAlerts` grant
-      # (which the step above excludes as `ai`). Its own file, not a scenario in permission.yaml: only
-      # the iOS (XCUITest) backend declares the capability, so a scenario in the shared file would fail
-      # android-e2e.yml's required `smoke (adb)` job at preflight. Reached via this job's already-built
-      # Simulator/app/runner for one more `bajutsu run`, the same cost-sharing as the scenarios above.
       - name: Run the system-alert scenario (xcuitest — handleSystemAlert)
         uses: ./.github/actions/bajutsu-e2e
         with:
@@ -735,19 +636,66 @@ jobs:
           target: showcase-swiftui
           backend: xcuitest
           config: demos/showcase/showcase.config.yaml
-          udid: ${{ steps.sim.outputs.udid }}
-          artifact-name: xcuitest-system-alert-run
+          udid: ${{ steps.toolchain.outputs.udid }}
+          artifact-name: permission-system-alert-run
 
-      # XCUITest actuation on the runner channel (BE-0281): the `/type`, `/swipe`, and `/back`
-      # endpoints of the resident BajutsuRunner, which on-device CI reached only for tap / pinch /
-      # rotate before now. Both scenarios open with a tab tap (they filter the Search list / walk
-      # the Notices list, screens behind the native tab bar), reached via this job's already-built
-      # runner and app for one more `bajutsu run` each, the same cost-sharing the permission
-      # scenario above uses rather than a whole new job.
-      #   - search.yaml: `/type` into the Search field, then assert the filtered count.
-      #   - notices.yaml: `/swipe` to walk an off-screen row into view, then `/back` from
-      #     the pushed Notice Detail. The Notices List is XCUITest's reliable scroll surface (the Log
-      #     Form's deep rows are not, see gestures_multitouch.yaml's header).
+  # XCUITest actuation on the runner channel (BE-0281): the `/type` and `/swipe` + `/back`
+  # endpoints of the resident BajutsuRunner, which on-device CI reached only for tap / pinch /
+  # rotate before this. Both scenarios open with a tab tap (they filter the Search list / walk the
+  # Notices list, screens behind the native tab bar). Feeds the required `E2E` gate directly (no
+  # continue-on-error), like `gestures` above.
+  #   - search.yaml: `/type` into the Search field, then assert the filtered count.
+  #   - notices.yaml: `/swipe` to walk an off-screen row into view, then `/back` from
+  #     the pushed Notice Detail. The Notices List is XCUITest's reliable scroll surface (the Log
+  #     Form's deep rows are not, see gestures_multitouch.yaml's header).
+  runner-actuation:
+    name: runner-actuation (xcuitest)
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
+    runs-on: macos-latest
+    # Cap the metered macOS job (10x billing): a hung Simulator/runner would otherwise run to the
+    # 6h default. Build + two short scenario runs is ~12min, so 20 catches a real hang with headroom.
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - name: Set up the iOS toolchain
+        id: toolchain
+        uses: ./.github/actions/setup-ios-toolchain
+
+      # Cache the showcase app's DerivedData so `swiftui-build` is incremental across runs, sharing
+      # the `-app-` scheme cache the smoke / golden / visual jobs use. A miss just rebuilds cold.
+      - name: Cache DerivedData (app)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: demos/showcase/ios/swiftui/build/dd
+          key: xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-${{ hashFiles('BajutsuKit/**/*.swift', 'demos/showcase/ios/swiftui/**/*.swift', 'demos/showcase/ios/swiftui/**/project.yml') }}
+          restore-keys: |
+            xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-
+
+      # The resident XCUITest runner builds into its own DerivedData dir; cache it separately
+      # (keyed on the runner's Swift sources + project spec) so `runner-build` is incremental too.
+      - name: Cache DerivedData (runner)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: BajutsuKit/Runner/build/dd
+          key: xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-${{ hashFiles('BajutsuKit/**/*.swift', 'BajutsuKit/Runner/project.yml') }}
+          restore-keys: |
+            xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-
+
+      # Build the a11y app AND the resident XCUITest runner (both needed by the XCUITest backend).
+      # The bajutsu-e2e action's own `uv sync --no-dev` covers the Python deps, so no dep fetch here.
+      - name: Build the app + runner
+        run: |
+          make -C demos/showcase swiftui-build
+          make -C demos/showcase runner-build
+
+      - name: Wait for the Simulator
+        run: xcrun simctl bootstatus "${{ steps.toolchain.outputs.udid }}" -b
+
+      - name: Install the app
+        run: xcrun simctl install "${{ steps.toolchain.outputs.udid }}" "demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
+
       - name: Run the search scenario (xcuitest — /type)
         uses: ./.github/actions/bajutsu-e2e
         with:
@@ -755,8 +703,8 @@ jobs:
           target: showcase-swiftui
           backend: xcuitest
           config: demos/showcase/showcase.config.yaml
-          udid: ${{ steps.sim.outputs.udid }}
-          artifact-name: xcuitest-search-run
+          udid: ${{ steps.toolchain.outputs.udid }}
+          artifact-name: runner-actuation-search-run
 
       - name: Run the notices scenario (xcuitest — /swipe + /back)
         uses: ./.github/actions/bajutsu-e2e
@@ -765,17 +713,84 @@ jobs:
           target: showcase-swiftui
           backend: xcuitest
           config: demos/showcase/showcase.config.yaml
-          udid: ${{ steps.sim.outputs.udid }}
-          artifact-name: xcuitest-notices-run
+          udid: ${{ steps.toolchain.outputs.udid }}
+          artifact-name: runner-actuation-notices-run
 
-      # The bundled-runner path (BE-0292): the same resident runner, but resolved from the wheel
-      # bundle instead of a config `testRunner`. Uses showcase.bundled-runner.config.yaml, whose
-      # targets carry no `xcuitest` block, so with the runner staged into bajutsu/_xcuitest_runner/ by
-      # `make runner-bundle` above, resolution falls through to the bundled runner and materializes it
-      # into the cache — proving a Simulator run needs no runner-build and no runner path. smoke.yaml
-      # runs identically on every target (it only asserts the fixed Stable catalog), so it is the
-      # steadiest proof; running it on both toolkits shows the one app-agnostic bundled runner (BE-0019)
-      # drives SwiftUI and UIKit alike. Forced onto XCUITest since the bundled runner is the point.
+  # The bundled-runner path (BE-0292): the same resident runner, but resolved from the wheel
+  # bundle instead of a config `testRunner`. Uses showcase.bundled-runner.config.yaml, whose
+  # targets carry no `xcuitest` block, so with the runner staged into bajutsu/_xcuitest_runner/ by
+  # `make runner-bundle` below, resolution falls through to the bundled runner and materializes it
+  # into the cache — proving a Simulator run needs no runner-build and no runner path. smoke.yaml
+  # runs identically on every target (it only asserts the fixed Stable catalog), so it is the
+  # steadiest proof; running it on both toolkits shows the one app-agnostic bundled runner (BE-0019)
+  # drives SwiftUI and UIKit alike. Forced onto XCUITest since the bundled runner is the point.
+  # Feeds the required `E2E` gate directly (no continue-on-error), like `gestures` above.
+  bundled-runner:
+    name: bundled-runner (xcuitest)
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
+    runs-on: macos-latest
+    # Cap the metered macOS job (10x billing): a hung Simulator/runner would otherwise run to the
+    # 6h default. Build (SwiftUI + UIKit) + bundle the runner + two smoke runs is ~16min, so 25
+    # catches a real hang with headroom.
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - name: Set up the iOS toolchain
+        id: toolchain
+        uses: ./.github/actions/setup-ios-toolchain
+
+      # Cache the showcase app's DerivedData so `swiftui-build` is incremental across runs, sharing
+      # the `-app-` scheme cache the smoke / golden / visual jobs use. A miss just rebuilds cold.
+      - name: Cache DerivedData (app)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: demos/showcase/ios/swiftui/build/dd
+          key: xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-${{ hashFiles('BajutsuKit/**/*.swift', 'demos/showcase/ios/swiftui/**/*.swift', 'demos/showcase/ios/swiftui/**/project.yml') }}
+          restore-keys: |
+            xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-
+
+      # The resident XCUITest runner builds into its own DerivedData dir; cache it separately
+      # (keyed on the runner's Swift sources + project spec) so `runner-build` is incremental too.
+      - name: Cache DerivedData (runner)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: BajutsuKit/Runner/build/dd
+          key: xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-${{ hashFiles('BajutsuKit/**/*.swift', 'BajutsuKit/Runner/project.yml') }}
+          restore-keys: |
+            xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-
+
+      # The UIKit twin builds into its own DerivedData dir; cache it separately (keyed on the UIKit
+      # app's Swift sources + project spec). This app is otherwise built only by the non-gating
+      # jobs (which run on SwiftUI), so its cache never collides with the `-app-` SwiftUI cache above.
+      - name: Cache DerivedData (uikit)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: demos/showcase/ios/uikit/build/dd
+          key: xcode-dd-uikit-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-${{ hashFiles('BajutsuKit/**/*.swift', 'demos/showcase/ios/uikit/**/*.swift', 'demos/showcase/ios/uikit/**/project.yml') }}
+          restore-keys: |
+            xcode-dd-uikit-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-
+
+      # Build the a11y apps (SwiftUI + UIKit) and stage the resident XCUITest runner. `make
+      # runner-bundle` (BE-0292) builds the runner (its own `runner-build` step) AND stages it into
+      # bajutsu/_xcuitest_runner/, so it serves the bundled-runner smoke runs below (which resolve
+      # to the staged copy with no testRunner path) — no separate runner-build line needed. The
+      # bajutsu-e2e action's own `uv sync --no-dev` covers the Python deps, so no dep fetch here.
+      - name: Build the apps + bundle the runner
+        run: |
+          make -C demos/showcase swiftui-build
+          make -C demos/showcase uikit-build
+          make runner-bundle
+
+      - name: Wait for the Simulator
+        run: xcrun simctl bootstatus "${{ steps.toolchain.outputs.udid }}" -b
+
+      - name: Install the apps
+        run: |
+          xcrun simctl install "${{ steps.toolchain.outputs.udid }}" "demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
+          xcrun simctl install "${{ steps.toolchain.outputs.udid }}" "demos/showcase/ios/uikit/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseUIKit.app"
+
       - name: Run smoke on the bundled runner (xcuitest — SwiftUI, no testRunner)
         uses: ./.github/actions/bajutsu-e2e
         with:
@@ -783,8 +798,8 @@ jobs:
           target: showcase-swiftui
           backend: xcuitest
           config: demos/showcase/showcase.bundled-runner.config.yaml
-          udid: ${{ steps.sim.outputs.udid }}
-          artifact-name: xcuitest-bundled-swiftui-run
+          udid: ${{ steps.toolchain.outputs.udid }}
+          artifact-name: bundled-runner-swiftui-run
 
       - name: Run smoke on the bundled runner (xcuitest — UIKit, no testRunner)
         uses: ./.github/actions/bajutsu-e2e
@@ -793,8 +808,8 @@ jobs:
           target: showcase-uikit
           backend: xcuitest
           config: demos/showcase/showcase.bundled-runner.config.yaml
-          udid: ${{ steps.sim.outputs.udid }}
-          artifact-name: xcuitest-bundled-uikit-run
+          udid: ${{ steps.toolchain.outputs.udid }}
+          artifact-name: bundled-runner-uikit-run
 
   # The driver conformance suite (BE-0114): one backend-agnostic contract, run on-device against
   # the XCUITest backend (the resident BajutsuRunner). It proves the determinism-core invariants
@@ -814,46 +829,19 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
 
-      - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90  # v1.7.0
-        with:
-          xcode-version: latest-stable
+      - name: Set up the iOS toolchain
+        id: toolchain
+        uses: ./.github/actions/setup-ios-toolchain
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990  # v8.3.2
-        with:
-          enable-cache: true
-
-      - name: Install xcodegen
-        env:
-          HOMEBREW_NO_AUTO_UPDATE: "1"
-          HOMEBREW_NO_INSTALL_CLEANUP: "1"
-        run: brew install xcodegen
-
-      - name: Boot a Simulator
-        id: sim
-        uses: ./.github/actions/boot-simulator
-        with:
-          wait: "false"
-
-      # The DerivedData cache must not cross Xcode upgrades: a different Xcode's compiled modules
-      # cause stale-artifact build failures. Capture the active Xcode build version for the cache key.
-      - name: Resolve Xcode version (for the cache key)
-        id: xcode
-        run: echo "ver=$(xcodebuild -version | tr '\n ' '--')" >> "$GITHUB_OUTPUT"
-
-      # Cache the showcase app's DerivedData so `swiftui-build` is incremental across runs, matching
-      # the xcuitest job. Keyed on Xcode + the app's Swift sources + project spec; the `-app-` infix
-      # keeps this app-scheme cache from colliding with the xcuitest job's UITests-scheme cache that
-      # writes the same DerivedData path. restore-keys warm compiled modules on a partial source
-      # change; a miss just rebuilds cold, so the cache only ever speeds the build, never its result.
+      # Cache the showcase app's DerivedData so `swiftui-build` is incremental across runs, sharing
+      # the `-app-` scheme cache the smoke / golden / visual jobs use. A miss just rebuilds cold.
       - name: Cache DerivedData (app)
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: demos/showcase/ios/swiftui/build/dd
-          key: xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-${{ hashFiles('BajutsuKit/**/*.swift', 'demos/showcase/ios/swiftui/**/*.swift', 'demos/showcase/ios/swiftui/**/project.yml') }}
+          key: xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-${{ hashFiles('BajutsuKit/**/*.swift', 'demos/showcase/ios/swiftui/**/*.swift', 'demos/showcase/ios/swiftui/**/project.yml') }}
           restore-keys: |
-            xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-
+            xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-
 
       # The resident XCUITest runner builds into its own DerivedData dir; cache it separately
       # (keyed on the runner's Swift sources + project spec) so `runner-build` is incremental too.
@@ -861,9 +849,9 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: BajutsuKit/Runner/build/dd
-          key: xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-${{ hashFiles('BajutsuKit/**/*.swift', 'BajutsuKit/Runner/project.yml') }}
+          key: xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-${{ hashFiles('BajutsuKit/**/*.swift', 'BajutsuKit/Runner/project.yml') }}
           restore-keys: |
-            xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-
+            xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-
 
       # Build the a11y app AND the resident XCUITest runner; sync the venv concurrently. Unlike the
       # smoke job, the venv here keeps the dev group (pytest) — this job runs the suite through
@@ -879,7 +867,7 @@ jobs:
           trap - EXIT
 
       - name: Wait for the Simulator
-        run: xcrun simctl bootstatus "${{ steps.sim.outputs.udid }}" -b
+        run: xcrun simctl bootstatus "${{ steps.toolchain.outputs.udid }}" -b
 
       # `launch_driver` erases/installs/launches the backend, so no explicit install here. `-m
       # ondevice` overrides the repo default (`-m 'not web and not ondevice'`) to select exactly the
@@ -888,7 +876,7 @@ jobs:
       # spec file the app polls, so parallel workers would clobber each other's screen — run serially.
       - name: Run the conformance suite (xcuitest)
         env:
-          BAJUTSU_CONFORMANCE_UDID: ${{ steps.sim.outputs.udid }}
+          BAJUTSU_CONFORMANCE_UDID: ${{ steps.toolchain.outputs.udid }}
         run: uv run pytest tests/test_driver_conformance_ondevice.py -m ondevice -n0 -v
 
   # On-device iOS visual-regression (VRT): the iOS twin of android-e2e.yml's `e2e-visual`. Boots a
@@ -919,32 +907,10 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
 
-      - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90  # v1.7.0
+      - name: Set up the iOS toolchain
+        id: toolchain
+        uses: ./.github/actions/setup-ios-toolchain
         with:
-          xcode-version: latest-stable
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990  # v8.3.2
-        with:
-          enable-cache: true
-
-      # xcodegen generates the showcase Xcode project for `swiftui-build`; rely on the runner image's
-      # pre-installed Homebrew state and skip auto-update / cleanup (each costs minutes per run).
-      - name: Install xcodegen
-        env:
-          HOMEBREW_NO_AUTO_UPDATE: "1"
-          HOMEBREW_NO_INSTALL_CLEANUP: "1"
-        run: brew install xcodegen
-
-      # Start the boot first so it runs concurrently with the app build below (a fresh boot is ~80s
-      # and does not depend on the build). `wait: 'false'` returns once boot is initiated; the wait
-      # step blocks on "booted" right before the run.
-      - name: Boot a Simulator
-        id: sim
-        uses: ./.github/actions/boot-simulator
-        with:
-          wait: "false"
           # Pin the exact model the committed baseline was recorded on (see baselines_ios/README.md),
           # the iOS twin of android-e2e.yml's `profile: pixel_6`. Unpinned, boot-simulator takes
           # whichever iPhone the runner's Xcode ships first — a resolution change would drift this
@@ -952,21 +918,15 @@ jobs:
           # loudly rather than silently drifting.
           device-type: iPhone 17
 
-      # The DerivedData cache must not cross Xcode upgrades (a different Xcode's compiled modules cause
-      # stale-artifact build failures), so key it on the active Xcode build version.
-      - name: Resolve Xcode version (for the cache key)
-        id: xcode
-        run: echo "ver=$(xcodebuild -version | tr '\n ' '--')" >> "$GITHUB_OUTPUT"
-
       # Cache the showcase app's DerivedData so `swiftui-build` is incremental across runs (matches
       # the `smoke` job above). A miss just rebuilds cold, so the cache only ever speeds the build.
       - name: Cache DerivedData (app)
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: demos/showcase/ios/swiftui/build/dd
-          key: xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-${{ hashFiles('BajutsuKit/**/*.swift', 'demos/showcase/ios/swiftui/**/*.swift', 'demos/showcase/ios/swiftui/**/project.yml') }}
+          key: xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-${{ hashFiles('BajutsuKit/**/*.swift', 'demos/showcase/ios/swiftui/**/*.swift', 'demos/showcase/ios/swiftui/**/project.yml') }}
           restore-keys: |
-            xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-
+            xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-
 
       # The resident XCUITest runner builds into its own DerivedData dir; cache it separately
       # (keyed on the runner's Swift sources + project spec) so `runner-build` is incremental too.
@@ -974,9 +934,9 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: BajutsuKit/Runner/build/dd
-          key: xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-${{ hashFiles('BajutsuKit/**/*.swift', 'BajutsuKit/Runner/project.yml') }}
+          key: xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-${{ hashFiles('BajutsuKit/**/*.swift', 'BajutsuKit/Runner/project.yml') }}
           restore-keys: |
-            xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.ver }}-
+            xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-
 
       # Sync the visual Python extra concurrently with the app + runner build (the extra is
       # independent of the build): the pixel-compare deps `make e2e-visual` needs. A build failure
@@ -993,13 +953,13 @@ jobs:
           trap - EXIT
 
       - name: Wait for the Simulator
-        run: xcrun simctl bootstatus "${{ steps.sim.outputs.udid }}" -b
+        run: xcrun simctl bootstatus "${{ steps.toolchain.outputs.udid }}" -b
 
       # Run the committed pixel VRT over XCUITest. `make e2e-visual` (demos/showcase/Makefile)
       # installs the freshly-built app, drives the Stable catalog on the launch tab, and
       # pixel-compares it against baselines_ios/stable.png with the status bar + tab bar masked.
       - name: Run the visual regression (VRT, pixel snapshot)
-        run: make -C demos/showcase e2e-visual SIM=${{ steps.sim.outputs.udid }}
+        run: make -C demos/showcase e2e-visual SIM=${{ steps.toolchain.outputs.udid }}
 
       - name: Upload run artifacts
         if: always()
@@ -1017,19 +977,22 @@ jobs:
   # path-gated macOS jobs.
   e2e:
     name: E2E (iOS)
-    needs: [changes, smoke, xcuitest, xcuitest-gestures, conformance]
+    needs: [changes, smoke, codegen, gestures, permission, runner-actuation, bundled-runner, conformance]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Check E2E results
         env:
           SMOKE: ${{ needs.smoke.result }}
-          XCUITEST: ${{ needs.xcuitest.result }}
-          GESTURES: ${{ needs.xcuitest-gestures.result }}
+          CODEGEN: ${{ needs.codegen.result }}
+          GESTURES: ${{ needs.gestures.result }}
+          PERMISSION: ${{ needs.permission.result }}
+          RUNNER_ACTUATION: ${{ needs.runner-actuation.result }}
+          BUNDLED_RUNNER: ${{ needs.bundled-runner.result }}
           CONFORMANCE: ${{ needs.conformance.result }}
         run: |
-          echo "smoke=$SMOKE xcuitest=$XCUITEST gestures=$GESTURES conformance=$CONFORMANCE"
-          for result in "$SMOKE" "$XCUITEST" "$GESTURES" "$CONFORMANCE"; do
+          echo "smoke=$SMOKE codegen=$CODEGEN gestures=$GESTURES permission=$PERMISSION runner_actuation=$RUNNER_ACTUATION bundled_runner=$BUNDLED_RUNNER conformance=$CONFORMANCE"
+          for result in "$SMOKE" "$CODEGEN" "$GESTURES" "$PERMISSION" "$RUNNER_ACTUATION" "$BUNDLED_RUNNER" "$CONFORMANCE"; do
             if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
               echo "E2E failed"
               exit 1

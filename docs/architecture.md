@@ -446,7 +446,7 @@ device (the shared device is reseeded via one channel, so parallel workers would
   on-device per PR by `ios-e2e.yml`
   ([BE-0281](../roadmaps/BE-0281-ios-on-device-actuation-coverage/BE-0281-ios-on-device-actuation-coverage.md)).
 - The `pinch`/`rotate` multi-touch gestures — confirmed on-device via the `ios-e2e.yml`
-  `xcuitest (multi-touch)` job (`demos/showcase/scenarios/gestures_multitouch.yaml`, `--backend ios`).
+  `gestures (xcuitest)` job (`demos/showcase/scenarios/gestures_multitouch.yaml`, `--backend ios`).
 
 ### Validated in a browser (Linux, no Mac)
 

@@ -4,7 +4,7 @@
 # the real driver, the network smoke (BE-0282) drives the real network path (interception, capture,
 # the mocked flag, and redaction of really-captured evidence), and the codegen real-compile gate
 # (BE-0293) runs a bajutsu-generated .spec.ts with the real @playwright/test runner — the web twin of
-# ios-e2e.yml's `xcuitest (codegen)`. Unlike the iOS E2E (ios-e2e.yml) all run on Linux — no Mac, no
+# ios-e2e.yml's `codegen (xcuitest)`. Unlike the iOS E2E (ios-e2e.yml) all run on Linux — no Mac, no
 # Simulator — but installing Chromium + running a browser is heavy enough to gate.
 #
 # The lane carries a REQUIRED status check like iOS's `E2E`: the `E2E (web)` job below `needs` the
@@ -16,7 +16,7 @@
 # and the codegen job (`codegen (playwright)`, BE-0293) landed as SIGNAL first and, having proven
 # stable in CI, are now promoted into the aggregator's `needs` — the network job the web twin of
 # android-e2e.yml's already-gating `network (adb)`, the codegen job the web twin of ios-e2e.yml's
-# already-gating `xcuitest (codegen)`. A new browser job lands as SIGNAL (outside `needs`) and is
+# already-gating `codegen (xcuitest)`. A new browser job lands as SIGNAL (outside `needs`) and is
 # promoted into `needs` only once it proves stable, exactly as these two were.
 #
 # Because `E2E (web)` is a required check, the lane can't be path-gated at the trigger — a required
@@ -221,7 +221,7 @@ jobs:
       - name: Web network smoke + redaction check (demos/web)
         run: make -C demos/web e2e-network
 
-  # Codegen real-compile gate (BE-0293): the web twin of ios-e2e.yml's `xcuitest (codegen)`. Where the
+  # Codegen real-compile gate (BE-0293): the web twin of ios-e2e.yml's `codegen (xcuitest)`. Where the
   # string-only tests/test_codegen_playwright.py check the emitted source as text, this proves
   # codegen's actual claim — that the emitted file is a runnable native test — by re-generating the
   # checked-in demos/web/codegen/smoke.spec.ts from the smoke scenario, failing on drift, then running
