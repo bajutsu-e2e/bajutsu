@@ -76,12 +76,14 @@ _RUN_PATH = (
 # Each lane adds its own driver, app, scenarios, conformance harness, and workflow file on top of
 # `_RUN_PATH`. The lane differences are real: iOS and web relay both codegen and record CLI
 # commands, the Android lane relays `bajutsu run` and (for its `uiautomator (codegen)` job, BE-0294)
-# `bajutsu codegen` but not `record`; iOS and web exercise every driver while Android touches only
-# `drivers/adb.py` (+ the resident channel); each lane owns its showcase surface, its conformance
-# harness module, and its own workflow file.
+# `bajutsu codegen` but not `record`; each lane touches only the driver module(s) its own backend
+# actually imports (iOS: xcuitest[_live].py, Android: adb.py, web: playwright.py — verified against
+# each module's own imports, not a blanket `bajutsu/drivers/` sweep, which previously fired a lane's
+# metered jobs on another lane's driver-only change); each lane owns its showcase surface, its
+# conformance harness module, and its own workflow file.
 _LANE_PATHS: dict[str, str] = {
     "ios": (
-        r"|bajutsu/drivers/"
+        r"|bajutsu/drivers/(?:xcuitest|xcuitest_live)\.py$"
         r"|bajutsu/cli/commands/(?:codegen|record)\.py$"
         r"|tests/test_driver_conformance_ondevice\.py$"
         r"|BajutsuKit/"
@@ -99,10 +101,9 @@ _LANE_PATHS: dict[str, str] = {
         r"|\.github/actions/boot-simulator/"
     ),
     "android": (
-        # Only the adb driver (the top-level list does not reach into subdirectories) and the Python
-        # side of the resident UI Automator channel (BE-0245) this lane exercises. coordinate_tree.py
-        # is the shared read/settle core adb.py and idb.py both subclass (BE-0254) — relevant here
-        # too, not only to iOS's full `bajutsu/drivers/` sweep.
+        # Only the adb driver and the Python side of the resident UI Automator channel (BE-0245) this
+        # lane exercises. coordinate_tree.py is adb.py's own read/settle core (BE-0254) — a change to
+        # it can change adb's runtime behavior even though adb.py itself is untouched.
         r"|bajutsu/drivers/adb\.py$"
         r"|bajutsu/drivers/coordinate_tree\.py$"
         r"|bajutsu/adb_resident\.py$"
@@ -119,7 +120,7 @@ _LANE_PATHS: dict[str, str] = {
         r"|\.github/workflows/android-e2e\.yml$"
     ),
     "web": (
-        r"|bajutsu/drivers/"
+        r"|bajutsu/drivers/playwright\.py$"
         r"|bajutsu/cli/commands/(?:codegen|record)\.py$"
         # The serve-UI dogfood (BE-0058) drives the served SPA, so the serve backend and its templates
         # are web-CI-relevant whenever they change, not only when the harness itself does.
