@@ -33,8 +33,8 @@ Mac.
 
 This item closes that gap two ways. The primary contribution extends the determinism `locale`
 already gives the app to SpringBoard itself: force the Simulator's system language to a known value
-before boot, so `label`/`labelMatches` resolve exactly as `locale` predicts on every machine that
-runs the scenario, and the app and SpringBoard never disagree on which language is showing. The
+on every cold spawn, so `label`/`labelMatches` resolve exactly as `locale` predicts on every machine
+that runs the scenario, and the app and SpringBoard never disagree on which language is showing. The
 supporting contribution adds a small, locale-keyed label lookup for the two prompts this item scopes
 to first — notification authorization and App Tracking Transparency (ATT), the two prompts
 [BE-0276](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state.md)'s
@@ -81,24 +81,29 @@ native path once it lands, without either needing to solve the same problem twic
 The work divides into pinning the Simulator's system language, documenting the resulting contract,
 adding the locale-keyed convenience lookup, and verifying both on a real Simulator.
 
-1. **Resolve and pin the Simulator's system language deterministically, once per scenario.** Extend
-   `XcuitestEnvironment._prepare_simulator` (`bajutsu/platform_lifecycle/environments/xcuitest.py`) —
-   which already reapplies permission state on every scenario, cold spawn or warm resume alike, so a
-   reused runner starts each scenario from the same known state a cold lease does — to also write the
-   Simulator's system-wide language and region before the app launches, using the same technique
+1. **Resolve the Simulator's system language deterministically on every cold spawn, and gate warm
+   reuse on it matching.** `XcuitestEnvironment.start` already forces a cold respawn instead of
+   reusing a warm runner when a scenario needs `erase`
+   (`bajutsu/platform_lifecycle/environments/xcuitest.py`); extend that same condition so a resolved
+   locale that differs from the one already pinned on a warm runner forces a cold respawn too, rather
+   than being served by a runner whose SpringBoard is still rendering a previous locale. The value to
+   compare and pin follows the same precedence `_launch_params` already resolves for the app's own
+   launch arguments: `pre.locale or eff.locale`, the per-scenario `Preconditions.locale` override
+   falling back to the target's `locale` config field. On a cold spawn, extend `_prepare_simulator` to
+   write the Simulator's system-wide language and region after `boot`, using the same technique
    `xcodebuild`-based screenshot tools already rely on: `xcrun simctl spawn <udid> defaults write
-   -globalDomain AppleLanguages -array <language>` and the matching `AppleLocale` write, which
-   SpringBoard reads from the same global preferences database as any other process on the simulated
-   device. The value to write follows the same precedence `_launch_params` already resolves for the
-   app's own launch arguments — `pre.locale or eff.locale`, the per-scenario `Preconditions.locale`
-   override falling back to the target's `locale` config field — so a scenario that overrides its own
-   locale gets SpringBoard pinned to match it, rather than being pinned once at boot to a value a
-   later scenario's override then silently contradicts. Because the write happens once per scenario,
-   not on every polling tick, it costs nothing on the runner's per-tick budget that
+   -globalDomain AppleLanguages -array <language>` and the matching `AppleLocale` write. A `simctl
+   spawn` command needs an already-booted device to run at all, so this write only reaches the
+   Simulator once SpringBoard is already up and rendering whichever language it booted with, and an
+   already-running process does not pick up a `-globalDomain` write live — so the sequence must shut
+   the Simulator down and boot it once more, letting the second boot's SpringBoard start fresh against
+   the newly written value before the existing install/permission steps proceed. This adds one extra
+   boot cycle to a cold spawn or a locale-triggered respawn: a bounded, known cost paid once per spawn,
+   not on every polling tick, so it still costs nothing on the runner's per-tick budget that
    [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling.md)'s
-   detailed design is careful to protect. The exact `simctl spawn` invocation needs on-device
-   confirmation (unit 4) before this is called done, since a Simulator's global-preferences write is
-   not something the off-Simulator gate can observe.
+   detailed design is careful to protect. The reboot is the part unit 4 must confirm actually renders
+   SpringBoard in the new language on a real Simulator, since nothing here is observable
+   off-Simulator.
 2. **Document the resulting contract.** Once unit 1 lands, `label`/`labelMatches` resolve
    identically on every machine that runs the same `locale` — a scenario author who writes
    `label: "Allow"` under `locale: en_US` gets that exact behavior on CI, on a teammate's Mac, and on
@@ -123,10 +128,15 @@ adding the locale-keyed convenience lookup, and verifying both on a real Simulat
    today — the literal `label`/`labelMatches` a scenario supplies, unlocalized.
 4. **Verify on a real Simulator.** Boot two Simulators pinned to different `locale` values (for
    example `en_US` and `ja_JP`), run the same `handleSystemAlert` scenario against each, and confirm
-   both dismiss the prompt deterministically — proving unit 1's system-wide pin actually reaches
-   SpringBoard and unit 3's lookup resolves the label it predicts. A Simulator's rendered alert text
-   cannot be proven by the off-Simulator gate, so this unit is what turns units 1–3 from a plausible
-   design into a demonstrated one, mirroring the on-device verification unit both
+   both dismiss the prompt deterministically after the reboot unit 1 performs — proving the write and
+   the extra boot actually change what SpringBoard renders, not just what a preference file holds —
+   and that unit 3's lookup resolves the label it predicts. Then, within one runner, run a scenario at
+   one locale, immediately run a second scenario overriding `Preconditions.locale` to a different
+   value, and confirm the mismatch forces a cold respawn rather than reusing the first scenario's warm
+   runner with its stale language, proving unit 1's warm-reuse gate and not only its cold-spawn write.
+   A Simulator's rendered alert text cannot be proven by the off-Simulator gate, so this unit is what
+   turns units 1–3 from a plausible design into a demonstrated one, mirroring the on-device
+   verification unit both
    [BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step.md) and
    [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling.md)
    already carry for their own native-tap surfaces.
@@ -164,15 +174,17 @@ adding the locale-keyed convenience lookup, and verifying both on a real Simulat
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — resolve and pin the Simulator's system language and region deterministically once per
-      scenario, following the same `pre.locale or eff.locale` precedence `_launch_params` already
-      resolves for the app-scoped launch-argument mechanism.
+- [ ] Unit 1 — resolve the Simulator's system language deterministically on every cold spawn (write +
+      reboot so SpringBoard actually renders it), and gate warm reuse on the resolved locale matching
+      the one already pinned, mirroring `pre.erase`'s existing cold-respawn condition in
+      `XcuitestEnvironment.start`.
 - [ ] Unit 2 — document the resulting contract for `label`/`labelMatches` in `docs/configuration.md`
       and `handleSystemAlert`'s own documentation.
 - [ ] Unit 3 — add a locale-keyed label lookup for notification authorization and ATT (the two
       prompts BE-0276 cannot reach), additive to `label`/`labelMatches`/`index`, never a replacement.
-- [ ] Unit 4 — on-device verification: two Simulators pinned to different `locale` values, the same
-      `handleSystemAlert` scenario, deterministic dismissal on both.
+- [ ] Unit 4 — on-device verification: two Simulators pinned to different `locale` values dismiss the
+      same `handleSystemAlert` scenario deterministically after unit 1's reboot, and a mid-runner
+      locale override forces a cold respawn rather than a stale warm reuse.
 
 ## References
 
@@ -186,8 +198,9 @@ adding the locale-keyed convenience lookup, and verifying both on a real Simulat
   `bajutsu/config/schema.py`'s target-level `locale` field, matching the `pre.locale or eff.locale`
   precedence `_launch_params` already follows.
 - [`bajutsu/platform_lifecycle/environments/xcuitest.py`](../../bajutsu/platform_lifecycle/environments/xcuitest.py)
-  — `XcuitestEnvironment._prepare_simulator` and `_launch_params`, the device-prep sequence unit 1
-  extends and the precedence it reuses.
+  — `XcuitestEnvironment.start`'s existing `pre.erase` cold-respawn condition, which unit 1's
+  locale-mismatch gate mirrors; `_prepare_simulator`, the device-prep sequence unit 1 extends with the
+  write-and-reboot; and `_launch_params`, the precedence unit 1 reuses.
 - [`demos/showcase/scenarios/permission_system_alert.yaml`](../../demos/showcase/scenarios/permission_system_alert.yaml)
   — the shipped scenario whose literal `label: "Allow"` already carries the fragility this item
   closes.
