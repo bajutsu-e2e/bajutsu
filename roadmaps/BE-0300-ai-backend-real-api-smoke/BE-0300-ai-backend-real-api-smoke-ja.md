@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0300](BE-0300-ai-backend-real-api-smoke-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0300") |
+| 実装 PR | _pending_ |
 | トピック | AI プロバイダ設定 |
 <!-- /BE-METADATA -->
 
@@ -88,10 +89,34 @@ opt-in で API キーによりゲートされた、ゲート対象外のスモ�
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] 直接 Anthropic API アダプタ向けに、API キーでゲートした最小限のライブ呼び出しテストを追加する。
-- [ ] Bedrock アダプタにも同様のテストを追加する。困難な場合はその理由を明示する。
-- [ ] `ant` CLI アダプタにも同様のテストを追加する。困難な場合はその理由を明示する。
-- [ ] アダプタごとに opt-in かつゲート対象外の CI レーンを組み込む。
+- [x] 直接 Anthropic API アダプタ向けに、API キーでゲートした最小限のライブ呼び出しテストを追加する。
+- [x] Bedrock アダプタにも同様のテストを追加する。困難な場合はその理由を明示する。
+- [x] `ant` CLI アダプタにも同様のテストを追加する。困難な場合はその理由を明示する。
+- [x] アダプタごとに opt-in かつゲート対象外の CI レーンを組み込む。
+
+**ログ**
+
+- `tests/test_ai_backend_live_smoke.py` は、`AnthropicBackend` を通して些細な強制ツールのプロンプトで
+  実プロバイダを呼び出し、返り値がベンダー中立な `MessageResponse` として空でなくパースでき、
+  `ToolUseBlock` を持つことだけを検証します。トランスポートとスキーマの検証であって、モデルの品質検証
+  ではありません。アダプタごとに1つずつ（`api-key` / `bedrock` / `ant`）テストを置き、各プロバイダに
+  認証情報が無いときは `bajutsu.ai.credential_gap` によりスキップします。同じファイルにある決定的な
+  `FakeAnthropic` の自己検証テストが配線契約のアサーションの健全さを保つため、ライブ実行は空振りせず
+  実際に検証を行います。
+- opt-in のゲートには、設計が例として挙げた `BAJUTSU_LIVE_AI_SMOKE` 環境変数ではなく **`live` の
+  pytest マーカー**を用います。このマーカーは既定で高速スイートから除外されるため（`addopts` の
+  `not live`）、contributor が `ANTHROPIC_API_KEY` を export していても `make check` は構造として密閉の
+  ままです。兄弟項目の BE-0295 が実モデルスモークで確立したのと同じ前例です。実行は `-m live` で opt-in
+  します。
+- `.github/workflows/ai-smoke.yml` は**直接 Anthropic API** のレーンだけを配線します。起動は
+  `workflow_dispatch` のみで（push / PR では動かないため、フォークからの実行が認証情報を目にすることは
+  ありません。`devicefarm.yml` と同じ境界です）、`ai-smoke` の Environment にスコープした
+  `ANTHROPIC_API_KEY` の secret を使い、ゲート対象外です。secret が未設定ならテストはスキップし、ジョブは
+  緑の no-op になるので、運用者が接続するまでレーンは休止します。
+- **Bedrock と `ant` のレーンは意図的に CI へ配線していません。** ライブの Bedrock 呼び出しには AWS ロール
+  （とプロバイダ接頭辞つきの `BAJUTSU_BEDROCK_MODEL`）が、`ant` にはサインイン済みの OAuth CLI シートが
+  要り、いずれも現実的にはリポジトリの secret にできません。それらの `-m live` テストは、認証情報がある
+  ときにローカルや手動でなら実行できます。CI レーンだけを、そうした認証情報が用意できるまで見送ります。
 
 ## 参考
 
