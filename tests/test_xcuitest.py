@@ -354,6 +354,25 @@ def test_await_ready_times_out_loudly_when_the_runner_never_comes_up() -> None:
         _driver(lambda m, p, b: _Reply(status="starting")).await_ready(timeout=0.02, poll=0.001)
 
 
+def test_health_ready_is_a_single_shot_probe_true_when_ready() -> None:
+    # BE-0319 unit 3: one non-blocking probe (unlike await_ready's loop), so the cold-spawn liveness
+    # wait owns the timing between probes.
+    assert _driver(lambda m, p, b: _Reply(status="ready")).health_ready() is True
+
+
+def test_health_ready_is_false_before_the_runner_is_up() -> None:
+    assert _driver(lambda m, p, b: _Reply(status="starting")).health_ready() is False
+
+
+def test_health_ready_swallows_a_transport_failure_as_not_ready() -> None:
+    # A runner not yet accepting connections raises a transport failure; the single-shot probe reads
+    # that as not-ready (never an error), so the caller keeps polling rather than aborting.
+    def _refuse(m: str, p: str, b: Any) -> _Reply:
+        raise _TransportFailure("refused", delivered=False)
+
+    assert _driver(_refuse).health_ready() is False
+
+
 def test_a_runner_crash_mid_action_fails_loudly_not_as_not_found() -> None:
     def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
         if path == "/elements":

@@ -16,8 +16,10 @@ import shlex
 import socket
 import subprocess
 import tempfile
+import time
 from collections import deque
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import IO, Literal, cast
 
@@ -34,16 +36,31 @@ from bajutsu.scenario import Preconditions
 
 _logger = logging.getLogger(__name__)
 
-# Set to a directory to capture the runner subprocess's combined stdout/stderr, one file per cold
-# spawn. Off by default (the output is discarded): a passing run is silent and high-volume, but a
-# mid-run crash — see `_MAX_WARM_REUSES` below for what this repeatedly surfaced in CI — is
-# otherwise visible only as a `Connection refused` with no cause. A diagnostic aid for isolating
-# that crash, not a behavior change: unset, the runner is spawned exactly as before.
+# Overrides the directory the runner subprocess's combined stdout/stderr is captured into, one file
+# per cold spawn. Capture is on by default (BE-0319 unit 1): the first CI flake — and a mid-run
+# crash, see `_MAX_WARM_REUSES` below for what this repeatedly surfaced in CI — is diagnosable
+# without a human pre-arming this, so the variable now only redirects the capture directory. A
+# default (env-unset) capture goes to `_DEFAULT_RUNNER_LOG_DIR` and is pruned on teardown; an
+# explicit directory is kept, since the operator asked for it.
 _RUNNER_LOG_ENV = "BAJUTSU_XCUITEST_RUNNER_LOG"
 
-# Lines of captured runner output to fold into the crash warning — enough to show the tail of an
-# `xcodebuild` failure without dumping the whole (verbose) log into the terminal.
+# Where a default (env-unset) capture goes — a run-scoped temporary area teardown can prune, so a
+# passing run leaves nothing behind while a failing one is still diagnosable.
+_DEFAULT_RUNNER_LOG_DIR = Path(tempfile.gettempdir()) / "bajutsu-xcuitest-runner"
+
+# Lines of captured runner output to fold into the crash warning and the startup-failure error —
+# enough to show the tail of an `xcodebuild` failure without dumping the whole (verbose) log.
 _RUNNER_LOG_TAIL_LINES = 20
+
+# A cold XCTest-host launch that never binds its port is a transient blip (the class BE-0207 absorbs
+# at the transport layer). One retry absorbs a one-off cold-start blip; a repeatable failure — a
+# broken build, signature, or app — fails every attempt and still stops the gate (BE-0049). Bounded
+# to a single retry: two attempts total.
+_COLD_SPAWN_ATTEMPTS = 2
+
+# Between health probes during the cold-spawn wait, re-check the `xcodebuild` handle this often — a
+# condition wait (no fixed sleep that ignores the condition), matching the driver's own /health poll.
+_COLD_POLL_SECONDS = 0.1
 
 
 def _allocate_port() -> int:
@@ -99,6 +116,92 @@ def _max_warm_reuses() -> int:
         return _MAX_WARM_REUSES
 
 
+@dataclass
+class _Spawned:
+    """One cold-spawn attempt's live handles, injectable so the retry seam is Simulator-free (BE-0319 unit 5).
+
+    Callables rather than the concrete process/driver, so a test can drive `_spawn_cold_with_retry`
+    with fakes: `ready` is one `/health` probe, `poll` the `xcodebuild` handle's exit code (`None`
+    while alive), `log_tail` the captured-output trailer folded into a loud failure, and `discard`
+    the attempt's teardown.
+    """
+
+    driver: base.Driver
+    ready: Callable[[], bool]
+    poll: Callable[[], int | None]
+    log_tail: Callable[[], str]
+    discard: Callable[[], None]
+
+
+def _await_cold_runner(
+    spawned: _Spawned,
+    *,
+    timeout: float,
+    poll: float,
+    sleep: Callable[[float], None],
+    clock: Callable[[], float],
+) -> str | None:
+    """Wait for the runner to answer `/health` while watching its process; `None` if ready, else why not.
+
+    A bounded condition wait (BE-0319 unit 3): each round probes `spawned.ready()` first — a runner
+    that came up wins regardless of process state — then polls `spawned.poll()`, so a runner that
+    died during startup aborts at once with its exit code rather than probing a dead port for the
+    remaining budget. Returns `None` once ready, else a failure reason (a dead process's exit code,
+    or the timeout) the caller folds the captured tail onto.
+    """
+    deadline = clock() + timeout
+    while True:
+        if spawned.ready():
+            return None
+        exit_code = spawned.poll()
+        if exit_code is not None:
+            return (
+                f"the xcodebuild process exited (code {exit_code}) before the runner bound its port"
+            )
+        if clock() >= deadline:
+            return f"health never ready within {timeout}s"
+        sleep(poll)
+
+
+def _spawn_cold_with_retry(
+    spawn: Callable[[], _Spawned],
+    *,
+    timeout: float,
+    attempts: int = _COLD_SPAWN_ATTEMPTS,
+    poll: float = _COLD_POLL_SECONDS,
+    sleep: Callable[[float], None] = time.sleep,
+    clock: Callable[[], float] = time.monotonic,
+) -> _Spawned:
+    """Spawn the cold runner, await readiness with a liveness check, and retry once before failing loudly.
+
+    A cold XCTest-host launch that never binds its port is a transient infrastructure blip (BE-0207's
+    class); a single retry absorbs a one-off cold-start blip, while a repeatable failure — a broken
+    build, signature, or app — fails every attempt and still stops the gate, preserving BE-0049's
+    "flakiness is never tolerated by absorption". Each failed attempt is discarded (no leaked
+    subprocess) and its captured tail folded into the final loud `XcuitestChannelError` (unit 2), so
+    the run-failing error shows *why* the runner never answered, not merely that it did not.
+    """
+    from bajutsu.drivers.xcuitest import XcuitestChannelError
+
+    diagnostics: list[str] = []
+    for n in range(1, attempts + 1):
+        spawned = spawn()
+        try:
+            reason = _await_cold_runner(
+                spawned, timeout=timeout, poll=poll, sleep=sleep, clock=clock
+            )
+        except BaseException:
+            # An unexpected failure while awaiting must not leak the just-spawned runner (the leak
+            # BE-0290 prevents); discard it before propagating.
+            spawned.discard()
+            raise
+        if reason is None:
+            return spawned
+        diagnostics.append(f"attempt {n}/{attempts}: {reason}{spawned.log_tail()}")
+        spawned.discard()
+    raise XcuitestChannelError("xcuitest runner did not come up:\n" + "\n".join(diagnostics))
+
+
 def _destination(device_type: str, udid: str) -> str:
     """Build the `xcodebuild -destination` for a Simulator or a real device (BE-0238).
 
@@ -127,9 +230,12 @@ class XcuitestEnvironment(_DeviceEnvironment):
         self._runner_proc: subprocess.Popen[bytes] | None = None
         self._runner_port: int = 0
         self._patched_runner: Path | None = None
-        # Where the current runner's captured output went (BAJUTSU_XCUITEST_RUNNER_LOG), or None when
-        # capture is off; a mid-run-crash warning points at it (`_runner_log_hint`).
+        # Where the current runner's captured output went; a mid-run-crash warning and a startup
+        # failure both point at it (`_runner_log_hint`). Capture is on by default (BE-0319 unit 1).
         self._runner_log: Path | None = None
+        # True when `_runner_log` is a default (env-unset) capture teardown should prune; False when
+        # it is an explicit `BAJUTSU_XCUITEST_RUNNER_LOG` directory the operator asked to keep.
+        self._runner_log_ephemeral = False
         # BE-0291: True once a Simulator `start` has left a runner the pool should keep warm across
         # leases. A real-device start (BE-0238) never sets it — warm reuse targets only the Simulator
         # runner's cold startup — so the pool tears such an environment down per lease, unchanged.
@@ -198,7 +304,13 @@ class XcuitestEnvironment(_DeviceEnvironment):
         extra_env: Mapping[str, str] | None,
         permissions: Mapping[str, str] | None,
     ) -> base.Driver:
-        """Bring the runner up from cold: simctl prep (Simulator only), then spawn `xcodebuild`."""
+        """Bring the runner up from cold: simctl prep (Simulator only), then spawn `xcodebuild`.
+
+        The simctl device prep runs once; only the `xcodebuild` spawn is retried (BE-0319 unit 4).
+        `_spawn_cold_with_retry` awaits readiness with a liveness check (unit 3), retries a one-off
+        cold-start blip once, discards every failed attempt (no leaked subprocess — the leak BE-0290
+        prevents), and on a repeatable failure fails loudly with each attempt's captured tail.
+        """
         ios = require_ios(eff)
         if device_type != "device":
             self._prepare_simulator(eff, pre, permissions, cold=True)
@@ -207,12 +319,8 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # through env vars: the runner reads BAJUTSU_LAUNCH_ENV_* and sets them on
         # launchEnvironment, BAJUTSU_LAUNCH_ARGS as launchArguments, and opens BAJUTSU_DEEPLINK.
         launch_env, launch_args = self._launch_params(eff, pre, extra_env)
-
         runner_path = _resolve_runner(ios.xcuitest, device_type)
-
-        self._runner_port = _allocate_port()
-        forwarded = {
-            "BAJUTSU_RUNNER_PORT": str(self._runner_port),
+        forwarded_base = {
             # One generic runner drives whatever app the run targets, so it launches this
             # bundle id via XCUIApplication(bundleIdentifier:) rather than its own target app.
             "BAJUTSU_BUNDLE_ID": ios.bundle_id,
@@ -220,15 +328,39 @@ class XcuitestEnvironment(_DeviceEnvironment):
             "BAJUTSU_LAUNCH_ARGS": json.dumps(launch_args),
         }
         if pre.deeplink is not None:
-            forwarded["BAJUTSU_DEEPLINK"] = pre.deeplink
+            forwarded_base["BAJUTSU_DEEPLINK"] = pre.deeplink
 
+        def spawn() -> _Spawned:
+            return self._spawn_runner(runner_path, forwarded_base, device_type)
+
+        # A cold `xcodebuild test-without-building` spins up the XCTest host and launches the app
+        # before the runner's server answers /health; on a loaded CI runner that first start well
+        # exceeds the 10s default, so give it generous headroom (a warm start still returns at once).
+        spawned = _spawn_cold_with_retry(spawn, timeout=_RUNNER_STARTUP_TIMEOUT)
+        # Only the Simulator runner is kept warm; a real-device runner is torn down per lease.
+        self._reusable = device_type != "device"
+        self._warm_reuses = 0  # a fresh XCTest session: the app.launch()-cycle count starts over
+        return spawned.driver
+
+    def _spawn_runner(
+        self, runner_path: Path, forwarded_base: Mapping[str, str], device_type: str
+    ) -> _Spawned:
+        """Spawn one `xcodebuild test-without-building` runner and hand back its liveness handles.
+
+        Allocates a fresh port per attempt (so successive respawns leave separate capture files),
+        patches the .xctestrun with the forwarded env, captures the runner's output, and builds the
+        channel driver. Returns a `_Spawned` reading from this environment's just-set state — the
+        surviving attempt's state is the environment's, which warm reuse and teardown then own.
+        """
+        self._runner_port = _allocate_port()
+        forwarded = {"BAJUTSU_RUNNER_PORT": str(self._runner_port), **forwarded_base}
         # `xcodebuild` does not pass its own environment through to the test-runner process
         # inside the Simulator, so the runner reads these from the .xctestrun's per-target
         # TestingEnvironmentVariables instead. Patch a private copy and run that.
-        self._patched_runner = _patch_xctestrun_env(Path(runner_path), forwarded)
+        self._patched_runner = _patch_xctestrun_env(runner_path, forwarded)
         runner_out = self._open_runner_output()
         try:
-            self._runner_proc = subprocess.Popen(
+            proc = subprocess.Popen(
                 [  # noqa: S607 — xcodebuild resolved on PATH; requires Xcode
                     "xcodebuild",
                     "test-without-building",
@@ -241,50 +373,31 @@ class XcuitestEnvironment(_DeviceEnvironment):
                 ],
                 env={**os.environ, **forwarded},
                 stdout=runner_out,
-                # Fold stderr into the same sink so a crash's cause is captured in order; when
-                # capture is off this redirects into DEVNULL, exactly the previous behavior.
+                # Fold stderr into the same sink so a crash's cause is captured in order.
                 stderr=subprocess.STDOUT,
             )
         except OSError as exc:
             raise simctl.DeviceError(f"failed to start xcodebuild: {exc}") from exc
         finally:
             # `Popen` dups the fd into the child at spawn, so the parent's copy is no longer needed;
-            # close it (DEVNULL is an int, not a handle to close). Closing on the error path too
-            # means a failed spawn never leaks the log handle.
-            if runner_out is not subprocess.DEVNULL:
-                cast(IO[bytes], runner_out).close()
-        if self._runner_log is not None:
-            _logger.info("xcuitest runner output → %s", self._runner_log)
+            # closing on the error path too means a failed spawn never leaks the log handle.
+            runner_out.close()
+        self._runner_proc = proc
+        _logger.info("xcuitest runner output → %s", self._runner_log)
 
         driver = backends.make_driver(self._actuator, self._udid, runner_port=self._runner_port)
-        # A cold `xcodebuild test-without-building` spins up the XCTest host and launches the app
-        # before the runner's server answers /health; on a loaded CI runner that first start well
-        # exceeds the 10s default, so give it generous headroom (a warm start still returns at once).
-        # If it never answers, discard the just-spawned runner before re-raising: the run path would
-        # reclaim the orphan on the next spawn, but a single-use environment (doctor / serve via
-        # read_session) never spawns again, so an unguarded failure here leaks the xcodebuild
-        # subprocess — the leak BE-0290 set out to prevent.
-        try:
-            cast(base.BackendLifecycle, driver).await_ready(timeout=_RUNNER_STARTUP_TIMEOUT)
-        except Exception:
-            # Say *why* the runner never answered /health before discarding it. `_discard_runner`
-            # reports the captured output only when the process died on its own (a crash, poll() is
-            # not None); a runner still alive but that never bound its port — the app under test hung
-            # at launch, or xcodebuild was slow to bring up the XCTest host — otherwise vanishes
-            # behind a bare "did not come up" with no clue which. Emitting the hint here covers that
-            # hang case too, so a startup timeout always points at the captured runner log (or, when
-            # capture is off, how to turn it on) instead of only recording that the channel never came.
-            _logger.warning(
-                "xcuitest runner never answered /health within %ss%s",
-                _RUNNER_STARTUP_TIMEOUT,
-                self._runner_log_hint(),
-            )
-            self._discard_runner()
-            raise
-        # Only the Simulator runner is kept warm; a real-device runner is torn down per lease.
-        self._reusable = device_type != "device"
-        self._warm_reuses = 0  # a fresh XCTest session: the app.launch()-cycle count starts over
-        return driver
+        # `log_tail` / `discard` reach live environment state (`self._runner_log` / `self._runner_proc`);
+        # they are valid only until the next `spawn()` overwrites it, which the strictly sequential
+        # retry loop (spawn → await → log_tail → discard → next spawn) guarantees. A failed cold
+        # attempt keeps its log (`keep_log`) and skips the mid-run-crash warning (its reason is
+        # already in the raised error).
+        return _Spawned(
+            driver=driver,
+            ready=cast(base.BackendLifecycle, driver).health_ready,
+            poll=proc.poll,
+            log_tail=self._runner_log_hint,
+            discard=lambda: self._discard_runner(warn_on_crash=False, keep_log=True),
+        )
 
     def _resume_warm(
         self,
@@ -387,27 +500,28 @@ class XcuitestEnvironment(_DeviceEnvironment):
             return None  # wedged / unreachable — treat as a cache miss and respawn
         return driver
 
-    def _open_runner_output(self) -> int | IO[bytes]:
-        """Where to send the runner subprocess's output: a capture file, or DEVNULL by default.
+    def _open_runner_output(self) -> IO[bytes]:
+        """Open the sink for the runner subprocess's combined output, capturing by default (BE-0319 unit 1).
 
-        Reads `BAJUTSU_XCUITEST_RUNNER_LOG` (a directory) each cold spawn, so the capture can be
-        toggled between runs without restarting anything. Sets `_runner_log` to the file it opened
-        (cleared to None when capture is off), and returns the sink for `Popen`'s `stdout`.
+        A cold spawn always captures, so the first CI flake is diagnosable without a human pre-arming
+        `BAJUTSU_XCUITEST_RUNNER_LOG`; that variable now only *overrides the directory*. An env-unset
+        capture goes to `_DEFAULT_RUNNER_LOG_DIR` and is marked ephemeral (teardown prunes it), while
+        an explicit directory is kept. Sets `_runner_log` to the file it opened and returns it as the
+        sink for `Popen`'s `stdout`.
         """
-        log_dir = os.environ.get(_RUNNER_LOG_ENV)
-        if not log_dir:
-            self._runner_log = None
-            return subprocess.DEVNULL
-        Path(log_dir).mkdir(parents=True, exist_ok=True)
+        log_dir_env = os.environ.get(_RUNNER_LOG_ENV)
+        self._runner_log_ephemeral = not log_dir_env
+        log_dir = Path(log_dir_env) if log_dir_env else _DEFAULT_RUNNER_LOG_DIR
+        log_dir.mkdir(parents=True, exist_ok=True)
         # Port keys the file to this spawn (a fresh ephemeral port each cold start), so successive
         # respawns on one device leave separate logs rather than overwriting the crashed one.
-        self._runner_log = Path(log_dir) / f"runner-{self._udid}-{self._runner_port}.log"
+        self._runner_log = log_dir / f"runner-{self._udid}-{self._runner_port}.log"
         return self._runner_log.open("wb")
 
     def _runner_log_hint(self) -> str:
-        """A trailer for the mid-run-crash warning: the captured log's path and tail, or how to get it."""
+        """A trailer for the crash warning and the startup-failure error: the captured log's path and tail."""
         if self._runner_log is None:
-            return f" (set {_RUNNER_LOG_ENV} to a directory to capture the runner's output)"
+            return ""
         tail = ""
         try:
             # Keep only the last N lines without materializing the whole (high-volume) capture: deque
@@ -418,21 +532,30 @@ class XcuitestEnvironment(_DeviceEnvironment):
             pass  # the log may not exist yet on a spawn that failed before writing
         return f"; see {self._runner_log}" + (f"\n{tail}" if tail else "")
 
-    def _discard_runner(self) -> None:
-        """Terminate the runner process and remove its patched .xctestrun (kills the warm resident)."""
+    def _discard_runner(self, *, warn_on_crash: bool = True, keep_log: bool = False) -> None:
+        """Terminate the runner process and remove its patched .xctestrun (kills the warm resident).
+
+        `warn_on_crash` logs the mid-run-crash diagnostic when the process had already exited on its
+        own — right for a resident runner that vanished mid-run (the known app.launch()-cycle crash),
+        but wrong for a cold-spawn startup failure, whose reason is already folded into the raised
+        error, so `_spawn_cold_with_retry` clears it. `keep_log` leaves the capture on disk for a
+        failed cold attempt (the evidence a loud failure points at); teardown of a healthy runner
+        prunes it (BE-0319).
+        """
         if self._runner_proc is not None:
             exited = self._runner_proc.poll()
             if exited is not None:
-                # The process is already gone — it exited on its own, not at our request (see
-                # `_MAX_WARM_REUSES` above for the mid-run crash this guards against). Log it (with
-                # the captured output when enabled) so a run that died on a `Connection refused` shows
-                # *why* the channel vanished, not only that it did. No terminate(): the pid is already
-                # reaped.
-                _logger.warning(
-                    "xcuitest runner exited on its own (code %s) — a mid-run crash%s",
-                    exited,
-                    self._runner_log_hint(),
-                )
+                # The process is already gone — it exited on its own, not at our request. For a
+                # resident runner that is the known app.launch()-cycle crash (see `_MAX_WARM_REUSES`
+                # above for what this repeatedly surfaced in CI); log it (with the captured output)
+                # so a run that died on a `Connection refused` shows *why* the channel vanished. No
+                # terminate(): the pid is already reaped.
+                if warn_on_crash:
+                    _logger.warning(
+                        "xcuitest runner exited on its own (code %s) — a mid-run crash%s",
+                        exited,
+                        self._runner_log_hint(),
+                    )
             else:
                 self._runner_proc.terminate()
                 try:
@@ -441,10 +564,24 @@ class XcuitestEnvironment(_DeviceEnvironment):
                     self._runner_proc.kill()
                     self._runner_proc.wait()
             self._runner_proc = None
+        self._release_log(keep=keep_log)  # after the crash hint above has read the tail
         if self._patched_runner is not None:
             self._patched_runner.unlink(missing_ok=True)
             self._patched_runner = None
         self._reusable = False
+
+    def _release_log(self, *, keep: bool) -> None:
+        """Drop the reference to the current capture, pruning a default (env-unset) one unless kept.
+
+        A default capture exists only to diagnose a flake — its tail is folded into the crash warning
+        / startup error before this runs — so a healthy run prunes it and leaves nothing behind. A
+        failed cold attempt passes `keep=True` so the full log survives as evidence past the 20-line
+        tail in the error; an explicit `BAJUTSU_XCUITEST_RUNNER_LOG` directory is always kept, since
+        the operator asked for it (BE-0319 unit 1).
+        """
+        if self._runner_log is not None and self._runner_log_ephemeral and not keep:
+            self._runner_log.unlink(missing_ok=True)
+        self._runner_log = None
 
     def has_reusable_resident(self) -> bool:
         return self._reusable  # BE-0291: a Simulator start left a warm runner the pool should keep

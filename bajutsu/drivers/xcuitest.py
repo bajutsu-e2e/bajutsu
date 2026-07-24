@@ -654,3 +654,14 @@ class XcuitestDriver:
             raise XcuitestChannelError(
                 f"xcuitest runner did not come up within {timeout}s (health never ready)"
             )
+
+    def health_ready(self) -> bool:
+        """One `GET /health` probe: `True` if the runner answers `ready`, `False` if not up yet (BE-0319).
+
+        A single non-blocking check (a zero-budget `_await_health`: it probes once and returns),
+        unlike `await_ready`'s bounded poll loop. The cold-spawn liveness wait that watches the
+        `xcodebuild` process between probes owns its own loop and timing, and reuses the driver's one
+        definition of the health-wire contract — the endpoint, the `ready` sentinel, and which
+        transport errors read as not-ready — rather than restating it.
+        """
+        return _await_health(self._transport, timeout=0.0)
