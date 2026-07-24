@@ -109,10 +109,12 @@ Preconditions ::= {
   setup?:      string,                      # 再利用プレリュードファイル（§6.4）
 }
 
-# ── DismissAlerts（視覚アラートガード; 既定 ON）────────────────────────
+# ── DismissAlerts（リアクティブなシステムアラートガード; 既定 ON）───────
+# XCUITest ではネイティブの SpringBoard 照会 + tap（モデルなし、BE-0316 を再利用）。AI 視覚はフォールバック（BE-0315）。
 DismissAlerts ::= boolean                                   # { enabled: <bool> } の短縮形
                | { enabled?: boolean,                       # 既定 true
-                   instruction?: string }                   # 押すボタン（無指定なら dismiss）
+                   instruction?: string | [string],         # [labels]=ネイティブ; "text"=視覚（無指定なら dismiss）
+                   pollInterval?: number }                   # ネイティブのポーリング間隔・秒（既定 1）
 
 Permissions ::= map(PermissionService, PermissionAction)    # アプリの起動前に適用する
 PermissionService ::= "location" | "camera" | "microphone" | "contacts"

@@ -129,6 +129,9 @@ class FakeDriver:
         base.resolve_unique(self.system_alert_buttons, sel)
         self._record("handle_system_alert", (sel, timeout))
 
+    def system_alert_labels(self) -> list[str]:
+        return [label for b in self.system_alert_buttons if (label := b["label"])]
+
     def wait_for(self, sel: base.Selector) -> bool:
         return len(base.find_all(self.screen, sel)) >= 1
 

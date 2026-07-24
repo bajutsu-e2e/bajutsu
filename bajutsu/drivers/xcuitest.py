@@ -597,6 +597,17 @@ class XcuitestDriver:
                 f"system alert button vanished before tap (status={reply.status}): {sel!r}"
             )
 
+    def system_alert_labels(self) -> list[str]:
+        """The current SpringBoard alert's button labels, or [] when none is up (BE-0315).
+
+        A single, non-blocking read reusing BE-0316's `/systemAlert/query` (the same route
+        `handle_system_alert` polls) — the reactive guard reads it to decide whether a prompt is
+        showing and which button its policy should tap. Unlabeled buttons are dropped: the policy
+        resolves by visible label.
+        """
+        buttons, _ = self._parse_elements(self._transport("POST", "/systemAlert/query", {}))
+        return [label for b in buttons if (label := b["label"])]
+
     def back(self) -> None:
         # iOS has no hardware back: tap the OS navigation back button. Reuses `tap` rather than
         # re-issuing the actuate call (BE-0210).

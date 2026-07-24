@@ -136,7 +136,7 @@ from conftest import el  # noqa: E402
 
 from bajutsu.drivers import base  # noqa: E402
 from bajutsu.drivers.fake import FakeDriver  # noqa: E402
-from bajutsu.orchestrator import run_scenario  # noqa: E402
+from bajutsu.orchestrator import AlertGuardConfig, run_scenario  # noqa: E402
 from bajutsu.orchestrator.loop import _do_email  # noqa: E402
 from bajutsu.scenario import Scenario  # noqa: E402
 
@@ -338,7 +338,7 @@ def test_on_blocked_retry_preserves_the_mailbox() -> None:
         clock=_FakeClock(),
         bindings={},
         mailbox=mailbox,
-        on_blocked=on_blocked,
+        alert_guard=AlertGuardConfig(vision=on_blocked),
     )
     assert result.ok, result.failure
     assert "no mailbox configured" not in (result.steps[0].reason or "")

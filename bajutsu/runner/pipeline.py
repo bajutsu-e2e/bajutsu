@@ -27,7 +27,7 @@ from bajutsu.evidence import Artifact
 from bajutsu.evidence.network import NetworkExchange, _no_transitions
 from bajutsu.evidence.redaction import Redactor
 from bajutsu.orchestrator import (
-    BlockedHandler,
+    AlertGuardConfig,
     Clock,
     MailboxReader,
     ProgressFn,
@@ -38,7 +38,7 @@ from bajutsu.orchestrator import (
 from bajutsu.orchestrator.types import _no_network
 from bajutsu.report import git_revision, run_provenance, scenario_render_inputs, write_report
 from bajutsu.runner.mailbox import build_mailbox_reader
-from bajutsu.runner.types import LeaseFn, OnBlockedFor
+from bajutsu.runner.types import AlertGuardFor, LeaseFn
 from bajutsu.scenario import Scenario, dump_scenario_file, redact_totp_secrets
 
 _logger = logging.getLogger(__name__)
@@ -96,8 +96,8 @@ class _ScenarioRunner:
     caps: frozenset[str] | None
     total: int
     clock: Clock | None = None
-    on_blocked: BlockedHandler | None = None
-    on_blocked_for: OnBlockedFor | None = None
+    alert_guard: AlertGuardConfig | None = None
+    alert_guard_for: AlertGuardFor | None = None
     run_dir: Path | None = None
     bindings: Mapping[str, str] | None = None
     progress: ProgressFn | None = None
@@ -158,7 +158,7 @@ class _ScenarioRunner:
                 failure=f"unsupported on backend '{actuator}': {'; '.join(reasons)}",
             )
         lz = self.lease(self.eff, s)
-        handler = self.on_blocked_for(s) if self.on_blocked_for is not None else self.on_blocked
+        handler = self.alert_guard_for(s) if self.alert_guard_for is not None else self.alert_guard
         try:
             if lz.collector is not None:
                 lz.collector.clear()
@@ -199,7 +199,7 @@ class _ScenarioRunner:
                 s,
                 self.clock,
                 sink=lz.sink,
-                on_blocked=handler,
+                alert_guard=handler,
                 scenario_id=sid,
                 network=(lz.collector.snapshot if lz.collector is not None else _no_network),
                 relaunch=lz.relaunch,
@@ -250,8 +250,8 @@ def run_all(
     scenarios: list[Scenario],
     lease: LeaseFn,
     clock: Clock | None = None,
-    on_blocked: BlockedHandler | None = None,
-    on_blocked_for: OnBlockedFor | None = None,
+    alert_guard: AlertGuardConfig | None = None,
+    alert_guard_for: AlertGuardFor | None = None,
     run_dir: Path | None = None,
     workers: int = 1,
     bindings: Mapping[str, str] | None = None,
@@ -279,9 +279,9 @@ def run_all(
             of one).
         clock: Injectable time source for condition waits, so tests need no real sleeps. None uses
             the real clock.
-        on_blocked: A single alert-guard handler, used by tests.
-        on_blocked_for: Picks each scenario's alert-guard handler (honoring its `dismissAlerts`);
-            takes precedence over `on_blocked`.
+        alert_guard: A single alert-guard handler, used by tests.
+        alert_guard_for: Picks each scenario's alert-guard handler (honoring its `dismissAlerts`);
+            takes precedence over `alert_guard`.
         run_dir: Where per-scenario artifacts (network.json, visual diffs) are written. None skips
             writing them.
         workers: Concurrent scenarios; >1 hands each worker its own device + per-device resources,
@@ -335,8 +335,8 @@ def run_all(
         caps=caps,
         total=len(scenarios),
         clock=clock,
-        on_blocked=on_blocked,
-        on_blocked_for=on_blocked_for,
+        alert_guard=alert_guard,
+        alert_guard_for=alert_guard_for,
         run_dir=run_dir,
         bindings=bindings,
         progress=progress,
@@ -362,8 +362,8 @@ def run_and_report(
     runs_dir: Path,
     run_id: str,
     clock: Clock | None = None,
-    on_blocked: BlockedHandler | None = None,
-    on_blocked_for: OnBlockedFor | None = None,
+    alert_guard: AlertGuardConfig | None = None,
+    alert_guard_for: AlertGuardFor | None = None,
     workers: int = 1,
     bindings: Mapping[str, str] | None = None,
     secret_values: list[str] | None = None,
@@ -401,8 +401,8 @@ def run_and_report(
         scenarios,
         lease,
         clock,
-        on_blocked=on_blocked,
-        on_blocked_for=on_blocked_for,
+        alert_guard=alert_guard,
+        alert_guard_for=alert_guard_for,
         run_dir=run_dir,
         workers=workers,
         bindings=bindings,

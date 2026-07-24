@@ -6,13 +6,19 @@ from __future__ import annotations
 import logging
 import os
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from bajutsu import assertions
 from bajutsu.drivers import base
 from bajutsu.elements import shows_app_ui
 from bajutsu.evidence.network import TransitionSource, _no_transitions
-from bajutsu.orchestrator.types import AlertEvent, BlockedHandler, Clock, NetworkSource, _no_network
+from bajutsu.orchestrator.types import (
+    AlertEvent,
+    AlertGuardConfig,
+    Clock,
+    NetworkSource,
+    _no_network,
+)
 from bajutsu.scenario import Gone, Wait, WaitRequest
 
 _logger = logging.getLogger(__name__)
@@ -139,51 +145,102 @@ def _adaptive_sleep(clock: Clock, before: float) -> None:
 
 @dataclass
 class _AlertGuardGate:
-    """Fires the system-alert guard mid-wait when the polled tree stays collapsed (BE-0269).
+    """Fires the system-alert guard mid-wait (BE-0269; native path BE-0315).
 
     Fed each poll's already-fetched tree via `observe`. It is the deterministic trigger only — it
-    decides *when* to ask the guard to look, never the wait's pass/fail (prime directive 1). Three
-    bounds keep a real AI-vision call rare: a debounce (a transient collapsed frame is ignored), a
-    cooldown between attempts, and a hard per-wait attempt ceiling after which it goes inert and the
-    wait falls back to polling its own deadline.
+    decides *when* to act, never the wait's pass/fail (prime directive 1).
+
+    On a backend advertising `HANDLE_SYSTEM_ALERT` it prefers the native path (BE-0315): it reads
+    BE-0316's SpringBoard query (`system_alert_labels`) on its own wall-clock interval
+    (`guard.poll_interval`, decoupled from the wait's `_POLL`) and taps a policy-named button the
+    moment a poll finds one — no debounce, cooldown, or attempt ceiling, because a native query
+    reports a fact (not the collapsed-tree proxy's correlation, so no transient-frame false positive)
+    and the fixed interval already rate-limits the cross-process query. A definitive "no alert" even
+    suppresses the vision path's false positive. This resolves the tension BE-0316 recorded for
+    keeping the guard reactive — a native query is not a model call, so "a passing scenario never
+    calls the model" still holds.
+
+    Where the backend lacks the capability — or an alert is up but no policy label resolves — it
+    falls back to the vision path, whose three bounds keep a real AI-vision call rare: a debounce (a
+    transient collapsed frame is ignored), a cooldown between attempts, and a hard per-wait attempt
+    ceiling after which it goes inert and the wait falls back to polling its own deadline.
     """
 
     driver: base.Driver
     clock: Clock
-    on_blocked: BlockedHandler
+    guard: AlertGuardConfig
     alerts: list[AlertEvent]
+    _native: bool = field(init=False)
+    _last_native: float | None = None
     _collapsed_polls: int = 0
     _attempts: int = 0
     _last_attempt: float | None = None
     _gave_up: bool = False
 
+    def __post_init__(self) -> None:
+        self._native = base.Capability.HANDLE_SYSTEM_ALERT in self.driver.capabilities()
+
     def observe(self, elements: list[base.Element]) -> None:
-        """Inspect one poll's tree; ask the guard to clear a blocking prompt if it's warranted."""
-        if self._attempts >= _GUARD_MAX_ATTEMPTS:
-            # Attempts are spent and the screen is still collapsed: the dismisses didn't take. Say so
-            # once, loudly — otherwise the wait fails with a bare timeout that hides the fact the
-            # guard already stepped in and gave up (determinism first: never fail silently).
-            if not self._gave_up and not shows_app_ui(elements):
-                self._gave_up = True
-                _logger.warning(
-                    "mid-wait alert guard gave up after %d attempts; the screen still looks blocked "
-                    "by a system prompt — falling back to the wait's own timeout",
-                    _GUARD_MAX_ATTEMPTS,
-                )
+        """Inspect one poll; clear a blocking system prompt if warranted (native first, then vision)."""
+        if self._native:
+            self._observe_native()
+        else:
+            self._observe_vision(elements)
+
+    def _observe_native(self) -> None:
+        # Poll the native presence query on its own wall clock, not every `_POLL`: a per-tick
+        # cross-process SpringBoard query would roughly double the single-main-thread runner's load
+        # (BE-0315). `_last_native` starts None so the first poll fires at once, bounding detection
+        # latency to one interval.
+        now = self.clock.now()
+        if self._last_native is not None and now - self._last_native < self.guard.poll_interval:
             return
+        self._last_native = now
+        state, event = self.guard.probe_native(self.driver)
+        if state == "dismissed" and event is not None:
+            self.alerts.append(event)
+        elif state == "unhandled":
+            # An alert is up but no policy label resolves — an unknown button, or a query that could
+            # not name it. Fall back to the vision guard, bounded by the same cooldown / attempt
+            # ceiling as the vision path so a persistently unhandled alert cannot fire an unbounded
+            # stream of AI-vision calls.
+            self._fire_vision_bounded()
+        # "absent" is a deterministic no-alert fact — do nothing, which also suppresses the vision
+        # path's transient-frame false positive.
+
+    def _observe_vision(self, elements: list[base.Element]) -> None:
+        """The collapsed-tree-proxy + vision path for a backend without the native capability."""
         if shows_app_ui(elements):
             self._collapsed_polls = 0
             return
         self._collapsed_polls += 1
         if self._collapsed_polls < _GUARD_DEBOUNCE_POLLS:
             return
+        self._collapsed_polls = 0
+        self._fire_vision_bounded()
+
+    def _fire_vision_bounded(self) -> None:
+        """Fire the vision guard under the shared per-wait bounds (cooldown + attempt ceiling).
+
+        Shared by the collapsed-tree path and the native "unhandled" fallback so an AI-vision call
+        stays rare on both: a cooldown spaces attempts and a hard ceiling stops them, after which it
+        goes inert once (loudly) and the wait falls back to its own timeout (never fail silently).
+        """
+        if self._attempts >= _GUARD_MAX_ATTEMPTS:
+            if not self._gave_up:
+                self._gave_up = True
+                _logger.warning(
+                    "mid-wait alert guard gave up after %d vision attempts; the prompt still looks "
+                    "blocking — falling back to the wait's own timeout",
+                    _GUARD_MAX_ATTEMPTS,
+                )
+            return
         now = self.clock.now()
         if self._last_attempt is not None and now - self._last_attempt < _GUARD_COOLDOWN:
             return
-        self._collapsed_polls = 0
         self._last_attempt = now
         self._attempts += 1
-        event = self.on_blocked(self.driver)
+        event = self.guard.vision(self.driver)
         if event is not None:
             self.alerts.append(event)
 
@@ -195,7 +252,7 @@ def _wait(
     network: NetworkSource = _no_network,
     *,
     trace: WaitTrace | None = None,
-    on_blocked: BlockedHandler | None = None,
+    alert_guard: AlertGuardConfig | None = None,
     alerts: list[AlertEvent] | None = None,
     on_tick: WaitTick | None = None,
     transitions: TransitionSource = _no_transitions,
@@ -207,12 +264,14 @@ def _wait(
     When `trace` is given (a `for` wait only), each poll is recorded into it so a timeout can be
     diagnosed from artifacts (BE-0231 Unit 1); it never changes the wait's outcome.
 
-    When `on_blocked` is given, the branches a system alert can *stall* — `for`, `settled`, and
+    When `alert_guard` is given, the branches a system alert can *stall* — `for`, `settled`, and
     `screenChanged` (where a collapsed tree keeps the condition unmet and would otherwise burn the
-    whole timeout) — watch the already-fetched tree for the collapsed-tree signature of a blocking
-    prompt and ask the guard to clear it mid-wait, then resume polling against the *same* `deadline`
-    (BE-0269). The condition check still decides pass/fail; the guard only accelerates recovery, and
-    dismissed alerts are appended to `alerts` (the step's outcome list) for the report. `gone` is
+    whole timeout) — drive the guard mid-wait, then resume polling against the *same* `deadline`. On
+    an iOS backend the guard queries SpringBoard natively on its own interval (BE-0315, reusing
+    BE-0316's primitive); elsewhere it watches the already-fetched tree for the collapsed-tree
+    signature of a blocking prompt and asks the vision guard to clear it (BE-0269). The condition
+    check still decides pass/fail; the guard only accelerates recovery, and dismissed alerts are
+    appended to `alerts` (the step's outcome list) for the report. `gone` is
     *not* guarded: a collapsed tree already satisfies "gone" and returns at once, so no timeout is
     wasted and there is nothing to accelerate (guarding it would mean redefining "gone" to reject a
     blank screen). `request` polls the network, not the screen, so it is not guarded either.
@@ -251,10 +310,10 @@ def _wait(
         _AlertGuardGate(
             driver=driver,
             clock=clock,
-            on_blocked=on_blocked,
+            guard=alert_guard,
             alerts=alerts if alerts is not None else [],
         )
-        if on_blocked is not None
+        if alert_guard is not None
         else None
     )
     hb = _Heartbeat(on_tick, deadline) if on_tick is not None else None

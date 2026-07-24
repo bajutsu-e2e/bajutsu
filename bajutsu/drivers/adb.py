@@ -495,6 +495,10 @@ class AdbDriver(CoordinateTreeDriver):
             "handleSystemAlert は iOS 専用; Android のシステムダイアログは通常の tap で操作できる"
         )
 
+    def system_alert_labels(self) -> list[str]:
+        # No SpringBoard on Android; the reactive guard's native path never runs here (BE-0315).
+        return []
+
     def type_text(self, text: str) -> None:
         # Feed the `input text` command to `adb shell` over stdin, not on the argv, so a secret / OTP
         # never lands in the adb process command line where `ps` could read it (BE-0155). Routed

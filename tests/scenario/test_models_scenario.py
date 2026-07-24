@@ -70,6 +70,42 @@ def test_dismiss_alerts_bool_and_object_forms() -> None:
         )
 
 
+def test_dismiss_alerts_instruction_accepts_a_label_list() -> None:
+    # BE-0315: the deterministic native form is an ordered list of candidate labels; it round-trips.
+    s = Scenario.model_validate(
+        {
+            "name": "x",
+            "dismissAlerts": {"instruction": ["Allow", "OK"]},
+            "steps": [{"tap": {"id": "a"}}],
+        }
+    )
+    assert s.dismiss_alerts is not None
+    assert s.dismiss_alerts.instruction == ["Allow", "OK"]
+    rt = load_scenarios(dump_scenarios([s]))[0]
+    assert rt.dismiss_alerts is not None and rt.dismiss_alerts.instruction == ["Allow", "OK"]
+
+
+def test_dismiss_alerts_instruction_drops_empty_labels_and_normalizes_to_none() -> None:
+    # A list of only blank labels can match nothing deterministically, so it normalizes to the
+    # default dismissive policy (None) rather than silently matching zero buttons (BE-0315).
+    s = Scenario.model_validate(
+        {"name": "x", "dismissAlerts": {"instruction": ["", "  "]}, "steps": [{"tap": {"id": "a"}}]}
+    )
+    assert s.dismiss_alerts is not None and s.dismiss_alerts.instruction is None
+
+
+def test_dismiss_alerts_poll_interval() -> None:
+    # BE-0315: the native poll interval is a per-scenario knob; a non-positive value is rejected.
+    s = Scenario.model_validate(
+        {"name": "x", "dismissAlerts": {"pollInterval": 2.5}, "steps": [{"tap": {"id": "a"}}]}
+    )
+    assert s.dismiss_alerts is not None and s.dismiss_alerts.poll_interval == 2.5
+    with pytest.raises(ValidationError):
+        Scenario.model_validate(
+            {"name": "x", "dismissAlerts": {"pollInterval": 0}, "steps": [{"tap": {"id": "a"}}]}
+        )
+
+
 def test_permissions_default_unset() -> None:
     # Empty by default, and pruned when empty so a dumped scenario stays clean (BE-0276).
     s = Scenario.model_validate({"name": "x", "steps": [{"tap": {"id": "a"}}]})
