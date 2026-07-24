@@ -163,6 +163,9 @@ ROUTES: tuple[Route, ...] = (
     Route("GET", "/api/version/checkout", lambda state, ctx: ops.server_checkout()),
     Route("GET", "/api/config", lambda state, ctx: ops.config_info(state)),
     Route("GET", "/api/config/content", lambda state, ctx: ops.config_content(state)),
+    # The running server's resolved configuration + the bundled iOS runner state (BE-0318). Read-only
+    # and open like /api/config; the operation withholds host paths when hosted (BE-0108).
+    Route("GET", "/api/server", lambda state, ctx: ops.server_settings(state)),
     Route("GET", "/api/fs", lambda state, ctx: ops.browse_fs(state, ctx.query("dir"))),
     Route("GET", "/api/apikey", lambda state, ctx: ops.api_key_info(state, ctx.actor())),
     Route(

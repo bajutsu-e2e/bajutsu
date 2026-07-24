@@ -12,7 +12,7 @@ from typing import Any
 
 import yaml
 
-from bajutsu import _yaml
+from bajutsu import __version__, _yaml
 from bajutsu.agents import availability as ai_availability
 from bajutsu.agents.ai_config import (
     BEDROCK_MODEL_ENV,
@@ -28,8 +28,13 @@ from bajutsu.agents.ai_config import (
 )
 from bajutsu.agents.anthropic_client import ANT_BINARY, ANT_CLI_MISSING, ANTHROPIC_KEY_ENV
 from bajutsu.ai import credential_gap, known_providers, resolved_provider
-from bajutsu.config import load_config, resolve
+from bajutsu.backends import IMPLEMENTED
+from bajutsu.config import load_config, resolve, xcuitest_pins_runner
 from bajutsu.config_source import materialize, parse_config_spec, source_provenance
+from bajutsu.platform_lifecycle.environments import (
+    bundled_products_dir,
+    bundled_runner_build_info,
+)
 from bajutsu.serve.helpers import (
     list_targets,
 )
@@ -194,6 +199,108 @@ def config_content(state: ServeState) -> tuple[Any, int]:
         "parsed": parsed,
         "provenance": state.config_provenance,  # None for a local file / uploaded bundle
     }, 200
+
+
+def _config_overrides_ios_runner(state: ServeState) -> bool:
+    """Whether the bound config names an explicit ``xcuitest.testRunner`` on any iOS target (BE-0318).
+
+    A config can carry several iOS targets; the server-wide readiness line reports "overridden" when
+    *any* of them sets a runner, since such a target never falls back to the bundled one. No config
+    bound, no iOS target, or a config that fails to load reads as no override (the tab then shows the
+    bundled-runner state unqualified); a load failure is logged at debug, matching ``active_key_env``.
+
+    Each target's ``resolve`` is guarded on its own: one unresolvable target must not mask a pinned
+    runner on another (the row is the tab's sharpest signal), so a per-target failure is logged and
+    skipped rather than collapsing the whole answer to ``False``.
+    """
+    if state.config is None:
+        return False
+    try:
+        cfg = load_config(state.config.read_text(encoding="utf-8"))
+    except Exception:
+        logging.getLogger(__name__).debug(
+            "cannot load config to check the xcuitest.testRunner override", exc_info=True
+        )
+        return False
+    for name in cfg.targets:
+        try:
+            if xcuitest_pins_runner(resolve(cfg, name)):
+                return True
+        except Exception:
+            logging.getLogger(__name__).debug(
+                "cannot resolve target %r to check the xcuitest.testRunner override",
+                name,
+                exc_info=True,
+            )
+    return False
+
+
+def _ios_runner_status(state: ServeState) -> dict[str, Any]:
+    """The bundled iOS XCUITest runner's deployment state, for the Server settings tab (BE-0318).
+
+    Answers "will an iOS Simulator run that names no runner find one, and what was it built against?"
+    without starting a run — the one filesystem probe this tab makes (BE-0292's ``_bundled_runner``,
+    re-exported at the ``environments`` package root). App-agnostic and server-wide, so it lives here
+    rather than per-target.
+
+    Fields: ``bundled`` (this build ships the generic runner as package data — the fallback a
+    runner-less Simulator run resolves to), ``buildInfo`` (the ``{"xcode", "sdk"}`` toolchain the
+    runner was built against, or ``None`` when no bundle / no metadata), and ``override`` (the bound
+    config names an explicit ``xcuitest.testRunner``, so the bundle isn't the runner that would run).
+    """
+    return {
+        "bundled": bundled_products_dir() is not None,
+        "buildInfo": bundled_runner_build_info(),
+        "override": _config_overrides_ios_runner(state),
+    }
+
+
+def server_settings(state: ServeState) -> tuple[Any, int]:
+    """The running server's resolved configuration, read-only, for the Server settings tab (BE-0318).
+
+    A Tier-1, AI-free view assembled from the already-resolved ``ServeState`` plus one filesystem
+    probe (the bundled iOS runner): nothing here is a per-run signal, so nothing reaches the
+    deterministic ``run`` / CI verdict (prime directive 1).
+
+    Authz matches ``config_info`` — open to any viewer — so it discloses only what that posture
+    permits. Two consequences: the admin-gated commit/branch of ``server_checkout`` is **not**
+    surfaced (a branch name can leak an in-progress work topic), and — stricter than ``config_info``,
+    which returns its ``config`` path unconditionally — the host paths (``config``, ``runsDir``,
+    ``baselinesDir``) are withheld when ``state.hosted``, since a hosted user has no filesystem
+    relationship to the host and an absolute host path is then dead information (BE-0108). The
+    non-path fields (deployment mode, backends, retention window, concurrency caps, version, the
+    config's Git source, and the iOS runner state) are shown either way; the endpoint reports presence
+    and configuration only, never a secret's plaintext.
+    """
+    payload: dict[str, Any] = {
+        # The one deployment-posture field the UI displays; the host-path redaction below keys off
+        # `state.hosted` directly, so a second boolean here would only be a redundant encoding of it.
+        "mode": "hosted" if state.hosted else "local",
+        "version": __version__,
+        "hasConfig": state.config is not None,
+        # The config's Git source (host/owner/repo/ref/sha), or None for a local file / uploaded
+        # bundle — the "where the bound config came from" the version row's commit deliberately isn't.
+        "configSource": state.config_provenance,
+        # The backends this build has a driver for (fake / playwright / xcuitest / adb) — a static
+        # server-wide fact, sorted for a stable display; not a per-backend availability probe (the
+        # tab makes exactly one filesystem probe, the iOS runner below).
+        "backends": sorted(IMPLEMENTED),
+        # The soft-delete retention window in days (BE-0239); <= 0 means the automatic purge is off.
+        "retentionDays": state.run_retention_days,
+        # The concurrency caps (BE-0051 / BE-0015 / BE-0016); <= 0 means unlimited for that axis.
+        "concurrency": {
+            "total": state.max_concurrent,
+            "perUser": state.max_concurrent_per_user,
+            "perOrg": state.max_concurrent_per_org,
+        },
+        "iosRunner": _ios_runner_status(state),
+    }
+    if not state.hosted:
+        # Host filesystem paths: meaningful only on a local deployment (BE-0108), so withheld hosted.
+        payload["config"] = str(state.config) if state.config else None
+        payload["runsDir"] = str(state.runs_dir)
+        payload["baselinesDir"] = str(state.baselines_dir)
+    return payload, 200
 
 
 def api_key_info(state: ServeState, actor: str | None) -> tuple[Any, int]:

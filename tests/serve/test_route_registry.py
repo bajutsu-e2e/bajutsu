@@ -38,6 +38,7 @@ _EXPECTED: frozenset[tuple[str, str]] = frozenset(
         ("GET", "/api/version/checkout"),
         ("GET", "/api/config"),
         ("GET", "/api/config/content"),
+        ("GET", "/api/server"),
         ("GET", "/api/fs"),
         ("GET", "/api/apikey"),
         ("GET", "/api/claudecodetoken"),

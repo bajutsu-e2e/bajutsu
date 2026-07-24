@@ -17,6 +17,7 @@ from bajutsu.config.accessors import (
     require_web,
     web_base_url,
     web_engine,
+    xcuitest_pins_runner,
     xcuitest_targets_real_device,
 )
 from bajutsu.config.effective import (
@@ -83,5 +84,6 @@ __all__ = [
     "resolve",
     "web_base_url",
     "web_engine",
+    "xcuitest_pins_runner",
     "xcuitest_targets_real_device",
 ]
