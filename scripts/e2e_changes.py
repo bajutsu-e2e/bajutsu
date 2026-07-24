@@ -80,7 +80,9 @@ _RUN_PATH = (
 # actually imports (iOS: xcuitest[_live].py, Android: adb.py, web: playwright.py — verified against
 # each module's own imports, not a blanket `bajutsu/drivers/` sweep, which previously fired a lane's
 # metered jobs on another lane's driver-only change); each lane owns its showcase surface, its
-# conformance harness module, and its own workflow file.
+# conformance harness module, and its own workflow file. A new driver module a backend imports must
+# now be added to its lane's fragment by name — `bajutsu/drivers/` is no longer swept, so a new
+# `drivers/<foo>.py` defaults to NOT triggering (a silent under-trigger of the lane's required check).
 _LANE_PATHS: dict[str, str] = {
     "ios": (
         r"|bajutsu/drivers/(?:xcuitest|xcuitest_live)\.py$"
