@@ -1,14 +1,14 @@
-[English](BE-XXXX-ios-system-alert-locale-determinism.md) · **日本語**
+[English](BE-0320-ios-system-alert-locale-determinism.md) · **日本語**
 
-# BE-XXXX — iOS システムアラートのボタン選択を Simulator のシステム言語によらず決定論的にする
+# BE-0320 — iOS システムアラートのボタン選択を Simulator のシステム言語によらず決定論的にする
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-ios-system-alert-locale-determinism-ja.md) |
+| 提案 | [BE-0320](BE-0320-ios-system-alert-locale-determinism-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0320") |
 | トピック | プラットフォーム対応 |
 | 関連 | [BE-0269](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention-ja.md)、[BE-0276](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state-ja.md)、[BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling-ja.md)、[BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step-ja.md) |
 <!-- /BE-METADATA -->
