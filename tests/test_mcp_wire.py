@@ -80,7 +80,10 @@ def _roundtrip(config: Path, runs: Path, scenario: Path) -> dict[str, Any]:
             ],
             cwd=str(config.parent),
         )
-        async with Client(transport) as client:
+        # Bound the whole stdio session: a subprocess that never answers `initialize` (or a call
+        # that deadlocks) would otherwise hang the session forever — the test-level counterpart to
+        # the job's `timeout-minutes`, so a hang fails loudly in seconds even when run locally.
+        async with asyncio.timeout(60), Client(transport) as client:
             tools = await client.list_tools()
             doctor = await client.call_tool("bajutsu_doctor", {"target": "demo"})
             run = await client.call_tool(
