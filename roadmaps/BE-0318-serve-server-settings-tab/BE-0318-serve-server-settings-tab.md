@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0318](BE-0318-serve-server-settings-tab.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0318") |
 | Topic | Surfacing CLI features in the serve Web UI |
 <!-- /BE-METADATA -->
@@ -124,10 +124,10 @@ state and probes the filesystem, so no Simulator is needed and the core gate sti
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — `GET /api/server` → `ops.server_settings(state)` with hosted-aware redaction.
-- [ ] Unit 2 — `iosRunner` block (bundled-runner presence, build-info, `xcuitest.testRunner` override).
-- [ ] Unit 3 — the read-only Server tab in the Settings modal (`serve.html.j2` + `serve.core.mjs`).
-- [ ] Unit 4 — operation and route-registration tests (local/hosted, bundled/absent, override).
+- [x] Unit 1 — `GET /api/server` → `ops.server_settings(state)` with hosted-aware redaction.
+- [x] Unit 2 — `iosRunner` block (bundled-runner presence, build-info, `xcuitest.testRunner` override).
+- [x] Unit 3 — the read-only Server tab in the Settings modal (`serve.html.j2` + `serve.core.mjs`).
+- [x] Unit 4 — operation and route-registration tests (local/hosted, bundled/absent, override).
 
 ## References
 

@@ -551,6 +551,14 @@ header .appversion .dirty{color:var(--acc);font-weight:700}
 /* Scenario secrets (BE-0274): one write-once field per declared name, stacked in the list. */
 .scnsecret{margin-top:.85rem}
 .scnsecret:first-child{margin-top:.4rem}
+/* Server tab (BE-0318): read-only key/value rows of the running server's resolved configuration. */
+.srvrow{display:flex;justify-content:space-between;gap:1rem;padding:.32rem 0;font-size:.85em;border-bottom:1px solid var(--line)}
+.srvrow:last-child{border-bottom:0}
+.srvkey{color:var(--mut);flex:0 0 auto}
+.srvval{color:var(--fg);text-align:right;word-break:break-word}
+.srvval code{background:var(--bg2);padding:.05rem .3rem;border-radius:5px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+/* Value modifiers inside a row (`.muted` is global; `.ok` is scoped here to avoid a bare global). */
+.srvval .ok{color:var(--ok)}
 /* Theme editor (BE-0191 unit 6): the contract-generated form has one input per token, so it can be
    far taller than the viewport. Cap the box and scroll only the form, keeping the header and the
    action buttons pinned as a footer — otherwise Save/Upload sit below the fold (a usability trap,

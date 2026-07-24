@@ -758,6 +758,7 @@
     <div class="tabs" role="tablist" data-testid="settings.tabs">
       <button class="tab active" type="button" data-settab="ai" data-testid="settings.tab-ai">AI</button>
       <button class="tab" type="button" data-settab="secrets" data-testid="settings.tab-secrets">Secrets</button>
+      <button class="tab" type="button" data-settab="server" data-testid="settings.tab-server">Server</button>
     </div>
     <div id="setpanel-ai" data-testid="settings.panel-ai">
     <div class="setsection">
@@ -848,6 +849,19 @@
       <div id="scnsecrets-list" data-testid="settings.scnsecrets-list"></div>
     </div>
     </div><!-- /setpanel-secrets -->
+    <div id="setpanel-server" data-testid="settings.panel-server" hidden>
+    <!-- Server tab (BE-0318): a read-only view of how the running server is configured — deployment
+         mode, the bound config and its Git source, the backends this build can run, run storage /
+         retention / concurrency, the running version, and whether the bundled iOS test runner is
+         deployed. No inputs: populated by serve.core.mjs loadServerInfo() from GET /api/server, which
+         withholds host paths on a hosted deployment (BE-0108). The iOS runner row is the sharpest
+         value — its absence silently blocks every iOS Simulator run (BE-0290/BE-0292). -->
+    <div class="setsection" id="serverinfosection" data-testid="settings.serverinfo-section">
+      <div class="setlabel">Server</div>
+      <div class="fshint">How this running server is configured. Read-only &mdash; these values come from the launch command and environment; restart <code>serve</code> to change them.</div>
+      <div id="serverinfo-rows" data-testid="settings.serverinfo-rows"></div>
+    </div>
+    </div><!-- /setpanel-server -->
     <div class="fshint">Settings live in the running server's memory for this session only &mdash; <b>not written to disk</b>, so they reset when <code>serve</code> restarts. For values that survive restarts, set <code>ANTHROPIC_API_KEY</code> / <code>AWS_*</code> in your shell or a <code>.env</code> before launching <code>serve</code>.</div>
   </div>
 </div>

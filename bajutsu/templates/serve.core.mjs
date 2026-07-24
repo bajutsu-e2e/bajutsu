@@ -899,9 +899,62 @@ async function saveSettings(){
 // two .tab idioms don't collide; the AI tab is the entry point openSettings resets to.
 function showSettingsTab(name){
   document.querySelectorAll('#settingsmodal .tab').forEach(t=>t.classList.toggle('active',t.dataset.settab===name));
-  $('#setpanel-ai').hidden=name!=='ai';$('#setpanel-secrets').hidden=name!=='secrets';
+  $('#setpanel-ai').hidden=name!=='ai';$('#setpanel-secrets').hidden=name!=='secrets';$('#setpanel-server').hidden=name!=='server';
 }
-function openSettings(){openModal($('#settingsmodal'));showSettingsTab('ai');$('#apikey').value='';$('#cctoken').value='';setSettingsStatus('','');loadKey();loadCcTok();loadProv();loadScenarioSecrets()}
+// ---- Server tab (BE-0318): a read-only view of the running server's resolved configuration, read
+// once when the Settings modal opens (the server config doesn't change without a restart). Rows are
+// built with the same innerHTML+esc pattern as the masked-field renders; host paths are absent from
+// the payload on a hosted deployment (BE-0108), so those rows simply don't render there.
+function srvRow(key,valHtml){return '<div class="srvrow"><span class="srvkey">'+esc(key)+'</span><span class="srvval">'+valHtml+'</span></div>'}
+function loadServerInfo(){
+  const host=$('#serverinfo-rows');if(!host)return;
+  return getJSON('/api/server',{}).then(d=>{
+    if(!d||!d.mode){host.innerHTML='<div class="fshint">Server info is unavailable.</div>';return}
+    let h='';
+    h+=srvRow('Deployment mode','<code>'+esc(d.mode)+'</code>');
+    if(d.version)h+=srvRow('Version','v'+esc(d.version));
+    // Bound config: the path locally, "(hosted — path hidden)" when hosted, or the no-config note.
+    if(d.hasConfig){
+      const cfg='config' in d?('<code>'+esc(d.config)+'</code>'):'<span class="muted">(hosted &mdash; path hidden)</span>';
+      h+=srvRow('Config',cfg);
+    }else{h+=srvRow('Config','<span class="muted">no config bound</span>')}
+    // Config source: the Git provenance stamp when the config came from Git, else a local/upload
+    // note. Mirrors the config-view provenance line (host/owner/repo @ ref → sha) for consistency.
+    const src=d.configSource;
+    if(src&&src.repo){
+      let s='<code>'+esc([src.host,src.owner,src.repo].filter(Boolean).join('/'))+'</code>';
+      if(src.ref)s+=' @ <code>'+esc(src.ref)+'</code>';
+      if(src.sha)s+=' &rarr; <code>'+esc(String(src.sha).slice(0,12))+'</code>';
+      h+=srvRow('Config source',s);
+    }else if(d.hasConfig){h+=srvRow('Config source','<span class="muted">local file / upload</span>')}
+    if(Array.isArray(d.backends)&&d.backends.length)h+=srvRow('Backends','<code>'+esc(d.backends.join(', '))+'</code>');
+    if('runsDir' in d)h+=srvRow('Runs directory','<code>'+esc(d.runsDir)+'</code>');
+    if('baselinesDir' in d)h+=srvRow('Baselines directory','<code>'+esc(d.baselinesDir)+'</code>');
+    if(typeof d.retentionDays==='number')h+=srvRow('Trash retention',d.retentionDays>0?(d.retentionDays+' days'):'<span class="muted">disabled</span>');
+    const c=d.concurrency||{};
+    // cap() returns only digits or the literal "unlimited", so the row needs no escaping.
+    const cap=v=>(typeof v==='number'&&v>0)?String(v):'unlimited';
+    h+=srvRow('Max concurrent runs',cap(c.total)+' total &middot; '+cap(c.perUser)+' / user &middot; '+cap(c.perOrg)+' / org');
+    // iOS test runner (BE-0292/BE-0318): the one row whose absence silently blocks every iOS
+    // Simulator run — shown "deployed / not deployed", with the build toolchain when known and a note
+    // when the bound config overrides the runner (so the bundle isn't what would run).
+    const ios=d.iosRunner||{};
+    let iosHtml;
+    if(ios.bundled){
+      let s='<span class="ok">deployed</span>';
+      const bi=ios.buildInfo;
+      if(bi&&(bi.xcode||bi.sdk)){
+        const parts=[];if(bi.xcode)parts.push('Xcode '+esc(bi.xcode));if(bi.sdk)parts.push('SDK '+esc(bi.sdk));
+        s+=' <span class="muted">(built against '+parts.join(' / ')+')</span>';
+      }
+      iosHtml=s;
+    }else{iosHtml='<span class="muted">not deployed</span>'}
+    if(ios.override)iosHtml+=' <span class="muted">&mdash; config sets an explicit testRunner</span>';
+    h+=srvRow('iOS test runner',iosHtml);
+    host.innerHTML=h;
+  });
+}
+function openSettings(){openModal($('#settingsmodal'));showSettingsTab('ai');$('#apikey').value='';$('#cctoken').value='';setSettingsStatus('','');loadKey();loadCcTok();loadProv();loadScenarioSecrets();loadServerInfo()}
 function closeSettings(){closeModal($('#settingsmodal'))}
 $('#opensettings').addEventListener('click',openSettings);
 $('#settingsclose').addEventListener('click',closeSettings);

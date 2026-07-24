@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0318](BE-0318-serve-server-settings-tab-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0318") |
 | トピック | serve Web UI への CLI 機能の取り込み |
 <!-- /BE-METADATA -->
@@ -129,10 +129,10 @@ Secrets タブの隣に 3 つめのタブ（`data-settab="server"`、パネル `
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] 単位 1 — `GET /api/server` → `ops.server_settings(state)`（ホスト型対応の伏せ方つき）。
-- [ ] 単位 2 — `iosRunner` ブロック（同梱ランナーの有無、ビルド情報、`xcuitest.testRunner` の上書き）。
-- [ ] 単位 3 — Settings モーダルの読み取り専用 Server タブ（`serve.html.j2` と `serve.core.mjs`）。
-- [ ] 単位 4 — オペレーションとルート登録のテスト（ローカルとホスト型、同梱の有無、上書き）。
+- [x] 単位 1 — `GET /api/server` → `ops.server_settings(state)`（ホスト型対応の伏せ方つき）。
+- [x] 単位 2 — `iosRunner` ブロック（同梱ランナーの有無、ビルド情報、`xcuitest.testRunner` の上書き）。
+- [x] 単位 3 — Settings モーダルの読み取り専用 Server タブ（`serve.html.j2` と `serve.core.mjs`）。
+- [x] 単位 4 — オペレーションとルート登録のテスト（ローカルとホスト型、同梱の有無、上書き）。
 
 ## 参考
 

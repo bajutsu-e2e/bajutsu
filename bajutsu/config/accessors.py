@@ -90,3 +90,16 @@ def xcuitest_targets_real_device(eff: Effective) -> bool:
         and cfg.xcuitest is not None
         and cfg.xcuitest.device_type == "device"
     )
+
+
+def xcuitest_pins_runner(eff: Effective) -> bool:
+    """True when the target pins an explicit XCUITest runner (`xcuitest.testRunner`).
+
+    Every non-iOS target — and an iOS target that names no runner — is False. Such a target resolves
+    to the wheel-bundled generic runner instead (BE-0292); consulted by the serve Server settings tab
+    to report whether the bound config overrides that fallback (BE-0318).
+    """
+    cfg = eff.platform_config
+    return (
+        isinstance(cfg, IosConfig) and cfg.xcuitest is not None and bool(cfg.xcuitest.test_runner)
+    )
