@@ -402,19 +402,23 @@ def _raw_http_transport(host: str, port: int) -> TransportFn:
     return transport
 
 
-def _http_transport(host: str, port: int) -> TransportFn:
-    """The real transport: a crash-resilient, bounded-retry channel to the runner's loopback server.
+def _http_transport(host: str, port: int) -> tuple[TransportFn, TransportFn]:
+    """The real transport, plus the raw single-attempt transport used for fast health probes.
 
     Two layers over the raw socket: BE-0207's `_with_retry` smooths a sub-second blip, and BE-0287's
     `_with_crash_recovery` rides out a mid-run crash (idempotent re-issue) or fails loudly on a write it
-    must not re-send. The crash-recovery health poll uses the single-attempt raw transport so probing
-    stays fast, not the retried one.
+    must not re-send. Both the crash-recovery health poll and the cold-spawn liveness probe
+    (`XcuitestDriver.health_ready`, BE-0319) need probing to stay fast, not retried: `_with_retry`
+    re-issues a down connection up to `_MAX_ATTEMPTS` times with backoff, so routing a "single-shot"
+    probe through it would silently cost over a second per call instead of one quick attempt — the raw
+    transport is returned alongside the wrapped one so both callers can reuse this same instance.
     """
     raw = _raw_http_transport(host, port)
-    return _with_crash_recovery(
+    wrapped = _with_crash_recovery(
         _with_retry(raw),
         health=lambda timeout: _await_health(raw, timeout=timeout),
     )
+    return wrapped, raw
 
 
 class XcuitestDriver:
@@ -456,7 +460,12 @@ class XcuitestDriver:
         port: int = 0,
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
-        self._transport = transport if transport is not None else _http_transport(host, port)
+        if transport is not None:
+            # A test fake serves both roles: it has no BE-0207 retry to distinguish away.
+            self._transport = transport
+            self._probe_transport = transport
+        else:
+            self._transport, self._probe_transport = _http_transport(host, port)
         # Injectable so the stale re-resolution backoff (BE-0289) adds no wall time under test.
         self._sleep = sleep
 
@@ -659,9 +668,12 @@ class XcuitestDriver:
         """One `GET /health` probe: `True` if the runner answers `ready`, `False` if not up yet (BE-0319).
 
         A single non-blocking check (a zero-budget `_await_health`: it probes once and returns),
-        unlike `await_ready`'s bounded poll loop. The cold-spawn liveness wait that watches the
-        `xcodebuild` process between probes owns its own loop and timing, and reuses the driver's one
-        definition of the health-wire contract — the endpoint, the `ready` sentinel, and which
-        transport errors read as not-ready — rather than restating it.
+        unlike `await_ready`'s bounded poll loop. Uses `_probe_transport` — the raw, single-attempt
+        transport, the same one the crash-recovery health poll uses — rather than `_transport`, whose
+        BE-0207 retry would silently turn a "single probe" into up to `_MAX_ATTEMPTS` attempts with
+        backoff (over a second) each call; the cold-spawn liveness wait that watches the `xcodebuild`
+        process between probes needs each one fast, since it owns its own loop and timing. Reuses the
+        driver's one definition of the health-wire contract — the endpoint, the `ready` sentinel, and
+        which transport errors read as not-ready — rather than restating it.
         """
-        return _await_health(self._transport, timeout=0.0)
+        return _await_health(self._probe_transport, timeout=0.0)
