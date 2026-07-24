@@ -274,12 +274,17 @@ run-flutter: flutter-build runner-build
 # the plugin-free Flutter app does not link (docs/drivers.md "Flutter" out-of-scope). `adb root`
 # enables the `sendevent` path the gestures double-tap and multi-touch use, exactly as the native
 # android-e2e lane does; `text_editing` / `push` stay iOS-only in the native suite too.
+# BAJUTSU_MIN_WAIT_TIMEOUT=15 mirrors the native Compose lane (demos/showcase/android/Makefile): a
+# CI x86_64 software-rendered emulator presents sheets/covers slower than the shared scenarios' 5s
+# waits allow, so the modal/component scenarios need a higher wait ceiling. It is a ceiling on a
+# condition wait, not a fixed delay, so a fast (hardware-accelerated) emulator still resolves early.
 FLUTTER_ANDROID_SCENARIOS := smoke firstlook navigation search data_driven relaunch system \
 	components modals controls notices gestures gestures_multitouch permission extract foreach
 run-flutter-android: flutter-android-build
 	adb root >/dev/null 2>&1 || true
 	adb wait-for-device
 	cd $(ROOT) && for s in $(FLUTTER_ANDROID_SCENARIOS); do \
+		BAJUTSU_MIN_WAIT_TIMEOUT=15 \
 		uv run bajutsu run --scenario demos/showcase/scenarios/$$s.yaml \
 			--target showcase-flutter-android --backend android --config $(CONFIG) || exit 1; \
 	done
