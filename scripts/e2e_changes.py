@@ -97,6 +97,7 @@ _LANE_PATHS: dict[str, str] = {
         r"|\.github/workflows/ios-e2e\.yml$"
         r"|\.github/actions/bajutsu-e2e/"
         r"|\.github/actions/boot-simulator/"
+        r"|\.github/actions/setup-ios-toolchain/"
     ),
     "android": (
         # Only the adb driver (the top-level list does not reach into subdirectories) and the Python
