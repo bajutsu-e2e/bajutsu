@@ -285,27 +285,30 @@ jobs:
   # has a flakiness history (BE-0218), so new actuation lands as a per-PR signal first and is promoted
   # to the gate only once it proves stable.
   # SPIKE (not merge-bound): step-level parallelism instead of the job/matrix fan-out on the sibling
-  # branch — run the four actuation scenarios concurrently on ONE runner, each on its own Simulator.
+  # branch — run the four actuation scenarios concurrently on ONE runner via the native 2026-06-25
+  # `parallel:` step group, each scenario on its own Simulator.
   #
-  # The native 2026-06-25 "steps can run in parallel" feature (`parallel:`) was tried first and is
-  # unusable in this repo today, on two counts (finding of this spike):
-  #   - GitHub itself rejects the workflow: a `parallel:` group produced a startup_failure ("workflow
-  #     file issue", zero jobs) — the feature is not accepted by the workflow parser as written here.
-  #   - `actionlint` 1.7.12 (the repo's pinned, required check) does not understand `parallel:`
-  #     either (upstream rhysd/actionlint#693-695 are open, and no released version supports it).
-  # So to still observe the *runtime* question the spike exists for, this emulates step-parallelism
-  # the pre-feature way the changelog itself names: shell backgrounding (`&`) of the four
-  # `bajutsu run` calls in one step, then `wait`. Same runtime shape the native feature would have —
-  # four cold XCUITest runners on four Simulators on one runner — minus the native per-step logs
-  # (captured per scenario into files here instead), and it runs on today's GitHub + passes actionlint.
+  # `parallel:` runs each step in the group as a background step with an implicit wait at the end
+  # (docs: workflow-syntax "Running steps in parallel"). The group step carries NO `name:` — a first
+  # attempt with `- name: … / parallel:` startup_failed the workflow; the correct shape is a bare
+  # `- parallel:` with the sub-steps directly under it.
   #
   # Determinism note: the four scenarios all drive UI, so they cannot share one Simulator
   # concurrently (the `conformance` job runs pytest `-n0` for exactly this reason). Hence one freshly
   # booted Simulator per scenario — trading the matrix branch's N runners (N× 10x-billed macOS
-  # minutes + N acquisitions) for N Simulators on one runner (RAM/CPU + N cold runner spawns). Still
-  # not a merge candidate: one job means "Re-run failed jobs" reruns every scenario, not just the
-  # failed one — the per-scenario re-run the matrix branch buys is lost. bajutsu is invoked inline so
-  # the one `uv sync` runs before the fan-out rather than four times concurrently on one venv.
+  # minutes + N acquisitions) for N Simulators on one runner (RAM/CPU + N cold runner spawns). bajutsu
+  # is invoked inline so the one `uv sync` runs before the fan-out, not four times concurrently on one
+  # venv.
+  #
+  # Why still a spike, not a merge candidate:
+  #   - `actionlint` 1.7.12 (the repo's pinned, required check) does not understand `parallel:`
+  #     (upstream rhysd/actionlint#693-695 are open; no released version supports it), so this is
+  #     pushed with `--no-verify` and its `actionlint` check stays red — GitHub runs the workflow,
+  #     the lint gate does not pass.
+  #   - one job means "Re-run failed jobs" reruns every scenario, not just the failed one — the
+  #     per-scenario re-run the matrix branch buys is lost.
+  #   - four cold XCUITest runners spawning at once likely stresses the `/selectAll timed out`
+  #     cold-runner flakiness the isolated text_editing matrix leg already hit.
   actuation:
     name: actuation (xcuitest, step-parallel spike)
     needs: [changes, build]
@@ -361,37 +364,19 @@ jobs:
       - name: Sync dependencies (once)
         run: uv sync --no-dev
 
-      # The spike's core: launch the four `bajutsu run` calls at once (shell `&`), each on its own
-      # Simulator, capture each scenario's output to its own log, `wait` for all, then aggregate —
-      # a non-zero exit from any scenario reddens the step. This is the step-parallel runtime the
-      # native `parallel:` feature would give (see the job header for why the native form is unused).
-      - name: Run the four actuation scenarios concurrently (one Simulator each)
-        run: |
-          set -uo pipefail
-          mkdir -p runs/spike-logs
-          names=(navigation device push text_editing)
-          sims=("$SIM_1" "$SIM_2" "$SIM_3" "$SIM_4")
-          run_one() {
-            uv run --no-sync bajutsu run --scenario "demos/showcase/scenarios/$1.yaml" \
-              --target showcase-swiftui --backend xcuitest \
-              --config demos/showcase/showcase.config.yaml --udid "$2" --no-erase \
-              > "runs/spike-logs/$1.log" 2>&1
-          }
-          pids=()
-          for i in "${!names[@]}"; do
-            run_one "${names[$i]}" "${sims[$i]}" &
-            pids+=("$!")
-          done
-          fail=0
-          for i in "${!names[@]}"; do
-            if wait "${pids[$i]}"; then echo "${names[$i]}: PASS"; else echo "${names[$i]}: FAIL"; fail=1; fi
-          done
-          echo "===== per-scenario logs ====="
-          for name in "${names[@]}"; do
-            echo "----- $name -----"
-            cat "runs/spike-logs/$name.log" || true
-          done
-          exit "$fail"
+      # The spike's core: the native `parallel:` group runs the four scenarios concurrently, each as
+      # a background step on its own Simulator, with an implicit wait at the end (the group fails if
+      # any sub-step fails). The group step takes no `name:` — a bare `- parallel:` with the
+      # sub-steps directly under it, per the workflow-syntax docs.
+      - parallel:
+          - name: navigation (Sim 1 — tap + back)
+            run: uv run --no-sync bajutsu run --scenario demos/showcase/scenarios/navigation.yaml --target showcase-swiftui --backend xcuitest --config demos/showcase/showcase.config.yaml --udid "$SIM_1" --no-erase
+          - name: device (Sim 2 — setLocation + clipboard)
+            run: uv run --no-sync bajutsu run --scenario demos/showcase/scenarios/device.yaml --target showcase-swiftui --backend xcuitest --config demos/showcase/showcase.config.yaml --udid "$SIM_2" --no-erase
+          - name: push (Sim 3 — push notification)
+            run: uv run --no-sync bajutsu run --scenario demos/showcase/scenarios/push.yaml --target showcase-swiftui --backend xcuitest --config demos/showcase/showcase.config.yaml --udid "$SIM_3" --no-erase
+          - name: text_editing (Sim 4 — select/copy/delete/clear)
+            run: uv run --no-sync bajutsu run --scenario demos/showcase/scenarios/text_editing.yaml --target showcase-swiftui --backend xcuitest --config demos/showcase/showcase.config.yaml --udid "$SIM_4" --no-erase
 
       - name: Upload run artifacts
         if: always()
