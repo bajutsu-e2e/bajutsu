@@ -64,13 +64,26 @@ PY
 # Stage the bundled XCUITest Simulator runner so `make serve` on a Mac makes XCUITest work out of
 # the box (BE-0292). The bundled products live under `bajutsu/_xcuitest_runner/`, populated by `make
 # runner-bundle` (an `xcodebuild build-for-testing`); a source checkout ships none, and without them
-# the environment cannot fall back to the bundled runner. Build once when absent — a warm bundle is
-# reused, so this pays `xcodebuild` only on the first XCUITest serve of a fresh clone. A build
-# failure only warns, leaving serve to start for other backends.
+# the environment cannot fall back to the bundled runner. Build when absent OR stale — a warm,
+# current bundle is reused, so this pays `xcodebuild` only on the first XCUITest serve of a fresh
+# clone and again whenever a runner-affecting source changes; without the staleness half, a bundle
+# built before a runner change (e.g. a new Router.swift endpoint) would silently keep serving that
+# change's scenarios with the old runner. A build failure only warns, leaving serve to start for
+# other backends.
 runner_bundle="bajutsu/_xcuitest_runner/BajutsuRunner.xctestrun"
+runner_build_info="bajutsu/_xcuitest_runner/build-info.json"
+
+runner_bundle_stale() {
+  [ ! -f "$runner_bundle" ] && return 0
+  [ ! -f "$runner_build_info" ] && return 0
+  recorded="$(sed -n 's/.*"sourceHash": *"\([^"]*\)".*/\1/p' "$runner_build_info")"
+  [ -z "$recorded" ] && return 0
+  [ "$recorded" != "$(./scripts/xcuitest-runner-hash.sh)" ]
+}
+
 if [ "${BAJUTSU_SKIP_RUNNER_BUNDLE:-}" != "1" ] &&
   [ "$(uname)" = "Darwin" ] &&
-  [ ! -f "$runner_bundle" ] &&
+  runner_bundle_stale &&
   serve_uses_xcuitest; then
   if command -v xcodebuild >/dev/null 2>&1 && command -v xcodegen >/dev/null 2>&1; then
     echo "serve: staging bundled XCUITest runner (make runner-bundle)…" >&2

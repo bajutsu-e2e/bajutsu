@@ -67,7 +67,7 @@ preflight:
 	@./scripts/preflight.sh
 
 # Shell scripts the gate lints. pre-push has no .sh suffix, so they're listed explicitly.
-SHELL_SCRIPTS := .githooks/pre-push .githooks/commit-msg scripts/serve.sh scripts/install.sh scripts/worktree.sh scripts/preflight.sh scripts/merge-uv-lock.sh .claude/hooks/session-start.sh demos/tour/demo.sh
+SHELL_SCRIPTS := .githooks/pre-push .githooks/commit-msg scripts/serve.sh scripts/install.sh scripts/worktree.sh scripts/preflight.sh scripts/merge-uv-lock.sh scripts/xcuitest-runner-hash.sh .claude/hooks/session-start.sh demos/tour/demo.sh
 
 # Modules whose public surface has migrated to the Google-style docstring standard (BE-0065),
 # enforced by `lint-docstrings`. This list GROWS module-by-module as more migrate; keep it the
@@ -224,15 +224,18 @@ docs-diagrams:
 # The whole products directory is copied so the `.xctestrun`'s `__TESTROOT__` still resolves beside
 # its test bundles. The output is gitignored and force-included via pyproject `artifacts`. A
 # build-info.json records the Xcode / Simulator SDK the runner was built against, so `doctor` can warn
-# when the host toolchain differs from it (BE-0292) rather than surfacing an opaque xcodebuild error.
+# when the host toolchain differs from it (BE-0292) rather than surfacing an opaque xcodebuild error;
+# it also records a content hash of the runner's own sources (scripts/xcuitest-runner-hash.sh), so
+# `scripts/serve.sh` can tell a stale bundle from a current one without re-running xcodebuild.
 runner-bundle:
 	$(MAKE) -C demos/showcase runner-build
 	rm -rf bajutsu/_xcuitest_runner
 	mkdir -p bajutsu/_xcuitest_runner
 	cp -R BajutsuKit/Runner/build/dd/Build/Products/. bajutsu/_xcuitest_runner/
-	printf '{"xcode": "%s", "sdk": "%s"}\n' \
+	printf '{"xcode": "%s", "sdk": "%s", "sourceHash": "%s"}\n' \
 		"$$(xcodebuild -version | awk 'NR==1 {print $$2}')" \
 		"$$(xcodebuild -version -sdk iphonesimulator SDKVersion 2>/dev/null | tr -d '[:space:]')" \
+		"$$(scripts/xcuitest-runner-hash.sh)" \
 		> bajutsu/_xcuitest_runner/build-info.json
 
 # Showcase build / on-device targets live with the fixture (demos/showcase/, the single iOS app):
