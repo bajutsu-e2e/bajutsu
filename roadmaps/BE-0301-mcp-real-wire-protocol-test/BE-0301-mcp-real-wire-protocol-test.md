@@ -87,8 +87,12 @@ Proposal altitude. The work is MECE along the units below.
   types (`erase` boolean, `workers` integer), and covers the error path — a missing resource and a
   tool call missing its required argument, each asserted to come back as a JSON-RPC error frame
   carrying the server's message, a serialization path distinct from a successful call. The
-  subprocess uses the `fake` backend, so both tool calls run real, device-free logic — the same
-  backend the gate drives. The in-process `tests/test_mcp.py` is unchanged. Scope is the `stdio`
+  subprocess uses the `fake` backend, so `bajutsu_doctor` runs a real, device-free driver query in
+  the server process; `bajutsu_run` spawns a real `bajutsu run` subprocess whose verdict depends on
+  the target environment (its device resolution needs the platform CLIs, absent on the Linux host),
+  so the run round-trip asserts the verdict *line* survives the transport in well-formed shape — the
+  wire property under test — not the run's own pass/fail. The in-process `tests/test_mcp.py` is
+  unchanged. Scope is the `stdio`
   transport; the `sse` transport's distinct framing is a deliberate follow-up. The suite is marked
   `mcp_wire` (pyproject `addopts` deselects it from the fast gate) and runs in the non-gating
   `mcp-wire.yml` lane, to be promoted to required once stable — the precedent BE-0282 set.
