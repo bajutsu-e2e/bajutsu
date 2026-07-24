@@ -48,7 +48,7 @@ except ValueError as exc:
     _GAP = f"provider misconfigured: {exc}"
 _requires_credential = pytest.mark.skipif(
     _GAP is not None,
-    reason=f"real-model smoke is signal-first (BE-0282); no AI credential: {_GAP}",
+    reason=f"real-model smoke is signal-first (BE-0282); real model unavailable: {_GAP}",
 )
 
 
@@ -126,6 +126,7 @@ def test_crawl_smoke_harness_validates_parsed_actions() -> None:
 # --- Key-gated live smoke tests (real model) ----------------------------------------------------
 
 
+@pytest.mark.live
 @_requires_credential
 def test_record_propose_parses_a_real_model_response() -> None:
     screen = _showcase_screen("controls")
@@ -134,6 +135,7 @@ def test_record_propose_parses_a_real_model_response() -> None:
     _assert_parses_to_record_action(proposal)
 
 
+@pytest.mark.live
 @_requires_credential
 def test_crawl_navigate_parses_a_real_model_response() -> None:
     screen = _showcase_screen("controls")
