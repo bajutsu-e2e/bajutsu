@@ -368,10 +368,17 @@ def test_discarding_a_crashed_runner_warns_and_does_not_signal_it(
     proc = env._runner_proc
     assert proc is not None
     proc.alive = False  # type: ignore[attr-defined]  # the runner crashed mid-run
+    log = env._runner_log
+    assert log is not None and log.exists()
     with caplog.at_level("WARNING"):
         env._discard_runner()
     assert not proc.terminated  # type: ignore[attr-defined]  # a dead process is never signalled
     assert "exited on its own" in caplog.text
+    # A review finding this PR caught: the warning tells the operator to "see <path>" — that file
+    # must still exist, or the pointer resolves to nothing. A mid-run crash keeps its ephemeral
+    # capture (parity with a failed cold-spawn attempt), never prunes it.
+    assert f"see {log}" in caplog.text
+    assert log.exists()
 
 
 def test_runner_output_is_captured_when_the_env_var_is_set(

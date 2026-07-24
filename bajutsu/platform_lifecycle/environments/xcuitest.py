@@ -540,8 +540,11 @@ class XcuitestEnvironment(_DeviceEnvironment):
         but wrong for a cold-spawn startup failure, whose reason is already folded into the raised
         error, so `_spawn_cold_with_retry` clears it. `keep_log` leaves the capture on disk for a
         failed cold attempt (the evidence a loud failure points at); teardown of a healthy runner
-        prunes it (BE-0319).
+        prunes it (BE-0319). A mid-run crash keeps its capture too — `warn_on_crash`'s hint tells the
+        operator to "see <path>", so pruning that same file in this call would point at evidence that
+        no longer exists.
         """
+        crashed = False
         if self._runner_proc is not None:
             exited = self._runner_proc.poll()
             if exited is not None:
@@ -550,6 +553,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
                 # above for what this repeatedly surfaced in CI); log it (with the captured output)
                 # so a run that died on a `Connection refused` shows *why* the channel vanished. No
                 # terminate(): the pid is already reaped.
+                crashed = warn_on_crash
                 if warn_on_crash:
                     _logger.warning(
                         "xcuitest runner exited on its own (code %s) — a mid-run crash%s",
@@ -564,7 +568,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
                     self._runner_proc.kill()
                     self._runner_proc.wait()
             self._runner_proc = None
-        self._release_log(keep=keep_log)  # after the crash hint above has read the tail
+        self._release_log(keep=keep_log or crashed)  # after the hint above has read the tail
         if self._patched_runner is not None:
             self._patched_runner.unlink(missing_ok=True)
             self._patched_runner = None
@@ -575,9 +579,10 @@ class XcuitestEnvironment(_DeviceEnvironment):
 
         A default capture exists only to diagnose a flake — its tail is folded into the crash warning
         / startup error before this runs — so a healthy run prunes it and leaves nothing behind. A
-        failed cold attempt passes `keep=True` so the full log survives as evidence past the 20-line
-        tail in the error; an explicit `BAJUTSU_XCUITEST_RUNNER_LOG` directory is always kept, since
-        the operator asked for it (BE-0319 unit 1).
+        failed cold attempt, and a mid-run crash (`_discard_runner`'s `keep_log or crashed`), both keep
+        it, so the full log survives as evidence past the 20-line tail already shown; an explicit
+        `BAJUTSU_XCUITEST_RUNNER_LOG` directory is always kept, since the operator asked for it
+        (BE-0319 unit 1).
 
         A kept default capture is logged here at the moment it is kept: `_spawn_cold_with_retry`
         folds a failed attempt's path into the raised error only when *every* attempt fails: a retry
