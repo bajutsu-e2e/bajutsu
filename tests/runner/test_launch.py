@@ -53,6 +53,9 @@ def _mock_runner_spawn(monkeypatch: pytest.MonkeyPatch) -> None:
         def __init__(self, cmd: list[str], **kwargs: object) -> None:
             pass
 
+        def poll(self) -> int | None:
+            return None  # alive: the cold-spawn liveness check (BE-0319) never trips
+
         def terminate(self) -> None:
             pass
 
@@ -62,8 +65,12 @@ def _mock_runner_spawn(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("subprocess.Popen", _FakePopen)
 
     class _ReadyFake(FakeDriver):
-        # The XCUITest lifecycle probes the runner via `await_ready` before returning; the fake has
-        # no runner, so this is a no-op. `query()` still returns the ready screen for `_await_ready`.
+        # The cold spawn probes the runner via `health_ready` before returning (BE-0319); the fake
+        # has no runner, so it just reports ready. `query()` still returns the ready screen for
+        # `_await_ready`.
+        def health_ready(self) -> bool:
+            return True
+
         def await_ready(self, timeout: float = 0.0) -> None:
             return None
 

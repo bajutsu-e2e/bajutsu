@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0319](BE-0319-xcuitest-cold-spawn-resilience.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0319") |
+| Implementing PR | [#1327](https://github.com/bajutsu-e2e/bajutsu/pull/1327) |
 | Topic | Platform support |
 | Related | [BE-0207](../BE-0207-xcuitest-channel-transient-retry/BE-0207-xcuitest-channel-transient-retry.md), [BE-0218](../BE-0218-e2e-simulator-flaky-readiness-actuation/BE-0218-e2e-simulator-flaky-readiness-actuation.md), [BE-0287](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience.md) |
 <!-- /BE-METADATA -->
@@ -158,11 +159,11 @@ seam (`_open_runner_output` / `_runner_log_hint`); units 3–5 are new.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — default the runner-output capture on for the cold-spawn path (builds on #1299).
-- [ ] Unit 2 — fold the captured tail into the `XcuitestChannelError` startup-failure message.
-- [ ] Unit 3 — fail fast when the `xcodebuild` process exits during the cold-spawn wait.
-- [ ] Unit 4 — retry the cold spawn once before failing loudly.
-- [ ] Unit 5 — off-device tests over the spawn/wait seam.
+- [x] Unit 1 — default the runner-output capture on for the cold-spawn path (builds on #1299).
+- [x] Unit 2 — fold the captured tail into the `XcuitestChannelError` startup-failure message.
+- [x] Unit 3 — fail fast when the `xcodebuild` process exits during the cold-spawn wait.
+- [x] Unit 4 — retry the cold spawn once before failing loudly.
+- [x] Unit 5 — off-device tests over the spawn/wait seam.
 
 ## References
 

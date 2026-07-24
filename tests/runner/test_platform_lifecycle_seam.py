@@ -429,6 +429,9 @@ def test_xcuitest_environment_start_launches_runner_and_creates_driver(
         def __init__(self, cmd: list[str], **kwargs: object) -> None:
             popen_calls.append({"cmd": cmd, "kwargs": kwargs})
 
+        def poll(self) -> int | None:
+            return None  # alive: the cold-spawn liveness check (BE-0319) never trips
+
         def terminate(self) -> None:
             pass
 
@@ -441,8 +444,11 @@ def test_xcuitest_environment_start_launches_runner_and_creates_driver(
         name = "xcuitest"
         ready_called = False
 
-        def await_ready(self, **kw: object) -> None:
-            self.ready_called = True
+        def health_ready(self) -> bool:
+            self.ready_called = True  # the cold spawn probes readiness here now (BE-0319)
+            return True
+
+        def await_ready(self, **kw: object) -> None: ...
 
         def query(self) -> list[base.Element]:
             return []
@@ -504,6 +510,9 @@ def test_xcuitest_environment_applies_permissions_before_the_runner_launches(
                 any(c[:3] == ["xcrun", "simctl", "privacy"] for c in simctl_calls)
             )
 
+        def poll(self) -> int | None:
+            return None  # alive: the cold-spawn liveness check (BE-0319) never trips
+
         def terminate(self) -> None:
             pass
 
@@ -515,8 +524,10 @@ def test_xcuitest_environment_applies_permissions_before_the_runner_launches(
     class FakeXcuitestDriver:
         name = "xcuitest"
 
-        def await_ready(self, **kw: object) -> None:
-            pass
+        def health_ready(self) -> bool:
+            return True
+
+        def await_ready(self, **kw: object) -> None: ...
 
     monkeypatch.setattr("bajutsu.backends.make_driver", lambda *a, **k: FakeXcuitestDriver())
 
@@ -563,21 +574,28 @@ def test_xcuitest_environment_teardown_stops_runner(monkeypatch: pytest.MonkeyPa
     assert ["xcrun", "simctl", "terminate", "UDID-1", "com.example.demo"] in calls
 
 
-def test_spawn_cold_discards_runner_when_await_ready_fails(
-    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+def test_spawn_cold_discards_a_never_ready_runner_on_every_attempt(
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # BE-0290: a runner that spawns but never answers /health must be discarded before start() raises
-    # — a single-use environment (doctor / serve via read_session) never spawns again to reclaim it,
-    # so an unguarded failure here would orphan the xcodebuild subprocess.
-    import logging
+    # BE-0290 / BE-0319: a runner that spawns but never answers /health (process alive) must be
+    # discarded before start() raises — a single-use environment (doctor / serve via read_session)
+    # never spawns again to reclaim it, so an unguarded failure would orphan the live xcodebuild
+    # subprocess. The cold spawn also retries once (unit 4), so a repeatable never-ready failure
+    # discards a live runner on each attempt and then fails loudly.
     import plistlib
     import tempfile
 
     from bajutsu.config import XcuitestConfig
+    from bajutsu.drivers.xcuitest import XcuitestChannelError
 
     monkeypatch.setattr(
         "bajutsu.platform_lifecycle.environments.xcuitest._allocate_port", lambda: 12345
     )
+    # Shrink the cold-startup ceiling so a never-ready wait fails in one poll rather than 120s.
+    monkeypatch.setattr(
+        "bajutsu.platform_lifecycle.environments.xcuitest._RUNNER_STARTUP_TIMEOUT", 0.02
+    )
+    monkeypatch.delenv("BAJUTSU_XCUITEST_RUNNER_LOG", raising=False)
     terminated: list[bool] = []
 
     class FakePopen:
@@ -585,7 +603,7 @@ def test_spawn_cold_discards_runner_when_await_ready_fails(
             pass
 
         def poll(self) -> int | None:
-            return None  # alive: the await_ready failure path discards it via terminate()
+            return None  # alive but never binds: the wait times out and discards via terminate()
 
         def terminate(self) -> None:
             terminated.append(True)
@@ -593,34 +611,31 @@ def test_spawn_cold_discards_runner_when_await_ready_fails(
         def wait(self, timeout: float | None = None) -> int:
             return 0
 
+        def kill(self) -> None:
+            pass
+
     monkeypatch.setattr("subprocess.Popen", FakePopen)
 
-    class _BoomDriver:
+    class _NeverReadyDriver:
         name = "xcuitest"
 
-        def await_ready(self, **_kw: object) -> None:
-            raise simctl.DeviceError("runner never became ready")
+        def health_ready(self) -> bool:
+            return False  # /health never answers ready
 
-    monkeypatch.setattr("bajutsu.backends.make_driver", lambda *a, **k: _BoomDriver())
+        def await_ready(self, **_kw: object) -> None: ...
+
+    monkeypatch.setattr("bajutsu.backends.make_driver", lambda *a, **k: _NeverReadyDriver())
 
     with tempfile.NamedTemporaryFile(suffix=".xctestrun") as f:
         plistlib.dump({"__xctestrun_metadata__": {"FormatVersion": 1}, "T": {}}, f)
         f.flush()
         eff = _ios_eff(xcuitest=XcuitestConfig(test_runner=f.name), app_path=None)
         xe = XcuitestEnvironment("xcuitest", "UDID-1", env_run=lambda _a, _e=None: "")
-        with (
-            pytest.raises(simctl.DeviceError, match="never became ready"),
-            caplog.at_level(logging.WARNING),
-        ):
+        with pytest.raises(XcuitestChannelError, match="did not come up"):
             xe.start(eff, Preconditions())
 
-    assert terminated == [True]  # the runner that never became ready was discarded, not orphaned
-    assert xe._runner_proc is None  # _discard_runner cleared the handle
-    # The startup timeout is diagnosable even though the runner is still alive (poll() is None, a
-    # hang not a crash): the warning names the timeout and, with capture off, points at how to
-    # capture the runner's output next time — so "did not come up" is never a bare dead end.
-    assert "never answered /health" in caplog.text
-    assert "BAJUTSU_XCUITEST_RUNNER_LOG" in caplog.text
+    assert len(terminated) == 2  # each attempt's live runner was discarded, not orphaned
+    assert xe._runner_proc is None  # the last _discard_runner cleared the handle
 
 
 def test_xcuitest_environment_forwards_preconditions_to_runner_env(
@@ -642,6 +657,9 @@ def test_xcuitest_environment_forwards_preconditions_to_runner_env(
         def __init__(self, cmd: list[str], **kwargs: object) -> None:
             popen_calls.append({"cmd": cmd, "kwargs": kwargs})
 
+        def poll(self) -> int | None:
+            return None  # alive: the cold-spawn liveness check (BE-0319) never trips
+
         def terminate(self) -> None:
             pass
 
@@ -653,8 +671,10 @@ def test_xcuitest_environment_forwards_preconditions_to_runner_env(
     class FakeDriver:
         name = "xcuitest"
 
-        def await_ready(self, **kw: object) -> None:
-            pass
+        def health_ready(self) -> bool:
+            return True
+
+        def await_ready(self, **kw: object) -> None: ...
 
     monkeypatch.setattr("bajutsu.backends.make_driver", lambda *a, **k: FakeDriver())
 
