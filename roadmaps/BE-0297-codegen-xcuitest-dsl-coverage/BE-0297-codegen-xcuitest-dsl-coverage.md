@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0297") |
-| Implementing PR | [#1278](https://github.com/bajutsu-e2e/bajutsu/pull/1278), [#1315](https://github.com/bajutsu-e2e/bajutsu/pull/1315) |
+| Implementing PR | [#1278](https://github.com/bajutsu-e2e/bajutsu/pull/1278), [#1315](https://github.com/bajutsu-e2e/bajutsu/pull/1315), [#1332](https://github.com/bajutsu-e2e/bajutsu/pull/1332) |
 | Topic | codegen coverage |
 <!-- /BE-METADATA -->
 
