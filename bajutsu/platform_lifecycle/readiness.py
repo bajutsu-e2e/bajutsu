@@ -8,6 +8,7 @@ skeleton is shared, so there is no second hand-rolled deadline implementation to
 
 from __future__ import annotations
 
+import logging
 import subprocess
 import time
 from typing import Literal
@@ -15,7 +16,10 @@ from typing import Literal
 from bajutsu import adb
 from bajutsu.doctor import namespace_of
 from bajutsu.drivers import base
+from bajutsu.evidence.network import TransitionSource, _no_transitions
 from bajutsu.platform_lifecycle.protocols import ReadinessResult
+
+_logger = logging.getLogger(__name__)
 
 # A readyWhen selector is a usable readiness signal only if it carries a per-element condition;
 # positional-only fields (`index`, `within`) match every element via find_all, so they fall back to
@@ -46,6 +50,7 @@ def _await_ready(
     *,
     ready_sel: base.Selector | None = None,
     id_namespaces: list[str] | None = None,
+    transitions: TransitionSource = _no_transitions,
 ) -> ReadinessResult:
     """Poll until the launched app has rendered its first screen.
 
@@ -53,7 +58,18 @@ def _await_ready(
 
     - `ready_sel` (a target's `readyWhen`): wait for that element to appear — the signal for an app
       whose first interactive screen is a modal over always-present chrome, where a count heuristic
-      would return before the modal presents.
+      would return before the modal presents. This is an explicit author declaration of the exact
+      element to wait for, so it outranks even the `transitions` signal below (BE-0310): for a
+      `readyWhen` target that also links `BajutsuKit`, an earlier *base-screen* transition must not
+      preempt the modal `readyWhen` is there to wait for — that would reintroduce the very race
+      `readyWhen` exists to close.
+    - `transitions` (BE-0310): an app linking `BajutsuKit`'s screen-transition observer (a
+      `UIViewController.viewDidAppear` hook) that has reported a completed appearance since this wait
+      started — a positive signal from the transition itself, needing no heuristic, so it outranks the
+      namespace/count heuristics below. Consulted only when no `readyWhen` match selector is set (see
+      above). A target that doesn't link the SDK (or whose cold-launch first screen reports nothing)
+      reports none, and falls through
+      unchanged to the rungs below.
     - `id_namespaces` (a target's `idNamespaces`): wait for any element whose id belongs to a declared
       namespace. On a slow cold boot the device query can return SpringBoard (the Home screen's app
       icons) before the app foregrounds — 2+ *off-namespace* elements that a bare count would wrongly
@@ -66,10 +82,10 @@ def _await_ready(
     when the app takes longer to start.
 
     Returns:
-        Whether the app became ready, which signal decided it (`readyWhen` / `namespace` / `count`,
-        or `timeout` when the deadline passed first), and the elapsed time — recorded on a first-wait
-        timeout so the failure is diagnosable from artifacts (BE-0231). Callers that only need the
-        side effect (the relaunch paths) may ignore the return.
+        Whether the app became ready, which signal decided it (`screenChanged` / `readyWhen` /
+        `namespace` / `count`, or `timeout` when the deadline passed first), and the elapsed time —
+        recorded on a first-wait timeout so the failure is diagnosable from artifacts (BE-0231).
+        Callers that only need the side effect (the relaunch paths) may ignore the return.
     """
     start = time.monotonic()
     # Use the selector only when it has a per-element condition; otherwise (None, empty, or
@@ -81,6 +97,19 @@ def _await_ready(
         "readyWhen" if match_sel is not None else "namespace" if declared else "count"
     )
     for _ in base.deadline_ticks(timeout, poll_init, poll_max):
+        # A `readyWhen` match selector keeps its guarantee: the transition shortcut applies only when
+        # none is set, so an earlier base-screen transition can't preempt the modal `readyWhen` waits
+        # for. The signal still outranks the namespace/count heuristics below. Only a transition
+        # received since this wait started counts — one left over from a prior launch (a mid-scenario
+        # relaunch reuses the same collector) must not satisfy readiness for a launch it predates. A
+        # collector only ever appends in receive order, so the most recent transition is always its
+        # last element: if that one doesn't clear `start`, none do.
+        reported = transitions()
+        if match_sel is None and reported and reported[-1][1] >= start:
+            # Diagnostic only (BE-0310 Unit 5): confirms the signal actually decided readiness on a
+            # real device, so on-device verification needs no extra instrumentation to observe it.
+            _logger.debug("readiness satisfied by the screenChanged signal")
+            return ReadinessResult(True, "screenChanged", time.monotonic() - start)
         try:
             elements = driver.query()
             if match_sel is not None:

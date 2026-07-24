@@ -21,6 +21,8 @@ from bajutsu import backends, simctl
 from bajutsu.config import Effective, load_config, resolve
 from bajutsu.drivers.xcuitest import XcuitestChannelError
 from bajutsu.platform_lifecycle.environments.xcuitest import (
+    _MAX_WARM_REUSES,
+    _MAX_WARM_REUSES_ENV,
     _WARM_HEALTH_TIMEOUT,
     XcuitestEnvironment,
     _destination,
@@ -297,6 +299,37 @@ def test_end_lease_keeps_the_runner_but_teardown_terminates_it(
     env.teardown(driver, eff)
     assert env._runner_proc is None and not proc.alive  # teardown kills the runner
     assert not env.has_reusable_resident()
+
+
+def test_start_respawns_cold_before_the_app_launch_cycle_crash(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # BE-0287: the resident runner crashes after a handful of app.launch() cycles
+    # (docs/architecture.md). The BE-0291 warm probe only detects an *already*-crashed runner, so the
+    # crash still lands mid-scenario. Bounding the reuse count respawns the runner cold *before* the
+    # crash threshold: after `_MAX_WARM_REUSES` warm reuses (the runner stays healthy throughout), the
+    # next lease spawns a fresh runner rather than tipping the live one over.
+    popen_argvs, _, run = _fake_toolchain(monkeypatch)
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    eff = _sim_eff(test_runner=str(_write_runner(tmp_path)))
+    for _ in range(_MAX_WARM_REUSES + 1):  # cold spawn, then `_MAX_WARM_REUSES` warm reuses
+        env.start(eff, Preconditions())
+    assert len(popen_argvs) == 1  # one runner across the whole reuse budget (all warm, all healthy)
+    env.start(eff, Preconditions())  # budget spent → proactive cold respawn, not another reuse
+    assert len(popen_argvs) == 2
+    assert env._warm_reuses == 0  # the fresh runner's cycle count started over
+
+
+def test_max_warm_reuses_env_override(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    # A lane can retune the reuse budget without a code change; 0 disables warm reuse entirely (every
+    # lease is cold), the safe fallback if a runner proves to crash sooner than the default tolerates.
+    monkeypatch.setenv(_MAX_WARM_REUSES_ENV, "0")
+    popen_argvs, _, run = _fake_toolchain(monkeypatch)
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    eff = _sim_eff(test_runner=str(_write_runner(tmp_path)))
+    env.start(eff, Preconditions())
+    env.start(eff, Preconditions())
+    assert len(popen_argvs) == 2  # no warm reuse: each lease spawns cold
 
 
 def test_start_respawns_a_dead_runner(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

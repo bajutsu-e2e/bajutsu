@@ -11,13 +11,20 @@ from dataclasses import dataclass
 from bajutsu import assertions
 from bajutsu.drivers import base
 from bajutsu.elements import shows_app_ui
+from bajutsu.evidence.network import TransitionSource, _no_transitions
 from bajutsu.orchestrator.types import AlertEvent, BlockedHandler, Clock, NetworkSource, _no_network
 from bajutsu.scenario import Gone, Wait, WaitRequest
 
 _logger = logging.getLogger(__name__)
 
 _POLL = 0.05
-_SETTLE_POLLS = 2  # consecutive unchanged polls that count as "settled"
+_SETTLE_POLLS = 2  # consecutive unchanged polls that count as "settled" (tree-diff fallback)
+# Quiescence window for the signal-based settle path (BE-0310): once no further screen-transition
+# has been reported for this long, the last transition is taken as finished. Short by design —
+# `viewDidAppear` already fires *after* the appearance transition completes, so this only smooths
+# over a chained transition posting more than one report in quick succession, not a whole
+# animation's duration.
+_TRANSITION_QUIESCENCE = 0.3
 
 # Min seconds between live "still waiting …" lines. Waits poll every _POLL (50ms); a per-poll
 # progress line would flood the run log, so the heartbeat below throttles it to a readable cadence.
@@ -191,6 +198,7 @@ def _wait(
     on_blocked: BlockedHandler | None = None,
     alerts: list[AlertEvent] | None = None,
     on_tick: WaitTick | None = None,
+    transitions: TransitionSource = _no_transitions,
     on_interrupt_poll: Callable[[list[base.Element]], bool] | None = None,
 ) -> tuple[bool, str, list[base.Element] | None]:
     """Condition wait. Polls query() (or the observed network) until satisfied instead
@@ -223,6 +231,10 @@ def _wait(
     When `on_tick` is given, a throttled "still waiting …" line is emitted while the wait is pending:
     once on entry — so even an instantly-satisfied wait surfaces its condition — then every
     `_TICK_INTERVAL` until it resolves. It is display only and never affects the outcome.
+
+    `transitions` (BE-0310) is the `settled` branch's read-only screen-transition signal; the
+    default reports none, so `settled` keeps its unchanged tree-diff behavior unless a caller passes
+    a real source.
 
     Returns `(ok, reason, tree)` where `tree` is the last screen the wait queried — the settled
     device state, since nothing actuates in a wait. The caller reuses it as the step's `after`
@@ -303,7 +315,9 @@ def _wait(
                 hb.tick(clock.now())
             _adaptive_sleep(clock, t0)
     if w.until == "settled":
-        return _wait_settled(driver, deadline, clock, gate, hb, on_interrupt_poll)
+        return _wait_settled(
+            driver, deadline, clock, gate, hb, transitions, on_interrupt_poll, start
+        )
     # until == "screenChanged"
     before = driver.query()
     if gate is not None:
@@ -330,16 +344,31 @@ def _wait_settled(
     clock: Clock,
     gate: _AlertGuardGate | None = None,
     hb: _Heartbeat | None = None,
+    transitions: TransitionSource = _no_transitions,
     on_interrupt_poll: Callable[[list[base.Element]], bool] | None = None,
+    start: float = 0.0,
 ) -> tuple[bool, str, list[base.Element]]:
     """Wait until a non-empty screen stops changing (transition/animation finished).
 
-    A blank/collapsed tree (e.g. a screen mid-render, or one covered by a system
-    alert) is never treated as settled. Best-effort: timing out just proceeds with the
-    current screen — a settle is a stabilization hint, not a correctness assertion, so
-    it never fails the step. When `gate` is given, a screen that stays collapsed (a system alert)
-    is cleared mid-settle rather than burning the whole timeout (BE-0269). When `hb` is given, it
-    emits the throttled "still waiting …" progress line while settling. Returns the last
+    When `transitions` has reported a screen-transition event *since this wait began*
+    (`events[-1][1] >= start`), settled is a positive signal — no further transition reported for
+    `_TRANSITION_QUIESCENCE` — rather than an inference from tree reads; see
+    `_wait_settled_by_signal`. This is re-checked on every poll, not only at entry: `viewDidAppear`'s
+    report is POSTed fire-and-forget *after* the appearance animation, so for the canonical
+    tap → navigate → `settled` step it lands a few hundred ms into the wait, not before it — the wait
+    switches onto the signal path the instant that report arrives, mirroring the readiness gate's
+    per-tick re-read. The since-start guard mirrors the one the readiness gate applies to the same
+    signal (BE-0310): a transition left over from a *prior* step (the collector is scenario-scoped,
+    not per-wait) predates `start`, so it is ignored rather than settling this wait instantly and
+    missing the current step's own transition. Until a since-start transition is observed (the app
+    doesn't link the observer, or its report is still in flight), this runs the original tree-diff
+    behavior, which waits the animation out: a blank/collapsed tree (e.g. a screen mid-render, or one
+    covered by a system alert) is never treated as settled, and settled is two consecutive unchanged
+    polls with an identified element. Both paths are best-effort: timing out
+    just proceeds with the current screen — a settle is a stabilization hint, not a correctness
+    assertion, so it never fails the step. When `gate` is given, a screen that stays collapsed (a
+    system alert) is cleared mid-settle rather than burning the whole timeout (BE-0269). When `hb` is
+    given, it emits the throttled "still waiting …" progress line while settling. Returns the last
     queried tree so the caller can reuse it as the step's `after` snapshot (BE-0259).
 
     A `True` from `on_interrupt_poll` ends the settle immediately (BE-0314) — a failed interrupt
@@ -351,6 +380,17 @@ def _wait_settled(
         gate.observe(previous)
     stable = 0
     while stable < _SETTLE_POLLS:
+        # A qualifying transition can land mid-wait, not only before it: `viewDidAppear`'s
+        # fire-and-forget report arrives *after* the appearance animation, so for the canonical
+        # tap → navigate → `settled` step it lands a few hundred ms into this wait rather than at
+        # entry. Re-consult every poll — like the readiness gate — and switch to the signal path the
+        # instant a since-start transition appears; until then the tree-diff loop below waits the
+        # animation out. A left-over transition from a prior step predates `start`, so it is ignored.
+        events = transitions()
+        if events and events[-1][1] >= start:
+            return _wait_settled_by_signal(
+                driver, deadline, clock, gate, hb, transitions, events[-1][1], on_interrupt_poll
+            )
         if clock.now() >= deadline:
             return True, "", previous
         t0 = clock.now()
@@ -367,3 +407,51 @@ def _wait_settled(
             hb.tick(clock.now())
         _adaptive_sleep(clock, t0)
     return True, "", previous
+
+
+def _wait_settled_by_signal(
+    driver: base.Driver,
+    deadline: float,
+    clock: Clock,
+    gate: _AlertGuardGate | None,
+    hb: _Heartbeat | None,
+    transitions: TransitionSource,
+    last: float,
+    on_interrupt_poll: Callable[[list[base.Element]], bool] | None = None,
+) -> tuple[bool, str, list[base.Element]]:
+    """The signal-based settle path (BE-0310): quiescence since the last observed transition.
+
+    "No further screen-change transition reported for `_TRANSITION_QUIESCENCE`" is a positive "the
+    last transition has finished and no new one started," not "two reads happened to match" — the
+    window restarts each time a fresh transition is observed. `last` is the most recent transition's
+    receive time, already fetched by the caller (`_wait_settled`) to confirm at least one had been
+    reported. A collector only ever appends in receive order, so it stays non-empty and its final
+    element is always the newest — later reads take `transitions()[-1][1]` rather than scanning for
+    a max.
+
+    A `True` from `on_interrupt_poll` ends the settle immediately (BE-0314), same as the tree-diff
+    fallback above — the signal path is still a settle loop over `driver.query()`, so a scenario's
+    `interrupts` handlers apply here too, not only when no transition signal is available.
+    """
+    # Diagnostic only (BE-0310 Unit 5): confirms the signal path actually decided settled on a real
+    # device, so on-device verification needs no extra instrumentation to observe it.
+    _logger.debug(
+        "settled via the screen-transition signal (quiescence=%ss)", _TRANSITION_QUIESCENCE
+    )
+    current = driver.query()
+    if gate is not None:
+        gate.observe(current)
+    while clock.now() - last < _TRANSITION_QUIESCENCE:
+        if clock.now() >= deadline:
+            return True, "", current
+        if on_interrupt_poll is not None and on_interrupt_poll(current):
+            return False, "interrupt recovery failed", current
+        t0 = clock.now()
+        last = transitions()[-1][1]
+        current = driver.query()
+        if gate is not None:
+            gate.observe(current)
+        if hb is not None:
+            hb.tick(clock.now())
+        _adaptive_sleep(clock, t0)
+    return True, "", current

@@ -36,9 +36,9 @@ _logger = logging.getLogger(__name__)
 
 # Set to a directory to capture the runner subprocess's combined stdout/stderr, one file per cold
 # spawn. Off by default (the output is discarded): a passing run is silent and high-volume, but a
-# mid-run crash — the known app.launch()-cycle crash (docs/architecture.md) — is otherwise visible
-# only as a `Connection refused` with no cause. A diagnostic aid for isolating that crash, not a
-# behavior change: unset, the runner is spawned exactly as before.
+# mid-run crash — see `_MAX_WARM_REUSES` below for what this repeatedly surfaced in CI — is
+# otherwise visible only as a `Connection refused` with no cause. A diagnostic aid for isolating
+# that crash, not a behavior change: unset, the runner is spawned exactly as before.
 _RUNNER_LOG_ENV = "BAJUTSU_XCUITEST_RUNNER_LOG"
 
 # Lines of captured runner output to fold into the crash warning — enough to show the tail of an
@@ -64,9 +64,39 @@ def _allocate_port() -> int:
 _RUNNER_STARTUP_TIMEOUT = 120.0
 
 # Probing a *warm* runner before reuse (BE-0291): a live runner answers /health at once, so this only
-# bounds the wedged case — a runner that crashed after repeated app.launch() cycles (a known failure,
-# docs/architecture.md) must be detected quickly and respawned, not waited on for the cold ceiling.
+# bounds the wedged case — a runner that crashed after repeated app.launch() cycles must be detected
+# quickly and respawned, not waited on for the cold ceiling.
 _WARM_HEALTH_TIMEOUT = 10.0
+
+# CI observation, not a documented platform limit: this PR's own `golden` / `visual` /
+# `xcuitest (multi-touch)` lanes crashed the resident runner mid-run on nearly every attempt, on
+# CI hardware only — never reproduced locally on a real Mac across dozens of runs, including the
+# exact same multi-scenario sequences these lanes exercise. The most likely cause, since it appeared
+# only alongside BE-0310, is `BajutsuScreen`'s `viewDidAppear` hook doing JSON-encode-and-POST work
+# synchronously on the main thread on every screen appearance — new work in a callback the XCTest
+# accessibility bridge is already timing-sensitive around on slower/contended CI hosts. That work is
+# now dispatched off the main thread (`BajutsuNet.postJSON`), which should remove the cause directly.
+# This bound stays as defense-in-depth for the reactive case the BE-0291 warm probe only detects
+# after the fact — each warm reuse re-attaches the XCTest automation session to a freshly launched
+# app, and that session can still destabilize after enough cycles even without the crash this PR
+# introduced. Bounding the reuse count makes the respawn *proactive*: after this many warm reuses,
+# `start` respawns the runner cold (a fresh XCTest session) before the next launch can tip it over,
+# so a run never hits the mid-scenario crash. A cold spawn resets the count. Kept below "a handful"
+# with headroom; overridable per lane for on-device tuning without a code change. 0 disables warm
+# reuse entirely (always cold).
+_MAX_WARM_REUSES = 3
+_MAX_WARM_REUSES_ENV = "BAJUTSU_XCUITEST_MAX_WARM_REUSES"
+
+
+def _max_warm_reuses() -> int:
+    """The warm-reuse budget before a proactive cold respawn, from the env override or the default."""
+    raw = os.environ.get(_MAX_WARM_REUSES_ENV)
+    if not raw:
+        return _MAX_WARM_REUSES
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return _MAX_WARM_REUSES
 
 
 def _destination(device_type: str, udid: str) -> str:
@@ -104,6 +134,10 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # leases. A real-device start (BE-0238) never sets it — warm reuse targets only the Simulator
         # runner's cold startup — so the pool tears such an environment down per lease, unchanged.
         self._reusable = False
+        # How many times the current runner has been reused warm (BE-0287): reset on a cold spawn,
+        # incremented on each warm resume, and capped by `_max_warm_reuses()` so the runner is
+        # respawned cold before it accumulates enough app.launch() cycles to crash mid-scenario.
+        self._warm_reuses = 0
 
     def start(
         self,
@@ -143,10 +177,17 @@ class XcuitestEnvironment(_DeviceEnvironment):
 
         # Simulator: reuse a healthy warm runner across leases (BE-0291). `erase` shuts the Simulator
         # down (killing the runner), so a scenario that erases forces a cold respawn; a wedged runner
-        # is a cache miss too (Unit 4), costing one extra cold start rather than the run.
-        if not pre.erase and (driver := self._healthy_resident_driver()) is not None:
+        # is a cache miss too (Unit 4), costing one extra cold start rather than the run. The reuse
+        # budget (`_max_warm_reuses`) forces a cold respawn *before* the runner accumulates enough
+        # app.launch() cycles to crash mid-scenario (BE-0287) — a proactive refresh, checked before the
+        # health probe so a spent runner skips straight to a cold spawn.
+        if (
+            not pre.erase
+            and self._warm_reuses < _max_warm_reuses()
+            and (driver := self._healthy_resident_driver()) is not None
+        ):
             return self._resume_warm(eff, pre, extra_env, permissions, driver)
-        self._discard_runner()  # drop any dead / lingering runner before a fresh spawn
+        self._discard_runner()  # drop any dead / lingering / reuse-spent runner before a fresh spawn
         return self._spawn_cold(eff, pre, device_type, extra_env, permissions)
 
     def _spawn_cold(
@@ -226,10 +267,23 @@ class XcuitestEnvironment(_DeviceEnvironment):
         try:
             cast(base.BackendLifecycle, driver).await_ready(timeout=_RUNNER_STARTUP_TIMEOUT)
         except Exception:
+            # Say *why* the runner never answered /health before discarding it. `_discard_runner`
+            # reports the captured output only when the process died on its own (a crash, poll() is
+            # not None); a runner still alive but that never bound its port — the app under test hung
+            # at launch, or xcodebuild was slow to bring up the XCTest host — otherwise vanishes
+            # behind a bare "did not come up" with no clue which. Emitting the hint here covers that
+            # hang case too, so a startup timeout always points at the captured runner log (or, when
+            # capture is off, how to turn it on) instead of only recording that the channel never came.
+            _logger.warning(
+                "xcuitest runner never answered /health within %ss%s",
+                _RUNNER_STARTUP_TIMEOUT,
+                self._runner_log_hint(),
+            )
             self._discard_runner()
             raise
         # Only the Simulator runner is kept warm; a real-device runner is torn down per lease.
         self._reusable = device_type != "device"
+        self._warm_reuses = 0  # a fresh XCTest session: the app.launch()-cycle count starts over
         return driver
 
     def _resume_warm(
@@ -262,6 +316,9 @@ class XcuitestEnvironment(_DeviceEnvironment):
                 e.openurl(pre.deeplink)
         except subprocess.CalledProcessError as exc:
             raise simctl.device_error(exc) from exc
+        self._warm_reuses += (
+            1  # one more app.launch() cycle on this runner (toward the reuse budget)
+        )
         return driver
 
     def _prepare_simulator(
@@ -366,10 +423,11 @@ class XcuitestEnvironment(_DeviceEnvironment):
         if self._runner_proc is not None:
             exited = self._runner_proc.poll()
             if exited is not None:
-                # The process is already gone — it exited on its own, not at our request. This is the
-                # known app.launch()-cycle crash (docs/architecture.md); log it (with the captured
-                # output when enabled) so a run that died on a `Connection refused` shows *why* the
-                # channel vanished, not only that it did. No terminate(): the pid is already reaped.
+                # The process is already gone — it exited on its own, not at our request (see
+                # `_MAX_WARM_REUSES` above for the mid-run crash this guards against). Log it (with
+                # the captured output when enabled) so a run that died on a `Connection refused` shows
+                # *why* the channel vanished, not only that it did. No terminate(): the pid is already
+                # reaped.
                 _logger.warning(
                     "xcuitest runner exited on its own (code %s) — a mid-run crash%s",
                     exited,

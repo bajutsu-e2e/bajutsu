@@ -76,11 +76,14 @@ intervals until the condition holds or `timeout` is reached.
 | `for: <sel>` | a matching element appears | **fail** |
 | `until: { gone: <sel> }` | a matching element disappears | **fail** |
 | `until: screenChanged` | `query()` changed from the initial value | **fail** |
-| `until: settled` | the screen is stable (two consecutive unchanged `query()`s, and there is an element with an id) | **proceed (does not fail)** |
+| `until: settled` | on iOS, when the app has reported a screen-transition event (BE-0310): no further one for a short quiescence window. Otherwise: the screen is stable (two consecutive unchanged `query()`s, and there is an element with an id) | **proceed (does not fail)** |
 
 > `settled` is a stabilization hint that "waits for a transition / animation to settle," not a
 > correctness assertion. An empty / collapsed tree (mid-render, or covered by a system alert) is
-> never treated as settled. On timeout it proceeds with the current screen.
+> never treated as settled under the tree-diff path. On timeout it proceeds with the current screen.
+> The screen-transition signal (BE-0310) is a positive "the last transition finished and no new one
+> started," read-only and opt-in (an app linking `BajutsuKit`'s observer); a target that doesn't
+> report it keeps the tree-diff behavior exactly as before.
 
 ## Evidence rule firing
 
@@ -162,3 +165,11 @@ The CLI's `run` calls this `run_and_report` ([cli](cli.md#run)).
 > a different actuator (BE-0240), or a scenario that `erase`s the device, tears it down and respawns,
 > and a runner that fails its bounded `/health` probe is treated as a cache miss (one extra cold
 > start, never a lost run). idb and the other backends spawn no such resident and are unchanged.
+>
+> The resident runner crashes after a handful of `app.launch()` cycles (an XCTest-session limit; see
+> `docs/architecture.md`), so warm reuse is **bounded** (BE-0287): after `BAJUTSU_XCUITEST_MAX_WARM_REUSES`
+> reuses (default 3), the runner is respawned cold *before* the next launch can crash it, rather than
+> letting the crash land mid-scenario and fail it. The `/health` probe above is only reactive — it
+> catches an already-crashed runner — so this proactive refresh is what keeps a long suite off the
+> crash. Set the knob to `0` to disable warm reuse entirely (every lease cold) on a device that
+> proves to crash sooner.

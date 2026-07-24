@@ -400,6 +400,18 @@ device (the shared device is reseeded via one channel, so parallel workers would
   element trees / network exchanges before they are written
 - Network observation + **deterministic mocks** (scenario `mocks` → in-protocol stubs, validated
   on-device): `request` assertions, `wait: { until: request }`, and offline stubbed responses
+- The **screen-transition signal** (BE-0310, iOS): an opt-in `BajutsuScreen` in `BajutsuKit`
+  swizzles `UIViewController.viewDidAppear(_:)` and reports each completed view-controller
+  appearance to the collector's `/transitions` endpoint (UIKit and SwiftUI alike, since
+  every `NavigationStack` push, sheet presentation, and tab switch is `UIHostingController`-backed),
+  independent of the network-exchange store it shares a process with. The
+  post-launch readiness gate (`_await_ready`) consults it as a new rung above the BE-0218
+  namespace/count heuristics (an explicit `readyWhen` still outranks it, so a base-screen transition
+  never preempts the modal `readyWhen` waits for), and the `settled` wait consults it as a
+  quiescence-window debounce, in place of tree-diff polling; a target that doesn't link the observer
+  (or hasn't yet transitioned) gets the unchanged tree-diff behavior on both. Fast-gate tested with a fake signal source; on-device confirmation
+  across UIKit and SwiftUI is this item's own gate, tracked in
+  [`demos/showcase/BE-0310-screen-transition-verification.md`](../demos/showcase/BE-0310-screen-transition-verification.md).
 - Reporting (`manifest.json` / `junit.xml` / `ctrf.json` / `report.html`)
 - Config resolution (defaults × targets, redact merge) and actuator selection
 - The `simctl` command layer · the XCUITest automation-snapshot parser · the `doctor` score + per-backend runnability

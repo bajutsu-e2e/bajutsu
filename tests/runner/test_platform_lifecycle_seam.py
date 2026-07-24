@@ -213,6 +213,9 @@ def test_web_hook_collector_wires_the_scenarios_mocks() -> None:
         def snapshot_timed(self) -> list[object]:
             return []
 
+        def transitions_snapshot_timed(self) -> list[object]:
+            return []
+
         def clear(self) -> None:
             pass
 
@@ -560,10 +563,13 @@ def test_xcuitest_environment_teardown_stops_runner(monkeypatch: pytest.MonkeyPa
     assert ["xcrun", "simctl", "terminate", "UDID-1", "com.example.demo"] in calls
 
 
-def test_spawn_cold_discards_runner_when_await_ready_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_spawn_cold_discards_runner_when_await_ready_fails(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
     # BE-0290: a runner that spawns but never answers /health must be discarded before start() raises
     # — a single-use environment (doctor / serve via read_session) never spawns again to reclaim it,
     # so an unguarded failure here would orphan the xcodebuild subprocess.
+    import logging
     import plistlib
     import tempfile
 
@@ -602,11 +608,19 @@ def test_spawn_cold_discards_runner_when_await_ready_fails(monkeypatch: pytest.M
         f.flush()
         eff = _ios_eff(xcuitest=XcuitestConfig(test_runner=f.name), app_path=None)
         xe = XcuitestEnvironment("xcuitest", "UDID-1", env_run=lambda _a, _e=None: "")
-        with pytest.raises(simctl.DeviceError, match="never became ready"):
+        with (
+            pytest.raises(simctl.DeviceError, match="never became ready"),
+            caplog.at_level(logging.WARNING),
+        ):
             xe.start(eff, Preconditions())
 
     assert terminated == [True]  # the runner that never became ready was discarded, not orphaned
     assert xe._runner_proc is None  # _discard_runner cleared the handle
+    # The startup timeout is diagnosable even though the runner is still alive (poll() is None, a
+    # hang not a crash): the warning names the timeout and, with capture off, points at how to
+    # capture the runner's output next time — so "did not come up" is never a bare dead end.
+    assert "never answered /health" in caplog.text
+    assert "BAJUTSU_XCUITEST_RUNNER_LOG" in caplog.text
 
 
 def test_xcuitest_environment_forwards_preconditions_to_runner_env(

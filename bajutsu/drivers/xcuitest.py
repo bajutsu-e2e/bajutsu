@@ -139,6 +139,17 @@ _RECOVERY_TIMEOUT_SECONDS = 60
 # wait, not a fixed up-front sleep: the loop returns the instant the alert's buttons are present.
 _SYSTEM_ALERT_POLL_SECONDS = 0.2
 
+# How many *consecutive* mid-run crashes the recovery layer rides out before failing loudly. Recovery
+# re-issues an idempotent call once the runner is back; a runner that crashes *again* on that re-issue
+# — observed crashing on back-to-back `/screenshot` calls on CI only, once BE-0310 added the
+# `viewDidAppear` hook's per-appearance report (see `_MAX_WARM_REUSES` in
+# `platform_lifecycle/environments/xcuitest.py` for the likely root cause and its direct fix) —
+# used to propagate uncaught and fail the run on the second crash. Retrying the recovery a bounded
+# number of times rides out a runner that flaps across a few calls, while a runner that never
+# stabilizes still fails the run rather than looping forever. Each attempt re-uses `recovery_timeout`
+# for its health wait, so the worst case stays bounded.
+_MAX_CRASH_RECOVERIES = 3
+
 
 def _to_element(item: Mapping[str, Any]) -> base.Element:
     """Normalize one `GET /elements` item into an `Element`.
@@ -278,6 +289,7 @@ def _with_crash_recovery(
     *,
     health: Callable[[float], bool],
     recovery_timeout: float = _RECOVERY_TIMEOUT_SECONDS,
+    max_recoveries: int = _MAX_CRASH_RECOVERIES,
 ) -> TransportFn:
     """Wrap *inner* so a mid-run runner crash surfaces deterministically, not as a lost gesture (BE-0287).
 
@@ -285,11 +297,14 @@ def _with_crash_recovery(
     `XcuitestRunnerCrashError`. This layer catches that and decides by the same `delivered` split the
     seam already draws. An idempotent read — or a write that never reached the runner — waits for the
     runner to come back (via *health*, the bounded `/health` poll) and re-issues, because re-reading is
-    safe. A write that may already have been delivered is never re-sent (double-actuation risk) and
-    fails with a distinct crash diagnostic, so the run stops on an honest "the runner died mid-gesture"
-    rather than a misleading `actual='idle'`. Every crash — recovered or not — is logged as visibly as
-    the retry seam logs a retried blip (BE-0287 Unit 4), so a crashed-and-recovered run is never
-    indistinguishable from one that never crashed.
+    safe. The re-issue is itself protected: a runner that crashes *again* on the re-issued call is
+    recovered anew, up to `max_recoveries` consecutive crashes, so a flapping runner is ridden out
+    instead of failing the run on the second crash. A write that may already have been delivered is
+    never re-sent (double-actuation risk) and fails with a distinct crash diagnostic, so the run
+    stops on an honest "the runner died
+    mid-gesture" rather than a misleading `actual='idle'`. Every crash — recovered or not — is logged as
+    visibly as the retry seam logs a retried blip (BE-0287 Unit 4), so a crashed-and-recovered run is
+    never indistinguishable from one that never crashed.
 
     `/health` itself passes straight through: it is the probe recovery leans on, so wrapping it would
     recurse (and block a startup `await_ready` for the whole recovery window on a runner not yet up).
@@ -299,35 +314,55 @@ def _with_crash_recovery(
     def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         if path == "/health":
             return inner(method, path, body)
-        try:
-            return inner(method, path, body)
-        except XcuitestRunnerCrashError as crash:
-            logger.warning(
-                "runner channel %s %s: the runner became unreachable past the retry budget — a mid-run crash: %s",
-                method,
-                path,
-                crash,
-            )
-            if not _is_retry_eligible(method, delivered=crash.delivered):
-                raise XcuitestRunnerCrashError(
-                    f"runner channel {method} {path} failed after delivery: the runner did not confirm "
-                    "the write, which may have been lost and cannot be safely re-applied (mid-run crash)",
-                    method=method,
-                    delivered=crash.delivered,
-                ) from crash
-            if not health(recovery_timeout):
-                raise XcuitestRunnerCrashError(
-                    f"runner channel {method} {path} failed: the runner crashed mid-run and did not "
-                    f"recover within {recovery_timeout}s",
-                    method=method,
-                    delivered=crash.delivered,
-                ) from crash
-            logger.warning(
-                "runner channel %s %s: the runner recovered from a mid-run crash; re-issuing the idempotent call",
-                method,
-                path,
-            )
-            return inner(method, path, body)
+        recoveries = 0
+        while True:
+            try:
+                return inner(method, path, body)
+            except XcuitestRunnerCrashError as crash:
+                logger.warning(
+                    "runner channel %s %s: the runner became unreachable past the retry budget — a mid-run crash: %s",
+                    method,
+                    path,
+                    crash,
+                )
+                if not _is_retry_eligible(method, delivered=crash.delivered):
+                    raise XcuitestRunnerCrashError(
+                        f"runner channel {method} {path} failed after delivery: the runner did not confirm "
+                        "the write, which may have been lost and cannot be safely re-applied (mid-run crash)",
+                        method=method,
+                        delivered=crash.delivered,
+                    ) from crash
+                recoveries += 1
+                if recoveries > max_recoveries:
+                    # The runner keeps crashing on each re-issue: it is not a single flake but a runner
+                    # that never stabilizes, so fail loudly rather than loop. Distinct from the
+                    # "did not recover" (health never came back) diagnostic below.
+                    raise XcuitestRunnerCrashError(
+                        f"runner channel {method} {path} failed: the runner crashed {recoveries} times and "
+                        f"stayed unstable past the {max_recoveries}-recovery budget (mid-run crash)",
+                        method=method,
+                        delivered=crash.delivered,
+                    ) from crash
+                if not health(recovery_timeout):
+                    raise XcuitestRunnerCrashError(
+                        f"runner channel {method} {path} failed: the runner crashed mid-run and did not "
+                        f"recover within {recovery_timeout}s",
+                        method=method,
+                        delivered=crash.delivered,
+                    ) from crash
+                logger.warning(
+                    "runner channel %s %s: the runner recovered from a mid-run crash; re-issuing the "
+                    "idempotent call (recovery %d/%d)",
+                    method,
+                    path,
+                    recoveries,
+                    max_recoveries,
+                )
+                # Loop to re-issue. A re-issue that crashes again is caught here and recovered anew, up
+                # to max_recoveries, so a runner that flaps across consecutive calls is ridden out
+                # instead of failing the run on the second crash (the observed back-to-back /screenshot
+                # crash). `_is_retry_eligible` still gates every attempt, so a delivered write is never
+                # re-sent even once.
 
     return transport
 

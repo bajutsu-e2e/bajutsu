@@ -35,6 +35,12 @@ A Simulator app runs as a host process and shares the Mac's loopback, so:
 `--no-network` disables the collector. Apps without the SDK report nothing (the
 collector stays empty); the feature is opt-in per app.
 
+The same collector, on iOS, also receives screen-transition events on a separate `/transitions`
+endpoint (BE-0310): `BajutsuKit`'s `BajutsuScreen` swizzles `UIViewController.viewDidAppear(_:)`
+and reports each completed view-controller appearance there, kept in its own store independent of the
+network exchanges above. That signal is not a `request`-assertion concern — the post-launch
+readiness gate and the `settled` wait consult it instead; see [run-loop](run-loop.md#waits-condition-waits-only).
+
 **Android** works the same way, with two differences (BE-0283). The app links
 [`BajutsuAndroid`](../BajutsuAndroid/README.md) and adds `BajutsuNet.interceptor()` to its OkHttp
 client — Android has no single OS-level HTTP hook like iOS's `URLProtocol`, so the interceptor is

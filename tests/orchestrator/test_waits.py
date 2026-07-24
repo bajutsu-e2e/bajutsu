@@ -7,7 +7,10 @@ from conftest import el
 
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.orchestrator import run_scenario
+from bajutsu.evidence.network import ScreenTransition
+from bajutsu.orchestrator import _wait, run_scenario
+from bajutsu.orchestrator.waits import _TRANSITION_QUIESCENCE
+from bajutsu.scenario import Wait
 
 
 def test_wait_for_appears() -> None:
@@ -138,10 +141,160 @@ def test_wait_settled_proceeds_on_blank_screen() -> None:
     assert result.ok and result.steps[0].ok
 
 
+# --- BE-0310: the screen-transition signal, consulted from the `settled` wait ---
+
+
+def test_wait_settled_ignores_a_transition_from_before_the_wait_started() -> None:
+    """A transition observed before this settle wait began — e.g. left over from a prior step, since
+    the collector is scenario-scoped, not per-wait — must not be treated as authoritative: taking it
+    would settle instantly and miss the current step's own (still in-flight, fire-and-forget)
+    transition. The wait falls back to the tree-diff path, which waits the screen out. Mirrors the
+    since-start guard the readiness gate applies to the same signal (BE-0310)."""
+    driver = FakeDriver([el("a", "A")])
+    clock = FakeClock()
+    stale = [(ScreenTransition(kind="screenChanged"), -1.0 - _TRANSITION_QUIESCENCE)]
+    w = Wait.model_validate({"until": "settled", "timeout": 2.0})
+    ok, reason, _tree = _wait(driver, w, clock, transitions=lambda: stale)  # type: ignore[arg-type]
+    assert ok and reason == ""
+    assert clock.now() > 0.0  # polled the tree (fell back), not the instant signal-path return
+
+
+def test_wait_settled_picks_up_a_transition_that_arrives_mid_wait() -> None:
+    """A transition whose fire-and-forget report lands mid-wait — the canonical tap → navigate →
+    settled case, where `viewDidAppear` fires only after the appearance animation, so its POST
+    arrives a few hundred ms into the wait, not at entry — switches the wait onto the signal path
+    rather than committing to tree-diff for the whole duration. Mirrors the readiness gate's
+    mid-poll pickup (`test_await_ready_catches_a_transition_that_arrives_mid_poll`)."""
+
+    class Churning:  # a new tree each poll, so the tree-diff path never settles on its own —
+        name = "churning"  # isolating the signal pickup as the only thing that can end the wait
+
+        def __init__(self) -> None:
+            self._n = 0
+
+        def query(self) -> list[base.Element]:
+            self._n += 1
+            return [el(f"row{self._n}", "R")]
+
+    events: list[tuple[ScreenTransition, float]] = []
+    injected = False
+
+    def on_sleep(t: float) -> None:
+        nonlocal injected
+        if not injected and t >= 0.2:  # the report lands well into the wait, not at entry
+            events.append((ScreenTransition(kind="screenChanged"), t))
+            injected = True
+
+    clock = FakeClock(on_sleep)
+    w = Wait.model_validate({"until": "settled", "timeout": 5.0})
+    ok, reason, _tree = _wait(Churning(), w, clock, transitions=lambda: events)  # type: ignore[arg-type]
+    assert ok and reason == ""
+    assert injected  # the transition really arrived mid-wait, after tree-diff had been polling
+    # Settled only after the quiescence window elapsed since that mid-wait transition — proof the
+    # wait switched to the signal path, not the never-settling tree-diff (which would run to the 5s
+    # deadline on a churning screen).
+    assert clock.now() >= events[-1][1] + _TRANSITION_QUIESCENCE
+    assert clock.now() < 5.0  # ended via the signal, well before the deadline
+
+
+def test_wait_settled_signal_waits_out_the_quiescence_window() -> None:
+    """A transition just observed must not settle instantly — the wait holds out for
+    `_TRANSITION_QUIESCENCE` of silence first."""
+    driver = FakeDriver([el("a", "A")])
+    clock = FakeClock()
+    fresh = [(ScreenTransition(kind="screenChanged"), 0.0)]
+    w = Wait.model_validate({"until": "settled", "timeout": 2.0})
+    ok, reason, _tree = _wait(driver, w, clock, transitions=lambda: fresh)  # type: ignore[arg-type]
+    assert ok and reason == ""
+    assert clock.now() >= _TRANSITION_QUIESCENCE
+
+
+def test_wait_settled_signal_restarts_the_window_on_a_new_transition() -> None:
+    """A fresh transition arriving mid-wait pushes settlement out further: the debounce is 'no
+    further transition for the quiescence window since the LATEST one', not a fixed timer
+    started from the first."""
+    driver = FakeDriver([el("a", "A")])
+    events: list[tuple[ScreenTransition, float]] = [(ScreenTransition(kind="screenChanged"), 0.0)]
+    injected = False
+
+    def on_sleep(t: float) -> None:
+        nonlocal injected
+        if not injected and t >= _TRANSITION_QUIESCENCE / 2:
+            events.append((ScreenTransition(kind="screenChanged"), t))
+            injected = True
+
+    clock = FakeClock(on_sleep)
+    w = Wait.model_validate({"until": "settled", "timeout": 2.0})
+    ok, reason, _tree = _wait(driver, w, clock, transitions=lambda: events)  # type: ignore[arg-type]
+    assert ok and reason == ""
+    assert injected  # the mid-wait injection actually happened
+    # Settled only after quiescence elapsed since the SECOND (later) transition.
+    assert clock.now() >= events[-1][1] + _TRANSITION_QUIESCENCE
+
+
+def test_wait_settled_signal_hits_the_deadline_while_still_awaiting_quiescence() -> None:
+    """A transition that keeps arriving (quiescence never elapses) must not hang the wait: it
+    proceeds best-effort once the step's own deadline passes, exactly like the tree-diff
+    fallback's own timeout behavior — the deadline still bounds the signal path."""
+    driver = FakeDriver([el("a", "A")])
+    clock = FakeClock()
+
+    def transitions() -> list[tuple[ScreenTransition, float]]:
+        # A transition "just observed" on every call: the quiescence window never elapses.
+        return [(ScreenTransition(kind="screenChanged"), clock.now())]
+
+    w = Wait.model_validate(
+        {"until": "settled", "timeout": 0.1}
+    )  # shorter than the quiescence window
+    ok, reason, _tree = _wait(driver, w, clock, transitions=transitions)  # type: ignore[arg-type]
+    assert ok and reason == ""  # best-effort: proceeds, never fails the step
+    assert clock.now() >= 0.1  # gave up at the deadline, not before
+
+
+def test_wait_settled_falls_back_to_tree_diff_when_no_transitions_reported() -> None:
+    """No signal reported (the app doesn't link BajutsuKit, or hasn't transitioned yet): the wait
+    keeps its original two-consecutive-unchanged-reads behavior, unaffected by BE-0310."""
+    driver = FakeDriver([el("home", "Home", ["button"])])
+
+    def on_sleep(t: float) -> None:
+        if t < 0.15:  # a transition still in progress: the frame keeps moving
+            driver.screen = [
+                {
+                    "identifier": "home",
+                    "label": "Home",
+                    "traits": ["button"],
+                    "value": None,
+                    "frame": (t, 0.0, 10.0, 10.0),
+                }
+            ]
+
+    clock = FakeClock(on_sleep)
+    w = Wait.model_validate({"until": "settled", "timeout": 2.0})
+    ok, reason, _tree = _wait(driver, w, clock, transitions=list)  # type: ignore[arg-type]
+    assert ok and reason == ""
+
+
+def test_wait_settled_via_run_scenario_threads_the_signal() -> None:
+    """End-to-end: `run_scenario`'s `transitions` reaches the settled wait (the plumbing this item
+    adds through `_run_steps` / `_run_step_body` / `_wait`). A transition reported "now" — since the
+    wait began — takes the signal path; a fresh one on every read never quiesces, so the wait runs to
+    its deadline (best-effort) instead of the tree-diff fallback's instant settle on this static
+    screen, which is what proves the signal, not the fallback, decided it."""
+    driver = FakeDriver([el("home", "Home")])
+    clock = FakeClock()
+    result = run_scenario(
+        driver,
+        _scenario({"name": "x", "steps": [{"wait": {"until": "settled", "timeout": 2.0}}]}),
+        clock=clock,
+        transitions=lambda: [(ScreenTransition(kind="screenChanged"), clock.now())],
+    )
+    assert result.ok and result.steps[0].ok
+    assert clock.now() >= 2.0  # ran to the deadline via the signal path, not the tree-diff fallback
+
+
 def test_wait_skips_sleep_when_query_exceeds_poll_interval() -> None:
     """When query() takes longer than _POLL, additional sleep is skipped."""
-    from bajutsu.orchestrator import _POLL, _wait
-    from bajutsu.scenario import Wait
+    from bajutsu.orchestrator import _POLL
 
     sleeps: list[float] = []
 
@@ -596,6 +749,36 @@ def test_wait_settled_guard_fires_on_a_collapsed_screen() -> None:
     assert alerts == [AlertEvent(label="OK")]
     assert tree == [el("home", "Home")]
     assert clock.now() < 2.0  # cleared and settled quickly, not the full 30s
+
+
+def test_wait_settled_signal_guard_fires_on_a_collapsed_screen() -> None:
+    """BE-0269's mid-wait alert guard still fires in the signal-based settle path (BE-0310), not
+    only the tree-diff fallback above: a collapsed screen during the quiescence wait is cleared
+    instead of silently waiting out the whole window collapsed."""
+    from bajutsu.orchestrator.types import AlertEvent
+    from bajutsu.orchestrator.waits import _wait
+    from bajutsu.scenario import Wait
+
+    driver = _CollapsingDriver([el("home", "Home")])
+    calls = {"n": 0}
+
+    def on_blocked(d: object) -> AlertEvent:
+        calls["n"] += 1
+        d.cleared = True  # type: ignore[attr-defined]
+        return AlertEvent(label="OK")
+
+    alerts: list[AlertEvent] = []
+    clock = _LogicalClock()
+    fresh = [(ScreenTransition(kind="screenChanged"), 0.0)]
+    w = Wait.model_validate({"until": "settled", "timeout": 30.0})
+    ok, _reason, tree = _wait(
+        driver, w, clock, on_blocked=on_blocked, alerts=alerts, transitions=lambda: fresh
+    )
+    assert ok  # a settle never fails the step
+    assert calls["n"] == 1
+    assert alerts == [AlertEvent(label="OK")]
+    assert tree == [el("home", "Home")]  # revealed once the guard cleared it
+    assert clock.now() < 2.0  # cleared well inside the signal path's own quiescence window
 
 
 def test_run_scenario_guard_fires_during_a_wait_step() -> None:

@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
 from bajutsu.assertions import match_request
-from bajutsu.evidence.network import NetworkExchange
+from bajutsu.evidence.network import NetworkExchange, ScreenTransition
 
 if TYPE_CHECKING:
     from bajutsu.scenario.models.assertions import RequestMatch
@@ -63,6 +63,11 @@ class WebNetworkCollector:
 
     def snapshot_timed(self) -> list[tuple[NetworkExchange, float]]:
         return list(self._items)
+
+    def transitions_snapshot_timed(self) -> list[tuple[ScreenTransition, float]]:
+        # Web has no screen-transition observer (BE-0310 is iOS-only); the readiness gate and the
+        # `settled` wait fall back to tree-diff polling here, same as before this item.
+        return []
 
     def clear(self) -> None:
         self._items.clear()

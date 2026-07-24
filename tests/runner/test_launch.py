@@ -19,6 +19,7 @@ from bajutsu import simctl
 from bajutsu.config import XcuitestConfig, require_ios
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
+from bajutsu.evidence.network import ScreenTransition
 from bajutsu.runner import (
     _await_ready,
     launch_driver,
@@ -468,3 +469,85 @@ def test_await_ready_reports_timeout_when_never_ready(monkeypatch: pytest.Monkey
     result = _await_ready(driver, timeout=1.0)  # type: ignore[arg-type]
     assert result.ready is False
     assert result.signal == "timeout"
+
+
+# --- BE-0310: the screen-transition signal, the new strongest readiness rung ---
+
+
+def test_await_ready_screenchanged_signal_beats_the_ladder(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A reported transition since this wait started is the strongest signal: it must declare ready
+    # without needing the readyWhen/namespace/count ladder to ever match — the driver here never
+    # returns a ready tree, so only the signal can satisfy it.
+    _install_bounded_clock(monkeypatch)
+    driver = _ScriptedDriver([[]])  # always empty; the ladder alone would time out
+    live = [(ScreenTransition(kind="screenChanged"), 0.0)]  # received at/after this wait's start
+    result = _await_ready(driver, timeout=1.0, transitions=lambda: live)  # type: ignore[arg-type]
+    assert result.ready is True
+    assert result.signal == "screenChanged"
+    assert driver.calls == 0  # satisfied before ever needing a tree read
+
+
+def test_await_ready_readywhen_outranks_the_screenchanged_signal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A `readyWhen` target that also links the observer must keep its guarantee: an earlier
+    # base-screen transition must NOT preempt the modal readyWhen waits for, or the first step races
+    # the modal (the exact flake readyWhen exists to close). The signal is present from the start,
+    # but readiness must hold out for the readyWhen element, which only the 3rd read reveals.
+    _install_bounded_clock(monkeypatch)
+    chrome = [_el("home.title", "H"), _el("tab", "T")]  # base screen, no modal yet
+    target = _el("onboarding.start", "Start")
+    driver = _ScriptedDriver([chrome, chrome, [*chrome, target]])  # modal appears on the 3rd read
+    live = [(ScreenTransition(kind="screenChanged"), 0.0)]  # a base-screen transition, since start
+    result = _await_ready(driver, ready_sel={"id": "onboarding.start"}, transitions=lambda: live)  # type: ignore[arg-type]
+    assert result.ready is True
+    assert result.signal == "readyWhen"  # held for the modal, did not fire on the base transition
+    assert driver.calls >= 3
+
+
+def test_await_ready_ignores_a_transition_that_predates_this_wait(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A transition received before this wait started (e.g. left over from a prior launch a
+    # mid-scenario relaunch reuses the same collector across) must not satisfy readiness for a
+    # launch it predates — it falls through to the unchanged BE-0218 ladder instead.
+    _install_bounded_clock(monkeypatch)
+    driver = _ScriptedDriver([[_el("a", "A"), _el("b", "B")]])  # 2+ elements -> count heuristic
+    stale = [(ScreenTransition(kind="screenChanged"), -5.0)]  # received well before start (t=0)
+    result = _await_ready(driver, transitions=lambda: stale)  # type: ignore[arg-type]
+    assert result.ready is True
+    assert result.signal == "count"  # fell through to the ladder, not the stale signal
+
+
+def test_await_ready_catches_a_transition_that_arrives_mid_poll(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The signal need not be present on the very first tick: a transition that arrives after a
+    # couple of polls (the app is still mid-launch when the gate starts polling) must still
+    # satisfy readiness on a later tick, not just an immediately-available one.
+    _install_bounded_clock(monkeypatch)
+    driver = _ScriptedDriver([[]])  # never renders enough elements for the ladder to catch it
+    calls = {"n": 0}
+
+    def transitions() -> list[tuple[ScreenTransition, float]]:
+        calls["n"] += 1
+        if calls["n"] < 3:
+            return []
+        return [(ScreenTransition(kind="screenChanged"), 0.0)]
+
+    result = _await_ready(driver, timeout=1.0, transitions=transitions)  # type: ignore[arg-type]
+    assert result.ready is True
+    assert result.signal == "screenChanged"
+    assert calls["n"] >= 3  # took more than one poll for the signal to appear
+
+
+def test_await_ready_with_no_transitions_keeps_the_ladder_unchanged(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The default transitions source reports none, so passing it explicitly (or not at all) is the
+    # same unchanged behavior as before this item — a non-regression check for the default.
+    _install_bounded_clock(monkeypatch)
+    driver = _ScriptedDriver([[_el("a", "A"), _el("b", "B")]])
+    result = _await_ready(driver, transitions=list)  # type: ignore[arg-type]
+    assert result.ready is True
+    assert result.signal == "count"

@@ -9,6 +9,13 @@ another local process can't inject fabricated exchanges). The collector keeps th
 exchanges in memory so a step's `request` assertion can be evaluated in real time, and
 dumps them to `network.json` as scenario evidence.
 
+The same receiver also accepts screen-transition reports on `/transitions`
+(BE-0310): the opt-in `BajutsuScreen` observer in `BajutsuKit` (a
+`UIViewController.viewDidAppear` hook) POSTs one record per completed appearance. They are
+kept in an independent store from the network exchanges — the readiness gate and the
+`settled` wait read only this one, never network-capture state, so the two stay independent
+as documented.
+
 The in-app side that captures and POSTs the exchanges is a separate Swift package
 (`BajutsuKit`); this module is only the bajutsu-side receiver and data model.
 """
@@ -22,6 +29,7 @@ import time
 from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Protocol, runtime_checkable
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -47,6 +55,36 @@ class NetworkExchange(BaseModel):
     mocked: bool = False  # served by a bajutsu mock stub (not a real network call)
 
 
+class ScreenTransition(BaseModel):
+    """One screen-transition event the app's `BajutsuScreen` observer reported (BE-0310).
+
+    Minimal by design: no screen content, only what a positive "the transition finished"
+    signal needs. Extra keys are ignored and the app's own `timestamp` is informational only —
+    the collector stamps its own receive time (`snapshot_timed`), the same monotonic clock
+    domain the readiness gate and the `settled` wait already poll in, so nothing here depends on
+    the app process's separate clock.
+    """
+
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    kind: str = ""
+
+
+# Returns the screen-transition events observed so far, each with the collector's receive time
+# (its own monotonic clock, the same domain the readiness gate and the `settled` wait already poll
+# in) — for `_await_ready` / `_wait_settled` (BE-0310) to consult as a read-only signal. Mirrors
+# `Collector.snapshot_timed()`'s shape (below), not the untimed `orchestrator.types.NetworkSource`:
+# both readiness and settled need the receive time itself (to bound "since this wait started" /
+# compute the quiescence window), unlike a `request` assertion, which only needs exchange content.
+# Kept here (not in `orchestrator`) since the readiness gate lives in `platform_lifecycle`, outside
+# the orchestrator package.
+TransitionSource = Callable[[], list[tuple[ScreenTransition, float]]]
+
+
+def _no_transitions() -> list[tuple[ScreenTransition, float]]:
+    return []
+
+
 @runtime_checkable
 class Collector(Protocol):
     """The exchange source the run loop and evidence writer drive.
@@ -60,6 +98,9 @@ class Collector(Protocol):
     def snapshot_timed(self) -> list[tuple[NetworkExchange, float]]: ...  # each + receive time
     def clear(self) -> None: ...  # drop observed exchanges (scoped per scenario by the run loop)
     def stop(self) -> None: ...  # release the observation resource (HTTP receiver / event hooks)
+    # Screen-transition events (BE-0310), each with its receive time; independent of the exchanges
+    # above. A collector with no such observer (web, fake) returns an empty list.
+    def transitions_snapshot_timed(self) -> list[tuple[ScreenTransition, float]]: ...
 
 
 class NetworkCollector:
@@ -74,6 +115,9 @@ class NetworkCollector:
         # Each exchange with the monotonic time it was received (≈ completion), so the
         # report can place it on the scenario timeline.
         self._items: list[tuple[NetworkExchange, float]] = []
+        # Screen-transition events (BE-0310), independent of the exchanges above — the readiness
+        # gate and the `settled` wait read only this list, never `_items`.
+        self._transitions: list[tuple[ScreenTransition, float]] = []
         self._now = now
         self._server: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
@@ -97,6 +141,19 @@ class NetworkCollector:
         with self._lock:
             self._items.append((ex, self._now()))
 
+    def add_transition(self, data: dict[str, Any]) -> None:
+        """Validate and store one reported screen-transition event (BE-0310).
+
+        Same forward-compatible drop-on-failure behavior as `add`, and stored in its own list so
+        the readiness/settled signal never depends on network-capture state.
+        """
+        try:
+            transition = ScreenTransition.model_validate(data)
+        except ValidationError:
+            return
+        with self._lock:
+            self._transitions.append((transition, self._now()))
+
     def check_token(self, candidate: str) -> bool:
         """Constant-time compare of a presented token against this run's token.
 
@@ -114,10 +171,16 @@ class NetworkCollector:
         with self._lock:
             return list(self._items)
 
+    def transitions_snapshot_timed(self) -> list[tuple[ScreenTransition, float]]:
+        """Each observed screen-transition event with its receive time, in arrival order."""
+        with self._lock:
+            return list(self._transitions)
+
     def clear(self) -> None:
-        """Drop all stored exchanges — called between scenarios to scope them to one run."""
+        """Drop all stored exchanges and transitions — called between scenarios to scope them to one run."""
         with self._lock:
             self._items.clear()
+            self._transitions.clear()
 
     # --- lifecycle ---
 
@@ -179,10 +242,20 @@ def _make_handler(collector: NetworkCollector) -> type[BaseHTTPRequestHandler]:
                 self.send_response(400)
                 self.end_headers()
                 return
-            # Accept a single exchange or a batch (list).
+            # /transitions (BE-0310) carries screen-transition events; every other path keeps the
+            # original network-exchange behavior, so an app not yet linking the transition observer
+            # is unaffected. Compare on the path component alone (urlsplit drops a query string),
+            # so an unexpected `?...` suffix still routes correctly instead of silently falling
+            # through to `add` and being stored as a bogus network exchange.
+            add = (
+                collector.add_transition
+                if urlsplit(self.path).path.rstrip("/") == "/transitions"
+                else collector.add
+            )
+            # Accept a single record or a batch (list).
             for item in data if isinstance(data, list) else [data]:
                 if isinstance(item, dict):
-                    collector.add(item)
+                    add(item)
             self.send_response(204)
             self.end_headers()
 

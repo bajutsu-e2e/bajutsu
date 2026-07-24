@@ -34,6 +34,13 @@ Simulator のアプリはホストプロセスとして動作し、Mac のルー
 `--no-network` を渡すとコレクタを無効にします。SDK を持たないアプリは何も報告しません
 （コレクタは空のままです）。この機能はアプリごとのオプトインです。
 
+同じコレクタは iOS 上で、画面遷移イベントも別の `/transitions` エンドポイントで受け取ります
+（BE-0310）。報告するのは `BajutsuKit` の `BajutsuScreen` です。`UIViewController.viewDidAppear(_:)`
+を swizzle し、完了したビューコントローラの出現をそれぞれ報告します。報告した記録は、上記のネットワーク
+通信とは独立した専用のストアに保持します。このシグナルは `request` アサーションの対象ではありません。参照するのは
+起動直後の readiness ゲートと `settled` 待ちです。詳細は
+[run-loop](run-loop.md#待機条件待機)を参照してください。
+
 **Android** も同じ仕組みで、違いは 2 点です（BE-0283）。アプリは
 [`BajutsuAndroid`](../../BajutsuAndroid/README.md) をリンクし、OkHttp クライアントに
 `BajutsuNet.interceptor()` を足します。iOS の `URLProtocol` のような単一の OS レベルの HTTP フックが

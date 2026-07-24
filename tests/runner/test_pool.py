@@ -15,7 +15,7 @@ from bajutsu import simctl
 from bajutsu.config import Effective
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.evidence.network import NetworkExchange
+from bajutsu.evidence.network import NetworkExchange, ScreenTransition
 from bajutsu.platform_lifecycle import ProvisionProfile
 from bajutsu.runner import (
     ReadinessResult,
@@ -289,6 +289,9 @@ class _StubCollector:
         return []
 
     def snapshot_timed(self) -> list[tuple[NetworkExchange, float]]:
+        return []
+
+    def transitions_snapshot_timed(self) -> list[tuple[ScreenTransition, float]]:
         return []
 
     def clear(self) -> None:
@@ -929,6 +932,9 @@ def test_device_pool_releases_resources_when_launch_fails(monkeypatch: pytest.Mo
             return []
 
         def snapshot_timed(self) -> list[tuple[NetworkExchange, float]]:
+            return []
+
+        def transitions_snapshot_timed(self) -> list[tuple[ScreenTransition, float]]:
             return []
 
         def clear(self) -> None:

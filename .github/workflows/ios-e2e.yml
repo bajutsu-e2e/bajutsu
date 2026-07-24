@@ -57,6 +57,20 @@ concurrency:
   group: ios-e2e-${{ github.ref }}
   cancel-in-progress: true
 
+# Capture the XCUITest runner subprocess's stdout/stderr (folded together) on every on-device job.
+# Without it the runner's output goes to DEVNULL, so a startup timeout ("xcuitest runner did not come
+# up within Ns") is undiagnosable — we can't tell a crash from a hang from a slow XCTest host, and a
+# *mid-run* runner crash (see `_MAX_WARM_REUSES` in `bajutsu/platform_lifecycle/environments/xcuitest.py`
+# for what this repeatedly surfaced on this PR's CI runs) leaves no trace of what the runner did.
+# With capture on, a startup-timeout warning carries the log's tail inline
+# (bajutsu/platform_lifecycle/environments/xcuitest.py), and the file itself is retained for any
+# failure. The directory sits *under* `runs/` on purpose: every on-device job already uploads `runs/`
+# as its artifact, so the runner log rides along and is downloadable after any failure — a mid-run
+# crash included, where there is no startup-timeout to log a tail. `github.workspace` (not
+# `runner.temp`, which is unavailable in workflow-level env) keys it to the checkout.
+env:
+  BAJUTSU_XCUITEST_RUNNER_LOG: ${{ github.workspace }}/runs/runner-logs
+
 jobs:
   # Decide whether an on-device run is warranted. The macOS jobs only fire when the PR
   # touches what they exercise — the app, the SDK, the runtime, the build/deps, or this
