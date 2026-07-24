@@ -438,7 +438,10 @@ jobs:
 
       # `make -C demos/showcase ui-test` re-generates ComponentsUITests.swift from the scenario,
       # regenerates the project, then `xcodebuild test`s it against the SwiftUI a11y app — no
-      # bajutsu / AI at test time.
+      # bajutsu / AI at test time. No explicit "Wait for the Simulator" step (unlike the jobs that
+      # install/actuate directly and follow the toolchain action's `udid` note): `xcodebuild test`
+      # blocks on the destination becoming ready when it reaches the test phase, by which point the
+      # boot the toolchain action started has finished.
       - name: Codegen + run native XCUITest
         run: make -C demos/showcase ui-test SIM=${{ steps.toolchain.outputs.udid }}
 
