@@ -21,7 +21,7 @@
 登録するフィールドです。config 側でアプリ全体の既定として設定し、シナリオ側でさらに追加できます。ランナーは
 各エントリの `condition` を、`if`（[BE-0033](../BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow-ja.md)）
 がすでに使っているのと同じ決定論的なアサーション DSL（ドメイン固有言語）で、ステップ実行のために取得済みの
-要素ツリーへ機会的に判定します。ステップ列のどこで割り込み画面が現れても捕捉できるため、著者は「どのステップの
+要素ツリーへ機会をとらえて判定します。ステップ列のどこで割り込み画面が現れても捕捉できるため、著者は「どのステップの
 直後に確認を置くか」を予測する必要がなくなります。
 
 ## 動機
@@ -105,7 +105,7 @@ scenario:
    エントリのあとにシナリオ側のエントリを連結したものです。これは `_alert_guard_factory` の `_enabled` が
    `dismiss_alerts` に対してすでに適用している、config 優先でシナリオ側が上書きするのと同じ順序です
    （[`bajutsu/cli/commands/run.py:339`](../../bajutsu/cli/commands/run.py)）。
-2. **取得済みのツリーに乗せる機会的チェック。** 有効化した `interrupts` リストを `_run_steps`
+2. **取得済みのツリーに乗せる、機会をとらえたチェック。** 有効化した `interrupts` リストを `_run_steps`
    （[`bajutsu/orchestrator/loop.py:513`](../../bajutsu/orchestrator/loop.py)）に渡し、各エントリの
    `condition` を、ループがすでに保持しているツリーに対して評価します。`screenChanged` ポリシーのために
    すでに取得している `before`/`after` のクエリ、あるいは `_wait`
@@ -127,7 +127,7 @@ scenario:
    元のステップの通常の結果（成功・失敗・タイムアウト）にそのままフォールバックします。BE-0269 の
    `_GUARD_MAX_ATTEMPTS` / `_GUARD_COOLDOWN` と同じ形を踏襲することで、設定を誤った条件は実行を止まらせず、
    そのステップを明確に失敗させます。
-5. **codegen。** 「このシナリオ全体を通じて条件を機会的にチェックし続ける」という挙動に対応するネイティブな
+5. **codegen。** 「このシナリオ全体を通じて条件を機会をとらえてチェックし続ける」という挙動に対応するネイティブな
    XCUITest・Espresso・Playwright の構文はありません。
    [BE-0026](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax-ja.md) と BE-0276 が
    すでにアプリレベルの対応物を持たないフィールドに対して行っているのと同じ形で、フィールド名と各 `condition`
@@ -181,7 +181,7 @@ scenario:
 
 - [x] Unit 1 — シナリオと config のスキーマ（`interrupts: list[Interrupt]`）、config 側を先にする
       連結順序。
-- [x] Unit 2 — `_run_steps` と `_wait` で、取得済みのツリーに乗せる機会的な条件チェック。
+- [x] Unit 2 — `_run_steps` と `_wait` で、取得済みのツリーに乗せる、機会をとらえた条件チェック。
 - [x] Unit 3 — 一致時に既存の `_ExecSteps` の仕組みでエントリの `steps` を実行し、割り込まれたステップを
       再開する（wait は同じ deadline へ、act 系は1回だけ再試行）。
 - [x] Unit 4 — エントリごとの再入回数上限と、ステップの通常の結果へのきれいなフォールバック。
