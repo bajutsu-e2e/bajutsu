@@ -20,10 +20,10 @@ _logger = logging.getLogger(__name__)
 _POLL = 0.05
 _SETTLE_POLLS = 2  # consecutive unchanged polls that count as "settled" (tree-diff fallback)
 # Quiescence window for the signal-based settle path (BE-0310): once no further screen-transition
-# has been reported for this long, the last transition is taken as finished. Short by design — the
-# notification already fires *after* the transition settles (the accessibility contract's own
-# timing), so this only smooths over a chained transition posting more than one notification in
-# quick succession, not a whole animation's duration.
+# has been reported for this long, the last transition is taken as finished. Short by design —
+# `viewDidAppear` already fires *after* the appearance transition completes, so this only smooths
+# over a chained transition posting more than one report in quick succession, not a whole
+# animation's duration.
 _TRANSITION_QUIESCENCE = 0.3
 
 # Min seconds between live "still waiting …" lines. Waits poll every _POLL (50ms); a per-poll
