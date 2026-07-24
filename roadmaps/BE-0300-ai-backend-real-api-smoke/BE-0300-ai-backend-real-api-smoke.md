@@ -100,9 +100,9 @@ Proposal altitude. The work is MECE along the units below.
 - The opt-in gate is the **`live` pytest marker**, not the `BAJUTSU_LIVE_AI_SMOKE` env flag the design
   named as an example: the marker is deselected from the fast suite by default (`addopts` `not live`),
   so `make check` stays hermetic by structure even when a contributor's `ANTHROPIC_API_KEY` is set.
-  The sibling BE-0295 ([#1344](https://github.com/bajutsu-e2e/bajutsu/pull/1344)) introduces the same
-  `live` marker concurrently for its own real-model smoke — both PRs add the byte-identical `addopts`
-  and marker line, so whichever merges second resolves a trivial add/add. Opt in with `-m live`.
+  The sibling BE-0295 ([#1344](https://github.com/bajutsu-e2e/bajutsu/pull/1344)) added this same
+  `live` marker and `addopts` line for its own real-model smoke and merged first, so `main` already
+  carries them; this item reuses that marker rather than redefining it. Opt in with `-m live`.
 - `.github/workflows/ai-smoke.yml` wires the **direct Anthropic API** lane only: `workflow_dispatch`
   only (never push/PR, so a fork run can't see the credential — the `devicefarm.yml` boundary), the
   `ANTHROPIC_API_KEY` secret scoped to an `ai-smoke` Environment, non-gating. With the secret unset the
