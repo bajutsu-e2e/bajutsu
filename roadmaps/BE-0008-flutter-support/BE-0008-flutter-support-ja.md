@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0008](BE-0008-flutter-support-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0008") |
+| 実装 PR | _pending_ |
 | トピック | プラットフォーム対応 |
 <!-- /BE-METADATA -->
 
@@ -161,9 +162,13 @@ reach 軸に残る最後の1プラットフォームです（[docs/vision.md §1
 > 作業分解（作業の単位ごとに1つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] Flutter ショーケースターゲット：`Semantics(identifier: …)` を使う `demos/` の Flutter アプリを、既存の XCUITest / adb バックエンドで既存のショーケースシナリオにより駆動。
-- [ ] id 規約のドキュメント：Flutter の id 規約、3.19 の最低バージョン、semantics 遅延構築の前提と `ensureSemantics()` フォールバック、スコープ外の境界（`docs/drivers.md` と日本語版）。
-- [ ] 実機検証：3つの仮説（semantics の起動タイミング、`MergeSemantics` と culling、`identifier` の公開）を確かめ、結果を規約へ反映。
+- [x] Flutter ショーケースターゲット：`Semantics(identifier: …)` を使う `demos/showcase/flutter` の Flutter アプリを、ネイティブ showcase アプリの双子として用意し、既存の XCUITest / adb バックエンドで共有のショーケースシナリオにより駆動（`showcase-flutter` / `showcase-flutter-android[-noax]` ターゲット）。
+- [x] id 規約のドキュメント：Flutter の id 規約、3.19 の最低バージョン、semantics 遅延構築の前提と `ensureSemantics()` フォールバック、スコープ外の境界（`docs/drivers.md` と日本語版）。
+- [x] 実機検証：3 つの仮説を実機で確かめ（ログ参照）、結果を規約へ反映。
+
+ログ:
+
+- [#1339](https://github.com/bajutsu-e2e/bajutsu/pull/1339) で実装しました。3 つの仮説を実機で確かめました（iPhone 17 Pro / iOS 26.5 Simulator を XCUITest で、`bajutsu_api34` API 34 AVD を adb で）。(1) **semantics の起動**：バックエンド自身のアクセシビリティ照会が Flutter の遅延 semantics ツリーを**両バックエンドで**起動するので、駆動される経路に `ensureSemantics()` の呼び出しは不要でした（既定オフの `--dart-define=ENSURE_SEMANTICS` のフォールバックとして残します）。(2) **culling**：遅延構築される Notices リストへの scroll-to-element が一意に解決します。(3) **`identifier` の公開**：`Semantics(identifier:)` は 3.19 以降で `accessibilityIdentifier` / `resource-id` として解決します。**iOS／XCUITest** では、共有の `scenarios/` スイートが `network*`（スコープ外）と AI 経路の `permission` のアラート許可（ネイティブアプリと同じ）を除き通ります。**Android／adb** では、ネイティブ Compose レーンが回すのと同じ実機セットが通ります（`gestures_multitouch` の 2 本指スイープにはネイティブレーンと同様に root 化したエミュレータを使います）。Flutter 固有の差は `device.yaml` の device-control **clipboard** だけで、これはプラグインなしの Flutter アプリがリンクしないアプリ内 `BajutsuAndroid` レシーバを要します。`network` と同じアプリ協力のクラスで、`drivers.md` のスコープ外の記述に畳み込みました（`text_editing` と `push` 部分はネイティブのスイートでも iOS 専用のままです）。
 
 ## 参考
 

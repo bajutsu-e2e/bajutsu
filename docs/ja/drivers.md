@@ -101,6 +101,36 @@ class Driver(Protocol):
 
 > XML の属性名は UI Automator の `uiautomator dump` スキーマに従います。Views の `android:id` における `.`↔`_` の扱いはシナリオ側で解決します。セレクタが id を両方の形で持ち、どちらにもマッチします（BE-0221）。そのため共有の showcase シナリオが両 Android toolkit でそのまま走り、[`android-e2e.yml`](../.github/workflows/android-e2e.yml) が `showcase-compose` と `showcase-views` を同じセットで駆動して push／PR ごとに検証します。fast ゲートでは、取得済みの XML フィクスチャに対してパーサ、frame 中心タップ、transient-empty のリトライ、ambiguity 即失敗を検証します。adb は `brew install android-platform-tools` でインストールします。
 
+## Flutter（ネイティブバックエンド経由）
+
+Flutter アプリは、**既存の XCUITest／adb バックエンドをそのまま**使って駆動します。Flutter は自前のバックエンドを追加しません（ロードマップ [BE-0008](../../roadmaps/BE-0008-flutter-support/BE-0008-flutter-support-ja.md)）。Flutter は Skia／Impeller で自前のピクセルを描きますが、ネイティブバックエンドはピクセルを一切読まず、OS のアクセシビリティツリーを読みます。Flutter はそこへ自身の semantics ツリーをエンジンが橋渡しします（Android の `AccessibilityBridge` は各 `SemanticsNode` を仮想の `AccessibilityNodeInfo` に変換し、iOS のエンジンは `UIAccessibility` 要素を公開します）。したがって `Semantics(identifier: …)` を設定したウィジェットは両バックエンドで解決可能な要素として現れ、bounds 中心への tap は semantics ノードの画面上の矩形と Flutter 自身のヒットテストを通じて着地します。セレクタモデル、機械アサーション、ランナーはバイト単位でそのまま変わりません。
+
+id 規約は、上の iOS と Android のものと並べて記します（Flutter **3.19 以降**。このバージョンで `SemanticsProperties.identifier` がプラットフォームのツリーへ写り始めました）。
+
+| `Selector` フィールド | Flutter（ネイティブバックエンド経由） |
+|---|---|
+| `id`（主）| `Semantics(identifier: "…")` → `accessibilityIdentifier`（iOS）／ `resource-id`（Android）|
+| `label`（補助）| ウィジェットの semantics ラベル（可視テキスト）|
+| `value` | ウィジェットの semantics `value`（状態のミラー、`Semantics(value: …)`）|
+| `traits`（役割フィルタ）| プラットフォームのウィジェットクラス／trait として公開される semantics の役割（`button`、`selected` など）|
+
+アプリが満たすべき前提が 2 つあります。いずれもレンダラではなく Flutter の semantics の状態に関わるものです。
+
+- **semantics は遅延構築されます。** Flutter はアクセシビリティのクライアントが接続したとき、またはアプリが `SemanticsBinding.instance.ensureSemantics()` を呼んだときにだけツリーを組み立てます。両バックエンドとも接続が構築の引き金になります。Android では UI Automator がアクセシビリティサービスとして接続し、そしてこの項目が実機で確かめたとおり、**iOS でも XCUITest ランナーのアクセシビリティ照会が引き金になります**。したがって駆動される経路に `ensureSemantics()` の呼び出しは要りません。showcase アプリは、既定でオフの `--dart-define=ENSURE_SEMANTICS=true` の裏にこの呼び出しを残し、アクセシビリティのクライアントなしで駆動されるアプリのための文書化されたフォールバックとしています。
+- **semantics を持つウィジェットしか現れません。** 標準の Material／Cupertino ウィジェットやテキストは semantics を自動で持ちますが、`CustomPaint` で描いたコントロールを `Semantics` で包んでいなければツリーに入りません。`Semantics(identifier: …)` で包むことは、id を公開する規約と同じ操作です。Flutter はナビゲーションの見た目も自前で描くので、アプリは戻るコントロールの identifier も、iOS バックエンドの `back` ステップがタップするプラットフォーム規約 `BackButton`（`base.OS_BACK_BUTTON`）に設定します。Android ではシステムの戻るキーが従来どおり pop します。
+
+**実機検証済みです。** ネイティブ showcase アプリの Flutter 双子（[`demos/showcase/flutter`](../../demos/showcase/flutter)）を `showcase-flutter`（iOS、XCUITest）と `showcase-flutter-android`（Android、adb）のターゲットで駆動し、共有の `scenarios/` セットがそのまま走ります。id ベースのセレクタ、状態ミラーに対する `value` アサーション、遅延構築（culling）される Notices リストへの scroll-to-element、ネイティブの 2 本指 `pinch`／`rotate` を確認しました。`make -C demos/showcase run-flutter`（iOS）／ `run-flutter-android`（Android）で実行します。
+
+スコープ外（理由はロードマップ項目を参照してください）:
+
+- **アプリ内 collector／receiver ライブラリを必要とする機能。** 2 つの機能は、`BajutsuKit`（iOS）／ `BajutsuAndroid`（Android）がアプリにリンクされていることに依存します。Flutter アプリはプラグインなしを保つためこれらをリンクしていません。
+  - **`network` の捕捉と `mocks`** はアプリ内のインターセプタ（iOS は `BajutsuKit` の `URLProtocol`、Android は `BajutsuAndroid` の OkHttp インターセプタ）に通信を通します。Flutter の Dart `HttpClient` はそのどちらも通らないので、`network` 証跡と `mocks` は Flutter の通信を観測しません。アプリの `*.status` ミラーは、シナリオが依拠する決定論的な wait／assert を引き続き駆動します。Dart の HTTP をネイティブのスタックへ通すこと（`cupertino_http`／`cronet_http` 経由）は後続作業です。
+  - **Android の device-control `clipboard`** は `BajutsuAndroid` のアプリ内レシーバ（BE-0233）を往復するので、`device.yaml` の `setClipboard`／`clipboard` ステップは Flutter Android ターゲットで失敗します。iOS の device-control クリップボードはアプリの協力なしに simctl を通るので、Flutter iOS ターゲットでは動きます。この差は Android だけのものです。
+
+  これらを除けば、Flutter ターゲットはネイティブ双子が回すのと同じ実機シナリオ群を通ります。Flutter とは無関係にプラットフォームで制限されるものだけが外れます。マルチタッチ（`gestures_multitouch`）は adb では root 化したエミュレータを要し（ネイティブ Android アプリと同様）、`text_editing` と `device` の `push` 部分はネイティブのスイートでも iOS 専用です。
+- **Flutter Web（CanvasKit）。** canvas へ描き、要素を DOM に出さないので、Playwright バックエンドでは解決できません。
+- **iOS の `noax` 双子。** a11y ビルドが公開の実証です。identifier を持たない別の iOS バンドルには Flutter フレーバによる bundle id の分離が要り、後続作業とします。Android の `noax` 双子は同梱します（`showcase-flutter-android-noax`）。Gradle のプロダクトフレーバでビルドします。
+
 ## Playwright（web）
 
 Playwright（Python）によるヘッドレス Chromium です。Mac も Simulator も要らず Linux で動くため、`make check` と同じツールチェーンに収まります。実装: `drivers/playwright.py`（ロードマップ [BE-0041](../../roadmaps/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）。

@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0008](BE-0008-flutter-support.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0008") |
+| Implementing PR | _pending_ |
 | Topic | Platform support |
 <!-- /BE-METADATA -->
 
@@ -166,9 +167,13 @@ backend, not a framework-specific bridge.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Flutter showcase target — a `demos/` Flutter app using `Semantics(identifier: …)`, driven by the existing XCUITest / adb backends over the existing showcase scenarios.
-- [ ] The id-convention docs — the Flutter id convention, the 3.19 minimum, the lazy-semantics precondition + `ensureSemantics()` fallback, and the out-of-scope boundary (`docs/drivers.md` + ja).
-- [ ] On-device verification — settle the three hypotheses (semantics activation timing, `MergeSemantics`/culling, `identifier` surfacing) and fold the results into the convention.
+- [x] Flutter showcase target — the `demos/showcase/flutter` Flutter app using `Semantics(identifier: …)`, a twin of the native showcase apps, driven by the existing XCUITest / adb backends over the shared showcase scenarios (`showcase-flutter` / `showcase-flutter-android[-noax]` targets).
+- [x] The id-convention docs — the Flutter id convention, the 3.19 minimum, the lazy-semantics precondition + `ensureSemantics()` fallback, and the out-of-scope boundary (`docs/drivers.md` + ja).
+- [x] On-device verification — settled the three hypotheses on device (see the log) and folded the results into the convention.
+
+Log:
+
+- Implemented in [#1339](https://github.com/bajutsu-e2e/bajutsu/pull/1339). The three hypotheses were settled on device (iPhone 17 Pro / iOS 26.5 Simulator via XCUITest; `bajutsu_api34` API 34 AVD via adb): (1) **semantics activation** — the backend's own accessibility query triggers Flutter's lazy semantics tree on **both** backends, so no `ensureSemantics()` call is needed on the driven path (kept behind an off-by-default `--dart-define=ENSURE_SEMANTICS` fallback); (2) **culling** — the scroll-to-element flow over the lazily-built Notices list resolves uniquely; (3) **`identifier` surfacing** — `Semantics(identifier:)` resolves as `accessibilityIdentifier` / `resource-id` on 3.19+. On **iOS/XCUITest** the full shared `scenarios/` suite passes except `network*` (out of scope) and the AI-path `permission` alert grant (as on the native apps). On **Android/adb** the same on-device set the native Compose lane runs passes (a rooted emulator for the `gestures_multitouch` two-finger sweep, as on the native lane); the one Flutter-specific gap is `device.yaml`'s device-control **clipboard**, which needs the in-app `BajutsuAndroid` receiver the plugin-free Flutter app does not link — the same app-cooperation class as `network`, folded into the `drivers.md` out-of-scope note (`text_editing` and the `push` half stay iOS-only in the native suite too).
 
 ## References
 

@@ -207,6 +207,12 @@ branch = true
 python_version = "3.13"
 strict = true
 
+# The Flutter showcase app (BE-0008) is a Dart project; the only `.py` files under it are Flutter's
+# own generated tooling (e.g. ios/Flutter/ephemeral/flutter_lldb_helper.py), which is gitignored and
+# absent on a fresh CI checkout but present locally after a `flutter build`. Exclude the subtree so a
+# local `make check` matches CI and never type-checks generated Flutter scripts we do not own.
+exclude = ["demos/showcase/flutter/"]
+
 # The cloud SDKs (boto3, google-cloud-storage) are lazy imports behind the optional extras and ship
 # no type stubs, so resolve their imports loosely — the seam adapters around them are typed and tested.
 [[tool.mypy.overrides]]

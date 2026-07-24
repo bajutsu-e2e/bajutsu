@@ -186,3 +186,55 @@ targets:
     build: make -C android views-noax-build
     backend: [android]
     scenarios: scenarios
+
+  # ==== Flutter (BE-0008) =========================================================
+  # The Flutter twin of the four native products (demos/showcase/flutter), one Dart codebase built
+  # for both platforms. It adds NO backend: the native backends read the OS accessibility tree, and
+  # Flutter bridges its own semantics tree into that tree, so a `Semantics(identifier: …)` (Flutter
+  # 3.19+) surfaces as `accessibilityIdentifier` (iOS) / `resource-id` (Android) and resolves through
+  # the unchanged XCUITest / adb path (see docs/drivers.md). The `--dart-define=ACCESSIBLE` flag is the
+  # Flutter analog of the iOS `ACCESSIBLE` condition and the Android flavor flag; the shared
+  # `scenarios/` set drives these unchanged, each id listing both its dotted and underscore form
+  # (BE-0221). Flutter must be on PATH to build (CI installs it); iOS `noax` awaits Flutter-flavor
+  # bundle-id separation (a follow-up — the a11y build is BE-0008's surfacing proof).
+
+  # ---- Flutter on iOS, accessibility ON (drives through XCUITest) ----------------
+  showcase-flutter:
+    bundleId: com.bajutsu.showcase.ios.flutter
+    deeplinkScheme: showcaseflutter
+    launchEnv: { SHOWCASE_UITEST: "1" }
+    idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
+    readyWhen: { id: [stable.row.1, stable_row_1] }
+    appPath: flutter/build/ios/iphonesimulator/Runner.app
+    build: cd flutter && flutter build ios --simulator --debug --dart-define=ACCESSIBLE=true
+    backend: [ios]
+    scenarios: scenarios
+    # The generic XCUITest runner drives this Flutter app by bundle id exactly as it drives the
+    # native apps — it never links the app, so no Flutter-specific runner is needed (BE-0008).
+    xcuitest:
+      testRunner: ../../BajutsuKit/Runner/build/dd/Build/Products/BajutsuRunner.xctestrun
+      build: make runner-build
+
+  # ---- Flutter on Android, accessibility ON (drives through adb) -----------------
+  showcase-flutter-android:
+    package: com.bajutsu.showcase.android.flutter
+    deeplinkScheme: showcaseflutter
+    launchEnv: { SHOWCASE_UITEST: "1" }
+    grantPermissions: [android.permission.POST_NOTIFICATIONS]
+    idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
+    readyWhen: { id: [stable.row.1, stable_row_1] }
+    appPath: flutter/build/app/outputs/flutter-apk/app-a11y-debug.apk
+    build: cd flutter && flutter build apk --debug --flavor a11y --dart-define=ACCESSIBLE=true
+    backend: [android]
+    scenarios: scenarios
+
+  # ---- Flutter on Android, accessibility OFF -------------------------------------
+  showcase-flutter-android-noax:
+    package: com.bajutsu.showcase.android.flutter.noax
+    deeplinkScheme: showcaseflutternoax
+    launchEnv: { SHOWCASE_UITEST: "1" }
+    idNamespaces: []   # honest: this build exposes no identifiers
+    appPath: flutter/build/app/outputs/flutter-apk/app-noax-debug.apk
+    build: cd flutter && flutter build apk --debug --flavor noax --dart-define=ACCESSIBLE=false
+    backend: [android]
+    scenarios: scenarios
