@@ -72,14 +72,21 @@ def _assert_parses_to_record_action(proposal: Proposal) -> None:
 
 
 def _assert_parses_to_crawl_actions(proposal: guide.Proposal) -> None:
-    """The real crawl response mapped to at least one replayable action, each addressable on screen."""
+    """The real crawl response mapped to at least one replayable action, each with a stable selector.
+
+    "Replayable" here means faithfully serializable into a scenario, since a crawl's payoff is the
+    committable candidate flow (`crawl/repro.py`). A `tap_point` is a bare coordinate that schema
+    can't address, so `repro.py` drops any path containing one ("faithful or nothing") — an action
+    with only `point` is not replayable, so this smoke must not count it.
+    """
     assert proposal.actions, "real crawl response parsed into no replayable action"
     for action in proposal.actions:
         # `action.key` is never empty — it falls back to `@{label}#…` even with no selector — so
-        # assert a genuine addressing source instead: an id, a label, a tap_point coordinate, or a
-        # fill's fields. A bare key would pass on an action nothing can actually replay.
-        assert action.target or action.label or action.point or action.fields, (
-            f"crawl action has no genuine selector source: {action}"
+        # assert a genuine, serializable addressing source instead: an id, a label, or a fill's
+        # fields (the exact sources `repro.py` can turn into a scenario). `point` is excluded: a
+        # coordinate-only action passes `key` but is exactly what `repro.py` refuses to serialize.
+        assert action.target or action.label or action.fields, (
+            f"crawl action has no stable selector source (a bare tap_point is not replayable): {action}"
         )
 
 
