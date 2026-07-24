@@ -237,6 +237,78 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
 > transient-empty retry, and ambiguous-fails-fast over captured XML fixtures. adb is
 > `brew install android-platform-tools`.
 
+## Flutter (via the native backends)
+
+Flutter apps are driven by the **existing XCUITest / adb backends, unchanged** — Flutter adds no
+backend of its own (roadmap
+[BE-0008](../roadmaps/BE-0008-flutter-support/BE-0008-flutter-support.md)). Flutter renders its own
+pixels through Skia / Impeller, but the native backends never read pixels: they read the OS
+accessibility tree, and Flutter maintains a semantics tree that its engine bridges into that tree
+(Android's `AccessibilityBridge` turns each `SemanticsNode` into a virtual `AccessibilityNodeInfo`;
+the iOS engine exposes `UIAccessibility` elements). A widget that sets
+`Semantics(identifier: …)` therefore surfaces as a resolvable element on both backends, and a
+bounds-center tap lands via the semantics node's on-screen rect and Flutter's own hit-testing. The
+selector model, machine assertions, and the runner stay byte-for-byte unchanged.
+
+The id convention, alongside the iOS and Android ones above (Flutter **3.19+**, when
+`SemanticsProperties.identifier` began mapping into the platform tree):
+
+| `Selector` field | Flutter (via the native backend) |
+|---|---|
+| `id` (primary) | `Semantics(identifier: "…")` → `accessibilityIdentifier` (iOS) / `resource-id` (Android) |
+| `label` (auxiliary) | the widget's semantics label (visible text) |
+| `value` | the widget's semantics `value` (the state mirror, `Semantics(value: …)`) |
+| `traits` (role filter) | the semantics role surfaced as the platform widget class / trait (`button`, `selected`, …) |
+
+Two preconditions the app must meet — they are about Flutter's semantics state, not the renderer:
+
+- **Semantics is built lazily.** Flutter constructs the tree only once an accessibility client
+  connects or the app calls `SemanticsBinding.instance.ensureSemantics()`. On both backends the
+  connection triggers construction on its own — Android's UI Automator connects as an accessibility
+  service, and, as this item verified on device, **the XCUITest runner's accessibility query
+  triggers it on iOS too**, so no `ensureSemantics()` call is needed for the driven path. The
+  showcase app keeps the call behind an off-by-default `--dart-define=ENSURE_SEMANTICS=true` as a
+  documented fallback for an app that is driven without an accessibility client.
+- **Only widgets that carry semantics appear.** Standard Material / Cupertino widgets and text carry
+  semantics automatically; a `CustomPaint`-drawn control that is not wrapped in `Semantics` never
+  enters the tree. Wrapping it in `Semantics(identifier: …)` is the same convention that surfaces
+  the id. Flutter draws its own navigation chrome, so the app also sets the back control's
+  identifier to the platform convention `BackButton` (`base.OS_BACK_BUTTON`) that the iOS backend's
+  `back` step taps; on Android the system back key pops as usual.
+
+**Verified on device** by the `showcase-flutter` (iOS, XCUITest) and `showcase-flutter-android`
+(Android, adb) targets, a Flutter twin of the native showcase apps
+([`demos/showcase/flutter`](../demos/showcase/flutter)) that the shared `scenarios/` set drives
+unchanged — id-based selectors, `value` assertions over the state mirror, scroll-to-element over the
+lazily-built (culled) Notices list, and native two-finger `pinch` / `rotate`. Run it with
+`make -C demos/showcase run-flutter` (iOS) / `run-flutter-android` (Android).
+
+Out of scope (see the roadmap item for the reasoning):
+
+- **Features that need the in-app collector / receiver library the Flutter twin does not link.**
+  Two capabilities depend on `BajutsuKit` (iOS) / `BajutsuAndroid` (Android) being linked into the
+  app — which the Flutter app is not, to stay plugin-free:
+  - **`network` capture and `mocks`** route app traffic through an in-app interceptor (`BajutsuKit`
+    `URLProtocol` on iOS, `BajutsuAndroid`'s OkHttp interceptor on Android). Flutter's Dart
+    `HttpClient` flows through neither, so `network` evidence and `mocks` do not observe Flutter
+    traffic; the app's `*.status` mirror still drives the deterministic wait/assert the scenarios
+    rely on. Routing Dart HTTP through the native stack (via `cupertino_http` / `cronet_http`) is a
+    follow-up.
+  - **The Android device-control `clipboard`** round-trips through `BajutsuAndroid`'s in-app receiver
+    (BE-0233), so `device.yaml`'s `setClipboard` / `clipboard` steps fail on the Flutter Android
+    target. iOS device-control clipboard goes through simctl with no app cooperation, so it works on
+    the Flutter iOS target — this gap is Android-only.
+
+  Beyond these, the Flutter targets pass the same on-device scenario sets the native twins run —
+  minus what is platform-limited regardless of Flutter: multi-touch (`gestures_multitouch`) needs a
+  rooted emulator on adb (as for the native Android apps), and `text_editing` / the `push` half of
+  `device` are iOS-only in the native suite too.
+- **Flutter Web (CanvasKit).** It paints to a canvas and surfaces no DOM elements, so the Playwright
+  backend cannot resolve them.
+- **The iOS `noax` twin.** The a11y build is the surfacing proof; a distinct no-identifier iOS bundle
+  needs Flutter-flavor bundle-id separation, a follow-up. The Android `noax` twin ships
+  (`showcase-flutter-android-noax`), built via a Gradle product flavor.
+
 ## Playwright (web)
 
 Headless Chromium via Playwright (Python). Runs on Linux with **no Mac and no Simulator**, so it

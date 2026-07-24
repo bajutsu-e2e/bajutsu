@@ -8,13 +8,16 @@
 	run-swiftui run-uikit run-swiftui-tabs run-uikit-tabs \
 	run-swiftui-noax run-uikit-noax doctor record ui-test ui-test-coverage \
 	vrt vrt-approve vrt-swiftui vrt-swiftui-approve vrt-uikit vrt-uikit-approve \
-	e2e-visual e2e-visual-approve clean
+	e2e-visual e2e-visual-approve \
+	flutter-build flutter-android-build flutter-android-noax-build \
+	run-flutter run-flutter-android clean
 
 ROOT   := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../..)
 HERE   := $(ROOT)/demos/showcase
 CONFIG := $(HERE)/showcase.config.yaml
 SWIFTUI := $(HERE)/ios/swiftui
 UIKIT   := $(HERE)/ios/uikit
+FLUTTER := $(HERE)/flutter
 RUNNER  := $(ROOT)/BajutsuKit/Runner
 
 # A built scheme lands at build/dd/Build/Products/Debug-iphonesimulator/<Scheme>.app,
@@ -245,6 +248,47 @@ e2e-visual-approve:
 	-$(MAKE) --no-print-directory e2e-visual
 	cd $(ROOT) && uv run --extra visual bajutsu approve --baselines $(BASELINES_IOS_VRT)
 
+# ---- Flutter (BE-0008) ----------------------------------------------------------------------------
+# The Flutter twin (demos/showcase/flutter), one Dart codebase built for both platforms. It adds no
+# backend: `Semantics(identifier: …)` surfaces into the OS accessibility tree the native backends
+# already read, so the shared scenarios drive it through XCUITest / adb unchanged (docs/drivers.md).
+# `--dart-define=ACCESSIBLE` is the a11y/noax switch (the analog of the iOS ACCESSIBLE condition).
+# Flutter must be on PATH. NOT part of `make check` — these need a Simulator / emulator.
+flutter-build:
+	cd $(FLUTTER) && flutter build ios --simulator --debug --dart-define=ACCESSIBLE=true
+flutter-android-build:
+	cd $(FLUTTER) && flutter build apk --debug --flavor a11y --dart-define=ACCESSIBLE=true
+flutter-android-noax-build:
+	cd $(FLUTTER) && flutter build apk --debug --flavor noax --dart-define=ACCESSIBLE=false
+
+# The shared id-based scenarios against the Flutter app. iOS resolves to XCUITest; `--exclude`
+# drops what a Flutter target does not serve (see docs/drivers.md "Flutter" out-of-scope): `network`
+# (Dart HTTP bypasses the native interceptors, so capture / mocks see nothing) and the AI-path
+# `systemalert`. Prereqs: a booted Simulator, `make runner-build`; an attached emulator for Android.
+run-flutter: flutter-build runner-build
+	cd $(ROOT) && uv run bajutsu run --target showcase-flutter --udid $(SIM) --backend xcuitest \
+		--exclude network,systemalert --config $(CONFIG)
+
+# The same on-device set the native Compose lane runs (demos/showcase/android/Makefile), minus
+# device.yaml — its device-control clipboard round-trips through the in-app BajutsuAndroid receiver
+# the plugin-free Flutter app does not link (docs/drivers.md "Flutter" out-of-scope). `adb root`
+# enables the `sendevent` path the gestures double-tap and multi-touch use, exactly as the native
+# android-e2e lane does; `text_editing` / `push` stay iOS-only in the native suite too.
+# BAJUTSU_MIN_WAIT_TIMEOUT=15 mirrors the native Compose lane (demos/showcase/android/Makefile): a
+# CI x86_64 software-rendered emulator presents sheets/covers slower than the shared scenarios' 5s
+# waits allow, so the modal/component scenarios need a higher wait ceiling. It is a ceiling on a
+# condition wait, not a fixed delay, so a fast (hardware-accelerated) emulator still resolves early.
+FLUTTER_ANDROID_SCENARIOS := smoke firstlook navigation search data_driven relaunch system \
+	components modals controls notices gestures gestures_multitouch permission extract foreach
+run-flutter-android: flutter-android-build
+	adb root >/dev/null 2>&1 || true
+	adb wait-for-device
+	cd $(ROOT) && for s in $(FLUTTER_ANDROID_SCENARIOS); do \
+		BAJUTSU_MIN_WAIT_TIMEOUT=15 \
+		uv run bajutsu run --scenario demos/showcase/scenarios/$$s.yaml \
+			--target showcase-flutter-android --backend android --config $(CONFIG) || exit 1; \
+	done
+
 clean:
 	rm -rf $(SWIFTUI)/build $(UIKIT)/build \
-		$(SWIFTUI)/*.xcodeproj $(UIKIT)/*.xcodeproj
+		$(SWIFTUI)/*.xcodeproj $(UIKIT)/*.xcodeproj $(FLUTTER)/build
