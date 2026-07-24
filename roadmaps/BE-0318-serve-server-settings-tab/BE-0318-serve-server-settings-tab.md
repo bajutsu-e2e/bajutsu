@@ -8,8 +8,8 @@
 | Proposal | [BE-0318](BE-0318-serve-server-settings-tab.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
-| Implementing PR | [#1323](https://github.com/bajutsu-e2e/bajutsu/pull/1323) |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0318") |
+| Implementing PR | [#1323](https://github.com/bajutsu-e2e/bajutsu/pull/1323) |
 | Topic | Surfacing CLI features in the serve Web UI |
 <!-- /BE-METADATA -->
 

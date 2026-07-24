@@ -954,7 +954,7 @@ function loadServerInfo(){
     host.innerHTML=h;
   });
 }
-function openSettings(){openModal($('#settingsmodal'));showSettingsTab('ai');$('#apikey').value='';$('#cctoken').value='';setSettingsStatus('','');loadKey();loadCcTok();loadProv();loadScenarioSecrets();loadServerInfo()}
+function openSettings(){openModal($('#settingsmodal'));showSettingsTab('ai');$('#apikey').value='';$('#cctoken').value='';setSettingsStatus('','');loadKey();loadCcTok();loadProv();loadScenarioSecrets();loadServerInfo();}
 function closeSettings(){closeModal($('#settingsmodal'))}
 $('#opensettings').addEventListener('click',openSettings);
 $('#settingsclose').addEventListener('click',closeSettings);
