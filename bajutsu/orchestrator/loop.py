@@ -268,16 +268,6 @@ def _read_clipboard(control: DeviceControl) -> str | None:
         return None
 
 
-def _clipboard_for(block: list[Assertion], control: DeviceControl | None) -> str | None:
-    """The device pasteboard, read once when `block` has a `clipboard` assertion; None otherwise.
-
-    None when no `clipboard` assertion is present, when no device-control channel is available
-    (fake driver / parallel run), or when the read itself fails."""
-    if control is None or not any(a.clipboard is not None for a in block):
-        return None
-    return _read_clipboard(control)
-
-
 def _clipboard_reader(
     block: list[Assertion], control: DeviceControl | None
 ) -> Callable[[], str | None] | None:
@@ -383,11 +373,12 @@ def _run_step_body(
             return ok, reason, [], None
         if kind == "assert_":
             assert step.assert_ is not None
-            clip = _clipboard_for(step.assert_, control)
             # A step-level assert sees only golden + clipboard: no per-step screenshot is taken, so
             # `visual` / `responseSchema` have no fresh input here (they run at scenario `expect`).
-            # Drop them from the bundled context to preserve that behavior (BE-0250 Unit 2).
-            step_ctx = replace(ctx or EvalContext(), visual=None, schema=None, clipboard=clip)
+            # Drop them from the bundled context to preserve that behavior (BE-0250 Unit 2). The
+            # clipboard is left None here: `_poll_asserts` reads it via the reader below, on the
+            # first cycle and every cycle after — seeding it too would just be a discarded read.
+            step_ctx = replace(ctx or EvalContext(), visual=None, schema=None, clipboard=None)
             # A condition wait, not a single snapshot: a value the prior action mirrors into the tree
             # a beat late is caught, the same race the trailing `expect` already closes (BE-0299
             # Unit 2). The clipboard is refreshed each cycle too, so a `copy` whose pasteboard write
@@ -481,7 +472,8 @@ def run_scenario(
         )
         if failure is None and scenario.expect:
             expect = _interp_asserts(scenario.expect, live_bindings)
-            clip = _clipboard_for(expect, control)
+            # The clipboard is read by the reader inside `_poll_asserts` (first cycle and every
+            # cycle after), so no seed read here — seeding `ctx.clipboard` would only be discarded.
             clip_reader = _clipboard_reader(expect, control)
             if ctx.visual is not None:
                 driver.screenshot(str(ctx.visual.screenshot_path))
@@ -490,7 +482,7 @@ def run_scenario(
                 expect,
                 network,
                 clock,
-                ctx=replace(ctx, clipboard=clip),
+                ctx=replace(ctx, clipboard=None),
                 clipboard=clip_reader,
             )
             if not assertions.passed(expect_results) and on_blocked is not None:
@@ -499,15 +491,15 @@ def run_scenario(
                     expect_alerts.append(event)
                     if ctx.visual is not None:
                         driver.screenshot(str(ctx.visual.screenshot_path))
-                    # Re-read the clipboard too: clearing the block may have let the app update the
-                    # pasteboard, so the retry must compare against the fresh value, not the stale one.
-                    clip = _clipboard_for(expect, control)
+                    # The retry re-reads the clipboard through the same reader: clearing the block
+                    # may have let the app update the pasteboard, so the poll compares against the
+                    # fresh value each cycle, not a stale pre-block one.
                     expect_results = _evaluate_expect(
                         driver,
                         expect,
                         network,
                         clock,
-                        ctx=replace(ctx, clipboard=clip),
+                        ctx=replace(ctx, clipboard=None),
                         clipboard=clip_reader,
                     )  # retry once
             if not assertions.passed(expect_results):
