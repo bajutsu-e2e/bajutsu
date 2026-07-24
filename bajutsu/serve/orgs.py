@@ -20,12 +20,15 @@ class OrgConfig(_Model):
     """One tenant under `orgs.<name>` (BE-0015 multi-tenancy).
 
     Holds the GitHub logins that belong to it (`members`) and/or the GitHub orgs whose members
-    belong to it (`github_orgs`), plus the targets it owns. A login or target named in no org falls
-    back to the single `default` org, so a config with no `orgs:` block stays single-tenant.
+    belong to it (`github_orgs`), plus the targets it owns. A target named in no org falls back to
+    the single `default` org. `editor_team` (BE-0313) names one flat GitHub Team, as
+    `"<github-org>/<team-slug>"`, whose direct members are promoted to editor within this org; None
+    leaves every member of the org at viewer.
     """
 
     members: list[str] = Field(default_factory=list)
     github_orgs: list[str] = Field(default_factory=list, alias="githubOrgs")
+    editor_team: str | None = Field(default=None, alias="editorTeam")
     targets: list[str] = Field(default_factory=list)
 
 
@@ -41,6 +44,21 @@ def org_for_user(orgs: dict[str, OrgConfig], login: str) -> str:
 def org_for_target(orgs: dict[str, OrgConfig], target: str) -> str:
     """The org whose targets list *target*, or `default` if none do."""
     return next((org for org, oc in orgs.items() if target in oc.targets), DEFAULT_ORG)
+
+
+def identity_matches_org(orgs: dict[str, OrgConfig], login: str, github_orgs: list[str]) -> bool:
+    """Whether *login* (with GitHub memberships *github_orgs*) belongs to any declared org (BE-0313).
+
+    True when the login is an explicit `members` entry or a member of some org's `github_orgs`. The
+    sign-in gate consults this before `org_for_identity`, whose plain `str` return can't tell a login
+    that matched nothing from one that legitimately resolved to `default` — and a deployment may name
+    an org literally `default`. An empty `orgs` mapping (no `orgs:` block) matches nobody, so an
+    OAuth deployment must declare one to admit any login.
+    """
+    if any(login in oc.members for oc in orgs.values()):
+        return True
+    user_orgs = set(github_orgs)
+    return any(user_orgs.intersection(oc.github_orgs) for oc in orgs.values())
 
 
 def org_for_identity(orgs: dict[str, OrgConfig], login: str, github_orgs: list[str]) -> str:

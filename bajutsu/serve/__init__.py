@@ -338,7 +338,8 @@ def _build_server_state(
     if _db_engine is not None and _secrets_fernet is None:
         raise ValueError("BAJUTSU_SECRETS_KEY is required for --backend=server with a database")
     # GitHub OAuth login is optional: wired only when all three OAuth vars are set, else None (token
-    # auth only). The allowlist is the GitHub logins permitted to log in (BE-0015 7b-2).
+    # auth only). Once configured, sign-in and the viewer/editor role follow GitHub org/Team
+    # membership (BE-0313); `BAJUTSU_OAUTH_ADMIN_TEAM` names the one server-wide admin Team.
     cid = os.environ.get("BAJUTSU_OAUTH_GITHUB_CLIENT_ID")
     secret = os.environ.get("BAJUTSU_OAUTH_GITHUB_CLIENT_SECRET")
     redirect = os.environ.get("BAJUTSU_OAUTH_GITHUB_REDIRECT_URI")
@@ -347,13 +348,7 @@ def _build_server_state(
         if cid and secret and redirect
         else None
     )
-
-    def _logins(var: str) -> frozenset[str]:
-        return frozenset(u.strip() for u in os.environ.get(var, "").split(",") if u.strip())
-
-    allowed_users = _logins("BAJUTSU_OAUTH_ALLOWED_USERS")
-    oauth_admins = _logins("BAJUTSU_OAUTH_ADMINS")
-    oauth_viewers = _logins("BAJUTSU_OAUTH_VIEWERS")
+    oauth_admin_team = os.environ.get("BAJUTSU_OAUTH_ADMIN_TEAM") or None
 
     repo = repository_from_env()
 
@@ -408,7 +403,7 @@ def _build_server_state(
         ),
         # The authentication cluster (BE-0248): the shared token, the login-session store (a
         # DB-backed one when a database is wired so sessions survive restarts, else in-memory), and
-        # the GitHub OAuth client + its allow/role lists.
+        # the GitHub OAuth client + the server-wide admin Team (BE-0313).
         auth=SessionManager(
             token=token,
             sessions=(
@@ -420,9 +415,7 @@ def _build_server_state(
                 else InMemorySessionStore()
             ),
             oauth=oauth,
-            oauth_allowed_users=allowed_users,
-            oauth_admins=oauth_admins,
-            oauth_viewers=oauth_viewers,
+            oauth_admin_team=oauth_admin_team,
         ),
     )
 

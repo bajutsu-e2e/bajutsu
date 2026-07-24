@@ -355,8 +355,9 @@ def test_theme_upload_requires_themes_dir(tmp_path: Path) -> None:
 class _FakeOAuth:
     """Stand-in for the GitHub OAuth client — no network. `fetch_identity` fails for code ``"bad"``."""
 
-    def __init__(self, login: str | None = "alice") -> None:
+    def __init__(self, login: str | None = "alice", teams: list[str] | None = None) -> None:
         self._login = login
+        self._teams = teams or []
 
     def authorize_url(self, state: str) -> str:
         return f"https://github.test/login/oauth/authorize?state={state}"
@@ -364,19 +365,36 @@ class _FakeOAuth:
     def fetch_identity(self, code: str) -> Identity | None:
         if code == "bad" or not self._login:
             return None
-        return Identity(login=self._login, orgs=[])
+        return Identity(login=self._login, orgs=[], teams=list(self._teams))
 
 
-def _oauth_state(
-    tmp_path: Path, *, login: str | None = "alice", allowed: frozenset[str] = frozenset({"alice"})
-) -> srv.ServeState:
+# The editor Team the org config below names; a logged-in identity carrying it is promoted to editor.
+_EDITOR_TEAM = "acme-gh/editors"
+_ADMIN_TEAM = "acme-gh/admins"
+
+
+def _with_orgs(cfg: Path, members: list[str]) -> None:
+    """Append an `orgs:` block admitting *members* (BE-0313): sign-in is now gated on org membership,
+    so the OAuth/RBAC states need a config that lists their test logins. The single org owns both
+    targets, so every admitted login resolves to it and passes the org-scope check."""
+    roster = ", ".join(members)
+    cfg.write_text(
+        cfg.read_text(encoding="utf-8")
+        + f"orgs:\n  acme:\n    members: [{roster}]\n    editorTeam: {_EDITOR_TEAM}\n"
+        "    targets: [demo, other]\n",
+        encoding="utf-8",
+    )
+
+
+def _oauth_state(tmp_path: Path, *, login: str | None = "alice") -> srv.ServeState:
     _scn_dir, cfg, runs = project(tmp_path)
+    _with_orgs(cfg, ["alice"])
     return srv.ServeState(
         config=cfg,
         runs_dir=runs,
         root=tmp_path,
         cwd=tmp_path,
-        auth=srv.SessionManager(oauth=_FakeOAuth(login), oauth_allowed_users=allowed),
+        auth=srv.SessionManager(oauth=_FakeOAuth(login)),
     )
 
 
@@ -391,7 +409,7 @@ def test_oauth_login_redirects_and_sets_a_state_cookie(tmp_path: Path) -> None:
     assert "bajutsu_oauth_state" in resp.headers.get("set-cookie", "")
 
 
-def test_oauth_callback_logs_in_an_allowlisted_user(tmp_path: Path) -> None:
+def test_oauth_callback_logs_in_an_org_member(tmp_path: Path) -> None:
     client = _client(_oauth_state(tmp_path))
     started = client.get(
         "/api/oauth/login", follow_redirects=False
@@ -410,7 +428,8 @@ def test_oauth_callback_rejects_a_state_mismatch(tmp_path: Path) -> None:
     assert resp.status_code == 403
 
 
-def test_oauth_callback_rejects_a_user_not_on_the_allowlist(tmp_path: Path) -> None:
+def test_oauth_callback_rejects_a_user_in_no_org(tmp_path: Path) -> None:
+    # BE-0313: mallory is not an `orgs:` member, so the sign-in gate turns them away.
     client = _client(_oauth_state(tmp_path, login="mallory"))
     csrf = _csrf_from_redirect(client.get("/api/oauth/login", follow_redirects=False))
     resp = client.get(f"/api/oauth/callback?code=ok&state={csrf}", follow_redirects=False)
@@ -427,6 +446,7 @@ def test_run_audits_the_logged_in_user(tmp_path: Path) -> None:
     from bajutsu.serve.server.models import AuditLog, Base
 
     _scn_dir, cfg, runs = project(tmp_path)
+    _with_orgs(cfg, ["alice"])
     # A file DB (not in-memory) so the callback's threadpool worker and the run handler share it.
     engine = create_engine(f"sqlite:///{tmp_path / 'audit.db'}")
     Base.metadata.create_all(engine)
@@ -435,9 +455,8 @@ def test_run_audits_the_logged_in_user(tmp_path: Path) -> None:
         runs_dir=runs,
         root=tmp_path,
         cwd=tmp_path,
-        auth=srv.SessionManager(
-            oauth=_FakeOAuth("alice"), oauth_allowed_users=frozenset({"alice"})
-        ),
+        # alice carries the editor Team, so she can trigger the run whose audit entry we assert.
+        auth=srv.SessionManager(oauth=_FakeOAuth("alice", teams=[_EDITOR_TEAM])),
         repository=SqlRepository(engine),
         popen=fake_popen([]),
     )
@@ -460,8 +479,8 @@ def _rbac_state(
     tmp_path: Path,
     *,
     login: str,
-    admins: frozenset[str] = frozenset(),
-    viewers: frozenset[str] = frozenset(),
+    teams: list[str] | None = None,
+    admin_team: str | None = None,
 ) -> srv.ServeState:
     from sqlalchemy import create_engine
 
@@ -469,6 +488,7 @@ def _rbac_state(
     from bajutsu.serve.server.models import Base
 
     _scn_dir, cfg, runs = project(tmp_path)
+    _with_orgs(cfg, [login])  # the login is an org member (BE-0313), so sign-in admits it
     engine = create_engine(f"sqlite:///{tmp_path / 'rbac.db'}")
     Base.metadata.create_all(engine)
     return srv.ServeState(
@@ -478,10 +498,8 @@ def _rbac_state(
         cwd=tmp_path,
         auth=srv.SessionManager(
             token="t",  # a token makes the gate enforce auth, so the OAuth session's role applies
-            oauth=_FakeOAuth(login),
-            oauth_allowed_users=frozenset({login}),
-            oauth_admins=admins,
-            oauth_viewers=viewers,
+            oauth=_FakeOAuth(login, teams=teams),
+            oauth_admin_team=admin_team,
         ),
         repository=SqlRepository(engine),
         popen=fake_popen([]),
@@ -497,7 +515,8 @@ def _oauth_signin(client: TestClient) -> None:
 
 
 def test_rbac_viewer_cannot_run(tmp_path: Path) -> None:
-    client = TestClient(make_app(_rbac_state(tmp_path, login="v", viewers=frozenset({"v"}))))
+    # A signed-in user in no Team is a viewer (the BE-0313 base role).
+    client = TestClient(make_app(_rbac_state(tmp_path, login="v")))
     _oauth_signin(client)
     assert (
         client.post("/api/run", json={"scenario": "smoke.yaml", "target": "demo"}).status_code
@@ -512,7 +531,7 @@ def test_rbac_viewer_gets_masked_key_never_plaintext(
     # admin-configured key in plaintext via GET /api/apikey?reveal=1. Now a viewer's GET returns
     # only a masked preview, never a `value`, for any query.
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-admin-secret-12345")
-    client = TestClient(make_app(_rbac_state(tmp_path, login="v", viewers=frozenset({"v"}))))
+    client = TestClient(make_app(_rbac_state(tmp_path, login="v")))  # no Team → viewer
     _oauth_signin(client)
     body = client.get("/api/apikey").json()
     assert body == {"set": True, "masked": "sk-a…2345"}
@@ -520,7 +539,8 @@ def test_rbac_viewer_gets_masked_key_never_plaintext(
 
 
 def test_rbac_editor_can_run_but_not_change_settings(tmp_path: Path) -> None:
-    client = TestClient(make_app(_rbac_state(tmp_path, login="e")))  # default role = editor
+    # Membership in the org's editor Team promotes to editor (BE-0313).
+    client = TestClient(make_app(_rbac_state(tmp_path, login="e", teams=[_EDITOR_TEAM])))
     _oauth_signin(client)
     assert (
         client.post("/api/run", json={"scenario": "smoke.yaml", "target": "demo"}).status_code
@@ -531,7 +551,10 @@ def test_rbac_editor_can_run_but_not_change_settings(tmp_path: Path) -> None:
 
 def test_rbac_admin_can_change_settings(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ANTHROPIC_API_KEY", "")  # so monkeypatch restores it after set_api_key runs
-    client = TestClient(make_app(_rbac_state(tmp_path, login="root", admins=frozenset({"root"}))))
+    # Membership in the server-wide admin Team grants admin (BE-0313).
+    client = TestClient(
+        make_app(_rbac_state(tmp_path, login="root", teams=[_ADMIN_TEAM], admin_team=_ADMIN_TEAM))
+    )
     _oauth_signin(client)
     assert client.post("/api/apikey", json={"value": "sk-admin"}).status_code == 200
 
@@ -687,6 +710,18 @@ def test_auth_gate_mirrors_stdlib(tmp_path: Path) -> None:
     # A Bearer token also authorizes (a fresh client over the same state — no session cookie).
     fresh = TestClient(app)
     assert fresh.get("/api/runs", headers={"Authorization": "Bearer s3cret"}).status_code == 200
+
+
+def test_bearer_narrows_to_worker_paths_once_oauth_configured_fastapi(tmp_path: Path) -> None:
+    # BE-0313 parity with the stdlib handler (tests/serve/test_http_auth.py): once OAuth is
+    # configured on the FastAPI backend, the shared Bearer token authorizes only worker traffic.
+    state = _state(tmp_path, token="s3cret")
+    state.auth.oauth = _FakeOAuth("alice")
+    client = TestClient(make_app(state))
+    headers = {"Authorization": "Bearer s3cret"}
+    assert client.get("/api/runs", headers=headers).status_code == 401
+    worker = client.post("/api/worker/lease", json={"worker_id": "w1"}, headers=headers)
+    assert worker.status_code != 401  # the gate admitted it; the route may still 200/400 downstream
 
 
 def test_metrics_route_serves_prometheus_text(tmp_path: Path) -> None:

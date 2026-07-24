@@ -240,7 +240,11 @@ later moved that server store to a Postgres `sessions` table).
 (checked against the server-side store) — gated by a **GitHub-username
 allowlist** (`BAJUTSU_OAUTH_ALLOWED_USERS`), with the login bound to the session as the user's
 identity. It coexists with the shared token (BE-0051): the token stays the operator credential (full
-access, e.g. for CI), OAuth is the per-user browser login. `operations` stays provider-agnostic;
+access, e.g. for CI), OAuth is the per-user browser login. (**Superseded by
+[BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac.md):** sign-in now follows
+GitHub organization membership rather than this username allowlist, and once OAuth is configured the
+shared token narrows to worker traffic — the operator-credential reach over other endpoints is
+retired.) `operations` stays provider-agnostic;
 auth lives in the handler/app middleware, where
 [BE-0051](../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)
 put it. An `authlib` extra carries the dependency.
@@ -255,7 +259,10 @@ On the server backend with a database wired:
   approve/save), admin (config / API key / provider). The role is derived from env policy
   (`BAJUTSU_OAUTH_ADMINS` / `BAJUTSU_OAUTH_VIEWERS`, default editor) and recomputed on each login, so
   changing the policy needs no data migration. Enforcement lives in the auth gate (mirroring authN);
-  only an OAuth session is gated — the operator token stays full-access.
+  only an OAuth session is gated — the operator token stays full-access. (**Superseded by
+  [BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac.md):** the role now follows
+  GitHub Team membership — the org's `editorTeam` for editor, one server-wide `BAJUTSU_OAUTH_ADMIN_TEAM`
+  for admin — with viewer as the base role, replacing these login lists. Recompute-on-login is kept.)
 - **Per-user concurrency quota** (#152): `BAJUTSU_MAX_CONCURRENT_PER_USER` caps one user's in-flight
   jobs so no single user starves the scarce device pool (the per-org quota is just the existing
   global `max_concurrent` while there is one org).

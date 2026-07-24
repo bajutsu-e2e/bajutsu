@@ -113,6 +113,51 @@ def test_bearer_header_authorizes(tmp_path: Path) -> None:
         server.server_close()
 
 
+def test_bearer_narrows_to_worker_paths_once_oauth_configured(tmp_path: Path) -> None:
+    # BE-0313: with OAuth configured the shared token authorizes only worker traffic on the stdlib
+    # backend — a non-worker endpoint rejects the raw Bearer, a worker route still accepts it.
+    state = _state(tmp_path, "s3cret")
+    state.auth.oauth = _FakeOAuth()
+    server, port = _serve(state)
+    try:
+        headers = {"Authorization": "Bearer s3cret"}
+        blocked, _, _ = _request(port, "/api/runs", headers=headers)
+        assert blocked == 401  # non-worker endpoint no longer honors the Bearer token
+        # A worker route clears the gate (it 404s/errors past it, but never 401 — the gate admitted it).
+        worker, _, _ = _request(
+            port,
+            "/api/worker/lease",
+            method="POST",
+            headers={**headers, "Content-Type": "application/json"},
+            body={"worker_id": "w1"},
+        )
+        assert worker != 401
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_token_login_disabled_once_oauth_configured(tmp_path: Path) -> None:
+    # BE-0313: the token-cookie exchange is retired when OAuth is configured — a human then signs in
+    # only through /api/oauth/login.
+    state = _state(tmp_path, "s3cret")
+    state.auth.oauth = _FakeOAuth()
+    server, port = _serve(state)
+    try:
+        status, headers, _ = _request(
+            port,
+            "/api/login",
+            method="POST",
+            headers={"Content-Type": "application/json"},
+            body={"token": "s3cret"},
+        )
+        assert status == 404
+        assert "Set-Cookie" not in headers
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 def test_login_sets_cookie_then_cookie_authorizes(tmp_path: Path) -> None:
     server, port = _serve(_state(tmp_path, "s3cret"))
     try:
@@ -265,7 +310,6 @@ def test_oauth_login_redirects_and_sets_state_cookie(tmp_path: Path) -> None:
     # the CSRF state in a cookie. Use a raw connection so the 302 isn't auto-followed to github.test.
     state = _state(tmp_path, None)
     state.auth.oauth = _FakeOAuth()
-    state.auth.oauth_allowed_users = frozenset({"alice"})
     server, port = _serve(state)
     try:
         conn = http.client.HTTPConnection("127.0.0.1", port)

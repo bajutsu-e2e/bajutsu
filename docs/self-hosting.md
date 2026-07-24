@@ -368,15 +368,54 @@ once the prefix is dropped.
 
 The shared token (`BAJUTSU_SERVE_TOKEN`) alone is enough for a couple of operators. For per-user
 browser login, create a GitHub OAuth app (callback `https://<your-host>/api/oauth/callback`) and set
-in `.env`: `BAJUTSU_OAUTH_GITHUB_CLIENT_ID` / `_SECRET` / `_REDIRECT_URI`, plus the allowlist
-`BAJUTSU_OAUTH_ALLOWED_USERS` (and optionally `BAJUTSU_OAUTH_ADMINS` / `BAJUTSU_OAUTH_VIEWERS`).
-Allowlisted users are **editors** by default (they can run); admins also change server settings
-(config / API key / provider); viewers are read-only. The token stays the operator/CI credential
-(full access); OAuth is the team's per-user login.
+in `.env`: `BAJUTSU_OAUTH_GITHUB_CLIENT_ID` / `_SECRET` / `_REDIRECT_URI`.
 
-Login always requests the `read:org` scope so a user can be mapped to an org by GitHub org
-membership (config `githubOrgs`); the consent screen therefore mentions organization access either way. A
-single-tenant deploy (no `orgs:` block) just ignores the org info.
+Once OAuth is configured, access follows **GitHub organization and Team membership**
+([BE-0313](../roadmaps/BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac.md)) rather than a
+hand-maintained login list:
+
+- **Sign-in and the viewer role** follow org membership. A user may sign in only as a member of a
+  configured org — an explicit `members` entry or a member of a `githubOrgs`-listed GitHub org (see
+  [`orgs:`](configuration.md#orgs-orgs-the-multi-tenant-server-backend)) — and a successful sign-in
+  grants **viewer** (read-only). A login that matches no org is turned away, so an OAuth deployment
+  must declare an `orgs:` block.
+- **Editor** follows the org's `editorTeam`: a direct member of that one flat GitHub Team may run,
+  record, and edit scenarios.
+- **Admin** follows one server-wide GitHub Team, `BAJUTSU_OAUTH_ADMIN_TEAM` (written
+  `"<github-org>/<team-slug>"`), whose members also change server settings (config / API key /
+  provider). Admin is a single deployment-wide tier, so name a Team whose members you trust across
+  every org. An admin still has to clear the sign-in gate above first: `BAJUTSU_OAUTH_ADMIN_TEAM` is
+  checked only after a login already matches some `orgs:` entry, so the Team's GitHub organization
+  must itself appear in some org's `githubOrgs` (or its members listed under `members`) — otherwise
+  the intended admin is turned away at sign-in before the admin Team is ever consulted.
+
+Membership is re-read on every login, so leaving a GitHub org or Team takes effect at the affected
+user's next sign-in — no server-side list to edit. Login always requests the `read:org` scope to read
+these memberships, so the consent screen mentions organization access.
+
+**Upgrading from the login lists.** Two things change beyond the role-source swap: sign-in now admits
+*everyone* in a configured `githubOrgs`/`members` entry, not just the logins that were on the old
+`BAJUTSU_OAUTH_ALLOWED_USERS` — if that allowlist was narrower than the org's full membership, tighten
+`orgs:` before switching, or the org gate alone will widen who can sign in. And
+`BAJUTSU_OAUTH_ALLOWED_USERS` / `_ADMINS` / `_VIEWERS` are simply ignored now, so re-declare every
+admin and editor as a Team membership before cutting over — anyone not yet covered by `editorTeam` or
+`BAJUTSU_OAUTH_ADMIN_TEAM` drops to viewer on their next login.
+
+A third thing: disabling `POST /api/login` stops **minting** new token-cookie sessions once OAuth is
+configured, but it doesn't invalidate one already issued — a browser that logged in with the shared
+token before OAuth was turned on keeps that session's full, unchecked access (a token-minted session
+carries no identity, so the role gate never applies to it) until it expires on its own
+(`BAJUTSU_SESSION_TTL`, seven days by default). A deployment moving from token-only to OAuth should
+rotate the session store (or otherwise force-clear existing cookies) at cutover, rather than count on
+the seven-day window to close it.
+
+Once OAuth is configured, the shared token narrows to **worker traffic only**: it authorizes the
+worker control-plane routes (the `/api/worker/*` endpoints and the run evidence-upload URL request)
+and nothing else. The browser token-login endpoint
+(`POST /api/login`) is disabled — a human signs in exclusively through GitHub OAuth — and a raw
+`Authorization: Bearer <token>` no longer reaches any non-worker endpoint. A deployment that scripted
+non-worker endpoints with the token loses that path once OAuth is on. Without OAuth (the single-Mac,
+private-network shape) the token is unchanged and still reaches everything.
 
 ### Operator secrets (the Claude API key)
 

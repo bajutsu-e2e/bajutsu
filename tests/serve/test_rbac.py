@@ -13,11 +13,33 @@ from bajutsu.serve.server.models import Base
 from bajutsu.serve.state import ServeState
 
 
-def test_role_for_applies_the_env_policy() -> None:
-    admins, viewers = frozenset({"root"}), frozenset({"guest"})
-    assert ops.role_for("root", admins=admins, viewers=viewers) == "admin"
-    assert ops.role_for("guest", admins=admins, viewers=viewers) == "viewer"
-    assert ops.role_for("dev", admins=admins, viewers=viewers) == "editor"  # the default
+def test_role_for_derives_the_role_from_team_membership() -> None:
+    # BE-0313: admin follows the server-wide admin Team, editor the org's editor Team, else viewer.
+    teams = ["acme-gh/scenario-maintainers", "acme-gh/ops"]
+    assert (
+        ops.role_for(
+            teams=teams, editor_team="acme-gh/scenario-maintainers", admin_team="acme-gh/ops"
+        )
+        == "admin"
+    )
+    assert (
+        ops.role_for(
+            teams=teams, editor_team="acme-gh/scenario-maintainers", admin_team="acme-gh/absent"
+        )
+        == "editor"
+    )
+    # The base role: signed in, but a member of neither Team.
+    assert (
+        ops.role_for(teams=teams, editor_team="acme-gh/absent", admin_team="acme-gh/none")
+        == "viewer"
+    )
+    # An unset Team never matches, even against an empty-string team name in the list.
+    assert ops.role_for(teams=[""], editor_team=None, admin_team=None) == "viewer"
+    # Nested-Team names don't match the configured flat Team (exact match only).
+    assert (
+        ops.role_for(teams=["acme-gh/parent/child"], editor_team="acme-gh/parent", admin_team=None)
+        == "viewer"
+    )
 
 
 def test_required_role_maps_endpoints() -> None:

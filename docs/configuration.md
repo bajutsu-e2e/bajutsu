@@ -281,21 +281,31 @@ on transport, not on the mail vendor, because vendors differ only in JSON field 
 
 `orgs:` declares tenants for the hosted server backend ([BE-0015](../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)).
 Each org lists its members — explicit GitHub logins (`members`) and/or whole GitHub orgs
-(`githubOrgs`) — and the targets it owns:
+(`githubOrgs`) — the GitHub Team whose members may write (`editorTeam`), and the targets it owns:
 
 ```yaml
 orgs:
   acme:
-    members: [alice, bob]    # explicit GitHub logins
-    githubOrgs: [acme-gh]    # everyone in this GitHub org (needs the read:org OAuth scope)
+    members: [alice, bob]                   # explicit GitHub logins
+    githubOrgs: [acme-gh]                    # everyone in this GitHub org (needs the read:org OAuth scope)
+    editorTeam: acme-gh/scenario-maintainers # direct members of this Team become editors
     targets: [demo, checkout]
 ```
 
 At OAuth login users are assigned their org — an explicit `members` entry first, else a `githubOrgs`
 match from their GitHub org memberships. Afterward they see only that org's targets, and a run's
-artifacts/scenarios/baselines live under the org's own object-store prefix. A login or target named in
-no org falls into the single `default` org, so a config **without** an `orgs:` block is
-single-tenant — the CLI and local `serve` ignore `orgs:` entirely.
+artifacts/scenarios/baselines live under the org's own object-store prefix. A target named in no org
+falls into the single `default` org, so a config **without** an `orgs:` block is single-tenant — the
+CLI and local `serve` ignore `orgs:` entirely.
+
+Once GitHub OAuth is configured, org membership also decides access
+([BE-0313](../roadmaps/BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac.md)). Signing in
+requires membership in a configured org — through `members` or `githubOrgs` — and grants the
+**viewer** role. A direct member of the org's `editorTeam` is promoted to **editor**; a member of the
+one server-wide admin Team (`BAJUTSU_OAUTH_ADMIN_TEAM`, see
+[Self-hosting](self-hosting.md#2-add-github-oauth-optional)) is **admin**. `editorTeam` is one flat Team, written as
+`"<github-org>/<team-slug>"`; a nested Team beneath it does not match. An OAuth deployment therefore
+must declare an `orgs:` block, or every login is turned away.
 
 ## Selecting from the CLI
 

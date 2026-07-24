@@ -7,6 +7,7 @@ builders that once lived here now sit in `serve/commands.py` (BE-0206).
 from __future__ import annotations
 
 import json
+import logging
 import re
 import subprocess
 import threading
@@ -169,12 +170,20 @@ def _load_config_cached(config_path: Path) -> Config:
 
 def load_serve_config_file(config_path: Path | None) -> tuple[Config, dict[str, OrgConfig]] | None:
     """The parsed config and its org model, or None if there is none or it can't be read/validated.
-    Used where the org model is needed (resolving a user/target to its org)."""
+    Used where the org model is needed (resolving a user/target to its org).
+
+    A read/validation failure is logged before collapsing to None: the OAuth sign-in gate (BE-0313)
+    now depends on this succeeding, so a transient filesystem error or a config typo would otherwise
+    lock out every login under a "user not allowed" message with no signal pointing at the real
+    cause."""
     if config_path is None:
         return None
     try:
         return _load_serve_config_cached(config_path)
     except (OSError, ValueError):
+        logging.getLogger(__name__).warning(
+            "failed to load serve config at %s", config_path, exc_info=True
+        )
         return None
 
 

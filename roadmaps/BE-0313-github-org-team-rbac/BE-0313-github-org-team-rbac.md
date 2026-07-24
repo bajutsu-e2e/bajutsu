@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0313](BE-0313-github-org-team-rbac.md) |
 | Author | [@paihu](https://github.com/paihu) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0313") |
+| Implementing PR | [#1325](https://github.com/bajutsu-e2e/bajutsu/pull/1325) |
 | Topic | Hosting the web UI |
 | Related | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md), [BE-0051](../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md), [BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub.md) |
 <!-- /BE-METADATA -->
@@ -301,27 +302,27 @@ with.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Extend `OrgConfig` with the `editorTeam` field and its config-schema documentation.
-- [ ] Add the `GET /user/teams` lookup (direct membership only) and the `BAJUTSU_OAUTH_ADMIN_TEAM`
+- [x] Extend `OrgConfig` with the `editorTeam` field and its config-schema documentation.
+- [x] Add the `GET /user/teams` lookup (direct membership only) and the `BAJUTSU_OAUTH_ADMIN_TEAM`
       environment variable.
-- [ ] Add a plain match/no-match check (the same `members`/`githubOrgs` test `org_for_identity`
+- [x] Add a plain match/no-match check (the same `members`/`githubOrgs` test `org_for_identity`
       already performs) for the sign-in gate to call before `org_for_identity` — `org_for_identity`'s
       `str` return can't distinguish "matches nothing" from "legitimately resolves to `default`."
       Keep the rejection at the top of `oauth_callback` — before the `if state.repository is not
       None:` block — so an OAuth-configured but database-less deployment still gates sign-in; retire
       `BAJUTSU_OAUTH_ALLOWED_USERS` and `BAJUTSU_OAUTH_VIEWERS`.
-- [ ] Replace `role_for()`'s login-list resolution with the organization/Team resolution above; retire
+- [x] Replace `role_for()`'s login-list resolution with the organization/Team resolution above; retire
       `BAJUTSU_OAUTH_ADMINS`.
-- [ ] Gate the token-backed `POST /api/login` cookie path on "OAuth is not configured" for this
+- [x] Gate the token-backed `POST /api/login` cookie path on "OAuth is not configured" for this
       deployment.
-- [ ] Scope `gate.is_authorized`'s Bearer-token branch to the `/api/worker/*` routes once OAuth is
+- [x] Scope `gate.is_authorized`'s Bearer-token branch to the `/api/worker/*` routes once OAuth is
       configured (`bajutsu/serve/gate.py`), and keep both call sites — the stdlib handler
       (`bajutsu/serve/handler.py`) and the FastAPI app (`bajutsu/serve/server/app.py`) — in lockstep,
       closing the direct-Bearer RBAC bypass on every other endpoint alongside the cookie-login
       retirement.
-- [ ] Update `docs/architecture.md` and the BE-0015/BE-0016 cross-references (both languages) to
-      describe the organization/Team-based RBAC in place of the login lists.
-- [ ] Tests: the organization-membership sign-in gate (allow and reject), editor/admin Team resolution
+- [x] Update the configuration/self-hosting docs and the BE-0015/BE-0016 cross-references (both
+      languages) to describe the organization/Team-based RBAC in place of the login lists.
+- [x] Tests: the organization-membership sign-in gate (allow and reject), editor/admin Team resolution
       against a faked Teams API — including a paginated Team list and a failed lookup resolving to
       viewer — the admin-gated `GET` exceptions staying admin-only, the token-login gate switching on
       whether OAuth is configured, and the direct Bearer-token path being rejected on non-worker

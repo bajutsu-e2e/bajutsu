@@ -357,14 +357,49 @@ prefix を URI のパスに畳み込んでください。`BAJUTSU_S3_BUCKET=baju
 
 オペレータが数人なら共有トークン（`BAJUTSU_SERVE_TOKEN`）だけで十分です。ユーザごとのブラウザログインには、
 GitHub OAuth アプリを作り（callback は `https://<your-host>/api/oauth/callback`）、`.env` に
-`BAJUTSU_OAUTH_GITHUB_CLIENT_ID`／`_SECRET`／`_REDIRECT_URI` と、許可リスト `BAJUTSU_OAUTH_ALLOWED_USERS`
-（任意で `BAJUTSU_OAUTH_ADMINS`／`BAJUTSU_OAUTH_VIEWERS`）を設定します。許可リストのユーザは既定で **editor**
-（run 可）、admin はサーバ設定（config、API キー、provider）も変更でき、viewer は閲覧のみです。トークンは
-オペレータと CI 向けの認証（full access）のまま、OAuth がチームのユーザごとのログインです。
+`BAJUTSU_OAUTH_GITHUB_CLIENT_ID`／`_SECRET`／`_REDIRECT_URI` を設定します。
 
-ログインは常に `read:org` scope を要求し、ユーザを GitHub org メンバーシップから org に対応づけられるようにします
-（config の `githubOrgs`）。そのため同意画面には常に organization へのアクセスが表示されます。シングルテナント構成
-（`orgs:` ブロック無し）では、その org 情報を使わないだけです。
+OAuth を構成すると、アクセスは手作業の login リストではなく **GitHub organization と Team のメンバーシップ**に
+従います（[BE-0313](../../roadmaps/BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac-ja.md)）。
+
+- **サインインと viewer ロール**は org メンバーシップに従います。構成済みの org のメンバー（明示の
+  `members`、または `githubOrgs` に挙げた GitHub org の一員。[`orgs:`](configuration.md#orgorgsマルチテナントのサーバ-backend)
+  を参照）だけがサインインでき、成功すると **viewer**（閲覧のみ）が付きます。どの org にも一致しない login は
+  拒否されるので、OAuth を使う構成では `orgs:` ブロックの宣言が必須です。
+- **editor** は org の `editorTeam` に従います。その 1 つのフラットな GitHub Team の直接メンバーが、run、record、
+  scenario の編集をできます。
+- **admin** はサーバ全体で 1 つの GitHub Team、`BAJUTSU_OAUTH_ADMIN_TEAM`（`"<github-org>/<team-slug>"` の形）に
+  従います。そのメンバーはサーバ設定（config、API キー、provider）も変更できます。admin はデプロイ全体で 1 段の
+  ロールなので、どの org を越えても信頼できるメンバーの Team を指定します。ただし admin も、まず上記のサインイン
+  のゲートを通過する必要があります。`BAJUTSU_OAUTH_ADMIN_TEAM` は、login がいずれかの `orgs:` エントリに一致した
+  後にしか確認されません。そのため admin Team が属する GitHub organization 自体を、どこかの org の `githubOrgs`
+  に含める（または、そのメンバーを `members` に列挙する）必要があります。含めなければ、意図した admin もサイン
+  インの時点で拒否され、admin Team は確認すらされません。
+
+メンバーシップはログインのたびに読み直されるので、GitHub org や Team を抜けると、対象ユーザの次のサインインで
+反映されます。サーバ側のリストを編集する必要はありません。ログインは常にこれらのメンバーシップを読むために
+`read:org` scope を要求するので、同意画面には organization へのアクセスが表示されます。
+
+**ログインリストからの移行にあたって。** ロールの由来が変わること以外にも、2 点変わります。1 つ目は、サインインが
+今後は構成済みの `githubOrgs`／`members` の**全員**を通すようになることです。旧来の `BAJUTSU_OAUTH_ALLOWED_USERS`
+がその org の全メンバーより狭い範囲を許可していたなら、切り替え前に `orgs:` を絞ってください。org のゲートだけに
+なると、その分アクセスが広がります。2 つ目は、`BAJUTSU_OAUTH_ALLOWED_USERS`／`_ADMINS`／`_VIEWERS` が単純に無視さ
+れるようになることです。切り替える前に、admin と editor のそれぞれを Team メンバーシップとして宣言し直してくだ
+さい。`editorTeam` や `BAJUTSU_OAUTH_ADMIN_TEAM` でまだカバーされていない login は、次のログインで viewer に落ちます。
+
+3 つ目は、セッションそのものです。`POST /api/login` を無効にするのは、OAuth を構成した後に**新たな**トークン
+Cookie セッションが発行されなくなるだけで、それ以前にすでに発行されたセッションは無効になりません。OAuth を
+有効にする前に共有トークンでサインインしていたブラウザは、そのセッションが持つ完全な権限（トークンで発行された
+セッションには identity が無く、role のゲートがそもそも適用されないため）を、既定 7 日間の有効期限
+（`BAJUTSU_SESSION_TTL`）が切れるまで保ち続けます。トークンのみの運用から OAuth に切り替えるデプロイは、この
+7 日間の失効を待つのではなく、切り替え時にセッションストアをローテーションする（既存の Cookie を強制的に無効化
+する）ことをお勧めします。
+
+OAuth を構成すると、共有トークンは**ワーカーの通信だけ**に狭まります。ワーカーのコントロールプレーンの route
+（`/api/worker/*` の endpoint と、run のエビデンスアップロード URL の要求）を認可し、それ以外には効きません。ブラウザのトークンログイン（`POST /api/login`）は無効になり（人間の
+サインインは GitHub OAuth だけになります）、生の `Authorization: Bearer <token>` はワーカー以外のどの endpoint にも
+届きません。トークンでワーカー以外の endpoint をスクリプト運用していたデプロイは、OAuth を有効にするとその経路を
+失います。OAuth を使わない構成（単一 Mac の閉じたネットワーク）では、トークンは従来どおりすべてに届きます。
 
 ### オペレータのシークレット（Claude API キー）
 

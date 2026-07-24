@@ -63,6 +63,20 @@ def test_load_serve_config_file_returns_none_on_malformed_yaml(tmp_path: Path) -
     assert srv.list_targets(cfg) == []
 
 
+def test_load_serve_config_file_logs_a_failure_instead_of_swallowing_it_silently(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # BE-0313: the OAuth sign-in gate now depends on this succeeding, so a broken config would
+    # otherwise lock out every login under a "user not allowed" message with no signal pointing at
+    # the real cause. A warning here is what lets an operator tell the two cases apart.
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text("targets: [unbalanced\n", encoding="utf-8")
+    with caplog.at_level("WARNING"):
+        assert srv.load_serve_config_file(cfg) is None
+    assert "failed to load serve config" in caplog.text
+    assert str(cfg) in caplog.text
+
+
 def test_load_config_cached_keys_on_the_resolved_path(tmp_path: Path) -> None:
     import os
 

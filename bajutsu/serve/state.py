@@ -293,21 +293,21 @@ class SessionManager:
     whom" methods that read them. Grouping them behind one boundary answers that question in one
     place, exactly as `JobRegistry` (BE-0198) did for job registration.
 
-    `token` is the optional shared token (None = open, the loopback-only legacy behavior); a login
-    exchanges it for an opaque session id held by `sessions` — the token itself never lives in the
-    browser. `sessions` is a swappable `SessionStore` seam (in-memory by default; a server backend
-    swaps in a Redis/SQL store, BE-0015 7b). `oauth` is the GitHub OAuth client (None = OAuth not
-    configured); `oauth_allowed_users` is the login allowlist, and `oauth_admins` / `oauth_viewers`
-    the RBAC role policy read by `authz.py` (BE-0015 7b-2/7c-2). The OAuth fields are fixed at server
-    construction and never change after, so they travel with the token/session state they gate.
+    `token` is the optional shared token (None = open, the loopback-only legacy behavior; once
+    `oauth` is set it narrows to worker traffic, BE-0313); a login exchanges it for an opaque session
+    id held by `sessions` — the token itself never lives in the browser. `sessions` is a swappable
+    `SessionStore` seam (in-memory by default; a server backend swaps in a Redis/SQL store, BE-0015
+    7b). `oauth` is the GitHub OAuth client (None = OAuth not configured); sign-in and the
+    viewer/editor role then follow GitHub org and Team membership (`authz.py`, BE-0313), and
+    `oauth_admin_team` is the one server-wide GitHub Team (`"<github-org>/<team-slug>"`) whose members
+    are admin. The OAuth fields are fixed at server construction and never change after, so they
+    travel with the token/session state they gate.
     """
 
     token: str | None = None
     sessions: SessionStore = field(default_factory=InMemorySessionStore)
     oauth: OAuthClient | None = None
-    oauth_allowed_users: frozenset[str] = frozenset()
-    oauth_admins: frozenset[str] = frozenset()
-    oauth_viewers: frozenset[str] = frozenset()
+    oauth_admin_team: str | None = None
 
     def check_token(self, candidate: str) -> bool:
         """Constant-time compare of a presented token against the configured one."""
