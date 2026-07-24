@@ -306,7 +306,7 @@ adb の harness はその代わりに、新しい `SHOWCASE_CONFORMANCE` の int
 
 ### 実 Postgres で検証済み（Linux で動作、Mac 不要）
 
-- serve の DB 層の Alembic migration を、一時的な `postgres:16` サービスコンテナに対して実行します（`migrations (postgres)` ジョブ、`serve-db.yml`、[BE-0309](../../roadmaps/BE-0309-serve-postgres-ci-lane/BE-0309-serve-postgres-ci-lane-ja.md)）。対象には、migration 0010 の `dialect.name == "postgresql"` による foreign-key 分岐や、`models.py` といくつかの migration が Postgres でのみ選ぶ `JSONB` カラムのバリアントが含まれます。このジョブは `tests/serve/test_db_migrations.py` の upgrade/downgrade のアサーションを再実行します。テストは両方の方言でパラメータ化してあるため、高速な `check` ゲートは SQLite を、このレーンは `postgres` マーカーの裏で Postgres を検証し、その方言固有のコードに、ホステッドな運用が実際に対象とする方言での初めてのカバレッジを与えます。BE-0282 の前例に従い、まずシグナルとして着地させており、必須チェックにはまだしていません。DB に触れる広いテストスイート（テストごとにインメモリの SQLite エンジンを作る約 20 数ファイル）は、当面 SQLite に対してのみ実行します。共有 Postgres に対して実行するには、テストごとの分離を先に後付けする必要があり、後続のスライスとします。
+- serve の DB 層の Alembic migration を、一時的な `postgres:16` サービスコンテナに対して実行します（`migrations (postgres)` ジョブ、`serve-db.yml`、[BE-0309](../../roadmaps/BE-0309-serve-postgres-ci-lane/BE-0309-serve-postgres-ci-lane-ja.md)）。対象には、migration 0010 の `dialect.name == "postgresql"` による foreign-key 分岐や、`models.py` といくつかの migration が Postgres でのみ選ぶ `JSONB` カラムのバリアントが含まれます。このジョブは `tests/serve/test_db_migrations.py` の upgrade/downgrade のアサーションを再実行します。テストは両方の方言でパラメータ化してあるため、高速な `check` ゲートは SQLite を、このレーンは `postgres` マーカーの裏で Postgres を検証し、その方言固有のコードに、ホステッドな運用が実際に対象とする方言での初めてのカバレッジを与えます。BE-0282 の前例に従い、まずシグナルとして着地させており、必須チェックにはまだしていません。DB に触れる広いテストスイート（テストごとにインメモリの SQLite エンジンを作る 20 余りのファイル）は、当面 SQLite に対してのみ実行します。共有 Postgres に対して実行するには、テストごとの分離を先に後付けする必要があり、後続のスライスとします。
 
 ### 未配線（スキーマ/フラグはあるが実行時に効かない）
 

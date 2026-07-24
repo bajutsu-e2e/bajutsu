@@ -32,6 +32,11 @@ from bajutsu.serve.server.models import Base
 
 _POSTGRES_URL_ENV = "BAJUTSU_TEST_POSTGRES_URL"
 
+# The serve-db.yml lane sets this to fail (not skip) when the Postgres URL is missing, so a future
+# edit that drops the URL from the workflow can't make the one lane whose whole purpose is Postgres
+# report a false green. The fast gate leaves it unset, so it keeps skipping the Postgres parameter.
+_REQUIRE_POSTGRES_ENV = "BAJUTSU_REQUIRE_POSTGRES"
+
 # Both dialects run the same migration assertions. The Postgres parameter carries the `postgres`
 # marker so the default gate (which deselects `-m 'not postgres'`) stays SQLite-only, while the
 # serve-db.yml lane runs it with `-m postgres` against a real Postgres service.
@@ -79,9 +84,9 @@ def _load_migration(name: str):
 
 
 def _reset_schema(url: str) -> None:
-    """Drop every table so an upgrade or `create_all` starts from an empty database. In-memory
-    SQLite is fresh per connection, but the shared Postgres service persists across tests, so each
-    test must clear it explicitly to avoid leftover tables from a prior parameter."""
+    """Drop every table so an upgrade or `create_all` starts from an empty database. The SQLite
+    branch uses a throwaway file per test (fresh), but the shared Postgres service persists across
+    tests, so each test must clear it explicitly to avoid leftover tables from a prior parameter."""
     engine = create_engine(url)
     try:
         if engine.dialect.name == "postgresql":
@@ -100,10 +105,17 @@ def _reset_schema(url: str) -> None:
 def migration_db_url(request, tmp_path, monkeypatch) -> str:
     """A clean, empty database URL for the requested dialect, wired into `BAJUTSU_DATABASE_URL` so
     the Alembic config resolves it. SQLite uses a throwaway file; Postgres uses the service from
-    `BAJUTSU_TEST_POSTGRES_URL`, skipping when it is unset so the fast gate never needs one."""
+    `BAJUTSU_TEST_POSTGRES_URL`, skipping when it is unset so the fast gate never needs one — unless
+    `BAJUTSU_REQUIRE_POSTGRES` is set (the dedicated lane does), in which case a missing URL fails
+    loudly instead of skipping, so the lane can't report a false green."""
     if request.param == "postgresql":
         url = os.environ.get(_POSTGRES_URL_ENV)
         if not url:
+            if os.environ.get(_REQUIRE_POSTGRES_ENV):
+                pytest.fail(
+                    f"{_REQUIRE_POSTGRES_ENV} is set but {_POSTGRES_URL_ENV} is missing — the "
+                    "Postgres lane is misconfigured (it must run against a real Postgres service)."
+                )
             pytest.skip(f"{_POSTGRES_URL_ENV} not set")
     else:
         url = f"sqlite:///{tmp_path / 'm.db'}"

@@ -77,4 +77,8 @@ jobs:
       - name: Run migration tests against Postgres
         env:
           BAJUTSU_TEST_POSTGRES_URL: postgresql+psycopg://bajutsu:bajutsu@localhost:5432/bajutsu_test
+          # This lane exists to exercise Postgres, so a missing URL must fail loudly here — not skip
+          # every `-m postgres` case and report a false green. The sentinel flips the fixture from
+          # skip to fail; the fast gate leaves it unset and keeps skipping.
+          BAJUTSU_REQUIRE_POSTGRES: "1"
         run: uv run --no-sync pytest tests/serve/test_db_migrations.py -m postgres -n0
