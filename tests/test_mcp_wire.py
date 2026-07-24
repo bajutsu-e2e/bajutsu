@@ -84,8 +84,10 @@ def _roundtrip(config: Path, runs: Path, scenario: Path) -> dict[str, Any]:
                 "bajutsu_run", {"target": "demo", "scenario": str(scenario)}
             )
             manifest = await client.read_resource("bajutsu://runs/run1/manifest.json")
+            # The space in `step 0` must be percent-encoded by the client and decoded by the server
+            # — the URI-encoding round-trip, not just multi-segment template resolution.
             artifact = await client.read_resource(
-                "bajutsu://runs/run1/artifact/00-scenario/step0/elements.json"
+                "bajutsu://runs/run1/artifact/00-scenario/step 0/elements.json"
             )
             missing_resource_error = await _capture_error(
                 client.read_resource("bajutsu://runs/nonexistent/manifest.json")
@@ -124,7 +126,8 @@ def wire(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Any]:
     (runs / "run1" / "manifest.json").write_text(
         json.dumps({"runId": "run1", "ok": True}), encoding="utf-8"
     )
-    artifact = runs / "run1" / "00-scenario" / "step0"
+    # A space in the path forces percent-encoding on the wire (see the wildcard-resource test).
+    artifact = runs / "run1" / "00-scenario" / "step 0"
     artifact.mkdir(parents=True)
     (artifact / "elements.json").write_text(json.dumps([{"identifier": "ok"}]), encoding="utf-8")
     scenario = root / "noop.yaml"
@@ -134,8 +137,10 @@ def wire(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Any]:
 
 def test_wire_advertises_both_tools_with_typed_schemas(wire: dict[str, Any]) -> None:
     # The tool list and each tool's input schema are advertised over JSON-RPC, not read from the
-    # in-process registry — the serialized schema a real client parses.
-    assert set(wire["tools"]) == {"bajutsu_doctor", "bajutsu_run"}
+    # in-process registry — the serialized schema a real client parses. Assert both are present
+    # rather than that they are the *only* tools, so adding a tool later (a compatible change) does
+    # not break this.
+    assert {"bajutsu_doctor", "bajutsu_run"} <= set(wire["tools"])
     for name in ("bajutsu_doctor", "bajutsu_run"):
         assert "target" in wire["tools"][name].inputSchema["properties"]
     # The non-string params are where "a schema Claude Desktop/Code could not parse" would surface:
@@ -173,9 +178,11 @@ def test_wire_round_trips_a_top_level_resource(wire: dict[str, Any]) -> None:
 
 
 def test_wire_round_trips_a_wildcard_template_resource(wire: dict[str, Any]) -> None:
-    # `bajutsu://runs/{run_id}/artifact/{path*}` is the one templated URI with a wildcard segment —
-    # the resource most exposed to encoding quirks, so round-tripping a nested path proves the
-    # multi-segment template resolves over the wire, not just the flat top-level URIs.
+    # `bajutsu://runs/{run_id}/artifact/{path*}` is the one templated URI with a wildcard segment,
+    # and the seeded path (`00-scenario/step 0/elements.json`) carries a space — so the round-trip
+    # proves both the multi-segment template resolves and the client-encode / server-decode of a
+    # character that must be percent-encoded survives the wire, the encoding path a plain ASCII path
+    # would not touch.
     assert json.loads(wire["artifact_text"]) == [{"identifier": "ok"}]
 
 

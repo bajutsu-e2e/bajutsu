@@ -46,7 +46,8 @@ jobs:
         run: uv sync --extra mcp --group dev
 
       # `-m mcp_wire` overrides the default `-m 'not mcp_wire'` (pyproject addopts) so the suite —
-      # deselected everywhere else — actually runs here. `-n0` overrides `-n auto`: each test spawns
-      # its own `bajutsu mcp` subprocess, so xdist workers would only add contention, not speed.
+      # deselected everywhere else — actually runs here. `-n0` overrides `-n auto`: the suite shares
+      # one module-scoped `bajutsu mcp` subprocess, so xdist would fan the module across workers and
+      # multiply subprocesses (more stdio-IPC contention), not add speed.
       - name: MCP wire round-trip (stdio)
         run: uv run --no-sync pytest tests/test_mcp_wire.py -m mcp_wire -n0
