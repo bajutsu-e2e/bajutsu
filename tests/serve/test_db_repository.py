@@ -1,15 +1,18 @@
 """The `Repository` seam (BE-0015 7a / BE-0225): the run round-trip, org-scoped listing, the
-env-driven factory, and the project CRUD methods, all against an in-memory SQLite database built
-inside each test (no live Postgres). `ProjectRecord` and the project methods arrived with BE-0225;
-orgs/users/audit_log are tested elsewhere in this file (implemented in 7b/7c)."""
+env-driven factory, and the project CRUD methods. Each test builds its schema through the
+`serve_engine` fixture, which runs it against in-memory SQLite in the fast gate and, behind the
+`postgres` marker, against a real Postgres service in the serve-db.yml lane (BE-0309). `ProjectRecord`
+and the project methods arrived with BE-0225; orgs/users/audit_log are tested elsewhere in this file
+(implemented in 7b/7c)."""
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from sqlalchemy import create_engine, event, select
+from sqlalchemy import Engine, create_engine, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -26,33 +29,41 @@ from bajutsu.serve.server.models import AuditLog, Base, Org, User
 from bajutsu.serve.server.post_completion_logbus import PostCompletionLogBus
 
 
-def _repo() -> SqlRepository:
-    engine = create_engine("sqlite://")
+def _repo(serve_engine: Callable[..., Engine]) -> SqlRepository:
+    engine = serve_engine()
     Base.metadata.create_all(engine)
     return SqlRepository(engine)
 
 
-def _repo_fk() -> SqlRepository:
-    """Like `_repo()` but with SQLite FK enforcement enabled.
+def _repo_fk(serve_engine: Callable[..., Engine]) -> SqlRepository:
+    """Like `_repo(serve_engine)` but with FK enforcement on.
 
-    Needed for tests that verify ON DELETE behaviour (e.g. SET NULL on project deletion) that
-    SQLite only enacts when ``PRAGMA foreign_keys=ON`` is set. Callers must satisfy *all* FKs,
-    so an org row must be created via ``ensure_org`` before inserting projects or runs.
+    Needed for tests that verify ON DELETE behaviour (e.g. SET NULL on project deletion). SQLite
+    only enacts it under ``PRAGMA foreign_keys=ON``, which `serve_engine(foreign_keys=True)` sets;
+    Postgres enforces it natively. Callers must satisfy *all* FKs, so an org row must be created
+    via ``ensure_org`` before inserting projects or runs.
     """
-    engine = create_engine("sqlite://")
-    event.listen(engine, "connect", lambda c, _: c.execute("PRAGMA foreign_keys=ON"))
+    engine = serve_engine(foreign_keys=True)
     Base.metadata.create_all(engine)
     return SqlRepository(engine)
 
 
-def _engine_repo() -> tuple[object, SqlRepository]:
-    engine = create_engine("sqlite://")
+def _engine_repo(serve_engine: Callable[..., Engine]) -> tuple[Engine, SqlRepository]:
+    engine = serve_engine()
     Base.metadata.create_all(engine)
     return engine, SqlRepository(engine)
 
 
-def test_ensure_org_is_idempotent() -> None:
-    engine, repo = _engine_repo()
+def _seed_orgs(repo: SqlRepository, *org_ids: str) -> None:
+    """Create the org rows the runs and projects below reference. `_repo` leaves SQLite's FKs off,
+    so a run or project can name an org that was never inserted; Postgres enforces the org_id FK, so
+    the parent org must exist first. Seeding it keeps the same test dialect-agnostic."""
+    for org_id in org_ids:
+        repo.ensure_org(org_id, slug=org_id, name=org_id)
+
+
+def test_ensure_org_is_idempotent(serve_engine: Callable[..., Engine]) -> None:
+    engine, repo = _engine_repo(serve_engine)
     repo.ensure_org("default", slug="default", name="Default")
     repo.ensure_org("default", slug="default", name="Default")  # again — no duplicate, no error
     with Session(engine) as s:
@@ -61,8 +72,8 @@ def test_ensure_org_is_idempotent() -> None:
     assert orgs[0].slug == "default"
 
 
-def test_upsert_user_inserts_then_updates_in_place() -> None:
-    engine, repo = _engine_repo()
+def test_upsert_user_inserts_then_updates_in_place(serve_engine: Callable[..., Engine]) -> None:
+    engine, repo = _engine_repo(serve_engine)
     repo.ensure_org("default", slug="default", name="Default")
     email = "alice@users.noreply.github.com"
     repo.upsert_user("alice", org_id="default", github_login="alice", email=email)
@@ -74,17 +85,17 @@ def test_upsert_user_inserts_then_updates_in_place() -> None:
     assert users[0].org_id == "default"
 
 
-def test_upsert_user_defaults_to_editor() -> None:
+def test_upsert_user_defaults_to_editor(serve_engine: Callable[..., Engine]) -> None:
     # The default role matches the policy default (an allowlisted user can run), so model /
     # migration / upsert agree and no caller accidentally persists an over-restrictive viewer.
-    _engine, repo = _engine_repo()
+    _engine, repo = _engine_repo(serve_engine)
     repo.ensure_org("default", slug="default", name="Default")
     repo.upsert_user("a", org_id="default", github_login="a", email="a@x")
     assert repo.user_role("a") == "editor"
 
 
-def test_upsert_user_stores_and_updates_the_role() -> None:
-    _engine, repo = _engine_repo()
+def test_upsert_user_stores_and_updates_the_role(serve_engine: Callable[..., Engine]) -> None:
+    _engine, repo = _engine_repo(serve_engine)
     repo.ensure_org("default", slug="default", name="Default")
     repo.upsert_user("a", org_id="default", github_login="a", email="a@x", role="admin")
     assert repo.user_role("a") == "admin"
@@ -93,16 +104,18 @@ def test_upsert_user_stores_and_updates_the_role() -> None:
     assert repo.user_role("nobody") is None
 
 
-def test_user_org_returns_the_users_org() -> None:
-    _engine, repo = _engine_repo()
+def test_user_org_returns_the_users_org(serve_engine: Callable[..., Engine]) -> None:
+    _engine, repo = _engine_repo(serve_engine)
     repo.ensure_org("acme", slug="acme", name="Acme")
     repo.upsert_user("a", org_id="acme", github_login="a", email="a@x")
     assert repo.user_org("a") == "acme"
     assert repo.user_org("nobody") is None
 
 
-def test_record_audit_appends_a_row_with_actor_and_detail() -> None:
-    engine, repo = _engine_repo()
+def test_record_audit_appends_a_row_with_actor_and_detail(
+    serve_engine: Callable[..., Engine],
+) -> None:
+    engine, repo = _engine_repo(serve_engine)
     repo.ensure_org("default", slug="default", name="Default")
     repo.upsert_user(
         "alice", org_id="default", github_login="alice", email="a@users.noreply.github.com"
@@ -123,8 +136,9 @@ def test_record_audit_appends_a_row_with_actor_and_detail() -> None:
     assert rows[0].detail == {"workers": 2}
 
 
-def test_record_then_get_round_trips() -> None:
-    repo = _repo()
+def test_record_then_get_round_trips(serve_engine: Callable[..., Engine]) -> None:
+    repo = _repo(serve_engine)
+    _seed_orgs(repo, "o1")
     repo.record_run(
         RunRecord(id="r1", org_id="o1", status="done", ok=True, summary={"passed": 3, "failed": 0})
     )
@@ -137,12 +151,15 @@ def test_record_then_get_round_trips() -> None:
     assert got.summary == {"passed": 3, "failed": 0}
 
 
-def test_get_missing_returns_none() -> None:
-    assert _repo().get_run("nope") is None
+def test_get_missing_returns_none(serve_engine: Callable[..., Engine]) -> None:
+    assert _repo(serve_engine).get_run("nope") is None
 
 
-def test_list_runs_filters_by_org_and_orders_newest_first() -> None:
-    repo = _repo()
+def test_list_runs_filters_by_org_and_orders_newest_first(
+    serve_engine: Callable[..., Engine],
+) -> None:
+    repo = _repo(serve_engine)
+    _seed_orgs(repo, "o1", "o2")
     base = datetime(2026, 1, 1, tzinfo=UTC)
     repo.record_run(RunRecord(id="a", org_id="o1", status="done", created_at=base.replace(hour=1)))
     repo.record_run(RunRecord(id="b", org_id="o1", status="done", created_at=base.replace(hour=3)))
@@ -150,8 +167,9 @@ def test_list_runs_filters_by_org_and_orders_newest_first() -> None:
     assert [r.id for r in repo.list_runs(org_id="o1")] == ["b", "a"]
 
 
-def test_list_runs_respects_limit() -> None:
-    repo = _repo()
+def test_list_runs_respects_limit(serve_engine: Callable[..., Engine]) -> None:
+    repo = _repo(serve_engine)
+    _seed_orgs(repo, "o1")
     base = datetime(2026, 1, 1, tzinfo=UTC)
     for i in range(5):
         repo.record_run(
@@ -160,8 +178,9 @@ def test_list_runs_respects_limit() -> None:
     assert len(repo.list_runs(org_id="o1", limit=2)) == 2
 
 
-def test_summary_json_roundtrips_a_nested_value() -> None:
-    repo = _repo()
+def test_summary_json_roundtrips_a_nested_value(serve_engine: Callable[..., Engine]) -> None:
+    repo = _repo(serve_engine)
+    _seed_orgs(repo, "o1")
     summary = {"counts": {"passed": 2, "failed": 1}, "steps": [{"name": "tap", "ok": True}]}
     repo.record_run(RunRecord(id="r1", org_id="o1", status="done", summary=summary))
     got = repo.get_run("r1")
@@ -169,8 +188,9 @@ def test_summary_json_roundtrips_a_nested_value() -> None:
     assert got.summary == summary
 
 
-def test_record_run_is_idempotent_by_id() -> None:
-    repo = _repo()
+def test_record_run_is_idempotent_by_id(serve_engine: Callable[..., Engine]) -> None:
+    repo = _repo(serve_engine)
+    _seed_orgs(repo, "o1")
     repo.record_run(RunRecord(id="r1", org_id="o1", status="running"))
     repo.record_run(RunRecord(id="r1", org_id="o1", status="done", ok=True))
     got = repo.get_run("r1")
@@ -180,8 +200,9 @@ def test_record_run_is_idempotent_by_id() -> None:
     assert len(repo.list_runs(org_id="o1")) == 1
 
 
-def test_create_then_list_and_get_project() -> None:
-    repo = _repo()
+def test_create_then_list_and_get_project(serve_engine: Callable[..., Engine]) -> None:
+    repo = _repo(serve_engine)
+    _seed_orgs(repo, "o1", "o2")
     repo.create_project(
         ProjectRecord(
             id="p1",
@@ -203,8 +224,11 @@ def test_create_then_list_and_get_project() -> None:
     assert repo.get_project(org_id="o1", name="other") is None
 
 
-def test_create_project_is_idempotent_by_id_and_rebinds_source() -> None:
-    repo = _repo()
+def test_create_project_is_idempotent_by_id_and_rebinds_source(
+    serve_engine: Callable[..., Engine],
+) -> None:
+    repo = _repo(serve_engine)
+    _seed_orgs(repo, "o1")
     repo.create_project(
         ProjectRecord(id="p1", org_id="o1", name="checkout", source={"kind": "file"})
     )
@@ -218,22 +242,27 @@ def test_create_project_is_idempotent_by_id_and_rebinds_source() -> None:
     assert len(repo.list_projects(org_id="o1")) == 1
 
 
-def test_create_project_rejects_a_name_collision_under_a_different_id() -> None:
+def test_create_project_rejects_a_name_collision_under_a_different_id(
+    serve_engine: Callable[..., Engine],
+) -> None:
     # `Project` carries UniqueConstraint("org_id", "name") and create_project merges by id only,
     # so minting a *fresh* id for a name the org already uses is a genuine collision — not an
     # idempotent rebind. The DB-backed Repository surfaces it as IntegrityError; a caller must
     # resolve the existing id via get_project first rather than rely on this to upsert by name.
-    repo = _repo()
+    repo = _repo(serve_engine)
+    _seed_orgs(repo, "o1")
     repo.create_project(ProjectRecord(id="p1", org_id="o1", name="checkout"))
     with pytest.raises(IntegrityError):
         repo.create_project(ProjectRecord(id="p2", org_id="o1", name="checkout"))
 
 
-def test_delete_project_on_delete_set_null_keeps_run_history_fk_enforced() -> None:
+def test_delete_project_on_delete_set_null_keeps_run_history_fk_enforced(
+    serve_engine: Callable[..., Engine],
+) -> None:
     # Uses FK-enforcing helper to catch the Postgres-vs-SQLite gap: without ondelete="SET NULL"
     # on Run.project_id, deleting a project raises IntegrityError on Postgres but silently
     # succeeds on the gate's SQLite. With the fix, the run is retained and project_id is NULL.
-    repo = _repo_fk()
+    repo = _repo_fk(serve_engine)
     repo.ensure_org("o1", slug="o1", name="Org1")
     repo.create_project(ProjectRecord(id="p1", org_id="o1", name="checkout"))
     repo.record_run(RunRecord(id="r1", org_id="o1", status="done", project_id="p1"))
@@ -246,8 +275,11 @@ def test_delete_project_on_delete_set_null_keeps_run_history_fk_enforced() -> No
     assert got.project_id is None  # SET NULL by FK — run history retained, association cleared
 
 
-def test_create_project_source_none_does_not_clobber_existing_binding() -> None:
-    repo = _repo()
+def test_create_project_source_none_does_not_clobber_existing_binding(
+    serve_engine: Callable[..., Engine],
+) -> None:
+    repo = _repo(serve_engine)
+    _seed_orgs(repo, "o1")
     repo.create_project(
         ProjectRecord(id="p1", org_id="o1", name="checkout", source={"kind": "file"})
     )
@@ -259,7 +291,14 @@ def test_create_project_source_none_does_not_clobber_existing_binding() -> None:
 
 
 def test_delete_project_removes_binding_but_keeps_run_history() -> None:
-    repo = _repo()
+    # SQLite-only (not parametrized over the Postgres lane): `_repo` leaves SQLite's FKs off, so
+    # deleting the project leaves the run's project_id dangling rather than cleared. Postgres
+    # enforces the ondelete="SET NULL" instead, which the sibling
+    # test_delete_project_on_delete_set_null_keeps_run_history_fk_enforced covers — so this
+    # no-enforcement assertion stays on SQLite alone.
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    repo = SqlRepository(engine)
     repo.create_project(ProjectRecord(id="p1", org_id="o1", name="checkout"))
     repo.record_run(RunRecord(id="r1", org_id="o1", status="done", project_id="p1"))
 
@@ -272,8 +311,11 @@ def test_delete_project_removes_binding_but_keeps_run_history() -> None:
     assert got.project_id == "p1"
 
 
-def test_list_runs_filters_by_project() -> None:
-    repo = _repo()
+def test_list_runs_filters_by_project(serve_engine: Callable[..., Engine]) -> None:
+    repo = _repo(serve_engine)
+    _seed_orgs(repo, "o1")
+    repo.create_project(ProjectRecord(id="p1", org_id="o1", name="p1"))
+    repo.create_project(ProjectRecord(id="p2", org_id="o1", name="p2"))
     base = datetime(2026, 1, 1, tzinfo=UTC)
     repo.record_run(
         RunRecord(
@@ -338,8 +380,8 @@ def test_repository_from_env_rejects_a_non_finite_lease_timeout(monkeypatch) -> 
 # ---------------------------------------------------------------------------
 
 
-def test_enqueue_then_lease_returns_the_spec() -> None:
-    repo = _repo()
+def test_enqueue_then_lease_returns_the_spec(serve_engine: Callable[..., Engine]) -> None:
+    repo = _repo(serve_engine)
     spec = {"cmd": ["bajutsu", "run"], "job_id": "j1"}
     repo.enqueue_job("j1", org_id="o1", spec=spec)
     leased = repo.lease_job("worker-1")
@@ -348,12 +390,12 @@ def test_enqueue_then_lease_returns_the_spec() -> None:
     assert leased.spec == spec
 
 
-def test_lease_returns_none_when_queue_is_empty() -> None:
-    assert _repo().lease_job("worker-1") is None
+def test_lease_returns_none_when_queue_is_empty(serve_engine: Callable[..., Engine]) -> None:
+    assert _repo(serve_engine).lease_job("worker-1") is None
 
 
-def test_lease_takes_oldest_first() -> None:
-    repo = _repo()
+def test_lease_takes_oldest_first(serve_engine: Callable[..., Engine]) -> None:
+    repo = _repo(serve_engine)
     repo.enqueue_job("j1", org_id="o1", spec={"n": 1})
     repo.enqueue_job("j2", org_id="o1", spec={"n": 2})
     first = repo.lease_job("w1")
@@ -363,8 +405,8 @@ def test_lease_takes_oldest_first() -> None:
     assert repo.lease_job("w3") is None
 
 
-def test_complete_job_stores_result() -> None:
-    repo = _repo()
+def test_complete_job_stores_result(serve_engine: Callable[..., Engine]) -> None:
+    repo = _repo(serve_engine)
     repo.enqueue_job("j1", org_id="o1", spec={"cmd": []})
     repo.lease_job("w1")
     result = {"ok": True, "run_id": "r1", "summary": {"passed": 3}}
@@ -375,8 +417,8 @@ def test_complete_job_stores_result() -> None:
     assert got["result"] == result
 
 
-def test_fail_job_stores_error() -> None:
-    repo = _repo()
+def test_fail_job_stores_error(serve_engine: Callable[..., Engine]) -> None:
+    repo = _repo(serve_engine)
     repo.enqueue_job("j1", org_id="o1", spec={"cmd": []})
     repo.lease_job("w1")
     repo.fail_job("j1", error="crash")
@@ -386,8 +428,8 @@ def test_fail_job_stores_error() -> None:
     assert got["result"]["error"] == "crash"
 
 
-def test_get_job_returns_none_for_missing() -> None:
-    assert _repo().get_job("nope") is None
+def test_get_job_returns_none_for_missing(serve_engine: Callable[..., Engine]) -> None:
+    assert _repo(serve_engine).get_job("nope") is None
 
 
 # ---------------------------------------------------------------------------
@@ -395,8 +437,8 @@ def test_get_job_returns_none_for_missing() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_db_executor_inserts_a_queued_job() -> None:
-    repo = _repo()
+def test_db_executor_inserts_a_queued_job(serve_engine: Callable[..., Engine]) -> None:
+    repo = _repo(serve_engine)
     state = srv.ServeState(runs_dir=Path("/tmp/runs"))
     job = state.register(srv.Job(cmd=["bajutsu", "run"], udids=["U1"]))
     DbQueueExecutor(repo).dispatch(state, job)
@@ -420,8 +462,8 @@ class _FakeArtifactStore:
         return self._files.get(path)
 
 
-def test_post_completion_logbus_yields_log_after_done() -> None:
-    repo = _repo()
+def test_post_completion_logbus_yields_log_after_done(serve_engine: Callable[..., Engine]) -> None:
+    repo = _repo(serve_engine)
     repo.enqueue_job("j1", org_id="o1", spec={"cmd": []})
     repo.lease_job("w1")
     repo.complete_job("j1", result={"ok": True, "runId": "20260702-1"})
@@ -432,8 +474,10 @@ def test_post_completion_logbus_yields_log_after_done() -> None:
     assert "line 2\n" in lines
 
 
-def test_post_completion_logbus_heartbeats_while_queued() -> None:
-    repo = _repo()
+def test_post_completion_logbus_heartbeats_while_queued(
+    serve_engine: Callable[..., Engine],
+) -> None:
+    repo = _repo(serve_engine)
     repo.enqueue_job("j1", org_id="o1", spec={"cmd": []})
     bus = PostCompletionLogBus(repo, poll_interval=0.01)
     it = bus.stream("j1", timeout=1.0)
@@ -441,8 +485,8 @@ def test_post_completion_logbus_heartbeats_while_queued() -> None:
     assert hb is None  # heartbeat while still queued (timeout set → heartbeats emitted)
 
 
-def test_post_completion_logbus_final_returns_result() -> None:
-    repo = _repo()
+def test_post_completion_logbus_final_returns_result(serve_engine: Callable[..., Engine]) -> None:
+    repo = _repo(serve_engine)
     repo.enqueue_job("j1", org_id="o1", spec={"cmd": []})
     bus = PostCompletionLogBus(repo, poll_interval=0.01)
     assert bus.final("j1") is None

@@ -8,9 +8,10 @@ one place. Plain functions/classes (not fixtures) so they can be used at module 
 
 from __future__ import annotations
 
+import os
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
@@ -19,6 +20,9 @@ from bajutsu.analytics import ledger as usage_ledger
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from scripts.build_roadmap_index import tracking_issue_url
+
+if TYPE_CHECKING:
+    from sqlalchemy import Engine
 
 
 @pytest.fixture(autouse=True)
@@ -182,3 +186,102 @@ class FakeBackend:
         response = self._responses[min(self._i, len(self._responses) - 1)]
         self._i += 1
         return response
+
+
+# --------------------------------------------------------------------------------------------------
+# Real-Postgres serve DB harness (BE-0309)
+#
+# The fast `check` gate runs the serve DB tests against in-memory SQLite alone — the dialect the
+# hosted, multi-tenant deployment does not use. The `serve_engine` fixture parametrizes a requesting
+# test over both dialects: the SQLite parameter runs everywhere; the Postgres parameter carries the
+# `postgres` marker, so the default gate (which deselects `-m 'not postgres'`) stays SQLite-only,
+# while the serve-db.yml lane runs it with `-m postgres` against a real Postgres service container.
+# A test opts in simply by requesting `serve_engine`; every other test is unaffected. This lives in
+# the top-level conftest rather than a second `tests/serve/conftest.py` because the suite imports
+# helpers by bare module name (`from conftest import el`), and a second `conftest` module collides
+# under xdist's prepend import.
+# --------------------------------------------------------------------------------------------------
+
+_POSTGRES_URL_ENV = "BAJUTSU_TEST_POSTGRES_URL"
+_REQUIRE_POSTGRES_ENV = "BAJUTSU_REQUIRE_POSTGRES"
+
+# Both dialects run the same assertions. The Postgres parameter carries the `postgres` marker so the
+# default gate stays SQLite-only, while the serve-db.yml lane selects it with `-m postgres`.
+_DIALECTS = [
+    pytest.param("sqlite", id="sqlite"),
+    pytest.param("postgresql", id="postgresql", marks=pytest.mark.postgres),
+]
+
+
+def _require_postgres_url() -> str:
+    """Resolve the Postgres service URL under the same double opt-in `test_db_migrations.py` uses.
+
+    Both env vars must be set together: the URL alone skips rather than running the destructive
+    schema reset, so a developer who accidentally exports it against a non-throwaway database can't
+    lose data; the flag alone with the URL missing fails loudly so the lane can't report a false
+    green. The dedicated lane sets both.
+    """
+    url = os.environ.get(_POSTGRES_URL_ENV)
+    if not url:
+        if os.environ.get(_REQUIRE_POSTGRES_ENV):
+            pytest.fail(
+                f"{_REQUIRE_POSTGRES_ENV} is set but {_POSTGRES_URL_ENV} is missing — the "
+                "Postgres lane is misconfigured (it must run against a real Postgres service)."
+            )
+        pytest.skip(f"{_POSTGRES_URL_ENV} not set")
+    if not os.environ.get(_REQUIRE_POSTGRES_ENV):
+        pytest.skip(
+            f"{_POSTGRES_URL_ENV} is set but {_REQUIRE_POSTGRES_ENV} is not — set it explicitly "
+            "to confirm the database is throwaway before the destructive schema reset runs."
+        )
+    return url
+
+
+def _reset_public_schema(url: str) -> None:
+    """Drop every table so the next test starts from an empty database. The shared Postgres service
+    persists across tests, unlike SQLite's throwaway in-memory database, so each test must clear it
+    explicitly to avoid leftover rows or tables from a prior test."""
+    from sqlalchemy import create_engine, text
+
+    engine = create_engine(url)
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("DROP SCHEMA public CASCADE"))
+            conn.execute(text("CREATE SCHEMA public"))
+    finally:
+        engine.dispose()
+
+
+class _EngineFactory:
+    """Builds a fresh, empty engine for the parametrized dialect.
+
+    Callable so a test (or its helper) can build the engine exactly where it did before — SQLite
+    returns a new in-memory database per call; Postgres returns the shared, already-reset service.
+    `foreign_keys=True` turns on ON DELETE enforcement, which SQLite only enacts under a
+    per-connection `PRAGMA foreign_keys=ON` — Postgres enforces it natively, so the flag is a no-op
+    there.
+    """
+
+    def __init__(self, dialect: str, url: str) -> None:
+        self._dialect = dialect
+        self._url = url
+
+    def __call__(self, *, foreign_keys: bool = False) -> Engine:
+        from sqlalchemy import create_engine, event
+
+        engine = create_engine(self._url)
+        if foreign_keys and self._dialect == "sqlite":
+            event.listen(engine, "connect", lambda conn, _: conn.execute("PRAGMA foreign_keys=ON"))
+        return engine
+
+
+@pytest.fixture(params=_DIALECTS)
+def serve_engine(request: pytest.FixtureRequest) -> _EngineFactory:
+    """A per-dialect engine factory: SQLite in the gate, real Postgres in the serve-db.yml lane."""
+    dialect: str = request.param
+    if dialect == "postgresql":
+        url = _require_postgres_url()
+        _reset_public_schema(url)
+    else:
+        url = "sqlite://"
+    return _EngineFactory(dialect, url)

@@ -1,9 +1,11 @@
 # Real-Postgres CI lane for the serve DB layer (BE-0309). The fast `check` gate in ci.yml runs the
-# serve DB tests against in-memory SQLite alone, so the dialect-specific migration code — 0010's
-# `dialect.name == "postgresql"` FK branch and the JSONB column variants in models.py and the
-# migrations — has never actually executed against the dialect the hosted deployment targets. This
-# job stands up an ephemeral Postgres service container (the standard GitHub Actions pattern) and
-# reruns test_db_migrations.py's upgrade/downgrade assertions against it (`-m postgres`).
+# serve DB tests against in-memory SQLite alone, so the dialect-specific code — 0010's
+# `dialect.name == "postgresql"` FK branch, the JSONB column variants in models.py, and the FK
+# enforcement SQLite silently skips — has never actually executed against the dialect the hosted
+# deployment targets. This job stands up an ephemeral Postgres service container (the standard
+# GitHub Actions pattern) and reruns every `postgres`-marked serve DB test against it (`-m postgres`):
+# the migration upgrade/downgrade assertions plus the models, repository, and OAuth-persistence
+# suites, which the `serve_engine` fixture (tests/conftest.py) parametrizes over both dialects.
 #
 # NON-GATING first, following the precedent BE-0282 set for the web `network (playwright)` job: a
 # first-time Postgres service can hit its own teething problems (image-pull hiccups, connection
@@ -25,7 +27,12 @@ on:
       - "bajutsu/serve/server/db.py"
       - "bajutsu/serve/server/models.py"
       - "bajutsu/serve/server/migrations/**"
+      - "bajutsu/serve/server/oauth.py"
+      - "tests/conftest.py"
       - "tests/serve/test_db_migrations.py"
+      - "tests/serve/test_db_models.py"
+      - "tests/serve/test_db_repository.py"
+      - "tests/serve/test_oauth.py"
       - ".github/workflows/serve-db.yml"
       - "pyproject.toml"
       - "uv.lock"
@@ -39,7 +46,7 @@ concurrency:
 
 jobs:
   postgres:
-    name: migrations (postgres)
+    name: serve db (postgres)
     runs-on: ubuntu-latest
     # An ephemeral Postgres for the duration of this job alone. The health-check options gate the
     # steps below on the server actually accepting connections, so the test step never races startup.
@@ -66,19 +73,21 @@ jobs:
           enable-cache: true
 
       # The `db` extra carries SQLAlchemy / Alembic / psycopg (the real Postgres driver); the dev
-      # group carries pytest. The migration tests need both.
+      # group carries pytest. The DB tests need both.
       - name: Install the db extra + test tooling
         run: uv sync --extra db --group dev
 
       # `-m postgres` overrides the default `-m 'not … and not postgres'` (pyproject addopts) so the
-      # Postgres-parametrized cases — deselected everywhere else — actually run here. `-n0` serializes
+      # Postgres-parametrized cases — deselected everywhere else — actually run here. Selecting the
+      # whole `tests/serve` directory by marker (rather than naming files) means a newly retrofitted
+      # suite joins this lane the moment it carries the marker, with no change here. `-n0` serializes
       # them: they share the one Postgres service and reset its schema between tests, so parallel
       # workers would race. psycopg v3 uses the `postgresql+psycopg://` scheme.
-      - name: Run migration tests against Postgres
+      - name: Run serve DB tests against Postgres
         env:
           BAJUTSU_TEST_POSTGRES_URL: postgresql+psycopg://bajutsu:bajutsu@localhost:5432/bajutsu_test
           # This lane exists to exercise Postgres, so a missing URL must fail loudly here — not skip
           # every `-m postgres` case and report a false green. The sentinel flips the fixture from
           # skip to fail; the fast gate leaves it unset and keeps skipping.
           BAJUTSU_REQUIRE_POSTGRES: "1"
-        run: uv run --no-sync pytest tests/serve/test_db_migrations.py -m postgres -n0
+        run: uv run --no-sync pytest tests/serve -m postgres -n0
