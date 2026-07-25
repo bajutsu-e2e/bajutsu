@@ -186,7 +186,13 @@ jobs:
           script: echo "Generated AVD snapshot for caching."
 
       # Boot the AVD under KVM and run the core scenarios over the adb backend (the action owns
-      # boot + readiness; the default serial `booted` resolves to the one running emulator).
+      # boot + readiness; the default serial `booted` resolves to the one running emulator). The
+      # onboarding gate (BE-0304) runs first, inside the emulator session where a device is attached:
+      # `bajutsu doctor --environment-only` must report no ✗ in its `environment:` section, exercising
+      # the real `adb` presence check and attached-device count through the real actuator — the drift
+      # no injected-fake unit test can see. It must run here (not as a plain step) because the
+      # environment gate counts attached devices, which only exist while this action holds the
+      # emulator up. A ✗ fails the step and this gating job before the scenarios run.
       - name: Run the core scenarios (adb)
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
         with:
@@ -197,7 +203,11 @@ jobs:
           force-avd-creation: false
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           disable-animations: true
-          script: make -C demos/showcase/android e2e
+          script: |
+            uv run --no-sync python scripts/assert_doctor_env.py --expect ok \
+              --target showcase-compose --backend android \
+              --config demos/showcase/showcase.config.yaml
+            make -C demos/showcase/android e2e
 
       - name: Upload run artifacts
         if: always()

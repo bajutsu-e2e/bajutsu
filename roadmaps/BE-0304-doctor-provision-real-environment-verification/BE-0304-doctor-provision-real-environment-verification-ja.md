@@ -7,9 +7,9 @@
 |---|---|
 | 提案 | [BE-0304](BE-0304-doctor-provision-real-environment-verification-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0304") |
-| 実装 PR | [#1367](https://github.com/bajutsu-e2e/bajutsu/pull/1367) |
+| 実装 PR | [#1367](https://github.com/bajutsu-e2e/bajutsu/pull/1367), [#_pending_](https://github.com/bajutsu-e2e/bajutsu/pull/_pending_) |
 | トピック | doctor / オンボーディング |
 <!-- /BE-METADATA -->
 
@@ -86,9 +86,8 @@ score only)"`）にすぎず、終了コードを握りつぶし、レンダリ�
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] iOS・Android・web の E2E レーン内で `bajutsu doctor` を実際に実行し、`environment:`
-  セクションに `✘` がないことを検証する。*（web レーンは着地済みです。iOS と Android の 2 レーンは
-  後続スライスで対応します。）*
+- [x] iOS・Android・web の E2E レーン内で `bajutsu doctor` を実際に実行し、`environment:`
+  セクションに `✘` がないことを検証する。
 - [x] 意図的に壊した環境のケースを追加し、非ゼロの終了コードで `environment:` セクションに
   `✘` が出ることを検証する。
 - [x] 新しい環境で `python -m bajutsu.provision` を実際に実行する。
@@ -106,6 +105,21 @@ score only)"`）にすぎず、終了コードを握りつぶし、レンダリ�
   パーサをそれに対して検証することで、Xcode のスキーマドリフトを捉えられるようにします。iOS と
   Android の `doctor` ステップ（最初のチェック項目の残る 2 レーン）は後続スライスとするため、本項目は
   *実装中* のままとします。
+- **iOS + Android オンボーディングスライス**（本 PR）：最初のチェック項目の残る 2 レーンが着地し、
+  本項目を完了します。`ios-e2e.yml` の `smoke` ジョブ（シミュレータ起動済み）と `android-e2e.yml` の
+  `smoke` ジョブ（エミュレータのセッション内）が、それぞれ `bajutsu doctor` を実環境で実行し、
+  `environment:` セクションに `✗` がないことを検証します。これにより、`simctl.py` / `adb` の実際の
+  デバイス数パースと、`preflight.py` の実際のツール検査が、実アクチュエータを通じて動きます。新しい
+  `bajutsu doctor --environment-only` フラグは doctor を実行可能性ゲートで停止させ、検証範囲を環境
+  ゲートに限定します。これにより、画面プローブ（iOS では常駐 XCUITest ランナー）の起動コストや、その
+  不安定さの影響を受けません。web スライスが最初に用いた壊れやすいインラインの `awk`/`grep` は、
+  3 レーンすべてで `scripts/assert_doctor_env.py` に置き換えます。そのセクションパーサはユニット
+  テスト（`tests/test_assert_doctor_env.py`）で検証しており、`scripts/e2e_changes.py` と同じ
+  「未テストのシェル → ユニットテスト済みの Python」への移行です。両方の `smoke` ジョブはこの検証を
+  ゲートに含めます（`✗` は必須の `E2E` チェックを失敗させます）。環境ゲートは、各ジョブが既にゲート
+  対象としている `smoke` 実行より厳密に弱いため、不安定さを増やしません。この点が、`provision` を
+  再実行する（`playwright install` のネットワーク由来の不安定さがある）ために非ゲートのままとした
+  web スライスのジョブとは異なります。
 
 ## 参考
 

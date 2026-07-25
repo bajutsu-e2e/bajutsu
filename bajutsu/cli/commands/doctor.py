@@ -161,8 +161,16 @@ def doctor(
     backend: str = typer.Option(""),
     config: str = typer.Option(DEFAULT_CONFIG),
     scenario: str = typer.Option("", "--scenario"),
+    environment_only: bool = typer.Option(False, "--environment-only"),
 ) -> None:
-    """Check the environment is runnable, then score the app's current screen."""
+    """Check the environment is runnable, then score the app's current screen.
+
+    ``--environment-only`` stops after the runnability gate — render the `environment:` section, then
+    exit 0 (gate passed) or 1 (a `✗`), without the screen probe. The probe reads the live screen (on
+    iOS it spins up a short-lived XCUITest runner), so a CI lane that only needs to verify the
+    *environment* gate against a real host (BE-0304) skips that cost and its unrelated failure modes —
+    the runner's own startup flakiness included.
+    """
     eff = _load_effective(config, target_name)
     backends = _backends(backend, eff.backend)
     try:
@@ -251,6 +259,11 @@ def doctor(
     # Fail after environment is reported, so the user sees both environment and capability issues.
     if cap_failed:
         raise typer.Exit(1)
+    # --environment-only stops here: the runnability gate has been rendered and (on failure) already
+    # exited 1 above, so a clean run means the environment passed. Skip the screen probe and its cost
+    # (BE-0304) — nothing below the gate is part of what this mode verifies.
+    if environment_only:
+        raise typer.Exit(0)
     # Runnability proved the tools are installed, not that the screen is reachable: a web target
     # whose app server is down still faults on navigate (ERR_CONNECTION_REFUSED). Report it as a
     # fixable error and exit non-zero rather than surfacing a stack trace — doctor diagnoses, it

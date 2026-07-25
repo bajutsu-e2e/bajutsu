@@ -71,6 +71,9 @@ _RUN_PATH = (
     r"|bajutsu/cli/commands/__init__\.py$"
     r"|bajutsu/cli/commands/run\.py$"
     r"|tests/driver_conformance\.py$"
+    # The onboarding-gate assertion each lane's `doctor` step runs (BE-0304); a change to it must
+    # re-run every lane that exercises it, so it lives in the shared core, not one lane fragment.
+    r"|scripts/assert_doctor_env\.py$"
     r"|pyproject\.toml$"
     r"|uv\.lock$"
 )
