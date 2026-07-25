@@ -271,7 +271,9 @@ class AdbDriver(CoordinateTreeDriver):
         never silently, so a slower fallback read stays visible — leaving the backend no worse off
         than the dump-every-read path it replaces. The failure latches: the channel is disabled after
         the first fault so the rest of the lease reads via dump without re-logging or re-paying the
-        connect timeout on every read.
+        connect timeout on every read. The fetch itself tears the resident server down on that fault
+        (`ResidentServer.start`), releasing the device's single UiAutomation session so the dump
+        fallback is a clean degrade rather than one poisoned by a wedged-but-alive server.
         """
         if self._fetch_hierarchy is not None:
             try:
