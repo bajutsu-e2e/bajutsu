@@ -9,7 +9,7 @@
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0322") |
-| 実装 PR | _pending_ |
+| 実装 PR | [#1356](https://github.com/bajutsu-e2e/bajutsu/pull/1356) |
 | トピック | コントリビューターワークフロー |
 <!-- /BE-METADATA -->
 
@@ -165,7 +165,7 @@ iOS の E2E レーンは 10 個のジョブを走らせます。その 1 つ 1 �
 
 **進捗ログ**
 
-- 1 つの PR（_pending_）で実装しました。[`scripts/e2e_changes.py`](../../scripts/e2e_changes.py) の分類器・ワークフロー宣言から読むジョブとシナリオの対応表・`shared` / `affected` 出力、[`ios-e2e.yml`](../../.github/workflows/ios-e2e.yml) のシナリオ対応づけ済み 7 ジョブへのジョブ単位 `if:` ガード、[`docs/ci.md`](../../docs/ci.md)（と日本語版）への安全モデルの記載です。対応表は標準ライブラリの行走査でワークフローから読むので、`changes` ジョブに PyYAML は不要です。
+- 1 つの PR（[#1356](https://github.com/bajutsu-e2e/bajutsu/pull/1356)）で実装しました。[`scripts/e2e_changes.py`](../../scripts/e2e_changes.py) の分類器・ワークフロー宣言から読むジョブとシナリオの対応表・`shared` / `affected` 出力、[`ios-e2e.yml`](../../.github/workflows/ios-e2e.yml) のシナリオ対応づけ済み 7 ジョブへのジョブ単位 `if:` ガード、[`docs/ci.md`](../../docs/ci.md)（と日本語版）への安全モデルの記載です。対応表は標準ライブラリの行走査でワークフローから読むので、`changes` ジョブに PyYAML は不要です。
 
 ## 参考
 

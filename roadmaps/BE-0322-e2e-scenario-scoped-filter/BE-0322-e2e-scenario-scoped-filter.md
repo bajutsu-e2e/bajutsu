@@ -9,7 +9,7 @@
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0322") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#1356](https://github.com/bajutsu-e2e/bajutsu/pull/1356) |
 | Topic | Contributor workflow |
 <!-- /BE-METADATA -->
 
@@ -169,7 +169,7 @@ scenario files stay the only place per-app knowledge lives (prime directive 3).
 
 **Progress log**
 
-- Implemented in one PR (_pending_): the classifier, the workflow-declared job-to-scenario map, and the `shared` / `affected` outputs in [`scripts/e2e_changes.py`](../../scripts/e2e_changes.py); the per-job `if:` guards on the seven scenario-keyed iOS jobs in [`ios-e2e.yml`](../../.github/workflows/ios-e2e.yml); the safety model documented in [`docs/ci.md`](../../docs/ci.md) (and its Japanese mirror). The map is read from the workflow with a standard-library line scan so the `changes` job needs no PyYAML.
+- Implemented in one PR ([#1356](https://github.com/bajutsu-e2e/bajutsu/pull/1356)): the classifier, the workflow-declared job-to-scenario map, and the `shared` / `affected` outputs in [`scripts/e2e_changes.py`](../../scripts/e2e_changes.py); the per-job `if:` guards on the seven scenario-keyed iOS jobs in [`ios-e2e.yml`](../../.github/workflows/ios-e2e.yml); the safety model documented in [`docs/ci.md`](../../docs/ci.md) (and its Japanese mirror). The map is read from the workflow with a standard-library line scan so the `changes` job needs no PyYAML.
 
 ## References
 
