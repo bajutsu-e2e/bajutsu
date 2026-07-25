@@ -20,12 +20,12 @@ import Foundation
 /// It is a bounded retry, not a wait: `maxAttempts` caps the tries so a gesture that genuinely has
 /// no observable effect returns after a fixed, small number of attempts rather than looping. The
 /// first attempt whose post-actuation `signature` differs from the pre-actuation one is taken as the
-/// gesture landing, so the stop condition is only as precise as `signature`: a change the gesture did
-/// *not* cause (a clock, a spinner, an async-loaded row) is mistaken for a landing and stops the
-/// retry early, degrading back to the drop this closes. `signature` should therefore project only
-/// state a landed gesture is expected to move; when the caller cannot identify that state and must
-/// project the whole screen, the screen under test must carry no gesture-independent live-updating
-/// content. Excluding `frame` is always right — layout jitter is not a landing.
+/// gesture landing, so the stop condition is only as precise as `signature`: it must project state a
+/// landed gesture is *responsible for* and gesture-independent churn (a clock, a spinner) is not,
+/// else an unrelated change is mistaken for a landing and stops the retry early — degrading back to
+/// the drop this closes. The caller keys it on the actuated element's own mirrored value for that
+/// reason; a magnitude-sensitive caller should additionally guard against a mirror that trails a
+/// runloop (see the accumulating-gesture note above).
 ///
 /// - Parameters:
 ///   - maxAttempts: The most times to issue `actuate` (clamped to at least 1).

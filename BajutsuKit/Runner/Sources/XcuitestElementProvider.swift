@@ -75,11 +75,15 @@ final class XcuitestElementProvider: ElementProviding {
             return .notFound
         }
         // XCUITest occasionally synthesizes a two-finger gesture the Simulator drops before the app's
-        // recognizer fires, leaving the mirrored a11y value unmoved and the run's `expect` red. Re-issue
-        // the idempotent gesture until the tree reflects a change, bounded by a small cap.
+        // recognizer fires, leaving the target's mirrored a11y value unmoved and the run's `expect`
+        // red. Re-issue the idempotent gesture until the actuated element's own value reflects a
+        // change, bounded by a small cap. Keying on the *actuated element's* value — not the whole
+        // screen — is what honors the retry's invariant: only a change the gesture is responsible for
+        // stops it, so an unrelated update elsewhere can't be mistaken for a landing (the showcase's
+        // GestureView mirrors each gesture onto the target it acts on for exactly this).
         actuateUntilStateChanges(
             maxAttempts: Self.maxGestureAttempts,
-            signature: { self.snapshotSignature() },
+            signature: { (el.value as? String) ?? "" },
             actuate: actuate
         )
         return .ok
@@ -88,21 +92,6 @@ final class XcuitestElementProvider: ElementProviding {
     /// The most times `gesture` re-issues a dropped pinch/rotate before giving up (a genuinely
     /// no-op gesture then still returns, and the run's `expect` fails loudly rather than looping).
     private static let maxGestureAttempts = 4
-
-    /// A cheap projection of the current tree — identifier|label|value per element, frame excluded so
-    /// layout jitter isn't mistaken for a gesture landing — used to detect that a re-issued gesture
-    /// finally took effect. It projects the *whole* screen rather than the actuated element, because
-    /// the mirror a gesture flips is not always the element acted on: the showcase `GestureView`
-    /// reflects the pinch into a sibling `log.pinch.value`, not the "Pinch me" box the gesture
-    /// targets — scoping to the backing element's own value would never see the change. A
-    /// gesture-under-test screen is static (no timers/animations), so a whole-screen change is the
-    /// gesture's; a screen carrying gesture-independent churn would violate `actuateUntilStateChanges`'s
-    /// documented precondition and stop the retry early.
-    private func snapshotSignature() -> String {
-        queryElements()
-            .map { "\($0.identifier ?? "")|\($0.label ?? "")|\($0.value ?? "")" }
-            .joined(separator: "\n")
-    }
 
     func swipe(fromX: Double, fromY: Double, toX: Double, toY: Double) -> TapResult {
         coordinate(fromX, fromY).press(forDuration: 0.1, thenDragTo: coordinate(toX, toY))
