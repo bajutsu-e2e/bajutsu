@@ -3,13 +3,15 @@
 The control plane exposes `/api/worker/lease` and `/api/worker/result` so `bajutsu worker` can
 lease jobs and return results over HTTP instead of Redis/RQ. Both endpoints are operator-token
 authenticated. Tests exercise the operations layer directly (no HTTP server) against an in-memory
-SQLite database."""
+SQLite database in the gate and, behind the `postgres` marker, against a real Postgres service in the
+serve-db.yml lane (BE-0309)."""
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
-from sqlalchemy import create_engine
+from sqlalchemy import Engine
 
 from bajutsu import serve as srv
 from bajutsu.serve import operations as ops
@@ -18,8 +20,10 @@ from bajutsu.serve.server.db_executor import DbQueueExecutor
 from bajutsu.serve.server.models import Base
 
 
-def _state_with_db(tmp_path: Path) -> tuple[srv.ServeState, SqlRepository]:
-    engine = create_engine("sqlite://")
+def _state_with_db(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> tuple[srv.ServeState, SqlRepository]:
+    engine = serve_engine()
     Base.metadata.create_all(engine)
     repo = SqlRepository(engine)
     state = srv.ServeState(
@@ -30,8 +34,10 @@ def _state_with_db(tmp_path: Path) -> tuple[srv.ServeState, SqlRepository]:
     return state, repo
 
 
-def test_worker_lease_returns_spec_when_queued(tmp_path: Path) -> None:
-    state, repo = _state_with_db(tmp_path)
+def test_worker_lease_returns_spec_when_queued(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    state, repo = _state_with_db(serve_engine, tmp_path)
     spec = {"cmd": ["bajutsu", "run"], "job_id": "j1", "udids": []}
     repo.enqueue_job("j1", org_id="o1", spec=spec)
     payload, code = ops.worker_lease(state, "worker-1")
@@ -40,15 +46,19 @@ def test_worker_lease_returns_spec_when_queued(tmp_path: Path) -> None:
     assert payload["spec"] == spec
 
 
-def test_worker_lease_returns_204_when_empty(tmp_path: Path) -> None:
-    state, _repo = _state_with_db(tmp_path)
+def test_worker_lease_returns_204_when_empty(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    state, _repo = _state_with_db(serve_engine, tmp_path)
     payload, code = ops.worker_lease(state, "worker-1")
     assert code == 204
     assert payload == {}
 
 
-def test_worker_lease_rejects_empty_worker_id(tmp_path: Path) -> None:
-    state, _repo = _state_with_db(tmp_path)
+def test_worker_lease_rejects_empty_worker_id(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    state, _repo = _state_with_db(serve_engine, tmp_path)
     _payload, code = ops.worker_lease(state, "")
     assert code == 400
 
@@ -76,10 +86,12 @@ class _FakeStore:
         return sorted(k for k in self.objects if k.startswith(prefix))
 
 
-def test_worker_lease_embeds_baseline_get_urls_under_the_orgs_prefix(tmp_path: Path) -> None:
+def test_worker_lease_embeds_baseline_get_urls_under_the_orgs_prefix(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
     # A run that materializes baselines gets a presigned GET URL per baseline, keyed under the
     # *leased job's* org prefix (BE-0160) — so the worker downloads them over plain HTTP, no creds.
-    state, repo = _state_with_db(tmp_path)
+    state, repo = _state_with_db(serve_engine, tmp_path)
     store = _FakeStore()
     store.put_bytes("o1/baselines/home.png", b"\x89PNG")
     store.put_bytes("o1/baselines/login.png", b"\x89PNG")
@@ -94,8 +106,10 @@ def test_worker_lease_embeds_baseline_get_urls_under_the_orgs_prefix(tmp_path: P
     }
 
 
-def test_worker_lease_omits_baseline_urls_when_not_materializing(tmp_path: Path) -> None:
-    state, repo = _state_with_db(tmp_path)
+def test_worker_lease_omits_baseline_urls_when_not_materializing(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    state, repo = _state_with_db(serve_engine, tmp_path)
     state.object_store = _FakeStore()
     repo.enqueue_job("j1", org_id="o1", spec={"cmd": ["run"], "materialize_baselines": False})
     payload, code = ops.worker_lease(state, "w1")
@@ -103,17 +117,19 @@ def test_worker_lease_omits_baseline_urls_when_not_materializing(tmp_path: Path)
     assert "baseline_urls" not in payload
 
 
-def test_worker_lease_omits_baseline_urls_without_an_object_store(tmp_path: Path) -> None:
+def test_worker_lease_omits_baseline_urls_without_an_object_store(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
     # Local serve (no hosted object store) never signs baseline URLs, even if a spec asks.
-    state, repo = _state_with_db(tmp_path)
+    state, repo = _state_with_db(serve_engine, tmp_path)
     repo.enqueue_job("j1", org_id="o1", spec={"cmd": ["run"], "materialize_baselines": True})
     payload, code = ops.worker_lease(state, "w1")
     assert code == 200
     assert "baseline_urls" not in payload
 
 
-def test_worker_result_marks_job_done(tmp_path: Path) -> None:
-    state, repo = _state_with_db(tmp_path)
+def test_worker_result_marks_job_done(serve_engine: Callable[..., Engine], tmp_path: Path) -> None:
+    state, repo = _state_with_db(serve_engine, tmp_path)
     repo.enqueue_job("j1", org_id="o1", spec={"cmd": []})
     repo.lease_job("w1")
     result = {"ok": True, "runId": "r1", "summary": {"passed": 3}}
@@ -125,14 +141,18 @@ def test_worker_result_marks_job_done(tmp_path: Path) -> None:
     assert info["result"] == result
 
 
-def test_worker_result_rejects_missing_job(tmp_path: Path) -> None:
-    state, _repo = _state_with_db(tmp_path)
+def test_worker_result_rejects_missing_job(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    state, _repo = _state_with_db(serve_engine, tmp_path)
     _payload, code = ops.worker_result(state, {"job_id": "nope", "worker_id": "w1", "result": {}})
     assert code == 404
 
 
-def test_worker_result_requires_worker_id(tmp_path: Path) -> None:
-    state, repo = _state_with_db(tmp_path)
+def test_worker_result_requires_worker_id(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    state, repo = _state_with_db(serve_engine, tmp_path)
     repo.enqueue_job("j1", org_id="o1", spec={"cmd": []})
     repo.lease_job("w1")
     _payload, code = ops.worker_result(state, {"job_id": "j1", "result": {"ok": True}})
@@ -145,16 +165,20 @@ def test_worker_result_returns_503_without_repository(tmp_path: Path) -> None:
     assert code == 503
 
 
-def test_worker_result_rejects_non_dict_result(tmp_path: Path) -> None:
-    state, _repo = _state_with_db(tmp_path)
+def test_worker_result_rejects_non_dict_result(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    state, _repo = _state_with_db(serve_engine, tmp_path)
     _payload, code = ops.worker_result(
         state, {"job_id": "j1", "worker_id": "w1", "result": "not a dict"}
     )
     assert code == 400
 
 
-def test_worker_result_marks_error_as_failed(tmp_path: Path) -> None:
-    state, repo = _state_with_db(tmp_path)
+def test_worker_result_marks_error_as_failed(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    state, repo = _state_with_db(serve_engine, tmp_path)
     repo.enqueue_job("j1", org_id="o1", spec={"cmd": []})
     repo.lease_job("w1")
     _payload, code = ops.worker_result(
@@ -166,8 +190,10 @@ def test_worker_result_marks_error_as_failed(tmp_path: Path) -> None:
     assert info["status"] == "failed"
 
 
-def test_worker_lease_then_result_round_trip(tmp_path: Path) -> None:
-    state, repo = _state_with_db(tmp_path)
+def test_worker_lease_then_result_round_trip(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    state, repo = _state_with_db(serve_engine, tmp_path)
     repo.enqueue_job("j1", org_id="o1", spec={"cmd": ["run"]})
     lease_payload, lease_code = ops.worker_lease(state, "w1")
     assert lease_code == 200

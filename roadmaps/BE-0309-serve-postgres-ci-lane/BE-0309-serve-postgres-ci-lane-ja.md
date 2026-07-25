@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0309") |
-| 実装 PR | [#1347](https://github.com/bajutsu-e2e/bajutsu/pull/1347), [#1353](https://github.com/bajutsu-e2e/bajutsu/pull/1353) |
+| 実装 PR | [#1347](https://github.com/bajutsu-e2e/bajutsu/pull/1347), [#1353](https://github.com/bajutsu-e2e/bajutsu/pull/1353), [#1359](https://github.com/bajutsu-e2e/bajutsu/pull/1359) |
 | トピック | 検証とカバレッジ |
 | 関連 | [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) |
 <!-- /BE-METADATA -->
@@ -84,12 +84,12 @@ migration を実行するまで表面化しません。それは方言固有の�
 > ともに記録します。
 
 - [x] サービスコンテナを持つ Postgres 専用の CI ジョブを新規に追加する（`check` の変更ではない）。
-- [ ] migration の upgrade/downgrade テストと、DB に触れる広いテストスイートをそちらに対しても実行する。
+- [x] migration の upgrade/downgrade テストと、DB に触れる広いテストスイートをそちらに対しても実行する。
   *（スライス 1 で migration テストを Postgres に対して実行しました。スライス 2 では、リスクの高い
   3 つの DB に触れるスイート（`test_db_models.py`・`test_db_repository.py`・`test_oauth.py` の永続化
   テスト）を、共有 Postgres が必要とするテストごとの分離を後付けする `serve_engine` フィクスチャの裏で
-  追加しました。`create_engine("sqlite://")` を呼ぶ残りのファイルは後続のスライスです。いずれもテスト
-  ごとに新しいインメモリ DB を前提としているため、フィクスチャを採用した順にレーンへ加わります。）*
+  追加しました。スライス 3 では残りの 18 ファイルを同じフィクスチャへ移し、インメモリエンジンに
+  スキーマを構築する serve の DB テストがすべて両方の方言で走るようにしました。）*
 - [ ] ゲート対象外のシグナルとして CI に組み込み、安定後に必須化する。
   *（ゲート対象外のシグナルとして着地しました。必須チェックへの昇格は残っています。）*
 
@@ -112,6 +112,16 @@ migration を実行するまで表面化しません。それは方言固有の�
   ことが判明しました。これらは org を先に用意し、Postgres が強制する参照整合性を尊重するようにしました。
   FK 非強制で `project_id` が宙に残る挙動をアサートする 1 件は SQLite 専用のまま残し、その Postgres 側の
   `ON DELETE SET NULL` の対応は姉妹テストがすでにカバーしています。
+- スライス 3 — DB に触れる残り 18 ファイルが `serve_engine` フィクスチャを採用し、リスクの高い 3
+  ファイルだけでなく、インメモリエンジンにスキーマを構築する serve の DB テストがすべて、ゲートの
+  インメモリ SQLite とレーンの実 Postgres の両方で走るようになりました。実 Postgres に対して実行したところ、スライス 2 と同じ外部キーの乖離が
+  現れました。secret ストアと provider-settings ストアは `org_id`（および secret ストアの `updated_by`
+  という `users.id` への外部キー）で行を挿入しますが、SQLite の外部キー非強制の既定ではこれらが宙に
+  残っていました。そこで各ストアのテストヘルパで親となる org 行（と書き手の行）を先に用意し、両方の
+  方言で通るようにしました。`test_db_run_listing.py` のスキーマ無しのエラー経路テスト 1 件は、設計上
+  SQLite 専用のまま残します。ワークフローの変更は不要でした。レーンはすでにディレクトリをマーカーで
+  選択しているため（`pytest tests/serve -m postgres -n0`）、後付けした各ファイルは自動的にレーンへ
+  加わりました。
 
 ## 参考
 

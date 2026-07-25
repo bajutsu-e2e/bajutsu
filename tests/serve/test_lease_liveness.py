@@ -4,15 +4,17 @@ BE-0106 moved job distribution to a Postgres `jobs` table leased over HTTP, but 
 mid-run left its job stuck in `leased` forever. These tests pin the re-queue contract: a lease with
 no heartbeat past its timeout returns to `queued` (so another worker picks it up), a poison job that
 keeps killing workers is `failed` once it hits the attempt cap, and a live heartbeat keeps a
-legitimately long run from being reclaimed. All run against in-memory SQLite — no Mac, no Postgres.
+legitimately long run from being reclaimed. All run against in-memory SQLite in the gate and, behind
+the `postgres` marker, against a real Postgres service in the serve-db.yml lane (BE-0309).
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from sqlalchemy import create_engine
+from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
 from bajutsu import serve as srv
@@ -22,8 +24,8 @@ from bajutsu.serve.server.db_executor import DbQueueExecutor
 from bajutsu.serve.server.models import Base, JobRecord
 
 
-def _repo() -> SqlRepository:
-    engine = create_engine("sqlite://")
+def _repo(serve_engine: Callable[..., Engine]) -> SqlRepository:
+    engine = serve_engine()
     Base.metadata.create_all(engine)
     return SqlRepository(engine)
 
@@ -44,8 +46,8 @@ def _state(repo: SqlRepository, tmp_path: Path) -> srv.ServeState:
     )
 
 
-def test_reclaim_requeues_a_lease_past_its_timeout() -> None:
-    repo = _repo()
+def test_reclaim_requeues_a_lease_past_its_timeout(serve_engine: Callable[..., Engine]) -> None:
+    repo = _repo(serve_engine)
     repo.enqueue_job("j1", org_id="o1", spec={"cmd": []})
     repo.lease_job("w1")
     _backdate_lease(repo, "j1", seconds=300)
@@ -57,8 +59,8 @@ def test_reclaim_requeues_a_lease_past_its_timeout() -> None:
     assert info is not None and info["status"] == "queued"
 
 
-def test_reclaim_leaves_a_fresh_lease_alone() -> None:
-    repo = _repo()
+def test_reclaim_leaves_a_fresh_lease_alone(serve_engine: Callable[..., Engine]) -> None:
+    repo = _repo(serve_engine)
     repo.enqueue_job("j1", org_id="o1", spec={"cmd": []})
     repo.lease_job("w1")  # leased_at = now, well within the timeout
 
@@ -69,8 +71,10 @@ def test_reclaim_leaves_a_fresh_lease_alone() -> None:
     assert info is not None and info["status"] == "leased"
 
 
-def test_reclaim_fails_a_job_that_exhausts_its_attempts() -> None:
-    repo = _repo()
+def test_reclaim_fails_a_job_that_exhausts_its_attempts(
+    serve_engine: Callable[..., Engine],
+) -> None:
+    repo = _repo(serve_engine)
     repo.enqueue_job("j1", org_id="o1", spec={"cmd": []})
     # Two prior expiries already burned; the third and final attempt is what expires now.
     for _ in range(3):
@@ -84,8 +88,8 @@ def test_reclaim_fails_a_job_that_exhausts_its_attempts() -> None:
     assert "error" in info["result"]
 
 
-def test_heartbeat_renews_a_lease_so_reclaim_skips_it() -> None:
-    repo = _repo()
+def test_heartbeat_renews_a_lease_so_reclaim_skips_it(serve_engine: Callable[..., Engine]) -> None:
+    repo = _repo(serve_engine)
     repo.enqueue_job("j1", org_id="o1", spec={"cmd": []})
     repo.lease_job("w1")
     _backdate_lease(repo, "j1", seconds=300)
@@ -98,8 +102,8 @@ def test_heartbeat_renews_a_lease_so_reclaim_skips_it() -> None:
     assert info is not None and info["status"] == "leased"
 
 
-def test_heartbeat_reports_a_lost_lease() -> None:
-    repo = _repo()
+def test_heartbeat_reports_a_lost_lease(serve_engine: Callable[..., Engine]) -> None:
+    repo = _repo(serve_engine)
     repo.enqueue_job("j1", org_id="o1", spec={"cmd": []})
     repo.lease_job("w1")
 
@@ -110,8 +114,10 @@ def test_heartbeat_reports_a_lost_lease() -> None:
     assert repo.heartbeat_job("j1", "w1") is False
 
 
-def test_lease_reclaims_an_expired_lease_before_serving() -> None:
-    repo = _repo()
+def test_lease_reclaims_an_expired_lease_before_serving(
+    serve_engine: Callable[..., Engine],
+) -> None:
+    repo = _repo(serve_engine)
     repo.enqueue_job("j1", org_id="o1", spec={"cmd": []})
     repo.lease_job("w1")
     _backdate_lease(repo, "j1", seconds=300)
@@ -121,8 +127,10 @@ def test_lease_reclaims_an_expired_lease_before_serving() -> None:
     assert leased is not None and leased.id == "j1"
 
 
-def test_worker_heartbeat_endpoint_renews(tmp_path: Path) -> None:
-    repo = _repo()
+def test_worker_heartbeat_endpoint_renews(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    repo = _repo(serve_engine)
     state = _state(repo, tmp_path)
     repo.enqueue_job("j1", org_id="o1", spec={"cmd": []})
     repo.lease_job("w1")
@@ -132,8 +140,10 @@ def test_worker_heartbeat_endpoint_renews(tmp_path: Path) -> None:
     assert payload["ok"] is True
 
 
-def test_worker_heartbeat_endpoint_reports_lost_lease(tmp_path: Path) -> None:
-    repo = _repo()
+def test_worker_heartbeat_endpoint_reports_lost_lease(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    repo = _repo(serve_engine)
     state = _state(repo, tmp_path)
     repo.enqueue_job("j1", org_id="o1", spec={"cmd": []})
     repo.lease_job("w1")
@@ -142,8 +152,10 @@ def test_worker_heartbeat_endpoint_reports_lost_lease(tmp_path: Path) -> None:
     assert code == 409
 
 
-def test_worker_heartbeat_endpoint_validates_input(tmp_path: Path) -> None:
-    repo = _repo()
+def test_worker_heartbeat_endpoint_validates_input(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    repo = _repo(serve_engine)
     state = _state(repo, tmp_path)
     _payload, code = ops.worker_heartbeat(state, "", "j1")
     assert code == 400
@@ -157,8 +169,10 @@ def test_worker_heartbeat_endpoint_503_without_repository(tmp_path: Path) -> Non
     assert code == 503
 
 
-def test_stale_worker_result_does_not_overwrite_the_winner(tmp_path: Path) -> None:
-    repo = _repo()
+def test_stale_worker_result_does_not_overwrite_the_winner(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    repo = _repo(serve_engine)
     state = _state(repo, tmp_path)
     repo.enqueue_job("j1", org_id="o1", spec={"cmd": []})
     repo.lease_job("w1")
@@ -183,8 +197,10 @@ def test_stale_worker_result_does_not_overwrite_the_winner(tmp_path: Path) -> No
     assert info is not None and info["status"] == "done" and info["result"]["runId"] == "winner"
 
 
-def test_worker_result_rejected_for_an_already_finished_job(tmp_path: Path) -> None:
-    repo = _repo()
+def test_worker_result_rejected_for_an_already_finished_job(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    repo = _repo(serve_engine)
     state = _state(repo, tmp_path)
     repo.enqueue_job("j1", org_id="o1", spec={"cmd": []})
     repo.lease_job("w1")

@@ -3,17 +3,21 @@
 `QueueExecutor` is a server implementation of the `RunExecutor` seam: instead of running `run_job`
 in-process (like `LocalExecutor`), it serializes the job and enqueues it; a remote `bajutsu worker`
 later reconstructs the job and runs the *unchanged* `run_job`. These tests drive both ends with a
-fake queue and an injected Popen, so the Linux gate needs neither Redis nor RQ installed.
+fake queue and an injected Popen, so the Linux gate needs neither Redis nor RQ installed. The two
+worker-side cases that record into a repository run against in-memory SQLite in the gate and, behind
+the `postgres` marker, against a real Postgres service in the serve-db.yml lane (BE-0309).
 """
 
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import pytest
 from _shared import SCENARIO, FakeProc, fake_popen, project
+from sqlalchemy import Engine
 
 from bajutsu import serve as srv
 from bajutsu.serve import operations as ops
@@ -99,16 +103,16 @@ def test_job_spec_carries_the_project_id(tmp_path: Path) -> None:
     assert job_spec(job)["project_id"] == "proj-1"
 
 
-def test_execute_job_spec_stamps_the_project_id_carried_in_the_spec(tmp_path: Path) -> None:
+def test_execute_job_spec_stamps_the_project_id_carried_in_the_spec(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
     # The worker has no project registry; the run must still be labeled with the project the control
     # plane resolved at enqueue and shipped in the spec (BE-0225 unit 3).
-    from sqlalchemy import create_engine
-
     from bajutsu.serve.server.db import SqlRepository
     from bajutsu.serve.server.models import Base
 
     project(tmp_path)
-    engine = create_engine("sqlite://")
+    engine = serve_engine()
     Base.metadata.create_all(engine)
     repo = SqlRepository(engine)
     repo.ensure_org("acme", slug="acme", name="acme")
@@ -188,16 +192,16 @@ def test_start_run_derives_the_jobs_required_capabilities(tmp_path: Path) -> Non
     assert dispatched[0].capabilities == ["ios18", "platform:ios"]
 
 
-def test_execute_job_spec_records_the_run_into_an_injected_repository(tmp_path: Path) -> None:
+def test_execute_job_spec_records_the_run_into_an_injected_repository(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
     # On the server backend the run executes on the worker; with a repository wired (the worker has
     # BAJUTSU_DATABASE_URL), the finished run is recorded under its org and actor (BE-0015).
-    from sqlalchemy import create_engine
-
     from bajutsu.serve.server.db import SqlRepository
     from bajutsu.serve.server.models import Base
 
     project(tmp_path)
-    engine = create_engine("sqlite://")
+    engine = serve_engine()
     Base.metadata.create_all(engine)
     repo = SqlRepository(engine)
     repo.ensure_org("acme", slug="acme", name="acme")
