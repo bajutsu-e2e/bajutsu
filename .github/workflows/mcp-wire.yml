@@ -1,0 +1,58 @@
+# Real wire-protocol round-trip for the MCP server (BE-0301). tests/test_mcp_wire.py starts
+# `bajutsu mcp` as an actual subprocess and drives it with the real `mcp` SDK client over stdio, so
+# the JSON-RPC framing, tool-schema advertisement, and resource-URI encoding — which the in-process
+# tests/test_mcp.py never touch — are exercised end to end. It needs no Simulator or browser, only
+# the `mcp` extra, so it runs on Linux like ci.yml.
+#
+# NON-GATING signal, not a required check: a real subprocess plus stdio IPC is more timing-sensitive
+# than an in-process call, so — following the precedent BE-0282 set — this lands as signal and is
+# promoted into the required set only once it proves stable. Because it is not required, the `paths:`
+# filter below is safe: a PR that touches nothing MCP-relevant skips it, and a skipped non-required
+# check never blocks a merge. The `mcp_wire` marker keeps the same suite out of the fast gate
+# (pyproject addopts `not mcp_wire`), so it runs here and nowhere else.
+name: MCP wire
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "bajutsu/mcp/**"
+      - "bajutsu/cli/commands/mcp.py"
+      - "tests/test_mcp_wire.py"
+      - ".github/workflows/mcp-wire.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mcp-wire-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  wire:
+    name: wire (stdio)
+    runs-on: ubuntu-latest
+    # A real subprocess driven over stdio can hang before writing its first frame (crash on stderr,
+    # never answer the `initialize` handshake), and `_drive()` awaits it with no per-call timeout —
+    # so cap the job well under GitHub's 6-hour default to fail such a hang loudly in minutes. The
+    # round-trip completes in seconds; 10 minutes is generous headroom (prime directive 2).
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990  # v8.3.2
+        with:
+          enable-cache: true
+
+      # The wire test needs the `mcp` extra (fastmcp + the SDK client) alongside pytest from the dev
+      # group; nothing else (no Simulator, no browser).
+      - name: Install the MCP extra + test tooling
+        run: uv sync --extra mcp --group dev
+
+      # `-m mcp_wire` overrides the default `-m 'not mcp_wire'` (pyproject addopts) so the suite —
+      # deselected everywhere else — actually runs here. `-n0` overrides `-n auto`: the suite shares
+      # one module-scoped `bajutsu mcp` subprocess, so xdist would fan the module across workers and
+      # multiply subprocesses (more stdio-IPC contention), not add speed.
+      - name: MCP wire round-trip (stdio)
+        run: uv run --no-sync pytest tests/test_mcp_wire.py -m mcp_wire -n0
