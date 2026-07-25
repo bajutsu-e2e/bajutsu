@@ -652,31 +652,34 @@ def test_spawn_cold_retries_once_then_succeeds() -> None:
     ]  # the failed first attempt discarded, the live second kept
 
 
-def test_spawn_cold_retries_after_a_timeout_then_succeeds() -> None:
-    # The retry absorbs a first attempt that *times out* (process alive, never binds its port), not
-    # only one that dies: an advancing clock lets the first attempt cross its deadline, then the
-    # second is ready at once. Each attempt re-derives its own deadline, so this exercises a distinct
-    # shape from the die-then-succeed case above.
+def test_spawn_cold_does_not_retry_after_a_timeout() -> None:
+    # The startup ceiling is a *total* budget shared across attempts: a first attempt that spends the
+    # whole ceiling on "health never ready" (process alive, never binds its port) leaves nothing for a
+    # retry, so exactly one attempt runs and it fails loudly. A second full-ceiling wait would double
+    # the worst case (300s → 600s on the ios-e2e lane) and blow a job's timeout-minutes — the fast-
+    # failing case still retries (the two tests around this one), only the budget-spent one does not.
     spawns = 0
 
     def spawn() -> _Spawned:
         nonlocal spawns
         spawns += 1
-        first = spawns == 1
         return _Spawned(
             driver=f"driver-{spawns}",
-            ready=lambda: not first,  # first never becomes ready (times out); second ready at once
-            poll=lambda: None,  # the process stays alive throughout — no fail-fast
+            ready=lambda: False,  # never binds its port
+            poll=lambda: None,  # the process stays alive — the timeout path, not fail-fast
             log_tail=lambda: "",
             discard=lambda: None,
         )
 
-    # attempt 1: deadline 0.0+0.2, crosses at 0.3; attempt 2: ready on the first probe
-    ticks = iter([0.0, 0.0, 0.3, 0.0])
-    result = _spawn_cold_with_retry(
-        spawn, timeout=0.2, poll=0.0, sleep=lambda _s: None, clock=lambda: next(ticks)
-    )
-    assert result.driver == "driver-2" and spawns == 2
+    # outer deadline 0.0+0.2; attempt 1's own wait crosses at 0.3 (health never ready); the retry
+    # check then sees the shared budget spent (0.3 > 0.2) and stops before a second spawn.
+    ticks = iter([0.0, 0.0, 0.0, 0.3, 0.3])
+    with pytest.raises(XcuitestChannelError) as excinfo:
+        _spawn_cold_with_retry(
+            spawn, timeout=0.2, poll=0.0, sleep=lambda _s: None, clock=lambda: next(ticks)
+        )
+    assert spawns == 1  # a spent budget yields no second attempt
+    assert "health never ready" in str(excinfo.value)
 
 
 def test_spawn_cold_fails_loudly_after_exactly_two_attempts_with_both_tails() -> None:
