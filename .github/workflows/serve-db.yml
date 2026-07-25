@@ -2,38 +2,31 @@
 # serve DB tests against in-memory SQLite alone, so the dialect-specific code — 0010's
 # `dialect.name == "postgresql"` FK branch, the JSONB column variants in models.py, and the FK
 # enforcement SQLite silently skips — has never actually executed against the dialect the hosted
-# deployment targets. This job stands up an ephemeral Postgres service container (the standard
-# GitHub Actions pattern) and reruns every `postgres`-marked serve DB test against it (`-m postgres`):
-# the migration upgrade/downgrade assertions plus the models, repository, and OAuth-persistence
-# suites, which the `serve_engine` fixture (tests/conftest.py) parametrizes over both dialects.
+# deployment targets. The `postgres` job stands up an ephemeral Postgres service container (the
+# standard GitHub Actions pattern) and reruns every `postgres`-marked serve DB test against it
+# (`-m postgres`): the migration upgrade/downgrade assertions plus every `postgres`-marked test in
+# `tests/serve/` — those added by the `serve_engine` fixture (tests/conftest.py), which
+# parametrizes each test over both dialects (SQLite in the gate, Postgres here).
 #
-# NON-GATING first, following the precedent BE-0282 set for the web `network (playwright)` job: a
-# first-time Postgres service can hit its own teething problems (image-pull hiccups, connection
-# timing, a dialect edge case the SQLite-only suite never exercised) independent of ordinary
-# flakiness, so it earns required status only once it proves stable. It is therefore a plain signal
-# job, not part of `main`'s required checks — promote it to required (a branch-protection setting)
-# after it has run green for a while. Because it is not required, a `paths:` skip simply doesn't
-# report and never blocks a merge, so — unlike the required `E2E (web)` aggregator — this lane needs
-# no always-reporting gate job.
+# ALWAYS-REPORTING gate so `serve db (postgres)` can graduate to a required check. A required check
+# that never reports stays pending and blocks the merge, so the lane cannot be path-gated at the
+# workflow trigger the way a plain signal job can. Instead it mirrors the required `E2E (web)`
+# aggregator: it triggers on every PR (and the merge queue), a `changes` job decides per PR whether
+# the heavy `postgres` job runs, and the `serve db (postgres)` gate always reports — a path-skip is a
+# pass, so an unrelated PR is neither run nor blocked. Adding the gate does not by itself make the
+# check required (that is a repository ruleset setting); it only makes the check safe to require once
+# it has proven stable, following the precedent BE-0282 set for the web `network (playwright)` lane.
 name: Serve DB (Postgres)
 
 on:
   workflow_dispatch:
+  # Trigger on every PR so the `serve db (postgres)` gate always reports a status; the heavy
+  # `postgres` job is path-gated by the `changes` job below, so a PR that can't affect the serve DB
+  # surface skips it and the gate passes.
   pull_request:
-    # Only the serve DB surface can affect this lane, so path-gate it (safe: a non-required check
-    # that skips never blocks a merge). `tests/serve/**` covers the whole directory so that a PR
-    # adding `serve_engine` to any future suite triggers the lane automatically, consistent with the
-    # run step's directory-wide `pytest tests/serve -m postgres -n0` selection.
-    paths:
-      - "bajutsu/serve/server/db.py"
-      - "bajutsu/serve/server/models.py"
-      - "bajutsu/serve/server/migrations/**"
-      - "bajutsu/serve/server/oauth.py"
-      - "tests/conftest.py"
-      - "tests/serve/**"
-      - ".github/workflows/serve-db.yml"
-      - "pyproject.toml"
-      - "uv.lock"
+  # Also run in the merge queue: once `serve db (postgres)` is required, a required check that never
+  # reports on `merge_group` leaves the queue entry pending until it times out.
+  merge_group:
 
 permissions:
   contents: read
@@ -43,8 +36,44 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Decide whether the Postgres job is warranted. Only the serve DB surface can affect this lane, so
+  # a PR that touches none of it skips the container and the gate still reports green. `tests/serve/**`
+  # covers the whole directory so a PR adding `serve_engine` to any future suite triggers the lane
+  # automatically, consistent with the run step's directory-wide `pytest tests/serve -m postgres`
+  # selection. On merge_group / workflow_dispatch there is no PR diff to filter against, so the suite
+  # runs unconditionally — the merge queue is the last gate before merge, and a manual dispatch is an
+  # explicit request to run.
+  changes:
+    name: detect relevant changes
+    runs-on: ubuntu-latest
+    # dorny/paths-filter lists the PR's changed files through the API (no checkout), which needs
+    # read access to the pull request. Scoped to this job so the heavier `postgres` job doesn't
+    # hold an unnecessary token scope.
+    permissions:
+      pull-requests: read
+    outputs:
+      relevant: ${{ steps.filter.outputs.serve_db == 'true' || github.event_name != 'pull_request' }}
+    steps:
+      - uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706  # v4.0.2
+        id: filter
+        if: github.event_name == 'pull_request'
+        with:
+          filters: |
+            serve_db:
+              - 'bajutsu/serve/server/db.py'
+              - 'bajutsu/serve/server/models.py'
+              - 'bajutsu/serve/server/migrations/**'
+              - 'bajutsu/serve/server/oauth.py'
+              - 'tests/conftest.py'
+              - 'tests/serve/**'
+              - '.github/workflows/serve-db.yml'
+              - 'pyproject.toml'
+              - 'uv.lock'
+
   postgres:
-    name: serve db (postgres)
+    name: serve db suite (postgres)
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     # An ephemeral Postgres for the duration of this job alone. The health-check options gate the
     # steps below on the server actually accepting connections, so the test step never races startup.
@@ -89,3 +118,28 @@ jobs:
           # skip to fail; the fast gate leaves it unset and keeps skipping.
           BAJUTSU_REQUIRE_POSTGRES: "1"
         run: uv run --no-sync pytest tests/serve -m postgres -n0
+
+  # The always-reporting gate whose name is the requirable check. It mirrors the E2E aggregators
+  # (`E2E (web)` et al.): depend on the work job, always run, translate a skip into a pass and a
+  # failure/cancellation into a red. `changes`'s own result is checked too — if it fails, `postgres`
+  # is skipped as a side effect of the failed dependency, not a genuine path-skip, and a gate that
+  # inspected only `postgres` would read that as a pass, reporting green having run nothing.
+  serve-db:
+    name: serve db (postgres)
+    needs: [changes, postgres]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check serve DB results
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          POSTGRES: ${{ needs.postgres.result }}
+        run: |
+          echo "changes=$CHANGES postgres=$POSTGRES"
+          for result in "$CHANGES" "$POSTGRES"; do
+            if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
+              echo "serve db (postgres) failed"
+              exit 1
+            fi
+          done
+          echo "serve db (postgres) passed (or skipped — no serve-DB-relevant change)"
