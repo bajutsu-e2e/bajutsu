@@ -84,7 +84,7 @@ Proposal altitude. The work is MECE along the units below.
   DB-touching suites — `test_db_models.py`, `test_db_repository.py`, and `test_oauth.py`'s
   persistence tests — behind a shared `serve_engine` fixture that retrofits the per-test isolation a
   shared Postgres needs. Slice 3 moved the remaining eighteen files onto the same fixture, so every
-  serve DB test that builds a schema now runs against both dialects.)*
+  serve DB test that builds its schema on an in-memory engine now runs against both dialects.)*
 - [ ] Wire it into CI as a non-gating signal, promote to required once stable.
   *(Non-gating signal landed; promotion to a required check remains.)*
 
@@ -108,8 +108,9 @@ Proposal altitude. The work is MECE along the units below.
   The one test that asserts the FKs-off dangling-`project_id` behavior stays SQLite-only, its
   Postgres `ON DELETE SET NULL` counterpart already covered by a sibling test.
 - Slice 3 — the remaining eighteen DB-touching `tests/serve` files adopt the `serve_engine`
-  fixture, so the whole serve DB suite — not just the three highest-risk files — now runs against
-  both in-memory SQLite in the gate and real Postgres in the lane. Running them against real
+  fixture, so every serve DB test that builds its schema on an in-memory engine — not just the
+  three highest-risk files — now runs against both in-memory SQLite in the gate and real Postgres
+  in the lane. Running them against real
   Postgres surfaced the same foreign-key divergence slice 2 hit: the secret and provider-settings
   stores insert rows keyed by `org_id` (and the secret store's `updated_by`, a `users.id` foreign
   key) that SQLite's foreign-keys-off default let dangle, so each store's test helper now seeds the
