@@ -6,7 +6,7 @@ ever the shape the test author expected; this file is the shape a real model act
 
 - `triage.json` — the `diagnose` tool-use blocks (`[{ "name": "diagnose", "input": {...} }]`)
   captured from a live run over the committed showcase `controls` golden with a selector-rename
-  failure. Absent until captured; the committed-replay test skips while it is missing.
+  failure. The committed-replay test skips whenever this file is absent.
 
 ## Capturing / refreshing the fixture
 
