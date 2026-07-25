@@ -13,8 +13,8 @@ unit-tested Python" move scripts/e2e_changes.py made.
 Two modes:
 
 - ``--expect ok`` (the provisioned lane): the section is present and carries no ``✗``. doctor's own
-  exit code is ignored on purpose — with no app server reachable its *screen* probe faults and exits
-  non-zero even when the environment gate (the one thing asserted here) passed.
+  exit code is not relied on here — ``_run_doctor`` passes ``--environment-only``, which stops before
+  the screen probe, so a passing environment gate always exits 0 regardless of the app server.
 - ``--expect broken`` (the deliberately-broken host): doctor exits non-zero AND the section carries a
   ``✗`` — the fail side no injected-fake test can prove, since a fake only ever reacts to a hand-fed
   boolean.
@@ -117,7 +117,8 @@ def main() -> int:
     failed = section_has_failure(section)
 
     if args.expect == "ok":
-        # The screen probe can exit non-zero with a passing environment gate, so ignore proc rc here.
+        # `--environment-only` stops before the screen probe, so a passing gate already exits 0;
+        # rc isn't relied on here — the ✗ scan is what decides the ok side.
         if failed:
             print("::error::doctor's environment gate reported a ✗")
             return 1

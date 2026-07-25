@@ -37,10 +37,29 @@ def _forbid_probe(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("bajutsu.cli.commands.doctor.probe_screen", boom)
 
 
+def _adb_available(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Report the `adb` tool as present so actuator selection resolves regardless of host.
+
+    `select_actuator(["adb"])` gates on `adb` being on PATH — a host without the Android SDK (the
+    Linux `check` runner) would otherwise fail selection and exit 2 before the gate under test runs.
+    Tool presence is an external dependency the gate's *own* logic doesn't hinge on, so we make it
+    deterministic here; the environment gate's content stays real, injected per test below.
+    """
+    import shutil
+
+    real_which = shutil.which
+    monkeypatch.setattr(
+        shutil,
+        "which",
+        lambda cmd, *a, **k: "/usr/bin/adb" if cmd == "adb" else real_which(cmd, *a, **k),
+    )
+
+
 def test_environment_only_passes_without_probing_the_screen(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _forbid_probe(monkeypatch)
+    _adb_available(monkeypatch)
     monkeypatch.setattr(
         "bajutsu.preflight.doctor_environment_checks",
         lambda *a, **k: [Check("device attached", True, "1 attached")],
@@ -67,6 +86,7 @@ def test_environment_only_fails_loudly_on_a_broken_gate(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _forbid_probe(monkeypatch)
+    _adb_available(monkeypatch)
     monkeypatch.setattr(
         "bajutsu.preflight.doctor_environment_checks",
         lambda *a, **k: [Check("device attached", False, "attach a device")],
