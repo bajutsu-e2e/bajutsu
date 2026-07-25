@@ -29,9 +29,6 @@ on:
 
 permissions:
   contents: read
-  # dorny/paths-filter lists the PR's changed files through the API (no checkout), which needs read
-  # access to the pull request.
-  pull-requests: read
 
 concurrency:
   group: serve-db-${{ github.ref }}
@@ -48,6 +45,11 @@ jobs:
   changes:
     name: detect relevant changes
     runs-on: ubuntu-latest
+    # dorny/paths-filter lists the PR's changed files through the API (no checkout), which needs
+    # read access to the pull request. Scoped to this job so the heavier `postgres` job doesn't
+    # hold an unnecessary token scope.
+    permissions:
+      pull-requests: read
     outputs:
       relevant: ${{ steps.filter.outputs.serve_db == 'true' || github.event_name != 'pull_request' }}
     steps:
