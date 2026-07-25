@@ -17,6 +17,7 @@ from pathlib import Path
 import pytest
 
 from scripts.e2e_changes import (
+    _LANE_SCENARIO_PATHS,
     affected_jobs,
     changed_files,
     classify_change,
@@ -558,6 +559,22 @@ def test_job_scenario_map_is_not_truncated_by_a_column_zero_comment() -> None:
         "          scenarios: demos/showcase/scenarios/smoke.yaml\n"
     )
     assert set(job_scenario_map(workflow)) == {"smoke", "bundled-runner"}
+
+
+def test_every_scenario_path_prefix_is_also_relevant() -> None:
+    # The module comment states the load-bearing invariant: each _LANE_SCENARIO_PATHS prefix is a subset
+    # of that lane's _LANE_PATHS fragment "so a scenario file is always relevant first". If a new
+    # scenario prefix were added here without a matching relevance fragment, classify_change would
+    # return `none` for a real scenario edit and the whole required lane would skip silently (the exact
+    # failure mode guarded elsewhere). Pin it: a representative path under each prefix must be relevant.
+    for lane, pattern in _LANE_SCENARIO_PATHS.items():
+        for prefix in pattern.split("|"):
+            representative = prefix + "any.yaml"
+            assert is_relevant([representative], lane), (
+                f"Scenario prefix {prefix!r} in _LANE_SCENARIO_PATHS[{lane!r}] is not covered by "
+                f"is_relevant — {representative!r} is not relevant for lane {lane!r}. "
+                f"Add the prefix to _LANE_PATHS[{lane!r}] to restore the subset invariant."
+            )
 
 
 def test_every_scenario_keyed_job_guard_matches_the_map() -> None:
