@@ -94,8 +94,6 @@ def test_load_rejects_a_hand_edited_non_string_leaf(serve_engine: Callable[..., 
     """A tampered row with a non-string leaf fails loudly through the shared decoder, the same as
     the file store — the DB store does not blindly trust its own column."""
     engine = _engine(serve_engine)
-    from sqlalchemy.orm import Session
-
     from bajutsu.serve.server.models import ProviderSettingsRow
 
     with Session(engine) as session:
