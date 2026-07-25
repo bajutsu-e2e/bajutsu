@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-e2e-scenario-scoped-filter-ja.md)
+**English** · [日本語](BE-0322-e2e-scenario-scoped-filter-ja.md)
 
-# BE-XXXX — Scenario-scoped E2E filtering (fire only the affected on-device jobs)
+# BE-0322 — Scenario-scoped E2E filtering (fire only the affected on-device jobs)
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-e2e-scenario-scoped-filter.md) |
+| Proposal | [BE-0322](BE-0322-e2e-scenario-scoped-filter.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0322") |
 | Topic | Contributor workflow |
 <!-- /BE-METADATA -->
 

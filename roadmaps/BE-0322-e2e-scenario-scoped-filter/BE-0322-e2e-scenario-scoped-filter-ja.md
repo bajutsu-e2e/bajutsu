@@ -1,14 +1,14 @@
-[English](BE-XXXX-e2e-scenario-scoped-filter.md) · **日本語**
+[English](BE-0322-e2e-scenario-scoped-filter.md) · **日本語**
 
-# BE-XXXX — シナリオ単位の E2E フィルタリング（影響を受けるジョブだけを実行する）
+# BE-0322 — シナリオ単位の E2E フィルタリング（影響を受けるジョブだけを実行する）
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-e2e-scenario-scoped-filter-ja.md) |
+| 提案 | [BE-0322](BE-0322-e2e-scenario-scoped-filter-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0322") |
 | トピック | コントリビューターワークフロー |
 <!-- /BE-METADATA -->
 
