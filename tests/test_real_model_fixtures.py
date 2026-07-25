@@ -31,7 +31,6 @@ from real_model_support import (
     FIXTURES_DIR,
     RECORD_GOAL,
     RecordingBackend,
-    _FixtureReplay,
     assert_parses_to_crawl_actions,
     assert_parses_to_record_action,
     crawl_candidates,
@@ -81,25 +80,18 @@ def test_record_capture_replay_roundtrip(tmp_path: Path) -> None:
 
 
 def test_record_multiblock_capture_replay_roundtrip(tmp_path: Path) -> None:
-    # Verify the _FixtureReplay path: a real model may emit several tool-use blocks in one turn
-    # (BE-0178 batched actions). `FakeBackend` returns each block on successive calls, so it cannot
-    # simulate that shape — `_FixtureReplay` (used by `load_fixture`) replays all blocks in one
-    # `MessageResponse.content`, which is the only shape `_to_proposal` sees from a real capture.
+    # A real model may emit several tool-use blocks in one turn (BE-0178 batched actions), and the
+    # record loop maps every block to a step (`_to_proposal`). `FakeBackend` returns each block on a
+    # successive `create_message` call, so it cannot simulate that shape — only the fixture path
+    # replays all blocks in one `MessageResponse`, the shape a real capture produces. Drive that
+    # path end to end (save → load → replay) and assert both blocks survive as two steps, so the
+    # multi-block behavior is exercised through the public seam, not a private replay backend.
     blocks = [
         ToolUseBlock(name="tap", input={"id": "log.intense", "reason": "toggle on"}),
         ToolUseBlock(name="tap", input={"id": "log.submit", "reason": "submit after"}),
     ]
-    replay = _FixtureReplay(blocks)
-    proposal = _record_proposal(replay)
-    assert len(proposal.steps) == 2, (
-        f"expected both blocks to produce two steps (one per block); got {len(proposal.steps)}"
-    )
-    assert_parses_to_record_action(proposal)
-
-    # Also exercise the full save → load round-trip with a multi-block response.
-    multi_response = MessageResponse(content=list(blocks))
     fixture = tmp_path / "record_multi.json"
-    save_fixture(fixture, multi_response)
+    save_fixture(fixture, MessageResponse(content=list(blocks)))
     reloaded = _record_proposal(load_fixture(fixture))
     assert len(reloaded.steps) == 2, (
         f"load_fixture must replay all blocks in one turn; got {len(reloaded.steps)} steps"
