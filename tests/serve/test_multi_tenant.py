@@ -1,12 +1,15 @@
 """BE-0015 multi-tenancy: org resolution and org-scope enforcement at the operations layer, plus
 the per-org store routing and worker key prefix. Driven against a real SqlRepository on in-memory
-SQLite (same thread, so the single connection is safe) and a real config file — no mock, no fixture."""
+SQLite in the gate (same thread, so the single connection is safe) and, behind the `postgres` marker,
+against a real Postgres service in the serve-db.yml lane (BE-0309), plus a real config file — no
+mock."""
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
-from sqlalchemy import create_engine
+from sqlalchemy import Engine
 
 from bajutsu import serve as srv
 from bajutsu.serve import operations as ops
@@ -32,10 +35,12 @@ orgs:
 """
 
 
-def _state(tmp_path: Path, config_text: str = CONFIG) -> srv.ServeState:
+def _state(
+    serve_engine: Callable[..., Engine], tmp_path: Path, config_text: str = CONFIG
+) -> srv.ServeState:
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(config_text, encoding="utf-8")
-    engine = create_engine("sqlite://")
+    engine = serve_engine()
     Base.metadata.create_all(engine)
     repo = SqlRepository(engine)
     for org, members in (("acme", ["alice"]), ("globex", ["bob"])):
@@ -45,8 +50,10 @@ def _state(tmp_path: Path, config_text: str = CONFIG) -> srv.ServeState:
     return srv.ServeState(runs_dir=tmp_path / "runs", config=cfg, repository=repo)
 
 
-def test_list_targets_is_scoped_to_the_actors_org(tmp_path: Path) -> None:
-    state = _state(tmp_path)
+def test_list_targets_is_scoped_to_the_actors_org(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    state = _state(serve_engine, tmp_path)
     assert [a["name"] for a in ops.list_targets_payload(state, actor="alice")[0]] == [
         "checkout",
         "demo",
@@ -56,8 +63,10 @@ def test_list_targets_is_scoped_to_the_actors_org(tmp_path: Path) -> None:
     assert [a["name"] for a in ops.list_targets_payload(state, actor=None)[0]] == []
 
 
-def test_start_run_on_another_orgs_app_is_forbidden(tmp_path: Path) -> None:
-    state = _state(tmp_path)
+def test_start_run_on_another_orgs_app_is_forbidden(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    state = _state(serve_engine, tmp_path)
     payload, status = ops.start_run(
         state, {"target": "other", "scenario": "smoke.yaml"}, actor="alice"
     )
@@ -65,23 +74,29 @@ def test_start_run_on_another_orgs_app_is_forbidden(tmp_path: Path) -> None:
     assert payload == {"error": "forbidden"}
 
 
-def test_start_run_on_own_orgs_app_passes_the_org_check(tmp_path: Path) -> None:
+def test_start_run_on_own_orgs_app_passes_the_org_check(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
     # alice owns demo; the org check passes, so it fails later (no scenarios dir), not with 403.
-    state = _state(tmp_path)
+    state = _state(serve_engine, tmp_path)
     _payload, status = ops.start_run(
         state, {"target": "demo", "scenario": "smoke.yaml"}, actor="alice"
     )
     assert status != 403
 
 
-def test_read_scenario_in_another_orgs_app_is_not_found(tmp_path: Path) -> None:
-    state = _state(tmp_path)
+def test_read_scenario_in_another_orgs_app_is_not_found(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    state = _state(serve_engine, tmp_path)
     payload, status = ops.read_scenario(state, "other", "smoke.yaml", actor="alice")
     assert status == 404
     assert payload == {"error": "not found"}
 
 
-def test_no_orgs_block_keeps_a_single_tenant(tmp_path: Path) -> None:
+def test_no_orgs_block_keeps_a_single_tenant(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
     # Without an orgs: block every app belongs to the default org, so any user sees them all and
     # nothing is forbidden (single-tenant behavior is unchanged). The user is in the default org,
     # matching what oauth_callback would assign from this config.
@@ -90,7 +105,7 @@ def test_no_orgs_block_keeps_a_single_tenant(tmp_path: Path) -> None:
         "targets:\n  demo: { bundleId: com.example.demo }\n  other: { bundleId: com.example.other }\n",
         encoding="utf-8",
     )
-    engine = create_engine("sqlite://")
+    engine = serve_engine()
     Base.metadata.create_all(engine)
     repo = SqlRepository(engine)
     repo.ensure_org("default", slug="default", name="default")
@@ -122,9 +137,11 @@ class _FakeOAuthClient:
         return Identity(login=self._login, orgs=list(self._orgs), teams=list(self._teams))
 
 
-def test_oauth_login_assigns_the_org_from_config(tmp_path: Path) -> None:
+def test_oauth_login_assigns_the_org_from_config(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
     # A login resolves to its config org and is persisted there, so later requests scope to it.
-    state = _state(tmp_path)
+    state = _state(serve_engine, tmp_path)
     state.auth.oauth = _FakeOAuthClient("bob")
     _payload, status, sid = ops.oauth_callback(state, code="ok", state_param="s", state_cookie="s")
     assert status == 200 and sid is not None
@@ -138,7 +155,9 @@ def test_oauth_login_assigns_the_org_from_config(tmp_path: Path) -> None:
     assert state.repository.user_org("carol") is None
 
 
-def test_oauth_login_assigns_the_org_from_github_org_membership(tmp_path: Path) -> None:
+def test_oauth_login_assigns_the_org_from_github_org_membership(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
     # A login with no explicit member listing is mapped to a bajutsu org by its GitHub org.
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
@@ -146,7 +165,7 @@ def test_oauth_login_assigns_the_org_from_github_org_membership(tmp_path: Path) 
         "orgs:\n  acme:\n    githubOrgs: [acme-gh]\n    targets: [demo]\n",
         encoding="utf-8",
     )
-    engine = create_engine("sqlite://")
+    engine = serve_engine()
     Base.metadata.create_all(engine)
     repo = SqlRepository(engine)
     state = srv.ServeState(
@@ -231,10 +250,10 @@ class _CountingRepo:
         return getattr(self._inner, name)
 
 
-def test_request_resolves_the_org_once(tmp_path: Path) -> None:
+def test_request_resolves_the_org_once(serve_engine: Callable[..., Engine], tmp_path: Path) -> None:
     # The org is resolved a single time per request (one DB lookup), not re-resolved by each of the
     # forbidden check / store bundle / audit (BE-0015 perf).
-    engine = create_engine("sqlite://")
+    engine = serve_engine()
     Base.metadata.create_all(engine)
     inner = SqlRepository(engine)
     inner.ensure_org("default", slug="default", name="default")

@@ -1,17 +1,21 @@
 """BE-0015 7c-4: a finished run is recorded into the system of record, and the run-history
 listing is served from it (org-scoped) when a repository is wired — falling back to the artifact
-store otherwise. Driven against a real SqlRepository on in-memory SQLite (no live Postgres, no
-mock); `run_job` runs synchronously in the test thread, so the single connection is safe."""
+store otherwise. Driven against a real SqlRepository on in-memory SQLite in the gate and, behind the
+`postgres` marker, against a real Postgres service in the serve-db.yml lane (BE-0309); `run_job` runs
+synchronously in the test thread, so the single connection is safe. One test
+(`test_run_job_survives_a_failing_repository`) stays SQLite-only: it builds a schema-less engine to
+force a persistence error, so it never needs the Postgres parameter."""
 
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from _shared import fake_popen, project, write_run
-from sqlalchemy import create_engine
+from sqlalchemy import Engine, create_engine
 
 from bajutsu import serve as srv
 from bajutsu.serve.operations import crawl_runs_payload, runs_payload
@@ -19,18 +23,20 @@ from bajutsu.serve.server.db import RunRecord, SqlRepository
 from bajutsu.serve.server.models import Base
 
 
-def _repo() -> SqlRepository:
-    engine = create_engine("sqlite://")
+def _repo(serve_engine: Callable[..., Engine]) -> SqlRepository:
+    engine = serve_engine()
     Base.metadata.create_all(engine)
     repo = SqlRepository(engine)
     repo.ensure_org("default", slug="default", name="Default")
     return repo
 
 
-def test_run_job_records_finished_run_into_the_repository(tmp_path: Path) -> None:
+def test_run_job_records_finished_run_into_the_repository(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
     scn_dir, cfg, runs = project(tmp_path)
     write_run(runs, "20260621-1", ok=True, scenarios=[("alpha", True), ("beta", True)])
-    repo = _repo()
+    repo = _repo(serve_engine)
     # The actor was upserted at OAuth login, so the run can be attributed to them (the created_by
     # foreign key resolves).
     repo.upsert_user("alice", org_id="default", github_login="alice", email="a@x")
@@ -58,7 +64,9 @@ def test_run_job_records_finished_run_into_the_repository(tmp_path: Path) -> Non
     assert rec.summary["report"] is True
 
 
-def test_run_job_stamps_run_provenance_from_the_manifest(tmp_path: Path) -> None:
+def test_run_job_stamps_run_provenance_from_the_manifest(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
     # BE-0220: the run's manifest.json provenance (the BE-0049 stamp) is mirrored onto the DB record
     # so cross-run flakiness can group by scenario identity straight from the DB.
     scn_dir, cfg, runs = project(tmp_path)
@@ -80,7 +88,7 @@ def test_run_job_stamps_run_provenance_from_the_manifest(tmp_path: Path) -> None
         encoding="utf-8",
     )
     (run_dir / "report.html").write_text("<html></html>", encoding="utf-8")
-    repo = _repo()
+    repo = _repo(serve_engine)
     state = srv.ServeState(
         scenarios_dir=scn_dir,
         config=cfg,
@@ -98,12 +106,14 @@ def test_run_job_stamps_run_provenance_from_the_manifest(tmp_path: Path) -> None
     assert rec.git_revision == "deadbeef"
 
 
-def test_run_job_leaves_provenance_null_for_a_pre_provenance_run(tmp_path: Path) -> None:
+def test_run_job_leaves_provenance_null_for_a_pre_provenance_run(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
     # A run whose manifest predates the provenance stamp records with null provenance — ungroupable
     # by scenario identity, but never blocking (mirrors audit --history's `skipped`, BE-0049).
     scn_dir, cfg, runs = project(tmp_path)
     write_run(runs, "20260621-5", ok=True, scenarios=[("alpha", True)])
-    repo = _repo()
+    repo = _repo(serve_engine)
     state = srv.ServeState(
         scenarios_dir=scn_dir,
         config=cfg,
@@ -121,7 +131,9 @@ def test_run_job_leaves_provenance_null_for_a_pre_provenance_run(tmp_path: Path)
     assert rec.git_revision is None
 
 
-def test_run_job_records_a_malformed_manifest_with_null_provenance(tmp_path: Path) -> None:
+def test_run_job_records_a_malformed_manifest_with_null_provenance(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
     # A manifest that parses but isn't a JSON object (a corrupted/partial write left a bare list,
     # string, or `null`) must not abort the whole record_run: the run still persists, just with null
     # provenance and a minimal summary. Guards against `json.loads(...).get(...)` raising
@@ -131,7 +143,7 @@ def test_run_job_records_a_malformed_manifest_with_null_provenance(tmp_path: Pat
     run_dir.mkdir(parents=True)
     (run_dir / "manifest.json").write_text(json.dumps([1, 2, 3]), encoding="utf-8")
     (run_dir / "report.html").write_text("<html></html>", encoding="utf-8")
-    repo = _repo()
+    repo = _repo(serve_engine)
     state = srv.ServeState(
         scenarios_dir=scn_dir,
         config=cfg,
@@ -149,13 +161,15 @@ def test_run_job_records_a_malformed_manifest_with_null_provenance(tmp_path: Pat
     assert rec.git_revision is None
 
 
-def test_run_job_reads_the_run_manifest_only_once(tmp_path: Path) -> None:
+def test_run_job_reads_the_run_manifest_only_once(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
     # `_persist_run` feeds both the history summary and the provenance stamp from a single manifest
     # read. On a hosted backend `open_bytes` is a real object-storage round trip, so reading it once
     # per helper (twice per finished run) doubles exactly the cost `_run_summary` was written to avoid.
     scn_dir, cfg, runs = project(tmp_path)
     write_run(runs, "20260621-r", ok=True, scenarios=[("alpha", True)])
-    repo = _repo()
+    repo = _repo(serve_engine)
     state = srv.ServeState(
         scenarios_dir=scn_dir,
         config=cfg,
@@ -188,12 +202,14 @@ def test_run_job_reads_the_run_manifest_only_once(tmp_path: Path) -> None:
     assert counting.manifest_reads == 1
 
 
-def test_run_job_does_not_attribute_to_an_unknown_user(tmp_path: Path) -> None:
+def test_run_job_does_not_attribute_to_an_unknown_user(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
     # A run whose actor has no user row (shouldn't happen in practice) is still recorded, just with
     # no created_by — so the foreign key can't break job finalization.
     scn_dir, cfg, runs = project(tmp_path)
     write_run(runs, "20260621-7", ok=True, scenarios=[("alpha", True)])
-    repo = _repo()
+    repo = _repo(serve_engine)
     state = srv.ServeState(
         scenarios_dir=scn_dir,
         config=cfg,
@@ -214,7 +230,8 @@ def test_run_job_does_not_attribute_to_an_unknown_user(tmp_path: Path) -> None:
 def test_run_job_survives_a_failing_repository(tmp_path: Path) -> None:
     # A repository pointed at a schema-less database raises on record_run. Persistence runs in
     # run_job's finally, just before the log stream is closed, so the error must be swallowed and
-    # the job must still finalize (its run id parsed, status done).
+    # the job must still finalize (its run id parsed, status done). SQLite-only (not parametrized
+    # over the Postgres lane): it builds the schema-less engine directly to force the error path.
     scn_dir, cfg, runs = project(tmp_path)
     write_run(runs, "20260621-8", ok=True, scenarios=[("alpha", True)])
     engine = create_engine("sqlite://")  # no Base.metadata.create_all → no tables
@@ -247,9 +264,11 @@ def test_run_job_without_a_repository_does_not_record(tmp_path: Path) -> None:
     assert job.view()["runId"] == "20260621-2"
 
 
-def test_runs_payload_lists_from_the_repository_scoped_to_the_org(tmp_path: Path) -> None:
+def test_runs_payload_lists_from_the_repository_scoped_to_the_org(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
     _scn_dir, _cfg, runs = project(tmp_path)
-    repo = _repo()
+    repo = _repo(serve_engine)
     repo.ensure_org("other", slug="other", name="Other")
     repo.record_run(
         RunRecord(
@@ -313,7 +332,9 @@ def test_crawl_runs_payload_falls_back_to_the_artifact_store_without_a_repositor
     assert status == 200 and [r["id"] for r in payload] == ["20260621-c"]
 
 
-def test_crawl_runs_payload_is_scoped_to_the_actors_org(tmp_path: Path) -> None:
+def test_crawl_runs_payload_is_scoped_to_the_actors_org(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
     # On the server backend the crawl history comes from the actor's org-scoped artifact store, not a
     # local runs_dir scan (BE-0190). Two orgs' stores back distinct dirs; each actor lists only its own.
     from bajutsu.serve.artifacts import LocalArtifactStore
@@ -329,7 +350,7 @@ def test_crawl_runs_payload_is_scoped_to_the_actors_org(tmp_path: Path) -> None:
     _write_crawl(dirs["default"], "20260621-a")
     _write_crawl(dirs["other"], "20260621-b")
 
-    repo = _repo()
+    repo = _repo(serve_engine)
     repo.ensure_org("other", slug="other", name="Other")
     repo.upsert_user("al", org_id="default", github_login="al", email="a@x")
     repo.upsert_user("bo", org_id="other", github_login="bo", email="b@x")
