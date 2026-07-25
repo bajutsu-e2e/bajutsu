@@ -69,7 +69,7 @@ def section_has_failure(section: list[str]) -> bool:
 
 
 def _run_doctor(args: argparse.Namespace) -> subprocess.CompletedProcess[str]:
-    """Run `bajutsu doctor --environment-only` via the module entry point, folding stderr into stdout.
+    """Run `bajutsu doctor --environment-only` via the module entry point, capturing stdout and stderr.
 
     ``--environment-only`` stops doctor at the runnability gate, so the assertion is scoped to the
     environment section and never pays for (or flakes on) the screen probe — on iOS, the short-lived

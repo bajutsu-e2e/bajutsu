@@ -11,6 +11,12 @@ is never read as an environment failure, and vice versa.
 
 from __future__ import annotations
 
+import subprocess
+import sys
+
+import pytest
+
+import scripts.assert_doctor_env as _mod
 from scripts.assert_doctor_env import environment_section, section_has_failure
 
 # A booted-Simulator run where every environment check passes. The capability-preflight and Claude
@@ -74,6 +80,56 @@ def test_capability_preflight_cross_marker_is_not_an_environment_failure() -> No
     section = environment_section(_HEALTHY)
     assert section is not None
     assert not any("✘" in line for line in section)
+
+
+def _make_proc(stdout: str, returncode: int = 0) -> subprocess.CompletedProcess[str]:
+    return subprocess.CompletedProcess(args=[], returncode=returncode, stdout=stdout, stderr="")
+
+
+def _argv(expect: str) -> list[str]:
+    return ["assert_doctor_env.py", "--target", "t", "--config", "c.yaml", "--expect", expect]
+
+
+def test_main_ok_passes_on_healthy_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(_mod, "_run_doctor", lambda _: _make_proc(_HEALTHY))
+    monkeypatch.setattr(sys, "argv", _argv("ok"))
+    assert _mod.main() == 0
+
+
+def test_main_ok_fails_on_broken_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    # `--expect ok` ignores returncode — the ✗ scan decides.
+    monkeypatch.setattr(_mod, "_run_doctor", lambda _: _make_proc(_BROKEN))
+    monkeypatch.setattr(sys, "argv", _argv("ok"))
+    assert _mod.main() == 1
+
+
+def test_main_ok_fails_when_section_absent(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A config-error exit may produce no `environment:` header — must not read absence as a pass.
+    monkeypatch.setattr(
+        _mod, "_run_doctor", lambda _: _make_proc("config error: target not found\n", returncode=1)
+    )
+    monkeypatch.setattr(sys, "argv", _argv("ok"))
+    assert _mod.main() == 1
+
+
+def test_main_broken_passes_when_gate_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    # `--expect broken` needs non-zero exit AND a ✗ in the section.
+    monkeypatch.setattr(_mod, "_run_doctor", lambda _: _make_proc(_BROKEN, returncode=1))
+    monkeypatch.setattr(sys, "argv", _argv("broken"))
+    assert _mod.main() == 0
+
+
+def test_main_broken_fails_when_doctor_exits_0(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(_mod, "_run_doctor", lambda _: _make_proc(_BROKEN, returncode=0))
+    monkeypatch.setattr(sys, "argv", _argv("broken"))
+    assert _mod.main() == 1
+
+
+def test_main_broken_fails_when_no_failure_marker(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Non-zero exit alone is not enough — the ✗ must also appear in the section.
+    monkeypatch.setattr(_mod, "_run_doctor", lambda _: _make_proc(_HEALTHY, returncode=1))
+    monkeypatch.setattr(sys, "argv", _argv("broken"))
+    assert _mod.main() == 1
 
 
 def test_missing_environment_section_returns_none() -> None:
