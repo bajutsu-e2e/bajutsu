@@ -23,10 +23,13 @@ from bajutsu.drivers.xcuitest import XcuitestChannelError
 from bajutsu.platform_lifecycle.environments.xcuitest import (
     _MAX_WARM_REUSES,
     _MAX_WARM_REUSES_ENV,
+    _RUNNER_STARTUP_TIMEOUT,
+    _RUNNER_STARTUP_TIMEOUT_ENV,
     _WARM_HEALTH_TIMEOUT,
     XcuitestEnvironment,
     _await_cold_runner,
     _destination,
+    _runner_startup_timeout,
     _spawn_cold_with_retry,
     _Spawned,
 )
@@ -341,6 +344,17 @@ def test_max_warm_reuses_env_override(monkeypatch: pytest.MonkeyPatch, tmp_path:
     env.start(eff, Preconditions())
     env.start(eff, Preconditions())
     assert len(popen_argvs) == 2  # no warm reuse: each lease spawns cold
+
+
+def test_runner_startup_timeout_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A contended CI host can extend the cold-start ceiling without a code change (the ios-e2e
+    # workflow raises it to 300s); a blank or malformed value falls back to the compiled default.
+    monkeypatch.delenv(_RUNNER_STARTUP_TIMEOUT_ENV, raising=False)
+    assert _runner_startup_timeout() == _RUNNER_STARTUP_TIMEOUT
+    monkeypatch.setenv(_RUNNER_STARTUP_TIMEOUT_ENV, "300")
+    assert _runner_startup_timeout() == 300.0
+    monkeypatch.setenv(_RUNNER_STARTUP_TIMEOUT_ENV, "not-a-number")
+    assert _runner_startup_timeout() == _RUNNER_STARTUP_TIMEOUT
 
 
 def test_start_respawns_a_dead_runner(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
