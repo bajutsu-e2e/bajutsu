@@ -94,9 +94,14 @@ def test_run_all_fails_a_scenario_that_crashes_every_attempt() -> None:
         )
 
     scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
-    results = run_all(_eff(), scenarios, lease, crash_retries=2)
+    messages: list[str] = []
+    results = run_all(_eff(), scenarios, lease, crash_retries=2, progress=messages.append)
     assert not results[0].ok and leases == 3  # crash_retries=2 → 3 attempts, all crashed
     assert "crashed mid-run" in (results[0].failure or "")
+    # The final, non-retried attempt must not claim a retry that never happens (would mislead an
+    # operator watching progress into expecting a fourth attempt that the budget doesn't allow).
+    assert "respawning" not in messages[-1]
+    assert sum("respawning" in m for m in messages) == 2  # only the 2 attempts that did retry
 
 
 def test_run_all_crash_retries_zero_disables_recovery() -> None:

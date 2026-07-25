@@ -120,6 +120,9 @@ class _ScenarioRunner:
     # before failing it — the dead lease is discarded and a fresh one leased (a cold respawn) each
     # retry. A crash is backend infrastructure, not a verdict (prime directive 1); bounding the
     # retries keeps a genuinely crash-inducing scenario failing loudly (BE-0049). 0 disables it.
+    # The retry replays the *whole* scenario on a respawned (not erased) app, so it is safe only for
+    # scenarios idempotent up to the crash point — one with a persistent side effect before the
+    # crash (e.g. a server-side write) can fail, or pass against the wrong state, on replay.
     crash_retries: int = 1
 
     def run_one(self, i: int, s: Scenario) -> RunResult:
@@ -178,14 +181,16 @@ class _ScenarioRunner:
                 return self._run_on_lease(lz, handler, i, s, sid)
             except BackendCrashError as crash:
                 last_crash = crash
+                will_retry = attempt <= self.crash_retries
                 _logger.warning(
-                    "scenario %s: backend crashed mid-run (attempt %d/%d), respawning and retrying: %s",
+                    "scenario %s: backend crashed mid-run (attempt %d/%d)%s: %s",
                     s.name,
                     attempt,
                     self.crash_retries + 1,
+                    ", respawning and retrying" if will_retry else "",
                     crash,
                 )
-                if self.progress is not None:
+                if self.progress is not None and will_retry:
                     self.progress(
                         f"⟳ scenario {i + 1}/{self.total}: {s.name} — backend crashed mid-run, "
                         f"respawning and retrying (attempt {attempt}/{self.crash_retries + 1})"
@@ -366,7 +371,9 @@ def run_all(
             (`base.BackendCrashError`) on a fresh device before failing it. A crash is backend
             infrastructure, not a verdict; the default 1 rides out a one-off resident-runner crash,
             and a scenario that crashes every attempt still fails loudly once the budget is spent
-            (BE-0049). 0 disables the recovery.
+            (BE-0049). 0 disables the recovery. The replay re-runs the whole scenario on a
+            respawned (not erased) app, so it is safe only for scenarios idempotent up to the
+            crash point.
 
     Returns:
         One result per scenario, in the same order as `scenarios`.
