@@ -3,16 +3,19 @@
 Covers both deployment shapes: local (no repository — the artifact store's trash is the whole
 story) and hosted (a repository whose `deleted_at` column drives the DB-backed listing, updated
 alongside the store). Also the purge admin gate the path-based RBAC can't apply, org scoping, the
-audit-log entry, and the lazy retention sweep with an injected clock.
+audit-log entry, and the lazy retention sweep with an injected clock. The hosted-shape cases run
+against in-memory SQLite in the gate and, behind the `postgres` marker, against a real Postgres
+service in the serve-db.yml lane (BE-0309).
 """
 
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from sqlalchemy import create_engine, select
+from sqlalchemy import Engine, select
 
 from bajutsu.serve import operations as ops
 from bajutsu.serve.artifacts import LocalArtifactStore
@@ -25,8 +28,10 @@ def _local_state(tmp_path: Path) -> ServeState:
     return ServeState(runs_dir=tmp_path / "runs")
 
 
-def _hosted_state(tmp_path: Path) -> tuple[ServeState, SqlRepository]:
-    engine = create_engine("sqlite://")
+def _hosted_state(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> tuple[ServeState, SqlRepository]:
+    engine = serve_engine()
     Base.metadata.create_all(engine)
     repo = SqlRepository(engine)
     repo.ensure_org("default", slug="default", name="default")
@@ -139,13 +144,15 @@ def test_trashed_runs_payload_sweeps_expired_before_listing(tmp_path: Path) -> N
     assert ops.trashed_runs_payload(state)[0] == []
 
 
-def test_trashed_runs_payload_is_org_scoped(tmp_path: Path) -> None:
+def test_trashed_runs_payload_is_org_scoped(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
     # A soft-deleted run in one org's store is invisible to another org's Trash view (BE-0015 holds
     # for the trash listing too): the payload reads the actor's org-scoped store, not the default one.
     # Route each org to its own runs dir through `org_stores`, as a server backend does with prefixes.
     from bajutsu.serve.state import StoreBundle
 
-    state, repo = _hosted_state(tmp_path)
+    state, repo = _hosted_state(serve_engine, tmp_path)
     repo.ensure_org("other", slug="other", name="other")
     repo.upsert_user("ed2", org_id="other", github_login="ed2", email="e2@x", role="editor")
     bundles = {
@@ -193,11 +200,13 @@ def test_runs_payload_scoped_keeps_a_multi_scenario_run(tmp_path: Path) -> None:
     assert [r["id"] for r in ops.runs_payload(state, scenario="checkout")[0]] == ["r1"]
 
 
-def test_runs_payload_scoped_surfaces_a_run_past_the_hosted_cap(tmp_path: Path) -> None:
+def test_runs_payload_scoped_surfaces_a_run_past_the_hosted_cap(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
     # BE-0262 follow-up: the DB `list_runs` caps at the newest 50 runs. When scoping to a scenario,
     # that cap must count *scoped* runs — otherwise a run of the loaded scenario that falls outside
     # the newest-50 global window is silently dropped and the picker can't reach it.
-    state, repo = _hosted_state(tmp_path)
+    state, repo = _hosted_state(serve_engine, tmp_path)
     base = datetime(2026, 1, 1, tzinfo=UTC)
     repo.record_run(
         RunRecord(
@@ -238,8 +247,10 @@ def test_runs_payload_scoped_local_list_is_not_re_capped(tmp_path: Path) -> None
 # --- hosted (repository) ---
 
 
-def test_hosted_soft_delete_updates_store_and_db(tmp_path: Path) -> None:
-    state, repo = _hosted_state(tmp_path)
+def test_hosted_soft_delete_updates_store_and_db(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    state, repo = _hosted_state(serve_engine, tmp_path)
     repo.record_run(RunRecord(id="r1", org_id="default", status="done", ok=True))
     _run_dir(state, "r1")  # a regular run has both a DB row and store bytes
     assert ops.delete_run(state, "r1", actor="editor")[1] == 200
@@ -247,8 +258,8 @@ def test_hosted_soft_delete_updates_store_and_db(tmp_path: Path) -> None:
     assert ("run.soft_delete", "r1") in _audit_actions(repo)
 
 
-def test_hosted_purge_requires_admin(tmp_path: Path) -> None:
-    state, repo = _hosted_state(tmp_path)
+def test_hosted_purge_requires_admin(serve_engine: Callable[..., Engine], tmp_path: Path) -> None:
+    state, repo = _hosted_state(serve_engine, tmp_path)
     repo.record_run(RunRecord(id="r1", org_id="default", status="done", ok=True))
     _run_dir(state, "r1")
     # An editor may soft-delete but not purge.
@@ -257,8 +268,10 @@ def test_hosted_purge_requires_admin(tmp_path: Path) -> None:
     assert repo.get_run("r1") is None
 
 
-def test_hosted_bulk_purge_requires_admin(tmp_path: Path) -> None:
-    state, _repo = _hosted_state(tmp_path)
+def test_hosted_bulk_purge_requires_admin(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    state, _repo = _hosted_state(serve_engine, tmp_path)
     assert ops.bulk_delete_runs(state, {"ids": [], "purge": True}, actor="editor")[1] == 403
     assert ops.bulk_delete_runs(state, {"ids": [], "purge": True}, actor="admin")[1] == 200
 
@@ -329,7 +342,9 @@ class _FakeObjectStore:
             self._o.pop(k, None)
 
 
-def test_sweep_end_to_end_on_the_object_store_backend(tmp_path: Path) -> None:
+def test_sweep_end_to_end_on_the_object_store_backend(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
     # Drives the sweep's *object-store* branch (the real hosted/R2 target) end-to-end through
     # ops.delete_run + sweep_expired_trash with a repository — not the local-filesystem fallback.
     from bajutsu.serve.server.artifacts import ObjectStorageArtifactStore
@@ -338,7 +353,7 @@ def test_sweep_end_to_end_on_the_object_store_backend(tmp_path: Path) -> None:
     prefix = "artifacts/default/"
     fake = _FakeObjectStore({f"{prefix}r1/manifest.json": b'{"ok": true, "scenarios": []}'})
     art = ObjectStorageArtifactStore(fake, prefix=prefix)
-    state, repo = _hosted_state(tmp_path)
+    state, repo = _hosted_state(serve_engine, tmp_path)
     repo.record_run(RunRecord(id="r1", org_id="default", status="done", ok=True))
     bundle = StoreBundle(
         artifacts=art,
@@ -362,11 +377,13 @@ def test_sweep_end_to_end_on_the_object_store_backend(tmp_path: Path) -> None:
     assert fake.list_keys(prefix) == []  # every object gone
 
 
-def test_sweep_purges_a_db_only_trashed_run(tmp_path: Path) -> None:
+def test_sweep_purges_a_db_only_trashed_run(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
     # Hosted edge (BE-0239): a run soft-deleted before any evidence upload has a DB `deleted_at` but
     # no store tombstone, so the store scan misses it — the sweep reconciles against the DB so it is
     # still auto-purged. Here the run has a DB row but no artifact dir.
-    state, repo = _hosted_state(tmp_path)
+    state, repo = _hosted_state(serve_engine, tmp_path)
     repo.record_run(RunRecord(id="r1", org_id="default", status="done", ok=True))
     repo.soft_delete_run(
         "r1", org_id="default", deleted_by="editor", at=datetime.now(UTC) - timedelta(days=40)

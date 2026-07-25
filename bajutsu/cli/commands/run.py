@@ -7,7 +7,7 @@ import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Annotated
 
 if TYPE_CHECKING:
     from bajutsu.drivers import base
@@ -112,19 +112,23 @@ def _resolve_dir(
         return scenario_file.parent / default_name
 
 
-def _scenario_files(eff: Effective, scenario: str, target_name: str) -> tuple[list[Path], bool]:
+def _scenario_files(
+    eff: Effective, scenario: list[str], target_name: str
+) -> tuple[list[Path], bool]:
     """The scenario files `run` should load.
 
-    `[--scenario]` when given (an explicit override), else every `*.yaml` in the target's configured
-    `scenarios` dir. Returns `(files, single)` where `single` flags the one-file override (so the
-    report can carry that file's name/description).
+    The `--scenario` files when given (an explicit override — repeat the flag to run several in one
+    process, sharing one warm runner), else every `*.yaml` in the target's configured `scenarios`
+    dir. Returns `(files, single)` where `single` flags the lone-file override (so the report can
+    carry that file's name/description); an explicit list of two or more is not `single`.
     """
     if scenario:
-        path = Path(scenario)
-        if not path.exists():
-            typer.echo(f"scenario not found: {scenario}")
-            raise typer.Exit(2)
-        return [path], True
+        paths = [Path(s) for s in scenario]
+        for path in paths:
+            if not path.exists():
+                typer.echo(f"scenario not found: {path}")
+                raise typer.Exit(2)
+        return paths, len(paths) == 1
     if eff.evidence_dirs.scenarios is None:
         typer.echo(
             f"target '{target_name}' has no scenarios dir "
@@ -242,18 +246,24 @@ def _resolve_secrets(eff: Effective) -> tuple[dict[str, str], list[str]]:
 
 
 def _load_scenarios(
-    eff: Effective, scenario: str, target_name: str
+    eff: Effective, scenario: list[str], target_name: str
 ) -> tuple[list[Scenario], str | None, str, list[Path]]:
-    """Load and fully expand the run's scenarios: the `--scenario` file, or the target's dir.
+    """Load and fully expand the run's scenarios: the `--scenario` files, or the target's dir.
 
     Each file's setup/component/data refs resolve relative to its own directory, then the expanded
     scenarios concatenate into one run. Returns the scenarios, the single-file description (None for
-    a directory run), the report's source label, and the source files (for directory resolution).
+    a multi-file or directory run), the report's source label, and the source files.
     """
     files, single = _scenario_files(eff, scenario, target_name)
-    # The containment root for refs: the configured scenarios dir for a suite run, or the single
-    # file's own directory for a `--scenario` override (BE-0174).
-    root = files[0].parent if single else Path(eff.evidence_dirs.scenarios or files[0].parent)
+    # The containment root for refs (BE-0174): the single file's own directory for a lone `--scenario`
+    # override; the common parent of an explicit multi-file `--scenario` list; else the configured
+    # scenarios dir for a whole-suite run.
+    if single:
+        root = files[0].parent
+    elif scenario:
+        root = Path(os.path.commonpath([str(f.parent) for f in files]))
+    else:
+        root = Path(eff.evidence_dirs.scenarios or files[0].parent)
     scenarios: list[Scenario] = []
     description: str | None = None
     for path in files:
@@ -261,8 +271,8 @@ def _load_scenarios(
         scenarios.extend(expanded)
         if single:
             description = file_desc
-    # The report's source label: the single file's name, or the dir name for a config-driven run.
-    source_name = files[0].name if single else Path(eff.evidence_dirs.scenarios or "").name
+    # The report's source label: the single file's name, else the root dir's name.
+    source_name = files[0].name if single else root.name
     return scenarios, description, source_name, files
 
 
@@ -723,11 +733,16 @@ def _resolve_project_config(project: str, runs_dir: str) -> str:
 def run(
     # --- Target & scenario selection ---
     target_name: str = typer.Option(..., "--target"),
-    scenario: str = typer.Option(
-        "",
-        "--scenario",
-        help="run only this one *.yaml (overrides the target's configured scenarios dir)",
-    ),
+    scenario: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--scenario",
+            help=(
+                "run only these *.yaml (repeat --scenario to run several in one process, sharing "
+                "one warm runner); overrides the target's configured scenarios dir"
+            ),
+        ),
+    ] = None,
     backend: str = typer.Option(
         "",
         help="comma list of platforms (ios/android/web/fake) or actuators (idb); first available wins",
@@ -888,7 +903,7 @@ def run(
         browsers=browsers,
     )
     secret_bindings, secret_values = _resolve_secrets(eff)
-    scenarios, description, source_name, files = _load_scenarios(eff, scenario, target_name)
+    scenarios, description, source_name, files = _load_scenarios(eff, scenario or [], target_name)
     scenarios = _filter_scenarios(scenarios, tag, exclude, erase, eff.run_defaults.erase)
     actuator, backends = _select_actuator(backend, eff, engines)
     # Where this target's devices come from is a seam (BE-0236): the provider `acquire` returns the

@@ -1,0 +1,31 @@
+[
+  {
+    "name": "propose_actions",
+    "input": {
+      "thought": "This is a workout-log form; Submit likely stays idle until the note field is filled, so I fill note then submit, toggle Intense, and try incrementing the count control.",
+      "actions": [
+        {
+          "action": "fill",
+          "fields": [
+            {
+              "id": "log.note",
+              "value": "Morning run 5k"
+            }
+          ]
+        },
+        {
+          "action": "tap",
+          "id": "log.submit"
+        },
+        {
+          "action": "tap",
+          "id": "log.intense"
+        },
+        {
+          "action": "tap",
+          "label": "Count: 1"
+        }
+      ]
+    }
+  }
+]

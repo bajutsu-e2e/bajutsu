@@ -183,7 +183,24 @@ class ResidentServer:
         # Capture the port (not self._host_port, which stop() clears): after stop() the fetch raises
         # AdbResidentError, which the driver latches into its dump fallback — a clean degrade.
         port = self._host_port
-        return lambda: narrow_to_active_window(self._fetch(port))
+
+        def fetch() -> str:
+            try:
+                return narrow_to_active_window(self._fetch(port))
+            except AdbResidentError:
+                # Stop the resident server before the driver degrades to `uiautomator dump`. A read
+                # fault is usually a wedged-but-alive instrumentation — a read that outran the socket
+                # timeout, not a dead process — and it still holds the device's single UiAutomation
+                # session. A fallback dump connects its own (BE-0245: the dump path "spins up a fresh
+                # instrumentation, connects a UiAutomation"), so while the resident server lives the
+                # dump reads an empty tree for the rest of the lease, breaking every later read.
+                # Tearing it down here releases that session, making the fallback a clean degrade
+                # rather than one poisoned by the very server it replaces. stop() is idempotent, so
+                # the environment's own end-of-lease stop() stays a safe no-op.
+                self.stop()
+                raise
+
+        return fetch
 
     def stop(self) -> None:
         """Kill the instrumentation and remove the forward; safe to call on a partial start."""

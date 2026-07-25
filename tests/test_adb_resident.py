@@ -207,6 +207,47 @@ def test_start_installs_forwards_and_returns_a_working_fetch(tmp_path: Path) -> 
     assert parse_hierarchy(fetch()) == parse_hierarchy(_APP_ONLY)
 
 
+def test_fetch_fault_stops_the_server_before_it_propagates(tmp_path: Path) -> None:
+    # A read fault must tear the resident server down before the driver degrades to `uiautomator
+    # dump`: a wedged-but-alive instrumentation still holds the device's single UiAutomation session,
+    # so a fallback dump would read an empty tree for the rest of the lease. Releasing it here makes
+    # the fallback a clean degrade.
+    teardown: list[list[str]] = []
+
+    def run(args: list[str]) -> str:
+        if "--remove" in args or "force-stop" in args:
+            teardown.append(args)
+        return "41000\n" if "forward" in args and "--remove" not in args else ""
+
+    # The readiness probe sees the channel up; the driver's first real read finds it wedged.
+    reads = iter([_MULTI_WINDOW])
+
+    def fetch(port: int) -> str:
+        try:
+            return next(reads)
+        except StopIteration:
+            raise AdbResidentError("timed out") from None
+
+    proc = _FakeProc()
+    server_apk, test_apk = _apks(tmp_path)
+    srv = adb_resident.ResidentServer(
+        "U",
+        run=run,
+        spawn=lambda argv: proc,
+        fetch=fetch,
+        server_apk=server_apk,
+        test_apk=test_apk,
+    )
+    read = srv.start()
+    with pytest.raises(AdbResidentError, match="timed out"):
+        read()
+    # The fault stopped the server: the forward was removed and the device-side package force-stopped,
+    # releasing the UiAutomation session for the driver's dump fallback.
+    assert proc.terminated
+    assert adb.forward_remove_cmd("U", 41000) in teardown
+    assert adb.force_stop_cmd("U", adb.RESIDENT_SERVER_PACKAGE) in teardown
+
+
 def test_stop_removes_the_forward_and_kills_the_instrumentation(tmp_path: Path) -> None:
     teardown: list[list[str]] = []
 
