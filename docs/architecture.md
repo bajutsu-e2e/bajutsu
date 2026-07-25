@@ -480,6 +480,21 @@ device (the shared device is reseeded via one channel, so parallel workers would
   ≈ 2.4 s per-read `uiautomator dump` startup) by default there, with a dump-fallback golden run
   guarding the `uiautomator dump` path.
 
+### Validated against a real Postgres (Linux, no Mac)
+
+- The serve DB layer's Alembic migrations — including migration 0010's `dialect.name == "postgresql"`
+  foreign-key branch and the `JSONB` column variants that `models.py` and several migrations select
+  only on Postgres — run against an ephemeral `postgres:16` service container by the
+  `migrations (postgres)` job (`serve-db.yml`;
+  [BE-0309](../roadmaps/BE-0309-serve-postgres-ci-lane/BE-0309-serve-postgres-ci-lane.md)). It reruns
+  `tests/serve/test_db_migrations.py`'s upgrade/downgrade assertions — parametrized over both
+  dialects, so the fast `check` gate exercises SQLite and this lane exercises Postgres behind the
+  `postgres` marker — giving that dialect-specific code its first coverage against the dialect the
+  hosted deployment actually targets. It landed as signal first (BE-0282's precedent) and is not yet
+  a required check. The wider DB-touching suite (the ~two dozen files that build an in-memory SQLite
+  engine per test) runs only against SQLite for now; running it against the shared Postgres needs
+  per-test isolation retrofitted first, a follow-up slice.
+
 ### Not yet wired (schema/flags exist but have no runtime effect)
 
 | Feature | Status | Location |

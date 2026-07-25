@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0309](BE-0309-serve-postgres-ci-lane.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0309") |
+| Implementing PR | [#1347](https://github.com/bajutsu-e2e/bajutsu/pull/1347) |
 | Topic | Verification & coverage |
 | Related | [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) |
 <!-- /BE-METADATA -->
@@ -77,9 +78,22 @@ Proposal altitude. The work is MECE along the units below.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Add a dedicated Postgres CI job with a service container (not a change to `check`).
+- [x] Add a dedicated Postgres CI job with a service container (not a change to `check`).
 - [ ] Run the migration upgrade/downgrade tests and the wider DB-touching test suite against it.
+  *(Slice 1: the migration tests run against Postgres; the wider DB-touching suite is a follow-up
+  slice — the 22 files that call `create_engine("sqlite://")` each assume a fresh in-memory database
+  per test, so a shared Postgres needs per-test isolation retrofitted before they can run there.)*
 - [ ] Wire it into CI as a non-gating signal, promote to required once stable.
+  *(Non-gating signal landed; promotion to a required check remains.)*
+
+### Log
+
+- Slice 1 — `serve-db.yml` stands up a `postgres:16` service container and reruns
+  `test_db_migrations.py`'s upgrade/downgrade assertions against real Postgres. The tests are
+  parametrized over both dialects (SQLite in the fast gate, Postgres behind the `postgres` marker in
+  the lane), reusing the same assertions; the lane runs `-m postgres -n0`. This gives migration
+  0010's `postgresql` FK branch and the JSONB column variants their first real-Postgres coverage.
+  Non-gating for now, per BE-0282's precedent.
 
 ## References
 

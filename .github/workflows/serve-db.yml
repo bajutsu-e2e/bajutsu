@@ -1,0 +1,84 @@
+# Real-Postgres CI lane for the serve DB layer (BE-0309). The fast `check` gate in ci.yml runs the
+# serve DB tests against in-memory SQLite alone, so the dialect-specific migration code — 0010's
+# `dialect.name == "postgresql"` FK branch and the JSONB column variants in models.py and the
+# migrations — has never actually executed against the dialect the hosted deployment targets. This
+# job stands up an ephemeral Postgres service container (the standard GitHub Actions pattern) and
+# reruns test_db_migrations.py's upgrade/downgrade assertions against it (`-m postgres`).
+#
+# NON-GATING first, following the precedent BE-0282 set for the web `network (playwright)` job: a
+# first-time Postgres service can hit its own teething problems (image-pull hiccups, connection
+# timing, a dialect edge case the SQLite-only suite never exercised) independent of ordinary
+# flakiness, so it earns required status only once it proves stable. It is therefore a plain signal
+# job, not part of `main`'s required checks — promote it to required (a branch-protection setting)
+# after it has run green for a while. Because it is not required, a `paths:` skip simply doesn't
+# report and never blocks a merge, so — unlike the required `E2E (web)` aggregator — this lane needs
+# no always-reporting gate job.
+name: Serve DB (Postgres)
+
+on:
+  workflow_dispatch:
+  pull_request:
+    # Only the serve DB surface can affect this lane, so path-gate it (safe: a non-required check
+    # that skips never blocks a merge). A new DB-relevant path defaults to NOT triggering — add it
+    # here.
+    paths:
+      - "bajutsu/serve/server/db.py"
+      - "bajutsu/serve/server/models.py"
+      - "bajutsu/serve/server/migrations/**"
+      - "tests/serve/test_db_migrations.py"
+      - ".github/workflows/serve-db.yml"
+      - "pyproject.toml"
+      - "uv.lock"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: serve-db-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  postgres:
+    name: migrations (postgres)
+    runs-on: ubuntu-latest
+    # An ephemeral Postgres for the duration of this job alone. The health-check options gate the
+    # steps below on the server actually accepting connections, so the test step never races startup.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: bajutsu
+          POSTGRES_PASSWORD: bajutsu
+          POSTGRES_DB: bajutsu_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U bajutsu -d bajutsu_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990  # v8.3.2
+        with:
+          enable-cache: true
+
+      # The `db` extra carries SQLAlchemy / Alembic / psycopg (the real Postgres driver); the dev
+      # group carries pytest. The migration tests need both.
+      - name: Install the db extra + test tooling
+        run: uv sync --extra db --group dev
+
+      # `-m postgres` overrides the default `-m 'not … and not postgres'` (pyproject addopts) so the
+      # Postgres-parametrized cases — deselected everywhere else — actually run here. `-n0` serializes
+      # them: they share the one Postgres service and reset its schema between tests, so parallel
+      # workers would race. psycopg v3 uses the `postgresql+psycopg://` scheme.
+      - name: Run migration tests against Postgres
+        env:
+          BAJUTSU_TEST_POSTGRES_URL: postgresql+psycopg://bajutsu:bajutsu@localhost:5432/bajutsu_test
+          # This lane exists to exercise Postgres, so a missing URL must fail loudly here — not skip
+          # every `-m postgres` case and report a false green. The sentinel flips the fixture from
+          # skip to fail; the fast gate leaves it unset and keeps skipping.
+          BAJUTSU_REQUIRE_POSTGRES: "1"
+        run: uv run --no-sync pytest tests/serve/test_db_migrations.py -m postgres -n0
