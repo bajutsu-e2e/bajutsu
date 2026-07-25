@@ -96,6 +96,16 @@ concurrency:
 env:
   BAJUTSU_XCUITEST_RUNNER_LOG: ${{ github.workspace }}/runs/runner-logs
   BAJUTSU_XCUITEST_STARTUP_TIMEOUT: "300"
+  # Respawn the resident runner cold after a single warm reuse rather than the default 3
+  # (`_MAX_WARM_REUSES`). Folding many scenarios into one `bajutsu run` (the `run` / `actuation` jobs)
+  # lengthens each warm-runner session, and each warm reuse re-attaches the XCTest automation session
+  # to a freshly launched app — a session that can destabilize into a mid-run crash after enough
+  # cycles on a contended CI host (see `_MAX_WARM_REUSES` in
+  # bajutsu/platform_lifecycle/environments/xcuitest.py). Respawning sooner caps that accumulation:
+  # the six-scenario `run` job pays three cold startups instead of one, still fewer than the four the
+  # pre-consolidation jobs summed to, and the build-once `build` job already removed their per-job
+  # Swift builds — so the crash exposure drops without giving back the consolidation's saving.
+  BAJUTSU_XCUITEST_MAX_WARM_REUSES: "1"
 
 jobs:
   # Decide whether an on-device run is warranted. The macOS jobs only fire when the PR
