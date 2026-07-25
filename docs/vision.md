@@ -102,7 +102,7 @@ UI toolkits (BE-0221; see [scenarios](scenarios.md#cross-platform-ids-a-candidat
 | Shared abstractions | Platform-aware backend registry + `Environment` Protocol | Implemented ([BE-0042](../roadmaps/BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md), [BE-0009](../roadmaps/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md)) |
 | Web | Playwright; runs on the existing Linux gate, no Mac / emulator | Implemented ([BE-0041](../roadmaps/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md), [BE-0054](../roadmaps/BE-0054-web-backend-completion/BE-0054-web-backend-completion.md)) |
 | Android | adb + UI Automator, a coordinate-driven backend | Implemented ([BE-0007](../roadmaps/BE-0007-android-backend/BE-0007-android-backend.md), [BE-0208](../roadmaps/BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci.md), [BE-0209](../roadmaps/BE-0209-android-codegen-emitter/BE-0209-android-codegen-emitter.md)) |
-| Flutter / hybrids | Cross-rendered UIs need a semantics bridge, not a new OS actuator | Planned ([BE-0008](../roadmaps/BE-0008-flutter-support/BE-0008-flutter-support.md)) |
+| Flutter / hybrids | An id convention on the existing iOS / Android backends, not a new actuator or a semantics bridge | Planned ([BE-0008](../roadmaps/BE-0008-flutter-support/BE-0008-flutter-support.md)) |
 
 Web landed before Android, even though Android is architecturally closer to a coordinate backend: Web needed no
 macOS and no device emulator, so it fit inside the [`make check`](../CLAUDE.md) / [CI](ci.md) gate

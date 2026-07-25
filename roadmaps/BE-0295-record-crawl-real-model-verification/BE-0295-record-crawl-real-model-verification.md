@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0295](BE-0295-record-crawl-real-model-verification.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0295") |
+| Implementing PR | [#1344](https://github.com/bajutsu-e2e/bajutsu/pull/1344), [#1357](https://github.com/bajutsu-e2e/bajutsu/pull/1357) |
 | Topic | Authoring experience |
 | Related | [BE-0104](../BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend.md), [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md) |
 <!-- /BE-METADATA -->
@@ -78,10 +79,40 @@ Proposal altitude. The work is MECE along the units below.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Capture real `record` propose-step responses as regression fixtures.
-- [ ] Capture real `crawl` navigation-step responses as regression fixtures.
-- [ ] Add a key-gated live smoke test for `record`'s propose loop.
-- [ ] Add a key-gated live smoke test for `crawl`'s navigation loop.
+- [x] Capture real `record` propose-step responses as regression fixtures.
+- [x] Capture real `crawl` navigation-step responses as regression fixtures.
+- [x] Add a key-gated live smoke test for `record`'s propose loop.
+- [x] Add a key-gated live smoke test for `crawl`'s navigation loop.
+
+**Log**
+
+- Landed the two key-gated live smoke tests first, signal-first (the BE-0282 precedent):
+  `tests/test_real_model_smoke.py` drives `ClaudeAgent.next_action` and `ClaudeActionProposer.propose`
+  against a real model over a committed showcase golden screen (no Simulator; only the model call is
+  live), asserting each real response parses into the propose loop's action schema. They skip when no
+  AI credential is configured, so the gate stays hermetic. Deterministic `FakeBackend` self-checks in
+  the same file keep the loader and the validity assertions honest, so a live run validates for real.
+  The two fixture-capture units remain, needing a real credential to record the responses.
+- Built the capture harness for the two fixture units, keyless: `tests/real_model_support.py` adds a
+  `RecordingBackend` that wraps the live backend and keeps the raw tool-use a real model returns
+  before the propose loop parses it away, plus `save_fixture` and `load_fixture`. `save_fixture`
+  serializes all tool-use blocks from the response; `load_fixture` returns a `_FixtureReplay` backend
+  that replays every captured block in one `MessageResponse` — preserving a real multi-action turn
+  intact (BE-0178 batched actions). `tests/test_real_model_fixtures.py` exercises the whole
+  capture → save → load → replay chain deterministically (no credential), including a multi-block
+  round-trip so the `_FixtureReplay` path is validated keylessly; it replays any committed fixture
+  under `tests/fixtures/be0295/` (signal-first — skipped while none exists), and carries the
+  key-gated live capture that writes the committed fixture. Both boxes stayed unchecked until the
+  next entry. The shared screen loader, credential gate, and parse-validity assertions moved into
+  `real_model_support`, so the smoke and fixture tests share one source of truth.
+- Captured both fixtures from a real model through the `claude-code` backend (BE-0176), which reaches
+  a real model over the `claude` CLI's own credential — so no `ANTHROPIC_API_KEY` was needed:
+  `BAJUTSU_AI_PROVIDER=claude-code uv run pytest tests/test_real_model_fixtures.py -m live -k capture`.
+  `tests/fixtures/be0295/record.json` and `crawl.json` hold the genuine tool-use each loop's prompt
+  produced (`crawl.json` is a single `propose_actions` block whose `input.actions` carries four real
+  actions — a real fixture the fakes never produced, though it is one block, not multiple). The committed-fixture replay tests now run deterministically on
+  every gate — no credential — closing both fixture units. All four units done, so the item is
+  **Implemented**; the key-gated live capture stays for re-recording when a prompt or model changes.
 
 ## References
 

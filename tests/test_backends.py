@@ -124,9 +124,9 @@ def test_plain_fake_advertises_no_network() -> None:
 
 
 def test_backend_lifecycle_is_runtime_checkable() -> None:
-    # BackendLifecycle is a typing umbrella over the full hook set — no single real driver owns all
-    # four (see the Protocol docstring). @runtime_checkable still lets isinstance verify the
-    # structural "has every hook" shape: a class with all four passes, one missing any does not.
+    # BackendLifecycle is a typing umbrella over the full hook set — no single real driver owns the
+    # whole set (see the Protocol docstring). @runtime_checkable still lets isinstance verify the
+    # structural "has every hook" shape: a class with all of them passes, one missing any does not.
     from bajutsu.drivers.base import BackendLifecycle
 
     class FullLifecycle:
@@ -134,6 +134,7 @@ def test_backend_lifecycle_is_runtime_checkable() -> None:
         def close(self) -> None: ...
         def reset_context(self) -> None: ...
         def await_ready(self, timeout: float = 10.0, poll: float = 0.1) -> None: ...
+        def health_ready(self) -> bool: ...
 
     class PartialLifecycle:
         def navigate(self) -> None: ...

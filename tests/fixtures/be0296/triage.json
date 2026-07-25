@@ -1,0 +1,17 @@
+[
+  {
+    "name": "diagnose",
+    "input": {
+      "summary": "The tap targets id `log.intens`, which does not exist on the screen; the button captured nearest the failure is `log.intense` (label \"Intense\"). The id is misspelled/truncated by one character.",
+      "category": "selector",
+      "suggestions": [
+        "Did you mean `log.intense`? Change the tap target from `log.intens` to `log.intense`, the button present on this screen."
+      ],
+      "fix": {
+        "kind": "renameId",
+        "find": "log.intens",
+        "replace": "log.intense"
+      }
+    }
+  }
+]
