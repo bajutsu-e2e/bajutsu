@@ -9,7 +9,11 @@ from collections.abc import Callable, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from bajutsu.doctor import Score
+    from bajutsu.drivers import base
 
 from bajutsu import capability_preflight
 from bajutsu.artifact_perms import make_run_dir, restrict_file
@@ -115,6 +119,38 @@ class _ScenarioRunner:
     # the actuator preflighted here is the one the lease builds. None keeps the fixed-`actuator` path
     # (the cross-browser matrix, tests driving a lease directly).
     resolve_actuator: Callable[[Scenario], str] | None = None
+    # Emit the app's entry-screen convention score once per run (the first scenario's freshly launched
+    # driver), folding `doctor`'s Ready/Partial/Blocked tell into the run so CI needs no separate
+    # `doctor` invocation that would cold-spawn a second XCUITest runner. Purely diagnostic and off the
+    # verdict path (prime directive 1): it never changes a scenario's result or the run's exit code.
+    # None (the default) keeps every existing run silent.
+    on_score: Callable[[Score], None] | None = None
+
+    def _maybe_emit_score(self, i: int, driver: base.Driver) -> None:
+        """Score the just-launched app's entry screen once, on the first scenario (best-effort).
+
+        Runs only for the first scenario and only when an `on_score` sink is set, so exactly one score
+        is emitted per run (per engine in a matrix). A `query()` fault here is diagnostic noise, never a
+        run failure — it is logged and swallowed so the deterministic verdict is untouched.
+        """
+        if i != 0 or self.on_score is None:
+            return
+        # Lazy import: `doctor` pulls in the platform lifecycle, which imports `namespace_of` back from
+        # it — a module-level import here would risk a cycle, and the default (no `on_score`) path must
+        # not pay for loading it at all.
+        from bajutsu.doctor import score
+
+        try:
+            self.on_score(
+                score(
+                    driver.query(),
+                    self.eff.id_namespaces,
+                    ok_coverage=self.eff.doctor_thresholds.ok_coverage,
+                    fail_coverage=self.eff.doctor_thresholds.fail_coverage,
+                )
+            )
+        except Exception as exc:  # diagnostic only — the run's verdict must not depend on it
+            _logger.debug("entry-screen convention score failed: %s", exc, exc_info=True)
 
     def run_one(self, i: int, s: Scenario) -> RunResult:
         """Run one scenario on a freshly leased device and return its result.
@@ -160,6 +196,9 @@ class _ScenarioRunner:
         lz = self.lease(self.eff, s)
         handler = self.on_blocked_for(s) if self.on_blocked_for is not None else self.on_blocked
         try:
+            # Score the entry screen before the scenario mutates it — the app is freshly launched here,
+            # exactly what a standalone `doctor` probe would see, but on the lease this run already holds.
+            self._maybe_emit_score(i, lz.driver)
             if lz.collector is not None:
                 lz.collector.clear()
             # t0 after launch, so exchange offsets share the step timeline's origin.
@@ -263,6 +302,7 @@ def run_all(
     resolve_actuator: Callable[[Scenario], str] | None = None,
     golden_context: GoldenContext | None = None,
     lease_udid_spec: str = "booted",
+    on_score: Callable[[Score], None] | None = None,
 ) -> list[RunResult]:
     """Run every scenario, each on a freshly leased device, and return one result per scenario.
 
@@ -306,6 +346,9 @@ def run_all(
             routes the run to the live XCUITest environment, so the preflight narrows to that
             transport's set (BE-0238) — the same `is_webdriver_endpoint` signal `environment_for`
             routes on. "booted" (the default) is never a URL, so the local path is unchanged.
+        on_score: Sink for the app's entry-screen convention score, emitted once from the first
+            scenario's freshly launched driver (the `run --score` inline of `doctor`'s grade). None
+            (the default) scores nothing; diagnostic only, never on the verdict path.
 
     Returns:
         One result per scenario, in the same order as `scenarios`.
@@ -346,6 +389,7 @@ def run_all(
         resolve_actuator=resolve_actuator,
         golden_context=golden_context,
         udid_spec=lease_udid_spec,
+        on_score=on_score,
     )
     if workers > 1:
         # >1 hands each worker its own device + per-device resources; the runner is frozen and
@@ -378,6 +422,7 @@ def run_and_report(
     exec_provenance: dict[str, str | None] | None = None,
     golden_context: GoldenContext | None = None,
     lease_udid_spec: str = "booted",
+    on_score: Callable[[Score], None] | None = None,
 ) -> tuple[list[RunResult], Path]:
     """Run the scenarios, then write the run's artifacts under `runs_dir/run_id`.
 
@@ -414,6 +459,7 @@ def run_and_report(
         resolve_actuator=resolve_actuator,
         golden_context=golden_context,
         lease_udid_spec=lease_udid_spec,
+        on_score=on_score,
     )
     manifest = _assemble_report(
         scenarios,

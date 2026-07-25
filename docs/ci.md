@@ -65,8 +65,8 @@ a `0` / `1` exit code, and — inside Actions — failure **annotations** + a jo
 1. **Build and install your app** (and the XCUITest runner) onto a booted Simulator (this varies
    per app, so it stays yours — `xcodebuild` + `xcrun simctl install`).
 2. **Run bajutsu** with the [`bajutsu-e2e`](../.github/actions/bajutsu-e2e/action.yml)
-   composite action — it syncs deps, runs an optional `doctor`
-   preflight, runs your scenarios, and uploads the run (report + screenshots + video +
+   composite action — it syncs deps, runs your scenarios (with `run --score`, so the log carries
+   the entry-screen convention grade), and uploads the run (report + screenshots + video +
    `network.json`) as an artifact. The XCUITest backend needs no pip extra — its runner is driven
    over HTTP and `xcodebuild` ships with Xcode on the runner.
 
@@ -110,5 +110,9 @@ No flag needed — it auto-detects the Actions environment.
   (e.g. `dorny/test-reporter`) for an inline test view.
 - **Determinism**: use scenario [`mocks`](network.md#deterministic-mocks) to stub the
   network so runs do not depend on a live server.
-- **`doctor`**: today it is a convention *score* (non-blocking preflight); a hard
-  env/permission runnability gate (`xcodebuild` / Xcode presence) is future work.
+- **Convention score**: the composite action passes `run --score`, so the run prints the app's
+  entry-screen convention grade (`Ready` / `Partial` / `Blocked`, the same score `doctor` reports)
+  to stderr, computed from the run's own first launch. It is diagnostic only — never on the pass/fail
+  path — and folding it into the run avoids a separate `doctor` step that would cold-spawn a second
+  XCUITest runner. Run `bajutsu doctor` locally for the fuller preflight (runnability + capability
+  checks); a hard env/permission runnability gate in CI (`xcodebuild` / Xcode presence) is future work.

@@ -9,6 +9,7 @@ import pytest
 from _runner import _eff, _el, _failing_lease, _fake_driver, _ios_eff, _lease
 
 from bajutsu.config import Effective, XcuitestConfig
+from bajutsu.doctor import Score
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence import NullSink
@@ -30,6 +31,47 @@ def test_run_all() -> None:
     ]
     results = run_all(_eff(), scenarios, _lease)
     assert [r.ok for r in results] == [True, False]
+
+
+def test_on_score_emits_the_entry_screen_grade_once() -> None:
+    # `run --score`: the app's entry screen is scored once per run — from the first scenario's freshly
+    # launched driver — so CI reads doctor's Ready/Partial/Blocked tell without a second cold spawn.
+    scenarios = [
+        Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]}),
+        Scenario.model_validate({"name": "b", "steps": [{"tap": {"id": "ok"}}]}),
+    ]
+    scores: list[Score] = []
+    run_all(_eff(), scenarios, _lease, workers=2, on_score=scores.append)
+    # Exactly once for the whole run (index 0), even with parallel workers; `_fake_driver`'s single
+    # id-carrying button grades Ready.
+    assert len(scores) == 1
+    assert scores[0].grade == "Ready"
+
+
+def test_on_score_defaults_to_not_scoring() -> None:
+    scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
+    scored = False
+
+    def _sink(_s: Score) -> None:
+        nonlocal scored
+        scored = True
+
+    # The default call (no on_score) is unchanged; passing the sink is what opts in.
+    run_all(_eff(), scenarios, _lease)
+    assert scored is False
+    run_all(_eff(), scenarios, _lease, on_score=_sink)
+    assert scored is True
+
+
+def test_on_score_failure_never_breaks_the_run() -> None:
+    # The score is diagnostic and off the verdict path (prime directive 1): a sink that raises — or a
+    # query fault behind it — is swallowed, so the scenario's own machine verdict still stands.
+    def boom(_s: Score) -> None:
+        raise RuntimeError("score sink blew up")
+
+    scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
+    results = run_all(_eff(), scenarios, _lease, on_score=boom)
+    assert results[0].ok
 
 
 def test_scenario_runner_runs_one_in_isolation() -> None:
@@ -302,6 +344,15 @@ def test_run_and_report(tmp_path: Path) -> None:
     assert prov["scenarioHash"] == expected
     assert prov["toolVersion"] == __version__
     assert "configSource" not in prov  # a local config records no Git source
+
+
+def test_run_and_report_forwards_on_score(tmp_path: Path) -> None:
+    # `run_and_report` threads `--score`'s sink through to the pipeline, so the CLI's `--score` reaches
+    # the first lease's grade.
+    scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
+    scores: list[Score] = []
+    run_and_report(_eff(), scenarios, _lease, tmp_path / "runs", "run1", on_score=scores.append)
+    assert len(scores) == 1 and scores[0].grade == "Ready"
 
 
 # --- cross-browser matrix run (BE-0076 Phase 2): run-per-engine -> assemble -> report-once ---
