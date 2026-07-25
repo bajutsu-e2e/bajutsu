@@ -10,6 +10,7 @@ the element it resolved, addressed by that element's per-snapshot handle.
 from __future__ import annotations
 
 import json
+import time
 from typing import Any
 
 import pytest
@@ -352,6 +353,47 @@ def test_await_ready_returns_once_the_runner_health_is_ready() -> None:
 def test_await_ready_times_out_loudly_when_the_runner_never_comes_up() -> None:
     with pytest.raises(XcuitestChannelError, match="did not come up"):
         _driver(lambda m, p, b: _Reply(status="starting")).await_ready(timeout=0.02, poll=0.001)
+
+
+def test_health_ready_is_a_single_shot_probe_true_when_ready() -> None:
+    # BE-0319 unit 3: one non-blocking probe (unlike await_ready's loop), so the cold-spawn liveness
+    # wait owns the timing between probes.
+    assert _driver(lambda m, p, b: _Reply(status="ready")).health_ready() is True
+
+
+def test_health_ready_is_false_before_the_runner_is_up() -> None:
+    assert _driver(lambda m, p, b: _Reply(status="starting")).health_ready() is False
+
+
+def test_health_ready_swallows_a_transport_failure_as_not_ready() -> None:
+    # A runner not yet accepting connections raises a transport failure; the single-shot probe reads
+    # that as not-ready (never an error), so the caller keeps polling rather than aborting.
+    def _refuse(m: str, p: str, b: Any) -> _Reply:
+        raise _TransportFailure("refused", delivered=False)
+
+    assert _driver(_refuse).health_ready() is False
+
+
+def test_health_ready_probes_the_raw_transport_not_the_retried_one() -> None:
+    # A regression this PR's own review caught: health_ready() must reuse the single-attempt probe
+    # transport (`_probe_transport`, the same one the BE-0287 crash-recovery health poll uses), never
+    # the BE-0207-retried `_transport` — routing a "single-shot" probe through the retry would silently
+    # turn one call into up to _MAX_ATTEMPTS attempts with backoff (over a second) instead of one.
+    driver = XcuitestDriver(host="127.0.0.1", port=1)  # a real transport, no injected fake
+    assert driver._probe_transport is not driver._transport
+
+
+def test_health_ready_returns_promptly_on_a_refused_connection() -> None:
+    # The timing signature of the regression above: through the retried transport, a down runner
+    # costs _BACKOFF_BASE_SECONDS * (1 + 2) = 1.5s of sleep before health_ready() returns; through the
+    # raw single-attempt transport it returns as soon as the connection is refused. A generous bound
+    # well under 1.5s catches a reintroduction of the bug without being timing-flaky.
+    start = time.monotonic()
+    # Port 1 is a privileged port nothing listens on locally — refused immediately, no hang.
+    ready = XcuitestDriver(host="127.0.0.1", port=1).health_ready()
+    elapsed = time.monotonic() - start
+    assert ready is False
+    assert elapsed < 1.0
 
 
 def test_a_runner_crash_mid_action_fails_loudly_not_as_not_found() -> None:

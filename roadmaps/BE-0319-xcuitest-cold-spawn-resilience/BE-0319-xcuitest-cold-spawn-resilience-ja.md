@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0319](BE-0319-xcuitest-cold-spawn-resilience-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0319") |
+| 実装 PR | [#1327](https://github.com/bajutsu-e2e/bajutsu/pull/1327) |
 | トピック | Platform support |
 | 関連 | [BE-0207](../BE-0207-xcuitest-channel-transient-retry/BE-0207-xcuitest-channel-transient-retry-ja.md), [BE-0218](../BE-0218-e2e-simulator-flaky-readiness-actuation/BE-0218-e2e-simulator-flaky-readiness-actuation-ja.md), [BE-0287](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience-ja.md) |
 <!-- /BE-METADATA -->
@@ -156,11 +157,11 @@ PR #1299 はすでに runner の出力を捕捉し、その末尾を長さを区
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] 単位 1 — コールド起動の経路で runner 出力の捕捉を既定で有効にする（#1299 の上に立つ）。
-- [ ] 単位 2 — 捕捉した末尾を `XcuitestChannelError` の起動失敗メッセージに織り込む。
-- [ ] 単位 3 — コールド起動の待機中に `xcodebuild` プロセスが終了したら即座に失敗する。
-- [ ] 単位 4 — 明確に失敗する前に、コールド起動を 1 度だけ再試行する。
-- [ ] 単位 5 — 起動・待機の接合部に対するオフデバイスのテスト。
+- [x] 単位 1 — コールド起動の経路で runner 出力の捕捉を既定で有効にする（#1299 の上に立つ）。
+- [x] 単位 2 — 捕捉した末尾を `XcuitestChannelError` の起動失敗メッセージに織り込む。
+- [x] 単位 3 — コールド起動の待機中に `xcodebuild` プロセスが終了したら即座に失敗する。
+- [x] 単位 4 — 明確に失敗する前に、コールド起動を 1 度だけ再試行する。
+- [x] 単位 5 — 起動・待機の接合部に対するオフデバイスのテスト。
 
 ## 参考
 
