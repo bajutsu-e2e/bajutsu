@@ -3,16 +3,18 @@
 Read-only and org-scoped, mirroring the stats tab (BE-0102). When a repository is wired the ranking
 groups straight from the DB provenance stamp (the BE-0220 prerequisite columns); without one it
 builds the same records from each run's `manifest.json`. Driven against a real SqlRepository on
-in-memory SQLite and a real LocalArtifactStore — no mocks.
+in-memory SQLite in the gate and, behind the `postgres` marker, against a real Postgres service in
+the serve-db.yml lane (BE-0309), plus a real LocalArtifactStore — no mocks.
 """
 
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
 
 from _shared import _get, _serve, project
-from sqlalchemy import create_engine
+from sqlalchemy import Engine
 
 from bajutsu import serve as srv
 from bajutsu.serve.operations import flakiness_html
@@ -20,8 +22,8 @@ from bajutsu.serve.server.db import RunRecord, SqlRepository
 from bajutsu.serve.server.models import Base
 
 
-def _repo() -> SqlRepository:
-    engine = create_engine("sqlite://")
+def _repo(serve_engine: Callable[..., Engine]) -> SqlRepository:
+    engine = serve_engine()
     Base.metadata.create_all(engine)
     repo = SqlRepository(engine)
     repo.ensure_org("default", slug="default", name="Default")
@@ -64,9 +66,11 @@ def test_flakiness_html_from_artifact_store(tmp_path: Path) -> None:
     assert "/runs/20260102-000000/report.html" in html
 
 
-def test_flakiness_html_from_repository_is_org_scoped(tmp_path: Path) -> None:
+def test_flakiness_html_from_repository_is_org_scoped(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
     scn_dir, cfg, runs = project(tmp_path)
-    repo = _repo()
+    repo = _repo(serve_engine)
     repo.ensure_org("other", slug="other", name="Other")
     # Two default-org runs flip the verdict at one fingerprint; another org's run must not appear.
     repo.record_run(
