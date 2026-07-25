@@ -269,7 +269,15 @@ class _EngineFactory:
     def __call__(self, *, foreign_keys: bool = False) -> Engine:
         from sqlalchemy import create_engine, event
 
-        engine = create_engine(self._url)
+        # NullPool for Postgres: each `Session` closes its connection immediately on commit/rollback,
+        # so the suite doesn't accumulate idle pooled connections that can exhaust the service
+        # container's limit across the many small per-test engines the fixture creates.
+        kwargs: dict[str, object] = {}
+        if self._dialect == "postgresql":
+            from sqlalchemy.pool import NullPool
+
+            kwargs["poolclass"] = NullPool
+        engine = create_engine(self._url, **kwargs)
         if foreign_keys and self._dialect == "sqlite":
             event.listen(engine, "connect", lambda conn, _: conn.execute("PRAGMA foreign_keys=ON"))
         return engine

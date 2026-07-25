@@ -149,7 +149,7 @@ def _db_state(
     tmp_path: Path,
     oauth: object,
     admin_team: str | None = None,
-) -> tuple[ServeState, object]:
+) -> tuple[ServeState, Engine]:
     from bajutsu.serve.server.db import SqlRepository
     from bajutsu.serve.server.models import Base
 
