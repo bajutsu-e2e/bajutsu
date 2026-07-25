@@ -99,4 +99,4 @@ jobs:
 
 - **JUnit**：`junit.xml` はレポートの隣に書き出されます。これを test-reporter 系アクション（例 `dorny/test-reporter`）に渡すと、テスト結果をインライン表示できます。
 - **決定性**：シナリオの [`mocks`](../network.md#deterministic-mocks) で通信をスタブし、ライブサーバへの依存をなくします。
-- **規約スコア**：composite action は `run --score` を渡すので、run が実行時の最初の起動から算出した入口画面の規約グレード（`Ready` / `Partial` / `Blocked`、`doctor` が報告するスコアと同じもの）を stderr に出力します。この出力は診断だけを目的としており、合否の判定には一切関与しません。スコアを run に畳み込むことで、2 つめの XCUITest ランナーをコールド起動する別立ての `doctor` ステップを避けられます。実行可能性や capability のチェックを含むより広いプリフライトは、ローカルで `bajutsu doctor` を実行してください。CI での env や権限の実行可能性ゲート（`xcodebuild` / Xcode の存在チェック）は今後の課題です。
+- **規約スコア**：composite action は `run --score` を渡すので、run が実行時の最初の起動から算出した入口画面の規約グレード（`Ready` / `Partial` / `Blocked`、`doctor` が報告するスコアと同じもの）を stderr に出力します。この出力は診断だけを目的としており、合否の判定には一切関与しません。スコアを run に畳み込むことで、2 つめの XCUITest ランナーをコールド起動する別立ての `doctor` ステップを避けられます。実行可能性や capability のチェックを含むより広いプリフライトを行うには、ローカルで `bajutsu doctor` を実行してください。CI での env や権限の実行可能性ゲート（`xcodebuild` / Xcode の存在チェック）は今後の課題です。
