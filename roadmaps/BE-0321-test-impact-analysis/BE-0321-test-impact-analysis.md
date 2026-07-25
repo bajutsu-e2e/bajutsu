@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-test-impact-analysis-ja.md)
+**English** · [日本語](BE-0321-test-impact-analysis-ja.md)
 
-# BE-XXXX — Test impact analysis (affected-step selection from a change)
+# BE-0321 — Test impact analysis (affected-step selection from a change)
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-test-impact-analysis.md) |
+| Proposal | [BE-0321](BE-0321-test-impact-analysis.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0321") |
 | Topic | Verification & coverage |
 <!-- /BE-METADATA -->
 
