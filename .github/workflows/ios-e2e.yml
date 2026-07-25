@@ -2,19 +2,25 @@
 # (adb) and web-e2e.yml (Playwright) in scope, but unlike them this lane carries the platform's
 # REQUIRED status check: the `E2E` job below always reports (even when the macOS jobs are
 # path-gated skipped), so it — not this file's name — is what `main`'s branch-protection ruleset
-# pins. Ten jobs, all on the XCUITest backend (the resident BajutsuRunner), against the showcase
+# pins. Seven jobs, all on the XCUITest backend (the resident BajutsuRunner), against the showcase
 # suite (BE-0079, the single iOS fixture). Each macOS job starts with the same five-step bootstrap
 # (select Xcode, install uv, install xcodegen, start booting a Simulator, resolve the Xcode
 # version for a cache key) via the `setup-ios-toolchain` composite action, then does its own
 # DerivedData caching and build — those vary per job (app only / app + runner / app + runner +
 # UIKit), so they stay job-local rather than folded into the shared action:
-#   - smoke (xcuitest): build the showcase, boot a Simulator, run a scenario through the XCUITest
-#     backend (driver + simctl + the resident runner + real actuation) — the functional heart.
-#   - actuation (xcuitest): real on-device XCUITest actuation beyond the conformance job's `tap`
-#     (BE-0281) — `back` and device control (setLocation / clipboard / push) on the Stable launch
-#     tab. Deliberately NOT part of the `E2E` gate's `needs:` (like `golden` / `visual`): new
-#     actuation lands as a per-PR signal first (Simulator flakiness, BE-0218) and is promoted to
-#     the gate only once stable.
+#   - run (xcuitest): the homogeneous gating lane — every `bajutsu run`-over-XCUITest scenario that
+#     used to be its own job (smoke, gestures, the runner channel's /type + /swipe + /back, and the
+#     deterministic permissions surface) folded into one `bajutsu run`. They differed only in which
+#     scenarios they ran, so each re-paid the lane's dominant fixed cost — the cold XCTest-host
+#     startup plus its own build and boot — over again; one job pays it once and warm-reuses the
+#     resident runner across the scenarios (BE-0291/BE-0287). `run` reddens the gate if any scenario
+#     fails, so per-scenario pass/fail moves from job names into its report. Covers BE-0019 (pinch/
+#     rotate, /gesture), BE-0281 (/type, /swipe, /back), BE-0276 (`permissions`: location, pre-granted
+#     with no prompt), and BE-0316 (`handleSystemAlert` taps the SpringBoard "Allow" by native query).
+#   - actuation (xcuitest): real on-device XCUITest actuation beyond `tap` (BE-0281) — `back` and
+#     device control (setLocation / clipboard / push) on the Stable launch tab. Deliberately NOT part
+#     of the `E2E` gate's `needs:` (like `golden` / `visual`): new actuation lands as a per-PR signal
+#     first (Simulator flakiness, BE-0218) and is promoted to the gate only once stable.
 #   - golden (xcuitest): the BE-0006 element-tree golden over XCUITest, the iOS twin of
 #     android-e2e.yml's `golden (adb)`. Like `visual`, deliberately NOT part of the `E2E` gate's
 #     `needs:` — the tree golden is deterministic and host-independent, so a drift surfaces here as
@@ -24,34 +30,24 @@
 #     compiles components.yaml; a trailing non-gating step (BE-0297) also compiles the wider DSL
 #     surface (text-editing / gestures / multi-touch / coordinate-swipe / drag / compound selectors)
 #     reusing scenarios already proven on-device, promoted into the gate once the slice is stable.
-#   - gestures (xcuitest): a pinch/rotate scenario through the full `bajutsu run` path on the
-#     XCUITest backend (BE-0019) — two-finger gestures, the one class of actuation the retired idb
-#     backend could not drive.
-#   - permission (xcuitest): the deterministic `permissions` field (BE-0276) — location, which
-#     `simctl privacy grant` pre-grants before launch with no prompt — and the `handleSystemAlert`
-#     step (BE-0316), which taps the SpringBoard notification-permission prompt's "Allow" button by
-#     a native accessibility query. Both need the forced-XCUITest treatment a coordinate backend
-#     can never resolve (tapping the tab bar item behind it, see docs/showcase.md).
-#   - runner-actuation (xcuitest): the resident runner channel's actuation beyond tap / pinch /
-#     rotate (BE-0281) — `/type` (search.yaml) and `/swipe` + `/back` (notices.yaml),
-#     tab-crossing scenarios.
 #   - bundled-runner (xcuitest): the bundled-runner path (BE-0292) — the same resident runner
 #     resolved from the wheel bundle rather than a config `testRunner`, against both the SwiftUI
 #     and UIKit a11y apps (the runner is app-agnostic, BE-0019), proving a Simulator run needs no
-#     runner-build and no runner path.
+#     runner-build and no runner path. Kept its own job — a distinct config and two targets, not
+#     just different scenarios, so it does not fold into `run`.
 #   - conformance (xcuitest): the driver conformance suite (BE-0114) on-device against the XCUITest
-#     backend.
+#     backend. Kept its own job — a pytest-ondevice harness, not a `bajutsu run`.
 #   - visual (xcuitest): the iOS twin of android-e2e.yml's `visual` — a pixel VRT of the Stable
 #     catalog against the committed `baselines_ios/` baseline. Deliberately NOT part of the `E2E`
 #     gate's `needs:` (see that job below) — a pixel baseline is host-specific (the Simulator
 #     renderer varies by Xcode / device / OS), so a drift surfaces here as a signal, never
 #     blocking a merge, the same rationale android-e2e.yml's `visual` and web-e2e.yml's jobs
 #     follow for their own non-required lanes.
-#   - gestures, permission, runner-actuation, and bundled-runner used to be one job
-#     (`xcuitest-gestures`, display name `xcuitest (multi-touch)`) that grew concern by concern
-#     (BE-0276, BE-0281, BE-0292, BE-0316) well past its original multi-touch-only name; each now
-#     boots and builds independently, trading the old job's shared-build cost saving for a job name
-#     and a failure signal that map onto one concern each.
+#   - `run` is itself the second consolidation of this lane: smoke / gestures / permission /
+#     runner-actuation were once separate jobs (and earlier still one `xcuitest-gestures` job), each
+#     re-paying the cold XCTest-host startup — the lane's dominant cost. Folding them back into one
+#     `bajutsu run` trades per-concern job names for paying that cold startup once, now that the run
+#     loop's per-scenario verdict makes the split unnecessary for the gate.
 # The SwiftUI a11y product is the smoke / golden / codegen / visual subject; the UIKit twin shares
 # the identifier contract, so one toolkit suffices for the gate (bundled-runner is the exception —
 # it deliberately runs both toolkits to prove the runner is app-agnostic).
@@ -127,17 +123,45 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
         run: python3 scripts/e2e_changes.py
 
-  smoke:
-    name: smoke (xcuitest)
+  # The homogeneous XCUITest gating lane: one build, one boot, one resident runner drive every
+  # `bajutsu run`-over-XCUITest scenario that used to be its own job (smoke / gestures / permission /
+  # runner-actuation). They differed only in which scenarios they ran, so each re-paid the lane's
+  # dominant fixed cost — the cold `xcodebuild test-without-building` XCTest-host startup (~2-3 min on
+  # macos-latest) plus its own build and boot — four times over, at 10x macOS billing. Folded into one
+  # `bajutsu run`, the cold startup is paid once and BE-0291's warm reuse (with BE-0287's proactive
+  # respawn) carries the resident runner across the scenarios. `run` runs each scenario to its own
+  # verdict and exits non-zero if any fails, so the single job reddens the required `E2E` gate exactly
+  # as the four jobs did — the per-scenario pass/fail moves from job names into the run's report.
+  # Kept separate (genuinely different execution models, not just different scenarios): `codegen`
+  # (native xcodebuild on generated Swift), `conformance` (pytest ondevice), `bundled-runner` (the
+  # bundled-runner config on two targets). The non-gating `actuation` / `golden` / `visual` stay out
+  # (per-PR signals, deliberately off the gate).
+  #   - smoke.yaml: the Stable catalog on the launch tab (wait/expect only).
+  #   - gestures_multitouch.yaml (BE-0019): pinch/rotate through the runner's /gesture endpoint.
+  #   - search.yaml (BE-0281): /type into the Search field, then assert the filtered count.
+  #   - notices.yaml (BE-0281): /swipe an off-screen row into view, then /back from a pushed detail.
+  #   - permission.yaml (BE-0276): the `permissions` field; `--exclude ai` drops its notification
+  #     scenario (the vision-guard path kept off this deterministic gate, prime directive 1), leaving
+  #     `location` (pre-granted by `simctl privacy grant`, no prompt).
+  #   - permission_system_alert.yaml (BE-0316): `handleSystemAlert` taps the SpringBoard prompt's
+  #     "Allow" by a native query — the deterministic counterpart to the excluded `ai` grant.
+  # The two permission scenarios run last so their OS-level grants never perturb the state-neutral
+  # scenarios above them; each scenario relaunches the app under the warm runner, so their isolation
+  # holds. `--exclude ai` is safe across the set: only permission.yaml's notification scenario is
+  # `ai`-tagged.
+  run:
+    name: run (xcuitest)
     needs: changes
     if: needs.changes.outputs.relevant == 'true'
     runs-on: macos-latest
-    # Cap the metered macOS job (10x billing): a hung Simulator/runner would otherwise run to the
-    # 6h default. Typical end-to-end is ~10min, so 25 catches a real hang with comfortable headroom.
-    timeout-minutes: 25
-    # BE-0231 unit 4: a cold-boot CI Simulator sometimes renders the first Stable row later than the
-    # shared smoke scenario's 10s first-wait allows — even with unit 2's `readyWhen` gate (which waits
-    # up to _await_ready's own 10s for that row). Raise the wait *floor* so the condition wait has the
+    # Cap the metered macOS job (10x billing): a hung Simulator/runner would otherwise run to the 6h
+    # default. One build + boot + cold runner + six short scenarios is ~18min, so 30 catches a real
+    # hang with headroom (higher than the old single-concern jobs' 20-25 since one job now does the
+    # work of four, but far below what four separate jobs' cold startups summed to).
+    timeout-minutes: 30
+    # BE-0231 unit 4: a cold-boot CI Simulator sometimes renders the first Stable row later than a
+    # scenario's 10s first-wait allows — even with unit 2's `readyWhen` gate (which waits up to
+    # _await_ready's own 10s for that row). Raise the wait *floor* so the condition wait has the
     # budget to see it: the gate's ~10s plus this 20s ceiling gives the row ~30s from launch, well
     # past the >20s cold-boot render observed on this lane. A condition wait returns the instant the
     # row appears, so a fast render is unaffected — no fixed sleep (prime directive 2), the same knob
@@ -188,15 +212,25 @@ jobs:
       - name: Install the app
         run: xcrun simctl install "${{ steps.toolchain.outputs.udid }}" "demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
 
-      - name: Run smoke scenarios
+      # Every gating XCUITest scenario in one `bajutsu run`: one cold runner startup, warm-reused
+      # across the six. State-neutral scenarios first, the two permission-granting ones last (see the
+      # job header). `--exclude ai` drops only permission.yaml's notification scenario.
+      - name: Run the gating XCUITest scenarios (smoke, gestures, runner channel, permissions)
         uses: ./.github/actions/bajutsu-e2e
         with:
-          scenarios: demos/showcase/scenarios/smoke.yaml
+          scenarios: >-
+            demos/showcase/scenarios/smoke.yaml
+            demos/showcase/scenarios/gestures_multitouch.yaml
+            demos/showcase/scenarios/search.yaml
+            demos/showcase/scenarios/notices.yaml
+            demos/showcase/scenarios/permission.yaml
+            demos/showcase/scenarios/permission_system_alert.yaml
+          exclude: ai
           target: showcase-swiftui
           backend: xcuitest
           config: demos/showcase/showcase.config.yaml
           udid: ${{ steps.toolchain.outputs.udid }}
-          artifact-name: smoke-run
+          artifact-name: run
 
       # The onboarding gate for real (BE-0304): with the Simulator booted, assert `bajutsu doctor`'s
       # `environment:` section reports no ✗ — exercising simctl.py's real JSON parsing (`booted_udids`)
@@ -462,229 +496,6 @@ jobs:
           path: demos/showcase/ios/swiftui/build/dd/Logs/Test/*.xcresult
           if-no-files-found: ignore
 
-  # A pinch/rotate scenario run through the full `bajutsu run` path on the XCUITest backend
-  # (BE-0019): two-finger gestures actuated through the resident runner's /gesture endpoint and
-  # snapshot-handle addressing. This exercises the actuator end to end via the run loop, not just
-  # the driver contract the conformance job runs — the one class of actuation the retired idb
-  # backend could not drive (BE-0290). Feeds the required `E2E` gate directly (no
-  # continue-on-error): unlike the non-gating `actuation` job, an early failure here should stop
-  # the job rather than trade gate strictness for a per-scenario signal.
-  gestures:
-    name: gestures (xcuitest)
-    needs: changes
-    if: needs.changes.outputs.relevant == 'true'
-    runs-on: macos-latest
-    # Cap the metered macOS job (10x billing): a hung Simulator/runner would otherwise run to the
-    # 6h default. Build + the gesture scenario run is ~12min, so 20 catches a real hang with headroom.
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
-
-      - name: Set up the iOS toolchain
-        id: toolchain
-        uses: ./.github/actions/setup-ios-toolchain
-
-      # Cache the showcase app's DerivedData so `swiftui-build` is incremental across runs, sharing
-      # the `-app-` scheme cache the smoke / golden / visual jobs use. A miss just rebuilds cold.
-      - name: Cache DerivedData (app)
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
-        with:
-          path: demos/showcase/ios/swiftui/build/dd
-          key: xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-${{ hashFiles('BajutsuKit/**/*.swift', 'demos/showcase/ios/swiftui/**/*.swift', 'demos/showcase/ios/swiftui/**/project.yml') }}
-          restore-keys: |
-            xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-
-
-      # The resident XCUITest runner builds into its own DerivedData dir; cache it separately
-      # (keyed on the runner's Swift sources + project spec) so `runner-build` is incremental too.
-      - name: Cache DerivedData (runner)
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
-        with:
-          path: BajutsuKit/Runner/build/dd
-          key: xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-${{ hashFiles('BajutsuKit/**/*.swift', 'BajutsuKit/Runner/project.yml') }}
-          restore-keys: |
-            xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-
-
-      # Build the a11y app AND the resident XCUITest runner (both needed by the XCUITest backend).
-      # The bajutsu-e2e action's own `uv sync --no-dev` covers the Python deps, so no dep fetch here.
-      - name: Build the app + runner
-        run: |
-          make -C demos/showcase swiftui-build
-          make -C demos/showcase runner-build
-
-      - name: Wait for the Simulator
-        run: xcrun simctl bootstatus "${{ steps.toolchain.outputs.udid }}" -b
-
-      - name: Install the app
-        run: xcrun simctl install "${{ steps.toolchain.outputs.udid }}" "demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
-
-      - name: Run the multi-touch scenario (xcuitest)
-        uses: ./.github/actions/bajutsu-e2e
-        with:
-          scenarios: demos/showcase/scenarios/gestures_multitouch.yaml
-          target: showcase-swiftui
-          backend: xcuitest
-          config: demos/showcase/showcase.config.yaml
-          udid: ${{ steps.toolchain.outputs.udid }}
-          artifact-name: gestures-run
-
-  # The deterministic permission surface (BE-0276, BE-0316): each scenario taps a tab-bar item
-  # behind the native tab bar (docs/showcase.md), a target a coordinate backend can never resolve,
-  # so both need the same forced-XCUITest treatment. Feeds the required `E2E` gate directly (no
-  # continue-on-error), like `gestures` above.
-  #   - permission.yaml: the `permissions` field on-device. `--exclude ai` drops the file's
-  #     notification scenario (its iOS grant path needs the vision `dismissAlerts` guard, so it
-  #     stays out of this deterministic gate — prime directive 1) and keeps only `location`, which
-  #     `simctl privacy grant` pre-grants before launch with no prompt. android-e2e.yml's
-  #     `smoke (adb)` job already runs both scenarios in permission.yaml unchanged, so this is the
-  #     iOS twin of that coverage.
-  #   - permission_system_alert.yaml: the `handleSystemAlert` step. It fires the
-  #     notification-permission request, then taps the SpringBoard prompt's "Allow" button by a
-  #     native accessibility query — no vision model, so this is the deterministic counterpart to
-  #     permission.yaml's `dismissAlerts` grant (which the step above excludes as `ai`). Its own
-  #     file, not a scenario in permission.yaml: only the iOS (XCUITest) backend declares the
-  #     capability, so a scenario in the shared file would fail android-e2e.yml's required
-  #     `smoke (adb)` job at preflight.
-  permission:
-    name: permission (xcuitest)
-    needs: changes
-    if: needs.changes.outputs.relevant == 'true'
-    runs-on: macos-latest
-    # Cap the metered macOS job (10x billing): a hung Simulator/runner would otherwise run to the
-    # 6h default. Build + two short scenario runs is ~12min, so 20 catches a real hang with headroom.
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
-
-      - name: Set up the iOS toolchain
-        id: toolchain
-        uses: ./.github/actions/setup-ios-toolchain
-
-      # Cache the showcase app's DerivedData so `swiftui-build` is incremental across runs, sharing
-      # the `-app-` scheme cache the smoke / golden / visual jobs use. A miss just rebuilds cold.
-      - name: Cache DerivedData (app)
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
-        with:
-          path: demos/showcase/ios/swiftui/build/dd
-          key: xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-${{ hashFiles('BajutsuKit/**/*.swift', 'demos/showcase/ios/swiftui/**/*.swift', 'demos/showcase/ios/swiftui/**/project.yml') }}
-          restore-keys: |
-            xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-
-
-      # The resident XCUITest runner builds into its own DerivedData dir; cache it separately
-      # (keyed on the runner's Swift sources + project spec) so `runner-build` is incremental too.
-      - name: Cache DerivedData (runner)
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
-        with:
-          path: BajutsuKit/Runner/build/dd
-          key: xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-${{ hashFiles('BajutsuKit/**/*.swift', 'BajutsuKit/Runner/project.yml') }}
-          restore-keys: |
-            xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-
-
-      # Build the a11y app AND the resident XCUITest runner (both needed by the XCUITest backend).
-      # The bajutsu-e2e action's own `uv sync --no-dev` covers the Python deps, so no dep fetch here.
-      - name: Build the app + runner
-        run: |
-          make -C demos/showcase swiftui-build
-          make -C demos/showcase runner-build
-
-      - name: Wait for the Simulator
-        run: xcrun simctl bootstatus "${{ steps.toolchain.outputs.udid }}" -b
-
-      - name: Install the app
-        run: xcrun simctl install "${{ steps.toolchain.outputs.udid }}" "demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
-
-      # Both permission scenarios in one `bajutsu run` so they share a single warm runner (the cold
-      # XCTest-host startup is paid once for the job, not once per scenario — BE-0291's warm reuse
-      # already spans leases within one process). `--exclude ai` still drops permission.yaml's
-      # notification scenario (the vision-guard path kept out of this deterministic gate, prime
-      # directive 1) while leaving its `location` scenario and permission_system_alert.yaml's
-      # `handleSystemAlert` scenario, neither of which is `ai`-tagged — exactly the two the split
-      # steps ran. Each scenario relaunches the app under the warm runner, so their isolation holds.
-      - name: Run the permission scenarios (xcuitest — permissions + handleSystemAlert)
-        uses: ./.github/actions/bajutsu-e2e
-        with:
-          scenarios: >-
-            demos/showcase/scenarios/permission.yaml
-            demos/showcase/scenarios/permission_system_alert.yaml
-          exclude: ai
-          target: showcase-swiftui
-          backend: xcuitest
-          config: demos/showcase/showcase.config.yaml
-          udid: ${{ steps.toolchain.outputs.udid }}
-          artifact-name: permission-run
-
-  # XCUITest actuation on the runner channel (BE-0281): the `/type` and `/swipe` + `/back`
-  # endpoints of the resident BajutsuRunner, which on-device CI reached only for tap / pinch /
-  # rotate before this. Both scenarios open with a tab tap (they filter the Search list / walk the
-  # Notices list, screens behind the native tab bar). Feeds the required `E2E` gate directly (no
-  # continue-on-error), like `gestures` above.
-  #   - search.yaml: `/type` into the Search field, then assert the filtered count.
-  #   - notices.yaml: `/swipe` to walk an off-screen row into view, then `/back` from
-  #     the pushed Notice Detail. The Notices List is XCUITest's reliable scroll surface (the Log
-  #     Form's deep rows are not, see gestures_multitouch.yaml's header).
-  runner-actuation:
-    name: runner-actuation (xcuitest)
-    needs: changes
-    if: needs.changes.outputs.relevant == 'true'
-    runs-on: macos-latest
-    # Cap the metered macOS job (10x billing): a hung Simulator/runner would otherwise run to the
-    # 6h default. Build + two short scenario runs is ~12min, so 20 catches a real hang with headroom.
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
-
-      - name: Set up the iOS toolchain
-        id: toolchain
-        uses: ./.github/actions/setup-ios-toolchain
-
-      # Cache the showcase app's DerivedData so `swiftui-build` is incremental across runs, sharing
-      # the `-app-` scheme cache the smoke / golden / visual jobs use. A miss just rebuilds cold.
-      - name: Cache DerivedData (app)
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
-        with:
-          path: demos/showcase/ios/swiftui/build/dd
-          key: xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-${{ hashFiles('BajutsuKit/**/*.swift', 'demos/showcase/ios/swiftui/**/*.swift', 'demos/showcase/ios/swiftui/**/project.yml') }}
-          restore-keys: |
-            xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-
-
-      # The resident XCUITest runner builds into its own DerivedData dir; cache it separately
-      # (keyed on the runner's Swift sources + project spec) so `runner-build` is incremental too.
-      - name: Cache DerivedData (runner)
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
-        with:
-          path: BajutsuKit/Runner/build/dd
-          key: xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-${{ hashFiles('BajutsuKit/**/*.swift', 'BajutsuKit/Runner/project.yml') }}
-          restore-keys: |
-            xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-
-
-      # Build the a11y app AND the resident XCUITest runner (both needed by the XCUITest backend).
-      # The bajutsu-e2e action's own `uv sync --no-dev` covers the Python deps, so no dep fetch here.
-      - name: Build the app + runner
-        run: |
-          make -C demos/showcase swiftui-build
-          make -C demos/showcase runner-build
-
-      - name: Wait for the Simulator
-        run: xcrun simctl bootstatus "${{ steps.toolchain.outputs.udid }}" -b
-
-      - name: Install the app
-        run: xcrun simctl install "${{ steps.toolchain.outputs.udid }}" "demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
-
-      # Both scenarios in one `bajutsu run` so they share a single warm runner: the cold XCTest-host
-      # startup is paid once for the job instead of once per scenario (BE-0291's warm reuse already
-      # spans leases within one process). `run` runs each scenario to a per-scenario verdict and its
-      # exit code reddens if any fails, so splitting the steps bought no isolation the run loop lacks.
-      - name: Run the runner-channel scenarios (xcuitest — /type, /swipe, /back)
-        uses: ./.github/actions/bajutsu-e2e
-        with:
-          scenarios: >-
-            demos/showcase/scenarios/search.yaml
-            demos/showcase/scenarios/notices.yaml
-          target: showcase-swiftui
-          backend: xcuitest
-          config: demos/showcase/showcase.config.yaml
-          udid: ${{ steps.toolchain.outputs.udid }}
-          artifact-name: runner-actuation-run
-
   # The bundled-runner path (BE-0292): the same resident runner, but resolved from the wheel
   # bundle instead of a config `testRunner`. Uses showcase.bundled-runner.config.yaml, whose
   # targets carry no `xcuitest` block, so with the runner staged into bajutsu/_xcuitest_runner/ by
@@ -946,22 +757,19 @@ jobs:
   # path-gated macOS jobs.
   e2e:
     name: E2E (iOS)
-    needs: [changes, smoke, codegen, gestures, permission, runner-actuation, bundled-runner, conformance]
+    needs: [changes, run, codegen, bundled-runner, conformance]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Check E2E results
         env:
-          SMOKE: ${{ needs.smoke.result }}
+          RUN: ${{ needs.run.result }}
           CODEGEN: ${{ needs.codegen.result }}
-          GESTURES: ${{ needs.gestures.result }}
-          PERMISSION: ${{ needs.permission.result }}
-          RUNNER_ACTUATION: ${{ needs.runner-actuation.result }}
           BUNDLED_RUNNER: ${{ needs.bundled-runner.result }}
           CONFORMANCE: ${{ needs.conformance.result }}
         run: |
-          echo "smoke=$SMOKE codegen=$CODEGEN gestures=$GESTURES permission=$PERMISSION runner_actuation=$RUNNER_ACTUATION bundled_runner=$BUNDLED_RUNNER conformance=$CONFORMANCE"
-          for result in "$SMOKE" "$CODEGEN" "$GESTURES" "$PERMISSION" "$RUNNER_ACTUATION" "$BUNDLED_RUNNER" "$CONFORMANCE"; do
+          echo "run=$RUN codegen=$CODEGEN bundled_runner=$BUNDLED_RUNNER conformance=$CONFORMANCE"
+          for result in "$RUN" "$CODEGEN" "$BUNDLED_RUNNER" "$CONFORMANCE"; do
             if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
               echo "E2E failed"
               exit 1
