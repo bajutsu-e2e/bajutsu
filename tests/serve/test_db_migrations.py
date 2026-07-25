@@ -6,7 +6,10 @@ so a column or constraint that drifts is caught too.
 The upgrade/downgrade tests are parametrized over both dialects (BE-0309): the fast gate runs them
 against a throwaway SQLite file, and the serve-db.yml lane reruns the same assertions against a real
 Postgres service — the only place the dialect-specific migration code (0010's `postgresql` FK branch
-and the JSONB column variants) actually executes."""
+and the JSONB column variants) actually executes. Running against Postgres requires both
+`BAJUTSU_TEST_POSTGRES_URL` and `BAJUTSU_REQUIRE_POSTGRES` to be set (the URL alone skips, so a
+developer who accidentally exports the URL against a non-throwaway database can't silently destroy
+data via the `DROP SCHEMA public CASCADE` reset)."""
 
 from __future__ import annotations
 
@@ -105,9 +108,10 @@ def _reset_schema(url: str) -> None:
 def migration_db_url(request, tmp_path, monkeypatch) -> str:
     """A clean, empty database URL for the requested dialect, wired into `BAJUTSU_DATABASE_URL` so
     the Alembic config resolves it. SQLite uses a throwaway file; Postgres uses the service from
-    `BAJUTSU_TEST_POSTGRES_URL`, skipping when it is unset so the fast gate never needs one — unless
-    `BAJUTSU_REQUIRE_POSTGRES` is set (the dedicated lane does), in which case a missing URL fails
-    loudly instead of skipping, so the lane can't report a false green."""
+    `BAJUTSU_TEST_POSTGRES_URL`. Both env vars must be set together: the URL without the flag skips
+    rather than running the destructive schema reset, so a developer who accidentally exports the URL
+    against a non-throwaway database can't silently destroy data. The dedicated lane sets both.
+    A missing URL with the flag set fails loudly so the lane can't report a false green."""
     if request.param == "postgresql":
         url = os.environ.get(_POSTGRES_URL_ENV)
         if not url:
@@ -117,6 +121,11 @@ def migration_db_url(request, tmp_path, monkeypatch) -> str:
                     "Postgres lane is misconfigured (it must run against a real Postgres service)."
                 )
             pytest.skip(f"{_POSTGRES_URL_ENV} not set")
+        if not os.environ.get(_REQUIRE_POSTGRES_ENV):
+            pytest.skip(
+                f"{_POSTGRES_URL_ENV} is set but {_REQUIRE_POSTGRES_ENV} is not — set it "
+                "explicitly to confirm the database is throwaway before the destructive reset runs."
+            )
     else:
         url = f"sqlite:///{tmp_path / 'm.db'}"
     _reset_schema(url)
