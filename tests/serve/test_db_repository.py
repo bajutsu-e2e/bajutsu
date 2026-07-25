@@ -1,9 +1,11 @@
 """The `Repository` seam (BE-0015 7a / BE-0225): the run round-trip, org-scoped listing, the
-env-driven factory, and the project CRUD methods. Each test builds its schema through the
-`serve_engine` fixture, which runs it against in-memory SQLite in the fast gate and, behind the
-`postgres` marker, against a real Postgres service in the serve-db.yml lane (BE-0309). `ProjectRecord`
-and the project methods arrived with BE-0225; orgs/users/audit_log are tested elsewhere in this file
-(implemented in 7b/7c)."""
+env-driven factory, and the project CRUD methods. Most tests build their schema through the
+`serve_engine` fixture, which runs them against in-memory SQLite in the fast gate and, behind the
+`postgres` marker, against a real Postgres service in the serve-db.yml lane (BE-0309). One test
+(`test_delete_project_removes_binding_but_keeps_run_history`) stays SQLite-only: it asserts the
+FKs-off dangling-`project_id` behavior that only holds with FK enforcement off — the Postgres
+`ON DELETE SET NULL` path is covered by a sibling test. `ProjectRecord` and the project methods
+arrived with BE-0225; orgs/users/audit_log are tested elsewhere in this file (7b/7c)."""
 
 from __future__ import annotations
 

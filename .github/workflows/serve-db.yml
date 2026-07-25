@@ -21,18 +21,16 @@ on:
   workflow_dispatch:
   pull_request:
     # Only the serve DB surface can affect this lane, so path-gate it (safe: a non-required check
-    # that skips never blocks a merge). A new DB-relevant path defaults to NOT triggering — add it
-    # here.
+    # that skips never blocks a merge). `tests/serve/**` covers the whole directory so that a PR
+    # adding `serve_engine` to any future suite triggers the lane automatically, consistent with the
+    # run step's directory-wide `pytest tests/serve -m postgres -n0` selection.
     paths:
       - "bajutsu/serve/server/db.py"
       - "bajutsu/serve/server/models.py"
       - "bajutsu/serve/server/migrations/**"
       - "bajutsu/serve/server/oauth.py"
       - "tests/conftest.py"
-      - "tests/serve/test_db_migrations.py"
-      - "tests/serve/test_db_models.py"
-      - "tests/serve/test_db_repository.py"
-      - "tests/serve/test_oauth.py"
+      - "tests/serve/**"
       - ".github/workflows/serve-db.yml"
       - "pyproject.toml"
       - "uv.lock"
