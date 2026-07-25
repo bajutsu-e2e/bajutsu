@@ -16,7 +16,7 @@
 
 Fire only the on-device end-to-end (E2E) jobs a change can actually affect. Each E2E lane runs a set
 of feature and dimension jobs — iOS on a Simulator, Android on a hardware-accelerated emulator, and
-web on a headless browser — and most of those jobs declare the scenarios they exercise. Today any change a lane deems relevant fires every job in that
+web on a headless browser — and some of those jobs declare the scenarios they exercise. Today any change a lane deems relevant fires every job in that
 lane, even jobs whose scenarios the change never touched. This item narrows that fan-out for the one
 case it can prove safe: when a change is confined to scenario files, only the jobs that declare a
 changed scenario run. Every other case still fires the whole lane, unchanged — a change to shared
@@ -30,7 +30,7 @@ always caught before merge, never deferred past it.
 
 The iOS E2E lane runs ten on-device jobs, each booting a Simulator on a macOS runner billed at ten
 times the Linux rate; the Android lane runs six under a hardware-accelerated emulator. A required
-aggregator check guards each lane (`E2E`, `E2E (android)`, `E2E (web)`), and a required check that
+aggregator check guards each lane (`E2E (iOS)`, `E2E (android)`, `E2E (web)`), and a required check that
 never reports blocks the merge — so a lane cannot be gated at the workflow trigger. Every lane
 instead triggers on every pull request, and [`scripts/e2e_changes.py`](../../scripts/e2e_changes.py)
 decides, per lane, whether the metered jobs run at all. The verdict it emits today is a single
@@ -84,7 +84,7 @@ scenario files stay the only place per-app knowledge lives (prime directive 3).
   app and runner independently (there is no shared build-once job), so a narrowed run simply skips the
   build and Simulator boot of every job it drops.
 
-- **Aggregator integrity.** The lane's required aggregator check (`E2E` and its Android and web
+- **Aggregator integrity.** The lane's required aggregator check (`E2E (iOS)` and its Android and web
   siblings) must report success when a narrowed run skips most jobs. A skipped job is not a failed
   job, so the aggregator gates on "no job failed" — evaluated with `if: always()` so the aggregator
   itself always runs and always reports — rather than on "every job succeeded". This keeps a required
