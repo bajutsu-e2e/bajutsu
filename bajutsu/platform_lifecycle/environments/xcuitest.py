@@ -78,7 +78,22 @@ def _allocate_port() -> int:
 # Cold `xcodebuild test-without-building` startup (XCTest host boot + app launch before the runner's
 # server answers /health) routinely exceeds the driver's 10s default on a loaded CI runner; a warm
 # start still returns as soon as /health is ready, so this only raises the ceiling for the cold case.
+# Overridable per lane so a contended CI host can extend the ceiling without a code change (the
+# ios-e2e workflow raises it to 300s); a warm start still returns at once, so this is a cap.
 _RUNNER_STARTUP_TIMEOUT = 120.0
+_RUNNER_STARTUP_TIMEOUT_ENV = "BAJUTSU_XCUITEST_STARTUP_TIMEOUT"
+
+
+def _runner_startup_timeout() -> float:
+    """The cold-runner startup ceiling in seconds, from the env override or the default."""
+    raw = os.environ.get(_RUNNER_STARTUP_TIMEOUT_ENV)
+    if not raw:
+        return _RUNNER_STARTUP_TIMEOUT
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        return _RUNNER_STARTUP_TIMEOUT
+
 
 # Probing a *warm* runner before reuse (BE-0291): a live runner answers /health at once, so this only
 # bounds the wedged case — a runner that crashed after repeated app.launch() cycles must be detected
@@ -336,7 +351,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # A cold `xcodebuild test-without-building` spins up the XCTest host and launches the app
         # before the runner's server answers /health; on a loaded CI runner that first start well
         # exceeds the 10s default, so give it generous headroom (a warm start still returns at once).
-        spawned = _spawn_cold_with_retry(spawn, timeout=_RUNNER_STARTUP_TIMEOUT)
+        spawned = _spawn_cold_with_retry(spawn, timeout=_runner_startup_timeout())
         # Only the Simulator runner is kept warm; a real-device runner is torn down per lease.
         self._reusable = device_type != "device"
         self._warm_reuses = 0  # a fresh XCTest session: the app.launch()-cycle count starts over
