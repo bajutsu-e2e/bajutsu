@@ -86,7 +86,10 @@ Proposal altitude. The work is MECE along the units below.
   shared Postgres needs. Slice 3 moved the remaining eighteen files onto the same fixture, so every
   serve DB test that builds its schema on an in-memory engine now runs against both dialects.)*
 - [ ] Wire it into CI as a non-gating signal, promote to required once stable.
-  *(Non-gating signal landed; promotion to a required check remains.)*
+  *(Non-gating signal landed. Slice 4 gave the lane an always-reporting `serve db (postgres)` gate —
+  mirroring the required `E2E (web)` aggregator — so the check can be required without a path-skip
+  leaving it pending forever. The final step, adding that check to the branch ruleset, is a
+  repository setting a maintainer flips once the gate has proven stable; it stays out of a code PR.)*
 
 ### Log
 
@@ -118,6 +121,14 @@ Proposal altitude. The work is MECE along the units below.
   `test_db_run_listing.py` stays SQLite-only by design. No workflow change was needed: the lane
   already selects the directory by marker (`pytest tests/serve -m postgres -n0`), so each newly
   retrofitted file joined it automatically.
+- Slice 4 — restructured `serve-db.yml` into the always-reporting shape a required check needs. It
+  now triggers on every PR (and the merge queue) rather than a workflow-trigger `paths:` filter; a
+  `changes` job (`dorny/paths-filter`) decides whether the heavy `postgres` job runs; and a new
+  `if: always()` gate job named `serve db (postgres)` translates the work job's skip into a pass and
+  its failure into a red — the same pattern the required `E2E (web)` aggregator uses so a path-skip
+  never leaves a required check pending. This does not itself make the check required — that is a
+  repository ruleset change a maintainer makes once the gate has proven stable — it only makes the
+  check safe to require.
 
 ## References
 
