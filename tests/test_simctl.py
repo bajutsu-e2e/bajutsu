@@ -293,6 +293,26 @@ def test_run_pbcopy_reraises_after_exhausting_retries(monkeypatch: pytest.Monkey
     assert attempts["n"] == simctl._PBCOPY_MAX_ATTEMPTS  # bounded, fails loudly after the last
 
 
+def test_run_pbcopy_fast_fails_non_transient_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A deterministic simctl failure (bad UDID, un-booted device) won't clear on a re-run, so it
+    # surfaces on the first attempt — no retry, no backoff.
+    attempts = {"n": 0}
+
+    def bad_device(cmd: list[str], **kw: object) -> subprocess.CompletedProcess[str]:
+        attempts["n"] += 1
+        raise subprocess.CalledProcessError(149, cmd, output="", stderr="Invalid device")
+
+    slept: list[float] = []
+    monkeypatch.setattr(simctl.subprocess, "run", bad_device)
+    monkeypatch.setattr(simctl.time, "sleep", lambda s: slept.append(s))
+
+    with pytest.raises(subprocess.CalledProcessError):
+        simctl.Env("UDID").set_clipboard("x")
+
+    assert attempts["n"] == 1  # fast-failed, not retried
+    assert slept == []
+
+
 def test_run_pbcopy_retries_python_side_hang(monkeypatch: pytest.MonkeyPatch) -> None:
     # A hang (no simctl exit) surfaces as TimeoutExpired from the subprocess bound; retry it too.
     attempts = {"n": 0}
