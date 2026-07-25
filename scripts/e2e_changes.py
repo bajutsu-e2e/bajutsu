@@ -253,15 +253,33 @@ def job_scenario_map(workflow_text: str) -> dict[str, set[str]]:
     ``python3`` with no PyYAML); the format is regular block YAML pinned by the tests.
 
     Raises:
-        ValueError: the text has no ``jobs`` block, or a ``scenarios:`` value is not a single
-            unquoted path the scanner can attribute (a quoted value, a block scalar, a list). The
-            caller falls back to firing the whole lane on this, the safe over-selection, rather than
-            trusting a silently empty or mis-parsed map that would narrow the lane wrongly.
+        ValueError: the text has no ``jobs`` block; a ``scenarios:`` value is a quoted path, a list,
+            or a literal block scalar (``|``); or a path in a folded block scalar (``>``/``>-``) is
+            not a plain unquoted path. The caller falls back to firing the whole lane rather than
+            trusting a mis-parsed map that would narrow the lane wrongly.
     """
     result: dict[str, set[str]] = {}
     in_jobs = False
     current_job: str | None = None
+    # When non-None, we're collecting path lines from a folded block scalar (`>-`/`>`).
+    # Stores the job key and the indentation of the `scenarios: >-` line.
+    block_collecting: str | None = None
+    block_indent: int = 0
     for line in workflow_text.splitlines():
+        if block_collecting is not None:
+            stripped = line.rstrip()
+            if not stripped or stripped.lstrip().startswith("#"):
+                continue  # blank / comment inside block scalar
+            indent = len(stripped) - len(stripped.lstrip())
+            if indent > block_indent:
+                path = stripped.strip()
+                if not _PLAIN_PATH_RE.match(path):
+                    raise ValueError(
+                        f"unparseable path {path!r} in block-scalar `scenarios:` of job {block_collecting!r}"
+                    )
+                result.setdefault(block_collecting, set()).add(path)
+                continue
+            block_collecting = None  # shallower indent: block scalar ended; fall through
         if _JOBS_HEADER_RE.match(line):
             in_jobs = True
             continue
@@ -273,9 +291,13 @@ def job_scenario_map(workflow_text: str) -> dict[str, set[str]]:
             current_job = job_match.group(1)
         elif current_job is not None and (scenario_match := _SCENARIOS_INPUT_RE.match(line)):
             value = scenario_match.group(1)
-            if not _PLAIN_PATH_RE.match(value):
+            if value in (">-", ">"):
+                block_collecting = current_job
+                block_indent = len(line) - len(line.lstrip())
+            elif _PLAIN_PATH_RE.match(value):
+                result.setdefault(current_job, set()).add(value)
+            else:
                 raise ValueError(f"unparseable `scenarios:` value {value!r} in job {current_job!r}")
-            result.setdefault(current_job, set()).add(value)
     if not in_jobs:
         raise ValueError("workflow YAML has no `jobs` mapping")
     return result

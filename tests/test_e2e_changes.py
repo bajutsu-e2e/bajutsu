@@ -524,10 +524,9 @@ def test_job_scenario_map_raises_on_a_malformed_workflow() -> None:
 
 
 def test_job_scenario_map_rejects_a_non_plain_scenario_value() -> None:
-    # A quoted value or a block scalar isn't a single unquoted path the line scan can attribute, so it
-    # raises rather than mis-parsing it (capturing the quotes or the `|`) — the caller then falls back
-    # to the whole fleet, keeping the fail-safe posture instead of silently under-firing a job.
-    for value in ('"demos/showcase/scenarios/smoke.yaml"', "|", ">-"):
+    # A quoted value or an unsupported block scalar (`|` literal) raises rather than mis-parsing —
+    # the caller falls back to the whole fleet rather than silently under-firing a job.
+    for value in ('"demos/showcase/scenarios/smoke.yaml"', "|"):
         workflow = (
             "jobs:\n"
             "  smoke:\n"
@@ -538,6 +537,28 @@ def test_job_scenario_map_rejects_a_non_plain_scenario_value() -> None:
         )
         with pytest.raises(ValueError, match="scenarios"):
             job_scenario_map(workflow)
+
+
+def test_job_scenario_map_handles_folded_block_scalar() -> None:
+    # Workflows that consolidate multiple scenarios in one step use a folded block scalar (`>-`).
+    # The scanner must collect each path from the continuation lines rather than raise ValueError.
+    workflow = (
+        "jobs:\n"
+        "  actuation:\n"
+        "    steps:\n"
+        "      - uses: ./.github/actions/bajutsu-e2e\n"
+        "        with:\n"
+        "          scenarios: >-\n"
+        "            demos/showcase/scenarios/navigation.yaml\n"
+        "            demos/showcase/scenarios/device.yaml\n"
+        "          target: showcase-swiftui\n"
+    )
+    assert job_scenario_map(workflow) == {
+        "actuation": {
+            "demos/showcase/scenarios/navigation.yaml",
+            "demos/showcase/scenarios/device.yaml",
+        }
+    }
 
 
 def test_job_scenario_map_is_not_truncated_by_a_column_zero_comment() -> None:
