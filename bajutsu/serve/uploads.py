@@ -321,4 +321,4 @@ def validate_bundle_config(root: Path) -> None:
         raise BundleError("has no bajutsu.config.yaml")
     cfg = load_config(config_path.read_text(encoding="utf-8"))
     for name in cfg.targets:
-        resolve(cfg, name).rebased(config_path.parent)
+        resolve(cfg, name).rebased(config_path.parent, confine=True)

@@ -280,6 +280,31 @@ def test_http_config_rejects_absolute_traversal_outside_root(tmp_path: Path) -> 
         server.server_close()
 
 
+def test_http_local_config_with_escaping_path_is_refused(tmp_path: Path) -> None:
+    # A local config file whose path fields (scenarios/appPath/etc) climb out of the config's own
+    # directory is rejected at bind, so serve's scenario/build resolution never sees a host path
+    # outside the config's tree (matches the confinement applied to Git and uploaded configs).
+    config_dir = tmp_path / "configs"
+    config_dir.mkdir()
+    secret = tmp_path / "secret"  # outside config_dir
+    secret.mkdir()
+    local_cfg = config_dir / "bajutsu.config.yaml"
+    local_cfg.write_text(
+        "targets:\n  evil: { bundleId: com.example.evil, scenarios: ../secret }\n",
+        encoding="utf-8",
+    )
+    _, _, runs = project(tmp_path)
+    server, port = _serve(srv.ServeState(runs_dir=runs, root=tmp_path, cwd=tmp_path))
+    try:
+        status, resp = _post(port, "/api/config", {"path": str(local_cfg)})
+        assert status == 400 and "config path validation failed" in resp["error"]
+        # Verify the config was not bound due to the invalid path.
+        assert _get_json(port, "/api/config")["hasConfig"] is False
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 def test_http_config_sources_local_offers_all_three(tmp_path: Path) -> None:
     # The local backend offers every config source, including the file browser, and surfaces the
     # browse root the fs source needs (BE-0108).
