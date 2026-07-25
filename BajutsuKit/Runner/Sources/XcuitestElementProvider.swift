@@ -80,10 +80,13 @@ final class XcuitestElementProvider: ElementProviding {
         // change, bounded by a small cap. Keying on the *actuated element's* value — not the whole
         // screen — is what honors the retry's invariant: only a change the gesture is responsible for
         // stops it, so an unrelated update elsewhere can't be mistaken for a landing (the showcase's
-        // GestureView mirrors each gesture onto the target it acts on for exactly this).
+        // GestureView mirrors each gesture onto the target it acts on for exactly this). `el.value`
+        // is passed through as-is (nil when unreadable): the retry treats a failed read as
+        // "couldn't observe → keep trying", not as a change — a `?? ""` here would read a transient
+        // read failure as a landing and stop after one attempt.
         actuateUntilStateChanges(
             maxAttempts: Self.maxGestureAttempts,
-            signature: { (el.value as? String) ?? "" },
+            signature: { el.value as? String },
             actuate: actuate
         )
         return .ok

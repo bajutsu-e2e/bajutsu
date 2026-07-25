@@ -50,4 +50,33 @@ final class GestureRetryTests: XCTestCase {
         )
         XCTAssertEqual(actuations, 1)
     }
+
+    func testAnUnreadableSampleIsNotMistakenForALanding() {
+        var actuations = 0
+        // Every post-actuation read fails (nil). A nil sample must not read as a change, so a
+        // genuinely dropped gesture keeps retrying to the cap rather than stopping after one attempt.
+        actuateUntilStateChanges(
+            maxAttempts: 4,
+            signature: { actuations == 0 ? "idle" : nil },
+            actuate: { actuations += 1 }
+        )
+        XCTAssertEqual(actuations, 4)
+    }
+
+    func testKeepsRetryingThroughATransientReadFailureUntilItLands() {
+        var actuations = 0
+        actuateUntilStateChanges(
+            maxAttempts: 5,
+            signature: {
+                switch actuations {
+                case 0: return "idle"   // before
+                case 1: return nil      // first post-actuation read transiently fails
+                case 2: return "idle"   // still dropped
+                default: return "pinched"  // landed on the third attempt
+                }
+            },
+            actuate: { actuations += 1 }
+        )
+        XCTAssertEqual(actuations, 3)
+    }
 }
