@@ -11,6 +11,7 @@ import json
 import os
 import subprocess
 import tempfile
+import time
 from collections.abc import Callable, Mapping, Sequence
 
 from bajutsu import device_errors
@@ -125,6 +126,13 @@ def clear_location_cmd(udid: str) -> list[str]:
 # vocabulary entry names its own TCC service (`base.PERMISSION_SERVICES`'s spelling matches
 # `simctl privacy`'s service names 1:1), so no separate service->TCC-name map is needed.
 _NO_TCC_SERVICE = "notifications"
+
+# simctl's host<->Simulator pasteboard sync (`pbcopy`) intermittently times out — simctl
+# exits 60 (ETIMEDOUT), or the call hangs past a reasonable bound — which is transient: a
+# re-run clears it. Retry a bounded number of times so a genuine fault still surfaces.
+_PBCOPY_MAX_ATTEMPTS = 3
+_PBCOPY_RETRY_DELAY_S = 0.5
+_PBCOPY_TIMEOUT_S = 30.0
 
 
 def privacy_cmd(udid: str, action: str, tcc_service: str, bundle_id: str) -> list[str]:
@@ -384,7 +392,26 @@ class Env:
 
     @staticmethod
     def _run_pbcopy(cmd: list[str], text: str = "") -> None:
-        subprocess.run(cmd, input=text, capture_output=True, text=True, check=True)
+        # pbcopy is idempotent — re-feeding the same stdin is safe — so retry the transient
+        # simctl pasteboard timeout (see `_PBCOPY_*`) rather than fail the whole scenario on it.
+        last: subprocess.CalledProcessError | subprocess.TimeoutExpired | None = None
+        for attempt in range(_PBCOPY_MAX_ATTEMPTS):
+            try:
+                subprocess.run(
+                    cmd,
+                    input=text,
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                    timeout=_PBCOPY_TIMEOUT_S,
+                )
+                return
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+                last = exc
+                if attempt + 1 < _PBCOPY_MAX_ATTEMPTS:
+                    time.sleep(_PBCOPY_RETRY_DELAY_S * (attempt + 1))
+        assert last is not None  # the loop runs at least once, so a failure sets `last`
+        raise last
 
     def get_clipboard(self) -> str:
         # pbpaste returns the pasteboard content on stdout; RunFn already yields stdout.
