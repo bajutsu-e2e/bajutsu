@@ -531,9 +531,9 @@ def _confined_config_path(root: Path, raw: str) -> Path | None:
 
 def bind_config(state: ServeState, raw: str) -> tuple[Any, int]:
     """Bind a config.yml chosen in the UI's file browser.  The path is confined to ``--root``; we
-    validate it loads and its path fields are confined, then re-point ``state.config`` at it **and**
-    ``state.cwd`` at its own directory so the config's relative paths resolve from beside it, not
-    serve's launch dir (BE-0242) — mirroring the Git/upload binds."""
+    validate it loads and its path fields stay within ``--root`` too, then re-point ``state.config``
+    at it **and** ``state.cwd`` at its own directory so the config's relative paths resolve from
+    beside it, not serve's launch dir (BE-0242) — mirroring the Git/upload binds."""
     if state.hosted:
         # Defense in depth (BE-0108): the file browser is removed from the hosted UI, but a
         # hand-crafted path-bind must be refused too, or hiding it would be merely cosmetic.
@@ -549,11 +549,14 @@ def bind_config(state: ServeState, raw: str) -> tuple[Any, int]:
         cfg = load_config(target.read_text(encoding="utf-8"))
     except (OSError, ValueError, yaml.YAMLError) as e:
         return {"error": f"invalid config: {e}"}, 400
-    # Validate path fields are confined to the config file's directory (BE-0051).
+    # Validate path fields stay within `--root` (BE-0051): resolved against the config's own
+    # directory (matching `state.cwd` below), but confined to the broader browse root rather than
+    # that one directory, so an in-root sibling reference (`../scenarios` from a config nested under
+    # `<root>/configs/`) still resolves — only an escape past `--root` itself is refused.
     config_dir = target.resolve().parent
     try:
         for name in cfg.targets:
-            resolve(cfg, name).rebased(config_dir, confine=True)
+            resolve(cfg, name).rebased(config_dir, confine=True, confine_to=state.root)
     except ValueError as e:
         return {"error": f"config path validation failed: {e}"}, 400
     state.release_upload()  # a fresh config replaces any bound bundle and resets cwd to serve's launch dir
