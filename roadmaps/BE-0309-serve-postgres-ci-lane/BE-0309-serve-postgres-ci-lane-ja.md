@@ -7,9 +7,9 @@
 |---|---|
 | 提案 | [BE-0309](BE-0309-serve-postgres-ci-lane-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0309") |
-| 実装 PR | [#1347](https://github.com/bajutsu-e2e/bajutsu/pull/1347), [#1353](https://github.com/bajutsu-e2e/bajutsu/pull/1353), [#1359](https://github.com/bajutsu-e2e/bajutsu/pull/1359), [#1362](https://github.com/bajutsu-e2e/bajutsu/pull/1362) |
+| 実装 PR | [#1347](https://github.com/bajutsu-e2e/bajutsu/pull/1347), [#1353](https://github.com/bajutsu-e2e/bajutsu/pull/1353), [#1359](https://github.com/bajutsu-e2e/bajutsu/pull/1359), [#1362](https://github.com/bajutsu-e2e/bajutsu/pull/1362), [#1365](https://github.com/bajutsu-e2e/bajutsu/pull/1365) |
 | トピック | 検証とカバレッジ |
 | 関連 | [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) |
 <!-- /BE-METADATA -->
@@ -90,12 +90,12 @@ migration を実行するまで表面化しません。それは方言固有の�
   テスト）を、共有 Postgres が必要とするテストごとの分離を後付けする `serve_engine` フィクスチャの裏で
   追加しました。スライス 3 では残りの 18 ファイルを同じフィクスチャへ移し、インメモリエンジンに
   スキーマを構築する serve の DB テストがすべて両方の方言で走るようにしました。）*
-- [ ] ゲート対象外のシグナルとして CI に組み込み、安定後に必須化する。
+- [x] ゲート対象外のシグナルとして CI に組み込み、安定後に必須化する。
   *（ゲート対象外のシグナルとして着地しました。スライス 4 で、レーンに常時報告する
   `serve db (postgres)` ゲートを与え（必須の `E2E (web)` アグリゲータと同じ形）、path-skip が必須チェックを
-  いつまでも保留のままにすることなく必須化できるようにしました。最後の一歩であるブランチの ruleset へ
-  このチェックを追加する作業は、ゲートが安定してから管理者が行うリポジトリ設定であり、コードの PR には
-  含めません。）*
+  いつまでも保留のままにすることなく必須化できるようにしました。その後、管理者がこのチェックを
+  「Require code review」のブランチ ruleset に追加したため、`serve db (postgres)` は必須チェックになりました。
+  最後の一歩であるこの作業は、コードの PR の外側で行うリポジトリ設定です。）*
 
 ### ログ
 
@@ -133,6 +133,10 @@ migration を実行するまで表面化しません。それは方言固有の�
   します。これは必須の `E2E (web)` アグリゲータと同じパターンで、path-skip が必須チェックを保留のまま
   残さないようにするものです。これ自体はチェックを必須にはしません。必須化はゲートが安定してから管理者が
   行う ruleset の変更であり、ここではチェックを必須にしても安全な状態にするだけです。
+- 必須化 — 管理者が `serve db (postgres)` を「Require code review」のブランチ ruleset の必須ステータス
+  チェックに追加したため、レーンは `check` や `E2E (…)` アグリゲータと同じようにマージをゲートするように
+  なりました。これは本項目の最後の一歩であり、これで項目は完了します。コードではなくリポジトリ設定である
+  ため PR の外側で反映されるので、このログにその事実を記録します。
 
 ## 参考
 
