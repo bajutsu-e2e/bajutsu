@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0309") |
-| 実装 PR | [#1347](https://github.com/bajutsu-e2e/bajutsu/pull/1347), [#1353](https://github.com/bajutsu-e2e/bajutsu/pull/1353), [#1359](https://github.com/bajutsu-e2e/bajutsu/pull/1359) |
+| 実装 PR | [#1347](https://github.com/bajutsu-e2e/bajutsu/pull/1347), [#1353](https://github.com/bajutsu-e2e/bajutsu/pull/1353), [#1359](https://github.com/bajutsu-e2e/bajutsu/pull/1359), [#1362](https://github.com/bajutsu-e2e/bajutsu/pull/1362) |
 | トピック | 検証とカバレッジ |
 | 関連 | [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) |
 <!-- /BE-METADATA -->
@@ -91,7 +91,11 @@ migration を実行するまで表面化しません。それは方言固有の�
   追加しました。スライス 3 では残りの 18 ファイルを同じフィクスチャへ移し、インメモリエンジンに
   スキーマを構築する serve の DB テストがすべて両方の方言で走るようにしました。）*
 - [ ] ゲート対象外のシグナルとして CI に組み込み、安定後に必須化する。
-  *（ゲート対象外のシグナルとして着地しました。必須チェックへの昇格は残っています。）*
+  *（ゲート対象外のシグナルとして着地しました。スライス 4 で、レーンに常時報告する
+  `serve db (postgres)` ゲートを与え（必須の `E2E (web)` アグリゲータと同じ形）、path-skip が必須チェックを
+  いつまでも保留のままにすることなく必須化できるようにしました。最後の一歩であるブランチの ruleset へ
+  このチェックを追加する作業は、ゲートが安定してから管理者が行うリポジトリ設定であり、コードの PR には
+  含めません。）*
 
 ### ログ
 
@@ -122,6 +126,13 @@ migration を実行するまで表面化しません。それは方言固有の�
   SQLite 専用のまま残します。ワークフローの変更は不要でした。レーンはすでにディレクトリをマーカーで
   選択しているため（`pytest tests/serve -m postgres -n0`）、後付けした各ファイルは自動的にレーンへ
   加わりました。
+- スライス 4 — `serve-db.yml` を、必須チェックに必要な「常時報告する」形へ組み替えました。ワークフロー
+  トリガの `paths:` フィルタをやめ、すべての PR（およびマージキュー）で発火するようにし、重い `postgres`
+  ジョブを走らせるかどうかは `changes` ジョブ（`dorny/paths-filter`）が判断します。そして新しい
+  `if: always()` のゲートジョブ `serve db (postgres)` が、作業ジョブの skip を pass に、失敗を赤に翻訳
+  します。これは必須の `E2E (web)` アグリゲータと同じパターンで、path-skip が必須チェックを保留のまま
+  残さないようにするものです。これ自体はチェックを必須にはしません。必須化はゲートが安定してから管理者が
+  行う ruleset の変更であり、ここではチェックを必須にしても安全な状態にするだけです。
 
 ## 参考
 
