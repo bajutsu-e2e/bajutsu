@@ -214,9 +214,10 @@ jobs:
   #     to the runner-actuation job beside search.yaml.
   # Deliberately NOT in the `E2E` gate's `needs:` below (like `golden` / `visual`): the Simulator lane
   # has a flakiness history (BE-0218), so new actuation lands as a per-PR signal first and is promoted
-  # to the gate only once it proves stable. One build serves all four scenarios (cost discipline: the
-  # macOS runner bills at 10x) — split the interaction and device-control halves into their own jobs
-  # if one is promoted to the gate ahead of the other.
+  # to the gate only once it proves stable. One build and one `bajutsu run` serve all four scenarios
+  # (cost discipline: the macOS runner bills at 10x), so the job's dominant cost — the cold XCTest-host
+  # startup — is paid once, not four times. Split a scenario into its own job if it is promoted to the
+  # gate ahead of the others.
   actuation:
     name: actuation (xcuitest)
     needs: changes
@@ -271,83 +272,33 @@ jobs:
       - name: Install the app
         run: xcrun simctl install "${{ steps.toolchain.outputs.udid }}" "demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
 
-      # Interaction (BE-0281): `tap` + `back` end-to-end, on the Stable launch tab.
-      # continue-on-error: the four scenarios below are independent and unrelated, bundled into one
-      # job purely for cost reasons (see the job header comment) — a normal step failure would skip
-      # every step after it, hiding the other three scenarios' pass/fail signal and artifacts even
-      # though they have nothing to do with the failure. The "Report actuation results" step below
-      # turns any step failure back into a job failure once all four have had a chance to run.
-      - name: Run the navigation scenario (xcuitest — tap + back)
-        id: navigation
-        continue-on-error: true
+      # All four scenarios in one `bajutsu run` so they share a single warm runner: the cold
+      # XCTest-host startup — the job's dominant cost, paid once per `bajutsu run` process — is now
+      # paid once for the whole job instead of four times (BE-0291's warm reuse already spans leases
+      # within one process). This also removes the reason the steps were split: `run` runs every
+      # scenario to its own per-scenario verdict regardless of the others failing, then exits non-zero
+      # if any failed — the exact "run all four independently, redden if any fails" behavior the
+      # continue-on-error steps plus the aggregator hand-rolled, now native to the run loop.
+      #   - navigation.yaml (BE-0281): `tap` + `back` end-to-end, on the Stable launch tab.
+      #   - device.yaml (BE-0281): `setLocation` + clipboard round-trip (simctl-backed, launch tab) —
+      #     the iOS twin of android-e2e.yml's device-control coverage (BE-0210).
+      #   - push.yaml (BE-0281): a simctl `push` delivery — iOS-only (no faithful Android-emulator
+      #     equivalent, so it lives apart from the cross-backend device.yaml).
+      #   - text_editing.yaml (iOS-only): `select` + `copy` round-trip the Search field's text, then
+      #     `delete` + `clear` — the four editing actuators no other scenario drove (Search tab).
+      - name: Run the actuation scenarios (xcuitest — back, device control, text editing)
         uses: ./.github/actions/bajutsu-e2e
         with:
-          scenarios: demos/showcase/scenarios/navigation.yaml
+          scenarios: >-
+            demos/showcase/scenarios/navigation.yaml
+            demos/showcase/scenarios/device.yaml
+            demos/showcase/scenarios/push.yaml
+            demos/showcase/scenarios/text_editing.yaml
           target: showcase-swiftui
           backend: xcuitest
           config: demos/showcase/showcase.config.yaml
           udid: ${{ steps.toolchain.outputs.udid }}
-          artifact-name: actuation-navigation-run
-
-      # Device control (BE-0281): `setLocation` + clipboard round-trip. simctl-backed, on the launch
-      # tab. The iOS twin of android-e2e.yml's device-control coverage (BE-0210).
-      - name: Run the device-control scenario (xcuitest — setLocation + clipboard)
-        id: device
-        continue-on-error: true
-        uses: ./.github/actions/bajutsu-e2e
-        with:
-          scenarios: demos/showcase/scenarios/device.yaml
-          target: showcase-swiftui
-          backend: xcuitest
-          config: demos/showcase/showcase.config.yaml
-          udid: ${{ steps.toolchain.outputs.udid }}
-          artifact-name: actuation-device-run
-
-      # Device control (BE-0281): a simctl `push` delivery — iOS-only (no faithful Android-emulator
-      # equivalent, so it lives apart from the cross-backend device.yaml, see push.yaml's header).
-      - name: Run the push scenario (xcuitest — push notification)
-        id: push
-        continue-on-error: true
-        uses: ./.github/actions/bajutsu-e2e
-        with:
-          scenarios: demos/showcase/scenarios/push.yaml
-          target: showcase-swiftui
-          backend: xcuitest
-          config: demos/showcase/showcase.config.yaml
-          udid: ${{ steps.toolchain.outputs.udid }}
-          artifact-name: actuation-push-run
-
-      # Text editing (iOS-only, single-form ids): `select` + `copy` round-trip the Search field's text
-      # through the clipboard, then `delete` + `clear` edit it down — the four editing actuators no
-      # other scenario drove. Crosses to the Search tab (see text_editing.yaml's header).
-      - name: Run the text-editing scenario (xcuitest — select/copy/delete/clear)
-        id: text_editing
-        continue-on-error: true
-        uses: ./.github/actions/bajutsu-e2e
-        with:
-          scenarios: demos/showcase/scenarios/text_editing.yaml
-          target: showcase-swiftui
-          backend: xcuitest
-          config: demos/showcase/showcase.config.yaml
-          udid: ${{ steps.toolchain.outputs.udid }}
-          artifact-name: actuation-text-editing-run
-
-      # Re-fail the job if any of the continue-on-error steps above failed — they need to run
-      # independently of each other, but the job as a whole must still redden so the signal isn't lost.
-      - name: Report actuation results
-        if: always()
-        run: |
-          echo "navigation:   ${{ steps.navigation.outcome }}"
-          echo "device:       ${{ steps.device.outcome }}"
-          echo "push:         ${{ steps.push.outcome }}"
-          echo "text_editing: ${{ steps.text_editing.outcome }}"
-          if [ "${{ steps.navigation.outcome }}" = "failure" ] || \
-             [ "${{ steps.device.outcome }}" = "failure" ] || \
-             [ "${{ steps.push.outcome }}" = "failure" ] || \
-             [ "${{ steps.text_editing.outcome }}" = "failure" ]; then
-            echo "::error::at least one actuation scenario failed — see the step outcomes above"
-            exit 1
-          fi
+          artifact-name: actuation-run
 
   # The BE-0006 element-tree golden over XCUITest: pins the normalized accessibility tree for the
   # Stable catalog's list rows, reached on the launch tab. Runs golden.yaml per PR — the iOS twin of
@@ -625,26 +576,25 @@ jobs:
       - name: Install the app
         run: xcrun simctl install "${{ steps.toolchain.outputs.udid }}" "demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
 
-      - name: Run the permission scenario (xcuitest)
+      # Both permission scenarios in one `bajutsu run` so they share a single warm runner (the cold
+      # XCTest-host startup is paid once for the job, not once per scenario — BE-0291's warm reuse
+      # already spans leases within one process). `--exclude ai` still drops permission.yaml's
+      # notification scenario (the vision-guard path kept out of this deterministic gate, prime
+      # directive 1) while leaving its `location` scenario and permission_system_alert.yaml's
+      # `handleSystemAlert` scenario, neither of which is `ai`-tagged — exactly the two the split
+      # steps ran. Each scenario relaunches the app under the warm runner, so their isolation holds.
+      - name: Run the permission scenarios (xcuitest — permissions + handleSystemAlert)
         uses: ./.github/actions/bajutsu-e2e
         with:
-          scenarios: demos/showcase/scenarios/permission.yaml
+          scenarios: >-
+            demos/showcase/scenarios/permission.yaml
+            demos/showcase/scenarios/permission_system_alert.yaml
           exclude: ai
           target: showcase-swiftui
           backend: xcuitest
           config: demos/showcase/showcase.config.yaml
           udid: ${{ steps.toolchain.outputs.udid }}
           artifact-name: permission-run
-
-      - name: Run the system-alert scenario (xcuitest — handleSystemAlert)
-        uses: ./.github/actions/bajutsu-e2e
-        with:
-          scenarios: demos/showcase/scenarios/permission_system_alert.yaml
-          target: showcase-swiftui
-          backend: xcuitest
-          config: demos/showcase/showcase.config.yaml
-          udid: ${{ steps.toolchain.outputs.udid }}
-          artifact-name: permission-system-alert-run
 
   # XCUITest actuation on the runner channel (BE-0281): the `/type` and `/swipe` + `/back`
   # endpoints of the resident BajutsuRunner, which on-device CI reached only for tap / pinch /
@@ -703,25 +653,21 @@ jobs:
       - name: Install the app
         run: xcrun simctl install "${{ steps.toolchain.outputs.udid }}" "demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
 
-      - name: Run the search scenario (xcuitest — /type)
+      # Both scenarios in one `bajutsu run` so they share a single warm runner: the cold XCTest-host
+      # startup is paid once for the job instead of once per scenario (BE-0291's warm reuse already
+      # spans leases within one process). `run` runs each scenario to a per-scenario verdict and its
+      # exit code reddens if any fails, so splitting the steps bought no isolation the run loop lacks.
+      - name: Run the runner-channel scenarios (xcuitest — /type, /swipe, /back)
         uses: ./.github/actions/bajutsu-e2e
         with:
-          scenarios: demos/showcase/scenarios/search.yaml
+          scenarios: >-
+            demos/showcase/scenarios/search.yaml
+            demos/showcase/scenarios/notices.yaml
           target: showcase-swiftui
           backend: xcuitest
           config: demos/showcase/showcase.config.yaml
           udid: ${{ steps.toolchain.outputs.udid }}
-          artifact-name: runner-actuation-search-run
-
-      - name: Run the notices scenario (xcuitest — /swipe + /back)
-        uses: ./.github/actions/bajutsu-e2e
-        with:
-          scenarios: demos/showcase/scenarios/notices.yaml
-          target: showcase-swiftui
-          backend: xcuitest
-          config: demos/showcase/showcase.config.yaml
-          udid: ${{ steps.toolchain.outputs.udid }}
-          artifact-name: runner-actuation-notices-run
+          artifact-name: runner-actuation-run
 
   # The bundled-runner path (BE-0292): the same resident runner, but resolved from the wheel
   # bundle instead of a config `testRunner`. Uses showcase.bundled-runner.config.yaml, whose
