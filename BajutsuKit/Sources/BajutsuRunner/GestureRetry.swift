@@ -6,8 +6,16 @@ import Foundation
 /// Simulator before the app's gesture recognizer fires, so a single actuation can silently no-op —
 /// leaving the target's mirrored a11y value at its pre-gesture state and the run's `expect` red on
 /// a value that never moved (the `gestures (xcuitest)` lane's recurring "expected 'pinched' but
-/// actual 'idle'"). Because the gesture is idempotent, re-issuing it until `signature` changes
-/// closes that drop without weakening any assertion.
+/// actual 'idle'"). Re-issuing the gesture until `signature` changes closes that drop.
+///
+/// Invariant the caller must uphold: a *landed* `actuate()` is observable in `signature()` by the
+/// time it is re-read. XCUITest delivers a gesture synchronously — the call blocks until its events
+/// are pumped — so this holds whenever the app mirrors the effect into the tree without trailing a
+/// runloop. It matters because pinch and rotate are *accumulating*: each call zooms/rotates by the
+/// amount again, so if a landed gesture's mirror read stale, the loop would issue a second one and
+/// apply it twice. That double-apply is harmless when the mirror is a flag (`idle → pinched`,
+/// today's only use), but a caller asserting a *magnitude* must guarantee the mirror is current on
+/// return, or key on a change threshold rather than mere inequality.
 ///
 /// It is a bounded retry, not a wait: `maxAttempts` caps the tries so a gesture that genuinely has
 /// no observable effect returns after a fixed, small number of attempts rather than looping. The
