@@ -300,54 +300,29 @@ jobs:
       - name: Install the web backend package (no browser — the broken environment)
         run: uv sync --extra web
 
+      # The broken-environment case: with the Playwright package present but no Chromium, doctor's
+      # environment gate must refuse the host — exit non-zero with a ✗ in its `environment:` section.
+      # `--expect broken` (scripts/assert_doctor_env.py) asserts exactly that; its parser is
+      # unit-tested (tests/test_assert_doctor_env.py), replacing the fragile inline awk/grep this lane
+      # first shipped with — the same "untested shell -> tested Python" move scripts/e2e_changes.py made.
       - name: doctor fails loudly when the browser is missing (BE-0304 broken-environment case)
-        env:
-          CONFIG: demos/web/demo.config.yaml
-          TARGET: web
-        run: |
-          set +e
-          out=$(uv run --no-sync bajutsu doctor --target "$TARGET" --config "$CONFIG" 2>&1)
-          rc=$?
-          set -e
-          printf '%s\n' "$out"
-          # doctor's environment gate raises before the screen probe, so a non-zero exit here is the
-          # gate itself refusing a broken host — the fail side no injected-fake test can prove.
-          if [ "$rc" -eq 0 ]; then
-            echo "::error::doctor exited 0 in a browserless environment; expected it to fail"
-            exit 1
-          fi
-          env_section=$(printf '%s\n' "$out" | awk '/^environment:/{f=1;next} f&&/^[^ ]/{f=0} f')
-          if ! printf '%s' "$env_section" | grep -q '✗'; then
-            echo "::error::expected a ✗ in doctor's environment section, found none"
-            exit 1
-          fi
+        run: >-
+          uv run --no-sync python scripts/assert_doctor_env.py --expect broken
+          --target web --config demos/web/demo.config.yaml
 
       - name: Provision the web backend for real (BE-0304 provision case)
         # The real installer, not the hand-rolled `playwright install` every other job runs, so its
         # own command-construction code (BE-0164) is the thing that actually executes at least once.
         run: uv run --no-sync python -m bajutsu.provision --backend web
 
+      # The provisioned case: after the real installer ran, doctor's environment gate must report no
+      # ✗. `--expect ok` runs `doctor --environment-only`, so — unlike the earlier inline check — it
+      # never reaches the screen probe that faulted on the absent app server (ERR_CONNECTION_REFUSED),
+      # and the assertion is scoped to the environment gate the same way the iOS/Android lanes are.
       - name: doctor's environment gate passes after provision (BE-0304 real-run case)
-        env:
-          CONFIG: demos/web/demo.config.yaml
-          TARGET: web
-        run: |
-          set +e
-          out=$(uv run --no-sync bajutsu doctor --target "$TARGET" --config "$CONFIG" 2>&1)
-          set -e
-          printf '%s\n' "$out"
-          # The exit code is ignored on purpose: with no app server running, doctor's *screen* probe
-          # faults (ERR_CONNECTION_REFUSED) and exits 1 even though the environment gate — the one
-          # thing this step asserts — passed. So inspect the rendered environment section directly.
-          if ! printf '%s\n' "$out" | grep -q '^environment:'; then
-            echo "::error::doctor printed no environment section"
-            exit 1
-          fi
-          env_section=$(printf '%s\n' "$out" | awk '/^environment:/{f=1;next} f&&/^[^ ]/{f=0} f')
-          if printf '%s' "$env_section" | grep -q '✗'; then
-            echo "::error::doctor's environment gate reported a ✗ after provision"
-            exit 1
-          fi
+        run: >-
+          uv run --no-sync python scripts/assert_doctor_env.py --expect ok
+          --target web --config demos/web/demo.config.yaml
 
   # Single required status check for the web lane — the web twin of ios-e2e.yml's `E2E`. Always runs
   # so it reports even when the browser jobs are skipped (a PR that can't affect the web path) — a

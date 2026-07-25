@@ -169,6 +169,8 @@ def test_shared_run_path_is_relevant_on_every_lane() -> None:
         assert is_relevant(["bajutsu/interp.py"], lane) is True, lane
         assert is_relevant(["bajutsu/assertions/evaluate.py"], lane) is True, lane
         assert is_relevant(["tests/driver_conformance.py"], lane) is True, lane
+        # The onboarding-gate assertion every lane's `doctor` step runs (BE-0304).
+        assert is_relevant(["scripts/assert_doctor_env.py"], lane) is True, lane
         assert is_relevant(["uv.lock"], lane) is True, lane
 
 
