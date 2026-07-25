@@ -95,8 +95,15 @@ concurrency:
 # as its artifact, so the runner log rides along and is downloadable after any failure — a mid-run
 # crash included, where there is no startup-timeout to log a tail. `github.workspace` (not
 # `runner.temp`, which is unavailable in workflow-level env) keys it to the checkout.
+#
+# BAJUTSU_XCUITEST_STARTUP_TIMEOUT raises the cold-runner startup ceiling from the 120s default to
+# 300s (5 minutes) for every on-device lane: `xcodebuild test-without-building` boots the XCTest host
+# and launches the app before the runner answers /health, and on a loaded/contended macOS runner that
+# first start can exceed 120s. A warm start still returns the instant /health is ready, so this only
+# raises the ceiling for the cold case (bajutsu/platform_lifecycle/environments/xcuitest.py).
 env:
   BAJUTSU_XCUITEST_RUNNER_LOG: ${{ github.workspace }}/runs/runner-logs
+  BAJUTSU_XCUITEST_STARTUP_TIMEOUT: "300"
 
 jobs:
   # Decide whether an on-device run is warranted. The macOS jobs only fire when the PR

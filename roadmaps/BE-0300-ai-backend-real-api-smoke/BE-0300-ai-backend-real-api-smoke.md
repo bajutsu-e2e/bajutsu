@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0300](BE-0300-ai-backend-real-api-smoke.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0300") |
+| Implementing PR | [#1348](https://github.com/bajutsu-e2e/bajutsu/pull/1348) |
 | Topic | AI provider configuration |
 <!-- /BE-METADATA -->
 
@@ -83,10 +84,33 @@ Proposal altitude. The work is MECE along the units below.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Add a key-gated, minimal live-call test for the direct Anthropic API adapter.
-- [ ] Add the same for the Bedrock adapter, or record explicitly why it can't run in CI (e.g. a live Bedrock role).
-- [ ] Add the same for the `ant`-CLI adapter, or record explicitly why it can't run in CI.
-- [ ] Wire non-gating, opt-in CI lanes per adapter.
+- [x] Add a key-gated, minimal live-call test for the direct Anthropic API adapter.
+- [x] Add the same for the Bedrock adapter, or record explicitly why it can't run in CI (e.g. a live Bedrock role).
+- [x] Add the same for the `ant`-CLI adapter, or record explicitly why it can't run in CI.
+- [x] Wire a non-gating, opt-in CI lane for the direct Anthropic API adapter; the Bedrock and `ant` CI lanes stay deferred (no live AWS role / OAuth CLI seat as a CI secret), as the log records.
+
+**Log**
+
+- `tests/test_ai_backend_live_smoke.py` calls a real provider through `AnthropicBackend` with a
+  trivial forced-tool prompt and asserts only that the reply lands as a populated, parseable neutral
+  `MessageResponse` carrying a `ToolUseBlock` — a transport-and-schema check, never a model-quality
+  one. One test per adapter (`api-key`, `bedrock`, `ant`), each skipped by `bajutsu.ai.credential_gap`
+  when its provider has no credential. Deterministic `FakeAnthropic` self-checks in the same file keep
+  the wire-contract assertion honest, so a live run genuinely validates rather than passing vacuously.
+- The opt-in gate is the **`live` pytest marker**, not the `BAJUTSU_LIVE_AI_SMOKE` env flag the design
+  named as an example: the marker is deselected from the fast suite by default (`addopts` `not live`),
+  so `make check` stays hermetic by structure even when a contributor's `ANTHROPIC_API_KEY` is set.
+  The sibling BE-0295 ([#1344](https://github.com/bajutsu-e2e/bajutsu/pull/1344)) added this same
+  `live` marker and `addopts` line for its own real-model smoke and merged first, so `main` already
+  carries them; this item reuses that marker rather than redefining it. Opt in with `-m live`.
+- `.github/workflows/ai-smoke.yml` wires the **direct Anthropic API** lane only: `workflow_dispatch`
+  only (never push/PR, so a fork run can't see the credential — the `devicefarm.yml` boundary), the
+  `ANTHROPIC_API_KEY` secret scoped to an `ai-smoke` Environment, non-gating. With the secret unset the
+  test skips and the job is a green no-op, so the lane stays dormant until an operator wires it up.
+- **Bedrock and `ant` lanes are deliberately not wired in CI.** A live Bedrock call needs an AWS role
+  (with a provider-prefixed `BAJUTSU_BEDROCK_MODEL`) and `ant` needs a signed-in OAuth CLI seat —
+  neither is realistically available as a repository secret. Their `-m live` tests still run locally /
+  manually when the credential is present; only the CI lane is deferred until such a credential exists.
 
 ## References
 
