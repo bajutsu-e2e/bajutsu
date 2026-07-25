@@ -95,15 +95,16 @@ Proposal altitude. The work is MECE along the units below.
   The two fixture-capture units remain, needing a real credential to record the responses.
 - Built the capture harness for the two fixture units, keyless: `tests/real_model_support.py` adds a
   `RecordingBackend` that wraps the live backend and keeps the raw tool-use a real model returns
-  before the propose loop parses it away, plus `save_fixture` / `load_fixture` that round-trip that
-  payload through `FakeBackend`. `tests/test_real_model_fixtures.py` exercises the whole
-  capture → save → load → replay chain deterministically over a `FakeBackend` (no credential), replays
-  any committed fixture under `tests/fixtures/be0295/` (signal-first — skipped while none exists), and
-  carries the key-gated live capture that writes the committed fixture. Both boxes stay unchecked: the
-  harness is complete and tested, but the real payloads still need one keyed run to capture and commit
-  (`tests/fixtures/be0295/README.md` records the command). The shared screen loader, credential gate,
-  and parse-validity assertions moved into `real_model_support`, so the smoke and fixture tests share
-  one source of truth.
+  before the propose loop parses it away, plus `save_fixture` and `load_fixture`. `save_fixture`
+  serializes all tool-use blocks from the response; `load_fixture` returns a `_FixtureReplay` backend
+  that replays every captured block in one `MessageResponse` — preserving a real multi-action turn
+  intact (BE-0178 batched actions). `tests/test_real_model_fixtures.py` exercises the whole
+  capture → save → load → replay chain deterministically (no credential), including a multi-block
+  round-trip so the `_FixtureReplay` path is validated keylessly; it replays any committed fixture
+  under `tests/fixtures/be0295/` (signal-first — skipped while none exists), and carries the
+  key-gated live capture that writes the committed fixture. Both boxes stayed unchecked until the
+  next entry. The shared screen loader, credential gate, and parse-validity assertions moved into
+  `real_model_support`, so the smoke and fixture tests share one source of truth.
 - Captured both fixtures from a real model through the `claude-code` backend (BE-0176), which reaches
   a real model over the `claude` CLI's own credential — so no `ANTHROPIC_API_KEY` was needed:
   `BAJUTSU_AI_PROVIDER=claude-code uv run pytest tests/test_real_model_fixtures.py -m live -k capture`.

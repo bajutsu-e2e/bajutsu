@@ -31,6 +31,7 @@ from real_model_support import (
     FIXTURES_DIR,
     RECORD_GOAL,
     RecordingBackend,
+    _FixtureReplay,
     assert_parses_to_crawl_actions,
     assert_parses_to_record_action,
     crawl_candidates,
@@ -43,7 +44,7 @@ from real_model_support import (
 from bajutsu.agents.claude import ClaudeAgent
 from bajutsu.agents.protocols import Observation, Proposal
 from bajutsu.ai import create_backend
-from bajutsu.ai.base import AiBackend
+from bajutsu.ai.base import AiBackend, MessageResponse, ToolUseBlock
 from bajutsu.crawl import guide
 from bajutsu.crawl.guide import ClaudeActionProposer
 
@@ -76,6 +77,25 @@ def test_record_capture_replay_roundtrip(tmp_path: Path) -> None:
 
     fixture = tmp_path / "record.json"
     save_fixture(fixture, recording.responses[0])
+    assert_parses_to_record_action(_record_proposal(load_fixture(fixture)))
+
+
+def test_record_multiblock_capture_replay_roundtrip(tmp_path: Path) -> None:
+    # Verify the _FixtureReplay path: a real model may emit several tool-use blocks in one turn
+    # (BE-0178 batched actions). `FakeBackend` returns each block on successive calls, so it cannot
+    # simulate that shape — `_FixtureReplay` (used by `load_fixture`) replays all blocks in one
+    # `MessageResponse.content`, which is the only shape `_to_proposal` sees from a real capture.
+    blocks = [
+        ToolUseBlock(name="tap", input={"id": "log.intense", "reason": "toggle on"}),
+        ToolUseBlock(name="tap", input={"id": "log.submit", "reason": "submit after"}),
+    ]
+    replay = _FixtureReplay(blocks)
+    assert_parses_to_record_action(_record_proposal(replay))
+
+    # Also exercise the full save → load round-trip with a multi-block response.
+    multi_response = MessageResponse(content=list(blocks))
+    fixture = tmp_path / "record_multi.json"
+    save_fixture(fixture, multi_response)
     assert_parses_to_record_action(_record_proposal(load_fixture(fixture)))
 
 

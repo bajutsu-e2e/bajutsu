@@ -100,14 +100,16 @@ tool-use の提案を Bajutsu 自身のアクションスキーマへパース�
 - フィクスチャ捕捉の 2 単位向けに、鍵なしで動く捕捉ハーネスを実装しました。`tests/real_model_support.py`
   に `RecordingBackend` を追加します。これはライブバックエンドをラップし、propose ループがパースして
   しまう前の、実モデルが返した生の tool-use をそのまま保持します。あわせて `save_fixture` と
-  `load_fixture` を追加し、その内容を `FakeBackend` で往復させます。`tests/test_real_model_fixtures.py`
-  は、捕捉→保存→読み込み→再生の全経路を `FakeBackend` 上で決定的に検証し（認証情報は不要です）、
-  `tests/fixtures/be0295/` にコミット済みのフィクスチャがあれば再生し（signal-first の方針で、無い間は
-  スキップします）、コミット用フィクスチャを書き出す API キーで gate したライブ捕捉も持ちます。2 つの
-  チェックボックスは未チェックのままです。ハーネス自体は完成しテスト済みですが、実際のペイロードは鍵
-  付きの実行を 1 回行って捕捉・コミットする必要が残ります（コマンドは `tests/fixtures/be0295/README.md`
-  に記録しています）。共有するショーケース画面のローダー、認証情報のゲート、パース妥当性のアサーション
-  は `real_model_support` へ移し、smoke テストとフィクスチャテストが単一の真実源を共有するようにしました。
+  `load_fixture` を追加します。`save_fixture` はレスポンスの全 tool-use ブロックを直列化し、
+  `load_fixture` は捕捉した全ブロックを1つの `MessageResponse` として再生する `_FixtureReplay` バックエンド
+  を返します。これにより、実際のマルチアクションターンをそのまま保持します（BE-0178 バッチアクション）。
+  `tests/test_real_model_fixtures.py` は、捕捉→保存→読み込み→再生の全経路を決定的に検証します（認証情報
+  は不要です）。マルチブロック版の round-trip テストも含むため、`_FixtureReplay` 経路を鍵なしで検証できます。
+  さらに、`tests/fixtures/be0295/` にコミット済みのフィクスチャがあれば再生し（signal-first の方針で、
+  ない間はスキップします）、コミット用フィクスチャを書き出す API キーで gate したライブ捕捉も持ちます。
+  2 つのチェックボックスは次のエントリで完了するまで未チェックのままでした。共有するショーケース画面の
+  ローダー、認証情報のゲート、パース妥当性のアサーションは `real_model_support` へ移し、smoke テストと
+  フィクスチャテストが単一の真実源を共有するようにしました。
 - 両方のフィクスチャを、`claude-code` バックエンド（BE-0176）経由で実モデルから捕捉しました。この
   バックエンドは `claude` CLI 自身の認証情報で実モデルへ到達するため、`ANTHROPIC_API_KEY` は不要でした
   （`BAJUTSU_AI_PROVIDER=claude-code uv run pytest tests/test_real_model_fixtures.py -m live -k capture`）。
