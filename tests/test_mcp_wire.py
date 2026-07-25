@@ -12,11 +12,14 @@ The subprocess uses the ``fake`` backend, so ``bajutsu_doctor`` runs a real driv
 server process — device-free, so its computed result round-trips on any host. ``bajutsu_run``
 spawns a real ``bajutsu run`` subprocess whose verdict depends on the target environment: the
 fake *actuator* itself needs no device, but the run reaches it only after its udid/device
-resolution step, and ``_resolve_lanes`` (``bajutsu/cli/commands/run.py``) resolves the udid via the
-platform CLI ``xcrun`` for every actuator except ``playwright`` — including ``fake`` — so on the
-Linux CI host, where ``xcrun`` is absent, that step raises before the fake actuator ever runs and
-the run cannot complete. The test therefore asserts that the verdict *line* round-trips in
-well-formed shape, which is the wire property under test, not that the run itself passes.
+resolution step. ``fake`` is one of the simctl family (``fake`` and ``xcuitest``), whose
+environment resolves the udid through ``simctl.resolve_udid`` — which shells out to ``xcrun`` for
+the default ``booted`` udid — so on the Linux CI host, where ``xcrun`` is absent, that step raises
+before the fake actuator ever runs and the run cannot complete. (Other actuators do not take this
+path: ``playwright`` short-circuits before udid resolution, and ``adb`` resolves via
+``adb.resolve_serial``, not ``xcrun``.) The test therefore asserts that the verdict *line*
+round-trips in well-formed shape, which is the wire property under test, not that the run itself
+passes.
 
 Scope is the ``stdio`` transport (it needs no network); the ``sse`` transport's distinct framing is
 a deliberate follow-up (see the item's Progress log). Marked ``mcp_wire`` so it stays out of the
@@ -167,9 +170,9 @@ def test_wire_round_trips_the_doctor_tool(wire: dict[str, Any]) -> None:
 def test_wire_round_trips_the_run_tool(wire: dict[str, Any]) -> None:
     # `bajutsu_run` spawns a real `bajutsu run` subprocess and returns its verdict; the wire property
     # under test is that the verdict line survives the transport, not the run's own pass/fail. The
-    # run's udid/device-resolution step shells out to `xcrun` for the fake backend too (see the
-    # module docstring), so it can complete on macOS but not on the Linux CI host — hence we assert
-    # only the verdict line's shape. The first token is always PASS or FAIL, and the deterministic
+    # fake actuator is in the simctl family, so its udid/device-resolution step shells out to
+    # `xcrun` (see the module docstring), so it can complete on macOS but not on the Linux CI host —
+    # hence we assert only the verdict line's shape. The first token is always PASS or FAIL, and the deterministic
     # two-space `PASS|FAIL  <manifest>` shape means a PASS carries a manifest path — so the verdict
     # line's structure round-tripped intact either way.
     verdict_line = wire["run_text"].splitlines()[0]

@@ -90,8 +90,11 @@ Proposal altitude. The work is MECE along the units below.
   subprocess uses the `fake` backend, so `bajutsu_doctor` runs a real, device-free driver query in
   the server process; `bajutsu_run` spawns a real `bajutsu run` subprocess whose verdict depends on
   the target environment — the fake actuator itself needs no device, but the run reaches it only
-  after its udid/device-resolution step, which shells out to `xcrun` for the `fake` backend too and
-  so raises on the Linux host, where `xcrun` is absent — so the run round-trip asserts the verdict
+  after its udid/device-resolution step, and `fake` is one of the simctl family (`fake` and
+  `xcuitest`), whose environment resolves the udid through `simctl.resolve_udid`, which shells out
+  to `xcrun` for the default `booted` udid and so raises on the Linux host, where `xcrun` is absent
+  (`playwright` short-circuits before udid resolution and `adb` resolves via `adb.resolve_serial`,
+  not `xcrun`) — so the run round-trip asserts the verdict
   *line* survives the transport in well-formed shape — the wire property under test — not the run's
   own pass/fail. The in-process `tests/test_mcp.py` is
   unchanged. Scope is the `stdio`
