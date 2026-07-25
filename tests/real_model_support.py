@@ -18,7 +18,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from conftest import FakeBackend, FakeBlock
 
 from bajutsu import crawl
 from bajutsu.agents.protocols import Proposal
@@ -115,7 +114,7 @@ def tool_use_payload(response: MessageResponse) -> list[dict[str, Any]]:
     """The response's tool-use blocks as plain `{name, input}` dicts — the fixture's whole content.
 
     Only tool-use blocks are kept: the propose loops read nothing else from a forced-tool turn, and
-    a `FakeBlock` reconstructs exactly this shape, so a fixture round-trips through `FakeBackend`.
+    `load_fixture` reconstructs exactly this shape as one replayed turn (`_FixtureReplay`).
     """
     return [
         {"name": block.name, "input": block.input}
@@ -131,7 +130,26 @@ def save_fixture(path: Path, response: MessageResponse) -> None:
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
-def load_fixture(path: Path) -> FakeBackend:
-    """Rebuild a `FakeBackend` from a saved fixture, replaying the captured tool-use unchanged."""
+class _FixtureReplay:
+    """Replays a saved turn's tool-use blocks as one multi-block `MessageResponse`.
+
+    The record loop maps *every* tool-use block in a single turn to a step (`_to_proposal`,
+    BE-0178: the agent may emit several actions), so a captured turn must replay as one response
+    whose `content` holds all the blocks in order. `FakeBackend` instead returns each block as its
+    own single-block response on successive `create_message()` calls, which would silently drop all
+    but the first block of a real parallel multi-action capture — the exact shape a fixture exists
+    to guard.
+    """
+
+    def __init__(self, blocks: list[ToolUseBlock]) -> None:
+        self._response = MessageResponse(content=list(blocks))
+
+    def create_message(self, request: MessageRequest) -> MessageResponse:
+        return self._response
+
+
+def load_fixture(path: Path) -> AiBackend:
+    """Rebuild a backend from a saved fixture, replaying the captured tool-use as one turn."""
     payload = json.loads(path.read_text(encoding="utf-8"))
-    return FakeBackend(*(FakeBlock(entry["name"], entry["input"]) for entry in payload))
+    blocks = [ToolUseBlock(name=entry["name"], input=entry["input"]) for entry in payload]
+    return _FixtureReplay(blocks)

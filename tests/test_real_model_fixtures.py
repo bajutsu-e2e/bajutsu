@@ -117,6 +117,8 @@ def test_capture_record_fixture() -> None:
     recording = RecordingBackend(create_backend())
     assert_parses_to_record_action(_record_proposal(recording))
     save_fixture(_RECORD_FIXTURE, recording.responses[0])
+    # Fail the capture fast if the saved payload cannot round-trip back through the replay path.
+    assert_parses_to_record_action(_record_proposal(load_fixture(_RECORD_FIXTURE)))
 
 
 @pytest.mark.live
@@ -125,3 +127,5 @@ def test_capture_crawl_fixture() -> None:
     recording = RecordingBackend(create_backend())
     assert_parses_to_crawl_actions(_crawl_proposal(recording))
     save_fixture(_CRAWL_FIXTURE, recording.responses[0])
+    # Fail the capture fast if the saved payload cannot round-trip back through the replay path.
+    assert_parses_to_crawl_actions(_crawl_proposal(load_fixture(_CRAWL_FIXTURE)))
