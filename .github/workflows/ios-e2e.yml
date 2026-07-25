@@ -115,6 +115,11 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       relevant: ${{ steps.filter.outputs.relevant }}
+      # BE-0322: `shared` is true for a shared-code change (fire the whole lane); `affected` is a JSON
+      # array of the scenario-keyed jobs a scenario-only change reached. A scenario-keyed job runs
+      # when `relevant` and (`shared` or the job is in `affected`); a dimension job runs on `relevant`.
+      shared: ${{ steps.filter.outputs.shared }}
+      affected: ${{ steps.filter.outputs.affected }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         with:
@@ -130,7 +135,11 @@ jobs:
   smoke:
     name: smoke (xcuitest)
     needs: changes
-    if: needs.changes.outputs.relevant == 'true'
+    # BE-0322: run on a shared-code change, or when this job declares a changed scenario.
+    if: >-
+      needs.changes.outputs.relevant == 'true' &&
+      (needs.changes.outputs.shared == 'true' ||
+      contains(fromJSON(needs.changes.outputs.affected), 'smoke'))
     runs-on: macos-latest
     # Cap the metered macOS job (10x billing): a hung Simulator/runner would otherwise run to the
     # 6h default. Typical end-to-end is ~10min, so 25 catches a real hang with comfortable headroom.
@@ -221,7 +230,11 @@ jobs:
   actuation:
     name: actuation (xcuitest)
     needs: changes
-    if: needs.changes.outputs.relevant == 'true'
+    # BE-0322: run on a shared-code change, or when this job declares a changed scenario.
+    if: >-
+      needs.changes.outputs.relevant == 'true' &&
+      (needs.changes.outputs.shared == 'true' ||
+      contains(fromJSON(needs.changes.outputs.affected), 'actuation'))
     runs-on: macos-latest
     # Cap the metered macOS job (10x billing): a hung Simulator/runner would otherwise run to the 6h
     # default. Build + four short scenario runs is ~14min, so 25 catches a real hang with headroom.
@@ -308,7 +321,11 @@ jobs:
   golden:
     name: golden (xcuitest)
     needs: changes
-    if: needs.changes.outputs.relevant == 'true'
+    # BE-0322: run on a shared-code change, or when this job declares a changed scenario.
+    if: >-
+      needs.changes.outputs.relevant == 'true' &&
+      (needs.changes.outputs.shared == 'true' ||
+      contains(fromJSON(needs.changes.outputs.affected), 'golden'))
     runs-on: macos-latest
     # A cold Xcode build (~2.5min) + a fresh Simulator boot (~80s) + the golden run is well under
     # this; 25 catches a hung Simulator/runner on the metered macOS runner with comfortable headroom.
@@ -377,6 +394,8 @@ jobs:
   codegen:
     name: codegen (xcuitest)
     needs: changes
+    # BE-0322: a dimension job — it declares no single scenario, so it runs on any relevant change
+    # (a scenario-only change included), never narrowed.
     if: needs.changes.outputs.relevant == 'true'
     runs-on: macos-latest
     # Cap the metered macOS job (10x billing): a hung Simulator/xcodebuild would otherwise run to
@@ -456,7 +475,11 @@ jobs:
   gestures:
     name: gestures (xcuitest)
     needs: changes
-    if: needs.changes.outputs.relevant == 'true'
+    # BE-0322: run on a shared-code change, or when this job declares a changed scenario.
+    if: >-
+      needs.changes.outputs.relevant == 'true' &&
+      (needs.changes.outputs.shared == 'true' ||
+      contains(fromJSON(needs.changes.outputs.affected), 'gestures'))
     runs-on: macos-latest
     # Cap the metered macOS job (10x billing): a hung Simulator/runner would otherwise run to the
     # 6h default. Build + the gesture scenario run is ~12min, so 20 catches a real hang with headroom.
@@ -531,7 +554,11 @@ jobs:
   permission:
     name: permission (xcuitest)
     needs: changes
-    if: needs.changes.outputs.relevant == 'true'
+    # BE-0322: run on a shared-code change, or when this job declares a changed scenario.
+    if: >-
+      needs.changes.outputs.relevant == 'true' &&
+      (needs.changes.outputs.shared == 'true' ||
+      contains(fromJSON(needs.changes.outputs.affected), 'permission'))
     runs-on: macos-latest
     # Cap the metered macOS job (10x billing): a hung Simulator/runner would otherwise run to the
     # 6h default. Build + two short scenario runs is ~12min, so 20 catches a real hang with headroom.
@@ -608,7 +635,11 @@ jobs:
   runner-actuation:
     name: runner-actuation (xcuitest)
     needs: changes
-    if: needs.changes.outputs.relevant == 'true'
+    # BE-0322: run on a shared-code change, or when this job declares a changed scenario.
+    if: >-
+      needs.changes.outputs.relevant == 'true' &&
+      (needs.changes.outputs.shared == 'true' ||
+      contains(fromJSON(needs.changes.outputs.affected), 'runner-actuation'))
     runs-on: macos-latest
     # Cap the metered macOS job (10x billing): a hung Simulator/runner would otherwise run to the
     # 6h default. Build + two short scenario runs is ~12min, so 20 catches a real hang with headroom.
@@ -681,7 +712,11 @@ jobs:
   bundled-runner:
     name: bundled-runner (xcuitest)
     needs: changes
-    if: needs.changes.outputs.relevant == 'true'
+    # BE-0322: run on a shared-code change, or when this job declares a changed scenario.
+    if: >-
+      needs.changes.outputs.relevant == 'true' &&
+      (needs.changes.outputs.shared == 'true' ||
+      contains(fromJSON(needs.changes.outputs.affected), 'bundled-runner'))
     runs-on: macos-latest
     # Cap the metered macOS job (10x billing): a hung Simulator/runner would otherwise run to the
     # 6h default. Build (SwiftUI + UIKit) + bundle the runner + two smoke runs is ~16min, so 25
@@ -774,6 +809,8 @@ jobs:
   conformance:
     name: conformance (xcuitest)
     needs: changes
+    # BE-0322: a dimension job — it declares no single scenario, so it runs on any relevant change
+    # (a scenario-only change included), never narrowed.
     if: needs.changes.outputs.relevant == 'true'
     runs-on: macos-latest
     # Cap the metered macOS job (10x billing): a hung Simulator/runner would otherwise run to the
@@ -847,6 +884,8 @@ jobs:
   visual:
     name: visual (xcuitest)
     needs: changes
+    # BE-0322: a dimension job — it declares no single scenario, so it runs on any relevant change
+    # (a scenario-only change included), never narrowed.
     if: needs.changes.outputs.relevant == 'true'
     runs-on: macos-latest
     # A cold Xcode build (~2.5min) + a fresh Simulator boot (~80s) + the VRT run is well under this;
@@ -923,11 +962,13 @@ jobs:
           if-no-files-found: ignore
 
   # Single required status check for E2E. Always runs so it reports even when the macOS
-  # jobs are skipped (docs-only PRs) — a skipped dependency is a pass; only a real
-  # failure or cancellation fails the gate. `actuation`, `golden`, and `visual` are deliberately
-  # excluded from `needs:` (see each job's comment) so newly-wired actuation (BE-0281) or a
-  # host-specific pixel drift never blocks a merge. Make `E2E` the required check, not the
-  # path-gated macOS jobs.
+  # jobs are skipped — for a docs-only PR (the whole lane skips), and now also per job when
+  # BE-0322 narrows a scenario-only change to only the jobs that declare a changed scenario (the
+  # others skip). A skipped dependency is a pass; only a real failure or cancellation fails the gate,
+  # so a narrowed run stays green without letting a genuine failure slip through. `actuation`,
+  # `golden`, and `visual` are deliberately excluded from `needs:` (see each job's comment) so
+  # newly-wired actuation (BE-0281) or a host-specific pixel drift never blocks a merge. Make `E2E`
+  # the required check, not the path-gated macOS jobs.
   e2e:
     name: E2E (iOS)
     needs: [changes, smoke, codegen, gestures, permission, runner-actuation, bundled-runner, conformance]

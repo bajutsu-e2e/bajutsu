@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0322](BE-0322-e2e-scenario-scoped-filter.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0322") |
+| Implementing PR | _pending_ |
 | Topic | Contributor workflow |
 <!-- /BE-METADATA -->
 
@@ -161,10 +162,14 @@ scenario files stay the only place per-app knowledge lives (prime directive 3).
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Change classification — partition a diff's changed files into shared-code versus scenario-only in `scripts/e2e_changes.py`.
-- [ ] Job-to-scenario map and affected-job selection — read each job's declared `scenarios:`, and emit the affected-job set alongside the relevant boolean to `GITHUB_OUTPUT`.
-- [ ] Workflow wiring — guard each scenario-keyed job on "shared change or in the affected set", and keep the required aggregator green when jobs skip (`if: always()` + "no job failed").
-- [ ] Fallback and documentation — fall back to the whole fleet for dimension jobs, non-keyed lanes (Android), and shared fragments, and document the safety model and the bounded scope.
+- [x] Change classification — partition a diff's changed files into shared-code versus scenario-only in `scripts/e2e_changes.py`.
+- [x] Job-to-scenario map and affected-job selection — read each job's declared `scenarios:`, and emit the affected-job set alongside the relevant boolean to `GITHUB_OUTPUT`.
+- [x] Workflow wiring — guard each scenario-keyed job on "shared change or in the affected set", and keep the required aggregator green when jobs skip (`if: always()` + "no job failed").
+- [x] Fallback and documentation — fall back to the whole fleet for dimension jobs, non-keyed lanes (Android), and shared fragments, and document the safety model and the bounded scope.
+
+**Progress log**
+
+- Implemented in one PR (_pending_): the classifier, the workflow-declared job-to-scenario map, and the `shared` / `affected` outputs in [`scripts/e2e_changes.py`](../../scripts/e2e_changes.py); the per-job `if:` guards on the seven scenario-keyed iOS jobs in [`ios-e2e.yml`](../../.github/workflows/ios-e2e.yml); the safety model documented in [`docs/ci.md`](../../docs/ci.md) (and its Japanese mirror). The map is read from the workflow with a standard-library line scan so the `changes` job needs no PyYAML.
 
 ## References
 
