@@ -211,14 +211,18 @@ class Effective:
         The common path fields — `scenarios` / `baselines` / `schemas` / `goldens` — and the iOS or
         Android sub-config's `app_path` are rebased; a future path field is rebased by adding it here. `build`
         (a shell command) and `setup` (resolved relative to the scenario, not the cwd) are
-        intentionally absent. Called for a Git checkout (BE-0063), for an uploaded bundle, and — with
-        `confine=False`, `root` the config file's own directory — for a local config (BE-0242), so the
-        caller's working directory no longer decides where a config's paths point.
+        intentionally absent. Called for a Git checkout (BE-0063), for an uploaded bundle, and — `root`
+        the config file's own directory — for a local config (BE-0242), so the caller's working
+        directory no longer decides where a config's paths point.
 
-        `confine` gates the escape check: when true (an untrusted source — a fetched Git config or an
-        uploaded bundle), an absolute or `../` value that would leave `root` raises ValueError, mirroring
-        the serve-hardening path confinement (BE-0051). A local file is operator-trusted (BE-0121), so it
-        passes `confine=False` and may point at a sibling outside its own directory.
+        `confine` gates the escape check: when true (an untrusted source — a fetched Git config, an
+        uploaded bundle, or a config bound through serve's file browser) an absolute or `../` value that
+        would leave `root` raises ValueError, mirroring the serve-hardening path confinement (BE-0051).
+        The two local-config entry points now diverge here: the CLI's `--config` (an operator typing a
+        path at their own terminal, BE-0121) passes `confine=False` and may point at a sibling outside
+        its own directory, while serve's `bind_config` (a path picked through the running server's file
+        browser, not necessarily the same trust level) passes `confine=True` — a local file is
+        operator-trusted only at the CLI, not once serve is already listening for UI requests.
         """
         root_resolved = root.resolve()
 
