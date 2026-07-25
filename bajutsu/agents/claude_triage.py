@@ -46,6 +46,10 @@ MODEL = "claude-opus-4-8"
 
 _CATEGORIES = ("selector", "timing", "assertion", "unknown")
 
+# The summary returned when the model produces no diagnose tool call. Named so tests can assert a
+# real diagnosis differs from it without duplicating the literal (a copy would silently drift).
+NO_DIAGNOSIS_SUMMARY = "Claude returned no diagnosis."
+
 SYSTEM_PROMPT = f"""You are an iOS end-to-end test triage assistant. A deterministic test \
 scenario ran against an app on the iOS Simulator and a step or expectation failed. Explain \
 the ROOT CAUSE of the failure and propose the minimal fix a human should apply.
@@ -200,7 +204,7 @@ def _parse_fix(raw: Any) -> Fix | None:
 def _to_triage(response: MessageResponse, categories: tuple[str, ...] = _CATEGORIES) -> Triage:
     tool_use = response.first_tool_use()
     if tool_use is None:
-        return Triage("Claude returned no diagnosis.", "unknown", [])
+        return Triage(NO_DIAGNOSIS_SUMMARY, "unknown", [])
     args = tool_use.input
     category = str(args.get("category", "unknown"))
     if category not in categories:
