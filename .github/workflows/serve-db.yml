@@ -4,8 +4,9 @@
 # enforcement SQLite silently skips — has never actually executed against the dialect the hosted
 # deployment targets. The `postgres` job stands up an ephemeral Postgres service container (the
 # standard GitHub Actions pattern) and reruns every `postgres`-marked serve DB test against it
-# (`-m postgres`): the migration upgrade/downgrade assertions plus the whole `tests/serve` suite,
-# which the `serve_engine` fixture (tests/conftest.py) parametrizes over both dialects.
+# (`-m postgres`): the migration upgrade/downgrade assertions plus every `postgres`-marked test in
+# `tests/serve/` — those added by the `serve_engine` fixture (tests/conftest.py), which
+# parametrizes each test over both dialects (SQLite in the gate, Postgres here).
 #
 # ALWAYS-REPORTING gate so `serve db (postgres)` can graduate to a required check. A required check
 # that never reports stays pending and blocks the merge, so the lane cannot be path-gated at the
