@@ -49,7 +49,7 @@
 #     runner-actuation were once separate jobs (and earlier still one `xcuitest-gestures` job), each
 #     re-paying the cold XCTest-host startup — the lane's dominant cost. Folding them back into one
 #     `bajutsu run` trades per-concern job names for paying that cold startup once, now that the run
-#     loop's per-scenario verdict makes the split unnecessary for the gate.
+# The SwiftUI a11y product is the run / golden / codegen / visual subject; the UIKit twin shares
 # The SwiftUI a11y product is the smoke / golden / codegen / visual subject; the UIKit twin shares
 # the identifier contract, so one toolkit suffices for the gate (bundled-runner is the exception —
 # it deliberately runs both toolkits to prove the runner is app-agnostic).
