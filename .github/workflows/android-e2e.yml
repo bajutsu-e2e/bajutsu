@@ -203,17 +203,16 @@ jobs:
           force-avd-creation: false
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           disable-animations: true
-          # This script runs inside the emulator-runner action under `/usr/bin/sh` (dash), not a
-          # GitHub `run:` step, so it gets no default `-e`. Without `set -e` a multi-command script
-          # returns only the last command's exit code, which would let a ✗ from the doctor gate be
-          # masked by a passing `make e2e` — exactly the drift this gate exists to catch. `pipefail`
-          # is a bashism dash rejects, and nothing here pipes, so `set -e` alone is what's needed.
-          script: |
-            set -e
-            uv run --no-sync python scripts/assert_doctor_env.py --expect ok \
-              --target showcase-compose --backend android \
-              --config demos/showcase/showcase.config.yaml
-            make -C demos/showcase/android e2e
+          # The emulator-runner runs each script *line* as its own `/usr/bin/sh -c`, so a `set -e`
+          # line and backslash continuations don't carry across lines. Keep it one command joined
+          # with `&&` (the folded scalar collapses to a single line), so a ✗ from the doctor gate
+          # short-circuits before `make e2e` and fails the job — the drift this gate exists to catch,
+          # which a two-statement script would mask by returning only `make e2e`'s exit code.
+          script: >-
+            uv run --no-sync python scripts/assert_doctor_env.py --expect ok
+            --target showcase-compose --backend android
+            --config demos/showcase/showcase.config.yaml
+            && make -C demos/showcase/android e2e
 
       - name: Upload run artifacts
         if: always()
