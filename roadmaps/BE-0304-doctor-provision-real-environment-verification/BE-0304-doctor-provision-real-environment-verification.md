@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0304") |
-| Implementing PR | [#1367](https://github.com/bajutsu-e2e/bajutsu/pull/1367), [#_pending_](https://github.com/bajutsu-e2e/bajutsu/pull/_pending_) |
+| Implementing PR | [#1367](https://github.com/bajutsu-e2e/bajutsu/pull/1367), [#1370](https://github.com/bajutsu-e2e/bajutsu/pull/1370) |
 | Topic | doctor / onboarding |
 <!-- /BE-METADATA -->
 
