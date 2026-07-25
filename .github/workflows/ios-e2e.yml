@@ -461,6 +461,13 @@ jobs:
     # Cap the metered macOS job (10x billing): a hung Simulator/runner would otherwise run to the
     # 6h default. Build + the gesture scenario run is ~12min, so 20 catches a real hang with headroom.
     timeout-minutes: 20
+    # The actuator now re-issues a dropped two-finger gesture until it lands (XcuitestElementProvider),
+    # which fixes the primary flake. This raises the `expect` wait *floor* too, matching the smoke /
+    # actuation / golden / visual jobs, so a mirrored value that lands a beat after the (landed)
+    # gesture returns is waited out rather than read once — a condition wait, so a prompt value is
+    # unaffected (no fixed sleep, prime directive 2).
+    env:
+      BAJUTSU_MIN_WAIT_TIMEOUT: "20"
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
 

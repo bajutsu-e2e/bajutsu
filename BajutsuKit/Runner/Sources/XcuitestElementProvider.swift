@@ -64,16 +64,38 @@ final class XcuitestElementProvider: ElementProviding {
     func gesture(backingElement: AnyObject, kind: String, scale: Double, radians: Double) -> TapResult {
         guard let backing = backingElement as? PositionPathBacking else { return .notFound }
         guard let el = liveElement(for: backing) else { return .stale }
+        let actuate: () -> Void
         switch kind {
         case "pinch":
             // velocity sign must match the scale direction (zoom in vs out) or XCUITest rejects it.
-            el.pinch(withScale: CGFloat(scale), velocity: scale >= 1 ? 1 : -1)
+            actuate = { el.pinch(withScale: CGFloat(scale), velocity: scale >= 1 ? 1 : -1) }
         case "rotate":
-            el.rotate(CGFloat(radians), withVelocity: 1)
+            actuate = { el.rotate(CGFloat(radians), withVelocity: 1) }
         default:
             return .notFound
         }
+        // XCUITest occasionally synthesizes a two-finger gesture the Simulator drops before the app's
+        // recognizer fires, leaving the mirrored a11y value unmoved and the run's `expect` red. Re-issue
+        // the idempotent gesture until the tree reflects a change, bounded by a small cap.
+        actuateUntilStateChanges(
+            maxAttempts: Self.maxGestureAttempts,
+            signature: { self.snapshotSignature() },
+            actuate: actuate
+        )
         return .ok
+    }
+
+    /// The most times `gesture` re-issues a dropped pinch/rotate before giving up (a genuinely
+    /// no-op gesture then still returns, and the run's `expect` fails loudly rather than looping).
+    private static let maxGestureAttempts = 4
+
+    /// A cheap projection of the current tree — identifier|label|value per element, frame excluded so
+    /// layout jitter isn't mistaken for a gesture landing — used to detect that a re-issued gesture
+    /// finally took effect (the showcase's `GestureView` flips a mirrored value from 'idle').
+    private func snapshotSignature() -> String {
+        queryElements()
+            .map { "\($0.identifier ?? "")|\($0.label ?? "")|\($0.value ?? "")" }
+            .joined(separator: "\n")
     }
 
     func swipe(fromX: Double, fromY: Double, toX: Double, toY: Double) -> TapResult {
