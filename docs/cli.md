@@ -94,13 +94,18 @@ A **runnability gate** + the **convention score** for the current screen (AI-ind
 [configuration](configuration.md#doctor-the-convention-score)).
 
 ```bash
-bajutsu doctor --target <name> [--udid booted] [--backend ...] [--config ...]
+bajutsu doctor --target <name> [--udid booted] [--backend ...] [--config ...] [--scenario <file.yaml>] [--environment-only]
 ```
 
 - First the env gate (`preflight.py`): the required CLIs for the actuator (`xcrun` / `xcodebuild`
   for XCUITest) and a **booted Simulator**, printed as a ✓/✗ checklist. A missing
   check **exits 1** (fail fast with a fixable hint).
-- Then `query()`s via the actuator and renders `score(elements, idNamespaces)`. **Exits 1 when
+- `--environment-only` stops right after that gate — render the `environment:` section, then exit 0
+  (gate passed) or 1 (a `✗`), skipping the screen probe below (on iOS, the probe's cost of spinning
+  up the resident XCUITest runner). A CI lane that only needs to verify the environment gate against
+  a real host (BE-0304) uses this to skip the probe's unrelated failure modes, the runner's own
+  startup flakiness included.
+- Otherwise, `query()`s via the actuator and renders `score(elements, idNamespaces)`. **Exits 1 when
   the grade is Blocked, 0 otherwise.**
 
 ## `audit`
