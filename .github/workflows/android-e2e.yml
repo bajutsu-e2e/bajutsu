@@ -203,12 +203,13 @@ jobs:
           force-avd-creation: false
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           disable-animations: true
-          # This script runs inside the emulator-runner action, not a GitHub `run:` step, so it
-          # gets no default `bash -e -o pipefail`. Without `set -e` a multi-command script returns
-          # only the last command's exit code, which would let a ✗ from the doctor gate be masked
-          # by a passing `make e2e` — exactly the drift this gate exists to catch.
+          # This script runs inside the emulator-runner action under `/usr/bin/sh` (dash), not a
+          # GitHub `run:` step, so it gets no default `-e`. Without `set -e` a multi-command script
+          # returns only the last command's exit code, which would let a ✗ from the doctor gate be
+          # masked by a passing `make e2e` — exactly the drift this gate exists to catch. `pipefail`
+          # is a bashism dash rejects, and nothing here pipes, so `set -e` alone is what's needed.
           script: |
-            set -euo pipefail
+            set -e
             uv run --no-sync python scripts/assert_doctor_env.py --expect ok \
               --target showcase-compose --backend android \
               --config demos/showcase/showcase.config.yaml
