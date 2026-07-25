@@ -55,7 +55,11 @@ _RUNNER_LOG_TAIL_LINES = 20
 # A cold XCTest-host launch that never binds its port is a transient blip (the class BE-0207 absorbs
 # at the transport layer). One retry absorbs a one-off cold-start blip; a repeatable failure — a
 # broken build, signature, or app — fails every attempt and still stops the gate (BE-0049). Bounded
-# to a single retry: two attempts total.
+# to a single retry: two attempts total. The startup ceiling is a *shared* budget across these
+# attempts (`_spawn_cold_with_retry`), not a fresh ceiling each: a slow "health never ready" attempt
+# has already spent the budget, so a second full-ceiling wait would double the worst case (e.g. the
+# ios-e2e lane's 300s → 600s) and blow a job's `timeout-minutes` — while a fast-failing attempt (an
+# `xcodebuild` that exits at once) leaves the budget nearly intact for the genuine retry it wants.
 _COLD_SPAWN_ATTEMPTS = 2
 
 # Between health probes during the cold-spawn wait, re-check the `xcodebuild` handle this often — a
@@ -195,15 +199,29 @@ def _spawn_cold_with_retry(
     "flakiness is never tolerated by absorption". Each failed attempt is discarded (no leaked
     subprocess) and its captured tail folded into the final loud `XcuitestChannelError` (unit 2), so
     the run-failing error shows *why* the runner never answered, not merely that it did not.
+
+    `timeout` is a *total* budget shared across attempts, not a per-attempt ceiling: the first
+    attempt gets the whole budget; each later attempt gets only what an earlier one left unspent.
+    A "health never ready" attempt spends the entire budget, so no retry follows it (a second
+    full-ceiling wait would double the worst case — 300s → 600s on the ios-e2e lane — and blow a
+    job's `timeout-minutes`); a fast-failing attempt (an `xcodebuild` that exits at once, leaving the
+    budget nearly intact) still earns its retry. So the total cold-spawn wall time is bounded by
+    `timeout` regardless of how the attempts fail.
     """
     from bajutsu.drivers.xcuitest import XcuitestChannelError
 
+    deadline = clock() + timeout
     diagnostics: list[str] = []
     for n in range(1, attempts + 1):
+        remaining = deadline - clock()
+        # First attempt always runs (with the full budget); a later one only if a fast failure left
+        # budget for it — a prior attempt that spent the whole ceiling gets no wasteful second wait.
+        if n > 1 and remaining <= 0:
+            break
         spawned = spawn()
         try:
             reason = _await_cold_runner(
-                spawned, timeout=timeout, poll=poll, sleep=sleep, clock=clock
+                spawned, timeout=max(0.0, remaining), poll=poll, sleep=sleep, clock=clock
             )
         except BaseException:
             # An unexpected failure while awaiting must not leak the just-spawned runner (the leak

@@ -2,21 +2,24 @@
 
 The hosted regular-run history is DB-driven (`Repository.list_runs`), so a soft-delete there is a
 `deleted_at`/`deleted_by` column update that the listing filters on — the DB counterpart to the
-object store's tombstone. Purge deletes the row outright. Exercised on in-memory SQLite, org-scoped.
+object store's tombstone. Purge deletes the row outright. Exercised on in-memory SQLite in the gate
+and, behind the `postgres` marker, against a real Postgres service in the serve-db.yml lane (BE-0309),
+org-scoped.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime
 
-from sqlalchemy import create_engine
+from sqlalchemy import Engine
 
 from bajutsu.serve.server.db import RunRecord, SqlRepository
 from bajutsu.serve.server.models import Base
 
 
-def _repo() -> SqlRepository:
-    engine = create_engine("sqlite://")
+def _repo(serve_engine: Callable[..., Engine]) -> SqlRepository:
+    engine = serve_engine()
     Base.metadata.create_all(engine)
     repo = SqlRepository(engine)
     for org in ("acme", "globex"):
@@ -32,8 +35,8 @@ def _ids(repo: SqlRepository, org: str = "acme", **kw) -> list[str]:
     return [r.id for r in repo.list_runs(org_id=org, **kw)]
 
 
-def test_soft_delete_hides_a_run_from_list_runs() -> None:
-    repo = _repo()
+def test_soft_delete_hides_a_run_from_list_runs(serve_engine: Callable[..., Engine]) -> None:
+    repo = _repo(serve_engine)
     _run(repo, "r1")
     _run(repo, "r2")
     assert (
@@ -43,8 +46,8 @@ def test_soft_delete_hides_a_run_from_list_runs() -> None:
     assert "r1" in _ids(repo, include_deleted=True)  # still there, just filtered out
 
 
-def test_soft_delete_is_org_scoped() -> None:
-    repo = _repo()
+def test_soft_delete_is_org_scoped(serve_engine: Callable[..., Engine]) -> None:
+    repo = _repo(serve_engine)
     _run(repo, "r1", org="acme")
     # globex cannot trash acme's run — no matching row, a clean not-found.
     assert (
@@ -53,8 +56,8 @@ def test_soft_delete_is_org_scoped() -> None:
     assert _ids(repo, org="acme") == ["r1"]
 
 
-def test_soft_delete_twice_is_false_the_second_time() -> None:
-    repo = _repo()
+def test_soft_delete_twice_is_false_the_second_time(serve_engine: Callable[..., Engine]) -> None:
+    repo = _repo(serve_engine)
     _run(repo, "r1")
     assert (
         repo.soft_delete_run("r1", org_id="acme", deleted_by="alice", at=datetime.now(UTC)) is True
@@ -64,8 +67,8 @@ def test_soft_delete_twice_is_false_the_second_time() -> None:
     )
 
 
-def test_restore_brings_a_run_back() -> None:
-    repo = _repo()
+def test_restore_brings_a_run_back(serve_engine: Callable[..., Engine]) -> None:
+    repo = _repo(serve_engine)
     _run(repo, "r1")
     repo.soft_delete_run("r1", org_id="acme", deleted_by="alice", at=datetime.now(UTC))
     assert repo.restore_run("r1", org_id="acme") is True
@@ -73,9 +76,11 @@ def test_restore_brings_a_run_back() -> None:
     assert repo.restore_run("r1", org_id="acme") is False  # nothing trashed now
 
 
-def test_record_run_does_not_resurrect_or_clobber_the_marker() -> None:
+def test_record_run_does_not_resurrect_or_clobber_the_marker(
+    serve_engine: Callable[..., Engine],
+) -> None:
     # A status update (re-`record_run`) on a trashed run must not clear its soft-delete marker.
-    repo = _repo()
+    repo = _repo(serve_engine)
     _run(repo, "r1")
     repo.soft_delete_run("r1", org_id="acme", deleted_by="alice", at=datetime.now(UTC))
     repo.record_run(RunRecord(id="r1", org_id="acme", status="done", ok=False))
@@ -83,8 +88,8 @@ def test_record_run_does_not_resurrect_or_clobber_the_marker() -> None:
     assert repo.get_run("r1").deleted_at is not None
 
 
-def test_purge_deletes_the_row() -> None:
-    repo = _repo()
+def test_purge_deletes_the_row(serve_engine: Callable[..., Engine]) -> None:
+    repo = _repo(serve_engine)
     _run(repo, "r1")
     repo.soft_delete_run("r1", org_id="acme", deleted_by="alice", at=datetime.now(UTC))
     assert repo.purge_run("r1", org_id="acme") is True
@@ -92,17 +97,17 @@ def test_purge_deletes_the_row() -> None:
     assert repo.purge_run("r1", org_id="acme") is False  # already gone
 
 
-def test_purge_is_org_scoped() -> None:
-    repo = _repo()
+def test_purge_is_org_scoped(serve_engine: Callable[..., Engine]) -> None:
+    repo = _repo(serve_engine)
     _run(repo, "r1", org="acme")
     assert repo.purge_run("r1", org_id="globex") is False  # another org can't purge it
     assert repo.get_run("r1") is not None
 
 
-def test_list_deleted_runs_filters_by_org_and_cutoff() -> None:
+def test_list_deleted_runs_filters_by_org_and_cutoff(serve_engine: Callable[..., Engine]) -> None:
     from datetime import timedelta
 
-    repo = _repo()
+    repo = _repo(serve_engine)
     now = datetime.now(UTC)
     for rid in ("old", "recent", "live"):
         _run(repo, rid)

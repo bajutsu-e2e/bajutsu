@@ -8,10 +8,16 @@ never makes a network call."""
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from bajutsu.serve import operations as ops
 from bajutsu.serve.server.oauth import Identity
 from bajutsu.serve.state import ServeState, SessionManager
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from sqlalchemy import Engine
 
 # An `orgs:` block that admits `alice` (explicit member) and anyone in the `acme-gh` GitHub org, and
 # names the Team whose members become editors. The sign-in gate reads this from `state.config`.
@@ -139,14 +145,15 @@ class _RaisingOAuthClient:
 
 
 def _db_state(
-    tmp_path: Path, oauth: object, admin_team: str | None = None
-) -> tuple[ServeState, object]:
-    from sqlalchemy import create_engine
-
+    serve_engine: Callable[..., Engine],
+    tmp_path: Path,
+    oauth: object,
+    admin_team: str | None = None,
+) -> tuple[ServeState, Engine]:
     from bajutsu.serve.server.db import SqlRepository
     from bajutsu.serve.server.models import Base
 
-    engine = create_engine("sqlite://")
+    engine = serve_engine()
     Base.metadata.create_all(engine)
     state = _state(tmp_path, oauth=oauth, config=_config_file(tmp_path), admin_team=admin_team)
     state.repository = SqlRepository(engine)
@@ -160,7 +167,9 @@ def _role_after_login(state: ServeState, login: str) -> str | None:
     return state.repository.user_role(login)
 
 
-def test_oauth_callback_persists_the_user_under_the_resolved_org(tmp_path: Path) -> None:
+def test_oauth_callback_persists_the_user_under_the_resolved_org(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
     # With a database wired, a successful login upserts the user into their resolved org so
     # audit/RBAC can reference them (BE-0015 7c-1).
     from sqlalchemy import select
@@ -168,7 +177,7 @@ def test_oauth_callback_persists_the_user_under_the_resolved_org(tmp_path: Path)
 
     from bajutsu.serve.server.models import Org, User
 
-    state, engine = _db_state(tmp_path, FakeOAuthClient(login="alice"))
+    state, engine = _db_state(serve_engine, tmp_path, FakeOAuthClient(login="alice"))
     _payload, status, sid = ops.oauth_callback(state, code="ok", state_param="s", state_cookie="s")
     assert status == 200 and sid is not None
     with Session(engine) as s:
@@ -178,21 +187,30 @@ def test_oauth_callback_persists_the_user_under_the_resolved_org(tmp_path: Path)
     assert [o.slug for o in orgs] == ["acme"]
 
 
-def test_oauth_callback_base_role_is_viewer(tmp_path: Path) -> None:
+def test_oauth_callback_base_role_is_viewer(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
     # BE-0313: a signed-in user in no editor/admin Team gets the base viewer role.
-    state, _ = _db_state(tmp_path, FakeOAuthClient(login="alice", teams=[]))
+    state, _ = _db_state(serve_engine, tmp_path, FakeOAuthClient(login="alice", teams=[]))
     assert _role_after_login(state, "alice") == "viewer"
 
 
-def test_oauth_callback_editor_team_membership_promotes_to_editor(tmp_path: Path) -> None:
+def test_oauth_callback_editor_team_membership_promotes_to_editor(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
     state, _ = _db_state(
-        tmp_path, FakeOAuthClient(login="alice", teams=["acme-gh/scenario-maintainers"])
+        serve_engine,
+        tmp_path,
+        FakeOAuthClient(login="alice", teams=["acme-gh/scenario-maintainers"]),
     )
     assert _role_after_login(state, "alice") == "editor"
 
 
-def test_oauth_callback_admin_team_membership_promotes_to_admin(tmp_path: Path) -> None:
+def test_oauth_callback_admin_team_membership_promotes_to_admin(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
     state, _ = _db_state(
+        serve_engine,
         tmp_path,
         FakeOAuthClient(login="alice", teams=["acme-gh/ops"]),
         admin_team="acme-gh/ops",

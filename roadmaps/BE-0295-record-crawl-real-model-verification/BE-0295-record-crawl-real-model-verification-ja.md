@@ -7,9 +7,9 @@
 |---|---|
 | 提案 | [BE-0295](BE-0295-record-crawl-real-model-verification-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0295") |
-| 実装 PR | [#1344](https://github.com/bajutsu-e2e/bajutsu/pull/1344) |
+| 実装 PR | [#1344](https://github.com/bajutsu-e2e/bajutsu/pull/1344), [#1357](https://github.com/bajutsu-e2e/bajutsu/pull/1357) |
 | トピック | オーサリング体験 |
 | 関連 | [BE-0104](../BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend-ja.md)、[BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md) |
 <!-- /BE-METADATA -->
@@ -82,8 +82,8 @@ tool-use の提案を Bajutsu 自身のアクションスキーマへパース�
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] 実際の `record` propose ステップのレスポンスを回帰用フィクスチャとして捕捉する。
-- [ ] 実際の `crawl` ナビゲーションステップのレスポンスを回帰用フィクスチャとして捕捉する。
+- [x] 実際の `record` propose ステップのレスポンスを回帰用フィクスチャとして捕捉する。
+- [x] 実際の `crawl` ナビゲーションステップのレスポンスを回帰用フィクスチャとして捕捉する。
 - [x] `record` の propose ループ向けに、API キーで gate したライブ smoke テストを追加する。
 - [x] `crawl` のナビゲーションループ向けに、API キーで gate したライブ smoke テストを追加する。
 
@@ -97,6 +97,28 @@ tool-use の提案を Bajutsu 自身のアクションスキーマへパース�
   同じファイルの決定的な `FakeBackend` 自己検証テストがローダーと妥当性アサーションの健全さを保つ
   ため、ライブ実行は実際に検証を行います。フィクスチャ捕捉の 2 単位は、レスポンスを記録するのに実
   認証情報が要るため残します。
+- フィクスチャ捕捉の 2 単位向けに、鍵なしで動く捕捉ハーネスを実装しました。`tests/real_model_support.py`
+  に `RecordingBackend` を追加します。これはライブバックエンドをラップし、propose ループがパースして
+  しまう前の、実モデルが返した生の tool-use をそのまま保持します。あわせて `save_fixture` と
+  `load_fixture` を追加します。`save_fixture` はレスポンスの全 tool-use ブロックを直列化し、
+  `load_fixture` は捕捉した全ブロックを1つの `MessageResponse` として再生する `_FixtureReplay` バックエンド
+  を返します。これにより、実際のマルチアクションターンをそのまま保持します（BE-0178 バッチアクション）。
+  `tests/test_real_model_fixtures.py` は、捕捉→保存→読み込み→再生の全経路を決定的に検証します（認証情報
+  は不要です）。マルチブロック版の round-trip テストも含むため、`_FixtureReplay` 経路を鍵なしで検証できます。
+  さらに、`tests/fixtures/be0295/` にコミット済みのフィクスチャがあれば再生し（signal-first の方針で、
+  ない間はスキップします）、コミット用フィクスチャを書き出す API キーで gate したライブ捕捉も持ちます。
+  2 つのチェックボックスは次のエントリで完了するまで未チェックのままでした。共有するショーケース画面の
+  ローダー、認証情報のゲート、パース妥当性のアサーションは `real_model_support` へ移し、smoke テストと
+  フィクスチャテストが単一の真実源を共有するようにしました。
+- 両方のフィクスチャを、`claude-code` バックエンド（BE-0176）経由で実モデルから捕捉しました。この
+  バックエンドは `claude` CLI 自身の認証情報で実モデルへ到達するため、`ANTHROPIC_API_KEY` は不要でした
+  （`BAJUTSU_AI_PROVIDER=claude-code uv run pytest tests/test_real_model_fixtures.py -m live -k capture`）。
+  `tests/fixtures/be0295/record.json` と `crawl.json` には、各ループのプロンプトが実際に生んだ本物の
+  tool-use が入っています（`crawl.json` は `propose_actions` ブロック 1 つで、その `input.actions` に
+  実アクション 4 件が入った形です。fake では生成できない実際のフィクスチャですが、ToolUseBlock は
+  1 つです）。コミット済みフィクスチャの再生テストは、認証情報なしで毎回のゲート
+  で決定的に走るようになり、フィクスチャの 2 単位を完了しました。4 単位すべてが完了したので、本項目は
+  **実装済み**です。API キーで gate したライブ捕捉は、プロンプトやモデルが変わったときの再録用に残します。
 
 ## 参考
 

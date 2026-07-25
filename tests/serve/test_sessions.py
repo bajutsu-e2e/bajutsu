@@ -5,12 +5,16 @@
 replacement (BE-0106): sessions in the same Postgres the system of record already uses, so no Redis
 is needed. Both server stores survive a restart and span replicas. The redis client / SQL engine are
 injected, so in-memory fakes (a dict for Redis, SQLite for SQL) drive the contract — no live
-Redis or Postgres on the gate."""
+Redis or Postgres on the gate. The `SqlSessionStore` cases run against in-memory SQLite in the gate
+and, behind the `postgres` marker, against a real Postgres service in the serve-db.yml lane
+(BE-0309)."""
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import Engine
 
 from bajutsu.serve.server.models import Base
 from bajutsu.serve.server.sessions import _DEFAULT_TTL, RedisSessionStore, SqlSessionStore
@@ -113,38 +117,38 @@ def test_session_ttl_from_env_parses_and_validates() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _sql_store(ttl: int = 3600) -> SqlSessionStore:
-    engine = create_engine("sqlite://")
+def _sql_store(serve_engine: Callable[..., Engine], ttl: int = 3600) -> SqlSessionStore:
+    engine = serve_engine()
     Base.metadata.create_all(engine)
     return SqlSessionStore(engine, ttl=ttl)
 
 
-def test_sql_issue_then_valid() -> None:
-    store = _sql_store()
+def test_sql_issue_then_valid(serve_engine: Callable[..., Engine]) -> None:
+    store = _sql_store(serve_engine)
     sid = store.issue()
     assert store.valid(sid)
 
 
-def test_sql_unknown_is_invalid() -> None:
-    assert not _sql_store().valid("nope")
+def test_sql_unknown_is_invalid(serve_engine: Callable[..., Engine]) -> None:
+    assert not _sql_store(serve_engine).valid("nope")
 
 
-def test_sql_binds_and_reads_identity() -> None:
-    store = _sql_store()
+def test_sql_binds_and_reads_identity(serve_engine: Callable[..., Engine]) -> None:
+    store = _sql_store(serve_engine)
     assert store.identity(store.issue("carol")) == "carol"
     assert store.identity(store.issue()) is None
     assert store.identity("nope") is None
 
 
-def test_sql_ids_are_unique_and_opaque() -> None:
-    store = _sql_store()
+def test_sql_ids_are_unique_and_opaque(serve_engine: Callable[..., Engine]) -> None:
+    store = _sql_store(serve_engine)
     a, b = store.issue(), store.issue()
     assert a != b
     assert len(a) > 20
 
 
-def test_sql_expired_session_is_invalid() -> None:
-    store = _sql_store(ttl=-1)
+def test_sql_expired_session_is_invalid(serve_engine: Callable[..., Engine]) -> None:
+    store = _sql_store(serve_engine, ttl=-1)
     sid = store.issue()
     assert not store.valid(sid)
     assert store.identity(sid) is None

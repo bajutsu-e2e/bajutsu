@@ -574,14 +574,15 @@ def test_xcuitest_environment_teardown_stops_runner(monkeypatch: pytest.MonkeyPa
     assert ["xcrun", "simctl", "terminate", "UDID-1", "com.example.demo"] in calls
 
 
-def test_spawn_cold_discards_a_never_ready_runner_on_every_attempt(
+def test_spawn_cold_discards_a_never_ready_runner(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # BE-0290 / BE-0319: a runner that spawns but never answers /health (process alive) must be
     # discarded before start() raises — a single-use environment (doctor / serve via read_session)
     # never spawns again to reclaim it, so an unguarded failure would orphan the live xcodebuild
-    # subprocess. The cold spawn also retries once (unit 4), so a repeatable never-ready failure
-    # discards a live runner on each attempt and then fails loudly.
+    # subprocess. A "health never ready" attempt spends the whole shared startup budget, so it earns
+    # no retry (a second full-ceiling wait would double the worst case and blow a job's
+    # timeout-minutes): exactly one attempt, its live runner discarded, then a loud failure.
     import plistlib
     import tempfile
 
@@ -634,7 +635,7 @@ def test_spawn_cold_discards_a_never_ready_runner_on_every_attempt(
         with pytest.raises(XcuitestChannelError, match="did not come up"):
             xe.start(eff, Preconditions())
 
-    assert len(terminated) == 2  # each attempt's live runner was discarded, not orphaned
+    assert len(terminated) == 1  # the one attempt's live runner was discarded, not orphaned
     assert xe._runner_proc is None  # the last _discard_runner cleared the handle
 
 

@@ -3,18 +3,20 @@
 Renders Prometheus-format metrics from state the control plane already tracks: in-flight jobs (the
 local `state.jobs`), and — when a database is wired (the server backend) — queue depth, leased jobs,
 and worker heartbeat freshness from the jobs table. The endpoint respects serve's exposure rules
-(BE-0051) and never leaks a secret. All server-backend cases run against in-memory SQLite — no Mac,
-no Postgres.
+(BE-0051) and never leaks a secret. The server-backend cases run against in-memory SQLite in the
+gate and, behind the `postgres` marker, against a real Postgres service in the serve-db.yml lane
+(BE-0309).
 """
 
 from __future__ import annotations
 
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from pathlib import Path
 
 from _shared import _get, _serve, project
-from sqlalchemy import create_engine
+from sqlalchemy import Engine
 
 from bajutsu import serve as srv
 from bajutsu.serve import operations as ops
@@ -23,8 +25,8 @@ from bajutsu.serve.server.models import Base
 from bajutsu.serve.state import Job
 
 
-def _repo() -> SqlRepository:
-    engine = create_engine("sqlite://")
+def _repo(serve_engine: Callable[..., Engine]) -> SqlRepository:
+    engine = serve_engine()
     Base.metadata.create_all(engine)
     return SqlRepository(engine)
 
@@ -53,8 +55,10 @@ def test_max_concurrent_is_exposed(tmp_path: Path) -> None:
     assert "bajutsu_max_concurrent 7" in text
 
 
-def test_queue_and_lease_counts_from_repository(tmp_path: Path) -> None:
-    repo = _repo()
+def test_queue_and_lease_counts_from_repository(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    repo = _repo(serve_engine)
     repo.enqueue_job("j1", org_id="acme", spec={"cmd": []})  # oldest -> leased below
     repo.enqueue_job("j2", org_id="acme", spec={"cmd": []})
     repo.enqueue_job("j3", org_id="beta", spec={"cmd": []})
@@ -70,9 +74,11 @@ def test_queue_and_lease_counts_from_repository(tmp_path: Path) -> None:
     assert 'bajutsu_worker_heartbeat_age_seconds{worker="w1"}' in text
 
 
-def test_unroutable_jobs_render_through_the_endpoint(tmp_path: Path) -> None:
+def test_unroutable_jobs_render_through_the_endpoint(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
     # BE-0166: a queued job no live worker can serve is counted and rendered as bajutsu_unroutable_jobs.
-    repo = _repo()
+    repo = _repo(serve_engine)
     repo.enqueue_job("routable", org_id="acme", spec={"cmd": []}, capabilities=["platform:ios"])
     repo.enqueue_job("stuck", org_id="acme", spec={"cmd": []}, capabilities=["platform:android"])
     repo.register_worker("w1", ["platform:ios"])  # only an iOS worker is live
@@ -94,8 +100,8 @@ def test_no_repository_omits_queue_metrics(tmp_path: Path) -> None:
     assert "bajutsu_worker_heartbeat_age_seconds" not in text
 
 
-def test_metrics_never_leak_secrets(tmp_path: Path) -> None:
-    repo = _repo()
+def test_metrics_never_leak_secrets(serve_engine: Callable[..., Engine], tmp_path: Path) -> None:
+    repo = _repo(serve_engine)
     # A job spec can carry secrets (a token flag, an API key in the env) — the renderer must never
     # touch it. The operator token is likewise never emitted.
     repo.enqueue_job(
