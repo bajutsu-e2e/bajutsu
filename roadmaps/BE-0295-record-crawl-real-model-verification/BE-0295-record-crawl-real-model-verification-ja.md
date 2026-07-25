@@ -114,8 +114,9 @@ tool-use の提案を Bajutsu 自身のアクションスキーマへパース�
   バックエンドは `claude` CLI 自身の認証情報で実モデルへ到達するため、`ANTHROPIC_API_KEY` は不要でした
   （`BAJUTSU_AI_PROVIDER=claude-code uv run pytest tests/test_real_model_fixtures.py -m live -k capture`）。
   `tests/fixtures/be0295/record.json` と `crawl.json` には、各ループのプロンプトが実際に生んだ本物の
-  tool-use が入っています（crawl の捕捉は複数アクションの `propose_actions` ターンで、マルチブロック
-  再生の経路をそのまま検証します）。コミット済みフィクスチャの再生テストは、認証情報なしで毎回のゲート
+  tool-use が入っています（`crawl.json` は `propose_actions` ブロック 1 つで、その `input.actions` に
+  実アクション 4 件が入った形です。fake では生成できない実際のフィクスチャですが、ToolUseBlock は
+  1 つです）。コミット済みフィクスチャの再生テストは、認証情報なしで毎回のゲート
   で決定的に走るようになり、フィクスチャの 2 単位を完了しました。4 単位すべてが完了したので、本項目は
   **実装済み**です。API キーで gate したライブ捕捉は、プロンプトやモデルが変わったときの再録用に残します。
 

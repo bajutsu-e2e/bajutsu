@@ -109,8 +109,8 @@ Proposal altitude. The work is MECE along the units below.
   a real model over the `claude` CLI's own credential — so no `ANTHROPIC_API_KEY` was needed:
   `BAJUTSU_AI_PROVIDER=claude-code uv run pytest tests/test_real_model_fixtures.py -m live -k capture`.
   `tests/fixtures/be0295/record.json` and `crawl.json` hold the genuine tool-use each loop's prompt
-  produced (the crawl capture is a real multi-action `propose_actions` turn, exercising the
-  multi-block replay path directly). The committed-fixture replay tests now run deterministically on
+  produced (`crawl.json` is a single `propose_actions` block whose `input.actions` carries four real
+  actions — a real fixture the fakes never produced, though it is one block, not multiple). The committed-fixture replay tests now run deterministically on
   every gate — no credential — closing both fixture units. All four units done, so the item is
   **Implemented**; the key-gated live capture stays for re-recording when a prompt or model changes.
 
