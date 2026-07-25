@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0304](BE-0304-doctor-provision-real-environment-verification-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0304") |
+| 実装 PR | _pending_ |
 | トピック | doctor / オンボーディング |
 <!-- /BE-METADATA -->
 
@@ -86,11 +87,25 @@ score only)"`）にすぎず、終了コードを握りつぶし、レンダリ�
 > ともに記録します。
 
 - [ ] iOS・Android・web の E2E レーン内で `bajutsu doctor` を実際に実行し、`environment:`
-  セクションに `✘` がないことを検証する。
-- [ ] 意図的に壊した環境のケースを追加し、非ゼロの終了コードで `environment:` セクションに
+  セクションに `✘` がないことを検証する。*（web レーンは着地済みです。iOS と Android の 2 レーンは
+  後続スライスで対応します。）*
+- [x] 意図的に壊した環境のケースを追加し、非ゼロの終了コードで `environment:` セクションに
   `✘` が出ることを検証する。
-- [ ] 新しい環境で `python -m bajutsu.provision` を実際に実行する。
-- [ ] 実際の `simctl list devices -j` の出力をテストフィクスチャとして捕捉する。
+- [x] 新しい環境で `python -m bajutsu.provision` を実際に実行する。
+- [x] 実際の `simctl list devices -j` の出力をテストフィクスチャとして捕捉する。
+
+### ログ
+
+- **web レーンのオンボーディングスライス**（本 PR）：`web-e2e.yml` に非ゲートの
+  `onboarding (doctor / provision)` ジョブを追加し、オンボーディングゲートを実環境に対して
+  エンドツーエンドで実行します。まずブラウザのない環境で `doctor` が `✗` を出して明示的に失敗すること
+  （壊した環境のケース）を確認し、続いて `python -m bajutsu.provision --backend web` が実際に Chromium を
+  インストールし、最後に `doctor` の環境ゲートが通過することを検証します。あわせて
+  `tests/test_simctl.py` に、実際に捕捉した `simctl list devices available -j` の出力
+  （`tests/data/simctl_list_devices_available.json`）を追加し、`device_catalog`/`booted_udids`
+  パーサをそれに対して検証することで、Xcode のスキーマドリフトを捉えられるようにします。iOS と
+  Android の `doctor` ステップ（最初のチェック項目の残る 2 レーン）は後続スライスとするため、本項目は
+  *実装中* のままとします。
 
 ## 参考
 

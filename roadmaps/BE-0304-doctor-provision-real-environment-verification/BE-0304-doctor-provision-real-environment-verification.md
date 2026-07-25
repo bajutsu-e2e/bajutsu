@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0304](BE-0304-doctor-provision-real-environment-verification.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0304") |
+| Implementing PR | _pending_ |
 | Topic | doctor / onboarding |
 <!-- /BE-METADATA -->
 
@@ -85,11 +86,24 @@ Proposal altitude. The work is MECE along the units below.
 > (oldest first), linking the PRs.
 
 - [ ] Run `bajutsu doctor` for real inside the iOS, Android, and web E2E lanes, asserting the
-  `environment:` section reports no `✘`.
-- [ ] Add a deliberately-broken-environment case asserting a non-zero exit with an `✘` in the
+  `environment:` section reports no `✘`. *(web lane landed; iOS and Android lanes remain — a later
+  slice.)*
+- [x] Add a deliberately-broken-environment case asserting a non-zero exit with an `✘` in the
   `environment:` section.
-- [ ] Run `python -m bajutsu.provision` for real in a fresh environment.
-- [ ] Capture a real `simctl list devices -j` payload as a test fixture.
+- [x] Run `python -m bajutsu.provision` for real in a fresh environment.
+- [x] Capture a real `simctl list devices -j` payload as a test fixture.
+
+### Log
+
+- **web-lane onboarding slice** (this PR): a new non-gating `onboarding (doctor / provision)` job in
+  `web-e2e.yml` runs the onboarding gate end to end against a real environment — the browserless host
+  where `doctor` must fail loudly with a `✗` (the broken-environment case), then `python -m
+  bajutsu.provision --backend web` installing Chromium for real, then `doctor`'s environment gate
+  passing. Separately, `tests/test_simctl.py` gains a real captured `simctl list devices available -j`
+  payload (`tests/data/simctl_list_devices_available.json`) that the `device_catalog` / `booted_udids`
+  parsers are checked against, so an Xcode schema drift has a chance of being caught. The iOS and
+  Android `doctor` steps (the first checklist item's remaining two lanes) are a later slice, which is
+  why the item stays *In progress*.
 
 ## References
 

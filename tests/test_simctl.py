@@ -4,10 +4,19 @@ from __future__ import annotations
 
 import subprocess
 from collections.abc import Mapping
+from pathlib import Path
 
 import pytest
 
 from bajutsu import simctl
+
+# A real `xcrun simctl list devices available -j` payload, captured once from a macOS host and
+# committed so the parsers are checked against the shape Xcode actually emits — not only against the
+# hand-typed literals above, which are internally consistent and so blind to schema drift (BE-0304).
+# Only the home-directory username in the `dataPath` / `logPath` values was normalized to `runner`;
+# the parsers read none of those, so the structure the parsers touch (`devices`, per-device `udid` /
+# `name` / `state`, the runtime keys) is exactly as captured.
+_REAL_LIST_DEVICES = Path(__file__).parent / "data" / "simctl_list_devices_available.json"
 
 
 def test_command_builders() -> None:
@@ -187,6 +196,33 @@ def test_env_validates_udid_at_construction() -> None:
     # UUID- / device-shaped ids and the `booted` alias pass through unchanged.
     for good in ["booted", "U", "A1B2C3D4-1122-3344-5566-77889900AABB"]:
         assert simctl.Env(good).udid == good
+
+
+def test_parsers_accept_a_real_captured_payload() -> None:
+    """`device_catalog` / `booted_udids` parse a real captured payload, not just hand-typed JSON.
+
+    The value is schema fidelity: a future Xcode that renamed `state` or restructured `devices`
+    would slip past the hand-typed literals (they encode today's schema by construction) but break
+    against this captured one — the gap BE-0304 closes. Injecting the payload through the parsers'
+    `run` seam keeps the test hermetic (no `xcrun` on the Linux gate).
+    """
+    payload = _REAL_LIST_DEVICES.read_text(encoding="utf-8")
+
+    catalog = simctl.device_catalog(run=lambda args, e=None: payload)
+    assert catalog, "the captured payload should yield a non-empty device catalog"
+    for udid, entry in catalog.items():
+        assert udid  # every catalogued device is keyed by a real udid
+        assert entry["name"], f"{udid} has no device name"
+        # `runtime_label` humanizes the runtime id to e.g. "iOS 26.5"; a schema change to the
+        # runtime key would surface here as a raw identifier instead of the "<OS> <ver>" shape.
+        assert entry["runtime"].startswith("iOS "), entry["runtime"]
+
+    # The same payload carries per-device `state`, so the booted filter runs against the real shape;
+    # the captured host had booted simulators, so the parser must find them (and each must be in the
+    # catalog above — booted devices are a subset of the available ones).
+    booted = simctl.booted_udids(run=lambda args, e=None: payload)
+    assert booted, "the captured payload had booted simulators; the parser should find them"
+    assert set(booted) <= set(catalog)
 
 
 def test_device_error_keeps_command_and_simctl_stderr() -> None:
