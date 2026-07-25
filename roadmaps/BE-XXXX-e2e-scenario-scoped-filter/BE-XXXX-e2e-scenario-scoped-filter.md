@@ -91,7 +91,7 @@ scenario files stay the only place per-app knowledge lives (prime directive 3).
   check green on a narrowed run without letting a genuine job failure slip through.
 
 - **Fallback to the whole fleet.** Anything not attributable to a specific scenario falls back to
-  firing the entire lane. Three cases fall back. A change to shared code fires every job, because
+  firing the entire lane. Four cases fall back. A change to shared code fires every job, because
   shared driver or runner code can affect any scenario. A dimension job that declares no scenario —
   `codegen`, `conformance`, `visual` — exercises the driver or harness rather than one scenario, so it
   runs on any scenario-only change. A lane whose jobs are not keyed on scenarios at all — the Android
