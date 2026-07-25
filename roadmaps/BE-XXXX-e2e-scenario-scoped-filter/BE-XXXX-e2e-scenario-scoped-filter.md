@@ -102,9 +102,9 @@ scenario files stay the only place per-app knowledge lives (prime directive 3).
   change could have broken.
 
 - **Scope of the saving.** The narrowing applies where jobs are scenario-keyed — today the iOS lane's
-  seven scenario-declaring jobs. A scenario-only iOS change runs only the jobs that load a changed
-  scenario, rather than all ten; the `codegen`, `conformance`, and `visual` jobs and the whole Android
-  lane still run, safely, as they do today. The web lane's jobs, like Android's, declare no scenario,
+  seven scenario-declaring jobs. A scenario-only iOS change fires only the scenario-keyed jobs that
+  load a changed scenario, rather than all seven of them; the `codegen`, `conformance`, and `visual`
+  jobs and the whole Android lane still run, safely, as they do today. The web lane's jobs, like Android's, declare no scenario,
   so it too has no scenario-keyed fan-out to narrow. The win is bounded but exact: it removes the
   clearly-wasted jobs and touches nothing else.
 
@@ -151,9 +151,9 @@ scenario files stay the only place per-app knowledge lives (prime directive 3).
 
 - **Do nothing (status quo).** Acceptable: the lane-wide boolean is correct and safe, only wasteful.
   The waste is a scenario-only pull request paying the full fleet's Simulator-boot and run cost across
-  ten iOS jobs, on a metered macOS runner, on every push — most of it for the seven scenario-keyed jobs
-  that never load the changed scenario, which the workflow's own `scenarios:` declarations already have
-  the information to skip.
+  ten iOS jobs, on a metered macOS runner, on every push — most of it for the scenario-keyed jobs
+  whose scenarios the change did not reach, which the workflow's own `scenarios:` declarations already
+  have the information to skip.
 
 ## Progress
 
