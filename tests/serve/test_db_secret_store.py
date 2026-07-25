@@ -1,31 +1,47 @@
-"""The hosted encrypted SecretStore (BE-0136 write-once secrets), on in-memory SQLite.
+"""The hosted encrypted SecretStore (BE-0136 write-once secrets), on in-memory SQLite in the gate
+and, behind the `postgres` marker, against a real Postgres service in the serve-db.yml lane (BE-0309).
 
 Exercises the `DbSecretStore` contract the same way the gate exercises the rest of the system of
-record: real Fernet encryption, a real (in-memory) database, no mocks. The load-bearing guarantee
+record: real Fernet encryption, a real database, no mocks. The load-bearing guarantee
 is that the stored ciphertext never contains the plaintext, and that no operation ever hands the
 plaintext back — only a masked preview.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import pytest
 from cryptography.fernet import Fernet, InvalidToken
-from sqlalchemy import create_engine, select
+from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 
 from bajutsu.serve.server.db import engine_from_url
-from bajutsu.serve.server.models import Base, Secret
+from bajutsu.serve.server.models import Base, Org, Secret, User
 from bajutsu.serve.server.secrets import DbSecretStore, fernet_from_env
 
+# The orgs these tests store secrets for, and the writers the audit tests record through
+# `updated_by` (a users.id FK). Seeded so both FKs hold on Postgres — the SQLite gate leaves FKs
+# off, so it never needed the parent rows; seeding keeps each test dialect-agnostic.
+_ORGS = ("default", "acme", "globex")
+_USERS = ("alice", "bob")
 
-def _engine():
-    engine = create_engine("sqlite://")
-    Base.metadata.create_all(engine)
-    return engine
+
+def _engine(serve_engine: Callable[..., Engine]) -> Engine:
+    eng = serve_engine()
+    Base.metadata.create_all(eng)
+    with Session(eng) as session:
+        session.add_all(Org(id=org_id, slug=org_id, name=org_id) for org_id in _ORGS)
+        session.flush()  # orgs must exist before the users' org_id FK resolves
+        session.add_all(
+            User(id=uid, org_id="default", email=f"{uid}@example.com") for uid in _USERS
+        )
+        session.commit()
+    return eng
 
 
-def test_set_then_describe_returns_masked_only() -> None:
-    store = DbSecretStore(_engine(), "default", Fernet(Fernet.generate_key()))
+def test_set_then_describe_returns_masked_only(serve_engine: Callable[..., Engine]) -> None:
+    store = DbSecretStore(_engine(serve_engine), "default", Fernet(Fernet.generate_key()))
     assert store.describe("aiApiKey") is None  # unset
 
     masked = store.set("aiApiKey", "sk-ant-secret-12345", updated_by="alice")
@@ -33,12 +49,14 @@ def test_set_then_describe_returns_masked_only() -> None:
     assert store.describe("aiApiKey") == "sk-a…2345"
 
 
-def test_scenario_declared_secret_round_trips_encrypted() -> None:
+def test_scenario_declared_secret_round_trips_encrypted(
+    serve_engine: Callable[..., Engine],
+) -> None:
     # BE-0274: a scenario's own declared secret name (an env-var name, not one of the three fixed
     # operator-credential logical names) is stored per org through the same generic store — set →
     # describe returns the mask, and the ciphertext column never holds the plaintext. This pins the
     # BE-0136 generalization the hosted storage path relies on.
-    engine = _engine()
+    engine = _engine(serve_engine)
     store = DbSecretStore(engine, "acme", Fernet(Fernet.generate_key()))
     assert store.describe("LOGIN_PASSWORD") is None  # unset
 
@@ -49,8 +67,8 @@ def test_scenario_declared_secret_round_trips_encrypted() -> None:
     assert "hunter2-secret" not in stored and "secret" not in stored
 
 
-def test_stored_ciphertext_never_holds_the_plaintext() -> None:
-    engine = _engine()
+def test_stored_ciphertext_never_holds_the_plaintext(serve_engine: Callable[..., Engine]) -> None:
+    engine = _engine(serve_engine)
     store = DbSecretStore(engine, "default", Fernet(Fernet.generate_key()))
     store.set("aiApiKey", "sk-ant-secret-12345")
 
@@ -62,15 +80,17 @@ def test_stored_ciphertext_never_holds_the_plaintext() -> None:
     assert "secret" not in stored
 
 
-def test_overwrite_rotates_without_reading_the_old_value() -> None:
-    store = DbSecretStore(_engine(), "default", Fernet(Fernet.generate_key()))
+def test_overwrite_rotates_without_reading_the_old_value(
+    serve_engine: Callable[..., Engine],
+) -> None:
+    store = DbSecretStore(_engine(serve_engine), "default", Fernet(Fernet.generate_key()))
     store.set("aiApiKey", "sk-ant-first-11111")
     store.set("aiApiKey", "sk-ant-second-22222")
     assert store.describe("aiApiKey") == "sk-a…2222"
 
 
-def test_empty_value_clears_the_secret() -> None:
-    engine = _engine()
+def test_empty_value_clears_the_secret(serve_engine: Callable[..., Engine]) -> None:
+    engine = _engine(serve_engine)
     store = DbSecretStore(engine, "default", Fernet(Fernet.generate_key()))
     store.set("aiApiKey", "sk-ant-secret-12345")
 
@@ -80,8 +100,8 @@ def test_empty_value_clears_the_secret() -> None:
         assert conn.execute(select(Secret.ciphertext)).all() == []  # the row is gone
 
 
-def test_secrets_are_scoped_per_org() -> None:
-    engine = _engine()
+def test_secrets_are_scoped_per_org(serve_engine: Callable[..., Engine]) -> None:
+    engine = _engine(serve_engine)
     fernet = Fernet(Fernet.generate_key())
     DbSecretStore(engine, "acme", fernet).set("aiApiKey", "sk-ant-acme-11111")
 
@@ -90,10 +110,10 @@ def test_secrets_are_scoped_per_org() -> None:
     assert DbSecretStore(engine, "acme", fernet).describe("aiApiKey") == "sk-a…1111"
 
 
-def test_set_persists_the_updated_by_audit_provenance() -> None:
+def test_set_persists_the_updated_by_audit_provenance(serve_engine: Callable[..., Engine]) -> None:
     # `updated_by` is best-effort audit metadata: who last wrote the secret. There is no reader on
     # the seam yet, so assert it lands in the row directly (BE-0136).
-    engine = _engine()
+    engine = _engine(serve_engine)
     store = DbSecretStore(engine, "acme", Fernet(Fernet.generate_key()))
     store.set("aiApiKey", "sk-ant-first-11111", updated_by="alice")
     store.set("aiApiKey", "sk-ant-second-22222", updated_by="bob")  # overwrite by a different user
@@ -111,11 +131,13 @@ def test_set_persists_the_updated_by_audit_provenance() -> None:
         assert row.updated_by == "bob"
 
 
-def test_describe_fails_loud_when_the_key_cannot_decrypt() -> None:
+def test_describe_fails_loud_when_the_key_cannot_decrypt(
+    serve_engine: Callable[..., Engine],
+) -> None:
     # A rotated / wrong BAJUTSU_SECRETS_KEY must surface loudly, never be silently read as "unset"
     # (which would mislead an admin into thinking no key is configured). The stored row still exists;
     # describe raises rather than returning None (BE-0136, "fail loudly").
-    engine = _engine()
+    engine = _engine(serve_engine)
     DbSecretStore(engine, "acme", Fernet(Fernet.generate_key())).set("aiApiKey", "sk-ant-secret-1")
 
     rotated = DbSecretStore(engine, "acme", Fernet(Fernet.generate_key()))  # a different master key
