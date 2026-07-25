@@ -26,15 +26,16 @@ from real_model_support import (  # noqa: F401 — re-exported so the triage tes
     showcase_screen,
 )
 
-from bajutsu.agents.claude_triage import _CATEGORIES
+from bajutsu.agents.claude_triage import _CATEGORIES, NO_DIAGNOSIS_SUMMARY
 from bajutsu.triage import FIX_KINDS, FailedStep, Triage, TriageContext
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures" / "be0296"
 
 # `_to_triage` returns this exact summary when the response carried no tool-use block — i.e. the
-# diagnosis failed to parse. Asserting the real result is NOT this sentinel is what proves a live
-# run genuinely validated a parsed diagnosis rather than passing on an empty fallback.
-_NO_DIAGNOSIS = "Claude returned no diagnosis."
+# diagnosis failed to parse. Imported from the product rather than copied so the two stay in lock
+# step: asserting the real result is NOT this sentinel is what proves a live run genuinely validated
+# a parsed diagnosis rather than passing on an empty fallback, and a copy could silently drift.
+_NO_DIAGNOSIS = NO_DIAGNOSIS_SUMMARY
 
 # A realistic selector-rename failure over the committed showcase "controls" screen: the scenario
 # taps `log.intens` (a typo), while the real screen exposes `log.intense`. A real model reasoning
