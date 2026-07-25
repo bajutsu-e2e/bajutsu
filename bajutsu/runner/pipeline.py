@@ -23,6 +23,7 @@ from bajutsu.assertions import (
 )
 from bajutsu.backends import capabilities_for_run
 from bajutsu.config import Effective
+from bajutsu.drivers.base import BackendCrashError
 from bajutsu.evidence import Artifact
 from bajutsu.evidence.network import NetworkExchange, _no_transitions
 from bajutsu.evidence.redaction import Redactor
@@ -38,7 +39,7 @@ from bajutsu.orchestrator import (
 from bajutsu.orchestrator.types import _no_network
 from bajutsu.report import git_revision, run_provenance, scenario_render_inputs, write_report
 from bajutsu.runner.mailbox import build_mailbox_reader
-from bajutsu.runner.types import LeaseFn, OnBlockedFor
+from bajutsu.runner.types import Lease, LeaseFn, OnBlockedFor
 from bajutsu.scenario import Scenario, dump_scenario_file, redact_totp_secrets
 
 _logger = logging.getLogger(__name__)
@@ -115,6 +116,11 @@ class _ScenarioRunner:
     # the actuator preflighted here is the one the lease builds. None keeps the fixed-`actuator` path
     # (the cross-browser matrix, tests driving a lease directly).
     resolve_actuator: Callable[[Scenario], str] | None = None
+    # How many times to re-run a scenario whose backend crashed mid-run (base.BackendCrashError)
+    # before failing it — the dead lease is discarded and a fresh one leased (a cold respawn) each
+    # retry. A crash is backend infrastructure, not a verdict (prime directive 1); bounding the
+    # retries keeps a genuinely crash-inducing scenario failing loudly (BE-0049). 0 disables it.
+    crash_retries: int = 1
 
     def run_one(self, i: int, s: Scenario) -> RunResult:
         """Run one scenario on a freshly leased device and return its result.
@@ -157,8 +163,57 @@ class _ScenarioRunner:
                 sid=sid,
                 failure=f"unsupported on backend '{actuator}': {'; '.join(reasons)}",
             )
-        lz = self.lease(self.eff, s)
+        # Backend-crash recovery: a mid-scenario runner/host crash (base.BackendCrashError) is
+        # backend infrastructure, not a verdict — discard the dead lease, lease a fresh device (a
+        # cold respawn), and re-run the whole scenario from the start, bounded by `crash_retries`.
+        # A scenario that crashes every attempt exhausts the budget and fails loudly (BE-0049).
         handler = self.on_blocked_for(s) if self.on_blocked_for is not None else self.on_blocked
+        last_crash: BackendCrashError | None = None
+        for attempt in range(1, self.crash_retries + 2):
+            # `_run_on_lease` leases via the caller, runs, and releases the lease in its own `finally`
+            # (on a crash too, so the dead lease is never leaked); a crash then propagates here for the
+            # retry, which leases afresh — a cold respawn, since the pool drops the dead warm runner.
+            lz = self.lease(self.eff, s)
+            try:
+                return self._run_on_lease(lz, handler, i, s, sid)
+            except BackendCrashError as crash:
+                last_crash = crash
+                _logger.warning(
+                    "scenario %s: backend crashed mid-run (attempt %d/%d), respawning and retrying: %s",
+                    s.name,
+                    attempt,
+                    self.crash_retries + 1,
+                    crash,
+                )
+                if self.progress is not None:
+                    self.progress(
+                        f"⟳ scenario {i + 1}/{self.total}: {s.name} — backend crashed mid-run, "
+                        f"respawning and retrying (attempt {attempt}/{self.crash_retries + 1})"
+                    )
+        # Retries spent: the crash is not a one-off, so surface it as an honest scenario failure.
+        if self.progress is not None:
+            self.progress(f"✘ scenario {i + 1}/{self.total}: {s.name} (backend crashed mid-run)")
+        return RunResult(
+            scenario=s.name,
+            ok=False,
+            steps=[],
+            backend=actuator or "",
+            sid=sid,
+            failure=(
+                f"backend crashed mid-run and did not recover across "
+                f"{self.crash_retries + 1} attempts: {last_crash}"
+            ),
+        )
+
+    def _run_on_lease(
+        self, lz: Lease, handler: BlockedHandler | None, i: int, s: Scenario, sid: str
+    ) -> RunResult:
+        """Run one scenario on an already-leased device and return its result.
+
+        Raises `base.BackendCrashError` straight through when the backend crashes mid-scenario: the
+        lease is dead, so `run_one` discards it and re-runs the scenario on a fresh one. Every other
+        outcome — pass, assertion failure, unsupported action — comes back as a `RunResult`.
+        """
         try:
             if lz.collector is not None:
                 lz.collector.clear()
@@ -263,6 +318,7 @@ def run_all(
     resolve_actuator: Callable[[Scenario], str] | None = None,
     golden_context: GoldenContext | None = None,
     lease_udid_spec: str = "booted",
+    crash_retries: int = 1,
 ) -> list[RunResult]:
     """Run every scenario, each on a freshly leased device, and return one result per scenario.
 
@@ -306,6 +362,11 @@ def run_all(
             routes the run to the live XCUITest environment, so the preflight narrows to that
             transport's set (BE-0238) — the same `is_webdriver_endpoint` signal `environment_for`
             routes on. "booted" (the default) is never a URL, so the local path is unchanged.
+        crash_retries: How many times to re-run a scenario whose backend crashed mid-run
+            (`base.BackendCrashError`) on a fresh device before failing it. A crash is backend
+            infrastructure, not a verdict; the default 1 rides out a one-off resident-runner crash,
+            and a scenario that crashes every attempt still fails loudly once the budget is spent
+            (BE-0049). 0 disables the recovery.
 
     Returns:
         One result per scenario, in the same order as `scenarios`.
@@ -346,6 +407,7 @@ def run_all(
         resolve_actuator=resolve_actuator,
         golden_context=golden_context,
         udid_spec=lease_udid_spec,
+        crash_retries=crash_retries,
     )
     if workers > 1:
         # >1 hands each worker its own device + per-device resources; the runner is frozen and
