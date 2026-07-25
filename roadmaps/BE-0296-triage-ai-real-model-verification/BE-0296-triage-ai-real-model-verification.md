@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0296](BE-0296-triage-ai-real-model-verification.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0296") |
+| Implementing PR | _pending_ |
 | Topic | Self-healing triage |
 <!-- /BE-METADATA -->
 
@@ -73,10 +74,10 @@ Proposal altitude. The work is MECE along the units below.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Capture a real `triage --ai` diagnosis response as a regression fixture.
-- [ ] Add a key-gated live smoke test running `triage --ai` end-to-end against a real failed run.
-- [ ] Add a dedicated test exercising the real credential-gap check (not a stand-in agent class).
-- [ ] Confirm triage's advisory status is unchanged — this verifies output parsing only.
+- [x] Capture a real `triage --ai` diagnosis response as a regression fixture.
+- [x] Add a key-gated live smoke test running `triage --ai` end-to-end against a real failed run.
+- [x] Add a dedicated test exercising the real credential-gap check (not a stand-in agent class).
+- [x] Confirm triage's advisory status is unchanged — this verifies output parsing only.
 
 ## References
 

@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0296](BE-0296-triage-ai-real-model-verification-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0296") |
+| 実装 PR | _pending_ |
 | トピック | 自己修復トリアージ |
 <!-- /BE-METADATA -->
 
@@ -74,11 +75,11 @@ triage は設計上あくまで advisory（助言）であり、`--apply`/`--wri
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] 実際の `triage --ai` 診断レスポンスを回帰用フィクスチャとして捕捉します。
-- [ ] 実際に失敗した run に対して `triage --ai` をエンドツーエンドで実行する、API キーで gate した
+- [x] 実際の `triage --ai` 診断レスポンスを回帰用フィクスチャとして捕捉します。
+- [x] 実際に失敗した run に対して `triage --ai` をエンドツーエンドで実行する、API キーで gate した
   ライブ smoke テストを追加します。
-- [ ] 代役のエージェントクラスではなく、実際の認証情報欠落チェックを検証する専用テストを追加します。
-- [ ] triage の advisory という位置づけが変わっていないことを確認します（検証するのは出力の
+- [x] 代役のエージェントクラスではなく、実際の認証情報欠落チェックを検証する専用テストを追加します。
+- [x] triage の advisory という位置づけが変わっていないことを確認します（検証するのは出力の
   パースのみ）。
 
 ## 参考
