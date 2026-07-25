@@ -286,7 +286,7 @@ jobs:
       #     equivalent, so it lives apart from the cross-backend device.yaml).
       #   - text_editing.yaml (iOS-only): `select` + `copy` round-trip the Search field's text, then
       #     `delete` + `clear` — the four editing actuators no other scenario drove (Search tab).
-      - name: Run the actuation scenarios (xcuitest — back, device control, text editing)
+      - name: Run the actuation scenarios (xcuitest — back, device control, push, text editing)
         uses: ./.github/actions/bajutsu-e2e
         with:
           scenarios: >-
