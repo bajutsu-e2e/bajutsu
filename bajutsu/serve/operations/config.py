@@ -560,7 +560,15 @@ def bind_config(state: ServeState, raw: str) -> tuple[Any, int]:
     state.config = target
     state.cwd = config_dir  # the config's relative paths resolve from its own directory (BE-0242)
     state.config_provenance = None  # a local file has no Git commit provenance to show
-    state.git_config_from_api = False  # a local file config is operator-trusted (BE-0121)
+    # A local file's *build:* stays trusted even when bound through this API endpoint (BE-0121), unlike
+    # a Git spec or an upload: this endpoint can only bind a file `_confined_config_path` already found
+    # inside `--root`, so the operator (who chose what lives under `--root`) already controls every
+    # candidate's content — there is no path by which this bind hands an attacker-authored `build:` to
+    # the host, the exact capability BE-0121 gates behind `--allow-remote-build`. The `confine=True`
+    # above is a separate, narrower guard: it stops an in-`--root` config's own path *fields* from
+    # resolving outside the directory its relative paths are defined against, regardless of who bound
+    # it — orthogonal to, not a relaxation of, this build-trust call.
+    state.git_config_from_api = False
     return {"ok": True, "config": str(target), "targets": list_targets(target)}, 200
 
 

@@ -215,14 +215,21 @@ class Effective:
         the config file's own directory — for a local config (BE-0242), so the caller's working
         directory no longer decides where a config's paths point.
 
-        `confine` gates the escape check: when true (an untrusted source — a fetched Git config, an
-        uploaded bundle, or a config bound through serve's file browser) an absolute or `../` value that
-        would leave `root` raises ValueError, mirroring the serve-hardening path confinement (BE-0051).
-        The two local-config entry points now diverge here: the CLI's `--config` (an operator typing a
-        path at their own terminal, BE-0121) passes `confine=False` and may point at a sibling outside
-        its own directory, while serve's `bind_config` (a path picked through the running server's file
-        browser, not necessarily the same trust level) passes `confine=True` — a local file is
-        operator-trusted only at the CLI, not once serve is already listening for UI requests.
+        `confine` gates the escape check: when true, an absolute or `../` value that would leave `root`
+        raises ValueError, mirroring the serve-hardening path confinement (BE-0051). A fetched Git
+        config and an uploaded bundle always pass `confine=True` — either can carry attacker-authored
+        path fields (a Git spec names any repo, an upload is any zip), so their paths are confined
+        regardless of who requested the bind. The two local-config entry points diverge on this axis
+        only: the CLI's `--config` (an operator typing a path at their own terminal, BE-0121) passes
+        `confine=False` and may point at a sibling outside its own directory, while serve's `bind_config`
+        passes `confine=True` as a defense-in-depth consistency check — not because the file it binds is
+        less trusted (`bind_config` only ever resolves a file `_confined_config_path` already found
+        inside `--root`, an operator-controlled tree, so its content is no less trusted than the CLI's),
+        but so every config's path *fields* are held to the same in-tree discipline regardless of bind
+        source. This is independent of `build:` trust (`bajutsu.serve.operations.dispatch._governed_
+        build`): `bind_config` keeps a local config's build trusted exactly as the CLI path does, since
+        neither can hand the host an attacker-authored command the way an API-bound Git spec or upload
+        can.
         """
         root_resolved = root.resolve()
 
