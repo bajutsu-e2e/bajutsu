@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0309") |
-| Implementing PR | [#1347](https://github.com/bajutsu-e2e/bajutsu/pull/1347) |
+| Implementing PR | [#1347](https://github.com/bajutsu-e2e/bajutsu/pull/1347), [#1353](https://github.com/bajutsu-e2e/bajutsu/pull/1353) |
 | Topic | Verification & coverage |
 | Related | [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) |
 <!-- /BE-METADATA -->
@@ -80,9 +80,12 @@ Proposal altitude. The work is MECE along the units below.
 
 - [x] Add a dedicated Postgres CI job with a service container (not a change to `check`).
 - [ ] Run the migration upgrade/downgrade tests and the wider DB-touching test suite against it.
-  *(Slice 1: the migration tests run against Postgres; the wider DB-touching suite is a follow-up
-  slice — the 22 files that call `create_engine("sqlite://")` each assume a fresh in-memory database
-  per test, so a shared Postgres needs per-test isolation retrofitted before they can run there.)*
+  *(Slice 1 ran the migration tests against Postgres. Slice 2 added the three highest-risk
+  DB-touching suites — `test_db_models.py`, `test_db_repository.py`, and `test_oauth.py`'s
+  persistence tests — behind a shared `serve_engine` fixture that retrofits the per-test isolation a
+  shared Postgres needs. The remaining files that call `create_engine("sqlite://")` are a further
+  slice: each assumes a fresh in-memory database per test, so they join the lane as they adopt the
+  fixture.)*
 - [ ] Wire it into CI as a non-gating signal, promote to required once stable.
   *(Non-gating signal landed; promotion to a required check remains.)*
 
@@ -94,6 +97,17 @@ Proposal altitude. The work is MECE along the units below.
   the lane), reusing the same assertions; the lane runs `-m postgres -n0`. This gives migration
   0010's `postgresql` FK branch and the JSONB column variants their first real-Postgres coverage.
   Non-gating for now, per BE-0282's precedent.
+- Slice 2 — a shared `tests/conftest.py` adds the `serve_engine` fixture: it parametrizes a
+  requesting test over both dialects (SQLite in the gate, the `postgres`-marked parameter in the
+  lane) and gives the shared Postgres service the per-test schema reset SQLite got for free from a
+  throwaway in-memory database. The three highest-risk suites now request it — `test_db_models.py`,
+  `test_db_repository.py`, and `test_oauth.py`'s persistence tests — so the lane runs the whole
+  `tests/serve` directory by marker (`pytest tests/serve -m postgres -n0`), and a later suite joins
+  automatically once it adopts the fixture. Running against real Postgres surfaced that several
+  repository tests inserted `runs`/`projects` without their parent org rows, relying on SQLite's
+  FKs-off default; they now seed the org so they respect the referential integrity Postgres enforces.
+  The one test that asserts the FKs-off dangling-`project_id` behavior stays SQLite-only, its
+  Postgres `ON DELETE SET NULL` counterpart already covered by a sibling test.
 
 ## References
 

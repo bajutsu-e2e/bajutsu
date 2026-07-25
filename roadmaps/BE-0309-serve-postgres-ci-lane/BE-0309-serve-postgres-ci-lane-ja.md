@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0309") |
-| 実装 PR | [#1347](https://github.com/bajutsu-e2e/bajutsu/pull/1347) |
+| 実装 PR | [#1347](https://github.com/bajutsu-e2e/bajutsu/pull/1347), [#1353](https://github.com/bajutsu-e2e/bajutsu/pull/1353) |
 | トピック | 検証とカバレッジ |
 | 関連 | [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) |
 <!-- /BE-METADATA -->
@@ -85,10 +85,11 @@ migration を実行するまで表面化しません。それは方言固有の�
 
 - [x] サービスコンテナを持つ Postgres 専用の CI ジョブを新規に追加する（`check` の変更ではない）。
 - [ ] migration の upgrade/downgrade テストと、DB に触れる広いテストスイートをそちらに対しても実行する。
-  *（スライス 1：migration テストは Postgres に対して実行するようになりました。DB に触れる広い
-  テストスイートは後続のスライスです。`create_engine("sqlite://")` を呼ぶ 22 ファイルは、テスト
-  ごとに新しいインメモリ DB を前提としているため、共有 Postgres でそれらを実行するには、テスト
-  ごとの分離を後付けする必要があります。）*
+  *（スライス 1 で migration テストを Postgres に対して実行しました。スライス 2 では、リスクの高い
+  3 つの DB に触れるスイート（`test_db_models.py`・`test_db_repository.py`・`test_oauth.py` の永続化
+  テスト）を、共有 Postgres が必要とするテストごとの分離を後付けする `serve_engine` フィクスチャの裏で
+  追加しました。`create_engine("sqlite://")` を呼ぶ残りのファイルは後続のスライスです。いずれもテスト
+  ごとに新しいインメモリ DB を前提としているため、フィクスチャを採用した順にレーンへ加わります。）*
 - [ ] ゲート対象外のシグナルとして CI に組み込み、安定後に必須化する。
   *（ゲート対象外のシグナルとして着地しました。必須チェックへの昇格は残っています。）*
 
@@ -100,6 +101,17 @@ migration を実行するまで表面化しません。それは方言固有の�
   裏で Postgres）、同じアサーションを再利用します。レーンは `-m postgres -n0` で実行します。これに
   より、migration 0010 の `postgresql` FK 分岐と JSONB カラムのバリアントに、実 Postgres での初めての
   カバレッジが得られます。BE-0282 の前例に従い、当面はゲート対象外とします。
+- スライス 2 — 共有の `tests/conftest.py` に `serve_engine` フィクスチャを追加しました。これは
+  テストを両方の方言でパラメータ化し（ゲートでは SQLite、レーンでは `postgres` マーカーのパラメータ）、
+  使い捨てのインメモリ DB で SQLite が自然に得ていたテストごとのスキーマ初期化を、共有 Postgres にも
+  与えます。リスクの高い 3 つのスイート（`test_db_models.py`・`test_db_repository.py`・`test_oauth.py`
+  の永続化テスト）がこれを要求するようになり、レーンは `tests/serve` ディレクトリ全体をマーカーで選択
+  して実行します（`pytest tests/serve -m postgres -n0`）。後続のスイートはフィクスチャを採用した時点で
+  自動的にレーンへ加わります。実 Postgres に対して実行したところ、いくつかの repository テストが親と
+  なる org 行を作らずに `runs`・`projects` を挿入しており、SQLite の FK 非強制の既定に依存していた
+  ことが判明しました。これらは org を先に用意し、Postgres が強制する参照整合性を尊重するようにしました。
+  FK 非強制で `project_id` が宙に残る挙動をアサートする 1 件は SQLite 専用のまま残し、その Postgres 側の
+  `ON DELETE SET NULL` の対応は姉妹テストがすでにカバーしています。
 
 ## 参考
 
