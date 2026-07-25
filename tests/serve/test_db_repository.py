@@ -57,9 +57,12 @@ def _engine_repo(serve_engine: Callable[..., Engine]) -> tuple[Engine, SqlReposi
 
 
 def _seed_orgs(repo: SqlRepository, *org_ids: str) -> None:
-    """Create the org rows a test's runs and projects reference. `_repo` leaves SQLite's FKs off, so
-    a run or project can name an org that was never inserted; Postgres enforces the org_id FK, so the
-    parent org must exist first. Seeding it keeps each calling test dialect-agnostic."""
+    """Create the org rows a test's runs and projects reference.
+
+    `_repo` leaves SQLite's FKs off, so a run or project can name an org that was never inserted;
+    Postgres enforces the org_id FK, so the parent org must exist first. Seeding it keeps each
+    calling test dialect-agnostic.
+    """
     for org_id in org_ids:
         repo.ensure_org(org_id, slug=org_id, name=org_id)
 

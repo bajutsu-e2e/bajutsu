@@ -194,8 +194,9 @@ class FakeBackend:
 # The fast `check` gate runs the serve DB tests against in-memory SQLite alone — the dialect the
 # hosted, multi-tenant deployment does not use. The `serve_engine` fixture parametrizes a requesting
 # test over both dialects: the SQLite parameter runs everywhere; the Postgres parameter carries the
-# `postgres` marker, so the default gate (which runs `-m 'not … and not postgres'`, excluding Postgres-marked tests) stays SQLite-only,
-# while the serve-db.yml lane runs it with `-m postgres` against a real Postgres service container.
+# `postgres` marker, so the default gate (which runs `-m 'not … and not postgres'`, excluding
+# Postgres-marked tests) stays SQLite-only, while the serve-db.yml lane runs it with `-m postgres`
+# against a real Postgres service container.
 # A test opts in simply by requesting `serve_engine`; every other test is unaffected. This lives in
 # the top-level conftest rather than a second `tests/serve/conftest.py` because the suite imports
 # helpers by bare module name (`from conftest import el`), and a second `conftest` module collides
