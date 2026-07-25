@@ -123,6 +123,24 @@ def test_crawl_capture_replay_roundtrip(tmp_path: Path) -> None:
     assert_parses_to_crawl_actions(_crawl_proposal(load_fixture(fixture)))
 
 
+# --- Empty-fixture guards (fail loudly rather than replay a broken capture) ---------------------
+
+
+def test_save_fixture_rejects_empty_response(tmp_path: Path) -> None:
+    # A model that returned no tool call must not be committed as a `[]` fixture: replaying it would
+    # look like a passing `Proposal(done=True)` and mask the broken capture.
+    with pytest.raises(ValueError, match="empty fixture"):
+        save_fixture(tmp_path / "empty.json", MessageResponse(content=[]))
+
+
+def test_load_fixture_rejects_empty_payload(tmp_path: Path) -> None:
+    # An accidentally-emptied `[]` file must fail loudly on load rather than replay as done=True.
+    empty = tmp_path / "empty.json"
+    empty.write_text("[]", encoding="utf-8")
+    with pytest.raises(ValueError, match="empty fixture"):
+        load_fixture(empty)
+
+
 # --- Committed-fixture replay (signal-first: skip until a real capture lands) --------------------
 
 

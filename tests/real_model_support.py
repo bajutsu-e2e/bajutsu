@@ -160,7 +160,17 @@ class _FixtureReplay:
 
 
 def load_fixture(path: Path) -> AiBackend:
-    """Rebuild a backend from a saved fixture, replaying the captured tool-use as one turn."""
+    """Rebuild a backend from a saved fixture, replaying the captured tool-use as one turn.
+
+    Raises ``ValueError`` on an empty fixture, mirroring ``save_fixture``: an accidentally-emptied
+    `[]` file would otherwise replay as ``Proposal(done=True)`` and mask the breakage as a passing
+    replay rather than surfacing it.
+    """
     payload = json.loads(path.read_text(encoding="utf-8"))
+    if not payload:
+        raise ValueError(
+            f"refusing to replay an empty fixture at {path}: "
+            "it holds no tool-use blocks — the fixture is broken or was emptied by mistake"
+        )
     blocks = [ToolUseBlock(name=entry["name"], input=entry["input"]) for entry in payload]
     return _FixtureReplay(blocks)
