@@ -90,13 +90,21 @@ def test_record_multiblock_capture_replay_roundtrip(tmp_path: Path) -> None:
         ToolUseBlock(name="tap", input={"id": "log.submit", "reason": "submit after"}),
     ]
     replay = _FixtureReplay(blocks)
-    assert_parses_to_record_action(_record_proposal(replay))
+    proposal = _record_proposal(replay)
+    assert len(proposal.steps) == 2, (
+        f"expected both blocks to produce two steps (one per block); got {len(proposal.steps)}"
+    )
+    assert_parses_to_record_action(proposal)
 
     # Also exercise the full save → load round-trip with a multi-block response.
     multi_response = MessageResponse(content=list(blocks))
     fixture = tmp_path / "record_multi.json"
     save_fixture(fixture, multi_response)
-    assert_parses_to_record_action(_record_proposal(load_fixture(fixture)))
+    reloaded = _record_proposal(load_fixture(fixture))
+    assert len(reloaded.steps) == 2, (
+        f"load_fixture must replay all blocks in one turn; got {len(reloaded.steps)} steps"
+    )
+    assert_parses_to_record_action(reloaded)
 
 
 def test_crawl_capture_replay_roundtrip(tmp_path: Path) -> None:

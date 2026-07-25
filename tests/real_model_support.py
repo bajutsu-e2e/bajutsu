@@ -124,9 +124,20 @@ def tool_use_payload(response: MessageResponse) -> list[dict[str, Any]]:
 
 
 def save_fixture(path: Path, response: MessageResponse) -> None:
-    """Persist a captured response's tool-use blocks as a JSON replay fixture."""
+    """Persist a captured response's tool-use blocks as a JSON replay fixture.
+
+    Raises ``ValueError`` when the response carries no tool-use blocks — saving an empty fixture
+    would let a broken live capture (a model that returned no tool call) produce a committed
+    `[]` file that ``_FixtureReplay`` silently replays as ``Proposal(done=True)``, masking the
+    failure rather than surfacing it.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = tool_use_payload(response)
+    if not payload:
+        raise ValueError(
+            f"refusing to save an empty fixture to {path}: "
+            "the response contained no tool-use blocks — the live capture likely failed"
+        )
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
