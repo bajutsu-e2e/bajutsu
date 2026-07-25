@@ -410,7 +410,7 @@ def _build_alert_locator(eff: Effective, redactor: Redactor) -> ClaudeAlertLocat
     if gap == "anthropic-key":
         typer.echo(
             f"note: dismiss-alerts is on but ${anthropic_client.key_env(eff.ai)} is unset — "
-            "the vision alert guard will no-op (iOS still clears common prompts natively)"
+            "the vision alert guard will no-op (on the iOS XCUITest backend the native path still clears common prompts)"
         )
     elif gap == "bedrock-model":
         typer.echo(
