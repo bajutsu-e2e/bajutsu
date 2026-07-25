@@ -46,8 +46,11 @@ class XcuitestChannelError(RuntimeError):
     """
 
 
-class XcuitestRunnerCrashError(XcuitestChannelError):
+class XcuitestRunnerCrashError(XcuitestChannelError, base.BackendCrashError):
     """The runner died mid-run: the loopback channel stayed unreachable past the transient-retry budget (BE-0287).
+
+    Also a `base.BackendCrashError`, so the backend-agnostic run pipeline recovers it uniformly:
+    it discards the dead lease, cold-respawns a fresh runner, and re-runs the whole scenario (bounded).
 
     A crash outlives the BE-0207 retry (a sub-second blip smoother), so it is kept distinct from both a
     transient blip and a decoded test outcome: it names an honest "the runner crashed" failure, so a
