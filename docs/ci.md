@@ -45,6 +45,20 @@ an unrelated PR is neither run nor blocked. Adding a new required aggregator to 
 branch-protection ruleset is an out-of-repo administrative step, done by a maintainer with the exact
 check name.
 
+The `changes` job narrows one step further for the one case it can prove safe (BE-0322): a change
+confined to a lane's scenario files fires only the jobs that declare a changed scenario, rather than
+the whole lane. The filter reads the `scenarios:` each iOS job already declares in the workflow, so
+the map from a changed scenario to the jobs that load it never drifts from what those jobs run, and
+emits — alongside `relevant` — a `shared` flag and an `affected` job array the jobs guard on. After
+the gating jobs folded into one `run` (the consolidation), the scenario-keyed jobs the narrowing acts
+on are `run`, `actuation`, `golden`, and `bundled-runner`; `run` declares its scenarios as a folded
+block scalar, which the filter reads the same way. Every other case still fires the whole lane: a
+shared-code change (driver / runner / app / workflow code that can affect any scenario), a dimension
+job that declares no scenario (`codegen` / `conformance` / `visual`), and a lane whose jobs are not
+scenario-keyed at all (Android and web). The decision over-selects toward the whole lane, so it never
+skips a job a change could have broken, and — reading only the `git` diff and the workflow's own
+declarations — puts no LLM on the path and has no bearing on any run's pass/fail verdict.
+
 The dev tools live in the `dev` dependency group, so the Linux job runs `uv sync --group
 dev` then `uv run --no-sync …` (plain `uv run` would re-sync to the default set and drop
 them). The gate mirrors [`make check`](../Makefile) and the [`pre-push`](../.githooks/pre-push)
