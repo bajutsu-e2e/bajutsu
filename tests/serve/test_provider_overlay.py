@@ -4,16 +4,19 @@ The load-bearing change: the serve provider selection resolves *per organization
 env overlay, rather than a single process-global `os.environ`. These tests cover the pure overlay
 builder (`provider_env`), the spawn-env merge that makes it authoritative (`_spawn_env`), the
 tenant-isolation guarantee (two orgs resolve independent selections, neither touching the process
-env), and that the overlay travels in the worker job spec.
+env), and that the overlay travels in the worker job spec. The tenant-isolation case runs against
+in-memory SQLite in the gate and, behind the `postgres` marker, against a real Postgres service in
+the serve-db.yml lane (BE-0309).
 """
 
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import Engine
 
 from bajutsu import serve as srv
 from bajutsu.agents import ai_config as aic
@@ -121,7 +124,7 @@ def test_spawn_env_never_strips_aws_region(monkeypatch: pytest.MonkeyPatch) -> N
 # --- tenant isolation: two orgs, independent selections --------------------------------
 
 
-def _multi_org_state(tmp_path: Path, engine):  # type: ignore[no-untyped-def]
+def _multi_org_state(tmp_path: Path, engine: Engine) -> srv.ServeState:
     """A hosted-shaped state: alice→acme, bob→globex, each org's provider settings a DB-backed row."""
     Base.metadata.create_all(engine)
     repo = SqlRepository(engine)
@@ -140,7 +143,7 @@ def _multi_org_state(tmp_path: Path, engine):  # type: ignore[no-untyped-def]
 
 
 def test_two_orgs_resolve_independent_provider_selections(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    serve_engine: Callable[..., Engine], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The whole point of BE-0229: one org's save never changes another org's AI runs, and it never
     touches the shared process env."""
@@ -152,7 +155,7 @@ def test_two_orgs_resolve_independent_provider_selections(
         aic.LANGUAGE_ENV,
     ):
         monkeypatch.delenv(var, raising=False)
-    engine = create_engine("sqlite://")
+    engine = serve_engine()
     state = _multi_org_state(tmp_path, engine)
 
     ops.set_provider(

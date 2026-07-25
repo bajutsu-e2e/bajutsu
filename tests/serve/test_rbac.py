@@ -1,11 +1,14 @@
 """RBAC helpers (BE-0015 7c-2): the role policy, the endpoint→role map, the rank check, and the
-gate's `forbidden_for_role` (which reads the user's stored role)."""
+gate's `forbidden_for_role` (which reads the user's stored role). The stored-role case runs against
+in-memory SQLite in the gate and, behind the `postgres` marker, against a real Postgres service in
+the serve-db.yml lane (BE-0309)."""
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
-from sqlalchemy import create_engine
+from sqlalchemy import Engine
 
 from bajutsu.serve import operations as ops
 from bajutsu.serve.server.db import SqlRepository
@@ -98,8 +101,10 @@ def test_forbidden_for_role_without_a_database_is_allowed(tmp_path: Path) -> Non
     )
 
 
-def test_forbidden_for_role_reads_the_stored_role(tmp_path: Path) -> None:
-    engine = create_engine("sqlite://")
+def test_forbidden_for_role_reads_the_stored_role(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    engine = serve_engine()
     Base.metadata.create_all(engine)
     repo = SqlRepository(engine)
     repo.ensure_org("default", slug="default", name="Default")

@@ -1,0 +1,9 @@
+[
+  {
+    "name": "tap",
+    "input": {
+      "id": "log.intense",
+      "reason": "Intense is currently off ('Easy'); tapping it turns the Intense option on before submitting."
+    }
+  }
+]
