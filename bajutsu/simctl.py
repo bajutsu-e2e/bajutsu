@@ -133,6 +133,7 @@ _NO_TCC_SERVICE = "notifications"
 _PBCOPY_MAX_ATTEMPTS = 3
 _PBCOPY_RETRY_DELAY_S = 0.5
 _PBCOPY_TIMEOUT_S = 30.0
+_PBCOPY_TIMEOUT_EXIT = 60  # simctl's ETIMEDOUT — the one transient exit worth retrying
 
 
 def privacy_cmd(udid: str, action: str, tcc_service: str, bundle_id: str) -> list[str]:
@@ -408,6 +409,14 @@ class Env:
                 return
             except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
                 last = exc
+                # Only the transient exit-60 timeout (and a Python-side hang, which has no
+                # returncode) is worth retrying; a genuine simctl failure — an un-booted device,
+                # a bad UDID — won't clear on a re-run, so surface it now rather than after ~1.5s.
+                if (
+                    isinstance(exc, subprocess.CalledProcessError)
+                    and exc.returncode != _PBCOPY_TIMEOUT_EXIT
+                ):
+                    raise
                 if attempt + 1 < _PBCOPY_MAX_ATTEMPTS:
                     time.sleep(_PBCOPY_RETRY_DELAY_S * (attempt + 1))
         assert last is not None  # the loop runs at least once, so a failure sets `last`
