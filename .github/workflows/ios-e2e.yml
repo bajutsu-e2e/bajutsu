@@ -49,6 +49,7 @@
 #     runner-actuation were once separate jobs (and earlier still one `xcuitest-gestures` job), each
 #     re-paying the cold XCTest-host startup — the lane's dominant cost. Folding them back into one
 #     `bajutsu run` trades per-concern job names for paying that cold startup once, now that the run
+#     loop's per-scenario verdict makes the split unnecessary for the gate.
 # The SwiftUI a11y product is the run / golden / codegen / visual subject; the UIKit twin shares
 # the identifier contract, so one toolkit suffices for the gate (bundled-runner is the exception —
 # it deliberately runs both toolkits to prove the runner is app-agnostic).
@@ -312,8 +313,8 @@ jobs:
       # and preflight.py's real tool checks (`xcrun`, `xcodebuild`) through the real actuator, the
       # drift no injected-fake unit test can see. `--environment-only` stops doctor at the runnability
       # gate, so this pays nothing for the screen probe and never touches the resident runner (its
-      # startup flakiness is the smoke run's concern above, already passed by here). Runs after the
-      # smoke step because the bajutsu-e2e action is what syncs the venv (`uv sync --no-dev`); the
+      # startup flakiness is the run scenarios' concern above, already passed by here). Runs after the
+      # scenarios step because the bajutsu-e2e action is what syncs the venv (`uv sync --no-dev`); the
       # Simulator stays booted, so the gate sees the same real environment. A ✗ fails this gating job.
       - name: Onboarding gate (bajutsu doctor environment — BE-0304)
         env:
@@ -323,11 +324,11 @@ jobs:
           --target showcase-swiftui --backend xcuitest
           --config demos/showcase/showcase.config.yaml --udid "$UDID"
 
-  # Real on-device XCUITest actuation beyond the conformance job's `tap` (BE-0281): drives `back`,
-  # device control, and text editing that the smoke / golden / visual jobs above never reach (they
-  # only `wait`/`expect`). The proven tab-crossing gesture / text scenarios (search.yaml,
-  # notices.yaml) live in the `runner-actuation` job below, which feeds the required `E2E` gate;
-  # this job is the non-gating landing pad where newer actuation earns its stability first:
+  # Real on-device XCUITest actuation that has not yet earned a place in the gating `run` job above:
+  # `back`, device control, and text editing that the `golden` / `visual` jobs never reach (they only
+  # `wait` / `expect` / snapshot). The gating `run` job already drives the proven `/back`, `/type`,
+  # `/swipe`, and gesture scenarios; this job is the non-gating landing pad where newer actuation
+  # earns its stability first, before it is promoted up into `run`:
   #   - navigation.yaml: tap a Stable row → push Horse Detail → `back` (the OS back button). `tap` is
   #     already the conformance job's contract, but `back` end-to-end through the resident runner is not.
   #   - device.yaml / push.yaml: `setLocation`, clipboard round-trip, and a simctl `push` — the
@@ -336,13 +337,13 @@ jobs:
   #   - text_editing.yaml: `select` + `copy` (⌘A / ⌘C), then `delete` and `clear` on the Search field,
   #     with the copied text read back through the `clipboard` assertion — the four text-editing
   #     actuators no other scenario drove. It crosses to the Search tab, so once stable it can move up
-  #     to the runner-actuation job beside search.yaml.
+  #     into the `run` job beside search.yaml.
   # Deliberately NOT in the `E2E` gate's `needs:` below (like `golden` / `visual`): the Simulator lane
   # has a flakiness history (BE-0218), so new actuation lands as a per-PR signal first and is promoted
-  # to the gate only once it proves stable. One build and one `bajutsu run` serve all four scenarios
-  # (cost discipline: the macOS runner bills at 10x), so the job's dominant cost — the cold XCTest-host
-  # startup — is paid once, not four times. Split a scenario into its own job if it is promoted to the
-  # gate ahead of the others.
+  # to the gate only once it proves stable. It installs the prebuilt products from the `build` job and
+  # runs all four scenarios in one `bajutsu run` (cost discipline: the macOS runner bills at 10x), so
+  # the job's dominant cost — the cold XCTest-host startup — is paid once, not four times. Promote a
+  # scenario into `run` once it is stable.
   actuation:
     name: actuation (xcuitest)
     needs: [changes, build]
@@ -352,7 +353,7 @@ jobs:
     # default. Install (no build) + four short scenario runs is ~10min, so 25 catches a real hang.
     timeout-minutes: 25
     # Raise the wait floor so a cold-boot Simulator has budget to render the first Stable row before
-    # navigation/device/push/text_editing's own 10s first-wait — the same knob the `smoke` job above
+    # navigation/device/push/text_editing's own 10s first-wait — the same knob the `run` job above
     # and the Android lane use. A condition wait returns the instant the row appears, so this is a
     # ceiling, not a sleep.
     env:
@@ -422,7 +423,7 @@ jobs:
     # well under this; 25 catches a hung Simulator/runner on the metered macOS runner with headroom.
     timeout-minutes: 25
     # Raise the wait floor so a cold-boot Simulator has budget to render the first Stable row before
-    # the scenario's own 10s first-wait — the same knob the `smoke` job above and the Android lane use.
+    # the scenario's own 10s first-wait — the same knob the `run` job above and the Android lane use.
     # A condition wait returns the instant the row appears, so this is a ceiling, not a fixed sleep.
     env:
       BAJUTSU_MIN_WAIT_TIMEOUT: "20"
@@ -489,8 +490,8 @@ jobs:
       # Xcode version + Swift sources + project spec; the restore-keys fallback warms the cache
       # (compiled modules) when only sources change, scoped to the same Xcode, and a miss simply
       # rebuilds cold — so the cache only ever speeds the build, never changes its result. No
-      # `-app-` infix (unlike the smoke / golden / etc. cache above): this job builds the UITests
-      # scheme into the same DerivedData path, so its cache must never collide with theirs.
+      # `-app-` infix (unlike the `build` job's `-app-` cache): this job builds the UITests scheme
+      # into the same DerivedData path, so its cache must never collide with that one.
       - name: Cache DerivedData
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
@@ -675,7 +676,7 @@ jobs:
     # 25 catches a hung Simulator/runner on the metered macOS runner with comfortable headroom.
     timeout-minutes: 25
     # Raise the wait floor so a cold-boot Simulator has budget to render the first Stable row before
-    # the scenario's own 10s first-wait — the same knob the `smoke` job above and the Android lane use.
+    # the scenario's own 10s first-wait — the same knob the `run` job above and the Android lane use.
     # A condition wait returns the instant the row appears, so this is a ceiling, not a fixed sleep.
     env:
       BAJUTSU_MIN_WAIT_TIMEOUT: "20"
@@ -694,7 +695,7 @@ jobs:
           device-type: iPhone 17
 
       # Cache the showcase app's DerivedData so `swiftui-build` is incremental across runs (matches
-      # the `smoke` job above). A miss just rebuilds cold, so the cache only ever speeds the build.
+      # the `build` job's app cache). A miss just rebuilds cold, so the cache only ever speeds the build.
       - name: Cache DerivedData (app)
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
