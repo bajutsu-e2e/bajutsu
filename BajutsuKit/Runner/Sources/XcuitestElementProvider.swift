@@ -91,7 +91,13 @@ final class XcuitestElementProvider: ElementProviding {
 
     /// A cheap projection of the current tree — identifier|label|value per element, frame excluded so
     /// layout jitter isn't mistaken for a gesture landing — used to detect that a re-issued gesture
-    /// finally took effect (the showcase's `GestureView` flips a mirrored value from 'idle').
+    /// finally took effect. It projects the *whole* screen rather than the actuated element, because
+    /// the mirror a gesture flips is not always the element acted on: the showcase `GestureView`
+    /// reflects the pinch into a sibling `log.pinch.value`, not the "Pinch me" box the gesture
+    /// targets — scoping to the backing element's own value would never see the change. A
+    /// gesture-under-test screen is static (no timers/animations), so a whole-screen change is the
+    /// gesture's; a screen carrying gesture-independent churn would violate `actuateUntilStateChanges`'s
+    /// documented precondition and stop the retry early.
     private func snapshotSignature() -> String {
         queryElements()
             .map { "\($0.identifier ?? "")|\($0.label ?? "")|\($0.value ?? "")" }
