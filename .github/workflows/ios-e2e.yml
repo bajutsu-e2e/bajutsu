@@ -335,24 +335,51 @@ jobs:
         run: tar -xpf ios-build.tar
 
       # One Simulator per parallel scenario: reuse the toolchain's booted device as Sim 1 and create
-      # three more of the same iPhone device type, then boot + install the app on all four. The four
-      # udids go to $GITHUB_ENV so the parallel run steps below each target their own device.
+      # three more of the same iPhone device type, provisioning each fully — boot, wait, install —
+      # before starting the next. Booting four cold Simulators concurrently on one macOS runner
+      # exhausts CPU/RAM and leaves at least one stuck "booting"; because `simctl bootstatus -b` has
+      # no internal timeout, the step would then hang to the job timeout. Serializing the boots avoids
+      # the contention, and a watchdog around each wait turns a stuck boot into a loud, fast failure
+      # instead of a silent 25-minute hang. The four udids go to $GITHUB_ENV so the parallel run steps
+      # below each target their own device.
       - name: Provision four Simulators (one per scenario)
         run: |
           set -euo pipefail
+          app="demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
+
+          # `simctl bootstatus -b` waits with no timeout and macOS ships no coreutils `timeout`, so a
+          # background watchdog kills the wait if a Simulator never finishes booting.
+          boot_and_wait() {
+            local u=$1
+            xcrun simctl bootstatus "$u" -b &
+            local pid=$!
+            ( sleep 240; kill -TERM "$pid" 2>/dev/null || true ) &
+            local watcher=$!
+            if wait "$pid"; then
+              kill "$watcher" 2>/dev/null || true
+            else
+              echo "::error::Simulator $u did not finish booting within 240s"
+              exit 1
+            fi
+          }
+
           sim1="${{ steps.toolchain.outputs.udid }}"
           devtype=$(xcrun simctl list devices -j | jq -r --arg u "$sim1" '[.devices[][] | select(.udid==$u)] | first | .deviceTypeIdentifier')
+
+          # Sim 1 is the toolchain's already-booted device: confirm boot, then install.
+          boot_and_wait "$sim1"
+          xcrun simctl install "$sim1" "$app"
           udids=("$sim1")
+
+          # Sims 2–4: create, boot, and wait one at a time so only a single cold boot runs at once.
           for n in 2 3 4; do
             u=$(xcrun simctl create "spike-iphone-$n" "$devtype")
             xcrun simctl boot "$u"
+            boot_and_wait "$u"
+            xcrun simctl install "$u" "$app"
             udids+=("$u")
           done
-          app="demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
-          for u in "${udids[@]}"; do
-            xcrun simctl bootstatus "$u" -b
-            xcrun simctl install "$u" "$app"
-          done
+
           {
             echo "SIM_1=${udids[0]}"
             echo "SIM_2=${udids[1]}"
