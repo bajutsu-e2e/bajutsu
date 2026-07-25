@@ -53,12 +53,12 @@ Proposal altitude. The work is MECE along the units below.
 
 - **Run `bajutsu doctor` for real inside an existing E2E lane.** Add a step to `ios-e2e.yml`
   (and, separately, `android-e2e.yml`/`web-e2e.yml`) that runs the real command against the lane's
-  real environment and asserts the rendered `environment:` section reports no `✘` (i.e. the
+  real environment and asserts the rendered `environment:` section reports no `✗` (i.e. the
   environment gate itself doesn't exit 1/2), exercising `simctl.py`'s real JSON parsing and
   `preflight.py`'s real tool checks in one pass.
 - **Add one deliberately-broken-environment case.** In a job (or job step) with a tool intentionally
   absent or misconfigured (e.g. `PATH` without `idb`), assert `doctor`/`preflight` correctly exits
-  non-zero with an `✘` in the rendered `environment:` section — the fail side no injected-fake test
+  non-zero with an `✗` in the rendered `environment:` section — the fail side no injected-fake test
   can prove today.
 - **Run `python -m bajutsu.provision` for real in a fresh environment.** Add a job (a bare container, or a
   fresh step before the rest of a lane's setup) that runs the real installer end-to-end and asserts
@@ -86,8 +86,8 @@ Proposal altitude. The work is MECE along the units below.
 > (oldest first), linking the PRs.
 
 - [x] Run `bajutsu doctor` for real inside the iOS, Android, and web E2E lanes, asserting the
-  `environment:` section reports no `✘`.
-- [x] Add a deliberately-broken-environment case asserting a non-zero exit with an `✘` in the
+  `environment:` section reports no `✗`.
+- [x] Add a deliberately-broken-environment case asserting a non-zero exit with an `✗` in the
   `environment:` section.
 - [x] Run `python -m bajutsu.provision` for real in a fresh environment.
 - [x] Capture a real `simctl list devices -j` payload as a test fixture.
