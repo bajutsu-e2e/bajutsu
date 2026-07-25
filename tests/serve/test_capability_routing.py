@@ -1,16 +1,18 @@
 """Capability-routed leasing end to end at the repository + operations layer (BE-0166).
 
 A worker leases only jobs whose required capabilities it advertises; a job no live worker can serve
-stays queued and is surfaced as unroutable via the metrics snapshot. Exercised on in-memory SQLite,
-no Simulator — the same routing logic the gate and production Postgres share.
+stays queued and is surfaced as unroutable via the metrics snapshot. Exercised on in-memory SQLite
+in the gate and, behind the `postgres` marker, against a real Postgres service in the serve-db.yml
+lane (BE-0309) — the same routing logic the gate and production Postgres share.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from sqlalchemy import create_engine
+from sqlalchemy import Engine
 
 from bajutsu import serve as srv
 from bajutsu.serve import operations as ops
@@ -19,8 +21,8 @@ from bajutsu.serve.server.db_executor import DbQueueExecutor
 from bajutsu.serve.server.models import Base, WorkerRecord
 
 
-def _repo() -> SqlRepository:
-    engine = create_engine("sqlite://")
+def _repo(serve_engine: Callable[..., Engine]) -> SqlRepository:
+    engine = serve_engine()
     Base.metadata.create_all(engine)
     return SqlRepository(engine)
 
@@ -31,8 +33,8 @@ def _state(tmp_path: Path, repo: SqlRepository) -> srv.ServeState:
     )
 
 
-def test_worker_leases_only_a_job_it_can_serve() -> None:
-    repo = _repo()
+def test_worker_leases_only_a_job_it_can_serve(serve_engine: Callable[..., Engine]) -> None:
+    repo = _repo(serve_engine)
     repo.enqueue_job("ios18-job", "o", {}, capabilities=["platform:ios", "ios18"])
     # An iOS-17-only worker cannot serve the ios18 job — the queue is empty *for it*.
     assert repo.lease_job("w17", ["platform:ios", "ios17"]) is None
@@ -41,16 +43,18 @@ def test_worker_leases_only_a_job_it_can_serve() -> None:
     assert leased is not None and leased.id == "ios18-job"
 
 
-def test_ipad_job_never_offered_to_an_iphone_only_worker() -> None:
-    repo = _repo()
+def test_ipad_job_never_offered_to_an_iphone_only_worker(
+    serve_engine: Callable[..., Engine],
+) -> None:
+    repo = _repo(serve_engine)
     repo.enqueue_job("ipad-job", "o", {}, capabilities=["platform:ios", "ipad"])
     assert repo.lease_job("iphone-worker", ["platform:ios", "iphone"]) is None
     leased = repo.lease_job("ipad-worker", ["platform:ios", "ipad", "iphone"])
     assert leased is not None and leased.id == "ipad-job"
 
 
-def test_web_and_ios_jobs_never_cross() -> None:
-    repo = _repo()
+def test_web_and_ios_jobs_never_cross(serve_engine: Callable[..., Engine]) -> None:
+    repo = _repo(serve_engine)
     repo.enqueue_job("web-job", "o", {}, capabilities=["platform:web"])
     repo.enqueue_job("ios-job", "o", {}, capabilities=["platform:ios"])
     # The web worker gets the web job, never the iOS one.
@@ -60,8 +64,10 @@ def test_web_and_ios_jobs_never_cross() -> None:
     assert ios is not None and ios.id == "ios-job"
 
 
-def test_lease_skips_an_unservable_older_job_for_a_servable_younger_one() -> None:
-    repo = _repo()
+def test_lease_skips_an_unservable_older_job_for_a_servable_younger_one(
+    serve_engine: Callable[..., Engine],
+) -> None:
+    repo = _repo(serve_engine)
     # The oldest queued job needs a capability this worker lacks; the lease must still find the
     # younger job it *can* serve rather than stopping at the head of the queue.
     repo.enqueue_job("old-web", "o", {}, capabilities=["platform:web"])
@@ -70,15 +76,15 @@ def test_lease_skips_an_unservable_older_job_for_a_servable_younger_one() -> Non
     assert leased is not None and leased.id == "new-ios"
 
 
-def test_unannotated_job_leases_to_any_worker() -> None:
-    repo = _repo()
+def test_unannotated_job_leases_to_any_worker(serve_engine: Callable[..., Engine]) -> None:
+    repo = _repo(serve_engine)
     repo.enqueue_job("plain", "o", {})  # no capabilities → any worker
     leased = repo.lease_job("whatever", [])
     assert leased is not None and leased.id == "plain"
 
 
-def test_metrics_counts_unroutable_queued_jobs() -> None:
-    repo = _repo()
+def test_metrics_counts_unroutable_queued_jobs(serve_engine: Callable[..., Engine]) -> None:
+    repo = _repo(serve_engine)
     repo.enqueue_job("routable", "o", {}, capabilities=["platform:ios"])
     repo.enqueue_job("unroutable", "o", {}, capabilities=["platform:android"])
     # Only a Mac worker is live; the android job matches no live worker.
@@ -87,11 +93,13 @@ def test_metrics_counts_unroutable_queued_jobs() -> None:
     assert snap.unroutable_queued == 1
 
 
-def test_heartbeat_keeps_a_busy_worker_live_for_routability() -> None:
+def test_heartbeat_keeps_a_busy_worker_live_for_routability(
+    serve_engine: Callable[..., Engine],
+) -> None:
     # BE-0166: a worker busy on a run longer than the lease timeout polls `lease` only after it
     # finishes; the heartbeat must refresh its liveness so its capability's queued jobs are not
     # falsely counted unroutable while it works.
-    repo = _repo()
+    repo = _repo(serve_engine)
     repo.register_worker("mac", ["platform:ios"])
     repo.enqueue_job("busy", "o", {}, capabilities=["platform:ios"])
     leased = repo.lease_job("mac", ["platform:ios"])
@@ -109,8 +117,8 @@ def test_heartbeat_keeps_a_busy_worker_live_for_routability() -> None:
     assert repo.metrics_snapshot().unroutable_queued == 0
 
 
-def test_metrics_ignores_dead_workers_capabilities() -> None:
-    repo = _repo()
+def test_metrics_ignores_dead_workers_capabilities(serve_engine: Callable[..., Engine]) -> None:
+    repo = _repo(serve_engine)
     repo.enqueue_job("web-job", "o", {}, capabilities=["platform:web"])
     repo.register_worker("web", ["platform:web"])
     # Age the only web worker past the lease timeout so it is no longer "live".
@@ -125,11 +133,11 @@ def test_metrics_ignores_dead_workers_capabilities() -> None:
     assert snap.unroutable_queued == 1
 
 
-def test_reclaim_prunes_dead_worker_rows() -> None:
+def test_reclaim_prunes_dead_worker_rows(serve_engine: Callable[..., Engine]) -> None:
     # BE-0166: the workers registry stays bounded to the live pool — a worker not seen within the
     # timeout is pruned by the same reclaim sweep the lease path runs, so restarted workers don't
     # leak a row each.
-    repo = _repo()
+    repo = _repo(serve_engine)
     repo.register_worker("gone", ["platform:ios"])
     with repo._engine.connect() as conn:
         from sqlalchemy import update
@@ -143,8 +151,10 @@ def test_reclaim_prunes_dead_worker_rows() -> None:
         assert conn.execute(select(func.count()).select_from(WorkerRecord)).scalar() == 0
 
 
-def test_heartbeat_op_refreshes_worker_liveness(tmp_path: Path) -> None:
-    repo = _repo()
+def test_heartbeat_op_refreshes_worker_liveness(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    repo = _repo(serve_engine)
     state = _state(tmp_path, repo)
     repo.register_worker("w", ["platform:ios"])
     repo.enqueue_job("j", "o", {"job_id": "j"}, capabilities=["platform:ios"])
@@ -162,8 +172,10 @@ def test_heartbeat_op_refreshes_worker_liveness(tmp_path: Path) -> None:
     assert repo.metrics_snapshot().unroutable_queued == 0
 
 
-def test_worker_lease_op_threads_capabilities_and_registers(tmp_path: Path) -> None:
-    repo = _repo()
+def test_worker_lease_op_threads_capabilities_and_registers(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    repo = _repo(serve_engine)
     state = _state(tmp_path, repo)
     repo.enqueue_job(
         "ios18-job", "o", {"job_id": "ios18-job"}, capabilities=["platform:ios", "ios18"]
@@ -177,8 +189,10 @@ def test_worker_lease_op_threads_capabilities_and_registers(tmp_path: Path) -> N
     assert code == 200 and payload["job_id"] == "ios18-job"
 
 
-def test_worker_lease_op_rejects_a_malformed_capabilities_payload(tmp_path: Path) -> None:
-    repo = _repo()
+def test_worker_lease_op_rejects_a_malformed_capabilities_payload(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    repo = _repo(serve_engine)
     state = _state(tmp_path, repo)
     repo.enqueue_job("plain", "o", {"job_id": "plain"})
     # A non-list capabilities value must not crash the lease — it advertises nothing.

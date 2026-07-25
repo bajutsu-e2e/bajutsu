@@ -3,17 +3,19 @@
 The run-id list comes from the system of record when a repository is wired (org-scoped), else the
 artifact store; the full `manifest.json` of each run is read from the artifact store either way (the
 DB `summary` is only the compact history-list shape). Driven against a real SqlRepository on
-in-memory SQLite and a real LocalArtifactStore; the one exception is a fake ArtifactStore used only
-to simulate a read failure at the storage I/O boundary."""
+in-memory SQLite in the gate and, behind the `postgres` marker, against a real Postgres service in
+the serve-db.yml lane (BE-0309), plus a real LocalArtifactStore; the one exception is a fake
+ArtifactStore used only to simulate a read failure at the storage I/O boundary."""
 
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 from _shared import _get, _serve, project
-from sqlalchemy import create_engine
+from sqlalchemy import Engine
 
 from bajutsu import serve as srv
 from bajutsu.serve.artifacts import Artifact, LocalArtifactStore
@@ -24,8 +26,8 @@ from bajutsu.serve.server.models import Base
 from bajutsu.serve.state import StoreBundle
 
 
-def _repo() -> SqlRepository:
-    engine = create_engine("sqlite://")
+def _repo(serve_engine: Callable[..., Engine]) -> SqlRepository:
+    engine = serve_engine()
     Base.metadata.create_all(engine)
     repo = SqlRepository(engine)
     repo.ensure_org("default", slug="default", name="Default")
@@ -97,9 +99,11 @@ def test_stats_html_from_artifact_store(tmp_path: Path) -> None:
     assert "flaky" in html
 
 
-def test_stats_html_from_repository_is_org_scoped(tmp_path: Path) -> None:
+def test_stats_html_from_repository_is_org_scoped(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
     scn_dir, cfg, runs = project(tmp_path)
-    repo = _repo()
+    repo = _repo(serve_engine)
     repo.ensure_org("other", slug="other", name="Other")
     # Two runs recorded to the default org, one to another org — the other org's run must not appear.
     _write_manifest(runs, "20260101-000000", ok=True, scenario_hash="sha256:a", duration_s=2.0)
@@ -153,11 +157,13 @@ def test_stats_html_empty(tmp_path: Path) -> None:
     assert "No runs to aggregate" in html
 
 
-def test_stats_html_skips_unsafe_run_id_from_repository(tmp_path: Path) -> None:
+def test_stats_html_skips_unsafe_run_id_from_repository(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
     # A repository id that isn't a single safe segment must never be turned into a path — it is
     # skipped, so a nested/legacy id can't read outside its run dir (serve's containment model).
     scn_dir, cfg, runs = project(tmp_path)
-    repo = _repo()
+    repo = _repo(serve_engine)
     _write_manifest(runs, "20260101-000000", ok=True, scenario_hash="sha256:a", duration_s=2.0)
     repo.record_run(
         RunRecord(
@@ -201,9 +207,11 @@ class _RaisingArtifactStore:
         return None
 
 
-def test_stats_html_skips_runs_whose_manifest_read_raises(tmp_path: Path) -> None:
+def test_stats_html_skips_runs_whose_manifest_read_raises(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
     scn_dir, cfg, runs = project(tmp_path)
-    repo = _repo()
+    repo = _repo(serve_engine)
     repo.record_run(
         RunRecord(
             id="20260101-000000",

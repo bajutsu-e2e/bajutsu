@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0309](BE-0309-serve-postgres-ci-lane.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0309") |
+| Implementing PR | [#1347](https://github.com/bajutsu-e2e/bajutsu/pull/1347), [#1353](https://github.com/bajutsu-e2e/bajutsu/pull/1353), [#1359](https://github.com/bajutsu-e2e/bajutsu/pull/1359), [#1362](https://github.com/bajutsu-e2e/bajutsu/pull/1362), [#1365](https://github.com/bajutsu-e2e/bajutsu/pull/1365) |
 | Topic | Verification & coverage |
 | Related | [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) |
 <!-- /BE-METADATA -->
@@ -77,9 +78,62 @@ Proposal altitude. The work is MECE along the units below.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Add a dedicated Postgres CI job with a service container (not a change to `check`).
-- [ ] Run the migration upgrade/downgrade tests and the wider DB-touching test suite against it.
-- [ ] Wire it into CI as a non-gating signal, promote to required once stable.
+- [x] Add a dedicated Postgres CI job with a service container (not a change to `check`).
+- [x] Run the migration upgrade/downgrade tests and the wider DB-touching test suite against it.
+  *(Slice 1 ran the migration tests against Postgres. Slice 2 added the three highest-risk
+  DB-touching suites — `test_db_models.py`, `test_db_repository.py`, and `test_oauth.py`'s
+  persistence tests — behind a shared `serve_engine` fixture that retrofits the per-test isolation a
+  shared Postgres needs. Slice 3 moved the remaining eighteen files onto the same fixture, so every
+  serve DB test that builds its schema on an in-memory engine now runs against both dialects.)*
+- [x] Wire it into CI as a non-gating signal, promote to required once stable.
+  *(Non-gating signal landed. Slice 4 gave the lane an always-reporting `serve db (postgres)` gate —
+  mirroring the required `E2E (web)` aggregator — so the check can be required without a path-skip
+  leaving it pending forever. A maintainer then added that check to the "Require code review"
+  branch ruleset, so `serve db (postgres)` is now a required check — the final step, a repository
+  setting outside any code PR.)*
+
+### Log
+
+- Slice 1 — `serve-db.yml` stands up a `postgres:16` service container and reruns
+  `test_db_migrations.py`'s upgrade/downgrade assertions against real Postgres. The tests are
+  parametrized over both dialects (SQLite in the fast gate, Postgres behind the `postgres` marker in
+  the lane), reusing the same assertions; the lane runs `-m postgres -n0`. This gives migration
+  0010's `postgresql` FK branch and the JSONB column variants their first real-Postgres coverage.
+  Non-gating for now, per BE-0282's precedent.
+- Slice 2 — a shared `tests/conftest.py` adds the `serve_engine` fixture: it parametrizes a
+  requesting test over both dialects (SQLite in the gate, the `postgres`-marked parameter in the
+  lane) and gives the shared Postgres service the per-test schema reset SQLite got for free from a
+  throwaway in-memory database. The three highest-risk suites now request it — `test_db_models.py`,
+  `test_db_repository.py`, and `test_oauth.py`'s persistence tests — so the lane runs the whole
+  `tests/serve` directory by marker (`pytest tests/serve -m postgres -n0`), and a later suite joins
+  automatically once it adopts the fixture. Running against real Postgres surfaced that several
+  repository tests inserted `runs`/`projects` without their parent org rows, relying on SQLite's
+  FKs-off default; they now seed the org so they respect the referential integrity Postgres enforces.
+  The one test that asserts the FKs-off dangling-`project_id` behavior stays SQLite-only, its
+  Postgres `ON DELETE SET NULL` counterpart already covered by a sibling test.
+- Slice 3 — the remaining eighteen DB-touching `tests/serve` files adopt the `serve_engine`
+  fixture, so every serve DB test that builds its schema on an in-memory engine — not just the
+  three highest-risk files — now runs against both in-memory SQLite in the gate and real Postgres
+  in the lane. Running them against real
+  Postgres surfaced the same foreign-key divergence slice 2 hit: the secret and provider-settings
+  stores insert rows keyed by `org_id` (and the secret store's `updated_by`, a `users.id` foreign
+  key) that SQLite's foreign-keys-off default let dangle, so each store's test helper now seeds the
+  parent org (and writer) rows and both dialects hold. A single schema-less error-path test in
+  `test_db_run_listing.py` stays SQLite-only by design. No workflow change was needed: the lane
+  already selects the directory by marker (`pytest tests/serve -m postgres -n0`), so each newly
+  retrofitted file joined it automatically.
+- Slice 4 — restructured `serve-db.yml` into the always-reporting shape a required check needs. It
+  now triggers on every PR (and the merge queue) rather than a workflow-trigger `paths:` filter; a
+  `changes` job (`dorny/paths-filter`) decides whether the heavy `postgres` job runs; and a new
+  `if: always()` gate job named `serve db (postgres)` translates the work job's skip into a pass and
+  its failure into a red — the same pattern the required `E2E (web)` aggregator uses so a path-skip
+  never leaves a required check pending. This does not itself make the check required — that is a
+  repository ruleset change a maintainer makes once the gate has proven stable — it only makes the
+  check safe to require.
+- Required — a maintainer added `serve db (postgres)` to the "Require code review" branch ruleset's
+  required status checks, so the lane now gates the merge like `check` and the `E2E (…)` aggregators.
+  This is the item's last step and completes it; being a repository setting rather than code, it
+  ships outside any PR, and this note records that it happened.
 
 ## References
 

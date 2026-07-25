@@ -186,18 +186,23 @@ ignore = [
 convention = "google"
 
 [tool.pytest.ini_options]
-# The two conformance suites that need a real backend stay out of the fast gate (BE-0114): `not
-# web` drops the browser-driven suite (real Chromium + the `web` extra; runs in `web-e2e.yml`,
-# `-m web`), and `not ondevice` drops the iOS (XCUITest) suite (a booted Simulator; runs in
-# `ios-e2e.yml`). Deselecting by marker (not just importorskip) means each stays out even when its extra
-# happens to be installed locally — so the gate is hermetic regardless of the venv's state. `not
-# live` drops the real-model smoke suite (a billable, network-dependent model call; opt in with `-m
-# live`), keeping the gate hermetic by structure even when an `ANTHROPIC_API_KEY` happens to be set.
-addopts = "-n auto -m 'not web and not ondevice and not live'"
+# The suites that need a real backend stay out of the fast gate (BE-0114, BE-0300, BE-0301, BE-0309):
+# `not web` drops the browser-driven suite (real Chromium + the `web` extra; runs in `web-e2e.yml`,
+# `-m web`), `not ondevice` drops the iOS (XCUITest) suite (a booted Simulator; runs in
+# `ios-e2e.yml`), `not live` drops the real-model smoke suite (a billable, network-dependent model
+# call; opt in with `-m live`), `not postgres` drops the migration tests parametrized against a real
+# Postgres service (runs in `serve-db.yml`, `-m postgres`), and `not mcp_wire` drops the
+# real-transport MCP round-trip (a `bajutsu mcp` subprocess; runs in `mcp-wire.yml`, non-gating).
+# Deselecting by marker (not just importorskip) means each stays out even when its extra happens to
+# be installed locally — so the gate is hermetic regardless of the venv's state, even when an
+# `ANTHROPIC_API_KEY` happens to be set.
+addopts = "-n auto -m 'not web and not ondevice and not live and not postgres and not mcp_wire'"
 markers = [
     "web: browser-driven test requiring the Playwright web extra + a Chromium binary (web CI only)",
     "ondevice: iOS Simulator test requiring a booted device + the showcase app (E2E workflow only)",
     "live: real-model smoke test firing a billable network model call (opt-in only, `-m live`)",
+    "postgres: DB test run against a real Postgres service container (serve-db.yml lane only)",
+    "mcp_wire: real-transport MCP round-trip spawning a `bajutsu mcp` subprocess (mcp-wire.yml, non-gating)",
 ]
 # Collect only the project's own suite; ignore local git worktrees under worktree/.
 testpaths = ["tests"]

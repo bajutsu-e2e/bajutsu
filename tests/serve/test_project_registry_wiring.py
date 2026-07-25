@@ -1,15 +1,17 @@
 """BE-0225 unit 2 wiring: the local backend assembles a `LocalProjectRegistry`, the launch config
 auto-registers as the active project, and a finished run is stamped with that project — the
 `runs.project_id` column with a database, the local project→run-ids index without one. Driven
-through `_build_state` / `run_job` on the Linux gate (no Simulator), against a real JSON file and an
-in-memory SQLite repository (no mocks)."""
+through `_build_state` / `run_job` on the Linux gate (no Simulator), against a real JSON file and a
+repository on in-memory SQLite in the gate and, behind the `postgres` marker, against a real Postgres
+service in the serve-db.yml lane (BE-0309) — no mocks."""
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 from _shared import fake_popen, project, write_run
-from sqlalchemy import create_engine
+from sqlalchemy import Engine
 
 from bajutsu import serve as srv
 from bajutsu.serve.operations.config import launch_project_identity, register_launch_project
@@ -144,10 +146,12 @@ def test_a_registry_error_never_strands_run_finalization(tmp_path: Path) -> None
     assert job.run_id == "20260711-3"
 
 
-def test_finished_run_is_stamped_with_the_active_project_id_in_the_db(tmp_path: Path) -> None:
+def test_finished_run_is_stamped_with_the_active_project_id_in_the_db(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
     scn_dir, cfg, runs = project(tmp_path)
     write_run(runs, "20260711-2", ok=True, scenarios=[("alpha", True)])
-    engine = create_engine("sqlite://")
+    engine = serve_engine()
     Base.metadata.create_all(engine)
     repo = SqlRepository(engine)
     repo.ensure_org("default", slug="default", name="Default")

@@ -183,11 +183,29 @@ def test_load_scenarios_single_file(tmp_path: Path) -> None:
         "description: suite\nscenarios:\n  - name: demo\n    steps:\n      - tap: { id: home.title }\n",
         encoding="utf-8",
     )
-    scenarios, description, source_name, files = _load_scenarios(_eff(), str(scn), "x")
+    scenarios, description, source_name, files = _load_scenarios(_eff(), [str(scn)], "x")
     assert [s.name for s in scenarios] == ["demo"]
     assert description == "suite"  # the single file's description rides back
     assert source_name == "s.yaml"
     assert files == [scn]
+
+
+def test_load_scenarios_multiple_files_share_one_run(tmp_path: Path) -> None:
+    # Repeating --scenario runs several files in one process (one warm runner): the scenarios
+    # concatenate in order, it is not a lone-file run (no single-file description), and the report's
+    # source label is the files' common parent, not any one file.
+    for name, demo in (("a.yaml", "one"), ("b.yaml", "two")):
+        (tmp_path / name).write_text(
+            f"scenarios:\n  - name: {demo}\n    steps:\n      - tap: {{ id: home.title }}\n",
+            encoding="utf-8",
+        )
+    scenarios, description, source_name, files = _load_scenarios(
+        _eff(), [str(tmp_path / "a.yaml"), str(tmp_path / "b.yaml")], "x"
+    )
+    assert [s.name for s in scenarios] == ["one", "two"]  # concatenated, order preserved
+    assert description is None  # a multi-file run carries no single-file description
+    assert source_name == tmp_path.name  # labelled by the common parent, not a lone file
+    assert files == [tmp_path / "a.yaml", tmp_path / "b.yaml"]
 
 
 # --- _filter_scenarios: --tag/--exclude selection plus the --erase override
