@@ -14,9 +14,9 @@
 
 ## Introduction
 
-Fire only the on-device end-to-end (E2E) jobs a change can actually affect. Each E2E lane — iOS,
-Android, and web — runs a set of feature and dimension jobs on real devices, and most of those jobs
-declare the scenarios they exercise. Today any change a lane deems relevant fires every job in that
+Fire only the on-device end-to-end (E2E) jobs a change can actually affect. Each E2E lane runs a set
+of feature and dimension jobs — iOS on a Simulator, Android on a hardware-accelerated emulator, and
+web on a headless browser — and most of those jobs declare the scenarios they exercise. Today any change a lane deems relevant fires every job in that
 lane, even jobs whose scenarios the change never touched. This item narrows that fan-out for the one
 case it can prove safe: when a change is confined to scenario files, only the jobs that declare a
 changed scenario run. Every other case still fires the whole lane, unchanged — a change to shared
@@ -80,8 +80,9 @@ scenario files stay the only place per-app knowledge lives (prime directive 3).
 
 - **Workflow wiring.** Guard each scenario-keyed job on "a shared-code change occurred, or this job is
   in the affected set". A shared-code change therefore fires every job exactly as it does today; a
-  scenario-only change fires only the jobs that load a changed scenario. The build-once `runner-build`
-  job runs whenever any job will, so a narrowed run still reuses one build.
+  scenario-only change fires only the jobs that load a changed scenario. Each on-device job builds its
+  app and runner independently (there is no shared build-once job), so a narrowed run simply skips the
+  build and Simulator boot of every job it drops.
 
 - **Aggregator integrity.** The lane's required aggregator check (`E2E` and its Android and web
   siblings) must report success when a narrowed run skips most jobs. A skipped job is not a failed
