@@ -280,6 +280,62 @@ def test_http_config_rejects_absolute_traversal_outside_root(tmp_path: Path) -> 
         server.server_close()
 
 
+def test_http_local_config_with_escaping_path_is_refused(tmp_path: Path) -> None:
+    # A local config file whose path fields (scenarios/appPath/etc) climb out of `--root` itself is
+    # rejected at bind, so serve's scenario/build resolution never sees a host path outside the
+    # browse root (matches the confinement applied to Git and uploaded configs). `secret` sits
+    # outside `root` entirely — not merely outside the config's own subdirectory — so this exercises
+    # a genuine `--root` escape, not an in-root sibling reference (see the sibling test below).
+    root = tmp_path / "root"
+    config_dir = root / "configs"
+    config_dir.mkdir(parents=True)
+    secret = tmp_path / "secret"  # outside `root`
+    secret.mkdir()
+    local_cfg = config_dir / "bajutsu.config.yaml"
+    local_cfg.write_text(
+        "targets:\n  evil: { bundleId: com.example.evil, scenarios: ../../secret }\n",
+        encoding="utf-8",
+    )
+    _, _, runs = project(tmp_path)
+    server, port = _serve(srv.ServeState(runs_dir=runs, root=root, cwd=tmp_path))
+    try:
+        status, resp = _post(port, "/api/config", {"path": str(local_cfg)})
+        assert status == 400 and "config path validation failed" in resp["error"]
+        # Verify the config was not bound due to the invalid path.
+        assert _get_json(port, "/api/config")["hasConfig"] is False
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_http_local_config_sibling_within_root_is_accepted(tmp_path: Path) -> None:
+    # A config nested in a subdirectory of `--root` may still reference a sibling tree elsewhere
+    # under `--root` via `../` — the path never leaves the browse root, so it must bind exactly as
+    # the CLI's unconfined `--config` would resolve it, not be rejected as if it were an escape.
+    root = tmp_path / "root"
+    config_dir = root / "configs"
+    config_dir.mkdir(parents=True)
+    scenarios_dir = root / "scenarios"  # a sibling of `configs/`, still inside `root`
+    scenarios_dir.mkdir()
+    (scenarios_dir / "smoke.yaml").write_text(
+        "- name: smoke\n  steps:\n    - tap: { id: x }\n", encoding="utf-8"
+    )
+    local_cfg = config_dir / "bajutsu.config.yaml"
+    local_cfg.write_text(
+        "targets:\n  demo: { bundleId: com.example.demo, scenarios: ../scenarios }\n",
+        encoding="utf-8",
+    )
+    _, _, runs = project(tmp_path)
+    server, port = _serve(srv.ServeState(runs_dir=runs, root=root, cwd=tmp_path))
+    try:
+        status, resp = _post(port, "/api/config", {"path": str(local_cfg)})
+        assert status == 200 and resp["ok"] is True and resp["targets"] == ["demo"]
+        assert _get_json(port, "/api/config")["hasConfig"] is True
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 def test_http_config_sources_local_offers_all_three(tmp_path: Path) -> None:
     # The local backend offers every config source, including the file browser, and surfaces the
     # browse root the fs source needs (BE-0108).

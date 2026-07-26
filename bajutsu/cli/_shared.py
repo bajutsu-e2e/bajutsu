@@ -266,8 +266,14 @@ def _load_effective_with_source(
         raise typer.Exit(2) from None
     # A config's relative paths resolve against the file that declares them, not the caller's cwd, so
     # the same config behaves the same wherever `bajutsu` runs from (BE-0242). A Git source rebases
-    # against its checkout root, confined (a fetched config is untrusted); a local file rebases against
-    # its own directory, unconfined (an operator-trusted local file may point at a sibling, BE-0121).
+    # against its checkout root, confined (a fetched config can carry attacker-authored path fields);
+    # a local file rebases against its own directory, unconfined (an operator typing `--config` at
+    # their own terminal is operator-trusted, BE-0121, and may point at a sibling). serve's own
+    # file-browser bind (`bind_config`) hands the same config file to the same `Effective.rebased`
+    # with `confine=True` instead — not because that file is less trusted (it can only be one
+    # `_confined_config_path` already found inside `--root`), but as a defense-in-depth consistency
+    # check applied regardless of bind source; see `Effective.rebased`'s docstring for the full
+    # reasoning, including why this is independent of `build:` trust.
     if root is None:
         return eff.rebased(cfg_path.resolve().parent, confine=False), source, None
     try:
