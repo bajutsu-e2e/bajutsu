@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0285") |
-| Implementing PR | [#1184](https://github.com/bajutsu-e2e/bajutsu/pull/1184), [#1214](https://github.com/bajutsu-e2e/bajutsu/pull/1214) |
+| Implementing PR | [#1184](https://github.com/bajutsu-e2e/bajutsu/pull/1184), [#1214](https://github.com/bajutsu-e2e/bajutsu/pull/1214), [#1377](https://github.com/bajutsu-e2e/bajutsu/pull/1377) |
 | Topic | Verification & coverage |
 | Related | [BE-0031](../BE-0031-data-driven-scenarios/BE-0031-data-driven-scenarios.md), [BE-0033](../BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow.md), [BE-0030](../BE-0030-parameterized-shared-steps/BE-0030-parameterized-shared-steps.md), [BE-0281](../BE-0281-ios-on-device-actuation-coverage/BE-0281-ios-on-device-actuation-coverage.md) |
 <!-- /BE-METADATA -->
@@ -106,7 +106,7 @@ Proposal altitude. The work is MECE along the units below.
   (BE-0221) so they run on Compose and Views alike, and join the adb lane through the showcase
   Android Makefile's `E2E_SCENARIOS` / `E2E_VIEWS_SCENARIOS`. The iOS extension still waits on
   BE-0281.
-- 2026-07-26 ([#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN)): iOS slice landed, completing
+- 2026-07-26 ([#1377](https://github.com/bajutsu-e2e/bajutsu/pull/1377)): iOS slice landed, completing
   the item. `extract.yaml`, `foreach.yaml`, `data_driven.yaml`, and `relaunch.yaml` — the same shared
   showcase files adb runs, unchanged — joined `ios-e2e.yml`'s non-gating `actuation (xcuitest)` job,
   ahead of its device-control scenarios so no OS-level side effect precedes them. They fold into that
