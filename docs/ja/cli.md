@@ -92,6 +92,7 @@ bajutsu doctor --target <name> [--udid booted] [--backend ...] [--config ...] [-
   終了 0、`✗` があれば終了 1 で終わり、以下の画面プローブ（iOS では、常駐 XCUITest ランナーを起動するコスト）
   をスキップします。実機に対して環境ゲートだけを検証したい CI レーン（BE-0304）は、これでプローブ固有の
   失敗要因（ランナー自体の起動の不安定さを含む）を避けられます。
+- `--scenario <file.yaml>` は端末不要の **capability プリフライト**（BE-0024）を実行します。画面プローブの前に、選択したバックエンドが実行できない構文をシナリオが使っていないかを検査し、非対応があれば**終了 1** とします。
 - それ以外は actuator で `query()` し、`score(elements, idNamespaces)` を表示します。**grade が Blocked で 1、それ以外 0**。
 
 ## `audit`
