@@ -145,4 +145,4 @@ def test_run_alert_guard_degrades_to_a_no_op_without_a_credential(
     )
     assert result.exit_code == 7  # reached execution, i.e. never bailed on a missing credential
     assert "no AI credential" not in result.output
-    assert "the alert guard will no-op" in result.output
+    assert "the vision alert guard will no-op" in result.output

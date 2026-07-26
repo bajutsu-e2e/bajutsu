@@ -94,6 +94,42 @@ def test_dismiss_alerts_alias_parses_and_dumps_canonical(
     assert any("dismissAlerts" in r.message and "deprecated" in r.message for r in caplog.records)
 
 
+def test_alert_handling_instruction_accepts_a_label_list() -> None:
+    # BE-0315: the deterministic native form is an ordered list of candidate labels; it round-trips.
+    s = Scenario.model_validate(
+        {
+            "name": "x",
+            "alertHandling": {"instruction": ["Allow", "OK"]},
+            "steps": [{"tap": {"id": "a"}}],
+        }
+    )
+    assert s.alert_handling is not None
+    assert s.alert_handling.instruction == ["Allow", "OK"]
+    rt = load_scenarios(dump_scenarios([s]))[0]
+    assert rt.alert_handling is not None and rt.alert_handling.instruction == ["Allow", "OK"]
+
+
+def test_alert_handling_instruction_drops_empty_labels_and_normalizes_to_none() -> None:
+    # A list of only blank labels can match nothing deterministically, so it normalizes to the
+    # default dismissive policy (None) rather than silently matching zero buttons (BE-0315).
+    s = Scenario.model_validate(
+        {"name": "x", "alertHandling": {"instruction": ["", "  "]}, "steps": [{"tap": {"id": "a"}}]}
+    )
+    assert s.alert_handling is not None and s.alert_handling.instruction is None
+
+
+def test_alert_handling_poll_interval() -> None:
+    # BE-0315: the native poll interval is a per-scenario knob; a non-positive value is rejected.
+    s = Scenario.model_validate(
+        {"name": "x", "alertHandling": {"pollInterval": 2.5}, "steps": [{"tap": {"id": "a"}}]}
+    )
+    assert s.alert_handling is not None and s.alert_handling.poll_interval == 2.5
+    with pytest.raises(ValidationError):
+        Scenario.model_validate(
+            {"name": "x", "alertHandling": {"pollInterval": 0}, "steps": [{"tap": {"id": "a"}}]}
+        )
+
+
 def test_permissions_default_unset() -> None:
     # Empty by default, and pruned when empty so a dumped scenario stays clean (BE-0276).
     s = Scenario.model_validate({"name": "x", "steps": [{"tap": {"id": "a"}}]})

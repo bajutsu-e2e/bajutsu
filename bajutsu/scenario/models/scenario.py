@@ -53,28 +53,65 @@ class Preconditions(_Model):
 
 
 class AlertHandling(_Model):
-    """Per-scenario control of the system-alert guard.
+    """Per-scenario control of the reactive system-alert guard.
 
-    The vision-based handling of OS prompts (e.g. iOS "Save Password?", a permission request) that
-    the app-scoped accessibility tree cannot see or tap. The guard is ON by default and fires only when a step (or `expect`) is blocked: it
-    screenshots, asks the locator where to tap, taps the prompt's button, and retries once. With an
-    `instruction` it taps whatever button that names — dismissing *or* accepting — so it handles the
-    prompt rather than only dismissing it. Two on-disk forms (the bare boolean is shorthand for
-    `{ enabled: <bool> }`):
-        alertHandling: false                  — disable the guard for this scenario
-        alertHandling: { instruction: "..." } — keep it on, but tap the named button
-                                                 (e.g. "tap Allow" to grant a prompt)
+    Handling of OS prompts (e.g. a notification or App Tracking Transparency request) that the
+    app-scoped accessibility tree cannot see or tap, fired reactively when a step (or `expect`) is
+    blocked or a guarded wait finds an alert. The guard is ON by default. On the iOS XCUITest backend
+    it clears the prompt deterministically and natively (BE-0315), reusing BE-0316's SpringBoard query
+    + tap — no screenshot and no model round trip; where the native path cannot act it falls back to
+    the vision guard (a screenshot the locator reads). With an `instruction` it taps whatever button
+    that names — dismissing *or* accepting (e.g. granting a permission) — so it handles the prompt
+    rather than only dismissing it. This is the *reactive* counterpart to the *proactive*
+    `handleSystemAlert` step (BE-0316): the step taps a named button at an author-chosen point, this
+    guard clears prompts automatically wherever they surface.
+    Two on-disk forms (the bare boolean is shorthand for `{ enabled: <bool> }`):
+        alertHandling: false                       — disable the guard for this scenario
+        alertHandling: { instruction: ["Allow"] }  — deterministic: tap the first of these labels
+                                                      present on the alert (native path)
+        alertHandling: { instruction: "tap Allow" } — legacy free text the vision locator interprets
     """
 
     enabled: bool = True
-    # When set, the locator taps the button this names instead of the default dismissive one
-    # (e.g. "tap Allow"); a per-scenario instruction wins over the CLI `--alert-instruction`.
-    instruction: str | None = None
+    # The button to press instead of the default dismissive one. Two forms (BE-0315):
+    #   - a list of candidate labels ("Allow", then "OK") the native path resolves deterministically,
+    #     tapping the first that is present on the alert (via BE-0316's `handle_system_alert`);
+    #   - a free-text string ("tap Allow") the *vision* locator interprets — the legacy form. It steers
+    #     only the vision fallback: the native path needs an exact label, so it ignores the string and
+    #     taps a *default dismissive* label instead. On a native-capable backend (XCUITest, the default
+    #     since BE-0290) that native tap pre-empts vision, so a free-text *grant* ("tap Allow") is
+    #     overridden and denies — use the list form `["Allow"]` to grant natively. The string is not a
+    #     drop-in for the old vision-only behavior on such a backend.
+    # A per-scenario value wins over the CLI `--alert-instruction`.
+    instruction: str | list[str] | None = None
+    # How often (seconds) the reactive guard polls the native system-alert presence query while a
+    # wait is pending, on its own wall clock decoupled from the wait's condition poll (BE-0315). A
+    # heuristic trading detection latency against runner load, so it is a knob rather than hard-coded;
+    # None inherits the built-in default (one second). Rides the same precedence as the rest of
+    # `alertHandling` (BE-0177).
+    poll_interval: float | None = Field(default=None, alias="pollInterval")
 
     @model_validator(mode="before")
     @classmethod
     def _coerce_bool(cls, data: Any) -> Any:
         return {"enabled": data} if isinstance(data, bool) else data
+
+    @field_validator("instruction")
+    @classmethod
+    def _non_empty_labels(cls, v: str | list[str] | None) -> str | list[str] | None:
+        # A list form must carry only non-empty labels, so a stray "" cannot silently match nothing
+        # (determinism first). An empty list normalizes to None (the default dismissive policy).
+        if isinstance(v, list):
+            labels = [s for s in v if s.strip()]
+            return labels or None
+        return v
+
+    @field_validator("poll_interval")
+    @classmethod
+    def _positive_interval(cls, v: float | None) -> float | None:
+        if v is not None and v <= 0:
+            raise ValueError("pollInterval must be positive")
+        return v
 
 
 class Scenario(_Model):

@@ -11,7 +11,7 @@ from bajutsu.agents.protocols import Proposal
 from bajutsu.ai.base import AnyTool, ImagePart, TextPart
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.orchestrator import AlertEvent, run_scenario
+from bajutsu.orchestrator import AlertEvent, AlertGuardConfig, run_scenario
 from bajutsu.record import record as record_loop
 from bajutsu.scenario import Step, load_scenarios
 
@@ -156,7 +156,9 @@ def test_on_blocked_retries_step_after_recovery() -> None:
         d.screen = [target]  # "dismiss the alert": the app reappears
         return AlertEvent(label="Not Now")
 
-    result = run_scenario(driver, load_scenarios(_TAP_GO)[0], on_blocked=on_blocked)
+    result = run_scenario(
+        driver, load_scenarios(_TAP_GO)[0], alert_guard=AlertGuardConfig(vision=on_blocked)
+    )
     assert result.ok is True
     assert ("tap", {"id": "go"}) in driver.actions
     # The dismissal is recorded on the retried step's outcome (for the report).
@@ -195,7 +197,9 @@ def test_on_blocked_retries_expect_after_recovery() -> None:
         "  steps:\n    - wait: { for: { id: here }, timeout: 1 }\n"
         "  expect:\n    - exists: { id: later }\n"
     )
-    result = run_scenario(driver, load_scenarios(yaml)[0], on_blocked=on_blocked)
+    result = run_scenario(
+        driver, load_scenarios(yaml)[0], alert_guard=AlertGuardConfig(vision=on_blocked)
+    )
     assert result.ok is True
     # The expect-phase dismissal is recorded on the run result (not on any step).
     assert result.expect_alerts == [AlertEvent(label="Allow")]

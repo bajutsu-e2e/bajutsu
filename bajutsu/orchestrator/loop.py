@@ -30,7 +30,7 @@ from bajutsu.orchestrator.evidence_rules import (
 from bajutsu.orchestrator.substitution import _interp_asserts, _interp_step
 from bajutsu.orchestrator.types import (
     AlertEvent,
-    BlockedHandler,
+    AlertGuardConfig,
     Clock,
     DeviceControl,
     MailboxReader,
@@ -303,7 +303,7 @@ def _run_step_body(
     ctx: EvalContext | None = None,
     wait_trace: WaitTrace | None = None,
     selection: SelectionState | None = None,
-    on_blocked: BlockedHandler | None = None,
+    alert_guard: AlertGuardConfig | None = None,
     alerts: list[AlertEvent] | None = None,
     on_wait_tick: WaitTick | None = None,
     transitions: TransitionSource = _no_transitions,
@@ -319,7 +319,7 @@ def _run_step_body(
 
     The caller is responsible for interpolation (``_interp_step``) before
     calling this function. ``wait_trace``, when given for a wait step, records the poll timeline so a
-    timeout is diagnosable from artifacts (BE-0231 Unit 1). ``on_blocked``/``alerts``, when given for
+    timeout is diagnosable from artifacts (BE-0231 Unit 1). ``alert_guard``/``alerts``, when given for
     a wait step, are passed through to ``_wait``'s mid-wait alert guard (BE-0269); other step kinds
     ignore them. ``on_interrupt_poll``, when given for a wait step, is passed to ``_wait`` so a
     scenario's ``interrupts`` handlers can clear an interstitial screen mid-wait (BE-0314)."""
@@ -332,7 +332,7 @@ def _run_step_body(
                 clock,
                 network,
                 trace=wait_trace,
-                on_blocked=on_blocked,
+                alert_guard=alert_guard,
                 alerts=alerts,
                 on_tick=on_wait_tick,
                 transitions=transitions,
@@ -367,7 +367,7 @@ def run_scenario(
     scenario: Scenario,
     clock: Clock | None = None,
     sink: EvidenceSink | None = None,
-    on_blocked: BlockedHandler | None = None,
+    alert_guard: AlertGuardConfig | None = None,
     scenario_id: str | None = None,
     network: NetworkSource = _no_network,
     relaunch: RelaunchFn | None = None,
@@ -387,7 +387,7 @@ def run_scenario(
     the first step and finalizes them after verification, attaching them to the result. A scenario
     that requests none records no intervals; the instant baseline still fires every step.
 
-    If a step fails and `on_blocked` clears a blocking condition (e.g. dismisses a
+    If a step fails and `alert_guard` clears a blocking condition (e.g. dismisses a
     system alert), the step is retried once before being recorded as a failure.
 
     `transitions` (BE-0310) is the read-only screen-transition signal a `wait until: settled` step
@@ -416,7 +416,7 @@ def run_scenario(
             scenario,
             clock,
             sink,
-            on_blocked,
+            alert_guard,
             wants_screen_changed,
             outcomes,
             scenario_start,
@@ -440,8 +440,8 @@ def run_scenario(
             expect_results = _evaluate_expect(
                 driver, expect, network, clock, ctx=replace(ctx, clipboard=clip)
             )
-            if not assertions.passed(expect_results) and on_blocked is not None:
-                event = on_blocked(driver)
+            if not assertions.passed(expect_results) and alert_guard is not None:
+                event = alert_guard(driver)
                 if event is not None:
                     expect_alerts.append(event)
                     if ctx.visual is not None:
@@ -630,7 +630,7 @@ def _run_steps(
     scenario: Scenario,
     clock: Clock,
     sink: EvidenceSink,
-    on_blocked: BlockedHandler | None,
+    alert_guard: AlertGuardConfig | None,
     wants_screen_changed: bool,
     outcomes: list[StepOutcome],
     scenario_start: float,
@@ -791,7 +791,7 @@ def _run_steps(
                     if before is not None:
                         before = before_read
             # A `for` wait records its poll timeline so a timeout is diagnosable from artifacts
-            # (BE-0231 Unit 1); the on_blocked retry gets a fresh trace so the diagnostic reflects the
+            # (BE-0231 Unit 1); the alert_guard retry gets a fresh trace so the diagnostic reflects the
             # attempt that actually failed.
             wait_trace = WaitTrace() if kind == "wait" and interp_step.wait is not None else None
             # A wait blocks silently for its whole timeout; stream a "still waiting <condition>" line
@@ -827,7 +827,7 @@ def _run_steps(
                     ctx,
                     wait_trace=wait_trace,
                     selection=selection,
-                    on_blocked=on_blocked,
+                    alert_guard=alert_guard,
                     alerts=outcome.alerts,
                     on_wait_tick=wait_tick,
                     transitions=transitions,
@@ -838,13 +838,13 @@ def _run_steps(
                     # firing the end-of-step alert-guard dismiss/retry against the screen the failed
                     # recovery left, symmetric with the pre-act short-circuit above.
                     ok, reason = False, guard.failure
-                elif not ok and on_blocked is not None:
-                    event = on_blocked(active_driver)
+                elif not ok and alert_guard is not None:
+                    event = alert_guard(active_driver)
                     if event is not None:
                         outcome.alerts.append(event)
                         wait_trace = WaitTrace() if wait_trace is not None else None
                         # The retry is the end-of-step "one more shot": it does not re-arm the mid-wait
-                        # guard (no on_blocked passed), so a step's AI-vision calls stay bounded at
+                        # guard (no alert_guard passed), so a step's AI-vision calls stay bounded at
                         # _GUARD_MAX_ATTEMPTS (mid-wait) + 1 (this end-of-step dismiss).
                         ok, reason, results, snapshot = _run_step_body(
                             active_driver,

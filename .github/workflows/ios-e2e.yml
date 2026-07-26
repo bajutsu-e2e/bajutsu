@@ -15,15 +15,17 @@
 #     deterministic permissions surface) folded into one `bajutsu run`. They differed only in which
 #     scenarios they ran, so each re-paid the lane's dominant fixed cost — the cold XCTest-host
 #     startup plus its own build and boot — over again; one job warm-reuses the resident runner
-#     across the nine scenario documents that run — the six scenario files hold ten, and `--exclude
-#     ai` drops one (BE-0291/BE-0287) — paying that cold startup five times (the lane caps warm reuse
+#     across the ten scenario documents that run — every scenario the six files hold, since BE-0315
+#     made the notification grant native so nothing is `ai`-tagged to exclude (BE-0291/BE-0287/BE-0315)
+#     — paying that cold startup five times (the lane caps warm reuse
 #     at 1, see the `env` block below) — one more than the four separate jobs' cold startups summed
 #     to, but each of those jobs also paid its own build and boot, which the `build` job below now
 #     pays once for the whole lane.
 #     `run` reddens the gate if any scenario
 #     fails, so per-scenario pass/fail moves from job names into its report. Covers BE-0019 (pinch/
 #     rotate, /gesture), BE-0281 (/type, /swipe, /back), BE-0276 (`permissions`: location, pre-granted
-#     with no prompt), and BE-0316 (`handleSystemAlert` taps the SpringBoard "Allow" by native query).
+#     with no prompt), BE-0315 (the native reactive `alertHandling` notification grant), and BE-0316
+#     (`handleSystemAlert` taps the SpringBoard "Allow" by native query).
 #   - actuation (xcuitest): real on-device XCUITest actuation beyond `tap` (BE-0281) — `back` and
 #     device control (setLocation / clipboard / push) on the Stable launch tab. Deliberately NOT part
 #     of the `E2E` gate's `needs:` (like `golden` / `visual`): new actuation lands as a per-PR signal
@@ -255,8 +257,9 @@ jobs:
   # over-XCUITest scenario that used to be its own job (smoke / gestures / permission /
   # runner-actuation). They differed only in which scenarios they ran, so each re-paid the lane's
   # dominant fixed cost — the cold `xcodebuild test-without-building` XCTest-host startup (~2-3 min on
-  # macos-latest) — over again, at 10x macOS billing. Folded into one `bajutsu run`, the nine scenario
-  # documents that run — the six scenario files hold ten, and `--exclude ai` drops one — pay that cold
+  # macos-latest) — over again, at 10x macOS billing. Folded into one `bajutsu run`, the ten scenario
+  # documents that run — every scenario the six files hold, since BE-0315 made the notification grant
+  # native so nothing is `ai`-tagged to exclude — pay that cold
   # startup five times (BE-0291's warm reuse carries the runner between them, capped at 1 on this lane
   # — see the env block above), one more than the four the separate jobs summed to — but those jobs
   # each also paid their own Swift build and boot, which the shared `build` job below now pays once
@@ -272,15 +275,16 @@ jobs:
   #   - gestures_multitouch.yaml (BE-0019): pinch/rotate through the runner's /gesture endpoint.
   #   - search.yaml (BE-0281): /type into the Search field, then assert the filtered count.
   #   - notices.yaml (BE-0281): /swipe an off-screen row into view, then /back from a pushed detail.
-  #   - permission.yaml (BE-0276): the `permissions` field; `--exclude ai` drops its notification
-  #     scenario (the vision-guard path kept off this deterministic gate, prime directive 1), leaving
-  #     `location` (pre-granted by `simctl privacy grant`, no prompt).
+  #   - permission.yaml (BE-0276): both scenarios run. `location` is pre-granted by `simctl privacy
+  #     grant` (no prompt); the notification scenario grants reactively through `alertHandling`, which
+  #     since BE-0315 clears the SpringBoard prompt by a native accessibility query — no screenshot, no
+  #     model, no API key — so it stays on this deterministic gate (prime directive 1 holds).
   #   - permission_system_alert.yaml (BE-0316): `handleSystemAlert` taps the SpringBoard prompt's
-  #     "Allow" by a native query — the deterministic counterpart to the excluded `ai` grant.
-  # The two permission scenarios run last so their OS-level grants never perturb the state-neutral
+  #     "Allow" by a native query — the *proactive* native counterpart to permission.yaml's *reactive*
+  #     native grant above.
+  # The three permission scenarios run last so their OS-level grants never perturb the state-neutral
   # scenarios above them; each scenario relaunches the app under the warm runner, so their isolation
-  # holds. `--exclude ai` is safe across the set: only permission.yaml's notification scenario is
-  # `ai`-tagged.
+  # holds. No scenario is `ai`-tagged, so the lane runs every one with no `--exclude`.
   run:
     name: run (xcuitest)
     needs: [changes, build]
@@ -330,9 +334,9 @@ jobs:
         run: xcrun simctl install "${{ steps.toolchain.outputs.udid }}" "demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
 
       # Every gating XCUITest scenario in one `bajutsu run`: five cold runner startups (MAX_WARM_REUSES=1), warm-reused
-      # across the nine scenario documents that run (the six files below hold ten; `--exclude ai`
-      # drops one of permission.yaml's two). State-neutral scenarios first, the two permission-granting
-      # ones last (see the job header).
+      # across the ten scenario documents that run (every scenario the six files below hold; nothing is
+      # `ai`-tagged since BE-0315, so no `--exclude`). State-neutral scenarios first, the three
+      # permission scenarios last (see the job header).
       - name: Run the gating XCUITest scenarios (smoke, gestures, runner channel, permissions)
         uses: ./.github/actions/bajutsu-e2e
         with:
@@ -343,7 +347,6 @@ jobs:
             demos/showcase/scenarios/notices.yaml
             demos/showcase/scenarios/permission.yaml
             demos/showcase/scenarios/permission_system_alert.yaml
-          exclude: ai
           target: showcase-swiftui
           backend: xcuitest
           config: demos/showcase/showcase.config.yaml
