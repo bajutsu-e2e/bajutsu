@@ -8,14 +8,14 @@
 # `tests/serve/` — those added by the `serve_engine` fixture (tests/conftest.py), which
 # parametrizes each test over both dialects (SQLite in the gate, Postgres here).
 #
-# ALWAYS-REPORTING gate so `serve db (postgres)` can graduate to a required check. A required check
-# that never reports stays pending and blocks the merge, so the lane cannot be path-gated at the
-# workflow trigger the way a plain signal job can. Instead it mirrors the required `E2E (web)`
-# aggregator: it triggers on every PR (and the merge queue), a `changes` job decides per PR whether
-# the heavy `postgres` job runs, and the `serve db (postgres)` gate always reports — a path-skip is a
-# pass, so an unrelated PR is neither run nor blocked. Adding the gate does not by itself make the
-# check required (that is a repository ruleset setting); it only makes the check safe to require once
-# it has proven stable, following the precedent BE-0282 set for the web `network (playwright)` lane.
+# ALWAYS-REPORTING gate: `serve db (postgres)` is now a required check (a repository ruleset
+# setting). A required check that never reports stays pending and blocks the merge, so the lane
+# cannot be path-gated at the workflow trigger the way a plain signal job can. Instead it mirrors
+# the required `E2E (web)` aggregator: it triggers on every PR (and the merge queue), a `changes`
+# job decides per PR whether the heavy `postgres` job runs, and the `serve db (postgres)` gate
+# always reports — a path-skip is a pass, so an unrelated PR is neither run nor blocked. It landed
+# as a signal-first lane and was promoted to required once it had proven stable, following the
+# precedent BE-0282 set for the web `network (playwright)` lane.
 name: Serve DB (Postgres)
 
 on:
@@ -24,8 +24,8 @@ on:
   # `postgres` job is path-gated by the `changes` job below, so a PR that can't affect the serve DB
   # surface skips it and the gate passes.
   pull_request:
-  # Also run in the merge queue: once `serve db (postgres)` is required, a required check that never
-  # reports on `merge_group` leaves the queue entry pending until it times out.
+  # Also run in the merge queue: `serve db (postgres)` is a required check, and a required check that
+  # never reports on `merge_group` leaves the queue entry pending until it times out.
   merge_group:
 
 permissions:

@@ -361,6 +361,10 @@ device (the shared device is reseeded via one channel, so parallel workers would
   `selected` / `request` / `requestSequence` / `event` / `responseSchema` / `visual` / `clipboard` /
   `golden`)
 - The Tier 2 run loop (act → wait → verify), verified with `FakeDriver`
+- Backend-crash recovery in the run pipeline (BE-0049): a mid-scenario backend crash
+  (`base.BackendCrashError`, backend-agnostic) discards the dead lease and re-runs the whole
+  scenario on a freshly respawned one, bounded by `crash_retries` (default 1) so a scenario that
+  keeps crashing still fails loudly rather than being retried into a silent pass
 - DSL: the `within` selector (geometric scoping), the `relaunch` step (validated on-device),
   reusable `setup` preludes, `locale` applied at launch, and parallel runs (`--workers`) over a
   device pool
@@ -484,16 +488,17 @@ device (the shared device is reseeded via one channel, so parallel workers would
 
 - The serve DB layer's Alembic migrations — including migration 0010's `dialect.name == "postgresql"`
   foreign-key branch and the `JSONB` column variants that `models.py` and several migrations select
-  only on Postgres — run against an ephemeral `postgres:16` service container by the
-  `migrations (postgres)` job (`serve-db.yml`;
-  [BE-0309](../roadmaps/BE-0309-serve-postgres-ci-lane/BE-0309-serve-postgres-ci-lane.md)). It reruns
-  `tests/serve/test_db_migrations.py`'s upgrade/downgrade assertions — parametrized over both
-  dialects, so the fast `check` gate exercises SQLite and this lane exercises Postgres behind the
-  `postgres` marker — giving that dialect-specific code its first coverage against the dialect the
-  hosted deployment actually targets. It landed as signal first (BE-0282's precedent) and is not yet
-  a required check. The wider DB-touching suite (the ~two dozen files that build an in-memory SQLite
-  engine per test) runs only against SQLite for now; running it against the shared Postgres needs
-  per-test isolation retrofitted first, a follow-up slice.
+  only on Postgres — plus the wider DB-touching suite across `tests/serve/` (models, repository, and
+  OAuth persistence — every file that opts into the shared `serve_engine` fixture) all run against an
+  ephemeral `postgres:16` service container by the `serve db (postgres)` job (`serve-db.yml`;
+  [BE-0309](../roadmaps/BE-0309-serve-postgres-ci-lane/BE-0309-serve-postgres-ci-lane.md)). Every one
+  of those tests is parametrized over both dialects through the shared `serve_engine` fixture
+  (`tests/conftest.py`) — the fast `check` gate exercises SQLite and this lane exercises Postgres
+  behind the `postgres` marker (`pytest tests/serve -m postgres -n0`) — giving migration 0010's
+  dialect-specific code, and the ORM/repository layer above it, their first coverage against the
+  dialect the hosted deployment actually targets. It landed as signal first (BE-0282's precedent)
+  and has since been promoted to a **required check** (a repository ruleset setting, not a code
+  change), so a Postgres regression now blocks the merge like `check` and the `E2E (…)` aggregators.
 
 ### Not yet wired (schema/flags exist but have no runtime effect)
 
