@@ -252,7 +252,7 @@ adb の harness はその代わりに、新しい `SHOWCASE_CONFORMANCE` の int
 - アサーション評価（`exists` / `value` / `label` / `count` / `enabled` / `disabled` / `selected` /
   `request` / `requestSequence` / `event` / `responseSchema` / `visual` / `clipboard` / `golden`）
 - Tier 2 run ループ（act → wait → verify）、`FakeDriver` で検証
-- run パイプラインでの**バックエンドクラッシュ復旧**（BE-0049）: シナリオ途中でバックエンドがクラッシュした場合（`base.BackendCrashError`、バックエンドに依存しない）、死んだリースを破棄し、新規に再生成したリースでシナリオ全体をやり直します。上限は `crash_retries`（既定 1）で、クラッシュし続けるシナリオは黙って合格扱いにせず、はっきりと失敗させます
+- run パイプラインでの**バックエンドクラッシュ復旧**: シナリオ途中でバックエンドがクラッシュした場合（`base.BackendCrashError`、バックエンドに依存しない）、死んだリースを破棄し、新規に再生成したリースでシナリオ全体をやり直します。上限は `crash_retries`（既定 1）で、クラッシュし続けるシナリオは黙って合格扱いにせず、はっきりと失敗させます
 - DSL（ドメイン固有言語）: `within` セレクタ（幾何スコープ）、`relaunch` ステップ（実機検証済み）、再利用 `setup` 前段、起動時の `locale` 適用、デバイスプール上の並列実行（`--workers`）
 - DSL のオーサリング再利用: 再利用可能なパラメータ化コンポーネント（`use` / `${params.*}`）、データ駆動シナリオ（`data` / `dataFile` と `${row.*}`）、シークレット変数（`${secrets.X}`、値マスク）、シナリオタグ + `--tag` / `--exclude` 選択、`setLocation` / `push` デバイスステップ、起動前の `permissions` フィールド（`simctl privacy` / `pm grant`|`pm revoke`、BE-0276）、`doubleTap` アクション、ファイル単位 + シナリオ単位の `description`
 - DSL の制御フローとデータ取得: 条件分岐 `if` とループ `forEach`（決定的。条件は機械アサーション）、`extract`（要素の value / label / identifier を `${vars.*}` に取り込む）

@@ -361,7 +361,7 @@ device (the shared device is reseeded via one channel, so parallel workers would
   `selected` / `request` / `requestSequence` / `event` / `responseSchema` / `visual` / `clipboard` /
   `golden`)
 - The Tier 2 run loop (act → wait → verify), verified with `FakeDriver`
-- Backend-crash recovery in the run pipeline (BE-0049): a mid-scenario backend crash
+- Backend-crash recovery in the run pipeline: a mid-scenario backend crash
   (`base.BackendCrashError`, backend-agnostic) discards the dead lease and re-runs the whole
   scenario on a freshly respawned one, bounded by `crash_retries` (default 1) so a scenario that
   keeps crashing still fails loudly rather than being retried into a silent pass
