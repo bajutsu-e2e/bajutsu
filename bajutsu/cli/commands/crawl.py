@@ -43,6 +43,7 @@ from bajutsu.cli._shared import (
     _select_actuator_or_exit,
     _start_launch_server_or_exit,
     _with_headed,
+    resolve_alert_handling_flag,
 )
 from bajutsu.config import Effective, web_base_url
 from bajutsu.crawl import flows as crawl_flows
@@ -199,7 +200,7 @@ def _wire_health(
     eff: Effective,
     redactor: Redactor,
     *,
-    dismiss_alerts: bool,
+    alert_handling: bool,
     alert_instruction: str,
     report: Report,
 ) -> tuple[
@@ -210,7 +211,7 @@ def _wire_health(
     All three are platform-specific, behind the Environment seam (BE-0009): web reads deterministic
     signals (pageerror / HTTP status / blank DOM), auto-handles JS dialogs with no model, and
     relaunches a wedged browser (BE-0066/BE-0077); iOS reads the accessibility tree (engine default)
-    and, when `--dismiss-alerts` is on, clears OS prompts with the alert guard. The platform recovery
+    and, when `--alert-handling` is on, clears OS prompts with the alert guard. The platform recovery
     is silent, so it's wrapped to report the wedge before healing the lane. On iOS the alert guard
     (Claude vision) supplies `clear_blocking`; the guide and the guard share one provider, and
     `_require_ai_credential` has already failed closed, so the guard's credential is known-present.
@@ -225,7 +226,7 @@ def _wire_health(
             report("⚠️  a worker's browser wedged — relaunching it")
             heal(d)
 
-    if clear_blocking is None and dismiss_alerts:
+    if clear_blocking is None and alert_handling:
         # The alert guard dismisses unexpected OS prompts the crawl would otherwise read as a crash.
         # `_require_ai_credential` has already failed closed, so the guard's credential is
         # known-present and the shared helper returns a real guard (never the no-op None branch).
@@ -267,7 +268,7 @@ class _CrawlPlan:
     max_steps: int
     prune_global: bool
     erase: bool
-    dismiss_alerts: bool
+    alert_handling: bool
     alert_instruction: str
     upload_exec: str
 
@@ -335,7 +336,7 @@ def _execute(plan: _CrawlPlan, guide: crawl_engine.Guide, report: Report) -> cra
         plan.environment,
         plan.eff,
         plan.redactor,
-        dismiss_alerts=plan.dismiss_alerts,
+        alert_handling=plan.alert_handling,
         alert_instruction=plan.alert_instruction,
         report=report,
     )
@@ -424,10 +425,16 @@ def crawl(
     erase: bool = typer.Option(
         True, "--erase/--no-erase", help="erase the device before launching (app must be installed)"
     ),
-    dismiss_alerts: bool = typer.Option(
-        True,
+    alert_handling: bool | None = typer.Option(
+        None,
+        "--alert-handling/--no-alert-handling",
+        help="handle unexpected OS prompts while crawling (on by default; uses the same API key)",
+    ),
+    dismiss_alerts: bool | None = typer.Option(
+        None,
         "--dismiss-alerts/--no-dismiss-alerts",
-        help="dismiss unexpected OS prompts while crawling (on by default; uses the same API key)",
+        hidden=True,
+        help="deprecated alias for --alert-handling (BE-0317)",
     ),
     alert_instruction: str = typer.Option(
         "", "--alert-instruction", help="how to handle a prompt instead of dismissing it"
@@ -537,6 +544,11 @@ def crawl(
     environment = environment_for(actuator, "")
     udids = _plan_lanes(environment, udid, workers, seed_path)
 
+    # On by default while crawling; the shared resolver folds in the deprecated --dismiss-alerts.
+    alert_handling_enabled = resolve_alert_handling_flag(
+        alert_handling, dismiss_alerts, default=True
+    )
+
     plan = _CrawlPlan(
         eff=eff,
         actuator=actuator,
@@ -554,7 +566,7 @@ def crawl(
         max_steps=max_steps,
         prune_global=prune_global,
         erase=erase,
-        dismiss_alerts=dismiss_alerts,
+        alert_handling=alert_handling_enabled,
         alert_instruction=alert_instruction,
         upload_exec=upload_exec,
     )

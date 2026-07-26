@@ -76,8 +76,8 @@ from bajutsu.scenario.models.evidence import (
 )
 from bajutsu.scenario.models.mocks import Mock, MockResponse
 from bajutsu.scenario.models.scenario import (
+    AlertHandling,
     Component,
-    DismissAlerts,
     Preconditions,
     Scenario,
     ScenarioFile,
@@ -89,6 +89,7 @@ from bajutsu.scenario.models.steps import Extract, ForEach, If, Interrupt, Step,
 __all__ = [
     "ASSERTION_KINDS",
     "STEP_ACTIONS",
+    "AlertHandling",
     "Assertion",
     "Background",
     "CaptureRule",
@@ -99,7 +100,6 @@ __all__ = [
     "Component",
     "CountMatch",
     "CountOp",
-    "DismissAlerts",
     "Drag",
     "Email",
     "EmailExtract",

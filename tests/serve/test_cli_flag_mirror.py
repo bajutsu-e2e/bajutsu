@@ -26,12 +26,15 @@ def test_run_flag_surface_is_fully_classified() -> None:
     # never spawns `run --project`). Everything else must be pass-through-able.
     base_handled = {"target_name", "scenario", "config", "progress"}
     not_serve_exposed = {"evidence_store", "project"}
+    # `dismiss_alerts` is the hidden deprecated alias of `--alert-handling` (BE-0317); serve renders
+    # the canonical `alert_handling`, so the alias stays a CLI-only flag it never passes through.
+    deprecated_aliases = {"dismiss_alerts"}
     pass_through = {
         "backend",
         "udid",
         "workers",
         "erase",
-        "dismiss_alerts",
+        "alert_handling",
         "headed",
         "baselines",
         "runs_dir",
@@ -50,13 +53,15 @@ def test_run_flag_surface_is_fully_classified() -> None:
         "config_offline",
         "require_pinned_config",
     }
-    buckets = [base_handled, not_serve_exposed, pass_through]
+    buckets = [base_handled, not_serve_exposed, deprecated_aliases, pass_through]
     # disjoint
     for i, a in enumerate(buckets):
         for b in buckets[i + 1 :]:
             assert not (a & b), f"buckets overlap: {a & b}"
     # exhaustive: a new CLI flag lands here and fails this until classified.
-    assert base_handled | not_serve_exposed | pass_through == _option_names("run")
+    assert base_handled | not_serve_exposed | deprecated_aliases | pass_through == _option_names(
+        "run"
+    )
     # every pass-through name is a real flag_args can render (no typo in the list above).
     assert not (pass_through - _option_names("run"))
 
@@ -75,29 +80,36 @@ def test_record_flag_surface_is_fully_classified() -> None:
         "max_steps",
         "screenshot",
     }
-    pass_through = {"backend", "udid", "erase", "dismiss_alerts", "headed", "upload_exec"}
+    deprecated_aliases = {"dismiss_alerts"}  # hidden alias of --alert-handling (BE-0317)
+    pass_through = {"backend", "udid", "erase", "alert_handling", "headed", "upload_exec"}
     # serve forces --handoff to `stream` (a human at the browser answers over SSE), never a knob (BE-0179).
     serve_forced = {"handoff"}
-    assert base_handled | not_serve_exposed | pass_through | serve_forced == _option_names("record")
+    assert (
+        base_handled | not_serve_exposed | deprecated_aliases | pass_through | serve_forced
+        == _option_names("record")
+    )
 
 
 def test_crawl_flag_surface_is_fully_classified() -> None:
     base_handled = {"target_name", "out", "config", "max_screens", "max_steps"}
     # language (BE-0188) is env-driven for serve (BAJUTSU_AI_LANGUAGE), like effort — see record above.
     not_serve_exposed = {"prune_global", "alert_instruction", "language"}
+    deprecated_aliases = {"dismiss_alerts"}  # hidden alias of --alert-handling (BE-0317)
     pass_through = {
         "backend",
         "udid",
         "workers",
         "erase",
-        "dismiss_alerts",
+        "alert_handling",
         "headed",
         "resume_src",
         "resume_key",
         "continue_crawl",
         "upload_exec",
     }
-    assert base_handled | not_serve_exposed | pass_through == _option_names("crawl")
+    assert base_handled | not_serve_exposed | deprecated_aliases | pass_through == _option_names(
+        "crawl"
+    )
 
 
 def test_triage_flag_surface_is_fully_classified() -> None:

@@ -22,7 +22,7 @@ two-tier structure (below).
 | `run` | Tier 2 | **none** | each step is act → wait → verify; pass/fail comes only from the `expect` machine assertions ([run-loop](run-loop.md)) |
 | `codegen` | — | none | structural mapping of a scenario to XCUITest ([codegen](codegen.md)) |
 
-The `run` path contains no `anthropic` call at all. The single exception is `--dismiss-alerts`
+The `run` path contains no `anthropic` call at all. The single exception is `--alert-handling`
 (it visually dismisses OS system alerts); it prepares the environment rather than deciding
 pass/fail, and runs only when explicitly opted in
 ([the alert guard](recording.md#dismissing-system-alerts-automatically)).

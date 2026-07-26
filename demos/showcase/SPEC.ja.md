@@ -211,7 +211,7 @@ Log から到達するモーダル（4 つの提示様式）：
 画面**（§7）です。alert-guard のフローへ直接到達できるよう、トップレベルのタブに昇格しました。加えて、アプリ内で
 完結するペーストボードの往復を行う System セクションを持ちます。
 
-- `perm.requestNotif` — ボタン → `UNUserNotificationCenter.requestAuthorization`。**SpringBoard の通知プロンプト**を上げる（プロセス外で、アプリ内のアクセシビリティ照会には見えず、run の vision alert guard が消すか、`dismissAlerts` で「Allow」を叩く）。
+- `perm.requestNotif` — ボタン → `UNUserNotificationCenter.requestAuthorization`。**SpringBoard の通知プロンプト**を上げる（プロセス外で、アプリ内のアクセシビリティ照会には見えず、run の vision alert guard が消すか、`alertHandling` で「Allow」を叩く）。
 - `perm.notif.value` — `notDetermined`/`authorized`/`denied`
 - `perm.notif.authorized` — 許可後にのみ表示される要素（run が待てる肯定条件を与える）
 - `perm.requestLocation` — ボタン → `CLLocationManager.requestWhenInUseAuthorization`。**システムの位置情報プロンプト**を上げる（同じく SpringBoard）。
@@ -265,7 +265,7 @@ Log から到達するモーダル（4 つの提示様式）：
   タップでのみ要求する。
 - **意図的なアラート**は **Permissions** タブにのみ存在：通知プロンプトと位置情報プロンプト。どちらも
   SpringBoard（プロセス外）で、アプリ内のどのアクセシビリティ照会にも見えないので、run の **vision alert guard**
-  / `dismissAlerts` の典型フィクスチャになります（このフィクスチャのシナリオは
+  / `alertHandling` の典型フィクスチャになります（このフィクスチャのシナリオは
   [`permission.yaml`](scenarios/permission.yaml)）。
 
 ## 8. `ACCESSIBLE` ビルドフラグ（変種が 1 コードベースを共有する仕組み）

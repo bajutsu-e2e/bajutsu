@@ -240,12 +240,12 @@ def _redactor() -> object:
 
 
 def test_wire_health_device_no_alerts_is_all_none() -> None:
-    # A device platform declines every health seam and, with --no-dismiss-alerts, no guard is built.
+    # A device platform declines every health seam and, with --no-alert-handling, no guard is built.
     is_alive, clear_blocking, recover = _wire_health(
         _HealthEnv(),  # type: ignore[arg-type]
         _eff(),  # type: ignore[arg-type]
         _redactor(),  # type: ignore[arg-type]
-        dismiss_alerts=False,
+        alert_handling=False,
         alert_instruction="",
         report=lambda _m: None,
     )
@@ -254,7 +254,7 @@ def test_wire_health_device_no_alerts_is_all_none() -> None:
 
 def test_wire_health_web_passes_through_and_wraps_recover() -> None:
     # The web shape supplies all three seams. `clear_blocking` present means no alert guard is built
-    # even with dismiss_alerts on; `recover` is wrapped to report the wedge before healing the lane.
+    # even with alert_handling on; `recover` is wrapped to report the wedge before healing the lane.
     healed: list[base.Driver] = []
     env = _HealthEnv(
         aliveness=lambda _d, _els: True,
@@ -266,7 +266,7 @@ def test_wire_health_web_passes_through_and_wraps_recover() -> None:
         env,  # type: ignore[arg-type]
         _eff(),  # type: ignore[arg-type]
         _redactor(),  # type: ignore[arg-type]
-        dismiss_alerts=True,
+        alert_handling=True,
         alert_instruction="",
         report=report,
     )
@@ -282,7 +282,7 @@ def test_wire_health_ios_builds_alert_guard_clear_blocking(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # The iOS shape: the platform declines the dialog clearer (returns None) and, with
-    # --dismiss-alerts on, `_wire_health` builds the alert guard to supply `clear_blocking`.
+    # --alert-handling on, `_wire_health` builds the alert guard to supply `clear_blocking`.
     # The shared `_build_alert_guard` (BE-0260) gates the guard on the AI credential — the real
     # crawl flow has already required it via `_require_ai_credential`, so set it here to exercise
     # the wiring branch without a Simulator or network.
@@ -291,7 +291,7 @@ def test_wire_health_ios_builds_alert_guard_clear_blocking(
         _HealthEnv(),  # type: ignore[arg-type]  # all seams None, like iOS
         _eff(),  # type: ignore[arg-type]
         _redactor(),  # type: ignore[arg-type]
-        dismiss_alerts=True,
+        alert_handling=True,
         alert_instruction="",
         report=lambda _m: None,
     )
@@ -302,7 +302,7 @@ def test_wire_health_ios_builds_alert_guard_clear_blocking(
 def test_wire_health_no_credential_leaves_clear_blocking_unwired(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # BE-0260 alignment: with --dismiss-alerts on but no AI credential, the shared guard no-ops, so
+    # BE-0260 alignment: with --alert-handling on but no AI credential, the shared guard no-ops, so
     # `_wire_health` leaves `clear_blocking` unwired rather than constructing a hosted-fallback
     # client. (The real crawl flow never reaches here credential-less — `_require_ai_credential`
     # fails closed first — but the seam degrades gracefully.)
@@ -311,7 +311,7 @@ def test_wire_health_no_credential_leaves_clear_blocking_unwired(
         _HealthEnv(),  # type: ignore[arg-type]  # all seams None, like iOS
         _eff(),  # type: ignore[arg-type]
         _redactor(),  # type: ignore[arg-type]
-        dismiss_alerts=True,
+        alert_handling=True,
         alert_instruction="",
         report=lambda _m: None,
     )
