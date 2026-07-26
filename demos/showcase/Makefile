@@ -176,8 +176,9 @@ ui-test:
 # first. Runs only the coverage classes (`-only-testing`, an allow-list keyed on the `Coverage*`
 # output names below, robust to any Components rename) — the required `ui-test` above owns the
 # Components class. Each class name is the `bajutsu codegen` transform of its `-o` stem
-# (`CoverageExtra` -> `CoverageextraUITests`).
-# No `-retry-tests-on-failure` here (unlike `ui-test`): a retry would mask a genuine flake in this
+# `-retry-tests-on-failure` mirrors the required `ui-test` step above: a loaded CI Simulator's
+# intermittent "Failed to terminate" between the four coverage classes self-heals, while a genuine
+# emitter/DSL break still fails every iteration and trips the now-gating slice.
 # newly-gating slice rather than surfacing it for investigation, and burn 10x-metered minutes doing it.
 UITESTS := $(SWIFTUI)/UITests
 ui-test-coverage:
