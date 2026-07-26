@@ -159,8 +159,9 @@ class _ScenarioRunner:
     def _maybe_emit_score(self, i: int, driver: base.Driver) -> None:
         """Score the just-launched app's entry screen once, on the first scenario (best-effort).
 
-        Runs only for the first scenario and only when an `on_score` sink is set, so exactly one score
-        is emitted per run (per engine in a matrix). A `query()` fault here is diagnostic noise, never a
+        Runs only for the first scenario and only when an `on_score` sink is set, so at most one score
+        is emitted per run (per engine in a matrix; a backend-crash retry of scenario 0 re-scores its
+        fresh launch, so it may repeat). A `query()` fault here is diagnostic noise, never a
         run failure — it is logged and swallowed so the deterministic verdict is untouched.
         """
         if i != 0 or self.on_score is None:
