@@ -130,11 +130,11 @@ _NO_TCC_SERVICE = "notifications"
 # simctl's host<->Simulator pasteboard sync (`pbcopy`) intermittently times out — simctl
 # exits 60 (ETIMEDOUT), or the call hangs past a reasonable bound — which is transient: a
 # re-run clears it. Retry a bounded number of times so a genuine fault still surfaces. The
-# budget is deliberately generous (linear backoff, ~7.5s over five attempts): CI has been
+# budget is deliberately generous (linear backoff, ~15s over five attempts): CI has been
 # seen wedged past three quick tries (~1.5s), and this recovery path is only paid when a
 # timeout actually occurs, so widening it costs nothing on the healthy path.
 _PBCOPY_MAX_ATTEMPTS = 5
-_PBCOPY_RETRY_DELAY_S = 0.75
+_PBCOPY_RETRY_DELAY_S = 1.5
 _PBCOPY_TIMEOUT_S = 30.0
 _PBCOPY_TIMEOUT_EXIT = 60  # simctl's ETIMEDOUT — the one transient exit worth retrying
 
