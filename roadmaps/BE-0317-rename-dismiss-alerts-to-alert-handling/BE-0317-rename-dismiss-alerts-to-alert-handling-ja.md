@@ -96,9 +96,9 @@ CLI も改名にならいます。`bajutsu run --alert-handling` / `--no-alert-h
   run の結果も変えません。
 - **ドキュメント。** `docs/` とその `docs/ja/` ミラーの、文書化されたすべての言及を `alertHandling` に
   改名し、`dismissAlerts` が受理される非推奨エイリアスである旨を短く注記します。現時点で言及は各言語で
-  10 ファイルにまたがります。`scenarios.md`（節の見出しとフィールド表）、`dsl-grammar.md`、
+  11 ファイルにまたがります。`scenarios.md`（節の見出しとフィールド表）、`dsl-grammar.md`、
   `configuration.md`、`recording.md`、`ai-boundary.md`、`cookbook.md`、`cli.md`、`concepts.md`、
-  `ci.md`、`self-hosting.md` です。`scenarios.md` の節見出しを改名すると slug が変わるので、そこを指す
+  `ci.md`、`self-hosting.md`、`architecture.md` です。`scenarios.md` の節見出しを改名すると slug が変わるので、そこを指す
   アンカーリンク（`scenarios.md` 自身のフィールド表の「下記」リンク、`cli.md`、`recording.md`、両言語）
   も同じ変更で更新しないとリンク切れになります。
   対の `handleSystemAlert` 提案のドキュメントと足並みを揃え、名前で衝突させるのではなく、2つの機能を役割
@@ -133,13 +133,13 @@ CLI も改名にならいます。`bajutsu run --alert-handling` / `--no-alert-h
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] シナリオスキーマ — `AlertHandling` / `alertHandling`、`dismissAlerts` を入力エイリアスとして維持。
-- [ ] config デフォルトの面 — `alertHandling` キー、`dismissAlerts` エイリアス。
-- [ ] CLI フラグ — `--alert-handling` を `run`/`record`/`crawl` の正規に、`--dismiss-alerts` を隠れた非推奨エイリアスに。ケーパビリティの `claude_flag`。
-- [ ] 旧来のキー / フラグに対する非推奨の告知（authoring / CLI 経路のみ）。
-- [ ] ドキュメント — `docs/` + `docs/ja/` の全言及を改名（各言語 10 ファイル）、見出し slug 変更で
+- [x] シナリオスキーマ — `AlertHandling` / `alertHandling`、`dismissAlerts` を入力エイリアスとして維持。
+- [x] config デフォルトの面 — `alertHandling` キー、`dismissAlerts` エイリアス。
+- [x] CLI フラグ — `--alert-handling` を `run`/`record`/`crawl` の正規に、`--dismiss-alerts` を隠れた非推奨エイリアスに。ケーパビリティの `claude_flag`。
+- [x] 旧来のキー / フラグに対する非推奨の告知（authoring / CLI 経路のみ）。
+- [x] ドキュメント — `docs/` + `docs/ja/` の全言及を改名（各言語 11 ファイル）、見出し slug 変更で
       切れるアンカーリンクを修正、エイリアスを注記、`handleSystemAlert` と対比。
-- [ ] テスト — 両方の綴りがパースされること、config デフォルト、両フラグ、ダンプが新キーを出力、非推奨通知。
+- [x] テスト — 両方の綴りがパースされること、config デフォルト、両フラグ、ダンプが新キーを出力、非推奨通知。
 
 ## 参考
 

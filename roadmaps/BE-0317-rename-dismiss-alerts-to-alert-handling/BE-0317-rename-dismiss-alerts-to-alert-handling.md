@@ -96,9 +96,9 @@ flag, and `--dismiss-alerts` / `--no-dismiss-alerts` keeps working as a hidden, 
   and it never changes the run's outcome — the alias behaves identically to the canonical name.
 - **Docs.** Rename every documented mention across `docs/` and its `docs/ja/` mirror to
   `alertHandling`, with a short note that `dismissAlerts` is the accepted deprecated alias. The
-  mentions today span ten files on each side: `scenarios.md` (the section heading and the field
+  mentions today span eleven files on each side: `scenarios.md` (the section heading and the field
   table), `dsl-grammar.md`, `configuration.md`, `recording.md`, `ai-boundary.md`, `cookbook.md`,
-  `cli.md`, `concepts.md`, `ci.md`, and `self-hosting.md`. Renaming the `scenarios.md` section
+  `cli.md`, `concepts.md`, `ci.md`, `self-hosting.md`, and `architecture.md`. Renaming the `scenarios.md` section
   heading changes its slug, so the anchor links pointing at it (in `scenarios.md`'s own field-table
   `[below]` link, `cli.md`, and `recording.md`, both languages) must be updated in the same change
   or they dangle. Coordinate with the sibling
@@ -141,7 +141,7 @@ flag, and `--dismiss-alerts` / `--no-dismiss-alerts` keeps working as a hidden, 
 - [x] Config-default surface — `alertHandling` key with `dismissAlerts` alias.
 - [x] CLI flags — `--alert-handling` canonical on `run`/`record`/`crawl`, `--dismiss-alerts` hidden deprecated alias; capability `claude_flag`.
 - [x] Deprecation signal on the old key / flag (authoring / CLI path only).
-- [x] Docs — rename every mention across `docs/` + `docs/ja/` (ten files each side), fix the anchor
+- [x] Docs — rename every mention across `docs/` + `docs/ja/` (eleven files each side), fix the anchor
       links the heading-slug change breaks, note the alias, contrast with `handleSystemAlert`.
 - [x] Tests — both spellings parse, config default, both flags, dump emits new key, deprecation notice.
 
