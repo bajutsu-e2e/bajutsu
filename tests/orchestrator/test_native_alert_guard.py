@@ -207,7 +207,9 @@ def test_gate_absent_native_alert_debounces_a_transient_collapse() -> None:
             self._polls += 1
             return [] if self._polls == 1 else [target]  # one collapsed frame, then app UI
 
-    guard = AlertGuardConfig(vision=_never_vision, poll_interval=0.05)  # probe every condition poll
+    # poll_interval=1.0 rate-limits only the native query; the collapsed-tree debounce still samples
+    # every _POLL, so one transient frame that clears before the debounce is filtered regardless.
+    guard = AlertGuardConfig(vision=_never_vision, poll_interval=1.0)
     ok, reason, _tree = _wait(
         _OneFrameCollapse(), _for_wait("ready", 30.0), _LogicalClock(), alert_guard=guard, alerts=[]
     )
@@ -233,12 +235,19 @@ def test_gate_absent_native_alert_still_drives_vision_for_a_persistent_collapse(
     driver = FakeDriver(
         []
     )  # capable, collapsed, no SpringBoard alert seeded → probe returns "absent"
-    guard = AlertGuardConfig(vision=vision, poll_interval=0.05)
+    # poll_interval=1.0 (the realistic default) but a tight 2s budget: the collapsed-tree debounce must
+    # sample every _POLL, not once per interval, or vision would first fire at ~3x poll_interval and
+    # miss this budget entirely (the regression this locks in). It recovers within a few _POLL ticks.
+    guard = AlertGuardConfig(vision=vision, poll_interval=1.0)
     alerts: list[AlertEvent] = []
+    clock = _LogicalClock()
     ok, reason, _tree = _wait(
-        driver, _for_wait("ready", 30.0), _LogicalClock(), alert_guard=guard, alerts=alerts
+        driver, _for_wait("ready", 2.0), clock, alert_guard=guard, alerts=alerts
     )
     assert ok and reason == ""
+    assert (
+        clock.now() < 1.0
+    )  # recovered at proxy latency, not throttled to the native-probe cadence
     assert calls["n"] == 1  # the vision fallback fired mid-wait for the non-SpringBoard collapse
     assert alerts == [AlertEvent(label="Dismiss")]
 

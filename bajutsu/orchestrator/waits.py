@@ -189,33 +189,35 @@ class _AlertGuardGate:
             self._observe_vision(elements)
 
     def _observe_native(self, elements: list[base.Element]) -> None:
-        # Poll the native presence query on its own wall clock, not every `_POLL`: a per-tick
-        # cross-process SpringBoard query would roughly double the single-main-thread runner's load
-        # (BE-0315). `_last_native` starts None so the first poll fires at once, bounding detection
-        # latency to one interval.
+        # Rate-limit only the cross-process native query to `poll_interval`, not the whole gate: a
+        # per-`_POLL` SpringBoard query would roughly double the single-main-thread runner's load
+        # (BE-0315). `_last_native` starts None so the first poll probes at once.
         now = self.clock.now()
-        if self._last_native is not None and now - self._last_native < self.guard.poll_interval:
-            return
-        self._last_native = now
-        state, event = self.guard.probe_native(self.driver)
-        if state == "dismissed" and event is not None:
-            self.alerts.append(event)
-            self._collapsed_polls = 0
-            return
-        if state == "unhandled":
-            # An alert is up but no policy label resolves — an unknown button, or a query that could
-            # not name it. Fall back to the vision guard, bounded by the same cooldown / attempt
-            # ceiling as the vision path so a persistently unhandled alert cannot fire an unbounded
-            # stream of AI-vision calls.
-            self._collapsed_polls = 0
-            self._fire_vision_bounded()
-            return
-        # "absent": the native query found no *SpringBoard* alert, but it only sees `springboard.alerts`
-        # — an action sheet or a WKWebView JS dialog reads as absent too, and the vision guard exists to
-        # clear exactly those. So still drive the debounced collapsed-tree proxy (BE-0269) to recover
-        # them mid-wait; the debounce filters the transient-frame false positive the bare "absent"
-        # suppression was there to avoid. A SpringBoard alert never reaches here — it resolves through
-        # the dismissed/unhandled branches above first — so this cannot pre-empt the native tap.
+        if self._last_native is None or now - self._last_native >= self.guard.poll_interval:
+            self._last_native = now
+            state, event = self.guard.probe_native(self.driver)
+            if state == "dismissed" and event is not None:
+                # A SpringBoard alert was up and tapped natively — no model. Clear the proxy debounce
+                # so a later collapse starts fresh, and skip the vision path this poll.
+                self.alerts.append(event)
+                self._collapsed_polls = 0
+                return
+            if state == "unhandled":
+                # An alert is up but no policy label resolves — an unknown button, or a query that
+                # could not name it. Hand to the vision guard, bounded by the same cooldown / attempt
+                # ceiling so a persistently unhandled alert cannot fire an unbounded stream of calls.
+                self._collapsed_polls = 0
+                self._fire_vision_bounded()
+                return
+            # "absent": no *SpringBoard* alert — fall through to the collapsed-tree proxy below.
+        # Every `_POLL`, whether or not the native query ran this tick, drive the debounced collapsed-
+        # tree proxy: `system_alert_labels()` only sees `springboard.alerts`, so an action sheet or a
+        # WKWebView JS dialog reads as absent yet still collapses the tree, and the vision guard exists
+        # to clear exactly those (BE-0269). Sampling every `_POLL` (not once per `poll_interval`) keeps
+        # its recovery latency at ~`_GUARD_DEBOUNCE_POLLS * _POLL`; the debounce filters transient
+        # frames. A SpringBoard alert that surfaces inside a sub-interval window may be seen here before
+        # the next native probe, but the vision path is attempt-bounded and no-ops without a credential,
+        # so the run stays deterministic (prime directive 1).
         self._observe_vision(elements)
 
     def _observe_vision(self, elements: list[base.Element]) -> None:
