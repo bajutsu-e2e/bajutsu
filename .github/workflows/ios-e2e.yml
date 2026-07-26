@@ -14,8 +14,10 @@
 #     used to be its own job (smoke, gestures, the runner channel's /type + /swipe + /back, and the
 #     deterministic permissions surface) folded into one `bajutsu run`. They differed only in which
 #     scenarios they ran, so each re-paid the lane's dominant fixed cost — the cold XCTest-host
-#     startup plus its own build and boot — over again; one job pays it once and warm-reuses the
-#     resident runner across the scenarios (BE-0291/BE-0287). `run` reddens the gate if any scenario
+#     startup plus its own build and boot — over again; one job warm-reuses the resident runner
+#     across the scenarios (BE-0291/BE-0287), paying that cold startup three times (the lane caps
+#     warm reuse at 1, see the `env` block below) instead of the four the separate jobs summed to.
+#     `run` reddens the gate if any scenario
 #     fails, so per-scenario pass/fail moves from job names into its report. Covers BE-0019 (pinch/
 #     rotate, /gesture), BE-0281 (/type, /swipe, /back), BE-0276 (`permissions`: location, pre-granted
 #     with no prompt), and BE-0316 (`handleSystemAlert` taps the SpringBoard "Allow" by native query).
@@ -48,8 +50,8 @@
 #   - `run` is itself the second consolidation of this lane: smoke / gestures / permission /
 #     runner-actuation were once separate jobs (and earlier still one `xcuitest-gestures` job), each
 #     re-paying the cold XCTest-host startup — the lane's dominant cost. Folding them back into one
-#     `bajutsu run` trades per-concern job names for paying that cold startup once, now that the run
-#     loop's per-scenario verdict makes the split unnecessary for the gate.
+#     `bajutsu run` trades per-concern job names for paying that cold startup far fewer times, now
+#     that the run loop's per-scenario verdict makes the split unnecessary for the gate.
 # The SwiftUI a11y product is the run / golden / codegen / visual subject; the UIKit twin shares
 # the identifier contract, so one toolkit suffices for the gate (bundled-runner is the exception —
 # it deliberately runs both toolkits to prove the runner is app-agnostic).
@@ -104,7 +106,9 @@ env:
   # bajutsu/platform_lifecycle/environments/xcuitest.py). Respawning sooner caps that accumulation:
   # the six-scenario `run` job pays three cold startups instead of one, still fewer than the four the
   # pre-consolidation jobs summed to, and the build-once `build` job already removed their per-job
-  # Swift builds — so the crash exposure drops without giving back the consolidation's saving.
+  # Swift builds — so the crash exposure drops without giving back the consolidation's saving. The
+  # run pipeline's scenario-level crash recovery (BackendCrashError retry) is the primary defense; this
+  # cap is a complementary reduction, kept because a smaller warm-runner session is simply steadier.
   BAJUTSU_XCUITEST_MAX_WARM_REUSES: "1"
 
 jobs:
@@ -233,9 +237,10 @@ jobs:
   # over-XCUITest scenario that used to be its own job (smoke / gestures / permission /
   # runner-actuation). They differed only in which scenarios they ran, so each re-paid the lane's
   # dominant fixed cost — the cold `xcodebuild test-without-building` XCTest-host startup (~2-3 min on
-  # macos-latest) — over again, at 10x macOS billing. Folded into one `bajutsu run`, the cold startup
-  # is paid once and BE-0291's warm reuse (with BE-0287's proactive respawn) carries the resident
-  # runner across the scenarios. `run` runs each scenario to its own verdict and exits non-zero if any
+  # macos-latest) — over again, at 10x macOS billing. Folded into one `bajutsu run`, the six scenarios
+  # pay that cold startup three times (BE-0291's warm reuse carries the runner between them, capped at
+  # 1 on this lane — see the env block above), still fewer than the four the separate jobs summed to.
+  # `run` runs each scenario to its own verdict and exits non-zero if any
   # fails, so the single job reddens the required `E2E` gate exactly as the four jobs did — the
   # per-scenario pass/fail moves from job names into the run's report. It installs the prebuilt
   # products from the `build` job (no build here). Kept separate (genuinely different execution
@@ -391,10 +396,10 @@ jobs:
       - name: Install the app
         run: xcrun simctl install "${{ steps.toolchain.outputs.udid }}" "demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
 
-      # All four scenarios in one `bajutsu run` so they share a single warm runner: the cold
-      # XCTest-host startup — the job's dominant cost, paid once per `bajutsu run` process — is now
-      # paid once for the whole job instead of four times (BE-0291's warm reuse already spans leases
-      # within one process). This also removes the reason the steps were split: `run` runs every
+      # All four scenarios in one `bajutsu run` so they share a warm runner: the cold XCTest-host
+      # startup — the job's dominant cost — is now paid twice for the whole job (BE-0291's warm reuse
+      # spans leases within one process, capped at 1 on this lane — see the env block) instead of four
+      # times. This also removes the reason the steps were split: `run` runs every
       # scenario to its own per-scenario verdict regardless of the others failing, then exits non-zero
       # if any failed — the exact "run all four independently, redden if any fails" behavior the
       # continue-on-error steps plus the aggregator hand-rolled, now native to the run loop.
