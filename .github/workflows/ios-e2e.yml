@@ -298,7 +298,7 @@ jobs:
       - name: Install the app
         run: xcrun simctl install "${{ steps.toolchain.outputs.udid }}" "demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
 
-      # Every gating XCUITest scenario in one `bajutsu run`: one cold runner startup, warm-reused
+      # Every gating XCUITest scenario in one `bajutsu run`: three cold runner startups (MAX_WARM_REUSES=1), warm-reused
       # across the six. State-neutral scenarios first, the two permission-granting ones last (see the
       # job header). `--exclude ai` drops only permission.yaml's notification scenario.
       - name: Run the gating XCUITest scenarios (smoke, gestures, runner channel, permissions)
