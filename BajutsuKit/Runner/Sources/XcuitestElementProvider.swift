@@ -75,20 +75,25 @@ final class XcuitestElementProvider: ElementProviding {
             return .notFound
         }
         // XCUITest occasionally synthesizes a two-finger gesture the Simulator drops before the app's
-        // recognizer fires, leaving the target's mirrored a11y value unmoved and the run's `expect`
-        // red. Re-issue the idempotent gesture until the actuated element's own value reflects a
-        // change, bounded by a small cap. Keying on the *actuated element's* value — not the whole
-        // screen — is what honors the retry's invariant: only a change the gesture is responsible for
-        // stops it, so an unrelated update elsewhere can't be mistaken for a landing (the showcase's
-        // GestureView mirrors each gesture onto the target it acts on for exactly this). `el.value`
-        // is passed through as-is (nil when unreadable): the retry treats a failed read as
-        // "couldn't observe → keep trying", not as a change — a `?? ""` here would read a transient
-        // read failure as a landing and stop after one attempt.
-        actuateUntilStateChanges(
-            maxAttempts: Self.maxGestureAttempts,
-            signature: { el.value as? String },
-            actuate: actuate
-        )
+        // recognizer fires, leaving no effect and a red `expect`. Re-issuing helps only when a landing
+        // is *observable*, because pinch and rotate are accumulating: re-applying one that already
+        // landed zooms/rotates again. The single app-agnostic signal a landing left is the actuated
+        // element's own value — and only an app that mirrors its gesture result there (as the showcase
+        // GestureView does) exposes it; a plain image / map / scroll view does not. So the retry is
+        // opt-in: a scenario whose target self-mirrors sets BAJUTSU_GESTURE_RETRY=1 in its launchEnv,
+        // and the retry re-issues until `el.value` moves (nil = unreadable, never a landing). Without
+        // the opt-in the gesture is actuated exactly once — the deterministic default for an arbitrary
+        // app, where re-applying an accumulating gesture a drop-dependent number of times would make
+        // the magnitude non-deterministic (prime directive 2).
+        if RunnerServer.forwardedLaunchEnvironment["BAJUTSU_GESTURE_RETRY"] == "1" {
+            actuateUntilStateChanges(
+                maxAttempts: Self.maxGestureAttempts,
+                signature: { el.value as? String },
+                actuate: actuate
+            )
+        } else {
+            actuate()
+        }
         return .ok
     }
 

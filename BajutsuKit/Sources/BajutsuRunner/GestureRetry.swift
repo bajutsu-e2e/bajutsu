@@ -15,7 +15,11 @@ import Foundation
 /// amount again, so if a landed gesture's mirror read stale, the loop would issue a second one and
 /// apply it twice. That double-apply is harmless when the mirror is a flag (`idle → pinched`,
 /// today's only use), but a caller asserting a *magnitude* must guarantee the mirror is current on
-/// return, or key on a change threshold rather than mere inequality.
+/// return, or key on a change threshold rather than mere inequality. Corollary: only drive an
+/// accumulating actuation through this when a landing is *observable* in `signature` at all — an
+/// effect that never surfaces there is re-issued to the cap, applying the accumulation a
+/// drop-dependent (non-deterministic) number of times. The caller gates on that (the XCUITest
+/// actuator retries only for a target that mirrors its gesture result onto its own value).
 ///
 /// It is a bounded retry, not a wait: `maxAttempts` caps the tries so a gesture that genuinely has
 /// no observable effect returns after a fixed, small number of attempts rather than looping. A pair
