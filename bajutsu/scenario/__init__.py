@@ -23,6 +23,7 @@ from bajutsu.scenario.load_expanded import (
 from bajutsu.scenario.models import (
     ASSERTION_KINDS,
     STEP_ACTIONS,
+    AlertHandling,
     Assertion,
     Background,
     CaptureRule,
@@ -33,7 +34,6 @@ from bajutsu.scenario.models import (
     Component,
     CountMatch,
     CountOp,
-    DismissAlerts,
     Drag,
     Email,
     EmailExtract,
@@ -99,6 +99,7 @@ from bajutsu.scenario.serialize import (
 __all__ = [
     "ASSERTION_KINDS",
     "STEP_ACTIONS",
+    "AlertHandling",
     "Assertion",
     "Background",
     "CaptureRule",
@@ -109,7 +110,6 @@ __all__ = [
     "Component",
     "CountMatch",
     "CountOp",
-    "DismissAlerts",
     "Drag",
     "Email",
     "EmailExtract",

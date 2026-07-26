@@ -1,8 +1,8 @@
 # handleSystemAlert (BE-0316): the deterministic, native counterpart to permission.yaml's vision
-# `dismissAlerts` grant of the same notification prompt. It fires the OS notification-permission
+# `alertHandling` grant of the same notification prompt. It fires the OS notification-permission
 # request, then taps the SpringBoard prompt's "Allow" button by a native accessibility query — no
 # screenshot, no vision model, no Claude API key — so the whole flow stays deterministic (prime
-# directive 1: AI never decides pass/fail). `dismissAlerts: false` proves it: with the vision guard
+# directive 1: AI never decides pass/fail). `alertHandling: false` proves it: with the vision guard
 # off, a handleSystemAlert that failed to tap would fail the run rather than be rescued by the guard,
 # so this scenario genuinely exercises the new step.
 #
@@ -16,7 +16,7 @@
 #     there; the dedicated `systemalert` tag (not the legacy `xcuitest` tag) keeps it out of them.
 - name: grant the notification prompt with handleSystemAlert
   tags: [systemalert]
-  dismissAlerts: false
+  alertHandling: false
   preconditions:
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:

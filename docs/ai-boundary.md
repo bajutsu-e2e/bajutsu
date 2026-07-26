@@ -43,11 +43,11 @@ no login, no AI runtime. Clone the repo and it works immediately.
 | **Uses Claude** | `record` | author a scenario by driving the app with Claude |
 | | `crawl` | explore an app autonomously with Claude to build a screen map |
 | | `triage --ai` | diagnose a failed run with Claude instead of the rule-based agent |
-| | `run --dismiss-alerts` | the alert guard — Claude clears an OS prompt that blocked a step |
+| | `run --alert-handling` | the alert guard — Claude clears an OS prompt that blocked a step |
 
 The classification is at the granularity of the **path**, not the command name: `triage` is
 Claude-free, and a single `--ai` flag flips it onto the Claude path; `run` is Claude-free, and the
-alert guard (`--dismiss-alerts`, on by default per scenario) is its Claude path. When there is no
+alert guard (`--alert-handling`, on by default per scenario) is its Claude path. When there is no
 credential, that guard **degrades to a no-op** — it never blocks a deterministic run.
 
 This split is the [Tier-1 / Tier-2 boundary](concepts.md) made visible; nothing here puts a model on
@@ -77,7 +77,7 @@ dependency at all.
   `codegen`, `trace`, `approve`, and the rest of the Claude-free column above). No AI SDK is
   installed, and nothing here reaches a model.
 - `pip install bajutsu[ai]` — adds the Anthropic SDK for the Claude paths (`record`, `crawl`,
-  `triage --ai`, `run --dismiss-alerts`). Use `bajutsu[bedrock]` instead for the Amazon Bedrock
+  `triage --ai`, `run --alert-handling`). Use `bajutsu[bedrock]` instead for the Amazon Bedrock
   provider; it layers the Bedrock variant onto the same SDK.
 
 Contributors get every extra at once through `uv sync --group dev`, so the gate keeps testing the

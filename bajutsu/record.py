@@ -486,7 +486,7 @@ def record(
     If `alert_guard` is given, an unexpected OS prompt (e.g. iOS "Save Password?")
     that surfaces while authoring is dismissed so the agent keeps a clean view. The
     dismissal is environmental, not a recorded step; replay handles it with
-    `run --dismiss-alerts`.
+    `run --alert-handling`.
 
     If `secret_tokens` is given (`(literal value, "${secrets.NAME}")` pairs, longest-value-first),
     a typed value matching a declared secret is recorded as its `${secrets.X}` token, never the

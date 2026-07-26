@@ -22,7 +22,7 @@ uv sync --group dev   # .venv ＋ 依存関係 ＋ 開発ツール
 make setup            # 上記に加え、追跡対象の git フックを配線（新しいクローンで一度だけ実行）
 ```
 
-API キーが必要なのは AI パス（`record`、`run --dismiss-alerts`）だけです。
+API キーが必要なのは AI パス（`record`、`run --alert-handling`）だけです。
 [`.env.example`](.env.example) を `.env`（gitignore 済み）にコピーして `ANTHROPIC_API_KEY` を
 設定してください。下記の決定論的なゲートはシークレットも Simulator も不要です。
 
