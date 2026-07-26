@@ -272,11 +272,11 @@ class AlertGuardConfig:
         return "dismissed", AlertEvent(label=label)
 
     def __call__(self, driver: base.Driver) -> AlertEvent | None:
-        # The end-of-step / expect retry: a one-shot dismiss. Here "absent" falls through to vision
-        # (a sheet the native query cannot enumerate may still be up). The mid-wait gate reacts to
-        # "absent" differently — it suppresses vision, since a definitive no-alert beats the
-        # collapsed-tree proxy's false positive — so that half of the policy lives in
-        # `_AlertGuardGate._observe_native` (waits.py), not here.
+        # The end-of-step / expect retry: a one-shot dismiss. Here "absent" falls straight through
+        # to vision (a sheet the native query cannot enumerate may still be up). The mid-wait gate
+        # routes "absent" differently — through the debounced, bounded collapsed-tree proxy in
+        # `_AlertGuardGate._observe_native` (waits.py) rather than calling vision unconditionally —
+        # so that half of the policy lives there, not here.
         state, event = self.probe_native(driver)
         if state == "dismissed":
             return event
