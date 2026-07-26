@@ -189,17 +189,58 @@ def test_gate_dismisses_natively_mid_wait_and_records_the_alert() -> None:
     assert alerts == [AlertEvent(label="Allow")]
 
 
-def test_gate_absent_native_alert_suppresses_the_vision_fallback() -> None:
-    # A definitive "no alert" on a capable backend must not trigger the vision path on a transient
-    # collapsed frame — the native fact beats the collapsed-tree proxy (BE-0315).
+def test_gate_absent_native_alert_debounces_a_transient_collapse() -> None:
+    # "absent" means the native query saw no *SpringBoard* alert. A single transient collapsed frame
+    # under it must not fire the vision path — the debounce filters that false positive (BE-0315 /
+    # BE-0269). A *persistent* non-SpringBoard collapse is the separate case the next test covers.
     from bajutsu.orchestrator.waits import _wait
 
-    driver = FakeDriver([])  # capable (advertises HANDLE_SYSTEM_ALERT), but no alert seeded
-    guard = AlertGuardConfig(vision=_never_vision)
+    target = _button("R")
+    target["identifier"] = "ready"
+
+    class _OneFrameCollapse(FakeDriver):
+        def __init__(self) -> None:
+            super().__init__([])  # capable; no alert seeded, so the native probe returns "absent"
+            self._polls = 0
+
+        def query(self) -> list[base.Element]:
+            self._polls += 1
+            return [] if self._polls == 1 else [target]  # one collapsed frame, then app UI
+
+    guard = AlertGuardConfig(vision=_never_vision, poll_interval=0.05)  # probe every condition poll
     ok, reason, _tree = _wait(
-        driver, _for_wait("never", 0.3), _LogicalClock(), alert_guard=guard, alerts=[]
+        _OneFrameCollapse(), _for_wait("ready", 30.0), _LogicalClock(), alert_guard=guard, alerts=[]
     )
-    assert not ok and "timeout" in reason  # timed out without ever calling vision
+    assert ok and reason == ""  # revealed after one transient collapse; vision never called
+
+
+def test_gate_absent_native_alert_still_drives_vision_for_a_persistent_collapse() -> None:
+    # "absent" only rules out a *SpringBoard* alert: an action sheet or a WKWebView JS dialog the
+    # native query cannot enumerate reads as absent too while still collapsing the tree. A persistent
+    # collapse under "absent" must still drive the debounced vision fallback mid-wait — restoring the
+    # BE-0269 recovery the native path would otherwise skip on the now-default backend (PR #1330).
+    from bajutsu.orchestrator.waits import _wait
+
+    target = _button("R")
+    target["identifier"] = "ready"
+    calls = {"n": 0}
+
+    def vision(d: base.Driver) -> AlertEvent | None:
+        calls["n"] += 1
+        d.screen = [target]  # vision clears the non-SpringBoard surface the native query cannot see
+        return AlertEvent(label="Dismiss")
+
+    driver = FakeDriver(
+        []
+    )  # capable, collapsed, no SpringBoard alert seeded → probe returns "absent"
+    guard = AlertGuardConfig(vision=vision, poll_interval=0.05)
+    alerts: list[AlertEvent] = []
+    ok, reason, _tree = _wait(
+        driver, _for_wait("ready", 30.0), _LogicalClock(), alert_guard=guard, alerts=alerts
+    )
+    assert ok and reason == ""
+    assert calls["n"] == 1  # the vision fallback fired mid-wait for the non-SpringBoard collapse
+    assert alerts == [AlertEvent(label="Dismiss")]
 
 
 def test_gate_polls_the_native_query_on_its_own_interval_not_every_tick() -> None:
@@ -214,9 +255,16 @@ def test_gate_polls_the_native_query_on_its_own_interval_not_every_tick() -> Non
             probes["n"] += 1
             return []  # never an alert, so the wait runs to its full budget
 
+    # App UI is visible (a non-collapsed tree), so the collapsed-tree vision fallback never enters —
+    # this isolates the native probe's cadence from the "absent + collapsed" fallback path.
+    app_ui = _button("home")
     guard = AlertGuardConfig(vision=_never_vision, poll_interval=1.0)
     ok, _reason, _tree = _wait(
-        _CountingProbe([]), _for_wait("never", 2.0), _LogicalClock(), alert_guard=guard, alerts=[]
+        _CountingProbe([app_ui]),
+        _for_wait("never", 2.0),
+        _LogicalClock(),
+        alert_guard=guard,
+        alerts=[],
     )
     assert not ok
     # ~40 condition polls over the 2s budget, but the native query fires about once per second:

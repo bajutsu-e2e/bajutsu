@@ -155,15 +155,16 @@ class _AlertGuardGate:
     (`guard.poll_interval`, decoupled from the wait's `_POLL`) and taps a policy-named button the
     moment a poll finds one — no debounce, cooldown, or attempt ceiling, because a native query
     reports a fact (not the collapsed-tree proxy's correlation, so no transient-frame false positive)
-    and the fixed interval already rate-limits the cross-process query. A definitive "no alert" even
-    suppresses the vision path's false positive. This resolves the tension BE-0316 recorded for
-    keeping the guard reactive — a native query is not a model call, so "a passing scenario never
-    calls the model" still holds.
+    and the fixed interval already rate-limits the cross-process query. This resolves the tension
+    BE-0316 recorded for keeping the guard reactive — a native query is not a model call, so "a
+    passing scenario never calls the model" still holds.
 
-    Where the backend lacks the capability — or an alert is up but no policy label resolves — it
-    falls back to the vision path, whose three bounds keep a real AI-vision call rare: a debounce (a
-    transient collapsed frame is ignored), a cooldown between attempts, and a hard per-wait attempt
-    ceiling after which it goes inert and the wait falls back to polling its own deadline.
+    Where the backend lacks the capability — or an alert is up but no policy label resolves, or the
+    native query reports no SpringBoard alert yet a non-SpringBoard surface (an action sheet, a
+    WKWebView JS dialog) it cannot enumerate is blocking — it falls back to the vision path, whose
+    three bounds keep a real AI-vision call rare: a debounce (a transient collapsed frame is
+    ignored), a cooldown between attempts, and a hard per-wait attempt ceiling after which it goes
+    inert and the wait falls back to polling its own deadline.
     """
 
     driver: base.Driver
@@ -183,11 +184,11 @@ class _AlertGuardGate:
     def observe(self, elements: list[base.Element]) -> None:
         """Inspect one poll; clear a blocking system prompt if warranted (native first, then vision)."""
         if self._native:
-            self._observe_native()
+            self._observe_native(elements)
         else:
             self._observe_vision(elements)
 
-    def _observe_native(self) -> None:
+    def _observe_native(self, elements: list[base.Element]) -> None:
         # Poll the native presence query on its own wall clock, not every `_POLL`: a per-tick
         # cross-process SpringBoard query would roughly double the single-main-thread runner's load
         # (BE-0315). `_last_native` starts None so the first poll fires at once, bounding detection
@@ -199,17 +200,28 @@ class _AlertGuardGate:
         state, event = self.guard.probe_native(self.driver)
         if state == "dismissed" and event is not None:
             self.alerts.append(event)
-        elif state == "unhandled":
+            self._collapsed_polls = 0
+            return
+        if state == "unhandled":
             # An alert is up but no policy label resolves — an unknown button, or a query that could
             # not name it. Fall back to the vision guard, bounded by the same cooldown / attempt
             # ceiling as the vision path so a persistently unhandled alert cannot fire an unbounded
             # stream of AI-vision calls.
+            self._collapsed_polls = 0
             self._fire_vision_bounded()
-        # "absent" is a deterministic no-alert fact — do nothing, which also suppresses the vision
-        # path's transient-frame false positive.
+            return
+        # "absent": the native query found no *SpringBoard* alert, but it only sees `springboard.alerts`
+        # — an action sheet or a WKWebView JS dialog reads as absent too, and the vision guard exists to
+        # clear exactly those. So still drive the debounced collapsed-tree proxy (BE-0269) to recover
+        # them mid-wait; the debounce filters the transient-frame false positive the bare "absent"
+        # suppression was there to avoid. A SpringBoard alert never reaches here — it resolves through
+        # the dismissed/unhandled branches above first — so this cannot pre-empt the native tap.
+        self._observe_vision(elements)
 
     def _observe_vision(self, elements: list[base.Element]) -> None:
-        """The collapsed-tree-proxy + vision path for a backend without the native capability."""
+        """The collapsed-tree-proxy + vision path: for a backend without the native capability, and
+        for a native backend's `"absent"` polls, where a non-SpringBoard surface the native query
+        cannot enumerate may still be blocking."""
         if shows_app_ui(elements):
             self._collapsed_polls = 0
             return

@@ -416,7 +416,7 @@ def _build_alert_locator(eff: Effective, redactor: Redactor) -> ClaudeAlertLocat
         typer.echo(
             "note: dismiss-alerts is on but no Bedrock model id is set "
             "(ai.model / BAJUTSU_BEDROCK_MODEL) — the vision alert guard will no-op "
-            "(iOS still clears common prompts natively)"
+            "(on the iOS XCUITest backend the native path still clears common prompts)"
         )
     if gap is not None:
         return None

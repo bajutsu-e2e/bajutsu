@@ -73,9 +73,12 @@ class DismissAlerts(_Model):
     # The button to press instead of the default dismissive one. Two forms (BE-0315):
     #   - a list of candidate labels ("Allow", then "OK") the native path resolves deterministically,
     #     tapping the first that is present on the alert (via BE-0316's `handle_system_alert`);
-    #   - a free-text string ("tap Allow") the *vision* locator interprets — the legacy form, kept for
-    #     backward compatibility and for the vision fallback (the native path, which needs an exact
-    #     label, ignores it and falls back to the default dismissive labels).
+    #   - a free-text string ("tap Allow") the *vision* locator interprets — the legacy form. It steers
+    #     only the vision fallback: the native path needs an exact label, so it ignores the string and
+    #     taps a *default dismissive* label instead. On a native-capable backend (XCUITest, the default
+    #     since BE-0290) that native tap pre-empts vision, so a free-text *grant* ("tap Allow") is
+    #     overridden and denies — use the list form `["Allow"]` to grant natively. The string is not a
+    #     drop-in for the old vision-only behavior on such a backend.
     # A per-scenario value wins over the CLI `--alert-instruction`.
     instruction: str | list[str] | None = None
     # How often (seconds) the reactive guard polls the native system-alert presence query while a
