@@ -70,7 +70,7 @@ bajutsu は CI 向けの出力を生成します。`junit.xml`、自己完結の
 1. 起動済みのシミュレータに **アプリ（と XCUITest ランナー）をビルドしてインストール**します。これはアプリごとに異なるためあなたの担当です（`xcodebuild`
    + `xcrun simctl install`）。
 2. [`bajutsu-e2e`](../../.github/actions/bajutsu-e2e/action.yml) composite action で **bajutsu を実行**します。
-   このアクションは依存の同期、任意の `doctor` プリフライト（非ブロッキング）、シナリオの実行、そして
+   このアクションは依存の同期、シナリオの実行（`run --score` を付けるので、ログに入口画面の規約グレードが残ります）、そして
    成果物（report、スクリーンショット、動画、`network.json`）のアップロードを行います。XCUITest バックエンドは pip の extra を必要としません。ランナーは HTTP 越しに駆動し、`xcodebuild` はランナー上の Xcode に付属するためです。
 
 ```yaml
@@ -109,4 +109,4 @@ jobs:
 
 - **JUnit**：`junit.xml` はレポートの隣に書き出されます。これを test-reporter 系アクション（例 `dorny/test-reporter`）に渡すと、テスト結果をインライン表示できます。
 - **決定性**：シナリオの [`mocks`](../network.md#deterministic-mocks) で通信をスタブし、ライブサーバへの依存をなくします。
-- **`doctor`**：現状は規約の*スコア*（非ブロッキングのプリフライト）です。env や権限の実行可能性を判定するゲート（`xcodebuild` / Xcode の存在チェック）は今後の課題です。
+- **規約スコア**：composite action は `run --score` を渡すので、run が実行時の最初の起動から算出した入口画面の規約グレード（`Ready` / `Partial` / `Blocked`、`doctor` が報告するスコアと同じもの）を stderr に出力します。この出力は診断だけを目的としており、合否の判定には一切関与しません。スコアを run に畳み込むことで、2 つめの XCUITest ランナーをコールド起動する別立ての `doctor` ステップを避けられます。実行可能性や capability のチェックを含むより広いプリフライトを行うには、ローカルで `bajutsu doctor` を実行してください。CI での env や権限の実行可能性ゲート（`xcodebuild` / Xcode の存在チェック）は今後の課題です。

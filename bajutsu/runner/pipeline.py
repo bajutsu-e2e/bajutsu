@@ -5,12 +5,17 @@ from __future__ import annotations
 import json
 import logging
 import os
+import threading
 import time
 from collections.abc import Callable, Mapping
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from bajutsu.doctor import Score
+    from bajutsu.drivers import base
 
 from bajutsu import capability_preflight
 from bajutsu.artifact_perms import make_run_dir, restrict_file
@@ -137,6 +142,12 @@ class _ScenarioRunner:
     # the actuator preflighted here is the one the lease builds. None keeps the fixed-`actuator` path
     # (the cross-browser matrix, tests driving a lease directly).
     resolve_actuator: Callable[[Scenario], str] | None = None
+    # Emit the app's entry-screen convention score once per run (the first scenario's freshly launched
+    # driver), folding `doctor`'s Ready/Partial/Blocked tell into the run so CI needs no separate
+    # `doctor` invocation that would cold-spawn a second XCUITest runner. Purely diagnostic and off the
+    # verdict path (prime directive 1): it never changes a scenario's result or the run's exit code.
+    # None (the default) keeps every existing run silent.
+    on_score: Callable[[Score], None] | None = None
     # How many times to re-run a scenario whose backend crashed mid-run (base.BackendCrashError)
     # before failing it — the dead lease is discarded and a fresh one leased (a cold respawn) each
     # retry. A crash is backend infrastructure, not a verdict (prime directive 1); bounding the
@@ -145,6 +156,43 @@ class _ScenarioRunner:
     # scenarios idempotent up to the crash point — one with a persistent side effect before the
     # crash (e.g. a server-side write) can fail, or pass against the wrong state, on replay.
     crash_retries: int = 1
+    # Latches once `_maybe_emit_score` has fired, so a backend-crash retry of scenario 0 (which
+    # re-enters `_run_on_lease` on a respawned app — BE-0049) does not re-score and emit a second
+    # grade: the score is a once-per-run tell, not a per-attempt one. A mutable field on a frozen
+    # dataclass (its state is toggled, never rebound); an Event so the latch is also safe under the
+    # `workers>1` thread pool.
+    _scored: threading.Event = field(default_factory=threading.Event)
+
+    def _maybe_emit_score(self, i: int, driver: base.Driver) -> None:
+        """Score the just-launched app's entry screen once, on the first scenario (best-effort).
+
+        Runs only for the first scenario and only when an `on_score` sink is set, and latches after
+        the first attempt, so at most one score is emitted per run (per engine in a matrix) — a
+        backend-crash retry of scenario 0 re-launches the app but does not re-score. A `query()` fault
+        here is diagnostic noise, never a run failure — it is logged and swallowed so the deterministic
+        verdict is untouched.
+        """
+        if i != 0 or self.on_score is None or self._scored.is_set():
+            return
+        # Latch before emitting: a crash retry must not re-score even if the sink or `query()` below
+        # faults (the fault is swallowed) — at-most-once is the contract, not one-success-guaranteed.
+        self._scored.set()
+        # Lazy import: `doctor` pulls in the platform lifecycle, which imports `namespace_of` back from
+        # it — a module-level import here would risk a cycle, and the default (no `on_score`) path must
+        # not pay for loading it at all.
+        from bajutsu.doctor import score
+
+        try:
+            self.on_score(
+                score(
+                    driver.query(),
+                    self.eff.id_namespaces,
+                    ok_coverage=self.eff.doctor_thresholds.ok_coverage,
+                    fail_coverage=self.eff.doctor_thresholds.fail_coverage,
+                )
+            )
+        except Exception as exc:  # diagnostic only — the run's verdict must not depend on it
+            _logger.debug("entry-screen convention score failed: %s", exc, exc_info=True)
 
     def run_one(self, i: int, s: Scenario) -> RunResult:
         """Run one scenario on a freshly leased device and return its result.
@@ -246,6 +294,9 @@ class _ScenarioRunner:
         outcome — pass, assertion failure, unsupported action — comes back as a `RunResult`.
         """
         try:
+            # Score the entry screen before the scenario mutates it — the app is freshly launched here,
+            # exactly what a standalone `doctor` probe would see, but on the lease this run already holds.
+            self._maybe_emit_score(i, lz.driver)
             if lz.collector is not None:
                 lz.collector.clear()
             # t0 after launch, so exchange offsets share the step timeline's origin.
@@ -349,6 +400,7 @@ def run_all(
     resolve_actuator: Callable[[Scenario], str] | None = None,
     golden_context: GoldenContext | None = None,
     lease_udid_spec: str = "booted",
+    on_score: Callable[[Score], None] | None = None,
     crash_retries: int | None = None,
 ) -> list[RunResult]:
     """Run every scenario, each on a freshly leased device, and return one result per scenario.
@@ -393,6 +445,9 @@ def run_all(
             routes the run to the live XCUITest environment, so the preflight narrows to that
             transport's set (BE-0238) — the same `is_webdriver_endpoint` signal `environment_for`
             routes on. "booted" (the default) is never a URL, so the local path is unchanged.
+        on_score: Sink for the app's entry-screen convention score, emitted once from the first
+            scenario's freshly launched driver (the `run --score` inline of `doctor`'s grade). None
+            (the default) scores nothing; diagnostic only, never on the verdict path.
         crash_retries: How many times to re-run a scenario whose backend crashed mid-run
             (`base.BackendCrashError`) on a fresh device before failing it. A crash is backend
             infrastructure, not a verdict; the default (None) reads `BAJUTSU_CRASH_RETRIES` — 1 when
@@ -440,6 +495,7 @@ def run_all(
         resolve_actuator=resolve_actuator,
         golden_context=golden_context,
         udid_spec=lease_udid_spec,
+        on_score=on_score,
         # None means "read the lane's `BAJUTSU_CRASH_RETRIES` (else the default)"; an explicit int
         # (a test, or a caller that pins it) still wins.
         crash_retries=crash_retries if crash_retries is not None else _default_crash_retries(),
@@ -475,6 +531,7 @@ def run_and_report(
     exec_provenance: dict[str, str | None] | None = None,
     golden_context: GoldenContext | None = None,
     lease_udid_spec: str = "booted",
+    on_score: Callable[[Score], None] | None = None,
 ) -> tuple[list[RunResult], Path]:
     """Run the scenarios, then write the run's artifacts under `runs_dir/run_id`.
 
@@ -511,6 +568,7 @@ def run_and_report(
         resolve_actuator=resolve_actuator,
         golden_context=golden_context,
         lease_udid_spec=lease_udid_spec,
+        on_score=on_score,
     )
     manifest = _assemble_report(
         scenarios,

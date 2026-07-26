@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Annotated
 
 if TYPE_CHECKING:
+    from bajutsu.doctor import Score
     from bajutsu.drivers import base
 
 import typer
@@ -470,6 +471,22 @@ class _RunPlan:
     zip_run: bool
     evidence_store: str
     upload_exec: str
+    # `--score`: emit the app's entry-screen convention score once (doctor's grade, inline) so CI needs
+    # no separate `doctor` cold-spawn. Diagnostic only — never on the verdict path.
+    score: bool
+
+
+def _print_score(score: Score) -> None:
+    """Render the app's entry-screen convention score to stderr (the `run --score` inline of `doctor`).
+
+    Written to stderr so stdout stays the machine-readable PASS/FAIL line — the same split progress and
+    the AI-usage summary follow. Diagnostic only (prime directive 1): the grade never touches the run's
+    exit code, which stays the assertions' machine-only verdict.
+    """
+    from bajutsu.doctor import render
+
+    typer.echo("doctor (convention score):", err=True)
+    typer.echo(render(score), err=True)
 
 
 def _dispatch(plan: _RunPlan) -> tuple[list[RunResult], Path]:
@@ -558,6 +575,10 @@ def _dispatch_single(
             exec_provenance=exec_decision,
             golden_context=plan.golden_context,
             lease_udid_spec=plan.udid_spec,
+            # `--score`: fold doctor's entry-screen grade into this run's own first lease, so CI reads
+            # the Ready/Partial/Blocked tell without a separate `doctor` that cold-spawns a second
+            # XCUITest runner. Off by default, so an ordinary run is unchanged.
+            on_score=_print_score if plan.score else None,
         )
     finally:
         shutdown()
@@ -607,6 +628,8 @@ def _dispatch_matrix(
                 schemas_dir=plan.schemas_dir,
                 actuator=plan.actuator,
                 golden_context=plan.golden_context,
+                # Each engine pass scores its own entry screen once (`--score`); off by default.
+                on_score=_print_score if plan.score else None,
             )
         finally:
             shutdown()
@@ -796,6 +819,13 @@ def run(
         "--progress/--no-progress",
         help="stream per-scenario/step progress to stderr as the run advances (used by the web UI)",
     ),
+    score: bool = typer.Option(
+        False,
+        "--score/--no-score",
+        help="print the app's entry-screen convention score (doctor's Ready/Partial/Blocked grade) "
+        "to stderr, computed from this run's own first launch — so CI reads the tell without a "
+        "separate `doctor` that cold-spawns a second runner. Diagnostic only; never affects pass/fail",
+    ),
     # --- Baseline / schema / golden directory overrides ---
     baselines: str = typer.Option(
         "",
@@ -971,6 +1001,7 @@ def run(
             zip_run=zip_run,
             evidence_store=evidence_store,
             upload_exec=upload_exec,
+            score=score,
         )
         # Install the usage/cost ledger before dispatch (BE-0196). Reporting only — emission is
         # best-effort and off the deterministic verdict path (prime directive 1). Per-scenario

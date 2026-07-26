@@ -3,7 +3,8 @@ description: >-
   Run bajutsu scenarios against an already-booted Simulator with the XCUITest backend,
   then upload the run (report.html, screenshots, video, network.json) as an artifact.
   The caller is responsible for building and installing the app (and the XCUITest runner)
-  first; this action owns the bajutsu-specific part (doctor, run, artifacts).
+  first; this action owns the bajutsu-specific part (run — with the entry-screen convention score
+  folded in via `--score` — and artifacts).
 
 inputs:
   scenarios:
@@ -52,18 +53,11 @@ runs:
 
     # Inputs go through env: so the shell sees them as data, not as script text spliced in
     # before parsing (the GitHub Actions ${{ }} injection pattern). See BE-0123.
-    - name: Preflight (bajutsu doctor — non-blocking)
-      shell: bash
-      env:
-        TARGET: ${{ inputs.target }}
-        UDID: ${{ inputs.udid }}
-        BACKEND: ${{ inputs.backend }}
-        CONFIG: ${{ inputs.config }}
-      run: >-
-        uv run --no-sync bajutsu doctor --target "$TARGET" --udid "$UDID"
-        --backend "$BACKEND" --config "$CONFIG"
-        || echo "doctor: non-blocking (convention score only)"
-
+    #
+    # `--score` folds the entry-screen convention score (doctor's Ready/Partial/Blocked tell) into the
+    # run's own first launch, so the log carries the diagnostic that a separate `doctor` step used to
+    # print — but without cold-spawning a second XCUITest runner (the run already holds a live lease).
+    # It writes to stderr and never affects pass/fail; the deterministic verdict stays `run`'s alone.
     - name: Run scenarios
       shell: bash
       env:
@@ -80,7 +74,7 @@ runs:
         scenario_args=()
         for s in $SCENARIOS; do scenario_args+=(--scenario "$s"); done
         uv run --no-sync bajutsu run "${scenario_args[@]}" --exclude "$EXCLUDE" --target "$TARGET" \
-          --udid "$UDID" --backend "$BACKEND" --config "$CONFIG" --no-erase
+          --udid "$UDID" --backend "$BACKEND" --config "$CONFIG" --no-erase --score
 
     # Collect any macOS crash reports the run produced into the uploaded artifact, so a resident-
     # runner mid-run crash is diagnosable even when the pipeline's scenario-level retry recovers it
