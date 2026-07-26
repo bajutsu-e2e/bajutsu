@@ -253,7 +253,7 @@ class Effective:
                 return value
             candidate = root / value
             if confine and not candidate.resolve().is_relative_to(confine_resolved):
-                raise ValueError(f"config field {field!r} escapes the checkout root: {value!r}")
+                raise ValueError(f"config field {field!r} escapes the confinement root: {value!r}")
             return str(candidate)
 
         common = replace(
