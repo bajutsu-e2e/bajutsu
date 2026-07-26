@@ -18,7 +18,7 @@ android {
         // The installed applicationId keeps the `.android.` segment the showcase.config.yaml
         // `package` targets, so it intentionally differs from the Kotlin source namespace above.
         applicationId = "com.bajutsu.showcase.android.flutter"
-        minSdk = maxOf(flutter.minSdkVersion, 23) // POST_NOTIFICATIONS runtime prompt needs API 33+ at run time
+        minSdk = maxOf(flutter.minSdkVersion, 23) // runtime-permission APIs (checkSelfPermission/requestPermissions, MainActivity) need API 23+; POST_NOTIFICATIONS auto-grants below 33 (prompt only on 33+, e.g. the API 34 AVD)
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
