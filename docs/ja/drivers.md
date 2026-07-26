@@ -128,6 +128,7 @@ id 規約は、上の iOS と Android のものと並べて記します（Flutte
   - **Android の device-control `clipboard`** は `BajutsuAndroid` のアプリ内レシーバ（BE-0233）を往復するので、`device.yaml` の `setClipboard`／`clipboard` ステップは Flutter Android ターゲットで失敗します。iOS の device-control クリップボードはアプリの協力なしに simctl を通るので、Flutter iOS ターゲットでは動きます。この差は Android だけのものです。
 
   これらを除けば、Flutter ターゲットはネイティブ双子が回すのと同じ実機シナリオ群を通ります。Flutter とは無関係にプラットフォームで制限されるものだけが外れます。マルチタッチ（`gestures_multitouch`）は adb では root 化したエミュレータを要し（ネイティブ Android アプリと同様）、`text_editing` と `device` の `push` 部分はネイティブのスイートでも iOS 専用です。
+- **ディープリンクからタブへのルーティング。** Flutter ターゲットはフレーバごとのスキームを登録します（Android の `VIEW` intent-filter、iOS の `CFBundleURLTypes`、各ターゲットの `deeplinkScheme`）。ただし、URI をタブへルーティングする（タブを選び、ルートまで戻し、開いているモーダルを閉じる）ネイティブ双子とは違い、Flutter アプリはまだ受け取った URI を処理しません。スキームを登録しているのは、BE-0007 のディープリンク実行の後続スライスが `am start -a VIEW -d <scheme>://<tab>` や `simctl openurl` で駆動できるようにするためで、アプリ側のハンドラはそのスライスで入ります。リテラルスキームのディープリンクを駆動する共有シナリオは今はなく（`navigation.yaml` や `notices.yaml` は launch env とタップだけで駆動します）、実機検証には影響しません。
 - **Flutter Web（CanvasKit）。** canvas へ描き、要素を DOM に出さないので、Playwright バックエンドでは解決できません。
 - **iOS の `noax` 双子。** a11y ビルドが公開の実証です。identifier を持たない別の iOS バンドルには Flutter フレーバによる bundle id の分離が要り、後続作業とします。Android の `noax` 双子は同梱します（`showcase-flutter-android-noax`）。Gradle のプロダクトフレーバでビルドします。
 

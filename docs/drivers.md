@@ -303,6 +303,14 @@ Out of scope (see the roadmap item for the reasoning):
   minus what is platform-limited regardless of Flutter: multi-touch (`gestures_multitouch`) needs a
   rooted emulator on adb (as for the native Android apps), and `text_editing` / the `push` half of
   `device` are iOS-only in the native suite too.
+- **Deeplink-to-tab routing.** The Flutter targets register the per-flavor scheme (the Android
+  `VIEW` intent-filter, the iOS `CFBundleURLTypes`, each target's `deeplinkScheme`), but — unlike the
+  native twins, which route the URI to a tab (select it, pop to root, dismiss any modal) — the
+  Flutter app does not yet handle the incoming URI. The scheme is registered so the BE-0007
+  deeplink-actuation follow-up can drive `am start -a VIEW -d <scheme>://<tab>` / `simctl openurl`;
+  the app-side handler lands with that slice. No shared scenario drives a literal-scheme deeplink
+  today (`navigation.yaml` / `notices.yaml` use launch env and taps only), so the on-device
+  verification is unaffected.
 - **Flutter Web (CanvasKit).** It paints to a canvas and surfaces no DOM elements, so the Playwright
   backend cannot resolve them.
 - **The iOS `noax` twin.** The a11y build is the surfacing proof; a distinct no-identifier iOS bundle

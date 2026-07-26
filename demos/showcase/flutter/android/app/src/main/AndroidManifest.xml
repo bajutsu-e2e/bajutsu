@@ -30,7 +30,11 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
-            <!-- Deeplink (SPEC §4): scheme is per-flavor; the host selects a tab. -->
+            <!-- Deeplink (SPEC §4): the per-flavor scheme is registered so the BE-0007
+                 deeplink-actuation follow-up can drive `am start -a VIEW -d <scheme>://<tab>`, but —
+                 unlike the native twins, which route the URI to a tab — the Flutter app does not yet
+                 handle the incoming URI. No shared scenario exercises it (see docs/drivers.md
+                 out-of-scope). -->
             <intent-filter android:autoVerify="false">
                 <action android:name="android.intent.action.VIEW"/>
                 <category android:name="android.intent.category.DEFAULT"/>
