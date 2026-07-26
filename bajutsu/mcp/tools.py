@@ -8,10 +8,10 @@ from pathlib import Path
 
 from fastmcp import FastMCP
 
+from bajutsu import device_errors
 from bajutsu.backends import select_actuator
 from bajutsu.config import Effective, load_config, resolve
-from bajutsu.doctor import render, score
-from bajutsu.drivers.base import Driver
+from bajutsu.doctor import DoctorProbeError, probe_screen, render, score
 
 
 def _load_effective(config_path: Path, target: str) -> Effective:
@@ -44,13 +44,6 @@ def _parse_verdict(stdout: str) -> str:
     return ""
 
 
-def make_driver(actuator: str, udid: str) -> Driver:
-    """Instantiate a driver for the given actuator and device — thin delegation to the backends registry."""
-    from bajutsu.backends import make_driver as _make
-
-    return _make(actuator, udid)
-
-
 def register_tools(mcp: FastMCP, config_path: Path) -> None:
     """Register ``bajutsu_doctor`` and ``bajutsu_run`` as MCP tools on *mcp*.
 
@@ -62,14 +55,22 @@ def register_tools(mcp: FastMCP, config_path: Path) -> None:
     def bajutsu_doctor(target: str, udid: str = "booted") -> str:
         """Score the current screen's accessibility convention readiness.
 
+        Shares `doctor`'s screen probe (BE-0199): on iOS this brings up a short-lived XCUITest
+        runner, reads the tree, and tears the runner back down (BE-0290) — no runner needs to be
+        resident beforehand.
+
         Returns the grade (Ready / Partial / Blocked) and a breakdown of
         id coverage, namespace conformance, and duplicates.
         """
         eff = _load_effective(config_path, target)
         backends = eff.backend
         actuator = select_actuator(backends)
-        driver = make_driver(actuator, udid)
-        elements = driver.query()
+        try:
+            elements = probe_screen(actuator, udid, eff)
+        except DoctorProbeError as e:
+            return str(e)
+        except device_errors.DeviceError as e:
+            return f"could not read the screen to score: {e}"
         s = score(
             elements,
             eff.id_namespaces,
