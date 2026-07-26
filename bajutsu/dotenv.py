@@ -1,7 +1,7 @@
 """Minimal .env loader: read KEY=VALUE lines into the environment.
 
 A gitignored .env keeps secrets (e.g. ANTHROPIC_API_KEY for record and
---dismiss-alerts) out of the shell profile and out of version control. The
+--alert-handling) out of the shell profile and out of version control. The
 parser is pure and unit-tested; loading never overrides a variable already set
 in the real environment, so the file is a fallback, not an override.
 """

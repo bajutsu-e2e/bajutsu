@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0317](BE-0317-rename-dismiss-alerts-to-alert-handling.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0317") |
+| Implementing PR | [#1331](https://github.com/bajutsu-e2e/bajutsu/pull/1331) |
 | Topic | Scenario authoring features |
 | Related | [BE-0269](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention.md), [BE-0276](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state.md) |
 <!-- /BE-METADATA -->
@@ -95,9 +96,9 @@ flag, and `--dismiss-alerts` / `--no-dismiss-alerts` keeps working as a hidden, 
   and it never changes the run's outcome — the alias behaves identically to the canonical name.
 - **Docs.** Rename every documented mention across `docs/` and its `docs/ja/` mirror to
   `alertHandling`, with a short note that `dismissAlerts` is the accepted deprecated alias. The
-  mentions today span ten files on each side: `scenarios.md` (the section heading and the field
+  mentions today span eleven files on each side: `scenarios.md` (the section heading and the field
   table), `dsl-grammar.md`, `configuration.md`, `recording.md`, `ai-boundary.md`, `cookbook.md`,
-  `cli.md`, `concepts.md`, `ci.md`, and `self-hosting.md`. Renaming the `scenarios.md` section
+  `cli.md`, `concepts.md`, `ci.md`, `self-hosting.md`, and `architecture.md`. Renaming the `scenarios.md` section
   heading changes its slug, so the anchor links pointing at it (in `scenarios.md`'s own field-table
   `[below]` link, `cli.md`, and `recording.md`, both languages) must be updated in the same change
   or they dangle. Coordinate with the sibling
@@ -136,13 +137,13 @@ flag, and `--dismiss-alerts` / `--no-dismiss-alerts` keeps working as a hidden, 
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Scenario schema — `AlertHandling` / `alertHandling`, `dismissAlerts` kept as an input alias.
-- [ ] Config-default surface — `alertHandling` key with `dismissAlerts` alias.
-- [ ] CLI flags — `--alert-handling` canonical on `run`/`record`/`crawl`, `--dismiss-alerts` hidden deprecated alias; capability `claude_flag`.
-- [ ] Deprecation signal on the old key / flag (authoring / CLI path only).
-- [ ] Docs — rename every mention across `docs/` + `docs/ja/` (ten files each side), fix the anchor
+- [x] Scenario schema — `AlertHandling` / `alertHandling`, `dismissAlerts` kept as an input alias.
+- [x] Config-default surface — `alertHandling` key with `dismissAlerts` alias.
+- [x] CLI flags — `--alert-handling` canonical on `run`/`record`/`crawl`, `--dismiss-alerts` hidden deprecated alias; capability `claude_flag`.
+- [x] Deprecation signal on the old key / flag (authoring / CLI path only).
+- [x] Docs — rename every mention across `docs/` + `docs/ja/` (eleven files each side), fix the anchor
       links the heading-slug change breaks, note the alias, contrast with `handleSystemAlert`.
-- [ ] Tests — both spellings parse, config default, both flags, dump emits new key, deprecation notice.
+- [x] Tests — both spellings parse, config default, both flags, dump emits new key, deprecation notice.
 
 ## References
 

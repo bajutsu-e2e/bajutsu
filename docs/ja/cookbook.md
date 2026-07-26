@@ -82,14 +82,14 @@ uv run bajutsu run --scenario <path-to-file> --target showcase-swiftui --backend
 ## システムの権限ダイアログを許可する
 
 実行時の権限プロンプト（通知、位置情報など）は、アプリ自身の UI ではなく**プロセス外のシステム
-アラート**です。iOS バックエンドはこれを直接タップできません。`dismissAlerts` は、そのタップだけを AI の
+アラート**です。iOS バックエンドはこれを直接タップできません。`alertHandling` は、そのタップだけを AI の
 アラートガードに任せます。ガードがプロンプトを見張って「Allow」をタップする一方で、その前後の
 アサーションはすべて機械チェックのままです。
 
 ```yaml
 - name: grant notification permission
   tags: [permission, system]
-  dismissAlerts: { instruction: "tap Allow" }
+  alertHandling: { instruction: "tap Allow" }
   preconditions:
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
@@ -103,7 +103,7 @@ uv run bajutsu run --scenario <path-to-file> --target showcase-swiftui --backend
     - value: { sel: { id: perm.notif.value }, equals: "authorized" }
 ```
 
-`dismissAlerts` はアラートの**ハンドラ**であって、アサーションではありません。合否の判定には
+`alertHandling` はアラートの**ハンドラ**であって、アサーションではありません。合否の判定には
 一切関与せず、iOS バックエンドからは見えないアラートでステップが止まってしまうのを防ぐだけです。Android では
 同じシナリオがプロンプトなしで走ります（target の config が権限を事前付与しているため）。その場合
 ガードは何もしないまま待機するだけです。1 つのシナリオが 2 つのプラットフォームで分岐なく動きます。
