@@ -739,6 +739,47 @@ def test_a_normal_reply_passes_through_without_probing_health() -> None:
     assert calls[0] == 1
 
 
+# Crash-recovery splits on the runner *process*. A process that has exited will never answer /health
+# again on its port, so recovery fails fast rather than polling the dead port for the whole window; a
+# process still alive stays BE-0287's recoverable case and waits out `health`.
+
+
+def test_a_crash_with_a_dead_runner_process_fails_fast_without_polling_health() -> None:
+    # The runner's `xcodebuild` process has exited (runner_alive False): nothing respawns it on this
+    # port mid-recovery, so recovery must fail fast with a distinct diagnostic — never consulting
+    # `health`, which would only wait out an inevitable failure (the readiness-time crash this fixes).
+    def _health_must_not_run(_t: float) -> bool:
+        raise AssertionError("health polled despite the runner process having exited")
+
+    inner, calls = _counting([_crash("GET", delivered=False)])
+    with pytest.raises(XcuitestRunnerCrashError, match="process exited"):
+        _with_crash_recovery(inner, health=_health_must_not_run, runner_alive=lambda: False)(
+            "GET", "/elements", None
+        )
+    assert calls[0] == 1  # crashed once, then failed fast — never re-issued
+
+
+def test_a_crash_with_a_live_runner_process_still_waits_out_health() -> None:
+    # The process is alive but momentarily unreachable (runner_alive True): this is BE-0287's
+    # recoverable case, unchanged — recovery waits out `health` and re-issues the idempotent read.
+    inner, calls = _counting([_crash("GET", delivered=True), _Reply(status="ok")])
+    reply = _with_crash_recovery(inner, health=lambda _t: True, runner_alive=lambda: True)(
+        "GET", "/elements", None
+    )
+    assert reply.status == "ok"
+    assert calls[0] == 2  # waited out health, then re-issued — the alive-process path is unchanged
+
+
+def test_absent_runner_alive_keeps_the_be0287_recovery_unchanged() -> None:
+    # With no liveness predicate (a test fake, or a caller that supplies none), the fast path is off:
+    # a crash that never recovers waits out `health` and fails with the BE-0287 "did not recover"
+    # diagnostic exactly as before — the default is byte-for-byte the prior behavior.
+    inner, calls = _counting([_crash("GET", delivered=False)])
+    with pytest.raises(XcuitestRunnerCrashError, match="did not recover"):
+        _with_crash_recovery(inner, health=lambda _t: False)("GET", "/elements", None)
+    assert calls[0] == 1
+
+
 def test_a_recovery_logs_the_crash_as_visibly_as_a_retried_blip(caplog: Any) -> None:
     # BE-0287 Unit 4: a crashed-and-recovered run must never be indistinguishable from one that never
     # crashed — both the crash and the recovery are logged.

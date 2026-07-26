@@ -418,7 +418,12 @@ class XcuitestEnvironment(_DeviceEnvironment):
         self._runner_proc = proc
         _logger.info("xcuitest runner output → %s", self._runner_log)
 
-        driver = backends.make_driver(self._actuator, self._udid, runner_port=self._runner_port)
+        driver = backends.make_driver(
+            self._actuator,
+            self._udid,
+            runner_port=self._runner_port,
+            runner_alive=self._runner_alive,
+        )
         # `log_tail` / `discard` reach live environment state (`self._runner_log` / `self._runner_proc`);
         # they are valid only until the next `spawn()` overwrites it, which the strictly sequential
         # retry loop (spawn → await → log_tail → discard → next spawn) guarantees. A failed cold
@@ -514,6 +519,16 @@ class XcuitestEnvironment(_DeviceEnvironment):
         launch_args = [*eff.launch_args, *pre.launch_args, *simctl.locale_args(locale)]
         return launch_env, launch_args
 
+    def _runner_alive(self) -> bool:
+        """Whether the runner's `xcodebuild` subprocess is still running.
+
+        The crash-recovery layer reads this to split a recoverable blip from a dead runner: a process
+        that has exited will never answer `/health` again on its port, so recovery fails fast instead
+        of polling it for the whole window (a runner merely unreachable but alive stays BE-0287's
+        recoverable case). `poll()` is `None` while the process runs, an exit code once it has ended.
+        """
+        return self._runner_proc is not None and self._runner_proc.poll() is None
+
     def _healthy_resident_driver(self) -> base.Driver | None:
         """The driver for the warm runner if it is up and answering `/health`, else None (BE-0291 Unit 4).
 
@@ -526,7 +541,12 @@ class XcuitestEnvironment(_DeviceEnvironment):
             return None
         from bajutsu.drivers.xcuitest import XcuitestChannelError
 
-        driver = backends.make_driver(self._actuator, self._udid, runner_port=self._runner_port)
+        driver = backends.make_driver(
+            self._actuator,
+            self._udid,
+            runner_port=self._runner_port,
+            runner_alive=self._runner_alive,
+        )
         try:
             cast(base.BackendLifecycle, driver).await_ready(timeout=_WARM_HEALTH_TIMEOUT)
         except XcuitestChannelError:

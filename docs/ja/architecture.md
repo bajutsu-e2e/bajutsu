@@ -252,6 +252,7 @@ adb の harness はその代わりに、新しい `SHOWCASE_CONFORMANCE` の int
 - アサーション評価（`exists` / `value` / `label` / `count` / `enabled` / `disabled` / `selected` /
   `request` / `requestSequence` / `event` / `responseSchema` / `visual` / `clipboard` / `golden`）
 - Tier 2 run ループ（act → wait → verify）、`FakeDriver` で検証
+- run パイプラインでの**バックエンドクラッシュ復旧**: シナリオ途中でバックエンドがクラッシュした場合（`base.BackendCrashError`、バックエンドに依存しない）、死んだリースを破棄し、新規に再生成したリースでシナリオ全体をやり直します。上限は `crash_retries`（既定 1）で、クラッシュし続けるシナリオは黙って合格扱いにせず、はっきりと失敗させます
 - DSL（ドメイン固有言語）: `within` セレクタ（幾何スコープ）、`relaunch` ステップ（実機検証済み）、再利用 `setup` 前段、起動時の `locale` 適用、デバイスプール上の並列実行（`--workers`）
 - DSL のオーサリング再利用: 再利用可能なパラメータ化コンポーネント（`use` / `${params.*}`）、データ駆動シナリオ（`data` / `dataFile` と `${row.*}`）、シークレット変数（`${secrets.X}`、値マスク）、シナリオタグ + `--tag` / `--exclude` 選択、`setLocation` / `push` デバイスステップ、起動前の `permissions` フィールド（`simctl privacy` / `pm grant`|`pm revoke`、BE-0276）、`doubleTap` アクション、ファイル単位 + シナリオ単位の `description`
 - DSL の制御フローとデータ取得: 条件分岐 `if` とループ `forEach`（決定的。条件は機械アサーション）、`extract`（要素の value / label / identifier を `${vars.*}` に取り込む）
@@ -293,7 +294,7 @@ adb の harness はその代わりに、新しい `SHOWCASE_CONFORMANCE` の int
 
 - XCUITest バックエンドの常駐 runner（`BajutsuKit`）を実機で検証しています。XCTest のオートメーションスナップショットの読み取り、スナップショットハンドルによる要素解決、semantic（identifier）tap、text / swipe、`simctl` launch 手順、`simctl io` スクリーンショットを、Xcode の `xcodebuild` に対して確認しました。showcase シナリオの実行、証跡の取得、triage 自己修復ループを実機で走らせています（`make -C demos/showcase run-swiftui`。`ios-e2e.yml` CI も smoke 経路を実行します）。[BE-0290](../../roadmaps/BE-0290-xcuitest-default-ios-backend/BE-0290-xcuitest-default-ios-backend-ja.md) で idb を撤去して以来、この経路の iOS backend は XCUITest だけです。
 - XCUITest バックエンドの `back` とデバイス制御（`setLocation` / クリップボード / `push`）を実機上で実行しています。`ios-e2e.yml` が PR ごとに検証します（[BE-0281](../../roadmaps/BE-0281-ios-on-device-actuation-coverage/BE-0281-ios-on-device-actuation-coverage-ja.md)）。
-- `pinch`/`rotate` の multi-touch ジェスチャを、`ios-e2e.yml` の `gestures (xcuitest)` ジョブ（`demos/showcase/scenarios/gestures_multitouch.yaml`、`--backend ios`）で確認済みです。
+- `pinch`/`rotate` の multi-touch ジェスチャを、`ios-e2e.yml` の `run (xcuitest)` ジョブ（`demos/showcase/scenarios/gestures_multitouch.yaml`、`--backend ios`）で確認済みです。
 
 ### ブラウザで検証済み（Linux で動作、Mac 不要）
 
@@ -306,7 +307,7 @@ adb の harness はその代わりに、新しい `SHOWCASE_CONFORMANCE` の int
 
 ### 実 Postgres で検証済み（Linux で動作、Mac 不要）
 
-- serve の DB 層の Alembic migration を、一時的な `postgres:16` サービスコンテナに対して実行します（`migrations (postgres)` ジョブ、`serve-db.yml`、[BE-0309](../../roadmaps/BE-0309-serve-postgres-ci-lane/BE-0309-serve-postgres-ci-lane-ja.md)）。対象には、migration 0010 の `dialect.name == "postgresql"` による foreign-key 分岐や、`models.py` といくつかの migration が Postgres でのみ選ぶ `JSONB` カラムのバリアントが含まれます。このジョブは `tests/serve/test_db_migrations.py` の upgrade/downgrade のアサーションを再実行します。テストは両方の方言でパラメータ化してあるため、高速な `check` ゲートは SQLite を、このレーンは `postgres` マーカーの裏で Postgres を検証し、その方言固有のコードに、ホスト型の運用環境が実際に対象とする方言での初めてのカバレッジを与えます。BE-0282 の前例に従い、まずシグナルとして着地させており、必須チェックにはまだしていません。DB に触れる広いテストスイート（テストごとにインメモリの SQLite エンジンを作る 20 余りのファイル）は、当面 SQLite に対してのみ実行します。共有 Postgres に対して実行するには、テストごとの分離を先に後付けする必要があり、後続のスライスとします。
+- serve の DB 層の Alembic migration を、一時的な `postgres:16` サービスコンテナに対して実行します（`serve db (postgres)` ジョブ、`serve-db.yml`、[BE-0309](../../roadmaps/BE-0309-serve-postgres-ci-lane/BE-0309-serve-postgres-ci-lane-ja.md)）。対象には、migration 0010 の `dialect.name == "postgresql"` による foreign-key 分岐や、`models.py` といくつかの migration が Postgres でのみ選ぶ `JSONB` カラムのバリアントに加え、共有の `serve_engine` フィクスチャにオプトインするファイル（models・repository・OAuth の永続化など）からなる、DB に触れる広いテストスイートも含まれます。これらのテストはすべて、共有の `serve_engine` フィクスチャ（`tests/conftest.py`）を通じて両方の方言でパラメータ化されているため、高速な `check` ゲートは SQLite を、このレーンは `postgres` マーカーの裏で Postgres を検証し（`pytest tests/serve -m postgres -n0`）、migration 0010 の方言固有のコードと、その上位の ORM/repository 層に、ホスト型の運用環境が実際に対象とする方言での初めてのカバレッジを与えます。BE-0282 の前例に従い、まずシグナルとして着地させ、その後**必須チェック**に昇格しました（コードの変更ではなく、リポジトリのルールセット設定によるものです）。これにより、Postgres での回帰は `check` や `E2E (…)` の集約ジョブと同じようにマージをブロックするようになりました。
 
 ### 未配線（スキーマ/フラグはあるが実行時に効かない）
 

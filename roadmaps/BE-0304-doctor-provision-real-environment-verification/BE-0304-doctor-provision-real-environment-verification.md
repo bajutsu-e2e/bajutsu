@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0304](BE-0304-doctor-provision-real-environment-verification.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0304") |
+| Implementing PR | [#1367](https://github.com/bajutsu-e2e/bajutsu/pull/1367), [#1370](https://github.com/bajutsu-e2e/bajutsu/pull/1370) |
 | Topic | doctor / onboarding |
 <!-- /BE-METADATA -->
 
@@ -52,12 +53,12 @@ Proposal altitude. The work is MECE along the units below.
 
 - **Run `bajutsu doctor` for real inside an existing E2E lane.** Add a step to `ios-e2e.yml`
   (and, separately, `android-e2e.yml`/`web-e2e.yml`) that runs the real command against the lane's
-  real environment and asserts the rendered `environment:` section reports no `✘` (i.e. the
+  real environment and asserts the rendered `environment:` section reports no `✗` (i.e. the
   environment gate itself doesn't exit 1/2), exercising `simctl.py`'s real JSON parsing and
   `preflight.py`'s real tool checks in one pass.
 - **Add one deliberately-broken-environment case.** In a job (or job step) with a tool intentionally
   absent or misconfigured (e.g. `PATH` without `idb`), assert `doctor`/`preflight` correctly exits
-  non-zero with an `✘` in the rendered `environment:` section — the fail side no injected-fake test
+  non-zero with an `✗` in the rendered `environment:` section — the fail side no injected-fake test
   can prove today.
 - **Run `python -m bajutsu.provision` for real in a fresh environment.** Add a job (a bare container, or a
   fresh step before the rest of a lane's setup) that runs the real installer end-to-end and asserts
@@ -84,12 +85,38 @@ Proposal altitude. The work is MECE along the units below.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Run `bajutsu doctor` for real inside the iOS, Android, and web E2E lanes, asserting the
-  `environment:` section reports no `✘`.
-- [ ] Add a deliberately-broken-environment case asserting a non-zero exit with an `✘` in the
+- [x] Run `bajutsu doctor` for real inside the iOS, Android, and web E2E lanes, asserting the
+  `environment:` section reports no `✗`.
+- [x] Add a deliberately-broken-environment case asserting a non-zero exit with an `✗` in the
   `environment:` section.
-- [ ] Run `python -m bajutsu.provision` for real in a fresh environment.
-- [ ] Capture a real `simctl list devices -j` payload as a test fixture.
+- [x] Run `python -m bajutsu.provision` for real in a fresh environment.
+- [x] Capture a real `simctl list devices -j` payload as a test fixture.
+
+### Log
+
+- **web-lane onboarding slice** (this PR): a new non-gating `onboarding (doctor / provision)` job in
+  `web-e2e.yml` runs the onboarding gate end to end against a real environment — the browserless host
+  where `doctor` must fail loudly with a `✗` (the broken-environment case), then `python -m
+  bajutsu.provision --backend web` installing Chromium for real, then `doctor`'s environment gate
+  passing. Separately, `tests/test_simctl.py` gains a real captured `simctl list devices available -j`
+  payload (`tests/data/simctl_list_devices_available.json`) that the `device_catalog` / `booted_udids`
+  parsers are checked against, so an Xcode schema drift has a chance of being caught. The iOS and
+  Android `doctor` steps (the first checklist item's remaining two lanes) are a later slice, which is
+  why the item stays *In progress*.
+- **iOS + Android onboarding slice** (this PR): the first checklist item's remaining two lanes land,
+  completing the item. `ios-e2e.yml`'s `smoke` job (Simulator booted) and `android-e2e.yml`'s
+  `smoke` job (inside the emulator session) each run `bajutsu doctor` for real and assert the
+  `environment:` section reports no `✗`, exercising `simctl.py`'s / `adb`'s real device-count parsing
+  and `preflight.py`'s real tool checks through the real actuator. A new `bajutsu doctor
+  --environment-only` flag stops doctor at the runnability gate, so the assertion is scoped to the
+  environment gate and never pays for — or flakes on — the screen probe (on iOS, the resident XCUITest
+  runner). The fragile inline `awk`/`grep` the web slice first shipped is replaced across all three
+  lanes by `scripts/assert_doctor_env.py`, whose section parser is unit-tested
+  (`tests/test_assert_doctor_env.py`) — the same "untested shell → unit-tested Python" move
+  `scripts/e2e_changes.py` made. Both smoke jobs gate on the assertion (a `✗` fails the required
+  `E2E` check): the environment gate is strictly weaker than the smoke run each job already gates on,
+  so it adds no flakiness — unlike the web slice's job, which stays non-gating because it re-runs
+  `provision` (a `playwright install` network flake).
 
 ## References
 
