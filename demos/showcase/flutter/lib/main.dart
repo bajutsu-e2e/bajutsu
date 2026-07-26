@@ -11,13 +11,15 @@ import 'screens/permissions_screen.dart';
 import 'screens/search_screen.dart';
 import 'screens/stable_screen.dart';
 
-/// The proposal's lazy-semantics fallback (BE-0008), gated so on-device verification can settle
-/// whether a backend's accessibility connection triggers semantics on its own before it is baked in.
+/// The proposal's lazy-semantics fallback (BE-0008), kept off by default now that on-device
+/// verification settled it is not needed on the driven path.
 ///
 /// Flutter builds its semantics tree lazily — only once an accessibility client connects or the app
 /// calls `ensureSemantics()`. Android's UI Automator connects as an accessibility service and
-/// triggers it; whether the iOS backend's accessibility access does is the open question. Build with
-/// `--dart-define=ENSURE_SEMANTICS=true` to force the tree on at launch regardless.
+/// triggers it; the iOS XCUITest runner's accessibility query was verified to trigger it too (see
+/// docs/drivers.md), so no forced build is needed on the driven path. Build with
+/// `--dart-define=ENSURE_SEMANTICS=true` to force the tree on at launch regardless — the documented
+/// fallback for an app driven without an accessibility client.
 const bool kEnsureSemantics = bool.fromEnvironment('ENSURE_SEMANTICS');
 
 // Held for the process lifetime: releasing the handle would let Flutter tear the semantics tree down.
