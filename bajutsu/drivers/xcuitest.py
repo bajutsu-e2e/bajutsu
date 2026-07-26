@@ -291,6 +291,7 @@ def _with_crash_recovery(
     inner: TransportFn,
     *,
     health: Callable[[float], bool],
+    runner_alive: Callable[[], bool] | None = None,
     recovery_timeout: float = _RECOVERY_TIMEOUT_SECONDS,
     max_recoveries: int = _MAX_CRASH_RECOVERIES,
 ) -> TransportFn:
@@ -311,6 +312,13 @@ def _with_crash_recovery(
 
     `/health` itself passes straight through: it is the probe recovery leans on, so wrapping it would
     recurse (and block a startup `await_ready` for the whole recovery window on a runner not yet up).
+
+    `runner_alive` splits recovery on the runner *process*: when the environment supplies its
+    `xcodebuild`-liveness check and it reports the process **exited**, the runner will never answer
+    `/health` again (nothing respawns it on this port mid-recovery), so recovery fails fast instead of
+    polling the dead port for the whole window — the pipeline's crash recovery then leases a fresh
+    device and re-runs the scenario. Absent (a test fake) or reporting the process alive, it changes
+    nothing: an alive-but-unreachable runner stays BE-0287's recoverable case and waits out *health*.
     """
     logger = logging.getLogger("bajutsu.xcuitest.channel")
 
@@ -343,6 +351,18 @@ def _with_crash_recovery(
                     raise XcuitestRunnerCrashError(
                         f"runner channel {method} {path} failed: the runner crashed {recoveries} times and "
                         f"stayed unstable past the {max_recoveries}-recovery budget (mid-run crash)",
+                        method=method,
+                        delivered=crash.delivered,
+                    ) from crash
+                if runner_alive is not None and not runner_alive():
+                    # The runner *process* has exited: it cannot answer `/health` again on this port,
+                    # so polling the recovery window would only wait out an inevitable failure. Fail
+                    # fast with a distinct diagnostic; the pipeline's crash recovery then leases a fresh
+                    # device and re-runs the scenario. A process merely unreachable (alive) skips this
+                    # and waits out `health` below, so BE-0287's recoverable case is unchanged.
+                    raise XcuitestRunnerCrashError(
+                        f"runner channel {method} {path} failed: the runner process exited mid-run "
+                        "(it will not recover on this port)",
                         method=method,
                         delivered=crash.delivered,
                     ) from crash
@@ -405,7 +425,9 @@ def _raw_http_transport(host: str, port: int) -> TransportFn:
     return transport
 
 
-def _http_transport(host: str, port: int) -> tuple[TransportFn, TransportFn]:
+def _http_transport(
+    host: str, port: int, runner_alive: Callable[[], bool] | None = None
+) -> tuple[TransportFn, TransportFn]:
     """The real transport, plus the raw single-attempt transport used for fast health probes.
 
     Two layers over the raw socket: BE-0207's `_with_retry` smooths a sub-second blip, and BE-0287's
@@ -415,11 +437,16 @@ def _http_transport(host: str, port: int) -> tuple[TransportFn, TransportFn]:
     re-issues a down connection up to `_MAX_ATTEMPTS` times with backoff, so routing a "single-shot"
     probe through it would silently cost over a second per call instead of one quick attempt — the raw
     transport is returned alongside the wrapped one so both callers can reuse this same instance.
+
+    `runner_alive`, when the environment supplies its `xcodebuild`-process liveness check, lets
+    crash-recovery fail fast on a runner whose process has exited rather than polling the dead port
+    for the whole recovery window; absent, recovery is exactly BE-0287's.
     """
     raw = _raw_http_transport(host, port)
     wrapped = _with_crash_recovery(
         _with_retry(raw),
         health=lambda timeout: _await_health(raw, timeout=timeout),
+        runner_alive=runner_alive,
     )
     return wrapped, raw
 
@@ -461,6 +488,7 @@ class XcuitestDriver:
         transport: TransportFn | None = None,
         host: str = "127.0.0.1",
         port: int = 0,
+        runner_alive: Callable[[], bool] | None = None,
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         if transport is not None:
@@ -468,7 +496,9 @@ class XcuitestDriver:
             self._transport = transport
             self._probe_transport = transport
         else:
-            self._transport, self._probe_transport = _http_transport(host, port)
+            # `runner_alive` lets crash-recovery fail fast on a runner whose process has exited; the
+            # environment supplies its `xcodebuild`-process check, None keeps BE-0287's recovery.
+            self._transport, self._probe_transport = _http_transport(host, port, runner_alive)
         # Injectable so the stale re-resolution backoff (BE-0289) adds no wall time under test.
         self._sleep = sleep
 

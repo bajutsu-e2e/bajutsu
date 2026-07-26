@@ -173,11 +173,16 @@ class _ScenarioRunner:
         handler = self.on_blocked_for(s) if self.on_blocked_for is not None else self.on_blocked
         last_crash: BackendCrashError | None = None
         for attempt in range(1, self.crash_retries + 2):
-            # `_run_on_lease` leases via the caller, runs, and releases the lease in its own `finally`
-            # (on a crash too, so the dead lease is never leaked); a crash then propagates here for the
-            # retry, which leases afresh — a cold respawn, since the pool drops the dead warm runner.
-            lz = self.lease(self.eff, s)
+            # Lease *inside* the try so a crash during bring-up — the launch/readiness gate, not only a
+            # scenario step — is caught by the same recovery. `self.lease` runs launch_driver, whose
+            # `_await_ready` surfaces a BackendCrashError when the resident runner answers /health at
+            # cold spawn and then crashes on the first readiness query, before any step runs; without
+            # this, that crash escaped the loop and failed the whole run. `_run_on_lease` releases the
+            # lease in its own `finally` (on a mid-step crash too, so the dead lease is never leaked); a
+            # lease-time crash leaves no lease to release (the pool tears down its own failed lease), and
+            # the retry leases afresh — a cold respawn, since the pool drops the dead warm runner.
             try:
+                lz = self.lease(self.eff, s)
                 return self._run_on_lease(lz, handler, i, s, sid)
             except BackendCrashError as crash:
                 last_crash = crash

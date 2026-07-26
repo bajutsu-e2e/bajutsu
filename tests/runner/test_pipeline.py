@@ -125,6 +125,55 @@ def test_run_all_crash_retries_zero_disables_recovery() -> None:
     assert not results[0].ok and leases == 1  # no retry
 
 
+def test_run_all_recovers_when_the_lease_itself_crashes_at_bringup() -> None:
+    # A backend crash during the LEASE — the launch/readiness gate, not a scenario step — must be
+    # recovered by the same retry. The resident runner can answer /health at cold spawn and then crash
+    # on the first readiness query, before any step runs, so `self.lease` (which runs launch_driver)
+    # raises BackendCrashError; the retry leases afresh (a cold respawn) and the scenario passes. Guards
+    # the fix that moved the lease inside the crash-retry try — before it, a lease-time crash escaped
+    # the loop and failed the whole run.
+    state = {"n": 0}
+    leased: list[int] = []
+
+    def lease(eff: Effective, scenario: Scenario) -> Lease:
+        state["n"] += 1
+        n = state["n"]
+        if n == 1:
+            raise base.BackendCrashError("runner crashed during the readiness gate (test)")
+        leased.append(n)
+        return Lease(
+            driver=_fake_driver(),
+            sink=NullSink(),
+            relaunch=None,
+            control=None,
+            collector=None,
+            release=lambda: None,
+        )
+
+    scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
+    results = run_all(_eff(), scenarios, lease)
+    assert [r.ok for r in results] == [
+        True
+    ]  # recovered even though the crash happened at lease time
+    assert leased == [2]  # the second lease (a cold respawn) served the run
+
+
+def test_run_all_fails_when_the_lease_crashes_every_attempt() -> None:
+    # A lease that crashes at bring-up on every attempt exhausts the budget and fails loudly, exactly
+    # like a step-time crash — the lease-time path honors the same bound (BE-0049), never looping.
+    leases = 0
+
+    def lease(eff: Effective, scenario: Scenario) -> Lease:
+        nonlocal leases
+        leases += 1
+        raise base.BackendCrashError("runner crashed during the readiness gate (test)")
+
+    scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
+    results = run_all(_eff(), scenarios, lease, crash_retries=1)
+    assert not results[0].ok and leases == 2  # crash_retries=1 → 2 attempts, both crashed at lease
+    assert "crashed mid-run" in (results[0].failure or "")
+
+
 def test_scenario_runner_runs_one_in_isolation() -> None:
     """`_ScenarioRunner.run_one` runs a single scenario without run_all's setup (BE-0172).
 
