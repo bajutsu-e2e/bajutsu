@@ -42,18 +42,19 @@ def test_doctor_tool_returns_score(tmp_path: Path, monkeypatch: pytest.MonkeyPat
         "defaults: {}\ntargets:\n  demo:\n    bundleId: com.demo\n    idNamespaces: [home]\n",
         encoding="utf-8",
     )
-    from bajutsu.drivers.fake import FakeDriver
     from bajutsu.mcp.tools import register_tools
 
     screen = [el("home.title", "Home", ["button"]), el("home.btn", "Go", ["button"])]
-    driver = FakeDriver(screen)
 
     from fastmcp import FastMCP
 
     mcp = FastMCP("test")
     register_tools(mcp, config)
 
-    monkeypatch.setattr("bajutsu.mcp.tools.make_driver", lambda actuator, udid: driver)
+    # The tool delegates to the shared `probe_screen` (BE-0199) rather than building a driver
+    # itself, so this exercises the delegation, not `probe_screen`'s own runner-startup logic
+    # (covered by test_doctor.py's xcuitest/playwright/adb probe tests).
+    monkeypatch.setattr("bajutsu.mcp.tools.probe_screen", lambda actuator, udid, eff: screen)
     monkeypatch.setattr(
         "bajutsu.mcp.tools.select_actuator", lambda backends, available=None: "fake"
     )
@@ -61,6 +62,59 @@ def test_doctor_tool_returns_score(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     result = _run(mcp.call_tool("bajutsu_doctor", {"target": "demo"}))
     text = result.content[0].text
     assert "Ready" in text
+
+
+def test_doctor_tool_reports_probe_config_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A DoctorProbeError (e.g. a web target with no baseUrl) is a fixable config error, not a
+    # crash — the tool returns its message instead of raising through the MCP transport.
+    config = tmp_path / "bajutsu.config.yaml"
+    config.write_text("defaults: {}\ntargets:\n  demo:\n    bundleId: com.demo\n", encoding="utf-8")
+    from fastmcp import FastMCP
+
+    from bajutsu.doctor import DoctorProbeError
+    from bajutsu.mcp.tools import register_tools
+
+    mcp = FastMCP("test")
+    register_tools(mcp, config)
+
+    def boom(actuator: str, udid: str, eff: object) -> list[object]:
+        raise DoctorProbeError("web target needs baseUrl (set targets.<name>.baseUrl)")
+
+    monkeypatch.setattr("bajutsu.mcp.tools.probe_screen", boom)
+    monkeypatch.setattr(
+        "bajutsu.mcp.tools.select_actuator", lambda backends, available=None: "playwright"
+    )
+
+    result = _run(mcp.call_tool("bajutsu_doctor", {"target": "demo"}))
+    assert "baseUrl" in result.content[0].text
+
+
+def test_doctor_tool_reports_device_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # A runner that never comes up (no booted Simulator, a dead `/health`, ...) surfaces a
+    # DeviceError from the probe; the tool reports it as a clean message, matching the CLI's UX,
+    # rather than an unhandled exception.
+    config = tmp_path / "bajutsu.config.yaml"
+    config.write_text("defaults: {}\ntargets:\n  demo:\n    bundleId: com.demo\n", encoding="utf-8")
+    from fastmcp import FastMCP
+
+    from bajutsu import device_errors
+    from bajutsu.mcp.tools import register_tools
+
+    mcp = FastMCP("test")
+    register_tools(mcp, config)
+
+    def boom(actuator: str, udid: str, eff: object) -> list[object]:
+        raise device_errors.DeviceError("no booted Simulator")
+
+    monkeypatch.setattr("bajutsu.mcp.tools.probe_screen", boom)
+    monkeypatch.setattr(
+        "bajutsu.mcp.tools.select_actuator", lambda backends, available=None: "xcuitest"
+    )
+
+    result = _run(mcp.call_tool("bajutsu_doctor", {"target": "demo"}))
+    assert "could not read the screen to score" in result.content[0].text
 
 
 # --- run tool ---
