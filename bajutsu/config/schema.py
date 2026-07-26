@@ -10,10 +10,18 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
+from bajutsu.deprecations import warn_deprecated_key
 from bajutsu.drivers import base
-from bajutsu.scenario import DismissAlerts, Interrupt, Redact
+from bajutsu.scenario import AlertHandling, Interrupt, Redact
 
 # Playwright rendering engines a web target can drive (BE-0076). Chromium is the default,
 # preserving today's single-engine behaviour; all three run headless on Linux.
@@ -365,14 +373,27 @@ class TargetConfig(_Model):
     # (BE-0177). Each sits *between* the per-scenario value and the built-in default: the flag still
     # overrides for one run, then the scenario's own value, then this, then the built-in — mirroring
     # `--headed`/`headless`. None = unset (fall through to the built-in default).
-    dismiss_alerts: DismissAlerts | None = Field(default=None, alias="dismissAlerts")
+    # `dismissAlerts` is the deprecated input alias (BE-0317); a dump emits `alertHandling`.
+    alert_handling: AlertHandling | None = Field(
+        default=None,
+        validation_alias=AliasChoices("alertHandling", "dismissAlerts"),
+        serialization_alias="alertHandling",
+    )
     erase: bool | None = None  # default for preconditions.erase (built-in: off)
     network: bool | None = None  # collect the app's network exchanges (built-in: on)
     # App-wide interstitial-screen handlers (BE-0314): the same `{ condition, steps }` shape a
     # scenario's `interrupts` uses, applied to every scenario for this target. A scenario's own
     # `interrupts` is appended after these (config entries checked first), mirroring how
-    # `dismissAlerts` layers a config default under a per-scenario value. Empty = no app-wide handler.
+    # `alertHandling` layers a config default under a per-scenario value. Empty = no app-wide handler.
     interrupts: list[Interrupt] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _warn_deprecated_alert_key(cls, data: Any) -> Any:
+        # `alertHandling` renamed `dismissAlerts` (BE-0317); the old key still parses via the alias
+        # above, but using it earns a one-time notice on the authoring path (never the run verdict).
+        warn_deprecated_key(data, surface="config", old="dismissAlerts", new="alertHandling")
+        return data
 
     @field_validator("backend", mode="before")
     @classmethod

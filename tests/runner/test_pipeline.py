@@ -407,16 +407,16 @@ def test_run_all_releases_after_each_scenario() -> None:
 
 
 def test_run_all_alert_guard_for_selects_per_scenario() -> None:
-    # The factory picks each scenario's guard from its dismissAlerts: the guarded scenario
+    # The factory picks each scenario's guard from its alertHandling: the guarded scenario
     # recovers from a blocked tap and passes; the one that disabled it fails.
     from bajutsu.orchestrator import AlertEvent, AlertGuardConfig
 
     scenarios = [
         Scenario.model_validate(
-            {"name": "guarded", "dismissAlerts": True, "steps": [{"tap": {"id": "later"}}]}
+            {"name": "guarded", "alertHandling": True, "steps": [{"tap": {"id": "later"}}]}
         ),
         Scenario.model_validate(
-            {"name": "bare", "dismissAlerts": False, "steps": [{"tap": {"id": "later"}}]}
+            {"name": "bare", "alertHandling": False, "steps": [{"tap": {"id": "later"}}]}
         ),
     ]
 
@@ -426,7 +426,7 @@ def test_run_all_alert_guard_for_selects_per_scenario() -> None:
         return AlertEvent(label="x")
 
     def alert_guard_for(s: Scenario) -> AlertGuardConfig | None:
-        cfg = s.dismiss_alerts
+        cfg = s.alert_handling
         return None if cfg is not None and not cfg.enabled else AlertGuardConfig(vision=recover)
 
     results = run_all(_eff(), scenarios, _lease, alert_guard_for=alert_guard_for)

@@ -2,7 +2,7 @@
 # steps and assertions are identical on both; only the grant *mechanism* differs, and it lives in the
 # target config, not this scenario:
 #   - iOS (XCUITest): there is no deterministic pre-grant (simctl can't grant notifications), so the
-#     out-of-process SpringBoard prompt is cleared by the reactive alert guard — `dismissAlerts` here
+#     out-of-process SpringBoard prompt is cleared by the reactive alert guard — `alertHandling` here
 #     taps "Allow" to grant. Since BE-0315 that guard takes a native SpringBoard path on XCUITest: it
 #     reads the prompt's buttons and taps "Allow" by an accessibility query, with no screenshot, no
 #     model, and no ANTHROPIC_API_KEY — so this grant is deterministic on iOS (prime directive 1). It
@@ -17,13 +17,13 @@
 #     assertion, so it never touches the pass/fail verdict.
 # The app's notification model starts at notDetermined regardless of any OS-level grant (it only
 # updates inside the request completion handler), so the pre/post assertions below are identical on
-# both platforms. `dismissAlerts` is on but no-ops wherever no prompt appears. The location scenario
+# both platforms. `alertHandling` is on but no-ops wherever no prompt appears. The location scenario
 # below does *not* share this "starts at notDetermined" property on iOS — see its own comment.
 # Both scenarios are deterministic on both lanes (the iOS grant is native since BE-0315), so neither
 # is tagged `ai` and both run on the required XCUITest gate.
 - name: grant notification permission
   tags: [permission, system]
-  dismissAlerts: { instruction: ["Allow"] }   # iOS: native tap on "Allow" to grant; Android: no-op (pre-granted)
+  alertHandling: { instruction: ["Allow"] }   # iOS: native tap on "Allow" to grant; Android: no-op (pre-granted)
   preconditions:
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
@@ -43,7 +43,7 @@
 # Location, pre-granted declaratively (BE-0276): unlike notifications above, `location` has a TCC
 # service on iOS (`simctl privacy grant location <bundle>`) and a real android.permission.* on
 # Android (`pm grant`), so `permissions` handles it on both platforms — no SpringBoard/system
-# prompt ever appears, so no dismissAlerts, no AI, fully deterministic on both lanes.
+# prompt ever appears, so no alertHandling, no AI, fully deterministic on both lanes.
 - name: location permission pre-granted
   tags: [permission, system]
   permissions:

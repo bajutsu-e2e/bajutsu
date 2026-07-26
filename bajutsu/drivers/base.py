@@ -232,7 +232,7 @@ class Driver(Protocol):
     # rejects the scenario before any device work, so this raise is only the mid-run backstop.
     def handle_system_alert(self, sel: Selector, timeout: float) -> None: ...
     # A single, non-blocking read of the SpringBoard alert's button labels — [] when no alert is up
-    # (BE-0315). The reactive `dismissAlerts` guard polls this to learn whether a prompt is showing
+    # (BE-0315). The reactive `alertHandling` guard polls this to learn whether a prompt is showing
     # and which buttons it offers, then taps a policy-named one via `handle_system_alert`. It shares
     # the HANDLE_SYSTEM_ALERT capability (a backend without it returns []), so it never adds a route
     # of its own — the query is BE-0316's `/systemAlert/query`, read here without the tap.

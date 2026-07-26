@@ -181,7 +181,7 @@ class RunResult:
 BlockedHandler = Callable[[base.Driver], "AlertEvent | None"]
 
 # The reactive guard's default native presence-query cadence (seconds), overridable per scenario /
-# target / flag via `dismissAlerts.pollInterval` (BE-0315, riding the BE-0177 precedence).
+# target / flag via `alertHandling.pollInterval` (BE-0315, riding the BE-0177 precedence).
 DEFAULT_ALERT_POLL_INTERVAL = 1.0
 
 # The timeout the reactive guard passes `handle_system_alert` for its tap (BE-0315): 0 means "query

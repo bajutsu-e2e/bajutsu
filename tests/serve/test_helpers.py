@@ -348,13 +348,13 @@ def test_run_command_builder() -> None:
         "U",
     ]
     assert "--erase" not in cmd and "--no-erase" not in cmd
-    erased = srv.run_command("s.yaml", "demo", erase=True, dismiss_alerts=True)
-    assert "--erase" in erased and "--no-erase" not in erased and "--dismiss-alerts" in erased
+    erased = srv.run_command("s.yaml", "demo", erase=True, alert_handling=True)
+    assert "--erase" in erased and "--no-erase" not in erased and "--alert-handling" in erased
     assert "--no-erase" in srv.run_command("s.yaml", "demo", erase=False)  # explicit override
-    # dismiss_alerts defaults to None: no flag, so each scenario's dismissAlerts (on) decides.
-    assert "--dismiss-alerts" not in cmd and "--no-dismiss-alerts" not in cmd
+    # alert_handling defaults to None: no flag, so each scenario's alertHandling (on) decides.
+    assert "--alert-handling" not in cmd and "--no-alert-handling" not in cmd
     # False forces the guard off for the run (mirrors --no-erase).
-    assert "--no-dismiss-alerts" in srv.run_command("s.yaml", "demo", dismiss_alerts=False)
+    assert "--no-alert-handling" in srv.run_command("s.yaml", "demo", alert_handling=False)
     # headed defaults to None: no flag, so the app's `headless` config decides. True/False force
     # the web browser visible/headless for the run (the Web UI's "show browser" toggle).
     assert "--headed" not in cmd and "--no-headed" not in cmd
@@ -479,10 +479,10 @@ def test_record_command_builder() -> None:
     assert "--agent" not in cmd
     assert cmd[cmd.index("--backend") + 1] == "xcuitest" and cmd[cmd.index("--udid") + 1] == "U"
     # erase / dismiss default to None (the CLI defaults — record erases and dismisses): no flag.
-    assert "--erase" not in cmd and "--no-erase" not in cmd and "--no-dismiss-alerts" not in cmd
+    assert "--erase" not in cmd and "--no-erase" not in cmd and "--no-alert-handling" not in cmd
     # Explicit overrides mirror run_command.
     assert "--no-erase" in srv.record_command("o.yaml", "demo", "g", erase=False)
-    assert "--no-dismiss-alerts" in srv.record_command("o.yaml", "demo", "g", dismiss_alerts=False)
+    assert "--no-alert-handling" in srv.record_command("o.yaml", "demo", "g", alert_handling=False)
     # headed mirrors run_command: None = no flag, True/False force the web browser visible/headless.
     assert "--headed" not in cmd and "--no-headed" not in cmd
     assert "--headed" in srv.record_command("o.yaml", "demo", "g", headed=True)
@@ -516,7 +516,7 @@ def test_crawl_command_builder() -> None:
     assert "--headed" in srv.crawl_command("demo", out="o", headed=True)
     assert "--no-headed" in srv.crawl_command("demo", out="o", headed=False)
     assert "--no-erase" in srv.crawl_command("demo", out="o", erase=False)  # explicit override
-    assert "--no-dismiss-alerts" in srv.crawl_command("demo", out="o", dismiss_alerts=False)
+    assert "--no-alert-handling" in srv.crawl_command("demo", out="o", alert_handling=False)
     bare = srv.crawl_command("demo", out="o")  # no backend/udid → those flags omitted
     assert "--agent" not in bare  # the AI provider is inherited from the serve env (BE-0163)
     assert "--backend" not in bare and "--udid" not in bare

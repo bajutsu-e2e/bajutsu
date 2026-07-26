@@ -175,7 +175,7 @@ def resolve(config: Config, target: str) -> Effective:
         notify=a.notify if a.notify is not None else list(config.notify),
         visual_compare=a.visual_compare or d.visual_compare or "exact",
         run_defaults=RunDefaults(
-            dismiss_alerts=a.dismiss_alerts,
+            alert_handling=a.alert_handling,
             erase=a.erase if a.erase is not None else False,
             network=a.network if a.network is not None else True,
             interrupts=list(a.interrupts),

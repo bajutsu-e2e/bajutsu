@@ -8,8 +8,9 @@ from __future__ import annotations
 
 from typing import Any, Literal, Self
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import AliasChoices, Field, field_validator, model_validator
 
+from bajutsu.deprecations import warn_deprecated_key
 from bajutsu.drivers.base import PERMISSION_SERVICES
 from bajutsu.scenario.models._base import _Model
 from bajutsu.scenario.models.assertions import Assertion
@@ -51,22 +52,24 @@ class Preconditions(_Model):
     setup: str | None = None
 
 
-class DismissAlerts(_Model):
+class AlertHandling(_Model):
     """Per-scenario control of the reactive system-alert guard.
 
-    Dismissal of OS prompts (e.g. a notification or App Tracking Transparency request) that the
+    Handling of OS prompts (e.g. a notification or App Tracking Transparency request) that the
     app-scoped accessibility tree cannot see or tap, fired reactively when a step (or `expect`) is
-    blocked or a guarded wait finds an alert. On the iOS XCUITest backend it clears the prompt
-    deterministically and natively (BE-0315), reusing BE-0316's SpringBoard query + tap — no
-    screenshot and no model round trip; where the native path cannot act it falls back to the vision
-    guard (a screenshot the locator reads). This is the *reactive* counterpart to the *proactive*
+    blocked or a guarded wait finds an alert. The guard is ON by default. On the iOS XCUITest backend
+    it clears the prompt deterministically and natively (BE-0315), reusing BE-0316's SpringBoard query
+    + tap — no screenshot and no model round trip; where the native path cannot act it falls back to
+    the vision guard (a screenshot the locator reads). With an `instruction` it taps whatever button
+    that names — dismissing *or* accepting (e.g. granting a permission) — so it handles the prompt
+    rather than only dismissing it. This is the *reactive* counterpart to the *proactive*
     `handleSystemAlert` step (BE-0316): the step taps a named button at an author-chosen point, this
     guard clears prompts automatically wherever they surface.
     Two on-disk forms (the bare boolean is shorthand for `{ enabled: <bool> }`):
-        dismissAlerts: false                       — disable the guard for this scenario
-        dismissAlerts: { instruction: ["Allow"] }  — deterministic: tap the first of these labels
+        alertHandling: false                       — disable the guard for this scenario
+        alertHandling: { instruction: ["Allow"] }  — deterministic: tap the first of these labels
                                                       present on the alert (native path)
-        dismissAlerts: { instruction: "tap Allow" } — legacy free text the vision locator interprets
+        alertHandling: { instruction: "tap Allow" } — legacy free text the vision locator interprets
     """
 
     enabled: bool = True
@@ -85,7 +88,7 @@ class DismissAlerts(_Model):
     # wait is pending, on its own wall clock decoupled from the wait's condition poll (BE-0315). A
     # heuristic trading detection latency against runner load, so it is a knob rather than hard-coded;
     # None inherits the built-in default (one second). Rides the same precedence as the rest of
-    # `dismissAlerts` (BE-0177).
+    # `alertHandling` (BE-0177).
     poll_interval: float | None = Field(default=None, alias="pollInterval")
 
     @model_validator(mode="before")
@@ -122,7 +125,7 @@ class Scenario(_Model):
     tags: list[str] = Field(default_factory=list)
     # Per-scenario OS permission state (BE-0276), applied before the app process starts: grant or
     # revoke a permission up front so the runtime prompt never appears (iOS `simctl privacy`,
-    # Android `pm grant`/`pm revoke`). Deterministic and AI-free, unlike the vision dismissAlerts
+    # Android `pm grant`/`pm revoke`). Deterministic and AI-free, unlike the vision alertHandling
     # guard below, which reacts to a prompt only after it appears. Kept as a plain `dict[str, str]`
     # (validated below against the vocabulary) rather than a `Literal`-keyed dict, so it stays
     # assignable to the `Mapping[str, str]` the platform-lifecycle `start()` seam expects.
@@ -131,7 +134,7 @@ class Scenario(_Model):
     # names a `condition` (the assertion DSL `if` uses) and the `steps` that clear it. The runner
     # checks each opportunistically against trees it has already fetched, wherever the screen appears
     # — so an author need not predict the one spot to place an `if`. Appended to the target config's
-    # own `interrupts` (config entries first), mirroring how `dismissAlerts` layers config under
+    # own `interrupts` (config entries first), mirroring how `alertHandling` layers config under
     # scenario. Empty (the default) means no scenario-level handler, so it prunes from a dump.
     interrupts: list[Interrupt] = Field(default_factory=list)
     data: list[dict[str, str]] | None = None
@@ -143,9 +146,22 @@ class Scenario(_Model):
     network: Network | None = None
     mocks: list[Mock] = Field(default_factory=list)
     redact: Redact | None = None
-    # The alert guard runs on by default; unset means "on, dismiss the prompt" (see
-    # DismissAlerts). Kept None when unset so a dumped scenario stays clean.
-    dismiss_alerts: DismissAlerts | None = Field(default=None, alias="dismissAlerts")
+    # The alert guard runs on by default; unset means "on, tap the prompt's default button" (see
+    # AlertHandling). Kept None when unset so a dumped scenario stays clean. `dismissAlerts` is the
+    # deprecated input alias (BE-0317); a dump emits the canonical `alertHandling`.
+    alert_handling: AlertHandling | None = Field(
+        default=None,
+        validation_alias=AliasChoices("alertHandling", "dismissAlerts"),
+        serialization_alias="alertHandling",
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _warn_deprecated_alert_key(cls, data: Any) -> Any:
+        # `alertHandling` renamed `dismissAlerts` (BE-0317); the old key still parses via the alias
+        # above, but using it earns a one-time notice on the authoring path (never the run verdict).
+        warn_deprecated_key(data, surface="scenario", old="dismissAlerts", new="alertHandling")
+        return data
 
     @field_validator("permissions")
     @classmethod
