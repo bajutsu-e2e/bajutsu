@@ -105,6 +105,9 @@ bajutsu doctor --target <name> [--udid booted] [--backend ...] [--config ...] [-
   up the resident XCUITest runner). A CI lane that only needs to verify the environment gate against
   a real host (BE-0304) uses this to skip the probe's unrelated failure modes, the runner's own
   startup flakiness included.
+- `--scenario <file.yaml>` runs a device-free **capability preflight** (BE-0024): before the screen
+  probe, it checks whether the scenario uses constructs the chosen backend can't perform and **exits
+  1** if any are unsupported.
 - Otherwise, `query()`s via the actuator and renders `score(elements, idNamespaces)`. **Exits 1 when
   the grade is Blocked, 0 otherwise.**
 
