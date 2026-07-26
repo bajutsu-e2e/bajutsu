@@ -136,6 +136,11 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       relevant: ${{ steps.filter.outputs.relevant }}
+      # BE-0322: `shared` is a shared-code change (fire the whole lane); `affected` is the JSON array
+      # of scenario-keyed jobs a scenario-only change reached. A scenario-keyed job runs when
+      # `relevant` and (`shared` or the job is in `affected`); a dimension job runs on any `relevant`.
+      shared: ${{ steps.filter.outputs.shared }}
+      affected: ${{ steps.filter.outputs.affected }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         with:
@@ -272,7 +277,12 @@ jobs:
   run:
     name: run (xcuitest)
     needs: [changes, build]
-    if: needs.changes.outputs.relevant == 'true'
+    # BE-0322: a scenario-keyed job runs on a shared-code change, or when a scenario it declares
+    # changed. A scenario-only change to none of this job's scenarios narrows it out.
+    if: >-
+      needs.changes.outputs.relevant == 'true' &&
+      (needs.changes.outputs.shared == 'true' ||
+      contains(fromJSON(needs.changes.outputs.affected), 'run'))
     runs-on: macos-latest
     # Cap the metered macOS job (10x billing): a hung Simulator/runner would otherwise run to the 6h
     # default. No build here (the `build` job staged the products) — boot + install + one cold runner
@@ -371,7 +381,12 @@ jobs:
   actuation:
     name: actuation (xcuitest)
     needs: [changes, build]
-    if: needs.changes.outputs.relevant == 'true'
+    # BE-0322: runs on a shared-code change, or when one of its scenarios (navigation / device /
+    # push / text_editing) changed.
+    if: >-
+      needs.changes.outputs.relevant == 'true' &&
+      (needs.changes.outputs.shared == 'true' ||
+      contains(fromJSON(needs.changes.outputs.affected), 'actuation'))
     runs-on: macos-latest
     # Cap the metered macOS job (10x billing): a hung Simulator/runner would otherwise run to the 6h
     # default. Install (no build) + four short scenario runs is ~10min, so 25 catches a real hang.
@@ -441,7 +456,11 @@ jobs:
   golden:
     name: golden (xcuitest)
     needs: [changes, build]
-    if: needs.changes.outputs.relevant == 'true'
+    # BE-0322: runs on a shared-code change, or when golden.yaml changed.
+    if: >-
+      needs.changes.outputs.relevant == 'true' &&
+      (needs.changes.outputs.shared == 'true' ||
+      contains(fromJSON(needs.changes.outputs.affected), 'golden'))
     runs-on: macos-latest
     # Install the prebuilt products (no build) + a fresh Simulator boot (~80s) + the golden run is
     # well under this; 25 catches a hung Simulator/runner on the metered macOS runner with headroom.
@@ -575,7 +594,12 @@ jobs:
   bundled-runner:
     name: bundled-runner (xcuitest)
     needs: [changes, build]
-    if: needs.changes.outputs.relevant == 'true'
+    # BE-0322: runs on a shared-code change, or when smoke.yaml changed (declared here and by `run`,
+    # so a smoke.yaml edit fires both).
+    if: >-
+      needs.changes.outputs.relevant == 'true' &&
+      (needs.changes.outputs.shared == 'true' ||
+      contains(fromJSON(needs.changes.outputs.affected), 'bundled-runner'))
     runs-on: macos-latest
     # Cap the metered macOS job (10x billing): a hung Simulator/runner would otherwise run to the
     # 6h default. Install both prebuilt apps (no build) + two smoke runs is ~10min, so 25 catches a

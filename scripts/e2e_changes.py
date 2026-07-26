@@ -31,14 +31,29 @@ Invoked by each workflow with ``BASE_SHA`` / ``HEAD_SHA`` in the environment and
 the lane (``ios`` — the default — / ``android`` / ``web``); it writes ``relevant=true|false`` to
 ``GITHUB_OUTPUT``. An empty ``BASE_SHA`` (a manual ``workflow_dispatch`` with no PR context) always
 counts as relevant.
+
+BE-0322 narrows the fan-out for the one case it can prove safe: a change confined to a lane's
+scenario files fires only the jobs that declare a changed scenario, rather than the whole lane.
+Alongside ``relevant`` the module emits two more outputs the lane's jobs read: ``shared=true|false``
+(a shared-code change — driver / runner / app / workflow code that can affect any scenario, so the
+whole lane fires) and ``affected`` (a JSON array of the scenario-keyed jobs a scenario-only change
+reached). A scenario-keyed job runs when ``relevant`` is true and (``shared`` is true, or the job is
+in ``affected``); a dimension job that declares no scenario (codegen / conformance / visual) runs
+whenever ``relevant`` is true. The decision over-selects toward the whole lane — a shared-code
+change, an unattributable scenario fragment, an unreadable workflow, and a lane with no
+scenario-keyed jobs (Android, web) all fall back to ``shared`` — so it never skips a job a change
+could have broken. It reads only the ``git`` diff and the ``scenarios:`` each job already declares:
+no large language model touches the decision, and it has no bearing on any run's pass/fail verdict.
 """
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
 from collections.abc import Iterable
+from pathlib import Path
 
 # The run / codegen / record importable surface every backend's E2E exercises — identical across the
 # iOS, Android, and web lanes, so it lives here once. Subpackages (runner / scenario / orchestrator /
@@ -149,9 +164,43 @@ _LANE_RE: dict[str, re.Pattern[str]] = {
 
 DEFAULT_LANE = "ios"
 
+# The scenario-file subset of each lane's relevant surface (BE-0322). A change confined to these
+# files is `scenario-only` and can be narrowed to the jobs that declare a changed scenario; a
+# relevant change anywhere else is `shared` and fires the whole lane. The showcase scenarios are the
+# iOS and Android scenario files; the web lane's scenarios live under its own demos. Each pattern is
+# a subset of the lane's own `_LANE_PATHS` fragment above, so a scenario file is always relevant first.
+_LANE_SCENARIO_PATHS: dict[str, str] = {
+    "ios": r"demos/showcase/scenarios/",
+    "android": r"demos/showcase/scenarios/",
+    "web": r"demos/serve-ui/|demos/web/",
+}
 
-def is_relevant(paths: Iterable[str], lane: str = DEFAULT_LANE) -> bool:
-    """Whether any changed path is one the given lane's E2E jobs actually exercise.
+_LANE_SCENARIO_RE: dict[str, re.Pattern[str]] = {
+    lane: re.compile(r"^(?:" + pattern + r")") for lane, pattern in _LANE_SCENARIO_PATHS.items()
+}
+
+# Repo root, resolved from this file so the workflow read below works regardless of the invoking cwd.
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+
+# A `jobs:` block header, a job id (a 2-space-indented key under it), and a `scenarios:` input line
+# (nested deeper inside a step's `with:`). `scenarios:` appears only as the bajutsu-e2e action's
+# input in these workflows, so every match is a job's declared scenario (BE-0322). A line scan, not
+# a YAML parse, keeps the `changes` job on the standard library — its bare `python3` has no PyYAML.
+_JOBS_HEADER_RE = re.compile(r"^jobs:\s*(?:#.*)?$")
+# A column-0 key ends the jobs block — but not a column-0 comment, which would otherwise cut the scan
+# short and silently drop every job below it (an under-fire that could skip a job exercising a
+# changed scenario). Comments and blank lines are skipped, so only a real top-level key stops it.
+_TOP_LEVEL_KEY_RE = re.compile(r"^[^\s#]")
+_JOB_ID_RE = re.compile(r"^  ([A-Za-z0-9_-]+):\s*(?:#.*)?$")
+_SCENARIOS_INPUT_RE = re.compile(r"^\s+scenarios:\s*(.*?)\s*(?:#.*)?$")
+# A single unquoted scenario path — the only form these workflows use. A `scenarios:` value that is
+# quoted, a block scalar (`|` / `>`), or a multi-item list matches neither and is rejected below, so
+# the scanner fails loud into the caller's whole-fleet fallback rather than mis-parsing it silently.
+_PLAIN_PATH_RE = re.compile(r"^[\w./-]+$")
+
+
+def _lane_re(lane: str) -> re.Pattern[str]:
+    """The compiled relevance pattern for ``lane``.
 
     Raises:
         ValueError: ``lane`` is none of the known lanes. ``E2E_LANE`` is a literal each workflow
@@ -160,10 +209,145 @@ def is_relevant(paths: Iterable[str], lane: str = DEFAULT_LANE) -> bool:
             under-trigger and let a required aggregator report green without exercising this lane.
     """
     try:
-        pattern = _LANE_RE[lane]
+        return _LANE_RE[lane]
     except KeyError:
         raise ValueError(f"Unknown E2E lane {lane!r}; expected one of {sorted(_LANE_RE)}") from None
+
+
+def is_relevant(paths: Iterable[str], lane: str = DEFAULT_LANE) -> bool:
+    """Whether any changed path is one the given lane's E2E jobs actually exercise.
+
+    Raises:
+        ValueError: ``lane`` is none of the known lanes (see ``_lane_re``).
+    """
+    pattern = _lane_re(lane)
     return any(pattern.match(p) for p in paths)
+
+
+def classify_change(paths: Iterable[str], lane: str = DEFAULT_LANE) -> str:
+    """Partition ``lane``'s changed files into ``none`` / ``scenario-only`` / ``shared`` (BE-0322).
+
+    Returns:
+        ``none`` when no changed path is one the lane exercises (skip it, as today); ``scenario-only``
+        when every relevant path is a scenario file (the affected jobs can be narrowed); ``shared``
+        when a relevant path lies outside the scenario files (shared code that can affect any
+        scenario — fire the whole lane). Irrelevant paths (a doc, a roadmap file) are ignored, so
+        they never tip a scenario-only change into ``shared``.
+
+    Raises:
+        ValueError: ``lane`` is none of the known lanes (see ``_lane_re``).
+    """
+    pattern = _lane_re(lane)
+    relevant = [p for p in paths if pattern.match(p)]
+    if not relevant:
+        return "none"
+    scenario_re = _LANE_SCENARIO_RE[lane]
+    return "scenario-only" if all(scenario_re.match(p) for p in relevant) else "shared"
+
+
+def job_scenario_map(workflow_text: str) -> dict[str, set[str]]:
+    """Map each job to the scenario files it declares, read from a lane's workflow file (BE-0322).
+
+    Reads the ``scenarios:`` inputs already present in the workflow, so the map is a lookup over the
+    workflow's own declarations rather than a second list to maintain — it cannot drift from what
+    each job runs. A job that declares no scenario — a dimension job (codegen / conformance /
+    visual), or a lane with no scenario-keyed jobs at all — is simply absent, so an empty map is
+    valid. A line scan keeps the caller on the standard library (the ``changes`` job runs a bare
+    ``python3`` with no PyYAML); the format is regular block YAML pinned by the tests.
+
+    Raises:
+        ValueError: the text has no ``jobs`` block; a ``scenarios:`` value is a quoted path, a list,
+            or a literal block scalar (``|``); or a path in a folded block scalar (``>``/``>-``) is
+            not a plain unquoted path. The caller falls back to firing the whole lane rather than
+            trusting a mis-parsed map that would narrow the lane wrongly.
+    """
+    result: dict[str, set[str]] = {}
+    in_jobs = False
+    current_job: str | None = None
+    # When non-None, we're collecting path lines from a folded block scalar (`>-`/`>`).
+    # Stores the job key and the indentation of the `scenarios: >-` line.
+    block_collecting: str | None = None
+    block_indent: int = 0
+    for line in workflow_text.splitlines():
+        if block_collecting is not None:
+            stripped = line.rstrip()
+            if not stripped or stripped.lstrip().startswith("#"):
+                continue  # blank / comment inside block scalar
+            indent = len(stripped) - len(stripped.lstrip())
+            if indent > block_indent:
+                path = stripped.strip()
+                if not _PLAIN_PATH_RE.match(path):
+                    raise ValueError(
+                        f"unparseable path {path!r} in block-scalar `scenarios:` of job {block_collecting!r}"
+                    )
+                result.setdefault(block_collecting, set()).add(path)
+                continue
+            block_collecting = None  # shallower indent: block scalar ended; fall through
+        if _JOBS_HEADER_RE.match(line):
+            in_jobs = True
+            continue
+        if not in_jobs:
+            continue
+        if _TOP_LEVEL_KEY_RE.match(line):
+            break  # a new column-0 key ends the jobs block
+        if job_match := _JOB_ID_RE.match(line):
+            current_job = job_match.group(1)
+        elif current_job is not None and (scenario_match := _SCENARIOS_INPUT_RE.match(line)):
+            value = scenario_match.group(1)
+            if value in (">-", ">"):
+                block_collecting = current_job
+                block_indent = len(line) - len(line.lstrip())
+            elif _PLAIN_PATH_RE.match(value):
+                result.setdefault(current_job, set()).add(value)
+            else:
+                raise ValueError(f"unparseable `scenarios:` value {value!r} in job {current_job!r}")
+    if not in_jobs:
+        raise ValueError("workflow YAML has no `jobs` mapping")
+    return result
+
+
+def affected_jobs(changed_scenarios: Iterable[str], job_map: dict[str, set[str]]) -> set[str]:
+    """The jobs whose declared scenarios intersect the changed scenario files.
+
+    A scenario reused across jobs (``smoke.yaml``, declared by both ``run`` and ``bundled-runner``)
+    selects every job that declares it, because each one exercises it.
+    """
+    changed = set(changed_scenarios)
+    return {job for job, scenarios in job_map.items() if scenarios & changed}
+
+
+def lane_workflow_text(lane: str) -> str | None:
+    """The text of ``lane``'s E2E workflow file, or None when it is absent."""
+    path = _REPO_ROOT / ".github" / "workflows" / f"{lane}-e2e.yml"
+    try:
+        return path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+
+
+def _affected_or_fallback(changed: list[str], lane: str) -> list[str] | None:
+    """The scenario-keyed jobs a scenario-only change reached, or None to fire the whole lane.
+
+    None means fall back to the whole fleet — the safe over-selection — when the lane's workflow
+    can't be read or parsed, or when a changed scenario is not attributable to any job (a shared
+    fragment or a scenario no job runs). A lane with no scenario-keyed jobs (Android, web) lands here
+    too: its map is empty, so every changed scenario is unattributable and the whole lane fires.
+    """
+    text = lane_workflow_text(lane)
+    if text is None:
+        return None
+    try:
+        job_map = job_scenario_map(text)
+    except ValueError:
+        return None
+    scenario_re = _LANE_SCENARIO_RE[lane]
+    changed_scenarios = {p for p in changed if scenario_re.match(p)}
+    # An empty `job_map` (a lane with no scenario-keyed jobs) unions to the empty set, so every
+    # changed scenario is unattributable and the whole lane fires — the safe over-selection.
+    declared = set().union(*job_map.values())
+    if changed_scenarios - declared:  # a changed scenario no job declares → fire the whole lane
+        return None
+    return sorted(affected_jobs(changed_scenarios, job_map))
 
 
 def changed_files(base: str, head: str) -> list[str]:
@@ -177,13 +361,23 @@ def changed_files(base: str, head: str) -> list[str]:
     return [line for line in out.stdout.splitlines() if line]
 
 
-def _emit(relevant: bool) -> None:
-    """Print the verdict and append it to ``GITHUB_OUTPUT`` when the workflow provides one."""
-    line = f"relevant={'true' if relevant else 'false'}"
-    print(line)
+def _emit(relevant: bool, shared: bool, affected: list[str]) -> None:
+    """Print the verdict and append it to ``GITHUB_OUTPUT`` when the workflow provides one.
+
+    Emits the three outputs the lane's jobs read (BE-0322): ``relevant`` (run any metered job at
+    all), ``shared`` (a shared-code change — fire the whole lane), and ``affected`` (a JSON array of
+    the scenario-keyed jobs a scenario-only change reached; empty unless the change was narrowed).
+    """
+    lines = [
+        f"relevant={str(relevant).lower()}",
+        f"shared={str(shared).lower()}",
+        f"affected={json.dumps(affected)}",
+    ]
+    for line in lines:
+        print(line)
     if output := os.environ.get("GITHUB_OUTPUT"):
         with open(output, "a", encoding="utf-8") as fh:
-            fh.write(line + "\n")
+            fh.write("\n".join(lines) + "\n")
 
 
 def main() -> int:
@@ -191,8 +385,8 @@ def main() -> int:
     base = os.environ.get("BASE_SHA", "")
     head = os.environ.get("HEAD_SHA", "")
     if not base:
-        # workflow_dispatch: no PR context, so nothing to path-gate against — always run.
-        _emit(True)
+        # workflow_dispatch: no PR context, so nothing to path-gate against — run the whole lane.
+        _emit(relevant=True, shared=True, affected=[])
         return 0
 
     changed = changed_files(base, head)
@@ -200,7 +394,17 @@ def main() -> int:
     print("Changed files:")
     for path in changed:
         print(f"  {path}")
-    _emit(is_relevant(changed, lane))
+
+    kind = classify_change(changed, lane)
+    if kind == "none":
+        _emit(relevant=False, shared=False, affected=[])
+        return 0
+
+    # A scenario-only change narrows to the jobs that declare a changed scenario; anything else — a
+    # shared-code change, or a scenario-only change the workflow can't attribute (`None`) — fires the
+    # whole lane, the safe over-selection.
+    affected = _affected_or_fallback(changed, lane) if kind == "scenario-only" else None
+    _emit(relevant=True, shared=affected is None, affected=affected or [])
     return 0
 
 
