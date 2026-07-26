@@ -83,12 +83,17 @@ bajutsu project rm <name>                       # プロジェクトを登録解
 **実行可能ゲート** + 現在画面の **規約充足度スコア**（AI 非依存。[configuration](configuration.md#doctor規約充足度スコア)）。
 
 ```bash
-bajutsu doctor --target <name> [--udid booted] [--backend ...] [--config ...]
+bajutsu doctor --target <name> [--udid booted] [--backend ...] [--config ...] [--scenario <file.yaml>] [--environment-only]
 ```
 
 - まず env ゲート（`preflight.py`）: actuator が必要とする CLI（XCUITest なら `xcrun` / `xcodebuild`）
   と**起動済みシミュレータ**を ✓/✗ チェックリストで表示します。不足があれば**終了 1**（直し方ヒント付きで即失敗）。
-- 次に actuator で `query()` し、`score(elements, idNamespaces)` を表示します。**grade が Blocked で 1、それ以外 0**。
+- `--environment-only` はこのゲート直後で止まります。`environment:` セクションを表示したら、ゲート通過なら
+  終了 0、`✗` があれば終了 1 で終わり、以下の画面プローブ（iOS では、短命な XCUITest ランナーを起動するコスト）
+  をスキップします。実機に対して環境ゲートだけを検証したい CI レーン（BE-0304）は、これでプローブ固有の
+  失敗要因（ランナー自体の起動の不安定さを含む）を避けられます。
+- `--scenario <file.yaml>` は端末不要の **capability プリフライト**（BE-0024）を実行します。画面プローブの前に、選択したバックエンドが実行できない構文をシナリオが使っていないかを検査し、非対応があれば**終了 1** とします。
+- それ以外は actuator で `query()` し、`score(elements, idNamespaces)` を表示します。**grade が Blocked で 1、それ以外 0**。
 
 ## `audit`
 

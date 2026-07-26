@@ -7,6 +7,18 @@ final class Router {
     // A separate handle store for SpringBoard alert buttons (BE-0316), so their handles never
     // collide with the app tree's and a `/systemAlert/query` never disturbs the app snapshot.
     private let alertStore = SnapshotStore()
+    // Serializes every XCUITest-touching operation so no two run — or *re-enter* — concurrently.
+    // `app.snapshot()` / `app.screenshot()` / an `XCUIElement` interaction pumps the main run loop
+    // internally while it waits on the app over XPC, and that run-loop spin drains the main dispatch
+    // queue. Two concurrent `DispatchQueue.main.sync` handlers (e.g. a scenario `/elements` and an
+    // evidence `/screenshot`, which the concurrent HTTP server delivers at once) would then re-enter —
+    // the second XCUITest call starts on the main thread *inside* the first's snapshot — and XCUITest
+    // is not re-entrant, so the XCTest host aborts (the CI-only mid-run crash: slower/contended hosts
+    // widen the re-entrancy window). Held on the *connection* thread before dispatching to main, this
+    // lock means a second operation never even enqueues onto main while the first is in flight, so the
+    // run-loop spin has nothing re-entrant to drain. `/health` never takes it (it touches no XCUITest
+    // state), so it stays answerable during a long operation — the concurrent server's whole purpose.
+    private let actuationLock = NSLock()
 
     init(provider: ElementProviding) {
         self.provider = provider
@@ -227,7 +239,16 @@ final class Router {
     }
 
     private func onMain<T>(_ work: @escaping () -> T) -> T {
+        // Already on main (a direct call, or a nested one from inside another operation's work): run
+        // in place. Taking `actuationLock` here would deadlock a nested call against the outer hold,
+        // and there is nothing to serialize against — the main thread runs one block at a time.
         if Thread.isMainThread { return work() }
+        // Off the main thread (an HTTP connection handler): serialize on the connection side *before*
+        // dispatching to main, so a second XCUITest operation never enqueues onto the main queue while
+        // the first is mid-flight and pumping the run loop — the re-entrancy that aborts the XCTest
+        // host (see `actuationLock`). The lock is released only after the main-thread work returns.
+        actuationLock.lock()
+        defer { actuationLock.unlock() }
         var result: T!
         DispatchQueue.main.sync { result = work() }
         return result
