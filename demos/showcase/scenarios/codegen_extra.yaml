@@ -1,7 +1,7 @@
 # Codegen-only coverage (BE-0297): the three DSL constructs no proven on-device scenario reaches —
 # a coordinate `swipe` (from/to), an element-anchored `drag`, and a compound `traits` + `index`
 # selector. Their Swift translation is already unit-tested (tests/test_codegen.py); this scenario
-# exists so the emitted Swift is also *compiled and run* by the non-gating `ui-test-coverage`
+# exists so the emitted Swift is also *compiled and run* by the `ui-test-coverage`
 # codegen step, closing the compile gap for the last constructs alongside the reused text-editing /
 # gesture / multi-touch scenarios.
 #

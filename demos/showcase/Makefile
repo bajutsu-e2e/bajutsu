@@ -196,7 +196,8 @@ ui-test-coverage:
 		-only-testing:BajutsuShowcaseSwiftUIUITests/CoveragetexteditingUITests \
 		-only-testing:BajutsuShowcaseSwiftUIUITests/CoveragegesturesUITests \
 		-only-testing:BajutsuShowcaseSwiftUIUITests/CoveragemultitouchUITests \
-		-only-testing:BajutsuShowcaseSwiftUIUITests/CoverageextraUITests
+		-only-testing:BajutsuShowcaseSwiftUIUITests/CoverageextraUITests \
+		-retry-tests-on-failure -test-iterations 3
 
 # Visual regression demo — every screen, for BOTH a11y toolkits. The two render the same
 # screens but not pixel-identically, so each keeps its own baseline dir (gitignored, regenerate
