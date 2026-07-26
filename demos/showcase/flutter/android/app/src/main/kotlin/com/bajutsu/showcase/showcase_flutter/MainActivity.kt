@@ -34,14 +34,18 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    /** launchEnv (SPEC §3) arrives as string intent extras; read once, defaults live in the model. */
+    /**
+     * launchEnv (SPEC §3) arrives as string intent extras; read once, defaults live in the model.
+     * Filtered by prefix (`SHOWCASE_*` hooks + `BAJUTSU_*` collector keys), mirroring the iOS
+     * `AppDelegate.launchEnv` seam so a new hook reaches Dart on both platforms without editing a
+     * per-key list here. Non-`String` extras fall out via `getString` returning null.
+     */
     private fun launchEnv(): Map<String, String> {
         val extras = intent?.extras ?: return emptyMap()
-        val keys = listOf(
-            "SHOWCASE_UITEST", "SHOWCASE_TAB", "SHOWCASE_API_URL", "SHOWCASE_HTTP_BASE",
-            "SHOWCASE_GESTURES", "SHOWCASE_CONFORMANCE", "BAJUTSU_COLLECTOR", "BAJUTSU_COLLECTOR_TOKEN",
-        )
-        return keys.mapNotNull { key -> extras.getString(key)?.let { key to it } }.toMap()
+        return extras.keySet()
+            .filter { it.startsWith("SHOWCASE_") || it.startsWith("BAJUTSU_") }
+            .mapNotNull { key -> extras.getString(key)?.let { key to it } }
+            .toMap()
     }
 
     private fun requestPermission(permission: String, grantedStatus: String, result: MethodChannel.Result) {
