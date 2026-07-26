@@ -5,10 +5,11 @@ from __future__ import annotations
 import json
 import logging
 import os
+import threading
 import time
 from collections.abc import Callable, Mapping
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -155,17 +156,27 @@ class _ScenarioRunner:
     # scenarios idempotent up to the crash point — one with a persistent side effect before the
     # crash (e.g. a server-side write) can fail, or pass against the wrong state, on replay.
     crash_retries: int = 1
+    # Latches once `_maybe_emit_score` has fired, so a backend-crash retry of scenario 0 (which
+    # re-enters `_run_on_lease` on a respawned app — BE-0049) does not re-score and emit a second
+    # grade: the score is a once-per-run tell, not a per-attempt one. A mutable field on a frozen
+    # dataclass (its state is toggled, never rebound); an Event so the latch is also safe under the
+    # `workers>1` thread pool.
+    _scored: threading.Event = field(default_factory=threading.Event)
 
     def _maybe_emit_score(self, i: int, driver: base.Driver) -> None:
         """Score the just-launched app's entry screen once, on the first scenario (best-effort).
 
-        Runs only for the first scenario and only when an `on_score` sink is set, so at most one score
-        is emitted per run (per engine in a matrix; a backend-crash retry of scenario 0 re-scores its
-        fresh launch, so it may repeat). A `query()` fault here is diagnostic noise, never a
-        run failure — it is logged and swallowed so the deterministic verdict is untouched.
+        Runs only for the first scenario and only when an `on_score` sink is set, and latches after
+        the first attempt, so at most one score is emitted per run (per engine in a matrix) — a
+        backend-crash retry of scenario 0 re-launches the app but does not re-score. A `query()` fault
+        here is diagnostic noise, never a run failure — it is logged and swallowed so the deterministic
+        verdict is untouched.
         """
-        if i != 0 or self.on_score is None:
+        if i != 0 or self.on_score is None or self._scored.is_set():
             return
+        # Latch before emitting: a crash retry must not re-score even if the sink or `query()` below
+        # faults (the fault is swallowed) — at-most-once is the contract, not one-success-guaranteed.
+        self._scored.set()
         # Lazy import: `doctor` pulls in the platform lifecycle, which imports `namespace_of` back from
         # it — a module-level import here would risk a cycle, and the default (no `on_score`) path must
         # not pay for loading it at all.

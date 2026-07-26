@@ -118,6 +118,19 @@ def test_run_all_recovers_a_scenario_whose_backend_crashed() -> None:
     assert events == ["release-1", "release-2"]  # the dead lease and the live one both released
 
 
+def test_on_score_emits_once_even_when_scenario_zero_crashes_and_recovers() -> None:
+    # The score is a once-per-run tell, not per-attempt. When scenario 0 crashes mid-run and recovers
+    # on a respawned app (BE-0049), `_run_on_lease` is re-entered and would re-score the fresh launch —
+    # but the latch keeps the sink firing exactly once, so CI reads a single grade, not one per retry.
+    # (The crash is in `tap`; scoring uses `query()`, so attempt 1 scores before the step crashes.)
+    lease, _events = _crash_then_ok_lease()
+    scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
+    scores: list[Score] = []
+    results = run_all(_eff(), scenarios, lease, on_score=scores.append)
+    assert results[0].ok  # recovered on the fresh-lease retry
+    assert len(scores) == 1  # latched: the retry's fresh launch is not re-scored
+
+
 def test_run_all_fails_a_scenario_that_crashes_every_attempt() -> None:
     # A scenario whose backend crashes on every attempt exhausts the retry budget and fails loudly —
     # flakiness is never absorbed into a pass (BE-0049). Exactly crash_retries + 1 attempts run.
