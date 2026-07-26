@@ -336,12 +336,15 @@ def make_driver(
     device_mode: str = "desktop",
     record_video_dir: Path | None = None,
     runner_port: int = 0,
+    runner_alive: Callable[[], bool] | None = None,
     fetch_hierarchy: Callable[[], str] | None = None,
 ) -> base.Driver:
     """Construct the driver for an actuator, wiring up its backend-specific arguments.
 
     The adb backend reads through `fetch_hierarchy` (the resident-server channel, BE-0245) when one is
-    supplied, else via `uiautomator dump`; every other actuator ignores it.
+    supplied, else via `uiautomator dump`; every other actuator ignores it. The xcuitest backend reads
+    `runner_alive` — the environment's `xcodebuild`-process liveness check — so crash-recovery can fail
+    fast on a runner whose process has exited; every other actuator ignores it.
     """
     if actuator == "adb":
         from bajutsu.drivers.adb import AdbDriver
@@ -356,7 +359,7 @@ def make_driver(
             )
         from bajutsu.drivers.xcuitest import XcuitestDriver
 
-        return XcuitestDriver(host="127.0.0.1", port=runner_port)
+        return XcuitestDriver(host="127.0.0.1", port=runner_port, runner_alive=runner_alive)
     if actuator == "playwright":
         # Lazy: keep Playwright (a heavy optional dep) off the default import path.
         from bajutsu.drivers.playwright import PlaywrightDriver
