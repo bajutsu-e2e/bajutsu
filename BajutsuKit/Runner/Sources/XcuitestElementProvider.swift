@@ -64,17 +64,42 @@ final class XcuitestElementProvider: ElementProviding {
     func gesture(backingElement: AnyObject, kind: String, scale: Double, radians: Double) -> TapResult {
         guard let backing = backingElement as? PositionPathBacking else { return .notFound }
         guard let el = liveElement(for: backing) else { return .stale }
+        let actuate: () -> Void
         switch kind {
         case "pinch":
             // velocity sign must match the scale direction (zoom in vs out) or XCUITest rejects it.
-            el.pinch(withScale: CGFloat(scale), velocity: scale >= 1 ? 1 : -1)
+            actuate = { el.pinch(withScale: CGFloat(scale), velocity: scale >= 1 ? 1 : -1) }
         case "rotate":
-            el.rotate(CGFloat(radians), withVelocity: 1)
+            actuate = { el.rotate(CGFloat(radians), withVelocity: 1) }
         default:
             return .notFound
         }
+        // XCUITest occasionally synthesizes a two-finger gesture the Simulator drops before the app's
+        // recognizer fires, leaving no effect and a red `expect`. Re-issuing helps only when a landing
+        // is *observable*, because pinch and rotate are accumulating: re-applying one that already
+        // landed zooms/rotates again. The single app-agnostic signal a landing left is the actuated
+        // element's own value — and only an app that mirrors its gesture result there (as the showcase
+        // GestureView does) exposes it; a plain image / map / scroll view does not. So the retry is
+        // opt-in: a scenario whose target self-mirrors sets BAJUTSU_GESTURE_RETRY=1 in its launchEnv,
+        // and the retry re-issues until `el.value` moves (nil = unreadable, never a landing). Without
+        // the opt-in the gesture is actuated exactly once — the deterministic default for an arbitrary
+        // app, where re-applying an accumulating gesture a drop-dependent number of times would make
+        // the magnitude non-deterministic (prime directive 2).
+        if RunnerServer.forwardedLaunchEnvironment["BAJUTSU_GESTURE_RETRY"] == "1" {
+            actuateUntilStateChanges(
+                maxAttempts: Self.maxGestureAttempts,
+                signature: { el.value as? String },
+                actuate: actuate
+            )
+        } else {
+            actuate()
+        }
         return .ok
     }
+
+    /// The most times `gesture` re-issues a dropped pinch/rotate before giving up (a genuinely
+    /// no-op gesture then still returns, and the run's `expect` fails loudly rather than looping).
+    private static let maxGestureAttempts = 4
 
     func swipe(fromX: Double, fromY: Double, toX: Double, toY: Double) -> TapResult {
         coordinate(fromX, fromY).press(forDuration: 0.1, thenDragTo: coordinate(toX, toY))
