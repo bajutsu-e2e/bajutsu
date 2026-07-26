@@ -531,9 +531,9 @@ def _confined_config_path(root: Path, raw: str) -> Path | None:
 
 def bind_config(state: ServeState, raw: str) -> tuple[Any, int]:
     """Bind a config.yml chosen in the UI's file browser.  The path is confined to ``--root``; we
-    validate it loads, then re-point ``state.config`` at it **and** ``state.cwd`` at its own directory
-    so the config's relative paths resolve from beside it, not serve's launch dir (BE-0242) — mirroring
-    the Git/upload binds."""
+    validate it loads and its path fields stay within ``--root`` too, then re-point ``state.config``
+    at it **and** ``state.cwd`` at its own directory so the config's relative paths resolve from
+    beside it, not serve's launch dir (BE-0242) — mirroring the Git/upload binds."""
     if state.hosted:
         # Defense in depth (BE-0108): the file browser is removed from the hosted UI, but a
         # hand-crafted path-bind must be refused too, or hiding it would be merely cosmetic.
@@ -546,17 +546,32 @@ def bind_config(state: ServeState, raw: str) -> tuple[Any, int]:
     if not target.is_file():
         return {"error": "config not found"}, 404
     try:
-        load_config(target.read_text(encoding="utf-8"))
+        cfg = load_config(target.read_text(encoding="utf-8"))
     except (OSError, ValueError, yaml.YAMLError) as e:
         return {"error": f"invalid config: {e}"}, 400
+    # Validate path fields stay within `--root` (BE-0051): resolved against the config's own
+    # directory (matching `state.cwd` below), but confined to the broader browse root rather than
+    # that one directory, so an in-root sibling reference (`../scenarios` from a config nested under
+    # `<root>/configs/`) still resolves — only an escape past `--root` itself is refused.
+    config_dir = target.resolve().parent
+    try:
+        for name in cfg.targets:
+            resolve(cfg, name).rebased(config_dir, confine=True, confine_to=state.root)
+    except ValueError as e:
+        return {"error": f"config path validation failed: {e}"}, 400
     state.release_upload()  # a fresh config replaces any bound bundle and resets cwd to serve's launch dir
     state.config = target
-    # A local config's relative paths resolve from its own directory, not serve's launch dir, so the
-    # bound config behaves the same wherever serve was started (BE-0242) — mirroring the Git/upload
-    # binds below. Unconfined: an operator-trusted local file may point at a sibling (BE-0121).
-    state.cwd = target.resolve().parent
+    state.cwd = config_dir  # the config's relative paths resolve from its own directory (BE-0242)
     state.config_provenance = None  # a local file has no Git commit provenance to show
-    state.git_config_from_api = False  # a local file config is operator-trusted (BE-0121)
+    # A local file's *build:* stays trusted even when bound through this API endpoint (BE-0121), unlike
+    # a Git spec or an upload: this endpoint can only bind a file `_confined_config_path` already found
+    # inside `--root`, so the operator (who chose what lives under `--root`) already controls every
+    # candidate's content — there is no path by which this bind hands an attacker-authored `build:` to
+    # the host, the exact capability BE-0121 gates behind `--allow-remote-build`. The `confine=True`
+    # above is a separate, narrower guard: it stops an in-`--root` config's own path *fields* from
+    # resolving outside the directory its relative paths are defined against, regardless of who bound
+    # it — orthogonal to, not a relaxation of, this build-trust call.
+    state.git_config_from_api = False
     return {"ok": True, "config": str(target), "targets": list_targets(target)}, 200
 
 
@@ -592,7 +607,7 @@ def bind_git_config(state: ServeState, spec_str: str) -> tuple[Any, int]:
         # `scenarios`/`appPath`/… at an absolute or `../` path outside the tree is rejected here, so
         # serve's (unconfined) scenario/build resolution only ever sees in-checkout paths (BE-0051).
         for name in cfg.targets:
-            resolve(cfg, name).rebased(mat.root)
+            resolve(cfg, name).rebased(mat.root, confine=True)
     except (OSError, ValueError, yaml.YAMLError) as e:
         return {"error": f"invalid config: {e}"}, 400
     state.release_upload()  # switching to a Git config drops any bound bundle's sandbox

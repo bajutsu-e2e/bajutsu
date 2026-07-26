@@ -15,7 +15,7 @@ from bajutsu.config import load_config, resolve
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence import Artifact, intervals
-from bajutsu.orchestrator import run_scenario
+from bajutsu.orchestrator import AlertGuardConfig, run_scenario
 from bajutsu.orchestrator.types import AlertEvent
 from bajutsu.scenario import Interrupt, Scenario, dump_scenarios, load_scenarios
 
@@ -306,7 +306,7 @@ def test_recovery_failure_mid_wait_skips_the_end_of_step_alert_guard() -> None:
         driver,
         _scenario({"name": "d", "steps": [{"wait": {"for": {"id": "home.title"}, "timeout": 5}}]}),
         clock=FakeClock(),
-        on_blocked=on_blocked,
+        alert_guard=AlertGuardConfig(vision=on_blocked),
         interrupts=[
             _interrupt({"exists": {"id": "ov.close"}}, [{"tap": {"id": "does.not.exist"}}])
         ],

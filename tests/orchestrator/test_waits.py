@@ -8,9 +8,18 @@ from conftest import el
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence.network import ScreenTransition
-from bajutsu.orchestrator import _wait, run_scenario
+from bajutsu.orchestrator import AlertGuardConfig, _wait, run_scenario
 from bajutsu.orchestrator.waits import _TRANSITION_QUIESCENCE
 from bajutsu.scenario import Wait
+
+
+class _GuardStub:
+    """Minimal driver stub for the vision-path guard tests: advertises no HANDLE_SYSTEM_ALERT
+    capability, so the mid-wait gate takes its collapsed-tree + vision branch rather than the native
+    path (BE-0315)."""
+
+    def capabilities(self) -> set[str]:
+        return set()
 
 
 def test_wait_for_appears() -> None:
@@ -439,7 +448,7 @@ def test_wait_diagnostic_written_once_after_on_blocked_retry(tmp_path) -> None: 
         _scenario({"name": "x", "steps": [{"wait": {"for": {"id": "never"}, "timeout": 0.2}}]}),
         clock=FakeClock(),
         sink=sink,
-        on_blocked=on_blocked,
+        alert_guard=AlertGuardConfig(vision=on_blocked),
     )
     assert not result.ok
     assert calls["n"] == 1  # on_blocked fired once, then the wait was retried
@@ -596,7 +605,7 @@ def test_wait_still_sleeps_when_query_is_fast() -> None:
 # --- BE-0269: early system-alert guard intervention during a wait ---
 
 
-class _CollapsingDriver:
+class _CollapsingDriver(_GuardStub):
     """A driver whose tree is collapsed (a system alert covering the app) until the guard clears
     it, at which point it reveals `revealed`. Models the SpringBoard-alert failure signature that
     `shows_app_ui` detects: no actionable content while blocked."""
@@ -630,7 +639,9 @@ def test_wait_for_guard_fires_mid_wait_and_records_the_alert() -> None:
     alerts: list[AlertEvent] = []
     clock = _LogicalClock()
     w = Wait.model_validate({"for": {"id": "ready"}, "timeout": 30.0})
-    ok, reason, tree = _wait(driver, w, clock, on_blocked=on_blocked, alerts=alerts)
+    ok, reason, tree = _wait(
+        driver, w, clock, alert_guard=AlertGuardConfig(vision=on_blocked), alerts=alerts
+    )
     assert ok and reason == ""
     assert tree == [el("ready", "R")]
     assert calls["n"] == 1  # the guard fired exactly once, mid-wait
@@ -645,7 +656,7 @@ def test_wait_guard_debounces_a_transient_collapse() -> None:
     from bajutsu.orchestrator.waits import _wait
     from bajutsu.scenario import Wait
 
-    class OneFrameCollapse:
+    class OneFrameCollapse(_GuardStub):
         name = "one-frame"
 
         def __init__(self) -> None:
@@ -663,7 +674,9 @@ def test_wait_guard_debounces_a_transient_collapse() -> None:
 
     clock = _LogicalClock()
     w = Wait.model_validate({"for": {"id": "ready"}, "timeout": 30.0})
-    ok, _reason, _tree = _wait(OneFrameCollapse(), w, clock, on_blocked=on_blocked, alerts=[])  # type: ignore[arg-type]
+    ok, _reason, _tree = _wait(
+        OneFrameCollapse(), w, clock, alert_guard=AlertGuardConfig(vision=on_blocked), alerts=[]
+    )  # type: ignore[arg-type]
     assert ok
     assert calls["n"] == 0  # one transient collapse is below the debounce threshold
 
@@ -675,7 +688,7 @@ def test_wait_guard_is_capped_then_falls_back_to_timeout() -> None:
     from bajutsu.orchestrator.waits import _GUARD_MAX_ATTEMPTS, _wait
     from bajutsu.scenario import Wait
 
-    class NeverClears:
+    class NeverClears(_GuardStub):
         name = "stuck"
 
         def query(self) -> list[base.Element]:
@@ -689,7 +702,9 @@ def test_wait_guard_is_capped_then_falls_back_to_timeout() -> None:
 
     clock = _LogicalClock()
     w = Wait.model_validate({"for": {"id": "never"}, "timeout": 30.0})
-    ok, reason, _tree = _wait(NeverClears(), w, clock, on_blocked=on_blocked, alerts=[])  # type: ignore[arg-type]
+    ok, reason, _tree = _wait(
+        NeverClears(), w, clock, alert_guard=AlertGuardConfig(vision=on_blocked), alerts=[]
+    )  # type: ignore[arg-type]
     assert not ok
     assert "timeout" in reason
     assert calls["n"] == _GUARD_MAX_ATTEMPTS
@@ -702,7 +717,7 @@ def test_wait_guard_never_fires_while_app_ui_is_visible() -> None:
     from bajutsu.orchestrator.waits import _wait
     from bajutsu.scenario import Wait
 
-    class AppVisible:
+    class AppVisible(_GuardStub):
         name = "app"
 
         def __init__(self) -> None:
@@ -720,7 +735,9 @@ def test_wait_guard_never_fires_while_app_ui_is_visible() -> None:
 
     clock = _LogicalClock()
     w = Wait.model_validate({"for": {"id": "row"}, "timeout": 30.0})
-    ok, _reason, _tree = _wait(AppVisible(), w, clock, on_blocked=on_blocked, alerts=[])  # type: ignore[arg-type]
+    ok, _reason, _tree = _wait(
+        AppVisible(), w, clock, alert_guard=AlertGuardConfig(vision=on_blocked), alerts=[]
+    )  # type: ignore[arg-type]
     assert ok
     assert calls["n"] == 0
 
@@ -743,7 +760,9 @@ def test_wait_settled_guard_fires_on_a_collapsed_screen() -> None:
     alerts: list[AlertEvent] = []
     clock = _LogicalClock()
     w = Wait.model_validate({"until": "settled", "timeout": 30.0})
-    ok, _reason, tree = _wait(driver, w, clock, on_blocked=on_blocked, alerts=alerts)
+    ok, _reason, tree = _wait(
+        driver, w, clock, alert_guard=AlertGuardConfig(vision=on_blocked), alerts=alerts
+    )
     assert ok  # a settle never fails the step
     assert calls["n"] == 1
     assert alerts == [AlertEvent(label="OK")]
@@ -772,7 +791,12 @@ def test_wait_settled_signal_guard_fires_on_a_collapsed_screen() -> None:
     fresh = [(ScreenTransition(kind="screenChanged"), 0.0)]
     w = Wait.model_validate({"until": "settled", "timeout": 30.0})
     ok, _reason, tree = _wait(
-        driver, w, clock, on_blocked=on_blocked, alerts=alerts, transitions=lambda: fresh
+        driver,
+        w,
+        clock,
+        alert_guard=AlertGuardConfig(vision=on_blocked),
+        alerts=alerts,
+        transitions=lambda: fresh,
     )
     assert ok  # a settle never fails the step
     assert calls["n"] == 1
@@ -781,13 +805,22 @@ def test_wait_settled_signal_guard_fires_on_a_collapsed_screen() -> None:
     assert clock.now() < 2.0  # cleared well inside the signal path's own quiescence window
 
 
+class _NoNativeFake(FakeDriver):
+    """A FakeDriver without the native HANDLE_SYSTEM_ALERT capability, so the guard exercises the
+    collapsed-tree + vision path end to end (FakeDriver otherwise advertises it, BE-0316)."""
+
+    def capabilities(self) -> set[str]:
+        return super().capabilities() - {base.Capability.HANDLE_SYSTEM_ALERT}
+
+
 def test_run_scenario_guard_fires_during_a_wait_step() -> None:
-    """BE-0269 end to end: a `for` wait blocked by a system alert has the guard fire mid-wait (not
-    only after the whole timeout elapses), the alert is recorded on the step outcome, and the step
-    passes once cleared."""
+    """BE-0269 end to end: a `for` wait blocked by a system alert has the vision guard fire mid-wait
+    (not only after the whole timeout elapses), the alert is recorded on the step outcome, and the
+    step passes once cleared. Uses a capability-stripped fake to force the vision path (the native
+    path's end-to-end coverage lives in test_native_alert_guard)."""
     from bajutsu.orchestrator.types import AlertEvent
 
-    driver = FakeDriver([])  # collapsed under a system alert
+    driver = _NoNativeFake([])  # collapsed under a system alert, no native capability
 
     def on_blocked(d: base.Driver) -> AlertEvent:
         d.screen = [el("ready", "R")]  # type: ignore[attr-defined]
@@ -797,7 +830,7 @@ def test_run_scenario_guard_fires_during_a_wait_step() -> None:
         driver,
         _scenario({"name": "x", "steps": [{"wait": {"for": {"id": "ready"}, "timeout": 30.0}}]}),
         clock=FakeClock(),
-        on_blocked=on_blocked,
+        alert_guard=AlertGuardConfig(vision=on_blocked),
     )
     assert result.ok and result.steps[0].ok
     assert result.steps[0].alerts == [AlertEvent(label="Not Now")]
@@ -826,7 +859,9 @@ def test_wait_screen_changed_guard_fires_when_started_under_an_alert() -> None:
     alerts: list[AlertEvent] = []
     clock = _LogicalClock()
     w = Wait.model_validate({"until": "screenChanged", "timeout": 30.0})
-    ok, reason, _tree = _wait(driver, w, clock, on_blocked=on_blocked, alerts=alerts)
+    ok, reason, _tree = _wait(
+        driver, w, clock, alert_guard=AlertGuardConfig(vision=on_blocked), alerts=alerts
+    )
     assert ok and reason == ""
     assert calls["n"] == 1
     assert alerts == [AlertEvent(label="Close")]
@@ -839,7 +874,7 @@ def test_wait_guard_cooldown_spaces_out_attempts() -> None:
     from bajutsu.orchestrator.waits import _GUARD_COOLDOWN, _GUARD_MAX_ATTEMPTS, _wait
     from bajutsu.scenario import Wait
 
-    class NeverClears:
+    class NeverClears(_GuardStub):
         name = "stuck"
 
         def query(self) -> list[base.Element]:
@@ -853,7 +888,7 @@ def test_wait_guard_cooldown_spaces_out_attempts() -> None:
         return None
 
     w = Wait.model_validate({"for": {"id": "never"}, "timeout": 30.0})
-    _wait(NeverClears(), w, clock, on_blocked=on_blocked, alerts=[])  # type: ignore[arg-type]
+    _wait(NeverClears(), w, clock, alert_guard=AlertGuardConfig(vision=on_blocked), alerts=[])  # type: ignore[arg-type]
     assert len(fire_times) == _GUARD_MAX_ATTEMPTS
     assert fire_times[1] - fire_times[0] >= _GUARD_COOLDOWN
 
@@ -866,7 +901,7 @@ def test_wait_guard_does_not_extend_the_deadline() -> None:
     from bajutsu.orchestrator.waits import _wait
     from bajutsu.scenario import Wait
 
-    class SlowReveal:
+    class SlowReveal(_GuardStub):
         name = "slow"
 
         def __init__(self, clock: _LogicalClock) -> None:
@@ -881,7 +916,9 @@ def test_wait_guard_does_not_extend_the_deadline() -> None:
         return AlertEvent(label="OK")  # "dismisses", but the element is still 10s out
 
     w = Wait.model_validate({"for": {"id": "ready"}, "timeout": 1.0})
-    ok, reason, _tree = _wait(SlowReveal(clock), w, clock, on_blocked=on_blocked, alerts=[])  # type: ignore[arg-type]
+    ok, reason, _tree = _wait(
+        SlowReveal(clock), w, clock, alert_guard=AlertGuardConfig(vision=on_blocked), alerts=[]
+    )  # type: ignore[arg-type]
     assert not ok
     assert "timeout" in reason
     assert clock.now() < 2.0  # honored the 1s budget; the guard did not push the deadline to 10s
@@ -904,7 +941,9 @@ def test_wait_guard_fires_without_an_alerts_list() -> None:
 
     clock = _LogicalClock()
     w = Wait.model_validate({"for": {"id": "ready"}, "timeout": 30.0})
-    ok, _reason, _tree = _wait(driver, w, clock, on_blocked=on_blocked)  # no alerts list
+    ok, _reason, _tree = _wait(
+        driver, w, clock, alert_guard=AlertGuardConfig(vision=on_blocked)
+    )  # no alerts list
     assert ok
     assert calls["n"] == 1
 
@@ -918,7 +957,7 @@ def test_wait_guard_warns_once_when_it_gives_up(caplog) -> None:  # type: ignore
     from bajutsu.orchestrator.waits import _wait
     from bajutsu.scenario import Wait
 
-    class NeverClears:
+    class NeverClears(_GuardStub):
         name = "stuck"
 
         def query(self) -> list[base.Element]:
@@ -930,7 +969,7 @@ def test_wait_guard_warns_once_when_it_gives_up(caplog) -> None:  # type: ignore
     clock = _LogicalClock()
     w = Wait.model_validate({"for": {"id": "never"}, "timeout": 30.0})
     with caplog.at_level(logging.WARNING):
-        _wait(NeverClears(), w, clock, on_blocked=on_blocked, alerts=[])  # type: ignore[arg-type]
+        _wait(NeverClears(), w, clock, alert_guard=AlertGuardConfig(vision=on_blocked), alerts=[])  # type: ignore[arg-type]
     assert sum("gave up" in r.getMessage() for r in caplog.records) == 1
 
 

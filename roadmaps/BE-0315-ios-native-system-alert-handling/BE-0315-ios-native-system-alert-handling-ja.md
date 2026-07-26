@@ -1,17 +1,20 @@
 [English](BE-0315-ios-native-system-alert-handling.md) · **日本語**
 
-# BE-0315 — ネイティブの XCUITest で iOS のシステムアラートを決定論的に検知して閉じる
+# BE-0315 — リアクティブなアラートガードを、BE-0316 の SpringBoard 経路を再利用して決定論的・ネイティブにする
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
 | 提案 | [BE-0315](BE-0315-ios-native-system-alert-handling-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0315") |
+| 実装 PR | [#1330](https://github.com/bajutsu-e2e/bajutsu/pull/1330) |
 | トピック | プラットフォーム対応 |
-| 関連 | [BE-0177](../BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md), [BE-0269](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention-ja.md), [BE-0276](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state-ja.md), [BE-0290](../BE-0290-xcuitest-default-ios-backend/BE-0290-xcuitest-default-ios-backend-ja.md), [BE-0308](../BE-0308-alerts-guard-real-model-verification/BE-0308-alerts-guard-real-model-verification-ja.md), [BE-0314](../BE-0314-scenario-interrupt-handlers/BE-0314-scenario-interrupt-handlers-ja.md) |
+| 関連 | [BE-0177](../BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md), [BE-0269](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention-ja.md), [BE-0276](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state-ja.md), [BE-0290](../BE-0290-xcuitest-default-ios-backend/BE-0290-xcuitest-default-ios-backend-ja.md), [BE-0308](../BE-0308-alerts-guard-real-model-verification/BE-0308-alerts-guard-real-model-verification-ja.md), [BE-0314](../BE-0314-scenario-interrupt-handlers/BE-0314-scenario-interrupt-handlers-ja.md), [BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step-ja.md) |
 <!-- /BE-METADATA -->
+
+> **実装中にマージされた BE-0316 との整合。** BE-0316 がネイティブの SpringBoard プリミティブを実装しました。`handleSystemAlert` *ステップ*、`handle_system_alert` ドライバメソッド、`/systemAlert/query` と `/systemAlert/tap` の runner ルート、`HANDLE_SYSTEM_ALERT` capability です。BE-0316 は `dismissAlerts` をリアクティブな vision guard のまま残すことを意図的に選び、「成功するシナリオはモデルを呼ばない」を保つために決定論的な機構をリアクティブにはしない、と記録しました。BE-0315 はまさにそのリアクティブな対の一方であり、その緊張を解消します。ネイティブの SpringBoard 照会は**モデル呼び出しではない**ため、この不変条件は保たれます。したがって本実装は、並立する API を追加するのではなく、BE-0316 のプリミティブを**再利用**します（既存の `/systemAlert/query` を読む薄い非ブロッキングの `system_alert_labels()` だけを足します）。その貢献は、自動的なリアクティブガード、決定論的なボタン方針、ポーリング間隔ノブ、そして vision の fallback への降格です。
 
 ## はじめに
 
@@ -80,28 +83,23 @@ Control（TCC）データベースに支えられており、`simctl privacy` �
 （アプリごと、プラットフォームごとの差異は driver インターフェースの背後にとどめる）が全体を通じて
 保たれます。
 
+> **実装（BE-0316 との整合後）。** 下記のユニット 1・2 は、BE-0316 が同じ SpringBoard の配管を実装する*前*の、presence 照会と dismiss 操作についての提案時の計画です。実装ではそれらを新設せず BE-0316 を再利用しました（冒頭の整合の但し書きを参照）。実際に入ったのは、BE-0316 の `/systemAlert/query` を読む薄い `Driver.system_alert_labels()`（ユニット 1）と、`HANDLE_SYSTEM_ALERT` capability のもとで BE-0316 の `handle_system_alert` を通じて tap するガード（ユニット 2）です。新しい runner ルート、dismiss 操作、capability トークンは追加していません。ユニット 3〜5 は記載どおり実装しました。
+
 1. **`Driver` インターフェースを通じて公開する、決定論的なシステムアラートの presence 照会。**
    システムアラートが表示されているか、表示されているときはそのボタンの label を返す、バックエンド
-   非依存の driver メソッドを追加します。XCUITest バックエンドは、2 つ目の
-   `XCUIApplication(bundleIdentifier: "com.apple.springboard")`（起動ではなく proxy なので安価です）を
-   保持し、`springboard.alerts.firstMatch` を読むことで答えます。`.exists` が表示の有無という決定論的な
-   答えを与え、アラートの子孫のボタンが label を与えます。コマンドは既存のループバック HTTP/JSON
-   トランスポート（`BajutsuRunner/Router.swift`）で Swift runner に届き、`(method, path)` で分岐します。
-   照会はルートを 1 つと `ElementProviding` メソッドを 1 つ追加します。この信号は事実を報告するだけで、
-   合否を決めることは決してないため、prime directive 1 から外れています。
+   非依存の driver メソッドを追加します。*（実装: 新ルートを足す代わりに、`system_alert_labels()` が
+   BE-0316 の既存の `/systemAlert/query`——BE-0316 がすでに保持する 2 つ目の
+   `com.apple.springboard` の `XCUIApplication`——を読み、ボタンの label を返します。アラートが
+   なければ `[]` です。）* この信号は事実を報告するだけで合否を決めないため、prime directive 1 から
+   外れています。
 
 2. **label 指定の決定論的な dismiss 操作。** 現在のシステムアラートを、名前で指定したボタンを押して
-   閉じる driver メソッドを追加し、XCUITest では `springboard.alerts.buttons[label].tap()` として実装
-   します。dismiss 操作は、新しい runner ルート、新しい `ElementProviding` メソッド、Python の
-   `XcuitestDriver` メソッド、そして `bajutsu/drivers/base.py` の既存のトークンと並ぶ新しい capability
-   トークンからなります。label 指定のネイティブなタップが必要なのは、決定論的な dismiss が自力でタップ
-   座標を選べないためです。座標選びこそ、既存の座標タップ（`tap_point`）が vision の呼び出しに委ねている
-   部分であり、固定オフセットは端末のサイズやボタン配置をまたぐと壊れます。ネイティブの
-   `springboard.alerts.buttons[label]` の要素は、ボタンがどこにあってもその label で解決します。
-   determinism first（prime directive 2）を保つため、
-   dismiss 操作は指定された label をちょうど 1 つのボタンに解決し、0 個または複数一致したときは声高に
-   失敗しなければなりません。driver の `resolve_unique` / `AmbiguousSelector` の契約に倣い、クエリが最初に
-   解決したボタンを押す振る舞いにはしません。
+   閉じます。determinism first（prime directive 2）を保つため、指定された label をちょうど 1 つのボタンに
+   解決し、0 個または複数一致したときは声高に失敗します（driver の `resolve_unique` /
+   `AmbiguousSelector` の契約）。クエリが最初に解決したボタンを押す振る舞いにはしません。*（実装:
+   ガードは `HANDLE_SYSTEM_ALERT` capability のもとで BE-0316 の `handle_system_alert`——
+   `resolve_unique` で解決する label セレクタと `/systemAlert/tap`——を通じて tap するため、並立する
+   dismiss ルートや capability トークンは追加していません。）*
 
 3. **既存の `DismissAlerts.instruction` を決定論的なボタン方針へ発展させる。** `dismissAlerts` シナリオ
    フィールドには、押すボタンを名指しする能力がすでにあります。`DismissAlerts.instruction`
@@ -147,6 +145,16 @@ Control（TCC）データベースに支えられており、`simctl privacy` �
    あります。バックエンド非依存の配線（ユニット 3 と 4）は、driver の capability をスタブする実機不要の
    テストで覆います。
 
+6. **showcase と CI でネイティブなリアクティブ許可を実現する。** showcase の通知シナリオを、ネイティブ経路を
+   動かすように変えます。`demos/showcase/scenarios/permission.yaml` はリスト形の
+   `dismissAlerts: { instruction: ["Allow"] }` で許可するので、既定となった XCUITest backend（BE-0290）では、
+   ガードは vision フォールバックではなく正確な label のネイティブ照会で「Allow」を押します。許可がネイティブ
+   かつ認証情報なしで決定論的になったため、このシナリオは `ai` タグを外し、必須の XCUITest ゲートに加わります
+   （`ios-e2e.yml` は `--exclude ai` を落とします）。同じゲート上にある BE-0316 のプロアクティブな
+   `permission_system_alert.yaml` に対する、リアクティブなネイティブの対応物です。このユニットによって、
+   ネイティブな許可は実機不要のテストで覆った capability にとどまらず、ゲートで担保される実証済みのフローに
+   なります。
+
 ## 検討した代替案
 
 - **XCUITest 組み込みの割り込みハンドラ `addUIInterruptionMonitor`。** 却下します。この監視は非決定論的な
@@ -178,19 +186,30 @@ Control（TCC）データベースに支えられており、`simctl privacy` �
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] ユニット 1 — `Driver` インターフェースを通じた決定論的なシステムアラートの presence 照会。XCUITest の
-      実装は 2 つ目の `com.apple.springboard` の `XCUIApplication` と `springboard.alerts` による。
-- [ ] ユニット 2 — label 指定の決定論的な dismiss 操作（runner ルート、`ElementProviding` メソッド、Python
-      driver メソッド、capability トークン）。
-- [ ] ユニット 3 — `DismissAlerts.instruction` を vision 解釈の文字列から決定論的な label の形へ発展させる。
-      既存の `instruction` と BE-0314 の `interrupts` を含む 3 者で突き合わせ、語彙を並立させず 1 つの文法へ
-      収束させる。
-- [ ] ユニット 4 — `_AlertGuardGate` で独立した間隔（デフォルト 1 秒、`dismissAlerts` の優先順位で上書き
+- [x] ユニット 1 — 決定論的なシステムアラートの presence 照会。**BE-0316 から再利用**: 新ルートではなく、
+      薄い非ブロッキングの `Driver.system_alert_labels()` が BE-0316 の既存の `/systemAlert/query`
+      （BE-0316 がすでに保持する 2 つ目の `com.apple.springboard` の `XCUIApplication`）を読み、アラートの
+      ボタン label を返す。アラートがなければ `[]`。
+- [x] ユニット 2 — label 指定の決定論的な dismiss 操作。**BE-0316 から再利用**: ガードは
+      `HANDLE_SYSTEM_ALERT` capability のもとで BE-0316 の `handle_system_alert`（label セレクタ ＋
+      `/systemAlert/tap`、`resolve_unique` で解決）を通じて tap するため、並立する dismiss ルートや
+      capability は追加していない。
+- [x] ユニット 3 — `DismissAlerts.instruction` を vision 解釈の文字列から `str | list[str]` へ発展させる。
+      候補 label のリストが決定論的なネイティブ形、自由文字列が vision 形。既存の `instruction`、BE-0314 の
+      `interrupts`、BE-0316 の `handleSystemAlert` セレクタに突き合わせ、語彙を増やさない。
+- [x] ユニット 4 — `_AlertGuardGate` で独立した間隔（デフォルト 1 秒、`dismissAlerts` の優先順位で上書き
       可能、BE-0177）でネイティブの照会をポーリングし、最初の陽性で dismiss する（`_POLL` から切り離す。
       毎 tick 照会はせず、debounce/cooldown/max-attempts も付けない）。vision guard を fallback に降格し、
       capability を持たないバックエンドは変えない。
-- [ ] ユニット 5 — 実際の通知プロンプトか ATT プロンプトに対する実機検証。バックエンド非依存の配線は実機
-      不要のテストで覆う。
+- [x] ユニット 5 — 実際の通知プロンプトに対する実機検証（ネイティブでの許可、認証情報なし）。ガード方針、
+      ゲートのネイティブ経路、`system_alert_labels` チャネル、config 配線は実機不要のテストで覆う。
+- [x] ユニット 6 — showcase と CI でネイティブなリアクティブ許可を実現する。`demos/showcase/scenarios/permission.yaml`
+      の通知シナリオはリスト形の `dismissAlerts: { instruction: ["Allow"] }` で許可するようにし、既定と
+      なった XCUITest backend（BE-0290）でネイティブ経路が決定論的に「Allow」を押す。自由文字列はネイティブの
+      label を埋めず、既定の無害な label 群にフォールバックして「Don't Allow」を押し、許可を反転させてしまう。
+      許可がネイティブかつ鍵不要になったため、このシナリオは `ai` タグを外して必須の XCUITest ゲートに加わる
+      （`ios-e2e.yml`、`--exclude ai` は不要）。同じゲート上にある BE-0316 のプロアクティブな
+      `permission_system_alert.yaml` に対する、リアクティブな対応物である。
 
 ## 参考
 

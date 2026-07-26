@@ -10,6 +10,7 @@ import pytest
 from _runner import _eff, _el, _failing_lease, _fake_driver, _ios_eff, _lease
 
 from bajutsu.config import Effective, XcuitestConfig
+from bajutsu.doctor import Score
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence import NullSink
@@ -31,6 +32,47 @@ def test_run_all() -> None:
     ]
     results = run_all(_eff(), scenarios, _lease)
     assert [r.ok for r in results] == [True, False]
+
+
+def test_on_score_emits_the_entry_screen_grade_once() -> None:
+    # `run --score`: the app's entry screen is scored once per run — from the first scenario's freshly
+    # launched driver — so CI reads doctor's Ready/Partial/Blocked tell without a second cold spawn.
+    scenarios = [
+        Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]}),
+        Scenario.model_validate({"name": "b", "steps": [{"tap": {"id": "ok"}}]}),
+    ]
+    scores: list[Score] = []
+    run_all(_eff(), scenarios, _lease, workers=2, on_score=scores.append)
+    # Exactly once for the whole run (index 0), even with parallel workers; `_fake_driver`'s single
+    # id-carrying button grades Ready.
+    assert len(scores) == 1
+    assert scores[0].grade == "Ready"
+
+
+def test_on_score_defaults_to_not_scoring() -> None:
+    scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
+    scored = False
+
+    def _sink(_s: Score) -> None:
+        nonlocal scored
+        scored = True
+
+    # The default call (no on_score) is unchanged; passing the sink is what opts in.
+    run_all(_eff(), scenarios, _lease)
+    assert scored is False
+    run_all(_eff(), scenarios, _lease, on_score=_sink)
+    assert scored is True
+
+
+def test_on_score_failure_never_breaks_the_run() -> None:
+    # The score is diagnostic and off the verdict path (prime directive 1): a sink that raises — or a
+    # query fault behind it — is swallowed, so the scenario's own machine verdict still stands.
+    def boom(_s: Score) -> None:
+        raise RuntimeError("score sink blew up")
+
+    scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
+    results = run_all(_eff(), scenarios, _lease, on_score=boom)
+    assert results[0].ok
 
 
 def _crashing_driver() -> base.Driver:
@@ -74,6 +116,19 @@ def test_run_all_recovers_a_scenario_whose_backend_crashed() -> None:
     results = run_all(_eff(), scenarios, lease)
     assert [r.ok for r in results] == [True]  # recovered on the fresh-lease retry
     assert events == ["release-1", "release-2"]  # the dead lease and the live one both released
+
+
+def test_on_score_emits_once_even_when_scenario_zero_crashes_and_recovers() -> None:
+    # The score is a once-per-run tell, not per-attempt. When scenario 0 crashes mid-run and recovers
+    # on a respawned app (BE-0049), `_run_on_lease` is re-entered and would re-score the fresh launch —
+    # but the latch keeps the sink firing exactly once, so CI reads a single grade, not one per retry.
+    # (The crash is in `tap`; scoring uses `query()`, so attempt 1 scores before the step crashes.)
+    lease, _events = _crash_then_ok_lease()
+    scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
+    scores: list[Score] = []
+    results = run_all(_eff(), scenarios, lease, on_score=scores.append)
+    assert results[0].ok  # recovered on the fresh-lease retry
+    assert len(scores) == 1  # latched: the retry's fresh launch is not re-scored
 
 
 def test_run_all_fails_a_scenario_that_crashes_every_attempt() -> None:
@@ -406,10 +461,10 @@ def test_run_all_releases_after_each_scenario() -> None:
     assert released == ["a", "b"]  # release runs after every scenario, including the last
 
 
-def test_run_all_on_blocked_for_selects_per_scenario() -> None:
+def test_run_all_alert_guard_for_selects_per_scenario() -> None:
     # The factory picks each scenario's guard from its alertHandling: the guarded scenario
     # recovers from a blocked tap and passes; the one that disabled it fails.
-    from bajutsu.orchestrator import AlertEvent, BlockedHandler
+    from bajutsu.orchestrator import AlertEvent, AlertGuardConfig
 
     scenarios = [
         Scenario.model_validate(
@@ -425,11 +480,11 @@ def test_run_all_on_blocked_for_selects_per_scenario() -> None:
         d.screen = [_el("later", "Later", ["button"])]  # "dismiss the alert": target appears
         return AlertEvent(label="x")
 
-    def on_blocked_for(s: Scenario) -> BlockedHandler | None:
+    def alert_guard_for(s: Scenario) -> AlertGuardConfig | None:
         cfg = s.alert_handling
-        return None if cfg is not None and not cfg.enabled else recover
+        return None if cfg is not None and not cfg.enabled else AlertGuardConfig(vision=recover)
 
-    results = run_all(_eff(), scenarios, _lease, on_blocked_for=on_blocked_for)
+    results = run_all(_eff(), scenarios, _lease, alert_guard_for=alert_guard_for)
     assert [r.ok for r in results] == [True, False]
 
 
@@ -477,6 +532,15 @@ def test_run_and_report(tmp_path: Path) -> None:
     assert prov["scenarioHash"] == expected
     assert prov["toolVersion"] == __version__
     assert "configSource" not in prov  # a local config records no Git source
+
+
+def test_run_and_report_forwards_on_score(tmp_path: Path) -> None:
+    # `run_and_report` threads `--score`'s sink through to the pipeline, so the CLI's `--score` reaches
+    # the first lease's grade.
+    scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
+    scores: list[Score] = []
+    run_and_report(_eff(), scenarios, _lease, tmp_path / "runs", "run1", on_score=scores.append)
+    assert len(scores) == 1 and scores[0].grade == "Ready"
 
 
 # --- cross-browser matrix run (BE-0076 Phase 2): run-per-engine -> assemble -> report-once ---

@@ -266,8 +266,14 @@ def _load_effective_with_source(
         raise typer.Exit(2) from None
     # A config's relative paths resolve against the file that declares them, not the caller's cwd, so
     # the same config behaves the same wherever `bajutsu` runs from (BE-0242). A Git source rebases
-    # against its checkout root, confined (a fetched config is untrusted); a local file rebases against
-    # its own directory, unconfined (an operator-trusted local file may point at a sibling, BE-0121).
+    # against its checkout root, confined (a fetched config can carry attacker-authored path fields);
+    # a local file rebases against its own directory, unconfined (an operator typing `--config` at
+    # their own terminal is operator-trusted, BE-0121, and may point at a sibling). serve's own
+    # file-browser bind (`bind_config`) hands the same config file to the same `Effective.rebased`
+    # with `confine=True` instead — not because that file is less trusted (it can only be one
+    # `_confined_config_path` already found inside `--root`), but as a defense-in-depth consistency
+    # check applied regardless of bind source; see `Effective.rebased`'s docstring for the full
+    # reasoning, including why this is independent of `build:` trust.
     if root is None:
         return eff.rebased(cfg_path.resolve().parent, confine=False), source, None
     try:
@@ -431,17 +437,21 @@ def _build_alert_locator(eff: Effective, redactor: Redactor) -> ClaudeAlertLocat
 
     # The credential is provider-specific: the key named by ai.keyEnv (default ANTHROPIC_API_KEY) for
     # Anthropic, a provider-prefixed model for Bedrock (AWS credentials authenticate there). When it's
-    # absent we don't construct the locator at all — the guard no-ops rather than falling back.
+    # absent we don't construct the locator at all — the vision fallback no-ops rather than falling back.
+    # Only the *vision* fallback needs the credential; the iOS XCUITest native alert path (BE-0315)
+    # still clears the common system prompts without one, so the note names the vision fallback, not
+    # "the whole guard", to avoid implying the run has no alert handling at all.
     gap = credential_gap(eff.ai)
     if gap == "anthropic-key":
         typer.echo(
             f"note: alert-handling is on but ${anthropic_client.key_env(eff.ai)} is unset — "
-            "the alert guard will no-op"
+            "the vision alert guard will no-op (on the iOS XCUITest backend the native path still clears common prompts)"
         )
     elif gap == "bedrock-model":
         typer.echo(
             "note: alert-handling is on but no Bedrock model id is set "
-            "(ai.model / BAJUTSU_BEDROCK_MODEL) — the alert guard will no-op"
+            "(ai.model / BAJUTSU_BEDROCK_MODEL) — the vision alert guard will no-op "
+            "(on the iOS XCUITest backend the native path still clears common prompts)"
         )
     if gap is not None:
         return None

@@ -175,6 +175,10 @@ class WebContextDriver:
         # only the resident-runner XCUITest backend declares the capability, so this never runs.
         raise UnsupportedAction("handleSystemAlert is iOS-only; not supported in web context")
 
+    def system_alert_labels(self) -> list[str]:
+        # A WebView DOM context sees no SpringBoard alert layer; the reactive native path never runs.
+        return []
+
     def wait_for(self, sel: Selector) -> bool:
         """Single-shot: whether `sel` matches the WebView's current DOM (BE-0118).
 

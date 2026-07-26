@@ -701,6 +701,10 @@ class PlaywrightDriver:
             "handleSystemAlert is iOS-only; the web backend has no OS-level permission prompt"
         )
 
+    def system_alert_labels(self) -> list[str]:
+        # No OS-level SpringBoard prompt on the web; the reactive guard's native path never runs here.
+        return []
+
     @_wedge_guard
     def wait_for(self, sel: base.Selector) -> bool:
         # Single-shot by contract (BE-0118): delegates to the shared base.default_wait_for so the
