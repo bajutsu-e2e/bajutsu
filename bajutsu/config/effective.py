@@ -220,9 +220,13 @@ class Effective:
         `confine` gates the escape check: when true, an absolute or `../` value that would leave the
         confinement boundary raises ValueError, mirroring the serve-hardening path confinement
         (BE-0051). That boundary is `root` itself by default — the same directory relative paths
-        resolve against — which is right for a Git checkout or an uploaded bundle: `root` there is the
-        whole checkout/bundle tree (the config file need not sit at its top), so a sibling reference
-        elsewhere in that tree is legitimate and a path leaving the tree is the only thing refused.
+        resolve against — which is right for both a Git checkout and an uploaded bundle, though `root`
+        means a different tree to each. For a Git checkout `root` is the whole fetched tree and the
+        config may sit anywhere within it, so a sibling reference elsewhere in the checkout is
+        legitimate and only a path leaving the tree is refused. For an uploaded bundle `root` is
+        instead the config file's own directory (`config_path.parent` — the bundle root, or the single
+        wrapper subdirectory `find_bundle_config` accepts), so the config always sits at its top and a
+        `../` reference to a sibling outside that directory is refused, not legitimate.
         `confine_to` overrides just the confinement boundary, decoupling it from the resolution base,
         for serve's local file-browser bind (`bind_config`): paths there still resolve against the
         config file's own directory (`root`, matching `state.cwd`), but are confined to `--root`

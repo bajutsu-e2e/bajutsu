@@ -552,7 +552,7 @@ def test_rebased_refuses_a_path_field_escaping_the_checkout() -> None:
         eff = resolve(
             load_config(f"targets:\n  x:\n    bundleId: com.x\n    scenarios: {bad}\n"), "x"
         )
-        with pytest.raises(ValueError, match="escapes the checkout"):
+        with pytest.raises(ValueError, match="escapes the confinement root"):
             eff.rebased(Path("/co"))
 
 
