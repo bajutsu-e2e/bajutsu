@@ -198,6 +198,22 @@ jobs:
           udid: ${{ steps.toolchain.outputs.udid }}
           artifact-name: smoke-run
 
+      # The onboarding gate for real (BE-0304): with the Simulator booted, assert `bajutsu doctor`'s
+      # `environment:` section reports no ✗ — exercising simctl.py's real JSON parsing (`booted_udids`)
+      # and preflight.py's real tool checks (`xcrun`, `xcodebuild`) through the real actuator, the
+      # drift no injected-fake unit test can see. `--environment-only` stops doctor at the runnability
+      # gate, so this pays nothing for the screen probe and never touches the resident runner (its
+      # startup flakiness is the smoke run's concern above, already passed by here). Runs after the
+      # smoke step because the bajutsu-e2e action is what syncs the venv (`uv sync --no-dev`); the
+      # Simulator stays booted, so the gate sees the same real environment. A ✗ fails this gating job.
+      - name: Onboarding gate (bajutsu doctor environment — BE-0304)
+        env:
+          UDID: ${{ steps.toolchain.outputs.udid }}
+        run: >-
+          uv run --no-sync python scripts/assert_doctor_env.py --expect ok
+          --target showcase-swiftui --backend xcuitest
+          --config demos/showcase/showcase.config.yaml --udid "$UDID"
+
   # Real on-device XCUITest actuation beyond the conformance job's `tap` (BE-0281): drives `back`,
   # device control, and text editing that the smoke / golden / visual jobs above never reach (they
   # only `wait`/`expect`). The proven tab-crossing gesture / text scenarios (search.yaml,
