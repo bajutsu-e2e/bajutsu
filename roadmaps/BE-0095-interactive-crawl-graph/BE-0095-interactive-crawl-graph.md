@@ -123,7 +123,25 @@ lands; it can ship in the same change if low-cost, or as an immediate follow-up.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] TBD — enumerate the work breakdown (MECE) here once scoped.
+- [x] Manual-position overrides — the module-scoped `nodeOverrides` map, overlaid onto the
+  algorithmic `pos` in `renderGraph` before edges/frames/tiles are emitted.
+- [x] Node dragging, distinct from canvas pan, with live edge-path recomputation instead of a full
+  re-render per frame.
+- [x] Click-vs-drag disambiguation (the ~3px `moved` threshold) so a tap still opens the lightbox /
+  group expand-collapse.
+- [x] Realign button (`#crawl-realign`) that clears `nodeOverrides` and redraws from the canonical
+  BFS layout.
+- [x] Group expand/collapse interaction — an override simply stops matching once its unit id
+  changes, falling back to the algorithmic position.
+- [x] Touch support (one-finger drag on a node moves it; drag on the background still pans) —
+  shipped in the same change rather than as a follow-up.
+
+Log:
+
+- [#398](https://github.com/bajutsu-e2e/bajutsu/pull/398) — shipped node drag (mouse + touch), the
+  realign button, and live edge recomputation during drag, in `bajutsu/templates/serve.js` /
+  `serve.html.j2` / `serve.css`. `localStorage` persistence, snap-to-grid, and per-node reset stayed
+  deferred, as the *Alternatives considered* section anticipated.
 
 ## References
 
