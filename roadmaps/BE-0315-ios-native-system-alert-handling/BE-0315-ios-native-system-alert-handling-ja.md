@@ -145,6 +145,16 @@ Control（TCC）データベースに支えられており、`simctl privacy` �
    あります。バックエンド非依存の配線（ユニット 3 と 4）は、driver の capability をスタブする実機不要の
    テストで覆います。
 
+6. **showcase と CI でネイティブなリアクティブ許可を実現する。** showcase の通知シナリオを、ネイティブ経路を
+   動かすように変えます。`demos/showcase/scenarios/permission.yaml` はリスト形の
+   `dismissAlerts: { instruction: ["Allow"] }` で許可するので、既定となった XCUITest backend（BE-0290）では、
+   ガードは vision フォールバックではなく正確な label のネイティブ照会で「Allow」を押します。許可がネイティブ
+   かつ認証情報なしで決定論的になったため、このシナリオは `ai` タグを外し、必須の XCUITest ゲートに加わります
+   （`ios-e2e.yml` は `--exclude ai` を落とします）。同じゲート上にある BE-0316 のプロアクティブな
+   `permission_system_alert.yaml` に対する、リアクティブなネイティブの対応物です。このユニットによって、
+   ネイティブな許可は実機不要のテストで覆った capability にとどまらず、ゲートで担保される実証済みのフローに
+   なります。
+
 ## 検討した代替案
 
 - **XCUITest 組み込みの割り込みハンドラ `addUIInterruptionMonitor`。** 却下します。この監視は非決定論的な

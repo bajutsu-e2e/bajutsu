@@ -161,6 +161,16 @@ interface) holds throughout.
    label-addressed dismiss. The backend-agnostic wiring (units 3 and 4) is covered by off-device tests
    that stub the driver capability.
 
+6. **Realize the native reactive grant in the showcase and CI.** Convert the showcase's notification
+   scenario to exercise the native path: `demos/showcase/scenarios/permission.yaml` grants with the
+   list form `dismissAlerts: { instruction: ["Allow"] }`, so on the now-default XCUITest backend
+   (BE-0290) the guard taps "Allow" by an exact-label native query rather than through the vision
+   fallback. Because the grant is now deterministic and credential-free, the scenario sheds its `ai`
+   tag and joins the required XCUITest gate (`ios-e2e.yml` drops `--exclude ai`) — the reactive native
+   counterpart to BE-0316's proactive `permission_system_alert.yaml` on the same gate. This unit is
+   what makes the native grant a demonstrated, gate-enforced flow rather than only an
+   off-device-tested capability.
+
 ## Alternatives considered
 
 - **`addUIInterruptionMonitor`, XCUITest's built-in interruption handler.** Rejected: the monitor
