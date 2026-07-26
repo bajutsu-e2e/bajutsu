@@ -489,7 +489,7 @@ device (the shared device is reseeded via one channel, so parallel workers would
 - The serve DB layer's Alembic migrations — including migration 0010's `dialect.name == "postgresql"`
   foreign-key branch and the `JSONB` column variants that `models.py` and several migrations select
   only on Postgres — plus the wider DB-touching suite across `tests/serve/` (models, repository, and
-  OAuth persistence, among every other file that builds its schema on an engine) all run against an
+  OAuth persistence — every file that opts into the shared `serve_engine` fixture) all run against an
   ephemeral `postgres:16` service container by the `serve db (postgres)` job (`serve-db.yml`;
   [BE-0309](../roadmaps/BE-0309-serve-postgres-ci-lane/BE-0309-serve-postgres-ci-lane.md)). Every one
   of those tests is parametrized over both dialects through the shared `serve_engine` fixture
