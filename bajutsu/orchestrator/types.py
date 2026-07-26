@@ -249,9 +249,11 @@ class AlertGuardConfig:
 
         Reads BE-0316's SpringBoard query (`system_alert_labels`) to learn the alert's buttons, picks
         a policy-named one, and taps it through BE-0316's `handle_system_alert`. The returned
-        `AlertEvent` is set only for `"dismissed"`. `"absent"` is a deterministic no-alert fact
-        (unlike the collapsed-tree proxy), so the gate can suppress a vision false positive on it;
-        `"unhandled"` means an alert is up but no candidate label resolves, so the gate falls back to
+        `AlertEvent` is set only for `"dismissed"`. `"absent"` is a deterministic no-*SpringBoard*-alert
+        fact — but the native query only sees `springboard.alerts`, so a non-enumerable surface (an
+        action sheet, a WKWebView dialog) reads as `"absent"` too, and the caller still routes it to the
+        vision guard (`__call__` one-shot; the mid-wait gate via its debounced collapsed-tree proxy).
+        `"unhandled"` means an alert is up but no candidate label resolves, so the caller falls back to
         the vision guard.
         """
         if base.Capability.HANDLE_SYSTEM_ALERT not in driver.capabilities():
