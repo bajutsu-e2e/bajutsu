@@ -101,9 +101,9 @@ bajutsu doctor --target <name> [--udid booted] [--backend ...] [--config ...] [-
   for XCUITest) and a **booted Simulator**, printed as a ✓/✗ checklist. A missing
   check **exits 1** (fail fast with a fixable hint).
 - `--environment-only` stops right after that gate — render the `environment:` section, then exit 0
-  up a short-lived XCUITest runner). A CI lane that only needs to verify the environment gate against
-  up the resident XCUITest runner). A CI lane that only needs to verify the environment gate against
-  a real host (BE-0304) uses this to skip the probe's unrelated failure modes, the runner's own
+  (a pass) or 1 (a `✗`), skipping the screen probe below (on iOS, the cost of bringing up a
+  short-lived XCUITest runner). A CI lane that only needs to verify the environment gate against a
+  real host (BE-0304) uses this to skip the probe's unrelated failure modes, the runner's own
   startup flakiness included.
 - `--scenario <file.yaml>` runs a device-free **capability preflight** (BE-0024): before the screen
   probe, it checks whether the scenario uses constructs the chosen backend can't perform and **exits
