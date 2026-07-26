@@ -277,6 +277,26 @@ def test_run_pbcopy_retries_transient_timeout(monkeypatch: pytest.MonkeyPatch) -
     assert len(slept) == 2  # slept between the two retries only
 
 
+def test_run_pbcopy_recovers_past_three_attempts(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A wedged pasteboard can outlast three quick tries (the CI flake this budget was widened
+    # for); the retry budget must reach far enough to clear it.
+    assert simctl._PBCOPY_MAX_ATTEMPTS >= 4
+    attempts = {"n": 0}
+
+    def flaky_run(cmd: list[str], **kw: object) -> subprocess.CompletedProcess[str]:
+        attempts["n"] += 1
+        if attempts["n"] < 4:
+            raise subprocess.CalledProcessError(60, cmd, output="", stderr="")
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(simctl.subprocess, "run", flaky_run)
+    monkeypatch.setattr(simctl.time, "sleep", lambda s: None)
+
+    simctl.Env("UDID").set_clipboard("x")  # succeeds on the fourth attempt, no raise
+
+    assert attempts["n"] == 4
+
+
 def test_run_pbcopy_reraises_after_exhausting_retries(monkeypatch: pytest.MonkeyPatch) -> None:
     attempts = {"n": 0}
 
