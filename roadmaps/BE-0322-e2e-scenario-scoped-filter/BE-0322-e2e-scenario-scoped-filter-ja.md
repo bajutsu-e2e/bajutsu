@@ -9,7 +9,7 @@
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0322") |
-| 実装 PR | _未定_ |
+| 実装 PR | [#1375](https://github.com/bajutsu-e2e/bajutsu/pull/1375) |
 | トピック | コントリビューターワークフロー |
 <!-- /BE-METADATA -->
 
