@@ -91,9 +91,10 @@ not recover within 60s
 
 ## 詳細設計
 
-作業は独立した 3 つのユニットに分かれます。ユニット 1 と 2 は上記の 2 つの隙間——bring-up の
+作業は 5 つのユニットに分かれます。ユニット 1 と 2 は上記の 2 つの隙間——bring-up の
 クラッシュを回復し、次に死んだプロセスに窓を費やすのをやめる——で、ユニット 3 は両方を注入可能な
-シームの上でテストします。Simulator は不要です。
+シームの上でテストします。ユニット 4 と 5 は、その下にある再入クラッシュを塞ぎます。runner の
+XCUITest 操作を直列化（根本原因）し、その安全余裕として crash-retry 予算を引き上げます。Simulator は不要です。
 
 1. **lease を crash リトライの `try` の内側に置く。** `_ScenarioRunner.run_one`
    （`bajutsu/runner/pipeline.py`）で、`self.lease(...)` の呼び出しを `try` の直前から `try` の内側へ

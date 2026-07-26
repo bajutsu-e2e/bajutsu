@@ -88,9 +88,10 @@ cleared only by re-running the job by hand.
 
 ## Detailed design
 
-The work breaks into three independent units. Units 1 and 2 are the two gaps above — recover the
-bring-up crash, then stop spending the window on a dead process — and unit 3 tests both over
-injectable seams, no Simulator required.
+The work breaks into five units. Units 1 and 2 are the two gaps above — recover the bring-up crash,
+then stop spending the window on a dead process — and unit 3 tests both over injectable seams. Units
+4 and 5 then close the re-entrancy crash beneath them: serialize the runner's XCUITest operations
+(the root cause), and raise the crash-retry budget as its safety margin. No Simulator required.
 
 1. **Lease inside the crash-retry `try`.** In `_ScenarioRunner.run_one`
    (`bajutsu/runner/pipeline.py`), move the `self.lease(...)` call from just before the `try` to
