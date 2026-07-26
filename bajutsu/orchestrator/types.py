@@ -264,7 +264,7 @@ class AlertGuardConfig:
             return "unhandled", None
         try:
             driver.handle_system_alert({"label": label}, _NATIVE_TAP_TIMEOUT)
-        except base.ElementNotFound:
+        except (base.ElementNotFound, base.AmbiguousSelector):
             # A time-of-check/time-of-use race: the alert changed or vanished between the presence
             # query and the tap. It is no longer blocking, so treat it as absent rather than failing
             # the step on a benign, self-resolved race — a genuine channel error still propagates.
