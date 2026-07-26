@@ -6,6 +6,7 @@
 # The request deliberately carries Authorization + a `password` body field; with a `redact`
 # policy those are masked in the captured evidence (SPEC §6 / DESIGN §9).
 - name: log submit answered by a mock, toast appears and clears
+  tags: [network]
   preconditions:
     launchEnv: { SHOWCASE_UITEST: "1" }
   mocks:

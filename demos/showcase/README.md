@@ -37,6 +37,14 @@ UIKit, each in the same a11y/noax flavor pair (four more products,
 `make -C demos/showcase/android build-all`). Until BE-0007 lands they build but cannot be run
 (`--backend android` reports "not implemented yet").
 
+**Flutter twin** ([`flutter/`](flutter), [BE-0008](../../roadmaps/BE-0008-flutter-support/BE-0008-flutter-support.md)):
+one Dart codebase reproduces the same contract for **both** platforms and adds no backend — a
+widget's `Semantics(identifier: …)` surfaces into the OS accessibility tree, so the same
+`scenarios/` set drives it through XCUITest / adb unchanged (see
+[`docs/drivers.md`](../../docs/drivers.md) "Flutter"). Targets: `showcase-flutter` (iOS),
+`showcase-flutter-android`, `showcase-flutter-android-noax`. Run with
+`make -C demos/showcase run-flutter` / `run-flutter-android` (Flutter must be on PATH).
+
 ## Build
 
 Needs [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`) and Xcode.

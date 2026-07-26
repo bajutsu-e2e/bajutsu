@@ -3,6 +3,7 @@
 # change (the counterpart to network_mock.yaml). The upstream response varies, so the scenario
 # asserts only the deterministic fact — that the request was observed — not a specific status.
 - name: refresh issues an observed catalog request
+  tags: [network]
   preconditions:
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
