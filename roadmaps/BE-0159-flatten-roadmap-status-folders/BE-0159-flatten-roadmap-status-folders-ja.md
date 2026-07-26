@@ -222,24 +222,24 @@ BE-0078 が導入し、BE-0096・BE-0149 が拡張したツール群に触れる
 > コードを取り除いて、フラット専用の後片付け（`promote` の廃止、状態による承認ゲート、文章の書き換え）を
 > 行います。どの段階でもツリーは正しい状態に保たれます。
 
-- [ ] 物理的な配置のフラット化：すべての項目をフラットな直下へ `git mv`（PR1 は実装済みの項目、PR2 は
+- [x] 物理的な配置のフラット化：すべての項目をフラットな直下へ `git mv`（PR1 は実装済みの項目、PR2 は
       残り）し、新しい（フラットな）パスで索引を再生成する。
-- [ ] `scripts/build_roadmap_index.py`：リンク生成からカテゴリ別ディレクトリを取り除く。生成される
+- [x] `scripts/build_roadmap_index.py`：リンク生成からカテゴリ別ディレクトリを取り除く。生成される
       表の状態による分類そのものは変えない。
-- [ ] `scripts/promote_roadmap_items.py` / `roadmap-promote.yml`：ファイル移動のロジックを廃止し、
+- [x] `scripts/promote_roadmap_items.py` / `roadmap-promote.yml`：ファイル移動のロジックを廃止し、
       残る「状態変更時の索引再生成」を既存の `roadmap-id` ワークフローへ畳み込む（または最小限の
       別立てのまま残す）。
-- [ ] `scripts/allocate_roadmap_ids.py`：4 カテゴリの走査を単一ディレクトリの走査にまとめる。
-- [ ] `scripts/check_roadmap_format.py` / `scripts/roadmap_ids.py`：`_items()` の 4 フォルダ走査を
+- [x] `scripts/allocate_roadmap_ids.py`：4 カテゴリの走査を単一ディレクトリの走査にまとめる。
+- [x] `scripts/check_roadmap_format.py` / `scripts/roadmap_ids.py`：`_items()` の 4 フォルダ走査を
       単一ディレクトリの走査にまとめる（ID の形を見る述語自体は影響を受けない）。
-- [ ] `scripts/new_roadmap_item.py`：`--status` に関わらず、新しい項目を常に `roadmaps/` 直下に
+- [x] `scripts/new_roadmap_item.py`：`--status` に関わらず、新しい項目を常に `roadmaps/` 直下に
       作成する。
-- [ ] `scripts/sync_roadmap_tracking_issues.py`：`issue_body()` の `href` から `item.category` を
+- [x] `scripts/sync_roadmap_tracking_issues.py`：`issue_body()` の `href` から `item.category` を
       取り除く。既存のトラッキング Issue（開いているものも閉じたものも）すべてに対して、壊れた
       リンクを直す一度限りの修復を走らせる。
-- [ ] 文章：`CLAUDE.md`、`roadmaps/README.md` / `README-ja.md`、`docs/ai-development.md` の
+- [x] 文章：`CLAUDE.md`、`roadmaps/README.md` / `README-ja.md`、`docs/ai-development.md` の
       フォルダ全単射の規則を「単一ディレクトリ。状態が決めるのは索引の分類だけ」に書き換える。
-- [ ] [BE-0154](../BE-0154-roadmap-promote-base-sha/BE-0154-roadmap-promote-base-sha-ja.md)
+- [x] [BE-0154](../BE-0154-roadmap-promote-base-sha/BE-0154-roadmap-promote-base-sha-ja.md)
       に、`promote_roadmap_items.py` の仕事が索引再生成だけに縮んだ段階で見直しか終了が必要である旨の
       印を付ける。
 

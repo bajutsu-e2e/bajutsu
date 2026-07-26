@@ -223,24 +223,24 @@ CI stay deterministic; nothing app- or backend-specific is touched.
 > removes the dual-layout code, and does the flat-only cleanup (retire `promote`, Status-based
 > approvals gate, prose retraction). The tree is valid at every step.
 
-- [ ] Flatten the physical layout: every item `git mv`'d to the flat root (PR1: Implemented items;
+- [x] Flatten the physical layout: every item `git mv`'d to the flat root (PR1: Implemented items;
       PR2: the remainder), index regenerated at the new (flat) paths.
-- [ ] `scripts/build_roadmap_index.py` — drop the per-category directory from link construction;
+- [x] `scripts/build_roadmap_index.py` — drop the per-category directory from link construction;
       keep `Status`-derived bucket grouping in the generated tables unchanged.
-- [ ] `scripts/promote_roadmap_items.py` / `roadmap-promote.yml` — retire the file-move logic; fold
+- [x] `scripts/promote_roadmap_items.py` / `roadmap-promote.yml` — retire the file-move logic; fold
       the remaining "reindex on Status change" into the existing `roadmap-id` workflow (or keep it
       minimal and separate).
-- [ ] `scripts/allocate_roadmap_ids.py` — collapse the four-category scan to one directory scan.
-- [ ] `scripts/check_roadmap_format.py` / `scripts/roadmap_ids.py` — collapse `_items()`'s
+- [x] `scripts/allocate_roadmap_ids.py` — collapse the four-category scan to one directory scan.
+- [x] `scripts/check_roadmap_format.py` / `scripts/roadmap_ids.py` — collapse `_items()`'s
       four-folder walk to one directory (the id-shape predicates themselves are unaffected).
-- [ ] `scripts/new_roadmap_item.py` — scaffold every new item directly under `roadmaps/`,
+- [x] `scripts/new_roadmap_item.py` — scaffold every new item directly under `roadmaps/`,
       independent of `--status`.
-- [ ] `scripts/sync_roadmap_tracking_issues.py` — drop `item.category` from `issue_body()`'s
+- [x] `scripts/sync_roadmap_tracking_issues.py` — drop `item.category` from `issue_body()`'s
       `href`; run a one-time repair pass over every existing tracking issue (open and closed) to fix
       already-broken links.
-- [ ] Prose — `CLAUDE.md`, `roadmaps/README.md` / `README-ja.md`, `docs/ai-development.md`: replace
+- [x] Prose — `CLAUDE.md`, `roadmaps/README.md` / `README-ja.md`, `docs/ai-development.md`: replace
       the folder-bijection rule with "one directory; `Status` decides only the index bucket."
-- [ ] Flag [BE-0154](../BE-0154-roadmap-promote-base-sha/BE-0154-roadmap-promote-base-sha.md)
+- [x] Flag [BE-0154](../BE-0154-roadmap-promote-base-sha/BE-0154-roadmap-promote-base-sha.md)
       for revision or closing once `promote_roadmap_items.py`'s job shrinks to a reindex.
 
 Log:
