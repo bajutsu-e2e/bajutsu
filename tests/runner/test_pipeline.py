@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -72,6 +73,180 @@ def test_on_score_failure_never_breaks_the_run() -> None:
     scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
     results = run_all(_eff(), scenarios, _lease, on_score=boom)
     assert results[0].ok
+
+
+def _crashing_driver() -> base.Driver:
+    """A driver whose `tap` raises `BackendCrashError` — models a mid-run resident-runner crash
+    (the real failure surfaced as `POST /tap failed: … crashed mid-run`)."""
+
+    class _Crashing(FakeDriver):
+        def tap(self, sel: base.Selector) -> None:
+            raise base.BackendCrashError("runner crashed mid-run (test)")
+
+    return _Crashing([_el("ok", "OK", ["button"])])
+
+
+def _crash_then_ok_lease() -> tuple[Callable[[Effective, Scenario], Lease], list[str]]:
+    """A lease factory whose first lease crashes and the rest pass, recording each lease's release."""
+    state = {"n": 0}
+    events: list[str] = []
+
+    def lease(eff: Effective, scenario: Scenario) -> Lease:
+        state["n"] += 1
+        n = state["n"]
+        driver = _crashing_driver() if n == 1 else _fake_driver()
+        return Lease(
+            driver=driver,
+            sink=NullSink(),
+            relaunch=None,
+            control=None,
+            collector=None,
+            release=lambda n=n: events.append(f"release-{n}"),
+        )
+
+    return lease, events
+
+
+def test_run_all_recovers_a_scenario_whose_backend_crashed() -> None:
+    # A mid-scenario backend crash (BackendCrashError) is infrastructure, not a verdict: the pipeline
+    # discards the dead lease, leases a fresh one (a cold respawn), and re-runs the scenario. Here the
+    # first lease crashes and the second passes, so the scenario passes — with both leases released.
+    lease, events = _crash_then_ok_lease()
+    scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
+    results = run_all(_eff(), scenarios, lease)
+    assert [r.ok for r in results] == [True]  # recovered on the fresh-lease retry
+    assert events == ["release-1", "release-2"]  # the dead lease and the live one both released
+
+
+def test_run_all_fails_a_scenario_that_crashes_every_attempt() -> None:
+    # A scenario whose backend crashes on every attempt exhausts the retry budget and fails loudly —
+    # flakiness is never absorbed into a pass (BE-0049). Exactly crash_retries + 1 attempts run.
+    leases = 0
+
+    def lease(eff: Effective, scenario: Scenario) -> Lease:
+        nonlocal leases
+        leases += 1
+        return Lease(
+            driver=_crashing_driver(),
+            sink=NullSink(),
+            relaunch=None,
+            control=None,
+            collector=None,
+            release=lambda: None,
+        )
+
+    scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
+    messages: list[str] = []
+    results = run_all(_eff(), scenarios, lease, crash_retries=2, progress=messages.append)
+    assert not results[0].ok and leases == 3  # crash_retries=2 → 3 attempts, all crashed
+    assert "crashed mid-run" in (results[0].failure or "")
+    # The final, non-retried attempt must not claim a retry that never happens (would mislead an
+    # operator watching progress into expecting a fourth attempt that the budget doesn't allow).
+    assert "respawning" not in messages[-1]
+    assert sum("respawning" in m for m in messages) == 2  # only the 2 attempts that did retry
+
+
+def test_run_all_crash_retries_zero_disables_recovery() -> None:
+    # crash_retries=0: a single attempt, no respawn — a crash fails the scenario at once.
+    leases = 0
+
+    def lease(eff: Effective, scenario: Scenario) -> Lease:
+        nonlocal leases
+        leases += 1
+        return Lease(
+            driver=_crashing_driver(),
+            sink=NullSink(),
+            relaunch=None,
+            control=None,
+            collector=None,
+            release=lambda: None,
+        )
+
+    scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
+    results = run_all(_eff(), scenarios, lease, crash_retries=0)
+    assert not results[0].ok and leases == 1  # no retry
+
+
+def test_crash_retries_default_reads_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The on-device lane raises the budget via BAJUTSU_CRASH_RETRIES without a code change; unset (or
+    # invalid) keeps the default 1, and 0 disables recovery. An explicit run_all arg still wins.
+    from bajutsu.runner.pipeline import _default_crash_retries
+
+    monkeypatch.delenv("BAJUTSU_CRASH_RETRIES", raising=False)
+    assert _default_crash_retries() == 1  # unset -> the pre-knob default
+    monkeypatch.setenv("BAJUTSU_CRASH_RETRIES", "2")
+    assert _default_crash_retries() == 2
+    monkeypatch.setenv("BAJUTSU_CRASH_RETRIES", "0")
+    assert _default_crash_retries() == 0  # explicit opt-out of recovery
+    monkeypatch.setenv("BAJUTSU_CRASH_RETRIES", "not-a-number")
+    assert _default_crash_retries() == 1  # invalid -> the default, never a crash
+
+
+def test_run_all_honors_the_crash_retries_environment_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # End to end: with the env raised to 2 (three attempts) and no explicit arg, a lease that crashes
+    # at bring-up on every attempt is leased exactly three times before failing loudly.
+    monkeypatch.setenv("BAJUTSU_CRASH_RETRIES", "2")
+    leases = 0
+
+    def lease(eff: Effective, scenario: Scenario) -> Lease:
+        nonlocal leases
+        leases += 1
+        raise base.BackendCrashError("runner crashed during the readiness gate (test)")
+
+    scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
+    results = run_all(_eff(), scenarios, lease)  # crash_retries unset -> reads the env (2)
+    assert not results[0].ok and leases == 3  # env budget 2 -> three attempts
+
+
+def test_run_all_recovers_when_the_lease_itself_crashes_at_bringup() -> None:
+    # A backend crash during the LEASE — the launch/readiness gate, not a scenario step — must be
+    # recovered by the same retry. The resident runner can answer /health at cold spawn and then crash
+    # on the first readiness query, before any step runs, so `self.lease` (which runs launch_driver)
+    # raises BackendCrashError; the retry leases afresh (a cold respawn) and the scenario passes. Guards
+    # the fix that moved the lease inside the crash-retry try — before it, a lease-time crash escaped
+    # the loop and failed the whole run.
+    state = {"n": 0}
+    leased: list[int] = []
+
+    def lease(eff: Effective, scenario: Scenario) -> Lease:
+        state["n"] += 1
+        n = state["n"]
+        if n == 1:
+            raise base.BackendCrashError("runner crashed during the readiness gate (test)")
+        leased.append(n)
+        return Lease(
+            driver=_fake_driver(),
+            sink=NullSink(),
+            relaunch=None,
+            control=None,
+            collector=None,
+            release=lambda: None,
+        )
+
+    scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
+    results = run_all(_eff(), scenarios, lease)
+    assert [r.ok for r in results] == [
+        True
+    ]  # recovered even though the crash happened at lease time
+    assert leased == [2]  # the second lease (a cold respawn) served the run
+
+
+def test_run_all_fails_when_the_lease_crashes_every_attempt() -> None:
+    # A lease that crashes at bring-up on every attempt exhausts the budget and fails loudly, exactly
+    # like a step-time crash — the lease-time path honors the same bound (BE-0049), never looping.
+    leases = 0
+
+    def lease(eff: Effective, scenario: Scenario) -> Lease:
+        nonlocal leases
+        leases += 1
+        raise base.BackendCrashError("runner crashed during the readiness gate (test)")
+
+    scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
+    results = run_all(_eff(), scenarios, lease, crash_retries=1)
+    assert not results[0].ok and leases == 2  # crash_retries=1 → 2 attempts, both crashed at lease
+    assert "crashed mid-run" in (results[0].failure or "")
 
 
 def test_scenario_runner_runs_one_in_isolation() -> None:

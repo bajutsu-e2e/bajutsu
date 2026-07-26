@@ -4,10 +4,19 @@ from __future__ import annotations
 
 import subprocess
 from collections.abc import Mapping
+from pathlib import Path
 
 import pytest
 
 from bajutsu import simctl
+
+# A real `xcrun simctl list devices available -j` payload, captured once from a macOS host and
+# committed so the parsers are checked against the shape Xcode actually emits — not only against the
+# hand-typed literals above, which are internally consistent and so blind to schema drift (BE-0304).
+# Only the home-directory username in the `dataPath` / `logPath` values was normalized to `runner`;
+# the parsers read none of those, so the structure the parsers touch (`devices`, per-device `udid` /
+# `name` / `state`, the runtime keys) is exactly as captured.
+_REAL_LIST_DEVICES = Path(__file__).parent / "data" / "simctl_list_devices_available.json"
 
 
 def test_command_builders() -> None:
@@ -189,6 +198,33 @@ def test_env_validates_udid_at_construction() -> None:
         assert simctl.Env(good).udid == good
 
 
+def test_parsers_accept_a_real_captured_payload() -> None:
+    """`device_catalog` / `booted_udids` parse a real captured payload, not just hand-typed JSON.
+
+    The value is schema fidelity: a future Xcode that renamed `state` or restructured `devices`
+    would slip past the hand-typed literals (they encode today's schema by construction) but break
+    against this captured one — the gap BE-0304 closes. Injecting the payload through the parsers'
+    `run` seam keeps the test hermetic (no `xcrun` on the Linux gate).
+    """
+    payload = _REAL_LIST_DEVICES.read_text(encoding="utf-8")
+
+    catalog = simctl.device_catalog(run=lambda args, e=None: payload)
+    assert catalog, "the captured payload should yield a non-empty device catalog"
+    for udid, entry in catalog.items():
+        assert udid  # every catalogued device is keyed by a real udid
+        assert entry["name"], f"{udid} has no device name"
+        # `runtime_label` humanizes the runtime id to e.g. "iOS 26.5"; a schema change to the
+        # runtime key would surface here as a raw identifier instead of the "<OS> <ver>" shape.
+        assert entry["runtime"].startswith("iOS "), entry["runtime"]
+
+    # The same payload carries per-device `state`, so the booted filter runs against the real shape;
+    # the captured host had booted simulators, so the parser must find them (and each must be in the
+    # catalog above — booted devices are a subset of the available ones).
+    booted = simctl.booted_udids(run=lambda args, e=None: payload)
+    assert booted, "the captured payload had booted simulators; the parser should find them"
+    assert set(booted) <= set(catalog)
+
+
 def test_device_error_keeps_command_and_simctl_stderr() -> None:
     exc = subprocess.CalledProcessError(
         149,
@@ -202,3 +238,94 @@ def test_device_error_keeps_command_and_simctl_stderr() -> None:
     assert "exit 149" in msg
     assert "xcrun simctl erase U" in msg
     assert "Booted" in msg  # simctl's own (actionable) stderr is preserved
+
+
+def test_run_pbcopy_passes_stdin_and_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[dict[str, object]] = []
+
+    def fake_run(cmd: list[str], **kw: object) -> subprocess.CompletedProcess[str]:
+        calls.append({"cmd": cmd, **kw})
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(simctl.subprocess, "run", fake_run)
+    simctl.Env("UDID").set_clipboard("hello")
+
+    assert len(calls) == 1  # first attempt succeeds, no retry
+    assert calls[0]["cmd"] == ["xcrun", "simctl", "pbcopy", "UDID"]
+    assert calls[0]["input"] == "hello"
+    assert calls[0]["timeout"] == simctl._PBCOPY_TIMEOUT_S
+    assert calls[0]["check"] is True
+
+
+def test_run_pbcopy_retries_transient_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    # simctl exits 60 (ETIMEDOUT) on a flaky pasteboard sync; a re-run clears it.
+    attempts = {"n": 0}
+
+    def flaky_run(cmd: list[str], **kw: object) -> subprocess.CompletedProcess[str]:
+        attempts["n"] += 1
+        if attempts["n"] < 3:
+            raise subprocess.CalledProcessError(60, cmd, output="", stderr="")
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    slept: list[float] = []
+    monkeypatch.setattr(simctl.subprocess, "run", flaky_run)
+    monkeypatch.setattr(simctl.time, "sleep", lambda s: slept.append(s))
+
+    simctl.Env("UDID").set_clipboard("x")  # succeeds on the third attempt, no raise
+
+    assert attempts["n"] == 3
+    assert len(slept) == 2  # slept between the two retries only
+
+
+def test_run_pbcopy_reraises_after_exhausting_retries(monkeypatch: pytest.MonkeyPatch) -> None:
+    attempts = {"n": 0}
+
+    def always_timeout(cmd: list[str], **kw: object) -> subprocess.CompletedProcess[str]:
+        attempts["n"] += 1
+        raise subprocess.CalledProcessError(60, cmd, output="", stderr="")
+
+    monkeypatch.setattr(simctl.subprocess, "run", always_timeout)
+    monkeypatch.setattr(simctl.time, "sleep", lambda s: None)
+
+    with pytest.raises(subprocess.CalledProcessError):
+        simctl.Env("UDID").clear_clipboard()
+
+    assert attempts["n"] == simctl._PBCOPY_MAX_ATTEMPTS  # bounded, fails loudly after the last
+
+
+def test_run_pbcopy_fast_fails_non_transient_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A deterministic simctl failure (bad UDID, un-booted device) won't clear on a re-run, so it
+    # surfaces on the first attempt — no retry, no backoff.
+    attempts = {"n": 0}
+
+    def bad_device(cmd: list[str], **kw: object) -> subprocess.CompletedProcess[str]:
+        attempts["n"] += 1
+        raise subprocess.CalledProcessError(149, cmd, output="", stderr="Invalid device")
+
+    slept: list[float] = []
+    monkeypatch.setattr(simctl.subprocess, "run", bad_device)
+    monkeypatch.setattr(simctl.time, "sleep", lambda s: slept.append(s))
+
+    with pytest.raises(subprocess.CalledProcessError):
+        simctl.Env("UDID").set_clipboard("x")
+
+    assert attempts["n"] == 1  # fast-failed, not retried
+    assert slept == []
+
+
+def test_run_pbcopy_retries_python_side_hang(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A hang (no simctl exit) surfaces as TimeoutExpired from the subprocess bound; retry it too.
+    attempts = {"n": 0}
+
+    def hang_then_ok(cmd: list[str], **kw: object) -> subprocess.CompletedProcess[str]:
+        attempts["n"] += 1
+        if attempts["n"] == 1:
+            raise subprocess.TimeoutExpired(cmd, simctl._PBCOPY_TIMEOUT_S)
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(simctl.subprocess, "run", hang_then_ok)
+    monkeypatch.setattr(simctl.time, "sleep", lambda s: None)
+
+    simctl.Env("UDID").set_clipboard("x")
+
+    assert attempts["n"] == 2

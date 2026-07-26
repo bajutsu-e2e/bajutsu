@@ -9,9 +9,14 @@
 # swipe-to-scroll on a deep Form row is unreliable, and a two-finger target must be fully on-screen
 # for its touch points anyway. Each target flips its mirrored a11y value once the gesture is
 # recognized, so the run asserts the actuation actually landed rather than merely not erroring.
+# BAJUTSU_GESTURE_RETRY opts this scenario into the XCUITest actuator's dropped-gesture retry: its
+# targets mirror each gesture onto the acted-on element's own a11y value (see GestureView), so a
+# landing is observable and the actuator can safely re-issue a dropped pinch/rotate until it lands.
+# Without the opt-in a two-finger gesture is actuated once — the deterministic default for an app that
+# does not self-mirror, where re-applying an accumulating gesture would vary its magnitude by run.
 - name: pinch and rotate targets mirror their result
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_GESTURES: "1" }
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_GESTURES: "1", BAJUTSU_GESTURE_RETRY: "1" }
   steps:
     - wait: { for: { id: log.pinch }, timeout: 10 }
       capture: [video]

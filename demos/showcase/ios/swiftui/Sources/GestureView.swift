@@ -17,12 +17,17 @@ struct GestureView: View {
             // A generous, opaque hit area (as in ConformanceView): XCUITest drives a pinch/rotate as
             // two touch points that need real room, and the gesture degenerates on an
             // intrinsically-sized view. `contentShape` makes the whole frame hittable.
+            // The target mirrors its own result onto its own accessibility value (not only the sibling
+            // `.value` label below): the XCUITest actuator retries a dropped two-finger gesture until
+            // the element it acted on reflects a change, so it needs the flip on the actuated element
+            // itself — a whole-screen diff would stop on any unrelated update.
             Text("Pinch me")
                 .frame(width: 280, height: 120)
                 .background(Color.gray.opacity(0.25))
                 .contentShape(Rectangle())
                 .gesture(MagnifyGesture().onChanged { _ in pinched = true })
                 .accessibilityID("log.pinch")
+                .accessibilityStateValue(pinched ? "pinched" : "idle")
             Text(pinched ? "pinched" : "idle")
                 .foregroundStyle(.secondary)
                 .accessibilityID("log.pinch.value")
@@ -34,6 +39,7 @@ struct GestureView: View {
                 .contentShape(Rectangle())
                 .gesture(RotateGesture().onChanged { _ in rotated = true })
                 .accessibilityID("log.rotate")
+                .accessibilityStateValue(rotated ? "rotated" : "idle")
             Text(rotated ? "rotated" : "idle")
                 .foregroundStyle(.secondary)
                 .accessibilityID("log.rotate.value")

@@ -270,6 +270,60 @@ jobs:
       - name: Codegen real-compile gate (demos/web)
         run: make -C demos/web codegen-e2e
 
+  # The onboarding gate for real (BE-0304): `provision` → `preflight`/`doctor`, exercised end to end
+  # against both a broken and a provisioned environment — the drift no injected-fake unit test can
+  # see, since the fakes are internally consistent with today's behaviour by construction. One job
+  # tells a before/after story: the browser is absent, doctor refuses the host, `provision` installs
+  # it for real, doctor's environment gate then passes. Deliberately *uncached* (no Playwright
+  # browser cache): the first step needs a genuinely browserless host, which a restored cache would
+  # mask, and `provision` below does the real download. A non-gating signal for now — kept out of the
+  # `E2E (web)` aggregator's `needs`, as `network` / `codegen` were before they were promoted — so it
+  # reports on the PR without blocking a merge on a `playwright install` network flake.
+  onboarding:
+    name: onboarding (doctor / provision)
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
+    runs-on: ubuntu-latest
+    env:
+      UV_NO_DEV: "1"
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990  # v8.3.2
+        with:
+          enable-cache: true
+
+      # The Playwright *package* only, no browser — the broken environment the next step asserts
+      # against. The package imports (so the actuator resolves and doctor reaches its environment
+      # gate), but its Chromium is absent.
+      - name: Install the web backend package (no browser — the broken environment)
+        run: uv sync --extra web
+
+      # The broken-environment case: with the Playwright package present but no Chromium, doctor's
+      # environment gate must refuse the host — exit non-zero with a ✗ in its `environment:` section.
+      # `--expect broken` (scripts/assert_doctor_env.py) asserts exactly that; its parser is
+      # unit-tested (tests/test_assert_doctor_env.py), replacing the fragile inline awk/grep this lane
+      # first shipped with — the same "untested shell -> tested Python" move scripts/e2e_changes.py made.
+      - name: doctor fails loudly when the browser is missing (BE-0304 broken-environment case)
+        run: >-
+          uv run --no-sync python scripts/assert_doctor_env.py --expect broken
+          --target web --config demos/web/demo.config.yaml
+
+      - name: Provision the web backend for real (BE-0304 provision case)
+        # The real installer, not the hand-rolled `playwright install` every other job runs, so its
+        # own command-construction code (BE-0164) is the thing that actually executes at least once.
+        run: uv run --no-sync python -m bajutsu.provision --backend web
+
+      # The provisioned case: after the real installer ran, doctor's environment gate must report no
+      # ✗. `--expect ok` runs `doctor --environment-only`, so — unlike the earlier inline check — it
+      # never reaches the screen probe that faulted on the absent app server (ERR_CONNECTION_REFUSED),
+      # and the assertion is scoped to the environment gate the same way the iOS/Android lanes are.
+      - name: doctor's environment gate passes after provision (BE-0304 real-run case)
+        run: >-
+          uv run --no-sync python scripts/assert_doctor_env.py --expect ok
+          --target web --config demos/web/demo.config.yaml
+
   # Single required status check for the web lane — the web twin of ios-e2e.yml's `E2E`. Always runs
   # so it reports even when the browser jobs are skipped (a PR that can't affect the web path) — a
   # skipped dependency is a pass; only a real failure or cancellation fails the gate. The web lane

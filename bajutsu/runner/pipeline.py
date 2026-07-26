@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 from collections.abc import Callable, Mapping
 from concurrent.futures import ThreadPoolExecutor
@@ -27,6 +28,7 @@ from bajutsu.assertions import (
 )
 from bajutsu.backends import capabilities_for_run
 from bajutsu.config import Effective
+from bajutsu.drivers.base import BackendCrashError
 from bajutsu.evidence import Artifact
 from bajutsu.evidence.network import NetworkExchange, _no_transitions
 from bajutsu.evidence.redaction import Redactor
@@ -42,10 +44,30 @@ from bajutsu.orchestrator import (
 from bajutsu.orchestrator.types import _no_network
 from bajutsu.report import git_revision, run_provenance, scenario_render_inputs, write_report
 from bajutsu.runner.mailbox import build_mailbox_reader
-from bajutsu.runner.types import LeaseFn, OnBlockedFor
+from bajutsu.runner.types import Lease, LeaseFn, OnBlockedFor
 from bajutsu.scenario import Scenario, dump_scenario_file, redact_totp_secrets
 
 _logger = logging.getLogger(__name__)
+
+# The default backend-crash retry budget, overridable per lane without a code change. A resident
+# XCUITest runner crashes more on a loaded/contended CI host (the XCTest host's accessibility bridge
+# under actuation), so a lane on such hardware can raise the budget for infrastructure crashes — the
+# crash is the test host dying, not an app verdict, so riding it out is not flakiness-by-absorption
+# (BE-0049): a scenario that crashes every attempt still fails once the budget is spent. Default 1
+# (two attempts), the value before this knob existed, so an unset environment is unchanged.
+_CRASH_RETRIES_ENV = "BAJUTSU_CRASH_RETRIES"
+_DEFAULT_CRASH_RETRIES = 1
+
+
+def _default_crash_retries() -> int:
+    """The backend-crash retry budget from `BAJUTSU_CRASH_RETRIES`, or the default when unset/invalid."""
+    raw = os.environ.get(_CRASH_RETRIES_ENV)
+    if not raw:
+        return _DEFAULT_CRASH_RETRIES
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return _DEFAULT_CRASH_RETRIES
 
 
 def _write_network(
@@ -125,6 +147,14 @@ class _ScenarioRunner:
     # verdict path (prime directive 1): it never changes a scenario's result or the run's exit code.
     # None (the default) keeps every existing run silent.
     on_score: Callable[[Score], None] | None = None
+    # How many times to re-run a scenario whose backend crashed mid-run (base.BackendCrashError)
+    # before failing it — the dead lease is discarded and a fresh one leased (a cold respawn) each
+    # retry. A crash is backend infrastructure, not a verdict (prime directive 1); bounding the
+    # retries keeps a genuinely crash-inducing scenario failing loudly (BE-0049). 0 disables it.
+    # The retry replays the *whole* scenario on a respawned (not erased) app, so it is safe only for
+    # scenarios idempotent up to the crash point — one with a persistent side effect before the
+    # crash (e.g. a server-side write) can fail, or pass against the wrong state, on replay.
+    crash_retries: int = 1
 
     def _maybe_emit_score(self, i: int, driver: base.Driver) -> None:
         """Score the just-launched app's entry screen once, on the first scenario (best-effort).
@@ -193,8 +223,64 @@ class _ScenarioRunner:
                 sid=sid,
                 failure=f"unsupported on backend '{actuator}': {'; '.join(reasons)}",
             )
-        lz = self.lease(self.eff, s)
+        # Backend-crash recovery: a mid-scenario runner/host crash (base.BackendCrashError) is
+        # backend infrastructure, not a verdict — discard the dead lease, lease a fresh device (a
+        # cold respawn), and re-run the whole scenario from the start, bounded by `crash_retries`.
+        # A scenario that crashes every attempt exhausts the budget and fails loudly (BE-0049).
         handler = self.on_blocked_for(s) if self.on_blocked_for is not None else self.on_blocked
+        last_crash: BackendCrashError | None = None
+        for attempt in range(1, self.crash_retries + 2):
+            # Lease *inside* the try so a crash during bring-up — the launch/readiness gate, not only a
+            # scenario step — is caught by the same recovery. `self.lease` runs launch_driver, whose
+            # `_await_ready` surfaces a BackendCrashError when the resident runner answers /health at
+            # cold spawn and then crashes on the first readiness query, before any step runs; without
+            # this, that crash escaped the loop and failed the whole run. `_run_on_lease` releases the
+            # lease in its own `finally` (on a mid-step crash too, so the dead lease is never leaked); a
+            # lease-time crash leaves no lease to release (the pool tears down its own failed lease), and
+            # the retry leases afresh — a cold respawn, since the pool drops the dead warm runner.
+            try:
+                lz = self.lease(self.eff, s)
+                return self._run_on_lease(lz, handler, i, s, sid)
+            except BackendCrashError as crash:
+                last_crash = crash
+                will_retry = attempt <= self.crash_retries
+                _logger.warning(
+                    "scenario %s: backend crashed mid-run (attempt %d/%d)%s: %s",
+                    s.name,
+                    attempt,
+                    self.crash_retries + 1,
+                    ", respawning and retrying" if will_retry else "",
+                    crash,
+                )
+                if self.progress is not None and will_retry:
+                    self.progress(
+                        f"⟳ scenario {i + 1}/{self.total}: {s.name} — backend crashed mid-run, "
+                        f"respawning and retrying (attempt {attempt}/{self.crash_retries + 1})"
+                    )
+        # Retries spent: the crash is not a one-off, so surface it as an honest scenario failure.
+        if self.progress is not None:
+            self.progress(f"✘ scenario {i + 1}/{self.total}: {s.name} (backend crashed mid-run)")
+        return RunResult(
+            scenario=s.name,
+            ok=False,
+            steps=[],
+            backend=actuator or "",
+            sid=sid,
+            failure=(
+                f"backend crashed mid-run and did not recover across "
+                f"{self.crash_retries + 1} attempts: {last_crash}"
+            ),
+        )
+
+    def _run_on_lease(
+        self, lz: Lease, handler: BlockedHandler | None, i: int, s: Scenario, sid: str
+    ) -> RunResult:
+        """Run one scenario on an already-leased device and return its result.
+
+        Raises `base.BackendCrashError` straight through when the backend crashes mid-scenario: the
+        lease is dead, so `run_one` discards it and re-runs the scenario on a fresh one. Every other
+        outcome — pass, assertion failure, unsupported action — comes back as a `RunResult`.
+        """
         try:
             # Score the entry screen before the scenario mutates it — the app is freshly launched here,
             # exactly what a standalone `doctor` probe would see, but on the lease this run already holds.
@@ -303,6 +389,7 @@ def run_all(
     golden_context: GoldenContext | None = None,
     lease_udid_spec: str = "booted",
     on_score: Callable[[Score], None] | None = None,
+    crash_retries: int | None = None,
 ) -> list[RunResult]:
     """Run every scenario, each on a freshly leased device, and return one result per scenario.
 
@@ -349,6 +436,13 @@ def run_all(
         on_score: Sink for the app's entry-screen convention score, emitted once from the first
             scenario's freshly launched driver (the `run --score` inline of `doctor`'s grade). None
             (the default) scores nothing; diagnostic only, never on the verdict path.
+        crash_retries: How many times to re-run a scenario whose backend crashed mid-run
+            (`base.BackendCrashError`) on a fresh device before failing it. A crash is backend
+            infrastructure, not a verdict; the default (None) reads `BAJUTSU_CRASH_RETRIES` — 1 when
+            unset — so a loaded CI lane can raise the budget without a code change, while a scenario
+            that crashes every attempt still fails loudly once it is spent (BE-0049). 0 disables the
+            recovery. The replay re-runs the whole scenario on a respawned (not erased) app, so it is
+            safe only for scenarios idempotent up to the crash point.
 
     Returns:
         One result per scenario, in the same order as `scenarios`.
@@ -390,6 +484,9 @@ def run_all(
         golden_context=golden_context,
         udid_spec=lease_udid_spec,
         on_score=on_score,
+        # None means "read the lane's `BAJUTSU_CRASH_RETRIES` (else the default)"; an explicit int
+        # (a test, or a caller that pins it) still wins.
+        crash_retries=crash_retries if crash_retries is not None else _default_crash_retries(),
     )
     if workers > 1:
         # >1 hands each worker its own device + per-device resources; the runner is frozen and
