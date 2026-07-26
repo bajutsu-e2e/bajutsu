@@ -7,9 +7,9 @@
 |---|---|
 | Proposal | [BE-0309](BE-0309-serve-postgres-ci-lane.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0309") |
-| Implementing PR | [#1347](https://github.com/bajutsu-e2e/bajutsu/pull/1347), [#1353](https://github.com/bajutsu-e2e/bajutsu/pull/1353), [#1359](https://github.com/bajutsu-e2e/bajutsu/pull/1359) |
+| Implementing PR | [#1347](https://github.com/bajutsu-e2e/bajutsu/pull/1347), [#1353](https://github.com/bajutsu-e2e/bajutsu/pull/1353), [#1359](https://github.com/bajutsu-e2e/bajutsu/pull/1359), [#1362](https://github.com/bajutsu-e2e/bajutsu/pull/1362), [#1365](https://github.com/bajutsu-e2e/bajutsu/pull/1365) |
 | Topic | Verification & coverage |
 | Related | [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) |
 <!-- /BE-METADATA -->
@@ -85,8 +85,12 @@ Proposal altitude. The work is MECE along the units below.
   persistence tests — behind a shared `serve_engine` fixture that retrofits the per-test isolation a
   shared Postgres needs. Slice 3 moved the remaining eighteen files onto the same fixture, so every
   serve DB test that builds its schema on an in-memory engine now runs against both dialects.)*
-- [ ] Wire it into CI as a non-gating signal, promote to required once stable.
-  *(Non-gating signal landed; promotion to a required check remains.)*
+- [x] Wire it into CI as a non-gating signal, promote to required once stable.
+  *(Non-gating signal landed. Slice 4 gave the lane an always-reporting `serve db (postgres)` gate —
+  mirroring the required `E2E (web)` aggregator — so the check can be required without a path-skip
+  leaving it pending forever. A maintainer then added that check to the "Require code review"
+  branch ruleset, so `serve db (postgres)` is now a required check — the final step, a repository
+  setting outside any code PR.)*
 
 ### Log
 
@@ -118,6 +122,18 @@ Proposal altitude. The work is MECE along the units below.
   `test_db_run_listing.py` stays SQLite-only by design. No workflow change was needed: the lane
   already selects the directory by marker (`pytest tests/serve -m postgres -n0`), so each newly
   retrofitted file joined it automatically.
+- Slice 4 — restructured `serve-db.yml` into the always-reporting shape a required check needs. It
+  now triggers on every PR (and the merge queue) rather than a workflow-trigger `paths:` filter; a
+  `changes` job (`dorny/paths-filter`) decides whether the heavy `postgres` job runs; and a new
+  `if: always()` gate job named `serve db (postgres)` translates the work job's skip into a pass and
+  its failure into a red — the same pattern the required `E2E (web)` aggregator uses so a path-skip
+  never leaves a required check pending. This does not itself make the check required — that is a
+  repository ruleset change a maintainer makes once the gate has proven stable — it only makes the
+  check safe to require.
+- Required — a maintainer added `serve db (postgres)` to the "Require code review" branch ruleset's
+  required status checks, so the lane now gates the merge like `check` and the `E2E (…)` aggregators.
+  This is the item's last step and completes it; being a repository setting rather than code, it
+  ships outside any PR, and this note records that it happened.
 
 ## References
 

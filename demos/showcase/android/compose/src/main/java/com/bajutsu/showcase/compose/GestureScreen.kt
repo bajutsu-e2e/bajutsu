@@ -67,5 +67,10 @@ private fun GestureTarget(
             },
     )
     val value = if (fired) pressedLabel else "idle"
+    // Only the sibling `.value` twin mirrors the result here (unlike iOS, where the target also mirrors
+    // onto its own accessibilityValue): that iOS self-mirror serves the XCUITest actuator's dropped-
+    // gesture retry, which scopes to the acted-on element's value; adb drives the two-finger sweep
+    // without that retry, and a `uiautomator dump` exposes one content-desc per node — it can't carry
+    // the target's "Pinch me" label and an "idle" value at once. So the twin alone mirrors here.
     Text(value, Modifier.aid("$id.value").stateValue(value))
 }

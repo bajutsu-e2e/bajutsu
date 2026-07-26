@@ -173,3 +173,15 @@ The CLI's `run` calls this `run_and_report` ([cli](cli.md#run)).
 > catches an already-crashed runner — so this proactive refresh is what keeps a long suite off the
 > crash. Set the knob to `0` to disable warm reuse entirely (every lease cold) on a device that
 > proves to crash sooner.
+
+> **Backend-crash recovery.** The proactive refresh above narrows the crash window but
+> does not close it; when a backend still crashes mid-scenario, `_ScenarioRunner.run_one` catches the
+> backend-agnostic `base.BackendCrashError` (raised by any driver, not only XCUITest's), discards the
+> dead lease, leases a fresh one — a cold respawn, since the pool drops the dead warm runner — and
+> re-runs the *whole* scenario from the start, bounded by `crash_retries` (default 1, so one retry
+> after the first crash). A scenario that crashes on every attempt exhausts the budget and fails
+> loudly, so flakiness is never absorbed into a silent pass. Because the retry replays the
+> whole scenario against a respawned (not erased)
+> app, it is safe only for a scenario idempotent up to its crash point; one with a persistent side
+> effect before the crash (e.g. a server-side write) can fail, or pass against the wrong state, on
+> replay.
