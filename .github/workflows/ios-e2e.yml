@@ -352,7 +352,7 @@ jobs:
   # has a flakiness history (BE-0218), so new actuation lands as a per-PR signal first and is promoted
   # to the gate only once it proves stable. It installs the prebuilt products from the `build` job and
   # runs all four scenarios in one `bajutsu run` (cost discipline: the macOS runner bills at 10x), so
-  # the job's dominant cost — the cold XCTest-host startup — is paid once, not four times. Promote a
+  # the job's dominant cost — the cold XCTest-host startup — is paid twice, not four times. Promote a
   # scenario into `run` once it is stable.
   actuation:
     name: actuation (xcuitest)
