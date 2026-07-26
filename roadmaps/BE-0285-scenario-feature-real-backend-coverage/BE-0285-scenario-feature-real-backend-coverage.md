@@ -7,9 +7,9 @@
 |---|---|
 | Proposal | [BE-0285](BE-0285-scenario-feature-real-backend-coverage.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0285") |
-| Implementing PR | [#1184](https://github.com/bajutsu-e2e/bajutsu/pull/1184), [#1214](https://github.com/bajutsu-e2e/bajutsu/pull/1214) |
+| Implementing PR | [#1184](https://github.com/bajutsu-e2e/bajutsu/pull/1184), [#1214](https://github.com/bajutsu-e2e/bajutsu/pull/1214), [#1377](https://github.com/bajutsu-e2e/bajutsu/pull/1377) |
 | Topic | Verification & coverage |
 | Related | [BE-0031](../BE-0031-data-driven-scenarios/BE-0031-data-driven-scenarios.md), [BE-0033](../BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow.md), [BE-0030](../BE-0030-parameterized-shared-steps/BE-0030-parameterized-shared-steps.md), [BE-0281](../BE-0281-ios-on-device-actuation-coverage/BE-0281-ios-on-device-actuation-coverage.md) |
 <!-- /BE-METADATA -->
@@ -88,7 +88,7 @@ Proposal altitude. The work is MECE along the units below.
 - [x] `extract` reuse scenario on adb + web (real field value fed into a later step).
 - [x] `forEach` over a real multi-element list on adb + web.
 - [x] Data-driven and `relaunch` on web (beyond adb).
-- [ ] Extend the extract / forEach / data-driven / relaunch scenarios to iOS once BE-0281 lands (non-gating macOS lane).
+- [x] Extend the extract / forEach / data-driven / relaunch scenarios to iOS once BE-0281 lands (non-gating macOS lane).
 - [x] Dynamic-UI scenario exercising the read-count snapshot-identity and wait-floor premises (web; the
   wait-floor premise, BE-0245, is adb/Android-specific and has no web analog).
 
@@ -106,6 +106,18 @@ Proposal altitude. The work is MECE along the units below.
   (BE-0221) so they run on Compose and Views alike, and join the adb lane through the showcase
   Android Makefile's `E2E_SCENARIOS` / `E2E_VIEWS_SCENARIOS`. The iOS extension still waits on
   BE-0281.
+- 2026-07-26 ([#1377](https://github.com/bajutsu-e2e/bajutsu/pull/1377)): iOS slice landed, completing
+  the item. `extract.yaml`, `foreach.yaml`, `data_driven.yaml`, and `relaunch.yaml` — the same shared
+  showcase files adb runs, unchanged — joined `ios-e2e.yml`'s non-gating `actuation (xcuitest)` job,
+  ahead of its device-control scenarios so no OS-level side effect precedes them. They fold into that
+  existing job rather than a new one because a second non-gating job would differ only in which
+  scenarios it ran, and would re-pay the lane's boot, install, and cold XCTest-host startup to do it —
+  the reasoning by which this lane already consolidated twice. All four were run on a real Simulator
+  against both iOS toolkits before the wiring, which surfaced one asymmetry no fake could: the UIKit
+  twin's `UIStepper` started at 0, so three taps left the counter at 3 against `extract.yaml`'s
+  expected "4". `LogController` now starts the count at 1 like Compose, Views, and iOS SwiftUI, so
+  the one file runs unchanged on every target (BE-0221), and `SPEC.md` records that initial value as
+  part of the contract rather than a coincidence across four implementations.
 
 ## References
 

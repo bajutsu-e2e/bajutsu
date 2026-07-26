@@ -451,6 +451,10 @@ device (the shared device is reseeded via one channel, so parallel workers would
   ([BE-0281](../roadmaps/BE-0281-ios-on-device-actuation-coverage/BE-0281-ios-on-device-actuation-coverage.md)).
 - The `pinch`/`rotate` multi-touch gestures — confirmed on-device via the `ios-e2e.yml`
   `run (xcuitest)` job (`demos/showcase/scenarios/gestures_multitouch.yaml`, `--backend ios`).
+- The scenario-authoring features — `extract`, `forEach` over a list whose tree mutates between
+  iterations, data-driven rows, and `relaunch` — exercised on-device per PR by `ios-e2e.yml`'s
+  `actuation (xcuitest)` job, so none of them rests on adb and Playwright alone
+  ([BE-0285](../roadmaps/BE-0285-scenario-feature-real-backend-coverage/BE-0285-scenario-feature-real-backend-coverage.md)).
 
 ### Validated in a browser (Linux, no Mac)
 

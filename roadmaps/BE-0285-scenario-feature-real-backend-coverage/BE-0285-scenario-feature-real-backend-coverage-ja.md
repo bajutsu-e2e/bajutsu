@@ -7,9 +7,9 @@
 |---|---|
 | 提案 | [BE-0285](BE-0285-scenario-feature-real-backend-coverage-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0285") |
-| 実装 PR | [#1184](https://github.com/bajutsu-e2e/bajutsu/pull/1184), [#1214](https://github.com/bajutsu-e2e/bajutsu/pull/1214) |
+| 実装 PR | [#1184](https://github.com/bajutsu-e2e/bajutsu/pull/1184), [#1214](https://github.com/bajutsu-e2e/bajutsu/pull/1214), [#1377](https://github.com/bajutsu-e2e/bajutsu/pull/1377) |
 | トピック | 検証とカバレッジ |
 | 関連 | [BE-0031](../BE-0031-data-driven-scenarios/BE-0031-data-driven-scenarios-ja.md), [BE-0033](../BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow-ja.md), [BE-0030](../BE-0030-parameterized-shared-steps/BE-0030-parameterized-shared-steps-ja.md), [BE-0281](../BE-0281-ios-on-device-actuation-coverage/BE-0281-ios-on-device-actuation-coverage-ja.md) |
 <!-- /BE-METADATA -->
@@ -52,7 +52,7 @@
 - [x] adb + web での `extract` 再利用シナリオ（実フィールド値を後続ステップに渡す）。
 - [x] adb + web での実複数要素リストに対する `forEach`。
 - [x] web での data-driven と `relaunch` の検証（adb に加えて）。
-- [ ] BE-0281 の着地後、extract / forEach / data-driven / relaunch のシナリオを iOS へ拡張（ゲート対象外の macOS レーン）。
+- [x] BE-0281 の着地後、extract / forEach / data-driven / relaunch のシナリオを iOS へ拡張（ゲート対象外の macOS レーン）。
 - [x] 読み取り回数削減のスナップショット同一性と待機の下限の前提を検証する動的 UI シナリオ（web）。待機の下限の前提である BE-0245 は adb / Android 固有であり、web に対応する仕組みはありません。
 
 **ログ**
@@ -68,6 +68,19 @@
   どちらも既存のショーケースの部品を再利用し（アプリの変更は不要です）、両方の id 形式（BE-0221）を持つため
   Compose と Views の双方で動きます。ショーケースの Android Makefile の `E2E_SCENARIOS` /
   `E2E_VIEWS_SCENARIOS` を通じて adb レーンに加わります。iOS への拡張は引き続き BE-0281 を待ちます。
+- 2026-07-26（[#1377](https://github.com/bajutsu-e2e/bajutsu/pull/1377)）: iOS 側の作業が着地し、本項目が
+  完了しました。`extract.yaml`、`foreach.yaml`、`data_driven.yaml`、`relaunch.yaml` を、adb が走らせて
+  いるのと同じ showcase の共有ファイルのまま、`ios-e2e.yml` のゲート対象外ジョブ `actuation (xcuitest)`
+  に加えました。デバイス制御のシナリオより前に置いたので、OS レベルの副作用がこの 4 つの前に来ることは
+  ありません。新しいジョブを立てずに既存のジョブへ畳んだのは、ゲート対象外のジョブをもう 1 つ作っても
+  実行するシナリオしか違わず、そのために起動、インストール、コールドの XCTest ホスト起動をもう一度
+  支払うことになるからです。このレーンが 2 度の統合で潰してきたのと同じ理由です。配線の前に 4 つとも実
+  Simulator 上で iOS の両ツールキットに対して実行し、fake では現れない非対称がひとつ見つかりました。
+  UIKit 版の `UIStepper` は 0 から始まるため、3 回タップしてもカウンタは 3 のままで、`extract.yaml` が
+  期待する「4」に届かず失敗していました。`LogController` は Compose、Views、iOS SwiftUI と同じく 1 から
+  数え始めるようにしたので、
+  1 つのファイルがどのターゲットでもそのまま動きます（BE-0221）。あわせて `SPEC.md` に初期値を書き、
+  4 つの実装がたまたま揃っている状態ではなく規約として定めました。
 
 ## 参考
 

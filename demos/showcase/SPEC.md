@@ -189,7 +189,7 @@ A `NavigationStack` (SwiftUI) / `UINavigationController` (UIKit). Catalog list w
 A training-log composer exercising every input control and every modal style.
 
 - `log.note` — multiline text field
-- `log.count` — stepper for a numeric count; `log.count.value` mirrors the number
+- `log.count` — stepper for a numeric count, starting at 1 (the shared `extract.yaml` asserts an absolute count, so every target starts here); `log.count.value` mirrors the number
 - `log.intense` — a button-backed toggle "Intense" (the retired idb backend could not flip a native Toggle/UISwitch on iOS 26, BE-0290); `log.intense.value` = `on`/`off`
 - `log.segment.<one|two|three>` — a button-backed segmented control (the retired idb backend could not switch a native `Picker(.segmented)` / `UISegmentedControl` on iOS 26, BE-0290); the selected button carries the `selected` trait and the choice mirrors to `log.segment.value` (`one`/`two`/`three`, default `one`)
 - `log.submit` — button: POST to `SHOWCASE_HTTP_BASE` + `/post` with the note/count as JSON; on success shows `log.toast` (auto-dismiss ~1.2 s → exercises `wait until gone`) and appends a row

@@ -6,8 +6,10 @@ own tour/features scenarios so they stay loadable as the schema evolves; needs n
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
+from bajutsu import _yaml
 from bajutsu.config import AndroidConfig, IosConfig, load_config, resolve
 from bajutsu.scenario import load_scenarios
 
@@ -100,6 +102,44 @@ def test_demo_menu_config_declares_the_features_secret() -> None:
     assert eff.secrets == ["PASSWORD"]
 
 
+# Where each showcase target initializes the Log tab's counter. BE-0285's shared extract.yaml taps
+# `log.count` a fixed number of times and asserts an absolute value, so its arithmetic only holds while
+# every target starts from the same number — a contract SPEC §5.3 states and four independent native
+# sources implement. The on-device lanes catch a drift late (a red 10x-billed macOS job), and on the
+# iOS UIKit twin not at all: no CI job runs extract.yaml there.
+_LOG_COUNT_INITIALIZERS = {
+    "android/compose/src/main/java/com/bajutsu/showcase/compose/AppModel.kt": (
+        r"var logCount by mutableIntStateOf\((\d+)\)"
+    ),
+    "android/views/src/main/java/com/bajutsu/showcase/views/LogTab.kt": r"private var count = (\d+)",
+    "ios/swiftui/Sources/LogView.swift": r"@State private var count = (\d+)",
+    "ios/uikit/Sources/LogController.swift": r"private var count = (\d+)",
+}
+
+
+def test_extract_scenario_counter_arithmetic_holds_on_every_target() -> None:
+    showcase = ROOT / "demos" / "showcase"
+    for relative, pattern in _LOG_COUNT_INITIALIZERS.items():
+        found = re.search(pattern, (showcase / relative).read_text(encoding="utf-8"))
+        assert found, f"{relative}: no `log.count` initializer matching {pattern}"
+        assert found.group(1) == "1", f"{relative} starts log.count at {found.group(1)}, not 1"
+
+    scenario = _load_yaml(SCENARIO_DIR / "extract.yaml")[0]
+    taps = sum(1 for step in scenario["steps"] if "log.count" in _selector_ids(step.get("tap")))
+    assert taps, "extract.yaml no longer taps log.count"
+    assert int(scenario["expect"][0]["value"]["equals"]) == 1 + taps
+
+
+def _selector_ids(selector: object) -> list[str]:
+    """The `id` candidates a step's selector lists, as a list whatever form the YAML used."""
+    if not isinstance(selector, dict):
+        return []
+    ids = selector.get("id")
+    if isinstance(ids, str):
+        return [ids]
+    return [i for i in ids or [] if isinstance(i, str)]
+
+
 def test_menu_scenario_ids_use_declared_namespaces() -> None:
     ids = _collect_ids(MENU_DIR)
     assert ids  # sanity
@@ -107,9 +147,13 @@ def test_menu_scenario_ids_use_declared_namespaces() -> None:
     assert not off, f"ids outside declared namespaces: {off}"
 
 
-def _collect_ids(directory: Path) -> set[str]:
-    from bajutsu import _yaml
+def _load_yaml(path: Path) -> list[dict[str, object]]:
+    loaded = _yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert isinstance(loaded, list), f"{path.name}: expected a list of scenarios"
+    return loaded
 
+
+def _collect_ids(directory: Path) -> set[str]:
     ids: set[str] = set()
 
     def walk(node: object) -> None:
