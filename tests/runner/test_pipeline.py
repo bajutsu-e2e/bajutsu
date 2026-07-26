@@ -125,6 +125,39 @@ def test_run_all_crash_retries_zero_disables_recovery() -> None:
     assert not results[0].ok and leases == 1  # no retry
 
 
+def test_crash_retries_default_reads_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The on-device lane raises the budget via BAJUTSU_CRASH_RETRIES without a code change; unset (or
+    # invalid) keeps the default 1, and 0 disables recovery. An explicit run_all arg still wins.
+    from bajutsu.runner.pipeline import _default_crash_retries
+
+    monkeypatch.delenv("BAJUTSU_CRASH_RETRIES", raising=False)
+    assert _default_crash_retries() == 1  # unset -> the pre-knob default
+    monkeypatch.setenv("BAJUTSU_CRASH_RETRIES", "2")
+    assert _default_crash_retries() == 2
+    monkeypatch.setenv("BAJUTSU_CRASH_RETRIES", "0")
+    assert _default_crash_retries() == 0  # explicit opt-out of recovery
+    monkeypatch.setenv("BAJUTSU_CRASH_RETRIES", "not-a-number")
+    assert _default_crash_retries() == 1  # invalid -> the default, never a crash
+
+
+def test_run_all_honors_the_crash_retries_environment_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # End to end: with the env raised to 2 (three attempts) and no explicit arg, a lease that crashes
+    # at bring-up on every attempt is leased exactly three times before failing loudly.
+    monkeypatch.setenv("BAJUTSU_CRASH_RETRIES", "2")
+    leases = 0
+
+    def lease(eff: Effective, scenario: Scenario) -> Lease:
+        nonlocal leases
+        leases += 1
+        raise base.BackendCrashError("runner crashed during the readiness gate (test)")
+
+    scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
+    results = run_all(_eff(), scenarios, lease)  # crash_retries unset -> reads the env (2)
+    assert not results[0].ok and leases == 3  # env budget 2 -> three attempts
+
+
 def test_run_all_recovers_when_the_lease_itself_crashes_at_bringup() -> None:
     # A backend crash during the LEASE — the launch/readiness gate, not a scenario step — must be
     # recovered by the same retry. The resident runner can answer /health at cold spawn and then crash

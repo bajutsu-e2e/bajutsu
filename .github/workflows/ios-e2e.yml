@@ -110,6 +110,15 @@ env:
   # run pipeline's scenario-level crash recovery (BackendCrashError retry) is the primary defense; this
   # cap is a complementary reduction, kept because a smaller warm-runner session is simply steadier.
   BAJUTSU_XCUITEST_MAX_WARM_REUSES: "1"
+  # Raise the scenario-level backend-crash retry budget from the default 1 for the metered on-device
+  # lane (`_default_crash_retries`, bajutsu/runner/pipeline.py). The resident XCTest host still crashes
+  # more here than on a real Mac even with the runner's re-entrancy serialization (Router.actuationLock)
+  # removing the concurrent-snapshot abort; 2 (three attempts) rides out the residual one-off crash so a
+  # single unlucky scenario does not redden the six-scenario `run` job. A crash on *every* attempt still
+  # fails loudly once the budget is spent (BE-0049) — this only absorbs a genuine one-off, never a
+  # reproducible failure. Unused by the pytest-driven conformance job (it does not run through the
+  # pipeline), which leans on the runner-side serialization instead.
+  BAJUTSU_CRASH_RETRIES: "2"
 
 jobs:
   # Decide whether an on-device run is warranted. The macOS jobs only fire when the PR

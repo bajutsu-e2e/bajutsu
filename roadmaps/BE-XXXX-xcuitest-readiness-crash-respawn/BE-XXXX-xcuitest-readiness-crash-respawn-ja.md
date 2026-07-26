@@ -28,6 +28,17 @@ run パイプラインは、バックエンドのクラッシュに対する復�
 費やし、来ない復旧に 1 分を使うことです。本項目は lease をリトライの内側へ移して bring-up 時の
 クラッシュを他と同様に回復させ、runner プロセスが消えているときは復旧を即座に失敗させます。
 
+最初の修正の CI 実行が、その下の層をあらわにしました。混雑した CI ホストでは runner が**繰り返し**
+クラッシュするため、最初の起動も再起動後のリトライも死にうえに、`conformance` ゲート——`bajutsu run`
+ではなく pytest スイート——はパイプライン復旧にそもそも到達しません。クラッシュを源流までたどると、
+runner の HTTP サーバは接続を並行に捌き、`app.snapshot()` / `app.screenshot()` は app を待つあいだ
+main の run loop を回すので、並行する 2 つの `DispatchQueue.main.sync` 操作（scenario の `/elements`
+と evidence の `/screenshot`）が再入します——2 つ目の XCUITest 呼び出しが 1 つ目の*内側*で main
+スレッド上を走る——これは XCUITest が禁じており、XCTest ホストが abort します。そこで本項目は
+**runner の XCUITest 操作を直列化**して再入を源流から取り除き（`conformance` を含む全ジョブに効く）、
+**crash-retry 予算を設定可能**にして、従量課金の on-device レーンが残る 1 回限りのクラッシュを乗り切れる
+ようにもします。
+
 ## 動機
 
 必須の `run (xcuitest)` ジョブが、scenario のアサーションではなくセットアップ段階の失敗で flaky に
@@ -119,6 +130,29 @@ not recover within 60s
    **生存**を報告するクラッシュは予算を待ち続け BE-0287 が保たれること、そして述語がない既定の挙動が
    不変であること（ユニット 2、`tests/test_xcuitest.py`）。
 
+4. **runner の XCUITest 操作を直列化して再入クラッシュを取り除く（根本原因）。** 常駐 runner の HTTP
+   サーバ（`BajutsuRunner`）は接続を並行に捌きます——意図的に、長いジェスチャ中も `/health`
+   ポーリングに応答できるようにするためです（BE-0287）。あらゆる XCUITest 呼び出しは
+   `DispatchQueue.main.sync` で main スレッドへ marshal されますが、`app.snapshot()` /
+   `app.screenshot()` / 操作は app を待つあいだ main の run loop を回し、その spin が main の
+   dispatch キューを drain します——ので並行する 2 つ目の操作のブロックが 1 つ目の*内側*で走り、
+   XCUITest に再入して XCTest ホストを abort させます（CI 固有の実行中クラッシュ。混雑したホストほど
+   窓が広がる）。connection スレッドで main へ dispatch する*前に*握るロック（`Router.actuationLock`）を
+   追加し、1 つ目が実行中のあいだ 2 つ目が main へ enqueue されないようにします。すると run loop の
+   spin には drain すべき再入対象がありません。`/health` はロックを取りません（XCUITest 状態に触れない）
+   ので、並行サーバは「runner は busy であって dead ではない」シグナルを保ちます。これはユニット 1・2 の
+   パイプライン復旧を通らない `conformance` ジョブに届く唯一の修正です。main スレッド外から 2 つの読み取りを
+   並行に走らせ、決して重ならない・再入しないことを確かめる `BajutsuRunner` テストで担保します。
+
+5. **crash-retry 予算を設定可能にし、on-device レーンで引き上げる。** パイプラインの `crash_retries` は
+   ハードコードの既定 1（2 試行）でした。`BAJUTSU_CRASH_RETRIES` から読む（未設定なら 1）ようにして、
+   従量課金の on-device CI レーンがコード変更なしで引き上げられるようにし、そこで 2（3 試行）に設定します。
+   runner のクラッシュは*テストホスト*の死であってアプリの判定ではないので、1 回限りを乗り切るのは
+   flake の吸収ではありません——毎回クラッシュする scenario は予算を使い切れば依然として大きく失敗します
+   （[BE-0049](../BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md)）。これは
+   ユニット 4 の根本修正の*背後*にある安全余裕であって、代替ではありません。env が既定を設定すること
+   （未設定・不正 → 1、`0` で無効化）と `run_all` がそれを end to end で尊重することをテストで担保します。
+
 ## 検討した代替案
 
 - **パイプラインではなく `launch_driver` の内側だけでリトライする。** launch ローカルのリトライは、
@@ -151,6 +185,10 @@ not recover within 60s
 - [x] ユニット 2 — runner プロセスが終了していたら crash-recovery で即座に失敗させる（環境から
   liveness 述語を渡す。BE-0287 のプロセス生存ケースは不変）。
 - [x] ユニット 3 — パイプラインとチャネルのシームのオフデバイステスト。
+- [x] ユニット 4 — runner の XCUITest 操作を直列化（`Router.actuationLock`）し、XCTest ホストを abort
+  させる並行スナップショット再入を取り除く。`conformance` ゲートにも届く。
+- [x] ユニット 5 — crash-retry 予算を設定可能にし（`BAJUTSU_CRASH_RETRIES`）、on-device レーンで
+  ユニット 4 の背後の安全余裕として 2 に引き上げる。
 
 ## 参考
 
@@ -161,6 +199,8 @@ not recover within 60s
 - [BE-0310 — iOS アクセシビリティの画面遷移 readiness](../BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness-ja.md)
 - [BE-0319 — XCUITest のコールド runner 起動を診断可能で自己修復的にする](../BE-0319-xcuitest-cold-spawn-resilience/BE-0319-xcuitest-cold-spawn-resilience-ja.md)
 - [BE-0049 — 決定性と flaky さの監査](../BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md)
-- `bajutsu/runner/pipeline.py` — `_ScenarioRunner.run_one`（lease を内側へ移す crash リトライループ）。
+- `bajutsu/runner/pipeline.py` — `_ScenarioRunner.run_one`（lease を内側へ移す crash リトライループ）、`_default_crash_retries`（`BAJUTSU_CRASH_RETRIES` 予算）。
 - `bajutsu/drivers/xcuitest.py` — `_with_crash_recovery`、`_http_transport`、`XcuitestDriver`（チャネルとその crash-recovery シーム）。
 - `bajutsu/platform_lifecycle/environments/xcuitest.py` — `XcuitestEnvironment`（liveness 述語が読む `xcodebuild` サブプロセスのハンドルを持つ）。
+- `BajutsuKit/Sources/BajutsuRunner/Router.swift` — `Router.actuationLock`（runner の XCUITest 操作を直列化して再入クラッシュを取り除く）。
+- `.github/workflows/ios-e2e.yml` — on-device レーンの `BAJUTSU_CRASH_RETRIES` 予算。

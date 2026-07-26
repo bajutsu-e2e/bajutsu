@@ -28,6 +28,18 @@ when the runner's `xcodebuild` **process has exited**, the crash-recovery layer 
 recovery that cannot come. This item moves the lease inside the retry so a bring-up crash is
 recovered like any other, and fails the recovery fast when the runner process is gone.
 
+The first fix's own CI run then exposed the layer beneath: the resident runner crashes *repeatedly*
+on a contended CI host, so both the initial launch and the respawned retry can die, and the
+`conformance` gate — a pytest suite, not a `bajutsu run` — never reaches the pipeline recovery at
+all. Chasing the crash to its source, the runner's HTTP server serves connections concurrently, and
+`app.snapshot()` / `app.screenshot()` pump the main run loop while they wait on the app: two
+concurrent `DispatchQueue.main.sync` operations (a scenario `/elements` and an evidence
+`/screenshot`) re-enter — the second XCUITest call runs on the main thread *inside* the first — which
+XCUITest forbids, aborting the XCTest host. So this item also **serializes the runner's XCUITest
+operations** to remove that re-entrancy at the source (helping every job, `conformance` included),
+and makes the **crash-retry budget configurable** so the metered on-device lane can ride out the
+residual one-off crash.
+
 ## Motivation
 
 The required `run (xcuitest)` job flaked with a setup-time failure, not a scenario assertion:
@@ -106,7 +118,7 @@ injectable seams, no Simulator required.
    BE-0287's — so this only ever *shortens* an already-doomed wait, never converts a recoverable blip
    into a failure.
 
-3. **Off-device tests over both seams.** Both units are exercisable without a Simulator, the same
+3. **Off-device tests over both seams.** Units 1 and 2 are exercisable without a Simulator, the same
    isolation the pipeline and channel tests already use by injecting fakes. Cover: a lease whose
    bring-up raises `BackendCrashError` is recovered on the retry's fresh lease, and one that crashes
    every attempt fails loudly after exactly the bounded number of leases (unit 1, in
@@ -114,6 +126,31 @@ injectable seams, no Simulator required.
    fails fast without polling the recovery window, one whose predicate reports it **alive** still
    waits the window (BE-0287 intact), and the absent-predicate default is unchanged (unit 2, in
    `tests/test_xcuitest.py`).
+
+4. **Serialize the runner's XCUITest operations to remove the re-entrancy crash (root cause).** The
+   resident runner's HTTP server (`BajutsuRunner`) handles connections concurrently — deliberately, so
+   a `/health` poll stays answerable during a long gesture (BE-0287). Every XCUITest call is marshaled
+   to the main thread with `DispatchQueue.main.sync`, but `app.snapshot()` / `app.screenshot()` / an
+   interaction pumps the main run loop while it waits on the app, and that spin drains the main
+   dispatch queue — so a second concurrent operation's block runs *inside* the first, re-entering
+   XCUITest, which aborts the XCTest host (the CI-only mid-run crash: a contended host widens the
+   window). Add a lock (`Router.actuationLock`) held on the *connection* thread before dispatching to
+   main, so a second operation never enqueues onto main while the first is in flight; the run-loop spin
+   then has nothing re-entrant to drain. `/health` never takes the lock (it touches no XCUITest state),
+   so the concurrent server keeps its "runner busy, not dead" signal. This is the one fix that reaches
+   the `conformance` job, which never runs through the pipeline recovery of units 1–2. Covered by a
+   `BajutsuRunner` test that drives two concurrent reads off the main thread and asserts they never
+   overlap or re-enter.
+
+5. **Make the crash-retry budget configurable, raised for the on-device lane.** The pipeline's
+   `crash_retries` was a hard-coded default of 1 (two attempts). Read it from `BAJUTSU_CRASH_RETRIES`
+   (unset keeps 1) so the metered on-device CI lane raises it without a code change, and set it to 2
+   (three attempts) there. The runner crash is the *test host* dying, not an app verdict, so riding out
+   a one-off is not flakiness-by-absorption — a scenario that crashes every attempt still fails once
+   the budget is spent
+   ([BE-0049](../BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md)). This is
+   the safety margin *behind* unit 4's root-cause fix, not a substitute for it. Covered by tests that
+   the env sets the default (unset/invalid → 1, `0` disables) and that `run_all` honors it end to end.
 
 ## Alternatives considered
 
@@ -148,6 +185,10 @@ injectable seams, no Simulator required.
 - [x] Unit 2 — fail fast in crash-recovery when the runner process has exited (liveness predicate
   threaded from the environment; BE-0287's process-alive case unchanged).
 - [x] Unit 3 — off-device tests over the pipeline and channel seams.
+- [x] Unit 4 — serialize the runner's XCUITest operations (`Router.actuationLock`) to remove the
+  concurrent-snapshot re-entrancy that aborts the XCTest host; reaches the `conformance` gate too.
+- [x] Unit 5 — make the crash-retry budget configurable (`BAJUTSU_CRASH_RETRIES`), raised to 2 on the
+  on-device lane as the safety margin behind unit 4.
 
 ## References
 
@@ -158,6 +199,8 @@ injectable seams, no Simulator required.
 - [BE-0310 — iOS accessibility screen-change readiness](../BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness.md)
 - [BE-0319 — Make the XCUITest cold runner spawn diagnosable and self-healing](../BE-0319-xcuitest-cold-spawn-resilience/BE-0319-xcuitest-cold-spawn-resilience.md)
 - [BE-0049 — Determinism and flakiness audit](../BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md)
-- `bajutsu/runner/pipeline.py` — `_ScenarioRunner.run_one` (the crash-retry loop the lease moves inside).
+- `bajutsu/runner/pipeline.py` — `_ScenarioRunner.run_one` (the crash-retry loop the lease moves inside), `_default_crash_retries` (the `BAJUTSU_CRASH_RETRIES` budget).
 - `bajutsu/drivers/xcuitest.py` — `_with_crash_recovery`, `_http_transport`, `XcuitestDriver` (the channel and its crash-recovery seam).
 - `bajutsu/platform_lifecycle/environments/xcuitest.py` — `XcuitestEnvironment` (owns the `xcodebuild` subprocess handle the liveness predicate reads).
+- `BajutsuKit/Sources/BajutsuRunner/Router.swift` — `Router.actuationLock` (serializes the runner's XCUITest operations to remove the re-entrancy crash).
+- `.github/workflows/ios-e2e.yml` — the on-device lane's `BAJUTSU_CRASH_RETRIES` budget.
