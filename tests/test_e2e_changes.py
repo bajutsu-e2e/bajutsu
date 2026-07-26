@@ -640,6 +640,27 @@ def test_real_ios_workflow_declares_the_scenario_keyed_jobs() -> None:
     assert job_map["golden"] == {"demos/showcase/scenarios/golden/golden.yaml"}
 
 
+def test_ios_actuation_job_still_declares_the_authoring_scenarios() -> None:
+    # A coverage pin, not a narrowing one (hence its own test): BE-0285 brought `extract`, `forEach`,
+    # data-driven rows, and `relaunch` to iOS on the non-gating `actuation` job, which is the only
+    # place any of them runs against a real Simulator. Dropping one from the workflow would retire that
+    # coverage silently — the job is off the `E2E` gate, so nobody is watching a red X. The fast gate
+    # cannot run a Simulator, but it can check the wiring.
+    text = lane_workflow_text("ios")
+    assert text is not None
+    declared = job_scenario_map(text)["actuation"]
+    authoring = {
+        "demos/showcase/scenarios/extract.yaml",
+        "demos/showcase/scenarios/foreach.yaml",
+        "demos/showcase/scenarios/data_driven.yaml",
+        "demos/showcase/scenarios/relaunch.yaml",
+    }
+    assert authoring <= declared, (
+        f"the `actuation` job no longer declares {sorted(authoring - declared)} — BE-0285's only "
+        "on-device iOS coverage of those scenario-authoring features"
+    )
+
+
 def test_android_and_web_workflows_have_no_scenario_keyed_jobs() -> None:
     # Neither lane drives the bajutsu-e2e action, so both maps are empty — every scenario-only change
     # on them is unattributable and falls back to the whole fleet (they keep today's behavior).

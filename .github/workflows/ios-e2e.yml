@@ -27,9 +27,11 @@
 #     with no prompt), BE-0315 (the native reactive `alertHandling` notification grant), and BE-0316
 #     (`handleSystemAlert` taps the SpringBoard "Allow" by native query).
 #   - actuation (xcuitest): real on-device XCUITest actuation beyond `tap` (BE-0281) — `back` and
-#     device control (setLocation / clipboard / push) on the Stable launch tab. Deliberately NOT part
-#     of the `E2E` gate's `needs:` (like `golden` / `visual`): new actuation lands as a per-PR signal
-#     first (Simulator flakiness, BE-0218) and is promoted to the gate only once stable.
+#     device control (setLocation / clipboard / push) on the Stable launch tab — plus the
+#     scenario-authoring features on a real backend (BE-0285): `extract`, `forEach` over a mutating
+#     tree, data-driven rows, and `relaunch`. Deliberately NOT part of the `E2E` gate's `needs:` (like
+#     `golden` / `visual`): new coverage lands as a per-PR signal first (Simulator flakiness, BE-0218)
+#     and is promoted to the gate only once stable.
 #   - golden (xcuitest): the BE-0006 element-tree golden over XCUITest, the iOS twin of
 #     android-e2e.yml's `golden (adb)`. Like `visual`, deliberately NOT part of the `E2E` gate's
 #     `needs:` — the tree golden is deterministic and host-independent, so a drift surfaces here as
@@ -369,13 +371,25 @@ jobs:
           --target showcase-swiftui --backend xcuitest
           --config demos/showcase/showcase.config.yaml --udid "$UDID"
 
-  # Real on-device XCUITest actuation that has not yet earned a place in the gating `run` job above:
-  # `back`, device control, and text editing that the `golden` / `visual` jobs never reach (they only
-  # `wait` / `expect` / snapshot). The gating `run` job already drives the proven `/back`, `/type`,
-  # `/swipe`, and gesture scenarios; this job is the non-gating landing pad where newer actuation
-  # earns its stability first, before it is promoted up into `run`:
+  # The lane's non-gating landing pad: real on-device XCUITest behavior that has not yet earned a place
+  # in the gating `run` job above — `back`, device control, and text editing that the `golden` /
+  # `visual` jobs never reach (they only `wait` / `expect` / snapshot), plus the scenario-authoring
+  # features BE-0285 brings to iOS. The gating `run` job already drives the proven `/back`, `/type`,
+  # `/swipe`, and gesture scenarios; here newer behavior earns its stability first, before it is
+  # promoted up into `run`:
   #   - navigation.yaml: tap a Stable row → push Horse Detail → `back` (the OS back button). `tap` is
   #     already the conformance job's contract, but `back` end-to-end through the resident runner is not.
+  #   - extract.yaml / foreach.yaml / data_driven.yaml / relaunch.yaml (BE-0285): the scenario-authoring
+  #     features, on the third actuating backend after adb and Playwright. `extract` and `forEach` are
+  #     pure orchestrator logic over `query()` snapshots and are thoroughly unit-tested, but FakeDriver's
+  #     screen is frozen, so what only a device shows is a tree that mutates *during* iteration —
+  #     foreach.yaml pushes and pops a detail inside its loop body — and a value a real accessibility
+  #     tree reports rather than one a test scripted, which extract.yaml captures off the Log tab's live
+  #     counter. data_driven.yaml (three rows, each in its own clean environment) and relaunch.yaml were
+  #     proven on adb and Playwright only, so running them here is what stops either feature from
+  #     resting on one backend. All four are the shared showcase files, unchanged (BE-0221), and are
+  #     listed ahead of device.yaml / push.yaml so neither a delivered notification nor an OS-level
+  #     grant precedes a scenario that only reads and taps the app's own UI.
   #   - device.yaml / push.yaml: `setLocation`, clipboard round-trip, and a simctl `push` — the
   #     device-control family, the iOS twin of Android's device control (BE-0210). Both run on the
   #     launch tab.
@@ -384,28 +398,33 @@ jobs:
   #     actuators no other scenario drove. It crosses to the Search tab, so once stable it can move up
   #     into the `run` job beside search.yaml.
   # Deliberately NOT in the `E2E` gate's `needs:` below (like `golden` / `visual`): the Simulator lane
-  # has a flakiness history (BE-0218), so new actuation lands as a per-PR signal first and is promoted
+  # has a flakiness history (BE-0218), so new coverage lands as a per-PR signal first and is promoted
   # to the gate only once it proves stable. It installs the prebuilt products from the `build` job and
-  # runs all four scenarios in one `bajutsu run` (cost discipline: the macOS runner bills at 10x), so
-  # the job's dominant cost — the cold XCTest-host startup — is paid twice, not four times. Promote a
-  # scenario into `run` once it is stable.
+  # runs every scenario in one `bajutsu run` (cost discipline: the macOS runner bills at 10x), so the
+  # job's dominant cost — the cold XCTest-host startup — is paid once per two scenario runs rather than
+  # once per run. Folding BE-0285's four files in here rather than into a job of their own follows
+  # the same reasoning: a second non-gating job would differ only in which scenarios it ran, and would
+  # re-pay this lane's boot, install, and cold startup to do it. Promote a scenario into `run` once it
+  # is stable.
   actuation:
     name: actuation (xcuitest)
     needs: [changes, build]
-    # BE-0322: runs on a shared-code change, or when one of its scenarios (navigation / device /
-    # push / text_editing) changed.
+    # BE-0322: runs on a shared-code change, or when one of its scenarios (navigation / extract /
+    # foreach / data_driven / relaunch / device / push / text_editing) changed.
     if: >-
       needs.changes.outputs.relevant == 'true' &&
       (needs.changes.outputs.shared == 'true' ||
       contains(fromJSON(needs.changes.outputs.affected), 'actuation'))
     runs-on: macos-latest
     # Cap the metered macOS job (10x billing): a hung Simulator/runner would otherwise run to the 6h
-    # default. Install (no build) + four short scenario runs is ~10min, so 25 catches a real hang.
-    timeout-minutes: 25
+    # default. Install (no build) + the ten scenario runs the eight files below produce (each file holds
+    # one scenario; data_driven.yaml's three `${row.*}` rows expand to three) is ~20min — the dominant
+    # term is five cold XCTest-host startups, one per two runs at this lane's warm-reuse cap — so 30
+    # catches a real hang with headroom rather than reddening a healthy run.
+    timeout-minutes: 30
     # Raise the wait floor so a cold-boot Simulator has budget to render the first Stable row before
-    # navigation/device/push/text_editing's own 10s first-wait — the same knob the `run` job above
-    # and the Android lane use. A condition wait returns the instant the row appears, so this is a
-    # ceiling, not a sleep.
+    # each scenario's own 10s first-wait — the same knob the `run` job above and the Android lane use.
+    # A condition wait returns the instant the row appears, so this is a ceiling, not a sleep.
     env:
       BAJUTSU_MIN_WAIT_TIMEOUT: "20"
     steps:
@@ -431,25 +450,36 @@ jobs:
       - name: Install the app
         run: xcrun simctl install "${{ steps.toolchain.outputs.udid }}" "demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
 
-      # All four scenarios in one `bajutsu run` so they share a warm runner: the cold XCTest-host
-      # startup — the job's dominant cost — is now paid twice for the whole job (BE-0291's warm reuse
-      # spans leases within one process, capped at 1 on this lane — see the env block) instead of four
-      # times. This also removes the reason the steps were split: `run` runs every
+      # Every scenario in one `bajutsu run` so they share a warm runner: the cold XCTest-host startup —
+      # the job's dominant cost — is paid once per two scenario runs (BE-0291's warm reuse spans
+      # leases within one process, capped at 1 on this lane — see the env block) instead of once per
+      # run. This also removes the reason the steps were split: `run` runs every
       # scenario to its own per-scenario verdict regardless of the others failing, then exits non-zero
-      # if any failed — the exact "run all four independently, redden if any fails" behavior the
+      # if any failed — the exact "run them all independently, redden if any fails" behavior the
       # continue-on-error steps plus the aggregator hand-rolled, now native to the run loop.
       #   - navigation.yaml (BE-0281): `tap` + `back` end-to-end, on the Stable launch tab.
+      #   - extract.yaml (BE-0285): capture the Log tab's live counter with `extract` and feed the
+      #     captured value into a later assertion — a value the real accessibility tree reported.
+      #   - foreach.yaml (BE-0285): iterate the five Stable rows, pushing and popping a detail inside the
+      #     loop body so the element tree mutates between iterations, then assert all five survived.
+      #   - data_driven.yaml (BE-0285): three `${row.*}` rows, each in its own clean environment.
+      #   - relaunch.yaml (BE-0285): flip an in-app control, `relaunch`, and assert the state reset.
       #   - device.yaml (BE-0281): `setLocation` + clipboard round-trip (simctl-backed, launch tab) —
       #     the iOS twin of android-e2e.yml's device-control coverage (BE-0210).
       #   - push.yaml (BE-0281): a simctl `push` delivery — iOS-only (no faithful Android-emulator
       #     equivalent, so it lives apart from the cross-backend device.yaml).
       #   - text_editing.yaml (iOS-only): `select` + `copy` round-trip the Search field's text, then
       #     `delete` + `clear` — the four editing actuators no other scenario drove (Search tab).
-      - name: Run the actuation scenarios (xcuitest — back, device control, push, text editing)
+      # The listed order is deliberate — see the job header for why BE-0285's four come first.
+      - name: Run the actuation + authoring scenarios (xcuitest)
         uses: ./.github/actions/bajutsu-e2e
         with:
           scenarios: >-
             demos/showcase/scenarios/navigation.yaml
+            demos/showcase/scenarios/extract.yaml
+            demos/showcase/scenarios/foreach.yaml
+            demos/showcase/scenarios/data_driven.yaml
+            demos/showcase/scenarios/relaunch.yaml
             demos/showcase/scenarios/device.yaml
             demos/showcase/scenarios/push.yaml
             demos/showcase/scenarios/text_editing.yaml

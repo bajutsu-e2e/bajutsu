@@ -20,7 +20,9 @@ final class LogController: UIViewController {
     private let doubleTapValueLabel = UILabel()
     private let entriesStack = UIStackView()
 
-    private var count = 0
+    // Starts at 1 like the SwiftUI twin and both Android toolkits, so the shared
+    // extract.yaml — whose expectation is an absolute count — runs unchanged here (BE-0221).
+    private var count = 1
     private var intense = false
     private var segment = "one"
     private var entryCount = 0
@@ -55,6 +57,7 @@ final class LogController: UIViewController {
 
         stepper.minimumValue = 0
         stepper.maximumValue = 99
+        stepper.value = Double(count)
         stepper.addAction(UIAction { [weak self] _ in self?.stepperChanged() }, for: .valueChanged)
         stepper.accessibilityID("log.count")
         countLabel.accessibilityID("log.count.value")

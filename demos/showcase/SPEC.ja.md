@@ -187,7 +187,7 @@ scheme は変種ごと（§2）、host 文法は共通です。deeplink は**タ
 入力コントロールとモーダル各様式をすべて行使するトレーニングログ作成画面。
 
 - `log.note` — 複数行テキストフィールド
-- `log.count` — 数値ステッパー。`log.count.value` が数値をミラー
+- `log.count` — 数値ステッパー。初期値は 1（共有の `extract.yaml` が絶対値をアサートするため、どのターゲットもここから始めます）。`log.count.value` が数値をミラー
 - `log.intense` — ボタン式トグル「Intense」（廃止済みの idb バックエンドは iOS 26 では素の Toggle/UISwitch を切り替えられませんでした、BE-0290）。`log.intense.value` = `on`/`off`
 - `log.segment.<one|two|three>` — ボタン式のセグメントコントロール（廃止済みの idb バックエンドは iOS 26 では native の `Picker(.segmented)` / `UISegmentedControl` を切り替えられませんでした、BE-0290）。選択中のボタンが `selected` トレイトを持ち、選択内容は `log.segment.value`（`one`/`two`/`three`、既定は `one`）にミラーされます
 - `log.submit` — ボタン：note/count を JSON にして `SHOWCASE_HTTP_BASE` + `/post` へ POST。成功で `log.toast` を表示（約 1.2 秒で自動消滅 → `wait until gone` を行使）し、行を追加
