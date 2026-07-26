@@ -73,7 +73,7 @@ misinterpret rather than merely reject; a purely additive optional field needs n
 | `network` | object | none | `{ filter: { domains: [...] } }` — `filter.domains` scopes which observed requests are interleaved into the report's Steps timeline (by URL host; a parent domain matches subdomains). Unset shows all; the Network tab always lists them all ([reporting](reporting.md#reporthtml)) |
 | `mocks` | list | `[]` | Deterministic network stubs — a matching outgoing request gets a canned response instead of hitting the network ([network mocks](#network-mocks-deterministic-stubs)) |
 | `redact` | object | none | Masking applied before evidence is written ([evidence](evidence.md#masking-redact)) |
-| `dismissAlerts` | bool / object | none (on) | The vision **alert guard** — clears OS prompts the iOS backend cannot see. On by default; `false` disables it, `{ instruction: "tap Allow" }` keeps it on but taps a named button. CLI `--dismiss-alerts`/`--no-dismiss-alerts` overrides ([below](#dismissalerts-the-system-alert-guard)) |
+| `alertHandling` | bool / object | none (on) | The vision **alert guard** — clears OS prompts the iOS backend cannot see. On by default; `false` disables it, `{ instruction: "tap Allow" }` keeps it on but taps a named button. CLI `--alert-handling`/`--no-alert-handling` overrides ([below](#alerthandling-the-system-alert-guard)) |
 | `permissions` | dict | `{}` | Declarative OS permission state — `{ <service>: grant \| revoke }` — applied **before the app launches** ([below](#permissions-pre-launch-permission-state)) |
 | `interrupts` | list | `[]` | Handlers for an interstitial screen that surfaces at an **unpredictable** point — each `{ condition, steps }`, checked opportunistically wherever the screen appears ([below](#interrupts-handling-unpredictable-interstitial-screens)) |
 
@@ -111,35 +111,41 @@ the launch sequence ([run-loop](run-loop.md#runner-the-run-pipeline)).
 > **launchEnv resolution order** is **config's `launchEnv` < preconditions' `launchEnv`** (the
 > one closer to the test wins). `launch_driver` merges `{**eff.launch_env, **pre.launch_env}`.
 
-## dismissAlerts (the system-alert guard)
+## alertHandling (the system-alert guard)
 
 The iOS backend cannot see or tap **SpringBoard-level prompts** (iOS "Save Password?", a permission request, "Allow Paste"). These prompts cover the app and collapse its element tree, silently blocking a step. The **alert guard** is a vision-based fallback (`alerts.py`): when a step is blocked, it takes a screenshot, asks Claude where to tap, clears the prompt, and retries the step once ([details](recording.md#dismissing-system-alerts-automatically)). For a `wait` step (`for`/`settled`/`screenChanged`), the guard also watches the already-polled screen and fires **mid-wait** the moment the tree looks collapsed (debounced, cooldown-limited, capped at two attempts per wait) — recovering before the wait's own timeout elapses, rather than waiting for the step to fail first (BE-0269).
 
-It is **on by default** and fires **only when a step (or `expect`) is blocked, or — for a guarded `wait` — the polled screen looks blocked**, so a passing scenario never calls the model. It requires `ANTHROPIC_API_KEY`; without one it no-ops and the run continues unaffected. Use `dismissAlerts` to change the behavior per scenario:
+It is **on by default** and fires **only when a step (or `expect`) is blocked, or — for a guarded `wait` — the polled screen looks blocked**, so a passing scenario never calls the model. It requires `ANTHROPIC_API_KEY`; without one it no-ops and the run continues unaffected. Use `alertHandling` to change the behavior per scenario:
 
 | Form | Meaning |
 |---|---|
 | (omitted) | on; tap the **least-destructive** button ("Not Now" / "Don't Allow" / "Cancel") |
-| `dismissAlerts: false` | off for this scenario |
-| `dismissAlerts: { instruction: "tap Allow" }` | on, but tap the button the instruction names — e.g. to **grant** a permission |
-| `dismissAlerts: { enabled: false }` | off (the explicit object form of `false`) |
+| `alertHandling: false` | off for this scenario |
+| `alertHandling: { instruction: "tap Allow" }` | on, but tap the button the instruction names — e.g. to **grant** a permission |
+| `alertHandling: { enabled: false }` | off (the explicit object form of `false`) |
 
 ```yaml
 - name: grant notification permission
-  dismissAlerts: { instruction: "tap Allow" }   # accept the prompt instead of dismissing it
+  alertHandling: { instruction: "tap Allow" }   # accept the prompt instead of dismissing it
   steps:
     - tap:  { id: sys.requestNotif }
     - wait: { for: { id: sys.notif.authorized }, timeout: 4 }   # the guard taps Allow, then this passes
 ```
 
-The CLI `--dismiss-alerts` / `--no-dismiss-alerts` flag **overrides every scenario** (otherwise the
+The CLI `--alert-handling` / `--no-alert-handling` flag **overrides every scenario** (otherwise the
 per-scenario default applies); `--alert-instruction` sets a default button instruction that a
 scenario's own `instruction` overrides. (real file:
 [`demos/showcase/scenarios/permission.yaml`](../demos/showcase/scenarios/permission.yaml))
 
+> **Renamed from `dismissAlerts`.** The field and its CLI flag were renamed to `alertHandling` /
+> `--alert-handling` because the guard grants prompts as well as dismisses them
+> ([BE-0317](../roadmaps/BE-0317-rename-dismiss-alerts-to-alert-handling/BE-0317-rename-dismiss-alerts-to-alert-handling.md)).
+> The old `dismissAlerts` key and `--dismiss-alerts` flag still work as deprecated aliases; using one
+> emits a one-time notice pointing at the new name.
+
 ## handleSystemAlert (the deterministic system-alert step)
 
-`dismissAlerts` above is a **reactive guard**: it fires only when a step is already blocked, and it
+`alertHandling` above is a **reactive guard**: it fires only when a step is already blocked, and it
 decides where to tap with a vision model. `handleSystemAlert` is its opposite — an explicit,
 **deterministic step** the author places at the exact point a prompt is expected, which taps the
 prompt's button by a native accessibility query, with **no screenshot and no model**
@@ -177,14 +183,14 @@ When to reach for `handleSystemAlert` versus the two alert fields it stands besi
 |---|---|---|---|
 | `permissions` | an OS permission prompt you can avoid outright | pre-launch, before the app starts | deterministic device mutation |
 | `handleSystemAlert` | a **known** mid-flow prompt you mean to tap | an explicit step where you place it | deterministic (native accessibility tap) |
-| `dismissAlerts` | an **unexpected** out-of-process prompt the tree cannot see | reactive, when a step or wait is blocked | AI vision (`ANTHROPIC_API_KEY`) |
+| `alertHandling` | an **unexpected** out-of-process prompt the tree cannot see | reactive, when a step or wait is blocked | AI vision (`ANTHROPIC_API_KEY`) |
 
 (real file:
 [`demos/showcase/scenarios/permission_system_alert.yaml`](../demos/showcase/scenarios/permission_system_alert.yaml))
 
 ## permissions (pre-launch permission state)
 
-`dismissAlerts` reacts to a permission prompt only *after* it appears, and only by tapping it —
+`alertHandling` reacts to a permission prompt only *after* it appears, and only by tapping it —
 useful when the prompt is unexpected, but it cannot **revoke** a permission or guarantee the app
 starts from a known state. When the permission is known ahead of time, `permissions` sets it
 **before the app process starts**, so the prompt never appears at all: a deterministic,
@@ -213,7 +219,7 @@ Each backend maps a service to its own native mechanism:
 
 **iOS has no TCC service for `notifications`** (iOS notification authorization is not part of
 TCC), so a scenario naming `notifications` on an iOS target fails **preflight** — before any device
-work, naming the unsupported capability; `dismissAlerts` remains the reactive path for that one
+work, naming the unsupported capability; `alertHandling` remains the reactive path for that one
 prompt. Android's `POST_NOTIFICATIONS` *is* a runtime permission (API 33+), so Android supports the
 whole vocabulary. Every other unsupported combination (a service unsupported on the chosen backend)
 fails preflight the same way, named individually.
@@ -264,14 +270,14 @@ targets:
 
 An `interrupts` list set at the **config** level (`targets.<name>.interrupts`) is an app-wide
 default; a scenario's own `interrupts` is **appended** to it, config entries checked first — the same
-config-then-scenario layering `dismissAlerts` follows. An entry's `steps` share the enclosing
+config-then-scenario layering `alertHandling` follows. An entry's `steps` share the enclosing
 scenario's `vars.*` bindings, exactly as `if`'s branches do. If a handler's own `steps` never clear
 its `condition` (a broken selector, a screen that re-renders identically), the entry fires only a
 small bounded number of times per step and then the step falls back to its ordinary outcome (pass,
 fail, or timeout) — a mis-set entry fails the step cleanly rather than hanging the run.
 
 The check is the deterministic assertion DSL, never a model call, so `interrupts` adds no AI to the
-`run` verdict. That is the difference from `dismissAlerts`: the alert guard is the vision path
+`run` verdict. That is the difference from `alertHandling`: the alert guard is the vision path
 reserved for out-of-process system prompts the accessibility tree **cannot see**, while `interrupts`
 handles a screen the tree **can** see with a machine-checkable condition. When to reach for which:
 
@@ -280,7 +286,7 @@ handles a screen the tree **can** see with a machine-checkable condition. When t
 | `if` | a screen at a **known** point in the sequence | one scripted check | deterministic (assertion DSL) |
 | `interrupts` | a screen at an **unpredictable** point, visible in the tree | checked opportunistically throughout | deterministic (assertion DSL) |
 | `handleSystemAlert` | a **known** out-of-process prompt you mean to tap mid-flow | an explicit step where you place it | deterministic (native accessibility tap) |
-| `dismissAlerts` | an **unexpected** out-of-process prompt the tree cannot see | reactive, when a step or wait is blocked | AI vision (`ANTHROPIC_API_KEY`) |
+| `alertHandling` | an **unexpected** out-of-process prompt the tree cannot see | reactive, when a step or wait is blocked | AI vision (`ANTHROPIC_API_KEY`) |
 | `permissions` | an OS permission prompt you can avoid outright | pre-launch, before the app starts | deterministic device mutation |
 
 No native XCUITest / Espresso / Playwright construct maps onto "check this condition opportunistically

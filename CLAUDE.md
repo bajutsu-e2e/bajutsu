@@ -53,7 +53,7 @@ gate: `make -C demos/showcase run-swiftui` (requires `make deps` first). Don't b
 - Python **3.13**, managed with **[uv](https://docs.astral.sh/uv/)**. `uv sync --group dev`
   installs everything the gate needs. In Claude Code web sessions this is done for you by
   [`.claude/hooks/session-start.sh`](.claude/hooks/session-start.sh).
-- Secrets: only the AI paths (`record`, `run --dismiss-alerts`) need `ANTHROPIC_API_KEY`.
+- Secrets: only the AI paths (`record`, `run --alert-handling`) need `ANTHROPIC_API_KEY`.
   Copy [`.env.example`](.env.example) → `.env` (gitignored). The deterministic gate needs none.
 - `mypy` is **strict** and `ruff` is configured in [`pyproject.toml`](pyproject.toml) — match
   the existing style. Fullwidth/Japanese characters in strings are intentional (RUF001 is off).

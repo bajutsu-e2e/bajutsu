@@ -22,7 +22,7 @@ from bajutsu.config.schema import (
     XcuitestConfig,
 )
 from bajutsu.drivers import base
-from bajutsu.scenario import DismissAlerts, Interrupt, Redact
+from bajutsu.scenario import AlertHandling, Interrupt, Redact
 
 
 @dataclass(frozen=True)
@@ -124,11 +124,11 @@ class RunDefaults:
     """Per-app run-behavior defaults (BE-0177), grouped out of `Effective` (BE-0252).
 
     The layer the run consults when neither a CLI flag nor the scenario sets the value.
-    `dismiss_alerts` None = built-in on with the default instruction; `erase` / `network` are the
+    `alert_handling` None = built-in on with the default instruction; `erase` / `network` are the
     concrete built-in defaults when unset.
     """
 
-    dismiss_alerts: DismissAlerts | None = None
+    alert_handling: AlertHandling | None = None
     erase: bool = False
     network: bool = True
     # App-wide interstitial-screen handlers (BE-0314), prepended to a scenario's own `interrupts`.

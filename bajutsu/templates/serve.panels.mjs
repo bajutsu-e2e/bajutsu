@@ -585,7 +585,7 @@ function initPanels(){
       url:'/api/record',body:{
         goal,target:$('#rec-target').value,
         udid:$('#rec-device').value||'booted',name:$('#rec-name').value.trim()||undefined,
-        erase:$('#rec-erase').checked,dismissAlerts:$('#rec-nodismiss').checked?false:undefined,
+        erase:$('#rec-erase').checked,alertHandling:$('#rec-nodismiss').checked?false:undefined,
         headed:$('#rec-headed').checked||undefined},
       onStart:d=>{state.recPath=d.path;state.recJobId=d.jobId;},
       onLog:line=>appendLine($('#rec-out'),line),onDone:recDone,onHuman:onHandoffRequest});
@@ -619,7 +619,7 @@ function initPanels(){
     const rs=$('#rec-runstatus');if(rs)setStatus(rs,'','run');
     const r=await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
       scenario:state.recPath,target,udid:$('#rec-device').value||'booted',
-      erase:$('#rec-erase').checked||undefined,dismissAlerts:$('#rec-nodismiss').checked?false:undefined})});
+      erase:$('#rec-erase').checked||undefined,alertHandling:$('#rec-nodismiss').checked?false:undefined})});
     const {jobId,error}=await r.json();
     if(error){setStatus($('#rec-runstatus'),error,'ng');setBusy($('#rec-run'),$('#rec-runstop'),false);return;}
     state.recRunJobId=jobId;
@@ -654,7 +654,7 @@ function initPanels(){
       url:'/api/run',body:{
         scenario:$('#scn').value,target:$('#target').value,udid:pickedUdids().join(',')||'booted',
         workers:parseInt($('#workers').value,10)||1,headed:$('#headed').checked||undefined,
-        erase:$('#erasedev').checked||undefined,dismissAlerts:$('#nodismiss').checked?false:undefined},
+        erase:$('#erasedev').checked||undefined,alertHandling:$('#nodismiss').checked?false:undefined},
       onStart:d=>{state.runJobId=d.jobId;},
       onLog:line=>appendLine($('#out'),line),onDone:runDone});
   });
