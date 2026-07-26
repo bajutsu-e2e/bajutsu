@@ -193,6 +193,13 @@ Control（TCC）データベースに支えられており、`simctl privacy` �
       capability を持たないバックエンドは変えない。
 - [x] ユニット 5 — 実際の通知プロンプトに対する実機検証（ネイティブでの許可、認証情報なし）。ガード方針、
       ゲートのネイティブ経路、`system_alert_labels` チャネル、config 配線は実機不要のテストで覆う。
+- [x] ユニット 6 — showcase と CI でネイティブなリアクティブ許可を実現する。`demos/showcase/scenarios/permission.yaml`
+      の通知シナリオはリスト形の `dismissAlerts: { instruction: ["Allow"] }` で許可するようにし、既定と
+      なった XCUITest backend（BE-0290）でネイティブ経路が決定論的に「Allow」を押す。自由文字列はネイティブの
+      label を埋めず、既定の無害な label 群にフォールバックして「Don't Allow」を押し、許可を反転させてしまう。
+      許可がネイティブかつ鍵不要になったため、このシナリオは `ai` タグを外して必須の XCUITest ゲートに加わる
+      （`ios-e2e.yml`、`--exclude ai` は不要）。同じゲート上にある BE-0316 のプロアクティブな
+      `permission_system_alert.yaml` に対する、リアクティブな対応物である。
 
 ## 参考
 

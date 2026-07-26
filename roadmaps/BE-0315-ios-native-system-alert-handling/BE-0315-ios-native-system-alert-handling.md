@@ -214,6 +214,13 @@ interface) holds throughout.
 - [x] Unit 5 — on-device verification against a real notification prompt (native grant, credential-free);
       off-device tests for the guard policy, gate native path, the `system_alert_labels` channel, and
       the config wiring.
+- [x] Unit 6 — realize the native reactive grant in the showcase and CI. `demos/showcase/scenarios/permission.yaml`'s
+      notification scenario now grants with the list form `dismissAlerts: { instruction: ["Allow"] }`,
+      so on the now-default XCUITest backend (BE-0290) the native path taps "Allow" deterministically —
+      a free-text string would populate no native label, fall through to the default dismissive labels,
+      and tap "Don't Allow", inverting the grant. With the grant native and key-free, the scenario drops
+      its `ai` tag and joins the required XCUITest gate (`ios-e2e.yml`, no more `--exclude ai`): the
+      reactive counterpart to BE-0316's proactive `permission_system_alert.yaml` on the same gate.
 
 ## References
 
