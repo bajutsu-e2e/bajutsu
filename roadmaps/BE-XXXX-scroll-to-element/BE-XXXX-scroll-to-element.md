@@ -1,11 +1,11 @@
 **English** · [日本語](BE-XXXX-scroll-to-element-ja.md)
 
-# `BE-XXXX` — The `scroll` action: scroll until an element appears
+# BE-XXXX — The `scroll` action: scroll until an element appears
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [`BE-XXXX`](BE-XXXX-scroll-to-element.md) |
+| Proposal | [BE-XXXX](BE-XXXX-scroll-to-element.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |

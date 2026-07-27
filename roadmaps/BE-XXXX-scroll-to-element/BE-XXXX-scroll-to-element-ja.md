@@ -1,11 +1,11 @@
 [English](BE-XXXX-scroll-to-element.md) · **日本語**
 
-# `BE-XXXX` — `scroll` アクション：要素が現れるまでスクロールする
+# BE-XXXX — `scroll` アクション：要素が現れるまでスクロールする
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [`BE-XXXX`](BE-XXXX-scroll-to-element-ja.md) |
+| 提案 | [BE-XXXX](BE-XXXX-scroll-to-element-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
