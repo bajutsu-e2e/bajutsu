@@ -352,10 +352,11 @@ def _compose_and_bind(
     `bind_composition` (the compose picker). Returns `(upload, 200)` on success — the bound `Upload`,
     so a caller can read back its display-safe `filename` for an audit line / response without
     re-sanitizing — or an `(error, status)` pair. *filename* is the raw, untrusted provenance name
-    (a client-shaped record or request); this is the single place it is run through `_safe_filename`.
-    *scenarios_filename* names a single-file `scenarios` artifact so it lands under a meaningful
-    `*.yaml` name and salts the cache key — but **only when that artifact is actually a single YAML**,
-    not a zip: `materialize_composition` ignores the name for a zip (it content-sniffs with
+    (a client-shaped record or request); it is run through `_safe_filename` here for `Upload.filename`
+    and again, independently, inside `_artifact_display_names` for the `config` entry of
+    `artifact_names`. *scenarios_filename* names a single-file `scenarios` artifact so it lands under
+    a meaningful `*.yaml` name and salts the cache key — but **only when that artifact is actually a
+    single YAML**, not a zip: `materialize_composition` ignores the name for a zip (it content-sniffs with
     `zipfile.is_zipfile`), so salting a zip would fragment the cache into byte-identical trees. This
     invariant is enforced here, at the API boundary, not just in the UI's `.zip`-suffix gate — any
     `/api/compose` client gets it. The reactivation path carries no name, so it never salts. A
