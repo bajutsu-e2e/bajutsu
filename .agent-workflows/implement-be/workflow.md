@@ -192,8 +192,8 @@ make check    # lock-check + format + lint + lint-sh + lint-actions + typecheck 
 It must be green; **never push red** (the tracked pre-push hook runs it for you). It needs
 no Simulator and runs anywhere. On-device E2E (`make -C demos/showcase run-swiftui`) is a separate,
 heavier path and is **not** part of this gate — don't block core work on it. But if the
-item's correctness genuinely depends on a Simulator/browser run, drive that run with the
-`verify` skill (launch the app, exercise the behavior, report what you saw) rather than
+item's correctness genuinely depends on a Simulator/browser run, drive that run with the host's
+interactive-verification facility (launch the app, exercise the behavior, report what you saw) rather than
 claiming it works untested.
 
 ### 10. Auto-open a Draft PR
