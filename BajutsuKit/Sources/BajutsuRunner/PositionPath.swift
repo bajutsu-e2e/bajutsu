@@ -112,3 +112,21 @@ public func attributesMatch(
         && recorded.label == current.label
         && recorded.traits == current.traits
 }
+
+/// Return the index of the sole candidate with the recorded identity.
+///
+/// Zero matches and multiple matches both return nil: neither case identifies one element safely.
+/// Callers can then use a stronger discriminator, such as the recorded position path, or report the
+/// element as stale rather than choosing an arbitrary match.
+public func uniqueMatchingIndex(
+    recorded: RecordedAttributes,
+    candidates: [RecordedAttributes]
+) -> Int? {
+    var match: Int?
+    for (index, candidate) in candidates.enumerated()
+    where attributesMatch(recorded: recorded, current: candidate) {
+        guard match == nil else { return nil }
+        match = index
+    }
+    return match
+}
