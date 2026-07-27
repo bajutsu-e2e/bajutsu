@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-hosted-scenario-local-read-ja.md)
+**English** · [日本語](BE-0324-hosted-scenario-local-read-ja.md)
 
-# BE-XXXX — Read hosted scenarios from the bound config's local cache tree instead of object storage
+# BE-0324 — Read hosted scenarios from the bound config's local cache tree instead of object storage
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-hosted-scenario-local-read.md) |
+| Proposal | [BE-0324](BE-0324-hosted-scenario-local-read.md) |
 | Author | [@paihu](https://github.com/paihu) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0324") |
 | Topic | Configuration sourcing |
 | Related | [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source.md), [BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md), [BE-0243](../BE-0243-upload-bundle-durable-storage/BE-0243-upload-bundle-durable-storage.md), [BE-0268](../BE-0268-composable-upload-artifacts/BE-0268-composable-upload-artifacts.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) |
 <!-- /BE-METADATA -->
