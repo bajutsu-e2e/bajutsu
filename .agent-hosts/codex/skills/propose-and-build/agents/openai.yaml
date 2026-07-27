@@ -1,0 +1,4 @@
+interface:
+  display_name: "Propose and build"
+  short_description: "Create a BE proposal and implementation in one change"
+  default_prompt: "Use $propose-and-build to propose and implement this feature."

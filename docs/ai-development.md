@@ -228,14 +228,14 @@ one-line change in one place. The model ids above are Claude Code aliases (`opus
 Each in-repo skill declares its tier as a `model:` field in its `SKILL.md` frontmatter, so the
 harness picks the right model when the skill runs — nothing to remember, still overridable:
 
-- [`implement-be`](../.claude/skills/implement-be/SKILL.md) → `opus` (Heavy)
-- [`propose-and-build`](../.claude/skills/propose-and-build/SKILL.md) → `opus` (Heavy) — it
+- [`implement-be`](../.agent-workflows/implement-be/workflow.md) → `opus` (Heavy)
+- [`propose-and-build`](../.agent-workflows/propose-and-build/workflow.md) → `opus` (Heavy) — it
   implements product code in its Phase B, so it carries the same tier as `implement-be`.
-- [`ideation`](../.claude/skills/ideation/SKILL.md) → `sonnet` (Medium)
-- [`document-writing`](../.claude/skills/document-writing/SKILL.md) → `sonnet` (Medium)
-- [`english-document-writing`](../.claude/skills/english-document-writing/SKILL.md) → `sonnet` (Medium)
-- [`japanese-document-writing`](../.claude/skills/japanese-document-writing/SKILL.md) → `sonnet` (Medium)
-- [`roadmap-filter`](../.claude/skills/roadmap-filter/SKILL.md) → `haiku` (Light) — a read-only
+- [`ideation`](../.agent-workflows/ideation/workflow.md) → `sonnet` (Medium)
+- [`document-writing`](../.agent-workflows/document-writing/workflow.md) → `sonnet` (Medium)
+- [`english-document-writing`](../.agent-workflows/english-document-writing/workflow.md) → `sonnet` (Medium)
+- [`japanese-document-writing`](../.agent-workflows/japanese-document-writing/workflow.md) → `sonnet` (Medium)
+- [`roadmap-filter`](../.agent-workflows/roadmap-filter/workflow.md) → `haiku` (Light) — a read-only
   survey of the roadmap by `Status` (BE-0162): it wraps `make roadmap-status STATUS="…"` so a
   session lists just the items in one status (e.g. every open `Proposal`), with each item's file
   path to open next, instead of paging through the dashboard's rendered HTML or opening each item
@@ -269,14 +269,14 @@ contributor workflow ([BE-0069](../roadmaps/BE-0069-executable-contributor-guard
 Turning an idea into shipped code runs through three skills that form a triangle — author,
 ship, or both:
 
-- [`ideation`](../.claude/skills/ideation/SKILL.md) — **author only.** A sounding board that
+- [`ideation`](../.agent-workflows/ideation/workflow.md) — **author only.** A sounding board that
   shapes an idea into a BE proposal and stops at the `roadmaps/` files (never touches product
   code). The proposal carries the `BE-XXXX` placeholder; CI allocates the real id after the PR
   merges.
-- [`implement-be`](../.claude/skills/implement-be/SKILL.md) — **ship a numbered item.** Takes an
+- [`implement-be`](../.agent-workflows/implement-be/workflow.md) — **ship a numbered item.** Takes an
   already-allocated `BE-NNNN`, treats its proposal as the spec, implements it with tests, flips
   the item to `Status: Implemented`, and proves `make check` green.
-- [`propose-and-build`](../.claude/skills/propose-and-build/SKILL.md) — **both, in one PR.**
+- [`propose-and-build`](../.agent-workflows/propose-and-build/workflow.md) — **both, in one PR.**
   Composes the other two for a small, settled item the author is ready to build now: it authors
   the proposal *and* implements it on a single branch, landing them as one BE-creation PR that
   carries the roadmap item, the code, and the tests together. The item keeps the `BE-XXXX`
@@ -685,7 +685,7 @@ exists, not a preference to keep the item reading as a forward-looking proposal.
 no code is `Proposal`; the PR that **ships its code** sets `Status` to `Implemented` (or `In progress`
 when it lands a partial slice) in that same PR, ticks the matching `Progress` boxes, and records the PR
 under `Implementing PR`. `Proposal` is never left standing on an item whose code has already shipped —
-that is exactly the promotion the [`implement-be`](../.claude/skills/implement-be/SKILL.md) skill
+that is exactly the promotion the [`implement-be`](../.agent-workflows/implement-be/workflow.md) skill
 performs, and it binds humans and agents alike. (The one exception is *authoring* a new item: an
 `ideation`-style proposal that ships no code stays `Proposal`, since there is nothing implemented yet.)
 
@@ -706,16 +706,16 @@ These rules apply to all documentation — English under `docs/` and the Japanes
 `docs/ja/` — and to every future update, not just new files. Agents must follow them, and they
 apply equally when reporting on or summarizing work.
 
-- **Follow the [`document-writing`](../.claude/skills/document-writing/SKILL.md) skill.** It is the
+- **Follow the [`document-writing`](../.agent-workflows/document-writing/workflow.md) skill.** It is the
   authoritative prose norm for every document here and every BE roadmap item, in both languages:
   the language-agnostic writing technique both languages share (draft top-down, state the
   contribution up front, reserve a sentence's end for its most important element, keep the verb near
   the subject, prefer the active voice, cut filler, and write one topic per paragraph with the
   argument moving in a single direction — paragraph writing). Invoke it *before* writing or revising,
   not after. It is the umbrella above two language layers: for English prose apply
-  [`english-document-writing`](../.claude/skills/english-document-writing/SKILL.md) with it (serial comma,
+  [`english-document-writing`](../.agent-workflows/english-document-writing/workflow.md) with it (serial comma,
   *that* / *which*, dashes, numbers, and the rest of the English mechanics), and for Japanese prose
-  the [`japanese-document-writing`](../.claude/skills/japanese-document-writing/SKILL.md) skill (see below).
+  the [`japanese-document-writing`](../.agent-workflows/japanese-document-writing/workflow.md) skill (see below).
   The rules below are the specific expectations this section and those skills share.
 - **Write natural prose.** A Japanese document must read as natural Japanese; an English document
   must read as natural English. A mirror conveys the same content naturally in its own language —
@@ -726,12 +726,12 @@ apply equally when reporting on or summarizing work.
   translating it would read unnaturally, keep the original term instead — usually the English word
   (e.g. `selector`, `actuator`, `backend`, `assertion`) rather than a contrived literal rendering.
 - **No omissions; be self-contained.** Follow the `document-writing` skill's
-  [self-contained-prose norm](../.claude/skills/document-writing/SKILL.md#self-contained-prose-both-languages):
+  [self-contained-prose norm](../.agent-workflows/document-writing/workflow.md#self-contained-prose-both-languages):
   a reader who has not read anything else in the repository must be able to follow the document start
   to finish, with every abbreviation spelled out and every term defined at first use, everywhere a term
   appears — including roadmap items, not only `docs/`.
 - **Avoid anaphora that forces the reader to backtrack.** Follow the `document-writing` skill's
-  [anaphora norm](../.claude/skills/document-writing/SKILL.md#minimize-anaphora-both-languages):
+  [anaphora norm](../.agent-workflows/document-writing/workflow.md#minimize-anaphora-both-languages):
   repeat the noun instead of reusing a pronoun or demonstrative once the antecedent is more than one
   sentence back, crosses a paragraph, a list, or a heading, or could plausibly resolve to more than
   one nearby candidate.
@@ -756,10 +756,10 @@ apply equally when reporting on or summarizing work.
   `run` / CI path. [`drivers.md`](drivers.md) is the model to follow.
 - **Japanese prose follows the `japanese-document-writing` skill.** Whether you write the Japanese side
   fresh or translate the English mirror into `docs/ja/` (or a roadmap `*-ja.md`), apply
-  [`japanese-document-writing`](../.claude/skills/japanese-document-writing/): it is the authoritative style
+  [`japanese-document-writing`](../.agent-workflows/japanese-document-writing/workflow.md): it is the authoritative style
   for Japanese prose in this repo, and a translation must read as natural Japanese under those norms,
   not a literal rendering of the English. It sits beneath the
-  [`document-writing`](../.claude/skills/document-writing/SKILL.md) umbrella (above); apply both for Japanese
+  [`document-writing`](../.agent-workflows/document-writing/workflow.md) umbrella (above); apply both for Japanese
   prose.
 - **Japanese documents use 敬体 (the polite *desu/masu* style, ですます調).** Every Japanese file
   under `docs/ja/` and every roadmap `*-ja.md` is written in 敬体, never the plain *da/dearu* style

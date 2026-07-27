@@ -1,0 +1,4 @@
+interface:
+  display_name: "Implement BE item"
+  short_description: "Implement and verify a numbered Bajutsu roadmap item"
+  default_prompt: "Use $implement-be to implement BE-0000 end to end."

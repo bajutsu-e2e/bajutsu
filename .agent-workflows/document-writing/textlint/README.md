@@ -14,7 +14,7 @@ repo's tooling, so a session drafting English-only prose can read it without Jap
 ## Install
 
 ```bash
-npm --prefix .claude/skills/document-writing/textlint ci --ignore-scripts
+npm --prefix .agent-workflows/document-writing/textlint ci --ignore-scripts
 ```
 
 ## Supply-chain defenses

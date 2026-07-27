@@ -1,0 +1,4 @@
+interface:
+  display_name: "PR follow-up"
+  short_description: "Fix CI failures and resolve actionable PR feedback"
+  default_prompt: "Use $pr-followup to address the remaining work on this PR."
