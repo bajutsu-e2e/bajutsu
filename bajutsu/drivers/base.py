@@ -285,9 +285,8 @@ class ViewportProvider(Protocol):
     opt-in rather than a `Driver` requirement.
     """
 
-    def viewport(self) -> Point:
-        """The viewport size `(w, h)`; its origin is the coordinate space's `(0, 0)`."""
-        ...
+    # The viewport size `(w, h)`; its origin is the coordinate space's `(0, 0)`.
+    def viewport(self) -> Point: ...
 
 
 @runtime_checkable

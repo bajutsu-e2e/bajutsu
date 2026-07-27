@@ -408,9 +408,9 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
   destabilized the XCUITest runner). A `ViewportProvider` protocol reports it on every backend:
   Playwright (`window.innerWidth/innerHeight`), adb (`wm size`), the XCUITest runner
   (`XCUIScreen.main.bounds`, a new `/screen` route), and `FakeDriver`'s model.
-- The driver conformance case reveals an off-screen row on all four backends (lazy native lists keep
-  the tree-extent viewport valid); the taller-than-viewport case, which needs an exact viewport, runs
-  on the FakeDriver + Playwright lanes and is skipped on the two native lanes with a documented reason.
+- The driver conformance case reveals an off-screen row, reveals a target taller than the viewport
+  (its center on-screen), and fails on an absent target — all four backends, since each now reports an
+  exact viewport. The on-device harness resets the list to the top between scroll tests.
 - The `scroll` handler and its loop live in a focused new module,
   `bajutsu/orchestrator/actions/handlers/scroll.py`.
 
