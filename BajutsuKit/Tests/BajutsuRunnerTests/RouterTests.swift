@@ -19,6 +19,18 @@ final class RouterTests: XCTestCase {
         XCTAssertEqual(json?["status"] as? String, "ready")
     }
 
+    // MARK: - /screen
+
+    func testScreenReturnsTheProviderSize() {
+        // GET /screen reports the device screen size for the `scroll` viewport (BE-0326).
+        let provider = FakeElementProvider()
+        provider.screenSizeValue = (width: 393, height: 852)
+        let response = makeRouter(provider).handle(HTTPRequest(method: "GET", path: "/screen", body: nil))
+        let json = parseJSON(response)
+        XCTAssertEqual(json?["width"] as? Double, 393)
+        XCTAssertEqual(json?["height"] as? Double, 852)
+    }
+
     // MARK: - /elements
 
     func testElementsReturnsSnapshotWithHandles() {

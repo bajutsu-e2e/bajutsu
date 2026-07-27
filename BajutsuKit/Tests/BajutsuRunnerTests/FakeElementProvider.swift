@@ -56,6 +56,10 @@ final class FakeElementProvider: ElementProviding {
         return tapResult
     }
 
+    var screenSizeValue: (width: Double, height: Double) = (390, 844)
+
+    func screenSize() -> (width: Double, height: Double) { screenSizeValue }
+
     func typeText(_ text: String) -> TapResult {
         typeCalls.append(text)
         return tapResult

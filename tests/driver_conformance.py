@@ -68,16 +68,6 @@ SCROLL_LAST_ROW = f"{SCROLL_ROW_PREFIX}{SCROLL_ROW_COUNT - 1}"
 #: A generous scroll bound for the conformance screen — far more steps than reaching the bottom needs.
 SCROLL_MAX = 30
 
-#: The exact-viewport tall-target case is skipped on the native lanes: the iOS / adb backends
-#: approximate the viewport from the queried tree, which is exact only while no element exceeds the
-#: screen. A lazy list keeps that true for the row-reveal case, but a target *taller* than the
-#: viewport inflates the tree extent, so its center check needs a real viewport — exercised on the
-#: fast gate (FakeDriver) and web (Playwright), where the viewport is reported exactly (BE-0326).
-_TALL_TARGET_NEEDS_EXACT_VIEWPORT = (
-    "the taller-than-viewport case needs an exact viewport; native backends approximate it from the "
-    "tree, so it is covered on the fast gate + web lanes where the viewport is reported exactly"
-)
-
 #: The editable text field present on every conformance screen (BE-0280), alongside the readiness
 #: marker. The text-editing and `tap_point` invariants act on it; each backend's screen realizes it
 #: (the iOS `ConformanceView`, the Compose `ConformanceScreen`, the web `_render`, and — for the
@@ -183,12 +173,17 @@ class OnDeviceConformanceHarness:
         return self._driver
 
     def scrollable_screen(self) -> base.Driver:
-        # Seed the sentinel: the app renders its fixed scroll layout for it (a lazy list, so the later
-        # rows are dropped from the a11y tree until scrolled to). Readiness waits on the marker plus
-        # the first row — the sentinel is not itself a rendered element, and the off-screen rows are
-        # deliberately absent, so neither can be the readiness signal.
+        # Realize the empty screen first so the app tears down any list a prior test left scrolled:
+        # re-seeding the same sentinel would leave that scroll offset in place, and `row.0` might never
+        # return. Wait until every scroll row is gone (the list unmounted), then seed the sentinel and
+        # wait for a fresh `row.0` at the top. The app renders the fixed scroll layout for the sentinel
+        # (a lazy list, so the later rows drop from the a11y tree until scrolled to); the sentinel is
+        # not itself a rendered element, so the marker plus the first row is the readiness signal.
+        all_rows = {f"{SCROLL_ROW_PREFIX}{i}" for i in range(SCROLL_ROW_COUNT)} | {SCROLL_TALL_ID}
+        self._realize([])
+        self._await_screen([], gone=all_rows)
         self._realize([SCROLL_SENTINEL])
-        self._await_screen([SCROLL_FIRST_ROW], gone=set(self._prev) - {SCROLL_FIRST_ROW})
+        self._await_screen([SCROLL_FIRST_ROW], gone=set())
         self._prev = [SCROLL_FIRST_ROW]
         return self._driver
 
@@ -397,8 +392,8 @@ class DriverConformanceContract:
         self, harness: ConformanceHarness
     ) -> None:
         # A target taller than the viewport still resolves once its *center* is on-screen — the reason
-        # the stop condition checks the center, not whole-frame containment (BE-0326). Skipped on the
-        # native lanes, whose approximate viewport can't tell a tall target's center from its edges.
+        # the stop condition checks the center, not whole-frame containment (BE-0326). This needs an
+        # exact viewport (a tall frame's edges straddle the screen), which every backend now reports.
         driver = harness.scrollable_screen()
         target: base.Selector = {"id": SCROLL_TALL_ID}
         scroll_to_target(driver, target, "down", None, SCROLL_MAX)

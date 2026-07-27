@@ -30,6 +30,8 @@ final class Router {
             return handleHealth()
         case ("GET", "/elements"):
             return handleElements()
+        case ("GET", "/screen"):
+            return handleScreen()
         case ("POST", "/tap"):
             return handleTap(request)
         case ("POST", "/gesture"):
@@ -59,6 +61,14 @@ final class Router {
 
     private func handleHealth() -> HTTPResponse {
         .json(200, ["status": "ready"])
+    }
+
+    // The device screen size, for the `scroll` action's on-screen stop condition (BE-0326). The
+    // element tree excludes the app window and can hold buffered off-screen ScrollView children, so
+    // the Python side cannot infer the true viewport from the tree — it reads it here instead.
+    private func handleScreen() -> HTTPResponse {
+        let size = onMain { self.provider.screenSize() }
+        return .json(200, ["width": size.width, "height": size.height])
     }
 
     private func handleElements() -> HTTPResponse {

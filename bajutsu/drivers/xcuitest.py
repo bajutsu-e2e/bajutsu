@@ -76,6 +76,7 @@ class _Reply:
     status: str
     elements: list[dict[str, Any]] | None = None
     png: bytes | None = field(default=None, repr=False)
+    size: base.Point | None = None  # the `GET /screen` viewport (w, h), BE-0326
 
 
 # (method, path, json body) -> decoded reply. Injectable so the channel logic is tested without a
@@ -185,7 +186,10 @@ def _decode(path: str, status_code: int, body: bytes) -> _Reply:
         raise XcuitestChannelError(f"runner returned non-JSON for {path}: {body!r}") from exc
     status = data.get("status") or (_OK if status_code == 200 else "error")
     elements = data.get("elements")
-    return _Reply(status=str(status), elements=elements)
+    # `GET /screen` (BE-0326) carries the viewport as width/height; absent on every other endpoint.
+    width, height = data.get("width"), data.get("height")
+    size = (float(width), float(height)) if width is not None and height is not None else None
+    return _Reply(status=str(status), elements=elements, size=size)
 
 
 class _TransportFailure(Exception):
@@ -501,6 +505,8 @@ class XcuitestDriver:
             self._transport, self._probe_transport = _http_transport(host, port, runner_alive)
         # Injectable so the stale re-resolution backoff (BE-0289) adds no wall time under test.
         self._sleep = sleep
+        # The device screen size (BE-0326), fetched once from the runner; fixed for a run.
+        self._screen: base.Point | None = None
 
     # --- the channel ---
 
@@ -603,6 +609,18 @@ class XcuitestDriver:
         reply = self._transport("POST", "/swipe", {"from": [frm[0], frm[1]], "to": [to[0], to[1]]})
         if reply.status != _OK:
             raise XcuitestChannelError(f"swipe failed ({reply.status})")
+
+    def viewport(self) -> base.Point:
+        # The device screen size from the resident runner (BE-0326). The flattened element tree
+        # excludes the app window and can hold buffered off-screen ScrollView children, so
+        # `screen_size_from_elements` overshoots the screen — a `scroll` stop condition off that would
+        # judge an off-screen center as on-screen and drive the gesture off-screen. Cached for the run.
+        if self._screen is None:
+            reply = self._transport("GET", "/screen", None)
+            if reply.status != _OK or reply.size is None:
+                raise XcuitestChannelError(f"screen size unavailable ({reply.status})")
+            self._screen = reply.size
+        return self._screen
 
     def scroll(self, frm: base.Point, to: base.Point) -> None:
         # A non-inertial scroll (BE-0326): the resident runner's `/scroll` holds the drag at its end

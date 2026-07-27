@@ -399,11 +399,15 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
 ### Log
 
 - The `scroll` non-inertial contract is realized per backend: web is already non-inertial (a wheel /
-  touch drag) and now exposes `window.innerWidth/innerHeight` for the viewport check; adb pans with a
-  longer-duration `input swipe`; the XCUITest resident runner gains a `/scroll` route that holds the
-  drag at its end before lifting; the Appium live driver drags over a longer duration. A
-  `ViewportProvider` protocol (web + `FakeDriver`) supplies the true viewport; every other backend
-  falls back to `screen_size_from_elements`.
+  touch drag); adb pans with a longer-duration `input swipe`; the XCUITest resident runner gains a
+  `/scroll` route that holds the drag at its end before lifting; the Appium live driver drags over a
+  longer duration.
+- The stop condition needs the true viewport, and the queried tree cannot supply it — a lazy list
+  keeps buffered off-screen rows in the tree, so `screen_size_from_elements` overshoots the screen and
+  would judge an off-screen center as on-screen (and drive the gesture anchor off-screen, which
+  destabilized the XCUITest runner). A `ViewportProvider` protocol reports it on every backend:
+  Playwright (`window.innerWidth/innerHeight`), adb (`wm size`), the XCUITest runner
+  (`XCUIScreen.main.bounds`, a new `/screen` route), and `FakeDriver`'s model.
 - The driver conformance case reveals an off-screen row on all four backends (lazy native lists keep
   the tree-extent viewport valid); the taller-than-viewport case, which needs an exact viewport, runs
   on the FakeDriver + Playwright lanes and is skipped on the two native lanes with a documented reason.

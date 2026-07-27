@@ -94,6 +94,30 @@ def _bounds(raw: str) -> base.Frame:
     return (x1, y1, x2 - x1, y2 - y1)
 
 
+# `wm size` prints "Physical size: WxH" and, when the display has been resized, an "Override size:
+# WxH" that is the effective resolution — the override wins when present (BE-0326).
+_WM_SIZE = re.compile(r"^\s*(Physical|Override)\s+size:\s*(\d+)x(\d+)\s*$", re.MULTILINE)
+
+
+def _parse_wm_size(out: str) -> base.Point:
+    """Parse `adb shell wm size` output to the display `(w, h)` in pixels.
+
+    Prefers an Override size over the Physical size; fails loudly (determinism first) rather than
+    guessing a viewport if the output carries neither.
+    """
+    physical: base.Point | None = None
+    override: base.Point | None = None
+    for label, w, h in _WM_SIZE.findall(out or ""):
+        if label == "Override":
+            override = (float(w), float(h))
+        else:
+            physical = (float(w), float(h))
+    size = override or physical
+    if size is None:
+        raise ValueError(f"could not parse `wm size` output: {out!r}")
+    return size
+
+
 def _derived_label(node: ET.Element) -> str | None:
     """The accessible name of a labelless control, joined from its descendants' visible text.
 
@@ -260,6 +284,8 @@ class AdbDriver(CoordinateTreeDriver):
         self._is_root: bool | None = None
         self._touch_dev: adb.TouchDevice | None = None
         self._touch_probed = False
+        # The true display size (BE-0326), resolved once via `wm size`; the resolution is fixed for a run.
+        self._screen: base.Point | None = None
 
     def _describe(self) -> list[base.Element]:
         return parse_hierarchy(self._read_source())
@@ -420,6 +446,16 @@ class AdbDriver(CoordinateTreeDriver):
 
     def swipe(self, frm: base.Point, to: base.Point) -> None:
         self._run(adb.swipe_cmd(self.serial, frm[0], frm[1], to[0], to[1]))
+
+    def viewport(self) -> base.Point:
+        # The true display size in raw pixels (BE-0326). A lazy list (RecyclerView / LazyColumn) keeps
+        # a few buffered rows either side of the viewport in the a11y tree, so
+        # `screen_size_from_elements` overshoots the screen and the `scroll` stop condition would
+        # misjudge an off-screen center as on-screen; `wm size` reports the real display. Cached: the
+        # resolution is fixed for a run.
+        if self._screen is None:
+            self._screen = _parse_wm_size(self._run(adb.wm_size_cmd(self.serial)))
+        return self._screen
 
     def scroll(self, frm: base.Point, to: base.Point) -> None:
         # A non-inertial pan (BE-0326): `input swipe` over a longer duration than the default drag

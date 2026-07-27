@@ -37,6 +37,7 @@ final class RouterConcurrencyTests: XCTestCase {
         func gesture(backingElement: AnyObject, kind: String, scale: Double, radians: Double) -> TapResult { .ok }
         func swipe(fromX: Double, fromY: Double, toX: Double, toY: Double) -> TapResult { .ok }
         func scroll(fromX: Double, fromY: Double, toX: Double, toY: Double) -> TapResult { .ok }
+        func screenSize() -> (width: Double, height: Double) { (390, 844) }
         func typeText(_ text: String) -> TapResult { .ok }
         func deleteText(count: Int) -> TapResult { .ok }
         func selectAll() -> TapResult { .ok }

@@ -40,6 +40,11 @@ public protocol ElementProviding: AnyObject {
     /// Return a snapshot of all on-screen elements. Called on the main thread.
     func queryElements() -> [ElementSnapshot]
 
+    /// The device screen size in points, for the `scroll` action's on-screen stop condition
+    /// (BE-0326). The flattened element tree excludes the app window, so the true viewport cannot be
+    /// inferred from it. Called on the main thread.
+    func screenSize() -> (width: Double, height: Double)
+
     /// Tap the element identified by its backing reference.
     func tap(backingElement: AnyObject, taps: Int, duration: TimeInterval) -> TapResult
 

@@ -431,6 +431,29 @@ def test_scroll_is_a_non_inertial_pan_with_a_longer_duration() -> None:
     assert calls[0] == ["adb", "-s", "U", "shell", "input", "swipe", "10", "20", "30", "40", "600"]
 
 
+def test_viewport_reads_wm_size_not_the_tree_extent() -> None:
+    # The `scroll` viewport is the real display via `wm size` (BE-0326), not `screen_size_from_elements`
+    # (a lazy list buffers off-screen rows into the tree, overshooting the screen). Cached: one call.
+    calls: list[list[str]] = []
+
+    def run(args: list[str]) -> str:
+        calls.append(args)
+        return "Physical size: 1080x2400\n"
+
+    driver = AdbDriver("U", run=run)
+    assert driver.viewport() == (1080.0, 2400.0)
+    assert driver.viewport() == (1080.0, 2400.0)  # cached
+    assert [a for a in calls if a[-1] == "size"] == [["adb", "-s", "U", "shell", "wm", "size"]]
+
+
+def test_viewport_prefers_override_size() -> None:
+    # A resized display prints both a Physical and an Override size; the override is the effective one.
+    def run(_args: list[str]) -> str:
+        return "Physical size: 1080x2400\nOverride size: 720x1600\n"
+
+    assert AdbDriver("U", run=run).viewport() == (720.0, 1600.0)
+
+
 def test_type_text_passes_value_over_stdin_not_argv(monkeypatch: pytest.MonkeyPatch) -> None:
     # BE-0155: a typed value (which may be a secret / OTP) goes to `adb shell` on
     # stdin, never in the adb argv where `ps` could read it.

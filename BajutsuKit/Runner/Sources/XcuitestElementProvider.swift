@@ -45,6 +45,14 @@ final class XcuitestElementProvider: ElementProviding {
         return flattenSnapshot(root: SnapshotNodeAdapter(root))
     }
 
+    func screenSize() -> (width: Double, height: Double) {
+        // The physical screen bounds in points — the coordinate space the snapshot frames use — so an
+        // on-screen element's frame center falls within it (BE-0326). Stable regardless of a scroll
+        // view's buffered off-screen children, unlike the element tree's extent.
+        let bounds = XCUIScreen.main.bounds
+        return (Double(bounds.width), Double(bounds.height))
+    }
+
     func tap(backingElement: AnyObject, taps: Int, duration: TimeInterval) -> TapResult {
         guard let backing = backingElement as? PositionPathBacking else { return .notFound }
         guard let el = liveElement(for: backing) else { return .stale }

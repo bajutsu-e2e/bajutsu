@@ -396,12 +396,15 @@ Mutually Exclusive, Collectively Exhaustive（`MECE`）な作業単位は次の�
 
 ### ログ
 
-- 慣性なしの契約を各バックエンドで実現する。web はすでに慣性がなく（wheel／タッチドラッグ）、
-  ビューポート判定のために `window.innerWidth/innerHeight` を公開する。adb は長めの `input swipe`
-  でパンする。XCUITest の常駐ランナーには、離す前に終点でドラッグを保持する `/scroll` ルートを
-  追加する。Appium の実機ドライバは長めの duration でドラッグする。真のビューポートは
-  `ViewportProvider` プロトコル（web と `FakeDriver`）が供給し、他のバックエンドは
-  `screen_size_from_elements` にフォールバックする。
+- 慣性なしの契約を各バックエンドで実現する。web はすでに慣性がない（wheel／タッチドラッグ）。adb は
+  長めの `input swipe` でパンする。XCUITest の常駐ランナーには、離す前に終点でドラッグを保持する
+  `/scroll` ルートを追加する。Appium の実機ドライバは長めの duration でドラッグする。
+- 停止条件には真のビューポートが要るが、取得したツリーからは求められない。遅延リストはビューポート外の
+  行をバッファとしてツリーに残すので、`screen_size_from_elements` は画面を超過する。超過したビューポートは、
+  画面外の中心を画面内と誤判定してしまう。さらに、ジェスチャの起点を画面外へ押し出し、XCUITest ランナーを
+  不安定にしていた。真のビューポートは `ViewportProvider` プロトコルが各バックエンドで報告する。Playwright は
+  `window.innerWidth/innerHeight`、adb は `wm size`、XCUITest は `XCUIScreen.main.bounds`（新設の
+  `/screen` ルート）、`FakeDriver` は自身のモデルから求める。
 - ドライバ適合ケースは 4 つのバックエンドすべてで画面外の行を引き出す（遅延リストでは、ツリー範囲
   によるビューポート近似が有効なままとなる）。正確なビューポートを要する、ビューポートより高い要素の
   ケースは、FakeDriver と Playwright のレーンで走らせ、2 つのネイティブレーンでは理由を明記して

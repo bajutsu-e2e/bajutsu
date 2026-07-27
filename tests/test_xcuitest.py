@@ -144,6 +144,31 @@ def test_scroll_posts_to_the_non_inertial_scroll_route() -> None:
     assert sent == [("POST", "/scroll", {"from": [10.0, 20.0], "to": [30.0, 40.0]})]
 
 
+def test_viewport_reads_the_screen_route_and_caches() -> None:
+    # The `scroll` viewport is the runner's real screen size (BE-0326), fetched once via GET /screen —
+    # the flattened tree excludes the app window and buffers off-screen ScrollView children, so it
+    # can't supply the viewport.
+    sent: list[tuple[str, str, dict[str, Any] | None]] = []
+
+    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+        sent.append((method, path, body))
+        return _Reply(status="ok", size=(390.0, 844.0))
+
+    driver = _driver(transport)
+    assert driver.viewport() == (390.0, 844.0)
+    assert driver.viewport() == (390.0, 844.0)  # cached
+    assert sent == [("GET", "/screen", None)]
+
+
+def test_decode_parses_screen_size() -> None:
+    # The wire decoder lifts width/height into `_Reply.size` for GET /screen, None elsewhere (BE-0326).
+    assert _decode("/screen", 200, b'{"status":"ok","width":390,"height":844}').size == (
+        390.0,
+        844.0,
+    )
+    assert _decode("/elements", 200, b'{"status":"ok","elements":[]}').size is None
+
+
 def test_pinch_and_rotate_emit_gesture_requests_with_the_handle() -> None:
     sent: list[tuple[str, dict[str, Any] | None]] = []
 

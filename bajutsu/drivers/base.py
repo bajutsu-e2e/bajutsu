@@ -275,13 +275,14 @@ class ViewportProvider(Protocol):
     """A backend that can report its true viewport size, for the `scroll` stop condition (BE-0326).
 
     `scroll` stops when the target's frame center lands inside the viewport, so it needs the real
-    viewport bounds. On a native backend the queried tree holds only on-screen elements, so
-    `screen_size_from_elements` approximates the viewport well enough and no backend need implement
-    this. The web backend is the exception: its tree keeps off-screen DOM nodes, so the content
-    extent overshoots the viewport — Playwright implements this to report `window.innerWidth` /
-    `window.innerHeight` instead. `FakeDriver` implements it too, so its in-memory scrollable model
-    can drive the loop on the fast gate. The handler falls back to `screen_size_from_elements` for
-    any backend that does not implement it, so this stays a narrow opt-in, not a `Driver` requirement.
+    viewport bounds — and the queried tree cannot supply them, because a lazy list keeps buffered
+    off-screen rows in the tree (and the web tree keeps off-screen DOM nodes), so
+    `screen_size_from_elements` overshoots the screen and would judge an off-screen center as
+    on-screen. Each backend reports the real viewport its own way: Playwright via `window.innerWidth`
+    / `window.innerHeight`, adb via `wm size`, XCUITest via the runner's `XCUIScreen.main.bounds`, and
+    `FakeDriver` from its in-memory scrollable model. The handler falls back to
+    `screen_size_from_elements` for any backend that does not implement this, so it stays a narrow
+    opt-in rather than a `Driver` requirement.
     """
 
     def viewport(self) -> Point:
