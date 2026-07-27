@@ -11,8 +11,10 @@ import BajutsuRunner
 /// each attribute over its own XCUITest round-trip (elements × attributes ≈ 600 trips for one
 /// screen), `queryElements()` takes **one** `app.snapshot()` and reads every attribute from that
 /// tree. The trade-off is that snapshot nodes are values, not tappable elements, so each element's
-/// backing is its root-relative position path; `tap` / `gesture` re-derive the live `XCUIElement`
-/// from that path and re-verify its attributes, returning `.stale` if the screen has shifted under it.
+/// backing records its identity and root-relative position path. `tap` / `gesture` first recover a
+/// uniquely identified live `XCUIElement` from a narrow flat query, then use the position path for
+/// duplicate or anonymous elements. This also reaches system-owned sheets whose snapshot hierarchy
+/// cannot be replayed through live direct-child queries.
 /// Backs a SpringBoard alert button by its ordinal within `springboard.alerts.buttons` (BE-0316).
 ///
 /// The out-of-process alert is not part of the app snapshot the `PositionPathBacking` walk records,
@@ -166,26 +168,51 @@ final class XcuitestElementProvider: ElementProviding {
 
     // MARK: - Helpers
 
-    /// Re-derive the live `XCUIElement` for a snapshot backing, or nil if the screen no longer matches.
+    /// Recover the live `XCUIElement` for a snapshot backing, or nil if the screen no longer matches.
     ///
-    /// Walking the recorded index path is one element resolution, not a re-walk of the whole tree; the
-    /// attribute re-check (`identifier` / `label` / `traits`) guards against a sibling reorder whenever a
-    /// distinguishing identifier or label is present. Two elements that share the same
-    /// `identifier` / `label` / `traits` — icon-only controls with no accessibility text, or reused
-    /// table/collection cells with a generic label and no per-row identifier — are indistinguishable by
-    /// `attributesMatch`, so a reorder among such siblings is invisible and they rely on the position path
-    /// alone for identity. Frame is deliberately excluded (BE-0287): a snapshot taken while the UI is
-    /// still settling can record a frame that legitimately shifts before the tap, causing a false stale.
+    /// A narrow flat query is the primary path for an element with an identifier or label. It avoids
+    /// replaying snapshot child indices through a live hierarchy that may have different system-owned
+    /// wrapper nodes, as happens for the iOS Save Password sheet. The query must yield exactly one
+    /// identity match. Duplicate or anonymous elements retain the position-path discriminator.
+    /// Frame is deliberately excluded from both identity checks (BE-0287).
     private func liveElement(for backing: PositionPathBacking) -> XCUIElement? {
+        if let identified = uniquelyIdentifiedElement(matching: backing.recorded) {
+            return identified
+        }
         let el = element(at: backing.path)
         guard el.exists else { return nil }
-        let current = RecordedAttributes(
+        let current = recordedAttributes(of: el)
+        return attributesMatch(recorded: backing.recorded, current: current) ? el : nil
+    }
+
+    /// Resolve one semantic identity without depending on snapshot hierarchy shape.
+    private func uniquelyIdentifiedElement(matching recorded: RecordedAttributes) -> XCUIElement? {
+        guard recorded.identifier != nil || recorded.label != nil else { return nil }
+        var query = app.descendants(matching: .any)
+        if let identifier = recorded.identifier {
+            query = query.matching(identifier: identifier)
+        }
+        if let label = recorded.label {
+            query = query.matching(NSPredicate(format: "label == %@", label))
+        }
+        let candidates = query.allElementsBoundByIndex.filter { $0.exists }
+        let attributes = candidates.map(recordedAttributes)
+        guard let index = uniqueMatchingIndex(recorded: recorded, candidates: attributes) else {
+            return nil
+        }
+        return candidates[index]
+    }
+
+    /// Read the identity fields shared by flat-query and position-path resolution.
+    private func recordedAttributes(of el: XCUIElement) -> RecordedAttributes {
+        RecordedAttributes(
             identifier: nonEmpty(el.identifier),
             label: nonEmpty(el.label),
-            traits: traitTokens(elementType: el.elementType, isEnabled: el.isEnabled, isSelected: el.isSelected),
+            traits: traitTokens(
+                elementType: el.elementType, isEnabled: el.isEnabled, isSelected: el.isSelected
+            ),
             frame: frameTuple(el.frame)
         )
-        return attributesMatch(recorded: backing.recorded, current: current) ? el : nil
     }
 
     /// Resolve a root-relative index path back to an `XCUIElement` by descending direct children —
