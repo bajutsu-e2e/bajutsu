@@ -140,5 +140,5 @@ def test_within_anchors_the_gesture_on_the_container() -> None:
     )
     scrolls = [arg for kind, arg in driver.actions if kind == "scroll"]
     assert scrolls, "expected at least one scroll"
-    (from_x, _from_y), _to = scrolls[0]
+    (from_x, _from_y), _ = scrolls[0]
     assert from_x == 300.0  # the container's center x (200 + 200/2), not the screen center (200)

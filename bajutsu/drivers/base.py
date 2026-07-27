@@ -287,6 +287,7 @@ class ViewportProvider(Protocol):
 
     def viewport(self) -> Point:
         """The viewport size `(w, h)`; its origin is the coordinate space's `(0, 0)`."""
+        ...
 
 
 @runtime_checkable

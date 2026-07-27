@@ -347,7 +347,7 @@ def test_scroll_is_a_non_inertial_drag_over_a_longer_duration() -> None:
     driver = XcuitestLiveDriver(client)
     driver.swipe((5.0, 200.0), (5.0, 10.0))
     driver.scroll((5.0, 200.0), (5.0, 10.0))
-    (_swipe_script, (swipe_arg,)) = grid.executed[0]
+    (_, (swipe_arg,)) = grid.executed[0]
     (scroll_script, (scroll_arg,)) = grid.executed[1]
     assert scroll_script == "mobile: dragFromToForDuration"
     assert (scroll_arg["fromX"], scroll_arg["fromY"], scroll_arg["toX"], scroll_arg["toY"]) == (
