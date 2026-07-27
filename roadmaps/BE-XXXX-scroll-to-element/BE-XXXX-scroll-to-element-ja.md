@@ -389,9 +389,9 @@ Mutually Exclusive, Collectively Exhaustive（`MECE`）な作業単位は次の�
 - [ ] Unit 3 — 慣性なし `Driver.scroll` と `FakeDriver` ビューポート
 - [ ] Unit 4 — 取得済みツリーを使う末尾検出
 - [ ] Unit 5 — codegen（Playwright、UI Automator、XCUITest `TODO`）
-- [ ] Unit 6 — ドライバ適合ケース
+- [ ] Unit 6 — ドライバ適合ケース（要素を引き出す／使い切った領域で失敗）
 - [ ] Unit 7 — ドキュメントと notices.yaml の書き換え
-- [ ] Unit 8 — テスト
+- [ ] Unit 8 — テスト（スキーマ、FakeDriver ループ、`within`、コンテンツ末尾）
 
 ## 参考
 
