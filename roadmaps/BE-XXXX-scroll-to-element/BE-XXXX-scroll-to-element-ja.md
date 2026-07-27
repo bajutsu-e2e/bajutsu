@@ -10,7 +10,7 @@
 | 状態 | **提案** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | トピック | シナリオ記述機能 |
-| 関連 | [BE-0083](../BE-0083-codegen-emitter-unification/BE-0083-codegen-emitter-unification-ja.md), [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md), [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity-ja.md), [BE-0227](../BE-0227-web-swipe-scroll-fidelity/BE-0227-web-swipe-scroll-fidelity-ja.md), [BE-0259](../BE-0259-assert-query-snapshot-reuse/BE-0259-assert-query-snapshot-reuse-ja.md) |
+| 関連 | [BE-0083](../BE-0083-codegen-emitter-unification/BE-0083-codegen-emitter-unification-ja.md), [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md), [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity-ja.md), [BE-0227](../BE-0227-web-swipe-scroll-fidelity/BE-0227-web-swipe-scroll-fidelity-ja.md), [BE-0251](../BE-0251-driver-base-helper-hoist/BE-0251-driver-base-helper-hoist-ja.md), [BE-0259](../BE-0259-assert-query-snapshot-reuse/BE-0259-assert-query-snapshot-reuse-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
@@ -107,7 +107,7 @@ iOS と web では失敗することがあります。
   一方、native の lazy リストは画面外の行をツリーから外す。
   `wait: { for: … }` の述語は存在だけを見る。
   その wait は、流れ去った web 要素を「見つかった」とみなし、スクロールしない。
-  中心点は、`frame_center` が座標ベースの `tap` に対して解決する点と同じ（BE-0251）。
+  中心点は、`frame_center` が座標ベースの `tap` に対して解決する点と同じ（[BE-0251](../BE-0251-driver-base-helper-hoist/BE-0251-driver-base-helper-hoist-ja.md)）。
   そのヘルパーは [`bajutsu/drivers/base.py`](../../bajutsu/drivers/base.py) にある。
   後続の `tap` が画面内に必要とするのは frame 全体ではなく、その点。
   frame 全体をビューポート内に要求すると、ビューポートより高い対象で失敗する。

@@ -10,7 +10,7 @@
 | Status | **Proposal** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | Topic | Scenario authoring features |
-| Related | [BE-0083](../BE-0083-codegen-emitter-unification/BE-0083-codegen-emitter-unification.md), [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md), [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md), [BE-0227](../BE-0227-web-swipe-scroll-fidelity/BE-0227-web-swipe-scroll-fidelity.md), [BE-0259](../BE-0259-assert-query-snapshot-reuse/BE-0259-assert-query-snapshot-reuse.md) |
+| Related | [BE-0083](../BE-0083-codegen-emitter-unification/BE-0083-codegen-emitter-unification.md), [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md), [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md), [BE-0227](../BE-0227-web-swipe-scroll-fidelity/BE-0227-web-swipe-scroll-fidelity.md), [BE-0251](../BE-0251-driver-base-helper-hoist/BE-0251-driver-base-helper-hoist.md), [BE-0259](../BE-0259-assert-query-snapshot-reuse/BE-0259-assert-query-snapshot-reuse.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -105,7 +105,7 @@ It also accepts two optional refinements.
   A native lazy list drops an off-screen row from the tree.
   A `wait: { for: … }` predicate checks existence alone.
   That wait would treat a scrolled-away web element as found and never scroll.
-  The center point is the same point `frame_center` resolves for a coordinate-based `tap` (BE-0251).
+  The center point is the same point `frame_center` resolves for a coordinate-based `tap` ([BE-0251](../BE-0251-driver-base-helper-hoist/BE-0251-driver-base-helper-hoist.md)).
   See [`bajutsu/drivers/base.py`](../../bajutsu/drivers/base.py) for that helper.
   A following `tap` needs that point on-screen, not the whole frame.
   Requiring the whole frame inside the viewport would fail a target taller than the viewport.
