@@ -177,7 +177,7 @@ the canonical flag, and `--alert-handling` / `--no-alert-handling` plus `--dismi
   the precedent this item follows one step further: same alias-preserving rename pattern, same field.
 - [BE-0316 — Explicit mid-flow step for iOS permission-prompt alerts](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step.md) —
   the sibling `handleSystemAlert` step whose name motivates this rename; the two are told apart by
-- `bajutsu/scenario/models/scenario.py` (`SystemAlertHandling`), `bajutsu/config/schema.py`,
+  part of speech (verb action versus noun setting) once both name "system alert" explicitly.
 - `bajutsu/scenario/models/scenario.py` (`SystemAlertHandling`), `bajutsu/config/schema.py`,
   `bajutsu/config/effective.py`, `bajutsu/config/resolve.py`, `bajutsu/cli/_shared.py`,
   `bajutsu/cli/commands/run.py`, `bajutsu/cli/commands/record.py`, `bajutsu/cli/commands/crawl.py`,
