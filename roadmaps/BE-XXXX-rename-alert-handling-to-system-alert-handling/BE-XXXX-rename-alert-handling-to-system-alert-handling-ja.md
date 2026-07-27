@@ -174,7 +174,7 @@ CLI も改名にならいます。`bajutsu run --system-alert-handling` / `--no-
 - [BE-0316 — iOS 権限プロンプトアラート向けの明示的な中間ステップ](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step-ja.md) —
   この改名の動機となった対の `handleSystemAlert` ステップ。両者が「system alert」を明示するように
   なった今、品詞（動詞のアクションと名詞の設定）で読み分けられます。
-- `bajutsu/scenario/models/scenario.py`（`AlertHandling`）、`bajutsu/config/schema.py`、
+- `bajutsu/scenario/models/scenario.py`（`SystemAlertHandling`）、`bajutsu/config/schema.py`、
   `bajutsu/config/effective.py`、`bajutsu/config/resolve.py`、`bajutsu/cli/_shared.py`、
   `bajutsu/cli/commands/run.py`、`bajutsu/cli/commands/record.py`、
   `bajutsu/cli/commands/crawl.py`、`bajutsu/capabilities.py`、
