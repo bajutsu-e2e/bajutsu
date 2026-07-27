@@ -148,9 +148,9 @@ automatically wherever a prompt surfaces, the step at the one point an author pl
 
 > **Renamed from `alertHandling`, which itself renamed `dismissAlerts`.** The field and its CLI flag
 > were renamed to `systemAlertHandling` / `--system-alert-handling` so the reactive guard's setting
-> names "system alert" explicitly, pairing with the `handleSystemAlert` step below the way `alertHandling`
-> ([BE-0317](../roadmaps/BE-0317-rename-dismiss-alerts-to-alert-handling/BE-0317-rename-dismiss-alerts-to-alert-handling.md))
-> renamed `dismissAlerts` so the name covered granting as well as dismissing.
+> names "system alert" explicitly, pairing with the `handleSystemAlert` step below.
+> `alertHandling` ([BE-0317](../roadmaps/BE-0317-rename-dismiss-alerts-to-alert-handling/BE-0317-rename-dismiss-alerts-to-alert-handling.md))
+> had itself renamed `dismissAlerts` so the name covered granting as well as dismissing.
 > The old `alertHandling` / `dismissAlerts` keys and `--alert-handling` / `--dismiss-alerts` flags
 > still work as deprecated aliases; using one emits a one-time notice pointing at the new name.
 
