@@ -101,6 +101,10 @@ def test_build_state_server_wires_the_hosted_seams(
     assert isinstance(state.secrets, DbSecretStore)  # encrypted per-org store (BE-0136)
     scope = state.scenarios.scope("demo")
     assert scope is not None
+    # The scenario lives on `demo`'s configured local dir (`project`'s fixture), never in the fake
+    # bucket: list/read resolve it from there without touching object storage (BE-0324).
+    assert [s["file"] for s in scope.list()] == ["smoke.yaml"]
+    assert scope.read("smoke.yaml") == (_scn / "smoke.yaml").read_text(encoding="utf-8")
 
 
 def test_build_state_local_has_no_repository(tmp_path: Path) -> None:

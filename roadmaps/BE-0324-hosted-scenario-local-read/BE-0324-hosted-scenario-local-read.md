@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0324](BE-0324-hosted-scenario-local-read.md) |
 | Author | [@paihu](https://github.com/paihu) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0324") |
 | Topic | Configuration sourcing |
 | Related | [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source.md), [BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md), [BE-0243](../BE-0243-upload-bundle-durable-storage/BE-0243-upload-bundle-durable-storage.md), [BE-0268](../BE-0268-composable-upload-artifacts/BE-0268-composable-upload-artifacts.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) |
@@ -155,13 +155,13 @@ already names (directive 3).
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] 1 — `LocalTreeScenarioStorage`: a `ScenarioStorage` implementation answering `has_app` from
-  the same `apps` lookup `ObjectScenarioStorage` uses, `list` and `read` by delegating to
-  `_scenarios_dir_for` and `LocalScenarioScope`, and `save` by delegating to an injected
-  `ObjectScenarioStorage`.
-- [ ] 2 — `runnable()` sourcing its `materials` text from `LocalTreeScenarioStorage`. The
+- [x] 1 — `LocalTreeScenarioStorage`: a `ScenarioStorage` implementation answering `has_app` by
+  delegating to the injected `ObjectScenarioStorage` (the same *apps* lookup, without a second copy
+  of it), `list` and `read` by delegating to `LocalScenarioStore`/`_scenarios_dir_for`, and `save` by
+  delegating to that same injected `ObjectScenarioStorage`.
+- [x] 2 — `runnable()` sourcing its `materials` text from `LocalTreeScenarioStorage`. The
   worker-side contract (`_materialize` writing materials into the run workspace) stays unchanged.
-- [ ] 3 — `_build_server_state` wrapping its constructed `ObjectScenarioStorage` in
+- [x] 3 — `_build_server_state` wrapping its constructed `ObjectScenarioStorage` in
   `LocalTreeScenarioStorage` before handing it to `StorageScenarioStore`.
 
 ## References
