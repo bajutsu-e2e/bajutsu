@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0324](BE-0324-hosted-scenario-local-read-ja.md) |
 | 提案者 | [@paihu](https://github.com/paihu) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0324") |
+| 実装 PR | [#1384](https://github.com/bajutsu-e2e/bajutsu/pull/1384) |
 | トピック | config の取得元 |
 | 関連 | [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source-ja.md), [BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload-ja.md), [BE-0243](../BE-0243-upload-bundle-durable-storage/BE-0243-upload-bundle-durable-storage-ja.md), [BE-0268](../BE-0268-composable-upload-artifacts/BE-0268-composable-upload-artifacts-ja.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) |
 <!-- /BE-METADATA -->
@@ -63,10 +64,11 @@ config ファイル自身の取得元と同じ場所です。Git や zip ソー�
 
 `ObjectScenarioStorage` と並べて、`ScenarioStorage` の実装を1つ追加します。名前は
 `LocalTreeScenarioStorage` とします(`bajutsu/serve/server/scenarios.py`)。構築時には、稼働中の
-`ServeState` と、`ObjectScenarioStorage` がすでに受け取っているのと同じ `apps` の取得方法を渡します。
-`has_app` は、その同じ `apps` の取得方法をそのまま使って答えます。`list` と `read` については、
-object storage を呼ぶ代わりに、ローカルバックエンドの仕組みへ委ねます。これにより、Git や zip
-ソースのシナリオは、直接の読み取りや実行だけでなく、ホスト提供 UI の一覧にも現れるようになります。
+`ServeState` と、`ObjectScenarioStorage` のインスタンスそのものを渡します。`has_app` は、その
+インスタンスへの委譲によって答えます(同じ `apps` の取得方法を、二重に持つことなく再利用します)。
+`list` と `read` については、object storage を呼ぶ代わりに、ローカルバックエンドの仕組みへ委ねます。
+これにより、Git や zip ソースのシナリオは、直接の読み取りや実行だけでなく、ホスト提供 UI の一覧にも
+現れるようになります。
 org のターゲットが与えられると、`_scenarios_dir_for(state, target)`(`bajutsu/serve/state.py`)を呼び、
 そのターゲットのシナリオディレクトリを得ます。得られたディレクトリを `LocalScenarioScope`
 (`bajutsu/serve/scenarios.py`)に渡し、その `list` または `read` を呼びます。このように
@@ -83,11 +85,12 @@ checkout のルート、zip 展開のルート、組み合わせ済みアーテ�
 `LocalTreeScenarioStorage` にも `save` メソッドは要ります。`ScenarioStorage` プロトコル
 (`bajutsu/serve/server/scenarios.py`)がそれを求めるからです。`StorageScenarioStore` と
 `StorageScenarioScope` は、それぞれ注入された `ScenarioStorage` を1つだけ保持し、その同じオブジェクトに
-対して `save` を呼びます。`LocalTreeScenarioStorage` は、この1点のためだけに、コンストラクタの引数として
-`ObjectScenarioStorage` のインスタンスを受け取ります。その `save` メソッドは、このインスタンスへそのまま
-委ねます。`has_app`・`list`・`read` はこの委譲先に触れません。触れるのは `save` だけです。こうして
-1つのオブジェクトが `ScenarioStorage` プロトコル全体に答えます。ローカルツリーから読み、
-`ObjectScenarioStorage` を通じて書きます。新しいプロトコルは不要で、`StorageScenarioScope` が保持する
+対して `save` を呼びます。`LocalTreeScenarioStorage` は、§1 で `has_app` の委譲先として使ったのと同じ
+`ObjectScenarioStorage` のインスタンスを、コンストラクタの引数として受け取ります。その `save` メソッドは、
+このインスタンスへそのまま委ねます。`list` と `read` はこの委譲先に触れません。触れるのは `has_app` と
+`save` だけです。こうして1つのオブジェクトが `ScenarioStorage` プロトコル全体に答えます。
+ローカルツリーから読み、`ObjectScenarioStorage` を通じて書きます。新しいプロトコルは不要で、
+`StorageScenarioScope` が保持する
 オブジェクトも1つのままです。
 
 ### 2. `runnable()` は materials を運び続け、変わるのはその取得元だけ
@@ -153,12 +156,12 @@ worker 側の契約は変わりません。変わるのは、control plane が�
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] 1 — `LocalTreeScenarioStorage` の実装。`has_app` は `ObjectScenarioStorage` と同じ `apps` の
-  取得方法で、`list`・`read` は `_scenarios_dir_for` と `LocalScenarioScope` への委譲で、`save` は
-  注入された `ObjectScenarioStorage` への委譲で答える。
-- [ ] 2 — `runnable()` の変更。`materials` の本文の取得元を `LocalTreeScenarioStorage` にする
+- [x] 1 — `LocalTreeScenarioStorage` の実装。`has_app` は注入された `ObjectScenarioStorage` への
+  委譲で答え(同じ `apps` の取得方法を二重に持たない)、`list`・`read` は `LocalScenarioStore` /
+  `_scenarios_dir_for` への委譲で、`save` はその同じ注入済み `ObjectScenarioStorage` への委譲で答える。
+- [x] 2 — `runnable()` の変更。`materials` の本文の取得元を `LocalTreeScenarioStorage` にする
   (worker 側の契約、`_materialize` による実行ワークスペースへの書き出しは変更なし)。
-- [ ] 3 — `_build_server_state` の配線変更。構築した `ObjectScenarioStorage` を
+- [x] 3 — `_build_server_state` の配線変更。構築した `ObjectScenarioStorage` を
   `LocalTreeScenarioStorage` で包んでから `StorageScenarioStore` へ渡す。
 
 ## 参考

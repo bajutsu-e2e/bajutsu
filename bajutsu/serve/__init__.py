@@ -317,7 +317,11 @@ def _build_server_state(
     from bajutsu.serve.server.object_store import artifact_prefix, object_store_from_env, org_prefix
     from bajutsu.serve.server.post_completion_logbus import PostCompletionLogBus
     from bajutsu.serve.server.provider_store import DbProviderSettingsStore
-    from bajutsu.serve.server.scenarios import ObjectScenarioStorage, StorageScenarioStore
+    from bajutsu.serve.server.scenarios import (
+        LocalTreeScenarioStorage,
+        ObjectScenarioStorage,
+        StorageScenarioStore,
+    )
     from bajutsu.serve.server.secrets import DbSecretStore, fernet_from_env
     from bajutsu.serve.server.sessions import _DEFAULT_TTL, SqlSessionStore
 
@@ -447,11 +451,15 @@ def _build_server_state(
         provider_settings = (
             DbProviderSettingsStore(_db_engine, org) if _db_engine is not None else None
         )
+        # Scenarios are read from the bound config's local-tree dir, not this org's object-storage
+        # prefix (BE-0324): a Git- or zip-sourced scenario is already extracted onto the control
+        # plane's disk by the time a request arrives, so `list`/`read` resolve it from there. The
+        # object storage still backs `save` (the hosted web editor / a `record` job) — the one
+        # purpose `LocalTreeScenarioStorage` holds it for.
+        object_scenarios = ObjectScenarioStorage(store, partial(_org_apps, org), prefix=base)
         return StoreBundle(
             artifacts=ObjectStorageArtifactStore(store, prefix=artifact_prefix(base)),
-            scenarios=StorageScenarioStore(
-                ObjectScenarioStorage(store, partial(_org_apps, org), prefix=base)
-            ),
+            scenarios=StorageScenarioStore(LocalTreeScenarioStorage(state, object_scenarios)),
             baselines=ObjectBaselineStore(store, prefix=base),
             secrets=secrets,
             provider_settings=provider_settings,

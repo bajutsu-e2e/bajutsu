@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0324](BE-0324-hosted-scenario-local-read.md) |
 | Author | [@paihu](https://github.com/paihu) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0324") |
+| Implementing PR | [#1384](https://github.com/bajutsu-e2e/bajutsu/pull/1384) |
 | Topic | Configuration sourcing |
 | Related | [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source.md), [BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md), [BE-0243](../BE-0243-upload-bundle-durable-storage/BE-0243-upload-bundle-durable-storage.md), [BE-0268](../BE-0268-composable-upload-artifacts/BE-0268-composable-upload-artifacts.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) |
 <!-- /BE-METADATA -->
@@ -63,10 +64,10 @@ would not reach the worker at all.
 
 Add a `ScenarioStorage` implementation named `LocalTreeScenarioStorage`, beside
 `ObjectScenarioStorage` (`bajutsu/serve/server/scenarios.py`). Construct it with the live
-`ServeState` and the same `apps` lookup `ObjectScenarioStorage` already takes. It answers `has_app`
-by checking that same `apps` lookup, unchanged. For `list` and `read`, it delegates to the local
-backend's own machinery instead of an object-store call, so a Git- or zip-sourced scenario appears
-in the hosted UI's list, not only on a direct read or a run. For an org's target, it calls
+`ServeState` and the `ObjectScenarioStorage` instance itself; it answers `has_app` by delegating to
+that instance (the same *apps* lookup, no second copy of it). For `list` and `read`, it delegates to
+the local backend's own machinery instead of an object-store call, so a Git- or zip-sourced scenario
+appears in the hosted UI's list, not only on a direct read or a run. For an org's target, it calls
 `_scenarios_dir_for(state, target)` (`bajutsu/serve/state.py`) to get that target's scenario
 directory. It then hands the result to a `LocalScenarioScope` (`bajutsu/serve/scenarios.py`) and
 calls its `list` or `read`. This reuses `LocalScenarioScope` directly, rather than re-deriving the
@@ -83,12 +84,12 @@ composed-artifact source alike.
 `LocalTreeScenarioStorage` still needs a `save` method. The `ScenarioStorage` protocol
 (`bajutsu/serve/server/scenarios.py`) requires one, since `StorageScenarioStore` and
 `StorageScenarioScope` each hold a single injected `ScenarioStorage` and call `save` on that same
-object. `LocalTreeScenarioStorage` takes an `ObjectScenarioStorage` instance as a constructor
-argument for this single purpose. Its `save` method delegates to that instance, unchanged. `has_app`,
-`list`, and `read` never touch that delegate; `save` alone does. One object answers the whole
-`ScenarioStorage` protocol this way: it reads from the local tree and writes through
-`ObjectScenarioStorage`, with no new protocol and no second object for `StorageScenarioScope` to
-hold.
+object. `LocalTreeScenarioStorage` takes that same `ObjectScenarioStorage` instance as a constructor
+argument, reused from §1's `has_app` delegation. Its `save` method delegates to that instance,
+unchanged. `list` and `read` never touch that delegate; `has_app` and `save` alone do. One object
+answers the whole `ScenarioStorage` protocol this way: it reads from the local tree and writes
+through `ObjectScenarioStorage`, with no new protocol and no second object for `StorageScenarioScope`
+to hold.
 
 ### 2. `runnable()` keeps shipping materials; only their source changes
 
@@ -155,13 +156,13 @@ already names (directive 3).
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] 1 — `LocalTreeScenarioStorage`: a `ScenarioStorage` implementation answering `has_app` from
-  the same `apps` lookup `ObjectScenarioStorage` uses, `list` and `read` by delegating to
-  `_scenarios_dir_for` and `LocalScenarioScope`, and `save` by delegating to an injected
-  `ObjectScenarioStorage`.
-- [ ] 2 — `runnable()` sourcing its `materials` text from `LocalTreeScenarioStorage`. The
+- [x] 1 — `LocalTreeScenarioStorage`: a `ScenarioStorage` implementation answering `has_app` by
+  delegating to the injected `ObjectScenarioStorage` (the same *apps* lookup, without a second copy
+  of it), `list` and `read` by delegating to `LocalScenarioStore`/`_scenarios_dir_for`, and `save` by
+  delegating to that same injected `ObjectScenarioStorage`.
+- [x] 2 — `runnable()` sourcing its `materials` text from `LocalTreeScenarioStorage`. The
   worker-side contract (`_materialize` writing materials into the run workspace) stays unchanged.
-- [ ] 3 — `_build_server_state` wrapping its constructed `ObjectScenarioStorage` in
+- [x] 3 — `_build_server_state` wrapping its constructed `ObjectScenarioStorage` in
   `LocalTreeScenarioStorage` before handing it to `StorageScenarioStore`.
 
 ## References
