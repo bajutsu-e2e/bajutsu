@@ -257,9 +257,12 @@ ClaudeAgent(client=fake_client)    # api: テスト
 
 ## システムアラートの自動対処
 
-idb のアクセシビリティクエリは前面アプリにスコープされるため、**SpringBoard レベルのプロンプト**
+iOS のアクセシビリティクエリは前面アプリにスコープされるため、**SpringBoard レベルのプロンプト**
 （iOS の「パスワードを保存しますか?」等）は見えず、アプリの要素ツリーが 1 つの window ノードに
-縮退して run が静かにブロックされます。`agents/alerts.py` がこれを片付けます。
+縮退して run が静かにブロックされます。`agents/alerts.py` の視覚ガードがこれを片付けます。`run` は
+さらに、モデル呼び出しなしで一般的なプロンプトを片付ける決定的なネイティブ経路も備えます（BE-0315。
+下記）。これは [`handleSystemAlert`](scenarios.md#handlesystemalert決定的なシステムアラートステップ)
+（BE-0316）の 2 つ目の SpringBoard ハンドルを再利用します。
 
 ```python
 class AlertLocator(Protocol):
@@ -281,18 +284,29 @@ class SystemAlertGuard:
 
 ### run / record での使い方
 
-- `run`: ガードはシナリオごとに**既定 ON** です。CLI は [`systemAlertHandling`](scenarios.md#systemalerthandlingシステムアラートガード)
-  が有効な各シナリオに `SystemAlertGuard(...).dismiss` を `on_blocked` として渡します。ステップ失敗時に
-  プロンプトを片付け、**そのステップを 1 回だけ再試行**します（[run-loop](run-loop.md#run_scenario1-シナリオの実行)）。
-  `wait` ステップ（`for`/`settled`/`screenChanged`）では同じハンドラが **wait の途中でも**待ち構えており、
-  すでにポーリング済みの画面のツリーが潰れて見えた時点で発火します（デバウンスとクールダウンを挟み、1 回の
-  wait につき最大 2 回まで）。wait 自体のタイムアウトを待たず、末尾の再試行より前に回復できます（BE-0269）。
-  シナリオ側で `systemAlertHandling: false` で無効化、`{ instruction: "tap Allow" }` でボタンを指定できます。
-  `--system-alert-handling`/`--no-system-alert-handling` は全シナリオを上書きし、`--alert-instruction "..."` は既定指示を設定します。
+- `run`: ガードはシナリオごとに**既定 ON** です。CLI は有効な各シナリオに `AlertGuardConfig`
+  （[BE-0315](../../roadmaps/BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling-ja.md)）
+  を構築し `on_blocked` として渡します。`HANDLE_SYSTEM_ALERT` を宣言するバックエンド（XCUITest）では、
+  決定的なネイティブ経路を優先します。[`handleSystemAlert`](scenarios.md#handlesystemalert決定的なシステムアラートステップ)
+  （BE-0316）と同じ SpringBoard 照会を読み、ポリシーが名指しした最初のボタンを `resolve_unique` 経由でラベルで
+  タップし、モデル呼び出しは不要です。その能力を持たないバックエンド（adb、Playwright）は、上記の
+  ツリー縮退プロキシ＋視覚という従来どおりの挙動のままです。ステップ失敗時にはガードがプロンプトを片付け、
+  **そのステップを 1 回だけ再試行**します（[run-loop](run-loop.md#run_scenario1-シナリオの実行)）。
+  `wait` ステップ（`for`/`settled`/`screenChanged`）では、ネイティブ経路はさらに独自の間隔（既定 1 秒。
+  wait 自体の条件ポーリングとは切り離しています）でポーリングされます。視覚フォールバックが依然として
+  適用されるケースでは、従来どおり **wait の途中でも**待ち構えており、すでにポーリング済みの画面のツリーが
+  潰れて見えた時点で発火します（デバウンスとクールダウンを挟み、1 回の wait につき最大 2 回まで）。wait
+  自体のタイムアウトを待たず、末尾の再試行より前に回復できます（BE-0269）。シナリオ側で
+  `systemAlertHandling: false` で無効化、`{ instruction: ["Allow"] }` でネイティブ経路が決定的に解決する
+  候補ラベルを指定、あるいは視覚フォールバックだけが解釈する旧来の自由記述形式 `{ instruction: "tap Allow" }`
+  も使えます。`--system-alert-handling`/`--no-system-alert-handling` は全シナリオを上書きし、
+  `--alert-instruction "..."` は既定指示を設定します。
 - `record --system-alert-handling`: 既定で ON です（オーサリング時はまだシナリオが無いため）。割り込むプロンプトを片付け、
   エージェントに常にクリーンな画面を見せます。**dismissal は環境操作であって記録ステップではありません**
   （リプレイ側は各シナリオの `systemAlertHandling` で対処します）。
 
-> ガードは視覚モデルを使うため `ANTHROPIC_API_KEY` が必要です（[cli の .env](cli.md#環境変数env)）。
-> 無くても**ベストエフォート**で単に no-op し、run を失敗させません。ガードはブロックしたプロンプトを
+> 視覚ガードは `ANTHROPIC_API_KEY` が必要です（[cli の .env](cli.md#環境変数env)）。無くても
+> **ベストエフォート**で単に no-op し、run を失敗させません — ネイティブ経路を持たない `record`/`crawl`
+> ではこれがそのままアラート未対処を意味しますが、`run` の iOS ネイティブ経路（BE-0315）は認証情報なしで
+> 一般的なプロンプトを片付け続け、no-op するのは視覚フォールバックだけです。ガードはブロックしたプロンプトを
 > 片付けるためだけに動作し、合否は機械判定のみで AI 非依存です（[concepts](concepts.md#1-ai-は著者と調査役であり判定者ではない)）。

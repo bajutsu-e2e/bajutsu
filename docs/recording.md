@@ -293,9 +293,12 @@ ClaudeAgent(client=fake_client)    # api: tests
 
 ## Dismissing system alerts automatically
 
-idb's accessibility query is scoped to the foreground app, so **SpringBoard-level prompts** (e.g.
+The iOS accessibility query is scoped to the foreground app, so **SpringBoard-level prompts** (e.g.
 iOS "Save Password?") are invisible to it; the app's element tree collapses to a single window node
-and the run is silently blocked. `agents/alerts.py` handles clearing these.
+and the run is silently blocked. `agents/alerts.py`'s vision guard handles clearing these; `run`
+additionally has a deterministic native path (BE-0315, below) that clears the common prompts without
+a model call, reusing [`handleSystemAlert`](scenarios.md#handlesystemalert-the-deterministic-system-alert-step)'s
+(BE-0316) second SpringBoard handle.
 
 ```python
 class AlertLocator(Protocol):
@@ -317,22 +320,32 @@ class SystemAlertGuard:
 
 ### Usage in run / record
 
-- `run`: the guard is **on by default** per scenario — the CLI passes a `SystemAlertGuard(...).dismiss`
-  as `on_blocked` for each scenario whose [`systemAlertHandling`](scenarios.md#systemalerthandling-the-system-alert-guard)
-  is enabled. On step failure it clears the prompt and **retries that step exactly once**
-  ([run-loop](run-loop.md#run_scenario-running-one-scenario)). For a `wait` step (`for`/`settled`/
-  `screenChanged`), the same handler is also armed **mid-wait**: it fires against the already-polled
-  screen as soon as the tree looks collapsed, debounced, cooldown-limited, and capped at two attempts
-  per wait, so a blocked wait can recover before its own timeout elapses instead of only at the
-  end-of-step retry (BE-0269). A scenario sets `systemAlertHandling: false`
-  to opt out or `{ instruction: "tap Allow" }` to name a button;
+- `run`: the guard is **on by default** per scenario — the CLI builds each enabled scenario an
+  `AlertGuardConfig` ([BE-0315](../roadmaps/BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling.md)),
+  passed as `on_blocked`. On a backend that declares `HANDLE_SYSTEM_ALERT` (XCUITest), the guard
+  prefers a deterministic native path: it reads the same SpringBoard query
+  [`handleSystemAlert`](scenarios.md#handlesystemalert-the-deterministic-system-alert-step) (BE-0316)
+  uses, taps the first policy-named button by label through `resolve_unique`, and needs no model
+  call; a backend without the capability (adb, Playwright) keeps the collapsed-tree-proxy-plus-vision
+  behavior described above, unchanged. On step failure the guard clears the prompt and **retries
+  that step exactly once** ([run-loop](run-loop.md#run_scenario-running-one-scenario)). For a `wait`
+  step (`for`/`settled`/`screenChanged`), the native path is additionally polled on its own interval
+  (default 1s, decoupled from the wait's own condition poll); where the vision fallback still applies
+  it is armed **mid-wait** the same way it always was: it fires against the already-polled screen as
+  soon as the tree looks collapsed, debounced, cooldown-limited, and capped at two attempts per wait,
+  so a blocked wait can recover before its own timeout elapses instead of only at the end-of-step
+  retry (BE-0269). A scenario sets `systemAlertHandling: false` to opt out, `{ instruction: ["Allow"] }`
+  to name a candidate label the native path resolves deterministically, or `{ instruction: "tap Allow" }`
+  for the legacy free-text form only the vision fallback interprets;
   `--system-alert-handling`/`--no-system-alert-handling` overrides every scenario and
   `--alert-instruction "..."` sets a default instruction.
 - `record --system-alert-handling`: on by default (authoring has no scenario yet). Clears prompts
   that interrupt authoring so the agent always sees a clean screen. **A dismissal is an environment
   operation, not a recorded step** (replay handles it via each scenario's `systemAlertHandling`).
 
-> The guard uses a vision model, so it needs `ANTHROPIC_API_KEY` ([.env in cli](cli.md#environment-variables-env));
-> without one it is **best-effort** and simply no-ops, never failing a run. The guard fires only to clear
-> a blocking prompt — pass/fail stays machine-only and AI-independent
+> The vision guard needs `ANTHROPIC_API_KEY` ([.env in cli](cli.md#environment-variables-env));
+> without one it is **best-effort** and simply no-ops, never failing a run — for `record`/`crawl`,
+> which have no native path, that means no alert clearing at all, while `run`'s iOS native path
+> (BE-0315) still clears the common prompts credential-free, and only its vision fallback no-ops. The
+> guard fires only to clear a blocking prompt — pass/fail stays machine-only and AI-independent
 > ([concepts](concepts.md#1-ai-is-the-author-and-the-investigator-never-the-judge)).

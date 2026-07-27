@@ -21,7 +21,7 @@ Related: [run-loop](run-loop.md) · [recording](recording.md) · [codegen](codeg
 
 ## `run`
 
-Runs a scenario **deterministically**; pass/fail is machine-only. The only AI component is the **alert guard** (on by default per scenario), which fires only to clear an OS prompt that blocked a step — see [`systemAlertHandling`](scenarios.md#systemalerthandling-the-system-alert-guard).
+Runs a scenario **deterministically**; pass/fail is machine-only. The only AI component is the **alert guard**'s vision fallback (on by default per scenario), which fires only to clear an OS prompt that blocked a step and that the native SpringBoard path (iOS XCUITest, no model) can't name — see [`systemAlertHandling`](scenarios.md#systemalerthandling-the-system-alert-guard).
 
 ```bash
 bajutsu run --target <name> [--scenario <file.yaml>] [options]
@@ -40,7 +40,7 @@ to run. Pass `--scenario <file>` to run a single file instead.
 | `--exclude` | "" | comma list; skip scenarios carrying any of these tags |
 | `--udid` | `booted` | the target Simulator (comma list = a device pool for `--workers`) |
 | `--erase / --no-erase` | scenario › config › off | override every scenario's `preconditions.erase` (wipe the simulator first); omit and it resolves each scenario's value, then the target's `erase` config, then off ([BE-0177](../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md)). The app is reinstalled fresh either way (config `appPath` + `preconditions.reinstall`) |
-| `--system-alert-handling / --no-system-alert-handling` | scenario › config › on | override every scenario's `systemAlertHandling` — the vision guard that dismisses system alerts the iOS backend cannot see; omit and it resolves each scenario's value, then the target's `systemAlertHandling` config, then on (uses the configured AI provider — `ANTHROPIC_API_KEY`, or AWS credentials for Bedrock; [recording](recording.md#dismissing-system-alerts-automatically)) |
+| `--system-alert-handling / --no-system-alert-handling` | scenario › config › on | override every scenario's `systemAlertHandling` — the reactive guard that dismisses system alerts the iOS backend cannot see, natively on XCUITest (no model, BE-0315) with vision as the fallback for what the native path can't name; omit and it resolves each scenario's value, then the target's `systemAlertHandling` config, then on (the vision fallback needs the configured AI provider — `ANTHROPIC_API_KEY`, or AWS credentials for Bedrock; the native path needs no credential; [recording](recording.md#dismissing-system-alerts-automatically)) |
 | `--alert-instruction` | "" | default button instruction, below a scenario's own `systemAlertHandling.instruction` and above the target's `systemAlertHandling` config |
 | `--log-predicate` | "" | an NSPredicate narrowing the `deviceLog` stream (e.g. subsystem) |
 | `--log-subsystem` | "" | the os_log subsystem for `appTrace` (defaults to the app's `bundleId`) |
@@ -60,7 +60,7 @@ to run. Pass `--scenario <file>` to run a single file instead.
   ([evidence](evidence.md#sinks-where-evidence-goes)).
 - `runId` is `YYYYMMDD-HHMMSS`.
 - Output: `PASS|FAIL  runs/<runId>/manifest.json`. **Exits 0 if every scenario passes, 1 on failure.**
-- When the alert guard fires (it is the run's only AI), an `AI usage:` line with the
+- When the alert guard's vision fallback fires (it is the run's only AI), an `AI usage:` line with the
   token totals it consumed is printed to **stderr** after the result, leaving stdout the single
   machine-readable result line. A run that used no AI prints nothing.
 

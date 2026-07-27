@@ -63,7 +63,8 @@ flowchart LR
 その結果 **同じ決定的コアが今日すでに iOS、Android、Web を駆動しています**。各プラットフォームは、
 自分の actuator と環境、安定 id 規約だけを足しています。**iOS**（XCUITest）、**web**
 （Playwright）、**Android**（adb）backend はいずれも実装済みで end-to-end に検証されています
-（[architecture → 実装状況](architecture.md#実装状況) 参照）。残るは **Flutter** です。
+（[architecture → 実装状況](architecture.md#実装状況) 参照）。**Flutter** は今ではこの同じ
+iOS / Android backend にそのまま乗り、新しい actuator を必要としません（BE-0008）。
 
 **抽象はすでにプラットフォームの境界に沿った形をしています。** プラットフォーム固有なのは 3 つの継ぎ目だけです。
 UI を駆動する **actuator**（`drivers/xcuitest.py`、`drivers/adb.py` など）、boot / erase / launch を
@@ -98,7 +99,7 @@ YAML のセレクタ `{ id: settings.reindex }` はすでにプラットフォ�
 | 共有抽象 | プラットフォーム対応の backend レジストリ + `Environment` Protocol | 実装済み（[BE-0042](../../roadmaps/BE-0042-platform-backend-registry/BE-0042-platform-backend-registry-ja.md)、[BE-0009](../../roadmaps/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md)） |
 | Web | Playwright。既存の Linux ゲートで動き、Mac もエミュレータも不要 | 実装済み（[BE-0041](../../roadmaps/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)、[BE-0054](../../roadmaps/BE-0054-web-backend-completion/BE-0054-web-backend-completion-ja.md)） |
 | Android | adb + UI Automator。座標駆動の backend | 実装済み（[BE-0007](../../roadmaps/BE-0007-android-backend/BE-0007-android-backend-ja.md)、[BE-0208](../../roadmaps/BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci-ja.md)、[BE-0209](../../roadmaps/BE-0209-android-codegen-emitter/BE-0209-android-codegen-emitter-ja.md)） |
-| Flutter / ハイブリッド | 新しい actuator や semantics ブリッジではなく、既存の iOS / Android backend 上の id 規約 | 計画（[BE-0008](../../roadmaps/BE-0008-flutter-support/BE-0008-flutter-support-ja.md)） |
+| Flutter / ハイブリッド | 新しい actuator や semantics ブリッジではなく、既存の iOS / Android backend 上の id 規約 | 実装済み（[BE-0008](../../roadmaps/BE-0008-flutter-support/BE-0008-flutter-support-ja.md)） |
 
 Android のほうが座標駆動の backend に構造的に近いにもかかわらず、Web が先に出荷されました。Web は macOS も
 デバイスエミュレータも不要な唯一のプラットフォームで、初日から [`make check`](../../CLAUDE.md) /
@@ -171,9 +172,10 @@ Android のほうが座標駆動の backend に構造的に近いにもかかわ
 
 このページがかつて推奨していた直近の順序（Playwright による Web、MCP サーバ、ビジュアル回帰
 アサーション）は、いずれもすでに出荷済みです。scale 軸の公開・セルフホストの両トポロジーも、
-authoring 軸の GUI エディタと非 AI キャプチャも同様です。Reach 軸で残っているのは Flutter
-（[BE-0008](../../roadmaps/BE-0008-flutter-support/BE-0008-flutter-support-ja.md)）で、他の 2 軸は
-1 つの大きな残作業を中心にではなく、少しずつ広がり続けています。実際に次に何をやるかは
+authoring 軸の GUI エディタと非 AI キャプチャも同様です。Reach 軸で最後に残っていた Flutter
+（[BE-0008](../../roadmaps/BE-0008-flutter-support/BE-0008-flutter-support-ja.md)）も、既存の
+iOS / Android backend 上の id 規約というかたちで出荷済みで、新しい actuator は増えていません。
+3 軸とも今は 1 つの大きな残作業を中心にではなく、少しずつ広がり続けています。実際に次に何をやるかは
 [roadmap](../../roadmaps/README-ja.md) が優先順位付きの生きたバックログとして持っています。
 本ページが扱うのは根拠と方向性であり、順序付けではありません。ロードマップの項目が出荷されると
 [architecture 実装状況](architecture.md#実装状況) へ移ります。3 者は同期させます。

@@ -66,8 +66,8 @@ The `Driver` / environment / id-convention seams were built to be replaced, not 
 **the same deterministic core drives iOS, Android, and the Web** today, with each platform adding
 only its own actuator + environment + stable-id convention. **iOS** (XCUITest), **web**
 (Playwright), and **Android** (adb) backends have all landed and are validated end-to-end (see
-[architecture → implementation status](architecture.md#implementation-status)); **Flutter** is the
-remaining phase.
+[architecture → implementation status](architecture.md#implementation-status)); **Flutter** now
+rides those same iOS/Android backends unchanged, needing no new actuator (BE-0008).
 
 **The abstraction is already platform-shaped.** Only three seams are platform-specific: the
 **actuator** (drives the UI — `drivers/xcuitest.py`, `drivers/adb.py`, …), the **environment manager**
@@ -102,7 +102,7 @@ UI toolkits (BE-0221; see [scenarios](scenarios.md#cross-platform-ids-a-candidat
 | Shared abstractions | Platform-aware backend registry + `Environment` Protocol | Implemented ([BE-0042](../roadmaps/BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md), [BE-0009](../roadmaps/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md)) |
 | Web | Playwright; runs on the existing Linux gate, no Mac / emulator | Implemented ([BE-0041](../roadmaps/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md), [BE-0054](../roadmaps/BE-0054-web-backend-completion/BE-0054-web-backend-completion.md)) |
 | Android | adb + UI Automator, a coordinate-driven backend | Implemented ([BE-0007](../roadmaps/BE-0007-android-backend/BE-0007-android-backend.md), [BE-0208](../roadmaps/BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci.md), [BE-0209](../roadmaps/BE-0209-android-codegen-emitter/BE-0209-android-codegen-emitter.md)) |
-| Flutter / hybrids | An id convention on the existing iOS / Android backends, not a new actuator or a semantics bridge | Planned ([BE-0008](../roadmaps/BE-0008-flutter-support/BE-0008-flutter-support.md)) |
+| Flutter / hybrids | An id convention on the existing iOS / Android backends, not a new actuator or a semantics bridge | Implemented ([BE-0008](../roadmaps/BE-0008-flutter-support/BE-0008-flutter-support.md)) |
 
 Web landed before Android, even though Android is architecturally closer to a coordinate backend: Web needed no
 macOS and no device emulator, so it fit inside the [`make check`](../CLAUDE.md) / [CI](ci.md) gate
@@ -176,9 +176,10 @@ not what it does; new authoring produces the same YAML. The core stays constant.
 
 Web (Playwright), the MCP server, and visual-regression assertions — the near-term sequence this
 page once recommended — have all landed, along with both the public and self-hosted topologies of
-the scale axis and the GUI editor / non-AI capture piece of the authoring axis. Reach's open item is
-Flutter ([BE-0008](../roadmaps/BE-0008-flutter-support/BE-0008-flutter-support.md)); the other two
-axes keep extending incrementally rather than converging on one big remaining piece. For what is
+the scale axis and the GUI editor / non-AI capture piece of the authoring axis. Reach's last open item,
+Flutter ([BE-0008](../roadmaps/BE-0008-flutter-support/BE-0008-flutter-support.md)), has since landed
+too — an id convention on the existing iOS/Android backends, not a new actuator — so all three axes
+now keep extending incrementally rather than converging on one big remaining piece. For what is
 next, the [roadmap](../roadmaps/README.md) is the prioritized, living backlog — this page explains
 the rationale and direction, not the sequencing. When a roadmap item ships, it moves to the
 [architecture status table](architecture.md#implementation-status); keep the three in sync.
