@@ -104,7 +104,7 @@ make new-roadmap-item SLUG=retry-flaky-step TITLE="Bounded retry for transiently
 [`.github/claude-review-prompt.md`](../../.github/claude-review-prompt.md) の契約をステージ済みの差分に
 適用させ、見つかった指摘をすべて直します。誤検知や説明済みのトレードオフは理由を書き添えて見送り、設計
 そのものに関わる指摘は直そうとせずユーザーにエスカレーションします。3 回繰り返しても収束しない場合も、
-ユーザーに判断を仰ぎます。手順の詳細は [`ideation`](../../.claude/skills/ideation/SKILL.md) の手順 5 を
+ユーザーに判断を仰ぎます。手順の詳細は [`ideation`](../../.agent-workflows/ideation/workflow.md) の手順 5 を
 参照してください。
 
 docs だけの変更でも、ゲートは green のままです。
@@ -255,7 +255,7 @@ Ready で開きます。）
 
 **小さく範囲が定まっていて、レビューが設計を作り直すとは思えない項目** では、直列の経路の遅延、つまり
 「提案を開いた」から「ID が割り当てられた」までの空き時間は、純粋なオーバーヘッドです。それに応えるのが
-[`propose-and-build`](../../.claude/skills/propose-and-build/SKILL.md) です。
+[`propose-and-build`](../../.agent-workflows/propose-and-build/workflow.md) です。
 
 ```
 /propose-and-build

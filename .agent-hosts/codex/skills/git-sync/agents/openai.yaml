@@ -1,0 +1,4 @@
+interface:
+  display_name: "Git sync"
+  short_description: "Synchronize a branch and prepare a topic worktree"
+  default_prompt: "Use $git-sync to synchronize this branch with origin/main."

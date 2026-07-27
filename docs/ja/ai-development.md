@@ -202,10 +202,10 @@ PR ごとにシグナルとして走らせますが、各集約ジョブの `nee
 直すだけです。表のモデル id は Claude Code のエイリアス（`opus` / `sonnet` / `haiku`）で、背後のモデルの
 バージョンが上がっても安定します。
 
-### スキルの frontmatter に既定を埋め込む
+### Claude Codeアダプターのfrontmatterに既定を埋め込む
 
-リポジトリ内の各スキルは、自分の段階を `SKILL.md` frontmatter の `model:` として宣言します。ハーネスはスキル
-実行時にこれを読み、正しいモデルを選びます。覚えておく必要はなく、上書きもできます。
+各Claude Codeアダプターは、対応するスキルの段階を `SKILL.md` frontmatterの `model:` として宣言します。
+Claude Codeのハーネスはスキル実行時にこれを読み、正しいモデルを選びます。既定は上書きできます。
 
 - [`implement-be`](../../.claude/skills/implement-be/SKILL.md)：`opus`（重）
 - [`propose-and-build`](../../.claude/skills/propose-and-build/SKILL.md)：`opus`（重）。Phase B で
@@ -222,8 +222,8 @@ PR ごとにシグナルとして走らせますが、各集約ジョブの `nee
 
 軽い雑務の多くはスキルではないので、その段階はふだん下の対話操作かサブエージェントへの委譲で使います。
 `roadmap-filter` は例外で、その仕事そのものが軽い決定論的な検索だからです。`tests/test_skill_models.py` が
-各スキルの `model:` を既知の妥当な id かどうか確認するので、打ち間違いは黙って握りつぶされず、ローカルの
-ゲートが落とします。
+各Claude Codeアダプターの `model:` を既知の妥当なidかどうか確認するので、打ち間違いは黙って握りつぶされず、
+ローカルのゲートが落とします。
 
 ### フェーズとサブエージェントへの委譲
 
@@ -246,13 +246,13 @@ frontmatter は対話的な作業や委譲した作業には届かないので�
 アイデアを出荷可能なコードにする作業では、3 つのスキルを使い分けます。起草するか、出荷するか、
 その両方かです。
 
-- [`ideation`](../../.claude/skills/ideation/SKILL.md)：**起草のみ**。アイデアを BE 提案に整える相談相手で、
+- [`ideation`](../../.agent-workflows/ideation/workflow.md)：**起草のみ**。アイデアを BE 提案に整える相談相手で、
   `roadmaps/` のファイルで止まります（プロダクトコードには触れません）。提案は `BE-XXXX` のプレースホルダを
   持ち、実際の id は PR がマージされたあとに CI が採番します。
-- [`implement-be`](../../.claude/skills/implement-be/SKILL.md)：**採番済み項目の出荷**。採番済みの `BE-NNNN`
+- [`implement-be`](../../.agent-workflows/implement-be/workflow.md)：**採番済み項目の出荷**。採番済みの `BE-NNNN`
   を受け取り、その提案を仕様として実装とテストを書き、項目を `Status: Implemented` に切り替え、
   `make check` が緑であることを示します。
-- [`propose-and-build`](../../.claude/skills/propose-and-build/SKILL.md)：**両方を、1 つの PR で**。設計が固まった
+- [`propose-and-build`](../../.agent-workflows/propose-and-build/workflow.md)：**両方を、1 つの PR で**。設計が固まった
   小さな項目を、作者がいま実装できると確信しているときに、前の 2 つを組み合わせます。提案の起草と実装を
   1 つのブランチで進め、ロードマップ項目とコードとテストをまとめて運ぶ 1 つの BE 作成 PR として出します。
   項目は `BE-XXXX` のプレースホルダを保ったまま PR のなかで `Status: Implemented` に到達します。`Status` と
@@ -626,7 +626,7 @@ BE-0159 以降、すべての項目はパスが固定された一つの `roadmap
 項目を前向きな提案として読ませ続けたいという好みを表すものではありません。コードのない状態で書き起こした項目は
 `提案` です。その**コードを出荷する** PR は、同じ PR のなかで `状態` を `実装済み`（一部だけを出荷するなら
 `実装中`）に変え、対応する `進捗` のチェックを付け、その PR を `実装 PR` に記録します。コードがすでに出荷された
-項目に `提案` を残すことはありません。これはまさに [`implement-be`](../../.claude/skills/implement-be/SKILL.md)
+項目に `提案` を残すことはありません。これはまさに [`implement-be`](../../.agent-workflows/implement-be/workflow.md)
 スキルが行う昇格であり、人にもエージェントにも等しく適用されます。（唯一の例外は新規項目を*起草*する場合です。
 コードを出荷しない `ideation` 形式の提案は、まだ何も実装していないので `提案` のままにします。）
 
@@ -648,15 +648,15 @@ lint-roadmap ARGS="--fix"` は壊れた項目リンクを対象の現在のパ�
 今後のすべての更新（新規ファイルに限らない）に適用されます。エージェントは厳守してください。作業を
 報告したり要約したりするときも同じく適用されます。
 
-- **[`document-writing`](../../.claude/skills/document-writing/) スキルに従う。** ここのすべての
+- **[`document-writing`](../../.agent-workflows/document-writing/workflow.md) スキルに従う。** ここのすべての
   ドキュメントとすべての BE ロードマップ項目に対する、両言語の正式な散文規範です。両言語が共有する
   言語に依存しない執筆技法（上から下へ推敲する、主眼を冒頭で述べる、各文の文末を最も重要な要素のために
   空ける、主語と述語を近づける、能動態を選ぶ、冗語を削る、段落ごとに1つの話題だけを置いて論証を一方向に
   進める（パラグラフライティング））を定めます。書いたあとではなく、書く前・
   推敲する前に呼び出します。このスキルは、英語と日本語それぞれの言語レイヤーの上位に立つ傘です。
-  英語の散文には [`english-document-writing`](../../.claude/skills/english-document-writing/) を併せて適用します
+  英語の散文には [`english-document-writing`](../../.agent-workflows/english-document-writing/workflow.md) を併せて適用します
   （シリアルコンマ、*that* / *which*、ダッシュ、数の表記といった英語固有の作法）。日本語の散文には
-  下記の [`japanese-document-writing`](../../.claude/skills/japanese-document-writing/) を適用します。以下の
+  下記の [`japanese-document-writing`](../../.agent-workflows/japanese-document-writing/workflow.md) を適用します。以下の
   ルールは、この節とこれらのスキルが共有する具体的な期待です。
 - **自然な文章で書く。** 日本語ドキュメントは自然な日本語、英語ドキュメントは自然な英語で書きます。
   ミラーは逐語的な置き換えではなく、その言語で同じ内容を自然に伝えるものにします。
@@ -665,12 +665,12 @@ lint-roadmap ARGS="--fix"` は壊れた項目リンクを対象の現在のパ�
 - **不自然な翻訳禁止。** 用語は一般的な訳語を使います。訳すと不自然になる場合は、訳さず元の用語
   （多くは英単語。例: `selector`、`actuator`、`backend`、`assertion`）をそのまま使います。
 - **省略禁止、単体で完結。**
-  [`document-writing`](../../.claude/skills/document-writing/SKILL.md#self-contained-prose-both-languages)
+  [`document-writing`](../../.agent-workflows/document-writing/workflow.md#self-contained-prose-both-languages)
   スキルの自己完結の規範に従います。読者がリポジトリの他のページを何も読んでいなくても文書を最初から
   最後まで追えるようにし、略語は初出で展開し、用語は初出の箇所で定義します。これは `docs/` に限らず、
   ロードマップ項目を含め、用語が現れるあらゆる箇所に適用されます。
 - **指示語で読者を後戻りさせない。**
-  [`document-writing`](../../.claude/skills/document-writing/SKILL.md#minimize-anaphora-both-languages)
+  [`document-writing`](../../.agent-workflows/document-writing/workflow.md#minimize-anaphora-both-languages)
   スキルの指示語抑制の規範に従います。先行詞が1文より前に離れる、段落・箇条書き・見出しをまたぐ、あるいは
   近くに候補となる先行詞が複数ありうるときは、指示語ではなく名詞をそのまま繰り返します。
 - **横断的な規範は再記述せず、リンクする（BE-0284）。** 複数の文書にまたがる規則（ゲートのステップ一覧、
@@ -691,9 +691,9 @@ lint-roadmap ARGS="--fix"` は壊れた項目リンクを対象の現在のパ�
   指しているかどうかの判断には人間の判断が必要で、prime directive 1 がその判断を `run` / CI の
   経路から遠ざけているためです。手本は [`drivers.md`](drivers.md) です。
 - **日本語の文章は `japanese-document-writing` スキルに従う。** 日本語版を新規に書くときも、英語版を
-  `docs/ja/`（やロードマップの `*-ja.md`）へ翻訳するときも、[`japanese-document-writing`](../../.claude/skills/japanese-document-writing/)
+  `docs/ja/`（やロードマップの `*-ja.md`）へ翻訳するときも、[`japanese-document-writing`](../../.agent-workflows/japanese-document-writing/workflow.md)
   を適用します。これがこのリポジトリにおける日本語の文章の正式なスタイルであり、翻訳は英語の逐語訳ではなく、
-  この規範に沿った自然な日本語にします。これは [`document-writing`](../../.claude/skills/document-writing/)
+  この規範に沿った自然な日本語にします。これは [`document-writing`](../../.agent-workflows/document-writing/workflow.md)
   の下位に位置する日本語レイヤーです（上記）。日本語の散文では両方を適用します。
 - **日本語ドキュメントは敬体（ですます調）で書く。** `docs/ja/` 配下のすべての日本語ファイルと、
   ロードマップの `*-ja.md` は敬体で書きます。常体（だ・である調）は使いません。文書全体で一貫させます。

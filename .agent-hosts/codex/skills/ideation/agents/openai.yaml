@@ -1,0 +1,4 @@
+interface:
+  display_name: "Bajutsu ideation"
+  short_description: "Turn a feature idea into a bilingual BE proposal"
+  default_prompt: "Use $ideation to develop this idea into a BE proposal."

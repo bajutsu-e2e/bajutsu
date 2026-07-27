@@ -64,6 +64,21 @@ gate: `make -C demos/showcase run-swiftui` (requires `make deps` first). Don't b
   `make serve ARGS="--config demos/showcase/showcase.config.yaml --port 8766"` (the showcase config
   is needed for the showcase app, since the repo has no root `bajutsu.config.yaml`).
 
+## Agent skill layout
+
+Keep reusable workflow instructions independent of the agent host:
+
+- `.agent-workflows/<name>/workflow.md` holds the shared procedure and its portable resources.
+- `.claude/skills/<name>/SKILL.md` is the Claude Code adapter. Keep `model`, Claude tools,
+  slash commands, hooks, and Claude plugins there.
+- `.agent-hosts/codex/skills/<name>/SKILL.md` is the Codex adapter. Keep Codex tools, policies,
+  and `agents/openai.yaml` there. The `.agents` link exposes only this Codex-specific tree.
+
+Never link `.agents/skills` to the complete `.claude/skills` directory. A host-neutral change
+belongs in the shared workflow; a host-specific invocation or setting belongs only in that host's
+adapter. Keep each adapter small: its metadata selects the skill, and its body loads the complete
+shared workflow before applying the host-specific mapping.
+
 ## Working in parallel without breaking each other
 
 Several people and agents work in this repo at once. The rules below keep sessions from
@@ -97,12 +112,12 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   task→capability matrix and the phase/subagent guidance live in
   [`docs/ai-development.md`](docs/ai-development.md#right-sizing-the-model-and-reasoning-effort-be-0103).
 - **Who opens the PR depends on the work (BE-0230).** Two paths:
-  - **BE-creation work** — a proposal PR from [`ideation`](.claude/skills/ideation/SKILL.md) or the
-    proposal phase of [`propose-and-build`](.claude/skills/propose-and-build/SKILL.md): **don't
+  - **BE-creation work** — a proposal PR from [`ideation`](.agent-workflows/ideation/workflow.md) or the
+    proposal phase of [`propose-and-build`](.agent-workflows/propose-and-build/workflow.md): **don't
     auto-create it.** Push to your branch and let the human open the PR. A proposal is a human
     checkpoint, and its BE id is allocated only when a human merges it (BE-0089) — auto-opening
     would erode that checkpoint.
-  - **Implementation work** — [`implement-be`](.claude/skills/implement-be/SKILL.md), whose output
+  - **Implementation work** — [`implement-be`](.agent-workflows/implement-be/workflow.md), whose output
     is always a self-contained, gate-green change: **auto-open the Draft PR after the gate, then run
     a paced `/loop`** that drives the mechanical tail (CI fixes, review replies) to quiet-and-green,
     delegating each iteration's `pr-followup` work to a fresh subagent so the heavy implement
@@ -130,24 +145,24 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   information*; internal `_helpers` keep one prose line of *why*. **Never restate types**; describe
   meaning. English, like all code. Migrate module by module in small PRs. Full rule:
   [`docs/ai-development.md`](docs/ai-development.md).
-- **Follow the [`document-writing`](.claude/skills/document-writing/) skill whenever you write or revise a
+- **Follow the [`document-writing`](.agent-workflows/document-writing/workflow.md) skill whenever you write or revise a
   BE roadmap item or a prose doc, in either language.** It is the authoritative prose norm:
   language-agnostic technique (draft top-down, state the contribution up front, put a sentence's
   most important element at its end, keep the verb near the subject, prefer the active voice, cut
   filler). Invoke it *before* writing, not after. It is the umbrella above two language layers —
   apply `english-document-writing` with it for English prose, `japanese-document-writing` for Japanese (both
   below). Like the bilingual-docs rule, it is a review-time norm, not a CI gate.
-- **Apply the [`english-document-writing`](.claude/skills/english-document-writing/) skill whenever you
+- **Apply the [`english-document-writing`](.agent-workflows/english-document-writing/workflow.md) skill whenever you
   write, translate into, or revise English prose.** It is the English layer beneath
-  [`document-writing`](.claude/skills/document-writing/): the English-specific mechanics (serial comma,
+  [`document-writing`](.agent-workflows/document-writing/workflow.md): the English-specific mechanics (serial comma,
   *that* / *which*, dashes, numbers, formal word choice) that only English grammar and typography
   need. Apply both for English prose. It never applies to Japanese.
-- **Always follow the [`japanese-document-writing`](.claude/skills/japanese-document-writing/) skill
+- **Always follow the [`japanese-document-writing`](.agent-workflows/japanese-document-writing/workflow.md) skill
   whenever you generate Japanese — without exception.** This is not limited to `docs/ja/` and
   roadmap `*-ja.md`: it covers *any* Japanese you produce, including freshly written prose,
   translations from English, and revisions/rewrites of existing Japanese. The skill is the
   authoritative style for Japanese prose in this project; invoke it before writing or editing the
-  Japanese, not after. It is the Japanese layer beneath the [`document-writing`](.claude/skills/document-writing/)
+  Japanese, not after. It is the Japanese layer beneath the [`document-writing`](.agent-workflows/document-writing/workflow.md)
   umbrella (above); apply both for Japanese prose.
 - Docs are **bilingual**: English in `docs/`, Japanese mirror in `docs/ja/`. Update both when
   you change a documented behavior.
@@ -170,7 +185,7 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   omissions** (each document self-contained; spell out an acronym in full on first use with the
   acronym in parentheses, e.g. role-based access control (RBAC), then the acronym alone). Japanese
   docs — `docs/ja/` and every roadmap `*-ja.md` — are written in **敬体 (ですます調)**, never 常体,
-  under the [`japanese-document-writing`](.claude/skills/japanese-document-writing/) skill (above). Full
+  under the [`japanese-document-writing`](.agent-workflows/japanese-document-writing/workflow.md) skill (above). Full
   guidance: [`docs/ai-development.md`](docs/ai-development.md).
 - **Roadmap items use BE IDs (strict).** Every item is one directory `roadmaps/BE-NNNN-<slug>/`
   holding **both** language files `BE-NNNN-<slug>.md` and `BE-NNNN-<slug>-ja.md` (`BE` = *Bajutsu
