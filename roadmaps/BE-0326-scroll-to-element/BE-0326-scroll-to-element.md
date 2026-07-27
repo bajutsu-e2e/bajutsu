@@ -406,8 +406,8 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
   keeps buffered off-screen rows in the tree, so `screen_size_from_elements` overshoots the screen and
   would judge an off-screen center as on-screen (and drive the gesture anchor off-screen, which
   destabilized the XCUITest runner). A `ViewportProvider` protocol reports it on every backend:
-  Playwright (`window.innerWidth/innerHeight`), adb (`wm size`), the XCUITest runner
-  (`XCUIScreen.main.bounds`, a new `/screen` route), and `FakeDriver`'s model.
+  Playwright (`window.innerWidth/innerHeight`), adb (`wm size`), the XCUITest runner (the app
+  window's `frame`, via a new `/screen` route), and `FakeDriver`'s model.
 - The driver conformance case reveals an off-screen row, reveals a target taller than the viewport
   (its center on-screen), and fails on an absent target — all four backends, since each now reports an
   exact viewport. The on-device harness resets the list to the top between scroll tests.

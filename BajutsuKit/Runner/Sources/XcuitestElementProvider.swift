@@ -46,11 +46,12 @@ final class XcuitestElementProvider: ElementProviding {
     }
 
     func screenSize() -> (width: Double, height: Double) {
-        // The physical screen bounds in points — the coordinate space the snapshot frames use — so an
-        // on-screen element's frame center falls within it (BE-0326). Stable regardless of a scroll
-        // view's buffered off-screen children, unlike the element tree's extent.
-        let bounds = XCUIScreen.main.bounds
-        return (Double(bounds.width), Double(bounds.height))
+        // The application window's frame in points — the coordinate space the snapshot frames use — so
+        // an on-screen element's frame center falls within it (BE-0326). The window fills the screen
+        // and its frame is stable regardless of a scroll view's buffered off-screen children, unlike
+        // the element tree's extent. (`XCUIScreen` has no frame/bounds; `app.frame` is the window.)
+        let frame = app.frame
+        return (Double(frame.width), Double(frame.height))
     }
 
     func tap(backingElement: AnyObject, taps: Int, duration: TimeInterval) -> TapResult {
