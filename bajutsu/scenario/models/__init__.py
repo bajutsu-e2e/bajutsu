@@ -76,11 +76,11 @@ from bajutsu.scenario.models.evidence import (
 )
 from bajutsu.scenario.models.mocks import Mock, MockResponse
 from bajutsu.scenario.models.scenario import (
-    AlertHandling,
     Component,
     Preconditions,
     Scenario,
     ScenarioFile,
+    SystemAlertHandling,
 )
 from bajutsu.scenario.models.selector import Selector
 from bajutsu.scenario.models.steps import _STEP_ACTIONS as STEP_ACTIONS
@@ -89,7 +89,6 @@ from bajutsu.scenario.models.steps import Extract, ForEach, If, Interrupt, Step,
 __all__ = [
     "ASSERTION_KINDS",
     "STEP_ACTIONS",
-    "AlertHandling",
     "Assertion",
     "Background",
     "CaptureRule",
@@ -141,6 +140,7 @@ __all__ = [
     "SetLocation",
     "Step",
     "Swipe",
+    "SystemAlertHandling",
     "TapPoint",
     "TextMatch",
     "Totp",

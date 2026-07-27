@@ -92,7 +92,7 @@ Scenario ::= {
   network?:        <Network>,
   mocks?:          list(<Mock>),            # 既定 []
   redact?:         <Redact>,
-  alertHandling?:  <AlertHandling>,         # アラートガード; 未指定で ON
+  systemAlertHandling?: <SystemAlertHandling>,  # アラートガード; 未指定で ON
   permissions?:    <Permissions>,           # 起動前の OS 権限状態; 既定 {}
 }
 
@@ -109,9 +109,9 @@ Preconditions ::= {
   setup?:      string,                      # 再利用プレリュードファイル（§6.4）
 }
 
-# ── AlertHandling（リアクティブなシステムアラートガード; 既定 ON）───────
+# ── SystemAlertHandling（リアクティブなシステムアラートガード; 既定 ON）─
 # XCUITest ではネイティブの SpringBoard 照会 + tap（モデルなし、BE-0316 を再利用）。AI 視覚はフォールバック（BE-0315）。
-AlertHandling ::= boolean                                   # { enabled: <bool> } の短縮形
+SystemAlertHandling ::= boolean                              # { enabled: <bool> } の短縮形
                | { enabled?: boolean,                       # 既定 true
                    instruction?: string | [string],         # [labels]=ネイティブ; "text"=視覚（無指定なら dismiss）
                    pollInterval?: number }                   # ネイティブのポーリング間隔・秒（既定 1）
@@ -294,13 +294,13 @@ MockResponse ::= { status?: integer, headers?: map(string,string), body?: string
 |---|---|
 | `Scenario.tags` / `expect` / `capturePolicy` / `mocks` | `[]` |
 | `Scenario.preconditions` | `{}`（= `erase: false`, `reinstall: clean`） |
-| `Scenario.alertHandling` | 未指定（アラートガード ON; プロンプトを dismiss） |
+| `Scenario.systemAlertHandling` | 未指定（アラートガード ON; プロンプトを dismiss） |
 | `Scenario.permissions` | `{}`（起動前の権限状態を適用しない） |
 | `Preconditions.erase` | `false` |
 | `Preconditions.reinstall` | `clean` |
 | `Preconditions.launchArgs` | `[]` |
 | `Preconditions.launchEnv` | `{}` |
-| `AlertHandling.enabled` | `true` |
+| `SystemAlertHandling.enabled` | `true` |
 | `TypeText.submit` | `false` |
 | `Exists.negate` | `false` |
 | `MockResponse.status` | `200` |

@@ -27,15 +27,16 @@ def test_run_flag_surface_is_fully_classified() -> None:
     # serve's own UI supersedes. Everything else must be pass-through-able.
     base_handled = {"target_name", "scenario", "config", "progress"}
     not_serve_exposed = {"evidence_store", "project", "score"}
-    # `dismiss_alerts` is the hidden deprecated alias of `--alert-handling` (BE-0317); serve renders
-    # the canonical `alert_handling`, so the alias stays a CLI-only flag it never passes through.
-    deprecated_aliases = {"dismiss_alerts"}
+    # `alert_handling` and `dismiss_alerts` are the hidden deprecated aliases of
+    # `--system-alert-handling` (the former originally BE-0317's canonical name); serve renders the
+    # canonical `system_alert_handling`, so the aliases stay CLI-only flags it never passes through.
+    deprecated_aliases = {"alert_handling", "dismiss_alerts"}
     pass_through = {
         "backend",
         "udid",
         "workers",
         "erase",
-        "alert_handling",
+        "system_alert_handling",
         "headed",
         "baselines",
         "runs_dir",
@@ -81,8 +82,9 @@ def test_record_flag_surface_is_fully_classified() -> None:
         "max_steps",
         "screenshot",
     }
-    deprecated_aliases = {"dismiss_alerts"}  # hidden alias of --alert-handling (BE-0317)
-    pass_through = {"backend", "udid", "erase", "alert_handling", "headed", "upload_exec"}
+    # hidden aliases of --system-alert-handling (the former originally BE-0317's canonical name)
+    deprecated_aliases = {"alert_handling", "dismiss_alerts"}
+    pass_through = {"backend", "udid", "erase", "system_alert_handling", "headed", "upload_exec"}
     # serve forces --handoff to `stream` (a human at the browser answers over SSE), never a knob (BE-0179).
     serve_forced = {"handoff"}
     assert (
@@ -95,13 +97,14 @@ def test_crawl_flag_surface_is_fully_classified() -> None:
     base_handled = {"target_name", "out", "config", "max_screens", "max_steps"}
     # language (BE-0188) is env-driven for serve (BAJUTSU_AI_LANGUAGE), like effort — see record above.
     not_serve_exposed = {"prune_global", "alert_instruction", "language"}
-    deprecated_aliases = {"dismiss_alerts"}  # hidden alias of --alert-handling (BE-0317)
+    # hidden aliases of --system-alert-handling (the former originally BE-0317's canonical name)
+    deprecated_aliases = {"alert_handling", "dismiss_alerts"}
     pass_through = {
         "backend",
         "udid",
         "workers",
         "erase",
-        "alert_handling",
+        "system_alert_handling",
         "headed",
         "resume_src",
         "resume_key",

@@ -73,7 +73,7 @@ misinterpret rather than merely reject; a purely additive optional field needs n
 | `network` | object | none | `{ filter: { domains: [...] } }` — `filter.domains` scopes which observed requests are interleaved into the report's Steps timeline (by URL host; a parent domain matches subdomains). Unset shows all; the Network tab always lists them all ([reporting](reporting.md#reporthtml)) |
 | `mocks` | list | `[]` | Deterministic network stubs — a matching outgoing request gets a canned response instead of hitting the network ([network mocks](#network-mocks-deterministic-stubs)) |
 | `redact` | object | none | Masking applied before evidence is written ([evidence](evidence.md#masking-redact)) |
-| `alertHandling` | bool / object | none (on) | The reactive **alert guard** — clears OS prompts the iOS backend cannot see, natively on XCUITest (no model, reusing BE-0316) with vision as the fallback. On by default; `false` disables it, `{ instruction: ["Allow"] }` keeps it on but taps a named button, `{ pollInterval: 2 }` retunes the native poll cadence. CLI `--alert-handling`/`--no-alert-handling` overrides ([below](#alerthandling-the-system-alert-guard)) |
+| `systemAlertHandling` | bool / object | none (on) | The reactive **alert guard** — clears OS prompts the iOS backend cannot see, natively on XCUITest (no model, reusing BE-0316) with vision as the fallback. On by default; `false` disables it, `{ instruction: ["Allow"] }` keeps it on but taps a named button, `{ pollInterval: 2 }` retunes the native poll cadence. CLI `--system-alert-handling`/`--no-system-alert-handling` overrides ([below](#systemalerthandling-the-system-alert-guard)) |
 | `permissions` | dict | `{}` | Declarative OS permission state — `{ <service>: grant \| revoke }` — applied **before the app launches** ([below](#permissions-pre-launch-permission-state)) |
 | `interrupts` | list | `[]` | Handlers for an interstitial screen that surfaces at an **unpredictable** point — each `{ condition, steps }`, checked opportunistically wherever the screen appears ([below](#interrupts-handling-unpredictable-interstitial-screens)) |
 
@@ -111,24 +111,24 @@ the launch sequence ([run-loop](run-loop.md#runner-the-run-pipeline)).
 > **launchEnv resolution order** is **config's `launchEnv` < preconditions' `launchEnv`** (the
 > one closer to the test wins). `launch_driver` merges `{**eff.launch_env, **pre.launch_env}`.
 
-## alertHandling (the system-alert guard)
+## systemAlertHandling (the system-alert guard)
 
 The iOS backend cannot see or tap **SpringBoard-level prompts** (a notification or App Tracking Transparency request, "Allow Paste"). These prompts cover the app and collapse its element tree, silently blocking a step. The **alert guard** clears them reactively. On the iOS XCUITest backend it takes a **deterministic native path** (BE-0315): reusing BE-0316's SpringBoard query, it reads which buttons the alert offers and taps a policy-named one — no screenshot and no model round trip, so it clears the common prompts in well under a tenth of a second and runs **without `ANTHROPIC_API_KEY`**. Where the native path cannot act — a backend without the capability, or an alert whose button the policy cannot name — it falls back to the **vision guard** (`alerts.py`): a screenshot the model reads for where to tap ([details](recording.md#dismissing-system-alerts-automatically)). For a `wait` step (`for`/`settled`/`screenChanged`), the guard fires **mid-wait**: the native path polls SpringBoard on its own interval (default one second), and the vision fallback watches the already-polled screen for a collapsed tree (debounced, cooldown-limited, capped at two attempts per wait) — recovering before the wait's own timeout elapses, rather than waiting for the step to fail first (BE-0269).
 
-It is **on by default** and fires **only when a step (or `expect`) is blocked, or — for a guarded `wait` — the native poll finds an alert (or the polled screen looks blocked)**, so a passing scenario does no extra work (a native query is not a model call). The vision fallback requires `ANTHROPIC_API_KEY`; without one it no-ops, but the native path still clears the prompts it can name. Use `alertHandling` to change the behavior per scenario:
+It is **on by default** and fires **only when a step (or `expect`) is blocked, or — for a guarded `wait` — the native poll finds an alert (or the polled screen looks blocked)**, so a passing scenario does no extra work (a native query is not a model call). The vision fallback requires `ANTHROPIC_API_KEY`; without one it no-ops, but the native path still clears the prompts it can name. Use `systemAlertHandling` to change the behavior per scenario:
 
 | Form | Meaning |
 |---|---|
 | (omitted) | on; tap the **least-destructive** button ("Not Now" / "Don't Allow" / "Cancel") |
-| `alertHandling: false` | off for this scenario |
-| `alertHandling: { instruction: ["Allow", "OK"] }` | on; the native path taps the first of these labels present on the alert — e.g. to **grant** a permission |
-| `alertHandling: { instruction: "tap Allow" }` | on; free-text the **vision** guard interprets (the native path, which needs an exact label, falls back to its default dismissive labels) |
-| `alertHandling: { pollInterval: 2 }` | on; poll the native presence query every 2 s instead of the one-second default |
-| `alertHandling: { enabled: false }` | off (the explicit object form of `false`) |
+| `systemAlertHandling: false` | off for this scenario |
+| `systemAlertHandling: { instruction: ["Allow", "OK"] }` | on; the native path taps the first of these labels present on the alert — e.g. to **grant** a permission |
+| `systemAlertHandling: { instruction: "tap Allow" }` | on; free-text the **vision** guard interprets (the native path, which needs an exact label, falls back to its default dismissive labels) |
+| `systemAlertHandling: { pollInterval: 2 }` | on; poll the native presence query every 2 s instead of the one-second default |
+| `systemAlertHandling: { enabled: false }` | off (the explicit object form of `false`) |
 
 ```yaml
 - name: grant notification permission
-  alertHandling: { instruction: ["Allow"] }   # accept the prompt instead of dismissing it
+  systemAlertHandling: { instruction: ["Allow"] }   # accept the prompt instead of dismissing it
   steps:
     - tap:  { id: sys.requestNotif }
     - wait: { for: { id: sys.notif.authorized }, timeout: 4 }   # the guard taps Allow, then this passes
@@ -136,24 +136,27 @@ It is **on by default** and fires **only when a step (or `expect`) is blocked, o
 
 The `instruction` is a list of candidate labels the native path resolves deterministically (it taps
 the first label present on the alert, and only when exactly one button carries it); a bare string is
-the legacy free-text form the vision guard interprets. The CLI `--alert-handling` /
-`--no-alert-handling` flag **overrides every scenario** (otherwise the per-scenario default applies);
-`--alert-instruction` sets a default button instruction that a scenario's own `instruction` overrides.
+the legacy free-text form the vision guard interprets. The CLI `--system-alert-handling` /
+`--no-system-alert-handling` flag **overrides every scenario** (otherwise the per-scenario default
+applies); `--alert-instruction` sets a default button instruction that a scenario's own `instruction`
+overrides.
 (real file: [`demos/showcase/scenarios/permission.yaml`](../demos/showcase/scenarios/permission.yaml))
 
 This reactive guard and the proactive `handleSystemAlert` step below now share the *same* native
 SpringBoard mechanism (BE-0316's query + tap); they differ only in *when* they fire — the guard
 automatically wherever a prompt surfaces, the step at the one point an author places it.
 
-> **Renamed from `dismissAlerts`.** The field and its CLI flag were renamed to `alertHandling` /
-> `--alert-handling` because the guard grants prompts as well as dismisses them
-> ([BE-0317](../roadmaps/BE-0317-rename-dismiss-alerts-to-alert-handling/BE-0317-rename-dismiss-alerts-to-alert-handling.md)).
-> The old `dismissAlerts` key and `--dismiss-alerts` flag still work as deprecated aliases; using one
-> emits a one-time notice pointing at the new name.
+> **Renamed from `alertHandling`, which itself renamed `dismissAlerts`.** The field and its CLI flag
+> were renamed to `systemAlertHandling` / `--system-alert-handling` so the reactive guard's setting
+> names "system alert" explicitly, pairing with the `handleSystemAlert` step below the way `alertHandling`
+> ([BE-0317](../roadmaps/BE-0317-rename-dismiss-alerts-to-alert-handling/BE-0317-rename-dismiss-alerts-to-alert-handling.md))
+> renamed `dismissAlerts` so the name covered granting as well as dismissing.
+> The old `alertHandling` / `dismissAlerts` keys and `--alert-handling` / `--dismiss-alerts` flags
+> still work as deprecated aliases; using one emits a one-time notice pointing at the new name.
 
 ## handleSystemAlert (the deterministic system-alert step)
 
-`alertHandling` above is a **reactive guard**: it fires automatically wherever a prompt surfaces.
+`systemAlertHandling` above is a **reactive guard**: it fires automatically wherever a prompt surfaces.
 `handleSystemAlert` is its proactive counterpart — an explicit,
 **deterministic step** the author places at the exact point a prompt is expected, which taps the
 prompt's button by a native accessibility query, with **no screenshot and no model**
@@ -191,14 +194,14 @@ When to reach for `handleSystemAlert` versus the two alert fields it stands besi
 |---|---|---|---|
 | `permissions` | an OS permission prompt you can avoid outright | pre-launch, before the app starts | deterministic device mutation |
 | `handleSystemAlert` | a **known** mid-flow prompt you mean to tap | an explicit step where you place it | deterministic (native accessibility tap) |
-| `alertHandling` | an **unexpected** out-of-process prompt the tree cannot see | reactive, when a step or wait is blocked | native SpringBoard query on XCUITest (no model, reusing BE-0316); AI-vision fallback |
+| `systemAlertHandling` | an **unexpected** out-of-process prompt the tree cannot see | reactive, when a step or wait is blocked | native SpringBoard query on XCUITest (no model, reusing BE-0316); AI-vision fallback |
 
 (real file:
 [`demos/showcase/scenarios/permission_system_alert.yaml`](../demos/showcase/scenarios/permission_system_alert.yaml))
 
 ## permissions (pre-launch permission state)
 
-`alertHandling` reacts to a permission prompt only *after* it appears, and only by tapping it —
+`systemAlertHandling` reacts to a permission prompt only *after* it appears, and only by tapping it —
 useful when the prompt is unexpected, but it cannot **revoke** a permission or guarantee the app
 starts from a known state. When the permission is known ahead of time, `permissions` sets it
 **before the app process starts**, so the prompt never appears at all: a deterministic,
@@ -227,7 +230,7 @@ Each backend maps a service to its own native mechanism:
 
 **iOS has no TCC service for `notifications`** (iOS notification authorization is not part of
 TCC), so a scenario naming `notifications` on an iOS target fails **preflight** — before any device
-work, naming the unsupported capability; `alertHandling` remains the reactive path for that one
+work, naming the unsupported capability; `systemAlertHandling` remains the reactive path for that one
 prompt. Android's `POST_NOTIFICATIONS` *is* a runtime permission (API 33+), so Android supports the
 whole vocabulary. Every other unsupported combination (a service unsupported on the chosen backend)
 fails preflight the same way, named individually.
@@ -278,14 +281,14 @@ targets:
 
 An `interrupts` list set at the **config** level (`targets.<name>.interrupts`) is an app-wide
 default; a scenario's own `interrupts` is **appended** to it, config entries checked first — the same
-config-then-scenario layering `alertHandling` follows. An entry's `steps` share the enclosing
+config-then-scenario layering `systemAlertHandling` follows. An entry's `steps` share the enclosing
 scenario's `vars.*` bindings, exactly as `if`'s branches do. If a handler's own `steps` never clear
 its `condition` (a broken selector, a screen that re-renders identically), the entry fires only a
 small bounded number of times per step and then the step falls back to its ordinary outcome (pass,
 fail, or timeout) — a mis-set entry fails the step cleanly rather than hanging the run.
 
 The check is the deterministic assertion DSL, never a model call, so `interrupts` adds no AI to the
-`run` verdict. That is the difference from `alertHandling`: the alert guard is the vision path
+`run` verdict. That is the difference from `systemAlertHandling`: the alert guard is the vision path
 reserved for out-of-process system prompts the accessibility tree **cannot see**, while `interrupts`
 handles a screen the tree **can** see with a machine-checkable condition. When to reach for which:
 
@@ -294,7 +297,7 @@ handles a screen the tree **can** see with a machine-checkable condition. When t
 | `if` | a screen at a **known** point in the sequence | one scripted check | deterministic (assertion DSL) |
 | `interrupts` | a screen at an **unpredictable** point, visible in the tree | checked opportunistically throughout | deterministic (assertion DSL) |
 | `handleSystemAlert` | a **known** out-of-process prompt you mean to tap mid-flow | an explicit step where you place it | deterministic (native accessibility tap) |
-| `alertHandling` | an **unexpected** out-of-process prompt the tree cannot see | reactive, when a step or wait is blocked | native SpringBoard query on XCUITest (no model, reusing BE-0316); AI-vision fallback |
+| `systemAlertHandling` | an **unexpected** out-of-process prompt the tree cannot see | reactive, when a step or wait is blocked | native SpringBoard query on XCUITest (no model, reusing BE-0316); AI-vision fallback |
 | `permissions` | an OS permission prompt you can avoid outright | pre-launch, before the app starts | deterministic device mutation |
 
 No native XCUITest / Espresso / Playwright construct maps onto "check this condition opportunistically

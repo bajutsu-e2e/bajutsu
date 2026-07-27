@@ -20,7 +20,7 @@ LLM（大規模言語モデル）の非決定性、コスト、レイテンシ�
 | `run` | Tier 2 | **なし** | 各ステップを act → wait → verify。合否は `expect` の機械アサーションのみ（[run-loop](run-loop.md)） |
 | `codegen` | — | なし | シナリオ → XCUITest の構造マッピング（[codegen](codegen.md)） |
 
-`run` の経路には `anthropic` の呼び出しが一切ありません。唯一の例外は `--alert-handling`（OS の
+`run` の経路には `anthropic` の呼び出しが一切ありません。唯一の例外は `--system-alert-handling`（OS の
 システムアラートを視覚的に消す機能）です。これは合否を判定するのではなく環境を準備するものであり、
 明示的にオプトインしたときにだけ動きます（[alert guard](recording.md#システムアラートの自動対処)）。
 

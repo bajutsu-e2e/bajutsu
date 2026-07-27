@@ -52,7 +52,7 @@ class Preconditions(_Model):
     setup: str | None = None
 
 
-class AlertHandling(_Model):
+class SystemAlertHandling(_Model):
     """Per-scenario control of the reactive system-alert guard.
 
     Handling of OS prompts (e.g. a notification or App Tracking Transparency request) that the
@@ -66,10 +66,11 @@ class AlertHandling(_Model):
     `handleSystemAlert` step (BE-0316): the step taps a named button at an author-chosen point, this
     guard clears prompts automatically wherever they surface.
     Two on-disk forms (the bare boolean is shorthand for `{ enabled: <bool> }`):
-        alertHandling: false                       — disable the guard for this scenario
-        alertHandling: { instruction: ["Allow"] }  — deterministic: tap the first of these labels
-                                                      present on the alert (native path)
-        alertHandling: { instruction: "tap Allow" } — legacy free text the vision locator interprets
+        systemAlertHandling: false                       — disable the guard for this scenario
+        systemAlertHandling: { instruction: ["Allow"] }  — deterministic: tap the first of these
+                                                             labels present on the alert (native path)
+        systemAlertHandling: { instruction: "tap Allow" } — legacy free text the vision locator
+                                                             interprets
     """
 
     enabled: bool = True
@@ -88,7 +89,7 @@ class AlertHandling(_Model):
     # wait is pending, on its own wall clock decoupled from the wait's condition poll (BE-0315). A
     # heuristic trading detection latency against runner load, so it is a knob rather than hard-coded;
     # None inherits the built-in default (one second). Rides the same precedence as the rest of
-    # `alertHandling` (BE-0177).
+    # `systemAlertHandling` (BE-0177).
     poll_interval: float | None = Field(default=None, alias="pollInterval")
 
     @model_validator(mode="before")
@@ -125,17 +126,18 @@ class Scenario(_Model):
     tags: list[str] = Field(default_factory=list)
     # Per-scenario OS permission state (BE-0276), applied before the app process starts: grant or
     # revoke a permission up front so the runtime prompt never appears (iOS `simctl privacy`,
-    # Android `pm grant`/`pm revoke`). Deterministic and AI-free, unlike the vision alertHandling
-    # guard below, which reacts to a prompt only after it appears. Kept as a plain `dict[str, str]`
-    # (validated below against the vocabulary) rather than a `Literal`-keyed dict, so it stays
-    # assignable to the `Mapping[str, str]` the platform-lifecycle `start()` seam expects.
+    # Android `pm grant`/`pm revoke`). Deterministic and AI-free, unlike the vision
+    # systemAlertHandling guard below, which reacts to a prompt only after it appears. Kept as a
+    # plain `dict[str, str]` (validated below against the vocabulary) rather than a `Literal`-keyed
+    # dict, so it stays assignable to the `Mapping[str, str]` the platform-lifecycle `start()` seam
+    # expects.
     permissions: dict[str, str] = Field(default_factory=dict)
     # Handlers for interstitial screens that surface at an unpredictable point (BE-0314): each entry
     # names a `condition` (the assertion DSL `if` uses) and the `steps` that clear it. The runner
     # checks each opportunistically against trees it has already fetched, wherever the screen appears
     # — so an author need not predict the one spot to place an `if`. Appended to the target config's
-    # own `interrupts` (config entries first), mirroring how `alertHandling` layers config under
-    # scenario. Empty (the default) means no scenario-level handler, so it prunes from a dump.
+    # own `interrupts` (config entries first), mirroring how `systemAlertHandling` layers config
+    # under scenario. Empty (the default) means no scenario-level handler, so it prunes from a dump.
     interrupts: list[Interrupt] = Field(default_factory=list)
     data: list[dict[str, str]] | None = None
     data_file: str | None = Field(default=None, alias="dataFile")
@@ -147,20 +149,27 @@ class Scenario(_Model):
     mocks: list[Mock] = Field(default_factory=list)
     redact: Redact | None = None
     # The alert guard runs on by default; unset means "on, tap the prompt's default button" (see
-    # AlertHandling). Kept None when unset so a dumped scenario stays clean. `dismissAlerts` is the
-    # deprecated input alias (BE-0317); a dump emits the canonical `alertHandling`.
-    alert_handling: AlertHandling | None = Field(
+    # SystemAlertHandling). Kept None when unset so a dumped scenario stays clean. `dismissAlerts`
+    # and `alertHandling` are deprecated input aliases (the latter from BE-0317); a dump emits the
+    # canonical `systemAlertHandling`.
+    system_alert_handling: SystemAlertHandling | None = Field(
         default=None,
-        validation_alias=AliasChoices("alertHandling", "dismissAlerts"),
-        serialization_alias="alertHandling",
+        validation_alias=AliasChoices("systemAlertHandling", "alertHandling", "dismissAlerts"),
+        serialization_alias="systemAlertHandling",
     )
 
     @model_validator(mode="before")
     @classmethod
     def _warn_deprecated_alert_key(cls, data: Any) -> Any:
-        # `alertHandling` renamed `dismissAlerts` (BE-0317); the old key still parses via the alias
-        # above, but using it earns a one-time notice on the authoring path (never the run verdict).
-        warn_deprecated_key(data, surface="scenario", old="dismissAlerts", new="alertHandling")
+        # `systemAlertHandling` renamed `alertHandling`, which had itself renamed `dismissAlerts`
+        # (BE-0317); both old keys still parse via the alias above, but using either earns a
+        # one-time notice on the authoring path (never the run verdict).
+        warn_deprecated_key(
+            data, surface="scenario", old="alertHandling", new="systemAlertHandling"
+        )
+        warn_deprecated_key(
+            data, surface="scenario", old="dismissAlerts", new="systemAlertHandling"
+        )
         return data
 
     @field_validator("permissions")

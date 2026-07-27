@@ -94,7 +94,7 @@ Scenario ::= {
   network?:        <Network>,
   mocks?:          list(<Mock>),            # default []
   redact?:         <Redact>,
-  alertHandling?:  <AlertHandling>,         # alert guard; on when unset
+  systemAlertHandling?: <SystemAlertHandling>,  # alert guard; on when unset
   permissions?:    <Permissions>,           # pre-launch OS permission state; default {}
 }
 
@@ -111,9 +111,9 @@ Preconditions ::= {
   setup?:      string,                      # a reusable prelude file (§6.4)
 }
 
-# ── AlertHandling (reactive system-alert guard; on by default) ─────────
+# ── SystemAlertHandling (reactive system-alert guard; on by default) ───
 # Native SpringBoard query + tap on XCUITest (no model, reusing BE-0316); AI-vision fallback (BE-0315).
-AlertHandling ::= boolean                                   # shorthand for { enabled: <bool> }
+SystemAlertHandling ::= boolean                                   # shorthand for { enabled: <bool> }
                | { enabled?: boolean,                       # default true
                    instruction?: string | [string],         # [labels] = native; "text" = vision (else dismiss)
                    pollInterval?: number }                   # native poll cadence, seconds (default 1)
@@ -306,13 +306,13 @@ Omitted optional keys take these values (so a minimal scenario is just `name` + 
 |---|---|
 | `Scenario.tags` / `expect` / `capturePolicy` / `mocks` | `[]` |
 | `Scenario.preconditions` | `{}` (i.e. `erase: false`, `reinstall: clean`) |
-| `Scenario.alertHandling` | unset (alert guard on; dismiss the prompt) |
+| `Scenario.systemAlertHandling` | unset (alert guard on; dismiss the prompt) |
 | `Scenario.permissions` | `{}` (no pre-launch permission state applied) |
 | `Preconditions.erase` | `false` |
 | `Preconditions.reinstall` | `clean` |
 | `Preconditions.launchArgs` | `[]` |
 | `Preconditions.launchEnv` | `{}` |
-| `AlertHandling.enabled` | `true` |
+| `SystemAlertHandling.enabled` | `true` |
 | `TypeText.submit` | `false` |
 | `Exists.negate` | `false` |
 | `MockResponse.status` | `200` |

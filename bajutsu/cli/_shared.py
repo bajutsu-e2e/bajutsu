@@ -50,30 +50,53 @@ if TYPE_CHECKING:
 
 
 @overload
-def resolve_alert_handling_flag(
-    alert_handling: bool | None, dismiss_alerts: bool | None, *, default: bool
+def resolve_system_alert_handling_flag(
+    system_alert_handling: bool | None,
+    alert_handling: bool | None,
+    dismiss_alerts: bool | None,
+    *,
+    default: bool,
 ) -> bool: ...
 @overload
-def resolve_alert_handling_flag(
-    alert_handling: bool | None, dismiss_alerts: bool | None, *, default: None = None
+def resolve_system_alert_handling_flag(
+    system_alert_handling: bool | None,
+    alert_handling: bool | None,
+    dismiss_alerts: bool | None,
+    *,
+    default: None = None,
 ) -> bool | None: ...
-def resolve_alert_handling_flag(
-    alert_handling: bool | None, dismiss_alerts: bool | None, *, default: bool | None = None
+def resolve_system_alert_handling_flag(
+    system_alert_handling: bool | None,
+    alert_handling: bool | None,
+    dismiss_alerts: bool | None,
+    *,
+    default: bool | None = None,
 ) -> bool | None:
-    """Merge the canonical `--alert-handling` with the deprecated `--dismiss-alerts` alias (BE-0317).
+    """Merge the canonical `--system-alert-handling` flag with its deprecated aliases.
 
-    The canonical flag wins when both are given; using the alias earns a one-time deprecation notice.
-    When neither is set, *default* decides: `run` leaves it None (each scenario's own value applies),
-    while `record` and `crawl` pass `default=True` (the guard is on while authoring / crawling).
-    Shared by all three so the alias behaves identically on each.
+    The canonical flag wins when more than one is given, `--alert-handling` next, `--dismiss-alerts`
+    last; using either alias earns a one-time deprecation notice. When none is set, *default*
+    decides: `run` leaves it None (each scenario's own value applies), while `record` and `crawl`
+    pass `default=True` (the guard is on while authoring / crawling). Shared by all three so the
+    aliases behave identically on each.
     """
+    if alert_handling is not None:
+        warn_once(
+            "cli.alert-handling",
+            "--alert-handling is deprecated; use --system-alert-handling "
+            "(--alert-handling is still accepted for now).",
+        )
     if dismiss_alerts is not None:
         warn_once(
             "cli.dismiss-alerts",
-            "--dismiss-alerts is deprecated; use --alert-handling "
+            "--dismiss-alerts is deprecated; use --system-alert-handling "
             "(--dismiss-alerts is still accepted for now).",
         )
-    resolved = alert_handling if alert_handling is not None else dismiss_alerts
+    resolved = system_alert_handling
+    if resolved is None:
+        resolved = alert_handling
+    if resolved is None:
+        resolved = dismiss_alerts
     return default if resolved is None else resolved
 
 

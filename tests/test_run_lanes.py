@@ -10,7 +10,7 @@ import typer
 
 from bajutsu.cli.commands.run import (
     _alert_guard_factory,
-    _apply_alert_handling,
+    _apply_system_alert_handling,
     _expand_file,
     _filter_scenarios,
     _load_scenarios,
@@ -264,25 +264,26 @@ def test_filter_scenarios_erase_flag_beats_scenario_and_target() -> None:
 
 def test_alert_guard_factory_none_when_all_disabled() -> None:
     scenarios = load_scenarios(
-        "- name: a\n  alertHandling: false\n" + "  steps:\n    - tap: { id: home.title }\n"
+        "- name: a\n  systemAlertHandling: false\n" + "  steps:\n    - tap: { id: home.title }\n"
     )
     assert _alert_guard_factory(scenarios, _eff(), "") is None
 
 
 def test_alert_guard_factory_none_when_target_disables() -> None:
-    # BE-0177: a scenario with no alertHandling inherits the target config's `alertHandling: false`,
-    # so the factory builds no guard at all (the enabled bit resolves scenario > target > built-in on).
+    # BE-0177: a scenario with no systemAlertHandling inherits the target config's
+    # `systemAlertHandling: false`, so the factory builds no guard at all (the enabled bit resolves
+    # scenario > target > built-in on).
     scenarios = load_scenarios(_one_scenario("a"))
-    assert _alert_guard_factory(scenarios, _eff(alertHandling="false"), "") is None
+    assert _alert_guard_factory(scenarios, _eff(systemAlertHandling="false"), "") is None
 
 
 def test_alert_guard_factory_scenario_reenables_over_target() -> None:
-    # BE-0177: a scenario's explicit `alertHandling: true` wins over the target's `false`, so a guard
-    # is still built (it no-ops here only because the test env has no AI credential).
+    # BE-0177: a scenario's explicit `systemAlertHandling: true` wins over the target's `false`, so a
+    # guard is still built (it no-ops here only because the test env has no AI credential).
     scenarios = load_scenarios(
-        "- name: a\n  alertHandling: true\n  steps:\n    - tap: { id: home.title }\n"
+        "- name: a\n  systemAlertHandling: true\n  steps:\n    - tap: { id: home.title }\n"
     )
-    assert _alert_guard_factory(scenarios, _eff(alertHandling="false"), "") is not None
+    assert _alert_guard_factory(scenarios, _eff(systemAlertHandling="false"), "") is not None
 
 
 # --- _resolve_network: --network/--no-network flag > target `network` config > built-in on (BE-0177)
@@ -324,7 +325,7 @@ def test_alert_guard_factory_vision_noop_without_credential(
 def _tap_scenario(name: str, dismiss: dict[str, object] | None = None) -> Scenario:
     body: dict[str, object] = {"name": name, "steps": [{"tap": {"id": "x"}}]}
     if dismiss is not None:
-        body["alertHandling"] = dismiss
+        body["systemAlertHandling"] = dismiss
     return Scenario.model_validate(body)
 
 
@@ -340,7 +341,7 @@ def test_alert_guard_factory_resolves_native_labels_and_poll_interval() -> None:
 
 def test_alert_guard_factory_poll_interval_precedence() -> None:
     # scenario > target > built-in default (BE-0177 / BE-0315).
-    eff = _eff(alertHandling="{ pollInterval: 3 }")
+    eff = _eff(systemAlertHandling="{ pollInterval: 3 }")
     s_override = _tap_scenario("a", {"pollInterval": 5})
     assert _alert_guard_factory([s_override], eff, "")(s_override).poll_interval == 5.0  # type: ignore[misc,union-attr]
     s_plain = _tap_scenario("b")
@@ -359,14 +360,15 @@ def test_vision_instruction_renders_a_label_list_and_passes_a_string_through() -
     assert _vision_instruction(None) is None
 
 
-def test_apply_alert_handling_preserves_the_button_policy_and_interval() -> None:
-    # The --no-alert-handling flip must keep both the label policy and the poll interval (BE-0315).
+def test_apply_system_alert_handling_preserves_the_button_policy_and_interval() -> None:
+    # The --no-system-alert-handling flip must keep both the label policy and the poll interval
+    # (BE-0315).
     s = _tap_scenario("a", {"instruction": ["Allow"], "pollInterval": 2})
-    _apply_alert_handling([s], False)
-    assert s.alert_handling is not None
-    assert s.alert_handling.enabled is False
-    assert s.alert_handling.instruction == ["Allow"]
-    assert s.alert_handling.poll_interval == 2.0
+    _apply_system_alert_handling([s], False)
+    assert s.system_alert_handling is not None
+    assert s.system_alert_handling.enabled is False
+    assert s.system_alert_handling.instruction == ["Allow"]
+    assert s.system_alert_handling.poll_interval == 2.0
 
 
 # --- _resolve_evidence_dirs: baselines/schemas dirs plus the golden context (only when it exists)
