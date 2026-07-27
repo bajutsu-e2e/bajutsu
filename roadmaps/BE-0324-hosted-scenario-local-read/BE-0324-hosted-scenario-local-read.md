@@ -64,10 +64,10 @@ would not reach the worker at all.
 
 Add a `ScenarioStorage` implementation named `LocalTreeScenarioStorage`, beside
 `ObjectScenarioStorage` (`bajutsu/serve/server/scenarios.py`). Construct it with the live
-`ServeState` and the same `apps` lookup `ObjectScenarioStorage` already takes. It answers `has_app`
-by checking that same `apps` lookup, unchanged. For `list` and `read`, it delegates to the local
-backend's own machinery instead of an object-store call, so a Git- or zip-sourced scenario appears
-in the hosted UI's list, not only on a direct read or a run. For an org's target, it calls
+`ServeState` and the `ObjectScenarioStorage` instance itself; it answers `has_app` by delegating to
+that instance (the same *apps* lookup, no second copy of it). For `list` and `read`, it delegates to
+the local backend's own machinery instead of an object-store call, so a Git- or zip-sourced scenario
+appears in the hosted UI's list, not only on a direct read or a run. For an org's target, it calls
 `_scenarios_dir_for(state, target)` (`bajutsu/serve/state.py`) to get that target's scenario
 directory. It then hands the result to a `LocalScenarioScope` (`bajutsu/serve/scenarios.py`) and
 calls its `list` or `read`. This reuses `LocalScenarioScope` directly, rather than re-deriving the
@@ -84,12 +84,12 @@ composed-artifact source alike.
 `LocalTreeScenarioStorage` still needs a `save` method. The `ScenarioStorage` protocol
 (`bajutsu/serve/server/scenarios.py`) requires one, since `StorageScenarioStore` and
 `StorageScenarioScope` each hold a single injected `ScenarioStorage` and call `save` on that same
-object. `LocalTreeScenarioStorage` takes an `ObjectScenarioStorage` instance as a constructor
-argument for this single purpose. Its `save` method delegates to that instance, unchanged. `has_app`,
-`list`, and `read` never touch that delegate; `save` alone does. One object answers the whole
-`ScenarioStorage` protocol this way: it reads from the local tree and writes through
-`ObjectScenarioStorage`, with no new protocol and no second object for `StorageScenarioScope` to
-hold.
+object. `LocalTreeScenarioStorage` takes that same `ObjectScenarioStorage` instance as a constructor
+argument, reused from §1's `has_app` delegation. Its `save` method delegates to that instance,
+unchanged. `list` and `read` never touch that delegate; `has_app` and `save` alone do. One object
+answers the whole `ScenarioStorage` protocol this way: it reads from the local tree and writes
+through `ObjectScenarioStorage`, with no new protocol and no second object for `StorageScenarioScope`
+to hold.
 
 ### 2. `runnable()` keeps shipping materials; only their source changes
 
