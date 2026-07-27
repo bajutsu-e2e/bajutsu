@@ -173,6 +173,17 @@ def test_parse_diff_marks_a_binary_hunk() -> None:
     assert f.path == "logo.png" and f.binary is True and f.lines == []
 
 
+def test_parse_diff_keys_a_git_binary_patch_by_its_real_path() -> None:
+    # A `GIT binary patch` section (git diff --binary) carries no +++/--- lines, so the path must come
+    # from the `diff --git` header, not fall back to the literal "GIT binary patch".
+    diff = (
+        "diff --git a/icon.png b/icon.png\nindex a1..b2 100644\n"
+        "GIT binary patch\ndelta 12\nzcmV0abcd\n"
+    )
+    (f,) = parse_diff(diff)
+    assert f.path == "icon.png" and f.binary is True
+
+
 # --- impact: touched set, affected steps, soundness ---
 
 

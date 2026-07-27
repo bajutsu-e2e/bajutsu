@@ -225,6 +225,11 @@ def parse_diff(text: str) -> list[ChangedFile]:
     for line in text.splitlines():
         if line.startswith("diff --git "):
             flush()  # a new file section starts; commit the previous one
+            # Seed the path from the header so a binary-only section (`GIT binary patch`, which
+            # carries no `+++`/`---` lines) keys by its real path; a later `+++ b/…` overrides it.
+            _, _, after_b = line.partition(" b/")
+            if after_b:
+                path = after_b
         elif line.startswith("@@"):
             in_hunk = True  # subsequent `+`/`-` lines are content, not path headers
         elif line.startswith(("Binary files ", "GIT binary patch")):
