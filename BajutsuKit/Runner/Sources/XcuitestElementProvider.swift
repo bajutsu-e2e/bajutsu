@@ -11,10 +11,10 @@ import BajutsuRunner
 /// each attribute over its own XCUITest round-trip (elements × attributes ≈ 600 trips for one
 /// screen), `queryElements()` takes **one** `app.snapshot()` and reads every attribute from that
 /// tree. The trade-off is that snapshot nodes are values, not tappable elements, so each element's
-/// backing records its identity and root-relative position path. `tap` / `gesture` first recover a
-/// uniquely identified live `XCUIElement` from a narrow flat query, then use the position path for
-/// duplicate or anonymous elements. This also reaches system-owned sheets whose snapshot hierarchy
-/// cannot be replayed through live direct-child queries.
+/// backing records its identity and root-relative position path. `tap` / `gesture` re-derive the
+/// live `XCUIElement` from that position path — one cheap resolution — and fall back to a narrow
+/// identity query only when the path no longer resolves, which also reaches system-owned sheets
+/// whose snapshot hierarchy cannot be replayed through live direct-child queries.
 /// Backs a SpringBoard alert button by its ordinal within `springboard.alerts.buttons` (BE-0316).
 ///
 /// The out-of-process alert is not part of the app snapshot the `PositionPathBacking` walk records,
@@ -170,19 +170,23 @@ final class XcuitestElementProvider: ElementProviding {
 
     /// Recover the live `XCUIElement` for a snapshot backing, or nil if the screen no longer matches.
     ///
-    /// A narrow flat query is the primary path for an element with an identifier or label. It avoids
-    /// replaying snapshot child indices through a live hierarchy that may have different system-owned
-    /// wrapper nodes, as happens for the iOS Save Password sheet. The query must yield exactly one
-    /// identity match. Duplicate or anonymous elements retain the position-path discriminator.
-    /// Frame is deliberately excluded from both identity checks (BE-0287).
+    /// The recorded position path is the primary path: it is a single element resolution, not a
+    /// re-walk of the whole tree, so it keeps the per-interaction cost off the ~600-round-trip scale
+    /// the class's one-`snapshot()` design (BE-0105) exists to avoid. When it resolves and the
+    /// attributes still match, that element wins.
+    ///
+    /// A narrow flat query is the recovery step, reached only when the position path fails — the
+    /// element moved, or its snapshot child indices cannot be replayed through a live hierarchy with
+    /// different system-owned wrapper nodes, as happens for the iOS Save Password sheet. The query
+    /// must yield exactly one identity match; duplicate or anonymous elements have no identity to
+    /// recover by, so a position-path miss on them is a genuine stale. Frame is deliberately excluded
+    /// from both identity checks (BE-0287).
     private func liveElement(for backing: PositionPathBacking) -> XCUIElement? {
-        if let identified = uniquelyIdentifiedElement(matching: backing.recorded) {
-            return identified
-        }
         let el = element(at: backing.path)
-        guard el.exists else { return nil }
-        let current = recordedAttributes(of: el)
-        return attributesMatch(recorded: backing.recorded, current: current) ? el : nil
+        if el.exists, attributesMatch(recorded: backing.recorded, current: recordedAttributes(of: el)) {
+            return el
+        }
+        return uniquelyIdentifiedElement(matching: backing.recorded)
     }
 
     /// Resolve one semantic identity without depending on snapshot hierarchy shape.
