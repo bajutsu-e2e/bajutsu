@@ -9,7 +9,7 @@
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0321") |
-| 実装 PR | [#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN) |
+| 実装 PR | [#1390](https://github.com/bajutsu-e2e/bajutsu/pull/1390) |
 | トピック | 検証とカバレッジ |
 <!-- /BE-METADATA -->
 
@@ -72,7 +72,7 @@ Bajutsu はこの答えの素材をすでに持っています。[BE-0050](../BE
 
 **ログ**
 
-- 2026-07-27 — 最初の提供を [#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN) で出荷しました。決定的な逆インデックス走査（`bajutsu impact`）で、BE-0050 のステップごとのセレクタ走査とエンドポイント走査を再利用します。AI 層（間接的な影響のために diff を意味的に読む部分）はスコープ外のままとし、CI の判定経路には載せません。
+- 2026-07-27 — 最初の提供を [#1390](https://github.com/bajutsu-e2e/bajutsu/pull/1390) で出荷しました。決定的な逆インデックス走査（`bajutsu impact`）で、BE-0050 のステップごとのセレクタ走査とエンドポイント走査を再利用します。AI 層（間接的な影響のために diff を意味的に読む部分）はスコープ外のままとし、CI の判定経路には載せません。
 
 ## 参考
 

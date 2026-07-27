@@ -9,7 +9,7 @@
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0321") |
-| Implementing PR | [#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN) |
+| Implementing PR | [#1390](https://github.com/bajutsu-e2e/bajutsu/pull/1390) |
 | Topic | Verification & coverage |
 <!-- /BE-METADATA -->
 
@@ -154,7 +154,7 @@ touches a device, never calls an LLM, and never gates CI.
 
 **Log**
 
-- 2026-07-27 — Shipped the first delivery in [#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN): the deterministic reverse-index scan (`bajutsu impact`), reusing BE-0050's per-step selector and endpoint walks; the AI layer (semantic diff reading for indirect impact) stays out of scope, off the CI verdict path.
+- 2026-07-27 — Shipped the first delivery in [#1390](https://github.com/bajutsu-e2e/bajutsu/pull/1390): the deterministic reverse-index scan (`bajutsu impact`), reusing BE-0050's per-step selector and endpoint walks; the AI layer (semantic diff reading for indirect impact) stays out of scope, off the CI verdict path.
 
 ## References
 
