@@ -65,7 +65,7 @@ survive the merge as a stale reference on `main`.
 
 ## Prime directives (unchanged — they bind Phase B exactly as they bind `implement-be`)
 
-Re-read [`CLAUDE.md`](../../CLAUDE.md) and [`DESIGN.md`](../../DESIGN.md) before you
+Re-read [`AGENTS.md`](../../AGENTS.md) and [`DESIGN.md`](../../DESIGN.md) before you
 touch code. Phase A is authoring-only (`ideation`'s rules); product code appears only in
 Phase B, under `implement-be`'s rules:
 
