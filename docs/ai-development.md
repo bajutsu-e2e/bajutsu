@@ -223,19 +223,20 @@ The tier → model-id mapping lives only here, so re-pointing a tier at a new Cl
 one-line change in one place. The model ids above are Claude Code aliases (`opus` / `sonnet` /
 `haiku`), which stay stable as the underlying model versions advance.
 
-### Where the default applies itself: skill frontmatter
+### Where Claude Code applies the default: adapter frontmatter
 
-Each in-repo skill declares its tier as a `model:` field in its `SKILL.md` frontmatter, so the
-harness picks the right model when the skill runs — nothing to remember, still overridable:
+Each Claude Code adapter declares its skill's tier as a `model:` field in its `SKILL.md`
+frontmatter. The Claude Code harness picks the right model when the skill runs. The default remains
+overridable:
 
-- [`implement-be`](../.agent-workflows/implement-be/workflow.md) → `opus` (Heavy)
-- [`propose-and-build`](../.agent-workflows/propose-and-build/workflow.md) → `opus` (Heavy) — it
+- [`implement-be`](../.claude/skills/implement-be/SKILL.md) → `opus` (Heavy)
+- [`propose-and-build`](../.claude/skills/propose-and-build/SKILL.md) → `opus` (Heavy) — it
   implements product code in its Phase B, so it carries the same tier as `implement-be`.
-- [`ideation`](../.agent-workflows/ideation/workflow.md) → `sonnet` (Medium)
-- [`document-writing`](../.agent-workflows/document-writing/workflow.md) → `sonnet` (Medium)
-- [`english-document-writing`](../.agent-workflows/english-document-writing/workflow.md) → `sonnet` (Medium)
-- [`japanese-document-writing`](../.agent-workflows/japanese-document-writing/workflow.md) → `sonnet` (Medium)
-- [`roadmap-filter`](../.agent-workflows/roadmap-filter/workflow.md) → `haiku` (Light) — a read-only
+- [`ideation`](../.claude/skills/ideation/SKILL.md) → `sonnet` (Medium)
+- [`document-writing`](../.claude/skills/document-writing/SKILL.md) → `sonnet` (Medium)
+- [`english-document-writing`](../.claude/skills/english-document-writing/SKILL.md) → `sonnet` (Medium)
+- [`japanese-document-writing`](../.claude/skills/japanese-document-writing/SKILL.md) → `sonnet` (Medium)
+- [`roadmap-filter`](../.claude/skills/roadmap-filter/SKILL.md) → `haiku` (Light) — a read-only
   survey of the roadmap by `Status` (BE-0162): it wraps `make roadmap-status STATUS="…"` so a
   session lists just the items in one status (e.g. every open `Proposal`), with each item's file
   path to open next, instead of paging through the dashboard's rendered HTML or opening each item
@@ -243,8 +244,8 @@ harness picks the right model when the skill runs — nothing to remember, still
 
 Most light-tier chores aren't skills, so that tier is otherwise reached interactively or by subagent
 delegation, below — `roadmap-filter` is the exception, since its whole job is one light,
-deterministic lookup. `tests/test_skill_models.py` checks that each skill's `model:` is a known,
-valid id, so a typo fails the gate locally instead of silently falling back.
+deterministic lookup. `tests/test_skill_models.py` checks that each Claude Code adapter's `model:`
+is a known, valid id, so a typo fails the gate locally instead of silently falling back.
 
 ### Phases and subagent delegation
 

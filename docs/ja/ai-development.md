@@ -202,19 +202,19 @@ PR ごとにシグナルとして走らせますが、各集約ジョブの `nee
 直すだけです。表のモデル id は Claude Code のエイリアス（`opus` / `sonnet` / `haiku`）で、背後のモデルの
 バージョンが上がっても安定します。
 
-### スキルの frontmatter に既定を埋め込む
+### Claude Codeアダプターのfrontmatterに既定を埋め込む
 
-リポジトリ内の各スキルは、自分の段階を `SKILL.md` frontmatter の `model:` として宣言します。ハーネスはスキル
-実行時にこれを読み、正しいモデルを選びます。覚えておく必要はなく、上書きもできます。
+各Claude Codeアダプターは、対応するスキルの段階を `SKILL.md` frontmatterの `model:` として宣言します。
+Claude Codeのハーネスはスキル実行時にこれを読み、正しいモデルを選びます。既定は上書きできます。
 
-- [`implement-be`](../../.agent-workflows/implement-be/workflow.md)：`opus`（重）
-- [`propose-and-build`](../../.agent-workflows/propose-and-build/workflow.md)：`opus`（重）。Phase B で
+- [`implement-be`](../../.claude/skills/implement-be/SKILL.md)：`opus`（重）
+- [`propose-and-build`](../../.claude/skills/propose-and-build/SKILL.md)：`opus`（重）。Phase B で
   プロダクトコードを実装するので、`implement-be` と同じ段階にします。
-- [`ideation`](../../.agent-workflows/ideation/workflow.md)：`sonnet`（中）
-- [`document-writing`](../../.agent-workflows/document-writing/workflow.md)：`sonnet`（中）
-- [`english-document-writing`](../../.agent-workflows/english-document-writing/workflow.md)：`sonnet`（中）
-- [`japanese-document-writing`](../../.agent-workflows/japanese-document-writing/workflow.md)：`sonnet`（中）
-- [`roadmap-filter`](../../.agent-workflows/roadmap-filter/workflow.md)：`haiku`（軽）。`Status` で
+- [`ideation`](../../.claude/skills/ideation/SKILL.md)：`sonnet`（中）
+- [`document-writing`](../../.claude/skills/document-writing/SKILL.md)：`sonnet`（中）
+- [`english-document-writing`](../../.claude/skills/english-document-writing/SKILL.md)：`sonnet`（中）
+- [`japanese-document-writing`](../../.claude/skills/japanese-document-writing/SKILL.md)：`sonnet`（中）
+- [`roadmap-filter`](../../.claude/skills/roadmap-filter/SKILL.md)：`haiku`（軽）。`Status` で
   ロードマップを見渡す読み取り専用のスキルです（BE-0162）。`make roadmap-status STATUS="…"` を包み、
   ある状態の項目だけ（たとえば未着手の `Proposal` すべて）を、次に開くファイルパス付きで一覧します。
   ダッシュボードの描画済み HTML をめくったり、項目ファイルを一つずつ開いて `Status` を確認したりする
@@ -222,8 +222,8 @@ PR ごとにシグナルとして走らせますが、各集約ジョブの `nee
 
 軽い雑務の多くはスキルではないので、その段階はふだん下の対話操作かサブエージェントへの委譲で使います。
 `roadmap-filter` は例外で、その仕事そのものが軽い決定論的な検索だからです。`tests/test_skill_models.py` が
-各スキルの `model:` を既知の妥当な id かどうか確認するので、打ち間違いは黙って握りつぶされず、ローカルの
-ゲートが落とします。
+各Claude Codeアダプターの `model:` を既知の妥当なidかどうか確認するので、打ち間違いは黙って握りつぶされず、
+ローカルのゲートが落とします。
 
 ### フェーズとサブエージェントへの委譲
 
