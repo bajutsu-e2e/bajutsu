@@ -43,10 +43,10 @@ Claude を使わない側のすべては、設定ゼロで動きます。資格�
 | **Claude を使う** | `record` | Claude でアプリを操作しながらシナリオを作成する |
 | | `crawl` | Claude で自律的にアプリを探索し、画面マップを作る |
 | | `triage --ai` | ルールベースの代わりに Claude で失敗した実行を診断する |
-| | `run --alert-handling` | アラートガード。ステップを塞いだ OS のプロンプトを Claude が処理する |
+| | `run --system-alert-handling` | アラートガード。ステップを塞いだ OS のプロンプトを Claude が処理する |
 
 分類はコマンド名ではなく経路の粒度です。`triage` は Claude を使わず、`--ai` フラグ一つで Claude の
-経路に切り替わります。`run` も Claude を使わず、アラートガード（`--alert-handling`。シナリオごとに
+経路に切り替わります。`run` も Claude を使わず、アラートガード（`--system-alert-handling`。シナリオごとに
 既定で有効）がその Claude 経路です。資格情報が無いとき、このガードは何もしない動作に縮退し、決定論的な
 実行を塞ぐことはありません。
 
@@ -76,7 +76,7 @@ AI のソフトウェア開発キット（SDK）は任意インストールの e
 - `pip install bajutsu`：決定論的なオーサリングと実行の経路（`run`、`doctor`、`lint`、`codegen`、
   `trace`、`approve` など、上記の Claude-free 列すべて）です。AI SDK はインストールされず、ここから
   モデルに到達することはありません。
-- `pip install bajutsu[ai]`：Claude の経路（`record`、`crawl`、`triage --ai`、`run --alert-handling`）の
+- `pip install bajutsu[ai]`：Claude の経路（`record`、`crawl`、`triage --ai`、`run --system-alert-handling`）の
   ために Anthropic の SDK を追加します。Amazon Bedrock プロバイダを使う場合は代わりに
   `bajutsu[bedrock]` を指定します。同じ SDK の上に Bedrock 版を重ねる形になります。
 

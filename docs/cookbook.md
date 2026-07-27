@@ -81,14 +81,14 @@ Full file (including the cross-platform id-candidate-list form):
 ## Grant a system permission dialog
 
 A runtime permission prompt (notifications, location, …) is an **out-of-process system alert**, not
-part of the app's own UI — the iOS backend can't tap it directly. `alertHandling` hands that one tap to the AI
+part of the app's own UI — the iOS backend can't tap it directly. `systemAlertHandling` hands that one tap to the AI
 alert guard, which watches for the prompt and taps "Allow", while every assertion around it stays
 machine-checked.
 
 ```yaml
 - name: grant notification permission
   tags: [permission, system]
-  alertHandling: { instruction: "tap Allow" }
+  systemAlertHandling: { instruction: "tap Allow" }
   preconditions:
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
@@ -102,7 +102,7 @@ machine-checked.
     - value: { sel: { id: perm.notif.value }, equals: "authorized" }
 ```
 
-`alertHandling` is an alert **handler**, never an assertion — it never touches the pass/fail
+`systemAlertHandling` is an alert **handler**, never an assertion — it never touches the pass/fail
 verdict, only unblocks a step that would otherwise hang on an alert the iOS backend can't see into. On Android
 the same scenario runs with no prompt at all (the target config pre-grants the permission), so the
 guard stays idle — one scenario, two platforms, no branching. Full file with the

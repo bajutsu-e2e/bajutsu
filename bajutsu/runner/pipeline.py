@@ -353,7 +353,7 @@ class _ScenarioRunner:
                 ),
                 # Config-level interrupts first, then the scenario's own (BE-0314): an app-wide
                 # interstitial handler composes with a per-scenario addition, the config-then-scenario
-                # order the alertHandling default already follows.
+                # order the systemAlertHandling default already follows.
                 interrupts=[*self.eff.run_defaults.interrupts, *s.interrupts],
             )
             result.sid = sid  # the evidence-dir slug, so the matrix links to the real dir (BE-0076)
@@ -419,7 +419,7 @@ def run_all(
         clock: Injectable time source for condition waits, so tests need no real sleeps. None uses
             the real clock.
         alert_guard: A single alert-guard handler, used by tests.
-        alert_guard_for: Picks each scenario's alert-guard handler (honoring its `alertHandling`);
+        alert_guard_for: Picks each scenario's alert-guard handler (honoring its `systemAlertHandling`);
             takes precedence over `alert_guard`.
         run_dir: Where per-scenario artifacts (network.json, visual diffs) are written. None skips
             writing them.

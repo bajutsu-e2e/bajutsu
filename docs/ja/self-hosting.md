@@ -67,7 +67,7 @@ chmod 600 ~/Library/LaunchAgents/com.bajutsu.serve.plist   # plist はトーク�
 
 出力された plist が設定しない項目が 2 つあり、どちらも `EnvironmentVariables` に追記します。
 
-- `ANTHROPIC_API_KEY`：AI パス（`record`、`--alert-handling`）に必要です（自動では埋め込みません）。Bedrock
+- `ANTHROPIC_API_KEY`：AI パス（`record`、`--system-alert-handling`）に必要です（自動では埋め込みません）。Bedrock
   プロバイダを使うなら、代わりにここへ `BAJUTSU_AI_PROVIDER` と `BAJUTSU_BEDROCK_MODEL`、AWS の認証情報を置きます。
 - `PATH`：iOS（XCUITest）backend のときだけ必要です。launchd は最小の `PATH` で agent を起動し、bajutsu は
   `xcodebuild` / `xcrun` / `simctl` を `PATH` 経由で探すため、これがないと実行が `no available actuator` で
@@ -455,7 +455,7 @@ export BAJUTSU_SECRETS_KEY=…
 ```bash
 export BAJUTSU_SERVER_URL=http://<linux-node>.<tailnet>.ts.net:8765
 export BAJUTSU_TOKEN=…         # コントロールプレーンと同じ operator トークン
-export ANTHROPIC_API_KEY=…     # シナリオが AI パス（record / --alert-handling）を使う場合のみ
+export ANTHROPIC_API_KEY=…     # シナリオが AI パス（record / --system-alert-handling）を使う場合のみ
 bajutsu worker
 ```
 

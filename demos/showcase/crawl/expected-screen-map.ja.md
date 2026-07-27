@@ -40,7 +40,7 @@ showcase は本当に枝分かれの多い crawl 対象として作られてい�
 - **モーダル**は Log ノードから開いて閉じる往復。crawl は開くエッジを記録し、戻った先の状態は再探索せず
   フィンガープリントで認識すべき。
 - **Permissions** は、その操作がプロセス外の OS アラートを出す唯一のノード（SPEC §7）。ここに到達した
-  crawl は `run` と同じく alert guard（`--alert-handling`）に頼るべきで、アラートは crawl が発見する画面では
+  crawl は `run` と同じく alert guard（`--system-alert-handling`）に頼るべきで、アラートは crawl が発見する画面では
   ない。
 
 ## no-a11y 変種で見えるべきもの

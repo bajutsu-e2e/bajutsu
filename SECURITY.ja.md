@@ -25,7 +25,7 @@ Bajutsu は iOS Simulator 向けの防御的な E2E（end-to-end）テストツ�
 ならではの注意点をいくつか挙げます。
 
 - **API キー / シークレット。** `ANTHROPIC_API_KEY` が必要なのは AI パス（`record`、
-  `run --alert-handling`）だけです。API キーはコミットしたり共有したりせず、`.env`
+  `run --system-alert-handling`）だけです。API キーはコミットしたり共有したりせず、`.env`
   （gitignore 済み）に保管してください。決定的な `run`／CI ゲートにシークレットは不要です。
 - **iOS Simulator（idb）バックエンドで非ラテン文字を `type` する場合。** idb のハードウェア
   キーボード経由のテキスト入力は、US キーボード配列の文字しか送信できません。そのため、日本語、

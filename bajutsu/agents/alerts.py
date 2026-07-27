@@ -80,7 +80,7 @@ class SystemAlertGuard:
             decision = self._locator.locate(png, self._instruction)
         except Exception as exc:
             # Best-effort: the guard is on by default, so it must never crash a run — but warn,
-            # because from here on --alert-handling is silently not handling anything.
+            # because from here on --system-alert-handling is silently not handling anything.
             _logger.warning(
                 "alert locator failed; blocking prompts will not be dismissed: %s",
                 exc,

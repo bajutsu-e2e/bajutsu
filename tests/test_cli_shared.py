@@ -10,7 +10,7 @@ from bajutsu.cli._shared import (
     _build_alert_guard,
     _build_alert_locator,
     _select_actuator_or_exit,
-    resolve_alert_handling_flag,
+    resolve_system_alert_handling_flag,
 )
 from bajutsu.config import Effective, load_config, resolve
 
@@ -49,15 +49,35 @@ def test_build_alert_guard_binds_dismiss_when_credential_present(
     assert callable(guard)
 
 
-def test_resolve_alert_handling_flag_canonical_wins() -> None:
-    # BE-0317: --alert-handling takes precedence; the deprecated --dismiss-alerts fills in when unset.
-    assert resolve_alert_handling_flag(True, None) is True
-    assert resolve_alert_handling_flag(None, False) is False
-    assert resolve_alert_handling_flag(False, True) is False  # canonical wins over the alias
-    assert resolve_alert_handling_flag(None, None) is None
+def test_resolve_system_alert_handling_flag_canonical_wins() -> None:
+    # --system-alert-handling takes precedence; the deprecated --alert-handling (originally
+    # BE-0317's canonical name) fills in next, then the deprecated --dismiss-alerts.
+    assert resolve_system_alert_handling_flag(True, None, None) is True
+    assert resolve_system_alert_handling_flag(None, True, None) is True
+    assert resolve_system_alert_handling_flag(None, None, False) is False
+    assert (
+        resolve_system_alert_handling_flag(False, True, True) is False
+    )  # canonical wins over both aliases
+    assert resolve_system_alert_handling_flag(None, False, True) is False  # alias wins over dismiss
+    assert resolve_system_alert_handling_flag(None, None, None) is None
 
 
-def test_resolve_alert_handling_flag_warns_on_deprecated_alias(
+def test_resolve_system_alert_handling_flag_warns_on_deprecated_alert_handling_alias(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    import logging
+
+    from bajutsu import deprecations
+
+    deprecations._emitted.discard("cli.alert-handling")  # so the one-time notice fires here
+    with caplog.at_level(logging.WARNING, logger="bajutsu.deprecations"):
+        resolve_system_alert_handling_flag(None, True, None)
+    assert any(
+        "--alert-handling" in r.message and "deprecated" in r.message for r in caplog.records
+    )
+
+
+def test_resolve_system_alert_handling_flag_warns_on_deprecated_dismiss_alerts_alias(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     import logging
@@ -66,7 +86,7 @@ def test_resolve_alert_handling_flag_warns_on_deprecated_alias(
 
     deprecations._emitted.discard("cli.dismiss-alerts")  # so the one-time notice fires here
     with caplog.at_level(logging.WARNING, logger="bajutsu.deprecations"):
-        resolve_alert_handling_flag(None, True)
+        resolve_system_alert_handling_flag(None, None, True)
     assert any(
         "--dismiss-alerts" in r.message and "deprecated" in r.message for r in caplog.records
     )

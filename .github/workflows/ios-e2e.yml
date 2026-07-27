@@ -24,7 +24,7 @@
 #     `run` reddens the gate if any scenario
 #     fails, so per-scenario pass/fail moves from job names into its report. Covers BE-0019 (pinch/
 #     rotate, /gesture), BE-0281 (/type, /swipe, /back), BE-0276 (`permissions`: location, pre-granted
-#     with no prompt), BE-0315 (the native reactive `alertHandling` notification grant), and BE-0316
+#     with no prompt), BE-0315 (the native reactive `systemAlertHandling` notification grant), and BE-0316
 #     (`handleSystemAlert` taps the SpringBoard "Allow" by native query).
 #   - actuation (xcuitest): real on-device XCUITest actuation beyond `tap` (BE-0281) — `back` and
 #     device control (setLocation / clipboard / push) on the Stable launch tab — plus the
@@ -278,7 +278,7 @@ jobs:
   #   - search.yaml (BE-0281): /type into the Search field, then assert the filtered count.
   #   - notices.yaml (BE-0281): /swipe an off-screen row into view, then /back from a pushed detail.
   #   - permission.yaml (BE-0276): both scenarios run. `location` is pre-granted by `simctl privacy
-  #     grant` (no prompt); the notification scenario grants reactively through `alertHandling`, which
+  #     grant` (no prompt); the notification scenario grants reactively through `systemAlertHandling`, which
   #     since BE-0315 clears the SpringBoard prompt by a native accessibility query — no screenshot, no
   #     model, no API key — so it stays on this deterministic gate (prime directive 1 holds).
   #   - permission_system_alert.yaml (BE-0316): `handleSystemAlert` taps the SpringBoard prompt's

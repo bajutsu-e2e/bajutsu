@@ -100,7 +100,7 @@ def test_record_fails_closed_without_credential(
             "demo",
             "--goal",
             "x",
-            "--no-alert-handling",
+            "--no-system-alert-handling",
             "--config",
             str(cfg),
         ],
@@ -132,7 +132,7 @@ def test_record_fails_closed_uses_configured_key_env(
             "demo",
             "--goal",
             "x",
-            "--no-alert-handling",
+            "--no-system-alert-handling",
             "--config",
             str(cfg),
         ],
@@ -186,8 +186,8 @@ def test_no_backend_available_exits_cleanly(
 ) -> None:
     # An unknown backend is never available -> clean exit 2, independent of PATH. (crawl has its own
     # test below: it additionally checks the run dir isn't created by the gate.)
-    # record/alert-handling now fail closed first (BE-0047), so give it a credential to reach the
-    # backend gate this test exercises.
+    # record/system-alert-handling now fail closed first (BE-0047), so give it a credential to reach
+    # the backend gate this test exercises.
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
     cfg, scn = _write(tmp_path)
     r = runner.invoke(
@@ -288,8 +288,8 @@ def test_record_writes_the_authored_scenario(
     # The record command's option handling and output-path selection, device- and AI-free: the
     # authoring loop, driver launch, and launchServer are the external boundaries, stubbed here so
     # the surrounding command body (target/browser/out resolution, then the file write) is covered.
-    # A dummy key clears the credential gate and --no-alert-handling skips the alert guard, so no
-    # model client is ever built on this deterministic path.
+    # A dummy key clears the credential gate and --no-system-alert-handling skips the alert guard, so
+    # no model client is ever built on this deterministic path.
     import bajutsu.cli.commands.record as rec
     from bajutsu.scenario import load_scenarios
 
@@ -322,7 +322,7 @@ def test_record_writes_the_authored_scenario(
             "do x",
             "--out",
             str(out),
-            "--no-alert-handling",
+            "--no-system-alert-handling",
             "--config",
             str(cfg),
         ],
@@ -372,7 +372,7 @@ def test_record_needs_human_handoff_exits_3(
             "log in",
             "--out",
             str(tmp_path / "rec.yaml"),
-            "--no-alert-handling",
+            "--no-system-alert-handling",
             "--config",
             str(cfg),
         ],
@@ -418,7 +418,7 @@ def test_record_device_error_exits_2(tmp_path: Path, monkeypatch: pytest.MonkeyP
             "do x",
             "--out",
             str(tmp_path / "rec.yaml"),
-            "--no-alert-handling",
+            "--no-system-alert-handling",
             "--config",
             str(_fake_record_config(tmp_path)),
         ],
@@ -481,7 +481,7 @@ def test_run_reports_pass_and_exits_zero(tmp_path: Path, monkeypatch: pytest.Mon
     manifest = _manifest_at(tmp_path)
     _stub_execution(monkeypatch, results=[RunResult("demo", True, [])], manifest=manifest)
     cfg, scn = _fake_run(tmp_path)
-    r = runner.invoke(app, _run_argv(cfg, scn, tmp_path, "--no-alert-handling"))
+    r = runner.invoke(app, _run_argv(cfg, scn, tmp_path, "--no-system-alert-handling"))
     assert r.exit_code == 0
     assert r.output.startswith(f"PASS  {manifest}")
 
@@ -495,7 +495,7 @@ def test_run_reports_fail_and_exits_one(tmp_path: Path, monkeypatch: pytest.Monk
         monkeypatch, results=[RunResult("demo", False, [], failure="boom")], manifest=manifest
     )
     cfg, scn = _fake_run(tmp_path)
-    r = runner.invoke(app, _run_argv(cfg, scn, tmp_path, "--erase", "--no-alert-handling"))
+    r = runner.invoke(app, _run_argv(cfg, scn, tmp_path, "--erase", "--no-system-alert-handling"))
     assert r.exit_code == 1
     assert r.output.startswith("FAIL")
 
@@ -512,12 +512,12 @@ def test_run_zip_writes_artifact_after_the_verdict(
     (manifest.parent / "report.html").write_text("<html></html>", encoding="utf-8")
     _stub_execution(monkeypatch, results=[RunResult("demo", True, [])], manifest=manifest)
     cfg, scn = _fake_run(tmp_path)
-    r = runner.invoke(app, _run_argv(cfg, scn, tmp_path, "--zip", "--no-alert-handling"))
+    r = runner.invoke(app, _run_argv(cfg, scn, tmp_path, "--zip", "--no-system-alert-handling"))
     assert r.exit_code == 0  # the verdict stands, unaffected by the post-run zip
     assert (manifest.parent.parent / f"{manifest.parent.name}.zip").is_file()
 
 
-def test_run_alert_handling_notes_no_op_without_credential(
+def test_run_system_alert_handling_notes_no_op_without_credential(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # The alert guard is on by default, but with no AI credential it degrades to a no-op and never
@@ -540,7 +540,7 @@ def test_run_alert_handling_notes_no_op_without_credential(
     assert "the vision alert guard will no-op" in r.output
 
 
-def test_run_alert_handling_bedrock_note_without_a_model(
+def test_run_system_alert_handling_bedrock_note_without_a_model(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # The Bedrock provider authenticates the alert guard with AWS credentials but still needs a
