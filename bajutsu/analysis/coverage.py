@@ -100,8 +100,12 @@ class EndpointCoverage:
     coverage: float  # asserted / observed (1.0 when nothing was observed)
 
 
-def _step_requests(step: Step) -> Iterator[RequestMatch]:
-    """Every network-endpoint matcher a step declares, recursing into control flow."""
+def step_requests(step: Step) -> Iterator[RequestMatch]:
+    """Every network-endpoint matcher a step declares, recursing into control flow.
+
+    Shared by the endpoint coverage map (BE-0050) and test impact analysis (BE-0321), so the two
+    read the same endpoint references from a step. Pure.
+    """
     if step.wait is not None and isinstance(step.wait.until, WaitRequest):
         yield step.wait.until.request  # `wait: { until: { request: ... } }` declares an endpoint too
     for a in step.assert_ or []:
@@ -109,10 +113,10 @@ def _step_requests(step: Step) -> Iterator[RequestMatch]:
     if step.if_ is not None:
         yield from _assertion_requests(step.if_.condition)
         for nested in (*step.if_.then, *(step.if_.else_ or [])):
-            yield from _step_requests(nested)
+            yield from step_requests(nested)
     if step.for_each is not None:
         for nested in step.for_each.steps:
-            yield from _step_requests(nested)
+            yield from step_requests(nested)
 
 
 def _assertion_requests(a: Assertion) -> Iterator[RequestMatch]:
@@ -147,7 +151,7 @@ def referenced_requests(scenario: Scenario) -> list[RequestMatch]:
     the coverage map (BE-0048 assertions).
     """
     return [
-        *(r for step in scenario.steps for r in _step_requests(step)),
+        *(r for step in scenario.steps for r in step_requests(step)),
         *(r for a in scenario.expect for r in _assertion_requests(a)),
     ]
 

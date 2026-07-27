@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0321](BE-0321-test-impact-analysis.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0321") |
+| Implementing PR | [#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN) |
 | Topic | Verification & coverage |
 <!-- /BE-METADATA -->
 
@@ -146,10 +147,14 @@ touches a device, never calls an LLM, and never gates CI.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Reverse index — invert BE-0050's static scenario analysis into `id / screen / endpoint → [(scenario, step)]`.
-- [ ] Change extraction — scan a `git` diff's changed lines for referenced stable ids; produce the touched set and the unattributable-change signal.
-- [ ] Output — join to affected `(scenario, step)` pairs; emit JSON and a human-readable list, each step carrying the implicating id.
-- [ ] CI integration — a consumable selection artifact plus documentation of the safe policy (conservative fallback, full-suite cadence, additive default).
+- [x] Reverse index — invert BE-0050's static scenario analysis into `id / screen / endpoint → [(scenario, step)]` (`bajutsu/analysis/impact.py:reverse_index`, reusing the shared `audit.step_referenced_ids` / `coverage.step_requests` per-step walks).
+- [x] Change extraction — scan a `git` diff's changed lines for referenced stable ids; produce the touched set and the unattributable-change signal (`parse_diff` + `impact`; a changed file matching no referenced literal marks the report incomplete).
+- [x] Output — join to affected `(scenario, step)` pairs; emit JSON and a human-readable list, each step carrying the implicating id (`bajutsu impact --json` / text via `render`).
+- [x] CI integration — a consumable selection artifact (`--json` with a `complete` signal) plus documentation of the safe policy (conservative fallback, full-suite cadence, additive default) in [cli.md](../../docs/cli.md#impact) and [ci.md](../../docs/ci.md).
+
+**Log**
+
+- 2026-07-27 — Shipped the first delivery in [#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN): the deterministic reverse-index scan (`bajutsu impact`), reusing BE-0050's per-step selector and endpoint walks; the AI layer (semantic diff reading for indirect impact) stays out of scope, off the CI verdict path.
 
 ## References
 

@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0321](BE-0321-test-impact-analysis-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0321") |
+| 実装 PR | [#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN) |
 | トピック | 検証とカバレッジ |
 <!-- /BE-METADATA -->
 
@@ -64,10 +65,14 @@ Bajutsu はこの答えの素材をすでに持っています。[BE-0050](../BE
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] 逆インデックス — BE-0050 の静的シナリオ解析を `id / 画面 / エンドポイント → [(シナリオ, ステップ)]` へ反転する。
-- [ ] 変更抽出 — `git` diff の変更行を、参照される安定 id で走査し、触れた集合と帰属不能変更の信号を生成する。
-- [ ] 出力 — 影響を受ける `(シナリオ, ステップ)` の組へ結合し、名指しした id を各ステップに添えて JSON と人間が読める一覧を出力する。
-- [ ] CI 連携 — 消費可能な選択の成果物と、安全なポリシー（保守的なフォールバック、全スイートのカデンス、additive なデフォルト）の文書化。
+- [x] 逆インデックス — BE-0050 の静的シナリオ解析を `id / 画面 / エンドポイント → [(シナリオ, ステップ)]` へ反転する（`bajutsu/analysis/impact.py` の `reverse_index`。共有した `audit.step_referenced_ids` / `coverage.step_requests` のステップごとの走査を再利用）。
+- [x] 変更抽出 — `git` diff の変更行を、参照される安定 id で走査し、触れた集合と帰属不能変更の信号を生成する（`parse_diff` + `impact`。どの参照リテラルにも一致しない変更ファイルはレポートを不完全と印付けます）。
+- [x] 出力 — 影響を受ける `(シナリオ, ステップ)` の組へ結合し、名指しした id を各ステップに添えて JSON と人間が読める一覧を出力する（`bajutsu impact --json` / `render` によるテキスト）。
+- [x] CI 連携 — 消費可能な選択の成果物（`complete` 信号つきの `--json`）と、安全なポリシー（保守的なフォールバック、全スイートのカデンス、additive なデフォルト）の文書化を [cli.md](../../docs/ja/cli.md#impact) と [ci.md](../../docs/ja/ci.md) に置きました。
+
+**ログ**
+
+- 2026-07-27 — 最初の提供を [#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN) で出荷しました。決定的な逆インデックス走査（`bajutsu impact`）で、BE-0050 のステップごとのセレクタ走査とエンドポイント走査を再利用します。AI 層（間接的な影響のために diff を意味的に読む部分）はスコープ外のままとし、CI の判定経路には載せません。
 
 ## 参考
 

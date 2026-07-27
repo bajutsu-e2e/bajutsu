@@ -146,6 +146,34 @@ def _located_selectors(scenario: Scenario) -> Iterator[tuple[str, base.Selector]
             yield from _with_nested(where, sel)
 
 
+def _selector_ids(sel: base.Selector) -> Iterator[str]:
+    """The stable id(s) one selector references (`id` / `idMatches`).
+
+    `id` / `idMatches` may each be a list of OR candidates (BE-0221) — the same logical id in each
+    platform's spelling. Consumers bucket by `namespace_of` (splits on `.`), so only the primary
+    (SPEC, dotted) candidate is the referenced id; a platform's underscore alternate (`stable_row_1`)
+    has no `.` and would otherwise register as a spurious off-namespace id.
+    """
+    if "id" in sel:
+        yield base.id_candidates(sel["id"])[0]
+    if "idMatches" in sel:
+        yield base.id_candidates(sel["idMatches"])[0]
+
+
+def step_referenced_ids(step: Step) -> set[str]:
+    """The stable ids (`id` / `idMatches`) one step statically references.
+
+    The step-granular counterpart of `referenced_ids`, covering the step's nested control flow and
+    `within` scopes. Test impact analysis (BE-0321) inverts these into an id → step index. Pure.
+    """
+    return {
+        rid
+        for where, sel in _step_selectors(step)
+        for _, scoped in _with_nested(where, sel)
+        for rid in _selector_ids(scoped)
+    }
+
+
 def referenced_ids(scenario: Scenario) -> set[str]:
     """The stable ids (`id` / `idMatches`) a scenario statically references.
 
@@ -153,17 +181,7 @@ def referenced_ids(scenario: Scenario) -> set[str]:
     measures these against an app's declared `idNamespaces`. Pure: no device, no model, no side
     effects.
     """
-    ids: set[str] = set()
-    for _, sel in _located_selectors(scenario):
-        # `id` / `idMatches` may each be a list of OR candidates (BE-0221) — the same logical id in
-        # each platform's spelling. Coverage buckets by `namespace_of` (splits on `.`), so only the
-        # primary (SPEC, dotted) candidate is the referenced id; a platform's underscore alternate
-        # (`stable_row_1`) has no `.` and would otherwise register as a spurious off-namespace id.
-        if "id" in sel:
-            ids.add(base.id_candidates(sel["id"])[0])
-        if "idMatches" in sel:
-            ids.add(base.id_candidates(sel["idMatches"])[0])
-    return ids
+    return {rid for _, sel in _located_selectors(scenario) for rid in _selector_ids(sel)}
 
 
 def _step_findings(step: Step) -> Iterator[Finding]:

@@ -128,3 +128,10 @@ No flag needed — it auto-detects the Actions environment.
   path — and folding it into the run avoids a separate `doctor` step that would cold-spawn a second
   XCUITest runner. Run `bajutsu doctor` locally for the fuller preflight (runnability + capability
   checks); a hard env/permission runnability gate in CI (`xcodebuild` / Xcode presence) is future work.
+- **Affected-step selection**: [`bajutsu impact`](cli.md#impact) reports which scenario steps a `git`
+  diff is likely to affect, so a pipeline can order those steps first for fast feedback. The safe
+  default is additive — run the whole suite, just affected-first. Narrowing a pre-merge run down to the
+  affected set is opt-in and sound only with both safeguards `impact` documents: fall back to the full
+  suite whenever the report is **incomplete** (`--json`'s `complete` is `false`, i.e. the diff carried
+  a change that maps to no referenced id), and still run the full deterministic suite at a coarser
+  cadence (on merge, nightly, or at release). The pass/fail verdict always stays with `run`.
