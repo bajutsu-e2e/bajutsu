@@ -125,7 +125,7 @@ does not restate those rules, it runs them:
 
 On the **same branch**, treat the `BE-XXXX-<slug>/` proposal as the spec and run `implement-be`'s
 steps 3–7 — ground yourself in the code, plan and confirm before writing, implement with tests, and
-review the diff with the `simplify` / `code-review` skills. Then, unlike the serial `implement-be`,
+review the diff through the host's available simplification and correctness-review facilities. Then, unlike the serial `implement-be`,
 run its promotion steps 8–9 **now**, because `Status` and the PR number do not depend on the
 not-yet-allocated id:
 
