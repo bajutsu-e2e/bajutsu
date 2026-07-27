@@ -16,8 +16,7 @@ This is a **mechanical, command-only** skill — no design decisions, no code ch
 
 2. **Worktree creation (when a topic is given)**
 
-   **Default (outside Claude Code):** use the project's `make worktree` target.
-   Do not invent an ad-hoc `git worktree add` path. This covers Cursor, Codex, and a plain shell.
+   Use the project's `make worktree` target. Do not invent an ad-hoc `git worktree add` path.
 
    ```bash
    make worktree TOPIC=<topic>
@@ -31,10 +30,6 @@ This is a **mechanical, command-only** skill — no design decisions, no code ch
    ```bash
    make worktree TOPIC=<topic> PREFIX=<user>
    ```
-
-   **Claude Code exception:** keep an existing Claude Code worktree under
-   `.claude/worktrees/`. Do not create a second tree with `make worktree`
-   unless the user asks for one.
 
 3. **Report** the result: current branch, HEAD commit, worktree path (if created).
 
