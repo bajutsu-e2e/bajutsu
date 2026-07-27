@@ -236,3 +236,165 @@ def test_composed_bind_records_triple_sha_provenance(tmp_path: Path) -> None:
     assert prov["scenariosSha"] == scenarios_sha
     assert prov["binarySha"] == binary_sha
     assert "sha256" not in prov
+
+
+def test_compose_current_empty_when_nothing_composed_is_bound(tmp_path: Path) -> None:
+    # No config / a non-composed bind: 200 with an empty seed so the UI treats "nothing to inherit"
+    # as a normal empty response, never a 404.
+    from _shared import _get_json
+
+    server, port = _serve(_state(tmp_path))
+    try:
+        assert _get_json(port, "/api/compose/current") == {"artifacts": {}}
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_compose_current_returns_the_active_composed_legs(tmp_path: Path) -> None:
+    # After a successful compose, the resume seed exposes each supplied leg's sha + display name.
+    from _shared import _get_json
+
+    server, port = _serve(_state(tmp_path))
+    try:
+        config_sha = _post_bytes(port, "/api/artifacts/config", _FULL_CONFIG)["sha256"]
+        scenarios_sha = _post_bytes(port, "/api/artifacts/scenarios", _scenarios_zip())["sha256"]
+        binary_sha = _post_bytes(port, "/api/artifacts/binary", _app_zip())["sha256"]
+        status, _ = _post(
+            port,
+            "/api/compose",
+            {
+                "config": config_sha,
+                "scenarios": scenarios_sha,
+                "binary": binary_sha,
+                "filename": "bajutsu.config.yaml",
+            },
+        )
+        assert status == 200
+        seed = _get_json(port, "/api/compose/current")
+        assert seed["artifacts"] == {
+            "config": {"sha256": config_sha, "filename": "bajutsu.config.yaml"},
+            "scenarios": {"sha256": scenarios_sha, "filename": "scenarios.zip"},
+            "binary": {"sha256": binary_sha, "filename": "binary"},
+        }
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_compose_current_empty_for_another_orgs_bind(tmp_path: Path) -> None:
+    # Org tenancy: a composed bind belonging to a different org is invisible to the caller.
+    state = _state(tmp_path)
+    config_sha = _store_artifact(state, tmp_path, "config", _SCENARIOS_ONLY_CONFIG)
+    scenarios_sha = _store_artifact(state, tmp_path, "scenarios", _scenarios_zip())
+    _, status = ops.bind_composition(
+        state, {"config": config_sha, "scenarios": scenarios_sha, "filename": "cfg.yaml"}
+    )
+    assert status == 200 and state.upload is not None
+    state.upload.org = "other-org"
+    body, code = ops.compose_current(state)
+    assert code == 200 and body == {"artifacts": {}}
+
+
+def test_compose_overwrite_one_leg_over_inherited_triple(tmp_path: Path) -> None:
+    # Incremental resume: re-compose with the same config/scenarios shas and a new binary — the
+    # combination matrix's cheap path, which the UI builds from GET /api/compose/current + one new
+    # upload. POST /api/compose still receives a complete explicit body (no server-side fill).
+    server, port = _serve(_state(tmp_path))
+    try:
+        config_sha = _post_bytes(port, "/api/artifacts/config", _FULL_CONFIG)["sha256"]
+        scenarios_sha = _post_bytes(port, "/api/artifacts/scenarios", _scenarios_zip())["sha256"]
+        binary_a = _post_bytes(port, "/api/artifacts/binary", _app_zip())["sha256"]
+        status, resp_a = _post(
+            port,
+            "/api/compose",
+            {"config": config_sha, "scenarios": scenarios_sha, "binary": binary_a},
+        )
+        assert status == 200
+        binary_b = _post_bytes(
+            port, "/api/artifacts/binary", _zip({"Info.plist": b"<plist/>", "Demo": b"\x7fELF-v2"})
+        )["sha256"]
+        status, resp_b = _post(
+            port,
+            "/api/compose",
+            {"config": config_sha, "scenarios": scenarios_sha, "binary": binary_b},
+        )
+        assert status == 200
+        assert resp_a["config"] != resp_b["config"]
+        assert resp_b["source"]["artifacts"] == {
+            "config": config_sha,
+            "scenarios": scenarios_sha,
+            "binary": binary_b,
+        }
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_compose_does_not_fill_omitted_legs_from_the_live_bind(tmp_path: Path) -> None:
+    # POST /api/compose is a pure function of its body: omitting binary while a richer composition
+    # is bound must not silently keep the old binary sha (directive 2). A scenarios-only config
+    # composes without binary, so the new bind's artifact map matches the request alone.
+    from _shared import _get_json
+
+    server, port = _serve(_state(tmp_path))
+    try:
+        full_sha = _post_bytes(port, "/api/artifacts/config", _FULL_CONFIG)["sha256"]
+        scenarios_only_sha = _post_bytes(port, "/api/artifacts/config", _SCENARIOS_ONLY_CONFIG)[
+            "sha256"
+        ]
+        scenarios_sha = _post_bytes(port, "/api/artifacts/scenarios", _scenarios_zip())["sha256"]
+        binary_sha = _post_bytes(port, "/api/artifacts/binary", _app_zip())["sha256"]
+        status, _ = _post(
+            port,
+            "/api/compose",
+            {"config": full_sha, "scenarios": scenarios_sha, "binary": binary_sha},
+        )
+        assert status == 200
+        status, resp = _post(
+            port, "/api/compose", {"config": scenarios_only_sha, "scenarios": scenarios_sha}
+        )
+        assert status == 200
+        assert resp["source"]["artifacts"] == {
+            "config": scenarios_only_sha,
+            "scenarios": scenarios_sha,
+        }
+        assert "binary" not in resp["source"]["artifacts"]
+        seed = _get_json(port, "/api/compose/current")
+        assert "binary" not in seed["artifacts"]
+        assert seed["artifacts"]["config"]["sha256"] == scenarios_only_sha
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_compose_records_scenarios_name_for_single_yaml_resume(tmp_path: Path) -> None:
+    # A single-YAML scenarios leg salts the composition cache key with scenariosName — the resume
+    # seed must surface that name so a later Compose & load can replay the same body.
+    from _shared import _get_json
+
+    server, port = _serve(_state(tmp_path))
+    try:
+        config_sha = _post_bytes(port, "/api/artifacts/config", _SCENARIOS_ONLY_CONFIG)["sha256"]
+        scenarios_sha = _post_bytes(
+            port, "/api/artifacts/scenarios", b"- name: smoke\n  steps: []\n"
+        )["sha256"]
+        status, _ = _post(
+            port,
+            "/api/compose",
+            {
+                "config": config_sha,
+                "scenarios": scenarios_sha,
+                "filename": "cfg.yaml",
+                "scenariosName": "smoke.yaml",
+            },
+        )
+        assert status == 200
+        seed = _get_json(port, "/api/compose/current")
+        assert seed["artifacts"]["scenarios"] == {
+            "sha256": scenarios_sha,
+            "filename": "smoke.yaml",
+        }
+    finally:
+        server.shutdown()
+        server.server_close()

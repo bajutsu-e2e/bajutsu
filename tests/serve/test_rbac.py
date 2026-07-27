@@ -82,6 +82,9 @@ def test_required_role_maps_endpoints() -> None:
     assert ops.required_role("POST", "/api/artifacts/scenarios") == "admin"
     assert ops.required_role("POST", "/api/artifacts/binary") == "admin"
     assert ops.required_role("GET", "/api/artifacts/exists") == "admin"
+    # Compose-picker resume seed: per-leg shas of the active composed bind — admin GET early case,
+    # same reason as `/api/artifacts/exists`.
+    assert ops.required_role("GET", "/api/compose/current") == "admin"
     # Server identity (BE-0272): the version string is open, but the Git checkout (commit/branch/
     # dirty) is admin — a branch name leaks the in-progress topic. Same GET early-case reason.
     assert ops.required_role("GET", "/api/version") is None

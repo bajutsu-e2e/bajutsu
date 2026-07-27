@@ -152,6 +152,26 @@ it: push the branch and let the human open the PR** (BE-0230). The human opens i
 carries product code); keep pushing fixes until `make check` and CI are both green before it is
 marked ready.
 
+### Phase C — fill in the Implementing PR row the moment the PR exists
+
+Because this skill never auto-opens the PR, the `Implementing PR` row is still the placeholder text
+when this session ends, and there is no step number that automatically comes back to it — unlike
+`implement-be` step 10, which fills its own row right after opening its own PR in the same breath.
+Do not let that gap turn into a forgotten follow-up:
+
+- The first time you (in this session or any later one — a resumed session, a `pr-followup` run, a
+  CI-fix, a review reply, or a plain status check) learn the PR's number, fill the `Implementing PR`
+  row in **both** language files with `[#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN)` and
+  push that change — before or alongside whatever else the session was asked to do, not only when a
+  human explicitly asks for it.
+- Treat "the row is still the placeholder and the PR number is now known" as an implicit, always-in-
+  scope task, the same way `make check` is always in scope before a push. Run `uv run python
+  scripts/lint_roadmap.py` (or `make lint-roadmap`) after editing to confirm the row's link
+  resolves.
+- If a later session is invoked for something else entirely on this PR (e.g. via
+  [`pr-followup`](../pr-followup/workflow.md)) and notices the row is still unfilled, filling it in
+  is part of that session's work too, not a separate ask.
+
 ## The one invariant
 
 The allocator rewrites `BE-XXXX` → `BE-NNNN` **only inside the item's own directory**

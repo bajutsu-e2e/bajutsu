@@ -272,8 +272,10 @@ textarea.goal{min-height:5.5rem;resize:vertical;line-height:1.4}
 .composelbl{font-weight:600;font-size:.82em;margin-bottom:.4rem}
 .composereq{color:var(--acc);font-weight:400;font-size:.85em}
 .composeopt{color:var(--mut);font-weight:400;font-size:.85em}
+.composerow{display:flex;flex-wrap:wrap;gap:.35rem;align-items:center}
+.composeclr{padding:.25rem .5rem;font-size:.8em}
 .composestate{margin-top:.4rem;font-size:.75em;color:var(--fg);word-break:break-all}
-.composestate.reused{color:var(--mut)}
+.composestate.reused,.composestate.inherited{color:var(--mut)}
 @media(max-width:560px){.composezones{grid-template-columns:1fr}}
 .sims{max-height:24vh;overflow:auto;border:1px solid var(--line);border-radius:6px;padding:.25rem}
 .sims label{display:flex;align-items:center;gap:.45rem;margin:0;padding:.22rem .35rem;color:var(--fg);cursor:pointer;font-size:.9em;border-radius:4px}

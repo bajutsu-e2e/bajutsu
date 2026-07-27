@@ -127,6 +127,7 @@ from bajutsu.serve.operations.upload import (
     bind_artifact,
     bind_composition,
     bind_upload_config,
+    compose_current,
 )
 from bajutsu.serve.operations.version import server_checkout, server_version
 from bajutsu.serve.operations.worker import (
@@ -179,6 +180,7 @@ __all__ = [
     "cancel_job",
     "claude_code_token_info",
     "close_capture",
+    "compose_current",
     "config_content",
     "config_info",
     "coverage_view",

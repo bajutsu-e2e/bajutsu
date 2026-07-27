@@ -8,7 +8,7 @@
 // loadSims / loadShared reach into) are real imports; core and the sections form an import cycle,
 // which is safe because every cross-module binding is used at call time, never at module-evaluation
 // time. serve.author.mjs is the entry module the page loads.
-import {loadHistory, loadStats, loadFlaky, loadUsage, coverageInit, showInfo, replayAudit, onSimChange, loadTrash} from './serve.panels.mjs';
+import {loadHistory, loadStats, loadFlaky, loadUsage, coverageInit, showInfo, replayAudit, onSimChange, loadTrash, seedComposeFromCurrent} from './serve.panels.mjs';
 import {loadMetrics} from './serve.metrics.mjs';
 import {renderProjectsView} from './serve.projects.mjs';
 import {onCrawlSimChange} from './serve.crawl.mjs';
@@ -515,7 +515,7 @@ async function browseFs(dir){
   $('#fslist').querySelectorAll('li[data-dir]').forEach(li=>li.addEventListener('click',()=>browseFs(li.dataset.dir)));
   $('#fslist').querySelectorAll('li[data-file]').forEach(li=>li.addEventListener('click',()=>chooseConfig(li.dataset.file)));
 }
-function openFs(){openModal($('#fsmodal'));$('#gitcred').value='';loadGitCred();if(fsSourceEnabled)browseFs('')}
+function openFs(){openModal($('#fsmodal'));$('#gitcred').value='';loadGitCred();if(fsSourceEnabled)browseFs('');seedComposeFromCurrent()}
 function closeFs(){closeModal($('#fsmodal'))}
 $('#opencfg').addEventListener('click',openFs);
 $('#fsclose').addEventListener('click',closeFs);
