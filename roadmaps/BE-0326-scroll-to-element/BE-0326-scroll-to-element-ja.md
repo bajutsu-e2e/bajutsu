@@ -404,7 +404,8 @@ Mutually Exclusive, Collectively Exhaustive（`MECE`）な作業単位は次の�
   画面外の中心を画面内と誤判定してしまいます。さらに、ジェスチャの起点を画面外へ押し出し、XCUITest ランナーを
   不安定にしていました。真のビューポートは `ViewportProvider` プロトコルが各バックエンドで報告します。
   Playwright は `window.innerWidth/innerHeight` から、adb は `wm size` から求めます。XCUITest は新設の
-  `/screen` ルートでアプリウィンドウの `frame` を返し、`FakeDriver` は自身のモデルから求めます。
+  `/screen` ルートでアプリウィンドウの `frame` を返します。Appium の実機ドライバは WebDriver のウィンドウ
+  矩形から、`FakeDriver` は自身のモデルから求めます。
 - ドライバ適合ケースは、4 つのバックエンドすべてで画面外の行を引き出します。ビューポートより高い要素を
   その中心が画面に入った時点で明らかにするケースと、対象がないときに失敗するケースも含みます。各バックエンドが
   真のビューポートを報告するので、ネイティブのレーンでもスキップは要りません。

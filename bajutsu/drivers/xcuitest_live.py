@@ -191,6 +191,13 @@ class WebDriverClient:
             raise WebDriverError(f"rect was not a mapping: {value!r}")
         return value
 
+    def window_rect(self) -> Mapping[str, Any]:
+        """Return the window rect (`x` / `y` / `width` / `height`) — the device screen on iOS."""
+        value = self._value("GET", self._session_path("/window/rect"), None)
+        if not isinstance(value, Mapping):
+            raise WebDriverError(f"window rect was not a mapping: {value!r}")
+        return value
+
     def click(self, element_id: str) -> None:
         """Tap the element addressed by *element_id*."""
         self._value("POST", self._session_path(f"/element/{element_id}/click"), {})
@@ -267,6 +274,8 @@ class XcuitestLiveDriver:
 
     def __init__(self, client: WebDriverClient) -> None:
         self._client = client
+        # The device screen size (BE-0326), fetched once from the session; fixed for a session.
+        self._screen: base.Point | None = None
 
     # --- query / resolve / act ---
 
@@ -386,6 +395,16 @@ class XcuitestLiveDriver:
                 }
             ],
         )
+
+    def viewport(self) -> base.Point:
+        # The device screen size (BE-0326). The queried tree can hold buffered off-screen ScrollView
+        # children (a lazy list), so `screen_size_from_elements` overshoots the screen and the `scroll`
+        # stop condition would judge an off-screen center as on-screen; the WebDriver window rect is
+        # the real screen (an iOS app window fills it). Cached for the session.
+        if self._screen is None:
+            r = self._client.window_rect()
+            self._screen = (float(r["width"]), float(r["height"]))
+        return self._screen
 
     def scroll(self, frm: base.Point, to: base.Point) -> None:
         # A non-inertial pan (BE-0326): `mobile: dragFromToForDuration` over a longer duration than a
