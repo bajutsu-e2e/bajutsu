@@ -34,7 +34,7 @@ This is a **read-only, advisory** skill — it never implements features or crea
 
 5. **Wait for the user's choice** before suggesting next steps. When the user
    picks a task, recommend:
-   - `/git-sync <topic>` to prepare the worktree (Haiku)
+   - prepare a topic worktree with the git-sync workflow
    - `implement-be BE-NNNN` to start implementation
 
 ## What this skill does NOT do
