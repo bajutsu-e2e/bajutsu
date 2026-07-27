@@ -41,4 +41,5 @@ This is a **mechanical, command-only** skill — no design decisions, no code ch
 - Resolve merge conflicts (report and stop)
 
 If the user asks to proceed with implementation after sync, tell them to start a new
-session with `/implement-be` or the appropriate skill — that will use the right model.
+If the user asks to proceed with implementation after sync, tell them to start a new
+session with the implement-be workflow (or the appropriate skill).
