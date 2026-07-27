@@ -229,7 +229,7 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
 
    Give `Driver.scroll` (or a companion method) the bounded-step, no-momentum contract.
    Realize that contract per backend.
-   Playwright needs no change; it already meets the contract.
+   Playwright's scroll gesture needs no change; it already meets the non-inertial contract (its viewport exposure below is the one Playwright change this unit adds).
    adb uses a slow-duration `input swipe`.
    XCUITest uses a settle-before-release drag.
    The in-viewport stop condition also needs true viewport dimensions.
