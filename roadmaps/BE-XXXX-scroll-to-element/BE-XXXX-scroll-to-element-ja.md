@@ -99,16 +99,21 @@ iOS と web では失敗することがあります。
 
 - **`to`**（必須）：引き出す[セレクタ](../../docs/selectors.md)
   ループの停止条件。
-  単なる存在より厳しい条件です。
-  `to` が解決し、かつその frame がビューポート内にある瞬間に戻る。
+  単なる存在より厳しい条件。
+  `to` が解決し、かつその frame の中心点がビューポート内にある瞬間に戻る。
   存在するだけでは不十分。
   バックエンドは画面外の要素をツリーに残すことがある。
   web バックエンドの `query()` は、画面外の Document Object Model（`DOM`）ノードも返す。
   一方、native の lazy リストは画面外の行をツリーから外す。
   `wait: { for: … }` の述語は存在だけを見る。
   その wait は、流れ去った web 要素を「見つかった」とみなし、スクロールしない。
-  frame がビューポート内であることを要求すれば、どのバックエンドでも reveal が成立する。
-  frame は取得済みの各要素に載っている。
+  中心点は、`frame_center` が座標ベースの `tap` に対して解決する点と同じ（BE-0251）。
+  そのヘルパーは [`bajutsu/drivers/base.py`](../../bajutsu/drivers/base.py) にある。
+  後続の `tap` が画面内に必要とするのは frame 全体ではなく、その点。
+  frame 全体をビューポート内に要求すると、ビューポートより高い対象で失敗する。
+  単なる交差を要求すると、タップ対象の中心がまだ隠れたまま停止する。
+  中心点による判定は、この両方の問題を避ける。
+  frame は取得済みの各要素にすでに載っている。
   比較相手のビューポート範囲は Unit 3 が与える。
 
 - **`direction`**（デフォルト `down`）：コンテンツをたどる方向
@@ -207,7 +212,7 @@ Mutually Exclusive, Collectively Exhaustive（`MECE`）な作業単位は次の�
 
    [`bajutsu/orchestrator/actions/handlers/gestures.py`](../../bajutsu/orchestrator/actions/handlers/gestures.py) に `_do_scroll` を追加する。
    回数を区切ったスクロールと再取得のループにする。
-   `to` が解決し、frame がビューポート内かを確認する。
+   `to` が解決し、その frame の `frame_center` がビューポート内かを確認する。
    そうでなければ慣性なしの 1 ステップを行い、再取得する。
    端点は既存の `_scroll_gesture` から取る。
    アンカーは `within` の中心、または画面中心。
@@ -260,7 +265,8 @@ Mutually Exclusive, Collectively Exhaustive（`MECE`）な作業単位は次の�
 
    [`tests/driver_conformance.py`](../../tests/driver_conformance.py) に scroll-into-view のケースを追加する。
    スクロールしてはじめて現れる画面外対象を使う。
-   `scroll` がそれを引き出すことを検証する。
+   `scroll` がそれを引き出すことを検証する：解決した frame の `frame_center` がビューポートに収まる。
+   ビューポートより高い対象も加え、その中心がビューポートに入った時点で `scroll` が成功することを検証する。
    使い切った領域にない対象が失敗することを検証する。
    慣性なしでバックエンド横断の契約を証明する。
    FakeDriver、Playwright、XCUITest、adb で成り立つ。

@@ -98,14 +98,19 @@ It also accepts two optional refinements.
 - **`to`** (required): the [selector](../../docs/selectors.md) to reveal.
   This is the loop's stop condition.
   The condition is stricter than mere existence.
-  The action returns when `to` resolves and its frame sits inside the viewport.
+  The action returns when `to` resolves and its frame's center point sits inside the viewport.
   Existence alone is not enough.
   A backend can keep an off-screen element in the tree.
   The web backend's `query()` returns a Document Object Model (`DOM`) node that is off-screen.
   A native lazy list drops an off-screen row from the tree.
   A `wait: { for: … }` predicate checks existence alone.
   That wait would treat a scrolled-away web element as found and never scroll.
-  Requiring the frame inside the viewport makes the reveal real on every backend.
+  The center point is the same point `frame_center` resolves for a coordinate-based `tap` (BE-0251).
+  See [`bajutsu/drivers/base.py`](../../bajutsu/drivers/base.py) for that helper.
+  A following `tap` needs that point on-screen, not the whole frame.
+  Requiring the whole frame inside the viewport would fail a target taller than the viewport.
+  Requiring mere intersection would stop while the tappable center is still clipped.
+  The center-point check avoids both problems.
   Every queried element already carries its frame.
   Unit 3 supplies the viewport bounds for that comparison.
 
@@ -206,7 +211,7 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
 
    Add `_do_scroll` to [`bajutsu/orchestrator/actions/handlers/gestures.py`](../../bajutsu/orchestrator/actions/handlers/gestures.py).
    Use a bounded scroll-and-re-query loop.
-   Check that `to` resolves and that its frame sits in the viewport.
+   Check that `to` resolves and that `frame_center` of its frame sits in the viewport.
    If not, perform one non-inertial scroll step and re-query.
    Take step endpoints from the existing `_scroll_gesture` helper.
    Anchor on the `within` container's center or the screen center.
@@ -260,7 +265,8 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
 
    Add a scroll-into-view case to [`tests/driver_conformance.py`](../../tests/driver_conformance.py).
    Use a screen with an off-screen target that a scroll reveals.
-   Assert that `scroll` reveals it.
+   Assert that `scroll` reveals it: `frame_center` of the resolved frame lands in the viewport.
+   Add a target taller than the viewport, and assert `scroll` still succeeds once its center is in view.
    Assert that a target absent from an exhausted region fails.
    This proves the non-inertial, cross-backend contract.
    It holds on FakeDriver, Playwright, XCUITest, and adb.
