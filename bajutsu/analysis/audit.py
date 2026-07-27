@@ -146,6 +146,57 @@ def _located_selectors(scenario: Scenario) -> Iterator[tuple[str, base.Selector]
             yield from _with_nested(where, sel)
 
 
+def _selector_ids(sel: base.Selector) -> Iterator[str]:
+    """The stable id(s) one selector references (`id` / `idMatches`).
+
+    `id` / `idMatches` may each be a list of OR candidates (BE-0221) — the same logical id in each
+    platform's spelling. Consumers bucket by `namespace_of` (splits on `.`), so only the primary
+    (SPEC, dotted) candidate is the referenced id; a platform's underscore alternate (`stable_row_1`)
+    has no `.` and would otherwise register as a spurious off-namespace id.
+    """
+    if "id" in sel:
+        yield base.id_candidates(sel["id"])[0]
+    if "idMatches" in sel:
+        yield base.id_candidates(sel["idMatches"])[0]
+
+
+def _selector_match_ids(sel: base.Selector) -> Iterator[str]:
+    """Every literal id spelling one selector references — **all** `id` OR-candidates, no `idMatches`.
+
+    The string-matching counterpart of `_selector_ids`, for test impact analysis (BE-0321), which
+    substring-matches these against app source rather than bucketing by `namespace_of`. Two differences
+    follow from that: every BE-0221 candidate is yielded, not just the canonical dotted one, because a
+    change to any platform's spelling (`login.button` *or* `login_button`) must be matched; and
+    `idMatches` is dropped, because a regex is a pattern, not a literal that appears verbatim in source
+    (mirroring the endpoint side dropping `urlMatches` / `pathMatches`).
+    """
+    if "id" in sel:
+        yield from base.id_candidates(sel["id"])
+
+
+def step_matchable_ids(step: Step) -> set[str]:
+    """Every literal id spelling one step references (all candidates, no `idMatches`), for BE-0321.
+
+    Covers the step's nested control flow and `within` scopes. Impact analysis inverts these into a
+    literal → step index and substring-matches each against a diff. Pure.
+    """
+    return {
+        rid
+        for where, sel in _step_selectors(step)
+        for _, scoped in _with_nested(where, sel)
+        for rid in _selector_match_ids(scoped)
+    }
+
+
+def scenario_matchable_ids(scenario: Scenario) -> set[str]:
+    """Every literal id spelling a scenario references (all candidates, no `idMatches`), for BE-0321.
+
+    The scenario-wide counterpart of `step_matchable_ids`, covering steps, nested control flow,
+    `within` scopes, and scenario-level assertions. Pure.
+    """
+    return {rid for _, sel in _located_selectors(scenario) for rid in _selector_match_ids(sel)}
+
+
 def referenced_ids(scenario: Scenario) -> set[str]:
     """The stable ids (`id` / `idMatches`) a scenario statically references.
 
@@ -153,17 +204,7 @@ def referenced_ids(scenario: Scenario) -> set[str]:
     measures these against an app's declared `idNamespaces`. Pure: no device, no model, no side
     effects.
     """
-    ids: set[str] = set()
-    for _, sel in _located_selectors(scenario):
-        # `id` / `idMatches` may each be a list of OR candidates (BE-0221) — the same logical id in
-        # each platform's spelling. Coverage buckets by `namespace_of` (splits on `.`), so only the
-        # primary (SPEC, dotted) candidate is the referenced id; a platform's underscore alternate
-        # (`stable_row_1`) has no `.` and would otherwise register as a spurious off-namespace id.
-        if "id" in sel:
-            ids.add(base.id_candidates(sel["id"])[0])
-        if "idMatches" in sel:
-            ids.add(base.id_candidates(sel["idMatches"])[0])
-    return ids
+    return {rid for _, sel in _located_selectors(scenario) for rid in _selector_ids(sel)}
 
 
 def _step_findings(step: Step) -> Iterator[Finding]:

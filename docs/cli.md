@@ -203,6 +203,51 @@ bajutsu coverage --target <name> [--config ...] [--runs <dir>] [--crawl <screenm
   it **exits 0 even with gaps** (only a missing config / scenarios dir or an unreadable scenario exits
   2). A gap is a namespace to cover, not a verdict.
 
+## `impact`
+
+**Test impact analysis** — from a source change, which scenario steps that change is likely to affect
+(AI-independent; [BE-0321](../roadmaps/BE-0321-test-impact-analysis/BE-0321-test-impact-analysis.md)).
+It is the reverse of `coverage`: where `coverage` walks the suite forward to the app surface it
+exercises, `impact` inverts the same static analysis into a map from each
+[stable id](glossary.md#scenario-authoring), screen, and asserted endpoint to the `(scenario, step)`
+pairs that reference it, then reads a change as a `git` diff and reports the steps a developer should
+review. A developer sees exactly the steps at risk before pushing; a CI pipeline can order them first
+for fast feedback.
+
+```bash
+bajutsu impact --target <name> [--config ...] [--range HEAD~1..HEAD] [--diff <path>|-] [--repo <dir>] [--json]
+```
+
+- **The change is a `git` diff.** `--range` names a revision range to diff (the default `HEAD` diffs
+  the working tree against `HEAD`); `--repo` picks the repository (default: the current directory).
+  Alternatively `--diff <path>` reads a unified diff from a file, or `--diff -` from stdin — the form
+  a CI pipeline that already has the diff feeds in. In working-tree mode (a range with no `..`), an
+  untracked new file is folded in too — read for its referenced ids, or marked unattributable when it
+  is binary — so a brand-new screen is not silently missed.
+- **The match is a plain string search**, over the [stable ids](glossary.md#scenario-authoring) (and
+  screen names / endpoint paths) the suite already declares: an id is *touched* when its literal
+  appears on an added or removed line of the diff. This needs no language-specific parsing and encodes
+  no per-app knowledge, so it works identically for a Swift, Kotlin, or TypeScript diff.
+- **Reports** the affected `(scenario, step)` pairs, each carrying the touched literal that implicates
+  it (so you see not just *which* step but *why*), as text or `--json` for a CI consumer.
+- **Soundness is bounded, and the bound is surfaced.** A change the scan cannot vouch for is
+  *unattributable*: a change that edits no referenced literal (a handler's logic, a shared helper), or
+  one the string match can never see into (a binary file). When the change carries any such part, the
+  report is flagged **incomplete** and lists the unattributable files, so a CI narrowing must **fall
+  back to the full suite** on that signal (`--json`'s `complete` is `false`). Over-selection is the
+  safe direction — a short or common id may widen the affected set, but no affected step is silently
+  skipped.
+- **Safe CI use.** The affected set is a *mechanism*; a team chooses the policy. The safe default is
+  additive: order the affected steps first, or flag them for a human, while still running the whole
+  suite. Narrowing a pre-merge run down to the affected set is opt-in, and sound only with two
+  safeguards — the **conservative fallback** above, and a **full-suite safety cadence** (the whole
+  deterministic suite still runs on merge to the main branch, nightly, or at release), so a step the
+  scan misses is caught before it ships. In every case the pass/fail verdict stays with the
+  deterministic runner.
+- **Advisory and read-only**: it never runs a scenario, never edits anything, and **never gates CI** —
+  it **exits 0 whatever the affected set** (only a missing config / scenarios dir, an unreadable
+  scenario, or a `git` / diff read failure exits 2). No model is consulted at any point.
+
 ## `stats`
 
 An **aggregate run-stats dashboard** — the read-only trend *across* many runs, complementing the
