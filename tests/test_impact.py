@@ -51,6 +51,32 @@ def test_reverse_index_covers_nested_control_flow_and_within() -> None:
         assert steps[0].index == 1
 
 
+def test_reverse_index_maps_every_id_candidate_spelling() -> None:
+    # A BE-0221 OR-candidate id carries each platform's spelling; a change to *any* of them must be
+    # matchable, so all candidates are indexed (not just the canonical dotted one).
+    idx = _index("- name: x\n  steps:\n    - tap: { id: [login.button, login_button] }\n")
+    id_keys = {k.value for k in idx.entries if k.kind == "id"}
+    assert id_keys == {"login.button", "login_button"}
+
+
+def test_reverse_index_does_not_index_idmatches_regex() -> None:
+    # `idMatches` is a regex/pattern, not a literal that appears verbatim in source — like the endpoint
+    # side dropping urlMatches/pathMatches, it must not be substring-matched against a diff.
+    idx = _index("- name: x\n  steps:\n    - tap: { idMatches: 'login.*' }\n")
+    assert not [k for k in idx.entries if k.kind == "id"]
+
+
+def test_a_change_to_the_native_id_alternate_selects_the_step() -> None:
+    # The under-selection the multi-candidate index fixes: source touches only the platform-native
+    # spelling `login_button`, which must still select the step authored with the OR-candidate id.
+    idx = _index(
+        "- name: login\n  steps:\n"
+        "    - { tap: { id: [login.button, login_button] }, name: tap login }\n"
+    )
+    report = impact(idx, [ChangedFile("Login.kt", ['resource-id = "login_button"'])])
+    assert [a.step.label for a in report.affected] == ["tap login"]
+
+
 def test_reverse_index_maps_endpoint_literals_not_regex() -> None:
     idx = _index(
         "- name: x\n  steps:\n"

@@ -19,14 +19,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from bajutsu.analysis.audit import referenced_ids, step_referenced_ids
+from bajutsu.analysis.audit import scenario_matchable_ids, step_matchable_ids
 from bajutsu.analysis.coverage import referenced_requests, step_requests
-from bajutsu.scenario import RequestMatch, Scenario, Step
-from bajutsu.scenario.models.steps import _STEP_ACTIONS
+from bajutsu.scenario import STEP_ACTIONS, RequestMatch, Scenario, Step
 
 # The YAML key each action field serializes to, so a step's label reads as its author wrote it
-# (`assert_` → `assert`). Derived from the model, like `_STEP_ACTIONS`, so a new action needs no edit.
-_ACTION_KEYS = {f: Step.model_fields[f].alias or f for f in _STEP_ACTIONS}
+# (`assert_` → `assert`). Derived from the model, like `STEP_ACTIONS`, so a new action needs no edit.
+_ACTION_KEYS = {f: Step.model_fields[f].alias or f for f in STEP_ACTIONS}
 
 
 @dataclass(frozen=True, order=True)
@@ -104,7 +103,7 @@ def _step_label(step: Step, index: int) -> str:
     """A human label for a step: its `name`, else its action key, else its position."""
     if step.name:
         return step.name
-    action = next((_ACTION_KEYS[f] for f in _STEP_ACTIONS if getattr(step, f) is not None), None)
+    action = next((_ACTION_KEYS[f] for f in STEP_ACTIONS if getattr(step, f) is not None), None)
     return action or f"step {index}"
 
 
@@ -135,7 +134,7 @@ def reverse_index(scenarios: list[Scenario]) -> ReverseIndex:
         step_endpoints: set[str] = set()
         for i, step in enumerate(s.steps, start=1):
             ref = StepRef(s.name, i, _step_label(step, i))
-            for rid in step_referenced_ids(step):
+            for rid in step_matchable_ids(step):
                 add("id", rid, ref)
                 step_ids.add(rid)
             for ep in _request_literals(list(step_requests(step))):
@@ -151,7 +150,7 @@ def reverse_index(scenarios: list[Scenario]) -> ReverseIndex:
                 add(kind, value, StepRef(s.name, 0, kind))
         # Scenario-level `expect`: ids / endpoints referenced by no step belong to the scenario itself.
         expect_ref = StepRef(s.name, 0, "expect")
-        for rid in referenced_ids(s) - step_ids:
+        for rid in scenario_matchable_ids(s) - step_ids:
             add("id", rid, expect_ref)
         for ep in _request_literals(referenced_requests(s)) - step_endpoints:
             add("endpoint", ep, expect_ref)
