@@ -23,7 +23,7 @@ it together in one BE-creation PR. The only files *this* skill touches are under
 
 ## Prime directives (these bound every idea)
 
-Read [`CLAUDE.md`](../../CLAUDE.md) and [`DESIGN.md`](../../DESIGN.md) before
+Read [`AGENTS.md`](../../AGENTS.md) and [`DESIGN.md`](../../DESIGN.md) before
 proposing. Any idea must respect them, and you should say so when an idea brushes against
 a boundary:
 
