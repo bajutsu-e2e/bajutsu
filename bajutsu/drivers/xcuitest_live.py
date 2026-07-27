@@ -56,6 +56,9 @@ BACKSPACE_KEY = "\ue003"
 # to zoom out — so its magnitude is fixed and only the sign varies. `mobile: rotateElement` carries
 # direction in `rotation` instead, so its velocity is a fixed positive rate (see the `rotate()` comment).
 _DRAG_DURATION_SECONDS = 0.5
+# `scroll` drags over a longer duration than a plain `swipe` so the scroll view settles where the
+# gesture ends rather than flinging past it — the non-inertial contract (BE-0326).
+_SCROLL_DURATION_SECONDS = 1.0
 _PINCH_VELOCITY = 1.0
 _ROTATE_VELOCITY = 1.0
 
@@ -385,9 +388,22 @@ class XcuitestLiveDriver:
         )
 
     def scroll(self, frm: base.Point, to: base.Point) -> None:
-        # A real XCUITest drag scrolls iOS scroll views, so a directional scroll is just a swipe —
-        # the same identity the runner-channel driver keeps.
-        self.swipe(frm, to)
+        # A non-inertial pan (BE-0326): `mobile: dragFromToForDuration` over a longer duration than a
+        # plain drag keeps the scroll view moving with the finger and settling where it ends, leaving
+        # no fling momentum. A quick flick's post-lift travel is device- and frame-rate-dependent —
+        # the non-determinism the `scroll` action removes by re-querying after each bounded step.
+        self._client.execute(
+            "mobile: dragFromToForDuration",
+            [
+                {
+                    "fromX": frm[0],
+                    "fromY": frm[1],
+                    "toX": to[0],
+                    "toY": to[1],
+                    "duration": _SCROLL_DURATION_SECONDS,
+                }
+            ],
+        )
 
     def pinch(self, sel: base.Selector, scale: float) -> None:
         # Appium's `mobile: pinch` needs a velocity whose sign matches the scale: positive to zoom in

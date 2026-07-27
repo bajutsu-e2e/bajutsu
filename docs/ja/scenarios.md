@@ -278,6 +278,7 @@ targets:
 | `selectOption` | `selectOption: { sel: <Selector>, option: "..." }` | web の `<select>` をこの value を持つ option に合わせる。web 専用（iOS / Android は失敗する） |
 | `swipe` | `swipe: { on: <Selector>, direction: up\|down\|left\|right }` または `swipe: { from: [x,y], to: [x,y] }` | セレクタ形と座標形は混在できない。方向指定形式は**スクロール**する |
 | `drag` | `drag: { on: <Selector>, direction: up\|down\|left\|right, amount?: <frac> }` | 要素そのものを**ドラッグ**する（ハンドル／仕切り／スライダー）。スクロールではない |
+| `scroll` | `scroll: { to: <Selector>, direction?: up\|down\|left\|right, within?: <Selector>, maxScrolls?: <int> }` | `to` が画面に入るまで（慣性なしに）スクロールし、上限に達したら失敗する。`direction` は**スクロール**方向（既定 `down`）で、`swipe` とは逆向き |
 | `pinch` | `pinch: { sel: <Selector>, scale: <num> }` | 2 本指の拡縮。`scale > 0`（`>1` で拡大, `<1` で縮小） |
 | `rotate` | `rotate: { sel: <Selector>, radians: <num> }` | 2 本指の回転。`>0` で時計回り |
 | `handleSystemAlert` | `handleSystemAlert: { sel: <Selector>, timeout: <sec> }` | iOS SpringBoard の権限プロンプトのボタンを決定的に tap する（[下記](#handlesystemalert決定的なシステムアラートステップ)）。iOS（XCUITest）専用。`sel` は `label` / `labelMatches` / `index` のみ受け付ける |
@@ -348,6 +349,21 @@ targets:
 ```
 
 `drag` は要素アンカーの**ポインタドラッグ**です。要素そのものを掴んで方向へ動かすもので、リサイズ用の仕切り、スライダーのつまみ、並べ替えハンドルなど、スクロールではなくドラッグする操作に使います。方向指定 `swipe` と同じジオメトリを共有し（`amount` は画面に対する割合で `0 < amount ≤ 1`、省略時は小さな既定値）、方向指定 `swipe` が**スクロール**するのに対して `drag` は本物のポインタドラッグを行います。差が出るのは web だけです。web では方向指定 `swipe` が wheel スクロールになり、掴んだハンドルを動かせないため、その場合は `drag` を使います。iOS / Android では OS の本物のドラッグがスクロールもハンドル移動も兼ねるので、両者は一致します。
+
+### `scroll`
+
+```yaml
+- scroll: { to: { id: notice.row.20 } }                 # 行が現れるまで下へスクロールし、続けて…
+- tap: { id: notice.row.20 }
+- scroll: { to: { label: "Log out", traits: [button] }, # 特定のコンテナをスクロールする…
+            within: { id: settings.list }, maxScrolls: 25 }
+```
+
+`scroll` は画面外の要素を表示領域に入れます。1 ステップ分スクロールしてツリーを再クエリし、`to` が解決してそのフレームの**中心**が画面内に入った時点で止まります。中心は続く `tap` が狙う点なので、ビューポートより高い要素でも、中心が入りさえすれば成功します。`maxScrolls` 分（既定 15）を使い切ったとき、またはスクロールしても対象領域が変化しなくなったとき、決定論的に失敗します。領域が末尾に達して対象がそこにないということなので、`to` の打ち間違いは上限まで回さずに早く失敗します。`within` はジェスチャと末尾判定を 1 つのスクロール可能なコンテナに限定します。省略すると画面全体をスクロールします。
+
+対象を**現れさせる**なら `scroll`、**決まったジェスチャ**なら `swipe`、**掴んだハンドルを動かす**なら `drag` を使います。各ステップは慣性を残しません。画面に対する有限の距離を進んで止まるので、対象がビューポートを飛び越すことはなく、同じシナリオが高速な実機と遅い CI エミュレータのどちらでも同じように対象へ届きます。手作業で調整した `swipe` の連鎖では保証できなかった決定論です。
+
+> **`scroll` の `direction` は、指ではなくコンテンツが動く向きです**。`swipe` とは逆になります。`scroll: { direction: down }` は fold より下のコンテンツを現します（ドライバーは指を*上*へスワイプします）。`swipe: { direction: up }` は指が上に動きます。`scroll` に手を伸ばす書き手は「リストを下へスクロールする」と考えるので、`scroll` はその向きを名前にします。`swipe` は指を名前にします。
 
 ### `doubleTap` / `pinch` / `rotate`（ジェスチャ）
 

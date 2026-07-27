@@ -36,6 +36,8 @@ final class Router {
             return handleGesture(request)
         case ("POST", "/swipe"):
             return handleSwipe(request)
+        case ("POST", "/scroll"):
+            return handleScroll(request)
         case ("POST", "/type"):
             return handleType(request)
         case ("POST", "/deleteText"):
@@ -197,6 +199,26 @@ final class Router {
             return .error(400, "missing or invalid from/to coordinates")
         }
         let result = onMainCatching { self.provider.swipe(fromX: fx, fromY: fy, toX: tx, toY: ty) }
+        return tapResultResponse(result)
+    }
+
+    // A directional scroll (BE-0326). Same coordinates as `/swipe`, but the provider drags
+    // non-inertially — holding at the end before lift so the scroll view settles where the gesture
+    // left it, rather than flinging past the target with momentum.
+    private func handleScroll(_ request: HTTPRequest) -> HTTPResponse {
+        guard let body = request.body,
+              let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any] else {
+            return .error(400, "missing or invalid JSON body")
+        }
+        guard let rawFrom = json["from"] as? [Any], rawFrom.count == 2,
+              let fx = (rawFrom[0] as? NSNumber)?.doubleValue,
+              let fy = (rawFrom[1] as? NSNumber)?.doubleValue,
+              let rawTo = json["to"] as? [Any], rawTo.count == 2,
+              let tx = (rawTo[0] as? NSNumber)?.doubleValue,
+              let ty = (rawTo[1] as? NSNumber)?.doubleValue else {
+            return .error(400, "missing or invalid from/to coordinates")
+        }
+        let result = onMainCatching { self.provider.scroll(fromX: fx, fromY: fy, toX: tx, toY: ty) }
         return tapResultResponse(result)
     }
 

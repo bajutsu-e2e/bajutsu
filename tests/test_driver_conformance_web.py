@@ -22,7 +22,14 @@ from collections.abc import Iterator
 from typing import Any
 
 import pytest
-from driver_conformance import FIELD_ID, ConformanceHarness, DriverConformanceContract
+from driver_conformance import (
+    FIELD_ID,
+    SCROLL_ROW_COUNT,
+    SCROLL_ROW_PREFIX,
+    SCROLL_TALL_ID,
+    ConformanceHarness,
+    DriverConformanceContract,
+)
 
 from bajutsu.drivers import base
 from bajutsu.drivers.playwright import PlaywrightDriver
@@ -89,6 +96,24 @@ class PlaywrightConformanceHarness:
 
     def with_screen(self, elements: list[base.Element]) -> base.Driver:
         self._page.set_content(_render(elements))
+        return self._driver
+
+    def scrollable_screen(self) -> base.Driver:
+        # A document taller than the viewport (BE-0326): block rows stack down the page, so the lower
+        # ones and the tall row start below the fold. They stay in the DOM (so `query()` reports them
+        # with an out-of-viewport `getBoundingClientRect`), and the driver's real wheel scroll brings
+        # the target's center into `window.innerHeight` — the exact viewport `viewport()` reports.
+        rows = "".join(
+            f'<div data-testid="{SCROLL_ROW_PREFIX}{i}" '
+            f'style="height:90px;background:#ccc">row {i}</div>'
+            for i in range(SCROLL_ROW_COUNT)
+        )
+        tall = (
+            f'<div data-testid="{SCROLL_TALL_ID}" style="height:1400px;background:#aaa">tall</div>'
+        )
+        self._page.set_content(
+            f"<!doctype html><html><body style='margin:0'>{rows}{tall}</body></html>"
+        )
         return self._driver
 
 

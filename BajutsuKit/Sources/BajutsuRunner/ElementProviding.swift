@@ -52,6 +52,12 @@ public protocol ElementProviding: AnyObject {
     /// Swipe between two screen coordinates.
     func swipe(fromX: Double, fromY: Double, toX: Double, toY: Double) -> TapResult
 
+    /// Scroll (a non-inertial drag) between two screen coordinates (BE-0326). Unlike `swipe`, the
+    /// drag holds at its end before lifting, so the scroll view settles where the gesture left it
+    /// rather than flinging past the target with momentum — the contract the `scroll` action's
+    /// bounded re-query loop relies on.
+    func scroll(fromX: Double, fromY: Double, toX: Double, toY: Double) -> TapResult
+
     /// Type text into the focused element.
     func typeText(_ text: String) -> TapResult
 

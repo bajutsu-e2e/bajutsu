@@ -112,6 +112,13 @@ def test_drag_direction_is_a_mouse_drag() -> None:
     assert "page.mouse.wheel" not in code
 
 
+def test_scroll_maps_to_scroll_into_view() -> None:
+    # A Playwright locator auto-scrolls its target into view before acting, so `scroll` (BE-0326)
+    # maps to scrollIntoViewIfNeeded on the target — direction / within / maxScrolls are subsumed.
+    code = _gen("- name: x\n  steps:\n    - scroll: { to: { id: notice.row.20 } }\n")
+    assert "await page.getByTestId('notice.row.20').scrollIntoViewIfNeeded();" in code
+
+
 def test_selector_label_traits_and_role() -> None:
     code = _gen(
         "- name: x\n  steps:\n"

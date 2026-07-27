@@ -40,7 +40,7 @@ def _selector_hint(obj: object) -> str:
         v = getattr(obj, attr, None)
         if v:
             return str(v)
-    for attr in ("into", "on", "sel", "of", "within"):
+    for attr in ("into", "on", "sel", "of", "to", "within"):
         nested = getattr(obj, attr, None)
         if nested is not None:
             hint = _selector_hint(nested)

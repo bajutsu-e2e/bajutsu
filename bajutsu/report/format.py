@@ -84,6 +84,7 @@ _ACTION_META = {
     "pinch": ("pinch", "act-move"),
     "rotate": ("rotate", "act-move"),
     "drag": ("drag", "act-move"),
+    "scroll": ("scroll", "act-move"),
     "wait": ("wait", "act-wait"),
     "assert": ("assert", "act-assert"),
     "relaunch": ("relaunch", "act-wait"),

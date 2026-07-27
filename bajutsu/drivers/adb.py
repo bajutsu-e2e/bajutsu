@@ -239,6 +239,7 @@ class AdbDriver(CoordinateTreeDriver):
     _SCROLL_RETRIES = 3  # scroll-and-re-query attempts before a deterministic not-found failure
     _SCROLL_FROM_FRAC = 0.7  # swipe start, as a fraction of screen height
     _SCROLL_TO_FRAC = 0.3  # swipe end (< start ⇒ upward ⇒ content scrolls up)
+    _SCROLL_DURATION_MS = 600  # the `scroll` pan duration: long enough to drag, not fling (BE-0326)
 
     def __init__(
         self,
@@ -421,9 +422,13 @@ class AdbDriver(CoordinateTreeDriver):
         self._run(adb.swipe_cmd(self.serial, frm[0], frm[1], to[0], to[1]))
 
     def scroll(self, frm: base.Point, to: base.Point) -> None:
-        # An adb `input swipe` with a finite duration is a real drag, which scrolls, so a directional
-        # scroll is just a swipe.
-        self.swipe(frm, to)
+        # A non-inertial pan (BE-0326): `input swipe` over a longer duration than the default drag
+        # keeps the list moving with the finger and stopping when the gesture ends, so the scroll
+        # leaves no fling momentum. A short swipe over the same distance flings — its post-lift
+        # travel varies by device, which is exactly the non-determinism the `scroll` action removes.
+        self._run(
+            adb.swipe_cmd(self.serial, frm[0], frm[1], to[0], to[1], self._SCROLL_DURATION_MS)
+        )
 
     def back(self) -> None:
         # The true system back: a KEYCODE_BACK key event. Android has no on-screen "back" element to

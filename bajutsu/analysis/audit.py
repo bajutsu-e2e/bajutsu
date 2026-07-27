@@ -111,6 +111,10 @@ def _step_selectors(step: Step) -> Iterator[tuple[str, base.Selector]]:
         yield "rotate", step.rotate.sel.as_selector()
     if step.drag is not None:
         yield "drag", step.drag.on.as_selector()
+    if step.scroll is not None:
+        yield "scroll", step.scroll.to.as_selector()
+        if step.scroll.within is not None:
+            yield "scroll", step.scroll.within.as_selector()
     if step.wait is not None:
         if step.wait.for_ is not None:
             yield "wait", step.wait.for_.as_selector()

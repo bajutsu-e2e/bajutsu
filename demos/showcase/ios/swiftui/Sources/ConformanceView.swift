@@ -24,6 +24,15 @@ struct ConformanceView: View {
     /// coordinate tap has a known center to aim at.
     static let fieldID = "conformance.field"
 
+    /// The sentinel identifier the scroll conformance test seeds (BE-0326): when it is the whole
+    /// seeded set, render the fixed scrollable list below instead of the per-identifier buttons, so
+    /// the `scroll` action's re-query loop is driven against XCUITest's real query / scroll code.
+    /// Mirrors `driver_conformance.SCROLL_SENTINEL` and the Compose `CONFORMANCE_SCROLL_SENTINEL`.
+    static let scrollSentinel = "conformance.scroll"
+    static let scrollRowPrefix = "conformance.scroll.row."
+    static let scrollRowCount = 20
+    static let scrollTallID = "conformance.scroll.tall"
+
     /// Backs the editable field. The empty placeholder is deliberate: an iOS text field reports its
     /// placeholder as the accessibility value when empty, which would make the field read non-empty
     /// before any typing and hide the round-trip length change the contract observes.
@@ -34,6 +43,56 @@ struct ConformanceView: View {
     @FocusState private var fieldFocused: Bool
 
     var body: some View {
+        Group {
+            if identifiers == [Self.scrollSentinel] {
+                scrollBody
+            } else {
+                standardBody
+            }
+        }
+        // A reseed (the suite writing a new spec) means the previous screen's test is done. A
+        // text-editing test leaves iOS transient UI up — the keyboard, and after select-all/copy the
+        // system edit menu (a `PopoverDismissRegion` backdrop) — that floats *above* this view, so
+        // re-rendering the content alone does not clear it; it would obscure the next screen's marker,
+        // and the reseed readiness probe would see only `PopoverDismissRegion` (BE-0280). Resigning the
+        // field and ending editing app-wide dismisses both, deterministically, at the screen boundary —
+        // no fixed sleep, and the backend-agnostic contract stays free of any iOS-specific teardown.
+        .onChange(of: identifiers) {
+            fieldFocused = false
+            UIApplication.shared.sendAction(
+                #selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil
+            )
+        }
+    }
+
+    /// The scroll conformance screen (BE-0326): a lazy, scrollable list of rows plus a row taller than
+    /// the viewport, so the lower rows and the tall row start below the fold. Lazy (`LazyVStack`), so
+    /// an off-screen row is dropped from the a11y tree until scrolled to — the native lazy-list case
+    /// the `scroll` action's re-query loop must handle. The `scroll` conformance test drives
+    /// XCUITest's real scroll / query here rather than the shared base alone.
+    private var scrollBody: some View {
+        ScrollView {
+            LazyVStack(spacing: 8) {
+                Text("ready").accessibilityID(Self.readyID)
+                ForEach(0..<Self.scrollRowCount, id: \.self) { i in
+                    Button("row \(i)") {}
+                        .frame(width: 280, height: 90)
+                        .background(Color.gray.opacity(0.25))
+                        .contentShape(Rectangle())
+                        .accessibilityID("\(Self.scrollRowPrefix)\(i)")
+                }
+                // A row taller than the viewport: the `scroll` stop condition checks the target's
+                // center, so this resolves once its center — not its whole frame — is on-screen.
+                Button("tall") {}
+                    .frame(width: 280, height: 1400)
+                    .background(Color.gray.opacity(0.25))
+                    .contentShape(Rectangle())
+                    .accessibilityID(Self.scrollTallID)
+            }
+        }
+    }
+
+    private var standardBody: some View {
         // Duplicates are the point (the ambiguous-selector case), so the row identity is the
         // position, never the identifier — a `\.self` id would collapse repeated identifiers.
         VStack(spacing: 8) {
@@ -63,19 +122,6 @@ struct ConformanceView: View {
                     .contentShape(Rectangle())
                     .accessibilityID(identifier)
             }
-        }
-        // A reseed (the suite writing a new spec) means the previous screen's test is done. A
-        // text-editing test leaves iOS transient UI up — the keyboard, and after select-all/copy the
-        // system edit menu (a `PopoverDismissRegion` backdrop) — that floats *above* this view, so
-        // re-rendering the content alone does not clear it; it would obscure the next screen's marker,
-        // and the reseed readiness probe would see only `PopoverDismissRegion` (BE-0280). Resigning the
-        // field and ending editing app-wide dismisses both, deterministically, at the screen boundary —
-        // no fixed sleep, and the backend-agnostic contract stays free of any iOS-specific teardown.
-        .onChange(of: identifiers) {
-            fieldFocused = false
-            UIApplication.shared.sendAction(
-                #selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil
-            )
         }
     }
 }

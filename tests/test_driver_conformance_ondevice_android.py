@@ -39,6 +39,7 @@ from pathlib import Path
 
 import pytest
 from driver_conformance import (
+    _TALL_TARGET_NEEDS_EXACT_VIEWPORT,
     ConformanceHarness,
     DriverConformanceContract,
     OnDeviceConformanceHarness,
@@ -134,3 +135,9 @@ class TestAdbDriverConformance(DriverConformanceContract):
     @pytest.fixture
     def harness(self, _adb_driver: base.Driver, _component: str) -> ConformanceHarness:
         return _AndroidHarness(_adb_driver, SERIAL, _component)
+
+    @pytest.mark.skip(reason=_TALL_TARGET_NEEDS_EXACT_VIEWPORT)
+    def test_scroll_reveals_a_target_taller_than_the_viewport(
+        self, harness: ConformanceHarness
+    ) -> None:
+        pass

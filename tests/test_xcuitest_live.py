@@ -338,14 +338,25 @@ def test_swipe_issues_a_drag_from_to() -> None:
     assert arg["duration"] > 0  # a real XCUITest drag needs a duration
 
 
-def test_scroll_is_a_swipe() -> None:
+def test_scroll_is_a_non_inertial_drag_over_a_longer_duration() -> None:
+    # A directional scroll is a `mobile: dragFromToForDuration` like a swipe, but over a longer
+    # duration so the scroll view settles where the gesture ends rather than flinging (BE-0326).
     grid = _FakeGrid([])
     client = WebDriverClient(grid)
     client.new_session({})
-    XcuitestLiveDriver(client).scroll((5.0, 200.0), (5.0, 10.0))
-    (script, (arg,)) = grid.executed[0]
-    assert script == "mobile: dragFromToForDuration"
-    assert (arg["fromX"], arg["fromY"], arg["toX"], arg["toY"]) == (5.0, 200.0, 5.0, 10.0)
+    driver = XcuitestLiveDriver(client)
+    driver.swipe((5.0, 200.0), (5.0, 10.0))
+    driver.scroll((5.0, 200.0), (5.0, 10.0))
+    (_swipe_script, (swipe_arg,)) = grid.executed[0]
+    (scroll_script, (scroll_arg,)) = grid.executed[1]
+    assert scroll_script == "mobile: dragFromToForDuration"
+    assert (scroll_arg["fromX"], scroll_arg["fromY"], scroll_arg["toX"], scroll_arg["toY"]) == (
+        5.0,
+        200.0,
+        5.0,
+        10.0,
+    )
+    assert scroll_arg["duration"] > swipe_arg["duration"]
 
 
 def test_pinch_velocity_sign_follows_the_scale() -> None:

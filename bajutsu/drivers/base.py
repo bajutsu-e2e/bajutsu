@@ -204,6 +204,14 @@ class Driver(Protocol):
     # the web backend cannot (a mouse drag does not scroll a page), so it dispatches a wheel event
     # (desktop) or a touch drag (touch context) instead. The `swipe` handler routes the directional
     # form here and the coordinate form to `swipe`, so the coordinate form stays a literal drag.
+    #
+    # The step is non-inertial (BE-0326): content travels with the gesture and stops where it ends,
+    # leaving no momentum carry. A fling's post-lift travel depends on scroll physics and frame
+    # rate, which makes a target land above the fold on a fast device and below it on a slow one —
+    # the non-determinism the `scroll` action removes by re-querying after each bounded step. Web is
+    # already non-inertial; adb pans with a long-duration `input swipe`; XCUITest holds the drag at
+    # its end before lifting. The `scroll` action's bounded re-query loop relies on this contract,
+    # pinned by the driver conformance suite (BE-0114).
     def scroll(self, frm: Point, to: Point) -> None: ...
     # Navigate back one level, each backend using its platform-correct primitive (BE-0210):
     # Android's system back key, iOS's on-screen OS back button, the browser's history.
@@ -260,6 +268,24 @@ class EvidenceProvider(Protocol):
 
     def capabilities(self) -> set[str]: ...
     def network_collector(self, mocks: list[object] | None = None) -> Collector: ...
+
+
+@runtime_checkable
+class ViewportProvider(Protocol):
+    """A backend that can report its true viewport size, for the `scroll` stop condition (BE-0326).
+
+    `scroll` stops when the target's frame center lands inside the viewport, so it needs the real
+    viewport bounds. On a native backend the queried tree holds only on-screen elements, so
+    `screen_size_from_elements` approximates the viewport well enough and no backend need implement
+    this. The web backend is the exception: its tree keeps off-screen DOM nodes, so the content
+    extent overshoots the viewport — Playwright implements this to report `window.innerWidth` /
+    `window.innerHeight` instead. `FakeDriver` implements it too, so its in-memory scrollable model
+    can drive the loop on the fast gate. The handler falls back to `screen_size_from_elements` for
+    any backend that does not implement it, so this stays a narrow opt-in, not a `Driver` requirement.
+    """
+
+    def viewport(self) -> Point:
+        """The viewport size `(w, h)`; its origin is the coordinate space's `(0, 0)`."""
 
 
 @runtime_checkable

@@ -167,6 +167,14 @@ def _step_desc_parts(action: str, payload: Any) -> list[Part]:
         ]
     if action == "drag":
         return _directional_parts(payload)
+    if action == "scroll":
+        parts: list[Part] = [
+            ("", f"{payload.get('direction', '')} to "),
+            *_sel_parts(payload["to"]),
+        ]
+        if payload.get("within"):
+            parts += [("", " within "), *_sel_parts(payload["within"])]
+        return parts
     if action == "wait":
         return _wait_parts(payload)
     if action == "relaunch":

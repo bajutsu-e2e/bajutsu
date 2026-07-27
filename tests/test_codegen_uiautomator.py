@@ -122,6 +122,26 @@ def test_drag_maps_to_swipe_gesture() -> None:
     assert 'device.findObject(byId("divider")).swipe(Direction.RIGHT, 0.75f)' in code
 
 
+def test_scroll_maps_to_uiscrollable_scroll_into_view() -> None:
+    # UI Automator has a native scroll-to-element: UiScrollable.scrollIntoView, bounded by
+    # setMaxSearchSwipes (the peer of maxScrolls) — `scroll` (BE-0326) emits it for id / label targets.
+    code = _gen(
+        "- name: x\n  steps:\n    - scroll: { to: { id: notice.row.20 }, maxScrolls: 25 }\n"
+    )
+    assert (
+        "UiScrollable(UiSelector().scrollable(true)).setAsVerticalList()"
+        '.setMaxSearchSwipes(25).scrollIntoView(UiSelector().resourceIdMatches("(.*:id/)?" '
+        '+ Pattern.quote("notice.row.20")))'
+    ) in code
+
+
+def test_scroll_with_a_compound_selector_is_a_todo() -> None:
+    # scrollIntoView takes a UiSelector, which maps only the primary id / label forms; a compound
+    # selector has no faithful single UiSelector, so it stays a labeled TODO (BE-0326).
+    code = _gen("- name: x\n  steps:\n    - scroll: { to: { id: a, value: v } }\n")
+    assert "// TODO: unsupported selector" in code
+
+
 def test_long_press_pinch_and_unsupported_gestures() -> None:
     code = _gen(
         "- name: x\n  steps:\n"

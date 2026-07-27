@@ -8,10 +8,25 @@ The Playwright (web CI) and XCUITest (on-device E2E) backends reuse the same con
 from __future__ import annotations
 
 import pytest
-from driver_conformance import FIELD_ID, ConformanceHarness, DriverConformanceContract, element
+from driver_conformance import (
+    FIELD_ID,
+    SCROLL_ROW_COUNT,
+    SCROLL_ROW_PREFIX,
+    SCROLL_TALL_ID,
+    ConformanceHarness,
+    DriverConformanceContract,
+    element,
+)
 
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver, React
+
+# The scroll conformance screen's geometry on the fake (BE-0326): a 300x800 viewport over content
+# taller than it. Rows of `_ROW_H` stack from the top, so the lower rows start below the fold; the
+# tall row exceeds the viewport, so only its center — not its whole frame — can land on-screen.
+_SCROLL_VIEWPORT: base.Point = (300.0, 800.0)
+_ROW_W, _ROW_H = 280.0, 90.0
+_TALL_H = 1400.0
 
 # The conformance field's frame on the fake screen: a known, off-origin box so a coordinate tap at
 # its center is unambiguous and never coincides with the default (0,0)-origin seeded elements.
@@ -56,6 +71,19 @@ class FakeConformanceHarness:
     def with_screen(self, elements: list[base.Element]) -> base.Driver:
         field = element(identifier=FIELD_ID, value="", frame=_FIELD_FRAME)
         return FakeDriver(screen=[*elements, field], react=_text_field_react(field))
+
+    def scrollable_screen(self) -> base.Driver:
+        # A FakeDriver in scrollable mode (BE-0326): rows and a taller-than-viewport row in content
+        # coordinates, over a fixed viewport. `scroll` pans a clamped offset and `query()` reports
+        # frames translated by it, so the lower rows and the tall row start with off-screen centers.
+        rows = [
+            element(identifier=f"{SCROLL_ROW_PREFIX}{i}", frame=(0.0, i * _ROW_H, _ROW_W, _ROW_H))
+            for i in range(SCROLL_ROW_COUNT)
+        ]
+        tall = element(
+            identifier=SCROLL_TALL_ID, frame=(0.0, SCROLL_ROW_COUNT * _ROW_H, _ROW_W, _TALL_H)
+        )
+        return FakeDriver(screen=[*rows, tall], viewport=_SCROLL_VIEWPORT)
 
 
 class TestFakeDriverConformance(DriverConformanceContract):

@@ -605,8 +605,13 @@ class XcuitestDriver:
             raise XcuitestChannelError(f"swipe failed ({reply.status})")
 
     def scroll(self, frm: base.Point, to: base.Point) -> None:
-        # A real XCUITest drag scrolls iOS scroll views, so a directional scroll is just a swipe.
-        self.swipe(frm, to)
+        # A non-inertial scroll (BE-0326): the resident runner's `/scroll` holds the drag at its end
+        # before lifting, so the scroll view settles where the gesture left it rather than flinging
+        # past the target — the contract the `scroll` action's bounded re-query loop relies on. A
+        # plain `/swipe` lifts with residual velocity, so iOS carries the content onward.
+        reply = self._transport("POST", "/scroll", {"from": [frm[0], frm[1]], "to": [to[0], to[1]]})
+        if reply.status != _OK:
+            raise XcuitestChannelError(f"scroll failed ({reply.status})")
 
     def select_option(self, sel: base.Selector, option: str) -> None:
         raise base.UnsupportedAction(

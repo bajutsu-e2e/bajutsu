@@ -27,7 +27,7 @@ class Driver(Protocol):
     def tap_point(self, p: Point) -> None: ...       # raw coordinate tap (system alerts, etc.)
     def long_press(self, sel: Selector, duration: float) -> None: ...
     def swipe(self, frm: Point, to: Point) -> None: ...    # a raw pointer drag (coordinate form)
-    def scroll(self, frm: Point, to: Point) -> None: ...   # a directional scroll (BE-0227)
+    def scroll(self, frm: Point, to: Point) -> None: ...   # a non-inertial directional scroll (BE-0227, BE-0326)
     def type_text(self, text: str) -> None: ...
     def wait_for(self, sel: Selector) -> bool: ...   # single-shot: matches the current screen?
     def screenshot(self, path: str) -> None: ...
@@ -183,12 +183,14 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
   condition wait, so a selector that never appears still fails deterministically.
 
   > [!NOTE]
-  > Scroll-into-view is an **adb-only** recovery today: XCUITest / Playwright still fail a
-  > `tap` fast when the target is not in the initial viewport. So a `tap` on a below-the-fold element
-  > can pass on Android (after up to a few swipes) yet fail on iOS/web for the same scenario. The
-  > portable idiom stays an **explicit `swipe` step** (see `demos/showcase/scenarios/notices.yaml`);
-  > the adb auto-scroll is a robustness net, not a substitute for it. Widening it to the other
-  > backends is a follow-up (BE-0210 scoped it to adb).
+  > This implicit scroll-into-view is an **adb-only tap recovery**: XCUITest / Playwright still fail a
+  > `tap` fast when the target is not in the initial viewport, so relying on it makes a `tap` on a
+  > below-the-fold element pass on Android yet fail on iOS/web for the same scenario. The portable way
+  > to reach an off-screen element is the explicit **[`scroll` action](scenarios.md#scroll)** (BE-0326):
+  > one deterministic, non-inertial construct that reveals a target identically on iOS, Android, and
+  > web — `scroll: { to: <selector> }` then act on it. It supersedes the hand-tuned `swipe` chain the
+  > showcase fixture once used. The adb auto-scroll remains a robustness net under `tap`, not the
+  > portable idiom.
 - **Multi-touch** (BE-0232): `pinch` / `rotate` drive a two-slot protocol-B `sendevent` sweep
   (`pinch_contacts` / `rotate_contacts` compute the two contacts' geometry; `rotate` sweeps the
   straight chord between the endpoints, a linear approximation of the arc, like the web backend's

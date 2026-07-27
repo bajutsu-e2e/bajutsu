@@ -130,9 +130,10 @@ def test_back_taps_the_os_back_button() -> None:
     assert sent == [("POST", "/tap", {"handle": "h-back"})]
 
 
-def test_scroll_delegates_to_a_real_swipe_drag() -> None:
-    # A directional scroll on iOS is a real XCUITest drag, so scroll delegates to swipe (BE-0227) —
-    # the same POST /swipe an XCUITest drag issues, since a drag already scrolls scroll views.
+def test_scroll_posts_to_the_non_inertial_scroll_route() -> None:
+    # A directional scroll on iOS is non-inertial (BE-0326): it posts to the resident runner's
+    # dedicated `/scroll`, which holds the drag at its end before lifting so the scroll view settles
+    # where the gesture left it — distinct from `/swipe`, whose drag lifts with residual velocity.
     sent: list[tuple[str, str, dict[str, Any] | None]] = []
 
     def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
@@ -140,7 +141,7 @@ def test_scroll_delegates_to_a_real_swipe_drag() -> None:
         return _Reply(status="ok")
 
     _driver(transport).scroll((10.0, 20.0), (30.0, 40.0))
-    assert sent == [("POST", "/swipe", {"from": [10.0, 20.0], "to": [30.0, 40.0]})]
+    assert sent == [("POST", "/scroll", {"from": [10.0, 20.0], "to": [30.0, 40.0]})]
 
 
 def test_pinch_and_rotate_emit_gesture_requests_with_the_handle() -> None:

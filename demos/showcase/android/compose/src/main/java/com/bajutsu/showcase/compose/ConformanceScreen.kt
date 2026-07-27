@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -28,6 +29,15 @@ const val CONFORMANCE_READY_ID = "conformance.ready"
 // conformance screen like the marker, with a fixed size so the coordinate tap has a known center.
 const val CONFORMANCE_FIELD_ID = "conformance.field"
 
+// The sentinel the scroll conformance test seeds (BE-0326): when it is the whole seeded set, render
+// the fixed scrollable list below instead of the per-identifier buttons, so the `scroll` action's
+// re-query loop is driven against the adb driver's real query / scroll code. Mirrors the iOS
+// ConformanceView.scrollSentinel and driver_conformance.SCROLL_SENTINEL.
+const val CONFORMANCE_SCROLL_SENTINEL = "conformance.scroll"
+const val CONFORMANCE_SCROLL_ROW_PREFIX = "conformance.scroll.row."
+const val CONFORMANCE_SCROLL_ROW_COUNT = 20
+const val CONFORMANCE_SCROLL_TALL_ID = "conformance.scroll.tall"
+
 // BE-0114 / BE-0270: the on-device realization of a driver-conformance screen for the adb backend,
 // the Compose twin of the iOS ConformanceView. The conformance suite seeds an arbitrary set of
 // identifiers — duplicated (an ambiguous selector), empty (a zero-match), or unique — and each
@@ -40,6 +50,10 @@ const val CONFORMANCE_FIELD_ID = "conformance.field"
 // extra, delivered to the running singleTask activity through onNewIntent.
 @Composable
 fun ConformanceScreen(identifiers: List<String>) {
+    if (identifiers == listOf(CONFORMANCE_SCROLL_SENTINEL)) {
+        ScrollConformanceScreen()
+        return
+    }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -86,6 +100,50 @@ fun ConformanceScreen(identifiers: List<String>) {
                 contentAlignment = Alignment.Center,
             ) {
                 Text(identifier)
+            }
+        }
+    }
+}
+
+// BE-0326: the scroll conformance screen, the Compose twin of the iOS ConformanceView.scrollBody. A
+// lazy, scrollable list of rows plus a row taller than the viewport, so the lower rows and the tall
+// row start below the fold. LazyColumn is lazy, so an off-screen row is not composed — it is absent
+// from the a11y tree until scrolled to, the native lazy-list case the `scroll` action's re-query loop
+// must handle. Drives the adb driver's real scroll / query, not the shared base alone.
+@Composable
+private fun ScrollConformanceScreen() {
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .enableTestTagsAsResourceId(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        // The readiness marker, always the first item so the harness sees it as soon as the list mounts.
+        item { Text("ready", Modifier.aid(CONFORMANCE_READY_ID)) }
+        items(CONFORMANCE_SCROLL_ROW_COUNT) { i ->
+            Box(
+                modifier = Modifier
+                    .size(width = 280.dp, height = 90.dp)
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .aid("$CONFORMANCE_SCROLL_ROW_PREFIX$i")
+                    .clickable {},
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("row $i")
+            }
+        }
+        // A row taller than the viewport: the `scroll` stop condition checks the target's center, so
+        // this resolves once its center — not its whole frame — is on-screen.
+        item {
+            Box(
+                modifier = Modifier
+                    .size(width = 280.dp, height = 1400.dp)
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .aid(CONFORMANCE_SCROLL_TALL_ID)
+                    .clickable {},
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("tall")
             }
         }
     }

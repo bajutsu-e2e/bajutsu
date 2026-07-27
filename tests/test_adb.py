@@ -415,9 +415,10 @@ def test_swipe_command_shape() -> None:
     assert calls[0] == ["adb", "-s", "U", "shell", "input", "swipe", "10", "20", "30", "40", "300"]
 
 
-def test_scroll_delegates_to_a_real_drag() -> None:
-    # A directional scroll on Android is a real `input swipe` drag, so scroll delegates to swipe
-    # (BE-0227) — the same command shape, since a drag already scrolls Android scroll views.
+def test_scroll_is_a_non_inertial_pan_with_a_longer_duration() -> None:
+    # A directional scroll on Android is a non-inertial `input swipe` drag (BE-0326): the same command
+    # as a swipe but over a longer duration (600ms vs the 300ms default), so the list moves with the
+    # finger and settles when the gesture ends rather than flinging past the target with momentum.
     calls: list[list[str]] = []
 
     def run(args: list[str]) -> str:
@@ -427,7 +428,7 @@ def test_scroll_delegates_to_a_real_drag() -> None:
         return ""
 
     AdbDriver("U", run=run).scroll((10, 20), (30, 40))
-    assert calls[0] == ["adb", "-s", "U", "shell", "input", "swipe", "10", "20", "30", "40", "300"]
+    assert calls[0] == ["adb", "-s", "U", "shell", "input", "swipe", "10", "20", "30", "40", "600"]
 
 
 def test_type_text_passes_value_over_stdin_not_argv(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -140,6 +140,7 @@ Action    ::=
   | { selectOption:{ sel: <Selector>, option: string } }   # set a web <select> to the option with this value (web only; iOS/Android raise)
   | { swipe:       <Swipe> }                          # directional form scrolls; coordinate form is a raw drag
   | { drag:        <Drag> }                           # pointer-drag a grabbed element (handle / divider / slider), not a scroll
+  | { scroll:      <Scroll> }                         # scroll (non-inertially) until `to` is on-screen, else fail at a bound (BE-0326)
   | { back:        {} }                               # navigate back (Android system key / iOS OS back button / web history)
   | { pinch:       { sel: <Selector>, scale: number } }    # scale > 0  (>1 in, <1 out)
   | { rotate:      { sel: <Selector>, radians: number } }  # >0 clockwise
@@ -170,6 +171,9 @@ Swipe ::=
   | { from: <Point>,  to: <Point> }                                                # coordinate form ┘
     # amount (selector form only): travel as a fraction of the screen, 0 < amount ≤ 1; omitted = a small default fraction (0.125)
 Drag ::= { on: <Selector>, direction: ("up"|"down"|"left"|"right"), amount?: number }   # element-anchored pointer drag (BE-0227), amount as in Swipe
+Scroll ::= { to: <Selector>, direction?: ("up"|"down"|"left"|"right"), within?: <Selector>, maxScrolls?: integer }
+    # scroll until `to`'s frame center is on-screen, else fail (BE-0326). direction = scroll direction (default "down"), the inverse of Swipe's finger direction.
+    # within: the scrollable container to gesture inside (default: the whole screen). maxScrolls: step bound before failing (default 15, > 0).
 Point ::= [ number, number ]
 
 # ── Selector (≥1 field; provided fields are AND-ed) ────────────────────

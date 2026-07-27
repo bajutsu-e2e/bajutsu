@@ -108,6 +108,24 @@ final class XcuitestElementProvider: ElementProviding {
         return .ok
     }
 
+    /// How long the scroll drag holds stationary at its end before lifting. A hold near zero
+    /// velocity settles the scroll view where the drag left it, so no momentum carries the content
+    /// past the target after lift — the non-inertial contract (BE-0326).
+    private static let scrollSettleDuration: TimeInterval = 0.3
+
+    func scroll(fromX: Double, fromY: Double, toX: Double, toY: Double) -> TapResult {
+        // Unlike `swipe` (a plain press-and-drag that lifts with residual velocity, so iOS flings the
+        // scroll view onward), hold at the end before lifting so the release velocity is ~zero and
+        // the content stops where the gesture ended.
+        coordinate(fromX, fromY).press(
+            forDuration: 0.1,
+            thenDragTo: coordinate(toX, toY),
+            withVelocity: .default,
+            thenHoldForDuration: Self.scrollSettleDuration
+        )
+        return .ok
+    }
+
     func typeText(_ text: String) -> TapResult {
         app.typeText(text)
         return .ok
