@@ -239,6 +239,34 @@ def artifact_exists(
     return {"exists": exists}, 200
 
 
+def _artifact_display_names(
+    shas: dict[str, str],
+    *,
+    filename: Any,
+    scenarios_filename: str | None,
+) -> dict[str, str]:
+    """Per-leg display names for a composed bind's UI seed (`GET /api/compose/current`).
+
+    Provenance only — `materialize_composition` never reads these. Config uses the request's
+    `filename` (falling back to `bajutsu.config.yaml`); a single-YAML scenarios leg keeps the
+    dropped `scenariosName` (needed to replay the cache-key salt); a zip scenarios leg and a binary
+    leg get stable defaults when the request carries no display name."""
+    names: dict[str, str] = {}
+    if "config" in shas:
+        raw = filename if isinstance(filename, str) else ""
+        base = "".join(c for c in Path(raw).name if c.isprintable()).strip()
+        names["config"] = (base or "bajutsu.config.yaml")[:200]
+    if "scenarios" in shas:
+        if scenarios_filename:
+            base = "".join(c for c in Path(scenarios_filename).name if c.isprintable()).strip()
+            names["scenarios"] = (base or "scenario.yaml")[:200]
+        else:
+            names["scenarios"] = "scenarios.zip"
+    if "binary" in shas:
+        names["binary"] = "binary"
+    return names
+
+
 def _composition_id(shas: dict[str, str], extra: str = "") -> str:
     """A deterministic cache key for a `(config, scenarios, binary)` triple, so composing the same
     combination twice is a cache hit (`materialize_composition`). Built from a fixed kind order
@@ -391,6 +419,9 @@ def _compose_and_bind(
         org=org,
         actor=actor,
         artifact_shas=shas,
+        artifact_names=_artifact_display_names(
+            shas, filename=filename, scenarios_filename=scenarios_filename
+        ),
     )
     state.bind_upload(upload)
     return upload, 200
@@ -487,6 +518,28 @@ def bind_composition(
         "targets": list_targets(result.config),
         "source": {"kind": "upload", "artifacts": shas, "filename": result.filename},
     }, 200
+
+
+def compose_current(state: ServeState, *, actor: str | None = None) -> tuple[Any, int]:
+    """The active composed bind's per-leg shas and display names, for the compose picker's resume
+    seed (`GET /api/compose/current`).
+
+    Returns `{"artifacts": {}}` with HTTP 200 when nothing composed is bound (no config, a Git/fs
+    bind, a legacy zip bind, or another org's bind) so the UI treats "nothing to inherit" as an
+    empty seed — never a 404. Does not materialize or rebind; it only reports what `state.upload`
+    already holds. The POST body of `/api/compose` stays a pure function of its request — this GET
+    never fills omitted legs on the server."""
+    upload = state.upload
+    if upload is None or upload.artifact_shas is None:
+        return {"artifacts": {}}, 200
+    if upload.org != state.org_of(actor):
+        return {"artifacts": {}}, 200
+    names = upload.artifact_names or {}
+    artifacts = {
+        kind: {"sha256": sha, "filename": names.get(kind) or kind}
+        for kind, sha in upload.artifact_shas.items()
+    }
+    return {"artifacts": artifacts}, 200
 
 
 def activate_uploaded_project(

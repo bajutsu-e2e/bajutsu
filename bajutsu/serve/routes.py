@@ -229,6 +229,11 @@ ROUTES: tuple[Route, ...] = (
     ),
     Route(
         "GET",
+        "/api/compose/current",
+        lambda state, ctx: ops.compose_current(state, actor=ctx.actor()),
+    ),
+    Route(
+        "GET",
         "/api/scenario",
         lambda state, ctx: ops.read_scenario(
             state,

@@ -489,10 +489,12 @@ function wireFileZone(pickBtn,fileInput,dropEl,onFile){
 // server already holds those bytes (`/api/artifacts/exists`), and POST only on a miss — so an
 // unchanged binary never travels the wire. A composition is a triple of shas assembled at run time
 // (`/api/compose`), so a new binary×scenario combination is a fresh triple over stored parts, not a
-// fresh upload (the combination matrix). Selections persist while the modal is open, so swapping one
-// part and composing again reuses the others as-is.
+// fresh upload (the combination matrix). Opening Open config seeds empty zones from the active
+// composed bind (`/api/compose/current`), so swapping one leg reuses the rest without re-picking.
+// Selections also persist while the modal is open. `/api/compose` stays a pure function of its body
+// — the UI fills inherited legs into that body; the server never guesses omitted ones.
 const COMPOSE_KINDS=['config','scenarios','binary'];
-const composeState={config:null,scenarios:null,binary:null};  // per kind: {sha, filename, reused}
+const composeState={config:null,scenarios:null,binary:null};  // per kind: {sha, filename, reused, inherited}
 const composeBusy=new Set();  // kinds mid-hash/mid-upload; #cmp-run stays disabled while any is in flight
 function setComposeBusy(kind,busy){
   // Disable Compose & load while ANY zone is still working, so a leg that's nulled-out for the
@@ -505,11 +507,40 @@ async function sha256Hex(file){
   return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
 }
 function renderComposeZone(kind){
-  const el=$('#cmp-'+kind+'-state');if(!el)return;const s=composeState[kind];
-  if(!s){el.textContent='';el.classList.remove('reused');return;}
-  // textContent (not innerHTML): the file name comes from a file input, so never reinterpret it as HTML.
-  el.textContent=s.filename+' · '+s.sha.slice(0,12)+'… '+(s.reused?'(already stored — skipped)':'(uploaded)');
-  el.classList.toggle('reused',s.reused);
+  const el=$('#cmp-'+kind+'-state');const clr=$('#cmp-'+kind+'-clear');if(!el)return;const s=composeState[kind];
+  if(!s){el.textContent='';el.classList.remove('reused','inherited');if(clr)clr.hidden=true;return;}
+  // textContent (not innerHTML): the file name comes from a file input / server seed, so never reinterpret it as HTML.
+  let tag='(uploaded)';
+  if(s.inherited)tag='(inherited)';
+  else if(s.reused)tag='(already stored — skipped)';
+  el.textContent=s.filename+' · '+s.sha.slice(0,12)+'… '+tag;
+  el.classList.toggle('reused',!!s.reused&&!s.inherited);
+  el.classList.toggle('inherited',!!s.inherited);
+  if(clr)clr.hidden=false;
+}
+function clearComposeZone(kind){
+  composeState[kind]=null;renderComposeZone(kind);
+  const err=$('#cmp-error');if(err)err.hidden=true;
+}
+async function seedComposeFromCurrent(){
+  // Align zones with the active composed bind. Empty zones and previously inherited ones refresh
+  // from the GET; a zone the user uploaded in this modal session (`inherited:false`) stays put so
+  // a mid-session seed cannot clobber an in-flight pick. A kind absent from the seed clears an
+  // inherited zone (e.g. after a Git/fs/zip rebind that leaves no composition).
+  let d;
+  try{d=await getJSON('/api/compose/current',null);}catch(e){return;}
+  if(!d||typeof d!=='object'||!d.artifacts||typeof d.artifacts!=='object')d={artifacts:{}};
+  COMPOSE_KINDS.forEach(kind=>{
+    const cur=composeState[kind];
+    if(cur&&!cur.inherited)return;  // in-session upload/overwrite — keep it
+    const a=d.artifacts[kind];
+    if(!a||typeof a.sha256!=='string'||!a.sha256){
+      if(cur&&cur.inherited){composeState[kind]=null;renderComposeZone(kind);}
+      return;
+    }
+    composeState[kind]={sha:a.sha256,filename:(typeof a.filename==='string'&&a.filename)?a.filename:kind,reused:true,inherited:true};
+    renderComposeZone(kind);
+  });
 }
 async function chooseArtifact(kind,file){
   if(!file)return;
@@ -538,7 +569,7 @@ async function chooseArtifact(kind,file){
         if(!r.ok||d.error){state.textContent='';err.textContent=(d&&d.error)||'upload failed';err.hidden=false;return;}
       }catch(e){state.textContent='';err.textContent='upload failed';err.hidden=false;return;}
     }
-    composeState[kind]={sha:sha,filename:file.name,reused:reused};
+    composeState[kind]={sha:sha,filename:file.name,reused:reused,inherited:false};
     renderComposeZone(kind);
   }finally{setComposeBusy(kind,false);}
 }
@@ -558,6 +589,8 @@ async function composeAndLoad(){
     const d=await postJSON('/api/compose',body,{error:'compose failed'});
     if(!d||d.error){meta.hidden=true;err.textContent=(d&&d.error)||'compose failed';err.hidden=false;return;}
     meta.textContent='Composed and bound '+((d.targets||[]).length)+' target(s)';
+    // The bind just succeeded — keep the zones as the new inherited seed for the next open.
+    COMPOSE_KINDS.forEach(kind=>{if(composeState[kind])composeState[kind]={...composeState[kind],inherited:true,reused:true};renderComposeZone(kind);});
     setCfgName(d.config,true);closeFs();await loadShared();
   }finally{if(btn)btn.disabled=composeBusy.size>0;}
 }
@@ -685,12 +718,15 @@ function initPanels(){
   // Upload & compose file zones (BE-0073 bundle upload, BE-0268 compose-from-artifacts). Both go
   // through wireFileZone; every element may be absent in a hosted deployment, so each binding self-guards.
   wireFileZone($('#up-pick'),$('#up-file'),$('#up-drop'),chooseUploadConfig);
-  COMPOSE_KINDS.forEach(kind=>wireFileZone(
-    $('#cmp-'+kind+'-pick'),$('#cmp-'+kind+'-file'),$('#cmp-'+kind+'-drop'),f=>chooseArtifact(kind,f)));
+  COMPOSE_KINDS.forEach(kind=>{
+    wireFileZone(
+      $('#cmp-'+kind+'-pick'),$('#cmp-'+kind+'-file'),$('#cmp-'+kind+'-drop'),f=>chooseArtifact(kind,f));
+    const clr=$('#cmp-'+kind+'-clear');if(clr)clr.addEventListener('click',()=>clearComposeZone(kind));
+  });
   const cmpRun=$('#cmp-run');if(cmpRun)cmpRun.addEventListener('click',composeAndLoad);
 }
 
 export {
   loadHistory, loadStats, loadFlaky, loadUsage, coverageInit, showInfo, replayAudit, onSimChange,
-  setHistoryFilter, showTab, initPanels, loadTrash,
+  setHistoryFilter, showTab, initPanels, loadTrash, seedComposeFromCurrent,
 };

@@ -125,6 +125,11 @@ class Upload:
     # "config"/"scenarios"/"binary" — a triple need not fill all three). `sha256` above is then the
     # composition cache key (see the class docstring), not a hash of these bytes.
     artifact_shas: dict[str, str] | None = None
+    # Display filenames per supplied leg (compose-picker resume): recorded from the compose request
+    # so Open config can re-seed zones without inventing names. Provenance for the UI only — layout
+    # still comes from the config. A single-YAML `scenarios` leg's name also salts the composition
+    # cache key, so replaying it on resume needs the same string the picker sent the first time.
+    artifact_names: dict[str, str] | None = None
 
     @property
     def root(self) -> Path:
