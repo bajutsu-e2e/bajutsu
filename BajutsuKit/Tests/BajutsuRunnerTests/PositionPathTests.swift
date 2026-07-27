@@ -127,4 +127,36 @@ final class PositionPathTests: XCTestCase {
             )
         )
     }
+
+    func testUniqueMatchingIndexReturnsSoleIdentityMatch() {
+        XCTAssertEqual(
+            uniqueMatchingIndex(
+                recorded: attrs(label: "Not Now"),
+                candidates: [
+                    attrs(label: "Save"),
+                    attrs(label: "Not Now"),
+                    attrs(label: "Cancel"),
+                ]
+            ),
+            1
+        )
+    }
+
+    func testUniqueMatchingIndexReturnsNilWithoutAMatch() {
+        XCTAssertNil(
+            uniqueMatchingIndex(
+                recorded: attrs(label: "Not Now"),
+                candidates: [attrs(label: "Save"), attrs(label: "Cancel")]
+            )
+        )
+    }
+
+    func testUniqueMatchingIndexRejectsDuplicateIdentityMatches() {
+        XCTAssertNil(
+            uniqueMatchingIndex(
+                recorded: attrs(label: "Not Now"),
+                candidates: [attrs(label: "Not Now"), attrs(label: "Not Now")]
+            )
+        )
+    }
 }
