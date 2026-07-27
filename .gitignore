@@ -62,6 +62,7 @@ BajutsuKit/Runner/*.xcodeproj/
 # committed (regenerated per Xcode/SDK), so ignore them here.
 bajutsu/_xcuitest_runner/
 .claude/launch.json
+.claude/worktrees/
 DerivedData/
 *.xcuserstate
 
