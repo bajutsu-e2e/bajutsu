@@ -9,7 +9,7 @@
 | 提案者 | [@akira-matsuda](https://github.com/akira-matsuda) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
-| 実装 PR | _（人間が PR を開いたあとに記入）_ |
+| 実装 PR | [#1386](https://github.com/bajutsu-e2e/bajutsu/pull/1386) |
 | トピック | config の取得元 |
 | 関連 | [BE-0268](../BE-0268-composable-upload-artifacts/BE-0268-composable-upload-artifacts-ja.md), [BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload-ja.md), [BE-0243](../BE-0243-upload-bundle-durable-storage/BE-0243-upload-bundle-durable-storage-ja.md) |
 <!-- /BE-METADATA -->
