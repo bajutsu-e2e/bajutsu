@@ -147,7 +147,7 @@ touches a device, never calls an LLM, and never gates CI.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [x] Reverse index — invert BE-0050's static scenario analysis into `id / screen / endpoint → [(scenario, step)]` (`bajutsu/analysis/impact.py:reverse_index`, reusing the shared `audit.step_referenced_ids` / `coverage.step_requests` per-step walks).
+- [x] Reverse index — invert BE-0050's static scenario analysis into `id / screen / endpoint → [(scenario, step)]` (`bajutsu/analysis/impact.py:reverse_index`, reusing the shared `audit.step_matchable_ids` / `coverage.step_requests` per-step walks).
 - [x] Change extraction — scan a `git` diff's changed lines for referenced stable ids; produce the touched set and the unattributable-change signal (`parse_diff` + `impact`; a changed file matching no referenced literal marks the report incomplete).
 - [x] Output — join to affected `(scenario, step)` pairs; emit JSON and a human-readable list, each step carrying the implicating id (`bajutsu impact --json` / text via `render`).
 - [x] CI integration — a consumable selection artifact (`--json` with a `complete` signal) plus documentation of the safe policy (conservative fallback, full-suite cadence, additive default) in [cli.md](../../docs/cli.md#impact) and [ci.md](../../docs/ci.md).
