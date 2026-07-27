@@ -1,14 +1,14 @@
-[English](BE-XXXX-rename-alert-handling-to-system-alert-handling.md) · **日本語**
+[English](BE-0327-rename-alert-handling-to-system-alert-handling.md) · **日本語**
 
-# BE-XXXX — alertHandling ガードを、扱う対象を表す systemAlertHandling に改名する
+# BE-0327 — alertHandling ガードを、扱う対象を表す systemAlertHandling に改名する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-rename-alert-handling-to-system-alert-handling-ja.md) |
+| 提案 | [BE-0327](BE-0327-rename-alert-handling-to-system-alert-handling-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0327") |
 | 実装 PR | [#1388](https://github.com/bajutsu-e2e/bajutsu/pull/1388) |
 | トピック | シナリオ記述機能 |
 | 関連 | [BE-0317](../BE-0317-rename-dismiss-alerts-to-alert-handling/BE-0317-rename-dismiss-alerts-to-alert-handling-ja.md)、[BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step-ja.md) |
