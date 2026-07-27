@@ -127,6 +127,17 @@ env:
   # reproducible failure. Unused by the pytest-driven conformance job (it does not run through the
   # pipeline), which leans on the runner-side serialization instead.
   BAJUTSU_CRASH_RETRIES: "2"
+  # Cap the *wall-clock* the scenario-level crash recovery may spend respawning, not just the count
+  # above (bajutsu/runner/pipeline.py, _default_crash_recovery_budget). The count alone is unbounded in
+  # time: a runner that crashes and never comes back makes each cold respawn pay a fresh
+  # STARTUP_TIMEOUT (300s) ceiling, so `BAJUTSU_CRASH_RETRIES: 2` silently becomes 2 × 300s ≈ 10min of
+  # readiness waits stacked on the pre-crash scenario time — enough to hit a hung Simulator and run the
+  # job to the 25min `timeout-minutes` as a *silent* cancel instead of a loud failure (the mid-run
+  # `pinch/rotate` two-finger crash did exactly this). 300s bounds recovery to about one full cold
+  # respawn: a genuine one-off — a respawn that comes back inside the window — is still ridden out (the
+  # first respawn is never blocked), while a runner that stays dead fails loudly well under the cap
+  # instead of hanging. Keep this ≈ STARTUP_TIMEOUT so exactly one slow respawn is allowed.
+  BAJUTSU_CRASH_RECOVERY_BUDGET: "300"
 
 jobs:
   # Decide whether an on-device run is warranted. The macOS jobs only fire when the PR
@@ -299,7 +310,10 @@ jobs:
     runs-on: macos-latest
     # Cap the metered macOS job (10x billing): a hung Simulator/runner would otherwise run to the 6h
     # default. No build here (the `build` job staged the products) — boot + install + one cold runner
-    # + six short scenarios is ~15min, so 25 catches a real hang with headroom.
+    # + six short scenarios is ~15min, so 25 catches a real hang with headroom. A mid-run backend crash
+    # adds at most about one more cold respawn: BAJUTSU_CRASH_RECOVERY_BUDGET (300s, above) bounds the
+    # scenario-level recovery in wall-clock, so a never-recovering runner fails loudly inside that
+    # window rather than paying BAJUTSU_CRASH_RETRIES × the 300s startup ceiling and hanging to this cap.
     timeout-minutes: 25
     # BE-0231 unit 4: a cold-boot CI Simulator sometimes renders the first Stable row later than a
     # scenario's 10s first-wait allows — even with unit 2's `readyWhen` gate (which waits up to
