@@ -91,10 +91,17 @@ The short form of this rule is in [`CLAUDE.md`](../CLAUDE.md).
 ## Isolate concurrent sessions with worktrees
 
 Two agents must never edit the same checkout. Give each session its own
-[worktree](https://git-scm.com/docs/git-worktree) + branch, all sharing one `.git`:
+[worktree](https://git-scm.com/docs/git-worktree) + branch, all sharing one `.git`.
+
+How you create that worktree depends on the agent environment. Claude Code may use its own
+worktree tooling, which places trees under `.claude/worktrees/`. Other environments create
+topic worktrees through `make worktree` (below). That includes Cursor, Codex, a plain shell,
+and future agents. Do not call `git worktree add` with a hand-picked path in those
+environments. The Makefile target owns fetch, branch naming, path layout
+(`../bajutsu-<topic>`), and `make setup`.
 
 ```bash
-# from the main checkout
+# from the main checkout (required outside Claude Code)
 make worktree TOPIC=<topic>             # branch claude/<topic> at ../bajutsu-<topic>
 make worktree TOPIC=<topic> PREFIX=<user>   # a human's <user>/<topic> branch
 ```

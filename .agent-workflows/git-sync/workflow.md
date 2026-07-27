@@ -16,7 +16,8 @@ This is a **mechanical, command-only** skill — no design decisions, no code ch
 
 2. **Worktree creation (when a topic is given)**
 
-   Use the project's `make worktree` target:
+   **Default (outside Claude Code):** use the project's `make worktree` target.
+   Do not invent an ad-hoc `git worktree add` path. This covers Cursor, Codex, and a plain shell.
 
    ```bash
    make worktree TOPIC=<topic>
@@ -25,11 +26,15 @@ This is a **mechanical, command-only** skill — no design decisions, no code ch
    This fetches `origin/main`, creates `../bajutsu-<topic>` on branch `claude/<topic>`,
    and runs `make setup` inside. Report the worktree path when done.
 
-   If the user specifies a `PREFIX` (e.g. their username), pass it through:
+   If the user specifies a `PREFIX` (for example their username), pass it through:
 
    ```bash
    make worktree TOPIC=<topic> PREFIX=<user>
    ```
+
+   **Claude Code exception:** keep an existing Claude Code worktree under
+   `.claude/worktrees/`. Do not create a second tree with `make worktree`
+   unless the user asks for one.
 
 3. **Report** the result: current branch, HEAD commit, worktree path (if created).
 

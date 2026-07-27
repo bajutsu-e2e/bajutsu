@@ -86,10 +86,16 @@ make preflight   # git fetch origin && git rebase origin/main && make check の�
 ## worktree で同時セッションを隔離する
 
 2 つのエージェントが同じチェックアウトを編集してはいけません。各セッションに専用の
-[worktree](https://git-scm.com/docs/git-worktree) + ブランチを与えます（`.git` は 1 つを共有）。
+[worktree](https://git-scm.com/docs/git-worktree) + ブランチを与えます（`.git` は 1 つを共有します）。
+
+作成方法はエージェント環境ごとに決まります。Claude Code は、独自の worktree 機能を使ってかまいません。
+配置先は `.claude/worktrees/` です。それ以外の環境（Cursor、Codex、通常のシェル、今後のエージェント）は、
+トピック用の worktree を `make worktree`（下記）で作成します。これらの環境でパスを手で決めて
+`git worktree add` しないでください。fetch、ブランチ名、配置（`../bajutsu-<topic>`）、`make setup` は
+Makefile のターゲットが引き受けます。
 
 ```bash
-# メインのチェックアウトから
+# メインのチェックアウトから（Claude Code 以外では必須）
 make worktree TOPIC=<topic>             # ../bajutsu-<topic> に claude/<topic> ブランチ
 make worktree TOPIC=<topic> PREFIX=<user>   # 人間の <user>/<topic> ブランチ
 ```
