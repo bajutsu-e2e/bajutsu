@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-compose-incremental-artifact-upload-ja.md)
+**English** · [日本語](BE-0325-compose-incremental-artifact-upload-ja.md)
 
-# BE-XXXX — Reuse the active composition when uploading only the legs that changed
+# BE-0325 — Reuse the active composition when uploading only the legs that changed
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-compose-incremental-artifact-upload.md) |
+| Proposal | [BE-0325](BE-0325-compose-incremental-artifact-upload.md) |
 | Author | [@akira-matsuda](https://github.com/akira-matsuda) |
 | Status | **Implemented** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0325") |
 | Implementing PR | [#1386](https://github.com/bajutsu-e2e/bajutsu/pull/1386) |
 | Topic | Configuration sourcing |
 | Related | [BE-0268](../BE-0268-composable-upload-artifacts/BE-0268-composable-upload-artifacts.md), [BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md), [BE-0243](../BE-0243-upload-bundle-durable-storage/BE-0243-upload-bundle-durable-storage.md) |
