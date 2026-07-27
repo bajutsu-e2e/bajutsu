@@ -16,7 +16,7 @@ This is a **mechanical, command-only** skill — no design decisions, no code ch
 
 2. **Worktree creation (when a topic is given)**
 
-   Use the project's `make worktree` target:
+   Use the project's `make worktree` target. Do not invent an ad-hoc `git worktree add` path.
 
    ```bash
    make worktree TOPIC=<topic>
@@ -25,7 +25,7 @@ This is a **mechanical, command-only** skill — no design decisions, no code ch
    This fetches `origin/main`, creates `../bajutsu-<topic>` on branch `claude/<topic>`,
    and runs `make setup` inside. Report the worktree path when done.
 
-   If the user specifies a `PREFIX` (e.g. their username), pass it through:
+   If the user specifies a `PREFIX` (for example their username), pass it through:
 
    ```bash
    make worktree TOPIC=<topic> PREFIX=<user>

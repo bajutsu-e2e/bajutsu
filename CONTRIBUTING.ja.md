@@ -62,9 +62,10 @@ make check   # 決定的なゲート（ステップの全一覧は CLAUDE.md）
 - **レビューには 1 件ずつ、根拠とともに返信します。** まとめて 1 つの返信では足りません。詳しくは
   [`docs/ja/ai-development.md`](docs/ja/ai-development.md#pr-レビューコメントへの対応) を
   参照してください。
-- このリポジトリは複数のセッションが並行して作業します。worktree、`uv.lock` のマージドライバ、
-  その他の並行作業モデルについては [`docs/ai-development.md`](docs/ai-development.md) を参照して
-  ください。
+- このリポジトリは複数のセッションが並行して作業します。Claude Code 以外では、トピック用の
+  worktree を `make worktree` で作成してください。Claude Code は独自の `.claude/worktrees/`
+  フローを使います。worktree、`uv.lock` のマージドライバ、その他の並行作業モデルについては
+  [`docs/ja/ai-development.md`](docs/ja/ai-development.md) を参照してください。
 
 ## ロードマップ項目（BE ID）
 

@@ -59,8 +59,10 @@ On-device E2E (macOS + Simulator) is a separate, heavier path and is **not** par
   convention: [`docs/ai-development.md`](docs/ai-development.md#pull-requests-title-and-body).
 - **Answer reviews comment by comment, with the grounds for each resolution** — never a single
   summary reply. Full rule: [`docs/ai-development.md`](docs/ai-development.md#responding-to-pr-review-comments).
-- Several sessions work this repo in parallel. For worktrees, the `uv.lock` merge driver, and the
-  rest of the parallel-work model, see [`docs/ai-development.md`](docs/ai-development.md).
+- Several sessions work this repo in parallel. Outside Claude Code, create topic worktrees with
+  `make worktree`. Claude Code keeps its `.claude/worktrees/` flow. For worktrees, the
+  `uv.lock` merge driver, and the rest of the parallel-work model, see
+  [`docs/ai-development.md`](docs/ai-development.md).
 
 ## Roadmap items (BE IDs)
 

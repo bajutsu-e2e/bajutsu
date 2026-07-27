@@ -9,7 +9,8 @@
 #
 # Usage: scripts/worktree.sh <topic>   (Makefile: make worktree TOPIC=<topic> [PREFIX=<user>])
 # The branch is <prefix>/<topic> (prefix defaults to `claude`); the worktree lands at
-# ../bajutsu-<topic> next to this checkout.
+# ../bajutsu-<topic> next to this checkout. Required outside Claude Code
+# (which may use its own .claude/worktrees/ tooling — see docs/ai-development.md).
 set -euo pipefail
 
 cd "$(dirname "$0")/.."

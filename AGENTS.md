@@ -11,7 +11,8 @@ Please read [`CLAUDE.md`](CLAUDE.md) before starting. In short:
   add an LLM call to the run/CI gate.
 - **Work in parallel safely:** one topic per `claude/<topic>` branch, keep changes small, never
   push red (the pre-push hook enforces the gate), rebase on `origin/main` before pushing.
-  Full guide: [`docs/ai-development.md`](docs/ai-development.md).
+  Outside Claude Code, create topic worktrees with `make worktree`. Claude Code keeps its
+  `.claude/worktrees/` flow. Full guide: [`docs/ai-development.md`](docs/ai-development.md).
 - **Split features into files to avoid conflicts.** When implementing a feature, prefer adding a
   new focused file over editing a shared monolith, and keep modules split by concern so concurrent
   work touches disjoint files. New CLI commands go in `bajutsu/cli/commands/<name>.py`, new tests in
