@@ -163,7 +163,7 @@ Review the diff through the host's available simplification and correctness-revi
 facilities. Apply justified fixes before the gate. For a non-trivial change, use fresh,
 independent review contexts for the following lenses:
 
-- **`silent-failure-hunter`** — swallowed errors and weak fallbacks. This *is* "determinism
+- **Silent failures** — swallowed errors and weak fallbacks. This *is* "determinism
   first, fail loudly": a test tool that hides failures is worse than none.
 - **`type-design-analyzer`** — type invariants and encapsulation under strict `mypy`.
 - **`pr-test-analyzer`** — whether the regression-net tests actually cover the new logic.
