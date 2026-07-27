@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0326") |
-| Implementing PR | [#PENDING](https://github.com/bajutsu-e2e/bajutsu/pulls) |
+| Implementing PR | [#1391](https://github.com/bajutsu-e2e/bajutsu/pull/1391) |
 | Topic | Scenario authoring features |
 | Related | [BE-0083](../BE-0083-codegen-emitter-unification/BE-0083-codegen-emitter-unification.md), [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md), [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md), [BE-0227](../BE-0227-web-swipe-scroll-fidelity/BE-0227-web-swipe-scroll-fidelity.md), [BE-0251](../BE-0251-driver-base-helper-hoist/BE-0251-driver-base-helper-hoist.md), [BE-0259](../BE-0259-assert-query-snapshot-reuse/BE-0259-assert-query-snapshot-reuse.md) |
 <!-- /BE-METADATA -->
