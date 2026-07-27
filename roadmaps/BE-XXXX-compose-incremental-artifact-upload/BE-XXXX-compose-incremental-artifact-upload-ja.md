@@ -48,7 +48,7 @@ BE-0268 は、変わっていないバイトの回線コストを解決しまし
   "artifacts": {
     "config": { "sha256": "…", "filename": "bajutsu.config.yaml" },
     "scenarios": { "sha256": "…", "filename": "scenarios.zip" },
-    "binary": { "sha256": "…", "filename": "Demo.app.zip" }
+    "binary": { "sha256": "…", "filename": "binary" }
   }
 }
 ```

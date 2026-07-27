@@ -78,7 +78,7 @@ nothing composed is bound:
   "artifacts": {
     "config": { "sha256": "…", "filename": "bajutsu.config.yaml" },
     "scenarios": { "sha256": "…", "filename": "scenarios.zip" },
-    "binary": { "sha256": "…", "filename": "Demo.app.zip" }
+    "binary": { "sha256": "…", "filename": "binary" }
   }
 }
 ```
