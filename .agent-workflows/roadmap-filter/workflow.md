@@ -44,7 +44,7 @@ Rows are sorted by `Topic`, then `ID`.
 
 1. Run `make roadmap-status STATUS="<status>"` for the status you care about.
 2. Read the table to find the item(s) relevant to the task.
-3. **`Read` the `Path`** of an item to get its full proposal text — that column is exactly what to
+3. **Open the file at the `Path`** of an item to get its full proposal text — that column is exactly what to
    open next. For the Japanese mirror, swap the `.md` suffix for `-ja.md`.
 
 Keep the survey narrow: pull only the status you need, then open only the items that matter — that
