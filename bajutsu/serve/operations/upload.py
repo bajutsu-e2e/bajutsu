@@ -55,11 +55,11 @@ _COMPOSED_KINDS: tuple[ArtifactKind, ...] = tuple(k for k in ARTIFACT_KINDS if k
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
-def _safe_filename(name: str) -> str:
-    """A display-safe basename for the uploaded zip (provenance only): strip any directory and
-    non-printable characters, bound the length, and fall back to a default when nothing remains."""
+def _safe_filename(name: str, *, default: str = "bundle.zip") -> str:
+    """A display-safe basename for an uploaded file (provenance only): strip any directory and
+    non-printable characters, bound the length, and fall back to *default* when nothing remains."""
     base = "".join(c for c in Path(name or "").name if c.isprintable()).strip()
-    return (base or "bundle.zip")[:200]
+    return (base or default)[:200]
 
 
 def _upload_store_key(state: ServeState, org: str, sha256: str) -> str:
@@ -254,12 +254,10 @@ def _artifact_display_names(
     names: dict[str, str] = {}
     if "config" in shas:
         raw = filename if isinstance(filename, str) else ""
-        base = "".join(c for c in Path(raw).name if c.isprintable()).strip()
-        names["config"] = (base or "bajutsu.config.yaml")[:200]
+        names["config"] = _safe_filename(raw, default="bajutsu.config.yaml")
     if "scenarios" in shas:
         if scenarios_filename:
-            base = "".join(c for c in Path(scenarios_filename).name if c.isprintable()).strip()
-            names["scenarios"] = (base or "scenario.yaml")[:200]
+            names["scenarios"] = _safe_filename(scenarios_filename, default="scenario.yaml")
         else:
             names["scenarios"] = "scenarios.zip"
     if "binary" in shas:
