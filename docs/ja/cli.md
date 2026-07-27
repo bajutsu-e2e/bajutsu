@@ -19,7 +19,7 @@
 
 ## `run`
 
-シナリオを **決定的に実行**します。合否は機械判定のみです。唯一の AI コンポーネントは**アラートガード**（シナリオごとに既定 ON）で、ステップをブロックした OS プロンプトを片付けるためだけに動作します。詳しくは [`systemAlertHandling`](scenarios.md#systemalerthandlingシステムアラートガード) を参照してください。
+シナリオを **決定的に実行**します。合否は機械判定のみです。唯一の AI コンポーネントは**アラートガード**の視覚フォールバック（シナリオごとに既定 ON）で、ステップをブロックした OS プロンプトのうち、ネイティブの SpringBoard 経路（iOS XCUITest、モデル不使用）が名指しできないものを片付けるためだけに動作します。詳しくは [`systemAlertHandling`](scenarios.md#systemalerthandlingシステムアラートガード) を参照してください。
 
 ```bash
 bajutsu run --target <name> [--scenario <file.yaml>] [options]
@@ -37,7 +37,7 @@ bajutsu run --target <name> [--scenario <file.yaml>] [options]
 | `--exclude` | "" | カンマ区切り。これらの tag のいずれかを持つシナリオをスキップ |
 | `--udid` | `booted` | 対象 Simulator（カンマ区切り = `--workers` 用のデバイスプール） |
 | `--erase / --no-erase` | シナリオ › config › off | 各シナリオの `preconditions.erase`（シム全体を wipe）を上書き。省略時は各シナリオの値、次にターゲットの `erase` config、次に off の順で解決（[BE-0177](../../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)）。アプリはどちらでも毎回 fresh に再インストール（config `appPath` + `preconditions.reinstall`） |
-| `--system-alert-handling / --no-system-alert-handling` | シナリオ › config › ON | 各シナリオの `systemAlertHandling` を上書きします。iOS バックエンドから見えないシステムアラートを視覚で消すガードです。省略時は各シナリオの値、次にターゲットの `systemAlertHandling` config、次に ON の順で解決します（設定した AI プロバイダを使用。`ANTHROPIC_API_KEY`、Bedrock なら AWS 認証情報。[recording](recording.md#システムアラートの自動対処)） |
+| `--system-alert-handling / --no-system-alert-handling` | シナリオ › config › ON | 各シナリオの `systemAlertHandling` を上書きします。iOS バックエンドから見えないシステムアラートを消すリアクティブなガードで、XCUITest 上ではネイティブに（モデル不使用、BE-0315）、ネイティブ経路が名指しできないものは視覚フォールバックで処理します。省略時は各シナリオの値、次にターゲットの `systemAlertHandling` config、次に ON の順で解決します（視覚フォールバックは設定した AI プロバイダが必要です。`ANTHROPIC_API_KEY`、Bedrock なら AWS 認証情報。ネイティブ経路は認証情報不要です。[recording](recording.md#システムアラートの自動対処)） |
 | `--alert-instruction` | "" | 既定のボタン指示。シナリオ自身の `systemAlertHandling.instruction` の下位、ターゲットの `systemAlertHandling` config の上位に位置します |
 | `--log-predicate` | "" | `deviceLog` ストリームを絞る NSPredicate（例 subsystem） |
 | `--log-subsystem` | "" | `appTrace` 用の os_log subsystem（既定はアプリの `bundleId`） |
@@ -56,7 +56,7 @@ bajutsu run --target <name> [--scenario <file.yaml>] [options]
 - 証跡は `FileSink(runs/<runId>, udid=..., log_predicate=...)` に書きます（[evidence](evidence.md#sink証跡の出力先)）。
 - `runId` は `YYYYMMDD-HHMMSS`。
 - 出力: `PASS|FAIL  runs/<runId>/manifest.json`。**終了コードは全シナリオ成功で 0、失敗で 1**。
-- run 内で唯一 AI を使うアラートガードが実際に発火したときは、結果の後に消費トークン量を示す
+- run 内で唯一 AI を使うアラートガードの視覚フォールバックが実際に発火したときは、結果の後に消費トークン量を示す
   `AI usage:` 行を **stderr** に出力します（stdout は機械可読の結果 1 行のままです）。AI を使わな
   かった run では何も出力しません。
 

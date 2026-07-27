@@ -232,8 +232,10 @@ AI が生成する文章、すなわち `record` の `from:` 由来と `crawl` �
 
 **Claude API key**（Anthropic API provider を選ぶと現れます）は **write-once** です。キーを入力して **Save** すると、以後はマスクした表示だけになり、
 内容が再表示されることはありません。変更するには新しいキーを設定します。**Clear** で削除します。これは
-Anthropic API プロバイダとアラートガードで使われます（Bedrock は代わりに AWS 認証情報を使います）。
-必要とするのは AI を使うパスだけです。**Record**、**Crawl**、そしてアラートガードを有効にした Replay です。
+Anthropic API プロバイダとアラートガードの視覚フォールバックで使われます（Bedrock は代わりに AWS 認証情報を使います）。
+必要とするのは AI を使うパスだけです。**Record**、**Crawl**、そしてアラートガードを有効にした Replay です — Replay の
+iOS ネイティブ経路（BE-0315）は鍵なしで一般的なプロンプトを片付けるため、そこでの鍵はネイティブ経路が
+名指しできないものに対する視覚フォールバックのためだけに使われます。
 
 **Scenario secrets**（[BE-0274](../../roadmaps/BE-0274-serve-scenario-secrets/BE-0274-serve-scenario-secrets-ja.md)）
 は、バインド中の config が宣言するシークレット、つまりシナリオが `${secrets.X}` として参照する
