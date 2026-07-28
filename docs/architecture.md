@@ -392,6 +392,15 @@ device (the shared device is reseeded via one channel, so parallel workers would
   sequence; on a match, runs the entry's `steps` then resumes the interrupted step (a `wait` keeps
   its original deadline; an act step retries once), with a re-entrancy cap falling back to the
   step's ordinary outcome
+- DSL `scroll` action (BE-0326): scroll a region — the whole screen, or a `within` container — until
+  a target selector's frame center lands inside the viewport, or fail deterministically at a
+  `maxScrolls` bound (default 15) or as soon as a step leaves the scrolled region's queried subtree
+  unchanged (end-of-content). Each step is non-inertial (a bounded advance with no fling), realized
+  per backend behind `Driver.scroll` and a `ViewportProvider` (web, fake report the true viewport
+  directly; a native backend's on-screen-only tree already is one) — closing the BE-0210 asymmetry
+  where only adb recovered an off-screen `tap`. Codegen maps it onto Playwright's
+  `scrollIntoViewIfNeeded()` and UI Automator's `UiScrollable.scrollIntoView` natively, and emits a
+  labeled `TODO` for XCUITest, which has no single robust scroll-to-element primitive
 - DSL text-editing steps (BE-0265): `clear` / `delete` / `select` / `copy` close the gap left by
   `type` on every backend (adb, Playwright, XCUITest, fake); the web context raises
   `UnsupportedAction` for `select`/`copy` (codegen routes those to XCUITest instead), and the web
