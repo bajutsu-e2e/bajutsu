@@ -74,9 +74,10 @@ def _default_crash_retries() -> int:
 # A wall-clock ceiling (seconds) on how long one scenario may spend *respawning* after a backend
 # crash, across all its `crash_retries`. `crash_retries` alone caps the retry *count*, not
 # the time: a runner that crashes and never comes back makes each cold respawn pay a fresh
-# cold-startup ceiling, so the count budget silently becomes count x that ceiling (on the ios-e2e
-# lane, 2 retries x 300s ≈ 10min of respawn readiness) — enough to blow a job's `timeout-minutes`
-# with a silent hang instead of a loud failure. This is the same "a fresh full ceiling each attempt
+# cold-startup ceiling, so the count budget silently becomes count x that ceiling — enough to blow a
+# job's `timeout-minutes` with a silent hang instead of a loud failure. (A backend may separately cap
+# a single respawn's readiness wait; this budget bounds the cumulative recovery time regardless.)
+# This is the same "a fresh full ceiling each attempt
 # doubles the worst case" pathology `_spawn_cold_with_retry` avoids *inside* one launch, reappearing
 # one level up at the scenario-level respawn. This budget caps that: once the wall-clock spent
 # respawning is exhausted, recovery stops and the scenario fails loudly (BE-0049), even if retries

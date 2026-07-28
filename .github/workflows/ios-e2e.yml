@@ -138,16 +138,17 @@ env:
   # reproducible failure. Unused by the pytest-driven conformance job (it does not run through the
   # pipeline), which leans on the runner-side serialization instead.
   BAJUTSU_CRASH_RETRIES: "2"
-  # Cap the *wall-clock* the scenario-level crash recovery may spend respawning, not just the count
+  # Cap the *wall-clock* the scenario-level crash recovery may spend respawning, on top of the count
   # above (bajutsu/runner/pipeline.py, _default_crash_recovery_budget). The count alone is unbounded in
-  # time: a runner that crashes and never comes back makes each cold respawn pay a fresh
-  # STARTUP_TIMEOUT (300s) ceiling, so `BAJUTSU_CRASH_RETRIES: 2` silently becomes 2 × 300s ≈ 10min of
-  # readiness waits stacked on the pre-crash scenario time — enough to hit a hung Simulator and run the
-  # job to the 25min `timeout-minutes` as a *silent* cancel instead of a loud failure (the mid-run
-  # `pinch/rotate` two-finger crash did exactly this). 300s bounds recovery to about one full cold
-  # respawn: a genuine one-off — a respawn that comes back inside the window — is still ridden out (the
-  # first respawn is never blocked), while a runner that stays dead fails loudly well under the cap
-  # instead of hanging. Keep this ≈ STARTUP_TIMEOUT so exactly one slow respawn is allowed.
+  # time: a runner that crashes and never comes back keeps respawning, and each respawn runs simctl prep
+  # and re-runs the scenario. BAJUTSU_XCUITEST_RESPAWN_TIMEOUT (90s, above) already caps each respawn's
+  # *readiness* wait on this lane — the part that used to dominate (a full 300s STARTUP_TIMEOUT per
+  # respawn, the silent hang that ran the mid-run `pinch/rotate` crash to `timeout-minutes`). So this
+  # budget's remaining job is the rest the readiness ceiling does not cover: the simctl prep and
+  # scenario re-run, plus the cumulative cost across BAJUTSU_CRASH_RETRIES respawns. 300s keeps a
+  # never-recovering runner failing loudly well under the 25min `timeout-minutes` instead of hanging,
+  # while still riding out a genuine one-off (the first respawn is never blocked) — a backstop on top of
+  # the per-respawn ceiling, not a substitute for it.
   BAJUTSU_CRASH_RECOVERY_BUDGET: "300"
 
 jobs:
