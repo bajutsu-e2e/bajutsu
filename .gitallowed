@@ -24,5 +24,8 @@ A-Z \]\*PRIVATE KEY
 \$\{(BAJUTSU_SERVE_TOKEN|GRAFANA_ADMIN_PASSWORD)
 
 # bajutsu/serve/launchagent.py: `"BAJUTSU_SERVE_TOKEN": token` assigns the plist entry from the
-# `token` variable already validated by its caller — not a literal secret value.
-BAJUTSU_SERVE_TOKEN["']?:\s*token\b
+# `token` variable already validated by its caller — not a literal secret value. `[[:space:]]*`,
+# not `\s*`/`\b`: this file is matched with the system `grep -E`, and on BSD grep (the macOS
+# default) neither is supported (both read as literal characters), which would silently drop this
+# exemption on a Mac and flag a false positive on every local commit/scan there.
+BAJUTSU_SERVE_TOKEN["']?:[[:space:]]*token
