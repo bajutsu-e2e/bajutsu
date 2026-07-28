@@ -262,6 +262,120 @@ def test_run_all_fails_when_the_lease_crashes_every_attempt() -> None:
     assert "crashed mid-run" in (results[0].failure or "")
 
 
+class _AdvancingClock:
+    """A clock whose `now()` moves only when the test advances it (or via `sleep`).
+
+    Lets a respawn's wall-clock cost be injected deterministically — no real delay — so the
+    crash-recovery budget can be exercised in a unit test.
+    """
+
+    def __init__(self) -> None:
+        self.t = 0.0
+
+    def now(self) -> float:
+        return self.t
+
+    def sleep(self, seconds: float) -> None:
+        self.t += seconds
+
+    def advance(self, seconds: float) -> None:
+        self.t += seconds
+
+
+def test_run_all_stops_respawning_once_the_crash_recovery_budget_is_spent() -> None:
+    # `crash_retries` caps the retry *count*; the wall-clock budget caps the *time*. A runner that
+    # crashes and never comes back makes each cold respawn pay a fresh startup ceiling, so a generous
+    # count would burn count x that ceiling — enough to blow a job's timeout with a silent hang. With a
+    # 300s budget and each respawn "taking" 200s, recovery stops once the budget is spent — well before
+    # the 5-retry count — and fails loudly naming the budget (a crash is never absorbed into a pass —
+    # BE-0049).
+    clock = _AdvancingClock()
+    leases = 0
+
+    def lease(eff: Effective, scenario: Scenario) -> Lease:
+        nonlocal leases
+        leases += 1
+        clock.advance(200.0)  # each cold respawn's readiness wait burns 200s of wall-clock
+        raise base.BackendCrashError("runner crashed during the readiness gate (test)")
+
+    scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
+    results = run_all(
+        _eff(), scenarios, lease, clock=clock, crash_retries=5, crash_recovery_budget=300.0
+    )
+    # Deadline is set at the first crash: t=200 + 300 = 500. Attempt 2 crashes at t=400 (<500, retry);
+    # attempt 3 at t=600 (≥500, budget spent → stop). So 3 leases, not the 6 the count alone allows.
+    assert not results[0].ok and leases == 3
+    assert "crash-recovery budget" in (results[0].failure or "")
+
+
+def test_run_all_crash_recovery_budget_still_rides_out_a_fast_one_off() -> None:
+    # The budget bites only when respawns are slow. A one-off crash whose respawn comes back at once
+    # (no wall-clock burned) is still recovered — the scenario passes even under a tight budget, because
+    # the budget clock never advances. Guards against the budget switching off genuine one-off recovery.
+    clock = _AdvancingClock()
+    state = {"n": 0}
+
+    def lease(eff: Effective, scenario: Scenario) -> Lease:
+        state["n"] += 1
+        if state["n"] == 1:
+            raise base.BackendCrashError("runner crashed during the readiness gate (test)")
+        return Lease(
+            driver=_fake_driver(),
+            sink=NullSink(),
+            relaunch=None,
+            control=None,
+            collector=None,
+            release=lambda: None,
+        )
+
+    scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
+    results = run_all(
+        _eff(), scenarios, lease, clock=clock, crash_retries=2, crash_recovery_budget=1.0
+    )
+    assert results[0].ok and state["n"] == 2  # recovered on the first respawn, clock never advanced
+
+
+def test_crash_recovery_budget_default_reads_the_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A lane caps respawn wall-clock via BAJUTSU_CRASH_RECOVERY_BUDGET without a code change; unset,
+    # non-positive, or invalid all read as unbounded (the count stays the only cap) — never as zero,
+    # which would be "no recovery at all", crash_retries=0's job, not this knob's.
+    from bajutsu.runner.pipeline import _default_crash_recovery_budget
+
+    monkeypatch.delenv("BAJUTSU_CRASH_RECOVERY_BUDGET", raising=False)
+    assert _default_crash_recovery_budget() is None  # unset -> unbounded
+    monkeypatch.setenv("BAJUTSU_CRASH_RECOVERY_BUDGET", "300")
+    assert _default_crash_recovery_budget() == 300.0
+    monkeypatch.setenv("BAJUTSU_CRASH_RECOVERY_BUDGET", "0")
+    assert _default_crash_recovery_budget() is None  # non-positive -> unbounded, not "no recovery"
+    monkeypatch.setenv("BAJUTSU_CRASH_RECOVERY_BUDGET", "-5")
+    assert _default_crash_recovery_budget() is None
+    monkeypatch.setenv("BAJUTSU_CRASH_RECOVERY_BUDGET", "not-a-number")
+    assert _default_crash_recovery_budget() is None  # invalid -> unbounded, never a crash
+
+
+def test_run_all_honors_the_crash_recovery_budget_environment_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # End to end: with the env set and no explicit arg, run_all reads the env budget and stops the
+    # respawn loop once the wall-clock is spent — the same None-reads-the-env wiring as crash_retries.
+    monkeypatch.setenv("BAJUTSU_CRASH_RECOVERY_BUDGET", "300")
+    clock = _AdvancingClock()
+    leases = 0
+
+    def lease(eff: Effective, scenario: Scenario) -> Lease:
+        nonlocal leases
+        leases += 1
+        clock.advance(200.0)
+        raise base.BackendCrashError("runner crashed during the readiness gate (test)")
+
+    scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
+    results = run_all(_eff(), scenarios, lease, clock=clock, crash_retries=5)  # budget arg unset
+    assert not results[0].ok and leases == 3  # env budget 300 -> stopped after ~one slow respawn
+    assert "crash-recovery budget" in (results[0].failure or "")
+
+
 def test_scenario_runner_runs_one_in_isolation() -> None:
     """`_ScenarioRunner.run_one` runs a single scenario without run_all's setup (BE-0172).
 

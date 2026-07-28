@@ -105,6 +105,17 @@ concurrency:
 env:
   BAJUTSU_XCUITEST_RUNNER_LOG: ${{ github.workspace }}/runs/runner-logs
   BAJUTSU_XCUITEST_STARTUP_TIMEOUT: "300"
+  # A *respawn* readiness ceiling, tighter than the 300s cold-start one above
+  # (bajutsu/platform_lifecycle/environments/xcuitest.py, _respawn_timeout). The 300s ceiling exists
+  # for the first bring-up — first Simulator boot + app install + the initial `xcodebuild
+  # test-without-building` host spin-up. A mid-run respawn (a crash evicted the warm resident) re-spawns
+  # on an already-booted Simulator with the app installed, so it does not need that budget; waiting the
+  # full 300s again only lets a dead runner hang for minutes inside a single respawn — which the
+  # scenario-level BAJUTSU_CRASH_RECOVERY_BUDGET cannot cut short, because that budget is checked only
+  # *between* attempts, never mid-readiness. 90s is ample for a re-spawn to answer /health on a warm
+  # host, so a runner that will not come back fails loudly in ~90s instead of ~300s. Unset (elsewhere)
+  # keeps the cold ceiling for respawns too, so only this lane opts in.
+  BAJUTSU_XCUITEST_RESPAWN_TIMEOUT: "90"
   # Respawn the resident runner cold after a single warm reuse rather than the default 3
   # (`_MAX_WARM_REUSES`). Folding many scenarios into one `bajutsu run` (the `run` / `actuation` jobs)
   # lengthens each warm-runner session, and each warm reuse re-attaches the XCTest automation session
@@ -127,6 +138,18 @@ env:
   # reproducible failure. Unused by the pytest-driven conformance job (it does not run through the
   # pipeline), which leans on the runner-side serialization instead.
   BAJUTSU_CRASH_RETRIES: "2"
+  # Cap the *wall-clock* the scenario-level crash recovery may spend respawning, on top of the count
+  # above (bajutsu/runner/pipeline.py, _default_crash_recovery_budget). The count alone is unbounded in
+  # time: a runner that crashes and never comes back keeps respawning, and each respawn runs simctl prep
+  # and re-runs the scenario. BAJUTSU_XCUITEST_RESPAWN_TIMEOUT (90s, above) already caps each respawn's
+  # *readiness* wait on this lane — the part that used to dominate (a full 300s STARTUP_TIMEOUT per
+  # respawn, the silent hang that ran the mid-run `pinch/rotate` crash to `timeout-minutes`). So this
+  # budget's remaining job is the rest the readiness ceiling does not cover: the simctl prep and
+  # scenario re-run, plus the cumulative cost across BAJUTSU_CRASH_RETRIES respawns. 300s keeps a
+  # never-recovering runner failing loudly well under the 25min `timeout-minutes` instead of hanging,
+  # while still riding out a genuine one-off (the first respawn is never blocked) — a backstop on top of
+  # the per-respawn ceiling, not a substitute for it.
+  BAJUTSU_CRASH_RECOVERY_BUDGET: "300"
 
 jobs:
   # Decide whether an on-device run is warranted. The macOS jobs only fire when the PR
@@ -299,7 +322,10 @@ jobs:
     runs-on: macos-latest
     # Cap the metered macOS job (10x billing): a hung Simulator/runner would otherwise run to the 6h
     # default. No build here (the `build` job staged the products) — boot + install + one cold runner
-    # + six short scenarios is ~15min, so 25 catches a real hang with headroom.
+    # + six short scenarios is ~15min, so 25 catches a real hang with headroom. A mid-run backend crash
+    # adds at most about one more cold respawn: BAJUTSU_CRASH_RECOVERY_BUDGET (300s, above) bounds the
+    # scenario-level recovery in wall-clock, so a never-recovering runner fails loudly inside that
+    # window rather than paying BAJUTSU_CRASH_RETRIES × the 300s startup ceiling and hanging to this cap.
     timeout-minutes: 25
     # BE-0231 unit 4: a cold-boot CI Simulator sometimes renders the first Stable row later than a
     # scenario's 10s first-wait allows — even with unit 2's `readyWhen` gate (which waits up to

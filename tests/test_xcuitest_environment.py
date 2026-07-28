@@ -23,12 +23,14 @@ from bajutsu.drivers.xcuitest import XcuitestChannelError
 from bajutsu.platform_lifecycle.environments.xcuitest import (
     _MAX_WARM_REUSES,
     _MAX_WARM_REUSES_ENV,
+    _RESPAWN_TIMEOUT_ENV,
     _RUNNER_STARTUP_TIMEOUT,
     _RUNNER_STARTUP_TIMEOUT_ENV,
     _WARM_HEALTH_TIMEOUT,
     XcuitestEnvironment,
     _await_cold_runner,
     _destination,
+    _respawn_timeout,
     _runner_startup_timeout,
     _spawn_cold_with_retry,
     _Spawned,
@@ -355,6 +357,110 @@ def test_runner_startup_timeout_env_override(monkeypatch: pytest.MonkeyPatch) ->
     assert _runner_startup_timeout() == 300.0
     monkeypatch.setenv(_RUNNER_STARTUP_TIMEOUT_ENV, "not-a-number")
     assert _runner_startup_timeout() == _RUNNER_STARTUP_TIMEOUT
+
+
+def test_respawn_timeout_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The respawn readiness ceiling only tightens a respawn's wait, so unset / non-positive / malformed
+    # all read as None (fall back to the cold ceiling) — never as zero, which would remove the wait.
+    monkeypatch.delenv(_RESPAWN_TIMEOUT_ENV, raising=False)
+    assert _respawn_timeout() is None  # unset -> use the cold ceiling for respawns too
+    monkeypatch.setenv(_RESPAWN_TIMEOUT_ENV, "90")
+    assert _respawn_timeout() == 90.0
+    monkeypatch.setenv(_RESPAWN_TIMEOUT_ENV, "0")
+    assert _respawn_timeout() is None  # non-positive -> cold ceiling, not "no readiness wait"
+    monkeypatch.setenv(_RESPAWN_TIMEOUT_ENV, "not-a-number")
+    assert _respawn_timeout() is None
+
+
+def test_respawn_uses_the_tighter_readiness_ceiling(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # A first bring-up pays the full cold-start ceiling; a respawn (the Simulator already booted, the
+    # app installed) pays the tighter respawn ceiling, so a dead runner surfaces fast instead of
+    # hanging out the whole cold budget. Both go through `_spawn_cold_with_retry`; only the timeout
+    # differs, which is what a mid-run respawn's readiness wait is bounded by.
+    monkeypatch.setenv(_RUNNER_STARTUP_TIMEOUT_ENV, "300")
+    monkeypatch.setenv(_RESPAWN_TIMEOUT_ENV, "90")
+    _, _, run = _fake_toolchain(monkeypatch)
+    eff = _sim_eff(test_runner=str(_write_runner(tmp_path)))
+
+    seen: list[float] = []
+    original = _spawn_cold_with_retry
+
+    def spy(*args: Any, **kwargs: Any) -> _Spawned:
+        seen.append(kwargs["timeout"])
+        return original(*args, **kwargs)
+
+    # Patch the module-level name `_spawn_cold` resolves against (string target, so no second
+    # `import` of a module this file already imports names from).
+    monkeypatch.setattr(
+        "bajutsu.platform_lifecycle.environments.xcuitest._spawn_cold_with_retry", spy
+    )
+
+    XcuitestEnvironment("xcuitest", "UDID", env_run=run, respawn=False).start(eff, Preconditions())
+    XcuitestEnvironment("xcuitest", "UDID", env_run=run, respawn=True).start(eff, Preconditions())
+    assert seen == [300.0, 90.0]  # first bring-up: cold ceiling; respawn: the tighter one
+
+
+def test_in_place_respawn_uses_the_tighter_readiness_ceiling(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The common mid-run-crash path keeps the SAME environment: the dead resident stays warm-cached, so
+    # the retry reuses this instance and `start` respawns cold *in place*. That in-place respawn must
+    # also take the tighter ceiling — the env self-detects it via `_cold_spawned_before`, because the
+    # pool's `respawn` flag on a reused instance was fixed to False at first bring-up (see the PR
+    # review: without this, the most common recovery path silently paid the full 300s cold ceiling).
+    monkeypatch.setenv(_RUNNER_STARTUP_TIMEOUT_ENV, "300")
+    monkeypatch.setenv(_RESPAWN_TIMEOUT_ENV, "90")
+    _, _, run = _fake_toolchain(monkeypatch)
+    eff = _sim_eff(test_runner=str(_write_runner(tmp_path)))
+
+    seen: list[float] = []
+    original = _spawn_cold_with_retry
+
+    def spy(*args: Any, **kwargs: Any) -> _Spawned:
+        seen.append(kwargs["timeout"])
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(
+        "bajutsu.platform_lifecycle.environments.xcuitest._spawn_cold_with_retry", spy
+    )
+
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)  # respawn=False: a first bring-up
+    env.start(eff, Preconditions())  # first cold spawn: full ceiling
+    assert env._runner_proc is not None
+    env._runner_proc.alive = False  # type: ignore[attr-defined]  # the runner crashed mid-run
+    env.start(eff, Preconditions())  # same instance respawns cold in place: the tighter ceiling
+    assert seen == [300.0, 90.0]
+
+
+def test_erase_forced_cold_spawn_keeps_the_full_ceiling(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # `erase` shuts the Simulator down, so the cold spawn after it is a genuine first-boot start (reboot
+    # + reinstall), not a respawn onto a live Simulator — it must keep the full cold ceiling even though
+    # this instance has cold-spawned before (`_cold_spawned_before`). Guards the respawn ceiling from
+    # wrongly tightening a real cold boot, which needs the whole budget.
+    monkeypatch.setenv(_RUNNER_STARTUP_TIMEOUT_ENV, "300")
+    monkeypatch.setenv(_RESPAWN_TIMEOUT_ENV, "90")
+    _, _, run = _fake_toolchain(monkeypatch)
+    eff = _sim_eff(test_runner=str(_write_runner(tmp_path)))
+
+    seen: list[float] = []
+    original = _spawn_cold_with_retry
+
+    def spy(*args: Any, **kwargs: Any) -> _Spawned:
+        seen.append(kwargs["timeout"])
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(
+        "bajutsu.platform_lifecycle.environments.xcuitest._spawn_cold_with_retry", spy
+    )
+
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    env.start(eff, Preconditions())  # first cold spawn: full ceiling
+    env.start(eff, Preconditions(erase=True))  # erase reboots the Simulator: a genuine cold start
+    assert seen == [300.0, 300.0]  # the erase spawn keeps the full ceiling, not the respawn one
 
 
 def test_start_respawns_a_dead_runner(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
