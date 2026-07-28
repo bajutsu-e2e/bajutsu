@@ -415,9 +415,10 @@ def test_swipe_command_shape() -> None:
     assert calls[0] == ["adb", "-s", "U", "shell", "input", "swipe", "10", "20", "30", "40", "300"]
 
 
-def test_scroll_delegates_to_a_real_drag() -> None:
-    # A directional scroll on Android is a real `input swipe` drag, so scroll delegates to swipe
-    # (BE-0227) — the same command shape, since a drag already scrolls Android scroll views.
+def test_scroll_is_a_non_inertial_pan_with_a_longer_duration() -> None:
+    # A directional scroll on Android is a non-inertial `input swipe` drag (BE-0326): the same command
+    # as a swipe but over a longer duration (600ms vs the 300ms default), so the list moves with the
+    # finger and settles when the gesture ends rather than flinging past the target with momentum.
     calls: list[list[str]] = []
 
     def run(args: list[str]) -> str:
@@ -427,7 +428,30 @@ def test_scroll_delegates_to_a_real_drag() -> None:
         return ""
 
     AdbDriver("U", run=run).scroll((10, 20), (30, 40))
-    assert calls[0] == ["adb", "-s", "U", "shell", "input", "swipe", "10", "20", "30", "40", "300"]
+    assert calls[0] == ["adb", "-s", "U", "shell", "input", "swipe", "10", "20", "30", "40", "600"]
+
+
+def test_viewport_reads_wm_size_not_the_tree_extent() -> None:
+    # The `scroll` viewport is the real display via `wm size` (BE-0326), not `screen_size_from_elements`
+    # (a lazy list buffers off-screen rows into the tree, overshooting the screen). Cached: one call.
+    calls: list[list[str]] = []
+
+    def run(args: list[str]) -> str:
+        calls.append(args)
+        return "Physical size: 1080x2400\n"
+
+    driver = AdbDriver("U", run=run)
+    assert driver.viewport() == (1080.0, 2400.0)
+    assert driver.viewport() == (1080.0, 2400.0)  # cached
+    assert [a for a in calls if a[-1] == "size"] == [["adb", "-s", "U", "shell", "wm", "size"]]
+
+
+def test_viewport_prefers_override_size() -> None:
+    # A resized display prints both a Physical and an Override size; the override is the effective one.
+    def run(_args: list[str]) -> str:
+        return "Physical size: 1080x2400\nOverride size: 720x1600\n"
+
+    assert AdbDriver("U", run=run).viewport() == (720.0, 1600.0)
 
 
 def test_type_text_passes_value_over_stdin_not_argv(monkeypatch: pytest.MonkeyPatch) -> None:

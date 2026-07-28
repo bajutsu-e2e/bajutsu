@@ -30,12 +30,16 @@ final class Router {
             return handleHealth()
         case ("GET", "/elements"):
             return handleElements()
+        case ("GET", "/screen"):
+            return handleScreen()
         case ("POST", "/tap"):
             return handleTap(request)
         case ("POST", "/gesture"):
             return handleGesture(request)
         case ("POST", "/swipe"):
             return handleSwipe(request)
+        case ("POST", "/scroll"):
+            return handleScroll(request)
         case ("POST", "/type"):
             return handleType(request)
         case ("POST", "/deleteText"):
@@ -57,6 +61,14 @@ final class Router {
 
     private func handleHealth() -> HTTPResponse {
         .json(200, ["status": "ready"])
+    }
+
+    // The device screen size, for the `scroll` action's on-screen stop condition (BE-0326). The
+    // element tree excludes the app window and can hold buffered off-screen ScrollView children, so
+    // the Python side cannot infer the true viewport from the tree — it reads it here instead.
+    private func handleScreen() -> HTTPResponse {
+        let size = onMain { self.provider.screenSize() }
+        return .json(200, ["width": size.width, "height": size.height])
     }
 
     private func handleElements() -> HTTPResponse {
@@ -197,6 +209,26 @@ final class Router {
             return .error(400, "missing or invalid from/to coordinates")
         }
         let result = onMainCatching { self.provider.swipe(fromX: fx, fromY: fy, toX: tx, toY: ty) }
+        return tapResultResponse(result)
+    }
+
+    // A directional scroll (BE-0326). Same coordinates as `/swipe`, but the provider drags
+    // non-inertially — holding at the end before lift so the scroll view settles where the gesture
+    // left it, rather than flinging past the target with momentum.
+    private func handleScroll(_ request: HTTPRequest) -> HTTPResponse {
+        guard let body = request.body,
+              let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any] else {
+            return .error(400, "missing or invalid JSON body")
+        }
+        guard let rawFrom = json["from"] as? [Any], rawFrom.count == 2,
+              let fx = (rawFrom[0] as? NSNumber)?.doubleValue,
+              let fy = (rawFrom[1] as? NSNumber)?.doubleValue,
+              let rawTo = json["to"] as? [Any], rawTo.count == 2,
+              let tx = (rawTo[0] as? NSNumber)?.doubleValue,
+              let ty = (rawTo[1] as? NSNumber)?.doubleValue else {
+            return .error(400, "missing or invalid from/to coordinates")
+        }
+        let result = onMainCatching { self.provider.scroll(fromX: fx, fromY: fy, toX: tx, toY: ty) }
         return tapResultResponse(result)
     }
 

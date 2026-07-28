@@ -38,6 +38,7 @@ from bajutsu.scenario.models.actions import (
     Push,
     Relaunch,
     Rotate,
+    Scroll,
     SelectOption,
     SelectText,
     SetClipboard,
@@ -134,6 +135,7 @@ class Step(_Model):
     select_option: SelectOption | None = Field(default=None, alias="selectOption")
     swipe: Swipe | None = None
     drag: Drag | None = None
+    scroll: Scroll | None = None
     back: Back | None = None
     pinch: Pinch | None = None
     rotate: Rotate | None = None

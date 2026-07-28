@@ -129,6 +129,27 @@ def _by(sel: base.Selector) -> str | None:
     return None
 
 
+def _ui_selector(sel: base.Selector) -> str | None:
+    """A `UiSelector` for `UiScrollable.scrollIntoView`, or None (→ TODO).
+
+    `scrollIntoView` takes a `UiSelector`, not the `BySelector` the rest of this emitter uses, so
+    `scroll` maps only the primary id / label forms; a compound selector stays a labeled TODO. An id
+    matches whether or not the app namespaces it with a `<package>:id/` prefix, mirroring `byId`.
+    """
+    keys = set(sel)
+    if keys == {"id"}:
+        ids = base.id_candidates(sel["id"])
+        if len(ids) == 1:
+            inner = f"Pattern.quote({_s(ids[0])})"
+        else:
+            alt = ' + "|" + '.join(f"Pattern.quote({_s(i)})" for i in ids)
+            inner = f'"(" + {alt} + ")"'
+        return f'UiSelector().resourceIdMatches("{_ID_PREFIX}" + {inner})'
+    if keys == {"label"}:
+        return f"UiSelector().text({_s(sel['label'])})"
+    return None
+
+
 def _unsupported_selector_todo(sel: base.Selector) -> str:
     """A labeled `// TODO` naming the selector fields that have no single UI Automator selector."""
     fields = ", ".join(sorted(sel))
@@ -204,6 +225,20 @@ def _emit_step(step: Step) -> list[str]:
             step.drag.on.as_selector(),
             f"swipe(Direction.{_DIRECTION[step.drag.direction]}, {_SWIPE_PERCENT})",
         )
+    if step.scroll is not None:
+        # UI Automator has a native scroll-to-element: `UiScrollable.scrollIntoView` searches the
+        # scrollable list, bounded by `setMaxSearchSwipes` — the peer of `maxScrolls` (BE-0326).
+        # `direction` picks the list orientation; `within` has no faithful UiScrollable scope, so it
+        # is left to the first scrollable container.
+        sc = step.scroll
+        ui = _ui_selector(sc.to.as_selector())
+        if ui is None:
+            return [_unsupported_selector_todo(sc.to.as_selector())]
+        orient = "setAsHorizontalList" if sc.direction in ("left", "right") else "setAsVerticalList"
+        return [
+            f"UiScrollable(UiSelector().scrollable(true)).{orient}()"
+            f".setMaxSearchSwipes({sc.max_scrolls}).scrollIntoView({ui})"
+        ]
     if step.pinch is not None:
         # UiObject2 pinchOpen / pinchClose take the gesture extent as a fraction; scale >= 1 zooms in.
         call = "pinchOpen(0.5f)" if step.pinch.scale >= 1 else "pinchClose(0.5f)"
@@ -349,6 +384,8 @@ class _UiAutomatorGen:
             "import androidx.test.uiautomator.By",
             "import androidx.test.uiautomator.Direction",
             "import androidx.test.uiautomator.UiDevice",
+            "import androidx.test.uiautomator.UiScrollable",
+            "import androidx.test.uiautomator.UiSelector",
             "import androidx.test.uiautomator.Until",
             "import org.junit.Assert.assertEquals",
             "import org.junit.Assert.assertFalse",

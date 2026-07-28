@@ -262,6 +262,26 @@ class Drag(_Model):
         return self
 
 
+class Scroll(_Model):
+    """`scroll` action — scroll a region until `to` is on-screen, or fail at a bound (BE-0326).
+
+    Where `swipe`'s directional form is a *single* gesture, `scroll` is a bounded condition wait: it
+    scrolls one non-inertial step, re-queries, and stops the moment `to` resolves with its frame's
+    center inside the viewport — the point a following coordinate `tap` would aim at. It fails
+    deterministically when it spends `maxScrolls` steps, or as soon as a step no longer changes the
+    scrolled region's subtree (the region has bottomed out and the target is not there).
+
+    `direction` names the direction the *content* scrolls, so `down` reveals items below the fold —
+    the inverse of `swipe`, whose `direction` is the finger's. `within` scopes the gesture (and the
+    end-of-content comparison) to one scrollable container; omitted, the whole screen scrolls.
+    """
+
+    to: Selector
+    direction: Literal["up", "down", "left", "right"] = "down"
+    within: Selector | None = None
+    max_scrolls: int = Field(default=15, alias="maxScrolls", gt=0)
+
+
 class Back(_Model):
     """`back` action — navigate back one level, each backend using its platform-correct primitive.
 

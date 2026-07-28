@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0326](BE-0326-scroll-to-element-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0326") |
+| 実装 PR | [#1391](https://github.com/bajutsu-e2e/bajutsu/pull/1391) |
 | トピック | シナリオ記述機能 |
 | 関連 | [BE-0083](../BE-0083-codegen-emitter-unification/BE-0083-codegen-emitter-unification-ja.md), [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md), [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity-ja.md), [BE-0227](../BE-0227-web-swipe-scroll-fidelity/BE-0227-web-swipe-scroll-fidelity-ja.md), [BE-0251](../BE-0251-driver-base-helper-hoist/BE-0251-driver-base-helper-hoist-ja.md), [BE-0259](../BE-0259-assert-query-snapshot-reuse/BE-0259-assert-query-snapshot-reuse-ja.md) |
 <!-- /BE-METADATA -->
@@ -384,14 +385,32 @@ Mutually Exclusive, Collectively Exhaustive（`MECE`）な作業単位は次の�
 > チェックリストは *詳細設計* の `MECE` な作業分解に対応します。
 > ログには変更内容と時期（古い順）を PR へのリンクとともに記録します。
 
-- [ ] Unit 1 — `Scroll` スキーマを `Step` に配線
-- [ ] Unit 2 — `_do_scroll` の有界ループ
-- [ ] Unit 3 — 慣性なし `Driver.scroll` と `FakeDriver` ビューポート
-- [ ] Unit 4 — 取得済みツリーを使う末尾検出
-- [ ] Unit 5 — codegen（Playwright、UI Automator、XCUITest `TODO`）
-- [ ] Unit 6 — ドライバ適合ケース（要素を引き出す／使い切った領域で失敗）
-- [ ] Unit 7 — ドキュメントと notices.yaml の書き換え
-- [ ] Unit 8 — テスト（スキーマ、FakeDriver ループ、`within`、コンテンツ末尾）
+- [x] Unit 1 — `Scroll` スキーマを `Step` に配線
+- [x] Unit 2 — `_do_scroll` の有界ループ
+- [x] Unit 3 — 慣性なし `Driver.scroll` と `FakeDriver` ビューポート
+- [x] Unit 4 — 取得済みツリーを使う末尾検出
+- [x] Unit 5 — codegen（Playwright、UI Automator、XCUITest `TODO`）
+- [x] Unit 6 — ドライバ適合ケース（要素を引き出す／使い切った領域で失敗）
+- [x] Unit 7 — ドキュメントと notices.yaml の書き換え
+- [x] Unit 8 — テスト（スキーマ、FakeDriver ループ、`within`、コンテンツ末尾）
+
+### ログ
+
+- 慣性なしの契約を各バックエンドで実現します。web はすでに慣性がありません（wheel／タッチドラッグ）。
+  adb は長めの `input swipe` でパンします。XCUITest の常駐ランナーには、離す前に終点でドラッグを保持する
+  `/scroll` ルートを追加します。Appium の実機ドライバは長めの duration でドラッグします。
+- 停止条件には真のビューポートが必要ですが、取得したツリーからは求められません。遅延リストはビューポート外の
+  行をバッファとしてツリーに残すので、`screen_size_from_elements` は画面を超過します。超過したビューポートは、
+  画面外の中心を画面内と誤判定してしまいます。さらに、ジェスチャの起点を画面外へ押し出し、XCUITest ランナーを
+  不安定にしていました。真のビューポートは `ViewportProvider` プロトコルが各バックエンドで報告します。
+  Playwright は `window.innerWidth/innerHeight` から、adb は `wm size` から求めます。XCUITest は新設の
+  `/screen` ルートでアプリウィンドウの `frame` を返します。Appium の実機ドライバは WebDriver のウィンドウ
+  矩形から、`FakeDriver` は自身のモデルから求めます。
+- ドライバ適合ケースは、4 つのバックエンドすべてで画面外の行を引き出します。ビューポートより高い要素を
+  その中心が画面に入った時点で明らかにするケースと、対象がないときに失敗するケースも含みます。各バックエンドが
+  真のビューポートを報告するので、ネイティブのレーンでもスキップは要りません。
+- `scroll` ハンドラとそのループは、独立した新規モジュール
+  `bajutsu/orchestrator/actions/handlers/scroll.py` に置きます。
 
 ## 参考
 

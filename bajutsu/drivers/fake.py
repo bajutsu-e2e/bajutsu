@@ -53,8 +53,17 @@ class FakeDriver:
         screen: Sequence[base.Element] | None = None,
         react: React | None = None,
         exchanges: Sequence[NetworkExchange] | None = None,
+        viewport: base.Point | None = None,
     ) -> None:
         self.screen: list[base.Element] = list(screen) if screen is not None else []
+        # A minimal scrollable-viewport model (BE-0326): given a `viewport`, `screen` holds elements
+        # in content coordinates, `scroll` pans a clamped offset, and `query()` reports frames
+        # translated by it — off-screen elements stay in the tree (web-like) with out-of-viewport
+        # centers. This makes the `scroll` handler's bounded loop and its center-in-viewport stop
+        # condition testable on the fast gate. Left None, the fake is the plain record-and-react
+        # driver, and `scroll` only logs the gesture for `react` to script the screen change.
+        self._viewport = viewport
+        self._scroll_offset: base.Point = (0.0, 0.0)
         # The SpringBoard alert buttons `handle_system_alert` resolves over (BE-0316); tests seed
         # this to stand in for the out-of-process prompt the real backend queries on-device.
         self.system_alert_buttons: list[base.Element] = []
@@ -69,7 +78,18 @@ class FakeDriver:
     # --- Driver Protocol ---
 
     def query(self) -> list[base.Element]:
-        return list(self.screen)
+        if self._viewport is None:
+            return list(self.screen)
+        # Scrollable mode: report every element with its frame translated by the scroll offset, so a
+        # scrolled-away element keeps its tree entry but reports an out-of-viewport center.
+        ox, oy = self._scroll_offset
+        return [
+            {
+                **el,
+                "frame": (el["frame"][0] - ox, el["frame"][1] - oy, el["frame"][2], el["frame"][3]),
+            }
+            for el in self.screen
+        ]
 
     def tap(self, sel: base.Selector) -> None:
         # Like a real semantic tap, require a unique match (ambiguous/not-found -> SelectorError).
@@ -91,7 +111,29 @@ class FakeDriver:
         self._record("swipe", (frm, to))
 
     def scroll(self, frm: base.Point, to: base.Point) -> None:
+        if self._viewport is not None:
+            # Pan the offset by the gesture's travel (content moves opposite the finger), clamped to
+            # the content bounds — so once the region has bottomed out the offset (and thus every
+            # reported frame) stops changing, which is how the handler detects end-of-content.
+            vw, vh = self._viewport
+            cw = max((el["frame"][0] + el["frame"][2] for el in self.screen), default=0.0)
+            ch = max((el["frame"][1] + el["frame"][3] for el in self.screen), default=0.0)
+            ox, oy = self._scroll_offset
+            ox = min(max(ox + (frm[0] - to[0]), 0.0), max(0.0, cw - vw))
+            oy = min(max(oy + (frm[1] - to[1]), 0.0), max(0.0, ch - vh))
+            self._scroll_offset = (ox, oy)
         self._record("scroll", (frm, to))
+
+    def viewport(self) -> base.Point:
+        # Implements ViewportProvider (BE-0326): in scrollable mode the translated tree's content
+        # extent overshoots the viewport (as a web DOM tree does), so report the model's viewport;
+        # in plain mode every element is on-screen, so the screen extent *is* the viewport — the
+        # same value the handler's `screen_size_from_elements` fallback would compute.
+        if self._viewport is not None:
+            return self._viewport
+        w = max((el["frame"][0] + el["frame"][2] for el in self.screen), default=0.0)
+        h = max((el["frame"][1] + el["frame"][3] for el in self.screen), default=0.0)
+        return (w, h)
 
     def back(self) -> None:
         self._record("back", None)

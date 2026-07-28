@@ -16,6 +16,7 @@ final class FakeElementProvider: ElementProviding {
     var tapPointCalls: [(x: Double, y: Double)] = []
     var gestureCalls: [(backingElement: AnyObject, kind: String, scale: Double, radians: Double)] = []
     var swipeCalls: [(fromX: Double, fromY: Double, toX: Double, toY: Double)] = []
+    var scrollCalls: [(fromX: Double, fromY: Double, toX: Double, toY: Double)] = []
     var typeCalls: [String] = []
     var deleteTextCalls: [Int] = []
     var selectAllCalls = 0
@@ -49,6 +50,15 @@ final class FakeElementProvider: ElementProviding {
         swipeCalls.append((fromX, fromY, toX, toY))
         return tapResult
     }
+
+    func scroll(fromX: Double, fromY: Double, toX: Double, toY: Double) -> TapResult {
+        scrollCalls.append((fromX, fromY, toX, toY))
+        return tapResult
+    }
+
+    var screenSizeValue: (width: Double, height: Double) = (390, 844)
+
+    func screenSize() -> (width: Double, height: Double) { screenSizeValue }
 
     func typeText(_ text: String) -> TapResult {
         typeCalls.append(text)

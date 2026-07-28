@@ -46,6 +46,27 @@ from typing import Protocol, runtime_checkable
 import pytest
 
 from bajutsu.drivers import base
+from bajutsu.orchestrator.actions.handlers.scroll import (
+    _center_in_viewport,
+    _resolve_target,
+    _viewport,
+    scroll_to_target,
+)
+
+#: The scroll conformance screen (BE-0326): a scrollable list whose later rows start below the fold.
+#: Each backend realizes the same fixed layout — a marker, `SCROLL_ROW_COUNT` rows, and a row taller
+#: than the viewport — so the `scroll` action's re-query loop is driven against every real driver's
+#: query / scroll / viewport code. The sentinel id is what a harness seeds to ask for this screen
+#: (the app renders the fixed layout for it rather than a button carrying that id).
+SCROLL_SENTINEL = "conformance.scroll"
+SCROLL_ROW_PREFIX = "conformance.scroll.row."
+SCROLL_ROW_COUNT = 20
+SCROLL_TALL_ID = "conformance.scroll.tall"
+SCROLL_FIRST_ROW = f"{SCROLL_ROW_PREFIX}0"
+SCROLL_LAST_ROW = f"{SCROLL_ROW_PREFIX}{SCROLL_ROW_COUNT - 1}"
+
+#: A generous scroll bound for the conformance screen — far more steps than reaching the bottom needs.
+SCROLL_MAX = 30
 
 #: The editable text field present on every conformance screen (BE-0280), alongside the readiness
 #: marker. The text-editing and `tap_point` invariants act on it; each backend's screen realizes it
@@ -104,6 +125,16 @@ class ConformanceHarness(Protocol):
         seeded elements to be present, not that the screen equals them exactly.
         """
 
+    def scrollable_screen(self) -> base.Driver:
+        """Return a driver showing the tall, vertically scrollable screen (BE-0326).
+
+        The screen stacks `SCROLL_ROW_COUNT` rows (`SCROLL_ROW_PREFIX{i}`) and a row taller than the
+        viewport (`SCROLL_TALL_ID`) in a container taller than the viewport, so the later rows and the
+        tall row start below the fold. A backend that keeps off-screen nodes in its tree (web) or
+        models a viewport (fake) reports them off-screen; a native lazy list drops them until scrolled
+        to — the `scroll` action's re-query loop reveals the target on either.
+        """
+
 
 class OnDeviceConformanceHarness:
     """Shared base for the on-device harnesses: realize a seeded screen, then wait until it renders.
@@ -139,6 +170,21 @@ class OnDeviceConformanceHarness:
         # last screen's ids still linger (the app updates ~asynchronously after `_realize`).
         self._await_screen(ids, gone=set(self._prev) - set(ids))
         self._prev = ids
+        return self._driver
+
+    def scrollable_screen(self) -> base.Driver:
+        # Realize the empty screen first so the app tears down any list a prior test left scrolled:
+        # re-seeding the same sentinel would leave that scroll offset in place, and `row.0` might never
+        # return. Wait until every scroll row is gone (the list unmounted), then seed the sentinel and
+        # wait for a fresh `row.0` at the top. The app renders the fixed scroll layout for the sentinel
+        # (a lazy list, so the later rows drop from the a11y tree until scrolled to); the sentinel is
+        # not itself a rendered element, so the marker plus the first row is the readiness signal.
+        all_rows = {f"{SCROLL_ROW_PREFIX}{i}" for i in range(SCROLL_ROW_COUNT)} | {SCROLL_TALL_ID}
+        self._realize([])
+        self._await_screen([], gone=all_rows)
+        self._realize([SCROLL_SENTINEL])
+        self._await_screen([SCROLL_FIRST_ROW], gone=set())
+        self._prev = [SCROLL_FIRST_ROW]
         return self._driver
 
     def _realize(self, ids: list[str]) -> None:
@@ -328,3 +374,35 @@ class DriverConformanceContract:
         assert base.wait_until(present, {"id": "s"}, timeout=0, poll=0) is True
         absent = harness.with_screen([])
         assert base.wait_until(absent, {"id": "s"}, timeout=0, poll=0) is False
+
+    def test_scroll_reveals_an_offscreen_target(self, harness: ConformanceHarness) -> None:
+        # The core cross-backend contract (BE-0326): a target below the fold starts off-screen (absent
+        # from a lazy tree, or present with an out-of-viewport center), and `scroll` reveals it —
+        # `scroll()` is non-inertial and `query()` reports the target on-screen, on every backend.
+        driver = harness.scrollable_screen()
+        target: base.Selector = {"id": SCROLL_LAST_ROW}
+        viewport = _viewport(driver, driver.query())
+        initial = _resolve_target(driver.query(), target)
+        assert initial is None or not _center_in_viewport(initial["frame"], viewport)
+        scroll_to_target(driver, target, "down", None, SCROLL_MAX)
+        revealed = base.resolve_unique(driver.query(), target)
+        assert _center_in_viewport(revealed["frame"], _viewport(driver, driver.query()))
+
+    def test_scroll_reveals_a_target_taller_than_the_viewport(
+        self, harness: ConformanceHarness
+    ) -> None:
+        # A target taller than the viewport still resolves once its *center* is on-screen — the reason
+        # the stop condition checks the center, not whole-frame containment (BE-0326). This needs an
+        # exact viewport (a tall frame's edges straddle the screen), which every backend now reports.
+        driver = harness.scrollable_screen()
+        target: base.Selector = {"id": SCROLL_TALL_ID}
+        scroll_to_target(driver, target, "down", None, SCROLL_MAX)
+        revealed = base.resolve_unique(driver.query(), target)
+        assert _center_in_viewport(revealed["frame"], _viewport(driver, driver.query()))
+
+    def test_scroll_fails_when_the_target_is_absent(self, harness: ConformanceHarness) -> None:
+        # A target no row carries fails deterministically — the region bottoms out (a scroll stops
+        # changing it) or the bound is spent — rather than scrolling forever (BE-0326).
+        driver = harness.scrollable_screen()
+        with pytest.raises(base.ElementNotFound):
+            scroll_to_target(driver, {"id": "conformance.scroll.absent"}, "down", None, SCROLL_MAX)

@@ -27,7 +27,7 @@ class Driver(Protocol):
     def tap_point(self, p: Point) -> None: ...       # 生座標 tap（システムアラート等）
     def long_press(self, sel: Selector, duration: float) -> None: ...
     def swipe(self, frm: Point, to: Point) -> None: ...    # 素のポインタドラッグ（座標形）
-    def scroll(self, frm: Point, to: Point) -> None: ...   # 方向指定のスクロール（BE-0227）
+    def scroll(self, frm: Point, to: Point) -> None: ...   # 慣性なしの方向指定スクロール（BE-0227, BE-0326）
     def type_text(self, text: str) -> None: ...
     def wait_for(self, sel: Selector) -> bool: ...   # 単発チェック：現在の画面に一致するか
     def screenshot(self, path: str) -> None: ...
@@ -91,7 +91,7 @@ class Driver(Protocol):
 - **実機アクチュエーションの忠実度**（ロードマップ [BE-0210](../../roadmaps/BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity-ja.md)）: `back` ステップは真のシステムバック（`input keyevent 4`、`KEYCODE_BACK`）です。Android にはタップできる画面上の戻る要素がなく、この点が iOS の OS 戻るボタンと異なります。`double_tap` は 2 回のタップを**単一の `adb shell` 往復**（`input tap … ; input tap …`）で発行するので、adb の転送往復がタップの間に挟まって double-tap ウィンドウを超えることがありません。タップの対象が**現在のビューポートにない**ときは、そちらへスクロール（既定は上方向のスワイプ）して再クエリし、回数で区切ります。固定 sleep ではなく条件待機なので、決して現れないセレクタはそれでも決定論的に失敗します。
 
   > [!NOTE]
-  > scroll-into-view は現状 **adb 専用**の回復です。XCUITest／Playwright は対象が初期ビューポートに無いと `tap` を即座に失敗させます。そのため、同じシナリオでも fold より下の要素への `tap` が Android では（数回のスワイプののち）通り、iOS／web では失敗しうる非対称が生じます。移植可能な書き方は依然として**明示的な `swipe` ステップ**です（`demos/showcase/scenarios/notices.yaml` を参照）。adb の自動スクロールはその代替ではなく堅牢化のための安全網です。他バックエンドへの拡張は後続作業です（BE-0210 は adb に限定しました）。
+  > この暗黙の scroll-into-view は **adb 専用の `tap` 回復**です。XCUITest／Playwright は対象が初期ビューポートにないと `tap` を即座に失敗させます。そのため、これに頼ると、同じシナリオでも fold より下の要素への `tap` が Android では通り、iOS／web では失敗する非対称が生じます。画面外の要素へ届く移植可能な方法は、明示的な **[`scroll` アクション](scenarios.md#scroll)**（BE-0326）です。iOS、Android、web で同じように対象を現す、決定論的で慣性のない 1 つの構文で、`scroll: { to: <selector> }` としてから対象を操作します。showcase フィクスチャがかつて使っていた手作業調整の `swipe` 連鎖を置き換えます。adb の自動スクロールは、移植可能な書き方ではなく `tap` の下の安全網として残ります。
 - **マルチタッチ**（BE-0232）: `pinch` / `rotate` は 2 スロットの protocol-B `sendevent` スイープで駆動します（`pinch_contacts` / `rotate_contacts` が 2 接点の座標を計算し、`rotate` は両端点を結ぶ直線の弦を掃きます。円弧の線形近似で、web バックエンドの rotate と同じです）。rooted device でタッチスクリーンを検出できることが前提で、`_two_finger_gesture` はそれ以外では `UnsupportedAction` で明確に失敗します。下の double-tap 経路と異なり、単一タッチへのフォールバックはありません。`MULTI_TOUCH` は root の有無にかかわらず能力集合で静的に宣言するので、preflight は adb 上の `gestures_multitouch` を通します。root のチェックは能力集合ではなく実行時に課します。
 - `screenshot` は `adb exec-out screencap -p` の PNG バイト列（バイナリを崩さない stdout）を書き出します。
 - ライフサイクル（`AndroidEnvironment`、iOS の `simctl` シーケンスの双子）: 起動完了待ち（`getprop sys.boot_completed` を有界の期限まで polling する条件待機で、固定 sleep も、無期限にブロックする `adb wait-for-device` もありません）→ 必要に応じて APK インストール → `pm clear` によるクリーン状態（`erase` 相当）→ `am force-stop` → ランタイム権限の事前付与（`pm grant`、後述）→ `am start`（起動アクティビティはパッケージマネージャで解決し、launch env は intent extras として渡します）→ deeplink（`am start -a android.intent.action.VIEW`）。run の manifest は `backend: "adb"` を記録するので、選ばれた actuator が開示されます。

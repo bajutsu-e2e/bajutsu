@@ -31,15 +31,14 @@
     - exists: { id: notice.row.1 }
     - exists: { id: notice.detail.title, negate: true }
 
-# The headline: scroll an off-screen target into view, then tap it. Each swipe scrolls a
-# fraction of the screen (the default swipe travel) and is anchored on a row that stays
-# visible as the list scrolls down; the condition wait stops once the target appears. A
-# screen-relative travel keeps the reach comparable across devices of different densities (a
-# fixed pixel count would scroll far less of a dense screen). The anchors step through the list
-# with one swipe of margin (past row.16, through row.18) so the target is still reached where
-# the list's fling settles shorter — a software-rendered CI emulator scrolls less per swipe
-# than a hardware-accelerated device, and the extra step covers that gap without over-scrolling
-# the target off the top on a faster one.
+# The headline: reveal an off-screen target with one `scroll` step, then tap it. `scroll` scrolls
+# non-inertially — a bounded, screen-relative step, then a re-query — and stops the moment the row's
+# center is on-screen. It leaves no momentum, so the row never flings past the viewport; the same
+# step reaches it identically on a hardware device and a software-rendered CI emulator. This replaces
+# the hand-tuned `swipe` chain that once stepped through the list on visible-row anchors with a
+# one-swipe margin to compensate for fling by hand (BE-0326) — `scroll`'s re-query makes that
+# device-tuning unnecessary. `scroll: direction` is the direction the content moves (down reveals
+# below-the-fold rows), the inverse of `swipe`'s finger direction.
 - name: scroll to an off-screen notice and open it
   preconditions:
     launchEnv: { SHOWCASE_UITEST: "1" }
@@ -49,12 +48,7 @@
     - wait: { for: { id: notice.row.1 }, timeout: 10 }
     - assert:
         - exists: { id: notice.row.20, negate: true }   # off-screen before scrolling
-    - swipe: { on: { id: notice.row.4 }, direction: up }
-    - swipe: { on: { id: notice.row.8 }, direction: up }
-    - swipe: { on: { id: notice.row.12 }, direction: up }
-    - swipe: { on: { id: notice.row.16 }, direction: up }
-    - swipe: { on: { id: notice.row.18 }, direction: up }
-    - wait: { for: { id: notice.row.20 }, timeout: 5 }   # now scrolled into view
+    - scroll: { to: { id: notice.row.20 }, direction: down }   # non-inertial: reveal, don't overshoot
     - tap: { id: notice.row.20 }
     - wait: { for: { id: notice.detail.title }, timeout: 5 }
   expect:

@@ -287,6 +287,14 @@ def _emit_step(step: Step) -> list[str]:
         # XCUITest's `swipeX()` is a real drag, so an element-anchored `drag` (BE-0227) emits the
         # same primitive a directional `swipe` does — on iOS a drag both scrolls and moves handles.
         return [f"{_element(step.drag.on.as_selector())}.{_SWIFT_DIRECTION[step.drag.direction]}()"]
+    if step.scroll is not None:
+        # XCUITest has no single robust scroll-to-element primitive: `swipeUp()` scrolls a fixed
+        # amount without re-querying (so it can under- or over-shoot), and `firstMatch` waits do not
+        # scroll. Faithfully reproducing `scroll`'s bounded, re-querying loop is a hand-written helper,
+        # so emit a labeled TODO rather than an unchecked `swipeUp()` chain that fakes the action (BE-0326).
+        return [
+            "// TODO: scroll to reveal an element — XCUITest has no single robust scroll-to-element; not generated"
+        ]
     if step.wait is not None:
         w = step.wait
         if w.for_ is not None:

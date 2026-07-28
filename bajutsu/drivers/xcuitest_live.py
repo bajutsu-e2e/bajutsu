@@ -56,6 +56,9 @@ BACKSPACE_KEY = "\ue003"
 # to zoom out — so its magnitude is fixed and only the sign varies. `mobile: rotateElement` carries
 # direction in `rotation` instead, so its velocity is a fixed positive rate (see the `rotate()` comment).
 _DRAG_DURATION_SECONDS = 0.5
+# `scroll` drags over a longer duration than a plain `swipe` so the scroll view settles where the
+# gesture ends rather than flinging past it — the non-inertial contract (BE-0326).
+_SCROLL_DURATION_SECONDS = 1.0
 _PINCH_VELOCITY = 1.0
 _ROTATE_VELOCITY = 1.0
 
@@ -188,6 +191,13 @@ class WebDriverClient:
             raise WebDriverError(f"rect was not a mapping: {value!r}")
         return value
 
+    def window_rect(self) -> Mapping[str, Any]:
+        """Return the window rect (`x` / `y` / `width` / `height`) — the device screen on iOS."""
+        value = self._value("GET", self._session_path("/window/rect"), None)
+        if not isinstance(value, Mapping):
+            raise WebDriverError(f"window rect was not a mapping: {value!r}")
+        return value
+
     def click(self, element_id: str) -> None:
         """Tap the element addressed by *element_id*."""
         self._value("POST", self._session_path(f"/element/{element_id}/click"), {})
@@ -264,6 +274,8 @@ class XcuitestLiveDriver:
 
     def __init__(self, client: WebDriverClient) -> None:
         self._client = client
+        # The device screen size (BE-0326), fetched once from the session; fixed for a session.
+        self._screen: base.Point | None = None
 
     # --- query / resolve / act ---
 
@@ -384,10 +396,33 @@ class XcuitestLiveDriver:
             ],
         )
 
+    def viewport(self) -> base.Point:
+        # The device screen size (BE-0326). The queried tree can hold buffered off-screen ScrollView
+        # children (a lazy list), so `screen_size_from_elements` overshoots the screen and the `scroll`
+        # stop condition would judge an off-screen center as on-screen; the WebDriver window rect is
+        # the real screen (an iOS app window fills it). Cached for the session.
+        if self._screen is None:
+            r = self._client.window_rect()
+            self._screen = (float(r["width"]), float(r["height"]))
+        return self._screen
+
     def scroll(self, frm: base.Point, to: base.Point) -> None:
-        # A real XCUITest drag scrolls iOS scroll views, so a directional scroll is just a swipe —
-        # the same identity the runner-channel driver keeps.
-        self.swipe(frm, to)
+        # A non-inertial pan (BE-0326): `mobile: dragFromToForDuration` over a longer duration than a
+        # plain drag keeps the scroll view moving with the finger and settling where it ends, leaving
+        # no fling momentum. A quick flick's post-lift travel is device- and frame-rate-dependent —
+        # the non-determinism the `scroll` action removes by re-querying after each bounded step.
+        self._client.execute(
+            "mobile: dragFromToForDuration",
+            [
+                {
+                    "fromX": frm[0],
+                    "fromY": frm[1],
+                    "toX": to[0],
+                    "toY": to[1],
+                    "duration": _SCROLL_DURATION_SECONDS,
+                }
+            ],
+        )
 
     def pinch(self, sel: base.Selector, scale: float) -> None:
         # Appium's `mobile: pinch` needs a velocity whose sign matches the scale: positive to zoom in

@@ -31,7 +31,17 @@ from bajutsu.scenario import (
     load_scenarios,
 )
 
-_ACT_TARGETS = ("tap", "double_tap", "long_press", "type", "swipe", "pinch", "rotate", "drag")
+_ACT_TARGETS = (
+    "tap",
+    "double_tap",
+    "long_press",
+    "type",
+    "swipe",
+    "pinch",
+    "rotate",
+    "drag",
+    "scroll",
+)
 
 
 @dataclass(frozen=True)
@@ -417,6 +427,7 @@ def _target_id(step: Step) -> str | None:
         step.pinch.sel if step.pinch else None,
         step.rotate.sel if step.rotate else None,
         step.drag.on if step.drag else None,
+        step.scroll.to if step.scroll else None,
         step.wait.for_ if step.wait else None,
     ]
     for sel in selectors:

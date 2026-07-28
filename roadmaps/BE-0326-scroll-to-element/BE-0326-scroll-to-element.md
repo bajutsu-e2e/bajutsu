@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0326](BE-0326-scroll-to-element.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0326") |
+| Implementing PR | [#1391](https://github.com/bajutsu-e2e/bajutsu/pull/1391) |
 | Topic | Scenario authoring features |
 | Related | [BE-0083](../BE-0083-codegen-emitter-unification/BE-0083-codegen-emitter-unification.md), [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md), [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md), [BE-0227](../BE-0227-web-swipe-scroll-fidelity/BE-0227-web-swipe-scroll-fidelity.md), [BE-0251](../BE-0251-driver-base-helper-hoist/BE-0251-driver-base-helper-hoist.md), [BE-0259](../BE-0259-assert-query-snapshot-reuse/BE-0259-assert-query-snapshot-reuse.md) |
 <!-- /BE-METADATA -->
@@ -386,14 +387,33 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
 > The checklist mirrors the `MECE` work breakdown in *Detailed design*.
 > The log records what changed and when (oldest first), linking the PRs.
 
-- [ ] Unit 1 — `Scroll` scenario schema wired into `Step`
-- [ ] Unit 2 — `_do_scroll` bounded scroll-and-re-query handler
-- [ ] Unit 3 — non-inertial `Driver.scroll` plus `FakeDriver` viewport model
-- [ ] Unit 4 — end-of-content detection reusing the queried tree
-- [ ] Unit 5 — codegen (Playwright, UI Automator, XCUITest `TODO`)
-- [ ] Unit 6 — driver conformance case (reveal; fail on exhausted region)
-- [ ] Unit 7 — docs and the notices.yaml rewrite
-- [ ] Unit 8 — tests (schema, FakeDriver loop, `within`, end-of-content)
+- [x] Unit 1 — `Scroll` scenario schema wired into `Step`
+- [x] Unit 2 — `_do_scroll` bounded scroll-and-re-query handler
+- [x] Unit 3 — non-inertial `Driver.scroll` plus `FakeDriver` viewport model
+- [x] Unit 4 — end-of-content detection reusing the queried tree
+- [x] Unit 5 — codegen (Playwright, UI Automator, XCUITest `TODO`)
+- [x] Unit 6 — driver conformance case (reveal; fail on exhausted region)
+- [x] Unit 7 — docs and the notices.yaml rewrite
+- [x] Unit 8 — tests (schema, FakeDriver loop, `within`, end-of-content)
+
+### Log
+
+- The `scroll` non-inertial contract is realized per backend: web is already non-inertial (a wheel /
+  touch drag); adb pans with a longer-duration `input swipe`; the XCUITest resident runner gains a
+  `/scroll` route that holds the drag at its end before lifting; the Appium live driver drags over a
+  longer duration.
+- The stop condition needs the true viewport, and the queried tree cannot supply it — a lazy list
+  keeps buffered off-screen rows in the tree, so `screen_size_from_elements` overshoots the screen and
+  would judge an off-screen center as on-screen (and drive the gesture anchor off-screen, which
+  destabilized the XCUITest runner). A `ViewportProvider` protocol reports it on every backend:
+  Playwright (`window.innerWidth/innerHeight`), adb (`wm size`), the XCUITest runner (the app
+  window's `frame`, via a new `/screen` route), the Appium live driver (its WebDriver window rect),
+  and `FakeDriver`'s model.
+- The driver conformance case reveals an off-screen row, reveals a target taller than the viewport
+  (its center on-screen), and fails on an absent target — all four backends, since each now reports an
+  exact viewport. The on-device harness resets the list to the top between scroll tests.
+- The `scroll` handler and its loop live in a focused new module,
+  `bajutsu/orchestrator/actions/handlers/scroll.py`.
 
 ## References
 

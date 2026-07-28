@@ -358,6 +358,7 @@ actions in one step is a validation error (`scenario/models/steps.py` `_one_acti
 | `selectOption` | `selectOption: { sel: <Selector>, option: "..." }` | set a web `<select>` to the option with this value; web only (iOS / Android raise) |
 | `swipe` | `swipe: { on: <Selector>, direction: up\|down\|left\|right }` or `swipe: { from: [x,y], to: [x,y] }` | selector form and coordinate form cannot mix; the directional form **scrolls** |
 | `drag` | `drag: { on: <Selector>, direction: up\|down\|left\|right, amount?: <frac> }` | a real pointer **drag** of the element (a handle / divider / slider), not a scroll |
+| `scroll` | `scroll: { to: <Selector>, direction?: up\|down\|left\|right, within?: <Selector>, maxScrolls?: <int> }` | scroll (non-inertially) until `to` is on-screen, or fail at a bound; `direction` is **scroll** direction (default `down`), the inverse of `swipe`'s |
 | `pinch` | `pinch: { sel: <Selector>, scale: <num> }` | two-finger magnify; `scale > 0` (`>1` zooms in, `<1` out) |
 | `rotate` | `rotate: { sel: <Selector>, radians: <num> }` | two-finger rotation; `>0` is clockwise |
 | `handleSystemAlert` | `handleSystemAlert: { sel: <Selector>, timeout: <sec> }` | tap a button on an iOS SpringBoard permission prompt, deterministically ([below](#handlesystemalert-the-deterministic-system-alert-step)); iOS (XCUITest) only. `sel` accepts only `label` / `labelMatches` / `index` |
@@ -446,6 +447,33 @@ omitted, a small default), but where a directional `swipe` **scrolls**, `drag` p
 pointer drag. The distinction only bites on web: there a directional `swipe` is a wheel scroll that
 would leave a grabbed handle unmoved, so use `drag` for it; on iOS / Android a real OS drag both
 scrolls and moves handles, so the two coincide.
+
+### `scroll`
+
+```yaml
+- scroll: { to: { id: notice.row.20 } }                 # scroll down until the row appears, then …
+- tap: { id: notice.row.20 }
+- scroll: { to: { label: "Log out", traits: [button] }, # scroll a specific container …
+            within: { id: settings.list }, maxScrolls: 25 }
+```
+
+`scroll` brings an off-screen element into view: it scrolls one step, re-queries the tree, and stops
+the moment `to` resolves with its frame's **center** on-screen — the point a following `tap` aims at,
+so a target taller than the viewport still succeeds once its center is reached. It fails
+deterministically when it spends `maxScrolls` steps (default 15), or as soon as a step no longer
+changes the scrolled region — the region has bottomed out and the target is not there, so a typo in
+`to` fails fast rather than scrolling the whole bound. `within` scopes the gesture (and the
+end-of-content check) to one scrollable container; omitted, the whole screen scrolls.
+
+Use `scroll` to **reveal a target**, `swipe` for a **fixed gesture**, and `drag` to **move a grabbed
+handle**. Each step is non-inertial: it advances a bounded, screen-relative distance and leaves no
+momentum, so a target never flings past the viewport and the same scenario reaches it identically on
+a fast device and a slow CI emulator — the determinism a hand-tuned `swipe` chain cannot guarantee.
+
+> **`scroll`'s `direction` is the direction the content moves, not the finger** — the inverse of
+> `swipe`. `scroll: { direction: down }` reveals below-the-fold content (the driver swipes the finger
+> *up*); `swipe: { direction: up }` is the finger going up. An author reaching for `scroll` thinks
+> "scroll down the list", so `scroll` names that; `swipe` names the finger.
 
 ### `doubleTap` / `pinch` / `rotate` (gestures)
 

@@ -569,6 +569,36 @@ class PlaywrightDriver:
         else:
             self._page.mouse.move(frm[0], frm[1])
             self._page.mouse.wheel(frm[0] - to[0], frm[1] - to[1])
+        # `wheel` / touch dispatch returns before the compositor applies the scroll, so a `query()`
+        # fired immediately after (the `scroll` action re-queries every step) would read the pre-scroll
+        # layout and mistake a real scroll for end-of-content. Honor the non-inertial "advance and
+        # stop" contract (BE-0326): wait on the paint loop until the scroll position holds steady for
+        # two consecutive frames — a condition wait, not a fixed sleep. An instantaneous wheel settles
+        # in a few frames; if the page animates the scroll (a JS handler calling smooth `scrollTo`),
+        # this waits it out rather than capturing a mid-flight frame a following `tap` would miss. The
+        # frame cap keeps a pathological never-settling page from hanging the step.
+        self._page.evaluate(
+            "() => new Promise(resolve => {"
+            "  let last = null, steady = 0, frames = 0;"
+            "  const tick = () => {"
+            "    const p = window.scrollX + ',' + window.scrollY;"
+            "    steady = p === last ? steady + 1 : 0;"
+            "    last = p;"
+            "    if (steady >= 2 || ++frames >= 30) resolve();"
+            "    else requestAnimationFrame(tick);"
+            "  };"
+            "  requestAnimationFrame(tick);"
+            "})"
+        )
+
+    @_wedge_guard
+    def viewport(self) -> base.Point:
+        # The true viewport for the `scroll` stop condition (BE-0326). `query()` reads
+        # `getBoundingClientRect`, so frames are viewport-relative and off-screen DOM nodes stay in
+        # the tree — `screen_size_from_elements` would overshoot the viewport by the content extent.
+        # `window.innerWidth`/`innerHeight` report the real viewport in that same coordinate space.
+        size = self._page.evaluate("() => [window.innerWidth, window.innerHeight]")
+        return (float(size[0]), float(size[1]))
 
     def _has_touch(self) -> bool:
         """Whether the active context takes touch input, deciding a gesture's primitive (BE-0227).

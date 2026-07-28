@@ -493,6 +493,16 @@ def test_referenced_ids_includes_drag_targets() -> None:
     assert referenced_ids(scenarios[0]) == {"gest.divider"}
 
 
+def test_referenced_ids_includes_scroll_targets_and_containers() -> None:
+    # Both a `scroll` step's target and its `within` container must register in the coverage map,
+    # or an id reached only through a scroll escapes the audit (BE-0326).
+    scenarios = load_scenarios(
+        "- name: x\n  steps:\n"
+        "    - scroll: { to: { id: notice.row.20 }, within: { id: notice.list } }\n"
+    )
+    assert referenced_ids(scenarios[0]) == {"notice.row.20", "notice.list"}
+
+
 def test_loose_wait_is_flagged() -> None:
     report = _audit(
         "- name: x\n  steps:\n"

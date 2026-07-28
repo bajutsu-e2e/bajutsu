@@ -154,6 +154,11 @@ def tap_cmd(serial: str, x: float, y: float) -> list[str]:
     return _adb(serial, "shell", "input", "tap", _num(x), _num(y))
 
 
+def wm_size_cmd(serial: str) -> list[str]:
+    """`adb shell wm size` — the display resolution in raw pixels, the true viewport (BE-0326)."""
+    return _adb(serial, "shell", "wm", "size")
+
+
 def double_tap_cmd(serial: str, x: float, y: float) -> list[str]:
     """Both taps of a double-tap in a single `adb shell` round-trip (BE-0210) — the non-root fallback.
 

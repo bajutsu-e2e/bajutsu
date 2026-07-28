@@ -94,6 +94,30 @@ def _bounds(raw: str) -> base.Frame:
     return (x1, y1, x2 - x1, y2 - y1)
 
 
+# `wm size` prints "Physical size: WxH" and, when the display has been resized, an "Override size:
+# WxH" that is the effective resolution — the override wins when present (BE-0326).
+_WM_SIZE = re.compile(r"^\s*(Physical|Override)\s+size:\s*(\d+)x(\d+)\s*$", re.MULTILINE)
+
+
+def _parse_wm_size(out: str) -> base.Point:
+    """Parse `adb shell wm size` output to the display `(w, h)` in pixels.
+
+    Prefers an Override size over the Physical size; fails loudly (determinism first) rather than
+    guessing a viewport if the output carries neither.
+    """
+    physical: base.Point | None = None
+    override: base.Point | None = None
+    for label, w, h in _WM_SIZE.findall(out or ""):
+        if label == "Override":
+            override = (float(w), float(h))
+        else:
+            physical = (float(w), float(h))
+    size = override or physical
+    if size is None:
+        raise ValueError(f"could not parse `wm size` output: {out!r}")
+    return size
+
+
 def _derived_label(node: ET.Element) -> str | None:
     """The accessible name of a labelless control, joined from its descendants' visible text.
 
@@ -239,6 +263,7 @@ class AdbDriver(CoordinateTreeDriver):
     _SCROLL_RETRIES = 3  # scroll-and-re-query attempts before a deterministic not-found failure
     _SCROLL_FROM_FRAC = 0.7  # swipe start, as a fraction of screen height
     _SCROLL_TO_FRAC = 0.3  # swipe end (< start ⇒ upward ⇒ content scrolls up)
+    _SCROLL_DURATION_MS = 600  # the `scroll` pan duration: long enough to drag, not fling (BE-0326)
 
     def __init__(
         self,
@@ -259,6 +284,8 @@ class AdbDriver(CoordinateTreeDriver):
         self._is_root: bool | None = None
         self._touch_dev: adb.TouchDevice | None = None
         self._touch_probed = False
+        # The true display size (BE-0326), resolved once via `wm size`; the resolution is fixed for a run.
+        self._screen: base.Point | None = None
 
     def _describe(self) -> list[base.Element]:
         return parse_hierarchy(self._read_source())
@@ -420,10 +447,24 @@ class AdbDriver(CoordinateTreeDriver):
     def swipe(self, frm: base.Point, to: base.Point) -> None:
         self._run(adb.swipe_cmd(self.serial, frm[0], frm[1], to[0], to[1]))
 
+    def viewport(self) -> base.Point:
+        # The true display size in raw pixels (BE-0326). A lazy list (RecyclerView / LazyColumn) keeps
+        # a few buffered rows either side of the viewport in the a11y tree, so
+        # `screen_size_from_elements` overshoots the screen and the `scroll` stop condition would
+        # misjudge an off-screen center as on-screen; `wm size` reports the real display. Cached: the
+        # resolution is fixed for a run.
+        if self._screen is None:
+            self._screen = _parse_wm_size(self._run(adb.wm_size_cmd(self.serial)))
+        return self._screen
+
     def scroll(self, frm: base.Point, to: base.Point) -> None:
-        # An adb `input swipe` with a finite duration is a real drag, which scrolls, so a directional
-        # scroll is just a swipe.
-        self.swipe(frm, to)
+        # A non-inertial pan (BE-0326): `input swipe` over a longer duration than the default drag
+        # keeps the list moving with the finger and stopping when the gesture ends, so the scroll
+        # leaves no fling momentum. A short swipe over the same distance flings — its post-lift
+        # travel varies by device, which is exactly the non-determinism the `scroll` action removes.
+        self._run(
+            adb.swipe_cmd(self.serial, frm[0], frm[1], to[0], to[1], self._SCROLL_DURATION_MS)
+        )
 
     def back(self) -> None:
         # The true system back: a KEYCODE_BACK key event. Android has no on-screen "back" element to

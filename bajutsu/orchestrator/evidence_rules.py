@@ -40,6 +40,8 @@ def _primary_selector(step: Step) -> Selector | None:
         return step.pinch.sel
     if step.rotate is not None:
         return step.rotate.sel
+    if step.scroll is not None:
+        return step.scroll.to
     if step.handle_system_alert is not None:
         return step.handle_system_alert.sel
     return None

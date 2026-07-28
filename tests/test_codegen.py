@@ -87,6 +87,13 @@ def test_drag_maps_to_swipe_gesture() -> None:
     assert 'el("comp.divider").swipeRight()' in code
 
 
+def test_scroll_emits_a_labeled_todo() -> None:
+    # XCUITest has no single robust scroll-to-element, so `scroll` (BE-0326) emits a labeled TODO
+    # rather than an unchecked swipeUp() chain that would fake the action.
+    code = _gen("- name: x\n  steps:\n    - scroll: { to: { id: notice.row.20 } }\n")
+    assert "// TODO: scroll to reveal an element — XCUITest has no single robust" in code
+
+
 def test_coordinate_swipe_maps_to_coordinate_drag() -> None:
     # `swipe { from, to }` (BE-0025): a coordinate drag via XCUICoordinate, not a `// TODO`.
     code = _gen("- name: x\n  steps:\n    - swipe: { from: [10, 20], to: [30, 40] }\n")

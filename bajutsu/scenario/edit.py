@@ -32,6 +32,7 @@ _SELECTOR_SLOT: dict[str, str | None] = {
     "longPress": "sel",
     "type": "into",
     "selectOption": "sel",
+    "scroll": "to",
 }
 
 
