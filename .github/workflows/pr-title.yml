@@ -36,7 +36,7 @@ jobs:
     name: validate PR title
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           # Fork PRs run the linter from the trusted base SHA so a PR can't edit scripts/lint_pr.py
           # to bypass the gate; same-repo PRs check out the PR head so linter/workflow changes are
