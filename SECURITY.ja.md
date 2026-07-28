@@ -28,7 +28,7 @@ Bajutsu は iOS Simulator 向けの防御的な E2E（end-to-end）テストツ�
   `run --system-alert-handling`）だけです。API キーはコミットしたり共有したりせず、`.env`
   （gitignore 済み）に保管してください。決定的な `run`／CI ゲートにシークレットは不要です。
   追跡対象の pre-commit フックと CI での再スキャンが、どちらも
-  [git-secrets](https://github.com/awslabs/git-secrets) を使ってシークレットをブランチに
+  [gitleaks](https://github.com/gitleaks/gitleaks) を使ってシークレットをブランチに
   取り込まれる前後で検出します（詳細は
   [`docs/ja/ai-development.md`](docs/ja/ai-development.md#コミット前にシークレットをブロックする)）。
   ただし、これは最後の砦であり、シークレットを貼り付けてよい理由にはなりません。

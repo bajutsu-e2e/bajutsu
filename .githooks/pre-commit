@@ -1,14 +1,15 @@
 #!/bin/bash
-# Pre-commit gate: block a staged secret before it's committed, via awslabs/git-secrets
-# (https://github.com/awslabs/git-secrets) — the same tool and the same patterns
-# `make lint-secrets` re-checks in CI, so a skipped or bypassed local hook still gets caught before
-# merge.
+# Pre-commit gate: block a staged secret before it's committed, via gitleaks
+# (https://github.com/gitleaks/gitleaks) — the same tool and the same tracked
+# .gitleaks.toml config `make lint-secrets` re-checks in CI, so a bypassed or skipped local hook
+# still gets caught before merge.
 #
-# Enable once per clone: git config core.hooksPath .githooks (done by `make setup` / `make hooks`,
-# which also self-heals the pattern registration — see scripts/git-secrets-setup.sh).
+# Enable once per clone: git config core.hooksPath .githooks (done by `make setup` / `make hooks`).
 # Bypass for a genuine emergency: git commit --no-verify
 set -euo pipefail
 
-command -v git-secrets >/dev/null 2>&1 || exit 0  # not installed → don't block the commit
+command -v gitleaks >/dev/null 2>&1 || exit 0  # not installed → don't block the commit
 
-exec git secrets --pre_commit_hook -- "$@"
+# --staged/--pre-commit + --redact is gitleaks' own documented pre-commit invocation
+# (.pre-commit-hooks.yaml upstream) — redact so a real match never prints in cleartext.
+exec gitleaks git --pre-commit --staged --redact --no-banner

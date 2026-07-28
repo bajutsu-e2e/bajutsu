@@ -95,9 +95,8 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   needed. Mechanism:
   [`docs/ai-development.md`](docs/ai-development.md#rebase-early-integrate-small-conflicts).
 - **Never commit a secret.** A tracked pre-commit/prepare-commit-msg/commit-msg hook and a CI
-  re-scan, both backed by [git-secrets](https://github.com/awslabs/git-secrets), block a secret
-  before and after it lands on a branch; `make hooks` self-heals the pattern registration the same
-  way it self-heals the settings above. Mechanism:
+  re-scan, both backed by [gitleaks](https://github.com/gitleaks/gitleaks) and its tracked
+  `.gitleaks.toml` config, block a secret before and after it lands on a branch. Mechanism:
   [`docs/ai-development.md`](docs/ai-development.md#block-a-secret-before-its-committed).
 - **Rebase, don't drift.** Before pushing, `git fetch origin && git rebase origin/main` so you
   integrate others' merged work early and surface conflicts while they're small. `make preflight`

@@ -10,17 +10,16 @@ setup: hooks
 # Wire per-clone local git settings that clone/pull never carry over, so this self-heals
 # existing clones too — `check` runs it before every gate, right when it matters. Idempotent:
 #   - core.hooksPath    -> the tracked hooks dir (pre-push gate + commit-msg scope check, BE-0069;
-#                          pre-commit/prepare-commit-msg/commit-msg secret scan)
+#                          pre-commit/prepare-commit-msg/commit-msg secret scan, via .gitleaks.toml
+#                          — a tracked file, so no local git-config registration is needed here)
 #   - merge.uv-lock     -> regenerate uv.lock from pyproject.toml on conflict (BE-0043)
 #   - rerere            -> replay a once-resolved conflict automatically (BE-0043)
-#   - secrets.patterns  -> git-secrets prohibited patterns, when git-secrets is installed
 hooks:
 	@[ -d .githooks ] && git config core.hooksPath .githooks && echo "hooks: core.hooksPath -> .githooks" || true
 	@git config merge.uv-lock.name "regenerate uv.lock from pyproject.toml" \
 	  && git config merge.uv-lock.driver "./scripts/merge-uv-lock.sh %A" \
 	  && git config rerere.enabled true \
 	  && echo "hooks: uv.lock merge driver + rerere wired"
-	@./scripts/git-secrets-setup.sh
 
 # Config-aware one-command bootstrap (BE-0164): the base toolchain (`setup`) PLUS exactly the
 # backend deps a project's config needs — not "every backend unconditionally", not "everything".
@@ -71,7 +70,7 @@ preflight:
 
 # Shell scripts the gate lints. pre-push/pre-commit/prepare-commit-msg have no .sh suffix, so
 # they're listed explicitly.
-SHELL_SCRIPTS := .githooks/pre-push .githooks/commit-msg .githooks/pre-commit .githooks/prepare-commit-msg scripts/serve.sh scripts/install.sh scripts/worktree.sh scripts/preflight.sh scripts/merge-uv-lock.sh scripts/xcuitest-runner-hash.sh scripts/git-secrets-setup.sh .claude/hooks/session-start.sh demos/tour/demo.sh
+SHELL_SCRIPTS := .githooks/pre-push .githooks/commit-msg .githooks/pre-commit .githooks/prepare-commit-msg scripts/serve.sh scripts/install.sh scripts/worktree.sh scripts/preflight.sh scripts/merge-uv-lock.sh scripts/xcuitest-runner-hash.sh .claude/hooks/session-start.sh demos/tour/demo.sh
 
 # Modules whose public surface has migrated to the Google-style docstring standard (BE-0065),
 # enforced by `lint-docstrings`. This list GROWS module-by-module as more migrate; keep it the
@@ -186,19 +185,18 @@ new-roadmap-item:
 lint-pr:
 	uv run python scripts/lint_pr.py
 
-# Re-scan every tracked file for a committed secret with git-secrets: defense-in-depth
-# alongside the pre-commit hook, which a `--no-verify` commit or a clone that skipped `make setup`
-# never runs. `hooks` (a prerequisite here, and already `check`'s first step) self-heals the
-# pattern registration first, so the patterns are current even on a fresh checkout. Skips with a
-# notice, like `lint-actions`/`lint-js`, when git-secrets isn't on PATH (CI always installs it, a
-# pinned commit of https://github.com/awslabs/git-secrets) — an if/else, not `cmd && ... || echo
+# Re-scan every tracked file for a committed secret with gitleaks: defense-in-depth alongside the
+# pre-commit hook, which a `--no-verify` commit or a clone that skipped `make setup` never runs.
+# Config is the tracked .gitleaks.toml — no per-clone registration step needed. Skips with a
+# notice, like `lint-actions`/`lint-js`, when gitleaks isn't on PATH (CI always installs it, a
+# pinned release of https://github.com/gitleaks/gitleaks) — an if/else, not `cmd && ... || echo
 # ...`: the latter would also print (and mask a real failure behind) the "not installed" notice
-# whenever `git secrets --scan` itself found a match and exited non-zero.
-lint-secrets: hooks
-	@if command -v git-secrets >/dev/null 2>&1; then \
-		git secrets --scan; \
+# whenever `gitleaks dir` itself found a match and exited non-zero.
+lint-secrets:
+	@if command -v gitleaks >/dev/null 2>&1; then \
+		gitleaks dir . --no-banner --redact; \
 	else \
-		echo "lint-secrets: git-secrets not installed — skipping (CI enforces it); see docs/ai-development.md"; \
+		echo "lint-secrets: gitleaks not installed — skipping (CI enforces it); see docs/ai-development.md"; \
 	fi
 
 # Filter roadmap (BE) items by Status into one small table — ID / Item / Topic / Path — so an AI

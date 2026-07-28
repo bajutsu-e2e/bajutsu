@@ -60,22 +60,21 @@ jobs:
       - name: Lint roadmap (cross-links + author handle)
         run: make lint-roadmap
 
-      # git-secrets (https://github.com/awslabs/git-secrets) isn't pip/uv-installable — the second
-      # gate check needing its own install, alongside actionlint below. Unlike actionlint's release
-      # binary (a mutable asset URL, so that step separately verifies a checksum), checking out a
-      # full 40-character commit SHA already pins the fetched content byte-for-byte, so no separate
-      # verification step is needed here. The SHA below is upstream's "Prepare for 1.3.0 release"
-      # commit — upstream has cut no GitHub Release, so a tag/SHA is the closest thing to a version.
-      - name: Install git-secrets
+      # gitleaks (https://github.com/gitleaks/gitleaks) isn't pip/uv-installable — the second gate
+      # check needing its own install, alongside actionlint below. Same pattern as actionlint: pin
+      # the release tarball by exact version and verify its checksum (the release's own published
+      # checksums.txt), since the download URL itself is a mutable release asset.
+      - name: Install gitleaks
         run: |
-          git clone --quiet https://github.com/awslabs/git-secrets.git /tmp/git-secrets
-          git -C /tmp/git-secrets checkout --quiet ad82d68ee924906a0401dfd48de5057731a9bc84  # 1.3.0
-          sudo make -C /tmp/git-secrets install
+          curl -fsSL -o gitleaks.tar.gz https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf gitleaks.tar.gz gitleaks
+          sudo mv gitleaks /usr/local/bin/gitleaks
 
       # Re-scans every tracked file for a secret the pre-commit hook never saw — a `--no-verify`
       # commit, or a clone that skipped `make setup`/`make hooks` entirely, both bypass the local
       # hook but not this step.
-      - name: Lint for a committed secret (git-secrets)
+      - name: Lint for a committed secret (gitleaks)
         run: make lint-secrets
 
       - name: Lint shell scripts (shellcheck)
