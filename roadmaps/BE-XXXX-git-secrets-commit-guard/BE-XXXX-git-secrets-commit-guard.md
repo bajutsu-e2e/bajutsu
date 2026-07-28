@@ -97,9 +97,16 @@ existing commit-msg hook already no-ops when `uv` is absent — so a contributor
 installed it yet is never blocked from committing, only left unprotected until they do.
 
 **B. Self-healing pattern registration.** `git secrets --register-aws` adds the built-in AWS
-credential patterns; this repository additionally handles an Anthropic API key or OAuth token
-(`.env.example`'s `ANTHROPIC_API_KEY` / `CLAUDE_CODE_OAUTH_TOKEN`, both `sk-ant-`-prefixed) and a
-pasted PEM private-key block, neither of which `--register-aws` covers. Because `git-secrets`
+credential patterns; this repository additionally handles four shapes `--register-aws` doesn't
+cover: an Anthropic API key or OAuth token (`.env.example`'s `ANTHROPIC_API_KEY` /
+`CLAUDE_CODE_OAUTH_TOKEN`, both `sk-ant-`-prefixed), a pasted PEM private-key block (also covers a
+GitHub App or GCS service-account key, the same PEM format), a GitHub token (`ghp_`/`gho_`/`ghu_`/
+`ghs_`/`ghr_`/`github_pat_`-prefixed — this repository integrates deeply with GitHub, from
+[`bajutsu/github/app.py`](../../bajutsu/github/app.py) to the CI automation bot), and
+`BAJUTSU_SERVE_TOKEN` / `GRAFANA_ADMIN_PASSWORD` hardcoded by key name rather than value shape (the
+actual deploy-time secrets [`deploy/self-host/README.md`](../../deploy/self-host/README.md) has an
+operator set, following the same `KEY=value` shape `--register-aws`'s own AWS-secret-key pattern
+already uses for a value with no distinctive shape of its own). Because `git-secrets`
 stores every pattern in this clone's local `git config` — a setting clone/pull never carries over,
 the same problem `core.hooksPath` already has — the patterns live in a tracked file,
 [`.githooks/git-secrets-patterns.txt`](../../.githooks/git-secrets-patterns.txt), and
@@ -124,15 +131,23 @@ instead of verifying a separately-downloaded release asset.
 
 **D. An escape valve for a legitimate false match.** `git-secrets` reads a tracked
 [`.gitallowed`](../../.gitallowed) file at the repository root as its own exemption mechanism, so a
-string that matches a pattern without being a secret (a fixture value, a documented placeholder)
-can be exempted there instead of by loosening a pattern. Running `make lint-secrets` against this
-repository's existing tree surfaced two such cases, so `.gitallowed` ships with two narrow,
-reviewable entries rather than an empty file:
+string that matches a pattern without being a secret (a fixture value, a documented placeholder, a
+shell variable reference) can be exempted there instead of by loosening a pattern. Running
+`make lint-secrets` against this repository's existing tree surfaced five such cases, so
+`.gitallowed` ships with five narrow, reviewable entries rather than an empty file:
 [`tests/test_github_app.py`](../../tests/test_github_app.py)'s deliberately malformed PEM fixture
 (the literal string `nope` as the key body, used to test the error path for a key that fails to
-parse) matches the new private-key pattern without being a private key; and the pattern's own
+parse) matches the private-key pattern without being a private key; the private-key pattern's own
 source line in [`.githooks/git-secrets-patterns.txt`](../../.githooks/git-secrets-patterns.txt)
-matches itself, since its literal regex text contains the string it's written to detect.
+matches itself, since its literal regex text contains the string it's written to detect; and the
+new `BAJUTSU_SERVE_TOKEN` / `GRAFANA_ADMIN_PASSWORD` pattern (*B* above) matches three more places
+in the existing tree that reference the variable name without a literal secret value —
+[`deploy/self-host/.env.example`](../../deploy/self-host/.env.example)'s self-documenting
+`change-me` placeholder (the same convention `.env.example`'s own `sk-ant-...` already uses),
+[`deploy/self-host/docker-compose.yml`](../../deploy/self-host/docker-compose.yml)'s
+`${BAJUTSU_SERVE_TOKEN:?…}` / `${GRAFANA_ADMIN_PASSWORD:-…}` shell variable interpolation, and
+[`bajutsu/serve/launchagent.py`](../../bajutsu/serve/launchagent.py)'s
+`"BAJUTSU_SERVE_TOKEN": token`, which assigns from an already-validated variable, not a literal.
 
 **E. Documentation.** [`docs/ai-development.md`](../../docs/ai-development.md) (and its
 `docs/ja/` mirror) gains a section describing the two-layer guard, and

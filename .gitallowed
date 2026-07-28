@@ -13,3 +13,16 @@ app_jwt.*nope
 # regex's character-class syntax immediately before "PRIVATE KEY", so this stays narrow to the
 # pattern's own definition line.
 A-Z \]\*PRIVATE KEY
+
+# deploy/self-host/.env.example: the BAJUTSU_SERVE_TOKEN / GRAFANA_ADMIN_PASSWORD lines use the
+# self-documenting "change-me" placeholder, the same convention `sk-ant-...` uses in .env.example
+# — not a real deploy-time secret.
+=change-me$
+
+# deploy/self-host/docker-compose.yml: `${BAJUTSU_SERVE_TOKEN:?...}` / `${GRAFANA_ADMIN_PASSWORD:-...}`
+# are shell/compose variable interpolation — a reference to the environment, not a literal value.
+\$\{(BAJUTSU_SERVE_TOKEN|GRAFANA_ADMIN_PASSWORD)
+
+# bajutsu/serve/launchagent.py: `"BAJUTSU_SERVE_TOKEN": token` assigns the plist entry from the
+# `token` variable already validated by its caller — not a literal secret value.
+BAJUTSU_SERVE_TOKEN["']?:\s*token\b

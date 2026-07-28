@@ -20,19 +20,22 @@ cd "$(dirname "$0")/.."
 
 if ! command -v git-secrets >/dev/null 2>&1; then
 	echo "hooks: git-secrets not installed — the pre-commit/CI secret scan will skip until it is" \
-		"(macOS: 'brew install git-secrets' or 'make deps'; else clone" \
+		"(macOS: 'brew install git-secrets'; else clone" \
 		"https://github.com/awslabs/git-secrets and run 'sudo make install')." >&2
 	exit 0
 fi
 
 git secrets --register-aws >/dev/null
 
-while IFS= read -r pattern; do
-	[ -z "$pattern" ] && continue
-	case "$pattern" in
-	'#'*) continue ;;
+# `|| [ -n "$pattern" ]` covers a patterns file whose last line lacks a trailing newline: `read`
+# still fills `$pattern` on that final line but returns non-zero (no delimiter found), which would
+# otherwise end the loop one line early and silently drop it.
+while IFS= read -r pattern || [ -n "$pattern" ]; do
+	trimmed="${pattern#"${pattern%%[![:space:]]*}"}" # strip leading whitespace, so an indented
+	case "$trimmed" in                               # comment isn't registered as a pattern
+	'' | '#'*) continue ;;
 	esac
-	git secrets --add -- "$pattern" >/dev/null || true
+	git secrets --add -- "$trimmed" >/dev/null || true
 done <.githooks/git-secrets-patterns.txt
 
 echo "hooks: git-secrets patterns registered"
