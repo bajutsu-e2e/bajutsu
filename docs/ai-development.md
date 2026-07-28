@@ -58,6 +58,44 @@ other session from your change.
 
 The short form of this rule is in [`CLAUDE.md`](../CLAUDE.md).
 
+## Block a secret before it's committed
+
+`core.hooksPath` also wires a tracked **pre-commit hook**
+([`.githooks/pre-commit`](../.githooks/pre-commit)) and a **prepare-commit-msg hook**
+([`.githooks/prepare-commit-msg`](../.githooks/prepare-commit-msg)), both backed by
+[git-secrets](https://github.com/awslabs/git-secrets): the pre-commit hook scans every staged
+file for a prohibited pattern (an AWS credential, an Anthropic API key, a pasted private-key
+block) and refuses the commit on a match; the prepare-commit-msg hook does the same for a merge
+that would otherwise pull a secret in from another branch's history. The existing commit-msg hook
+([`.githooks/commit-msg`](../.githooks/commit-msg)) gained the same scan for the message body
+itself, alongside its scoped-subject check — git runs only one script per hook name, so both
+checks share that one file.
+
+```bash
+make hooks   # registers the git-secrets patterns in this clone's local git config, idempotently
+```
+
+The patterns themselves live in a tracked file
+([`.githooks/git-secrets-patterns.txt`](../.githooks/git-secrets-patterns.txt)), because
+git-secrets stores them in local `git config` — a per-clone setting that clone/pull never carries
+over, the same problem `core.hooksPath` has. `make hooks` re-registers them every time (via
+[`scripts/git-secrets-setup.sh`](../scripts/git-secrets-setup.sh)), so a fresh clone or a session
+that skipped `make setup` self-heals the moment it next runs the gate. Everything degrades
+gracefully when `git-secrets` isn't installed yet — the hooks and `make lint-secrets` (below) skip
+with a notice rather than blocking a commit or the gate; install it with `brew install git-secrets`
+(macOS, also in the [`Brewfile`](../Brewfile)) or by building it from source
+(`git clone https://github.com/awslabs/git-secrets && cd git-secrets && sudo make install`). A
+string that legitimately matches a pattern but isn't a secret (a fixture, a documented placeholder)
+can be exempted with a tracked `.gitallowed` file at the repository root — git-secrets' own
+escape valve — rather than by loosening a pattern.
+
+A local hook only helps a clone that has one wired and isn't bypassed with `--no-verify`, so CI
+runs the same scan independently: `make lint-secrets` re-scans every tracked file and is folded
+into `make check`, mirroring the way `make check` itself runs both locally and in CI so neither a
+skipped `make setup` nor a `--no-verify` commit slips a secret past review.
+
+The short form of this rule is in [`CLAUDE.md`](../CLAUDE.md).
+
 ## Rebase early, integrate small conflicts
 
 ```bash

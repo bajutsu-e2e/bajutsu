@@ -1,0 +1,15 @@
+# git-secrets false-positive allowlist: a tracked, reviewable exemption list, read by both the
+# pre-commit hook and `make lint-secrets` (see docs/ai-development.md, "Block a secret before it's
+# committed"). One extended-regex line per exemption, matched against a line git-secrets already
+# flagged as matching a prohibited pattern — narrow each entry to the specific fixture, never to
+# the shape of the pattern itself (that would defeat the check for every other file).
+
+# tests/test_github_app.py: a deliberately malformed PEM fixture ("nope" as the key body) that
+# tests the error path for a key that fails to parse — not a real private key.
+app_jwt.*nope
+
+# .githooks/git-secrets-patterns.txt: the private-key pattern's own source regex matches itself
+# (its literal text contains the string it's written to detect). A real secret never embeds this
+# regex's character-class syntax immediately before "PRIVATE KEY", so this stays narrow to the
+# pattern's own definition line.
+A-Z \]\*PRIVATE KEY

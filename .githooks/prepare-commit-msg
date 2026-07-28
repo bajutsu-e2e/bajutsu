@@ -1,0 +1,9 @@
+#!/bin/bash
+# prepare-commit-msg gate: git-secrets also checks a merge's incoming history for a secret the
+# merge would otherwise pull in silently. Wired the same way as pre-commit — see there
+# for the enable/bypass notes and scripts/git-secrets-setup.sh for the pattern registration.
+set -euo pipefail
+
+command -v git-secrets >/dev/null 2>&1 || exit 0  # not installed → don't block the commit
+
+exec git secrets --prepare_commit_msg_hook -- "$@"

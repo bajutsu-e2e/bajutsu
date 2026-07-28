@@ -53,6 +53,20 @@ push 直前にゲートが自己修復されます。Claude Code の web セッ�
 
 このルールの短縮版は [`CLAUDE.md`](../../CLAUDE.md) にあります。
 
+## コミット前にシークレットをブロックする
+
+`core.hooksPath` は、追跡対象の **pre-commit フック**（[`.githooks/pre-commit`](../../.githooks/pre-commit)）と **prepare-commit-msg フック**（[`.githooks/prepare-commit-msg`](../../.githooks/prepare-commit-msg)）も配線します。どちらも [git-secrets](https://github.com/awslabs/git-secrets) を使います。pre-commit フックはステージ済みの全ファイルを禁止パターン（AWS の認証情報、Anthropic の API キー、貼り付けられた秘密鍵のブロックなど）でスキャンし、一致すればコミットを拒否します。prepare-commit-msg フックは、別ブランチの履歴からシークレットを取り込んでしまう merge に対して同じチェックを行います。既存の commit-msg フック（[`.githooks/commit-msg`](../../.githooks/commit-msg)）にも、コミットメッセージ本文向けの同じスキャンを、subject のスコープチェックと並べて追加しました。git は 1 つのフック名につき 1 本のスクリプトしか実行できないため、両方のチェックを 1 つのファイルにまとめています。
+
+```bash
+make hooks   # git-secrets のパターンをこのクローンのローカル git config へ、冪等に登録する
+```
+
+パターンそのものは追跡対象のファイル（[`.githooks/git-secrets-patterns.txt`](../../.githooks/git-secrets-patterns.txt)）に置いてあります。git-secrets がパターンをローカルの `git config` に保存するためで、`core.hooksPath` と同じく clone/pull では伝播しない、クローンごとの設定だからです。`make hooks` は（[`scripts/git-secrets-setup.sh`](../../scripts/git-secrets-setup.sh) 経由で）毎回パターンを登録し直すので、新規クローンや `make setup` を飛ばしたセッションも、次にゲートを走らせた瞬間に自己修復します。`git-secrets` 未インストールのときはすべて緩やかに縮退し、フックと（後述の）`make lint-secrets` はコミットやゲートをブロックせず、通知だけを出してスキップします。インストールは `brew install git-secrets`（macOS。[`Brewfile`](../../Brewfile) にも記載）か、ソースからのビルド（`git clone https://github.com/awslabs/git-secrets && cd git-secrets && sudo make install`）で行えます。パターンには一致するもののシークレットではない文字列（フィクスチャや、ドキュメント中のプレースホルダーなど）があれば、パターン自体を緩めるのではなく、リポジトリのルートに追跡対象の `.gitallowed` ファイルを置いて除外してください。これは git-secrets 自身が用意する例外の仕組みです。
+
+ローカルのフックは、それが配線されていて `--no-verify` で回避されていないクローンにしか効きません。そこで CI は同じスキャンを独立に実行します。`make lint-secrets` は追跡対象の全ファイルを再スキャンし、`make check` に組み込まれています。`make check` 自体がローカルと CI の両方で走ることで、`make setup` を飛ばしたクローンにも `--no-verify` のコミットにも、シークレットをレビューの目をすり抜けさせません。
+
+このルールの短縮版は [`CLAUDE.md`](../../CLAUDE.md) にあります。
+
 ## 早めに rebase し、小さな衝突のうちに統合する
 
 ```bash

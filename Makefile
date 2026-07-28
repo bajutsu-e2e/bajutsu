@@ -1,5 +1,5 @@
 .PHONY: setup hooks install deps deps-check serve worktree preflight test lint lint-docstrings lint-imports format format-check typecheck \
-        lock-check lint-sh lint-actions lint-js lint-roadmap lint-pr check new-roadmap-item \
+        lock-check lint-sh lint-actions lint-js lint-roadmap lint-pr lint-secrets check new-roadmap-item \
         roadmap-status roadmap-dashboard docs docs-serve docs-diagrams runner-bundle
 
 # One-command bootstrap for a fresh clone (cross-platform; the dev gate needs no
@@ -9,15 +9,18 @@ setup: hooks
 
 # Wire per-clone local git settings that clone/pull never carry over, so this self-heals
 # existing clones too — `check` runs it before every gate, right when it matters. Idempotent:
-#   - core.hooksPath    -> the tracked hooks dir (pre-push gate + commit-msg scope check, BE-0069)
+#   - core.hooksPath    -> the tracked hooks dir (pre-push gate + commit-msg scope check, BE-0069;
+#                          pre-commit/prepare-commit-msg/commit-msg secret scan)
 #   - merge.uv-lock     -> regenerate uv.lock from pyproject.toml on conflict (BE-0043)
 #   - rerere            -> replay a once-resolved conflict automatically (BE-0043)
+#   - secrets.patterns  -> git-secrets prohibited patterns, when git-secrets is installed
 hooks:
 	@[ -d .githooks ] && git config core.hooksPath .githooks && echo "hooks: core.hooksPath -> .githooks" || true
 	@git config merge.uv-lock.name "regenerate uv.lock from pyproject.toml" \
 	  && git config merge.uv-lock.driver "./scripts/merge-uv-lock.sh %A" \
 	  && git config rerere.enabled true \
 	  && echo "hooks: uv.lock merge driver + rerere wired"
+	@./scripts/git-secrets-setup.sh
 
 # Config-aware one-command bootstrap (BE-0164): the base toolchain (`setup`) PLUS exactly the
 # backend deps a project's config needs — not "every backend unconditionally", not "everything".
@@ -66,8 +69,9 @@ worktree:
 preflight:
 	@./scripts/preflight.sh
 
-# Shell scripts the gate lints. pre-push has no .sh suffix, so they're listed explicitly.
-SHELL_SCRIPTS := .githooks/pre-push .githooks/commit-msg scripts/serve.sh scripts/install.sh scripts/worktree.sh scripts/preflight.sh scripts/merge-uv-lock.sh scripts/xcuitest-runner-hash.sh .claude/hooks/session-start.sh demos/tour/demo.sh
+# Shell scripts the gate lints. pre-push/pre-commit/prepare-commit-msg have no .sh suffix, so
+# they're listed explicitly.
+SHELL_SCRIPTS := .githooks/pre-push .githooks/commit-msg .githooks/pre-commit .githooks/prepare-commit-msg scripts/serve.sh scripts/install.sh scripts/worktree.sh scripts/preflight.sh scripts/merge-uv-lock.sh scripts/xcuitest-runner-hash.sh scripts/git-secrets-setup.sh .claude/hooks/session-start.sh demos/tour/demo.sh
 
 # Modules whose public surface has migrated to the Google-style docstring standard (BE-0065),
 # enforced by `lint-docstrings`. This list GROWS module-by-module as more migrate; keep it the
@@ -182,6 +186,21 @@ new-roadmap-item:
 lint-pr:
 	uv run python scripts/lint_pr.py
 
+# Re-scan every tracked file for a committed secret with git-secrets: defense-in-depth
+# alongside the pre-commit hook, which a `--no-verify` commit or a clone that skipped `make setup`
+# never runs. `hooks` (a prerequisite here, and already `check`'s first step) self-heals the
+# pattern registration first, so the patterns are current even on a fresh checkout. Skips with a
+# notice, like `lint-actions`/`lint-js`, when git-secrets isn't on PATH (CI always installs it, a
+# pinned commit of https://github.com/awslabs/git-secrets) — an if/else, not `cmd && ... || echo
+# ...`: the latter would also print (and mask a real failure behind) the "not installed" notice
+# whenever `git secrets --scan` itself found a match and exited non-zero.
+lint-secrets: hooks
+	@if command -v git-secrets >/dev/null 2>&1; then \
+		git secrets --scan; \
+	else \
+		echo "lint-secrets: git-secrets not installed — skipping (CI enforces it); see docs/ai-development.md"; \
+	fi
+
 # Filter roadmap (BE) items by Status into one small table — ID / Item / Topic / Path — so an AI
 # session surveys just the rows it needs (e.g. every Proposal) without paging through the dashboard's
 # rendered HTML or opening each item file to check its `Status` (BE-0162). Pure and offline: reads
@@ -193,7 +212,7 @@ roadmap-status:
 # The full gate. CI (.github/workflows/ci.yml) mirrors these steps so "green locally"
 # predicts "green in CI". The uv-native checks run identically everywhere; actionlint is
 # the lone exception (see lint-actions above).
-check: hooks format-check lint lint-docstrings lint-imports lint-sh lint-actions lint-js lint-roadmap lock-check typecheck test
+check: hooks format-check lint lint-docstrings lint-imports lint-sh lint-actions lint-js lint-roadmap lint-secrets lock-check typecheck test
 
 # Generated API reference (BE-0065). Deliberately NOT in `check`: like on-device E2E, the
 # reference build is a separate, heavier path (it pulls the `docs` extra) and must not slow the
