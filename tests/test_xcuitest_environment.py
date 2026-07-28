@@ -385,15 +385,17 @@ def test_respawn_uses_the_tighter_readiness_ceiling(
     eff = _sim_eff(test_runner=str(_write_runner(tmp_path)))
 
     seen: list[float] = []
-    import bajutsu.platform_lifecycle.environments.xcuitest as xc_mod
-
-    original = xc_mod._spawn_cold_with_retry
+    original = _spawn_cold_with_retry
 
     def spy(*args: Any, **kwargs: Any) -> _Spawned:
         seen.append(kwargs["timeout"])
         return original(*args, **kwargs)
 
-    monkeypatch.setattr(xc_mod, "_spawn_cold_with_retry", spy)
+    # Patch the module-level name `_spawn_cold` resolves against (string target, so no second
+    # `import` of a module this file already imports names from).
+    monkeypatch.setattr(
+        "bajutsu.platform_lifecycle.environments.xcuitest._spawn_cold_with_retry", spy
+    )
 
     XcuitestEnvironment("xcuitest", "UDID", env_run=run, respawn=False).start(eff, Preconditions())
     XcuitestEnvironment("xcuitest", "UDID", env_run=run, respawn=True).start(eff, Preconditions())
