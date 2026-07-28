@@ -434,6 +434,35 @@ def test_in_place_respawn_uses_the_tighter_readiness_ceiling(
     assert seen == [300.0, 90.0]
 
 
+def test_erase_forced_cold_spawn_keeps_the_full_ceiling(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # `erase` shuts the Simulator down, so the cold spawn after it is a genuine first-boot start (reboot
+    # + reinstall), not a respawn onto a live Simulator — it must keep the full cold ceiling even though
+    # this instance has cold-spawned before (`_cold_spawned_before`). Guards the respawn ceiling from
+    # wrongly tightening a real cold boot, which needs the whole budget.
+    monkeypatch.setenv(_RUNNER_STARTUP_TIMEOUT_ENV, "300")
+    monkeypatch.setenv(_RESPAWN_TIMEOUT_ENV, "90")
+    _, _, run = _fake_toolchain(monkeypatch)
+    eff = _sim_eff(test_runner=str(_write_runner(tmp_path)))
+
+    seen: list[float] = []
+    original = _spawn_cold_with_retry
+
+    def spy(*args: Any, **kwargs: Any) -> _Spawned:
+        seen.append(kwargs["timeout"])
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(
+        "bajutsu.platform_lifecycle.environments.xcuitest._spawn_cold_with_retry", spy
+    )
+
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    env.start(eff, Preconditions())  # first cold spawn: full ceiling
+    env.start(eff, Preconditions(erase=True))  # erase reboots the Simulator: a genuine cold start
+    assert seen == [300.0, 300.0]  # the erase spawn keeps the full ceiling, not the respawn one
+
+
 def test_start_respawns_a_dead_runner(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     # BE-0291 Unit 4: a runner whose process has exited (crashed) between leases is discarded before
     # any /health probe (the `poll()` fast path) — the next lease respawns cold.

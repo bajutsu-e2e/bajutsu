@@ -419,8 +419,11 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # when the lane sets one, so a dead runner surfaces fast instead of paying the full cold budget.
         # A respawn is either a fresh env the pool built for one (`_respawn`) or *this* env cold-spawning
         # a second time in place — its warm resident died, `start` discarded it, and we are re-spawning
-        # (`_cold_spawned_before`), the common mid-run-crash path a reused instance takes.
-        is_respawn = self._respawn or self._cold_spawned_before
+        # (`_cold_spawned_before`), the common mid-run-crash path a reused instance takes. But `erase`
+        # shuts the Simulator down (this method's `_prepare_simulator` then reboots and reinstalls), so a
+        # post-erase spawn is a genuine first-boot cold start — not a respawn onto a live Simulator — and
+        # must keep the full cold ceiling even though this instance has cold-spawned before.
+        is_respawn = (self._respawn or self._cold_spawned_before) and not pre.erase
         respawn_ceiling = _respawn_timeout() if is_respawn else None
         timeout = respawn_ceiling if respawn_ceiling is not None else _runner_startup_timeout()
         spawned = _spawn_cold_with_retry(spawn, timeout=timeout)
