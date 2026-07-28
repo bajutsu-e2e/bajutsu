@@ -99,6 +99,32 @@ def _runner_startup_timeout() -> float:
         return _RUNNER_STARTUP_TIMEOUT
 
 
+# A *respawn* — a cold spawn on a device this run already brought up once, because a mid-run crash
+# evicted its warm resident — is not the first bring-up: the Simulator is booted and the app
+# installed, so the slow parts of `_RUNNER_STARTUP_TIMEOUT` (first boot + install + the initial
+# `xcodebuild test-without-building` host spin-up) are already paid. Waiting the full cold ceiling
+# again on a respawn only lets a dead runner burn minutes before a crash surfaces (the between-attempt
+# recovery budget in pipeline.py cannot cut a single respawn's readiness wait short). This overrides
+# the ceiling for respawns only; unset keeps the cold ceiling, so a lane not opting in is unchanged.
+_RESPAWN_TIMEOUT_ENV = "BAJUTSU_XCUITEST_RESPAWN_TIMEOUT"
+
+
+def _respawn_timeout() -> float | None:
+    """The respawn readiness ceiling (s) from the env, or None (fall back to the cold ceiling) unset/invalid.
+
+    Non-positive or unparseable reads as None (use the cold ceiling): the override only ever *tightens*
+    a respawn's wait, never removes readiness waiting altogether.
+    """
+    raw = os.environ.get(_RESPAWN_TIMEOUT_ENV)
+    if not raw:
+        return None
+    try:
+        value = float(raw)
+    except ValueError:
+        return None
+    return value if value > 0 else None
+
+
 # Probing a *warm* runner before reuse (BE-0291): a live runner answers /health at once, so this only
 # bounds the wedged case — a runner that crashed after repeated app.launch() cycles must be detected
 # quickly and respawned, not waited on for the cold ceiling.
@@ -258,8 +284,20 @@ class XcuitestEnvironment(_DeviceEnvironment):
     `XcuitestDriver` channel.
     """
 
-    def __init__(self, actuator: str, udid: str, env_run: simctl.RunFn = simctl._real_run) -> None:
+    def __init__(
+        self,
+        actuator: str,
+        udid: str,
+        env_run: simctl.RunFn = simctl._real_run,
+        *,
+        respawn: bool = False,
+    ) -> None:
         super().__init__(actuator, udid, env_run)
+        # This environment is a mid-run respawn (the pool cold-spawns a fresh one after a crash evicted
+        # the warm resident), so a cold start here gets the tighter respawn readiness ceiling rather
+        # than the full first-bring-up one — see `_respawn_timeout` / `_spawn_cold`. False (a first
+        # bring-up) keeps the cold ceiling.
+        self._respawn = respawn
         self._runner_proc: subprocess.Popen[bytes] | None = None
         self._runner_port: int = 0
         self._patched_runner: Path | None = None
@@ -369,7 +407,11 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # A cold `xcodebuild test-without-building` spins up the XCTest host and launches the app
         # before the runner's server answers /health; on a loaded CI runner that first start well
         # exceeds the 10s default, so give it generous headroom (a warm start still returns at once).
-        spawned = _spawn_cold_with_retry(spawn, timeout=_runner_startup_timeout())
+        # A respawn (the Simulator already booted, the app installed) gets the tighter respawn ceiling
+        # when the lane sets one, so a dead runner surfaces fast instead of paying the full cold budget.
+        respawn_ceiling = _respawn_timeout() if self._respawn else None
+        timeout = respawn_ceiling if respawn_ceiling is not None else _runner_startup_timeout()
+        spawned = _spawn_cold_with_retry(spawn, timeout=timeout)
         # Only the Simulator runner is kept warm; a real-device runner is torn down per lease.
         self._reusable = device_type != "device"
         self._warm_reuses = 0  # a fresh XCTest session: the app.launch()-cycle count starts over

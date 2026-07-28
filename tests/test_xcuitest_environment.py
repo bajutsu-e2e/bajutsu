@@ -23,12 +23,14 @@ from bajutsu.drivers.xcuitest import XcuitestChannelError
 from bajutsu.platform_lifecycle.environments.xcuitest import (
     _MAX_WARM_REUSES,
     _MAX_WARM_REUSES_ENV,
+    _RESPAWN_TIMEOUT_ENV,
     _RUNNER_STARTUP_TIMEOUT,
     _RUNNER_STARTUP_TIMEOUT_ENV,
     _WARM_HEALTH_TIMEOUT,
     XcuitestEnvironment,
     _await_cold_runner,
     _destination,
+    _respawn_timeout,
     _runner_startup_timeout,
     _spawn_cold_with_retry,
     _Spawned,
@@ -355,6 +357,47 @@ def test_runner_startup_timeout_env_override(monkeypatch: pytest.MonkeyPatch) ->
     assert _runner_startup_timeout() == 300.0
     monkeypatch.setenv(_RUNNER_STARTUP_TIMEOUT_ENV, "not-a-number")
     assert _runner_startup_timeout() == _RUNNER_STARTUP_TIMEOUT
+
+
+def test_respawn_timeout_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The respawn readiness ceiling only tightens a respawn's wait, so unset / non-positive / malformed
+    # all read as None (fall back to the cold ceiling) — never as zero, which would remove the wait.
+    monkeypatch.delenv(_RESPAWN_TIMEOUT_ENV, raising=False)
+    assert _respawn_timeout() is None  # unset -> use the cold ceiling for respawns too
+    monkeypatch.setenv(_RESPAWN_TIMEOUT_ENV, "90")
+    assert _respawn_timeout() == 90.0
+    monkeypatch.setenv(_RESPAWN_TIMEOUT_ENV, "0")
+    assert _respawn_timeout() is None  # non-positive -> cold ceiling, not "no readiness wait"
+    monkeypatch.setenv(_RESPAWN_TIMEOUT_ENV, "not-a-number")
+    assert _respawn_timeout() is None
+
+
+def test_respawn_uses_the_tighter_readiness_ceiling(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # A first bring-up pays the full cold-start ceiling; a respawn (the Simulator already booted, the
+    # app installed) pays the tighter respawn ceiling, so a dead runner surfaces fast instead of
+    # hanging out the whole cold budget. Both go through `_spawn_cold_with_retry`; only the timeout
+    # differs, which is what a mid-run respawn's readiness wait is bounded by.
+    monkeypatch.setenv(_RUNNER_STARTUP_TIMEOUT_ENV, "300")
+    monkeypatch.setenv(_RESPAWN_TIMEOUT_ENV, "90")
+    _, _, run = _fake_toolchain(monkeypatch)
+    eff = _sim_eff(test_runner=str(_write_runner(tmp_path)))
+
+    seen: list[float] = []
+    import bajutsu.platform_lifecycle.environments.xcuitest as xc_mod
+
+    original = xc_mod._spawn_cold_with_retry
+
+    def spy(*args: Any, **kwargs: Any) -> _Spawned:
+        seen.append(kwargs["timeout"])
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(xc_mod, "_spawn_cold_with_retry", spy)
+
+    XcuitestEnvironment("xcuitest", "UDID", env_run=run, respawn=False).start(eff, Preconditions())
+    XcuitestEnvironment("xcuitest", "UDID", env_run=run, respawn=True).start(eff, Preconditions())
+    assert seen == [300.0, 90.0]  # first bring-up: cold ceiling; respawn: the tighter one
 
 
 def test_start_respawns_a_dead_runner(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

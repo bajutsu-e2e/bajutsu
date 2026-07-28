@@ -169,6 +169,14 @@ def device_pool(
     # lease, and `shutdown()` runs after every worker has joined.
     warm: dict[str, tuple[str, RunEnvironment, base.Driver]] = {}
 
+    # Which udids this run has already cold-spawned at least once. A later cache-miss lease on such a
+    # udid — the warm resident died and was evicted (a mid-run crash) — is a *respawn*, not a first
+    # bring-up: the device is booted and the app installed, so it takes the tighter respawn readiness
+    # ceiling (`environment_for(respawn=...)`). Scoped to this pool closure, so a long-lived `serve`
+    # process (many runs) never carries one run's spawn history into the next run's first cold start.
+    # Same no-lock reasoning as `warm`/`free`: a udid is leased exclusively for the whole lease.
+    ever_spawned: set[str] = set()
+
     def lease(eff: Effective, scenario: Scenario) -> Lease:
         udid = free.get()
         # Resolve the actuator for *this* scenario — the cheapest one its own steps can run on
@@ -197,10 +205,14 @@ def device_pool(
                     teardown_exc,
                 )
             cached = None
+        # A cold spawn on a udid already brought up once this run is a respawn (the warm resident died
+        # and was evicted), not the first bring-up — so it gets the tighter respawn readiness ceiling.
+        # A cache hit resumes the warm resident (no cold spawn), so `respawn` there is moot.
+        is_respawn = cached is None and udid in ever_spawned
         lease_env: RunEnvironment = (
             cached[1]
             if cached is not None
-            else environment_for(actuator, udid, env_run, provision=provision)
+            else environment_for(actuator, udid, env_run, provision=provision, respawn=is_respawn)
         )
         # A same-platform, read-only provider for an evidence kind this actuator can't supply
         # (BE-0020), resolved per scenario now that the actuator is. Today `network` is covered by web
@@ -273,6 +285,9 @@ def device_pool(
                     else _no_transitions
                 ),
             )
+            # This device has now been brought up at least once this run, so a later cache-miss lease
+            # on it (after a crash evicts the warm resident) is a respawn — see `is_respawn` above.
+            ever_spawned.add(udid)
             # Keep this device's resident warm for the next lease when the environment holds one
             # (the Simulator XCUITest runner); the next same-actuator lease resumes it instead of
             # spawning a fresh runner (BE-0291). Every other backend reports False and is not cached.

@@ -20,6 +20,7 @@ def environment_for(
     env_run: simctl.RunFn = simctl._real_run,
     *,
     provision: ProvisionProfile | None = None,
+    respawn: bool = False,
 ) -> Environment:
     """The `Environment` for *actuator* — the seam that ends per-actuator branching in the runner.
 
@@ -27,6 +28,11 @@ def environment_for(
     already booted / with the app installed lets the environment skip that setup. None (the default,
     the local provider's inert profile) runs the full bring-up, so an omitted argument is unchanged.
     Only the Android environment consults it today; the others accept the run's default and ignore it.
+
+    `respawn` marks a mid-run *re-*bring-up: the pool has already cold-spawned this device once this
+    run and a crash evicted its warm resident, so the Simulator is booted and the app installed. Only
+    the XCUITest Simulator environment uses it (to pick a tighter cold-start readiness ceiling); the
+    others have no resident to respawn and ignore it. False (a first bring-up) is unchanged.
     """
     if actuator == "playwright":
         return WebEnvironment(actuator)
@@ -42,7 +48,7 @@ def environment_for(
         # that structurally cannot carry a URL (BE-0238). The URL scheme is the routing signal.
         if is_webdriver_endpoint(udid):
             return XcuitestLiveEnvironment(actuator, udid)
-        return XcuitestEnvironment(actuator, udid, env_run)
+        return XcuitestEnvironment(actuator, udid, env_run, respawn=respawn)
     # Every implemented actuator is handled above; an unknown one reaching here is a caller bug
     # (selection should have rejected it). Fail loudly rather than silently mis-routing.
     raise ValueError(f"no environment for actuator: {actuator!r}")

@@ -424,7 +424,12 @@ def test_device_pool_resolves_actuator_per_scenario_and_tears_down_its_own_env(
     created: list[_RecordingEnv] = []
 
     def fake_env_for(
-        actuator: str, udid: str, env_run: object = None, *, provision: object = None
+        actuator: str,
+        udid: str,
+        env_run: object = None,
+        *,
+        provision: object = None,
+        respawn: bool = False,
     ) -> _RecordingEnv:
         env = _RecordingEnv(actuator, udid, provision)
         created.append(env)
@@ -461,6 +466,46 @@ def test_device_pool_resolves_actuator_per_scenario_and_tears_down_its_own_env(
         shutdown()
 
 
+def test_device_pool_marks_a_cold_respawn_after_the_first_bring_up(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The first cold spawn of a device is a first bring-up (respawn=False); a later cache-miss lease on
+    # the same device — the warm resident died and was evicted, as a mid-run crash does — is a respawn
+    # (respawn=True), so the environment picks the tighter readiness ceiling. A non-reusable fake env
+    # is cache-missed every lease, reproducing that "cold-spawn a device already brought up" state.
+    respawns: list[bool] = []
+
+    def fake_env_for(
+        actuator: str,
+        udid: str,
+        env_run: object = None,
+        *,
+        provision: object = None,
+        respawn: bool = False,
+    ) -> _RecordingEnv:
+        respawns.append(respawn)
+        return _RecordingEnv(actuator, udid, provision)  # reusable=False: never cached, always cold
+
+    monkeypatch.setattr("bajutsu.runner.pool.environment_for", fake_env_for)
+    lease, shutdown = device_pool(
+        ["UDID-A"],
+        ["ios"],
+        _eff(),
+        Path("runs"),
+        network=False,
+        available=lambda b: True,
+        env_run=lambda *a, **k: "",
+    )
+    try:
+        lease(_eff(), _scn("one")).release()
+        lease(_eff(), _scn("two")).release()
+    finally:
+        shutdown()
+    # The pool builds one representative environment up front (device catalog, never a lease —
+    # respawn=False), then the two leases: the first is a first bring-up, the second a respawn.
+    assert respawns == [False, False, True]
+
+
 def test_device_pool_reuses_a_warm_resident_across_scenarios(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -471,7 +516,12 @@ def test_device_pool_reuses_a_warm_resident_across_scenarios(
     created: list[_RecordingEnv] = []
 
     def fake_env_for(
-        actuator: str, udid: str, env_run: object = None, *, provision: object = None
+        actuator: str,
+        udid: str,
+        env_run: object = None,
+        *,
+        provision: object = None,
+        respawn: bool = False,
     ) -> _RecordingEnv:
         env = _RecordingEnv(actuator, udid, provision, reusable=True)
         created.append(env)
@@ -512,7 +562,12 @@ def test_device_pool_actuator_switch_tears_down_the_warm_resident(
     created: list[_RecordingEnv] = []
 
     def fake_env_for(
-        actuator: str, udid: str, env_run: object = None, *, provision: object = None
+        actuator: str,
+        udid: str,
+        env_run: object = None,
+        *,
+        provision: object = None,
+        respawn: bool = False,
     ) -> _RecordingEnv:
         env = _RecordingEnv(actuator, udid, provision, reusable=True)
         created.append(env)
@@ -559,7 +614,12 @@ def test_device_pool_evicts_and_tears_down_a_warm_resident_whose_resume_fails(
     created: list[_RecordingEnv] = []
 
     def fake_env_for(
-        actuator: str, udid: str, env_run: object = None, *, provision: object = None
+        actuator: str,
+        udid: str,
+        env_run: object = None,
+        *,
+        provision: object = None,
+        respawn: bool = False,
     ) -> _RecordingEnv:
         env = _RecordingEnv(actuator, udid, provision, reusable=True)
         created.append(env)
@@ -605,7 +665,12 @@ def test_device_pool_shutdown_tears_down_every_warm_device_despite_a_failure(
     created: list[_RecordingEnv] = []
 
     def fake_env_for(
-        actuator: str, udid: str, env_run: object = None, *, provision: object = None
+        actuator: str,
+        udid: str,
+        env_run: object = None,
+        *,
+        provision: object = None,
+        respawn: bool = False,
     ) -> _RecordingEnv:
         env = _RecordingEnv(
             actuator, udid, provision, reusable=True, raise_on_teardown=(udid == "UDID-A")
@@ -643,7 +708,12 @@ def test_device_pool_does_not_cache_a_non_reusable_environment(
     created: list[_RecordingEnv] = []
 
     def fake_env_for(
-        actuator: str, udid: str, env_run: object = None, *, provision: object = None
+        actuator: str,
+        udid: str,
+        env_run: object = None,
+        *,
+        provision: object = None,
+        respawn: bool = False,
     ) -> _RecordingEnv:
         env = _RecordingEnv(actuator, udid, provision, reusable=False)
         created.append(env)
@@ -679,7 +749,12 @@ def test_device_pool_bridges_the_collector_before_launch_and_tears_it_down(
     created: list[_RecordingEnv] = []
 
     def fake_env_for(
-        actuator: str, udid: str, env_run: object = None, *, provision: object = None
+        actuator: str,
+        udid: str,
+        env_run: object = None,
+        *,
+        provision: object = None,
+        respawn: bool = False,
     ) -> _RecordingEnv:
         env = _RecordingEnv(actuator, udid, provision)
         created.append(env)
@@ -714,7 +789,12 @@ def test_device_pool_releases_the_bridge_when_launch_fails(
     created: list[_RecordingEnv] = []
 
     def fake_env_for(
-        actuator: str, udid: str, env_run: object = None, *, provision: object = None
+        actuator: str,
+        udid: str,
+        env_run: object = None,
+        *,
+        provision: object = None,
+        respawn: bool = False,
     ) -> _RecordingEnv:
         env = _RecordingEnv(actuator, udid, provision, fail_start=True)
         created.append(env)
@@ -750,7 +830,12 @@ def test_device_pool_threads_provision_to_pool_and_lease_environments(
     created: list[_RecordingEnv] = []
 
     def fake_env_for(
-        actuator: str, udid: str, env_run: object = None, *, provision: object = None
+        actuator: str,
+        udid: str,
+        env_run: object = None,
+        *,
+        provision: object = None,
+        respawn: bool = False,
     ) -> _RecordingEnv:
         env = _RecordingEnv(actuator, udid, provision)
         created.append(env)

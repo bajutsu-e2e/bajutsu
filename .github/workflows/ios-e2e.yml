@@ -105,6 +105,17 @@ concurrency:
 env:
   BAJUTSU_XCUITEST_RUNNER_LOG: ${{ github.workspace }}/runs/runner-logs
   BAJUTSU_XCUITEST_STARTUP_TIMEOUT: "300"
+  # A *respawn* readiness ceiling, tighter than the 300s cold-start one above
+  # (bajutsu/platform_lifecycle/environments/xcuitest.py, _respawn_timeout). The 300s ceiling exists
+  # for the first bring-up — first Simulator boot + app install + the initial `xcodebuild
+  # test-without-building` host spin-up. A mid-run respawn (a crash evicted the warm resident) re-spawns
+  # on an already-booted Simulator with the app installed, so it does not need that budget; waiting the
+  # full 300s again only lets a dead runner hang for minutes inside a single respawn — which the
+  # scenario-level BAJUTSU_CRASH_RECOVERY_BUDGET cannot cut short, because that budget is checked only
+  # *between* attempts, never mid-readiness. 90s is ample for a re-spawn to answer /health on a warm
+  # host, so a runner that will not come back fails loudly in ~90s instead of ~300s. Unset (elsewhere)
+  # keeps the cold ceiling for respawns too, so only this lane opts in.
+  BAJUTSU_XCUITEST_RESPAWN_TIMEOUT: "90"
   # Respawn the resident runner cold after a single warm reuse rather than the default 3
   # (`_MAX_WARM_REUSES`). Folding many scenarios into one `bajutsu run` (the `run` / `actuation` jobs)
   # lengthens each warm-runner session, and each warm reuse re-attaches the XCTest automation session
