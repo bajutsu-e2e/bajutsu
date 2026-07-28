@@ -402,6 +402,38 @@ def test_respawn_uses_the_tighter_readiness_ceiling(
     assert seen == [300.0, 90.0]  # first bring-up: cold ceiling; respawn: the tighter one
 
 
+def test_in_place_respawn_uses_the_tighter_readiness_ceiling(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The common mid-run-crash path keeps the SAME environment: the dead resident stays warm-cached, so
+    # the retry reuses this instance and `start` respawns cold *in place*. That in-place respawn must
+    # also take the tighter ceiling — the env self-detects it via `_cold_spawned_before`, because the
+    # pool's `respawn` flag on a reused instance was fixed to False at first bring-up (see the PR
+    # review: without this, the most common recovery path silently paid the full 300s cold ceiling).
+    monkeypatch.setenv(_RUNNER_STARTUP_TIMEOUT_ENV, "300")
+    monkeypatch.setenv(_RESPAWN_TIMEOUT_ENV, "90")
+    _, _, run = _fake_toolchain(monkeypatch)
+    eff = _sim_eff(test_runner=str(_write_runner(tmp_path)))
+
+    seen: list[float] = []
+    original = _spawn_cold_with_retry
+
+    def spy(*args: Any, **kwargs: Any) -> _Spawned:
+        seen.append(kwargs["timeout"])
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(
+        "bajutsu.platform_lifecycle.environments.xcuitest._spawn_cold_with_retry", spy
+    )
+
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)  # respawn=False: a first bring-up
+    env.start(eff, Preconditions())  # first cold spawn: full ceiling
+    assert env._runner_proc is not None
+    env._runner_proc.alive = False  # type: ignore[attr-defined]  # the runner crashed mid-run
+    env.start(eff, Preconditions())  # same instance respawns cold in place: the tighter ceiling
+    assert seen == [300.0, 90.0]
+
+
 def test_start_respawns_a_dead_runner(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     # BE-0291 Unit 4: a runner whose process has exited (crashed) between leases is discarded before
     # any /health probe (the `poll()` fast path) — the next lease respawns cold.

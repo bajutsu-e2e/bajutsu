@@ -169,12 +169,15 @@ def device_pool(
     # lease, and `shutdown()` runs after every worker has joined.
     warm: dict[str, tuple[str, RunEnvironment, base.Driver]] = {}
 
-    # Which udids this run has already cold-spawned at least once. A later cache-miss lease on such a
-    # udid — the warm resident died and was evicted (a mid-run crash) — is a *respawn*, not a first
-    # bring-up: the device is booted and the app installed, so it takes the tighter respawn readiness
-    # ceiling (`environment_for(respawn=...)`). Scoped to this pool closure, so a long-lived `serve`
-    # process (many runs) never carries one run's spawn history into the next run's first cold start.
-    # Same no-lock reasoning as `warm`/`free`: a udid is leased exclusively for the whole lease.
+    # Which udids this run has already cold-spawned at least once, so a *fresh* env built for one is a
+    # respawn. This covers only the eviction path: a warm resume that fails drops the resident
+    # (`warm.pop` below), so the retry is a cache miss (`cached is None`) that builds a fresh env — with
+    # no instance history, it needs this signal to take the tighter respawn ceiling. The far more
+    # common mid-run-crash path keeps the *same* env (the dead resident stays warm-cached, the retry
+    # reuses it and respawns cold in place), which the env's own `_cold_spawned_before` catches instead.
+    # Scoped to this pool closure, so a long-lived `serve` process (many runs) never carries one run's
+    # spawn history into the next run's first cold start. Same no-lock reasoning as `warm`/`free`: a
+    # udid is leased exclusively for the whole lease.
     ever_spawned: set[str] = set()
 
     def lease(eff: Effective, scenario: Scenario) -> Lease:
@@ -205,9 +208,10 @@ def device_pool(
                     teardown_exc,
                 )
             cached = None
-        # A cold spawn on a udid already brought up once this run is a respawn (the warm resident died
-        # and was evicted), not the first bring-up — so it gets the tighter respawn readiness ceiling.
-        # A cache hit resumes the warm resident (no cold spawn), so `respawn` there is moot.
+        # A fresh env built for a udid already brought up once this run is a respawn (a prior warm
+        # resume failed and evicted the resident), so it gets the tighter respawn readiness ceiling. A
+        # cache hit reuses the warm env, which self-detects an in-place respawn (`_cold_spawned_before`),
+        # so `respawn` there is moot — this signal is only for the fresh-env eviction path.
         is_respawn = cached is None and udid in ever_spawned
         lease_env: RunEnvironment = (
             cached[1]

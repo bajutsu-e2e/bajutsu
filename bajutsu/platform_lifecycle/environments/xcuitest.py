@@ -293,11 +293,19 @@ class XcuitestEnvironment(_DeviceEnvironment):
         respawn: bool = False,
     ) -> None:
         super().__init__(actuator, udid, env_run)
-        # This environment is a mid-run respawn (the pool cold-spawns a fresh one after a crash evicted
-        # the warm resident), so a cold start here gets the tighter respawn readiness ceiling rather
-        # than the full first-bring-up one — see `_respawn_timeout` / `_spawn_cold`. False (a first
-        # bring-up) keeps the cold ceiling.
+        # This *fresh* environment was built by the pool for a mid-run respawn — the pool already
+        # cold-spawned this device once this run and had to build a new environment for it (the
+        # failed-resume eviction path, `cached is None`). A cold start here gets the tighter respawn
+        # readiness ceiling. The far more common crash path keeps the *same* environment (a mid-run
+        # crash leaves the dead resident warm-cached, so the retry reuses this instance and respawns
+        # cold in place) — `_cold_spawned_before` below catches that. See `_respawn_timeout` /
+        # `_spawn_cold`. Both default False for a genuine first bring-up, which keeps the cold ceiling.
         self._respawn = respawn
+        # True once this instance has cold-spawned at least once: a *second* `_spawn_cold` on the same
+        # environment is an in-place respawn (its warm resident died, so `start` discards it and
+        # re-spawns cold), so it too takes the respawn ceiling — the ceiling must not depend only on
+        # `_respawn`, which a reused instance built at first bring-up never has set (see the PR review).
+        self._cold_spawned_before = False
         self._runner_proc: subprocess.Popen[bytes] | None = None
         self._runner_port: int = 0
         self._patched_runner: Path | None = None
@@ -409,9 +417,15 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # exceeds the 10s default, so give it generous headroom (a warm start still returns at once).
         # A respawn (the Simulator already booted, the app installed) gets the tighter respawn ceiling
         # when the lane sets one, so a dead runner surfaces fast instead of paying the full cold budget.
-        respawn_ceiling = _respawn_timeout() if self._respawn else None
+        # A respawn is either a fresh env the pool built for one (`_respawn`) or *this* env cold-spawning
+        # a second time in place — its warm resident died, `start` discarded it, and we are re-spawning
+        # (`_cold_spawned_before`), the common mid-run-crash path a reused instance takes.
+        is_respawn = self._respawn or self._cold_spawned_before
+        respawn_ceiling = _respawn_timeout() if is_respawn else None
         timeout = respawn_ceiling if respawn_ceiling is not None else _runner_startup_timeout()
         spawned = _spawn_cold_with_retry(spawn, timeout=timeout)
+        # A later cold spawn on this same instance is an in-place respawn, so tighten its ceiling too.
+        self._cold_spawned_before = True
         # Only the Simulator runner is kept warm; a real-device runner is torn down per lease.
         self._reusable = device_type != "device"
         self._warm_reuses = 0  # a fresh XCTest session: the app.launch()-cycle count starts over
