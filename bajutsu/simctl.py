@@ -9,6 +9,8 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import plistlib
+import re
 import subprocess
 import tempfile
 import time
@@ -88,13 +90,83 @@ def launch_cmd(udid: str, bundle_id: str, args: Sequence[str] = ()) -> list[str]
     ]
 
 
+# A locale is config-supplied, so it reaches an argv the same way a `--udid` does; the same policy
+# applies (chiefly: never leads with `-`, which `defaults` would read as an option). Deliberately
+# permissive about the body so an ICU keyword form (`en_US@calendar=japanese`) still passes.
+_LOCALE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_@=.+-]*$")
+
+
+def validated_locale(locale: str) -> str:
+    """Return `locale` if it is safe to place on a `defaults` argv, else raise.
+
+    Raises:
+        DeviceError: if `locale` violates the policy — the same clean exit-2 device fault a bad
+            `--udid` surfaces as.
+    """
+    if _LOCALE_RE.match(locale):
+        return locale
+    raise DeviceError(f"invalid locale: {locale!r}")
+
+
+def language_of(locale: str) -> str:
+    """The language subtag a locale resolves to (`ja_JP` -> `ja`).
+
+    The one place the split lives, so the app's own `-AppleLanguages` launch argument and the
+    Simulator's system-wide language (BE-0320) can never name different languages.
+    """
+    return locale.split("_", 1)[0]
+
+
 def locale_args(locale: str) -> list[str]:
     """App launch arguments that force the locale + language. iOS reads `-AppleLocale` and
     `-AppleLanguages` from the process argv via NSUserDefaults, so passing them as the app's
     launch args makes a run deterministic regardless of the device's region settings.
-    `ja_JP` -> `-AppleLocale ja_JP -AppleLanguages (ja)`."""
-    language = locale.split("_", 1)[0]
-    return ["-AppleLocale", locale, "-AppleLanguages", f"({language})"]
+    `ja_JP` -> `-AppleLocale ja_JP -AppleLanguages (ja)`.
+
+    These reach the app process alone. SpringBoard — which owns the permission prompts
+    `handleSystemAlert` taps — is a separate process Bajutsu never launches, so its own language
+    comes from the device's global preference domain instead (`system_locale_cmds`, BE-0320)."""
+    return ["-AppleLocale", locale, "-AppleLanguages", f"({language_of(locale)})"]
+
+
+# The Simulator's global preference domain, where its system-wide language and locale live. Writing
+# it needs a booted device (`simctl spawn` runs the guest's own `defaults`), which is why the
+# BE-0320 pin happens after `boot` rather than as a launch argument.
+_GLOBAL_DOMAIN = "-globalDomain"
+
+# The two global-domain keys that decide which language SpringBoard renders in. `AppleLanguages` is
+# written as a one-element array (not appended to) so the pinned language is the device's first
+# choice with nothing behind it to fall back to — the same single value `locale_args` gives the app.
+_LANGUAGES_KEY = "AppleLanguages"
+_LOCALE_KEY = "AppleLocale"
+
+
+def export_globals_cmd(udid: str) -> list[str]:
+    """`simctl spawn <udid> defaults export -globalDomain -` — the device's global domain as an XML plist.
+
+    `defaults export` rather than `defaults read`: its output is a plist `plistlib` parses exactly,
+    where `read`'s is a human-readable rendering that would need hand-parsing.
+    """
+    return [
+        "xcrun",
+        "simctl",
+        "spawn",
+        validated_udid(udid),
+        "defaults",
+        "export",
+        _GLOBAL_DOMAIN,
+        "-",
+    ]
+
+
+def system_locale_cmds(udid: str, locale: str) -> list[list[str]]:
+    """The `defaults write` argvs that pin the Simulator's system-wide language and locale (BE-0320)."""
+    checked_udid, checked_locale = validated_udid(udid), validated_locale(locale)
+    spawn = ["xcrun", "simctl", "spawn", checked_udid, "defaults", "write", _GLOBAL_DOMAIN]
+    return [
+        [*spawn, _LANGUAGES_KEY, "-array", language_of(checked_locale)],
+        [*spawn, _LOCALE_KEY, "-string", checked_locale],
+    ]
 
 
 def terminate_cmd(udid: str, bundle_id: str) -> list[str]:
@@ -319,6 +391,37 @@ class Env:
     def boot(self) -> None:
         with contextlib.suppress(subprocess.CalledProcessError):
             self._run(boot_cmd(self.udid), None)
+
+    def system_locale_matches(self, locale: str) -> bool | None:
+        """Whether the device's global domain carries exactly what `pin_system_locale` writes.
+
+        `None` distinguishes "could not read the domain" from a definite mismatch, so a caller can
+        act on what it actually observed: skipping the write needs a positive match, while failing
+        the run needs a positive *mis*match — an unreadable device is neither.
+        """
+        try:
+            exported = plistlib.loads(self._run(export_globals_cmd(self.udid), None).encode())
+        except (subprocess.CalledProcessError, plistlib.InvalidFileException, ValueError):
+            return None
+        if not isinstance(exported, dict) or _LANGUAGES_KEY not in exported:
+            return None
+        return exported.get(_LANGUAGES_KEY) == [language_of(locale)] and exported.get(
+            _LOCALE_KEY
+        ) == validated_locale(locale)
+
+    def pin_system_locale(self, locale: str) -> bool:
+        """Write the device's system-wide language and locale unless already exact; True if it wrote.
+
+        The caller reboots the Simulator when this returns True — a running SpringBoard does not pick
+        a global-domain write up live (BE-0320). Skipping the write on a device that already carries
+        the value is what keeps the common case (a Simulator pinned by an earlier spawn, or already
+        on the configured locale) at the cost of one read instead of a second boot cycle.
+        """
+        if self.system_locale_matches(locale):
+            return False
+        for cmd in system_locale_cmds(self.udid, locale):
+            self._run(cmd, None)
+        return True
 
     def is_installed(self, bundle_id: str) -> bool:
         try:

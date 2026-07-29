@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0320](BE-0320-ios-system-alert-locale-determinism.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0320") |
+| Implementing PR | PENDING |
 | Topic | Platform support |
 | Related | [BE-0269](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention.md), [BE-0276](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state.md), [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling.md), [BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step.md) |
 <!-- /BE-METADATA -->
@@ -174,17 +175,39 @@ adding the locale-keyed convenience lookup, and verifying both on a real Simulat
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — resolve the Simulator's system language deterministically on every cold spawn (write +
+- [x] Unit 1 — resolve the Simulator's system language deterministically on every cold spawn (write +
       reboot so SpringBoard actually renders it), and gate warm reuse on the resolved locale matching
       the one already pinned, mirroring `pre.erase`'s existing cold-respawn condition in
-      `XcuitestEnvironment.start`.
-- [ ] Unit 2 — document the resulting contract for `label`/`labelMatches` in `docs/configuration.md`
+      `XcuitestEnvironment.start`. The write is skipped when the device already reads back the
+      resolved locale, so the common case costs one read rather than a second boot cycle.
+- [x] Unit 2 — document the resulting contract for `label`/`labelMatches` in `docs/configuration.md`
       and `handleSystemAlert`'s own documentation.
-- [ ] Unit 3 — add a locale-keyed label lookup for notification authorization and ATT (the two
+- [x] Unit 3 — add a locale-keyed label lookup for notification authorization and ATT (the two
       prompts BE-0276 cannot reach), additive to `label`/`labelMatches`/`index`, never a replacement.
-- [ ] Unit 4 — on-device verification: two Simulators pinned to different `locale` values dismiss the
+      Reached through `prompt` + `choice` in place of `sel`; an uncovered language fails the step
+      loudly rather than tapping a guessed button.
+- [x] Unit 4 — on-device verification: two Simulators pinned to different `locale` values dismiss the
       same `handleSystemAlert` scenario deterministically after unit 1's reboot, and a mid-runner
       locale override forces a cold respawn rather than a stale warm reuse.
+
+Verified on a real Simulator (iOS 26.5, Xcode 26):
+
+- The write plus reboot changes what SpringBoard *renders*, not merely what a preference file holds:
+  pinning `ja_JP` and rebooting turns the home screen Japanese (`マップ` / `設定` / `検索`), and
+  pinning `en_US` turns it back. Re-pinning the same locale writes nothing and skips the extra boot.
+- `demos/showcase/scenarios/permission_system_alert.yaml`, now naming `prompt: notifications` +
+  `choice: grant`, passes at `en_US` (tapping `Allow`) and at `ja_JP` (tapping `許可`).
+- The warm-reuse gate holds: two scenarios at one locale in a single run leave **one** cold-spawn
+  runner log, while the same pair at two locales leaves **two** — the locale change forced the cold
+  respawn rather than serving the second scenario from the first's SpringBoard language.
+- Unrelated to this item, iOS suppresses a repeat notification-authorization prompt for the same
+  bundle id shortly after one is answered, so back-to-back runs of that scenario can find no prompt.
+  A control run at a single locale reproduced it on the *first* scenario, so it is an OS behavior,
+  not a locale effect.
+- The lookup's values are Apple's own, read from the Simulator runtime's shipped strings
+  (`UserNotificationsServer.framework`'s `PERMISSION_ALERT_ALLOW` / `PERMISSION_ALERT_DENY` and
+  `TCC.framework`'s `REQUEST_ACCESS_{ALLOW,DENY}_kTCCServiceUserTracking`), which is how a future
+  runtime's values can be re-checked rather than trusted.
 
 ## References
 

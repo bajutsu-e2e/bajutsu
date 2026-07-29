@@ -1,4 +1,4 @@
-"""Runtime ${...} token substitution (secrets.*, vars.*) into steps and assertions.
+"""Runtime rewrites of a step before it executes: ${...} token substitution, and locale resolution.
 
 Only the executed copy sees the real value; the caller keeps the original for the
 manifest/report, so the recorded scenario shows the token, never the secret."""
@@ -27,6 +27,25 @@ def _interp_step(step: Step, bindings: Mapping[str, str]) -> Step:
     if not interp.find_tokens(dumped) & bindings.keys():
         return step
     return Step.model_validate(interp.interpolate(dumped, bindings))
+
+
+def _resolve_system_alert(step: Step, locale: str | None) -> Step:
+    """A copy of the step with `handleSystemAlert`'s `prompt`/`choice` turned into a `sel` (BE-0320).
+
+    The label a SpringBoard prompt shows depends on the language the run pinned the Simulator to, so
+    the intent form can only be resolved once the run's locale is known. Every other step — and a
+    `handleSystemAlert` that already names its button through `sel` — returns unchanged.
+
+    A caller with no locale (`record`'s replay) leaves the step unresolved; the handler then fails it
+    loudly, rather than this guessing at a language.
+
+    Raises:
+        UncoveredSystemAlertLocale: no labels are known for that locale's language.
+    """
+    hsa = step.handle_system_alert
+    if hsa is None or hsa.prompt is None or locale is None:
+        return step
+    return step.model_copy(update={"handle_system_alert": hsa.resolved(locale)})
 
 
 def _interp_asserts(asserts: list[Assertion], bindings: Mapping[str, str]) -> list[Assertion]:

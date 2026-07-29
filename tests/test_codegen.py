@@ -464,3 +464,14 @@ def test_handle_system_alert_regex_labelmatches_is_todo() -> None:
     )
     assert "// TODO: handleSystemAlert" in code
     assert "springboard" not in code.split("// TODO: handleSystemAlert")[1][:80]
+
+
+def test_handle_system_alert_prompt_form_is_todo() -> None:
+    # BE-0320's intent form resolves its label from the *run's* locale, which codegen — a static
+    # translation of the scenario file — has no access to. A labeled TODO naming the prompt, rather
+    # than a hard-coded English label the generated test would carry to every machine.
+    code = _gen(
+        "- name: x\n  steps:\n"
+        "    - handleSystemAlert: { prompt: notifications, choice: grant, timeout: 5 }\n"
+    )
+    assert "// TODO: handleSystemAlert — prompt: notifications" in code

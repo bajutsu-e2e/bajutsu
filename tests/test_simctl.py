@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import plistlib
 import subprocess
 from collections.abc import Mapping
 from pathlib import Path
@@ -349,3 +350,108 @@ def test_run_pbcopy_retries_python_side_hang(monkeypatch: pytest.MonkeyPatch) ->
     simctl.Env("UDID").set_clipboard("x")
 
     assert attempts["n"] == 2
+
+
+# --- the Simulator's own system language (BE-0320) --- #
+
+
+def _globals(mapping: dict[str, object]) -> str:
+    """A `defaults export -globalDomain -` payload, as the guest's `defaults` renders it."""
+    return plistlib.dumps(mapping).decode()
+
+
+def test_system_locale_command_builders() -> None:
+    # `AppleLanguages` is written as a one-element array (the language subtag alone, matching the
+    # app's own `-AppleLanguages` launch argument), `AppleLocale` as the full locale string.
+    assert simctl.system_locale_cmds("U", "ja_JP") == [
+        [
+            "xcrun",
+            "simctl",
+            "spawn",
+            "U",
+            "defaults",
+            "write",
+            "-globalDomain",
+            "AppleLanguages",
+            "-array",
+            "ja",
+        ],
+        [
+            "xcrun",
+            "simctl",
+            "spawn",
+            "U",
+            "defaults",
+            "write",
+            "-globalDomain",
+            "AppleLocale",
+            "-string",
+            "ja_JP",
+        ],
+    ]
+    assert simctl.export_globals_cmd("U") == [
+        "xcrun",
+        "simctl",
+        "spawn",
+        "U",
+        "defaults",
+        "export",
+        "-globalDomain",
+        "-",
+    ]
+
+
+def test_system_locale_builders_reject_an_option_injecting_locale() -> None:
+    # A locale is config-supplied, so it reaches an argv the same way a --udid does: a leading `-`
+    # would be read by `defaults` as an option. Rejected before any subprocess sees it.
+    for bad in ["-array", "--globalDomain", "ja JP", "ja;rm", ""]:
+        with pytest.raises(simctl.DeviceError, match="invalid locale"):
+            simctl.system_locale_cmds("U", bad)
+
+
+def test_language_of_matches_the_app_launch_argument() -> None:
+    # The Simulator's system language and the app's own `-AppleLanguages` must never name different
+    # languages — that disagreement is exactly what BE-0320 removes.
+    for locale in ("en_US", "ja_JP", "fr", "zh_Hans_CN"):
+        language = simctl.language_of(locale)
+        assert simctl.locale_args(locale)[3] == f"({language})"
+
+
+def test_pin_system_locale_skips_the_write_when_the_device_already_matches() -> None:
+    # The already-pinned case costs one read and no write, so the caller pays no extra boot cycle.
+    calls: list[list[str]] = []
+
+    def fake_run(args: list[str], extra_env: Mapping[str, str] | None = None) -> str:
+        calls.append(args)
+        return _globals({"AppleLanguages": ["ja"], "AppleLocale": "ja_JP"})
+
+    assert simctl.Env("UDID", run=fake_run).pin_system_locale("ja_JP") is False
+    assert calls == [simctl.export_globals_cmd("UDID")]
+
+
+def test_pin_system_locale_writes_when_the_device_carries_another_language() -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(args: list[str], extra_env: Mapping[str, str] | None = None) -> str:
+        calls.append(args)
+        return _globals({"AppleLanguages": ["en", "ja"], "AppleLocale": "en_JP"})
+
+    assert simctl.Env("UDID", run=fake_run).pin_system_locale("ja_JP") is True
+    assert calls[1:] == simctl.system_locale_cmds("UDID", "ja_JP")
+
+
+def test_system_locale_matches_reports_an_unreadable_domain_as_unknown() -> None:
+    # A domain that cannot be read or parsed is neither a match nor a mismatch: the caller writes
+    # (it cannot confirm) but never *fails* on it, since nothing was observed to be wrong.
+    def unparseable(args: list[str], extra_env: Mapping[str, str] | None = None) -> str:
+        return "not a plist"
+
+    def failing(args: list[str], extra_env: Mapping[str, str] | None = None) -> str:
+        raise subprocess.CalledProcessError(1, args, stderr="device not booted")
+
+    for run in (unparseable, failing):
+        assert simctl.Env("UDID", run=run).system_locale_matches("ja_JP") is None
+    # An exported domain that simply has no pinned language reads as unknown too, not as a mismatch.
+    assert (
+        simctl.Env("UDID", run=lambda a, e=None: _globals({})).system_locale_matches("ja") is None
+    )

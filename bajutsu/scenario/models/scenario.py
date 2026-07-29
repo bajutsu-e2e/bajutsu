@@ -51,6 +51,16 @@ class Preconditions(_Model):
     locale: str | None = None
     setup: str | None = None
 
+    def resolved_locale(self, target_locale: str) -> str:
+        """The locale this scenario runs under: its own override, else the target config's `locale`.
+
+        The one place the precedence lives, so everything that acts on it agrees — the app's launch
+        arguments, the Simulator's own system language, and the system-alert label lookup that
+        predicts what SpringBoard renders (BE-0320). Takes the target's value rather than the whole
+        config, keeping the scenario schema a portable inner contract.
+        """
+        return self.locale or target_locale
+
 
 class SystemAlertHandling(_Model):
     """Per-scenario control of the reactive system-alert guard.

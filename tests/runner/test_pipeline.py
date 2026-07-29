@@ -1052,3 +1052,46 @@ def test_pipeline_uses_the_single_orchestrator_no_op_network_source() -> None:
     assert pipeline._no_network is _no_network
     assert _no_network() == []
     assert not hasattr(types, "_no_net")
+
+
+def test_the_run_resolves_a_system_alert_prompt_against_the_scenario_locale() -> None:
+    # BE-0320: the pipeline hands the run loop the same locale the lease pinned the Simulator's
+    # system language to, so `handleSystemAlert`'s intent form taps the label SpringBoard renders.
+    # The per-scenario `locale` override wins over the target config's, exactly as the launch
+    # arguments and the Simulator pin resolve it.
+    driver = FakeDriver([_el("ok", "OK", ["button"])])
+    driver.system_alert_buttons = [
+        {
+            "identifier": None,
+            "label": label,
+            "traits": ["button"],
+            "value": None,
+            "frame": (0.0, 0.0, 10.0, 10.0),
+        }
+        for label in ("許可", "許可しない")
+    ]
+
+    def lease(eff: Effective, scenario: Scenario) -> Lease:
+        return Lease(
+            driver=driver,
+            sink=NullSink(),
+            relaunch=None,
+            control=None,
+            collector=None,
+            release=lambda: None,
+        )
+
+    scenario = Scenario.model_validate(
+        {
+            "name": "grant",
+            "preconditions": {"locale": "ja_JP"},  # overrides `_eff()`'s en_US
+            "steps": [
+                {"handleSystemAlert": {"prompt": "notifications", "choice": "grant", "timeout": 5}}
+            ],
+        }
+    )
+
+    results = run_all(_eff(), [scenario], lease)
+
+    assert [r.ok for r in results] == [True], results[0].failure
+    assert driver.actions == [("handle_system_alert", ({"label": "許可"}, 5.0))]

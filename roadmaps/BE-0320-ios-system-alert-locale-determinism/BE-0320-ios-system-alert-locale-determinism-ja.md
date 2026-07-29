@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0320](BE-0320-ios-system-alert-locale-determinism-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0320") |
+| 実装 PR | PENDING |
 | トピック | プラットフォーム対応 |
 | 関連 | [BE-0269](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention-ja.md)、[BE-0276](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state-ja.md)、[BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling-ja.md)、[BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step-ja.md) |
 <!-- /BE-METADATA -->
@@ -49,10 +50,18 @@
 > 作業分解(作業の単位ごとに 1 つ)に対応し、ログには変更内容と時期(古い順)を PR へのリンクと
 > ともに記録します。
 
-- [ ] ユニット1 — コールドスタートのたびに Simulator のシステム言語を決定論的に解決する(書き込み+再起動で SpringBoard に実際に反映させる)。解決したロケールがすでに固定されている値と一致する場合だけウォームレジュームを許し、`XcuitestEnvironment.start` の既存の `pre.erase` コールドリスポーン条件に倣う。
-- [ ] ユニット2 — `docs/configuration.md` と `handleSystemAlert` 自身のドキュメントに、その結果として得られる `label`/`labelMatches` の契約を明文化する。
-- [ ] ユニット3 — 通知許可と ATT(BE-0276 が届かない2つのプロンプト)について、`label`/`labelMatches`/`index` に追加する形でロケール別ラベル対応表を追加する(置き換えではない)。
-- [ ] ユニット4 — 実機検証: 異なる `locale` の値を固定した2台の Simulator が、ユニット1の再起動を経たあとに同じ `handleSystemAlert` シナリオを決定論的に閉じること、そして途中のロケールオーバーライドが古い言語のままのウォームレジュームではなくコールドリスポーンを強制することを確認する。
+- [x] ユニット1 — コールドスタートのたびに Simulator のシステム言語を決定論的に解決する(書き込み+再起動で SpringBoard に実際に反映させる)。解決したロケールがすでに固定されている値と一致する場合だけウォームレジュームを許し、`XcuitestEnvironment.start` の既存の `pre.erase` コールドリスポーン条件に倣う。デバイスが解決済みのロケールをすでに返す場合は書き込みを省くので、通常の場合の費用は 2 回目の起動ではなく 1 回の読み取りで済む。
+- [x] ユニット2 — `docs/configuration.md` と `handleSystemAlert` 自身のドキュメントに、その結果として得られる `label`/`labelMatches` の契約を明文化する。
+- [x] ユニット3 — 通知許可と ATT(BE-0276 が届かない2つのプロンプト)について、`label`/`labelMatches`/`index` に追加する形でロケール別ラベル対応表を追加する(置き換えではない)。`sel` の代わりに `prompt` と `choice` で指定する。対応表が扱っていない言語では、推測したボタンをタップせずステップを明示的に失敗させる。
+- [x] ユニット4 — 実機検証: 異なる `locale` の値を固定した2台の Simulator が、ユニット1の再起動を経たあとに同じ `handleSystemAlert` シナリオを決定論的に閉じること、そして途中のロケールオーバーライドが古い言語のままのウォームレジュームではなくコールドリスポーンを強制することを確認する。
+
+実機の Simulator (iOS 26.5、Xcode 26) で確認した内容は次のとおりです。
+
+- 書き込みと再起動は、設定ファイルの値だけでなく SpringBoard の*描画*を変えます。`ja_JP` を固定して再起動するとホーム画面が日本語になり(`マップ` / `設定` / `検索`)、`en_US` を固定すると英語に戻ります。同じロケールを再度固定した場合は何も書き込まず、追加の起動も行いません。
+- `demos/showcase/scenarios/permission_system_alert.yaml` は `prompt: notifications` と `choice: grant` の指定に変わり、`en_US`(`Allow` をタップ)でも `ja_JP`(`許可` をタップ)でも成功します。
+- ウォームレジュームのゲートも働きます。同じロケールの 2 シナリオを 1 回の run で実行するとコールドスタートのランナーログは **1 個**、同じ組を 2 つのロケールで実行すると **2 個**残ります。ロケールの変更がコールドリスポーンを強制し、2 番目のシナリオが 1 番目の SpringBoard の言語で実行されることはありませんでした。
+- この項目とは無関係ですが、iOS は同じ bundle id に対する通知許可のプロンプトが一度応答された直後、再度のプロンプトを抑制します。そのため、このシナリオを続けて実行するとプロンプトが現れないことがあります。単一のロケールで行った対照実験では *1 番目*のシナリオで再現したため、ロケールの影響ではなく OS の挙動です。
+- 対応表の値は Apple 自身のもので、Simulator ランタイムが出荷する文字列(`UserNotificationsServer.framework` の `PERMISSION_ALERT_ALLOW` / `PERMISSION_ALERT_DENY` と、`TCC.framework` の `REQUEST_ACCESS_{ALLOW,DENY}_kTCCServiceUserTracking`)から読み取りました。将来のランタイムの値も、信用するのではなくこの方法で確認できます。
 
 ## 参考
 

@@ -413,7 +413,13 @@ device (the shared device is reseeded via one channel, so parallel workers would
 - DSL `handleSystemAlert` (BE-0316): a deterministic, iOS-only step that taps a SpringBoard
   permission-prompt button by a native accessibility query (the runner's second, on-demand
   SpringBoard handle) — resolution stays Python-side in `resolve_unique`; only the XCUITest backend
-  declares the capability, so Android and web fail preflight
+  declares the capability, so Android and web fail preflight. Its label is deterministic because the
+  XCUITest lifecycle pins the *Simulator's own* system language to the run's `locale` on every cold
+  spawn — a global-domain write plus one reboot, since SpringBoard is a separate process no app
+  launch argument reaches — and gates warm-runner reuse on that locale still matching; for the two
+  prompts `permissions` cannot pre-answer (notification authorization and ATT), the step also takes
+  `prompt` + `choice` in place of `sel` and the run resolves the label the pinned locale renders
+  (BE-0320)
 - DSL `systemAlertHandling` (BE-0315), the reactive counterpart: an alert guard that fires only when
   a step or `wait` is blocked, polling `handleSystemAlert`'s SpringBoard query on its own interval
   (default 1s, decoupled from the wait's poll cadence) and dismissing by a deterministic

@@ -197,4 +197,12 @@ def _do_handle_system_alert(
     # as the mid-run backstop, so no extra capability guard is needed here (mirrors select_option).
     assert step.handle_system_alert is not None
     hsa = step.handle_system_alert
+    if hsa.sel is None:
+        # The `prompt`/`choice` form is resolved against the run's locale before dispatch (BE-0320).
+        # Reaching here means a caller ran the step without that resolution (`record`'s replay), and
+        # the label it needs is unknowable from the step alone — fail loudly rather than skip a tap.
+        raise base.UnsupportedAction(
+            "handleSystemAlert prompt/choice needs the run's locale to resolve its button label; "
+            "this caller does not supply one — name the button with sel.label instead (BE-0320)"
+        )
     driver.handle_system_alert(hsa.sel.as_selector(), hsa.timeout)

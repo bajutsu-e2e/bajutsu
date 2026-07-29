@@ -99,7 +99,7 @@ final class ComponentsUITests: XCTestCase {
 | `type`（`into` なし） | `app.typeText(...)` |
 | `swipe { on, direction }` | `.swipeUp/Down/Left/Right()` |
 | `swipe { from, to }` | `coord(x1, y1).press(forDuration: 0.1, thenDragTo: coord(x2, y2))`（`XCUICoordinate` のドラッグ。BE-0025） |
-| `handleSystemAlert` | `XCTAssertTrue(XCUIApplication(bundleIdentifier: "com.apple.springboard").buttons["…"].waitForExistence(timeout:))` + `.tap()`。ネイティブな SpringBoard の書き方で、ステップの `timeout` を引き継ぐ（BE-0316） |
+| `handleSystemAlert` | `XCTAssertTrue(XCUIApplication(bundleIdentifier: "com.apple.springboard").buttons["…"].waitForExistence(timeout:))` + `.tap()`。ネイティブな SpringBoard の書き方で、ステップの `timeout` を引き継ぐ（BE-0316）。`prompt` / `choice` の形は label を **run の** locale から解決するため（BE-0320）、静的な変換では扱えず、ラベル付きの `// TODO` を出力する |
 | `wait { for }` | `XCTAssertTrue(el(...).waitForExistence(timeout:))` |
 | `wait { until: gone }` | `.waitForNonExistence(timeout:)` |
 | `wait { until: screenChanged/settled }` | コメント（XCUITest は hittability を自動待機） |

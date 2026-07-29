@@ -227,6 +227,14 @@ def _emit_step(step: Step) -> list[str]:
         # exactly how a hand-written XCUITest clears a permission alert (BE-0316). Native idiom, no
         # screenshot, no vision model; the required timeout carries into the generated wait.
         hsa = step.handle_system_alert
+        if hsa.sel is None:
+            # The `prompt`/`choice` form's label comes from the run's locale (BE-0320), which
+            # codegen — a static translation of the scenario file — has no access to. A labeled
+            # TODO, like the labelMatches case below.
+            return [
+                f"// TODO: handleSystemAlert — prompt: {hsa.prompt} resolves its label from the "
+                "run's locale; not generated"
+            ]
         el = _system_alert_element(hsa.sel.as_selector())
         if el is None:  # a real-regex labelMatches has no faithful NSPredicate form
             return [

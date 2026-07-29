@@ -145,6 +145,7 @@ Action    ::=
   | { pinch:       { sel: <Selector>, scale: number } }    # scale > 0  (>1 in, <1 out)
   | { rotate:      { sel: <Selector>, radians: number } }  # >0 clockwise
   | { handleSystemAlert: { sel: <Selector>, timeout: number } }  # tap an iOS SpringBoard permission prompt (iOS/XCUITest only); sel accepts only label/labelMatches/index
+  | { handleSystemAlert: { prompt: notifications|tracking, choice: grant|deny, timeout: number } }  # same step, label resolved from the run's locale (BE-0320)
   | { wait:        <Wait> }
   | { assert:      list(<Assertion>) }
   | { relaunch:    { env?: map(string,string), args?: list(string) } }
