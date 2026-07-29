@@ -107,7 +107,7 @@ jobs:
       # so the AI can read merged-PR history (`git log`) and the clobber guard can inspect the branch.
       - name: Check out main with the App token
         if: steps.gate.outputs.enabled == 'true'
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           ref: main
           fetch-depth: 0
@@ -115,7 +115,7 @@ jobs:
 
       - name: Install uv
         if: steps.gate.outputs.enabled == 'true'
-        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990  # v8.3.2
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9  # v9.0.0
         with:
           enable-cache: true
 
@@ -137,7 +137,7 @@ jobs:
       # needs — so authoring is all it can do; the deterministic step below turns the edits into a PR.
       - name: Author the refresh with the Claude Code action
         if: steps.gate.outputs.enabled == 'true'
-        uses: anthropics/claude-code-action@1298632ce7736903d02a1435002705aa2a594a6c  # v1.0.175
+        uses: anthropics/claude-code-action@fa7e2f0a29a126f0b81cdcf360561b36e44cf608  # v1.0.180
         env:
           ANTHROPIC_MODEL: ${{ steps.gate.outputs.provider == 'bedrock' && vars.BEDROCK_MODEL_ID || '' }}
         with:
