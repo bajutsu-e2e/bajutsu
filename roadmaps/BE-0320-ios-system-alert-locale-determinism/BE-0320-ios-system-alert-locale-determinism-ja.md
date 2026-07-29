@@ -55,18 +55,18 @@
 - [x] ユニット3 — 通知許可と ATT(BE-0276 が届かない2つのプロンプト)について、`label`/`labelMatches`/`index` に追加する形でロケール別ラベル対応表を追加する(置き換えではない)。`sel` の代わりに `prompt` と `choice` で指定する。対応表が扱わない言語では、推測したボタンをタップせず明示的に失敗させる。
 - [x] ユニット4 — 実機検証: 異なる `locale` の値を固定した2台の Simulator が、ユニット1の再起動を経たあとに同じ `handleSystemAlert` シナリオを決定論的に閉じること、そして途中のロケールオーバーライドが古い言語のままのウォームレジュームではなくコールドリスポーンを強制することを確認する。
 
-実機の Simulator (iOS 26.5、Xcode 26) で確認した内容は次のとおり。
+実機の Simulator (iOS 26.5、Xcode 26) で確認した内容は次のとおりです。
 
-- 書き込みと再起動は、設定ファイルの値だけでなく SpringBoard の*描画*を変える。`ja_JP` を固定して再起動するとホーム画面が日本語になり(`マップ` / `設定` / `検索`)、`en_US` を固定すると英語に戻る。同じロケールを再度固定した場合は、何も書き込まず追加の起動もしない。
-- 出荷済みの `permission_system_alert.yaml` は `prompt: notifications` と `choice: grant` の指定に変わった。`en_US`(`Allow` をタップ)でも `ja_JP`(`許可` をタップ)でも成功する。
-- ウォームレジュームのゲートも働く。同じロケールの 2 シナリオを 1 回の run で実行すると、コールドスタートのランナーログは **1 個**しか残らない。同じ組を 2 つのロケールで実行すると **2 個**残る。ロケールの変更がコールドリスポーンを強制し、2 番目のシナリオは 1 番目の SpringBoard の言語で実行されなかった。
-- この項目とは無関係な挙動として、iOS は通知許可のプロンプトに一度応答した直後、同じ bundle id への再度のプロンプトを抑制する。そのため、このシナリオを続けて実行するとプロンプトが現れない場合もある。単一のロケールで行った対照実験では *1 番目*のシナリオで再現したので、ロケールの影響ではない。
-- 対応表の値は Apple 自身のもので、Simulator ランタイムが出荷する文字列から読み取った。通知は `UserNotificationsServer.framework` の `PERMISSION_ALERT_ALLOW` / `PERMISSION_ALERT_DENY` である。ATT は `TCC.framework` の `REQUEST_ACCESS_{ALLOW,DENY}_kTCCServiceUserTracking` である。将来のランタイムの値も、信用するのではなく同じ方法で確認できる。
+- 書き込みと再起動は、設定ファイルの値だけでなく SpringBoard の*描画*を変えます。`ja_JP` を固定して再起動するとホーム画面が日本語になり(`マップ` / `設定` / `検索`)、`en_US` を固定すると英語に戻ります。同じロケールを再度固定した場合は、何も書き込まず追加の起動もしません。
+- 出荷済みの `permission_system_alert.yaml` は `prompt: notifications` と `choice: grant` の指定に変わりました。`en_US`(`Allow` をタップ)でも `ja_JP`(`許可` をタップ)でも成功します。
+- ウォームレジュームのゲートも働きます。同じロケールの 2 シナリオを 1 回の run で実行すると、コールドスタートのランナーログは **1 個**しか残りません。同じ組を 2 つのロケールで実行すると **2 個**残ります。ロケールの変更がコールドリスポーンを強制し、2 番目のシナリオは 1 番目の SpringBoard の言語で実行されませんでした。
+- この項目とは無関係な挙動として、iOS は通知許可のプロンプトに一度応答した直後、同じ bundle id への再度のプロンプトを抑制します。そのため、このシナリオを続けて実行するとプロンプトが現れない場合もあります。単一のロケールで行った対照実験では *1 番目*のシナリオで再現したので、ロケールの影響ではありません。
+- 対応表の値は Apple 自身のもので、Simulator ランタイムが出荷する文字列から読み取りました。通知は `UserNotificationsServer.framework` の `PERMISSION_ALERT_ALLOW` / `PERMISSION_ALERT_DENY` です。ATT は `TCC.framework` の `REQUEST_ACCESS_{ALLOW,DENY}_kTCCServiceUserTracking` です。将来のランタイムの値も、信用するのではなく同じ方法で確認できます。
 
 この項目には、残した制限が 2 つあります。どちらも [`docs/ja/scenarios.md`](../../docs/ja/scenarios.md#テキストではなく意図で指定する) に記載してあり、この項目を広げるのではなく後続の項目で扱うのが妥当です。
 
-- **言語の固定は Simulator 専用である。** `simctl` は実機の設定を書き換えられない。そのため `xcuitest.deviceType: device` の target(BE-0238)には固定が効かない。`prompt` / `choice` の形は、画面に出ている保証のない label を解決してしまう。きちんと塞ぐには、どの環境が言語を固定するかをランナーに伝える必要がある。locale を渡さず、その理由で失敗させられるようにする。platform-lifecycle のプロトコルにまたがる変更であり、この項目の担当範囲より広い。
-- **`systemAlertHandling` の拒否ラベルの初期値は英語の文字列である。** 英語以外の `locale` を固定すると `DEFAULT_DISMISSIVE_LABELS` が一致しなくなる。リアクティブなガードのネイティブ経路は `unhandled` を返し、これまでネイティブに tap していた場面で視覚ガードへフォールバックする。この初期値をこの項目のロケール別対応表へ通すのが自然な修正であり、[BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling-ja.md) の担当範囲に属する。
+- **言語の固定は Simulator 専用です。** `simctl` は実機の設定を書き換えられません。そのため `xcuitest.deviceType: device` の target(BE-0238)には固定が効きません。`prompt` / `choice` の形は、画面に出ている保証のない label を解決してしまいます。きちんと塞ぐには、どの環境が言語を固定するかをランナーに伝える必要があります。locale を渡さず、その理由で失敗させられるようにします。platform-lifecycle のプロトコルにまたがる変更であり、この項目の担当範囲より広くなります。
+- **`systemAlertHandling` の拒否ラベルの初期値は英語の文字列です。** 英語以外の `locale` を固定すると `DEFAULT_DISMISSIVE_LABELS` が一致しなくなります。リアクティブなガードのネイティブ経路は `unhandled` を返し、これまでネイティブに tap していた場面で視覚ガードへフォールバックします。この初期値をこの項目のロケール別対応表へ通すのが自然な修正であり、[BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling-ja.md) の担当範囲に属します。
 
 ## 参考
 
