@@ -40,8 +40,9 @@ jobs:
         run: uv sync --group dev
 
       # Each step invokes the matching `make` target so the gate's commands and file/target lists
-      # live only in the Makefile. actionlint is the lone separately-installed binary (kept inline
-      # below: `make lint-actions` only runs it when it's on PATH, but CI installs ./actionlint).
+      # live only in the Makefile. gitleaks and actionlint are the two separately-installed binaries
+      # (kept inline below: `make lint-secrets`/`make lint-actions` only run them when on PATH, but
+      # CI installs each).
       - name: Lockfile up to date (uv lock --check)
         run: make lock-check
 
