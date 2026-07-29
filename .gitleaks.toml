@@ -1,0 +1,55 @@
+title = "Bajutsu gitleaks configuration"
+minVersion = "v8.25.0"
+
+# Extend, don't replace, the built-in ruleset: it already covers AWS credentials, GitHub tokens
+# (classic and fine-grained), and a PEM private-key block (also covers a GitHub App / GCS
+# service-account key, the same PEM format). This repo needs exactly two things beyond that.
+[extend]
+useDefault = true
+# The default anthropic-admin-api-key rule is folded into the anthropic-api-key override below
+# instead of coexisting with it: registering two separate rules that both match sk-ant--prefixed
+# content made gitleaks silently stop matching either one (reproduced against gitleaks v8.30.1;
+# a single rule covering all three prefixes does not hit whatever this interaction is).
+disabledRules = ["anthropic-admin-api-key"]
+
+# Overrides the default anthropic-api-key rule (same id, so this replaces rather than adds a
+# rule) to also cover .env.example's CLAUDE_CODE_OAUTH_TOKEN (sk-ant-oat01-) and the admin key
+# (sk-ant-admin01-, folded in per the note above), alongside the default's own sk-ant-api03-.
+[[rules]]
+id = "anthropic-api-key"
+description = "Anthropic API key or OAuth token (.env.example: ANTHROPIC_API_KEY, CLAUDE_CODE_OAUTH_TOKEN)"
+regex = '''sk-ant-(api03|admin01|oat01)-[A-Za-z0-9_-]{20,}'''
+keywords = ["sk-ant-"]
+tags = ["anthropic"]
+
+# BAJUTSU_SERVE_TOKEN / GRAFANA_ADMIN_PASSWORD are this repo's own deploy-time secrets
+# (deploy/self-host/README.md), detected by key name rather than value shape since the value has
+# no distinctive shape of its own.
+[[rules]]
+id = "bajutsu-serve-secret"
+description = "BAJUTSU_SERVE_TOKEN / GRAFANA_ADMIN_PASSWORD hardcoded instead of passed via the environment"
+regex = '''(BAJUTSU_SERVE_TOKEN|GRAFANA_ADMIN_PASSWORD)("|')?\s*(:|=>|=)\s*("|')?[^\s"']+'''
+tags = ["bajutsu"]
+
+# False positives found by actually running `gitleaks dir .` against this repo's tree — each
+# scoped to the specific rule and file, never to the rule's general shape (that would defeat the
+# check for every other file). See roadmap.
+[[allowlists]]
+description = "tests/test_github_app.py's deliberately malformed PEM fixture (\"nope\" as the key body) is not a real private key"
+targetRules = ["private-key"]
+paths = ['''tests/test_github_app\.py''']
+
+[[allowlists]]
+description = "deploy/self-host/.env.example's self-documenting change-me placeholder, and docker-compose.yml's ${VAR:?...}/${VAR:-...} shell interpolation, reference these variables without a literal secret value"
+targetRules = ["bajutsu-serve-secret"]
+paths = ['''deploy/self-host/\.env\.example''', '''deploy/self-host/docker-compose\.yml''']
+
+[[allowlists]]
+description = "bajutsu/serve/launchagent.py assigns the plist entry from the already-validated `token` variable, not a literal secret"
+targetRules = ["bajutsu-serve-secret"]
+paths = ['''bajutsu/serve/launchagent\.py''']
+
+[[allowlists]]
+description = "generic-api-key (entropy heuristic, a default rule) false-positives on Android AVD device names, a JS metrics key literal, and a TOTP test fixture secret — none are API keys"
+targetRules = ["generic-api-key"]
+paths = ['''\.github/workflows/android-e2e\.yml''', '''bajutsu/templates/serve\.metrics\.mjs''', '''tests/test_totp(_step)?\.py''']

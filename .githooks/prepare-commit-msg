@@ -1,0 +1,9 @@
+#!/bin/bash
+# prepare-commit-msg gate: catches a secret a merge would otherwise pull in silently — at the
+# merge-commit point the index already holds the merged tree, so the same staged-diff scan
+# pre-commit uses applies here too. See .githooks/pre-commit for the enable/bypass notes.
+set -euo pipefail
+
+command -v gitleaks >/dev/null 2>&1 || exit 0  # not installed → don't block the commit
+
+exec gitleaks git --pre-commit --staged --redact --no-banner

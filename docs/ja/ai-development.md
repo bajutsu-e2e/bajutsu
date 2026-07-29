@@ -53,6 +53,16 @@ push 直前にゲートが自己修復されます。Claude Code の web セッ�
 
 このルールの短縮版は [`CLAUDE.md`](../../CLAUDE.md) にあります。
 
+## コミット前にシークレットをブロックする
+
+`core.hooksPath` は、追跡対象の **pre-commit フック**（[`.githooks/pre-commit`](../../.githooks/pre-commit)）と **prepare-commit-msg フック**（[`.githooks/prepare-commit-msg`](../../.githooks/prepare-commit-msg)）も配線します。どちらも [gitleaks](https://github.com/gitleaks/gitleaks) を使います。pre-commit フックはステージ済みの全ファイルを禁止パターン（AWS の認証情報、GitHub のトークン、Anthropic の API キー、貼り付けられた秘密鍵のブロックなど）でスキャンし、一致すればコミットを拒否します。prepare-commit-msg フックは、別ブランチの履歴からシークレットを取り込んでしまう merge に対して同じチェックを行います。既存の commit-msg フック（[`.githooks/commit-msg`](../../.githooks/commit-msg)）にも、コミットメッセージ本文向けの同じスキャンを、subject のスコープチェックと並べて追加しました。git は 1 つのフック名につき 1 本のスクリプトしか実行しないため、両方のチェックを 1 つのファイルにまとめています。
+
+パターンそのものは追跡対象のファイル、[`.gitleaks.toml`](../../.gitleaks.toml) に置いてあります。ローカルの `git config` に設定を保存するツール（`core.hooksPath` と同じく clone/pull では伝播しない、クローンごとの設定です）とは違い、gitleaks はこれを普通の追跡対象ファイルとして直接読み込むため、クローンごとの登録手順を自己修復する必要がそもそもありません。gitleaks 自身の組み込みルールセット（AWS の認証情報、GitHub のトークン、PEM 秘密鍵）を拡張し、このリポジトリ固有の 2 つの形、Anthropic の API キーまたは OAuth トークンと、`deploy/self-host/` の実際のデプロイ時シークレットである `BAJUTSU_SERVE_TOKEN` / `GRAFANA_ADMIN_PASSWORD` を追加しています。`gitleaks` 未インストールのときはすべて緩やかに縮退し、フックと（後述の）`make lint-secrets` はコミットやゲートをブロックせず、通知だけを出してスキップします。インストールは `brew install gitleaks`（macOS。[`Brewfile`](../../Brewfile) にも記載）か、[リリースバイナリ](https://github.com/gitleaks/gitleaks/releases)から行えます。パターンには一致するもののシークレットではない文字列（フィクスチャ、ドキュメント中のプレースホルダー、シェル変数の参照など）があれば、パターン自体を緩めるのではなく、`.gitleaks.toml` 内の絞り込んだ `[[allowlists]]` エントリで除外してください。これは gitleaks 自身が用意する例外の仕組みです。
+
+ローカルのフックは、それが配線されていて `--no-verify` で回避されていないクローンにしか効きません。そこで CI は同じスキャンを独立に実行します。`make lint-secrets` は追跡対象の全ファイルを再スキャンし、`make check` に組み込まれています。`make check` 自体がローカルと CI の両方で走ることで、`make setup` を飛ばしたクローンにも `--no-verify` のコミットにも、シークレットをレビューの目をすり抜けさせません。
+
+このルールの短縮版は [`CLAUDE.md`](../../CLAUDE.md) にあります。
+
 ## 早めに rebase し、小さな衝突のうちに統合する
 
 ```bash

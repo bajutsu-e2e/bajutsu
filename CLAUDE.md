@@ -33,13 +33,13 @@ The Python core needs no Simulator, so the gate is fast and runs anywhere (Linux
 
 ```bash
 make check        # format-check + lint + lint-docstrings + lint-imports + lint-sh
-                  #   + lint-actions + lint-js + lint-roadmap + lock-check + typecheck
-                  #   + test (coverage floor)   — mirrors CI exactly
+                  #   + lint-actions + lint-js + lint-roadmap + lint-secrets + lock-check
+                  #   + typecheck + test (coverage floor)   — mirrors CI exactly
 ```
 
 Individual steps: `make format-check` · `make lint` · `make lint-docstrings` · `make lint-imports`
-· `make lint-sh` · `make lint-actions` · `make lint-js` · `make lint-roadmap` · `make lock-check`
-· `make typecheck` · `make test`. (`make format` rewrites; the gate only
+· `make lint-sh` · `make lint-actions` · `make lint-js` · `make lint-roadmap` · `make lint-secrets`
+· `make lock-check` · `make typecheck` · `make test`. (`make format` rewrites; the gate only
 checks.) Every step is uv-native and runs on a fresh clone — except `actionlint`, a standalone
 binary that CI installs but `make` skips (with a notice) when it is absent. CI
 ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs the same steps on every PR —
@@ -94,6 +94,10 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   settings that ease parallel work: a `uv.lock` merge driver and `rerere`. No manual `git config`
   needed. Mechanism:
   [`docs/ai-development.md`](docs/ai-development.md#rebase-early-integrate-small-conflicts).
+- **Never commit a secret.** A tracked pre-commit/prepare-commit-msg/commit-msg hook and a CI
+  re-scan, both backed by [gitleaks](https://github.com/gitleaks/gitleaks) and its tracked
+  `.gitleaks.toml` config, block a secret before and after it lands on a branch. Mechanism:
+  [`docs/ai-development.md`](docs/ai-development.md#block-a-secret-before-its-committed).
 - **Rebase, don't drift.** Before pushing, `git fetch origin && git rebase origin/main` so you
   integrate others' merged work early and surface conflicts while they're small. `make preflight`
   (BE-0069) does this and runs the gate, then prints the "definition of done" reminder — the

@@ -1,5 +1,5 @@
 .PHONY: setup hooks install deps deps-check serve worktree preflight test lint lint-docstrings lint-imports format format-check typecheck \
-        lock-check lint-sh lint-actions lint-js lint-roadmap lint-pr check new-roadmap-item \
+        lock-check lint-sh lint-actions lint-js lint-roadmap lint-pr lint-secrets check new-roadmap-item \
         roadmap-status roadmap-dashboard docs docs-serve docs-diagrams runner-bundle
 
 # One-command bootstrap for a fresh clone (cross-platform; the dev gate needs no
@@ -9,7 +9,9 @@ setup: hooks
 
 # Wire per-clone local git settings that clone/pull never carry over, so this self-heals
 # existing clones too — `check` runs it before every gate, right when it matters. Idempotent:
-#   - core.hooksPath    -> the tracked hooks dir (pre-push gate + commit-msg scope check, BE-0069)
+#   - core.hooksPath    -> the tracked hooks dir (pre-push gate + commit-msg scope check, BE-0069;
+#                          pre-commit/prepare-commit-msg/commit-msg secret scan, via .gitleaks.toml
+#                          — a tracked file, so no local git-config registration is needed here)
 #   - merge.uv-lock     -> regenerate uv.lock from pyproject.toml on conflict (BE-0043)
 #   - rerere            -> replay a once-resolved conflict automatically (BE-0043)
 hooks:
@@ -66,8 +68,9 @@ worktree:
 preflight:
 	@./scripts/preflight.sh
 
-# Shell scripts the gate lints. pre-push has no .sh suffix, so they're listed explicitly.
-SHELL_SCRIPTS := .githooks/pre-push .githooks/commit-msg scripts/serve.sh scripts/install.sh scripts/worktree.sh scripts/preflight.sh scripts/merge-uv-lock.sh scripts/xcuitest-runner-hash.sh .claude/hooks/session-start.sh demos/tour/demo.sh
+# Shell scripts the gate lints. pre-push/pre-commit/prepare-commit-msg have no .sh suffix, so
+# they're listed explicitly.
+SHELL_SCRIPTS := .githooks/pre-push .githooks/commit-msg .githooks/pre-commit .githooks/prepare-commit-msg scripts/serve.sh scripts/install.sh scripts/worktree.sh scripts/preflight.sh scripts/merge-uv-lock.sh scripts/xcuitest-runner-hash.sh .claude/hooks/session-start.sh demos/tour/demo.sh
 
 # Modules whose public surface has migrated to the Google-style docstring standard (BE-0065),
 # enforced by `lint-docstrings`. This list GROWS module-by-module as more migrate; keep it the
@@ -182,6 +185,20 @@ new-roadmap-item:
 lint-pr:
 	uv run python scripts/lint_pr.py
 
+# Re-scan every tracked file for a committed secret with gitleaks: defense-in-depth alongside the
+# pre-commit hook, which a `--no-verify` commit or a clone that skipped `make setup` never runs.
+# Config is the tracked .gitleaks.toml — no per-clone registration step needed. Skips with a
+# notice, like `lint-actions`/`lint-js`, when gitleaks isn't on PATH (CI always installs it, a
+# pinned release of https://github.com/gitleaks/gitleaks) — an if/else, not `cmd && ... || echo
+# ...`: the latter would also print (and mask a real failure behind) the "not installed" notice
+# whenever `gitleaks dir` itself found a match and exited non-zero.
+lint-secrets:
+	@if command -v gitleaks >/dev/null 2>&1; then \
+		gitleaks dir . --no-banner --redact; \
+	else \
+		echo "lint-secrets: gitleaks not installed — skipping (CI enforces it); see docs/ai-development.md"; \
+	fi
+
 # Filter roadmap (BE) items by Status into one small table — ID / Item / Topic / Path — so an AI
 # session surveys just the rows it needs (e.g. every Proposal) without paging through the dashboard's
 # rendered HTML or opening each item file to check its `Status` (BE-0162). Pure and offline: reads
@@ -193,7 +210,7 @@ roadmap-status:
 # The full gate. CI (.github/workflows/ci.yml) mirrors these steps so "green locally"
 # predicts "green in CI". The uv-native checks run identically everywhere; actionlint is
 # the lone exception (see lint-actions above).
-check: hooks format-check lint lint-docstrings lint-imports lint-sh lint-actions lint-js lint-roadmap lock-check typecheck test
+check: hooks format-check lint lint-docstrings lint-imports lint-sh lint-actions lint-js lint-roadmap lint-secrets lock-check typecheck test
 
 # Generated API reference (BE-0065). Deliberately NOT in `check`: like on-device E2E, the
 # reference build is a separate, heavier path (it pulls the `docs` extra) and must not slow the

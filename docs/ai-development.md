@@ -58,6 +58,41 @@ other session from your change.
 
 The short form of this rule is in [`CLAUDE.md`](../CLAUDE.md).
 
+## Block a secret before it's committed
+
+`core.hooksPath` also wires a tracked **pre-commit hook**
+([`.githooks/pre-commit`](../.githooks/pre-commit)) and a **prepare-commit-msg hook**
+([`.githooks/prepare-commit-msg`](../.githooks/prepare-commit-msg)), both backed by
+[gitleaks](https://github.com/gitleaks/gitleaks): the pre-commit hook scans every staged file for
+a prohibited pattern (an AWS credential, a GitHub token, an Anthropic API key, a pasted
+private-key block) and refuses the commit on a match; the prepare-commit-msg hook does the same
+for a merge that would otherwise pull a secret in from another branch's history. The existing
+commit-msg hook ([`.githooks/commit-msg`](../.githooks/commit-msg)) gained the same scan for the
+message body itself, alongside its scoped-subject check — git runs only one script per hook name,
+so both checks share that one file.
+
+The patterns themselves live in a tracked file, [`.gitleaks.toml`](../.gitleaks.toml) — an
+ordinary tracked file gitleaks reads directly, unlike a tool that stores its configuration in local
+`git config` (a per-clone setting clone/pull never carries over, the same problem `core.hooksPath`
+has), so there's no per-clone registration step to self-heal. It extends gitleaks' own built-in
+ruleset (AWS credentials, GitHub tokens, PEM private keys) with the two shapes specific to this
+repository: an Anthropic API key or OAuth token, and the `BAJUTSU_SERVE_TOKEN` /
+`GRAFANA_ADMIN_PASSWORD` deploy-time secrets from `deploy/self-host/`. Everything degrades
+gracefully when `gitleaks` isn't installed yet — the hooks and `make lint-secrets` (below) skip
+with a notice rather than blocking a commit or the gate; install it with `brew install gitleaks`
+(macOS, also in the [`Brewfile`](../Brewfile)) or from a
+[release binary](https://github.com/gitleaks/gitleaks/releases). A string that legitimately
+matches a pattern but isn't a secret (a fixture, a documented placeholder, a shell variable
+reference) can be exempted with a scoped `[[allowlists]]` entry in `.gitleaks.toml` — gitleaks'
+own escape valve — rather than by loosening a pattern.
+
+A local hook only helps a clone that has one wired and isn't bypassed with `--no-verify`, so CI
+runs the same scan independently: `make lint-secrets` re-scans every tracked file and is folded
+into `make check`, mirroring the way `make check` itself runs both locally and in CI so neither a
+skipped `make setup` nor a `--no-verify` commit slips a secret past review.
+
+The short form of this rule is in [`CLAUDE.md`](../CLAUDE.md).
+
 ## Rebase early, integrate small conflicts
 
 ```bash

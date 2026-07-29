@@ -26,7 +26,11 @@ project-specific points are worth keeping in mind:
 
 - **API keys / secrets.** Only the AI paths (`record`, `run --system-alert-handling`)
   need `ANTHROPIC_API_KEY`. Never commit or share API keys; keep them in `.env`
-  (gitignored). The deterministic `run`/CI gate needs no secrets.
+  (gitignored). The deterministic `run`/CI gate needs no secrets. A tracked pre-commit hook and a
+  CI re-scan, both backed by [gitleaks](https://github.com/gitleaks/gitleaks), catch a secret
+  before and after it lands on a branch — see
+  [`docs/ai-development.md`](docs/ai-development.md#block-a-secret-before-its-committed) — but
+  treat that as a backstop, not a reason to paste one in.
 - **`type` of non-Latin text on the iOS Simulator (idb) backend.** idb's hardware-keyboard
   text path only encodes US-keyboard-layout characters. A `type` step with non-Latin text
   falls back to the Simulator's pasteboard instead. The fallback writes the value with
