@@ -396,13 +396,21 @@ class Env:
             self._run(boot_cmd(self.udid), None)
 
     def system_locale_matches(self, locale: str) -> bool | None:
-        """Whether the device's global domain carries exactly what `pin_system_locale` writes.
+        """Whether the device's global domain already renders the language `pin_system_locale` writes.
 
         `None` distinguishes "could not read the domain" from a definite mismatch, so a caller can
         act on what it actually observed: skipping the write needs a positive match, while failing
         the run needs a positive *mis*match — an unreadable device is neither. A domain that reads
         back fine but carries no pinned language is a *mismatch*, not an unknown: it is positive
         evidence that nothing pinned it.
+
+        A match is one language with **nothing queued behind it** whose subtag is the one we would
+        write, plus an exact `AppleLocale`. Comparing the subtag rather than the whole entry matters
+        for the common case: a freshly created Simulator inherits the host's language-region tag
+        (`en-US`), which selects the same language as the bare `en` this writes, so an exact string
+        comparison would rewrite and reboot every device that was already right. A second language
+        behind the first is still a mismatch — SpringBoard can fall back to it for a string the first
+        lacks, which is the "matched by accident" behaviour this exists to remove.
 
         Raises:
             DeviceError: `locale` is not safe to place on a `defaults` argv — checked up front, so a
@@ -415,8 +423,11 @@ class Env:
             return None
         if not isinstance(exported, dict):
             return None
+        languages = exported.get(_LANGUAGES_KEY)
+        if not isinstance(languages, list) or len(languages) != 1:
+            return False  # absent, or a fallback queued behind the first
         return (
-            exported.get(_LANGUAGES_KEY) == [language_of(checked)]
+            language_of(str(languages[0])) == language_of(checked)
             and exported.get(_LOCALE_KEY) == checked
         )
 

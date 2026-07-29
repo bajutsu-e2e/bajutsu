@@ -440,6 +440,18 @@ def test_pin_system_locale_writes_when_the_device_carries_another_language() -> 
     assert calls[1:] == simctl.system_locale_cmds("UDID", "ja_JP")
 
 
+def test_a_region_tagged_language_needs_no_rewrite() -> None:
+    # The shape a freshly created Simulator inherits from its host: `en-US`, not the bare `en` the
+    # pin writes. It already selects the same language, so an exact string comparison would rewrite
+    # and reboot every device that was already right — a boot cycle added to every cold spawn.
+    def fake_run(args: list[str], extra_env: Mapping[str, str] | None = None) -> str:
+        return _globals({"AppleLanguages": ["en-US"], "AppleLocale": "en_US"})
+
+    e = simctl.Env("UDID", run=fake_run)
+    assert e.system_locale_matches("en_US") is True
+    assert e.pin_system_locale("en_US") is False
+
+
 def test_a_fallback_language_behind_the_pinned_one_is_a_mismatch() -> None:
     # The write is a one-element array on purpose: a language queued behind the pinned one lets
     # SpringBoard fall back to it for any string the pinned language lacks, which is the "matched by
