@@ -1,14 +1,14 @@
-[English](BE-XXXX-gitleaks-commit-guard.md) · **日本語**
+[English](BE-0328-gitleaks-commit-guard.md) · **日本語**
 
-# BE-XXXX — gitleaks でシークレットのコミットをブロックする
+# BE-0328 — gitleaks でシークレットのコミットをブロックする
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-gitleaks-commit-guard-ja.md) |
+| 提案 | [BE-0328](BE-0328-gitleaks-commit-guard-ja.md) |
 | 提案者 | [@akira-matsuda](https://github.com/akira-matsuda) |
 | 状態 | **実装済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0328") |
 | 実装 PR | TBD（PR を開いた時点で記入します。BE 作成 PR のため、ID と PR は本セッションでは作成しません） |
 | トピック | Contributor workflow |
 <!-- /BE-METADATA -->

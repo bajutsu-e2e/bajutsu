@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-gitleaks-commit-guard-ja.md)
+**English** · [日本語](BE-0328-gitleaks-commit-guard-ja.md)
 
-# BE-XXXX — Block secrets from being committed with gitleaks
+# BE-0328 — Block secrets from being committed with gitleaks
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-gitleaks-commit-guard.md) |
+| Proposal | [BE-0328](BE-0328-gitleaks-commit-guard.md) |
 | Author | [@akira-matsuda](https://github.com/akira-matsuda) |
 | Status | **Implemented** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0328") |
 | Implementing PR | TBD — filled in once the PR is opened (this is a BE-creation PR; the id and PR are not opened by this session) |
 | Topic | Contributor workflow |
 <!-- /BE-METADATA -->
