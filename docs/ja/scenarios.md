@@ -161,7 +161,7 @@ iOS バックエンドは **SpringBoard レベルのプロンプト**（通知�
 
 ### テキストではなく意図で指定する
 
-`permissions` では先回りできないプロンプトが 2 つあります。TCC（Transparency, Consent, and Control）のサービスではない通知の許可と、`simctl` の切り替え手段がまったくない App Tracking Transparency（ATT）です。この 2 つについては、`sel` の代わりに `prompt` と `choice` を指定できます。固定した `locale` が描画する label は run が解決します（[BE-0320](../../roadmaps/BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md)）。
+`permissions` では先回りできないプロンプトが 2 つあります。Transparency, Consent, and Control（TCC）のサービスではない通知の許可と、`simctl` の切り替え手段がまったくない App Tracking Transparency（ATT）です。この 2 つについては、`sel` の代わりに `prompt` と `choice` を指定できます。固定した `locale` が描画する label は run が解決します（[BE-0320](../../roadmaps/BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md)）。
 
 ```yaml
 - handleSystemAlert: { prompt: notifications, choice: grant, timeout: 5 }
@@ -170,6 +170,11 @@ iOS バックエンドは **SpringBoard レベルのプロンプト**（通知�
 `prompt` は `notifications` か `tracking`、`choice` は `grant` か `deny` です。ボタンを意味で指定するため、同じファイルが `en_US` でも `ja_JP` でもプロンプトを許可します。どちらの言語のテキストも作者が書き写す必要はありません。これは英語だけを使う場合にも役立ちます。英語の拒否ボタンのアポストロフィは、手で打った label が持つ ASCII 文字ではなく、活字体のアポストロフィ（`Don’t Allow`）だからです。
 
 この対応表がまだ扱っていない言語（現時点では英語と日本語のみ）の locale を指定した場合、推測した label を tap するのではなく、扱える言語を名指ししてステップが明示的に失敗します。ほかのアラートは、これまでどおり `sel` でボタンを指定します。
+
+使う前に知っておきたい制限が 2 つあります。
+
+- **Simulator 専用です。** 言語の固定は `simctl` の操作なので、`xcuitest.deviceType: device` の target は実機が持つシステム言語のまま動きます。この形では、画面に出ている保証のない label を解決してしまいます。実機ではボタンを `sel.label` で指定してください。
+- **リアクティブなガードが持つ拒否ラベルの初期値は英語のままです。** `systemAlertHandling` が組み込みで持つラベル（`Don't Allow`、`Not Now`、`Cancel` など）は英語の文字列そのものです。そのため英語以外の `locale` ではネイティブ経路が一致せず、AI 視覚のガードへフォールバックします。決定的に保つには、固定した言語のラベルを `instruction` のリストで明示してください。
 
 （[`demos/showcase/scenarios/permission_system_alert.yaml`](../../demos/showcase/scenarios/permission_system_alert.yaml) 実物）
 

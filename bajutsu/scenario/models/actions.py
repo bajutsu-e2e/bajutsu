@@ -88,13 +88,15 @@ class HandleSystemAlert(_Model):
 
     @model_validator(mode="after")
     def _one_way_to_name_the_button(self) -> Self:
+        # The pairing check runs first, so a step carrying only one half of the intent form is told
+        # what is actually wrong rather than the misleading "neither form was given".
+        if (self.prompt is None) != (self.choice is None):
+            raise ValueError("handleSystemAlert prompt and choice are set together (§6.2)")
         if (self.sel is None) == (self.prompt is None):
             raise ValueError(
                 "handleSystemAlert names its button either by sel or by prompt + choice, "
                 "never both and never neither (§6.2)"
             )
-        if (self.prompt is None) != (self.choice is None):
-            raise ValueError("handleSystemAlert prompt and choice are set together (§6.2)")
         return self
 
     @model_validator(mode="after")

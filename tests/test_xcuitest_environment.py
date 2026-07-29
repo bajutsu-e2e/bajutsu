@@ -265,6 +265,8 @@ def _fake_toolchain(
 
     def _run(argv: list[str], env: object = None) -> str:
         simctl_calls.append(argv)
+        if argv[2:3] == ["erase"]:
+            domain["v"] = None  # a real erase wipes the device's preferences with everything else
         if argv[4:7] == ["defaults", "export", "-globalDomain"]:
             return _globals_plist(domain["v"])
         if argv[4:8] == ["defaults", "write", "-globalDomain", "AppleLocale"]:
@@ -398,6 +400,59 @@ def test_a_pin_that_does_not_take_fails_loudly(
     eff = _sim_eff_locale(test_runner=str(_write_runner(tmp_path)), locale="ja_JP")
     with pytest.raises(simctl.DeviceError, match="BE-0320"):
         env.start(eff, Preconditions())
+
+
+def test_an_erasing_cold_spawn_re_pins_the_wiped_domain(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # `erase` wipes the device's preferences, so the pin has to run *after* it — moving the pin above
+    # the erase would leave the second scenario on whatever language the wiped device boots with.
+    domain: dict[str, str | None] = {"v": "ja_JP"}
+    _, simctl_calls, run = _fake_toolchain(monkeypatch, system_locale=domain)
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    eff = _sim_eff_locale(test_runner=str(_write_runner(tmp_path)), locale="ja_JP")
+
+    env.start(eff, Preconditions(erase=True))
+
+    assert domain["v"] == "ja_JP"  # re-pinned after the wipe, not left to the boot default
+    verbs = _verbs(simctl_calls)
+    assert verbs.index("erase") < verbs.index("spawn")
+
+
+def test_an_unconfirmable_pin_runs_on_but_is_not_remembered(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # A device whose global domain cannot be read back after the reboot is not an observed mismatch,
+    # so the run proceeds — but the pin is unconfirmed, so it must not be recorded: warm reuse is
+    # gated on it, and remembering it would carry the doubt across every later lease.
+    def run(argv: list[str], env: object = None) -> str:
+        if argv[4:7] == ["defaults", "export", "-globalDomain"]:
+            raise subprocess.CalledProcessError(1, argv, stderr="device not booted")
+        return ""
+
+    popen_argvs: list[list[str]] = []
+
+    def _popen(argv: list[str], **_kw: Any) -> _FakeProc:
+        popen_argvs.append(argv)
+        return _FakeProc()
+
+    class _Driver:
+        def await_ready(self, timeout: float = 10.0) -> None: ...
+        def health_ready(self) -> bool:
+            return True
+
+    monkeypatch.setattr(subprocess, "Popen", _popen)
+    monkeypatch.setattr(backends, "make_driver", lambda *_a, **_k: _Driver())
+
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    eff = _sim_eff_locale(test_runner=str(_write_runner(tmp_path)), locale="ja_JP")
+
+    env.start(eff, Preconditions())  # no raise: nothing was observed to be wrong
+    assert env._pinned_locale is None
+    env.start(eff, Preconditions())
+    assert (
+        len(popen_argvs) == 2
+    )  # the unconfirmed pin blocked warm reuse, so the next lease is cold
 
 
 def test_start_respawns_the_runner_when_the_scenario_erases(

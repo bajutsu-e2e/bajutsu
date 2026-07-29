@@ -224,6 +224,16 @@ A locale whose language the lookup does not cover (today: English and Japanese) 
 loudly, naming what is covered, rather than tapping a guessed button. Every other alert keeps naming
 its button through `sel`, unchanged.
 
+Two limits are worth knowing before reaching for it:
+
+- **The Simulator only.** The pin is a `simctl` operation, so a target on `xcuitest.deviceType:
+  device` runs against whatever system language the physical device carries — the intent form would
+  resolve a label nothing guarantees is on screen. Name the button with `sel.label` there.
+- **The reactive guard's default labels are still English.** `systemAlertHandling`'s built-in
+  dismissive labels (`Don't Allow`, `Not Now`, `Cancel`, …) are literal English text, so under a
+  non-English `locale` the native path finds no match and falls back to the AI-vision guard. Give
+  the guard an explicit `instruction` list in the pinned language to keep it deterministic.
+
 (real file:
 [`demos/showcase/scenarios/permission_system_alert.yaml`](../demos/showcase/scenarios/permission_system_alert.yaml))
 

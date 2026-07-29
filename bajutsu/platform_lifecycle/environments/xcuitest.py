@@ -589,21 +589,38 @@ class XcuitestEnvironment(_DeviceEnvironment):
         so a write is followed by one more boot cycle before the caller installs and launches. The
         common case (already pinned) costs one read and no extra boot.
 
+        The read-back after the reboot is what makes the pin a fact rather than a hope: a `defaults
+        write` can exit 0 and still not survive the shutdown. Only a confirmed pin is remembered —
+        `_pinned_locale` gates warm reuse, so recording an unconfirmed one would carry the doubt
+        across every later lease instead of re-checking on the next cold spawn.
+
         Raises:
             DeviceError: if the reboot demonstrably left the device on another locale — the run would
-                otherwise proceed against an alert language nothing predicts. A device whose global
-                domain cannot be read at all is not that case: the write itself already ran checked,
-                so there is no observed mismatch to fail on.
+                otherwise proceed against an alert language nothing predicts.
         """
-        self._pinned_locale = None  # not pinned until the write below is verified
-        if e.pin_system_locale(locale):
-            e.shutdown()
-            e.boot()
-            if e.system_locale_matches(locale) is False:
-                raise simctl.DeviceError(
-                    f"failed to pin the Simulator's system locale to {locale!r}; "
-                    "system-alert button labels would not be deterministic (BE-0320)"
-                )
+        self._pinned_locale = None  # not pinned until the write below is confirmed
+        if not e.pin_system_locale(locale):
+            self._pinned_locale = locale  # the read already confirmed it; nothing was written
+            return
+        e.shutdown()
+        e.boot()
+        confirmed = e.system_locale_matches(locale)
+        if confirmed is False:
+            raise simctl.DeviceError(
+                f"failed to pin the Simulator's system locale to {locale!r}; "
+                "system-alert button labels would not be deterministic (BE-0320)"
+            )
+        if confirmed is None:
+            # Nothing was observed to be wrong, so the run proceeds — but the pin is unconfirmed, so
+            # it is not recorded: the next lease cold-spawns and re-checks rather than reusing a
+            # runner on the strength of a write we could not read back.
+            _logger.warning(
+                "could not read the Simulator's global domain back after pinning it to %r; "
+                "the run continues, but warm-runner reuse is disabled until a spawn confirms it "
+                "(BE-0320)",
+                locale,
+            )
+            return
         self._pinned_locale = locale
 
     def _launch_params(

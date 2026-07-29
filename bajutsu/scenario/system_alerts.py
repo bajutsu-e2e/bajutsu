@@ -20,7 +20,8 @@ Re-reading those files under a new runtime is what checks this table, rather tha
 
 from __future__ import annotations
 
-from typing import Literal, get_args
+import re
+from typing import Literal, TypedDict
 
 # The prompts this table covers. `notifications` matches the permission vocabulary's spelling
 # (`drivers.base.PERMISSION_SERVICES`) for the same OS prompt; `tracking` is ATT, which that
@@ -31,10 +32,34 @@ SystemAlertPrompt = Literal["notifications", "tracking"]
 # which is not always a plain refusal — ATT's is "Ask App Not to Track".
 SystemAlertChoice = Literal["grant", "deny"]
 
+
+class _Choices(TypedDict):
+    """Both choices for one prompt in one language.
+
+    A `TypedDict` so mypy, not a runtime check, rejects a half-filled entry — one that would resolve
+    `deny` while `grant` raised a `KeyError` mid-run.
+    """
+
+    grant: str
+    deny: str
+
+
+class _Prompts(TypedDict):
+    """Every prompt `SystemAlertPrompt` names, with its labels.
+
+    Declaring a new prompt without its labels is then a type error, rather than a schema that
+    accepts a step no lookup can resolve. The keys must stay in step with `SystemAlertPrompt`; the
+    per-prompt maps are keyed by language subtag (lowercase, no region — see `system_alert_label`).
+    """
+
+    notifications: dict[str, _Choices]
+    tracking: dict[str, _Choices]
+
+
 # Keyed by prompt, then language subtag, then choice. Note the English deny labels: the notification
 # prompt uses a typographic apostrophe (U+2019), not the ASCII one a hand-typed `label` would carry
 # — exactly the transcription trap this lookup removes.
-_LABELS: dict[SystemAlertPrompt, dict[str, dict[SystemAlertChoice, str]]] = {
+_LABELS: _Prompts = {
     "notifications": {
         "en": {"grant": "Allow", "deny": "Don’t Allow"},
         "ja": {"grant": "許可", "deny": "許可しない"},
@@ -66,15 +91,15 @@ def system_alert_label(prompt: SystemAlertPrompt, choice: SystemAlertChoice, loc
     Raises:
         UncoveredSystemAlertLocale: the table has no entry for that language.
     """
-    by_language = _LABELS[prompt]
     # The same subtag `simctl.language_of` derives for the app's `-AppleLanguages` launch argument
     # and the Simulator's pinned system language; split here rather than imported, so the scenario
     # schema stays a portable inner contract that pulls in no device layer. A test pins the two
     # together so they cannot drift.
-    language = locale.split("_", 1)[0]
-    labels = by_language.get(language)
+    language = re.split(r"[_-]", locale, maxsplit=1)[0]
+    labels = _LABELS[prompt].get(language)
     if labels is None:
-        covered = ", ".join(sorted(by_language))
+        # Built from the exported helper, so the message and the documented surface cannot drift.
+        covered = ", ".join(covered_languages(prompt))
         raise UncoveredSystemAlertLocale(
             f"handleSystemAlert prompt: {prompt} has no known button labels for language "
             f"{language!r} (locale {locale!r}); covered: {covered}. Name the button directly with "
@@ -86,14 +111,3 @@ def system_alert_label(prompt: SystemAlertPrompt, choice: SystemAlertChoice, loc
 def covered_languages(prompt: SystemAlertPrompt) -> tuple[str, ...]:
     """The language subtags this table covers for `prompt`, sorted — the documented, testable surface."""
     return tuple(sorted(_LABELS[prompt]))
-
-
-# Every prompt in the `Literal` carries a table, and every table covers both choices in *its*
-# `Literal` — asserted at import so a future prompt or choice cannot be declared in the schema while
-# silently missing its labels (the schema would accept a step no lookup could resolve).
-assert set(_LABELS) == set(get_args(SystemAlertPrompt))
-assert all(
-    set(labels) == set(get_args(SystemAlertChoice))
-    for by_language in _LABELS.values()
-    for labels in by_language.values()
-)

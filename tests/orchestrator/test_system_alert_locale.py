@@ -104,13 +104,49 @@ def test_a_nested_step_is_resolved_too() -> None:
     assert driver.actions == [("handle_system_alert", ({"label": "許可"}, 5.0))]
 
 
+def test_a_foreach_body_is_resolved_too() -> None:
+    # The same seam covers a `forEach` body, which re-enters the step loop the way an `if` branch
+    # does — worth pinning separately so a future dispatch that bypasses the seam is caught.
+    driver = _fake_with_alert("許可")
+    result = run_scenario(
+        driver,
+        _grant_scenario(
+            [
+                {
+                    "forEach": {
+                        "sel": {"id": "home.title"},
+                        "as": "row",
+                        "steps": [
+                            {
+                                "handleSystemAlert": {
+                                    "prompt": "notifications",
+                                    "choice": "grant",
+                                    "timeout": 5,
+                                }
+                            }
+                        ],
+                    }
+                }
+            ]
+        ),
+        clock=FakeClock(),
+        locale="ja_JP",
+    )
+
+    assert result.ok, result.failure
+    assert driver.actions == [("handle_system_alert", ({"label": "許可"}, 5.0))]
+
+
 def test_an_uncovered_language_fails_the_step_instead_of_guessing() -> None:
     driver = _fake_with_alert("Erlauben")
     result = run_scenario(driver, _grant_scenario(), clock=FakeClock(), locale="de_DE")
 
     assert not result.ok
-    assert result.failure is not None and "de" in result.failure
+    assert result.failure is not None and "language 'de'" in result.failure
     assert driver.actions == []  # nothing was tapped
+    # The failed step is still recorded, so the report and the run matrix show *which* step failed
+    # rather than only that the scenario did.
+    assert [(o.index, o.action, o.ok) for o in result.steps] == [(0, "handle_system_alert", False)]
 
 
 def test_a_run_with_no_locale_fails_the_step_loudly() -> None:

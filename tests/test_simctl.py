@@ -440,6 +440,51 @@ def test_pin_system_locale_writes_when_the_device_carries_another_language() -> 
     assert calls[1:] == simctl.system_locale_cmds("UDID", "ja_JP")
 
 
+def test_a_fallback_language_behind_the_pinned_one_is_a_mismatch() -> None:
+    # The write is a one-element array on purpose: a language queued behind the pinned one lets
+    # SpringBoard fall back to it for any string the pinned language lacks, which is the "matched by
+    # accident" behaviour BE-0320 removes. A right *primary* language is therefore not a match.
+    def fake_run(args: list[str], extra_env: Mapping[str, str] | None = None) -> str:
+        return _globals({"AppleLanguages": ["ja", "en"], "AppleLocale": "ja_JP"})
+
+    e = simctl.Env("UDID", run=fake_run)
+    assert e.system_locale_matches("ja_JP") is False
+    assert e.pin_system_locale("ja_JP") is True
+
+
+def test_a_matching_language_with_another_region_is_a_mismatch() -> None:
+    # `AppleLocale` decides date / number rendering even when the language agrees, so it is compared
+    # too — dropping it from the comparison must not go unnoticed.
+    def fake_run(args: list[str], extra_env: Mapping[str, str] | None = None) -> str:
+        return _globals({"AppleLanguages": ["en"], "AppleLocale": "en_GB"})
+
+    assert simctl.Env("UDID", run=fake_run).system_locale_matches("en_US") is False
+
+
+def test_a_domain_with_no_pinned_language_is_a_mismatch_not_an_unknown() -> None:
+    # Readable but carrying no language is positive evidence that nothing pinned it — a mismatch.
+    # Classifying it as unknown would let the post-reboot verification pass on a write that never
+    # survived the shutdown.
+    def fake_run(args: list[str], extra_env: Mapping[str, str] | None = None) -> str:
+        return _globals({"AppleLocale": "ja_JP"})
+
+    assert simctl.Env("UDID", run=fake_run).system_locale_matches("ja_JP") is False
+
+
+def test_pin_system_locale_rejects_an_option_injecting_locale_before_touching_the_device() -> None:
+    # The validation callers actually reach: a malformed locale raises before any subprocess runs,
+    # rather than after a wasted round trip (or only when the language happens to differ).
+    calls: list[list[str]] = []
+
+    def fake_run(args: list[str], extra_env: Mapping[str, str] | None = None) -> str:
+        calls.append(args)
+        return ""
+
+    with pytest.raises(simctl.DeviceError, match="invalid locale"):
+        simctl.Env("UDID", run=fake_run).pin_system_locale("-array")
+    assert calls == []
+
+
 def test_system_locale_matches_reports_an_unreadable_domain_as_unknown() -> None:
     # A domain that cannot be read or parsed is neither a match nor a mismatch: the caller writes
     # (it cannot confirm) but never *fails* on it, since nothing was observed to be wrong.
@@ -451,7 +496,7 @@ def test_system_locale_matches_reports_an_unreadable_domain_as_unknown() -> None
 
     for run in (unparseable, failing):
         assert simctl.Env("UDID", run=run).system_locale_matches("ja_JP") is None
-    # An exported domain that simply has no pinned language reads as unknown too, not as a mismatch.
-    assert (
-        simctl.Env("UDID", run=lambda a, e=None: _globals({})).system_locale_matches("ja") is None
-    )
+    # A payload that parses but is not a dict is unreadable too (a mangled export), unlike a
+    # readable domain that merely lacks the key — that one is a mismatch, covered above.
+    mangled = plistlib.dumps([]).decode()
+    assert simctl.Env("UDID", run=lambda a, e=None: mangled).system_locale_matches("ja") is None

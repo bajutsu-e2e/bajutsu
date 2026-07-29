@@ -209,6 +209,22 @@ Verified on a real Simulator (iOS 26.5, Xcode 26):
   `TCC.framework`'s `REQUEST_ACCESS_{ALLOW,DENY}_kTCCServiceUserTracking`), which is how a future
   runtime's values can be re-checked rather than trusted.
 
+Two limits this item leaves open, both documented in
+[`docs/scenarios.md`](../../docs/scenarios.md#naming-the-intent-instead-of-the-text) and worth a
+follow-up item rather than a widening of this one:
+
+- **The pin is Simulator-only.** `simctl` cannot write a physical device's preferences, so a target
+  on `xcuitest.deviceType: device` (BE-0238) gets no pin, and the `prompt` / `choice` form would
+  resolve a label nothing guarantees is on screen. Closing it properly means teaching the runner
+  which environments pin, so it can withhold the locale and let the step fail with that reason —
+  a change across the platform-lifecycle protocol, wider than this item's lane.
+- **`systemAlertHandling`'s default dismissive labels are English literals.** Pinning a non-English
+  `locale` now makes `DEFAULT_DISMISSIVE_LABELS` stop matching, so the reactive guard's native path
+  reports `unhandled` and falls back to the vision guard where it used to tap natively. Routing
+  those defaults through this item's locale-keyed table is the natural fix, and belongs with
+  [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling.md)'s
+  surface rather than here.
+
 ## References
 
 - [`bajutsu/scenario/models/actions.py`](../../bajutsu/scenario/models/actions.py) —

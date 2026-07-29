@@ -112,9 +112,12 @@ def language_of(locale: str) -> str:
     """The language subtag a locale resolves to (`ja_JP` -> `ja`).
 
     The one place the split lives, so the app's own `-AppleLanguages` launch argument and the
-    Simulator's system-wide language (BE-0320) can never name different languages.
+    Simulator's system-wide language (BE-0320) can never name different languages. Splits on either
+    separator, since `_LOCALE_RE` admits the hyphenated tag form (`en-US`) as well as the
+    underscored one the config examples use — a `-` there would otherwise leave the whole tag as
+    the "language" and never match anything.
     """
-    return locale.split("_", 1)[0]
+    return re.split(r"[_-]", locale, maxsplit=1)[0]
 
 
 def locale_args(locale: str) -> list[str]:
@@ -397,17 +400,25 @@ class Env:
 
         `None` distinguishes "could not read the domain" from a definite mismatch, so a caller can
         act on what it actually observed: skipping the write needs a positive match, while failing
-        the run needs a positive *mis*match — an unreadable device is neither.
+        the run needs a positive *mis*match — an unreadable device is neither. A domain that reads
+        back fine but carries no pinned language is a *mismatch*, not an unknown: it is positive
+        evidence that nothing pinned it.
+
+        Raises:
+            DeviceError: `locale` is not safe to place on a `defaults` argv — checked up front, so a
+                malformed one never costs a subprocess round trip first.
         """
+        checked = validated_locale(locale)
         try:
             exported = plistlib.loads(self._run(export_globals_cmd(self.udid), None).encode())
         except (subprocess.CalledProcessError, plistlib.InvalidFileException, ValueError):
             return None
-        if not isinstance(exported, dict) or _LANGUAGES_KEY not in exported:
+        if not isinstance(exported, dict):
             return None
-        return exported.get(_LANGUAGES_KEY) == [language_of(locale)] and exported.get(
-            _LOCALE_KEY
-        ) == validated_locale(locale)
+        return (
+            exported.get(_LANGUAGES_KEY) == [language_of(checked)]
+            and exported.get(_LOCALE_KEY) == checked
+        )
 
     def pin_system_locale(self, locale: str) -> bool:
         """Write the device's system-wide language and locale unless already exact; True if it wrote.
@@ -415,9 +426,11 @@ class Env:
         The caller reboots the Simulator when this returns True — a running SpringBoard does not pick
         a global-domain write up live (BE-0320). Skipping the write on a device that already carries
         the value is what keeps the common case (a Simulator pinned by an earlier spawn, or already
-        on the configured locale) at the cost of one read instead of a second boot cycle.
+        on the configured locale) at the cost of one read instead of a second boot cycle. Only a
+        positive match skips the write; an unreadable domain (`None`) writes, since nothing was
+        observed to already be right.
         """
-        if self.system_locale_matches(locale):
+        if self.system_locale_matches(locale) is True:
             return False
         for cmd in system_locale_cmds(self.udid, locale):
             self._run(cmd, None)
