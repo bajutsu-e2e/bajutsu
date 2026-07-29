@@ -234,6 +234,7 @@ def _fake_toolchain(
     *,
     wedged: dict[str, bool] | None = None,
     system_locale: dict[str, str | None] | None = None,
+    export_fails: bool = False,
 ) -> tuple[list[list[str]], list[list[str]], simctl.RunFn]:
     """Fake Popen (the runner), the driver factory, and simctl; return (popen log, simctl log, run).
 
@@ -245,7 +246,8 @@ def _fake_toolchain(
     `system_locale`, when given, models the device's global preference domain in `["v"]` — the fake
     device answers `defaults export` from it and a `defaults write` updates it, so a test can drive
     the BE-0320 pin the way a real Simulator would answer. Omitted, the domain reads as unwritten and
-    every cold spawn pins it.
+    every cold spawn pins it. `export_fails` instead makes every read of that domain fail, modelling
+    a device whose pin can be written but never confirmed.
     """
     popen_argvs: list[list[str]] = []
     simctl_calls: list[list[str]] = []
@@ -268,6 +270,8 @@ def _fake_toolchain(
         if argv[2:3] == ["erase"]:
             domain["v"] = None  # a real erase wipes the device's preferences with everything else
         if argv[4:7] == ["defaults", "export", "-globalDomain"]:
+            if export_fails:
+                raise subprocess.CalledProcessError(1, argv, stderr="device not booted")
             return _globals_plist(domain["v"])
         if argv[4:8] == ["defaults", "write", "-globalDomain", "AppleLocale"]:
             domain["v"] = argv[-1]
@@ -425,25 +429,7 @@ def test_an_unconfirmable_pin_runs_on_but_is_not_remembered(
     # A device whose global domain cannot be read back after the reboot is not an observed mismatch,
     # so the run proceeds — but the pin is unconfirmed, so it must not be recorded: warm reuse is
     # gated on it, and remembering it would carry the doubt across every later lease.
-    def run(argv: list[str], env: object = None) -> str:
-        if argv[4:7] == ["defaults", "export", "-globalDomain"]:
-            raise subprocess.CalledProcessError(1, argv, stderr="device not booted")
-        return ""
-
-    popen_argvs: list[list[str]] = []
-
-    def _popen(argv: list[str], **_kw: Any) -> _FakeProc:
-        popen_argvs.append(argv)
-        return _FakeProc()
-
-    class _Driver:
-        def await_ready(self, timeout: float = 10.0) -> None: ...
-        def health_ready(self) -> bool:
-            return True
-
-    monkeypatch.setattr(subprocess, "Popen", _popen)
-    monkeypatch.setattr(backends, "make_driver", lambda *_a, **_k: _Driver())
-
+    popen_argvs, _, run = _fake_toolchain(monkeypatch, export_fails=True)
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     eff = _sim_eff_locale(test_runner=str(_write_runner(tmp_path)), locale="ja_JP")
 
