@@ -1,7 +1,7 @@
 """The config-declared org model for `serve` (BE-0015 multi-tenancy, BE-0129).
 
 Hosting is a `serve` concern the deterministic core does not model, so the `orgs:` block and its
-resolution helpers live here rather than in `bajutsu/config.py`. `load_serve_config` parses a raw
+resolution helpers live here rather than in `bajutsu/config`. `load_serve_config` parses a raw
 config once, splitting it into the core `Config` (org-agnostic) and the org model the serve auth /
 storage layer resolves against.
 """
