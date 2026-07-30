@@ -166,9 +166,11 @@ expression are `URL` and stdout patterns rather than filesystem run roots, so th
 not touch them; the check is scoped to deriving the filesystem root. And `serve`'s artifact store does
 write into a run directory when a remote worker uploads its output, so that path moves onto the sink.
 The uploading case is the one place the receiving side may hold no secret values for the run that
-produced the content, since the run happened elsewhere. The sink records such content as
-unmasked-passthrough rather than implying it was scrubbed, which keeps the same honesty the item
-applies to images.
+produced the content, since the run happened elsewhere. That limitation reaches only the rules which
+need to know a value in advance: a configured key, a configured label, and a known secret literal. The
+pattern backstop needs none of them, so the sink still runs it over uploaded text. Raw passthrough is
+reserved for the bytes it cannot inspect at all — images, video, an archive. The sink records which of
+the two an upload received, so an artifact is never described as scrubbed by rules that did not run.
 
 ### Masking that needs no configuration
 
