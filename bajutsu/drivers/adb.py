@@ -39,7 +39,7 @@ from xml.etree import ElementTree as ET
 
 from bajutsu import adb
 from bajutsu.drivers import base
-from bajutsu.drivers.coordinate_tree import CoordinateTreeDriver
+from bajutsu.drivers.coordinate_tree import CoordinateTreeDriver, StableKey
 from bajutsu.elements import screen_size_from_elements
 from bajutsu.evidence import intervals
 
@@ -264,14 +264,31 @@ class AdbDriver(CoordinateTreeDriver):
     _SCROLL_FROM_FRAC = 0.7  # swipe start, as a fraction of screen height
     _SCROLL_TO_FRAC = 0.3  # swipe end (< start ⇒ upward ⇒ content scrolls up)
     _SCROLL_DURATION_MS = 600  # the `scroll` pan duration: long enough to drag, not fling (BE-0326)
-    # The `read_lag` budget (see `read_lag`). Sized from the CI emulator: of 14 steps whose first read
-    # looked unchanged, 12 showed the change on a re-read well inside this budget, and six full repeats
-    # of the scroll conformance tests then passed. The remaining 2 changed only once the gesture was
-    # re-issued, so they are not explained by read lag alone — a longer budget would not have helped
-    # them, and whatever they are (a `_region_signature` blind to motion behind an element taller than
-    # the viewport is the leading candidate) is tracked separately. Only ever spent once, on the step
-    # that ends a `scroll`, so a generous value costs nothing on a step that lands.
+    # Ceiling on waiting for a read to catch up with a gesture that already moved the content. One
+    # number for one phenomenon, shared by two consumers: `read_lag()` hands it to the `scroll` loop
+    # (BE-0326), and `_await_catchup` spends it on the actuator path. Android publishes the
+    # accessibility update *after* the gesture has applied, so a read taken in between describes the
+    # pre-gesture screen — self-consistently, for over a second.
+    #
+    # Sized from two independent measurements on the CI emulator. From the `scroll` end-of-content
+    # failure: of 14 steps whose first read looked unchanged, 12 showed the change on a re-read well
+    # inside this budget, and six full repeats of the scroll conformance tests then passed. The
+    # remaining 2 changed only once the gesture was re-issued, so they are not explained by read lag
+    # alone — a longer budget would not have helped them, and whatever they are (a `_region_signature`
+    # blind to motion behind an element taller than the viewport is the leading candidate) is tracked
+    # separately. From `smoke (adb)`'s intermittent `gestures` failure: a `swipe` moved the Log form
+    # 73px, and four consecutive reads spanning 1.2s past the gesture still reported the pre-swipe
+    # frames, so `long_press` aimed 10px below the target's real bottom edge and pressed the gap.
+    #
+    # Generous on purpose, because it is only ever spent on a read that still matches the pre-gesture
+    # screen: a read that already caught up costs nothing.
     _READ_LAG_S = 4.0
+    # How long a changed projection must hold before it counts as caught up (see `_advance_catchup`).
+    # Above the widest tear the failing run showed: its post-press read had `log.submit` republished
+    # but every frame below it still pre-pan, and the next read 0.37s later was whole — so a dwell
+    # under that could return the torn frames. Comfortably inside `_READ_LAG_S`, and paid only on a
+    # read that was still describing the pre-pan screen.
+    _CATCHUP_DWELL_S = 0.5
 
     def __init__(
         self,
@@ -294,6 +311,10 @@ class AdbDriver(CoordinateTreeDriver):
         self._touch_probed = False
         # The true display size (BE-0326), resolved once via `wm size`; the resolution is fixed for a run.
         self._screen: base.Point | None = None
+        # Armed by a pan (`swipe` / `scroll`): the projection the screen had before it, and the
+        # wall-clock deadline by which a read must have moved off that projection. Disarmed by the
+        # first read that differs, so the healthy case never waits. See `_await_catchup`.
+        self._catchup: tuple[StableKey, float] | None = None
 
     def _describe(self) -> list[base.Element]:
         return parse_hierarchy(self._read_source())
@@ -322,6 +343,58 @@ class AdbDriver(CoordinateTreeDriver):
                 self._fetch_hierarchy = None
         return self._run(adb.dump_cmd(self.serial))
 
+    def _record_tree(self, els: list[base.Element]) -> list[base.Element]:
+        # Any read that has moved off the pre-pan projection has caught up with the gesture, so the
+        # barrier is spent here rather than in `_settle` alone: by the time an actuator resolves a
+        # coordinate the runner has usually already read the tree (a `wait`, an `assert`, a post-step
+        # capture), and on the healthy path one of those reads disarms this — so `_settle` finds
+        # nothing pending and the fix costs a passing run nothing.
+        els = super()._record_tree(els)
+        if self._catchup is not None and self._last_stable_key != self._catchup[0]:
+            self._catchup = None
+        return els
+
+    def _arm_catchup(self) -> None:
+        """Note that a pan just moved the content, so the next read may still describe the old screen.
+
+        Called after the gesture returns, so the budget is measured from when the content actually
+        stopped. With no read yet there is no projection to compare against, and nothing is armed.
+        """
+        if self._last_stable_key is not None:
+            self._catchup = (self._last_stable_key, time.monotonic() + self._READ_LAG_S)
+
+    def _await_catchup(self) -> None:
+        """Re-read until the tree reflects the pan just applied, or its lag budget is spent.
+
+        The one thing the two-consecutive-equal-reads settle below cannot do on its own: a lagging
+        Android tree is *self-consistently* lagging, so any number of reads agree with each other and
+        agree on the pre-pan frames. Only "differs from the projection the pan started at" separates a
+        caught-up read from a stale one, and only a wall-clock budget bounds the wait when a pan
+        legitimately changed nothing (already at the end of the content).
+
+        The first differing read is not enough either, because the catch-up is not atomic: Android
+        republishes node bounds one node at a time, so a read taken mid-catch-up is *torn* — some
+        frames new, the rest still pre-pan — and two fast reads can both land inside that tear and
+        agree with each other. So a differing projection also has to hold for `_CATCHUP_DWELL_S`
+        before it is trusted, which is BE-0245's "bound by elapsed time, not read count" applied to
+        the catch-up itself. A tear outlasting the dwell would still get through; the dwell is sized
+        above the widest one observed, not proven impossible.
+        """
+        if self._catchup is None:
+            return
+        pre_key, deadline = self._catchup
+        self._catchup = None  # spent once, however it ends: a later resolve must not pay it again
+        key = self._last_stable_key
+        settled_at = time.monotonic()
+        while time.monotonic() < deadline:
+            if key != pre_key and time.monotonic() - settled_at >= self._CATCHUP_DWELL_S:
+                return
+            time.sleep(self._SETTLE_POLL_S)
+            self.query()
+            if self._last_stable_key != key:
+                key = self._last_stable_key
+                settled_at = time.monotonic()
+
     def _settle(self) -> list[base.Element]:
         """Wait until the tree's identifier-frame projection stops changing, or give up.
 
@@ -331,7 +404,13 @@ class AdbDriver(CoordinateTreeDriver):
         not a fixed read count, so it spans a real animation whatever the read costs — the resident
         channel's fast read (BE-0245) would otherwise collapse the window and let a still-moving tree
         pass as settled.
+
+        A pending pan is waited out first (`_await_catchup`), then the stability poll runs as before.
+        Both halves are needed: the first gets past a wholly pre-pan tree, and the second gets past
+        the *torn* tree that the catch-up passes through — Android republishes node bounds one node at
+        a time, so the read that first differs can still carry most of the old frames.
         """
+        self._await_catchup()
         prev_key = self._last_stable_key
         tree = self.query()
         key = self._last_stable_key
@@ -454,6 +533,7 @@ class AdbDriver(CoordinateTreeDriver):
 
     def swipe(self, frm: base.Point, to: base.Point) -> None:
         self._run(adb.swipe_cmd(self.serial, frm[0], frm[1], to[0], to[1]))
+        self._arm_catchup()
 
     def viewport(self) -> base.Point:
         # The true display size in raw pixels (BE-0326). A lazy list (RecyclerView / LazyColumn) keeps
@@ -484,6 +564,7 @@ class AdbDriver(CoordinateTreeDriver):
         self._run(
             adb.swipe_cmd(self.serial, frm[0], frm[1], to[0], to[1], self._SCROLL_DURATION_MS)
         )
+        self._arm_catchup()
 
     def back(self) -> None:
         # The true system back: a KEYCODE_BACK key event. Android has no on-screen "back" element to

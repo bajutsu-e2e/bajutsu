@@ -173,6 +173,21 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
   immediately) → `adb shell input tap` at the frame center. `swipe` adds a finite duration so it is a
   real drag; `long_press` is a same-point swipe held for the duration; `type_text` is `input text`
   (spaces sent as its `%s` escape).
+- **A coordinate resolve waits for the tree to catch up with a pan.** Android moves the content first
+  and publishes the accessibility update naming the new frames afterwards. A read landing between those
+  two moments describes the pre-scroll screen. Repeated reads then agree with each other on frames that
+  are already wrong, so the two-consecutive-equal-reads settle cannot detect the lag on its own: the
+  tree is *self-consistently* stale rather than visibly unsettled. After a `swipe` or a `scroll` the
+  driver records the frame projection the screen had beforehand. The next coordinate resolve re-reads
+  until the projection moves off that record and then holds still briefly, bounded by a wall-clock
+  budget. Any read that already reflects the gesture spends the wait — a `wait`, an `assert`, a
+  post-step capture — so a run whose tree keeps up pays nothing. The brief hold matters because the
+  catch-up is not atomic. Android republishes node bounds one node at a time, so a read landing
+  mid-catch-up carries some new frames and some old, and two fast reads can both land inside that
+  window and agree. This wait fixes the intermittent `gestures` flake on the continuous-integration
+  emulator, where the tree withheld a 73px scroll for over a second. The `longPress` aimed 10px past
+  the target's bottom edge, so the mirrored value stayed `idle` even though the screenshots for those
+  steps stayed pixel-identical.
 - **On-device actuation fidelity** (roadmap
   [BE-0210](../roadmaps/BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md)):
   the `back` step is the true system back (`input keyevent 4` / `KEYCODE_BACK`) — Android has no

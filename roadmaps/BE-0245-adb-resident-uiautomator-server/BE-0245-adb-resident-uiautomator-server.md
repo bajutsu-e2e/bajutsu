@@ -204,6 +204,20 @@ Log:
   wait floor (`BAJUTSU_MIN_WAIT_TIMEOUT`), so it is a single read (today's behavior) off the Android
   lane and re-reads only the UI tree, ending the moment nothing a tree re-read could fix is still
   failing. This completes the item.
+- The wall-clock settle above closes one of two ways a tap after a scroll reaches a stale coordinate,
+  not both. A wall-clock deadline catches a tree the reads show *moving*, because two consecutive reads
+  then disagree and the poll continues. A tree that has not published the gesture at all shows nothing
+  moving: every read agrees with every other read, on frames that are already wrong. The intermittent
+  `gestures` red on the `smoke (adb)` lane was the second kind. Its own run artifacts recorded the whole
+  sequence, because the runner captures a tree and a screenshot per step. A `swipe` scrolled the Log
+  form 73px, four consecutive reads spanning 1.2s past the gesture all reported the pre-swipe frames,
+  and the screenshots for those steps are pixel-identical, which rules out a value that landed late.
+  The `longPress` then aimed 10px below the target's real bottom edge and pressed the gap, while the
+  `doubleTap` a second later resolved against a caught-up tree and landed. The one condition that
+  separates the two cases is "the projection differs from the one the gesture started at", so a pan now
+  makes `AdbDriver` record that projection and re-read before the next coordinate resolve. The stability
+  poll described above still runs afterwards, because the catch-up is not atomic: Android republishes node
+  bounds one node at a time, so a read landing mid-catch-up carries some new frames and some old.
 
 ## References
 
