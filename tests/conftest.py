@@ -37,6 +37,33 @@ def _reset_usage_ledger() -> Iterator[None]:
     usage_ledger.reset()
 
 
+@pytest.fixture(autouse=True)
+def _fresh_clone_resident_gate(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin the Android resident read channel to a fresh clone's state for every test (BE-0245).
+
+    `AndroidEnvironment.start` picks the read channel from ambient machine state — the
+    `BAJUTSU_ADB_RESIDENT` override and whether `make -C BajutsuAndroidUIAutomatorServer build` left
+    the server APKs on disk — so in a checkout that has built them it constructs a real
+    `ResidentServer`, which pushes two `adb install` commands through the test's injected `run` and
+    spawns a real background `adb instrument`. A unit test would then measure the machine rather than
+    the code: the BE-0236 install-skip assertion saw the resident server's install and failed locally
+    while CI, which never builds the APKs, stayed green. The four tests that cover the gate itself
+    set both signals explicitly, so their own monkeypatching still wins.
+    """
+    import bajutsu.adb_resident as adb_resident
+
+    built = adb_resident.server_apks_built
+    monkeypatch.delenv("BAJUTSU_ADB_RESIDENT", raising=False)
+    # Only the gate's ambient, argument-less call is answered "not built"; an explicit-path call (the
+    # function's own test) keeps the real logic, since the paths it asks about are its own fixtures.
+    # Positional and keyword paths both forward, so naming them cannot silently land in the stub.
+    monkeypatch.setattr(
+        adb_resident,
+        "server_apks_built",
+        lambda *paths, **named: built(*paths, **named) if paths or named else False,
+    )
+
+
 class ShotDriver(FakeDriver):
     """A FakeDriver whose screenshot writes real PNG bytes, so callers that read the
     capture back (the alert guard, the crawl guide's vision path) get an image."""

@@ -7,6 +7,7 @@ asserted without a device, the Android peer of `test_simctl.py`.
 
 from __future__ import annotations
 
+import os
 import subprocess
 
 import pytest
@@ -481,6 +482,20 @@ def test_android_environment_skips_resident_when_the_server_is_not_built(
     assert env._resident is None  # nothing started
 
 
+def test_the_suite_pins_the_resident_gate_to_a_fresh_clone() -> None:
+    # Every start() in this module that injects no resident_factory leans on conftest's
+    # `_fresh_clone_resident_gate`. The gate reads machine state, so in a checkout that ran
+    # `make -C BajutsuAndroidUIAutomatorServer build` those starts would run through a real
+    # ResidentServer — its own two `adb install`s landing in the recorded calls (which is what broke
+    # the BE-0236 install-skip assertion below) and a real background `adb instrument`. Asserting the
+    # pin directly makes such a failure name its own cause; CI, which never builds the server APKs,
+    # is green either way.
+    import bajutsu.adb_resident as adb_resident
+
+    assert "BAJUTSU_ADB_RESIDENT" not in os.environ
+    assert not adb_resident.server_apks_built()
+
+
 def test_make_resident_defaults_on_when_the_server_apks_are_built(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -641,6 +656,35 @@ def test_android_environment_start_skips_install_when_preinstalled() -> None:
     )
     env.start(_eff(app_path="/nonexistent/app.apk"), Preconditions())  # would raise if not skipped
     assert not any("install" in " ".join(c) for c in calls)
+
+
+def test_android_environment_preinstalled_skip_is_about_the_app_not_the_resident_server() -> None:
+    # `app_preinstalled` suppresses the *app* install (BE-0236). The resident read channel installing
+    # its own server APKs over the same adb is a different install and stays untouched — the two are
+    # told apart by path, not by the word "install", which is what the assertion above has to be read
+    # against once a local tree has built the server (see the fresh-clone pin above).
+    calls: list[list[str]] = []
+    run = _resolve_activity_run(calls)
+
+    class _InstallingResident(_FakeResident):
+        """A resident server that installs its own APKs over the environment's adb, as the real
+        one does."""
+
+        def start(self):  # type: ignore[no-untyped-def]
+            run(adb.install_cmd("S", "/built/server-debug.apk"))
+            return lambda: "<hierarchy/>"
+
+    env = AndroidEnvironment(
+        "adb",
+        "S",
+        adb_run=run,
+        resident_factory=_InstallingResident,
+        provision=ProvisionProfile(app_preinstalled=True),
+    )
+    env.start(_eff(app_path="/nonexistent/app.apk"), Preconditions())
+    joined = [" ".join(c) for c in calls]
+    assert any("install" in j and "server-debug.apk" in j for j in joined)  # the channel's own
+    assert not any("/nonexistent/app.apk" in j for j in joined)  # never the app's
 
 
 def test_android_environment_preinstalled_skip_still_fails_loudly_on_a_missing_app() -> None:

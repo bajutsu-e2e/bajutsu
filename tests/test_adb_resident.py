@@ -400,3 +400,6 @@ def test_server_apks_built_needs_both_apks(tmp_path: Path) -> None:
     assert not adb_resident.server_apks_built(server_apk, tmp_path / "missing.apk")
     assert not adb_resident.server_apks_built(tmp_path / "missing.apk", test_apk)
     assert not adb_resident.server_apks_built(tmp_path / "a.apk", tmp_path / "b.apk")
+    # The signature's params are named, so asking by keyword must answer about those same paths —
+    # conftest's `_fresh_clone_resident_gate` pins only the gate's argument-less, ambient call.
+    assert adb_resident.server_apks_built(server_apk=server_apk, test_apk=test_apk)
