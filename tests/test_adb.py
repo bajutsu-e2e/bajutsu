@@ -1325,7 +1325,11 @@ def test_catch_up_gives_up_loudly_at_the_lag_budget_when_the_pan_changed_nothing
     assert clock.t >= driver._READ_LAG_S
     assert _by_id(tree, "stable.submit")["frame"] == (0.0, 200.0, 200.0, 100.0)  # unmoved
     assert driver._catchup is None  # spent, so the next resolve does not pay it again
+    # Both causes named, because the driver cannot tell them apart and this very case is the benign
+    # one: asserting the lag alone would point an investigator at a bug that never happened. A pan at
+    # the end of the content hits this on every `_scroll_into_view` retry, so it is routine, not exotic.
     assert "read lag" in caplog.text
+    assert "never published" in caplog.text and "moved nothing" in caplog.text
 
 
 def test_only_a_pan_arms_the_catch_up_wait(monkeypatch: pytest.MonkeyPatch) -> None:

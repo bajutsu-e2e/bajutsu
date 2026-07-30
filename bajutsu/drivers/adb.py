@@ -458,12 +458,16 @@ class AdbDriver(CoordinateTreeDriver):
         """
         while (catchup := self._catchup) is not None:
             if time.monotonic() >= catchup.deadline:
-                # Loudly, not silently: the actuator is about to resolve a coordinate from a tree that
-                # never published the pan, which is exactly the failure whose bare `expect` mismatch
-                # cost a full artifact investigation to explain.
+                # Loudly, not silently: the actuator may be about to resolve a coordinate from a tree
+                # that never published the pan, which is the failure whose bare `expect` mismatch cost
+                # a full artifact investigation to explain. Both causes are named because the driver
+                # cannot tell them apart, and the benign one is routine — a pan at the end of the
+                # content moves nothing, so its projection never differs and the barrier can only end
+                # here. Asserting the lag would send an investigator after a bug that never happened.
                 logger.warning(
-                    "read lag: the tree never published the last pan within %.1fs; resolving from a "
-                    "possibly pre-pan screen",
+                    "read lag: the last pan did not change the projection within %.1fs — either the "
+                    "tree never published it, or the pan moved nothing (e.g. already at the end of "
+                    "the content). Resolving from the current screen",
                     self._READ_LAG_S,
                 )
                 self._catchup = None
