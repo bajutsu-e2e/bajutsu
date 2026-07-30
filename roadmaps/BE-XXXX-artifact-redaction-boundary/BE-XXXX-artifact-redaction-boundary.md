@@ -109,18 +109,34 @@ required.
 
 ### The boundary
 
-One sink owns every write into a run directory. A caller hands it a path and content; the sink applies
-the run's redactor and writes the result. The sink is the only code in the repository that writes into
-a run directory, so redaction is a property of the location rather than of the caller's diligence.
+One sink owns every write into a run directory. A caller hands it a *relative name* and content, never
+a path; the sink resolves the name against the run directory, applies the run's redactor, and writes
+the result. The sink is the only code in the repository that writes into a run directory, so redaction
+is a property of the location rather than of the caller's diligence.
 
 The sink accepts bytes for content that cannot be masked — screenshots, video, an archive — and
 records that it was written unmasked, keeping
 [BE-0151](../BE-0151-screenshot-secret-capture-warning/BE-0151-screenshot-secret-capture-warning.md)'s
 honesty: an image is not claimed to be protected.
 
-A test enforces the boundary. It walks the abstract syntax tree of every module that writes run
-output and fails when a direct `write_text`, `write_bytes`, or `open` call targets a run directory
-path outside the sink. That check is mechanical and needs no model, so it belongs in the gate.
+Withholding the path is what makes the boundary enforceable. A caller that never receives the run
+directory as a `Path` cannot write into it without the sink, so the guarantee rests on what a module
+can reach rather than on what a reviewer notices. Two mechanical checks pin that down, and neither
+needs to decide at analysis time whether a runtime path value points into a run directory.
+
+- **An import contract.** No module except the sink may reach the run-directory path provider. This
+  repository already runs such contracts in the gate — `lint-imports` keeps three today — and a
+  contract states a property of the whole import graph rather than a list of writers, so a module that
+  does not exist yet is covered the moment it does.
+- **A literal check.** The run root is derived in one function, and a `runs/` path literal outside the
+  sink module fails the gate. Together with the contract, this closes the remaining way to rebuild the
+  path without importing the provider.
+
+Both checks are decidable from source, which an inspection of runtime path values would not be. That
+distinction is the reason the design withholds the path instead of scanning for suspicious writes: a
+scan would have to guess which `write_text` call lands in a run directory, and it would either
+false-positive on a legitimate config, cache, or temporary-file write or need a curated module list —
+reintroducing the on-its-honor gap this item removes.
 
 ### Masking that needs no configuration
 
@@ -182,8 +198,9 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
 1. **The run-directory sink.**
 
    Introduce the single write path for run output, taking the run's `Redactor` and applying it to text
-   content. Give it an explicit unmasked-bytes entry point for images, video, and archives, which
-   records that the content was written unmasked.
+   content. Its entry points take a relative name rather than a path, so the run directory is never
+   handed to a caller. Give it an explicit unmasked-bytes entry point for images, video, and archives,
+   which records that the content was written unmasked.
 
 2. **Route every existing writer through the sink.**
 
@@ -194,10 +211,12 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
    the evidence subsystem is unchanged, since it already redacts; it moves to the sink so one rule
    covers everything.
 
-3. **The boundary test.**
+3. **The enforced boundary.**
 
-   Add the abstract-syntax-tree check that fails when a module writes a run-directory path outside the
-   sink, so a future writer cannot silently bypass redaction. Wire it into the gate.
+   Add the `lint-imports` contract that forbids every module but the sink from reaching the
+   run-directory path provider, plus the check that fails a `runs/` path literal outside the sink
+   module. Both are decidable from source and cover a module that does not exist yet, so a future
+   writer cannot bypass redaction by being added somewhere the gate was not told to look.
 
 4. **Default masking for a platform-marked secret field.**
 
@@ -245,7 +264,7 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
 - **Determinism first.**
 
   Redaction is a pure function of the content and the resolved configuration, so the same run produces
-  the same artifact bytes. The boundary test is mechanical. No fixed `sleep` and no condition wait is
+  the same artifact bytes. Both boundary checks read source alone. No fixed `sleep` and no condition wait is
   involved.
 
 - **App-agnostic.**
@@ -302,7 +321,7 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
 
 - [ ] Unit 1 — the run-directory sink that applies the redactor
 - [ ] Unit 2 — every existing writer routed through the sink
-- [ ] Unit 3 — the boundary test wired into the gate
+- [ ] Unit 3 — the import contract and literal check that enforce the boundary
 - [ ] Unit 4 — default masking for a platform-marked secret field
 - [ ] Unit 5 — default masking for a credential-named identifier or label
 - [ ] Unit 6 — the crawl action description stops carrying its value
