@@ -125,19 +125,44 @@ directory as a `Path` cannot write into it without the sink, so the guarantee re
 can reach rather than on what a reviewer notices. Two mechanical checks pin that down, and neither
 needs to decide at analysis time whether a runtime path value points into a run directory.
 
-- **An import contract.** No module except the sink may reach the run-directory path provider. This
-  repository already runs such contracts in the gate — `lint-imports` keeps three today — and a
+- **An import contract.** No module except the sink may reach the run-directory *write* provider.
+  This repository already runs such contracts in the gate — `lint-imports` keeps three today — and a
   contract states a property of the whole import graph rather than a list of writers, so a module that
   does not exist yet is covered the moment it does.
-- **A literal check.** The run root is derived in one function, and a `runs/` path literal outside the
-  sink module fails the gate. Together with the contract, this closes the remaining way to rebuild the
-  path without importing the provider.
+- **A literal check.** The filesystem run root is derived in one function, and a run-root path literal
+  outside that function fails the gate. Together with the contract, this closes the remaining way to
+  rebuild the path without importing the provider.
 
 Both checks are decidable from source, which an inspection of runtime path values would not be. That
 distinction is the reason the design withholds the path instead of scanning for suspicious writes: a
 scan would have to guess which `write_text` call lands in a run directory, and it would either
 false-positive on a legitimate config, cache, or temporary-file write or need a curated module list —
 reintroducing the on-its-honor gap this item removes.
+
+### Reading is not writing
+
+The boundary governs writing alone, and saying so matters because the run directory's largest consumer
+only reads it. `serve` lists runs, mounts the `runs/<id>/` tree, resolves a job's `manifest.json`, and
+compares evidence across runs; [`bajutsu/serve/`](../../bajutsu/serve/) reaches run paths in several
+places, and this item's own rejection of encryption rests on those files staying plainly readable. A
+contract that forbade every module but the sink from resolving a run path would break all of it.
+
+So the run directory is reached through two providers, and only one of them writes.
+
+- **A read locator** resolves a run id to a path for reading. `serve`, the evidence readers, `export`,
+  and the comparison commands import it. It is not restricted, because reading an artifact cannot
+  create an unredacted one.
+- **The write sink** is what the import contract restricts. Nothing but the sink may reach it, so every
+  byte entering a run directory still crosses redaction.
+
+Two consequences follow for existing code. `serve`'s `/runs/` route prefix and its run-id regular
+expression are `URL` and stdout patterns rather than filesystem run roots, so the literal check does
+not touch them; the check is scoped to deriving the filesystem root. And `serve`'s artifact store does
+write into a run directory when a remote worker uploads its output, so that path moves onto the sink.
+The uploading case is the one place the receiving side may hold no secret values for the run that
+produced the content, since the run happened elsewhere. The sink records such content as
+unmasked-passthrough rather than implying it was scrubbed, which keeps the same honesty the item
+applies to images.
 
 ### Masking that needs no configuration
 
@@ -221,19 +246,23 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
 
 2. **Route every existing writer through the sink.**
 
-   Convert the direct writes in the command modules, the crawl package, and the report renderers.
-   The known sites include [`bajutsu/cli/commands/crawl.py`](../../bajutsu/cli/commands/crawl.py),
+   Convert the direct writes in the command modules, the crawl package, the report renderers, and
+   `serve`'s artifact store. The known sites include
+   [`bajutsu/cli/commands/crawl.py`](../../bajutsu/cli/commands/crawl.py),
    [`bajutsu/crawl/report.py`](../../bajutsu/crawl/report.py),
-   [`bajutsu/crawl/flows.py`](../../bajutsu/crawl/flows.py), and the run archive writers. Behavior for
-   the evidence subsystem is unchanged, since it already redacts; it moves to the sink so one rule
-   covers everything.
+   [`bajutsu/crawl/flows.py`](../../bajutsu/crawl/flows.py), the run archive writers, and the local
+   artifact store in [`bajutsu/serve/`](../../bajutsu/serve/) that receives a remote worker's upload.
+   Behavior for the evidence subsystem is unchanged, since it already redacts; it moves to the sink so
+   one rule covers everything. Reading is untouched: `serve` and the evidence readers keep resolving
+   run paths through the read locator.
 
 3. **The enforced boundary.**
 
-   Add the `lint-imports` contract that forbids every module but the sink from reaching the
-   run-directory path provider, plus the check that fails a `runs/` path literal outside the sink
-   module. Both are decidable from source and cover a module that does not exist yet, so a future
-   writer cannot bypass redaction by being added somewhere the gate was not told to look.
+   Split the run directory's read locator from its write provider, then add the `lint-imports`
+   contract that forbids every module but the sink from reaching the write provider, plus the check
+   that fails a filesystem run-root literal outside the deriving function. Both are decidable from
+   source and cover a module that does not exist yet, so a future writer cannot bypass redaction by
+   being added somewhere the gate was not told to look. Reading stays unrestricted.
 
 4. **A normalized masked-input trait, and its default masking.**
 
@@ -343,7 +372,7 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
 
 - [ ] Unit 1 — the run-directory sink that applies the redactor
 - [ ] Unit 2 — every existing writer routed through the sink
-- [ ] Unit 3 — the import contract and literal check that enforce the boundary
+- [ ] Unit 3 — the read locator / write sink split, its import contract, and the literal check
 - [ ] Unit 4 — a normalized masked-input trait on every backend, and its default masking
 - [ ] Unit 5 — default masking for a credential-named identifier or label
 - [ ] Unit 6 — the crawl action description stops carrying its value
