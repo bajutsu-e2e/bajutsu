@@ -10,7 +10,7 @@
 | 状態 | **提案** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | トピック | Security hardening |
-| 関連 | [BE-0032](../BE-0032-secret-variables/BE-0032-secret-variables-ja.md), [BE-0047](../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md), [BE-0097](../BE-0097-crawl-ai-data-sovereignty/BE-0097-crawl-ai-data-sovereignty-ja.md), [BE-0120](../BE-0120-recorded-scenario-secret-tokenization/BE-0120-recorded-scenario-secret-tokenization-ja.md), [BE-0130](../BE-0130-default-network-secret-redaction/BE-0130-default-network-secret-redaction-ja.md), [BE-0151](../BE-0151-screenshot-secret-capture-warning/BE-0151-screenshot-secret-capture-warning-ja.md), [BE-0153](../BE-0153-encode-aware-secret-redaction/BE-0153-encode-aware-secret-redaction-ja.md) |
+| 関連 | [BE-0032](../BE-0032-secret-variables/BE-0032-secret-variables-ja.md), [BE-0047](../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md), [BE-0097](../BE-0097-crawl-ai-data-sovereignty/BE-0097-crawl-ai-data-sovereignty-ja.md), [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md), [BE-0120](../BE-0120-recorded-scenario-secret-tokenization/BE-0120-recorded-scenario-secret-tokenization-ja.md), [BE-0130](../BE-0130-default-network-secret-redaction/BE-0130-default-network-secret-redaction-ja.md), [BE-0151](../BE-0151-screenshot-secret-capture-warning/BE-0151-screenshot-secret-capture-warning-ja.md), [BE-0153](../BE-0153-encode-aware-secret-redaction/BE-0153-encode-aware-secret-redaction-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
@@ -30,7 +30,7 @@ Bajutsu の遮蔽は、書き出す側ごとの実装に委ねられています
 いない場合を受け持ちます。フィールドの名前が何も示さないのに、値の書式が見分けのつく資格情報である
 場合です。
 
-具体的な流出が起点です。`crawl --guide ai` の実行が、`screenmap.json` と生成されたスクリーンマップ
+その流出は 2 つの成果物に達しました。`crawl --guide ai` の実行が、`screenmap.json` と生成されたスクリーンマップ
 レポートに `type settings.apikey='sk-ant-api03-…'` と書き出していました。値は合成で、API キーを求める
 フィールドを満たすためにモデルが作ったもので、コミットには一度も入っていません。しかし運んだ機構は
 実在します。この経路には遮蔽が 1 つもなく、しかもある関数が、設定されたどのルールも届かない場所へ値を
@@ -143,9 +143,26 @@ run ディレクトリへの書き出しを 1 つの出口が所有します。�
 BE-0130 のヘッダ集合に 2 つの既定が加わります。どちらも `redact.unmaskHeaders` が確立した、明示的で
 目に見える解除の形を取ります。
 
-**プラットフォームが秘匿と印を付けたフィールド。** `secureTextField` の trait を持つ要素は値を隠し、
-そうしたフィールドを狙う入力や一括入力の値は、そのアクションを記録するどの成果物でも隠します。
-フィールドの秘匿性はプラットフォームがすでに述べているので、設定ファイルが言い直す必要はありません。
+**プラットフォームが秘匿と印を付けたフィールド。** マスク入力の要素は値を隠し、そうしたフィールドを
+狙う入力や一括入力の値は、そのアクションを記録するどの成果物でも隠します。フィールドの秘匿性は
+プラットフォームがすでに述べているので、設定ファイルが言い直す必要はありません。
+
+ただしこの既定がどこでも成り立つには、正規化された trait が先に必要です。今はそれが存在しません。
+`secureTextField` は XCUITest の生の型であり、[`bajutsu/drivers/base.py`](../../bajutsu/drivers/base.py)
+が持つ正規化されたトークンではありません。そこにあるのは `button`、`link`、`notEnabled`、`selected`
+だけです。web のバックエンドはすべての `input` を `textField` へ写すので
+（[`bajutsu/dom.py`](../../bajutsu/dom.py)）、パスワード入力はふつうの入力と区別できない形で届きます。
+adb のバックエンドは秘匿入力の trait をそもそも出しません。現状の `secureTextField` を鍵にすれば
+iOS だけが守られ、web と Android は黙って未保護になります。プライムディレクティブ 3 はそれを許しません。
+1 つの構成要素はどのバックエンドでも同じ意味を持たなければなりません。
+
+信号はどのバックエンドも供給できるので、これは障害ではなく作業です。新しい正規化 trait を
+`base.Trait` に加え、各 driver が自分の出どころを写します。XCUITest の `secureTextField`、web の
+`input[type=password]`、Android のアクセシビリティノードがすでに公開しているパスワードの旗です。
+driver conformance suite
+（[BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md)）がこの trait を
+すべてのバックエンドで固定するので、報告しなくなったバックエンドは既定を黙って失うのではなく suite で
+落ちます。
 
 **識別子またはラベルが資格情報を名指しているフィールド。** 既定の語彙として `password`、`passwd`、
 `secret`、`token`、`apikey`、`api_key`、`credential`、`otp`、`pin` を、要素の識別子とラベルに対して
@@ -214,10 +231,13 @@ BE-0130 のヘッダ集合に 2 つの既定が加わります。どちらも `r
    まだ存在しないモジュールも対象になるので、ゲートが見るよう指示されていない場所へ書き出しを追加する
    ことで遮蔽を迂回できません。
 
-4. **プラットフォームが秘匿と印を付けたフィールドの既定遮蔽**
+4. **正規化されたマスク入力の trait と、その既定遮蔽**
 
-   `secureTextField` の要素の値と、そうしたフィールドを狙う入力や一括入力の値を、設定なしで隠します。
-   `redact.unmaskHeaders` と並ぶ、目に見える解除の形を追加します。
+   マスク入力の trait を `base.Trait` に加え、各バックエンドの出どころを写します。XCUITest の
+   `secureTextField`、web の `input[type=password]`、Android のアクセシビリティノードのパスワードの旗
+   です。すべてのバックエンドが報告することを確かめる driver conformance のケースを追加します。その
+   うえで、そうした要素の値と、そのフィールドを狙う入力や一括入力の値を設定なしで隠し、
+   `redact.unmaskHeaders` と並ぶ目に見える解除の形を追加します。
 
 5. **資格情報を名指す識別子またはラベルの既定遮蔽**
 
@@ -263,7 +283,9 @@ BE-0130 のヘッダ集合に 2 つの既定が加わります。どちらも `r
 - **アプリ非依存**
 
   既定はプラットフォームの trait と、識別子およびラベルのテキストを鍵にし、特定のアプリを鍵にしません。
-  アプリごとの追加は、遮蔽の設定がすでに置かれている `targets.<name>.redact` に留まります。
+  アプリごとの追加は、遮蔽の設定がすでに置かれている `targets.<name>.redact` に留まります。マスク入力の
+  trait はどのバックエンドでも正規化され conformance suite が固定するので、この既定が iOS と web や
+  Android で違う意味を持つことはありません。
 
 ## 検討した代替案
 
@@ -313,7 +335,7 @@ BE-0130 のヘッダ集合に 2 つの既定が加わります。どちらも `r
 - [ ] Unit 1 — redactor を適用する run ディレクトリの出口
 - [ ] Unit 2 — 既存の書き出しをすべて出口へ通す
 - [ ] Unit 3 — 境界を強制する import の契約と直値の検査
-- [ ] Unit 4 — プラットフォームが秘匿と印を付けたフィールドの既定遮蔽
+- [ ] Unit 4 — 全バックエンドで正規化されたマスク入力の trait と、その既定遮蔽
 - [ ] Unit 5 — 資格情報を名指す識別子またはラベルの既定遮蔽
 - [ ] Unit 6 — crawl のアクションの表示名から値を外す
 - [ ] Unit 7 — 資格情報の書式による網

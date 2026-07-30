@@ -10,7 +10,7 @@
 | Status | **Proposal** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | Topic | Security hardening |
-| Related | [BE-0032](../BE-0032-secret-variables/BE-0032-secret-variables.md), [BE-0047](../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md), [BE-0097](../BE-0097-crawl-ai-data-sovereignty/BE-0097-crawl-ai-data-sovereignty.md), [BE-0120](../BE-0120-recorded-scenario-secret-tokenization/BE-0120-recorded-scenario-secret-tokenization.md), [BE-0130](../BE-0130-default-network-secret-redaction/BE-0130-default-network-secret-redaction.md), [BE-0151](../BE-0151-screenshot-secret-capture-warning/BE-0151-screenshot-secret-capture-warning.md), [BE-0153](../BE-0153-encode-aware-secret-redaction/BE-0153-encode-aware-secret-redaction.md) |
+| Related | [BE-0032](../BE-0032-secret-variables/BE-0032-secret-variables.md), [BE-0047](../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md), [BE-0097](../BE-0097-crawl-ai-data-sovereignty/BE-0097-crawl-ai-data-sovereignty.md), [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md), [BE-0120](../BE-0120-recorded-scenario-secret-tokenization/BE-0120-recorded-scenario-secret-tokenization.md), [BE-0130](../BE-0130-default-network-secret-redaction/BE-0130-default-network-secret-redaction.md), [BE-0151](../BE-0151-screenshot-secret-capture-warning/BE-0151-screenshot-secret-capture-warning.md), [BE-0153](../BE-0153-encode-aware-secret-redaction/BE-0153-encode-aware-secret-redaction.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -29,7 +29,7 @@ motivated this item is the second case — the field was called `settings.apikey
 it. A pattern backstop then covers the case neither default anticipates: a value whose field name
 suggests nothing but whose shape is a recognizable credential.
 
-A concrete leak motivated the item. A `crawl --guide ai` run wrote
+That leak reached two artifacts. A `crawl --guide ai` run wrote
 `type settings.apikey='sk-ant-api03-…'` into `screenmap.json` and the generated screen-map report. The
 value was synthetic, invented by the model to satisfy a field asking for an API key, and it was never
 committed. The mechanism that carried it there is real: nothing on that path redacts, and one function
@@ -144,10 +144,26 @@ reintroducing the on-its-honor gap this item removes.
 Two defaults join BE-0130's header set, and both take the same explicit, visible opt-out that
 `redact.unmaskHeaders` established.
 
-**A field the platform marks secret.** An element carrying the `secureTextField` trait has its value
-masked, and a typed or filled value aimed at such a field is masked in whatever artifact records the
-action. The platform already stated the field's secrecy; a configuration file should not have to
-restate it.
+**A field the platform marks secret.** A masked-input element has its value masked, and a typed or
+filled value aimed at such a field is masked in whatever artifact records the action. The platform
+already stated the field's secrecy; a configuration file should not have to restate it.
+
+That default needs a normalized trait before it can hold everywhere, because no such trait exists
+today. `secureTextField` is a raw XCUITest type rather than one of the normalized tokens in
+[`bajutsu/drivers/base.py`](../../bajutsu/drivers/base.py), which carries only `button`, `link`,
+`notEnabled`, and `selected`. The web backend maps every `input` to `textField`
+([`bajutsu/dom.py`](../../bajutsu/dom.py)), so a password input arrives indistinguishable from a plain
+one, and the adb backend never emits a secret-input trait at all. Keying the default on
+`secureTextField` as it stands would protect iOS and silently leave web and Android unprotected, which
+prime directive 3 does not allow: one construct must mean the same thing on every backend.
+
+Each backend can supply the signal, so normalization is the work rather than a blocker. A new
+normalized trait joins `base.Trait`, and each driver maps its own source onto it: XCUITest's
+`secureTextField`, the web backend's `input[type=password]`, and the password flag the Android
+accessibility node already exposes. The driver conformance suite
+([BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md)) pins the trait on
+every backend, so a backend that stops reporting it fails the suite rather than quietly dropping the
+default.
 
 **A field whose identifier or label names a credential.** A default vocabulary — `password`,
 `passwd`, `secret`, `token`, `apikey`, `api_key`, `credential`, `otp`, `pin` — matched against an
@@ -219,10 +235,13 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
    module. Both are decidable from source and cover a module that does not exist yet, so a future
    writer cannot bypass redaction by being added somewhere the gate was not told to look.
 
-4. **Default masking for a platform-marked secret field.**
+4. **A normalized masked-input trait, and its default masking.**
 
-   Mask a `secureTextField` element's value, and any typed or filled value aimed at such a field, with
-   no configuration. Add the visible opt-out alongside `redact.unmaskHeaders`.
+   Add the masked-input trait to `base.Trait` and map each backend's own source onto it: XCUITest's
+   `secureTextField`, the web backend's `input[type=password]`, and the Android accessibility node's
+   password flag. Add a driver conformance case so every backend reports it. Then mask such an
+   element's value, and any typed or filled value aimed at such a field, with no configuration, and add
+   the visible opt-out alongside `redact.unmaskHeaders`.
 
 5. **Default masking for a credential-named identifier or label.**
 
@@ -271,7 +290,9 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
 - **App-agnostic.**
 
   The defaults key on platform traits and on identifier and label text, not on any app. Per-app
-  additions stay in `targets.<name>.redact`, where redaction configuration already lives.
+  additions stay in `targets.<name>.redact`, where redaction configuration already lives. The
+  masked-input trait is normalized across every backend and pinned by the conformance suite, so the
+  default does not mean one thing on iOS and another on web or Android.
 
 ## Alternatives considered
 
@@ -323,7 +344,7 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
 - [ ] Unit 1 — the run-directory sink that applies the redactor
 - [ ] Unit 2 — every existing writer routed through the sink
 - [ ] Unit 3 — the import contract and literal check that enforce the boundary
-- [ ] Unit 4 — default masking for a platform-marked secret field
+- [ ] Unit 4 — a normalized masked-input trait on every backend, and its default masking
 - [ ] Unit 5 — default masking for a credential-named identifier or label
 - [ ] Unit 6 — the crawl action description stops carrying its value
 - [ ] Unit 7 — the credential-shape pattern backstop
