@@ -149,11 +149,17 @@ contract that forbade every module but the sink from resolving a run path would 
 
 So the run directory is reached through two providers, and only one of them writes.
 
-- **A read locator** resolves a run id to a path for reading. `serve`, the evidence readers, `export`,
-  and the comparison commands import it. It is not restricted, because reading an artifact cannot
-  create an unredacted one.
+- **A read accessor** answers read questions about a run: list its artifact names, read one as text or
+  bytes, open one as a stream. `serve`, the evidence readers, `export`, and the comparison commands
+  import it, and it is not restricted, because none of those operations can create an artifact.
+  Crucially it never returns a `Path`. A path into a run directory is writable, so handing one out
+  would let any unrestricted importer call `write_text` on it and reach the directory without the
+  sink — the contract would hold on paper while the boundary leaked.
 - **The write sink** is what the import contract restricts. Nothing but the sink may reach it, so every
   byte entering a run directory still crosses redaction.
+
+Between them, no component outside the sink ever holds a writable handle into a run directory. That is
+what makes the contract mean what it says rather than merely regulating which module imports which.
 
 Two consequences follow for existing code. `serve`'s `/runs/` route prefix and its run-id regular
 expression are `URL` and stdout patterns rather than filesystem run roots, so the literal check does
@@ -253,12 +259,13 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
    [`bajutsu/crawl/flows.py`](../../bajutsu/crawl/flows.py), the run archive writers, and the local
    artifact store in [`bajutsu/serve/`](../../bajutsu/serve/) that receives a remote worker's upload.
    Behavior for the evidence subsystem is unchanged, since it already redacts; it moves to the sink so
-   one rule covers everything. Reading is untouched: `serve` and the evidence readers keep resolving
-   run paths through the read locator.
+   one rule covers everything. Reading is untouched: `serve` and the evidence readers move onto the read
+   accessor, which returns content and names rather than paths.
 
 3. **The enforced boundary.**
 
-   Split the run directory's read locator from its write provider, then add the `lint-imports`
+   Split the run directory's read accessor, which returns content rather than a path, from its
+   write provider, then add the `lint-imports`
    contract that forbids every module but the sink from reaching the write provider, plus the check
    that fails a filesystem run-root literal outside the deriving function. Both are decidable from
    source and cover a module that does not exist yet, so a future writer cannot bypass redaction by
@@ -372,7 +379,7 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
 
 - [ ] Unit 1 — the run-directory sink that applies the redactor
 - [ ] Unit 2 — every existing writer routed through the sink
-- [ ] Unit 3 — the read locator / write sink split, its import contract, and the literal check
+- [ ] Unit 3 — the path-free read accessor / write sink split, its import contract, and the literal check
 - [ ] Unit 4 — a normalized masked-input trait on every backend, and its default masking
 - [ ] Unit 5 — default masking for a credential-named identifier or label
 - [ ] Unit 6 — the crawl action description stops carrying its value
