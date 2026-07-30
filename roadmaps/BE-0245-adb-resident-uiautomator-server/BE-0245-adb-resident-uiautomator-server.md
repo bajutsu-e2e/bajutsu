@@ -218,6 +218,16 @@ Log:
   makes `AdbDriver` record that projection and re-read before the next coordinate resolve. The stability
   poll described above still runs afterwards, because the catch-up is not atomic: Android republishes node
   bounds one node at a time, so a read landing mid-catch-up carries some new frames and some old.
+- "Differs from the recorded projection" needed three qualifications before it meant "caught up", each
+  found by reviewing the first attempt rather than by a failing run. A *torn* read differs while still
+  carrying the old frame for the element being resolved, so the differing projection also has to hold for
+  a dwell — and crediting a torn read from an ordinary `wait` or `assert` would bypass that dwell
+  entirely, handing the next actuator a partly-stale tree. A *degenerate* read differs from every real
+  projection, so counting one spends the budget on a tree the read path is itself still retrying. And a
+  baseline recorded from a read that predates an intervening actuation is worse than no baseline: the
+  first post-pan read moves off it, the pan is credited as published, and the barrier silently does
+  nothing — which is why the baseline is re-read whenever anything has actuated since the last read, and
+  why every actuator routes through one helper that marks the cached projection stale.
 
 ## References
 

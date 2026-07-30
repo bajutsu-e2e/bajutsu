@@ -1088,9 +1088,16 @@ def _scrolled(dy: int) -> str:
 _TORN = _moved(100 + _SCROLLED_BY)
 
 
+_LONG_PRESS_MS = "700"  # `long_press(..., 0.7)` → `round(duration * 1000)`
+
+
 def _long_press_target(run_calls: list[list[str]]) -> tuple[float, float]:
-    """The (x, y) the long press was actually aimed at, from the captured `input swipe`."""
-    swipe = next(c for c in run_calls if "swipe" in c and c[-1] != "300")
+    """The (x, y) the long press was actually aimed at, from the captured `input swipe`.
+
+    Matched on the long press's own duration rather than by excluding the pan's, so the helper cannot
+    silently start reporting a pan's endpoint if `swipe_cmd`'s default duration ever changes.
+    """
+    swipe = next(c for c in run_calls if "swipe" in c and c[-1] == _LONG_PRESS_MS)
     return float(swipe[-5]), float(swipe[-4])
 
 
@@ -1145,29 +1152,145 @@ def test_settle_rides_out_the_torn_read_the_catch_up_passes_through(
     assert _by_id(tree, "stable.submit")["frame"] == (0.0, 127.0, 200.0, 100.0)
 
 
-def test_a_read_that_already_caught_up_leaves_the_next_settle_free(
+def test_reads_the_runner_already_takes_close_the_barrier_for_free(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # The healthy path — and the passing re-run of the same CI job, where the tree published the pan
-    # immediately. Any read that moves off the pre-pan projection spends the barrier, so by the time an
-    # actuator resolves a coordinate there is nothing pending and no wall-clock is burned.
+    # immediately. The runner's own reads between a pan and the next actuator (a `wait`, an `assert`, a
+    # post-step capture) are spread over real time, so they satisfy the dwell themselves and the next
+    # `_settle` has nothing pending: no extra reads, no wall-clock burned inside the actuator.
     clock = _Clock()
     monkeypatch.setattr(adb_driver_mod, "time", clock)
     run, _ = _capturing_run([FIXTURE, _scrolled(_SCROLLED_BY)])
     driver = AdbDriver("U", run=run)
     driver.query()
     driver.swipe((10, 300), (10, 100))
-    driver.query()  # a `wait` / `assert` / post-step read that already sees the pan
+    driver.query()  # a post-step read that already sees the pan: starts the dwell
+    clock.sleep(AdbDriver._CATCHUP_DWELL_S + 0.1)  # the gap to the next step
+    driver.query()  # a `wait` / `assert` read: same projection, dwell satisfied
     assert driver._catchup is None
+    spent = clock.t
     driver._settle()
-    assert clock.t == 0.0  # never slept: no catch-up wait, and the stability poll returned at once
+    assert clock.t == spent  # the actuator itself never slept
 
 
-def test_catch_up_gives_up_at_the_lag_budget_when_the_pan_changed_nothing(
+def test_an_external_torn_read_does_not_close_the_barrier(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # A `wait` / `assert` / post-step read can land inside the ~0.37s tear the run artifacts recorded.
+    # Closing the barrier there would hand the next actuator a partly-stale tree with no dwell left to
+    # ride the tear out, and `_settle`'s two-equal-reads poll would accept it — the same failure this
+    # fix exists to stop, reached by another door. So a torn read must leave the barrier open.
+    clock = _Clock()
+    monkeypatch.setattr(adb_driver_mod, "time", clock)
+    run, calls = _capturing_run([FIXTURE, _TORN, _TORN, _scrolled(_SCROLLED_BY)])
+    driver = AdbDriver("U", run=run)
+    driver.query()
+    driver.swipe((10, 300), (10, 100))
+    driver.query()  # an intervening read that lands mid-tear
+    assert driver._catchup is not None  # still open: differing is not the same as caught up
+    driver.long_press({"id": "stable.submit"}, 0.7)
+    assert _long_press_target(calls) == (100.0, 177.0)  # the whole tree, not the torn one
+
+
+def test_a_degenerate_read_does_not_close_the_barrier(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A mid-transition near-empty tree projects to `()`, which differs from every real projection. It
+    # must not count as the pan being published, or the barrier is spent on a tree the read path is
+    # itself still retrying and the actuator resolves against pre-pan frames. Two such reads spaced
+    # past the dwell are what the dwell alone cannot reject — hence the explicit degenerate skip.
+    clock = _Clock()
+    monkeypatch.setattr(adb_driver_mod, "time", clock)
+    empties = [NULL_ROOT] * 14  # enough to outlive the transient-empty retries on both reads
+    run, calls = _capturing_run([FIXTURE, *empties, *([FIXTURE] * 12), _scrolled(_SCROLLED_BY)])
+    driver = AdbDriver("U", run=run)
+    driver._EMPTY_BACKOFF_S = 0
+    driver.query()
+    driver.swipe((10, 300), (10, 100))
+    driver.query()  # a `wait` poll during the transition: degenerate
+    clock.sleep(AdbDriver._CATCHUP_DWELL_S + 0.1)
+    driver.query()  # the next poll, still degenerate — dwell satisfied, but on nothing real
+    assert driver._catchup is not None
+    driver.long_press({"id": "stable.submit"}, 0.7)
+    assert _long_press_target(calls) == (100.0, 177.0)
+
+
+def test_a_pan_with_no_fresh_read_takes_its_baseline_from_the_screen(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The coordinate form `swipe: { from, to }` reaches the driver with no `query()` in its step, so the
+    # cached projection can predate an earlier actuation. Inheriting it is worse than having none: the
+    # first post-pan read differs from it, the barrier credits the pan as published, and the pan's own
+    # lag goes unwaited. The baseline is therefore re-read when something has actuated since.
+    clock = _Clock()
+    monkeypatch.setattr(adb_driver_mod, "time", clock)
+    before, after = _moved(150), _scrolled(_SCROLLED_BY)
+    # FIXTURE: the read taken before the earlier tap. `before`: that tap's published effect, still
+    # pre-pan. `after`: the pan finally published. `before` is held for more reads than a wrongly
+    # inherited baseline needs to settle on it, so only a re-read baseline reaches `after`.
+    run, calls = _capturing_run([FIXTURE, *([before] * 12), after])
+    driver = AdbDriver("U", run=run)
+    driver.query()  # cached projection: A
+    driver.tap_point((10, 10))  # actuates; the cached projection is now stale
+    driver.swipe((10, 300), (10, 100))  # coordinate form: no query in this step
+    driver.long_press({"id": "stable.submit"}, 0.7)
+    # 250.0 is B's centre — the pre-pan tree. A stale baseline lands there.
+    assert _long_press_target(calls) == (100.0, 177.0)
+
+
+def test_pinch_arms_the_catch_up_wait_like_a_pan() -> None:
+    # A zoom moves every frame on screen just as a pan does, so it carries the same publish lag. Left
+    # unarmed, a tap after a `pinch` resolves against pre-zoom frames.
+    calls: list[list[str]] = []
+    driver = AdbDriver("U", run=_root_touch_run(calls))
+    driver.pinch({"id": "stable_refresh"}, 2.0)
+    assert driver._catchup is not None
+
+
+def test_every_actuator_invalidates_the_cached_tree() -> None:
+    # The guard for `_act`: an actuator that keeps using `_run` would leave the cached projection
+    # marked current, and the next pan would inherit a baseline predating this actuation.
+    calls: list[list[str]] = []
+    actuations: list[Callable[[AdbDriver], object]] = [
+        lambda d: d.tap({"id": "stable_refresh"}),
+        lambda d: d.tap_point((10, 10)),
+        lambda d: d.double_tap({"id": "stable_refresh"}),
+        lambda d: d.long_press({"id": "stable_refresh"}, 0.1),
+        lambda d: d.swipe((10, 300), (10, 100)),
+        lambda d: d.scroll((10, 300), (10, 100)),
+        lambda d: d.back(),
+        lambda d: d.pinch({"id": "stable_refresh"}, 2.0),
+        lambda d: d.rotate({"id": "stable_refresh"}, 1.0),
+        lambda d: d.delete_text(2),
+        lambda d: d.select_all(),
+        lambda d: d.copy_selection(),
+    ]
+    for actuate in actuations:
+        driver = AdbDriver("U", run=_root_touch_run(calls))
+        driver.query()
+        assert driver._tree_current, "a read must mark the cached projection current"
+        actuate(driver)
+        assert not driver._tree_current, f"{actuate} left the cached projection marked current"
+
+
+def test_type_text_invalidates_the_cached_tree(monkeypatch: pytest.MonkeyPatch) -> None:
+    # `type_text` goes through the static `_run_text`, bypassing `_act`, so it carries its own
+    # invalidation — typing changes the screen as much as any tap.
+    monkeypatch.setattr(AdbDriver, "_run_text", staticmethod(lambda cmd, script: None))
+    run, _ = _capturing_run([FIXTURE])
+    driver = AdbDriver("U", run=run)
+    driver.query()
+    driver.type_text("horse")
+    assert not driver._tree_current
+
+
+def test_catch_up_gives_up_loudly_at_the_lag_budget_when_the_pan_changed_nothing(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
     # A pan at the end of the content legitimately moves nothing, so the projection never differs. The
-    # wait is bounded by wall-clock and spent once, rather than blocking the run forever.
+    # wait is bounded by wall-clock and spent once, rather than blocking the run forever — and it says
+    # so, because the alternative is the bare `expect` mismatch that cost a full artifact investigation.
     clock = _Clock()
     monkeypatch.setattr(adb_driver_mod, "time", clock)
     run, _ = _capturing_run([FIXTURE])
@@ -1175,10 +1298,12 @@ def test_catch_up_gives_up_at_the_lag_budget_when_the_pan_changed_nothing(
     driver._READ_LAG_S = 0.5
     driver.query()
     driver.swipe((10, 300), (10, 100))
-    tree = driver._settle()
+    with caplog.at_level(logging.WARNING, logger="bajutsu.adb.resident"):
+        tree = driver._settle()
     assert clock.t >= driver._READ_LAG_S
     assert _by_id(tree, "stable.submit")["frame"] == (0.0, 200.0, 200.0, 100.0)  # unmoved
     assert driver._catchup is None  # spent, so the next resolve does not pay it again
+    assert "read lag" in caplog.text
 
 
 def test_only_a_pan_arms_the_catch_up_wait(monkeypatch: pytest.MonkeyPatch) -> None:

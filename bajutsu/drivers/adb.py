@@ -34,6 +34,7 @@ import re
 import subprocess
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
@@ -226,6 +227,21 @@ def parse_hierarchy(text: str) -> list[base.Element]:
     return [_to_element(n) for n in root.iter("node")]
 
 
+@dataclass
+class _Catchup:
+    """One pan's outstanding read-lag barrier: has the tree published the gesture yet?
+
+    Android moves the content before it publishes the accessibility update naming the new frames, so a
+    read taken in between describes the pre-pan screen. `AdbDriver._advance_catchup` folds each read
+    into this state and closes the barrier once the tree has demonstrably caught up.
+    """
+
+    pre_key: StableKey  # the projection the screen had when the pan fired
+    deadline: float  # wall-clock ceiling on waiting for the pan to show up
+    key: StableKey | None  # the newest non-degenerate projection seen since
+    since: float  # when `key` was first seen — the dwell is measured from here
+
+
 class AdbDriver(CoordinateTreeDriver):
     """Driver implementation for the Android emulator via adb + UI Automator.
 
@@ -311,10 +327,27 @@ class AdbDriver(CoordinateTreeDriver):
         self._touch_probed = False
         # The true display size (BE-0326), resolved once via `wm size`; the resolution is fixed for a run.
         self._screen: base.Point | None = None
-        # Armed by a pan (`swipe` / `scroll`): the projection the screen had before it, and the
-        # wall-clock deadline by which a read must have moved off that projection. Disarmed by the
-        # first read that differs, so the healthy case never waits. See `_await_catchup`.
-        self._catchup: tuple[StableKey, float] | None = None
+        # The outstanding read-lag barrier for a pan, if any (see `_advance_catchup`). Closed by the
+        # first read that shows the pan and holds, so a run whose tree keeps up never waits.
+        self._catchup: _Catchup | None = None
+        # Whether the cached projection still describes the screen. False after anything actuates, so
+        # a pan re-reads its catch-up baseline instead of inheriting a pre-actuation one
+        # (`_pan_baseline`). Every adb command clears it and every read sets it, rather than each
+        # actuator clearing it by hand: an actuator added later would otherwise silently reintroduce a
+        # stale baseline, and the false positives (a screenshot, `wm size`) only cost one extra read.
+        self._tree_current = False
+
+    def _act(self, args: list[str]) -> str:
+        """Issue an adb command that changes the screen, marking the cached projection stale.
+
+        Every actuator goes through this rather than `_run` directly, so "did the screen move since the
+        last read?" has one owner. `_pan_baseline` needs that answer: a pan whose catch-up baseline
+        predates an actuation is worse than no baseline at all, because the first post-pan read moves
+        off it and the barrier credits the pan as published. `test_every_actuator_invalidates_the_cached_tree`
+        guards the set, so an actuator added later cannot quietly keep using `_run`.
+        """
+        self._tree_current = False
+        return self._run(args)
 
     def _describe(self) -> list[base.Element]:
         return parse_hierarchy(self._read_source())
@@ -344,56 +377,89 @@ class AdbDriver(CoordinateTreeDriver):
         return self._run(adb.dump_cmd(self.serial))
 
     def _record_tree(self, els: list[base.Element]) -> list[base.Element]:
-        # Any read that has moved off the pre-pan projection has caught up with the gesture, so the
-        # barrier is spent here rather than in `_settle` alone: by the time an actuator resolves a
-        # coordinate the runner has usually already read the tree (a `wait`, an `assert`, a post-step
-        # capture), and on the healthy path one of those reads disarms this — so `_settle` finds
-        # nothing pending and the fix costs a passing run nothing.
         els = super()._record_tree(els)
-        if self._catchup is not None and self._last_stable_key != self._catchup[0]:
-            self._catchup = None
+        self._tree_current = True  # this read describes the screen as it is now
+        self._advance_catchup(els)
         return els
 
-    def _arm_catchup(self) -> None:
-        """Note that a pan just moved the content, so the next read may still describe the old screen.
+    def _pan_baseline(self) -> StableKey | None:
+        """The projection to measure a pan's catch-up against: the screen as it stands right now.
 
-        Called after the gesture returns, so the budget is measured from when the content actually
-        stopped. With no read yet there is no projection to compare against, and nothing is armed.
+        Read afresh when something has actuated since the last read. A baseline predating that
+        actuation already differs from whatever the next read shows, so the first post-pan read would
+        move off it, `_advance_catchup` would credit that as the pan being published, and the pan's own
+        lag would go unwaited — the fix would silently not apply. The common paths cost nothing extra:
+        a directional `swipe` and a `drag` resolve their endpoints from a `query()` in the same step,
+        and `_scroll_toward` runs straight after a `_settle`. Only a pan reached with no fresh read
+        (the coordinate form `swipe: { from, to }`, or one preceded by a screenshot capture) pays one.
         """
-        if self._last_stable_key is not None:
-            self._catchup = (self._last_stable_key, time.monotonic() + self._READ_LAG_S)
+        if not self._tree_current:
+            self.query()
+        return self._last_stable_key
+
+    def _arm_catchup(self, pre_key: StableKey | None) -> None:
+        """Open a catch-up barrier for the pan that just fired, measured against `pre_key`.
+
+        Called after the gesture returns, so the budget starts when the content actually stopped. With
+        no projection to compare against there is nothing to detect, and nothing is armed.
+        """
+        if pre_key is not None:
+            now = time.monotonic()
+            self._catchup = _Catchup(pre_key, now + self._READ_LAG_S, pre_key, now)
+
+    def _advance_catchup(self, els: list[base.Element]) -> None:
+        """Fold one read into the pending pan's barrier, closing it once the tree has caught up.
+
+        Runs on **every** read, not only the ones `_await_catchup` issues, so the reads the runner
+        already takes between a pan and the next actuator — a `wait`, an `assert`, a post-step capture
+        — close the barrier and a run whose tree keeps up waits for nothing.
+
+        A read counts as caught up only once its projection differs from the pre-pan one *and* has
+        held for `_CATCHUP_DWELL_S`. Differing alone is not enough, because the catch-up is not
+        atomic: Android republishes node bounds one node at a time, so a read taken mid-catch-up is
+        *torn* (some frames new, the rest still pre-pan). Closing the barrier on a torn read would
+        hand the next actuator a partly-stale tree with no dwell left to ride the tear out, and
+        `_settle`'s two-equal-reads poll would accept it — the same failure this fix exists to stop,
+        reached by another door. Requiring the dwell is BE-0245's "bound by elapsed time, not read
+        count" applied to the catch-up itself. A tear outlasting the dwell would still get through;
+        the dwell is sized above the widest one observed, not proven impossible.
+
+        A degenerate read is ignored outright: its projection differs from every real one, so crediting
+        it would spend the barrier on a tree the read path is itself still retrying.
+        """
+        catchup = self._catchup
+        if catchup is None or self._is_transient_empty(els):
+            return
+        key = self._last_stable_key
+        now = time.monotonic()
+        if key != catchup.key:
+            catchup.key, catchup.since = key, now
+        if key != catchup.pre_key and now - catchup.since >= self._CATCHUP_DWELL_S:
+            self._catchup = None
 
     def _await_catchup(self) -> None:
-        """Re-read until the tree reflects the pan just applied, or its lag budget is spent.
+        """Re-read until the pending pan shows in the tree, or its lag budget is spent.
 
         The one thing the two-consecutive-equal-reads settle below cannot do on its own: a lagging
         Android tree is *self-consistently* lagging, so any number of reads agree with each other and
-        agree on the pre-pan frames. Only "differs from the projection the pan started at" separates a
-        caught-up read from a stale one, and only a wall-clock budget bounds the wait when a pan
-        legitimately changed nothing (already at the end of the content).
-
-        The first differing read is not enough either, because the catch-up is not atomic: Android
-        republishes node bounds one node at a time, so a read taken mid-catch-up is *torn* — some
-        frames new, the rest still pre-pan — and two fast reads can both land inside that tear and
-        agree with each other. So a differing projection also has to hold for `_CATCHUP_DWELL_S`
-        before it is trusted, which is BE-0245's "bound by elapsed time, not read count" applied to
-        the catch-up itself. A tear outlasting the dwell would still get through; the dwell is sized
-        above the widest one observed, not proven impossible.
+        agree on the pre-pan frames. What separates a caught-up read from a stale one is
+        `_advance_catchup`'s test, which this drives reads until; the wall-clock budget bounds the wait
+        when a pan legitimately changed nothing (already at the end of the content).
         """
-        if self._catchup is None:
-            return
-        pre_key, deadline = self._catchup
-        self._catchup = None  # spent once, however it ends: a later resolve must not pay it again
-        key = self._last_stable_key
-        settled_at = time.monotonic()
-        while time.monotonic() < deadline:
-            if key != pre_key and time.monotonic() - settled_at >= self._CATCHUP_DWELL_S:
+        while (catchup := self._catchup) is not None:
+            if time.monotonic() >= catchup.deadline:
+                # Loudly, not silently: the actuator is about to resolve a coordinate from a tree that
+                # never published the pan, which is exactly the failure whose bare `expect` mismatch
+                # cost a full artifact investigation to explain.
+                logger.warning(
+                    "read lag: the tree never published the last pan within %.1fs; resolving from a "
+                    "possibly pre-pan screen",
+                    self._READ_LAG_S,
+                )
+                self._catchup = None
                 return
             time.sleep(self._SETTLE_POLL_S)
-            self.query()
-            if self._last_stable_key != key:
-                key = self._last_stable_key
-                settled_at = time.monotonic()
+            self.query()  # `_advance_catchup` closes the barrier once the tree has caught up
 
     def _settle(self) -> list[base.Element]:
         """Wait until the tree's identifier-frame projection stops changing, or give up.
@@ -486,10 +552,10 @@ class AdbDriver(CoordinateTreeDriver):
 
     def tap(self, sel: base.Selector) -> None:
         x, y = self._center(sel)
-        self._run(adb.tap_cmd(self.serial, x, y))
+        self._act(adb.tap_cmd(self.serial, x, y))
 
     def tap_point(self, p: base.Point) -> None:
-        self._run(adb.tap_cmd(self.serial, p[0], p[1]))
+        self._act(adb.tap_cmd(self.serial, p[0], p[1]))
 
     def double_tap(self, sel: base.Selector) -> None:
         # adb has no native double-tap. `input tap ; input tap` chains both taps in one round-trip,
@@ -501,9 +567,9 @@ class AdbDriver(CoordinateTreeDriver):
         dev = self._touch_device() if self._rooted() else None
         if dev is not None:
             raw_x, raw_y = adb.scale_to_touch(point, screen, dev)
-            self._run(adb.sendevent_double_tap_cmd(self.serial, dev.path, raw_x, raw_y))
+            self._act(adb.sendevent_double_tap_cmd(self.serial, dev.path, raw_x, raw_y))
         else:
-            self._run(adb.double_tap_cmd(self.serial, point[0], point[1]))
+            self._act(adb.double_tap_cmd(self.serial, point[0], point[1]))
 
     def _rooted(self) -> bool:
         """Whether adbd runs as root (`id -u` is 0), cached — a precondition for `sendevent`."""
@@ -529,11 +595,12 @@ class AdbDriver(CoordinateTreeDriver):
     def long_press(self, sel: base.Selector, duration: float) -> None:
         # `input` has no press-and-hold, so a zero-length swipe with a duration acts as a long press.
         x, y = self._center(sel)
-        self._run(adb.swipe_cmd(self.serial, x, y, x, y, round(duration * 1000)))
+        self._act(adb.swipe_cmd(self.serial, x, y, x, y, round(duration * 1000)))
 
     def swipe(self, frm: base.Point, to: base.Point) -> None:
-        self._run(adb.swipe_cmd(self.serial, frm[0], frm[1], to[0], to[1]))
-        self._arm_catchup()
+        pre_key = self._pan_baseline()
+        self._act(adb.swipe_cmd(self.serial, frm[0], frm[1], to[0], to[1]))
+        self._arm_catchup(pre_key)
 
     def viewport(self) -> base.Point:
         # The true display size in raw pixels (BE-0326). A lazy list (RecyclerView / LazyColumn) keeps
@@ -561,15 +628,16 @@ class AdbDriver(CoordinateTreeDriver):
         # keeps the list moving with the finger and stopping when the gesture ends, so the scroll
         # leaves no fling momentum. A short swipe over the same distance flings — its post-lift
         # travel varies by device, which is exactly the non-determinism the `scroll` action removes.
-        self._run(
+        pre_key = self._pan_baseline()
+        self._act(
             adb.swipe_cmd(self.serial, frm[0], frm[1], to[0], to[1], self._SCROLL_DURATION_MS)
         )
-        self._arm_catchup()
+        self._arm_catchup(pre_key)
 
     def back(self) -> None:
         # The true system back: a KEYCODE_BACK key event. Android has no on-screen "back" element to
         # tap (unlike iOS's OS back button), so this is a key event, not a coordinate — BE-0210.
-        self._run(adb.keyevent_cmd(self.serial, adb.KEYCODE_BACK))
+        self._act(adb.keyevent_cmd(self.serial, adb.KEYCODE_BACK))
 
     def pinch(self, sel: base.Selector, scale: float) -> None:
         # Two contacts spread from / close to the target centre by `scale`, driven as a raw two-slot
@@ -623,7 +691,12 @@ class AdbDriver(CoordinateTreeDriver):
             adb.scale_to_touch(start[1], screen, dev),
         )
         raw_end = (adb.scale_to_touch(end[0], screen, dev), adb.scale_to_touch(end[1], screen, dev))
-        self._run(adb.sendevent_gesture_cmd(self.serial, dev.path, raw_start, raw_end))
+        # A zoom or a rotation moves every frame on screen just as a pan does, so it carries the same
+        # publish lag and takes the same catch-up barrier. `_resolve_frame_and_screen` above already
+        # read the tree, so the baseline costs nothing here.
+        pre_key = self._pan_baseline()
+        self._act(adb.sendevent_gesture_cmd(self.serial, dev.path, raw_start, raw_end))
+        self._arm_catchup(pre_key)
 
     def select_option(self, sel: base.Selector, option: str) -> None:
         raise base.UnsupportedAction(
@@ -646,6 +719,7 @@ class AdbDriver(CoordinateTreeDriver):
         # Feed the `input text` command to `adb shell` over stdin, not on the argv, so a secret / OTP
         # never lands in the adb process command line where `ps` could read it (BE-0155). Routed
         # through a class-level attribute so tests can patch it.
+        self._tree_current = False  # `_run_text` bypasses `_act`; see its docstring
         self._run_text(adb.shell_cmd(self.serial), adb.text_script(text))
 
     @staticmethod
@@ -655,15 +729,15 @@ class AdbDriver(CoordinateTreeDriver):
     def delete_text(self, count: int) -> None:
         # `count` backspaces (KEYCODE_DEL) in one `input keyevent` call. The orchestrator focuses the
         # field first, so the deletes land in it (BE-0265).
-        self._run(adb.keyevents_cmd(self.serial, [adb.KEYCODE_DEL] * count))
+        self._act(adb.keyevents_cmd(self.serial, [adb.KEYCODE_DEL] * count))
 
     def select_all(self) -> None:
         # Ctrl+A selects the focused field's whole content (BE-0265).
-        self._run(adb.keycombination_cmd(self.serial, [adb.KEYCODE_CTRL_LEFT, adb.KEYCODE_A]))
+        self._act(adb.keycombination_cmd(self.serial, [adb.KEYCODE_CTRL_LEFT, adb.KEYCODE_A]))
 
     def copy_selection(self) -> None:
         # Ctrl+C copies the active selection to the clipboard, read back by the `clipboard` assertion.
-        self._run(adb.keycombination_cmd(self.serial, [adb.KEYCODE_CTRL_LEFT, adb.KEYCODE_C]))
+        self._act(adb.keycombination_cmd(self.serial, [adb.KEYCODE_CTRL_LEFT, adb.KEYCODE_C]))
 
     def screenshot(self, path: str) -> None:
         adb.Env(self.serial, run=self._run).screenshot(path)
