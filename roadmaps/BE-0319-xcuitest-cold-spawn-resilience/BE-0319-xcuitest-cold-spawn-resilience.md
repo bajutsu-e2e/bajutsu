@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0319") |
-| Implementing PR | [#1327](https://github.com/bajutsu-e2e/bajutsu/pull/1327) |
+| Implementing PR | [#1327](https://github.com/bajutsu-e2e/bajutsu/pull/1327), [#1403](https://github.com/bajutsu-e2e/bajutsu/pull/1403) |
 | Topic | Platform support |
 | Related | [BE-0207](../BE-0207-xcuitest-channel-transient-retry/BE-0207-xcuitest-channel-transient-retry.md), [BE-0218](../BE-0218-e2e-simulator-flaky-readiness-actuation/BE-0218-e2e-simulator-flaky-readiness-actuation.md), [BE-0287](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience.md) |
 <!-- /BE-METADATA -->
@@ -87,8 +87,9 @@ process itself**, which is the failure mode here. This item fills that gap.
 
 ## Detailed design
 
-The work breaks into five independent units. Units 1 and 2 build directly on PR #1299's capture
-seam (`_open_runner_output` / `_runner_log_hint`); units 3–5 are new.
+The work breaks into six independent units. Units 1 and 2 build directly on PR #1299's capture
+seam (`_open_runner_output` / `_runner_log_hint`); units 3–5 are new. Unit 6 closes a residual that
+CI surfaced after units 1–5 shipped in PR #1327.
 
 1. **Default the runner-output capture on for the cold-spawn path.** #1299 captures only when
    `BAJUTSU_XCUITEST_RUNNER_LOG` is set. Make the cold spawn capture by default — to the run's
@@ -133,6 +134,22 @@ seam (`_open_runner_output` / `_runner_log_hint`); units 3–5 are new.
    failure followed by a second-attempt success exercises the single retry (unit 4); a repeatable
    failure fails loudly after exactly two attempts and no more.
 
+6. **End the cold-spawn wait when the test run ends, not when the ceiling expires.** After units
+   1–5 shipped, the `actuation (xcuitest)` and `bundled-runner (xcuitest)` lanes kept failing before
+   any scenario ran, on a trigger units 3 and 4 cannot reach: a Simulator app-launch timeout.
+   `xcodebuild` reports `Failed to launch <bundle id>: Timed out attempting to launch app`, the
+   XCTest suite finishes, and the `xcodebuild` process then lingers — so unit 3's liveness check,
+   which watches the process rather than the test run, keeps seeing a live handle and the wait runs
+   to the ceiling. Two failures observed on PR
+   [#1398](https://github.com/bajutsu-e2e/bajutsu/pull/1398) spent 225 and 127 seconds of a
+   300-second ceiling after the suite had already reported failure. That dead time is what makes the
+   residual self-sustaining: because the ceiling is a budget shared across attempts (unit 4),
+   an attempt that runs to the ceiling leaves nothing for the retry, so the failure the retry exists
+   to absorb is the one failure the retry can never reach, and every occurrence raised a lone
+   `attempt 1/2: health never ready`. Read the terminal marker out of the capture that unit 1 turned
+   on and end the wait there. The launch timeout then fails in seconds instead of minutes, and the
+   budget it no longer spends is what funds the retry.
+
 ## Alternatives considered
 
 - **Raise the 120-second startup timeout.** The port is refused for the entire window, so a longer
@@ -149,6 +166,13 @@ seam (`_open_runner_output` / `_runner_log_hint`); units 3–5 are new.
   `BAJUTSU_XCUITEST_RUNNER_LOG` means the flake that fails the gate — the first occurrence — is
   never captured; only a later reproduction is. Defaulting the capture on for the cold-spawn path
   (unit 1) captures the failure you already have. Rejected in favor of on-by-default.
+- **Retry the app launch inside the runner, separately from the health wait.** The Swift runner
+  could catch its own `XCUIApplication.launch()` timeout and relaunch without a fresh
+  `xcodebuild`, which is cheaper than the whole-runner retry of unit 4. Two reasons to prefer the
+  Python-side detection of unit 6 anyway: a relaunch inside a runner whose XCTest automation session
+  has already wedged reuses the very session that just timed out, and the fix would have to ship in
+  the Swift package rather than the logic core, so every lane would need a rebuilt runner to pick it
+  up. Worth revisiting only if the launch timeout survives unit 6.
 - **Stream `xcodebuild` output live to the CI log** instead of a file. Live streaming interleaves
   with pytest's captured output and is noisy on the success path; a captured file, tailed only on
   failure, gives the same diagnostic while staying quiet when the runner comes up.
@@ -164,6 +188,8 @@ seam (`_open_runner_output` / `_runner_log_hint`); units 3–5 are new.
 - [x] Unit 3 — fail fast when the `xcodebuild` process exits during the cold-spawn wait.
 - [x] Unit 4 — retry the cold spawn once before failing loudly.
 - [x] Unit 5 — off-device tests over the spawn/wait seam.
+- [x] Unit 6 — end the cold-spawn wait on an ended test run, so a Simulator app-launch timeout
+      fails fast and leaves budget for the retry.
 
 ## References
 
