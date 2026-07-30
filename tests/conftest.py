@@ -54,10 +54,13 @@ def _fresh_clone_resident_gate(monkeypatch: pytest.MonkeyPatch) -> None:
 
     built = adb_resident.server_apks_built
     monkeypatch.delenv("BAJUTSU_ADB_RESIDENT", raising=False)
-    # Only the gate's ambient, no-argument call is answered "not built"; an explicit-path call (the
+    # Only the gate's ambient, argument-less call is answered "not built"; an explicit-path call (the
     # function's own test) keeps the real logic, since the paths it asks about are its own fixtures.
+    # Positional and keyword paths both forward, so naming them cannot silently land in the stub.
     monkeypatch.setattr(
-        adb_resident, "server_apks_built", lambda *paths: built(*paths) if paths else False
+        adb_resident,
+        "server_apks_built",
+        lambda *paths, **named: built(*paths, **named) if paths or named else False,
     )
 
 
