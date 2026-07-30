@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0245") |
-| Implementing PR | [#1011](https://github.com/bajutsu-e2e/bajutsu/pull/1011), [#1017](https://github.com/bajutsu-e2e/bajutsu/pull/1017), [#1032](https://github.com/bajutsu-e2e/bajutsu/pull/1032), [#1042](https://github.com/bajutsu-e2e/bajutsu/pull/1042) |
+| Implementing PR | [#1011](https://github.com/bajutsu-e2e/bajutsu/pull/1011), [#1017](https://github.com/bajutsu-e2e/bajutsu/pull/1017), [#1032](https://github.com/bajutsu-e2e/bajutsu/pull/1032), [#1042](https://github.com/bajutsu-e2e/bajutsu/pull/1042), [#1400](https://github.com/bajutsu-e2e/bajutsu/pull/1400) |
 | Topic | Platform support |
 | Related | [BE-0234](../BE-0234-adb-run-performance/BE-0234-adb-run-performance.md), [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md), [BE-0233](../BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity.md), [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md), [BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci.md) |
 <!-- /BE-METADATA -->

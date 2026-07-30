@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0245") |
-| 実装 PR | [#1011](https://github.com/bajutsu-e2e/bajutsu/pull/1011)、[#1017](https://github.com/bajutsu-e2e/bajutsu/pull/1017)、[#1032](https://github.com/bajutsu-e2e/bajutsu/pull/1032)、[#1042](https://github.com/bajutsu-e2e/bajutsu/pull/1042) |
+| 実装 PR | [#1011](https://github.com/bajutsu-e2e/bajutsu/pull/1011)、[#1017](https://github.com/bajutsu-e2e/bajutsu/pull/1017)、[#1032](https://github.com/bajutsu-e2e/bajutsu/pull/1032)、[#1042](https://github.com/bajutsu-e2e/bajutsu/pull/1042)、[#1400](https://github.com/bajutsu-e2e/bajutsu/pull/1400) |
 | トピック | プラットフォーム対応 |
 | 関連 | [BE-0234](../BE-0234-adb-run-performance/BE-0234-adb-run-performance-ja.md), [BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md), [BE-0233](../BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity-ja.md), [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md), [BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci-ja.md) |
 <!-- /BE-METADATA -->
