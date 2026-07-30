@@ -228,6 +228,13 @@ Log:
   first post-pan read moves off it, the pan is credited as published, and the barrier silently does
   nothing — which is why the baseline is re-read whenever anything has actuated since the last read, and
   why every actuator routes through one helper that marks the cached projection stale.
+- Re-reading the baseline is not enough when the preceding actuation is itself a pan, because the read
+  returns the pre-pan screen and the new baseline predates the earlier pan. The earlier pan's publish is
+  then mistaken for the newer one's, and the newer pan's delta goes unwaited. Two pans back-to-back is
+  the shape of the failing scenario itself, whose consecutive `swipe` steps resolve their endpoints
+  through `query()` and `resolve_unique` and never reach `_settle`, so nothing drains the barrier between
+  them. A pan therefore waits out any outstanding barrier before taking its own baseline; a single pan
+  pays nothing, because there is no barrier to drain.
 
 ## References
 

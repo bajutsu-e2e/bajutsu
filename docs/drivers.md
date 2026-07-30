@@ -189,7 +189,9 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
   from every real one and would otherwise spend the budget on a tree the read path is still retrying.
   And the recorded projection is re-read when something has actuated since the last read, because a
   baseline predating that actuation is worse than none: the first post-gesture read moves off it, which
-  would count as the gesture being published.
+  would count as the gesture being published. A gesture still waiting to publish is drained before the
+  next one's baseline is taken, since re-reading cannot rescue that case — the read would return the
+  pre-gesture screen, and the earlier gesture's publish would later be mistaken for the newer one's.
   Every read counts toward the test, not only the ones the wait itself issues, so the reads the runner
   already takes between the gesture and the next actuator — a `wait`, an `assert`, a post-step capture
   — normally close it and a run whose tree keeps up waits for nothing.

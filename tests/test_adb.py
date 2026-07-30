@@ -1239,6 +1239,28 @@ def test_a_pan_with_no_fresh_read_takes_its_baseline_from_the_screen(
     assert _long_press_target(calls) == (100.0, 177.0)
 
 
+def test_a_second_pan_waits_for_the_first_to_publish_before_taking_its_baseline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Two pans back-to-back with no coordinate resolve between them — which is the shape of the very
+    # scenario this fix targets, whose two `swipe` steps resolve their endpoints through `query()` and
+    # `resolve_unique`, never `_settle`. Under the lag this fix fights, the second pan's baseline read
+    # still shows the pre-first-pan screen, so seeding from it makes the first pan's publish look like
+    # the second pan landing, and the actuator resolves a tree missing the second pan's delta.
+    clock = _Clock()
+    monkeypatch.setattr(adb_driver_mod, "time", clock)
+    first, both = _scrolled(-100), _scrolled(-173)  # the first pan's delta, then both pans'
+    run, calls = _capturing_run([FIXTURE, *([FIXTURE] * 3), *([first] * 16), both])
+    driver = AdbDriver("U", run=run)
+    driver.query()
+    driver.swipe((10, 300), (10, 100))  # pan 1; its publish is still outstanding
+    driver.swipe((10, 300), (10, 100))  # pan 2, with no resolve in between
+    driver.long_press({"id": "stable.submit"}, 0.7)
+    # stable.submit is [0,200][200,300], so centre y 150 with only the first pan published and 77 with
+    # both. Landing on 150 means the second pan's delta was never waited for.
+    assert _long_press_target(calls) == (100.0, 77.0)
+
+
 def test_pinch_arms_the_catch_up_wait_like_a_pan() -> None:
     # A zoom moves every frame on screen just as a pan does, so it carries the same publish lag. Left
     # unarmed, a tap after a `pinch` resolves against pre-zoom frames.

@@ -393,7 +393,16 @@ class AdbDriver(CoordinateTreeDriver):
         a directional `swipe` and a `drag` resolve their endpoints from a `query()` in the same step,
         and `_scroll_toward` runs straight after a `_settle`. Only a pan reached with no fresh read
         (the coordinate form `swipe: { from, to }`, or one preceded by a screenshot capture) pays one.
+
+        A pan still waiting to publish is drained first, because re-reading cannot rescue that case: the
+        read itself would return the pre-pan screen, so the new baseline would predate the earlier pan
+        and the earlier pan's publish would later be mistaken for this one's. Two pans back-to-back is
+        not hypothetical — it is the shape of the scenario this fix targets, whose consecutive `swipe`
+        steps resolve their endpoints through `query()` and never reach `_settle`, so nothing else
+        drains the barrier between them. A single pan pays nothing: `_catchup` is None and
+        `_await_catchup` returns at once.
         """
+        self._await_catchup()
         if not self._tree_current:
             self.query()
         return self._last_stable_key

@@ -220,6 +220,12 @@ BajutsuKit／BajutsuAndroid）と同じ性質です。どのターゲットも�
   ジェスチャ後の最初の読み取りがそこから動き、pan が publish されたと数えられて、barrier が黙って何もしなく
   なります。だから前回の読み取り以降に何かが actuate していれば baseline を読み直し、すべての actuator は
   キャッシュした射影を stale と印す 1 つのヘルパを通します。
+- 直前の actuation が pan そのものである場合は、baseline の読み直しだけでは足りません。読み取りが pan 前の
+  画面を返すので、新しい baseline が先の pan より前のものになります。すると先の pan の publish を新しい pan の
+  ものと取り違え、新しい pan の差分は待たれません。pan が 2 つ連続するのは、まさに今回失敗していたシナリオの
+  形です。連続する `swipe` ステップは `query()` と `resolve_unique` で端点を解決し `_settle` に到達しないので、
+  そのあいだに barrier を待ち切るものが何もありません。そこで pan は、自分の baseline を取る前に未解決の
+  barrier を待ち切ります。pan が 1 つだけなら待つ barrier が無いので、何も支払いません。
 
 ## 参考
 
