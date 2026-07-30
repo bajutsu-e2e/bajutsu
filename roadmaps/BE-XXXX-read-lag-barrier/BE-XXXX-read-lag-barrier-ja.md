@@ -1,6 +1,6 @@
 [English](BE-XXXX-read-lag-barrier.md) · **日本語**
 
-# BE-XXXX — Android で、操作直後の読み取りが変化しなくても最新とは判断しないようにする
+# BE-XXXX — Android で操作直後の読み取りが変化しなくても最新とは判断しないようにする
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
