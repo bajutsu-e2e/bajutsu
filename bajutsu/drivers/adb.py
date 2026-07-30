@@ -264,6 +264,14 @@ class AdbDriver(CoordinateTreeDriver):
     _SCROLL_FROM_FRAC = 0.7  # swipe start, as a fraction of screen height
     _SCROLL_TO_FRAC = 0.3  # swipe end (< start ⇒ upward ⇒ content scrolls up)
     _SCROLL_DURATION_MS = 600  # the `scroll` pan duration: long enough to drag, not fling (BE-0326)
+    # The `read_lag` budget (see `read_lag`). Sized from the CI emulator: of 14 steps whose first read
+    # looked unchanged, 12 showed the change on a re-read well inside this budget, and six full repeats
+    # of the scroll conformance tests then passed. The remaining 2 changed only once the gesture was
+    # re-issued, so they are not explained by read lag alone — a longer budget would not have helped
+    # them, and whatever they are (a `_region_signature` blind to motion behind an element taller than
+    # the viewport is the leading candidate) is tracked separately. Only ever spent once, on the step
+    # that ends a `scroll`, so a generous value costs nothing on a step that lands.
+    _READ_LAG_S = 4.0
 
     def __init__(
         self,
@@ -456,6 +464,17 @@ class AdbDriver(CoordinateTreeDriver):
         if self._screen is None:
             self._screen = _parse_wm_size(self._run(adb.wm_size_cmd(self.serial)))
         return self._screen
+
+    def read_lag(self) -> float:
+        # How long a read may describe the screen as it was before the last gesture (BE-0326). Android
+        # publishes the accessibility update *after* the scroll has moved the content, so a `query()`
+        # taken in between returns the pre-scroll tree: on the CI emulator every step that looked
+        # unchanged had in fact moved the screen's pixels. `waitForIdle` plus the resident channel's
+        # two-identical-dumps barrier does not close that window (BE-0245) — both dumps can land before
+        # the update and agree with each other — so the `scroll` loop is told to keep re-reading rather
+        # than call the first unchanged read the end of content. Only ever spent on a region that looks
+        # stopped, never on a step that landed.
+        return self._READ_LAG_S
 
     def scroll(self, frm: base.Point, to: base.Point) -> None:
         # A non-inertial pan (BE-0326): `input swipe` over a longer duration than the default drag

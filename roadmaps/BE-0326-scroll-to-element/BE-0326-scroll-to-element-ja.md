@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0326") |
-| 実装 PR | [#1391](https://github.com/bajutsu-e2e/bajutsu/pull/1391) |
+| 実装 PR | [#1391](https://github.com/bajutsu-e2e/bajutsu/pull/1391), [#1398](https://github.com/bajutsu-e2e/bajutsu/pull/1398) |
 | トピック | シナリオ記述機能 |
 | 関連 | [BE-0083](../BE-0083-codegen-emitter-unification/BE-0083-codegen-emitter-unification-ja.md), [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md), [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity-ja.md), [BE-0227](../BE-0227-web-swipe-scroll-fidelity/BE-0227-web-swipe-scroll-fidelity-ja.md), [BE-0251](../BE-0251-driver-base-helper-hoist/BE-0251-driver-base-helper-hoist-ja.md), [BE-0259](../BE-0259-assert-query-snapshot-reuse/BE-0259-assert-query-snapshot-reuse-ja.md) |
 <!-- /BE-METADATA -->
@@ -393,6 +393,7 @@ Mutually Exclusive, Collectively Exhaustive（`MECE`）な作業単位は次の�
 - [x] Unit 6 — ドライバ適合ケース（要素を引き出す／使い切った領域で失敗）
 - [x] Unit 7 — ドキュメントと notices.yaml の書き換え
 - [x] Unit 8 — テスト（スキーマ、FakeDriver ループ、`within`、コンテンツ末尾）
+- [x] Unit 9 — 読み取りが操作に遅れるバックエンドでのコンテンツ末尾の確認
 
 ### ログ
 
@@ -411,6 +412,20 @@ Mutually Exclusive, Collectively Exhaustive（`MECE`）な作業単位は次の�
   真のビューポートを報告するので、ネイティブのレーンでもスキップは要りません。
 - `scroll` ハンドラとそのループは、独立した新規モジュール
   `bajutsu/orchestrator/actions/handlers/scroll.py` に置きます。
+- コンテンツ末尾の判定には、1 回の照会では足りない条件がもう 1 つ必要でした。Android は、ジェスチャが
+  内容を動かした後にアクセシビリティ更新を公開します。公開までに読み取ったツリーはスクロール前の状態を
+  返すため、1 回の読み取りでは末尾に達した領域と区別できません。CI のエミュレータを計測して、どちらで
+  あったかが決まりました。変化がなかった 14 ステップのすべてで画面のピクセルが動いており、末尾に達した
+  ものは 1 つもありませんでした。`conformance (adb)` は対象を引き出す 12 件のうち 8 件で失敗していました。ループは
+  末尾と判定する前に領域が動くまで再読み取りするようになり、その上限は各バックエンドが自分で申告します
+  （`ReadLagProvider`）。adb は上限を申告します。同期的なバックエンドは申告せず、最初の変化なしの
+  読み取りで失敗するので、末尾の判定は従来どおり即座に下ります。適合テストのスクロール 3 件を 6 回
+  繰り返して、いずれも成功しました。
+- adb のパンを明示的な接点の列（`input motionevent` の down、move、up）に書き換える案は、単一の
+  `input swipe` と比較して計測し、採用しませんでした。どちらも 12 件のうち 8 件で失敗し、原因が
+  ジェスチャではなかったからです。ローカルのハードウェア支援エミュレータでは、明示的な接点の列のほうが
+  悪化しました。接点の間隔が近くフリングが伸びるため、連続する 2 つの照会済みビューポートの間を対象が
+  通り抜けてしまいます。
 
 ## 参考
 
