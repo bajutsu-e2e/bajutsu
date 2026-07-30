@@ -67,11 +67,10 @@ Bajutsu の遮蔽は、書き出す側ごとの実装に委ねられています
 
 `crawl` は遮蔽に必要なものをすでに持っています。コマンドは解決済みのターゲット設定と環境の秘匿値から
 redactor を組み立て（[`bajutsu/cli/_shared.py:137`](../../bajutsu/cli/_shared.py)）、AI guide へ渡して
-送信するプロンプトを洗っています。その redactor を自分の成果物を書く経路へは渡していません。
-[`bajutsu/crawl/serialize.py`](../../bajutsu/crawl/serialize.py)、
-[`bajutsu/crawl/report.py`](../../bajutsu/crawl/report.py)、
-[`bajutsu/cli/commands/crawl.py`](../../bajutsu/cli/commands/crawl.py) に、遮蔽への参照は 1 つも
-ありません。つまり BE-0097 は `crawl` がモデルへ送るものを守り、`crawl` がディスクへ書くものを未保護の
+送信するプロンプトを洗っています。受け取るのは guide だけです。同じモジュールはそのあと、組み立てた
+ばかりの redactor を渡さずにスクリーンマップを書きます。そして `crawl` の成果物を描く 2 つのモジュール
+（[`bajutsu/crawl/serialize.py`](../../bajutsu/crawl/serialize.py) と
+[`bajutsu/crawl/report.py`](../../bajutsu/crawl/report.py)）には、遮蔽への参照が 1 つもありません。つまり BE-0097 は `crawl` がモデルへ送るものを守り、`crawl` がディスクへ書くものを未保護の
 まま残しました。しかも書き出すレポートは、共有を前提とした自己完結の HTML ファイルです。
 
 より広く見れば、1 回の実行のバイト列が通る場所は 1 つに定まっていません。書き出しは

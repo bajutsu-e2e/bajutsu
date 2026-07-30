@@ -66,12 +66,12 @@ inherits the guarantee.
 `crawl` already holds everything it needs to redact. The command builds a redactor from the resolved
 target configuration and the environment's secret values, at
 [`bajutsu/cli/_shared.py:137`](../../bajutsu/cli/_shared.py), and hands it to the AI guide so an
-outbound prompt is scrubbed. It never hands that redactor to its own artifact writers.
-[`bajutsu/crawl/serialize.py`](../../bajutsu/crawl/serialize.py),
-[`bajutsu/crawl/report.py`](../../bajutsu/crawl/report.py), and
-[`bajutsu/cli/commands/crawl.py`](../../bajutsu/cli/commands/crawl.py) contain no reference to
-redaction at all. So BE-0097 protected what `crawl` sends to a model and left what `crawl` writes to
-disk unprotected — and the report it writes is a self-contained HTML file meant to be shared.
+outbound prompt is scrubbed. The guide is the only recipient. The same module then writes the screen
+map without passing the redactor it just built, and the two modules that render `crawl`'s artifacts —
+[`bajutsu/crawl/serialize.py`](../../bajutsu/crawl/serialize.py) and
+[`bajutsu/crawl/report.py`](../../bajutsu/crawl/report.py) — contain no reference to redaction at all.
+So BE-0097 protected what `crawl` sends to a model and left what `crawl` writes to disk unprotected —
+and the report it writes is a self-contained HTML file meant to be shared.
 
 The wider shape of the problem is that there is no single place a run's bytes pass through. Writers
 call `Path.write_text` and `json.dumps` directly across the command modules, the crawl package, and
