@@ -255,8 +255,10 @@ def test_device_pool_stops_started_collectors_when_one_fails(
             self._idx = FlakyCollector.count
             self.stopped = False
 
-        def start(self) -> None:
-            if self._idx == 2:  # the second device's collector fails to bind
+        def start_bridgeable(self) -> None:
+            # The second device's collector finds no bindable port at all — the reserved band and
+            # the ephemeral fallback both exhausted, which is the only way this raises.
+            if self._idx == 2:
                 raise OSError("port in use")
             started.append(self)
 

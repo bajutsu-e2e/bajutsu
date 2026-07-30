@@ -46,8 +46,12 @@ readiness gate and the `settled` wait consult it instead; see [run-loop](run-loo
 client — Android has no single OS-level HTTP hook like iOS's `URLProtocol`, so the interceptor is
 per-client and captures **OkHttp** traffic. And the emulator's `127.0.0.1` is its own loopback, not
 the host's, so bajutsu bridges the collector to the device with `adb reverse` (the same port both
-ways, so the injected `BAJUTSU_COLLECTOR` URL resolves unchanged). The collector, the token check,
-and the assertion pipeline are identical.
+ways, so the injected `BAJUTSU_COLLECTOR` URL resolves unchanged). Because that one number has to be
+bindable on **both** sides, the collector takes its port from a small reserved band rather than
+letting the operating system pick a free one. An operating-system pick comes from the host's
+ephemeral range, which is also the range the emulator hands out to its own sockets, so it
+periodically names a port the guest already holds and the bridge fails to bind. The collector, the
+token check, and the assertion pipeline are identical.
 
 > This mechanism is the in-app path. RocketSim's GUI network inspector and a TLS-intercepting proxy
 > were both rejected — the former is not exposed on its CLI (unusable for automated

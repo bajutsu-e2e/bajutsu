@@ -4,11 +4,15 @@
 from __future__ import annotations
 
 import json
+import socket
 import urllib.error
 import urllib.request
 
+import pytest
+
 from bajutsu.assertions import EvalContext, evaluate, evaluate_one
 from bajutsu.drivers.fake import FakeDriver
+from bajutsu.evidence import network
 from bajutsu.evidence.network import NetworkCollector, NetworkExchange, ScreenTransition
 from bajutsu.orchestrator import run_scenario
 from bajutsu.scenario import (
@@ -645,3 +649,59 @@ def test_wait_for_request_times_out() -> None:
     )[0]
     res = run_scenario(FakeDriver(), scn, network=list)  # nothing observed
     assert not res.ok and "request" in (res.failure or "")
+
+
+def test_start_bridgeable_prefers_the_reserved_band(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The reserved band sits wholly below the OS ephemeral range (32768+ on Linux), so a port free
+    # on the host is free on the guest too. That is a static property of the constants — assert it
+    # without binding the real port, which would couple this gate test to 6800-6899 being free.
+    assert network._BRIDGE_PORT_BASE + network._BRIDGE_PORT_SPAN <= 32768
+    # start_bridgeable starts from the band base, not an OS-chosen port. Pin the band to a
+    # known-free base so the test never depends on a fixed global port.
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        base = probe.getsockname()[1]
+    monkeypatch.setattr(network, "_BRIDGE_PORT_BASE", base)
+    monkeypatch.setattr(network, "_BRIDGE_PORT_SPAN", 8)
+    c = NetworkCollector()
+    port = c.start_bridgeable()
+    try:
+        assert port == base  # the band base was free, so it is what got bound
+        assert _post_report(port, c.token) == 204
+        assert [ex.path for ex in c.snapshot()] == ["/items"]
+    finally:
+        c.stop()
+
+
+def test_start_bridgeable_skips_a_taken_band_port(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A parallel lane's collector already holds the first band port: walk past it rather than fail.
+    with socket.socket() as taken:
+        taken.bind(("127.0.0.1", 0))
+        taken.listen(1)
+        base = taken.getsockname()[1]
+        monkeypatch.setattr(network, "_BRIDGE_PORT_BASE", base)
+        monkeypatch.setattr(network, "_BRIDGE_PORT_SPAN", 8)
+        c = NetworkCollector()
+        port = c.start_bridgeable()
+        try:
+            # Skipped the occupied base; which later port it lands on is not asserted, since the
+            # neighbors are not reserved and pinning the window would flake on a busy host.
+            assert port != base
+        finally:
+            c.stop()
+
+
+def test_start_bridgeable_raises_when_the_band_is_exhausted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Every band port taken: fail loudly. Falling back to an OS-chosen ephemeral port would land in
+    # the shared range and reopen the `adb reverse` collision start_bridgeable exists to remove.
+    with socket.socket() as taken:
+        taken.bind(("127.0.0.1", 0))
+        taken.listen(1)
+        base = taken.getsockname()[1]
+        monkeypatch.setattr(network, "_BRIDGE_PORT_BASE", base)
+        monkeypatch.setattr(network, "_BRIDGE_PORT_SPAN", 1)
+        c = NetworkCollector()
+        with pytest.raises(OSError, match="reserved bridge band"):
+            c.start_bridgeable()

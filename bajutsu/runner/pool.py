@@ -149,7 +149,9 @@ def device_pool(
         try:
             for udid in udids:
                 collector = NetworkCollector()
-                collector.start()
+                # `start_bridgeable`, not `start`: a device backend mirrors this port onto the
+                # device (`bridge_collector` below), so it must be one the device can bind too.
+                collector.start_bridgeable()
                 collectors[udid] = collector
                 started.append(collector)
         except Exception:
