@@ -395,6 +395,7 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
 - [x] Unit 6 — driver conformance case (reveal; fail on exhausted region)
 - [x] Unit 7 — docs and the notices.yaml rewrite
 - [x] Unit 8 — tests (schema, FakeDriver loop, `within`, end-of-content)
+- [x] Unit 9 — end-of-content confirmed against a backend whose reads lag an actuation
 
 ### Log
 
@@ -414,6 +415,19 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
   exact viewport. The on-device harness resets the list to the top between scroll tests.
 - The `scroll` handler and its loop live in a focused new module,
   `bajutsu/orchestrator/actions/handlers/scroll.py`.
+- End-of-content needed one more condition than a single query supplies. Android publishes the
+  accessibility update after the gesture has already moved the content. A read taken meanwhile
+  returns the pre-scroll tree, which looks like a bottomed-out region. Instrumenting the CI emulator
+  settled the question. All 14 unchanged steps had moved the screen's pixels, so none was an end of
+  content. `conformance (adb)` went red on 8 of 12 revealing scroll tests. The loop now re-reads
+  until the region moves before it concludes the content ended. A budget each backend declares for
+  itself bounds the re-reading (`ReadLagProvider`). adb declares one. The synchronous backends
+  declare none and still stop at their first unchanged read. Their end-of-content verdict stays
+  immediate. Six repeats of the conformance scroll tests then passed.
+- Rewriting adb's pan as an explicit contact stream lost to the single `input swipe`. The stream
+  injects `input motionevent` down, moves, and up. Both went red on 8 of 12, because the gesture was
+  never the cause. The explicit stream was worse on the local hardware-accelerated emulator. Its
+  contacts sit near each other, so the fling carried the target past two queried viewports.
 
 ## References
 

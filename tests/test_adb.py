@@ -446,6 +446,16 @@ def test_viewport_reads_wm_size_not_the_tree_extent() -> None:
     assert [a for a in calls if a[-1] == "size"] == [["adb", "-s", "U", "shell", "wm", "size"]]
 
 
+def test_declares_a_read_lag_so_scroll_does_not_misread_a_late_tree() -> None:
+    # Android publishes the accessibility update after the gesture has moved the content, so a read
+    # taken in between describes the pre-scroll screen (BE-0326). The driver admits that by
+    # implementing ReadLagProvider, which is what stops the `scroll` loop reading one unchanged region
+    # as the end of content; the budget has to be a real wait, not a nominal zero, to close the window.
+    driver = AdbDriver("U", run=lambda args: "")
+    assert isinstance(driver, base.ReadLagProvider)
+    assert driver.read_lag() > 0.0
+
+
 def test_viewport_prefers_override_size() -> None:
     # A resized display prints both a Physical and an Override size; the override is the effective one.
     def run(_args: list[str]) -> str:

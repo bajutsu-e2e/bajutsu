@@ -394,10 +394,18 @@ device (the shared device is reseeded via one channel, so parallel workers would
   step's ordinary outcome
 - DSL `scroll` action (BE-0326): scroll a region — the whole screen, or a `within` container — until
   a target selector's frame center lands inside the viewport, or fail deterministically at a
-  `maxScrolls` bound (default 15) or as soon as a step leaves the scrolled region's queried subtree
-  unchanged (end-of-content). Each step is non-inertial (a bounded advance with no fling), realized
-  per backend behind `Driver.scroll` and a `ViewportProvider` (web, fake report the true viewport
-  directly; a native backend's on-screen-only tree already is one) — closing the BE-0210 asymmetry
+  `maxScrolls` bound (default 15) or once a step leaves the scrolled region's queried subtree
+  unchanged and a re-read confirms the region has stopped (end-of-content). The confirmation exists
+  because a queried tree can lag a gesture that has already moved the content. Android publishes the
+  accessibility update after the scroll, so a read taken meanwhile describes the pre-scroll screen,
+  and one read cannot tell that screen from a bottomed-out region. A backend that admits such a lag
+  reports the budget a step's result has to arrive in (`ReadLagProvider`; adb is the one backend
+  reporting a lag today). A backend reporting none still fails on its first unchanged read, so the
+  synchronous
+  backends stay as fail-fast as before. Each step is non-inertial (a bounded
+  advance with no fling), realized per backend behind `Driver.scroll` and a `ViewportProvider` (web,
+  fake report the true viewport directly; a native backend's on-screen-only tree already is one) —
+  closing the BE-0210 asymmetry
   where only adb recovered an off-screen `tap`. Codegen maps it onto Playwright's
   `scrollIntoViewIfNeeded()` and UI Automator's `UiScrollable.scrollIntoView` natively, and emits a
   labeled `TODO` for XCUITest, which has no single robust scroll-to-element primitive

@@ -117,6 +117,76 @@ def test_fails_fast_on_end_of_content() -> None:
     assert _scroll_count(driver) == 1  # one probe scroll, then fail — not 15
 
 
+# --- a backend whose reads lag the gesture (ReadLagProvider, BE-0326) ---
+
+
+class _LaggingDriver(FakeDriver):
+    """A scrollable fake whose first read after each scroll still describes the previous screen.
+
+    The Android failure mode in miniature: the gesture moves the content, but the tree naming the new
+    frames is published a moment later, so a read taken in between returns the pre-scroll screen.
+    """
+
+    def __init__(self, screen: list[base.Element], viewport: base.Point, lag: float) -> None:
+        super().__init__(screen=screen, viewport=viewport)
+        self._lag = lag
+        self._stale: list[base.Element] | None = None
+
+    def read_lag(self) -> float:
+        return self._lag
+
+    def scroll(self, frm: base.Point, to: base.Point) -> None:
+        self._stale = super().query()  # the screen as it looks *before* this gesture lands
+        super().scroll(frm, to)
+
+    def query(self) -> list[base.Element]:
+        if self._stale is not None:
+            stale, self._stale = self._stale, None
+            return stale
+        return super().query()
+
+
+def test_a_late_tree_is_not_mistaken_for_the_end_of_content() -> None:
+    # The regression: with the target genuinely below the fold, every step's first read describes the
+    # pre-scroll screen. Read once and that looks exactly like a bottomed-out region, so the loop used
+    # to fail with "end of content" while the content had in fact moved. Re-reading inside the
+    # backend's own `read_lag` budget sees the real result, so the target is still revealed.
+    driver = _LaggingDriver([_row(i) for i in range(20)], _VIEWPORT, lag=1.0)
+    _do_action(driver, Step(scroll=Scroll.model_validate({"to": {"id": "row.19"}})))
+    frame = base.resolve_unique(driver.query(), {"id": "row.19"})["frame"]
+    cx, cy = base.frame_center(frame)
+    assert 0.0 <= cx <= _VIEWPORT[0] and 0.0 <= cy <= _VIEWPORT[1]
+
+
+def test_a_lagging_backend_still_reports_a_real_end_of_content() -> None:
+    # The budget tolerates a late tree without blunting the verdict: on a screen that cannot scroll,
+    # re-reading never sees a change, so the loop still fails with end-of-content rather than
+    # spending `maxScrolls`.
+    driver = _LaggingDriver([_row(0), _row(1)], _VIEWPORT, lag=0.3)
+    with pytest.raises(base.ElementNotFound, match="end of content"):
+        _do_action(driver, Step(scroll=Scroll.model_validate({"to": {"id": "missing"}})))
+    assert _scroll_count(driver) == 1
+
+
+def test_a_backend_that_reports_no_lag_is_read_exactly_once_per_step() -> None:
+    # Not implementing ReadLagProvider means "my reads do not lag", so the re-read loop must not run
+    # at all: one read per step keeps the synchronous backends as fail-fast (and as cheap) as before.
+    driver = _scrollable([_row(0), _row(1)])
+    assert not isinstance(driver, base.ReadLagProvider)
+    reads = 0
+    plain_query = driver.query
+
+    def counting_query() -> list[base.Element]:
+        nonlocal reads
+        reads += 1
+        return plain_query()
+
+    driver.query = counting_query  # type: ignore[method-assign]
+    with pytest.raises(base.ElementNotFound, match="end of content"):
+        _do_action(driver, Step(scroll=Scroll.model_validate({"to": {"id": "missing"}})))
+    assert reads == 2  # the loop's opening read, then one read of the step's result — no polling
+
+
 def test_ambiguous_target_fails_rather_than_scrolling_forever() -> None:
     driver = _scrollable([_row(0), _row(0)])  # two elements share an id
     with pytest.raises(base.AmbiguousSelector):
