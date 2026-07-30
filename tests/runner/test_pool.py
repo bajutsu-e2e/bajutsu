@@ -256,8 +256,9 @@ def test_device_pool_stops_started_collectors_when_one_fails(
             self.stopped = False
 
         def start_bridgeable(self) -> None:
-            # The second device's collector finds no bindable port at all — the reserved band and
-            # the ephemeral fallback both exhausted, which is the only way this raises.
+            # The second device's collector finds no bindable port at all — the whole reserved band
+            # is exhausted, which is the only way start_bridgeable raises: it never falls back to an
+            # OS-chosen ephemeral port.
             if self._idx == 2:
                 raise OSError("port in use")
             started.append(self)
