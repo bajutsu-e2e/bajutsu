@@ -54,7 +54,7 @@ server = ["fastapi>=0.110", "uvicorn>=0.27", "boto3>=1.34"]
 db = ["sqlalchemy>=2.0", "alembic>=1.13", "psycopg[binary]>=3.1", "cryptography>=42.0"]
 # GitHub OAuth login for the hosted control plane (BE-0015 7b-2). Imported only when OAuth is
 # configured (BAJUTSU_OAUTH_GITHUB_*), never on the default path (the import guard locks this).
-oauth = ["authlib>=1.3"]
+oauth = ["authlib>=1.3", "httpx>=0.27"]
 # JSON Schema validation for the `responseSchema` assertion (BE-0048). Imported lazily, only when a
 # responseSchema assertion is evaluated — never on the default path.
 schema = ["jsonschema>=4.0"]
