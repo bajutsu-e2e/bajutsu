@@ -1,14 +1,14 @@
-[English](BE-XXXX-artifact-redaction-boundary.md) · **日本語**
+[English](BE-0331-artifact-redaction-boundary.md) · **日本語**
 
-# BE-XXXX — どの書き出し経路も遮蔽を通るようにして平文の秘匿値を生成物から締め出す
+# BE-0331 — どの書き出し経路も遮蔽を通るようにして平文の秘匿値を生成物から締め出す
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-artifact-redaction-boundary-ja.md) |
+| 提案 | [BE-0331](BE-0331-artifact-redaction-boundary-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0331") |
 | トピック | Security hardening |
 | 関連 | [BE-0032](../BE-0032-secret-variables/BE-0032-secret-variables-ja.md), [BE-0047](../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md), [BE-0097](../BE-0097-crawl-ai-data-sovereignty/BE-0097-crawl-ai-data-sovereignty-ja.md), [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md), [BE-0120](../BE-0120-recorded-scenario-secret-tokenization/BE-0120-recorded-scenario-secret-tokenization-ja.md), [BE-0130](../BE-0130-default-network-secret-redaction/BE-0130-default-network-secret-redaction-ja.md), [BE-0151](../BE-0151-screenshot-secret-capture-warning/BE-0151-screenshot-secret-capture-warning-ja.md), [BE-0153](../BE-0153-encode-aware-secret-redaction/BE-0153-encode-aware-secret-redaction-ja.md) |
 <!-- /BE-METADATA -->

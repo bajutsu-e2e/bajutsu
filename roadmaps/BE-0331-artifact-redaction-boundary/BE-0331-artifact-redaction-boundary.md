@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-artifact-redaction-boundary-ja.md)
+**English** · [日本語](BE-0331-artifact-redaction-boundary-ja.md)
 
-# BE-XXXX — Redact at the artifact boundary so no writer can emit a plaintext secret
+# BE-0331 — Redact at the artifact boundary so no writer can emit a plaintext secret
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-artifact-redaction-boundary.md) |
+| Proposal | [BE-0331](BE-0331-artifact-redaction-boundary.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0331") |
 | Topic | Security hardening |
 | Related | [BE-0032](../BE-0032-secret-variables/BE-0032-secret-variables.md), [BE-0047](../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md), [BE-0097](../BE-0097-crawl-ai-data-sovereignty/BE-0097-crawl-ai-data-sovereignty.md), [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md), [BE-0120](../BE-0120-recorded-scenario-secret-tokenization/BE-0120-recorded-scenario-secret-tokenization.md), [BE-0130](../BE-0130-default-network-secret-redaction/BE-0130-default-network-secret-redaction.md), [BE-0151](../BE-0151-screenshot-secret-capture-warning/BE-0151-screenshot-secret-capture-warning.md), [BE-0153](../BE-0153-encode-aware-secret-redaction/BE-0153-encode-aware-secret-redaction.md) |
 <!-- /BE-METADATA -->
