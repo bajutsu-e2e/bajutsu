@@ -24,9 +24,10 @@ each network exchange before writing them. Every other writer is on its honor to
 This item moves redaction from a habit to a boundary. Every write into a run directory goes through
 one sink that requires a redactor, so a writer cannot emit an unredacted artifact by forgetting to
 ask. Masking becomes default-on for the two cases a caller should never have to configure: a field the
-platform itself marks secret, and a field whose identifier or label names a credential. A pattern
-backstop then masks a value that carries a recognizable credential shape even when no rule named it,
-which is the case that reached disk here.
+platform itself marks secret, and a field whose identifier or label names a credential. The leak that
+motivated this item is the second case — the field was called `settings.apikey`, and nothing masked
+it. A pattern backstop then covers the case neither default anticipates: a value whose field name
+suggests nothing but whose shape is a recognizable credential.
 
 A concrete leak motivated the item. A `crawl --guide ai` run wrote
 `type settings.apikey='sk-ant-api03-…'` into `screenmap.json` and the generated screen-map report. The
