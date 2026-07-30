@@ -37,7 +37,7 @@ Android の常駐リーダーが、自分の見た最後のアクセシビリテ
 この項目を開いた症状は、`extract` ステップの挙動です。このステップは、自分自身のタップより前の値を
 写し取ってしまいます。showcase のシナリオ
 [`extract.yaml`](../../demos/showcase/scenarios/extract.yaml) は、カウンタを 3 回タップし、3 回目の
-タップでカウンタのツリー上の値を捕捉します。次の[ステップ](../../docs/glossary.md#scenario-authoring)
+タップでカウンタのツリー上の値を捕捉します。次の[ステップ](../../docs/ja/glossary.md#シナリオのオーサリング)
 は、その捕捉値を検証します。Android のレーンでは、`smoke (adb)` ジョブがこのシナリオをおよそ 3 回に
 1 回失敗させ、`step 4 (assert_): expected equals='2' but actual='3'` を報告します。この数字が、
 欠陥をそのまま表しています。カウンタは 3 回のタップを通じて 1、2、3 と進みます。`extract` は、
@@ -55,7 +55,7 @@ Android では、新しい値を伝えるアクセシビリティ更新が、タ
 ポーリングの側から見ると、この結果は失敗の形をしていません。求めた一致が、そのまま得られただけです。
 
 同じ誤りは、さらに 3 箇所にあります。だからこそ、局所的な手当てでは形が合いません。
-`AdbDriver._settle`（`bajutsu/drivers/adb.py:317`）は、新しい読み取りの識別子とフレームの射影が
+`AdbDriver._settle`（`bajutsu/drivers/adb.py:325`）は、新しい読み取りの識別子とフレームの射影が
 前回の読み取りと一致した時点で戻ります。そのため、ジェスチャ前のレイアウトの座標を、そのまま
 アクチュエータへ渡しかねません。`smoke (adb)` が `gestures` シナリオを断続的に落とす現象、つまり
 `expected equals='pressed' but actual='idle'` を報告する現象の、もっとも有力な説明がこれです。長押しが、

@@ -53,7 +53,7 @@ both stale. They agree with each other, and they pass the stability test. Nothin
 looks like a failure from inside the poll. The poll got exactly the agreement it asked for.
 
 The same mistake sits in three further places. That is what makes a local patch the wrong shape.
-`AdbDriver._settle` (`bajutsu/drivers/adb.py:317`) returns as soon as a fresh read's
+`AdbDriver._settle` (`bajutsu/drivers/adb.py:325`) returns as soon as a fresh read's
 identifier-and-frame projection equals the previous read's. It can then hand an actuator the
 coordinates of a pre-gesture layout. That is the leading explanation for `smoke (adb)` intermittently
 failing the `gestures` scenario with `expected equals='pressed' but actual='idle'`. The long press
