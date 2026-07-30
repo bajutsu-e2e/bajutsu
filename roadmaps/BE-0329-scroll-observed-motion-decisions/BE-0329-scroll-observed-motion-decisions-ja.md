@@ -1,14 +1,14 @@
-[English](BE-XXXX-scroll-observed-motion-decisions.md) · **日本語**
+[English](BE-0329-scroll-observed-motion-decisions.md) · **日本語**
 
-# BE-XXXX — `scroll` は領域が止まったか進みすぎたかを観測した要素の動きから判定する
+# BE-0329 — `scroll` は領域が止まったか進みすぎたかを観測した要素の動きから判定する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-scroll-observed-motion-decisions-ja.md) |
+| 提案 | [BE-0329](BE-0329-scroll-observed-motion-decisions-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0329") |
 | トピック | Scenario authoring features |
 | 関連 | [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md), [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity-ja.md), [BE-0245](../BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server-ja.md), [BE-0259](../BE-0259-assert-query-snapshot-reuse/BE-0259-assert-query-snapshot-reuse-ja.md), [BE-0326](../BE-0326-scroll-to-element/BE-0326-scroll-to-element-ja.md) |
 <!-- /BE-METADATA -->
