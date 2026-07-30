@@ -503,8 +503,8 @@ scrolled region — the region has bottomed out and the target is not there, so 
 fast rather than scrolling the whole bound. A re-read, not a single query, settles whether a step
 changed the region. The re-read matters on Android. There the accessibility tree arrives after the
 gesture has already moved the list. A read taken meanwhile describes the pre-scroll screen, which
-looks like the end of the content. Confirming costs Android's declared budget of four seconds, on the
-step that ends a failing `scroll`. Web and iOS pay nothing, because their reads do not lag. `within`
+looks like the end of the content. Confirming costs Android's declared read budget, on the step that
+ends a failing `scroll`. Web and iOS pay nothing, because their reads do not lag. `within`
 scopes the gesture (and the end-of-content check) to one scrollable container; omitted, the whole
 screen scrolls.
 
