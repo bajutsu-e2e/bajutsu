@@ -22,8 +22,9 @@ other. The stability test passes on a tree that is merely late.
 This item replaces "the tree stopped changing" with "the tree postdates the action," at each of
 those four places. The device-side barrier gets the real fix. The resident Android reader publishes
 a mark. The mark identifies the last accessibility update it has seen. A read is trusted once that
-mark postdates the actuation, and not before. The two host-side read paths cannot see such a mark.
-They keep a bounded budget as their fallback instead.
+mark postdates the actuation, and not before. Either host-side path gets that same guarantee once
+its read reaches the resident channel. Only a one-shot `uiautomator dump` — which carries no such
+mark — falls back to a bounded budget.
 
 One of the four is already fixed in isolation. Pull request
 [#1391](https://github.com/bajutsu-e2e/bajutsu/pull/1391) added the `scroll` action. Pull request
