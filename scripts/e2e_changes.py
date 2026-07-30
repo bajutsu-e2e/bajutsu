@@ -84,13 +84,21 @@ _RUN_PATH_MODULES = (
     "capabilities",
     "capability_preflight",
     "config_source",
+    # The platform-neutral `DeviceError` base (BE-0260) both `run` and the doctor gate catch to turn
+    # a device fault into their verdict, so a change to it can change what either reports.
+    "device_errors",
     "device_id",
+    # `doctor` and `preflight` are the onboarding gate every lane runs as `bajutsu doctor
+    # --environment-only` (BE-0304), asserted by `scripts/assert_doctor_env.py` above. The assertion
+    # script was on this list from the start; the code it asserts against was not.
+    "doctor",
     "dom",
     "dotenv",
     "elements",
     "handoff",
     "interp",
     "mailbox",
+    "preflight",
     "record",
     "run_id",
     "screenshots",
@@ -120,6 +128,11 @@ _RUN_PATH = (
     r"|bajutsu/cli/_shared\.py$"
     r"|bajutsu/cli/commands/__init__\.py$"
     r"|bajutsu/cli/commands/run\.py$"
+    # The `doctor` CLI command each lane's BE-0304 onboarding gate invokes, alongside the
+    # `bajutsu/doctor.py` core it renders from (both above). Its AI-availability half
+    # (`agents/availability`, `ai/credential_gap`) stays excluded: `assert_doctor_env.py` reads only
+    # the `environment:` section, which no AI credential can move.
+    r"|bajutsu/cli/commands/doctor\.py$"
     r"|tests/driver_conformance\.py$"
     # The onboarding-gate assertion each lane's `doctor` step runs (BE-0304); a change to it must
     # re-run every lane that exercises it, so it lives in the shared core, not one lane fragment.
@@ -195,6 +208,10 @@ _LANE_PATHS: dict[str, str] = {
         # The web lifecycle environment (browser launch, context teardown) — the web half of the
         # `platform_lifecycle/` carve-out.
         r"|bajutsu/platform_lifecycle/environments/web\.py$"
+        # The real provisioner the `onboarding (doctor / provision)` job runs as `python -m
+        # bajutsu.provision --backend web` (BE-0304) to install Chromium for real. Web-only: no other
+        # lane invokes it, and the lanes never run `scripts/install.sh`, its other caller.
+        r"|bajutsu/provision\.py$"
         r"|bajutsu/cli/commands/(?:codegen|record)\.py$"
         # The serve-UI dogfood (BE-0058) drives the served SPA, so the serve backend and its templates
         # are web-CI-relevant whenever they change, not only when the harness itself does.

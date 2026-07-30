@@ -190,6 +190,43 @@ def test_shared_run_path_is_relevant_on_every_lane() -> None:
         assert is_relevant(["uv.lock"], lane) is True, lane
 
 
+def test_doctor_onboarding_gate_code_is_relevant_on_every_lane() -> None:
+    # All three lanes run `bajutsu doctor --environment-only` as the BE-0304 onboarding gate and
+    # assert its output with `scripts/assert_doctor_env.py`. The assertion script was allow-listed
+    # from the start; the code it asserts against was not, so a change to the doctor gate itself
+    # skipped every lane that exercises it — the gate could regress with all three lanes green.
+    for lane in ("ios", "android", "web"):
+        for path in (
+            "bajutsu/doctor.py",
+            "bajutsu/cli/commands/doctor.py",
+            "bajutsu/preflight.py",
+            # The platform-neutral DeviceError base (BE-0260) that both `run` and doctor catch.
+            "bajutsu/device_errors.py",
+        ):
+            assert is_relevant([path], lane) is True, (lane, path)
+
+
+def test_doctors_ai_availability_half_stays_excluded() -> None:
+    # `cli/commands/doctor.py` also reports whether AI credentials are present, via
+    # `agents/availability` and the `credential_gap` lookup `bajutsu/ai/registry.py` backs. Those
+    # stay excluded on purpose: `assert_doctor_env.py` reads only the `environment:` section, which no
+    # AI credential can move, and sweeping them in would drag the whole AI periphery onto the metered
+    # lanes.
+    for lane in ("ios", "android", "web"):
+        assert is_relevant(["bajutsu/agents/availability.py"], lane) is False, lane
+        assert is_relevant(["bajutsu/ai/registry.py"], lane) is False, lane
+        assert is_relevant(["bajutsu/ai/__init__.py"], lane) is False, lane
+
+
+def test_provision_is_web_only() -> None:
+    # The web lane's `onboarding (doctor / provision)` job runs `python -m bajutsu.provision
+    # --backend web` to install Chromium for real (BE-0304), so a provisioner change is web-relevant.
+    # No other lane invokes it: neither runs `scripts/install.sh`, its only other caller.
+    assert is_relevant(["bajutsu/provision.py"], "web") is True
+    assert is_relevant(["bajutsu/provision.py"], "ios") is False
+    assert is_relevant(["bajutsu/provision.py"], "android") is False
+
+
 def test_serve_analytics_modules_are_relevant_on_no_lane_except_web_serve() -> None:
     # The serve/analytics/crawl-periphery modules the E2E never imports must not fire any lane —
     # except that the web lane *does* exercise the serve backend (the serve-UI dogfood), so
