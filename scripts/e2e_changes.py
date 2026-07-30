@@ -24,8 +24,12 @@ split into two testable pieces:
   …) the E2E never touches; a bare ``bajutsu/*.py`` glob swept those in and burned the jobs on, e.g.,
   a serve-only PR. Each lane's own ``bajutsu/drivers/*.py`` file(s) are likewise allow-listed by
   name, not swept as a directory, so a lane fires only on the driver module its own backend actually
-  imports. A new subpackage, top-level module, driver module, or CLI command defaults to NOT
-  triggering — add its pattern to ``_RUN_PATH`` (all lanes) or the lane's own fragment.
+  imports. The per-backend ``bajutsu/platform_lifecycle/environments/*.py`` modules are split per lane
+  the same way, carved out of the otherwise-swept ``platform_lifecycle/`` package. A new subpackage,
+  top-level module, driver module, or CLI command defaults to NOT triggering — add its pattern to
+  ``_RUN_PATH`` (all lanes) or the lane's own fragment. Allow-listing a module by name carries one
+  hazard worth naming: the name is anchored with ``\\.py$``, so splitting that module into a package
+  silently stops every lane from firing on it (see ``_RUN_PATH_MODULES``).
 
 Invoked by each workflow with ``BASE_SHA`` / ``HEAD_SHA`` in the environment and ``E2E_LANE`` naming
 the lane (``ios`` — the default — / ``android`` / ``web``); it writes ``relevant=true|false`` to
@@ -65,14 +69,45 @@ from pathlib import Path
 # periphery the run never imports. `assertions` is a package (BE-0250) whose every module is on the
 # run path, so the whole package is swept. A new top-level module defaults to NOT triggering — add it
 # here (all lanes) or to a lane fragment below.
+#
+# Each name in `_RUN_PATH_MODULES` is matched with a trailing `\.py$`, so it reaches a single-file
+# module and nothing else: the day that module becomes a package, its every file stops matching and
+# the lane silently stops firing. That drift hit `config` (BE-0252) and `platform_lifecycle`
+# unnoticed, so both now live in the swept-package group below. The names are a tuple rather than
+# regex text so `test_no_by_name_module_is_actually_a_package` can check each one against the tree
+# and fail the gate on the PR that does the next such split.
+_RUN_PATH_MODULES = (
+    "_yaml",
+    "adb",
+    "artifact_perms",
+    "backends",
+    "capabilities",
+    "capability_preflight",
+    "config_source",
+    "device_id",
+    "dom",
+    "dotenv",
+    "elements",
+    "handoff",
+    "interp",
+    "mailbox",
+    "record",
+    "run_id",
+    "screenshots",
+    "simctl",
+    "totp",
+    "web_network",
+    "webview",
+)
+
 _RUN_PATH = (
-    r"bajutsu/(?:runner|scenario|orchestrator|codegen)/"
-    r"|bajutsu/(?:"
-    r"_yaml|adb|artifact_perms|backends|capabilities|capability_preflight"
-    r"|config|config_source|device_id|dom|dotenv|elements"
-    r"|handoff|interp|mailbox|platform_lifecycle|record"
-    r"|run_id|screenshots|simctl|totp|web_network|webview"
-    r")\.py$"
+    r"bajutsu/(?:runner|scenario|orchestrator|codegen|config)/"
+    # Everything in the lifecycle package except the four per-backend `Environment` leaves, which
+    # each lane claims by name below (the `bajutsu/drivers/` contract, one layer up). The carve-out
+    # names only the leaves that exist: a new `environments/<foo>.py` falls through to this sweep and
+    # fires every lane — an over-fire, the safe direction — until a lane claims it.
+    r"|bajutsu/platform_lifecycle/(?!environments/(?:android|web|xcuitest|xcuitest_live)\.py$)"
+    r"|bajutsu/(?:" + "|".join(_RUN_PATH_MODULES) + r")\.py$"
     r"|bajutsu/crawl/(?:core|serialize|__init__)\.py$"
     r"|bajutsu/agents/(?:protocols|__init__)\.py$"
     r"|bajutsu/evidence/(?:core|intervals|network|visual|golden|redaction|__init__)\.py$"
@@ -103,9 +138,15 @@ _RUN_PATH = (
 # conformance harness module, and its own workflow file. A new driver module a backend imports must
 # now be added to its lane's fragment by name — `bajutsu/drivers/` is no longer swept, so a new
 # `drivers/<foo>.py` defaults to NOT triggering (a silent under-trigger of the lane's required check).
+# The per-backend `platform_lifecycle/environments/` leaves are split the same way and for the same
+# reason, but default the other way: `platform_lifecycle/` *is* swept, minus the four leaves named
+# here, so an unclaimed environment module over-fires rather than under-fires.
 _LANE_PATHS: dict[str, str] = {
     "ios": (
         r"|bajutsu/drivers/(?:xcuitest|xcuitest_live)\.py$"
+        # The XCUITest lifecycle environments (cold spawn, the warm resident lease, the BE-0292
+        # bundled runner) — the iOS half of the `platform_lifecycle/` carve-out above.
+        r"|bajutsu/platform_lifecycle/environments/(?:xcuitest|xcuitest_live)\.py$"
         r"|bajutsu/cli/commands/(?:codegen|record)\.py$"
         r"|tests/test_driver_conformance_ondevice\.py$"
         r"|BajutsuKit/"
@@ -129,6 +170,9 @@ _LANE_PATHS: dict[str, str] = {
         r"|bajutsu/drivers/adb\.py$"
         r"|bajutsu/drivers/coordinate_tree\.py$"
         r"|bajutsu/adb_resident\.py$"
+        # The Android lifecycle environment (boot, install, the BE-0236 provision profile) — the
+        # Android half of the `platform_lifecycle/` carve-out.
+        r"|bajutsu/platform_lifecycle/environments/android\.py$"
         # The `uiautomator (codegen)` job (BE-0294) regenerates its test with `bajutsu codegen`, so a
         # change to that CLI command is android-relevant — unlike `bajutsu run`, which the other jobs
         # drive (the shared `_RUN_PATH` already sweeps the `bajutsu/codegen/` emitter package itself).
@@ -143,6 +187,9 @@ _LANE_PATHS: dict[str, str] = {
     ),
     "web": (
         r"|bajutsu/drivers/playwright\.py$"
+        # The web lifecycle environment (browser launch, context teardown) — the web half of the
+        # `platform_lifecycle/` carve-out.
+        r"|bajutsu/platform_lifecycle/environments/web\.py$"
         r"|bajutsu/cli/commands/(?:codegen|record)\.py$"
         # The serve-UI dogfood (BE-0058) drives the served SPA, so the serve backend and its templates
         # are web-CI-relevant whenever they change, not only when the harness itself does.

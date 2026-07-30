@@ -18,6 +18,7 @@ import pytest
 
 from scripts.e2e_changes import (
     _LANE_SCENARIO_PATHS,
+    _RUN_PATH_MODULES,
     affected_jobs,
     changed_files,
     classify_change,
@@ -267,6 +268,86 @@ def test_web_lane_surface() -> None:
     assert is_relevant(["bajutsu/drivers/xcuitest_live.py"], "web") is False
     assert is_relevant(["bajutsu/drivers/adb.py"], "web") is False
     assert is_relevant(["bajutsu/drivers/coordinate_tree.py"], "web") is False
+
+
+# --- The package-vs-module drift in the by-name allow-list ---------------------------------------
+# A name in `_RUN_PATH`'s by-name alternation carries a trailing `\.py$`, so it reaches one
+# single-file module. Split that module into a package and every file under it stops matching: the
+# lane's `changes` job reports `relevant=false` and the required aggregator goes green without
+# running a thing. `config` (BE-0252) and `platform_lifecycle` both drifted that way unnoticed —
+# `platform_lifecycle/environments/xcuitest.py` owns the XCUITest cold spawn the iOS lane exists to
+# exercise, and PR #1403 changed it to a fully skipped fleet. Both are swept packages now; the last
+# test here is the mechanical guard that catches the next one.
+
+
+def test_lifecycle_package_files_are_relevant() -> None:
+    # The regression: `platform_lifecycle` became a package, so every one of these matched nothing.
+    # The package root, the shared plumbing, and the environments the whole family shares fire every
+    # lane; the per-backend leaves are pinned to their own lane below.
+    for lane in ("ios", "android", "web"):
+        for path in (
+            "bajutsu/platform_lifecycle/__init__.py",
+            "bajutsu/platform_lifecycle/factories.py",
+            "bajutsu/platform_lifecycle/protocols.py",
+            "bajutsu/platform_lifecycle/readiness.py",
+            "bajutsu/platform_lifecycle/device_control.py",
+            "bajutsu/platform_lifecycle/read_session.py",
+            "bajutsu/platform_lifecycle/relaunchers.py",
+            "bajutsu/platform_lifecycle/environments/__init__.py",
+            "bajutsu/platform_lifecycle/environments/ios.py",
+            "bajutsu/platform_lifecycle/environments/_bundled_runner.py",
+            "bajutsu/platform_lifecycle/environments/fake.py",
+        ):
+            assert is_relevant([path], lane) is True, (lane, path)
+
+
+def test_lifecycle_environment_leaves_fire_only_their_own_lane() -> None:
+    # The four per-backend `Environment` leaves follow the `bajutsu/drivers/` contract one layer up:
+    # an XCUITest-only lifecycle change must not burn the Android KVM or web Playwright jobs, which
+    # never import it. Sweeping the package without this carve-out would trade the under-trigger for
+    # an over-trigger on `environments/xcuitest.py`, the most-churned file in the package.
+    owner = {
+        "bajutsu/platform_lifecycle/environments/xcuitest.py": "ios",
+        "bajutsu/platform_lifecycle/environments/xcuitest_live.py": "ios",
+        "bajutsu/platform_lifecycle/environments/android.py": "android",
+        "bajutsu/platform_lifecycle/environments/web.py": "web",
+    }
+    for path, own_lane in owner.items():
+        for lane in ("ios", "android", "web"):
+            assert is_relevant([path], lane) is (lane == own_lane), (lane, path)
+
+
+def test_config_package_files_are_relevant() -> None:
+    # The same drift, one release earlier: BE-0252 split `config.py` into a package, and config
+    # resolution feeds every lane's run, so all three must fire.
+    for lane in ("ios", "android", "web"):
+        for path in (
+            "bajutsu/config/__init__.py",
+            "bajutsu/config/resolve.py",
+            "bajutsu/config/effective.py",
+            "bajutsu/config/schema.py",
+            "bajutsu/config/accessors.py",
+        ):
+            assert is_relevant([path], lane) is True, (lane, path)
+    # `config_source.py` is a separate top-level module and still matches by name — the swept
+    # `bajutsu/config/` prefix must not be what carries it.
+    assert is_relevant(["bajutsu/config_source.py"]) is True
+
+
+def test_no_by_name_module_is_actually_a_package() -> None:
+    # The mechanical guard. Every name in the by-name alternation must still be a single-file
+    # `bajutsu/<name>.py` on disk; the day one becomes `bajutsu/<name>/`, the `\.py$` anchor silently
+    # stops matching anything and the lane stops firing. Fail here — at `make check`, on the PR that
+    # does the split — instead of discovering it from a mysteriously green required check later.
+    assert _RUN_PATH_MODULES, "the by-name allow-list is empty; every lane would stop firing"
+    repo_root = Path(__file__).resolve().parent.parent
+    for name in _RUN_PATH_MODULES:
+        module, package = repo_root / "bajutsu" / f"{name}.py", repo_root / "bajutsu" / name
+        assert module.is_file() or not package.is_dir(), (
+            f"bajutsu/{name} is a package but is allow-listed by name with a `.py$` anchor, "
+            f"so no file under it triggers any lane; move it to the swept-package group"
+        )
+        assert module.is_file(), f"bajutsu/{name}.py is allow-listed but does not exist"
 
 
 def test_unrecognized_lane_raises_instead_of_silently_substituting() -> None:
