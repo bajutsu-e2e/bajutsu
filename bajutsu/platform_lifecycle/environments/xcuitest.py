@@ -66,6 +66,21 @@ _COLD_SPAWN_ATTEMPTS = 2
 # condition wait (no fixed sleep that ignores the condition), matching the driver's own /health poll.
 _COLD_POLL_SECONDS = 0.1
 
+# The captured lines that say the XCTest run reached its end, so this runner will never bind its
+# port. `xcodebuild` outlives its own test run by a long way: on the observed ios-e2e flake the app
+# launch timed out and the suite reported failure 225s before the 300s ceiling expired, yet the
+# process stayed alive the whole time, so the liveness check (which watches the *process*) saw
+# nothing and the wait ran to the ceiling. That dead time is exactly the budget the shared ceiling
+# needed to fund a retry, so the failure BE-0319's retry exists to absorb was the one failure it
+# could never reach. Reading the terminal marker out of the capture ends the wait when the run
+# actually ended. Both outcomes end the run — a suite that passed has exited too — so neither can be
+# a runner still on its way up.
+_RUN_ENDED_MARKERS = (b"Test Suite 'All tests' failed", b"Test Suite 'All tests' passed")
+
+# Carried between probes so a marker split across two reads is still matched; one byte short of the
+# longest marker is all the overlap that can hide one.
+_RUN_ENDED_OVERLAP = max(len(m) for m in _RUN_ENDED_MARKERS) - 1
+
 
 def _allocate_port() -> int:
     """Bind an ephemeral port on localhost and return it.
@@ -161,14 +176,55 @@ def _max_warm_reuses() -> int:
         return _MAX_WARM_REUSES
 
 
+def _never_ended() -> str | None:
+    """The neutral run-ended probe: a spawn with no capture to read can only be judged by its process."""
+    return None
+
+
+def _run_ended_probe(log_path: Path | None) -> Callable[[], str | None]:
+    """Watch the growing capture for the marker that ends an XCTest run; the reason, or `None` while it runs.
+
+    The companion to the process-liveness check in `_await_cold_runner`: that one catches an
+    `xcodebuild` that *exits*, this one an `xcodebuild` that finished its test run and lingers. Only
+    the bytes appended since the previous probe are read, so polling the capture stays cheap however
+    verbose it grows.
+    """
+    if log_path is None:
+        return _never_ended
+    offset = 0
+    carry = b""
+
+    def probe() -> str | None:
+        nonlocal offset, carry
+        try:
+            with log_path.open("rb") as fh:
+                fh.seek(offset)
+                chunk = fh.read()
+                offset = fh.tell()
+        except OSError:
+            return None  # the capture may not exist yet on a spawn that failed before writing
+        if not chunk:
+            return None
+        window = carry + chunk
+        for marker in _RUN_ENDED_MARKERS:
+            if marker in window:
+                return f"the xctest run ended ({marker.decode()}) before the runner bound its port"
+        carry = window[-_RUN_ENDED_OVERLAP:]
+        return None
+
+    return probe
+
+
 @dataclass
 class _Spawned:
     """One cold-spawn attempt's live handles, injectable so the retry seam is Simulator-free (BE-0319 unit 5).
 
     Callables rather than the concrete process/driver, so a test can drive `_spawn_cold_with_retry`
     with fakes: `ready` is one `/health` probe, `poll` the `xcodebuild` handle's exit code (`None`
-    while alive), `log_tail` the captured-output trailer folded into a loud failure, and `discard`
-    the attempt's teardown.
+    while alive), `run_ended` the captured output's verdict on whether the test run already finished,
+    `log_tail` the captured-output trailer folded into a loud failure, and `discard` the attempt's
+    teardown. `run_ended` defaults to the neutral probe so a fake that exercises only the process
+    paths need not supply one.
     """
 
     driver: base.Driver
@@ -176,6 +232,7 @@ class _Spawned:
     poll: Callable[[], int | None]
     log_tail: Callable[[], str]
     discard: Callable[[], None]
+    run_ended: Callable[[], str | None] = _never_ended
 
 
 def _await_cold_runner(
@@ -189,10 +246,12 @@ def _await_cold_runner(
     """Wait for the runner to answer `/health` while watching its process; `None` if ready, else why not.
 
     A bounded condition wait (BE-0319 unit 3): each round probes `spawned.ready()` first — a runner
-    that came up wins regardless of process state — then polls `spawned.poll()`, so a runner that
-    died during startup aborts at once with its exit code rather than probing a dead port for the
-    remaining budget. Returns `None` once ready, else a failure reason (a dead process's exit code,
-    or the timeout) the caller folds the captured tail onto.
+    that came up wins regardless of the other two — then `spawned.poll()`, so a runner that died
+    during startup aborts at once with its exit code rather than probing a dead port for the
+    remaining budget, and finally `spawned.run_ended()`, which catches the failure the exit code
+    cannot: an `xcodebuild` whose test run has ended but whose process lingers (see
+    `_RUN_ENDED_MARKERS`). Returns `None` once ready, else a failure reason (a dead process's exit
+    code, an ended run, or the timeout) the caller folds the captured tail onto.
     """
     deadline = clock() + timeout
     while True:
@@ -203,6 +262,9 @@ def _await_cold_runner(
             return (
                 f"the xcodebuild process exited (code {exit_code}) before the runner bound its port"
             )
+        ended = spawned.run_ended()
+        if ended is not None:
+            return ended
         if clock() >= deadline:
             return f"health never ready within {timeout}s"
         sleep(poll)
@@ -230,9 +292,14 @@ def _spawn_cold_with_retry(
     attempt gets the whole budget; each later attempt gets only what an earlier one left unspent.
     A "health never ready" attempt spends the entire budget, so no retry follows it (a second
     full-ceiling wait would double the worst case — 300s → 600s on the ios-e2e lane — and blow a
-    job's `timeout-minutes`); a fast-failing attempt (an `xcodebuild` that exits at once, leaving the
-    budget nearly intact) still earns its retry. So the total cold-spawn wall time is bounded by
-    `timeout` regardless of how the attempts fail.
+    job's `timeout-minutes`); an attempt that fails while budget remains still earns its retry. So
+    the total cold-spawn wall time is bounded by `timeout` regardless of how the attempts fail.
+
+    Which failures leave budget is what decides whether the retry is reachable at all, so
+    `_await_cold_runner` ends the wait on the *first* evidence the attempt is doomed — a dead
+    process, or a test run that ended — rather than on the ceiling. Before it read the second,
+    a Simulator app-launch timeout (the dominant observed flake) sat at the ceiling until the budget
+    was gone and so was structurally unable to retry, which is the residual BE-0319 left behind.
     """
     from bajutsu.drivers.xcuitest import XcuitestChannelError
 
@@ -503,6 +570,9 @@ class XcuitestEnvironment(_DeviceEnvironment):
             poll=proc.poll,
             log_tail=self._runner_log_hint,
             discard=lambda: self._discard_runner(warn_on_crash=False, keep_log=True),
+            # Bound to *this* attempt's capture (the port keys the file), so a retry's probe starts
+            # from an empty offset on its own log rather than re-reading the failed attempt's marker.
+            run_ended=_run_ended_probe(self._runner_log),
         )
 
     def _resume_warm(

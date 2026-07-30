@@ -31,6 +31,7 @@ from bajutsu.platform_lifecycle.environments.xcuitest import (
     _await_cold_runner,
     _destination,
     _respawn_timeout,
+    _run_ended_probe,
     _runner_startup_timeout,
     _spawn_cold_with_retry,
     _Spawned,
@@ -863,9 +864,21 @@ def test_a_repeatable_cold_spawn_failure_fails_loudly_and_keeps_the_logs(
 
 
 def _fake_spawned(
-    *, ready: Any, poll: Any = lambda: None, tail: str = "", discard: Any = lambda: None
+    *,
+    ready: Any,
+    poll: Any = lambda: None,
+    tail: str = "",
+    discard: Any = lambda: None,
+    run_ended: Any = lambda: None,
 ) -> _Spawned:
-    return _Spawned(driver=object(), ready=ready, poll=poll, log_tail=lambda: tail, discard=discard)
+    return _Spawned(
+        driver=object(),
+        ready=ready,
+        poll=poll,
+        log_tail=lambda: tail,
+        discard=discard,
+        run_ended=run_ended,
+    )
 
 
 def test_await_cold_runner_returns_none_once_ready() -> None:
@@ -895,6 +908,80 @@ def test_await_cold_runner_fails_fast_when_the_xcodebuild_process_exits() -> Non
         spawned, timeout=999.0, poll=0.0, sleep=lambda _s: None, clock=lambda: 0.0
     )
     assert reason is not None and "exited (code 71)" in reason
+
+
+def test_run_ended_probe_reports_nothing_while_the_run_is_still_going(tmp_path: Path) -> None:
+    log = tmp_path / "runner.log"
+    log.write_bytes(b"Running tests...\n    t = 0.81s Launch com.example.app\n")
+    assert _run_ended_probe(log)() is None
+
+
+def test_run_ended_probe_detects_the_marker_appended_after_an_earlier_clean_probe(
+    tmp_path: Path,
+) -> None:
+    # The real shape: the capture grows under the probe, so a marker written *after* a probe that saw
+    # a healthy log must still be found by the next one.
+    log = tmp_path / "runner.log"
+    log.write_bytes(b"Running tests...\n")
+    probe = _run_ended_probe(log)
+    assert probe() is None
+    with log.open("ab") as fh:
+        fh.write(b"Test Suite 'All tests' failed at 2026-07-30 05:22:30.761.\n")
+    reason = probe()
+    assert reason is not None and "Test Suite 'All tests' failed" in reason
+
+
+def test_run_ended_probe_finds_a_marker_split_across_two_reads(tmp_path: Path) -> None:
+    # Each probe reads only what was appended, so a marker straddling two reads would be invisible
+    # without the carried overlap.
+    log = tmp_path / "runner.log"
+    marker = b"Test Suite 'All tests' failed"
+    log.write_bytes(marker[:10])
+    probe = _run_ended_probe(log)
+    assert probe() is None
+    with log.open("ab") as fh:
+        fh.write(marker[10:] + b" at 2026-07-30 05:22:30.761.\n")
+    assert probe() is not None
+
+
+def test_run_ended_probe_is_quiet_when_the_capture_does_not_exist(tmp_path: Path) -> None:
+    # A spawn that failed before writing anything must not be judged by a missing file.
+    assert _run_ended_probe(tmp_path / "absent.log")() is None
+    assert _run_ended_probe(None)() is None
+
+
+def test_await_cold_runner_fails_fast_when_the_test_run_ended_though_the_process_lives() -> None:
+    # The gap the process-liveness check alone cannot see: `xcodebuild` finished its test run (the
+    # app-launch timeout on the ios-e2e lane) but lingers, so `poll()` stays None and the wait would
+    # otherwise run to the ceiling. The capture's terminal marker ends it at once — the huge timeout
+    # here is never spent.
+    spawned = _fake_spawned(
+        ready=lambda: False, poll=lambda: None, run_ended=lambda: "the xctest run ended (x)"
+    )
+    # The clock advances per probe, so a wait that ignored the marker would end at the ceiling
+    # instead of spinning — the detection's absence fails this loudly rather than hanging the gate.
+    now = 0.0
+
+    def clock() -> float:
+        nonlocal now
+        now += 100.0
+        return now
+
+    reason = _await_cold_runner(
+        spawned, timeout=999.0, poll=0.0, sleep=lambda _s: None, clock=clock
+    )
+    assert reason is not None and "the xctest run ended" in reason
+    assert now == 100.0  # only the deadline was read: the marker ended the wait on the first round
+
+
+def test_await_cold_runner_ready_wins_over_an_ended_run() -> None:
+    # Probe order again: a runner answering /health is up, so a marker that landed in the same round
+    # (a suite line racing the health server) must not turn a live runner into a failure.
+    spawned = _fake_spawned(ready=lambda: True, run_ended=lambda: "the xctest run ended (x)")
+    assert (
+        _await_cold_runner(spawned, timeout=1.0, poll=0.0, sleep=lambda _s: None, clock=lambda: 0.0)
+        is None
+    )
 
 
 def test_await_cold_runner_times_out_when_never_ready_and_process_alive() -> None:
@@ -964,6 +1051,43 @@ def test_spawn_cold_does_not_retry_after_a_timeout() -> None:
         )
     assert spawns == 1  # a spent budget yields no second attempt
     assert "health never ready" in str(excinfo.value)
+
+
+def test_spawn_cold_retries_after_an_ended_run_because_it_leaves_budget() -> None:
+    # The residual BE-0319 left behind, closed. A Simulator app-launch timeout used to hold the wait
+    # at the ceiling with the process alive, spending the shared budget and so making the retry
+    # structurally unreachable — the one failure the retry existed to absorb. Detecting the ended run
+    # returns while the budget is nearly intact, so the second attempt actually runs.
+    spawns = 0
+
+    def spawn() -> _Spawned:
+        nonlocal spawns
+        spawns += 1
+        first = spawns == 1
+        return _Spawned(
+            driver=f"driver-{spawns}",
+            ready=(lambda: not first),
+            poll=lambda: None,  # the process lingers throughout: only the marker ends attempt 1
+            log_tail=lambda: "",
+            discard=lambda: None,
+            run_ended=(
+                lambda: "the xctest run ended (Test Suite 'All tests' failed)" if first else None
+            ),
+        )
+
+    # Every probe costs wall time, so a wait that ignored the marker would still reach the ceiling
+    # and spend the budget — this fails loudly (rather than spinning) if the detection is lost.
+    now = 0.0
+
+    def clock() -> float:
+        nonlocal now
+        now += 10.0
+        return now
+
+    result = _spawn_cold_with_retry(
+        spawn, timeout=300.0, poll=0.0, sleep=lambda _s: None, clock=clock
+    )
+    assert result.driver == "driver-2" and spawns == 2
 
 
 def test_spawn_cold_fails_loudly_after_exactly_two_attempts_with_both_tails() -> None:
