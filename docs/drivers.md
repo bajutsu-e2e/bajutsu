@@ -181,7 +181,9 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
   `pinch`, or a `rotate` — every gesture that moves frames wholesale — the driver records the frame
   projection the screen had beforehand, and the next coordinate resolve re-reads until the projection
   moves off that record and then holds still briefly, bounded by a wall-clock budget it announces
-  spending in full.
+  spending in full. That budget is the same number the `scroll` loop uses to confirm an end of content
+  before failing (`ReadLagProvider`, BE-0326; see [architecture](architecture.md)) — one publish lag,
+  so one budget, spent on two paths.
   Three conditions make that test mean "caught up" rather than merely "different". The hold matters
   because the catch-up is not atomic: Android republishes node bounds one node at a time, so a read
   landing mid-catch-up carries some new frames and some old, and two fast reads can both land inside
