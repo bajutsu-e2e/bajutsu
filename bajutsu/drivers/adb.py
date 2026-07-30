@@ -332,9 +332,10 @@ class AdbDriver(CoordinateTreeDriver):
         self._catchup: _Catchup | None = None
         # Whether the cached projection still describes the screen. False after anything actuates, so
         # a pan re-reads its catch-up baseline instead of inheriting a pre-actuation one
-        # (`_pan_baseline`). Every adb command clears it and every read sets it, rather than each
-        # actuator clearing it by hand: an actuator added later would otherwise silently reintroduce a
-        # stale baseline, and the false positives (a screenshot, `wm size`) only cost one extra read.
+        # (`_pan_baseline`). Actuators clear it by routing through `_act`, and every read sets it,
+        # rather than each actuator clearing it by hand: an actuator added later that reached for
+        # `_run` directly would otherwise silently reintroduce a stale baseline. Read-only commands
+        # (`screenshot`, `wm size`) stay on `_run`, so they neither clear nor re-set it.
         self._tree_current = False
 
     def _act(self, args: list[str]) -> str:
