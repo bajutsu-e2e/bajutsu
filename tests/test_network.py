@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import errno
 import json
 import socket
 import urllib.error
@@ -705,3 +706,20 @@ def test_start_bridgeable_raises_when_the_band_is_exhausted(
         c = NetworkCollector()
         with pytest.raises(OSError, match="reserved bridge band"):
             c.start_bridgeable()
+
+
+def test_start_bridgeable_reraises_a_non_occupancy_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A bind error that is not "port taken" surfaces at once. Walking the band would mask a real
+    # fault (a down loopback, a denied bind) as occupancy and end in the wrong error entirely.
+    attempts = 0
+
+    def denied(self: NetworkCollector, port: int = 0) -> int:
+        nonlocal attempts
+        attempts += 1
+        raise OSError(errno.EACCES, "permission denied")
+
+    monkeypatch.setattr(NetworkCollector, "start", denied)
+    with pytest.raises(OSError, match="permission denied") as exc:
+        NetworkCollector().start_bridgeable()
+    assert exc.value.errno == errno.EACCES  # the real error, not the band-exhausted one
+    assert attempts == 1  # gave up on the first port rather than walking the band
