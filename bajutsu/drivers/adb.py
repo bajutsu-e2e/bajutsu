@@ -264,10 +264,13 @@ class AdbDriver(CoordinateTreeDriver):
     _SCROLL_FROM_FRAC = 0.7  # swipe start, as a fraction of screen height
     _SCROLL_TO_FRAC = 0.3  # swipe end (< start ⇒ upward ⇒ content scrolls up)
     _SCROLL_DURATION_MS = 600  # the `scroll` pan duration: long enough to drag, not fling (BE-0326)
-    # The `read_lag` budget (see `read_lag`). Sized from the CI emulator, where a late tree caught up
-    # well inside it on 12 of 14 observed steps and every one of six full repeats then passed; a value
-    # near the observed lag would leave the flake in place, and it is only ever spent once, on the step
-    # that ends a `scroll`.
+    # The `read_lag` budget (see `read_lag`). Sized from the CI emulator: of 14 steps whose first read
+    # looked unchanged, 12 showed the change on a re-read well inside this budget, and six full repeats
+    # of the scroll conformance tests then passed. The remaining 2 changed only once the gesture was
+    # re-issued, so they are not explained by read lag alone — a longer budget would not have helped
+    # them, and whatever they are (a `_region_signature` blind to motion behind an element taller than
+    # the viewport is the leading candidate) is tracked separately. Only ever spent once, on the step
+    # that ends a `scroll`, so a generous value costs nothing on a step that lands.
     _READ_LAG_S = 4.0
 
     def __init__(
@@ -466,11 +469,11 @@ class AdbDriver(CoordinateTreeDriver):
         # How long a read may describe the screen as it was before the last gesture (BE-0326). Android
         # publishes the accessibility update *after* the scroll has moved the content, so a `query()`
         # taken in between returns the pre-scroll tree: on the CI emulator every step that looked
-        # unchanged had in fact moved the screen's pixels, and re-reading caught up within this budget.
-        # `waitForIdle` plus the resident channel's two-identical-dumps barrier does not close the
-        # window (BE-0245) — both dumps can land before the update and agree with each other — so the
-        # `scroll` loop is told to keep re-reading rather than call the first unchanged read the end of
-        # content. Only ever spent on a region that looks stopped, never on a step that landed.
+        # unchanged had in fact moved the screen's pixels. `waitForIdle` plus the resident channel's
+        # two-identical-dumps barrier does not close that window (BE-0245) — both dumps can land before
+        # the update and agree with each other — so the `scroll` loop is told to keep re-reading rather
+        # than call the first unchanged read the end of content. Only ever spent on a region that looks
+        # stopped, never on a step that landed.
         return self._READ_LAG_S
 
     def scroll(self, frm: base.Point, to: base.Point) -> None:
