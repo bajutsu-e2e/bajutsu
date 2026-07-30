@@ -45,6 +45,7 @@ from bajutsu.scenario.models import (
     Foreground,
     GoldenMatch,
     Gone,
+    HandleSystemAlert,
     HttpRequest,
     If,
     Interrupt,
@@ -96,6 +97,13 @@ from bajutsu.scenario.serialize import (
     redact_totp_secrets,
     scenario_dict,
 )
+from bajutsu.scenario.system_alerts import (
+    SystemAlertChoice,
+    SystemAlertPrompt,
+    UncoveredSystemAlertLocale,
+    covered_languages,
+    system_alert_label,
+)
 
 __all__ = [
     "ASSERTION_KINDS",
@@ -122,6 +130,7 @@ __all__ = [
     "Foreground",
     "GoldenMatch",
     "Gone",
+    "HandleSystemAlert",
     "HttpRequest",
     "If",
     "Interrupt",
@@ -151,12 +160,15 @@ __all__ = [
     "SetLocation",
     "Step",
     "Swipe",
+    "SystemAlertChoice",
     "SystemAlertHandling",
+    "SystemAlertPrompt",
     "TapPoint",
     "TextMatch",
     "Totp",
     "Trigger",
     "TypeText",
+    "UncoveredSystemAlertLocale",
     "Use",
     "VarTarget",
     "VisualMatch",
@@ -165,6 +177,7 @@ __all__ = [
     "Web",
     "apply_setups",
     "contained_ref",
+    "covered_languages",
     "dump_block",
     "dump_mocks",
     "dump_scenario_file",
@@ -180,4 +193,5 @@ __all__ = [
     "redact_totp_secrets",
     "scenario_dict",
     "select_scenarios",
+    "system_alert_label",
 ]

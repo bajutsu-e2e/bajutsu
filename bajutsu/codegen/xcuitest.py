@@ -227,6 +227,16 @@ def _emit_step(step: Step) -> list[str]:
         # exactly how a hand-written XCUITest clears a permission alert (BE-0316). Native idiom, no
         # screenshot, no vision model; the required timeout carries into the generated wait.
         hsa = step.handle_system_alert
+        if hsa.sel is None:
+            # The `prompt`/`choice` form's label is only deterministic because `bajutsu run` pins the
+            # Simulator's system language first (BE-0320). A generated test runs under bare
+            # `xcodebuild`, which pins nothing — so baking in the label for the target's configured
+            # locale would reintroduce exactly the machine-dependent match this form removes. A
+            # labeled TODO, like the labelMatches case below.
+            return [
+                f"// TODO: handleSystemAlert — prompt: {hsa.prompt} resolves its label from the "
+                "run's pinned locale, which a generated test does not pin; not generated"
+            ]
         el = _system_alert_element(hsa.sel.as_selector())
         if el is None:  # a real-regex labelMatches has no faithful NSPredicate form
             return [

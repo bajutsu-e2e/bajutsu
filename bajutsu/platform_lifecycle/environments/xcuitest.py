@@ -319,6 +319,11 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # leases. A real-device start (BE-0238) never sets it — warm reuse targets only the Simulator
         # runner's cold startup — so the pool tears such an environment down per lease, unchanged.
         self._reusable = False
+        # The locale this device's SpringBoard is currently pinned to (BE-0320), or None when nothing
+        # has pinned it yet. Set only by a cold `_prepare_simulator` that verified the write landed,
+        # and compared before a warm reuse — a scenario running under a different locale must not be
+        # served by a runner whose SpringBoard is still rendering the previous one.
+        self._pinned_locale: str | None = None
         # How many times the current runner has been reused warm (BE-0287): reset on a cold spawn,
         # incremented on each warm resume, and capped by `_max_warm_reuses()` so the runner is
         # respawned cold before it accumulates enough app.launch() cycles to crash mid-scenario.
@@ -362,12 +367,16 @@ class XcuitestEnvironment(_DeviceEnvironment):
 
         # Simulator: reuse a healthy warm runner across leases (BE-0291). `erase` shuts the Simulator
         # down (killing the runner), so a scenario that erases forces a cold respawn; a wedged runner
-        # is a cache miss too (Unit 4), costing one extra cold start rather than the run. The reuse
+        # is a cache miss too (Unit 4), costing one extra cold start rather than the run. A scenario
+        # under a different locale than the one this device's SpringBoard is pinned to forces a cold
+        # respawn for the same reason (BE-0320): only a cold spawn re-pins and reboots, so reusing
+        # the warm runner would run the scenario against the previous scenario's language. The reuse
         # budget (`_max_warm_reuses`) forces a cold respawn *before* the runner accumulates enough
         # app.launch() cycles to crash mid-scenario (BE-0287) — a proactive refresh, checked before the
         # health probe so a spent runner skips straight to a cold spawn.
         if (
             not pre.erase
+            and self._pinned_locale == pre.resolved_locale(eff.locale)
             and self._warm_reuses < _max_warm_reuses()
             and (driver := self._healthy_resident_driver()) is not None
         ):
@@ -554,6 +563,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
                     e.shutdown()
                     e.erase()
                 e.boot()
+                self._pin_system_locale(e, pre.resolved_locale(eff.locale))
             if ios.app_path:
                 if not Path(ios.app_path).exists():
                     raise simctl.DeviceError(
@@ -569,13 +579,60 @@ class XcuitestEnvironment(_DeviceEnvironment):
         except subprocess.CalledProcessError as exc:
             raise simctl.device_error(exc) from exc
 
+    def _pin_system_locale(self, e: simctl.Env, locale: str) -> None:
+        """Force the Simulator's *system* language to `locale`, so SpringBoard renders it too (BE-0320).
+
+        `locale` reaches the app through its own launch arguments (`simctl.locale_args`), but
+        SpringBoard — which owns the permission prompts `handleSystemAlert` taps by label — is a
+        separate process those arguments never reach. Writing the device's global domain needs a
+        booted device (`simctl spawn`), and a running SpringBoard does not pick the value up live,
+        so a write is followed by one more boot cycle before the caller installs and launches. The
+        common case (already pinned) costs one read and no extra boot.
+
+        The read-back after the reboot is what makes the pin a fact rather than a hope: a `defaults
+        write` can exit 0 and still not survive the shutdown. Only a confirmed pin is remembered —
+        `_pinned_locale` gates warm reuse, so recording an unconfirmed one would carry the doubt
+        across every later lease instead of re-checking on the next cold spawn.
+
+        Raises:
+            DeviceError: if the reboot demonstrably left the device on another locale — the run would
+                otherwise proceed against an alert language nothing predicts.
+        """
+        self._pinned_locale = None  # not pinned until the write below is confirmed
+        if not e.pin_system_locale(locale):
+            self._pinned_locale = locale  # the read already confirmed it; nothing was written
+            return
+        e.shutdown()
+        e.boot()
+        confirmed = e.system_locale_matches(locale)
+        if confirmed is False:
+            raise simctl.DeviceError(
+                f"failed to pin the Simulator's system locale to {locale!r}; "
+                "system-alert button labels would not be deterministic (BE-0320)"
+            )
+        if confirmed is None:
+            # Nothing was observed to be wrong, so the run proceeds — but the pin is unconfirmed, so
+            # it is not recorded: the next lease cold-spawns and re-checks rather than reusing a
+            # runner on the strength of a write we could not read back.
+            _logger.warning(
+                "could not read the Simulator's global domain back after pinning it to %r; "
+                "the run continues, but warm-runner reuse is disabled until a spawn confirms it "
+                "(BE-0320)",
+                locale,
+            )
+            return
+        self._pinned_locale = locale
+
     def _launch_params(
         self, eff: Effective, pre: Preconditions, extra_env: Mapping[str, str] | None
     ) -> tuple[dict[str, str], list[str]]:
         """The launch env and args for this scenario (scenario locale overrides the config default)."""
         launch_env = {**eff.launch_env, **pre.launch_env, **(extra_env or {})}
-        locale = pre.locale or eff.locale
-        launch_args = [*eff.launch_args, *pre.launch_args, *simctl.locale_args(locale)]
+        launch_args = [
+            *eff.launch_args,
+            *pre.launch_args,
+            *simctl.locale_args(pre.resolved_locale(eff.locale)),
+        ]
         return launch_env, launch_args
 
     def _runner_alive(self) -> bool:

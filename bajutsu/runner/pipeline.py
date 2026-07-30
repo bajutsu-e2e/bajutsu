@@ -430,6 +430,10 @@ class _ScenarioRunner:
                 # interstitial handler composes with a per-scenario addition, the config-then-scenario
                 # order the systemAlertHandling default already follows.
                 interrupts=[*self.eff.run_defaults.interrupts, *s.interrupts],
+                # The locale this scenario runs under — the same value the lease pinned the
+                # Simulator's system language to, so a `handleSystemAlert` naming a prompt and a
+                # choice resolves to the label SpringBoard is actually rendering (BE-0320).
+                locale=s.preconditions.resolved_locale(self.eff.locale),
             )
             result.sid = sid  # the evidence-dir slug, so the matrix links to the real dir (BE-0076)
             result.device = lz.udid  # attribute the scenario to the device that ran it

@@ -68,7 +68,7 @@ def device_relauncher(
                 **(extra_env or {}),
                 **(opts.env or {}),
             }
-            locale = pre.locale or eff.locale
+            locale = pre.resolved_locale(eff.locale)
             launch_args = [
                 *eff.launch_args,
                 *pre.launch_args,

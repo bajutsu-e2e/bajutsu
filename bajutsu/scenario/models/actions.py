@@ -13,6 +13,11 @@ from pydantic import Field, model_validator
 
 from bajutsu.scenario.models._base import Point, _Model
 from bajutsu.scenario.models.selector import Selector
+from bajutsu.scenario.system_alerts import (
+    SystemAlertChoice,
+    SystemAlertPrompt,
+    system_alert_label,
+)
 
 
 def _check_regex(pattern: str, field: str) -> None:
@@ -63,13 +68,41 @@ class HandleSystemAlert(_Model):
     carries no app-assigned identifier, trait set, or value — only its visible text. `sel` therefore
     accepts the label-based fields alone (`label` / `labelMatches` / `index`) and rejects the rest at
     parse time. `timeout` bounds the condition wait for the prompt, required exactly as `wait`'s is.
+
+    Two ways to name the button, exactly one per step:
+        handleSystemAlert: { sel: { label: "Allow" }, timeout: 10 }
+        handleSystemAlert: { prompt: notifications, choice: grant, timeout: 10 }
+
+    The second form states the *intent* and lets the run resolve the label from the scenario's
+    locale (BE-0320), for the two prompts a `permissions` preset cannot pre-answer — notification
+    authorization and App Tracking Transparency. It is worth reaching for because the literal text
+    is easy to get subtly wrong: English's own deny button spells its apostrophe typographically, not
+    as the ASCII character a hand-typed label carries. Every other alert keeps naming its button
+    through `sel`, unchanged.
     """
 
-    sel: Selector
+    sel: Selector | None = None
+    prompt: SystemAlertPrompt | None = None
+    choice: SystemAlertChoice | None = None
     timeout: float
 
     @model_validator(mode="after")
+    def _one_way_to_name_the_button(self) -> Self:
+        # The pairing check runs first, so a step carrying only one half of the intent form is told
+        # what is actually wrong rather than the misleading "neither form was given".
+        if (self.prompt is None) != (self.choice is None):
+            raise ValueError("handleSystemAlert prompt and choice are set together (§6.2)")
+        if (self.sel is None) == (self.prompt is None):
+            raise ValueError(
+                "handleSystemAlert names its button either by sel or by prompt + choice, "
+                "never both and never neither (§6.2)"
+            )
+        return self
+
+    @model_validator(mode="after")
     def _label_only_selector(self) -> Self:
+        if self.sel is None:
+            return self
         disallowed = sorted(
             f for f in self.sel.model_fields_set if f not in _SYSTEM_ALERT_SEL_FIELDS
         )
@@ -82,6 +115,23 @@ class HandleSystemAlert(_Model):
                 f"a SpringBoard alert button carries no {aliases} (§6.2)"
             )
         return self
+
+    def resolved(self, locale: str) -> HandleSystemAlert:
+        """This step with `prompt`/`choice` turned into the `sel` the locale's SpringBoard renders.
+
+        A `sel` form returns unchanged, so the resolution is a no-op for every alert outside the two
+        prompts the lookup covers.
+
+        Raises:
+            UncoveredSystemAlertLocale: the lookup has no labels for the locale's language — the
+                step fails loudly rather than tapping a guessed button.
+        """
+        if self.prompt is None or self.choice is None:
+            return self
+        label = system_alert_label(self.prompt, self.choice, locale)
+        return self.model_copy(
+            update={"sel": Selector(label=label), "prompt": None, "choice": None}
+        )
 
 
 class TapPoint(_Model):

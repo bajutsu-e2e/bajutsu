@@ -27,7 +27,11 @@ from bajutsu.orchestrator.evidence_rules import (
     _run_extract,
     requested_intervals,
 )
-from bajutsu.orchestrator.substitution import _interp_asserts, _interp_step
+from bajutsu.orchestrator.substitution import (
+    _interp_asserts,
+    _interp_step,
+    _resolve_system_alert,
+)
 from bajutsu.orchestrator.types import (
     AlertEvent,
     AlertGuardConfig,
@@ -62,6 +66,7 @@ from bajutsu.scenario import (
     Scenario,
     Selector,
     Step,
+    UncoveredSystemAlertLocale,
 )
 from bajutsu.webview import DomSource, WebContextDriver
 
@@ -379,6 +384,7 @@ def run_scenario(
     webview_bridge: DomSource | None = None,
     transitions: TransitionSource = _no_transitions,
     interrupts: list[Interrupt] | None = None,
+    locale: str | None = None,
 ) -> RunResult:
     """Run one scenario deterministically, firing capturePolicy rules into `sink`.
 
@@ -431,6 +437,7 @@ def run_scenario(
             webview_bridge,
             transitions,
             interrupts,
+            locale,
         )
         if failure is None and scenario.expect:
             expect = _interp_asserts(scenario.expect, live_bindings)
@@ -645,6 +652,7 @@ def _run_steps(
     webview_bridge: DomSource | None = None,
     transitions: TransitionSource = _no_transitions,
     interrupts: list[Interrupt] | None = None,
+    locale: str | None = None,
 ) -> str | None:
     """Run the step loop, appending outcomes; return the failure string or None.
 
@@ -747,7 +755,19 @@ def _run_steps(
                     return f"step {idx} ({kind}): {reason}"
                 continue
 
-            interp_step = _interp_step(step, bindings)
+            # Interpolate ${...} tokens, then turn a `handleSystemAlert` naming a prompt and a
+            # choice into the concrete button label this run's locale renders (BE-0320). Resolving
+            # here rather than per action kind means nested steps — `if` / `forEach` branches and an
+            # interrupt's recovery — all arrive already resolved, since they come back through here.
+            # A locale the lookup does not cover fails this step loudly, like the blocks above; it
+            # never falls back to a guessed label.
+            try:
+                interp_step = _resolve_system_alert(_interp_step(step, bindings), locale)
+            except UncoveredSystemAlertLocale as exc:
+                outcome.ok, outcome.reason = False, str(exc)
+                outcome.duration_s = clock.now() - start
+                outcomes.append(outcome)
+                return f"step {idx} ({kind}): {exc}"
             # `before` is needed only for a `screenChanged` policy. Reuse the previous step's
             # post-step tree when we have one (same device state — nothing actuated in between), so
             # the read drops to (near) zero across the scenario; only the first step, or a step after

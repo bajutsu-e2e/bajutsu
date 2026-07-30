@@ -146,6 +146,7 @@ iOS バックエンドは **SpringBoard レベルのプロンプト**（通知�
 許可ではなく拒否するには、拒否側のボタンを指定します（`handleSystemAlert: { sel: { label: "Don't Allow" }, timeout: 5 }`）。
 
 - **`sel` は label 系のみです。** SpringBoard のアラートボタンは、アプリが割り当てた identifier も trait も value も持たず、見えているテキストしか持ちません。そのため `sel` は `label` / `labelMatches` / `index` を受け付け、`id` / `idMatches` / `traits` / `value` / `within` はパース時に拒否します。
+- **run が一致させるべき label は、ターゲットの [`locale`](configuration.md#設定の階層defaults--targets) が描画するものです。** プロンプトを所有しているのは SpringBoard なので、以前は Simulator がたまたま持っていたシステム言語で描画されていました。つまり `label: "Allow"` が通るのは英語の環境だけで、日本語の環境では失敗しました。現在は、アプリを起動する前に Simulator 自身のシステム言語をその `locale` に固定するため、CI でも、同僚の Mac でも、コントリビューターの Simulator でも、`label` / `labelMatches` は同じように解決します（[BE-0320](../../roadmaps/BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md)）。
 - **`timeout` は必須です。** `wait` とまったく同じで、プロンプトを待つ条件待機には明示的な上限が要ります。ステップはプロンプトを待ち込んでから tap します。固定の sleep はありません。
 - **0 件・複数件は即座に失敗します。** `timeout` 以内にプロンプトが現れなければステップは失敗します。label に一致するボタンが複数あるときは、`index` が n 番目を選ぶ場合を除いて曖昧として失敗します。あらゆる[セレクタ](selectors.md)が従う規則を、アラートのボタンに当てはめたものです。
 - **iOS（XCUITest）専用です。** この能力を宣言するのは iOS バックエンドだけなので、Android や web バックエンドに対して `handleSystemAlert` を指定したシナリオは、デバイスを操作する前の **preflight** で失敗します。Android はシステムダイアログを通常の要素ツリーに出すため、そこでは素の `tap` で届きます。web バックエンドには OS レベルのプロンプト自体がありません。
@@ -157,6 +158,23 @@ iOS バックエンドは **SpringBoard レベルのプロンプト**（通知�
 | `permissions` | そもそも避けられる OS 権限プロンプト | 起動前、アプリが動き出す前 | 決定的なデバイス操作 |
 | `handleSystemAlert` | **既知の**、途中で tap するつもりのプロンプト | 作者が置いた明示的なステップ | 決定的（ネイティブなアクセシビリティ tap） |
 | `systemAlertHandling` | ツリーに見えない**想定外**のプロセス外プロンプト | ステップや wait がブロックされたときに反応 | XCUITest ではネイティブの SpringBoard 照会（モデルなし、BE-0316 を再利用）。AI 視覚はフォールバック |
+
+### テキストではなく意図で指定する
+
+`permissions` では先回りできないプロンプトが 2 つあります。Transparency, Consent, and Control（TCC）のサービスではない通知の許可と、`simctl` の切り替え手段がまったくない App Tracking Transparency（ATT）です。この 2 つについては、`sel` の代わりに `prompt` と `choice` を指定できます。固定した `locale` が描画する label は run が解決します（[BE-0320](../../roadmaps/BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md)）。
+
+```yaml
+- handleSystemAlert: { prompt: notifications, choice: grant, timeout: 5 }
+```
+
+`prompt` は `notifications` か `tracking`、`choice` は `grant` か `deny` です。ボタンを意味で指定するため、同じファイルが `en_US` でも `ja_JP` でもプロンプトを許可します。どちらの言語のテキストも作者が書き写す必要はありません。これは英語だけを使う場合にも役立ちます。英語の拒否ボタンのアポストロフィは、手で打った label が持つ ASCII 文字ではなく、活字体のアポストロフィ（`Don’t Allow`）だからです。
+
+この対応表がまだ扱っていない言語（現時点では英語と日本語のみ）の locale を指定した場合、推測した label を tap するのではなく、扱える言語を名指ししてステップが明示的に失敗します。ほかのアラートは、これまでどおり `sel` でボタンを指定します。
+
+使う前に知っておきたい制限が 2 つあります。
+
+- **Simulator 専用です。** 言語の固定は `simctl` の操作なので、`xcuitest.deviceType: device` の target は実機が持つシステム言語のまま動きます。この形では、画面に出ている保証のない label を解決してしまいます。実機ではボタンを `sel.label` で指定してください。
+- **リアクティブなガードが持つ拒否ラベルの初期値は英語のままです。** `systemAlertHandling` が組み込みで持つラベル（`Don't Allow`、`Not Now`、`Cancel` など）は英語の文字列そのものです。そのため英語以外の `locale` ではネイティブ経路が一致せず、AI 視覚のガードへフォールバックします。決定的に保つには、固定した言語のラベルを `instruction` のリストで明示してください。
 
 （[`demos/showcase/scenarios/permission_system_alert.yaml`](../../demos/showcase/scenarios/permission_system_alert.yaml) 実物）
 

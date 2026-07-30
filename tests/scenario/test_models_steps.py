@@ -6,6 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from bajutsu.scenario import (
+    HandleSystemAlert,
     Step,
 )
 
@@ -293,4 +294,59 @@ def test_handle_system_alert_is_one_action() -> None:
     with pytest.raises(ValidationError):
         Step.model_validate(
             {"handleSystemAlert": {"sel": {"label": "Allow"}, "timeout": 5}, "tap": {"id": "a"}}
+        )
+
+
+def test_handle_system_alert_parses_the_prompt_and_choice_form() -> None:
+    # BE-0320: the intent form, for the two prompts a `permissions` preset cannot pre-answer. `sel`
+    # stays unset until the run resolves it against its locale.
+    step = Step.model_validate(
+        {"handleSystemAlert": {"prompt": "notifications", "choice": "grant", "timeout": 5}}
+    )
+    assert step.handle_system_alert is not None
+    assert step.handle_system_alert.sel is None
+    assert step.handle_system_alert.prompt == "notifications"
+    assert step.handle_system_alert.choice == "grant"
+
+
+def test_handle_system_alert_resolves_the_prompt_form_against_a_locale() -> None:
+    step = Step.model_validate(
+        {"handleSystemAlert": {"prompt": "notifications", "choice": "deny", "timeout": 5}}
+    )
+    assert step.handle_system_alert is not None
+    resolved = step.handle_system_alert.resolved("ja_JP")
+    assert resolved.sel is not None and resolved.sel.label == "許可しない"
+    # The prompt/choice pair is consumed, so the resolved step satisfies the same one-way-to-name-
+    # the-button invariant a hand-written `sel` step does.
+    assert resolved.prompt is None and resolved.choice is None
+    assert HandleSystemAlert.model_validate(resolved.model_dump(by_alias=True, exclude_none=True))
+
+
+def test_handle_system_alert_leaves_a_sel_form_untouched_when_resolved() -> None:
+    step = Step.model_validate({"handleSystemAlert": {"sel": {"label": "Allow"}, "timeout": 5}})
+    assert step.handle_system_alert is not None
+    assert step.handle_system_alert.resolved("ja_JP") is step.handle_system_alert
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        # Both forms at once: which one wins would be silent and arbitrary.
+        {"sel": {"label": "Allow"}, "prompt": "notifications", "choice": "grant", "timeout": 5},
+        {"timeout": 5},  # neither form: nothing names a button
+        {"prompt": "notifications", "timeout": 5},  # a prompt with no choice
+        {"choice": "grant", "timeout": 5},  # a choice with no prompt
+    ],
+)
+def test_handle_system_alert_names_its_button_exactly_one_way(payload: dict[str, object]) -> None:
+    with pytest.raises(ValidationError, match="handleSystemAlert"):
+        Step.model_validate({"handleSystemAlert": payload})
+
+
+def test_handle_system_alert_rejects_an_unknown_prompt() -> None:
+    # The lookup covers two prompts by design; anything else is a scenario error at parse time, not
+    # a run-time miss.
+    with pytest.raises(ValidationError):
+        Step.model_validate(
+            {"handleSystemAlert": {"prompt": "camera", "choice": "grant", "timeout": 5}}
         )

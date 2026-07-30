@@ -217,8 +217,24 @@ def _write_runner(tmp_path: Path) -> Path:
     return runner
 
 
+def _globals_plist(locale: str | None) -> str:
+    """The device's global preference domain as `defaults export` renders it (BE-0320).
+
+    `None` models a device that carries no pinned language — an unwritten domain — which is what a
+    fresh fake device starts from.
+    """
+    if locale is None:
+        return plistlib.dumps({}).decode()
+    language, _, _ = locale.partition("_")
+    return plistlib.dumps({"AppleLanguages": [language], "AppleLocale": locale}).decode()
+
+
 def _fake_toolchain(
-    monkeypatch: pytest.MonkeyPatch, *, wedged: dict[str, bool] | None = None
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    wedged: dict[str, bool] | None = None,
+    system_locale: dict[str, str | None] | None = None,
+    export_fails: bool = False,
 ) -> tuple[list[list[str]], list[list[str]], simctl.RunFn]:
     """Fake Popen (the runner), the driver factory, and simctl; return (popen log, simctl log, run).
 
@@ -226,9 +242,16 @@ def _fake_toolchain(
     given, makes the driver's *warm* health probe (`_WARM_HEALTH_TIMEOUT`) raise while `wedged["v"]`
     is True, so a test can wedge the reused runner; the cold-startup `await_ready` (the long timeout)
     always succeeds, so a respawn still comes up.
+
+    `system_locale`, when given, models the device's global preference domain in `["v"]` — the fake
+    device answers `defaults export` from it and a `defaults write` updates it, so a test can drive
+    the BE-0320 pin the way a real Simulator would answer. Omitted, the domain reads as unwritten and
+    every cold spawn pins it. `export_fails` instead makes every read of that domain fail, modelling
+    a device whose pin can be written but never confirmed.
     """
     popen_argvs: list[list[str]] = []
     simctl_calls: list[list[str]] = []
+    domain: dict[str, str | None] = system_locale if system_locale is not None else {"v": None}
 
     def _popen(argv: list[str], **_kw: Any) -> _FakeProc:
         popen_argvs.append(argv)
@@ -242,9 +265,17 @@ def _fake_toolchain(
         def health_ready(self) -> bool:
             return True  # the cold runner answers /health at once (BE-0319 unit 3)
 
-    def _run(argv: list[str], env: object = None) -> subprocess.CompletedProcess[bytes]:
+    def _run(argv: list[str], env: object = None) -> str:
         simctl_calls.append(argv)
-        return subprocess.CompletedProcess(argv, 0, b"", b"")
+        if argv[2:3] == ["erase"]:
+            domain["v"] = None  # a real erase wipes the device's preferences with everything else
+        if argv[4:7] == ["defaults", "export", "-globalDomain"]:
+            if export_fails:
+                raise subprocess.CalledProcessError(1, argv, stderr="device not booted")
+            return _globals_plist(domain["v"])
+        if argv[4:8] == ["defaults", "write", "-globalDomain", "AppleLocale"]:
+            domain["v"] = argv[-1]
+        return ""
 
     monkeypatch.setattr(subprocess, "Popen", _popen)
     monkeypatch.setattr(backends, "make_driver", lambda *_a, **_k: _Driver())
@@ -263,6 +294,151 @@ def test_start_reuses_a_healthy_runner_across_leases(
     assert env.has_reusable_resident()
     env.start(eff, Preconditions())  # warm: reuse it
     assert len(popen_argvs) == 1  # the runner was spawned once and reused (BE-0291)
+
+
+# --- pinning the Simulator's own system language (BE-0320) --- #
+#
+# SpringBoard owns the permission prompts `handleSystemAlert` taps by label, and no app launch
+# argument reaches it — so a cold spawn writes the device's global preference domain and reboots,
+# and a warm reuse is gated on the resolved locale still matching. Same fake points as above.
+
+
+def _sim_eff_locale(*, test_runner: str, locale: str) -> Effective:
+    cfg = (
+        f"defaults:\n  locale: {locale}\n"
+        f"targets:\n  s:\n    bundleId: com.x\n    xcuitest:\n      testRunner: {test_runner}\n"
+    )
+    return resolve(load_config(cfg), "s")
+
+
+def _verbs(simctl_calls: list[list[str]]) -> list[str]:
+    return [c[2] for c in simctl_calls if c[:2] == ["xcrun", "simctl"]]
+
+
+def test_cold_spawn_pins_the_system_locale_and_reboots_for_it(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # A device on another language is written and rebooted: `simctl spawn` needs a booted device, and
+    # a running SpringBoard does not pick a global-domain write up live, so the value only reaches
+    # the alert text on the *next* boot. The write must land before the app is installed and launched.
+    domain: dict[str, str | None] = {"v": "en_US"}
+    _, simctl_calls, run = _fake_toolchain(monkeypatch, system_locale=domain)
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    env.start(
+        _sim_eff_locale(test_runner=str(_write_runner(tmp_path)), locale="ja_JP"), Preconditions()
+    )
+
+    assert domain["v"] == "ja_JP"  # the device now carries the configured locale
+    assert simctl.system_locale_cmds("UDID", "ja_JP")[0] in simctl_calls
+    # boot (the initial one) -> spawn (the read, then the two writes) -> shutdown -> boot (the one
+    # that re-renders SpringBoard) -> spawn (the read-back that verifies it took).
+    assert _verbs(simctl_calls) == [
+        "boot",
+        "spawn",
+        "spawn",
+        "spawn",
+        "shutdown",
+        "boot",
+        "spawn",
+    ]
+
+
+def test_cold_spawn_skips_the_extra_boot_when_the_device_already_matches(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The common case — a Simulator already on the configured locale, or one an earlier spawn pinned.
+    # Reading the domain is enough to know, so a cold spawn pays one read instead of a second boot.
+    _, simctl_calls, run = _fake_toolchain(monkeypatch, system_locale={"v": "en_US"})
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    env.start(
+        _sim_eff_locale(test_runner=str(_write_runner(tmp_path)), locale="en_US"), Preconditions()
+    )
+
+    assert _verbs(simctl_calls).count("boot") == 1  # no second boot cycle
+    assert not any("write" in c for c in simctl_calls)
+
+
+def test_a_locale_change_forces_a_cold_respawn_rather_than_a_stale_warm_reuse(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # Only a cold spawn re-pins and reboots, so reusing the warm runner for a scenario under another
+    # locale would run it against the previous scenario's SpringBoard language — the very accident
+    # this item removes. The mismatch is a cache miss, exactly as `erase` and a wedged runner are.
+    domain: dict[str, str | None] = {"v": "en_US"}
+    popen_argvs, simctl_calls, run = _fake_toolchain(monkeypatch, system_locale=domain)
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    eff = _sim_eff_locale(test_runner=str(_write_runner(tmp_path)), locale="en_US")
+
+    env.start(eff, Preconditions())
+    env.start(eff, Preconditions(locale="ja_JP"))  # the per-scenario override wins over the config
+
+    assert len(popen_argvs) == 2  # the locale change forced a fresh runner
+    assert domain["v"] == "ja_JP"
+    assert simctl.system_locale_cmds("UDID", "ja_JP")[1] in simctl_calls
+
+
+def test_the_same_locale_still_reuses_the_warm_runner(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The gate keys on the *resolved* locale, so a scenario whose override merely restates the
+    # target's own `locale` is not a mismatch — it still resumes warm (BE-0291 amortization intact).
+    popen_argvs, _, run = _fake_toolchain(monkeypatch, system_locale={"v": "en_US"})
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    eff = _sim_eff_locale(test_runner=str(_write_runner(tmp_path)), locale="en_US")
+
+    env.start(eff, Preconditions())
+    env.start(eff, Preconditions(locale="en_US"))
+
+    assert len(popen_argvs) == 1
+
+
+def test_a_pin_that_does_not_take_fails_loudly(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # A device that reads back another locale after the write and reboot would run the scenario
+    # against an alert language nothing predicts — fail rather than proceed (determinism first).
+    def run(argv: list[str], env: object = None) -> str:
+        return _globals_plist("en_US") if "export" in argv else ""
+
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    eff = _sim_eff_locale(test_runner=str(_write_runner(tmp_path)), locale="ja_JP")
+    with pytest.raises(simctl.DeviceError, match="BE-0320"):
+        env.start(eff, Preconditions())
+
+
+def test_an_erasing_cold_spawn_re_pins_the_wiped_domain(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # `erase` wipes the device's preferences, so the pin has to run *after* it — moving the pin above
+    # the erase would leave the second scenario on whatever language the wiped device boots with.
+    domain: dict[str, str | None] = {"v": "ja_JP"}
+    _, simctl_calls, run = _fake_toolchain(monkeypatch, system_locale=domain)
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    eff = _sim_eff_locale(test_runner=str(_write_runner(tmp_path)), locale="ja_JP")
+
+    env.start(eff, Preconditions(erase=True))
+
+    assert domain["v"] == "ja_JP"  # re-pinned after the wipe, not left to the boot default
+    verbs = _verbs(simctl_calls)
+    assert verbs.index("erase") < verbs.index("spawn")
+
+
+def test_an_unconfirmable_pin_runs_on_but_is_not_remembered(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # A device whose global domain cannot be read back after the reboot is not an observed mismatch,
+    # so the run proceeds — but the pin is unconfirmed, so it must not be recorded: warm reuse is
+    # gated on it, and remembering it would carry the doubt across every later lease.
+    popen_argvs, _, run = _fake_toolchain(monkeypatch, export_fails=True)
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    eff = _sim_eff_locale(test_runner=str(_write_runner(tmp_path)), locale="ja_JP")
+
+    env.start(eff, Preconditions())  # no raise: nothing was observed to be wrong
+    assert env._pinned_locale is None
+    env.start(eff, Preconditions())
+    assert (
+        len(popen_argvs) == 2
+    )  # the unconfirmed pin blocked warm reuse, so the next lease is cold
 
 
 def test_start_respawns_the_runner_when_the_scenario_erases(
@@ -656,8 +832,10 @@ def test_a_repeatable_cold_spawn_failure_fails_loudly_and_keeps_the_logs(
 
         def await_ready(self, timeout: float = 10.0) -> None: ...
 
-    def _run(argv: list[str], env: object = None) -> subprocess.CompletedProcess[bytes]:
-        return subprocess.CompletedProcess(argv, 0, b"", b"")
+    def _run(argv: list[str], env: object = None) -> str:
+        # A device already on the configured locale, so the BE-0320 pin is a no-op here and this
+        # test still exercises only the cold-spawn retry it is about.
+        return _globals_plist("en_US") if "export" in argv else ""
 
     monkeypatch.setattr(subprocess, "Popen", lambda *_a, **_k: _DeadProc())
     monkeypatch.setattr(backends, "make_driver", lambda *_a, **_k: _Driver())

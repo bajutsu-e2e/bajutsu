@@ -178,6 +178,13 @@ To dismiss the prompt rather than accept it, target the dismissive button
 - **`sel` is label-based only.** A SpringBoard alert button carries no app-assigned identifier, trait,
   or value — only its visible text — so `sel` accepts `label` / `labelMatches` / `index` and rejects
   `id` / `idMatches` / `traits` / `value` / `within` at parse time.
+- **The label a run must match is the one the target's [`locale`](configuration.md#config-layering-defaults--targets)
+  renders.** SpringBoard owns the prompt, so it used to render in whatever system language the
+  Simulator happened to carry — making `label: "Allow"` work by accident on an English machine and
+  fail on a Japanese one. A run now pins the Simulator's own system language to that `locale` before
+  the app launches, so `label` / `labelMatches` resolve identically on CI, on a teammate's Mac, and on
+  a contributor's Simulator alike
+  ([BE-0320](../roadmaps/BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism.md)).
 - **`timeout` is required**, exactly as for `wait`: a condition wait for the prompt needs an explicit
   bound. The step waits the prompt in, then taps — no fixed sleep.
 - **Fail-fast on zero or many.** No prompt within `timeout` fails the step; more than one button
@@ -195,6 +202,37 @@ When to reach for `handleSystemAlert` versus the two alert fields it stands besi
 | `permissions` | an OS permission prompt you can avoid outright | pre-launch, before the app starts | deterministic device mutation |
 | `handleSystemAlert` | a **known** mid-flow prompt you mean to tap | an explicit step where you place it | deterministic (native accessibility tap) |
 | `systemAlertHandling` | an **unexpected** out-of-process prompt the tree cannot see | reactive, when a step or wait is blocked | native SpringBoard query on XCUITest (no model, reusing BE-0316); AI-vision fallback |
+
+### Naming the intent instead of the text
+
+For the two prompts `permissions` cannot pre-answer — notification authorization, which is not a
+TCC (Transparency, Consent, and Control) service, and App Tracking Transparency (ATT), which has no
+`simctl` toggle at all — the step takes a `prompt` and a `choice` in place of `sel`, and the run
+resolves the label the pinned `locale` renders
+([BE-0320](../roadmaps/BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism.md)):
+
+```yaml
+- handleSystemAlert: { prompt: notifications, choice: grant, timeout: 5 }
+```
+
+`prompt` is `notifications` or `tracking`; `choice` is `grant` or `deny`. One step names the button by
+its meaning, so the same file grants the prompt under `en_US` and under `ja_JP` without an author
+transcribing either language's text — worth having even for English alone, whose deny button spells
+its apostrophe typographically (`Don’t Allow`), not as the ASCII character a hand-typed label carries.
+
+A locale whose language the lookup does not cover (today: English and Japanese) fails the step
+loudly, naming what is covered, rather than tapping a guessed button. Every other alert keeps naming
+its button through `sel`, unchanged.
+
+Two limits are worth knowing before reaching for it:
+
+- **The Simulator only.** The pin is a `simctl` operation, so a target on `xcuitest.deviceType:
+  device` runs against whatever system language the physical device carries — the intent form would
+  resolve a label nothing guarantees is on screen. Name the button with `sel.label` there.
+- **The reactive guard's default labels are still English.** `systemAlertHandling`'s built-in
+  dismissive labels (`Don't Allow`, `Not Now`, `Cancel`, …) are literal English text, so under a
+  non-English `locale` the native path finds no match and falls back to the AI-vision guard. Give
+  the guard an explicit `instruction` list in the pinned language to keep it deterministic.
 
 (real file:
 [`demos/showcase/scenarios/permission_system_alert.yaml`](../demos/showcase/scenarios/permission_system_alert.yaml))
@@ -361,7 +399,7 @@ actions in one step is a validation error (`scenario/models/steps.py` `_one_acti
 | `scroll` | `scroll: { to: <Selector>, direction?: up\|down\|left\|right, within?: <Selector>, maxScrolls?: <int> }` | scroll (non-inertially) until `to` is on-screen, or fail at a bound; `direction` is **scroll** direction (default `down`), the inverse of `swipe`'s |
 | `pinch` | `pinch: { sel: <Selector>, scale: <num> }` | two-finger magnify; `scale > 0` (`>1` zooms in, `<1` out) |
 | `rotate` | `rotate: { sel: <Selector>, radians: <num> }` | two-finger rotation; `>0` is clockwise |
-| `handleSystemAlert` | `handleSystemAlert: { sel: <Selector>, timeout: <sec> }` | tap a button on an iOS SpringBoard permission prompt, deterministically ([below](#handlesystemalert-the-deterministic-system-alert-step)); iOS (XCUITest) only. `sel` accepts only `label` / `labelMatches` / `index` |
+| `handleSystemAlert` | `handleSystemAlert: { sel: <Selector>, timeout: <sec> }` | tap a button on an iOS SpringBoard permission prompt, deterministically ([below](#handlesystemalert-the-deterministic-system-alert-step)); iOS (XCUITest) only. `sel` accepts only `label` / `labelMatches` / `index`, and resolves against the system language the run pins the Simulator to. In place of `sel`, `prompt: notifications\|tracking` + `choice: grant\|deny` names the button by meaning and lets the run resolve its label (BE-0320) |
 | `wait` | `wait: { for\|until: ..., timeout: <sec> }` | condition wait (below) |
 | `assert` | `assert: [ <Assertion>... ]` | mid-step verification |
 | `relaunch` | `relaunch: { env?: {...}, args?: [...] }` | terminate + relaunch the app (re-applying launch env/args, plus the given overrides), then wait until ready |

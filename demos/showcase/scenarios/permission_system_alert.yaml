@@ -1,6 +1,6 @@
 # handleSystemAlert (BE-0316): the deterministic, native counterpart to permission.yaml's vision
 # `systemAlertHandling` grant of the same notification prompt. It fires the OS notification-permission
-# request, then taps the SpringBoard prompt's "Allow" button by a native accessibility query — no
+# request, then taps the SpringBoard prompt's grant button by a native accessibility query — no
 # screenshot, no vision model, no Claude API key — so the whole flow stays deterministic (prime
 # directive 1: AI never decides pass/fail). `systemAlertHandling: false` proves it: with the vision guard
 # off, a handleSystemAlert that failed to tap would fail the run rather than be rescued by the guard,
@@ -26,7 +26,10 @@
     - assert:
         - value: { sel: { id: perm.notif.value }, equals: "notDetermined" }
     - tap: { id: perm.requestNotif }                              # fires the OS permission request
-    - handleSystemAlert: { sel: { label: "Allow" }, timeout: 10 }  # tap the prompt's button by label
+    # Name the intent, not the text (BE-0320): the run pins the Simulator's system language to the
+    # target's `locale` and resolves the label SpringBoard renders under it, so this same file grants
+    # the prompt on a contributor's Japanese Simulator as well as on CI's.
+    - handleSystemAlert: { prompt: notifications, choice: grant, timeout: 10 }
     - wait: { for: { id: perm.notif.authorized }, timeout: 10 }   # request granted, app state updates
   expect:
     - value: { sel: { id: perm.notif.value }, equals: "authorized" }

@@ -99,7 +99,7 @@ the selector at `el("UNSUPPORTED_SELECTOR")` — an honest gap, not a wrong gues
 | `type` (no `into`) | `app.typeText(...)` |
 | `swipe { on, direction }` | `.swipeUp/Down/Left/Right()` |
 | `swipe { from, to }` | `coord(x1, y1).press(forDuration: 0.1, thenDragTo: coord(x2, y2))` — an `XCUICoordinate` drag (BE-0025) |
-| `handleSystemAlert` | `XCTAssertTrue(XCUIApplication(bundleIdentifier: "com.apple.springboard").buttons["…"].waitForExistence(timeout:))` + `.tap()` — the native SpringBoard idiom, carrying the step's `timeout` (BE-0316) |
+| `handleSystemAlert` | `XCTAssertTrue(XCUIApplication(bundleIdentifier: "com.apple.springboard").buttons["…"].waitForExistence(timeout:))` + `.tap()` — the native SpringBoard idiom, carrying the step's `timeout` (BE-0316). The `prompt` / `choice` form resolves its label from the *run's* locale (BE-0320), which a static translation has no access to, so it emits a labeled `// TODO` instead |
 | `wait { for }` | `XCTAssertTrue(el(...).waitForExistence(timeout:))` |
 | `wait { until: gone }` | `.waitForNonExistence(timeout:)` |
 | `wait { until: screenChanged/settled }` | a comment (XCUITest auto-waits for hittability) |
