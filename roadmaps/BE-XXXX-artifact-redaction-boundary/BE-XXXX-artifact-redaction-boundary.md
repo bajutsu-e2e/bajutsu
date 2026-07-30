@@ -125,7 +125,16 @@ element tree is a `JSON` string the identifier-to-value pairing is gone, so a si
 serialized text could not apply either default, and moving the network writer onto such a sink would
 silently drop the header masking BE-0130 made default-on. The sink therefore has one entry point per
 shape — an element tree, network exchanges, a screen map, free text — each applying the matching
-redactor method and then serializing. It is a small typed API rather than a generic text writer, which
+redactor method and then serializing.
+
+The screen map needs a fourth method, because none of the three existing ones fits it. A screen-map
+node or edge is not an `Element`, so `redact_elements` cannot see the pairing between an action's target
+and the value that action typed; it is not a network exchange; and the credential-named default is
+structural, so a free-text pass cannot apply it either. The new method keys the same two defaults on
+each action's target — the masked-input trait where the crawl recorded it, and the credential-name
+vocabulary otherwise — and masks that action's own value. Naming it matters because the screen map is
+the artifact the motivating leak actually reached, so it is the one shape whose structural rule cannot
+be left implicit. It is a small typed API rather than a generic text writer, which
 is the cost of keeping the structural rules inside the boundary instead of back in the callers.
 
 The pattern backstop runs last, over the serialized text, so it catches a value the structural rules
@@ -265,7 +274,9 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
 
    Introduce the single write path for run output, taking the run's `Redactor`. Give it one entry point
    per content shape — an element tree, network exchanges, a screen map, free text — each applying the
-   matching redactor method (`redact_elements`, `redact_exchange`, `redact_text`) and then serializing,
+   matching redactor method (`redact_elements`, `redact_exchange`, `redact_text`, and a new screen-map
+   method that keys the two defaults on each action's target and masks that action's value) and then
+   serializing,
    with the pattern backstop over the serialized result. Every entry point takes a relative name rather
    than a path, so the run directory is never handed to a caller. Add an opaque-bytes entry point for
    images, video, and archives, which records that the content was written unmasked.
