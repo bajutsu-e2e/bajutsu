@@ -111,12 +111,28 @@ required.
 ### The boundary
 
 One sink owns every write into a run directory. A caller hands it a *relative name* and content, never
-a path; the sink resolves the name against the run directory, applies the run's redactor, and writes
-the result. The sink is the only code in the repository that writes into a run directory, so redaction
-is a property of the location rather than of the caller's diligence.
+a path; the sink resolves the name against the run directory, redacts, serializes, and writes. The sink
+is the only code in the repository that writes into a run directory, so redaction is a property of the
+location rather than of the caller's diligence.
 
-The sink accepts bytes for content that cannot be masked — screenshots, video, an archive — and
-records that it was written unmasked, keeping
+The sink takes content *before* serialization, which its entry points make explicit. Two of the rules
+this item makes default-on are structural rather than textual: the masked-input trait keys on an
+element's trait, and the credential-named default keys on an element's identifier or label to mask that
+element's value. `Redactor` already separates the three shapes accordingly —
+[`bajutsu/evidence/redaction.py`](../../bajutsu/evidence/redaction.py) has `redact_elements` for an
+element tree, `redact_exchange` for a network exchange, and `redact_text` for free text. Once an
+element tree is a `JSON` string the identifier-to-value pairing is gone, so a sink that only scanned
+serialized text could not apply either default, and moving the network writer onto such a sink would
+silently drop the header masking BE-0130 made default-on. The sink therefore has one entry point per
+shape — an element tree, network exchanges, a screen map, free text — each applying the matching
+redactor method and then serializing. It is a small typed API rather than a generic text writer, which
+is the cost of keeping the structural rules inside the boundary instead of back in the callers.
+
+The pattern backstop runs last, over the serialized text, so it catches a value the structural rules
+did not reach.
+
+The sink also accepts opaque bytes for content it cannot inspect — screenshots, video, an archive —
+and records that the content was written unmasked, keeping
 [BE-0151](../BE-0151-screenshot-secret-capture-warning/BE-0151-screenshot-secret-capture-warning.md)'s
 honesty: an image is not claimed to be protected.
 
@@ -247,10 +263,12 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
 
 1. **The run-directory sink.**
 
-   Introduce the single write path for run output, taking the run's `Redactor` and applying it to text
-   content. Its entry points take a relative name rather than a path, so the run directory is never
-   handed to a caller. Give it an explicit unmasked-bytes entry point for images, video, and archives,
-   which records that the content was written unmasked.
+   Introduce the single write path for run output, taking the run's `Redactor`. Give it one entry point
+   per content shape — an element tree, network exchanges, a screen map, free text — each applying the
+   matching redactor method (`redact_elements`, `redact_exchange`, `redact_text`) and then serializing,
+   with the pattern backstop over the serialized result. Every entry point takes a relative name rather
+   than a path, so the run directory is never handed to a caller. Add an opaque-bytes entry point for
+   images, video, and archives, which records that the content was written unmasked.
 
 2. **Route every existing writer through the sink.**
 
@@ -261,7 +279,9 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
    [`bajutsu/crawl/flows.py`](../../bajutsu/crawl/flows.py), the run archive writers, and the local
    artifact store in [`bajutsu/serve/`](../../bajutsu/serve/) that receives a remote worker's upload.
    Behavior for the evidence subsystem is unchanged, since it already redacts; it moves to the sink so
-   one rule covers everything. Reading is untouched: `serve` and the evidence readers move onto the read
+   one rule covers everything. The network writer moves onto the exchange entry point specifically, so
+   BE-0130's default header masking keeps running inside the boundary rather than being left behind in
+   the caller. Reading is untouched: `serve` and the evidence readers move onto the read
    accessor, which returns content and names rather than paths.
 
 3. **The enforced boundary.**
