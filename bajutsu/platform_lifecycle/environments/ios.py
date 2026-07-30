@@ -96,6 +96,9 @@ class _DeviceEnvironment:
     def observes_network_via_driver(self) -> bool:
         return False  # the app reports to an external collector via BAJUTSU_COLLECTOR
 
+    def mirrors_collector_port_on_device(self) -> bool:
+        return False  # the Simulator shares the Mac's loopback: nothing binds the port device-side
+
     def records_video_up_front(self) -> bool:
         return False  # simctl records on demand
 

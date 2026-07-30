@@ -255,11 +255,8 @@ def test_device_pool_stops_started_collectors_when_one_fails(
             self._idx = FlakyCollector.count
             self.stopped = False
 
-        def start_bridgeable(self) -> None:
-            # The second device's collector finds no bindable port at all — the whole reserved band
-            # is exhausted, which is the only way start_bridgeable raises: it never falls back to an
-            # OS-chosen ephemeral port.
-            if self._idx == 2:
+        def start(self) -> None:
+            if self._idx == 2:  # the second device's collector fails to bind
                 raise OSError("port in use")
             started.append(self)
 
@@ -280,6 +277,53 @@ def test_device_pool_stops_started_collectors_when_one_fails(
             env_run=lambda args, extra_env=None: "",
         )
     assert len(started) == 1 and started[0].stopped  # type: ignore[attr-defined]
+
+
+@pytest.mark.parametrize("mirrors", [False, True])
+def test_device_pool_reserves_a_bridgeable_port_only_where_the_device_mirrors_it(
+    monkeypatch: pytest.MonkeyPatch, mirrors: bool
+) -> None:
+    """Which start the pool calls follows the platform, not the fact that a collector exists.
+
+    Android mirrors the collector's port onto the guest with `adb reverse`, so its port must come
+    from the reserved band; a platform sharing the host's loopback binds nothing device-side and
+    keeps the OS-chosen port it always had.
+    """
+    calls: list[str] = []
+
+    class RecordingCollector:
+        def start(self) -> int:
+            calls.append("start")
+            return 41000
+
+        def start_bridgeable(self) -> int:
+            calls.append("start_bridgeable")
+            return 6800
+
+        def stop(self) -> None:
+            pass
+
+    monkeypatch.setattr("bajutsu.runner.pool.NetworkCollector", RecordingCollector)
+    monkeypatch.setattr("bajutsu.backends.make_driver", lambda actuator, udid: FakeDriver([]))
+    monkeypatch.setattr(
+        "bajutsu.platform_lifecycle.environments.fake.FakeEnvironment."
+        "mirrors_collector_port_on_device",
+        lambda self: mirrors,
+    )
+
+    _lease, shutdown = device_pool(
+        ["UDID-A"],
+        ["fake"],
+        _eff(),
+        Path("runs"),
+        network=True,
+        available=lambda b: True,
+        env_run=lambda args, extra_env=None: "",
+    )
+    try:
+        assert calls == (["start_bridgeable"] if mirrors else ["start"])
+    finally:
+        shutdown()
 
 
 class _StubCollector:
@@ -373,6 +417,9 @@ class _RecordingEnv:
 
     def observes_network_via_driver(self) -> bool:
         return False
+
+    def mirrors_collector_port_on_device(self) -> bool:
+        return True  # stands in for Android, the backend whose bridge mirrors the port
 
     def bridge_collector(self, port: int) -> Callable[[], None]:
         self.bridged_port = port

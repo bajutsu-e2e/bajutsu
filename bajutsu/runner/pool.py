@@ -150,9 +150,13 @@ def device_pool(
         try:
             for udid in udids:
                 collector = NetworkCollector()
-                # `start_bridgeable`, not `start`: a device backend mirrors this port onto the
-                # device (`bridge_collector` below), so it must be one the device can bind too.
-                collector.start_bridgeable()
+                # Only a backend whose bridge mirrors this number onto the device (Android's `adb
+                # reverse`) constrains which port is usable; the reserved band is scoped to it so a
+                # platform sharing the host's loopback keeps the OS-chosen port it always had.
+                if pool_env.mirrors_collector_port_on_device():
+                    collector.start_bridgeable()
+                else:
+                    collector.start()
                 collectors[udid] = collector
                 started.append(collector)
         except Exception:
