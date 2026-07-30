@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-read-lag-barrier-ja.md)
+**English** · [日本語](BE-0332-read-lag-barrier-ja.md)
 
-# BE-XXXX — Apply a read-lag barrier to every read path that mistakes a stable tree for a current one
+# BE-0332 — Apply a read-lag barrier to every read path that mistakes a stable tree for a current one
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-read-lag-barrier.md) |
+| Proposal | [BE-0332](BE-0332-read-lag-barrier.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0332") |
 | Topic | Driver & backend architecture |
 <!-- /BE-METADATA -->
 
