@@ -124,6 +124,11 @@ _RUN_PATH = (
     # The onboarding-gate assertion each lane's `doctor` step runs (BE-0304); a change to it must
     # re-run every lane that exercises it, so it lives in the shared core, not one lane fragment.
     r"|scripts/assert_doctor_env\.py$"
+    # This module itself. A change to the gate that decides which lanes run must run every lane, or
+    # the new decision ships without a single lane ever having exercised it — the same silent
+    # under-trigger the rest of this list guards against, one level up. Such a change is rare, so
+    # firing all three lanes on it is cheap next to shipping the gate unvalidated.
+    r"|scripts/e2e_changes\.py$"
     r"|pyproject\.toml$"
     r"|uv\.lock$"
 )

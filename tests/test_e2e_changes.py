@@ -182,6 +182,11 @@ def test_shared_run_path_is_relevant_on_every_lane() -> None:
         assert is_relevant(["tests/driver_conformance.py"], lane) is True, lane
         # The onboarding-gate assertion every lane's `doctor` step runs (BE-0304).
         assert is_relevant(["scripts/assert_doctor_env.py"], lane) is True, lane
+        # This filter itself: a change to the gate deciding which lanes run must run every lane,
+        # or the new decision ships without a lane ever exercising it. Its own test file must not —
+        # a unit test the lanes never execute is the `test_e2e_changes.py` exclusion pinned below.
+        assert is_relevant(["scripts/e2e_changes.py"], lane) is True, lane
+        assert is_relevant(["tests/test_e2e_changes.py"], lane) is False, lane
         assert is_relevant(["uv.lock"], lane) is True, lane
 
 
