@@ -1,14 +1,14 @@
-[English](BE-XXXX-scenario-authoring-skill.md) · **日本語**
+[English](BE-0330-scenario-authoring-skill.md) · **日本語**
 
-# BE-XXXX — ソースコードからシナリオを起草し自己検証まで行う Claude Code スキルを配布する
+# BE-0330 — ソースコードからシナリオを起草し自己検証まで行う Claude Code スキルを配布する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-scenario-authoring-skill-ja.md) |
+| 提案 | [BE-0330](BE-0330-scenario-authoring-skill-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0330") |
 | トピック | オーサリング体験 |
 <!-- /BE-METADATA -->
 

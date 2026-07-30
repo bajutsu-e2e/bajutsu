@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-scenario-authoring-skill-ja.md)
+**English** · [日本語](BE-0330-scenario-authoring-skill-ja.md)
 
-# BE-XXXX — Ship a Claude Code skill that drafts and self-validates scenarios from source
+# BE-0330 — Ship a Claude Code skill that drafts and self-validates scenarios from source
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-scenario-authoring-skill.md) |
+| Proposal | [BE-0330](BE-0330-scenario-authoring-skill.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0330") |
 | Topic | Authoring experience |
 <!-- /BE-METADATA -->
 
