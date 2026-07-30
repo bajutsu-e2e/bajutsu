@@ -26,9 +26,9 @@ already define the grammar and its vocabulary. Three of the five are `scenarios.
 playbook keeps a verbatim copy of each one. It orchestrates authoring, rather than restating a rule
 that already lives in those five documents.
 
-A new `bajutsu skill export` command copies the package into a target project. The source is the
+A new `bajutsu skill install` command copies the package into a target project. The source is the
 installed `bajutsu` distribution. The destination is the project's own `.claude/skills/`
-directory. An exported copy always matches the `bajutsu` version the project already depends on.
+directory. An installed copy always matches the `bajutsu` version the project already depends on.
 
 ## Motivation
 
@@ -98,11 +98,17 @@ playbook instead has the skill run `bajutsu schema` itself. The target project a
 `bajutsu` installed alongside it. The authoritative shape is always the exact installed version.
 No copy exists to go stale.
 
-### 2. `bajutsu skill export` materializes the bundle into a target project
+### 2. `bajutsu skill install` materializes the bundle into a target project
 
-`bajutsu skill export [--dest .claude/skills/bajutsu-scenario-author] [--force]` is new. The
+`bajutsu skill install [--dest .claude/skills/bajutsu-scenario-author] [--force]` is new. The
 command is Claude-free. It copies the package from the installed `bajutsu` distribution. The
 destination is the target project itself.
+
+The verb is `install`, not `export`. `bajutsu` already has an `export` command
+([BE-0060](../BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md)) that archives a
+finished run into a zip. That command's `export` moves a result out of `bajutsu`. This command's
+job runs the other way: it moves a bundled package into a project. `install` names that direction,
+and it frees `export` from a second, unrelated meaning.
 
 The package ships as ordinary package data ([`pyproject.toml`](../../pyproject.toml)). It needs no
 force-include rule. That rule exists for a single, different case: `bajutsu/_xcuitest_runner/**`.
@@ -110,7 +116,7 @@ The repository's `.gitignore` excludes that directory, since it holds generated 
 the rule, hatchling would drop the directory.
 
 The command exits non-zero when the destination already exists. One exception applies: a
-destination that a prior export itself produced. The `--force` flag overrides this check. A plain
+destination that a prior install itself produced. The `--force` flag overrides this check. A plain
 re-run after a `bajutsu` upgrade always refreshes the bundle to the newly installed version.
 
 ### 3. The playbook grounds every draft in source, never in a guess
@@ -166,16 +172,16 @@ doctor --target <name>`, or a `bajutsu run` against the running target.
 
 - [`docs/getting-started/ios.md`](../../docs/getting-started/ios.md) and
   [`web.md`](../../docs/getting-started/web.md) each carry an existing "Author with AI" section.
-  Each section gains a subsection that introduces `bajutsu skill export`. The subsection presents
+  Each section gains a subsection that introduces `bajutsu skill install`. The subsection presents
   the new command as a source-grounded alternative to `record`, for a developer with no running
   target yet. An Android getting-started page does not exist yet, so
   [`docs/configuration.md`](../../docs/configuration.md) documents the Android backend's install
   step instead, until one exists.
-- [`docs/cli.md`](../../docs/cli.md) documents the new `skill export` command next to `lint` /
+- [`docs/cli.md`](../../docs/cli.md) documents the new `skill install` command next to `lint` /
   `schema`.
-- [`docs/ai-boundary.md`](../../docs/ai-boundary.md) gains a new row for `skill export`, under the
+- [`docs/ai-boundary.md`](../../docs/ai-boundary.md) gains a new row for `skill install`, under the
   Claude-free column. The command itself does nothing but copy files. A companion note places the
-  exported skill's own drafting work elsewhere. That work runs inside Claude Code, an external
+  installed skill's own drafting work elsewhere. That work runs inside Claude Code, an external
   agent. That
   agent invokes `bajutsu`'s existing Claude-free commands. The drafting work is not a `bajutsu`
   code path at all, so it earns no row of its own.
@@ -197,7 +203,7 @@ doctor --target <name>`, or a `bajutsu run` against the running target.
   `getting-started` would point at the package's installed location, and a developer would copy it
   by hand. Rejected. A developer forgets to redo a hand copy after a `bajutsu` upgrade. The copy
   then drifts from the schema the installed version actually accepts, without anyone noticing.
-  `bajutsu skill export` costs one small command instead, and avoids that drift.
+  `bajutsu skill install` costs one small command instead, and avoids that drift.
 * **Extend `record` or `crawl` to also read source, instead of shipping a separate skill.**
   Rejected. `record` and `crawl` are `bajutsu` Python code paths. Both exist to drive a running
   target. Teaching them to read arbitrary source trees would blur a boundary. That boundary
@@ -214,7 +220,7 @@ doctor --target <name>`, or a `bajutsu run` against the running target.
 
 - [ ] **Package layout** — `bajutsu/scenario_author_skill/` with `SKILL.md` and `references/`. The
   drift check against `docs/` wires into `make check`.
-- [ ] **`bajutsu skill export`** — the new CLI command, wheel packaging, `--dest` / `--force`.
+- [ ] **`bajutsu skill install`** — the new CLI command, wheel packaging, `--dest` / `--force`.
 - [ ] **Playbook** — backend identification. Per-backend identifier lookup. Source-grounded
   drafting. The missing-identifier gap report.
 - [ ] **Self-validation loop** — `lint` → `audit` → `trace --explain` → `doctor --scenario

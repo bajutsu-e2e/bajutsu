@@ -27,8 +27,8 @@ Command Line Interface（CLI）です。このスキルは、`bajutsu` の配布
 configuration.md です。残る2つは selectors.md と glossary.md です。手順書は、これらの文書に書かれて
 いるルールを書き直しません。手順書は、参照先を示すだけの役割にとどまります。
 
-新設する `bajutsu skill export` コマンドは、パッケージをコピーします。コピー元は、インストール済みの
-`bajutsu` です。コピー先は、対象プロジェクトの `.claude/skills/` です。エクスポートしたコピーは、常に
+新設する `bajutsu skill install` コマンドは、パッケージをコピーします。コピー元は、インストール済みの
+`bajutsu` です。コピー先は、対象プロジェクトの `.claude/skills/` です。インストールしたコピーは、常に
 そのプロジェクトが依存している `bajutsu` のバージョンと一致します。
 
 ## 動機
@@ -100,10 +100,16 @@ configuration.md です。残る2つは selectors.md と glossary.md です。�
 にすでにインストールされている `bajutsu schema` を、スキル自身に実行させます。正本の形は、常にインストール
 済みのバージョンそのものです。古びるコピーを、持ちません。
 
-### 2. `bajutsu skill export` が対象プロジェクトへパッケージを展開する
+### 2. `bajutsu skill install` が対象プロジェクトへパッケージを展開する
 
-`bajutsu skill export [--dest .claude/skills/bajutsu-scenario-author] [--force]` は、新しいコマンド
+`bajutsu skill install [--dest .claude/skills/bajutsu-scenario-author] [--force]` は、新しいコマンド
 です。Claude 不要です。インストール済みの `bajutsu` から、このパッケージを対象プロジェクトへコピーします。
+
+動詞には `export` ではなく `install` を選びます。`bajutsu` にはすでに `export` コマンド
+（[BE-0060](../BE-0060-run-report-zip-export/BE-0060-run-report-zip-export-ja.md)）があり、完了した
+run を zip へアーカイブします。その `export` は、結果を `bajutsu` の外へ持ち出す向きです。この
+コマンドの役割は逆向きで、同梱したパッケージをプロジェクトの中へ持ち込みます。`install` はこの向きを
+言い表す語であり、`export` を無関係な2つ目の意味から解放します。
 
 パッケージは、通常のパッケージデータとして同梱します（[`pyproject.toml`](../../pyproject.toml)）。
 force-include の仕組みは不要です。その仕組みは、`bajutsu/_xcuitest_runner/**` という別件のためだけに
@@ -111,7 +117,7 @@ force-include の仕組みは不要です。その仕組みは、`bajutsu/_xcuit
 なければ、hatchling はこのディレクトリを取りこぼします。
 
 展開先がすでに存在する場合、コマンドは終了コード非ゼロで終わります。ただし、例外が1つあります。以前の
-エクスポートが生成した展開先です。`--force` を付けると、この確認を上書きします。`bajutsu` をアップグレード
+インストールが生成した展開先です。`--force` を付けると、この確認を上書きします。`bajutsu` をアップグレード
 した後、素朴に再実行するだけで済みます。パッケージは、新しくインストールされたバージョンへ常に更新
 されます。
 
@@ -163,14 +169,14 @@ force-include の仕組みは不要です。その仕組みは、`bajutsu/_xcuit
 - [`docs/getting-started/ios.md`](../../docs/ja/getting-started/ios.md) と
   [`web.md`](../../docs/ja/getting-started/web.md) の既存の「AI でオーサリングする」節への小節追加。
   追加する小節は、対象をまだ稼働させていない開発者向けに、`record` に代わるソースコード接地の
-  選択肢として `bajutsu skill export` を紹介するもの。Android 向けの getting-started ページは未作成で
+  選択肢として `bajutsu skill install` を紹介するもの。Android 向けの getting-started ページは未作成で
   あり、それまでの間、Android バックエンドの導入手順は [`docs/configuration.md`](../../docs/ja/configuration.md)
   に記載。
-- [`docs/cli.md`](../../docs/ja/cli.md) への、`lint` / `schema` の隣での新しい `skill export` コマンド
+- [`docs/cli.md`](../../docs/ja/cli.md) への、`lint` / `schema` の隣での新しい `skill install` コマンド
   の記載。
-- [`docs/ai-boundary.md`](../../docs/ja/ai-boundary.md) への、`skill export` の新しい行の追加。行の
+- [`docs/ai-boundary.md`](../../docs/ja/ai-boundary.md) への、`skill install` の新しい行の追加。行の
   置き場所は Claude 不要の列。このコマンド自体は、ファイルコピーのみの存在。あわせて添える注記の
-  内容は、エクスポートしたスキルの行うドラフト作成が、外部エージェントである Claude Code の内部での
+  内容は、インストールしたスキルの行うドラフト作成が、外部エージェントである Claude Code の内部での
   実行だという点。この実行の中身は、`bajutsu` の既存の Claude 不要のコマンドの呼び出しのみ。ドラフト
   作成そのものは `bajutsu` のコードパスではなく、行を持たない位置づけ。
 
@@ -188,7 +194,7 @@ force-include の仕組みは不要です。その仕組みは、`bajutsu/_xcuit
 * **手作業のコピー&ペースト手順の文書化**（新しい CLI コマンドの見送り）。より小さな v1 として検討。
   パッケージのインストール先を getting-started に示し、開発者への手作業でのコピーを委ねる案。却下。手で
   コピーしたバンドルは、`bajutsu` のアップグレード後にやり直し忘れやすく、インストール済みのバージョンが
-  実際に受け付けるスキーマからの、気づかれないままの乖離という代物。`bajutsu skill export` は、それを
+  実際に受け付けるスキーマからの、気づかれないままの乖離という代物。`bajutsu skill install` は、それを
   避けるための小さな1つのコマンドで済む話。
 * **`record` や `crawl` へのソースコード読み取りの追加**（別スキルを設けるのではなく）。却下。`record`
   と `crawl` は、稼働中の対象を操作するために作られた `bajutsu` の Python コードパス。任意のソース
@@ -205,7 +211,7 @@ force-include の仕組みは不要です。その仕組みは、`bajutsu/_xcuit
 
 - [ ] **パッケージの構成** — `bajutsu/scenario_author_skill/` への `SKILL.md` と `references/` の配置。
   `docs/` との乖離チェックの `make check` への組み込み。
-- [ ] **`bajutsu skill export`** — 新しい CLI コマンド、wheel パッケージング、`--dest` / `--force`。
+- [ ] **`bajutsu skill install`** — 新しい CLI コマンド、wheel パッケージング、`--dest` / `--force`。
 - [ ] **手順書** — バックエンドの特定、バックエンドごとの識別子の見つけ方、ソースコード接地のドラフト
   作成、識別子不足の報告。
 - [ ] **自己検証ループ** — `lint` → `audit` → `trace --explain` → `doctor --scenario
