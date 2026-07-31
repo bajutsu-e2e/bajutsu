@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-roadmap-dashboard-relationship-graph-ja.md)
+**English** · [日本語](BE-0335-roadmap-dashboard-relationship-graph-ja.md)
 
-# BE-XXXX — Relationship graph view for the roadmap dashboard
+# BE-0335 — Relationship graph view for the roadmap dashboard
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-roadmap-dashboard-relationship-graph.md) |
+| Proposal | [BE-0335](BE-0335-roadmap-dashboard-relationship-graph.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0335") |
 | Implementing PR | [#1421](https://github.com/bajutsu-e2e/bajutsu/pull/1421) |
 | Topic | Contributor workflow |
 | Related | [BE-0094](../BE-0094-roadmap-status-dashboard/BE-0094-roadmap-status-dashboard.md), [BE-0219](../BE-0219-roadmap-dashboard-search/BE-0219-roadmap-dashboard-search.md), [BE-0311](../BE-0311-roadmap-dashboard-table-view/BE-0311-roadmap-dashboard-table-view.md) |

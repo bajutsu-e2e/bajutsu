@@ -1,14 +1,14 @@
-[English](BE-XXXX-roadmap-dashboard-relationship-graph.md) · **日本語**
+[English](BE-0335-roadmap-dashboard-relationship-graph.md) · **日本語**
 
-# BE-XXXX — ロードマップダッシュボードへの関係図表示の追加
+# BE-0335 — ロードマップダッシュボードへの関係図表示の追加
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-roadmap-dashboard-relationship-graph-ja.md) |
+| 提案 | [BE-0335](BE-0335-roadmap-dashboard-relationship-graph-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0335") |
 | 実装 PR | [#1421](https://github.com/bajutsu-e2e/bajutsu/pull/1421) |
 | トピック | コントリビューターワークフロー |
 | 関連 | [BE-0094](../BE-0094-roadmap-status-dashboard/BE-0094-roadmap-status-dashboard-ja.md)、[BE-0219](../BE-0219-roadmap-dashboard-search/BE-0219-roadmap-dashboard-search-ja.md)、[BE-0311](../BE-0311-roadmap-dashboard-table-view/BE-0311-roadmap-dashboard-table-view-ja.md) |
