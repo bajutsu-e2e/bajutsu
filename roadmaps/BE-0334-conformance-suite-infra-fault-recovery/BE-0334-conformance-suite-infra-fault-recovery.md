@@ -20,10 +20,13 @@
 discarded, a fresh device is leased in a cold respawn, and the scenario is re-run, bounded by
 `crash_retries` (BE-0323). The cold spawn itself is diagnosable and self-healing (BE-0319).
 
-The on-device driver conformance suite inherits none of that recovery, and it is the one iOS job
-besides `run` that **gates a merge**. It obtains its device by calling `launch_driver` directly from a
-module-scoped `pytest` fixture, so the run pipeline holding the recovery is never on the path — the iOS
-workflow says as much in a comment: "a pytest-ondevice harness, not a `bajutsu run`". A Simulator fault
+The on-device driver conformance suite inherits none of that recovery. Among the iOS jobs that
+**gate a merge**, it is the only one that drives the device through Bajutsu's driver yet bypasses the
+pipeline's recovery. `codegen` runs native XCUITest and was never on this pipeline's path;
+`bundled-runner` reaches the
+device through `bajutsu run` and already inherits the recovery. It obtains its device by calling
+`launch_driver` directly from a module-scoped `pytest` fixture — the iOS workflow says as much in a
+comment: "a pytest-ondevice harness, not a `bajutsu run`". A Simulator fault
 during the suite therefore reddens the required `E2E (iOS)` check on a pull request that cannot have
 caused it. This item proposes classifying an infrastructure fault in the harness and recovering from it
 the way the pipeline does, while a genuine contract violation keeps failing as loudly as it does today.
