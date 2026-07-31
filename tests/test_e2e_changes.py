@@ -200,6 +200,9 @@ def test_doctor_onboarding_gate_code_is_relevant_on_every_lane() -> None:
             "bajutsu/doctor.py",
             "bajutsu/cli/commands/doctor.py",
             "bajutsu/preflight.py",
+            # `preflight.py` builds every `environment:` check's tool list and remedy strings from
+            # this, so a change here moves the section the gate asserts on too.
+            "bajutsu/requirements.py",
             # The platform-neutral DeviceError base (BE-0260) that both `run` and doctor catch.
             "bajutsu/device_errors.py",
         ):
