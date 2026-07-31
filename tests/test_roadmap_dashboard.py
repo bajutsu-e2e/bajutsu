@@ -351,10 +351,11 @@ def test_origin_absolute_link_is_left_verbatim() -> None:
     )
 
 
-def test_graph_payload_holds_only_items_that_declare_a_relation() -> None:
+def test_graph_payload_holds_only_items_taking_part_in_a_relation() -> None:
     """The graph draws the linked items and counts the rest, so the view claims no completeness.
 
-    The relationship graph's node set is exactly the items that appear on some edge; every other
+    The relationship graph's node set is exactly the items that appear on some edge — participation,
+    not declaration, since an item named only by another still belongs in the picture; every other
     item is reported through ``total`` / ``unlinked`` instead of drawn as an isolated dot.
     """
     data = brd.graph_data(_ITEMS)
@@ -445,10 +446,28 @@ def test_graph_view_is_wired_and_states_what_it_leaves_out() -> None:
     """The canvas, its caption, and the script's entry points are all present on the page."""
     data = brd.graph_data(_ITEMS)
     assert f"{len(data['nodes'])} of {data['total']} roadmap items" in _PAGE
-    assert f"the remaining {data['unlinked']} declare no relationship and are not drawn" in _PAGE
+    assert f"the remaining {data['unlinked']} take part in none and are not drawn" in _PAGE
     assert '<svg class="be-graph">' in _PAGE
     # Laid out on first sight rather than on page load, and narrowed by the shared filters.
     assert re.search(r"if\(v==='graph'\)\s*buildGraph\(\);", _PAGE)
     assert "applyGraphFilter();" in _PAGE
     # The layout is reproducible: no random seeding anywhere in the script.
     assert "Math.random" not in _PAGE
+
+
+def test_the_caption_claims_participation_rather_than_declaration() -> None:
+    """The drawn set is wider than the declaring set, so the caption must not overclaim.
+
+    ``Origin`` is one-directional and ``Related``'s reciprocity is a convention rather than a checked
+    rule, so an item named only by another is drawn while declaring no relation of its own. Saying
+    those items "declare" one would be untrue for every one of them (BE-0094's honesty rule).
+    """
+    declaring = {
+        item.by_lang["en"].id
+        for item in _ITEMS
+        if item.related or item.origin_refs or item.superseded_by
+    }
+    drawn = {node["id"] for node in brd.graph_data(_ITEMS)["nodes"]}
+    assert declaring < drawn, "expected items drawn only because another item named them"
+    assert "declare at least one" not in _PAGE
+    assert "take part in at least one Related, Origin, or Superseded by relationship" in _PAGE

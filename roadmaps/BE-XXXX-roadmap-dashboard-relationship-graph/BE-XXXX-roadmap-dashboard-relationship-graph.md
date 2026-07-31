@@ -44,7 +44,7 @@ which corners of the roadmap stand alone.
 Those questions have concrete answers in the metadata today, and no way to see them. Reading the
 `Related` row of one item tells a reader its immediate neighbors, but reaching the cluster around it
 means opening each neighbor in turn and holding the accumulated picture in memory. Across a roadmap of
-roughly 330 items, about 200 of which declare at least one relation, that traversal is impractical by
+roughly 330 items, about 200 of which stand in at least one relation, that traversal is impractical by
 hand — and it is exactly the traversal a contributor performs when scoping new work, because the first
 question about any proposal is what it touches.
 
@@ -96,7 +96,7 @@ across these units:
    graph rather than on page load, so a reader who never leaves Cards view pays nothing for it.
 4. **Rendering and interaction.** Draw the result as Scalable Vector Graphics (SVG): a line per edge,
    and a circle per node carrying its item's status color, sized by how many relations the item
-   declares. Label only the hubs at rest — two hundred labels at once are unreadable — and let every
+   takes part in. Label only the hubs at rest — two hundred labels at once are unreadable — and let every
    other node name itself on hover, on focus, and through its tooltip. Wrap each node in an
    SVG anchor pointing at the item's file on GitHub, so a node is a real link — reachable by keyboard
    and openable in a new tab — rather than a shape with a click handler. Dragging a node moves it and
@@ -110,13 +110,16 @@ across these units:
    simply leave it with fewer edges. Like the rest of the dashboard's interactivity, the graph is
    progressive enhancement — its view is hidden in the markup and shown only by the toggle, so a
    reader with scripting off sees the Cards view exactly as they do today.
-6. **Honest coverage of items with no relation.** An item declaring no relation has no place in a
+6. **Honest coverage of items outside the graph.** An item on no edge has no place in a
    relationship graph, and drawing roughly 130 unconnected dots around the picture would bury the
-   structure the graph exists to show. Render only the items that carry at least one relation, and
+   structure the graph exists to show. Render the items that take part in at least one relation, and
    state the omission on the page: a caption reports how many of the roadmap's items the graph draws
-   and how many carry no relation at all. This keeps BE-0094's rule about the data the dashboard
-   shows — never present a figure with no source in the metadata, and never let a view imply
-   completeness it does not have.
+   and how many take part in none. Word the caption as *participation* rather than *declaration*,
+   because the two differ: `Origin` is one-directional, and `Related`'s expected reciprocity is a
+   convention rather than a checked rule, so an item named only by another is drawn while declaring
+   no relation of its own. Saying such an item "declares" a relation would be untrue, which is what
+   BE-0094's rule about the data the dashboard shows forbids — never present a figure with no source
+   in the metadata, and never let a view imply completeness it does not have.
 7. **Styling.** Add the graph's canvas, node, edge, and caption rules to the generator's stylesheet,
    reusing the per-status colors the cards and badges already use so a node's color means the same
    thing everywhere on the page, and staying legible in both the light and the dark theme.
@@ -172,7 +175,7 @@ a future sentence there enumerate the views, it is updated in the same change th
 - [x] Deterministic force-directed layout, run on first open of the view.
 - [x] SVG rendering with drag, pan, zoom, neighbor highlighting, and per-node links.
 - [x] `Graph` added to the existing view toggle, composing with the search and status filters.
-- [x] Caption reporting how many items the graph draws and how many carry no relation.
+- [x] Caption reporting how many items the graph draws and how many take part in none.
 - [x] Styling for both the light and the dark theme.
 - [x] Tests in `tests/test_roadmap_dashboard.py` and `tests/test_roadmap_index.py`.
 

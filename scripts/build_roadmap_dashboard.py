@@ -318,11 +318,14 @@ def _edges(items: list[Any]) -> list[dict[str, str]]:
 
 
 def graph_data(items: list[Any]) -> dict[str, Any]:
-    """The relationship graph's payload: the items that declare a relation, and the edges between.
+    """The relationship graph's payload: the items taking part in a relation, and the edges between.
 
-    An item declaring no relation has nothing to draw and would only crowd the picture, so it is left
-    out and counted instead: ``total`` and ``unlinked`` let the page state that omission outright
-    rather than let the view imply a completeness it does not have (BE-0094's honesty rule). Each
+    A node is drawn for every item on some edge, which is *participation* in a relation rather than
+    *declaration* of one: ``Origin`` is one-directional, and ``Related``'s expected reciprocity is a
+    convention rather than a checked rule, so an item named only by another still belongs in the
+    picture. An item on no edge has nothing to draw and would only crowd it, so it is left out and
+    counted instead: ``total`` and ``unlinked`` let the page state that omission outright rather than
+    let the view imply a completeness it does not have (BE-0094's honesty rule). Each
     node carries the same lower-cased search string its card does, so the search box and status chips
     narrow the graph on exactly the tokens they narrow the other two views on.
     """
@@ -360,9 +363,9 @@ def _graph_view(items: list[Any]) -> str:
     data = graph_data(items)
     drawn = len(data["nodes"])
     caption = (
-        f"{drawn} of {data['total']} roadmap items declare at least one Related, Origin, or "
-        f"Superseded by link, and each is drawn here as a node; the remaining {data['unlinked']} "
-        "declare no relationship and are not drawn."
+        f"{drawn} of {data['total']} roadmap items take part in at least one Related, Origin, or "
+        f"Superseded by relationship, and each is drawn here as a node; the remaining "
+        f"{data['unlinked']} take part in none and are not drawn."
     )
     hint = (
         "Drag a node to move it, drag the background to pan, scroll to zoom, and hover a node to "
@@ -1106,8 +1109,8 @@ _INTRO = (
     "cards by id, title, topic, or status. Switch between the card grid and a sortable table with the "
     "Cards / Table toggle — the table lists every item as a row with sortable Created and Updated "
     "columns, and the search and status filters narrow both views alike. A third view, Graph, draws "
-    "the relationships the items themselves declare: one node per item that names another through "
-    "its Related, Origin, or Superseded by field, one edge per relationship, and a force-directed "
+    "the relationships the items themselves record: one node per item standing in a Related, "
+    "Origin, or Superseded by relation to another, one edge per relationship, and a force-directed "
     "layout you can drag, pan, and zoom. Each card links to its "
     "full proposal on GitHub. This dashboard is the only status view — for what a roadmap item is "
     "and how to add one, see [`roadmaps/README.md`]"
