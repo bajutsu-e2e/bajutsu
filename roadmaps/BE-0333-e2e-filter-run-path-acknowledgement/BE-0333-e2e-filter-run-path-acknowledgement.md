@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-e2e-filter-run-path-acknowledgement-ja.md)
+**English** · [日本語](BE-0333-e2e-filter-run-path-acknowledgement-ja.md)
 
-# BE-XXXX — Force every run-path file to be either gated or explicitly excluded in the E2E relevance filter
+# BE-0333 — Force every run-path file to be either gated or explicitly excluded in the E2E relevance filter
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-e2e-filter-run-path-acknowledgement.md) |
+| Proposal | [BE-0333](BE-0333-e2e-filter-run-path-acknowledgement.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0333") |
 | Topic | CI / build infrastructure |
 <!-- /BE-METADATA -->
 

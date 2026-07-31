@@ -1,14 +1,14 @@
-[English](BE-XXXX-e2e-filter-run-path-acknowledgement.md) · **日本語**
+[English](BE-0333-e2e-filter-run-path-acknowledgement.md) · **日本語**
 
-# BE-XXXX — E2E 関連性フィルタで run 経路の全ファイルにゲート対象か明示的除外かの決定を強制する
+# BE-0333 — E2E 関連性フィルタで run 経路の全ファイルにゲート対象か明示的除外かの決定を強制する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-e2e-filter-run-path-acknowledgement-ja.md) |
+| 提案 | [BE-0333](BE-0333-e2e-filter-run-path-acknowledgement-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0333") |
 | トピック | CI / build infrastructure |
 <!-- /BE-METADATA -->
 
