@@ -101,6 +101,10 @@ _RUN_PATH_MODULES = (
     "mailbox",
     "preflight",
     "record",
+    # `preflight.py` (above) imports this directly and builds every `environment:` check's tool
+    # list and remedy strings from `requirements.BACKENDS` / `requirements.remedy`, so a change here
+    # moves the section `scripts/assert_doctor_env.py` asserts on, same as a `preflight.py` change.
+    "requirements",
     "run_id",
     "screenshots",
     "simctl",
@@ -135,7 +139,7 @@ _RUN_PATH = (
     r"|bajutsu/cli/commands/run\.py$"
     # The `doctor` CLI command each lane's BE-0304 onboarding gate invokes, alongside the
     # `bajutsu/doctor.py` core it renders from (both above). Its AI-availability half
-    # (`agents/availability`, `ai/credential_gap`) stays excluded: `assert_doctor_env.py` reads only
+    # (`agents/availability`, `ai/registry`) stays excluded: `assert_doctor_env.py` reads only
     # the `environment:` section, which no AI credential can move.
     r"|bajutsu/cli/commands/doctor\.py$"
     r"|tests/driver_conformance\.py$"
