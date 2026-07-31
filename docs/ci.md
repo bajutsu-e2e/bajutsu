@@ -54,7 +54,15 @@ package, every file under the new package stops matching. The lane's `changes` j
 packages: a change to the XCUITest cold-spawn code, which the iOS lane exists to exercise, skipped
 the entire iOS fleet. A module that becomes a package belongs in the swept group instead, and
 `tests/test_e2e_changes.py` checks every remaining by-name entry against the source tree, so
-`make check` fails on the pull request that splits the next one.
+`make check` fails on the pull request that splits the next one. Three more guards close the rest of
+the class. The shared core sweeps the two per-backend directories (`bajutsu/drivers/` and
+`bajutsu/platform_lifecycle/environments/`) minus the leaves each lane names, and a test asserts that
+no file under either one fires zero lanes. A newly added backend module over-fires rather than going
+unseen. A second test resolves every plain path in the filter against the tree, so a rename
+or a deletion fails the gate instead of leaving a lane that stops running with no signal at all. A
+third test checks the shared exclusion list against the union of every lane's named leaves, so a
+driver or environment added to only one list fails the gate instead of silently over-firing every
+lane on what should be one lane's own change.
 
 The `changes` job narrows one step further for the one case it can prove safe (BE-0322): a change
 confined to a lane's scenario files fires only the jobs that declare a changed scenario, rather than

@@ -22,14 +22,15 @@ split into two testable pieces:
   modules are allow-listed by name — only the ones that path actually imports — because the top level
   also holds serve/analytics/crawl modules (stats, audit, coverage, usage*, crawl*, alerts, github,
   …) the E2E never touches; a bare ``bajutsu/*.py`` glob swept those in and burned the jobs on, e.g.,
-  a serve-only PR. Each lane's own ``bajutsu/drivers/*.py`` file(s) are likewise allow-listed by
-  name, not swept as a directory, so a lane fires only on the driver module its own backend actually
-  imports. The per-backend ``bajutsu/platform_lifecycle/environments/*.py`` modules are split per lane
-  the same way, carved out of the otherwise-swept ``platform_lifecycle/`` package. A new subpackage,
-  top-level module, driver module, or CLI command defaults to NOT triggering — add its pattern to
-  ``_RUN_PATH`` (all lanes) or the lane's own fragment. Allow-listing a module by name carries one
-  hazard worth naming: the name is anchored with ``\\.py$``, so splitting that module into a package
-  silently stops every lane from firing on it (see ``_RUN_PATH_MODULES``).
+  a serve-only PR. The two per-backend directories — ``bajutsu/drivers/`` and
+  ``bajutsu/platform_lifecycle/environments/`` — are swept by the shared core minus exactly the leaves
+  each lane claims by name, so a lane fires only on the driver and environment its own backend
+  imports, while no file is orphaned: anything unclaimed, a new module included, fires all three. A new
+  top-level ``bajutsu/*.py`` module or CLI command still defaults to NOT triggering — add its pattern
+  to ``_RUN_PATH`` (all lanes) or the lane's own fragment. Allow-listing by name carries two hazards
+  the tests now guard: a name anchored with ``\\.py$`` stops matching the day its module becomes a
+  package (see ``_RUN_PATH_MODULES``), and a renamed or deleted path leaves its pattern matching
+  nothing. Either one silently stops a lane from firing, so both fail ``make check`` instead.
 
 Invoked by each workflow with ``BASE_SHA`` / ``HEAD_SHA`` in the environment and ``E2E_LANE`` naming
 the lane (``ios`` — the default — / ``android`` / ``web``); it writes ``relevant=true|false`` to
@@ -124,10 +125,14 @@ _RUN_PATH = (
     r"|bajutsu/agents/(?:protocols|__init__)\.py$"
     r"|bajutsu/evidence/(?:core|intervals|network|visual|golden|redaction|__init__)\.py$"
     r"|bajutsu/assertions/"
-    # The driver abstraction (Point/Element/Selector, the Driver Protocol, selector resolution) every
-    # backend's driver module imports, along with the shared run-path modules above (runner/,
-    # orchestrator/, …) — universal, so it lives in the shared core rather than any one lane fragment.
-    r"|bajutsu/drivers/base\.py$"
+    # Every driver file except the per-backend leaves each lane claims by name below. The invariant is
+    # that no driver file is orphaned: a file is either claimed by exactly the lanes whose backend
+    # imports it, or shared by all three. `base.py` (Point/Element/Selector, the Driver Protocol,
+    # selector resolution) and `__init__.py` are universal because every backend's driver imports them;
+    # `fake.py` no lane drives, but sweeping it costs an over-fire, while orphaning it would be the
+    # silent under-trigger this sweep exists to prevent. A new `drivers/<foo>.py` lands here too and
+    # fires every lane until a lane claims it — the safe direction.
+    r"|bajutsu/drivers/(?!(?:adb|coordinate_tree|playwright|xcuitest|xcuitest_live)\.py$)"
     r"|bajutsu/cli/__init__\.py$"
     r"|bajutsu/cli/_shared\.py$"
     r"|bajutsu/cli/commands/__init__\.py$"
@@ -157,12 +162,15 @@ _RUN_PATH = (
 # actually imports (iOS: xcuitest[_live].py, Android: adb.py, web: playwright.py — verified against
 # each module's own imports, not a blanket `bajutsu/drivers/` sweep, which previously fired a lane's
 # metered jobs on another lane's driver-only change); each lane owns its showcase surface, its
-# conformance harness module, and its own workflow file. A new driver module a backend imports must
-# now be added to its lane's fragment by name — `bajutsu/drivers/` is no longer swept, so a new
-# `drivers/<foo>.py` defaults to NOT triggering (a silent under-trigger of the lane's required check).
-# The per-backend `platform_lifecycle/environments/` leaves are split the same way and for the same
-# reason, but default the other way: `platform_lifecycle/` *is* swept, minus the four leaves named
-# here, so an unclaimed environment module over-fires rather than under-fires.
+# conformance harness module, and its own workflow file.
+#
+# Both `bajutsu/drivers/` and `bajutsu/platform_lifecycle/environments/` are split this way, and both
+# default to over-firing: the shared core sweeps each directory minus exactly the leaves named here,
+# so a file a lane claims fires only that lane, while anything unclaimed — including a newly added
+# module — fires all three. Naming the leaves in a lane fragment therefore narrows a known file; it
+# never decides whether a new file is seen at all. An earlier revision inverted that default and
+# allow-listed each driver by name, which meant a new `drivers/<foo>.py` fired nothing and silently
+# under-triggered every lane's required check.
 _LANE_PATHS: dict[str, str] = {
     "ios": (
         r"|bajutsu/drivers/(?:xcuitest|xcuitest_live)\.py$"

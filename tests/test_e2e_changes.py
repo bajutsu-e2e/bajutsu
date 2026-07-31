@@ -17,7 +17,9 @@ from pathlib import Path
 import pytest
 
 from scripts.e2e_changes import (
+    _LANE_PATHS,
     _LANE_SCENARIO_PATHS,
+    _RUN_PATH,
     _RUN_PATH_MODULES,
     affected_jobs,
     changed_files,
@@ -393,6 +395,135 @@ def test_no_by_name_module_is_actually_a_package() -> None:
             f"so no file under it triggers any lane; move it to the swept-package group"
         )
         assert module.is_file(), f"bajutsu/{name}.py is allow-listed but does not exist"
+
+
+# --- Structural guards against a silent under-trigger ---------------------------------------------
+# The two guards below do not check any single path; they check the shape of the filter, so a future
+# edit cannot reintroduce the class of bug that motivated them. The first pins the "no orphan" rule
+# for the two per-backend directories. The second catches a renamed or deleted path, which the repo
+# has been bitten by before: a moved workflow or demo leaves a pattern matching nothing, and the lane
+# stops firing exactly as silently as the package split did.
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+
+# Directories split per backend: a file is either claimed by the lanes whose backend imports it, or
+# swept into the shared core. Neither may leave a file matching nothing on every lane.
+_PER_BACKEND_DIRS = ("bajutsu/drivers", "bajutsu/platform_lifecycle/environments")
+
+
+def test_no_per_backend_file_is_orphaned() -> None:
+    # Every file under a per-backend directory must fire at least one lane. A file that fires none is
+    # invisible to CI: it can break any lane that imports it while all three required checks stay
+    # green. Both directories sweep by default and exclude only the leaves a lane claims, so a newly
+    # added module fires all three until a lane narrows it — the safe direction.
+    for rel in _PER_BACKEND_DIRS:
+        directory = _REPO_ROOT / rel
+        assert directory.is_dir(), f"{rel} moved; update _PER_BACKEND_DIRS"
+        for path in sorted(directory.glob("*.py")):
+            target = f"{rel}/{path.name}"
+            lanes = [lane for lane in ("ios", "android", "web") if is_relevant([target], lane)]
+            assert lanes, f"{target} fires no lane — it would break CI silently"
+
+
+# The shared core's negative lookahead (which by-name leaves it does NOT sweep, leaving them to a
+# lane) and each lane's own claimed leaves in `_LANE_PATHS` are two independently hand-maintained
+# lists over the same two per-backend directories. A driver or environment added to a lane's fragment
+# without adding it to the shared exclusion re-sweeps it into the shared core too, so it fires all
+# three lanes instead of just the one that claims it — silently reintroducing the "a lane's metered
+# jobs fire on another lane's driver-only change" regression #1405 fixed, from the other list this
+# time. `test_no_per_backend_file_is_orphaned` above only catches the opposite drift (a file firing no
+# lane); this pins the shared exclusion to the *union* of every lane's claims, so the two lists cannot
+# drift apart in either direction without failing here.
+_DRIVERS_EXCLUSION_RE = re.compile(r"bajutsu/drivers/\(\?!\(\?:([a-z_|]+)\)\\\.py\$\)")
+_ENVIRONMENTS_EXCLUSION_RE = re.compile(
+    r"bajutsu/platform_lifecycle/\(\?!environments/\(\?:([a-z_|]+)\)\\\.py\$\)"
+)
+_DRIVERS_CLAIM_RE = re.compile(r"bajutsu/drivers/(?:\(\?:([a-z_|]+)\)|([a-z_]+))\\\.py\$")
+_ENVIRONMENTS_CLAIM_RE = re.compile(
+    r"bajutsu/platform_lifecycle/environments/(?:\(\?:([a-z_|]+)\)|([a-z_]+))\\\.py\$"
+)
+
+
+def _claimed_names(pattern: str, claim_re: re.Pattern[str]) -> set[str]:
+    names: set[str] = set()
+    for match in claim_re.finditer(pattern):
+        group = next(g for g in match.groups() if g)
+        names.update(group.split("|"))
+    return names
+
+
+def test_shared_exclusion_matches_the_union_of_lane_claims() -> None:
+    for label, exclusion_re, claim_re in (
+        ("bajutsu/drivers/", _DRIVERS_EXCLUSION_RE, _DRIVERS_CLAIM_RE),
+        (
+            "bajutsu/platform_lifecycle/environments/",
+            _ENVIRONMENTS_EXCLUSION_RE,
+            _ENVIRONMENTS_CLAIM_RE,
+        ),
+    ):
+        excluded_match = exclusion_re.search(_RUN_PATH)
+        assert excluded_match, (
+            f"{label}: shared exclusion lookahead not found — has its shape changed?"
+        )
+        excluded = set(excluded_match.group(1).split("|"))
+
+        claimed: set[str] = set()
+        for lane_pattern in _LANE_PATHS.values():
+            claimed |= _claimed_names(lane_pattern, claim_re)
+
+        assert claimed == excluded, (
+            f"{label}: shared exclusion {sorted(excluded)} != union of lane claims {sorted(claimed)} — "
+            f"a driver/environment named in one list but not the other over-fires or orphans a lane"
+        )
+
+
+def _plain_literal_paths(pattern: str) -> list[str]:
+    """The unambiguous filesystem paths in one alternation, skipping genuinely regex branches.
+
+    Splits on the top-level ``|`` only (a ``|`` nested inside ``(?:…)`` or ``(?!…)`` separates
+    alternatives *within* one branch, not branches), then keeps the branches that are plain paths once
+    ``\\.`` is unescaped. A branch still holding regex syntax — ``Makefile$`` has none but
+    ``showcase(?:\\.[^/]+)?\\.config\\.yaml$`` does — is not a single path and is skipped.
+    """
+    branches, depth, current = [], 0, ""
+    for char in pattern:
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+        if char == "|" and depth == 0:
+            branches.append(current)
+            current = ""
+            continue
+        current += char
+    branches.append(current)
+
+    plain = []
+    for branch in branches:
+        candidate = branch.removesuffix("$").replace("\\.", ".")
+        if not candidate or any(ch in candidate for ch in "()?[]*+!\\"):
+            continue  # a real regex branch, not one path
+        plain.append(candidate)
+    return plain
+
+
+def test_every_plain_literal_path_in_the_filter_exists() -> None:
+    # A renamed or deleted path leaves its pattern matching nothing, and the lane stops firing with no
+    # signal at all — the same failure mode as a module becoming a package, reached by a different
+    # route. Checking the patterns against the real tree turns that into a `make check` failure on the
+    # PR doing the rename.
+    checked = 0
+    for label, pattern in [("shared", _RUN_PATH), *_LANE_PATHS.items()]:
+        for candidate in _plain_literal_paths(pattern.removeprefix("|")):
+            target = _REPO_ROOT / candidate
+            if candidate.endswith("/"):
+                assert target.is_dir(), f"{label}: directory {candidate!r} does not exist"
+            else:
+                assert target.exists(), f"{label}: path {candidate!r} does not exist"
+            checked += 1
+    # A floor, so a rewrite that leaves the extraction matching nothing fails here rather than
+    # passing vacuously. Raise it freely; it only records that the check still has teeth.
+    assert checked >= 30, f"only {checked} literal paths checked — has the filter's shape changed?"
 
 
 def test_unrecognized_lane_raises_instead_of_silently_substituting() -> None:
