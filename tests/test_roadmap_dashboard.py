@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import html
 import importlib.util
+import json
 import re
 import sys
 from pathlib import Path
@@ -348,3 +349,106 @@ def test_origin_absolute_link_is_left_verbatim() -> None:
         '<span class="be-origin"><a href="https://github.com/bajutsu-e2e/bajutsu/issues/123">'
         "#123</a></span>" in card
     )
+
+
+def test_graph_payload_holds_only_items_that_declare_a_relation() -> None:
+    """The graph draws the linked items and counts the rest, so the view claims no completeness.
+
+    The relationship graph's node set is exactly the items that appear on some edge; every other
+    item is reported through ``total`` / ``unlinked`` instead of drawn as an isolated dot.
+    """
+    data = brd.graph_data(_ITEMS)
+    linked = {end for edge in data["edges"] for end in (edge["source"], edge["target"])}
+    assert {node["id"] for node in data["nodes"]} == linked
+    assert data["total"] == len(_ITEMS)
+    assert data["unlinked"] == len(_ITEMS) - len(data["nodes"])
+    assert [node["id"] for node in data["nodes"]] == sorted(node["id"] for node in data["nodes"])
+
+
+def test_graph_edges_are_well_formed() -> None:
+    """Every edge names two rendered nodes, one known kind, and no pair appears twice."""
+    data = brd.graph_data(_ITEMS)
+    ids = {node["id"] for node in data["nodes"]}
+    seen: set[tuple[str, str]] = set()
+    for edge in data["edges"]:
+        assert edge["source"] in ids and edge["target"] in ids
+        assert edge["source"] != edge["target"]
+        assert edge["kind"] in brd._EDGE_PRECEDENCE
+        pair = tuple(sorted((edge["source"], edge["target"])))
+        assert pair not in seen, f"{pair} drawn twice"
+        seen.add(pair)
+
+
+def _linked_item(be_id: str, **relations: tuple[str, ...]) -> Any:
+    """A synthetic item with a chosen id and relations — for the edge rules, free of the real tree."""
+    entry_cls = type(_ITEMS[0].by_lang["en"])
+    item_cls = type(_ITEMS[0])
+    return item_cls(
+        id=be_id,
+        slug="x",
+        bucket="Proposals",
+        topic=_ITEMS[0].topic,
+        by_lang={"en": entry_cls(id=be_id, slug="x", title="T", status="Proposal", origin=None)},
+        **relations,
+    )
+
+
+def test_a_mutual_related_pair_becomes_one_undirected_edge() -> None:
+    """``Related`` is declared by both items, so its two directions collapse into a single edge."""
+    edges = brd._edges(
+        [
+            _linked_item("BE-9999", related=("BE-9998",)),
+            _linked_item("BE-9998", related=("BE-9999",)),
+        ]
+    )
+    assert edges == [{"source": "BE-9998", "target": "BE-9999", "kind": "related"}]
+
+
+def test_a_directed_relation_outranks_related_between_the_same_pair() -> None:
+    """Two items that are both Related and Origin get the edge that says more, drawn once."""
+    edges = brd._edges([_linked_item("BE-9999", related=("BE-9998",), origin_refs=("BE-9998",))])
+    assert edges == [{"source": "BE-9998", "target": "BE-9999", "kind": "origin"}]
+
+
+def test_graph_payload_is_valid_json_and_cannot_close_its_script_element() -> None:
+    """The payload parses as JSON and carries no raw ``<``, which could end the script early."""
+    payload = _PAGE.split('class="be-graph-data">', 1)[1].split("</script>", 1)[0]
+    assert "<" not in payload
+    data = json.loads(payload)
+    assert len(data["nodes"]) == len(brd.graph_data(_ITEMS)["nodes"])
+    assert set(data["colors"]) == set(brd.BUCKET_COLOR)
+
+
+def test_graph_nodes_carry_the_same_search_string_their_cards_do() -> None:
+    """One filter predicate serves all three views, so a node matches exactly when its card does."""
+    by_id = {item.by_lang["en"].id: item for item in _ITEMS}
+    for node in brd.graph_data(_ITEMS)["nodes"]:
+        item = by_id[node["id"]]
+        assert node["search"] == brd._search_terms(item)
+        assert node["status"] == item.bucket
+        assert node["href"] == brd._item_href(item)
+
+
+def test_view_toggle_offers_cards_table_and_graph() -> None:
+    """Three views share one toggle; Cards is the pressed default, so no-JS readers keep it."""
+    for key, label in (("cards", "Cards"), ("table", "Table"), ("graph", "Graph")):
+        assert f'data-view="{key}"' in _PAGE, key
+        assert f">{label}</button>" in _PAGE
+    assert 'data-view="cards" aria-pressed="true"' in _PAGE
+    assert 'data-view="graph" aria-pressed="false"' in _PAGE
+    # Every view but Cards ships hidden, so scripting off leaves the page exactly as it was.
+    assert 'class="be-graph-view is-hidden"' in _PAGE
+    assert 'class="be-table-view is-hidden"' in _PAGE
+
+
+def test_graph_view_is_wired_and_states_what_it_leaves_out() -> None:
+    """The canvas, its caption, and the script's entry points are all present on the page."""
+    data = brd.graph_data(_ITEMS)
+    assert f"{len(data['nodes'])} of {data['total']} roadmap items" in _PAGE
+    assert f"the remaining {data['unlinked']} declare no relationship and are not drawn" in _PAGE
+    assert '<svg class="be-graph">' in _PAGE
+    # Laid out on first sight rather than on page load, and narrowed by the shared filters.
+    assert re.search(r"if\(v==='graph'\)\s*buildGraph\(\);", _PAGE)
+    assert "applyGraphFilter();" in _PAGE
+    # The layout is reproducible: no random seeding anywhere in the script.
+    assert "Math.random" not in _PAGE

@@ -21,7 +21,7 @@ import re
 import subprocess
 import sys
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -59,6 +59,25 @@ _TRACKING_ISSUE_SEARCH = (
 def tracking_issue_url(be_id: str) -> str:
     """The GitHub issue-search URL for an item's tracking issue, built from its id alone (BE-0139)."""
     return _TRACKING_ISSUE_SEARCH.format(id=be_id)
+
+
+_ID_TOKEN_RE = re.compile(r"BE-(\d{4})")
+
+
+def relation_ids(value: str | None, *, self_id: str) -> tuple[str, ...]:
+    """Every distinct item id a relation field names, in first-seen order, minus the item itself.
+
+    A relation value is author-written Markdown carrying one or more links, so scanning it for id
+    tokens reads it without depending on the link syntax the author chose. A ``BE-XXXX`` placeholder
+    carries no number and so matches nothing, which is what the callers want: an unnumbered item has
+    nowhere stable to link to.
+    """
+    found: dict[str, None] = {}
+    for number in _ID_TOKEN_RE.findall(value or ""):
+        be_id = f"BE-{number}"
+        if be_id != self_id:
+            found.setdefault(be_id, None)
+    return tuple(found)
 
 
 @dataclass(frozen=True)
@@ -166,6 +185,9 @@ class Item:
     ``created`` / ``updated`` are UTC ISO-8601 timestamps derived from the item's Git history
     (BE-0311), populated only when :func:`load_items` is called ``with_dates=True`` — ``None``
     otherwise, so the tools that don't need them pay no ``git`` cost.
+
+    ``related`` / ``origin_refs`` / ``superseded_by`` are the ids the item's three relation fields
+    name, already filtered to items the loaded tree actually holds, so every id here resolves.
     """
 
     id: str
@@ -175,6 +197,9 @@ class Item:
     by_lang: dict[str, Entry]
     created: str | None = None
     updated: str | None = None
+    related: tuple[str, ...] = ()
+    origin_refs: tuple[str, ...] = ()
+    superseded_by: tuple[str, ...] = ()
 
 
 def parse_metadata(text: str) -> tuple[str, dict[str, str]]:
@@ -283,6 +308,9 @@ def load_items(roadmap: Path, *, with_dates: bool = False) -> list[Item]:
         by_lang: dict[str, Entry] = {}
         paths: list[Path] = []
         item_bucket = topic = ""
+        related: tuple[str, ...] = ()
+        origin_refs: tuple[str, ...] = ()
+        superseded_by: tuple[str, ...] = ()
         for lang in LANGS:
             path = d / f"{item_id}-{slug}{lang.suffix}.md"
             paths.append(path)
@@ -297,6 +325,12 @@ def load_items(roadmap: Path, *, with_dates: bool = False) -> list[Item]:
             if lang.code == "en":
                 item_bucket = bucket(fields[lang.field_status])
                 topic = fields[lang.field_topic]
+                # The three relation fields are read from the English file alone, exactly as
+                # ``Status`` and ``Topic`` already are, so a Japanese-only wording fix can never
+                # change what the relations say.
+                related = relation_ids(fields.get("Related"), self_id=item_id)
+                origin_refs = relation_ids(fields.get("Origin"), self_id=item_id)
+                superseded_by = relation_ids(fields.get("Superseded by"), self_id=item_id)
         if topic not in KNOWN_TOPICS:
             raise ValueError(
                 f"{item_id}: unknown Topic {topic!r}; add it to TOPICS (with a key) so it "
@@ -312,6 +346,25 @@ def load_items(roadmap: Path, *, with_dates: bool = False) -> list[Item]:
                 by_lang=by_lang,
                 created=created,
                 updated=updated,
+                related=related,
+                origin_refs=origin_refs,
+                superseded_by=superseded_by,
             )
         )
-    return items
+    # A relation is only usable once every item is loaded, since an id can only be checked against
+    # the full set. Dropping an id no directory backs keeps a typo in one file from producing a
+    # relation with nothing on the other end.
+    known = {item.id for item in items}
+
+    def resolved(refs: tuple[str, ...]) -> tuple[str, ...]:
+        return tuple(ref for ref in refs if ref in known)
+
+    return [
+        replace(
+            item,
+            related=resolved(item.related),
+            origin_refs=resolved(item.origin_refs),
+            superseded_by=resolved(item.superseded_by),
+        )
+        for item in items
+    ]
