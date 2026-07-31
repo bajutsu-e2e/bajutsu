@@ -173,6 +173,34 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
   immediately) → `adb shell input tap` at the frame center. `swipe` adds a finite duration so it is a
   real drag; `long_press` is a same-point swipe held for the duration; `type_text` is `input text`
   (spaces sent as its `%s` escape).
+- **A coordinate resolve waits for the tree to catch up with a pan.** Android moves the content first
+  and publishes the accessibility update naming the new frames afterwards. A read landing between those
+  two moments describes the pre-scroll screen. Repeated reads then agree with each other on frames that
+  are already wrong, so the two-consecutive-equal-reads settle cannot detect the lag on its own: the
+  tree is *self-consistently* stale rather than visibly unsettled. After a `swipe`, a `scroll`, a
+  `pinch`, or a `rotate` — every gesture that moves frames wholesale — the driver records the frame
+  projection the screen had beforehand, and the next coordinate resolve re-reads until the projection
+  moves off that record and then holds still briefly, bounded by a wall-clock budget it announces
+  spending in full. That budget is the same number the `scroll` loop uses to confirm an end of content
+  before failing (`ReadLagProvider`, BE-0326; see [architecture](architecture.md)) — one publish lag,
+  so one budget, spent on two paths.
+  Three conditions make that test mean "caught up" rather than merely "different". The hold matters
+  because the catch-up is not atomic: Android republishes node bounds one node at a time, so a read
+  landing mid-catch-up carries some new frames and some old, and two fast reads can both land inside
+  that window and agree. A degenerate read is ignored outright, because its empty projection differs
+  from every real one and would otherwise spend the budget on a tree the read path is still retrying.
+  And the recorded projection is re-read when something has actuated since the last read, because a
+  baseline predating that actuation is worse than none: the first post-gesture read moves off it, which
+  would count as the gesture being published. A gesture still waiting to publish is drained before the
+  next one's baseline is taken, since re-reading cannot rescue that case — the read would return the
+  pre-gesture screen, and the earlier gesture's publish would later be mistaken for the newer one's.
+  Every read counts toward the test, not only the ones the wait itself issues, so the reads the runner
+  already takes between the gesture and the next actuator — a `wait`, an `assert`, a post-step capture
+  — normally close it and a run whose tree keeps up waits for nothing.
+  This wait fixes the intermittent `gestures` flake on the continuous-integration emulator, where the
+  tree withheld a 73px scroll for over a second. The `longPress` aimed 10px past the target's bottom
+  edge, so the mirrored value stayed `idle` even though the screenshots for those steps stayed
+  pixel-identical.
 - **On-device actuation fidelity** (roadmap
   [BE-0210](../roadmaps/BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md)):
   the `back` step is the true system back (`input keyevent 4` / `KEYCODE_BACK`) — Android has no

@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0245") |
-| 実装 PR | [#1011](https://github.com/bajutsu-e2e/bajutsu/pull/1011)、[#1017](https://github.com/bajutsu-e2e/bajutsu/pull/1017)、[#1032](https://github.com/bajutsu-e2e/bajutsu/pull/1032)、[#1042](https://github.com/bajutsu-e2e/bajutsu/pull/1042) |
+| 実装 PR | [#1011](https://github.com/bajutsu-e2e/bajutsu/pull/1011)、[#1017](https://github.com/bajutsu-e2e/bajutsu/pull/1017)、[#1032](https://github.com/bajutsu-e2e/bajutsu/pull/1032)、[#1042](https://github.com/bajutsu-e2e/bajutsu/pull/1042)、[#1400](https://github.com/bajutsu-e2e/bajutsu/pull/1400) |
 | トピック | プラットフォーム対応 |
 | 関連 | [BE-0234](../BE-0234-adb-run-performance/BE-0234-adb-run-performance-ja.md), [BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md), [BE-0233](../BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity-ja.md), [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md), [BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci-ja.md) |
 <!-- /BE-METADATA -->
@@ -198,6 +198,34 @@ BajutsuKit／BajutsuAndroid）と同じ性質です。どのターゲットも�
   偶然それを待っていたので、速い読み取りは更新前の値をとらえていました。この待ちの上限はレーン既定の待ち下限
   （`BAJUTSU_MIN_WAIT_TIMEOUT`）で、Android レーン以外では 1 回の読み取り（いまの挙動）のままです。再読み取りは UI
   ツリーだけを対象とし、ツリーの再読み取りでは解消しえない失敗だけが残った時点で終えます。これで項目は完了します。
+- 上記の実時間による settle は、スクロール後の tap が古い座標を撃つ 2 通りの経路のうち、片方だけを塞ぎます。
+  実時間の締め切りは、読み取りから「動いている」と見えるツリーをとらえます。連続する 2 回の読み取りが食い違い、
+  poll が続くからです。いっぽう、ジェスチャをまだ publish していないツリーは、何も動いていないように見えます。
+  どの読み取りも互いに一致し、その frame はすでに誤っているのです。`smoke (adb)` レーンで `gestures` が
+  間欠的に落ちていたのは、後者でした。ランナーがステップごとにツリーとスクリーンショットを収めるので、その実行
+  自身の artifact に一連の経過が残っていました。`swipe` が Log フォームを 73px スクロールしたのに、ジェスチャから
+  1.2 秒後まで連続 4 回の読み取りがすべて swipe 前の frame を報告し、しかも該当ステップのスクリーンショットは
+  1 ピクセルも違いません。値が遅れて届いたという説明は、これで否定できます。そのため `longPress` は対象の実際の
+  下端より 10px 下を狙って隙間を押し、1 秒後の `doubleTap` は追いついたツリーで解決して命中しました。2 つの経路を
+  分けられるのは「射影がジェスチャ開始時のものと違う」という条件だけなので、`AdbDriver` は pan を撃つときにその
+  射影を記録し、次に座標を解決する前に読み直します。上記の安定 poll はそのあとも走ります。追いつきは一括では
+  起きず、Android は node の bounds を 1 つずつ publish し直すため、追いつきの途中に当たった読み取りは新しい
+  frame と古い frame を混在させるからです。
+- 「記録した射影と違う」が「追いついた」を意味するには、3 つの限定が必要でした。いずれも失敗した実行ではなく、
+  最初の実装をレビューして見つけたものです。torn な読み取りは、解決対象の要素については古い frame を持ったまま
+  「違う」ので、違う射影が一定時間保たれることも要求します。そして通常の `wait` や `assert` の読み取りで torn な
+  ものを追いついたと数えてしまうと、その保持時間の判定自体を飛ばし、次の actuator に部分的に古いツリーを渡します。
+  退化した読み取りはどの実在の射影とも違うので、数えると、読み取り経路自身がまだリトライしているツリーに予算を
+  使います。さらに、途中の actuation より前の読み取りから記録した baseline は、baseline が無いよりも悪いです。
+  ジェスチャ後の最初の読み取りがそこから動き、pan が publish されたと数えられて、barrier が黙って何もしなく
+  なります。だから前回の読み取り以降に何かが actuate していれば baseline を読み直し、すべての actuator は
+  キャッシュした射影を stale と印す 1 つのヘルパを通します。
+- 直前の actuation が pan そのものである場合は、baseline の読み直しだけでは足りません。読み取りが pan 前の
+  画面を返すので、新しい baseline が先の pan より前のものになります。すると先の pan の publish を新しい pan の
+  ものと取り違え、新しい pan の差分は待たれません。pan が 2 つ連続するのは、まさに今回失敗していたシナリオの
+  形です。連続する `swipe` ステップは `query()` と `resolve_unique` で端点を解決し `_settle` に到達しないので、
+  そのあいだに barrier を待ち切るものが何もありません。そこで pan は、自分の baseline を取る前に未解決の
+  barrier を待ち切ります。pan が 1 つだけなら待つ barrier が無いので、何も支払いません。
 
 ## 参考
 
