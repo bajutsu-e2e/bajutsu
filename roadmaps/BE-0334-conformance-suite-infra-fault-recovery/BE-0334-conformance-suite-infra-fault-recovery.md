@@ -21,8 +21,9 @@ discarded, a fresh device is leased in a cold respawn, and the scenario is re-ru
 `crash_retries` (BE-0323). The cold spawn itself is diagnosable and self-healing (BE-0319).
 
 The on-device driver conformance suite inherits none of that recovery. Among the iOS jobs that
-**gate a merge**, it is the only one that drives the device without the pipeline's recovery.
-`codegen` runs native XCUITest and was never on this pipeline's path; `bundled-runner` reaches the
+**gate a merge**, it is the only one that drives the device through Bajutsu's driver yet bypasses the
+pipeline's recovery. `codegen` runs native XCUITest and was never on this pipeline's path;
+`bundled-runner` reaches the
 device through `bajutsu run` and already inherits the recovery. It obtains its device by calling
 `launch_driver` directly from a module-scoped `pytest` fixture — the iOS workflow says as much in a
 comment: "a pytest-ondevice harness, not a `bajutsu run`". A Simulator fault
