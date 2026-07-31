@@ -138,18 +138,25 @@ def device_pool(
     free: queue.Queue[str] = queue.Queue()
     for udid in udids:
         free.put(udid)
-    # One collector per device (its own ephemeral port), started up front and reused across leases
-    # (cleared per scenario by the run loop). If a start fails mid-setup, stop the ones already
-    # started so we don't leak listening sockets. Only the external-receiver path (the device
-    # backends) pre-starts these; a driver-observed platform (web) has no up-front receiver and hooks
-    # its collector to the page built per lease instead.
+    # One collector per device (its own reserved-band port, not an OS ephemeral one — see
+    # `start_bridgeable`), started up front and reused across leases (cleared per scenario by the
+    # run loop). If a start fails mid-setup, stop the ones already started so we don't leak
+    # listening sockets. Only the external-receiver path (the device backends) pre-starts these; a
+    # driver-observed platform (web) has no up-front receiver and hooks its collector to the page
+    # built per lease instead.
     collectors: dict[str, NetworkCollector] = {}
     if network and not pool_env.observes_network_via_driver():
         started: list[NetworkCollector] = []
         try:
             for udid in udids:
                 collector = NetworkCollector()
-                collector.start()
+                # Only a backend whose bridge mirrors this number onto the device (Android's `adb
+                # reverse`) constrains which port is usable; the reserved band is scoped to it so a
+                # platform sharing the host's loopback keeps the OS-chosen port it always had.
+                if pool_env.mirrors_collector_port_on_device():
+                    collector.start_bridgeable()
+                else:
+                    collector.start()
                 collectors[udid] = collector
                 started.append(collector)
         except Exception:

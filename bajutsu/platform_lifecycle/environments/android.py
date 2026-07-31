@@ -201,6 +201,11 @@ class AndroidEnvironment:
     def observes_network_via_driver(self) -> bool:
         return False  # no native network monitor — the same mocked story as iOS
 
+    def mirrors_collector_port_on_device(self) -> bool:
+        # `bridge_collector`'s `adb reverse tcp:<port> tcp:<port>` binds the same number inside the
+        # guest, so the collector's port must be one the emulator can bind too.
+        return True
+
     def records_video_up_front(self) -> bool:
         # Begin `screenrecord` before the app launches so its cold start is captured; the sink adopts
         # the running interval (`_prestart_video` / `prestarted_intervals`) instead of the driver's
