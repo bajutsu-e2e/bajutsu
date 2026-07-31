@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-conformance-suite-infra-fault-recovery-ja.md)
+**English** · [日本語](BE-0334-conformance-suite-infra-fault-recovery-ja.md)
 
-# BE-XXXX — Give the on-device conformance suite the infrastructure-fault recovery the run pipeline already has
+# BE-0334 — Give the on-device conformance suite the infrastructure-fault recovery the run pipeline already has
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-conformance-suite-infra-fault-recovery.md) |
+| Proposal | [BE-0334](BE-0334-conformance-suite-infra-fault-recovery.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0334") |
 | Topic | Platform support |
 | Related | [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md), [BE-0218](../BE-0218-e2e-simulator-flaky-readiness-actuation/BE-0218-e2e-simulator-flaky-readiness-actuation.md), [BE-0319](../BE-0319-xcuitest-cold-spawn-resilience/BE-0319-xcuitest-cold-spawn-resilience.md), [BE-0323](../BE-0323-xcuitest-readiness-crash-respawn/BE-0323-xcuitest-readiness-crash-respawn.md) |
 <!-- /BE-METADATA -->
