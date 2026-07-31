@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
-| 実装 PR | （PR を開いた時点で記入します） |
+| 実装 PR | [#1421](https://github.com/bajutsu-e2e/bajutsu/pull/1421) |
 | トピック | コントリビューターワークフロー |
 | 関連 | [BE-0094](../BE-0094-roadmap-status-dashboard/BE-0094-roadmap-status-dashboard-ja.md)、[BE-0219](../BE-0219-roadmap-dashboard-search/BE-0219-roadmap-dashboard-search-ja.md)、[BE-0311](../BE-0311-roadmap-dashboard-table-view/BE-0311-roadmap-dashboard-table-view-ja.md) |
 <!-- /BE-METADATA -->
