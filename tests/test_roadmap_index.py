@@ -223,3 +223,79 @@ def test_load_items_with_dates_are_opt_in() -> None:
                 assert datetime.fromisoformat(stamp).tzinfo is not None
     # Off by default, so the tools that don't render dates skip the per-item git log calls.
     assert all(i.created is None and i.updated is None for i in bri.load_items(roadmap))
+
+
+def test_relation_ids_reads_every_id_a_field_names() -> None:
+    """A relation value's ids are read by token, in first-seen order, deduped, minus the item."""
+    value = (
+        "[BE-0094](../BE-0094-roadmap-status-dashboard/BE-0094-roadmap-status-dashboard.md), "
+        "[BE-0219](../BE-0219-roadmap-dashboard-search/BE-0219-roadmap-dashboard-search.md)"
+    )
+    assert bri.relation_ids(value, self_id="BE-0311") == ("BE-0094", "BE-0219")
+    # An id repeated by a link's text and its href is one reference, not two.
+    assert bri.relation_ids("BE-0094 [BE-0094](x.md)", self_id="BE-0311") == ("BE-0094",)
+    # Self-references and an unset field yield nothing rather than a self-loop or a crash.
+    assert bri.relation_ids("[BE-0311](BE-0311-x.md)", self_id="BE-0311") == ()
+    assert bri.relation_ids(None, self_id="BE-0311") == ()
+    # A BE-XXXX placeholder carries no number, so it names no item to link to.
+    assert bri.relation_ids("BE-XXXX", self_id="BE-0311") == ()
+
+
+def _item_dir(roadmap: Path, be_id: str, slug: str, *, extra: str = "") -> None:
+    """Write a minimal two-language item under ``roadmap``, with optional extra metadata rows."""
+    directory = roadmap / f"{be_id}-{slug}"
+    directory.mkdir(parents=True)
+    for suffix, status, topic in (("", "Status", "Topic"), ("-ja", "状態", "トピック")):
+        (directory / f"{be_id}-{slug}{suffix}.md").write_text(
+            f"# {be_id} — Title\n\n"
+            "<!-- BE-METADATA -->\n| Field | Value |\n|---|---|\n"
+            f"| {status} | **Implemented** |\n| {topic} | Contributor workflow |\n"
+            f"{extra if not suffix else ''}"
+            "<!-- /BE-METADATA -->\n",
+            encoding="utf-8",
+        )
+
+
+def test_load_items_drops_a_relation_to_an_item_that_does_not_exist(tmp_path: Path) -> None:
+    """A relation is kept only when the tree holds the item it names, so no edge is left dangling."""
+    roadmap = tmp_path / "roadmaps"
+    _item_dir(
+        roadmap,
+        "BE-0045",
+        "foo",
+        extra="| Related | [BE-0046](x.md), [BE-9999](y.md) |\n| Superseded by | [BE-0046](z.md) |\n",
+    )
+    _item_dir(roadmap, "BE-0046", "bar")
+    items = {item.id: item for item in bri.load_items(roadmap)}
+    assert items["BE-0045"].related == ("BE-0046",)
+    assert items["BE-0045"].superseded_by == ("BE-0046",)
+    assert items["BE-0046"].related == ()
+
+
+def test_load_items_reads_relations_from_the_english_file_only(tmp_path: Path) -> None:
+    """Relations come off the English metadata, like Status and Topic — Japanese never adds one."""
+    roadmap = tmp_path / "roadmaps"
+    _item_dir(roadmap, "BE-0045", "foo", extra="| Origin | [BE-0046](x.md) |\n")
+    _item_dir(roadmap, "BE-0046", "bar")
+    ja = roadmap / "BE-0046-bar" / "BE-0046-bar-ja.md"
+    ja.write_text(
+        ja.read_text(encoding="utf-8").replace(
+            "<!-- /BE-METADATA -->", "| 関連 | [BE-0045](x.md) |\n<!-- /BE-METADATA -->"
+        ),
+        encoding="utf-8",
+    )
+    items = {item.id: item for item in bri.load_items(roadmap)}
+    assert items["BE-0045"].origin_refs == ("BE-0046",)
+    assert items["BE-0046"].related == ()
+
+
+def test_committed_relations_all_resolve() -> None:
+    """The gate: every relation the committed roadmap declares names an item that exists."""
+    roadmap = Path(__file__).resolve().parent.parent / "roadmaps"
+    items = bri.load_items(roadmap)
+    known = {item.id for item in items}
+    for item in items:
+        for attr in ("related", "origin_refs", "superseded_by"):
+            refs = getattr(item, attr)
+            assert set(refs) <= known, f"{item.id}.{attr}"
+            assert item.id not in refs, f"{item.id}.{attr} points at itself"
