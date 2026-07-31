@@ -45,6 +45,17 @@ an unrelated PR is neither run nor blocked. Adding a new required aggregator to 
 branch-protection ruleset is an out-of-repo administrative step, done by a maintainer with the exact
 check name.
 
+One distinction inside that positive-list carries a maintenance hazard. The list sweeps a subpackage
+by its directory prefix but allow-lists a top-level module by name, and the filter appends `.py` to
+that name, so the entry reaches a single-file module and nothing else. The day that module becomes a
+package, every file under the new package stops matching. The lane's `changes` job then reports
+`relevant=false`, and the always-reporting aggregator passes without having run a single job. Both
+`bajutsu/config` and `bajutsu/platform_lifecycle` drifted that way when a refactor split them into
+packages: a change to the XCUITest cold-spawn code, which the iOS lane exists to exercise, skipped
+the entire iOS fleet. A module that becomes a package belongs in the swept group instead, and
+`tests/test_e2e_changes.py` checks every remaining by-name entry against the source tree, so
+`make check` fails on the pull request that splits the next one.
+
 The `changes` job narrows one step further for the one case it can prove safe (BE-0322): a change
 confined to a lane's scenario files fires only the jobs that declare a changed scenario, rather than
 the whole lane. The filter reads the `scenarios:` each iOS job already declares in the workflow, so
