@@ -22,6 +22,7 @@ The in-app side that captures and POSTs the exchanges is a separate Swift packag
 
 from __future__ import annotations
 
+import errno
 import json
 import secrets
 import threading
@@ -101,6 +102,15 @@ class Collector(Protocol):
     # Screen-transition events (BE-0310), each with its receive time; independent of the exchanges
     # above. A collector with no such observer (web, fake) returns an empty list.
     def transitions_snapshot_timed(self) -> list[tuple[ScreenTransition, float]]: ...
+
+
+# The band `start_bridgeable` draws the collector's port from — below both the host's and the
+# emulator's ephemeral ranges, and beside the resident UI Automator server's device port
+# (`adb.RESIDENT_DEVICE_PORT`, 6790), which reserves a fixed port for the same reason. The span is
+# the ceiling on collectors sharing one host: one per leased device, so it covers every parallel
+# lane a run can hold and every other bajutsu process on the machine.
+_BRIDGE_PORT_BASE = 6800
+_BRIDGE_PORT_SPAN = 100
 
 
 class NetworkCollector:
@@ -205,6 +215,49 @@ class NetworkCollector:
         )
         self._thread.start()
         return self.port
+
+    def start_bridgeable(self) -> int:
+        """Start the receiver on a port a leased device can mirror, for the `adb reverse` bridge.
+
+        `start()`'s OS-chosen port is host-local, but the adb backend tunnels the collector with
+        `adb reverse tcp:<port> tcp:<port>` (BE-0283) — the *emulator* has to bind the same number.
+        An OS-chosen port comes from the host's ephemeral range, which is the guest's as well
+        (32768-60999 on Linux), so it lands where the emulator is already handing ports out to its
+        own sockets; when the guest happens to hold that one, adbd's bind fails and the bridge dies
+        with `cannot bind listener: Address already in use`, taking the lease with it. Any guest
+        socket collides, not just a listener — an outbound connection, or one left in `TIME_WAIT`.
+
+        Preferring a band below both ephemeral ranges removes that collision class rather than
+        narrowing it: nothing on either side allocates these ports by chance, so the number is free
+        on the device precisely because it was free on the host.
+
+        Returns:
+            The bound port, as `start()` does.
+
+        Raises:
+            OSError: no reserved-band port was bindable. An occupancy error (EADDRINUSE) on one
+                port advances to the next; any other bind error, and exhausting the whole band,
+                raise rather than fall back to an OS-chosen ephemeral port — that fallback would
+                sit in the shared range and reopen the guest-side collision this method removes.
+        """
+        for port in range(_BRIDGE_PORT_BASE, _BRIDGE_PORT_BASE + _BRIDGE_PORT_SPAN):
+            try:
+                return self.start(port)
+            except OSError as exc:
+                if exc.errno != errno.EADDRINUSE:
+                    # Not "port taken" (EACCES, EADDRNOTAVAIL, loopback down) — the next port
+                    # will not fix it, so surface it rather than burn the whole band masking it
+                    # as occupancy.
+                    raise
+                continue  # taken on this host (a parallel lane's collector); try the next
+        # The band is the collision-free guarantee: an OS-chosen fallback would land in the shared
+        # ephemeral range and reopen the very `adb reverse` collision this exists to remove. With
+        # one collector per leased device, exhausting the whole reserved band means the host is
+        # misconfigured — fail loudly instead of degrading to the flaky path.
+        raise OSError(
+            f"no free port in the reserved bridge band "
+            f"{_BRIDGE_PORT_BASE}-{_BRIDGE_PORT_BASE + _BRIDGE_PORT_SPAN - 1}"
+        )
 
     def stop(self) -> None:
         """Stop the receiver and release its socket. Idempotent — a no-op if never started."""

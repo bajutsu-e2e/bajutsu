@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0245") |
-| Implementing PR | [#1011](https://github.com/bajutsu-e2e/bajutsu/pull/1011), [#1017](https://github.com/bajutsu-e2e/bajutsu/pull/1017), [#1032](https://github.com/bajutsu-e2e/bajutsu/pull/1032), [#1042](https://github.com/bajutsu-e2e/bajutsu/pull/1042) |
+| Implementing PR | [#1011](https://github.com/bajutsu-e2e/bajutsu/pull/1011), [#1017](https://github.com/bajutsu-e2e/bajutsu/pull/1017), [#1032](https://github.com/bajutsu-e2e/bajutsu/pull/1032), [#1042](https://github.com/bajutsu-e2e/bajutsu/pull/1042), [#1400](https://github.com/bajutsu-e2e/bajutsu/pull/1400) |
 | Topic | Platform support |
 | Related | [BE-0234](../BE-0234-adb-run-performance/BE-0234-adb-run-performance.md), [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md), [BE-0233](../BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity.md), [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md), [BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci.md) |
 <!-- /BE-METADATA -->
@@ -204,6 +204,37 @@ Log:
   wait floor (`BAJUTSU_MIN_WAIT_TIMEOUT`), so it is a single read (today's behavior) off the Android
   lane and re-reads only the UI tree, ending the moment nothing a tree re-read could fix is still
   failing. This completes the item.
+- The wall-clock settle above closes one of two ways a tap after a scroll reaches a stale coordinate,
+  not both. A wall-clock deadline catches a tree the reads show *moving*, because two consecutive reads
+  then disagree and the poll continues. A tree that has not published the gesture at all shows nothing
+  moving: every read agrees with every other read, on frames that are already wrong. The intermittent
+  `gestures` red on the `smoke (adb)` lane was the second kind. Its own run artifacts recorded the whole
+  sequence, because the runner captures a tree and a screenshot per step. A `swipe` scrolled the Log
+  form 73px, four consecutive reads spanning 1.2s past the gesture all reported the pre-swipe frames,
+  and the screenshots for those steps are pixel-identical, which rules out a value that landed late.
+  The `longPress` then aimed 10px below the target's real bottom edge and pressed the gap, while the
+  `doubleTap` a second later resolved against a caught-up tree and landed. The one condition that
+  separates the two cases is "the projection differs from the one the gesture started at", so a pan now
+  makes `AdbDriver` record that projection and re-read before the next coordinate resolve. The stability
+  poll described above still runs afterwards, because the catch-up is not atomic: Android republishes node
+  bounds one node at a time, so a read landing mid-catch-up carries some new frames and some old.
+- "Differs from the recorded projection" needed three qualifications before it meant "caught up", each
+  found by reviewing the first attempt rather than by a failing run. A *torn* read differs while still
+  carrying the old frame for the element being resolved, so the differing projection also has to hold for
+  a dwell — and crediting a torn read from an ordinary `wait` or `assert` would bypass that dwell
+  entirely, handing the next actuator a partly-stale tree. A *degenerate* read differs from every real
+  projection, so counting one spends the budget on a tree the read path is itself still retrying. And a
+  baseline recorded from a read that predates an intervening actuation is worse than no baseline: the
+  first post-pan read moves off it, the pan is credited as published, and the barrier silently does
+  nothing — which is why the baseline is re-read whenever anything has actuated since the last read, and
+  why every actuator routes through one helper that marks the cached projection stale.
+- Re-reading the baseline is not enough when the preceding actuation is itself a pan, because the read
+  returns the pre-pan screen and the new baseline predates the earlier pan. The earlier pan's publish is
+  then mistaken for the newer one's, and the newer pan's delta goes unwaited. Two pans back-to-back is
+  the shape of the failing scenario itself, whose consecutive `swipe` steps resolve their endpoints
+  through `query()` and `resolve_unique` and never reach `_settle`, so nothing drains the barrier between
+  them. A pan therefore waits out any outstanding barrier before taking its own baseline; a single pan
+  pays nothing, because there is no barrier to drain.
 
 ## References
 

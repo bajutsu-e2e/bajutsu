@@ -235,6 +235,16 @@ class RunEnvironment(Protocol):
         `adb reverse` (BE-0283). Returns the teardown thunk (removes the tunnel), never `None`.
         """
 
+    def mirrors_collector_port_on_device(self) -> bool:
+        """Whether `bridge_collector` requires the *device* to bind the collector's host port too.
+
+        True only for the Android emulator, whose `adb reverse tcp:<port> tcp:<port>` mirrors the one
+        number onto the guest — so the port must be free on both sides, and the pool draws it from a
+        reserved band (`NetworkCollector.start_bridgeable`) instead of letting the OS pick. Every
+        platform that shares the host's loopback (the iOS Simulator) bridges nothing and binds
+        nothing on the device, so it keeps the OS-chosen port and is unaffected by the band.
+        """
+
     def relauncher(
         self,
         eff: Effective,

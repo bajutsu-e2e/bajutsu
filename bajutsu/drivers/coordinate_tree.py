@@ -21,8 +21,9 @@ from abc import ABC, abstractmethod
 from bajutsu.drivers import base
 
 # The settle projection: identifier + frame per element, sorted — a screen's stable shape ignoring
-# volatile value/traits/label.
-_StableKey = tuple[tuple[str, base.Frame], ...]
+# volatile value/traits/label. Public because a subclass's own `_settle` reasons about it (adb keeps
+# the projection a gesture was aimed at, to tell a caught-up read from a lagging one).
+StableKey = tuple[tuple[str, base.Frame], ...]
 
 
 class CoordinateTreeDriver(ABC):
@@ -43,7 +44,7 @@ class CoordinateTreeDriver(ABC):
 
     def __init__(self) -> None:
         self._max_seen = 0  # richest tree seen on this device; gates the empty retry
-        self._last_stable_key: _StableKey | None = None
+        self._last_stable_key: StableKey | None = None
 
     @abstractmethod
     def _describe(self) -> list[base.Element]:
@@ -113,7 +114,7 @@ class CoordinateTreeDriver(ABC):
         return min(self._EMPTY_BACKOFF_S * 2.0**attempt, self._EMPTY_BACKOFF_MAX_S)
 
     @staticmethod
-    def _stable_key(els: list[base.Element]) -> _StableKey:
+    def _stable_key(els: list[base.Element]) -> StableKey:
         """Identifier-frame projection for settle: ignores volatile value/traits/label."""
         return tuple(sorted((e["identifier"] or "", e["frame"]) for e in els))
 

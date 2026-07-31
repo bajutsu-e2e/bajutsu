@@ -70,6 +70,9 @@ class WebEnvironment:
     def observes_network_via_driver(self) -> bool:
         return True  # Playwright observes the live page natively
 
+    def mirrors_collector_port_on_device(self) -> bool:
+        return False  # no device and no pre-started collector to bridge
+
     def records_video_up_front(self) -> bool:
         return True  # Playwright records at context-creation, before the scenario runs
 

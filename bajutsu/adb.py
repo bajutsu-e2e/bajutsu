@@ -546,6 +546,10 @@ def reverse_cmd(serial: str, port: int) -> list[str]:
     here the emulator's `127.0.0.1:<port>` reaches the `NetworkCollector` bajutsu started on the host's
     loopback (BE-0283). Device and host port are the same, so the injected `BAJUTSU_COLLECTOR` URL
     (`http://127.0.0.1:<port>`) resolves on-device unchanged — no URL rewrite.
+
+    That sameness is what constrains the caller: adbd binds `port` inside the guest, so a port free on
+    the host is not enough — `NetworkCollector.start_bridgeable` picks one outside both ephemeral
+    ranges so the guest cannot already be holding it.
     """
     return _adb(serial, "reverse", f"tcp:{port}", f"tcp:{port}")
 

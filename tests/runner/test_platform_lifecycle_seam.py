@@ -175,6 +175,17 @@ def test_network_observation_strategy_is_per_platform() -> None:
     assert FakeEnvironment("fake", "UDID").observes_network_via_driver() is False
 
 
+def test_only_android_mirrors_the_collector_port_onto_the_device() -> None:
+    # Android's `adb reverse tcp:<port> tcp:<port>` binds the same number inside the guest, so its
+    # collector port must be free on both sides and comes from a reserved band. Everything else
+    # shares the host's loopback (or has no device at all) and keeps the OS-chosen port, so the band
+    # is scoped to the one backend that needs it rather than applied to every device lane.
+    assert AndroidEnvironment("adb", "SER").mirrors_collector_port_on_device() is True
+    assert XcuitestEnvironment("xcuitest", "UDID").mirrors_collector_port_on_device() is False
+    assert WebEnvironment("playwright").mirrors_collector_port_on_device() is False
+    assert FakeEnvironment("fake", "UDID").mirrors_collector_port_on_device() is False
+
+
 def test_devices_and_web_record_video_up_front_but_the_fake_does_not() -> None:
     # Video capture is wired before launch so the app's cold start is recorded: web binds it to the
     # browser context at creation, and Android starts recording before the app launches. XCUITest's
