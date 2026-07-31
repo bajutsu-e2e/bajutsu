@@ -455,12 +455,26 @@ def test_graph_view_is_wired_and_states_what_it_leaves_out() -> None:
     assert "Math.random" not in _PAGE
 
 
-def test_the_caption_claims_participation_rather_than_declaration() -> None:
-    """The drawn set is wider than the declaring set, so the caption must not overclaim.
+def test_an_item_named_only_by_another_is_drawn_while_declaring_nothing() -> None:
+    """Being drawn means taking part in a relation, which is wider than declaring one.
 
     ``Origin`` is one-directional and ``Related``'s reciprocity is a convention rather than a checked
-    rule, so an item named only by another is drawn while declaring no relation of its own. Saying
-    those items "declare" one would be untrue for every one of them (BE-0094's honesty rule).
+    rule, so an item named only by another is drawn without declaring anything itself. Pinned on a
+    synthetic pair, since only the code guarantees this — whether the live roadmap happens to contain
+    such an item today is an accident of its content.
+    """
+    derived = _linked_item("BE-9999", origin_refs=("BE-9998",))
+    named = _linked_item("BE-9998")
+    assert not (named.related or named.origin_refs or named.superseded_by)
+    drawn = {node["id"] for node in brd.graph_data([derived, named])["nodes"]}
+    assert drawn == {"BE-9998", "BE-9999"}
+
+
+def test_the_caption_claims_participation_rather_than_declaration() -> None:
+    """The caption must not tell a reader the drawn items declared anything (BE-0094's honesty rule).
+
+    Every declarer is drawn, so the caption's claim is checked as the non-strict containment the code
+    guarantees; the wording assertions are what keep it from drifting back to "declare".
     """
     declaring = {
         item.by_lang["en"].id
@@ -468,6 +482,21 @@ def test_the_caption_claims_participation_rather_than_declaration() -> None:
         if item.related or item.origin_refs or item.superseded_by
     }
     drawn = {node["id"] for node in brd.graph_data(_ITEMS)["nodes"]}
-    assert declaring < drawn, "expected items drawn only because another item named them"
+    assert declaring <= drawn
     assert "declare at least one" not in _PAGE
     assert "take part in at least one Related, Origin, or Superseded by relationship" in _PAGE
+
+
+def test_directed_edges_are_drawn_with_an_arrowhead() -> None:
+    """The legend labels Origin and Superseded by with an arrow, so the drawing must render one.
+
+    A dash pattern alone says the two ends of an edge differ without saying which is which, and the
+    direction ``_edges`` stores in ``source`` / ``target`` would be invisible.
+    """
+    assert "Origin \u2192" in _PAGE and "Superseded by \u2192" in _PAGE
+    assert "'be-graph-arrow'" in _PAGE
+    # Only the directed kinds carry the marker; Related is undirected and must stay a bare line.
+    assert re.search(
+        r"if\(ed\.kind!=='related'\)\s*line\.setAttribute\('marker-end', 'url\(#be-graph-arrow\)'\);",
+        _PAGE,
+    )

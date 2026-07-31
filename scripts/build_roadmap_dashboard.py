@@ -614,6 +614,9 @@ _STYLE = """
 .be-graph.is-dimmed .be-graph-edge,.be-graph.is-dimmed .be-node{opacity:.12}
 .be-graph.is-dimmed .be-graph-edge.is-lit,.be-graph.is-dimmed .be-node.is-lit{opacity:1}
 .be-graph .be-graph-edge.is-lit{stroke-opacity:.85;stroke-width:1.7}
+/* A marker paints with its own fill, not the referencing line's stroke, so match the edge opacity
+   rather than let an arrowhead read darker than the line it ends. */
+.be-graph-arrow{fill:currentColor;fill-opacity:.55}
 .be-graph .be-node.is-hidden,.be-graph .be-graph-edge.is-hidden{display:none}
 </style>
 """
@@ -865,9 +868,18 @@ _SCRIPT = """
 
   function placeGraph(){
     graphEdges.forEach(function(ed){
-      var a=graphNodes[ed.s], b=graphNodes[ed.t];
+      var a=graphNodes[ed.s], b=graphNodes[ed.t], x2=b.x, y2=b.y;
+      // A directed edge stops short of its target: its arrowhead sits at the line's end, and a line
+      // run to the node's centre would bury the head under the circle.
+      if(ed.kind!=='related'){
+        var vx=b.x-a.x, vy=b.y-a.y, len=Math.sqrt(vx*vx+vy*vy);
+        if(len>0.001){
+          var back=Math.min(len-0.5, b.r+7);
+          x2=b.x-vx/len*back; y2=b.y-vy/len*back;
+        }
+      }
       ed.el.setAttribute('x1', a.x.toFixed(1)); ed.el.setAttribute('y1', a.y.toFixed(1));
-      ed.el.setAttribute('x2', b.x.toFixed(1)); ed.el.setAttribute('y2', b.y.toFixed(1));
+      ed.el.setAttribute('x2', x2.toFixed(1)); ed.el.setAttribute('y2', y2.toFixed(1));
     });
     graphNodes.forEach(function(nd){
       nd.el.setAttribute('transform',
@@ -996,9 +1008,25 @@ _SCRIPT = """
     graphRoot=document.createElementNS(SVG_NS, 'g');
     var edgeLayer=document.createElementNS(SVG_NS, 'g');
     var nodeLayer=document.createElementNS(SVG_NS, 'g');
+    // Origin and Superseded by are directed relations, and the legend labels them with an arrow, so
+    // the drawing has to carry one — a dash pattern alone says the two ends differ without saying
+    // which is which.
+    var defs=document.createElementNS(SVG_NS, 'defs');
+    var marker=document.createElementNS(SVG_NS, 'marker');
+    marker.setAttribute('id', 'be-graph-arrow');
+    marker.setAttribute('viewBox', '0 0 8 8');
+    marker.setAttribute('refX', '7'); marker.setAttribute('refY', '4');
+    marker.setAttribute('markerWidth', '6'); marker.setAttribute('markerHeight', '6');
+    marker.setAttribute('orient', 'auto');
+    var head=document.createElementNS(SVG_NS, 'path');
+    head.setAttribute('class', 'be-graph-arrow');
+    head.setAttribute('d', 'M0,0 L8,4 L0,8 Z');
+    marker.appendChild(head);
+    defs.appendChild(marker);
     graphEdges.forEach(function(ed){
       var line=document.createElementNS(SVG_NS, 'line');
       line.setAttribute('class', 'be-graph-edge be-kind-'+ed.kind);
+      if(ed.kind!=='related') line.setAttribute('marker-end', 'url(#be-graph-arrow)');
       ed.el=line;
       edgeLayer.appendChild(line);
     });
@@ -1010,6 +1038,7 @@ _SCRIPT = """
       a.setAttribute('href', nd.href);
       a.setAttribute('aria-label', nd.id+': '+nd.title);
       var r=4+Math.min(6, Math.sqrt(nd.deg)*1.6);
+      nd.r=r;  // placeGraph stops a directed edge this far short, so its arrowhead stays visible
       var circle=document.createElementNS(SVG_NS, 'circle');
       circle.setAttribute('r', r.toFixed(2));
       circle.setAttribute('fill', colors[nd.status]||'#888');
@@ -1022,6 +1051,7 @@ _SCRIPT = """
       nd.el=a;
       nodeLayer.appendChild(a);
     });
+    graphRoot.appendChild(defs);
     graphRoot.appendChild(edgeLayer);
     graphRoot.appendChild(nodeLayer);
     graphSvg.appendChild(graphRoot);
