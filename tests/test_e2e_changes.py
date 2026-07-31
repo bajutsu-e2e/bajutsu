@@ -425,6 +425,58 @@ def test_no_per_backend_file_is_orphaned() -> None:
             assert lanes, f"{target} fires no lane — it would break CI silently"
 
 
+# The shared core's negative lookahead (which by-name leaves it does NOT sweep, leaving them to a
+# lane) and each lane's own claimed leaves in `_LANE_PATHS` are two independently hand-maintained
+# lists over the same two per-backend directories. A driver or environment added to a lane's fragment
+# without adding it to the shared exclusion re-sweeps it into the shared core too, so it fires all
+# three lanes instead of just the one that claims it — silently reintroducing the "a lane's metered
+# jobs fire on another lane's driver-only change" regression #1405 fixed, from the other list this
+# time. `test_no_per_backend_file_is_orphaned` above only catches the opposite drift (a file firing no
+# lane); this pins the shared exclusion to the *union* of every lane's claims, so the two lists cannot
+# drift apart in either direction without failing here.
+_DRIVERS_EXCLUSION_RE = re.compile(r"bajutsu/drivers/\(\?!\(\?:([a-z_|]+)\)\\\.py\$\)")
+_ENVIRONMENTS_EXCLUSION_RE = re.compile(
+    r"bajutsu/platform_lifecycle/\(\?!environments/\(\?:([a-z_|]+)\)\\\.py\$\)"
+)
+_DRIVERS_CLAIM_RE = re.compile(r"bajutsu/drivers/(?:\(\?:([a-z_|]+)\)|([a-z_]+))\\\.py\$")
+_ENVIRONMENTS_CLAIM_RE = re.compile(
+    r"bajutsu/platform_lifecycle/environments/(?:\(\?:([a-z_|]+)\)|([a-z_]+))\\\.py\$"
+)
+
+
+def _claimed_names(pattern: str, claim_re: re.Pattern[str]) -> set[str]:
+    names: set[str] = set()
+    for match in claim_re.finditer(pattern):
+        group = next(g for g in match.groups() if g)
+        names.update(group.split("|"))
+    return names
+
+
+def test_shared_exclusion_matches_the_union_of_lane_claims() -> None:
+    for label, exclusion_re, claim_re in (
+        ("bajutsu/drivers/", _DRIVERS_EXCLUSION_RE, _DRIVERS_CLAIM_RE),
+        (
+            "bajutsu/platform_lifecycle/environments/",
+            _ENVIRONMENTS_EXCLUSION_RE,
+            _ENVIRONMENTS_CLAIM_RE,
+        ),
+    ):
+        excluded_match = exclusion_re.search(_RUN_PATH)
+        assert excluded_match, (
+            f"{label}: shared exclusion lookahead not found — has its shape changed?"
+        )
+        excluded = set(excluded_match.group(1).split("|"))
+
+        claimed: set[str] = set()
+        for lane_pattern in _LANE_PATHS.values():
+            claimed |= _claimed_names(lane_pattern, claim_re)
+
+        assert claimed == excluded, (
+            f"{label}: shared exclusion {sorted(excluded)} != union of lane claims {sorted(claimed)} — "
+            f"a driver/environment named in one list but not the other over-fires or orphans a lane"
+        )
+
+
 def _plain_literal_paths(pattern: str) -> list[str]:
     """The unambiguous filesystem paths in one alternation, skipping genuinely regex branches.
 
