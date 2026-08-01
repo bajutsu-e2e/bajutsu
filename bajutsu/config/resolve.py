@@ -156,6 +156,7 @@ def resolve(config: Config, target: str) -> Effective:
         mock_server=a.mock_server,
         mailbox=a.mailbox,
         device_provider=a.device_provider,
+        cloud_batch=a.cloud_batch,
         setup=a.setup,
         capture=list(d.capture),
         redact=_merge_redact(d.redact, a.redact),

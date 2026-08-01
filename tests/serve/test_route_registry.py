@@ -85,6 +85,7 @@ _EXPECTED: frozenset[tuple[str, str]] = frozenset(
         ("POST", "/api/compose"),
         ("POST", "/api/ant/login"),
         ("POST", "/api/run"),
+        ("POST", "/api/run-set"),
         ("POST", "/api/projects"),
         ("POST", "/api/projects/{name}/run"),
         ("POST", "/api/projects/{name}/activate"),

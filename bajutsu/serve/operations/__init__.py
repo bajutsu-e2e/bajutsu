@@ -64,6 +64,7 @@ from bajutsu.serve.operations.dispatch import (
     start_crawl,
     start_record,
     start_run,
+    start_run_set,
 )
 from bajutsu.serve.operations.doctor import doctor_check
 from bajutsu.serve.operations.enrich import start_enrich
@@ -241,6 +242,7 @@ __all__ = [
     "start_enrich",
     "start_record",
     "start_run",
+    "start_run_set",
     "start_triage",
     "stats_html",
     "sweep_expired_trash",

@@ -345,6 +345,21 @@ def test_device_provider_kind_defaults_to_local() -> None:
     assert provider.kind == "local"
 
 
+def test_cloud_batch_defaults_to_none() -> None:
+    # No cloudBatch = the target runs on local devices; Effective carries None so serve's fan-out
+    # dispatches local jobs, leaving every existing target unchanged (BE-0336 Unit 3).
+    cfg = load_config("targets: { app: { bundleId: com.example.app } }")
+    assert resolve(cfg, "app").cloud_batch is None
+
+
+def test_cloud_batch_names_the_batch_provider_kind() -> None:
+    # A target declares which registered batch provider its cloud runs use; the kind resolves straight
+    # onto Effective (like device_provider). The kind is validated against the batch-provider registry
+    # at runtime, not config load, so the deterministic core imports no cloud SDK (BE-0336 / BE-0112).
+    cfg = load_config("targets: { app: { bundleId: com.example.app, cloudBatch: devicefarm } }")
+    assert resolve(cfg, "app").cloud_batch == "devicefarm"
+
+
 def test_appium_provider_endpoint_round_trips_through_config() -> None:
     # The `endpoint` field on `deviceProvider` must survive the YAML → `load_config` → `resolve`
     # path; a field-name or alias mismatch in `_Model` (which sets `extra="forbid"`) would only

@@ -343,6 +343,11 @@ ROUTES: tuple[Route, ...] = (
     ),
     Route(
         "POST",
+        "/api/run-set",
+        lambda state, ctx: ops.start_run_set(state, ctx.body(), actor=ctx.actor()),
+    ),
+    Route(
+        "POST",
         "/api/projects",
         lambda state, ctx: ops.register_project(state, ctx.body(), actor=ctx.actor()),
     ),

@@ -322,6 +322,11 @@ class TargetConfig(_Model):
     # `--udid` path), so an existing target is unchanged; a device-cloud `kind` reserves a device
     # off-host. Validated against the registry at runtime, not here (the core imports no cloud SDK).
     device_provider: DeviceProvider | None = Field(default=None, alias="deviceProvider")
+    # Which registered batch provider serve's per-scenario fan-out submits this target's cloud runs
+    # to (BE-0336 Unit 3). None = the target runs on local devices; a value (e.g. "devicefarm") names
+    # a kind in the batch-provider registry. Validated at runtime, not here, so the deterministic
+    # core imports no cloud SDK (BE-0112). Distinct from `deviceProvider` (the live-device topology).
+    cloud_batch: str | None = Field(default=None, alias="cloudBatch")
     device: str | None = None
     locale: str | None = None
     # Capability tokens this target requires of the worker that runs it (BE-0166), added to the

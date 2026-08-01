@@ -9,7 +9,7 @@
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0336") |
-| 実装 PR | [#1425](https://github.com/bajutsu-e2e/bajutsu/pull/1425)（単位1 — submitter core の移行）、[#1429](https://github.com/bajutsu-e2e/bajutsu/pull/1429)（単位2 — batch executor seam） |
+| 実装 PR | [#1425](https://github.com/bajutsu-e2e/bajutsu/pull/1425)（単位1 — submitter core の移行）、[#1429](https://github.com/bajutsu-e2e/bajutsu/pull/1429)（単位2 — batch executor seam）、[#1435](https://github.com/bajutsu-e2e/bajutsu/pull/1435)（単位3 — シナリオ単位の分割） |
 | トピック | Device-cloud execution |
 | 関連 | [BE-0235](../BE-0235-aws-device-farm-submitter/BE-0235-aws-device-farm-submitter-ja.md), [BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction-ja.md), [BE-0198](../BE-0198-serve-state-job-registry-split/BE-0198-serve-state-job-registry-split-ja.md) |
 <!-- /BE-METADATA -->
@@ -133,7 +133,7 @@ serve の利用者ごと・org ごとのキャップや run の履歴も共有�
   確認する。
 - [x] serve 向けの Device Farm executor — 1件のシナリオを投入・ポーリングし、判定経路の外で manifest
   の合否を記録する。
-- [ ] シナリオ単位の分割 — シナリオの集合を求める要求を、シナリオごとに1つのジョブへ展開する。
+- [x] シナリオ単位の分割 — シナリオの集合を求める要求を、シナリオごとに1つのジョブへ展開する。
 - [ ] デバイス予算 `K` — 同時に走る Device Farm ジョブを、ジョブレジストリで抑える。既定は設定から取り、
   要求ごとに上書きでき、Device Farm の `maxDevices` を1に固定する。
 - [ ] 長時間ポーリングのための永続化 — ホスティング用の backend で queued/polling/done の状態を永続化し、
@@ -160,6 +160,16 @@ serve の利用者ごと・org ごとのキャップや run の履歴も共有�
   デバイス無し・サブプロセス無し・判定経路の外）。範囲は executor の機構で、in-memory の AWS fake で
   端から端まで検証します。config によるプロバイダ登録とホスティングの object-store／永続ワーカー経路は
   単位3〜5で続けます。
+- [#1435](https://github.com/bajutsu-e2e/bajutsu/pull/1435)（単位3）— シナリオ単位の分割投入を追加しました。中立な `POST /api/run-set` エンドポイント
+  （`start_run_set`）が、シナリオの集合を求める要求を、シナリオごとに1つの cloud-batch `Job` へ展開します。
+  各ジョブは自身の `BatchRequest` を持ち、ほかのすべての run と同じ同時実行キャップ付きの経路
+  （`_register_and_dispatch`）で登録されます。対象が使う batch プロバイダは、新しい `cloudBatch` 設定
+  （`TargetConfig` → `Effective`）で宣言するため、要求はプロバイダ名を出しません。executor の種別は
+  クライアントではなく設定の判断です（設計論点④）。対象とするシナリオは要求された部分集合、または省略時は
+  対象ディレクトリ内の全件です。各シナリオは投入の前に信頼できる runnable へ解決するため、未知の名前は
+  途中まで分割を残さず要求全体を fail-closed にします。web 対象、`cloudBatch` 未設定の対象、インストール
+  可能な `appPath` を持たない対象、プロバイダがパッケージ化する run ディレクトリの外にある config や
+  シナリオは、明示的に拒否します。同時にデバイスを確保できる本数を抑えるデバイス予算は単位4です。
 
 ## 参考
 

@@ -9,7 +9,7 @@
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0336") |
-| Implementing PR | [#1425](https://github.com/bajutsu-e2e/bajutsu/pull/1425) (Unit 1 — submitter core migration); [#1429](https://github.com/bajutsu-e2e/bajutsu/pull/1429) (Unit 2 — batch executor seam) |
+| Implementing PR | [#1425](https://github.com/bajutsu-e2e/bajutsu/pull/1425) (Unit 1 — submitter core migration); [#1429](https://github.com/bajutsu-e2e/bajutsu/pull/1429) (Unit 2 — batch executor seam); [#1435](https://github.com/bajutsu-e2e/bajutsu/pull/1435) (Unit 3 — per-scenario fan-out) |
 | Topic | Device-cloud execution |
 | Related | [BE-0235](../BE-0235-aws-device-farm-submitter/BE-0235-aws-device-farm-submitter.md), [BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction.md), [BE-0198](../BE-0198-serve-state-job-registry-split/BE-0198-serve-state-job-registry-split.md) |
 <!-- /BE-METADATA -->
@@ -137,7 +137,7 @@ through the registry's existing cap.
   invocation as the fan-out unit.
 - [x] Device Farm executor for serve — submit and poll one scenario, record the manifest verdict off
   the verdict path.
-- [ ] Per-scenario fan-out — expand a scenario-set request into one job per scenario.
+- [x] Per-scenario fan-out — expand a scenario-set request into one job per scenario.
 - [ ] Device budget `K` — bound in-flight Device Farm jobs through the job registry, default from
   config with a per-request override, and pin Device Farm `maxDevices` to one.
 - [ ] Durable state for long polls — persist queued/polling/done state on the hosted backend; keep a
@@ -165,6 +165,17 @@ Log:
   no subprocess, off the `run`/CI verdict path. Scope is the executor mechanism, exercised end to end
   against the in-memory AWS fake; config-driven provider registration and the hosted object-store /
   durable-worker path follow in Units 3–5.
+- [#1435](https://github.com/bajutsu-e2e/bajutsu/pull/1435) (Unit 3) — added the per-scenario fan-out dispatch: a neutral `POST /api/run-set` endpoint
+  (`start_run_set`) expands a scenario-set request into one cloud-batch `Job` per scenario, each carrying
+  its own `BatchRequest`, registered through the same concurrency-capped tail (`_register_and_dispatch`)
+  as every other run. The target's config declares which batch provider its cloud runs use through a new
+  `cloudBatch` field (`TargetConfig` → `Effective`), so the request never names a provider — the executor
+  kind is a config decision, not a client one (design point ④). Scenarios are the requested subset or, when
+  omitted, every scenario in the target's dir; each is resolved to its trusted runnable *before* any
+  dispatch, so an unknown name fails the whole request closed with no partial fan-out. A web target, a
+  target with no `cloudBatch`, one with no installable `appPath`, or a config/scenario that sits outside
+  the run directory the provider packages is refused loudly. The device budget that bounds how many of
+  these reserve a device at once is Unit 4.
 
 ## References
 
