@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-codegen-visual-scenario-keyed-ja.md)
+**English** · [日本語](BE-0338-codegen-visual-scenario-keyed-ja.md)
 
-# BE-XXXX — Scenario-key the iOS codegen and visual E2E jobs
+# BE-0338 — Scenario-key the iOS codegen and visual E2E jobs
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-codegen-visual-scenario-keyed.md) |
+| Proposal | [BE-0338](BE-0338-codegen-visual-scenario-keyed.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0338") |
 | Topic | Contributor workflow |
 | Related | [BE-0322](../BE-0322-e2e-scenario-scoped-filter/BE-0322-e2e-scenario-scoped-filter.md) |
 <!-- /BE-METADATA -->
