@@ -9,7 +9,7 @@
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0338") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#1439](https://github.com/bajutsu-e2e/bajutsu/pull/1439) |
 | Topic | Contributor workflow |
 | Related | [BE-0322](../BE-0322-e2e-scenario-scoped-filter/BE-0322-e2e-scenario-scoped-filter.md) |
 <!-- /BE-METADATA -->

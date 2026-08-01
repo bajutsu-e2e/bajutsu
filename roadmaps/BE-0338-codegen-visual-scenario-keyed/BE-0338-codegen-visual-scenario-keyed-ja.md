@@ -9,7 +9,7 @@
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0338") |
-| 実装 PR | _pending_ |
+| 実装 PR | [#1439](https://github.com/bajutsu-e2e/bajutsu/pull/1439) |
 | トピック | コントリビューターワークフロー |
 | 関連 | [BE-0322](../BE-0322-e2e-scenario-scoped-filter/BE-0322-e2e-scenario-scoped-filter-ja.md) |
 <!-- /BE-METADATA -->
