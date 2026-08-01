@@ -7,9 +7,9 @@
 |---|---|
 | Proposal | [BE-0336](BE-0336-serve-device-farm-bounded-fan-out.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0336") |
-| Implementing PR | [#1425](https://github.com/bajutsu-e2e/bajutsu/pull/1425) (Unit 1 — submitter core migration); [#1429](https://github.com/bajutsu-e2e/bajutsu/pull/1429) (Unit 2 — batch executor seam); [#1435](https://github.com/bajutsu-e2e/bajutsu/pull/1435) (Unit 3 — per-scenario fan-out); [#1438](https://github.com/bajutsu-e2e/bajutsu/pull/1438) (Unit 4 — device budget); [#1440](https://github.com/bajutsu-e2e/bajutsu/pull/1440) (Unit 5 — durable poll state) |
+| Implementing PR | [#1425](https://github.com/bajutsu-e2e/bajutsu/pull/1425) (Unit 1 — submitter core migration); [#1429](https://github.com/bajutsu-e2e/bajutsu/pull/1429) (Unit 2 — batch executor seam); [#1435](https://github.com/bajutsu-e2e/bajutsu/pull/1435) (Unit 3 — per-scenario fan-out); [#1438](https://github.com/bajutsu-e2e/bajutsu/pull/1438) (Unit 4 — device budget); [#1440](https://github.com/bajutsu-e2e/bajutsu/pull/1440) (Unit 5 — durable poll state); [#PENDINGN](https://github.com/bajutsu-e2e/bajutsu/pull/PENDINGN) (Unit 6 — docs and faked-AWS coverage) |
 | Topic | Device-cloud execution |
 | Related | [BE-0235](../BE-0235-aws-device-farm-submitter/BE-0235-aws-device-farm-submitter.md), [BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction.md), [BE-0198](../BE-0198-serve-state-job-registry-split/BE-0198-serve-state-job-registry-split.md) |
 <!-- /BE-METADATA -->
@@ -142,7 +142,7 @@ through the registry's existing cap.
   config with a per-request override, and pin Device Farm `maxDevices` to one.
 - [x] Durable state for long polls — persist queued/polling/done state on the hosted backend; keep a
   best-effort local path.
-- [ ] Documentation and tests — bilingual how-to update and faked-AWS coverage of the fan-out and the
+- [x] Documentation and tests — bilingual how-to update and faked-AWS coverage of the fan-out and the
   cap.
 
 Log:
@@ -200,6 +200,20 @@ Log:
   checkpoint (a restart there loses all in-memory state regardless), keeping the thinner best-effort path the
   design calls for. The verdict path is untouched, exercised end to end against the in-memory AWS fake. The
   bilingual how-to and the wider faked-AWS coverage are Unit 6.
+- [#PENDINGN](https://github.com/bajutsu-e2e/bajutsu/pull/PENDINGN) (Unit 6) — documented the serve dispatch
+  path and widened the faked-AWS coverage, closing the item. `docs/devicefarm.md` and its `docs/ja/` mirror
+  gained a "Dispatching from serve" section: the per-scenario fan-out contrasted with the submitter's single
+  serialized run, the two per-target config fields (`cloudBatch` selecting the provider, `cloudBatchBudget`
+  setting the device budget `K` keyed on the provider pool), the `POST /api/run-set` request (its optional
+  `scenarios` subset and lower-only `deviceBudget`, fail-closed on an unknown scenario, the routine partial
+  dispatch when the budget is full, and the loud refusals), the restart-durable checkpoint on the hosted
+  backend, and the unchanged manifest verdict. A new `tests/serve/test_run_set_devicefarm.py` drives the
+  fan-out end to end through the real `DeviceFarmBatchProvider` against the in-memory Device Farm fake — the
+  gap the earlier units left, since `test_run_set` stops at the dispatch layer and `test_batch_provider` runs
+  a single scenario: three scenarios fan out to three scheduled runs that each land their own run and PASS
+  verdict, a failing manifest surfaces as a failed job (verdict from `manifest.json`, not Device Farm's
+  classification), and the device budget bounds a faked fan-out to `K` runs. No product code changed; the cap's
+  provider-keyed counting stays covered by `test_job_registry_caps_concurrent_batch_by_provider_pool`.
 
 ## References
 

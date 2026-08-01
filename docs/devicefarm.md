@@ -169,6 +169,64 @@ from the `DEVICEFARM_PROJECT_ARN` / `DEVICEFARM_DEVICE_POOL_ARN` repository vari
 the three unset, the job is a green no-op (a `::notice::`, never red), so it stays dormant until an
 operator wires up an account.
 
+## Dispatching from serve
+
+The submitter and the workflow above are the headless path: one run packages the whole suite and
+executes its scenarios back to back on a single reserved device. `bajutsu serve` (BE-0336) adds a
+second path on the surface operators already use to dispatch runs and watch history — and it changes
+the shape. Instead of one serialized run, serve **fans the suite out one Device Farm run per
+scenario**, so scenarios run in parallel, bounded by a device budget rather than by a single device.
+
+Two per-target config fields under `targets.<name>` drive it, keeping the per-environment difference
+in config as the tool stays unchanged (prime directive 3):
+
+- **`cloudBatch: devicefarm`** selects the batch provider a target's cloud runs use. A target without
+  it is a local target, and the cloud fan-out refuses it.
+- **`cloudBatchBudget: K`** sets the device budget: at most `K` of that provider's runs reserve a
+  device at once. The cap is keyed on the provider — the contended device pool — so it spans every
+  target and org sharing that provider, not one target's slice. Device Farm's own `maxDevices` stays
+  pinned to one per run, so this Bajutsu-side budget alone governs how many devices are held.
+
+```yaml
+targets:
+  showcase-compose:
+    platform: android
+    package: com.example.showcase
+    scenarios: demos/showcase/scenarios
+    appPath: app-debug.apk        # the APK Device Farm installs on the reserved device
+    cloudBatch: devicefarm        # dispatch this target's cloud runs through Device Farm
+    cloudBatchBudget: 4           # reserve at most four devices at once across the pool
+```
+
+A `POST /api/run-set` request fans a target out. Its body names the `target` and, optionally, a
+`scenarios` subset and a `deviceBudget`:
+
+```json
+{ "target": "showcase-compose", "scenarios": ["firstlook.yaml", "controls.yaml"], "deviceBudget": 2 }
+```
+
+Omitting `scenarios` runs every scenario in the target's directory. Every requested name resolves to
+its scenario **before** any dispatch, so one unknown name fails the whole request closed rather than
+fanning out the good ones and erroring on the bad one. A per-request `deviceBudget` may only *lower*
+the target's budget, never raise it — the request tightens a shared resource, it does not grant more
+of it. When the budget is already full, the surplus scenarios are **deferred**, not rejected: a
+partial dispatch is the routine outcome the cap governs, and the response lists the jobs it did
+start. serve refuses the request loudly, though, when it cannot honor it at all — a web target (no
+device to reserve), a target with no `cloudBatch` provider or no `appPath`, or a config or scenario
+that sits outside the run directory the provider packages.
+
+On the hosted, database-backed backend the run is **durable across a serve restart**. serve
+checkpoints the scheduled run's ARN the moment Device Farm accepts it, so a worker that re-leases the
+job after a restart resumes polling that same run — no re-upload, no reschedule — and its reserved
+device is not orphaned during the 150-minute poll. The local single-process backend keeps a thinner,
+best-effort path: a restart there loses in-memory state regardless, so it does not checkpoint.
+
+None of this touches the verdict. Each Device Farm run reports pass or fail from Bajutsu's own
+`manifest.json`, exactly as a local run does, and serve lands the downloaded run under its runs
+directory so its report viewer and history render it like any other. The submission and polling
+machinery stays off the `run`/CI verdict path, with no large language model (LLM) call on it (prime
+directive 1).
+
 ## The serial-resolution proof of concept (manual)
 
 The one empirical unknown is whether Bajutsu's Android backend picks up the Device Farm host's
