@@ -27,6 +27,7 @@ from bajutsu.cloud.devicefarm import (
     _safe_extract,
     _store_artifact,
     build_package,
+    device_selection_for,
     render_test_spec,
     submit_and_collect,
     verdict_from_manifest,
@@ -644,6 +645,79 @@ def test_submit_and_collect_uploads_schedules_and_returns_the_manifest_verdict(
     assert client.scheduled is not None
     assert verdict.ok
     assert verdict.passed == 1
+
+
+def test_device_selection_for_pins_the_platform_and_a_single_device() -> None:
+    # BE-0336's serve fan-out reserves exactly one shared-pool device per run through
+    # deviceSelectionConfiguration (devicePoolArn would run on *every* pool device). The Bajutsu-side
+    # budget K governs how many such runs are in flight; each run itself takes one device.
+    selection = device_selection_for("ios")
+    assert selection["maxDevices"] == 1
+    assert selection["filters"] == [
+        {"attribute": "PLATFORM", "operator": "EQUALS", "values": ["IOS"]}
+    ]
+    assert device_selection_for("android")["filters"][0]["values"] == ["ANDROID"]
+
+
+def test_submit_and_collect_schedules_with_device_selection_not_a_pool(tmp_path: Path) -> None:
+    # The serve fan-out path passes deviceSelectionConfiguration + maxDevices:1 instead of a static
+    # devicePoolArn (the two are mutually exclusive in ScheduleRun). Assert the run is scheduled with
+    # the selection and no pool, so one run reserves one device from the shared platform pool.
+    client = _FakeClient()
+    transfer = _FakeTransfer(downloaded_ok=True)
+    package = tmp_path / "package.zip"
+    package.write_bytes(b"zip")
+    spec = tmp_path / "testspec.yml"
+    spec.write_text("version: 0.1")
+    apk = tmp_path / "app.apk"
+    apk.write_bytes(b"apk")
+
+    submit_and_collect(
+        client,
+        transfer,
+        project_arn="arn:project/1",
+        device_selection=device_selection_for("android"),
+        app_path=apk,
+        package_zip=package,
+        spec_yaml=spec,
+        dest=tmp_path / "out",
+        sleep=lambda _: None,
+    )
+
+    assert client.scheduled is not None
+    assert client.scheduled["deviceSelectionConfiguration"] == device_selection_for("android")
+    assert "devicePoolArn" not in client.scheduled
+
+
+def test_submit_and_collect_requires_exactly_one_of_pool_or_selection(tmp_path: Path) -> None:
+    # devicePoolArn and deviceSelectionConfiguration are exclusive in ScheduleRun; passing both or
+    # neither is a caller bug that must fail loud rather than schedule an ambiguous or empty run.
+    client = _FakeClient()
+    transfer = _FakeTransfer()
+    package = tmp_path / "package.zip"
+    package.write_bytes(b"zip")
+    spec = tmp_path / "testspec.yml"
+    spec.write_text("version: 0.1")
+    apk = tmp_path / "app.apk"
+    apk.write_bytes(b"apk")
+    kwargs: dict[str, Any] = {
+        "project_arn": "arn:project/1",
+        "app_path": apk,
+        "package_zip": package,
+        "spec_yaml": spec,
+        "dest": tmp_path / "out",
+        "sleep": lambda _: None,
+    }
+    with pytest.raises(DeviceFarmError, match="exactly one"):
+        submit_and_collect(client, transfer, **kwargs)
+    with pytest.raises(DeviceFarmError, match="exactly one"):
+        submit_and_collect(
+            client,
+            transfer,
+            device_pool_arn="arn:pool/1",
+            device_selection=device_selection_for("android"),
+            **kwargs,
+        )
 
 
 def test_submit_and_collect_uploads_the_android_app_type_by_default(tmp_path: Path) -> None:

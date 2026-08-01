@@ -34,6 +34,75 @@ def test_run_job_captures_output_and_run_id(tmp_path: Path) -> None:
     assert "step 0 ok" in v["lines"]
 
 
+def test_run_job_cloud_batch_records_the_manifest_verdict(tmp_path: Path) -> None:
+    # A cloud-batch job (BE-0336) runs its scenario on a remote device via the batch seam, not a local
+    # subprocess. run_job lands the downloaded run under runs_dir and sets the job's verdict from that
+    # run's own manifest — the same pass/fail a local run reports, off the `run`/CI verdict path.
+    import json
+
+    from bajutsu.cloud.devicefarm import verdict_from_manifest
+    from bajutsu.serve import batch_provider as bp
+
+    scn_dir, cfg, runs = project(tmp_path)
+    state = srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+
+    class _Provider:
+        def submit(self, request: Any, *, work_dir: Path, dest: Path) -> Any:
+            run_dir = dest / "runs" / "20260101-1"
+            run_dir.mkdir(parents=True)
+            (run_dir / "manifest.json").write_text(
+                json.dumps({"ok": True, "scenarios": [{"scenario": "alpha", "ok": True}]}),
+                encoding="utf-8",
+            )
+            return verdict_from_manifest(dest)
+
+    saved = dict(bp._PROVIDERS)
+    bp.register("fake", _Provider())
+    try:
+        request = bp.BatchRequest(
+            provider="fake",
+            scenario="smoke.yaml",
+            target="demo",
+            config=str(cfg),
+            platform="ios",
+            app_path=str(tmp_path / "app.ipa"),
+        )
+        job = state.register(srv.Job(batch=request))
+        srv.run_job(state, job)
+    finally:
+        bp._PROVIDERS.clear()
+        bp._PROVIDERS.update(saved)
+
+    v = job.view()
+    assert v["status"] == "done" and v["exitCode"] == 0 and v["ok"] is True
+    assert v["runId"] == "20260101-1"
+    # The downloaded run is landed under runs_dir so serve records and renders it like a local run.
+    assert (runs / "20260101-1" / "manifest.json").exists()
+
+
+def test_run_job_cloud_batch_fails_loud_on_an_unknown_provider(tmp_path: Path) -> None:
+    # An unknown provider must surface as a failed run (non-zero exit, the error on the transcript),
+    # never a silently stranded job (determinism first).
+    from bajutsu.serve import batch_provider as bp
+
+    scn_dir, cfg, runs = project(tmp_path)
+    state = srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+    request = bp.BatchRequest(
+        provider="nope",
+        scenario="smoke.yaml",
+        target="demo",
+        config=str(cfg),
+        platform="ios",
+        app_path=str(tmp_path / "app.ipa"),
+    )
+    job = state.register(srv.Job(batch=request))
+    srv.run_job(state, job)
+
+    v = job.view()
+    assert v["status"] == "done" and v["exitCode"] == 1 and v["ok"] is False
+    assert any("unknown batch provider" in line for line in v["lines"])
+
+
 def test_record_provenance_merges_not_clobbers(tmp_path: Path) -> None:
     # BE-0090: the run subprocess already wrote a provenance block (scenario fingerprint + the
     # uploadExec decision); serve must merge its upload identity in, not overwrite both away.

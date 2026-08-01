@@ -58,6 +58,10 @@ APP_UPLOAD_TYPE: dict[Platform, str] = {"android": "ANDROID_APP", "ios": "IOS_AP
 _UPLOAD_TEST_PACKAGE = "APPIUM_PYTHON_TEST_PACKAGE"
 _UPLOAD_TEST_SPEC = "APPIUM_PYTHON_TEST_SPEC"
 
+# Device Farm's DeviceFilter PLATFORM values (uppercase), keyed by Bajutsu's platform. Used to build
+# the deviceSelectionConfiguration the serve fan-out path schedules with (see `device_selection_for`).
+_DF_PLATFORM_ATTR: dict[Platform, str] = {"android": "ANDROID", "ios": "IOS"}
+
 
 @dataclass(frozen=True)
 class _PlatformRun:
@@ -424,12 +428,31 @@ def _wait_run(
         sleep(_POLL_INTERVAL_SECONDS)
 
 
+def device_selection_for(platform: Platform, *, max_devices: int = 1) -> dict[str, Any]:
+    """Build a ``deviceSelectionConfiguration`` that reserves `max_devices` of `platform` per run.
+
+    ScheduleRun takes *either* a static ``devicePoolArn`` (which runs on every device in the pool) *or*
+    a ``deviceSelectionConfiguration`` whose ``maxDevices`` bounds how many of the matching devices one
+    run reserves — the two are mutually exclusive. BE-0336's serve fan-out needs one device per run so
+    the Bajutsu-side budget `K` alone governs the device count, so it schedules with this selection
+    (``maxDevices`` defaulting to one) rather than a pool. The only filter in this version is the
+    platform; device-type filters (OS version, model) are deliberately out of scope.
+    """
+    return {
+        "filters": [
+            {"attribute": "PLATFORM", "operator": "EQUALS", "values": [_DF_PLATFORM_ATTR[platform]]}
+        ],
+        "maxDevices": max_devices,
+    }
+
+
 def submit_and_collect(
     client: DeviceFarmClient,
     transfer: Transfer,
     *,
     project_arn: str,
-    device_pool_arn: str,
+    device_pool_arn: str | None = None,
+    device_selection: Mapping[str, Any] | None = None,
     app_path: Path,
     package_zip: Path,
     spec_yaml: Path,
@@ -445,13 +468,23 @@ def submit_and_collect(
     customer artifacts into `dest`, and derives the verdict from the returned ``manifest.json`` tree —
     always Bajutsu's verdict, never Device Farm's classification.
 
+    Provide exactly one of `device_pool_arn` (the batch submitter's static pool — every device in it
+    runs the suite) or `device_selection` (a ``deviceSelectionConfiguration`` from
+    `device_selection_for`, which the serve fan-out uses to reserve a single device per run). The two
+    are mutually exclusive in ScheduleRun.
+
     Args:
         app_upload_type: The Device Farm upload type for the app artifact (``ANDROID_APP`` for an
             `.apk`, ``IOS_APP`` for an `.ipa`) — Device Farm rejects a mismatched artifact.
 
     Raises:
-        DeviceFarmError: If any upload fails or the run does not complete within the hard cap.
+        DeviceFarmError: If neither or both of `device_pool_arn` / `device_selection` are given, if any
+            upload fails, or if the run does not complete within the hard cap.
     """
+    if (device_pool_arn is None) == (device_selection is None):
+        raise DeviceFarmError(
+            "schedule a run with exactly one of device_pool_arn or device_selection"
+        )
     app_arn = _upload_one(
         client,
         transfer,
@@ -479,12 +512,18 @@ def submit_and_collect(
         path=spec_yaml,
         sleep=sleep,
     )
+    # ScheduleRun accepts the static pool or the selection, never both (validated above).
+    where = (
+        {"devicePoolArn": device_pool_arn}
+        if device_pool_arn is not None
+        else {"deviceSelectionConfiguration": device_selection}
+    )
     scheduled = client.schedule_run(
         projectArn=project_arn,
         appArn=app_arn,
-        devicePoolArn=device_pool_arn,
         name=run_name,
         test={"type": "APPIUM_PYTHON", "testPackageArn": package_arn, "testSpecArn": spec_arn},
+        **where,
     )
     run_arn = scheduled["run"]["arn"]
     _wait_run(client, run_arn, sleep=sleep)
