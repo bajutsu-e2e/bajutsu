@@ -299,7 +299,7 @@ class _ScriptedScreens(FakeDriver):
 
 
 def test_wait_settled_does_not_confirm_on_a_momentary_empty() -> None:
-    """A tree that flickers empty mid-settle ("空→非空→空") must reset the stable-poll counter, so
+    """A tree that flickers empty mid-settle ("非空→空→非空") must reset the stable-poll counter, so
     `settled` never confirms on the transient empty (or the read right after it). It requires two
     consecutive identical *non-empty* reads, so the value handed back is the settled screen — never
     the blank flicker. Were the empty to count, the wait would confirm a poll too early on a screen

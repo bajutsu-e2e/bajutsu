@@ -137,26 +137,33 @@ def test_device_pool_lease_blocks_until_a_held_device_is_returned(
         available=lambda b: True,
         env_run=lambda *a, **k: "",
     )
+    first = lease(_eff(), _scn("a"))  # holds the only device
+    released = False
+    acquired: list[str] = []
+    entered = threading.Event()
+
+    def worker() -> None:
+        entered.set()
+        lz = lease(_eff(), _scn("b"))  # blocks: the free queue is empty
+        acquired.append(lz.udid)
+        lz.release()
+
+    # Daemon so a worker still blocked on `free.get()` (an assertion failed before the release below)
+    # never wedges interpreter teardown; the finally then releases the held device to unblock it.
+    t = threading.Thread(target=worker, daemon=True)
+    t.start()
     try:
-        first = lease(_eff(), _scn("a"))  # holds the only device
-        acquired: list[str] = []
-        entered = threading.Event()
-
-        def worker() -> None:
-            entered.set()
-            lz = lease(_eff(), _scn("b"))  # blocks: the free queue is empty
-            acquired.append(lz.udid)
-            lz.release()
-
-        t = threading.Thread(target=worker)
-        t.start()
         assert entered.wait(1.0)  # the worker reached the blocking lease
         t.join(0.2)
         assert t.is_alive() and acquired == []  # still blocked while the device is held
         first.release()  # returns UDID-1 to the free queue
+        released = True
         t.join(2.0)
         assert not t.is_alive() and acquired == ["UDID-1"]  # the freed device unblocked the lease
     finally:
+        if not released:
+            first.release()  # unblock a still-waiting worker so it can't leak past this test
+        t.join(2.0)
         shutdown()
 
 
