@@ -474,7 +474,10 @@ def _run_batch_job(state: ServeState, job: Job) -> None:
             )
         except Exception as exc:
             # A provider or submission failure is a failed run, never a stranded worker thread: catch
-            # broadly (like `_persist_run`'s finalization guards) and surface it as a loud FAIL.
+            # broadly (like `_persist_run`'s finalization guards) and surface it as a loud FAIL. Log the
+            # traceback for operational debugging before failing the job (the surfaced line carries only
+            # the message), consistent with the other finally-guarded paths in this module.
+            logger.warning("cloud-batch job %s submission failed", job.id, exc_info=True)
             _fail_batch(job, f"cloud-batch run failed: {exc}")
             return
         run_id = _land_batch_run(Path(download_name), runs_root)
@@ -506,8 +509,11 @@ def _fail_batch(job: Job, message: str) -> None:
 def _land_batch_run(download_dir: Path, runs_root: Path) -> str | None:
     """Move the downloaded run directory (the one holding ``manifest.json``) under ``runs_root`` as
     ``<run_id>/``, so serve's local artifact store, provenance stamp, and report viewer find it just as
-    they do a local run. Returns the run id (the run dir's name), or None when the download carried no
-    manifest — a failed cloud run whose empty tree the verdict already reports as a fail."""
+    they do a local run. Returns the run id only when the run was actually landed, or None when the
+    download carried no manifest (a failed cloud run the verdict already reports as a fail), the run id
+    is unsafe, or the id already exists under ``runs_root``."""
+    # One scenario is one run is one manifest; `sorted()[0]` keeps the pick deterministic if a malformed
+    # download ever carries more than one.
     manifests = sorted(download_dir.rglob("manifest.json"))
     if not manifests:
         return None
@@ -519,9 +525,14 @@ def _land_batch_run(download_dir: Path, runs_root: Path) -> str | None:
         logger.warning("cloud-batch run id %r is not a safe segment; not landing it", run_id)
         return None
     target = runs_root / run_id
-    if (
-        not target.exists()
-    ):  # a fresh cloud run id never collides; never overwrite existing run data
-        runs_root.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(run_dir), str(target))
+    if target.exists():
+        # A fresh cloud run id shouldn't collide; if it does, an existing dir under this id belongs to
+        # another run, so claiming it would point persistence/rendering at unrelated data. Don't land it
+        # (and don't overwrite the existing run) — return None so the run is left unrecorded, loudly.
+        logger.warning(
+            "cloud-batch run id %r already exists under runs_dir; not landing it", run_id
+        )
+        return None
+    runs_root.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(run_dir), str(target))
     return run_id

@@ -103,6 +103,29 @@ def test_run_job_cloud_batch_fails_loud_on_an_unknown_provider(tmp_path: Path) -
     assert any("unknown batch provider" in line for line in v["lines"])
 
 
+def test_land_batch_run_does_not_claim_a_colliding_existing_run(tmp_path: Path) -> None:
+    # A fresh cloud run id shouldn't collide, but if one already exists under runs_dir it belongs to
+    # another run — landing must not claim it (which would point history/rendering at unrelated data)
+    # nor overwrite it. It returns None and leaves the existing run untouched.
+    import json
+
+    from bajutsu.serve.jobs import _land_batch_run
+
+    download = tmp_path / "download"
+    (download / "runs" / "20260101-1").mkdir(parents=True)
+    (download / "runs" / "20260101-1" / "manifest.json").write_text(
+        json.dumps({"ok": True, "scenarios": []}), encoding="utf-8"
+    )
+    runs_root = tmp_path / "runs"
+    existing = runs_root / "20260101-1"
+    existing.mkdir(parents=True)
+    (existing / "manifest.json").write_text("EXISTING", encoding="utf-8")
+
+    assert _land_batch_run(download, runs_root) is None
+    # The pre-existing run is untouched — not overwritten by the download's manifest.
+    assert (existing / "manifest.json").read_text() == "EXISTING"
+
+
 def test_record_provenance_merges_not_clobbers(tmp_path: Path) -> None:
     # BE-0090: the run subprocess already wrote a provenance block (scenario fingerprint + the
     # uploadExec decision); serve must merge its upload identity in, not overwrite both away.
