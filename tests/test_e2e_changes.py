@@ -1084,6 +1084,37 @@ def test_makefile_target_job_map_covers_only_the_two_keyed_jobs() -> None:
     assert set(_MAKEFILE_JOB_TARGETS) == {"codegen", "visual"}
 
 
+def test_makefile_job_targets_match_the_workflow_make_invocations() -> None:
+    # Close the loop between `_MAKEFILE_JOB_TARGETS` and the actual workflow (BE-0338 follow-up).
+    # `_MAKEFILE_JOB_TARGETS` names, per job, which Makefile targets the job runs — and those targets
+    # are what `makefile_job_scenarios` reads to attribute scenarios. If a future edit changes a job's
+    # `make` invocation (adds a target, renames one) without updating this dict, the filter silently
+    # under-selects, the exact miss BE-0338 exists to prevent. Pin it: for every `(job, targets)` in
+    # `_MAKEFILE_JOB_TARGETS`, every target must appear as a `make -C demos/showcase <target>` step
+    # somewhere in that job's block in ios-e2e.yml, so a workflow edit that changes a job's Makefile
+    # targets fails the gate unless the dict moves with it.
+    text = lane_workflow_text("ios")
+    assert text is not None
+    # Extract a rough "job section" for each Makefile-keyed job: collect lines from the job's header
+    # until the next same-level (2-space-indented) job header.
+    job_section_re = re.compile(r"^  ([A-Za-z0-9_-]+):\s*(?:#.*)?$")
+    sections: dict[str, list[str]] = {}
+    current_job: str | None = None
+    for line in text.splitlines():
+        if m := job_section_re.match(line):
+            current_job = m.group(1)
+        if current_job is not None:
+            sections.setdefault(current_job, []).append(line)
+    for job, targets in _MAKEFILE_JOB_TARGETS.items():
+        assert job in sections, f"job {job!r} not found in ios-e2e.yml"
+        section_text = "\n".join(sections[job])
+        for target in targets:
+            assert f"make -C demos/showcase {target}" in section_text, (
+                f"ios-e2e.yml job {job!r} has no `make -C demos/showcase {target}` step, but "
+                f"_MAKEFILE_JOB_TARGETS[{job!r}] lists it — update the dict or the workflow."
+            )
+
+
 # --- main() end to end over the real iOS workflow (BE-0322) --------------------------------------
 
 
