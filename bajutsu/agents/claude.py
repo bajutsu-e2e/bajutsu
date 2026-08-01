@@ -558,7 +558,9 @@ def _provenance(value: str | None) -> dict[str, str]:
 
 def _to_assertion(item: _AssertionArgs) -> Assertion:
     sel = _target(item)
-    check = item["check"]
+    check = item.get("check")
+    if check is None:
+        raise ValueError(f"assertion missing required 'check' field: {dict(item)!r}")
     text = item.get("text")
     # The natural-language phrase this check verifies (BE-0044 provenance) — optional.
     prov = _provenance(item.get("intent"))
