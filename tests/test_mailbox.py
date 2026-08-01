@@ -53,6 +53,20 @@ def test_extract_whole_match_when_no_group() -> None:
     assert extract_value("x 4815 y", EmailExtract(var="c", bodyMatches=r"\d{4}")) == "4815"
 
 
+def test_extract_returns_group_one_with_multiple_capturing_groups() -> None:
+    # With several groups the first (group 1) is the value, deterministically — the extra groups only
+    # help the pattern match, they never change which one is bound. A trailing group must not win.
+    val = extract_value("code 123-456 sent", EmailExtract(var="c", bodyMatches=r"(\d{3})-(\d{3})"))
+    assert val == "123"
+
+
+def test_extract_group_one_even_when_a_later_group_is_the_only_content() -> None:
+    # group(1) is chosen by position, not by which group happened to capture the digits: an empty but
+    # present first group returns "" (a clean miss for that step), never silently falling to group 2.
+    val = extract_value("PIN: 999", EmailExtract(var="c", bodyMatches=r"(X*)(\d{3})"))
+    assert val == ""
+
+
 def test_extract_returns_none_when_regex_misses() -> None:
     assert extract_value("no digits here", EmailExtract(var="c", bodyMatches=r"\d{6}")) is None
 

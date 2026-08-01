@@ -131,6 +131,29 @@ def test_tap_ambiguous_fails() -> None:
     assert "件一致" in result.steps[0].reason  # ambiguous
 
 
+def test_tap_ambiguous_reason_states_the_match_count() -> None:
+    # The failure reason names *how many* elements matched, not just "ambiguous" — an author needs
+    # the count to know a selector is too broad. Three matches → "3 件一致", and the run stops on it
+    # (a single action never taps "whatever matched first" — prime directive 2).
+    driver = FakeDriver(
+        [el("row.1", "A", ["cell"]), el("row.2", "B", ["cell"]), el("row.3", "C", ["cell"])]
+    )
+    result = run_scenario(
+        driver,
+        _scenario(
+            {"name": "x", "steps": [{"tap": {"idMatches": "row.*"}}, {"tap": {"id": "row.1"}}]}
+        ),
+        clock=FakeClock(),
+    )
+    assert not result.ok
+    reason = result.steps[0].reason
+    assert (
+        reason is not None and "3 件一致" in reason
+    )  # the exact match count, not a generic message
+    assert len(result.steps) == 1  # stopped on the ambiguous step; the second tap never ran
+    assert driver.actions == []  # nothing was tapped
+
+
 def test_assert_step_intermediate() -> None:
     driver = FakeDriver([el("counter", "c", ["staticText"], value="3")])
     ok = run_scenario(

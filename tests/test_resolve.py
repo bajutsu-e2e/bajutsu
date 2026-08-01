@@ -66,6 +66,42 @@ def test_index_disambiguates() -> None:
     assert got["identifier"] == "result.row.1"
 
 
+def test_index_negative_counts_from_the_end() -> None:
+    # A negative index selects from the end (Python semantics): -1 is the last match, -2 the one
+    # before it. Deterministic on an ordered candidate list, so it disambiguates like a positive one.
+    assert resolve_unique(SCREEN, {"idMatches": "result.row.*", "index": -1})["identifier"] == (
+        "result.row.2"
+    )
+    assert resolve_unique(SCREEN, {"idMatches": "result.row.*", "index": -2})["identifier"] == (
+        "result.row.1"
+    )
+
+
+def test_index_out_of_range_raises_at_either_end() -> None:
+    # Two candidates: valid indices are 0..1 and -2..-1. A positive index at/over the count, or a
+    # negative one below -count, is out of range and fails loudly rather than wrapping or clamping.
+    # (Message captured then asserted outside the `except`, keeping this file pytest-free — its
+    # docstring promises it also runs directly.)
+    for bad in (2, -3):
+        message = ""
+        try:
+            resolve_unique(SCREEN, {"idMatches": "result.row.*", "index": bad})
+        except ElementNotFound as e:
+            message = str(e)
+        assert "範囲外" in message, f"index {bad} は範囲外で ElementNotFound になるべき"
+
+
+def test_index_on_no_candidates_is_out_of_range() -> None:
+    # An index against zero matches has no valid slot (0 is already ==len), so it fails as out of
+    # range — never an IndexError leaking from the raw list access.
+    message = ""
+    try:
+        resolve_unique(SCREEN, {"id": "nope", "index": 0})
+    except ElementNotFound as e:
+        message = str(e)
+    assert "範囲外" in message, "候補ゼロへの index は範囲外であるべき"
+
+
 def test_count_via_find_all() -> None:
     assert len(find_all(SCREEN, {"idMatches": "result.row.*"})) == 2
 
