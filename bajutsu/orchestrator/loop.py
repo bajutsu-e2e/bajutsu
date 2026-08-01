@@ -632,6 +632,437 @@ def _run_for_each(
     return True, ""
 
 
+@dataclass
+class StepLoopState:
+    """The mutable context a run's step loop carries across its recursive descent.
+
+    Aggregates what the loop used to smuggle through closure `nonlocal`s and free variables, so a
+    single object threads the shared state through nested `if` / `forEach` / `web` groups and an
+    interrupt's recovery — all of which run through the same step loop and must see the same
+    counter, outcomes, bindings, and screen-read bookkeeping.
+    """
+
+    counter: _StepCounter
+    outcomes: list[StepOutcome]
+    # `bindings` is a mutable dict (guaranteed by `run_scenario`) — extract steps add `vars.*`
+    # entries so that subsequent steps and scenario-level `expect` can reference them.
+    bindings: dict[str, str]
+    # One selection tracker per run, shared across the recursive step loop (like `_StepCounter`), so
+    # a `copy` sees the selection a prior `select` left — and any action in between clears it (BE-0265).
+    selection: SelectionState = field(default_factory=SelectionState)
+    # `prev_after` carries a step's post-step tree to the next step's `before` (BE-0234 Unit 2):
+    # nothing actuates between the two, so they observe the same device state and the `before` read
+    # is skipped. It holds only a tree we actually read; a step that took no read leaves it None so
+    # the next `before` reads fresh, and a `web` block resets it (the tree is a different driver's).
+    prev_after: list[base.Element] | None = None
+    total_reads: int = 0  # runner-issued screen reads, the BE-0234 read-count yardstick (Unit 1)
+    # True while an interrupt's own recovery steps run (BE-0314). Those steps go through the step loop
+    # too, so without this an interrupt whose recovery targets the very screen its `condition` matches
+    # would re-trigger itself on each recovery step and recurse without end. Suppressing the guard
+    # while recovery runs also keeps a run's interrupt handling to the outermost screen, not the
+    # handlers reacting to each other mid-recovery.
+    running_recovery: bool = False
+
+
+@dataclass(frozen=True)
+class _LoopConfig:
+    """The run-invariant inputs the step loop reads but never mutates.
+
+    Kept apart from `StepLoopState` (the mutable, shared bookkeeping) so a step handler takes the
+    whole loop context as two values: `self.state` for what changes step to step, `self.cfg` for
+    what is fixed for the run.
+    """
+
+    driver: base.Driver
+    scenario: Scenario
+    clock: Clock
+    sink: EvidenceSink
+    alert_guard: AlertGuardConfig | None
+    wants_screen_changed: bool
+    scenario_start: float
+    sid: str
+    network: NetworkSource
+    relaunch: RelaunchFn | None
+    control: DeviceControl | None
+    progress: ProgressFn | None
+    mailbox: MailboxReader | None
+    ctx: EvalContext | None
+    webview_bridge: DomSource | None
+    transitions: TransitionSource
+    interrupts: list[Interrupt] | None
+    locale: str | None
+
+
+class _StepRunner:
+    """Drives a scenario's steps over shared `state` and run-invariant `cfg`.
+
+    `exec_steps` and `_run_recovery` are bound methods, so each is a `_ExecSteps` value that
+    `_run_if` / `_run_for_each` / `_InterruptGuard` take unchanged: the recursion into nested `if` /
+    `forEach` / `web` groups and an interrupt's recovery all re-enter through the same runner, so
+    they share one `StepLoopState`.
+    """
+
+    def __init__(self, state: StepLoopState, cfg: _LoopConfig) -> None:
+        self.state = state
+        self.cfg = cfg
+
+    def _run_recovery(self, steps: list[Step], active_driver: base.Driver) -> str | None:
+        self.state.running_recovery = True
+        try:
+            return self.exec_steps(steps, active_driver)
+        finally:
+            self.state.running_recovery = False
+
+    def exec_steps(self, steps: list[Step], active_driver: base.Driver) -> str | None:
+        for step in steps:
+            failure = self._run_one(step, active_driver)
+            if failure is not None:
+                return failure
+        return None
+
+    def _run_one(self, step: Step, active_driver: base.Driver) -> str | None:
+        """Prepare the step's outcome, then dispatch to the handler for its kind.
+
+        The `if` chain keeps the fall-through of the original loop: `if` / `forEach` / `web` have
+        dedicated handlers, and every other kind — the actuating steps, `wait`, `assert`, `email`,
+        and any future kind — flows to `_handle_action`, so a new step kind needs no wiring here.
+        """
+        kind = _action_of(step)
+        idx = self.state.counter.take()
+        outcome = StepOutcome(index=idx, action=kind)
+        if self.cfg.progress is not None:
+            self.cfg.progress(f"{self.cfg.sid} · step {idx + 1}: {_step_label(step, kind)}")
+        start = self.cfg.clock.now()
+        outcome.started_at = max(0.0, start - self.cfg.scenario_start)
+
+        if kind == "if_":
+            return self._handle_if(step, active_driver, idx, kind, outcome, start)
+        if kind == "for_each":
+            return self._handle_for_each(step, active_driver, idx, kind, outcome, start)
+        if kind == "web":
+            return self._handle_web(step, active_driver, idx, kind, outcome, start)
+        return self._handle_action(step, active_driver, idx, kind, outcome, start)
+
+    def _handle_if(
+        self,
+        step: Step,
+        active_driver: base.Driver,
+        idx: int,
+        kind: str,
+        outcome: StepOutcome,
+        start: float,
+    ) -> str | None:
+        assert step.if_ is not None
+        ok, reason = _run_if(
+            active_driver,
+            step.if_,
+            self.cfg.clock,
+            self.cfg.network,
+            self.state.bindings,
+            self.exec_steps,
+        )
+        outcome.ok, outcome.reason = ok, reason
+        outcome.duration_s = self.cfg.clock.now() - start
+        self.state.outcomes.append(outcome)
+        return None if ok else f"step {idx} ({kind}): {reason}"
+
+    def _handle_for_each(
+        self,
+        step: Step,
+        active_driver: base.Driver,
+        idx: int,
+        kind: str,
+        outcome: StepOutcome,
+        start: float,
+    ) -> str | None:
+        assert step.for_each is not None
+        ok, reason = _run_for_each(
+            active_driver, step.for_each, self.state.bindings, self.exec_steps
+        )
+        outcome.ok, outcome.reason = ok, reason
+        outcome.duration_s = self.cfg.clock.now() - start
+        self.state.outcomes.append(outcome)
+        return None if ok else f"step {idx} ({kind}): {reason}"
+
+    def _handle_web(
+        self,
+        step: Step,
+        active_driver: base.Driver,
+        idx: int,
+        kind: str,
+        outcome: StepOutcome,
+        start: float,
+    ) -> str | None:
+        assert step.web is not None
+        try:
+            if self.cfg.webview_bridge is None:
+                ok, reason = (
+                    False,
+                    "web: no WebView bridge configured (BAJUTSU_WEBVIEW_PORT not set)",
+                )
+            else:
+                sel = interp.interpolate(
+                    step.web.within.model_dump(by_alias=True), self.state.bindings
+                )
+                host_sel = Selector.model_validate(sel).as_selector()
+                base.resolve_unique(active_driver.query(), host_sel)
+                host_id = step.web.within.first_id()
+                if host_id is None:
+                    ok, reason = False, "web: within selector must specify an id"
+                else:
+                    # The inner steps run against a WebView driver; the active driver is
+                    # passed explicitly, so control returns to `active_driver` for the
+                    # steps after this block with no shared mutable state (BE-0172).
+                    web_driver = WebContextDriver(
+                        bridge=self.cfg.webview_bridge, webview_id=host_id
+                    )
+                    # The inner steps run on a different driver, so its trees must not seed a
+                    # native step's `before`: reset around the block on both sides (BE-0234).
+                    self.state.prev_after = None
+                    failure = self.exec_steps(step.web.steps, web_driver)
+                    self.state.prev_after = None
+                    ok = failure is None
+                    reason = failure or ""
+        except base.SelectorError as e:
+            ok, reason = False, str(e)
+        outcome.ok, outcome.reason = ok, reason
+        outcome.duration_s = self.cfg.clock.now() - start
+        self.state.outcomes.append(outcome)
+        return None if ok else f"step {idx} ({kind}): {reason}"
+
+    def _handle_action(
+        self,
+        step: Step,
+        active_driver: base.Driver,
+        idx: int,
+        kind: str,
+        outcome: StepOutcome,
+        start: float,
+    ) -> str | None:
+        step_id = f"{self.cfg.sid}/{step.name or f'step{idx}'}"
+        # Interpolate ${...} tokens, then turn a `handleSystemAlert` naming a prompt and a
+        # choice into the concrete button label this run's locale renders (BE-0320). Resolving
+        # here rather than per action kind means nested steps — `if` / `forEach` branches and an
+        # interrupt's recovery — all arrive already resolved, since they come back through here.
+        # A locale the lookup does not cover fails this step loudly, like the blocks above; it
+        # never falls back to a guessed label.
+        try:
+            interp_step = _resolve_system_alert(
+                _interp_step(step, self.state.bindings), self.cfg.locale
+            )
+        except UncoveredSystemAlertLocale as exc:
+            outcome.ok, outcome.reason = False, str(exc)
+            outcome.duration_s = self.cfg.clock.now() - start
+            self.state.outcomes.append(outcome)
+            return f"step {idx} ({kind}): {exc}"
+        # `before` is needed only for a `screenChanged` policy. Reuse the previous step's
+        # post-step tree when we have one (same device state — nothing actuated in between), so
+        # the read drops to (near) zero across the scenario; only the first step, or a step after
+        # one that took no read, reads a fresh `before` (BE-0234 Unit 2). `before_is_fresh` tracks
+        # which case this was, for the interrupt guard below: a tree just read this iteration is
+        # current, but `prev_after` is a snapshot from the *previous* step's boundary — valid for
+        # BE-0234's "nothing we actuated in between" assumption, not proof against an interstitial
+        # that appeared asynchronously since (a timer/network overlay), which is exactly the case
+        # `interrupts` exists to catch.
+        before_is_fresh = False
+        if not self.cfg.wants_screen_changed:
+            before = None
+        elif self.state.prev_after is not None:
+            before = self.state.prev_after
+        else:
+            before = active_driver.query()
+            self.state.total_reads += 1
+            before_is_fresh = True
+        # A fresh interrupt guard per step (BE-0314), so its re-entrancy cap resets each step. A
+        # bare act clears any interstitial up front — reusing `before` only when it is a tree just
+        # read this iteration (zero extra cost); a carried-over `prev_after` snapshot, or no tree
+        # at all, costs one extra query (paid only by interrupt-declaring scenarios) so the guard
+        # checks the live screen rather than a possibly-stale one. A `wait` instead hooks the guard
+        # into its own polling (`on_interrupt_poll` below), riding the poll tree at zero extra cost.
+        # Only the step guard queries here; the recovery `steps` it runs go through `exec_steps`,
+        # sharing the counter/outcomes/bindings like `if`'s branches.
+        guard = (
+            _InterruptGuard(
+                self.cfg.interrupts,
+                active_driver,
+                self.cfg.network,
+                self.state.bindings,
+                self._run_recovery,
+            )
+            if self.cfg.interrupts and not self.state.running_recovery
+            else None
+        )
+        if guard is not None and kind != "wait":
+            # Re-baseline `before` from the settled post-recovery tree either way, so a cleared
+            # interstitial's own screen change is not later misattributed to this step's action by
+            # the `screenChanged` capture decision.
+            if before is not None and before_is_fresh:
+                before = guard.clear_before_act(before)
+            else:
+                before_read = guard.clear_before_act(active_driver.query())
+                self.state.total_reads += 1
+                if before is not None:
+                    before = before_read
+        # A `for` wait records its poll timeline so a timeout is diagnosable from artifacts
+        # (BE-0231 Unit 1); the alert_guard retry gets a fresh trace so the diagnostic reflects the
+        # attempt that actually failed.
+        wait_trace = WaitTrace() if kind == "wait" and interp_step.wait is not None else None
+        # A wait blocks silently for its whole timeout; stream a "still waiting <condition>" line
+        # so the run log shows what it is blocked on, live. Only when progress is wired.
+        wait_tick: WaitTick | None = None
+        if self.cfg.progress is not None and kind == "wait" and interp_step.wait is not None:
+            desc = describe_wait(interp_step.wait)
+            prefix = f"{self.cfg.sid} · step {idx + 1}"
+
+            def wait_tick(remaining: float, _desc: str = desc, _prefix: str = prefix) -> None:
+                assert self.cfg.progress is not None
+                self.cfg.progress(f"{_prefix}: waiting {_desc} ({remaining:.0f}s left)")
+
+        if guard is not None and guard.failure is not None:
+            # The pre-act clear already decided the outcome (a recovery step failed): skip the
+            # step's own action rather than poke a screen the failed recovery left broken —
+            # symmetric with how a wait's `on_interrupt_poll` aborts the poll instead of running
+            # on. The rest of the pipeline below (evidence capture, outcome bookkeeping) still
+            # runs unchanged, exactly as it does for any other failed step.
+            ok, reason, snapshot = False, guard.failure, None
+            results: list[AssertionResult] = []
+        else:
+            ok, reason, results, snapshot = _run_step_body(
+                active_driver,
+                interp_step,
+                kind,
+                self.cfg.clock,
+                self.cfg.network,
+                self.cfg.relaunch,
+                self.state.bindings,
+                self.cfg.control,
+                self.cfg.mailbox,
+                self.cfg.ctx,
+                wait_trace=wait_trace,
+                selection=self.state.selection,
+                alert_guard=self.cfg.alert_guard,
+                alerts=outcome.alerts,
+                on_wait_tick=wait_tick,
+                transitions=self.cfg.transitions,
+                on_interrupt_poll=guard.observe if guard is not None else None,
+            )
+            if guard is not None and guard.failure is not None:
+                # A mid-wait recovery failure is a decided outcome — fail on it now rather than
+                # firing the end-of-step alert-guard dismiss/retry against the screen the failed
+                # recovery left, symmetric with the pre-act short-circuit above.
+                ok, reason = False, guard.failure
+            elif not ok and self.cfg.alert_guard is not None:
+                event = self.cfg.alert_guard(active_driver)
+                if event is not None:
+                    outcome.alerts.append(event)
+                    wait_trace = WaitTrace() if wait_trace is not None else None
+                    # The retry is the end-of-step "one more shot": it does not re-arm the mid-wait
+                    # guard (no alert_guard passed), so a step's AI-vision calls stay bounded at
+                    # _GUARD_MAX_ATTEMPTS (mid-wait) + 1 (this end-of-step dismiss).
+                    ok, reason, results, snapshot = _run_step_body(
+                        active_driver,
+                        interp_step,
+                        kind,
+                        self.cfg.clock,
+                        self.cfg.network,
+                        self.cfg.relaunch,
+                        self.state.bindings,
+                        self.cfg.control,
+                        self.cfg.mailbox,
+                        self.cfg.ctx,
+                        wait_trace=wait_trace,
+                        selection=self.state.selection,
+                        on_wait_tick=wait_tick,
+                        transitions=self.cfg.transitions,
+                        on_interrupt_poll=guard.observe if guard is not None else None,
+                    )
+            # A failure inside an interrupt's own recovery `steps` fails the step loudly, rather
+            # than being swallowed while the run continues against a screen the recovery left
+            # broken (determinism first). It overrides a step that otherwise passed — this is the
+            # wait path's version of the pre-act short-circuit above (guard.failure can newly
+            # become True during `_run_step_body`'s `on_interrupt_poll` calls).
+            if guard is not None and guard.failure is not None:
+                ok, reason = False, guard.failure
+        outcome.ok, outcome.reason, outcome.assertion_results = ok, reason, results
+        outcome.duration_s = self.cfg.clock.now() - start
+
+        # The post-step read is lazy (BE-0234 Unit 2): `.get()` reads (once) only where a
+        # consumer needs the tree, so a step with no consumer under a NullSink never reads. A
+        # non-mutating step (`assert`/`wait`) hands back the tree it already settled on, so the
+        # read reuses that snapshot rather than issuing a second identical query (BE-0259);
+        # `snapshot` is None for mutating/tree-less steps, restoring the fresh post-step read.
+        #
+        # An `extract` on this step consumes the read, so it must observe a value that has stopped
+        # propagating, not whichever one the single read caught (BE-0299 Unit 3). Gated on
+        # `outcome.ok`, matching where the extract actually runs (below), so a failed step never
+        # pays the poll for a value it will not read. A mutating step (or `wait until: request`,
+        # which hands back no tree) has no seed, so the property-aware read is deferred into
+        # `_ScreenRead` and fires only when a consumer needs the tree; `partial` binds this step's
+        # driver/extracts now, not a later iteration's. A seeded non-mutating step cannot poll
+        # there — the seed short-circuits `.get()` — so it is refined here, at that earlier read
+        # site, before `_ScreenRead` reuses it (keeping `queried` False for it).
+        read: Callable[[], list[base.Element]] | None = None
+        if outcome.ok and interp_step.extract:
+            if snapshot is None:
+                read = partial(
+                    _settle_extract_read, active_driver, interp_step.extract, self.cfg.clock
+                )
+            else:
+                snapshot = _settle_extract_read(
+                    active_driver, interp_step.extract, self.cfg.clock, initial=snapshot
+                )
+        screen = _ScreenRead(active_driver, seed=snapshot, read=read)
+        screen_changed = before is not None and screen.get() != before
+
+        # An unconditional first-wait diagnostic on a `for`-wait timeout: capturePolicy may not
+        # request an element dump on failure, so without this the timeout leaves no evidence to
+        # decide which cause fired (BE-0231 Unit 1). Deterministic, no LLM (prime directive 1).
+        # `polls > 0` fires only after a `for`-wait ran (only that branch records the trace), so
+        # the trigger is a structural fact, not the wording of the timeout message.
+        if wait_trace is not None and not ok and wait_trace.polls > 0:
+            try:
+                art = self.cfg.sink.wait_diagnostic(
+                    step_id, trace=wait_trace, elements=screen.get()
+                )
+            except OSError as exc:
+                # Best-effort evidence: a disk/permission failure writing the diagnostic must not
+                # mask the real timeout with an I/O traceback — keep the timeout as the failure and
+                # disclose the lost evidence loudly. A genuine bug (e.g. a redaction error) still
+                # surfaces rather than being swallowed here.
+                _logger.warning("dropping wait-timeout diagnostic: write failed: %s", exc)
+            else:
+                if art is not None:
+                    outcome.artifacts.append(art)
+
+        if outcome.ok and interp_step.extract:
+            ext_ok, ext_reason = _run_extract(
+                screen.get(), interp_step.extract, self.state.bindings
+            )
+            if not ext_ok:
+                outcome.ok, outcome.reason = False, ext_reason
+
+        fired = _collect_captures(self.cfg.scenario, step, kind, outcome.ok, screen_changed)
+        # Interval kinds are recorded scenario-wide (run_scenario), so only the
+        # instant kinds are captured per step here. Pass the tree only if we already read it;
+        # otherwise `elements=None` lets the sink's `elements` writer read on its own (a NullSink
+        # reads nothing), so a FileSink run stays at one read and a NullSink run at zero. A `web`
+        # block captures against the native `driver`, so it must read the active (web) tree here
+        # rather than let the native writer fall back to a mismatched tree (BE-0234 Unit 2).
+        instant = [t for t in fired if _kind_of(t) not in intervals.INTERVAL_KINDS]
+        els = screen.get() if active_driver is not self.cfg.driver else screen.cached
+        outcome.artifacts.extend(
+            self.cfg.sink.capture(self.cfg.driver, step_id, instant, elements=els)
+        )
+        if screen.queried:
+            self.state.total_reads += 1
+        # Seed the next step's `before` only with a tree we actually read; if we skipped the
+        # read, the next `before` reads fresh (BE-0234 Unit 2).
+        self.state.prev_after = screen.cached
+
+        self.state.outcomes.append(outcome)
+        return None if outcome.ok else f"step {idx} ({kind}): {outcome.reason}"
+
+
 def _run_steps(
     driver: base.Driver,
     scenario: Scenario,
@@ -660,309 +1091,27 @@ def _run_steps(
     steps add ``vars.*`` entries so that subsequent steps and scenario-level
     ``expect`` can reference them."""
     assert bindings is not None
-    counter = _StepCounter()
-    # One selection tracker per run, shared across the recursive step loop (like `_StepCounter`), so
-    # a `copy` sees the selection a prior `select` left — and any action in between clears it (BE-0265).
-    selection = SelectionState()
-    # `prev_after` carries a step's post-step tree to the next step's `before` (BE-0234 Unit 2):
-    # nothing actuates between the two, so they observe the same device state and the `before` read
-    # is skipped. It holds only a tree we actually read; a step that took no read leaves it None so
-    # the next `before` reads fresh, and a `web` block resets it (the tree is a different driver's).
-    prev_after: list[base.Element] | None = None
-    total_reads = 0  # runner-issued screen reads, the BE-0234 read-count yardstick (Unit 1)
-    # True while an interrupt's own recovery steps run (BE-0314). Those steps go through `exec_steps`
-    # too, so without this an interrupt whose recovery targets the very screen its `condition` matches
-    # would re-trigger itself on each recovery step and recurse without end. Suppressing the guard
-    # while recovery runs also keeps a run's interrupt handling to the outermost screen, not the
-    # handlers reacting to each other mid-recovery.
-    running_recovery = False
-
-    def _run_recovery(steps: list[Step], active_driver: base.Driver) -> str | None:
-        nonlocal running_recovery
-        running_recovery = True
-        try:
-            return exec_steps(steps, active_driver)
-        finally:
-            running_recovery = False
-
-    def exec_steps(steps: list[Step], active_driver: base.Driver) -> str | None:
-        nonlocal prev_after, total_reads
-        for step in steps:
-            kind = _action_of(step)
-            idx = counter.take()
-            outcome = StepOutcome(index=idx, action=kind)
-            if progress is not None:
-                progress(f"{sid} · step {idx + 1}: {_step_label(step, kind)}")
-            step_id = f"{sid}/{step.name or f'step{idx}'}"
-            start = clock.now()
-            outcome.started_at = max(0.0, start - scenario_start)
-
-            if kind == "if_":
-                assert step.if_ is not None
-                ok, reason = _run_if(active_driver, step.if_, clock, network, bindings, exec_steps)
-                outcome.ok, outcome.reason = ok, reason
-                outcome.duration_s = clock.now() - start
-                outcomes.append(outcome)
-                if not ok:
-                    return f"step {idx} ({kind}): {reason}"
-                continue
-
-            if kind == "for_each":
-                assert step.for_each is not None
-                ok, reason = _run_for_each(active_driver, step.for_each, bindings, exec_steps)
-                outcome.ok, outcome.reason = ok, reason
-                outcome.duration_s = clock.now() - start
-                outcomes.append(outcome)
-                if not ok:
-                    return f"step {idx} ({kind}): {reason}"
-                continue
-
-            if kind == "web":
-                assert step.web is not None
-                try:
-                    if webview_bridge is None:
-                        ok, reason = (
-                            False,
-                            "web: no WebView bridge configured (BAJUTSU_WEBVIEW_PORT not set)",
-                        )
-                    else:
-                        sel = interp.interpolate(
-                            step.web.within.model_dump(by_alias=True), bindings
-                        )
-                        host_sel = Selector.model_validate(sel).as_selector()
-                        base.resolve_unique(active_driver.query(), host_sel)
-                        host_id = step.web.within.first_id()
-                        if host_id is None:
-                            ok, reason = False, "web: within selector must specify an id"
-                        else:
-                            # The inner steps run against a WebView driver; the active driver is
-                            # passed explicitly, so control returns to `active_driver` for the
-                            # steps after this block with no shared mutable state (BE-0172).
-                            web_driver = WebContextDriver(bridge=webview_bridge, webview_id=host_id)
-                            # The inner steps run on a different driver, so its trees must not seed a
-                            # native step's `before`: reset around the block on both sides (BE-0234).
-                            prev_after = None
-                            failure = exec_steps(step.web.steps, web_driver)
-                            prev_after = None
-                            ok = failure is None
-                            reason = failure or ""
-                except base.SelectorError as e:
-                    ok, reason = False, str(e)
-                outcome.ok, outcome.reason = ok, reason
-                outcome.duration_s = clock.now() - start
-                outcomes.append(outcome)
-                if not ok:
-                    return f"step {idx} ({kind}): {reason}"
-                continue
-
-            # Interpolate ${...} tokens, then turn a `handleSystemAlert` naming a prompt and a
-            # choice into the concrete button label this run's locale renders (BE-0320). Resolving
-            # here rather than per action kind means nested steps — `if` / `forEach` branches and an
-            # interrupt's recovery — all arrive already resolved, since they come back through here.
-            # A locale the lookup does not cover fails this step loudly, like the blocks above; it
-            # never falls back to a guessed label.
-            try:
-                interp_step = _resolve_system_alert(_interp_step(step, bindings), locale)
-            except UncoveredSystemAlertLocale as exc:
-                outcome.ok, outcome.reason = False, str(exc)
-                outcome.duration_s = clock.now() - start
-                outcomes.append(outcome)
-                return f"step {idx} ({kind}): {exc}"
-            # `before` is needed only for a `screenChanged` policy. Reuse the previous step's
-            # post-step tree when we have one (same device state — nothing actuated in between), so
-            # the read drops to (near) zero across the scenario; only the first step, or a step after
-            # one that took no read, reads a fresh `before` (BE-0234 Unit 2). `before_is_fresh` tracks
-            # which case this was, for the interrupt guard below: a tree just read this iteration is
-            # current, but `prev_after` is a snapshot from the *previous* step's boundary — valid for
-            # BE-0234's "nothing we actuated in between" assumption, not proof against an interstitial
-            # that appeared asynchronously since (a timer/network overlay), which is exactly the case
-            # `interrupts` exists to catch.
-            before_is_fresh = False
-            if not wants_screen_changed:
-                before = None
-            elif prev_after is not None:
-                before = prev_after
-            else:
-                before = active_driver.query()
-                total_reads += 1
-                before_is_fresh = True
-            # A fresh interrupt guard per step (BE-0314), so its re-entrancy cap resets each step. A
-            # bare act clears any interstitial up front — reusing `before` only when it is a tree just
-            # read this iteration (zero extra cost); a carried-over `prev_after` snapshot, or no tree
-            # at all, costs one extra query (paid only by interrupt-declaring scenarios) so the guard
-            # checks the live screen rather than a possibly-stale one. A `wait` instead hooks the guard
-            # into its own polling (`on_interrupt_poll` below), riding the poll tree at zero extra cost.
-            # Only the step guard queries here; the recovery `steps` it runs go through `exec_steps`,
-            # sharing the counter/outcomes/bindings like `if`'s branches.
-            guard = (
-                _InterruptGuard(interrupts, active_driver, network, bindings, _run_recovery)
-                if interrupts and not running_recovery
-                else None
-            )
-            if guard is not None and kind != "wait":
-                # Re-baseline `before` from the settled post-recovery tree either way, so a cleared
-                # interstitial's own screen change is not later misattributed to this step's action by
-                # the `screenChanged` capture decision.
-                if before is not None and before_is_fresh:
-                    before = guard.clear_before_act(before)
-                else:
-                    before_read = guard.clear_before_act(active_driver.query())
-                    total_reads += 1
-                    if before is not None:
-                        before = before_read
-            # A `for` wait records its poll timeline so a timeout is diagnosable from artifacts
-            # (BE-0231 Unit 1); the alert_guard retry gets a fresh trace so the diagnostic reflects the
-            # attempt that actually failed.
-            wait_trace = WaitTrace() if kind == "wait" and interp_step.wait is not None else None
-            # A wait blocks silently for its whole timeout; stream a "still waiting <condition>" line
-            # so the run log shows what it is blocked on, live. Only when progress is wired.
-            wait_tick: WaitTick | None = None
-            if progress is not None and kind == "wait" and interp_step.wait is not None:
-                desc = describe_wait(interp_step.wait)
-                prefix = f"{sid} · step {idx + 1}"
-
-                def wait_tick(remaining: float, _desc: str = desc, _prefix: str = prefix) -> None:
-                    assert progress is not None
-                    progress(f"{_prefix}: waiting {_desc} ({remaining:.0f}s left)")
-
-            if guard is not None and guard.failure is not None:
-                # The pre-act clear already decided the outcome (a recovery step failed): skip the
-                # step's own action rather than poke a screen the failed recovery left broken —
-                # symmetric with how a wait's `on_interrupt_poll` aborts the poll instead of running
-                # on. The rest of the pipeline below (evidence capture, outcome bookkeeping) still
-                # runs unchanged, exactly as it does for any other failed step.
-                ok, reason, snapshot = False, guard.failure, None
-                results: list[AssertionResult] = []
-            else:
-                ok, reason, results, snapshot = _run_step_body(
-                    active_driver,
-                    interp_step,
-                    kind,
-                    clock,
-                    network,
-                    relaunch,
-                    bindings,
-                    control,
-                    mailbox,
-                    ctx,
-                    wait_trace=wait_trace,
-                    selection=selection,
-                    alert_guard=alert_guard,
-                    alerts=outcome.alerts,
-                    on_wait_tick=wait_tick,
-                    transitions=transitions,
-                    on_interrupt_poll=guard.observe if guard is not None else None,
-                )
-                if guard is not None and guard.failure is not None:
-                    # A mid-wait recovery failure is a decided outcome — fail on it now rather than
-                    # firing the end-of-step alert-guard dismiss/retry against the screen the failed
-                    # recovery left, symmetric with the pre-act short-circuit above.
-                    ok, reason = False, guard.failure
-                elif not ok and alert_guard is not None:
-                    event = alert_guard(active_driver)
-                    if event is not None:
-                        outcome.alerts.append(event)
-                        wait_trace = WaitTrace() if wait_trace is not None else None
-                        # The retry is the end-of-step "one more shot": it does not re-arm the mid-wait
-                        # guard (no alert_guard passed), so a step's AI-vision calls stay bounded at
-                        # _GUARD_MAX_ATTEMPTS (mid-wait) + 1 (this end-of-step dismiss).
-                        ok, reason, results, snapshot = _run_step_body(
-                            active_driver,
-                            interp_step,
-                            kind,
-                            clock,
-                            network,
-                            relaunch,
-                            bindings,
-                            control,
-                            mailbox,
-                            ctx,
-                            wait_trace=wait_trace,
-                            selection=selection,
-                            on_wait_tick=wait_tick,
-                            transitions=transitions,
-                            on_interrupt_poll=guard.observe if guard is not None else None,
-                        )
-                # A failure inside an interrupt's own recovery `steps` fails the step loudly, rather
-                # than being swallowed while the run continues against a screen the recovery left
-                # broken (determinism first). It overrides a step that otherwise passed — this is the
-                # wait path's version of the pre-act short-circuit above (guard.failure can newly
-                # become True during `_run_step_body`'s `on_interrupt_poll` calls).
-                if guard is not None and guard.failure is not None:
-                    ok, reason = False, guard.failure
-            outcome.ok, outcome.reason, outcome.assertion_results = ok, reason, results
-            outcome.duration_s = clock.now() - start
-
-            # The post-step read is lazy (BE-0234 Unit 2): `.get()` reads (once) only where a
-            # consumer needs the tree, so a step with no consumer under a NullSink never reads. A
-            # non-mutating step (`assert`/`wait`) hands back the tree it already settled on, so the
-            # read reuses that snapshot rather than issuing a second identical query (BE-0259);
-            # `snapshot` is None for mutating/tree-less steps, restoring the fresh post-step read.
-            #
-            # An `extract` on this step consumes the read, so it must observe a value that has stopped
-            # propagating, not whichever one the single read caught (BE-0299 Unit 3). Gated on
-            # `outcome.ok`, matching where the extract actually runs (below), so a failed step never
-            # pays the poll for a value it will not read. A mutating step (or `wait until: request`,
-            # which hands back no tree) has no seed, so the property-aware read is deferred into
-            # `_ScreenRead` and fires only when a consumer needs the tree; `partial` binds this step's
-            # driver/extracts now, not a later iteration's. A seeded non-mutating step cannot poll
-            # there — the seed short-circuits `.get()` — so it is refined here, at that earlier read
-            # site, before `_ScreenRead` reuses it (keeping `queried` False for it).
-            read: Callable[[], list[base.Element]] | None = None
-            if outcome.ok and interp_step.extract:
-                if snapshot is None:
-                    read = partial(_settle_extract_read, active_driver, interp_step.extract, clock)
-                else:
-                    snapshot = _settle_extract_read(
-                        active_driver, interp_step.extract, clock, initial=snapshot
-                    )
-            screen = _ScreenRead(active_driver, seed=snapshot, read=read)
-            screen_changed = before is not None and screen.get() != before
-
-            # An unconditional first-wait diagnostic on a `for`-wait timeout: capturePolicy may not
-            # request an element dump on failure, so without this the timeout leaves no evidence to
-            # decide which cause fired (BE-0231 Unit 1). Deterministic, no LLM (prime directive 1).
-            # `polls > 0` fires only after a `for`-wait ran (only that branch records the trace), so
-            # the trigger is a structural fact, not the wording of the timeout message.
-            if wait_trace is not None and not ok and wait_trace.polls > 0:
-                try:
-                    art = sink.wait_diagnostic(step_id, trace=wait_trace, elements=screen.get())
-                except OSError as exc:
-                    # Best-effort evidence: a disk/permission failure writing the diagnostic must not
-                    # mask the real timeout with an I/O traceback — keep the timeout as the failure and
-                    # disclose the lost evidence loudly. A genuine bug (e.g. a redaction error) still
-                    # surfaces rather than being swallowed here.
-                    _logger.warning("dropping wait-timeout diagnostic: write failed: %s", exc)
-                else:
-                    if art is not None:
-                        outcome.artifacts.append(art)
-
-            if outcome.ok and interp_step.extract:
-                ext_ok, ext_reason = _run_extract(screen.get(), interp_step.extract, bindings)
-                if not ext_ok:
-                    outcome.ok, outcome.reason = False, ext_reason
-
-            fired = _collect_captures(scenario, step, kind, outcome.ok, screen_changed)
-            # Interval kinds are recorded scenario-wide (run_scenario), so only the
-            # instant kinds are captured per step here. Pass the tree only if we already read it;
-            # otherwise `elements=None` lets the sink's `elements` writer read on its own (a NullSink
-            # reads nothing), so a FileSink run stays at one read and a NullSink run at zero. A `web`
-            # block captures against the native `driver`, so it must read the active (web) tree here
-            # rather than let the native writer fall back to a mismatched tree (BE-0234 Unit 2).
-            instant = [t for t in fired if _kind_of(t) not in intervals.INTERVAL_KINDS]
-            els = screen.get() if active_driver is not driver else screen.cached
-            outcome.artifacts.extend(sink.capture(driver, step_id, instant, elements=els))
-            if screen.queried:
-                total_reads += 1
-            # Seed the next step's `before` only with a tree we actually read; if we skipped the
-            # read, the next `before` reads fresh (BE-0234 Unit 2).
-            prev_after = screen.cached
-
-            outcomes.append(outcome)
-            if not outcome.ok:
-                return f"step {idx} ({kind}): {outcome.reason}"
-        return None
-
-    result = exec_steps(scenario.steps, driver)
-    _logger.debug("%s: %d runner-issued screen reads (BE-0234)", sid, total_reads)
+    state = StepLoopState(counter=_StepCounter(), outcomes=outcomes, bindings=bindings)
+    cfg = _LoopConfig(
+        driver=driver,
+        scenario=scenario,
+        clock=clock,
+        sink=sink,
+        alert_guard=alert_guard,
+        wants_screen_changed=wants_screen_changed,
+        scenario_start=scenario_start,
+        sid=sid,
+        network=network,
+        relaunch=relaunch,
+        control=control,
+        progress=progress,
+        mailbox=mailbox,
+        ctx=ctx,
+        webview_bridge=webview_bridge,
+        transitions=transitions,
+        interrupts=interrupts,
+        locale=locale,
+    )
+    result = _StepRunner(state, cfg).exec_steps(scenario.steps, driver)
+    _logger.debug("%s: %d runner-issued screen reads (BE-0234)", sid, state.total_reads)
     return result
