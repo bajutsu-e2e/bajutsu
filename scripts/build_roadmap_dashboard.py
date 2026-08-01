@@ -338,6 +338,7 @@ def graph_data(items: list[Any]) -> dict[str, Any]:
             "status": item.bucket,
             "href": _item_href(item),
             "search": _search_terms(item),
+            "summary": item.summary,
         }
         for item in sorted(items, key=lambda it: it.id)
         if item.id in linked
@@ -443,13 +444,17 @@ def _map_node(node: dict[str, Any]) -> str:
 
     The id label is too small to carry a title, so the item's name rides along in ``data-caption``
     for the readout and in ``<title>`` for a tooltip; naming it once here keeps the three spellings
-    of it from drifting apart.
+    of it from drifting apart. ``data-title`` and ``data-summary`` carry the same title plus the
+    item's Introduction excerpt (:func:`build_roadmap_index.extract_summary`) for the hover/focus
+    card, which shows more than the single-line readout can.
     """
     name = html.escape(f"{node['id']} — {node['title']}")
     return (
-        f'<a class="be-map-node" href="{node["href"]}" data-id="{html.escape(node["id"])}" '
+        f'<a class="be-map-node" href="{html.escape(node["href"])}" '
+        f'data-id="{html.escape(node["id"])}" '
         f'data-status="{html.escape(node["status"])}" data-search="{html.escape(node["search"])}" '
-        f'data-caption="{name}" '
+        f'data-caption="{name}" data-title="{html.escape(node["title"])}" '
+        f'data-summary="{html.escape(node["summary"])}" '
         f'data-status-label="{html.escape(BUCKET_LABEL[node["status"]])}" '
         f'aria-label="{html.escape(f"{node['id']}: {node['title']}")}">'
         f"<title>{name}</title>"
@@ -515,10 +520,39 @@ def _map_view(items: list[Any]) -> str:
     )
     nodes = "".join(_map_node(node) for node in layout["nodes"])
     readout = "Point at an item to read its title. Selecting one opens its record on GitHub."
+    # Zoom scales the already-finished SVG by pixel size (no re-layout); Full size breaks the map out
+    # of the page's prose-width column into the whole browser viewport. Both are pure view controls —
+    # neither touches the deterministic, build-time layout above.
+    toolbar = (
+        '<div class="be-map-toolbar">'
+        '<div class="be-map-zoom" role="group" aria-label="Zoom the map">'
+        '<button type="button" class="be-map-zoom-btn" data-zoom="out" '
+        'aria-label="Zoom out">−</button>'
+        '<button type="button" class="be-map-zoom-btn" data-zoom="reset" '
+        'aria-label="Reset zoom">Reset</button>'
+        '<button type="button" class="be-map-zoom-btn" data-zoom="in" '
+        'aria-label="Zoom in">+</button>'
+        "</div>"
+        '<button type="button" class="be-map-expand" aria-pressed="false" '
+        'aria-label="View the map at full browser size">Full size</button>'
+        "</div>"
+    )
+    # A hover/focus card, positioned next to whatever node the reader is pointing at (BE-0335): the
+    # id, title, and Introduction excerpt every node's data-* attributes already carry. Decorative
+    # (aria-hidden) — the live-region readout below stays the accessible source of the same fact.
+    card = (
+        '<div class="be-map-card" aria-hidden="true">'
+        '<div class="be-map-card-top"><span class="be-map-card-id"></span>'
+        '<span class="be-map-card-status"></span></div>'
+        '<div class="be-map-card-title"></div>'
+        '<div class="be-map-card-summary"></div>'
+        "</div>"
+    )
     return (
         '<div class="be-map-view is-hidden">'
         f'<p class="be-graph-caption">{html.escape(caption)}</p>'
         f'<div class="be-legend">{legend}</div>'
+        f"{toolbar}"
         '<div class="be-map-scroll">'
         f'<svg class="be-map" viewBox="0 0 {layout["width"]:.0f} {layout["height"]:.0f}" '
         f'style="min-width:{layout["width"]:.0f}px" preserveAspectRatio="xMidYMid meet" '
@@ -526,6 +560,7 @@ def _map_view(items: list[Any]) -> str:
         f'{marker}<g class="be-map-rows">{rows}</g>'
         f'<g class="be-map-edges">{edges}</g><g class="be-map-nodes">{nodes}</g></svg>'
         "</div>"
+        f"{card}"
         f'<p class="be-map-readout" role="status" data-default="{html.escape(readout)}">'
         f"{html.escape(readout)}</p>"
         "</div>"
@@ -722,11 +757,40 @@ _STYLE = """
 .be-legend-line{width:18px;height:0;border-top:2px solid currentColor;opacity:.7}
 .be-legend-origin{border-top-style:dashed}
 .be-legend-superseded{border-top-style:dotted}
+.be-map-toolbar{display:flex;align-items:center;justify-content:space-between;gap:.6rem;
+  flex-wrap:wrap;margin:0 0 .5rem}
+.be-map-zoom{display:inline-flex;border:1px solid rgba(128,128,128,.35);border-radius:8px;
+  overflow:hidden}
+.be-map-zoom-btn,.be-map-expand{font:inherit;font-size:12.5px;padding:.28rem .7rem;border:0;
+  background:transparent;color:inherit;cursor:pointer}
+.be-map-zoom-btn+.be-map-zoom-btn{border-left:1px solid rgba(128,128,128,.35)}
+.be-map-zoom-btn:hover,.be-map-expand:hover{background:rgba(128,128,128,.15)}
+.be-map-expand{border:1px solid rgba(128,128,128,.35);border-radius:8px}
+.be-map-expand[aria-pressed="true"]{background:rgba(128,128,128,.18);font-weight:600}
 /* The drawing is rendered at a fixed natural size, so the box scrolls rather than letting the SVG
-   scale below the size its labels were drawn for. */
-.be-map-scroll{overflow-x:auto;border:1px solid rgba(128,128,128,.25);border-radius:8px;
-  padding:.5rem;background:rgba(128,128,128,.04)}
+   scale below the size its labels were drawn for; Zoom (above) and Full size (below) are the reader's
+   way past that natural size when it reads too small. */
+.be-map-scroll{position:relative;overflow:auto;border:1px solid rgba(128,128,128,.25);
+  border-radius:8px;padding:.5rem;background:rgba(128,128,128,.04)}
 .be-map{display:block;width:100%;height:auto}
+/* Full size breaks the view out of the page's prose-width column to fill the browser viewport —
+   still an ordinary in-page element (no Fullscreen API), so it needs no permission and Escape or the
+   same button closes it. */
+.be-map-view.is-expanded{position:fixed;inset:0;z-index:1000;display:flex;flex-direction:column;
+  padding:1rem 1.2rem;overflow:auto;background:var(--md-default-bg-color,Canvas)}
+.be-map-view.is-expanded .be-map-scroll{flex:1 1 auto;min-height:0}
+html.be-map-lock-scroll,html.be-map-lock-scroll body{overflow:hidden}
+.be-map-card{position:fixed;z-index:1100;display:none;max-width:280px;padding:.55rem .7rem;
+  border:1px solid rgba(128,128,128,.35);border-radius:8px;
+  background:var(--md-default-bg-color,Canvas);box-shadow:0 4px 18px rgba(0,0,0,.22);
+  font-size:12.5px;line-height:1.4;pointer-events:none}
+.be-map-card.is-visible{display:block}
+.be-map-card-top{display:flex;align-items:center;gap:.4rem;margin-bottom:.15rem}
+.be-map-card-id{font-weight:700;font-size:11px}
+.be-map-card-status{font-size:10px;opacity:.7}
+.be-map-card-title{font-weight:600;margin-bottom:.25rem}
+.be-map-card-summary{opacity:.85}
+.be-map-card-summary:empty{display:none}
 .be-map-rule{stroke:currentColor;stroke-opacity:.18;stroke-width:1}
 .be-map-row-label{fill:currentColor;opacity:.72;font-size:12px}
 .be-map-edge{fill:none;stroke:currentColor;stroke-opacity:.16;stroke-width:1}
@@ -901,6 +965,11 @@ _SCRIPT = """
   var mapEdges=Array.prototype.slice.call(document.querySelectorAll('.be-map-edge'));
   var readout=document.querySelector('.be-map-readout');
   var readoutDefault=readout?(readout.getAttribute('data-default')||''):'';
+  var mapCard=document.querySelector('.be-map-card');
+  var mapCardId=mapCard?mapCard.querySelector('.be-map-card-id'):null;
+  var mapCardStatus=mapCard?mapCard.querySelector('.be-map-card-status'):null;
+  var mapCardTitle=mapCard?mapCard.querySelector('.be-map-card-title'):null;
+  var mapCardSummary=mapCard?mapCard.querySelector('.be-map-card-summary'):null;
 
   function applyGraphFilter(){
     if(!mapSvg) return;
@@ -934,9 +1003,11 @@ _SCRIPT = """
     });
     mapSvg.classList.add('is-picking');
     if(readout){
+      var summary=node.getAttribute('data-summary');
       readout.textContent=node.getAttribute('data-caption')+' \u00b7 '
-        +node.getAttribute('data-status-label');
+        +node.getAttribute('data-status-label')+(summary?'. '+summary:'');
     }
+    showCard(node);
   }
 
   function releaseNode(){
@@ -945,7 +1016,99 @@ _SCRIPT = """
     mapEdges.forEach(function(edge){ edge.classList.remove('is-lit'); });
     mapNodes.forEach(function(node){ node.classList.remove('is-lit'); });
     if(readout) readout.textContent=readoutDefault;
+    hideCard();
   }
+
+  // The hover/focus card: id, title, and Introduction excerpt for whichever node the reader is
+  // pointing at (BE-0335). Positioned from the node's own screen rect \u2014 via getBoundingClientRect,
+  // so it works the same on mouse hover and keyboard focus \u2014 and clamped inside the viewport rather
+  // than letting it run off the edge near a border node.
+  function showCard(node){
+    if(!mapCard) return;
+    if(mapCardId) mapCardId.textContent=node.getAttribute('data-id')||'';
+    if(mapCardStatus) mapCardStatus.textContent=node.getAttribute('data-status-label')||'';
+    if(mapCardTitle) mapCardTitle.textContent=node.getAttribute('data-title')||'';
+    if(mapCardSummary) mapCardSummary.textContent=node.getAttribute('data-summary')||'';
+    mapCard.classList.add('is-visible');
+    var rect=node.getBoundingClientRect();
+    var cardRect=mapCard.getBoundingClientRect();
+    var vw=document.documentElement.clientWidth, vh=document.documentElement.clientHeight;
+    var left=rect.left+rect.width/2-cardRect.width/2;
+    var top=rect.bottom+10;
+    left=Math.max(8, Math.min(left, vw-cardRect.width-8));
+    if(top+cardRect.height>vh-8) top=rect.top-cardRect.height-10;
+    top=Math.max(8, top);
+    mapCard.style.left=left+'px';
+    mapCard.style.top=top+'px';
+  }
+
+  function hideCard(){
+    if(mapCard) mapCard.classList.remove('is-visible');
+  }
+
+  // Zoom scales the finished SVG by explicit pixel size, relative to however it is rendered right
+  // now (its default fill-the-container width, or a size an earlier click already set) \u2014 so each
+  // click is a step from what the reader sees, not from an abstract baseline. Reset restores the
+  // default responsive sizing (still floored at the natural size, per BE-0337).
+  var ZOOM_FACTOR=1.25, ZOOM_MIN_PX=200, ZOOM_MAX_PX=8000;
+  var zoomBtns=document.querySelectorAll('.be-map-zoom-btn');
+  function mapWidthPx(){
+    return mapSvg.style.width ? parseFloat(mapSvg.style.width)
+      : mapSvg.getBoundingClientRect().width;
+  }
+  function setMapWidth(px){
+    var vb=mapSvg.viewBox.baseVal;
+    if(!vb || !vb.width) return;
+    px=Math.max(ZOOM_MIN_PX, Math.min(ZOOM_MAX_PX, px));
+    // The svg also carries an inline min-width (its natural size, BE-0337) that would otherwise
+    // clamp a zoom-out below it while style.width \u2014 and mapWidthPx() reading it back \u2014 moved on
+    // regardless, desyncing the tracked size from what is actually on screen. Zoom explicitly
+    // overrides that floor so shrinking below natural size (to see more of the map at once) works.
+    mapSvg.style.width=px+'px';
+    mapSvg.style.minWidth=px+'px';
+    mapSvg.style.height=(px*vb.height/vb.width)+'px';
+  }
+  function resetMapWidth(){
+    var vb=mapSvg.viewBox.baseVal;
+    mapSvg.style.width='';
+    mapSvg.style.height='';
+    // Restore the natural-size floor rather than clearing it outright \u2014 clearing would drop
+    // BE-0337's "never below natural size" rule for good, since the inline min-width the page
+    // shipped with and any zoom-set value share the same style property.
+    mapSvg.style.minWidth=(vb && vb.width) ? vb.width+'px' : '';
+  }
+  zoomBtns.forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var action=btn.getAttribute('data-zoom');
+      if(!mapSvg) return;
+      if(action==='in') setMapWidth(mapWidthPx()*ZOOM_FACTOR);
+      else if(action==='out') setMapWidth(mapWidthPx()/ZOOM_FACTOR);
+      else resetMapWidth();
+    });
+  });
+
+  // Full size breaks the map out of the page's prose-width column to fill the browser viewport \u2014 an
+  // in-page overlay (not the Fullscreen API), so no permission prompt and Escape or the same button
+  // closes it just as reliably as it opened.
+  var mapView=document.querySelector('.be-map-view');
+  var expandBtn=document.querySelector('.be-map-expand');
+  function setExpanded(on){
+    if(!mapView) return;
+    mapView.classList.toggle('is-expanded', on);
+    document.documentElement.classList.toggle('be-map-lock-scroll', on);
+    if(expandBtn){
+      expandBtn.setAttribute('aria-pressed', String(on));
+      expandBtn.textContent=on?'Exit full size':'Full size';
+    }
+  }
+  if(expandBtn){
+    expandBtn.addEventListener('click', function(){
+      setExpanded(!mapView.classList.contains('is-expanded'));
+    });
+  }
+  document.addEventListener('keydown', function(e){
+    if(e.key==='Escape' && mapView && mapView.classList.contains('is-expanded')) setExpanded(false);
+  });
 
   mapNodes.forEach(function(node){
     node.addEventListener('mouseenter', function(){ pickNode(node); });
@@ -965,6 +1128,12 @@ _SCRIPT = """
   var VIEW_KEY='bajutsu-roadmap-view';
   function setView(v){
     if(!VIEWS[v]) v='cards';
+    // Switching away from Map must also leave full size: its overlay covers the whole viewport
+    // (including this toggle), so nothing else would ever call setExpanded(false) to release the
+    // scroll lock it set on <html> — a reader who reaches another view while still expanded (e.g.
+    // by keyboard, since the hidden buttons stay focusable behind the overlay) would otherwise be
+    // left unable to scroll the page at all.
+    if(v!=='graph') setExpanded(false);
     Object.keys(VIEWS).forEach(function(name){
       if(VIEWS[name]) VIEWS[name].classList.toggle('is-hidden', name!==v);
     });
@@ -1008,8 +1177,9 @@ _INTRO = (
     "columns, and the search and status filters narrow both views alike. A third view, Map, draws "
     "the relationships the items themselves record as a transit map: one line per topic, its items "
     "as stops along it in id order, and a curve joining every pair that stands in a Related, "
-    "Origin, or Superseded by relation. Point at a stop to name it and light up what it connects "
-    "to. Each card links to its "
+    "Origin, or Superseded by relation. Point at a stop to light up what it connects to and see a "
+    "card with its title and a short excerpt from its Introduction; the Zoom and Full size controls "
+    "above the map scale it up and expand it to fill the browser window. Each card links to its "
     "full proposal on GitHub. This dashboard is the only status view — for what a roadmap item is "
     "and how to add one, see [`roadmaps/README.md`]"
     "(https://github.com/bajutsu-e2e/bajutsu/blob/main/roadmaps/README.md) (both languages).\n\n"

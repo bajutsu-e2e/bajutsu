@@ -188,6 +188,9 @@ class Item:
 
     ``related`` / ``origin_refs`` / ``superseded_by`` are the ids the item's three relation fields
     name, already filtered to items the loaded tree actually holds, so every id here resolves.
+
+    ``summary`` is the first paragraph of the English ``## Introduction`` section, as plain text
+    (:func:`extract_summary`) — empty when the file has no such section.
     """
 
     id: str
@@ -200,6 +203,54 @@ class Item:
     related: tuple[str, ...] = ()
     origin_refs: tuple[str, ...] = ()
     superseded_by: tuple[str, ...] = ()
+    summary: str = ""
+
+
+_INTRO_RE = re.compile(r"^## Introduction\n\n(.+?)(?:\n\n|\Z)", re.DOTALL | re.MULTILINE)
+_MD_LINK_RE = re.compile(r"\[([^\]]+)\]\([^)]+\)")
+_MD_CODE_RE = re.compile(r"`([^`]+)`")
+_MD_BOLD_RE = re.compile(r"\*\*(.+?)\*\*|__(.+?)__")
+# An underscore or asterisk pair only counts as emphasis when it is *not* intraword — i.e. neither
+# delimiter sits directly between two word characters — so a snake_case identifier like ``wait_for``
+# (a single underscore, both neighbours word characters) can never match either alternative.
+_MD_ITALIC_RE = re.compile(r"(?<!\w)\*(\S(?:.*?\S)?)\*(?!\w)|(?<!\w)_(\S(?:.*?\S)?)_(?!\w)")
+_CODE_PLACEHOLDER_RE = re.compile(r"\x00(\d+)\x00")
+_WHITESPACE_RE = re.compile(r"\s+")
+
+
+def extract_summary(text: str, *, max_len: int = 220) -> str:
+    """The first paragraph of an item's ``## Introduction`` section, as a plain-text one-liner.
+
+    Used as a short at-a-glance overview (the dashboard relationship map's hover card, BE-0335)
+    rather than as parsed metadata: every item's file already opens with one, so this reads it
+    instead of asking an author to maintain a second, shorter description that could drift from the
+    real one. An inline code span is stashed behind a placeholder *before* any other substitution
+    runs — including link resolution — and restored verbatim at the end, so its content (an
+    identifier like ``` `__init__` ``` or ``` `wait_for` ```, or even literal text that happens to
+    look like a markdown link) round-trips untouched rather than being mutated by a rule meant for
+    the surrounding prose. A markdown link outside a code span keeps its visible text; bold/italic
+    markers are stripped. Returns an empty string when the file has no ``## Introduction`` section
+    (the legacy-format fixtures used in tests), so a caller can treat "no summary" as ordinary
+    rather than an error.
+    """
+    match = _INTRO_RE.search(text)
+    if not match:
+        return ""
+    paragraph = _WHITESPACE_RE.sub(" ", match.group(1)).strip()
+    code_spans: list[str] = []
+
+    def _stash(m: re.Match[str]) -> str:
+        code_spans.append(m.group(1))
+        return f"\x00{len(code_spans) - 1}\x00"
+
+    paragraph = _MD_CODE_RE.sub(_stash, paragraph)
+    paragraph = _MD_LINK_RE.sub(r"\1", paragraph)
+    paragraph = _MD_BOLD_RE.sub(lambda m: m.group(1) or m.group(2), paragraph)
+    paragraph = _MD_ITALIC_RE.sub(lambda m: m.group(1) or m.group(2), paragraph)
+    paragraph = _CODE_PLACEHOLDER_RE.sub(lambda m: code_spans[int(m.group(1))], paragraph)
+    if len(paragraph) <= max_len:
+        return paragraph
+    return paragraph[:max_len].rsplit(" ", 1)[0].rstrip(",;:") + "…"
 
 
 def parse_metadata(text: str) -> tuple[str, dict[str, str]]:
@@ -307,14 +358,15 @@ def load_items(roadmap: Path, *, with_dates: bool = False) -> list[Item]:
 
         by_lang: dict[str, Entry] = {}
         paths: list[Path] = []
-        item_bucket = topic = ""
+        item_bucket = topic = summary = ""
         related: tuple[str, ...] = ()
         origin_refs: tuple[str, ...] = ()
         superseded_by: tuple[str, ...] = ()
         for lang in LANGS:
             path = d / f"{item_id}-{slug}{lang.suffix}.md"
             paths.append(path)
-            title, fields = parse_metadata(path.read_text(encoding="utf-8"))
+            text = path.read_text(encoding="utf-8")
+            title, fields = parse_metadata(text)
             by_lang[lang.code] = Entry(
                 id=item_id,
                 slug=slug,
@@ -327,10 +379,12 @@ def load_items(roadmap: Path, *, with_dates: bool = False) -> list[Item]:
                 topic = fields[lang.field_topic]
                 # The three relation fields are read from the English file alone, exactly as
                 # ``Status`` and ``Topic`` already are, so a Japanese-only wording fix can never
-                # change what the relations say.
+                # change what the relations say. The summary is read the same way, for the same
+                # reason (BE-0335's relationship-map hover card).
                 related = relation_ids(fields.get("Related"), self_id=item_id)
                 origin_refs = relation_ids(fields.get("Origin"), self_id=item_id)
                 superseded_by = relation_ids(fields.get("Superseded by"), self_id=item_id)
+                summary = extract_summary(text)
         if topic not in KNOWN_TOPICS:
             raise ValueError(
                 f"{item_id}: unknown Topic {topic!r}; add it to TOPICS (with a key) so it "
@@ -349,6 +403,7 @@ def load_items(roadmap: Path, *, with_dates: bool = False) -> list[Item]:
                 related=related,
                 origin_refs=origin_refs,
                 superseded_by=superseded_by,
+                summary=summary,
             )
         )
     # A relation is only usable once every item is loaded, since an id can only be checked against

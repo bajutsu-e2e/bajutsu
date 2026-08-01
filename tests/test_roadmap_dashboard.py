@@ -420,6 +420,13 @@ def test_graph_nodes_carry_the_same_search_string_their_cards_do() -> None:
         assert node["href"] == brd._item_href(item)
 
 
+def test_graph_nodes_carry_the_items_summary() -> None:
+    """Each node's ``summary`` is the item's own (BE-0335's hover card reads it verbatim)."""
+    by_id = {item.by_lang["en"].id: item for item in _ITEMS}
+    for node in brd.graph_data(_ITEMS)["nodes"]:
+        assert node["summary"] == by_id[node["id"]].summary
+
+
 def test_an_item_named_only_by_another_is_drawn_while_declaring_nothing() -> None:
     """Being drawn means taking part in a relation, which is wider than declaring one.
 
@@ -564,3 +571,67 @@ def test_pointing_at_an_item_names_it_in_a_live_region() -> None:
     assert "Point at an item to read its title" in _PAGE
     for node in brd.map_layout(_ITEMS)["nodes"][:5]:
         assert html.escape(f"{node['id']} — {node['title']}") in _PAGE
+
+
+def test_the_live_region_readout_carries_the_summary_too() -> None:
+    """The visual hover card is decorative (aria-hidden); the readout is its accessible fallback, so
+    it must speak the same Introduction excerpt the card shows, not just the id/title/status.
+    """
+    script = brd.filter_script()
+    pick_node = script[script.index("function pickNode") : script.index("function releaseNode")]
+    assert "data-summary" in pick_node
+    assert "readout.textContent" in pick_node and "summary" in pick_node
+
+
+def test_map_node_href_is_escaped_like_its_other_attributes() -> None:
+    """A node's ``href`` is escaped consistently with its other ``data-*`` attributes.
+
+    Today's ``_item_href()`` output only ever holds URL-safe characters, but the map node was the
+    one attribute on the element left unescaped — inconsistent with the rest, and one slug away from
+    a malformed attribute if that ever changes.
+    """
+    for node in brd.map_layout(_ITEMS)["nodes"][:5]:
+        assert f'href="{html.escape(node["href"])}"' in _PAGE
+
+
+def test_each_node_carries_its_title_and_summary_for_the_hover_card() -> None:
+    """The hover/focus card (BE-0335) reads a node's title and Introduction excerpt off its own <a>."""
+    for node in brd.map_layout(_ITEMS)["nodes"][:5]:
+        assert f'data-title="{html.escape(node["title"])}"' in _PAGE
+        assert f'data-summary="{html.escape(node["summary"])}"' in _PAGE
+
+
+def test_the_map_offers_zoom_and_full_size_controls() -> None:
+    """A reader can enlarge the map beyond its natural size, in place or across the whole browser."""
+    assert 'class="be-map-toolbar"' in _PAGE
+    for action in ("out", "reset", "in"):
+        assert f'data-zoom="{action}"' in _PAGE
+    assert 'class="be-map-expand"' in _PAGE
+    assert 'aria-pressed="false"' in _PAGE.split('class="be-map-expand"', 1)[1][:120]
+
+
+def test_zoom_overrides_the_svgs_natural_size_floor() -> None:
+    """Zooming must move the same floor it reads, or a zoom-out below natural size silently does nothing.
+
+    Regression test: the svg carries an inline ``min-width`` (BE-0337's natural-size floor). Setting
+    only ``style.width`` while that min-width stays at its original value clamps the *rendered* size
+    below it, desyncing it from the tracked ``style.width`` that later zoom clicks step from —
+    ``setMapWidth`` must move ``min-width`` in lockstep, and ``resetMapWidth`` must restore the floor
+    to the natural size rather than dropping it outright.
+    """
+    script = brd.filter_script()
+    set_width = script[
+        script.index("function setMapWidth") : script.index("function resetMapWidth")
+    ]
+    assert "mapSvg.style.minWidth=px" in set_width
+    reset_width = script[script.index("function resetMapWidth") : script.index("zoomBtns.forEach")]
+    assert "mapSvg.style.minWidth=" in reset_width
+    assert "vb.width" in reset_width
+
+
+def test_the_map_ships_a_hover_card_container() -> None:
+    """The card's four fields (id, status, title, summary) are rendered empty and filled by JS."""
+    map_view = _PAGE.split('class="be-map-view', 1)[1]
+    assert 'class="be-map-card" aria-hidden="true"' in map_view
+    for field in ("id", "status", "title", "summary"):
+        assert f'class="be-map-card-{field}"' in map_view
