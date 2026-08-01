@@ -632,6 +632,38 @@ def _run_for_each(
     return True, ""
 
 
+@dataclass
+class StepLoopState:
+    """The mutable context a run's step loop carries across its recursive descent.
+
+    Aggregates what the loop used to smuggle through closure `nonlocal`s and free variables, so a
+    single object threads the shared state through nested `if` / `forEach` / `web` groups and an
+    interrupt's recovery — all of which run through the same step loop and must see the same
+    counter, outcomes, bindings, and screen-read bookkeeping.
+    """
+
+    counter: _StepCounter
+    outcomes: list[StepOutcome]
+    # `bindings` is a mutable dict (guaranteed by `run_scenario`) — extract steps add `vars.*`
+    # entries so that subsequent steps and scenario-level `expect` can reference them.
+    bindings: dict[str, str]
+    # One selection tracker per run, shared across the recursive step loop (like `_StepCounter`), so
+    # a `copy` sees the selection a prior `select` left — and any action in between clears it (BE-0265).
+    selection: SelectionState = field(default_factory=SelectionState)
+    # `prev_after` carries a step's post-step tree to the next step's `before` (BE-0234 Unit 2):
+    # nothing actuates between the two, so they observe the same device state and the `before` read
+    # is skipped. It holds only a tree we actually read; a step that took no read leaves it None so
+    # the next `before` reads fresh, and a `web` block resets it (the tree is a different driver's).
+    prev_after: list[base.Element] | None = None
+    total_reads: int = 0  # runner-issued screen reads, the BE-0234 read-count yardstick (Unit 1)
+    # True while an interrupt's own recovery steps run (BE-0314). Those steps go through the step loop
+    # too, so without this an interrupt whose recovery targets the very screen its `condition` matches
+    # would re-trigger itself on each recovery step and recurse without end. Suppressing the guard
+    # while recovery runs also keeps a run's interrupt handling to the outermost screen, not the
+    # handlers reacting to each other mid-recovery.
+    running_recovery: bool = False
+
+
 def _run_steps(
     driver: base.Driver,
     scenario: Scenario,
@@ -660,36 +692,19 @@ def _run_steps(
     steps add ``vars.*`` entries so that subsequent steps and scenario-level
     ``expect`` can reference them."""
     assert bindings is not None
-    counter = _StepCounter()
-    # One selection tracker per run, shared across the recursive step loop (like `_StepCounter`), so
-    # a `copy` sees the selection a prior `select` left — and any action in between clears it (BE-0265).
-    selection = SelectionState()
-    # `prev_after` carries a step's post-step tree to the next step's `before` (BE-0234 Unit 2):
-    # nothing actuates between the two, so they observe the same device state and the `before` read
-    # is skipped. It holds only a tree we actually read; a step that took no read leaves it None so
-    # the next `before` reads fresh, and a `web` block resets it (the tree is a different driver's).
-    prev_after: list[base.Element] | None = None
-    total_reads = 0  # runner-issued screen reads, the BE-0234 read-count yardstick (Unit 1)
-    # True while an interrupt's own recovery steps run (BE-0314). Those steps go through `exec_steps`
-    # too, so without this an interrupt whose recovery targets the very screen its `condition` matches
-    # would re-trigger itself on each recovery step and recurse without end. Suppressing the guard
-    # while recovery runs also keeps a run's interrupt handling to the outermost screen, not the
-    # handlers reacting to each other mid-recovery.
-    running_recovery = False
+    state = StepLoopState(counter=_StepCounter(), outcomes=outcomes, bindings=bindings)
 
     def _run_recovery(steps: list[Step], active_driver: base.Driver) -> str | None:
-        nonlocal running_recovery
-        running_recovery = True
+        state.running_recovery = True
         try:
             return exec_steps(steps, active_driver)
         finally:
-            running_recovery = False
+            state.running_recovery = False
 
     def exec_steps(steps: list[Step], active_driver: base.Driver) -> str | None:
-        nonlocal prev_after, total_reads
         for step in steps:
             kind = _action_of(step)
-            idx = counter.take()
+            idx = state.counter.take()
             outcome = StepOutcome(index=idx, action=kind)
             if progress is not None:
                 progress(f"{sid} · step {idx + 1}: {_step_label(step, kind)}")
@@ -699,20 +714,22 @@ def _run_steps(
 
             if kind == "if_":
                 assert step.if_ is not None
-                ok, reason = _run_if(active_driver, step.if_, clock, network, bindings, exec_steps)
+                ok, reason = _run_if(
+                    active_driver, step.if_, clock, network, state.bindings, exec_steps
+                )
                 outcome.ok, outcome.reason = ok, reason
                 outcome.duration_s = clock.now() - start
-                outcomes.append(outcome)
+                state.outcomes.append(outcome)
                 if not ok:
                     return f"step {idx} ({kind}): {reason}"
                 continue
 
             if kind == "for_each":
                 assert step.for_each is not None
-                ok, reason = _run_for_each(active_driver, step.for_each, bindings, exec_steps)
+                ok, reason = _run_for_each(active_driver, step.for_each, state.bindings, exec_steps)
                 outcome.ok, outcome.reason = ok, reason
                 outcome.duration_s = clock.now() - start
-                outcomes.append(outcome)
+                state.outcomes.append(outcome)
                 if not ok:
                     return f"step {idx} ({kind}): {reason}"
                 continue
@@ -727,7 +744,7 @@ def _run_steps(
                         )
                     else:
                         sel = interp.interpolate(
-                            step.web.within.model_dump(by_alias=True), bindings
+                            step.web.within.model_dump(by_alias=True), state.bindings
                         )
                         host_sel = Selector.model_validate(sel).as_selector()
                         base.resolve_unique(active_driver.query(), host_sel)
@@ -741,16 +758,16 @@ def _run_steps(
                             web_driver = WebContextDriver(bridge=webview_bridge, webview_id=host_id)
                             # The inner steps run on a different driver, so its trees must not seed a
                             # native step's `before`: reset around the block on both sides (BE-0234).
-                            prev_after = None
+                            state.prev_after = None
                             failure = exec_steps(step.web.steps, web_driver)
-                            prev_after = None
+                            state.prev_after = None
                             ok = failure is None
                             reason = failure or ""
                 except base.SelectorError as e:
                     ok, reason = False, str(e)
                 outcome.ok, outcome.reason = ok, reason
                 outcome.duration_s = clock.now() - start
-                outcomes.append(outcome)
+                state.outcomes.append(outcome)
                 if not ok:
                     return f"step {idx} ({kind}): {reason}"
                 continue
@@ -762,11 +779,11 @@ def _run_steps(
             # A locale the lookup does not cover fails this step loudly, like the blocks above; it
             # never falls back to a guessed label.
             try:
-                interp_step = _resolve_system_alert(_interp_step(step, bindings), locale)
+                interp_step = _resolve_system_alert(_interp_step(step, state.bindings), locale)
             except UncoveredSystemAlertLocale as exc:
                 outcome.ok, outcome.reason = False, str(exc)
                 outcome.duration_s = clock.now() - start
-                outcomes.append(outcome)
+                state.outcomes.append(outcome)
                 return f"step {idx} ({kind}): {exc}"
             # `before` is needed only for a `screenChanged` policy. Reuse the previous step's
             # post-step tree when we have one (same device state — nothing actuated in between), so
@@ -780,11 +797,11 @@ def _run_steps(
             before_is_fresh = False
             if not wants_screen_changed:
                 before = None
-            elif prev_after is not None:
-                before = prev_after
+            elif state.prev_after is not None:
+                before = state.prev_after
             else:
                 before = active_driver.query()
-                total_reads += 1
+                state.total_reads += 1
                 before_is_fresh = True
             # A fresh interrupt guard per step (BE-0314), so its re-entrancy cap resets each step. A
             # bare act clears any interstitial up front — reusing `before` only when it is a tree just
@@ -795,8 +812,8 @@ def _run_steps(
             # Only the step guard queries here; the recovery `steps` it runs go through `exec_steps`,
             # sharing the counter/outcomes/bindings like `if`'s branches.
             guard = (
-                _InterruptGuard(interrupts, active_driver, network, bindings, _run_recovery)
-                if interrupts and not running_recovery
+                _InterruptGuard(interrupts, active_driver, network, state.bindings, _run_recovery)
+                if interrupts and not state.running_recovery
                 else None
             )
             if guard is not None and kind != "wait":
@@ -807,7 +824,7 @@ def _run_steps(
                     before = guard.clear_before_act(before)
                 else:
                     before_read = guard.clear_before_act(active_driver.query())
-                    total_reads += 1
+                    state.total_reads += 1
                     if before is not None:
                         before = before_read
             # A `for` wait records its poll timeline so a timeout is diagnosable from artifacts
@@ -841,12 +858,12 @@ def _run_steps(
                     clock,
                     network,
                     relaunch,
-                    bindings,
+                    state.bindings,
                     control,
                     mailbox,
                     ctx,
                     wait_trace=wait_trace,
-                    selection=selection,
+                    selection=state.selection,
                     alert_guard=alert_guard,
                     alerts=outcome.alerts,
                     on_wait_tick=wait_tick,
@@ -873,12 +890,12 @@ def _run_steps(
                             clock,
                             network,
                             relaunch,
-                            bindings,
+                            state.bindings,
                             control,
                             mailbox,
                             ctx,
                             wait_trace=wait_trace,
-                            selection=selection,
+                            selection=state.selection,
                             on_wait_tick=wait_tick,
                             transitions=transitions,
                             on_interrupt_poll=guard.observe if guard is not None else None,
@@ -938,7 +955,7 @@ def _run_steps(
                         outcome.artifacts.append(art)
 
             if outcome.ok and interp_step.extract:
-                ext_ok, ext_reason = _run_extract(screen.get(), interp_step.extract, bindings)
+                ext_ok, ext_reason = _run_extract(screen.get(), interp_step.extract, state.bindings)
                 if not ext_ok:
                     outcome.ok, outcome.reason = False, ext_reason
 
@@ -953,16 +970,16 @@ def _run_steps(
             els = screen.get() if active_driver is not driver else screen.cached
             outcome.artifacts.extend(sink.capture(driver, step_id, instant, elements=els))
             if screen.queried:
-                total_reads += 1
+                state.total_reads += 1
             # Seed the next step's `before` only with a tree we actually read; if we skipped the
             # read, the next `before` reads fresh (BE-0234 Unit 2).
-            prev_after = screen.cached
+            state.prev_after = screen.cached
 
-            outcomes.append(outcome)
+            state.outcomes.append(outcome)
             if not outcome.ok:
                 return f"step {idx} ({kind}): {outcome.reason}"
         return None
 
     result = exec_steps(scenario.steps, driver)
-    _logger.debug("%s: %d runner-issued screen reads (BE-0234)", sid, total_reads)
+    _logger.debug("%s: %d runner-issued screen reads (BE-0234)", sid, state.total_reads)
     return result
