@@ -254,8 +254,38 @@ def test_extract_summary_reads_the_first_introduction_paragraph() -> None:
     assert bri.extract_summary(text) == "Add a thing that matters, spanning two wrapped lines."
 
 
+def test_extract_summary_preserves_underscores_inside_inline_code() -> None:
+    """A code span's identifiers must survive verbatim, not lose their underscores to emphasis-stripping.
+
+    Regression test: an inline code span like ``` `Driver.wait_for` ``` or ``` `__init__` ``` looks,
+    once its backticks are gone, exactly like underscore-delimited emphasis around ``wait_for`` /
+    ``init`` — the two are only distinguishable while the backticks are still there, so the fix must
+    strip a code span's backticks without ever running the emphasis rule over its contents.
+    """
+    text = (
+        "## Introduction\n\n"
+        "Call `Driver.wait_for()` and `__init__` before `_header_names` runs.\n\n## Motivation\n"
+    )
+    assert (
+        bri.extract_summary(text)
+        == "Call Driver.wait_for() and __init__ before _header_names runs."
+    )
+
+
+def test_extract_summary_leaves_a_bare_snake_case_identifier_untouched() -> None:
+    """A single underscore between word characters is never a valid emphasis delimiter (intraword)."""
+    text = "## Introduction\n\nwait_for and set_value both changed.\n\n## Motivation\n"
+    assert bri.extract_summary(text) == "wait_for and set_value both changed."
+
+
+def test_extract_summary_still_strips_genuine_underscore_italics() -> None:
+    """Real emphasis — delimiters flanked by non-word characters — is still stripped as before."""
+    text = "## Introduction\n\nSee _the docs_ for more.\n\n## Motivation\n"
+    assert bri.extract_summary(text) == "See the docs for more."
+
+
 def test_extract_summary_truncates_a_long_paragraph_at_a_word_boundary() -> None:
-    """A paragraph past ``max_len`` is cut at the last whole word, not mid-word, and marked with ‥"""
+    """A paragraph past ``max_len`` is cut at the last whole word, not mid-word, and marked with …"""
     text = "## Introduction\n\n" + ("word " * 100).strip() + "\n\n## Motivation\n"
     summary = bri.extract_summary(text, max_len=20)
     assert summary == "word word word word…"

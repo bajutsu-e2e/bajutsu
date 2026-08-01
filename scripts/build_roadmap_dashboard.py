@@ -1112,6 +1112,12 @@ _SCRIPT = """
   var VIEW_KEY='bajutsu-roadmap-view';
   function setView(v){
     if(!VIEWS[v]) v='cards';
+    // Switching away from Map must also leave full size: its overlay covers the whole viewport
+    // (including this toggle), so nothing else would ever call setExpanded(false) to release the
+    // scroll lock it set on <html> — a reader who reaches another view while still expanded (e.g.
+    // by keyboard, since the hidden buttons stay focusable behind the overlay) would otherwise be
+    // left unable to scroll the page at all.
+    if(v!=='graph') setExpanded(false);
     Object.keys(VIEWS).forEach(function(name){
       if(VIEWS[name]) VIEWS[name].classList.toggle('is-hidden', name!==v);
     });

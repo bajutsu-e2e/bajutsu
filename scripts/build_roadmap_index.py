@@ -208,7 +208,13 @@ class Item:
 
 _INTRO_RE = re.compile(r"^## Introduction\n\n(.+?)(?:\n\n|\Z)", re.DOTALL | re.MULTILINE)
 _MD_LINK_RE = re.compile(r"\[([^\]]+)\]\([^)]+\)")
-_MD_EMPHASIS_RE = re.compile(r"(\*\*|__|[*_`])")
+_MD_CODE_RE = re.compile(r"`([^`]+)`")
+_MD_BOLD_RE = re.compile(r"\*\*(.+?)\*\*|__(.+?)__")
+# An underscore or asterisk pair only counts as emphasis when it is *not* intraword — i.e. neither
+# delimiter sits directly between two word characters — so a snake_case identifier like ``wait_for``
+# (a single underscore, both neighbours word characters) can never match either alternative.
+_MD_ITALIC_RE = re.compile(r"(?<!\w)\*(\S(?:.*?\S)?)\*(?!\w)|(?<!\w)_(\S(?:.*?\S)?)_(?!\w)")
+_CODE_PLACEHOLDER_RE = re.compile(r"\x00(\d+)\x00")
 _WHITESPACE_RE = re.compile(r"\s+")
 
 
@@ -218,16 +224,28 @@ def extract_summary(text: str, *, max_len: int = 220) -> str:
     Used as a short at-a-glance overview (the dashboard relationship map's hover card, BE-0335)
     rather than as parsed metadata: every item's file already opens with one, so this reads it
     instead of asking an author to maintain a second, shorter description that could drift from the
-    real one. A markdown link keeps its visible text; other emphasis markup is stripped. Returns an
-    empty string when the file has no ``## Introduction`` section (the legacy-format fixtures used in
-    tests), so a caller can treat "no summary" as ordinary rather than an error.
+    real one. A markdown link keeps its visible text; bold/italic markers are stripped. An inline
+    code span's content is stashed behind a placeholder before that stripping runs and restored
+    verbatim afterward, so an identifier inside it (``` `__init__` ```, ``` `wait_for` ```) survives
+    untouched rather than losing its underscores to the emphasis rule. Returns an empty string when
+    the file has no ``## Introduction`` section (the legacy-format fixtures used in tests), so a
+    caller can treat "no summary" as ordinary rather than an error.
     """
     match = _INTRO_RE.search(text)
     if not match:
         return ""
     paragraph = _WHITESPACE_RE.sub(" ", match.group(1)).strip()
     paragraph = _MD_LINK_RE.sub(r"\1", paragraph)
-    paragraph = _MD_EMPHASIS_RE.sub("", paragraph)
+    code_spans: list[str] = []
+
+    def _stash(m: re.Match[str]) -> str:
+        code_spans.append(m.group(1))
+        return f"\x00{len(code_spans) - 1}\x00"
+
+    paragraph = _MD_CODE_RE.sub(_stash, paragraph)
+    paragraph = _MD_BOLD_RE.sub(lambda m: m.group(1) or m.group(2), paragraph)
+    paragraph = _MD_ITALIC_RE.sub(lambda m: m.group(1) or m.group(2), paragraph)
+    paragraph = _CODE_PLACEHOLDER_RE.sub(lambda m: code_spans[int(m.group(1))], paragraph)
     if len(paragraph) <= max_len:
         return paragraph
     return paragraph[:max_len].rsplit(" ", 1)[0].rstrip(",;:") + "…"
