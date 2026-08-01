@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-roadmap-dashboard-map-layout-ja.md)
+**English** · [日本語](BE-0337-roadmap-dashboard-map-layout-ja.md)
 
-# BE-XXXX — Transit-map layout for the roadmap dashboard's relationship view
+# BE-0337 — Transit-map layout for the roadmap dashboard's relationship view
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-roadmap-dashboard-map-layout.md) |
+| Proposal | [BE-0337](BE-0337-roadmap-dashboard-map-layout.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0337") |
 | Implementing PR | [#1427](https://github.com/bajutsu-e2e/bajutsu/pull/1427) |
 | Topic | Contributor workflow |
 | Related | [BE-0335](../BE-0335-roadmap-dashboard-relationship-graph/BE-0335-roadmap-dashboard-relationship-graph.md), [BE-0094](../BE-0094-roadmap-status-dashboard/BE-0094-roadmap-status-dashboard.md), [BE-0311](../BE-0311-roadmap-dashboard-table-view/BE-0311-roadmap-dashboard-table-view.md) |
