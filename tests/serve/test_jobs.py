@@ -153,6 +153,56 @@ def test_land_batch_run_warns_when_the_download_carries_more_than_one_manifest(
     assert any("more than one manifest" in record.message for record in caplog.records)
 
 
+def test_land_batch_run_ignores_manifests_outside_runs_subdirectory(tmp_path: Path) -> None:
+    # rglob finds manifest.json anywhere under download_dir, but only a manifest nested under a
+    # `runs/<run_id>/` path is a valid landed run; one at an unexpected location must not move an
+    # arbitrary directory under runs_root.
+    import json
+
+    from bajutsu.serve.jobs import _land_batch_run
+
+    download = tmp_path / "download"
+    # A manifest directly at the top of download_dir (not under runs/<id>/) is malformed.
+    download.mkdir()
+    (download / "manifest.json").write_text(
+        json.dumps({"ok": True, "scenarios": []}), encoding="utf-8"
+    )
+    runs_root = tmp_path / "runs"
+
+    result = _land_batch_run(download, runs_root)
+
+    # The top-level manifest's parent is download_dir itself; its name is a temp path fragment
+    # that won't pass valid_run_id, so the run is not landed.
+    assert result is None
+    assert not runs_root.exists() or not any(runs_root.iterdir())
+
+
+def test_land_batch_run_rejects_a_symlinked_run_directory(tmp_path: Path) -> None:
+    # A symlinked run directory under downloads/runs/ could make shutil.move write outside
+    # runs_root if the symlink points elsewhere; refuse to land it.
+    import json
+
+    from bajutsu.serve.jobs import _land_batch_run
+
+    download = tmp_path / "download"
+    real_dir = tmp_path / "real_run"
+    real_dir.mkdir(parents=True)
+    (real_dir / "manifest.json").write_text(
+        json.dumps({"ok": True, "scenarios": [{"name": "s1", "ok": True}]}), encoding="utf-8"
+    )
+    runs_subdir = download / "runs"
+    runs_subdir.mkdir(parents=True)
+    symlink = runs_subdir / "20260101-1"
+    symlink.symlink_to(real_dir)
+    runs_root = tmp_path / "runs"
+
+    result = _land_batch_run(download, runs_root)
+
+    # The symlinked run directory must not be moved — return None, leave real_dir untouched.
+    assert result is None
+    assert real_dir.exists()
+
+
 def test_record_provenance_merges_not_clobbers(tmp_path: Path) -> None:
     # BE-0090: the run subprocess already wrote a provenance block (scenario fingerprint + the
     # uploadExec decision); serve must merge its upload identity in, not overwrite both away.

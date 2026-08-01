@@ -525,9 +525,11 @@ def _land_batch_run(download_dir: Path, runs_root: Path) -> str | None:
     they do a local run. Returns the run id only when the run was actually landed, or None when the
     download carried no manifest (a failed cloud run the verdict already reports as a fail), the run id
     is unsafe, or the id already exists under ``runs_root``."""
-    # One scenario is one run is one manifest; `sorted()[0]` keeps the pick deterministic if a malformed
-    # download ever carries more than one.
-    manifests = sorted(download_dir.rglob("manifest.json"))
+    # The Device Farm download unpacks as runs/<run_id>/manifest.json; restrict the search to that
+    # subdirectory so a malformed download with a manifest elsewhere can't make us move an arbitrary
+    # directory under runs_root.
+    runs_subdir = download_dir / "runs"
+    manifests = sorted(runs_subdir.rglob("manifest.json")) if runs_subdir.is_dir() else []
     if not manifests:
         return None
     if len(manifests) > 1:
@@ -541,6 +543,10 @@ def _land_batch_run(download_dir: Path, runs_root: Path) -> str | None:
             manifests[0].parent.name,
         )
     run_dir = manifests[0].parent
+    if run_dir.is_symlink():
+        # A symlinked run directory could make shutil.move write outside runs_root; refuse it.
+        logger.warning("cloud-batch run directory %r is a symlink; not landing it", run_dir.name)
+        return None
     run_id = run_dir.name
     if not valid_run_id(run_id):
         # A remote run id that isn't a single safe path segment must not escape runs_root: leave the
