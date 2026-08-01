@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0332") |
-| Implementing PR | _pending_ |
+| Implementing PR | [#1442](https://github.com/bajutsu-e2e/bajutsu/pull/1442) |
 | Topic | Driver & backend architecture |
 <!-- /BE-METADATA -->
 
@@ -203,7 +203,7 @@ rather than fix it.
 
 Log:
 
-- 2026-08-02 — Host-side barrier slice (PR _pending_): Unit 1 (`_settle_extract_read` postdates a
+- 2026-08-02 — Host-side barrier slice (PR #1442): Unit 1 (`_settle_extract_read` postdates a
   mutating step's actuation by `read_lag()`), Unit 2 (`tap` / `long_press` / `double_tap` arm the
   existing pan catch-up so a following `_settle` resolves against the published tree), deterministic
   coverage, and the budget-barrier docs. Status → In progress. The device-side read mark (Units 3–4,

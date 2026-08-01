@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0332") |
-| 実装 PR | _pending_ |
+| 実装 PR | [#1442](https://github.com/bajutsu-e2e/bajutsu/pull/1442) |
 | トピック | ドライバとバックエンドのアーキテクチャ |
 <!-- /BE-METADATA -->
 
@@ -205,7 +205,7 @@ Mutually Exclusive, Collectively Exhaustive（`MECE`）な作業単位は、次�
 
 ログ:
 
-- 2026-08-02 — ホスト側の歯止めスライス（PR _pending_）: 作業単位 1（`_settle_extract_read` が、
+- 2026-08-02 — ホスト側の歯止めスライス（PR #1442）: 作業単位 1（`_settle_extract_read` が、
   操作するステップのアクチュエーションより `read_lag()` のぶんだけ後になるまで待つ）、作業単位 2
   （`tap` / `long_press` / `double_tap` が既存の pan 追いつき待ちを張り、続く `_settle` が公開済みの
   ツリーに対して解決する）、決定的なテスト、予算による歯止めの文書化。状態を実装中へ。デバイス側の
