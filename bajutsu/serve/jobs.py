@@ -530,6 +530,16 @@ def _land_batch_run(download_dir: Path, runs_root: Path) -> str | None:
     manifests = sorted(download_dir.rglob("manifest.json"))
     if not manifests:
         return None
+    if len(manifests) > 1:
+        # `verdict_from_manifest` aggregates the verdict across *every* manifest, but we land only this
+        # one. The two disagree the moment a download carries more than one manifest, so warn loudly
+        # rather than drop the extra runs silently (determinism first / fail loud).
+        logger.warning(
+            "cloud-batch download carried more than one manifest (%d); landing only %r and reporting a "
+            "verdict aggregated across all of them",
+            len(manifests),
+            manifests[0].parent.name,
+        )
     run_dir = manifests[0].parent
     run_id = run_dir.name
     if not valid_run_id(run_id):

@@ -126,6 +126,33 @@ def test_land_batch_run_does_not_claim_a_colliding_existing_run(tmp_path: Path) 
     assert (existing / "manifest.json").read_text() == "EXISTING"
 
 
+def test_land_batch_run_warns_when_the_download_carries_more_than_one_manifest(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # One scenario is one run is one manifest, so a >1 case means the landed run (a single deterministic
+    # pick) can't match the job's verdict, which `verdict_from_manifest` aggregates across every manifest.
+    # Land the deterministic first pick, but warn loudly so the disagreement isn't silent.
+    import json
+    import logging
+
+    from bajutsu.serve.jobs import _land_batch_run
+
+    download = tmp_path / "download"
+    for name in ("20260101-1", "20260101-2"):
+        (download / "runs" / name).mkdir(parents=True)
+        (download / "runs" / name / "manifest.json").write_text(
+            json.dumps({"ok": True, "scenarios": []}), encoding="utf-8"
+        )
+    runs_root = tmp_path / "runs"
+
+    with caplog.at_level(logging.WARNING):
+        run_id = _land_batch_run(download, runs_root)
+
+    # The deterministic first pick still lands; the extra manifest is what the warning is about.
+    assert run_id == "20260101-1"
+    assert any("more than one manifest" in record.message for record in caplog.records)
+
+
 def test_record_provenance_merges_not_clobbers(tmp_path: Path) -> None:
     # BE-0090: the run subprocess already wrote a provenance block (scenario fingerprint + the
     # uploadExec decision); serve must merge its upload identity in, not overwrite both away.
