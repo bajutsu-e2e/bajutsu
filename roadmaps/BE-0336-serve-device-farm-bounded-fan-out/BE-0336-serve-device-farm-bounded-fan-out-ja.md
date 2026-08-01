@@ -9,7 +9,7 @@
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0336") |
-| 実装 PR | _pending_（単位1 — submitter core の移行） |
+| 実装 PR | [#1425](https://github.com/bajutsu-e2e/bajutsu/pull/1425)（単位1 — submitter core の移行） |
 | トピック | Device-cloud execution |
 | 関連 | [BE-0235](../BE-0235-aws-device-farm-submitter/BE-0235-aws-device-farm-submitter-ja.md), [BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction-ja.md), [BE-0198](../BE-0198-serve-state-job-registry-split/BE-0198-serve-state-job-registry-split-ja.md) |
 <!-- /BE-METADATA -->
@@ -142,7 +142,7 @@ serve の利用者ごと・org ごとのキャップや run の履歴も共有�
 
 ログ:
 
-- _pending_（単位1）— submitter の core（`render_test_spec`、`build_package`、`verdict_from_manifest`、
+- [#1425](https://github.com/bajutsu-e2e/bajutsu/pull/1425)（単位1）— submitter の core（`render_test_spec`、`build_package`、`verdict_from_manifest`、
   `submit_and_collect` とその補助、`DeviceFarmClient` / `Transfer` の seam）を
   `scripts/devicefarm_submit.py` から `bajutsu/cloud/devicefarm.py` へ移しました。これにより、後続の
   serve の分割と executor が、カバレッジ計測対象の経路で 1 つの submitter を共有します。

@@ -9,7 +9,7 @@
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0336") |
-| Implementing PR | _pending_ (Unit 1 — submitter core migration) |
+| Implementing PR | [#1425](https://github.com/bajutsu-e2e/bajutsu/pull/1425) (Unit 1 — submitter core migration) |
 | Topic | Device-cloud execution |
 | Related | [BE-0235](../BE-0235-aws-device-farm-submitter/BE-0235-aws-device-farm-submitter.md), [BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction.md), [BE-0198](../BE-0198-serve-state-job-registry-split/BE-0198-serve-state-job-registry-split.md) |
 <!-- /BE-METADATA -->
@@ -147,7 +147,7 @@ through the registry's existing cap.
 
 Log:
 
-- _pending_ (Unit 1) — migrated the submitter core (`render_test_spec`, `build_package`,
+- [#1425](https://github.com/bajutsu-e2e/bajutsu/pull/1425) (Unit 1) — migrated the submitter core (`render_test_spec`, `build_package`,
   `verdict_from_manifest`, `submit_and_collect` and its helpers, the `DeviceFarmClient` / `Transfer`
   seams) from `scripts/devicefarm_submit.py` into `bajutsu/cloud/devicefarm.py`, so serve's coming
   fan-out and executor reuse one submitter on the coverage-measured path; `scripts/devicefarm_submit.py`
