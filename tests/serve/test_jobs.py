@@ -189,15 +189,16 @@ def test_land_batch_run_warns_when_the_download_carries_more_than_one_manifest(
 
 
 def test_land_batch_run_ignores_manifests_outside_runs_subdirectory(tmp_path: Path) -> None:
-    # rglob finds manifest.json anywhere under download_dir, but only a manifest nested under a
-    # `runs/<run_id>/` path is a valid landed run; one at an unexpected location must not move an
-    # arbitrary directory under runs_root.
+    # _land_batch_run only searches download_dir/runs/ (not the whole tree). A malformed download
+    # that has a manifest.json outside that subdirectory (e.g. at the top of download_dir) contains
+    # no runs/ directory, so runs_subdir.is_dir() is False, rglob never runs, manifests is empty,
+    # and _land_batch_run returns None via the `if not manifests` branch — valid_run_id and
+    # shutil.move are never reached.
     import json
 
     from bajutsu.serve.jobs import _land_batch_run
 
     download = tmp_path / "download"
-    # A manifest directly at the top of download_dir (not under runs/<id>/) is malformed.
     download.mkdir()
     (download / "manifest.json").write_text(
         json.dumps({"ok": True, "scenarios": []}), encoding="utf-8"
@@ -206,8 +207,7 @@ def test_land_batch_run_ignores_manifests_outside_runs_subdirectory(tmp_path: Pa
 
     result = _land_batch_run(download, runs_root)
 
-    # The top-level manifest's parent is download_dir itself; its name is a temp path fragment
-    # that won't pass valid_run_id, so the run is not landed.
+    # No runs/ subdirectory → empty manifests → None; nothing lands under runs_root.
     assert result is None
     assert not runs_root.exists() or not any(runs_root.iterdir())
 
