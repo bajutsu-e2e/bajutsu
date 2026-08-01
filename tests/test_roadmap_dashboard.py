@@ -630,8 +630,38 @@ def test_zoom_overrides_the_svgs_natural_size_floor() -> None:
 
 
 def test_the_map_ships_a_hover_card_container() -> None:
-    """The card's four fields (id, status, title, summary) are rendered empty and filled by JS."""
+    """The card's four descriptive fields (id, status, title, summary) sit in an aria-hidden span —
+    the live-region readout is their accessible source — while the related-chip row sits outside
+    it, since those are real navigation rather than decoration. A second, wholly decorative card
+    previews whichever chip the pointer rests on.
+    """
     map_view = _PAGE.split('class="be-map-view', 1)[1]
-    assert 'class="be-map-card" aria-hidden="true"' in map_view
+    assert 'class="be-map-card">' in map_view
+    assert 'class="be-map-card-info" aria-hidden="true"' in map_view
     for field in ("id", "status", "title", "summary"):
         assert f'class="be-map-card-{field}"' in map_view
+    assert 'class="be-map-card-related"' in map_view
+    assert 'class="be-map-chip-card" aria-hidden="true"' in map_view
+
+
+def test_the_map_node_carries_no_native_tooltip() -> None:
+    """A native ``<title>`` tooltip would duplicate, and visually collide with, the hover card."""
+    for node in brd.map_layout(_ITEMS)["nodes"][:5]:
+        name = html.escape(f"{node['id']} — {node['title']}")
+        assert f"<title>{name}</title>" not in _PAGE
+
+
+def test_each_node_carries_its_related_ids_for_the_hover_cards_links() -> None:
+    """The card's related-links list is built from ``data-related`` rather than re-deriving the
+    graph in JS, so every drawn node must carry the ids of everything it shares an edge with.
+    """
+    data = brd.graph_data(_ITEMS)
+    neighbors: dict[str, set[str]] = {}
+    for edge in data["edges"]:
+        neighbors.setdefault(edge["source"], set()).add(edge["target"])
+        neighbors.setdefault(edge["target"], set()).add(edge["source"])
+    for node in data["nodes"]:
+        assert set(node["related"]) == neighbors[node["id"]]
+        assert node["related"] == sorted(node["related"])
+    for node in brd.map_layout(_ITEMS)["nodes"][:5]:
+        assert f'data-related="{html.escape(" ".join(node["related"]))}"' in _PAGE
