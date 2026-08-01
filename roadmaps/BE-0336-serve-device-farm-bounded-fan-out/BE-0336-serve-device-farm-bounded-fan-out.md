@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0336](BE-0336-serve-device-farm-bounded-fan-out.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Proposal** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0336") |
+| Implementing PR | [#1425](https://github.com/bajutsu-e2e/bajutsu/pull/1425) (Unit 1 — submitter core migration) |
 | Topic | Device-cloud execution |
 | Related | [BE-0235](../BE-0235-aws-device-farm-submitter/BE-0235-aws-device-farm-submitter.md), [BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction.md), [BE-0198](../BE-0198-serve-state-job-registry-split/BE-0198-serve-state-job-registry-split.md) |
 <!-- /BE-METADATA -->
@@ -132,7 +133,7 @@ through the registry's existing cap.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Single-scenario submission unit — expose and confirm the one-scenario `submit_and_collect`
+- [x] Single-scenario submission unit — expose and confirm the one-scenario `submit_and_collect`
   invocation as the fan-out unit.
 - [ ] Device Farm executor for serve — submit and poll one scenario, record the manifest verdict off
   the verdict path.
@@ -143,6 +144,18 @@ through the registry's existing cap.
   best-effort local path.
 - [ ] Documentation and tests — bilingual how-to update and faked-AWS coverage of the fan-out and the
   cap.
+
+Log:
+
+- [#1425](https://github.com/bajutsu-e2e/bajutsu/pull/1425) (Unit 1) — migrated the submitter core (`render_test_spec`, `build_package`,
+  `verdict_from_manifest`, `submit_and_collect` and its helpers, the `DeviceFarmClient` / `Transfer`
+  seams) from `scripts/devicefarm_submit.py` into `bajutsu/cloud/devicefarm.py`, so serve's coming
+  fan-out and executor reuse one submitter on the coverage-measured path; `scripts/devicefarm_submit.py`
+  is now a thin CLI wrapper holding only argparse and the real boto3/urllib adapters. Confirmed the
+  one-scenario invocation as the fan-out unit (a single-scenario spec renders exactly one `bajutsu run`).
+  Beyond the move, this hardens artifact collection: `_safe_extract` now rejects symlink members and
+  `_store_artifact` sanitizes the artifact extension against path separators, each with a new test. The
+  existing faked-AWS suite passes unchanged.
 
 ## References
 

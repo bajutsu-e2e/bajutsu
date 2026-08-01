@@ -1,4 +1,4 @@
-"""Tests for the AWS Device Farm batch submitter (BE-0235, `scripts/devicefarm_submit.py`).
+"""Tests for the AWS Device Farm batch submitter (BE-0235, `bajutsu.cloud.devicefarm`).
 
 The submitter is CI-side glue, decoupled from the deterministic core: it packages Bajutsu +
 scenarios, renders a Device Farm custom-environment test spec that runs `bajutsu run --backend adb`,
@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import io
 import json
+import stat
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -20,17 +21,17 @@ from typing import Any
 import pytest
 import yaml
 
-from scripts.devicefarm_submit import (
+from bajutsu.cloud.devicefarm import (
     DeviceFarmError,
     Verdict,
     _safe_extract,
     _store_artifact,
     build_package,
-    main,
     render_test_spec,
     submit_and_collect,
     verdict_from_manifest,
 )
+from scripts.devicefarm_submit import main
 
 
 def _zip_bytes(members: dict[str, str]) -> bytes:
@@ -71,6 +72,18 @@ def test_test_spec_runs_bajutsu_over_adb_for_each_scenario() -> None:
     assert all("--target showcase-compose" in c for c in runs)
     assert any("a.yaml" in c for c in runs)
     assert any("b.yaml" in c for c in runs)
+
+
+def test_one_scenario_renders_exactly_one_run_the_fan_out_unit() -> None:
+    # BE-0336's fan-out unit is one Device Farm run per scenario: serve renders a spec for a
+    # single-scenario list and submits it once. Pin that a one-element list produces exactly one
+    # `bajutsu run` — the invariant serve's per-scenario fan-out depends on, distinct from the
+    # batch submitter's multi-scenario spec. `submit_and_collect` then drives a single run for that
+    # one-scenario package (its single-run behavior is covered by the submit tests below).
+    spec = render_test_spec(["only.yaml"], target="showcase-compose", config="c.yaml")
+    runs = [c for c in yaml.safe_load(spec)["phases"]["test"]["commands"] if " run " in c]
+    assert len(runs) == 1
+    assert "only.yaml" in runs[0]
 
 
 def test_test_spec_bootstraps_python_with_uv_not_the_device_farm_runtime() -> None:
@@ -422,6 +435,20 @@ def test_safe_extract_rejects_a_traversal_member(tmp_path: Path) -> None:
     assert not (tmp_path / "escape.txt").exists()
 
 
+def test_safe_extract_rejects_a_symlink_member(tmp_path: Path) -> None:
+    # A symlink member could point outside `dest`; it must be rejected loud (DeviceFarmError) before
+    # extraction, mirroring how serve's extract_bundle refuses symlink entries.
+    zip_path = tmp_path / "symlink.zip"
+    link = zipfile.ZipInfo("runs/link")
+    link.external_attr = stat.S_IFLNK << 16
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.writestr(link, "/etc/passwd")
+    dest = tmp_path / "out"
+    dest.mkdir()
+    with zipfile.ZipFile(zip_path) as zf, pytest.raises(DeviceFarmError, match="symlink"):
+        _safe_extract(zf, dest)
+
+
 # ---------------------------------------------------------------------------
 # _store_artifact (zip vs. plain-file artifacts from list_artifacts)
 # ---------------------------------------------------------------------------
@@ -455,6 +482,25 @@ def test_store_artifact_writes_a_non_zip_artifact_as_a_file(tmp_path: Path) -> N
     written = list((dest / "logs").glob("*.txt"))
     assert len(written) == 1
     assert "adb devices" in written[0].read_text()
+
+
+def test_store_artifact_neutralizes_separators_in_the_artifact_extension(tmp_path: Path) -> None:
+    # `name` and `extension` are untrusted Device Farm fields spliced into one filename; a separator in
+    # `extension` must be stripped like one in `name`, so the write can't escape dest/logs/.
+    dest = tmp_path / "out"
+    dest.mkdir()
+    _store_artifact(
+        {"name": "log", "type": "DEVICE_LOG", "extension": "../../evil"},
+        b"payload",
+        dest,
+        index=0,
+    )
+    # Nothing lands outside dest/logs/ — the only file written is under it.
+    assert not (tmp_path / "evil").exists()
+    written = list((dest / "logs").iterdir())
+    assert len(written) == 1
+    assert written[0].parent == dest / "logs"
+    assert written[0].read_bytes() == b"payload"
 
 
 def test_store_artifact_names_non_zip_files_uniquely_by_index(tmp_path: Path) -> None:
