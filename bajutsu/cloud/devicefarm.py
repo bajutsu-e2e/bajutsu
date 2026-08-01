@@ -511,8 +511,11 @@ def _store_artifact(artifact: Mapping[str, Any], payload: bytes, dest: Path, *, 
         return
     logs = dest / "logs"
     logs.mkdir(parents=True, exist_ok=True)
+    # Both `name` and `extension` come from the (untrusted) Device Farm artifact and are spliced into
+    # one filename, so strip path separators from each — a `/` or `\` in either would otherwise let the
+    # write escape `dest/logs/`.
     name = str(artifact.get("name") or "artifact").replace("/", "_").replace("\\", "_")
-    extension = str(artifact.get("extension") or "txt")
+    extension = str(artifact.get("extension") or "txt").replace("/", "_").replace("\\", "_")
     (logs / f"{index:03d}-{name}.{extension}").write_bytes(payload)
 
 

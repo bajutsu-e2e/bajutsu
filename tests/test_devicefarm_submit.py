@@ -484,6 +484,25 @@ def test_store_artifact_writes_a_non_zip_artifact_as_a_file(tmp_path: Path) -> N
     assert "adb devices" in written[0].read_text()
 
 
+def test_store_artifact_neutralizes_separators_in_the_artifact_extension(tmp_path: Path) -> None:
+    # `name` and `extension` are untrusted Device Farm fields spliced into one filename; a separator in
+    # `extension` must be stripped like one in `name`, so the write can't escape dest/logs/.
+    dest = tmp_path / "out"
+    dest.mkdir()
+    _store_artifact(
+        {"name": "log", "type": "DEVICE_LOG", "extension": "../../evil"},
+        b"payload",
+        dest,
+        index=0,
+    )
+    # Nothing lands outside dest/logs/ — the only file written is under it.
+    assert not (tmp_path / "evil").exists()
+    written = list((dest / "logs").iterdir())
+    assert len(written) == 1
+    assert written[0].parent == dest / "logs"
+    assert written[0].read_bytes() == b"payload"
+
+
 def test_store_artifact_names_non_zip_files_uniquely_by_index(tmp_path: Path) -> None:
     # Device Farm artifact names are not unique across a run's jobs; index-prefixing keeps one
     # job's log from overwriting another's.
