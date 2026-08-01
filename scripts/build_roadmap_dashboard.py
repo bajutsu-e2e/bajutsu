@@ -438,6 +438,30 @@ def marker_end(kind: str) -> str:
     return "" if kind == "related" else ' marker-end="url(#be-map-arrow)"'
 
 
+def _map_node(node: dict[str, Any]) -> str:
+    """One stop on the map: a hit target, a status dot, an id label, and a real link around them.
+
+    The id label is too small to carry a title, so the item's name rides along in ``data-caption``
+    for the readout and in ``<title>`` for a tooltip; naming it once here keeps the three spellings
+    of it from drifting apart.
+    """
+    name = html.escape(f"{node['id']} — {node['title']}")
+    return (
+        f'<a class="be-map-node" href="{node["href"]}" data-id="{html.escape(node["id"])}" '
+        f'data-status="{html.escape(node["status"])}" data-search="{html.escape(node["search"])}" '
+        f'data-caption="{name}" '
+        f'data-status-label="{html.escape(BUCKET_LABEL[node["status"]])}" '
+        f'aria-label="{html.escape(f"{node['id']}: {node['title']}")}">'
+        f"<title>{name}</title>"
+        f'<circle class="be-map-hit" cx="{node["x"]:.1f}" cy="{node["y"]:.1f}" r="18"/>'
+        f'<circle class="be-map-dot" cx="{node["x"]:.1f}" cy="{node["y"]:.1f}" r="6" '
+        f'style="fill:{BUCKET_COLOR[node["status"]]}"/>'
+        f'<text class="be-map-label" x="{node["x"]:.1f}" y="{node["y"] + LABEL_DROP:.1f}" '
+        f'text-anchor="middle">{html.escape(node["id"])}</text>'
+        "</a>"
+    )
+
+
 def _map_view(items: list[Any]) -> str:
     """The map view: its caption, legend, the finished drawing, and the readout a pointer fills.
 
@@ -489,21 +513,7 @@ def _map_view(items: list[Any]) -> str:
         f"{marker_end(edge['kind'])}/>"
         for edge in layout["connectors"]
     )
-    nodes = "".join(
-        f'<a class="be-map-node" href="{node["href"]}" data-id="{html.escape(node["id"])}" '
-        f'data-status="{html.escape(node["status"])}" data-search="{html.escape(node["search"])}" '
-        f'data-caption="{html.escape(f"{node['id']} — {node['title']}")}" '
-        f'data-status-label="{html.escape(BUCKET_LABEL[node["status"]])}" '
-        f'aria-label="{html.escape(f"{node['id']}: {node['title']}")}">'
-        f"<title>{html.escape(f'{node["id"]} — {node["title"]}')}</title>"
-        f'<circle class="be-map-hit" cx="{node["x"]:.1f}" cy="{node["y"]:.1f}" r="18"/>'
-        f'<circle class="be-map-dot" cx="{node["x"]:.1f}" cy="{node["y"]:.1f}" r="6" '
-        f'style="fill:{BUCKET_COLOR[node["status"]]}"/>'
-        f'<text class="be-map-label" x="{node["x"]:.1f}" y="{node["y"] + LABEL_DROP:.1f}" '
-        f'text-anchor="middle">{html.escape(node["id"])}</text>'
-        "</a>"
-        for node in layout["nodes"]
-    )
+    nodes = "".join(_map_node(node) for node in layout["nodes"])
     readout = "Point at an item to read its title. Selecting one opens its record on GitHub."
     return (
         '<div class="be-map-view is-hidden">'
