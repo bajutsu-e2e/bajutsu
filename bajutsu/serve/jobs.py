@@ -489,17 +489,22 @@ def _run_batch_job(state: ServeState, job: Job) -> None:
             logger.warning("cloud-batch job %s failed to land its run", job.id, exc_info=True)
             _fail_batch(job, f"cloud-batch run failed to land: {exc}")
             return
-    line = f"bajutsu verdict: {'PASS' if verdict.ok else 'FAIL'} ({verdict.passed}/{verdict.total})"
+    lines = [
+        f"bajutsu verdict: {'PASS' if verdict.ok else 'FAIL'} ({verdict.passed}/{verdict.total})"
+    ]
+    if verdict.failures:
+        lines.append("failed scenarios: " + ", ".join(verdict.failures))
     with job.lock:
         if run_id is not None:
             job.run_id = run_id
-        job.lines.append(line)
-        if verdict.failures:
-            job.lines.append("failed scenarios: " + ", ".join(verdict.failures))
+        job.lines.extend(lines)
         job.exit_code = 0 if verdict.ok else 1
         job.status = "done"
     if job.bus is not None:
-        job.bus.publish(job.id, line)
+        # Publish every line (not just the verdict), so a bus-streaming client also learns which
+        # scenarios failed — otherwise it sees "FAIL" but never the `failed scenarios:` detail.
+        for line in lines:
+            job.bus.publish(job.id, line)
 
 
 def _fail_batch(job: Job, message: str) -> None:
