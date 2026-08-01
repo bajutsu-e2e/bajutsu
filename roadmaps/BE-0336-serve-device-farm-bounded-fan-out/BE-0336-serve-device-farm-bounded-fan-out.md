@@ -9,7 +9,7 @@
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0336") |
-| Implementing PR | [#1425](https://github.com/bajutsu-e2e/bajutsu/pull/1425) (Unit 1 — submitter core migration); [#1429](https://github.com/bajutsu-e2e/bajutsu/pull/1429) (Unit 2 — batch executor seam); _pending_ (Unit 3 — per-scenario fan-out) |
+| Implementing PR | [#1425](https://github.com/bajutsu-e2e/bajutsu/pull/1425) (Unit 1 — submitter core migration); [#1429](https://github.com/bajutsu-e2e/bajutsu/pull/1429) (Unit 2 — batch executor seam); [#1435](https://github.com/bajutsu-e2e/bajutsu/pull/1435) (Unit 3 — per-scenario fan-out) |
 | Topic | Device-cloud execution |
 | Related | [BE-0235](../BE-0235-aws-device-farm-submitter/BE-0235-aws-device-farm-submitter.md), [BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction.md), [BE-0198](../BE-0198-serve-state-job-registry-split/BE-0198-serve-state-job-registry-split.md) |
 <!-- /BE-METADATA -->
@@ -165,7 +165,7 @@ Log:
   no subprocess, off the `run`/CI verdict path. Scope is the executor mechanism, exercised end to end
   against the in-memory AWS fake; config-driven provider registration and the hosted object-store /
   durable-worker path follow in Units 3–5.
-- _pending_ (Unit 3) — added the per-scenario fan-out dispatch: a neutral `POST /api/run-set` endpoint
+- [#1435](https://github.com/bajutsu-e2e/bajutsu/pull/1435) (Unit 3) — added the per-scenario fan-out dispatch: a neutral `POST /api/run-set` endpoint
   (`start_run_set`) expands a scenario-set request into one cloud-batch `Job` per scenario, each carrying
   its own `BatchRequest`, registered through the same concurrency-capped tail (`_register_and_dispatch`)
   as every other run. The target's config declares which batch provider its cloud runs use through a new

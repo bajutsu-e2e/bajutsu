@@ -9,7 +9,7 @@
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0336") |
-| 実装 PR | [#1425](https://github.com/bajutsu-e2e/bajutsu/pull/1425)（単位1 — submitter core の移行）、[#1429](https://github.com/bajutsu-e2e/bajutsu/pull/1429)（単位2 — batch executor seam）、_pending_（単位3 — シナリオ単位の分割） |
+| 実装 PR | [#1425](https://github.com/bajutsu-e2e/bajutsu/pull/1425)（単位1 — submitter core の移行）、[#1429](https://github.com/bajutsu-e2e/bajutsu/pull/1429)（単位2 — batch executor seam）、[#1435](https://github.com/bajutsu-e2e/bajutsu/pull/1435)（単位3 — シナリオ単位の分割） |
 | トピック | Device-cloud execution |
 | 関連 | [BE-0235](../BE-0235-aws-device-farm-submitter/BE-0235-aws-device-farm-submitter-ja.md), [BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction-ja.md), [BE-0198](../BE-0198-serve-state-job-registry-split/BE-0198-serve-state-job-registry-split-ja.md) |
 <!-- /BE-METADATA -->
@@ -160,7 +160,7 @@ serve の利用者ごと・org ごとのキャップや run の履歴も共有�
   デバイス無し・サブプロセス無し・判定経路の外）。範囲は executor の機構で、in-memory の AWS fake で
   端から端まで検証します。config によるプロバイダ登録とホスティングの object-store／永続ワーカー経路は
   単位3〜5で続けます。
-- _pending_（単位3）— シナリオ単位の分割投入を追加しました。中立な `POST /api/run-set` エンドポイント
+- [#1435](https://github.com/bajutsu-e2e/bajutsu/pull/1435)（単位3）— シナリオ単位の分割投入を追加しました。中立な `POST /api/run-set` エンドポイント
   （`start_run_set`）が、シナリオの集合を求める要求を、シナリオごとに1つの cloud-batch `Job` へ展開します。
   各ジョブは自身の `BatchRequest` を持ち、ほかのすべての run と同じ同時実行キャップ付きの経路
   （`_register_and_dispatch`）で登録されます。対象が使う batch プロバイダは、新しい `cloudBatch` 設定
