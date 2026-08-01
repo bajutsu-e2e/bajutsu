@@ -21,7 +21,7 @@ from typing import Any
 import pytest
 import yaml
 
-import bajutsu.cloud.devicefarm as devicefarm
+from bajutsu.cloud import devicefarm
 from bajutsu.cloud.devicefarm import (
     _POLL_INITIAL_SECONDS,
     _POLL_INTERVAL_SECONDS,
