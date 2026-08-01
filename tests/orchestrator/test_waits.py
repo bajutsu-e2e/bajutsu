@@ -283,6 +283,38 @@ def test_wait_settled_falls_back_to_tree_diff_when_no_transitions_reported() -> 
     assert ok and reason == ""
 
 
+class _ScriptedScreens(FakeDriver):
+    """A FakeDriver whose successive `query()` calls return a scripted sequence of trees (the last
+    frame repeats once exhausted) — lets a settle test drive an exact poll-by-poll screen history."""
+
+    def __init__(self, frames: list[list[base.Element]]) -> None:
+        super().__init__(frames[0])
+        self._frames = frames
+        self._i = 0
+
+    def query(self) -> list[base.Element]:
+        frame = self._frames[min(self._i, len(self._frames) - 1)]
+        self._i += 1
+        return frame
+
+
+def test_wait_settled_does_not_confirm_on_a_momentary_empty() -> None:
+    """A tree that flickers empty mid-settle ("非空→空→非空") must reset the stable-poll counter, so
+    `settled` never confirms on the transient empty (or the read right after it). It requires two
+    consecutive identical *non-empty* reads, so the value handed back is the settled screen — never
+    the blank flicker. Were the empty to count, the wait would confirm a poll too early on a screen
+    still mid-transition."""
+    a = [el("home", "Home", ["button"])]
+    # previous=A, then A (almost stable), then the flicker [] resets, then A A A settles on A.
+    driver = _ScriptedScreens([list(a), list(a), [], list(a), list(a), list(a)])
+    clock = FakeClock()
+    w = Wait.model_validate({"until": "settled", "timeout": 5.0})
+    ok, reason, tree = _wait(driver, w, clock, transitions=list)  # type: ignore[arg-type]
+    assert ok and reason == ""
+    assert tree == a  # settled on the non-empty screen, never the momentary empty
+    assert any(e["identifier"] for e in tree)
+
+
 def test_wait_settled_via_run_scenario_threads_the_signal() -> None:
     """End-to-end: `run_scenario`'s `transitions` reaches the settled wait (the plumbing this item
     adds through `_run_steps` / `_run_step_body` / `_wait`). A transition reported "now" — since the
@@ -561,6 +593,17 @@ def test_wait_floor_raises_on_malformed_env(monkeypatch) -> None:  # type: ignor
     monkeypatch.setenv("BAJUTSU_MIN_WAIT_TIMEOUT", "15s")
     with pytest.raises(ValueError, match="BAJUTSU_MIN_WAIT_TIMEOUT"):
         _timeout_floor()
+
+
+def test_wait_floor_clamps_a_negative_env_to_zero(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """A negative floor is meaningless as a minimum, so it clamps to 0 rather than raising or, worse,
+    shrinking a wait below its scenario timeout — a negative `max()` argument would silently shorten
+    every wait's ceiling. Distinct from the malformed case above: '-5' parses as a float, so it is a
+    value question (clamp), not a parse error (raise)."""
+    from bajutsu.orchestrator.waits import _timeout_floor
+
+    monkeypatch.setenv("BAJUTSU_MIN_WAIT_TIMEOUT", "-5")
+    assert _timeout_floor() == 0.0
 
 
 def test_wait_still_sleeps_when_query_is_fast() -> None:

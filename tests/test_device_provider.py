@@ -92,6 +92,29 @@ def test_appium_provider_rejects_an_empty_endpoint() -> None:
         )
 
 
+@pytest.mark.parametrize("blank", [" ", "\t", "\n", "  \t\n "])
+def test_appium_provider_rejects_a_whitespace_only_endpoint(blank: str) -> None:
+    # A whitespace-only endpoint is truthy, so it slips past the empty-string guard above, yet it is
+    # no more a drivable address than "" — it fails closed the same way rather than yielding a run
+    # whose udid spec is blank space (a `DeviceError: invalid udid` deep in the launch, not a clean
+    # config error at resolution).
+    with pytest.raises(ValueError, match="device provider 'appium' requires an endpoint"):
+        dp.acquire_device(
+            _eff(device_provider=DeviceProvider(kind="appium", endpoint=blank)), "booted"
+        )
+
+
+def test_appium_provider_normalizes_a_padded_endpoint() -> None:
+    # A valid endpoint carrying surrounding whitespace (a stray newline from config) is trimmed to the
+    # drivable address, so the padding never reaches the launch as part of the udid spec — the same
+    # normalization that makes the whitespace-only case above fail cleanly.
+    lease = dp.acquire_device(
+        _eff(device_provider=DeviceProvider(kind="appium", endpoint="  http://grid.local:4723\n")),
+        "booted",
+    )
+    assert lease.udid_spec == "http://grid.local:4723"
+
+
 def test_registry_is_a_real_extension_point() -> None:
     """Register a fake cloud provider, resolve it, then remove it (global registry)."""
 

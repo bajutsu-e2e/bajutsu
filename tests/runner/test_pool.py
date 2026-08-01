@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import subprocess
+import threading
 from collections.abc import Callable
 from pathlib import Path
 
@@ -114,6 +115,56 @@ def test_device_pool_per_device_resources(monkeypatch: pytest.MonkeyPatch) -> No
     # shutdown() stops every device's collector.
     assert la is not None and lb is not None
     assert la.collector._server is None and lb.collector._server is None
+
+
+def test_device_pool_lease_blocks_until_a_held_device_is_returned(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The free queue is the pool's back-pressure: with more workers than devices, a lease for a
+    device that is all checked out blocks on `free.get()` until a holder releases one — and a
+    release (the happy path *and*, per the failure-path tests, an aborted lease) returns the udid so
+    the waiting lease can proceed. A never-returned udid would block that worker forever."""
+    monkeypatch.setattr(
+        "bajutsu.backends.make_driver",
+        lambda actuator, udid: FakeDriver([_el("home", "H"), _el("ok", "OK")]),
+    )
+    lease, shutdown = device_pool(
+        ["UDID-1"],  # a single device, so a second concurrent lease must wait
+        ["fake"],
+        _eff(),
+        Path("runs"),
+        network=False,
+        available=lambda b: True,
+        env_run=lambda *a, **k: "",
+    )
+    first = lease(_eff(), _scn("a"))  # holds the only device
+    released = False
+    acquired: list[str] = []
+    entered = threading.Event()
+
+    def worker() -> None:
+        entered.set()
+        lz = lease(_eff(), _scn("b"))  # blocks: the free queue is empty
+        acquired.append(lz.udid)
+        lz.release()
+
+    # Daemon so a worker still blocked on `free.get()` (an assertion failed before the release below)
+    # never wedges interpreter teardown; the finally then releases the held device to unblock it.
+    t = threading.Thread(target=worker, daemon=True)
+    t.start()
+    try:
+        assert entered.wait(1.0)  # the worker reached the blocking lease
+        t.join(0.2)
+        assert t.is_alive() and acquired == []  # still blocked while the device is held
+        first.release()  # returns UDID-1 to the free queue
+        released = True
+        t.join(2.0)
+        assert not t.is_alive() and acquired == ["UDID-1"]  # the freed device unblocked the lease
+    finally:
+        if not released:
+            first.release()  # unblock a still-waiting worker so it can't leak past this test
+        t.join(2.0)
+        shutdown()
 
 
 def test_device_pool_wires_readiness_and_provenance_into_the_sink(
@@ -513,6 +564,50 @@ def test_device_pool_resolves_actuator_per_scenario_and_tears_down_its_own_env(
         pinch_lease.release()
         assert xc_env.torn
     finally:
+        shutdown()
+
+
+def test_device_pool_gives_each_lease_a_distinct_webview_bridge_port(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A backend that bridges the WebView inspector (iOS, which does not observe network via the
+    driver) gets a fresh host port per lease, bound from the OS ephemeral range. Two concurrent
+    leases on a pool must therefore never share a port — a collision would cross two devices' inspector
+    traffic onto one tunnel. Each lease exposes its bridge, so assert the two ports differ."""
+
+    def fake_env_for(
+        actuator: str,
+        udid: str,
+        env_run: object = None,
+        *,
+        provision: object = None,
+        respawn: bool = False,
+    ) -> _RecordingEnv:
+        # observes_network_via_driver() is False here, so the pool allocates a WebView bridge (the iOS
+        # shape), unlike web where the driver owns the page and no bridge is reserved.
+        return _RecordingEnv(actuator, udid, provision)
+
+    monkeypatch.setattr("bajutsu.runner.pool.environment_for", fake_env_for)
+    lease, shutdown = device_pool(
+        ["UDID-A", "UDID-B"],
+        ["ios"],
+        _eff(),
+        Path("runs"),
+        network=False,
+        available=lambda b: True,
+        env_run=lambda *a, **k: "",
+    )
+    la = lb = None
+    try:
+        la = lease(_eff(), _scn("a"))
+        lb = lease(_eff(), _scn("b"))
+        assert la.webview_bridge is not None and lb.webview_bridge is not None
+        assert la.webview_bridge.port != lb.webview_bridge.port  # no cross-device port collision
+    finally:
+        if la is not None:
+            la.release()
+        if lb is not None:
+            lb.release()
         shutdown()
 
 

@@ -82,14 +82,17 @@ class _AppiumProvider:
     """
 
     def acquire(self, eff: Effective, requested_udid: str) -> DeviceLease:
-        endpoint = eff.device_provider.endpoint if eff.device_provider is not None else None
+        raw = eff.device_provider.endpoint if eff.device_provider is not None else None
+        endpoint = raw.strip() if raw else ""
+        # An empty or whitespace-only endpoint is no drivable address, so fail closed at resolution
+        # rather than pass blank (or padded) space downstream as a udid spec.
         if not endpoint:
             raise ValueError(
                 "device provider 'appium' requires an endpoint "
                 "(targets.<name>.deviceProvider.endpoint)"
             )
         return DeviceLease(
-            udid_spec=endpoint,
+            udid_spec=endpoint,  # normalized: any surrounding whitespace trimmed off
             provision=ProvisionProfile(boot_ready=True, app_preinstalled=True),
         )
 

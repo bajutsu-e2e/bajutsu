@@ -28,6 +28,9 @@ class WebViewBridge:
     """HTTP client for the BajutsuKit WebView bridge server."""
 
     def __init__(self, port: int, host: str = "127.0.0.1") -> None:
+        self.port = (
+            port  # the host port this bridge reserved — one per lease, so leases never collide
+        )
         self._base_url = f"http://{host}:{port}"
 
     def query_dom(self, webview_id: str) -> list[Element]:
