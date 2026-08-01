@@ -27,8 +27,11 @@ class _RecordingExecutor:
         self.jobs.append(job)
 
 
-def _android_batch_project(tmp_path: Path, *, scenarios: list[str]) -> tuple[Path, Path]:
-    """A scenarios dir + config for an Android target wired for cloud-batch runs."""
+def _android_batch_project(
+    tmp_path: Path, *, scenarios: list[str], budget: int | None = None
+) -> tuple[Path, Path]:
+    """A scenarios dir + config for an Android target wired for cloud-batch runs. *budget* sets the
+    target's `cloudBatchBudget` (the device budget K); None omits it (unbounded by config)."""
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
     body = "- name: a\n  steps:\n    - tap: { id: x }\n"
@@ -36,6 +39,7 @@ def _android_batch_project(tmp_path: Path, *, scenarios: list[str]) -> tuple[Pat
         (scn_dir / name).write_text(body, encoding="utf-8")
     apk = tmp_path / "app.apk"
     apk.write_text("APK", encoding="utf-8")
+    budget_line = f"    cloudBatchBudget: {budget}\n" if budget is not None else ""
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
         "targets:\n"
@@ -44,6 +48,7 @@ def _android_batch_project(tmp_path: Path, *, scenarios: list[str]) -> tuple[Pat
         "    package: com.example.demo\n"
         f"    scenarios: {scn_dir}\n"
         "    cloudBatch: devicefarm\n"
+        f"{budget_line}"
         f"    appPath: {apk}\n",
         encoding="utf-8",
     )
@@ -255,6 +260,101 @@ def test_fan_out_returns_429_when_cap_rejects_the_first_job(tmp_path: Path) -> N
 
     assert status == 429
     assert "too many concurrent" in payload["error"]
+
+
+def test_fan_out_stops_at_the_device_budget(tmp_path: Path) -> None:
+    # The device budget K bounds how many of a target's cloud-batch runs reserve a device at once
+    # (BE-0336 Unit 4). With K=2 and three scenarios, the fan-out registers two (each holding a
+    # device) and stops at the third — a partial dispatch, the routine outcome the cap governs, not
+    # an error. The recording executor never finishes its jobs, so both registered runs stay in
+    # flight and the third hits the cap.
+    scn_dir, cfg = _android_batch_project(
+        tmp_path, scenarios=["one.yaml", "two.yaml", "three.yaml"], budget=2
+    )
+    state, executor = _state(tmp_path, cfg, scn_dir)
+
+    payload, status = start_run_set(state, {"target": "demo"})
+
+    assert status == 200
+    assert len(payload["jobIds"]) == 2
+    assert len(executor.jobs) == 2
+
+
+def test_request_can_lower_the_device_budget(tmp_path: Path) -> None:
+    # A request may lower the target's budget (never raise it): with a config budget of 3 and a
+    # per-request deviceBudget of 1, only one scenario is dispatched before the cap stops the fan-out.
+    scn_dir, cfg = _android_batch_project(tmp_path, scenarios=["one.yaml", "two.yaml"], budget=3)
+    state, executor = _state(tmp_path, cfg, scn_dir)
+
+    payload, status = start_run_set(state, {"target": "demo", "deviceBudget": 1})
+
+    assert status == 200
+    assert len(payload["jobIds"]) == 1
+    assert len(executor.jobs) == 1
+
+
+def test_request_cannot_raise_the_device_budget(tmp_path: Path) -> None:
+    # The per-request override only tightens: a deviceBudget above the config budget leaves the
+    # config budget in force, so K=1 still stops the fan-out at one dispatched run.
+    scn_dir, cfg = _android_batch_project(tmp_path, scenarios=["one.yaml", "two.yaml"], budget=1)
+    state, executor = _state(tmp_path, cfg, scn_dir)
+
+    payload, status = start_run_set(state, {"target": "demo", "deviceBudget": 5})
+
+    assert status == 200
+    assert len(payload["jobIds"]) == 1
+    assert len(executor.jobs) == 1
+
+
+def test_request_budget_bounds_a_target_with_no_config_budget(tmp_path: Path) -> None:
+    # A target with no configured budget is unbounded by config; a per-request deviceBudget still
+    # bounds that dispatch (it lowers from "unbounded"), stopping the fan-out at the requested count.
+    scn_dir, cfg = _android_batch_project(tmp_path, scenarios=["one.yaml", "two.yaml"])
+    state, _ = _state(tmp_path, cfg, scn_dir)
+
+    payload, status = start_run_set(state, {"target": "demo", "deviceBudget": 1})
+
+    assert status == 200
+    assert len(payload["jobIds"]) == 1
+
+
+def test_request_rejects_a_non_positive_device_budget(tmp_path: Path) -> None:
+    # A resource cap the caller asked for must fail loudly, not silently evaporate into "unbounded":
+    # a non-positive deviceBudget is a 400, and nothing is dispatched (BE-0336 Unit 4).
+    scn_dir, cfg = _android_batch_project(tmp_path, scenarios=["one.yaml"])
+    state, executor = _state(tmp_path, cfg, scn_dir)
+
+    payload, status = start_run_set(state, {"target": "demo", "deviceBudget": 0})
+
+    assert status == 400
+    assert "deviceBudget" in payload["error"]
+    assert executor.jobs == []
+
+
+def test_request_rejects_a_malformed_device_budget(tmp_path: Path) -> None:
+    # A non-integer deviceBudget (string, float, bool) is a client error, not a silent truncation to
+    # "no request bound" — reject it with a 400 before any dispatch.
+    scn_dir, cfg = _android_batch_project(tmp_path, scenarios=["one.yaml"])
+    state, executor = _state(tmp_path, cfg, scn_dir)
+
+    for bad in ("two", 1.9, True):
+        payload, status = start_run_set(state, {"target": "demo", "deviceBudget": bad})
+        assert status == 400
+        assert "deviceBudget" in payload["error"]
+    assert executor.jobs == []
+
+
+def test_fan_out_unbounded_without_a_budget(tmp_path: Path) -> None:
+    # No config budget and no request override = the pre-Unit-4 behavior: every scenario dispatches.
+    scn_dir, cfg = _android_batch_project(
+        tmp_path, scenarios=["one.yaml", "two.yaml", "three.yaml"]
+    )
+    state, _ = _state(tmp_path, cfg, scn_dir)
+
+    payload, status = start_run_set(state, {"target": "demo"})
+
+    assert status == 200
+    assert len(payload["jobIds"]) == 3
 
 
 def test_fan_out_rejects_scenarios_that_travel_as_materials(tmp_path: Path) -> None:

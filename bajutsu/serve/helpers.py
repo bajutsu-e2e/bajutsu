@@ -208,18 +208,22 @@ def target_build_info(config_path: Path, target: str) -> tuple[str | None, str |
     return (ios.app_path, ios.build) if isinstance(ios, IosConfig) else (None, None)
 
 
-def target_batch_info(config_path: Path, target: str) -> tuple[str | None, str | None, str | None]:
-    """``(cloud_batch, platform, app_path)`` for *target* — which registered batch provider its
-    cloud runs use, its resolved platform axis, and the app artifact to install on the reserved
-    device (BE-0336 Unit 3). Each is ``None`` on any load/resolve error, so a fan-out request
-    against an unreadable config fails closed at the endpoint rather than crashing dispatch. Only an
-    iOS/Android target carries an installable ``app_path``; a web target's sub-config has none."""
+def target_batch_info(
+    config_path: Path, target: str
+) -> tuple[str | None, str | None, str | None, int | None]:
+    """``(cloud_batch, platform, app_path, budget)`` for *target* — which registered batch provider
+    its cloud runs use, its resolved platform axis, the app artifact to install on the reserved
+    device (BE-0336 Unit 3), and the per-target device budget K (BE-0336 Unit 4). Each is ``None`` on
+    any load/resolve error, so a fan-out request against an unreadable config fails closed at the
+    endpoint rather than crashing dispatch. Only an iOS/Android target carries an installable
+    ``app_path``; a web target's sub-config has none. ``budget`` is ``None`` when the target sets no
+    `cloudBatchBudget` (unbounded by config)."""
     try:
         eff = resolve(_load_config_cached(config_path), target)
     except (OSError, ValueError, KeyError):
-        return (None, None, None)
+        return (None, None, None, None)
     app_path = getattr(eff.platform_config, "app_path", None)
-    return (eff.cloud_batch, eff.platform, app_path)
+    return (eff.cloud_batch, eff.platform, app_path, eff.cloud_batch_budget)
 
 
 def target_capabilities(config_path: Path, target: str) -> list[str]:

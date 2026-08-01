@@ -327,6 +327,13 @@ class TargetConfig(_Model):
     # a kind in the batch-provider registry. Validated at runtime, not here, so the deterministic
     # core imports no cloud SDK (BE-0112). Distinct from `deviceProvider` (the live-device topology).
     cloud_batch: str | None = Field(default=None, alias="cloudBatch")
+    # How many of this target's cloud-batch runs may reserve a device at once (BE-0336 Unit 4): the
+    # per-target device budget K. None = no cap from config (serve's fan-out is unbounded by this
+    # target; a per-request `deviceBudget` may still bound it). serve keys the job registry's
+    # concurrency cap on the batch device pool, so at most K runs reserve devices at once and the rest
+    # are deferred. Must be a positive integer when set — a non-positive literal (a "disable" typo)
+    # is rejected loudly at config load rather than silently meaning "unlimited" (determinism first).
+    cloud_batch_budget: int | None = Field(default=None, alias="cloudBatchBudget", gt=0)
     device: str | None = None
     locale: str | None = None
     # Capability tokens this target requires of the worker that runs it (BE-0166), added to the

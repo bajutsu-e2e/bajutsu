@@ -633,6 +633,26 @@ def test_try_new_job_per_user_and_per_org_caps_compose(tmp_path: Path) -> None:
     assert state.try_register(srv.Job(cmd=[], actor="alice", org="globex")) is None
 
 
+def test_try_register_forwards_the_per_call_device_budget(tmp_path: Path) -> None:
+    # The device budget is per-target, not a state-wide field like the other caps, so `try_register`
+    # takes it per call and forwards it to the registry's batch pool cap (BE-0336 Unit 4).
+    from bajutsu.serve.batch_provider import BatchRequest
+
+    request = BatchRequest(
+        provider="devicefarm",
+        scenario="scenarios/s.yaml",
+        target="demo",
+        config="bajutsu.config.yaml",
+        platform="android",
+        app_path="app.apk",
+    )
+    state = srv.ServeState(runs_dir=tmp_path / "runs")
+    assert state.try_register(srv.Job(batch=request), device_budget=1) is not None
+    assert state.try_register(srv.Job(batch=request), device_budget=1) is None
+    # With no budget passed (the default), the batch pool is unbounded — every other run path.
+    assert state.try_register(srv.Job(batch=request)) is not None
+
+
 # The concurrency logic lives in JobRegistry (BE-0198), so it is tested directly against the
 # registry — the id sequence, the register-twice guard, and each cap — without standing up a full
 # ServeState, whose __post_init__ resolves stores, secrets, and a launch dir that the caps don't
@@ -680,6 +700,51 @@ def test_job_registry_caps_concurrency_per_org() -> None:
     assert reg.try_register(srv.Job(cmd=[], org="acme"), max_concurrent_per_org=1) is not None
     assert reg.try_register(srv.Job(cmd=[], org="acme"), max_concurrent_per_org=1) is None
     assert reg.try_register(srv.Job(cmd=[], org="globex"), max_concurrent_per_org=1) is not None
+
+
+def test_job_registry_caps_concurrent_batch_by_provider_pool() -> None:
+    # The device budget caps in-flight cloud-batch jobs keyed on the batch device pool — the
+    # provider — so at most K reserve a device at once (BE-0336 Unit 4). A run on a different
+    # provider draws on a different pool and is unaffected; a non-batch job is exempt entirely.
+    from bajutsu.serve.batch_provider import BatchRequest
+
+    def _batch(provider: str) -> BatchRequest:
+        return BatchRequest(
+            provider=provider,
+            scenario="scenarios/s.yaml",
+            target="demo",
+            config="bajutsu.config.yaml",
+            platform="android",
+            app_path="app.apk",
+        )
+
+    reg = srv_state.JobRegistry(logbus=InMemoryLogBus())
+    assert reg.try_register(srv.Job(batch=_batch("devicefarm")), max_concurrent_batch=1) is not None
+    # A second devicefarm run would reserve a second device beyond the budget of 1 — rejected.
+    assert reg.try_register(srv.Job(batch=_batch("devicefarm")), max_concurrent_batch=1) is None
+    # A different provider is a different device pool, so its own budget of 1 still has room.
+    assert reg.try_register(srv.Job(batch=_batch("firebase")), max_concurrent_batch=1) is not None
+    # A non-batch (local) job reserves no cloud device, so the batch budget never applies to it.
+    assert reg.try_register(srv.Job(cmd=[]), max_concurrent_batch=1) is not None
+
+
+def test_job_registry_batch_budget_unlimited_by_default() -> None:
+    # Default 0 = unbounded, so a target with no configured device budget dispatches every scenario
+    # as before (BE-0336 Unit 4). A cap <= 0 is likewise treated as unlimited.
+    from bajutsu.serve.batch_provider import BatchRequest
+
+    request = BatchRequest(
+        provider="devicefarm",
+        scenario="scenarios/s.yaml",
+        target="demo",
+        config="bajutsu.config.yaml",
+        platform="android",
+        app_path="app.apk",
+    )
+    reg = srv_state.JobRegistry(logbus=InMemoryLogBus())
+    assert reg.try_register(srv.Job(batch=request)) is not None
+    assert reg.try_register(srv.Job(batch=request)) is not None
+    assert reg.try_register(srv.Job(batch=request), max_concurrent_batch=0) is not None
 
 
 def test_job_registry_counts_only_running_jobs() -> None:

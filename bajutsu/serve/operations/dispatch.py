@@ -92,19 +92,50 @@ def _system_alert_handling_flag(body: dict[str, Any]) -> bool | None:
     return legacy if legacy is not None else _bool_flag(body, "dismissAlerts")
 
 
+def _request_device_budget(
+    body: dict[str, Any],
+) -> tuple[int | None, tuple[Any, int] | None]:
+    """The per-request ``deviceBudget`` override, validated (BE-0336 Unit 4). None when absent (no
+    override). A present value must be a positive integer: a resource cap the caller asked for must
+    fail loudly with a 400 rather than silently evaporate into "unbounded" (determinism first), so a
+    non-int, a float, a bool, or a non-positive value is rejected. Returns ``(budget, None)`` or
+    ``(None, (error, 400))``."""
+    raw = body.get("deviceBudget")
+    if raw is None:
+        return None, None
+    # bool is an int subclass, so guard it out first — a boolean device budget is a client error, not
+    # the integer 1. A float ("1.9") is likewise rejected rather than silently truncated.
+    if isinstance(raw, bool) or not isinstance(raw, int) or raw <= 0:
+        return None, ({"error": "deviceBudget must be a positive integer"}, 400)
+    return raw, None
+
+
+def _device_budget(config_budget: int | None, request_budget: int | None) -> int:
+    """The effective cloud-batch device budget K for a fan-out: the more restrictive of the target's
+    configured budget and a validated per-request override (BE-0336 Unit 4). A request may only
+    *lower* the budget, never raise it — so this is the minimum of the two, treating None on either
+    side as "no bound from that side". Both are positive when set (config via schema `gt=0`, request
+    via `_request_device_budget`). Returns 0 (unbounded, the registry's convention) when neither
+    side sets a cap."""
+    candidates = [b for b in (config_budget, request_budget) if b is not None]
+    return min(candidates) if candidates else 0
+
+
 def _register_and_dispatch(
-    state: ServeState, job: Job
+    state: ServeState, job: Job, *, device_budget: int = 0
 ) -> tuple[Job | None, tuple[Any, int] | None]:
     """Register *job* under the concurrency cap and dispatch it, the tail shared by every start_*
     endpoint. Returns ``(job, None)`` once dispatched, or ``(None, (error, 429))`` when the cap is
-    hit. The atomic count+create in `try_register` is what keeps concurrent dispatches under the cap."""
+    hit. The atomic count+create in `try_register` is what keeps concurrent dispatches under the cap.
+    *device_budget* is the per-target cloud-batch device cap (BE-0336 Unit 4), 0 for the local run
+    paths that reserve no cloud device."""
     # Resolve the requesting org's AI provider selection into this job's env overlay (BE-0229), so
     # the spawn uses that org's provider/model/effort without the serve process mutating its shared
     # os.environ. Empty when no provider is selected (the zero-config path). Travels in the job spec,
     # so a remote worker needs no settings of its own. Done here — the single tail every start_*
     # endpoint (run / record / crawl / triage) funnels through — so every AI-capable job is covered.
     job.env_overlay = resolve_provider_env(state, job.org)
-    registered = state.try_register(job)
+    registered = state.try_register(job, device_budget=device_budget)
     if registered is None:
         oplog.log_event(
             _logger,
@@ -274,7 +305,7 @@ def start_run_set(
     scope = state.for_org(org).scenarios.scope(target)
     if scope is None:
         return {"error": f"target '{target}' has no scenarios dir"}, 400
-    provider, platform, app_path = target_batch_info(cfg, target)
+    provider, platform, app_path, config_budget = target_batch_info(cfg, target)
     if not provider:
         return {
             "error": f"target '{target}' is not configured for cloud-batch runs (set cloudBatch)"
@@ -335,16 +366,27 @@ def start_run_set(
             )
         )
     project_id = _active_project_id(state, org)
+    # The device budget K bounds how many of this target's runs reserve a device at once (BE-0336
+    # Unit 4): the target's configured `cloudBatchBudget`, which a per-request `deviceBudget` may
+    # lower. Keyed on the batch provider (the device pool) inside `try_register`, so the (K+1)th job
+    # is rejected and the fan-out stops there.
+    request_budget, budget_err = _request_device_budget(body)
+    if budget_err:
+        return budget_err
+    device_budget = _device_budget(config_budget, request_budget)
     dispatched: list[str] = []
     for request in requests:
         job, capped = _register_and_dispatch(
-            state, Job(batch=request, actor=actor, org=org, project_id=project_id)
+            state,
+            Job(batch=request, actor=actor, org=org, project_id=project_id),
+            device_budget=device_budget,
         )
         if capped:
-            # The concurrency cap stops the fan-out here; a later unit's device budget makes a
-            # partially-dispatched set the routine outcome rather than an error. But if the cap
-            # rejected the *first* job, nothing was dispatched — surface the 429 rather than
-            # returning a silent 200 with an empty jobIds list (like the other start_* endpoints).
+            # The concurrency cap (global/per-user/per-org) or the device budget stops the fan-out
+            # here; a partially-dispatched set is the routine outcome of the device budget rather than
+            # an error (BE-0336 Unit 4). But if the cap rejected the *first* job, nothing was
+            # dispatched — surface the 429 rather than returning a silent 200 with an empty jobIds
+            # list (like the other start_* endpoints).
             if not dispatched:
                 return capped
             break

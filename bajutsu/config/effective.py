@@ -179,6 +179,11 @@ class Effective:
     # Which registered batch provider serve's per-scenario fan-out submits this target's cloud runs
     # to (BE-0336 Unit 3). None = local devices; a value (e.g. "devicefarm") names a registry kind.
     cloud_batch: str | None = None
+    # The per-target device budget K for cloud-batch runs (BE-0336 Unit 4): how many of this target's
+    # runs may reserve a device at once. None = no cap from config (unbounded by this target; a
+    # per-request override may still lower it). serve keys the job registry's concurrency cap on the
+    # batch device pool, so the device count never exceeds K.
+    cloud_batch_budget: int | None = None
     # Evidence directory overrides — scenarios / baselines / schemas / goldens (BE-0252).
     evidence_dirs: EvidenceDirs = field(default_factory=EvidenceDirs)
     # How to bring up baseUrl's host for the run (start/probe/teardown). None = assume it's running.
