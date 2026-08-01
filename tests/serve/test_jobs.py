@@ -34,6 +34,211 @@ def test_run_job_captures_output_and_run_id(tmp_path: Path) -> None:
     assert "step 0 ok" in v["lines"]
 
 
+def test_run_job_cloud_batch_records_the_manifest_verdict(tmp_path: Path) -> None:
+    # A cloud-batch job (BE-0336) runs its scenario on a remote device via the batch seam, not a local
+    # subprocess. run_job lands the downloaded run under runs_dir and sets the job's verdict from that
+    # run's own manifest — the same pass/fail a local run reports, off the `run`/CI verdict path.
+    import json
+
+    from bajutsu.cloud.devicefarm import verdict_from_manifest
+    from bajutsu.serve import batch_provider as bp
+
+    scn_dir, cfg, runs = project(tmp_path)
+    state = srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+
+    class _Provider:
+        def submit(self, request: Any, *, work_dir: Path, dest: Path) -> Any:
+            run_dir = dest / "runs" / "20260101-1"
+            run_dir.mkdir(parents=True)
+            (run_dir / "manifest.json").write_text(
+                json.dumps({"ok": True, "scenarios": [{"scenario": "alpha", "ok": True}]}),
+                encoding="utf-8",
+            )
+            return verdict_from_manifest(dest)
+
+    saved = dict(bp._PROVIDERS)
+    bp.register("fake", _Provider())
+    try:
+        request = bp.BatchRequest(
+            provider="fake",
+            scenario="smoke.yaml",
+            target="demo",
+            config=str(cfg),
+            platform="ios",
+            app_path=str(tmp_path / "app.ipa"),
+        )
+        job = state.register(srv.Job(batch=request))
+        srv.run_job(state, job)
+    finally:
+        bp._PROVIDERS.clear()
+        bp._PROVIDERS.update(saved)
+
+    v = job.view()
+    assert v["status"] == "done" and v["exitCode"] == 0 and v["ok"] is True
+    assert v["runId"] == "20260101-1"
+    # The downloaded run is landed under runs_dir so serve records and renders it like a local run.
+    assert (runs / "20260101-1" / "manifest.json").exists()
+
+
+def test_run_job_cloud_batch_fails_loud_on_an_unknown_provider(tmp_path: Path) -> None:
+    # An unknown provider must surface as a failed run (non-zero exit, the error on the transcript),
+    # never a silently stranded job (determinism first).
+    from bajutsu.serve import batch_provider as bp
+
+    scn_dir, cfg, runs = project(tmp_path)
+    state = srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+    request = bp.BatchRequest(
+        provider="nope",
+        scenario="smoke.yaml",
+        target="demo",
+        config=str(cfg),
+        platform="ios",
+        app_path=str(tmp_path / "app.ipa"),
+    )
+    job = state.register(srv.Job(batch=request))
+    srv.run_job(state, job)
+
+    v = job.view()
+    assert v["status"] == "done" and v["exitCode"] == 1 and v["ok"] is False
+    assert any("unknown batch provider" in line for line in v["lines"])
+
+
+def test_run_job_cloud_batch_fails_loud_when_submit_raises(tmp_path: Path) -> None:
+    # A provider whose submit() raises (e.g. a network or AWS error) must end up as a failed job
+    # (status="done", exitCode=1, error on the transcript), never a stranded worker. run_job has no
+    # outer except, so an uncaught exception here would leave the job at status="running" forever.
+    from bajutsu.serve import batch_provider as bp
+
+    scn_dir, cfg, runs = project(tmp_path)
+    state = srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+
+    class _BrokenProvider:
+        def submit(self, request: Any, *, work_dir: Path, dest: Path) -> Any:
+            raise RuntimeError("simulated AWS failure")
+
+    saved = dict(bp._PROVIDERS)
+    bp.register("broken", _BrokenProvider())
+    try:
+        request = bp.BatchRequest(
+            provider="broken",
+            scenario="smoke.yaml",
+            target="demo",
+            config=str(cfg),
+            platform="ios",
+            app_path=str(tmp_path / "app.ipa"),
+        )
+        job = state.register(srv.Job(batch=request))
+        srv.run_job(state, job)
+    finally:
+        bp._PROVIDERS.clear()
+        bp._PROVIDERS.update(saved)
+
+    v = job.view()
+    assert v["status"] == "done" and v["exitCode"] == 1 and v["ok"] is False
+    assert any("cloud-batch run failed" in line for line in v["lines"])
+
+
+def test_land_batch_run_does_not_claim_a_colliding_existing_run(tmp_path: Path) -> None:
+    # A fresh cloud run id shouldn't collide, but if one already exists under runs_dir it belongs to
+    # another run — landing must not claim it (which would point history/rendering at unrelated data)
+    # nor overwrite it. It returns None and leaves the existing run untouched.
+    import json
+
+    from bajutsu.serve.jobs import _land_batch_run
+
+    download = tmp_path / "download"
+    (download / "runs" / "20260101-1").mkdir(parents=True)
+    (download / "runs" / "20260101-1" / "manifest.json").write_text(
+        json.dumps({"ok": True, "scenarios": []}), encoding="utf-8"
+    )
+    runs_root = tmp_path / "runs"
+    existing = runs_root / "20260101-1"
+    existing.mkdir(parents=True)
+    (existing / "manifest.json").write_text("EXISTING", encoding="utf-8")
+
+    assert _land_batch_run(download, runs_root) is None
+    # The pre-existing run is untouched — not overwritten by the download's manifest.
+    assert (existing / "manifest.json").read_text() == "EXISTING"
+
+
+def test_land_batch_run_warns_when_the_download_carries_more_than_one_manifest(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # One scenario is one run is one manifest, so a >1 case means the landed run (a single deterministic
+    # pick) can't match the job's verdict, which `verdict_from_manifest` aggregates across every manifest.
+    # Land the deterministic first pick, but warn loudly so the disagreement isn't silent.
+    import json
+    import logging
+
+    from bajutsu.serve.jobs import _land_batch_run
+
+    download = tmp_path / "download"
+    for name in ("20260101-1", "20260101-2"):
+        (download / "runs" / name).mkdir(parents=True)
+        (download / "runs" / name / "manifest.json").write_text(
+            json.dumps({"ok": True, "scenarios": []}), encoding="utf-8"
+        )
+    runs_root = tmp_path / "runs"
+
+    with caplog.at_level(logging.WARNING):
+        run_id = _land_batch_run(download, runs_root)
+
+    # The deterministic first pick still lands; the extra manifest is what the warning is about.
+    assert run_id == "20260101-1"
+    assert any("more than one manifest" in record.message for record in caplog.records)
+
+
+def test_land_batch_run_ignores_manifests_outside_runs_subdirectory(tmp_path: Path) -> None:
+    # _land_batch_run only searches download_dir/runs/ (not the whole tree). A malformed download
+    # that has a manifest.json outside that subdirectory (e.g. at the top of download_dir) contains
+    # no runs/ directory, so runs_subdir.is_dir() is False, rglob never runs, manifests is empty,
+    # and _land_batch_run returns None via the `if not manifests` branch — valid_run_id and
+    # shutil.move are never reached.
+    import json
+
+    from bajutsu.serve.jobs import _land_batch_run
+
+    download = tmp_path / "download"
+    download.mkdir()
+    (download / "manifest.json").write_text(
+        json.dumps({"ok": True, "scenarios": []}), encoding="utf-8"
+    )
+    runs_root = tmp_path / "runs"
+
+    result = _land_batch_run(download, runs_root)
+
+    # No runs/ subdirectory → empty manifests → None; nothing lands under runs_root.
+    assert result is None
+    assert not runs_root.exists() or not any(runs_root.iterdir())
+
+
+def test_land_batch_run_does_not_land_through_a_symlinked_run_directory(tmp_path: Path) -> None:
+    # Path.rglob uses recurse_symlinks=False by default (Python 3.13), so a symlinked run
+    # directory under downloads/runs/ is never descended into — its manifest.json is not found,
+    # and _land_batch_run returns None via the empty-manifests branch before shutil.move is ever
+    # called. This test pins that safety property: the real_dir backing the symlink is untouched.
+    import json
+
+    from bajutsu.serve.jobs import _land_batch_run
+
+    download = tmp_path / "download"
+    real_dir = tmp_path / "real_run"
+    real_dir.mkdir(parents=True)
+    (real_dir / "manifest.json").write_text(
+        json.dumps({"ok": True, "scenarios": [{"name": "s1", "ok": True}]}), encoding="utf-8"
+    )
+    runs_subdir = download / "runs"
+    runs_subdir.mkdir(parents=True)
+    runs_subdir.joinpath("20260101-1").symlink_to(real_dir)
+    runs_root = tmp_path / "runs"
+
+    result = _land_batch_run(download, runs_root)
+
+    # rglob did not descend into the symlink, so no manifest was found — None, real_dir untouched.
+    assert result is None
+    assert real_dir.exists()
+
+
 def test_record_provenance_merges_not_clobbers(tmp_path: Path) -> None:
     # BE-0090: the run subprocess already wrote a provenance block (scenario fingerprint + the
     # uploadExec decision); serve must merge its upload identity in, not overwrite both away.

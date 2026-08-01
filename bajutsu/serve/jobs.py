@@ -14,9 +14,11 @@ import logging
 import os
 import re
 import shlex
+import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import threading
 from pathlib import Path
 from typing import Any
@@ -384,6 +386,11 @@ def _run_summary(run_id: str, manifest: dict[str, Any] | None, *, ok: bool) -> d
 
 
 def _run_job(state: ServeState, job: Job) -> None:
+    if job.batch is not None:
+        # A cloud-batch job runs its scenario on a remote reserved device, not a local subprocess
+        # (BE-0336). No device to boot, no app to build here — the provider packages and submits.
+        _run_batch_job(state, job)
+        return
     if not _boot_devices(state, job):
         return
     if not _build_app(state, job):
@@ -439,3 +446,122 @@ def _run_job(state: ServeState, job: Job) -> None:
         # cancel, or a killed job) must not report awaiting-human on its terminal view — the process
         # is gone and cannot be resumed (BE-0179).
         job.awaiting_human = False
+
+
+def _run_batch_job(state: ServeState, job: Job) -> None:
+    """Run a cloud-batch job (BE-0336): submit its one scenario to the named batch provider, land the
+    downloaded run under ``runs_dir`` so serve records and renders it like a local run, and set the
+    job's verdict from the run's own manifest — no local device, no subprocess, off the verdict path."""
+    request = job.batch
+    if (
+        request is None
+    ):  # _run_job routes here only when batch is set; the guard keeps intent + mypy honest
+        return
+    # Lazy import: only a cloud-batch job needs the batch seam (and its provider's optional deps), so
+    # the default serve path never pulls it in.
+    from bajutsu.serve import batch_provider
+
+    try:
+        provider = batch_provider.resolve(request.provider)
+    except ValueError as exc:
+        _fail_batch(job, str(exc))
+        return
+    runs_root = (state.base_cwd / state.runs_dir).resolve()
+    with tempfile.TemporaryDirectory() as download_name:
+        try:
+            verdict = provider.submit(
+                request, work_dir=job.cwd or state.cwd, dest=Path(download_name)
+            )
+        except Exception as exc:
+            # A provider or submission failure is a failed run, never a stranded worker thread: catch
+            # broadly (like `_persist_run`'s finalization guards) and surface it as a loud FAIL. Log the
+            # traceback for operational debugging before failing the job (the surfaced line carries only
+            # the message), consistent with the other finally-guarded paths in this module.
+            logger.warning("cloud-batch job %s submission failed", job.id, exc_info=True)
+            _fail_batch(job, f"cloud-batch run failed: {exc}")
+            return
+        try:
+            run_id = _land_batch_run(Path(download_name), runs_root)
+        except OSError as exc:
+            # Landing runs outside the submit guard above, but its `mkdir`/`move` can still raise
+            # (permission, disk full, cross-device rename). `run_job` has no `except`, so an escape here
+            # would strand the worker with the job stuck "running" — fail loud instead.
+            logger.warning("cloud-batch job %s failed to land its run", job.id, exc_info=True)
+            _fail_batch(job, f"cloud-batch run failed to land: {exc}")
+            return
+    lines = [
+        f"bajutsu verdict: {'PASS' if verdict.ok else 'FAIL'} ({verdict.passed}/{verdict.total})"
+    ]
+    if verdict.failures:
+        lines.append("failed scenarios: " + ", ".join(verdict.failures))
+    with job.lock:
+        if run_id is not None:
+            job.run_id = run_id
+        job.lines.extend(lines)
+        job.exit_code = 0 if verdict.ok else 1
+        job.status = "done"
+    if job.bus is not None:
+        # Publish every line (not just the verdict), so a bus-streaming client also learns which
+        # scenarios failed — otherwise it sees "FAIL" but never the `failed scenarios:` detail.
+        for line in lines:
+            job.bus.publish(job.id, line)
+
+
+def _fail_batch(job: Job, message: str) -> None:
+    """Fail a cloud-batch job loudly: surface `message`, set a non-zero exit, and mark it done — a
+    provider or submission error is a failed run, never a silent hang (determinism first)."""
+    with job.lock:
+        job.lines.append(message)
+        job.exit_code = 1
+        job.status = "done"
+    if job.bus is not None:
+        job.bus.publish(job.id, message)
+    logger.warning("cloud-batch job %s failed: %s", job.id, message)
+
+
+def _land_batch_run(download_dir: Path, runs_root: Path) -> str | None:
+    """Move the downloaded run directory (the one holding ``manifest.json``) under ``runs_root`` as
+    ``<run_id>/``, so serve's local artifact store, provenance stamp, and report viewer find it just as
+    they do a local run. Returns the run id only when the run was actually landed, or None when the
+    download carried no manifest (a failed cloud run the verdict already reports as a fail), the run id
+    is unsafe, or the id already exists under ``runs_root``."""
+    # The Device Farm download unpacks as runs/<run_id>/manifest.json; restrict the search to that
+    # subdirectory so a malformed download with a manifest elsewhere can't make us move an arbitrary
+    # directory under runs_root.
+    runs_subdir = download_dir / "runs"
+    manifests = sorted(runs_subdir.rglob("manifest.json")) if runs_subdir.is_dir() else []
+    if not manifests:
+        return None
+    if len(manifests) > 1:
+        # `verdict_from_manifest` aggregates the verdict across *every* manifest, but we land only this
+        # one. The two disagree the moment a download carries more than one manifest, so warn loudly
+        # rather than drop the extra runs silently (determinism first / fail loud).
+        logger.warning(
+            "cloud-batch download carried more than one manifest (%d); landing only %r and reporting a "
+            "verdict aggregated across all of them",
+            len(manifests),
+            manifests[0].parent.name,
+        )
+    run_dir = manifests[0].parent
+    # Note: an explicit symlink guard is unnecessary. `Path.rglob` uses `recurse_symlinks=False` by
+    # default (Python 3.13), so a symlinked run directory is never descended into and its
+    # `manifest.json` never appears in `manifests` — `_land_batch_run` returns None via the
+    # `if not manifests` branch above before `run_dir` is ever computed.
+    run_id = run_dir.name
+    if not valid_run_id(run_id):
+        # A remote run id that isn't a single safe path segment must not escape runs_root: leave the
+        # run unlanded rather than write astray. The verdict still stands on the job.
+        logger.warning("cloud-batch run id %r is not a safe segment; not landing it", run_id)
+        return None
+    target = runs_root / run_id
+    if target.exists():
+        # A fresh cloud run id shouldn't collide; if it does, an existing dir under this id belongs to
+        # another run, so claiming it would point persistence/rendering at unrelated data. Don't land it
+        # (and don't overwrite the existing run) — return None so the run is left unrecorded, loudly.
+        logger.warning(
+            "cloud-batch run id %r already exists under runs_dir; not landing it", run_id
+        )
+        return None
+    runs_root.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(run_dir), str(target))
+    return run_id
