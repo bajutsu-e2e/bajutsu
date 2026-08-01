@@ -9,7 +9,7 @@
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0336") |
-| 実装 PR | [#1425](https://github.com/bajutsu-e2e/bajutsu/pull/1425)（単位1 — submitter core の移行）、[#1429](https://github.com/bajutsu-e2e/bajutsu/pull/1429)（単位2 — batch executor seam）、[#1435](https://github.com/bajutsu-e2e/bajutsu/pull/1435)（単位3 — シナリオ単位の分割）、[#1438](https://github.com/bajutsu-e2e/bajutsu/pull/1438)（単位4 — デバイス予算）、[#PENDING5](https://github.com/bajutsu-e2e/bajutsu/pull/PENDING5)（単位5 — 長時間ポーリングの永続化） |
+| 実装 PR | [#1425](https://github.com/bajutsu-e2e/bajutsu/pull/1425)（単位1 — submitter core の移行）、[#1429](https://github.com/bajutsu-e2e/bajutsu/pull/1429)（単位2 — batch executor seam）、[#1435](https://github.com/bajutsu-e2e/bajutsu/pull/1435)（単位3 — シナリオ単位の分割）、[#1438](https://github.com/bajutsu-e2e/bajutsu/pull/1438)（単位4 — デバイス予算）、[#1440](https://github.com/bajutsu-e2e/bajutsu/pull/1440)（単位5 — 長時間ポーリングの永続化） |
 | トピック | Device-cloud execution |
 | 関連 | [BE-0235](../BE-0235-aws-device-farm-submitter/BE-0235-aws-device-farm-submitter-ja.md), [BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction-ja.md), [BE-0198](../BE-0198-serve-state-job-registry-split/BE-0198-serve-state-job-registry-split-ja.md) |
 <!-- /BE-METADATA -->
@@ -182,7 +182,7 @@ serve の利用者ごと・org ごとのキャップや run の履歴も共有�
   Device Farm の `maxDevices` は run ごとに1へ固定したまま（単位2）で、Bajutsu 側のキャップだけがデバイス
   台数を律します。判定経路には触れていません。ホスティング用 backend での queued/polling 状態の永続化と、
   英日両言語の使い方は単位5〜6で続けます。
-- [#PENDING5](https://github.com/bajutsu-e2e/bajutsu/pull/PENDING5)（単位5）— cloud-batch の run を、serve の再起動をまたいで永続化しました。
+- [#1440](https://github.com/bajutsu-e2e/bajutsu/pull/1440)（単位5）— cloud-batch の run を、serve の再起動をまたいで永続化しました。
   まず要求が運ばれるようにします。`job_spec` が `Job.batch` をシリアライズし、ワーカーがそれを組み立て直すので、
   DB キュー経由で投入された batch ジョブは、ホスティング用 backend でローカルのサブプロセスへ退化せず batch seam
   で走ります。次に長時間ポーリングが再開できるようにします。`submit_and_collect` は投入した run の ARN を
