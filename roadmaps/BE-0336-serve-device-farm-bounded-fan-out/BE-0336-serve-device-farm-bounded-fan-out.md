@@ -9,7 +9,7 @@
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0336") |
-| Implementing PR | [#1425](https://github.com/bajutsu-e2e/bajutsu/pull/1425) (Unit 1 — submitter core migration); [#1429](https://github.com/bajutsu-e2e/bajutsu/pull/1429) (Unit 2 — batch executor seam); [#1435](https://github.com/bajutsu-e2e/bajutsu/pull/1435) (Unit 3 — per-scenario fan-out); [#1438](https://github.com/bajutsu-e2e/bajutsu/pull/1438) (Unit 4 — device budget) |
+| Implementing PR | [#1425](https://github.com/bajutsu-e2e/bajutsu/pull/1425) (Unit 1 — submitter core migration); [#1429](https://github.com/bajutsu-e2e/bajutsu/pull/1429) (Unit 2 — batch executor seam); [#1435](https://github.com/bajutsu-e2e/bajutsu/pull/1435) (Unit 3 — per-scenario fan-out); [#1438](https://github.com/bajutsu-e2e/bajutsu/pull/1438) (Unit 4 — device budget); [#1440](https://github.com/bajutsu-e2e/bajutsu/pull/1440) (Unit 5 — durable poll state) |
 | Topic | Device-cloud execution |
 | Related | [BE-0235](../BE-0235-aws-device-farm-submitter/BE-0235-aws-device-farm-submitter.md), [BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction.md), [BE-0198](../BE-0198-serve-state-job-registry-split/BE-0198-serve-state-job-registry-split.md) |
 <!-- /BE-METADATA -->
@@ -140,7 +140,7 @@ through the registry's existing cap.
 - [x] Per-scenario fan-out — expand a scenario-set request into one job per scenario.
 - [x] Device budget `K` — bound in-flight Device Farm jobs through the job registry, default from
   config with a per-request override, and pin Device Farm `maxDevices` to one.
-- [ ] Durable state for long polls — persist queued/polling/done state on the hosted backend; keep a
+- [x] Durable state for long polls — persist queued/polling/done state on the hosted backend; keep a
   best-effort local path.
 - [ ] Documentation and tests — bilingual how-to update and faked-AWS coverage of the fan-out and the
   cap.
@@ -188,6 +188,18 @@ Log:
   silently meaning "unlimited" (determinism first). Device Farm's `maxDevices` stays pinned to one per run
   (Unit 2), so the Bajutsu-side cap alone governs the device count. The verdict path is untouched. Durable
   queued/polling state on the hosted backend and the bilingual how-to follow in Units 5–6.
+- [#1440](https://github.com/bajutsu-e2e/bajutsu/pull/1440) (Unit 5) — made a cloud-batch run durable across a serve
+  restart. First, the request now travels: `job_spec` serializes `Job.batch` and the worker rebuilds it, so a
+  batch job dispatched through the DB queue runs on the batch seam on the hosted backend instead of degrading to
+  a local subprocess. Then the long poll resumes: `submit_and_collect` reports the scheduled run ARN through an
+  `on_scheduled` callback and `collect_run` (split from it) polls and downloads an already-scheduled run, so
+  `DeviceFarmBatchProvider.submit` persists the ARN the moment the run is scheduled and, on a re-lease, resumes
+  polling that run rather than re-uploading and rescheduling — the in-flight run and its reserved device are not
+  orphaned. A new `jobs.batch_state` column (migration 0013 — `NOT NULL`, defaulting to `{}`) plus
+  `Repository.save_batch_run_arn` / `load_batch_run_arn` back the checkpoint on the hosted DB backend; the local single-process backend passes no
+  checkpoint (a restart there loses all in-memory state regardless), keeping the thinner best-effort path the
+  design calls for. The verdict path is untouched, exercised end to end against the in-memory AWS fake. The
+  bilingual how-to and the wider faked-AWS coverage are Unit 6.
 
 ## References
 

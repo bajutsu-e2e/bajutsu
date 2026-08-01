@@ -57,6 +57,7 @@ class _FakeClient:
 
     def __init__(self) -> None:
         self.scheduled: dict[str, Any] | None = None
+        self.schedule_calls = 0
 
     def create_upload(self, *, projectArn: str, name: str, type: str) -> dict[str, Any]:  # noqa: N803 - boto3 kwargs
         return {"upload": {"arn": f"arn:upload/{name}", "url": f"https://s3/{name}"}}
@@ -66,6 +67,7 @@ class _FakeClient:
 
     def schedule_run(self, **kwargs: Any) -> dict[str, Any]:
         self.scheduled = kwargs
+        self.schedule_calls += 1
         return {"run": {"arn": "arn:run/1"}}
 
     def get_run(self, *, arn: str) -> dict[str, Any]:
@@ -121,3 +123,74 @@ def test_devicefarm_provider_submits_one_scenario_reserving_a_single_device(tmp_
     assert client.scheduled["deviceSelectionConfiguration"]["maxDevices"] == 1
     assert "devicePoolArn" not in client.scheduled
     assert (dest / "runs" / "20260101-1" / "manifest.json").exists()
+
+
+class _Checkpoint:
+    """A tiny in-memory stand-in for the durable checkpoint the DB backend provides (BE-0336 Unit 5)."""
+
+    def __init__(self) -> None:
+        self.run_arn: str | None = None
+
+    def load(self) -> str | None:
+        return self.run_arn
+
+    def save(self, run_arn: str) -> None:
+        self.run_arn = run_arn
+
+
+def _android_request(tmp_path: Path) -> tuple[Path, bp.BatchRequest]:
+    work = tmp_path / "project"
+    work.mkdir()
+    (work / "smoke.yaml").write_text("- name: alpha\n  steps: []\n", encoding="utf-8")
+    (tmp_path / "app.apk").write_bytes(b"apk")
+    request = bp.BatchRequest(
+        provider="devicefarm",
+        scenario="smoke.yaml",
+        target="demo",
+        config="bajutsu.config.yaml",
+        platform="android",
+        app_path=str(tmp_path / "app.apk"),
+    )
+    return work, request
+
+
+def test_devicefarm_provider_checkpoints_the_scheduled_run(tmp_path: Path) -> None:
+    # Once the run is scheduled, the provider persists its ARN through the checkpoint so a worker that
+    # re-leases the job after a restart can resume polling it instead of resubmitting (BE-0336 Unit 5).
+    client = _FakeClient()
+    provider = bp.DeviceFarmBatchProvider(
+        client=client,
+        transfer=_FakeTransfer(manifest_ok=True),
+        project_arn="arn:project/1",
+        sleep=lambda _: None,
+    )
+    work, request = _android_request(tmp_path)
+    checkpoint = _Checkpoint()
+
+    provider.submit(request, work_dir=work, dest=tmp_path / "d1", checkpoint=checkpoint)
+
+    assert checkpoint.run_arn == "arn:run/1"
+    assert client.schedule_calls == 1
+
+
+def test_devicefarm_provider_resumes_a_scheduled_run_without_resubmitting(tmp_path: Path) -> None:
+    # A restart mid-poll re-leases the job; the provider loads the persisted run ARN and resumes
+    # polling that run — no re-upload, no reschedule — so the in-flight run (and its reserved device)
+    # is not orphaned. The verdict still comes from the downloaded manifest (BE-0336 Unit 5).
+    client = _FakeClient()
+    transfer = _FakeTransfer(manifest_ok=True)
+    provider = bp.DeviceFarmBatchProvider(
+        client=client, transfer=transfer, project_arn="arn:project/1", sleep=lambda _: None
+    )
+    work, request = _android_request(tmp_path)
+    checkpoint = _Checkpoint()
+
+    provider.submit(request, work_dir=work, dest=tmp_path / "d1", checkpoint=checkpoint)
+    uploads_after_first = len(transfer.uploaded)
+
+    verdict = provider.submit(request, work_dir=work, dest=tmp_path / "d2", checkpoint=checkpoint)
+
+    assert client.schedule_calls == 1  # resumed the scheduled run, never rescheduled
+    assert len(transfer.uploaded) == uploads_after_first  # no re-upload on resume
+    assert verdict.ok and verdict.passed == 1
+    assert (tmp_path / "d2" / "runs" / "20260101-1" / "manifest.json").exists()

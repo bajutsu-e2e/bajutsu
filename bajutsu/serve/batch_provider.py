@@ -32,6 +32,7 @@ from bajutsu.cloud.devicefarm import (
     Transfer,
     Verdict,
     build_package,
+    collect_run,
     device_selection_for,
     render_test_spec,
     submit_and_collect,
@@ -56,6 +57,22 @@ class BatchRequest:
     app_path: str
 
 
+class BatchCheckpoint(Protocol):
+    """A durable record of a cloud-batch run's scheduled ARN, so a re-leased worker resumes it (Unit 5).
+
+    A batch run's poll can span the 150-minute hard cap. On the hosted DB backend a worker persists the
+    run ARN through this seam the moment the run is scheduled; a worker that picks the same job up again
+    after a restart loads it and resumes polling that run instead of resubmitting — the long poll
+    survives a serve restart rather than orphaning the run (and its reserved device).
+    """
+
+    def load(self) -> str | None:
+        """The scheduled run ARN persisted for this job, or None if it is not yet scheduled."""
+
+    def save(self, run_arn: str) -> None:
+        """Persist the scheduled run ARN so a restart resumes polling it."""
+
+
 class BatchProvider(Protocol):
     """A batch cloud serve can run one scenario on: submit it, wait, and return Bajutsu's verdict.
 
@@ -64,8 +81,19 @@ class BatchProvider(Protocol):
     `run`/CI verdict path.
     """
 
-    def submit(self, request: BatchRequest, *, work_dir: Path, dest: Path) -> Verdict:
-        """Package `work_dir`, run `request.scenario` on the cloud, download artifacts under `dest`."""
+    def submit(
+        self,
+        request: BatchRequest,
+        *,
+        work_dir: Path,
+        dest: Path,
+        checkpoint: BatchCheckpoint | None = None,
+    ) -> Verdict:
+        """Package `work_dir`, run `request.scenario` on the cloud, download artifacts under `dest`.
+
+        With a `checkpoint`, persist the scheduled run so a re-leased worker resumes polling it after a
+        restart rather than resubmitting (BE-0336 Unit 5); None keeps the best-effort, non-durable path.
+        """
         raise NotImplementedError
 
 
@@ -111,8 +139,25 @@ class DeviceFarmBatchProvider:
         self._project_arn = project_arn
         self._sleep = sleep
 
-    def submit(self, request: BatchRequest, *, work_dir: Path, dest: Path) -> Verdict:
-        """Render the one-scenario spec, package `work_dir`, submit the run, and collect the verdict."""
+    def submit(
+        self,
+        request: BatchRequest,
+        *,
+        work_dir: Path,
+        dest: Path,
+        checkpoint: BatchCheckpoint | None = None,
+    ) -> Verdict:
+        """Render the one-scenario spec, package `work_dir`, submit the run, and collect the verdict.
+
+        A `checkpoint` carrying a run ARN means this job was already scheduled before a restart: resume
+        polling that run and collect it — no re-upload, no reschedule — so the in-flight run and its
+        reserved device are not orphaned (BE-0336 Unit 5).
+        """
+        resume_arn = checkpoint.load() if checkpoint is not None else None
+        if resume_arn is not None:
+            return collect_run(
+                self._client, self._transfer, run_arn=resume_arn, dest=dest, sleep=self._sleep
+            )
         spec = render_test_spec(
             [request.scenario],
             target=request.target,
@@ -138,4 +183,5 @@ class DeviceFarmBatchProvider:
                 dest=dest,
                 app_upload_type=APP_UPLOAD_TYPE[request.platform],
                 sleep=self._sleep,
+                on_scheduled=(checkpoint.save if checkpoint is not None else None),
             )

@@ -474,6 +474,7 @@ def submit_and_collect(
     app_upload_type: str = APP_UPLOAD_TYPE["android"],
     run_name: str = "bajutsu",
     sleep: Callable[[float], None] = time.sleep,
+    on_scheduled: Callable[[str], None] | None = None,
 ) -> Verdict:
     """Upload the payload, schedule the run, wait for it, download artifacts, and return the verdict.
 
@@ -490,6 +491,9 @@ def submit_and_collect(
     Args:
         app_upload_type: The Device Farm upload type for the app artifact (``ANDROID_APP`` for an
             `.apk`, ``IOS_APP`` for an `.ipa`) — Device Farm rejects a mismatched artifact.
+        on_scheduled: Called with the run ARN the moment the run is scheduled, before the long poll —
+            serve persists it so a worker that re-leases the job after a restart resumes that run
+            through `collect_run` instead of resubmitting (BE-0336 Unit 5).
 
     Raises:
         DeviceFarmError: If neither or both of `device_pool_arn` / `device_selection` are given, if any
@@ -540,6 +544,30 @@ def submit_and_collect(
         **where,
     )
     run_arn = scheduled["run"]["arn"]
+    # Persist the run ARN before the long poll, so a restart mid-poll resumes this run rather than
+    # orphaning it and scheduling a new one (BE-0336 Unit 5).
+    if on_scheduled is not None:
+        on_scheduled(run_arn)
+    return collect_run(client, transfer, run_arn=run_arn, dest=dest, sleep=sleep)
+
+
+def collect_run(
+    client: DeviceFarmClient,
+    transfer: Transfer,
+    *,
+    run_arn: str,
+    dest: Path,
+    sleep: Callable[[float], None] = time.sleep,
+) -> Verdict:
+    """Wait for an already-scheduled run, download its artifacts under `dest`, and return the verdict.
+
+    Split from `submit_and_collect` so a resumed cloud-batch job (BE-0336 Unit 5) polls and collects a
+    run scheduled before a restart — reached from the persisted run ARN — without re-uploading or
+    rescheduling. The verdict is Bajutsu's own, read from the downloaded ``manifest.json`` tree.
+
+    Raises:
+        DeviceFarmError: If the run does not complete within the 150-minute hard cap.
+    """
     _wait_run(client, run_arn, sleep=sleep)
     dest.mkdir(parents=True, exist_ok=True)
     for index, artifact in enumerate(client.list_artifacts(arn=run_arn, type="FILE")["artifacts"]):

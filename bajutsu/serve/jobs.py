@@ -20,14 +20,18 @@ import subprocess
 import sys
 import tempfile
 import threading
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from bajutsu import simctl as _simctl
 from bajutsu.agents.ai_config import PROVIDER_MANAGED_ENV
 from bajutsu.handoff import REQUEST_LINE_PREFIX as _HANDOFF_REQUEST_PREFIX
 from bajutsu.serve.helpers import valid_run_id
 from bajutsu.serve.state import Job, ServeState
+
+if TYPE_CHECKING:
+    from bajutsu.serve.server.db import Repository
 
 logger = logging.getLogger(__name__)
 
@@ -448,6 +452,35 @@ def _run_job(state: ServeState, job: Job) -> None:
         job.awaiting_human = False
 
 
+@dataclass
+class _RepositoryBatchCheckpoint:
+    """Persist and resume a cloud-batch run's scheduled ARN through the system of record (Unit 5).
+
+    Keyed by job id on the ``jobs`` row, so a worker that re-leases the job after a restart resumes the
+    scheduled run instead of resubmitting it.
+    """
+
+    repo: Repository
+    job_id: str
+
+    def load(self) -> str | None:
+        return self.repo.load_batch_run_arn(self.job_id)
+
+    def save(self, run_arn: str) -> None:
+        self.repo.save_batch_run_arn(self.job_id, run_arn)
+
+
+def _batch_checkpoint(state: ServeState, job_id: str) -> _RepositoryBatchCheckpoint | None:
+    """A durable checkpoint when the hosted DB backend is wired, else None (BE-0336 Unit 5).
+
+    The local single-process backend keeps only the in-process best-effort path — a restart there loses
+    all in-memory state regardless, so there is nothing durable to resume from."""
+    repo = state.repository
+    if repo is None:
+        return None
+    return _RepositoryBatchCheckpoint(repo, job_id)
+
+
 def _run_batch_job(state: ServeState, job: Job) -> None:
     """Run a cloud-batch job (BE-0336): submit its one scenario to the named batch provider, land the
     downloaded run under ``runs_dir`` so serve records and renders it like a local run, and set the
@@ -470,7 +503,10 @@ def _run_batch_job(state: ServeState, job: Job) -> None:
     with tempfile.TemporaryDirectory() as download_name:
         try:
             verdict = provider.submit(
-                request, work_dir=job.cwd or state.cwd, dest=Path(download_name)
+                request,
+                work_dir=job.cwd or state.cwd,
+                dest=Path(download_name),
+                checkpoint=_batch_checkpoint(state, job.id),
             )
         except Exception as exc:
             # A provider or submission failure is a failed run, never a stranded worker thread: catch
