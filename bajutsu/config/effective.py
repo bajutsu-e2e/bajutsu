@@ -176,6 +176,9 @@ class Effective:
     # locally-attached `--udid` path); a device-cloud `kind` reserves a device off-host. Resolved by
     # `acquire_device` against the provider registry — off the deterministic verdict path.
     device_provider: DeviceProvider | None = None
+    # Which registered batch provider serve's per-scenario fan-out submits this target's cloud runs
+    # to (BE-0336 Unit 3). None = local devices; a value (e.g. "devicefarm") names a registry kind.
+    cloud_batch: str | None = None
     # Evidence directory overrides — scenarios / baselines / schemas / goldens (BE-0252).
     evidence_dirs: EvidenceDirs = field(default_factory=EvidenceDirs)
     # How to bring up baseUrl's host for the run (start/probe/teardown). None = assume it's running.

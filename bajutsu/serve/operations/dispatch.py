@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any
 
+from bajutsu.cloud.devicefarm import Platform
 from bajutsu.run_id import new_run_id
 from bajutsu.serve import oplog
 from bajutsu.serve.authz import _record_audit
+from bajutsu.serve.batch_provider import BatchRequest
 from bajutsu.serve.commands import _int, crawl_command, record_command, run_command
 from bajutsu.serve.helpers import (
+    target_batch_info,
     target_build_info,
     target_capabilities,
     valid_relative_key,
@@ -60,6 +64,15 @@ def _boot_targets(udid: str) -> list[str]:
     """The concrete devices to boot before a run/record/crawl. Picked devices are booted (and
     waited on) first; the "booted" alias names whatever is already up, so it's not a boot target."""
     return [u.strip() for u in udid.split(",") if u.strip() and u.strip() != "booted"]
+
+
+def _escapes(rel_path: str) -> bool:
+    """Whether a `relpath`-computed package path climbs out of the run directory (a leading ``..``).
+
+    The batch provider packages the run directory at the package root, so a path outside it can't be
+    packaged; the fan-out rejects it loudly rather than shipping a `../…` the cloud host can't find.
+    """
+    return rel_path == os.pardir or rel_path.startswith(os.pardir + os.sep)
 
 
 def _bool_flag(body: dict[str, Any], key: str) -> bool | None:
@@ -234,6 +247,98 @@ def start_run(
         state, actor, org, "run", f"{target}/{body['scenario']}", {"backend": backend or None}
     )
     return {"jobId": job.id}, 200
+
+
+def start_run_set(
+    state: ServeState, body: dict[str, Any], *, actor: str | None = None
+) -> tuple[Any, int]:
+    """Fan out a scenario-set request into one cloud-batch job per scenario (BE-0336 Unit 3).
+
+    A neutral dispatch surface: the request names a `target` and, optionally, a `scenarios` subset
+    (omitted = every scenario in the target's dir). The target's config declares which batch provider
+    its cloud runs use (`cloudBatch`); the request never names a provider, so the executor kind is a
+    config decision, not a client one. Each scenario becomes its own Job carrying a per-scenario
+    `BatchRequest`, registered and dispatched through the same concurrency-capped tail as every other
+    run. Returns the dispatched job ids. The device budget that bounds how many of these reserve a
+    device at once arrives in a later unit; here the fan-out simply enumerates and registers.
+    """
+    cfg = state.config
+    if cfg is None:
+        return {"error": "open a config first"}, 400
+    if not body.get("target"):
+        return {"error": "target is required"}, 400
+    target = str(body["target"])
+    org, forbidden = _resolve_org_or_forbid(state, target, actor)
+    if forbidden:
+        return forbidden
+    scope = state.for_org(org).scenarios.scope(target)
+    if scope is None:
+        return {"error": f"target '{target}' has no scenarios dir"}, 400
+    provider, platform, app_path = target_batch_info(cfg, target)
+    if not provider:
+        return {
+            "error": f"target '{target}' is not configured for cloud-batch runs (set cloudBatch)"
+        }, 400
+    if platform not in ("android", "ios"):
+        return {"error": f"cloud-batch runs support android or ios, not {platform!r}"}, 400
+    batch_platform: Platform = "android" if platform == "android" else "ios"
+    if not app_path:
+        return {"error": f"target '{target}' has no appPath to install on the cloud device"}, 400
+    # Which scenarios to fan out: the requested subset, or every scenario in the target's dir.
+    requested = body.get("scenarios")
+    if requested is None:
+        names = [entry["file"] for entry in scope.list()]
+    elif isinstance(requested, list) and all(isinstance(s, str) for s in requested):
+        names = requested
+    else:
+        return {"error": "scenarios must be a list of scenario file names"}, 400
+    if not names:
+        return {"error": f"target '{target}' has no scenarios to run"}, 400
+    # Resolve every scenario to its trusted runnable *before* dispatching any, so an unknown name
+    # fails the whole request closed rather than leaving a partial fan-out behind (BE-0051 confines
+    # each to the target's own dir). The batch provider packages state.cwd at the package root, so
+    # the scenario and config travel as package-relative paths.
+    work_dir = state.cwd
+    config_arg = os.path.relpath(cfg, work_dir)
+    if _escapes(config_arg):
+        # The provider packages work_dir at the package root, so a config outside it would travel as
+        # a `../…` path that won't exist in the package and would fail opaquely on the cloud host.
+        # Fail loud here instead (determinism first): this target's config isn't under the run cwd.
+        return {"error": "config is not under the run directory; cannot package it"}, 400
+    requests: list[BatchRequest] = []
+    for name in names:
+        runnable = scope.runnable(name)
+        if runnable is None:
+            return {
+                "error": f"scenario '{name}' must be an existing .yaml inside the target's scenarios dir"
+            }, 400
+        scenario_arg = os.path.relpath(runnable.arg, work_dir)
+        if _escapes(scenario_arg):
+            return {"error": f"scenario '{name}' is not under the run directory"}, 400
+        requests.append(
+            BatchRequest(
+                provider=provider,
+                scenario=scenario_arg,
+                target=target,
+                config=config_arg,
+                platform=batch_platform,
+                app_path=app_path,
+            )
+        )
+    project_id = _active_project_id(state, org)
+    dispatched: list[str] = []
+    for request in requests:
+        job, capped = _register_and_dispatch(
+            state, Job(batch=request, actor=actor, org=org, project_id=project_id)
+        )
+        if capped:
+            # The concurrency cap stops the fan-out here; a later unit's device budget makes a
+            # partially-dispatched set the routine outcome rather than an error.
+            break
+        assert job is not None
+        dispatched.append(job.id)
+    _record_audit(state, actor, org, "run-set", target, {"count": len(dispatched)})
+    return {"jobIds": dispatched}, 200
 
 
 def start_record(
