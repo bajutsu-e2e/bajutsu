@@ -67,6 +67,7 @@ def test_dispatch_enqueues_a_serializable_job_spec(tmp_path: Path) -> None:
         "evidence_prefix": "",  # no per-run evidence prefix requested (BE-0110)
         "project_id": None,  # no project hub wired for this locally-built job (BE-0225)
         "env_overlay": {},  # no AI provider selected for this org, so no overlay (BE-0229)
+        "batch": None,  # not a cloud-batch job (BE-0336 Unit 5)
     }
     json.dumps(spec)  # must carry no live objects (locks/Popen/bus) — JSON round-trips
 
@@ -569,3 +570,82 @@ def test_execute_job_spec_skips_baseline_download_when_not_requested(tmp_path: P
         spec, popen=fake_popen(["ok\n"]), cwd=tmp_path, bus=srv.InMemoryLogBus(), io=io
     )
     assert io.downloaded == []
+
+
+def test_job_spec_round_trips_a_cloud_batch_request(tmp_path: Path) -> None:
+    # A cloud-batch job's request must travel through the queue so a worker reconstructs `Job.batch`
+    # and runs it on the batch seam (BE-0336 Unit 5); it must stay JSON-serializable like every spec.
+    from bajutsu.serve.batch_provider import BatchRequest
+
+    state = srv.ServeState(runs_dir=tmp_path / "runs")
+    request = BatchRequest(
+        provider="devicefarm",
+        scenario="smoke.yaml",
+        target="demo",
+        config="c.yaml",
+        platform="android",
+        app_path="app.apk",
+    )
+    job = state.register(srv.Job(batch=request))
+    spec = job_spec(job)
+    assert spec["batch"] == {
+        "provider": "devicefarm",
+        "scenario": "smoke.yaml",
+        "target": "demo",
+        "config": "c.yaml",
+        "platform": "android",
+        "app_path": "app.apk",
+    }
+    assert json.loads(json.dumps(spec)) == spec
+
+
+def test_job_spec_omits_batch_for_a_local_job(tmp_path: Path) -> None:
+    # A normal (local-subprocess) job carries no batch request — the field is None, not an artifact.
+    state = srv.ServeState(runs_dir=tmp_path / "runs")
+    job = state.register(srv.Job(cmd=["run"]))
+    assert job_spec(job)["batch"] is None
+
+
+def test_execute_job_spec_reconstructs_the_batch_request(tmp_path: Path) -> None:
+    # The worker rebuilds `Job.batch` from the spec and routes to the batch seam — so a cloud-batch
+    # job dispatched through the DB queue runs on a cloud device instead of degrading to a local
+    # subprocess on the hosted backend (BE-0336 Unit 5).
+    from bajutsu.cloud.devicefarm import verdict_from_manifest
+    from bajutsu.serve import batch_provider as bp
+
+    captured: dict[str, Any] = {}
+
+    class _Provider:
+        def submit(
+            self, request: Any, *, work_dir: Path, dest: Path, checkpoint: Any = None
+        ) -> Any:
+            captured["request"] = request
+            run_dir = dest / "runs" / "20260101-1"
+            run_dir.mkdir(parents=True)
+            (run_dir / "manifest.json").write_text(
+                json.dumps({"ok": True, "scenarios": [{"scenario": "alpha", "ok": True}]}),
+                encoding="utf-8",
+            )
+            return verdict_from_manifest(dest)
+
+    saved = dict(bp._PROVIDERS)
+    bp.register("fake", _Provider())
+    try:
+        state = srv.ServeState(runs_dir=tmp_path / "runs", cwd=tmp_path)
+        request = bp.BatchRequest(
+            provider="fake",
+            scenario="smoke.yaml",
+            target="demo",
+            config="c.yaml",
+            platform="android",
+            app_path=str(tmp_path / "app.apk"),
+        )
+        job = state.register(srv.Job(batch=request))
+        execute_job_spec(job_spec(job), cwd=tmp_path)
+    finally:
+        bp._PROVIDERS.clear()
+        bp._PROVIDERS.update(saved)
+
+    assert captured["request"].provider == "fake"
+    assert captured["request"].scenario == "smoke.yaml"
+    assert captured["request"].platform == "android"

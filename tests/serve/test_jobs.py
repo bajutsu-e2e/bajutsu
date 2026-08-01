@@ -47,7 +47,9 @@ def test_run_job_cloud_batch_records_the_manifest_verdict(tmp_path: Path) -> Non
     state = srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
 
     class _Provider:
-        def submit(self, request: Any, *, work_dir: Path, dest: Path) -> Any:
+        def submit(
+            self, request: Any, *, work_dir: Path, dest: Path, checkpoint: Any = None
+        ) -> Any:
             run_dir = dest / "runs" / "20260101-1"
             run_dir.mkdir(parents=True)
             (run_dir / "manifest.json").write_text(
@@ -113,7 +115,9 @@ def test_run_job_cloud_batch_fails_loud_when_submit_raises(tmp_path: Path) -> No
     state = srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
 
     class _BrokenProvider:
-        def submit(self, request: Any, *, work_dir: Path, dest: Path) -> Any:
+        def submit(
+            self, request: Any, *, work_dir: Path, dest: Path, checkpoint: Any = None
+        ) -> Any:
             raise RuntimeError("simulated AWS failure")
 
     saved = dict(bp._PROVIDERS)
@@ -806,3 +810,101 @@ def test_release_upload_keeps_the_cache_and_resets_cwd(tmp_path: Path) -> None:
     state.release_upload()
     assert state.upload is None and up.dir.exists()
     assert state.cwd == state.base_cwd == tmp_path
+
+
+class _CapturingProvider:
+    """A batch provider that records the checkpoint it was handed and lands a passing run."""
+
+    def __init__(self) -> None:
+        self.checkpoint: Any = "unset"
+
+    def submit(self, request: Any, *, work_dir: Path, dest: Path, checkpoint: Any = None) -> Any:
+        import json
+
+        from bajutsu.cloud.devicefarm import verdict_from_manifest
+
+        self.checkpoint = checkpoint
+        run_dir = dest / "runs" / "20260101-1"
+        run_dir.mkdir(parents=True)
+        (run_dir / "manifest.json").write_text(
+            json.dumps({"ok": True, "scenarios": [{"scenario": "alpha", "ok": True}]}),
+            encoding="utf-8",
+        )
+        return verdict_from_manifest(dest)
+
+
+def _batch_state(tmp_path: Path, provider: Any, **kwargs: Any) -> tuple[srv.ServeState, srv.Job]:
+    from bajutsu.serve import batch_provider as bp
+
+    scn_dir, cfg, runs = project(tmp_path)
+    bp.register("fake", provider)
+    state = srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path, **kwargs)
+    request = bp.BatchRequest(
+        provider="fake",
+        scenario="smoke.yaml",
+        target="demo",
+        config=str(cfg),
+        platform="ios",
+        app_path=str(tmp_path / "app.ipa"),
+    )
+    job = state.register(srv.Job(batch=request))
+    return state, job
+
+
+def test_batch_job_gets_a_durable_checkpoint_on_the_db_backend(
+    tmp_path: Path, serve_engine: Any
+) -> None:
+    # On the hosted DB backend the worker hands the provider a durable checkpoint, so a 150-minute
+    # poll interrupted by a serve restart resumes the scheduled run rather than losing it (Unit 5).
+    from bajutsu.serve import batch_provider as bp
+    from bajutsu.serve.server.db import SqlRepository
+    from bajutsu.serve.server.models import Base
+
+    engine = serve_engine()
+    Base.metadata.create_all(engine)
+    provider = _CapturingProvider()
+    saved = dict(bp._PROVIDERS)
+    try:
+        state, job = _batch_state(tmp_path, provider, repository=SqlRepository(engine))
+        srv.run_job(state, job)
+    finally:
+        bp._PROVIDERS.clear()
+        bp._PROVIDERS.update(saved)
+
+    assert provider.checkpoint is not None
+    assert job.view()["ok"] is True
+
+
+def test_batch_job_has_no_durable_checkpoint_on_the_local_backend(tmp_path: Path) -> None:
+    # A local single-process backend has no database to persist to, so the checkpoint is None: its
+    # best-effort path is the in-process retry, never a cross-restart resume (BE-0336 Unit 5).
+    from bajutsu.serve import batch_provider as bp
+
+    provider = _CapturingProvider()
+    saved = dict(bp._PROVIDERS)
+    try:
+        state, job = _batch_state(tmp_path, provider)
+        srv.run_job(state, job)
+    finally:
+        bp._PROVIDERS.clear()
+        bp._PROVIDERS.update(saved)
+
+    assert provider.checkpoint is None
+    assert job.view()["ok"] is True
+
+
+def test_batch_run_arn_persists_across_a_repository_reload(serve_engine: Any) -> None:
+    # The scheduled run ARN persists in the jobs table, so a fresh repository over the same database
+    # (a serve restart) still resolves it — the durable state resume relies on (BE-0336 Unit 5).
+    from bajutsu.serve.server.db import SqlRepository
+    from bajutsu.serve.server.models import Base
+
+    engine = serve_engine()
+    Base.metadata.create_all(engine)
+    repo = SqlRepository(engine)
+    repo.enqueue_job("j1", "o", {}, capabilities=[])
+
+    assert repo.load_batch_run_arn("j1") is None
+    repo.save_batch_run_arn("j1", "arn:run/xyz")
+
+    assert SqlRepository(engine).load_batch_run_arn("j1") == "arn:run/xyz"

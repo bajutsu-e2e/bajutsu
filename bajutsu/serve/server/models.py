@@ -124,6 +124,10 @@ class JobRecord(Base):
     # killing its worker is failed once it hits the attempt cap rather than re-queued forever.
     attempts: Mapped[int] = mapped_column(default=0, server_default="0")
     result: Mapped[dict[str, Any]] = mapped_column(_JSON, default=dict)
+    # The scheduled cloud-batch (Device Farm) run's ARN, persisted once the run is scheduled so a
+    # worker that re-leases this job after a restart resumes polling that run instead of resubmitting
+    # it (BE-0336 Unit 5). Empty ``{}`` until the job is a scheduled cloud-batch run.
+    batch_state: Mapped[dict[str, Any]] = mapped_column(_JSON, default=dict)
     created_at: Mapped[datetime] = _created_at()
 
 

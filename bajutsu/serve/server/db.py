@@ -255,6 +255,21 @@ class Repository(Protocol):
     def metrics_snapshot(self) -> JobMetrics:
         """A one-pass aggregate of the jobs table for the ``/metrics`` endpoint (BE-0169)."""
 
+    def save_batch_run_arn(self, job_id: str, run_arn: str) -> None:
+        """Persist the scheduled Device Farm run ARN for *job_id* (BE-0336 Unit 5).
+
+        A worker records the ARN the moment the cloud-batch run is scheduled, so a worker that
+        re-leases the job after a restart resumes polling that run rather than resubmitting. A no-op
+        if the job row is gone.
+        """
+
+    def load_batch_run_arn(self, job_id: str) -> str | None:
+        """The scheduled Device Farm run ARN persisted for *job_id*, or None (BE-0336 Unit 5).
+
+        None when the run is not yet scheduled, or the job does not exist — the caller then submits a
+        fresh run rather than resuming.
+        """
+
 
 def _to_project(row: Project) -> ProjectRecord:
     return ProjectRecord(
@@ -776,6 +791,30 @@ class SqlRepository:
                 "org_id": row.org_id,
                 "leased_by": row.leased_by,
             }
+
+    def save_batch_run_arn(self, job_id: str, run_arn: str) -> None:
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import JobRecord
+
+        with Session(self._engine) as session:
+            row = session.get(JobRecord, job_id)
+            if row is None:
+                return
+            row.batch_state = {"run_arn": run_arn}
+            session.commit()
+
+    def load_batch_run_arn(self, job_id: str) -> str | None:
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import JobRecord
+
+        with Session(self._engine) as session:
+            row = session.get(JobRecord, job_id)
+            if row is None:
+                return None
+            run_arn = (row.batch_state or {}).get("run_arn")
+            return str(run_arn) if run_arn is not None else None
 
     def metrics_snapshot(self) -> JobMetrics:
         from collections import defaultdict

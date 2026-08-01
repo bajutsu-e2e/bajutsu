@@ -17,7 +17,7 @@ import logging
 import subprocess
 from contextlib import nullcontext
 from pathlib import Path
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from bajutsu import simctl as _simctl
 from bajutsu.serve import oplog
@@ -25,6 +25,11 @@ from bajutsu.serve.jobs import run_job
 from bajutsu.serve.logbus import InMemoryLogBus, LogBus
 from bajutsu.serve.orgs import DEFAULT_ORG as _DEFAULT_ORG
 from bajutsu.serve.state import Job, ServeState
+
+if TYPE_CHECKING:
+    # Only the type annotations reference it; the runtime rebuild imports it lazily so serializing a
+    # normal job never pulls the batch seam (and its optional deps) into the common worker path.
+    from bajutsu.serve.batch_provider import BatchRequest
 
 
 class WorkerIO(Protocol):
@@ -77,7 +82,34 @@ def job_spec(job: Job) -> dict[str, Any]:
         # that org's saved selection. The worker merges it onto the spawn env, so the run uses the
         # org's provider/model/effort without the worker holding any provider settings of its own.
         "env_overlay": dict(job.env_overlay),
+        # The cloud-batch request (BE-0336 Unit 5), so a batch job dispatched through the DB queue is
+        # reconstructed as a batch run on the worker instead of degrading to a local subprocess. None
+        # for a normal (local-subprocess) job.
+        "batch": _batch_spec(job.batch),
     }
+
+
+def _batch_spec(batch: BatchRequest | None) -> dict[str, Any] | None:
+    """The JSON form of a cloud-batch request so the worker rebuilds `Job.batch` (BE-0336 Unit 5)."""
+    if batch is None:
+        return None
+    return {
+        "provider": batch.provider,
+        "scenario": batch.scenario,
+        "target": batch.target,
+        "config": batch.config,
+        "platform": batch.platform,
+        "app_path": batch.app_path,
+    }
+
+
+def _batch_from_spec(data: dict[str, Any] | None) -> BatchRequest | None:
+    """Rebuild the cloud-batch request from its spec form, or None for a non-batch job (Unit 5)."""
+    if not data:
+        return None
+    from bajutsu.serve.batch_provider import BatchRequest
+
+    return BatchRequest(**data)
 
 
 def _materialize(work: Path, materials: dict[str, str]) -> None:
@@ -166,6 +198,9 @@ def execute_job_spec(
         # The org's AI provider overlay the control plane resolved at enqueue (BE-0229); `run_job`'s
         # `_spawn_env` merges it onto the child env so the run uses the org's selection.
         env_overlay=dict(spec.get("env_overlay") or {}),
+        # The cloud-batch request (BE-0336 Unit 5), so a batch job leased from the DB queue runs on the
+        # batch seam here rather than degrading to a local subprocess. None for a normal job.
+        batch=_batch_from_spec(spec.get("batch")),
     )
     # Bind the job's ids so every operational record on this worker correlates to it (BE-0055);
     # `run_id` is the run's own id, minted by `run_job`, so it binds only once the run has started.
