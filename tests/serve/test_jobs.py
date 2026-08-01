@@ -103,6 +103,41 @@ def test_run_job_cloud_batch_fails_loud_on_an_unknown_provider(tmp_path: Path) -
     assert any("unknown batch provider" in line for line in v["lines"])
 
 
+def test_run_job_cloud_batch_fails_loud_when_submit_raises(tmp_path: Path) -> None:
+    # A provider whose submit() raises (e.g. a network or AWS error) must end up as a failed job
+    # (status="done", exitCode=1, error on the transcript), never a stranded worker. run_job has no
+    # outer except, so an uncaught exception here would leave the job at status="running" forever.
+    from bajutsu.serve import batch_provider as bp
+
+    scn_dir, cfg, runs = project(tmp_path)
+    state = srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+
+    class _BrokenProvider:
+        def submit(self, request: Any, *, work_dir: Path, dest: Path) -> Any:
+            raise RuntimeError("simulated AWS failure")
+
+    saved = dict(bp._PROVIDERS)
+    bp.register("broken", _BrokenProvider())
+    try:
+        request = bp.BatchRequest(
+            provider="broken",
+            scenario="smoke.yaml",
+            target="demo",
+            config=str(cfg),
+            platform="ios",
+            app_path=str(tmp_path / "app.ipa"),
+        )
+        job = state.register(srv.Job(batch=request))
+        srv.run_job(state, job)
+    finally:
+        bp._PROVIDERS.clear()
+        bp._PROVIDERS.update(saved)
+
+    v = job.view()
+    assert v["status"] == "done" and v["exitCode"] == 1 and v["ok"] is False
+    assert any("cloud-batch run failed" in line for line in v["lines"])
+
+
 def test_land_batch_run_does_not_claim_a_colliding_existing_run(tmp_path: Path) -> None:
     # A fresh cloud run id shouldn't collide, but if one already exists under runs_dir it belongs to
     # another run — landing must not claim it (which would point history/rendering at unrelated data)
@@ -177,9 +212,11 @@ def test_land_batch_run_ignores_manifests_outside_runs_subdirectory(tmp_path: Pa
     assert not runs_root.exists() or not any(runs_root.iterdir())
 
 
-def test_land_batch_run_rejects_a_symlinked_run_directory(tmp_path: Path) -> None:
-    # A symlinked run directory under downloads/runs/ could make shutil.move write outside
-    # runs_root if the symlink points elsewhere; refuse to land it.
+def test_land_batch_run_does_not_land_through_a_symlinked_run_directory(tmp_path: Path) -> None:
+    # Path.rglob uses recurse_symlinks=False by default (Python 3.13), so a symlinked run
+    # directory under downloads/runs/ is never descended into — its manifest.json is not found,
+    # and _land_batch_run returns None via the empty-manifests branch before shutil.move is ever
+    # called. This test pins that safety property: the real_dir backing the symlink is untouched.
     import json
 
     from bajutsu.serve.jobs import _land_batch_run
@@ -192,13 +229,12 @@ def test_land_batch_run_rejects_a_symlinked_run_directory(tmp_path: Path) -> Non
     )
     runs_subdir = download / "runs"
     runs_subdir.mkdir(parents=True)
-    symlink = runs_subdir / "20260101-1"
-    symlink.symlink_to(real_dir)
+    runs_subdir.joinpath("20260101-1").symlink_to(real_dir)
     runs_root = tmp_path / "runs"
 
     result = _land_batch_run(download, runs_root)
 
-    # The symlinked run directory must not be moved — return None, leave real_dir untouched.
+    # rglob did not descend into the symlink, so no manifest was found — None, real_dir untouched.
     assert result is None
     assert real_dir.exists()
 

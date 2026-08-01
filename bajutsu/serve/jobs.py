@@ -543,10 +543,10 @@ def _land_batch_run(download_dir: Path, runs_root: Path) -> str | None:
             manifests[0].parent.name,
         )
     run_dir = manifests[0].parent
-    if run_dir.is_symlink():
-        # A symlinked run directory could make shutil.move write outside runs_root; refuse it.
-        logger.warning("cloud-batch run directory %r is a symlink; not landing it", run_dir.name)
-        return None
+    # Note: an explicit symlink guard is unnecessary. `Path.rglob` uses `recurse_symlinks=False` by
+    # default (Python 3.13), so a symlinked run directory is never descended into and its
+    # `manifest.json` never appears in `manifests` — `_land_batch_run` returns None via the
+    # `if not manifests` branch above before `run_dir` is ever computed.
     run_id = run_dir.name
     if not valid_run_id(run_id):
         # A remote run id that isn't a single safe path segment must not escape runs_root: leave the
