@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import html
 import importlib.util
-import json
 import re
 import sys
 from pathlib import Path
@@ -411,15 +410,6 @@ def test_a_directed_relation_outranks_related_between_the_same_pair() -> None:
     assert edges == [{"source": "BE-9998", "target": "BE-9999", "kind": "origin"}]
 
 
-def test_graph_payload_is_valid_json_and_cannot_close_its_script_element() -> None:
-    """The payload parses as JSON and carries no raw ``<``, which could end the script early."""
-    payload = _PAGE.split('class="be-graph-data">', 1)[1].split("</script>", 1)[0]
-    assert "<" not in payload
-    data = json.loads(payload)
-    assert len(data["nodes"]) == len(brd.graph_data(_ITEMS)["nodes"])
-    assert set(data["colors"]) == set(brd.BUCKET_COLOR)
-
-
 def test_graph_nodes_carry_the_same_search_string_their_cards_do() -> None:
     """One filter predicate serves all three views, so a node matches exactly when its card does."""
     by_id = {item.by_lang["en"].id: item for item in _ITEMS}
@@ -428,31 +418,6 @@ def test_graph_nodes_carry_the_same_search_string_their_cards_do() -> None:
         assert node["search"] == brd._search_terms(item)
         assert node["status"] == item.bucket
         assert node["href"] == brd._item_href(item)
-
-
-def test_view_toggle_offers_cards_table_and_graph() -> None:
-    """Three views share one toggle; Cards is the pressed default, so no-JS readers keep it."""
-    for key, label in (("cards", "Cards"), ("table", "Table"), ("graph", "Graph")):
-        assert f'data-view="{key}"' in _PAGE, key
-        assert f">{label}</button>" in _PAGE
-    assert 'data-view="cards" aria-pressed="true"' in _PAGE
-    assert 'data-view="graph" aria-pressed="false"' in _PAGE
-    # Every view but Cards ships hidden, so scripting off leaves the page exactly as it was.
-    assert 'class="be-graph-view is-hidden"' in _PAGE
-    assert 'class="be-table-view is-hidden"' in _PAGE
-
-
-def test_graph_view_is_wired_and_states_what_it_leaves_out() -> None:
-    """The canvas, its caption, and the script's entry points are all present on the page."""
-    data = brd.graph_data(_ITEMS)
-    assert f"{len(data['nodes'])} of {data['total']} roadmap items" in _PAGE
-    assert f"the remaining {data['unlinked']} take part in none and are not drawn" in _PAGE
-    assert '<svg class="be-graph">' in _PAGE
-    # Laid out on first sight rather than on page load, and narrowed by the shared filters.
-    assert re.search(r"if\(v==='graph'\)\s*buildGraph\(\);", _PAGE)
-    assert "applyGraphFilter();" in _PAGE
-    # The layout is reproducible: no random seeding anywhere in the script.
-    assert "Math.random" not in _PAGE
 
 
 def test_an_item_named_only_by_another_is_drawn_while_declaring_nothing() -> None:
@@ -487,16 +452,115 @@ def test_the_caption_claims_participation_rather_than_declaration() -> None:
     assert "take part in at least one Related, Origin, or Superseded by relationship" in _PAGE
 
 
-def test_directed_edges_are_drawn_with_an_arrowhead() -> None:
-    """The legend labels Origin and Superseded by with an arrow, so the drawing must render one.
+def test_every_drawn_item_is_placed_exactly_once_on_its_topic_row() -> None:
+    """The layout is a total, injective placement: one position per drawn item, on its topic's row."""
+    layout = brd.map_layout(_ITEMS)
+    rows = {row["topic"]: row["y"] for row in layout["rows"]}
+    drawn = {node["id"] for node in brd.graph_data(_ITEMS)["nodes"]}
+    placed = [node["id"] for node in layout["nodes"]]
+    assert sorted(placed) == sorted(drawn)
+    assert len(placed) == len(set(placed))
+    for node in layout["nodes"]:
+        assert node["y"] == rows[node["topic"]], node["id"]
 
-    A dash pattern alone says the two ends of an edge differ without saying which is which, and the
-    direction ``_edges`` stores in ``source`` / ``target`` would be invisible.
+
+def test_each_row_runs_left_to_right_in_id_order() -> None:
+    """Position is predictable because it is derived: within a row, x ascends with the identifier."""
+    layout = brd.map_layout(_ITEMS)
+    by_row: dict[float, list[Any]] = {}
+    for node in layout["nodes"]:
+        by_row.setdefault(node["y"], []).append(node)
+    for nodes in by_row.values():
+        ordered = sorted(nodes, key=lambda n: n["x"])
+        assert [n["id"] for n in ordered] == sorted(n["id"] for n in nodes)
+
+
+def test_rows_are_emitted_only_for_topics_that_have_a_drawn_item() -> None:
+    """A topic nothing is drawn for gets no row, so the map carries no empty lines."""
+    layout = brd.map_layout(_ITEMS)
+    drawn_topics = {node["topic"] for node in layout["nodes"]}
+    assert [row["topic"] for row in layout["rows"]] == [
+        topic for topic, _key, _origin in brd.bri.TOPICS if topic in drawn_topics
+    ]
+
+
+def test_the_drawing_fits_the_reported_size() -> None:
+    """Width and height bound every row and node, so the viewBox never clips the map."""
+    layout = brd.map_layout(_ITEMS)
+    for row in layout["rows"]:
+        assert 0 < row["x1"] < row["x2"] <= layout["width"]
+        assert 0 < row["y"] < layout["height"]
+    for node in layout["nodes"]:
+        assert 0 < node["x"] < layout["width"]
+        assert 0 < node["y"] < layout["height"]
+
+
+def test_the_layout_is_a_pure_function_of_the_metadata() -> None:
+    """The same items always yield the same coordinates — what no force simulation could promise."""
+    assert brd.map_layout(_ITEMS) == brd.map_layout(list(reversed(_ITEMS)))
+
+
+def test_a_connector_follows_the_rows_rather_than_cutting_across_them() -> None:
+    """Same-row relations arc above the row; cross-row ones leave and arrive horizontally."""
+    layout = brd.map_layout(_ITEMS)
+    at = {node["id"]: node for node in layout["nodes"]}
+    same = next(c for c in layout["connectors"] if at[c["source"]]["y"] == at[c["target"]]["y"])
+    across = next(c for c in layout["connectors"] if at[c["source"]]["y"] != at[c["target"]]["y"])
+    assert same["d"].count("Q") == 1, "a same-row connector is a single arc"
+    assert across["d"].count("C") == 1, "a cross-row connector is a single curve"
+    # The cross-row curve's first control point shares its start's y, so it leaves horizontally.
+    control = across["d"].split("C")[1].split()[0]
+    assert control.split(",")[1] == f"{at[across['source']]['y']:.1f}"
+
+
+def test_every_connector_ends_on_two_drawn_items() -> None:
+    """A path with an endpoint nothing is drawn for would run off into blank space."""
+    layout = brd.map_layout(_ITEMS)
+    drawn = {node["id"] for node in layout["nodes"]}
+    for connector in layout["connectors"]:
+        assert connector["source"] in drawn and connector["target"] in drawn
+
+
+def test_view_toggle_offers_cards_table_and_map() -> None:
+    """Three views share one toggle; Cards is the pressed default, so no-JS readers keep it.
+
+    The map's stored value stays ``graph`` even though the button now reads Map, so a reader who
+    chose the view before it was renamed still lands on it.
     """
-    assert "Origin \u2192" in _PAGE and "Superseded by \u2192" in _PAGE
-    assert "'be-graph-arrow'" in _PAGE
-    # Only the directed kinds carry the marker; Related is undirected and must stay a bare line.
-    assert re.search(
-        r"if\(ed\.kind!=='related'\)\s*line\.setAttribute\('marker-end', 'url\(#be-graph-arrow\)'\);",
-        _PAGE,
-    )
+    for key, label in (("cards", "Cards"), ("table", "Table"), ("graph", "Map")):
+        assert f'data-view="{key}"' in _PAGE, key
+        assert f">{label}</button>" in _PAGE
+    assert 'data-view="cards" aria-pressed="true"' in _PAGE
+    assert 'class="be-map-view is-hidden"' in _PAGE
+    assert 'class="be-table-view is-hidden"' in _PAGE
+
+
+def test_the_map_ships_finished_rather_than_laid_out_in_the_browser() -> None:
+    """Every row, connector, and node is rendered by the build; the script lays out nothing."""
+    layout = brd.map_layout(_ITEMS)
+    assert _PAGE.count('class="be-map-row"') == len(layout["rows"])
+    assert _PAGE.count('class="be-map-edge ') == len(layout["connectors"])
+    assert _PAGE.count('class="be-map-node"') == len(layout["nodes"])
+    assert f'viewBox="0 0 {layout["width"]:.0f} {layout["height"]:.0f}"' in _PAGE
+    # No simulation, and no randomness that would make the drawing differ between builds.
+    assert "Math.random" not in _PAGE
+    assert "Float64Array" not in _PAGE
+
+
+def test_directed_connectors_are_drawn_with_an_arrowhead() -> None:
+    """The legend labels Origin and Superseded by with an arrow, so the drawing must render one."""
+    layout = brd.map_layout(_ITEMS)
+    directed = sum(1 for c in layout["connectors"] if c["kind"] != "related")
+    assert directed, "expected the roadmap to declare a directed relation"
+    assert _PAGE.count('marker-end="url(#be-map-arrow)"') == directed
+    assert 'id="be-map-arrow"' in _PAGE
+    assert brd.marker_end("related") == ""
+    assert brd.marker_end("origin") == ' marker-end="url(#be-map-arrow)"'
+
+
+def test_pointing_at_an_item_names_it_in_a_live_region() -> None:
+    """A dot is too small to carry a title, so the readout names whatever the pointer rests on."""
+    assert 'class="be-map-readout" role="status"' in _PAGE
+    assert "Point at an item to read its title" in _PAGE
+    for node in brd.map_layout(_ITEMS)["nodes"][:5]:
+        assert html.escape(f"{node['id']} — {node['title']}") in _PAGE
