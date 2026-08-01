@@ -66,14 +66,18 @@ lane on what should be one lane's own change.
 
 The `changes` job narrows one step further for the one case it can prove safe (BE-0322): a change
 confined to a lane's scenario files fires only the jobs that declare a changed scenario, rather than
-the whole lane. The filter reads the `scenarios:` each iOS job already declares in the workflow, so
-the map from a changed scenario to the jobs that load it never drifts from what those jobs run, and
-emits — alongside `relevant` — a `shared` flag and an `affected` job array the jobs guard on. Every
-other case still fires the whole lane: a shared-code change (driver / runner / app / workflow code
-that can affect any scenario), a dimension job that declares no scenario (`codegen` / `conformance` /
-`visual`), and a lane whose jobs are not scenario-keyed at all (Android and web). The decision
-over-selects toward the whole lane, so it never skips a job a change could have broken, and — reading
-only the `git` diff and the workflow's own declarations — puts no LLM on the path and has no bearing
+the whole lane. The filter reads the `scenarios:` each iOS job declares in the workflow — and, for
+the `codegen` and `visual` jobs, the scenarios their `demos/showcase/Makefile` targets run (BE-0338),
+since those two name their scenarios in a Makefile target rather than a workflow input — so the map
+from a changed scenario to the jobs that load it never drifts from what those jobs run, and emits —
+alongside `relevant` — a `shared` flag and an `affected` job array the jobs guard on. A test pins the
+Makefile-read attribution against those targets, so a target gaining or losing a scenario fails the
+gate unless the map moves with it. Every other case still fires the whole lane: a shared-code change
+(driver / runner / app / workflow code that can affect any scenario), the `conformance` dimension job
+that declares no scenario subset (it drives the whole driver-conformance harness), and a lane whose
+jobs are not scenario-keyed at all (Android and web). The decision over-selects toward the whole
+lane, so it never skips a job a change could have broken, and — reading only the `git` diff, the
+workflow's own declarations, and those Makefile targets — puts no LLM on the path and has no bearing
 on any run's pass/fail verdict.
 
 The dev tools live in the `dev` dependency group, so the Linux job runs `uv sync --group

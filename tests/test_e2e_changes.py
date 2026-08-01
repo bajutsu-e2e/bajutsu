@@ -19,15 +19,20 @@ import pytest
 from scripts.e2e_changes import (
     _LANE_PATHS,
     _LANE_SCENARIO_PATHS,
+    _MAKEFILE_JOB_TARGETS,
     _RUN_PATH,
     _RUN_PATH_MODULES,
+    _makefile_target_scenarios,
     affected_jobs,
     changed_files,
     classify_change,
     is_relevant,
     job_scenario_map,
+    lane_job_scenario_map,
     lane_workflow_text,
     main,
+    makefile_job_scenarios,
+    showcase_makefile_text,
 )
 
 
@@ -862,13 +867,15 @@ def test_every_scenario_keyed_job_guard_matches_the_map() -> None:
     # Each scenario-keyed iOS job carries an `if:` guard `contains(fromJSON(...affected...), '<job>')`.
     # That literal must equal the job id the map is keyed on: a rename that updates the job key but not
     # its guard (or vice versa) would leave a job whose guard never fires on a scenario-only change.
-    # Pin the guarded-job set equal to the map-key set so such a divergence fails here.
+    # Pin the guarded-job set equal to the map-key set so such a divergence fails here. The map is the
+    # combined lane map (BE-0338): `codegen` and `visual` declare their scenarios in the showcase
+    # Makefile, so they are keyed via `lane_job_scenario_map`, not `job_scenario_map` alone.
     text = lane_workflow_text("ios")
     assert text is not None
     guarded = set(
         re.findall(r"contains\(fromJSON\(needs\.changes\.outputs\.affected\), '([^']+)'\)", text)
     )
-    assert guarded == set(job_scenario_map(text))
+    assert guarded == set(lane_job_scenario_map("ios", text))
 
 
 def test_affected_jobs_intersects_changed_scenarios_with_the_map() -> None:
@@ -950,16 +957,208 @@ def test_no_ios_declared_scenario_includes_another_declared_scenario() -> None:
             )
 
 
+# --- codegen / visual keyed from the showcase Makefile (BE-0338) ---------------------------------
+# `codegen` and `visual` declare their scenarios in `demos/showcase/Makefile` targets, not a workflow
+# `scenarios:` input, so their attribution is read from the recipes and pinned here against the
+# Makefile ground truth — the drift guard that lets the narrowing hold BE-0322's no-drift invariant.
+
+_MAKEFILE_SAMPLE = """\
+CONFIG := $(HERE)/showcase.config.yaml
+
+ui-test:
+\t# demos/showcase/scenarios/retired.yaml is a shell comment make never runs — must not be collected.
+\tcd $(ROOT) && uv run bajutsu codegen demos/showcase/scenarios/components.yaml --target showcase-swiftui \\
+\t\t--config $(CONFIG) -o demos/showcase/ios/swiftui/UITests/ComponentsUITests.swift
+\tcd $(SWIFTUI) && xcodegen generate
+
+# A comment between recipes must not leak the next target's scenarios into this one.
+UITESTS := $(SWIFTUI)/UITests
+ui-test-coverage:
+\tcd $(ROOT) && uv run bajutsu codegen demos/showcase/scenarios/text_editing.yaml --target showcase-swiftui \\
+\t\t--config $(CONFIG) -o $(UITESTS)/CoverageTextEditing.swift
+\tcd $(ROOT) && uv run bajutsu codegen demos/showcase/scenarios/gestures.yaml --target showcase-swiftui \\
+\t\t--config $(CONFIG) -o $(UITESTS)/CoverageGestures.swift
+
+e2e-visual: swiftui-build
+\tcd $(ROOT) && uv run --extra visual bajutsu run \\
+\t\t--scenario demos/showcase/scenarios/visual/visual_ios.yaml \\
+\t\t--target showcase-swiftui --udid $(SIM)
+"""
+
+
+def test_makefile_target_scenarios_reads_a_targets_recipe() -> None:
+    # The reader collects every scenario path a target's tab-indented recipe names, and stops at the
+    # next target — a prefix collision (`ui-test` vs `ui-test-coverage`) or a comment between recipes
+    # must not bleed one target's scenarios into another's. A tab-then-`#` shell comment inside the
+    # recipe names no scenario make runs, so `retired.yaml` in `ui-test` must not be collected.
+    assert _makefile_target_scenarios(_MAKEFILE_SAMPLE, "ui-test") == {
+        "demos/showcase/scenarios/components.yaml"
+    }
+    assert _makefile_target_scenarios(_MAKEFILE_SAMPLE, "ui-test-coverage") == {
+        "demos/showcase/scenarios/text_editing.yaml",
+        "demos/showcase/scenarios/gestures.yaml",
+    }
+    assert _makefile_target_scenarios(_MAKEFILE_SAMPLE, "e2e-visual") == {
+        "demos/showcase/scenarios/visual/visual_ios.yaml"
+    }
+    # A target that isn't present names nothing.
+    assert _makefile_target_scenarios(_MAKEFILE_SAMPLE, "absent") == set()
+
+
+def test_makefile_job_scenarios_folds_a_jobs_targets() -> None:
+    job_scenarios = makefile_job_scenarios(_MAKEFILE_SAMPLE)
+    # `codegen` unions its two targets; `visual` is its one target.
+    assert job_scenarios["codegen"] == {
+        "demos/showcase/scenarios/components.yaml",
+        "demos/showcase/scenarios/text_editing.yaml",
+        "demos/showcase/scenarios/gestures.yaml",
+    }
+    assert job_scenarios["visual"] == {"demos/showcase/scenarios/visual/visual_ios.yaml"}
+
+
+def test_makefile_job_scenarios_raises_when_a_target_names_no_scenario() -> None:
+    # A recipe that names no scenario (a rename that outdated the target, or a parse failure) must
+    # fail loud so the caller falls back to the whole lane rather than narrowing a job to nothing.
+    empty = "ui-test:\n\techo nothing here\nui-test-coverage:\n\techo nor here\ne2e-visual:\n\techo none\n"
+    with pytest.raises(ValueError, match="codegen"):
+        makefile_job_scenarios(empty)
+
+
+def test_makefile_job_scenarios_raises_per_target_not_per_job() -> None:
+    # Fail-closed per target: if one of a job's targets goes empty (renamed/broken) while another
+    # still yields scenarios, the union is non-empty — but the empty target's scenarios silently drop
+    # from the job's set, under-attributing it. The raise must fire on the empty target, naming it, so
+    # the caller falls back to the whole lane rather than narrowing a job on a half-read map.
+    half = (
+        "ui-test:\n"
+        "\techo renamed away, names no scenario\n"
+        "ui-test-coverage:\n"
+        "\tuv run bajutsu codegen demos/showcase/scenarios/text_editing.yaml -o x.swift\n"
+        "e2e-visual:\n"
+        "\tuv run bajutsu run --scenario demos/showcase/scenarios/visual/visual_ios.yaml\n"
+    )
+    with pytest.raises(ValueError, match="ui-test"):
+        makefile_job_scenarios(half)
+
+
+def test_makefile_declared_scenarios_match_the_targets() -> None:
+    # BE-0338 drift guard — the linchpin. The `codegen` / `visual` attribution is read from the
+    # showcase Makefile recipes (never a second hand-written copy), but pin the extracted set against
+    # an explicit expectation so a Makefile edit that adds or drops a scenario from `ui-test` /
+    # `ui-test-coverage` / `e2e-visual` fails `make check` until the attribution is consciously moved
+    # with it. Without this the attribution is exactly the drift BE-0322's design removed; with it, it
+    # is as ground-truth-bound as the action-input map.
+    text = showcase_makefile_text()
+    assert text is not None
+    assert makefile_job_scenarios(text) == {
+        "codegen": {
+            "demos/showcase/scenarios/components.yaml",
+            "demos/showcase/scenarios/text_editing.yaml",
+            "demos/showcase/scenarios/gestures.yaml",
+            "demos/showcase/scenarios/gestures_multitouch.yaml",
+            "demos/showcase/scenarios/codegen_extra.yaml",
+        },
+        "visual": {"demos/showcase/scenarios/visual/visual_ios.yaml"},
+    }
+
+
+def test_lane_job_scenario_map_folds_the_makefile_jobs_on_ios_only() -> None:
+    # On iOS the combined map carries the workflow-declared jobs *and* the Makefile-declared
+    # `codegen` / `visual`. On Android / web the Makefile jobs are not folded — they key no jobs on
+    # scenarios (BE-0338 is iOS-only), so the combined map equals the (empty) workflow map.
+    ios_text = lane_workflow_text("ios")
+    assert ios_text is not None
+    ios_map = lane_job_scenario_map("ios", ios_text)
+    assert set(ios_map) == {"run", "actuation", "golden", "bundled-runner", "codegen", "visual"}
+    assert ios_map["codegen"] == {
+        "demos/showcase/scenarios/components.yaml",
+        "demos/showcase/scenarios/text_editing.yaml",
+        "demos/showcase/scenarios/gestures.yaml",
+        "demos/showcase/scenarios/gestures_multitouch.yaml",
+        "demos/showcase/scenarios/codegen_extra.yaml",
+    }
+    assert ios_map["visual"] == {"demos/showcase/scenarios/visual/visual_ios.yaml"}
+    for lane in ("android", "web"):
+        text = lane_workflow_text(lane)
+        assert text is not None
+        assert lane_job_scenario_map(lane, text) == {}, lane
+
+
+def test_codegen_and_visual_carry_the_scenario_keyed_guard() -> None:
+    # Unit 4 wiring: both jobs must guard on their `affected` slot, not fire on bare `relevant`. A
+    # revert of the `if:` (back to `relevant == 'true'`) would silently un-narrow them, so pin the
+    # guard's presence here alongside the map-key match test above.
+    text = lane_workflow_text("ios")
+    assert text is not None
+    for job in ("codegen", "visual"):
+        assert f"contains(fromJSON(needs.changes.outputs.affected), '{job}')" in text, job
+
+
+def test_makefile_target_job_map_covers_only_the_two_keyed_jobs() -> None:
+    # `conformance` stays a dimension job (it drives the whole harness, declaring no scenario subset),
+    # so only `codegen` and `visual` are Makefile-keyed. Pin the mapping so a future addition is a
+    # conscious edit here.
+    assert set(_MAKEFILE_JOB_TARGETS) == {"codegen", "visual"}
+
+
+def test_makefile_job_targets_match_the_workflow_make_invocations() -> None:
+    # Close the loop between `_MAKEFILE_JOB_TARGETS` and the actual workflow (BE-0338 follow-up), in
+    # BOTH directions, so the dict can neither list a target the job no longer runs nor omit a
+    # scenario-bearing target the job does run:
+    #   - rename/removal: every target the dict lists must appear as a `make -C demos/showcase
+    #     <target>` step in that job's block — so renaming a listed target out of the workflow (and
+    #     `makefile_job_scenarios` then reading a target the job no longer runs) fails here.
+    #   - addition: every `make -C demos/showcase <target>` step in the job's block whose Makefile
+    #     recipe is *scenario-bearing* must be in the dict — so adding a new scenario target to a job
+    #     without listing it (leaving its scenario silently unattributed, an under-fire) fails here.
+    # The addition check filters on scenario-bearing recipes via `_makefile_target_scenarios`, so the
+    # non-scenario build targets both jobs legitimately invoke (`swiftui-build`, `runner-build`) are
+    # ignored rather than forced into the dict.
+    text = lane_workflow_text("ios")
+    assert text is not None
+    makefile = showcase_makefile_text()
+    assert makefile is not None
+    # Extract a rough "job section" for each job: collect lines from the job's header until the next
+    # same-level (2-space-indented) job header.
+    job_section_re = re.compile(r"^  ([A-Za-z0-9_-]+):\s*(?:#.*)?$")
+    make_step_re = re.compile(r"make -C demos/showcase (\S+)")
+    sections: dict[str, list[str]] = {}
+    current_job: str | None = None
+    for line in text.splitlines():
+        if m := job_section_re.match(line):
+            current_job = m.group(1)
+        if current_job is not None:
+            sections.setdefault(current_job, []).append(line)
+    for job, targets in _MAKEFILE_JOB_TARGETS.items():
+        assert job in sections, f"job {job!r} not found in ios-e2e.yml"
+        section_text = "\n".join(sections[job])
+        # rename/removal: each listed target is still invoked.
+        for target in targets:
+            assert f"make -C demos/showcase {target}" in section_text, (
+                f"ios-e2e.yml job {job!r} has no `make -C demos/showcase {target}` step, but "
+                f"_MAKEFILE_JOB_TARGETS[{job!r}] lists it — update the dict or the workflow."
+            )
+        # addition: each scenario-bearing target the job invokes is listed.
+        for invoked in make_step_re.findall(section_text):
+            if _makefile_target_scenarios(makefile, invoked):
+                assert invoked in targets, (
+                    f"ios-e2e.yml job {job!r} runs `make -C demos/showcase {invoked}`, whose recipe "
+                    f"names scenarios, but _MAKEFILE_JOB_TARGETS[{job!r}] omits it — a change to that "
+                    f"scenario would not fire {job!r}. Add {invoked!r} to the dict."
+                )
+
+
 # --- main() end to end over the real iOS workflow (BE-0322) --------------------------------------
 
 
 def test_main_narrows_a_scenario_only_ios_change_to_the_affected_jobs(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # A change confined to gestures_multitouch.yaml is scenario-only and reaches only the `run` job
-    # (which declares it); main() emits shared=false and the narrowed affected set. The
-    # job-to-scenario map is read from the real workflow (via lane_workflow_text), while the changed
-    # file lives in the temp repo.
+    # A change confined to gestures_multitouch.yaml is scenario-only and reaches the `run` job (which
+    # declares it in the workflow) and — since BE-0338 — the `codegen` job, which codegens it via the
+    # `ui-test-coverage` Makefile target; main() emits shared=false and the narrowed affected set. The
+    # job-to-scenario map is read from the real workflow + showcase Makefile (via lane_workflow_text /
+    # showcase_makefile_text), while the changed file lives in the temp repo.
     _init_repo(tmp_path, monkeypatch)
     _commit(tmp_path, "README.md", "seed")
     _git(tmp_path, "branch", "pr")
@@ -972,7 +1171,9 @@ def test_main_narrows_a_scenario_only_ios_change_to_the_affected_jobs(
     monkeypatch.setenv("HEAD_SHA", pr_tip)
     monkeypatch.setenv("GITHUB_OUTPUT", str(output))
     assert main() == 0
-    assert output.read_text(encoding="utf-8") == ('relevant=true\nshared=false\naffected=["run"]\n')
+    assert output.read_text(encoding="utf-8") == (
+        'relevant=true\nshared=false\naffected=["codegen", "run"]\n'
+    )
 
 
 def test_main_narrows_a_shared_scenario_to_every_job_that_declares_it(
@@ -1038,3 +1239,49 @@ def test_main_keeps_the_android_lane_whole_fleet_on_a_scenario_change(
     monkeypatch.setenv("GITHUB_OUTPUT", str(output))
     assert main() == 0
     assert output.read_text(encoding="utf-8") == "relevant=true\nshared=true\naffected=[]\n"
+
+
+def test_main_narrows_a_codegen_scenario_change_to_the_codegen_job(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # BE-0338: components.yaml is codegen-only (declared by `make ui-test`, no workflow `scenarios:`
+    # input), so a change confined to it narrows to just the `codegen` job — the two-Simulator lane no
+    # longer boots for a scenario neither `run` nor `visual` exercises. The map folds the showcase
+    # Makefile ground truth read from the real repo, while the changed file lives in the temp repo.
+    _init_repo(tmp_path, monkeypatch)
+    _commit(tmp_path, "README.md", "seed")
+    _git(tmp_path, "branch", "pr")
+    main_tip = _commit(tmp_path, "main_only.txt", "unrelated on main")
+    _git(tmp_path, "checkout", "-q", "pr")
+    pr_tip = _commit(tmp_path, "demos/showcase/scenarios/components.yaml", "components edit")
+
+    output = tmp_path / "github_output"
+    monkeypatch.setenv("BASE_SHA", main_tip)
+    monkeypatch.setenv("HEAD_SHA", pr_tip)
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+    assert main() == 0
+    assert (
+        output.read_text(encoding="utf-8") == 'relevant=true\nshared=false\naffected=["codegen"]\n'
+    )
+
+
+def test_main_narrows_a_visual_scenario_change_to_the_visual_job(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # BE-0338: visual/visual_ios.yaml is the pixel VRT `make e2e-visual` runs, so a change to it
+    # narrows to just the `visual` job.
+    _init_repo(tmp_path, monkeypatch)
+    _commit(tmp_path, "README.md", "seed")
+    _git(tmp_path, "branch", "pr")
+    main_tip = _commit(tmp_path, "main_only.txt", "unrelated on main")
+    _git(tmp_path, "checkout", "-q", "pr")
+    pr_tip = _commit(tmp_path, "demos/showcase/scenarios/visual/visual_ios.yaml", "vrt edit")
+
+    output = tmp_path / "github_output"
+    monkeypatch.setenv("BASE_SHA", main_tip)
+    monkeypatch.setenv("HEAD_SHA", pr_tip)
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+    assert main() == 0
+    assert (
+        output.read_text(encoding="utf-8") == 'relevant=true\nshared=false\naffected=["visual"]\n'
+    )
