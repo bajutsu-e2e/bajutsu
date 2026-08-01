@@ -480,7 +480,15 @@ def _run_batch_job(state: ServeState, job: Job) -> None:
             logger.warning("cloud-batch job %s submission failed", job.id, exc_info=True)
             _fail_batch(job, f"cloud-batch run failed: {exc}")
             return
-        run_id = _land_batch_run(Path(download_name), runs_root)
+        try:
+            run_id = _land_batch_run(Path(download_name), runs_root)
+        except OSError as exc:
+            # Landing runs outside the submit guard above, but its `mkdir`/`move` can still raise
+            # (permission, disk full, cross-device rename). `run_job` has no `except`, so an escape here
+            # would strand the worker with the job stuck "running" — fail loud instead.
+            logger.warning("cloud-batch job %s failed to land its run", job.id, exc_info=True)
+            _fail_batch(job, f"cloud-batch run failed to land: {exc}")
+            return
     line = f"bajutsu verdict: {'PASS' if verdict.ok else 'FAIL'} ({verdict.passed}/{verdict.total})"
     with job.lock:
         if run_id is not None:
