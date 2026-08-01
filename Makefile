@@ -82,6 +82,14 @@ DOCSTRING_PATHS := bajutsu/ai bajutsu/drivers bajutsu/assertions bajutsu/evidenc
 test:
 	uv run pytest -q --cov=bajutsu --cov-report=term-missing:skip-covered --cov-report=json:coverage.json --cov-fail-under=89
 
+# The whole-tree roadmap date test (`roadmap_dates` marker) is excluded from `test`/the gate: it
+# git-logs every roadmap item twice, so its runtime grows with the tree and once dominated the whole
+# suite. The date logic is covered fast by the mocked `test_git_dates_*` cases that DO run on every
+# gate; this end-to-end pass can only regress when scripts/build_roadmap_index.py changes, so run it
+# by hand after editing that loader. NOT part of `check` by design (same reasoning as `docs`).
+test-roadmap-dates:
+	uv run pytest tests/test_roadmap_index.py -m roadmap_dates -n0
+
 lint:
 	uv run ruff check .
 

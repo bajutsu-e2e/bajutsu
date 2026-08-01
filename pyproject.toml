@@ -196,13 +196,14 @@ convention = "google"
 # Deselecting by marker (not just importorskip) means each stays out even when its extra happens to
 # be installed locally — so the gate is hermetic regardless of the venv's state, even when an
 # `ANTHROPIC_API_KEY` happens to be set.
-addopts = "-n auto -m 'not web and not ondevice and not live and not postgres and not mcp_wire'"
+addopts = "-n auto -m 'not web and not ondevice and not live and not postgres and not mcp_wire and not roadmap_dates'"
 markers = [
     "web: browser-driven test requiring the Playwright web extra + a Chromium binary (web CI only)",
     "ondevice: iOS Simulator test requiring a booted device + the showcase app (E2E workflow only)",
     "live: real-model smoke test firing a billable network model call (opt-in only, `-m live`)",
     "postgres: DB test run against a real Postgres service container (serve-db.yml lane only)",
     "mcp_wire: real-transport MCP round-trip spawning a `bajutsu mcp` subprocess (mcp-wire.yml, non-gating)",
+    "roadmap_dates: whole-tree roadmap date integration that git-logs every item (grows with the tree; `make test-roadmap-dates`)",
 ]
 # Collect only the project's own suite; ignore local git worktrees under worktree/.
 testpaths = ["tests"]
