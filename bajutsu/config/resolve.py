@@ -157,6 +157,7 @@ def resolve(config: Config, target: str) -> Effective:
         mailbox=a.mailbox,
         device_provider=a.device_provider,
         cloud_batch=a.cloud_batch,
+        cloud_batch_budget=a.cloud_batch_budget,
         setup=a.setup,
         capture=list(d.capture),
         redact=_merge_redact(d.redact, a.redact),

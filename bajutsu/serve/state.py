@@ -255,11 +255,16 @@ class JobRegistry:
         max_concurrent: int = 0,
         max_concurrent_per_user: int = 0,
         max_concurrent_per_org: int = 0,
+        max_concurrent_batch: int = 0,
     ) -> Job | None:
         """Register *job* only if under the concurrency caps, counting and inserting atomically under
         the lock so two concurrent dispatches can't both slip past a cap (BE-0051). Returns None at
-        the global cap, at the per-user cap for an identified ``job.actor`` (BE-0015 7c-3), or at the
-        per-org cap for ``job.org`` (BE-0016 Tier B pool fairness). Each cap ``<= 0`` is unlimited."""
+        the global cap, at the per-user cap for an identified ``job.actor`` (BE-0015 7c-3), at the
+        per-org cap for ``job.org`` (BE-0016 Tier B pool fairness), or — for a cloud-batch job — at
+        the device budget for its batch *provider* pool, keyed on ``job.batch.provider`` (BE-0336
+        Unit 4): the count spans all targets and orgs sharing that provider (the contended resource),
+        so the cap bounds total in-flight device reservations on the provider, not a single target's
+        slice. Each cap ``<= 0`` is unlimited; the batch cap applies only when ``job.batch`` is set."""
         with self._lock:
             running = [j for j in self.jobs.values() if j.status == "running"]
             if max_concurrent > 0 and len(running) >= max_concurrent:
@@ -271,6 +276,14 @@ class JobRegistry:
             if max_concurrent_per_org > 0:
                 same_org = sum(1 for j in running if j.org == job.org)
                 if same_org >= max_concurrent_per_org:
+                    return None
+            if job.batch is not None and max_concurrent_batch > 0:
+                same_pool = sum(
+                    1
+                    for j in running
+                    if j.batch is not None and j.batch.provider == job.batch.provider
+                )
+                if same_pool >= max_concurrent_batch:
                     return None
             return self._register(job)
 
@@ -658,14 +671,17 @@ class ServeState:
         """Assign *job* its id + live-log bus and store it. Delegates to the registry (BE-0198)."""
         return self.job_registry.register(job)
 
-    def try_register(self, job: Job) -> Job | None:
+    def try_register(self, job: Job, *, device_budget: int = 0) -> Job | None:
         """Register *job* only if under the concurrency caps, forwarding this state's configured caps
-        to the registry, which counts and inserts atomically under one lock (BE-0051)."""
+        to the registry, which counts and inserts atomically under one lock (BE-0051). *device_budget*
+        is the per-target cloud-batch device cap (BE-0336 Unit 4); unlike the state-wide caps it is
+        per-target, so the dispatcher resolves it from the request's config and passes it per call."""
         return self.job_registry.try_register(
             job,
             max_concurrent=self.max_concurrent,
             max_concurrent_per_user=self.max_concurrent_per_user,
             max_concurrent_per_org=self.max_concurrent_per_org,
+            max_concurrent_batch=device_budget,
         )
 
     def bind_upload(self, upload: Upload) -> None:

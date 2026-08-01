@@ -9,7 +9,7 @@
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0336") |
-| 実装 PR | [#1425](https://github.com/bajutsu-e2e/bajutsu/pull/1425)（単位1 — submitter core の移行）、[#1429](https://github.com/bajutsu-e2e/bajutsu/pull/1429)（単位2 — batch executor seam）、[#1435](https://github.com/bajutsu-e2e/bajutsu/pull/1435)（単位3 — シナリオ単位の分割） |
+| 実装 PR | [#1425](https://github.com/bajutsu-e2e/bajutsu/pull/1425)（単位1 — submitter core の移行）、[#1429](https://github.com/bajutsu-e2e/bajutsu/pull/1429)（単位2 — batch executor seam）、[#1435](https://github.com/bajutsu-e2e/bajutsu/pull/1435)（単位3 — シナリオ単位の分割）、[#1438](https://github.com/bajutsu-e2e/bajutsu/pull/1438)（単位4 — デバイス予算） |
 | トピック | Device-cloud execution |
 | 関連 | [BE-0235](../BE-0235-aws-device-farm-submitter/BE-0235-aws-device-farm-submitter-ja.md), [BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction-ja.md), [BE-0198](../BE-0198-serve-state-job-registry-split/BE-0198-serve-state-job-registry-split-ja.md) |
 <!-- /BE-METADATA -->
@@ -134,7 +134,7 @@ serve の利用者ごと・org ごとのキャップや run の履歴も共有�
 - [x] serve 向けの Device Farm executor — 1件のシナリオを投入・ポーリングし、判定経路の外で manifest
   の合否を記録する。
 - [x] シナリオ単位の分割 — シナリオの集合を求める要求を、シナリオごとに1つのジョブへ展開する。
-- [ ] デバイス予算 `K` — 同時に走る Device Farm ジョブを、ジョブレジストリで抑える。既定は設定から取り、
+- [x] デバイス予算 `K` — 同時に走る Device Farm ジョブを、ジョブレジストリで抑える。既定は設定から取り、
   要求ごとに上書きでき、Device Farm の `maxDevices` を1に固定する。
 - [ ] 長時間ポーリングのための永続化 — ホスティング用の backend で queued/polling/done の状態を永続化し、
   ローカルには best-effort な経路を保つ。
@@ -170,6 +170,18 @@ serve の利用者ごと・org ごとのキャップや run の履歴も共有�
   途中まで分割を残さず要求全体を fail-closed にします。web 対象、`cloudBatch` 未設定の対象、インストール
   可能な `appPath` を持たない対象、プロバイダがパッケージ化する run ディレクトリの外にある config や
   シナリオは、明示的に拒否します。同時にデバイスを確保できる本数を抑えるデバイス予算は単位4です。
+- [#1438](https://github.com/bajutsu-e2e/bajutsu/pull/1438)（単位4）— シナリオ単位の分割を、デバイス予算 `K` で抑えるようにしました。
+  対象ごとの新しい `cloudBatchBudget`（`TargetConfig` → `Effective`）が既定のデバイス台数を解決し、
+  `start_run_set` はジョブレジストリの同時実行キャップを batch プロバイダ（競合するデバイスプール）で
+  キー付けします。これにより、対象の cloud run が同時にデバイスを確保するのは高々 `K` 件までで、残りは
+  エラーではなく通常の部分的な投入として先送りされます。`JobRegistry.try_register` に、`job.batch.provider`
+  でキー付けする `max_concurrent_batch` キャップを追加し、global／per-user／per-org のキャップと同じロック
+  配下で atomic に数えます。`ServeState.try_register` は対象ごとの予算を呼び出しごとに転送します。要求側の
+  `deviceBudget` は予算を**下げる**ことしかできません（両者の `min`）。要求の非正・不正な値も、設定の
+  非正な `cloudBatchBudget` も、黙って「無制限」を意味させず明示的に拒否します（determinism first）。
+  Device Farm の `maxDevices` は run ごとに1へ固定したまま（単位2）で、Bajutsu 側のキャップだけがデバイス
+  台数を律します。判定経路には触れていません。ホスティング用 backend での queued/polling 状態の永続化と、
+  英日両言語の使い方は単位5〜6で続けます。
 
 ## 参考
 

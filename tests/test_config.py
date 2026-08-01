@@ -360,6 +360,34 @@ def test_cloud_batch_names_the_batch_provider_kind() -> None:
     assert resolve(cfg, "app").cloud_batch == "devicefarm"
 
 
+def test_cloud_batch_budget_defaults_to_none() -> None:
+    # No cloudBatchBudget = no device budget from config; serve's fan-out is then unbounded by this
+    # target (the registry treats an absent cap as unlimited), so an existing target is unchanged
+    # (BE-0336 Unit 4).
+    cfg = load_config("targets: { app: { bundleId: com.example.app, cloudBatch: devicefarm } }")
+    assert resolve(cfg, "app").cloud_batch_budget is None
+
+
+def test_cloud_batch_budget_resolves_the_device_count() -> None:
+    # The per-target device budget K — how many of this target's cloud-batch runs may reserve a
+    # device at once — resolves straight onto Effective, where serve's fan-out reads it and keys the
+    # job registry's concurrency cap on the batch device pool (BE-0336 Unit 4).
+    cfg = load_config(
+        "targets: { app: { bundleId: com.example.app, cloudBatch: devicefarm, cloudBatchBudget: 3 } }"
+    )
+    assert resolve(cfg, "app").cloud_batch_budget == 3
+
+
+def test_cloud_batch_budget_rejects_a_non_positive_value() -> None:
+    # A non-positive budget (a "disable" typo, or a negative) is rejected at config load rather than
+    # silently meaning "unlimited" — the loud-failure directive applied to a resource cap (BE-0336
+    # Unit 4).
+    with pytest.raises(ValueError, match="greater than 0"):
+        load_config(
+            "targets: { app: { bundleId: com.example.app, cloudBatch: devicefarm, cloudBatchBudget: 0 } }"
+        )
+
+
 def test_appium_provider_endpoint_round_trips_through_config() -> None:
     # The `endpoint` field on `deviceProvider` must survive the YAML → `load_config` → `resolve`
     # path; a field-name or alias mismatch in `_Model` (which sets `extra="forbid"`) would only
