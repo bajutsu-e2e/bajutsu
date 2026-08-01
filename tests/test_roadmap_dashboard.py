@@ -420,6 +420,13 @@ def test_graph_nodes_carry_the_same_search_string_their_cards_do() -> None:
         assert node["href"] == brd._item_href(item)
 
 
+def test_graph_nodes_carry_the_items_summary() -> None:
+    """Each node's ``summary`` is the item's own (BE-0335's hover card reads it verbatim)."""
+    by_id = {item.by_lang["en"].id: item for item in _ITEMS}
+    for node in brd.graph_data(_ITEMS)["nodes"]:
+        assert node["summary"] == by_id[node["id"]].summary
+
+
 def test_an_item_named_only_by_another_is_drawn_while_declaring_nothing() -> None:
     """Being drawn means taking part in a relation, which is wider than declaring one.
 
@@ -564,3 +571,27 @@ def test_pointing_at_an_item_names_it_in_a_live_region() -> None:
     assert "Point at an item to read its title" in _PAGE
     for node in brd.map_layout(_ITEMS)["nodes"][:5]:
         assert html.escape(f"{node['id']} — {node['title']}") in _PAGE
+
+
+def test_each_node_carries_its_title_and_summary_for_the_hover_card() -> None:
+    """The hover/focus card (BE-0335) reads a node's title and Introduction excerpt off its own <a>."""
+    for node in brd.map_layout(_ITEMS)["nodes"][:5]:
+        assert f'data-title="{html.escape(node["title"])}"' in _PAGE
+        assert f'data-summary="{html.escape(node["summary"])}"' in _PAGE
+
+
+def test_the_map_offers_zoom_and_full_size_controls() -> None:
+    """A reader can enlarge the map beyond its natural size, in place or across the whole browser."""
+    assert 'class="be-map-toolbar"' in _PAGE
+    for action in ("out", "reset", "in"):
+        assert f'data-zoom="{action}"' in _PAGE
+    assert 'class="be-map-expand"' in _PAGE
+    assert 'aria-pressed="false"' in _PAGE.split('class="be-map-expand"', 1)[1][:120]
+
+
+def test_the_map_ships_a_hover_card_container() -> None:
+    """The card's four fields (id, status, title, summary) are rendered empty and filled by JS."""
+    map_view = _PAGE.split('class="be-map-view', 1)[1]
+    assert 'class="be-map-card" aria-hidden="true"' in map_view
+    for field in ("id", "status", "title", "summary"):
+        assert f'class="be-map-card-{field}"' in map_view

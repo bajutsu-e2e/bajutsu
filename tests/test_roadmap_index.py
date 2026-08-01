@@ -157,6 +157,9 @@ def test_load_items_loads_the_committed_roadmap_tree() -> None:
         assert item.bucket in dict(bri.BUCKETS)
         assert item.topic in bri.KNOWN_TOPICS
         assert "en" in item.by_lang and "ja" in item.by_lang
+        # Every committed item's English file opens with an "## Introduction" section, so every
+        # loaded item carries a non-empty summary.
+        assert item.summary, f"{item.id} loaded with no summary"
 
 
 class _FakeProc:
@@ -241,6 +244,30 @@ def test_relation_ids_reads_every_id_a_field_names() -> None:
     assert bri.relation_ids("BE-XXXX", self_id="BE-0311") == ()
 
 
+def test_extract_summary_reads_the_first_introduction_paragraph() -> None:
+    """A link's visible text survives, other markup is stripped, and wrapped lines join with spaces."""
+    text = (
+        "# BE-0029 — Title\n\n## Introduction\n\n"
+        "Add a [thing](x.md) that **matters**, spanning\n"
+        "two wrapped lines.\n\n## Motivation\n\nignored\n"
+    )
+    assert bri.extract_summary(text) == "Add a thing that matters, spanning two wrapped lines."
+
+
+def test_extract_summary_truncates_a_long_paragraph_at_a_word_boundary() -> None:
+    """A paragraph past ``max_len`` is cut at the last whole word, not mid-word, and marked with ‥"""
+    text = "## Introduction\n\n" + ("word " * 100).strip() + "\n\n## Motivation\n"
+    summary = bri.extract_summary(text, max_len=20)
+    assert summary == "word word word word…"
+    assert len(summary) <= 21
+
+
+def test_extract_summary_is_empty_without_an_introduction_section() -> None:
+    """A file with no ``## Introduction`` (the legacy-format fixtures above) yields no summary."""
+    assert bri.extract_summary(EN_FILE) == ""
+    assert bri.extract_summary("# BE-0029 — Title\n\nNo introduction heading here.\n") == ""
+
+
 def _item_dir(roadmap: Path, be_id: str, slug: str, *, extra: str = "") -> None:
     """Write a minimal two-language item under ``roadmap``, with optional extra metadata rows."""
     directory = roadmap / f"{be_id}-{slug}"
@@ -270,6 +297,23 @@ def test_load_items_drops_a_relation_to_an_item_that_does_not_exist(tmp_path: Pa
     assert items["BE-0045"].related == ("BE-0046",)
     assert items["BE-0045"].superseded_by == ("BE-0046",)
     assert items["BE-0046"].related == ()
+
+
+def test_load_items_reads_the_summary_from_the_english_introduction_only(tmp_path: Path) -> None:
+    """summary comes off the English file's Introduction, like Status and Topic — Japanese never adds one."""
+    roadmap = tmp_path / "roadmaps"
+    _item_dir(roadmap, "BE-0045", "foo")
+    en = roadmap / "BE-0045-foo" / "BE-0045-foo.md"
+    en.write_text(
+        en.read_text(encoding="utf-8") + "\n## Introduction\n\nWhat this item does.\n",
+        encoding="utf-8",
+    )
+    ja = roadmap / "BE-0045-foo" / "BE-0045-foo-ja.md"
+    ja.write_text(
+        ja.read_text(encoding="utf-8") + "\n## Introduction\n\nJapanese text.\n", encoding="utf-8"
+    )
+    items = {item.id: item for item in bri.load_items(roadmap)}
+    assert items["BE-0045"].summary == "What this item does."
 
 
 def test_load_items_reads_relations_from_the_english_file_only(tmp_path: Path) -> None:
