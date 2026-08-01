@@ -238,15 +238,7 @@ def test_fan_out_returns_429_when_cap_rejects_the_first_job(tmp_path: Path) -> N
     # returns the 429 payload rather than 200 with an empty list — a silent failure that looks like
     # success. Partial dispatch (some dispatched, then capped) is routine (Unit 4 governs this), but
     # zero dispatched + cap = loud error, consistent with start_run / start_record / start_crawl.
-    from bajutsu.serve import state as srv_state
-
     scn_dir, cfg = _android_batch_project(tmp_path, scenarios=["one.yaml"])
-
-    class _AlwaysCapExecutor:
-        jobs: list = []
-
-        def dispatch(self, state: ServeState, job: Job) -> None:
-            self.jobs.append(job)
 
     # Make try_register always return None (cap hit) by wrapping ServeState.
     import unittest.mock
@@ -256,7 +248,7 @@ def test_fan_out_returns_429_when_cap_rejects_the_first_job(tmp_path: Path) -> N
         config=cfg,
         runs_dir=tmp_path / "runs",
         cwd=tmp_path,
-        executor=_AlwaysCapExecutor(),
+        executor=_RecordingExecutor(),
     )
     with unittest.mock.patch.object(state, "try_register", return_value=None):
         payload, status = start_run_set(state, {"target": "demo"})
