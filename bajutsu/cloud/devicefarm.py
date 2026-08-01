@@ -46,7 +46,17 @@ import yaml
 # Device Farm caps one custom-environment execution at 150 minutes; poll no longer than that before
 # giving up rather than blocking a CI job indefinitely.
 _HARD_CAP_SECONDS = 150 * 60
+# Status polls back off exponentially: a small first wait so a short upload/run isn't blocked for a
+# full fixed interval, doubling up to a ceiling so a long one still polls no faster than every 30s
+# (gentle on the Device Farm API). `_POLL_INTERVAL_SECONDS` is that ceiling — the old fixed interval.
+_POLL_INITIAL_SECONDS = 3
 _POLL_INTERVAL_SECONDS = 30
+
+
+def _next_poll_delay(previous: float) -> float:
+    """The next status-poll wait: double the previous one, capped at ``_POLL_INTERVAL_SECONDS``."""
+    return min(previous * 2, _POLL_INTERVAL_SECONDS)
+
 
 Platform = Literal["android", "ios"]
 
@@ -392,6 +402,7 @@ def _upload_one(
     created = client.create_upload(projectArn=project_arn, name=name, type=upload_type)["upload"]
     transfer.upload(created["url"], path)
     deadline = time.monotonic() + _HARD_CAP_SECONDS
+    delay: float = _POLL_INITIAL_SECONDS
     while True:
         upload = client.get_upload(arn=created["arn"])["upload"]
         status = upload["status"]
@@ -404,7 +415,8 @@ def _upload_one(
             raise DeviceFarmError(f"upload failed on Device Farm: {name}: {reason}")
         if time.monotonic() >= deadline:
             raise DeviceFarmError(f"upload did not complete within the 150-minute cap: {name}")
-        sleep(_POLL_INTERVAL_SECONDS)
+        sleep(delay)
+        delay = _next_poll_delay(delay)
 
 
 def _wait_run(
@@ -422,10 +434,12 @@ def _wait_run(
         DeviceFarmError: If the run does not complete within the 150-minute hard cap.
     """
     deadline = time.monotonic() + _HARD_CAP_SECONDS
+    delay: float = _POLL_INITIAL_SECONDS
     while client.get_run(arn=run_arn)["run"]["status"] != "COMPLETED":
         if time.monotonic() >= deadline:
             raise DeviceFarmError("run did not complete within the 150-minute cap")
-        sleep(_POLL_INTERVAL_SECONDS)
+        sleep(delay)
+        delay = _next_poll_delay(delay)
 
 
 def device_selection_for(platform: Platform, *, max_devices: int = 1) -> dict[str, Any]:

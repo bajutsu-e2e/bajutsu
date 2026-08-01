@@ -552,9 +552,9 @@ def evaluate(
             bare.append((i, a.request))
     assigned: dict[int, AssertionResult] = {}
     if len(bare) >= 2:
-        order = _assign_requests(exs, [req for _, req in bare])
-        for (i, req), ex_idx in zip(bare, order, strict=True):
-            assigned[i] = _request_assignment_result(req, ex_idx, exs)
+        order, had_candidate = _assign_requests(exs, [req for _, req in bare])
+        for (i, req), ex_idx, matched in zip(bare, order, had_candidate, strict=True):
+            assigned[i] = _request_assignment_result(req, ex_idx, exs, matched_any=matched)
     return [
         assigned[i] if i in assigned else evaluate_one(elements, a, exs, ctx=ctx)
         for i, a in enumerate(assertions)
