@@ -327,12 +327,15 @@ class TargetConfig(_Model):
     # a kind in the batch-provider registry. Validated at runtime, not here, so the deterministic
     # core imports no cloud SDK (BE-0112). Distinct from `deviceProvider` (the live-device topology).
     cloud_batch: str | None = Field(default=None, alias="cloudBatch")
-    # How many of this target's cloud-batch runs may reserve a device at once (BE-0336 Unit 4): the
-    # per-target device budget K. None = no cap from config (serve's fan-out is unbounded by this
-    # target; a per-request `deviceBudget` may still bound it). serve keys the job registry's
-    # concurrency cap on the batch device pool, so at most K runs reserve devices at once and the rest
-    # are deferred. Must be a positive integer when set — a non-positive literal (a "disable" typo)
-    # is rejected loudly at config load rather than silently meaning "unlimited" (determinism first).
+    # The device budget K for cloud-batch fan-out dispatched from this target (BE-0336 Unit 4). None =
+    # no cap from this target's config (the fan-out is unbounded by config; a per-request
+    # `deviceBudget` may still lower it). When set, serve keys the job registry's concurrency cap on
+    # the batch *provider* (the shared Device Farm device pool), so at most K runs reserve devices on
+    # that provider at once — across all targets and orgs sharing it. A target with `cloudBatch:
+    # devicefarm` and K=2 means "dispatch a fan-out only when fewer than 2 devicefarm runs are
+    # in-flight total, not just for this target." This is intentional: the cap bounds the real device
+    # quota, not each target's slice of it. Must be a positive integer — a non-positive literal is
+    # rejected at config load rather than silently meaning "unlimited" (determinism first).
     cloud_batch_budget: int | None = Field(default=None, alias="cloudBatchBudget", gt=0)
     device: str | None = None
     locale: str | None = None

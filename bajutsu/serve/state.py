@@ -261,9 +261,10 @@ class JobRegistry:
         the lock so two concurrent dispatches can't both slip past a cap (BE-0051). Returns None at
         the global cap, at the per-user cap for an identified ``job.actor`` (BE-0015 7c-3), at the
         per-org cap for ``job.org`` (BE-0016 Tier B pool fairness), or — for a cloud-batch job — at
-        the device budget for its batch device pool, keyed on ``job.batch.provider`` (BE-0336 Unit 4):
-        each reserved run holds one device, so this cap bounds the device count. Each cap ``<= 0`` is
-        unlimited; the batch cap applies only to a job that carries a ``batch`` request."""
+        the device budget for its batch *provider* pool, keyed on ``job.batch.provider`` (BE-0336
+        Unit 4): the count spans all targets and orgs sharing that provider (the contended resource),
+        so the cap bounds total in-flight device reservations on the provider, not a single target's
+        slice. Each cap ``<= 0`` is unlimited; the batch cap applies only when ``job.batch`` is set."""
         with self._lock:
             running = [j for j in self.jobs.values() if j.status == "running"]
             if max_concurrent > 0 and len(running) >= max_concurrent:
