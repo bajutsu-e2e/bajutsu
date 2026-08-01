@@ -573,6 +573,16 @@ def test_pointing_at_an_item_names_it_in_a_live_region() -> None:
         assert html.escape(f"{node['id']} — {node['title']}") in _PAGE
 
 
+def test_the_live_region_readout_carries_the_summary_too() -> None:
+    """The visual hover card is decorative (aria-hidden); the readout is its accessible fallback, so
+    it must speak the same Introduction excerpt the card shows, not just the id/title/status.
+    """
+    script = brd.filter_script()
+    pick_node = script[script.index("function pickNode") : script.index("function releaseNode")]
+    assert "data-summary" in pick_node
+    assert "readout.textContent" in pick_node and "summary" in pick_node
+
+
 def test_each_node_carries_its_title_and_summary_for_the_hover_card() -> None:
     """The hover/focus card (BE-0335) reads a node's title and Introduction excerpt off its own <a>."""
     for node in brd.map_layout(_ITEMS)["nodes"][:5]:

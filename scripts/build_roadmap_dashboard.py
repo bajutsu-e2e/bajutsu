@@ -1002,8 +1002,9 @@ _SCRIPT = """
     });
     mapSvg.classList.add('is-picking');
     if(readout){
+      var summary=node.getAttribute('data-summary');
       readout.textContent=node.getAttribute('data-caption')+' \u00b7 '
-        +node.getAttribute('data-status-label');
+        +node.getAttribute('data-status-label')+(summary?'. '+summary:'');
     }
     showCard(node);
   }
