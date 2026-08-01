@@ -33,6 +33,7 @@ from __future__ import annotations
 import io
 import json
 import shlex
+import stat
 import time
 import zipfile
 from collections.abc import Callable, Mapping, Sequence
@@ -53,7 +54,7 @@ Platform = Literal["android", "ios"]
 # custom-environment types on both platforms; only the app artifact differs — an Android APK
 # (`.aab` is not accepted) or an iOS `.ipa`. Keying by `Platform` lets `mypy --strict` catch a
 # missing or misspelt platform key here rather than silently widening to `dict[str, str]`.
-_APP_UPLOAD_TYPE: dict[Platform, str] = {"android": "ANDROID_APP", "ios": "IOS_APP"}
+APP_UPLOAD_TYPE: dict[Platform, str] = {"android": "ANDROID_APP", "ios": "IOS_APP"}
 _UPLOAD_TEST_PACKAGE = "APPIUM_PYTHON_TEST_PACKAGE"
 _UPLOAD_TEST_SPEC = "APPIUM_PYTHON_TEST_SPEC"
 
@@ -107,7 +108,7 @@ _PACKAGE_EXCLUDES = frozenset(
 # root (alongside a `tests/` directory). Bajutsu is a pyproject/uv project with no such file, and the
 # custom test spec installs it directly (`pip install "$DEVICEFARM_TEST_PACKAGE_PATH"`), so we
 # synthesize an empty one purely to satisfy the structural check rather than pin anything here.
-_REQUIREMENTS_TXT = (
+REQUIREMENTS_TXT = (
     "# Present only to satisfy Device Farm's APPIUM_PYTHON_TEST_PACKAGE validation.\n"
     '# Bajutsu is installed by the custom test spec (pip install "$DEVICEFARM_TEST_PACKAGE_PATH"),\n'
     "# so no runtime dependencies are pinned here.\n"
@@ -361,9 +362,11 @@ class Transfer(Protocol):
 
     def upload(self, url: str, path: Path) -> None:
         """PUT the file at `path` to the presigned `url`."""
+        raise NotImplementedError
 
     def download(self, url: str) -> bytes:
         """Fetch and return the raw bytes of the artifact at `url` (dispatch is `_store_artifact`)."""
+        raise NotImplementedError
 
 
 def _upload_one(
@@ -431,7 +434,7 @@ def submit_and_collect(
     package_zip: Path,
     spec_yaml: Path,
     dest: Path,
-    app_upload_type: str = _APP_UPLOAD_TYPE["android"],
+    app_upload_type: str = APP_UPLOAD_TYPE["android"],
     run_name: str = "bajutsu",
     sleep: Callable[[float], None] = time.sleep,
 ) -> Verdict:
@@ -517,14 +520,20 @@ def _safe_extract(zip_file: zipfile.ZipFile, dest: Path) -> None:
     """Extract every member of *zip_file* into *dest*, confining each to *dest* (zip-slip guard).
 
     The artifact zip comes from Device Farm's presigned URL; a member with a ``../`` or absolute
-    name would otherwise let ``extractall`` write outside *dest*. Each member is resolved and
-    checked to land strictly under *dest* before extracting (mirrors `serve.uploads.extract_bundle`).
+    name would otherwise let ``extractall`` write outside *dest*, and a symlink member could point
+    outside *dest* too. Each member is resolved and checked to land strictly under *dest*, and any
+    symlink member is rejected outright, before extracting (mirrors `serve.uploads.extract_bundle`).
 
     Raises:
-        DeviceFarmError: If any member resolves outside *dest* — fail loud rather than write astray.
+        DeviceFarmError: If any member resolves outside *dest* or is a symlink — fail loud rather
+            than write astray.
     """
     dest_root = dest.resolve()
     for member in zip_file.infolist():
+        # A symlink member could point outside `dest`; reject it outright (mirrors how
+        # `serve.uploads.extract_bundle` reads the Unix mode bits in `external_attr >> 16`).
+        if stat.S_ISLNK(member.external_attr >> 16):
+            raise DeviceFarmError(f"symlink in Device Farm artifact: {member.filename!r}")
         target = (dest / member.filename).resolve()
         if target != dest_root and dest_root not in target.parents:
             raise DeviceFarmError(f"unsafe path in Device Farm artifact: {member.filename!r}")

@@ -20,8 +20,8 @@ from pathlib import Path
 from typing import cast
 
 from bajutsu.cloud.devicefarm import (
-    _APP_UPLOAD_TYPE,
-    _REQUIREMENTS_TXT,
+    APP_UPLOAD_TYPE,
+    REQUIREMENTS_TXT,
     DeviceFarmClient,
     DeviceFarmError,
     build_package,
@@ -139,7 +139,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     for raw in args.package_entries:
         src, _, arcname = raw.partition("=")
         entries.append((Path(src), arcname or Path(src).name))
-    build_package(entries, args.out, extra_texts={"requirements.txt": _REQUIREMENTS_TXT})
+    build_package(entries, args.out, extra_texts={"requirements.txt": REQUIREMENTS_TXT})
     print(f"wrote package {args.out} and spec {spec_path}")
 
     if args.package_only:
@@ -156,7 +156,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         package_zip=args.out,
         spec_yaml=spec_path,
         dest=args.dest,
-        app_upload_type=_APP_UPLOAD_TYPE[args.platform],
+        app_upload_type=APP_UPLOAD_TYPE[args.platform],
     )
     print(f"bajutsu verdict: {'PASS' if verdict.ok else 'FAIL'} ({verdict.passed}/{verdict.total})")
     if verdict.failures:

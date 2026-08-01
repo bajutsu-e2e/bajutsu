@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import io
 import json
+import stat
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -432,6 +433,20 @@ def test_safe_extract_rejects_a_traversal_member(tmp_path: Path) -> None:
     with zipfile.ZipFile(zip_path) as zf, pytest.raises(DeviceFarmError, match="unsafe path"):
         _safe_extract(zf, dest)
     assert not (tmp_path / "escape.txt").exists()
+
+
+def test_safe_extract_rejects_a_symlink_member(tmp_path: Path) -> None:
+    # A symlink member could point outside `dest`; it must be rejected loud (DeviceFarmError) before
+    # extraction, mirroring how serve's extract_bundle refuses symlink entries.
+    zip_path = tmp_path / "symlink.zip"
+    link = zipfile.ZipInfo("runs/link")
+    link.external_attr = stat.S_IFLNK << 16
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.writestr(link, "/etc/passwd")
+    dest = tmp_path / "out"
+    dest.mkdir()
+    with zipfile.ZipFile(zip_path) as zf, pytest.raises(DeviceFarmError, match="symlink"):
+        _safe_extract(zf, dest)
 
 
 # ---------------------------------------------------------------------------
