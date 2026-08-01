@@ -583,6 +583,17 @@ def test_the_live_region_readout_carries_the_summary_too() -> None:
     assert "readout.textContent" in pick_node and "summary" in pick_node
 
 
+def test_map_node_href_is_escaped_like_its_other_attributes() -> None:
+    """A node's ``href`` is escaped consistently with its other ``data-*`` attributes.
+
+    Today's ``_item_href()`` output only ever holds URL-safe characters, but the map node was the
+    one attribute on the element left unescaped — inconsistent with the rest, and one slug away from
+    a malformed attribute if that ever changes.
+    """
+    for node in brd.map_layout(_ITEMS)["nodes"][:5]:
+        assert f'href="{html.escape(node["href"])}"' in _PAGE
+
+
 def test_each_node_carries_its_title_and_summary_for_the_hover_card() -> None:
     """The hover/focus card (BE-0335) reads a node's title and Introduction excerpt off its own <a>."""
     for node in brd.map_layout(_ITEMS)["nodes"][:5]:

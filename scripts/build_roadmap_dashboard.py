@@ -450,7 +450,8 @@ def _map_node(node: dict[str, Any]) -> str:
     """
     name = html.escape(f"{node['id']} — {node['title']}")
     return (
-        f'<a class="be-map-node" href="{node["href"]}" data-id="{html.escape(node["id"])}" '
+        f'<a class="be-map-node" href="{html.escape(node["href"])}" '
+        f'data-id="{html.escape(node["id"])}" '
         f'data-status="{html.escape(node["status"])}" data-search="{html.escape(node["search"])}" '
         f'data-caption="{name}" data-title="{html.escape(node["title"])}" '
         f'data-summary="{html.escape(node["summary"])}" '

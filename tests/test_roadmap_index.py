@@ -284,6 +284,21 @@ def test_extract_summary_still_strips_genuine_underscore_italics() -> None:
     assert bri.extract_summary(text) == "See the docs for more."
 
 
+def test_extract_summary_protects_code_spans_before_link_resolution() -> None:
+    """A code span is stashed *before* link stripping runs, so link-shaped text inside it survives.
+
+    Regression test: link stripping used to run first, so literal text that happens to look like a
+    markdown link — e.g. an Introduction quoting the ``Related`` field's own syntax — would already
+    be resolved away by the time the code span around it was noticed, corrupting content that was
+    never meant to be treated as a real link.
+    """
+    text = "## Introduction\n\nExample: `[BE-0014](../x.md)` is the syntax.\n\n## Motivation\n"
+    assert bri.extract_summary(text) == "Example: [BE-0014](../x.md) is the syntax."
+    # A real link whose visible text itself contains a code span still resolves as before.
+    text2 = "## Introduction\n\nSee [`Driver.wait`](url) for details.\n\n## Motivation\n"
+    assert bri.extract_summary(text2) == "See Driver.wait for details."
+
+
 def test_extract_summary_truncates_a_long_paragraph_at_a_word_boundary() -> None:
     """A paragraph past ``max_len`` is cut at the last whole word, not mid-word, and marked with …"""
     text = "## Introduction\n\n" + ("word " * 100).strip() + "\n\n## Motivation\n"

@@ -224,18 +224,19 @@ def extract_summary(text: str, *, max_len: int = 220) -> str:
     Used as a short at-a-glance overview (the dashboard relationship map's hover card, BE-0335)
     rather than as parsed metadata: every item's file already opens with one, so this reads it
     instead of asking an author to maintain a second, shorter description that could drift from the
-    real one. A markdown link keeps its visible text; bold/italic markers are stripped. An inline
-    code span's content is stashed behind a placeholder before that stripping runs and restored
-    verbatim afterward, so an identifier inside it (``` `__init__` ```, ``` `wait_for` ```) survives
-    untouched rather than losing its underscores to the emphasis rule. Returns an empty string when
-    the file has no ``## Introduction`` section (the legacy-format fixtures used in tests), so a
-    caller can treat "no summary" as ordinary rather than an error.
+    real one. An inline code span is stashed behind a placeholder *before* any other substitution
+    runs — including link resolution — and restored verbatim at the end, so its content (an
+    identifier like ``` `__init__` ``` or ``` `wait_for` ```, or even literal text that happens to
+    look like a markdown link) round-trips untouched rather than being mutated by a rule meant for
+    the surrounding prose. A markdown link outside a code span keeps its visible text; bold/italic
+    markers are stripped. Returns an empty string when the file has no ``## Introduction`` section
+    (the legacy-format fixtures used in tests), so a caller can treat "no summary" as ordinary
+    rather than an error.
     """
     match = _INTRO_RE.search(text)
     if not match:
         return ""
     paragraph = _WHITESPACE_RE.sub(" ", match.group(1)).strip()
-    paragraph = _MD_LINK_RE.sub(r"\1", paragraph)
     code_spans: list[str] = []
 
     def _stash(m: re.Match[str]) -> str:
@@ -243,6 +244,7 @@ def extract_summary(text: str, *, max_len: int = 220) -> str:
         return f"\x00{len(code_spans) - 1}\x00"
 
     paragraph = _MD_CODE_RE.sub(_stash, paragraph)
+    paragraph = _MD_LINK_RE.sub(r"\1", paragraph)
     paragraph = _MD_BOLD_RE.sub(lambda m: m.group(1) or m.group(2), paragraph)
     paragraph = _MD_ITALIC_RE.sub(lambda m: m.group(1) or m.group(2), paragraph)
     paragraph = _CODE_PLACEHOLDER_RE.sub(lambda m: code_spans[int(m.group(1))], paragraph)
