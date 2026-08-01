@@ -9,7 +9,7 @@
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0336") |
-| Implementing PR | [#1425](https://github.com/bajutsu-e2e/bajutsu/pull/1425) (Unit 1 — submitter core migration); [#1429](https://github.com/bajutsu-e2e/bajutsu/pull/1429) (Unit 2 — batch executor seam); [#1435](https://github.com/bajutsu-e2e/bajutsu/pull/1435) (Unit 3 — per-scenario fan-out); [#PENDING4](https://github.com/bajutsu-e2e/bajutsu/pull/PENDING4) (Unit 4 — device budget) |
+| Implementing PR | [#1425](https://github.com/bajutsu-e2e/bajutsu/pull/1425) (Unit 1 — submitter core migration); [#1429](https://github.com/bajutsu-e2e/bajutsu/pull/1429) (Unit 2 — batch executor seam); [#1435](https://github.com/bajutsu-e2e/bajutsu/pull/1435) (Unit 3 — per-scenario fan-out); [#1438](https://github.com/bajutsu-e2e/bajutsu/pull/1438) (Unit 4 — device budget) |
 | Topic | Device-cloud execution |
 | Related | [BE-0235](../BE-0235-aws-device-farm-submitter/BE-0235-aws-device-farm-submitter.md), [BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction.md), [BE-0198](../BE-0198-serve-state-job-registry-split/BE-0198-serve-state-job-registry-split.md) |
 <!-- /BE-METADATA -->
@@ -176,7 +176,7 @@ Log:
   target with no `cloudBatch`, one with no installable `appPath`, or a config/scenario that sits outside
   the run directory the provider packages is refused loudly. The device budget that bounds how many of
   these reserve a device at once is Unit 4.
-- [#PENDING4](https://github.com/bajutsu-e2e/bajutsu/pull/PENDING4) (Unit 4) — bounded the per-scenario fan-out with the device
+- [#1438](https://github.com/bajutsu-e2e/bajutsu/pull/1438) (Unit 4) — bounded the per-scenario fan-out with the device
   budget `K`: a new per-target `cloudBatchBudget` (`TargetConfig` → `Effective`) resolves the default
   device count, and `start_run_set` keys the job registry's concurrency cap on the batch provider (the
   contended device pool) so at most `K` of a target's cloud runs reserve a device at once — the rest are

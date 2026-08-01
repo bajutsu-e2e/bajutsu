@@ -9,7 +9,7 @@
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0336") |
-| 実装 PR | [#1425](https://github.com/bajutsu-e2e/bajutsu/pull/1425)（単位1 — submitter core の移行）、[#1429](https://github.com/bajutsu-e2e/bajutsu/pull/1429)（単位2 — batch executor seam）、[#1435](https://github.com/bajutsu-e2e/bajutsu/pull/1435)（単位3 — シナリオ単位の分割）、[#PENDING4](https://github.com/bajutsu-e2e/bajutsu/pull/PENDING4)（単位4 — デバイス予算） |
+| 実装 PR | [#1425](https://github.com/bajutsu-e2e/bajutsu/pull/1425)（単位1 — submitter core の移行）、[#1429](https://github.com/bajutsu-e2e/bajutsu/pull/1429)（単位2 — batch executor seam）、[#1435](https://github.com/bajutsu-e2e/bajutsu/pull/1435)（単位3 — シナリオ単位の分割）、[#1438](https://github.com/bajutsu-e2e/bajutsu/pull/1438)（単位4 — デバイス予算） |
 | トピック | Device-cloud execution |
 | 関連 | [BE-0235](../BE-0235-aws-device-farm-submitter/BE-0235-aws-device-farm-submitter-ja.md), [BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction-ja.md), [BE-0198](../BE-0198-serve-state-job-registry-split/BE-0198-serve-state-job-registry-split-ja.md) |
 <!-- /BE-METADATA -->
@@ -170,7 +170,7 @@ serve の利用者ごと・org ごとのキャップや run の履歴も共有�
   途中まで分割を残さず要求全体を fail-closed にします。web 対象、`cloudBatch` 未設定の対象、インストール
   可能な `appPath` を持たない対象、プロバイダがパッケージ化する run ディレクトリの外にある config や
   シナリオは、明示的に拒否します。同時にデバイスを確保できる本数を抑えるデバイス予算は単位4です。
-- [#PENDING4](https://github.com/bajutsu-e2e/bajutsu/pull/PENDING4)（単位4）— シナリオ単位の分割を、デバイス予算 `K` で抑えるようにしました。
+- [#1438](https://github.com/bajutsu-e2e/bajutsu/pull/1438)（単位4）— シナリオ単位の分割を、デバイス予算 `K` で抑えるようにしました。
   対象ごとの新しい `cloudBatchBudget`（`TargetConfig` → `Effective`）が既定のデバイス台数を解決し、
   `start_run_set` はジョブレジストリの同時実行キャップを batch プロバイダ（競合するデバイスプール）で
   キー付けします。これにより、対象の cloud run が同時にデバイスを確保するのは高々 `K` 件までで、残りは
