@@ -1048,8 +1048,8 @@ _SCRIPT = """
 
   // Zoom scales the finished SVG by explicit pixel size, relative to however it is rendered right
   // now (its default fill-the-container width, or a size an earlier click already set) \u2014 so each
-  // click is a step from what the reader sees, not from an abstract baseline. Reset clears the
-  // inline size and returns to the default responsive sizing.
+  // click is a step from what the reader sees, not from an abstract baseline. Reset restores the
+  // default responsive sizing (still floored at the natural size, per BE-0337).
   var ZOOM_FACTOR=1.25, ZOOM_MIN_PX=200, ZOOM_MAX_PX=8000;
   var zoomBtns=document.querySelectorAll('.be-map-zoom-btn');
   function mapWidthPx(){
@@ -1060,8 +1060,22 @@ _SCRIPT = """
     var vb=mapSvg.viewBox.baseVal;
     if(!vb || !vb.width) return;
     px=Math.max(ZOOM_MIN_PX, Math.min(ZOOM_MAX_PX, px));
+    // The svg also carries an inline min-width (its natural size, BE-0337) that would otherwise
+    // clamp a zoom-out below it while style.width \u2014 and mapWidthPx() reading it back \u2014 moved on
+    // regardless, desyncing the tracked size from what is actually on screen. Zoom explicitly
+    // overrides that floor so shrinking below natural size (to see more of the map at once) works.
     mapSvg.style.width=px+'px';
+    mapSvg.style.minWidth=px+'px';
     mapSvg.style.height=(px*vb.height/vb.width)+'px';
+  }
+  function resetMapWidth(){
+    var vb=mapSvg.viewBox.baseVal;
+    mapSvg.style.width='';
+    mapSvg.style.height='';
+    // Restore the natural-size floor rather than clearing it outright \u2014 clearing would drop
+    // BE-0337's "never below natural size" rule for good, since the inline min-width the page
+    // shipped with and any zoom-set value share the same style property.
+    mapSvg.style.minWidth=(vb && vb.width) ? vb.width+'px' : '';
   }
   zoomBtns.forEach(function(btn){
     btn.addEventListener('click', function(){
@@ -1069,7 +1083,7 @@ _SCRIPT = """
       if(!mapSvg) return;
       if(action==='in') setMapWidth(mapWidthPx()*ZOOM_FACTOR);
       else if(action==='out') setMapWidth(mapWidthPx()/ZOOM_FACTOR);
-      else { mapSvg.style.width=''; mapSvg.style.height=''; }
+      else resetMapWidth();
     });
   });
 

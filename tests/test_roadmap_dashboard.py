@@ -610,6 +610,25 @@ def test_the_map_offers_zoom_and_full_size_controls() -> None:
     assert 'aria-pressed="false"' in _PAGE.split('class="be-map-expand"', 1)[1][:120]
 
 
+def test_zoom_overrides_the_svgs_natural_size_floor() -> None:
+    """Zooming must move the same floor it reads, or a zoom-out below natural size silently does nothing.
+
+    Regression test: the svg carries an inline ``min-width`` (BE-0337's natural-size floor). Setting
+    only ``style.width`` while that min-width stays at its original value clamps the *rendered* size
+    below it, desyncing it from the tracked ``style.width`` that later zoom clicks step from —
+    ``setMapWidth`` must move ``min-width`` in lockstep, and ``resetMapWidth`` must restore the floor
+    to the natural size rather than dropping it outright.
+    """
+    script = brd.filter_script()
+    set_width = script[
+        script.index("function setMapWidth") : script.index("function resetMapWidth")
+    ]
+    assert "mapSvg.style.minWidth=px" in set_width
+    reset_width = script[script.index("function resetMapWidth") : script.index("zoomBtns.forEach")]
+    assert "mapSvg.style.minWidth=" in reset_width
+    assert "vb.width" in reset_width
+
+
 def test_the_map_ships_a_hover_card_container() -> None:
     """The card's four fields (id, status, title, summary) are rendered empty and filled by JS."""
     map_view = _PAGE.split('class="be-map-view', 1)[1]
