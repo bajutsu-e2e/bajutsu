@@ -579,7 +579,13 @@ jobs:
   codegen:
     name: codegen (xcuitest)
     needs: changes
-    if: needs.changes.outputs.relevant == 'true'
+    # BE-0338: runs on a shared-code change, or when one of the scenarios it codegens changed. Those
+    # scenarios (components.yaml + the four coverage scenarios) are declared in demos/showcase/Makefile's
+    # `ui-test` / `ui-test-coverage` targets, which scripts/e2e_changes.py folds into `affected`.
+    if: >-
+      needs.changes.outputs.relevant == 'true' &&
+      (needs.changes.outputs.shared == 'true' ||
+      contains(fromJSON(needs.changes.outputs.affected), 'codegen'))
     runs-on: macos-latest
     # Cap the metered macOS job (10x billing): a hung Simulator/xcodebuild would otherwise run to
     # the 6h default. Typical end-to-end is ~10min, so 25 catches a real hang with comfortable headroom.
@@ -773,7 +779,13 @@ jobs:
   visual:
     name: visual (xcuitest)
     needs: changes
-    if: needs.changes.outputs.relevant == 'true'
+    # BE-0338: runs on a shared-code change, or when its pixel VRT scenario changed. That scenario
+    # (visual/visual_ios.yaml) is declared in demos/showcase/Makefile's `e2e-visual` target, which
+    # scripts/e2e_changes.py folds into `affected`.
+    if: >-
+      needs.changes.outputs.relevant == 'true' &&
+      (needs.changes.outputs.shared == 'true' ||
+      contains(fromJSON(needs.changes.outputs.affected), 'visual'))
     runs-on: macos-latest
     # A cold Xcode build (~2.5min) + a fresh Simulator boot (~80s) + the VRT run is well under this;
     # 25 catches a hung Simulator/runner on the metered macOS runner with comfortable headroom.

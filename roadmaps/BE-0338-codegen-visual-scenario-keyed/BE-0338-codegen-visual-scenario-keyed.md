@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0338](BE-0338-codegen-visual-scenario-keyed.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0338") |
+| Implementing PR | _pending_ |
 | Topic | Contributor workflow |
 | Related | [BE-0322](../BE-0322-e2e-scenario-scoped-filter/BE-0322-e2e-scenario-scoped-filter.md) |
 <!-- /BE-METADATA -->
@@ -130,11 +131,11 @@ Simulator and builds native tests — so the wasted runs are worth reclaiming.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — `Makefile` ground-truth reader for the `codegen` and `visual` scenario sets.
-- [ ] Unit 2 — drift-guard test tying the attribution to the `Makefile` targets.
-- [ ] Unit 3 — attribute the two jobs' scenarios in `e2e_changes.py`; update its docstring.
-- [ ] Unit 4 — wire the `codegen` and `visual` `if:` onto the scenario-keyed condition.
-- [ ] Unit 5 — bilingual CI documentation and reciprocal BE-0322 cross-links.
+- [x] Unit 1 — `Makefile` ground-truth reader for the `codegen` and `visual` scenario sets.
+- [x] Unit 2 — drift-guard test tying the attribution to the `Makefile` targets.
+- [x] Unit 3 — attribute the two jobs' scenarios in `e2e_changes.py`; update its docstring.
+- [x] Unit 4 — wire the `codegen` and `visual` `if:` onto the scenario-keyed condition.
+- [x] Unit 5 — bilingual CI documentation and reciprocal BE-0322 cross-links.
 
 ## References
 

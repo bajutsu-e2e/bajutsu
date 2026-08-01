@@ -43,12 +43,17 @@ Alongside ``relevant`` the module emits two more outputs the lane's jobs read: `
 (a shared-code change — driver / runner / app / workflow code that can affect any scenario, so the
 whole lane fires) and ``affected`` (a JSON array of the scenario-keyed jobs a scenario-only change
 reached). A scenario-keyed job runs when ``relevant`` is true and (``shared`` is true, or the job is
-in ``affected``); a dimension job that declares no scenario (codegen / conformance / visual) runs
-whenever ``relevant`` is true. The decision over-selects toward the whole lane — a shared-code
+in ``affected``); a dimension job that declares no scenario runs whenever ``relevant`` is true. On
+iOS the ``codegen`` and ``visual`` jobs are scenario-keyed too (BE-0338): they declare their
+scenarios in ``demos/showcase/Makefile`` targets rather than a workflow input, so ``job_scenario_map``
+never sees them — ``lane_job_scenario_map`` folds those Makefile-declared scenarios into the map,
+leaving ``conformance`` (which drives the whole harness, keyed on no scenario) the lane's one
+dimension job. The decision over-selects toward the whole lane — a shared-code
 change, an unattributable scenario fragment, an unreadable workflow, and a lane with no
 scenario-keyed jobs (Android, web) all fall back to ``shared`` — so it never skips a job a change
-could have broken. It reads only the ``git`` diff and the ``scenarios:`` each job already declares:
-no large language model touches the decision, and it has no bearing on any run's pass/fail verdict.
+could have broken. It reads only the ``git`` diff, the ``scenarios:`` each job declares, and (for the
+iOS ``codegen`` / ``visual`` jobs) the showcase Makefile targets those jobs run: no large language
+model touches the decision, and it has no bearing on any run's pass/fail verdict.
 """
 
 from __future__ import annotations
@@ -387,6 +392,24 @@ def job_scenario_map(workflow_text: str) -> dict[str, set[str]]:
     return result
 
 
+# The `codegen` and `visual` jobs declare their scenarios in `demos/showcase/Makefile` targets, not
+# in a workflow `scenarios:` input (BE-0338). `codegen` codegens and runs the `ui-test` +
+# `ui-test-coverage` targets; `visual` runs the `e2e-visual` pixel VRT. Their attribution is read from
+# those recipes — the one place the scenarios are named — so it cannot be a second copy that a
+# Makefile edit outdates. `test_makefile_declared_scenarios_match_the_targets` pins the extracted set,
+# so a target gaining or losing a scenario fails `make check` unless the attribution moves with it,
+# the same no-drift invariant BE-0322's action-input map holds (`conformance` stays a dimension job:
+# it drives the whole harness and declares no scenario subset, so it is deliberately absent here).
+_MAKEFILE_JOB_TARGETS: dict[str, tuple[str, ...]] = {
+    "codegen": ("ui-test", "ui-test-coverage"),
+    "visual": ("e2e-visual",),
+}
+
+# A `demos/showcase/scenarios/…` YAML path as it appears literally in a Makefile recipe — the same
+# repo-root-relative form `changed_files` and `_LANE_SCENARIO_RE` compare against.
+_MAKEFILE_SCENARIO_RE = re.compile(r"demos/showcase/scenarios/[\w./-]+\.ya?ml")
+
+
 def affected_jobs(changed_scenarios: Iterable[str], job_map: dict[str, set[str]]) -> set[str]:
     """The jobs whose declared scenarios intersect the changed scenario files.
 
@@ -397,6 +420,64 @@ def affected_jobs(changed_scenarios: Iterable[str], job_map: dict[str, set[str]]
     return {job for job, scenarios in job_map.items() if scenarios & changed}
 
 
+def _makefile_target_scenarios(makefile_text: str, target: str) -> set[str]:
+    """The scenario files a Makefile target's recipe names (BE-0338).
+
+    Scans the tab-indented recipe lines following the target header and collects every
+    ``demos/showcase/scenarios/…yaml`` path they reference. Blank and comment lines inside the recipe
+    are skipped; the first column-0 line that is neither blank nor a comment ends the recipe — so a
+    prefix-sharing target (``ui-test`` vs ``ui-test-coverage``) or a comment between recipes never
+    bleeds one target's scenarios into another's.
+    """
+    header_re = re.compile(rf"^{re.escape(target)}\s*:(?!=)")
+    scenarios: set[str] = set()
+    in_recipe = False
+    for line in makefile_text.splitlines():
+        if in_recipe:
+            if line.startswith("\t"):
+                # A tab-then-`#` line is a shell comment `make` never runs, so it names no scenario
+                # the target exercises — skip it, the same as a column-0 comment.
+                if not line.lstrip().startswith("#"):
+                    scenarios.update(_MAKEFILE_SCENARIO_RE.findall(line))
+                continue
+            if not line.strip() or line.lstrip().startswith("#"):
+                continue  # blank / comment within or just after the recipe
+            in_recipe = False  # a real column-0 line ends the recipe
+        if header_re.match(line):
+            in_recipe = True
+    return scenarios
+
+
+def makefile_job_scenarios(makefile_text: str) -> dict[str, set[str]]:
+    """Map ``codegen`` / ``visual`` to the scenarios their showcase Makefile targets run (BE-0338).
+
+    Raises:
+        ValueError: a mapped job's targets name no scenario — a recipe rename or a parse failure. The
+            caller falls back to firing the whole lane rather than narrowing a job to nothing on a
+            mis-read map, the same fail-closed direction ``job_scenario_map`` takes.
+    """
+    result: dict[str, set[str]] = {}
+    for job, targets in _MAKEFILE_JOB_TARGETS.items():
+        scenarios: set[str] = set()
+        for target in targets:
+            scenarios |= _makefile_target_scenarios(makefile_text, target)
+        if not scenarios:
+            raise ValueError(
+                f"showcase Makefile targets {targets} for job {job!r} name no scenarios"
+            )
+        result[job] = scenarios
+    return result
+
+
+def showcase_makefile_text() -> str | None:
+    """The text of the showcase Makefile, or None when it is absent (BE-0338)."""
+    path = _REPO_ROOT / "demos" / "showcase" / "Makefile"
+    try:
+        return path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+
+
 def lane_workflow_text(lane: str) -> str | None:
     """The text of ``lane``'s E2E workflow file, or None when it is absent."""
     path = _REPO_ROOT / ".github" / "workflows" / f"{lane}-e2e.yml"
@@ -404,6 +485,30 @@ def lane_workflow_text(lane: str) -> str | None:
         return path.read_text(encoding="utf-8")
     except OSError:
         return None
+
+
+def lane_job_scenario_map(lane: str, workflow_text: str) -> dict[str, set[str]]:
+    """The full job-to-scenario map for ``lane`` (BE-0322 + BE-0338).
+
+    The workflow's own ``scenarios:`` declarations (``job_scenario_map``), plus — on the iOS lane
+    only — the ``codegen`` / ``visual`` scenarios declared in the showcase Makefile, folded in so a
+    change to one of them names its job in ``affected``. Android and web key no jobs on scenarios, so
+    their map is the workflow map unchanged.
+
+    Raises:
+        ValueError: the workflow YAML, or (on iOS) the showcase Makefile, can't be parsed. The caller
+            falls back to firing the whole lane.
+    """
+    job_map = job_scenario_map(workflow_text)
+    if lane == DEFAULT_LANE:
+        makefile_text = showcase_makefile_text()
+        if makefile_text is None:
+            raise ValueError(
+                "showcase Makefile is absent; cannot key codegen / visual on scenarios"
+            )
+        for job, scenarios in makefile_job_scenarios(makefile_text).items():
+            job_map.setdefault(job, set()).update(scenarios)
+    return job_map
 
 
 def _affected_or_fallback(changed: list[str], lane: str) -> list[str] | None:
@@ -418,7 +523,7 @@ def _affected_or_fallback(changed: list[str], lane: str) -> list[str] | None:
     if text is None:
         return None
     try:
-        job_map = job_scenario_map(text)
+        job_map = lane_job_scenario_map(lane, text)
     except ValueError:
         return None
     scenario_re = _LANE_SCENARIO_RE[lane]

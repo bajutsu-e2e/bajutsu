@@ -11,6 +11,7 @@
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0322") |
 | Implementing PR | [#1375](https://github.com/bajutsu-e2e/bajutsu/pull/1375) |
 | Topic | Contributor workflow |
+| Related | [BE-0338](../BE-0338-codegen-visual-scenario-keyed/BE-0338-codegen-visual-scenario-keyed.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
