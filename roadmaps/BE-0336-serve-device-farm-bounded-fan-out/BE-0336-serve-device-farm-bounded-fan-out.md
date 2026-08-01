@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-serve-device-farm-bounded-fan-out-ja.md)
+**English** · [日本語](BE-0336-serve-device-farm-bounded-fan-out-ja.md)
 
-# BE-XXXX — serve-driven Device Farm dispatch with bounded per-scenario fan-out
+# BE-0336 — serve-driven Device Farm dispatch with bounded per-scenario fan-out
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-serve-device-farm-bounded-fan-out.md) |
+| Proposal | [BE-0336](BE-0336-serve-device-farm-bounded-fan-out.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0336") |
 | Topic | Device-cloud execution |
 | Related | [BE-0235](../BE-0235-aws-device-farm-submitter/BE-0235-aws-device-farm-submitter.md), [BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction.md), [BE-0198](../BE-0198-serve-state-job-registry-split/BE-0198-serve-state-job-registry-split.md) |
 <!-- /BE-METADATA -->
