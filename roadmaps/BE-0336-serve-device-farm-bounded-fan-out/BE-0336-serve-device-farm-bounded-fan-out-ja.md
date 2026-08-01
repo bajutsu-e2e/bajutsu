@@ -148,8 +148,9 @@ serve の利用者ごと・org ごとのキャップや run の履歴も共有�
   serve の分割と executor が、カバレッジ計測対象の経路で 1 つの submitter を共有します。
   `scripts/devicefarm_submit.py` は argparse と実際の boto3/urllib アダプタだけを持つ薄い CLI ラッパに
   なりました。シナリオ1件の呼び出しを分割の単位として確認しています（シナリオ1件の spec は
-  `bajutsu run` をちょうど1つだけ描画します）。振る舞いは不変で、既存の fake AWS スイートはそのまま
-  通ります。
+  `bajutsu run` をちょうど1つだけ生成します）。移設に加えて、成果物の収集を堅牢にしました。
+  `_safe_extract` は symlink メンバーを拒否し、`_store_artifact` は成果物の拡張子からパス区切りを
+  取り除きます（いずれも新しいテスト付き）。既存の fake AWS スイートはそのまま通ります。
 
 ## 参考
 

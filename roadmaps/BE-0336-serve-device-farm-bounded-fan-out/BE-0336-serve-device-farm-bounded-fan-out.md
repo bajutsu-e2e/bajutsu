@@ -153,7 +153,9 @@ Log:
   fan-out and executor reuse one submitter on the coverage-measured path; `scripts/devicefarm_submit.py`
   is now a thin CLI wrapper holding only argparse and the real boto3/urllib adapters. Confirmed the
   one-scenario invocation as the fan-out unit (a single-scenario spec renders exactly one `bajutsu run`).
-  No behavior change — the existing faked-AWS suite passes unchanged.
+  Beyond the move, this hardens artifact collection: `_safe_extract` now rejects symlink members and
+  `_store_artifact` sanitizes the artifact extension against path separators, each with a new test. The
+  existing faked-AWS suite passes unchanged.
 
 ## References
 
