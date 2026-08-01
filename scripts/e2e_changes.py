@@ -452,19 +452,23 @@ def makefile_job_scenarios(makefile_text: str) -> dict[str, set[str]]:
     """Map ``codegen`` / ``visual`` to the scenarios their showcase Makefile targets run (BE-0338).
 
     Raises:
-        ValueError: a mapped job's targets name no scenario — a recipe rename or a parse failure. The
-            caller falls back to firing the whole lane rather than narrowing a job to nothing on a
-            mis-read map, the same fail-closed direction ``job_scenario_map`` takes.
+        ValueError: any mapped target names no scenario — a recipe rename or a parse failure. Checked
+            per target, not per job: a job whose second target still yields scenarios would otherwise
+            hide a first target that silently went empty, dropping that target's scenarios from the
+            job's set and under-attributing it. Failing on the empty target instead makes the caller
+            fall back to firing the whole lane, the same fail-closed direction ``job_scenario_map``
+            takes.
     """
     result: dict[str, set[str]] = {}
     for job, targets in _MAKEFILE_JOB_TARGETS.items():
         scenarios: set[str] = set()
         for target in targets:
-            scenarios |= _makefile_target_scenarios(makefile_text, target)
-        if not scenarios:
-            raise ValueError(
-                f"showcase Makefile targets {targets} for job {job!r} name no scenarios"
-            )
+            target_scenarios = _makefile_target_scenarios(makefile_text, target)
+            if not target_scenarios:
+                raise ValueError(
+                    f"showcase Makefile target {target!r} for job {job!r} names no scenarios"
+                )
+            scenarios |= target_scenarios
         result[job] = scenarios
     return result
 

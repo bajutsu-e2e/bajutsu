@@ -1024,6 +1024,23 @@ def test_makefile_job_scenarios_raises_when_a_target_names_no_scenario() -> None
         makefile_job_scenarios(empty)
 
 
+def test_makefile_job_scenarios_raises_per_target_not_per_job() -> None:
+    # Fail-closed per target: if one of a job's targets goes empty (renamed/broken) while another
+    # still yields scenarios, the union is non-empty — but the empty target's scenarios silently drop
+    # from the job's set, under-attributing it. The raise must fire on the empty target, naming it, so
+    # the caller falls back to the whole lane rather than narrowing a job on a half-read map.
+    half = (
+        "ui-test:\n"
+        "\techo renamed away, names no scenario\n"
+        "ui-test-coverage:\n"
+        "\tuv run bajutsu codegen demos/showcase/scenarios/text_editing.yaml -o x.swift\n"
+        "e2e-visual:\n"
+        "\tuv run bajutsu run --scenario demos/showcase/scenarios/visual/visual_ios.yaml\n"
+    )
+    with pytest.raises(ValueError, match="ui-test"):
+        makefile_job_scenarios(half)
+
+
 def test_makefile_declared_scenarios_match_the_targets() -> None:
     # BE-0338 drift guard — the linchpin. The `codegen` / `visual` attribution is read from the
     # showcase Makefile recipes (never a second hand-written copy), but pin the extracted set against
@@ -1085,19 +1102,26 @@ def test_makefile_target_job_map_covers_only_the_two_keyed_jobs() -> None:
 
 
 def test_makefile_job_targets_match_the_workflow_make_invocations() -> None:
-    # Close the loop between `_MAKEFILE_JOB_TARGETS` and the actual workflow (BE-0338 follow-up).
-    # `_MAKEFILE_JOB_TARGETS` names, per job, which Makefile targets the job runs — and those targets
-    # are what `makefile_job_scenarios` reads to attribute scenarios. If a future edit changes a job's
-    # `make` invocation (adds a target, renames one) without updating this dict, the filter silently
-    # under-selects, the exact miss BE-0338 exists to prevent. Pin it: for every `(job, targets)` in
-    # `_MAKEFILE_JOB_TARGETS`, every target must appear as a `make -C demos/showcase <target>` step
-    # somewhere in that job's block in ios-e2e.yml, so a workflow edit that changes a job's Makefile
-    # targets fails the gate unless the dict moves with it.
+    # Close the loop between `_MAKEFILE_JOB_TARGETS` and the actual workflow (BE-0338 follow-up), in
+    # BOTH directions, so the dict can neither list a target the job no longer runs nor omit a
+    # scenario-bearing target the job does run:
+    #   - rename/removal: every target the dict lists must appear as a `make -C demos/showcase
+    #     <target>` step in that job's block — so renaming a listed target out of the workflow (and
+    #     `makefile_job_scenarios` then reading a target the job no longer runs) fails here.
+    #   - addition: every `make -C demos/showcase <target>` step in the job's block whose Makefile
+    #     recipe is *scenario-bearing* must be in the dict — so adding a new scenario target to a job
+    #     without listing it (leaving its scenario silently unattributed, an under-fire) fails here.
+    # The addition check filters on scenario-bearing recipes via `_makefile_target_scenarios`, so the
+    # non-scenario build targets both jobs legitimately invoke (`swiftui-build`, `runner-build`) are
+    # ignored rather than forced into the dict.
     text = lane_workflow_text("ios")
     assert text is not None
-    # Extract a rough "job section" for each Makefile-keyed job: collect lines from the job's header
-    # until the next same-level (2-space-indented) job header.
+    makefile = showcase_makefile_text()
+    assert makefile is not None
+    # Extract a rough "job section" for each job: collect lines from the job's header until the next
+    # same-level (2-space-indented) job header.
     job_section_re = re.compile(r"^  ([A-Za-z0-9_-]+):\s*(?:#.*)?$")
+    make_step_re = re.compile(r"make -C demos/showcase (\S+)")
     sections: dict[str, list[str]] = {}
     current_job: str | None = None
     for line in text.splitlines():
@@ -1108,11 +1132,20 @@ def test_makefile_job_targets_match_the_workflow_make_invocations() -> None:
     for job, targets in _MAKEFILE_JOB_TARGETS.items():
         assert job in sections, f"job {job!r} not found in ios-e2e.yml"
         section_text = "\n".join(sections[job])
+        # rename/removal: each listed target is still invoked.
         for target in targets:
             assert f"make -C demos/showcase {target}" in section_text, (
                 f"ios-e2e.yml job {job!r} has no `make -C demos/showcase {target}` step, but "
                 f"_MAKEFILE_JOB_TARGETS[{job!r}] lists it — update the dict or the workflow."
             )
+        # addition: each scenario-bearing target the job invokes is listed.
+        for invoked in make_step_re.findall(section_text):
+            if _makefile_target_scenarios(makefile, invoked):
+                assert invoked in targets, (
+                    f"ios-e2e.yml job {job!r} runs `make -C demos/showcase {invoked}`, whose recipe "
+                    f"names scenarios, but _MAKEFILE_JOB_TARGETS[{job!r}] omits it — a change to that "
+                    f"scenario would not fire {job!r}. Add {invoked!r} to the dict."
+                )
 
 
 # --- main() end to end over the real iOS workflow (BE-0322) --------------------------------------
