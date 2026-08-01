@@ -7,9 +7,9 @@
 |---|---|
 | 提案 | [BE-0336](BE-0336-serve-device-farm-bounded-fan-out-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0336") |
-| 実装 PR | [#1425](https://github.com/bajutsu-e2e/bajutsu/pull/1425)（単位1 — submitter core の移行）、[#1429](https://github.com/bajutsu-e2e/bajutsu/pull/1429)（単位2 — batch executor seam）、[#1435](https://github.com/bajutsu-e2e/bajutsu/pull/1435)（単位3 — シナリオ単位の分割）、[#1438](https://github.com/bajutsu-e2e/bajutsu/pull/1438)（単位4 — デバイス予算）、[#1440](https://github.com/bajutsu-e2e/bajutsu/pull/1440)（単位5 — 長時間ポーリングの永続化） |
+| 実装 PR | [#1425](https://github.com/bajutsu-e2e/bajutsu/pull/1425)（単位1 — submitter core の移行）、[#1429](https://github.com/bajutsu-e2e/bajutsu/pull/1429)（単位2 — batch executor seam）、[#1435](https://github.com/bajutsu-e2e/bajutsu/pull/1435)（単位3 — シナリオ単位の分割）、[#1438](https://github.com/bajutsu-e2e/bajutsu/pull/1438)（単位4 — デバイス予算）、[#1440](https://github.com/bajutsu-e2e/bajutsu/pull/1440)（単位5 — 長時間ポーリングの永続化）、[#1441](https://github.com/bajutsu-e2e/bajutsu/pull/1441)（単位6 — ドキュメントと fake AWS 検証） |
 | トピック | Device-cloud execution |
 | 関連 | [BE-0235](../BE-0235-aws-device-farm-submitter/BE-0235-aws-device-farm-submitter-ja.md), [BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction-ja.md), [BE-0198](../BE-0198-serve-state-job-registry-split/BE-0198-serve-state-job-registry-split-ja.md) |
 <!-- /BE-METADATA -->
@@ -138,7 +138,7 @@ serve の利用者ごと・org ごとのキャップや run の履歴も共有�
   要求ごとに上書きでき、Device Farm の `maxDevices` を1に固定する。
 - [x] 長時間ポーリングのための永続化 — ホスティング用の backend で queued/polling/done の状態を永続化し、
   ローカルには best-effort な経路を保つ。
-- [ ] ドキュメントとテスト — 英日両言語の使い方の更新と、分割・キャップの fake AWS による検証。
+- [x] ドキュメントとテスト — 英日両言語の使い方の更新と、分割・キャップの fake AWS による検証。
 
 ログ:
 
@@ -194,6 +194,19 @@ serve の利用者ごと・org ごとのキャップや run の履歴も共有�
   単一プロセス backend は checkpoint を渡しません（そこでは再起動で in-memory の状態がすべて失われるため）。設計が
   求める、より薄い best-effort な経路を保ちます。判定経路には触れておらず、in-memory の AWS fake で端から端まで
   検証します。英日両言語の使い方と、より広い fake AWS の検証は単位6です。
+- [#1441](https://github.com/bajutsu-e2e/bajutsu/pull/1441)（単位6）— serve からの投入経路を文書化し、fake AWS の
+  検証を広げて、この項目を締めくくりました。`docs/devicefarm.md` と `docs/ja/` のミラーに「serve からのディスパッチ」の
+  節を加えました。すなわち、submitter の直列 1 実行と対比したシナリオ単位の fan-out、ターゲット単位の 2 つの設定項目
+  （プロバイダーを選ぶ `cloudBatch`、プロバイダープールでキーされるデバイス予算 `K` を定める `cloudBatchBudget`）、
+  `POST /api/run-set` 要求（任意の `scenarios` 部分集合と下げるだけの `deviceBudget`、未知シナリオでの fail-closed、
+  予算が埋まったときの通常の部分ディスパッチ、そして明示的な拒否）、ホスティング backend での再起動をまたぐ
+  checkpoint、変わらない manifest 判定です。新しい `tests/serve/test_run_set_devicefarm.py` が、fan-out を実際の
+  `DeviceFarmBatchProvider` 経由で in-memory の Device Farm fake に対して端から端まで駆動します。これは先行する単位が
+  残したギャップです（`test_run_set` は投入層で止まり、`test_batch_provider` は単一シナリオを走らせるだけでした）。
+  3 つのシナリオが 3 つの投入済み run へ fan-out し、それぞれが自分の run を収めて PASS 判定を出すこと、失敗する
+  manifest が失敗ジョブとして表面化すること（判定は Device Farm の分類ではなく `manifest.json` 由来）、そしてデバイス
+  予算が fake の fan-out を `K` 件に抑えることを検証します。プロダクトコードは変更していません。キャップのプロバイダー
+  キー付きの計数は `test_job_registry_caps_concurrent_batch_by_provider_pool` が引き続き覆います。
 
 ## 参考
 
