@@ -189,7 +189,7 @@ serve の利用者ごと・org ごとのキャップや run の履歴も共有�
   `on_scheduled` コールバックで通知し、そこから切り出した `collect_run` が既に投入済みの run をポーリングして
   ダウンロードします。これにより `DeviceFarmBatchProvider.submit` は run を投入した瞬間に ARN を永続化し、再 lease
   時には再アップロードや再投入をせずにその run のポーリングを再開します。実行中の run と確保済みのデバイスを
-  孤児にしません。checkpoint は、新しい nullable な `jobs.batch_state` 列（マイグレーション 0013）と
+  孤児にしません。checkpoint は、新しい `jobs.batch_state` 列（マイグレーション 0013 — `NOT NULL`、既定は `{}`）と
   `Repository.save_batch_run_arn` / `load_batch_run_arn` が、ホスティングの DB backend で裏付けます。ローカルの
   単一プロセス backend は checkpoint を渡しません（そこでは再起動で in-memory の状態がすべて失われるため）。設計が
   求める、より薄い best-effort な経路を保ちます。判定経路には触れておらず、in-memory の AWS fake で端から端まで

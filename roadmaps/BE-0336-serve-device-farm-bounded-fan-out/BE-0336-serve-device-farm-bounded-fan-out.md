@@ -195,8 +195,8 @@ Log:
   `on_scheduled` callback and `collect_run` (split from it) polls and downloads an already-scheduled run, so
   `DeviceFarmBatchProvider.submit` persists the ARN the moment the run is scheduled and, on a re-lease, resumes
   polling that run rather than re-uploading and rescheduling — the in-flight run and its reserved device are not
-  orphaned. A new nullable `jobs.batch_state` column (migration 0013) plus `Repository.save_batch_run_arn` /
-  `load_batch_run_arn` back the checkpoint on the hosted DB backend; the local single-process backend passes no
+  orphaned. A new `jobs.batch_state` column (migration 0013 — `NOT NULL`, defaulting to `{}`) plus
+  `Repository.save_batch_run_arn` / `load_batch_run_arn` back the checkpoint on the hosted DB backend; the local single-process backend passes no
   checkpoint (a restart there loses all in-memory state regardless), keeping the thinner best-effort path the
   design calls for. The verdict path is untouched, exercised end to end against the in-memory AWS fake. The
   bilingual how-to and the wider faked-AWS coverage are Unit 6.
