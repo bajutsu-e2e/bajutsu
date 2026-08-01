@@ -564,9 +564,31 @@ class AdbDriver(CoordinateTreeDriver):
         cx = w / 2
         self.swipe((cx, h * self._SCROLL_FROM_FRAC), (cx, h * self._SCROLL_TO_FRAC))
 
+    def _actuate_centered(self, args: list[str]) -> None:
+        """Actuate a command whose target was just resolved, then open a read-lag barrier for it.
+
+        A center-resolving tap can change the layout (open a menu, expand a row, advance a stepper),
+        and Android publishes that update a beat after the actuation returns — so without a barrier the
+        next actuator's `_settle` accepts the still-pre-tap tree and resolves against stale frames, the
+        `gestures` long-press flake (BE-0332 Unit 2). The just-resolved tree is the baseline, so no
+        extra read is paid; a tap that moves nothing visible spends the budget exactly as a pan at the
+        end of the content does. `tap_point` is deliberately excluded: it resolves no selector, so it
+        has no target-from-a-layout to postdate, and arming there would steal a following pan's fresh
+        baseline (`_pan_baseline`).
+
+        Precondition: the caller has just resolved its target through `_center*` → `_settle`, which
+        both drained any outstanding prior barrier (`_await_catchup`) and populated `_last_stable_key`
+        with the layout resolved against. That is why the baseline is `_last_stable_key` directly, not
+        a fresh `_pan_baseline()` read — the resolve already paid for both. A center actuator wired here
+        without that preceding resolve would leave `_last_stable_key` None and silently arm nothing.
+        """
+        pre_key = self._last_stable_key
+        self._act(args)
+        self._arm_catchup(pre_key)
+
     def tap(self, sel: base.Selector) -> None:
         x, y = self._center(sel)
-        self._act(adb.tap_cmd(self.serial, x, y))
+        self._actuate_centered(adb.tap_cmd(self.serial, x, y))
 
     def tap_point(self, p: base.Point) -> None:
         self._act(adb.tap_cmd(self.serial, p[0], p[1]))
@@ -581,9 +603,10 @@ class AdbDriver(CoordinateTreeDriver):
         dev = self._touch_device() if self._rooted() else None
         if dev is not None:
             raw_x, raw_y = adb.scale_to_touch(point, screen, dev)
-            self._act(adb.sendevent_double_tap_cmd(self.serial, dev.path, raw_x, raw_y))
+            cmd = adb.sendevent_double_tap_cmd(self.serial, dev.path, raw_x, raw_y)
         else:
-            self._act(adb.double_tap_cmd(self.serial, point[0], point[1]))
+            cmd = adb.double_tap_cmd(self.serial, point[0], point[1])
+        self._actuate_centered(cmd)
 
     def _rooted(self) -> bool:
         """Whether adbd runs as root (`id -u` is 0), cached — a precondition for `sendevent`."""
@@ -609,7 +632,7 @@ class AdbDriver(CoordinateTreeDriver):
     def long_press(self, sel: base.Selector, duration: float) -> None:
         # `input` has no press-and-hold, so a zero-length swipe with a duration acts as a long press.
         x, y = self._center(sel)
-        self._act(adb.swipe_cmd(self.serial, x, y, x, y, round(duration * 1000)))
+        self._actuate_centered(adb.swipe_cmd(self.serial, x, y, x, y, round(duration * 1000)))
 
     def swipe(self, frm: base.Point, to: base.Point) -> None:
         pre_key = self._pan_baseline()

@@ -150,6 +150,7 @@ def _settle_extract_read(
     clock: Clock,
     *,
     initial: list[base.Element] | None = None,
+    actuated_at: float | None = None,
 ) -> list[base.Element]:
     """Read the post-step tree, polling until the properties `extract` reads stop changing.
 
@@ -159,11 +160,25 @@ def _settle_extract_read(
     With no wait floor the budget is zero, so it reads exactly once — today's single-read behavior on
     every lane that does not set the floor (BE-0299 Unit 3).
 
+    `actuated_at` anchors an actuation-anchored barrier (BE-0332 Unit 1): on a backend that declares a
+    `read_lag()`, two agreeing reads are not trusted until they also postdate `actuated_at` by that
+    budget. On Android the tree can keep publishing the pre-tap value for a beat, so the first reads
+    after an action agree with each other on a value the action already superseded (`extract.yaml`
+    binds the counter's previous value); the barrier holds the poll across that window. It is passed
+    only on the mutating path, where an actuation this step is what a read must postdate — a seeded
+    (`initial=`) read did not actuate, so it has no window to wait out. A backend reporting no lag,
+    and any read with no `actuated_at`, keep the plain two-agreeing-reads settle byte-for-byte. Until
+    the resident reader's read mark lands (BE-0332 Unit 3) the budget is a wall-clock ceiling, not an
+    early-releasing wait, so it only bites on a lane whose floor exceeds the lag (the Android e2e
+    lane); a lag exceeding the floor is simply never met and falls through to the latest read.
+
     `initial`, when given, is the seed a non-mutating step (`assert` / `wait`) already settled on: it
     is taken as the first sample so the poll refines that seed in place rather than re-reading it,
     which is why this is applied at that earlier read site — the seed short-circuits `_ScreenRead`, so
     the poll cannot live there for a seeded step. A mutating step passes no seed and reads fresh.
     """
+    lag = driver.read_lag() if isinstance(driver, base.ReadLagProvider) else 0.0
+    barrier = actuated_at + lag if actuated_at is not None else None
     deadline = clock.now() + _timeout_floor()
     tree = initial if initial is not None else driver.query()
     key = _extract_stable_key(tree, extracts)
@@ -171,13 +186,17 @@ def _settle_extract_read(
         t0 = clock.now()
         next_tree = driver.query()
         next_key = _extract_stable_key(next_tree, extracts)
-        if next_key == key:
+        settled = next_key == key
+        if settled and (barrier is None or clock.now() >= barrier):
             return next_tree
-        tree, key = next_tree, next_key
+        tree = next_tree
+        if not settled:
+            key = next_key
         _adaptive_sleep(clock, t0)
-    # Deadline hit while the extract projection was still moving: return the latest read (best-effort,
-    # like the driver `_settle`), and say so, so a later assert failing on a still-propagating value is
-    # traceable to an un-settled extract rather than looking inexplicable (BE-0299 Unit 3).
+    # Deadline hit while the extract projection was still moving (or still inside the read-lag window):
+    # return the latest read (best-effort, like the driver `_settle`), and say so, so a later assert
+    # failing on a still-propagating value is traceable to an un-settled extract rather than looking
+    # inexplicable (BE-0299 Unit 3).
     _logger.debug(
         "extract settle: projection still changing at the wait deadline; using latest read"
     )
@@ -1004,10 +1023,21 @@ class _StepRunner:
         read: Callable[[], list[base.Element]] | None = None
         if outcome.ok and interp_step.extract:
             if snapshot is None:
+                # A mutating step: the extract read must postdate this step's actuation by the
+                # backend's read lag (BE-0332 Unit 1). Nothing actuates between the step body
+                # returning and here, so `now` is that actuation's completion; bound into the deferred
+                # read so the barrier is measured from the action, not from whenever `_ScreenRead`
+                # later fires.
+                actuated_at = self.cfg.clock.now()
                 read = partial(
-                    _settle_extract_read, active_driver, interp_step.extract, self.cfg.clock
+                    _settle_extract_read,
+                    active_driver,
+                    interp_step.extract,
+                    self.cfg.clock,
+                    actuated_at=actuated_at,
                 )
             else:
+                # A seeded (non-mutating) step did not actuate, so it has no actuation to postdate.
                 snapshot = _settle_extract_read(
                     active_driver, interp_step.extract, self.cfg.clock, initial=snapshot
                 )

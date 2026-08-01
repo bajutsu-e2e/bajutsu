@@ -403,7 +403,13 @@ device (the shared device is reseeded via one channel, so parallel workers would
   reports the budget a step's result has to arrive in (`ReadLagProvider`; adb is the one backend
   reporting a lag today). A backend reporting none still fails on its first unchanged read, so the
   synchronous
-  backends stay as fail-fast as before. Each step is non-inertial (a bounded
+  backends stay as fail-fast as before. The same budget now governs two further reads on such a
+  backend (BE-0332): a coordinate resolve after a content-moving `tap` / `longPress` / `doubleTap`
+  (not only after a pan) postdates that actuation before it trusts the tree, and a mid-scenario
+  `extract` waits for the value it copies out to postdate the action that produced it — closing the
+  `gestures` long-press flake and the `extract.yaml` stale-value flake. The device-side read mark that
+  turns this ceiling into an early-releasing wait for every read path is planned (BE-0332 Unit 3);
+  see [drivers](drivers.md#adb-android). Each step is non-inertial (a bounded
   advance with no fling), realized per backend behind `Driver.scroll` and a `ViewportProvider` (web,
   fake report the true viewport directly; a native backend's on-screen-only tree already is one) —
   closing the BE-0210 asymmetry

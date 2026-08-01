@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0332](BE-0332-read-lag-barrier.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0332") |
+| Implementing PR | _pending_ |
 | Topic | Driver & backend architecture |
 <!-- /BE-METADATA -->
 
@@ -189,13 +190,25 @@ rather than fix it.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — actuation-anchored barrier in `_settle_extract_read`.
-- [ ] Unit 2 — the same barrier in `AdbDriver._settle`.
+- [x] Unit 1 — actuation-anchored barrier in `_settle_extract_read`.
+- [x] Unit 2 — the same barrier in `AdbDriver._settle`, via arming the pan catch-up on the
+      center-resolving `tap` / `long_press` / `double_tap`.
 - [ ] Unit 3 — read mark published by the resident Android reader, required by `AdbDriver`.
 - [ ] Unit 4 — `stableHierarchy` returns a marked read instead of two matching dumps.
-- [ ] Unit 5 — deterministic and conformance coverage for the barrier.
+- [ ] Unit 5 — deterministic and conformance coverage for the barrier. Deterministic coverage landed
+      with the host-side barrier; the conformance suite (BE-0114) check waits on the marked-read
+      contract (Unit 3).
 - [ ] Unit 6 — read contract documented in `docs/architecture.md` and `docs/drivers.md`, both
-      languages.
+      languages. The budget-barrier contract is documented; the read mark is added with Unit 3.
+
+Log:
+
+- 2026-08-02 — Host-side barrier slice (PR _pending_): Unit 1 (`_settle_extract_read` postdates a
+  mutating step's actuation by `read_lag()`), Unit 2 (`tap` / `long_press` / `double_tap` arm the
+  existing pan catch-up so a following `_settle` resolves against the published tree), deterministic
+  coverage, and the budget-barrier docs. Status → In progress. The device-side read mark (Units 3–4,
+  Kotlin) and the conformance check remain; until the mark lands the budget is a bounded wall-clock
+  ceiling on the Android lane, as the design's Unit 1 note anticipates.
 
 ## References
 

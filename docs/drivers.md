@@ -178,12 +178,16 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
   two moments describes the pre-scroll screen. Repeated reads then agree with each other on frames that
   are already wrong, so the two-consecutive-equal-reads settle cannot detect the lag on its own: the
   tree is *self-consistently* stale rather than visibly unsettled. After a `swipe`, a `scroll`, a
-  `pinch`, or a `rotate` — every gesture that moves frames wholesale — the driver records the frame
-  projection the screen had beforehand, and the next coordinate resolve re-reads until the projection
-  moves off that record and then holds still briefly, bounded by a wall-clock budget it announces
-  spending in full. That budget is the same number the `scroll` loop uses to confirm an end of content
-  before failing (`ReadLagProvider`, BE-0326; see [architecture](architecture.md)) — one publish lag,
-  so one budget, spent on two paths.
+  `pinch`, or a `rotate` — every gesture that moves frames wholesale — **and after a center-resolving
+  `tap`, `longPress`, or `doubleTap`** (BE-0332), the driver records the frame projection the screen
+  had beforehand, and the next coordinate resolve re-reads until the projection moves off that record
+  and then holds still briefly, bounded by a wall-clock budget it announces spending in full. A tap can
+  move the layout too — open a menu, expand a row, advance a stepper — so the actuator that follows one
+  must resolve against the tree the device published *after* it, not the pre-tap one; `tapPoint` (raw
+  coordinates) and `back` (no resolved target) do not arm the wait, since they have no
+  target-from-a-layout to postdate. That budget is the same number the `scroll` loop uses to confirm an
+  end of content before failing (`ReadLagProvider`, BE-0326 / BE-0332; see
+  [architecture](architecture.md)) — one publish lag, so one budget, spent across those paths.
   Three conditions make that test mean "caught up" rather than merely "different". The hold matters
   because the catch-up is not atomic: Android republishes node bounds one node at a time, so a read
   landing mid-catch-up carries some new frames and some old, and two fast reads can both land inside
@@ -201,6 +205,19 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
   tree withheld a 73px scroll for over a second. The `longPress` aimed 10px past the target's bottom
   edge, so the mirrored value stayed `idle` even though the screenshots for those steps stayed
   pixel-identical.
+  The same publish lag reaches a mid-scenario `extract` (BE-0332): a value an action mirrors into the
+  tree can land a beat after the action returns, so the first reads after the action agree with each
+  other on the pre-action value — `extract.yaml` bound a counter's previous value and the follow-up
+  `assert` against the live one failed a correct run. There the settle poll cannot use the pan's
+  "differs from the pre-step read" test, because an `extract` baseline is itself a single post-action
+  read that can be stale; it instead requires the agreeing read to postdate the action by the budget.
+  **Declaring a read lag is therefore a contract**: a backend that returns a non-zero `read_lag()`
+  takes on that every coordinate resolve after a content-moving actuation, and every mid-scenario
+  `extract`, may spend up to that budget waiting for the tree to catch up — paid only on a read that
+  still matches the pre-action screen, never on one that already landed. A backend that declares none
+  keeps its single-read, fail-fast behavior unchanged. Until the resident reader publishes a read mark
+  the host can compare against (BE-0332 Unit 3, planned), the budget is a wall-clock ceiling rather
+  than an early-releasing wait for the paths that cannot use the projection-differs test.
 - **On-device actuation fidelity** (roadmap
   [BE-0210](../roadmaps/BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md)):
   the `back` step is the true system back (`input keyevent 4` / `KEYCODE_BACK`) — Android has no

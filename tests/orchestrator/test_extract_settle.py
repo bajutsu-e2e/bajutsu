@@ -377,3 +377,123 @@ def test_assert_step_fails_at_the_deadline_when_the_value_never_arrives(
     assert not result.ok
     # A bounded condition wait: it polled past the deadline rather than reading once or looping forever.
     assert clock.now() >= 1.0
+
+
+# --- BE-0332 Unit 1: an actuation-anchored barrier for a backend whose reads lag the tap ---
+
+
+class _LaggingCounterDriver(FakeDriver):
+    """A counter field whose tree keeps naming the pre-tap value for the first reads after the tap.
+
+    The Android read-lag in miniature (BE-0332): the tap advanced the counter, but the accessibility
+    tree keeps publishing the previous value for a beat, so the first reads after the tap agree with
+    each other on a value the tap already superseded. That agreeing-but-stale pair is exactly what a
+    plain settle mistakes for a settled read; `read_lag()` is the budget the actuation-anchored
+    barrier spends before it will trust one. `values` is walked one entry per read, holding the last.
+    """
+
+    def __init__(self, values: Sequence[str], *, lag: float) -> None:
+        super().__init__([el("field", "Name", value=values[0])])
+        self._values = list(values)
+        self._i = 0
+        self._lag = lag
+
+    def read_lag(self) -> float:
+        return self._lag
+
+    def query(self) -> list[base.Element]:
+        self.screen = [el("field", "Name", value=self._values[min(self._i, len(self._values) - 1)])]
+        self._i += 1
+        return super().query()
+
+
+def test_extract_barrier_rejects_a_stale_but_stable_pair_after_a_tap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(_FLOOR, "5")
+    # The extract.yaml failure in miniature: the tap made the counter "3", but the tree names the
+    # pre-tap "2" for the first two reads, which agree with each other. A plain settle binds that
+    # stale "2"; the follow-up assert against the live "3" then fails a correct run. The
+    # actuation-anchored barrier holds the poll past the backend's lag, so it binds the "3" the tap
+    # produced, and the assert passes.
+    driver = _LaggingCounterDriver(["2", "2", "3", "3"], lag=0.3)
+    clock = FakeClock()
+    result = run_scenario(driver, _extract_then_assert_scenario(), clock=clock)
+    assert result.ok, result.failure
+    # The barrier is anchored on the lag (0.3), not the wait floor (5): it holds *past* the lag, then
+    # releases as soon as an agreeing read postdates it — it does not sleep out the whole floor. A bug
+    # that ignored `barrier` and always polled to the deadline would fail the upper bound; one that
+    # released before the lag (the defect this closes) would fail the lower bound.
+    assert 0.3 <= clock.now() < 5.0
+
+
+def test_extract_without_a_declared_lag_keeps_the_plain_settle() -> None:
+    # A backend that declares no read lag is unchanged: the first agreeing pair settles, with no extra
+    # wait for an actuation window it never has. The value genuinely rests, so the pair is trustworthy.
+    driver = _LateMirrorDriver(["3", "3"])  # a synchronous backend: no read_lag()
+    assert not isinstance(driver, base.ReadLagProvider)
+    clock = FakeClock()
+    result = run_scenario(driver, _extract_then_assert_scenario(), clock=clock)
+    assert result.ok, result.failure
+    assert clock.now() == 0.0  # settled on the first agreeing pair, no barrier wait
+
+
+def test_extract_barrier_returns_the_latest_read_when_the_tree_never_catches_up(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(_FLOOR, "1")
+    # If the tree stays stale for the whole budget — the tap published nothing new — the barrier does
+    # not raise or hang: it returns the latest read once the deadline is spent, best-effort, the same
+    # as a plain settle that never stabilizes. The lag deliberately exceeds the budget so the barrier
+    # can never be met; the step still binds the stale value and succeeds.
+    driver = _LaggingCounterDriver(["2", "2", "2", "2"], lag=5.0)
+    clock = FakeClock()
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "x",
+                "steps": [
+                    {
+                        "tap": {"id": "field"},
+                        "extract": {"who": {"sel": {"id": "field"}, "prop": "value"}},
+                    }
+                ],
+            }
+        ),
+        clock=clock,
+    )
+    assert result.ok, result.failure
+    assert (
+        clock.now() >= 1.0
+    )  # polled to the deadline, then returned latest via the fallback branch
+
+
+def test_seeded_extract_is_not_held_by_the_actuation_barrier(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(_FLOOR, "5")
+    # A non-mutating step (`wait`) did not actuate, so its seeded extract has no actuation to postdate:
+    # the barrier must not apply, even on a backend that declares a lag. The wait already settled the
+    # tree (BE-0259), so the seed is trustworthy and the extract refines it without waiting out a
+    # phantom lag window — otherwise every seeded extract on a lagging backend would pay the budget.
+    driver = _LaggingCounterDriver(["7", "7"], lag=5.0)
+    clock = FakeClock()
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "x",
+                "steps": [
+                    {
+                        "wait": {"for": {"id": "field"}, "timeout": 1.0},
+                        "extract": {"who": {"sel": {"id": "field"}, "prop": "value"}},
+                    },
+                    {"assert": [{"value": {"sel": {"id": "field"}, "equals": "${vars.who}"}}]},
+                ],
+            }
+        ),
+        clock=clock,
+    )
+    assert result.ok, result.failure
+    assert clock.now() < 5.0  # no barrier wait on the seeded path
