@@ -312,6 +312,15 @@ def start_run_set(
             return {
                 "error": f"scenario '{name}' must be an existing .yaml inside the target's scenarios dir"
             }, 400
+        if runnable.materials:
+            # The batch provider packages work_dir at the zip root; a scenario whose text travels as
+            # out-of-band materials (the server-backed store) can't be packaged from an on-disk path.
+            return {
+                "error": (
+                    f"scenario '{name}' is not an on-disk file — cloud-batch fan-out requires "
+                    "scenarios to be on the local filesystem (materials not supported)"
+                )
+            }, 400
         scenario_arg = os.path.relpath(runnable.arg, work_dir)
         if _escapes(scenario_arg):
             return {"error": f"scenario '{name}' is not under the run directory"}, 400
@@ -333,7 +342,11 @@ def start_run_set(
         )
         if capped:
             # The concurrency cap stops the fan-out here; a later unit's device budget makes a
-            # partially-dispatched set the routine outcome rather than an error.
+            # partially-dispatched set the routine outcome rather than an error. But if the cap
+            # rejected the *first* job, nothing was dispatched — surface the 429 rather than
+            # returning a silent 200 with an empty jobIds list (like the other start_* endpoints).
+            if not dispatched:
+                return capped
             break
         assert job is not None
         dispatched.append(job.id)
