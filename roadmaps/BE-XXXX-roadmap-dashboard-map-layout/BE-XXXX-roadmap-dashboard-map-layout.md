@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
-| Implementing PR | (filled in once the PR is open) |
+| Implementing PR | [#1427](https://github.com/bajutsu-e2e/bajutsu/pull/1427) |
 | Topic | Contributor workflow |
 | Related | [BE-0335](../BE-0335-roadmap-dashboard-relationship-graph/BE-0335-roadmap-dashboard-relationship-graph.md), [BE-0094](../BE-0094-roadmap-status-dashboard/BE-0094-roadmap-status-dashboard.md), [BE-0311](../BE-0311-roadmap-dashboard-table-view/BE-0311-roadmap-dashboard-table-view.md) |
 <!-- /BE-METADATA -->
