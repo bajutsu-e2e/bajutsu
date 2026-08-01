@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0336](BE-0336-serve-device-farm-bounded-fan-out-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
-| 状態 | **提案** |
+| 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0336") |
+| 実装 PR | _pending_（単位1 — submitter core の移行） |
 | トピック | Device-cloud execution |
 | 関連 | [BE-0235](../BE-0235-aws-device-farm-submitter/BE-0235-aws-device-farm-submitter-ja.md), [BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction-ja.md), [BE-0198](../BE-0198-serve-state-job-registry-split/BE-0198-serve-state-job-registry-split-ja.md) |
 <!-- /BE-METADATA -->
@@ -128,7 +129,7 @@ serve の利用者ごと・org ごとのキャップや run の履歴も共有�
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] シナリオ単位の投入単位 — シナリオ1件の `submit_and_collect` の呼び出しを分割の単位として露出し、
+- [x] シナリオ単位の投入単位 — シナリオ1件の `submit_and_collect` の呼び出しを分割の単位として露出し、
   確認する。
 - [ ] serve 向けの Device Farm executor — 1件のシナリオを投入・ポーリングし、判定経路の外で manifest
   の合否を記録する。
@@ -138,6 +139,17 @@ serve の利用者ごと・org ごとのキャップや run の履歴も共有�
 - [ ] 長時間ポーリングのための永続化 — ホスティング用の backend で queued/polling/done の状態を永続化し、
   ローカルには best-effort な経路を保つ。
 - [ ] ドキュメントとテスト — 英日両言語の使い方の更新と、分割・キャップの fake AWS による検証。
+
+ログ:
+
+- _pending_（単位1）— submitter の core（`render_test_spec`、`build_package`、`verdict_from_manifest`、
+  `submit_and_collect` とその補助、`DeviceFarmClient` / `Transfer` の seam）を
+  `scripts/devicefarm_submit.py` から `bajutsu/cloud/devicefarm.py` へ移しました。これにより、後続の
+  serve の分割と executor が、カバレッジ計測対象の経路で 1 つの submitter を共有します。
+  `scripts/devicefarm_submit.py` は argparse と実際の boto3/urllib アダプタだけを持つ薄い CLI ラッパに
+  なりました。シナリオ1件の呼び出しを分割の単位として確認しています（シナリオ1件の spec は
+  `bajutsu run` をちょうど1つだけ描画します）。振る舞いは不変で、既存の fake AWS スイートはそのまま
+  通ります。
 
 ## 参考
 
