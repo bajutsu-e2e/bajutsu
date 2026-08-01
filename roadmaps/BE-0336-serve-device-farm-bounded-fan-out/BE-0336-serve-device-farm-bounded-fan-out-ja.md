@@ -9,7 +9,7 @@
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0336") |
-| 実装 PR | [#1425](https://github.com/bajutsu-e2e/bajutsu/pull/1425)（単位1 — submitter core の移行）、[#1429](https://github.com/bajutsu-e2e/bajutsu/pull/1429)（単位2 — batch executor seam）、[#1435](https://github.com/bajutsu-e2e/bajutsu/pull/1435)（単位3 — シナリオ単位の分割）、[#1438](https://github.com/bajutsu-e2e/bajutsu/pull/1438)（単位4 — デバイス予算）、[#1440](https://github.com/bajutsu-e2e/bajutsu/pull/1440)（単位5 — 長時間ポーリングの永続化）、[#PENDINGN](https://github.com/bajutsu-e2e/bajutsu/pull/PENDINGN)（単位6 — ドキュメントと fake AWS 検証） |
+| 実装 PR | [#1425](https://github.com/bajutsu-e2e/bajutsu/pull/1425)（単位1 — submitter core の移行）、[#1429](https://github.com/bajutsu-e2e/bajutsu/pull/1429)（単位2 — batch executor seam）、[#1435](https://github.com/bajutsu-e2e/bajutsu/pull/1435)（単位3 — シナリオ単位の分割）、[#1438](https://github.com/bajutsu-e2e/bajutsu/pull/1438)（単位4 — デバイス予算）、[#1440](https://github.com/bajutsu-e2e/bajutsu/pull/1440)（単位5 — 長時間ポーリングの永続化）、[#1441](https://github.com/bajutsu-e2e/bajutsu/pull/1441)（単位6 — ドキュメントと fake AWS 検証） |
 | トピック | Device-cloud execution |
 | 関連 | [BE-0235](../BE-0235-aws-device-farm-submitter/BE-0235-aws-device-farm-submitter-ja.md), [BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction-ja.md), [BE-0198](../BE-0198-serve-state-job-registry-split/BE-0198-serve-state-job-registry-split-ja.md) |
 <!-- /BE-METADATA -->
@@ -194,7 +194,7 @@ serve の利用者ごと・org ごとのキャップや run の履歴も共有�
   単一プロセス backend は checkpoint を渡しません（そこでは再起動で in-memory の状態がすべて失われるため）。設計が
   求める、より薄い best-effort な経路を保ちます。判定経路には触れておらず、in-memory の AWS fake で端から端まで
   検証します。英日両言語の使い方と、より広い fake AWS の検証は単位6です。
-- [#PENDINGN](https://github.com/bajutsu-e2e/bajutsu/pull/PENDINGN)（単位6）— serve からの投入経路を文書化し、fake AWS の
+- [#1441](https://github.com/bajutsu-e2e/bajutsu/pull/1441)（単位6）— serve からの投入経路を文書化し、fake AWS の
   検証を広げて、この項目を締めくくりました。`docs/devicefarm.md` と `docs/ja/` のミラーに「serve からのディスパッチ」の
   節を加えました。すなわち、submitter の直列 1 実行と対比したシナリオ単位の fan-out、ターゲット単位の 2 つの設定項目
   （プロバイダーを選ぶ `cloudBatch`、プロバイダープールでキーされるデバイス予算 `K` を定める `cloudBatchBudget`）、

@@ -9,7 +9,7 @@
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0336") |
-| Implementing PR | [#1425](https://github.com/bajutsu-e2e/bajutsu/pull/1425) (Unit 1 — submitter core migration); [#1429](https://github.com/bajutsu-e2e/bajutsu/pull/1429) (Unit 2 — batch executor seam); [#1435](https://github.com/bajutsu-e2e/bajutsu/pull/1435) (Unit 3 — per-scenario fan-out); [#1438](https://github.com/bajutsu-e2e/bajutsu/pull/1438) (Unit 4 — device budget); [#1440](https://github.com/bajutsu-e2e/bajutsu/pull/1440) (Unit 5 — durable poll state); [#PENDINGN](https://github.com/bajutsu-e2e/bajutsu/pull/PENDINGN) (Unit 6 — docs and faked-AWS coverage) |
+| Implementing PR | [#1425](https://github.com/bajutsu-e2e/bajutsu/pull/1425) (Unit 1 — submitter core migration); [#1429](https://github.com/bajutsu-e2e/bajutsu/pull/1429) (Unit 2 — batch executor seam); [#1435](https://github.com/bajutsu-e2e/bajutsu/pull/1435) (Unit 3 — per-scenario fan-out); [#1438](https://github.com/bajutsu-e2e/bajutsu/pull/1438) (Unit 4 — device budget); [#1440](https://github.com/bajutsu-e2e/bajutsu/pull/1440) (Unit 5 — durable poll state); [#1441](https://github.com/bajutsu-e2e/bajutsu/pull/1441) (Unit 6 — docs and faked-AWS coverage) |
 | Topic | Device-cloud execution |
 | Related | [BE-0235](../BE-0235-aws-device-farm-submitter/BE-0235-aws-device-farm-submitter.md), [BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction.md), [BE-0198](../BE-0198-serve-state-job-registry-split/BE-0198-serve-state-job-registry-split.md) |
 <!-- /BE-METADATA -->
@@ -200,7 +200,7 @@ Log:
   checkpoint (a restart there loses all in-memory state regardless), keeping the thinner best-effort path the
   design calls for. The verdict path is untouched, exercised end to end against the in-memory AWS fake. The
   bilingual how-to and the wider faked-AWS coverage are Unit 6.
-- [#PENDINGN](https://github.com/bajutsu-e2e/bajutsu/pull/PENDINGN) (Unit 6) — documented the serve dispatch
+- [#1441](https://github.com/bajutsu-e2e/bajutsu/pull/1441) (Unit 6) — documented the serve dispatch
   path and widened the faked-AWS coverage, closing the item. `docs/devicefarm.md` and its `docs/ja/` mirror
   gained a "Dispatching from serve" section: the per-scenario fan-out contrasted with the submitter's single
   serialized run, the two per-target config fields (`cloudBatch` selecting the provider, `cloudBatchBudget`
