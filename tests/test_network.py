@@ -149,6 +149,36 @@ def test_request_no_match_fails_with_reason() -> None:
     assert not r.ok and "exchange" in r.reason
 
 
+def test_assign_requests_reports_match_candidacy() -> None:
+    # `_assign_requests` already knows, per matcher, which exchanges it matches (its adjacency).
+    # It returns that "matched at least one exchange" flag alongside the assignment so the caller
+    # never has to re-scan every exchange to explain an unassigned matcher (the N+1 it removes).
+    from bajutsu.assertions.network import _assign_requests
+
+    exs = [_ex("GET", "/a", 200), _ex("POST", "/b", 200)]
+    reqs = [RequestMatch(method="GET"), RequestMatch(method="DELETE")]
+    assigned, had_candidate = _assign_requests(exs, reqs)
+    assert assigned[0] == 0  # the GET matcher takes the only GET exchange
+    assert assigned[1] == -1  # the DELETE matcher matches nothing, so stays unassigned
+    assert had_candidate == [True, False]  # flag mirrors "this matcher matched some exchange"
+
+
+def test_request_assignment_no_match_reason() -> None:
+    # The two-matcher assignment path (not evaluate_one) must still explain an unmatched matcher
+    # with "no matching exchange" — the branch fed by the candidacy flag rather than a re-scan.
+    exs = [_ex("GET", "/a", 200)]
+    res = evaluate(
+        [],
+        [
+            Assertion(request=RequestMatch(method="GET")),
+            Assertion(request=RequestMatch(method="DELETE")),
+        ],
+        exs,
+    )
+    assert res[0].ok
+    assert not res[1].ok and "no matching exchange" in res[1].reason
+
+
 def _event(**kw: object) -> Assertion:
     return Assertion(event=EventMatch(**kw))
 

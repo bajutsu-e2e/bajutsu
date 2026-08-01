@@ -21,11 +21,17 @@ from typing import Any
 import pytest
 import yaml
 
+import bajutsu.cloud.devicefarm as devicefarm
 from bajutsu.cloud.devicefarm import (
+    _POLL_INITIAL_SECONDS,
+    _POLL_INTERVAL_SECONDS,
     DeviceFarmError,
     Verdict,
+    _next_poll_delay,
     _safe_extract,
     _store_artifact,
+    _upload_one,
+    _wait_run,
     build_package,
     device_selection_for,
     render_test_spec,
@@ -645,6 +651,71 @@ def test_submit_and_collect_uploads_schedules_and_returns_the_manifest_verdict(
     assert client.scheduled is not None
     assert verdict.ok
     assert verdict.passed == 1
+
+
+# ---------------------------------------------------------------------------
+# poll backoff
+# ---------------------------------------------------------------------------
+
+
+def test_poll_backoff_grows_then_caps_at_the_interval_ceiling() -> None:
+    # A short upload/run should settle after a small first wait rather than the fixed 30s poll, while
+    # a long one still polls no more often than the ceiling: start small, double, cap at the ceiling.
+    delays = [_POLL_INITIAL_SECONDS]
+    for _ in range(7):
+        delays.append(_next_poll_delay(delays[-1]))
+    assert delays[0] == _POLL_INITIAL_SECONDS
+    assert (
+        _POLL_INITIAL_SECONDS < _POLL_INTERVAL_SECONDS
+    )  # there is room to back off before the cap
+    assert delays == sorted(delays)  # monotonically non-decreasing
+    assert max(delays) == _POLL_INTERVAL_SECONDS  # never polls faster than the ceiling
+    assert delays[-1] == _POLL_INTERVAL_SECONDS  # eventually pinned at the ceiling
+
+
+class _SlowUploadClient(_FakeClient):
+    """Reports IN_PROGRESS for the first `pending` polls, then SUCCEEDED."""
+
+    def __init__(self, *, pending: int) -> None:
+        super().__init__()
+        self._pending = pending
+        self._polls = 0
+
+    def get_upload(self, *, arn: str) -> dict[str, Any]:
+        self._polls += 1
+        status = "IN_PROGRESS" if self._polls <= self._pending else "SUCCEEDED"
+        return {"upload": {"arn": arn, "status": status}}
+
+
+def test_upload_poll_starts_with_the_short_initial_wait(tmp_path: Path) -> None:
+    # An upload that finishes on the second poll must have waited only the short initial backoff for
+    # the first poll — not the fixed 30s ceiling, which is the whole point of backing off.
+    waits: list[float] = []
+    apk = tmp_path / "app.apk"
+    apk.write_bytes(b"apk")
+    _upload_one(
+        _SlowUploadClient(pending=1),
+        _FakeTransfer(),
+        project_arn="arn:project/1",
+        name="app",
+        upload_type="ANDROID_APP",
+        path=apk,
+        sleep=waits.append,
+    )
+    assert waits == [_POLL_INITIAL_SECONDS]  # one poll waited, at the short initial interval
+
+
+def test_wait_run_still_raises_at_the_hard_cap(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Backing off must not weaken the 150-minute hard cap. A run that never COMPLETEs still raises
+    # once the deadline passes; the fake clock advances by each backed-off sleep so no real waiting.
+    clock = {"t": 0.0}
+    monkeypatch.setattr(devicefarm.time, "monotonic", lambda: clock["t"])
+
+    def advance(seconds: float) -> None:
+        clock["t"] += seconds
+
+    with pytest.raises(DeviceFarmError, match="150-minute cap"):
+        _wait_run(_FakeClient(run_status="RUNNING"), "arn:run/1", sleep=advance)
 
 
 def test_device_selection_for_pins_the_platform_and_a_single_device() -> None:

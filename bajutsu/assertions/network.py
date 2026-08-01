@@ -86,12 +86,20 @@ def request_label(req: RequestMatch, *, with_count: bool = True) -> str:
     return " ".join(parts)
 
 
-def _assign_requests(exchanges: list[NetworkExchange], reqs: list[RequestMatch]) -> list[int]:
+def _assign_requests(
+    exchanges: list[NetworkExchange], reqs: list[RequestMatch]
+) -> tuple[list[int], list[bool]]:
     """Assign each request matcher a *distinct* exchange — one `request` ↔ one exchange.
 
     Maximum bipartite matching (Kuhn's augmenting paths) so a broad matcher never steals
-    the only exchange a more specific one needs. Returns, per matcher, the exchange index
-    it was assigned, or -1 when none is left for it.
+    the only exchange a more specific one needs.
+
+    Returns:
+        A pair of per-matcher lists, both positionally aligned with `reqs`: the exchange index
+        each matcher was assigned (-1 when none is left for it), and whether it matched *any*
+        exchange at all (its adjacency was non-empty). The second list lets the caller explain an
+        unassigned matcher without re-scanning every exchange — it is exactly the `matched_any`
+        a re-scan would recompute.
     """
     adj = [[j for j, ex in enumerate(exchanges) if match_request(ex, req)] for req in reqs]
     ex_to_req = [-1] * len(exchanges)
@@ -108,16 +116,15 @@ def _assign_requests(exchanges: list[NetworkExchange], reqs: list[RequestMatch])
 
     for i in range(len(reqs)):
         augment(i, [False] * len(exchanges))
-    return assigned
+    return assigned, [bool(candidates) for candidates in adj]
 
 
 def _request_assignment_result(
-    req: RequestMatch, assigned_ex: int, exchanges: list[NetworkExchange]
+    req: RequestMatch, assigned_ex: int, exchanges: list[NetworkExchange], *, matched_any: bool
 ) -> AssertionResult:
     detail = f"request {request_label(req)}"
     if assigned_ex != -1:
         return AssertionResult(True, "request", detail)
-    matched_any = any(match_request(ex, req) for ex in exchanges)
     reason = (
         "matching exchange already taken by another request (request ↔ exchange is one-to-one)"
         if matched_any
