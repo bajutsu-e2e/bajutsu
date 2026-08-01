@@ -11,7 +11,7 @@ client is injectable for testing.
 
 from __future__ import annotations
 
-from typing import Any, get_args
+from typing import Any, TypedDict, cast, get_args
 
 from bajutsu.agents.ai_config import (
     AiConfig,
@@ -388,8 +388,12 @@ TOOLS: list[ToolDef] = [
 ]
 
 
-def _hist_hint(sel: Any) -> str:
-    """The id or label to name a selector by in a recent-actions line (`?` when it has neither)."""
+def _hist_hint(sel: Selector | None) -> str:
+    """The id or label to name a selector by in a recent-actions line (`?` when it has neither).
+
+    `sel` may be None (a `type` / `wait` step whose target is unset): the `getattr` defaults then
+    fall through to `?`, so a missing target reads the same as one with neither id nor label.
+    """
     return next((str(v) for v in (getattr(sel, "id", None), getattr(sel, "label", None)) if v), "?")
 
 
@@ -472,7 +476,51 @@ def _render(observation: Observation, redactor: Redactor | None = None) -> str:
     return "\n".join(lines)
 
 
-def _target(args: Any) -> dict[str, Any]:
+class _TargetArgs(TypedDict, total=False):
+    """The selector fields a tool call may carry (the runtime counterpart of `_TARGET_PROPS`).
+
+    All optional — a call addresses an element by whichever of these the model filled in; `_target`
+    picks id first, then label/value/traits, with index as a last-resort disambiguator.
+    """
+
+    id: str
+    label: str
+    value: str
+    traits: list[str]
+    index: int
+
+
+class _AssertionArgs(_TargetArgs, total=False):
+    """One entry of `finish`'s `assertions` list: a target plus the check to run against it."""
+
+    check: str
+    text: str
+    intent: str
+
+
+class _ToolArgs(_TargetArgs, total=False):
+    """The argument object of any tool/action call, as the model fills it in.
+
+    One permissive shape across every tool — a given tool's `input_schema` fixes which of these it
+    actually populates, so each field is optional here and read only on the branch that expects it.
+    """
+
+    reason: str
+    plan_step: int
+    x: float
+    y: float
+    direction: str
+    amount: float
+    text: str
+    timeout: float
+    assertions: list[_AssertionArgs]
+    prompt: str
+    classify: str
+    name: str
+    bypass: str
+
+
+def _target(args: _TargetArgs) -> dict[str, Any]:
     """A selector dict addressing one element: id when given, else label/value/traits (ANDed), index as last resort."""
     if args.get("id"):
         sel: dict[str, Any] = {"id": args["id"]}
@@ -493,7 +541,7 @@ def _target(args: Any) -> dict[str, Any]:
     return sel
 
 
-def _has_target(args: Any) -> bool:
+def _has_target(args: _TargetArgs) -> bool:
     """Whether `args` addresses an element at all — `ask_human` may name no field (BE-0182)."""
     return bool(
         args.get("id")
@@ -508,7 +556,7 @@ def _provenance(value: str | None) -> dict[str, str]:
     return {"from": value} if value else {}
 
 
-def _to_assertion(item: Any) -> Assertion:
+def _to_assertion(item: _AssertionArgs) -> Assertion:
     sel = _target(item)
     check = item["check"]
     text = item.get("text")
@@ -525,7 +573,7 @@ def _to_assertion(item: Any) -> Assertion:
     raise ValueError(f"unknown assertion check: {check!r}")
 
 
-def proposal_from_call(name: str, args: dict[str, Any]) -> Proposal:
+def proposal_from_call(name: str, args: _ToolArgs) -> Proposal:
     """Turn one tool/action call — `(name, args)` — into a Proposal.
 
     Shared by the API agent (a Claude tool_use block) and the Claude Code agent (a
@@ -570,7 +618,9 @@ def proposal_from_call(name: str, args: dict[str, Any]) -> Proposal:
         field = Selector.model_validate(_target(args)) if _has_target(args) else None
         raw_classify = args.get("classify")
         classify: HumanValueClass | None = (
-            raw_classify if raw_classify in get_args(HumanValueClass) else None
+            cast(HumanValueClass, raw_classify)
+            if raw_classify in get_args(HumanValueClass)
+            else None
         )
         return Proposal(
             needs_human=True,
@@ -589,7 +639,7 @@ def proposal_from_call(name: str, args: dict[str, Any]) -> Proposal:
     raise ValueError(f"unknown tool: {name!r}")
 
 
-def steps_from_plan(raw: Any) -> list[str]:
+def steps_from_plan(raw: object) -> list[str]:
     """Normalize a `plan` tool/structured-output result into a clean list of step strings.
 
     Shared by both backends so the API agent and the Claude Code agent return the same shape.
@@ -644,8 +694,12 @@ def _combine(subs: list[Proposal]) -> Proposal:
 def _to_proposal(response: MessageResponse) -> Proposal:
     # Map every tool-use block in the turn to a step, in order (BE-0178) — the agent may emit
     # several actions determinable from the current screen. A turn with no tool call is done.
+    # A ToolUseBlock's `input` is the SDK's raw JSON object (`dict[str, Any]`); the model was forced
+    # to one of our tools, so it matches `_ToolArgs` — narrow it here at that one boundary.
     subs = [
-        proposal_from_call(b.name, b.input) for b in response.content if isinstance(b, ToolUseBlock)
+        proposal_from_call(b.name, cast(_ToolArgs, b.input))
+        for b in response.content
+        if isinstance(b, ToolUseBlock)
     ]
     if not subs:
         return Proposal(done=True, note="model returned no tool call")
