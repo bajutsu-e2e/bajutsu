@@ -9,7 +9,7 @@
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0336") |
-| Implementing PR | [#1425](https://github.com/bajutsu-e2e/bajutsu/pull/1425) (Unit 1 — submitter core migration) |
+| Implementing PR | [#1425](https://github.com/bajutsu-e2e/bajutsu/pull/1425) (Unit 1 — submitter core migration); [#1429](https://github.com/bajutsu-e2e/bajutsu/pull/1429) (Unit 2 — batch executor seam) |
 | Topic | Device-cloud execution |
 | Related | [BE-0235](../BE-0235-aws-device-farm-submitter/BE-0235-aws-device-farm-submitter.md), [BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction.md), [BE-0198](../BE-0198-serve-state-job-registry-split/BE-0198-serve-state-job-registry-split.md) |
 <!-- /BE-METADATA -->
@@ -156,7 +156,7 @@ Log:
   Beyond the move, this hardens artifact collection: `_safe_extract` now rejects symlink members and
   `_store_artifact` sanitizes the artifact extension against path separators, each with a new test. The
   existing faked-AWS suite passes unchanged.
-- _pending_ (Unit 2) — added the provider-generic batch seam `bajutsu/serve/batch_provider.py` (a
+- [#1429](https://github.com/bajutsu-e2e/bajutsu/pull/1429) (Unit 2) — added the provider-generic batch seam `bajutsu/serve/batch_provider.py` (a
   `BatchProvider` Protocol + a fail-closed registry) and its first concrete, `DeviceFarmBatchProvider`,
   which renders a one-scenario spec, packages the project, and schedules one run reserving a *single*
   device via `deviceSelectionConfiguration` + `maxDevices:1` (the CI batch path keeps its static

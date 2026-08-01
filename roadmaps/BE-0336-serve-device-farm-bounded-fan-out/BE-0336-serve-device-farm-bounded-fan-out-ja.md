@@ -9,7 +9,7 @@
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0336") |
-| 実装 PR | [#1425](https://github.com/bajutsu-e2e/bajutsu/pull/1425)（単位1 — submitter core の移行） |
+| 実装 PR | [#1425](https://github.com/bajutsu-e2e/bajutsu/pull/1425)（単位1 — submitter core の移行）、[#1429](https://github.com/bajutsu-e2e/bajutsu/pull/1429)（単位2 — batch executor seam） |
 | トピック | Device-cloud execution |
 | 関連 | [BE-0235](../BE-0235-aws-device-farm-submitter/BE-0235-aws-device-farm-submitter-ja.md), [BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction-ja.md), [BE-0198](../BE-0198-serve-state-job-registry-split/BE-0198-serve-state-job-registry-split-ja.md) |
 <!-- /BE-METADATA -->
@@ -151,7 +151,7 @@ serve の利用者ごと・org ごとのキャップや run の履歴も共有�
   `bajutsu run` をちょうど1つだけ生成します）。移設に加えて、成果物の収集を堅牢にしました。
   `_safe_extract` は symlink メンバーを拒否し、`_store_artifact` は成果物の拡張子からパス区切りを
   取り除きます（いずれも新しいテスト付き）。既存の fake AWS スイートはそのまま通ります。
-- _pending_（単位2）— プロバイダ非依存の batch seam `bajutsu/serve/batch_provider.py`（`BatchProvider`
+- [#1429](https://github.com/bajutsu-e2e/bajutsu/pull/1429)（単位2）— プロバイダ非依存の batch seam `bajutsu/serve/batch_provider.py`（`BatchProvider`
   Protocol ＋ fail-closed レジストリ）と、その最初の具象 `DeviceFarmBatchProvider` を追加しました。具象は
   シナリオ1件の spec を生成し、プロジェクトをパッケージ化し、`deviceSelectionConfiguration` ＋
   `maxDevices:1` で**デバイス1台だけ**を確保する run を1つ投入します（CI batch 経路は静的な
