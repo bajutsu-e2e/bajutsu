@@ -428,7 +428,7 @@ def test_android_environment_wires_the_resident_channel_when_enabled() -> None:
         '<node index="0" class="android.widget.Button" resource-id="stable.submit" '
         'text="送信" bounds="[0,0][10,10]" /></hierarchy>'
     )
-    resident = _FakeResident(fetch=lambda: HierarchyRead(xml))
+    resident = _FakeResident(fetch=lambda _since: HierarchyRead(xml))
 
     def run(args: list[str]) -> str:
         raise AssertionError(f"resident read must not shell out: {args}")
@@ -676,7 +676,7 @@ def test_android_environment_preinstalled_skip_is_about_the_app_not_the_resident
 
         def start(self):  # type: ignore[no-untyped-def]
             run(adb.install_cmd("S", "/built/server-debug.apk"))
-            return ResidentChannel(lambda: HierarchyRead("<hierarchy/>"), lambda: None)
+            return ResidentChannel(lambda _since: HierarchyRead("<hierarchy/>"), lambda: None)
 
     env = AndroidEnvironment(
         "adb",

@@ -66,7 +66,10 @@ class HierarchyRead:
     mark: float | None = None
 
 
-HierarchyFetch = Callable[[], HierarchyRead]
+# Takes the mark a read must postdate (BE-0332 Unit 4): the resident server blocks until an
+# accessibility event postdates it, then dumps once, rather than re-dumping until two hierarchies
+# match. None on a read with no gesture pending (nothing to postdate) and on the dump fallback.
+HierarchyFetch = Callable[[float | None], HierarchyRead]
 
 # The device's current clock (`SystemClock.uptimeMillis`), on the same scale as a read's `mark`, so the
 # host can take a "before the gesture" mark that a later read must postdate (BE-0332 Unit 3). Returns
@@ -421,8 +424,12 @@ class AdbDriver(CoordinateTreeDriver):
         fallback is a clean degrade rather than one poisoned by a wedged-but-alive server.
         """
         if self._fetch_hierarchy is not None:
+            # Tell the resident channel which mark to wait past (BE-0332 Unit 4): the pending gesture's
+            # actuation mark, so the device blocks until a read postdates it and returns that read in one
+            # round trip. None when nothing is pending, so a read that follows no gesture never waits.
+            since = self._catchup.actuation_mark if self._catchup is not None else None
             try:
-                read = self._fetch_hierarchy()
+                read = self._fetch_hierarchy(since)
                 self._read_mark = read.mark
                 return read.text
             except AdbResidentError as exc:
@@ -512,10 +519,13 @@ class AdbDriver(CoordinateTreeDriver):
 
         With a device event mark (BE-0332 Unit 3, the resident channel), the answer is exact: the read
         caught up the moment its mark postdates `actuation_mark`. That is a true ordering test — the
-        device published an update after the gesture — so it needs no dwell: the resident reader already
-        returns a settled (two-identical-dump) tree, so the read is whole, not torn. A read carrying no
-        mark (the channel died back to dump mid-barrier) simply never satisfies it, and the wall-clock
-        deadline in `_await_catchup` bounds the wait.
+        device published an update after the gesture — so it needs no host dwell: the resident reader
+        blocks on that same mark (BE-0332 Unit 4, `GET /source?since=`) until it can return a tree the
+        gesture has reached. The mark settles *staleness* (the read postdates the gesture); the device
+        then closes *tearing* (a dump caught mid-republish) with its own bounded settle before it
+        answers, so the two together make the read whole, not merely fresh. A read carrying no mark (the
+        channel died back to dump mid-barrier) simply never satisfies it, and the wall-clock deadline in
+        `_await_catchup` bounds the wait.
 
         Without a mark (the `uiautomator dump` fallback), the barrier keeps its earlier heuristic: a
         read counts as caught up only once its projection differs from the pre-gesture one *and* has
@@ -761,11 +771,12 @@ class AdbDriver(CoordinateTreeDriver):
         # How long a read may describe the screen as it was before the last gesture (BE-0326). Android
         # publishes the accessibility update *after* the scroll has moved the content, so a `query()`
         # taken in between returns the pre-scroll tree: on the CI emulator every step that looked
-        # unchanged had in fact moved the screen's pixels. `waitForIdle` plus the resident channel's
-        # two-identical-dumps barrier does not close that window (BE-0245) — both dumps can land before
-        # the update and agree with each other — so the `scroll` loop is told to keep re-reading rather
-        # than call the first unchanged read the end of content. Only ever spent on a region that looks
-        # stopped, never on a step that landed.
+        # unchanged had in fact moved the screen's pixels. `waitForIdle` alone does not close that window
+        # (BE-0245) — the queue looks idle before the update lands — so the `scroll` loop is told to keep
+        # re-reading rather than call the first unchanged read the end of content. This budget is the
+        # ceiling for reads that carry no device mark (the `uiautomator dump` fallback); the resident
+        # channel now closes the window exactly with the mark (BE-0332 Unit 4). Only ever spent on a
+        # region that looks stopped, never on a step that landed.
         return self._READ_LAG_S
 
     def read_postdates_actuation(self) -> bool:

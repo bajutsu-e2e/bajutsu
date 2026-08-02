@@ -309,7 +309,7 @@ def test_describe_uses_resident_fetch_when_configured() -> None:
     def run(args: list[str]) -> str:
         raise AssertionError(f"resident path must not shell out: {args}")
 
-    driver = AdbDriver("U", run=run, fetch_hierarchy=lambda: HierarchyRead(FIXTURE))
+    driver = AdbDriver("U", run=run, fetch_hierarchy=lambda _since: HierarchyRead(FIXTURE))
     assert len(driver.query()) == FIXTURE_ELEMENT_COUNT
 
 
@@ -323,7 +323,7 @@ def test_describe_falls_back_to_dump_on_resident_error() -> None:
         calls.append(args)
         return FIXTURE if "dump" in args else ""
 
-    def fetch() -> HierarchyRead:
+    def fetch(_since: float | None) -> HierarchyRead:
         raise AdbResidentError("channel down")
 
     driver = AdbDriver("U", run=run, fetch_hierarchy=fetch)
@@ -350,7 +350,7 @@ def test_query_transient_retry_rides_over_resident_fetch() -> None:
     # null-root read over the resident channel is retried just as a dump one is.
     seq = [FIXTURE, NULL_ROOT, FIXTURE]
 
-    def fetch() -> HierarchyRead:
+    def fetch(_since: float | None) -> HierarchyRead:
         return HierarchyRead(seq.pop(0) if len(seq) > 1 else seq[0])
 
     driver = AdbDriver("U", run=lambda a: "", fetch_hierarchy=fetch)
@@ -364,7 +364,7 @@ def test_query_transient_retry_rides_over_resident_fetch() -> None:
 def test_resident_fallback_logs_warning(caplog: pytest.LogCaptureFixture) -> None:
     # The fallback is loud (determinism first): a resident-channel failure is logged so a silently
     # degraded, slower read is visible rather than hidden.
-    def fetch() -> HierarchyRead:
+    def fetch(_since: float | None) -> HierarchyRead:
         raise AdbResidentError("channel down")
 
     driver = AdbDriver("U", run=lambda a: FIXTURE, fetch_hierarchy=fetch)
@@ -378,7 +378,7 @@ def test_resident_failure_latches_to_dump_for_the_rest_of_the_lease() -> None:
     # after the first AdbResidentError the driver disables the channel and reads via dump silently.
     fetch_calls = 0
 
-    def fetch() -> HierarchyRead:
+    def fetch(_since: float | None) -> HierarchyRead:
         nonlocal fetch_calls
         fetch_calls += 1
         raise AdbResidentError("channel down")
@@ -1230,7 +1230,7 @@ def _resident_driver(
     clock_seq = list(clocks)
     events: list[str] = []
 
-    def fetch() -> HierarchyRead:
+    def fetch(_since: float | None) -> HierarchyRead:
         xml, mark = read_seq.pop(0) if len(read_seq) > 1 else read_seq[0]
         return HierarchyRead(xml, mark)
 
@@ -1340,6 +1340,28 @@ def test_read_postdates_actuation_stays_false_when_the_actuation_armed_no_mark_b
     assert driver._catchup is None  # nothing armed
     driver.query()  # even a read whose mark advances must not confirm an order never anchored
     assert driver.read_postdates_actuation() is False
+
+
+def test_read_source_requests_the_pending_actuation_mark_as_since(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # BE-0332 Unit 4: the device blocks until a read postdates the requested mark, so the host must tell
+    # it which mark to wait past — the pending catch-up's actuation mark. A read with no gesture pending
+    # requests none, so the device returns at once.
+    clock = _Clock()
+    monkeypatch.setattr(adb_driver_mod, "time", clock)
+    seen: list[float | None] = []
+
+    def fetch(since: float | None) -> HierarchyRead:
+        seen.append(since)
+        return HierarchyRead(FIXTURE, 1001.0)
+
+    driver = AdbDriver("U", run=lambda a: "", fetch_hierarchy=fetch, fetch_clock=lambda: 1000.0)
+    driver.query()
+    assert seen == [None]  # nothing pending → no mark to postdate
+    driver.swipe((10, 300), (10, 100))  # takes the mark 1000 and arms the barrier
+    driver.query()  # the post-gesture read carries that mark as `since`
+    assert seen[-1] == 1000.0
 
 
 def test_a_pan_with_no_fresh_read_takes_its_baseline_from_the_screen(
