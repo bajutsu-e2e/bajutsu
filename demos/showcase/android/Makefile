@@ -30,6 +30,13 @@ SERIAL ?= booted
 # a condition wait returns the instant the sheet presents, so the larger floor never slows the flow
 # — it only gives the software renderer time before the step is failed.
 #
+# Every on-device target sets that floor, not just the scenario lanes. `e2e-golden`, `e2e-fallback`,
+# and `e2e-visual` were left without it, so their first wait — the Stable catalog's `stable.row.1`,
+# the same one `smoke` opens with — got the scenario's bare 10s while `e2e` gave it 15s. The app's
+# first render after launch outruns 10s on this emulator often enough that both jobs failed on it
+# with `step 0 (wait): wait timeout`, on a warm AVD, while the scenario lanes passed the identical
+# wait. The floor is a ceiling on a condition wait, so a fast render still returns at once.
+#
 # The deep-scroll flows `controls` / `notices` rejoin the lane (BE-0208 unit 5). Both scroll a far
 # target into view — `controls` the segmented-control value node below the buttons, `notices` a list
 # row that starts well below the fold. They failed before because the default directional swipe
@@ -181,7 +188,7 @@ e2e-network: compose-build
 # needs no tab-bar navigation. Not part of `make check`: it needs a booted AVD, so android-e2e.yml
 # drives it in its own `golden (adb)` job, which runs this target then `e2e-fallback` in one AVD boot.
 e2e-golden: compose-build
-	cd $(ROOT) && uv run bajutsu run \
+	cd $(ROOT) && BAJUTSU_MIN_WAIT_TIMEOUT=$(E2E_WAIT_FLOOR) uv run bajutsu run \
 		--scenario demos/showcase/scenarios/golden/golden.yaml \
 		--goldens demos/showcase/scenarios/golden/goldens_android \
 		--target showcase-compose --udid $(SERIAL) --backend android --config $(CONFIG)
@@ -193,7 +200,7 @@ e2e-golden: compose-build
 # proven to yield the same element tree. Not part of `make check`: it needs a booted AVD, so
 # android-e2e.yml drives it right after `e2e-golden` in the same `golden (adb)` job's AVD session.
 e2e-fallback: compose-build
-	cd $(ROOT) && BAJUTSU_ADB_RESIDENT=0 uv run bajutsu run \
+	cd $(ROOT) && BAJUTSU_ADB_RESIDENT=0 BAJUTSU_MIN_WAIT_TIMEOUT=$(E2E_WAIT_FLOOR) uv run bajutsu run \
 		--scenario demos/showcase/scenarios/golden/golden.yaml \
 		--goldens demos/showcase/scenarios/golden/goldens_android \
 		--target showcase-compose --udid $(SERIAL) --backend android --config $(CONFIG)
@@ -208,7 +215,7 @@ e2e-fallback: compose-build
 # in its own `visual (adb)` job (a separate AVD boot). The pixel compare needs Pillow, so this
 # pulls in the `visual` extra (the element-tree golden does not) — the adb backend itself has none.
 e2e-visual: compose-build
-	cd $(ROOT) && uv run --extra visual bajutsu run \
+	cd $(ROOT) && BAJUTSU_MIN_WAIT_TIMEOUT=$(E2E_WAIT_FLOOR) uv run --extra visual bajutsu run \
 		--scenario demos/showcase/scenarios/visual/visual_android.yaml \
 		--baselines demos/showcase/scenarios/visual/baselines_android \
 		--target showcase-compose --udid $(SERIAL) --backend android --config $(CONFIG)
