@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0332") |
-| Implementing PR | [#1442](https://github.com/bajutsu-e2e/bajutsu/pull/1442), [#1445](https://github.com/bajutsu-e2e/bajutsu/pull/1445), [#1449](https://github.com/bajutsu-e2e/bajutsu/pull/1449), [#1454](https://github.com/bajutsu-e2e/bajutsu/pull/1454) |
+| Implementing PR | [#1442](https://github.com/bajutsu-e2e/bajutsu/pull/1442), [#1445](https://github.com/bajutsu-e2e/bajutsu/pull/1445), [#1449](https://github.com/bajutsu-e2e/bajutsu/pull/1449), [#1454](https://github.com/bajutsu-e2e/bajutsu/pull/1454), [#1455](https://github.com/bajutsu-e2e/bajutsu/pull/1455) (withdraw the `extract` early release) |
 | Topic | Driver & backend architecture |
 <!-- /BE-METADATA -->
 
@@ -252,6 +252,19 @@ Log:
   header and `GET /clock` endpoint, the device-clock mark taken before an actuation, the ordering
   requirement (`read_postdates_actuation()`), the `GET /source?since=` blocking read, and the
   wall-clock budget surviving only for the mark-less `uiautomator dump` fallback. Status → Implemented.
+
+- 2026-08-02 — Follow-up (PR #1455): the read mark no longer releases the `extract` poll early. The
+  Motivation's own failure reproduced on `smoke (adb)` after Unit 3 landed — `step 4 (assert_):
+  expected equals='2' but actual='3'`, the same string — because the mark answers a weaker question
+  than the poll asks. The mark certifies that *an* accessibility event postdates the gesture; `extract`
+  needs the property it copies out to have been republished. One gesture produces several events:
+  Compose publishes the tapped button's own event before the `Text` mirroring the new count recomposes,
+  so a read can postdate the tap, still carry the previous value, and agree with the read after it —
+  and the mark and the two-agreeing-reads test then both pass on a stale pair. The wall-clock budget is
+  what separates them, so the `extract` poll keeps it as its only release. Ordering stays the right
+  question for the driver's own catch-up barrier, which waits on frames the mark does speak for, and
+  that use is unchanged. Deterministic coverage replaces the Unit 3 early-release test with the
+  regression: a backend whose mark fires while the value is still stale must bind the live value.
 
 ## References
 

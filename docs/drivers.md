@@ -227,9 +227,16 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
   `X-Bajutsu-Read-Mark` header — the device-clock time of the newest event as of the served dump — and
   adds a `GET /clock` endpoint. The driver takes a device-clock mark before each barrier-arming
   actuation and requires a read whose mark postdates it (`read_postdates_actuation()`, the
-  `ReadOrderProvider` seam), so both the coordinate resolve's catch-up and the `extract` poll release
-  the instant the device publishes the action's update — no dwell — instead of idling to the budget.
-  Both marks come from the device's own clock, so no host-to-device skew enters. `GET
+  `ReadOrderProvider` seam), so the coordinate resolve's catch-up releases the instant the device
+  publishes the action's update — no dwell — instead of idling to the budget.
+  Both marks come from the device's own clock, so no host-to-device skew enters.
+  The mark releases the **coordinate** barrier only. A mid-scenario `extract` keeps the wall-clock
+  budget, because the mark answers "an accessibility event postdates the gesture" while `extract`
+  needs "the property I am copying out has been republished". One gesture produces several events —
+  Compose publishes the tapped button's own event before the `Text` mirroring the new count
+  recomposes — so a read can postdate the tap, still carry the previous value, and agree with the read
+  after it. Ordering is the right question for frames, which the coordinate resolve waits on, and the
+  wrong one for a value. `GET
   /source?since=<mark>` pushes the same ordering into the reader itself: it blocks until an
   accessibility event postdates the requested mark, then a bounded settle closes tearing before it
   answers, so the two-identical-dumps freshness barrier is retired at its source and pays no second
