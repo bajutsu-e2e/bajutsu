@@ -231,7 +231,10 @@ languages. The handle keeps the decision on the host and sends only its result.
       actuation-grade read.
 - [ ] Unit 2 — `POST /act` on the resident UI Automator server, resolving a handle and injecting
       from the warm session.
-- [ ] Unit 3 — identity-derived handles, and the adb driver's actuators routed through them.
+- [~] Unit 3 — identity-derived handles, and the adb driver's actuators routed through them. The
+      **host half** has landed: an `ActRequest` names an already-resolved element by its four
+      accessibility fields, and `tap` routes through the channel. Nothing answers `/act` until Unit 2
+      ships, so today every attempt degrades to the coordinate tap after one probe per lease.
 - [ ] Unit 4 — the coordinate path kept as a declared, logged degraded mode.
 - [ ] Unit 5 — the read-lag barrier narrowed to the reads that still need it.
 - [ ] Unit 6 — deterministic and conformance coverage, and a repeated Android-lane run.
@@ -244,6 +247,13 @@ Log:
   out. The adb driver implements the protocol with its existing settle; every other backend does not
   implement it and keeps its single read unchanged. Status → In progress. Units 2–6, which move
   actuation itself onto the device, remain.
+
+- 2026-08-02 — Host half of Unit 3 (PR #1455): `ActRequest`, `parse_hierarchy_with_identities`, the
+  resident-channel `act` client, and `tap` routed through it, with the coordinate actuators kept as the
+  degraded path. Unit 2's Kotlin endpoint is written but not landed — it cannot be compiled in the
+  authoring environment (a JDK, but no Android SDK and no `kotlinc`), and an APK build that fails would
+  take `smoke`, `golden`, and `conformance` down together. Only `tap` is routed; `double_tap`,
+  `long_press`, `pinch`, and `rotate` stay on coordinates until the endpoint is proven on the lane.
 
 ## References
 

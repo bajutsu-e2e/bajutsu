@@ -184,6 +184,7 @@ e2e: compose-build views-build
 E2E_NET_STUB_PORT := 8770
 e2e-network: compose-build
 	adb wait-for-device
+	$(ANR_QUIET)
 	cd $(ROOT) && ( python3 demos/showcase/android/net_stub.py $(E2E_NET_STUB_PORT) & \
 		stub=$$!; trap "kill $$stub 2>/dev/null" EXIT; \
 		ready=0; for i in $$(seq 1 50); do \
@@ -253,6 +254,7 @@ e2e-visual: compose-build
 # android-e2e.yml drives it in its own `conformance (adb)` job.
 e2e-conformance: compose-build
 	adb root && adb wait-for-device
+	$(ANR_QUIET)
 	cd $(ROOT) && BAJUTSU_CONFORMANCE_SERIAL=$(SERIAL) \
 		uv run pytest tests/test_driver_conformance_ondevice_android.py -m ondevice -n0 -v
 
