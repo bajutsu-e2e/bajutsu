@@ -231,8 +231,9 @@ def pytest_sessionfinish(session: pytest.Session) -> None:
     by_test: dict[object, list[dict[str, object]]] = {}
     for event in events:
         by_test.setdefault(event["nodeid"], []).append(event)
-    # A test is "exhausted" if any of its crashes gave up (a will_retry=False event); otherwise it
-    # crashed but ultimately recovered to green.
+    # A test is "exhausted" if any of its crashes gave up (a will_retry=False event); otherwise every
+    # crash chose to retry, so the infra fault was recovered — though a later genuine (non-crash)
+    # failure can still redden the test, which "recovered" does not distinguish.
     exhausted = sum(1 for evs in by_test.values() if any(not e["willRetry"] for e in evs))
     summary = {
         "respawns": sum(1 for e in events if e["willRetry"]),
@@ -240,7 +241,17 @@ def pytest_sessionfinish(session: pytest.Session) -> None:
         "exhausted": exhausted,
         "events": events,
     }
-    Path(path).write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+    target = Path(path)
+    try:
+        # Best-effort observability that only ever counts, never gates: create the parent (a lane may
+        # point at a not-yet-created artifacts dir) and swallow any OS error — an unwritable report path
+        # must not raise out of sessionfinish and fail an otherwise-green suite.
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+    except OSError:
+        _logger.warning(
+            "could not write the backend-recovery report to %s; skipping", path, exc_info=True
+        )
 
 
 def _publish(item: pytest.Item, reports: list[pytest.TestReport]) -> None:
