@@ -806,9 +806,9 @@ jobs:
     if: needs.changes.outputs.relevant == 'true'
     runs-on: macos-latest
     # Cap the metered macOS job (10x billing). The freeze still spends the whole transport retry
-    # budget before recovery, but the suite shrinks the per-attempt socket timeout to 2s
-    # (`_TEST_SOCKET_TIMEOUT_S`), so that budget is ~7.5s rather than the shipped ~46s and each
-    # freeze holds ~12.5s — seconds, not minutes; 25 still catches a real hang with headroom.
+    # budget before recovery, but the suite shrinks the per-attempt socket timeout to 0.5s
+    # (`_TEST_SOCKET_TIMEOUT_S`), so that budget is ~3s rather than the shipped ~46s and each
+    # freeze holds ~4.5s — seconds, not minutes; 25 still catches a real hang with headroom.
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
