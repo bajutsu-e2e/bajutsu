@@ -110,13 +110,18 @@ class ResidentServerTest {
         // dumpWindowHierarchy traverses every window, so this XML also carries the SystemUI status
         // bar (clock, wifi, battery, notification icons — 29 nodes) that the platform `uiautomator
         // dump` omits by scoping to the active window. `parse_hierarchy` parses the format unchanged.
-        val body = stableHierarchy(device)
-        // Read the mark *after* the dump so it reflects as many observed events as possible (BE-0332).
-        // The listener fires asynchronously, so this is best-effort, not a happens-before guarantee — an
-        // event dispatched during the dump may not have reached the listener yet. That only ever
-        // *undercounts* the mark, which is the safe direction: a lagging mark makes the host wait
-        // longer for a postdating read, never trusts a stale one.
+
+        // Snapshot the read mark *before* the dump (BE-0332): the invariant the host relies on is
+        // `mark > actuation_mark` ⟹ body is post-gesture. That holds only when the body is at least
+        // as fresh as the mark — i.e. the dump captured after this snapshot reflects every event the
+        // mark counts. Reading the mark *after* the dump instead lets an accessibility event that
+        // arrives between `stableHierarchy()` and `lastEventTime.get()` push the mark above the
+        // body's freshness, causing the host to certify a two-identical-but-stale tree as caught up.
+        // Snapshotting before the dump makes the undershoot direction: the mark can only undercount
+        // events relative to the body (the body saw everything the mark saw, and possibly more), which
+        // makes the host wait for a fresher read — never trusts a stale one.
         val mark = lastEventTime.get()
+        val body = stableHierarchy(device)
         respond(
             out,
             "200 OK",

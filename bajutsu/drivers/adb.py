@@ -481,11 +481,12 @@ class AdbDriver(CoordinateTreeDriver):
         if mark is None and not self._clock_warned:
             # The read channel is live (a clock probe was configured) but `/clock` did not answer — an
             # older server without the endpoint, or a one-off fault. The barrier stays correct on its
-            # wall-clock budget; log once so a silently-slower lane is still diagnosable, not invisible.
+            # wall-clock budget for each gesture whose mark probe returns None (the probe keeps being
+            # attempted on subsequent gestures; this latch only suppresses repeated identical warnings).
             self._clock_warned = True
             logger.warning(
-                "resident clock probe returned no mark; read-lag barrier stays on its wall-clock "
-                "budget for the rest of this lease"
+                "resident clock probe returned no mark; read-lag barrier falls back to its "
+                "wall-clock budget for gestures where the probe cannot answer"
             )
         return mark
 
