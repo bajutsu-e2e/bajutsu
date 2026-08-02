@@ -158,8 +158,9 @@ class AndroidEnvironment:
         channel = self._begin_resident()
         fetch = channel.fetch if channel is not None else None
         clock = channel.clock if channel is not None else None
+        act = channel.act if channel is not None else None
         return backends.make_driver(
-            self._actuator, self._serial, fetch_hierarchy=fetch, fetch_clock=clock
+            self._actuator, self._serial, fetch_hierarchy=fetch, fetch_clock=clock, act=act
         )
 
     def _begin_resident(self) -> ResidentChannel | None:

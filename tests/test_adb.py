@@ -1638,3 +1638,102 @@ def test_instrument_cmd_starts_the_blocking_serve_test() -> None:
         "dev.bajutsu.android.server.ResidentServerTest#serve",
         "dev.bajutsu.android.server.test/androidx.test.runner.AndroidJUnitRunner",
     ]
+
+
+# --- device-side actuation: the host resolves, the device reads the bounds and injects ---
+
+
+def _recording_act(
+    replies: list[object],
+) -> tuple[Callable[[adb_driver_mod.ActRequest], bool], list[adb_driver_mod.ActRequest]]:
+    """An `ActFn` serving `replies` in order (holding the last) and recording every request.
+
+    A reply of True/False is the device's answer; an `AdbResidentError` instance is raised instead, so
+    one helper covers the acted, the stale, and the channel-fault paths.
+    """
+    seq = list(replies)
+    seen: list[adb_driver_mod.ActRequest] = []
+
+    def act(request: adb_driver_mod.ActRequest) -> bool:
+        seen.append(request)
+        reply = seq.pop(0) if len(seq) > 1 else seq[0]
+        if isinstance(reply, AdbResidentError):
+            raise reply
+        return bool(reply)
+
+    return act, seen
+
+
+def test_parse_hierarchy_identities_align_with_the_elements() -> None:
+    # The device matches on the dump's raw attributes, so the identity must be verbatim — not the
+    # `identifier` `_to_element` strips the package prefix off. Both lists walk the same nodes, so
+    # element i is named by identity i; a drift here would address the wrong node on the device.
+    els, identities = adb_driver_mod.parse_hierarchy_with_identities(FIXTURE)
+    assert len(els) == len(identities) == FIXTURE_ELEMENT_COUNT
+    submit = next(i for i, e in enumerate(els) if e["identifier"] == "stable.submit")
+    assert identities[submit] == ("stable.submit", "sent", "送信", "android.widget.Button")
+    refresh = next(i for i, e in enumerate(els) if e["identifier"] == "stable_refresh")
+    # The element's identifier is stripped; the identity keeps the package-qualified resource-id.
+    assert identities[refresh][0] == "com.bajutsu.showcase.android.views:id/stable_refresh"
+
+
+def test_tap_goes_to_the_device_and_injects_no_coordinate() -> None:
+    # The point of the device path: the host resolves the element and sends its identity, and no
+    # `input tap` is ever issued — so no coordinate computed here can go stale before the touch lands.
+    act, seen = _recording_act([True])
+    run, calls = _capturing_run([FIXTURE])
+    driver = AdbDriver("U", run=run, act=act)
+    driver.tap({"id": "stable.submit"})
+    assert [r.kind for r in seen] == ["tap"]
+    assert seen[0].identity == ("stable.submit", "sent", "送信", "android.widget.Button")
+    assert (seen[0].index, seen[0].count) == (0, 1)
+    assert not [c for c in calls if "input" in c]
+
+
+def test_a_stale_reply_re_resolves_then_falls_back_to_the_coordinate_path() -> None:
+    # `stale` means the screen moved between the host's resolve and the device's, so re-resolving is
+    # the fix. A target that never settles must not hang or fail: after a bounded number of attempts
+    # the gesture takes the coordinate path, leaving the run no worse off than before this existed.
+    act, seen = _recording_act([False])
+    run, calls = _capturing_run([FIXTURE])
+    driver = AdbDriver("U", run=run, act=act)
+    driver.tap({"id": "stable.submit"})
+    assert len(seen) == AdbDriver._STALE_MAX_ATTEMPTS  # bounded, not a spin
+    assert [c for c in calls if "input" in c]  # then the coordinate tap really did fire
+
+
+def test_a_channel_fault_degrades_to_the_coordinate_tap_and_warns_once(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # An older server answers 404 for /act while still serving reads, which reaches the driver as an
+    # AdbResidentError. The gesture must still happen, and the degrade must be visible — but once, not
+    # on every tap, so a long run's log stays readable.
+    act, seen = _recording_act([AdbResidentError("no such path")])
+    run, calls = _capturing_run([FIXTURE])
+    driver = AdbDriver("U", run=run, act=act)
+    with caplog.at_level(logging.WARNING):
+        driver.tap({"id": "stable.submit"})
+        driver.tap({"id": "stable.submit"})
+    assert len(seen) == 2  # still attempted; the latch suppresses the log, not the attempt
+    assert len([c for c in calls if "input" in c]) == 2
+    assert caplog.text.count("resident actuation unavailable") == 1
+
+
+def test_without_the_channel_the_coordinate_tap_is_unchanged() -> None:
+    # The dump path (no `act`) keeps today's behavior byte-for-byte: one `input tap` at the frame
+    # centre, with nothing new attempted first.
+    run, calls = _capturing_run([FIXTURE])
+    AdbDriver("U", run=run).tap({"id": "stable.submit"})
+    tap = next(c for c in calls if "tap" in c)
+    assert tap == ["adb", "-s", "U", "shell", "input", "tap", "100", "250"]
+
+
+def test_a_device_tap_arms_the_catch_up_barrier_like_a_coordinate_tap() -> None:
+    # The gesture happened, so the same bookkeeping must follow it: the cached tree is stale and the
+    # next coordinate resolve has to postdate this tap. Left unarmed, the device path would quietly
+    # drop the guarantee the coordinate path spent BE-0332 establishing.
+    act, _ = _recording_act([True])
+    run, _calls = _capturing_run([FIXTURE])
+    driver = AdbDriver("U", run=run, act=act)
+    driver.tap({"id": "stable.submit"})
+    assert driver._catchup is not None

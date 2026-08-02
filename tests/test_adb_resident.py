@@ -11,12 +11,13 @@ from __future__ import annotations
 
 import http.server
 import threading
+import urllib.parse
 from pathlib import Path
 
 import pytest
 
 from bajutsu import adb, adb_resident
-from bajutsu.drivers.adb import AdbResidentError, HierarchyRead, parse_hierarchy
+from bajutsu.drivers.adb import ActRequest, AdbResidentError, HierarchyRead, parse_hierarchy
 
 # One app window (a Views button) — the content the platform `uiautomator dump` returns.
 _APP_WINDOW = """  <node index="0" class="android.widget.FrameLayout" \
@@ -74,6 +75,18 @@ class _SourceHandler(http.server.BaseHTTPRequestHandler):
     mark: str | None = None  # the X-Bajutsu-Read-Mark header value, when set (BE-0332 Unit 3)
     clock = "12345"  # what GET /clock answers, a device-clock reading
     last_source_path: str | None = None  # the full GET /source target the client last sent
+
+    act_status = 200  # what POST /act answers
+    last_act_path: str | None = None  # the full POST /act target the client last sent
+
+    def do_POST(self) -> None:
+        if self.path.split("?", 1)[0] != "/act":
+            self.send_error(404)
+            return
+        type(self).last_act_path = self.path
+        self.send_response(self.act_status)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
 
     def do_GET(self) -> None:
         route = self.path.split("?", 1)[
@@ -511,3 +524,58 @@ def test_server_apks_built_needs_both_apks(tmp_path: Path) -> None:
     # The signature's params are named, so asking by keyword must answer about those same paths —
     # conftest's `_fresh_clone_resident_gate` pins only the gate's argument-less, ambient call.
     assert adb_resident.server_apks_built(server_apk=server_apk, test_apk=test_apk)
+
+
+# --- POST /act: the device resolves and injects, so no coordinate crosses the channel ---
+
+
+def _act_request(**over: object) -> ActRequest:
+    fields: dict[str, object] = {
+        "kind": "tap",
+        "identity": ("stable.submit", "sent", "送信", "android.widget.Button"),
+        "index": 0,
+        "count": 1,
+        "since": None,
+        "duration_ms": None,
+    }
+    fields.update(over)
+    return ActRequest(**fields)  # type: ignore[arg-type]
+
+
+def test_act_sends_the_element_identity_and_no_coordinate() -> None:
+    # The whole point of the endpoint: the device is told *which* element, never *where*. A coordinate
+    # on the wire would be one the host computed a round trip earlier — the staleness this closes.
+    port, server = _serve_once()
+    _SourceHandler.act_status = 200
+    try:
+        assert adb_resident.act(port, _act_request(since=42.0, duration_ms=700)) is True
+    finally:
+        server.shutdown()
+    sent = urllib.parse.parse_qs(urllib.parse.urlparse(_SourceHandler.last_act_path or "").query)
+    assert sent["rid"] == ["stable.submit"] and sent["text"] == ["送信"]
+    assert sent["index"] == ["0"] and sent["count"] == ["1"]
+    assert sent["since"] == ["42.0"] and sent["durationMs"] == ["700"]
+    assert not {"x", "y", "bounds"} & sent.keys()
+
+
+def test_act_reports_a_stale_target_rather_than_raising() -> None:
+    # 409 is the device saying "that identity no longer names the same nodes here". It is an ordinary
+    # outcome the driver answers by re-resolving, not a channel fault, so it must not raise.
+    port, server = _serve_once()
+    _SourceHandler.act_status = 409
+    try:
+        assert adb_resident.act(port, _act_request()) is False
+    finally:
+        server.shutdown()
+
+
+def test_act_raises_on_a_server_without_the_endpoint() -> None:
+    # An older resident server serves reads but 404s this path. That has to surface as a channel error
+    # so the driver degrades to its coordinate actuators rather than silently skipping the gesture.
+    port, server = _serve_once()
+    _SourceHandler.act_status = 404
+    try:
+        with pytest.raises(AdbResidentError, match="404"):
+            adb_resident.act(port, _act_request())
+    finally:
+        server.shutdown()

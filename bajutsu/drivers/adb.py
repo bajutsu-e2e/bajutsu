@@ -77,6 +77,36 @@ HierarchyFetch = Callable[[float | None], HierarchyRead]
 # failing a read, never accepting a stale tree in the bargain.
 ClockFetch = Callable[[], float | None]
 
+# The four accessibility fields that name one already-chosen element to the resident server:
+# `resource-id`, `content-desc`, `text`, `class`, verbatim from the dump.
+NodeIdentity = tuple[str, str, str, str]
+
+
+@dataclass(frozen=True)
+class ActRequest:
+    """One device-side actuation: what to do, and which element to do it to.
+
+    The host has already decided *which* element — `resolve_unique` ran here, so an ambiguous selector
+    failed before this was built. What crosses to the device is that element's identity, plus where it
+    sat among the nodes sharing that identity (`index` of `count`), so the device can confirm it is
+    looking at the same screen before it injects. No coordinate crosses: the device reads the bounds
+    itself, microseconds before the touch, from a dump of its own.
+    """
+
+    kind: str  # "tap" | "longPress" | "doubleTap"
+    identity: NodeIdentity
+    index: int  # the element's ordinal among the nodes sharing `identity`, in document order
+    count: int  # how many such nodes the host saw — the device refuses if its own count differs
+    since: float | None  # the device-clock mark the read behind the gesture must postdate
+    duration_ms: int | None  # press-and-hold length, for "longPress"
+
+
+# Perform one gesture on the device, against an element the host already resolved. True when the device
+# acted; False when it answered `stale` — the identity no longer names the same nodes there, so the host
+# re-resolves rather than letting a coordinate be guessed. Raises `AdbResidentError` when the channel
+# itself fails, which the driver degrades to its own coordinate path.
+ActFn = Callable[[ActRequest], bool]
+
 logger = logging.getLogger("bajutsu.adb.resident")
 
 
@@ -218,6 +248,34 @@ def _to_element(node: ET.Element) -> base.Element:
     }
 
 
+def _identity(node: ET.Element) -> NodeIdentity:
+    """The accessibility fields that name a node to the device, verbatim from the dump.
+
+    Verbatim — not `_to_element`'s derived `identifier` / `label` — because the resident server matches
+    these against its own dump's raw attributes. Deriving on one side and matching on the other is the
+    kind of drift that turns a resolvable element into a permanent `stale`.
+    """
+    return (
+        node.get("resource-id") or "",
+        node.get("content-desc") or "",
+        node.get("text") or "",
+        node.get("class") or "",
+    )
+
+
+def parse_hierarchy_with_identities(text: str) -> tuple[list[base.Element], list[NodeIdentity]]:
+    """`parse_hierarchy`, plus each element's device-addressable identity, index-aligned.
+
+    Both lists walk the same `<node>` sequence in document order, so element *i* is named by identity
+    *i*. Produced together rather than by two passes so the alignment cannot drift.
+    """
+    root = slice_hierarchy_root(text)
+    if root is None:
+        return [], []
+    nodes = list(root.iter("node"))
+    return [_to_element(n) for n in nodes], [_identity(n) for n in nodes]
+
+
 def slice_hierarchy_root(text: str) -> ET.Element | None:
     """Slice the `<hierarchy>` XML out of a UI Automator dump and parse its root, or `None`.
 
@@ -348,6 +406,7 @@ class AdbDriver(CoordinateTreeDriver):
         *,
         fetch_hierarchy: HierarchyFetch | None = None,
         fetch_clock: ClockFetch | None = None,
+        act: ActFn | None = None,
     ) -> None:
         super().__init__()
         self.serial = adb._checked_serial(serial)
@@ -359,6 +418,19 @@ class AdbDriver(CoordinateTreeDriver):
         # anchor the read-lag barrier on the device's own clock. None (the dump path, or an older
         # server) leaves the barrier on its wall-clock budget — a slower but equally safe degrade.
         self._fetch_clock = fetch_clock
+        # The resident server's actuation endpoint, when the channel offers one. With it, a `tap`
+        # resolves its target on the device — bounds read microseconds before the touch, in the warm
+        # session — instead of the host computing a coordinate and `adb shell input` injecting it a
+        # round trip later. None (the dump path, or an older server) keeps the coordinate actuators,
+        # which stay the declared degraded mode rather than a silent second-best.
+        self._act_fn = act
+        # Each element's device-addressable identity, keyed by `id()` of the element dict the last read
+        # produced — the same object `resolve_unique` hands back, so a resolved element maps straight to
+        # what the device needs. Rebuilt on every read; a stale key simply misses and degrades.
+        self._identities: dict[int, NodeIdentity] = {}
+        # Latches the first device-actuation fault so a channel that answers reads but not `/act` — an
+        # older server — degrades to coordinates once loudly rather than on every gesture.
+        self._act_warned = False
         # The device event mark of the most recent read (BE-0332 Unit 3): `SystemClock.uptimeMillis` of
         # the newest accessibility event the resident reader had seen. None on the dump path. Set by
         # `_read_source` on every read, before `_advance_catchup` folds that read into the barrier.
@@ -373,6 +445,9 @@ class AdbDriver(CoordinateTreeDriver):
         # channel — which silently forfeits the early release and leaves the lane on its wall-clock
         # budget — is logged once rather than invisibly or on every gesture.
         self._clock_warned = False
+        # Latches the first mark-less resident read (see `_read_source`), so a channel that serves
+        # hierarchies without the read-mark header says so once rather than degrading invisibly.
+        self._mark_warned = False
         # Lazily resolved once for the sendevent double-tap path (BE-0208): whether adbd is root and
         # which node is the touchscreen. `_touch_probed` distinguishes "not yet looked" from "looked,
         # found nothing" so a device with no touchscreen is not re-probed on every double-tap.
@@ -409,7 +484,9 @@ class AdbDriver(CoordinateTreeDriver):
         return self._run(args)
 
     def _describe(self) -> list[base.Element]:
-        return parse_hierarchy(self._read_source())
+        els, identities = parse_hierarchy_with_identities(self._read_source())
+        self._identities = {id(el): ident for el, ident in zip(els, identities, strict=True)}
+        return els
 
     def _read_source(self) -> str:
         """The raw hierarchy dump text: the resident channel when available, else `uiautomator dump`.
@@ -431,6 +508,20 @@ class AdbDriver(CoordinateTreeDriver):
             try:
                 read = self._fetch_hierarchy(since)
                 self._read_mark = read.mark
+                if read.mark is None and not self._mark_warned:
+                    # A live channel whose reads carry no `X-Bajutsu-Read-Mark` disables the ordering
+                    # test silently: `_advance_catchup`'s mark branch can never be satisfied, so every
+                    # mark-armed gesture spends the whole `_READ_LAG_S` budget and closes on the timeout
+                    # warning instead. That is slow and, worse, indistinguishable from a healthy run in
+                    # the log — the timeout message names the benign case too. Say it once, so "the lane
+                    # is on the mark path" stops being an assumption.
+                    self._mark_warned = True
+                    logger.warning(
+                        "resident reads carry no %s header; the read-lag barrier cannot use the "
+                        "device mark and every armed gesture will spend its full %.1fs budget",
+                        "X-Bajutsu-Read-Mark",
+                        self._READ_LAG_S,
+                    )
                 return read.text
             except AdbResidentError as exc:
                 logger.warning(
@@ -712,7 +803,74 @@ class AdbDriver(CoordinateTreeDriver):
         self._act(args)
         self._arm_catchup(pre_key, mark)
 
+    # How many times a `stale` reply is answered by re-resolving before the gesture falls back to the
+    # coordinate path. `stale` means the screen moved between the host's resolve and the device's, so a
+    # re-read is the fix and usually succeeds at once; a target that keeps moving is a moving target,
+    # not a channel fault, so the attempts are few. Mirrors the XCUITest channel's own bound (BE-0289).
+    _STALE_MAX_ATTEMPTS = 3
+
+    def _device_act(self, sel: base.Selector, kind: str, duration_ms: int | None = None) -> bool:
+        """Perform `kind` on `sel` device-side, or return False to leave it to the coordinate path.
+
+        Resolution stays here: `_resolve_frame_and_screen` settles the tree and `resolve_unique` picks
+        the element, so an ambiguous selector still fails immediately and a not-found one still scrolls
+        into view — the determinism core is untouched. Only the *coordinate* moves to the device, which
+        reads the element's bounds from its own dump microseconds before injecting.
+
+        Returns False, never raising, on every reason the device path cannot serve this gesture: no
+        channel, an element whose identity this read did not record, a `stale` reply that re-resolving
+        did not settle, or a channel fault. The caller then injects a coordinate exactly as before, so a
+        device without the endpoint is no worse off than one that never had it.
+        """
+        if self._act_fn is None:
+            return False
+        for _ in range(self._STALE_MAX_ATTEMPTS):
+            tree = self._settle()
+            try:
+                el = self._resolve(sel, timeout=self._RESOLVE_TIMEOUT_S, initial_tree=tree)
+            except base.ElementNotFound:
+                el = self._scroll_into_view(sel, tree)
+            identity = self._identities.get(id(el))
+            if identity is None:
+                return False  # a tree this driver did not parse (a seeded read); coordinates it is
+            same = [e for e in tree if self._identities.get(id(e)) == identity]
+            request = ActRequest(
+                kind=kind,
+                identity=identity,
+                index=same.index(el),
+                count=len(same),
+                since=self._capture_mark(),
+                duration_ms=duration_ms,
+            )
+            pre_key = self._last_stable_key
+            mark = request.since
+            try:
+                acted = self._act_fn(request)
+            except AdbResidentError as exc:
+                if not self._act_warned:
+                    self._act_warned = True
+                    logger.warning(
+                        "resident actuation unavailable (%s); falling back to coordinate injection, "
+                        "which resolves a target a round trip before it is touched",
+                        exc,
+                    )
+                return False
+            if acted:
+                # The gesture happened on the device, so the cached tree is stale and the next read must
+                # postdate it — the same bookkeeping `_act` does for a coordinate injection.
+                self._tree_current = False
+                self._read_ordered = False
+                self._arm_catchup(pre_key, mark)
+                return True
+        logger.warning(
+            "resident actuation reported the target moved on every attempt; falling back to "
+            "coordinate injection for this gesture"
+        )
+        return False
+
     def tap(self, sel: base.Selector) -> None:
+        if self._device_act(sel, "tap"):
+            return
         x, y = self._center(sel)
         self._actuate_centered(adb.tap_cmd(self.serial, x, y))
 
