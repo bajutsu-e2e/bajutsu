@@ -183,3 +183,94 @@ def test_does_not_retry_a_contract_violation(pytester) -> None:
     result.assert_outcomes(failed=1)
     # One lease only: the contract violation was not treated as infrastructure.
     result.stdout.fnmatch_lines(["*AmbiguousSelector*"])
+
+
+def test_amortizes_the_lease_across_crash_free_tests(pytester) -> None:
+    # The reason the lease is module-scoped (BE-0334 Unit 3): in the common, crash-free case the
+    # expensive cold spawn runs once and every test reuses it. The plugin must not erode that.
+    pytester.makeconftest(_INNER_CONFTEST)
+    pytester.makepyfile(
+        textwrap.dedent(
+            """
+            import pytest
+
+            pytestmark = pytest.mark.backend_crash_recovery
+            _LAUNCHES = {"n": 0}
+
+            class _FakeDriver:
+                def act(self) -> None:
+                    pass
+                def close(self) -> None:
+                    pass
+
+            @pytest.fixture(scope="module")
+            def _backend_launch():
+                def launch():
+                    _LAUNCHES["n"] += 1
+                    return _FakeDriver()
+                return launch
+
+            @pytest.fixture
+            def driver(_backend_lease_holder):
+                return _backend_lease_holder.driver
+
+            def test_one(driver):
+                driver.act()
+            def test_two(driver):
+                driver.act()
+            def test_three(driver):
+                driver.act()
+                assert _LAUNCHES["n"] == 1  # one shared cold spawn across the whole module
+            """
+        )
+    )
+    result = pytester.runpytest_inprocess()
+    result.assert_outcomes(passed=3)
+
+
+def test_a_crash_does_not_cascade_to_later_tests(pytester, monkeypatch) -> None:
+    # A module-scoped lease lets one crash poison every later test (the cascade BE-0334 Unit 3 stops).
+    # With crash_retries=0 the crashing test fails at once; the dead lease must then be discarded so the
+    # *next* test re-leases a fresh device and passes, rather than inheriting the dead runner.
+    monkeypatch.setenv("BAJUTSU_CRASH_RETRIES", "0")
+    pytester.makeconftest(_INNER_CONFTEST)
+    pytester.makepyfile(
+        textwrap.dedent(
+            """
+            import pytest
+            from bajutsu.drivers import base
+
+            pytestmark = pytest.mark.backend_crash_recovery
+            _LAUNCHES = {"n": 0}
+
+            class _FakeDriver:
+                def __init__(self, crash: bool) -> None:
+                    self._crash = crash
+                def act(self) -> None:
+                    if self._crash:
+                        raise base.BackendCrashError("fake runner crashed mid-test")
+                def close(self) -> None:
+                    pass
+
+            @pytest.fixture(scope="module")
+            def _backend_launch():
+                def launch():
+                    _LAUNCHES["n"] += 1
+                    return _FakeDriver(crash=_LAUNCHES["n"] == 1)  # only the first lease is poisoned
+                return launch
+
+            @pytest.fixture
+            def driver(_backend_lease_holder):
+                return _backend_lease_holder.driver
+
+            def test_a_crashes(driver):
+                driver.act()  # crashes on the first lease; crash_retries=0 -> fails at once
+            def test_b_runs_on_a_fresh_lease(driver):
+                driver.act()  # the dead lease was discarded, so this is a fresh, healthy device
+                assert _LAUNCHES["n"] == 2
+            """
+        )
+    )
+    result = pytester.runpytest_inprocess()
+    # No cascade: the crash fails only its own test; the later test re-leases and passes.
+    result.assert_outcomes(failed=1, passed=1)

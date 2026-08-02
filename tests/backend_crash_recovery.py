@@ -147,8 +147,11 @@ def pytest_runtest_protocol(item: pytest.Item, nextitem: pytest.Item | None) -> 
         decision = budget.on_crash(attempt)
         if not decision.will_retry:
             # Recovery is over and the test never passed: publish the failing reports so the crash
-            # fails loudly (BE-0049), rather than being absorbed into a slow green.
+            # fails loudly (BE-0049), rather than being absorbed into a slow green. Discard the dead
+            # lease so the *next* test cold-respawns onto a fresh device instead of inheriting the dead
+            # runner — one crash fails only its own test, it does not cascade across the module (Unit 3).
             _publish(item, reports)
+            _invalidate_holder(item)
             break
         # Discard the dead lease so the re-run cold-respawns onto a fresh device, then reset the
         # item's fixture request so its function-scoped fixtures resolve again on the next attempt.
