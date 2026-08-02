@@ -41,6 +41,7 @@ import os
 import signal
 import subprocess
 import threading
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -68,24 +69,48 @@ UDID: str = _udid
 _CONFIG_PATH = Path("demos/showcase/showcase.config.yaml")
 _TARGET = "showcase-swiftui"
 
-# How long the freeze holds before it is released: the transport's own worst-case retry budget (a
-# `GET`, the method `query` issues) plus a small margin. Read from the transport rather than
-# restated here, so re-tuning the retry loop re-tunes the fault with it. The margin stays small on
-# purpose: this suite drives one request at a time, never several concurrently, so the kernel's
-# accept backlog is never full and `connect()` is always served instantly — only the response read
-# actually blocks for the socket timeout, which `_retry_budget_seconds` already accounts for. A
-# margin wider than that buys nothing and costs real risk the other way: SIGSTOP is not free, and
-# holding a real XCTest host stopped far past the failure it's proving risks losing the runner
-# outright rather than letting it resume (observed: doubling this held the runner past recovery's
-# window and left nothing listening for the next test).
-_RETRY_BUDGET_S = xcuitest._retry_budget_seconds("GET")
-_FREEZE_HOLD_S = _RETRY_BUDGET_S + 5.0
-# Released after the retry loop has certainly given up, and before recovery stops waiting: outside
-# either bound the suite would silently test something else (the retry absorbing the freeze, or the
-# never-recovered branch), so a re-tune that breaks the window fails at import rather than on-device.
-assert _RETRY_BUDGET_S < _FREEZE_HOLD_S < _RETRY_BUDGET_S + xcuitest._RECOVERY_TIMEOUT_SECONDS
+# The per-attempt socket timeout this suite runs the transport at, in place of the shipped 15 s.
+# Shipped, one `GET`'s worst-case retry budget is ~46.5 s, so the freeze had to hold ~51.5 s for the
+# retry loop to genuinely exhaust — and a real XCTest host stopped that long does not reliably come
+# back: two of three CI runs lost the runner outright, the frozen case failing "did not recover" and
+# the killed case then finding nothing on the port at all. Rather than race whatever reclaims a
+# long-stopped process, shrink the budget the fault has to outlast. Nothing about the mechanism under
+# test changes — a real `SIGSTOP` still hangs a real socket, the retry loop still exhausts on it for
+# real, and recovery still re-issues — only the wall clock it all happens on, which also takes this
+# suite from minutes to seconds.
+_TEST_SOCKET_TIMEOUT_S = 2
 
 _RECOVERY_LOGGER = "bajutsu.xcuitest.channel"
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _shrink_retry_budget() -> Iterator[None]:
+    """Run the transport at `_TEST_SOCKET_TIMEOUT_S` per attempt for this module."""
+    mp = pytest.MonkeyPatch()
+    mp.setattr(xcuitest, "_SOCKET_TIMEOUT_SECONDS", _TEST_SOCKET_TIMEOUT_S)
+    try:
+        yield
+    finally:
+        mp.undo()
+
+
+def _freeze_hold_s() -> float:
+    """How long to hold the freeze: the retry loop's worst case, plus a small margin.
+
+    Read from the transport rather than restated, so re-tuning the retry loop re-tunes the fault with
+    it, and computed at call time so it sees `_shrink_retry_budget`'s override. The margin stays
+    small on purpose: this suite drives one request at a time, never several concurrently, so the
+    kernel's accept backlog is never full and `connect()` is always served instantly — only the
+    response read actually blocks for the socket timeout, which `_retry_budget_seconds` already
+    counts. A wider margin buys nothing and costs the runner's survival.
+    """
+    budget = xcuitest._retry_budget_seconds("GET")
+    hold = budget + 5.0
+    # Released after the retry loop has certainly given up, and before recovery stops waiting:
+    # outside either bound the suite would silently test something else (the retry absorbing the
+    # freeze, or the never-recovered branch).
+    assert budget < hold < budget + xcuitest._RECOVERY_TIMEOUT_SECONDS
+    return hold
 
 
 @pytest.fixture(scope="module")
@@ -158,7 +183,7 @@ def test_a_frozen_runner_is_recovered_and_the_call_re_issued(
     # Release from a separate thread: the driver call below blocks on the frozen socket for the whole
     # retry budget, so nothing on this thread could lift the freeze in time. Armed only once the stop
     # landed, so a failed signal never leaves a timer to fire at a pid this test did not stop.
-    release = threading.Timer(_FREEZE_HOLD_S, os.kill, args=(pid, signal.SIGCONT))
+    release = threading.Timer(_freeze_hold_s(), os.kill, args=(pid, signal.SIGCONT))
     release.start()
     try:
         with caplog.at_level(logging.WARNING, logger=_RECOVERY_LOGGER):

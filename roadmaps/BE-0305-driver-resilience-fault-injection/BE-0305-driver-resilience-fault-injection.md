@@ -131,6 +131,15 @@ Proposal altitude. The work is MECE along the units below.
   runner and its `xcodebuild` host then drives BE-0319's process-exited branch, asserting an
   `XcuitestRunnerCrashError` that is also a `base.BackendCrashError` — the classification the run
   pipeline needs to lease a fresh device and re-run.
+- The XCUITest freeze runs the transport at a 2 s per-attempt socket timeout instead of the shipped
+  15 s, so the fault has to outlast ~7.5 s of retry budget rather than ~46.5 s. At the shipped value
+  the freeze had to hold ~51.5 s, and a real XCTest host stopped that long did not reliably come
+  back: two of three runs lost the runner outright, the frozen case failing "did not recover" and the
+  killed case then finding nothing on the port. Shrinking the budget avoids racing whatever reclaims
+  a long-stopped process, and changes nothing about the mechanism under test — a real `SIGSTOP` still
+  hangs a real socket, the retry loop still exhausts on it for real, and recovery still re-issues.
+  The override is a module attribute the request path reads per call, so it moves the actual socket
+  timeout, not merely the arithmetic the freeze is sized from.
 - Both jobs stay outside their lane's `E2E (…)` aggregator's `needs:`, so neither can block a merge
   while it proves itself (BE-0282's precedent). The synthetic-fixture suites are untouched: they
   remain the fast control-flow check, and this item adds the real-condition layer beneath them.
