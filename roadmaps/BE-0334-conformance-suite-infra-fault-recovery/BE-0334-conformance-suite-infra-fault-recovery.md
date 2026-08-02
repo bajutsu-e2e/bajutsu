@@ -122,7 +122,7 @@ maintainer that the underlying fault is getting worse rather than staying rare.
 
 - [x] Unit 1 — classify infrastructure faults against contract violations at the harness boundary.
 - [x] Unit 2 — re-lease and retry on an infrastructure fault, reusing the pipeline's recovery.
-- [ ] Unit 3 — contain the module-scoped lease so one crash cannot cascade.
+- [x] Unit 3 — contain the module-scoped lease so one crash cannot cascade.
 - [ ] Unit 4 — report and count every recovery in the log and the artifacts.
 
 ## References
