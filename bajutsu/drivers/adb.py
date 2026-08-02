@@ -443,8 +443,9 @@ class AdbDriver(CoordinateTreeDriver):
         # Whether a read has postdated the *current* actuation's device mark (BE-0332 Unit 3). Reset on
         # every actuation and set true only when `_advance_catchup` closes a mark-anchored barrier on a
         # postdating read — never on the dump heuristic, an actuation that armed no mark, or a barrier
-        # that timed out. `read_postdates_actuation` reports it, so the `extract` poll releases early
-        # only when the device genuinely confirmed the order, and otherwise keeps its wall-clock budget.
+        # that timed out. `read_postdates_actuation` reports it. No production caller consults it now —
+        # the `extract` poll's early release was withdrawn (see that poll's docstring) — but the
+        # conformance suite checks the contract, so the flag stays accurate rather than guessed.
         self._read_ordered = False
         # Latches the first `/clock` fault so a persistently-broken clock endpoint on an otherwise-live
         # channel — which silently forfeits the early release and leaves the lane on its wall-clock
@@ -970,9 +971,17 @@ class AdbDriver(CoordinateTreeDriver):
         the next actuation. It is deliberately *not* `self._catchup is None`: that would also read true
         when the barrier timed out on a tree that never caught up, when it closed on the dump-path
         heuristic (no mark to confirm order), or when the actuation armed no barrier at all (`type_text`,
-        `back`, `tap_point`, the dump path) — cases where the `extract` poll must keep its wall-clock
-        budget rather than release early. So this early release only ever tightens that budget, never
-        returns a read that predates the actuation.
+        `back`, `tap_point`, the dump path).
+
+        **No production caller reads this today.** The `extract` poll used to, releasing early on a
+        confirmed order, until that release was found to accept a stale value: the mark says an
+        accessibility event postdates the gesture, not that the property being copied out has been
+        republished (`_settle_extract_read` says why at length). The driver's own catch-up barrier is
+        the remaining ordering consumer, and it reads `_read_mark` directly in `_advance_catchup` rather
+        than through here. The protocol stays declared because the driver conformance suite (BE-0114)
+        checks the marked-read contract against the real backend, and because narrowing the barrier is
+        an open unit of the device-side actuation item — so this is a live contract without a live
+        caller, not a leftover.
         """
         return self._read_ordered
 
