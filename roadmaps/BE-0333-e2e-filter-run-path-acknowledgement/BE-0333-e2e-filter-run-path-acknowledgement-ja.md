@@ -155,7 +155,7 @@ import しない crawl と agents のモジュールです。PR
   （ユニット2）。従来の場当たり parity アサーション2つ（`test_agent_factory_is_not_relevant_by_parity`、
   `test_untouched_subpackage_is_not_relevant`）は `_PERIPHERY_EXCLUSIONS` の理由つき項目へ置き換えました
   （ユニット3）。本項目が包摂する「名前ベースのパッケージ分割」ガードは撤去しました。
-  `scripts/e2e_overfire_report.py` は基準コミットに対して取引を計測します（ユニット4）。直近 80 件のマージ済み
+  `scripts/e2e_overfire_report.py` は基準コミットに対して過剰発火のトレードオフを計測します（ユニット4）。直近 80 件のマージ済み
   プルリクエストでは、新しい既定は 3 レーンすべてで旧来と**完全に同一**に発火しました — 過剰発火 0、過小発火 0。
   新たにゲート対象になったファイルが、既に他の run パスコードで発火している PR の外で単独に現れなかったためです。
   受け入れたコストは、将来の report 単独・object-store 単独の変更では実在しますが、直近の履歴では無視できる水準です。
