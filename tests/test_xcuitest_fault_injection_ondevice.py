@@ -118,12 +118,18 @@ def _listening_pid(port: int) -> int:
     the runner an ephemeral port of its own), so more than one listener means the environment is not
     the one this suite thinks it is and the fault would land somewhere unintended.
     """
-    probe = subprocess.run(
-        ["lsof", "-ti", f"tcp:{port}", "-sTCP:LISTEN"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        probe = subprocess.run(
+            ["lsof", "-ti", f"tcp:{port}", "-sTCP:LISTEN"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except FileNotFoundError:
+        pytest.fail(
+            "`lsof` is not on PATH, so the runner's pid cannot be resolved and no fault can be "
+            "injected; it ships with macOS, the only host this suite runs on"
+        )
     found = probe.stdout.split()
     # `lsof` exits non-zero both for "no match" and for its own failures, so the diagnosis carries
     # its exit code and stderr: an unusable `lsof` must not read as a runner that never came up.
