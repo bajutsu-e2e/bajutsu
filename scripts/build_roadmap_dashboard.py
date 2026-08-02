@@ -330,15 +330,20 @@ def graph_data(items: list[Any]) -> dict[str, Any]:
     """
     edges = _edges(items)
     linked = {end for edge in edges for end in (edge["source"], edge["target"])}
+    neighbors: dict[str, list[str]] = {}
+    for edge in edges:
+        neighbors.setdefault(edge["source"], []).append(edge["target"])
+        neighbors.setdefault(edge["target"], []).append(edge["source"])
     nodes = [
         {
-            "id": item.by_lang["en"].id,
+            "id": item.id,
             "title": item.by_lang["en"].title,
             "topic": item.topic,
             "status": item.bucket,
             "href": _item_href(item),
             "search": _search_terms(item),
             "summary": item.summary,
+            "related": sorted(neighbors.get(item.id, [])),
         }
         for item in sorted(items, key=lambda it: it.id)
         if item.id in linked
@@ -443,10 +448,12 @@ def _map_node(node: dict[str, Any]) -> str:
     """One stop on the map: a hit target, a status dot, an id label, and a real link around them.
 
     The id label is too small to carry a title, so the item's name rides along in ``data-caption``
-    for the readout and in ``<title>`` for a tooltip; naming it once here keeps the three spellings
-    of it from drifting apart. ``data-title`` and ``data-summary`` carry the same title plus the
-    item's Introduction excerpt (:func:`build_roadmap_index.extract_summary`) for the hover/focus
-    card, which shows more than the single-line readout can.
+    for the readout. No ``<title>`` element: the browser's own tooltip would duplicate, and visually
+    collide with, the custom hover/focus card below. ``data-title`` and ``data-summary`` carry the
+    same title plus the item's Introduction excerpt (:func:`build_roadmap_index.extract_summary`)
+    for that card, which shows more than the single-line readout can; ``data-related`` carries the
+    ids of every item this one shares an edge with, so the card can list them as links without
+    re-deriving the graph in JS.
     """
     name = html.escape(f"{node['id']} — {node['title']}")
     return (
@@ -455,9 +462,9 @@ def _map_node(node: dict[str, Any]) -> str:
         f'data-status="{html.escape(node["status"])}" data-search="{html.escape(node["search"])}" '
         f'data-caption="{name}" data-title="{html.escape(node["title"])}" '
         f'data-summary="{html.escape(node["summary"])}" '
+        f'data-related="{html.escape(" ".join(node["related"]))}" '
         f'data-status-label="{html.escape(BUCKET_LABEL[node["status"]])}" '
         f'aria-label="{html.escape(f"{node['id']}: {node['title']}")}">'
-        f"<title>{name}</title>"
         f'<circle class="be-map-hit" cx="{node["x"]:.1f}" cy="{node["y"]:.1f}" r="18"/>'
         f'<circle class="be-map-dot" cx="{node["x"]:.1f}" cy="{node["y"]:.1f}" r="6" '
         f'style="fill:{BUCKET_COLOR[node["status"]]}"/>'
@@ -538,10 +545,27 @@ def _map_view(items: list[Any]) -> str:
         "</div>"
     )
     # A hover/focus card, positioned next to whatever node the reader is pointing at (BE-0335): the
-    # id, title, and Introduction excerpt every node's data-* attributes already carry. Decorative
-    # (aria-hidden) — the live-region readout below stays the accessible source of the same fact.
+    # id, title, and Introduction excerpt every node's data-* attributes already carry, plus a row of
+    # id chips for whatever else the item shares an edge with (built from data-related) — a row rather
+    # than a list, since some items sit on a dozen-plus edges and a full-caption list per neighbour
+    # would make the card unreadably tall; it scrolls horizontally instead. The descriptive fields stay
+    # decorative (aria-hidden) — the live-region readout below is their accessible source — but the
+    # chips are genuine navigation, so they sit outside that aria-hidden span with tabindex="-1":
+    # reachable by mouse click, excluded from tab order rather than left as unannounced focusable
+    # ghosts inside a hidden subtree. A second, wholly decorative card previews whatever chip the
+    # pointer rests on, the same way the main card previews a map node — so a chip's id doesn't have
+    # to be memorised to know which item it names.
     card = (
-        '<div class="be-map-card" aria-hidden="true">'
+        '<div class="be-map-card">'
+        '<div class="be-map-card-info" aria-hidden="true">'
+        '<div class="be-map-card-top"><span class="be-map-card-id"></span>'
+        '<span class="be-map-card-status"></span></div>'
+        '<div class="be-map-card-title"></div>'
+        '<div class="be-map-card-summary"></div>'
+        "</div>"
+        '<div class="be-map-card-related"></div>'
+        "</div>"
+        '<div class="be-map-chip-card" aria-hidden="true">'
         '<div class="be-map-card-top"><span class="be-map-card-id"></span>'
         '<span class="be-map-card-status"></span></div>'
         '<div class="be-map-card-title"></div>'
@@ -783,7 +807,7 @@ html.be-map-lock-scroll,html.be-map-lock-scroll body{overflow:hidden}
 .be-map-card{position:fixed;z-index:1100;display:none;max-width:280px;padding:.55rem .7rem;
   border:1px solid rgba(128,128,128,.35);border-radius:8px;
   background:var(--md-default-bg-color,Canvas);box-shadow:0 4px 18px rgba(0,0,0,.22);
-  font-size:12.5px;line-height:1.4;pointer-events:none}
+  font-size:12.5px;line-height:1.4}
 .be-map-card.is-visible{display:block}
 .be-map-card-top{display:flex;align-items:center;gap:.4rem;margin-bottom:.15rem}
 .be-map-card-id{font-weight:700;font-size:11px}
@@ -791,6 +815,18 @@ html.be-map-lock-scroll,html.be-map-lock-scroll body{overflow:hidden}
 .be-map-card-title{font-weight:600;margin-bottom:.25rem}
 .be-map-card-summary{opacity:.85}
 .be-map-card-summary:empty{display:none}
+.be-map-card-related{display:flex;gap:.3rem;margin-top:.35rem;padding-top:.35rem;
+  border-top:1px solid rgba(128,128,128,.25);overflow-x:auto}
+.be-map-card-related:empty{display:none}
+.be-map-chip{flex:0 0 auto;padding:.15rem .45rem;border-radius:999px;
+  border:1px solid rgba(128,128,128,.4);color:inherit;text-decoration:none;font-weight:700;
+  font-size:10.5px;white-space:nowrap;opacity:.85}
+.be-map-chip:hover,.be-map-chip:focus{opacity:1;background:rgba(128,128,128,.15)}
+.be-map-chip-card{position:fixed;z-index:1200;display:none;max-width:260px;padding:.5rem .65rem;
+  border:1px solid rgba(128,128,128,.35);border-radius:8px;
+  background:var(--md-default-bg-color,Canvas);box-shadow:0 4px 18px rgba(0,0,0,.22);
+  font-size:12px;line-height:1.4;pointer-events:none}
+.be-map-chip-card.is-visible{display:block}
 .be-map-rule{stroke:currentColor;stroke-opacity:.18;stroke-width:1}
 .be-map-row-label{fill:currentColor;opacity:.72;font-size:12px}
 .be-map-edge{fill:none;stroke:currentColor;stroke-opacity:.16;stroke-width:1}
@@ -963,6 +999,8 @@ _SCRIPT = """
   var mapSvg=document.querySelector('.be-map');
   var mapNodes=Array.prototype.slice.call(document.querySelectorAll('.be-map-node'));
   var mapEdges=Array.prototype.slice.call(document.querySelectorAll('.be-map-edge'));
+  var nodesById={};
+  mapNodes.forEach(function(n){ nodesById[n.getAttribute('data-id')]=n; });
   var readout=document.querySelector('.be-map-readout');
   var readoutDefault=readout?(readout.getAttribute('data-default')||''):'';
   var mapCard=document.querySelector('.be-map-card');
@@ -970,6 +1008,55 @@ _SCRIPT = """
   var mapCardStatus=mapCard?mapCard.querySelector('.be-map-card-status'):null;
   var mapCardTitle=mapCard?mapCard.querySelector('.be-map-card-title'):null;
   var mapCardSummary=mapCard?mapCard.querySelector('.be-map-card-summary'):null;
+  var mapCardRelated=mapCard?mapCard.querySelector('.be-map-card-related'):null;
+  var chipCard=document.querySelector('.be-map-chip-card');
+  var chipCardId=chipCard?chipCard.querySelector('.be-map-card-id'):null;
+  var chipCardStatus=chipCard?chipCard.querySelector('.be-map-card-status'):null;
+  var chipCardTitle=chipCard?chipCard.querySelector('.be-map-card-title'):null;
+  var chipCardSummary=chipCard?chipCard.querySelector('.be-map-card-summary'):null;
+  // Leaving a node for the card floating just below it crosses a gap with nothing under the
+  // pointer; hiding on that instant mouseleave would make the card's own chips unreachable by
+  // mouse. A short grace period bridges the gap, cancelled the moment the pointer lands on either
+  // the node or the card, so the card only closes once the pointer truly leaves both.
+  var cardHideTimer=null;
+  function cancelCardRelease(){
+    if(cardHideTimer){ clearTimeout(cardHideTimer); cardHideTimer=null; }
+  }
+  function scheduleCardRelease(){
+    cancelCardRelease();
+    cardHideTimer=setTimeout(releaseNode, 250);
+  }
+
+  // A floating card's screen position, from whatever element it previews — shared by the main
+  // hover card and the chip preview card so the two clamp against the viewport identically.
+  function positionFloatingCard(card, anchorRect){
+    var cardRect=card.getBoundingClientRect();
+    var vw=document.documentElement.clientWidth, vh=document.documentElement.clientHeight;
+    var left=anchorRect.left+anchorRect.width/2-cardRect.width/2;
+    var top=anchorRect.bottom+10;
+    left=Math.max(8, Math.min(left, vw-cardRect.width-8));
+    if(top+cardRect.height>vh-8) top=anchorRect.top-cardRect.height-10;
+    top=Math.max(8, top);
+    card.style.left=left+'px';
+    card.style.top=top+'px';
+  }
+
+  // The chip preview: a second, wholly decorative card naming whichever related item a chip names,
+  // so a reader is not left to decode a bare id. No chips of its own — one level of preview is
+  // enough, and a chip inside a chip would invite an unbounded hover chain.
+  function showChipCard(other, anchor){
+    if(!chipCard||!other) return;
+    if(chipCardId) chipCardId.textContent=other.getAttribute('data-id')||'';
+    if(chipCardStatus) chipCardStatus.textContent=other.getAttribute('data-status-label')||'';
+    if(chipCardTitle) chipCardTitle.textContent=other.getAttribute('data-title')||'';
+    if(chipCardSummary) chipCardSummary.textContent=other.getAttribute('data-summary')||'';
+    chipCard.classList.add('is-visible');
+    positionFloatingCard(chipCard, anchor.getBoundingClientRect());
+  }
+
+  function hideChipCard(){
+    if(chipCard) chipCard.classList.remove('is-visible');
+  }
 
   function applyGraphFilter(){
     if(!mapSvg) return;
@@ -1017,6 +1104,7 @@ _SCRIPT = """
     mapNodes.forEach(function(node){ node.classList.remove('is-lit'); });
     if(readout) readout.textContent=readoutDefault;
     hideCard();
+    hideChipCard();
   }
 
   // The hover/focus card: id, title, and Introduction excerpt for whichever node the reader is
@@ -1029,17 +1117,26 @@ _SCRIPT = """
     if(mapCardStatus) mapCardStatus.textContent=node.getAttribute('data-status-label')||'';
     if(mapCardTitle) mapCardTitle.textContent=node.getAttribute('data-title')||'';
     if(mapCardSummary) mapCardSummary.textContent=node.getAttribute('data-summary')||'';
+    // Related chips, built from data-related rather than re-walking the edge list: one chip per
+    // still-visible neighbour, each a real <a> so a click follows it straight to that item, and
+    // hovering it previews that item in the chip card instead of leaving its id to be decoded.
+    if(mapCardRelated){
+      mapCardRelated.textContent='';
+      (node.getAttribute('data-related')||'').split(' ').filter(Boolean).forEach(function(id){
+        var other=nodesById[id];
+        if(!other||other.classList.contains('is-out')) return;
+        var chip=document.createElement('a');
+        chip.className='be-map-chip';
+        chip.href=other.getAttribute('href');
+        chip.tabIndex=-1;
+        chip.textContent=id;
+        chip.addEventListener('mouseenter', function(){ showChipCard(other, chip); });
+        chip.addEventListener('mouseleave', hideChipCard);
+        mapCardRelated.appendChild(chip);
+      });
+    }
     mapCard.classList.add('is-visible');
-    var rect=node.getBoundingClientRect();
-    var cardRect=mapCard.getBoundingClientRect();
-    var vw=document.documentElement.clientWidth, vh=document.documentElement.clientHeight;
-    var left=rect.left+rect.width/2-cardRect.width/2;
-    var top=rect.bottom+10;
-    left=Math.max(8, Math.min(left, vw-cardRect.width-8));
-    if(top+cardRect.height>vh-8) top=rect.top-cardRect.height-10;
-    top=Math.max(8, top);
-    mapCard.style.left=left+'px';
-    mapCard.style.top=top+'px';
+    positionFloatingCard(mapCard, node.getBoundingClientRect());
   }
 
   function hideCard(){
@@ -1111,11 +1208,15 @@ _SCRIPT = """
   });
 
   mapNodes.forEach(function(node){
-    node.addEventListener('mouseenter', function(){ pickNode(node); });
-    node.addEventListener('focus', function(){ pickNode(node); });
-    node.addEventListener('mouseleave', releaseNode);
+    node.addEventListener('mouseenter', function(){ cancelCardRelease(); pickNode(node); });
+    node.addEventListener('focus', function(){ cancelCardRelease(); pickNode(node); });
+    node.addEventListener('mouseleave', scheduleCardRelease);
     node.addEventListener('blur', releaseNode);
   });
+  if(mapCard){
+    mapCard.addEventListener('mouseenter', cancelCardRelease);
+    mapCard.addEventListener('mouseleave', scheduleCardRelease);
+  }
 
   // Cards/Table/Map toggle, persisted in localStorage so the choice survives visits. Defaults to
   // Cards (the no-JS view) when the key is absent, unknown, or storage is unavailable; the
@@ -1178,10 +1279,10 @@ _INTRO = (
     "the relationships the items themselves record as a transit map: one line per topic, its items "
     "as stops along it in id order, and a curve joining every pair that stands in a Related, "
     "Origin, or Superseded by relation. Point at a stop to light up what it connects to and see a "
-    "card with its title and a short excerpt from its Introduction; the Zoom and Full size controls "
-    "above the map scale it up and expand it to fill the browser window. Each card links to its "
-    "full proposal on GitHub. This dashboard is the only status view — for what a roadmap item is "
-    "and how to add one, see [`roadmaps/README.md`]"
+    "card with its title, a short excerpt from its Introduction, and a clickable link to each item "
+    "it connects to; the Zoom and Full size controls above the map scale it up and expand it to fill "
+    "the browser window. Each card links to its full proposal on GitHub. This dashboard is the only "
+    "status view — for what a roadmap item is and how to add one, see [`roadmaps/README.md`]"
     "(https://github.com/bajutsu-e2e/bajutsu/blob/main/roadmaps/README.md) (both languages).\n\n"
 )
 
