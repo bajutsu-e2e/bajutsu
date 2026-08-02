@@ -137,8 +137,27 @@ views-noax-build:
 # (the google_apis image allows it; the driver falls back to `input tap` when it cannot). `wait-for-
 # device` blocks until the restarted adbd reconnects before the first scenario runs. Both act on the
 # single attached AVD (this lane, like the local flow, only ever has one) rather than `-s $(SERIAL)`.
+# Suppress the system's crash / "isn't responding" dialogs for the emulator session.
+#
+# A cold-created AVD loads its snapshot into a thrashing system, and the Pixel Launcher regularly
+# misses its ANR deadline while the first scenario is launching. The dialog that follows takes the
+# foreground window, so the run's very first `wait` polls the dialog's tree instead of the app and
+# times out — with the app fully drawn behind it. That failure took this lane four times on one PR.
+#
+# Selecting "Close app" would clear one dialog; `hide_error_dialogs` stops them being posted at all,
+# which is the same intent without a coordinate tap on a system surface whose button labels are
+# locale-dependent. The app under test is unaffected: the setting governs the system's error UI, not
+# whether a process is killed, so a genuine app ANR still ends the run — it just ends it with the
+# app's own failure rather than with a dialog the scenario cannot see past.
+#
+# The broadcast that follows closes one that is already up: the setting only governs dialogs posted
+# after it, so a lane that starts with the launcher already wedged would otherwise still open on a
+# blocked foreground window.
+ANR_QUIET = adb shell settings put global hide_error_dialogs 1 && adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null
+
 e2e: compose-build views-build
 	adb root && adb wait-for-device
+	$(ANR_QUIET)
 	cd $(ROOT) && for s in $(E2E_SCENARIOS); do \
 		echo "=== showcase-compose / $$s ==="; \
 		BAJUTSU_MIN_WAIT_TIMEOUT=$(E2E_WAIT_FLOOR) \
@@ -188,6 +207,7 @@ e2e-network: compose-build
 # needs no tab-bar navigation. Not part of `make check`: it needs a booted AVD, so android-e2e.yml
 # drives it in its own `golden (adb)` job, which runs this target then `e2e-fallback` in one AVD boot.
 e2e-golden: compose-build
+	$(ANR_QUIET)
 	cd $(ROOT) && BAJUTSU_MIN_WAIT_TIMEOUT=$(E2E_WAIT_FLOOR) uv run bajutsu run \
 		--scenario demos/showcase/scenarios/golden/golden.yaml \
 		--goldens demos/showcase/scenarios/golden/goldens_android \
@@ -215,6 +235,7 @@ e2e-fallback: compose-build
 # in its own `visual (adb)` job (a separate AVD boot). The pixel compare needs Pillow, so this
 # pulls in the `visual` extra (the element-tree golden does not) — the adb backend itself has none.
 e2e-visual: compose-build
+	$(ANR_QUIET)
 	cd $(ROOT) && BAJUTSU_MIN_WAIT_TIMEOUT=$(E2E_WAIT_FLOOR) uv run --extra visual bajutsu run \
 		--scenario demos/showcase/scenarios/visual/visual_android.yaml \
 		--baselines demos/showcase/scenarios/visual/baselines_android \

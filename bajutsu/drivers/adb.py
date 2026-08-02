@@ -428,9 +428,14 @@ class AdbDriver(CoordinateTreeDriver):
         # produced — the same object `resolve_unique` hands back, so a resolved element maps straight to
         # what the device needs. Rebuilt on every read; a stale key simply misses and degrades.
         self._identities: dict[int, NodeIdentity] = {}
+        self._last_tree: list[base.Element] = []
         # Latches the first device-actuation fault so a channel that answers reads but not `/act` — an
         # older server — degrades to coordinates once loudly rather than on every gesture.
         self._act_warned = False
+        # Set once the channel proves it cannot serve `/act` (an older server 404s the path). Every
+        # later gesture then goes straight to the coordinate path, so the degrade costs one probe for
+        # the lease rather than a failed round trip — and a second resolve — on every tap (BE-0234).
+        self._act_unavailable = False
         # The device event mark of the most recent read (BE-0332 Unit 3): `SystemClock.uptimeMillis` of
         # the newest accessibility event the resident reader had seen. None on the dump path. Set by
         # `_read_source` on every read, before `_advance_catchup` folds that read into the barrier.
@@ -486,6 +491,11 @@ class AdbDriver(CoordinateTreeDriver):
     def _describe(self) -> list[base.Element]:
         els, identities = parse_hierarchy_with_identities(self._read_source())
         self._identities = {id(el): ident for el, ident in zip(els, identities, strict=True)}
+        # The tree the identity map above describes. `_device_act` counts an element's peers against
+        # *this* list, never against a tree it captured earlier: `_resolve` re-queries on a transient
+        # not-found and `_scroll_into_view` re-settles, so the element it hands back can belong to a
+        # later read than the one the caller settled — and the map is rebuilt by every read.
+        self._last_tree = els
         return els
 
     def _read_source(self) -> str:
@@ -822,7 +832,7 @@ class AdbDriver(CoordinateTreeDriver):
         did not settle, or a channel fault. The caller then injects a coordinate exactly as before, so a
         device without the endpoint is no worse off than one that never had it.
         """
-        if self._act_fn is None:
+        if self._act_fn is None or self._act_unavailable:
             return False
         for _ in range(self._STALE_MAX_ATTEMPTS):
             tree = self._settle()
@@ -833,11 +843,16 @@ class AdbDriver(CoordinateTreeDriver):
             identity = self._identities.get(id(el))
             if identity is None:
                 return False  # a tree this driver did not parse (a seeded read); coordinates it is
-            same = [e for e in tree if self._identities.get(id(e)) == identity]
+            same = [e for e in self._last_tree if self._identities.get(id(e)) == identity]
+            index = next((i for i, e in enumerate(same) if e is el), None)
+            if index is None:
+                # `el` outlived the read its peers were counted from. Rather than send an ordinal
+                # measured against the wrong screen, leave this gesture to the coordinate path.
+                return False
             request = ActRequest(
                 kind=kind,
                 identity=identity,
-                index=same.index(el),
+                index=index,
                 count=len(same),
                 since=self._capture_mark(),
                 duration_ms=duration_ms,
@@ -847,6 +862,7 @@ class AdbDriver(CoordinateTreeDriver):
             try:
                 acted = self._act_fn(request)
             except AdbResidentError as exc:
+                self._act_unavailable = True
                 if not self._act_warned:
                     self._act_warned = True
                     logger.warning(

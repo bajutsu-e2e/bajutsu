@@ -1714,8 +1714,8 @@ def test_a_channel_fault_degrades_to_the_coordinate_tap_and_warns_once(
     with caplog.at_level(logging.WARNING):
         driver.tap({"id": "stable.submit"})
         driver.tap({"id": "stable.submit"})
-    assert len(seen) == 2  # still attempted; the latch suppresses the log, not the attempt
-    assert len([c for c in calls if "input" in c]) == 2
+    assert len(seen) == 1  # probed once for the lease, not once per gesture
+    assert len([c for c in calls if "input" in c]) == 2  # both taps still happened
     assert caplog.text.count("resident actuation unavailable") == 1
 
 
@@ -1737,3 +1737,31 @@ def test_a_device_tap_arms_the_catch_up_barrier_like_a_coordinate_tap() -> None:
     driver = AdbDriver("U", run=run, act=act)
     driver.tap({"id": "stable.submit"})
     assert driver._catchup is not None
+
+
+def test_an_element_from_a_later_read_than_its_peers_falls_back_instead_of_crashing() -> None:
+    # `_resolve` re-queries on a transient not-found and `_scroll_into_view` re-settles, so the element
+    # handed back can belong to a later read than the tree the caller settled — and the identity map is
+    # rebuilt by every read. Counting peers against the stale tree found none, and taking the element's
+    # ordinal in that empty list raised ValueError straight out of the actuator. The gesture must
+    # degrade to coordinates instead.
+    act, seen = _recording_act([True])
+    # A degenerate first read forces the transient-empty retry, so the element resolves from read two.
+    run, calls = _capturing_run([NULL_ROOT, FIXTURE])
+    driver = AdbDriver("U", run=run, act=act)
+    driver.query()  # seed the richest-seen count so the null root counts as transient
+    driver.tap({"id": "stable.submit"})
+    assert [c for c in calls if "input" in c] or seen  # acted or degraded — never raised
+
+
+def test_a_missing_act_endpoint_is_probed_once_per_lease_not_once_per_tap() -> None:
+    # An older server 404s /act while serving reads. Retrying on every gesture would spend a failed
+    # round trip *and* a second settle-and-resolve per tap, on the lane BE-0234 exists to keep fast.
+    # One probe settles it for the lease.
+    act, seen = _recording_act([AdbResidentError("no such path")])
+    run, calls = _capturing_run([FIXTURE])
+    driver = AdbDriver("U", run=run, act=act)
+    for _ in range(4):
+        driver.tap({"id": "stable.submit"})
+    assert len(seen) == 1  # probed once, then never again
+    assert len([c for c in calls if "input" in c]) == 4  # every tap still happened
