@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0332") |
-| 実装 PR | [#1442](https://github.com/bajutsu-e2e/bajutsu/pull/1442), [#1445](https://github.com/bajutsu-e2e/bajutsu/pull/1445), [#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM) |
+| 実装 PR | [#1442](https://github.com/bajutsu-e2e/bajutsu/pull/1442), [#1445](https://github.com/bajutsu-e2e/bajutsu/pull/1445), [#1449](https://github.com/bajutsu-e2e/bajutsu/pull/1449) |
 | トピック | ドライバとバックエンドのアーキテクチャ |
 <!-- /BE-METADATA -->
 
@@ -225,7 +225,7 @@ Mutually Exclusive, Collectively Exhaustive（`MECE`）な作業単位は、次�
   到達しない上限になります。`uiautomator dump` へのフォールバックはマークを持たず、実時間の予算を保ちます。
   マーク経路の決定的なテストをドライバと `extract` ポーリングの両方に追加しました。デバイス側の変更は CI の
   Android レーンで検証します（このラグは Apple シリコンのエミュレータでは再現しないため）。
-- 2026-08-02 — マークつき読み取りの歯止めスライス（PR #PRNUM）: 作業単位 4。`GET /source` が `?since=`
+- 2026-08-02 — マークつき読み取りの歯止めスライス（PR #1449）: 作業単位 4。`GET /source` が `?since=`
   のデバイス時計マークを受け取れるようになり、指定されたときは常駐リーダーが、アクセシビリティイベントが
   そのマークを追い越すまで条件待ちでブロックしてから 1 回だけダンプします。これにより 2 回一致ダンプの
   `stableHierarchy` の歯止めと、安定した画面ごとに払っていた 2 回目のダンプを廃止します。ホストは保留中の

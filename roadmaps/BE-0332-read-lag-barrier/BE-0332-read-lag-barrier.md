@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0332") |
-| Implementing PR | [#1442](https://github.com/bajutsu-e2e/bajutsu/pull/1442), [#1445](https://github.com/bajutsu-e2e/bajutsu/pull/1445), [#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM) |
+| Implementing PR | [#1442](https://github.com/bajutsu-e2e/bajutsu/pull/1442), [#1445](https://github.com/bajutsu-e2e/bajutsu/pull/1445), [#1449](https://github.com/bajutsu-e2e/bajutsu/pull/1449) |
 | Topic | Driver & backend architecture |
 <!-- /BE-METADATA -->
 
@@ -223,7 +223,7 @@ Log:
   wall-clock budget. Deterministic coverage for the mark path added on both the driver and the extract
   poll. The device-side change is validated on the CI Android lane (the lag does not reproduce on an
   Apple-silicon emulator).
-- 2026-08-02 — Marked-read barrier slice (PR #PRNUM): Unit 4. `GET /source` now accepts a `?since=`
+- 2026-08-02 — Marked-read barrier slice (PR #1449): Unit 4. `GET /source` now accepts a `?since=`
   device-clock mark; when present the resident reader blocks on a condition wait until an accessibility
   event postdates it, then dumps once — retiring the two-identical-dumps `stableHierarchy` barrier and
   the second dump it paid on every settled screen. The host stamps the pending gesture's actuation mark
