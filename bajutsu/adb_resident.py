@@ -28,6 +28,7 @@ from bajutsu import adb
 from bajutsu.drivers.adb import (
     ActFn,
     ActRequest,
+    AdbActUnsupported,
     AdbResidentError,
     ClockFetch,
     HierarchyFetch,
@@ -46,6 +47,10 @@ _READ_MARK_HEADER = "X-Bajutsu-Read-Mark"
 # The status the resident server answers when the identity the host sent no longer names the same
 # number of nodes on its own dump: the screen moved between the two resolves, so nothing was injected.
 _STALE_STATUS = 409
+
+# What an older resident server answers for a path it does not serve. Permanent for the lease, unlike a
+# socket fault, so the driver latches it instead of probing again on every gesture.
+_NO_ENDPOINT_STATUS = 404
 
 # SystemUI owns the status and navigation bars — separate windows that `dumpWindowHierarchy` traverses
 # but the platform `uiautomator dump` (active window only) omits. Dropping them is a uniform
@@ -162,6 +167,8 @@ def act(host_port: int, request: ActRequest, *, timeout: float = 10.0) -> bool:
         if resp.status == _STALE_STATUS:
             logger.debug("resident actuation reported the target moved: %s", body)
             return False
+        if resp.status == _NO_ENDPOINT_STATUS:
+            raise AdbActUnsupported(f"resident server has no /act endpoint (HTTP {resp.status})")
         if resp.status != 200:
             raise AdbResidentError(f"resident actuation returned HTTP {resp.status}: {body}")
         return True

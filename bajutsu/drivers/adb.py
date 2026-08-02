@@ -119,6 +119,17 @@ class AdbResidentError(RuntimeError):
     """
 
 
+class AdbActUnsupported(AdbResidentError):
+    """The resident channel serves reads but has no actuation endpoint (an older server 404s `/act`).
+
+    Held apart from its base so the driver can tell a *permanent* absence from a *transient* fault. The
+    absence is a property of the deployed server and will not change within the lease, so the driver
+    latches it and stops probing. A socket blip is the opposite: the endpoint is there, and giving up on
+    it for the rest of the lease would put every later gesture back on the coordinate path this exists
+    to avoid — under exactly the flaky conditions that produced the blip.
+    """
+
+
 # uiautomator's bounds attribute, e.g. "[0,100][200,220]".
 _BOUNDS = re.compile(r"\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]")
 
@@ -862,7 +873,9 @@ class AdbDriver(CoordinateTreeDriver):
             mark = request.since
             try:
                 acted = self._act_fn(request)
-            except AdbResidentError as exc:
+            except AdbActUnsupported as exc:
+                # Permanent for this lease: stop probing, so the degrade costs one round trip rather
+                # than one per gesture (BE-0234).
                 self._act_unavailable = True
                 if not self._act_warned:
                     self._act_warned = True
@@ -871,6 +884,17 @@ class AdbDriver(CoordinateTreeDriver):
                         "which resolves a target a round trip before it is touched",
                         exc,
                     )
+                return False
+            except AdbResidentError as exc:
+                # A blip on a channel that does have the endpoint. Degrade this one gesture and keep
+                # the channel: the read path makes the same choice, retrying per read rather than
+                # disabling itself, and latching here would hand every later gesture back to the
+                # coordinate path precisely when the device is least settled.
+                logger.warning(
+                    "resident actuation faulted (%s); this gesture falls back to coordinate "
+                    "injection, the channel stays in use",
+                    exc,
+                )
                 return False
             if acted:
                 # The gesture happened on the device, so the cached tree is stale and the next read must

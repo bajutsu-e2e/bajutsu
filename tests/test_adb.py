@@ -18,7 +18,13 @@ import pytest
 import bajutsu.drivers.adb as adb_driver_mod
 from bajutsu import adb
 from bajutsu.drivers import base
-from bajutsu.drivers.adb import AdbDriver, AdbResidentError, HierarchyRead, parse_hierarchy
+from bajutsu.drivers.adb import (
+    AdbActUnsupported,
+    AdbDriver,
+    AdbResidentError,
+    HierarchyRead,
+    parse_hierarchy,
+)
 from bajutsu.evidence import intervals
 
 # A realistic dump: a Views native id (package-prefixed) with visible text only, a Compose testTag
@@ -1708,7 +1714,7 @@ def test_a_channel_fault_degrades_to_the_coordinate_tap_and_warns_once(
     # An older server answers 404 for /act while still serving reads, which reaches the driver as an
     # AdbResidentError. The gesture must still happen, and the degrade must be visible — but once, not
     # on every tap, so a long run's log stays readable.
-    act, seen = _recording_act([AdbResidentError("no such path")])
+    act, seen = _recording_act([AdbActUnsupported("no /act endpoint")])
     run, calls = _capturing_run([FIXTURE])
     driver = AdbDriver("U", run=run, act=act)
     with caplog.at_level(logging.WARNING):
@@ -1758,10 +1764,24 @@ def test_a_missing_act_endpoint_is_probed_once_per_lease_not_once_per_tap() -> N
     # An older server 404s /act while serving reads. Retrying on every gesture would spend a failed
     # round trip *and* a second settle-and-resolve per tap, on the lane BE-0234 exists to keep fast.
     # One probe settles it for the lease.
-    act, seen = _recording_act([AdbResidentError("no such path")])
+    act, seen = _recording_act([AdbActUnsupported("no /act endpoint")])
     run, calls = _capturing_run([FIXTURE])
     driver = AdbDriver("U", run=run, act=act)
     for _ in range(4):
         driver.tap({"id": "stable.submit"})
     assert len(seen) == 1  # probed once, then never again
     assert len([c for c in calls if "input" in c]) == 4  # every tap still happened
+
+
+def test_a_transient_actuation_fault_keeps_the_channel_for_the_next_gesture() -> None:
+    # A socket blip is not a missing endpoint. Latching on it would hand every later gesture of the
+    # lease back to the coordinate path — under exactly the unsettled conditions that produced the
+    # blip, and the read channel makes the opposite choice for the same reason. Degrade this gesture,
+    # keep the channel: the next tap must reach the device again.
+    act, seen = _recording_act([AdbResidentError("connection reset"), True])
+    run, calls = _capturing_run([FIXTURE])
+    driver = AdbDriver("U", run=run, act=act)
+    driver.tap({"id": "stable.submit"})  # blips, falls back to the coordinate tap
+    driver.tap({"id": "stable.submit"})  # and the channel is still tried
+    assert len(seen) == 2
+    assert len([c for c in calls if "input" in c]) == 1  # only the blipped gesture used coordinates
