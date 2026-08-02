@@ -193,7 +193,10 @@ rather than fix it.
 - [x] Unit 1 — actuation-anchored barrier in `_settle_extract_read`.
 - [x] Unit 2 — the same barrier in `AdbDriver._settle`, via arming the pan catch-up on the
       center-resolving `tap` / `long_press` / `double_tap`.
-- [ ] Unit 3 — read mark published by the resident Android reader, required by `AdbDriver`.
+- [x] Unit 3 — read mark published by the resident Android reader (a `GET /source`
+      `X-Bajutsu-Read-Mark` header plus a `GET /clock` endpoint), required by `AdbDriver`: the
+      catch-up barrier and the `extract` poll release the instant a read postdates the pre-gesture
+      device-clock mark.
 - [ ] Unit 4 — `stableHierarchy` returns a marked read instead of two matching dumps.
 - [ ] Unit 5 — deterministic and conformance coverage for the barrier. Deterministic coverage landed
       with the host-side barrier; the conformance suite (BE-0114) check waits on the marked-read
@@ -209,6 +212,16 @@ Log:
   coverage, and the budget-barrier docs. Status → In progress. The device-side read mark (Units 3–4,
   Kotlin) and the conformance check remain; until the mark lands the budget is a bounded wall-clock
   ceiling on the Android lane, as the design's Unit 1 note anticipates.
+- 2026-08-02 — Read-mark slice (PR #1445): Unit 3. The resident Android reader observes the
+  accessibility event stream and stamps every `GET /source` with an `X-Bajutsu-Read-Mark` header (the
+  device-clock time of the newest event as of the served dump) and adds a `GET /clock` endpoint.
+  `AdbDriver` takes a device-clock mark before each barrier-arming gesture and requires a read whose
+  mark postdates it: the catch-up barrier closes the instant the device publishes an update (no dwell),
+  and the `extract` poll (`ReadOrderProvider`) releases early on the same signal, turning the Unit 1/2
+  budgets into rarely-reached ceilings. The `uiautomator dump` fallback carries no mark and keeps the
+  wall-clock budget. Deterministic coverage for the mark path added on both the driver and the extract
+  poll. The device-side change is validated on the CI Android lane (the lag does not reproduce on an
+  Apple-silicon emulator).
 
 ## References
 

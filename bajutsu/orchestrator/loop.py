@@ -167,10 +167,15 @@ def _settle_extract_read(
     binds the counter's previous value); the barrier holds the poll across that window. It is passed
     only on the mutating path, where an actuation this step is what a read must postdate — a seeded
     (`initial=`) read did not actuate, so it has no window to wait out. A backend reporting no lag,
-    and any read with no `actuated_at`, keep the plain two-agreeing-reads settle byte-for-byte. Until
-    the resident reader's read mark lands (BE-0332 Unit 3) the budget is a wall-clock ceiling, not an
-    early-releasing wait, so it only bites on a lane whose floor exceeds the lag (the Android e2e
-    lane); a lag exceeding the floor is simply never met and falls through to the latest read.
+    and any read with no `actuated_at`, keep the plain two-agreeing-reads settle byte-for-byte.
+
+    A backend that also reports read order (`ReadOrderProvider`, BE-0332 Unit 3) turns that budget into
+    a ceiling rarely reached: the resident reader stamps each read with the device-clock time of the
+    most recent accessibility event, so the poll releases the instant a settled read postdates the tap
+    instead of idling to the budget. Where the mark is unavailable (the `uiautomator dump` fallback, or
+    a backend that does not report order) the budget stays a wall-clock ceiling that only bites on a
+    lane whose floor exceeds the lag (the Android e2e lane); a lag exceeding the floor is simply never
+    met and falls through to the latest read.
 
     `initial`, when given, is the seed a non-mutating step (`assert` / `wait`) already settled on: it
     is taken as the first sample so the poll refines that seed in place rather than re-reading it,
@@ -179,6 +184,7 @@ def _settle_extract_read(
     """
     lag = driver.read_lag() if isinstance(driver, base.ReadLagProvider) else 0.0
     barrier = actuated_at + lag if actuated_at is not None else None
+    order = driver if isinstance(driver, base.ReadOrderProvider) else None
     deadline = clock.now() + _timeout_floor()
     tree = initial if initial is not None else driver.query()
     key = _extract_stable_key(tree, extracts)
@@ -187,7 +193,12 @@ def _settle_extract_read(
         next_tree = driver.query()
         next_key = _extract_stable_key(next_tree, extracts)
         settled = next_key == key
-        if settled and (barrier is None or clock.now() >= barrier):
+        # The barrier releases when the agreeing read postdates the actuation. The driver's read mark
+        # answers that directly and early (BE-0332 Unit 3); until it can (the dump path, or before Unit
+        # 3 on a backend), `barrier` is the wall-clock ceiling the wait falls through at. Either way a
+        # settled read predating the action is never returned before one of them clears it.
+        postdated = order is not None and order.read_postdates_actuation()
+        if settled and (barrier is None or postdated or clock.now() >= barrier):
             return next_tree
         tree = next_tree
         if not settled:

@@ -8,7 +8,7 @@ import os
 import subprocess
 from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from bajutsu import adb, backends
 from bajutsu.config import Effective, require_android
@@ -21,6 +21,9 @@ from bajutsu.platform_lifecycle import readiness
 from bajutsu.platform_lifecycle.device_control import android_device_control
 from bajutsu.platform_lifecycle.protocols import ProvisionProfile
 from bajutsu.scenario import Preconditions, Relaunch, Scenario
+
+if TYPE_CHECKING:
+    from bajutsu.adb_resident import ResidentChannel
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +39,7 @@ _RESIDENT_ENV = "BAJUTSU_ADB_RESIDENT"
 class ResidentServerLike(Protocol):
     """The lease-lifecycle slice of `bajutsu.adb_resident.ResidentServer` the environment drives."""
 
-    def start(self) -> Callable[[], str]: ...
+    def start(self) -> ResidentChannel: ...
 
     def stop(self) -> None: ...
 
@@ -152,11 +155,14 @@ class AndroidEnvironment:
             ) from exc
         # The resident read channel drives whatever app is now on screen (BE-0245); a startup failure
         # degrades to `uiautomator dump` rather than failing the lease.
+        channel = self._begin_resident()
+        fetch = channel.fetch if channel is not None else None
+        clock = channel.clock if channel is not None else None
         return backends.make_driver(
-            self._actuator, self._serial, fetch_hierarchy=self._begin_resident()
+            self._actuator, self._serial, fetch_hierarchy=fetch, fetch_clock=clock
         )
 
-    def _begin_resident(self) -> Callable[[], str] | None:
+    def _begin_resident(self) -> ResidentChannel | None:
         """Start the resident server for this lease, or None to read via `uiautomator dump`."""
         server = self._make_resident()
         if server is None:
@@ -164,14 +170,14 @@ class AndroidEnvironment:
         from bajutsu.drivers.adb import AdbResidentError
 
         try:
-            fetch = server.start()
+            channel = server.start()
         except AdbResidentError as exc:
             logger.warning(
                 "resident UI Automator server unavailable (%s); reading via `uiautomator dump`", exc
             )
             return None
         self._resident = server
-        return fetch
+        return channel
 
     def _make_resident(self) -> ResidentServerLike | None:
         if self._resident_factory is not None:
