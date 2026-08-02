@@ -336,7 +336,7 @@ def graph_data(items: list[Any]) -> dict[str, Any]:
         neighbors.setdefault(edge["target"], []).append(edge["source"])
     nodes = [
         {
-            "id": item.by_lang["en"].id,
+            "id": item.id,
             "title": item.by_lang["en"].title,
             "topic": item.topic,
             "status": item.bucket,
@@ -448,12 +448,12 @@ def _map_node(node: dict[str, Any]) -> str:
     """One stop on the map: a hit target, a status dot, an id label, and a real link around them.
 
     The id label is too small to carry a title, so the item's name rides along in ``data-caption``
-    for the readout; naming it once here keeps the two spellings of it from drifting apart. No
-    ``<title>`` element: the browser's own tooltip would duplicate, and visually collide with, the
-    custom hover/focus card below. ``data-title`` and ``data-summary`` carry the same title plus the
-    item's Introduction excerpt (:func:`build_roadmap_index.extract_summary`) for that card, which
-    shows more than the single-line readout can; ``data-related`` carries the ids of every item this
-    one shares an edge with, so the card can list them as links without re-deriving the graph in JS.
+    for the readout. No ``<title>`` element: the browser's own tooltip would duplicate, and visually
+    collide with, the custom hover/focus card below. ``data-title`` and ``data-summary`` carry the
+    same title plus the item's Introduction excerpt (:func:`build_roadmap_index.extract_summary`)
+    for that card, which shows more than the single-line readout can; ``data-related`` carries the
+    ids of every item this one shares an edge with, so the card can list them as links without
+    re-deriving the graph in JS.
     """
     name = html.escape(f"{node['id']} — {node['title']}")
     return (
@@ -1209,7 +1209,7 @@ _SCRIPT = """
 
   mapNodes.forEach(function(node){
     node.addEventListener('mouseenter', function(){ cancelCardRelease(); pickNode(node); });
-    node.addEventListener('focus', function(){ pickNode(node); });
+    node.addEventListener('focus', function(){ cancelCardRelease(); pickNode(node); });
     node.addEventListener('mouseleave', scheduleCardRelease);
     node.addEventListener('blur', releaseNode);
   });
