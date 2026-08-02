@@ -53,8 +53,8 @@
 #     reports the process gone. Every other check of BE-0207 / BE-0287 raises a synthetic exception
 #     with health faked, which leaves untested whether a real socket failure is still classified as a
 #     crash at all rather than an unrelated timeout. Deliberately NOT part of the `E2E` gate's
-#     `needs:`: driving a real frozen socket costs real wall time and carries the flakiness a new
-#     lane does, so it lands as a signal first (BE-0282's precedent) and is promoted once stable.
+#     `needs:`: freezing a real runner carries the flakiness a new lane does, so it lands as a signal
+#     first (BE-0282's precedent) and is promoted once stable.
 #   - visual (xcuitest): the iOS twin of android-e2e.yml's `visual` — a pixel VRT of the Stable
 #     catalog against the committed `baselines_ios/` baseline. Deliberately NOT part of the `E2E`
 #     gate's `needs:` (see that job below) — a pixel baseline is host-specific (the Simulator
@@ -805,9 +805,10 @@ jobs:
     needs: [changes, build]
     if: needs.changes.outputs.relevant == 'true'
     runs-on: macos-latest
-    # Cap the metered macOS job (10x billing). The freeze deliberately spends the whole transport
-    # retry budget (~46s) before recovery, so the suite is slower than the others by construction;
-    # 25 still catches a real hang with headroom.
+    # Cap the metered macOS job (10x billing). The freeze still spends the whole transport retry
+    # budget before recovery, but the suite shrinks the per-attempt socket timeout to 2s
+    # (`_TEST_SOCKET_TIMEOUT_S`), so that budget is ~7.5s rather than the shipped ~46s and each
+    # freeze holds ~12.5s — seconds, not minutes; 25 still catches a real hang with headroom.
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1

@@ -24,9 +24,10 @@ The killed case leaves no runner behind, so it is written last and must run afte
 Source order plus `-n0` is what guarantees that, which is why both callers pass `-n0` rather than
 inheriting the repo's default `-n auto`.
 
-Running against a real, frozen socket costs real wall time — roughly the transport budget plus a
-margin for the first fault — which no injected-clock unit test pays. That is inherent to the fault
-being real, and is why the lane lands as a non-gating signal first (`fault (xcuitest)` in
+Running against a real, frozen socket costs real wall time — the transport budget plus a margin —
+which no injected-clock unit test pays. Shrinking the budget (below) keeps that to seconds, but it
+is still real time on a real device, and freezing a real runner is inherently less predictable than
+faking one: that is why the lane lands as a non-gating signal first (`fault (xcuitest)` in
 `ios-e2e.yml`), following BE-0282's precedent, and is promoted once stable.
 
 Runs in the iOS E2E path, never in `make check`: the `ondevice` marker is deselected by the gate's
