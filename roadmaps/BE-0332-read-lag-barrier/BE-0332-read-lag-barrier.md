@@ -242,7 +242,7 @@ Log:
   lane, where the lag reproduces (it does not on an Apple-silicon emulator). The tearing settle answers
   a review question raised on the PR (the mark alone proves only that catch-up started, not that the
   tree stopped republishing).
-- 2026-08-02 — Conformance and docs slice (PR #PENDING): Units 5 and 6. The driver conformance suite
+- 2026-08-02 — Conformance and docs slice (PR #1454): Units 5 and 6. The driver conformance suite
   (BE-0114) gains a marked-read contract check — after a content-moving scroll on the scrollable
   screen, a `ReadOrderProvider` backend must report a read that postdates the gesture; a backend that
   cannot order reads (the synchronous backends, and the fast gate's `FakeDriver`) does not implement
