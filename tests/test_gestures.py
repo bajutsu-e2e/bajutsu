@@ -249,7 +249,7 @@ def test_a_backend_that_reports_no_settled_read_keeps_its_single_query() -> None
         )[0],
     )
     assert result.ok, result.failure
-    [(_kind, (frm, _to))] = driver.actions
+    [(_, (frm, _to))] = driver.actions
     assert frm == (200.0, 400.0)
 
 
