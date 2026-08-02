@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import threading
 import time
 from collections.abc import Callable, Mapping
@@ -45,63 +44,23 @@ from bajutsu.orchestrator import (
 from bajutsu.orchestrator.types import _no_network
 from bajutsu.report import git_revision, run_provenance, scenario_render_inputs, write_report
 from bajutsu.runner.mailbox import build_mailbox_reader
+from bajutsu.runner.recovery import (
+    CrashRecoveryBudget,
+    _default_crash_recovery_budget,
+    _default_crash_retries,
+)
 from bajutsu.runner.types import AlertGuardFor, Lease, LeaseFn
 from bajutsu.scenario import Scenario, dump_scenario_file, redact_totp_secrets
 
+# Re-exported from `recovery` (BE-0334): the crash-retry count/budget bookkeeping now lives there so
+# the on-device conformance harness drives the same recovery and the two cannot drift. Kept importable
+# here for callers (and tests) that read the defaults through the pipeline's public surface.
+__all__ = [
+    "_default_crash_recovery_budget",
+    "_default_crash_retries",
+]
+
 _logger = logging.getLogger(__name__)
-
-# The default backend-crash retry budget, overridable per lane without a code change. A resident
-# XCUITest runner crashes more on a loaded/contended CI host (the XCTest host's accessibility bridge
-# under actuation), so a lane on such hardware can raise the budget for infrastructure crashes — the
-# crash is the test host dying, not an app verdict, so riding it out is not flakiness-by-absorption
-# (BE-0049): a scenario that crashes every attempt still fails once the budget is spent. Default 1
-# (two attempts), the value before this knob existed, so an unset environment is unchanged.
-_CRASH_RETRIES_ENV = "BAJUTSU_CRASH_RETRIES"
-_DEFAULT_CRASH_RETRIES = 1
-
-
-def _default_crash_retries() -> int:
-    """The backend-crash retry budget from `BAJUTSU_CRASH_RETRIES`, or the default when unset/invalid."""
-    raw = os.environ.get(_CRASH_RETRIES_ENV)
-    if not raw:
-        return _DEFAULT_CRASH_RETRIES
-    try:
-        return max(0, int(raw))
-    except ValueError:
-        return _DEFAULT_CRASH_RETRIES
-
-
-# A wall-clock ceiling (seconds) on how long one scenario may spend *respawning* after a backend
-# crash, across all its `crash_retries`. `crash_retries` alone caps the retry *count*, not
-# the time: a runner that crashes and never comes back makes each cold respawn pay a fresh
-# cold-startup ceiling, so the count budget silently becomes count x that ceiling — enough to blow a
-# job's `timeout-minutes` with a silent hang instead of a loud failure. (A backend may separately cap
-# a single respawn's readiness wait; this budget bounds the cumulative recovery time regardless.)
-# This is the same "a fresh full ceiling each attempt
-# doubles the worst case" pathology `_spawn_cold_with_retry` avoids *inside* one launch, reappearing
-# one level up at the scenario-level respawn. This budget caps that: once the wall-clock spent
-# respawning is exhausted, recovery stops and the scenario fails loudly (BE-0049), even if retries
-# remain. It never blocks the first respawn (the deadline is set at the first crash), so a genuine
-# one-off — a respawn that comes back quickly — is still ridden out; the budget bites only when
-# respawns are slow, which is exactly the hang. Unset (the default) is unbounded: the count is the
-# only cap, so every lane not opting in is byte-for-byte unchanged.
-_CRASH_RECOVERY_BUDGET_ENV = "BAJUTSU_CRASH_RECOVERY_BUDGET"
-
-
-def _default_crash_recovery_budget() -> float | None:
-    """The crash-recovery wall-clock budget (s) from the env, or None (unbounded) when unset/invalid.
-
-    A non-positive or unparseable value reads as unbounded, never as zero: the budget only ever
-    *reduces* recovery, and disabling recovery entirely is `crash_retries=0`'s job, not this knob's.
-    """
-    raw = os.environ.get(_CRASH_RECOVERY_BUDGET_ENV)
-    if not raw:
-        return None
-    try:
-        value = float(raw)
-    except ValueError:
-        return None
-    return value if value > 0 else None
 
 
 def _write_network(
@@ -287,13 +246,14 @@ class _ScenarioRunner:
         # A scenario that crashes every attempt exhausts the budget and fails loudly (BE-0049).
         handler = self.alert_guard_for(s) if self.alert_guard_for is not None else self.alert_guard
         last_crash: BackendCrashError | None = None
-        # A wall-clock ceiling on the respawn loop, on top of the `crash_retries` count. Set at the
+        # The count + wall-clock retry decision; Unit 2 of BE-0334 wires the conformance harness onto
+        # the same helper so the two recovery paths cannot drift. The wall-clock deadline it holds is set at the
         # *first* crash (so the first respawn is never blocked — a genuine one-off is still ridden
-        # out), it caps the total time a never-recovering runner can spend paying a fresh cold-startup
-        # ceiling per respawn (`_default_crash_recovery_budget`). None keeps the count as the only cap.
-        recovery_deadline: float | None = None
+        # out) and caps the total time a never-recovering runner can spend paying a fresh cold-startup
+        # ceiling per respawn. An unset budget keeps the count as the only cap.
+        budget = CrashRecoveryBudget(self.crash_retries, self.crash_recovery_budget, self._now)
         budget_spent = False
-        for attempt in range(1, self.crash_retries + 2):
+        for attempt in range(1, budget.total_attempts + 1):
             # Lease *inside* the try so a crash during bring-up — the launch/readiness gate, not only a
             # scenario step — is caught by the same recovery. `self.lease` runs launch_driver, whose
             # `_await_ready` surfaces a BackendCrashError when the resident runner answers /health at
@@ -307,31 +267,24 @@ class _ScenarioRunner:
                 return self._run_on_lease(lz, handler, i, s, sid)
             except BackendCrashError as crash:
                 last_crash = crash
-                # Start the recovery clock at the first crash: `now < deadline` holds here, so the
-                # first respawn always proceeds; the budget can only stop a *later* respawn once the
-                # earlier ones have burned the wall-clock (a slow, never-recovering runner).
-                if self.crash_recovery_budget is not None and recovery_deadline is None:
-                    recovery_deadline = self._now() + self.crash_recovery_budget
-                within_count = attempt <= self.crash_retries
-                within_budget = recovery_deadline is None or self._now() < recovery_deadline
-                will_retry = within_count and within_budget
+                decision = budget.on_crash(attempt)
                 # The count would allow another respawn but the wall-clock budget is spent: a distinct
                 # end state from "attempts exhausted", surfaced in the failure below.
-                budget_spent = within_count and not within_budget
+                budget_spent = decision.budget_spent
                 _logger.warning(
                     "scenario %s: backend crashed mid-run (attempt %d/%d)%s: %s",
                     s.name,
                     attempt,
-                    self.crash_retries + 1,
-                    ", respawning and retrying" if will_retry else "",
+                    budget.total_attempts,
+                    ", respawning and retrying" if decision.will_retry else "",
                     crash,
                 )
-                if self.progress is not None and will_retry:
+                if self.progress is not None and decision.will_retry:
                     self.progress(
                         f"⟳ scenario {i + 1}/{self.total}: {s.name} — backend crashed mid-run, "
-                        f"respawning and retrying (attempt {attempt}/{self.crash_retries + 1})"
+                        f"respawning and retrying (attempt {attempt}/{budget.total_attempts})"
                     )
-                if not will_retry:
+                if not decision.will_retry:
                     # Either cap reached — stop before leasing again. Breaking (vs. letting the range
                     # run out) is what lets the budget cut recovery short with retries still on the clock.
                     break
@@ -348,7 +301,7 @@ class _ScenarioRunner:
         else:
             failure = (
                 f"backend crashed mid-run and did not recover across "
-                f"{self.crash_retries + 1} attempts: {last_crash}"
+                f"{budget.total_attempts} attempts: {last_crash}"
             )
         return RunResult(
             scenario=s.name,
