@@ -31,6 +31,7 @@ from bajutsu.drivers.xcuitest import (
     _is_retry_eligible,
     _raw_http_transport,
     _Reply,
+    _retry_budget_seconds,
     _timeout_for,
     _TransportFailure,
     _with_crash_recovery,
@@ -616,6 +617,21 @@ def test_is_retry_eligible_splits_on_delivery_and_idempotency() -> None:
     # Delivered → only idempotent reads may be re-issued; a write could double-apply.
     assert _is_retry_eligible("GET", delivered=True) is True
     assert _is_retry_eligible("POST", delivered=True) is False
+
+
+def test_retry_budget_matches_what_the_retry_loop_actually_spends() -> None:
+    # The on-device fault-injection suite (BE-0305) holds an injected freeze for this budget, so it
+    # must track `_with_retry`'s real schedule. Drive the loop to exhaustion with a recording sleep:
+    # the backoff term is what the loop slept, and each attempt can additionally burn its timeout.
+    slept: list[float] = []
+    inner, calls = _counting([_TransportFailure("timed out", delivered=True)] * _MAX_ATTEMPTS)
+    with pytest.raises(XcuitestRunnerCrashError):
+        _with_retry(inner, sleep=slept.append)("GET", "/elements", None)
+
+    assert calls[0] == _MAX_ATTEMPTS
+    assert _retry_budget_seconds("GET") == _timeout_for("GET") * _MAX_ATTEMPTS + sum(slept)
+    # A write's longer per-attempt window widens the budget with it.
+    assert _retry_budget_seconds("POST") > _retry_budget_seconds("GET")
 
 
 def test_transient_read_failure_retries_then_succeeds() -> None:

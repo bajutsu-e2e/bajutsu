@@ -258,6 +258,9 @@ def test_ios_lane_surface() -> None:
     assert is_relevant(["BajutsuKit/Sources/x.swift"]) is True
     assert is_relevant(["demos/showcase/ios/swiftui/App.swift"]) is True
     assert is_relevant(["tests/test_driver_conformance_ondevice.py"]) is True
+    # The fault-injection suite (BE-0305) is driven by the lane's own `fault (xcuitest)` job, so it
+    # must re-run the lane the same way the conformance suite does.
+    assert is_relevant(["tests/test_xcuitest_fault_injection_ondevice.py"]) is True
     assert is_relevant([".github/workflows/ios-e2e.yml"]) is True
     # ...but not another lane's driver, app SDK, or workflow — the regression this fixes: a bare
     # `bajutsu/drivers/` sweep previously fired the metered macOS jobs on an adb-only or
@@ -278,6 +281,8 @@ def test_android_lane_surface() -> None:
     assert is_relevant(["BajutsuAndroid/src/Clipboard.kt"], "android") is True
     assert is_relevant(["BajutsuAndroidUIAutomatorServer/src/Server.kt"], "android") is True
     assert is_relevant(["tests/test_driver_conformance_ondevice_android.py"], "android") is True
+    # The fault-injection suite (BE-0305) is driven by the lane's own `fault (adb)` job.
+    assert is_relevant(["tests/test_driver_fault_injection_ondevice_android.py"], "android") is True
     assert is_relevant([".github/workflows/android-e2e.yml"], "android") is True
     # The `uiautomator (codegen)` job (BE-0294) regenerates its test with `bajutsu codegen`, so the
     # codegen CLI command is android-relevant — the one CLI command besides `run` this lane drives.

@@ -306,6 +306,7 @@ adb の harness はその代わりに、新しい `SHOWCASE_CONFORMANCE` の int
 - XCUITest バックエンドの `back` とデバイス制御（`setLocation` / クリップボード / `push`）を実機上で実行しています。`ios-e2e.yml` が PR ごとに検証します（[BE-0281](../../roadmaps/BE-0281-ios-on-device-actuation-coverage/BE-0281-ios-on-device-actuation-coverage-ja.md)）。
 - `pinch`/`rotate` の multi-touch ジェスチャを、`ios-e2e.yml` の `run (xcuitest)` ジョブ（`demos/showcase/scenarios/gestures_multitouch.yaml`、`--backend ios`）で確認済みです。
 - シナリオ作成機能（`extract`、反復のあいだにツリーが変化するリストに対する `forEach`、data-driven の行、`relaunch`）を実機上で実行しています。`ios-e2e.yml` の `actuation (xcuitest)` ジョブが PR ごとに検証するので、どの機能も adb と Playwright だけに依存しなくなりました（[BE-0285](../../roadmaps/BE-0285-scenario-feature-real-backend-coverage/BE-0285-scenario-feature-real-backend-coverage-ja.md)）。
+- ランナーチャネルのクラッシュ復旧を、作り上げた例外ではなく実際に失敗するランナーに対して検証しています。対象は BE-0207 のリトライ継ぎ目と BE-0287 の復旧層です。`ios-e2e.yml` の `fault (xcuitest)` ジョブは、常駐ランナーを `SIGSTOP` で凍結し、loopback 接続が受け付けられたまま応答されない状態を作ります。そのうえで、ハングしたソケットが依然としてクラッシュとして分類されることを検証します。`SIGCONT` で解放したあとには、冪等な呼び出しが再発行されることも検証します。続いてランナーと `xcodebuild` のホストプロセスを強制終了します。失敗が無関係なタイムアウトではなく、プロセスの終了を名指しする `XcuitestRunnerCrashError` になることを検証します（[BE-0305](../../roadmaps/BE-0305-driver-resilience-fault-injection/BE-0305-driver-resilience-fault-injection-ja.md)）。このジョブは BE-0282 の前例に従い、`E2E` 集約ジョブの `needs:` の外側、つまり非ゲートのシグナルとして着地させ、安定を確認してから昇格させます。
 
 ### ブラウザで検証済み（Linux で動作、Mac 不要）
 
@@ -315,6 +316,7 @@ adb の harness はその代わりに、新しい `SHOWCASE_CONFORMANCE` の int
 ### Android エミュレータで検証済み（Linux で動作、Mac 不要）
 
 - adb バックエンドの subprocess 実行（`uiautomator dump` パース、フレーム中心の tap、`AndroidEnvironment` の起動シーケンス、on-device の actuation fidelity、`pinch`/`rotate` のマルチタッチとデバイス制御のスライスを含む）を、KVM 上で起動した x86_64 API 34 AVD に対して確認しています（`android-e2e.yml`、BE-0208）。iOS が走らせるのと同じ共有シナリオを Compose と Views 両方の showcase ビルドで駆動し、Compose カタログの golden 要素ツリー検査とピクセル単位のビジュアルリグレッション baseline も併せて確認しています。このレーンは常駐 UI Automator サーバ（[BE-0245](../../roadmaps/BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server-ja.md)）もビルドするので、これらの読み取りは既定で常駐チャネル（`adb forward` 越しの `GET /source`。1 回約 2.4 秒の `uiautomator dump` 起動を置き換えます）を通り、`uiautomator dump` 経路はダンプへフォールバックさせた golden の実行で守ります。
+- `CoordinateTreeDriver` の transient-empty リトライを、作り上げた要素数の列ではなく、本来対象としている条件そのものに対して検証しています。`android-e2e.yml` の `fault (adb)` ジョブは、タブバーをタップしてから準備完了を待たずにツリーを読みます。この操作を、UI Automator が遷移途中で本当に階層を返さなくなるまで繰り返します。そのうえで、リトライが誤った「要素が見つからない」を出さずに実画面へ復帰することを検証します（[BE-0305](../../roadmaps/BE-0305-driver-resilience-fault-injection/BE-0305-driver-resilience-fault-injection-ja.md)）。条件を一度も再現できなかった場合はジョブが失敗するので、green の実行が「未検証」を意味することはありません。競合は狙った時刻に起こせないため、iOS 側と同じく非ゲートのシグナルとして着地させ、安定を確認してから昇格させます。
 
 ### 実 Postgres で検証済み（Linux で動作、Mac 不要）
 

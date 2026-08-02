@@ -48,6 +48,13 @@
 #     just different scenarios, so it does not fold into `run`.
 #   - conformance (xcuitest): the driver conformance suite (BE-0114) on-device against the XCUITest
 #     backend. Kept its own job — a pytest-ondevice harness, not a `bajutsu run`.
+#   - fault (xcuitest): real fault injection for the crash-recovery path (BE-0305) — freeze the
+#     resident runner with SIGSTOP so the channel really hangs, then kill it so `runner_alive` really
+#     reports the process gone. Every other check of BE-0207 / BE-0287 raises a synthetic exception
+#     with health faked, which leaves untested whether a real socket failure is still classified as a
+#     crash at all rather than an unrelated timeout. Deliberately NOT part of the `E2E` gate's
+#     `needs:`: driving a real frozen socket costs real wall time and carries the flakiness a new
+#     lane does, so it lands as a signal first (BE-0282's precedent) and is promoted once stable.
 #   - visual (xcuitest): the iOS twin of android-e2e.yml's `visual` — a pixel VRT of the Stable
 #     catalog against the committed `baselines_ios/` baseline. Deliberately NOT part of the `E2E`
 #     gate's `needs:` (see that job below) — a pixel baseline is host-specific (the Simulator
@@ -764,6 +771,62 @@ jobs:
           BAJUTSU_CONFORMANCE_UDID: ${{ steps.toolchain.outputs.udid }}
         run: uv run pytest tests/test_driver_conformance_ondevice.py -m ondevice -n0 -v
 
+  # Real fault injection for the runner-channel crash recovery (BE-0305): the iOS half of the item,
+  # the XCUITest twin of android-e2e.yml's `fault (adb)`. It freezes the resident runner with SIGSTOP
+  # so the channel really hangs past the retry budget and recovery re-issues the call, then kills it
+  # so `runner_alive` really reports the process gone and recovery fails fast with that diagnosis.
+  # Neither condition has ever been produced in CI — no job has interfered with a running runner —
+  # and the unit suite raises the crash error itself, so the classifier that decides what counts as a
+  # crash is what this job covers. Structured like `conformance (xcuitest)`: prebuilt products from
+  # `build`, pytest with the dev group, `-n0` (the suite signals one shared runner). Deliberately
+  # outside the `E2E` aggregator's `needs:` below — a new lane driving a real frozen socket lands as
+  # a signal and is promoted once stable.
+  fault:
+    name: fault (xcuitest)
+    needs: [changes, build]
+    if: needs.changes.outputs.relevant == 'true'
+    runs-on: macos-latest
+    # Cap the metered macOS job (10x billing). The freeze deliberately spends the whole transport
+    # retry budget (~46s) before recovery, so the suite is slower than the others by construction;
+    # 25 still catches a real hang with headroom.
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Set up the iOS toolchain
+        id: toolchain
+        uses: ./.github/actions/setup-ios-toolchain
+
+      - name: Download the prebuilt app + runner
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          name: ios-build
+
+      - name: Unpack the build products
+        run: tar -xpf ios-build.tar
+
+      - name: Sync the venv (dev group, for pytest)
+        run: uv sync
+
+      - name: Wait for the Simulator
+        run: xcrun simctl bootstatus "${{ steps.toolchain.outputs.udid }}" -b
+
+      # BAJUTSU_FAULT_UDID both routes the backend and un-skips the module; `-m ondevice` overrides
+      # the repo default to select exactly this suite. `-n0` runs it serially: the killed case leaves
+      # no runner behind, so its two cases must not race each other on one Simulator.
+      - name: Run the crash-recovery fault injection (xcuitest)
+        env:
+          BAJUTSU_FAULT_UDID: ${{ steps.toolchain.outputs.udid }}
+        run: uv run pytest tests/test_xcuitest_fault_injection_ondevice.py -m ondevice -n0 -v
+
+      - name: Upload the runner log
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: ios-e2e-fault-runner-logs
+          path: runs/runner-logs
+          if-no-files-found: ignore
+
   # On-device iOS visual-regression (VRT): the iOS twin of android-e2e.yml's `e2e-visual`. Boots a
   # Simulator, builds the SwiftUI showcase, and runs the committed pixel VRT
   # (`make -C demos/showcase e2e-visual`) over the XCUITest backend, comparing the Stable catalog
@@ -862,10 +925,10 @@ jobs:
 
   # Single required status check for E2E. Always runs so it reports even when the macOS
   # jobs are skipped (docs-only PRs) — a skipped dependency is a pass; only a real
-  # failure or cancellation fails the gate. `actuation`, `golden`, and `visual` are deliberately
-  # excluded from `needs:` (see each job's comment) so newly-wired actuation (BE-0281) or a
-  # host-specific pixel drift never blocks a merge. Make `E2E` the required check, not the
-  # path-gated macOS jobs.
+  # failure or cancellation fails the gate. `actuation`, `golden`, `visual`, and `fault` are
+  # deliberately excluded from `needs:` (see each job's comment) so newly-wired actuation (BE-0281),
+  # a host-specific pixel drift, or the new fault-injection lane (BE-0305) never blocks a merge. Make
+  # `E2E` the required check, not the path-gated macOS jobs.
   e2e:
     name: E2E (iOS)
     needs: [changes, build, run, codegen, bundled-runner, conformance]

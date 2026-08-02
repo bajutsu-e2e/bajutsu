@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0305](BE-0305-driver-resilience-fault-injection-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0305") |
 | トピック | ドライバとバックエンドのアーキテクチャ |
 | 関連 | [BE-0254](../BE-0254-coordinate-tree-driver-base/BE-0254-coordinate-tree-driver-base-ja.md), [BE-0207](../BE-0207-xcuitest-channel-transient-retry/BE-0207-xcuitest-channel-transient-retry-ja.md), [BE-0287](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience-ja.md), [BE-0289](../BE-0289-xcuitest-stale-handle-reresolve/BE-0289-xcuitest-stale-handle-reresolve-ja.md), [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md) |
@@ -76,10 +76,47 @@ idb/uiautomator の遷移途中でほぼ空になるレスポンスの実際の�
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] idb/adb 向けに、実際の transient-empty 障害注入をまずゲート対象外で追加する。
-- [ ] XCUITest 向けに、実際の crash-recovery 障害注入をまずゲート対象外で追加する。
+- [x] idb/adb 向けに、実際の transient-empty 障害注入をまずゲート対象外で追加する。
+  *（対象は adb だけです。[BE-0290](../BE-0290-xcuitest-default-ios-backend/BE-0290-xcuitest-default-ios-backend-ja.md)
+  で idb を撤去したため、`CoordinateTreeDriver` を継承する実装は `AdbDriver` だけが残っています）*
+- [x] XCUITest 向けに、実際の crash-recovery 障害注入をまずゲート対象外で追加する。
 - [ ] それぞれ安定後に必須化する。
-- [ ] 既存の合成フィクスチャによるユニットテストを、高速で決定的な制御フロー検証として残す。
+  *（必須化は、集約ジョブの `needs:` と必須チェック一覧に `fault (adb)` と `fault (xcuitest)` を加える
+  リポジトリのルールセット変更であってコードの PR ではないため、本項目の実装後も残ります。
+  [BE-0309](../BE-0309-serve-postgres-ci-lane/BE-0309-serve-postgres-ci-lane-ja.md) でも同じ扱いでした）*
+- [x] 既存の合成フィクスチャによるユニットテストを、高速で決定的な制御フロー検証として残す。
+
+### ログ
+
+- 2 つの障害注入レーンを同時に着地させました。Android の `fault (adb)` ジョブは、タブバーをタップしてから
+  準備完了を待たずにツリーを読みます。この操作を、UI Automator が階層を返さなくなるまで繰り返します。
+  そのうえで、リトライが誤った「要素が見つからない」を出さずに実画面へ復帰することを検証します。再現には
+  常駐チャネル（BE-0245）の約 0.1 秒の読み取りが要ります。約 2.4 秒かかる `uiautomator dump` の起動では
+  遷移が終わってしまうからです。またアニメーションを有効のままにする必要があり、このレーンで有効に
+  しているのはこのジョブだけです。タップにはドライバのアクチュエータではなく生の `adb shell input tap` を
+  使います。アクチュエータは画面を settle させてしまい、settle した画面では一過性の状態をもう観測
+  できないからです。
+- 分岐が実際に発火したことを示すには、機構を観測可能にする必要がありました。そこで
+  `CoordinateTreeDriver` が transient-empty の再読み取り回数を数えるようにしました。カウンタが
+  なければ、テストは「読み取りが壊れずに返ってきた」ことしか主張できません。それは競合が条件を
+  一度も再現しなかった場合にも成り立つので、green の実行が何も証明しないことになります。回数の上限を
+  使い切ったラウンドは、いまはその診断そのもので失敗します。
+- iOS の `fault (xcuitest)` ジョブに Swift の変更は要りません。障害はホスト側から、ランナーの loopback
+  ポートを保持しているプロセスへシグナルを送るだけで作れます。プロセスは名前ではなくポートから
+  引くので、ランナーの名前が変わってもテストが何にもシグナルを送らないまま通ることはありません。
+  `SIGSTOP` は、接続拒否では再現できないハングした接続の失敗モードを作ります。凍結の保持時間には
+  トランスポート自身のリトライ予算を使います。予算の算出はチャネル側の定数のそばに置き
+  （`_retry_budget_seconds`）、`_with_retry` が実際に取る sleep と一致することを高速ゲートで
+  固定したので、リトライループを調整すれば障害の側も追随します。呼び出し側が持つ計算式が
+  取り残されることはありません。保持が終わると背景スレッドが解放します。続いてランナーと
+  `xcodebuild` のホストプロセスを強制終了して BE-0319 の
+  プロセス終了分岐を通し、`base.BackendCrashError` でもある `XcuitestRunnerCrashError` になることを
+  検証します。この分類こそ、run パイプラインが新しいデバイスを確保してシナリオを再実行するために
+  必要なものです。
+- どちらのジョブも、所属するレーンの `E2E (…)` 集約ジョブの `needs:` の外側に置いています。安定を
+  確認するまでマージをブロックしないためで、BE-0282 の前例に従っています。合成フィクスチャによる
+  テストには手を入れていません。高速な制御フロー検証として引き続き残り、本項目はその下に実際の
+  条件による層を追加します。
 
 ## 参考
 

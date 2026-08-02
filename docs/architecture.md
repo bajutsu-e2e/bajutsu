@@ -499,6 +499,16 @@ device (the shared device is reseeded via one channel, so parallel workers would
   iterations, data-driven rows, and `relaunch` — exercised on-device per PR by `ios-e2e.yml`'s
   `actuation (xcuitest)` job, so none of them rests on adb and Playwright alone
   ([BE-0285](../roadmaps/BE-0285-scenario-feature-real-backend-coverage/BE-0285-scenario-feature-real-backend-coverage.md)).
+- The runner channel's crash recovery — the BE-0207 retry seam and BE-0287's recovery layer — against
+  a runner that really fails rather than one raising a fabricated error. `ios-e2e.yml`'s
+  `fault (xcuitest)` job freezes the resident runner with `SIGSTOP` so the loopback connection is
+  accepted and never answered, and asserts the hung socket is still classified as a crash and the
+  idempotent call re-issued once `SIGCONT` releases it; it then kills the runner and its `xcodebuild`
+  host, asserting the failure is an `XcuitestRunnerCrashError` naming the process exit rather than an
+  unrelated timeout
+  ([BE-0305](../roadmaps/BE-0305-driver-resilience-fault-injection/BE-0305-driver-resilience-fault-injection.md)).
+  It lands as a non-gating signal (outside the `E2E` aggregator's `needs:`) and is promoted once
+  stable, BE-0282's precedent.
 
 ### Validated in a browser (Linux, no Mac)
 
@@ -531,6 +541,15 @@ device (the shared device is reseeded via one channel, so parallel workers would
   so those reads run over the resident channel (`GET /source` over `adb forward`, replacing the
   ≈ 2.4 s per-read `uiautomator dump` startup) by default there, with a dump-fallback golden run
   guarding the `uiautomator dump` path.
+- `CoordinateTreeDriver`'s transient-empty retry against the condition it was written for, rather
+  than a fabricated element-count sequence. `android-e2e.yml`'s `fault (adb)` job taps the tab bar
+  and reads the tree with no readiness wait, repeating until UI Automator really answers
+  mid-transition with no hierarchy. It then asserts the retry recovered the real screen without a
+  false "element not found"
+  ([BE-0305](../roadmaps/BE-0305-driver-resilience-fault-injection/BE-0305-driver-resilience-fault-injection.md)).
+  A round that never reproduces the condition fails the job, so a green run cannot mean an untested
+  mechanism. Contention cannot be scheduled, so — like its iOS twin — it lands as a non-gating signal
+  and is promoted once stable.
 
 ### Validated against a real Postgres (Linux, no Mac)
 

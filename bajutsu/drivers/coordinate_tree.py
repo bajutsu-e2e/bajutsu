@@ -45,6 +45,9 @@ class CoordinateTreeDriver(ABC):
     def __init__(self) -> None:
         self._max_seen = 0  # richest tree seen on this device; gates the empty retry
         self._last_stable_key: StableKey | None = None
+        # Re-reads the transient-empty branch has taken; without it a run that never hit the branch
+        # is indistinguishable from one that rode over it (BE-0305).
+        self._transient_empty_retries = 0
 
     @abstractmethod
     def _describe(self) -> list[base.Element]:
@@ -76,6 +79,7 @@ class CoordinateTreeDriver(ABC):
         for i in range(self._EMPTY_RETRIES):
             if not self._is_transient_empty(els) or self._is_unrecoverable_empty(els):
                 break
+            self._transient_empty_retries += 1
             time.sleep(self._empty_backoff(i))
             els = self._describe()
         return els

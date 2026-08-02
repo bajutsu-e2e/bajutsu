@@ -184,6 +184,7 @@ _LANE_PATHS: dict[str, str] = {
         r"|bajutsu/platform_lifecycle/environments/(?:xcuitest|xcuitest_live)\.py$"
         r"|bajutsu/cli/commands/(?:codegen|record)\.py$"
         r"|tests/test_driver_conformance_ondevice\.py$"
+        r"|tests/test_xcuitest_fault_injection_ondevice\.py$"
         r"|BajutsuKit/"
         r"|demos/showcase/ios/swiftui/"
         r"|demos/showcase/ios/uikit/"
@@ -218,6 +219,7 @@ _LANE_PATHS: dict[str, str] = {
         r"|BajutsuAndroid/"  # the app-side clipboard SDK the showcase APKs build in (BE-0233)
         r"|BajutsuAndroidUIAutomatorServer/"  # the resident server this lane builds + exercises (BE-0245)
         r"|tests/test_driver_conformance_ondevice_android\.py$"
+        r"|tests/test_driver_fault_injection_ondevice_android\.py$"
         r"|\.github/workflows/android-e2e\.yml$"
     ),
     "web": (

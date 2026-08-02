@@ -122,6 +122,19 @@ def _timeout_for(method: str) -> float:
 _MAX_ATTEMPTS = 3
 _BACKOFF_BASE_SECONDS = 0.5  # exponential per retry: 0.5s, 1.0s, … between attempts
 
+
+def _retry_budget_seconds(method: str) -> float:
+    """Worst-case wall time `_with_retry` spends on *method* before it gives up and raises a crash.
+
+    Every attempt can burn its whole socket timeout, and each retry adds its backoff on top. Derived
+    here beside the constants rather than restated by the caller: the on-device fault-injection suite
+    (BE-0305) holds an injected freeze for exactly this long, and a re-tune of the retry loop that a
+    caller's own copy of the arithmetic missed would release the freeze mid-retry.
+    """
+    backoff = sum(_BACKOFF_BASE_SECONDS * 2.0**attempt for attempt in range(_MAX_ATTEMPTS - 1))
+    return _timeout_for(method) * _MAX_ATTEMPTS + backoff
+
+
 # Bounded re-resolution retry for a STALE actuation handle (BE-0289), held separate from BE-0207's
 # transport retry above even though it starts at the same values: the two loops bound different things
 # — a screen settling between `_resolve_handle` and `_actuate` versus a transport blip inside

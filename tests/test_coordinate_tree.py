@@ -61,6 +61,18 @@ def test_query_retries_through_transient_empty(backend: BackendFactory) -> None:
 
 
 @_BACKENDS
+def test_transient_empty_retries_are_counted(backend: BackendFactory) -> None:
+    # The counter the on-device fault-injection suite (BE-0305) reads to tell a run that really hit
+    # the branch from one where the injected fault never reproduced the condition.
+    driver, _ = backend([3, 1, 3])
+
+    driver.query()  # baseline, no retry
+    assert driver._transient_empty_retries == 0
+    driver.query()  # one empty, then the recovered tree
+    assert driver._transient_empty_retries == 1
+
+
+@_BACKENDS
 def test_query_does_not_retry_genuinely_sparse_screen(backend: BackendFactory) -> None:
     # No richer tree has ever been seen, so a small tree is taken at face value — never masked.
     driver, calls = backend([1])
@@ -79,6 +91,7 @@ def test_query_returns_after_bounded_retries_when_empty_persists(backend: Backen
     calls[0] = 0
     assert len(driver.query()) == 1  # gives up and returns the empty tree
     assert calls[0] == 1 + type(driver)._EMPTY_RETRIES  # initial read + bounded retries
+    assert driver._transient_empty_retries == type(driver)._EMPTY_RETRIES  # every retry counted
 
 
 @_BACKENDS

@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0305](BE-0305-driver-resilience-fault-injection.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0305") |
 | Topic | Driver & backend architecture |
 | Related | [BE-0254](../BE-0254-coordinate-tree-driver-base/BE-0254-coordinate-tree-driver-base.md), [BE-0207](../BE-0207-xcuitest-channel-transient-retry/BE-0207-xcuitest-channel-transient-retry.md), [BE-0287](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience.md), [BE-0289](../BE-0289-xcuitest-stale-handle-reresolve/BE-0289-xcuitest-stale-handle-reresolve.md), [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md) |
@@ -74,10 +74,43 @@ Proposal altitude. The work is MECE along the units below.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Add real transient-empty fault injection for idb/adb, non-gating first.
-- [ ] Add real crash-recovery fault injection for XCUITest, non-gating first.
+- [x] Add real transient-empty fault injection for idb/adb, non-gating first.
+  *(adb only: [BE-0290](../BE-0290-xcuitest-default-ios-backend/BE-0290-xcuitest-default-ios-backend.md)
+  retired idb, so `AdbDriver` is the sole `CoordinateTreeDriver` subclass left to cover.)*
+- [x] Add real crash-recovery fault injection for XCUITest, non-gating first.
 - [ ] Promote each to required once stable.
-- [ ] Keep the existing synthetic-fixture unit tests as the fast, deterministic control-flow check.
+  *(A repository ruleset change — adding `fault (adb)` / `fault (xcuitest)` to the aggregators'
+  `needs:` and the required-check list — not a code PR, so it stays open past this item's
+  implementation, as it did for [BE-0309](../BE-0309-serve-postgres-ci-lane/BE-0309-serve-postgres-ci-lane.md).)*
+- [x] Keep the existing synthetic-fixture unit tests as the fast, deterministic control-flow check.
+
+### Log
+
+- The two fault-injection lanes land together. On Android, `fault (adb)` taps the tab bar and reads
+  the tree with no readiness wait in between until UI Automator really answers mid-transition with no
+  hierarchy, then asserts the retry recovered the real screen without a false "element not found".
+  Reproducing that needs the resident channel's ~0.1 s read (BE-0245), which the ~2.4 s `uiautomator
+  dump` startup would outlast, and it needs animations left on — the one job in the lane that keeps
+  them. The tap is a raw `adb shell input tap`, not the driver's actuator, because that actuator
+  settles the screen and a settled screen no longer shows the transient.
+- Proving the branch fired needed the mechanism to be observable, so `CoordinateTreeDriver` now
+  counts its transient-empty re-reads. Without the counter the suite could only assert that a read
+  came back intact — which also holds when the contention never reproduced the condition, so a green
+  run would have proved nothing. A round that exhausts its bound now fails with exactly that
+  diagnosis.
+- On iOS, `fault (xcuitest)` needs no Swift change: the fault is a host-side signal to the process
+  holding the runner's loopback port, found by port rather than by name so a rename cannot leave the
+  suite signalling nothing. `SIGSTOP` produces the hung-connection failure mode a refused connection
+  cannot. The freeze is held for the transport's own retry budget, which the channel now derives
+  beside its constants (`_retry_budget_seconds`, pinned on the fast gate against the sleeps
+  `_with_retry` really takes) so a re-tune of the retry loop re-tunes the fault rather than leaving
+  a caller's copy of the arithmetic to drift. A background thread then releases it. Killing the
+  runner and its `xcodebuild` host then drives BE-0319's process-exited branch, asserting an
+  `XcuitestRunnerCrashError` that is also a `base.BackendCrashError` — the classification the run
+  pipeline needs to lease a fresh device and re-run.
+- Both jobs stay outside their lane's `E2E (…)` aggregator's `needs:`, so neither can block a merge
+  while it proves itself (BE-0282's precedent). The synthetic-fixture suites are untouched: they
+  remain the fast control-flow check, and this item adds the real-condition layer beneath them.
 
 ## References
 

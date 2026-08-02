@@ -22,6 +22,12 @@
 #     zero-match fails, `capabilities()` matches behavior, condition-backed waits) hold on the real
 #     actuator, which smoke/golden/visual cannot cover (they drive unambiguous selectors only). Unlike
 #     the other jobs it runs pytest, not the run CLI, so it keeps the dev group.
+#   - fault (adb): real fault injection for the transient-empty retry (BE-0305). The retry exists for
+#     UI Automator answering mid-transition with no hierarchy, a condition the conformance suite can
+#     never reach (it waits every screen to readiness first) and the unit suite can only fabricate.
+#     This job taps the tab bar and reads with no wait in between until the device really produces the
+#     empty tree, then asserts the retry rode over it. Contention cannot be scheduled, so it lands as
+#     a non-gating signal first (BE-0282's precedent) and is promoted once stable.
 #   - uiautomator (codegen) (adb): the codegen output path (BE-0294) — generate a native UI Automator
 #     (Kotlin) test from a scenario and run it with Gradle's connectedAndroidTest, no bajutsu / adb
 #     driver / AI at test time. The Android twin of ios-e2e.yml's `codegen (xcuitest)`; a non-gating
@@ -31,10 +37,10 @@
 # The lane now carries a REQUIRED status check like iOS's `E2E`: the `E2E (android)` job below
 # `needs` the deterministic host-independent jobs (`smoke`, `conformance`, `network`) and always reports (a
 # path-skip is a pass), so it — not the KVM jobs, which are path-gated — is what `main`'s
-# branch-protection ruleset pins. `golden`, `visual`, and `codegen` are deliberately NOT part of its
-# `needs:`: a pixel baseline is host-specific (the x86_64 software renderer varies), the element-tree
-# golden can drift with an upstream dependency, and the codegen lane lands as a per-PR signal first
-# (BE-0294), so each stays a per-PR signal that never blocks a merge — the same
+# branch-protection ruleset pins. `golden`, `visual`, `codegen`, and `fault` are deliberately NOT part
+# of its `needs:`: a pixel baseline is host-specific (the x86_64 software renderer varies), the
+# element-tree golden can drift with an upstream dependency, and the codegen (BE-0294) and fault
+# (BE-0305) lanes land as per-PR signals first, so each stays a per-PR signal that never blocks a merge — the same
 # deterministic-and-host-independent boundary iOS's `E2E` already draws. Each job boots its
 # own AVD; unlike iOS's metered macOS runners (10x billing), Android runs on standard-priced Linux
 # under KVM, so the per-job boot is an acceptable cost for the attribution win. Per-job setup is
@@ -428,6 +434,81 @@ jobs:
           path: runs/
           if-no-files-found: ignore
 
+  # Real fault injection for the transient-empty retry (BE-0305): the Android half of the item, the
+  # adb twin of ios-e2e.yml's `fault (xcuitest)`. The retry rides over UI Automator answering a read
+  # mid-transition with no hierarchy at all; nothing in CI has ever produced that condition, because
+  # the conformance suite waits every screen to readiness before reading and the unit suite can only
+  # fabricate a count sequence. `e2e-fault` taps the tab bar and reads with no wait in between until
+  # the emulator really produces the empty tree, asserting the retry recovered without a false
+  # "element not found" — and failing loudly if the contention never reproduced it, so a green run
+  # never means "untested". Builds the resident UI Automator server (BE-0245): its ~0.1 s read is what
+  # lands inside a transition at all, which the ~2.4 s `uiautomator dump` startup would outlast. Like
+  # `conformance` it drives pytest, so it keeps the dev group. Deliberately outside the `E2E
+  # (android)` aggregator's `needs:` (see the header) — contention cannot be scheduled, so the lane
+  # lands as a signal and is promoted once it proves stable.
+  fault:
+    name: fault (adb)
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
+    runs-on: ubuntu-latest
+    # A cold AVD boot + the Compose + resident-server builds + a bounded tap-and-read loop (seconds)
+    # is ~15min; 25 catches a real hang (a wedged AVD boot or adb) with headroom.
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Set up the Android toolchain
+        uses: ./.github/actions/setup-android-toolchain
+
+      # Drives the suite through pytest, not the run CLI, so it keeps the dev group (mirrors the
+      # `conformance (adb)` job); the adb backend itself needs no extra.
+      - name: Install the package with the dev group
+        run: uv sync
+
+      - name: Build the Compose showcase APK
+        run: make -C demos/showcase/android compose-build
+
+      - name: Build the resident UI Automator server APKs
+        run: make -C BajutsuAndroidUIAutomatorServer build
+
+      - name: Cache AVD
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        id: avd-cache
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-api34-x86_64-pixel6
+
+      - name: Create AVD and generate snapshot for caching
+        if: steps.avd-cache.outputs.cache-hit != 'true'
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          disable-animations: false
+          script: echo "Generated AVD snapshot for caching."
+
+      # Animations stay ON here, unlike every other job: a screen transition is the fault being
+      # injected, and a device with animations disabled has far less of one to read inside.
+      - name: Run the transient-empty fault injection (adb)
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          force-avd-creation: false
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          disable-animations: false
+          script: make -C demos/showcase/android e2e-fault
+      # No run-artifact upload: this job drives pytest, not `bajutsu run`, so nothing writes `runs/`
+      # and the step log carries the whole diagnosis.
+
   # The pixel VRT (BE-0208 unit 4 visual dimension): pixel-compare the Stable catalog against the
   # CI-recorded baseline (demos/showcase/scenarios/visual/baselines_android/). A pixel baseline is
   # host-specific — the CI x86_64 software renderer (swiftshader) and a local arm64 emulator diverge
@@ -579,10 +660,11 @@ jobs:
   # `network` joins `smoke`/`conformance` in `needs:`: its pass/fail is a deterministic,
   # host-independent fact (was the exchange observed?), so a regression there must fail the required
   # check like the other two — it is path-gated the same way, so a skip is still a pass. `golden`,
-  # `visual`, and `codegen` remain deliberately excluded (see the header): the element-tree golden can
-  # drift with an upstream dependency, a pixel baseline is host-specific, and the newly-wired codegen
-  # lane lands as a per-PR signal first (BE-0294, the signal-then-required precedent of BE-0282) — it
-  # is promoted into `needs:` only once stable. Each stays a per-PR signal. Make `E2E (android)` the
+  # `visual`, `codegen`, and `fault` remain deliberately excluded (see the header): the element-tree
+  # golden can drift with an upstream dependency, a pixel baseline is host-specific, and the codegen
+  # (BE-0294) and fault-injection (BE-0305) lanes land as per-PR signals first (the
+  # signal-then-required precedent of BE-0282) — each is
+  # promoted into `needs:` only once stable. Each stays a per-PR signal. Make `E2E (android)` the
   # required check, not the path-gated KVM jobs.
   #
   # `changes`'s own result is checked too, not just the KVM jobs': `changes` has no `if:`, so it

@@ -5,7 +5,7 @@
 # `run` / `doctor` land with the BE-0007 adb backend; until then these targets only build.
 .PHONY: build-all wrapper \
 	compose-build compose-noax-build views-build views-noax-build e2e e2e-network e2e-golden e2e-fallback \
-	e2e-visual e2e-conformance e2e-codegen clean
+	e2e-visual e2e-conformance e2e-fault e2e-codegen clean
 
 HERE := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 GRADLEW := $(HERE)/gradlew
@@ -227,6 +227,18 @@ e2e-conformance: compose-build
 	adb root && adb wait-for-device
 	cd $(ROOT) && BAJUTSU_CONFORMANCE_SERIAL=$(SERIAL) \
 		uv run pytest tests/test_driver_conformance_ondevice_android.py -m ondevice -n0 -v
+
+# Real fault injection for the transient-empty retry (BE-0305): tap the tab bar and read the tree
+# with no readiness wait in between, so some reads land while UI Automator has no stable
+# window and really answers with no hierarchy — the condition
+# `tests/test_coordinate_tree.py` can only fabricate. Like `e2e-conformance` this drives pytest, not
+# the run CLI, so it needs the dev group. The resident UI Automator server is built because the ~0.1 s
+# resident read is what lands inside a transition at all (BE-0245); the ~2.4 s `uiautomator dump`
+# startup would outlast almost every one. No `adb root`: nothing here actuates by `sendevent`. Not part
+# of `make check` (it needs a booted AVD) — android-e2e.yml drives it in its own `fault (adb)` job.
+e2e-fault: compose-build
+	cd $(ROOT) && BAJUTSU_FAULT_SERIAL=$(SERIAL) \
+		uv run pytest tests/test_driver_fault_injection_ondevice_android.py -m ondevice -n0 -v
 
 # The codegen output path: a scenario -> native UI Automator (Kotlin) test, compiled and run by
 # Gradle's connectedAndroidTest with no bajutsu runtime / adb driver / AI at test time (BE-0294) —
