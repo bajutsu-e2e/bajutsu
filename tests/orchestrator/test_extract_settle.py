@@ -497,3 +497,105 @@ def test_seeded_extract_is_not_held_by_the_actuation_barrier(
     )
     assert result.ok, result.failure
     assert clock.now() < 5.0  # no barrier wait on the seeded path
+
+
+# --- BE-0332 Unit 3: the read mark releases the actuation barrier early ---
+
+
+class _MarkedLaggingCounterDriver(_LaggingCounterDriver):
+    """A resident-style backend that reports read order as well as read lag (BE-0332 Unit 3).
+
+    Extends `_LaggingCounterDriver` — it still names the pre-tap value for the first reads — but it also
+    answers whether a read has caught up, as the resident reader's device event mark does. Reads before
+    `caught_up_at` (a read count over this driver's life) predate the tap; from there on they postdate
+    it. So the extract poll can release the instant the value is trustworthy instead of idling to the
+    whole `read_lag()` budget a mark-less backend must spend.
+    """
+
+    def __init__(self, values: Sequence[str], *, lag: float, caught_up_at: int) -> None:
+        super().__init__(values, lag=lag)
+        self._caught_up_at = caught_up_at
+
+    def read_postdates_actuation(self) -> bool:
+        return self._i >= self._caught_up_at
+
+
+def test_extract_barrier_releases_early_when_a_read_postdates_the_tap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(_FLOOR, "5")
+    # The Unit 3 payoff at the extract site: with the resident reader's read mark the poll releases the
+    # instant a read postdates the tap, instead of spending read_lag(). The counter lags ("2","2") then
+    # catches up ("3","3"), and the driver reports the read has caught up from the third read on — so
+    # the stale "2" pair is still rejected (it neither postdates the tap nor outlasts the budget), yet
+    # the true "3" binds at a fraction of the 5s budget a mark-less backend would have idled through.
+    driver = _MarkedLaggingCounterDriver(["2", "2", "3", "3"], lag=5.0, caught_up_at=3)
+    assert isinstance(driver, base.ReadOrderProvider)
+    clock = FakeClock()
+    result = run_scenario(driver, _extract_then_assert_scenario(), clock=clock)
+    assert result.ok, result.failure
+    assert clock.now() < 1.0  # released on the mark, far below the 5s lag budget
+
+
+def test_extract_barrier_still_bounds_by_the_budget_when_no_read_ever_postdates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(_FLOOR, "1")
+    # The mark only ever tightens the wait: if the device never publishes — no read postdates the tap —
+    # it cannot release the poll, so the wall-clock budget still bounds it and it returns the latest
+    # read, best-effort. A marked backend is never worse off than a mark-less one when the mark simply
+    # never arrives. The lag (5) exceeds the floor (1) so the barrier can never be met before the
+    # deadline; caught_up_at is unreachable so the mark never fires either.
+    driver = _MarkedLaggingCounterDriver(["2", "2", "2", "2"], lag=5.0, caught_up_at=999)
+    clock = FakeClock()
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "x",
+                "steps": [
+                    {
+                        "tap": {"id": "field"},
+                        "extract": {"who": {"sel": {"id": "field"}, "prop": "value"}},
+                    }
+                ],
+            }
+        ),
+        clock=clock,
+    )
+    assert result.ok, result.failure
+    assert (
+        clock.now() >= 1.0
+    )  # polled to the deadline, then returned latest via the fallback branch
+
+
+class _UnorderedLaggingDriver(_LaggingCounterDriver):
+    """A `ReadOrderProvider` whose actuation armed no mark barrier, so it never confirms an order.
+
+    Models the mutating actuators that arm no catch-up (`type_text`, `back`, `tap_point`): the backend
+    reports read order in general, but for this step there is no device mark to postdate, so
+    `read_postdates_actuation` stays false and the extract poll must keep the Unit 1 wall-clock barrier
+    rather than release on the first agreeing pair.
+    """
+
+    def read_postdates_actuation(self) -> bool:
+        return False
+
+
+def test_extract_barrier_holds_when_the_order_provider_never_confirms(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(_FLOOR, "5")
+    # The regression the read-order predicate must not reintroduce: a backend that reports order but
+    # whose actuation armed no device mark (a `type` step, say) must not get the early release. With
+    # `read_postdates_actuation` false throughout, the wall-clock barrier still holds the stale "2" pair
+    # past the lag and binds the live "3" — as a mark-less backend does. A predicate that read "no
+    # barrier pending" as "caught up" would release on the first agreeing pair and bind the stale "2".
+    driver = _UnorderedLaggingDriver(["2", "2", "3", "3"], lag=0.3)
+    assert isinstance(driver, base.ReadOrderProvider)
+    clock = FakeClock()
+    result = run_scenario(driver, _extract_then_assert_scenario(), clock=clock)
+    assert result.ok, result.failure
+    assert (
+        0.3 <= clock.now() < 5.0
+    )  # the barrier held past the lag despite the ReadOrderProvider seam

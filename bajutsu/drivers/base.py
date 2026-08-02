@@ -313,6 +313,30 @@ class ReadLagProvider(Protocol):
 
 
 @runtime_checkable
+class ReadOrderProvider(Protocol):
+    """A backend that can tell whether its last `query()` postdates the last actuation (BE-0332 Unit 3).
+
+    `ReadLagProvider` above bounds the wait for a lagging read with a wall-clock budget; this narrows
+    that budget to a ceiling by answering the ordering question directly. Android's resident reader
+    stamps each read with the device-clock time of the most recent accessibility event it has seen, and
+    the driver takes a device-clock mark before each gesture, so it knows the moment a read reflects
+    device state *after* the action — no host-to-device clock skew, because both marks are the device's.
+
+    A settle poll with no assertion to satisfy (`extract`) consults this to release the instant the
+    device publishes the action's update, rather than idling to the read-lag budget. A backend that
+    cannot answer simply does not implement it, and the poll keeps its wall-clock budget unchanged — the
+    same narrow opt-in as `ReadLagProvider` and `ViewportProvider`.
+    """
+
+    # Whether a read has positively postdated the last actuation, confirmed by the backend's device
+    # mark. True only on that confirmation, and reset by the next actuation — deliberately not merely
+    # "nothing is pending", so an actuation the backend could not mark (no device event, a stale-tree
+    # timeout, a channel without the mark) reads false and the caller keeps its wall-clock budget. The
+    # early release only ever tightens that budget, never accepts a read that predates the action.
+    def read_postdates_actuation(self) -> bool: ...
+
+
+@runtime_checkable
 class BackendLifecycle(Protocol):
     """The full set of lifecycle hooks backends run around a single run (BE-0141).
 
