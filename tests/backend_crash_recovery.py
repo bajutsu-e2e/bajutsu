@@ -12,13 +12,21 @@ A suite opts in by marking its module `backend_crash_recovery` and exposing a mo
 `_backend_launch` fixture (a zero-arg callable returning a fresh `base.Driver`, i.e. a cold spawn);
 the `_backend_lease_holder` fixture here wraps it in a `LeaseHolder` the plugin re-leases between
 attempts. The plugin is inert for any test the marker does not cover.
+
+Every respawn is reported (BE-0334 Unit 4): announced inline in the job log as it happens, and
+counted into a JSON report at `BAJUTSU_BACKEND_RECOVERY_REPORT` (an uploaded CI artifact) — so a
+degrading lane is visible as a rising count rather than merely looking slower, and a maintainer can
+tell whether the underlying fault is getting worse or staying rare.
 """
 
 from __future__ import annotations
 
+import json
 import logging
+import os
 import time
 from collections.abc import Callable
+from pathlib import Path
 
 import pytest
 from _pytest.runner import runtestprotocol
@@ -26,6 +34,7 @@ from _pytest.runner import runtestprotocol
 from bajutsu.drivers import base
 from bajutsu.runner.recovery import (
     CrashRecoveryBudget,
+    RetryDecision,
     _default_crash_recovery_budget,
     _default_crash_retries,
     is_infrastructure_fault,
@@ -35,10 +44,17 @@ _logger = logging.getLogger(__name__)
 
 RECOVER_MARKER = "backend_crash_recovery"
 
+# A path to write the JSON recovery report to (an uploaded CI artifact). Unset (the default, and the
+# fast gate) writes nothing — the plugin only ever *counts*, it never gates.
+_REPORT_ENV = "BAJUTSU_BACKEND_RECOVERY_REPORT"
+
 # Set by the makereport wrapper on a report whose exception is an infrastructure fault, carrying the
 # crash message. `None`/absent means "not a backend crash" (fail immediately), which is all the
 # protocol hook reads it for — the message rides along for whoever surfaces it.
 _CRASH_ATTR = "_backend_crash_reason"
+
+# Every crash the recovery loop saw, in order, accumulated across the session for the report.
+_EVENTS: pytest.StashKey[list[dict[str, object]]] = pytest.StashKey()
 
 
 class LeaseHolder:
@@ -145,6 +161,7 @@ def pytest_runtest_protocol(item: pytest.Item, nextitem: pytest.Item | None) -> 
             _publish(item, reports)
             break
         decision = budget.on_crash(attempt)
+        _record_crash(item, attempt, budget.total_attempts, decision, reason)
         if not decision.will_retry:
             # Recovery is over and the test never passed: publish the failing reports so the crash
             # fails loudly (BE-0049), rather than being absorbed into a slow green. Discard the dead
@@ -160,6 +177,70 @@ def pytest_runtest_protocol(item: pytest.Item, nextitem: pytest.Item | None) -> 
         attempt += 1
     item.ihook.pytest_runtest_logfinish(nodeid=item.nodeid, location=item.location)
     return True
+
+
+def _record_crash(
+    item: pytest.Item,
+    attempt: int,
+    total_attempts: int,
+    decision: RetryDecision,
+    reason: str,
+) -> None:
+    """Announce a crash in the job log and record it for the report (BE-0334 Unit 4)."""
+    events = item.session.stash.setdefault(_EVENTS, [])
+    events.append(
+        {
+            "nodeid": item.nodeid,
+            "attempt": attempt,
+            "totalAttempts": total_attempts,
+            "willRetry": decision.will_retry,
+            "budgetSpent": decision.budget_spent,
+            "reason": reason,
+        }
+    )
+    # Write the line inline (via the terminal reporter, not the captured per-test log) so a respawn is
+    # visible in the job log even on a test that then recovers to green.
+    if decision.will_retry:
+        line = (
+            f"⟳ {item.nodeid}: backend crashed (attempt {attempt}/{total_attempts}), "
+            f"respawning and retrying: {reason}"
+        )
+    elif decision.budget_spent:
+        line = (
+            f"✘ {item.nodeid}: backend crashed and did not recover within the crash-recovery "
+            f"budget (spent respawning across {attempt} attempt(s)): {reason}"
+        )
+    else:
+        line = (
+            f"✘ {item.nodeid}: backend crashed and did not recover across "
+            f"{total_attempts} attempts: {reason}"
+        )
+    _logger.warning(line)
+    reporter = item.config.pluginmanager.getplugin("terminalreporter")
+    if reporter is not None:
+        reporter.write_line(line)
+
+
+def pytest_sessionfinish(session: pytest.Session) -> None:
+    # Only when a report path is configured (a CI lane); the fast gate leaves it unset and writes
+    # nothing. Written even with zero crashes, so the lane always uploads a clean, present artifact.
+    path = os.environ.get(_REPORT_ENV)
+    if not path:
+        return
+    events = session.stash.get(_EVENTS, [])
+    by_test: dict[object, list[dict[str, object]]] = {}
+    for event in events:
+        by_test.setdefault(event["nodeid"], []).append(event)
+    # A test is "exhausted" if any of its crashes gave up (a will_retry=False event); otherwise it
+    # crashed but ultimately recovered to green.
+    exhausted = sum(1 for evs in by_test.values() if any(not e["willRetry"] for e in evs))
+    summary = {
+        "respawns": sum(1 for e in events if e["willRetry"]),
+        "recovered": len(by_test) - exhausted,
+        "exhausted": exhausted,
+        "events": events,
+    }
+    Path(path).write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
 
 
 def _publish(item: pytest.Item, reports: list[pytest.TestReport]) -> None:

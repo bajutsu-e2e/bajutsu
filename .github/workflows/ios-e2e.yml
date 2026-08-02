@@ -762,7 +762,24 @@ jobs:
       - name: Run the conformance suite (xcuitest)
         env:
           BAJUTSU_CONFORMANCE_UDID: ${{ steps.toolchain.outputs.udid }}
+          # Recover a Simulator infrastructure fault the way `bajutsu run` does (BE-0334): a runner
+          # crash re-leases a fresh device and re-runs the affected test, bounded per test by the retry
+          # count and the wall-clock respawn budget (the same knobs the `run` job sets). A crash every
+          # attempt still fails loudly (BE-0049); the 25-min job timeout above is the outer backstop.
+          BAJUTSU_CRASH_RETRIES: "2"
+          BAJUTSU_CRASH_RECOVERY_BUDGET: "300"
+          # Count every respawn into an uploaded artifact, so a degrading lane shows as a rising count.
+          BAJUTSU_BACKEND_RECOVERY_REPORT: conformance-recovery.json
         run: uv run pytest tests/test_driver_conformance_ondevice.py -m ondevice -n0 -v
+
+      # Upload the recovery report even when the suite fails, so an exhausted recovery is inspectable.
+      - name: Upload the conformance recovery report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: conformance-recovery-report
+          path: conformance-recovery.json
+          if-no-files-found: ignore
 
   # On-device iOS visual-regression (VRT): the iOS twin of android-e2e.yml's `e2e-visual`. Boots a
   # Simulator, builds the SwiftUI showcase, and runs the committed pixel VRT

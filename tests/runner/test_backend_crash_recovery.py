@@ -10,6 +10,7 @@ violation is not, and keeps failing immediately.
 
 from __future__ import annotations
 
+import json
 import textwrap
 
 # The inner conftest registers the real plugin; every inner test file supplies a fake `_backend_launch`
@@ -274,3 +275,129 @@ def test_a_crash_does_not_cascade_to_later_tests(pytester, monkeypatch) -> None:
     result = pytester.runpytest_inprocess()
     # No cascade: the crash fails only its own test; the later test re-leases and passes.
     result.assert_outcomes(failed=1, passed=1)
+
+
+def test_reports_and_counts_a_recovery(pytester, monkeypatch, tmp_path) -> None:
+    # BE-0334 Unit 4: every respawn is counted into an uploaded report, so a degrading lane is visible
+    # rather than merely looking slower. A transient crash that recovers records one respawn.
+    report = tmp_path / "recovery.json"
+    monkeypatch.setenv("BAJUTSU_BACKEND_RECOVERY_REPORT", str(report))
+    pytester.makeconftest(_INNER_CONFTEST)
+    pytester.makepyfile(
+        textwrap.dedent(
+            """
+            import pytest
+            from bajutsu.drivers import base
+
+            pytestmark = pytest.mark.backend_crash_recovery
+            _LAUNCHES = {"n": 0}
+
+            class _FakeDriver:
+                def __init__(self, crash: bool) -> None:
+                    self._crash = crash
+                def act(self) -> None:
+                    if self._crash:
+                        raise base.BackendCrashError("fake runner crashed mid-test")
+                def close(self) -> None:
+                    pass
+
+            @pytest.fixture(scope="module")
+            def _backend_launch():
+                def launch():
+                    _LAUNCHES["n"] += 1
+                    return _FakeDriver(crash=_LAUNCHES["n"] == 1)
+                return launch
+
+            @pytest.fixture
+            def driver(_backend_lease_holder):
+                return _backend_lease_holder.driver
+
+            def test_acts(driver):
+                driver.act()
+            """
+        )
+    )
+    result = pytester.runpytest_inprocess()
+    result.assert_outcomes(passed=1)
+    # The respawn is announced inline in the job log, not hidden until a failing test's captured log.
+    result.stdout.fnmatch_lines(["*backend crashed*respawning*"])
+    summary = json.loads(report.read_text())
+    assert summary["respawns"] == 1
+    assert summary["recovered"] == 1
+    assert summary["exhausted"] == 0
+    assert len(summary["events"]) == 1
+    assert summary["events"][0]["willRetry"] is True
+
+
+def test_reports_an_exhausted_recovery(pytester, monkeypatch, tmp_path) -> None:
+    # A runner that never comes back is counted as an exhausted recovery, not a silent slow lane — the
+    # count is what tells a maintainer the underlying fault is getting worse.
+    report = tmp_path / "recovery.json"
+    monkeypatch.setenv("BAJUTSU_BACKEND_RECOVERY_REPORT", str(report))
+    monkeypatch.setenv("BAJUTSU_CRASH_RETRIES", "1")
+    pytester.makeconftest(_INNER_CONFTEST)
+    pytester.makepyfile(
+        textwrap.dedent(
+            """
+            import pytest
+            from bajutsu.drivers import base
+
+            pytestmark = pytest.mark.backend_crash_recovery
+
+            class _FakeDriver:
+                def act(self) -> None:
+                    raise base.BackendCrashError("fake runner crashed mid-test")
+                def close(self) -> None:
+                    pass
+
+            @pytest.fixture(scope="module")
+            def _backend_launch():
+                def launch():
+                    return _FakeDriver()
+                return launch
+
+            @pytest.fixture
+            def driver(_backend_lease_holder):
+                return _backend_lease_holder.driver
+
+            def test_acts(driver):
+                driver.act()
+            """
+        )
+    )
+    result = pytester.runpytest_inprocess()
+    result.assert_outcomes(failed=1)
+    summary = json.loads(report.read_text())
+    assert summary["respawns"] == 1  # crash_retries=1 -> one respawn, then exhausted
+    assert summary["recovered"] == 0
+    assert summary["exhausted"] == 1
+    assert [e["willRetry"] for e in summary["events"]] == [True, False]
+
+
+def test_writes_no_report_when_the_env_is_unset(pytester, monkeypatch) -> None:
+    # The report is opt-in (an uploaded CI artifact): with no path configured and no crash, the plugin
+    # writes nothing and stays entirely inert.
+    monkeypatch.delenv("BAJUTSU_BACKEND_RECOVERY_REPORT", raising=False)
+    pytester.makeconftest(_INNER_CONFTEST)
+    pytester.makepyfile(
+        textwrap.dedent(
+            """
+            import pytest
+
+            pytestmark = pytest.mark.backend_crash_recovery
+
+            class _FakeDriver:
+                def close(self) -> None:
+                    pass
+
+            @pytest.fixture(scope="module")
+            def _backend_launch():
+                return lambda: _FakeDriver()
+
+            def test_noop(_backend_lease_holder):
+                assert _backend_lease_holder is not None
+            """
+        )
+    )
+    result = pytester.runpytest_inprocess()
+    result.assert_outcomes(passed=1)
