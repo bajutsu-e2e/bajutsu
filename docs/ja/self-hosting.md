@@ -591,7 +591,7 @@ curl -X POST "$SERVER/api/run" -H "Authorization: Bearer $TOKEN" \
 ### 複数 org
 
 1 つの backend で複数チームをホストするには、マウントした config に org を宣言します。各 org に所属メンバー
-（GitHub login や GitHub org）と、その org が持つ targets を指定します（[configuration](configuration.md#orgsマルチテナントのサーバ-backend)を参照）。
+（GitHub login や GitHub org）と、その org が持つ targets を指定します（[configuration](configuration.md#orgorgsマルチテナントのサーバ-backend)を参照）。
 
 ```yaml
 orgs:
