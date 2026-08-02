@@ -39,30 +39,39 @@ never blocks a merge:
 Because a required check skipped by a `paths:` filter stays pending forever and blocks the merge, none
 of the lanes path-gate at the trigger. Each triggers on every PR (and the merge queue) and a `changes`
 job path-gates the heavy jobs instead, running [`scripts/e2e_changes.py`](../scripts/e2e_changes.py)
-with `E2E_LANE=ios|android|web` (the per-lane positive-list of relevant paths, unit-tested in
+with `E2E_LANE=ios|android|web` (the per-lane relevance filter, unit-tested in
 `tests/test_e2e_changes.py`). The aggregator runs `if: always()`, so a path-skip reports as a pass and
 an unrelated PR is neither run nor blocked. Adding a new required aggregator to `main`'s
 branch-protection ruleset is an out-of-repo administrative step, done by a maintainer with the exact
 check name.
 
-One distinction inside that positive-list carries a maintenance hazard. The list sweeps a subpackage
-by its directory prefix but allow-lists a top-level module by name, and the filter appends `.py` to
-that name, so the entry reaches a single-file module and nothing else. The day that module becomes a
-package, every file under the new package stops matching. The lane's `changes` job then reports
-`relevant=false`, and the always-reporting aggregator passes without having run a single job. Both
-`bajutsu/config` and `bajutsu/platform_lifecycle` drifted that way when a refactor split them into
-packages: a change to the XCUITest cold-spawn code, which the iOS lane exists to exercise, skipped
-the entire iOS fleet. A module that becomes a package belongs in the swept group instead, and
-`tests/test_e2e_changes.py` checks every remaining by-name entry against the source tree, so
-`make check` fails on the pull request that splits the next one. Three more guards close the rest of
-the class. The shared core sweeps the two per-backend directories (`bajutsu/drivers/` and
-`bajutsu/platform_lifecycle/environments/`) minus the leaves each lane names, and a test asserts that
-no file under either one fires zero lanes. A newly added backend module over-fires rather than going
-unseen. A second test resolves every plain path in the filter against the tree, so a rename
-or a deletion fails the gate instead of leaving a lane that stops running with no signal at all. A
-third test checks the shared exclusion list against the union of every lane's named leaves, so a
-driver or environment added to only one list fails the gate instead of silently over-firing every
-lane on what should be one lane's own change.
+The filter inverts its default for `bajutsu/` (BE-0333). Rather than a hand-kept positive list that a
+file must join to be seen — where anything unlisted silently fired nothing — the shared core sweeps
+the *whole* package and carves out only what is explicitly classified: the periphery no lane exercises
+(`_PERIPHERY_EXCLUSIONS`, each entry carrying the reason it is out — the analytics / analysis stacks,
+the MCP server, the AI adapters, the GitHub and cloud integrations, and the individual periphery
+modules of the mixed `agents` / `crawl` / `cli.commands` packages) and the per-backend leaves each
+lane reclaims (`_LANE_CLAIMED`). A file named in neither is swept in and fires all three lanes until
+somebody classifies it — a wasted job, the safe direction — instead of the silent under-trigger the
+positive list produced. That default retires a whole class of miss: a top-level module split into a
+package (`bajutsu/config`, `bajutsu/platform_lifecycle` both drifted that way, skipping the fleet the
+lane exists to exercise), a new top-level module or CLI command, and files the run path imports but
+the list never named — `bajutsu/report/`, the manifest writer every run invokes, chief among them —
+now all fire because a package and a module match the sweep alike.
+
+Several tests keep the classification honest. `test_run_path_closure_is_gated_or_excluded` walks the
+run path's static `ast` import closure and fails if any file it reaches is neither gated by a lane nor
+a classified periphery entry — so a module the run path *starts* importing that nobody classified
+fails `make check` rather than surfacing months later as a mysteriously green required check.
+`test_periphery_exclusion_paths_exist` and `test_every_plain_literal_path_in_the_filter_exists` resolve
+every exclusion entry and every plain path against the tree, so a rename or a deletion fails the gate
+instead of leaving a pattern matching nothing. And the shared core sweeps the two per-backend
+directories (`bajutsu/drivers/`, `bajutsu/platform_lifecycle/environments/`) minus the leaves each lane
+names, with a test asserting no file under either fires zero lanes and another asserting each
+`_LANE_CLAIMED` leaf is reclaimed by at least one lane — so a newly added backend module over-fires
+rather than going unseen, and a leaf carved out but claimed by nobody fails the gate. The inverted
+default's over-fire cost was measured before it shipped: across the last 80 merged pull requests it
+fired identically to the old positive list on all three lanes (`scripts/e2e_overfire_report.py`).
 
 The `changes` job narrows one step further for the one case it can prove safe (BE-0322): a change
 confined to a lane's scenario files fires only the jobs that declare a changed scenario, rather than

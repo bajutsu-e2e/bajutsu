@@ -9,6 +9,7 @@ whose base branch has moved on isn't charged for files it never touched.
 
 from __future__ import annotations
 
+import ast
 import os
 import re
 import subprocess
@@ -17,11 +18,12 @@ from pathlib import Path
 import pytest
 
 from scripts.e2e_changes import (
+    _LANE_CLAIMED,
     _LANE_PATHS,
     _LANE_SCENARIO_PATHS,
     _MAKEFILE_JOB_TARGETS,
+    _PERIPHERY_EXCLUSIONS,
     _RUN_PATH,
-    _RUN_PATH_MODULES,
     _makefile_target_scenarios,
     affected_jobs,
     changed_files,
@@ -54,12 +56,11 @@ def test_run_path_subpackage_is_relevant() -> None:
 
 
 def test_run_path_top_level_modules_are_relevant() -> None:
-    # The top-level allow-list: only the single-level modules the on-device run / codegen / record
-    # path actually imports (the run loop, assertions, the element model, the driver helpers, the
-    # visual/golden dimensions, codegen, plus the run-pipeline's direct dependencies: evidence,
-    # redaction, artifact_perms, mailbox; and record.py's direct imports: agent, crawl, handoff).
-    # Each is listed explicitly rather than swept by a `bajutsu/*.py` blanket, which also caught
-    # serve/analytics/crawl modules that never run here.
+    # The run / codegen / record surface: the run loop, assertions, the element model, the driver
+    # helpers, the visual/golden dimensions, codegen, the run-pipeline's direct dependencies
+    # (evidence, redaction, artifact_perms, mailbox), and record.py's direct imports (the agent
+    # protocols, crawl core, handoff). Under the BE-0333 inverted default these fire because the
+    # shared core sweeps `bajutsu/` and none of them is a classified periphery exclusion.
     for module in (
         "bajutsu/interp.py",
         # assertions is a package (BE-0250); the whole package is on the run path, so every
@@ -106,29 +107,22 @@ def test_run_path_top_level_modules_are_relevant() -> None:
         assert is_relevant([module]) is True, module
 
 
-def test_agent_factory_is_not_relevant_by_parity() -> None:
-    # agents/factory.py (was agent_factory.py, the renamed agents.py) was never on the allow-list:
-    # only agent.py (now agents/protocols.py) was. cli/commands/record.py does import make_agent
-    # from it, so an argument exists for listing it — but that is a trigger-surface change, not a
-    # rename, so the BE-0246/BE-0257 renames keep exact parity and leave closing that latent gap to
-    # a separate decision.
-    assert is_relevant(["bajutsu/agents/factory.py"]) is False
-
-
 def test_non_run_path_top_level_modules_are_not_relevant() -> None:
-    # The regression this fixes: a serve/analytics/crawl module lives at the top level too, but the
-    # on-device jobs never import it, so touching it must not burn the metered macOS jobs. (PR #936,
-    # a serve-only change to bajutsu/stats.py, wrongly fired all four.)
+    # A serve/analytics/crawl module lives at the top level too, and the on-device jobs never import
+    # it, so touching it must not burn the metered macOS jobs. Under the BE-0333 inverted default each
+    # of these fires nothing only because it is a classified `_PERIPHERY_EXCLUSIONS` entry — a new,
+    # unclassified module would fire (that is the point). (PR #936, a serve-only change, wrongly fired
+    # all four before the periphery was carved out.)
     for module in (
         "bajutsu/analysis/stats.py",
         "bajutsu/analysis/audit.py",
         "bajutsu/analysis/coverage.py",
         "bajutsu/analytics/stats.py",
         "bajutsu/agents/alerts.py",
-        "bajutsu/github.py",
+        "bajutsu/github/actions.py",
         # The crawl engine core/serialize/__init__ trigger (above), but the periphery siblings in the
         # same package do not — the on-device run never imports them, so `crawl/**` must not be swept
-        # wholesale. All four are pinned so the regex boundary is fully covered, not just sampled.
+        # wholesale. All five are pinned so the boundary is fully covered, not just sampled.
         "bajutsu/crawl/guide.py",
         "bajutsu/crawl/report.py",
         "bajutsu/crawl/repro.py",
@@ -138,10 +132,49 @@ def test_non_run_path_top_level_modules_are_not_relevant() -> None:
         assert is_relevant([module]) is False, module
 
 
-def test_untouched_subpackage_is_not_relevant() -> None:
-    # ...and a subpackage the E2E never exercises (serve/mcp/report/templates) is not.
+def test_report_package_is_relevant_on_every_lane() -> None:
+    # The headline miss BE-0333 fixes: `bajutsu/report/` holds the manifest writer every run invokes
+    # through `runner/pipeline.py`, yet the old positive list never swept the package, so a change to
+    # it fired no lane and the required aggregators reported green without exercising it. The inverted
+    # default sweeps the whole package in; the HTML renderer no lane asserts on rides along as a
+    # cheap over-fire rather than being carved out file by file.
+    for lane in ("ios", "android", "web"):
+        for path in (
+            "bajutsu/report/manifest.py",
+            "bajutsu/report/__init__.py",
+            "bajutsu/report/html.py",
+        ):
+            assert is_relevant([path], lane) is True, (lane, path)
+    # ...but the MCP server stays a classified periphery subpackage the E2E never exercises.
     assert is_relevant(["bajutsu/mcp/server.py"]) is False
-    assert is_relevant(["bajutsu/report/manifest.py"]) is False
+
+
+def test_previously_missed_run_path_modules_now_fire() -> None:
+    # The BE-0333 motivation cites these among the run-path-closure files that fired no lane under the
+    # old positive list. Each is a top-level module the run imports (through the report writer, the
+    # deprecation shims, the object store, record capture, or the grouping helper), so a change to it
+    # must re-run the lanes; the inverted default sweeps each in.
+    for module in (
+        "bajutsu/deprecations.py",
+        "bajutsu/object_store.py",
+        "bajutsu/record_capture.py",
+        "bajutsu/from_grouping.py",
+    ):
+        assert is_relevant([module]) is True, module
+
+
+def test_new_unclassified_module_fires_every_lane() -> None:
+    # The property BE-0333 buys: a module added anywhere under `bajutsu/` that nobody has classified
+    # fires all three lanes (a wasted job, the safe direction) rather than defaulting to firing
+    # nothing and surfacing later as a mysteriously green required check. A top-level module, a file
+    # in a swept subpackage, and a brand-new CLI command all over-fire until classified.
+    for path in (
+        "bajutsu/brand_new_module.py",
+        "bajutsu/runner/brand_new.py",
+        "bajutsu/cli/commands/brand_new.py",
+    ):
+        for lane in ("ios", "android", "web"):
+            assert is_relevant([path], lane) is True, (lane, path)
 
 
 def test_only_listed_cli_commands_are_relevant() -> None:
@@ -322,14 +355,15 @@ def test_web_lane_surface() -> None:
     assert is_relevant(["bajutsu/drivers/coordinate_tree.py"], "web") is False
 
 
-# --- The package-vs-module drift in the by-name allow-list ---------------------------------------
-# A name in `_RUN_PATH`'s by-name alternation carries a trailing `\.py$`, so it reaches one
-# single-file module. Split that module into a package and every file under it stops matching: the
-# lane's `changes` job reports `relevant=false` and the required aggregator goes green without
-# running a thing. `config` (BE-0252) and `platform_lifecycle` both drifted that way unnoticed —
-# `platform_lifecycle/environments/xcuitest.py` owns the XCUITest cold spawn the iOS lane exists to
-# exercise, and PR #1403 changed it to a fully skipped fleet. Both are swept packages now; the last
-# test here is the mechanical guard that catches the next one.
+# --- Package sweeps that a module→package split used to silently break ----------------------------
+# The historical failure: a top-level module the old positive list named with a trailing `\.py$` was
+# split into a package (`config`, BE-0252; `platform_lifecycle`), and every file under it stopped
+# matching, so the lane's `changes` job reported `relevant=false` and the required aggregator went
+# green without running a thing — `platform_lifecycle/environments/xcuitest.py` owns the XCUITest
+# cold spawn the iOS lane exists to exercise, and PR #1403 changed it to a fully skipped fleet. The
+# BE-0333 inverted default retires that whole class: the shared core sweeps `bajutsu/` wholesale, so
+# a package and a module match alike and a split cannot drop a file out of the filter. These pin that
+# the once-bitten packages fire.
 
 
 def test_lifecycle_package_files_are_relevant() -> None:
@@ -386,22 +420,6 @@ def test_config_package_files_are_relevant() -> None:
     assert is_relevant(["bajutsu/config_source.py"]) is True
 
 
-def test_no_by_name_module_is_actually_a_package() -> None:
-    # The mechanical guard. Every name in the by-name alternation must still be a single-file
-    # `bajutsu/<name>.py` on disk; the day one becomes `bajutsu/<name>/`, the `\.py$` anchor silently
-    # stops matching anything and the lane stops firing. Fail here — at `make check`, on the PR that
-    # does the split — instead of discovering it from a mysteriously green required check later.
-    assert _RUN_PATH_MODULES, "the by-name allow-list is empty; every lane would stop firing"
-    repo_root = Path(__file__).resolve().parent.parent
-    for name in _RUN_PATH_MODULES:
-        module, package = repo_root / "bajutsu" / f"{name}.py", repo_root / "bajutsu" / name
-        assert module.is_file() or not package.is_dir(), (
-            f"bajutsu/{name} is a package but is allow-listed by name with a `.py$` anchor, "
-            f"so no file under it triggers any lane; move it to the swept-package group"
-        )
-        assert module.is_file(), f"bajutsu/{name}.py is allow-listed but does not exist"
-
-
 # --- Structural guards against a silent under-trigger ---------------------------------------------
 # The two guards below do not check any single path; they check the shape of the filter, so a future
 # edit cannot reintroduce the class of bug that motivated them. The first pins the "no orphan" rule
@@ -430,56 +448,203 @@ def test_no_per_backend_file_is_orphaned() -> None:
             assert lanes, f"{target} fires no lane — it would break CI silently"
 
 
-# The shared core's negative lookahead (which by-name leaves it does NOT sweep, leaving them to a
-# lane) and each lane's own claimed leaves in `_LANE_PATHS` are two independently hand-maintained
-# lists over the same two per-backend directories. A driver or environment added to a lane's fragment
-# without adding it to the shared exclusion re-sweeps it into the shared core too, so it fires all
-# three lanes instead of just the one that claims it — silently reintroducing the "a lane's metered
-# jobs fire on another lane's driver-only change" regression #1405 fixed, from the other list this
-# time. `test_no_per_backend_file_is_orphaned` above only catches the opposite drift (a file firing no
-# lane); this pins the shared exclusion to the *union* of every lane's claims, so the two lists cannot
-# drift apart in either direction without failing here.
-_DRIVERS_EXCLUSION_RE = re.compile(r"bajutsu/drivers/\(\?!\(\?:([a-z_|]+)\)\\\.py\$\)")
-_ENVIRONMENTS_EXCLUSION_RE = re.compile(
-    r"bajutsu/platform_lifecycle/\(\?!environments/\(\?:([a-z_|]+)\)\\\.py\$\)"
-)
-_DRIVERS_CLAIM_RE = re.compile(r"bajutsu/drivers/(?:\(\?:([a-z_|]+)\)|([a-z_]+))\\\.py\$")
-_ENVIRONMENTS_CLAIM_RE = re.compile(
-    r"bajutsu/platform_lifecycle/environments/(?:\(\?:([a-z_|]+)\)|([a-z_]+))\\\.py\$"
-)
-
-
-def _claimed_names(pattern: str, claim_re: re.Pattern[str]) -> set[str]:
-    names: set[str] = set()
-    for match in claim_re.finditer(pattern):
-        group = next(g for g in match.groups() if g)
-        names.update(group.split("|"))
-    return names
-
-
-def test_shared_exclusion_matches_the_union_of_lane_claims() -> None:
-    for label, exclusion_re, claim_re in (
-        ("bajutsu/drivers/", _DRIVERS_EXCLUSION_RE, _DRIVERS_CLAIM_RE),
-        (
-            "bajutsu/platform_lifecycle/environments/",
-            _ENVIRONMENTS_EXCLUSION_RE,
-            _ENVIRONMENTS_CLAIM_RE,
-        ),
-    ):
-        excluded_match = exclusion_re.search(_RUN_PATH)
-        assert excluded_match, (
-            f"{label}: shared exclusion lookahead not found — has its shape changed?"
+# Every leaf `_LANE_CLAIMED` carves out of the shared sweep must be re-claimed by at least one lane
+# fragment. The two lists are maintained independently — the shared exclusion (this constant, via
+# `_SWEEP_EXCLUSIONS`) and each lane's `_LANE_PATHS` fragment — so a leaf carved out but claimed by no
+# lane fires *nothing*: the silent under-trigger the whole item guards against. (The opposite drift, a
+# leaf claimed by a lane but not carved out, would fire all three; the per-lane surface tests above
+# pin each claimed leaf to exactly its owning lane, catching that.)
+def test_lane_claimed_leaves_fire_at_least_one_lane() -> None:
+    for path in _LANE_CLAIMED:
+        # A directory entry (serve/ , templates/) stands in for the files under it; probe a
+        # representative path so `is_relevant`'s prefix match has something to bite on.
+        probe = f"{path}app.py" if path.endswith("/") else path
+        lanes = [lane for lane in ("ios", "android", "web") if is_relevant([probe], lane)]
+        assert lanes, (
+            f"{path} is carved out of the shared sweep but claimed by no lane — it fires nothing"
         )
-        excluded = set(excluded_match.group(1).split("|"))
 
-        claimed: set[str] = set()
-        for lane_pattern in _LANE_PATHS.values():
-            claimed |= _claimed_names(lane_pattern, claim_re)
 
-        assert claimed == excluded, (
-            f"{label}: shared exclusion {sorted(excluded)} != union of lane claims {sorted(claimed)} — "
-            f"a driver/environment named in one list but not the other over-fires or orphans a lane"
+def test_lane_claimed_leaves_are_not_swept_into_every_lane() -> None:
+    # The carve-out's reason for being: a claimed leaf must fire *fewer* than all three lanes (or the
+    # exclusion is pointless and it should just be swept). A driver/environment leaf fires one lane; the
+    # broadest, `record`, fires two (iOS + web, not Android). None may fire all three.
+    for path in _LANE_CLAIMED:
+        probe = f"{path}app.py" if path.endswith("/") else path
+        lanes = [lane for lane in ("ios", "android", "web") if is_relevant([probe], lane)]
+        assert len(lanes) < 3, (
+            f"{path} fires every lane — carving it out of the shared sweep buys nothing"
         )
+
+
+# --- The classified periphery (BE-0333 Unit 1 / Unit 3) ------------------------------------------
+
+
+def test_periphery_exclusions_fire_no_lane() -> None:
+    # Every `_PERIPHERY_EXCLUSIONS` entry is a deliberate "the E2E never runs this" decision, so none
+    # of them may fire any lane. A directory entry stands in for its files; probe a representative path.
+    for path, reason in _PERIPHERY_EXCLUSIONS:
+        probe = f"{path}probe.py" if path.endswith("/") else path
+        for lane in ("ios", "android", "web"):
+            assert is_relevant([probe], lane) is False, (lane, path, reason)
+
+
+def test_periphery_exclusion_paths_exist() -> None:
+    # A renamed or deleted periphery path leaves a stale exclusion carving nothing out, so a run-path
+    # file that later takes its place would be swept in silently mislabeled. Check each against the
+    # tree, the same drift guard `test_every_plain_literal_path_in_the_filter_exists` applies to the
+    # positive patterns.
+    for path, _reason in _PERIPHERY_EXCLUSIONS:
+        target = _REPO_ROOT / path
+        if path.endswith("/"):
+            assert target.is_dir(), f"periphery exclusion {path!r} is not a directory on disk"
+        else:
+            assert target.is_file(), f"periphery exclusion {path!r} is not a file on disk"
+
+
+def test_periphery_exclusions_carry_a_reason() -> None:
+    # The point of moving the ad-hoc parity tests (BE-0333 Unit 3) into this list is that every
+    # exclusion reads as a decision. An empty reason is a decision nobody wrote down.
+    for path, reason in _PERIPHERY_EXCLUSIONS:
+        assert reason.strip(), f"periphery exclusion {path!r} carries no reason"
+
+
+# --- The run-path import-closure cross-check (BE-0333 Unit 2) -------------------------------------
+# The inverted default (Unit 1) makes a *new* file over-fire, but on its own it cannot see the reverse
+# error: a module the run path *starts* importing that is not classified — swept in silently, or worse,
+# reached while sitting on the periphery list. This walks the run path's static import closure with
+# `ast` (parse, never import — the `changes` job runs a bare `python3` with no dependencies, and this
+# belongs in the fast `make check` gate) and fails if any file it reaches is neither gated by a lane
+# nor a classified periphery entry. It is the mechanical enforcement of the item's title: every
+# run-path file is either gated or explicitly excluded.
+
+# The files the three lanes actually execute — `bajutsu run` / `codegen` / `record` / `doctor`, the
+# web lane's `python -m bajutsu.provision`, and the on-device conformance harness. Their transitive
+# `bajutsu` imports are the run path this check must keep fully classified.
+_RUN_ENTRYPOINTS = (
+    "bajutsu/cli/commands/run.py",
+    "bajutsu/cli/commands/codegen.py",
+    "bajutsu/cli/commands/record.py",
+    "bajutsu/cli/commands/doctor.py",
+    "bajutsu/provision.py",
+    "tests/driver_conformance.py",
+)
+
+
+def _module_to_relpath(module: str) -> str | None:
+    """`bajutsu.a.b` -> the repo-relative file path of its module or package `__init__`, or None."""
+    rel = module.replace(".", "/")
+    for candidate in (f"{rel}.py", f"{rel}/__init__.py"):
+        if (_REPO_ROOT / candidate).is_file():
+            return candidate
+    return None
+
+
+def _containing_package(relpath: str) -> list[str]:
+    """The package a module or package-init file lives in, as dotted components. Dropping the last
+    component covers both: `bajutsu/agents/protocols.py` and `bajutsu/agents/__init__.py` alike sit in
+    `bajutsu.agents`, so a `from . import x` in either resolves to `bajutsu.agents.x` (a package init
+    that kept its `__init__` component would resolve to `bajutsu.agents.__init__.x` and drop the edge)."""
+    return relpath.removesuffix(".py").replace("/", ".").split(".")[:-1]
+
+
+def _imports_from_source(relpath: str, source: str) -> set[str]:
+    """The absolute `bajutsu.*` modules `source` (the text of `relpath`) imports, resolving relative
+    imports against `relpath`'s containing package."""
+    tree = ast.parse(source, filename=relpath)
+    package = _containing_package(relpath)
+    found: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            found.update(a.name for a in node.names if a.name.startswith("bajutsu"))
+        elif isinstance(node, ast.ImportFrom):
+            if node.level == 0:
+                base = node.module or ""
+            else:
+                base = ".".join(
+                    package[: len(package) - (node.level - 1)]
+                    + ([node.module] if node.module else [])
+                )
+            if not base.startswith("bajutsu"):
+                continue
+            found.add(
+                base
+            )  # `from pkg import name` may pull a symbol; the package itself is imported
+            found.update(f"{base}.{a.name}" for a in node.names if a.name != "*")
+    return found
+
+
+def _bajutsu_imports(relpath: str) -> set[str]:
+    """The absolute `bajutsu.*` modules `relpath` imports, resolving relative imports to absolute."""
+    return _imports_from_source(relpath, (_REPO_ROOT / relpath).read_text(encoding="utf-8"))
+
+
+def test_containing_package_drops_module_and_init_alike() -> None:
+    # The fix a package-init resolver depends on: both a module and its package `__init__` sit in the
+    # same package, so a relative import in either resolves against that package — not against a
+    # phantom `…__init__` component that would drop the edge from the closure walk.
+    assert _containing_package("bajutsu/agents/protocols.py") == ["bajutsu", "agents"]
+    assert _containing_package("bajutsu/agents/__init__.py") == ["bajutsu", "agents"]
+
+
+def test_relative_imports_resolve_to_absolute() -> None:
+    # The closure walk must follow `from . import x` / `from .mod import y` edges (the codebase has
+    # none today, but Unit 2 exists to survive that drift). A `__init__.py` resolving a relative import
+    # to `bajutsu.agents.__init__.factory` instead of `bajutsu.agents.factory` would silently drop the
+    # run-path file behind it — the exact miss this check guards against.
+    found = _imports_from_source(
+        "bajutsu/agents/__init__.py",
+        "from . import protocols\nfrom .factory import make_agent\nfrom ..runner import pipeline\n",
+    )
+    assert "bajutsu.agents.protocols" in found
+    assert "bajutsu.agents.factory" in found
+    assert "bajutsu.runner.pipeline" in found
+    assert not any("__init__" in name for name in found), found
+
+
+def _run_path_closure() -> set[str]:
+    """Every `bajutsu/` file transitively imported by the run entrypoints (a static `ast` walk)."""
+    seen = set(_RUN_ENTRYPOINTS)
+    queue = list(_RUN_ENTRYPOINTS)
+    while queue:
+        for module in _bajutsu_imports(queue.pop()):
+            relpath = _module_to_relpath(module)
+            if relpath is not None and relpath.startswith("bajutsu/") and relpath not in seen:
+                seen.add(relpath)
+                queue.append(relpath)
+    return {p for p in seen if p.startswith("bajutsu/")}
+
+
+def _covered_by_periphery(relpath: str) -> bool:
+    return any(
+        relpath.startswith(path) if path.endswith("/") else relpath == path
+        for path, _reason in _PERIPHERY_EXCLUSIONS
+    )
+
+
+def test_run_path_closure_is_gated_or_excluded() -> None:
+    # The Unit 2 invariant. Walk the run path's import closure and require every file in it to be
+    # either gated (fires some lane) or a classified periphery entry. A run-path module that is
+    # neither — a per-backend leaf carved out of the shared sweep but re-claimed by no lane, or a
+    # periphery module the run path newly imports that nobody has added to `_PERIPHERY_EXCLUSIONS` —
+    # fails here, at `make check`, instead of surfacing months later as a mysteriously green required
+    # check. `record` reaching `agents/factory` (the agent factory) is the canonical acknowledged
+    # crossing: it is covered because `factory.py` is a periphery entry, not because it is gated.
+    closure = _run_path_closure()
+    assert len(closure) > 100, (
+        f"closure walk reached only {len(closure)} files — did the entrypoints move?"
+    )
+    uncovered = sorted(
+        relpath
+        for relpath in closure
+        if not any(is_relevant([relpath], lane) for lane in ("ios", "android", "web"))
+        and not _covered_by_periphery(relpath)
+    )
+    assert not uncovered, (
+        "run-path files neither gated by a lane nor in `_PERIPHERY_EXCLUSIONS`:\n"
+        + "\n".join(f"  {p}" for p in uncovered)
+        + "\nGate each (it is on the run path) or add it to `_PERIPHERY_EXCLUSIONS` with a reason."
+    )
 
 
 def _plain_literal_paths(pattern: str) -> list[str]:

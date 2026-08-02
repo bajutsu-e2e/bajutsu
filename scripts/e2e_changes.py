@@ -16,21 +16,21 @@ split into two testable pieces:
   ``bajutsu/runner/…`` commit on main would then trip the filter and burn the metered jobs on, say,
   a roadmap-only PR. The merge-base diff yields only what the PR itself changed.
 
-- ``is_relevant`` is the positive-list, keyed by lane. Every lane shares ``_RUN_PATH`` — the
-  run / codegen / record importable surface each backend exercises — and adds its own driver, app,
-  scenarios, conformance harness, and workflow file. Subpackages are swept; top-level ``bajutsu/*.py``
-  modules are allow-listed by name — only the ones that path actually imports — because the top level
-  also holds serve/analytics/crawl modules (stats, audit, coverage, usage*, crawl*, alerts, github,
-  …) the E2E never touches; a bare ``bajutsu/*.py`` glob swept those in and burned the jobs on, e.g.,
-  a serve-only PR. The two per-backend directories — ``bajutsu/drivers/`` and
-  ``bajutsu/platform_lifecycle/environments/`` — are swept by the shared core minus exactly the leaves
-  each lane claims by name, so a lane fires only on the driver and environment its own backend
-  imports, while no file is orphaned: anything unclaimed, a new module included, fires all three. A new
-  top-level ``bajutsu/*.py`` module or CLI command still defaults to NOT triggering — add its pattern
-  to ``_RUN_PATH`` (all lanes) or the lane's own fragment. Allow-listing by name carries two hazards
-  the tests now guard: a name anchored with ``\\.py$`` stops matching the day its module becomes a
-  package (see ``_RUN_PATH_MODULES``), and a renamed or deleted path leaves its pattern matching
-  nothing. Either one silently stops a lane from firing, so both fail ``make check`` instead.
+- ``is_relevant`` is keyed by lane. Every lane shares ``_RUN_PATH`` — the run / codegen / record
+  surface each backend exercises — and adds its own driver, app, scenarios, conformance harness, and
+  workflow file. BE-0333 inverts the default for ``bajutsu/``: the shared core sweeps the *whole*
+  package and carves out only what is explicitly classified out — the periphery no lane exercises
+  (``_PERIPHERY_EXCLUSIONS``, each entry with the reason it is out) and the per-backend leaves each
+  lane reclaims (``_LANE_CLAIMED``). A file named in neither is swept in and fires all three lanes,
+  so a new top-level ``bajutsu/*.py`` module or CLI command over-fires — a wasted job, the safe
+  direction — instead of the silent under-trigger the old hand-kept positive list produced when a
+  listed module became a package (``config``, BE-0252; ``platform_lifecycle``) or a run-path file
+  went unlisted. A change confined to the periphery still fires nothing. The two per-backend
+  directories — ``bajutsu/drivers/`` and ``bajutsu/platform_lifecycle/environments/`` — follow the
+  same shape: swept by the shared core minus exactly the leaves each lane claims, so a lane fires
+  only on the driver and environment its own backend imports, while no file is orphaned. A renamed or
+  deleted path leaves its pattern matching nothing, so the tests check every literal path and
+  exclusion entry against the tree and fail ``make check`` on the PR that moves one.
 
 Invoked by each workflow with ``BASE_SHA`` / ``HEAD_SHA`` in the environment and ``E2E_LANE`` naming
 the lane (``ios`` — the default — / ``android`` / ``web``); it writes ``relevant=true|false`` to
@@ -65,124 +65,207 @@ import subprocess
 from collections.abc import Iterable
 from pathlib import Path
 
-# The run / codegen / record importable surface every backend's E2E exercises — identical across the
-# iOS, Android, and web lanes, so it lives here once. Subpackages (runner / scenario / orchestrator /
-# codegen) are swept; top-level modules are allow-listed by name because the top level also holds the
-# serve/analytics/crawl modules (stats, audit, coverage, usage*, crawl*, alerts, notify, github, the
-# AI/enrich/triage helpers) that never run here — a bare `bajutsu/*.py` glob burned the jobs on a
-# serve-only PR. `crawl` is swept only for the three modules record's package re-export pulls in
-# (`__init__` imports `core` and `serialize`); its guide/report/repro/flows/tabs siblings are
-# periphery the run never imports. `assertions` is a package (BE-0250) whose every module is on the
-# run path, so the whole package is swept. A new top-level module defaults to NOT triggering — add it
-# here (all lanes) or to a lane fragment below.
+# The run / codegen / record surface every backend's E2E exercises — identical across the iOS,
+# Android, and web lanes, so it lives here once. BE-0333 inverts the default for `bajutsu/`: rather
+# than a hand-kept positive list of the modules the run path imports — which silently under-fired the
+# day a listed module became a package (`config`, BE-0252; `platform_lifecycle`) or a new run-path
+# file or CLI command was added — the shared core sweeps the whole package and carves out only what
+# is explicitly classified out. A file named nowhere below is swept in and fires all three lanes
+# until somebody classifies it: a wasted job, the safe direction, rather than an unexercised required
+# check that reports green without running the change at all.
 #
-# Each name in `_RUN_PATH_MODULES` is matched with a trailing `\.py$`, so it reaches a single-file
-# module and nothing else: the day that module becomes a package, its every file stops matching and
-# the lane silently stops firing. That drift hit `config` (BE-0252) and `platform_lifecycle`
-# unnoticed, so both now live in the swept-package group below. The names are a tuple rather than
-# regex text so `test_no_by_name_module_is_actually_a_package` can check each one against the tree
-# and fail the gate on the PR that does the next such split.
-_RUN_PATH_MODULES = (
-    "_yaml",
-    "adb",
-    "artifact_perms",
-    "backends",
-    "capabilities",
-    "capability_preflight",
-    "config_source",
-    # The platform-neutral `DeviceError` base (BE-0260) both `run` and the doctor gate catch to turn
-    # a device fault into their verdict, so a change to it can change what either reports.
-    "device_errors",
-    "device_id",
-    # `doctor` and `preflight` are the onboarding gate every lane runs as `bajutsu doctor
-    # --environment-only` (BE-0304), asserted by `scripts/assert_doctor_env.py` above. The assertion
-    # script was on this list from the start; the code it asserts against was not.
-    "doctor",
-    "dom",
-    "dotenv",
-    "elements",
-    "handoff",
-    "interp",
-    "mailbox",
-    "preflight",
-    "record",
-    # `preflight.py` (above) imports this directly and builds every `environment:` check's tool
-    # list and remedy strings from `requirements.BACKENDS` / `requirements.remedy`, so a change here
-    # moves the section `scripts/assert_doctor_env.py` asserts on, same as a `preflight.py` change.
-    "requirements",
-    "run_id",
-    "screenshots",
-    "simctl",
-    "totp",
-    "web_network",
-    "webview",
+# Two exclusion sets carve files out of that sweep:
+#
+# - `_PERIPHERY_EXCLUSIONS` — files under `bajutsu/` no E2E lane exercises (the analytics / analysis
+#   stacks, the MCP server, the AI adapters, the GitHub and cloud integrations, and the individual
+#   periphery modules of the mixed `agents` / `crawl` / `cli.commands` packages whose siblings do
+#   run). Each carries the reason it is out, so every deliberate "the E2E never runs this" decision
+#   reads as a decision in one place (BE-0333 Unit 3 folds the former ad-hoc parity tests in here).
+#   `test_periphery_exclusions_fire_no_lane` pins that none of them fire; the Unit 2 closure check
+#   pins that the list stays complete as the run path's imports change.
+#
+# - `_LANE_CLAIMED` — per-backend leaves the shared core must NOT fire on every lane, each re-added
+#   by the lane fragment(s) whose backend imports it (the four driver leaves, the four lifecycle
+#   `Environment` leaves, the serve backend + templates the web dogfood drives, the provisioner, the
+#   resident-channel Python side, and the `record` CLI command the Android lane does not run).
+#   Sweeping these into the shared core would fire, e.g., the macOS jobs on an adb-only change no
+#   XCUITest backend imports — the regression PR #1405 fixed.
+_PERIPHERY_EXCLUSIONS: tuple[tuple[str, str], ...] = (
+    (
+        "bajutsu/ai/",
+        "the AI provider adapters — no run / codegen / record path imports them for a run's verdict",
+    ),
+    (
+        "bajutsu/analytics/",
+        "the analytics ledger the report writer feeds; a run writes it but never asserts on it",
+    ),
+    (
+        "bajutsu/analysis/",
+        "the offline analysis stack (audit / coverage / stats) a serve or CLI report renders",
+    ),
+    (
+        "bajutsu/mcp/",
+        "the Model Context Protocol server — a separate transport, never on the on-device run path",
+    ),
+    (
+        "bajutsu/github/",
+        "the GitHub App / Actions integration, a hosted-CI concern the run never drives",
+    ),
+    (
+        "bajutsu/cloud/",
+        "the AWS Device Farm submitter — a hosted batch path, not the local on-device run",
+    ),
+    (
+        "bajutsu/notify.py",
+        "run-completion notifications (serve / CI glue), never exercised by a run itself",
+    ),
+    (
+        "bajutsu/triage.py",
+        "the AI triage command's core — an authoring / diagnosis path, not a run",
+    ),
+    (
+        "bajutsu/trace.py",
+        "the `bajutsu trace` diagnostic — it inspects a past run, it is never part of one",
+    ),
+    # agents/: record imports the Agent / EnrichmentAgent *protocols* (`agents/protocols.py`, swept in
+    # below), but a run drives no live agent, so the concrete implementations stay out. The factory
+    # entry restates the former `test_agent_factory_is_not_relevant_by_parity` (BE-0333 Unit 3).
+    (
+        "bajutsu/agents/factory.py",
+        "the agent factory record imports at authoring time; a run drives no live agent",
+    ),
+    (
+        "bajutsu/agents/ai_config.py",
+        "AI model / credential configuration, an authoring-path concern",
+    ),
+    ("bajutsu/agents/alerts.py", "serve-side alerting over a run's results, not part of the run"),
+    (
+        "bajutsu/agents/anthropic_client.py",
+        "the Anthropic API client the live agents use; a run drives none",
+    ),
+    (
+        "bajutsu/agents/availability.py",
+        "the AI-credential probe doctor's AI half reports; the E2E doctor gate reads only its environment section",
+    ),
+    (
+        "bajutsu/agents/claude.py",
+        "a concrete Claude agent implementation, an authoring / record-proposal path",
+    ),
+    ("bajutsu/agents/claude_backed.py", "a concrete Claude-backed agent base, authoring-path only"),
+    (
+        "bajutsu/agents/claude_enrich.py",
+        "Claude-backed evidence enrichment, a post-run authoring path",
+    ),
+    ("bajutsu/agents/claude_triage.py", "Claude-backed triage, a diagnosis path off the run"),
+    ("bajutsu/agents/enrich.py", "the enrichment-agent surface a run never invokes"),
+    # crawl/: record imports the crawl engine core (`core` / `serialize` / `__init__`, swept in); the
+    # guide / report / repro / flows / tabs siblings are periphery the run never imports.
+    ("bajutsu/crawl/guide.py", "crawl's human-facing guide output, an authoring path"),
+    ("bajutsu/crawl/report.py", "crawl's report renderer, a post-crawl authoring path"),
+    ("bajutsu/crawl/repro.py", "crawl's repro-scenario emitter, an authoring path"),
+    ("bajutsu/crawl/flows.py", "crawl's flow-analysis helpers, an authoring path"),
+    ("bajutsu/crawl/tabs.py", "crawl's tab-tracking helpers, an authoring path"),
+    # cli/commands/: `run` / `codegen` / `record` / `doctor` are the four the lanes drive (swept in,
+    # `record` via `_LANE_CLAIMED`); the rest are serve / analysis / authoring commands no lane runs.
+    ("bajutsu/cli/commands/approve.py", "the baseline-approval command, an authoring path"),
+    ("bajutsu/cli/commands/audit.py", "the audit-report command, an analysis path"),
+    ("bajutsu/cli/commands/coverage.py", "the coverage-report command, an analysis path"),
+    ("bajutsu/cli/commands/crawl.py", "the crawl command, an authoring path"),
+    ("bajutsu/cli/commands/export.py", "the export command, a reporting path"),
+    ("bajutsu/cli/commands/flakiness.py", "the flakiness-report command, an analysis path"),
+    ("bajutsu/cli/commands/impact.py", "the impact-report command, an analysis path"),
+    (
+        "bajutsu/cli/commands/lint.py",
+        "the scenario-lint command, a static-check path no run drives",
+    ),
+    ("bajutsu/cli/commands/mcp.py", "the MCP-server command, a separate transport"),
+    ("bajutsu/cli/commands/project.py", "the project-management command, a serve-config path"),
+    ("bajutsu/cli/commands/report.py", "the report command, a reporting path"),
+    ("bajutsu/cli/commands/schema.py", "the schema-dump command, a tooling path"),
+    (
+        "bajutsu/cli/commands/serve.py",
+        "the serve launcher; the web lane exercises the served backend, not this command",
+    ),
+    ("bajutsu/cli/commands/stats.py", "the stats command, an analysis path"),
+    ("bajutsu/cli/commands/trace.py", "the trace command, a diagnostic path"),
+    ("bajutsu/cli/commands/triage.py", "the triage command, a diagnosis path"),
+    ("bajutsu/cli/commands/worker.py", "the serve-worker command, a serve runtime path"),
+)
+
+# Per-backend leaves the shared core sweeps out and each lane fragment re-adds, so a leaf fires only
+# the lane(s) whose backend imports it, never all three. `test_lane_claimed_leaves_fire_a_lane` pins
+# that each stays claimed by at least one lane (none orphaned by this exclusion), and the per-lane
+# surface tests pin which lane(s).
+_LANE_CLAIMED: tuple[str, ...] = (
+    "bajutsu/drivers/adb.py",
+    "bajutsu/drivers/coordinate_tree.py",
+    "bajutsu/drivers/playwright.py",
+    "bajutsu/drivers/xcuitest.py",
+    "bajutsu/drivers/xcuitest_live.py",
+    "bajutsu/platform_lifecycle/environments/android.py",
+    "bajutsu/platform_lifecycle/environments/web.py",
+    "bajutsu/platform_lifecycle/environments/xcuitest.py",
+    "bajutsu/platform_lifecycle/environments/xcuitest_live.py",
+    "bajutsu/adb_resident.py",
+    "bajutsu/provision.py",
+    "bajutsu/serve/",
+    "bajutsu/templates/",
+    "bajutsu/cli/commands/record.py",
+)
+
+
+def _sweep_lookahead(paths: Iterable[str]) -> str:
+    """A negative-lookahead body matching each ``bajutsu/``-relative path — a ``/``-terminated entry
+    as a directory prefix, a file anchored with ``$`` — for the shared ``bajutsu/(?!…)`` sweep."""
+    fragments = []
+    for path in paths:
+        rel = path.removeprefix("bajutsu/")
+        fragments.append(re.escape(rel) if rel.endswith("/") else re.escape(rel) + r"$")
+    return "|".join(fragments)
+
+
+# The full set carved out of the shared `bajutsu/` sweep: the classified periphery plus the
+# per-backend leaves the lanes reclaim. Derived from the two lists above so the regex cannot drift
+# from them.
+_SWEEP_EXCLUSIONS: tuple[str, ...] = (
+    tuple(path for path, _ in _PERIPHERY_EXCLUSIONS) + _LANE_CLAIMED
 )
 
 _RUN_PATH = (
-    r"bajutsu/(?:runner|scenario|orchestrator|codegen|config)/"
-    # Everything in the lifecycle package except the four per-backend `Environment` leaves, which
-    # each lane claims by name below (the `bajutsu/drivers/` contract, one layer up). The carve-out
-    # names only the leaves that exist: a new `environments/<foo>.py` falls through to this sweep and
-    # fires every lane — an over-fire, the safe direction — until a lane claims it.
-    r"|bajutsu/platform_lifecycle/(?!environments/(?:android|web|xcuitest|xcuitest_live)\.py$)"
-    r"|bajutsu/(?:" + "|".join(_RUN_PATH_MODULES) + r")\.py$"
-    r"|bajutsu/crawl/(?:core|serialize|__init__)\.py$"
-    r"|bajutsu/agents/(?:protocols|__init__)\.py$"
-    r"|bajutsu/evidence/(?:core|intervals|network|visual|golden|redaction|__init__)\.py$"
-    r"|bajutsu/assertions/"
-    # Every driver file except the per-backend leaves each lane claims by name below. The invariant is
-    # that no driver file is orphaned: a file is either claimed by exactly the lanes whose backend
-    # imports it, or shared by all three. `base.py` (Point/Element/Selector, the Driver Protocol,
-    # selector resolution) and `__init__.py` are universal because every backend's driver imports them;
-    # `fake.py` no lane drives, but sweeping it costs an over-fire, while orphaning it would be the
-    # silent under-trigger this sweep exists to prevent. A new `drivers/<foo>.py` lands here too and
-    # fires every lane until a lane claims it — the safe direction.
-    r"|bajutsu/drivers/(?!(?:adb|coordinate_tree|playwright|xcuitest|xcuitest_live)\.py$)"
-    r"|bajutsu/cli/__init__\.py$"
-    r"|bajutsu/cli/_shared\.py$"
-    r"|bajutsu/cli/commands/__init__\.py$"
-    r"|bajutsu/cli/commands/run\.py$"
-    # The `doctor` CLI command each lane's BE-0304 onboarding gate invokes, alongside the
-    # `bajutsu/doctor.py` core it renders from (both above). Its AI-availability half
-    # (`agents/availability`, `ai/registry`) stays excluded: `assert_doctor_env.py` reads only
-    # the `environment:` section, which no AI credential can move.
-    r"|bajutsu/cli/commands/doctor\.py$"
+    # Sweep the whole shared core, carving out only the classified periphery and the per-backend
+    # leaves each lane claims below (BE-0333). A new file under `bajutsu/` fires all three lanes until
+    # it is classified here — the safe direction.
+    r"bajutsu/(?!" + _sweep_lookahead(_SWEEP_EXCLUSIONS) + r")"
     r"|tests/driver_conformance\.py$"
     # The onboarding-gate assertion each lane's `doctor` step runs (BE-0304); a change to it must
     # re-run every lane that exercises it, so it lives in the shared core, not one lane fragment.
     r"|scripts/assert_doctor_env\.py$"
     # This module itself. A change to the gate that decides which lanes run must run every lane, or
     # the new decision ships without a single lane ever having exercised it — the same silent
-    # under-trigger the rest of this list guards against, one level up. Such a change is rare, so
-    # firing all three lanes on it is cheap next to shipping the gate unvalidated.
+    # under-trigger the sweep guards against, one level up. Such a change is rare, so firing all three
+    # lanes on it is cheap next to shipping the gate unvalidated.
     r"|scripts/e2e_changes\.py$"
     r"|pyproject\.toml$"
     r"|uv\.lock$"
 )
 
-# Each lane adds its own driver, app, scenarios, conformance harness, and workflow file on top of
-# `_RUN_PATH`. The lane differences are real: iOS and web relay both codegen and record CLI
-# commands, the Android lane relays `bajutsu run` and (for its `uiautomator (codegen)` job, BE-0294)
-# `bajutsu codegen` but not `record`; each lane touches only the driver module(s) its own backend
-# actually imports (iOS: xcuitest[_live].py, Android: adb.py, web: playwright.py — verified against
-# each module's own imports, not a blanket `bajutsu/drivers/` sweep, which previously fired a lane's
-# metered jobs on another lane's driver-only change); each lane owns its showcase surface, its
-# conformance harness module, and its own workflow file.
+# Each lane re-adds the per-backend leaves `_LANE_CLAIMED` carved out of the shared sweep — only the
+# driver module(s), lifecycle environment(s), and (for iOS / web) the `record` CLI command its own
+# backend imports — plus the non-`bajutsu/` surface it owns: its showcase apps, scenarios, conformance
+# harness module, and workflow file. `bajutsu codegen` is on the shared sweep now (every lane relays
+# it), so no lane names it; `record` is claimed here because the Android lane does not run it.
 #
-# Both `bajutsu/drivers/` and `bajutsu/platform_lifecycle/environments/` are split this way, and both
-# default to over-firing: the shared core sweeps each directory minus exactly the leaves named here,
-# so a file a lane claims fires only that lane, while anything unclaimed — including a newly added
-# module — fires all three. Naming the leaves in a lane fragment therefore narrows a known file; it
-# never decides whether a new file is seen at all. An earlier revision inverted that default and
-# allow-listed each driver by name, which meant a new `drivers/<foo>.py` fired nothing and silently
-# under-triggered every lane's required check.
+# The per-backend leaves default to over-firing: anything the shared sweep does not carve out —
+# including a newly added driver or environment module — fires all three, and a lane fragment only
+# narrows a known leaf back to its own backend. An earlier revision allow-listed each driver by name,
+# which meant a new `drivers/<foo>.py` fired nothing and silently under-triggered every required check.
 _LANE_PATHS: dict[str, str] = {
     "ios": (
         r"|bajutsu/drivers/(?:xcuitest|xcuitest_live)\.py$"
         # The XCUITest lifecycle environments (cold spawn, the warm resident lease, the BE-0292
         # bundled runner) — the iOS half of the `platform_lifecycle/` carve-out above.
         r"|bajutsu/platform_lifecycle/environments/(?:xcuitest|xcuitest_live)\.py$"
-        r"|bajutsu/cli/commands/(?:codegen|record)\.py$"
+        r"|bajutsu/cli/commands/record\.py$"
         r"|tests/test_driver_conformance_ondevice\.py$"
         r"|BajutsuKit/"
         r"|demos/showcase/ios/swiftui/"
@@ -208,10 +291,6 @@ _LANE_PATHS: dict[str, str] = {
         # The Android lifecycle environment (boot, install, the BE-0236 provision profile) — the
         # Android half of the `platform_lifecycle/` carve-out.
         r"|bajutsu/platform_lifecycle/environments/android\.py$"
-        # The `uiautomator (codegen)` job (BE-0294) regenerates its test with `bajutsu codegen`, so a
-        # change to that CLI command is android-relevant — unlike `bajutsu run`, which the other jobs
-        # drive (the shared `_RUN_PATH` already sweeps the `bajutsu/codegen/` emitter package itself).
-        r"|bajutsu/cli/commands/codegen\.py$"
         r"|demos/showcase/android/"
         r"|demos/showcase/scenarios/"
         r"|demos/showcase/showcase\.config\.yaml$"
@@ -229,7 +308,7 @@ _LANE_PATHS: dict[str, str] = {
         # bajutsu.provision --backend web` (BE-0304) to install Chromium for real. Web-only: no other
         # lane invokes it, and the lanes never run `scripts/install.sh`, its other caller.
         r"|bajutsu/provision\.py$"
-        r"|bajutsu/cli/commands/(?:codegen|record)\.py$"
+        r"|bajutsu/cli/commands/record\.py$"
         # The serve-UI dogfood (BE-0058) drives the served SPA, so the serve backend and its templates
         # are web-CI-relevant whenever they change, not only when the harness itself does.
         r"|bajutsu/serve/"
