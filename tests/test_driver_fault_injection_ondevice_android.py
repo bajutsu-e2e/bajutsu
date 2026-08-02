@@ -19,9 +19,13 @@ retry then rides over. Reads go over the resident UI Automator channel (BE-0245)
 read lands inside a transition often enough to reproduce the condition, which the ~2.4 s `uiautomator
 dump` startup would almost always outlast.
 
-The tap is issued as a raw `adb shell input tap` rather than through the driver's own actuator,
-because that actuator settles the screen before returning — and a settled screen is exactly the state
-in which the transient can no longer be observed.
+The tap is a raw `input tap` rather than through the driver's own actuator, because that actuator
+settles the screen before returning — and a settled screen is exactly the state in which the
+transient can no longer be observed. It runs over one `adb shell` opened once and held for the whole
+loop, not a fresh `adb shell input tap` process per round: a fresh process pays a full adb
+client-server handshake every round, which on a loaded CI emulator can run past a second — longer
+than the tab transition itself, and enough on its own to explain a loop that completes every round
+without ever landing inside one.
 
 Contention cannot be scheduled, so the loop is bounded and its failure is loud: a round that never
 reproduces the condition fails with that as the diagnosis rather than passing on an untested
@@ -35,6 +39,8 @@ gate's default, and a module-level skip drops it whenever `BAJUTSU_FAULT_SERIAL`
 from __future__ import annotations
 
 import os
+import subprocess
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -106,13 +112,49 @@ def driver(_eff: Effective) -> AdbDriver:
     return driver
 
 
+@pytest.fixture(scope="module")
+def tap_shell(driver: AdbDriver) -> Iterator[subprocess.Popen[str]]:
+    """A single persistent `adb shell`, so a tap costs one stdin write, not a fresh adb process.
+
+    A fresh `adb shell input tap` per round pays a full adb client-server handshake every round; on
+    a loaded CI emulator that alone can run over a second — longer than the tab transition this
+    suite is trying to catch, and the actual reason four straight CI runs completed every round
+    without ever landing inside one (a round's ~1.4 s badly outweighs a resident read's ~0.1 s, so
+    the handshake, not the read, was eating the window). One persistent shell removes it: the
+    device executes each `input tap` the instant its line reaches the shell's stdin.
+    """
+    proc = subprocess.Popen(
+        adb._adb(SERIAL, "shell"),
+        stdin=subprocess.PIPE,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        text=True,
+    )
+    assert proc.stdin is not None, "Popen with stdin=PIPE always attaches a stdin stream"
+    try:
+        yield proc
+    finally:
+        proc.stdin.close()
+        proc.terminate()
+        proc.wait(timeout=5)
+
+
+def _tap(shell: subprocess.Popen[str], x: float, y: float) -> None:
+    """Fire a raw `input tap` over the persistent shell — no settle, no fresh adb process."""
+    assert shell.stdin is not None
+    shell.stdin.write(f"input tap {round(x)} {round(y)}\n")
+    shell.stdin.flush()
+
+
 def _center(el: base.Element) -> tuple[float, float]:
     """The frame centre to aim a raw `input tap` at, the same point the driver's own tap uses."""
     x, y, w, h = el["frame"]
     return x + w / 2, y + h / 2
 
 
-def test_the_retry_rides_over_a_real_mid_transition_empty_tree(driver: AdbDriver) -> None:
+def test_the_retry_rides_over_a_real_mid_transition_empty_tree(
+    driver: AdbDriver, tap_shell: subprocess.Popen[str]
+) -> None:
     tree = driver.query()  # baseline: a full screen, so `_is_transient_empty` is armed here
     taps = [
         _center(base.resolve_unique(tree, {"label": tab, "traits": ["button"]})) for tab in _TABS
@@ -125,7 +167,7 @@ def test_the_retry_rides_over_a_real_mid_transition_empty_tree(driver: AdbDriver
 
     for round_index in range(_MAX_ROUNDS):
         x, y = taps[round_index % len(taps)]
-        adb._real_run(adb.tap_cmd(SERIAL, x, y))
+        _tap(tap_shell, x, y)
         # No readiness wait: reading straight after the tap is what puts the read inside the
         # transition. A selector failure here is the failure this suite is for, so it is reported
         # with the round it happened on rather than as a bare "element not found" on the device.
