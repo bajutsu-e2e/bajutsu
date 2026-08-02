@@ -11,25 +11,38 @@ returns; the on-device conformance suite never reaches the branch at all, becaus
 `OnDeviceConformanceHarness._await_screen` waits every screen to readiness before the contract reads
 it. This module closes that gap by making the emulator produce the condition for real.
 
+**Reads must go over `uiautomator dump`, not the resident channel.** That is the whole premise, and
+it is the opposite of what this suite first assumed. The transient-empty tree is a *stock*
+`uiautomator dump` artifact — the "null root node" text above is what the platform's own dump returns
+mid-transition. The resident UI Automator server (BE-0245) exists partly to eliminate exactly that
+class of artifact, and BE-0332 Unit 4 finished the job: `respondSource` runs `waitForIdle()` and then
+`settledDump()` — re-dumping until two consecutive dumps are byte-identical — *before* it answers,
+unconditionally, whether or not a `since` mark rides on the request. So the device settles the
+transient away on its own side, and a host reading through that channel can never observe one, at any
+tap speed. Four CI runs tuning tap timing against the resident channel reproduced nothing for that
+reason, not a timing one. The module therefore forces the dump path (`BAJUTSU_ADB_RESIDENT=0`, the
+documented knob) and asserts it got it.
+
+Forcing it through the *environment* rather than blanking the driver's channel afterwards is what
+keeps the fault honest. A live resident server holds the device's single UiAutomation session, so a
+dump taken beside one reads empty for the rest of the lease (`adb_resident.py`) — a wedge, not a
+transient, and one that would satisfy a naive "did the tree come back empty?" check while proving
+nothing. With the knob the server is never started, so the empty trees seen here are the real
+mid-transition artifact. The recovery assertion at the end of the test is the second guard: a wedge
+never recovers, so it fails loudly instead of passing as a reproduction.
+
 The fault is contention, the escape hatch the item allows where a naturally-timed transient cannot be
-scheduled: a real tab tap fires and the tree is read immediately, with no readiness wait in between,
-so some reads land while UI Automator has no stable window to describe. The app is never modified and
-no read is faked — the driver's own `_read_source` and `parse_hierarchy` produce the empty tree the
-retry then rides over. Reads go over the resident UI Automator channel (BE-0245): at roughly 0.1 s a
-read lands inside a transition often enough to reproduce the condition, which the ~2.4 s `uiautomator
-dump` startup would almost always outlast.
+scheduled. A dump costs seconds to start, far longer than one tab transition, so a single tap can
+never be raced — the contention is *sustained* instead: a background thread taps the tab bar
+continuously while the main thread reads, so a dump starting at any moment still lands amid ongoing
+transitions. The app is never modified and no read is faked — the driver's own `_read_source` and
+`parse_hierarchy` produce the empty tree the retry then rides over. The taps go over one `adb shell`
+held open for the whole test, not a fresh process each time, so the tapping is dense enough to keep
+the screen genuinely unsettled rather than paying an adb handshake between taps.
 
-The tap is a raw `input tap` rather than through the driver's own actuator, because that actuator
-settles the screen before returning — and a settled screen is exactly the state in which the
-transient can no longer be observed. It runs over one `adb shell` opened once and held for the whole
-loop, not a fresh `adb shell input tap` process per round: a fresh process pays a full adb
-client-server handshake every round, which on a loaded CI emulator can run past a second — longer
-than the tab transition itself, and enough on its own to explain a loop that completes every round
-without ever landing inside one.
-
-Contention cannot be scheduled, so the loop is bounded and its failure is loud: a round that never
-reproduces the condition fails with that as the diagnosis rather than passing on an untested
-mechanism. That inherent flakiness is why the lane lands as a non-gating signal first
+Contention cannot be scheduled, so the loop is bounded by a wall-clock deadline and its failure is
+loud: a run that never reproduces the condition fails with that as the diagnosis rather than passing
+on an untested mechanism. That inherent flakiness is why the lane lands as a non-gating signal first
 (`fault (adb)` in `android-e2e.yml`), following BE-0282's precedent, and is promoted once stable.
 
 Runs in the Android E2E path, never in `make check`: the `ondevice` marker is deselected by the
@@ -40,6 +53,8 @@ from __future__ import annotations
 
 import os
 import subprocess
+import threading
+import time
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -79,10 +94,16 @@ _ALWAYS_PRESENT: base.Selector = {"label": "Stable", "traits": ["button"]}
 # keep every round a change of screen; its bar item is still what `_ALWAYS_PRESENT` resolves.
 _TABS = ("Search", "Log", "Notices", "Permissions")
 
-# How many tap-and-read rounds to spend reproducing the condition. Each round costs one tap plus one
-# resident read (~0.2 s together), so the ceiling is seconds, not minutes — high enough that an
-# emulator producing the transient at all will show it, low enough to fail fast when none does.
-_MAX_ROUNDS = 60
+# How long to keep the screen contended while reading, before giving up on reproducing the condition.
+# A wall-clock bound, not a round count: a `uiautomator dump` read costs seconds and varies with load,
+# so a fixed round count would be minutes on a slow emulator and seconds on a fast one. Sized to give
+# an emulator that produces the transient at all many dumps' worth of chances while leaving the job
+# far inside its timeout.
+_CONTENTION_BUDGET_S = 90.0
+
+# Gap between the background thread's taps. Short enough to keep transitions overlapping (a tab
+# transition is a few hundred ms), long enough that each tap still registers as its own gesture.
+_TAP_INTERVAL_S = 0.15
 
 
 @pytest.fixture(scope="module")
@@ -95,21 +116,32 @@ def _eff() -> Effective:
 
 
 @pytest.fixture(scope="module")
-def driver(_eff: Effective) -> AdbDriver:
-    driver, _readiness = launch_driver(SERIAL, _eff, "adb", extra_env={"SHOWCASE_UITEST": "1"})
-    assert isinstance(driver, AdbDriver), (
-        f"the adb backend resolved to {type(driver).__name__}, which does not carry the "
-        "transient-empty retry this suite injects a fault for"
-    )
-    # The fast resident read is the premise of the whole suite, and a missing server APK or a failed
-    # channel start degrades to `uiautomator dump` with nothing louder than a warning. Left
-    # unchecked, that degrade would surface as "the emulator never reproduced the condition" —
-    # blaming the device for a job that read through the one channel too slow to catch a transition.
-    assert driver._fetch_hierarchy is not None, (
-        "reads fell back to `uiautomator dump`: the resident UI Automator server (BE-0245) is not "
-        "running, and its ~2.4 s read startup outlasts the transition this suite injects"
-    )
-    return driver
+def driver(_eff: Effective) -> Iterator[AdbDriver]:
+    # Force the dump read path for this lease. Set before `launch_driver` so the environment never
+    # starts the resident server at all: blanking the driver's channel afterwards would leave the
+    # server holding the device's single UiAutomation session, and every dump beside it reads empty
+    # for the rest of the lease — a wedge that would look like the transient this suite hunts.
+    mp = pytest.MonkeyPatch()
+    mp.setenv("BAJUTSU_ADB_RESIDENT", "0")
+    try:
+        driver, _readiness = launch_driver(SERIAL, _eff, "adb", extra_env={"SHOWCASE_UITEST": "1"})
+        assert isinstance(driver, AdbDriver), (
+            f"the adb backend resolved to {type(driver).__name__}, which does not carry the "
+            "transient-empty retry this suite injects a fault for"
+        )
+        # The dump path is the premise of the whole suite: the resident channel settles the transient
+        # away on the device before answering (BE-0332 Unit 4's `settledDump`), so a read through it
+        # can never observe one. Reaching here on the resident channel would mean the knob above
+        # stopped being honoured, which must fail as itself rather than as "the emulator never
+        # reproduced the condition".
+        assert driver._fetch_hierarchy is None, (
+            "reads are going over the resident UI Automator channel despite BAJUTSU_ADB_RESIDENT=0; "
+            "that channel runs `waitForIdle` + `settledDump` before it answers, so the transient "
+            "this suite injects is settled away on the device and can never be observed"
+        )
+        yield driver
+    finally:
+        mp.undo()
 
 
 @pytest.fixture(scope="module")
@@ -160,35 +192,61 @@ def test_the_retry_rides_over_a_real_mid_transition_empty_tree(
         _center(base.resolve_unique(tree, {"label": tab, "traits": ["button"]})) for tab in _TABS
     ]
     before = driver._transient_empty_retries
-    # Distinct screens seen across the loop. A tap that stops landing (Compose can drop one aimed at
-    # a view mid-transition) would end the contention silently and exhaust the rounds looking like an
-    # emulator that never produces the transient, so the count goes into the failure below.
+    # Distinct screens seen while reading. A tapper that stops landing its taps (Compose can drop one
+    # aimed at a view mid-transition) would end the contention silently and spend the budget looking
+    # like an emulator that never produces the transient, so the count goes into the failure below.
     seen = {driver._stable_key(tree)}
+    reads = 0
 
-    for round_index in range(_MAX_ROUNDS):
-        x, y = taps[round_index % len(taps)]
-        _tap(tap_shell, x, y)
-        # No readiness wait: reading straight after the tap is what puts the read inside the
-        # transition. A selector failure here is the failure this suite is for, so it is reported
-        # with the round it happened on rather than as a bare "element not found" on the device.
-        tree = driver.query()
-        seen.add(driver._stable_key(tree))
-        try:
-            base.resolve_unique(tree, _ALWAYS_PRESENT)
-        except base.SelectorError as exc:
-            pytest.fail(
-                f"round {round_index}: the settled read returned {len(tree)} elements with no unique "
-                f"{_ALWAYS_PRESENT}. The retry either never fired, or fired and gave up before the "
-                f"screen came back; a partial tree of two or more nodes never enters the retry at "
-                f"all, since `_READY_MIN` treats it as settled ({exc})"
-            )
-        if driver._transient_empty_retries > before:
-            return
+    stop = threading.Event()
 
-    pytest.fail(
-        f"{_MAX_ROUNDS} tap-and-read rounds over {len(seen)} distinct screens never produced a "
-        "transient-empty tree, so the retry this suite exists to exercise was never reached. Either "
-        "the taps stopped switching tabs (a low screen count says so), the emulator no longer "
-        "produces the transient at this read speed, or the read path no longer reports an "
-        "unparseable hierarchy as an empty element list"
-    )
+    def tapper() -> None:
+        cycle = 0
+        while not stop.is_set():
+            x, y = taps[cycle % len(taps)]
+            _tap(tap_shell, x, y)
+            cycle += 1
+            stop.wait(_TAP_INTERVAL_S)  # a cancellable sleep: `stop` ends the wait immediately
+
+    thread = threading.Thread(target=tapper, name="fault-adb-tapper", daemon=True)
+    thread.start()
+    try:
+        deadline = time.monotonic() + _CONTENTION_BUDGET_S
+        while time.monotonic() < deadline:
+            # No readiness wait, and no assertion on this tree: under sustained contention a read
+            # legitimately lands on a torn or degenerate screen, and the retry legitimately exhausts.
+            # Whether the retry *recovers* is settled once, on the quiet screen after the tapper
+            # stops — asserting it here would fail the run for the contention it was asked to create.
+            tree = driver.query()
+            reads += 1
+            seen.add(driver._stable_key(tree))
+            if driver._transient_empty_retries > before:
+                break
+    finally:
+        stop.set()
+        thread.join(timeout=5)
+
+    if driver._transient_empty_retries == before:
+        pytest.fail(
+            f"{reads} contended `uiautomator dump` reads over {len(seen)} distinct screens never "
+            f"produced a transient-empty tree in {_CONTENTION_BUDGET_S}s, so the retry this suite "
+            "exists to exercise was never reached. Either the taps stopped switching tabs (a low "
+            "screen count says so), the emulator no longer returns an unparseable hierarchy while "
+            "the screen is in flux, or the read path no longer reports one as an empty element list"
+        )
+
+    # The retry fired; now prove it rides over the transient rather than merely counting it. The
+    # screen is quiet here (the tapper is stopped and joined), so a read that still cannot resolve
+    # the always-present tab bar is a tree the retry failed to recover — including the wedge case, an
+    # empty that never clears, which must never pass as a reproduction of a *transient*.
+    settled = driver.query()
+    try:
+        base.resolve_unique(settled, _ALWAYS_PRESENT)
+    except base.SelectorError as exc:
+        pytest.fail(
+            f"the retry fired ({driver._transient_empty_retries - before} re-reads) but the settled "
+            f"read on a quiet screen returned {len(settled)} elements with no unique "
+            f"{_ALWAYS_PRESENT}, so it never rode over the empty. A tree that stays empty once the "
+            f"contention stops is a wedged accessibility bridge, not the transient this suite "
+            f"injects ({exc})"
+        )

@@ -87,13 +87,27 @@ Proposal altitude. The work is MECE along the units below.
 
 ### Log
 
-- The two fault-injection lanes land together. On Android, `fault (adb)` taps the tab bar and reads
-  the tree with no readiness wait in between until UI Automator really answers mid-transition with no
-  hierarchy, then asserts the retry recovered the real screen without a false "element not found".
-  Reproducing that needs the resident channel's ~0.1 s read (BE-0245), which the ~2.4 s `uiautomator
-  dump` startup would outlast, and it needs animations left on — the one job in the lane that keeps
-  them. The tap is a raw `adb shell input tap`, not the driver's actuator, because that actuator
-  settles the screen and a settled screen no longer shows the transient.
+- The two fault-injection lanes land together. On Android, `fault (adb)` contends the tab bar and
+  reads the tree with no readiness wait in between until UI Automator really answers mid-transition
+  with no hierarchy, then asserts the retry recovered the real screen without a false "element not
+  found". It needs animations left on — the one job in the lane that keeps them. The tap is a raw
+  `input tap`, not the driver's actuator, because that actuator settles the screen and a settled
+  screen no longer shows the transient.
+- **The read must go over `uiautomator dump`, not the resident channel — the reverse of this item's
+  first assumption, and the reason the lane reproduced nothing on its first five CI runs.** The
+  transient-empty tree is a *stock* dump artifact, and the resident server (BE-0245) exists partly to
+  eliminate that class of artifact; BE-0332 Unit 4 completed it, so `respondSource` now runs
+  `waitForIdle()` and `settledDump()` — re-dumping until two consecutive dumps match — before it
+  answers, whether or not a `since` mark rides on the request. The device therefore settles the
+  transient away on its own side, and no host-side tap timing can make a read through that channel
+  observe one. The suite forces the dump path with `BAJUTSU_ADB_RESIDENT=0` and asserts it got it.
+  Forcing it through the environment (not by blanking the driver's channel afterwards) is what keeps
+  the fault honest: a live resident server holds the device's single UiAutomation session, so a dump
+  taken beside one reads empty for the whole lease — a wedge that would satisfy a naive "did it come
+  back empty?" check while proving nothing. The final recovery assertion is the second guard, since a
+  wedge never recovers. Because a dump costs seconds to start, far longer than one transition, the
+  contention is sustained rather than raced: a background thread taps continuously while the main
+  thread reads, and the loop is bounded by wall clock rather than a round count.
 - Proving the branch fired needed the mechanism to be observable, so `CoordinateTreeDriver` now
   counts its transient-empty re-reads. Without the counter the suite could only assert that a read
   came back intact — which also holds when the contention never reproduced the condition, so a green

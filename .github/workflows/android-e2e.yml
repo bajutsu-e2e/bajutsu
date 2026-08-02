@@ -451,8 +451,8 @@ jobs:
     needs: changes
     if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
-    # A cold AVD boot + the Compose + resident-server builds + a bounded tap-and-read loop (seconds)
-    # is ~15min; 25 catches a real hang (a wedged AVD boot or adb) with headroom.
+    # A cold AVD boot + the Compose build + a wall-clock-bounded contended read loop is ~15min; 25
+    # catches a real hang (a wedged AVD boot or adb) with headroom.
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -468,8 +468,10 @@ jobs:
       - name: Build the Compose showcase APK
         run: make -C demos/showcase/android compose-build
 
-      - name: Build the resident UI Automator server APKs
-        run: make -C BajutsuAndroidUIAutomatorServer build
+      # Deliberately no resident-server build here, unlike every other adb job: this suite forces the
+      # `uiautomator dump` path (BAJUTSU_ADB_RESIDENT=0). The resident server answers a read only
+      # after `waitForIdle` + `settledDump` (BE-0332 Unit 4), which settles the transient this suite
+      # injects away on the device — so reading through it could never observe one.
 
       - name: Cache AVD
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
