@@ -19,13 +19,26 @@ import subprocess
 import time
 import xml.etree.ElementTree as ET
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
 from bajutsu import adb
-from bajutsu.drivers.adb import AdbResidentError, HierarchyFetch, slice_hierarchy_root
+from bajutsu.drivers.adb import (
+    AdbResidentError,
+    ClockFetch,
+    HierarchyFetch,
+    HierarchyRead,
+    slice_hierarchy_root,
+)
 
 logger = logging.getLogger("bajutsu.adb.resident")
+
+# The response header the resident server stamps `GET /source` with: the device-clock time
+# (`SystemClock.uptimeMillis`) of the most recent accessibility event it had observed (BE-0332 Unit 3).
+# Carried in a header so the XML body stays byte-identical to `uiautomator dump`'s, keeping
+# `parse_hierarchy` and `narrow_to_active_window` unchanged.
+_READ_MARK_HEADER = "X-Bajutsu-Read-Mark"
 
 # SystemUI owns the status and navigation bars — separate windows that `dumpWindowHierarchy` traverses
 # but the platform `uiautomator dump` (active window only) omits. Dropping them is a uniform
@@ -61,27 +74,78 @@ def narrow_to_active_window(xml: str) -> str:
     return ET.tostring(root, encoding="unicode")
 
 
-def fetch_source(host_port: int, *, timeout: float = 5.0) -> str:
-    """GET the resident server's current hierarchy XML over the forwarded loopback host port.
+def fetch_source(
+    host_port: int, since: float | None = None, *, timeout: float = 5.0
+) -> HierarchyRead:
+    """GET the resident server's current hierarchy over the forwarded loopback host port.
+
+    Returns the XML plus its read mark (BE-0332 Unit 3): the `X-Bajutsu-Read-Mark` header carries the
+    device-clock time of the most recent accessibility event the reader had seen, so the driver can
+    trust a read only once it postdates the gesture. A response without the header (an older server)
+    yields a None mark, and the driver's barrier falls back to its wall-clock budget — never a failure.
+
+    Args:
+        since: The device-clock mark the read must postdate (BE-0332 Unit 4). When given, it rides on
+            the request as `?since=`, and the resident server blocks until an accessibility event
+            postdates it before dumping once — collapsing the host's re-poll into one round trip. None
+            (a read with no gesture pending) requests the current hierarchy with no wait.
 
     Raises:
         AdbResidentError: the channel could not be reached or did not answer 200 — an infrastructure
             failure the driver catches to fall back to `uiautomator dump`, never a test outcome.
     """
     conn = http.client.HTTPConnection("127.0.0.1", host_port, timeout=timeout)
+    path = "/source" if since is None else f"/source?since={since}"
     try:
-        conn.request("GET", "/source")
+        conn.request("GET", path)
         resp = conn.getresponse()
         body = resp.read()
         if resp.status != 200:
             raise AdbResidentError(f"resident server returned HTTP {resp.status}")
+        mark = _parse_mark(resp.getheader(_READ_MARK_HEADER))
         # A truncated/garbled body (a mid-write device server) must degrade to the dump fallback, not
         # escape past the driver's AdbResidentError-only catch — whether it surfaces as a
         # UnicodeDecodeError (garbled bytes) or an http.client.HTTPException (IncompleteRead from a
         # short body, BadStatusLine/UnknownProtocol from a malformed status line).
-        return body.decode("utf-8")
+        return HierarchyRead(body.decode("utf-8"), mark)
     except (OSError, UnicodeDecodeError, http.client.HTTPException) as exc:
         raise AdbResidentError(f"resident channel unreachable on port {host_port}: {exc}") from exc
+    finally:
+        conn.close()
+
+
+def _parse_mark(raw: str | None) -> float | None:
+    """The `X-Bajutsu-Read-Mark` header as a device-clock float, or None when absent/unparseable.
+
+    A missing header (an older server without the read mark) or a malformed value degrades the barrier
+    to its wall-clock budget rather than failing the read: the mark only ever tightens the wait.
+    """
+    if raw is None:
+        return None
+    try:
+        return float(raw)
+    except ValueError:
+        return None
+
+
+def fetch_clock(host_port: int, *, timeout: float = 5.0) -> float | None:
+    """GET the resident server's current device clock (`SystemClock.uptimeMillis`), or None.
+
+    Read just before a gesture (BE-0332 Unit 3) so a later read must postdate it, on the device's own
+    clock, to count as caught up. Returns None on any fault or a non-200 rather than raising: the mark
+    is an optimisation over the wall-clock budget, so a clock hiccup slows the barrier at worst, never
+    fails a read or accepts a stale one.
+    """
+    conn = http.client.HTTPConnection("127.0.0.1", host_port, timeout=timeout)
+    try:
+        conn.request("GET", "/clock")
+        resp = conn.getresponse()
+        body = resp.read()
+        if resp.status != 200:
+            return None
+        return float(body.decode("utf-8").strip())
+    except (OSError, ValueError, UnicodeDecodeError, http.client.HTTPException):
+        return None
     finally:
         conn.close()
 
@@ -99,7 +163,22 @@ class _Process(Protocol):
 
 
 Spawn = Callable[[list[str]], _Process]
-Fetch = Callable[[int], str]
+Fetch = Callable[[int, float | None], HierarchyRead]
+ClockProbe = Callable[[int], float | None]
+
+
+@dataclass(frozen=True)
+class ResidentChannel:
+    """The two read-side callables the driver needs from a started resident server (BE-0332 Unit 3).
+
+    `fetch` returns the current hierarchy and its read mark, blocking until the read postdates the mark
+    it is passed (BE-0332 Unit 4); `clock` returns the device's current clock so the driver can anchor
+    its read-lag barrier before a gesture. Both close over the lease's forwarded host port.
+    """
+
+    fetch: HierarchyFetch
+    clock: ClockFetch
+
 
 # APK build outputs of `make -C BajutsuAndroidUIAutomatorServer build` (gitignored; the paths gradle
 # writes).
@@ -134,9 +213,10 @@ class ResidentServer:
 
     `start` installs the server APKs, launches the blocking instrumentation, forwards a host port, and
     waits — a bounded connect retry, a condition wait with no fixed sleep — until the socket answers,
-    returning a `HierarchyFetch` the driver calls per read. `stop` kills the instrumentation and
-    removes the forward. Any startup failure raises `AdbResidentError`, so the caller degrades to
-    `uiautomator dump` rather than failing the run.
+    returning a `ResidentChannel` (a per-read hierarchy fetch and a device-clock probe) the driver
+    calls per read and per gesture. `stop` kills the instrumentation and removes the forward. Any
+    startup failure raises `AdbResidentError`, so the caller degrades to `uiautomator dump` rather than
+    failing the run.
     """
 
     _READY_TIMEOUT_S = 20.0  # generous: instrumentation install + UiAutomation session bring-up
@@ -149,6 +229,7 @@ class ResidentServer:
         run: adb.RunFn = adb._real_run,
         spawn: Spawn = _default_spawn,
         fetch: Fetch = fetch_source,
+        clock: ClockProbe = fetch_clock,
         server_apk: Path = _SERVER_APK,
         test_apk: Path = _TEST_APK,
     ) -> None:
@@ -156,12 +237,13 @@ class ResidentServer:
         self._run = run
         self._spawn = spawn
         self._fetch = fetch
+        self._clock = clock
         self._server_apk = server_apk
         self._test_apk = test_apk
         self._proc: _Process | None = None
         self._host_port: int | None = None
 
-    def start(self) -> HierarchyFetch:
+    def start(self) -> ResidentChannel:
         if not self._server_apk.exists() or not self._test_apk.exists():
             raise AdbResidentError(
                 f"resident server APKs not built ({self._server_apk}); run "
@@ -184,9 +266,10 @@ class ResidentServer:
         # AdbResidentError, which the driver latches into its dump fallback — a clean degrade.
         port = self._host_port
 
-        def fetch() -> str:
+        def fetch(since: float | None) -> HierarchyRead:
             try:
-                return narrow_to_active_window(self._fetch(port))
+                read = self._fetch(port, since)
+                return HierarchyRead(narrow_to_active_window(read.text), read.mark)
             except AdbResidentError:
                 # Stop the resident server before the driver degrades to `uiautomator dump`. A read
                 # fault is usually a wedged-but-alive instrumentation — a read that outran the socket
@@ -200,7 +283,14 @@ class ResidentServer:
                 self.stop()
                 raise
 
-        return fetch
+        def clock() -> float | None:
+            # The device-clock probe the driver takes before each gesture (BE-0332 Unit 3). Already
+            # non-raising (None on any fault), so unlike `fetch` it never tears the channel down: a
+            # missing mark only drops the barrier back to its wall-clock budget for that one gesture,
+            # and a genuine channel death still surfaces through the next `fetch`.
+            return self._clock(port)
+
+        return ResidentChannel(fetch, clock)
 
     def stop(self) -> None:
         """Kill the instrumentation and remove the forward; safe to call on a partial start."""
@@ -238,7 +328,7 @@ class ResidentServer:
         deadline = time.monotonic() + self._READY_TIMEOUT_S
         while True:
             try:
-                self._fetch(self._host_port)
+                self._fetch(self._host_port, None)  # a readiness probe waits past no mark
                 return
             except AdbResidentError:
                 # The polled fetch failing is the expected not-up-yet signal, not a cause to chain;

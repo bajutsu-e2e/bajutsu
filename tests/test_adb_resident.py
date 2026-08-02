@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 from bajutsu import adb, adb_resident
-from bajutsu.drivers.adb import AdbResidentError, parse_hierarchy
+from bajutsu.drivers.adb import AdbResidentError, HierarchyRead, parse_hierarchy
 
 # One app window (a Views button) — the content the platform `uiautomator dump` returns.
 _APP_WINDOW = """  <node index="0" class="android.widget.FrameLayout" \
@@ -71,15 +71,29 @@ def test_narrow_returns_unparseable_input_unchanged() -> None:
 class _SourceHandler(http.server.BaseHTTPRequestHandler):
     body = _MULTI_WINDOW
     status = 200
+    mark: str | None = None  # the X-Bajutsu-Read-Mark header value, when set (BE-0332 Unit 3)
+    clock = "12345"  # what GET /clock answers, a device-clock reading
+    last_source_path: str | None = None  # the full GET /source target the client last sent
 
     def do_GET(self) -> None:
-        if self.path != "/source":
+        route = self.path.split("?", 1)[
+            0
+        ]  # BE-0332 Unit 4 stamps GET /source with a `?since=` mark
+        if route == "/clock":
+            self._respond(self.clock.encode("utf-8"), "text/plain; charset=utf-8", with_mark=False)
+            return
+        if route != "/source":
             self.send_error(404)
             return
-        payload = self.body.encode("utf-8")
+        type(self).last_source_path = self.path
+        self._respond(self.body.encode("utf-8"), "application/xml; charset=utf-8", with_mark=True)
+
+    def _respond(self, payload: bytes, content_type: str, *, with_mark: bool) -> None:
         self.send_response(self.status)
-        self.send_header("Content-Type", "application/xml; charset=utf-8")
+        self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(payload)))
+        if with_mark and self.mark is not None:
+            self.send_header(adb_resident._READ_MARK_HEADER, self.mark)
         self.end_headers()
         self.wfile.write(payload)
 
@@ -87,8 +101,9 @@ class _SourceHandler(http.server.BaseHTTPRequestHandler):
         pass  # keep the test output quiet
 
 
-def _serve_once(status: int = 200) -> tuple[int, http.server.HTTPServer]:
+def _serve_once(status: int = 200, mark: str | None = None) -> tuple[int, http.server.HTTPServer]:
     _SourceHandler.status = status
+    _SourceHandler.mark = mark
     server = http.server.HTTPServer(("127.0.0.1", 0), _SourceHandler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server.server_port, server
@@ -97,7 +112,50 @@ def _serve_once(status: int = 200) -> tuple[int, http.server.HTTPServer]:
 def test_fetch_source_reads_the_hierarchy_over_http() -> None:
     port, server = _serve_once()
     try:
-        assert adb_resident.fetch_source(port) == _MULTI_WINDOW
+        assert adb_resident.fetch_source(port).text == _MULTI_WINDOW
+    finally:
+        server.shutdown()
+
+
+def test_fetch_source_carries_the_read_mark_header() -> None:
+    # BE-0332 Unit 3: the X-Bajutsu-Read-Mark header — the device-clock time of the newest a11y event
+    # the reader had seen — rides with the dump so the driver can require a read to postdate a gesture.
+    port, server = _serve_once(mark="98765")
+    try:
+        assert adb_resident.fetch_source(port).mark == 98765.0
+    finally:
+        server.shutdown()
+
+
+def test_fetch_source_requests_a_since_mark_when_given() -> None:
+    # BE-0332 Unit 4: the resident server blocks until a read postdates the requested mark, so the host
+    # stamps the mark it took before the gesture onto the request as `?since=`. The device waits past it
+    # rather than re-dumping until two hierarchies match.
+    port, server = _serve_once()
+    try:
+        adb_resident.fetch_source(port, since=98765.0)
+        assert _SourceHandler.last_source_path == "/source?since=98765.0"
+    finally:
+        server.shutdown()
+
+
+def test_fetch_source_omits_since_when_not_requested() -> None:
+    # A read with no gesture pending asks for no mark, so the path stays the bare /source that a read
+    # with nothing to postdate — and an older server — expects.
+    port, server = _serve_once()
+    try:
+        adb_resident.fetch_source(port)
+        assert _SourceHandler.last_source_path == "/source"
+    finally:
+        server.shutdown()
+
+
+def test_fetch_source_without_the_mark_header_yields_a_none_mark() -> None:
+    # An older server that does not stamp the header leaves the mark None, and the driver's barrier
+    # falls back to its wall-clock budget rather than failing the read.
+    port, server = _serve_once(mark=None)
+    try:
+        assert adb_resident.fetch_source(port).mark is None
     finally:
         server.shutdown()
 
@@ -116,6 +174,34 @@ def test_fetch_source_raises_on_non_200() -> None:
     try:
         with pytest.raises(AdbResidentError):
             adb_resident.fetch_source(port)
+    finally:
+        server.shutdown()
+
+
+def test_fetch_clock_reads_the_device_clock() -> None:
+    # BE-0332 Unit 3: GET /clock returns the device's current clock as a plain number, which the driver
+    # takes as the mark a later read must postdate.
+    port, server = _serve_once()
+    try:
+        assert adb_resident.fetch_clock(port) == 12345.0
+    finally:
+        server.shutdown()
+
+
+def test_fetch_clock_returns_none_on_fault_rather_than_raising() -> None:
+    # The clock is an optimisation over the wall-clock budget, so an unreachable channel degrades to
+    # None (barrier falls back to the budget) rather than raising and failing a gesture.
+    port, server = _serve_once()
+    server.shutdown()  # nothing is listening now
+    assert adb_resident.fetch_clock(port) is None
+
+
+def test_fetch_clock_returns_none_on_non_200() -> None:
+    # A server that answers /clock with an error (e.g. an older build without the endpoint → 404)
+    # yields None, not an exception: the barrier simply keeps its wall-clock budget.
+    port, server = _serve_once(status=500)
+    try:
+        assert adb_resident.fetch_clock(port) is None
     finally:
         server.shutdown()
 
@@ -194,17 +280,17 @@ def test_start_installs_forwards_and_returns_a_working_fetch(tmp_path: Path) -> 
         "U",
         run=run,
         spawn=lambda argv: proc,
-        fetch=lambda port: _MULTI_WINDOW,
+        fetch=lambda port, _since: HierarchyRead(_MULTI_WINDOW),
         server_apk=server_apk,
         test_apk=test_apk,
     )
-    fetch = srv.start()
+    channel = srv.start()
     # Both APKs installed, the blocking instrumentation spawned, a host port forwarded.
     assert calls[0] == adb.install_cmd("U", str(server_apk))
     assert calls[1] == adb.install_cmd("U", str(test_apk))
     assert calls[2] == adb.forward_cmd("U")
     # The returned fetch reads over the channel and narrows to the active window (no SystemUI window).
-    assert parse_hierarchy(fetch()) == parse_hierarchy(_APP_ONLY)
+    assert parse_hierarchy(channel.fetch(None).text) == parse_hierarchy(_APP_ONLY)
 
 
 def test_fetch_fault_stops_the_server_before_it_propagates(tmp_path: Path) -> None:
@@ -222,9 +308,9 @@ def test_fetch_fault_stops_the_server_before_it_propagates(tmp_path: Path) -> No
     # The readiness probe sees the channel up; the driver's first real read finds it wedged.
     reads = iter([_MULTI_WINDOW])
 
-    def fetch(port: int) -> str:
+    def fetch(port: int, _since: float | None) -> HierarchyRead:
         try:
-            return next(reads)
+            return HierarchyRead(next(reads))
         except StopIteration:
             raise AdbResidentError("timed out") from None
 
@@ -238,14 +324,36 @@ def test_fetch_fault_stops_the_server_before_it_propagates(tmp_path: Path) -> No
         server_apk=server_apk,
         test_apk=test_apk,
     )
-    read = srv.start()
+    channel = srv.start()
     with pytest.raises(AdbResidentError, match="timed out"):
-        read()
+        channel.fetch(None)
     # The fault stopped the server: the forward was removed and the device-side package force-stopped,
     # releasing the UiAutomation session for the driver's dump fallback.
     assert proc.terminated
     assert adb.forward_remove_cmd("U", 41000) in teardown
     assert adb.force_stop_cmd("U", adb.RESIDENT_SERVER_PACKAGE) in teardown
+
+
+def test_start_returns_a_channel_whose_clock_probe_reads_the_device(tmp_path: Path) -> None:
+    # BE-0332 Unit 3: start() hands back both a hierarchy fetch and a device-clock probe, each closed
+    # over the lease's forwarded port, so the driver can take a mark before a gesture with no arguments.
+    def run(args: list[str]) -> str:
+        return "41000\n" if "forward" in args and "--remove" not in args else ""
+
+    server_apk, test_apk = _apks(tmp_path)
+    srv = adb_resident.ResidentServer(
+        "U",
+        run=run,
+        spawn=lambda argv: _FakeProc(),
+        fetch=lambda port, _since: HierarchyRead(_MULTI_WINDOW, mark=float(port)),
+        clock=lambda port: float(port) + 1,
+        server_apk=server_apk,
+        test_apk=test_apk,
+    )
+    channel = srv.start()
+    # Both callables bind the same forwarded port (41000), so they answer about this lease's channel.
+    assert channel.fetch(None).mark == 41000.0
+    assert channel.clock() == 41001.0
 
 
 def test_stop_removes_the_forward_and_kills_the_instrumentation(tmp_path: Path) -> None:
@@ -262,7 +370,7 @@ def test_stop_removes_the_forward_and_kills_the_instrumentation(tmp_path: Path) 
         "U",
         run=run,
         spawn=lambda argv: proc,
-        fetch=lambda port: _MULTI_WINDOW,
+        fetch=lambda port, _since: HierarchyRead(_MULTI_WINDOW),
         server_apk=server_apk,
         test_apk=test_apk,
     )
@@ -282,7 +390,7 @@ def test_start_raises_when_the_apks_are_not_built(tmp_path: Path) -> None:
         "U",
         run=lambda args: "",
         spawn=lambda argv: _FakeProc(),
-        fetch=lambda port: _MULTI_WINDOW,
+        fetch=lambda port, _since: HierarchyRead(_MULTI_WINDOW),
         server_apk=tmp_path / "missing.apk",
         test_apk=tmp_path / "missing-test.apk",
     )
@@ -297,7 +405,7 @@ def test_start_raises_when_the_instrumentation_exits_before_serving(tmp_path: Pa
     proc._exit = 1
     server_apk, test_apk = _apks(tmp_path)
 
-    def fetch(port: int) -> str:
+    def fetch(port: int, _since: float | None) -> HierarchyRead:
         raise AdbResidentError("not up yet")
 
     srv = adb_resident.ResidentServer(
@@ -330,7 +438,7 @@ def test_start_tears_down_when_the_forward_port_cannot_be_parsed(tmp_path: Path)
         "U",
         run=run,
         spawn=lambda argv: proc,
-        fetch=lambda port: _MULTI_WINDOW,
+        fetch=lambda port, _since: HierarchyRead(_MULTI_WINDOW),
         server_apk=server_apk,
         test_apk=test_apk,
     )
@@ -351,7 +459,7 @@ def test_start_fails_when_the_server_never_answers(
     proc = _FakeProc()  # poll() stays None: the process is up but not serving
     server_apk, test_apk = _apks(tmp_path)
 
-    def fetch(port: int) -> str:
+    def fetch(port: int, _since: float | None) -> HierarchyRead:
         raise AdbResidentError("not up yet")
 
     srv = adb_resident.ResidentServer(
@@ -381,7 +489,7 @@ def test_stop_escalates_to_kill_when_terminate_does_not_reap(tmp_path: Path) -> 
         "U",
         run=lambda args: "41000\n" if "forward" in args and "--remove" not in args else "",
         spawn=lambda argv: proc,
-        fetch=lambda port: _MULTI_WINDOW,
+        fetch=lambda port, _since: HierarchyRead(_MULTI_WINDOW),
         server_apk=server_apk,
         test_apk=test_apk,
     )

@@ -407,9 +407,12 @@ device (the shared device is reseeded via one channel, so parallel workers would
   backend (BE-0332): a coordinate resolve after a content-moving `tap` / `longPress` / `doubleTap`
   (not only after a pan) postdates that actuation before it trusts the tree, and a mid-scenario
   `extract` waits for the value it copies out to postdate the action that produced it — closing the
-  `gestures` long-press flake and the `extract.yaml` stale-value flake. The device-side read mark that
-  turns this ceiling into an early-releasing wait for every read path is planned (BE-0332 Unit 3);
-  see [drivers](drivers.md#adb-android). Each step is non-inertial (a bounded
+  `gestures` long-press flake and the `extract.yaml` stale-value flake. A device-side read mark turns
+  this ceiling into an early-releasing wait: the resident Android reader stamps each read with the
+  device-clock time of the newest accessibility event it has seen, and the driver takes a device-clock
+  mark before an actuation, so a read is trusted the instant its mark postdates the action rather than
+  idling to the budget. The budget then stands only for a one-shot `uiautomator dump`, which carries no
+  such mark (BE-0332 Units 3–4); see [drivers](drivers.md#adb-android). Each step is non-inertial (a bounded
   advance with no fling), realized per backend behind `Driver.scroll` and a `ViewportProvider` (web,
   fake report the true viewport directly; a native backend's on-screen-only tree already is one) —
   closing the BE-0210 asymmetry

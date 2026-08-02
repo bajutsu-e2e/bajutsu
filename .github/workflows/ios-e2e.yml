@@ -142,8 +142,10 @@ env:
   # removing the concurrent-snapshot abort; 2 (three attempts) rides out the residual one-off crash so a
   # single unlucky scenario does not redden the nine-scenario `run` job. A crash on *every* attempt still
   # fails loudly once the budget is spent (BE-0049) — this only absorbs a genuine one-off, never a
-  # reproducible failure. Unused by the pytest-driven conformance job (it does not run through the
-  # pipeline), which leans on the runner-side serialization instead.
+  # reproducible failure. The pytest-driven `conformance` job consumes these two knobs too (BE-0334):
+  # it does not run through the pipeline, but its crash-recovery plugin reads the same
+  # `_default_crash_retries` / `_default_crash_recovery_budget`, so both lanes share one retry budget
+  # from here rather than pinning their own and drifting apart.
   BAJUTSU_CRASH_RETRIES: "2"
   # Cap the *wall-clock* the scenario-level crash recovery may spend respawning, on top of the count
   # above (bajutsu/runner/pipeline.py, _default_crash_recovery_budget). The count alone is unbounded in
@@ -769,7 +771,24 @@ jobs:
       - name: Run the conformance suite (xcuitest)
         env:
           BAJUTSU_CONFORMANCE_UDID: ${{ steps.toolchain.outputs.udid }}
+          # Recover a Simulator infrastructure fault the way `bajutsu run` does (BE-0334): a runner
+          # crash re-leases a fresh device and re-runs the affected test, bounded per test by the retry
+          # count and the wall-clock respawn budget. Those two knobs (BAJUTSU_CRASH_RETRIES /
+          # BAJUTSU_CRASH_RECOVERY_BUDGET) are inherited from the workflow-level env, not re-pinned here,
+          # so this lane cannot silently drift from the `run` lane's budget. A crash every attempt still
+          # fails loudly (BE-0049); the 25-min job timeout above is the outer backstop.
+          # Count every respawn into an uploaded artifact, so a degrading lane shows as a rising count.
+          BAJUTSU_BACKEND_RECOVERY_REPORT: conformance-recovery.json
         run: uv run pytest tests/test_driver_conformance_ondevice.py -m ondevice -n0 -v
+
+      # Upload the recovery report even when the suite fails, so an exhausted recovery is inspectable.
+      - name: Upload the conformance recovery report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: conformance-recovery-report
+          path: conformance-recovery.json
+          if-no-files-found: ignore
 
   # Real fault injection for the runner-channel crash recovery (BE-0305): the iOS half of the item,
   # the XCUITest twin of android-e2e.yml's `fault (adb)`. It freezes the resident runner with SIGSTOP

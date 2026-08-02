@@ -25,6 +25,7 @@ from bajutsu.drivers.fake import FakeDriver
 
 if TYPE_CHECKING:
     from bajutsu.config import Effective
+    from bajutsu.drivers.adb import ClockFetch, HierarchyFetch
     from bajutsu.scenario import Scenario
 
 # Platform token -> its actuators, most-stable-first. `--backend` / config `backend` accept
@@ -337,19 +338,21 @@ def make_driver(
     record_video_dir: Path | None = None,
     runner_port: int = 0,
     runner_alive: Callable[[], bool] | None = None,
-    fetch_hierarchy: Callable[[], str] | None = None,
+    fetch_hierarchy: HierarchyFetch | None = None,
+    fetch_clock: ClockFetch | None = None,
 ) -> base.Driver:
     """Construct the driver for an actuator, wiring up its backend-specific arguments.
 
     The adb backend reads through `fetch_hierarchy` (the resident-server channel, BE-0245) when one is
-    supplied, else via `uiautomator dump`; every other actuator ignores it. The xcuitest backend reads
+    supplied, else via `uiautomator dump`, and takes a `fetch_clock` device-clock probe to anchor its
+    read-lag barrier (BE-0332 Unit 3); every other actuator ignores both. The xcuitest backend reads
     `runner_alive` — the environment's `xcodebuild`-process liveness check — so crash-recovery can fail
     fast on a runner whose process has exited; every other actuator ignores it.
     """
     if actuator == "adb":
         from bajutsu.drivers.adb import AdbDriver
 
-        return AdbDriver(udid, fetch_hierarchy=fetch_hierarchy)
+        return AdbDriver(udid, fetch_hierarchy=fetch_hierarchy, fetch_clock=fetch_clock)
     if actuator == "fake":
         return FakeDriver([])
     if actuator == "xcuitest":

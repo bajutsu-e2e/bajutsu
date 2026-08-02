@@ -19,6 +19,7 @@ from bajutsu.backends import (
 )
 from bajutsu.config import DeviceProvider, Effective, IosConfig, WebConfig, XcuitestConfig
 from bajutsu.drivers import base
+from bajutsu.drivers.adb import HierarchyRead
 from bajutsu.scenario import Redact, Scenario
 
 # A synthetic two-actuator platform (a "lean" actuator with no native network plus a "rich" one that
@@ -274,7 +275,7 @@ def test_make_driver_threads_fetch_hierarchy_to_the_adb_driver() -> None:
         '<node index="0" class="android.widget.Button" resource-id="stable.submit" '
         'text="送信" bounds="[0,0][10,10]" /></hierarchy>'
     )
-    driver = make_driver("adb", "U", fetch_hierarchy=lambda: xml)
+    driver = make_driver("adb", "U", fetch_hierarchy=lambda _since: HierarchyRead(xml))
     assert driver.name == "adb"
     assert len(driver.query()) == 1  # read came from the fetch, not a dump subprocess
 

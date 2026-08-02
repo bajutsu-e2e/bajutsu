@@ -27,6 +27,8 @@ The invariants (grounded in the `Driver` Protocol and `drivers/base`):
   contract, not just a per-backend command test.
 * `wait_for` is a single-shot check of the current screen; the shared `wait_until` loop turns
   it into a condition wait with no fixed sleep.
+* A read taken after a content-moving gesture reflects the moved screen, not the tree from before it
+  (`the marked-read contract`, BE-0332): the after-scroll read differs from the before-scroll one.
 
 The text-editing and `tap_point` invariants need a real editable field on the screen, so every
 conformance screen carries one (`FIELD_ID`) alongside the readiness marker — always present, like
@@ -86,6 +88,24 @@ def _field_center(driver: base.Driver) -> base.Point:
     """The center point of the conformance field's known frame, for a coordinate tap."""
     # Route the arithmetic through the shared helper the backends use (BE-0251), not a second copy.
     return base.frame_center(base.resolve_unique(driver.query(), {"id": FIELD_ID})["frame"])
+
+
+def _rows_in_viewport(driver: base.Driver) -> frozenset[int]:
+    """The scroll-row indices whose frame center is currently on-screen, as one read sees them.
+
+    A backend-neutral projection of "which screen the read describes": a native lazy list drops
+    off-screen rows from the tree, a retained tree keeps them with out-of-viewport centers, so both
+    reduce to the same set of on-screen rows. Comparing this before and after a scroll tells whether
+    a read reflects the moved screen or the one from before it.
+    """
+    els = driver.query()
+    viewport = _viewport(driver, els)
+    return frozenset(
+        i
+        for i in range(SCROLL_ROW_COUNT)
+        if (row := _resolve_target(els, {"id": f"{SCROLL_ROW_PREFIX}{i}"})) is not None
+        and _center_in_viewport(row["frame"], viewport)
+    )
 
 
 def element(
@@ -406,3 +426,23 @@ class DriverConformanceContract:
         driver = harness.scrollable_screen()
         with pytest.raises(base.ElementNotFound):
             scroll_to_target(driver, {"id": "conformance.scroll.absent"}, "down", None, SCROLL_MAX)
+
+    def test_a_read_postdates_a_content_moving_gesture(self, harness: ConformanceHarness) -> None:
+        # The marked-read contract (BE-0332), observed: a read taken after a gesture that moves the
+        # content whole reflects the moved screen, never the tree from before the gesture. On Android
+        # the resident reader stamps each read with the device-clock time of the newest accessibility
+        # event, and the driver marks the device clock before the gesture, so a settle trusts a read
+        # only once its mark postdates the actuation — the ordering that keeps a late tree (the same
+        # one `scroll` mistakes for the end of content) from settling a poll on a pre-gesture screen.
+        # Asserted as the observable ordering — the read after the scroll differs from the read before
+        # it — rather than the driver's internal early-release flag, which is a best-effort signal set
+        # only when the mark path fires and is legitimately false when the barrier closes on its
+        # budget (a bottomed-out final scroll publishes no event to postdate). A synchronous backend
+        # reads the moved screen at once, so the ordering holds there too.
+        driver = harness.scrollable_screen()
+        before = _rows_in_viewport(driver)
+        # A scroll to a row below the fold moves frames wholesale from the top — the exact case a late
+        # tree describes from before the gesture — and drives the driver's catch-up barrier.
+        scroll_to_target(driver, {"id": SCROLL_LAST_ROW}, "down", None, SCROLL_MAX)
+        after = _rows_in_viewport(driver)
+        assert after != before

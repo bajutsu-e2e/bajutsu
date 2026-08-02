@@ -46,11 +46,36 @@ from bajutsu.evidence import intervals
 
 RunFn = Callable[[list[str]], str]
 
+
 # A resident UI Automator server (BE-0245) returns the hierarchy over an already-open channel,
 # skipping the ~2.4 s per-invocation `uiautomator dump` startup. Its response is UI Automator's own
-# XML, unchanged, so `parse_hierarchy` consumes it identically — only the transport differs, which is
-# why a fetch is just "give me the current dump text": Callable[[], str].
-HierarchyFetch = Callable[[], str]
+# XML, unchanged, so `parse_hierarchy` consumes it identically — only the transport differs.
+@dataclass(frozen=True)
+class HierarchyRead:
+    """One resident-channel read: the hierarchy XML and its read mark (BE-0332 Unit 3).
+
+    `mark` is the device-clock timestamp (`SystemClock.uptimeMillis`) of the most recent accessibility
+    event the resident reader had observed when it served this dump. `AdbDriver` trusts a read once its
+    `mark` postdates the mark it took before actuating, so a stable-but-stale tree — one that agrees
+    with itself yet predates the last gesture — is no longer accepted (the read-lag defect). It is None
+    on the `uiautomator dump` fallback, which carries no such stamp; there the wall-clock budget stands
+    in, exactly as before this unit.
+    """
+
+    text: str
+    mark: float | None = None
+
+
+# Takes the mark a read must postdate (BE-0332 Unit 4): the resident server blocks until an
+# accessibility event postdates it, then dumps once, rather than re-dumping until two hierarchies
+# match. None on a read with no gesture pending (nothing to postdate) and on the dump fallback.
+HierarchyFetch = Callable[[float | None], HierarchyRead]
+
+# The device's current clock (`SystemClock.uptimeMillis`), on the same scale as a read's `mark`, so the
+# host can take a "before the gesture" mark that a later read must postdate (BE-0332 Unit 3). Returns
+# None when the channel cannot answer — the barrier then degrades to its wall-clock budget rather than
+# failing a read, never accepting a stale tree in the bargain.
+ClockFetch = Callable[[], float | None]
 
 logger = logging.getLogger("bajutsu.adb.resident")
 
@@ -229,17 +254,27 @@ def parse_hierarchy(text: str) -> list[base.Element]:
 
 @dataclass
 class _Catchup:
-    """One pan's outstanding read-lag barrier: has the tree published the gesture yet?
+    """One gesture's outstanding read-lag barrier: has the tree published the gesture yet?
 
     Android moves the content before it publishes the accessibility update naming the new frames, so a
-    read taken in between describes the pre-pan screen. `AdbDriver._advance_catchup` folds each read
+    read taken in between describes the pre-gesture screen. `AdbDriver._advance_catchup` folds each read
     into this state and closes the barrier once the tree has demonstrably caught up.
+
+    Two answers to "caught up?" live here, and `_advance_catchup` prefers the first available. When the
+    resident channel stamps reads with a device event mark (BE-0332 Unit 3), a read caught up the moment
+    its mark postdates `actuation_mark` — a genuine ordering test that releases as soon as the device
+    publishes an update. On the `uiautomator dump` fallback, which carries no mark, `actuation_mark` is
+    None and the barrier falls back to the projection-changed-and-dwelt heuristic (`pre_key`/`key`/
+    `since`) bounded by `deadline`.
     """
 
-    pre_key: StableKey  # the projection the screen had when the pan fired
-    deadline: float  # wall-clock ceiling on waiting for the pan to show up
+    pre_key: StableKey  # the projection the screen had when the gesture fired
+    deadline: float  # wall-clock ceiling on waiting for the gesture to show up
     key: StableKey | None  # the newest non-degenerate projection seen since
     since: float  # when `key` was first seen — the dwell is measured from here
+    actuation_mark: (
+        float | None
+    )  # the device-clock mark taken before the gesture (None on the dump path)
 
 
 class AdbDriver(CoordinateTreeDriver):
@@ -312,6 +347,7 @@ class AdbDriver(CoordinateTreeDriver):
         run: RunFn = adb._real_run,
         *,
         fetch_hierarchy: HierarchyFetch | None = None,
+        fetch_clock: ClockFetch | None = None,
     ) -> None:
         super().__init__()
         self.serial = adb._checked_serial(serial)
@@ -319,6 +355,24 @@ class AdbDriver(CoordinateTreeDriver):
         # When set, reads go through the resident channel and fall back to `uiautomator dump` only on
         # failure (BE-0245). Unset (the default) keeps today's dump-every-read behavior exactly.
         self._fetch_hierarchy = fetch_hierarchy
+        # The resident channel's device-clock endpoint (BE-0332 Unit 3): read just before a gesture to
+        # anchor the read-lag barrier on the device's own clock. None (the dump path, or an older
+        # server) leaves the barrier on its wall-clock budget — a slower but equally safe degrade.
+        self._fetch_clock = fetch_clock
+        # The device event mark of the most recent read (BE-0332 Unit 3): `SystemClock.uptimeMillis` of
+        # the newest accessibility event the resident reader had seen. None on the dump path. Set by
+        # `_read_source` on every read, before `_advance_catchup` folds that read into the barrier.
+        self._read_mark: float | None = None
+        # Whether a read has postdated the *current* actuation's device mark (BE-0332 Unit 3). Reset on
+        # every actuation and set true only when `_advance_catchup` closes a mark-anchored barrier on a
+        # postdating read — never on the dump heuristic, an actuation that armed no mark, or a barrier
+        # that timed out. `read_postdates_actuation` reports it, so the `extract` poll releases early
+        # only when the device genuinely confirmed the order, and otherwise keeps its wall-clock budget.
+        self._read_ordered = False
+        # Latches the first `/clock` fault so a persistently-broken clock endpoint on an otherwise-live
+        # channel — which silently forfeits the early release and leaves the lane on its wall-clock
+        # budget — is logged once rather than invisibly or on every gesture.
+        self._clock_warned = False
         # Lazily resolved once for the sendevent double-tap path (BE-0208): whether adbd is root and
         # which node is the touchscreen. `_touch_probed` distinguishes "not yet looked" from "looked,
         # found nothing" so a device with no touchscreen is not re-probed on every double-tap.
@@ -346,8 +400,12 @@ class AdbDriver(CoordinateTreeDriver):
         predates an actuation is worse than no baseline at all, because the first post-pan read moves
         off it and the barrier credits the pan as published. `test_every_actuator_invalidates_the_cached_tree`
         guards the set, so an actuator added later cannot quietly keep using `_run`.
+
+        It also clears `_read_ordered`: a new actuation is one the next read must postdate afresh, so any
+        order confirmed for the previous one is stale (BE-0332 Unit 3).
         """
         self._tree_current = False
+        self._read_ordered = False
         return self._run(args)
 
     def _describe(self) -> list[base.Element]:
@@ -366,8 +424,14 @@ class AdbDriver(CoordinateTreeDriver):
         fallback is a clean degrade rather than one poisoned by a wedged-but-alive server.
         """
         if self._fetch_hierarchy is not None:
+            # Tell the resident channel which mark to wait past (BE-0332 Unit 4): the pending gesture's
+            # actuation mark, so the device blocks until a read postdates it and returns that read in one
+            # round trip. None when nothing is pending, so a read that follows no gesture never waits.
+            since = self._catchup.actuation_mark if self._catchup is not None else None
             try:
-                return self._fetch_hierarchy()
+                read = self._fetch_hierarchy(since)
+                self._read_mark = read.mark
+                return read.text
             except AdbResidentError as exc:
                 logger.warning(
                     "resident hierarchy read failed (%s); falling back to `uiautomator dump` "
@@ -375,6 +439,9 @@ class AdbDriver(CoordinateTreeDriver):
                     exc,
                 )
                 self._fetch_hierarchy = None
+                self._fetch_clock = None  # the clock endpoint shares the dead channel
+        # The dump subprocess carries no event mark, so the barrier reverts to its wall-clock budget.
+        self._read_mark = None
         return self._run(adb.dump_cmd(self.serial))
 
     def _record_tree(self, els: list[base.Element]) -> list[base.Element]:
@@ -407,27 +474,64 @@ class AdbDriver(CoordinateTreeDriver):
             self.query()
         return self._last_stable_key
 
-    def _arm_catchup(self, pre_key: StableKey | None) -> None:
-        """Open a catch-up barrier for the pan that just fired, measured against `pre_key`.
+    def _capture_mark(self) -> float | None:
+        """The device clock (`SystemClock.uptimeMillis`) right now, or None if it cannot be read.
+
+        Taken just before a gesture (BE-0332 Unit 3) so a later read must postdate it — on the device's
+        own clock, no host-to-device skew — to count as caught up. None on the dump path (no resident
+        clock channel) or an older server without the `/clock` endpoint; the barrier then rests on its
+        wall-clock budget, which never accepts a stale read, only waits longer for a fresh one.
+        """
+        if self._fetch_clock is None:
+            return None
+        mark = self._fetch_clock()
+        if mark is None and not self._clock_warned:
+            # The read channel is live (a clock probe was configured) but `/clock` did not answer — an
+            # older server without the endpoint, or a one-off fault. The barrier stays correct on its
+            # wall-clock budget for each gesture whose mark probe returns None (the probe keeps being
+            # attempted on subsequent gestures; this latch only suppresses repeated identical warnings).
+            self._clock_warned = True
+            logger.warning(
+                "resident clock probe returned no mark; read-lag barrier falls back to its "
+                "wall-clock budget for gestures where the probe cannot answer"
+            )
+        return mark
+
+    def _arm_catchup(self, pre_key: StableKey | None, actuation_mark: float | None) -> None:
+        """Open a catch-up barrier for the gesture that just fired, anchored on `actuation_mark`.
 
         Called after the gesture returns, so the budget starts when the content actually stopped. With
-        no projection to compare against there is nothing to detect, and nothing is armed.
+        no projection to compare against there is nothing to detect, and nothing is armed. `actuation_mark`
+        is the device clock taken before the gesture (BE-0332 Unit 3): when present, `_advance_catchup`
+        closes the barrier on the first read that postdates it; when None (the dump path), it falls back
+        to the projection-changed-and-dwelt heuristic.
         """
         if pre_key is not None:
             now = time.monotonic()
-            self._catchup = _Catchup(pre_key, now + self._READ_LAG_S, pre_key, now)
+            self._catchup = _Catchup(pre_key, now + self._READ_LAG_S, pre_key, now, actuation_mark)
 
     def _advance_catchup(self, els: list[base.Element]) -> None:
-        """Fold one read into the pending pan's barrier, closing it once the tree has caught up.
+        """Fold one read into the pending gesture's barrier, closing it once the tree has caught up.
 
         Runs on **every** read, not only the ones `_await_catchup` issues, so the reads the runner
-        already takes between a pan and the next actuator — a `wait`, an `assert`, a post-step capture
-        — close the barrier and a run whose tree keeps up waits for nothing.
+        already takes between a gesture and the next actuator — a `wait`, an `assert`, a post-step
+        capture — close the barrier and a run whose tree keeps up waits for nothing.
 
-        A read counts as caught up only once its projection differs from the pre-pan one *and* has
+        With a device event mark (BE-0332 Unit 3, the resident channel), the answer is exact: the read
+        caught up the moment its mark postdates `actuation_mark`. That is a true ordering test — the
+        device published an update after the gesture — so it needs no host dwell: the resident reader
+        blocks on that same mark (BE-0332 Unit 4, `GET /source?since=`) until it can return a tree the
+        gesture has reached. The mark settles *staleness* (the read postdates the gesture); the device
+        then closes *tearing* (a dump caught mid-republish) with its own bounded settle before it
+        answers, so the two together make the read whole, not merely fresh. A read carrying no mark (the
+        channel died back to dump mid-barrier) simply never satisfies it, and the wall-clock deadline in
+        `_await_catchup` bounds the wait.
+
+        Without a mark (the `uiautomator dump` fallback), the barrier keeps its earlier heuristic: a
+        read counts as caught up only once its projection differs from the pre-gesture one *and* has
         held for `_CATCHUP_DWELL_S`. Differing alone is not enough, because the catch-up is not
         atomic: Android republishes node bounds one node at a time, so a read taken mid-catch-up is
-        *torn* (some frames new, the rest still pre-pan). Closing the barrier on a torn read would
+        *torn* (some frames new, the rest still pre-gesture). Closing the barrier on a torn read would
         hand the next actuator a partly-stale tree with no dwell left to ride the tear out, and
         `_settle`'s two-equal-reads poll would accept it — the same failure this fix exists to stop,
         reached by another door. Requiring the dwell is BE-0245's "bound by elapsed time, not read
@@ -439,6 +543,14 @@ class AdbDriver(CoordinateTreeDriver):
         """
         catchup = self._catchup
         if catchup is None or self._is_transient_empty(els):
+            return
+        if catchup.actuation_mark is not None:
+            if self._read_mark is not None and self._read_mark > catchup.actuation_mark:
+                self._catchup = None
+                # Order confirmed by the device, not merely by the barrier going quiet: only this path
+                # sets `_read_ordered`, so `read_postdates_actuation` never mistakes a timed-out or
+                # dump-heuristic close for a genuine postdate (BE-0332 Unit 3).
+                self._read_ordered = True
             return
         key = self._last_stable_key
         now = time.monotonic()
@@ -587,8 +699,9 @@ class AdbDriver(CoordinateTreeDriver):
         without that preceding resolve would leave `_last_stable_key` None and silently arm nothing.
         """
         pre_key = self._last_stable_key
+        mark = self._capture_mark()
         self._act(args)
-        self._arm_catchup(pre_key)
+        self._arm_catchup(pre_key, mark)
 
     def tap(self, sel: base.Selector) -> None:
         x, y = self._center(sel)
@@ -640,8 +753,9 @@ class AdbDriver(CoordinateTreeDriver):
 
     def swipe(self, frm: base.Point, to: base.Point) -> None:
         pre_key = self._pan_baseline()
+        mark = self._capture_mark()
         self._act(adb.swipe_cmd(self.serial, frm[0], frm[1], to[0], to[1]))
-        self._arm_catchup(pre_key)
+        self._arm_catchup(pre_key, mark)
 
     def viewport(self) -> base.Point:
         # The true display size in raw pixels (BE-0326). A lazy list (RecyclerView / LazyColumn) keeps
@@ -657,12 +771,27 @@ class AdbDriver(CoordinateTreeDriver):
         # How long a read may describe the screen as it was before the last gesture (BE-0326). Android
         # publishes the accessibility update *after* the scroll has moved the content, so a `query()`
         # taken in between returns the pre-scroll tree: on the CI emulator every step that looked
-        # unchanged had in fact moved the screen's pixels. `waitForIdle` plus the resident channel's
-        # two-identical-dumps barrier does not close that window (BE-0245) — both dumps can land before
-        # the update and agree with each other — so the `scroll` loop is told to keep re-reading rather
-        # than call the first unchanged read the end of content. Only ever spent on a region that looks
-        # stopped, never on a step that landed.
+        # unchanged had in fact moved the screen's pixels. `waitForIdle` alone does not close that window
+        # (BE-0245) — the queue looks idle before the update lands — so the `scroll` loop is told to keep
+        # re-reading rather than call the first unchanged read the end of content. This budget is the
+        # ceiling for reads that carry no device mark (the `uiautomator dump` fallback); the resident
+        # channel now closes the window exactly with the mark (BE-0332 Unit 4). Only ever spent on a
+        # region that looks stopped, never on a step that landed.
         return self._READ_LAG_S
+
+    def read_postdates_actuation(self) -> bool:
+        """Whether a read has postdated the last actuation's device mark (BE-0332 Unit 3).
+
+        True only once `_advance_catchup` has closed a mark-anchored barrier on a read whose event mark
+        postdates the mark taken before the gesture — a positive confirmation from the device, reset by
+        the next actuation. It is deliberately *not* `self._catchup is None`: that would also read true
+        when the barrier timed out on a tree that never caught up, when it closed on the dump-path
+        heuristic (no mark to confirm order), or when the actuation armed no barrier at all (`type_text`,
+        `back`, `tap_point`, the dump path) — cases where the `extract` poll must keep its wall-clock
+        budget rather than release early. So this early release only ever tightens that budget, never
+        returns a read that predates the actuation.
+        """
+        return self._read_ordered
 
     def scroll(self, frm: base.Point, to: base.Point) -> None:
         # A non-inertial pan (BE-0326): `input swipe` over a longer duration than the default drag
@@ -670,10 +799,11 @@ class AdbDriver(CoordinateTreeDriver):
         # leaves no fling momentum. A short swipe over the same distance flings — its post-lift
         # travel varies by device, which is exactly the non-determinism the `scroll` action removes.
         pre_key = self._pan_baseline()
+        mark = self._capture_mark()
         self._act(
             adb.swipe_cmd(self.serial, frm[0], frm[1], to[0], to[1], self._SCROLL_DURATION_MS)
         )
-        self._arm_catchup(pre_key)
+        self._arm_catchup(pre_key, mark)
 
     def back(self) -> None:
         # The true system back: a KEYCODE_BACK key event. Android has no on-screen "back" element to
@@ -736,8 +866,9 @@ class AdbDriver(CoordinateTreeDriver):
         # publish lag and takes the same catch-up barrier. `_resolve_frame_and_screen` above already
         # read the tree, so the baseline costs nothing here.
         pre_key = self._pan_baseline()
+        mark = self._capture_mark()
         self._act(adb.sendevent_gesture_cmd(self.serial, dev.path, raw_start, raw_end))
-        self._arm_catchup(pre_key)
+        self._arm_catchup(pre_key, mark)
 
     def select_option(self, sel: base.Selector, option: str) -> None:
         raise base.UnsupportedAction(
@@ -760,7 +891,10 @@ class AdbDriver(CoordinateTreeDriver):
         # Feed the `input text` command to `adb shell` over stdin, not on the argv, so a secret / OTP
         # never lands in the adb process command line where `ps` could read it (BE-0155). Routed
         # through a class-level attribute so tests can patch it.
-        self._tree_current = False  # `_run_text` bypasses `_act`; see its docstring
+        # `_run_text` bypasses `_act`, so mirror its two invalidations by hand: the cached tree is stale,
+        # and any order confirmed for a prior actuation no longer holds (BE-0332 Unit 3).
+        self._tree_current = False
+        self._read_ordered = False
         self._run_text(adb.shell_cmd(self.serial), adb.text_script(text))
 
     @staticmethod

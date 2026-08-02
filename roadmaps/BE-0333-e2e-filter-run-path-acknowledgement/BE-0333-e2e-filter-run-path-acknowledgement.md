@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0333](BE-0333-e2e-filter-run-path-acknowledgement.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0333") |
+| Implementing PR | [#1446](https://github.com/bajutsu-e2e/bajutsu/pull/1446) |
 | Topic | CI / build infrastructure |
 <!-- /BE-METADATA -->
 
@@ -131,10 +132,28 @@ periphery prefix churn often enough to matter, that is the signal to key its exc
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — sweep `bajutsu/` minus an explicit periphery exclusion list, inverting the default.
-- [ ] Unit 2 — add the static `ast` import-closure cross-check.
-- [ ] Unit 3 — restate the two ad-hoc parity tests as exclusion entries with reasons.
-- [ ] Unit 4 — measure the over-fire difference on a recent sample of merged pull requests.
+- [x] Unit 1 — sweep `bajutsu/` minus an explicit periphery exclusion list, inverting the default.
+- [x] Unit 2 — add the static `ast` import-closure cross-check.
+- [x] Unit 3 — restate the two ad-hoc parity tests as exclusion entries with reasons.
+- [x] Unit 4 — measure the over-fire difference on a recent sample of merged pull requests.
+
+Log (oldest first):
+
+- All four units land together in the implementing PR. `scripts/e2e_changes.py` now sweeps `bajutsu/`
+  minus two derived exclusion sets — `_PERIPHERY_EXCLUSIONS` (the periphery no lane exercises, each
+  entry carrying its reason) and `_LANE_CLAIMED` (the per-backend leaves each lane reclaims) — so an
+  unclassified file over-fires instead of firing nothing (Unit 1). `bajutsu/report/`, the manifest
+  writer every run invokes, and the previously-unlisted `deprecations` / `object_store` /
+  `record_capture` / `from_grouping` modules now fire. `tests/test_e2e_changes.py` walks the run
+  path's static `ast` import closure and fails if any file it reaches is neither gated nor a
+  classified periphery entry (Unit 2), and the two former ad-hoc parity assertions
+  (`test_agent_factory_is_not_relevant_by_parity`, `test_untouched_subpackage_is_not_relevant`) are
+  now reasoned entries in `_PERIPHERY_EXCLUSIONS` (Unit 3). The by-name package-split guards this
+  subsumes were retired. `scripts/e2e_overfire_report.py` measures the trade against a baseline commit
+  (Unit 4): across the last 80 merged pull requests the new default fired **identically** to the old
+  on all three lanes — 0 over-fire, 0 under-fire — because the newly-gated files never appeared in a
+  PR that was not already firing on other run-path code. The accepted cost is real for a future
+  report-only or object-store-only change, but negligible on recent history.
 
 ## References
 

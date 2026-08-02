@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0334](BE-0334-conformance-suite-infra-fault-recovery-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0334") |
+| 実装 PR | [#1448](https://github.com/bajutsu-e2e/bajutsu/pull/1448), [#1450](https://github.com/bajutsu-e2e/bajutsu/pull/1450), [#1452](https://github.com/bajutsu-e2e/bajutsu/pull/1452), [#1453](https://github.com/bajutsu-e2e/bajutsu/pull/1453) |
 | トピック | プラットフォーム対応 |
 | 関連 | [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md), [BE-0218](../BE-0218-e2e-simulator-flaky-readiness-actuation/BE-0218-e2e-simulator-flaky-readiness-actuation-ja.md), [BE-0319](../BE-0319-xcuitest-cold-spawn-resilience/BE-0319-xcuitest-cold-spawn-resilience-ja.md), [BE-0323](../BE-0323-xcuitest-readiness-crash-respawn/BE-0323-xcuitest-readiness-crash-respawn-ja.md) |
 <!-- /BE-METADATA -->
@@ -119,10 +120,10 @@ lease を module スコープのままにするかを決めます。module ス�
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] ユニット1 — ハーネスの境界で、インフラ障害と契約違反を分類する。
-- [ ] ユニット2 — インフラ障害で lease を取り直して再試行し、パイプラインの復旧を再利用する。
-- [ ] ユニット3 — module スコープの lease を封じ込め、1回のクラッシュが波及しないようにする。
-- [ ] ユニット4 — 復旧をすべてログと成果物に報告し、回数を数える。
+- [x] ユニット1 — ハーネスの境界で、インフラ障害と契約違反を分類する。
+- [x] ユニット2 — インフラ障害で lease を取り直して再試行し、パイプラインの復旧を再利用する。
+- [x] ユニット3 — module スコープの lease を封じ込め、1回のクラッシュが波及しないようにする。
+- [x] ユニット4 — 復旧をすべてログと成果物に報告し、回数を数える。
 
 ## 参考
 

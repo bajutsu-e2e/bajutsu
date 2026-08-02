@@ -13,8 +13,9 @@ import subprocess
 import pytest
 
 from bajutsu import adb
+from bajutsu.adb_resident import ResidentChannel
 from bajutsu.config import AndroidConfig, Effective
-from bajutsu.drivers.adb import AdbDriver
+from bajutsu.drivers.adb import AdbDriver, HierarchyRead
 from bajutsu.platform_lifecycle import AndroidEnvironment, ProvisionProfile, environment_for
 from bajutsu.scenario import Preconditions, Redact
 
@@ -400,17 +401,20 @@ def test_android_environment_start_applies_no_permissions_when_unset() -> None:
 
 
 class _FakeResident:
-    """A resident server stand-in: start() hands back a fetch; stop() records the teardown."""
+    """A resident server stand-in: start() hands back a ResidentChannel; stop() records the teardown."""
 
-    def __init__(self, *, fetch: object = None, error: Exception | None = None) -> None:
+    def __init__(
+        self, *, fetch: object = None, clock: object = None, error: Exception | None = None
+    ) -> None:
         self._fetch = fetch
+        self._clock = clock if clock is not None else (lambda: None)
         self._error = error
         self.stopped = False
 
     def start(self):  # type: ignore[no-untyped-def]
         if self._error is not None:
             raise self._error
-        return self._fetch
+        return ResidentChannel(self._fetch, self._clock)  # type: ignore[arg-type]
 
     def stop(self) -> None:
         self.stopped = True
@@ -424,7 +428,7 @@ def test_android_environment_wires_the_resident_channel_when_enabled() -> None:
         '<node index="0" class="android.widget.Button" resource-id="stable.submit" '
         'text="送信" bounds="[0,0][10,10]" /></hierarchy>'
     )
-    resident = _FakeResident(fetch=lambda: xml)
+    resident = _FakeResident(fetch=lambda _since: HierarchyRead(xml))
 
     def run(args: list[str]) -> str:
         raise AssertionError(f"resident read must not shell out: {args}")
@@ -672,7 +676,7 @@ def test_android_environment_preinstalled_skip_is_about_the_app_not_the_resident
 
         def start(self):  # type: ignore[no-untyped-def]
             run(adb.install_cmd("S", "/built/server-debug.apk"))
-            return lambda: "<hierarchy/>"
+            return ResidentChannel(lambda _since: HierarchyRead("<hierarchy/>"), lambda: None)
 
     env = AndroidEnvironment(
         "adb",

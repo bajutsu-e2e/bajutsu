@@ -7,9 +7,9 @@
 |---|---|
 | Proposal | [BE-0332](BE-0332-read-lag-barrier.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0332") |
-| Implementing PR | [#1442](https://github.com/bajutsu-e2e/bajutsu/pull/1442) |
+| Implementing PR | [#1442](https://github.com/bajutsu-e2e/bajutsu/pull/1442), [#1445](https://github.com/bajutsu-e2e/bajutsu/pull/1445), [#1449](https://github.com/bajutsu-e2e/bajutsu/pull/1449), [#1454](https://github.com/bajutsu-e2e/bajutsu/pull/1454) |
 | Topic | Driver & backend architecture |
 <!-- /BE-METADATA -->
 
@@ -128,12 +128,14 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
    as soon as the device publishes an update. That turns the budgets in units 1 and 2 into ceilings
    rarely reached, and it holds for reads taken through the resident channel — whether the caller is
    `extract`, `_settle`, or `scroll`.
-4. **Replace `stableHierarchy`'s two-identical-dumps barrier with the mark.** Once unit 3's event
-   timestamp is available inside the reader, the device side can stop inferring stability from two
-   matching dumps. It can instead return a hierarchy that postdates the requested mark. This removes
-   the defect at its source, rather than compensating for it in every caller. It also retires a
-   second dump per read on the path where the two dumps agreed: the cost the current barrier pays on
-   every settled screen.
+4. **Re-anchor `stableHierarchy`'s barrier on the mark.** Once unit 3's event timestamp is available
+   inside the reader, the device stops inferring *staleness* from two matching dumps and instead
+   returns a hierarchy that postdates the requested mark. This removes the defect at its source,
+   rather than compensating for it in every caller. The two-dump settle is not dropped but narrowed
+   to what it alone can prove: *tearing* — a dump caught mid-republish, where Android has republished
+   some node bounds but not the rest. The mark decides freshness; a bounded settle after it decides
+   wholeness. Splitting the two keeps both guarantees the single barrier gave, while a settled-but-late
+   tree can no longer pass as current — which is the read-lag defect itself.
 5. **Cover the barrier in the deterministic suite and the driver conformance suite.** The
    deterministic tests need a `FakeDriver` that reports a lag and serves a scripted stale read. That
    lets the barrier's behavior be checked without a device. A stale-but-stable read must not be
@@ -193,13 +195,19 @@ rather than fix it.
 - [x] Unit 1 — actuation-anchored barrier in `_settle_extract_read`.
 - [x] Unit 2 — the same barrier in `AdbDriver._settle`, via arming the pan catch-up on the
       center-resolving `tap` / `long_press` / `double_tap`.
-- [ ] Unit 3 — read mark published by the resident Android reader, required by `AdbDriver`.
-- [ ] Unit 4 — `stableHierarchy` returns a marked read instead of two matching dumps.
-- [ ] Unit 5 — deterministic and conformance coverage for the barrier. Deterministic coverage landed
-      with the host-side barrier; the conformance suite (BE-0114) check waits on the marked-read
-      contract (Unit 3).
-- [ ] Unit 6 — read contract documented in `docs/architecture.md` and `docs/drivers.md`, both
-      languages. The budget-barrier contract is documented; the read mark is added with Unit 3.
+- [x] Unit 3 — read mark published by the resident Android reader (a `GET /source`
+      `X-Bajutsu-Read-Mark` header plus a `GET /clock` endpoint), required by `AdbDriver`: the
+      catch-up barrier and the `extract` poll release the instant a read postdates the pre-gesture
+      device-clock mark.
+- [x] Unit 4 — `GET /source?since=<mark>` blocks on the resident reader until an accessibility event
+      postdates the requested mark (staleness), then a bounded settle closes tearing before it answers.
+      The mark replaces the two-dump barrier's freshness role; the settle keeps its wholeness role.
+- [x] Unit 5 — deterministic and conformance coverage for the barrier. Deterministic coverage landed
+      with the host-side barrier; the conformance suite (BE-0114) now adds a marked-read contract check —
+      a `ReadOrderProvider` backend confirms a read postdates a content-moving gesture, and a synchronous
+      backend is exempt (skipped).
+- [x] Unit 6 — read contract documented in `docs/architecture.md` and `docs/drivers.md`, both
+      languages, with the read mark added to the already-documented budget-barrier contract.
 
 Log:
 
@@ -209,6 +217,41 @@ Log:
   coverage, and the budget-barrier docs. Status → In progress. The device-side read mark (Units 3–4,
   Kotlin) and the conformance check remain; until the mark lands the budget is a bounded wall-clock
   ceiling on the Android lane, as the design's Unit 1 note anticipates.
+- 2026-08-02 — Read-mark slice (PR #1445): Unit 3. The resident Android reader observes the
+  accessibility event stream and stamps every `GET /source` with an `X-Bajutsu-Read-Mark` header (the
+  device-clock time of the newest event as of the served dump) and adds a `GET /clock` endpoint.
+  `AdbDriver` takes a device-clock mark before each barrier-arming gesture and requires a read whose
+  mark postdates it: the catch-up barrier closes the instant the device publishes an update (no dwell),
+  and the `extract` poll (`ReadOrderProvider`) releases early on the same signal, turning the Unit 1/2
+  budgets into rarely-reached ceilings. The `uiautomator dump` fallback carries no mark and keeps the
+  wall-clock budget. Deterministic coverage for the mark path added on both the driver and the extract
+  poll. The device-side change is validated on the CI Android lane (the lag does not reproduce on an
+  Apple-silicon emulator).
+- 2026-08-02 — Marked-read barrier slice (PR #1449): Unit 4. `GET /source` now accepts a `?since=`
+  device-clock mark; when present the resident reader blocks on a condition wait until an accessibility
+  event postdates it (staleness), then a bounded settle re-dumps until two hierarchies match before it
+  answers (tearing). This splits the retired `stableHierarchy`: the mark takes over deciding freshness,
+  which the two-dump barrier decided only by proxy and so could pass a settled-but-late tree — the
+  read-lag defect — while the settle keeps deciding wholeness, which `waitForIdle` alone cannot (a dump
+  caught between two node republishes tears). The host stamps the pending gesture's actuation mark onto
+  the request, so the driver's re-poll collapses into one blocking round trip. The budget is a ceiling
+  on the lag (well inside the host's HTTP timeout and shorter than its own read-lag budget, so the host
+  re-poll stays the outer bound); on expiry the latest tree is returned with its own mark, not an error.
+  Deterministic coverage for the `?since=` plumbing on both the resident client and the driver; the
+  Kotlin compiles under the pinned Gradle (JBR) and the device behavior is validated on the CI Android
+  lane, where the lag reproduces (it does not on an Apple-silicon emulator). The tearing settle answers
+  a review question raised on the PR (the mark alone proves only that catch-up started, not that the
+  tree stopped republishing).
+- 2026-08-02 — Conformance and docs slice (PR #1454): Units 5 and 6. The driver conformance suite
+  (BE-0114) gains a marked-read contract check — after a content-moving scroll on the scrollable
+  screen, a `ReadOrderProvider` backend must report a read that postdates the gesture; a backend that
+  cannot order reads (the synchronous backends, and the fast gate's `FakeDriver`) does not implement
+  the protocol and is skipped, so `make check` stays green while the assertion runs on the adb
+  on-device lane. `docs/architecture.md` and `docs/drivers.md`, with their Japanese mirrors, replace
+  the "read mark planned" note with the landed mark: the resident reader's `X-Bajutsu-Read-Mark`
+  header and `GET /clock` endpoint, the device-clock mark taken before an actuation, the ordering
+  requirement (`read_postdates_actuation()`), the `GET /source?since=` blocking read, and the
+  wall-clock budget surviving only for the mark-less `uiautomator dump` fallback. Status → Implemented.
 
 ## References
 

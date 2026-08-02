@@ -204,6 +204,9 @@ markers = [
     "postgres: DB test run against a real Postgres service container (serve-db.yml lane only)",
     "mcp_wire: real-transport MCP round-trip spawning a `bajutsu mcp` subprocess (mcp-wire.yml, non-gating)",
     "roadmap_dates: whole-tree roadmap date integration that git-logs every item (grows with the tree; `make test-roadmap-dates`)",
+    # `backend_crash_recovery` is intentionally not listed here: the plugin's own `pytest_configure`
+    # (tests/backend_crash_recovery.py) registers it, a single source of truth that also covers the
+    # inner pytester sessions, which never read this file (BE-0334).
 ]
 # Collect only the project's own suite; ignore local git worktrees under worktree/.
 testpaths = ["tests"]

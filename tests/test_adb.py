@@ -18,7 +18,7 @@ import pytest
 import bajutsu.drivers.adb as adb_driver_mod
 from bajutsu import adb
 from bajutsu.drivers import base
-from bajutsu.drivers.adb import AdbDriver, AdbResidentError, parse_hierarchy
+from bajutsu.drivers.adb import AdbDriver, AdbResidentError, HierarchyRead, parse_hierarchy
 from bajutsu.evidence import intervals
 
 # A realistic dump: a Views native id (package-prefixed) with visible text only, a Compose testTag
@@ -309,7 +309,7 @@ def test_describe_uses_resident_fetch_when_configured() -> None:
     def run(args: list[str]) -> str:
         raise AssertionError(f"resident path must not shell out: {args}")
 
-    driver = AdbDriver("U", run=run, fetch_hierarchy=lambda: FIXTURE)
+    driver = AdbDriver("U", run=run, fetch_hierarchy=lambda _since: HierarchyRead(FIXTURE))
     assert len(driver.query()) == FIXTURE_ELEMENT_COUNT
 
 
@@ -323,7 +323,7 @@ def test_describe_falls_back_to_dump_on_resident_error() -> None:
         calls.append(args)
         return FIXTURE if "dump" in args else ""
 
-    def fetch() -> str:
+    def fetch(_since: float | None) -> HierarchyRead:
         raise AdbResidentError("channel down")
 
     driver = AdbDriver("U", run=run, fetch_hierarchy=fetch)
@@ -350,8 +350,8 @@ def test_query_transient_retry_rides_over_resident_fetch() -> None:
     # null-root read over the resident channel is retried just as a dump one is.
     seq = [FIXTURE, NULL_ROOT, FIXTURE]
 
-    def fetch() -> str:
-        return seq.pop(0) if len(seq) > 1 else seq[0]
+    def fetch(_since: float | None) -> HierarchyRead:
+        return HierarchyRead(seq.pop(0) if len(seq) > 1 else seq[0])
 
     driver = AdbDriver("U", run=lambda a: "", fetch_hierarchy=fetch)
     driver._EMPTY_BACKOFF_S = 0  # no real sleeping in the test
@@ -364,7 +364,7 @@ def test_query_transient_retry_rides_over_resident_fetch() -> None:
 def test_resident_fallback_logs_warning(caplog: pytest.LogCaptureFixture) -> None:
     # The fallback is loud (determinism first): a resident-channel failure is logged so a silently
     # degraded, slower read is visible rather than hidden.
-    def fetch() -> str:
+    def fetch(_since: float | None) -> HierarchyRead:
         raise AdbResidentError("channel down")
 
     driver = AdbDriver("U", run=lambda a: FIXTURE, fetch_hierarchy=fetch)
@@ -378,7 +378,7 @@ def test_resident_failure_latches_to_dump_for_the_rest_of_the_lease() -> None:
     # after the first AdbResidentError the driver disables the channel and reads via dump silently.
     fetch_calls = 0
 
-    def fetch() -> str:
+    def fetch(_since: float | None) -> HierarchyRead:
         nonlocal fetch_calls
         fetch_calls += 1
         raise AdbResidentError("channel down")
@@ -1214,6 +1214,154 @@ def test_a_degenerate_read_does_not_close_the_barrier(
     assert driver._catchup is not None
     driver.long_press({"id": "stable.submit"}, 0.7)
     assert _long_press_target(calls) == (100.0, 177.0)
+
+
+def _resident_driver(
+    reads: list[tuple[str, float | None]], clocks: list[float | None]
+) -> tuple[AdbDriver, list[str]]:
+    """A driver reading through the resident channel with read marks (BE-0332 Unit 3).
+
+    `reads` are (xml, event-mark) pairs served one per read (the last held once exhausted); `clocks`
+    are the device-clock values the pre-gesture mark capture (`GET /clock`) returns in order. The
+    returned `events` list records each clock probe and each actuation in order, so a test can assert
+    the mark is taken *before* the gesture fires.
+    """
+    read_seq = list(reads)
+    clock_seq = list(clocks)
+    events: list[str] = []
+
+    def fetch(_since: float | None) -> HierarchyRead:
+        xml, mark = read_seq.pop(0) if len(read_seq) > 1 else read_seq[0]
+        return HierarchyRead(xml, mark)
+
+    def clock() -> float | None:
+        events.append("clock")
+        return clock_seq.pop(0) if len(clock_seq) > 1 else clock_seq[0]
+
+    def run(args: list[str]) -> str:
+        if "input" in args:
+            events.append("act")
+        return ""
+
+    return AdbDriver("U", run=run, fetch_hierarchy=fetch, fetch_clock=clock), events
+
+
+def test_a_marked_read_closes_the_catch_up_the_instant_it_postdates_the_actuation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The heart of Unit 3. Every post-gesture read here is byte-identical to the pre-gesture one — a tap
+    # that changed only a mirrored value moves no frame, so the projection never differs and the dump
+    # path's dwell would wait out the whole budget. Only the device event mark advancing proves the
+    # update was published: mark 1000 → 1000 is still stale, and 1001 postdates the actuation and is
+    # caught up at once, with no dwell.
+    clock = _Clock()
+    monkeypatch.setattr(adb_driver_mod, "time", clock)
+    driver, _ = _resident_driver(
+        reads=[(FIXTURE, 1000.0), (FIXTURE, 1000.0), (FIXTURE, 1001.0)],
+        clocks=[1000.0],
+    )
+    driver.query()  # the pre-gesture resolve read (event mark 1000)
+    driver.swipe((10, 300), (10, 100))  # takes the mark 1000 and arms the barrier
+    driver.query()  # a post-gesture read carrying the same mark 1000 — still stale
+    assert driver._catchup is not None
+    started = clock.t
+    driver.query()  # mark 1001 postdates the actuation → caught up
+    assert driver._catchup is None
+    assert clock.t == started  # closed on the mark alone, no dwell spent
+
+
+def test_a_marked_read_that_never_postdates_falls_through_at_the_budget(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    # The mark is a genuine condition wait, so the wall-clock budget becomes a ceiling it rarely reaches
+    # (Unit 3). But if the device never publishes — every read keeps the stale mark — the ceiling still
+    # bounds the wait and gives up loudly, exactly as the dump path does when a pan moved no frame.
+    clock = _Clock()
+    monkeypatch.setattr(adb_driver_mod, "time", clock)
+    driver, _ = _resident_driver(reads=[(FIXTURE, 1000.0)], clocks=[1000.0])
+    driver._READ_LAG_S = 0.5
+    driver.query()
+    driver.swipe((10, 300), (10, 100))
+    with caplog.at_level(logging.WARNING, logger="bajutsu.adb.resident"):
+        driver._settle()
+    assert clock.t >= driver._READ_LAG_S  # the ceiling bounded the wait
+    assert driver._catchup is None  # spent, so the next resolve does not pay it again
+    assert "read lag" in caplog.text
+
+
+def test_the_actuation_mark_is_taken_before_the_gesture_fires(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The mark must anchor a "before the gesture" instant: taken after the actuation, a read the gesture
+    # itself triggered could postdate it and release the barrier on a still-pre-gesture tree.
+    clock = _Clock()
+    monkeypatch.setattr(adb_driver_mod, "time", clock)
+    driver, events = _resident_driver(reads=[(FIXTURE, 1000.0)], clocks=[1000.0])
+    driver.query()
+    driver.swipe((10, 300), (10, 100))
+    assert events == ["clock", "act"]
+
+
+def test_read_postdates_actuation_confirms_only_a_genuine_postdate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The predicate the `extract` settle poll consults (Unit 3): false until a read positively postdates
+    # the gesture's device mark, then true, and reset false by the next actuation. It is a confirmation,
+    # not "is the barrier quiet" — so a fresh driver reads false before any actuation at all.
+    clock = _Clock()
+    monkeypatch.setattr(adb_driver_mod, "time", clock)
+    driver, _ = _resident_driver(
+        reads=[(FIXTURE, 1000.0), (FIXTURE, 1000.0), (FIXTURE, 1001.0)],
+        clocks=[1000.0],
+    )
+    driver.query()
+    assert driver.read_postdates_actuation() is False  # nothing confirmed yet
+    driver.swipe((10, 300), (10, 100))
+    driver.query()  # stale mark
+    assert driver.read_postdates_actuation() is False  # a gesture is waiting to publish
+    driver.query()  # postdating mark
+    assert driver.read_postdates_actuation() is True  # the device confirmed the order
+    driver.back()  # a fresh actuation: the prior confirmation is now stale
+    assert driver.read_postdates_actuation() is False
+
+
+def test_read_postdates_actuation_stays_false_when_the_actuation_armed_no_mark_barrier(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The regression the predicate must not have: `back` / `tap_point` resolve no target, so they arm no
+    # catch-up and there is no device mark to postdate. The barrier being trivially "closed" must NOT
+    # read as a confirmed order — otherwise a mutating `extract` step on one of these actuators would
+    # bypass the Unit 1 wall-clock barrier it depends on. A later read must not flip it true either.
+    clock = _Clock()
+    monkeypatch.setattr(adb_driver_mod, "time", clock)
+    driver, _ = _resident_driver(reads=[(FIXTURE, 1000.0), (FIXTURE, 2000.0)], clocks=[1000.0])
+    driver.query()
+    driver.back()
+    assert driver._catchup is None  # nothing armed
+    driver.query()  # even a read whose mark advances must not confirm an order never anchored
+    assert driver.read_postdates_actuation() is False
+
+
+def test_read_source_requests_the_pending_actuation_mark_as_since(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # BE-0332 Unit 4: the device blocks until a read postdates the requested mark, so the host must tell
+    # it which mark to wait past — the pending catch-up's actuation mark. A read with no gesture pending
+    # requests none, so the device returns at once.
+    clock = _Clock()
+    monkeypatch.setattr(adb_driver_mod, "time", clock)
+    seen: list[float | None] = []
+
+    def fetch(since: float | None) -> HierarchyRead:
+        seen.append(since)
+        return HierarchyRead(FIXTURE, 1001.0)
+
+    driver = AdbDriver("U", run=lambda a: "", fetch_hierarchy=fetch, fetch_clock=lambda: 1000.0)
+    driver.query()
+    assert seen == [None]  # nothing pending → no mark to postdate
+    driver.swipe((10, 300), (10, 100))  # takes the mark 1000 and arms the barrier
+    driver.query()  # the post-gesture read carries that mark as `since`
+    assert seen[-1] == 1000.0
 
 
 def test_a_pan_with_no_fresh_read_takes_its_baseline_from_the_screen(
