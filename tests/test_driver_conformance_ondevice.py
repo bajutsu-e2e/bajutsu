@@ -25,9 +25,11 @@ workers would clobber each other's screen. The `ios-e2e.yml` job passes `-n0`.
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
+from backend_crash_recovery import LeaseHolder
 from driver_conformance import (
     ConformanceHarness,
     DriverConformanceContract,
@@ -39,7 +41,14 @@ from bajutsu.config import Effective, ios_bundle_id, load_config, resolve
 from bajutsu.drivers import base
 from bajutsu.runner.launch import launch_driver
 
-pytestmark = pytest.mark.ondevice
+# A resident-runner crash mid-suite (a `base.BackendCrashError` — the `XcuitestRunnerCrashError` that
+# reddened PR #1405, whether raised by a test's actuation or by a query driving the bring-up/readiness
+# path) is infrastructure, not a verdict: the `backend_crash_recovery` plugin (BE-0334) re-leases a
+# fresh device off the `_backend_launch` fixture below and re-runs the affected test, exactly as
+# `bajutsu run` recovers a `BackendCrashError`. A contract violation is not a `BackendCrashError`, so
+# it is never retried — it keeps failing immediately. (A cold spawn that never comes up is already
+# retried by the spawn layer (BE-0319) and stays terminal past it, as in the pipeline.)
+pytestmark = [pytest.mark.ondevice, pytest.mark.backend_crash_recovery]
 
 # The E2E workflow provisions a booted Simulator with the showcase app and signals it here; absent
 # (any Linux box, the fast gate), skip the whole module. The `ondevice` marker also deselects it,
@@ -108,12 +117,20 @@ _CONFORMANCE_ENV = {"SHOWCASE_UITEST": "1", "SHOWCASE_CONFORMANCE": ""}
 
 
 @pytest.fixture(scope="module")
-def _xcuitest_driver(_eff: Effective) -> base.Driver:
-    driver, _readiness = launch_driver(UDID, _eff, "xcuitest", extra_env=_CONFORMANCE_ENV)
-    return driver
+def _backend_launch(_eff: Effective) -> Callable[[], base.Driver]:
+    # A cold spawn: the `backend_crash_recovery` plugin calls this to lease the shared device, and
+    # again to re-lease a fresh one after a crash. `launch_driver` erases/boots/installs/launches and
+    # waits for readiness, so each call is a full cold respawn — a crash during it is recovered too.
+    def launch() -> base.Driver:
+        driver, _readiness = launch_driver(UDID, _eff, "xcuitest", extra_env=_CONFORMANCE_ENV)
+        return driver
+
+    return launch
 
 
 class TestXcuitestDriverConformance(DriverConformanceContract):
     @pytest.fixture
-    def harness(self, _eff: Effective, _xcuitest_driver: base.Driver) -> ConformanceHarness:
-        return _OnDeviceHarness("xcuitest", _xcuitest_driver, _spec_path(_eff))
+    def harness(self, _eff: Effective, _backend_lease_holder: LeaseHolder) -> ConformanceHarness:
+        # Read the driver off the holder each test: crash-free, it is the one shared lease (the module
+        # scope's amortization); after a crash, the plugin has re-leased, so this is the fresh device.
+        return _OnDeviceHarness("xcuitest", _backend_lease_holder.driver, _spec_path(_eff))

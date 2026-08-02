@@ -321,3 +321,8 @@ def serve_engine(request: pytest.FixtureRequest) -> _EngineFactory:
     else:
         url = "sqlite://"
     return _EngineFactory(dialect, url)
+
+
+# Enable the pytester fixture (BE-0334 recovery-plugin tests) and load the on-device conformance
+# crash-recovery plugin. The plugin is inert for any test not marked `backend_crash_recovery`.
+pytest_plugins = ["pytester", "backend_crash_recovery"]
