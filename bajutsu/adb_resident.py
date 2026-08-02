@@ -74,7 +74,9 @@ def narrow_to_active_window(xml: str) -> str:
     return ET.tostring(root, encoding="unicode")
 
 
-def fetch_source(host_port: int, *, timeout: float = 5.0) -> HierarchyRead:
+def fetch_source(
+    host_port: int, since: float | None = None, *, timeout: float = 5.0
+) -> HierarchyRead:
     """GET the resident server's current hierarchy over the forwarded loopback host port.
 
     Returns the XML plus its read mark (BE-0332 Unit 3): the `X-Bajutsu-Read-Mark` header carries the
@@ -82,13 +84,20 @@ def fetch_source(host_port: int, *, timeout: float = 5.0) -> HierarchyRead:
     trust a read only once it postdates the gesture. A response without the header (an older server)
     yields a None mark, and the driver's barrier falls back to its wall-clock budget — never a failure.
 
+    Args:
+        since: The device-clock mark the read must postdate (BE-0332 Unit 4). When given, it rides on
+            the request as `?since=`, and the resident server blocks until an accessibility event
+            postdates it before dumping once — collapsing the host's re-poll into one round trip. None
+            (a read with no gesture pending) requests the current hierarchy with no wait.
+
     Raises:
         AdbResidentError: the channel could not be reached or did not answer 200 — an infrastructure
             failure the driver catches to fall back to `uiautomator dump`, never a test outcome.
     """
     conn = http.client.HTTPConnection("127.0.0.1", host_port, timeout=timeout)
+    path = "/source" if since is None else f"/source?since={since}"
     try:
-        conn.request("GET", "/source")
+        conn.request("GET", path)
         resp = conn.getresponse()
         body = resp.read()
         if resp.status != 200:
@@ -154,7 +163,7 @@ class _Process(Protocol):
 
 
 Spawn = Callable[[list[str]], _Process]
-Fetch = Callable[[int], HierarchyRead]
+Fetch = Callable[[int, float | None], HierarchyRead]
 ClockProbe = Callable[[int], float | None]
 
 
@@ -162,9 +171,9 @@ ClockProbe = Callable[[int], float | None]
 class ResidentChannel:
     """The two read-side callables the driver needs from a started resident server (BE-0332 Unit 3).
 
-    `fetch` returns the current hierarchy and its read mark; `clock` returns the device's current clock
-    so the driver can anchor its read-lag barrier before a gesture. Both close over the lease's forwarded
-    host port, so the driver calls them with no arguments.
+    `fetch` returns the current hierarchy and its read mark, blocking until the read postdates the mark
+    it is passed (BE-0332 Unit 4); `clock` returns the device's current clock so the driver can anchor
+    its read-lag barrier before a gesture. Both close over the lease's forwarded host port.
     """
 
     fetch: HierarchyFetch
@@ -257,9 +266,9 @@ class ResidentServer:
         # AdbResidentError, which the driver latches into its dump fallback — a clean degrade.
         port = self._host_port
 
-        def fetch() -> HierarchyRead:
+        def fetch(since: float | None) -> HierarchyRead:
             try:
-                read = self._fetch(port)
+                read = self._fetch(port, since)
                 return HierarchyRead(narrow_to_active_window(read.text), read.mark)
             except AdbResidentError:
                 # Stop the resident server before the driver degrades to `uiautomator dump`. A read
@@ -319,7 +328,7 @@ class ResidentServer:
         deadline = time.monotonic() + self._READY_TIMEOUT_S
         while True:
             try:
-                self._fetch(self._host_port)
+                self._fetch(self._host_port, None)  # a readiness probe waits past no mark
                 return
             except AdbResidentError:
                 # The polled fetch failing is the expected not-up-yet signal, not a cause to chain;

@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0332") |
-| Implementing PR | [#1442](https://github.com/bajutsu-e2e/bajutsu/pull/1442) |
+| Implementing PR | [#1442](https://github.com/bajutsu-e2e/bajutsu/pull/1442), [#1445](https://github.com/bajutsu-e2e/bajutsu/pull/1445), [#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM) |
 | Topic | Driver & backend architecture |
 <!-- /BE-METADATA -->
 
@@ -197,7 +197,8 @@ rather than fix it.
       `X-Bajutsu-Read-Mark` header plus a `GET /clock` endpoint), required by `AdbDriver`: the
       catch-up barrier and the `extract` poll release the instant a read postdates the pre-gesture
       device-clock mark.
-- [ ] Unit 4 — `stableHierarchy` returns a marked read instead of two matching dumps.
+- [x] Unit 4 — `GET /source?since=<mark>` blocks on the resident reader until an accessibility event
+      postdates the requested mark, then dumps once, replacing the two-identical-dumps barrier.
 - [ ] Unit 5 — deterministic and conformance coverage for the barrier. Deterministic coverage landed
       with the host-side barrier; the conformance suite (BE-0114) check waits on the marked-read
       contract (Unit 3).
@@ -222,6 +223,16 @@ Log:
   wall-clock budget. Deterministic coverage for the mark path added on both the driver and the extract
   poll. The device-side change is validated on the CI Android lane (the lag does not reproduce on an
   Apple-silicon emulator).
+- 2026-08-02 — Marked-read barrier slice (PR #PRNUM): Unit 4. `GET /source` now accepts a `?since=`
+  device-clock mark; when present the resident reader blocks on a condition wait until an accessibility
+  event postdates it, then dumps once — retiring the two-identical-dumps `stableHierarchy` barrier and
+  the second dump it paid on every settled screen. The host stamps the pending gesture's actuation mark
+  onto the request, so the driver's re-poll collapses into one blocking round trip. The budget is a
+  ceiling on the lag (well inside the host's HTTP timeout and shorter than its own read-lag budget, so
+  the host re-poll stays the outer bound); on expiry the latest tree is returned with its own mark, not
+  an error. Deterministic coverage for the `?since=` plumbing on both the resident client and the
+  driver; the Kotlin compiles under the pinned Gradle (JBR) and the device behavior is validated on the
+  CI Android lane, where the lag reproduces (it does not on an Apple-silicon emulator).
 
 ## References
 

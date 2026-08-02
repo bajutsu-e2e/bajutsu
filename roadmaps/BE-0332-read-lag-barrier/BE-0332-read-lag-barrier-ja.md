@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0332") |
-| 実装 PR | [#1442](https://github.com/bajutsu-e2e/bajutsu/pull/1442) |
+| 実装 PR | [#1442](https://github.com/bajutsu-e2e/bajutsu/pull/1442), [#1445](https://github.com/bajutsu-e2e/bajutsu/pull/1445), [#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM) |
 | トピック | ドライバとバックエンドのアーキテクチャ |
 <!-- /BE-METADATA -->
 
@@ -200,7 +200,8 @@ Mutually Exclusive, Collectively Exhaustive（`MECE`）な作業単位は、次�
       `X-Bajutsu-Read-Mark` ヘッダと `GET /clock` エンドポイント）、`AdbDriver` がそれを要求する。
       追いつき待ちと `extract` のポーリングは、読み取りがジェスチャ前のデバイス時計マークを追い越した
       瞬間に解放される。
-- [ ] 作業単位 4 — `stableHierarchy` が 2 回の一致ではなくマークつきの読み取りを返す。
+- [x] 作業単位 4 — `GET /source?since=<mark>` が、要求されたマークをアクセシビリティイベントが
+      追い越すまで常駐リーダー側で待ってから 1 回だけダンプし、2 回一致ダンプの歯止めを置き換える。
 - [ ] 作業単位 5 — 歯止めを決定的なテストと適合スイートで覆う。決定的なテストはホスト側の歯止めと
       ともに着地。適合スイート（BE-0114）の確認はマークつき読み取りの契約（作業単位 3）を待つ。
 - [ ] 作業単位 6 — 読み取りの契約を `docs/architecture.md` と `docs/drivers.md` に両言語で記述する。
@@ -224,6 +225,16 @@ Mutually Exclusive, Collectively Exhaustive（`MECE`）な作業単位は、次�
   到達しない上限になります。`uiautomator dump` へのフォールバックはマークを持たず、実時間の予算を保ちます。
   マーク経路の決定的なテストをドライバと `extract` ポーリングの両方に追加しました。デバイス側の変更は CI の
   Android レーンで検証します（このラグは Apple シリコンのエミュレータでは再現しないため）。
+- 2026-08-02 — マークつき読み取りの歯止めスライス（PR #PRNUM）: 作業単位 4。`GET /source` が `?since=`
+  のデバイス時計マークを受け取れるようになり、指定されたときは常駐リーダーが、アクセシビリティイベントが
+  そのマークを追い越すまで条件待ちでブロックしてから 1 回だけダンプします。これにより 2 回一致ダンプの
+  `stableHierarchy` の歯止めと、安定した画面ごとに払っていた 2 回目のダンプを廃止します。ホストは保留中の
+  ジェスチャのアクチュエーションマークをリクエストに載せるため、ドライバの再ポーリングは 1 回のブロックする
+  往復に畳まれます。予算はラグの上限です（ホストの HTTP タイムアウトの十分内側で、ホスト自身の読み取りラグ
+  予算より短いため、ホストの再ポーリングが外側の境界として残ります）。予算を使い切ったときは、エラーではなく
+  最新のツリーをそれ自身のマークとともに返します。`?since=` の配線の決定的なテストを常駐クライアントと
+  ドライバの両方に追加しました。Kotlin は固定した Gradle（JBR）でコンパイルでき、デバイスの挙動は CI の
+  Android レーンで検証します（ラグはそこで再現し、Apple シリコンのエミュレータでは再現しません）。
 
 ## 参考
 
