@@ -519,11 +519,13 @@ class AdbDriver(CoordinateTreeDriver):
 
         With a device event mark (BE-0332 Unit 3, the resident channel), the answer is exact: the read
         caught up the moment its mark postdates `actuation_mark`. That is a true ordering test — the
-        device published an update after the gesture — so it needs no dwell: the resident reader blocks
-        on that same mark (BE-0332 Unit 4, `GET /source?since=`) until it can return a tree the gesture
-        has reached, so the read is whole, not torn. A read carrying no mark (the channel died back to
-        dump mid-barrier) simply never satisfies it, and the wall-clock deadline in `_await_catchup`
-        bounds the wait.
+        device published an update after the gesture — so it needs no host dwell: the resident reader
+        blocks on that same mark (BE-0332 Unit 4, `GET /source?since=`) until it can return a tree the
+        gesture has reached. The mark settles *staleness* (the read postdates the gesture); the device
+        then closes *tearing* (a dump caught mid-republish) with its own bounded settle before it
+        answers, so the two together make the read whole, not merely fresh. A read carrying no mark (the
+        channel died back to dump mid-barrier) simply never satisfies it, and the wall-clock deadline in
+        `_await_catchup` bounds the wait.
 
         Without a mark (the `uiautomator dump` fallback), the barrier keeps its earlier heuristic: a
         read counts as caught up only once its projection differs from the pre-gesture one *and* has

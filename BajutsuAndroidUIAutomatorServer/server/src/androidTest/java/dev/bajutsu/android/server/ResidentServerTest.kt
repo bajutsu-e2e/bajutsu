@@ -41,10 +41,13 @@ import org.junit.runner.RunWith
  * current [SystemClock.uptimeMillis] — the same clock [android.view.accessibility.AccessibilityEvent.getEventTime]
  * uses — so the host can take a "before the gesture" mark that a later read must postdate, with no
  * host-to-device clock skew. A `GET /source?since=<mark>` then blocks until an event postdates that
- * mark before dumping once (BE-0332 Unit 4): the reader returns a tree the host's gesture has already
- * reached, rather than inferring stability from two byte-identical dumps (the old barrier, which read
- * a late-but-settled tree as current and cost a second dump on every settled screen). The XML body is
- * unchanged, so bajutsu's `parse_hierarchy` still consumes it as-is; the mark rides in the header.
+ * mark before dumping (BE-0332 Unit 4): the reader returns a tree the host's gesture has already
+ * reached, rather than inferring *staleness* from two byte-identical dumps (the old barrier, which
+ * read a late-but-settled tree as current). A bounded settle still runs after the mark gate to close
+ * *tearing* — the window where Android has republished only some node bounds, so a lone dump captures
+ * a half-updated tree — so the mark decides freshness while the settle keeps the wholeness the retired
+ * barrier also gave. The XML body is unchanged, so bajutsu's `parse_hierarchy` still consumes it
+ * as-is; the mark rides in the header.
  */
 @RunWith(AndroidJUnit4::class)
 class ResidentServerTest {
@@ -137,14 +140,17 @@ class ResidentServerTest {
             readMark.awaitPostdate(since, POSTDATE_BUDGET_MS)
             device.waitForIdle()
         }
-        // Snapshot the read mark *before* the dump: the invariant the host relies on is
+        // Snapshot the read mark *before* the settle: the invariant the host relies on is
         // `mark > actuation_mark` ⟹ body is post-gesture, and that holds only when the body is at
-        // least as fresh as the mark. Reading the mark after the dump would let an event arriving in
-        // between push the mark above the body's freshness, certifying a stale tree as caught up.
-        // Snapshotting first makes the mark only ever *undercount* events relative to the body, so the
-        // host waits for a fresher read rather than trusting a stale one.
+        // least as fresh as the mark. `settledDump` returns its *last* dump, so any event landing
+        // during the settle only makes the body fresher than this mark — the mark still *undercounts*
+        // events relative to the body, and the host waits for a fresher read rather than trusting a
+        // stale one. Reading the mark after the settle would instead let such an event push the mark
+        // above the body's freshness, certifying a stale tree as caught up. In the mark path
+        // `awaitPostdate` has already advanced `current()` past `since`, so this undercount never
+        // drops the mark back below the actuation it must clear.
         val mark = readMark.current()
-        val body = dumpHierarchy(device)
+        val body = settledDump(device)
         respond(
             out,
             "200 OK",
@@ -152,6 +158,36 @@ class ResidentServerTest {
             body,
             mapOf(READ_MARK_HEADER to mark.toString()),
         )
+    }
+
+    /**
+     * Dump the hierarchy once it has stopped *tearing*: re-dump across [UiDevice.waitForIdle] until two
+     * consecutive dumps are byte-identical, or [SETTLE_DUMPS] is reached.
+     *
+     * This closes tearing only — the window where Android has republished some node bounds but not the
+     * rest, so a lone dump captures a half-updated tree. It does **not** decide *staleness* (whether the
+     * read postdates the gesture); that is the mark gate's job (BE-0332 Units 3 and 4), which has
+     * already run in [respondSource] when `since` was set. Layering the two restores both guarantees the
+     * retired `stableHierarchy` gave, but now the mark — not a settled-but-late tree — is what certifies
+     * freshness, so the read-lag bug BE-0332 fixes stays fixed: a merely-late tree that has stopped
+     * changing settles here yet never postdates the mark, so the host still re-polls for it.
+     *
+     * `waitForIdle` alone is the mechanism this timing class distrusts (it can look idle between two
+     * node republishes), which is why the barrier is two matching dumps, not one idle. Bounded and
+     * condition-driven (settle, not a fixed sleep — Bajutsu determinism); a node that never settles (an
+     * animation) costs at most [SETTLE_DUMPS] dumps and returns the last read. A tear outlasting the
+     * bound still gets through, exactly as the host's `_CATCHUP_DWELL_S` accepts one that outlasts its
+     * dwell.
+     */
+    private fun settledDump(device: UiDevice): ByteArray {
+        var previous = dumpHierarchy(device)
+        repeat(SETTLE_DUMPS - 1) {
+            device.waitForIdle()
+            val current = dumpHierarchy(device)
+            if (current.contentEquals(previous)) return current
+            previous = current
+        }
+        return previous.also { Log.d(TAG, "hierarchy did not settle after $SETTLE_DUMPS dumps") }
     }
 
     private fun dumpHierarchy(device: UiDevice): ByteArray =
@@ -231,5 +267,12 @@ class ResidentServerTest {
         // (`AdbDriver._READ_LAG_S`, 4 s) so the host re-poll stays the outer bound. The read-lag
         // investigation saw the post-gesture update land within ~2 s (BE-0332 Motivation).
         const val POSTDATE_BUDGET_MS = 2_000L
+
+        // Max dumps per read while `settledDump` waits for two consecutive hierarchies to match — the
+        // tearing barrier layered under the mark gate (BE-0332 Unit 4). A settled screen matches on the
+        // 2nd dump; the headroom absorbs a republish that lands mid-read without letting an animated
+        // node spin forever. Same value the retired `stableHierarchy` used, now scoped to tearing while
+        // the mark decides staleness.
+        const val SETTLE_DUMPS = 4
     }
 }

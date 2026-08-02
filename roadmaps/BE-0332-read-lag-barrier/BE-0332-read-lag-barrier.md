@@ -128,12 +128,14 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
    as soon as the device publishes an update. That turns the budgets in units 1 and 2 into ceilings
    rarely reached, and it holds for reads taken through the resident channel — whether the caller is
    `extract`, `_settle`, or `scroll`.
-4. **Replace `stableHierarchy`'s two-identical-dumps barrier with the mark.** Once unit 3's event
-   timestamp is available inside the reader, the device side can stop inferring stability from two
-   matching dumps. It can instead return a hierarchy that postdates the requested mark. This removes
-   the defect at its source, rather than compensating for it in every caller. It also retires a
-   second dump per read on the path where the two dumps agreed: the cost the current barrier pays on
-   every settled screen.
+4. **Re-anchor `stableHierarchy`'s barrier on the mark.** Once unit 3's event timestamp is available
+   inside the reader, the device stops inferring *staleness* from two matching dumps and instead
+   returns a hierarchy that postdates the requested mark. This removes the defect at its source,
+   rather than compensating for it in every caller. The two-dump settle is not dropped but narrowed
+   to what it alone can prove: *tearing* — a dump caught mid-republish, where Android has republished
+   some node bounds but not the rest. The mark decides freshness; a bounded settle after it decides
+   wholeness. Splitting the two keeps both guarantees the single barrier gave, while a settled-but-late
+   tree can no longer pass as current — which is the read-lag defect itself.
 5. **Cover the barrier in the deterministic suite and the driver conformance suite.** The
    deterministic tests need a `FakeDriver` that reports a lag and serves a scripted stale read. That
    lets the barrier's behavior be checked without a device. A stale-but-stable read must not be
@@ -198,7 +200,8 @@ rather than fix it.
       catch-up barrier and the `extract` poll release the instant a read postdates the pre-gesture
       device-clock mark.
 - [x] Unit 4 — `GET /source?since=<mark>` blocks on the resident reader until an accessibility event
-      postdates the requested mark, then dumps once, replacing the two-identical-dumps barrier.
+      postdates the requested mark (staleness), then a bounded settle closes tearing before it answers.
+      The mark replaces the two-dump barrier's freshness role; the settle keeps its wholeness role.
 - [ ] Unit 5 — deterministic and conformance coverage for the barrier. Deterministic coverage landed
       with the host-side barrier; the conformance suite (BE-0114) check waits on the marked-read
       contract (Unit 3).
@@ -225,14 +228,19 @@ Log:
   Apple-silicon emulator).
 - 2026-08-02 — Marked-read barrier slice (PR #1449): Unit 4. `GET /source` now accepts a `?since=`
   device-clock mark; when present the resident reader blocks on a condition wait until an accessibility
-  event postdates it, then dumps once — retiring the two-identical-dumps `stableHierarchy` barrier and
-  the second dump it paid on every settled screen. The host stamps the pending gesture's actuation mark
-  onto the request, so the driver's re-poll collapses into one blocking round trip. The budget is a
-  ceiling on the lag (well inside the host's HTTP timeout and shorter than its own read-lag budget, so
-  the host re-poll stays the outer bound); on expiry the latest tree is returned with its own mark, not
-  an error. Deterministic coverage for the `?since=` plumbing on both the resident client and the
-  driver; the Kotlin compiles under the pinned Gradle (JBR) and the device behavior is validated on the
-  CI Android lane, where the lag reproduces (it does not on an Apple-silicon emulator).
+  event postdates it (staleness), then a bounded settle re-dumps until two hierarchies match before it
+  answers (tearing). This splits the retired `stableHierarchy`: the mark takes over deciding freshness,
+  which the two-dump barrier decided only by proxy and so could pass a settled-but-late tree — the
+  read-lag defect — while the settle keeps deciding wholeness, which `waitForIdle` alone cannot (a dump
+  caught between two node republishes tears). The host stamps the pending gesture's actuation mark onto
+  the request, so the driver's re-poll collapses into one blocking round trip. The budget is a ceiling
+  on the lag (well inside the host's HTTP timeout and shorter than its own read-lag budget, so the host
+  re-poll stays the outer bound); on expiry the latest tree is returned with its own mark, not an error.
+  Deterministic coverage for the `?since=` plumbing on both the resident client and the driver; the
+  Kotlin compiles under the pinned Gradle (JBR) and the device behavior is validated on the CI Android
+  lane, where the lag reproduces (it does not on an Apple-silicon emulator). The tearing settle answers
+  a review question raised on the PR (the mark alone proves only that catch-up started, not that the
+  tree stopped republishing).
 
 ## References
 
