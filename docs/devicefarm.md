@@ -14,8 +14,12 @@ acquire) — it is a **CI-side submitter**: package Bajutsu plus your scenarios,
 test-spec that runs `bajutsu run --backend adb`, let Device Farm execute it on the host, and collect
 the artifacts.
 
-The submitter lives entirely outside the deterministic core, at
-[`scripts/devicefarm_submit.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/scripts/devicefarm_submit.py).
+The submitter core lives entirely outside the deterministic core, at
+[`bajutsu/cloud/devicefarm.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/bajutsu/cloud/devicefarm.py)
+(`render_test_spec` / `build_package` / `submit_and_collect` and the `DeviceFarmClient` / `Transfer`
+seams, BE-0336), reusable by any caller; the CLI at
+[`scripts/devicefarm_submit.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/scripts/devicefarm_submit.py)
+is now a thin wrapper holding only argument parsing and the real boto3 / urllib adapters.
 Nothing in the upload / poll / download machinery touches the `run`/CI verdict path: Bajutsu runs
 inside Device Farm exactly as it does locally — the same deterministic core, the same pass/fail from
 machine-checkable assertions — so the verdict the submitter reports comes from **Bajutsu's own
