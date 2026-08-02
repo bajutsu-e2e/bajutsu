@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0333](BE-0333-e2e-filter-run-path-acknowledgement-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0333") |
+| 実装 PR | _pending_ |
 | トピック | CI / build infrastructure |
 <!-- /BE-METADATA -->
 
@@ -137,10 +138,27 @@ import しない crawl と agents のモジュールです。PR
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] ユニット1 — `bajutsu/` を一括して拾い、明示的な周辺の除外リストだけを差し引いて既定値を反転する。
-- [ ] ユニット2 — `ast` による静的な import 閉包の相互検査を足す。
-- [ ] ユニット3 — 場当たり的な parity テスト2つを、理由つきの除外項目として書き直す。
-- [ ] ユニット4 — 直近のマージ済みプルリクエストの標本で、過剰発火の差を測る。
+- [x] ユニット1 — `bajutsu/` を一括して拾い、明示的な周辺の除外リストだけを差し引いて既定値を反転する。
+- [x] ユニット2 — `ast` による静的な import 閉包の相互検査を足す。
+- [x] ユニット3 — 場当たり的な parity テスト2つを、理由つきの除外項目として書き直す。
+- [x] ユニット4 — 直近のマージ済みプルリクエストの標本で、過剰発火の差を測る。
+
+ログ（古い順）:
+
+- 4 ユニットを実装 PR でまとめて出荷します。`scripts/e2e_changes.py` は `bajutsu/` を一括で拾い、
+  導出した 2 つの除外集合 — `_PERIPHERY_EXCLUSIONS`（どのレーンも実行しない周辺。各項目が除外の理由を
+  持つ）と `_LANE_CLAIMED`（各レーンが再主張する backend 固有のリーフ）— だけを差し引きます。これにより
+  未分類のファイルは「何も発火しない」のではなく全レーンを過剰発火させます（ユニット1）。毎 run が書き込む
+  マニフェスト書き出し `bajutsu/report/` と、これまで未掲載だった `deprecations` / `object_store` /
+  `record_capture` / `from_grouping` が発火するようになりました。`tests/test_e2e_changes.py` は run パスの
+  静的な `ast` import 閉包を辿り、到達したファイルがゲート対象でも分類済み周辺項目でもなければ落とします
+  （ユニット2）。従来の場当たり parity アサーション2つ（`test_agent_factory_is_not_relevant_by_parity`、
+  `test_untouched_subpackage_is_not_relevant`）は `_PERIPHERY_EXCLUSIONS` の理由つき項目へ置き換えました
+  （ユニット3）。本項目が包摂する「名前ベースのパッケージ分割」ガードは撤去しました。
+  `scripts/e2e_overfire_report.py` は基準コミットに対して取引を計測します（ユニット4）。直近 80 件のマージ済み
+  プルリクエストでは、新しい既定は 3 レーンすべてで旧来と**完全に同一**に発火しました — 過剰発火 0、過小発火 0。
+  新たにゲート対象になったファイルが、既に他の run パスコードで発火している PR の外で単独に現れなかったためです。
+  受け入れたコストは、将来の report 単独・object-store 単独の変更では実在しますが、直近の履歴では無視できる水準です。
 
 ## 参考
 
