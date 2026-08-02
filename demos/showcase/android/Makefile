@@ -232,9 +232,10 @@ e2e-conformance: compose-build
 # with no readiness wait in between, so some reads land while UI Automator has no stable
 # window and really answers with no hierarchy — the condition
 # `tests/test_coordinate_tree.py` can only fabricate. Like `e2e-conformance` this drives pytest, not
-# the run CLI, so it needs the dev group. The resident UI Automator server is built because the ~0.1 s
-# resident read is what lands inside a transition at all (BE-0245); the ~2.4 s `uiautomator dump`
-# startup would outlast almost every one. No `adb root`: nothing here actuates by `sendevent`. Not part
+# the run CLI, so it needs the dev group. Reads go over `uiautomator dump` — the suite forces that
+# path (`BAJUTSU_ADB_RESIDENT=0`) and asserts it, because the resident server answers only after
+# `waitForIdle` + `settledDump` (BE-0332 Unit 4), which settles the artifact away on the device before
+# the host ever sees it. No `adb root`: nothing here actuates by `sendevent`. Not part
 # of `make check` (it needs a booted AVD) — android-e2e.yml drives it in its own `fault (adb)` job.
 e2e-fault: compose-build
 	cd $(ROOT) && BAJUTSU_FAULT_SERIAL=$(SERIAL) \

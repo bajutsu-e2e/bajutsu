@@ -52,6 +52,7 @@ gate's default, and a module-level skip drops it whenever `BAJUTSU_FAULT_SERIAL`
 
 from __future__ import annotations
 
+import contextlib
 import os
 import subprocess
 import threading
@@ -177,9 +178,19 @@ def tap_shell(driver: AdbDriver) -> Iterator[subprocess.Popen[str]]:
     try:
         yield proc
     finally:
-        proc.stdin.close()
-        proc.terminate()
-        proc.wait(timeout=5)
+        # Best-effort: this fixture tears down after a test that deliberately hammers the device, so a
+        # wedged shell is plausible here. Letting teardown raise would replace the real diagnosis with
+        # a cleanup error, so escalate to kill and give up rather than propagate.
+        with contextlib.suppress(OSError):
+            proc.stdin.close()
+            proc.terminate()
+        with contextlib.suppress(OSError, subprocess.TimeoutExpired):
+            proc.wait(timeout=5)
+        if proc.poll() is None:
+            with contextlib.suppress(OSError):
+                proc.kill()
+            with contextlib.suppress(OSError, subprocess.TimeoutExpired):
+                proc.wait(timeout=5)
 
 
 def _tap(shell: subprocess.Popen[str], x: float, y: float) -> None:

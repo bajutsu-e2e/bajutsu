@@ -441,8 +441,9 @@ jobs:
   # fabricate a count sequence. `e2e-fault` taps the tab bar and reads with no wait in between until
   # the emulator really produces the empty tree, asserting the retry recovered without a false
   # "element not found" — and failing loudly if the contention never reproduced it, so a green run
-  # never means "untested". Builds the resident UI Automator server (BE-0245): its ~0.1 s read is what
-  # lands inside a transition at all, which the ~2.4 s `uiautomator dump` startup would outlast. Like
+  # never means "untested". Reads go over `uiautomator dump`, and the resident UI Automator server is
+  # deliberately not built: that server answers only after `waitForIdle` + `settledDump` (BE-0332
+  # Unit 4), settling away the very artifact this job injects. Like
   # `conformance` it drives pytest, so it keeps the dev group. Deliberately outside the `E2E
   # (android)` aggregator's `needs:` (see the header) — contention cannot be scheduled, so the lane
   # lands as a signal and is promoted once it proves stable.

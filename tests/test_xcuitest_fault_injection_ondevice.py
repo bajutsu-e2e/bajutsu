@@ -134,13 +134,18 @@ def _listening_pid(port: int) -> int:
             "`lsof` is not on PATH, so the runner's pid cannot be resolved and no fault can be "
             "injected; it ships with macOS, the only host this suite runs on"
         )
-    found = probe.stdout.split()
+    # Deduplicated: `lsof -t` prints one line per matching file descriptor, so a process holding the
+    # listening socket on more than one fd repeats its own pid. Counting raw lines would read that as
+    # several listeners and fail a perfectly ordinary environment.
+    found = sorted(set(probe.stdout.split()))
     # `lsof` exits non-zero both for "no match" and for its own failures, so the diagnosis carries
     # its exit code and stderr: an unusable `lsof` must not read as a runner that never came up.
     assert found, (
         f"nothing is listening on the runner port {port}; the fault would hit no process "
         f"(lsof exit {probe.returncode}, stderr {probe.stderr.strip()!r})"
     )
+    # More than one *distinct* pid means this is not the environment the suite thinks it is, and the
+    # fault would land somewhere unintended.
     assert len(found) == 1, f"{len(found)} processes listen on the runner port {port}: {found}"
     return int(found[0])
 
@@ -185,7 +190,16 @@ def test_a_killed_runner_fails_with_a_crash_diagnosis_not_an_unrelated_timeout(
     proc = environment._runner_proc
     assert proc is not None, "the environment holds no runner process to kill"
     proc.kill()
-    proc.wait()
+    # Bounded: an unbounded wait would hang this metered macOS job indefinitely if `xcodebuild` (or a
+    # wrapper of it) does not reap promptly after the kill. Failing here with that as the diagnosis
+    # beats spending the job's whole timeout on it.
+    try:
+        proc.wait(timeout=30)
+    except subprocess.TimeoutExpired:
+        pytest.fail(
+            "the `xcodebuild` runner host did not exit within 30s of SIGKILL, so `runner_alive` "
+            "cannot yet report the process gone and this test's premise does not hold"
+        )
 
     with pytest.raises(xcuitest.XcuitestRunnerCrashError) as raised:
         driver.query()
