@@ -215,9 +215,22 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
   takes on that every coordinate resolve after a content-moving actuation, and every mid-scenario
   `extract`, may spend up to that budget waiting for the tree to catch up — paid only on a read that
   still matches the pre-action screen, never on one that already landed. A backend that declares none
-  keeps its single-read, fail-fast behavior unchanged. Until the resident reader publishes a read mark
-  the host can compare against (BE-0332 Unit 3, planned), the budget is a wall-clock ceiling rather
-  than an early-releasing wait for the paths that cannot use the projection-differs test.
+  keeps its single-read, fail-fast behavior unchanged. The resident reader publishes a read mark the
+  host compares against (BE-0332 Units 3–4), which turns that ceiling into an early-releasing wait. The
+  reader observes the accessibility event stream and stamps every `GET /source` with an
+  `X-Bajutsu-Read-Mark` header — the device-clock time of the newest event as of the served dump — and
+  adds a `GET /clock` endpoint. The driver takes a device-clock mark before each barrier-arming
+  actuation and requires a read whose mark postdates it (`read_postdates_actuation()`, the
+  `ReadOrderProvider` seam), so both the coordinate resolve's catch-up and the `extract` poll release
+  the instant the device publishes the action's update — no dwell — instead of idling to the budget.
+  Both marks come from the device's own clock, so no host-to-device skew enters. `GET
+  /source?since=<mark>` pushes the same ordering into the reader itself: it blocks until an
+  accessibility event postdates the requested mark, then a bounded settle closes tearing before it
+  answers, so the two-identical-dumps freshness barrier is retired at its source and pays no second
+  dump on a settled screen. The budget survives only for the one-shot `uiautomator dump` fallback,
+  which carries no mark. That marked-read contract — a read on a read-ordering backend postdates a
+  content-moving gesture — is checked against the real backend by the driver conformance suite
+  (BE-0114).
 - **On-device actuation fidelity** (roadmap
   [BE-0210](../roadmaps/BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md)):
   the `back` step is the true system back (`input keyevent 4` / `KEYCODE_BACK`) — Android has no
