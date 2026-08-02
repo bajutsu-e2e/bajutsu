@@ -448,26 +448,30 @@ class AdbDriver(CoordinateTreeDriver):
             self._catchup = None
 
     def _await_catchup(self) -> None:
-        """Re-read until the pending pan shows in the tree, or its lag budget is spent.
+        """Re-read until the pending actuation shows in the tree, or its lag budget is spent.
 
         The one thing the two-consecutive-equal-reads settle below cannot do on its own: a lagging
         Android tree is *self-consistently* lagging, so any number of reads agree with each other and
-        agree on the pre-pan frames. What separates a caught-up read from a stale one is
+        agree on the pre-actuation frames. What separates a caught-up read from a stale one is
         `_advance_catchup`'s test, which this drives reads until; the wall-clock budget bounds the wait
-        when a pan legitimately changed nothing (already at the end of the content).
+        when an actuation legitimately changed no frame (a pan already at the end of the content, or a
+        tap that only moved a mirrored value — BE-0332 arms the barrier for center-resolving taps too).
         """
         while (catchup := self._catchup) is not None:
             if time.monotonic() >= catchup.deadline:
                 # Loudly, not silently: the actuator may be about to resolve a coordinate from a tree
-                # that never published the pan, which is the failure whose bare `expect` mismatch cost
-                # a full artifact investigation to explain. Both causes are named because the driver
-                # cannot tell them apart, and the benign one is routine — a pan at the end of the
-                # content moves nothing, so its projection never differs and the barrier can only end
-                # here. Asserting the lag would send an investigator after a bug that never happened.
+                # that never published the last actuation, which is the failure whose bare `expect`
+                # mismatch cost a full artifact investigation to explain. Both causes are named because
+                # the driver cannot tell them apart, and the benign one is routine — an actuation that
+                # moves no frame (a pan at the end of the content, or a tap that only changes a mirrored
+                # value) never differs the projection, so the barrier can only end here. The message
+                # names the actuator neutrally because BE-0332 arms this for taps, not only pans;
+                # asserting the lag would send an investigator after a bug that never happened.
                 logger.warning(
-                    "read lag: the last pan did not change the projection within %.1fs — either the "
-                    "tree never published it, or the pan moved nothing (e.g. already at the end of "
-                    "the content). Resolving from the current screen",
+                    "read lag: the last gesture did not change the projection within %.1fs — either "
+                    "the tree never published it, or it moved no frame (e.g. a pan already at the end "
+                    "of the content, or a tap that changed only a mirrored value). Resolving from the "
+                    "current screen",
                     self._READ_LAG_S,
                 )
                 self._catchup = None

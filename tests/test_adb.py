@@ -1370,7 +1370,9 @@ def test_catch_up_gives_up_loudly_at_the_lag_budget_when_the_pan_changed_nothing
     # one: asserting the lag alone would point an investigator at a bug that never happened. A pan at
     # the end of the content hits this on every `_scroll_into_view` retry, so it is routine, not exotic.
     assert "read lag" in caplog.text
-    assert "never published" in caplog.text and "moved nothing" in caplog.text
+    # The message names the actuator neutrally ("the last gesture" / "moved no frame") because
+    # BE-0332 arms this barrier for taps too, not only pans — so it must not misattribute a tap to a pan.
+    assert "never published" in caplog.text and "moved no frame" in caplog.text
 
 
 def test_a_non_resolving_actuator_does_not_arm_the_catch_up_wait(
