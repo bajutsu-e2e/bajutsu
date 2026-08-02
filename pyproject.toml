@@ -204,6 +204,7 @@ markers = [
     "postgres: DB test run against a real Postgres service container (serve-db.yml lane only)",
     "mcp_wire: real-transport MCP round-trip spawning a `bajutsu mcp` subprocess (mcp-wire.yml, non-gating)",
     "roadmap_dates: whole-tree roadmap date integration that git-logs every item (grows with the tree; `make test-roadmap-dates`)",
+    "backend_crash_recovery: on-device suite that recovers a Simulator infrastructure fault by re-leasing (BE-0334)",
 ]
 # Collect only the project's own suite; ignore local git worktrees under worktree/.
 testpaths = ["tests"]

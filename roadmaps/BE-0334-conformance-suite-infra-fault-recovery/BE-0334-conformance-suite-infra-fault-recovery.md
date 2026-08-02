@@ -121,7 +121,7 @@ maintainer that the underlying fault is getting worse rather than staying rare.
 > (oldest first), linking the PRs.
 
 - [x] Unit 1 — classify infrastructure faults against contract violations at the harness boundary.
-- [ ] Unit 2 — re-lease and retry on an infrastructure fault, reusing the pipeline's recovery.
+- [x] Unit 2 — re-lease and retry on an infrastructure fault, reusing the pipeline's recovery.
 - [ ] Unit 3 — contain the module-scoped lease so one crash cannot cascade.
 - [ ] Unit 4 — report and count every recovery in the log and the artifacts.
 
