@@ -151,6 +151,16 @@ Proposal altitude. The work is MECE along the units below.
 - Both jobs stay outside their lane's `E2E (…)` aggregator's `needs:`, so neither can block a merge
   while it proves itself (BE-0282's precedent). The synthetic-fixture suites are untouched: they
   remain the fast control-flow check, and this item adds the real-condition layer beneath them.
+- The 2 s freeze (~7.5 s budget, ~12.5 s held) still lost the runner on a later CI run: `health`
+  caught it alive for one poll — logged as recovered — and the immediately following re-issue found
+  the port refused, not merely unreachable. That rules out the retry loop or the classifier: a process
+  that answers `/health` and then refuses a connection within the same synchronous call has exited,
+  not hung, and no amount of polling logic changes that outcome. The freeze itself is still the
+  variable most under this suite's control, so it shrinks again: 0.5 s per attempt (~3 s budget), with
+  the release margin now a named constant (`_RELEASE_MARGIN_S = 1.5`, replacing the unlabelled
+  `+ 5.0`), holding the freeze for ~4.5 s total rather than ~12.5 s. Nothing about the mechanism
+  changes — the shorter timeout still forces three genuine socket timeouts before the classifier
+  fires — only the window a resumed process has to be reclaimed before this suite observes it.
 
 ## References
 

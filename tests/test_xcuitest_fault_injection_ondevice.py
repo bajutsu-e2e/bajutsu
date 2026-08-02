@@ -74,12 +74,21 @@ _TARGET = "showcase-swiftui"
 # Shipped, one `GET`'s worst-case retry budget is ~46.5 s, so the freeze had to hold ~51.5 s for the
 # retry loop to genuinely exhaust — and a real XCTest host stopped that long does not reliably come
 # back: two of three CI runs lost the runner outright, the frozen case failing "did not recover" and
-# the killed case then finding nothing on the port at all. Rather than race whatever reclaims a
-# long-stopped process, shrink the budget the fault has to outlast. Nothing about the mechanism under
-# test changes — a real `SIGSTOP` still hangs a real socket, the retry loop still exhausts on it for
-# real, and recovery still re-issues — only the wall clock it all happens on, which also takes this
-# suite from minutes to seconds.
-_TEST_SOCKET_TIMEOUT_S = 2
+# the killed case then finding nothing on the port at all. A first shrink to 2 s (~7.5 s budget, ~12.5 s
+# held) cut that risk but did not close it: a later run still lost the runner mid-recovery — `health`
+# caught it alive for one poll, then the very next re-issue found the port refused, which reads as the
+# process exiting right on the resume rather than as anything about how the freeze is applied. Rather
+# than keep racing whatever reclaims a resumed process, shrink further still. Nothing about the
+# mechanism under test changes — a real `SIGSTOP` still hangs a real socket, the retry loop still
+# exhausts on it for real, and recovery still re-issues — only the wall clock it all happens on, which
+# also takes this suite from minutes to seconds.
+_TEST_SOCKET_TIMEOUT_S = 0.5
+
+# Added to the retry budget to get the freeze's total hold time (`_freeze_hold_s`). Only has to cover
+# `threading.Timer` scheduling jitter — the budget itself already accounts for every attempt and
+# backoff the retry loop spends — so it stays small rather than padded: the smaller the total freeze,
+# the less time a resumed process spends exposed to whatever reclaims a long-stopped one.
+_RELEASE_MARGIN_S = 1.5
 
 _RECOVERY_LOGGER = "bajutsu.xcuitest.channel"
 
@@ -96,7 +105,7 @@ def _shrink_retry_budget() -> Iterator[None]:
 
 
 def _freeze_hold_s() -> float:
-    """How long to hold the freeze: the retry loop's worst case, plus a small margin.
+    """How long to hold the freeze: the retry loop's worst case, plus `_RELEASE_MARGIN_S`.
 
     Read from the transport rather than restated, so re-tuning the retry loop re-tunes the fault with
     it, and computed at call time so it sees `_shrink_retry_budget`'s override. The margin stays
@@ -106,7 +115,7 @@ def _freeze_hold_s() -> float:
     counts. A wider margin buys nothing and costs the runner's survival.
     """
     budget = xcuitest._retry_budget_seconds("GET")
-    hold = budget + 5.0
+    hold = budget + _RELEASE_MARGIN_S
     # Released after the retry loop has certainly given up, and before recovery stops waiting:
     # outside either bound the suite would silently test something else (the retry absorbing the
     # freeze, or the never-recovered branch).
