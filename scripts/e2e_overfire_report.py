@@ -53,10 +53,13 @@ def _load_old_filter(baseline: str) -> ModuleType:
     with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False, encoding="utf-8") as fh:
         fh.write(source)
         temp_path = fh.name
-    spec = importlib.util.spec_from_file_location("_e2e_changes_baseline", temp_path)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    try:
+        spec = importlib.util.spec_from_file_location("_e2e_changes_baseline", temp_path)
+        assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    finally:
+        Path(temp_path).unlink(missing_ok=True)
     return module
 
 
@@ -78,7 +81,7 @@ def _pr_changed_files(merge_sha: str) -> list[str]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--limit", type=int, default=60)
+    parser.add_argument("--limit", type=int, default=80)
     parser.add_argument("--baseline", default=None)
     args = parser.parse_args()
 
