@@ -246,8 +246,8 @@ class _ScenarioRunner:
         # A scenario that crashes every attempt exhausts the budget and fails loudly (BE-0049).
         handler = self.alert_guard_for(s) if self.alert_guard_for is not None else self.alert_guard
         last_crash: BackendCrashError | None = None
-        # The count + wall-clock retry decision, shared with the on-device conformance harness so the
-        # two recovery paths cannot drift (BE-0334). The wall-clock deadline it holds is set at the
+        # The count + wall-clock retry decision; Unit 2 of BE-0334 wires the conformance harness onto
+        # the same helper so the two recovery paths cannot drift. The wall-clock deadline it holds is set at the
         # *first* crash (so the first respawn is never blocked — a genuine one-off is still ridden
         # out) and caps the total time a never-recovering runner can spend paying a fresh cold-startup
         # ceiling per respawn. An unset budget keeps the count as the only cap.

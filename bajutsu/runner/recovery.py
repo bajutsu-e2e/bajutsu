@@ -9,10 +9,10 @@ selector, a refused actuator, a failed assertion — is not infrastructure and k
 
 That decision logic first lived inline in the pipeline's scenario loop. The on-device driver
 conformance suite (`tests/test_driver_conformance_ondevice.py`) needs the *same* recovery, so it is
-extracted here and both paths drive it — the two cannot then drift into different notions of "an
-infrastructure fault" or "how many respawns are left" (BE-0334 Unit 1). The classification rests on
-the exception type the driver already raises, so it stays a deterministic branch on a Python class:
-no model sits on the `run`/CI verdict.
+extracted here; the pipeline drives it today, and Unit 2 wires the conformance harness onto it, so
+the two cannot then drift into different notions of "an infrastructure fault" or "how many respawns
+are left" (BE-0334). The classification rests on the exception type the driver already raises, so it
+stays a deterministic branch on a Python class: no model sits on the `run`/CI verdict.
 """
 
 from __future__ import annotations
@@ -121,13 +121,16 @@ class CrashRecoveryBudget:
 
     def on_crash(self, attempt: int) -> RetryDecision:
         """Record a crash on the 1-based `attempt` and decide whether another respawn is allowed."""
-        # Start the recovery clock at the first crash: `now < deadline` holds here, so the first
+        # Capture the clock once so both deadline initialisation and the budget check see the same
+        # instant — a double call could in theory advance past a tiny budget between the two reads.
+        t = self._now()
+        # Start the recovery clock at the first crash: `t < deadline` holds here, so the first
         # respawn always proceeds; the budget can only stop a *later* respawn once earlier ones have
         # burned the wall-clock (a slow, never-recovering runner).
         if self._budget is not None and self._deadline is None:
-            self._deadline = self._now() + self._budget
+            self._deadline = t + self._budget
         within_count = attempt <= self._retries
-        within_budget = self._deadline is None or self._now() < self._deadline
+        within_budget = self._deadline is None or t < self._deadline
         # The count would allow another respawn but the wall-clock budget is spent: a distinct end
         # state from "attempts exhausted", which the caller surfaces in its failure message.
         return RetryDecision(
