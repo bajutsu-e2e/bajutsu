@@ -14,7 +14,8 @@ Two real faults, in the order the module runs them:
    still accepted (the kernel's backlog outlives the stopped process) and then never answered, so the
    transport hits its real socket timeout: the *hung connection* failure mode, which a refused
    connection would not reproduce. A background thread sends `SIGCONT` once the retry budget has
-   certainly been spent, so recovery finds the runner healthy and re-issues.
+   certainly been spent, kept close to that budget rather than padded, so recovery finds the runner
+   healthy and re-issues.
 2. **Killed** — `SIGKILL` the runner and its `xcodebuild` host process. `runner_alive` then reports
    the process gone and recovery fails fast with the diagnosis naming that, instead of polling a dead
    port for the whole recovery window.
@@ -67,15 +68,18 @@ UDID: str = _udid
 _CONFIG_PATH = Path("demos/showcase/showcase.config.yaml")
 _TARGET = "showcase-swiftui"
 
-# How long the freeze holds before it is released. Read from the transport (a `GET`, the method
-# `query` issues) rather than restated here, so re-tuning the retry loop re-tunes the fault with it.
-# Doubled because the budget counts one socket window per attempt while `http.client` applies that
-# window to the connect *and* the response read: against a stopped listener the connect is usually
-# served from the backlog for free, but a full backlog makes it time out too. Holding for the
-# doubled figure covers both, and one hold satisfies both ends of the window because recovery's
-# 60-second wait is wider than the spread between them.
+# How long the freeze holds before it is released: the transport's own worst-case retry budget (a
+# `GET`, the method `query` issues) plus a small margin. Read from the transport rather than
+# restated here, so re-tuning the retry loop re-tunes the fault with it. The margin stays small on
+# purpose: this suite drives one request at a time, never several concurrently, so the kernel's
+# accept backlog is never full and `connect()` is always served instantly — only the response read
+# actually blocks for the socket timeout, which `_retry_budget_seconds` already accounts for. A
+# margin wider than that buys nothing and costs real risk the other way: SIGSTOP is not free, and
+# holding a real XCTest host stopped far past the failure it's proving risks losing the runner
+# outright rather than letting it resume (observed: doubling this held the runner past recovery's
+# window and left nothing listening for the next test).
 _RETRY_BUDGET_S = xcuitest._retry_budget_seconds("GET")
-_FREEZE_HOLD_S = 2 * _RETRY_BUDGET_S + 5.0
+_FREEZE_HOLD_S = _RETRY_BUDGET_S + 5.0
 # Released after the retry loop has certainly given up, and before recovery stops waiting: outside
 # either bound the suite would silently test something else (the retry absorbing the freeze, or the
 # never-recovered branch), so a re-tune that breaks the window fails at import rather than on-device.
