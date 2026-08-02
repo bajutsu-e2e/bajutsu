@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0332") |
-| 実装 PR | [#1442](https://github.com/bajutsu-e2e/bajutsu/pull/1442), [#1445](https://github.com/bajutsu-e2e/bajutsu/pull/1445), [#1449](https://github.com/bajutsu-e2e/bajutsu/pull/1449), [#PENDING](https://github.com/bajutsu-e2e/bajutsu/pull/PENDING) |
+| 実装 PR | [#1442](https://github.com/bajutsu-e2e/bajutsu/pull/1442), [#1445](https://github.com/bajutsu-e2e/bajutsu/pull/1445), [#1449](https://github.com/bajutsu-e2e/bajutsu/pull/1449), [#1454](https://github.com/bajutsu-e2e/bajutsu/pull/1454) |
 | トピック | ドライバとバックエンドのアーキテクチャ |
 <!-- /BE-METADATA -->
 
