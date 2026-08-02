@@ -19,9 +19,10 @@ class of artifact, and BE-0332 Unit 4 finished the job: `respondSource` runs `wa
 `settledDump()` — re-dumping until two consecutive dumps are byte-identical — *before* it answers,
 unconditionally, whether or not a `since` mark rides on the request. So the device settles the
 transient away on its own side, and a host reading through that channel can never observe one, at any
-tap speed. Four CI runs tuning tap timing against the resident channel reproduced nothing for that
-reason, not a timing one. The module therefore forces the dump path (`BAJUTSU_ADB_RESIDENT=0`, the
-documented knob) and asserts it got it.
+tap speed. Five CI runs against the resident channel reproduced nothing for that reason, not a timing
+one — the last of them after the tap path had been made measurably denser, which moved the reads onto
+more partial transitions and still changed no outcome. The module therefore forces the dump path
+(`BAJUTSU_ADB_RESIDENT=0`, the documented knob) and asserts it got it.
 
 Forcing it through the *environment* rather than blanking the driver's channel afterwards is what
 keeps the fault honest. A live resident server holds the device's single UiAutomation session, so a
@@ -154,12 +155,16 @@ def driver(_eff: Effective) -> Iterator[AdbDriver]:
 def tap_shell(driver: AdbDriver) -> Iterator[subprocess.Popen[str]]:
     """A single persistent `adb shell`, so a tap costs one stdin write, not a fresh adb process.
 
-    A fresh `adb shell input tap` per round pays a full adb client-server handshake every round; on
-    a loaded CI emulator that alone can run over a second — longer than the tab transition this
-    suite is trying to catch, and the actual reason four straight CI runs completed every round
-    without ever landing inside one (a round's ~1.4 s badly outweighs a resident read's ~0.1 s, so
-    the handshake, not the read, was eating the window). One persistent shell removes it: the
-    device executes each `input tap` the instant its line reaches the shell's stdin.
+    A fresh `adb shell input tap` pays a full adb client-server handshake every time; on a loaded CI
+    emulator that alone can run over a second, which would leave the "sustained" contention this
+    suite depends on full of second-wide gaps the screen settles in. One persistent shell removes it:
+    the device executes each `input tap` the instant its line reaches the shell's stdin.
+
+    This is about contention *density*, not about why the lane took six runs to reach the branch —
+    that was the read channel (see the module docstring), and no tap timing could have fixed it. The
+    handshake was measurably real, though: removing it took a run from 5 distinct screens seen across
+    the loop to 9, so the reads did start landing amid more partial transitions. It just could not
+    matter while the resident server settled every one of them away before answering.
     """
     proc = subprocess.Popen(
         adb._adb(SERIAL, "shell"),
