@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0334](BE-0334-conformance-suite-infra-fault-recovery.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0334") |
+| Implementing PR | _pending_ |
 | Topic | Platform support |
 | Related | [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md), [BE-0218](../BE-0218-e2e-simulator-flaky-readiness-actuation/BE-0218-e2e-simulator-flaky-readiness-actuation.md), [BE-0319](../BE-0319-xcuitest-cold-spawn-resilience/BE-0319-xcuitest-cold-spawn-resilience.md), [BE-0323](../BE-0323-xcuitest-readiness-crash-respawn/BE-0323-xcuitest-readiness-crash-respawn.md) |
 <!-- /BE-METADATA -->
@@ -119,7 +120,7 @@ maintainer that the underlying fault is getting worse rather than staying rare.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — classify infrastructure faults against contract violations at the harness boundary.
+- [x] Unit 1 — classify infrastructure faults against contract violations at the harness boundary.
 - [ ] Unit 2 — re-lease and retry on an infrastructure fault, reusing the pipeline's recovery.
 - [ ] Unit 3 — contain the module-scoped lease so one crash cannot cascade.
 - [ ] Unit 4 — report and count every recovery in the log and the artifacts.
