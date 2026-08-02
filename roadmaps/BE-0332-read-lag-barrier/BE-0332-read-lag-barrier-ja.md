@@ -7,9 +7,9 @@
 |---|---|
 | 提案 | [BE-0332](BE-0332-read-lag-barrier-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0332") |
-| 実装 PR | [#1442](https://github.com/bajutsu-e2e/bajutsu/pull/1442), [#1445](https://github.com/bajutsu-e2e/bajutsu/pull/1445), [#1449](https://github.com/bajutsu-e2e/bajutsu/pull/1449) |
+| 実装 PR | [#1442](https://github.com/bajutsu-e2e/bajutsu/pull/1442), [#1445](https://github.com/bajutsu-e2e/bajutsu/pull/1445), [#1449](https://github.com/bajutsu-e2e/bajutsu/pull/1449), [#PENDING](https://github.com/bajutsu-e2e/bajutsu/pull/PENDING) |
 | トピック | ドライバとバックエンドのアーキテクチャ |
 <!-- /BE-METADATA -->
 
@@ -205,10 +205,12 @@ Mutually Exclusive, Collectively Exhaustive（`MECE`）な作業単位は、次�
 - [x] 作業単位 4 — `GET /source?since=<mark>` が、要求されたマークをアクセシビリティイベントが
       追い越すまで常駐リーダー側で待ち（陳腐化）、その後の有界な落ち着き待ちが応答前に断裂を閉じる。
       マークが 2 回一致ダンプの鮮度の役割を、落ち着き待ちがその完全さの役割を引き継ぐ。
-- [ ] 作業単位 5 — 歯止めを決定的なテストと適合スイートで覆う。決定的なテストはホスト側の歯止めと
-      ともに着地。適合スイート（BE-0114）の確認はマークつき読み取りの契約（作業単位 3）を待つ。
-- [ ] 作業単位 6 — 読み取りの契約を `docs/architecture.md` と `docs/drivers.md` に両言語で記述する。
-      予算による歯止めの契約は記述済み。読み取りマークは作業単位 3 で書き加える。
+- [x] 作業単位 5 — 歯止めを決定的なテストと適合スイートで覆う。決定的なテストはホスト側の歯止めと
+      ともに着地済み。適合スイート（BE-0114）にマークつき読み取りの契約の確認を追加する。読み取り順序を
+      持つ（`ReadOrderProvider`）バックエンドは、内容を動かすジェスチャより後の読み取りを確認し、同期的な
+      バックエンドは対象外（スキップ）とする。
+- [x] 作業単位 6 — 読み取りの契約を `docs/architecture.md` と `docs/drivers.md` に両言語で記述する。
+      記述済みの予算による歯止めの契約に、読み取りマークを書き加える。
 
 ログ:
 
@@ -243,6 +245,16 @@ Mutually Exclusive, Collectively Exhaustive（`MECE`）な作業単位は、次�
   Android レーンで検証します（ラグはそこで再現し、Apple シリコンのエミュレータでは再現しません）。落ち着き
   待ちは、PR で挙がったレビューの疑問（マークだけでは追いつきの開始しか証明できず、ツリーが再発行を終えた
   ことは証明しない）に答えるものです。
+- 2026-08-02 — 適合スイートと文書のスライス（PR #PENDING）: 作業単位 5 と 6。ドライバ適合スイート
+  （BE-0114）にマークつき読み取りの契約の確認を追加します。スクロール可能な画面で内容を動かすスクロールの
+  後、読み取り順序を持つ（`ReadOrderProvider`）バックエンドは、そのジェスチャより後の読み取りを報告しな
+  ければなりません。読み取りを順序づけられないバックエンド（同期的なバックエンドと、速いゲートの
+  `FakeDriver`）はこのプロトコルを実装せずスキップするため、`make check` は緑のまま保たれ、確認は adb の
+  オンデバイスレーンで走ります。`docs/architecture.md` と `docs/drivers.md`、およびその日本語版が、
+  「読み取りマークは予定」という注記を、着地したマークの記述へ置き換えます。常駐リーダーの
+  `X-Bajutsu-Read-Mark` ヘッダと `GET /clock` エンドポイント、アクチュエーションの前に取るデバイス時計
+  マーク、順序の要求（`read_postdates_actuation()`）、`GET /source?since=` のブロックする読み取り、そして
+  マークを持たない `uiautomator dump` のフォールバックにだけ残る実時間の予算を記述します。状態を実装済みへ。
 
 ## 参考
 

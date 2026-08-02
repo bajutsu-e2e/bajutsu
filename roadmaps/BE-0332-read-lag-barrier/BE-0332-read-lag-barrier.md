@@ -7,9 +7,9 @@
 |---|---|
 | Proposal | [BE-0332](BE-0332-read-lag-barrier.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0332") |
-| Implementing PR | [#1442](https://github.com/bajutsu-e2e/bajutsu/pull/1442), [#1445](https://github.com/bajutsu-e2e/bajutsu/pull/1445), [#1449](https://github.com/bajutsu-e2e/bajutsu/pull/1449) |
+| Implementing PR | [#1442](https://github.com/bajutsu-e2e/bajutsu/pull/1442), [#1445](https://github.com/bajutsu-e2e/bajutsu/pull/1445), [#1449](https://github.com/bajutsu-e2e/bajutsu/pull/1449), [#PENDING](https://github.com/bajutsu-e2e/bajutsu/pull/PENDING) |
 | Topic | Driver & backend architecture |
 <!-- /BE-METADATA -->
 
@@ -202,11 +202,12 @@ rather than fix it.
 - [x] Unit 4 — `GET /source?since=<mark>` blocks on the resident reader until an accessibility event
       postdates the requested mark (staleness), then a bounded settle closes tearing before it answers.
       The mark replaces the two-dump barrier's freshness role; the settle keeps its wholeness role.
-- [ ] Unit 5 — deterministic and conformance coverage for the barrier. Deterministic coverage landed
-      with the host-side barrier; the conformance suite (BE-0114) check waits on the marked-read
-      contract (Unit 3).
-- [ ] Unit 6 — read contract documented in `docs/architecture.md` and `docs/drivers.md`, both
-      languages. The budget-barrier contract is documented; the read mark is added with Unit 3.
+- [x] Unit 5 — deterministic and conformance coverage for the barrier. Deterministic coverage landed
+      with the host-side barrier; the conformance suite (BE-0114) now adds a marked-read contract check —
+      a `ReadOrderProvider` backend confirms a read postdates a content-moving gesture, and a synchronous
+      backend is exempt (skipped).
+- [x] Unit 6 — read contract documented in `docs/architecture.md` and `docs/drivers.md`, both
+      languages, with the read mark added to the already-documented budget-barrier contract.
 
 Log:
 
@@ -241,6 +242,16 @@ Log:
   lane, where the lag reproduces (it does not on an Apple-silicon emulator). The tearing settle answers
   a review question raised on the PR (the mark alone proves only that catch-up started, not that the
   tree stopped republishing).
+- 2026-08-02 — Conformance and docs slice (PR #PENDING): Units 5 and 6. The driver conformance suite
+  (BE-0114) gains a marked-read contract check — after a content-moving scroll on the scrollable
+  screen, a `ReadOrderProvider` backend must report a read that postdates the gesture; a backend that
+  cannot order reads (the synchronous backends, and the fast gate's `FakeDriver`) does not implement
+  the protocol and is skipped, so `make check` stays green while the assertion runs on the adb
+  on-device lane. `docs/architecture.md` and `docs/drivers.md`, with their Japanese mirrors, replace
+  the "read mark planned" note with the landed mark: the resident reader's `X-Bajutsu-Read-Mark`
+  header and `GET /clock` endpoint, the device-clock mark taken before an actuation, the ordering
+  requirement (`read_postdates_actuation()`), the `GET /source?since=` blocking read, and the
+  wall-clock budget surviving only for the mark-less `uiautomator dump` fallback. Status → Implemented.
 
 ## References
 

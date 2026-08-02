@@ -27,6 +27,8 @@ The invariants (grounded in the `Driver` Protocol and `drivers/base`):
   contract, not just a per-backend command test.
 * `wait_for` is a single-shot check of the current screen; the shared `wait_until` loop turns
   it into a condition wait with no fixed sleep.
+* A backend that can order its reads (`ReadOrderProvider`, BE-0332) confirms a read taken after a
+  content-moving gesture postdates that gesture; a synchronous backend cannot lag and is exempt.
 
 The text-editing and `tap_point` invariants need a real editable field on the screen, so every
 conformance screen carries one (`FIELD_ID`) alongside the readiness marker — always present, like
@@ -406,3 +408,21 @@ class DriverConformanceContract:
         driver = harness.scrollable_screen()
         with pytest.raises(base.ElementNotFound):
             scroll_to_target(driver, {"id": "conformance.scroll.absent"}, "down", None, SCROLL_MAX)
+
+    def test_a_read_postdates_a_frame_moving_gesture(self, harness: ConformanceHarness) -> None:
+        # The marked-read contract (BE-0332): a backend that can order its reads must confirm that a
+        # read taken after a gesture moving the content whole postdates that gesture — never a tree
+        # from before it. On Android the resident reader stamps each read with the device-clock time
+        # of the newest accessibility event it has seen, and the driver marks the device clock before
+        # the gesture, so the settle trusts a read only once its mark passes the actuation's — the
+        # ordering that keeps a late tree (the same one `scroll` fails on) from settling a poll. A
+        # synchronous backend cannot lag, does not implement `ReadOrderProvider`, and the contract is
+        # vacuous there, so it skips (the fast gate's `FakeDriver` with it).
+        driver = harness.scrollable_screen()
+        if not isinstance(driver, base.ReadOrderProvider):
+            pytest.skip("backend does not order reads; the marked-read contract is vacuous")
+        # A real scroll to an off-screen row moves frames wholesale — the exact case a late tree
+        # describes from before the gesture — and arms the driver's catch-up barrier.
+        scroll_to_target(driver, {"id": SCROLL_LAST_ROW}, "down", None, SCROLL_MAX)
+        driver.query()  # the read whose device mark must postdate the scroll
+        assert driver.read_postdates_actuation()
