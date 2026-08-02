@@ -212,7 +212,7 @@ Log:
   coverage, and the budget-barrier docs. Status → In progress. The device-side read mark (Units 3–4,
   Kotlin) and the conformance check remain; until the mark lands the budget is a bounded wall-clock
   ceiling on the Android lane, as the design's Unit 1 note anticipates.
-- 2026-08-02 — Read-mark slice (PR #PENDING): Unit 3. The resident Android reader observes the
+- 2026-08-02 — Read-mark slice (PR #1445): Unit 3. The resident Android reader observes the
   accessibility event stream and stamps every `GET /source` with an `X-Bajutsu-Read-Mark` header (the
   device-clock time of the newest event as of the served dump) and adds a `GET /clock` endpoint.
   `AdbDriver` takes a device-clock mark before each barrier-arming gesture and requires a read whose
