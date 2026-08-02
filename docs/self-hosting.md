@@ -609,7 +609,7 @@ still asks and simply uploads nothing.
 
 To host more than one team on one backend, declare orgs in the mounted config — each with its member
 GitHub logins and/or GitHub orgs, plus the targets it owns (see
-[configuration](configuration.md#orgs-the-multi-tenant-server-backend)):
+[configuration](configuration.md#orgs-orgs-the-multi-tenant-server-backend)):
 
 ```yaml
 orgs:
