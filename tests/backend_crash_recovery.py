@@ -1,4 +1,4 @@
-"""Infrastructure-fault recovery for the on-device driver conformance suite (BE-0334 Units 2-4).
+"""Infrastructure-fault recovery for the on-device driver conformance suite (BE-0334).
 
 The driver conformance suite (`tests/test_driver_conformance_ondevice.py`) drives a real Simulator
 through a module-scoped lease it obtains by calling `launch_driver` directly — a pytest harness, not
@@ -36,7 +36,8 @@ _logger = logging.getLogger(__name__)
 RECOVER_MARKER = "backend_crash_recovery"
 
 # Set by the makereport wrapper on a report whose exception is an infrastructure fault, carrying the
-# crash message the protocol hook logs. `None`/absent means "not a backend crash" (fail immediately).
+# crash message. `None`/absent means "not a backend crash" (fail immediately), which is all the
+# protocol hook reads it for — the message rides along for whoever surfaces it.
 _CRASH_ATTR = "_backend_crash_reason"
 
 
@@ -95,7 +96,8 @@ def _backend_lease_holder(
 def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line(
         "markers",
-        f"{RECOVER_MARKER}: on-device suite that recovers a backend crash by re-leasing (BE-0334)",
+        f"{RECOVER_MARKER}: on-device suite that recovers a Simulator infrastructure fault by "
+        "re-leasing (BE-0334)",
     )
 
 
