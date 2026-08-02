@@ -34,12 +34,20 @@ never recovers, so it fails loudly instead of passing as a reproduction.
 
 The fault is contention, the escape hatch the item allows where a naturally-timed transient cannot be
 scheduled. A dump costs seconds to start, far longer than one tab transition, so a single tap can
-never be raced — the contention is *sustained* instead: a background thread taps the tab bar
+never be raced — the contention is sustained instead: a background thread taps the tab bar
 continuously while the main thread reads, so a dump starting at any moment still lands amid ongoing
 transitions. The app is never modified and no read is faked — the driver's own `_read_source` and
 `parse_hierarchy` produce the empty tree the retry then rides over. The taps go over one `adb shell`
 held open for the whole test, not a fresh process each time, so the tapping is dense enough to keep
 the screen genuinely unsettled rather than paying an adb handshake between taps.
+
+It stops the instant the fault lands, though — the tapper watches the retry counter and returns as
+soon as it moves, even mid-`query`. The retry under test is what runs *after* the first empty read,
+and it exists to ride over a transition that is *ending*, so it has to see the screen calming, as it
+would on a device left alone. Tapping through those attempts denies the mechanism the only condition
+it can recover in, and the never-recovering empty that follows reads as a wedged accessibility bridge
+when nothing is wedged (observed: a run whose retry fired 15 times and never came back, against 6 and
+a clean recovery when it was left alone).
 
 Contention cannot be scheduled, so the loop is bounded by a wall-clock deadline and its failure is
 loud: a run that never reproduces the condition fails with that as the diagnosis rather than passing
@@ -225,6 +233,14 @@ def test_the_retry_rides_over_a_real_mid_transition_empty_tree(
     def tapper() -> None:
         cycle = 0
         while not stop.is_set():
+            # Stop the instant the fault has been injected, mid-`query` if that is when it lands.
+            # The retry under test is the thing that runs *after* the first empty read, and it is
+            # meant to ride over a transition that is ending — so it has to see the screen calming,
+            # exactly as it would on a device left alone. Tapping through those attempts instead
+            # denies the mechanism the only condition it can recover in, and the resulting
+            # never-recovering empty reads as a wedged bridge when nothing is wedged at all.
+            if driver._transient_empty_retries > before:
+                return
             x, y = taps[cycle % len(taps)]
             _tap(tap_shell, x, y)
             cycle += 1
@@ -235,10 +251,11 @@ def test_the_retry_rides_over_a_real_mid_transition_empty_tree(
     try:
         deadline = time.monotonic() + _CONTENTION_BUDGET_S
         while time.monotonic() < deadline:
-            # No readiness wait, and no assertion on this tree: under sustained contention a read
-            # legitimately lands on a torn or degenerate screen, and the retry legitimately exhausts.
-            # Whether the retry *recovers* is settled below, on the quiet screen after the tapper
-            # stops — asserting it here would fail the run for the contention it was asked to create.
+            # No readiness wait, and no assertion on this tree: under contention a read legitimately
+            # lands on a torn or degenerate screen. Whether the retry *recovers* is settled below,
+            # on the quiet screen — asserting it here would fail the run for the contention it was
+            # asked to create. The tapper stops itself the moment the first empty read lands, so the
+            # retry attempts inside this very `query` already run against a calming screen.
             tree = driver.query()
             reads += 1
             seen.add(driver._stable_key(tree))

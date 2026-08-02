@@ -110,6 +110,14 @@ Proposal altitude. The work is MECE along the units below.
   thread reads, and the loop is bounded by wall clock rather than a round count. Moving to the dump
   path is what finally reached the branch: the first run on it fired the retry (six re-reads), where
   five runs on the resident channel had never fired it once.
+- The contention stops the moment the fault lands, not when the read that caught it returns. The
+  retry under test is what runs *after* the first empty read, and it rides over a transition that is
+  *ending* — so it has to see the screen calming, as it would on a device left alone. Tapping through
+  those attempts denies the mechanism the only condition it can recover in: one run's retry fired
+  fifteen times and never came back, against six and a clean recovery when left alone, and the
+  never-recovering empty read as a wedged accessibility bridge when nothing was wedged. The tapper
+  therefore watches the retry counter and returns as soon as it moves, mid-read if that is when it
+  lands.
 - Recovery is checked by a bounded poll, not by the single read that follows the contention.
   `query`'s own retry budget (~0.75 s) answers "is this read a mid-transition blip"; whether the
   accessibility bridge survived being deliberately hammered is a different question, and one the
