@@ -14,6 +14,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 _MODULE_PATH = Path(__file__).resolve().parent.parent / "scripts" / "build_roadmap_index.py"
 _spec = importlib.util.spec_from_file_location("build_roadmap_index", _MODULE_PATH)
 assert _spec and _spec.loader
@@ -108,8 +110,6 @@ def test_bucket_derives_classification_from_status() -> None:
 
 
 def test_bucket_rejects_unknown_status() -> None:
-    import pytest
-
     with pytest.raises(ValueError, match="unknown status"):
         bri.bucket("Something else")
 
@@ -133,8 +133,6 @@ def test_duplicate_ids_flags_collisions(tmp_path: Path) -> None:
 
 def test_load_items_rejects_duplicate_ids(tmp_path: Path) -> None:
     """The loader refuses a tree with a duplicate id instead of loading two items for it."""
-    import pytest
-
     roadmap = tmp_path / "roadmaps"
     for name in ("BE-0045-foo", "BE-0045-bar"):
         (roadmap / name).mkdir(parents=True)
@@ -217,8 +215,16 @@ def test_git_dates_survives_missing_git(monkeypatch: Any) -> None:
     assert bri._git_dates([Path("x.md")]) == (None, None)
 
 
+@pytest.mark.roadmap_dates
 def test_load_items_with_dates_are_opt_in() -> None:
-    """with_dates fills created/updated as aware UTC ISO (or None); the default leaves them None."""
+    """with_dates fills created/updated as aware UTC ISO (or None); the default leaves them None.
+
+    Excluded from the default gate (``roadmap_dates`` marker): with_dates=True shells out to
+    ``git log --follow`` twice per item over the whole committed tree, which grows with the roadmap
+    and dominates the suite's wall clock. The date logic itself is covered fast by the mocked
+    ``test_git_dates_*`` above; this whole-tree integration can only regress when the loader script
+    changes, so it runs on demand via ``make test-roadmap-dates`` rather than on every PR.
+    """
     roadmap = Path(__file__).resolve().parent.parent / "roadmaps"
     for item in bri.load_items(roadmap, with_dates=True):
         for stamp in (item.created, item.updated):
