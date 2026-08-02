@@ -107,7 +107,15 @@ Proposal altitude. The work is MECE along the units below.
   back empty?" check while proving nothing. The final recovery assertion is the second guard, since a
   wedge never recovers. Because a dump costs seconds to start, far longer than one transition, the
   contention is sustained rather than raced: a background thread taps continuously while the main
-  thread reads, and the loop is bounded by wall clock rather than a round count.
+  thread reads, and the loop is bounded by wall clock rather than a round count. Moving to the dump
+  path is what finally reached the branch: the first run on it fired the retry (six re-reads), where
+  five runs on the resident channel had never fired it once.
+- Recovery is checked by a bounded poll, not by the single read that follows the contention.
+  `query`'s own retry budget (~0.75 s) answers "is this read a mid-transition blip"; whether the
+  accessibility bridge survived being deliberately hammered is a different question, and one the
+  device can legitimately take seconds to answer. A single read there failed a device that recovers a
+  moment later. The poll is a condition wait, never a fixed sleep — it returns the instant the screen
+  resolves — and a genuine wedge still fails loudly when its window expires.
 - Proving the branch fired needed the mechanism to be observable, so `CoordinateTreeDriver` now
   counts its transient-empty re-reads. Without the counter the suite could only assert that a read
   came back intact — which also holds when the contention never reproduced the condition, so a green

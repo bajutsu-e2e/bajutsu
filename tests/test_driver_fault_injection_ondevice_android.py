@@ -105,6 +105,12 @@ _CONTENTION_BUDGET_S = 90.0
 # transition is a few hundred ms), long enough that each tap still registers as its own gesture.
 _TAP_INTERVAL_S = 0.15
 
+# How long the screen has to come back after the contention stops, before an empty is called a wedge
+# rather than the transient this suite injects. Sized well above `query`'s own retry budget (~0.75s):
+# that budget answers "is this read a mid-transition blip", while this answers the different question
+# "did the bridge survive being hammered", which it can legitimately take seconds to do.
+_RECOVERY_BUDGET_S = 30.0
+
 
 @pytest.fixture(scope="module")
 def _eff() -> Effective:
@@ -215,7 +221,7 @@ def test_the_retry_rides_over_a_real_mid_transition_empty_tree(
         while time.monotonic() < deadline:
             # No readiness wait, and no assertion on this tree: under sustained contention a read
             # legitimately lands on a torn or degenerate screen, and the retry legitimately exhausts.
-            # Whether the retry *recovers* is settled once, on the quiet screen after the tapper
+            # Whether the retry *recovers* is settled below, on the quiet screen after the tapper
             # stops — asserting it here would fail the run for the contention it was asked to create.
             tree = driver.query()
             reads += 1
@@ -235,18 +241,25 @@ def test_the_retry_rides_over_a_real_mid_transition_empty_tree(
             "the screen is in flux, or the read path no longer reports one as an empty element list"
         )
 
-    # The retry fired; now prove it rides over the transient rather than merely counting it. The
-    # screen is quiet here (the tapper is stopped and joined), so a read that still cannot resolve
-    # the always-present tab bar is a tree the retry failed to recover — including the wedge case, an
-    # empty that never clears, which must never pass as a reproduction of a *transient*.
-    settled = driver.query()
-    try:
-        base.resolve_unique(settled, _ALWAYS_PRESENT)
-    except base.SelectorError as exc:
-        pytest.fail(
-            f"the retry fired ({driver._transient_empty_retries - before} re-reads) but the settled "
-            f"read on a quiet screen returned {len(settled)} elements with no unique "
-            f"{_ALWAYS_PRESENT}, so it never rode over the empty. A tree that stays empty once the "
-            f"contention stops is a wedged accessibility bridge, not the transient this suite "
-            f"injects ({exc})"
-        )
+    # The retry fired; now prove the empty was *transient* — that the screen comes back once the
+    # contention stops — rather than a wedged accessibility bridge, which must never pass as a
+    # reproduction. Polled rather than read once: `query`'s own retry budget (~0.75s) is sized for a
+    # mid-transition blip, not for the bridge catching its breath after this suite deliberately
+    # hammered it, so a single read here would fail a device that does recover a moment later. A
+    # bounded condition wait, never a fixed sleep — it returns the instant the screen resolves, and a
+    # genuine wedge still fails loudly when the window expires.
+    recovery_deadline = time.monotonic() + _RECOVERY_BUDGET_S
+    while True:
+        settled = driver.query()
+        try:
+            base.resolve_unique(settled, _ALWAYS_PRESENT)
+            break
+        except base.SelectorError as exc:
+            if time.monotonic() >= recovery_deadline:
+                pytest.fail(
+                    f"the retry fired ({driver._transient_empty_retries - before} re-reads) but the "
+                    f"screen never came back within {_RECOVERY_BUDGET_S}s of the contention "
+                    f"stopping: the last read returned {len(settled)} elements with no unique "
+                    f"{_ALWAYS_PRESENT}. An empty that outlives the contention is a wedged "
+                    f"accessibility bridge, not the transient this suite injects ({exc})"
+                )
