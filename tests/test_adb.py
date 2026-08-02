@@ -1270,6 +1270,47 @@ def test_pinch_arms_the_catch_up_wait_like_a_pan() -> None:
     assert driver._catchup is not None
 
 
+def test_tap_arms_the_catch_up_wait_like_a_pan() -> None:
+    # A tap can change the layout — open a menu, expand a row, advance a stepper — just as a pan moves
+    # it, so a read taken right after can still describe the pre-tap screen. Left unarmed, the next
+    # actuator's `_settle` accepts that stale tree and resolves against pre-tap frames — the `gestures`
+    # long-press flake this closes (BE-0332 Unit 2). The tree here never changes, so the barrier stays
+    # open; the point is only that a tap arms one at all, as the pan actuators already do.
+    driver = AdbDriver("U", run=_root_touch_run([]))
+    driver.tap({"id": "stable_refresh"})
+    assert driver._catchup is not None
+
+
+def test_long_press_arms_the_catch_up_wait_like_a_pan() -> None:
+    # A long press is a center-resolving actuator too, so a following `_settle` must postdate it.
+    driver = AdbDriver("U", run=_root_touch_run([]))
+    driver.long_press({"id": "stable_refresh"}, 0.5)
+    assert driver._catchup is not None
+
+
+def test_double_tap_arms_the_catch_up_wait_like_a_pan() -> None:
+    driver = AdbDriver("U", run=_root_touch_run([]))
+    driver.double_tap({"id": "stable_refresh"})
+    assert driver._catchup is not None
+
+
+def test_tap_then_long_press_resolves_against_the_published_tree(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # End to end: a tap moves the content, the next reads still describe the pre-tap screen, and only a
+    # later read publishes the new frames. The long press that follows must aim at the published
+    # centre, not the pre-tap one — the same guarantee a pan already has, now for a tap (BE-0332 Unit
+    # 2). stable.submit is [0,200][200,300] before, so centre y 250; after the -73 pan, centre y 177.
+    clock = _Clock()
+    monkeypatch.setattr(adb_driver_mod, "time", clock)
+    run, calls = _capturing_run([FIXTURE, FIXTURE, FIXTURE, FIXTURE, _scrolled(_SCROLLED_BY)])
+    driver = AdbDriver("U", run=run)
+    driver.query()  # the tree the tap was aimed at
+    driver.tap({"id": "stable_refresh"})
+    driver.long_press({"id": "stable.submit"}, 0.7)
+    assert _long_press_target(calls) == (100.0, 177.0)
+
+
 def test_every_actuator_invalidates_the_cached_tree() -> None:
     # The guard for `_act`: an actuator that keeps using `_run` would leave the cached projection
     # marked current, and the next pan would inherit a baseline predating this actuation.
@@ -1329,20 +1370,27 @@ def test_catch_up_gives_up_loudly_at_the_lag_budget_when_the_pan_changed_nothing
     # one: asserting the lag alone would point an investigator at a bug that never happened. A pan at
     # the end of the content hits this on every `_scroll_into_view` retry, so it is routine, not exotic.
     assert "read lag" in caplog.text
-    assert "never published" in caplog.text and "moved nothing" in caplog.text
+    # The message names the actuator neutrally ("the last gesture" / "moved no frame") because
+    # BE-0332 arms this barrier for taps too, not only pans — so it must not misattribute a tap to a pan.
+    assert "never published" in caplog.text and "moved no frame" in caplog.text
 
 
-def test_only_a_pan_arms_the_catch_up_wait(monkeypatch: pytest.MonkeyPatch) -> None:
-    # The budget is scoped to the gestures that move content. A tap resolves a coordinate and presses;
-    # it does not scroll, so it must not make the next resolve wait for a change that will never come.
+def test_a_non_resolving_actuator_does_not_arm_the_catch_up_wait(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The barrier postdates a *resolved* target's layout (BE-0332 Unit 2), so it is scoped to the
+    # actuators that resolve a coordinate from the tree. `tap_point` takes raw coordinates and `back`
+    # has no target at all, so neither arms — that waits for the resident reader's read mark, which
+    # postdates *every* actuation (BE-0332 Unit 3). Arming here would only steal a following pan's
+    # fresh baseline. The center-resolving taps that *do* arm are covered by the `_arms_` tests above.
     clock = _Clock()
     monkeypatch.setattr(adb_driver_mod, "time", clock)
     run, _ = _capturing_run([FIXTURE])
     driver = AdbDriver("U", run=run)
     driver.query()
-    driver.tap({"id": "stable.submit"})
+    driver.tap_point((10, 10))
     assert driver._catchup is None
-    driver.long_press({"id": "stable.submit"}, 0.7)
+    driver.back()
     assert driver._catchup is None
 
 

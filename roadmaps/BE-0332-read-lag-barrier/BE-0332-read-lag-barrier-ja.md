@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0332](BE-0332-read-lag-barrier-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0332") |
+| 実装 PR | [#1442](https://github.com/bajutsu-e2e/bajutsu/pull/1442) |
 | トピック | ドライバとバックエンドのアーキテクチャ |
 <!-- /BE-METADATA -->
 
@@ -192,12 +193,25 @@ Mutually Exclusive, Collectively Exhaustive（`MECE`）な作業単位は、次�
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] 作業単位 1 — `_settle_extract_read` に操作を基準とした歯止めを入れる。
-- [ ] 作業単位 2 — `AdbDriver._settle` に同じ歯止めを入れる。
+- [x] 作業単位 1 — `_settle_extract_read` に操作を基準とした歯止めを入れる。
+- [x] 作業単位 2 — `AdbDriver._settle` に同じ歯止めを入れる。座標を解決する `tap` / `long_press` /
+      `double_tap` に既存の pan 追いつき待ちを張ることで実現。
 - [ ] 作業単位 3 — Android の常駐リーダーが読み取りマークを発行し、`AdbDriver` がそれを要求する。
 - [ ] 作業単位 4 — `stableHierarchy` が 2 回の一致ではなくマークつきの読み取りを返す。
-- [ ] 作業単位 5 — 歯止めを決定的なテストと適合スイートで覆う。
+- [ ] 作業単位 5 — 歯止めを決定的なテストと適合スイートで覆う。決定的なテストはホスト側の歯止めと
+      ともに着地。適合スイート（BE-0114）の確認はマークつき読み取りの契約（作業単位 3）を待つ。
 - [ ] 作業単位 6 — 読み取りの契約を `docs/architecture.md` と `docs/drivers.md` に両言語で記述する。
+      予算による歯止めの契約は記述済み。読み取りマークは作業単位 3 で書き加える。
+
+ログ:
+
+- 2026-08-02 — ホスト側の歯止めスライス（PR #1442）: 作業単位 1（`_settle_extract_read` が、
+  操作するステップのアクチュエーションより `read_lag()` のぶんだけ後になるまで待つ）、作業単位 2
+  （`tap` / `long_press` / `double_tap` が既存の pan 追いつき待ちを張り、続く `_settle` が公開済みの
+  ツリーに対して解決する）、決定的なテスト、予算による歯止めの文書化。状態を実装中へ。デバイス側の
+  読み取りマーク（作業単位 3〜4、Kotlin）と適合スイートの確認は残ります。マークが着地するまで、予算は
+  Android レーンで有界な実時間の上限として働きます。これは詳細設計の作業単位 1 の注記が想定している
+  とおりです。
 
 ## 参考
 
