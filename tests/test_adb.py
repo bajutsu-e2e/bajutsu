@@ -1152,6 +1152,26 @@ def test_settle_rides_out_the_torn_read_the_catch_up_passes_through(
     assert _by_id(tree, "stable.submit")["frame"] == (0.0, 127.0, 200.0, 100.0)
 
 
+def test_settled_query_is_the_settle_a_directional_swipe_anchors_on(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A directional `swipe` / `drag` is the one selector-addressed actuation whose target is resolved
+    # above the driver: `_directional_endpoints` computes two coordinates and hands the driver those,
+    # not the selector, so the driver's own `_settle` never sees the anchor. Reading through a bare
+    # `query()` there anchored the second of two consecutive swipes on the first one's pre-pan frames
+    # — the same lag the long-press regression above pins, reached by the one door the catch-up
+    # barrier did not cover. `settled_query` is the seam that closes it, so it must wait the barrier
+    # out exactly as `_settle` does rather than return the stale tree.
+    clock = _Clock()
+    monkeypatch.setattr(adb_driver_mod, "time", clock)
+    run, _ = _capturing_run([FIXTURE, FIXTURE, FIXTURE, _scrolled(_SCROLLED_BY)])
+    driver = AdbDriver("U", run=run)
+    assert isinstance(driver, base.SettledReadProvider)
+    driver.query()
+    driver.swipe((10, 300), (10, 100))
+    assert _by_id(driver.settled_query(), "stable.submit")["frame"] == (0.0, 127.0, 200.0, 100.0)
+
+
 def test_reads_the_runner_already_takes_close_the_barrier_for_free(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

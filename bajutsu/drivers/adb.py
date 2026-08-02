@@ -591,6 +591,15 @@ class AdbDriver(CoordinateTreeDriver):
             time.sleep(self._SETTLE_POLL_S)
             self.query()  # `_advance_catchup` closes the barrier once the tree has caught up
 
+    def settled_query(self) -> list[base.Element]:
+        """A tree fit to resolve an actuation target from (`base.SettledReadProvider`).
+
+        The driver's own actuators reach `_settle` through `_center`; a directional `swipe` and a
+        `drag` resolve their anchor above the driver, so without this seam they would anchor on a
+        bare `query()` — the one selector-addressed actuation the catch-up barrier never covered.
+        """
+        return self._settle()
+
     def _settle(self) -> list[base.Element]:
         """Wait until the tree's identifier-frame projection stops changing, or give up.
 

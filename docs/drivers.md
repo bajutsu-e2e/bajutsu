@@ -188,6 +188,12 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
   target-from-a-layout to postdate. That budget is the same number the `scroll` loop uses to confirm an
   end of content before failing (`ReadLagProvider`, BE-0326 / BE-0332; see
   [architecture](architecture.md)) — one publish lag, so one budget, spent across those paths.
+  A directional `swipe` and a `drag` are the one exception to *where* the resolve happens: their
+  endpoints are computed above the driver, from the anchor element the step names, so the driver
+  receives two coordinates rather than a selector and cannot settle the tree itself. A backend that
+  needs the settle exposes it (`SettledReadProvider`), and the handler takes that read in place of a
+  bare one; a backend that does not implement the protocol keeps its single read. Without that seam,
+  two consecutive directional swipes anchor the second one on the first one's pre-pan frames.
   Three conditions make that test mean "caught up" rather than merely "different". The hold matters
   because the catch-up is not atomic: Android republishes node bounds one node at a time, so a read
   landing mid-catch-up carries some new frames and some old, and two fast reads can both land inside
