@@ -952,7 +952,8 @@ class AdbDriver(CoordinateTreeDriver):
                 el = self._scroll_into_view(sel, tree)
             identity = self._identities.get(id(el))
             if identity is None:
-                # a tree this driver did not parse (a seeded read); coordinates it is
+                # A seeded read: this driver never parsed that tree, so it recorded no identity to
+                # address the element by. Nothing to send, so the coordinate path takes the gesture.
                 logger.debug(
                     "device %s: %r came from an unparsed tree; coordinates it is", kind, sel
                 )

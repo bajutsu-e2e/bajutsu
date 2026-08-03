@@ -161,15 +161,25 @@ class ResidentServerTest {
      * as [respondSource] does, so the bounds read here postdate the gesture the host is following up on.
      */
     private fun respondAct(out: OutputStream, device: UiDevice, readMark: ReadMark, target: String) {
+        // Validated, never defaulted. A missing or malformed field here would otherwise pick an
+        // element by assumption — `index` 0 of `count` 1 — which is exactly the guess this endpoint
+        // exists to refuse. An identity field may legitimately be empty (a node with no text), so
+        // presence is required and emptiness is not.
         val kind = paramOf(target, "kind") ?: return respond(out, BAD_REQUEST, TEXT, "no kind\n".bytes())
-        val index = paramOf(target, "index")?.toIntOrNull() ?: 0
-        val count = paramOf(target, "count")?.toIntOrNull() ?: 1
+        val index = paramOf(target, "index")?.toIntOrNull()
+            ?: return respond(out, BAD_REQUEST, TEXT, "no usable index\n".bytes())
+        val count = paramOf(target, "count")?.toIntOrNull()
+            ?: return respond(out, BAD_REQUEST, TEXT, "no usable count\n".bytes())
+        val want = IDENTITY_FIELDS.map {
+            paramOf(target, it.first)
+                ?: return respond(out, BAD_REQUEST, TEXT, "no ${it.first}\n".bytes())
+        }
         device.waitForIdle()
         sinceOf(target)?.let {
             readMark.awaitPostdate(it, POSTDATE_BUDGET_MS)
             device.waitForIdle()
         }
-        val matches = matchingBounds(settledDump(device), target)
+        val matches = matchingBounds(settledDump(device), want)
         if (matches.size != count || index !in matches.indices) {
             // Loudly stale, never a guess: the screen the host resolved on is not the screen here, so
             // acting on `matches[index]` would be acting on a different element. The host re-resolves.
@@ -243,13 +253,12 @@ class ResidentServerTest {
     }
 
     /**
-     * Every node in `xml` whose four identity fields equal the ones `target` carries, in document
-     * order, as `[left, top, right, bottom]`.
+     * Every node in `xml` whose four identity fields equal `want`, in document order, as
+     * `[left, top, right, bottom]`.
      *
      * Bounds come from this dump, not from the host's, so the gesture lands where the element is now.
      */
-    private fun matchingBounds(xml: ByteArray, target: String): List<IntArray> {
-        val want = IDENTITY_FIELDS.map { paramOf(target, it.first) ?: "" }
+    private fun matchingBounds(xml: ByteArray, want: List<String>): List<IntArray> {
         val found = mutableListOf<IntArray>()
         val parser = Xml.newPullParser()
         parser.setInput(xml.inputStream(), "UTF-8")

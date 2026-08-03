@@ -245,6 +245,7 @@ e2e-golden: compose-build
 # proven to yield the same element tree. Not part of `make check`: it needs a booted AVD, so
 # android-e2e.yml drives it right after `e2e-golden` in the same `golden (adb)` job's AVD session.
 e2e-fallback: compose-build
+	$(ANR_QUIET)
 	$(TOUCH_DEBUG_OFF)
 	cd $(ROOT) && BAJUTSU_ADB_RESIDENT=0 $(E2E_ENV) uv run bajutsu run \
 		--scenario demos/showcase/scenarios/golden/golden.yaml \
