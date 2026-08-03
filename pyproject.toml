@@ -51,7 +51,7 @@ server = ["fastapi>=0.110", "uvicorn>=0.27", "boto3>=1.34"]
 # SQLAlchemy `Repository` seam + Alembic migrations + the Postgres driver (BE-0015 7a), plus
 # `cryptography` for the encrypted-at-rest operator secret store (BE-0136). Imported only when a
 # database is wired, never on the default path (the import guard locks this).
-db = ["sqlalchemy>=2.0", "alembic>=1.13", "psycopg[binary]>=3.1", "cryptography>=42.0"]
+db = ["sqlalchemy>=2.0", "alembic>=1.13", "psycopg[binary]>=3.1", "cryptography>=50.0.0"]
 # GitHub OAuth login for the hosted control plane (BE-0015 7b-2). Imported only when OAuth is
 # configured (BAJUTSU_OAUTH_GITHUB_*), never on the default path (the import guard locks this).
 oauth = ["authlib>=1.3", "httpx>=0.27"]
@@ -61,7 +61,7 @@ schema = ["jsonschema>=4.0"]
 # GitHub App installation-token auth for the private-repo config source (BE-0224): `cryptography`
 # signs the RS256 App JWT. Imported lazily (`bajutsu.github.app`), only when App credentials are
 # configured — a personal-access-token deployment never loads it, never on the default path.
-githubapp = ["cryptography>=42.0"]
+githubapp = ["cryptography>=50.0.0"]
 # Evidence upload to object storage via a single URI (BE-0110). The SDK is imported lazily, only
 # when `run --evidence-store` (or serve) actually uploads — never on the default path. `s3` covers
 # S3-compatible targets (AWS / R2 / MinIO), `gcs` covers Google Cloud Storage, `cloud` is both.
