@@ -592,6 +592,21 @@ def test_act_raises_on_a_server_without_the_endpoint() -> None:
         server.shutdown()
 
 
+def test_act_raises_when_the_platform_rejected_the_injection() -> None:
+    # The Kotlin endpoint answers a non-{200,404,409} status when the injector itself
+    # (UiDevice.click / .swipe / injectInputEvent) reports the touch never reached the screen — never
+    # a silent 200. That must surface as a channel fault so `_device_act` degrades to the coordinate
+    # path for this one gesture, exactly as any other resident-side fault does; nothing was injected,
+    # so the coordinate path is not a second touch.
+    port, server = _serve_once()
+    _SourceHandler.act_status = 500
+    try:
+        with pytest.raises(AdbResidentError, match="500"):
+            adb_resident.act(port, _act_request())
+    finally:
+        server.shutdown()
+
+
 def test_act_separates_a_reply_lost_after_the_send_from_one_never_sent() -> None:
     # The two socket faults mean opposite things, because the device injects before it answers. A
     # connect that never happened injected nothing and is safe to retry on coordinates; a reply lost

@@ -188,7 +188,13 @@ class ResidentServerTest {
         val bounds = matches[index]
         val x = (bounds[0] + bounds[2]) / 2
         val y = (bounds[1] + bounds[3]) / 2
-        when (kind) {
+        // Each injector's boolean return is the only signal that the touch actually reached the
+        // screen — `UiDevice.click` / `.swipe` and `UiAutomation.injectInputEvent` (via
+        // [injectDoubleTap]) all report `false` when the platform rejects the event. Answering
+        // `200 OK` regardless would let a rejected injection reach the host as a landed gesture: no
+        // step re-resolves or degrades, and only the scenario's own later assertion could ever catch
+        // it. A non-200 here surfaces the rejection immediately (see [INJECT_FAILED_STATUS]).
+        val landed = when (kind) {
             "tap" -> device.click(x, y)
             "longPress" -> {
                 // `UiDevice` has no press-and-hold, so a zero-length swipe over the requested duration
@@ -199,6 +205,9 @@ class ResidentServerTest {
             }
             "doubleTap" -> injectDoubleTap(x, y)
             else -> return respond(out, BAD_REQUEST, TEXT, "unknown kind $kind\n".bytes())
+        }
+        if (!landed) {
+            return respond(out, INJECT_FAILED_STATUS, TEXT, "$kind rejected by the platform\n".bytes())
         }
         respond(out, "200 OK", TEXT, "ok\n".bytes())
     }
@@ -218,19 +227,24 @@ class ResidentServerTest {
      * condition — nothing is being polled — it is the gesture's own duration, the same way a long
      * press holds for the duration it was asked for; it keeps the real interval and the stamped one
      * honest for a detector that consults either.
+     *
+     * Returns true only when both contacts were accepted by the platform; see [respondAct]'s `landed`
+     * check.
      */
-    private fun injectDoubleTap(x: Int, y: Int) {
+    private fun injectDoubleTap(x: Int, y: Int): Boolean {
         val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
         val first = SystemClock.uptimeMillis()
-        injectTap(automation, first, x, y)
+        val firstOk = injectTap(automation, first, x, y)
         SystemClock.sleep(TAP_HOLD_MS + INTER_TAP_MS)
-        injectTap(automation, first + TAP_HOLD_MS + INTER_TAP_MS, x, y)
+        val secondOk = injectTap(automation, first + TAP_HOLD_MS + INTER_TAP_MS, x, y)
+        return firstOk && secondOk
     }
 
     /** One down/up contact at `x`,`y`, stamped from `downTime` and held for [TAP_HOLD_MS]. */
-    private fun injectTap(automation: UiAutomation, downTime: Long, x: Int, y: Int) {
-        inject(automation, MotionEvent.ACTION_DOWN, downTime, downTime, x, y)
-        inject(automation, MotionEvent.ACTION_UP, downTime, downTime + TAP_HOLD_MS, x, y)
+    private fun injectTap(automation: UiAutomation, downTime: Long, x: Int, y: Int): Boolean {
+        val down = inject(automation, MotionEvent.ACTION_DOWN, downTime, downTime, x, y)
+        val up = inject(automation, MotionEvent.ACTION_UP, downTime, downTime + TAP_HOLD_MS, x, y)
+        return down && up
     }
 
     private fun inject(
@@ -240,10 +254,10 @@ class ResidentServerTest {
         eventTime: Long,
         x: Int,
         y: Int,
-    ) {
+    ): Boolean {
         val event = MotionEvent.obtain(downTime, eventTime, action, x.toFloat(), y.toFloat(), 0)
         event.source = InputDevice.SOURCE_TOUCHSCREEN
-        try {
+        return try {
             // Synchronous: the call returns once the event has been dispatched, so the second contact
             // cannot overtake the first and invert the pair the detector is trying to read.
             automation.injectInputEvent(event, true)
@@ -435,6 +449,14 @@ class ResidentServerTest {
         // nothing is missing, the state simply conflicts — and the host answers by re-resolving, as the
         // XCUITest channel does for its own stale handles (BE-0289).
         const val STALE_STATUS = "409 Conflict"
+
+        // The platform rejected the injection outright (`UiDevice.click` / `.swipe` /
+        // `UiAutomation.injectInputEvent` returned false) — the gesture never reached the screen, so it
+        // is safe to answer loudly rather than claim `200 OK` on a touch that did not land. The host's
+        // `adb_resident.act` treats any non-{200,404,409} status as `AdbResidentError`, which degrades
+        // this one gesture to the coordinate path without latching the channel — exactly right here,
+        // since nothing was injected and a coordinate retry is not a second touch.
+        const val INJECT_FAILED_STATUS = "500 Internal Server Error"
 
         // The element identity the host addresses a gesture by, as (query parameter, XML attribute).
         // Four fields, none of them a coordinate: the host picks the element, and this names it again
