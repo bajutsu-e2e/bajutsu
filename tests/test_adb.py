@@ -1874,3 +1874,23 @@ def test_a_reply_lost_after_the_request_went_out_does_not_actuate_twice() -> Non
     driver.tap({"id": "stable.submit"})
     assert len(seen) == 1  # no re-resolve loop either: the gesture is not repeated on the device
     assert not [c for c in calls if "input" in c]  # and never on the coordinate path
+
+
+def test_uninstall_precedes_a_showcase_install() -> None:
+    # `install -r` refuses an APK whose signing key differs from the one already there, and where it
+    # succeeds it keeps components the new build renamed — leaving the device running a mix of two
+    # builds. Removing first makes the install describe the APK alone.
+    calls: list[list[str]] = []
+    adb.Env("U", run=lambda a: calls.append(a) or "").uninstall("com.example.app")
+    assert calls[-1] == adb.uninstall_cmd("U", "com.example.app")
+
+
+def test_uninstalling_something_absent_is_not_a_failure() -> None:
+    # The ordinary case on a fresh emulator, where `adb uninstall` exits non-zero. Treating that as a
+    # failure would break every first install on a clean device.
+    import subprocess
+
+    def run(_args: list[str]) -> str:
+        raise subprocess.CalledProcessError(1, "adb", stderr="Failure [DELETE_FAILED]")
+
+    adb.Env("U", run=run).uninstall("com.example.absent")  # does not raise

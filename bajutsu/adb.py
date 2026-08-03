@@ -509,6 +509,10 @@ def install_cmd(serial: str, apk_path: str) -> list[str]:
     return _adb(serial, "install", "-r", "-t", apk_path)
 
 
+def uninstall_cmd(serial: str, package: str) -> list[str]:
+    return _adb(serial, "uninstall", package)
+
+
 # --- resident UI Automator server (BE-0245) ---
 
 # The resident server's fixed loopback port on the device (matches
@@ -523,6 +527,9 @@ RESIDENT_TEST_METHOD = "dev.bajutsu.android.server.ResidentServerTest#serve"
 # The server's own package (its applicationId); force-stopped at lease end to kill any device-side
 # instrumentation the local adb client's exit did not.
 RESIDENT_SERVER_PACKAGE = "dev.bajutsu.android.server"
+# The instrumentation APK's own package: the server package plus Android's conventional `.test`
+# suffix. Named here so the resident channel can clear both before it installs either.
+RESIDENT_TEST_PACKAGE = f"{RESIDENT_SERVER_PACKAGE}.test"
 
 
 def forward_cmd(serial: str, device_port: int = RESIDENT_DEVICE_PORT) -> list[str]:
@@ -788,6 +795,17 @@ class Env:
 
     def install(self, apk_path: str) -> None:
         self._run(install_cmd(self.serial, apk_path))
+
+    def uninstall(self, package: str) -> None:
+        """Remove `package` if it is there, so the install that follows describes the APK alone.
+
+        A leftover install is not neutral: `install -r` refuses one whose signature differs, and where
+        it succeeds it keeps components the new build renamed or dropped, leaving the device running a
+        mix of two builds. Absent is the ordinary case on a fresh emulator, and `adb uninstall` fails
+        for it, so the failure is suppressed the way `force_stop` suppresses its own.
+        """
+        with contextlib.suppress(subprocess.CalledProcessError, OSError):
+            self._run(uninstall_cmd(self.serial, package))
 
     def force_stop(self, package: str) -> None:
         with contextlib.suppress(subprocess.CalledProcessError):

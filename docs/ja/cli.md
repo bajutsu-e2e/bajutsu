@@ -759,5 +759,6 @@ BAJUTSU_LOG_LEVEL=DEBUG uv run bajutsu run --scenario …
 伏せるシンクを持っています（BE-0055）。その横に伏せない出力をもう 1 つ足さないよう、CLI は `serve` の
 ログ設定に手を触れません。
 
-実装は [`bajutsu/diagnostics.py`](../../bajutsu/diagnostics.py) です。Android の e2e レーンは既定で
-有効にしています（`demos/showcase/android/Makefile` の `E2E_LOG_LEVEL`）。
+実装は [`bajutsu/diagnostics.py`](../../bajutsu/diagnostics.py) です。Android の e2e レーンは既定を
+`WARNING` にしています。読み取りごとに 1 行出るとレーンが目に見えて長くなるためです。1 回だけ上げる
+には `make -C demos/showcase/android e2e E2E_LOG_LEVEL=DEBUG` を使います。

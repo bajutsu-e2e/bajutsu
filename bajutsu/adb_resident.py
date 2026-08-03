@@ -333,6 +333,13 @@ class ResidentServer:
                 "`make -C BajutsuAndroidUIAutomatorServer build`"
             )
         try:
+            # Clear both first. A device carrying an older pair fails `install -r` outright when the
+            # signing key differs, and where it succeeds it can leave the instrumentation and the
+            # server disagreeing about which endpoints exist — a `/act` that 404s against a server
+            # that has one, which is the confusing half of this channel's failure modes.
+            for package in (adb.RESIDENT_TEST_PACKAGE, adb.RESIDENT_SERVER_PACKAGE):
+                with contextlib.suppress(subprocess.CalledProcessError, OSError):
+                    self._run(adb.uninstall_cmd(self._serial, package))
             self._run(adb.install_cmd(self._serial, str(self._server_apk)))
             self._run(adb.install_cmd(self._serial, str(self._test_apk)))
             self._proc = self._spawn(adb.instrument_cmd(self._serial))

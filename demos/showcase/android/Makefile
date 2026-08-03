@@ -98,11 +98,12 @@ E2E_SCENARIOS := smoke firstlook navigation search data_driven relaunch system c
 # it is satisfied, so this is a safe upper bound, not a fixed delay (bajutsu/orchestrator/waits.py).
 E2E_WAIT_FLOOR ?= 15
 
-# Debug on for this lane, and only this lane. Its failures are timing ones — which tree an actuator
-# resolved against, and whether the read had caught up — and that evidence is written at debug level.
-# Four investigations of the same flake stalled for want of it, each ending in a re-run rather than a
-# cause, so the log volume is the cheaper half of that trade. Override to WARNING for a quiet run.
-E2E_LOG_LEVEL ?= DEBUG
+# Quiet by default. Debug here writes a line per read, which measurably lengthened the lane, and the
+# investigation it was added for is over: it named the double tap's interval as the cause, and the two
+# things worth hearing about — the read-lag barrier spending its budget, and the settle poll falling
+# through its deadline — are warnings, so they still print. Raise it for the next timing puzzle:
+# `make -C demos/showcase/android e2e E2E_LOG_LEVEL=DEBUG`.
+E2E_LOG_LEVEL ?= WARNING
 E2E_ENV = BAJUTSU_MIN_WAIT_TIMEOUT=$(E2E_WAIT_FLOOR) BAJUTSU_LOG_LEVEL=$(E2E_LOG_LEVEL)
 
 # The second Android UI toolkit (BE-0221): Compose surfaces the dotted SPEC id verbatim, Views maps

@@ -973,5 +973,6 @@ evidence they acted on, so a lane failure can be diagnosed from its log rather t
 secret-redacting sink on the root logger (BE-0055), so the CLI leaves its logging alone rather than
 adding a second, unredacted one beside it.
 
-Implementation: [`bajutsu/diagnostics.py`](../bajutsu/diagnostics.py). The Android e2e lane turns it
-on by default (`E2E_LOG_LEVEL` in `demos/showcase/android/Makefile`).
+Implementation: [`bajutsu/diagnostics.py`](../bajutsu/diagnostics.py). The Android e2e lane leaves it
+at `WARNING` — a line per read lengthens the lane — and exposes `E2E_LOG_LEVEL` to raise it for one
+run: `make -C demos/showcase/android e2e E2E_LOG_LEVEL=DEBUG`.

@@ -116,6 +116,7 @@ class AndroidEnvironment:
                     raise adb.DeviceError(
                         f"appPath not found: {android.app_path} (build the app first)"
                     )
+                e.uninstall(android.package)  # never install over a leftover build
                 e.install(android.app_path)
             # `pm clear` is the clean-state reset (fresh app data); skip it only on an explicit
             # `overwrite` reinstall with no erase, matching iOS's "keep data" overwrite path.

@@ -304,10 +304,15 @@ def test_start_installs_forwards_and_returns_a_working_fetch(tmp_path: Path) -> 
         test_apk=test_apk,
     )
     channel = srv.start()
-    # Both APKs installed, the blocking instrumentation spawned, a host port forwarded.
-    assert calls[0] == adb.install_cmd("U", str(server_apk))
-    assert calls[1] == adb.install_cmd("U", str(test_apk))
-    assert calls[2] == adb.forward_cmd("U")
+    # Any earlier pair removed first — an older install can differ in signing key, which fails
+    # `install -r`, or in which endpoints it serves, which is the confusing half of this channel's
+    # failure modes: a `/act` that 404s against a server built with one. Then both APKs installed,
+    # the blocking instrumentation spawned, a host port forwarded.
+    assert calls[0] == adb.uninstall_cmd("U", adb.RESIDENT_TEST_PACKAGE)
+    assert calls[1] == adb.uninstall_cmd("U", adb.RESIDENT_SERVER_PACKAGE)
+    assert calls[2] == adb.install_cmd("U", str(server_apk))
+    assert calls[3] == adb.install_cmd("U", str(test_apk))
+    assert calls[4] == adb.forward_cmd("U")
     # The returned fetch reads over the channel and narrows to the active window (no SystemUI window).
     assert parse_hierarchy(channel.fetch(None).text) == parse_hierarchy(_APP_ONLY)
 
