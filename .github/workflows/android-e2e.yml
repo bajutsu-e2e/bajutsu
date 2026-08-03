@@ -58,6 +58,14 @@ name: Android E2E (emulator)
 
 on:
   workflow_dispatch:
+    inputs:
+      poll_cpuinfo:
+        description: >-
+          Poll `dumpsys cpuinfo` during smoke (adb) (BE-XXXX-adb-device-side-actuation flake hunting
+          only). Off by default: it adds continuous adb traffic and host load to the very lane whose
+          CPU contention it measures, an observer effect that has no place in every PR's run.
+        type: boolean
+        default: false
   # Trigger on every PR so the `E2E (android)` gate job always reports a status (a required check
   # that never runs stays pending and blocks merges). The metered KVM jobs themselves are path-gated
   # by the `changes` job below — a PR that can't affect the adb path skips them and the gate passes.
@@ -173,6 +181,12 @@ jobs:
       # emulator up. A ✗ fails the step and this gating job before the scenarios run.
       - name: Run the core scenarios (adb)
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
+        env:
+          # Only ever "true" on a deliberate `workflow_dispatch` with the input set — `pull_request`
+          # and `merge_group` events carry no `inputs`, so this is unset (falsy) there. Read as an
+          # env var rather than interpolated into `script` directly, so the value crosses the
+          # expression/shell boundary as data, never as YAML-into-shell text.
+          POLL_CPUINFO: ${{ github.event.inputs.poll_cpuinfo || 'false' }}
         with:
           api-level: 34
           arch: x86_64
@@ -187,22 +201,26 @@ jobs:
           # short-circuits before `make e2e` and fails the job — the drift this gate exists to catch,
           # which a two-statement script would mask by returning only `make e2e`'s exit code.
           #
-          # A background `dumpsys cpuinfo` poller runs alongside the scenarios, appending a
-          # timestamped snapshot to `runs/cpuinfo.log` every 2s, so a run that hits the gesture
-          # flakes (BE-XXXX-adb-device-side-actuation) can be checked against host CPU pressure —
+          # A background `dumpsys cpuinfo` poller can run alongside the scenarios, appending a
+          # timestamped snapshot to `runs/cpuinfo.log` every 2s, so a deliberate flake-hunting
+          # dispatch (BE-XXXX-adb-device-side-actuation) can be checked against host CPU pressure —
           # the emulator-options bump above raises the ceiling but does not prove contention was the
-          # cause. It is killed and the real exit code preserved (`rc`) so the poller never masks a
+          # cause. Gated on `POLL_CPUINFO` (off for every `pull_request`/`merge_group` run): polling
+          # every 2s is itself continuous adb traffic and host load on the very lane whose CPU
+          # contention it measures, an observer effect this workflow's regular runs should not pay.
+          # When it runs, it is killed and the real exit code preserved (`rc`) so it never masks a
           # scenario failure; the log rides on the existing "Upload run artifacts" step below since
           # it is written under `runs/`.
           script: >-
-            mkdir -p runs
-            && ( while true; do { date -u +%Y-%m-%dT%H:%M:%S.%3NZ; adb shell dumpsys cpuinfo; } >>runs/cpuinfo.log 2>&1; sleep 2; done & echo $! >/tmp/cpuinfo.pid )
+            if [ "$POLL_CPUINFO" = "true" ]; then mkdir -p runs && ( while true; do { date -u
+            +%Y-%m-%dT%H:%M:%S.%3NZ; adb shell dumpsys cpuinfo; } >>runs/cpuinfo.log 2>&1; sleep 2;
+            done & echo $! >/tmp/cpuinfo.pid ); fi
             && uv run --no-sync python scripts/assert_doctor_env.py --expect ok
             --target showcase-compose --backend android
             --config demos/showcase/showcase.config.yaml
             && make -C demos/showcase/android e2e
             ; rc=$?
-            ; kill "$(cat /tmp/cpuinfo.pid)" 2>/dev/null
+            ; if [ "$POLL_CPUINFO" = "true" ]; then kill "$(cat /tmp/cpuinfo.pid)" 2>/dev/null; fi
             ; exit $rc
 
       - name: Upload run artifacts
