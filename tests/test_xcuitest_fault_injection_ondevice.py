@@ -70,7 +70,8 @@ UDID: str = _udid
 _CONFIG_PATH = Path("demos/showcase/showcase.config.yaml")
 _TARGET = "showcase-swiftui"
 
-# The per-attempt socket timeout this suite runs the transport at, in place of the shipped 15 s.
+# The per-attempt socket timeout the transport runs at *while a fault is injected* (see
+# `shrunk_retry_budget`, which scopes it to one test), in place of the shipped 15 s.
 # Shipped, one `GET`'s worst-case retry budget is ~46.5 s, so the freeze had to hold ~51.5 s for the
 # retry loop to genuinely exhaust — and a real XCTest host stopped that long does not reliably come
 # back: two of three CI runs lost the runner outright, the frozen case failing "did not recover" and
@@ -93,9 +94,18 @@ _RELEASE_MARGIN_S = 1.5
 _RECOVERY_LOGGER = "bajutsu.xcuitest.channel"
 
 
-@pytest.fixture(scope="module", autouse=True)
-def _shrink_retry_budget() -> Iterator[None]:
-    """Run the transport at `_TEST_SOCKET_TIMEOUT_S` per attempt for this module."""
+@pytest.fixture
+def shrunk_retry_budget(driver: base.Driver) -> Iterator[None]:
+    """Run the transport at `_TEST_SOCKET_TIMEOUT_S` per attempt, for one test's fault only.
+
+    Function-scoped and depending on `driver` so the shrink starts *after* the runner is up. Held
+    module-wide and autouse — which is how this landed — it also covered `launch_driver`'s readiness
+    probe, and a cold XCTest runner answering its first `/elements` takes far longer than this
+    timeout: both tests then errored in setup, the probe's reads timing out, being classified as a
+    crash, and the recovery machinery taking the runner down before any fault was ever injected. The
+    budget only ever needed to be small for the window the freeze has to outlast; everything else in
+    the suite wants the shipped timeout.
+    """
     mp = pytest.MonkeyPatch()
     mp.setattr(xcuitest, "_SOCKET_TIMEOUT_SECONDS", _TEST_SOCKET_TIMEOUT_S)
     try:
@@ -108,7 +118,7 @@ def _freeze_hold_s() -> float:
     """How long to hold the freeze: the retry loop's worst case, plus `_RELEASE_MARGIN_S`.
 
     Read from the transport rather than restated, so re-tuning the retry loop re-tunes the fault with
-    it, and computed at call time so it sees `_shrink_retry_budget`'s override. The margin stays
+    it, and computed at call time so it sees `shrunk_retry_budget`'s override. The margin stays
     small on purpose: this suite drives one request at a time, never several concurrently, so the
     kernel's accept backlog is never full and `connect()` is always served instantly — only the
     response read actually blocks for the socket timeout, which `_retry_budget_seconds` already
@@ -186,7 +196,10 @@ def _listening_pid(port: int) -> int:
 
 
 def test_a_frozen_runner_is_recovered_and_the_call_re_issued(
-    driver: base.Driver, environment: XcuitestEnvironment, caplog: pytest.LogCaptureFixture
+    driver: base.Driver,
+    environment: XcuitestEnvironment,
+    shrunk_retry_budget: None,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     pid = _listening_pid(environment._runner_port)
     os.kill(pid, signal.SIGSTOP)
@@ -217,7 +230,7 @@ def test_a_frozen_runner_is_recovered_and_the_call_re_issued(
 
 
 def test_a_killed_runner_fails_with_a_crash_diagnosis_not_an_unrelated_timeout(
-    driver: base.Driver, environment: XcuitestEnvironment
+    driver: base.Driver, environment: XcuitestEnvironment, shrunk_retry_budget: None
 ) -> None:
     os.kill(_listening_pid(environment._runner_port), signal.SIGKILL)
     # Kill the `xcodebuild` host too, so `runner_alive` reports the process gone and recovery fails

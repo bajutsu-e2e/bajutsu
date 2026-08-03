@@ -148,6 +148,13 @@ Proposal altitude. The work is MECE along the units below.
   hangs a real socket, the retry loop still exhausts on it for real, and recovery still re-issues.
   The override is a module attribute the request path reads per call, so it moves the actual socket
   timeout, not merely the arithmetic the freeze is sized from.
+- The shrunk budget is scoped to the fault, not to the module. Held module-wide and autouse — which
+  is how it first landed — it also covered `launch_driver`'s readiness probe, and a cold XCTest
+  runner answering its first `/elements` takes far longer than a sub-second timeout: both tests
+  errored in setup, the probe's reads timing out, being classified as a crash, and the recovery
+  machinery taking the runner down before any fault was injected. The budget only ever needed to be
+  small for the window the freeze has to outlast, so the override is now a function-scoped fixture
+  that depends on `driver` and therefore starts after the runner is up.
 - Both jobs stay outside their lane's `E2E (…)` aggregator's `needs:`, so neither can block a merge
   while it proves itself (BE-0282's precedent). The synthetic-fixture suites are untouched: they
   remain the fast control-flow check, and this item adds the real-condition layer beneath them.
