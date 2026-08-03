@@ -28,6 +28,7 @@ from bajutsu import adb
 from bajutsu.drivers.adb import (
     ActFn,
     ActRequest,
+    AdbActUncertain,
     AdbActUnsupported,
     AdbResidentError,
     ClockFetch,
@@ -161,9 +162,23 @@ def act(host_port: int, request: ActRequest, *, timeout: float = 10.0) -> bool:
     # and a press-and-hold then holds for its own duration on top of that.
     conn = http.client.HTTPConnection("127.0.0.1", host_port, timeout=timeout)
     try:
-        conn.request("POST", "/act?" + urllib.parse.urlencode(fields))
-        resp = conn.getresponse()
-        body = resp.read().decode("utf-8", "replace").strip()
+        try:
+            conn.request("POST", "/act?" + urllib.parse.urlencode(fields))
+        except (OSError, http.client.HTTPException) as exc:
+            # Nothing left the host, so nothing was injected: the caller may safely take the
+            # coordinate path. This is the only fault where that is safe.
+            raise AdbResidentError(
+                f"resident actuation unreachable on port {host_port}: {exc}"
+            ) from exc
+        try:
+            resp = conn.getresponse()
+            body = resp.read().decode("utf-8", "replace").strip()
+        except (OSError, http.client.HTTPException) as exc:
+            # The request went out, and the device injects before it answers, so the gesture may
+            # already have happened. Re-actuating on the coordinate path would be a second touch.
+            raise AdbActUncertain(
+                f"resident actuation was sent but its reply was lost on port {host_port}: {exc}"
+            ) from exc
         if resp.status == _STALE_STATUS:
             logger.debug("resident actuation reported the target moved: %s", body)
             return False
@@ -172,10 +187,6 @@ def act(host_port: int, request: ActRequest, *, timeout: float = 10.0) -> bool:
         if resp.status != 200:
             raise AdbResidentError(f"resident actuation returned HTTP {resp.status}: {body}")
         return True
-    except (OSError, http.client.HTTPException) as exc:
-        raise AdbResidentError(
-            f"resident actuation unreachable on port {host_port}: {exc}"
-        ) from exc
     finally:
         conn.close()
 

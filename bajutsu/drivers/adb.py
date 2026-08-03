@@ -130,6 +130,19 @@ class AdbActUnsupported(AdbResidentError):
     """
 
 
+class AdbActUncertain(AdbResidentError):
+    """The actuation request reached the device, and whether it applied is unknown.
+
+    The device injects the gesture *before* it writes its response, so a socket lost after the request
+    went out cannot be read as "nothing happened". Falling back to a coordinate injection here would
+    actuate a second time — a tap fired twice, or a double tap landing as four contacts — which is the
+    retry-an-already-applied-gesture hazard this item's design rejected. Held apart from its base so
+    the driver can do *less* rather than more: it treats the gesture as having happened and lets the
+    step's own condition wait fail loudly if it did not, because a missed gesture fails one assertion
+    while an extra one can navigate the screen out from under the rest of the scenario.
+    """
+
+
 # uiautomator's bounds attribute, e.g. "[0,100][200,220]".
 _BOUNDS = re.compile(r"\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]")
 
@@ -971,6 +984,21 @@ class AdbDriver(CoordinateTreeDriver):
                         exc,
                     )
                 return False
+            except AdbActUncertain as exc:
+                # The request went out and the device injects before it answers, so a coordinate
+                # injection here could be the *second* touch. Treat the gesture as having happened and
+                # arm the barrier for it: if it did not, the step's own condition wait fails loudly on
+                # a real assertion, where an extra tap could navigate the screen out from under the
+                # rest of the scenario. Failing by doing less is the recoverable direction.
+                logger.warning(
+                    "resident actuation may or may not have landed (%s); continuing as if it did "
+                    "rather than injecting a coordinate on top of it",
+                    exc,
+                )
+                self._tree_current = False
+                self._read_ordered = False
+                self._arm_catchup(pre_key, mark)
+                return True
             except AdbResidentError as exc:
                 # A blip on a channel that does have the endpoint. Degrade this one gesture and keep
                 # the channel: the read path makes the same choice, retrying per read rather than

@@ -1861,3 +1861,16 @@ def test_a_transient_actuation_fault_keeps_the_channel_for_the_next_gesture() ->
     driver.tap({"id": "stable.submit"})  # and the channel is still tried
     assert len(seen) == 2
     assert len([c for c in calls if "input" in c]) == 1  # only the blipped gesture used coordinates
+
+
+def test_a_reply_lost_after_the_request_went_out_does_not_actuate_twice() -> None:
+    # The device injects before it answers, so a socket lost after the POST cannot be read as
+    # "nothing happened". Re-injecting a coordinate on top would fire the gesture a second time — a
+    # tap twice, a double tap as four contacts. The driver does less instead: it treats the gesture
+    # as landed and lets the step's own condition wait fail loudly if it did not.
+    act, seen = _recording_act([adb_driver_mod.AdbActUncertain("reply lost")])
+    run, calls = _capturing_run([FIXTURE])
+    driver = AdbDriver("U", run=run, act=act)
+    driver.tap({"id": "stable.submit"})
+    assert len(seen) == 1  # no re-resolve loop either: the gesture is not repeated on the device
+    assert not [c for c in calls if "input" in c]  # and never on the coordinate path

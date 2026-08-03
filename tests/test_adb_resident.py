@@ -10,6 +10,7 @@ server lifecycle over an injected `run`. Real on-device verification is a later 
 from __future__ import annotations
 
 import http.server
+import socket
 import threading
 import urllib.parse
 from pathlib import Path
@@ -78,12 +79,17 @@ class _SourceHandler(http.server.BaseHTTPRequestHandler):
 
     act_status = 200  # what POST /act answers
     last_act_path: str | None = None  # the full POST /act target the client last sent
+    act_drop_reply = False  # accept the request, then hang up without answering
 
     def do_POST(self) -> None:
         if self.path.split("?", 1)[0] != "/act":
             self.send_error(404)
             return
         type(self).last_act_path = self.path
+        if self.act_drop_reply:
+            self.close_connection = True
+            self.wfile.close()
+            return
         self.send_response(self.act_status)
         self.send_header("Content-Length", "0")
         self.end_headers()
@@ -578,4 +584,27 @@ def test_act_raises_on_a_server_without_the_endpoint() -> None:
         with pytest.raises(AdbResidentError, match="404"):
             adb_resident.act(port, _act_request())
     finally:
+        server.shutdown()
+
+
+def test_act_separates_a_reply_lost_after_the_send_from_one_never_sent() -> None:
+    # The two socket faults mean opposite things, because the device injects before it answers. A
+    # connect that never happened injected nothing and is safe to retry on coordinates; a reply lost
+    # after the POST went out may sit on top of a gesture that already landed.
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        closed = probe.getsockname()[
+            1
+        ]  # bound only long enough to reserve a port nothing listens on
+    with pytest.raises(adb_resident.AdbResidentError) as never_sent:
+        adb_resident.act(closed, _act_request(), timeout=0.2)
+    assert not isinstance(never_sent.value, adb_resident.AdbActUncertain)
+
+    port, server = _serve_once()
+    _SourceHandler.act_drop_reply = True
+    try:
+        with pytest.raises(adb_resident.AdbActUncertain, match="sent but its reply was lost"):
+            adb_resident.act(port, _act_request())
+    finally:
+        _SourceHandler.act_drop_reply = False
         server.shutdown()
