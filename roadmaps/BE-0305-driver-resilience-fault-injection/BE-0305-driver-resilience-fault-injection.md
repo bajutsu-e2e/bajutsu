@@ -168,6 +168,20 @@ Proposal altitude. The work is MECE along the units below.
   `+ 5.0`), holding the freeze for ~4.5 s total rather than ~12.5 s. Nothing about the mechanism
   changes — the shorter timeout still forces three genuine socket timeouts before the classifier
   fires — only the window a resumed process has to be reclaimed before this suite observes it.
+- `fault (adb)` failed on a merged run before any contention began: the baseline
+  `driver.query()` — taken to arm `_is_transient_empty` — came back missing the "Search" tab,
+  raising `ElementNotFound` from the selector comprehension that builds the tap targets.
+  `launch_driver`'s readiness ladder guarantees only that the app has rendered *something*, not
+  that Compose has finished laying out every `NavigationBarItem` this suite selects by label; on a
+  loaded emulator the first read can land mid-composition. The two other Android-lane failures in
+  the same run (`smoke (adb)`'s gestures scenario, `uiautomator (codegen)`'s
+  `test_search_filters_the_catalog`) are unrelated pre-existing flakes — the former recurs across
+  most of this repository's Android E2E history regardless of the commit under test, the latter
+  touches a checked-in generated test this item does not modify — so neither is this item's to fix.
+  The baseline read is now a bounded poll, not a single read: it retries on `SelectorError` until
+  every tab resolves or `_LAUNCH_READY_BUDGET_S` (30 s) elapses, the same style as the recovery poll
+  at the test's end. A condition wait, never a fixed sleep, and a bar that never completes still
+  fails loudly as itself.
 
 ## References
 

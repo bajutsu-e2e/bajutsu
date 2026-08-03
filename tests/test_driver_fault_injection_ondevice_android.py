@@ -121,6 +121,14 @@ _TAP_INTERVAL_S = 0.15
 # "did the bridge survive being hammered", which it can legitimately take seconds to do.
 _RECOVERY_BUDGET_S = 30.0
 
+# How long the baseline read may take to see every tab, before a still-incomplete bar is a real bug
+# rather than a cold layout. `launch_driver`'s readiness ladder guarantees only that the app has
+# rendered *something*, not that Compose has finished laying out every `NavigationBarItem` this
+# suite selects by label — on a loaded emulator the first read can catch the bar mid-composition,
+# missing a tab and failing before any fault is even injected. Sized like `_RECOVERY_BUDGET_S`: both
+# answer "did the real device finish an operation", not "is this read a mid-transition blip".
+_LAUNCH_READY_BUDGET_S = 30.0
+
 
 @pytest.fixture(scope="module")
 def _eff() -> Effective:
@@ -217,10 +225,23 @@ def _center(el: base.Element) -> tuple[float, float]:
 def test_the_retry_rides_over_a_real_mid_transition_empty_tree(
     driver: AdbDriver, tap_shell: subprocess.Popen[str]
 ) -> None:
-    tree = driver.query()  # baseline: a full screen, so `_is_transient_empty` is armed here
-    taps = [
-        _center(base.resolve_unique(tree, {"label": tab, "traits": ["button"]})) for tab in _TABS
-    ]
+    # Baseline: a full screen, so `_is_transient_empty` is armed here. Polled rather than read once —
+    # a cold Compose layout can still be mid-composition when `launch_driver`'s generic readiness
+    # ladder is satisfied, catching the bar with a tab missing. A bounded condition wait, never a
+    # fixed sleep: it returns the instant every tab resolves, and a bar that never completes still
+    # fails loudly as itself rather than as this suite's own "never reproduced" diagnosis.
+    deadline = time.monotonic() + _LAUNCH_READY_BUDGET_S
+    while True:
+        tree = driver.query()
+        try:
+            taps = [
+                _center(base.resolve_unique(tree, {"label": tab, "traits": ["button"]}))
+                for tab in _TABS
+            ]
+            break
+        except base.SelectorError:
+            if time.monotonic() >= deadline:
+                raise
     before = driver._transient_empty_retries
     # Distinct screens seen while reading. A tapper that stops landing its taps (Compose can drop one
     # aimed at a view mid-transition) would end the contention silently and spend the budget looking
