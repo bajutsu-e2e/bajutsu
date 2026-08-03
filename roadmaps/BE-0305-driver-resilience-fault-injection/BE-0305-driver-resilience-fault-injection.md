@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0305") |
-| Implementing PR | _(pending)_ |
+| Implementing PR | [#1461](https://github.com/bajutsu-e2e/bajutsu/pull/1461) |
 | Topic | Driver & backend architecture |
 | Related | [BE-0254](../BE-0254-coordinate-tree-driver-base/BE-0254-coordinate-tree-driver-base.md), [BE-0207](../BE-0207-xcuitest-channel-transient-retry/BE-0207-xcuitest-channel-transient-retry.md), [BE-0287](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience.md), [BE-0289](../BE-0289-xcuitest-stale-handle-reresolve/BE-0289-xcuitest-stale-handle-reresolve.md), [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md) |
 <!-- /BE-METADATA -->
@@ -82,7 +82,7 @@ Proposal altitude. The work is MECE along the units below.
 
 Log:
 
-- _(pending)_ — landed both lanes as non-gating signals. **adb:** `fault-injection (adb)` puts the
+- [#1461](https://github.com/bajutsu-e2e/bajutsu/pull/1461) — landed both lanes as non-gating signals. **adb:** `fault-injection (adb)` puts the
   emulator's display to sleep, which was *measured* to make the real read source return 0 elements
   against the 2-element floor, with no error to mistake for something else; the retry then rides over
   it and the known element resolves. A second case holds the display down so the budget runs out and
