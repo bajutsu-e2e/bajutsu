@@ -152,7 +152,16 @@ jobs:
           path: |
             ~/.android/avd/*
             ~/.android/adb*
-          key: avd-api34-x86_64-pixel6
+          # Suffixed with the emulator-options hardware profile (memory, cores) below — a resumed
+          # snapshot's machine config must match the one it was saved with, and this key is otherwise
+          # a fixed string shared by every job. A memory/cores change with no matching key change hits
+          # a now-incompatible cached snapshot: the emulator logs "Failed to load snapshot" and falls
+          # back to a full cold boot, which is slower and leaves the system settling (package manager,
+          # GC) for longer — exactly the window in which the `search` scenario's app process was seen
+          # killed and relaunched mid-run (a black frame straight to the Stable tab, losing its typed
+          # query) on `-cores 1` once this key stopped matching. Bump this suffix in lockstep with
+          # `-memory`/`-cores` below so a hardware change always earns a fresh, matching cache entry.
+          key: avd-api34-x86_64-pixel6-mem6144-cores1
 
       - name: Create AVD and generate snapshot for caching
         if: steps.avd-cache.outputs.cache-hit != 'true'
@@ -270,7 +279,7 @@ jobs:
           path: |
             ~/.android/avd/*
             ~/.android/adb*
-          key: avd-api34-x86_64-pixel6
+          key: avd-api34-x86_64-pixel6-mem6144-cores1
 
       - name: Create AVD and generate snapshot for caching
         if: steps.avd-cache.outputs.cache-hit != 'true'
@@ -343,7 +352,7 @@ jobs:
           path: |
             ~/.android/avd/*
             ~/.android/adb*
-          key: avd-api34-x86_64-pixel6
+          key: avd-api34-x86_64-pixel6-mem6144-cores1
 
       - name: Create AVD and generate snapshot for caching
         if: steps.avd-cache.outputs.cache-hit != 'true'
@@ -421,7 +430,7 @@ jobs:
           path: |
             ~/.android/avd/*
             ~/.android/adb*
-          key: avd-api34-x86_64-pixel6
+          key: avd-api34-x86_64-pixel6-mem6144-cores1
 
       - name: Create AVD and generate snapshot for caching
         if: steps.avd-cache.outputs.cache-hit != 'true'
@@ -496,7 +505,7 @@ jobs:
           path: |
             ~/.android/avd/*
             ~/.android/adb*
-          key: avd-api34-x86_64-pixel6
+          key: avd-api34-x86_64-pixel6-mem6144-cores1
 
       - name: Create AVD and generate snapshot for caching
         if: steps.avd-cache.outputs.cache-hit != 'true'
@@ -565,7 +574,7 @@ jobs:
           path: |
             ~/.android/avd/*
             ~/.android/adb*
-          key: avd-api34-x86_64-pixel6
+          key: avd-api34-x86_64-pixel6-mem6144-cores1
 
       - name: Create AVD and generate snapshot for caching
         if: steps.avd-cache.outputs.cache-hit != 'true'
