@@ -158,10 +158,11 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
    than as a digest, so the host and the device never have to agree on a hash; a separate ordinal
    (index and count) picks the one node, among siblings that share all four, the host meant. A
    screen that has not changed keeps its identities valid, the same property BE-0312 established for
-   XCUITest's digest-based handle. `AdbDriver.tap`, `double_tap`, `long_press`, `pinch`, and `rotate`
-   resolve the selector on the host, then send its identity and ordinal. A `stale` reply re-queries
-   and re-sends, bounded, as BE-0289 does; zero or many matches still raise `ElementNotFound` or
-   `AmbiguousSelector` from the host and spend no attempt.
+   XCUITest's digest-based handle. `AdbDriver.tap`, `long_press`, and `double_tap` resolve the
+   selector on the host, then send its identity and ordinal; `pinch` and `rotate` stay on
+   coordinates, because a two-finger gesture needs a frame rather than a center. A `stale` reply
+   re-queries and re-sends, bounded, as BE-0289 does; zero or many matches still raise
+   `ElementNotFound` or `AmbiguousSelector` from the host and spend no attempt.
 4. **Keep the coordinate path as the declared degraded mode, not the default.** A device without
    the resident channel — an older server, a channel that died mid-run — still has to work. The
    coordinate actuators stay, reached only when the channel is unavailable, and the degrade is
