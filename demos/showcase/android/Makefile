@@ -30,6 +30,13 @@ SERIAL ?= booted
 # a condition wait returns the instant the sheet presents, so the larger floor never slows the flow
 # — it only gives the software renderer time before the step is failed.
 #
+# Every on-device target sets that floor, not just the scenario lanes. `e2e-golden`, `e2e-fallback`,
+# and `e2e-visual` were left without it, so their first wait — the Stable catalog's `stable.row.1`,
+# the same one `smoke` opens with — got the scenario's bare 10s while `e2e` gave it 15s. The app's
+# first render after launch outruns 10s on this emulator often enough that both jobs failed on it
+# with `step 0 (wait): wait timeout`, on a warm AVD, while the scenario lanes passed the identical
+# wait. The floor is a ceiling on a condition wait, so a fast render still returns at once.
+#
 # The deep-scroll flows `controls` / `notices` rejoin the lane (BE-0208 unit 5). Both scroll a far
 # target into view — `controls` the segmented-control value node below the buttons, `notices` a list
 # row that starts well below the fold. They failed before because the default directional swipe
@@ -91,6 +98,14 @@ E2E_SCENARIOS := smoke firstlook navigation search data_driven relaunch system c
 # it is satisfied, so this is a safe upper bound, not a fixed delay (bajutsu/orchestrator/waits.py).
 E2E_WAIT_FLOOR ?= 15
 
+# Quiet by default. Debug here writes a line per read, which measurably lengthened the lane, and the
+# investigation it was added for is over: it named the double tap's interval as the cause, and the two
+# things worth hearing about — the read-lag barrier spending its budget, and the settle poll falling
+# through its deadline — are warnings, so they still print. Raise it for the next timing puzzle:
+# `make -C demos/showcase/android e2e E2E_LOG_LEVEL=DEBUG`.
+E2E_LOG_LEVEL ?= WARNING
+E2E_ENV = BAJUTSU_MIN_WAIT_TIMEOUT=$(E2E_WAIT_FLOOR) BAJUTSU_LOG_LEVEL=$(E2E_LOG_LEVEL)
+
 # The second Android UI toolkit (BE-0221): Compose surfaces the dotted SPEC id verbatim, Views maps
 # it to underscores (`android:id` allows neither `.` nor `-`), and each scenario's selectors list both
 # forms (`id: [stable.refresh, stable_refresh]`) so one file resolves against either tree. Running the
@@ -130,17 +145,50 @@ views-noax-build:
 # (the google_apis image allows it; the driver falls back to `input tap` when it cannot). `wait-for-
 # device` blocks until the restarted adbd reconnects before the first scenario runs. Both act on the
 # single attached AVD (this lane, like the local flow, only ever has one) rather than `-s $(SERIAL)`.
+# Suppress the system's crash / "isn't responding" dialogs for the emulator session.
+#
+# A cold-created AVD loads its snapshot into a thrashing system, and the Pixel Launcher regularly
+# misses its ANR deadline while the first scenario is launching. The dialog that follows takes the
+# foreground window, so the run's very first `wait` polls the dialog's tree instead of the app and
+# times out — with the app fully drawn behind it. That failure took this lane four times on one PR.
+#
+# Selecting "Close app" would clear one dialog; `hide_error_dialogs` stops them being posted at all,
+# which is the same intent without a coordinate tap on a system surface whose button labels are
+# locale-dependent. The app under test is unaffected: the setting governs the system's error UI, not
+# whether a process is killed, so a genuine app ANR still ends the run — it just ends it with the
+# app's own failure rather than with a dialog the scenario cannot see past.
+#
+# The broadcast that follows closes one that is already up: the setting only governs dialogs posted
+# after it, so a lane that starts with the launcher already wedged would otherwise still open on a
+# blocked foreground window.
+ANR_QUIET = adb shell settings put global hide_error_dialogs 1 && adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null
+
+# Draw every touch on screen, so the captured video answers "where did it actually land" directly
+# rather than by inference from the log. `show_touches` is a surface-level effect the input system
+# draws, adding no window; `pointer_location` adds a secure system overlay with a coordinate strip.
+# The pair is the visual half of the diagnostics BAJUTSU_LOG_LEVEL turns on: the log says which frame
+# a selector resolved to, and the video says which pixel the finger reached.
+#
+# On the scenario lanes only. `e2e-golden` / `e2e-fallback` compare an element tree and `e2e-visual`
+# compares pixels against a committed baseline, so an overlay there is a false diff waiting to
+# happen — those targets turn the pair off explicitly rather than trusting a fresh AVD's defaults,
+# which also keeps a local run honest after someone has been debugging by hand.
+TOUCH_DEBUG_ON = adb shell settings put system show_touches 1 && adb shell settings put system pointer_location 1
+TOUCH_DEBUG_OFF = adb shell settings put system show_touches 0 && adb shell settings put system pointer_location 0
+
 e2e: compose-build views-build
 	adb root && adb wait-for-device
+	$(ANR_QUIET)
+	$(TOUCH_DEBUG_ON)
 	cd $(ROOT) && for s in $(E2E_SCENARIOS); do \
 		echo "=== showcase-compose / $$s ==="; \
-		BAJUTSU_MIN_WAIT_TIMEOUT=$(E2E_WAIT_FLOOR) \
+		$(E2E_ENV) \
 		uv run bajutsu run --scenario demos/showcase/scenarios/$$s.yaml \
 			--target showcase-compose --udid $(SERIAL) --backend android --config $(CONFIG) || exit 1; \
 	done
 	cd $(ROOT) && for s in $(E2E_VIEWS_SCENARIOS); do \
 		echo "=== showcase-views / $$s ==="; \
-		BAJUTSU_MIN_WAIT_TIMEOUT=$(E2E_WAIT_FLOOR) \
+		$(E2E_ENV) \
 		uv run bajutsu run --scenario demos/showcase/scenarios/$$s.yaml \
 			--target showcase-views --udid $(SERIAL) --backend android --config $(CONFIG) || exit 1; \
 	done
@@ -158,6 +206,8 @@ e2e: compose-build views-build
 E2E_NET_STUB_PORT := 8770
 e2e-network: compose-build
 	adb wait-for-device
+	$(ANR_QUIET)
+	$(TOUCH_DEBUG_ON)
 	cd $(ROOT) && ( python3 demos/showcase/android/net_stub.py $(E2E_NET_STUB_PORT) & \
 		stub=$$!; trap "kill $$stub 2>/dev/null" EXIT; \
 		ready=0; for i in $$(seq 1 50); do \
@@ -165,7 +215,7 @@ e2e-network: compose-build
 		  sleep 0.1; \
 		done; \
 		if [ "$$ready" -ne 1 ]; then echo "net_stub.py did not answer on port $(E2E_NET_STUB_PORT) within the readiness timeout" >&2; exit 1; fi; \
-		BAJUTSU_MIN_WAIT_TIMEOUT=$(E2E_WAIT_FLOOR) \
+		$(E2E_ENV) \
 		uv run bajutsu run --scenario demos/showcase/scenarios/network_android.yaml \
 			--target showcase-compose --udid $(SERIAL) --backend android --config $(CONFIG) )
 
@@ -181,7 +231,9 @@ e2e-network: compose-build
 # needs no tab-bar navigation. Not part of `make check`: it needs a booted AVD, so android-e2e.yml
 # drives it in its own `golden (adb)` job, which runs this target then `e2e-fallback` in one AVD boot.
 e2e-golden: compose-build
-	cd $(ROOT) && uv run bajutsu run \
+	$(ANR_QUIET)
+	$(TOUCH_DEBUG_OFF)
+	cd $(ROOT) && $(E2E_ENV) uv run bajutsu run \
 		--scenario demos/showcase/scenarios/golden/golden.yaml \
 		--goldens demos/showcase/scenarios/golden/goldens_android \
 		--target showcase-compose --udid $(SERIAL) --backend android --config $(CONFIG)
@@ -193,7 +245,9 @@ e2e-golden: compose-build
 # proven to yield the same element tree. Not part of `make check`: it needs a booted AVD, so
 # android-e2e.yml drives it right after `e2e-golden` in the same `golden (adb)` job's AVD session.
 e2e-fallback: compose-build
-	cd $(ROOT) && BAJUTSU_ADB_RESIDENT=0 uv run bajutsu run \
+	$(ANR_QUIET)
+	$(TOUCH_DEBUG_OFF)
+	cd $(ROOT) && BAJUTSU_ADB_RESIDENT=0 $(E2E_ENV) uv run bajutsu run \
 		--scenario demos/showcase/scenarios/golden/golden.yaml \
 		--goldens demos/showcase/scenarios/golden/goldens_android \
 		--target showcase-compose --udid $(SERIAL) --backend android --config $(CONFIG)
@@ -208,7 +262,9 @@ e2e-fallback: compose-build
 # in its own `visual (adb)` job (a separate AVD boot). The pixel compare needs Pillow, so this
 # pulls in the `visual` extra (the element-tree golden does not) — the adb backend itself has none.
 e2e-visual: compose-build
-	cd $(ROOT) && uv run --extra visual bajutsu run \
+	$(ANR_QUIET)
+	$(TOUCH_DEBUG_OFF)
+	cd $(ROOT) && $(E2E_ENV) uv run --extra visual bajutsu run \
 		--scenario demos/showcase/scenarios/visual/visual_android.yaml \
 		--baselines demos/showcase/scenarios/visual/baselines_android \
 		--target showcase-compose --udid $(SERIAL) --backend android --config $(CONFIG)
@@ -225,6 +281,8 @@ e2e-visual: compose-build
 # android-e2e.yml drives it in its own `conformance (adb)` job.
 e2e-conformance: compose-build
 	adb root && adb wait-for-device
+	$(ANR_QUIET)
+	$(TOUCH_DEBUG_ON)
 	cd $(ROOT) && BAJUTSU_CONFORMANCE_SERIAL=$(SERIAL) \
 		uv run pytest tests/test_driver_conformance_ondevice_android.py -m ondevice -n0 -v
 
@@ -256,6 +314,15 @@ e2e-codegen:
 	cd $(ROOT) && uv run bajutsu codegen demos/showcase/scenarios/$(CODEGEN_SCENARIO).yaml \
 		--emit uiautomator --target showcase-compose --config $(CONFIG) -o $(CODEGEN_KT)
 	adb wait-for-device
+	# Unlike the bajutsu-driven jobs (whose scenarios set reinstall: clean, so AndroidEnvironment
+	# uninstalls before installing), connectedAndroidTest installs incrementally with no such guard.
+	# The CI AVD boot snapshot is cached and shared across jobs (android-e2e.yml), so a stale copy of
+	# this package signed with another job's ephemeral debug keystore can already be resident;
+	# Gradle's install then fails loudly with INSTALL_FAILED_UPDATE_INCOMPATIBLE instead of replacing
+	# it. Uninstalling first is idempotent — a harmless no-op when neither package is present — and
+	# guarantees a clean install regardless of what the cached snapshot's disk state carries.
+	adb uninstall com.bajutsu.showcase.android.compose || true
+	adb uninstall com.bajutsu.showcase.android.compose.test || true
 	cd $(HERE) && $(GRADLEW) :compose:connectedA11yDebugAndroidTest
 
 clean:

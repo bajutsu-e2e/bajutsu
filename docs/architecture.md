@@ -98,7 +98,7 @@ The `bajutsu/` package (Python 3.13+, pydantic v2 / typer / anthropic / pyyaml /
 | `preflight.py` | Runnability gate, per backend (iOS: required CLIs + a booted Simulator; web: Playwright + its Chromium browser) | [configuration](configuration.md) |
 | `requirements.py` | One declarative mapping: backend/capability → pip extra + external-tool probe + install method (BE-0164), shared by `preflight` and `provision` | — |
 | `provision.py` | Config-aware environment installer (BE-0164): resolve a config's backends + AI provider, install only their extras/tools idempotently (`make install`) | — |
-| `runner/` | config + scenarios → report; device pool + launch sequence; `device_provider` seam resolves where the run's devices come from — the built-in `local` pass-through, plus an `appium` provider driving a reserved iOS device end to end behind a live Appium/WebDriver endpoint (BE-0238); a further cloud-vendor kind (e.g. Firebase Device Streaming) stays a future addition (package: `pipeline` / `pool` / `launch` / `device_provider`) | [run-loop](run-loop.md#runner-the-run-pipeline) |
+| `runner/` | config + scenarios → report; device pool + launch sequence; `device_provider` seam resolves where the run's devices come from — the built-in `local` pass-through, plus an `appium` provider driving a reserved iOS device end to end behind a live Appium/WebDriver endpoint (BE-0238); a further cloud-vendor kind (e.g. Firebase Device Streaming) stays a future addition; `recovery` holds the backend-crash retry-count/wall-clock-budget decision and infrastructure-fault classification shared with the on-device driver conformance suite (BE-0334) (package: `pipeline` / `pool` / `launch` / `device_provider` / `recovery`) | [run-loop](run-loop.md#runner-the-run-pipeline) |
 | `doctor.py` | Convention score (id coverage, etc.) | [configuration](configuration.md#doctor-the-convention-score) |
 | `agents/` | AI / authoring-agent periphery (BE-0257): `protocols` + `factory` (the `Observation`/`Proposal`/`Agent` abstraction + construction of the one SDK-backed agent), `claude` (the authoring agent), `claude_backed` (shared base, BE-0246), `claude_enrich`, `claude_triage`, `ai_config` (provider/model/effort/language resolution), `anthropic_client` (SDK client construction), `availability` (credential-gap messaging), `enrich` (the enrichment loop), `alerts` (system-alert guard) | [recording](recording.md) |
 | `ai/` | Vendor-neutral AI backend seam (BE-0104): `AiBackend` protocol + normalized request/response types (`base`), provider registry (`registry`) covering four registered providers — the Anthropic API and Amazon Bedrock via the reference adapter over `agents.anthropic_client` (`anthropic`), the Anthropic CLI `ant` (also via the `anthropic` adapter, BE-0163), and the Claude Code CLI (`claude_code`, BE-0176) | [configuration](configuration.md#ai-provider-ai-be-0047) |
@@ -372,8 +372,12 @@ device (the shared device is reseeded via one channel, so parallel workers would
 - The Tier 2 run loop (act → wait → verify), verified with `FakeDriver`
 - Backend-crash recovery in the run pipeline: a mid-scenario backend crash
   (`base.BackendCrashError`, backend-agnostic) discards the dead lease and re-runs the whole
-  scenario on a freshly respawned one, bounded by `crash_retries` (default 1) so a scenario that
-  keeps crashing still fails loudly rather than being retried into a silent pass
+  scenario on a freshly respawned one, bounded by a retry count (`crash_retries`, default 1) and an
+  optional wall-clock ceiling on total respawn time (`crash_recovery_budget`, unset by default) so a
+  scenario that keeps crashing — or a runner that never comes back — still fails loudly rather than
+  being retried into a silent pass or a hung job. The on-device driver conformance suite shares this
+  same decision (`runner/recovery.py`) so a Simulator infrastructure fault there recovers the same
+  way, rather than reddening the required check on an unrelated PR (BE-0334)
 - DSL: the `within` selector (geometric scoping), the `relaunch` step (validated on-device),
   reusable `setup` preludes, `locale` applied at launch, and parallel runs (`--workers`) over a
   device pool

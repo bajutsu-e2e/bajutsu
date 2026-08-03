@@ -116,6 +116,12 @@ class AndroidEnvironment:
                     raise adb.DeviceError(
                         f"appPath not found: {android.app_path} (build the app first)"
                     )
+                # Only where the data is going anyway. A clean reinstall may cross a signing key or
+                # drop a component the old build had, and `install -r` cannot express either — but on
+                # the keep-data path removing the package first would throw away exactly what that
+                # path exists to preserve, so there `install -r` is left to fail loudly instead.
+                if pre.erase or pre.reinstall == "clean":
+                    e.uninstall(android.package)
                 e.install(android.app_path)
             # `pm clear` is the clean-state reset (fresh app data); skip it only on an explicit
             # `overwrite` reinstall with no erase, matching iOS's "keep data" overwrite path.
@@ -158,8 +164,9 @@ class AndroidEnvironment:
         channel = self._begin_resident()
         fetch = channel.fetch if channel is not None else None
         clock = channel.clock if channel is not None else None
+        act = channel.act if channel is not None else None
         return backends.make_driver(
-            self._actuator, self._serial, fetch_hierarchy=fetch, fetch_clock=clock
+            self._actuator, self._serial, fetch_hierarchy=fetch, fetch_clock=clock, act=act
         )
 
     def _begin_resident(self) -> ResidentChannel | None:

@@ -140,8 +140,18 @@ def _directional_endpoints(
 
     Shared by `swipe` (which scrolls the result) and `drag` (which pointer-drags it) — the endpoint
     math is identical; only what the driver does with them differs.
+
+    The read is the driver's actuation-grade one where it offers a distinct one
+    (`SettledReadProvider`), because this is the only selector-addressed actuation whose target is
+    resolved above the driver: `tap` and the rest hand the driver a selector, so the driver settles
+    the tree itself, while this hands it two coordinates it can no longer trace back to an element.
+    On Android a bare read taken shortly after a gesture still describes the pre-gesture screen, so
+    two consecutive directional swipes would anchor the second one on the first one's starting
+    frames. A backend that does not implement the protocol keeps its single `query()` unchanged.
     """
-    elements = driver.query()
+    elements = (
+        driver.settled_query() if isinstance(driver, base.SettledReadProvider) else driver.query()
+    )
     el = base.resolve_unique(elements, sel)
     return _scroll_gesture(
         base.frame_center(el["frame"]), direction, amount, screen_size_from_elements(elements)

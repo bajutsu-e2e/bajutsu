@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0332") |
-| 実装 PR | [#1442](https://github.com/bajutsu-e2e/bajutsu/pull/1442), [#1445](https://github.com/bajutsu-e2e/bajutsu/pull/1445), [#1449](https://github.com/bajutsu-e2e/bajutsu/pull/1449), [#1454](https://github.com/bajutsu-e2e/bajutsu/pull/1454) |
+| 実装 PR | [#1442](https://github.com/bajutsu-e2e/bajutsu/pull/1442), [#1445](https://github.com/bajutsu-e2e/bajutsu/pull/1445), [#1449](https://github.com/bajutsu-e2e/bajutsu/pull/1449), [#1454](https://github.com/bajutsu-e2e/bajutsu/pull/1454), [#1455](https://github.com/bajutsu-e2e/bajutsu/pull/1455)（`extract` の早期解放の撤回） |
 | トピック | ドライバとバックエンドのアーキテクチャ |
 <!-- /BE-METADATA -->
 
@@ -255,6 +255,20 @@ Mutually Exclusive, Collectively Exhaustive（`MECE`）な作業単位は、次�
   `X-Bajutsu-Read-Mark` ヘッダと `GET /clock` エンドポイント、アクチュエーションの前に取るデバイス時計
   マーク、順序の要求（`read_postdates_actuation()`）、`GET /source?since=` のブロックする読み取り、そして
   マークを持たない `uiautomator dump` のフォールバックにだけ残る実時間の予算を記述します。状態を実装済みへ。
+
+- 2026-08-02 — 追補（PR #1455）。読み取りマークは `extract` のポーリングを早期に解放しなくなりました。
+  作業単位 3 が入った後の `smoke (adb)` で、動機に挙げた失敗そのものが再現しました。文字列も同じ
+  `step 4 (assert_): expected equals='2' but actual='3'` です。原因は、マークが答える問いがポーリングの
+  問いより弱いことにあります。マークが保証するのは「**何らかの**アクセシビリティイベントがジェスチャ
+  より後にある」ことであり、`extract` が必要とするのは「写し取る対象のプロパティが再公開済みである」
+  ことです。1 回のジェスチャは複数のイベントを生みます。Compose は、新しいカウントを映す `Text` の
+  再コンポーズより先に、タップされたボタン自身のイベントを publish します。そのため読み取りがタップ
+  より後でありながら以前の値を持ち、次の読み取りとも一致してしまい、マークと連続 2 回一致の判定が
+  そろって古いペアを通します。両者を分けられるのは実時間の予算だけなので、`extract` のポーリングは
+  予算を唯一の解放条件として保ちます。順序づけは、マークが語れる frame を待つドライバ自身の追いつき
+  バリアに対しては正しい問いのままで、そちらの用途は変えていません。決定的スイートでは、作業単位 3 の
+  早期解放テストを回帰テストへ差し替えました。値がまだ古いうちにマークが立つバックエンドでも、
+  生きた値を束縛しなければなりません。
 
 ## 参考
 

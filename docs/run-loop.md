@@ -178,10 +178,16 @@ The CLI's `run` calls this `run_and_report` ([cli](cli.md#run)).
 > does not close it; when a backend still crashes mid-scenario, `_ScenarioRunner.run_one` catches the
 > backend-agnostic `base.BackendCrashError` (raised by any driver, not only XCUITest's), discards the
 > dead lease, leases a fresh one — a cold respawn, since the pool drops the dead warm runner — and
-> re-runs the *whole* scenario from the start, bounded by `crash_retries` (default 1, so one retry
-> after the first crash). A scenario that crashes on every attempt exhausts the budget and fails
-> loudly, so flakiness is never absorbed into a silent pass. Because the retry replays the
-> whole scenario against a respawned (not erased)
-> app, it is safe only for a scenario idempotent up to its crash point; one with a persistent side
-> effect before the crash (e.g. a server-side write) can fail, or pass against the wrong state, on
-> replay.
+> re-runs the *whole* scenario from the start, bounded by a retry count (`crash_retries`, default 1,
+> so one retry after the first crash) and an optional wall-clock ceiling on the total time spent
+> respawning (`crash_recovery_budget`, unset by default, i.e. unbounded). The budget exists because
+> the count alone caps retries, not time: a runner that never comes back would otherwise pay a full
+> cold-startup ceiling on every one of its `crash_retries` attempts, silently turning into a job hang
+> rather than a loud failure. A scenario that crashes on every attempt exhausts one budget or the
+> other and fails loudly, so flakiness is never absorbed into a silent pass. Because the retry replays
+> the whole scenario against a respawned (not erased) app, it is safe only for a scenario idempotent
+> up to its crash point; one with a persistent side effect before the crash (e.g. a server-side write)
+> can fail, or pass against the wrong state, on replay. The decision logic lives in
+> `bajutsu/runner/recovery.py`, shared with the on-device driver conformance suite so a Simulator
+> infrastructure fault there recovers the same way instead of reddening the required check on an
+> unrelated PR (BE-0334).

@@ -18,7 +18,13 @@ import pytest
 import bajutsu.drivers.adb as adb_driver_mod
 from bajutsu import adb
 from bajutsu.drivers import base
-from bajutsu.drivers.adb import AdbDriver, AdbResidentError, HierarchyRead, parse_hierarchy
+from bajutsu.drivers.adb import (
+    AdbActUnsupported,
+    AdbDriver,
+    AdbResidentError,
+    HierarchyRead,
+    parse_hierarchy,
+)
 from bajutsu.evidence import intervals
 
 # A realistic dump: a Views native id (package-prefixed) with visible text only, a Compose testTag
@@ -1152,6 +1158,26 @@ def test_settle_rides_out_the_torn_read_the_catch_up_passes_through(
     assert _by_id(tree, "stable.submit")["frame"] == (0.0, 127.0, 200.0, 100.0)
 
 
+def test_settled_query_is_the_settle_a_directional_swipe_anchors_on(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A directional `swipe` / `drag` is the one selector-addressed actuation whose target is resolved
+    # above the driver: `_directional_endpoints` computes two coordinates and hands the driver those,
+    # not the selector, so the driver's own `_settle` never sees the anchor. Reading through a bare
+    # `query()` there anchored the second of two consecutive swipes on the first one's pre-pan frames
+    # — the same lag the long-press regression above pins, reached by the one door the catch-up
+    # barrier did not cover. `settled_query` is the seam that closes it, so it must wait the barrier
+    # out exactly as `_settle` does rather than return the stale tree.
+    clock = _Clock()
+    monkeypatch.setattr(adb_driver_mod, "time", clock)
+    run, _ = _capturing_run([FIXTURE, FIXTURE, FIXTURE, _scrolled(_SCROLLED_BY)])
+    driver = AdbDriver("U", run=run)
+    assert isinstance(driver, base.SettledReadProvider)
+    driver.query()
+    driver.swipe((10, 300), (10, 100))
+    assert _by_id(driver.settled_query(), "stable.submit")["frame"] == (0.0, 127.0, 200.0, 100.0)
+
+
 def test_reads_the_runner_already_takes_close_the_barrier_for_free(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1521,6 +1547,49 @@ def test_catch_up_gives_up_loudly_at_the_lag_budget_when_the_pan_changed_nothing
     # The message names the actuator neutrally ("the last gesture" / "moved no frame") because
     # BE-0332 arms this barrier for taps too, not only pans — so it must not misattribute a tap to a pan.
     assert "never published" in caplog.text and "moved no frame" in caplog.text
+    # And it says which test it was applying, so the two named causes can be told apart afterwards.
+    # This is the dump path, so the answer is about the projection, not a device mark.
+    assert "the projection, which never moved" in caplog.text
+
+
+def test_the_read_lag_warning_reports_the_marks_it_waited_on(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    # The warning appeared three times in a failing lane run and settled nothing, because it named two
+    # causes and no evidence. On the mark path the numbers are decisive: a newest read mark that never
+    # passed the actuation mark means the device published no accessibility event at all.
+    clock = _Clock()
+    monkeypatch.setattr(adb_driver_mod, "time", clock)
+    run, _ = _capturing_run([FIXTURE])
+    driver = AdbDriver(
+        "U",
+        run=run,
+        fetch_hierarchy=lambda _since: HierarchyRead(FIXTURE, 1000.0),
+        fetch_clock=lambda: 4200.0,
+    )
+    driver._READ_LAG_S = 0.5
+    driver.query()
+    driver.swipe((10, 300), (10, 100))
+    with caplog.at_level(logging.WARNING):
+        driver._settle()
+    assert "device mark 4200" in caplog.text
+    assert "the newest read was 1000 (-3200ms)" in caplog.text
+
+
+def test_a_tree_that_never_settles_says_so(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    # Falling through the settle deadline hands the next actuator a screen that was still moving. That
+    # was silent, so a coordinate resolved off a mid-animation frame looked exactly like a good one.
+    clock = _Clock()
+    monkeypatch.setattr(adb_driver_mod, "time", clock)
+    moving = [FIXTURE.replace("0,100][200,200", f"0,{100 + n}][200,{200 + n}") for n in range(200)]
+    run, _ = _capturing_run(moving)
+    driver = AdbDriver("U", run=run)
+    driver.query()
+    with caplog.at_level(logging.WARNING):
+        driver._settle()
+    assert "the tree was still changing after" in caplog.text
 
 
 def test_a_non_resolving_actuator_does_not_arm_the_catch_up_wait(
@@ -1618,3 +1687,210 @@ def test_instrument_cmd_starts_the_blocking_serve_test() -> None:
         "dev.bajutsu.android.server.ResidentServerTest#serve",
         "dev.bajutsu.android.server.test/androidx.test.runner.AndroidJUnitRunner",
     ]
+
+
+# --- device-side actuation: the host resolves, the device reads the bounds and injects ---
+
+
+def _recording_act(
+    replies: list[object],
+) -> tuple[Callable[[adb_driver_mod.ActRequest], bool], list[adb_driver_mod.ActRequest]]:
+    """An `ActFn` serving `replies` in order (holding the last) and recording every request.
+
+    A reply of True/False is the device's answer; an `AdbResidentError` instance is raised instead, so
+    one helper covers the acted, the stale, and the channel-fault paths.
+    """
+    seq = list(replies)
+    seen: list[adb_driver_mod.ActRequest] = []
+
+    def act(request: adb_driver_mod.ActRequest) -> bool:
+        seen.append(request)
+        reply = seq.pop(0) if len(seq) > 1 else seq[0]
+        if isinstance(reply, AdbResidentError):
+            raise reply
+        return bool(reply)
+
+    return act, seen
+
+
+def test_parse_hierarchy_identities_align_with_the_elements() -> None:
+    # The device matches on the dump's raw attributes, so the identity must be verbatim — not the
+    # `identifier` `_to_element` strips the package prefix off. Both lists walk the same nodes, so
+    # element i is named by identity i; a drift here would address the wrong node on the device.
+    els, identities = adb_driver_mod.parse_hierarchy_with_identities(FIXTURE)
+    assert len(els) == len(identities) == FIXTURE_ELEMENT_COUNT
+    submit = next(i for i, e in enumerate(els) if e["identifier"] == "stable.submit")
+    assert identities[submit] == ("stable.submit", "sent", "送信", "android.widget.Button")
+    refresh = next(i for i, e in enumerate(els) if e["identifier"] == "stable_refresh")
+    # The element's identifier is stripped; the identity keeps the package-qualified resource-id.
+    assert identities[refresh][0] == "com.bajutsu.showcase.android.views:id/stable_refresh"
+
+
+def test_tap_goes_to_the_device_and_injects_no_coordinate() -> None:
+    # The point of the device path: the host resolves the element and sends its identity, and no
+    # `input tap` is ever issued — so no coordinate computed here can go stale before the touch lands.
+    act, seen = _recording_act([True])
+    run, calls = _capturing_run([FIXTURE])
+    driver = AdbDriver("U", run=run, act=act)
+    driver.tap({"id": "stable.submit"})
+    assert [r.kind for r in seen] == ["tap"]
+    assert seen[0].identity == ("stable.submit", "sent", "送信", "android.widget.Button")
+    assert (seen[0].index, seen[0].count) == (0, 1)
+    assert not [c for c in calls if "input" in c]
+
+
+def test_long_press_carries_its_duration_to_the_device() -> None:
+    # The device has no press-and-hold either, so it needs the hold length to pace its own zero-length
+    # swipe. Sent in milliseconds, the unit the resident server counts steps in.
+    act, seen = _recording_act([True])
+    run, calls = _capturing_run([FIXTURE])
+    driver = AdbDriver("U", run=run, act=act)
+    driver.long_press({"id": "stable.submit"}, 0.7)
+    assert [(r.kind, r.duration_ms) for r in seen] == [("longPress", 700)]
+    assert not [c for c in calls if "input" in c]
+
+
+def test_double_tap_goes_to_the_device_for_its_timing() -> None:
+    # This one is routed for the interval, not the coordinate: every host recipe leaves the gap
+    # between the taps to a JVM startup, a process spawn, or `UiDevice.click`'s internal settle, and
+    # bets it lands inside the platform's double-tap window. The device stamps its own MotionEvents.
+    # Neither host recipe fires when the device serves it — not `sendevent`, not `input tap`.
+    act, seen = _recording_act([True])
+    run, calls = _capturing_run([FIXTURE])
+    driver = AdbDriver("U", run=run, act=act)
+    driver.double_tap({"id": "stable.submit"})
+    assert [r.kind for r in seen] == ["doubleTap"]
+    assert not [c for c in calls if "sendevent" in c or "input" in c]
+
+
+def test_double_tap_still_falls_back_when_the_device_cannot_serve_it() -> None:
+    # A device with no resident channel keeps the rooted `sendevent` sequence (BE-0208), so the
+    # timing fix never costs a backend that cannot receive it.
+    run, calls = _capturing_run([FIXTURE])
+    driver = AdbDriver("U", run=run)
+    driver.double_tap({"id": "stable.submit"})
+    assert [c for c in calls if "sendevent" in c or "input" in c]
+
+
+def test_a_stale_reply_re_resolves_then_falls_back_to_the_coordinate_path() -> None:
+    # `stale` means the screen moved between the host's resolve and the device's, so re-resolving is
+    # the fix. A target that never settles must not hang or fail: after a bounded number of attempts
+    # the gesture takes the coordinate path, leaving the run no worse off than before this existed.
+    act, seen = _recording_act([False])
+    run, calls = _capturing_run([FIXTURE])
+    driver = AdbDriver("U", run=run, act=act)
+    driver.tap({"id": "stable.submit"})
+    assert len(seen) == AdbDriver._STALE_MAX_ATTEMPTS  # bounded, not a spin
+    assert [c for c in calls if "input" in c]  # then the coordinate tap really did fire
+
+
+def test_a_channel_fault_degrades_to_the_coordinate_tap_and_warns_once(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # An older server answers 404 for /act while still serving reads, which reaches the driver as an
+    # AdbResidentError. The gesture must still happen, and the degrade must be visible — but once, not
+    # on every tap, so a long run's log stays readable.
+    act, seen = _recording_act([AdbActUnsupported("no /act endpoint")])
+    run, calls = _capturing_run([FIXTURE])
+    driver = AdbDriver("U", run=run, act=act)
+    with caplog.at_level(logging.WARNING):
+        driver.tap({"id": "stable.submit"})
+        driver.tap({"id": "stable.submit"})
+    assert len(seen) == 1  # probed once for the lease, not once per gesture
+    assert len([c for c in calls if "input" in c]) == 2  # both taps still happened
+    assert caplog.text.count("resident actuation unavailable") == 1
+
+
+def test_without_the_channel_the_coordinate_tap_is_unchanged() -> None:
+    # The dump path (no `act`) keeps today's behavior byte-for-byte: one `input tap` at the frame
+    # centre, with nothing new attempted first.
+    run, calls = _capturing_run([FIXTURE])
+    AdbDriver("U", run=run).tap({"id": "stable.submit"})
+    tap = next(c for c in calls if "tap" in c)
+    assert tap == ["adb", "-s", "U", "shell", "input", "tap", "100", "250"]
+
+
+def test_a_device_tap_arms_the_catch_up_barrier_like_a_coordinate_tap() -> None:
+    # The gesture happened, so the same bookkeeping must follow it: the cached tree is stale and the
+    # next coordinate resolve has to postdate this tap. Left unarmed, the device path would quietly
+    # drop the guarantee the coordinate path spent BE-0332 establishing.
+    act, _ = _recording_act([True])
+    run, _calls = _capturing_run([FIXTURE])
+    driver = AdbDriver("U", run=run, act=act)
+    driver.tap({"id": "stable.submit"})
+    assert driver._catchup is not None
+
+
+def test_an_element_from_a_later_read_than_its_peers_falls_back_instead_of_crashing() -> None:
+    # `_resolve` re-queries on a transient not-found and `_scroll_into_view` re-settles, so the element
+    # handed back can belong to a later read than the tree the caller settled — and the identity map is
+    # rebuilt by every read. Counting peers against the stale tree found none, and taking the element's
+    # ordinal in that empty list raised ValueError straight out of the actuator. The gesture must
+    # degrade to coordinates instead.
+    act, seen = _recording_act([True])
+    # A degenerate first read forces the transient-empty retry, so the element resolves from read two.
+    run, calls = _capturing_run([NULL_ROOT, FIXTURE])
+    driver = AdbDriver("U", run=run, act=act)
+    driver.query()  # seed the richest-seen count so the null root counts as transient
+    driver.tap({"id": "stable.submit"})
+    assert [c for c in calls if "input" in c] or seen  # acted or degraded — never raised
+
+
+def test_a_missing_act_endpoint_is_probed_once_per_lease_not_once_per_tap() -> None:
+    # An older server 404s /act while serving reads. Retrying on every gesture would spend a failed
+    # round trip *and* a second settle-and-resolve per tap, on the lane BE-0234 exists to keep fast.
+    # One probe settles it for the lease.
+    act, seen = _recording_act([AdbActUnsupported("no /act endpoint")])
+    run, calls = _capturing_run([FIXTURE])
+    driver = AdbDriver("U", run=run, act=act)
+    for _ in range(4):
+        driver.tap({"id": "stable.submit"})
+    assert len(seen) == 1  # probed once, then never again
+    assert len([c for c in calls if "input" in c]) == 4  # every tap still happened
+
+
+def test_a_transient_actuation_fault_keeps_the_channel_for_the_next_gesture() -> None:
+    # A socket blip is not a missing endpoint. Latching on it would hand every later gesture of the
+    # lease back to the coordinate path — under exactly the unsettled conditions that produced the
+    # blip, and the read channel makes the opposite choice for the same reason. Degrade this gesture,
+    # keep the channel: the next tap must reach the device again.
+    act, seen = _recording_act([AdbResidentError("connection reset"), True])
+    run, calls = _capturing_run([FIXTURE])
+    driver = AdbDriver("U", run=run, act=act)
+    driver.tap({"id": "stable.submit"})  # blips, falls back to the coordinate tap
+    driver.tap({"id": "stable.submit"})  # and the channel is still tried
+    assert len(seen) == 2
+    assert len([c for c in calls if "input" in c]) == 1  # only the blipped gesture used coordinates
+
+
+def test_a_reply_lost_after_the_request_went_out_does_not_actuate_twice() -> None:
+    # The device injects before it answers, so a socket lost after the POST cannot be read as
+    # "nothing happened". Re-injecting a coordinate on top would fire the gesture a second time — a
+    # tap twice, a double tap as four contacts. The driver does less instead: it treats the gesture
+    # as landed and lets the step's own condition wait fail loudly if it did not.
+    act, seen = _recording_act([adb_driver_mod.AdbActUncertain("reply lost")])
+    run, calls = _capturing_run([FIXTURE])
+    driver = AdbDriver("U", run=run, act=act)
+    driver.tap({"id": "stable.submit"})
+    assert len(seen) == 1  # no re-resolve loop either: the gesture is not repeated on the device
+    assert not [c for c in calls if "input" in c]  # and never on the coordinate path
+
+
+def test_uninstall_precedes_a_showcase_install() -> None:
+    # `install -r` refuses an APK whose signing key differs from the one already there, and where it
+    # succeeds it keeps components the new build renamed — leaving the device running a mix of two
+    # builds. Removing first makes the install describe the APK alone.
+    calls: list[list[str]] = []
+    adb.Env("U", run=lambda a: calls.append(a) or "").uninstall("com.example.app")
+    assert calls[-1] == adb.uninstall_cmd("U", "com.example.app")
+
+
+def test_uninstalling_something_absent_is_not_a_failure() -> None:
+    # The ordinary case on a fresh emulator, where `adb uninstall` exits non-zero. Treating that as a
+    # failure would break every first install on a clean device.
+    import subprocess
+
+    def run(_args: list[str]) -> str:
+        raise subprocess.CalledProcessError(1, "adb", stderr="Failure [DELETE_FAILED]")
+
+    adb.Env("U", run=run).uninstall("com.example.absent")  # does not raise
