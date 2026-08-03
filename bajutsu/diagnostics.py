@@ -62,10 +62,12 @@ def configure(level: str | None = None) -> None:
     setattr(handler, _OWNED, True)
     logger.addHandler(handler)
     logger.setLevel(resolve_level(requested))
-    # Propagation stays on. Silencing it here would stop the records reaching whatever an embedding
-    # application put on the root logger — pytest's `caplog` among them — and buy nothing: the
-    # standard library's last-resort handler, the only thing that could print a record twice, fires
-    # only when no handler was found anywhere in the chain, and the one just installed is found.
+    # Propagation stays on, so the records still reach whatever an embedding application put on the
+    # root logger — pytest's `caplog` among them, which is how most of the suite asserts on a
+    # warning. The cost is real rather than nil: against a root handler, every record is emitted
+    # twice, and this one does not redact. That is why the CLI does not call this for `serve`, whose
+    # root sink is the secret-redacting one (BE-0055) — an application that owns its logging should
+    # own it alone, and this function is for the commands that have none.
 
 
 def resolve_level(level: str | None = None) -> int:

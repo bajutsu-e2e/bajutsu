@@ -30,11 +30,18 @@ app = typer.Typer(
 
 
 @app.callback()
-def _bootstrap() -> None:
+def _bootstrap(ctx: typer.Context) -> None:
     """Load a gitignored .env (e.g. ANTHROPIC_API_KEY) and wire up logging before any command runs."""
     load_dotenv()
     # After the .env, so a project can set BAJUTSU_LOG_LEVEL there alongside its other run settings.
-    diagnostics.configure()
+    #
+    # Every command but `serve`, which owns its logging and reads the same variable (BE-0055).
+    # `oplog.configure` takes over the *root* logger with a secret-redacting sink seeded with the
+    # operator token and the API key, and it can only clear root's handlers — one left here on the
+    # `bajutsu` logger would survive it, write every record to stderr a second time, and write it
+    # unredacted. A deployment that raises its serve log level must not thereby leak its secrets.
+    if ctx.invoked_subcommand != "serve":
+        diagnostics.configure()
 
 
 def _register_commands() -> None:

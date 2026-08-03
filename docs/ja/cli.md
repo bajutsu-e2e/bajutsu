@@ -755,5 +755,9 @@ BAJUTSU_LOG_LEVEL=DEBUG uv run bajutsu run --scenario …
 ツリーが動いたまま settle のポーリングが期限を超えた場合です。どちらも判断の根拠とした値を出力する
 ので、レーンの失敗は再実行ではなくログから診断できます。
 
+`serve` だけは例外です。`serve` は同じ変数を読んで自身の運用ログのレベルを決め、root ロガーに秘密情報を
+伏せるシンクを持っています（BE-0055）。その横に伏せない出力をもう 1 つ足さないよう、CLI は `serve` の
+ログ設定に手を触れません。
+
 実装は [`bajutsu/diagnostics.py`](../../bajutsu/diagnostics.py) です。Android の e2e レーンは既定で
 有効にしています（`demos/showcase/android/Makefile` の `E2E_LOG_LEVEL`）。

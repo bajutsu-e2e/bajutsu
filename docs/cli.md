@@ -969,5 +969,9 @@ against a screen the driver could not vouch for: the read-lag barrier spending i
 the settle poll falling through its deadline while the tree was still changing. Both name the
 evidence they acted on, so a lane failure can be diagnosed from its log rather than re-run.
 
+`serve` is the exception: it reads the same variable to set its own operational log level and owns a
+secret-redacting sink on the root logger (BE-0055), so the CLI leaves its logging alone rather than
+adding a second, unredacted one beside it.
+
 Implementation: [`bajutsu/diagnostics.py`](../bajutsu/diagnostics.py). The Android e2e lane turns it
 on by default (`E2E_LOG_LEVEL` in `demos/showcase/android/Makefile`).

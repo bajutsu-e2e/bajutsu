@@ -87,3 +87,22 @@ def test_configure_keeps_a_handler_it_did_not_install(monkeypatch: pytest.Monkey
     diagnostics.configure()
     diagnostics.configure()
     assert theirs in logger.handlers
+
+
+def test_serve_keeps_its_own_logging(monkeypatch: pytest.MonkeyPatch) -> None:
+    # `serve` reads the same BAJUTSU_LOG_LEVEL and installs a secret-redacting root sink (BE-0055).
+    # `oplog.configure` can only clear root's handlers, so one left on the `bajutsu` logger would
+    # survive it and write every record to stderr again, unredacted. Raising a deployment's log
+    # level must not thereby leak its operator token.
+    from typer.testing import CliRunner
+
+    from bajutsu.cli import app
+
+    monkeypatch.setenv(diagnostics.LEVEL_ENV, "DEBUG")
+    installed: list[str] = []
+    monkeypatch.setattr(diagnostics, "configure", lambda *a, **k: installed.append("yes"))
+    runner = CliRunner()
+    runner.invoke(app, ["serve", "--help"])
+    assert installed == []
+    runner.invoke(app, ["doctor", "--help"])
+    assert installed == ["yes"]
