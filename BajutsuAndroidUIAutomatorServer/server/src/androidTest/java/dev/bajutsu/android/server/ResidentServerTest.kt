@@ -150,9 +150,12 @@ class ResidentServerTest {
      * to a coordinate the host computed: a mismatch answers [STALE_STATUS], and the host re-resolves.
      *
      * Fields rather than a digest, so the host and the device never have to agree on a hash. Fields
-     * rather than an index into the whole dump, so the two do not have to agree on which windows the
-     * tree includes either — the host narrows SystemUI decor out of its copy, and this one does not
-     * need to replicate that filter to find an app node by identity.
+     * rather than an index into the whole dump, so the two do not have to agree on the *position* a
+     * node sits at in their respective trees — but they do still have to agree on which *windows* the
+     * tree includes, because `count` is a count: `matchingBounds` below drops SystemUI's own windows
+     * the same way the host's `narrow_to_active_window` does, so a node whose bare identity happens to
+     * collide with an equally bare SystemUI container is not counted here when the host never counted
+     * it either.
      *
      * The win is the gap. Resolving here puts the read and the injection microseconds apart in one
      * process, where the host path spends a round trip plus `adb shell input`'s JVM startup between
@@ -267,19 +270,42 @@ class ResidentServerTest {
     }
 
     /**
-     * Every node in `xml` whose four identity fields equal `want`, in document order, as
+     * Every app-window node in `xml` whose four identity fields equal `want`, in document order, as
      * `[left, top, right, bottom]`.
      *
      * Bounds come from this dump, not from the host's, so the gesture lands where the element is now.
+     * `dumpWindowHierarchy` emits one top-level `<node>` per window; a SystemUI window (and everything
+     * under it) is skipped, the same filter the host applies before it counts matches
+     * (`narrow_to_active_window`) — without it, an unlabeled Compose node whose identity happens to
+     * collide with an equally bare SystemUI container (empty `resource-id`/`content-desc`/`text`, a
+     * generic `class`) would count nodes here that the host's narrowed copy never saw, so `count`
+     * never agrees and every such gesture answers stale on every attempt.
      */
     private fun matchingBounds(xml: ByteArray, want: List<String>): List<IntArray> {
         val found = mutableListOf<IntArray>()
         val parser = Xml.newPullParser()
         parser.setInput(xml.inputStream(), "UTF-8")
+        var nodeDepth = 0
+        var decorNodeDepth: Int? = null
         while (parser.next() != XmlPullParser.END_DOCUMENT) {
-            if (parser.eventType != XmlPullParser.START_TAG || parser.name != "node") continue
-            val have = IDENTITY_FIELDS.map { parser.getAttributeValue(null, it.second) ?: "" }
-            if (have == want) parseBounds(parser.getAttributeValue(null, "bounds"))?.let(found::add)
+            when (parser.eventType) {
+                XmlPullParser.START_TAG -> {
+                    if (parser.name != "node") continue
+                    nodeDepth++
+                    if (nodeDepth == 1) {
+                        val pkg = parser.getAttributeValue(null, "package")
+                        if (pkg != null && pkg in SYSTEM_DECOR_PACKAGES) decorNodeDepth = nodeDepth
+                    }
+                    if (decorNodeDepth != null) continue
+                    val have = IDENTITY_FIELDS.map { parser.getAttributeValue(null, it.second) ?: "" }
+                    if (have == want) parseBounds(parser.getAttributeValue(null, "bounds"))?.let(found::add)
+                }
+                XmlPullParser.END_TAG -> {
+                    if (parser.name != "node") continue
+                    if (decorNodeDepth == nodeDepth) decorNodeDepth = null
+                    nodeDepth--
+                }
+            }
         }
         return found
     }
@@ -467,6 +493,13 @@ class ResidentServerTest {
             "text" to "text",
             "cls" to "class",
         )
+
+        // SystemUI owns the status/navigation-bar windows that dumpWindowHierarchy's full tree carries
+        // and the platform `uiautomator dump` (active window only) omits. The host drops these before
+        // it counts matches (`bajutsu/adb_resident.py` narrow_to_active_window, keyed off this same
+        // package name) — matchingBounds below must drop them too, or a count taken over the full dump
+        // disagrees with one taken over the host's narrowed copy.
+        val SYSTEM_DECOR_PACKAGES = setOf("com.android.systemui")
 
         // `UiDevice.swipe` paces a drag in steps of about this long, so a press-and-hold's duration is
         // requested as a step count.
