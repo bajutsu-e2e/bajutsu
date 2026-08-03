@@ -11,8 +11,9 @@ element's frame to the visible area (Android) reports the same frame while the c
 an element taller than the screen, so "nothing changed" is not by itself proof that the region ended.
 The loop therefore ends the region only on evidence: an element it has watched move is still there and
 standing still, or nothing in the region is clipped at all, or — where the tree can show neither —
-the rendered screen did not change either. Two reads sharing no element in view mean the opposite
-error, a step that carried the target past the viewport, and the loop shrinks the step and looks back
+the rendered screen did not change either. When both reads have something in view and nothing the
+first read held in view is on screen at all in the second — not even partly — the opposite error has
+happened: a step carried the target past the viewport, so the loop shrinks the step and looks back
 instead of reporting the target missing.
 
 The loop lives in its own handler module so the driver conformance suite (BE-0114) can drive it
