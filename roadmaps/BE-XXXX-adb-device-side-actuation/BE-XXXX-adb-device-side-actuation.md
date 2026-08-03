@@ -121,11 +121,13 @@ actuation onto the device is the same move, for correctness.
 The design keeps the deterministic core exactly where it is and moves only the coordinate arithmetic.
 Selector semantics stay on the host: `resolve_unique` decides which element a selector means, and an
 ambiguous selector still fails immediately rather than acting on the first match (prime directive 2).
-What crosses to the device is a *handle* — an address for one already-chosen element — and the
-device's only judgement is whether that handle still names exactly one node. It answers `stale` when
-it does not, and never falls back to a coordinate.
+What crosses to the device is the element's *identity* — the four accessibility fields the dumped
+tree and the live node both carry, plus the ordinal (index and count) among the nodes sharing them —
+sent verbatim rather than as a digest, so the host and the device never have to agree on a hash. The
+device's only judgement is whether that identity still names exactly `count` nodes at `index`. It
+answers `stale` when it does not, and never falls back to a coordinate.
 
-Two constraints bound every unit. Prime directive 3 keeps the change app-agnostic: the handle is
+Two constraints bound every unit. Prime directive 3 keeps the change app-agnostic: the identity is
 built from the accessibility attributes the tree already carries, and no per-app knob is introduced.
 Prime directive 2 forbids a fixed `sleep`: the device-side path removes waits rather than adding
 them, and where a wait remains it stays a condition wait with a ceiling.
@@ -142,21 +144,23 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
    `ViewportProvider`, `ReadLagProvider`, and `ReadOrderProvider` in `bajutsu/drivers/base.py`. The
    adb driver implements it with its existing settle; every other backend does not implement it and
    keeps its single read byte-for-byte. This unit is independent of the rest and ships first.
-2. **Serve actuation from the resident UI Automator server, addressed by handle.** Add
+2. **Serve actuation from the resident UI Automator server, addressed by identity.** Add
    `POST /act` to the resident server: a request names an action (`tap`, `doubleTap`, `longPress`
-   with a duration, `pan` from an anchor), and a handle. The server resolves the handle against the
-   live accessibility tree through `UiDevice`, reads the node's current bounds, and injects the
-   gesture from the same warm `UiAutomation` session. A handle matching no node, or more than one,
-   is answered `stale` with no injection. The double tap is injected in-process, so its two taps
-   fall inside the platform's double-tap window without the raw `sendevent` sequence and the
-   `adb root` it needs.
-3. **Derive the handle from element identity, and route the adb driver's actuators through it.**
-   The handle is a digest of the attributes the dumped tree and the live node both carry — the
-   resource identifier, the content description, the class, and the ordinal among identical
-   siblings — so a screen that has not changed keeps its handles valid, exactly as BE-0312
-   established for XCUITest. `AdbDriver.tap`, `double_tap`, `long_press`, `pinch`, and `rotate`
-   resolve the selector on the host, then send the handle. A `stale` reply re-queries and re-sends,
-   bounded, as BE-0289 does; zero or many matches still raise `ElementNotFound` or
+   with a duration, `pan` from an anchor), and the target's identity and ordinal. The server
+   resolves the identity against the live accessibility tree through `UiDevice`, reads the node's
+   current bounds, and injects the gesture from the same warm `UiAutomation` session. An identity
+   matching no node, or a different number of nodes than the host counted, is answered `stale` with
+   no injection. The double tap is injected in-process, so its two taps fall inside the platform's
+   double-tap window without the raw `sendevent` sequence and the `adb root` it needs.
+3. **Address the element by its raw accessibility fields, and route the adb driver's actuators
+   through them.** The identity is the four fields the dumped tree and the live node both carry —
+   the resource identifier, the content description, the class, and the text — sent verbatim rather
+   than as a digest, so the host and the device never have to agree on a hash; a separate ordinal
+   (index and count) picks the one node, among siblings that share all four, the host meant. A
+   screen that has not changed keeps its identities valid, the same property BE-0312 established for
+   XCUITest's digest-based handle. `AdbDriver.tap`, `double_tap`, `long_press`, `pinch`, and `rotate`
+   resolve the selector on the host, then send its identity and ordinal. A `stale` reply re-queries
+   and re-sends, bounded, as BE-0289 does; zero or many matches still raise `ElementNotFound` or
    `AmbiguousSelector` from the host and spend no attempt.
 4. **Keep the coordinate path as the declared degraded mode, not the default.** A device without
    the resident channel — an older server, a channel that died mid-run — still has to work. The
@@ -169,7 +173,7 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
    — the `extract` poll and the `scroll` stop condition — which is the narrower claim BE-0332's
    Unit 1 makes. Removing the arming from `tap`, `long_press`, and `double_tap` also removes the
    4-second concession those gestures pay whenever they change no frame.
-6. **Cover the contract, deterministically and on-device.** The fast gate covers the handle digest,
+6. **Cover the contract, deterministically and on-device.** The fast gate covers the identity match,
    the `stale` re-resolve loop, the degrade to coordinates, and the new protocol's opt-out (a
    backend that does not implement it behaves as before). The driver conformance suite (BE-0114)
    adds the contract the fast gate cannot reach: after a gesture, the element the device acted on is
@@ -215,11 +219,11 @@ the whole subject of
 [BE-0234](../BE-0234-adb-run-performance/BE-0234-adb-run-performance.md), so the trade is a slower
 run for a smaller version of the same flake.
 
-**Move selector resolution onto the device as well, and send the selector rather than a handle.**
+**Move selector resolution onto the device as well, and send the selector rather than an identity.**
 This is the larger version of the same idea, and it is rejected on prime directive 2. Deciding that
 a selector matches exactly one element is a determinism-core decision; moving it into the Kotlin
 server would put it beyond the reach of the deterministic suite and split one rule across two
-languages. The handle keeps the decision on the host and sends only its result.
+languages. The identity keeps the decision on the host and sends only its result.
 
 ## Progress
 
@@ -229,9 +233,9 @@ languages. The handle keeps the decision on the host and sends only its result.
 
 - [x] Unit 1 — a directional `swipe` / `drag` resolves its anchor through the driver's
       actuation-grade read.
-- [x] Unit 2 — `POST /act` on the resident UI Automator server, resolving a handle and injecting
+- [x] Unit 2 — `POST /act` on the resident UI Automator server, resolving an identity and injecting
       from the warm session.
-- [x] Unit 3 — identity-derived handles, and the adb driver's actuators routed through them. `tap`
+- [x] Unit 3 — raw-field identities, and the adb driver's actuators routed through them. `tap`
       `long_press`, and `double_tap` go to the device — the first two for their coordinate, the third
       for its *interval*. `pinch` and `rotate` stay on coordinates because a two-finger gesture needs
       a frame, not a center.
