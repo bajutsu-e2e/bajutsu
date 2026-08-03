@@ -116,7 +116,12 @@ class AndroidEnvironment:
                     raise adb.DeviceError(
                         f"appPath not found: {android.app_path} (build the app first)"
                     )
-                e.uninstall(android.package)  # never install over a leftover build
+                # Only where the data is going anyway. A clean reinstall may cross a signing key or
+                # drop a component the old build had, and `install -r` cannot express either — but on
+                # the keep-data path removing the package first would throw away exactly what that
+                # path exists to preserve, so there `install -r` is left to fail loudly instead.
+                if pre.erase or pre.reinstall == "clean":
+                    e.uninstall(android.package)
                 e.install(android.app_path)
             # `pm clear` is the clean-state reset (fresh app data); skip it only on an explicit
             # `overwrite` reinstall with no erase, matching iOS's "keep data" overwrite path.
