@@ -514,6 +514,15 @@ jobs:
       # after `waitForIdle` + `settledDump` (BE-0332 Unit 4), which settles the transient this suite
       # injects away on the device — so reading through it could never observe one.
 
+      # Left at the emulator's default RAM and core count, unlike every sibling adb job's
+      # `-memory 8192 -cores 2`. Those were raised to make slow lanes faster; this job wants the
+      # opposite. The fault it injects is a screen transition, and a leaner, more jank-prone device
+      # holds one open longer — which is the window a read has to land inside for the transient to
+      # exist at all. Every passing run of this lane so far has been on the default profile. Do not
+      # harmonize it with the siblings to tidy the file: that would narrow the window and quietly
+      # lower how often the contention reproduces, which this job reports as "never reproduced"
+      # rather than as a config change. The cache key omits their `-mem8192-cores2` suffix for the
+      # same reason it exists there — the AVD spec differs, so the two must not share an entry.
       - name: Cache AVD
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         id: avd-cache
