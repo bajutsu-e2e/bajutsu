@@ -821,7 +821,10 @@ class AdbDriver(CoordinateTreeDriver):
             "settle: the tree was still changing after %d reads in %.1fs; resolving from the "
             "latest one",
             reads,
-            self._SETTLE_DEADLINE_S,
+            # Measured, not the budget constant: the first read happens before the deadline starts,
+            # so on the ~2.4s dump path the constant would undercount the real wait by that much.
+            # The success line above reports the same figure, so the two exits are comparable.
+            time.monotonic() - t0,
         )
         return tree
 
