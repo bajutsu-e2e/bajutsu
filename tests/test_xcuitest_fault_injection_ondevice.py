@@ -14,15 +14,27 @@ Two real faults, in the order the module runs them:
    still accepted (the kernel's backlog outlives the stopped process) and then never answered, so the
    transport hits its real socket timeout: the *hung connection* failure mode, which a refused
    connection would not reproduce. A background thread sends `SIGCONT` once the retry budget has
-   certainly been spent, kept close to that budget rather than padded, so recovery finds the runner
-   healthy and re-issues.
+   certainly been spent, kept close to that budget rather than padded.
 2. **Killed** — `SIGKILL` the runner and its `xcodebuild` host process. `runner_alive` then reports
    the process gone and recovery fails fast with the diagnosis naming that, instead of polling a dead
    port for the whole recovery window.
 
-The killed case leaves no runner behind, so it is written last and must run after the frozen one.
-Source order plus `-n0` is what guarantees that, which is why both callers pass `-n0` rather than
-inheriting the repo's default `-n auto`.
+**The frozen runner is not expected back.** XCTest reclaims a runner it cannot reach — its own log
+says "Restarting after unexpected exit, crash, or test timeout" — so a `SIGCONT` often resumes a
+process XCTest has already condemned, and the re-issue that follows meets a closed connection and
+then a refused one. Three successive shrinks of the freeze (~51.5 s, ~12.5 s, ~4.5 s) each lost the
+runner the same way, which is what rules duration out as the variable: the watchdog reacts to the
+runner being unreachable, not to how long for. So the frozen case asserts the two things the fault
+does prove, both read off the recovery log — that the hang was classified as a mid-run crash, and
+that recovery re-issued the call — and treats the re-issue's own outcome as XCTest's to decide.
+Asserting the app comes back would be asserting that the watchdog lost a race.
+
+The killed case therefore takes the port as it finds it: the frozen case ahead of it may already have
+left the runner exited, which *is* this case's premise rather than a broken environment. It still
+kills whatever holds the port, and still requires the `xcodebuild` host to be reaped, so the
+`runner_alive` branch it drives is reached the same way either way. It is written last and must run
+after the frozen one; source order plus `-n0` is what guarantees that, which is why both callers pass
+`-n0` rather than inheriting the repo's default `-n auto`.
 
 Running against a real, frozen socket costs real wall time — the transport budget plus a margin —
 which no injected-clock unit test pays. Shrinking the budget (below) keeps that to seconds, but it
@@ -71,18 +83,18 @@ _CONFIG_PATH = Path("demos/showcase/showcase.config.yaml")
 _TARGET = "showcase-swiftui"
 
 # The per-attempt socket timeout the transport runs at *while a fault is injected* (see
-# `shrunk_retry_budget`, which scopes it to one test), in place of the shipped 15 s.
-# Shipped, one `GET`'s worst-case retry budget is ~46.5 s, so the freeze had to hold ~51.5 s for the
-# retry loop to genuinely exhaust — and a real XCTest host stopped that long does not reliably come
-# back: two of three CI runs lost the runner outright, the frozen case failing "did not recover" and
-# the killed case then finding nothing on the port at all. A first shrink to 2 s (~7.5 s budget, ~12.5 s
-# held) cut that risk but did not close it: a later run still lost the runner mid-recovery — `health`
-# caught it alive for one poll, then the very next re-issue found the port refused, which reads as the
-# process exiting right on the resume rather than as anything about how the freeze is applied. Rather
-# than keep racing whatever reclaims a resumed process, shrink further still. Nothing about the
-# mechanism under test changes — a real `SIGSTOP` still hangs a real socket, the retry loop still
-# exhausts on it for real, and recovery still re-issues — only the wall clock it all happens on, which
-# also takes this suite from minutes to seconds.
+# `shrunk_retry_budget`, which scopes it to one test), in place of the shipped 15 s. Shipped, one
+# `GET`'s worst-case retry budget is ~46.5 s, so the freeze would have to hold ~51.5 s for the retry
+# loop to genuinely exhaust; at this value the budget is ~3 s and the freeze ~4.5 s, which is what
+# takes this suite from minutes to seconds. Nothing about the mechanism under test changes — a real
+# `SIGSTOP` still hangs a real socket, and the shorter timeout still forces three genuine socket
+# timeouts before the classifier fires — only the wall clock it all happens on.
+#
+# This value is *not* what keeps the runner alive, though three successive shrinks (~51.5 s, ~12.5 s,
+# ~4.5 s) were each tried in that hope and each lost it anyway. XCTest reclaims an unreachable runner
+# regardless of how briefly it was unreachable (see the module docstring), so the frozen case no longer
+# asserts the runner survives and there is nothing left here to tune for. Shrink it further only to
+# make the suite quicker, never to chase a surviving runner.
 _TEST_SOCKET_TIMEOUT_S = 0.5
 
 # Added to the retry budget to get the freeze's total hold time (`_freeze_hold_s`). Only has to cover
@@ -159,13 +171,12 @@ def driver(_eff: Effective, environment: XcuitestEnvironment) -> base.Driver:
     return driver
 
 
-def _listening_pid(port: int) -> int:
-    """The pid holding the runner's loopback port — the process a fault must signal.
+def _probe_listeners(port: int) -> tuple[list[str], str]:
+    """The distinct pids listening on *port*, paired with how `lsof` itself fared.
 
-    Found by port rather than by process name so a rename of the runner target cannot turn this suite
-    into one that silently signals nothing. The port is bound by one process (`_allocate_port` hands
-    the runner an ephemeral port of its own), so more than one listener means the environment is not
-    the one this suite thinks it is and the fault would land somewhere unintended.
+    `lsof` exits non-zero both for "no match" and for its own failures, so the second element carries
+    its exit code and stderr: a caller reporting an empty result must be able to say which it was, so
+    an unusable `lsof` never reads as a runner that never came up.
     """
     try:
         probe = subprocess.run(
@@ -182,20 +193,42 @@ def _listening_pid(port: int) -> int:
     # Deduplicated: `lsof -t` prints one line per matching file descriptor, so a process holding the
     # listening socket on more than one fd repeats its own pid. Counting raw lines would read that as
     # several listeners and fail a perfectly ordinary environment.
-    found = sorted(set(probe.stdout.split()))
-    # `lsof` exits non-zero both for "no match" and for its own failures, so the diagnosis carries
-    # its exit code and stderr: an unusable `lsof` must not read as a runner that never came up.
-    assert found, (
-        f"nothing is listening on the runner port {port}; the fault would hit no process "
-        f"(lsof exit {probe.returncode}, stderr {probe.stderr.strip()!r})"
+    return sorted(set(probe.stdout.split())), (
+        f"lsof exit {probe.returncode}, stderr {probe.stderr.strip()!r}"
     )
+
+
+def _listening_pid_or_none(port: int) -> int | None:
+    """The pid holding the runner's loopback port, or None when nothing holds it.
+
+    Found by port rather than by process name so a rename of the runner target cannot turn this suite
+    into one that silently signals nothing. The port is bound by one process (`_allocate_port` hands
+    the runner an ephemeral port of its own), so more than one listener means the environment is not
+    the one this suite thinks it is and the fault would land somewhere unintended — that still fails
+    here. Only an unbound port is a value rather than a failure: the killed case's premise is an
+    exited runner, which it can legitimately reach already satisfied.
+    """
+    found, _diagnosis = _probe_listeners(port)
+    if not found:
+        return None
     # More than one *distinct* pid means this is not the environment the suite thinks it is, and the
     # fault would land somewhere unintended.
     assert len(found) == 1, f"{len(found)} processes listen on the runner port {port}: {found}"
     return int(found[0])
 
 
-def test_a_frozen_runner_is_recovered_and_the_call_re_issued(
+def _listening_pid(port: int) -> int:
+    """`_listening_pid_or_none`, for a fault whose premise is a runner still holding the port."""
+    found, diagnosis = _probe_listeners(port)
+    assert found, (
+        f"nothing is listening on the runner port {port}; the fault would hit no process "
+        f"({diagnosis})"
+    )
+    assert len(found) == 1, f"{len(found)} processes listen on the runner port {port}: {found}"
+    return int(found[0])
+
+
+def test_a_frozen_runner_is_classified_as_a_crash_and_the_call_re_issued(
     driver: base.Driver,
     environment: XcuitestEnvironment,
     shrunk_retry_budget: None,
@@ -210,7 +243,16 @@ def test_a_frozen_runner_is_recovered_and_the_call_re_issued(
     release.start()
     try:
         with caplog.at_level(logging.WARNING, logger=_RECOVERY_LOGGER):
-            elements = driver.query()
+            try:
+                elements: list[base.Element] | None = driver.query()
+            except xcuitest.XcuitestRunnerCrashError:
+                # Not a failure of the mechanism: XCTest reclaims a runner it cannot reach, whatever
+                # lifted the freeze (its own log says "Restarting after unexpected exit, crash, or
+                # test timeout"). The re-issue then meets an already-exited process. What the freeze
+                # is here to prove — that a *hung* socket is classified as a crash and recovery
+                # re-issues — has already happened by then, and the assertions below read it off the
+                # log. Whether the re-issued call also lands on a live app is XCTest's to decide.
+                elements = None
     finally:
         release.cancel()
         # Covers the timer not having fired yet. Suppressed because a runner that died during the
@@ -218,8 +260,12 @@ def test_a_frozen_runner_is_recovered_and_the_call_re_issued(
         with contextlib.suppress(ProcessLookupError):
             os.kill(pid, signal.SIGCONT)
 
-    assert elements, (
-        "the recovered read returned no elements, so the re-issue did not reach the app"
+    # The hung connection specifically. Only a stopped process produces it — a killed one refuses the
+    # connection outright — so this is what separates this fault from the next test's, and pinning it
+    # keeps a freeze that silently degraded into a kill from passing as the frozen case.
+    assert "retrying: timed out" in caplog.text, (
+        "the frozen runner never produced a hung connection: the transport saw some other failure, "
+        "so the socket-timeout path this fault exists to drive was not the one exercised"
     )
     # Without this the test would also pass on a freeze the transport never noticed — a green run
     # proving the recovery path nothing.
@@ -227,12 +273,23 @@ def test_a_frozen_runner_is_recovered_and_the_call_re_issued(
         "the frozen runner never reached crash recovery: the transport either rode the freeze out "
         "inside its retry budget or classified the hung connection as something other than a crash"
     )
+    # Only when the re-issue actually reached the app — see the suppression above for when it cannot.
+    if elements is not None:
+        assert elements, (
+            "the recovered read returned no elements, so the re-issue did not reach the app"
+        )
 
 
 def test_a_killed_runner_fails_with_a_crash_diagnosis_not_an_unrelated_timeout(
     driver: base.Driver, environment: XcuitestEnvironment, shrunk_retry_budget: None
 ) -> None:
-    os.kill(_listening_pid(environment._runner_port), signal.SIGKILL)
+    # An exited runner is this test's premise, not its fault to cause: the frozen case ahead of it
+    # leaves one behind whenever XCTest reclaimed the stopped process, and which fault got it there
+    # changes nothing about what is asserted below. So kill whatever still holds the port, and treat
+    # an already-free port as the premise arriving pre-satisfied rather than as a broken environment.
+    pid = _listening_pid_or_none(environment._runner_port)
+    if pid is not None:
+        os.kill(pid, signal.SIGKILL)
     # Kill the `xcodebuild` host too, so `runner_alive` reports the process gone and recovery fails
     # fast on that rather than polling the dead port for the whole recovery window.
     proc = environment._runner_proc

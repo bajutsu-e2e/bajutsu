@@ -182,6 +182,26 @@ Proposal altitude. The work is MECE along the units below.
   every tab resolves or `_LAUNCH_READY_BUDGET_S` (30 s) elapses, the same style as the recovery poll
   at the test's end. A condition wait, never a fixed sleep, and a bar that never completes still
   fails loudly as itself.
+- **The frozen runner is not expected back, and the three shrinks that assumed otherwise were
+  chasing the wrong variable.** The runner's own log names the mechanism: "Restarting after
+  unexpected exit, crash, or test timeout" — XCTest reclaims a runner it cannot reach, so `SIGCONT`
+  often resumes a process XCTest has already condemned, and the re-issue meets a closed connection
+  and then a refused one. That is why ~51.5 s, ~12.5 s and ~4.5 s each lost it identically: the
+  watchdog reacts to the runner being unreachable, not to how long for, so no duration was ever
+  going to survive it. The captured recovery log shows every part of the mechanism under test
+  working before the runner goes — two attempts timing out, the classification as a mid-run crash
+  past the retry budget, `health` confirming, and the re-issue — so the frozen case now asserts
+  exactly those two facts off that log (the hang was classified as a crash; recovery re-issued), and
+  leaves the re-issue's own outcome to XCTest. It also pins `retrying: timed out` specifically, which
+  only a stopped process produces, so a freeze that silently degraded into a kill cannot pass as the
+  frozen case. Asserting the app comes back would be asserting that the watchdog lost a race.
+- The killed case now takes the port as it finds it. Its premise is an exited runner, and the frozen
+  case ahead of it leaves one whenever XCTest reclaimed the stopped process — which is that premise
+  arriving pre-satisfied, not a broken environment, and it failed on `nothing is listening` for
+  exactly that reason. It still kills whatever holds the port and still requires the `xcodebuild`
+  host to be reaped, so the `runner_alive` branch it drives is reached the same way either way. An
+  unusable `lsof` and several distinct listeners still fail there; only an unbound port became a
+  value rather than a failure.
 
 ## References
 
