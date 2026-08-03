@@ -162,9 +162,23 @@ views-noax-build:
 # blocked foreground window.
 ANR_QUIET = adb shell settings put global hide_error_dialogs 1 && adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null
 
+# Draw every touch on screen, so the captured video answers "where did it actually land" directly
+# rather than by inference from the log. `show_touches` is a surface-level effect the input system
+# draws, adding no window; `pointer_location` adds a secure system overlay with a coordinate strip.
+# The pair is the visual half of the diagnostics BAJUTSU_LOG_LEVEL turns on: the log says which frame
+# a selector resolved to, and the video says which pixel the finger reached.
+#
+# On the scenario lanes only. `e2e-golden` / `e2e-fallback` compare an element tree and `e2e-visual`
+# compares pixels against a committed baseline, so an overlay there is a false diff waiting to
+# happen — those targets turn the pair off explicitly rather than trusting a fresh AVD's defaults,
+# which also keeps a local run honest after someone has been debugging by hand.
+TOUCH_DEBUG_ON = adb shell settings put system show_touches 1 && adb shell settings put system pointer_location 1
+TOUCH_DEBUG_OFF = adb shell settings put system show_touches 0 && adb shell settings put system pointer_location 0
+
 e2e: compose-build views-build
 	adb root && adb wait-for-device
 	$(ANR_QUIET)
+	$(TOUCH_DEBUG_ON)
 	cd $(ROOT) && for s in $(E2E_SCENARIOS); do \
 		echo "=== showcase-compose / $$s ==="; \
 		$(E2E_ENV) \
@@ -192,6 +206,7 @@ E2E_NET_STUB_PORT := 8770
 e2e-network: compose-build
 	adb wait-for-device
 	$(ANR_QUIET)
+	$(TOUCH_DEBUG_ON)
 	cd $(ROOT) && ( python3 demos/showcase/android/net_stub.py $(E2E_NET_STUB_PORT) & \
 		stub=$$!; trap "kill $$stub 2>/dev/null" EXIT; \
 		ready=0; for i in $$(seq 1 50); do \
@@ -216,6 +231,7 @@ e2e-network: compose-build
 # drives it in its own `golden (adb)` job, which runs this target then `e2e-fallback` in one AVD boot.
 e2e-golden: compose-build
 	$(ANR_QUIET)
+	$(TOUCH_DEBUG_OFF)
 	cd $(ROOT) && $(E2E_ENV) uv run bajutsu run \
 		--scenario demos/showcase/scenarios/golden/golden.yaml \
 		--goldens demos/showcase/scenarios/golden/goldens_android \
@@ -228,6 +244,7 @@ e2e-golden: compose-build
 # proven to yield the same element tree. Not part of `make check`: it needs a booted AVD, so
 # android-e2e.yml drives it right after `e2e-golden` in the same `golden (adb)` job's AVD session.
 e2e-fallback: compose-build
+	$(TOUCH_DEBUG_OFF)
 	cd $(ROOT) && BAJUTSU_ADB_RESIDENT=0 $(E2E_ENV) uv run bajutsu run \
 		--scenario demos/showcase/scenarios/golden/golden.yaml \
 		--goldens demos/showcase/scenarios/golden/goldens_android \
@@ -244,6 +261,7 @@ e2e-fallback: compose-build
 # pulls in the `visual` extra (the element-tree golden does not) — the adb backend itself has none.
 e2e-visual: compose-build
 	$(ANR_QUIET)
+	$(TOUCH_DEBUG_OFF)
 	cd $(ROOT) && $(E2E_ENV) uv run --extra visual bajutsu run \
 		--scenario demos/showcase/scenarios/visual/visual_android.yaml \
 		--baselines demos/showcase/scenarios/visual/baselines_android \
@@ -262,6 +280,7 @@ e2e-visual: compose-build
 e2e-conformance: compose-build
 	adb root && adb wait-for-device
 	$(ANR_QUIET)
+	$(TOUCH_DEBUG_ON)
 	cd $(ROOT) && BAJUTSU_CONFORMANCE_SERIAL=$(SERIAL) \
 		uv run pytest tests/test_driver_conformance_ondevice_android.py -m ondevice -n0 -v
 
