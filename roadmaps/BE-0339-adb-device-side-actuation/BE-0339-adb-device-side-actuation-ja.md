@@ -1,14 +1,14 @@
-[English](BE-XXXX-adb-device-side-actuation.md) · **日本語**
+[English](BE-0339-adb-device-side-actuation.md) · **日本語**
 
-# BE-XXXX — デバイス側で解決してデバイス側で操作し、Android のジェスチャが古い座標を狙わないようにする
+# BE-0339 — デバイス側で解決してデバイス側で操作し、Android のジェスチャが古い座標を狙わないようにする
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-adb-device-side-actuation-ja.md) |
+| 提案 | [BE-0339](BE-0339-adb-device-side-actuation-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0339") |
 | 実装 PR | [#1455](https://github.com/bajutsu-e2e/bajutsu/pull/1455)（作業単位 1〜3、方向付きジェスチャのアンカー、`POST /act`、同一性で指すアクチュエーション） |
 | トピック | ドライバとバックエンドのアーキテクチャ |
 | 関連 | [BE-0332](../BE-0332-read-lag-barrier/BE-0332-read-lag-barrier-ja.md), [BE-0245](../BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server-ja.md), [BE-0289](../BE-0289-xcuitest-stale-handle-reresolve/BE-0289-xcuitest-stale-handle-reresolve-ja.md), [BE-0312](../BE-0312-xcuitest-content-addressed-snapshot-handle/BE-0312-xcuitest-content-addressed-snapshot-handle-ja.md), [BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci-ja.md) |
