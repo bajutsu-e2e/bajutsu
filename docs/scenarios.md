@@ -497,21 +497,37 @@ scrolls and moves handles, so the two coincide.
 
 `scroll` brings an off-screen element into view: it scrolls one step, re-queries the tree, and stops
 the moment `to` resolves with its frame's **center** on-screen — the point a following `tap` aims at,
-so a target taller than the viewport still succeeds once its center is reached. It fails
-deterministically when it spends `maxScrolls` steps (default 15), or once a step no longer changes the
-scrolled region — the region has bottomed out and the target is not there, so a typo in `to` fails
-fast rather than scrolling the whole bound. A re-read, not a single query, settles whether a step
-changed the region. The re-read matters on Android. There the accessibility tree arrives after the
-gesture has already moved the list. A read taken meanwhile describes the pre-scroll screen, which
-looks like the end of the content. Confirming costs Android's declared read budget, on the step that
-ends a failing `scroll`. Web and iOS pay nothing, because their reads do not lag. `within`
-scopes the gesture (and the end-of-content check) to one scrollable container; omitted, the whole
-screen scrolls.
+so a target taller than the viewport still succeeds once its center is reached.
+
+Ending the scrolled region — the whole screen, or the container `within` names — takes evidence.
+`scroll` reports the end of the content, meaning the target is not in the region, only once two
+consecutive reads *show* the content standing still: an element the loop watched move is still there
+and has stopped, or nothing in the region is clipped to the region's bounds, or, where the tree can
+show neither, the screen as drawn did not change across the step either. On an ordinary list nothing
+is clipped, so a typo in `to` still fails on the first step rather than scrolling the whole bound.
+Where no evidence is available at all, `scroll` keeps stepping and reports at `maxScrolls` (default
+15) that it could not observe whether the region moved. That failure makes a different claim from the
+list having ended, and the difference is real: Android reports an element's bounds clipped to the part
+of it that is visible, so a row taller than the screen reports the same frame while content scrolls
+behind it.
+
+A step that leaves nothing in view is the opposite error, because it may have carried the target past
+the viewport. `scroll` halves the step, scrolls back once to read the span that passed, and — when
+even the smallest step it will take still leaves nothing in view — fails naming the overshoot rather
+than reporting the target absent.
+
+A re-read, not a single query, settles whether a step moved the region. The re-read matters on
+Android. There the accessibility tree arrives after the gesture has already moved the list. A read
+taken meanwhile describes the pre-scroll screen, which looks like the end of the content. Confirming
+costs Android's declared read budget, on the step that ends a failing `scroll`. Web and iOS pay
+nothing, because their reads do not lag. `within` scopes the gesture (and every decision above) to one
+scrollable container; omitted, the whole screen scrolls.
 
 Use `scroll` to **reveal a target**, `swipe` for a **fixed gesture**, and `drag` to **move a grabbed
 handle**. Each step is non-inertial: it advances a bounded, screen-relative distance and leaves no
-momentum, so a target never flings past the viewport and the same scenario reaches it identically on
-a fast device and a slow CI emulator — the determinism a hand-tuned `swipe` chain cannot guarantee.
+momentum, so the same scenario reaches a target identically on a fast device and a slow CI emulator —
+the determinism a hand-tuned `swipe` chain cannot guarantee. A step whose content travels further than
+the step asked for is caught rather than assumed away, by the look-back above.
 
 > **`scroll`'s `direction` is the direction the content moves, not the finger** — the inverse of
 > `swipe`. `scroll: { direction: down }` reveals below-the-fold content (the driver swipes the finger

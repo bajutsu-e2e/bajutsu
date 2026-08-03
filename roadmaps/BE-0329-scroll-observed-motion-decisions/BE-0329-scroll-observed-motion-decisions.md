@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0329](BE-0329-scroll-observed-motion-decisions.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0329") |
 | Topic | Scenario authoring features |
 | Related | [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md), [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md), [BE-0245](../BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server.md), [BE-0259](../BE-0259-assert-query-snapshot-reuse/BE-0259-assert-query-snapshot-reuse.md), [BE-0326](../BE-0326-scroll-to-element/BE-0326-scroll-to-element.md) |
@@ -34,7 +34,9 @@ target can pass between two queries without ever being looked at.
 
 The fix changes what the loop is allowed to conclude from two consecutive trees. The loop reports the
 end of the content only when an element it has already seen move is still there and has stopped
-moving. It treats two trees with no element in common as a step that may have skipped the target, and
+moving, or — where every element in the region is clipped, so the tree can show nothing — when the
+screen as drawn stops changing as well. It treats two trees with no element in common as a step that
+may have skipped the target, and
 it shrinks the gesture and looks back rather than reporting the target missing. A driver conformance
 case then requires every backend to leave some overlap between consecutive steps, so a gesture that
 flings fails the test suite rather than skipping targets during a run.
@@ -138,9 +140,9 @@ its text, is not scrolling. Today's comparison treats any difference as motion, 
 change, which is why the loop can keep scrolling a list that has stopped.
 
 One case survives this test: a node whose own frame animates, such as an indeterminate progress bar,
-still reads as motion. That is the same weakness this item gives as its reason for rejecting
-screenshot comparison, so the frame test does not escape it entirely. What differs is the
-consequence. Such a region is never reported as ended, so it costs `maxScrolls` on an absent target,
+still reads as motion. That is the same weakness that keeps a per-step screenshot comparison out of
+this design (*Alternatives considered*), so the frame test does not escape it entirely. What differs
+is the consequence. Such a region is never reported as ended, so it costs `maxScrolls` on an absent target,
 and it never fails a target the loop can reach.
 
 Every element seen moving by this test is added to the mover set.
@@ -150,8 +152,9 @@ Every element seen moving by this test is added to the mover set.
 The loop reports the end of the content only when the step did not move the content and one of these
 holds:
 
-- a mover is present in both trees, is unclipped in both, and did not move, or
-- the region contains no clipped element at all.
+- a mover is present in both trees, is unclipped in both, and did not move,
+- the region contains no clipped element at all, or
+- the screen as drawn did not change across the step either.
 
 The first condition is the sound one. An element that has already moved during this call is anchored to
 the content, not to the screen, so its standing still means the content stands still. The second
@@ -164,21 +167,47 @@ unclipped inside the region and never moves, by design. Treating it as evidence 
 the content while the list scrolls behind it. Requiring a mover excludes it, because a sticky header
 never enters the mover set.
 
-When the step did not move the content and neither condition holds, the loop cannot tell. It takes
-another step. If it spends `maxScrolls` that way, it fails with a message saying it could not observe
-whether the region moved, rather than saying the list ended. That distinction matters to an author
-reading the failure.
+When the step did not move the content and none of the three conditions holds, the loop cannot tell. It
+takes another step. If it spends `maxScrolls` that way, it fails with a message saying it could not
+observe whether the region moved, rather than saying the list ended. That distinction matters to an
+author reading the failure.
 
-The cost is that a target genuinely absent from such a region is now found absent when the budget runs
-out, not on the first unchanged step. We accept it: the alternative is today's behavior of failing a
-reachable target, and a spent budget is still a deterministic failure. *Alternatives considered*
-records the backend signal that would restore the fast failure, and why this item defers it.
+### Confirming from the screen as drawn what the tree cannot show
+
+The first two conditions both read the element tree, and a region whose every element is clipped
+defeats both at once: nothing in it reports a position that belongs to the content, so the loop has no
+element to watch move and none to find standing still. The pixels carry the answer there. A `screencap`
+checksum is what proved the Android region was moving while its element list stayed byte-identical, so
+the same checksum, compared across a step, decides the case the tree cannot.
+
+The loop captures a checksum only on a step no read could judge, so a scroll whose steps the element
+tests settle pays for no capture at all. It waits for two consecutive captures to agree before it
+trusts one, which keeps a screen still being drawn from reading as a screen that moved, and it bounds
+that wait: a screen whose own animation never settles yields no checksum, and the step stays unjudged.
+Two consecutive unjudged steps whose settled checksums agree are the end of the content. The fast
+failure is therefore restored for the very region that defeated the tree, at the price of one extra
+step, and a backend that cannot capture a screen at all keeps the slower outcome below.
+
+What no capture can settle remains: an indeterminate progress bar keeps the checksum moving, and a
+backend without a screenshot has none to compare. There a target genuinely absent is found absent when
+the budget runs out, not on the first unchanged step. We accept that: the alternative is today's
+behavior of failing a reachable target, and a spent budget is still a deterministic failure.
+*Alternatives considered* records the backend signal that would end the loop authoritatively, and why
+this item defers it.
 
 ### Deciding that a step may have skipped the target
 
 Two consecutive trees that share no unclipped element mean the content advanced at least a full
 viewport. Nothing that was in view survived the step. That is exactly the condition under which the
 target can pass unseen, and it is directly visible in the two trees the loop already holds.
+
+The inference needs each of the two trees to have had something in view. A tree with no unclipped
+element describes a viewport covered by an element larger than itself, which is the case above where
+the tree shows nothing rather than evidence of travel, and the ordinary step that scrolls *into* such an element ends that
+way while advancing a fraction of a viewport. So the loop requires both trees to report at least one
+unclipped element before it reads their disjointness as a skip. The price is a fling that lands inside
+an element taller than the viewport, which the loop treats as a step it cannot judge; the conformance
+check below is what keeps such a gesture out of the shipped backends.
 
 On such a step the loop does two things. It halves the step fraction, with a floor at `swipe`'s 0.125
 default, so later steps observe the content more finely. It then takes one step in the opposite
@@ -204,10 +233,10 @@ can show: consecutive viewports overlap. A backend that flings shares nothing an
 check is what keeps a flinging gesture out of the shipped backends; the in-loop recovery above covers a
 screen whose own scrolling carries momentum past a gesture the suite found acceptable.
 
-### Relation to the pending read-lag fix
+### Relation to the read-lag fix
 
-A separate fix for a third defect in the same loop is in flight on branch
-`claude/adb-scroll-stale-read-fix`. It is unmerged and has no pull request.
+A separate fix for a third defect in the same loop has since merged, so this item is the change that
+reconciles the two.
 
 That fix handles a backend whose tree lags a gesture it has already applied. On the continuous
 integration Android emulator, the tree queried right after a scroll returns the pre-scroll snapshot,
@@ -216,8 +245,8 @@ protocol through which a backend declares how long its reads may lag. adb declar
 other backend declares nothing and keeps failing immediately. The loop then re-queries within that
 budget until the region's element list changes.
 
-Whichever change lands second has to reconcile the two, because the pending fix waits on the comparison
-this item replaces. A region with no unclipped element never changes that list, so the re-query would
+Landing second is what obliges this item to reconcile the two, because the merged fix waits on the
+comparison this item replaces. A region with no unclipped element never changes that list, so the re-query would
 spend the whole four-second budget on every step and then report no change. Under this item that step
 is one the loop cannot judge, but it now costs four seconds each time. The reconciliation is to wait on
 the motion test above instead, and to skip the wait when the region has no unclipped element, since
@@ -248,37 +277,47 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
    `maxScrolls` that way, fail with a message that says the loop could not observe whether the region
    moved.
 
-4. **Skip detection and recovery.**
+4. **The rendered-screen confirmation.**
 
-   When two consecutive trees share no unclipped element, halve the step fraction with a floor at
-   0.125 and take one reversing step to query the span that passed. Count every gesture against
-   `maxScrolls`, forbid a reversing step from triggering another reversal, and fail at the floor with a
-   message naming the overshoot. Correct the comment on the step fraction so it states the assumption
-   it rests on.
+   On a step neither tree test could judge, capture the screen, wait for two consecutive captures to
+   agree before trusting one, and end the region when two such steps in a row agree. Bound that wait,
+   treat a backend with no screenshot and a screen that never settles alike as still unjudged, and keep
+   the capture off every step the tree tests already settle. The checksum is arithmetic over bytes, so
+   no model enters the `run` path.
 
-5. **The conformance overlap check.**
+5. **Skip detection and recovery.**
+
+   When two consecutive trees each report an unclipped element and share none, halve the step fraction
+   with a floor at 0.125 and take one reversing step to query the span that passed. Count every gesture
+   against `maxScrolls`, forbid a reversing step from triggering another reversal, and fail at the floor
+   with a message naming the overshoot. Correct the comment on the step fraction so it states the
+   assumption it rests on.
+
+6. **The conformance overlap check.**
 
    Add a case to [`tests/driver_conformance.py`](../../tests/driver_conformance.py) asserting that one
    step on the conformance scroll screen leaves at least one unclipped element shared between the trees
    before and after, on every backend the suite drives.
 
-6. **Reconciliation with the read-lag re-query.**
+7. **Reconciliation with the read-lag re-query.**
 
    Change the re-query's wait condition from "the element list differs" to the motion test from unit 2,
-   and skip the wait when the region has no unclipped element. This unit belongs to whichever of this
-   item and the `claude/adb-scroll-stale-read-fix` branch lands second.
+   and skip the wait when the region has no unclipped element. The read-lag fix merged first, so this
+   unit belongs to this item.
 
-7. **Tests.**
+8. **Tests.**
 
    Over `FakeDriver` in [`bajutsu/drivers/fake.py`](../../bajutsu/drivers/fake.py), cover: an ordinary
    stopped list failing at once through the no-clipped-element condition; a region whose only element is
-   clipped scrolling to `maxScrolls` and failing with the distinct message; a sticky header that stands
-   still not being read as the end of the content; a step sharing no element shrinking the fraction and
-   revealing the target through the reversing step; and a step still sharing nothing at the floor
-   failing with the overshoot message. Cover the motion test directly, including a label-only change
-   that must not count as motion.
+   clipped scrolling to `maxScrolls` and failing with the distinct message; the same region ending at
+   once when its rendered screen stops changing, and never being called ended while that screen keeps
+   changing; a sticky header that stands still not being read as the end of the content; a step sharing
+   no element shrinking the fraction and revealing the target through the reversing step; a step still
+   sharing nothing at the floor failing with the overshoot message; and a step into an element taller
+   than the viewport not being read as an overshoot. Cover the region tests directly, including a
+   label-only change that must not count as motion.
 
-8. **Docs.**
+9. **Docs.**
 
    Document in [`docs/scenarios.md`](../../docs/scenarios.md) and its Japanese mirror what `scroll`
    reports when it cannot observe the region's motion, so an author reading the failure does not read it
@@ -290,8 +329,10 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
 
 - **AI never judges.**
 
-  Every decision is arithmetic over frames the backend reported: an edge-inside-bounds test, a frame
-  comparison, and a set membership check. No model call enters the `run` path.
+  Every decision is arithmetic over what the backend reported: an edge-inside-bounds test, a frame
+  comparison, a set membership check, and — where the frames cannot decide — a byte checksum of the
+  captured screen compared for equality. Nothing interprets an image, and no model call enters the
+  `run` path.
 
 - **Determinism first.**
 
@@ -353,13 +394,16 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
   by continuing, which is the defect this item exists to fix. Spending the budget and naming the
   distinction in the failure keeps the diagnosis without giving up the reachable case.
 
-- **Compare screenshots instead of element frames.**
+- **Compare screenshots instead of element frames, on every step.**
 
-  Rejected. A pixel checksum is what proved the region was moving during the investigation, so it does
-  find the motion a clipped frame hides. As a per-step mechanism it costs a capture and transfer on
-  every backend, and it reports motion for a blinking cursor, a spinner, or a clock, which would turn a
-  stopped region into a loop that runs to `maxScrolls`. The frames the loop already holds carry the same
-  information wherever an element is unclipped.
+  Rejected as the per-step mechanism, and adopted in the narrow case the tree cannot judge
+  (*Confirming from the screen as drawn what the tree cannot show*). A pixel checksum is what proved the region was
+  moving during the investigation, so it does find the motion a clipped frame hides. Paying for a
+  capture and a transfer on every step of every backend buys nothing wherever an unclipped element
+  already reports the content's position, and a checksum reports motion for a blinking cursor, a
+  spinner, or a clock, which would turn a stopped region into a loop that runs to `maxScrolls`. Confined
+  to the step no read could judge, the capture falls on the steps that would otherwise spend the whole
+  budget, and a screen that never settles is declined rather than read as motion.
 
 - **Shrink the step fraction instead of detecting a skip.**
 
@@ -375,14 +419,16 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — region bounds and the unclipped test
-- [ ] Unit 2 — the motion test and the mover set
-- [ ] Unit 3 — the end-of-content decision
-- [ ] Unit 4 — skip detection, step shrinking, and the reversing step
-- [ ] Unit 5 — conformance overlap check
-- [ ] Unit 6 — reconciliation with the read-lag re-query
-- [ ] Unit 7 — tests over `FakeDriver`
-- [ ] Unit 8 — docs for the new failure and the overlap requirement
+- [x] Unit 1 — region bounds and the unclipped test
+- [x] Unit 2 — the motion test and the mover set
+- [x] Unit 3 — the end-of-content decision
+- [x] Unit 4 — the rendered-screen confirmation
+- [x] Unit 5 — skip detection, step shrinking, and the reversing step
+- [ ] Unit 6 — conformance overlap check
+- [x] Unit 7 — reconciliation with the read-lag re-query
+- [x] Unit 8 — tests over `FakeDriver`
+- [ ] Unit 9 — docs for the new failure and the overlap requirement (the `scroll` authoring docs are
+      updated in both languages; the driver-contract note waits on unit 6)
 
 ## References
 

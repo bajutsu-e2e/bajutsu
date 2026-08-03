@@ -399,14 +399,21 @@ device (the shared device is reseeded via one channel, so parallel workers would
   step's ordinary outcome
 - DSL `scroll` action (BE-0326): scroll a region — the whole screen, or a `within` container — until
   a target selector's frame center lands inside the viewport, or fail deterministically at a
-  `maxScrolls` bound (default 15) or once a step leaves the scrolled region's queried subtree
-  unchanged and a re-read confirms the region has stopped (end-of-content). The confirmation exists
+  `maxScrolls` bound (default 15) or once two consecutive reads *show* the region standing still
+  (end-of-content). What counts as showing it is BE-0329's subject: an element the loop watched move
+  is still there, unclipped, and has stopped; or nothing in the region is clipped to the region's
+  bounds, so no frame can be hiding motion; or, where the tree can show neither — a backend that clips
+  an element taller than the screen to the screen reports the same frame while content scrolls behind
+  it — the captured screen's checksum did not change across the step either. A step that instead leaves
+  nothing in view is read as a possible overshoot: the loop halves the step fraction (floor 0.125),
+  takes one look-back step to read the span that passed, and fails naming the overshoot at the floor.
+  The re-read confirmation exists
   because a queried tree can lag a gesture that has already moved the content. Android publishes the
   accessibility update after the scroll, so a read taken meanwhile describes the pre-scroll screen,
   and one read cannot tell that screen from a bottomed-out region. A backend that admits such a lag
   reports the budget a step's result has to arrive in (`ReadLagProvider`; adb is the one backend
-  reporting a lag today). A backend reporting none still fails on its first unchanged read, so the
-  synchronous
+  reporting a lag today). A backend reporting none still fails on the first unchanged read that carries
+  the evidence above, so the synchronous
   backends stay as fail-fast as before. The same budget now governs two further reads on such a
   backend (BE-0332): a coordinate resolve after a content-moving `tap` / `longPress` / `doubleTap`
   (not only after a pan) postdates that actuation before it trusts the tree, and a mid-scenario
