@@ -801,6 +801,9 @@ class AdbDriver(CoordinateTreeDriver):
         key = self._last_stable_key
         if prev_key is None or key == prev_key:
             return tree
+        # From here, not from `t0`: the budget is sized for the *polling* reads, so folding the first
+        # read into it would cost the ~2.4s dump path a whole attempt — the shrink the constant's own
+        # comment warns against. `t0` stays for the elapsed figure the log reports.
         deadline = time.monotonic() + self._SETTLE_DEADLINE_S
         reads = 1
         while time.monotonic() < deadline:
