@@ -409,9 +409,11 @@ class AdbDriver(CoordinateTreeDriver):
     # failure: of 14 steps whose first read looked unchanged, 12 showed the change on a re-read well
     # inside this budget, and six full repeats of the scroll conformance tests then passed. The
     # remaining 2 changed only once the gesture was re-issued, so they are not explained by read lag
-    # alone — a longer budget would not have helped them, and whatever they are (a `_region_signature`
-    # blind to motion behind an element taller than the viewport is the leading candidate) is tracked
-    # separately. From `smoke (adb)`'s intermittent `gestures` failure: a `swipe` moved the Log form
+    # alone — a longer budget would not have helped them, and their leading candidate, a read that
+    # cannot show motion behind an element taller than the viewport, is what BE-0329's motion
+    # decisions address.
+    #
+    # From `smoke (adb)`'s intermittent `gestures` failure: a `swipe` moved the Log form
     # 73px, and four consecutive reads spanning 1.2s past the gesture still reported the pre-swipe
     # frames, so `long_press` aimed 10px below the target's real bottom edge and pressed the gap.
     #
