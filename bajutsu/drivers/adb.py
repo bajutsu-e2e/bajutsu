@@ -801,7 +801,7 @@ class AdbDriver(CoordinateTreeDriver):
         key = self._last_stable_key
         if prev_key is None or key == prev_key:
             return tree
-        deadline = t0 + self._SETTLE_DEADLINE_S
+        deadline = time.monotonic() + self._SETTLE_DEADLINE_S
         reads = 1
         while time.monotonic() < deadline:
             time.sleep(self._SETTLE_POLL_S)
