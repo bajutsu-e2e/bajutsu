@@ -316,24 +316,54 @@ class ReadLagProvider(Protocol):
 class ReadOrderProvider(Protocol):
     """A backend that can tell whether its last `query()` postdates the last actuation (BE-0332 Unit 3).
 
-    `ReadLagProvider` above bounds the wait for a lagging read with a wall-clock budget; this narrows
-    that budget to a ceiling by answering the ordering question directly. Android's resident reader
-    stamps each read with the device-clock time of the most recent accessibility event it has seen, and
-    the driver takes a device-clock mark before each gesture, so it knows the moment a read reflects
-    device state *after* the action — no host-to-device clock skew, because both marks are the device's.
+    `ReadLagProvider` above bounds the wait for a lagging read with a wall-clock budget; this answers
+    the ordering question directly. Android's resident reader stamps each read with the device-clock
+    time of the most recent accessibility event it has seen, and the driver takes a device-clock mark
+    before each gesture, so it knows the moment a read reflects device state *after* the action — no
+    host-to-device clock skew, because both marks are the device's.
 
-    A settle poll with no assertion to satisfy (`extract`) consults this to release the instant the
-    device publishes the action's update, rather than idling to the read-lag budget. A backend that
-    cannot answer simply does not implement it, and the poll keeps its wall-clock budget unchanged — the
-    same narrow opt-in as `ReadLagProvider` and `ViewportProvider`.
+    No production caller reads this through the protocol today. The `extract` poll used to release
+    early on a confirmed order, until that release was found to accept a stale value — the mark says
+    an accessibility event postdates the gesture, not that the property being copied out has been
+    republished — so `extract` now keeps its wall-clock budget unconditionally. The driver's own
+    catch-up barrier is the remaining ordering consumer, and it reads the backend's device mark
+    directly rather than through here. The protocol stays declared because the driver conformance
+    suite (BE-0114) checks the marked-read contract against the real backend, and because narrowing
+    the barrier to the reads that still need it is an open unit of the device-side actuation item — a
+    live contract without a live caller, not a leftover. A backend that cannot answer simply does not
+    implement it, and every poll keeps its wall-clock budget unchanged — the same narrow opt-in as
+    `ReadLagProvider` and `ViewportProvider`.
     """
 
     # Whether a read has positively postdated the last actuation, confirmed by the backend's device
     # mark. True only on that confirmation, and reset by the next actuation — deliberately not merely
     # "nothing is pending", so an actuation the backend could not mark (no device event, a stale-tree
-    # timeout, a channel without the mark) reads false and the caller keeps its wall-clock budget. The
-    # early release only ever tightens that budget, never accepts a read that predates the action.
+    # timeout, a channel without the mark) reads false.
     def read_postdates_actuation(self) -> bool: ...
+
+
+@runtime_checkable
+class SettledReadProvider(Protocol):
+    """A backend whose reads need settling before a coordinate is resolved from one for actuation.
+
+    Every selector-addressed actuator the adb driver owns — `tap`, `double_tap`, `long_press`,
+    `pinch`, `rotate` — resolves its target through the driver's own settle, which waits out the
+    catch-up barrier so the frame a touch aims at comes from a tree the device published after the
+    previous gesture. A directional `swipe` and a `drag` cannot: their endpoints are computed above
+    the driver (`_directional_endpoints`), which only has `query()` to work with, and the driver
+    receives two coordinates that no longer name an element. One unbarriered read there is enough to
+    anchor a pan on the previous screen's frames — the failure mode `ReadLagProvider` above describes,
+    reached by the one door the barrier does not cover.
+
+    A backend that needs the settle exposes it here, so the handler can ask for an actuation-grade
+    read rather than a bare one. Not implementing this means "a single `query()` is already good
+    enough to actuate from", which keeps the synchronous backends (`FakeDriver`, Playwright,
+    XCUITest) on exactly the read they take today. A narrow opt-in, like the three protocols above,
+    rather than a `Driver` requirement.
+    """
+
+    # A tree fit to resolve an actuation target from: settled, and past any pending read-lag barrier.
+    def settled_query(self) -> list[Element]: ...
 
 
 @runtime_checkable

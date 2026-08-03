@@ -520,21 +520,23 @@ class _MarkedLaggingCounterDriver(_LaggingCounterDriver):
         return self._i >= self._caught_up_at
 
 
-def test_extract_barrier_releases_early_when_a_read_postdates_the_tap(
+def test_extract_barrier_is_not_released_by_a_mark_that_predates_the_value(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv(_FLOOR, "5")
-    # The Unit 3 payoff at the extract site: with the resident reader's read mark the poll releases the
-    # instant a read postdates the tap, instead of spending read_lag(). The counter lags ("2","2") then
-    # catches up ("3","3"), and the driver reports the read has caught up from the third read on — so
-    # the stale "2" pair is still rejected (it neither postdates the tap nor outlasts the budget), yet
-    # the true "3" binds at a fraction of the 5s budget a mark-less backend would have idled through.
-    driver = _MarkedLaggingCounterDriver(["2", "2", "3", "3"], lag=5.0, caught_up_at=3)
+    # The `smoke (adb)` failure this closes: `step 4 (assert_): expected equals='2' but actual='3'`.
+    # One gesture produces several accessibility events, so a read can postdate the tap and still carry
+    # the previous value — Compose publishes the tapped button's own event before the Text mirroring the
+    # new count recomposes. Here the mark fires from the very first read (`caught_up_at=1`) while the
+    # counter still reads "2", and the read after it agrees, so the mark and the two-agreeing-reads test
+    # both pass on a stale pair. Only the wall-clock barrier tells the two apart, so the poll must hold
+    # for it and bind the live "3"; releasing on the mark bound the stale "2" and failed the next step.
+    driver = _MarkedLaggingCounterDriver(["2", "2", "3", "3"], lag=5.0, caught_up_at=1)
     assert isinstance(driver, base.ReadOrderProvider)
     clock = FakeClock()
     result = run_scenario(driver, _extract_then_assert_scenario(), clock=clock)
     assert result.ok, result.failure
-    assert clock.now() < 1.0  # released on the mark, far below the 5s lag budget
+    assert clock.now() >= 5.0  # held for the barrier rather than releasing on the mark
 
 
 def test_extract_barrier_still_bounds_by_the_budget_when_no_read_ever_postdates(

@@ -414,7 +414,7 @@ class _FakeResident:
     def start(self):  # type: ignore[no-untyped-def]
         if self._error is not None:
             raise self._error
-        return ResidentChannel(self._fetch, self._clock)  # type: ignore[arg-type]
+        return ResidentChannel(self._fetch, self._clock, lambda _r: True)  # type: ignore[arg-type]
 
     def stop(self) -> None:
         self.stopped = True
@@ -676,7 +676,9 @@ def test_android_environment_preinstalled_skip_is_about_the_app_not_the_resident
 
         def start(self):  # type: ignore[no-untyped-def]
             run(adb.install_cmd("S", "/built/server-debug.apk"))
-            return ResidentChannel(lambda _since: HierarchyRead("<hierarchy/>"), lambda: None)
+            return ResidentChannel(
+                lambda _since: HierarchyRead("<hierarchy/>"), lambda: None, lambda _r: True
+            )
 
     env = AndroidEnvironment(
         "adb",

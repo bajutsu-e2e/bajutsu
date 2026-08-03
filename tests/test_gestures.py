@@ -192,6 +192,67 @@ def test_swipe_amount_only_with_direction_form() -> None:
         )
 
 
+# --- the anchor read: a directional gesture resolves its target above the driver ---
+
+
+class _LaggingReadDriver(FakeDriver):
+    """A backend whose bare `query()` still describes the screen from before the last gesture.
+
+    Stands in for Android, where the accessibility update naming the new frames is published after
+    the gesture has already moved the content, so a read taken in between is self-consistently stale.
+    """
+
+    def __init__(self, stale: list[base.Element], settled: list[base.Element]) -> None:
+        super().__init__(screen=stale)
+        self._settled = settled
+
+    def settled_query(self) -> list[base.Element]:
+        return list(self._settled)
+
+
+def _anchor_frames(list_top: float) -> list[base.Element]:
+    win: base.Element = {"identifier": None, "label": None, "traits": ["application"], "value": None,
+                         "frame": (0.0, 0.0, 400.0, 800.0)}  # fmt: skip
+    lst: base.Element = {"identifier": "list", "label": None, "traits": ["table"], "value": None,
+                         "frame": (0.0, list_top, 400.0, 200.0)}  # fmt: skip
+    return [win, lst]
+
+
+def test_a_directional_swipe_anchors_on_the_settled_read_where_a_backend_offers_one() -> None:
+    # `tap` and the other selector-addressed actuators hand the driver a selector, so the driver
+    # settles the tree itself before resolving a coordinate. A directional swipe cannot: its endpoints
+    # are computed here and the driver receives two coordinates. On a backend whose reads lag, taking
+    # the bare read anchors the gesture on the previous screen — so the handler asks for the driver's
+    # actuation-grade read where one is offered.
+    driver = _LaggingReadDriver(_anchor_frames(300.0), _anchor_frames(227.0))
+    result = run_scenario(
+        driver,
+        load_scenarios(
+            "- name: s\n  steps:\n    - swipe: { on: { id: list }, direction: up, amount: 0.05 }\n"
+        )[0],
+    )
+    assert result.ok, result.failure
+    [(kind, (frm, _to))] = driver.actions
+    assert kind == "scroll"
+    assert frm == (200.0, 327.0)  # the settled centre, not the stale 400.0
+
+
+def test_a_backend_that_reports_no_settled_read_keeps_its_single_query() -> None:
+    # Not implementing the protocol means "one `query()` is already good enough to actuate from", so
+    # the synchronous backends keep the exact read they take today rather than paying a second one.
+    driver = FakeDriver(screen=_anchor_frames(300.0))
+    assert not isinstance(driver, base.SettledReadProvider)
+    result = run_scenario(
+        driver,
+        load_scenarios(
+            "- name: s\n  steps:\n    - swipe: { on: { id: list }, direction: up, amount: 0.05 }\n"
+        )[0],
+    )
+    assert result.ok, result.failure
+    [(_, (frm, _to))] = driver.actions
+    assert frm == (200.0, 400.0)
+
+
 # --- drag: an element-anchored pointer drag, distinct from swipe's scroll (BE-0227) ---
 
 

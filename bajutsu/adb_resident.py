@@ -17,6 +17,7 @@ import http.client
 import logging
 import subprocess
 import time
+import urllib.parse
 import xml.etree.ElementTree as ET
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -25,6 +26,10 @@ from typing import Protocol
 
 from bajutsu import adb
 from bajutsu.drivers.adb import (
+    ActFn,
+    ActRequest,
+    AdbActUncertain,
+    AdbActUnsupported,
     AdbResidentError,
     ClockFetch,
     HierarchyFetch,
@@ -39,6 +44,14 @@ logger = logging.getLogger("bajutsu.adb.resident")
 # Carried in a header so the XML body stays byte-identical to `uiautomator dump`'s, keeping
 # `parse_hierarchy` and `narrow_to_active_window` unchanged.
 _READ_MARK_HEADER = "X-Bajutsu-Read-Mark"
+
+# The status the resident server answers when the identity the host sent no longer names the same
+# number of nodes on its own dump: the screen moved between the two resolves, so nothing was injected.
+_STALE_STATUS = 409
+
+# What an older resident server answers for a path it does not serve. Permanent for the lease, unlike a
+# socket fault, so the driver latches it instead of probing again on every gesture.
+_NO_ENDPOINT_STATUS = 404
 
 # SystemUI owns the status and navigation bars — separate windows that `dumpWindowHierarchy` traverses
 # but the platform `uiautomator dump` (active window only) omits. Dropping them is a uniform
@@ -114,6 +127,70 @@ def fetch_source(
         conn.close()
 
 
+def act(host_port: int, request: ActRequest, *, timeout: float = 10.0) -> bool:
+    """Ask the resident server to perform one gesture on an element the host already resolved.
+
+    The element crosses as its four accessibility fields plus its ordinal among the nodes sharing them,
+    never as a coordinate: the device re-finds it in a dump of its own and reads the bounds microseconds
+    before injecting, closing the window in which a settling screen moves out from under a coordinate
+    the host computed a round trip earlier.
+
+    Returns:
+        True when the device performed the gesture; False when it answered `409` — the identity no
+        longer names the same nodes there, so the host must re-resolve rather than let a coordinate be
+        guessed.
+
+    Raises:
+        AdbResidentError: the channel could not be reached, or answered anything else — including the
+            `404` an older server without the endpoint returns. The driver degrades to its coordinate
+            actuators, so a device that cannot serve this is never worse off than before.
+    """
+    fields = {
+        "kind": request.kind,
+        "index": str(request.index),
+        "count": str(request.count),
+        "rid": request.identity[0],
+        "desc": request.identity[1],
+        "text": request.identity[2],
+        "cls": request.identity[3],
+    }
+    if request.since is not None:
+        fields["since"] = str(request.since)
+    if request.duration_ms is not None:
+        fields["durationMs"] = str(request.duration_ms)
+    # A longer timeout than a read: the server honors the `since` mark and settles before it injects,
+    # and a press-and-hold then holds for its own duration on top of that.
+    conn = http.client.HTTPConnection("127.0.0.1", host_port, timeout=timeout)
+    try:
+        try:
+            conn.request("POST", "/act?" + urllib.parse.urlencode(fields))
+        except (OSError, http.client.HTTPException) as exc:
+            # Nothing left the host, so nothing was injected: the caller may safely take the
+            # coordinate path. This is the only fault where that is safe.
+            raise AdbResidentError(
+                f"resident actuation unreachable on port {host_port}: {exc}"
+            ) from exc
+        try:
+            resp = conn.getresponse()
+            body = resp.read().decode("utf-8", "replace").strip()
+        except (OSError, http.client.HTTPException) as exc:
+            # The request went out, and the device injects before it answers, so the gesture may
+            # already have happened. Re-actuating on the coordinate path would be a second touch.
+            raise AdbActUncertain(
+                f"resident actuation was sent but its reply was lost on port {host_port}: {exc}"
+            ) from exc
+        if resp.status == _STALE_STATUS:
+            logger.debug("resident actuation reported the target moved: %s", body)
+            return False
+        if resp.status == _NO_ENDPOINT_STATUS:
+            raise AdbActUnsupported(f"resident server has no /act endpoint (HTTP {resp.status})")
+        if resp.status != 200:
+            raise AdbResidentError(f"resident actuation returned HTTP {resp.status}: {body}")
+        return True
+    finally:
+        conn.close()
+
+
 def _parse_mark(raw: str | None) -> float | None:
     """The `X-Bajutsu-Read-Mark` header as a device-clock float, or None when absent/unparseable.
 
@@ -165,6 +242,7 @@ class _Process(Protocol):
 Spawn = Callable[[list[str]], _Process]
 Fetch = Callable[[int, float | None], HierarchyRead]
 ClockProbe = Callable[[int], float | None]
+ActProbe = Callable[[int, ActRequest], bool]
 
 
 @dataclass(frozen=True)
@@ -173,11 +251,14 @@ class ResidentChannel:
 
     `fetch` returns the current hierarchy and its read mark, blocking until the read postdates the mark
     it is passed (BE-0332 Unit 4); `clock` returns the device's current clock so the driver can anchor
-    its read-lag barrier before a gesture. Both close over the lease's forwarded host port.
+    its read-lag barrier before a gesture; `act` performs a gesture on the device against an element the
+    host already resolved, so no coordinate crosses. All three close over the lease's forwarded host
+    port.
     """
 
     fetch: HierarchyFetch
     clock: ClockFetch
+    act: ActFn
 
 
 # APK build outputs of `make -C BajutsuAndroidUIAutomatorServer build` (gitignored; the paths gradle
@@ -230,6 +311,7 @@ class ResidentServer:
         spawn: Spawn = _default_spawn,
         fetch: Fetch = fetch_source,
         clock: ClockProbe = fetch_clock,
+        act_probe: ActProbe = act,
         server_apk: Path = _SERVER_APK,
         test_apk: Path = _TEST_APK,
     ) -> None:
@@ -238,6 +320,7 @@ class ResidentServer:
         self._spawn = spawn
         self._fetch = fetch
         self._clock = clock
+        self._act = act_probe
         self._server_apk = server_apk
         self._test_apk = test_apk
         self._proc: _Process | None = None
@@ -250,6 +333,13 @@ class ResidentServer:
                 "`make -C BajutsuAndroidUIAutomatorServer build`"
             )
         try:
+            # Clear both first. A device carrying an older pair fails `install -r` outright when the
+            # signing key differs, and where it succeeds it can leave the instrumentation and the
+            # server disagreeing about which endpoints exist — a `/act` that 404s against a server
+            # that has one, which is the confusing half of this channel's failure modes.
+            for package in (adb.RESIDENT_TEST_PACKAGE, adb.RESIDENT_SERVER_PACKAGE):
+                with contextlib.suppress(subprocess.CalledProcessError, OSError):
+                    self._run(adb.uninstall_cmd(self._serial, package))
             self._run(adb.install_cmd(self._serial, str(self._server_apk)))
             self._run(adb.install_cmd(self._serial, str(self._test_apk)))
             self._proc = self._spawn(adb.instrument_cmd(self._serial))
@@ -290,7 +380,14 @@ class ResidentServer:
             # and a genuine channel death still surfaces through the next `fetch`.
             return self._clock(port)
 
-        return ResidentChannel(fetch, clock)
+        def act_on_device(request: ActRequest) -> bool:
+            # Unlike `fetch`, a fault here does not tear the channel down. The reads are still good —
+            # an older server answers 404 for this path alone — and the driver's own degrade puts the
+            # gesture back on the coordinate actuators. Killing a working read channel over a missing
+            # actuation endpoint would trade a small regression for a large one.
+            return self._act(port, request)
+
+        return ResidentChannel(fetch, clock, act_on_device)
 
     def stop(self) -> None:
         """Kill the instrumentation and remove the forward; safe to call on a partial start."""
@@ -347,9 +444,17 @@ class ResidentServer:
 
 
 def _parse_forward_port(stdout: str) -> int:
-    """The host port `adb forward tcp:0 …` chose, printed on stdout."""
-    text = stdout.strip()
-    try:
-        return int(text)
-    except ValueError as exc:
-        raise AdbResidentError(f"adb forward did not report a host port: {stdout!r}") from exc
+    """The host port `adb forward tcp:0 …` chose, printed on stdout.
+
+    Read as the last bare-number line rather than the whole output, because adb prepends its own
+    chatter whenever the invocation happens to be the one that starts the server ("* daemon not
+    running; starting now at tcp:5037", "* daemon started successfully"). Parsing the whole string
+    would raise on exactly those runs, and a failed forward takes the resident channel down with it —
+    the lease then reads through `uiautomator dump`, which carries no device mark, so every read-lag
+    barrier silently falls back to spending its full budget. Tolerating the banner keeps a cosmetic
+    line from costing the channel.
+    """
+    ports = [line.strip() for line in stdout.splitlines() if line.strip().isdigit()]
+    if not ports:
+        raise AdbResidentError(f"adb forward did not report a host port: {stdout!r}")
+    return int(ports[-1])

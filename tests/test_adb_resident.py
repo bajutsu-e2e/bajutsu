@@ -10,13 +10,15 @@ server lifecycle over an injected `run`. Real on-device verification is a later 
 from __future__ import annotations
 
 import http.server
+import socket
 import threading
+import urllib.parse
 from pathlib import Path
 
 import pytest
 
 from bajutsu import adb, adb_resident
-from bajutsu.drivers.adb import AdbResidentError, HierarchyRead, parse_hierarchy
+from bajutsu.drivers.adb import ActRequest, AdbResidentError, HierarchyRead, parse_hierarchy
 
 # One app window (a Views button) — the content the platform `uiautomator dump` returns.
 _APP_WINDOW = """  <node index="0" class="android.widget.FrameLayout" \
@@ -74,6 +76,23 @@ class _SourceHandler(http.server.BaseHTTPRequestHandler):
     mark: str | None = None  # the X-Bajutsu-Read-Mark header value, when set (BE-0332 Unit 3)
     clock = "12345"  # what GET /clock answers, a device-clock reading
     last_source_path: str | None = None  # the full GET /source target the client last sent
+
+    act_status = 200  # what POST /act answers
+    last_act_path: str | None = None  # the full POST /act target the client last sent
+    act_drop_reply = False  # accept the request, then hang up without answering
+
+    def do_POST(self) -> None:
+        if self.path.split("?", 1)[0] != "/act":
+            self.send_error(404)
+            return
+        type(self).last_act_path = self.path
+        if self.act_drop_reply:
+            self.close_connection = True
+            self.wfile.close()
+            return
+        self.send_response(self.act_status)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
 
     def do_GET(self) -> None:
         route = self.path.split("?", 1)[
@@ -285,10 +304,15 @@ def test_start_installs_forwards_and_returns_a_working_fetch(tmp_path: Path) -> 
         test_apk=test_apk,
     )
     channel = srv.start()
-    # Both APKs installed, the blocking instrumentation spawned, a host port forwarded.
-    assert calls[0] == adb.install_cmd("U", str(server_apk))
-    assert calls[1] == adb.install_cmd("U", str(test_apk))
-    assert calls[2] == adb.forward_cmd("U")
+    # Any earlier pair removed first — an older install can differ in signing key, which fails
+    # `install -r`, or in which endpoints it serves, which is the confusing half of this channel's
+    # failure modes: a `/act` that 404s against a server built with one. Then both APKs installed,
+    # the blocking instrumentation spawned, a host port forwarded.
+    assert calls[0] == adb.uninstall_cmd("U", adb.RESIDENT_TEST_PACKAGE)
+    assert calls[1] == adb.uninstall_cmd("U", adb.RESIDENT_SERVER_PACKAGE)
+    assert calls[2] == adb.install_cmd("U", str(server_apk))
+    assert calls[3] == adb.install_cmd("U", str(test_apk))
+    assert calls[4] == adb.forward_cmd("U")
     # The returned fetch reads over the channel and narrows to the active window (no SystemUI window).
     assert parse_hierarchy(channel.fetch(None).text) == parse_hierarchy(_APP_ONLY)
 
@@ -511,3 +535,96 @@ def test_server_apks_built_needs_both_apks(tmp_path: Path) -> None:
     # The signature's params are named, so asking by keyword must answer about those same paths —
     # conftest's `_fresh_clone_resident_gate` pins only the gate's argument-less, ambient call.
     assert adb_resident.server_apks_built(server_apk=server_apk, test_apk=test_apk)
+
+
+# --- POST /act: the device resolves and injects, so no coordinate crosses the channel ---
+
+
+def _act_request(**over: object) -> ActRequest:
+    fields: dict[str, object] = {
+        "kind": "tap",
+        "identity": ("stable.submit", "sent", "送信", "android.widget.Button"),
+        "index": 0,
+        "count": 1,
+        "since": None,
+        "duration_ms": None,
+    }
+    fields.update(over)
+    return ActRequest(**fields)  # type: ignore[arg-type]
+
+
+def test_act_sends_the_element_identity_and_no_coordinate() -> None:
+    # The whole point of the endpoint: the device is told *which* element, never *where*. A coordinate
+    # on the wire would be one the host computed a round trip earlier — the staleness this closes.
+    port, server = _serve_once()
+    _SourceHandler.act_status = 200
+    try:
+        assert adb_resident.act(port, _act_request(since=42.0, duration_ms=700)) is True
+    finally:
+        server.shutdown()
+    sent = urllib.parse.parse_qs(urllib.parse.urlparse(_SourceHandler.last_act_path or "").query)
+    assert sent["rid"] == ["stable.submit"] and sent["text"] == ["送信"]
+    assert sent["index"] == ["0"] and sent["count"] == ["1"]
+    assert sent["since"] == ["42.0"] and sent["durationMs"] == ["700"]
+    assert not {"x", "y", "bounds"} & sent.keys()
+
+
+def test_act_reports_a_stale_target_rather_than_raising() -> None:
+    # 409 is the device saying "that identity no longer names the same nodes here". It is an ordinary
+    # outcome the driver answers by re-resolving, not a channel fault, so it must not raise.
+    port, server = _serve_once()
+    _SourceHandler.act_status = 409
+    try:
+        assert adb_resident.act(port, _act_request()) is False
+    finally:
+        server.shutdown()
+
+
+def test_act_raises_on_a_server_without_the_endpoint() -> None:
+    # An older resident server serves reads but 404s this path. That has to surface as a channel error
+    # so the driver degrades to its coordinate actuators rather than silently skipping the gesture.
+    port, server = _serve_once()
+    _SourceHandler.act_status = 404
+    try:
+        with pytest.raises(AdbResidentError, match="404"):
+            adb_resident.act(port, _act_request())
+    finally:
+        server.shutdown()
+
+
+def test_act_raises_when_the_platform_rejected_the_injection() -> None:
+    # The Kotlin endpoint answers a non-{200,404,409} status when the injector itself
+    # (UiDevice.click / .swipe / injectInputEvent) reports the touch never reached the screen — never
+    # a silent 200. That must surface as a channel fault so `_device_act` degrades to the coordinate
+    # path for this one gesture, exactly as any other resident-side fault does; nothing was injected,
+    # so the coordinate path is not a second touch.
+    port, server = _serve_once()
+    _SourceHandler.act_status = 500
+    try:
+        with pytest.raises(AdbResidentError, match="500"):
+            adb_resident.act(port, _act_request())
+    finally:
+        server.shutdown()
+
+
+def test_act_separates_a_reply_lost_after_the_send_from_one_never_sent() -> None:
+    # The two socket faults mean opposite things, because the device injects before it answers. A
+    # connect that never happened injected nothing and is safe to retry on coordinates; a reply lost
+    # after the POST went out may sit on top of a gesture that already landed.
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        closed = probe.getsockname()[
+            1
+        ]  # bound only long enough to reserve a port nothing listens on
+    with pytest.raises(adb_resident.AdbResidentError) as never_sent:
+        adb_resident.act(closed, _act_request(), timeout=0.2)
+    assert not isinstance(never_sent.value, adb_resident.AdbActUncertain)
+
+    port, server = _serve_once()
+    _SourceHandler.act_drop_reply = True
+    try:
+        with pytest.raises(adb_resident.AdbActUncertain, match="sent but its reply was lost"):
+            adb_resident.act(port, _act_request())
+    finally:
+        _SourceHandler.act_drop_reply = False
+        server.shutdown()
