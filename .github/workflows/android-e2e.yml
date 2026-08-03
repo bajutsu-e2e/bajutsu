@@ -161,7 +161,7 @@ jobs:
           # killed and relaunched mid-run (a black frame straight to the Stable tab, losing its typed
           # query) on `-cores 1` once this key stopped matching. Bump this suffix in lockstep with
           # `-memory`/`-cores` below so a hardware change always earns a fresh, matching cache entry.
-          key: avd-api34-x86_64-pixel6-mem6144-cores1
+          key: avd-api34-x86_64-pixel6-mem8192-cores2
 
       - name: Create AVD and generate snapshot for caching
         if: steps.avd-cache.outputs.cache-hit != 'true'
@@ -176,7 +176,7 @@ jobs:
           # profile scrolls a different number of rows per swipe and never reaches the target (BE-0208).
           profile: pixel_6
           force-avd-creation: false
-          emulator-options: -memory 6144 -cores 1 -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          emulator-options: -memory 8192 -cores 2 -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           disable-animations: false
           script: echo "Generated AVD snapshot for caching."
 
@@ -202,7 +202,7 @@ jobs:
           target: google_apis
           profile: pixel_6  # match the local validation geometry (see the create-AVD step above)
           force-avd-creation: false
-          emulator-options: -memory 6144 -cores 1 -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          emulator-options: -memory 8192 -cores 2 -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           disable-animations: true
           # The emulator-runner runs each script *line* as its own `/usr/bin/sh -c`, so a `set -e`
           # line and backslash continuations don't carry across lines. Keep it one command joined
@@ -279,7 +279,7 @@ jobs:
           path: |
             ~/.android/avd/*
             ~/.android/adb*
-          key: avd-api34-x86_64-pixel6-mem6144-cores1
+          key: avd-api34-x86_64-pixel6-mem8192-cores2
 
       - name: Create AVD and generate snapshot for caching
         if: steps.avd-cache.outputs.cache-hit != 'true'
@@ -290,7 +290,7 @@ jobs:
           target: google_apis
           profile: pixel_6
           force-avd-creation: false
-          emulator-options: -memory 6144 -cores 1 -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          emulator-options: -memory 8192 -cores 2 -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           disable-animations: false
           script: echo "Generated AVD snapshot for caching."
 
@@ -305,7 +305,7 @@ jobs:
           target: google_apis
           profile: pixel_6
           force-avd-creation: false
-          emulator-options: -memory 6144 -cores 1 -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          emulator-options: -memory 8192 -cores 2 -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           disable-animations: true
           script: make -C demos/showcase/android e2e-golden && make -C demos/showcase/android e2e-fallback
 
@@ -352,7 +352,7 @@ jobs:
           path: |
             ~/.android/avd/*
             ~/.android/adb*
-          key: avd-api34-x86_64-pixel6-mem6144-cores1
+          key: avd-api34-x86_64-pixel6-mem8192-cores2
 
       - name: Create AVD and generate snapshot for caching
         if: steps.avd-cache.outputs.cache-hit != 'true'
@@ -363,7 +363,7 @@ jobs:
           target: google_apis
           profile: pixel_6
           force-avd-creation: false
-          emulator-options: -memory 6144 -cores 1 -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          emulator-options: -memory 8192 -cores 2 -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           disable-animations: false
           script: echo "Generated AVD snapshot for caching."
 
@@ -375,7 +375,7 @@ jobs:
           target: google_apis
           profile: pixel_6
           force-avd-creation: false
-          emulator-options: -memory 6144 -cores 1 -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          emulator-options: -memory 8192 -cores 2 -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           disable-animations: true
           script: make -C demos/showcase/android e2e-network
 
@@ -430,7 +430,7 @@ jobs:
           path: |
             ~/.android/avd/*
             ~/.android/adb*
-          key: avd-api34-x86_64-pixel6-mem6144-cores1
+          key: avd-api34-x86_64-pixel6-mem8192-cores2
 
       - name: Create AVD and generate snapshot for caching
         if: steps.avd-cache.outputs.cache-hit != 'true'
@@ -441,7 +441,7 @@ jobs:
           target: google_apis
           profile: pixel_6
           force-avd-creation: false
-          emulator-options: -memory 6144 -cores 1 -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          emulator-options: -memory 8192 -cores 2 -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           disable-animations: false
           script: echo "Generated AVD snapshot for caching."
 
@@ -456,7 +456,7 @@ jobs:
           target: google_apis
           profile: pixel_6
           force-avd-creation: false
-          emulator-options: -memory 6144 -cores 1 -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          emulator-options: -memory 8192 -cores 2 -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           disable-animations: true
           script: make -C demos/showcase/android e2e-conformance
 
@@ -505,7 +505,7 @@ jobs:
           path: |
             ~/.android/avd/*
             ~/.android/adb*
-          key: avd-api34-x86_64-pixel6-mem6144-cores1
+          key: avd-api34-x86_64-pixel6-mem8192-cores2
 
       - name: Create AVD and generate snapshot for caching
         if: steps.avd-cache.outputs.cache-hit != 'true'
@@ -516,7 +516,7 @@ jobs:
           target: google_apis
           profile: pixel_6
           force-avd-creation: false
-          emulator-options: -memory 6144 -cores 1 -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          emulator-options: -memory 8192 -cores 2 -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           disable-animations: false
           script: echo "Generated AVD snapshot for caching."
 
@@ -528,7 +528,7 @@ jobs:
           target: google_apis
           profile: pixel_6
           force-avd-creation: false
-          emulator-options: -memory 6144 -cores 1 -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          emulator-options: -memory 8192 -cores 2 -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           disable-animations: true
           script: make -C demos/showcase/android e2e-visual
 
@@ -574,7 +574,7 @@ jobs:
           path: |
             ~/.android/avd/*
             ~/.android/adb*
-          key: avd-api34-x86_64-pixel6-mem6144-cores1
+          key: avd-api34-x86_64-pixel6-mem8192-cores2
 
       - name: Create AVD and generate snapshot for caching
         if: steps.avd-cache.outputs.cache-hit != 'true'
@@ -585,7 +585,7 @@ jobs:
           target: google_apis
           profile: pixel_6
           force-avd-creation: false
-          emulator-options: -memory 6144 -cores 1 -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          emulator-options: -memory 8192 -cores 2 -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           disable-animations: false
           script: echo "Generated AVD snapshot for caching."
 
@@ -599,7 +599,7 @@ jobs:
           target: google_apis
           profile: pixel_6
           force-avd-creation: false
-          emulator-options: -memory 6144 -cores 1 -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          emulator-options: -memory 8192 -cores 2 -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           disable-animations: true
           script: make -C demos/showcase/android e2e-codegen
 
