@@ -501,20 +501,23 @@ so a target taller than the viewport still succeeds once its center is reached.
 
 Ending the scrolled region — the whole screen, or the container `within` names — takes evidence.
 `scroll` reports the end of the content, meaning the target is not in the region, only once two
-consecutive reads *show* the content standing still: an element the loop watched move is still there
-and has stopped, or nothing in the region is clipped to the region's bounds, or, where the tree can
-show neither, the screen as drawn did not change across the step either. On an ordinary list nothing
-is clipped, so a typo in `to` still fails on the first step rather than scrolling the whole bound.
-Where no evidence is available at all, `scroll` keeps stepping and reports at `maxScrolls` (default
-15) that it could not observe whether the region moved. That failure makes a different claim from the
+consecutive reads *show* the content standing still: an element the loop watched move is still there,
+has stopped, and belongs to the scrolling region rather than to chrome above it; or the region's bounds
+cut nothing off, so no frame can be hiding motion; or, where the tree can show neither, the screen as
+drawn did not change across the step either. A tree of plain rows meets the second on the first step,
+so a typo in `to` fails at once there; a tree that reports a window or root view spanning the screen
+never does, so the screen as drawn is what fails fast on those backends, one step later. Where no
+evidence is available at all, `scroll` keeps stepping and reports at `maxScrolls` (default 15) that it
+could not observe whether the region moved. That failure makes a different claim from the
 list having ended, and the difference is real: Android reports an element's bounds clipped to the part
 of it that is visible, so a row taller than the screen reports the same frame while content scrolls
 behind it.
 
-A step that leaves nothing in view is the opposite error, because it may have carried the target past
-the viewport. `scroll` halves the step, scrolls back once to read the span that passed, and — when
-even the smallest step it will take still leaves nothing in view — fails naming the overshoot rather
-than reporting the target absent.
+A step after which nothing that had been in view is on screen at all is the opposite error, because it
+may have carried the target past the viewport. Partly on screen counts, so an ordinary step on a screen
+showing one card at a time is not mistaken for it. `scroll` halves the step, scrolls back once to read
+the span that passed, and — when even the smallest step it will take still leaves nothing behind —
+fails naming the overshoot rather than reporting the target absent.
 
 A re-read, not a single query, settles whether a step moved the region. The re-read matters on
 Android. There the accessibility tree arrives after the gesture has already moved the list. A read

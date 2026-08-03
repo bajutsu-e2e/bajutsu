@@ -401,12 +401,16 @@ device (the shared device is reseeded via one channel, so parallel workers would
   a target selector's frame center lands inside the viewport, or fail deterministically at a
   `maxScrolls` bound (default 15) or once two consecutive reads *show* the region standing still
   (end-of-content). What counts as showing it is BE-0329's subject: an element the loop watched move
-  is still there, unclipped, and has stopped; or nothing in the region is clipped to the region's
-  bounds, so no frame can be hiding motion; or, where the tree can show neither — a backend that clips
-  an element taller than the screen to the screen reports the same frame while content scrolls behind
-  it — the captured screen's checksum did not change across the step either. A step that instead leaves
-  nothing in view is read as a possible overshoot: the loop halves the step fraction (floor 0.125),
-  takes one look-back step to read the span that passed, and fails naming the overshoot at the floor.
+  is still there, unclipped, has stopped, and is not chrome sitting outside the scrolling region (a
+  collapsing app bar shifts once and then pins, which would otherwise stand for a list still scrolling
+  behind it); or the region's bounds cut nothing off, so no frame can be hiding motion — a tree
+  reporting a window or root view spanning the screen never meets this; or, where the tree can show
+  neither — a backend that clips an element taller than the screen to the screen reports the same frame
+  while content scrolls behind it — the captured screen's checksum, taken only on such a step and
+  trusted only once two captures agree, did not change across the step either. A step after which
+  nothing that had been in view is on screen at all (partly counts) is read as a possible overshoot: the
+  loop halves the step fraction (floor 0.125), takes one look-back step to read the span that passed,
+  and fails naming the overshoot at the floor.
   The re-read confirmation exists
   because a queried tree can lag a gesture that has already moved the content. Android publishes the
   accessibility update after the scroll, so a read taken meanwhile describes the pre-scroll screen,

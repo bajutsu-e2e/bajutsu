@@ -35,9 +35,9 @@ target can pass between two queries without ever being looked at.
 The fix changes what the loop is allowed to conclude from two consecutive trees. The loop reports the
 end of the content only when an element it has already seen move is still there and has stopped
 moving, or — where every element in the region is clipped, so the tree can show nothing — when the
-screen as drawn stops changing as well. It treats two trees with no element in common as a step that
-may have skipped the target, and
-it shrinks the gesture and looks back rather than reporting the target missing. A driver conformance
+screen as drawn stops changing as well. It treats a step after which nothing that had been in view is on
+screen at all as one that may have skipped the target, and it shrinks the gesture and looks back rather
+than reporting the target missing. A driver conformance
 case then requires every backend to leave some overlap between consecutive steps, so a gesture that
 flings fails the test suite rather than skipping targets during a run.
 
@@ -124,16 +124,21 @@ delivered which behavior.
 - **Unclipped** — an element whose frame, along the scroll axis, has both edges strictly inside the
   region bounds. A backend that clips reports a clipped edge at the bounds, so only an unclipped
   element reports a position that belongs to the content.
+- **Cut off** — an element the region bounds cross, so its true extent is unknown and it may reach far
+  past the bound. Distinct from an element lying wholly outside the bounds, which is simply out of view
+  and, on a tree that keeps such elements, still reports a position belonging to the content.
 - **Mover** — an element the loop has already seen change position during this `scroll` call. The loop
   records the identifier of every element whose frame it has observed moving, and keeps that record for
   the length of one `scroll` call.
 
 ### Deciding that a step moved the content
 
-A step moved the content when either of these holds:
+A step moved the content when any of these holds:
 
-- some element unclipped in both trees changed its frame along the scroll axis, or
-- the set of element identities in the region changed, meaning rows entered or left the tree.
+- some element the bounds cut off in neither tree changed its frame along the scroll axis,
+- the set of element identities in the region changed, meaning rows entered or left the tree, or
+- the number of elements in view changed, meaning one travelled as far as a region bound and took its
+  position out of the comparison with it.
 
 A changed label alone does not count. A relative clock label that ticks, or a spinner that only changes
 its text, is not scrolling. Today's comparison treats any difference as motion, including such a
@@ -152,20 +157,30 @@ Every element seen moving by this test is added to the mover set.
 The loop reports the end of the content only when the step did not move the content and one of these
 holds:
 
-- a mover is present in both trees, is unclipped in both, and did not move,
-- the region contains no clipped element at all, or
+- a mover is present in both trees, is unclipped in both, did not move, and no element cut off by the
+  region bounds could be a scroll container it does not belong to,
+- the region bounds cut nothing off at all, or
 - the screen as drawn did not change across the step either.
 
 The first condition is the sound one. An element that has already moved during this call is anchored to
-the content, not to the screen, so its standing still means the content stands still. The second
-condition keeps today's fast failure for ordinary lists: when nothing in the region is clipped, nothing
-can hide motion, so an unchanged region really has stopped. A list of normal rows meets that condition
-on the first step, so a mistyped selector still fails at once.
+the content, not to the screen, so its standing still means the content stands still — of *that*
+content. The qualification is what a mover outside the scrolling region would otherwise break. A
+collapsing app bar shifts once on the first scroll and then pins, which makes it a mover that stands
+still forever while the list scrolls behind it, and a large title contracting on the first scroll does
+the same. A cut-off element speaks against a mover only when it is larger along the scroll axis and
+does not contain it, since only something larger could hold content of its own the mover sits outside
+of: the list a row belongs to contains that row, while the list an app bar sits above does not contain
+the app bar. That also leaves a mover's own neighbour alone — the row the screen's edge cut off is no
+larger than the mover, so it can hold nothing.
 
-The mover condition is what a position-fixed element would otherwise break. A sticky header sits
-unclipped inside the region and never moves, by design. Treating it as evidence would report the end of
-the content while the list scrolls behind it. Requiring a mover excludes it, because a sticky header
-never enters the mover set.
+A position-fixed element is excluded more simply: a sticky header never moves, so it never enters the
+mover set at all.
+
+The second condition is what keeps today's fast failure, and only where the tree earns it: when the
+bounds cut nothing off, nothing can hide motion, so an unchanged region really has stopped. A tree of
+plain rows meets it on the first step. A tree that reports a window or a root view spanning the screen
+does not, because that element is cut off by definition — so on the backends that report one, this
+condition never fires and the mover or the screen below carries the fast failure instead.
 
 When the step did not move the content and none of the three conditions holds, the loop cannot tell. It
 takes another step. If it spends `maxScrolls` that way, it fails with a message saying it could not
@@ -197,17 +212,24 @@ this item defers it.
 
 ### Deciding that a step may have skipped the target
 
-Two consecutive trees that share no unclipped element mean the content advanced at least a full
-viewport. Nothing that was in view survived the step. That is exactly the condition under which the
-target can pass unseen, and it is directly visible in the two trees the loop already holds.
+When nothing that was in view before the step is on screen at all after it, the content advanced at
+least a full viewport. That is exactly the condition under which the target can pass unseen, and it is
+directly visible in the two trees the loop already holds.
 
-The inference needs each of the two trees to have had something in view. A tree with no unclipped
-element describes a viewport covered by an element larger than itself, which is the case above where
-the tree shows nothing rather than evidence of travel, and the ordinary step that scrolls *into* such an element ends that
-way while advancing a fraction of a viewport. So the loop requires both trees to report at least one
-unclipped element before it reads their disjointness as a skip. The price is a fling that lands inside
-an element taller than the viewport, which the loop treats as a step it cannot judge; the conformance
-check below is what keeps such a gesture out of the shipped backends.
+*On screen at all* is what makes the inference sound, and partly counts. An element the step pushed
+half off the edge is still evidence that the two viewports overlapped, so nothing between them went
+unqueried. Reading only the fully visible elements would fire on every step of a screen that shows one
+element at a time — a carousel card, or a row nearly as tall as the viewport, is replaced in that set by
+its neighbour after far less than a viewport of travel — and would halve the step and look back on an
+ordinary list.
+
+The inference also needs each of the two trees to have had something in view. A tree with nothing in
+view describes a viewport covered by an element larger than itself, which is the case above where the
+tree shows nothing rather than evidence of travel, and the ordinary step that scrolls *into* such an
+element ends that way while advancing a fraction of a viewport, as does the step that scrolls back out.
+The price is a fling that lands inside an element taller than the viewport, which the loop treats as a
+step it cannot judge; the conformance check below is what keeps such a gesture out of the shipped
+backends.
 
 On such a step the loop does two things. It halves the step fraction, with a floor at `swipe`'s 0.125
 default, so later steps observe the content more finely. It then takes one step in the opposite
@@ -287,8 +309,9 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
 
 5. **Skip detection and recovery.**
 
-   When two consecutive trees each report an unclipped element and share none, halve the step fraction
-   with a floor at 0.125 and take one reversing step to query the span that passed. Count every gesture
+   When two consecutive trees each report something in view and nothing that was in view before is on
+   screen at all after, halve the step fraction with a floor at 0.125 and take one reversing step to
+   query the span that passed. Count every gesture
    against `maxScrolls`, forbid a reversing step from triggering another reversal, and fail at the floor
    with a message naming the overshoot. Correct the comment on the step fraction so it states the
    assumption it rests on.
@@ -302,8 +325,10 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
 7. **Reconciliation with the read-lag re-query.**
 
    Change the re-query's wait condition from "the element list differs" to the motion test from unit 2,
-   and skip the wait when the region has no unclipped element. The read-lag fix merged first, so this
-   unit belongs to this item.
+   and skip the wait when the region holds elements but reports a position for none of them. A region
+   that reports *nothing* keeps waiting, since a read describing an empty screen is the shape a wedged
+   accessibility bridge or a mid-transition dump takes, and it must not be turned into a verdict. The
+   read-lag fix merged first, so this unit belongs to this item.
 
 8. **Tests.**
 
