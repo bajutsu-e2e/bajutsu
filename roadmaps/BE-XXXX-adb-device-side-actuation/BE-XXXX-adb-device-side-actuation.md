@@ -229,12 +229,11 @@ languages. The handle keeps the decision on the host and sends only its result.
 
 - [x] Unit 1 — a directional `swipe` / `drag` resolves its anchor through the driver's
       actuation-grade read.
-- [ ] Unit 2 — `POST /act` on the resident UI Automator server, resolving a handle and injecting
+- [x] Unit 2 — `POST /act` on the resident UI Automator server, resolving a handle and injecting
       from the warm session.
-- [~] Unit 3 — identity-derived handles, and the adb driver's actuators routed through them. The
-      **host half** has landed: an `ActRequest` names an already-resolved element by its four
-      accessibility fields, and `tap` routes through the channel. Nothing answers `/act` until Unit 2
-      ships, so today every attempt degrades to the coordinate tap after one probe per lease.
+- [x] Unit 3 — identity-derived handles, and the adb driver's actuators routed through them. `tap`,
+      `long_press`, and `double_tap` address an element by its four accessibility fields; `pinch` and
+      `rotate` stay on coordinates, since the two-finger gestures need a frame, not a center.
 - [ ] Unit 4 — the coordinate path kept as a declared, logged degraded mode.
 - [ ] Unit 5 — the read-lag barrier narrowed to the reads that still need it.
 - [ ] Unit 6 — deterministic and conformance coverage, and a repeated Android-lane run.
@@ -254,6 +253,19 @@ Log:
   authoring environment (a JDK, but no Android SDK and no `kotlinc`), and an APK build that fails would
   take `smoke`, `golden`, and `conformance` down together. Only `tap` is routed; `double_tap`,
   `long_press`, `pinch`, and `rotate` stay on coordinates until the endpoint is proven on the lane.
+
+- 2026-08-03 — Units 2 and 3 (PR #1455). `POST /act` landed on the resident server: it honors the
+  request's `since` mark, settles its own dump, matches the four identity fields in document order,
+  and injects from the warm session — answering `409` rather than guessing when the identity no
+  longer names the same number of nodes. `long_press` and `double_tap` join `tap` on that path, so
+  the rooted `sendevent` double tap (BE-0208) and the zero-length `input swipe` press-and-hold both
+  become the degraded path and neither needs root any more. Landed without a local compile: the
+  authoring environment has a JDK but no Android SDK, and the policy on its network denies
+  `dl.google.com`, so the Android lane is the first compiler this endpoint meets. Every branch it
+  adds is reachable from the host on the first run, which is what makes that run informative.
+  The evidence that host-side plumbing alone could not close the flake is in the `52d4ee1` run: the
+  failure moved from `gestures` (a long press) to `controls` (a plain `tap`), and every lease logged
+  `resident server has no /act endpoint (HTTP 404)`.
 
 ## References
 

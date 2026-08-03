@@ -1696,6 +1696,30 @@ def test_tap_goes_to_the_device_and_injects_no_coordinate() -> None:
     assert not [c for c in calls if "input" in c]
 
 
+def test_long_press_carries_its_duration_to_the_device() -> None:
+    # The device has no press-and-hold either, so it needs the hold length to pace its own zero-length
+    # swipe. Sent in milliseconds, the unit the resident server counts steps in.
+    act, seen = _recording_act([True])
+    run, calls = _capturing_run([FIXTURE])
+    driver = AdbDriver("U", run=run, act=act)
+    driver.long_press({"id": "stable.submit"}, 0.7)
+    assert [(r.kind, r.duration_ms) for r in seen] == [("longPress", 700)]
+    assert not [c for c in calls if "input" in c]
+
+
+def test_double_tap_on_the_device_needs_neither_root_nor_sendevent() -> None:
+    # Two in-process clicks fall inside the platform's double-tap window with no process startup
+    # between them, so the device path retires both host recipes at once: the rooted `sendevent`
+    # sequence (BE-0208) and the `input tap ; input tap` a non-rooted device fell back to.
+    act, seen = _recording_act([True])
+    run, calls = _capturing_run([FIXTURE])
+    driver = AdbDriver("U", run=run, act=act)
+    driver.double_tap({"id": "stable.submit"})
+    assert [r.kind for r in seen] == ["doubleTap"]
+    assert not [c for c in calls if "sendevent" in c or "input" in c]
+    assert not [c for c in calls if "id" in c and "-u" in c]  # the root probe never ran either
+
+
 def test_a_stale_reply_re_resolves_then_falls_back_to_the_coordinate_path() -> None:
     # `stale` means the screen moved between the host's resolve and the device's, so re-resolving is
     # the fix. A target that never settles must not hang or fail: after a bounded number of attempts

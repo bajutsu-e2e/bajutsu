@@ -2,6 +2,7 @@ package dev.bajutsu.android.server
 
 import android.os.SystemClock
 import android.util.Log
+import android.util.Xml
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.UiDevice
@@ -11,12 +12,14 @@ import java.io.OutputStream
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
+import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.xmlpull.v1.XmlPullParser
 
 /**
  * The resident UI Automator server (BE-0245).
@@ -88,6 +91,7 @@ class ResidentServerTest {
         val out = client.getOutputStream()
         when (target.substringBefore('?')) {
             "/source" -> respondSource(out, device, readMark, sinceOf(target))
+            "/act" -> respondAct(out, device, readMark, target)
             "/clock" ->
                 respond(
                     out,
@@ -112,19 +116,112 @@ class ResidentServerTest {
         return target
     }
 
+    /** One query parameter's decoded value, or null when the target does not carry it. */
+    private fun paramOf(target: String, name: String): String? {
+        val query = target.substringAfter('?', "")
+        for (param in query.split('&')) {
+            if (param.startsWith("$name=")) {
+                return URLDecoder.decode(param.removePrefix("$name="), "UTF-8")
+            }
+        }
+        return null
+    }
+
     /**
-     * The `since` device-clock mark from a `GET /source?since=<mark>` target, or null if absent.
+     * The `since` device-clock mark from a `?since=<mark>` target, or null if absent.
      *
      * Parsed as a Double because the host carries the mark as one (BE-0332 Unit 4); a malformed value
      * yields null, so the read simply does not wait rather than failing.
      */
-    private fun sinceOf(target: String): Double? {
-        val query = target.substringAfter('?', "")
-        for (param in query.split('&')) {
-            if (param.startsWith("since=")) return param.removePrefix("since=").toDoubleOrNull()
+    private fun sinceOf(target: String): Double? = paramOf(target, "since")?.toDoubleOrNull()
+
+    /**
+     * Resolve a target by its accessibility fields against a *fresh* dump and inject the gesture here,
+     * in the warm session, rather than answering a coordinate the host will inject a round trip later.
+     *
+     * The host still decides *which* element a selector means — `resolve_unique` runs there, so an
+     * ambiguous selector fails before anything is sent (Bajutsu determinism). What crosses is the
+     * already-chosen element's identity: its `resource-id`, `content-desc`, `text`, and `class`, plus
+     * its ordinal among the nodes that share all four and how many of those the host saw. The device's
+     * only judgement is whether that identity still names the same number of nodes. It never falls back
+     * to a coordinate the host computed: a mismatch answers [STALE_STATUS], and the host re-resolves.
+     *
+     * Fields rather than a digest, so the host and the device never have to agree on a hash. Fields
+     * rather than an index into the whole dump, so the two do not have to agree on which windows the
+     * tree includes either — the host narrows SystemUI decor out of its copy, and this one does not
+     * need to replicate that filter to find an app node by identity.
+     *
+     * The win is the gap. Resolving here puts the read and the injection microseconds apart in one
+     * process, where the host path spends a round trip plus `adb shell input`'s JVM startup between
+     * them — the window in which a still-settling screen moves out from under a computed coordinate.
+     * It does not make the accessibility tree itself current: a `since` mark is honored first, exactly
+     * as [respondSource] does, so the bounds read here postdate the gesture the host is following up on.
+     */
+    private fun respondAct(out: OutputStream, device: UiDevice, readMark: ReadMark, target: String) {
+        val kind = paramOf(target, "kind") ?: return respond(out, BAD_REQUEST, TEXT, "no kind\n".bytes())
+        val index = paramOf(target, "index")?.toIntOrNull() ?: 0
+        val count = paramOf(target, "count")?.toIntOrNull() ?: 1
+        device.waitForIdle()
+        sinceOf(target)?.let {
+            readMark.awaitPostdate(it, POSTDATE_BUDGET_MS)
+            device.waitForIdle()
         }
-        return null
+        val matches = matchingBounds(settledDump(device), target)
+        if (matches.size != count || index !in matches.indices) {
+            // Loudly stale, never a guess: the screen the host resolved on is not the screen here, so
+            // acting on `matches[index]` would be acting on a different element. The host re-resolves.
+            return respond(out, STALE_STATUS, TEXT, "stale: ${matches.size} of $count\n".bytes())
+        }
+        val bounds = matches[index]
+        val x = (bounds[0] + bounds[2]) / 2
+        val y = (bounds[1] + bounds[3]) / 2
+        when (kind) {
+            "tap" -> device.click(x, y)
+            "longPress" -> {
+                // `UiDevice` has no press-and-hold, so a zero-length swipe over the requested duration
+                // is the press: the same shape the host's `input swipe x y x y <ms>` takes, minus the
+                // process startup. Steps pace the drag, so one step per ~10ms holds the contact down.
+                val ms = paramOf(target, "durationMs")?.toIntOrNull() ?: DEFAULT_LONG_PRESS_MS
+                device.swipe(x, y, x, y, (ms / SWIPE_STEP_MS).coerceAtLeast(1))
+            }
+            "doubleTap" -> {
+                // Two in-process clicks fall inside the platform's double-tap window, which two
+                // `adb shell input tap` invocations could not (BE-0208) — each paid a JVM startup
+                // between them, which is why the host path needs a rooted `sendevent` sequence.
+                device.click(x, y)
+                device.click(x, y)
+            }
+            else -> return respond(out, BAD_REQUEST, TEXT, "unknown kind $kind\n".bytes())
+        }
+        respond(out, "200 OK", TEXT, "ok\n".bytes())
     }
+
+    /**
+     * Every node in `xml` whose four identity fields equal the ones `target` carries, in document
+     * order, as `[left, top, right, bottom]`.
+     *
+     * Bounds come from this dump, not from the host's, so the gesture lands where the element is now.
+     */
+    private fun matchingBounds(xml: ByteArray, target: String): List<IntArray> {
+        val want = IDENTITY_FIELDS.map { paramOf(target, it.first) ?: "" }
+        val found = mutableListOf<IntArray>()
+        val parser = Xml.newPullParser()
+        parser.setInput(xml.inputStream(), "UTF-8")
+        while (parser.next() != XmlPullParser.END_DOCUMENT) {
+            if (parser.eventType != XmlPullParser.START_TAG || parser.name != "node") continue
+            val have = IDENTITY_FIELDS.map { parser.getAttributeValue(null, it.second) ?: "" }
+            if (have == want) parseBounds(parser.getAttributeValue(null, "bounds"))?.let(found::add)
+        }
+        return found
+    }
+
+    /** `[l,t][r,b]` as four ints, or null when the attribute is missing or malformed. */
+    private fun parseBounds(raw: String?): IntArray? {
+        val nums = Regex("-?\\d+").findAll(raw ?: "").map { it.value.toInt() }.toList()
+        return if (nums.size == 4) nums.toIntArray() else null
+    }
+
+    private fun String.bytes(): ByteArray = toByteArray(StandardCharsets.UTF_8)
 
     private fun respondSource(out: OutputStream, device: UiDevice, readMark: ReadMark, since: Double?) {
         // dumpWindowHierarchy traverses every window, so this XML also carries the SystemUI status
@@ -274,5 +371,29 @@ class ResidentServerTest {
         // node spin forever. Same value the retired `stableHierarchy` used, now scoped to tearing while
         // the mark decides staleness.
         const val SETTLE_DUMPS = 4
+
+        const val TEXT = "text/plain; charset=utf-8"
+        const val BAD_REQUEST = "400 Bad Request"
+
+        // A resolved-but-changed target: the identity the host sent no longer names the same number of
+        // nodes here, so the screen moved between its resolve and this call. 409 rather than 404 —
+        // nothing is missing, the state simply conflicts — and the host answers by re-resolving, as the
+        // XCUITest channel does for its own stale handles (BE-0289).
+        const val STALE_STATUS = "409 Conflict"
+
+        // The element identity the host addresses a gesture by, as (query parameter, XML attribute).
+        // Four fields, none of them a coordinate: the host picks the element, and this names it again
+        // against a dump taken here.
+        val IDENTITY_FIELDS = listOf(
+            "rid" to "resource-id",
+            "desc" to "content-desc",
+            "text" to "text",
+            "cls" to "class",
+        )
+
+        // `UiDevice.swipe` paces a drag in steps of about this long, so a press-and-hold's duration is
+        // requested as a step count.
+        const val SWIPE_STEP_MS = 10
+        const val DEFAULT_LONG_PRESS_MS = 700
     }
 }

@@ -919,11 +919,14 @@ class AdbDriver(CoordinateTreeDriver):
         self._act(adb.tap_cmd(self.serial, p[0], p[1]))
 
     def double_tap(self, sel: base.Selector) -> None:
+        if self._device_act(sel, "doubleTap"):
+            return
         # adb has no native double-tap. `input tap ; input tap` chains both taps in one round-trip,
         # but each `input` starts a JVM, so the gap still overruns the platform's double-tap window
         # (BE-0210). On a rooted device with a discoverable touchscreen, a raw `sendevent` sequence
         # closes that gap (BE-0208); otherwise fall back to `input tap`, so a non-rooted device is
-        # never worse off than before.
+        # never worse off than before. Both are the degraded path now that the resident session can
+        # click twice in-process with no startup between the taps, and neither needs root.
         point, screen = self._center_with_screen(sel)
         dev = self._touch_device() if self._rooted() else None
         if dev is not None:
@@ -955,9 +958,12 @@ class AdbDriver(CoordinateTreeDriver):
         return self._touch_dev
 
     def long_press(self, sel: base.Selector, duration: float) -> None:
+        ms = round(duration * 1000)
+        if self._device_act(sel, "longPress", duration_ms=ms):
+            return
         # `input` has no press-and-hold, so a zero-length swipe with a duration acts as a long press.
         x, y = self._center(sel)
-        self._actuate_centered(adb.swipe_cmd(self.serial, x, y, x, y, round(duration * 1000)))
+        self._actuate_centered(adb.swipe_cmd(self.serial, x, y, x, y, ms))
 
     def swipe(self, frm: base.Point, to: base.Point) -> None:
         pre_key = self._pan_baseline()
