@@ -947,3 +947,27 @@ AWS_REGION=us-east-1
 BAJUTSU_AI_PROVIDER=ant
 # ANTHROPIC_PROFILE=work   # optional: select a named ant CLI profile
 ```
+
+## Run diagnostics (`BAJUTSU_LOG_LEVEL`)
+
+`BAJUTSU_LOG_LEVEL` sets how much a run says about itself. It defaults to `WARNING`, which is what a
+run printed before the knob existed, so turning diagnostics on is always deliberate.
+
+```bash
+BAJUTSU_LOG_LEVEL=DEBUG uv run bajutsu run --scenario …
+```
+
+Reach for `DEBUG` when a step fails and the assertion message does not explain why — the timing
+failures, where the question is not what the assertion said but which tree the actuator resolved
+against. On the adb backend, debug records each read and its device event mark, when the read-lag
+barrier opened and what closed it, how the tree settled, the frame each selector resolved to, and
+whether a gesture went to the device or fell back to injecting a coordinate. Read together, those
+lines say where a tap actually landed and whether the screen underneath it had caught up.
+
+Two of them are warnings rather than debug, because each means an actuator is about to resolve
+against a screen the driver could not vouch for: the read-lag barrier spending its whole budget, and
+the settle poll falling through its deadline while the tree was still changing. Both name the
+evidence they acted on, so a lane failure can be diagnosed from its log rather than re-run.
+
+Implementation: [`bajutsu/diagnostics.py`](../bajutsu/diagnostics.py). The Android e2e lane turns it
+on by default (`E2E_LOG_LEVEL` in `demos/showcase/android/Makefile`).

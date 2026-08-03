@@ -231,9 +231,10 @@ languages. The handle keeps the decision on the host and sends only its result.
       actuation-grade read.
 - [x] Unit 2 — `POST /act` on the resident UI Automator server, resolving a handle and injecting
       from the warm session.
-- [x] Unit 3 — identity-derived handles, and the adb driver's actuators routed through them. `tap`,
-      `long_press`, and `double_tap` address an element by its four accessibility fields; `pinch` and
-      `rotate` stay on coordinates, since the two-finger gestures need a frame, not a center.
+- [x] Unit 3 — identity-derived handles, and the adb driver's actuators routed through them. `tap`
+      and `long_press` address an element by its four accessibility fields. `pinch` and `rotate` stay
+      on coordinates because a two-finger gesture needs a frame, not a center; `double_tap` stays
+      because the lane measured the device path losing the platform's double-tap window.
 - [ ] Unit 4 — the coordinate path kept as a declared, logged degraded mode.
 - [ ] Unit 5 — the read-lag barrier narrowed to the reads that still need it.
 - [ ] Unit 6 — deterministic and conformance coverage, and a repeated Android-lane run.
@@ -266,6 +267,28 @@ Log:
   The evidence that host-side plumbing alone could not close the flake is in the `52d4ee1` run: the
   failure moved from `gestures` (a long press) to `controls` (a plain `tap`), and every lease logged
   `resident server has no /act endpoint (HTTP 404)`.
+
+- 2026-08-03 — What the lane said about the endpoint, on the first run that had one (`f519a4a`). It
+  compiled, `/act` answered — the `HTTP 404` that every previous lease logged is gone — and twelve
+  scenarios passed, `controls` among them, the scenario the run before had failed. **The long press
+  passed**: `gestures` no longer fails on `log.longpress.value`, which is the residual
+  coordinate-staleness class closing. The one regression was mine: routing `double_tap` through the
+  endpoint as two in-process `UiDevice.click` calls failed with `log.doubletap.value` still `0`,
+  where the rooted `sendevent` sequence had been passing. `click` settles internally between the two
+  calls, so the pair lands outside the platform's double-tap window — and resolving on the device
+  buys a double tap nothing anyway, since both taps share one center and it is the *interval* that is
+  delicate. `double_tap` is back on `sendevent`, and the endpoint no longer offers the kind.
+
+- 2026-08-03 — Run diagnostics (PR #1455), so the next timing failure is diagnosable from a log
+  rather than a re-run. Nothing configured logging before, so `logger.debug` across the codebase
+  reached nobody and four investigations of this flake each ended in a re-run instead of a cause.
+  `BAJUTSU_LOG_LEVEL` (`bajutsu/diagnostics.py`) turns it on, and the Android lane sets it by
+  default. The adb driver now records each read with its device mark, when the barrier opened and
+  what closed it, how the tree settled, the frame every selector resolved to, and which path each
+  gesture took. Two of them are warnings, because each means an actuator is about to resolve against
+  a screen the driver cannot vouch for: the read-lag barrier spending its budget — now naming the
+  marks it waited on, which is what separates "the device published nothing" from "the gesture moved
+  no frame" — and the settle poll falling through its deadline, which had been silent.
 
 ## References
 

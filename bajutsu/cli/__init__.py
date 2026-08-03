@@ -14,7 +14,7 @@ import pkgutil
 
 import typer
 
-from bajutsu import capabilities
+from bajutsu import capabilities, diagnostics
 from bajutsu.cli import commands
 from bajutsu.dotenv import load_dotenv
 
@@ -31,8 +31,10 @@ app = typer.Typer(
 
 @app.callback()
 def _bootstrap() -> None:
-    """Load a gitignored .env (e.g. ANTHROPIC_API_KEY) before any command runs."""
+    """Load a gitignored .env (e.g. ANTHROPIC_API_KEY) and wire up logging before any command runs."""
     load_dotenv()
+    # After the .env, so a project can set BAJUTSU_LOG_LEVEL there alongside its other run settings.
+    diagnostics.configure()
 
 
 def _register_commands() -> None:

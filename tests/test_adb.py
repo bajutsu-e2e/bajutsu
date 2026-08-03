@@ -1547,6 +1547,49 @@ def test_catch_up_gives_up_loudly_at_the_lag_budget_when_the_pan_changed_nothing
     # The message names the actuator neutrally ("the last gesture" / "moved no frame") because
     # BE-0332 arms this barrier for taps too, not only pans — so it must not misattribute a tap to a pan.
     assert "never published" in caplog.text and "moved no frame" in caplog.text
+    # And it says which test it was applying, so the two named causes can be told apart afterwards.
+    # This is the dump path, so the answer is about the projection, not a device mark.
+    assert "the projection, which never moved" in caplog.text
+
+
+def test_the_read_lag_warning_reports_the_marks_it_waited_on(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    # The warning appeared three times in a failing lane run and settled nothing, because it named two
+    # causes and no evidence. On the mark path the numbers are decisive: a newest read mark that never
+    # passed the actuation mark means the device published no accessibility event at all.
+    clock = _Clock()
+    monkeypatch.setattr(adb_driver_mod, "time", clock)
+    run, _ = _capturing_run([FIXTURE])
+    driver = AdbDriver(
+        "U",
+        run=run,
+        fetch_hierarchy=lambda _since: HierarchyRead(FIXTURE, 1000.0),
+        fetch_clock=lambda: 4200.0,
+    )
+    driver._READ_LAG_S = 0.5
+    driver.query()
+    driver.swipe((10, 300), (10, 100))
+    with caplog.at_level(logging.WARNING):
+        driver._settle()
+    assert "device mark 4200" in caplog.text
+    assert "the newest read was 1000 (-3200ms)" in caplog.text
+
+
+def test_a_tree_that_never_settles_says_so(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    # Falling through the settle deadline hands the next actuator a screen that was still moving. That
+    # was silent, so a coordinate resolved off a mid-animation frame looked exactly like a good one.
+    clock = _Clock()
+    monkeypatch.setattr(adb_driver_mod, "time", clock)
+    moving = [FIXTURE.replace("0,100][200,200", f"0,{100 + n}][200,{200 + n}") for n in range(200)]
+    run, _ = _capturing_run(moving)
+    driver = AdbDriver("U", run=run)
+    driver.query()
+    with caplog.at_level(logging.WARNING):
+        driver._settle()
+    assert "the tree was still changing after" in caplog.text
 
 
 def test_a_non_resolving_actuator_does_not_arm_the_catch_up_wait(
@@ -1707,17 +1750,17 @@ def test_long_press_carries_its_duration_to_the_device() -> None:
     assert not [c for c in calls if "input" in c]
 
 
-def test_double_tap_on_the_device_needs_neither_root_nor_sendevent() -> None:
-    # Two in-process clicks fall inside the platform's double-tap window with no process startup
-    # between them, so the device path retires both host recipes at once: the rooted `sendevent`
-    # sequence (BE-0208) and the `input tap ; input tap` a non-rooted device fell back to.
+def test_double_tap_stays_off_the_device_path() -> None:
+    # Measured on the lane, not assumed: routed through `/act` as two in-process `UiDevice.click`
+    # calls, `gestures` failed with `doubletap.value` still 0 — `click` settles between the two, so
+    # the pair lands outside the platform's double-tap window that this actuator exists to hit. The
+    # device never sees a doubleTap request, however healthy the channel.
     act, seen = _recording_act([True])
     run, calls = _capturing_run([FIXTURE])
     driver = AdbDriver("U", run=run, act=act)
     driver.double_tap({"id": "stable.submit"})
-    assert [r.kind for r in seen] == ["doubleTap"]
-    assert not [c for c in calls if "sendevent" in c or "input" in c]
-    assert not [c for c in calls if "id" in c and "-u" in c]  # the root probe never ran either
+    assert seen == []
+    assert [c for c in calls if "input" in c or "sendevent" in c]
 
 
 def test_a_stale_reply_re_resolves_then_falls_back_to_the_coordinate_path() -> None:

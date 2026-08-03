@@ -184,13 +184,9 @@ class ResidentServerTest {
                 val ms = paramOf(target, "durationMs")?.toIntOrNull() ?: DEFAULT_LONG_PRESS_MS
                 device.swipe(x, y, x, y, (ms / SWIPE_STEP_MS).coerceAtLeast(1))
             }
-            "doubleTap" -> {
-                // Two in-process clicks fall inside the platform's double-tap window, which two
-                // `adb shell input tap` invocations could not (BE-0208) — each paid a JVM startup
-                // between them, which is why the host path needs a rooted `sendevent` sequence.
-                device.click(x, y)
-                device.click(x, y)
-            }
+            // No "doubleTap": two in-process `click` calls were tried on the lane and did *not* land
+            // inside the platform's double-tap window — `click` settles internally between them — so
+            // the host keeps its rooted `sendevent` sequence (BE-0208) for that one gesture.
             else -> return respond(out, BAD_REQUEST, TEXT, "unknown kind $kind\n".bytes())
         }
         respond(out, "200 OK", TEXT, "ok\n".bytes())

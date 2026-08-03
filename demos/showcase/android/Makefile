@@ -98,6 +98,13 @@ E2E_SCENARIOS := smoke firstlook navigation search data_driven relaunch system c
 # it is satisfied, so this is a safe upper bound, not a fixed delay (bajutsu/orchestrator/waits.py).
 E2E_WAIT_FLOOR ?= 15
 
+# Debug on for this lane, and only this lane. Its failures are timing ones — which tree an actuator
+# resolved against, and whether the read had caught up — and that evidence is written at debug level.
+# Four investigations of the same flake stalled for want of it, each ending in a re-run rather than a
+# cause, so the log volume is the cheaper half of that trade. Override to WARNING for a quiet run.
+E2E_LOG_LEVEL ?= DEBUG
+E2E_ENV = BAJUTSU_MIN_WAIT_TIMEOUT=$(E2E_WAIT_FLOOR) BAJUTSU_LOG_LEVEL=$(E2E_LOG_LEVEL)
+
 # The second Android UI toolkit (BE-0221): Compose surfaces the dotted SPEC id verbatim, Views maps
 # it to underscores (`android:id` allows neither `.` nor `-`), and each scenario's selectors list both
 # forms (`id: [stable.refresh, stable_refresh]`) so one file resolves against either tree. Running the
@@ -160,13 +167,13 @@ e2e: compose-build views-build
 	$(ANR_QUIET)
 	cd $(ROOT) && for s in $(E2E_SCENARIOS); do \
 		echo "=== showcase-compose / $$s ==="; \
-		BAJUTSU_MIN_WAIT_TIMEOUT=$(E2E_WAIT_FLOOR) \
+		$(E2E_ENV) \
 		uv run bajutsu run --scenario demos/showcase/scenarios/$$s.yaml \
 			--target showcase-compose --udid $(SERIAL) --backend android --config $(CONFIG) || exit 1; \
 	done
 	cd $(ROOT) && for s in $(E2E_VIEWS_SCENARIOS); do \
 		echo "=== showcase-views / $$s ==="; \
-		BAJUTSU_MIN_WAIT_TIMEOUT=$(E2E_WAIT_FLOOR) \
+		$(E2E_ENV) \
 		uv run bajutsu run --scenario demos/showcase/scenarios/$$s.yaml \
 			--target showcase-views --udid $(SERIAL) --backend android --config $(CONFIG) || exit 1; \
 	done
@@ -192,7 +199,7 @@ e2e-network: compose-build
 		  sleep 0.1; \
 		done; \
 		if [ "$$ready" -ne 1 ]; then echo "net_stub.py did not answer on port $(E2E_NET_STUB_PORT) within the readiness timeout" >&2; exit 1; fi; \
-		BAJUTSU_MIN_WAIT_TIMEOUT=$(E2E_WAIT_FLOOR) \
+		$(E2E_ENV) \
 		uv run bajutsu run --scenario demos/showcase/scenarios/network_android.yaml \
 			--target showcase-compose --udid $(SERIAL) --backend android --config $(CONFIG) )
 
@@ -209,7 +216,7 @@ e2e-network: compose-build
 # drives it in its own `golden (adb)` job, which runs this target then `e2e-fallback` in one AVD boot.
 e2e-golden: compose-build
 	$(ANR_QUIET)
-	cd $(ROOT) && BAJUTSU_MIN_WAIT_TIMEOUT=$(E2E_WAIT_FLOOR) uv run bajutsu run \
+	cd $(ROOT) && $(E2E_ENV) uv run bajutsu run \
 		--scenario demos/showcase/scenarios/golden/golden.yaml \
 		--goldens demos/showcase/scenarios/golden/goldens_android \
 		--target showcase-compose --udid $(SERIAL) --backend android --config $(CONFIG)
@@ -221,7 +228,7 @@ e2e-golden: compose-build
 # proven to yield the same element tree. Not part of `make check`: it needs a booted AVD, so
 # android-e2e.yml drives it right after `e2e-golden` in the same `golden (adb)` job's AVD session.
 e2e-fallback: compose-build
-	cd $(ROOT) && BAJUTSU_ADB_RESIDENT=0 BAJUTSU_MIN_WAIT_TIMEOUT=$(E2E_WAIT_FLOOR) uv run bajutsu run \
+	cd $(ROOT) && BAJUTSU_ADB_RESIDENT=0 $(E2E_ENV) uv run bajutsu run \
 		--scenario demos/showcase/scenarios/golden/golden.yaml \
 		--goldens demos/showcase/scenarios/golden/goldens_android \
 		--target showcase-compose --udid $(SERIAL) --backend android --config $(CONFIG)
@@ -237,7 +244,7 @@ e2e-fallback: compose-build
 # pulls in the `visual` extra (the element-tree golden does not) — the adb backend itself has none.
 e2e-visual: compose-build
 	$(ANR_QUIET)
-	cd $(ROOT) && BAJUTSU_MIN_WAIT_TIMEOUT=$(E2E_WAIT_FLOOR) uv run --extra visual bajutsu run \
+	cd $(ROOT) && $(E2E_ENV) uv run --extra visual bajutsu run \
 		--scenario demos/showcase/scenarios/visual/visual_android.yaml \
 		--baselines demos/showcase/scenarios/visual/baselines_android \
 		--target showcase-compose --udid $(SERIAL) --backend android --config $(CONFIG)
