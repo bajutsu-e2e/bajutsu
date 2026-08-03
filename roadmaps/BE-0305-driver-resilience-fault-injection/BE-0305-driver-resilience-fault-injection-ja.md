@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0305](BE-0305-driver-resilience-fault-injection-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0305") |
+| 実装 PR | [#1461](https://github.com/bajutsu-e2e/bajutsu/pull/1461) |
 | トピック | ドライバとバックエンドのアーキテクチャ |
 | 関連 | [BE-0254](../BE-0254-coordinate-tree-driver-base/BE-0254-coordinate-tree-driver-base-ja.md), [BE-0207](../BE-0207-xcuitest-channel-transient-retry/BE-0207-xcuitest-channel-transient-retry-ja.md), [BE-0287](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience-ja.md), [BE-0289](../BE-0289-xcuitest-stale-handle-reresolve/BE-0289-xcuitest-stale-handle-reresolve-ja.md), [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage-ja.md) |
 <!-- /BE-METADATA -->
@@ -76,10 +77,34 @@ idb/uiautomator の遷移途中でほぼ空になるレスポンスの実際の�
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] idb/adb 向けに、実際の transient-empty 障害注入をまずゲート対象外で追加する。
-- [ ] XCUITest 向けに、実際の crash-recovery 障害注入をまずゲート対象外で追加する。
+- [x] idb/adb 向けに、実際の transient-empty 障害注入をまずゲート対象外で追加する。
+- [x] XCUITest 向けに、実際の crash-recovery 障害注入をまずゲート対象外で追加する。
 - [ ] それぞれ安定後に必須化する。
-- [ ] 既存の合成フィクスチャによるユニットテストを、高速で決定的な制御フロー検証として残す。
+- [x] 既存の合成フィクスチャによるユニットテストを、高速で決定的な制御フロー検証として残す。
+
+ログ:
+
+- [#1461](https://github.com/bajutsu-e2e/bajutsu/pull/1461) 両方のレーンをゲート対象外のシグナルとして着地させました。**adb 側**：`fault-injection
+  (adb)` はエミュレータのディスプレイをスリープさせます。この操作で実際の読み取り元が要素 0 を
+  返すことを実測しました（判定の下限は 2 要素で、別のものと見誤るようなエラーは出ません）。リトライは
+  そこを乗り越え、既知の要素が解決できます。2 つ目のケースはディスプレイを落としたまま保って予算を
+  使い切らせ、その結末が明示的な `ElementNotFound` であることを固定します。どちらもミューテーションで
+  確認しました。`_READY_MIN` をゼロにすると（動機の節が述べるとおりに検出ヒューリスティクスを壊す操作
+  です）両方が赤くなります。組み立てた要素数シーケンスでは、これができません。**XCUITest 側**：
+  `fault-injection (xcuitest)` はランナー自身のホストプロセスにシグナルを送ります。`SIGSTOP` は
+  ソケットを accept できる状態に保ったまま応答を止めるので、短い凍結は BE-0207 のリトライが吸収し
+  （実測 15.5 秒、1 回目の再試行で回復）、リトライ予算を超える凍結は BE-0287 の crash-recovery が
+  乗り越えます（実測 46.6 秒、ログは「recovered from a mid-run crash; re-issuing」）。`SIGKILL` では、
+  実行中のランナー障害を名指しする `BackendCrashError` で読み取りが終わります。どちらのレーンも
+  待ち時間を推測しません。各ケースは、検証対象の層に到達したというドライバ自身のログ記録
+  （`tests/fault_injection.py`）を合図に障害を解除します。そのため、これまで無言だった
+  `CoordinateTreeDriver` のリトライにログ行を追加し、高速スイートのテストも付けました。合成
+  フィクスチャは、高速な制御フロー検証としてそのまま残します。作業中に実測して記録に値することが
+  1 つあります。強制終了したランナーは crash-recovery のプロセス終了による早期失敗の経路を通りません。
+  `_runner_alive` が見るのは `xcodebuild` の親プロセスで、これは強制終了したホストプロセスより長く
+  生き残るからです。したがって診断は正しいものの、ただちにではなく 60 秒の復旧ウィンドウを
+  使い切ったあとに届きます。本項目ではそのままにしました（判定は正しいままで、明確に失敗します）。より厳密な生存
+  確認は別項目にします。
 
 ## 参考
 

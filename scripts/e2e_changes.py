@@ -237,6 +237,9 @@ _RUN_PATH = (
     # it is classified here — the safe direction.
     r"bajutsu/(?!" + _sweep_lookahead(_SWEEP_EXCLUSIONS) + r")"
     r"|tests/driver_conformance\.py$"
+    # The fault-injection scaffolding (BE-0305) two lanes' fault-injection jobs share, so a change to
+    # it belongs in the shared core beside the conformance harness above, not in one lane fragment.
+    r"|tests/fault_injection\.py$"
     # The onboarding-gate assertion each lane's `doctor` step runs (BE-0304); a change to it must
     # re-run every lane that exercises it, so it lives in the shared core, not one lane fragment.
     r"|scripts/assert_doctor_env\.py$"
@@ -267,6 +270,7 @@ _LANE_PATHS: dict[str, str] = {
         r"|bajutsu/platform_lifecycle/environments/(?:xcuitest|xcuitest_live)\.py$"
         r"|bajutsu/cli/commands/record\.py$"
         r"|tests/test_driver_conformance_ondevice\.py$"
+        r"|tests/test_fault_injection_ondevice\.py$"
         r"|BajutsuKit/"
         r"|demos/showcase/ios/swiftui/"
         r"|demos/showcase/ios/uikit/"
@@ -297,6 +301,7 @@ _LANE_PATHS: dict[str, str] = {
         r"|BajutsuAndroid/"  # the app-side clipboard SDK the showcase APKs build in (BE-0233)
         r"|BajutsuAndroidUIAutomatorServer/"  # the resident server this lane builds + exercises (BE-0245)
         r"|tests/test_driver_conformance_ondevice_android\.py$"
+        r"|tests/test_fault_injection_ondevice_android\.py$"
         r"|\.github/workflows/android-e2e\.yml$"
     ),
     "web": (

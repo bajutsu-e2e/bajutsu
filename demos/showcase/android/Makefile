@@ -5,7 +5,7 @@
 # `run` / `doctor` land with the BE-0007 adb backend; until then these targets only build.
 .PHONY: build-all wrapper \
 	compose-build compose-noax-build views-build views-noax-build e2e e2e-network e2e-golden e2e-fallback \
-	e2e-visual e2e-conformance e2e-codegen clean
+	e2e-visual e2e-conformance e2e-fault-injection e2e-codegen clean
 
 HERE := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 GRADLEW := $(HERE)/gradlew
@@ -285,6 +285,21 @@ e2e-conformance: compose-build
 	$(TOUCH_DEBUG_ON)
 	cd $(ROOT) && BAJUTSU_CONFORMANCE_SERIAL=$(SERIAL) \
 		uv run pytest tests/test_driver_conformance_ondevice_android.py -m ondevice -n0 -v
+
+# On-device fault injection (BE-0305) for the adb read path: put the display to sleep so the real read
+# source serves a genuinely empty accessibility tree, and check that `CoordinateTreeDriver`'s
+# transient-empty retry rides over it — the condition its unit test can only fabricate. Like
+# `e2e-conformance` this drives pytest (so it needs the dev group) and runs serially; the display is
+# left awake whatever happens. `TOUCH_DEBUG_OFF` because nothing here inspects touch overlays, and no
+# `adb root`: the cases only read and tap. Not part of `make check` (it needs a booted AVD), and
+# deliberately non-gating in CI — android-e2e.yml drives it in its own `fault-injection (adb)` job,
+# outside the `E2E (Android)` aggregate, until it proves stable.
+e2e-fault-injection: compose-build
+	@[ -n "$(SERIAL)" ] || { echo "SERIAL is empty: the fault-injection module would skip and exit 0"; exit 1; }
+	$(ANR_QUIET)
+	$(TOUCH_DEBUG_OFF)
+	cd $(ROOT) && BAJUTSU_FAULT_INJECTION_SERIAL=$(SERIAL) \
+		uv run pytest tests/test_fault_injection_ondevice_android.py -m ondevice -n0 -v
 
 # The codegen output path: a scenario -> native UI Automator (Kotlin) test, compiled and run by
 # Gradle's connectedAndroidTest with no bajutsu runtime / adb driver / AI at test time (BE-0294) —

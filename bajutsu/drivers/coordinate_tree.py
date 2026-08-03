@@ -15,10 +15,13 @@ deadline, BE-0245), which therefore is not hoisted here.
 
 from __future__ import annotations
 
+import logging
 import time
 from abc import ABC, abstractmethod
 
 from bajutsu.drivers import base
+
+logger = logging.getLogger("bajutsu.drivers.coordinate_tree")
 
 # The settle projection: identifier + frame per element, sorted — a screen's stable shape ignoring
 # volatile value/traits/label. Public because a subclass's own `_settle` reasons about it (adb keeps
@@ -71,13 +74,40 @@ class CoordinateTreeDriver(ABC):
         Stops early on an unrecoverable empty (`_is_unrecoverable_empty`) so a backend does not burn
         the backoff loop on a read that a same-source re-read can never clear (an
         accessibility-bridge wedge, BE-0231 Unit 6) — the caller (`query`) handles that case.
+
+        Every retry is logged, and so is a budget that runs out (BE-0305): the retry absorbs a real
+        device fault, so a read that only succeeded on its third attempt must not look identical to one
+        that never faulted — the same visible-retry discipline the XCUITest channel keeps for its own
+        transient retry. It is also what lets the fault-injection lane assert that a real degenerate
+        read reached this loop, rather than merely that nothing broke.
         """
         els = self._describe()
         for i in range(self._EMPTY_RETRIES):
             if not self._is_transient_empty(els) or self._is_unrecoverable_empty(els):
                 break
-            time.sleep(self._empty_backoff(i))
+            backoff = self._empty_backoff(i)
+            logger.warning(
+                "read returned %d element(s), below the %d-element floor after a %d-element tree was "
+                "seen — a transient empty; retrying in %.2fs (attempt %d/%d)",
+                len(els),
+                self._READY_MIN,
+                self._max_seen,
+                backoff,
+                i + 1,
+                self._EMPTY_RETRIES,
+            )
+            time.sleep(backoff)
             els = self._describe()
+        # Still degenerate here means the empty outlived the budget (an unrecoverable empty is the
+        # caller's case, not this one). Say so rather than handing back a near-empty tree silently: a
+        # selector against it is about to fail, and this names why.
+        if self._is_transient_empty(els) and not self._is_unrecoverable_empty(els):
+            logger.warning(
+                "read still returned %d element(s) after %d retries; returning the degenerate tree — "
+                "a selector against it will fail",
+                len(els),
+                self._EMPTY_RETRIES,
+            )
         return els
 
     def _record_tree(self, els: list[base.Element]) -> list[base.Element]:

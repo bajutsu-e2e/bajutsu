@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0305](BE-0305-driver-resilience-fault-injection.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0305") |
+| Implementing PR | [#1461](https://github.com/bajutsu-e2e/bajutsu/pull/1461) |
 | Topic | Driver & backend architecture |
 | Related | [BE-0254](../BE-0254-coordinate-tree-driver-base/BE-0254-coordinate-tree-driver-base.md), [BE-0207](../BE-0207-xcuitest-channel-transient-retry/BE-0207-xcuitest-channel-transient-retry.md), [BE-0287](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience.md), [BE-0289](../BE-0289-xcuitest-stale-handle-reresolve/BE-0289-xcuitest-stale-handle-reresolve.md), [BE-0282](../BE-0282-real-backend-network-coverage/BE-0282-real-backend-network-coverage.md) |
 <!-- /BE-METADATA -->
@@ -74,10 +75,32 @@ Proposal altitude. The work is MECE along the units below.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Add real transient-empty fault injection for idb/adb, non-gating first.
-- [ ] Add real crash-recovery fault injection for XCUITest, non-gating first.
+- [x] Add real transient-empty fault injection for idb/adb, non-gating first.
+- [x] Add real crash-recovery fault injection for XCUITest, non-gating first.
 - [ ] Promote each to required once stable.
-- [ ] Keep the existing synthetic-fixture unit tests as the fast, deterministic control-flow check.
+- [x] Keep the existing synthetic-fixture unit tests as the fast, deterministic control-flow check.
+
+Log:
+
+- [#1461](https://github.com/bajutsu-e2e/bajutsu/pull/1461) — landed both lanes as non-gating signals. **adb:** `fault-injection (adb)` puts the
+  emulator's display to sleep, which was *measured* to make the real read source return 0 elements
+  against the 2-element floor, with no error to mistake for something else; the retry then rides over
+  it and the known element resolves. A second case holds the display down so the budget runs out and
+  pins that as a loud `ElementNotFound`. Both were mutation-checked: zeroing `_READY_MIN` (breaking
+  the detection heuristic exactly as the Motivation describes) reddens both, which the fabricated
+  count sequence cannot do. **XCUITest:** `fault-injection (xcuitest)` signals the runner's own host
+  process — `SIGSTOP` leaves its socket accepting while nothing answers, so a short freeze is absorbed
+  by BE-0207's retry (measured 15.5s, one attempt) and a freeze past the retry budget is ridden out by
+  BE-0287's crash recovery (measured 46.6s, "recovered from a mid-run crash; re-issuing"); `SIGKILL`
+  ends the read on a `BackendCrashError` naming a mid-run runner fault. Neither lane guesses a
+  duration: each lifts its fault on the driver's own log record that it reached the layer under test
+  (`tests/fault_injection.py`), which is why `CoordinateTreeDriver`'s retry — silent until now — gained
+  a log line, with fast-suite tests of its own. The synthetic fixtures stay as the fast control-flow
+  check. Measured on the way and worth recording: a killed runner does **not** take crash recovery's
+  process-exited fast path, because `_runner_alive` reads the `xcodebuild` parent, which outlives the
+  killed host process — so the diagnosis is correct but arrives after the full 60s recovery window
+  rather than immediately. Left as-is here (the verdict is right and loud); a tighter liveness check is
+  a separate item.
 
 ## References
 

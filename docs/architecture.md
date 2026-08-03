@@ -298,6 +298,36 @@ can render a spec-driven arbitrary-id screen (`testTag` takes any runtime string
 (deselected by the gate's default) so it never runs in `make check`, and runs serially on a single
 device (the shared device is reseeded via one channel, so parallel workers would collide).
 
+### Fault-injection lanes (BE-0305)
+
+Two mechanisms in the drivers exist only for a real device fault, and the suites above never meet
+one: the conformance suite waits every screen ready before it reads, and no job breaks the runner on
+purpose. `CoordinateTreeDriver`'s transient-empty retry (BE-0254) rides over the degenerate
+accessibility tree a device serves mid-transition; the XCUITest channel's transient retry (BE-0207)
+and crash recovery (BE-0287) ride out a runner that stops answering. Their fast-suite tests feed a
+fabricated element count and raise a synthetic exception — real coverage of the control flow, and no
+evidence that the real condition reaches it, since a real device does not raise a Python exception
+and a detection heuristic keyed on an element count can be broken while a fabricated count still
+trips it.
+
+The **fault-injection lanes** inject the real condition instead. `fault-injection (adb)`
+(`android-e2e.yml`) puts the emulator's display to sleep, which makes the real read source — the
+resident UI Automator channel, and the `uiautomator dump` fallback behind it — serve a genuinely
+empty tree, and checks the retry rides over it rather than raising a false "element not found"; a
+second case holds the display down so the retry budget runs out, and pins that outcome as a loud
+`ElementNotFound` rather than a silent one. `fault-injection (xcuitest)` (`ios-e2e.yml`) signals the
+runner's own host process: `SIGSTOP` leaves its socket accepting while nothing answers — what a
+wedged runner looks like from the host — so a short freeze is absorbed by the transient retry and a
+freeze past the retry budget is ridden out by crash recovery, while `SIGKILL` must end the run on a
+crash diagnosis that names a mid-run runner fault, never an unrelated timeout.
+
+Neither lane guesses how long to hold a fault: each lifts it on the driver's *own* log record that it
+reached the layer under test (`tests/fault_injection.py`), so which mechanism a case exercises is
+decided by observed behavior rather than by the length of a sleep. Both are per-PR signals,
+deliberately outside their lanes' required aggregate checks, and are promoted once stable — the
+signal-then-required path BE-0282 established, applied here to lanes that break the device on
+purpose and so carry more inherent flakiness risk than the ones driving a healthy one.
+
 ---
 
 ## Implementation status
