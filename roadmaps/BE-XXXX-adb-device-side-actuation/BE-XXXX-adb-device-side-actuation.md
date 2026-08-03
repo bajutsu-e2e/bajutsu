@@ -146,7 +146,7 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
    keeps its single read byte-for-byte. This unit is independent of the rest and ships first.
 2. **Serve actuation from the resident UI Automator server, addressed by identity.** Add
    `POST /act` to the resident server: a request names an action (`tap`, `doubleTap`, `longPress`
-   with a duration, `pan` from an anchor), and the target's identity and ordinal. The server
+   with a duration), and the target's identity and ordinal. The server
    resolves the identity against the live accessibility tree through `UiDevice`, reads the node's
    current bounds, and injects the gesture from the same warm `UiAutomation` session. An identity
    matching no node, or a different number of nodes than the host counted, is answered `stale` with
