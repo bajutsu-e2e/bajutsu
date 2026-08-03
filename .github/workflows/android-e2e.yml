@@ -176,7 +176,7 @@ jobs:
           # profile scrolls a different number of rows per swipe and never reaches the target (BE-0208).
           profile: pixel_6
           force-avd-creation: false
-          emulator-options: -memory 8192 -cores 2 -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          emulator-options: -memory 8192 -cores 2 -no-window -gpu auto -noaudio -no-boot-anim -camera-back none -camera-front none
           disable-animations: false
           script: echo "Generated AVD snapshot for caching."
 
@@ -202,7 +202,7 @@ jobs:
           target: google_apis
           profile: pixel_6  # match the local validation geometry (see the create-AVD step above)
           force-avd-creation: false
-          emulator-options: -memory 8192 -cores 2 -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          emulator-options: -memory 8192 -cores 2 -no-snapshot-save -no-window -gpu auto -noaudio -no-boot-anim -camera-back none -camera-front none
           disable-animations: true
           # The emulator-runner runs each script *line* as its own `/usr/bin/sh -c`, so a `set -e`
           # line and backslash continuations don't carry across lines. Keep it one command joined
@@ -290,7 +290,7 @@ jobs:
           target: google_apis
           profile: pixel_6
           force-avd-creation: false
-          emulator-options: -memory 8192 -cores 2 -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          emulator-options: -memory 8192 -cores 2 -no-window -gpu auto -noaudio -no-boot-anim -camera-back none -camera-front none
           disable-animations: false
           script: echo "Generated AVD snapshot for caching."
 
@@ -305,7 +305,7 @@ jobs:
           target: google_apis
           profile: pixel_6
           force-avd-creation: false
-          emulator-options: -memory 8192 -cores 2 -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          emulator-options: -memory 8192 -cores 2 -no-snapshot-save -no-window -gpu auto -noaudio -no-boot-anim -camera-back none -camera-front none
           disable-animations: true
           script: make -C demos/showcase/android e2e-golden && make -C demos/showcase/android e2e-fallback
 
@@ -363,7 +363,7 @@ jobs:
           target: google_apis
           profile: pixel_6
           force-avd-creation: false
-          emulator-options: -memory 8192 -cores 2 -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          emulator-options: -memory 8192 -cores 2 -no-window -gpu auto -noaudio -no-boot-anim -camera-back none -camera-front none
           disable-animations: false
           script: echo "Generated AVD snapshot for caching."
 
@@ -375,7 +375,7 @@ jobs:
           target: google_apis
           profile: pixel_6
           force-avd-creation: false
-          emulator-options: -memory 8192 -cores 2 -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          emulator-options: -memory 8192 -cores 2 -no-snapshot-save -no-window -gpu auto -noaudio -no-boot-anim -camera-back none -camera-front none
           disable-animations: true
           script: make -C demos/showcase/android e2e-network
 
@@ -441,7 +441,7 @@ jobs:
           target: google_apis
           profile: pixel_6
           force-avd-creation: false
-          emulator-options: -memory 8192 -cores 2 -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          emulator-options: -memory 8192 -cores 2 -no-window -gpu auto -noaudio -no-boot-anim -camera-back none -camera-front none
           disable-animations: false
           script: echo "Generated AVD snapshot for caching."
 
@@ -456,7 +456,7 @@ jobs:
           target: google_apis
           profile: pixel_6
           force-avd-creation: false
-          emulator-options: -memory 8192 -cores 2 -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          emulator-options: -memory 8192 -cores 2 -no-snapshot-save -no-window -gpu auto -noaudio -no-boot-anim -camera-back none -camera-front none
           disable-animations: true
           script: make -C demos/showcase/android e2e-conformance
 
@@ -516,7 +516,7 @@ jobs:
           target: google_apis
           profile: pixel_6
           force-avd-creation: false
-          emulator-options: -memory 8192 -cores 2 -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          emulator-options: -memory 8192 -cores 2 -no-window -gpu auto -noaudio -no-boot-anim -camera-back none -camera-front none
           disable-animations: false
           script: echo "Generated AVD snapshot for caching."
 
@@ -528,7 +528,7 @@ jobs:
           target: google_apis
           profile: pixel_6
           force-avd-creation: false
-          emulator-options: -memory 8192 -cores 2 -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          emulator-options: -memory 8192 -cores 2 -no-snapshot-save -no-window -gpu auto -noaudio -no-boot-anim -camera-back none -camera-front none
           disable-animations: true
           script: make -C demos/showcase/android e2e-visual
 
@@ -585,7 +585,7 @@ jobs:
           target: google_apis
           profile: pixel_6
           force-avd-creation: false
-          emulator-options: -memory 8192 -cores 2 -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          emulator-options: -memory 8192 -cores 2 -no-window -gpu auto -noaudio -no-boot-anim -camera-back none -camera-front none
           disable-animations: false
           script: echo "Generated AVD snapshot for caching."
 
@@ -599,7 +599,7 @@ jobs:
           target: google_apis
           profile: pixel_6
           force-avd-creation: false
-          emulator-options: -memory 8192 -cores 2 -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          emulator-options: -memory 8192 -cores 2 -no-snapshot-save -no-window -gpu auto -noaudio -no-boot-anim -camera-back none -camera-front none
           disable-animations: true
           script: make -C demos/showcase/android e2e-codegen
 
