@@ -301,6 +301,15 @@ e2e-codegen:
 	cd $(ROOT) && uv run bajutsu codegen demos/showcase/scenarios/$(CODEGEN_SCENARIO).yaml \
 		--emit uiautomator --target showcase-compose --config $(CONFIG) -o $(CODEGEN_KT)
 	adb wait-for-device
+	# Unlike the bajutsu-driven jobs (whose scenarios set reinstall: clean, so AndroidEnvironment
+	# uninstalls before installing), connectedAndroidTest installs incrementally with no such guard.
+	# The CI AVD boot snapshot is cached and shared across jobs (android-e2e.yml), so a stale copy of
+	# this package signed with another job's ephemeral debug keystore can already be resident;
+	# Gradle's install then fails loudly with INSTALL_FAILED_UPDATE_INCOMPATIBLE instead of replacing
+	# it. Uninstalling first is idempotent — a harmless no-op when neither package is present — and
+	# guarantees a clean install regardless of what the cached snapshot's disk state carries.
+	adb uninstall com.bajutsu.showcase.android.compose || true
+	adb uninstall com.bajutsu.showcase.android.compose.test || true
 	cd $(HERE) && $(GRADLEW) :compose:connectedA11yDebugAndroidTest
 
 clean:
