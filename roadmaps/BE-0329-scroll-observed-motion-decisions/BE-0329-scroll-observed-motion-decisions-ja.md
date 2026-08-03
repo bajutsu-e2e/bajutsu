@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0329") |
+| 実装 PR | [#1460](https://github.com/bajutsu-e2e/bajutsu/pull/1460)（判定、取り戻し、描画された画面による確認） |
 | トピック | Scenario authoring features |
 | 関連 | [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md), [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity-ja.md), [BE-0245](../BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server-ja.md), [BE-0259](../BE-0259-assert-query-snapshot-reuse/BE-0259-assert-query-snapshot-reuse-ja.md), [BE-0326](../BE-0326-scroll-to-element/BE-0326-scroll-to-element-ja.md) |
 <!-- /BE-METADATA -->
@@ -441,6 +442,17 @@ driver conformance suite
 - [x] Unit 8 — `FakeDriver` に対するテスト
 - [ ] Unit 9 — 新しい失敗と重なりの要求のドキュメント（`scroll` の作成者向けドキュメントは両言語で
       更新済み。driver の契約への記載は Unit 6 を待ちます）
+
+ログ:
+
+- [#1460](https://github.com/bajutsu-e2e/bajutsu/pull/1460) — frame を丸ごと比べる方式を領域の射影と
+  3 つの判定に置き換え、ツリーが判定できない領域のために描画された画面による確認を加え、飛ばしの検出と
+  歩幅の縮小・戻りのステップを加え、読み取り遅延の再取得を動きの判定と調停し、新しい失敗を
+  `docs/scenarios.md` と `docs/architecture.md`（および日本語ミラー）に記載しました。1 巡目のレビューで、
+  項目の文面どおりの規則が項目自身の守るべきケースを壊す例が 3 つ見つかりました（固定されたクロームが
+  「動いた要素」になる、空の読み取りが根拠になる、一度に 1 要素だけ見せる画面が行き過ぎと読まれる）。
+  それぞれに必要なただし書きを設計に記録しています。conformance の重なりの検査（Unit 6）と driver の
+  契約への記載は持ち越します。
 
 ## 参考
 

@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0329") |
+| Implementing PR | [#1460](https://github.com/bajutsu-e2e/bajutsu/pull/1460) (decisions, recovery, and the rendered-screen confirmation) |
 | Topic | Scenario authoring features |
 | Related | [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md), [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md), [BE-0245](../BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server.md), [BE-0259](../BE-0259-assert-query-snapshot-reuse/BE-0259-assert-query-snapshot-reuse.md), [BE-0326](../BE-0326-scroll-to-element/BE-0326-scroll-to-element.md) |
 <!-- /BE-METADATA -->
@@ -454,6 +455,18 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
 - [x] Unit 8 — tests over `FakeDriver`
 - [ ] Unit 9 — docs for the new failure and the overlap requirement (the `scroll` authoring docs are
       updated in both languages; the driver-contract note waits on unit 6)
+
+Log:
+
+- [#1460](https://github.com/bajutsu-e2e/bajutsu/pull/1460) — replaced the whole-frame comparison with
+  the region projection and its three decisions, added the rendered-screen confirmation for a region the
+  tree cannot judge, added skip detection with the shrink and the look-back step, reconciled the
+  read-lag re-query with the motion test, and documented the new failures in `docs/scenarios.md` and
+  `docs/architecture.md` with their Japanese mirrors. Review of the first pass found three cases where
+  the item's literal rule broke a case the item protects — pinned chrome as a mover, an empty read as
+  evidence, and a one-element-at-a-time screen read as an overshoot — and the design records the
+  qualification each one needed. The conformance overlap check (unit 6) and its driver-contract note are
+  deferred.
 
 ## References
 
