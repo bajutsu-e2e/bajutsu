@@ -1750,17 +1750,26 @@ def test_long_press_carries_its_duration_to_the_device() -> None:
     assert not [c for c in calls if "input" in c]
 
 
-def test_double_tap_stays_off_the_device_path() -> None:
-    # Measured on the lane, not assumed: routed through `/act` as two in-process `UiDevice.click`
-    # calls, `gestures` failed with `doubletap.value` still 0 — `click` settles between the two, so
-    # the pair lands outside the platform's double-tap window that this actuator exists to hit. The
-    # device never sees a doubleTap request, however healthy the channel.
+def test_double_tap_goes_to_the_device_for_its_timing() -> None:
+    # This one is routed for the interval, not the coordinate: every host recipe leaves the gap
+    # between the taps to a JVM startup, a process spawn, or `UiDevice.click`'s internal settle, and
+    # bets it lands inside the platform's double-tap window. The device stamps its own MotionEvents.
+    # Neither host recipe fires when the device serves it — not `sendevent`, not `input tap`.
     act, seen = _recording_act([True])
     run, calls = _capturing_run([FIXTURE])
     driver = AdbDriver("U", run=run, act=act)
     driver.double_tap({"id": "stable.submit"})
-    assert seen == []
-    assert [c for c in calls if "input" in c or "sendevent" in c]
+    assert [r.kind for r in seen] == ["doubleTap"]
+    assert not [c for c in calls if "sendevent" in c or "input" in c]
+
+
+def test_double_tap_still_falls_back_when_the_device_cannot_serve_it() -> None:
+    # A device with no resident channel keeps the rooted `sendevent` sequence (BE-0208), so the
+    # timing fix never costs a backend that cannot receive it.
+    run, calls = _capturing_run([FIXTURE])
+    driver = AdbDriver("U", run=run)
+    driver.double_tap({"id": "stable.submit"})
+    assert [c for c in calls if "sendevent" in c or "input" in c]
 
 
 def test_a_stale_reply_re_resolves_then_falls_back_to_the_coordinate_path() -> None:

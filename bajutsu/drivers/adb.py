@@ -1009,18 +1009,20 @@ class AdbDriver(CoordinateTreeDriver):
         self._act(adb.tap_cmd(self.serial, p[0], p[1]))
 
     def double_tap(self, sel: base.Selector) -> None:
-        # The one center actuator that stays off the device path, and it was measured, not assumed:
-        # routing it through `/act` as two in-process `UiDevice.click` calls made `gestures` fail with
-        # `doubletap.value` still 0, where the `sendevent` sequence below had been passing. `click`
-        # settles internally between calls, so the pair lands outside the platform's double-tap window
-        # — the very gap this actuator exists to close. Resolving on the device buys nothing a double
-        # tap needs anyway: both taps land on one center, and it is the *interval* that is delicate.
-        #
+        # Unlike the other actuators, this one goes to the device for its *timing*, not its
+        # coordinate. Every host recipe below leaves the gap between the two taps to something
+        # incidental and bets it lands inside the platform's double-tap window; the device builds the
+        # `MotionEvent`s itself and states the interval. Two in-process `UiDevice.click` calls were
+        # tried first and failed the same way the host recipes do — `click` settles between them — so
+        # the endpoint now stamps the events rather than chaining a convenience API.
+        if self._device_act(sel, "doubleTap"):
+            return
         # adb has no native double-tap. `input tap ; input tap` chains both taps in one round-trip,
         # but each `input` starts a JVM, so the gap still overruns the platform's double-tap window
         # (BE-0210). On a rooted device with a discoverable touchscreen, a raw `sendevent` sequence
-        # closes that gap (BE-0208); otherwise fall back to `input tap`, so a non-rooted device is
-        # never worse off than before.
+        # narrows that gap to five process spawns (BE-0208) — enough on a fast emulator, and observed
+        # missing the window on a loaded CI one, with the touches landing and the app reading them as
+        # two single taps. Both stay as the degraded path for a device with no resident channel.
         point, screen = self._center_with_screen(sel)
         dev = self._touch_device() if self._rooted() else None
         if dev is not None:

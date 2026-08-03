@@ -1,8 +1,11 @@
 package dev.bajutsu.android.server
 
+import android.app.UiAutomation
 import android.os.SystemClock
 import android.util.Log
 import android.util.Xml
+import android.view.InputDevice
+import android.view.MotionEvent
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.UiDevice
@@ -184,12 +187,59 @@ class ResidentServerTest {
                 val ms = paramOf(target, "durationMs")?.toIntOrNull() ?: DEFAULT_LONG_PRESS_MS
                 device.swipe(x, y, x, y, (ms / SWIPE_STEP_MS).coerceAtLeast(1))
             }
-            // No "doubleTap": two in-process `click` calls were tried on the lane and did *not* land
-            // inside the platform's double-tap window — `click` settles internally between them — so
-            // the host keeps its rooted `sendevent` sequence (BE-0208) for that one gesture.
+            "doubleTap" -> injectDoubleTap(x, y)
             else -> return respond(out, BAD_REQUEST, TEXT, "unknown kind $kind\n".bytes())
         }
         respond(out, "200 OK", TEXT, "ok\n".bytes())
+    }
+
+    /**
+     * Two taps whose separation is *stated*, not hoped for — the whole reason this gesture is here.
+     *
+     * Every earlier recipe left the inter-tap gap to something incidental and bet it would land inside
+     * the platform's double-tap window: `input tap ; input tap` paid a JVM startup between the taps
+     * (BE-0210), the rooted `sendevent` sequence pays five process spawns (BE-0208), and two
+     * [UiDevice.click] calls pay `click`'s internal settle. All three pass on a fast host and fail on a
+     * loaded one, which is the shape of a flake rather than a bug — the CI emulator failed with the
+     * touches visibly landing and the app treating them as two single taps.
+     *
+     * Building the events here fixes that: [MotionEvent.getEventTime] is what the platform's detector
+     * measures, and these timestamps are chosen rather than observed. The sleep is not a wait for a
+     * condition — nothing is being polled — it is the gesture's own duration, the same way a long
+     * press holds for the duration it was asked for; it keeps the real interval and the stamped one
+     * honest for a detector that consults either.
+     */
+    private fun injectDoubleTap(x: Int, y: Int) {
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        val first = SystemClock.uptimeMillis()
+        injectTap(automation, first, x, y)
+        SystemClock.sleep(TAP_HOLD_MS + INTER_TAP_MS)
+        injectTap(automation, first + TAP_HOLD_MS + INTER_TAP_MS, x, y)
+    }
+
+    /** One down/up contact at `x`,`y`, stamped from `downTime` and held for [TAP_HOLD_MS]. */
+    private fun injectTap(automation: UiAutomation, downTime: Long, x: Int, y: Int) {
+        inject(automation, MotionEvent.ACTION_DOWN, downTime, downTime, x, y)
+        inject(automation, MotionEvent.ACTION_UP, downTime, downTime + TAP_HOLD_MS, x, y)
+    }
+
+    private fun inject(
+        automation: UiAutomation,
+        action: Int,
+        downTime: Long,
+        eventTime: Long,
+        x: Int,
+        y: Int,
+    ) {
+        val event = MotionEvent.obtain(downTime, eventTime, action, x.toFloat(), y.toFloat(), 0)
+        event.source = InputDevice.SOURCE_TOUCHSCREEN
+        try {
+            // Synchronous: the call returns once the event has been dispatched, so the second contact
+            // cannot overtake the first and invert the pair the detector is trying to read.
+            automation.injectInputEvent(event, true)
+        } finally {
+            event.recycle()
+        }
     }
 
     /**
@@ -391,5 +441,11 @@ class ResidentServerTest {
         // requested as a step count.
         const val SWIPE_STEP_MS = 10
         const val DEFAULT_LONG_PRESS_MS = 700
+
+        // The double tap's two intervals, both comfortably inside the platform's 300ms window and
+        // above Compose's 40ms floor (`doubleTapMinTimeMillis`, which rejects a pair that arrives too
+        // fast to be two deliberate taps). Chosen numbers, not measured ones — that is the point.
+        const val TAP_HOLD_MS = 40L
+        const val INTER_TAP_MS = 60L
     }
 }

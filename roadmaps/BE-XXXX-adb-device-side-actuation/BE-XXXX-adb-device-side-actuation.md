@@ -232,9 +232,9 @@ languages. The handle keeps the decision on the host and sends only its result.
 - [x] Unit 2 — `POST /act` on the resident UI Automator server, resolving a handle and injecting
       from the warm session.
 - [x] Unit 3 — identity-derived handles, and the adb driver's actuators routed through them. `tap`
-      and `long_press` address an element by its four accessibility fields. `pinch` and `rotate` stay
-      on coordinates because a two-finger gesture needs a frame, not a center; `double_tap` stays
-      because the lane measured the device path losing the platform's double-tap window.
+      `long_press`, and `double_tap` go to the device — the first two for their coordinate, the third
+      for its *interval*. `pinch` and `rotate` stay on coordinates because a two-finger gesture needs
+      a frame, not a center.
 - [ ] Unit 4 — the coordinate path kept as a declared, logged degraded mode.
 - [ ] Unit 5 — the read-lag barrier narrowed to the reads that still need it.
 - [ ] Unit 6 — deterministic and conformance coverage, and a repeated Android-lane run.
@@ -289,6 +289,17 @@ Log:
   a screen the driver cannot vouch for: the read-lag barrier spending its budget — now naming the
   marks it waited on, which is what separates "the device published nothing" from "the gesture moved
   no frame" — and the settle poll falling through its deadline, which had been silent.
+
+- 2026-08-03 — The double tap, on the third attempt, and the first one that states its timing. The
+  `e30e147` lane run with the touch overlays on showed the touches landing and the app not reacting,
+  and the debug log showed the device publishing no accessibility event for twenty seconds after the
+  injection. So the contact reached the input system and the platform did not read it as a double
+  tap. Every recipe tried so far leaves the gap between the two taps to something incidental and bets
+  it lands inside the 300 ms window: `input tap ; input tap` pays a JVM startup (BE-0210), the rooted
+  `sendevent` sequence pays five process spawns (BE-0208), and two `UiDevice.click` calls pay
+  `click`'s internal settle. All three pass on a fast host and fail on a loaded one, which is a flake
+  rather than a bug. `POST /act` now builds the `MotionEvent`s itself and stamps them, so the
+  interval is a declared 40 ms hold plus a 60 ms gap rather than whatever the host happened to cost.
 
 ## References
 
