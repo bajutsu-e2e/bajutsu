@@ -109,8 +109,10 @@ def test_a_slow_cold_start_is_waited_out_rather_than_restarted() -> None:
 def _fn_body(code: str, name: str, next_name: str) -> str:
     """The emitted body of one generated Kotlin function, so an assertion on ordering inside it
     cannot be satisfied by a matching line that lives in some other function."""
-    start = code.index(f"private fun {name}")
-    return code[start : code.index(f"private fun {next_name}", start)]
+    # The trailing "(" keeps the boundary exact: a bare prefix would also match a longer helper
+    # that starts with the same characters.
+    start = code.index(f"private fun {name}(")
+    return code[start : code.index(f"private fun {next_name}(", start)]
 
 
 def test_launch_confirms_window_tracking_before_it_waits_on_the_tree() -> None:

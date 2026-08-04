@@ -708,7 +708,7 @@ class _UiAutomatorGen:
             "      // selector searches a list it is not in.",
             '      Log.w(LOG_TAG, "launch attempt $attempt saw no $PACKAGE window in "',
             '        + "${LAUNCH_TIMEOUT_MS}ms; windows:\\n" + windowSummary())',
-            "      // Hence the kick, and hence its not consulting the list: the list was neither"
+            "      // Hence the kick, and why it does not read the list first: the list was neither"
             + " empty nor",
             "      // unreadable, so nothing above this point can detect the case. HOME dismisses"
             + " whatever",
