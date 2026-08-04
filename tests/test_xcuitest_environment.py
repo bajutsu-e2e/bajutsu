@@ -1308,6 +1308,11 @@ def test_a_device_that_cannot_be_repaired_fails_the_run() -> None:
 # on, and calling it without a spawn keeps each case to the simctl argvs it is actually about.
 
 
+# The ceiling the failing spawn was given. These cases are all first bring-ups, so it is the cold one;
+# the respawn case has its own test below, where the tighter ceiling is the point.
+_COLD = _RUNNER_STARTUP_TIMEOUT
+
+
 def _eff_for_ladder() -> Effective:
     # No appPath, so the re-prepare exercises boot / locale / permissions without needing a built app.
     return _sim_eff(test_runner="/nonexistent.xctestrun")
@@ -1375,6 +1380,7 @@ def test_a_process_exit_leaves_the_booted_device_alone() -> None:
         _eff_for_ladder(),
         Preconditions(),
         None,
+        ceiling=_COLD,
     )
     assert recovery is not None and recovery.fresh_budget is None
     assert _verb_seq(calls) == ["list"]  # probed, nothing more
@@ -1390,6 +1396,7 @@ def test_an_app_launch_timeout_reboots_and_re_prepares_the_device() -> None:
         _eff_for_ladder(),
         Preconditions(),
         None,
+        ceiling=_COLD,
     )
     assert recovery is not None and recovery.fresh_budget == _runner_startup_timeout()
     assert _verb_seq(calls)[:5] == ["list", "shutdown", "boot", "bootstatus", "boot"]
@@ -1406,6 +1413,7 @@ def test_a_vanished_device_is_replaced_and_reported_to_the_pool() -> None:
         _eff_for_ladder(),
         Preconditions(),
         None,
+        ceiling=_COLD,
     )
     assert recovery is not None and recovery.fresh_budget == _runner_startup_timeout()
     assert env._udid == "UDID-NEW" and env.replaced_device() == "UDID-NEW"
@@ -1434,7 +1442,11 @@ def test_a_replacement_clones_the_type_captured_while_the_device_was_healthy(
     calls, replace_run = _ladder_run([])
     env._run = replace_run  # type: ignore[assignment]
     env._recover_between_attempts(
-        _AttemptFailure("run-ended", "ended"), _eff_for_ladder(), Preconditions(), None
+        _AttemptFailure("run-ended", "ended"),
+        _eff_for_ladder(),
+        Preconditions(),
+        None,
+        ceiling=_COLD,
     )
     assert simctl.create_cmd("bajutsu-recovered", "com.apple.x.iPhone-17-Pro") in calls
     assert not any(c[2:4] == ["list", "devicetypes"] for c in calls)
@@ -1454,6 +1466,7 @@ def test_a_probe_that_could_not_run_changes_nothing() -> None:
         _eff_for_ladder(),
         Preconditions(),
         None,
+        ceiling=_COLD,
     )
     assert recovery is not None and recovery.fresh_budget is None
     assert env._udid == "UDID" and env.replaced_device() is None
@@ -1475,7 +1488,11 @@ def test_a_vanished_device_with_no_replaceable_type_fails_loudly() -> None:
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     with pytest.raises(simctl.DeviceError, match="no iPhone device type is available"):
         env._recover_between_attempts(
-            _AttemptFailure("run-ended", "ended"), _eff_for_ladder(), Preconditions(), None
+            _AttemptFailure("run-ended", "ended"),
+            _eff_for_ladder(),
+            Preconditions(),
+            None,
+            ceiling=_COLD,
         )
 
 
@@ -1487,7 +1504,11 @@ def test_a_recovery_that_overran_its_bound_fails_the_run(monkeypatch: pytest.Mon
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     with pytest.raises(simctl.DeviceError, match="recovery exceeded"):
         env._recover_between_attempts(
-            _AttemptFailure("run-ended", "ended"), _eff_for_ladder(), Preconditions(), None
+            _AttemptFailure("run-ended", "ended"),
+            _eff_for_ladder(),
+            Preconditions(),
+            None,
+            ceiling=_COLD,
         )
 
 
@@ -1496,3 +1517,35 @@ def test_recovery_timeout_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
     assert _recovery_timeout() == 42.0
     monkeypatch.setenv("BAJUTSU_XCUITEST_RECOVERY_TIMEOUT", "not-a-number")
     assert _recovery_timeout() == _RECOVERY_TIMEOUT  # an unparseable override keeps the default
+
+
+def test_a_rebooted_device_keeps_the_ceiling_its_spawn_started_on() -> None:
+    # A reboot ends with the device booted and the app reinstalled, which is exactly what the tighter
+    # respawn ceiling assumes — so a rebooted respawn keeps that ceiling instead of inflating to the
+    # cold budget, which is what kept a mid-run respawn's worst case from tripling.
+    _calls, run = _ladder_run(["UDID"])
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    recovery = env._recover_between_attempts(
+        _AttemptFailure("run-ended", "ended"),
+        _eff_for_ladder(),
+        Preconditions(),
+        None,
+        ceiling=90.0,  # the respawn ceiling this lane opted into
+    )
+    assert recovery is not None and recovery.fresh_budget == 90.0
+
+
+def test_a_replacement_device_earns_the_full_cold_ceiling() -> None:
+    # A device that has never run anything is a genuine first bring-up, however tight the failing
+    # spawn's ceiling was: its very first `xcodebuild test-without-building` pays the whole spin-up.
+    _calls, run = _ladder_run([])  # the leased device is gone, so a replacement is created
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    recovery = env._recover_between_attempts(
+        _AttemptFailure("run-ended", "ended"),
+        _eff_for_ladder(),
+        Preconditions(),
+        None,
+        ceiling=90.0,
+    )
+    assert recovery is not None and recovery.fresh_budget == _runner_startup_timeout()
+    assert recovery.fresh_budget != 90.0

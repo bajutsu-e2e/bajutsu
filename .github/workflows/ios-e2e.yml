@@ -131,15 +131,19 @@ env:
   # whole lane down: the device was degraded, not merely unlucky. The recovery reboots and re-prepares
   # it — or creates a replacement when CoreSimulator has stopped listing it at all — and only then is
   # the second attempt worth spawning, so it earns a fresh readiness ceiling rather than the remains of
-  # the first attempt's. That fresh ceiling is always the *cold* one (`_runner_startup_timeout`), even
-  # when the failing spawn was a respawn: a rebooted or replaced device is a first bring-up again, so
-  # the premise the 90s respawn ceiling rests on (booted device, app installed) no longer holds. 180s
-  # covers the slowest rung (creating a Simulator and waiting out its first boot) while keeping the
-  # worst case bounded: 300s + 180s + 300s = 13min for a failing *first* bring-up, and
-  # 90s + 180s + 300s ≈ 9.5min for a failing respawn that had to repair its device. Only a *failing*
-  # spawn pays recovery at all, so one such event fits inside both the 25- and 30-minute
-  # `timeout-minutes` below; a job that sees two is running on a sick host, which the "cannot be
-  # repaired" path fails loudly and fast on.
+  # the first attempt's. Which ceiling it earns follows what the repair restored: a *reboot* leaves the
+  # device booted with the app reinstalled — the state this lane's 90s respawn ceiling already assumes —
+  # so a rebooted respawn keeps 90s, while a *replacement* device has never run anything and takes the
+  # full 300s. 180s covers the slowest rung (creating a Simulator and waiting out its first boot) while
+  # keeping the worst case bounded: 300s + 180s + 300s = 13min for a failing *first* bring-up,
+  # 90s + 180s + 90s = 6min for a rebooted respawn, and 90s + 180s + 300s ≈ 9.5min for the rarest case,
+  # a respawn whose device had vanished. Only a *failing* spawn pays recovery at all.
+  #
+  # A caveat the arithmetic above does not cover: this recovery happens inside one lease's bring-up, so
+  # BAJUTSU_CRASH_RECOVERY_BUDGET (below) cannot cut it short, and a job whose scenarios are *also*
+  # burning that scenario-level budget can add both. A run on 2026-08-04 hit `timeout-minutes` that
+  # way — three mid-run crashes plus one reboot rung — so treat the caps below as covering one device
+  # recovery on top of the nominal run, not one on top of a host already crashing repeatedly.
   BAJUTSU_XCUITEST_RECOVERY_TIMEOUT: "180"
   # Respawn the resident runner cold after a single warm reuse rather than the default 3
   # (`_MAX_WARM_REUSES`). Folding many scenarios into one `bajutsu run` (the `run` / `actuation` jobs)

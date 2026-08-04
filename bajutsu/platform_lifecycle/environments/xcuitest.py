@@ -659,7 +659,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # A real device has no simctl to recover through — it is powered on out of band — so it keeps
         # the plain retry. Only the Simulator gets the recovery ladder.
         def recover(failure: _AttemptFailure) -> _Recovery | None:
-            return self._recover_between_attempts(failure, eff, pre, permissions)
+            return self._recover_between_attempts(failure, eff, pre, permissions, ceiling=timeout)
 
         spawned = _spawn_cold_with_retry(
             spawn, timeout=timeout, recover=_no_recovery if device_type == "device" else recover
@@ -677,6 +677,8 @@ class XcuitestEnvironment(_DeviceEnvironment):
         eff: Effective,
         pre: Preconditions,
         permissions: Mapping[str, str] | None,
+        *,
+        ceiling: float,
     ) -> _Recovery | None:
         """Repair the Simulator a failed cold attempt leaves behind, so the retry spawns onto a live device.
 
@@ -686,10 +688,13 @@ class XcuitestEnvironment(_DeviceEnvironment):
         running is all there is to clean up; an app-launch timeout or a wait that reached its ceiling
         says the device stopped honouring automation, which only a reboot clears.
 
-        A rung that repaired the device grants the *cold* ceiling, never the tighter respawn one, even
-        when this spawn started on the respawn ceiling: a rebooted or replaced device is a first
-        bring-up again, so the premise the respawn ceiling rests on — a booted device with the app
-        already installed under a live runner — no longer holds.
+        Which fresh ceiling a repair earns follows what the repair actually restored. A **reboot** ends
+        with the device booted (`bootstatus` waited for it) and the app reinstalled, which is precisely
+        the state the caller's own `ceiling` assumes, so it hands that same ceiling back — on a lane
+        that opted into a tighter respawn ceiling, a rebooted respawn keeps it rather than inflating to
+        the cold budget. A **replacement** is a device that has never run anything, so its first
+        `xcodebuild test-without-building` is a genuine first bring-up and takes the full cold ceiling
+        however tight the failing spawn's was.
 
         Returns the note and fresh readiness ceiling `_spawn_cold_with_retry` folds into its
         diagnostics and budget, or None when no rung ran at all.
@@ -716,7 +721,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
             return _Recovery("xcodebuild exited on its own; device left booted")
         note = self._reboot_device(eff, pre, permissions)
         self._check_recovery_budget(started, note)
-        return _Recovery(note, fresh_budget=_runner_startup_timeout())
+        return _Recovery(note, fresh_budget=ceiling)
 
     def _check_recovery_budget(self, started: float, note: str) -> None:
         """Fail the run when a recovery rung overran its wall bound.
