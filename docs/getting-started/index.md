@@ -58,7 +58,8 @@ uv run bajutsu --help
 ```
 
 You should see the commands `run`, `doctor`, `record`, `crawl`, `codegen`, `trace`, `triage`,
-`approve`, `serve`, `mcp`, `worker`, `lint`, and `schema` (full reference: [cli](../cli.md)).
+`approve`, `serve`, `mcp`, `worker`, `lint`, `schema`, `audit`, `coverage`, `export`, `flakiness`,
+`impact`, `project`, `report`, and `stats` (full reference: [cli](../cli.md)).
 
 The web track adds one more install step on top of this (the Playwright browser); the iOS track
 needs only Xcode, which the XCUITest backend drives directly — see
