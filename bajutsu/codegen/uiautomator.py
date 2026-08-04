@@ -163,8 +163,9 @@ def _act(sel: base.Selector, call: str) -> list[str]:
     """An `act(<by>).<call>` line, or a TODO when the selector can't be rendered.
 
     `act` (below, in the file preamble) waits for the element before returning it — `findObject`
-    alone is a single-shot query with no implicit wait, unlike the adb driver's `tap()` /
-    `resolve_unique`, so an action right after `launch()` or a UI transition can race the render.
+    alone is a single-shot query with no implicit wait — unlike the adb driver's `tap()`, whose
+    resolve step retries with a timeout (`resolve_unique` itself is single-shot, no wait), so an
+    action right after `launch()` or a UI transition can race the render.
     """
     by = _by(sel)
     if by is None:
