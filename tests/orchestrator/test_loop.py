@@ -645,6 +645,55 @@ def test_pre_step_capture_downgrades_to_screenshot_only_when_web_query_fails(
     assert not any(a.kind == "elements" for a in leaf_outcome.artifacts)
 
 
+def test_post_step_elements_capture_skips_on_web_query_failure(tmp_path: Path) -> None:
+    """A genuinely-requested post-step `elements` capture (via `capturePolicy`) must not crash the
+    run when the WebView bridge query fails: only `elements` needs the active driver, so the
+    post-step capture drops just that token — mirroring the pre-step baseline's own guard — rather
+    than propagating the exception and failing an otherwise-decided step (review follow-up)."""
+
+    class _FlakyBridge(_FakeBridge):
+        def __init__(self, dom_elements: list[base.Element]) -> None:
+            super().__init__(dom_elements)
+            self.calls = 0
+
+        def query_dom(self, webview_id: str) -> list[base.Element]:
+            self.calls += 1
+            # Call 1 is the pre-step baseline's own read (succeeds, as usual); call 2 is the
+            # post-step capture this test targets.
+            if self.calls == 2:
+                raise ConnectionError("bridge unreachable")
+            return super().query_dom(webview_id)
+
+    native_screen = [el("app.webview", frame=(0.0, 0.0, 400.0, 800.0))]
+    driver = FakeDriver(native_screen)
+    run_dir = tmp_path / "run1"
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "x",
+                "steps": [
+                    {
+                        "web": {
+                            "within": {"id": "app.webview"},
+                            "steps": [{"type": {"text": "hi"}}],
+                        }
+                    }
+                ],
+                "capturePolicy": [{"on": {"action": "type"}, "capture": ["elements"]}],
+            }
+        ),
+        clock=FakeClock(),
+        sink=FileSink(run_dir),
+        webview_bridge=_FlakyBridge([]),
+    )
+    assert result.ok, result.failure
+    leaf_outcome = next(s for s in result.steps if s.action == "type")
+    # Exactly the pre-step baseline's `elements` write survives; the post-step capture the failed
+    # query would have added is dropped rather than crashing the run.
+    assert sum(1 for a in leaf_outcome.artifacts if a.kind == "elements") == 1
+
+
 def test_pre_step_query_marks_prev_after_fresh_for_the_interrupt_guard(tmp_path: Path) -> None:
     """The pre-step baseline's own `active_driver.query()` for a `web` block's first nested step
     (BE-XXXX) must count as a *fresh* read for the interrupt guard's `before_is_fresh` bookkeeping,

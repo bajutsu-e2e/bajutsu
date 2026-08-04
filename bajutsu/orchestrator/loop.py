@@ -1178,7 +1178,20 @@ class _StepRunner:
             and not isinstance(self.cfg.sink, NullSink)
             and any(_kind_of(t) == "elements" for t in instant)
         )
-        els = screen.get() if wants_web_elements else screen.cached
+        els = screen.cached
+        if wants_web_elements:
+            try:
+                els = screen.get()
+            except (ConnectionError, base.UnsupportedAction, OSError) as exc:
+                # Best-effort, like the pre-step baseline's own web-read guard: a torn-down
+                # WebView context must not crash an otherwise-decided step over an evidence
+                # capture. Drop just `elements` — `screenshot`/`actionLog` in `instant` still fire.
+                _logger.debug(
+                    "%s: post-step elements capture skipped, web driver query failed: %s",
+                    step_id,
+                    exc,
+                )
+                instant = [t for t in instant if _kind_of(t) != "elements"]
         outcome.artifacts.extend(
             self.cfg.sink.capture(self.cfg.driver, step_id, instant, elements=els)
         )
