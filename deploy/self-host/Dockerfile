@@ -12,9 +12,9 @@ ENV BAJUTSU_BUILD_COMMIT=$GIT_COMMIT
 
 WORKDIR /app
 COPY . /app
-# The control plane serves the FastAPI app and enqueues runs to Redis (RQ), persists to Postgres,
-# and stores artifacts in S3/MinIO, with GitHub OAuth — so it needs the server, worker, db, and
-# oauth extras. psycopg/sqlalchemy/boto3/fastapi/uvicorn all ship wheels, so slim needs no toolchain.
+# The control plane serves the FastAPI app, persists queued runs to Postgres, and stores artifacts
+# in S3/MinIO, with GitHub OAuth — so it needs the server, worker, db, and oauth extras.
+# psycopg/sqlalchemy/boto3/fastapi/uvicorn all ship wheels, so slim needs no toolchain.
 RUN pip install --no-cache-dir '.[server,worker,db,oauth]'
 
 EXPOSE 8765
