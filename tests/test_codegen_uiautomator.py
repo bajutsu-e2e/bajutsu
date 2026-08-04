@@ -38,6 +38,18 @@ def test_test_per_scenario_uses_sanitized_name_and_launch() -> None:
     assert "launch(extras)" in code
 
 
+def test_launch_waits_for_the_window_then_for_it_to_settle() -> None:
+    # The window wait alone only proves some window from the package exists, not that its first
+    # frame has finished drawing — waitForIdle closes that gap before act()'s own wait starts.
+    code = _gen("- name: x\n  steps:\n    - tap: { id: a }\n")
+    lines = [line.strip() for line in code.splitlines()]
+    window_idx = lines.index(
+        "device.wait(Until.hasObject(By.pkg(PACKAGE).depth(0)), LAUNCH_TIMEOUT_MS)"
+    )
+    idle_idx = lines.index("device.waitForIdle(LAUNCH_TIMEOUT_MS)")
+    assert idle_idx == window_idx + 1
+
+
 def test_launch_env_merges_config_and_scenario_as_intent_extras() -> None:
     code = _gen(
         "- name: x\n  preconditions:\n    launchEnv: { SHOWCASE_TAB: log }\n"

@@ -301,6 +301,7 @@ class ComponentsUITest {
     for ((k, v) in extras) intent.putExtra(k, v)
     context.startActivity(intent)
     device.wait(Until.hasObject(By.pkg(PACKAGE).depth(0)), LAUNCH_TIMEOUT_MS)
+    device.waitForIdle(LAUNCH_TIMEOUT_MS)
   }
 
   private fun act(by: BySelector): UiObject2 {
@@ -339,6 +340,11 @@ class ComponentsUITest {
 - Each method builds an `extras` map (config's `launchEnv` < the scenario's
   `preconditions.launchEnv`) and calls `launch(extras)`, which forwards the env as intent extras —
   the reverse of the adb backend's `am start --es`.
+- `launch` waits for the app's first window, then for that window to settle
+  (`device.waitForIdle`). The window wait proves some window from the package exists. It does
+  not prove that window has finished drawing its first frame. On a loaded CI runner, the next
+  `act()` can otherwise race a screen still mid-layout. `waitForIdle` closes that gap before the
+  test's own per-action waits start their clock.
 
 ### Selector mapping (UI Automator)
 
