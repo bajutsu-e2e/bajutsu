@@ -443,10 +443,11 @@ class _UiAutomatorGen:
             "",
             "  // Wait for an element before acting on it. findObject alone is a single-shot query"
             + " with no",
-            "  // implicit wait (unlike the adb driver's tap() / resolve_unique), so acting right"
-            + " after",
-            "  // launch() or a UI transition can race the render — a condition wait, never a"
-            + " fixed sleep.",
+            "  // implicit wait, unlike the adb driver's tap() (its resolve step retries with a"
+            + " timeout),",
+            "  // so acting right after launch() or a UI transition can race the render — a"
+            + " condition",
+            "  // wait, never a fixed sleep.",
             "  private fun act(by: BySelector): UiObject2 {",
             "    device.wait(Until.hasObject(by), ACT_TIMEOUT_MS)",
             "    return device.findObject(by)",
