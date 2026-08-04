@@ -1181,9 +1181,16 @@ class _StepRunner:
             elements_kinds = [t for t in instant if _kind_of(t) == "elements"]
             other_kinds = [t for t in instant if _kind_of(t) != "elements"]
             if elements_kinds:
+                # A real `elements` capture reads through `screen.get()`, not the sink's own
+                # `elements=None` fallback: the fallback would query `active_driver` invisibly to
+                # `screen`, leaving `screen.cached` (and so `prev_after` below) `None` even though a
+                # read just happened — the next nested step would then pay a redundant duplicate
+                # query to rediscover a tree from (nearly) the same instant. Routing it through
+                # `screen.get()` keeps this on the same one-read, carried-forward footing as the
+                # native path.
                 outcome.artifacts.extend(
                     self.cfg.sink.capture(
-                        active_driver, step_id, elements_kinds, elements=screen.cached
+                        active_driver, step_id, elements_kinds, elements=screen.get()
                     )
                 )
             if other_kinds:

@@ -188,9 +188,11 @@ def test_web_block_plain_tap_issues_no_extra_bridge_query() -> None:
 
 
 def test_web_block_file_sink_reads_the_web_tree_not_the_native_one(tmp_path: Path) -> None:
-    # A FileSink genuinely needs the post-step tree (the always-on baseline), so the deferred read
-    # this laziness relies on must still fire — and against the *active* (web) driver, not the
-    # native one passed to `capture()` for `screenshot` (a `WebContextDriver` can't take one).
+    # A FileSink genuinely needs the tree, so the deferred read this laziness relies on must still
+    # fire — and against the *active* (web) driver, not the native one passed to `capture()` for
+    # `screenshot` (a `WebContextDriver` can't take one). The always-on `elements` baseline is
+    # captured *pre*-step (BE-XXXX), so a post-step `elements` fires only when the scenario asks for
+    # it: the `capturePolicy` below is what puts the new `elements_kinds` branch on the path at all.
     # Guards against reintroducing the wrong-driver class of bug already fixed once for the
     # pre-step baseline capture.
     native_screen = [
@@ -208,6 +210,7 @@ def test_web_block_file_sink_reads_the_web_tree_not_the_native_one(tmp_path: Pat
                 "steps": [
                     {"web": {"within": {"id": "app.webview"}, "steps": [{"tap": {"id": "go"}}]}}
                 ],
+                "capturePolicy": [{"on": {"action": "tap"}, "capture": ["elements"]}],
             }
         ),
         clock=FakeClock(),
@@ -220,6 +223,45 @@ def test_web_block_file_sink_reads_the_web_tree_not_the_native_one(tmp_path: Pat
     written = (run_dir / "x" / "step1" / "elements.json").read_text(encoding="utf-8")
     assert "go" in written  # the web DOM element the step actually acted on
     assert "native-only" not in written  # never the native tree the sink can't screenshot with
+
+
+def test_web_block_elements_capture_reuses_the_read_for_the_next_steps_baseline(
+    tmp_path: Path,
+) -> None:
+    # A real post-step `elements` capture must go through `screen.get()`, not the sink's own
+    # `elements=None` fallback: the fallback queries `active_driver` invisibly to `screen`, so
+    # `prev_after` (seeded from `screen.cached`) would stay `None` and the *next* nested step's
+    # pre-step baseline would pay a redundant duplicate query to reread a tree from (nearly) the
+    # same instant — 2 reads per step boundary instead of 1. `type` steps (no target to resolve)
+    # isolate the count to exactly the pre-step/post-step captures, and a real `FileSink` (not a
+    # sink that discards `elements`, like `_KindsSink`) is required so its own `elements=None`
+    # fallback is actually reachable — a regression back to it shows up as 4 bridge queries here
+    # instead of the correct 3 (1 initial pre-step read, reused as each step's post-step read and
+    # carried forward as the next step's pre-step baseline).
+    driver = FakeDriver([el("app.webview", frame=(0.0, 0.0, 400.0, 800.0))])
+    bridge = _CountingBridge([])
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "x",
+                "steps": [
+                    {
+                        "web": {
+                            "within": {"id": "app.webview"},
+                            "steps": [{"type": {"text": "a"}}, {"type": {"text": "b"}}],
+                        }
+                    }
+                ],
+                "capturePolicy": [{"on": {"action": "type"}, "capture": ["elements"]}],
+            }
+        ),
+        clock=FakeClock(),
+        sink=FileSink(tmp_path / "run1"),
+        webview_bridge=bridge,
+    )
+    assert result.ok, result.failure
+    assert bridge.queries == 3
 
 
 def test_screen_changed_reuses_previous_after_as_before() -> None:
