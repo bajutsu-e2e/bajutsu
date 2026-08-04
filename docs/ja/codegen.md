@@ -426,7 +426,8 @@ class ComponentsUITest {
   到達できません。そこで `kickWindowTracking` は HOME キーを押し、intent を再送します。HOME は
   アクセシビリティ機構ではなく入力の経路で配送されるので、一覧が今どうなっていようと届き、
   フォーカスを握っているものを片付けます。キー入力自体が、それによって発生するイベントを待つので、
-  この回復に sleep は要りません。回数の上限は `TRACKING_KICK_ATTEMPTS` が与えます。なお `pressHome` は、
+  この回復に sleep は要りません。回数の上限は `LAUNCH_ATTEMPTS` が与えます。生成される値は2なので、
+  1回の起動で HOME を押すのは多くても1度です。なお `pressHome` は、
   イベントが届かなかったことを例外ではなく false の戻り値で報告するので、どちらの結果も記録します。
   この処理は `UiAutomation.executeAndWaitForEvent` の外に置きます。`pressHome` がすでに同じ呼び出しで
   待機しており、入れ子にすると外側の待機が見ているイベントキューを内側が空にしてしまうためです。

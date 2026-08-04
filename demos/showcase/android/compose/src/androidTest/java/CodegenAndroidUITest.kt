@@ -226,7 +226,7 @@ class CodegenandroiduitestUITest {
       // selector searches a list it is not in.
       Log.w(LOG_TAG, "launch attempt $attempt saw no $PACKAGE window in "
         + "${LAUNCH_TIMEOUT_MS}ms; windows:\n" + windowSummary())
-      // Hence the kick, and hence its being unconditional here: the list was neither empty nor
+      // Hence the kick, and hence its not consulting the list: the list was neither empty nor
       // unreadable, so nothing above this point can detect the case. HOME dismisses whatever
       // holds focus, and the intent is re-issued into a screen the app can reach. In the run
       // above that recovery worked — attempt 2 came up and the test passed.
