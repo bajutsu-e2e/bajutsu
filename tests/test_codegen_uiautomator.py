@@ -154,9 +154,14 @@ def test_a_wedged_window_list_is_kicked_rather_than_waited_out() -> None:
     # pressHome reports a missing window event by returning false, and no event is the wedge's own
     # symptom — a dropped return would discard the single most diagnostic outcome.
     assert "if (!device.pressHome())" in kick
-    # pressHome waits through UiAutomation.executeAndWaitForEvent itself; wrapping it in another
-    # would clear the queue the outer wait watches, leaving that wait able only to time out.
-    # Comment lines are stripped so rewording the rationale cannot redden the gate on its own.
+    # Nesting is banned across the whole emitted file, not just in this helper, and that breadth is
+    # deliberate: pressHome, click, and swipe each wait through UiAutomation.executeAndWaitForEvent
+    # internally, so wrapping any of them clears the queue the outer wait watches and leaves that
+    # wait able only to time out. Scoping the check to kickWindowTracking would let the identical
+    # bug land in the next helper. A future emitter with a genuine use for the call has to come
+    # here, read this, and decide deliberately.
+    #
+    # Comment lines are stripped so rewording a rationale cannot redden the gate on its own.
     emitted = "\n".join(ln for ln in code.splitlines() if not ln.lstrip().startswith("//"))
     assert "executeAndWaitForEvent" not in emitted
 

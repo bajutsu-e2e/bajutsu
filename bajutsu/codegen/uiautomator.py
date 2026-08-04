@@ -610,8 +610,8 @@ class _UiAutomatorGen:
             '    }.onFailure { Log.w(LOG_TAG, "pressHome failed", it) }',
             "  }",
             "",
-            "  // Never throws. getWindows() raises IllegalStateException when the connection is not"
-            + "",
+            "  // Never throws. getWindows() raises IllegalStateException when the connection is"
+            + " not",
             "  // established — the very fault being diagnosed — and that has to reach the caller's"
             + " named",
             "  // AssertionError rather than replace it with a raw framework exception.",

@@ -441,8 +441,9 @@ class ComponentsUITest {
   `TRACKING_KICK_ATTEMPTS` bounds it. `pressHome` reports a window event that never arrived by
   returning false rather than by throwing, and no event is the wedge's own symptom, so both outcomes
   are logged. Reading the list catches one case up front, the empty one: a stale non-empty list the
-  app's window never joined reads as healthy, so a timed-out launch attempt kicks regardless before
-  re-issuing the intent, and logs the list it saw so a later reader can tell the two apart. The kick
+  app's window never joined reads as healthy, so a launch attempt that times out with another attempt
+  still to come kicks without consulting the list at all, and logs the list it saw so a later reader
+  can tell the two apart. The kick
   stays outside `UiAutomation.executeAndWaitForEvent`, because `pressHome` already waits through that
   same call and a nested one would clear the event queue the outer wait is watching.
 - **The last attempt does not kick**, because after it there is no intent left to re-issue and HOME
