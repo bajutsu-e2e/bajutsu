@@ -174,6 +174,14 @@ def _wait_for(by: str) -> str:
     racing it. The message names the selector so a timeout reads the same in a CI console log as
     in the test report, rather than a bare "expected true" that sends the reader to the report to
     learn what was even being waited for.
+
+    Property-reading assertions (`_emit_text_assertion`, `_emit_state`, `_emit_count`) share the
+    same un-waited `findObject` and are deliberately left out of this fix: a scenario's `expect`
+    block runs after the steps above it, which by then have already driven the screen to the
+    state the assertion checks, unlike an action's target, which the *step before* it need never
+    have touched. Widening this wait to assertions would still be a faithful, symmetric fix if a
+    recorded scenario ever asserts before its target settles; it just is not the failure this item
+    reproduces.
     """
     message = _s(f"target not found within {_ACTION_WAIT_TIMEOUT_MS}ms: {by}")
     return f"assertTrue({message}, device.wait(Until.hasObject({by}), {_ACTION_WAIT_TIMEOUT_MS}L))"

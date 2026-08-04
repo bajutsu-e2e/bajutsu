@@ -336,6 +336,12 @@ class ComponentsUITest {
 
 ### アサーションのマッピング（UI Automator）
 
+アサーションは、アクションのマッピングにある wait-first の行を経由せず `findObject(<by>)` を直接読みます。
+シナリオの `expect` ブロックはそれより前のステップの後に実行されるので、アサーションが検証する画面の状態は
+その時点ですでに作られています。アクション自身の対象にはこの前提がないため、アクションだけに wait が必要でした。
+この差に構造的な理由はありません。対象が定まる前にアサーションを置けば、かつてのアクションと同じように
+`findObject` と競合します。
+
 | アサーション | UI Automator |
 |---|---|
 | `exists` | `assertTrue(device.hasObject(<by>))`（`negate` で `assertFalse`） |

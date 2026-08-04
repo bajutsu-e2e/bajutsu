@@ -341,6 +341,13 @@ the reader to the test report. The table below shows only the line each action c
 
 ### Assertion mapping (UI Automator)
 
+Assertions read `findObject(<by>)` directly, without the action mapping's wait-first line. A
+scenario's `expect` block runs after the steps above it. By the time it runs, those steps have
+already driven the screen to the state it checks — unlike an action's own target, which the step
+right before it need never have touched. That is why actions needed the wait and assertions have
+not shown the same problem. The gap is not structural: an assertion added before its target
+settles would race `findObject` just as an action once did.
+
 | Assertion | UI Automator |
 |---|---|
 | `exists` | `assertTrue(device.hasObject(<by>))` (`assertFalse` with `negate`) |
