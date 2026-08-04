@@ -54,14 +54,7 @@ class CodegenandroiduitestUITest {
   // so acting right after launch() or a UI transition can race the render — a condition
   // wait, never a fixed sleep.
   private fun act(by: BySelector): UiObject2 {
-    if (!device.wait(Until.hasObject(by), ACT_TIMEOUT_MS)) {
-      val onScreen = device.findObjects(By.pkg(PACKAGE)).joinToString("|") {
-        (it.resourceName ?: "") + "/" + (it.text ?: "") + "/" + (it.className ?: "")
-      }
-      throw AssertionError(
-        "DIAGNOSTIC: act() timed out for " + by + "; pkgObjs=" + device.findObjects(By.pkg(PACKAGE)).size + " root=" + device.findObjects(By.depth(0)).size + " onScreen=[" + onScreen + "]"
-      )
-    }
+    device.wait(Until.hasObject(by), ACT_TIMEOUT_MS)
     return device.findObject(by)
   }
 
