@@ -163,7 +163,7 @@ def _unsupported_selector_todo(sel: base.Selector) -> str:
 
 
 def _wait_for(by: str) -> str:
-    """An `assertTrue(device.wait(Until.hasObject(...)))` line the target must satisfy first.
+    """An `assertTrue(<message>, device.wait(Until.hasObject(...)))` line the target must satisfy first.
 
     `findObject` never auto-waits, unlike XCUITest / Playwright (see `_emit_wait`'s note): the
     screen right after a launch or a navigating tap can still be missing the target when the
@@ -171,9 +171,12 @@ def _wait_for(by: str) -> str:
     rather than a clear, named assertion failure, and worse under CI load, where rendering can
     lag further behind the coarse "some window appeared" signal `launch()` waits on. Every
     action waits for its own target first, so a slow render is absorbed by the poll instead of
-    racing it.
+    racing it. The message names the selector so a timeout reads the same in a CI console log as
+    in the test report, rather than a bare "expected true" that sends the reader to the report to
+    learn what was even being waited for.
     """
-    return f"assertTrue(device.wait(Until.hasObject({by}), {_ACTION_WAIT_TIMEOUT_MS}L))"
+    message = _s(f"target not found within {_ACTION_WAIT_TIMEOUT_MS}ms: {by}")
+    return f"assertTrue({message}, device.wait(Until.hasObject({by}), {_ACTION_WAIT_TIMEOUT_MS}L))"
 
 
 def _act(sel: base.Selector, call: str) -> list[str]:

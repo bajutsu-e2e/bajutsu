@@ -272,7 +272,7 @@ class ComponentsUITest {
     launch(extras)
 
     assertFalse(device.hasObject(byId("log.sheet.title")))
-    assertTrue(device.wait(Until.hasObject(byId("log.openFilter")), 10000L))
+    assertTrue("target not found within 10000ms: byId(\"log.openFilter\")", device.wait(Until.hasObject(byId("log.openFilter")), 10000L))
     device.findObject(byId("log.openFilter")).click()
 
     // expect
@@ -312,9 +312,11 @@ class ComponentsUITest {
 
 `findObject` は XCUITest や Playwright と違って auto-wait しません。そのため起動直後や画面遷移の直後に裸の
 `findObject(<by>)` を呼ぶと、描画が終わっていない画面では null が返ります。この呼び出しは名前付きのアサーション
-失敗ではなく素の `NullPointerException` になり、CI ランナーが混雑しているときほど起きやすくなります。対象を解決
-するアクションは、そのため本体の行の前に必ず `assertTrue(device.wait(Until.hasObject(<by>), 10000L))` を発行
-します。以下の表は、アクション自身が追加する本体の行だけを示します。
+失敗ではなく素の `NullPointerException` になります。この失敗は CI ランナーが混雑しているときほど起きやすくなり
+ます。対象を解決するアクションは、本体の行の前に必ず
+`assertTrue(<message>, device.wait(Until.hasObject(<by>), 10000L))` を発行します。メッセージにセレクタの名前
+が入るので、タイムアウト時には CI コンソールを見るだけで済みます。テストレポートを開いて何を待っていたのかを
+確認する必要はありません。以下の表は、アクション自身が追加する本体の行だけを示します。
 
 | シナリオ要素 | UI Automator |
 |---|---|

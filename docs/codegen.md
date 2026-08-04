@@ -277,7 +277,7 @@ class ComponentsUITest {
     launch(extras)
 
     assertFalse(device.hasObject(byId("log.sheet.title")))
-    assertTrue(device.wait(Until.hasObject(byId("log.openFilter")), 10000L))
+    assertTrue("target not found within 10000ms: byId(\"log.openFilter\")", device.wait(Until.hasObject(byId("log.openFilter")), 10000L))
     device.findObject(byId("log.openFilter")).click()
 
     // expect
@@ -317,11 +317,11 @@ same limit the XCUITest emitter hits for NSPredicate `MATCHES`), so it stays a `
 ### Action mapping (UI Automator)
 
 `findObject` never auto-waits, unlike XCUITest or Playwright. A bare `findObject(<by>)` right after
-a launch or a navigating tap can return null on a screen that hasn't finished rendering. That null
-produces an uninformative `NullPointerException` instead of a named assertion failure, and CI
-congestion makes it more probable. Every action that resolves a target emits
-`assertTrue(device.wait(Until.hasObject(<by>), 10000L))` before its own line; the table below shows
-only the line each action contributes.
+a launch or a navigating tap can return null on a screen that hasn't finished rendering. CI
+congestion makes that more probable. Every action that resolves a target emits
+`assertTrue(<message>, device.wait(Until.hasObject(<by>), 10000L))` before its own line. The
+message names the selector, so a timeout reads directly from the CI console rather than sending
+the reader to the test report. The table below shows only the line each action contributes.
 
 | Scenario step | UI Automator |
 |---|---|
