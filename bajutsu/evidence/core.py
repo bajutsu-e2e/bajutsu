@@ -194,7 +194,18 @@ class EvidenceSink(Protocol):
         kinds: list[str],
         *,
         elements: list[base.Element] | None = None,
-    ) -> list[Artifact]: ...
+    ) -> list[Artifact]:
+        """Write the given instant `kinds` for `step_id`.
+
+        `capture` may be invoked more than once for the same `step_id` in a single step — the
+        pre-step baseline, the post-step capture, and (inside a `web` block, where `elements` needs
+        the active driver's tree while `screenshot` needs the native one) a further split of the
+        post-step capture by kind. Each call carries a disjoint `kinds` subset and is additive: a
+        sink must not assume one call sees every kind a step fires, and must not let a later call
+        overwrite state a prior call for the same `step_id` already recorded.
+        """
+        ...
+
     def wait_diagnostic(
         self,
         step_id: str,
