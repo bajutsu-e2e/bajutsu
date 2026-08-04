@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from bajutsu.config import load_config, resolve
+from bajutsu.config import load_config
 from bajutsu.evidence.redaction import Redactor
 from bajutsu.serve.operations._common import (
     _default_driver_factory,
     _device_args,
     _resolve_org_or_forbid,
+    _session_effective,
 )
 from bajutsu.serve.state import CaptureSession, ServeState
 
@@ -57,7 +58,7 @@ def start_capture(
         udid = "booted"
 
     factory = driver_factory or _default_driver_factory
-    driver, teardown = factory(resolve(config, target), backends_list, udid)
+    driver, teardown = factory(_session_effective(state, config, target), backends_list, udid)
     # From bring-up until the session owns `teardown`, a failed query/screenshot (a real failure mode
     # for a freshly-launched XCUITest runner) must still stop the runner — otherwise the `xcodebuild`
     # subprocess leaks, the very thing BE-0290 set out to prevent. Once the CaptureSession is stored,
