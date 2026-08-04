@@ -94,11 +94,21 @@ final class ComponentsUITests: XCTestCase {
 | シナリオ要素 | 生成される XCUITest |
 |---|---|
 | `tap` | `el(id).tap()` / `byLabel(...).tap()` |
+| `doubleTap` | `.doubleTap()` |
 | `longPress` | `.press(forDuration: <sec>)` |
 | `type`（`into` あり） | `el(id).tap()` + `.typeText(...)` |
 | `type`（`into` なし） | `app.typeText(...)` |
+| `clear` | `.tap()` + 全選択（`typeKey("a", modifierFlags: .command)`）+ 削除。XCUIElement には「clear」の基本操作が無いため、フォーカス→全選択→削除で runner 自身の clear（BE-0265）を忠実に再現します |
+| `delete { count }` | `.tap()` + 削除キーを `count` 回（`typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count:))`、BE-0265） |
+| `select` | `.tap()` + 全選択（BE-0265） |
+| `copy` | `app.typeKey("c", modifierFlags: .command)` |
+| `back` | OS のナビゲーション戻るボタンを tap します。XCUITest ドライバが実行時に tap するのと同じ要素（共有定数、BE-0210） |
 | `swipe { on, direction }` | `.swipeUp/Down/Left/Right()` |
 | `swipe { from, to }` | `coord(x1, y1).press(forDuration: 0.1, thenDragTo: coord(x2, y2))`（`XCUICoordinate` のドラッグ。BE-0025） |
+| `drag { on, direction }` | 方向指定 `swipe` と同じ基本操作（`.swipeUp/Down/Left/Right()`）。iOS では実際のドラッグがスクロールとハンドル移動の両方を兼ねます（BE-0227） |
+| `pinch` | `.pinch(withScale: <scale>, velocity: <±1.0>)`。velocity の符号は scale に合わせます（scale ≥ 1 で拡大） |
+| `rotate` | `.rotate(<radians>, withVelocity: 1.0)` |
+| `scroll { to }` | `// TODO`。XCUITest には要素までスクロールする堅牢な単一の基本操作が無く（`swipeUp()` は再クエリせず固定量スクロールするだけ）、忠実な有界・再クエリ型のループは手書きヘルパが必要なため、偽の `swipeUp()` 連打を出す代わりに未生成のままにします（BE-0326） |
 | `handleSystemAlert` | `XCTAssertTrue(XCUIApplication(bundleIdentifier: "com.apple.springboard").buttons["…"].waitForExistence(timeout:))` + `.tap()`。ネイティブな SpringBoard の書き方で、ステップの `timeout` を引き継ぐ（BE-0316）。`prompt` / `choice` の形は label を **run の** locale から解決するため（BE-0320）、静的な変換では扱えず、ラベル付きの `// TODO` を出力する |
 | `wait { for }` | `XCTAssertTrue(el(...).waitForExistence(timeout:))` |
 | `wait { until: gone }` | `.waitForNonExistence(timeout:)` |
@@ -197,8 +207,15 @@ test.describe('Components', () => {
 | `type`（`into` あり） | `await loc.fill('…')` |
 | `type`（`into` なし） | `await page.keyboard.type('…')` |
 | `longPress` | `await loc.click({ delay: <ms> })` |
+| `clear` | `await loc.clear()`。ドライバ自身のフォーカス→バックスペースによる clear（BE-0265）を忠実に再現します |
+| `delete { count }` | フォーカス + `page.keyboard.press('Backspace')` を `count` 回（BE-0265） |
+| `select` | `await loc.selectText()`。web における全選択の対応物です（BE-0265） |
+| `copy` | `await page.keyboard.press('Control+c')` |
+| `back` | `await page.goBack()`。ブラウザ履歴で、ドライバの `back()` と同じ基本操作です（BE-0210） |
 | `swipe { on, direction }` | 要素中心からその方向への `page.mouse.wheel` スクロール（BE-0227） |
 | `swipe { from, to }` | `// TODO`（座標スワイプは生成しない） |
+| `drag { on, direction }` | 要素中心から実際にポインタでドラッグ（move → down → move → up）します。方向指定の `swipe` は wheel で済ませますが、`drag` は web ドライバと同じくドラッグします（BE-0227） |
+| `scroll { to }` | `await loc.scrollIntoViewIfNeeded()`。Playwright のロケータは操作前に自動でスクロールして要素を可視領域に入れるため、`direction` / `within` / `maxScrolls` はブラウザ自身のスクロールに吸収されます（BE-0326） |
 | `wait { for }` | `await expect(loc).toBeVisible({ timeout: <ms> })` |
 | `wait { until: gone }` | `await expect(loc).toBeHidden({ timeout: <ms> })` |
 | `wait { until: screenChanged/settled }` | コメント（Playwright は自動待機） |
@@ -345,16 +362,17 @@ class ComponentsUITest {
 - 各メソッドは `extras` マップ（config の `launchEnv` < シナリオの `preconditions.launchEnv`）を組み立て、
   `launch(extras)` を呼びます。この関数は env を intent extra として渡します。adb backend の `am start --es` の
   逆向きです。
+- `launch` はアプリの最初のウィンドウを待ってから、そのウィンドウの描画が落ち着くまで待ちます
+  （`device.waitForIdle`）。ウィンドウ待機だけでは「パッケージの何らかのウィンドウが存在する」ことしか
+  確認できません。最初のフレームが描画を終えたことまでは保証しません。CI ランナーが混雑していると、直後の
+  `act()` が描画の途中の画面と競合することがあります。`waitForIdle` はこの隙間を埋め、テスト自身の各アクション
+  の待機時間が始まる前に描画を落ち着かせます。この待機は成功時の経路に置きます。ウィンドウが見つからなかった
+  待機のあとに実行しても、落ち着かせる対象がないからです。
 - **`launch` はウィンドウ待機の結果を検査し、一致しなければ intent を再送します。** セレクタの照合先は
-  アクセシビリティツリーです。この待機は、そのツリーにアプリのウィンドウが現れたことを確かめます。ツリーに現れないウィンドウは
-  最初のフレームの描画が遅いのとは違うので、同じ起動を長く待っても回復しません。待機の結果を捨てると、起動が
-  成立しなかったまま最初の `act` へ抜け落ち、アプリが到達していない画面に対して `act` がタイムアウトします。
-  失敗が報告するのは起動ではなくセレクタになってしまいます。
-- **`launch` は続けて、そのウィンドウの描画が落ち着くまで待ちます**（`device.waitForIdle`）。
-  ウィンドウ待機だけでは「パッケージの何らかのウィンドウが存在する」ことしか確認できず、最初のフレームの
-  描画が終わったことまでは保証しません。CI ランナーが混雑していると、直後の `act()` が描画途中の画面と
-  競合することがあります。この待機は成功時の経路に置きます。ウィンドウが見つからなかった待機のあとに
-  実行しても、落ち着かせる対象がないからです。
+  アクセシビリティツリーです。この待機は、そのツリーにアプリのウィンドウが現れたことを確かめます。ツリーに
+  現れないウィンドウは最初のフレームの描画が遅いのとは違うので、同じ起動を長く待っても回復しません。待機の
+  結果を捨てると、起動が成立しなかったまま最初の `act` へ抜け落ち、アプリが到達していない画面に対して `act`
+  がタイムアウトします。失敗が報告するのは起動ではなくセレクタになってしまいます。
 - **各試行は `LAUNCH_TIMEOUT_MS` を丸ごと待ちます。** 単に起動が遅いだけの場合は、再起動せずに待ち切る
   ためです。`FLAG_ACTIVITY_CLEAR_TASK` は Activity を破棄するので、1回の試行の上限を短くすると、まだ
   起動途中のアプリを最初からやり直させてしまいます。それを繰り返すと、1回の長い待機なら間に合った起動を
@@ -423,8 +441,15 @@ Gradle 自身のレポートとあわせて回収済みのディレクトリを�
 | `type`（`into` あり） | `act(<by>).text = '…'` |
 | `type`（`into` なし） | `// TODO`（解決対象の要素が無い） |
 | `longPress` | `.longClick()`（プラットフォームの長押しタイムアウトを使い、シナリオの duration はパラメータが無い） |
+| `clear` | `act(<by>).clear()`。ドライバ自身の clear（BE-0265）を忠実に再現します |
+| `delete { count }` | `.click()` + `device.pressKeyCode(KeyEvent.KEYCODE_DEL)` を `count` 回（BE-0265） |
+| `select` | `.click()` + `device.pressKeyCode(KeyEvent.KEYCODE_A, KeyEvent.META_CTRL_ON)`（BE-0265） |
+| `copy` | `device.pressKeyCode(KeyEvent.KEYCODE_C, KeyEvent.META_CTRL_ON)` |
+| `back` | `device.pressBack()`。UI Automator ネイティブのシステム戻る操作で、adb ドライバの `keyevent 4` に対応します（BE-0210） |
 | `swipe { on, direction }` | `.swipe(Direction.<UP/DOWN/LEFT/RIGHT>, 0.75f)` |
 | `swipe { from, to }` | `// TODO`（座標スワイプは生成しない） |
+| `drag { on, direction }` | `swipe { on, direction }` と同じ基本操作です。`UiObject2.swipe` は実際のドラッグなので、要素起点の `drag` は Android でもスクロールとハンドル移動の両方を兼ねます（BE-0227） |
+| `scroll { to }` | `UiScrollable(UiSelector().scrollable(true)).<setAsHorizontalList/setAsVerticalList>().setMaxSearchSwipes(<max>).scrollIntoView(<selector>)`。UI Automator ネイティブの要素までスクロールする機能で、`maxScrolls` で上限を付けます（BE-0326） |
 | `pinch` | `.pinchOpen(0.5f)` / `.pinchClose(0.5f)`（scale ≥ 1 で拡大） |
 | `wait { for }` | `assertTrue(device.wait(Until.hasObject(<by>), <ms>L))` |
 | `wait { until: gone }` | `assertTrue(device.wait(Until.gone(<by>), <ms>L))` |
