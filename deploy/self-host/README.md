@@ -17,7 +17,7 @@ The step-by-step guide — including the macOS worker, OAuth setup, and exposure
 cd deploy/self-host           # the compose file and .env live here
 cp .env.example .env          # then edit: tokens, passwords, OAuth, bucket
 mkdir -p config               # put your bajutsu.config.yaml (the app list) here
-docker compose up -d          # postgres, minio, migrate (one-shot), bajutsu
+docker compose up -d          # postgres, minio, minio-init (one-shot), migrate (one-shot), bajutsu
 ```
 
 The control plane is then on `:8765`. Front it with `tailscale serve --bg 8765` (tailnet-only,
