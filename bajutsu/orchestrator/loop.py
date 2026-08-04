@@ -901,6 +901,11 @@ class _StepRunner:
             outcome.ok, outcome.reason = False, str(exc)
             outcome.duration_s = self.cfg.clock.now() - start
             self.state.outcomes.append(outcome)
+            # This early return skips the rest of the function, including the `last_leaf`
+            # assignment at its end — set it here too, so a scenario that ends on this failure
+            # still gets a final capture attributed to the step that actually ran last, rather than
+            # a stale one left over from an earlier step (or none at all, for a single-step run).
+            self.state.last_leaf = LastLeafStep(outcome, step_id)
             return f"step {idx} ({kind}): {exc}"
         # The report's baseline: the screen this step is about to act on, captured before it acts
         # (BE-XXXX). Reuses `prev_after` — already maintained unconditionally (BE-0234 Unit 2) —

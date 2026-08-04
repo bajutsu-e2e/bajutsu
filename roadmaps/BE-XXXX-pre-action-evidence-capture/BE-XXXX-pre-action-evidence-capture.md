@@ -130,8 +130,13 @@ otherwise — and never call `query()` itself to fill that gap.
    `self.state.prev_after = screen.cached` — `_handle_action` is the single handler every
    actuating/`wait`/`assert`/`email` kind flows through (`_run_one`, `loop.py:754-775`), so this never
    fires for an `if`/`forEach`/`web` container's own bookkeeping outcome, only for the leaf step that
-   actually ran last. After the top-level `exec_steps` call returns in `_run_steps`, regardless of its
-   outcome, extend `leaf.outcome.artifacts` with one more call:
+   actually ran last. `_handle_action` has exactly one early `return` ahead of that end-of-function
+   assignment — a `handleSystemAlert` step whose locale has no covered labels
+   (`UncoveredSystemAlertLocale`) fails and returns immediately, before ever reaching it — so that
+   path sets `last_leaf` itself, right where it appends its own outcome, rather than leaving a
+   scenario that ends on this failure with a stale `last_leaf` from an earlier step (or none at all,
+   for a single-step scenario). After the top-level `exec_steps` call returns in `_run_steps`,
+   regardless of its outcome, extend `leaf.outcome.artifacts` with one more call:
    `self.cfg.sink.capture(driver, leaf.step_id, ["screenshot.after"])`. This adds only a screenshot,
    deliberately never `elements`: `elements.json` has one fixed filename, so re-capturing it here
    would overwrite the pre-step baseline's pre-action tree with a post-action one, while

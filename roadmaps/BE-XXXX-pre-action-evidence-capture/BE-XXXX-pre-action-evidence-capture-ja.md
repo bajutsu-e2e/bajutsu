@@ -137,6 +137,11 @@
    構築します。`_handle_action` は、動作を伴うすべての種別と `wait` / `assert` / `email` が通る唯一の
    ハンドラなので（`_run_one`、`loop.py:754-775`）、これは `if` / `forEach` / `web` コンテナ自身の
    記録用 outcome では一度も発火せず、実際に最後に実行されたリーフステップでだけ発火します。
+   `_handle_action` には、その末尾の代入より前に早期 `return` が 1 箇所だけあります。`handleSystemAlert`
+   ステップが、対象の locale にカバーされたラベルを持たない場合（`UncoveredSystemAlertLocale`）に
+   失敗して即座に返るパスです。そのため、このパスでは自分自身の outcome を追加するその場で
+   `last_leaf` も設定します。そうしないと、この失敗で終わるシナリオは、最終取得が前のステップの
+   古い `last_leaf` に付いてしまうか（単一ステップのシナリオなら）まったく付かなくなってしまいます。
    トップレベルの `exec_steps` 呼び出しが `_run_steps` で返ったあと、その結果の成否にかかわらず、
    `leaf.outcome.artifacts` を次の呼び出しでもう一度拡張します。
    `self.cfg.sink.capture(driver, leaf.step_id, ["screenshot.after"])`。これが追加するのはスクリーン

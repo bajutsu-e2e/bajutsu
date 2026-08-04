@@ -348,6 +348,40 @@ def test_last_step_gets_a_final_capture_earlier_steps_do_not(tmp_path: Path) -> 
     assert not any(name.endswith("after.png") for name in step0_names)
 
 
+def test_final_capture_still_lands_on_a_step_that_fails_before_it_acts(tmp_path: Path) -> None:
+    """A step that fails resolving `handleSystemAlert`'s label against an uncovered locale returns
+    early, before the pre-step capture and before the `last_leaf` assignment at the end of
+    `_handle_action` — both skipped by the early `return` (review follow-up). Without setting
+    `last_leaf` in that except block too, the scenario's final capture would either land on a
+    stale, earlier step or (for a single-step scenario, as here) never fire at all."""
+    driver = FakeDriver([el("a", "A", ["button"])])
+    run_dir = tmp_path / "run1"
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "x",
+                "steps": [
+                    {
+                        "handleSystemAlert": {
+                            "prompt": "notifications",
+                            "choice": "grant",
+                            "timeout": 5,
+                        }
+                    }
+                ],
+            }
+        ),
+        clock=FakeClock(),
+        sink=FileSink(run_dir),
+        locale="de_DE",
+    )
+    assert not result.ok
+    assert result.failure is not None and "language 'de'" in result.failure
+    step0_names = {a.name for a in result.steps[0].artifacts}
+    assert any(name.endswith("after.png") for name in step0_names)
+
+
 def test_final_capture_lands_on_the_last_leaf_step_inside_an_if(tmp_path: Path) -> None:
     """A scenario ending in an `if` still gets its final capture on the last *leaf* step actually
     run, not on the `if` container's own (artifact-less) outcome (BE-XXXX)."""
