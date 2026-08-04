@@ -1166,14 +1166,30 @@ class _StepRunner:
         # Interval kinds are recorded scenario-wide (run_scenario), so only the
         # instant kinds are captured per step here. Pass the tree only if we already read it;
         # otherwise `elements=None` lets the sink's `elements` writer read on its own (a NullSink
-        # reads nothing), so a FileSink run stays at one read and a NullSink run at zero. A `web`
-        # block captures against the native `driver`, so it must read the active (web) tree here
-        # rather than let the native writer fall back to a mismatched tree (BE-0234 Unit 2).
+        # reads nothing), so a FileSink run stays at one read and a NullSink run at zero — on the
+        # native driver, and inside a `web` block alike. A `web` block's `elements` capture must
+        # fall back to the active (web) tree, while `screenshot` always falls back to the native
+        # `driver` (a `WebContextDriver` cannot take one) — two different fallback drivers a single
+        # `capture()` call cannot express, so the two kinds go through separate calls only inside a
+        # `web` block; the common native-driver step keeps one combined call.
         instant = [t for t in fired if _kind_of(t) not in intervals.INTERVAL_KINDS]
-        els = screen.get() if active_driver is not self.cfg.driver else screen.cached
-        outcome.artifacts.extend(
-            self.cfg.sink.capture(self.cfg.driver, step_id, instant, elements=els)
-        )
+        if active_driver is self.cfg.driver:
+            outcome.artifacts.extend(
+                self.cfg.sink.capture(self.cfg.driver, step_id, instant, elements=screen.cached)
+            )
+        else:
+            elements_kinds = [t for t in instant if _kind_of(t) == "elements"]
+            other_kinds = [t for t in instant if _kind_of(t) != "elements"]
+            if elements_kinds:
+                outcome.artifacts.extend(
+                    self.cfg.sink.capture(
+                        active_driver, step_id, elements_kinds, elements=screen.cached
+                    )
+                )
+            if other_kinds:
+                outcome.artifacts.extend(
+                    self.cfg.sink.capture(self.cfg.driver, step_id, other_kinds)
+                )
         if screen.queried:
             self.state.total_reads += 1
         # The last leaf step to actually run (BE-XXXX): `_run_steps` uses this after the whole run

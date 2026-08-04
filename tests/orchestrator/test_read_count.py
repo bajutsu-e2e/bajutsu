@@ -11,13 +11,14 @@ adb driver's internal `_settle` reads are counted separately in `tests/test_adb.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from pathlib import Path
 
 from _orch import FakeClock, _scenario
 from conftest import el
 
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver, React
-from bajutsu.evidence import Artifact
+from bajutsu.evidence import Artifact, FileSink
 from bajutsu.evidence.intervals import Interval
 from bajutsu.evidence.network import NetworkExchange
 from bajutsu.orchestrator import run_scenario
@@ -39,6 +40,29 @@ class _CountingDriver(FakeDriver):
     def query(self) -> list[base.Element]:
         self.queries += 1
         return super().query()
+
+
+class _CountingBridge:
+    """A fake WebView bridge that tallies every `query_dom()` call — the `web`-block analogue of
+    `_CountingDriver`, since a `WebContextDriver` resolves through the bridge, never the native
+    driver's `query()`."""
+
+    def __init__(self, dom_elements: Sequence[base.Element]) -> None:
+        self._elements = list(dom_elements)
+        self.queries = 0
+
+    def query_dom(self, webview_id: str) -> list[base.Element]:
+        self.queries += 1
+        return list(self._elements)
+
+    def tap_element(self, webview_id: str, point: base.Point) -> None:
+        pass
+
+    def type_text(self, webview_id: str, text: str) -> None:
+        pass
+
+    def scroll_to(self, webview_id: str, element_id: str) -> None:
+        pass
 
 
 class _KindsSink:
@@ -105,29 +129,13 @@ def test_pre_step_baseline_issues_no_extra_runner_read() -> None:
 
 def test_pre_step_baseline_skips_the_web_query_under_a_null_sink() -> None:
     # A `web` block's first nested step must not force a bridge query for a baseline `NullSink`
-    # discards (review follow-up on BE-XXXX): under the default sink (`NullSink`, `sink=None`),
-    # the only bridge read left is the pre-existing, unrelated post-step read every web-block step
-    # already pays (BE-0234 Unit 2, `screen.get()` for a web `active_driver`) — one call for one
-    # step, not two.
-    class _CountingBridge:
-        def __init__(self) -> None:
-            self.calls = 0
-
-        def query_dom(self, webview_id: str) -> list[base.Element]:
-            self.calls += 1
-            return []
-
-        def tap_element(self, webview_id: str, point: tuple[float, float]) -> None:
-            pass
-
-        def type_text(self, webview_id: str, text: str) -> None:
-            pass
-
-        def scroll_to(self, webview_id: str, element_id: str) -> None:
-            pass
-
-    bridge = _CountingBridge()
+    # discards (review follow-up on BE-XXXX): under the default sink (`NullSink`, `sink=None`), a
+    # `type` step (no tap to resolve, no extract) now costs the bridge nothing at all — the
+    # post-step laziness fix below closed the one remaining forced read this test used to pin
+    # ("one call for one step, not two"; see test_web_block_plain_tap_issues_no_extra_bridge_query
+    # for the tap-resolve case, which still costs exactly one).
     driver = _CountingDriver([el("app.webview", frame=(0.0, 0.0, 400.0, 800.0))])
+    bridge = _CountingBridge([])
     result = run_scenario(
         driver,
         _scenario(
@@ -147,7 +155,69 @@ def test_pre_step_baseline_skips_the_web_query_under_a_null_sink() -> None:
         webview_bridge=bridge,
     )
     assert result.ok, result.failure
-    assert bridge.calls == 1
+    assert bridge.queries == 0
+
+
+def test_web_block_plain_tap_issues_no_extra_bridge_query() -> None:
+    # The `web`-block analogue of test_plain_tap_issues_no_runner_read: no screenChanged policy, no
+    # extract, a sink that reads nothing. The tap itself must resolve its target through the bridge
+    # (1 query, same as any tap), but the post-step capture — previously unconditional for a `web`
+    # block regardless of whether any consumer needed it — must add none on top.
+    native_screen = [el("app.webview", "WebView", frame=(0.0, 0.0, 400.0, 800.0))]
+    driver = _CountingDriver(native_screen)
+    bridge = _CountingBridge([el("go", "Go", ["button"])])
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "x",
+                "steps": [
+                    {"web": {"within": {"id": "app.webview"}, "steps": [{"tap": {"id": "go"}}]}}
+                ],
+            }
+        ),
+        clock=FakeClock(),
+        sink=_KindsSink(),
+        webview_bridge=bridge,
+    )
+    assert result.ok, result.failure
+    assert bridge.queries == 1  # the tap's own resolve only; no forced post-step read
+    assert driver.queries == 1  # resolving the `within` host element only
+
+
+def test_web_block_file_sink_reads_the_web_tree_not_the_native_one(tmp_path: Path) -> None:
+    # A FileSink genuinely needs the post-step tree (the always-on baseline), so the deferred read
+    # this laziness relies on must still fire — and against the *active* (web) driver, not the
+    # native one passed to `capture()` for `screenshot` (a `WebContextDriver` can't take one).
+    # Guards against reintroducing the wrong-driver class of bug already fixed once for the
+    # pre-step baseline capture.
+    native_screen = [
+        el("app.webview", "WebView", frame=(0.0, 0.0, 400.0, 800.0)),
+        el("native-only", "Native Only", ["button"]),
+    ]
+    driver = FakeDriver(native_screen)
+    bridge = _CountingBridge([el("go", "Go", ["button"])])
+    run_dir = tmp_path / "run1"
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "x",
+                "steps": [
+                    {"web": {"within": {"id": "app.webview"}, "steps": [{"tap": {"id": "go"}}]}}
+                ],
+            }
+        ),
+        clock=FakeClock(),
+        sink=FileSink(run_dir),
+        webview_bridge=bridge,
+    )
+    assert result.ok, result.failure
+    # step0 is the `web` block itself; step1 is the tap nested inside it (BE-0172 shares one
+    # monotonic counter across the nesting).
+    written = (run_dir / "x" / "step1" / "elements.json").read_text(encoding="utf-8")
+    assert "go" in written  # the web DOM element the step actually acted on
+    assert "native-only" not in written  # never the native tree the sink can't screenshot with
 
 
 def test_screen_changed_reuses_previous_after_as_before() -> None:
