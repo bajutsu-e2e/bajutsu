@@ -160,9 +160,12 @@ def test_pre_step_baseline_skips_the_web_query_under_a_null_sink() -> None:
 
 def test_web_block_plain_tap_issues_no_extra_bridge_query() -> None:
     # The `web`-block analogue of test_plain_tap_issues_no_runner_read: no screenChanged policy, no
-    # extract, a sink that reads nothing. The tap itself must resolve its target through the bridge
-    # (1 query, same as any tap), but the post-step capture — previously unconditional for a `web`
-    # block regardless of whether any consumer needed it — must add none on top.
+    # extract, the default `NullSink` (the pre-step baseline's own laziness only recognizes a real
+    # `NullSink`, not just any sink that happens to read nothing — see
+    # test_pre_step_baseline_skips_the_web_query_under_a_null_sink). The tap itself must still
+    # resolve its target through the bridge (1 query, same as any tap), but the post-step capture —
+    # previously unconditional for a `web` block regardless of whether any consumer needed it — must
+    # add none on top.
     native_screen = [el("app.webview", "WebView", frame=(0.0, 0.0, 400.0, 800.0))]
     driver = _CountingDriver(native_screen)
     bridge = _CountingBridge([el("go", "Go", ["button"])])
@@ -177,7 +180,6 @@ def test_web_block_plain_tap_issues_no_extra_bridge_query() -> None:
             }
         ),
         clock=FakeClock(),
-        sink=_KindsSink(),
         webview_bridge=bridge,
     )
     assert result.ok, result.failure
