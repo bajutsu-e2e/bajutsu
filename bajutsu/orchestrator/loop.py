@@ -1166,37 +1166,22 @@ class _StepRunner:
         # Interval kinds are recorded scenario-wide (run_scenario), so only the
         # instant kinds are captured per step here. Pass the tree only if we already read it;
         # otherwise `elements=None` lets the sink's `elements` writer read on its own (a NullSink
-        # reads nothing), so a FileSink run stays at one read and a NullSink run at zero — on the
-        # native driver, and inside a `web` block alike. A `web` block's `elements` capture must
-        # fall back to the active (web) tree, while `screenshot` always falls back to the native
-        # `driver` (a `WebContextDriver` cannot take one) — two different fallback drivers a single
-        # `capture()` call cannot express, so the two kinds go through separate calls only inside a
-        # `web` block; the common native-driver step keeps one combined call.
+        # reads nothing), so a FileSink run stays at one read and a NullSink run at zero. A `web`
+        # block is the exception to that fallback: `capture()` takes one driver for both the
+        # `elements` and the `screenshot` write, and a `WebContextDriver` cannot take a screenshot —
+        # so the call keeps the native `driver` and the active (web) tree is read here instead, but
+        # only when an `elements` capture actually fired and the sink isn't a `NullSink` that would
+        # discard it regardless (matching the pre-step baseline's own guard above).
         instant = [t for t in fired if _kind_of(t) not in intervals.INTERVAL_KINDS]
-        if active_driver is self.cfg.driver:
-            outcome.artifacts.extend(
-                self.cfg.sink.capture(self.cfg.driver, step_id, instant, elements=screen.cached)
-            )
-        else:
-            elements_kinds = [t for t in instant if _kind_of(t) == "elements"]
-            other_kinds = [t for t in instant if _kind_of(t) != "elements"]
-            if elements_kinds:
-                # A real `elements` capture reads through `screen.get()`, not the sink's own
-                # `elements=None` fallback: the fallback would query `active_driver` invisibly to
-                # `screen`, leaving `screen.cached` (and so `prev_after` below) `None` even though a
-                # read just happened — the next nested step would then pay a redundant duplicate
-                # query to rediscover a tree from (nearly) the same instant. Routing it through
-                # `screen.get()` keeps this on the same one-read, carried-forward footing as the
-                # native path.
-                outcome.artifacts.extend(
-                    self.cfg.sink.capture(
-                        active_driver, step_id, elements_kinds, elements=screen.get()
-                    )
-                )
-            if other_kinds:
-                outcome.artifacts.extend(
-                    self.cfg.sink.capture(self.cfg.driver, step_id, other_kinds)
-                )
+        wants_web_elements = (
+            active_driver is not self.cfg.driver
+            and not isinstance(self.cfg.sink, NullSink)
+            and any(_kind_of(t) == "elements" for t in instant)
+        )
+        els = screen.get() if wants_web_elements else screen.cached
+        outcome.artifacts.extend(
+            self.cfg.sink.capture(self.cfg.driver, step_id, instant, elements=els)
+        )
         if screen.queried:
             self.state.total_reads += 1
         # The last leaf step to actually run (BE-XXXX): `_run_steps` uses this after the whole run

@@ -192,7 +192,7 @@ def test_web_block_file_sink_reads_the_web_tree_not_the_native_one(tmp_path: Pat
     # fire — and against the *active* (web) driver, not the native one passed to `capture()` for
     # `screenshot` (a `WebContextDriver` can't take one). The always-on `elements` baseline is
     # captured *pre*-step (BE-XXXX), so a post-step `elements` fires only when the scenario asks for
-    # it: the `capturePolicy` below is what puts the new `elements_kinds` branch on the path at all.
+    # it: the `capturePolicy` below is what makes the deferred web read actually fire.
     # Guards against reintroducing the wrong-driver class of bug already fixed once for the
     # pre-step baseline capture.
     native_screen = [
@@ -236,8 +236,9 @@ def test_web_block_elements_capture_reuses_the_read_for_the_next_steps_baseline(
     # isolate the count to exactly the pre-step/post-step captures, and a real `FileSink` (not a
     # sink that discards `elements`, like `_KindsSink`) is required so its own `elements=None`
     # fallback is actually reachable — a regression back to it shows up as 4 bridge queries here
-    # instead of the correct 3 (1 initial pre-step read, reused as each step's post-step read and
-    # carried forward as the next step's pre-step baseline).
+    # instead of the correct 3 (one pre-step baseline read on the block's first nested step, whose
+    # `prev_after` is reset around the block, plus one post-step read per `type` step — each of
+    # those carried forward as the next step's pre-step baseline, which is what keeps it at 3).
     driver = FakeDriver([el("app.webview", frame=(0.0, 0.0, 400.0, 800.0))])
     bridge = _CountingBridge([])
     result = run_scenario(
