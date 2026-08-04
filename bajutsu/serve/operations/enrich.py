@@ -10,6 +10,7 @@ from bajutsu.serve.operations._common import (
     _default_driver_factory,
     _device_args,
     _resolve_org_or_forbid,
+    _session_effective,
 )
 from bajutsu.serve.state import ServeState
 
@@ -78,7 +79,7 @@ def start_enrich(
         udid = "booted"
 
     factory = driver_factory or _default_driver_factory
-    driver, teardown = factory(resolve(config, target), backends_list, udid)
+    driver, teardown = factory(_session_effective(state, config, target), backends_list, udid)
 
     from bajutsu.agents.enrich import enrich
 

@@ -185,6 +185,39 @@ def test_start_capture_explicit_alias_backend_resolves(tmp_path: Path) -> None:
     assert seen == ["xcuitest"]
 
 
+def test_start_capture_rebases_app_path_against_state_cwd(tmp_path: Path) -> None:
+    # A relative `appPath` is copied verbatim by `resolve()`; start_capture must rebase it against
+    # `state.cwd` (an uploaded bundle's root, a Git checkout root, or a local config's own directory,
+    # BE-0063/BE-0073/BE-0242) before handing the Effective to the driver factory — otherwise an
+    # uploaded config's `appPath` resolves against wherever `bajutsu serve` happens to be running from
+    # instead of the bundle, and iOS bring-up fails with "appPath not found".
+    bundle = tmp_path / "bundle"
+    scn_dir = bundle / "scenarios"
+    scn_dir.mkdir(parents=True)
+    app_dir = bundle / "app" / "MyApp.app"
+    app_dir.mkdir(parents=True)
+    cfg = bundle / "bajutsu.config.yaml"
+    cfg.write_text(
+        "defaults: { backend: [ios] }\n"
+        "targets:\n"
+        f"  demo: {{ bundleId: com.example.demo, appPath: app/MyApp.app, scenarios: {scn_dir} }}\n",
+        encoding="utf-8",
+    )
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    state = ServeState(runs_dir=runs, config=cfg, cwd=bundle)
+
+    seen: list[object] = []
+
+    def factory(eff: object, _b: list[str], _u: str) -> tuple[FakeDriver, object]:
+        seen.append(eff)
+        return FakeDriver(_screen()), (lambda: None)
+
+    _payload, status = ops.start_capture(state, {"target": "demo"}, driver_factory=factory)
+    assert status == 200
+    assert seen[0].platform_config.app_path == str(app_dir)
+
+
 def test_start_capture_tears_down_runner_when_bring_up_fails(tmp_path: Path) -> None:
     # BE-0290: if the driver's query/screenshot raises before the session is stored (a real failure
     # mode for a freshly-launched XCUITest runner), teardown must still run so the runner subprocess

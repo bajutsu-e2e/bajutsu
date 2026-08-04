@@ -5,7 +5,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from bajutsu.config import Effective
+from bajutsu.config import Effective, resolve
+from bajutsu.config.schema import Config
 from bajutsu.drivers import base as driver_base
 from bajutsu.serve.authz import _target_forbidden
 from bajutsu.serve.helpers import (
@@ -44,6 +45,22 @@ def _resolve_org_or_forbid(
     if _target_forbidden(state, org, target):
         return org, ({"error": "forbidden"}, 403)
     return org, None
+
+
+def _session_effective(state: ServeState, config: Config, target: str) -> Effective:
+    """The effective config for a live capture/enrich session, with path fields rebased.
+
+    `resolve()` alone copies `appPath` (and the other path fields) verbatim from the raw YAML; a
+    relative value only resolves correctly once rebased against `state.cwd` — the config's own
+    directory, a Git checkout root, or an uploaded bundle's root (BE-0063/BE-0073/BE-0242). `run`/
+    `record` get this for free through the CLI's `_load_effective_with_source`; a live capture/enrich
+    session runs in-process and must rebase explicitly here, shared by both callers so the rebase
+    root and the `confine` decision below can't drift out of sync between them.
+
+    `confine=False`: every bind path (`bind_config`/`bind_git_config`/`bind_upload_config`) already
+    confined this same config's path fields once, at bind time.
+    """
+    return resolve(config, target).rebased(state.cwd, confine=False)
 
 
 def _close_quietly(driver: driver_base.Driver) -> None:
