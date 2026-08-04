@@ -449,7 +449,11 @@ class _UiAutomatorGen:
             + " condition",
             "  // wait, never a fixed sleep.",
             "  private fun act(by: BySelector): UiObject2 {",
-            "    device.wait(Until.hasObject(by), ACT_TIMEOUT_MS)",
+            "    if (!device.wait(Until.hasObject(by), ACT_TIMEOUT_MS)) {",
+            "      val dump = java.io.ByteArrayOutputStream().also { device.dumpWindowHierarchy(it) }",
+            '      throw AssertionError("DIAGNOSTIC: act() timed out waiting for " + by'
+            + ' + "\\n--- window hierarchy ---\\n" + dump.toString())',
+            "    }",
             "    return device.findObject(by)",
             "  }",
             "",
