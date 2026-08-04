@@ -434,22 +434,40 @@ def _step_artifacts(
     effective_name = scenario_name or matched.name
     scenario = _find_scenario(manifest, effective_name)
     # `or None` coerces a falsy/empty `sid` (e.g. `""`) to `None` too, so a malformed scenario
-    # record bails to `[]` below rather than building a malformed step id like `/step0`.
-    sid = scenario.get("sid") or None if scenario is not None else None
+    # record bails to `[]` below rather than building a malformed step id like `/step0`. Parenthesized
+    # so `scenario.get(...)` never runs when `scenario` is `None` regardless of how this expression
+    # is later refactored or read.
+    sid = (scenario.get("sid") or None) if scenario is not None else None
     if sid is None:
         return []
-    # index -> that step's recorded artifacts, so the loop below resolves the real names the run
-    # recorded (BE-XXXX) instead of assuming the baseline is always `before.png`/`after.png` under
-    # fixed names — a capturePolicy rule can add or replace either.
-    outcomes_by_index = {
-        out.get("index"): out.get("artifacts") or [] for out in (scenario or {}).get("steps", [])
-    }
+    # step id (parsed from each outcome's own recorded artifact paths) -> that step's artifacts, so
+    # the loop below resolves the real names the run recorded (BE-XXXX) instead of assuming the
+    # baseline is always `before.png`/`after.png` under fixed names — a capturePolicy rule can add
+    # or replace either. Keyed by the runtime step id, not the outcome's `index`: `index` is a
+    # counter across *all executed steps* including nested `if`/`forEach`/`web` steps, while the
+    # loop below counts only top-level YAML steps, so the two diverge as soon as the scenario has
+    # any nesting before this step. A named step's runtime id doesn't depend on either counter, so
+    # this keeps resolving to the right artifacts regardless of nesting; an unnamed step still falls
+    # back to `step{idx}` on both sides, the same positional ambiguity as before this rework. Skips
+    # a non-`dict` entry rather than raising, so a malformed/partially written manifest degrades to
+    # missing artifacts for that step instead of a 500.
+    artifacts_by_step_id: dict[str, list[Any]] = {}
+    for out in (scenario or {}).get("steps", []):
+        if not isinstance(out, dict):
+            continue
+        step_artifacts = out.get("artifacts")
+        if not isinstance(step_artifacts, list):
+            continue
+        first = next((a for a in step_artifacts if isinstance(a, dict)), None)
+        name = first.get("name") if first is not None else None
+        if isinstance(name, str) and "/" in name:
+            artifacts_by_step_id[name.rsplit("/", 1)[0]] = step_artifacts
 
     result: list[dict[str, Any]] = []
     for idx, step in enumerate(matched.steps):
         step_id = f"{sid}/{step.name or f'step{idx}'}"
         action, fields = _step_action_fields(step)
-        elements_name, screenshot_name = _artifact_names(outcomes_by_index.get(idx, []))
+        elements_name, screenshot_name = _artifact_names(artifacts_by_step_id.get(step_id, []))
         result.append(
             {
                 "stepId": step_id,

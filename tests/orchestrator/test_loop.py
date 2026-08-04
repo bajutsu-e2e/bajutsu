@@ -528,6 +528,55 @@ def test_pre_step_capture_queries_the_web_driver_for_a_blocks_first_nested_step(
     assert any(name.endswith("after.png") for name in names)
 
 
+def test_pre_step_capture_downgrades_to_screenshot_only_when_web_query_fails(
+    tmp_path: Path,
+) -> None:
+    """A `web` block's first nested step still gets its native `screenshot.before` when the bridge
+    query fails: only `elements` needs the web driver, so the pre-step baseline drops just that
+    token rather than the whole capture (BE-XXXX review follow-up). The bridge recovers for the
+    post-step read (an unrelated, pre-existing capture path), modeling a transient hiccup rather
+    than a permanently dead bridge."""
+
+    class _FlakyBridge(_FakeBridge):
+        def __init__(self, dom_elements: list[base.Element]) -> None:
+            super().__init__(dom_elements)
+            self.calls = 0
+
+        def query_dom(self, webview_id: str) -> list[base.Element]:
+            self.calls += 1
+            if self.calls == 1:
+                raise ConnectionError("bridge unreachable")
+            return super().query_dom(webview_id)
+
+    native_screen = [el("app.webview", frame=(0.0, 0.0, 400.0, 800.0))]
+    driver = FakeDriver(native_screen)
+    run_dir = tmp_path / "run1"
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "x",
+                "steps": [
+                    {
+                        "web": {
+                            "within": {"id": "app.webview"},
+                            "steps": [{"type": {"text": "hi"}}],
+                        }
+                    }
+                ],
+            }
+        ),
+        clock=FakeClock(),
+        sink=FileSink(run_dir),
+        webview_bridge=_FlakyBridge([]),
+    )
+    assert result.ok, result.failure
+    leaf_outcome = next(s for s in result.steps if s.action == "type")
+    names = {a.name for a in leaf_outcome.artifacts}
+    assert any(name.endswith("before.png") for name in names)
+    assert not any(a.kind == "elements" for a in leaf_outcome.artifacts)
+
+
 def test_pre_step_and_final_captures_write_content_from_the_same_pre_action_moment(
     tmp_path: Path,
 ) -> None:

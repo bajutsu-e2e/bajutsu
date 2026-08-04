@@ -424,6 +424,102 @@ def test_read_scenario_with_run_resolves_manifest_recorded_names_not_hardcoded(
     assert payload["steps"][0]["screenshotUrl"] == "/runs/run1/00-login/step0/around.png"
 
 
+def test_read_scenario_with_run_resolves_a_named_step_after_nested_control_flow(
+    tmp_path: Path,
+) -> None:
+    """A named top-level step *after* an `if` block resolves its own artifacts, not the nested
+    step's (BE-XXXX review follow-up). The runner's own step-name fallback counts every executed
+    step, including nested ones, so the `if` block's one nested `tap` consumes an index the
+    top-level loop below never sees; keying the lookup by each outcome's own recorded artifact path
+    (this step's real runtime id) rather than by top-level position keeps the two YAML steps'
+    artifacts from being swapped."""
+    state, runs = _state(tmp_path)
+    scn_dir = tmp_path / "scenarios"
+    (scn_dir / "login.yaml").write_text(
+        """\
+- name: login
+  steps:
+    - name: gate
+      if:
+        condition: { exists: { id: auth.email } }
+        then:
+          - name: inner
+            tap: { id: auth.email }
+    - name: after
+      tap: { id: auth.submit }
+""",
+        encoding="utf-8",
+    )
+
+    run_dir = runs / "run1"
+    for step_id in ("inner", "after"):
+        step_dir = run_dir / "00-login" / step_id
+        step_dir.mkdir(parents=True)
+        (step_dir / "before.png").write_bytes(b"PNG")
+        (step_dir / "elements.json").write_text(json.dumps(_elements()), encoding="utf-8")
+    manifest = {
+        "runId": "run1",
+        "ok": True,
+        "scenarios": [
+            {
+                "scenario": "login",
+                "ok": True,
+                "sid": "00-login",
+                "steps": [
+                    {"index": 0, "action": "if", "ok": True, "artifacts": []},
+                    {
+                        "index": 1,
+                        "action": "tap",
+                        "ok": True,
+                        "artifacts": [
+                            {
+                                "name": "00-login/inner/before.png",
+                                "kind": "screenshot",
+                                "provider": "driver",
+                            },
+                            {
+                                "name": "00-login/inner/elements.json",
+                                "kind": "elements",
+                                "provider": "driver",
+                            },
+                        ],
+                    },
+                    {
+                        "index": 2,
+                        "action": "tap",
+                        "ok": True,
+                        "artifacts": [
+                            {
+                                "name": "00-login/after/before.png",
+                                "kind": "screenshot",
+                                "provider": "driver",
+                            },
+                            {
+                                "name": "00-login/after/elements.json",
+                                "kind": "elements",
+                                "provider": "driver",
+                            },
+                        ],
+                    },
+                ],
+            }
+        ],
+    }
+    (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    payload, status = ops.read_scenario(
+        state,
+        "demo",
+        str(scn_dir / "login.yaml"),
+        run_id="run1",
+        scenario_name="login",
+    )
+    assert status == 200
+    after_step = next(s for s in payload["steps"] if s["stepId"] == "00-login/after")
+    assert after_step["screenshotUrl"] == "/runs/run1/00-login/after/before.png"
+    assert after_step["elementsUrl"] == "/runs/run1/00-login/after/elements.json"
+
+
 def test_read_scenario_with_run_prefers_the_first_recorded_screenshot(tmp_path: Path) -> None:
     """When a step's artifacts list carries two `screenshot`-kind entries — the pre-step baseline
     plus a capturePolicy rule's own shot, as a real run under an active rule produces — the first

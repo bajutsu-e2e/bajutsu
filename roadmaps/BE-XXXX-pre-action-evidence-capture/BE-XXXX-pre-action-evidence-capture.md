@@ -138,10 +138,13 @@ otherwise — and never call `query()` itself to fill that gap.
    `reads.py`'s `_step_artifacts` (unit 5) keeps resolving `screenshotUrl` to the *first*-recorded
    screenshot, `before.png` — decoupling the paired screenshot and tree the editor's element-picker
    relies on describing the same moment. Keeping `elements.json` the pre-action tree for every step,
-   including the last, keeps that pair consistent throughout the whole run; `after.png` alone still
-   shows the scenario's true end state visually. Because this capture always targets `self.cfg.driver`
-   (native — the same choice unit 1's pre-step call makes, and screenshots need no tree at all), it
-   needs no web-driver re-query and no exception guard of its own, unlike unit 1's pre-step call.
+   including the last, keeps that pair consistent throughout the whole run. `after.png` is written as
+   a raw artifact for anyone reading the manifest directly, but today's viewers (the HTML report and
+   the serve editor) both resolve a step's displayed screenshot to the first-recorded one, so this
+   file is not surfaced by default — making a viewer prefer it for the scenario's last step is
+   separate, future scope. Because this capture always targets `self.cfg.driver` (native — the same
+   choice unit 1's pre-step call makes, and screenshots need no tree at all), it needs no web-driver
+   re-query and no exception guard of its own, unlike unit 1's pre-step call.
 
 3. **Drop redundant `.before` tokens from the post-step call.** A scenario's inline `capture` or a
    `capturePolicy` rule can still spell `screenshot.before` explicitly; since Unit 1's pre-step call
@@ -178,7 +181,12 @@ otherwise — and never call `query()` itself to fill that gap.
    flowing a non-string value into the URL built from it. `_step_artifacts` restores the `or None`
    coercion the removed `_find_sid` deliberately applied to `sid`: an empty-string `sid` on a
    scenario record now bails to `[]` the same way a missing one already does, instead of building a
-   malformed step id like `/step0`.
+   malformed step id like `/step0`. The per-step lookup keys on the runtime step id parsed from each
+   outcome's own recorded artifact path (`name.rsplit("/", 1)[0]`), not the outcome's `index`:
+   `index` counts every executed step, including nested `if`/`forEach`/`web` steps, while the loop
+   over `matched.steps` counts only top-level YAML steps, so the two diverge as soon as the scenario
+   has any nesting before a given step — a named step's runtime id doesn't depend on either counter,
+   so this keeps resolving to the right artifacts regardless.
 
 6. **Cover the ordering, the final-step capture, the read-count invariant, and the non-regression in
    the deterministic suite.** A `FakeDriver`-backed test in `tests/orchestrator/test_loop.py` records
@@ -200,9 +208,12 @@ otherwise — and never call `query()` itself to fill that gap.
    `tests/orchestrator/test_read_count.py` gains a case proving the new pre-step call costs no
    additional loop-issued read when the sink does not consume `elements` — guarding the exact
    invariant `test_plain_tap_issues_no_runner_read` already pins, so this item cannot silently
-   regress it. A `tests/serve/test_editor_ops.py` case — where `_step_artifacts` is already
-   covered — proves it resolves the manifest-recorded name rather than a hardcoded one. A regression
-   test proves `extract` / `assert` still read the settled post-action tree, unaffected by this item.
+   regress it, and a further case proves the web-block's own pre-step baseline pays no bridge query
+   under a `NullSink`. A `tests/serve/test_editor_ops.py` case — where `_step_artifacts` is already
+   covered — proves it resolves the manifest-recorded name rather than a hardcoded one, and a further
+   case proves a named step after nested control flow resolves its own artifacts rather than the
+   nested step's. A regression test proves `extract` / `assert` still read the settled post-action
+   tree, unaffected by this item.
 
 7. **Document the new default.** [`docs/evidence.md`](../../docs/evidence.md) and its Japanese
    mirror: the "Default modifiers … default to `after`" line

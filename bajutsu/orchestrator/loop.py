@@ -910,10 +910,15 @@ class _StepRunner:
         # `active_driver` is the web one; only a genuinely unset `prev_after` (the block's first
         # nested step — reset around the whole block, BE-0234 Unit 2) pays a fresh, correctly-targeted
         # `active_driver.query()` here, and every later nested step reuses `prev_after` for free, same
-        # as a native step.
+        # as a native step. `NullSink` ignores `elements` outright, so skip the query entirely under
+        # it too — a sink that reads nothing must pay nothing even for a `web` block's first step.
         pre_elements = self.state.prev_after
-        skip_pre_capture = False
-        if pre_elements is None and active_driver is not self.cfg.driver:
+        pre_kinds = ["screenshot.before", "elements"]
+        if (
+            pre_elements is None
+            and active_driver is not self.cfg.driver
+            and not isinstance(self.cfg.sink, NullSink)
+        ):
             try:
                 pre_elements = active_driver.query()
                 self.state.total_reads += 1
@@ -924,21 +929,18 @@ class _StepRunner:
             except (ConnectionError, base.UnsupportedAction, OSError) as exc:
                 # Best-effort: a web context that can't be read yet must not crash the step before it
                 # even gets to attempt its own action — that failure surfaces normally through
-                # `_run_step_body` instead. Skip only this report artifact, and disclose the gap via
-                # logging rather than guess.
+                # `_run_step_body` instead. Only `elements` needs the web driver; `screenshot.before`
+                # is captured from the native driver regardless, so drop just `elements` here rather
+                # than losing the whole baseline, and disclose the gap via logging rather than guess.
                 _logger.debug(
-                    "%s: pre-step capture skipped, web driver query failed: %s", step_id, exc
-                )
-                skip_pre_capture = True
-        if not skip_pre_capture:
-            outcome.artifacts.extend(
-                self.cfg.sink.capture(
-                    self.cfg.driver,
+                    "%s: pre-step elements capture skipped, web driver query failed: %s",
                     step_id,
-                    ["screenshot.before", "elements"],
-                    elements=pre_elements,
+                    exc,
                 )
-            )
+                pre_kinds = ["screenshot.before"]
+        outcome.artifacts.extend(
+            self.cfg.sink.capture(self.cfg.driver, step_id, pre_kinds, elements=pre_elements)
+        )
         # `before` is needed only for a `screenChanged` policy. Reuse the previous step's
         # post-step tree when we have one (same device state — nothing actuated in between), so
         # the read drops to (near) zero across the scenario; only the first step, or a step after
@@ -1224,7 +1226,11 @@ def _run_steps(
     # resolving to the *first*-recorded screenshot, `before.png`. That mismatch would let a picked
     # element's coordinates (from the post-action tree) drift from what `before.png` actually shows.
     # Keeping `elements.json` the pre-action tree for every step, including the last, keeps that pair
-    # consistent throughout; `after.png` alone still shows the scenario's true end state visually.
+    # consistent throughout. `after.png` is written as a raw artifact for anyone reading the manifest
+    # directly; today's viewers (the HTML report and the serve editor) both resolve a step's
+    # displayed screenshot to the *first*-recorded one, `before.png`, so this file is not surfaced by
+    # default — making a viewer prefer it for the scenario's last step, if ever wanted, is separate,
+    # future scope.
     if (leaf := state.last_leaf) is not None:
         leaf.outcome.artifacts.extend(sink.capture(driver, leaf.step_id, ["screenshot.after"]))
     return result

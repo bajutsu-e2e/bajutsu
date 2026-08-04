@@ -103,6 +103,53 @@ def test_pre_step_baseline_issues_no_extra_runner_read() -> None:
     assert driver.queries == 0
 
 
+def test_pre_step_baseline_skips_the_web_query_under_a_null_sink() -> None:
+    # A `web` block's first nested step must not force a bridge query for a baseline `NullSink`
+    # discards (review follow-up on BE-XXXX): under the default sink (`NullSink`, `sink=None`),
+    # the only bridge read left is the pre-existing, unrelated post-step read every web-block step
+    # already pays (BE-0234 Unit 2, `screen.get()` for a web `active_driver`) — one call for one
+    # step, not two.
+    class _CountingBridge:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def query_dom(self, webview_id: str) -> list[base.Element]:
+            self.calls += 1
+            return []
+
+        def tap_element(self, webview_id: str, point: tuple[float, float]) -> None:
+            pass
+
+        def type_text(self, webview_id: str, text: str) -> None:
+            pass
+
+        def scroll_to(self, webview_id: str, element_id: str) -> None:
+            pass
+
+    bridge = _CountingBridge()
+    driver = _CountingDriver([el("app.webview", frame=(0.0, 0.0, 400.0, 800.0))])
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "x",
+                "steps": [
+                    {
+                        "web": {
+                            "within": {"id": "app.webview"},
+                            "steps": [{"type": {"text": "hi"}}],
+                        }
+                    }
+                ],
+            }
+        ),
+        clock=FakeClock(),
+        webview_bridge=bridge,
+    )
+    assert result.ok, result.failure
+    assert bridge.calls == 1
+
+
 def test_screen_changed_reuses_previous_after_as_before() -> None:
     # With a screenChanged policy every step needs a `before`, but the previous step's `after` is the
     # same device state, so it is reused: one initial `before` plus one post-step read per step —
