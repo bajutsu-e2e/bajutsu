@@ -619,27 +619,18 @@ class _UiAutomatorGen:
             "    InstrumentationRegistry.getInstrumentation().uiAutomation.windows.isNotEmpty()",
             '  }.getOrElse { Log.w(LOG_TAG, "could not read the window list", it); false }',
             "",
-            "  // Confirm the accessibility read channel is reporting windows at all before anything"
-            + " waits",
-            "  // on what it says. The window list arrives by event, so a connection that misses the"
-            + " change",
-            "  // it was opened across keeps serving the view it already had, and on an idle"
-            + " emulator no",
-            "  // later change refreshes it — every selector wait below then searches a screen the"
-            + " app is",
-            "  // absent from while being fully drawn. Waiting longer cannot fix a view that is not"
-            + " being",
-            "  // updated; only a window change can, so provoke one rather than raise a timeout.",
+            "  // Cheap insurance, not the main event: a list with nothing in it cannot be waited on"
+            + " at",
+            "  // all, so rule that out before the launch wait rather than spend the whole timeout"
+            + " on it.",
             "  //",
-            "  // An empty list is the case this can rule out cheaply and up front. A stale"
-            + " non-empty one",
-            "  // reads as healthy here, and the kick a failed launch attempt makes below covers"
-            + " that",
-            "  // instead. Across seven CI runs the two were indistinguishable from the outcome"
-            + " alone:",
-            "  // every passing run logged the transient null roots of a live view during launch,"
-            + " and",
-            "  // every failing run logged none across 119-171 polls.",
+            "  // The failure this file exists for is a different one, and an empty list is NOT it —"
+            + " see",
+            "  // launch() below. There the list is live and the app's window is simply missing from"
+            + " it,",
+            "  // which no is-it-empty check can see. Both are met by provoking a window change,"
+            + " because",
+            "  // no timeout recovers a list that will not gain the window on its own.",
             "  private fun ensureWindowTracking() {",
             "    for (attempt in 1..TRACKING_KICK_ATTEMPTS) {",
             "      if (reportsWindows()) return",
@@ -697,19 +688,26 @@ class _UiAutomatorGen:
             "        device.waitForIdle(LAUNCH_TIMEOUT_MS)",
             "        return",
             "      }",
-            "      // The summary, not just the miss: an empty list and a stale non-empty one both"
-            + " reach",
-            "      // here and need different fixes, and only the first attempt's state tells them"
-            + " apart —",
-            "      // the AssertionError below reports the state after every attempt has already"
-            + " run.",
+            "      // The summary, not just the miss. This is the line that identified the failure:"
+            + " a CI",
+            "      // run logged a LIVE two-window list here — SystemUI's status bar and a focused"
+            + ' "Pixel',
+            "      // Launcher isn't responding\" dialog — with the app's own window absent, 19s"
+            + " after",
+            "      // ActivityTaskManager had reported it Displayed. A focused system window keeps"
+            + " the app's",
+            "      // window out of what UiAutomation reports, so the app is drawn and foreground"
+            + " while every",
+            "      // selector searches a list it is not in.",
             '      Log.w(LOG_TAG, "launch attempt $attempt saw no $PACKAGE window in "',
             '        + "${LAUNCH_TIMEOUT_MS}ms; windows:\\n" + windowSummary())',
-            "      // A non-empty window list satisfies ensureWindowTracking() while still being a"
-            + " stale one",
-            "      // that the app's window never joined, which no list-is-empty check can tell"
-            + " apart. This",
-            "      // attempt has already failed, so kick regardless before re-issuing the intent.",
+            "      // Hence the kick, and hence its being unconditional here: the list was neither"
+            + " empty nor",
+            "      // unreadable, so nothing above this point can detect the case. HOME dismisses"
+            + " whatever",
+            "      // holds focus, and the intent is re-issued into a screen the app can reach. In"
+            + " the run",
+            "      // above that recovery worked — attempt 2 came up and the test passed.",
             "      //",
             "      // Only while an attempt remains, though. HOME after the last one would leave"
             + " every piece",

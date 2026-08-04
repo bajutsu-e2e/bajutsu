@@ -431,52 +431,54 @@ class ComponentsUITest {
 - **Both failures name the windows they searched**, because "no element matched" cannot distinguish
   an id that has not rendered from an app whose window is absent from the tree altogether. The two
   need opposite fixes.
-- **`launch` confirms the accessibility window list is live before it waits on what the list says.**
-  UI Automator matches every selector against the windows the accessibility framework reports, and
-  the framework delivers that list by event. A connection that misses the window change it opened
-  across keeps serving the view it already holds, and on an idle continuous-integration emulator no
-  later change refreshes it. Every selector then searches a view the app is absent from while the app
-  is fully drawn. The generated test reads `uiAutomation.windows` before launching into the list, so
-  a wait with no live list to wait on fails naming the list.
-- **A list that is not being updated is met with a window change, not a longer timeout.** No timeout
-  recovers an event that is never sent, so `kickWindowTracking` presses HOME, and the framework has
-  to re-report the list. HOME is dispatched through the input pipeline rather than the accessibility
-  one, so it lands even while the accessibility view is stale, and it moves any foreground app off
-  screen; on the launcher it may produce only content changes, which the key press's own wait accepts
-  as well. The key press
-  waits for the events it produces, so the recovery needs no sleep of its own, and
-  `TRACKING_KICK_ATTEMPTS` bounds it. `pressHome` reports a window event that never arrived by
-  returning false rather than by throwing, and no event is the wedge's own symptom, so both outcomes
-  are logged. Reading the list catches one case up front, the empty one: a stale non-empty list the
-  app's window never joined reads as healthy, so a launch attempt that times out with another attempt
-  still to come kicks without consulting the list at all, and logs the list it saw so a later reader
-  can tell the two apart. The kick
-  stays outside `UiAutomation.executeAndWaitForEvent`, because `pressHome` already waits through that
-  same call and a nested one would clear the event queue the outer wait is watching.
+- **A launch whose window never reaches the accessibility tree is retried after a window change, not
+  waited on longer.** UI Automator matches every selector against the windows the accessibility
+  framework reports, so an app whose window is missing from that list is unreachable however long the
+  wait runs. `kickWindowTracking` presses HOME and the intent is re-issued. HOME is dispatched through
+  the input pipeline rather than the accessibility one, so it lands whatever the accessibility view
+  currently says, and it dismisses whatever holds focus. The key press waits for the events it
+  produces, so the recovery adds no sleep, and `TRACKING_KICK_ATTEMPTS` bounds it. `pressHome` reports
+  a window event that never arrived by returning false rather than by throwing, so both outcomes are
+  logged. The kick stays outside `UiAutomation.executeAndWaitForEvent`, because `pressHome` already
+  waits through that same call and a nested one would clear the event queue the outer wait is
+  watching.
+- **The kick after a failed attempt does not consult the window list**, because the case it recovers
+  is invisible to any reading of it — see the run below, where the list was neither empty nor
+  unreadable. `ensureWindowTracking`, which does read the list before each attempt, covers only the
+  narrower case of a list with nothing in it at all: cheap to rule out up front rather than at the
+  cost of a whole launch timeout.
 - **The last attempt does not kick**, because after it there is no intent left to re-issue and HOME
   would overwrite every piece of evidence the failure is about to collect. The `AssertionError`'s own
   window summary, the hierarchy dump, and the screenshot would all describe the launcher, and a
   healthy launcher window list argues the exact opposite of the failure they exist to explain.
 
-  Gradle's per-test logcat, which CI uploads alongside the evidence below, is what diagnosed the
-  failure. Run 30899952762 failed all three of its attempts at the first action, each on a fresh
-  emulator boot; the three polled 153, 168, and 171 times across some 20 seconds. Throughout, logcat
-  recorded the activity as both `RESUMED` and `Displayed` — the app had drawn its screen, and the
-  window list never mentioned it. Raising the wait from 5 to 15 and then to 20 seconds changed
-  nothing, which is what first pointed at a read channel rather than a slow app.
+  Gradle's per-test logcat, which CI uploads alongside the evidence below, is what identified this
+  failure, and the per-attempt window summary is the line that did it. One run logged this at the end
+  of a 20-second launch wait:
 
-  Across seven runs the discriminator is whether the view ever changed. Every passing run logs
-  UiDevice reporting transient null roots during launch — `Active window root not found` and
-  `Skipping null root node for window` — 2 to 7 times within 10 to 24 polls, the ordinary churn of a
-  live view mid-transition. Every failing run logs neither, across 119 to 171 polls. Sampling density
-  does not explain the difference: passing runs caught that transitional state in as few as 10 polls,
-  so 119 would have caught it too. The view did not change while the system was plainly transitioning
-  windows underneath it.
+```text
+W BajutsuCodegen: launch attempt 1 saw no com.bajutsu.showcase.android.compose window in 20000ms; windows:
+W BajutsuCodegen: root=com.android.systemui AccessibilityWindowInfo[title=null, type=TYPE_SYSTEM, layer=1, …]
+W BajutsuCodegen: root=android AccessibilityWindowInfo[title=Pixel Launcher isn't responding, type=TYPE_SYSTEM, focused=true, active=true, …]
+W BajutsuCodegen: kicking accessibility window tracking with pressHome(): launch attempt 1 timed out
+```
 
-  What the evidence does **not** yet settle is whether the frozen view is empty or merely stale.
-  Neither log line appears in either case — an empty list has no window to skip, and a stale
-  non-empty list can hold windows that all have non-null roots — which is why the fix covers both and
-  the per-attempt log records which one it met.
+  The list was live and correct: two windows, one of them a focused application-not-responding dialog
+  that had appeared during the wait. What it did not contain was the app's own window — 19 seconds
+  after `ActivityTaskManager` had reported that activity `Displayed`. **A focused system window keeps
+  the app's window out of what UiAutomation reports**, so the app is drawn and foreground while every
+  selector searches a list it is not in. HOME dismissed the dialog, the second attempt came up, and
+  the test passed.
+
+  That also explains the earlier evidence, which had suggested a channel that had stopped reporting
+  altogether. Run 30899952762 failed all three of its attempts, polling 153, 168, and 171 times across
+  some 20 seconds with the activity both `RESUMED` and `Displayed`; and across seven runs, every
+  passing run logged UiDevice's transient null roots during launch (`Active window root not found`,
+  `Skipping null root node for window`) 2 to 7 times within 10 to 24 polls while every failing run
+  logged none. A missing app window accounts for that correlation without a frozen channel: with the
+  app's window never joining the list, there is no launch transition for UiDevice to observe, so none
+  of the churn a live launch produces appears. Raising the wait from 5 to 15 and then to 20 seconds
+  changed nothing, for the same reason a longer wait cannot help here.
 
 #### Failure evidence
 
