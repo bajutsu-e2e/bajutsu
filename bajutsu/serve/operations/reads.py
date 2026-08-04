@@ -465,15 +465,18 @@ def _step_artifacts(
             continue
         # Filtered once, up front, to `dict` entries only: `_artifact_names` below calls `.get` on
         # each one, so a stray non-`dict` artifact must never reach it. The step id then comes from
-        # the first artifact that is both a `dict` and has a usable (`str`, slash-bearing) `name` —
-        # not merely the first `dict` — so one malformed entry ahead of a valid one never stops the
-        # search.
+        # the first artifact that is both a `dict` and has a usable, safe (`_valid_step_id`) `name`
+        # — not merely the first `dict` — so one malformed entry ahead of a valid one never stops
+        # the search. `_valid_step_id`, not a bare `"/" in name` check: a traversal-shaped name
+        # (e.g. `../../../run2/...`) would otherwise become the key itself, hiding every other,
+        # legitimate artifact recorded for this same step under a key no real `step_id` ever
+        # matches.
         dict_artifacts = [a for a in step_artifacts if isinstance(a, dict)]
         name = next(
             (
                 a["name"]
                 for a in dict_artifacts
-                if isinstance(a.get("name"), str) and "/" in a["name"]
+                if isinstance(a.get("name"), str) and "/" in a["name"] and _valid_step_id(a["name"])
             ),
             None,
         )

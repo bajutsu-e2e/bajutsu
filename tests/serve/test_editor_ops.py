@@ -986,6 +986,65 @@ def test_read_scenario_with_run_skips_a_slash_less_name_for_a_later_valid_one(
     assert payload["steps"][0]["screenshotUrl"] == "/runs/run1/00-login/step0/before.png"
 
 
+def test_read_scenario_with_run_does_not_let_a_traversal_name_hijack_the_step_key(
+    tmp_path: Path,
+) -> None:
+    """A `..`-shaped artifact `name` (a malformed/tampered manifest) recorded *first* for a step
+    must not become that step's lookup key: `name.rsplit("/", 1)[0]` on it would produce a key no
+    real `step_id` ever matches, hiding every other, legitimate artifact recorded for the same step
+    (review follow-up). The step's own valid `elements` entry — recorded second — still establishes
+    the correct key."""
+    state, runs = _state(tmp_path)
+    scn_dir = tmp_path / "scenarios"
+    (scn_dir / "login.yaml").write_text(SCENARIO_YAML, encoding="utf-8")
+    run_dir = runs / "run1"
+    step_dir = run_dir / "00-login/step0"
+    step_dir.mkdir(parents=True)
+    (step_dir / "elements.json").write_text(json.dumps(_elements()), encoding="utf-8")
+    manifest = {
+        "runId": "run1",
+        "ok": True,
+        "scenarios": [
+            {
+                "scenario": "login",
+                "ok": True,
+                "sid": "00-login",
+                "steps": [
+                    {
+                        "index": 0,
+                        "action": "tap",
+                        "ok": True,
+                        "artifacts": [
+                            {
+                                "name": "00-login/step0/../../../run2/00-other/step0/secret.png",
+                                "kind": "screenshot",
+                                "provider": "driver",
+                            },
+                            {
+                                "name": "00-login/step0/elements.json",
+                                "kind": "elements",
+                                "provider": "driver",
+                            },
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+    (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    payload, status = ops.read_scenario(
+        state,
+        "demo",
+        str(scn_dir / "login.yaml"),
+        run_id="run1",
+        scenario_name="login",
+    )
+    assert status == 200
+    assert payload["steps"][0]["elementsUrl"] == "/runs/run1/00-login/step0/elements.json"
+    assert payload["steps"][0]["screenshotUrl"] is None
+
+
 def test_read_scenario_with_run_reads_from_object_storage(tmp_path: Path) -> None:
     """A hosted backend (`ObjectStorageArtifactStore`) populates the per-step artifact list the
     same as local `serve` (BE-0258): before this fix, `_step_artifacts` read `state.runs_dir`

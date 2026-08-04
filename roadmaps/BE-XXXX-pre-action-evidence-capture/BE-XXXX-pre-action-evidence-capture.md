@@ -244,9 +244,12 @@ otherwise — and never call `query()` itself to fill that gap.
    so this keeps resolving to the right artifacts regardless. Every step of this walk — the manifest
    itself, `scenarios`, each scenario's `steps`, each step's `artifacts`, and each artifact — is
    `isinstance`-checked before use, and the step id search skips past any artifact lacking a usable
-   (`str`, slash-bearing) `name` rather than stopping at the first one, so one malformed entry
-   anywhere in a partially written manifest degrades to missing artifacts for that step rather than
-   a 500.
+   (`str`, slash-bearing, and `_valid_step_id`-safe) `name` rather than stopping at the first one —
+   `_valid_step_id`, not just the slash check, so a traversal-shaped name (e.g. `../../../run2/...`)
+   can never become the key itself: `name.rsplit("/", 1)[0]` on it would produce a key no real
+   `step_id` ever matches, hiding every other, legitimate artifact recorded for that same step. One
+   malformed entry anywhere in a partially written manifest degrades to missing artifacts for that
+   step rather than a 500 or a hidden, otherwise-valid one.
 
 6. **Cover the ordering, the final-step capture, the read-count invariant, and the non-regression in
    the deterministic suite.** A `FakeDriver`-backed test in `tests/orchestrator/test_loop.py` records
