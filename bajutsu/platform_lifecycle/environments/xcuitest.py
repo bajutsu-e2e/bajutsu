@@ -116,10 +116,11 @@ def _terminate_process_group(proc: subprocess.Popen[bytes]) -> None:
             try:
                 os.killpg(pgid, sig)
                 return
-            except (ProcessLookupError, PermissionError):
-                pass  # the group is gone or not ours: try the process itself below
             except OSError:
-                return
+                # Gone, not ours, or unsignallable for any other reason — every case is a group this
+                # signal did not reach, so all of them fall through to the process itself. Narrowing
+                # this to the expected errors would let an unexpected one leave the runner alive.
+                pass
         with contextlib.suppress(OSError):
             proc.terminate() if sig == signal.SIGTERM else proc.kill()
 

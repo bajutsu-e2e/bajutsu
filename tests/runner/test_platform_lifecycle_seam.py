@@ -693,6 +693,41 @@ def test_discard_survives_a_process_group_that_is_already_gone(
     assert xe._runner_proc is None
 
 
+@pytest.mark.parametrize(
+    "killpg_error",
+    [ProcessLookupError("gone"), PermissionError("not ours"), OSError("something else")],
+)
+def test_a_group_signal_that_does_not_land_falls_back_to_the_process(
+    monkeypatch: pytest.MonkeyPatch, killpg_error: OSError
+) -> None:
+    # Whatever the reason `killpg` did not reach the group, the signal has not been delivered — so
+    # every failure falls through to the process itself. Narrowing the fallback to the two *expected*
+    # errors would let an unexpected one leave the runner alive on a device the next attempt spawns on.
+    signals: list[str] = []
+
+    class Proc:
+        pid = 782
+
+        def poll(self) -> int | None:
+            return None
+
+        def terminate(self) -> None:
+            signals.append("terminate")
+
+        def kill(self) -> None:
+            signals.append("kill")
+
+        def wait(self, timeout: float | None = None) -> int:
+            return 0
+
+    monkeypatch.setattr("os.getpgid", lambda pid: 4242)
+    monkeypatch.setattr("os.killpg", lambda pgid, sig: (_ for _ in ()).throw(killpg_error))
+    xe = XcuitestEnvironment("xcuitest", "UDID-1", env_run=lambda _a, _e=None: "")
+    xe._runner_proc = Proc()  # type: ignore[assignment]
+    xe._discard_runner(warn_on_crash=False)
+    assert signals == ["terminate", "kill"]
+
+
 def test_spawn_cold_discards_a_never_ready_runner(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
