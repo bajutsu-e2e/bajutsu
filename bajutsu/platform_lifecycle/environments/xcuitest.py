@@ -80,8 +80,9 @@ _COLD_POLL_SECONDS = 0.1
 _RUN_ENDED_MARKERS = (b"Test Suite 'All tests' failed", b"Test Suite 'All tests' passed")
 
 # `XCUIApplication.launch()` giving up on the app under test — the dominant CI signature, and the one
-# that says the *device* is degraded rather than the build broken, which is what picks the recovery
-# rung between attempts. Read for the diagnostic only: it precedes a `_RUN_ENDED_MARKERS` line, which is what ends the wait.
+# that says the *device* is degraded rather than the build broken. Read for the diagnostic only: the
+# recovery ladder keys on the failure *kind* (any run-ended attempt reboots, marker or not), not on
+# this text, which precedes the `_RUN_ENDED_MARKERS` line that actually ends the wait.
 _LAUNCH_TIMEOUT_MARKER = b"Timed out attempting to launch"
 
 # Carried between probes so a marker split across two reads is still matched; one byte short of the
@@ -409,10 +410,10 @@ def _spawn_cold_with_retry(
     the run-failing error shows *why* the runner never answered, not merely that it did not.
 
     Between attempts `recover` gets the classified failure and may repair the device it spawns onto:
-    the retry BE-0319 added isolated every host-side resource per attempt — port,
-    `.xctestrun`, capture — but never the device, so a Simulator whose app launch had just timed out
-    was handed to the retry in exactly the state that had defeated the first attempt. What `recover`
-    returns decides both the retry's budget and what the failing error says:
+    the retry BE-0319 added isolated every host-side resource per attempt — port, `.xctestrun`,
+    capture — but never the device, so a Simulator whose app launch had just timed out was handed to
+    the retry in exactly the state that had defeated the first attempt. What `recover` returns
+    decides both the retry's budget and what the failing error says:
 
     - A `_Recovery` carrying a `fresh_budget` (the device was rebooted, or replaced outright) restarts
       the ceiling, because the next attempt runs against a device that has demonstrably come back up.
@@ -1081,8 +1082,8 @@ class XcuitestEnvironment(_DeviceEnvironment):
         no longer exists.
 
         Teardown reaches the whole process group and then the app under test, because what this
-        discards is handed straight to another spawn on the same device: a runner whose
-        children survived, or an app left mid-launch, is state the next attempt inherits.
+        discards is handed straight to another spawn on the same device: a runner whose children
+        survived, or an app left mid-launch, is state the next attempt inherits.
         """
         crashed = False
         if self._runner_proc is not None:

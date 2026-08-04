@@ -310,10 +310,8 @@ def list_devices_cmd() -> list[str]:
 def list_all_devices_cmd() -> list[str]:
     """Every device simctl knows, including the unavailable ones `list_devices_cmd` filters out.
 
-    An unavailable device still carries its `deviceTypeIdentifier`, which is what a replacement is
-    cloned from when device recovery replaces it; the available-only listing would hide exactly the
-    device
-    whose type we need.
+    An unavailable device still carries its `deviceTypeIdentifier`, the type a replacement is cloned
+    from; the available-only listing would hide exactly the device whose type we need.
     """
     return ["xcrun", "simctl", "list", "devices", "-j"]
 
@@ -424,8 +422,8 @@ def device_available(udid: str, run: RunFn = _real_run) -> bool | None:
     """Whether simctl still lists `udid` as available, or None when the probe itself failed.
 
     The three-valued result is the point: device recovery creates a replacement only on a definite
-    `False`. A wedged CoreSimulator makes the listing itself fail, and reading that as "the
-    device is gone" would create a replacement on a host that cannot boot one.
+    `False`. A wedged CoreSimulator makes the listing itself fail, and reading that as "the device
+    is gone" would create a replacement on a host that cannot boot one.
     """
     try:
         data = json.loads(run(list_devices_cmd(), None))
