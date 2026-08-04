@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from _orch import FakeClock, _scenario
 from conftest import el
@@ -714,7 +715,9 @@ class _CollapsingThenRevealedDriver(FakeDriver):
         return list(self._revealed)
 
 
-def test_mid_wait_alert_guard_dismiss_preserves_correct_before_after_evidence(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_mid_wait_alert_guard_dismiss_preserves_correct_before_after_evidence(
+    tmp_path: Path,
+) -> None:
     """The mid-wait alert-guard dismiss must not corrupt the report's evidence (BE-XXXX
     non-regression): the waiting step's pre-step baseline still shows the true, collapsed
     pre-dismiss state, and the *next* step's own baseline reflects the post-dismiss, settled
