@@ -631,7 +631,7 @@ def _collapse_identical_duplicates(candidates: list[Element]) -> list[Element]:
     """
     seen: dict[tuple[object, ...], Element] = {}
     for el in candidates:
-        key = (el["identifier"], el["label"], tuple(el["traits"]), el["value"], el["frame"])
+        key = (el["identifier"], el["label"], tuple(sorted(set(el["traits"]))), el["value"], el["frame"])
         seen.setdefault(key, el)
     return list(seen.values())
 
