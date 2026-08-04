@@ -106,16 +106,20 @@ def test_a_slow_cold_start_is_waited_out_rather_than_restarted() -> None:
     )
 
 
+def _fn_body(code: str, name: str, next_name: str) -> str:
+    """The emitted body of one generated Kotlin function, so an assertion on ordering inside it
+    cannot be satisfied by a matching line that lives in some other function."""
+    start = code.index(f"private fun {name}")
+    return code[start : code.index(f"private fun {next_name}", start)]
+
+
 def test_launch_confirms_window_tracking_before_it_waits_on_the_tree() -> None:
     # The launch wait can only see the app through the accessibility window list, so a list that is
     # never reported reads exactly like an app that never started. CI run 30899952762 failed all
-    # three attempts that way: ~180 polls over 20s with the activity RESUMED and Displayed, and no
-    # window enumerated once. Check the channel first, so the failure names the channel.
+    # three attempts that way: 153, 168, and 171 polls over 20s with the activity RESUMED and
+    # Displayed, and no window enumerated once. Check the channel first, so the failure names it.
     code = _gen("- name: x\n  steps:\n    - tap: { id: a }\n")
-    assert "private fun ensureWindowTracking() {" in code
-    assert "if (automation.windows.isNotEmpty()) return" in code
-    launch = code[code.index("private fun launch") :]
-    body = launch[: launch.index("private fun act")]
+    body = _fn_body(code, "launch", "act")
     # Inside the attempt loop and before the intent: a check that ran after startActivity would
     # kick the app it just launched back to the launcher.
     assert (
@@ -127,33 +131,53 @@ def test_launch_confirms_window_tracking_before_it_waits_on_the_tree() -> None:
 
 def test_a_wedged_window_list_is_kicked_rather_than_waited_out() -> None:
     # The list is delivered by event, so no timeout can recover one that is never sent — only a
-    # window change can, and HOME produces one whatever is on screen. Raising the timeout was
-    # measured not to help (5s -> 15s -> 20s across several runs).
+    # window change can. Raising the timeout was measured not to help (5s -> 15s -> 20s across
+    # several runs), so assert the recovery itself: read, kick, and only then fail.
     code = _gen("- name: x\n  steps:\n    - tap: { id: a }\n")
     assert "private const val TRACKING_KICK_ATTEMPTS" in code
-    assert "runCatching { device.pressHome() }" in code
+    body = _fn_body(code, "ensureWindowTracking", "launch")
+    # Bounded, and the kick is reached from inside the loop — a bounded loop that only re-read the
+    # same list would satisfy a mere "is the helper defined" assertion while recovering nothing.
+    assert (
+        body.index("for (attempt in 1..TRACKING_KICK_ATTEMPTS)")
+        < body.index("kickWindowTracking(")
+        < body.index("throw AssertionError(")
+    )
+    # A kick that never lands fails here, naming the channel — not 15s later at a selector.
+    assert "accessibility window tracking reported no windows after" in body
+    # The read cannot throw past that AssertionError: getWindows() raises IllegalStateException
+    # when the connection is not established, which is the fault being reported.
+    assert "private fun reportsWindows(): Boolean = runCatching {" in code
+
+    kick = _fn_body(code, "kickWindowTracking", "reportsWindows")
+    assert "device.pressHome()" in kick
+    # pressHome reports a missing window event by returning false, and no event is the wedge's own
+    # symptom — a dropped return would discard the single most diagnostic outcome.
+    assert "if (!device.pressHome())" in kick
     # pressHome waits through UiAutomation.executeAndWaitForEvent itself; wrapping it in another
     # would clear the queue the outer wait watches, leaving that wait able only to time out.
-    kick = code[code.index("private fun kickWindowTracking") : code.index("private fun ensureWindowTracking")]
-    assert "executeAndWaitForEvent(" not in kick
-    # A kick that never lands must fail here, naming the channel — not 15s later at a selector.
-    assert "accessibility window tracking reported no windows after" in code
+    # Comment lines are stripped so rewording the rationale cannot redden the gate on its own.
+    emitted = "\n".join(ln for ln in code.splitlines() if not ln.lstrip().startswith("//"))
+    assert "executeAndWaitForEvent" not in emitted
 
 
-def test_a_timed_out_launch_attempt_kicks_before_re_issuing_the_intent() -> None:
+def test_a_timed_out_launch_attempt_kicks_only_while_an_attempt_remains() -> None:
     # A stale-but-non-empty list satisfies ensureWindowTracking() while still being one the app's
-    # window never joined, and no is-it-empty check tells those apart. The attempt has already
-    # failed by this point, so the kick costs nothing and covers the case the check cannot.
+    # window never joined, and no is-it-empty check tells those apart, so a failed attempt kicks
+    # regardless. But not after the last one: HOME would leave the AssertionError's own window
+    # summary, the hierarchy dump, and the screenshot all describing the launcher — and a healthy
+    # launcher window list argues the opposite of the failure they were collected to explain.
     code = _gen("- name: x\n  steps:\n    - tap: { id: a }\n")
-    launch = code[code.index("private fun launch") :]
-    body = launch[: launch.index("private fun act")]
-    assert body.index('Log.w(LOG_TAG, "launch attempt $attempt saw no') < body.index(
-        'kickWindowTracking("launch attempt $attempt timed out")'
+    body = _fn_body(code, "launch", "act")
+    assert (
+        body.index('Log.w(LOG_TAG, "launch attempt $attempt saw no')
+        < body.index("if (attempt < LAUNCH_ATTEMPTS) {")
+        < body.index('kickWindowTracking("launch attempt $attempt timed out")')
     )
     # The per-attempt log carries the window list, not only the miss. An empty list and a stale
     # non-empty one both reach here and call for different fixes, and the AssertionError raised
     # after the loop reports only the state left behind once every attempt has run.
-    assert 'window in ${LAUNCH_TIMEOUT_MS}ms; windows:\\n" + windowSummary()' in body
+    assert 'window in "\n        + "${LAUNCH_TIMEOUT_MS}ms; windows:\\n" + windowSummary()' in body
 
 
 def test_failure_messages_name_the_windows_that_were_searched() -> None:

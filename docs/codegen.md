@@ -315,19 +315,24 @@ class ComponentsUITest {
 
   private fun kickWindowTracking(reason: String) {
     Log.w(LOG_TAG, "kicking accessibility window tracking with pressHome(): $reason")
-    runCatching { device.pressHome() }.onFailure { Log.w(LOG_TAG, "pressHome failed", it) }
+    runCatching {
+      if (!device.pressHome()) Log.w(LOG_TAG, "pressHome produced no window event")
+    }.onFailure { Log.w(LOG_TAG, "pressHome failed", it) }
   }
 
+  private fun reportsWindows(): Boolean = runCatching {
+    InstrumentationRegistry.getInstrumentation().uiAutomation.windows.isNotEmpty()
+  }.getOrElse { Log.w(LOG_TAG, "could not read the window list", it); false }
+
   private fun ensureWindowTracking() {
-    val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
     for (attempt in 1..TRACKING_KICK_ATTEMPTS) {
-      if (automation.windows.isNotEmpty()) return
+      if (reportsWindows()) return
       kickWindowTracking("no accessibility windows reported (attempt $attempt)")
     }
-    if (automation.windows.isEmpty()) {
+    if (!reportsWindows()) {   // the last kick would otherwise go unchecked
       throw AssertionError(
-        "accessibility window tracking reported no windows after $TRACKING_KICK_ATTEMPTS kick(s); " +
-          "every selector wait would search an empty tree"
+        "accessibility window tracking reported no windows after " +
+          "$TRACKING_KICK_ATTEMPTS kick(s); every selector wait would search an empty tree"
       )
     }
   }
@@ -347,7 +352,9 @@ class ComponentsUITest {
       }
       Log.w(LOG_TAG, "launch attempt $attempt saw no $PACKAGE window in "
         + "${LAUNCH_TIMEOUT_MS}ms; windows:\n" + windowSummary())
-      kickWindowTracking("launch attempt $attempt timed out")
+      if (attempt < LAUNCH_ATTEMPTS) {   // HOME after the last one would overwrite the evidence
+        kickWindowTracking("launch attempt $attempt timed out")
+      }
     }
     throw AssertionError(
       "launch: no $PACKAGE window in the accessibility tree after $LAUNCH_ATTEMPTS attempt(s) " +
@@ -424,15 +431,23 @@ class ComponentsUITest {
   is fully drawn. The generated test reads `uiAutomation.windows` before launching into the list, so
   a wait with no live list to wait on fails naming the list.
 - **A list that is not being updated is met with a window change, not a longer timeout.** No timeout
-  recovers an event that is never sent, so `kickWindowTracking` presses HOME — the one key that
-  changes windows whatever is on screen — and the framework has to re-report the list. The key press
+  recovers an event that is never sent, so `kickWindowTracking` presses HOME, and the framework has
+  to re-report the list. HOME is dispatched through the input pipeline rather than the accessibility
+  one, so it lands even while the accessibility view is stale, and it moves any foreground app off
+  screen; on the launcher it may produce only content changes, which the key press's own wait accepts
+  as well. The key press
   waits for the events it produces, so the recovery needs no sleep of its own, and
-  `TRACKING_KICK_ATTEMPTS` bounds it. Reading the list catches one case up front, the empty one: a
-  stale non-empty list the app's window never joined reads as healthy, so a timed-out launch attempt
-  kicks unconditionally before re-issuing the intent, and logs the list it saw so a later reader can
-  tell the two apart. The kick stays outside `UiAutomation.executeAndWaitForEvent`, because
-  `pressHome` already waits through that same call and a nested one would clear the event queue the
-  outer wait is watching.
+  `TRACKING_KICK_ATTEMPTS` bounds it. `pressHome` reports a window event that never arrived by
+  returning false rather than by throwing, and no event is the wedge's own symptom, so both outcomes
+  are logged. Reading the list catches one case up front, the empty one: a stale non-empty list the
+  app's window never joined reads as healthy, so a timed-out launch attempt kicks regardless before
+  re-issuing the intent, and logs the list it saw so a later reader can tell the two apart. The kick
+  stays outside `UiAutomation.executeAndWaitForEvent`, because `pressHome` already waits through that
+  same call and a nested one would clear the event queue the outer wait is watching.
+- **The last attempt does not kick**, because after it there is no intent left to re-issue and HOME
+  would overwrite every piece of evidence the failure is about to collect. The `AssertionError`'s own
+  window summary, the hierarchy dump, and the screenshot would all describe the launcher, and a
+  healthy launcher window list argues the exact opposite of the failure they exist to explain.
 
   Gradle's per-test logcat, which CI uploads alongside the evidence below, is what diagnosed the
   failure. Run 30899952762 failed all three of its attempts at the first action, each on a fresh

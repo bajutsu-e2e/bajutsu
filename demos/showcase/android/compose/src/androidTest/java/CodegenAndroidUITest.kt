@@ -140,7 +140,10 @@ class CodegenandroiduitestUITest {
 
   // Provoke a window change so the accessibility framework has to re-report the window list,
   // and let the key press's own wait for the events it produces pace the recovery — never a
-  // sleep. HOME is the one key that changes windows whatever is on screen.
+  // sleep. HOME is dispatched through the input pipeline rather than the accessibility one, so
+  // it lands even while the accessibility view is stale, and it moves any foreground app off
+  // screen. On the launcher it may produce only content changes, which the key press's own
+  // wait accepts as well.
   //
   // Deliberately not wrapped in UiAutomation.executeAndWaitForEvent: pressHome already waits
   // through that same call, and the nested one would clear the event queue the outer wait is
@@ -148,7 +151,11 @@ class CodegenandroiduitestUITest {
   // instead, which is the fact in question anyway.
   private fun kickWindowTracking(reason: String) {
     Log.w(LOG_TAG, "kicking accessibility window tracking with pressHome(): $reason")
-    runCatching { device.pressHome() }.onFailure { Log.w(LOG_TAG, "pressHome failed", it) }
+    // pressHome reports a window event that never arrived by returning false, not by throwing,
+    // and no event is the wedge's own symptom — so neither outcome may pass unrecorded.
+    runCatching {
+      if (!device.pressHome()) Log.w(LOG_TAG, "pressHome produced no window event")
+    }.onFailure { Log.w(LOG_TAG, "pressHome failed", it) }
   }
 
   // Confirm the accessibility read channel is reporting windows at all before anything waits
@@ -163,16 +170,23 @@ class CodegenandroiduitestUITest {
   // below. Across seven CI runs the two were indistinguishable from the outcome alone: every
   // passing run logged the transient null roots of a live view during launch, and every
   // failing run logged none across 119-171 polls.
+  // Never throws. getWindows() raises IllegalStateException when the connection is not
+  // established — the very fault being diagnosed — and that has to reach the caller's named
+  // AssertionError rather than replace it with a raw framework exception.
+  private fun reportsWindows(): Boolean = runCatching {
+    InstrumentationRegistry.getInstrumentation().uiAutomation.windows.isNotEmpty()
+  }.getOrElse { Log.w(LOG_TAG, "could not read the window list", it); false }
+
   private fun ensureWindowTracking() {
-    val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
     for (attempt in 1..TRACKING_KICK_ATTEMPTS) {
-      if (automation.windows.isNotEmpty()) return
+      if (reportsWindows()) return
       kickWindowTracking("no accessibility windows reported (attempt $attempt)")
     }
-    if (automation.windows.isEmpty()) {
+    // The last kick would otherwise go unchecked — the loop provokes it and exits.
+    if (!reportsWindows()) {
       throw AssertionError(
-        "accessibility window tracking reported no windows after $TRACKING_KICK_ATTEMPTS kick(s); " +
-          "every selector wait would search an empty tree"
+        "accessibility window tracking reported no windows after " +
+          "$TRACKING_KICK_ATTEMPTS kick(s); every selector wait would search an empty tree"
       )
     }
   }
@@ -210,11 +224,19 @@ class CodegenandroiduitestUITest {
       // The summary, not just the miss: an empty list and a stale non-empty one both reach
       // here and need different fixes, and only the first attempt's state tells them apart —
       // the AssertionError below reports the state after every attempt has already run.
-      Log.w(LOG_TAG, "launch attempt $attempt saw no $PACKAGE window in ${LAUNCH_TIMEOUT_MS}ms; windows:\n" + windowSummary())
+      Log.w(LOG_TAG, "launch attempt $attempt saw no $PACKAGE window in "
+        + "${LAUNCH_TIMEOUT_MS}ms; windows:\n" + windowSummary())
       // A non-empty window list satisfies ensureWindowTracking() while still being a stale one
-      // that the app's window never joined, which no list-is-empty check can tell apart. The
-      // attempt has already failed, so kick unconditionally before re-issuing the intent.
-      kickWindowTracking("launch attempt $attempt timed out")
+      // that the app's window never joined, which no list-is-empty check can tell apart. This
+      // attempt has already failed, so kick regardless before re-issuing the intent.
+      //
+      // Only while an attempt remains, though. HOME after the last one would leave every piece
+      // of evidence below — the AssertionError's own window summary, the hierarchy dump, the
+      // screenshot — describing the launcher, and a healthy launcher window list argues the
+      // exact opposite of the failure it was collected to explain.
+      if (attempt < LAUNCH_ATTEMPTS) {
+        kickWindowTracking("launch attempt $attempt timed out")
+      }
     }
     throw AssertionError(
       "launch: no $PACKAGE window in the accessibility tree after $LAUNCH_ATTEMPTS attempt(s) " +

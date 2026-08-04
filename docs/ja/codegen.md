@@ -309,19 +309,24 @@ class ComponentsUITest {
 
   private fun kickWindowTracking(reason: String) {
     Log.w(LOG_TAG, "kicking accessibility window tracking with pressHome(): $reason")
-    runCatching { device.pressHome() }.onFailure { Log.w(LOG_TAG, "pressHome failed", it) }
+    runCatching {
+      if (!device.pressHome()) Log.w(LOG_TAG, "pressHome produced no window event")
+    }.onFailure { Log.w(LOG_TAG, "pressHome failed", it) }
   }
 
+  private fun reportsWindows(): Boolean = runCatching {
+    InstrumentationRegistry.getInstrumentation().uiAutomation.windows.isNotEmpty()
+  }.getOrElse { Log.w(LOG_TAG, "could not read the window list", it); false }
+
   private fun ensureWindowTracking() {
-    val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
     for (attempt in 1..TRACKING_KICK_ATTEMPTS) {
-      if (automation.windows.isNotEmpty()) return
+      if (reportsWindows()) return
       kickWindowTracking("no accessibility windows reported (attempt $attempt)")
     }
-    if (automation.windows.isEmpty()) {
+    if (!reportsWindows()) {   // the last kick would otherwise go unchecked
       throw AssertionError(
-        "accessibility window tracking reported no windows after $TRACKING_KICK_ATTEMPTS kick(s); " +
-          "every selector wait would search an empty tree"
+        "accessibility window tracking reported no windows after " +
+          "$TRACKING_KICK_ATTEMPTS kick(s); every selector wait would search an empty tree"
       )
     }
   }
@@ -341,7 +346,9 @@ class ComponentsUITest {
       }
       Log.w(LOG_TAG, "launch attempt $attempt saw no $PACKAGE window in "
         + "${LAUNCH_TIMEOUT_MS}ms; windows:\n" + windowSummary())
-      kickWindowTracking("launch attempt $attempt timed out")
+      if (attempt < LAUNCH_ATTEMPTS) {   // HOME after the last one would overwrite the evidence
+        kickWindowTracking("launch attempt $attempt timed out")
+      }
     }
     throw AssertionError(
       "launch: no $PACKAGE window in the accessibility tree after $LAUNCH_ATTEMPTS attempt(s) " +
@@ -413,15 +420,23 @@ class ComponentsUITest {
   セレクタもアプリの存在しない内容を照合先にしてしまいます。そこで生成テストは、一覧の内容を待ち始める前に
   `uiAutomation.windows` を読み、待つ相手の一覧が生きていなければ一覧そのものを名指しして失敗します。
 - **更新されなくなった一覧には、上限を延ばすのではなくウィンドウ変更で応じます。** 配信されないイベントは、
-  どんな上限を設けても回復しません。そこで `kickWindowTracking` は HOME キーを押します。画面に何が
-  出ていようとウィンドウが変わる唯一のキーであり、機構は一覧を報告し直さざるをえません。キー入力自体が、
+  どんな上限を設けても回復しません。そこで `kickWindowTracking` は HOME キーを押し、機構に一覧を報告し
+  直させます。HOME はアクセシビリティ機構ではなく入力の経路で配送されるので、内容が古くなっていても届き、
+  前面のアプリを画面外へ移します。ランチャー上では内容の変化だけが起こることもありますが、キー入力自身の
+  待機はそれも受け付けます。キー入力自体が、
   それによって発生するイベントを待つので、この回復に独自の sleep は不要です。回数の上限は
-  `TRACKING_KICK_ATTEMPTS` が与えます。一覧を読んで前もって捉えられるのは、空である場合だけです。
-  アプリのウィンドウが加わらなかった古い一覧は空ではなく、正常な場合と見分けがつきません。そこで起動の
-  試行がタイムアウトした後は、intent を再送する前に無条件でウィンドウ変更を起こし、そのとき見えていた
-  一覧も記録して、後から2つの場合を切り分けられるようにします。この処理は
-  `UiAutomation.executeAndWaitForEvent` の外に置きます。`pressHome` がすでに同じ呼び出しで待機しており、
-  入れ子にすると外側の待機が見ているイベントキューを内側が空にしてしまうためです。
+  `TRACKING_KICK_ATTEMPTS` が与えます。なお `pressHome` は、イベントが届かなかったことを例外ではなく
+  false の戻り値で報告します。イベントが届かないこと自体がこの不具合の症状なので、どちらの結果も記録
+  します。一覧を読んで前もって捉えられるのは、空である場合だけです。アプリのウィンドウが加わらなかった
+  古い一覧は空ではなく、正常な場合と見分けがつきません。そこで起動の試行がタイムアウトした後は、intent を
+  再送する前にウィンドウ変更を起こし、そのとき見えていた一覧も記録して、後から2つの場合を切り分けられる
+  ようにします。この処理は `UiAutomation.executeAndWaitForEvent` の外に置きます。`pressHome` がすでに
+  同じ呼び出しで待機しており、入れ子にすると外側の待機が見ているイベントキューを内側が空にしてしまう
+  ためです。
+- **最後の試行ではウィンドウ変更を起こしません。** その後に再送する intent はもうありませんし、HOME を
+  押すと、これから集める証跡がすべて上書きされてしまいます。`AssertionError` 自身のウィンドウ一覧も、
+  階層のダンプも、スクリーンショットも、ランチャーを写したものになります。健全なランチャーのウィンドウ
+  一覧は、証跡が説明しようとしている失敗とは正反対のことを語ってしまいます。
 
   この失敗を診断したのは、下の証跡と一緒にアップロードされる、Gradle がテストごとに収集する logcat です。
   実行 30899952762 は、いずれも新しいエミュレータの起動から始まった3回の試行すべてが最初のアクションで
