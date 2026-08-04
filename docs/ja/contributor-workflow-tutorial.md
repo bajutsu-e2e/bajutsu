@@ -130,13 +130,16 @@ gh pr create --reviewer bajutsu-e2e/steering-committee \
 > push で止まります。PR を開くのはあなた（人間）です。これは `/implement-be` の逆です。あちらの出力は常に
 > ゲートが green なコードなので、`/implement-be` は自分で PR を開きます（手順 B5）。
 
-### 手順 A5 — CI が実際の `BE-NNNN` を割り当て、マージする
+### 手順 A5 — マージする。CI が `main` 上で実際の `BE-NNNN` を割り当てる
 
-PR が開くと、[`roadmap-id`](../../.github/workflows/roadmap-id.yml) ワークフローが
-[`scripts/allocate_roadmap_ids.py`](../../scripts/allocate_roadmap_ids.py) を走らせます。次の空き ID を
-アトミックに確保し、`BE-XXXX` を `BE-NNNN` に **すべての箇所** で（ディレクトリ、両ファイル、相互リンク）
-書き換え、結果をあなたのブランチに push し戻します。そのコミットを pull してください。レビューが済んで提案が
-マージされると、項目は恒久的なパスに `Status: Proposal` で存在し、番号は確定します。この番号がパート B の
+レビューが済んだら、`BE-XXXX` のまま PR をマージします。割り当てが起きるのは PR が開いたときではなく、
+マージした後です。[`roadmap-id`](../../.github/workflows/roadmap-id.yml) ワークフローは `main` への push を
+トリガーとして走り、`main` 自身のツリーに対して
+[`scripts/allocate_roadmap_ids.py`](../../scripts/allocate_roadmap_ids.py) を実行します。マージした順番で
+次の空き ID を確保し、`BE-XXXX` を `BE-NNNN` に **すべての箇所** で（ディレクトリ、両ファイル、相互リンク）
+書き換えて、結果を `main` に直接コミットし、マージ済みの PR に割り当てた ID を知らせるコメントを付けます
+（[BE-0089](../../roadmaps/BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation-ja.md)）。
+これで項目は恒久的なパスに `Status: Proposal` で存在するようになり、番号が確定します。この番号がパート B の
 入力になります。
 
 ---

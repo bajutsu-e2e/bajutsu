@@ -28,8 +28,9 @@ Please read [`CLAUDE.md`](CLAUDE.md) before starting. In short:
 - **Resolve AI PR reviews before stopping, and reply per comment with the grounds** — when unsure
   how to handle a comment, ask the human instead of guessing. Full guide:
   [`docs/ai-development.md`](docs/ai-development.md#responding-to-pr-review-comments).
-- **Launch the web UI with `make serve`** (never `bajutsu serve` directly) — it installs the idb
-  backend's deps on demand; pass flags via `ARGS`.
+- **Launch the web UI with `make serve`** (never `bajutsu serve` directly) — it installs the
+  configured backend's deps on demand (for the web backend, Playwright's browser); pass flags via
+  `ARGS`.
 - **Write docs as plain technical prose, both languages.** Full rule:
   [`docs/ai-development.md`](docs/ai-development.md#documentation-style-every-document-both-languages),
   and the [`japanese-document-writing`](.agent-workflows/japanese-document-writing/workflow.md) skill for Japanese

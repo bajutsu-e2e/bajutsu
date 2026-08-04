@@ -200,7 +200,7 @@ doesn't read it as a nested mapping — `name: "Roadmap: allocate BE IDs"`.
 
 One constraint bounds any rename. A required status check's context is the **job's** `name:`
 verbatim — not the workflow's — and `main`'s branch-protection ruleset pins a few of these by exact
-string: `check` (`ci.yml`), `E2E` (`ios-e2e.yml`), and `require two approvals for BE proposals`
+string: `check` (`ci.yml`), `E2E (iOS)` (`ios-e2e.yml`), and `require two approvals for BE proposals`
 (`roadmap-proposal-approvals.yml`). Renaming one of those job names without editing the ruleset's
 `required_status_checks` in the same instant strands every open PR on a check that no longer
 reports, silently blocking merges. Ruleset edits are out-of-repo admin state a normal PR can't
@@ -220,22 +220,26 @@ capability, and a platform carries one only where it applies:
 
 | Job | What it verifies | iOS | Android | Web |
 |---|---|:-:|:-:|:-:|
-| `smoke` | functional `bajutsu run` over the showcase | ✓ | ✓ | ✓ |
+| `smoke` | functional `bajutsu run` over the showcase | ✓ (folded into `run`) | ✓ | ✓ |
 | `golden` | element-tree (BE-0006) matches the committed baseline | ✓ | ✓ | — |
 | `visual` | pixel VRT against the committed baseline | ✓ | ✓ | — |
 | `conformance` | driver contract (BE-0114) on the real backend | ✓ | ✓ | ✓ |
-| `codegen` / `gestures` | native-test output / multi-touch | ✓ | — | — |
+| `codegen` | native-test output compiles and runs against the real backend | ✓ | ✓ | ✓ |
+| `gestures` | multi-touch (pinch/rotate) | ✓ (in `run`) | — | — |
 | `fallback` | resident vs `uiautomator dump` read channels agree (BE-0245) | — | ✓ (step) | — |
 
 Two rules keep the set honest. **Every lane is required, per-lane.** A required status check is a
 job `name:` the ruleset pins (above); each lane carries its own always-reporting aggregator
-(`E2E`, `E2E (android)`, `E2E (web)`, BE-0279) whose heavy jobs a `changes` job path-gates, so an
+(`E2E (iOS)`, `E2E (android)`, `E2E (web)`, BE-0279) whose heavy jobs a `changes` job path-gates, so an
 unrelated PR is neither run nor blocked — per-lane aggregators (rather than one aggregator across backends) keep
 attribution: a red check names the backend that broke. **Host-specific or upstream-fragile checks
 stay off the required gate.** `visual` is a pixel compare whose baseline varies by renderer, and the
 element-tree `golden` can drift with an upstream on-device dependency
 out of our control — both run per PR as signals but are excluded from each
-aggregator's `needs:`, so a drift surfaces without blocking merges.
+aggregator's `needs:`, so a drift surfaces without blocking merges. `codegen` follows the same
+signal-then-required path on a per-platform schedule: iOS's and web's codegen jobs already gate
+their aggregator, while Android's (BE-0294) still lands as a per-PR signal and joins `needs:` only
+once it proves stable.
 
 ## Right-sizing the model and reasoning effort (BE-0103)
 

@@ -26,12 +26,12 @@ bajutsu run --target <name> [--scenario <file.yaml>] [options]
 ```
 
 既定では、そのアプリの設定済みシナリオディレクトリ（`targets.<name>.scenarios`、[configuration](configuration.md) 参照）内の
-**すべての `*.yaml`** を読み込んで実行します。config だけで実行できます。単一ファイルだけ実行するには `--scenario <file>` を渡してください。
+**すべての `*.yaml`** を読み込んで実行します。config だけで実行できます。1 ファイルだけ実行するには `--scenario <file>` を渡してください。このフラグを繰り返すと、指定した複数ファイルを1つの warm な runner を共有しながら1プロセスで実行できます。
 
 | オプション | 既定 | 説明 |
 |---|---|---|
 | `--target` | （必須） | 対象アプリ（config の `targets.<name>`） |
-| `--scenario` | config の `scenarios` ディレクトリ | アプリのシナリオディレクトリ全体ではなく単一の `*.yaml` を実行 |
+| `--scenario` | config の `scenarios` ディレクトリ | アプリのシナリオディレクトリ全体ではなく指定した `*.yaml` を実行。フラグを繰り返すと、複数ファイルを1つの warm な runner を共有しながら1プロセスで実行 |
 | `--backend` | config | actuator 順（カンマ区切り。先頭から最初に使えるもの） |
 | `--tag` | "" | カンマ区切り。これらの tag のいずれかを持つシナリオのみ実行 |
 | `--exclude` | "" | カンマ区切り。これらの tag のいずれかを持つシナリオをスキップ |
@@ -43,8 +43,9 @@ bajutsu run --target <name> [--scenario <file.yaml>] [options]
 | `--log-subsystem` | "" | `appTrace` 用の os_log subsystem（既定はアプリの `bundleId`） |
 | `--network / --no-network` | config › ON | `request` アサーション用にアプリの通信を収集。省略時はターゲットの `network` config、次に ON の順で解決（[BE-0177](../../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)）。iOS はアプリに BajutsuKit が必要。web は Playwright でネイティブに観測し、シナリオの `mocks` をその場でスタブします |
 | `--workers` | 1 | デバイスプール上で並列実行します。iOS では `--udid u1,u2,…` が必要で、そのプール数で上限になります。web では `--workers N` だけで N 本の並列ブラウザコンテキストレーンになります（`--udid` 不要、[BE-0054](../../roadmaps/BE-0054-web-backend-completion/BE-0054-web-backend-completion-ja.md)）。各レーンが自前のネットワークコレクタ、インターバル録画、（iOS では）デバイス制御を持つので、network / 動画 / `setLocation` / `push` はシングルデバイス実行と同じく機能します |
-| `--baselines` | シナリオ隣の `baselines/` | `visual` アサーション用のベースライン画像ディレクトリ。`baseline: home.png` はこの中で解決されます |
-| `--schemas` | シナリオ隣の `schemas/` | `responseSchema` アサーション用の JSON Schema ファイルのディレクトリ。`schema: items.json` はこの中で解決されます（`schema` extra が必要です） |
+| `--baselines` | config の `baselines`、次にシナリオ隣の `baselines/` | `visual` アサーション用のベースライン画像ディレクトリ。`baseline: home.png` はこの中で解決されます |
+| `--schemas` | config の `schemas`、次にシナリオ隣の `schemas/` | `responseSchema` アサーション用の JSON Schema ファイルのディレクトリ。`schema: items.json` はこの中で解決されます（`schema` extra が必要です） |
+| `--goldens` | config の `goldens`、次にシナリオ隣の `goldens/` | `golden` アサーション用の golden JSON ファイルのディレクトリ。`golden: response.json` はこの中で解決されます |
 | `--headed / --no-headed` | アプリの `headless`（既定はヘッドレス） | web backend: ヘッドレスの代わりにブラウザを画面に表示し（低速再生）、実行の各ステップを確認できます（コマンドを実行しているマシン上でウィンドウが開きます）。省略時はアプリの `headless` 設定に従います。iOS は無視します |
 | `--progress / --no-progress` | off | シナリオ / ステップごとの進捗を stderr に流します（`serve` UI が消費します） |
 | `--zip` | off | run の後に `runs/<id>.zip` も書き出します。レポートと証跡をまとめた1つの可搬な成果物で、CI アップロードや共有に使えます。**判定の後**に走るので pass/fail に影響しません。[`export`](#export) 参照 |
@@ -352,6 +353,7 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
 | `--target` | （必須） | 対象アプリ |
 | `--max-screens` | `50` | この数の異なる画面を発見したら停止 |
 | `--max-steps` | `200` | この数のアクションを実行したら停止 |
+| `--prune-global / --no-prune-global` | ON | 複数の画面で使われる共通コントロール（タブ / ナビゲーションなど）を、それを表示するすべての画面からではなく1回だけ探索します。Web UI からは pruned なブランチを後から resume できます（`--resume-src`/`--resume-key` 参照） |
 | `--udid` | `booted` | 対象 Simulator。カンマ区切り（`A,B,C`）で並列プールも指定できる（`--workers` 参照） |
 | `--workers` | `1` | 同時に動かすワーカー数。1 つの画面マップを共有する。iOS は同数のシミュレータ（[BE-0064](../../roadmaps/BE-0064-parallel-crawl/BE-0064-parallel-crawl-ja.md)、`--udid` のデバイス数で上限）、web は同数のブラウザプロセス（[BE-0077](../../roadmaps/BE-0077-parallel-web-crawl/BE-0077-parallel-web-crawl-ja.md)）。`1` はシングルワーカーのクロール |
 | `--backend` | config | actuator 順 |
@@ -360,7 +362,8 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
 | `--headed / --no-headed` | アプリの `headless` | web backend: ヘッドレスではなく目に見える（低速再生の）ブラウザでクロールする。省略時はアプリの `headless` 設定に従う |
 | `--language` | config の `ai.language`（`auto`） | ガイドの流れる推論の AI 出力言語。`ja` / `en` / `auto` から選び `ai.language` を上書きします。`auto` はクロールでは英語のままです（[BE-0188](../../roadmaps/BE-0188-configurable-ai-output-language/BE-0188-configurable-ai-output-language-ja.md)） |
 | `--out` | `runs/<timestamp>` | 画面マップを書き出す run ディレクトリ |
-| `--continue` | オフ | 過去の run（`--out` でその run を指します）を続きから探索します。1 つのブランチだけでなく、未試行の操作が残る**すべて**の画面を再探索します。`--max-screens`/`--max-steps` を上げるとさらに深く進み、`--workers`/`--udid` で continuation を並列に実行します（[BE-0181](../../roadmaps/BE-0181-crawl-continuation/BE-0181-crawl-continuation-ja.md)） |
+| `--resume-src` / `--resume-key` | "" | Web UI の「tap to resume」が指す、pruned な1ブランチだけを resume します。`--resume-src` は pruned にした画面の fingerprint、`--resume-key` はその replay key で、どちらも既存の run を指す `--out` と組み合わせます。`--continue` とは同時に指定できません |
+| `--continue` | オフ | 過去の run（`--out` でその run を指します）を続きから探索します。1 つのブランチだけでなく、未試行の操作が残る**すべて**の画面を再探索します。`--max-screens`/`--max-steps` を上げるとさらに深く進み、`--workers`/`--udid` で continuation を並列に実行します（[BE-0181](../../roadmaps/BE-0181-crawl-continuation/BE-0181-crawl-continuation-ja.md)）。`--resume-src`/`--resume-key` とは同時に指定できません |
 | `--config` | `bajutsu.config.yaml` | config |
 
 - **Git の `--config` は読み取り専用入力です**（[BE-0063](../../roadmaps/BE-0063-git-config-source/BE-0063-git-config-source-ja.md)）。`crawl` は config を取得したチェックアウトから読みますが、画面マップ／スクリーンショットはローカルの `--out` run ディレクトリ（既定 `runs/<timestamp>`）に書き、読み取り専用の SHA キーのキャッシュには書きません。チェックアウト内を指す `--out` は拒否します。
@@ -481,21 +484,22 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
 ## `codegen`
 
 シナリオから **ネイティブテスト** を生成します（AI 非依存、構造マッピング、[codegen](codegen.md)）。出力先は
-**XCUITest**（Swift、iOS）または **Playwright**（TypeScript、web）です。
+**XCUITest**（Swift、iOS）、**Playwright**（TypeScript、web）、または **UI Automator**（Kotlin、Android）です。
 
 ```bash
-bajutsu codegen <scenario.yaml> --target <name> [--emit xcuitest | playwright] [-o <out>] [--config ...]
+bajutsu codegen <scenario.yaml> --target <name> [--emit xcuitest | playwright | uiautomator] [-o <out>] [--config ...]
 ```
 
 | オプション | 既定 | 説明 |
 |---|---|---|
-| `--emit` | `xcuitest` | 出力形式。`xcuitest` または `playwright`（他は終了コード 2） |
+| `--emit` | `xcuitest` | 出力形式。`xcuitest`、`playwright`、または `uiautomator`（他は終了コード 2） |
 | `-o, --out` | `-` | 出力ファイル。`-` で標準出力 |
 
 - config の `launchEnv` が生成テストに入ります。XCUITest では `app.launchEnvironment`、Playwright では
   `localStorage` のシードに反映されます。
-- `--emit playwright` は対象が web ターゲットであること（`targets.<name>.baseUrl`）を要求し、なければ終了コード 2 で
-  終わります。
+- `--emit playwright` は対象が web ターゲットであること（`targets.<name>.baseUrl`）を要求します。`--emit
+  uiautomator` は対象が Android ターゲットであること（`targets.<name>.package`）を要求します。どちらも
+  満たさない場合は終了コード 2 で終わります。
 - ファイル出力時は `wrote <N> scenario(s) -> <out>`。
 
 ## `approve`
@@ -678,11 +682,25 @@ bajutsu mcp [--config bajutsu.config.yaml] [--runs runs] [--transport stdio]
 
 ## `worker`
 
-Redis からキュー済みの run をリースして実行します。ホスティング用サーバ backend の実行側です（[BE-0015](../../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)、[self-hosting](self-hosting.md)）。オプションの `bajutsu[worker]` extra（`redis` / `rq`）が必要です。ローカル利用には不要です。
+ホスト型コントロールプレーン（`serve --backend=server`）にキュー済みの run をポーリングし、実行します。
+ホスティング用サーバ backend の実行側です（[BE-0015](../../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)、[self-hosting](self-hosting.md)）。
+
+`/api/worker/lease` を単純な HTTP でポーリングして job をリースします。Redis や RQ には頼りません（BE-0106）。リースした job はそのまま `run_job` で実行し、結果を `/api/worker/result` に返します。worker は cloud の資格情報を一切持ちません。run 前のベースラインのダウンロードも、run 後の run ツリーのアップロードも、コントロールプレーンが発行する署名付き URL（presigned URL）を経由します（BE-0160）。そのため worker に必要なのは HTTP クライアントだけです。ローカル利用には不要です。
 
 ```bash
-bajutsu worker [--redis-url <url>] [--queue bajutsu]
+bajutsu worker [--server-url <url>] [--token <t>] [--platform ios] [--capabilities <tokens>]
+               [--poll-interval 2.0] [--heartbeat-interval 30.0] [--worker-id <id>]
 ```
+
+| オプション | 既定 | 説明 |
+|---|---|---|
+| `--server-url` | `$BAJUTSU_SERVER_URL` または `http://localhost:8765` | コントロールプレーンの URL |
+| `--token` | "" | 認証用の operator トークン（コントロールプレーン側の `--token` / `$BAJUTSU_SERVE_TOKEN`） |
+| `--platform` | `ios` | この worker が動かせる backend のカンマ区切りリスト（`ios` / `web` / `android`）。コントロールプレーンが job を振り分ける軸です |
+| `--capabilities` | "" (`$BAJUTSU_WORKER_CAPABILITIES` も可) | platform と Simulator の在庫情報に加えて広告する追加の capability トークン（例: `ios18,ipad`）。job がそのトークンを要求する場合、それを持つ worker にしかリースされません |
+| `--poll-interval` | `2.0` | 空き時間にリースを試みる間隔（秒） |
+| `--heartbeat-interval` | `30.0` | run 中にリースのハートビートを送る間隔（秒）。コントロールプレーンのリースタイムアウトより短く保つことで、長時間の run を停止した worker と誤認して回収されないようにしています |
+| `--worker-id` | "" (自動生成) | worker の識別子 |
 
 ## `lint`
 

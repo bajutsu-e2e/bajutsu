@@ -131,14 +131,18 @@ a roadmap item keeps the plain scoped subject.
 > `/implement-be`, which *does* auto-open its PR (Step B5) because its output is always gate-green
 > code.
 
-### Step A5 — CI allocates the real `BE-NNNN`; merge
+### Step A5 — merge; CI allocates the real `BE-NNNN` on `main`
 
-When the PR opens, the [`roadmap-id`](../.github/workflows/roadmap-id.yml) workflow runs
-[`scripts/allocate_roadmap_ids.py`](../scripts/allocate_roadmap_ids.py): it claims the next free id
-atomically, renames `BE-XXXX` → `BE-NNNN` **everywhere** (the directory, both files, cross-links),
-and pushes the result back to your branch. Pull that commit. Once review is happy and the proposal
-merges, the item exists at its permanent path with `Status: Proposal` — and its number is now
-allocated for good. That number is the input to Part B.
+Once review is happy, merge the PR as it is, `BE-XXXX` intact. Allocation happens only after the
+merge, not while the PR is still open: the [`roadmap-id`](../.github/workflows/roadmap-id.yml)
+workflow triggers on every push to `main` and runs
+[`scripts/allocate_roadmap_ids.py`](../scripts/allocate_roadmap_ids.py) against `main`'s own tree.
+It claims the next free id in merge order, renames `BE-XXXX` → `BE-NNNN` **everywhere** (the
+directory, both files, cross-links), commits the result directly to `main`, and posts a comment on
+your merged PR announcing the allocated id
+([BE-0089](../roadmaps/BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation.md)).
+The item now exists at its permanent path with `Status: Proposal`, and its number is allocated for
+good. That number is the input to Part B.
 
 ---
 

@@ -119,12 +119,16 @@ the selector at `el("UNSUPPORTED_SELECTOR")` — an honest gap, not a wrong gues
 
 ## Unsupported constructs fall back to TODO comments
 
-Unsupported constructs (`simctl`-level device control like `setLocation` / `push`, network
-`request` assertions, an unknown trait, and coordinate swipes on the Playwright
-target) emit a **`// TODO` line rather than failing** — device-control steps name the `simctl`
-command a reviewer would run. The output is always reviewable and never fails generation.
-The generated file header also states "do not edit by hand; re-generate." This fallback behavior
-holds for all three targets.
+Unsupported constructs (`simctl`-level device control like `setLocation` / `push`, an unknown
+trait, and coordinate swipes on the Playwright target) emit a **`// TODO` line rather than
+failing** — device-control steps name the `simctl` command a reviewer would run. The output is
+always reviewable and never fails generation. The generated file header also states "do not edit
+by hand; re-generate." This fallback behavior holds for all three targets.
+
+The same TODO rule covers a network `request` / `requestSequence` assertion on XCUITest and UI
+Automator. Neither backend has a network-interception surface. Playwright is the exception: the
+web backend intercepts network traffic, so the emitted test asserts against it for real, never
+falling back to a TODO (see [below](#playwright-web-target)).
 
 One family of constructs is the exception: `if`, `forEach`, and `extract` each evaluate against a
 live UI tree at run time — a branch on the current state, a loop over the live match set, a capture
@@ -169,9 +173,10 @@ test.describe('Components', () => {
   `page.goto`). Config's `launchEnv` < the scenario's `preconditions.launchEnv` is seeded via
   `page.addInitScript(() => localStorage.setItem(...))`; an app expecting another channel (query
   params / cookies) gets a `// TODO`.
-- All *waiting* uses Playwright's native auto-wait. The only fixed timings emitted are **gesture
-  durations** (`longPress`'s `delay`, directional swipe drags) — intrinsic to the gesture, the same
-  honesty the iOS path applies to `press(forDuration:)`.
+- All *waiting* uses Playwright's native auto-wait. The only fixed timing emitted is `longPress`'s
+  `delay` — intrinsic to the gesture, the same honesty the iOS path applies to
+  `press(forDuration:)`. A directional `swipe` carries no such timing: it wheels the page from the
+  element's center instead of dragging it, matching the web driver's own scroll (BE-0227).
 
 ### Selector mapping (Playwright)
 
@@ -195,7 +200,7 @@ test.describe('Components', () => {
 | `type` (with `into`) | `await loc.fill('…')` |
 | `type` (no `into`) | `await page.keyboard.type('…')` |
 | `longPress` | `await loc.click({ delay: <ms> })` |
-| `swipe { on, direction }` | a `page.mouse` drag from the element center in the direction |
+| `swipe { on, direction }` | a `page.mouse.wheel` scroll from the element center in the direction (BE-0227) |
 | `swipe { from, to }` | `// TODO` (coordinate swipes are not generated) |
 | `wait { for }` | `await expect(loc).toBeVisible({ timeout: <ms> })` |
 | `wait { until: gone }` | `await expect(loc).toBeHidden({ timeout: <ms> })` |
@@ -214,6 +219,14 @@ test.describe('Components', () => {
 | `enabled` / `disabled` | `.toBeEnabled()` / `.toBeDisabled()` |
 | `selected` | `.toBeChecked()` |
 | `count` (equals/atLeast/atMost) | `.toHaveCount(n)`; atLeast/atMost compare `await loc.count()` |
+
+Unlike XCUITest and UI Automator, the web backend intercepts network traffic, so a `request` /
+`requestSequence` assertion (or an `until: { request }` wait) is not a TODO here. The emitted test
+installs a `page.on('requestfinished', ...)` recorder before navigation. It then checks the
+exchanges observed so far — a point-in-time check that mirrors the runner's own collector rather
+than a `waitForResponse` that could stall on future traffic. A `responseSchema` assertion still
+falls back to a `// TODO`: validating a JSON Schema needs a schema library the generated test
+should not assume.
 
 The `describe` block name is the `-o` filename stem (or the scenario filename) humanized; each
 `test(...)` title is the scenario name verbatim (TypeScript test titles are plain strings, so no

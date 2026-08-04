@@ -17,7 +17,7 @@ Bajutsu（馬術）は、自然言語で書いた、あるいは記録したテ�
 
 ## 状況（pre-alpha）
 
-決定的なコア、AI の著述ループ（`record` と `crawl`）、evidence サブシステム、codegen、自己修復の triage は、いずれも実装済みでユニットテストも揃っており、シミュレータは要りません。iOS の **idb / XCUITest バックエンド**はシミュレータ上で end-to-end に検証済み、**Android（adb）バックエンド**はエミュレータ上で end-to-end に検証済みで、**web（Playwright）バックエンド**は Linux のゲートでブラウザに対して決定的な `run` を動かします。
+決定的なコア、AI の著述ループ（`record` と `crawl`）、evidence サブシステム、codegen、自己修復の triage は、いずれも実装済みでユニットテストも揃っており、シミュレータは要りません。iOS の **XCUITest バックエンド**はシミュレータ上で end-to-end に検証済み、**Android（adb）バックエンド**はエミュレータ上で end-to-end に検証済みで、**web（Playwright）バックエンド**は Linux のゲートでブラウザに対して決定的な `run` を動かします。Flutter アプリは、専用のバックエンドを持たず、同じ XCUITest / adb バックエンドをそのまま使って動かします。
 
 ## クイックスタート
 
@@ -43,10 +43,10 @@ bajutsu run    --target <name> [--scenario f.yaml]          # ティア2: 決定
 
 | プラットフォーム | バックエンド | 状況 |
 |---|---|---|
-| iOS シミュレータ | idb / XCUITest | 実機上で end-to-end に検証済み |
+| iOS シミュレータ | XCUITest | 実機上で end-to-end に検証済み |
 | Web | Playwright | Linux のゲート上で end-to-end に検証済み |
 | Android | adb | エミュレータ上で end-to-end に検証済み |
-| Flutter | （予定） | 次 |
+| Flutter | XCUITest / adb バックエンド経由 | 実機上で end-to-end に検証済み |
 
 ## さらに詳しく
 

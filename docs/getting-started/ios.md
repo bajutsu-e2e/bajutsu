@@ -48,14 +48,15 @@ The XCUITest backend drives the app through a **prebuilt on-device runner** (the
 one-shot `make` target below (`make runner-build`), so there is nothing extra to install — Xcode
 alone is enough.
 
-The one-shot path is the `make` target, which builds the runner, installs the freshly built app,
-and runs the smoke scenario plus a `doctor` check on the booted device:
+The one-shot path is the `make` target. It builds the runner, installs the freshly built app, and
+runs the full showcase suite (skipping scenarios tagged `xcuitest` or `systemalert`) on the booted
+device:
 
 ```bash
 make -C demos/showcase run-swiftui
 ```
 
-Or drive the CLI directly (the same steps, written out):
+Or drive the CLI directly against the smoke scenario alone — a quicker, single-scenario check:
 
 ```bash
 uv run bajutsu run --scenario demos/showcase/scenarios/smoke.yaml --target showcase-swiftui --backend ios --udid booted --no-erase
