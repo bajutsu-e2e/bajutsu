@@ -16,15 +16,15 @@ Related: [scenarios](scenarios.md) · [selectors](selectors.md) · [evidence](ev
 ## `run_scenario` (running one scenario)
 
 ```python
-def run_scenario(driver, scenario, clock=None, sink=None, on_blocked=None) -> RunResult
+def run_scenario(driver, scenario, clock=None, sink=None, alert_guard=None, ...) -> RunResult
 ```
 
 - `driver`: a `base.Driver` (a real driver or `FakeDriver`). The loop depends only on this interface.
 - `clock`: injected time / sleep (to make waits deterministic in tests). Default `RealClock`
   (`time.monotonic` / `time.sleep`).
 - `sink`: the evidence output target (default `NullSink` = writes nothing) ([evidence](evidence.md)).
-- `on_blocked`: a handler that, on step failure, "cleans up a blocker (a system alert, etc.) and
-  returns True." If it does, **the step is retried exactly once**
+- `alert_guard`: a handler that, on step failure, "cleans up a blocker (a system alert, etc.) and
+  returns the event it dismissed." If it does, **the step is retried exactly once**
   ([the alert guard](recording.md#dismissing-system-alerts-automatically)). For a `wait` step
   (`for`/`settled`/`screenChanged`), the same handler is also armed **mid-wait** (BE-0269): it fires
   against the already-polled screen as soon as the tree looks collapsed — debounced, cooldown-limited,
@@ -42,7 +42,7 @@ For each step `i` (in `orchestrator/loop.py`):
    action). `_pre_intervals` picks only triggers determinable from the step itself
    (`screenChanged`/`error` are too late).
 5. Run the **act** (or wait / assert) via `_run_step_body` → `(ok, reason, assertion_results)`.
-6. On failure, if `on_blocked` cleared a blocker, **retry once**.
+6. On failure, if `alert_guard` cleared a blocker, **retry once**.
 7. **Stop interval captures** (after the step has settled). Record the artifacts.
 8. Acquire the **instant captures** (`screenshot` / `elements`) (from `_collect_captures`'s
    firing result).
@@ -121,7 +121,7 @@ class RunResult:
     failure: str | None          # e.g. "step 3 (tap): no match: {...}"
 ```
 
-`expect` is evaluated only after all steps pass. If `on_blocked` is present, expect is also
+`expect` is evaluated only after all steps pass. If `alert_guard` is present, expect is also
 re-evaluated once. These become `report/`'s `manifest.json` / JUnit / HTML directly
 ([reporting](reporting.md)).
 
@@ -141,17 +141,21 @@ erase (if pre.erase: shutdown → erase) → boot → terminate(bundle) (for a c
   → _await_ready (poll until query() returns 2+ elements, up to 10s)
 ```
 
-> `_await_ready` polls until "the app has rendered a UI (more than the root element)." `locale` **is**
+> `_await_ready` polls for the strongest readiness signal available, in order: an explicit `readyWhen`
+> selector, then an app-reported screen-transition event ([BE-0310](../roadmaps/BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness.md), opt-in via `BajutsuKit`), then any
+> element whose id belongs to a declared `idNamespaces`, falling back to "the app has rendered a UI
+> (more than the root element)" — up to 10s ([configuration](configuration.md) documents each rung in
+> full). `locale` **is**
 > applied at launch (the scenario's `preconditions.locale` overrides the config default, passed as
 > launch args via `env.locale_args`). The simctl launch sequencing is validated on a real device
 > (iPhone 17 Pro) via `make -C demos/showcase run-swiftui` + the `ios-e2e.yml` CI workflow.
 
-### `device_factory` / `run_all` / `run_and_report`
+### `device_pool` / `run_all` / `run_and_report`
 
-- `device_factory(udid, backends, ...)`: selects the actuator and returns a factory that
-  `launch_driver`s per scenario.
-- `run_all(eff, scenarios, factory, ...)`: runs each scenario **with a freshly built driver**
-  (clean isolation).
+- `device_pool(udids, backends, ...)`: selects the actuator and returns a `(lease, shutdown)` pair —
+  `lease(eff, scenario)` leases a free device and `launch_driver`s it per scenario.
+- `run_all(eff, scenarios, lease, ...)`: runs each scenario **with a freshly leased, freshly built
+  driver** (clean isolation).
 - `run_and_report(...)`: writes the `run_all` results via `write_report(runs_dir/run_id, ...)` and
   returns `(results, manifest_path)`.
 
@@ -179,8 +183,9 @@ The CLI's `run` calls this `run_and_report` ([cli](cli.md#run)).
 > backend-agnostic `base.BackendCrashError` (raised by any driver, not only XCUITest's), discards the
 > dead lease, leases a fresh one — a cold respawn, since the pool drops the dead warm runner — and
 > re-runs the *whole* scenario from the start, bounded by a retry count (`crash_retries`, default 1,
-> so one retry after the first crash) and an optional wall-clock ceiling on the total time spent
-> respawning (`crash_recovery_budget`, unset by default, i.e. unbounded). The budget exists because
+> so one retry after the first crash — overridable via `BAJUTSU_CRASH_RETRIES`) and an optional
+> wall-clock ceiling on the total time spent respawning (`crash_recovery_budget`, unset by default,
+> i.e. unbounded — overridable in seconds via `BAJUTSU_CRASH_RECOVERY_BUDGET`). The budget exists because
 > the count alone caps retries, not time: a runner that never comes back would otherwise pay a full
 > cold-startup ceiling on every one of its `crash_retries` attempts, silently turning into a job hang
 > rather than a loud failure. A scenario that crashes on every attempt exhausts one budget or the

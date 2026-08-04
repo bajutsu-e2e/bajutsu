@@ -27,9 +27,9 @@ swapping that seam runs the same scenario, unchanged, on a different target.
 
 The deterministic core, the AI authoring loop (`record` / `crawl`), the evidence subsystem,
 codegen, and self-healing triage are all implemented and unit-tested with no Simulator
-needed. The iOS **idb/XCUITest backends** are validated end-to-end on a real Simulator, the
+needed. The iOS **XCUITest backend** is validated end-to-end on a real Simulator, the
 **Android (adb) backend** is validated on an emulator, and the **web (Playwright) backend** runs
-a deterministic `run` against a browser on the Linux gate.
+a deterministic `run` against a browser on the Linux gate. Flutter apps run through those same backends unchanged, with no separate Flutter backend.
 
 ## Quickstart
 
@@ -58,10 +58,10 @@ same loop against a browser (Playwright backend) — no Xcode or Simulator.
 
 | Platform | Backend | Status |
 |---|---|---|
-| iOS Simulator | idb / XCUITest | Validated end-to-end on-device |
+| iOS Simulator | XCUITest | Validated end-to-end on-device |
 | Web | Playwright | Validated end-to-end on the Linux gate |
 | Android | adb | Validated end-to-end on an emulator |
-| Flutter | (planned) | Next |
+| Flutter | via the XCUITest / adb backends | Validated end-to-end on-device |
 
 ## Learn more
 

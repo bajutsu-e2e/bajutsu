@@ -18,7 +18,7 @@ LLM（大規模言語モデル）の非決定性、コスト、レイテンシ�
 |---|---|---|---|
 | `record` | Tier 1 | 著者 | 探索しながら次の 1 手を提案 → 決定的シナリオを書き出す（[recording](recording.md)） |
 | `run` | Tier 2 | **なし** | 各ステップを act → wait → verify。合否は `expect` の機械アサーションのみ（[run-loop](run-loop.md)） |
-| `codegen` | — | なし | シナリオ → XCUITest の構造マッピング（[codegen](codegen.md)） |
+| `codegen` | — | なし | シナリオ → XCUITest / Playwright / UI Automator の構造マッピング（[codegen](codegen.md)） |
 
 `run` の経路には `anthropic` の呼び出しが一切ありません。唯一の例外は `--system-alert-handling`（OS の
 システムアラートを視覚的に消す機能）です。これは合否を判定するのではなく環境を準備するものであり、
@@ -49,7 +49,7 @@ Bajutsu の「決定的」という性質は、コードの構造として強制
 3. **クリーン環境から開始する**：各テストは既定で boot/launch の前に `simctl erase` を実行し、前テストからの
    汚染を断ちます。状態は launch env や deeplink から注入します（[drivers](drivers.md#環境管理simctl)）。
 4. **合否は機械チェックのみで決める**：「成功した気がする」という判断は入りません。機械アサーションは
-   `exists`/`value`/`label`/`count`/`enabled`/`disabled`/`selected`/`request`/`visual` です
+   `exists`/`value`/`label`/`count`/`enabled`/`disabled`/`selected`/`request`/`event`/`requestSequence`/`responseSchema`/`visual`/`clipboard`/`golden` です
    （[selectors](selectors.md#アサーション評価)）。
 
 > 適用範囲に注意してください。安定した識別子が安定させるのは「選択の決定性」だけです。タイミング、状態、
@@ -66,8 +66,11 @@ Bajutsu の「決定的」という性質は、コードの構造として強制
 ## 5. 安定度順ラダー（stability ladder）
 
 UI 操作は、最も安定する手段から順に試します。ただし「安定」とは選択（どの要素か）の話であって、
-actuation（どう叩くか）の話ではありません。idb（iOS の actuator）はいずれにせよ要素の frame 中心への座標 tap で操作するので、
-順位によって変わるのは要素の選び方だけです。下に行くほど壊れやすくなります。
+actuation（どう叩くか）の話ではありません。actuation の仕組みは actuator ごとに異なります。iOS の
+actuator（`xcuitest`）は、解決した要素が持つ不透明なハンドルを操作対象とし、座標はまったく使いません。
+一方、Android の actuator（`adb`）と web の actuator（`playwright`）は semantic tap を持ちません。
+そのため、解決した要素の frame 中心を操作対象とします。いずれの場合も、順位によって変わるのは要素の
+選び方だけです。下に行くほど壊れやすくなります。
 
 | 順 | 選択（どの要素） | 安定性 |
 |---|---|---|
@@ -75,8 +78,10 @@ actuation（どう叩くか）の話ではありません。idb（iOS の actuat
 | 2 | `label` / `traits` で解決 | ローカライズに弱い |
 | 3 | `index` / 生座標 | レイアウト変化で壊れる。最終手段 |
 
-> actuation は常に frame 中心への座標 tap です。idb は semantic tap を公開しないため、run ループは
-> 要素を一意に解決し（ネイティブの `AXUniqueId` を `id` として用います）、その frame 中心を叩きます。
+> `adb` と `playwright` は semantic tap を持たないため、この 2 つでは run ループが要素を一意に解決し、
+> その frame 中心を叩きます。`xcuitest` はこの例外で、解決した要素に対して runner が発行した不透明な
+> ハンドルをそのまま操作対象とし、座標は一切使いません
+> （[drivers](drivers.md#バックエンド選択と-actuator)）。
 
 **actuator（操作を担う backend）** は、安定度順の `backend` リストのうち最初に利用可能なものです。run 開始時に
 1 つに確定し、run のあいだは固定します（2 つのドライバが同一デバイスを操作することで生じる非決定性を避けるためです）。

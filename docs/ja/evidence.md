@@ -26,7 +26,7 @@
 
 | 種別 | 取得元 | 区間 / 瞬時 | 現状 |
 |---|---|---|---|
-| `screenshot` | ドライバ（idb は `simctl io screenshot`） | 瞬時 | ✅ 取得 |
+| `screenshot` | ドライバ（XCUITest 自身の `/screenshot` エンドポイント、`adb` の `screencap`、Playwright はネイティブに取得） | 瞬時 | ✅ 取得 |
 | `elements`（a11y＝アクセシビリティのツリー） | `driver.query()` を JSON 化 | 瞬時 | ✅ 取得 |
 | `actionLog` | orchestrator 内部（操作と所要時間） | — | ✅ manifest に内在 |
 | `video` | `simctl io recordVideo` | 区間 | ✅ 取得（要 udid） |
@@ -106,9 +106,9 @@ web は子プロセスを使いません。区間証跡は Playwright ネイテ�
 | `video` | `simctl io <udid> recordVideo --codec h264` / `adb shell screenrecord` | **SIGINT**（強制 kill だと mp4 が壊れる） | `scenario.mp4` |
 | `deviceLog` | `simctl spawn <udid> log stream --level debug --style compact [--predicate ...]` / `adb logcat -T 1` | SIGTERM | `device.log` |
 
-- iOS は `start_video` / `start_device_log`、Android は `start_screenrecord` / `start_logcat` が `Interval` を返し、`Interval.stop()` がシグナルを送ってファイルを確定します。停止は最大 10s 待ち、超えたら kill します。
+- iOS は `start_video` / `start_device_log`、Android は `start_screenrecord` / `start_logcat` が `Interval` を返し、`Interval.stop()` がシグナルを送ってファイルを確定します。`deviceLog` の停止は最大 10 秒待ち、超えたら kill します。`video` は停止から kill までに 120 秒という余裕のある確定待ちを取ります。`recordVideo` / `screenrecord` はクリップ全体をディスクへ flush して mux し終える必要があり、途中で kill すると mp4 が壊れ（`moov` atom を持たないファイルになり）、iOS では Simulator の録画セッションが解放されずに残ってしまうためです。
 - `screenrecord` はデバイス側に録画するので、その `Interval` は停止時に確定した mp4 を `adb pull` で回収し、デバイス側のコピーを削除します。pull が失敗した場合（デバイスが消えたなど）、Sink は実体のないパスを記録せず、その 1 件だけを警告つきで捨てます。区間証跡の確定処理の I/O で、通過するはずのシナリオを失敗させません。
-- なお `adb screenrecord` は 1 回の録画を約 180 秒（プラットフォームの既定／上限）で打ち切るので、それより長いシナリオの Android 動画はその時点で終わります。この上限と SIGINT による確定の実機での調整は、後続の BE-0007 e2e に含みます。
+- なお `adb screenrecord` は 1 回の録画を約 180 秒（プラットフォームの既定／上限であり、bajutsu が調整できるものではありません）で打ち切るので、それより長いシナリオの Android 動画はその時点で終わります。
 - deviceLog は iOS では `--predicate`（NSPredicate）でサブシステムなどに絞れます（CLI の `--log-predicate`）。`adb logcat` は絞り込みません（logcat の filterspec は別の構文で、後続の knob です）。取得はリングバッファ全体ではなくシナリオの区間を反映するよう、末尾から追従を始めます。
 - `INTERVAL_KINDS = {"video", "deviceLog", "appTrace"}`。orchestrator はこの集合で「区間 / 瞬時」を振り分けます。
 - **シナリオ全体の `video` はアプリの起動より前に開始します**。録画がアプリの起動（コールドスタート）を取りこぼさず含むようにするためです。デバイスバックエンドでは環境の `start` が録画を開始し（デバイスの boot とアプリの install の後、`simctl launch` / `am start` の前）、動いている `Interval` を `prestarted_intervals` で返します。Sink はシナリオ開始時にこの録画を新たに開始し直さず引き取り（`intervals.adopt`）、停止時に確定してファイルを `scenario.mp4` へ移します。web も同じ前倒しの取得をブラウザコンテキストの生成時に組み込みます。この前倒しは `records_video_up_front` で制御し、`video` を要求しないシナリオは何も開始しません。
@@ -118,6 +118,7 @@ web は子プロセスを使いません。区間証跡は Playwright ネイテ�
 ```python
 class EvidenceSink(Protocol):
     def capture(self, driver, step_id, kinds, *, elements=None) -> list[Artifact]: ...   # ステップ後に瞬時を取得
+    def wait_diagnostic(self, step_id, *, trace, elements) -> Artifact | None: ...       # 初回 wait のタイムアウト診断（後述）
     def start_scenario_intervals(self, scenario_id, kinds) -> list[Interval]: ...         # シナリオ全体の video / deviceLog / appTrace を開始
     def finish_scenario_intervals(self, scenario_id, started) -> list[Artifact]: ...      # 停止してファイルを回収
 ```
@@ -162,7 +163,7 @@ class Artifact:
 | `"runner"` | run ループが書き出した証跡です（初回 wait のタイムアウト診断、[BE-0231](../../roadmaps/BE-0231-smoke-idb-first-wait-settling/BE-0231-smoke-idb-first-wait-settling-ja.md)）。 |
 | `"simctl"` | `simctl` による区間証跡です（動画、デバイスログ、アプリトレース）。 |
 | `"adb"` | `adb` による区間証跡です（screenrecord の動画、logcat のデバイスログ）。 |
-| `"collector"` | idb のアプリ側ネットワークコレクタ（`BAJUTSU_COLLECTOR`）です。 |
+| `"collector"` | アプリ側のネットワークコレクタ（`BAJUTSU_COLLECTOR`）です。 |
 | `"playwright"` | Playwright のネイティブなネットワーク観測です（web バックエンド）。 |
 | `"<backend> (fallback)"` | read-only な証跡フォールバックが供給したアーティファクトです（[BE-0020](../../roadmaps/BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback-ja.md)）。 |
 

@@ -16,13 +16,13 @@
 ## `run_scenario`（1 シナリオの実行）
 
 ```python
-def run_scenario(driver, scenario, clock=None, sink=None, on_blocked=None) -> RunResult
+def run_scenario(driver, scenario, clock=None, sink=None, alert_guard=None, ...) -> RunResult
 ```
 
 - `driver`: `base.Driver`（実ドライバ or `FakeDriver`）。ループはこれにしか依存しません。
 - `clock`: 時刻 / sleep の注入（テストで待機を決定化）。既定 `RealClock`（`time.monotonic` / `time.sleep`）。
 - `sink`: 証跡の出力先（既定 `NullSink` は何も書かない）。詳細は [evidence](evidence.md)。
-- `on_blocked`: ステップ失敗時に「ブロッカー（システムアラート等）を片付けたら True」を返すハンドラです。True を返した場合、**そのステップを 1 回だけ再試行します**（[recording の alert guard](recording.md#システムアラートの自動対処)）。`wait` ステップ（`for`/`settled`/`screenChanged`）では同じハンドラが **wait の途中でも**待ち構えています（BE-0269）。すでにポーリング済みの画面のツリーが崩壊して見えた時点で発火します（デバウンスとクールダウンを挟み、1 回の wait につき最大 2 回まで）。末尾の再試行とは独立に、wait 自体のタイムアウトを待たず回復できます。
+- `alert_guard`: ステップ失敗時に「ブロッカー（システムアラート等）を片付けたら、その片付けたイベントを返す」ハンドラです。イベントを返した場合、**そのステップを 1 回だけ再試行します**（[recording の alert guard](recording.md#システムアラートの自動対処)）。`wait` ステップ（`for`/`settled`/`screenChanged`）では同じハンドラが **wait の途中でも**待ち構えています（BE-0269）。すでにポーリング済みの画面のツリーが崩壊して見えた時点で発火します（デバウンスとクールダウンを挟み、1 回の wait につき最大 2 回まで）。末尾の再試行とは独立に、wait 自体のタイムアウトを待たず回復できます。
 
 ### 1 ステップの流れ
 
@@ -33,7 +33,7 @@ def run_scenario(driver, scenario, clock=None, sink=None, on_blocked=None) -> Ru
 3. （`capturePolicy` に `screenChanged` トリガーがあれば）操作前の `query()` を控えます。
 4. **区間証跡を開始**します（`video` / `deviceLog` のうち、操作前から始める必要があるもの）。`_pre_intervals` は「ステップ自身から判定可能なトリガー」だけを拾います（`screenChanged`/`error` は遅すぎるため対象外）。
 5. `_run_step_body` で **act**（or wait / assert）を実行し、`(ok, reason, assertion_results)` を得ます。
-6. 失敗かつ `on_blocked` がブロッカーを片付けた場合は **1 回再試行します**。
+6. 失敗かつ `alert_guard` がブロッカーを片付けた場合は **1 回再試行します**。
 7. **区間証跡を停止**します（ステップが落ち着いてから）。アーティファクトを記録します。
 8. **瞬時証跡**（`screenshot` / `elements`）を取得します（`_collect_captures` の発火結果）。
 9. `StepOutcome` を積みます。失敗なら `failure` を設定して **break** します。
@@ -101,7 +101,7 @@ class RunResult:
     failure: str | None          # 例: "step 3 (tap): 一致なし: {...}"
 ```
 
-`expect` は全ステップ成功後にのみ評価されます。`on_blocked` があれば expect も 1 回だけ再評価します。これらはそのまま `report/` の `manifest.json` / JUnit / HTML になります（[reporting](reporting.md)）。
+`expect` は全ステップ成功後にのみ評価されます。`alert_guard` があれば expect も 1 回だけ再評価します。これらはそのまま `report/` の `manifest.json` / JUnit / HTML になります（[reporting](reporting.md)）。
 
 ## runner（実行パイプライン）
 
@@ -118,12 +118,12 @@ erase（pre.erase なら shutdown → erase） → boot → terminate(bundle)（
   → _await_ready（query() が 2 要素以上返すまで最大 10s ポーリング）
 ```
 
-> `_await_ready` は「アプリが UI を描画した（ルート要素より多い）」ことをポーリングで待ちます。`locale` は launch 時に **適用されます**（シナリオの `preconditions.locale` が config 既定を上書きし、`env.locale_args` で launch 引数として渡ります）。simctl の launch 手順は `make -C demos/showcase run-swiftui` ＋ `ios-e2e.yml` CI ワークフローで実機（iPhone 17 Pro）検証済みです。
+> `_await_ready` は、利用できる中で最も強いレディネスシグナルを順に探してポーリングします。明示的な `readyWhen` セレクタ、次にアプリが報告する画面遷移イベント（[BE-0310](../../roadmaps/BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness-ja.md)。`BajutsuKit` 経由のオプトイン）、次に宣言済みの `idNamespaces` に属する id を持つ要素、そしてどれも無ければ「アプリが UI を描画した（ルート要素より多い）」ことへとフォールバックし、最大 10s まで待ちます（各段の詳細は [configuration](configuration.md) を参照）。`locale` は launch 時に **適用されます**（シナリオの `preconditions.locale` が config 既定を上書きし、`env.locale_args` で launch 引数として渡ります）。simctl の launch 手順は `make -C demos/showcase run-swiftui` ＋ `ios-e2e.yml` CI ワークフローで実機（iPhone 17 Pro）検証済みです。
 
-### `device_factory` / `run_all` / `run_and_report`
+### `device_pool` / `run_all` / `run_and_report`
 
-- `device_factory(udid, backends, ...)`: actuator を選び、シナリオごとに `launch_driver` する factory を返します。
-- `run_all(eff, scenarios, factory, ...)`: 各シナリオを **新しいドライバで** 実行します（クリーン分離）。
+- `device_pool(udids, backends, ...)`: actuator を選び、`(lease, shutdown)` の組を返します。`lease(eff, scenario)` は空いているデバイスをリースし、シナリオごとに `launch_driver` します。
+- `run_all(eff, scenarios, lease, ...)`: 各シナリオを **新しくリースした、新しいドライバで** 実行します（クリーン分離）。
 - `run_and_report(...)`: `run_all` の結果を `write_report(runs_dir/run_id, ...)` で書き出し、`(results, manifest_path)` を返します。
 
 CLI の `run` はこの `run_and_report` を呼びます（[cli](cli.md#run)）。
@@ -132,4 +132,4 @@ CLI の `run` はこの `run_and_report` を呼びます（[cli](cli.md#run)）�
 >
 > 常駐ランナーは `app.launch()` を数回繰り返すとクラッシュします（XCTest セッションの制約。`docs/architecture.md` を参照）。そのためウォーム再利用には**上限**を設けています（BE-0287）。`BAJUTSU_XCUITEST_MAX_WARM_REUSES` 回（既定 3）再利用したら、次の起動でランナーがクラッシュする前に**先回りしてコールド再生成**します。クラッシュがシナリオの途中で起きて run を失うのを防ぐためです。上記の `/health` プローブは「すでにクラッシュしたランナー」を検知する事後的なものにすぎないので、この先回りの再生成こそが長いスイートをクラッシュから守ります。より早くクラッシュするデバイスでは、この値を `0` にするとウォーム再利用を完全に無効化できます（毎リースをコールドにします）。
 
-> **バックエンドクラッシュからの復旧。** 上記の先回りの再生成はクラッシュの窓を狭めるだけで、完全には閉じません。バックエンドがそれでもシナリオの途中でクラッシュした場合、`_ScenarioRunner.run_one` はバックエンドに依存しない `base.BackendCrashError`（XCUITest に限らず、どのドライバも送出できます）を捕まえ、死んだリースを破棄し、新しいリースを取得し（プールは死んだウォームランナーを捨てるため、これはコールド再生成になります）、シナリオ全体を最初からやり直します。上限はリトライ回数（`crash_retries`、既定 1、つまり最初のクラッシュ後に 1 回だけ再試行）と、再生成に費やす合計時間の任意の wall-clock 上限（`crash_recovery_budget`、既定は無制限）の 2 つです。この予算があるのは、回数の上限だけでは時間を制限できないためです。復旧しないランナーを相手にすると、`crash_retries` の試行のたびにコールド起動の上限いっぱいまで時間を費やし、はっきりした失敗ではなく黙ったジョブのハングになりかねません。試行のたびにクラッシュするシナリオはどちらかの予算を使い切り、黙って合格扱いにするのではなく、はっきりと失敗させることで、本当にクラッシュを誘発するシナリオが flaky の温床に紛れ込むのを防ぎます。再試行はシナリオ全体を（消去ではなく）再生成したアプリに対してやり直すため、安全なのはクラッシュ地点まで冪等なシナリオに限られます。クラッシュ前にサーバー側書き込みのような永続的な副作用を伴うシナリオは、再実行時に失敗するか、誤った状態のまま合格することがあります。この判定ロジックは `bajutsu/runner/recovery.py` にあり、オンデバイスのドライバ適合性スイートと共有しています。これにより、Simulator のインフラ障害が起きても、無関係な PR で必須チェックを赤くすることなく同じように復旧します（BE-0334）。
+> **バックエンドクラッシュからの復旧。** 上記の先回りの再生成はクラッシュの窓を狭めるだけで、完全には閉じません。バックエンドがそれでもシナリオの途中でクラッシュした場合、`_ScenarioRunner.run_one` はバックエンドに依存しない `base.BackendCrashError`（XCUITest に限らず、どのドライバも送出できます）を捕まえ、死んだリースを破棄し、新しいリースを取得し（プールは死んだウォームランナーを捨てるため、これはコールド再生成になります）、シナリオ全体を最初からやり直します。上限はリトライ回数（`crash_retries`、既定 1、つまり最初のクラッシュ後に 1 回だけ再試行。環境変数 `BAJUTSU_CRASH_RETRIES` で上書き可能）と、再生成に費やす合計時間の任意の wall-clock 上限（`crash_recovery_budget`、既定は無制限。環境変数 `BAJUTSU_CRASH_RECOVERY_BUDGET`（秒単位）で上書き可能）の 2 つです。この予算があるのは、回数の上限だけでは時間を制限できないためです。復旧しないランナーを相手にすると、`crash_retries` の試行のたびにコールド起動の上限いっぱいまで時間を費やし、はっきりした失敗ではなく黙ったジョブのハングになりかねません。試行のたびにクラッシュするシナリオはどちらかの予算を使い切り、黙って合格扱いにするのではなく、はっきりと失敗させることで、本当にクラッシュを誘発するシナリオが flaky の温床に紛れ込むのを防ぎます。再試行はシナリオ全体を（消去ではなく）再生成したアプリに対してやり直すため、安全なのはクラッシュ地点まで冪等なシナリオに限られます。クラッシュ前にサーバー側書き込みのような永続的な副作用を伴うシナリオは、再実行時に失敗するか、誤った状態のまま合格することがあります。この判定ロジックは `bajutsu/runner/recovery.py` にあり、オンデバイスのドライバ適合性スイートと共有しています。これにより、Simulator のインフラ障害が起きても、無関係な PR で必須チェックを赤くすることなく同じように復旧します（BE-0334）。

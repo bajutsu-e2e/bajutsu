@@ -431,7 +431,17 @@ class _UiAutomatorGen:
             "",
             "  // Launch (or relaunch) the app, forwarding launchEnv as intent extras (the reverse"
             + " of the",
-            "  // adb backend's `am start --es`); waits for the app's first window, never sleeps.",
+            "  // adb backend's `am start --es`); waits for the app's first window and for that"
+            + " window to",
+            "  // settle, never sleeps. The window wait alone only proves *some* window from the"
+            + " package",
+            "  // exists — on a loaded CI runner the first frame can still be mid-layout, so the"
+            + " very next",
+            "  // `act()` races a screen that has not finished drawing. `waitForIdle` closes that"
+            + " gap: it",
+            "  // blocks until the accessibility tree stops changing, giving the app's first"
+            + " composition",
+            "  // room to finish before the test's own per-action waits start their clock.",
             "  private fun launch(extras: Map<String, String>) {",
             "    val context = ApplicationProvider.getApplicationContext<Context>()",
             "    val intent = context.packageManager.getLaunchIntentForPackage(PACKAGE)!!",
@@ -439,6 +449,7 @@ class _UiAutomatorGen:
             "    for ((k, v) in extras) intent.putExtra(k, v)",
             "    context.startActivity(intent)",
             "    device.wait(Until.hasObject(By.pkg(PACKAGE).depth(0)), LAUNCH_TIMEOUT_MS)",
+            "    device.waitForIdle(LAUNCH_TIMEOUT_MS)",
             "  }",
             "",
             "  // Wait for an element before acting on it. findObject alone is a single-shot query"

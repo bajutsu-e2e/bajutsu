@@ -28,7 +28,7 @@ A `capture:` token is `<kind>[.<modifier>]` ([scenarios](scenarios.md#capture-to
 
 | Kind | Source | Interval / instant | Status |
 |---|---|---|---|
-| `screenshot` | the driver (idb uses `simctl io screenshot`) | instant | ✅ captured |
+| `screenshot` | the driver (XCUITest's own `/screenshot` endpoint, `adb`'s `screencap`, Playwright natively) | instant | ✅ captured |
 | `elements` (a11y / accessibility tree) | `driver.query()` as JSON | instant | ✅ captured |
 | `actionLog` | orchestrator internals (action · duration) | — | ✅ inherent in the manifest |
 | `video` | `simctl io recordVideo` | interval | ✅ captured (needs udid) |
@@ -120,13 +120,16 @@ app's os_log subsystem, paired into timed intervals by `parse_app_trace`.)
 | `deviceLog` | `simctl spawn <udid> log stream --level debug --style compact [--predicate ...]` / `adb logcat -T 1` | SIGTERM | `device.log` |
 
 - `start_video` / `start_device_log` (iOS) and `start_screenrecord` / `start_logcat` (Android)
-  return an `Interval`, and `Interval.stop()` sends the signal and finalizes the file. Stop waits up
-  to 10s, then kills. `screenrecord` records device-side, so its `Interval` also pulls the finalized
-  mp4 off the device on stop and removes the device copy. If the pull fails (the device vanished),
-  the sink drops that one artifact with a warning rather than emit a path with no file behind it —
-  it does not fail an otherwise-passing scenario while finalizing interval evidence. `adb screenrecord` caps a single recording at ~180s
-  (the platform default/maximum), so an Android video of a longer scenario ends at that mark; the
-  on-device tuning of this cap and of SIGINT finalization is part of the deferred BE-0007 e2e.
+  return an `Interval`, and `Interval.stop()` sends the signal and finalizes the file. `deviceLog`
+  waits up to 10s, then kills; `video` gets a generous 120s finalize window before the kill, because
+  `recordVideo` / `screenrecord` still has to flush and mux the whole clip to disk, and a premature
+  kill truncates the mp4 (no `moov` atom) and, on iOS, wedges the simulator's recording session.
+  `screenrecord` records device-side, so its `Interval` also pulls the finalized mp4 off the device
+  on stop and removes the device copy. If the pull fails (the device vanished), the sink drops that
+  one artifact with a warning rather than emit a path with no file behind it — it does not fail an
+  otherwise-passing scenario while finalizing interval evidence. `adb screenrecord` caps a single
+  recording at ~180s (the platform default/maximum, not a limit bajutsu tunes), so an Android video
+  of a longer scenario ends at that mark.
 - deviceLog can be narrowed by `--predicate` (NSPredicate) to a subsystem, etc. (the CLI's
   `--log-predicate`) on iOS; `adb logcat` is unfiltered (a logcat filterspec is a different syntax, a
   later knob) and starts the follow from the tail so it reflects the scenario window, not the whole
@@ -147,6 +150,7 @@ app's os_log subsystem, paired into timed intervals by `parse_app_trace`.)
 ```python
 class EvidenceSink(Protocol):
     def capture(self, driver, step_id, kinds, *, elements=None) -> list[Artifact]: ...   # instant captures after a step
+    def wait_diagnostic(self, step_id, *, trace, elements) -> Artifact | None: ...       # the first-wait timeout diagnostic (below)
     def start_scenario_intervals(self, scenario_id, kinds) -> list[Interval]: ...        # begin video / deviceLog / appTrace for the whole scenario
     def finish_scenario_intervals(self, scenario_id, started) -> list[Artifact]: ...     # stop them and collect the files
 ```
@@ -201,7 +205,7 @@ class Artifact:
 | `"runner"` | The run loop wrote it (the first-wait timeout diagnostic, [BE-0231](../roadmaps/BE-0231-smoke-idb-first-wait-settling/BE-0231-smoke-idb-first-wait-settling.md)). |
 | `"simctl"` | Interval evidence from `simctl` (video, device log, app trace). |
 | `"adb"` | Interval evidence from `adb` (screenrecord video, logcat device log). |
-| `"collector"` | The idb app-side network collector (`BAJUTSU_COLLECTOR`). |
+| `"collector"` | The app-side network collector (`BAJUTSU_COLLECTOR`). |
 | `"playwright"` | Native Playwright network observation (web backend). |
 | `"<backend> (fallback)"` | A read-only evidence fallback supplied the artifact ([BE-0020](../roadmaps/BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback.md)). |
 

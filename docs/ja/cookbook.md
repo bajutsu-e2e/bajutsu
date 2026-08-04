@@ -82,14 +82,17 @@ uv run bajutsu run --scenario <path-to-file> --target showcase-swiftui --backend
 ## システムの権限ダイアログを許可する
 
 実行時の権限プロンプト（通知、位置情報など）は、アプリ自身の UI ではなく**プロセス外のシステム
-アラート**です。iOS バックエンドはこれを直接タップできません。`systemAlertHandling` は、そのタップだけを AI の
-アラートガードに任せます。ガードがプロンプトを見張って「Allow」をタップする一方で、その前後の
-アサーションはすべて機械チェックのままです。
+アラート**です。iOS バックエンドはこれを直接タップできません。`systemAlertHandling` は、そのタップだけを
+リアクティブなアラートガードに任せます。ガードは決定論的なネイティブ経路で、スクリーンショットも
+モデルへの往復も使わずにプロンプトを見張り、「Allow」をタップします。その前後のアサーションはすべて
+機械チェックのままです。`instruction` はリスト形式（`["Allow"]`）で書く必要があります。ネイティブ経路が
+決定論的に解決できるのはリスト形式だけで、自由文字列を渡すとガードは既定の無害な label 群にフォール
+バックし、許可ではなく拒否になってしまいます。
 
 ```yaml
 - name: grant notification permission
   tags: [permission, system]
-  systemAlertHandling: { instruction: "tap Allow" }
+  systemAlertHandling: { instruction: ["Allow"] }
   preconditions:
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
@@ -136,8 +139,9 @@ uv run bajutsu run --scenario <path-to-file> --target showcase-swiftui --backend
 ```
 
 `wait: { until: { gone: … } }` は要素が**消える**までポーリングします。こういう一時的なトースト
-通知の検証に使えます。全文（このリクエストが運ぶ `Authorization` ヘッダと `password` フィールドを
-`redact` ポリシーが証跡上でマスクする様子も含む）は
+通知の検証に使えます。このリクエストは `Authorization` ヘッダも運びます。このシナリオ自体は `redact`
+ポリシーを設定していませんが、機密ヘッダは既定でマスクされるため、このヘッダは証跡上でマスクされます。
+全文は
 [`demos/showcase/scenarios/network_mock.yaml`](../../demos/showcase/scenarios/network_mock.yaml) に
 あります。
 

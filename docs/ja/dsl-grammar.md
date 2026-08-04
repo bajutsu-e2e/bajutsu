@@ -33,11 +33,11 @@ DSL は YAML ノードの木なので、文法は文字列ではなく **抽象�
 
 ## 2. 文法の全体像
 
-以下の **参照グラフ**は、どの非終端がどれを参照するかを示します。下の EBNF テキストでは追いにくい再帰と共有が見て取れます。`Selector` の `within` が自分自身へループする点や、`RequestMatch` を三箇所（`request` アサーション、`until: { request }` 待機、`Mock.match`）が共有する点です。（スカラのみを持ち共有の非終端を参照しないアクション、すなわち `relaunch`、`setLocation`、`push`、`http` とデバイス / ステータスバー系のステップは省略しています。）
+以下の **参照グラフ**は、どの非終端がどれを参照するかを示します。下の EBNF テキストが述べていても直接には見えない再帰と共有が、これで見て取れます。`Selector` の `within` が自分自身へループする点。`RequestMatch` を `request` アサーション、`until: { request }` 待機、`Mock.match` の三箇所が共有する点。そして `Web` と `Component` がそれぞれ新しい `Step` の列を内側に持つ点です。図はいくつかの要素を省略しています。スカラのみを持ち共有の非終端を参照しないアクション（`relaunch`、`setLocation`、`push`、`http`、`setClipboard`、`foreground`、その他デバイス / ステータスバー系のステップ）です。ペイロードが単純なパスだけの `golden` アサーションも同様です。
 
 ```mermaid
 graph LR
-  SF["ScenarioFile = list(Scenario)"] --> SC["Scenario"]
+  SF["ScenarioFile"] --> SC["Scenario"]
 
   SC -->|preconditions| PRE["Preconditions"]
   SC -->|steps| ST["Step"]
@@ -46,13 +46,19 @@ graph LR
   SC -->|network| NET["Network"]
   SC -->|mocks| MK["Mock"]
   SC -->|redact| RD["Redact"]
+  SC -->|interrupts| IR["Interrupt"]
 
   ST -->|"tap·doubleTap·longPress·<br/>type·swipe·pinch·rotate"| SEL["Selector"]
   ST -->|wait| WT["Wait"]
   ST -->|assert| AS
   ST -->|use| CMP["Component"]
+  ST -->|web| WEB["Web"]
   ST -->|capture| CT["CaptureToken"]
   CMP -->|steps| ST
+  WEB -->|within| SEL
+  WEB -->|steps| ST
+  IR -->|condition| AS
+  IR -->|steps| ST
 
   SEL -->|within| SEL
   WT -->|"for · until:gone"| SEL
@@ -61,7 +67,8 @@ graph LR
   AS -->|"exists·enabled·<br/>disabled·selected"| SEL
   AS -->|"value·label"| TM["TextMatch"]
   AS -->|count| CM["CountMatch"]
-  AS -->|request| RM
+  AS -->|"request·requestSequence·<br/>responseSchema"| RM
+  AS -->|event| EM["EventMatch"]
   TM --> SEL
   CM --> SEL
 
@@ -76,12 +83,18 @@ graph LR
 
 ```ebnf
 # ── ファイル ────────────────────────────────────────────────────────────
-ScenarioFile  ::= list(<Scenario>)          # トップレベルは必ずシーケンス
+# ディスク上の形式は2つあります。シナリオの素のシーケンス、またはファイル単位の `description` や
+# `schema`（クロスバージョン読み込みのゲート、BE-0119。既定は 1。より新しいバージョンを宣言した
+# ファイルは、誤解釈するのではなく古い bajutsu 側が拒否します）も持てるマッピングです。
+ScenarioFile  ::= list(<Scenario>)
+               | { schema?: integer, description?: string, scenarios: list(<Scenario>) }
 ComponentFile ::= <Component>               # 単一マッピング（別ロード）
 
 # ── Scenario ───────────────────────────────────────────────────────────
 Scenario ::= {
   name:            string,                  # 必須
+  description?:   string,                   # オーサリング用メタデータ。run は読まない
+  from?:           string,                  # 由来: record がこのシナリオを起こした元の自然言語のゴール（BE-0044）
   tags?:           list(string),            # 既定 []  — 選択（§6.4）
   data?:           list(map(string,string)),# インライン行  ┐ XOR
   dataFile?:       string,                  # CSV パス      ┘ （§6.3）
@@ -94,13 +107,18 @@ Scenario ::= {
   redact?:         <Redact>,
   systemAlertHandling?: <SystemAlertHandling>,  # アラートガード; 未指定で ON
   permissions?:    <Permissions>,           # 起動前の OS 権限状態; 既定 {}
+  interrupts?:     list(<Interrupt>),       # 既定 []  — 予測できないタイミングで現れる中断画面のハンドラ（BE-0314）。target config 自身のものの後に追加される
 }
 
 Component ::= { params?: list(string), steps: list(<Step>) }
 
+# 予測できないタイミングで現れる中断画面のハンドラ。ランナーはすでに取得済みのツリーに対して
+# `condition` を機会的にチェックし、ステップ列のどこで一致画面が現れても `steps` で解消する（BE-0314）。
+Interrupt ::= { condition: <Assertion>, steps: list(<Step>) }
+
 # ── Preconditions ──────────────────────────────────────────────────────
 Preconditions ::= {
-  erase?:      boolean,                     # 既定 false — 先頭で simctl erase
+  erase?:      boolean,                     # 未設定は target config の erase を継承し、それもなければオフ（BE-0177）。先頭で simctl erase
   reinstall?:  ("clean" | "overwrite"),     # 既定 "clean" — config が appPath 指定時の再インストール
   launchArgs?: list(string),                # 既定 []
   launchEnv?:  map(string,string),          # 既定 {}    — SIMCTL_CHILD_* として注入
@@ -123,7 +141,8 @@ PermissionAction  ::= "grant" | "revoke"
 
 # ── Step = ちょうど 1 アクション + 任意の修飾子 ─────────────────────────
 Step      ::= <Action> & <StepMods>
-StepMods  ::= { capture?: list(<CaptureToken>), extract?: map(string, <Extract>), name?: string }
+StepMods  ::= { capture?: list(<CaptureToken>), extract?: map(string, <Extract>), name?: string, from?: string }
+                # `from`: 由来。record がこのステップを正規化した元の自然言語の文（BE-0044）
 Extract   ::= { sel: <Selector>, prop?: ("value"|"label"|"identifier") }   # 既定 "value"
 Action    ::=
     { tap:         <Selector> }
@@ -153,17 +172,23 @@ Action    ::=
   | { totp:        { secret: string, into: { var: string } } }  # RFC 6238 OTP → vars.<var>（secret は base32）
   | { email:       { match: { to?: string, subject?: string, subjectMatches?: string }, extract: { var: string, bodyMatches: string }, timeout: number } }  # メールボックスをポーリング → vars.<var>
   | { background:       {} }                               # Home ボタン（SpringBoard 経由でバックグラウンド化。終了はしない）
+  | { foreground:       {} }                               # バックグラウンド化したアプリを前面に戻す（simctl launch、終了なし）。background の対
   | { clearKeychain:    {} }                               # 保存済みパスワード / 証明書をリセット
   | { clearClipboard:   {} }                               # ペーストボードをクリア
+  | { setClipboard:     { text: string } }                 # ペーストボードにテキストを書き込む（simctl pbcopy）。ペースト操作の準備用
   | { overrideStatusBar: { time?: string, batteryLevel?: integer, batteryState?: string, cellularBars?: integer, wifiBars?: integer } }
   | { clearStatusBar:   {} }                               # ライブのステータスバーに戻す
   | { use:         { component: string, with?: map(string,string) } }   # マクロ（§6.2）
   | { if:          <If> }                                               # 条件分岐（capture/extract 不可）
   | { forEach:     <ForEach> }                                          # ループ（capture/extract 不可）
+  | { web:         <Web> }                                              # WebView の DOM コンテキストに入る（BE-0037。capture/extract 不可）
   | { manual:      { label: string, bypass?: string } }                # `record` 中に記録される人による操作の引き取り（BE-0185）。決定的な等価物がないため、`bypass` を配線しない限り実行時に明示的に失敗する
 
 If ::= { condition: <Assertion>, then: list(<Step>), else?: list(<Step>) }
 ForEach ::= { sel: <Selector>, as: string, steps: list(<Step>) }
+Web ::= { within: <Selector>, steps: list(<Step>) }
+    # `within` はネイティブに解決してちょうど1つの WKWebView ホストを指す。内側の `steps` はネイティブの
+    # アクセシビリティツリーではなく、正規化された DOM（`data-testid` → Element.identifier）を対象にする。
 
 Swipe ::=
     { on: <Selector>, direction: ("up"|"down"|"left"|"right"), amount?: number }   # セレクタ形  ┐ XOR
@@ -177,8 +202,8 @@ Point ::= [ number, number ]
 
 # ── Selector（1 条件以上・指定フィールドは AND）────────────────────────
 Selector ::= {
-  id?:           string,
-  idMatches?:    string,        # id に対するグロブ（fnmatch, 例 "list.row.*"）
+  id?:           string | list(string),        # リストは候補の OR（BE-0221）。1つのシナリオでプラットフォームごとの id 表記をすべて持てる。正本（ドット区切り）の形を先頭に置く
+  idMatches?:    string | list(string),         # id に対するグロブ（fnmatch, 例 "list.row.*"）。リストは id と同じ形で候補を OR する
   label?:        string,
   labelMatches?: string,        # label に対する正規表現
   traits?:       list(string),
@@ -204,12 +229,18 @@ Assertion ::=
   | { disabled: <Selector> }
   | { selected: <Selector> }
   | { request:  <RequestMatch> }
+  | { event:    <EventMatch> }        # アプリが送信したアナリティクス / テレメトリのイベント（BE-0048）
+  | { requestSequence: list(<RequestMatch>) }   # 1 つ以上のマッチャ。マッチしたやり取りの順序付き集合
+  | { responseSchema: <ResponseSchemaMatch> }   # 取得したレスポンスボディを JSON Schema で検証する（BE-0048）
   | { visual:   <VisualMatch> }
   | { clipboard: <ClipboardMatch> }   # デバイスのペーストボードの読み戻し（simctl pbpaste）
+  | { golden:   <GoldenMatch> }       # 実行中の要素ツリーを記録済みの golden ファイルと比較する（BE-0006）
 
 TextMatch  ::= { sel: <Selector> } & ( {equals:string} | {contains:string} | {matches:string} )
 CountMatch ::= { sel: <Selector> } & ( {equals:integer} | {atLeast:integer} | {atMost:integer} )
+CountOp    ::= ( {equals:integer} | {atLeast:integer} | {atMost:integer} )   # セレクタを持たない件数比較。EventMatch の多重度に使う
 ClipboardMatch ::= ( {equals:string} | {matches:string} )   # ちょうど 1 つ。matches は正規表現
+GoldenMatch ::= { path: string }   # golden コンテキストのベースディレクトリに対して解決する（BE-0006）
 
 VisualMatch ::= {                  # 画面をベースライン画像とピクセル比較する
   baseline:   string,             # --baselines 内で解決されるファイル名（既定: シナリオ隣の baselines/）
@@ -234,12 +265,25 @@ RequestMatch ::= {              # 下記マッチフィールドの 1 つ以上
   count?:       integer,        # アサーション → 厳密一致数 / wait → 下限
 }
 
+EventMatch ::= {                # エンドポイント条件（method/url/urlMatches/path/pathMatches）または body の 1 つ以上
+  method?:      string,
+  url?:         string,
+  urlMatches?:  string,
+  path?:        string,
+  pathMatches?: string,
+  body?:        map(string,string),  # 各キーがリクエストボディの JSON に存在し、値がテキストとして一致すること
+  count?:       <CountOp>,           # 期待する多重度（既定: 1 回以上）
+}
+
+ResponseSchemaMatch ::= { request: <RequestMatch>, schema: string }   # `schema` はアプリの schemas ディレクトリに対して解決する
+
 # ── 証跡キャプチャ ─────────────────────────────────────────────────────
 CaptureToken ::= <Kind> ( "." <Modifier> )?
 Kind     ::= "screenshot" | "elements" | "actionLog" | "deviceLog" | "network" | "video" | "appTrace"
 Modifier ::= "before" | "after" | "around" | "onError"
 
-CaptureRule ::= { on: <Trigger>, capture: list(<CaptureToken>) }
+CaptureRule ::= { on: <Trigger>, capture: list(<CaptureToken>), from?: string }
+    # `from`: 由来。この証跡ルールを正規化した元の指示（BE-0044）
 Trigger ::=                                    # action / event / result のどれか 1 つ
     { action: string, idMatches?: string }     # idMatches は action と併用のときだけ
   | { event: "screenChanged" }
@@ -247,7 +291,9 @@ Trigger ::=                                    # action / event / result のど�
 
 # ── Network / mocks / redact ───────────────────────────────────────────
 Network ::= { filter?: { domains?: list(string) } }
-Redact  ::= { labels?: list(string), headers?: list(string), fields?: list(string) }
+Redact  ::= { labels?: list(string), headers?: list(string), fields?: list(string), unmaskHeaders?: list(string) }
+    # unmaskHeaders: 既定でマスクされる認証情報系ヘッダ（authorization、cookie、set-cookie など）の
+    # うち1つを明示的に解除する opt-out（BE-0130）
 Mock    ::= { match: <RequestMatch>, respond?: <MockResponse> }   # match はリクエスト側フィールドのみ
 MockResponse ::= { status?: integer, headers?: map(string,string), body?: string, delayMs?: number }
 ```
@@ -283,6 +329,9 @@ MockResponse ::= { status?: integer, headers?: map(string,string), body?: string
 | `CountMatch`（`count`） | `equals` / `atLeast` / `atMost` の **ちょうど 1 つ** | `scenario/models/assertions.py` |
 | `ClipboardMatch`（`clipboard`） | `equals` / `matches` の **ちょうど 1 つ** | `scenario/models/assertions.py` |
 | `RequestMatch` | `method`/`url`/`urlMatches`/`path`/`pathMatches`/`status`/`bodyMatches` の **1 つ以上**（`count` はマッチフィールドではない） | `scenario/models/assertions.py` |
+| `EventMatch`（`event`） | `method`/`url`/`urlMatches`/`path`/`pathMatches`/`body` の **1 つ以上** | `scenario/models/assertions.py` |
+| `CountOp`（`event.count`） | `equals` / `atLeast` / `atMost` の **ちょうど 1 つ** | `scenario/models/assertions.py` |
+| `Assertion.requestSequence` | **1 件以上** | `scenario/models/assertions.py` |
 | `Trigger`（`capturePolicy[].on`） | `action` / `event` / `result` の **ちょうど 1 つ**。`idMatches` は `action` と **併用時のみ** | `scenario/models/evidence.py` |
 | `Scenario` | `data` と `dataFile` は **両方不可** | `scenario/models/scenario.py` |
 | すべてのマッピング | **未知キー不可**（`extra="forbid"`） | `scenario/models/_base.py` |
@@ -297,11 +346,11 @@ MockResponse ::= { status?: integer, headers?: map(string,string), body?: string
 
 | フィールド | 既定値 |
 |---|---|
-| `Scenario.tags` / `expect` / `capturePolicy` / `mocks` | `[]` |
-| `Scenario.preconditions` | `{}`（= `erase: false`, `reinstall: clean`） |
+| `Scenario.tags` / `expect` / `capturePolicy` / `mocks` / `interrupts` | `[]` |
+| `Scenario.preconditions` | `{}`（= `erase` は未設定 — target config が指定しない限りオフ、`reinstall: clean`） |
 | `Scenario.systemAlertHandling` | 未指定（アラートガード ON; プロンプトを dismiss） |
 | `Scenario.permissions` | `{}`（起動前の権限状態を適用しない） |
-| `Preconditions.erase` | `false` |
+| `Preconditions.erase` | 未設定 — target config の `erase` を継承し、それもなければオフ（BE-0177） |
 | `Preconditions.reinstall` | `clean` |
 | `Preconditions.launchArgs` | `[]` |
 | `Preconditions.launchEnv` | `{}` |
@@ -311,6 +360,7 @@ MockResponse ::= { status?: integer, headers?: map(string,string), body?: string
 | `MockResponse.status` | `200` |
 | `MockResponse.headers` | `{}` |
 | `Component.params` | `[]` |
+| `ScenarioFile.schema` | `1`（BE-0119） |
 
 最小シナリオの全体:
 
@@ -398,7 +448,7 @@ load_scenarios        # この文法に対しパース + 検証
 
 ## 7. 検証とラウンドトリップ
 
-- `load_scenarios(text) -> list[Scenario]` は上記すべてに対して検証します。トップレベルはシーケンスが必須で、[§4](#4-個数と排他の制約) のいずれかの規則違反はロードエラーになります（`scenario/load.py`）。
+- `load_scenarios(text) -> list[Scenario]` は上記すべてに対して検証します。トップレベルはシナリオのシーケンスか `{description, scenarios}` マッピングのいずれかが必須で、[§4](#4-個数と排他の制約) のいずれかの規則違反はロードエラーになります（`scenario/load.py`）。
 - `dump_scenarios(scenarios) -> str` は YAML へ戻します。可読性のため `None` / 空リスト / 空辞書を刈り取り、エイリアスキー（`idMatches`、`launchEnv` など）で出力します。出力は **そのまま再ロード可能**で、`record` が依存するラウンドトリップです（`scenario/serialize.py`）。
 
 形の背後にある意味論（セレクタが 0/1/2+ 件にどう解決するか、各アサーションがどう比較するか、wait がどうタイムアウトするか）は [selectors](selectors.md) と [run-loop](run-loop.md) を参照してください。例でシナリオを書き始めるには [scenarios](scenarios.md) を参照してください。

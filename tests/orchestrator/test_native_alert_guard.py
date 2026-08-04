@@ -35,6 +35,14 @@ class _Incapable:
         return set()
 
 
+class _NonNativeDriver(FakeDriver):
+    """A web/Android-shaped backend stand-in: capable of everything `FakeDriver` is, minus
+    `HANDLE_SYSTEM_ALERT` — for asserting the in-tree dismiss path stays native-only."""
+
+    def capabilities(self) -> set[str]:
+        return super().capabilities() - {base.Capability.HANDLE_SYSTEM_ALERT}
+
+
 def _button(label: str) -> base.Element:
     return {
         "identifier": None,
@@ -279,6 +287,213 @@ def test_gate_polls_the_native_query_on_its_own_interval_not_every_tick() -> Non
     # ~40 condition polls over the 2s budget, but the native query fires about once per second:
     # a two-sided bound proves it re-fires on the interval (not just once) yet not every tick.
     assert 2 <= probes["n"] <= 4
+
+
+def test_gate_dismisses_an_app_attached_sheet_from_the_tree_without_vision() -> None:
+    # A system-owned prompt that is never SpringBoard-enumerable (e.g. iOS's Save Password sheet,
+    # attached to the app's own accessibility tree) reads as "absent" on every native probe forever,
+    # yet its own labeled, identifier-less buttons keep `shows_app_ui` from seeing a collapsed tree
+    # either — both mid-wait detectors used to sit idle for the whole timeout on exactly this shape.
+    # The in-tree label match (BE-0316's gap) must clear it within a poll or two, no vision call.
+    from bajutsu.orchestrator.waits import _wait
+
+    target = _button("R")
+    target["identifier"] = "ready"
+    prompt_button = _button(
+        "今はしない"
+    )  # identifier-less, like a real system-owned sheet's button
+
+    def react(d: FakeDriver, kind: str, arg: object) -> None:
+        if kind == "tap" and arg == {"label": "今はしない", "traits": ["button"]}:
+            d.screen = [target]  # dismissing the sheet reveals the awaited element
+
+    driver = FakeDriver([prompt_button], react=react)  # capable; no SpringBoard alert seeded
+    guard = AlertGuardConfig(
+        vision=_never_vision, labels=["今はしない", "Not Now"], poll_interval=1.0
+    )
+    alerts: list[AlertEvent] = []
+    clock = _LogicalClock()
+    ok, reason, _tree = _wait(
+        driver, _for_wait("ready", 30.0), clock, alert_guard=guard, alerts=alerts
+    )
+    assert ok and reason == ""
+    assert clock.now() < 1.0  # cleared at tree-poll latency, not anywhere near the 30s timeout
+    assert alerts == [AlertEvent(label="今はしない")]
+
+
+def test_dismiss_from_tree_taps_a_showing_at_most_once() -> None:
+    # A real dismiss isn't instant: a fading-out button can linger in the tree for a poll or two
+    # after the tap before the screen actually updates. Without its own guard, `_dismiss_from_tree`
+    # runs every `_POLL` with no cooldown, so it would re-match and re-tap the same button on every
+    # one of those polls — over-counting one dismissal into several `AlertEvent`s and actuating the
+    # app repeatedly (a second tap can land on whatever is underneath a fading sheet).
+    from bajutsu.orchestrator.waits import _wait
+
+    target = _button("R")
+    target["identifier"] = "ready"
+    prompt_button = _button("今はしない")
+
+    class _LingeringDismiss(FakeDriver):
+        def __init__(self) -> None:
+            super().__init__([prompt_button])
+            self._polls_since_tap: int | None = None
+
+        def tap(self, sel: base.Selector) -> None:
+            super().tap(sel)
+            self._polls_since_tap = 0
+
+        def query(self) -> list[base.Element]:
+            if self._polls_since_tap is not None:
+                self._polls_since_tap += 1
+                if self._polls_since_tap >= 3:  # the animation finishes; the screen updates
+                    return [target]
+            return list(self.screen)
+
+    driver = _LingeringDismiss()
+    guard = AlertGuardConfig(vision=_never_vision, labels=["今はしない"], poll_interval=1.0)
+    alerts: list[AlertEvent] = []
+    ok, _reason, _tree = _wait(
+        driver, _for_wait("ready", 2.0), _LogicalClock(), alert_guard=guard, alerts=alerts
+    )
+    assert ok
+    tap_sel = {"label": "今はしない", "traits": ["button"]}
+    assert driver.actions.count(("tap", tap_sel)) == 1  # tapped exactly once
+    assert alerts == [AlertEvent(label="今はしない")]  # exactly one dismissal recorded, not several
+
+
+def test_dismiss_from_tree_declines_on_an_in_app_label_collision() -> None:
+    # A system-owned identifier-less button and an app-authored one share a configured label:
+    # pick_alert_label resolves uniquely over the identifier-less subset, but the whole-tree tap
+    # sees both and must decline rather than tap the wrong one (determinism first). A *persistent*
+    # collision (unlike a vanish race) must decline before ever attempting the tap: the collision
+    # never clears, so `_tree_dismiss_pending` (only armed on a successful tap) never guards it, and
+    # a decline reached only via `except AmbiguousSelector` would re-issue the on-device tap every
+    # `_POLL` for the rest of the wait — count `tap()` calls directly, not `driver.actions`, since a
+    # raised `AmbiguousSelector` never reaches `_record` either way.
+    from bajutsu.orchestrator.waits import _wait
+
+    prompt_button = _button("Not Now")  # identifier-less, system-owned
+    app_button = _button("Not Now")
+    app_button["identifier"] = "screen.home.button.not-now"
+
+    class _CountingTapDriver(FakeDriver):
+        def __init__(self) -> None:
+            super().__init__([prompt_button, app_button])
+            self.tap_calls = 0
+
+        def tap(self, sel: base.Selector) -> None:
+            self.tap_calls += 1
+            super().tap(sel)
+
+    driver = _CountingTapDriver()  # native-capable; no SpringBoard alert
+    guard = AlertGuardConfig(vision=_never_vision, labels=["Not Now"], poll_interval=1.0)
+    ok, _reason, _tree = _wait(
+        driver, _for_wait("ready", 0.2), _LogicalClock(), alert_guard=guard, alerts=[]
+    )
+    assert not ok
+    assert driver.actions == []  # ambiguous → declined, nothing tapped
+    assert driver.tap_calls == 0  # declined before attempting the tap, not caught after
+
+
+def test_dismiss_from_tree_dismisses_despite_a_non_button_label_collision() -> None:
+    # A bare `{"label": label}` selector resolves via `matches()` (base.py), which matches on
+    # `label` alone and ignores `traits` — so a non-button element sharing the exact text (a static
+    # caption drawn next to the sheet, a header) would make a trait-unscoped tap ambiguous despite
+    # the intended button being uniquely named among buttons. Scoping both the pre-check and the tap
+    # itself to `traits: [BUTTON]` (mirroring the `buttons` filter `label` was resolved against)
+    # means a same-labeled caption never blocks dismissal at all.
+    from bajutsu.orchestrator.waits import _wait
+
+    target = _button("R")
+    target["identifier"] = "ready"
+    prompt_button = _button("Not Now")  # identifier-less, system-owned
+    caption = _button("Not Now")
+    caption["traits"] = ["staticText"]  # not a button; must not block the tap below
+
+    def react(d: FakeDriver, kind: str, arg: object) -> None:
+        if kind == "tap" and arg == {"label": "Not Now", "traits": ["button"]}:
+            d.screen = [target]
+
+    driver = FakeDriver(
+        [prompt_button, caption], react=react
+    )  # native-capable; no SpringBoard alert
+    guard = AlertGuardConfig(vision=_never_vision, labels=["Not Now"], poll_interval=1.0)
+    alerts: list[AlertEvent] = []
+    ok, _reason, _tree = _wait(
+        driver, _for_wait("ready", 0.2), _LogicalClock(), alert_guard=guard, alerts=alerts
+    )
+    assert ok
+    assert alerts == [AlertEvent(label="Not Now")]
+
+
+def test_dismiss_from_tree_never_matches_an_in_app_button_carrying_an_identifier() -> None:
+    # An app screen with its own button that happens to share a policy label (e.g. a real in-app
+    # "Not Now") must never be tapped by the guard — only a system-owned, identifier-less button can
+    # match, same restriction `system_alert_labels()` already assumes for a genuine SpringBoard alert.
+    from bajutsu.orchestrator.waits import _wait
+
+    target = _button("R")
+    target["identifier"] = "ready"
+    app_button = _button("Not Now")
+    app_button["identifier"] = "screen.home.button.not-now"  # an app-authored button, not a prompt
+
+    driver = FakeDriver([app_button])  # capable; no SpringBoard alert seeded; never reveals "ready"
+    guard = AlertGuardConfig(vision=_never_vision, labels=["Not Now"], poll_interval=1.0)
+    ok, _reason, _tree = _wait(
+        driver, _for_wait("ready", 0.2), _LogicalClock(), alert_guard=guard, alerts=[]
+    )
+    assert not ok  # the in-app button was never tapped, so "ready" never appears
+    assert driver.actions == []  # confirms no tap was issued against it
+
+
+def test_dismiss_from_tree_never_fires_on_a_non_native_backend() -> None:
+    # The in-tree match is native-only (the app-attached-sheet case it targets is an iOS one): a
+    # web/Android-shaped backend must keep its pre-existing behavior untouched — only the
+    # collapsed-tree + vision path (BE-0269) can act there, never the fast in-tree tap.
+    from bajutsu.orchestrator.waits import _wait
+
+    target = _button("R")
+    target["identifier"] = "ready"
+    prompt_button = _button("今はしない")
+
+    def react(d: FakeDriver, kind: str, arg: object) -> None:
+        if kind == "tap" and arg == {"label": "今はしない"}:
+            d.screen = [target]  # would reveal "ready" if the in-tree path fired (it must not)
+
+    driver = _NonNativeDriver([prompt_button], react=react)
+    guard = AlertGuardConfig(
+        vision=_never_vision, labels=["今はしない", "Not Now"], poll_interval=1.0
+    )
+    ok, _reason, _tree = _wait(
+        driver, _for_wait("ready", 0.2), _LogicalClock(), alert_guard=guard, alerts=[]
+    )
+    assert not ok  # never tapped, so "ready" never appears; the wait runs to its full budget
+    assert driver.actions == []
+
+
+def test_dismiss_from_tree_never_fires_on_default_dismissive_labels_alone() -> None:
+    # Without an explicit `systemAlertHandling.instruction`, only `DEFAULT_DISMISSIVE_LABELS`
+    # applies — generic English UI vocabulary ("Cancel", "Close", …) a real app screen can
+    # legitimately show. The fast in-tree path must stay off unless the scenario author opted in
+    # with their own `labels`; a default-only guard falls back to the collapsed-tree + vision path,
+    # same as before this path existed.
+    from bajutsu.orchestrator.waits import _wait
+
+    target = _button("R")
+    target["identifier"] = "ready"
+    cancel_button = _button("Cancel")  # identifier-less; matches DEFAULT_DISMISSIVE_LABELS
+
+    def react(d: FakeDriver, kind: str, arg: object) -> None:
+        if kind == "tap" and arg == {"label": "Cancel"}:
+            d.screen = [target]  # would reveal "ready" if the in-tree path fired (it must not)
+
+    driver = FakeDriver([cancel_button], react=react)  # native-capable; no labels configured
+    guard = AlertGuardConfig(vision=_never_vision, poll_interval=1.0)  # labels=[] (default)
+    ok, _reason, _tree = _wait(
+        driver, _for_wait("ready", 0.2), _LogicalClock(), alert_guard=guard, alerts=[]
+    )
+    assert not ok
+    assert driver.actions == []
 
 
 def test_gate_unhandled_native_alert_falls_back_to_vision_bounded() -> None:

@@ -98,32 +98,37 @@ deterministic gate (`make check`) is the judge — never an LLM.
 1. **Resolve the item** and read **both** language files. Implementing a `Proposal` *accepts* it —
    this PR flips it to `Implemented` — so the skill says so up front. An already-`Implemented` or a
    `Proposal (deferred)` item makes it stop and confirm what you actually want.
-2. **Ground in the spec and the code.** It reads the Detailed design and *Alternatives considered*
+2. **Claim the tracking issue.** Every open item has a GitHub issue labeled `roadmap-tracking`; if
+   someone else is already assigned, the skill stops rather than duplicating work. Otherwise it
+   self-assigns the issue before branching.
+3. **Ground in the spec and the code.** It reads the Detailed design and *Alternatives considered*
    (the latter records paths already rejected, often for directive reasons — do not re-propose them),
    opens every file the proposal links, checks [implementation status](architecture.md#implementation-status),
    and verifies any prerequisite BE item is not itself still a proposal.
-3. **Set up a focused branch** off the latest `origin/main` (`claude/be-NNNN-<slug>`), staying in
+4. **Set up a focused branch** off the latest `origin/main` (`claude/be-NNNN-<slug>`), staying in
    its lane — only the files this item needs.
-4. **Plan, then confirm before writing code.** A whole roadmap item is large and hard to reverse, so
+5. **Plan, then confirm before writing code.** A whole roadmap item is large and hard to reverse, so
    it gets your go-ahead on a concrete plan first: the files it will touch, the *machine-checkable*
    outcome that proves it works (and where AI is and is not allowed to sit), the tests, the docs that
    must move in both languages, and any tension with the prime directives.
-5. **Implement** to the design, matching the codebase grain — strict `mypy`, configured `ruff`,
+6. **Implement** to the design, matching the codebase grain — strict `mypy`, configured `ruff`,
    condition waits not `sleep`, new knobs in `targets.<name>` config, tests as the regression net,
    and bilingual docs for any documented behavior.
-6. **Review and refine the diff** with the built-in [`simplify`](../.claude/skills) and
+7. **Review and refine the diff** with the built-in [`simplify`](../.claude/skills) and
    [`code-review`](../.claude/skills) skills, and — for a non-trivial change — the **pr-review-toolkit**
    agents. These are *authoring aids*: they advise the author and never judge, so directive #1 holds
    and no LLM touches the `run`/CI path.
-7. **Flip the item to Implemented.** In both language files set `Status: Implemented` and add the
+8. **Flip the item to Implemented.** In both language files set `Status: Implemented` and add the
    `Implementing PR` line — nothing else to regenerate, since the dashboard reads `Status` straight
    off the item's metadata. The directory never moves (BE-0159): only the `Status` and its dashboard
    bucket change.
-8. **Verify — the gate.** `make check` must be green; never push red. If correctness genuinely
+9. **Verify — the gate.** `make check` must be green; never push red. If correctness genuinely
    depends on a Simulator/browser run, the [`verify`](../.claude/skills) skill drives it rather than
    claiming it works untested.
-9. **PR only when asked.** Push to the branch; the human usually opens the PR. The title carries the
-   `[BE-NNNN]` prefix, and the `Implementing PR` line is filled with the real number.
+10. **Auto-open the Draft PR.** Once the gate is green, the skill opens the PR itself instead of
+    waiting for a request — its output is always a self-contained, gate-green change. The title
+    carries the `[BE-NNNN]` prefix, and a follow-up push fills the `Implementing PR` line with the
+    real number.
 
 ## Why two skills, not one
 

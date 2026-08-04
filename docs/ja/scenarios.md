@@ -90,7 +90,7 @@ scenarios:
 
 | キー | 型 | 既定 | 説明 | 配線 |
 |---|---|---|---|---|
-| `erase` | bool | `false` | 各テスト前にシミュレータ全体を wipe する（`simctl erase`。アプリ、データ、設定を消去する）。既定はオフ。`reinstall` が全 wipe なしでアプリを新規状態に保つので、まっさらなデバイスが必要なテストだけ `true` にする | ✅ |
+| `erase` | bool | 未設定（継承。config が無ければオフ） | 各テスト前にシミュレータ全体を wipe する（`simctl erase`。アプリ、データ、設定を消去する）。既定はオフ。`reinstall` が全 wipe なしでアプリを新規状態に保つので、まっさらなデバイスが必要なテストだけ `true` にする | ✅ |
 | `reinstall` | `clean` \| `overwrite` | `clean` | config が `appPath` を指定したとき、各 run の前にアプリをどう再インストールするか。`clean` は uninstall してから install する（アプリとデータを fresh にする）。`overwrite` は既存アプリに上書き install する（データコンテナは保持する） | ✅ |
 | `launchArgs` | list[str] | `[]` | 起動引数（config の `launchArgs` に追記する） | ✅ |
 | `launchEnv` | dict | `{}` | 起動 env（`SIMCTL_CHILD_*` で注入する。config の `launchEnv` にマージする） | ✅ |
@@ -99,6 +99,13 @@ scenarios:
 | `setup` | str | なし | 再利用する前段シナリオファイル（このシナリオからの相対で解決）。その steps を本編の前に実行する | ✅ |
 
 > `launchEnv` の解決順は **config の `launchEnv` < preconditions の `launchEnv`** です（テストに近い方が優先）。`launch_driver` は `{**eff.launch_env, **pre.launch_env}` でマージします。
+
+> `erase` の解決順は **CLI の `--erase`/`--no-erase` > このシナリオ自身の `erase` > target config の
+> `run_defaults.erase` > 組み込みのオフ**です
+> （[BE-0177](../../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)、
+> [configuration](configuration.md#設定の階層defaults--targets)）。未設定のシナリオ（多くの場合はこれ）は
+> target config の既定を継承し、config 側も指定がなければオフになります。`_filter_scenarios`
+> （`cli/commands/run.py`）が run の開始前にこれを解決します。
 
 ## systemAlertHandling（システムアラートガード）
 
@@ -286,6 +293,7 @@ targets:
 | アクション | 形 | 説明 |
 |---|---|---|
 | `tap` | `tap: <Selector>` | 一意解決を要求する（曖昧なら失敗） |
+| `tapPoint` | `tapPoint: { x: <frac>, y: <frac> }` | セレクタではなく正規化座標（0..1、左上原点）でタップします。アクセシビリティツリーが要素として公開しない操作対象（id のないタブバーのタブなど）に使う、安定性の梯子の最下段です。`record` の vision 経路がこれを出力し、`run` はそのときの画面サイズに合わせて再生します |
 | `doubleTap` | `doubleTap: <Selector>` | 解決した要素を 2 回素早くタップする |
 | `longPress` | `longPress: { sel: <Selector>, duration: <sec> }` | 長押し |
 | `type` | `type: { text: "...", into?: <Selector>, submit?: <bool> }` | `into` 指定時は先にフォーカスする |
@@ -297,9 +305,10 @@ targets:
 | `swipe` | `swipe: { on: <Selector>, direction: up\|down\|left\|right }` または `swipe: { from: [x,y], to: [x,y] }` | セレクタ形と座標形は混在できない。方向指定形式は**スクロール**する |
 | `drag` | `drag: { on: <Selector>, direction: up\|down\|left\|right, amount?: <frac> }` | 要素そのものを**ドラッグ**する（ハンドル／仕切り／スライダー）。スクロールではない |
 | `scroll` | `scroll: { to: <Selector>, direction?: up\|down\|left\|right, within?: <Selector>, maxScrolls?: <int> }` | `to` が画面に入るまで（慣性なしに）スクロールし、上限に達したら失敗する。`direction` は**スクロール**方向（既定 `down`）で、`swipe` とは逆向き |
+| `back` | `back: {}` | 1 階層戻ります。各バックエンドがプラットフォームに合った手段（Android のシステム戻るキー、iOS の OS 提供の戻るボタン、web の履歴）を使います（[BE-0210](../../roadmaps/BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity-ja.md)） |
 | `pinch` | `pinch: { sel: <Selector>, scale: <num> }` | 2 本指の拡縮。`scale > 0`（`>1` で拡大, `<1` で縮小） |
 | `rotate` | `rotate: { sel: <Selector>, radians: <num> }` | 2 本指の回転。`>0` で時計回り |
-| `handleSystemAlert` | `handleSystemAlert: { sel: <Selector>, timeout: <sec> }` | iOS SpringBoard の権限プロンプトのボタンを決定的に tap する（[下記](#handlesystemalert決定的なシステムアラートステップ)）。iOS（XCUITest）専用。`sel` は `label` / `labelMatches` / `index` のみ受け付ける |
+| `handleSystemAlert` | `handleSystemAlert: { sel: <Selector>, timeout: <sec> }` | iOS SpringBoard の権限プロンプトのボタンを決定的に tap する（[下記](#handlesystemalert決定的なシステムアラートステップ)）。iOS（XCUITest）専用。`sel` は `label` / `labelMatches` / `index` のみ受け付け、run が Simulator を固定するシステム言語に対して解決する。`sel` の代わりに `prompt: notifications\|tracking` と `choice: grant\|deny` を指定すると、ボタンを意味で指定でき、run がその label を解決する（BE-0320） |
 | `wait` | `wait: { for\|until: ..., timeout: <sec> }` | 条件待機（下記） |
 | `assert` | `assert: [ <Assertion>... ]` | ステップ途中の中間検証 |
 | `relaunch` | `relaunch: { env?: {...}, args?: [...] }` | アプリを terminate + 再起動し（launch env/args を再適用し、指定分で上書き）、ready まで待つ |
@@ -317,6 +326,7 @@ targets:
 | `overrideStatusBar` | `overrideStatusBar: { time?, batteryLevel?, batteryState?, cellularBars?, wifiBars? }` | 決定的なスクリーンショットのためステータスバーを上書きする |
 | `clearStatusBar` | `clearStatusBar: {}` | ステータスバーの上書きを解除する（ライブ表示に戻す） |
 | `use` | `use: { component: <file>, with?: {...} }` | 再利用コンポーネントの steps を展開する。コンパイル時マクロ（[再利用](#再利用とデータ駆動とタグ)） |
+| `web` | `web: { within: <Selector>, steps: [...] }` | WebView の DOM コンテキストに入ります。`within` がホストの `WKWebView` をネイティブに解決し、入れ子の `steps` はネイティブツリーではなく正規化された DOM を対象にします（[後述](#webwebview-の-dom-コンテキストに入る)） |
 
 修飾子:
 
@@ -347,6 +357,18 @@ targets:
 ```
 
 ネイティブの HTML `<select>` は、ドロップダウンがページの要素ツリーに含まれないため、座標タップでは値を決定的に切り替えられません。`selectOption` は、ほかのアクションと同じ一意解決のコアで `<select>` を解決したうえで、表示ラベルではなく option の **value** を指定して値を設定し、`change` イベントを発火します。これにより、ユーザーが選んだときと同じようにページが反応します。指定する value は `value` アサーションが `<select>` から読み取る値と一致するので、選択結果はそのまま検証できます。これは web 専用のアクションです。`<select>` は iOS や Android にネイティブの対応物がないため、これらのバックエンドは何もせずに済ませるのではなく、「サポート外のアクション」という明確な理由でステップを失敗させます。
+
+### `web`（WebView の DOM コンテキストに入る）
+
+```yaml
+- web:
+    within: { id: checkout.webview }
+    steps:
+      - tap: { id: pay.submit }
+      - wait: { for: { id: pay.confirmation }, timeout: 10 }
+```
+
+`web` は `within` をネイティブに解決し、ちょうど 1 つの `WKWebView` ホストを指します。入れ子の `steps` は、アプリのネイティブなアクセシビリティツリーではなく、その WebView の正規化された DOM（`data-testid` → `Element.identifier`）を対象にします。web コンテンツをネイティブアプリに埋め込んだハイブリッド画面向けの構造です（[BE-0037](../../roadmaps/BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support-ja.md)）。ブロックの `steps` を終えると、制御はネイティブドライバーに戻ります。入れ子の `steps` は、`if` や `forEach` の分岐と同じく、囲むシナリオの `vars.*` を共有します。`capture` / `extract` 修飾子は `web` ステップ自体には使えません。WebView bridge の設定（`BAJUTSU_WEBVIEW_PORT`）が必要で、未設定のときは何もせず済ませるのではなくステップを明確に失敗させます。この最初の実装は、ブロック内の `tap` / `tapPoint` / `doubleTap` / `type` / `wait` / `assert` に対応しています。`longPress` / `swipe` / `drag` / `clear` / `delete` / `select` / `copy` / `selectOption` / `scroll` / `back` / `pinch` / `rotate` / `handleSystemAlert` はまだそこに届かず、いずれも「web コンテキストは非対応」という明確な理由で失敗します。
 
 ### `swipe`
 
@@ -403,7 +425,7 @@ targets:
 - rotate: { sel: { id: gest.rotate }, radians: 1.57 }  # >0 clockwise (radians)
 ```
 
-`scale` は **> 0** が必須です（違反は検証エラー）。`pinch` / `rotate` はマルチタッチが必要で、iOS（XCUITest）バックエンドと生成された XCUITest（`pinch(withScale:)` / `rotate(_:)`）のどちらも備えています。マルチタッチのないバックエンドは "needs multiTouch" の理由で失敗します。`doubleTap` はどこでも動作します（2 回タップ）。（[`demos/showcase/scenarios/gestures.yaml`](../../demos/showcase/scenarios/gestures.yaml) 実物）
+`scale` は **> 0** が必須です（違反は検証エラー）。`pinch` / `rotate` はマルチタッチが必要で、iOS（XCUITest）バックエンドと生成された XCUITest（`pinch(withScale:)` / `rotate(_:)`）のどちらも備えています。マルチタッチのないバックエンドは "needs multiTouch" の理由で失敗します。`doubleTap` はどこでも動作します（2 回タップ）。（実物: `doubleTap` / `longPress` は [`demos/showcase/scenarios/gestures.yaml`](../../demos/showcase/scenarios/gestures.yaml)、`pinch` / `rotate` は [`demos/showcase/scenarios/gestures_multitouch.yaml`](../../demos/showcase/scenarios/gestures_multitouch.yaml)）
 
 ### `wait`（条件待機）
 

@@ -20,7 +20,7 @@ two-tier structure (below).
 |---|---|---|---|
 | `record` | Tier 1 | author | explores and proposes the next move → writes a deterministic scenario ([recording](recording.md)) |
 | `run` | Tier 2 | **none** | each step is act → wait → verify; pass/fail comes only from the `expect` machine assertions ([run-loop](run-loop.md)) |
-| `codegen` | — | none | structural mapping of a scenario to XCUITest ([codegen](codegen.md)) |
+| `codegen` | — | none | structural mapping of a scenario to XCUITest / Playwright / UI Automator ([codegen](codegen.md)) |
 
 The `run` path contains no `anthropic` call at all. The single exception is `--system-alert-handling`
 (it visually dismisses OS system alerts); it prepares the environment rather than deciding
@@ -57,7 +57,7 @@ The structure of the code enforces Bajutsu's "deterministic" behavior.
    cutting off contamination from the previous test. State is injected via launch env / deeplink
    ([drivers](drivers.md#environment-management-simctl)).
 4. **Pass/fail is machine-checkable only.** There is no "looks like it passed" judgment. The
-   machine assertions are `exists`/`value`/`label`/`count`/`enabled`/`disabled`/`selected`/`request`/`visual`
+   machine assertions are `exists`/`value`/`label`/`count`/`enabled`/`disabled`/`selected`/`request`/`event`/`requestSequence`/`responseSchema`/`visual`/`clipboard`/`golden`
    ([selectors](selectors.md#assertion-evaluation)).
 
 > The scope is narrow: stable identifiers only stabilize the **determinism of selection**.
@@ -78,9 +78,10 @@ convention (`<namespace>.<element>`) is in
 ## 5. The stability ladder
 
 UI actions are attempted **most-stable-first**, where "most stable" refers to selection (which
-element), not actuation. idb (the iOS actuator) actuates by coordinate tap at the frame center
-regardless, so what changes between rungs is how the element is chosen. The lower the rung, the
-more fragile.
+element), not actuation. Actuation differs by actuator. iOS's actuator (`xcuitest`) acts on the
+resolved element's handle, never a coordinate. Android's actuator (`adb`) and the web actuator
+(`playwright`) have no semantic tap. They act on the frame center instead. Either way, what changes
+between rungs is how the element is chosen. The lower the rung, the more fragile.
 
 | Rung | Selection (which element) | Stability |
 |---|---|---|
@@ -88,8 +89,10 @@ more fragile.
 | 2 | resolve by `label` / `traits` | weak to localization |
 | 3 | `index` / raw coordinates | breaks on layout changes. Last resort |
 
-> Actuation is always a frame-center coordinate tap: idb exposes no semantic tap, so the run loop
-> resolves the unique element and taps its frame center.
+> `adb` and `playwright` have no semantic tap, so for them the run loop resolves the unique element
+> and taps its frame center. `xcuitest` is the exception: it addresses the resolved element by the
+> opaque handle its runner minted for it, never a coordinate
+> ([drivers](drivers.md#backend-selection-and-the-actuator)).
 
 The **actuator** — the backend that performs actions — is the first available one in the
 most-stable-first `backend` list; it is fixed once at the start of a run and held for the whole run

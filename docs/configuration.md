@@ -56,17 +56,25 @@ all) is rejected at load. See [drivers → Playwright](drivers.md#playwright-web
 ### Resolution (`resolve` → `Effective`)
 
 `resolve(config, target)` builds the effective values `Effective` (a frozen dataclass) for one target.
-An undefined target raises `KeyError` (the CLI exits with code 2).
+An undefined target raises `KeyError` (the CLI exits with code 2). The platform-specific knobs below
+— each platform's own identifier plus the web-only `headless` / `browser` / `device_mode` — are not
+flat `Effective` attributes: `Effective.platform_config` narrows to one of three mutually exclusive
+sub-configs (`IosConfig` / `WebConfig` / `AndroidConfig`) keyed by the resolved `platform`
+([BE-0126](../roadmaps/BE-0126-per-platform-effective-config/BE-0126-per-platform-effective-config.md)).
+Read them through `bajutsu/config/accessors.py`'s narrowing helpers — `require_ios` / `require_web` /
+`require_android` for code already committed to one platform, or the "soft" `ios_bundle_id` /
+`web_base_url` / `web_engine` / `android_package` for code that reads a value defensively across
+platforms — rather than `effective.bundle_id` directly, which does not exist.
 
 | `Effective` field | Source | Notes |
 |---|---|---|
 | `platform` | app < defaults < derived | the target's platform (`ios`/`android`/`web`): explicit `platform` wins, else the target's `backend` implies it, else the identifier present, else `ios`. Selects which identifier is required ([BE-0009](../roadmaps/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md)) |
-| `bundle_id` | app | iOS target identifier; required when the platform is `ios` |
-| `base_url` | app | web target URL (Playwright backend); required when the platform is `web` |
-| `package` | app | Android target identifier; required when the platform is `android` |
-| `headless` | app | web backend only: `true` (default) runs headless; `false` shows a visible (headed) browser, in slow-motion. `bajutsu run --headed / --no-headed` and the Web UI's "show browser" toggle override per run; iOS ignores it |
-| `browser` | app | web backend only: the Playwright rendering engine to drive — `chromium` (default), `firefox`, or `webkit`. All three run headless on Linux. `bajutsu run/record --browser <engine>` overrides per run (flag > config > default), and `bajutsu run --browsers <list>` runs the cross-browser matrix (below); a missing engine binary is installed on demand. An unknown value is rejected at config load. iOS ignores it ([BE-0076](../roadmaps/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md)) |
-| `device_mode` | app | web backend only: the device mode a browser context is created with — `deviceMode: desktop` (the default, unchanged from today) or a Playwright device preset name (e.g. `iPhone 13`) that emulates its viewport / touch / device scale / user agent, driving the web target as that mobile device. It is desktop-browser emulation (Chrome DevTools' device toolbar), not a real device ([drivers → Playwright](drivers.md#playwright-web)). Resolved **lazily** against `playwright.devices` in the driver, so config load never imports Playwright; an unknown preset fails loudly at driver start, not at config load. Distinct from the top-level `device` (the iOS Simulator name), which a web target ignores. iOS / Android ignore this ([BE-0228](../roadmaps/BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation.md)) |
+| `platform_config.bundle_id` (`IosConfig`) | app | iOS target identifier; required when the platform is `ios` |
+| `platform_config.base_url` (`WebConfig`) | app | web target URL (Playwright backend); required when the platform is `web` |
+| `platform_config.package` (`AndroidConfig`) | app | Android target identifier; required when the platform is `android` |
+| `platform_config.headless` (`WebConfig`) | app | web backend only: `true` (default) runs headless; `false` shows a visible (headed) browser, in slow-motion. `bajutsu run --headed / --no-headed` and the Web UI's "show browser" toggle override per run; iOS ignores it |
+| `platform_config.browser` (`WebConfig`) | app | web backend only: the Playwright rendering engine to drive — `chromium` (default), `firefox`, or `webkit`. All three run headless on Linux. `bajutsu run/record --browser <engine>` overrides per run (flag > config > default), and `bajutsu run --browsers <list>` runs the cross-browser matrix (below); a missing engine binary is installed on demand. An unknown value is rejected at config load. iOS ignores it ([BE-0076](../roadmaps/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md)) |
+| `platform_config.device_mode` (`WebConfig`) | app | web backend only: the device mode a browser context is created with — `deviceMode: desktop` (the default, unchanged from today) or a Playwright device preset name (e.g. `iPhone 13`) that emulates its viewport / touch / device scale / user agent, driving the web target as that mobile device. It is desktop-browser emulation (Chrome DevTools' device toolbar), not a real device ([drivers → Playwright](drivers.md#playwright-web)). Resolved **lazily** against `playwright.devices` in the driver, so config load never imports Playwright; an unknown preset fails loudly at driver start, not at config load. Distinct from the top-level `device` (the iOS Simulator name), which a web target ignores. iOS / Android ignore this ([BE-0228](../roadmaps/BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation.md)) |
 | `device_provider` | app | where this target's devices come from — `deviceProvider: { kind: local }` (the default, today's locally-attached `--udid` path) or another `kind` that a device-cloud adapter registers to reserve a device off-host and hand the run its serial / endpoint. The `kind` is resolved against the device-provider registry **at run time, not config load**, so the deterministic core never imports a cloud SDK; an unknown `kind` fails loudly when the run resolves the provider. Only `bajutsu run` resolves it today — `record`, `crawl`, and `audit --repeat` still resolve devices the old way and silently ignore this field. The seam sits upstream of the device pool and entirely off the run/CI verdict path (a provider only acquires and releases a device). Two built-in providers ship today: **`local`** (the default — the locally-attached `--udid` path, no extra fields) and **`appium`** (the live path to a reserved iOS device behind a self-hosted Appium / WebDriver grid — requires `endpoint: <url>`; Bajutsu drives that endpoint end to end over a live W3C WebDriver transport, resolving selectors Python-side the same way the local XCUITest backend does; see [iOS device cloud](ios-device-cloud.md#live--an-appium-endpoint-provider)). Concrete cloud adapters ship as separate optional packages ([BE-0236](../roadmaps/BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction.md), [BE-0238](../roadmaps/BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution.md)) |
 | `launch_server` | app | optional `launchServer: {cmd, readyUrl, readyTimeout, cwd, env}` — bring up `baseUrl`'s host for the run, then tear it down: probe `readyUrl` (default `baseUrl`), reuse it if already serving, else run `cmd` and wait until ready (a condition wait, never a fixed sleep). The web analogue of `build` ([BE-0059](../roadmaps/BE-0059-launch-target-server/BE-0059-launch-target-server.md)). For an **uploaded** bundle in `serve`, the host never runs `cmd` directly — `serve --upload-exec` governs it (see [self-hosting](self-hosting.md#uploaded-config-command-execution-be-0090)); a `sandbox` run needs the extra fields `dockerImage` (a Docker image reference, e.g. `node:20-slim`) **or** `dockerfile` (a bundle-relative path built with `docker build`) — exactly one — plus `port` (the in-container listen port, published to a loopback host port) ([BE-0090](../roadmaps/BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md)) |
 | `run_defaults.system_alert_handling` / `.erase` / `.network` | app | per-app defaults for run-behavior settings otherwise set per scenario or on a CLI flag ([BE-0177](../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md)). `systemAlertHandling` takes the scenario form (`false`, or `{ enabled, instruction }`) and defaults the alert guard; `erase` defaults `preconditions.erase`; `network` defaults collecting the app's network exchanges. Each resolves **flag > scenario > this > built-in** (guard on, erase off, network on), mirroring `--headed`/`headless`: `bajutsu run --system-alert-handling/--no-system-alert-handling`, `--erase/--no-erase`, `--network/--no-network` (and `--alert-instruction`) still override for one run |
@@ -276,6 +284,36 @@ is optional and defaults to `http`, so an existing `mailbox:` block is unchanged
 fails the run with a clean config error rather than falling back. Only `http` ships today — it keys
 on transport, not on the mail vendor, because vendors differ only in JSON field names, which
 `fields` already absorbs.
+
+### Webhook notifications (`notify:`, BE-0099)
+
+`notify:` is a top-level list of webhook endpoints `bajutsu run` posts to as a post-verdict side
+effect — a Slack-first delivery path with no LLM and no way to affect the deterministic verdict
+([BE-0099](../roadmaps/BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications.md)):
+
+```yaml
+notify:
+  - format: slack                              # renderer; slack is the only one shipped today
+    url: "${secrets.SLACK_WEBHOOK_URL}"         # webhook URL; ${secrets.*} resolved at run time
+    on: [failure]                               # failure (default) / change / recovery / always / start
+    targets: []                                 # optional: only these scenario names; empty = every scenario
+```
+
+- `on` selects which events fire this endpoint: `failure` (any scenario failed, the default),
+  `always` (every run), `change` / `recovery` (the run's overall verdict flipped since the previous
+  run of the same config source, read from that run's `manifest.json` under the runs dir), and
+  `start` (fired once, before the run starts, with its own message — an endpoint whose `on` is
+  `[start]` alone fires only there, never post-verdict).
+- `targets` (unrelated to the top-level config `targets.<name>` map) narrows the notification to
+  scenarios whose name is in the list; empty (the default) covers every scenario in the run.
+- `targets.<name>.notify` overrides the top-level list **wholesale** for that target (never merged);
+  omitting it inherits the top-level `notify:` unchanged.
+- Delivery is best-effort: a bounded timeout, a couple of retries, and a failure only logs a warning
+  — it can never flip the verdict or exit code, the same after-the-verdict discipline `--zip` and
+  `--evidence-store` follow. Only `format: slack` renders today (a Block Kit message, listing up to
+  five failing scenarios with a "…and N more" tail); an unrecognized `format`, or a `url` with an
+  unresolved `${secrets.*}` token, is skipped with a logged warning rather than posting a broken
+  payload.
 
 ### Orgs (`orgs:`, the multi-tenant server backend)
 

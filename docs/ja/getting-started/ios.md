@@ -48,14 +48,15 @@ XCUITest backend は、**事前ビルドしたオンデバイスの runner**（t
 の一部として（`make runner-build`）ビルドまで済ませるので、追加でインストールするものはありません。
 Xcode だけで十分です。
 
-一発で通す経路は `make` ターゲットです。runner をビルドし、ビルドしたばかりのアプリを install し、
-smoke シナリオと `doctor` チェックを booted デバイスで実行します。
+一発で通す経路は `make` ターゲットです。runner をビルドし、ビルドしたばかりのアプリを install します。
+続けて、showcase のシナリオ一式（`xcuitest` または `systemalert` タグ付きのシナリオは除きます）を booted
+デバイスで実行します。
 
 ```bash
 make -C demos/showcase run-swiftui
 ```
 
-あるいは CLI を直接叩くこともできます（上と同じ手順を書き下したものです）。
+あるいは、smoke シナリオだけを対象に CLI を直接叩くこともできます。より短時間で済む単一シナリオの確認です。
 
 ```bash
 uv run bajutsu run --scenario demos/showcase/scenarios/smoke.yaml --target showcase-swiftui --backend ios --udid booted --no-erase
@@ -100,4 +101,7 @@ uv run bajutsu record --target showcase-swiftui --goal "log in and increment the
 uv run bajutsu codegen demos/showcase/scenarios/smoke.yaml --target showcase-swiftui -o UITests/Smoke.swift
 ```
 
-`make -C demos/showcase ui-test` で end-to-end に実行できます。構造のマッピングは [codegen](../codegen.md) を参照してください。
+`make -C demos/showcase ui-test` は、同じパイプラインを実物で end-to-end に示します（上とは別のシナリオ
+`components.yaml` からリポジトリ自身の checked-in フィクスチャを再生成し、`xcodebuild test` でビルドして
+実行します）。これは codegen の real-compile 検証であり、上で生成した `Smoke.swift` をそのまま実行するもの
+ではありません。構造のマッピングは [codegen](../codegen.md) を参照してください。
