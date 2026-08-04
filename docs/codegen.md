@@ -277,6 +277,7 @@ class ComponentsUITest {
     launch(extras)
 
     assertFalse(device.hasObject(byId("log.sheet.title")))
+    assertTrue(device.wait(Until.hasObject(byId("log.openFilter")), 10000L))
     device.findObject(byId("log.openFilter")).click()
 
     // expect
@@ -315,6 +316,13 @@ same limit the XCUITest emitter hits for NSPredicate `MATCHES`), so it stays a `
 
 ### Action mapping (UI Automator)
 
+`findObject` never auto-waits, unlike XCUITest or Playwright. A bare `findObject(<by>)` right after
+a launch or a navigating tap can return null on a screen that hasn't finished rendering. That null
+produces an uninformative `NullPointerException` instead of a named assertion failure, and CI
+congestion makes it more probable. Every action that resolves a target emits
+`assertTrue(device.wait(Until.hasObject(<by>), 10000L))` before its own line; the table below shows
+only the line each action contributes.
+
 | Scenario step | UI Automator |
 |---|---|
 | `tap` | `device.findObject(<by>).click()` |
@@ -326,7 +334,7 @@ same limit the XCUITest emitter hits for NSPredicate `MATCHES`), so it stays a `
 | `pinch` | `.pinchOpen(0.5f)` / `.pinchClose(0.5f)` (scale ≥ 1 zooms in) |
 | `wait { for }` | `assertTrue(device.wait(Until.hasObject(<by>), <ms>L))` |
 | `wait { until: gone }` | `assertTrue(device.wait(Until.gone(<by>), <ms>L))` |
-| `wait { until: screenChanged/settled }` | `device.waitForIdle(<ms>L)` — `findObject` does not auto-wait, so this is a real condition wait, not a bare comment |
+| `wait { until: screenChanged/settled }` | `device.waitForIdle(<ms>L)` — a real condition wait, not a bare comment |
 | `relaunch` | `launch(extras)` (re-issues the launch intent) |
 | `doubleTap` / `rotate` | `// TODO` (no UI Automator gesture) |
 | `handleSystemAlert` | `// TODO` (iOS-only; tap the system dialog directly on Android) |

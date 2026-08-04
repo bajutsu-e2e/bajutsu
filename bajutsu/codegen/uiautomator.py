@@ -60,6 +60,9 @@ _GLOB_CLASS_CHARS = set("[]")
 # not, so the emitted selector makes the prefix optional to match either — the reverse of the strip.
 _ID_PREFIX = "(.*:id/)?"
 
+# How long an emitted action waits for its target to exist before acting on it (see `_wait_for`).
+_ACTION_WAIT_TIMEOUT_MS = 10000
+
 
 def _s(text: str) -> str:
     """A Kotlin double-quoted string literal.
@@ -159,12 +162,26 @@ def _unsupported_selector_todo(sel: base.Selector) -> str:
     )
 
 
+def _wait_for(by: str) -> str:
+    """An `assertTrue(device.wait(Until.hasObject(...)))` line the target must satisfy first.
+
+    `findObject` never auto-waits, unlike XCUITest / Playwright (see `_emit_wait`'s note): the
+    screen right after a launch or a navigating tap can still be missing the target when the
+    *next* line runs — surfaced on the emulator as a bare `NullPointerException` on `.click()`
+    rather than a clear, named assertion failure, and worse under CI load, where rendering can
+    lag further behind the coarse "some window appeared" signal `launch()` waits on. Every
+    action waits for its own target first, so a slow render is absorbed by the poll instead of
+    racing it.
+    """
+    return f"assertTrue(device.wait(Until.hasObject({by}), {_ACTION_WAIT_TIMEOUT_MS}L))"
+
+
 def _act(sel: base.Selector, call: str) -> list[str]:
-    """A `device.findObject(<by>).<call>` line, or a TODO when the selector can't be rendered."""
+    """A wait for the target, then `device.findObject(<by>).<call>` — or a TODO."""
     by = _by(sel)
     if by is None:
         return [_unsupported_selector_todo(sel)]
-    return [f"device.findObject({by}).{call}"]
+    return [_wait_for(by), f"device.findObject({by}).{call}"]
 
 
 def _emit_step(step: Step) -> list[str]:
@@ -196,6 +213,7 @@ def _emit_step(step: Step) -> list[str]:
             return [_unsupported_selector_todo(step.delete.into.as_selector())]
         # Focus, then backspace `count` times (KEYCODE_DEL) — one key event per character (BE-0265).
         return [
+            _wait_for(by),
             f"device.findObject({by}).click()",
             f"repeat({step.delete.count}) {{ device.pressKeyCode(KeyEvent.KEYCODE_DEL) }}",
         ]
@@ -205,6 +223,7 @@ def _emit_step(step: Step) -> list[str]:
             return [_unsupported_selector_todo(step.select.into.as_selector())]
         # Focus, then Ctrl+A selects the whole field (BE-0265).
         return [
+            _wait_for(by),
             f"device.findObject({by}).click()",
             "device.pressKeyCode(KeyEvent.KEYCODE_A, KeyEvent.META_CTRL_ON)",
         ]

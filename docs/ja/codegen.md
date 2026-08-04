@@ -272,6 +272,7 @@ class ComponentsUITest {
     launch(extras)
 
     assertFalse(device.hasObject(byId("log.sheet.title")))
+    assertTrue(device.wait(Until.hasObject(byId("log.openFilter")), 10000L))
     device.findObject(byId("log.openFilter")).click()
 
     // expect
@@ -309,6 +310,12 @@ class ComponentsUITest {
 
 ### アクションのマッピング（UI Automator）
 
+`findObject` は XCUITest や Playwright と違って auto-wait しません。そのため起動直後や画面遷移の直後に裸の
+`findObject(<by>)` を呼ぶと、描画が終わっていない画面では null が返ります。この呼び出しは名前付きのアサーション
+失敗ではなく素の `NullPointerException` になり、CI ランナーが混雑しているときほど起きやすくなります。対象を解決
+するアクションは、そのため本体の行の前に必ず `assertTrue(device.wait(Until.hasObject(<by>), 10000L))` を発行
+します。以下の表は、アクション自身が追加する本体の行だけを示します。
+
 | シナリオ要素 | UI Automator |
 |---|---|
 | `tap` | `device.findObject(<by>).click()` |
@@ -320,7 +327,7 @@ class ComponentsUITest {
 | `pinch` | `.pinchOpen(0.5f)` / `.pinchClose(0.5f)`（scale ≥ 1 で拡大） |
 | `wait { for }` | `assertTrue(device.wait(Until.hasObject(<by>), <ms>L))` |
 | `wait { until: gone }` | `assertTrue(device.wait(Until.gone(<by>), <ms>L))` |
-| `wait { until: screenChanged/settled }` | `device.waitForIdle(<ms>L)`。`findObject` は auto-wait しないので、裸コメントではなく実際の条件待機にする |
+| `wait { until: screenChanged/settled }` | `device.waitForIdle(<ms>L)`。裸コメントではなく実際の条件待機になる |
 | `relaunch` | `launch(extras)`（起動 intent を再発行） |
 | `doubleTap` / `rotate` | `// TODO`（対応する UI Automator ジェスチャが無い） |
 | `handleSystemAlert` | `// TODO`（iOS 専用。Android ではシステムダイアログを直接 tap する） |

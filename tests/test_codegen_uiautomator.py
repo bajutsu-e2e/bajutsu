@@ -61,6 +61,26 @@ def test_tap_by_id_text_and_desc() -> None:
     assert 'device.findObject(By.desc("off")).click()' in code
 
 
+def test_tap_waits_for_the_target_before_clicking() -> None:
+    # findObject never auto-waits (unlike XCUITest/Playwright), so a bare click on a screen still
+    # rendering NPEs instead of failing loudly. Every action waits for its own target first —
+    # observed as a flake on the very first tap right after launch under CI load.
+    code = _gen("- name: x\n  steps:\n    - tap: { id: search }\n")
+    lines = [line.strip() for line in code.splitlines()]
+    wait_idx = lines.index('assertTrue(device.wait(Until.hasObject(byId("search")), 10000L))')
+    click_idx = lines.index('device.findObject(byId("search")).click()')
+    assert click_idx == wait_idx + 1
+
+
+def test_delete_and_select_also_wait_before_focusing() -> None:
+    code = _gen(
+        "- name: x\n  steps:\n"
+        "    - delete: { into: { id: form.note }, count: 2 }\n"
+        "    - select: { into: { id: form.note } }\n"
+    )
+    assert code.count('assertTrue(device.wait(Until.hasObject(byId("form.note")), 10000L))') == 2
+
+
 def test_type_into_sets_text_and_bare_type_is_todo() -> None:
     code = _gen(
         "- name: x\n  steps:\n"

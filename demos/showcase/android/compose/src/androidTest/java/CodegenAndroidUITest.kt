@@ -52,9 +52,11 @@ class CodegenandroiduitestUITest {
     extras["SHOWCASE_UITEST"] = "1"
     launch(extras)
 
+    assertTrue(device.wait(Until.hasObject(byId("search")), 10000L))
     device.findObject(byId("search")).click()
     assertTrue(device.wait(Until.hasObject(byId("search.field")), 10000L))
     assertTrue(device.wait(Until.hasObject(byId("search.row.1")), 5000L))
+    assertTrue(device.wait(Until.hasObject(byId("search.field")), 10000L))
     device.findObject(byId("search.field")).text = "Horse 5"
     assertTrue(device.wait(Until.hasObject(byId("search.row.5")), 5000L))
     assertTrue(device.wait(Until.gone(byId("search.row.1")), 5000L))
