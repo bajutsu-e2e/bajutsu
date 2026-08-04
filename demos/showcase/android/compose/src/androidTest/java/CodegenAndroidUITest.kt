@@ -152,12 +152,17 @@ class CodegenandroiduitestUITest {
   }
 
   // Confirm the accessibility read channel is reporting windows at all before anything waits
-  // on what it says. The window list is delivered by event: a connection that misses the
-  // change it was opened across can report an empty list indefinitely on an otherwise idle
-  // emulator, and then every selector wait below searches nothing and times out against a
-  // screen that is in fact fully drawn (CI run 30899952762 polled ~180 times over 20s with
-  // the activity RESUMED and Displayed). Waiting longer cannot fix that — only a window
-  // change can — so provoke one rather than raise a timeout.
+  // on what it says. The window list arrives by event, so a connection that misses the change
+  // it was opened across keeps serving the view it already had, and on an idle emulator no
+  // later change refreshes it — every selector wait below then searches a screen the app is
+  // absent from while being fully drawn. Waiting longer cannot fix a view that is not being
+  // updated; only a window change can, so provoke one rather than raise a timeout.
+  //
+  // An empty list is the case this can rule out cheaply and up front. A stale non-empty one
+  // reads as healthy here and is caught by the unconditional kick on a failed launch attempt
+  // below. Across seven CI runs the two were indistinguishable from the outcome alone: every
+  // passing run logged the transient null roots of a live view during launch, and every
+  // failing run logged none across 119-171 polls.
   private fun ensureWindowTracking() {
     val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
     for (attempt in 1..TRACKING_KICK_ATTEMPTS) {
@@ -202,7 +207,10 @@ class CodegenandroiduitestUITest {
         device.waitForIdle(LAUNCH_TIMEOUT_MS)
         return
       }
-      Log.w(LOG_TAG, "launch attempt $attempt saw no $PACKAGE window in ${LAUNCH_TIMEOUT_MS}ms")
+      // The summary, not just the miss: an empty list and a stale non-empty one both reach
+      // here and need different fixes, and only the first attempt's state tells them apart —
+      // the AssertionError below reports the state after every attempt has already run.
+      Log.w(LOG_TAG, "launch attempt $attempt saw no $PACKAGE window in ${LAUNCH_TIMEOUT_MS}ms; windows:\n" + windowSummary())
       // A non-empty window list satisfies ensureWindowTracking() while still being a stale one
       // that the app's window never joined, which no list-is-empty check can tell apart. The
       // attempt has already failed, so kick unconditionally before re-issuing the intent.

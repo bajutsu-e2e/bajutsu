@@ -345,7 +345,8 @@ class ComponentsUITest {
         device.waitForIdle(LAUNCH_TIMEOUT_MS)   // let the first frame settle
         return
       }
-      Log.w(LOG_TAG, "launch attempt $attempt saw no $PACKAGE window in ${LAUNCH_TIMEOUT_MS}ms")
+      Log.w(LOG_TAG, "launch attempt $attempt saw no $PACKAGE window in "
+        + "${LAUNCH_TIMEOUT_MS}ms; windows:\n" + windowSummary())
       kickWindowTracking("launch attempt $attempt timed out")
     }
     throw AssertionError(
@@ -418,26 +419,40 @@ class ComponentsUITest {
 - **`launch` confirms the accessibility window list is live before it waits on what the list says.**
   UI Automator matches every selector against the windows the accessibility framework reports, and
   the framework delivers that list by event. A connection that misses the window change it opened
-  across keeps reporting an empty list until something else on the device changes windows, and on an
-  idle continuous-integration emulator nothing else does. The generated test reads
-  `uiAutomation.windows` before launching into the list, so a wait with no live list to wait on
-  fails naming the list.
-- **An empty list is met with a window change, not a longer timeout.** No timeout recovers an event
-  that is never sent, so `kickWindowTracking` presses HOME — the one key that changes windows
-  whatever is on screen — and the framework has to re-report the list. The key press waits for the
-  events it produces, so the recovery needs no sleep of its own, and `TRACKING_KICK_ATTEMPTS`
-  bounds it. A timed-out launch attempt kicks unconditionally before re-issuing the intent: a stale
-  list the app's window never joined is not empty, so reading the list cannot tell that case from a
-  healthy one, and by then the attempt has failed anyway. The kick stays outside
-  `UiAutomation.executeAndWaitForEvent`, because `pressHome` already waits through that same call
-  and a nested one would clear the event queue the outer wait is watching.
+  across keeps serving the view it already holds, and on an idle continuous-integration emulator no
+  later change refreshes it. Every selector then searches a view the app is absent from while the app
+  is fully drawn. The generated test reads `uiAutomation.windows` before launching into the list, so
+  a wait with no live list to wait on fails naming the list.
+- **A list that is not being updated is met with a window change, not a longer timeout.** No timeout
+  recovers an event that is never sent, so `kickWindowTracking` presses HOME — the one key that
+  changes windows whatever is on screen — and the framework has to re-report the list. The key press
+  waits for the events it produces, so the recovery needs no sleep of its own, and
+  `TRACKING_KICK_ATTEMPTS` bounds it. Reading the list catches one case up front, the empty one: a
+  stale non-empty list the app's window never joined reads as healthy, so a timed-out launch attempt
+  kicks unconditionally before re-issuing the intent, and logs the list it saw so a later reader can
+  tell the two apart. The kick stays outside `UiAutomation.executeAndWaitForEvent`, because
+  `pressHome` already waits through that same call and a nested one would clear the event queue the
+  outer wait is watching.
 
-  The evidence below diagnosed this failure. Run 30899952762 failed all three of its attempts at the
-  first action, each on a fresh emulator boot. The three polled 153, 168, and 171 times across some
-  20 seconds. Throughout, logcat recorded the activity as both `RESUMED` and `Displayed` — the app
-  had drawn its screen, and the window list never mentioned it. Raising the wait from 5 to 15 and then to
-  20 seconds changed nothing, which is what first pointed at a channel that was not reporting rather
-  than an app that was slow.
+  Gradle's per-test logcat, which CI uploads alongside the evidence below, is what diagnosed the
+  failure. Run 30899952762 failed all three of its attempts at the first action, each on a fresh
+  emulator boot; the three polled 153, 168, and 171 times across some 20 seconds. Throughout, logcat
+  recorded the activity as both `RESUMED` and `Displayed` — the app had drawn its screen, and the
+  window list never mentioned it. Raising the wait from 5 to 15 and then to 20 seconds changed
+  nothing, which is what first pointed at a read channel rather than a slow app.
+
+  Across seven runs the discriminator is whether the view ever changed. Every passing run logs
+  UiDevice reporting transient null roots during launch — `Active window root not found` and
+  `Skipping null root node for window` — 2 to 7 times within 10 to 24 polls, the ordinary churn of a
+  live view mid-transition. Every failing run logs neither, across 119 to 171 polls. Sampling density
+  does not explain the difference: passing runs caught that transitional state in as few as 10 polls,
+  so 119 would have caught it too. The view did not change while the system was plainly transitioning
+  windows underneath it.
+
+  What the evidence does **not** yet settle is whether the frozen view is empty or merely stale.
+  Neither log line appears in either case — an empty list has no window to skip, and a stale
+  non-empty list can hold windows that all have non-null roots — which is why the fix covers both and
+  the per-attempt log records which one it met.
 
 #### Failure evidence
 

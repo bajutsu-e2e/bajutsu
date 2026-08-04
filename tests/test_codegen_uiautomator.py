@@ -149,6 +149,10 @@ def test_a_timed_out_launch_attempt_kicks_before_re_issuing_the_intent() -> None
     assert body.index('Log.w(LOG_TAG, "launch attempt $attempt saw no') < body.index(
         'kickWindowTracking("launch attempt $attempt timed out")'
     )
+    # The per-attempt log carries the window list, not only the miss. An empty list and a stale
+    # non-empty one both reach here and call for different fixes, and the AssertionError raised
+    # after the loop reports only the state left behind once every attempt has run.
+    assert 'window in ${LAUNCH_TIMEOUT_MS}ms; windows:\\n" + windowSummary()' in body
 
 
 def test_failure_messages_name_the_windows_that_were_searched() -> None:
