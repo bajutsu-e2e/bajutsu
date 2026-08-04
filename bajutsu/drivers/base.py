@@ -618,27 +618,50 @@ def wait_until(driver: Driver, sel: Selector, timeout: float, poll: float = 0.2)
     return any(driver.wait_for(sel) for _ in deadline_ticks(timeout, poll))
 
 
+def _collapse_identical_duplicates(candidates: list[Element]) -> list[Element]:
+    """Collapse candidates that report identical content to one representative.
+
+    A standard `UIAlertController` viewed through XCUITest sometimes registers a button twice in
+    the accessibility tree — same identifier, label, traits, value, and frame, persisting for the
+    alert's whole lifetime rather than settling to one on a re-read. Nothing distinguishes the two
+    nodes, so `index` cannot pick the "real" one either: which of the two a run actually taps
+    swaps between runs, stale-handle-failing whichever twin it didn't. Two candidates that differ
+    in any reported field are not this case and stay separate, so a genuinely ambiguous selector
+    still raises `AmbiguousSelector` below.
+    """
+    seen: dict[tuple[object, ...], Element] = {}
+    for el in candidates:
+        key = (el["identifier"], el["label"], tuple(el["traits"]), el["value"], el["frame"])
+        seen.setdefault(key, el)
+    return list(seen.values())
+
+
 def resolve_unique(elements: list[Element], sel: Selector) -> Element:
     """Resolve a selector to exactly one element for a single action.
 
     A single action requires a unique match, so an ambiguous selector fails rather than acting on
-    "whatever matched first" — the determinism core (BE-0001).
+    "whatever matched first" — the determinism core (BE-0001). Candidates that report identical
+    content (identifier, label, traits, value, and frame all equal — a known XCUITest duplicate
+    registration for a standard `UIAlertController` button) are collapsed to one first, since
+    nothing distinguishes them for the caller to disambiguate on; a genuinely different-content
+    match still counts toward ambiguity.
 
     Args:
         elements: One `query()` snapshot of the on-screen elements.
         sel: The selector to resolve. `index` is honored only as a last resort, picking the nth of
-            several candidates (negative values count from the end) from the same, already
-            `other`-filtered set the ambiguity count below reports — not the raw `find_all` result.
+            several (content-distinct, `other`-filtered) candidates (negative values count from
+            the end) from the same filtered set the ambiguity count below reports — not the raw
+            `find_all` result.
 
     Returns:
         The one element the selector resolves to.
 
     Raises:
         ElementNotFound: Nothing matched, or `index` is out of range.
-        AmbiguousSelector: Two or more matched (after dropping `other`-trait ties, below) and no
-            `index` disambiguates.
+        AmbiguousSelector: Two or more content-distinct candidates matched (after dropping
+            `other`-trait ties, below) and no `index` disambiguates.
     """
-    candidates = find_all(elements, sel)
+    candidates = _collapse_identical_duplicates(find_all(elements, sel))
     if len(candidates) > 1 and Trait.OTHER not in sel.get("traits", []):
         # A same-label/id tie is often a generic `other` wrapper duplicating a real element's
         # label (e.g. iOS's catch-all XCUIElementTypeOther) rather than a genuine ambiguity — drop

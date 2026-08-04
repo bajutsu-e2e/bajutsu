@@ -59,7 +59,12 @@ def test_tap_resolves_and_dispatches() -> None:
 
 
 def test_tap_ambiguous_fails() -> None:
-    elements = [_el("dup"), _el("dup")]
+    # Distinct frames: two different DOM elements sharing a duplicate id, not a content-identical
+    # duplicate (which resolve_unique now collapses rather than flags ambiguous).
+    elements = [
+        _el("dup", frame=(10.0, 20.0, 100.0, 40.0)),
+        _el("dup", frame=(10.0, 80.0, 100.0, 40.0)),
+    ]
     bridge = FakeBridge(elements)
     driver = WebContextDriver(bridge=bridge, webview_id="wv")
     with pytest.raises(base.AmbiguousSelector):

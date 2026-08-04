@@ -83,7 +83,9 @@ class Element(TypedDict):
 | 1 件 | 解決成功 |
 | 2 件以上 | `AmbiguousSelector` を送出。「たまたま最初の一致を叩く」非決定性を**構造的に排除**する |
 
-2 件以上の一致を曖昧と判定する前に、`other` トレイトを持つ候補を除外します。汎用のラッパー要素（iOS の catch-all `XCUIElementTypeOther` など）は、実体のある要素の label をそのまま繰り返すことが多いからです。そうした重複のためだけに、シナリオへ `within` や `index` を足させたくありません。一致した候補がすべて `other` なら、それ以上除外する先がないため、そのまま曖昧判定にかけます。セレクタが `traits: ["other"]` で `other` を明示的に要求している場合も同様です。この除外は `resolve_unique` に閉じています。`find_all`（したがって `count` / `exists`）は、`other` を含めすべての一致をそのまま返します。
+`resolve_unique` は候補数を数える前に、identifier・label・traits・value・frame のすべてが一致する候補を1件へ畳みます。これは XCUITest の既知の癖への対処です。標準の `UIAlertController` のボタンは、アクセシビリティツリー上に見分けのつかない状態で二重登録されることがあり、その状態はアラートが表示され続ける間ずっと持続します。この2件の「候補」は区別する情報を何も持たないため、`index` では「本物」を選べません（実行ごとに、どちらの実体を実際にタップするかが入れ替わります）。`index` は、何らかの項目で実際に異なる候補にのみ使う手段として残ります。見分けのつかない重複に対しては、`index` は不要であり使われません。
+
+続いて、2 件以上の一致を曖昧と判定する前に、`other` トレイトを持つ候補を除外します。汎用のラッパー要素（iOS の catch-all `XCUIElementTypeOther` など）は、実体のある要素の label をそのまま繰り返すことが多いからです。そうした重複のためだけに、シナリオへ `within` や `index` を足させたくありません。一致した候補がすべて `other` なら、それ以上除外する先がないため、そのまま曖昧判定にかけます。セレクタが `traits: ["other"]` で `other` を明示的に要求している場合も同様です。この除外は `resolve_unique` に閉じています。`find_all`（したがって `count` / `exists`）は、`other` を含めすべての一致をそのまま返します。
 
 例外として `index` が指定されたときだけ、複数候補から n 番目を選びます（範囲外は `ElementNotFound`）。この除外は `index` の分岐より前に走ります。そのため `index` は、上記の曖昧件数と同じ、除外後の候補集合を数えます。除外前の `find_all` の結果を数えてしまうと、取り除かれた `other` の分だけ後続の位置がずれます。`index` は順序変化でも壊れるため、いずれにせよ最終手段です。集合を扱う場合は `idMatches` + `count` を使ってください（[scenarios](scenarios.md#アサーション-dsl)）。
 
@@ -92,7 +94,7 @@ class Element(TypedDict):
 ```python
 # drivers/base.py（抜粋）
 def resolve_unique(elements, sel):
-    candidates = find_all(elements, sel)
+    candidates = _collapse_identical_duplicates(find_all(elements, sel))
     if len(candidates) > 1 and "other" not in sel.get("traits", []):
         without_other = [c for c in candidates if "other" not in c["traits"]]
         if without_other:
