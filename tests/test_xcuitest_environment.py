@@ -1448,7 +1448,8 @@ def test_a_replacement_clones_the_type_captured_while_the_device_was_healthy(
         None,
         ceiling=_COLD,
     )
-    assert simctl.create_cmd("bajutsu-recovered", "com.apple.x.iPhone-17-Pro") in calls
+    # Named after the device it replaces, so several recoveries on one host stay tellable apart.
+    assert simctl.create_cmd("bajutsu-recovered-UDID", "com.apple.x.iPhone-17-Pro") in calls
     assert not any(c[2:4] == ["list", "devicetypes"] for c in calls)
 
 

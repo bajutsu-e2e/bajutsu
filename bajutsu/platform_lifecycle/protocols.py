@@ -15,8 +15,9 @@ package root, and the two hand-rolled readiness loops in `readiness.py`.
 
 The seam serves two commands, so its Protocol is split by command rather than carried as one flat
 surface: `RunEnvironment` is the `run` lease (`start`, `device_catalog`, `relauncher`, `controller`,
-`teardown`, `hook_collector`, `bridge_collector`, the run predicates, and the two device-identity
-queries `resolve_device` / `captures_video`); `CrawlEnvironment` is the `crawl` lease (`has_devices`,
+`teardown`, `hook_collector`, `bridge_collector`, the run predicates, `replaced_device` for a lease
+that moved to another device, and the two device-identity queries `resolve_device` /
+`captures_video`); `CrawlEnvironment` is the `crawl` lease (`has_devices`,
 `plan_lanes`, and the `crawl_*` methods). Every concrete platform implements both, and `Environment`
 is their union — the full surface a platform class satisfies and `environment_for` returns. The
 `run` pipeline (`runner/pool.py`, `runner/launch.py`) holds its environment as a `RunEnvironment`
@@ -79,7 +80,11 @@ A new `Environment` (extend `environment_for`) must, at minimum:
    otherwise (a Simulator shares the host loopback, and a driver-observed platform never reaches it).
    `has_reusable_resident` / `end_lease` (BE-0291) default to "no warm resident" (`False` / delegate
    to `teardown`); implement them only for a platform whose `start` spawns an expensive resident
-   worth amortizing across leases (XCUITest's `xcodebuild` runner).
+   worth amortizing across leases (XCUITest's `xcodebuild` runner). `replaced_device` defaults to
+   `None` ("the leased device is the one that ran"); implement it only for a platform whose `start`
+   can move the lease to a different device, which today means the XCUITest Simulator replacing one
+   CoreSimulator has stopped listing — the pool re-keys every per-device structure off what it
+   returns.
 2. Implement `CrawlEnvironment` as well: `has_devices`, `plan_lanes`, `crawl_reset`, and the three
    `crawl_*` health methods (return `None` from each the platform lacks). `environment_for` returns
    the union `Environment`, so a platform class must satisfy both surfaces — but the crawl half is

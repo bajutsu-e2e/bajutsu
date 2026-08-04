@@ -765,6 +765,15 @@ class XcuitestEnvironment(_DeviceEnvironment):
         runs before the prep so a fresh device's first boot is paid here rather than inside the next
         attempt's readiness ceiling.
 
+        The replacement **outlives the run**: nothing here or in the pool's teardown deletes it. That is
+        deliberate on two counts. It is a healthy device a later run can simply lease, where deleting it
+        would make the next run pay another creation on a host that has already shown it loses devices;
+        and it is the evidence that this happened at all, which a run that deleted its own replacement
+        would leave only in a log line. The cost is that a long-lived host with a flaky CoreSimulator
+        accumulates one device per recovery — bounded by how often that host loses a device, and cleared
+        by `xcrun simctl delete unavailable` or by deleting the `bajutsu-recovered-*` devices, which the
+        name below makes greppable.
+
         Raises:
             DeviceError: if no replacement can be created — chiefly a host that lost its iOS runtimes
                 along with the device, where there is nothing left to run on.
@@ -776,7 +785,11 @@ class XcuitestEnvironment(_DeviceEnvironment):
                 f"Simulator {old} is gone and no iPhone device type is available to replace it; "
                 "the host's Simulator runtimes are likely gone too"
             )
-        replacement = simctl.create_device(device_type, self._run)
+        # Named after the device it stands in for, so an operator reading `simctl list` afterwards can
+        # tell which recovery minted which device rather than finding several identical ones.
+        replacement = simctl.create_device(
+            device_type, self._run, name=f"bajutsu-recovered-{old[:8]}"
+        )
         self._udid = replacement
         self._replaced_from = old
         self._pinned_locale = None  # a fresh device: nothing has pinned its SpringBoard yet
