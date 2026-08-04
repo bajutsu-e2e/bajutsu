@@ -501,6 +501,8 @@ def _artifact_names(step_artifacts: list[dict[str, Any]]) -> tuple[str | None, s
     the pre-step baseline is first in the list, so it wins unless a capturePolicy rule fired too."""
     by_kind: dict[str, str] = {}
     for art in step_artifacts:
+        if not isinstance(art, dict):
+            continue
         kind, name = art.get("kind"), art.get("name")
         # Narrowed to `str`, not just non-`None`: a malformed/partially written manifest could carry
         # a non-string value here, which would otherwise flow into the URL/path built from it below.
