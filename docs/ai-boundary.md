@@ -40,7 +40,7 @@ no login, no AI runtime. Clone the repo and it works immediately.
 | | `report` / `export` / `stats` | re-render a finished run / archive it / aggregate a run directory into the whole-suite trend |
 | | `mcp` / `worker` | serve run/doctor as MCP tools / run a background job worker |
 | | `serve` | the local web UI — boots with nothing configured; its Claude tabs degrade gracefully |
-| | `project` | manage the config project hub — register, list, switch, and remove projects |
+| | `project` | manage the config project hub — `add` / `ls` / `use` / `rm` a project |
 | | `triage` | diagnose a failed run with the rule-based agent (no `--ai`) |
 | **Uses Claude** | `record` | author a scenario by driving the app with Claude |
 | | `crawl` | explore an app autonomously with Claude to build a screen map |
@@ -61,7 +61,7 @@ The classification is defined once (in `bajutsu/capabilities.py`) and consumed e
 surfaces can never disagree:
 
 - **`bajutsu --help`** groups every top-level command under *Claude-free (zero-config)* or *Uses
-  Claude*; `project`'s own subcommands (register, list, switch, and remove) sit under a separate group
+  Claude*; `project`'s own subcommands (`add`, `ls`, `use`, and `rm`) sit under a separate group
   there but are Claude-free like the rest of that column.
 - **`doctor`** reports Claude readiness as a separate, clearly **optional** section: a host with no
   AI setup is still graded `Ready` for the deterministic path, with Claude shown as a distinct

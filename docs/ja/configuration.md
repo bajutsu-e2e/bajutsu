@@ -148,6 +148,34 @@ targets:
 
 `kind` は、メールボックスの背後にあるトランスポートアダプタを選びます。メールボックスは 1 つのインターフェースの背後にある backend であり、ベンダーではなくトランスポート（`http`、将来は `imap`）でキーを引くので、トランスポートを増やすことは runner を分岐させることではなくアダプタを登録することになります（[BE-0186](../../roadmaps/BE-0186-mailbox-provider-registry/BE-0186-mailbox-provider-registry-ja.md)）。`kind` は任意で、省略時は `http` になるので既存の `mailbox:` ブロックはそのまま動きます。未知の `kind` はフォールバックせず、きれいな config エラーで run を落とします。現在出荷しているのは `http` だけです。ベンダーではなくトランスポートでキーを引くのは、ベンダー間の違いが JSON のフィールド名だけで、それは `fields` が吸収するからです。
 
+### Webhook 通知（`notify:`、BE-0099）
+
+`notify:` はトップレベルの Webhook エンドポイントのリストで、`bajutsu run` が判定後の副作用として POST します。LLM を一切使わず、決定的な判定に影響することもない Slack 優先の配信経路です（[BE-0099](../../roadmaps/BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications-ja.md)）。
+
+```yaml
+notify:
+  - format: slack                              # レンダラ。現状出荷しているのは slack だけ
+    url: "${secrets.SLACK_WEBHOOK_URL}"         # webhook URL。${secrets.*} は実行時に解決
+    on: [failure]                               # failure（既定）／change／recovery／always／start
+    targets: []                                 # 任意: このシナリオ名だけに絞る。空なら run 全体が対象
+```
+
+- `on` は、このエンドポイントを発火させるイベントを選びます。`failure`（いずれかのシナリオが失敗、既定）、
+  `always`（すべての run）、`change` / `recovery`（run 全体の判定が、同じ config ソースの直前の run から
+  反転した場合。判定は runs ディレクトリ配下のその run の `manifest.json` から読みます）、`start`（run
+  開始前に、専用のメッセージで 1 回だけ発火。`on` が `[start]` だけのエンドポイントはそこでしか発火せず、
+  判定後には発火しません）。
+- `targets`（トップレベルの config の `targets.<name>` マップとは無関係です）は、リストにある名前の
+  シナリオだけに通知を絞ります。空（既定）なら run 内のすべてのシナリオが対象です。
+- `targets.<name>.notify` は、そのターゲットについてトップレベルのリストを**丸ごと**上書きします
+  （マージはしません）。省略すればトップレベルの `notify:` をそのまま継承します。
+- 配信はベストエフォートです。タイムアウトに上限を設け、数回リトライし、失敗しても警告をログに出す
+  だけです。判定や終了コードを変えることは決してなく、`--zip` や `--evidence-store` と同じ、判定後
+  専用の規律に従います。現状レンダリングされるのは `format: slack` だけです（失敗したシナリオを最大 5
+  件挙げ、残りは「…and N more」でまとめる Block Kit メッセージ）。未知の `format`、または `url` に
+  未解決の `${secrets.*}` トークンが残っている場合は、壊れたペイロードを送る代わりに警告をログに出して
+  スキップします。
+
 ### org（`orgs:`、マルチテナントのサーバ backend）
 
 `orgs:` は、ホスト型サーバ backend のテナントを宣言します（[BE-0015](../../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)）。各 org は、所属メンバー（明示の GitHub login＝`members`、および／または GitHub org 全体＝`githubOrgs`）と、書き込みを許す GitHub Team（`editorTeam`）、その org が持つ targets を列挙します。

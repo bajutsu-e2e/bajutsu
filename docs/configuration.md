@@ -285,6 +285,36 @@ fails the run with a clean config error rather than falling back. Only `http` sh
 on transport, not on the mail vendor, because vendors differ only in JSON field names, which
 `fields` already absorbs.
 
+### Webhook notifications (`notify:`, BE-0099)
+
+`notify:` is a top-level list of webhook endpoints `bajutsu run` posts to as a post-verdict side
+effect — a Slack-first delivery path with no LLM and no way to affect the deterministic verdict
+([BE-0099](../roadmaps/BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications.md)):
+
+```yaml
+notify:
+  - format: slack                              # renderer; slack is the only one shipped today
+    url: "${secrets.SLACK_WEBHOOK_URL}"         # webhook URL; ${secrets.*} resolved at run time
+    on: [failure]                               # failure (default) / change / recovery / always / start
+    targets: []                                 # optional: only these scenario names; empty = every scenario
+```
+
+- `on` selects which events fire this endpoint: `failure` (any scenario failed, the default),
+  `always` (every run), `change` / `recovery` (the run's overall verdict flipped since the previous
+  run of the same config source, read from that run's `manifest.json` under the runs dir), and
+  `start` (fired once, before the run starts, with its own message — an endpoint whose `on` is
+  `[start]` alone fires only there, never post-verdict).
+- `targets` (unrelated to the top-level config `targets.<name>` map) narrows the notification to
+  scenarios whose name is in the list; empty (the default) covers every scenario in the run.
+- `targets.<name>.notify` overrides the top-level list **wholesale** for that target (never merged);
+  omitting it inherits the top-level `notify:` unchanged.
+- Delivery is best-effort: a bounded timeout, a couple of retries, and a failure only logs a warning
+  — it can never flip the verdict or exit code, the same after-the-verdict discipline `--zip` and
+  `--evidence-store` follow. Only `format: slack` renders today (a Block Kit message, listing up to
+  five failing scenarios with a "…and N more" tail); an unrecognized `format`, or a `url` with an
+  unresolved `${secrets.*}` token, is skipped with a logged warning rather than posting a broken
+  payload.
+
 ### Orgs (`orgs:`, the multi-tenant server backend)
 
 `orgs:` declares tenants for the hosted server backend ([BE-0015](../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)).

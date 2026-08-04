@@ -56,6 +56,8 @@ resolution, and the **preflight capability check** (below).
 | `network` | native network monitoring | — | — | ✅ | — |
 | `multiTouch` | two-finger gestures (pinch / rotate) | ✅ | ✅ | ✅ | ✅ |
 | `textSelection` | select-all + clipboard copy on the focused field | ✅ | ✅ | ✅ | ✅ |
+| `selectOption` | set a native `<select>` by value (web only) | — | — | ✅ | ✅ |
+| `handleSystemAlert` | tap an iOS SpringBoard permission-prompt button natively | ✅ | — | — | ✅ |
 | `deviceControl.setLocation` | set the simulated GPS location | ✅ | ✅ | — | — |
 | `deviceControl.clipboard` | read / write / clear the clipboard | ✅ | ✅ | — | — |
 | `deviceControl.push` | deliver a push notification | ✅ | — | — | — |
@@ -94,13 +96,17 @@ through (prime directive #2: fail fast and clearly). It is a pure function of (s
 set) — no device, no clock — and per-scenario: only the offending scenarios fail, the rest run.
 
 The check gates only the **hard** requirements the capability set cleanly decides: `pinch` /
-`rotate` need `multiTouch`, `select` / `copy` need `textSelection` (select-all + clipboard copy;
-the web context is coordinate-only for these and refuses both — `delete` / `clear` stay ungated, as
-every backend backs `delete_text`), a `visual` assertion needs `screenshot`, and each device-control step
-needs the token for its own operation — `setLocation` needs `deviceControl.setLocation`, the
-clipboard steps need `deviceControl.clipboard`, `push` needs `deviceControl.push`, and so on
-(BE-0212 split the coarse `deviceControl` family of BE-0128 into these per-operation tokens). Every
-run needs `query` + `elements`. It deliberately does **not** gate `conditionWait` (the run loop
+`rotate` need `multiTouch`, `selectOption` needs the `selectOption` token (a web-only `<select>`
+switch; iOS / Android are rejected before any device work), `select` / `copy` need `textSelection`
+(select-all + clipboard copy; the web context is coordinate-only for these and refuses both —
+`delete` / `clear` stay ungated, as every backend backs `delete_text`), a `visual` assertion needs
+`screenshot`, `handleSystemAlert` needs the `handleSystemAlert` token (only xcuitest declares it),
+and each device-control step needs the token for its own operation — `setLocation` needs
+`deviceControl.setLocation`, the clipboard steps need `deviceControl.clipboard`, `push` needs
+`deviceControl.push`, and so on (BE-0212 split the coarse `deviceControl` family of BE-0128 into
+these per-operation tokens); a `permissions` entry is likewise gated per service
+(`deviceControl.permissions.<service>`), so an unsupported service is named individually rather than
+the field as a whole. Every run needs `query` + `elements`. It deliberately does **not** gate `conditionWait` (the run loop
 polls for every wait, so no backend needs the token) or `network` (XCUITest captures traffic through
 the app-side collector despite not advertising `network`, so `request` / `event` / `requestSequence` /
 `responseSchema` assertions and `until: { request }` waits run on iOS). `gestures.py`'s
@@ -505,12 +511,12 @@ Implementation: `bajutsu/backends.py`.
 ```python
 PLATFORMS = {                              # a platform token expands to its actuators (stability order)
     "ios":     ("xcuitest",),              #   the sole iOS actuator since BE-0290 retired idb
-    "android": ("adb",),                   #   planned
+    "android": ("adb",),                   #   the sole Android actuator (BE-0007)
     "web":     ("playwright",),            #   implemented (BE-0041)
     "fake":    ("fake",),                  #   the in-memory test/demo driver
 }
 COST_ORDER: dict[str, tuple[str, ...]] = {}  # empty: no platform's cost order differs from its stability order
-IMPLEMENTED = {"fake", "playwright", "xcuitest"}  # actuators with a driver today
+IMPLEMENTED = {"fake", "playwright", "xcuitest", "adb"}  # actuators with a driver today
 
 def default_available(actuator) -> bool:   # implemented + backing tool present (playwright: package import; fake: always)
 def resolve_actuators(backends) -> list:   # expand each token (platform or actuator) to actuators

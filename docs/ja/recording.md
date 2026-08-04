@@ -25,6 +25,7 @@ class Observation:
     screen: list[Element]           # 現在画面の要素
     history: list[Step]             # ここまでに記録したステップ
     screenshot: bytes | None        # 現在画面の PNG（視覚用）
+    plan: list[str] = field(default_factory=list)  # ゴールを事前分解した計画（後述）
 
 @dataclass
 class Proposal:
@@ -32,12 +33,29 @@ class Proposal:
     done: bool = False                                     # ゴール到達
     expect: list[Assertion] = field(default_factory=list)  # done 時に、ゴールを検証するアサーション
     note: str = ""
+    plan_step: int | None = None    # この手が実行している計画上のステップ（後述）。ライブ進捗の表示に使う
     needs_human: bool = False       # 第三の結果。人に引き渡す（BE-0179）
     human_prompt: str = ""          # 引き渡しの理由。人に提示する
 
 class Agent(Protocol):
     def next_action(self, observation: Observation) -> Proposal: ...
+    def plan(self, goal: str) -> list[str]: ...  # 事前分解（後述）。省略可能
 ```
+
+### ゴールの事前分解
+
+ループが始まる前に、`record` は `agent.plan(goal)` を一度だけ呼び、自然言語のゴールを、短く具体的で
+人間可読なステップの順序付きリストに分解します（`record.py` の `_plan_goal`。`ClaudeAgent` の実装は専用の
+`plan` ツール呼び出しを強制します）。計画は開始時点で見ている人にストリーム表示され、以降の各ターンの
+`Observation.plan` にも渡されます。ライブ画面が正であるという立場を保ったまま、エージェントは従うべき
+手順を持てるということです。計画はあくまで実行を導くだけで、画面が実際に示すものの代わりにはなりません。
+エージェントが提案する各手は、自分がどの計画ステップを実行しているかを `Proposal.plan_step` にタグ付け
+します。これが、ライブの 1 手ごとの行に付く `(plan k/N)` の接頭辞と、後述する AI 使用量の内訳の `plan`
+カテゴリが指すものです。
+
+計画づくりはベストエフォートです。`plan` メソッドを持たないエージェント（テスト用の fake など）や、
+計画呼び出しが失敗・タイムアウトした場合は、単に計画なしとなり、ループはこの機能がなかった場合とまったく
+同じに動きます。`run` は計画をまったく見ないため、ここでの挙動は `run` に一切影響しません。
 
 ## record ループ
 

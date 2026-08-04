@@ -51,12 +51,17 @@ specific files in one process, sharing a single warm runner.
 | `--schemas` | config's `schemas`, then `schemas/` beside the scenario | directory of JSON Schema files for `responseSchema` assertions; `schema: items.json` resolves inside it (needs the `schema` extra) |
 | `--goldens` | config's `goldens`, then `goldens/` beside the scenario | directory of golden JSON files for `golden` assertions; `golden: response.json` resolves inside it |
 | `--headed / --no-headed` | app `headless` (headless) | web backend: show the run in a visible, slow-motion Chromium window instead of headless, so you can watch each step (the window opens on the machine running the command). Omit to use the app's `headless` config; iOS ignores it |
+| `--browser` | app `browser` (chromium) | web backend: the Playwright rendering engine to drive for this run — `chromium` / `firefox` / `webkit`; omit to use the target's `browser` config ([configuration](configuration.md), [BE-0076](../roadmaps/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md)) |
+| `--browsers` | "" | web backend: run the **cross-browser matrix** — a comma list of engines (e.g. `chromium,firefox,webkit`); each scenario runs once per engine and the run is green only if every engine passes ([configuration](configuration.md#cross-browser-matrix---browsers-be-0076)). A single engine is exactly `--browser` |
 | `--progress / --no-progress` | off | stream per-scenario / per-step progress lines to stderr (the `serve` UI consumes these) |
+| `--score / --no-score` | off | print the app's entry-screen convention score (doctor's Ready/Partial/Blocked grade) to stderr, computed from this run's own first launch — so CI reads the tell without a separate `doctor` step that cold-spawns a second runner. Diagnostic only; never affects pass/fail |
 | `--zip` | off | after the run, also write `runs/<id>.zip` — one portable artifact (report + evidence) for CI upload or sharing. Runs **after** the verdict, so it can't affect pass/fail; see [`export`](#export) |
 | `--runs-dir` | `runs` | directory to write the run tree into. Lets a caller run from one working directory but persist the run elsewhere — `serve` uses it when the active config is bound from a different tree (a Git checkout or an uploaded bundle) to run from that tree while keeping the run in `serve`'s store ([BE-0073](../roadmaps/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md)) |
 | `--evidence-store` | "" (also `BAJUTSU_EVIDENCE_STORE`) | after the run, upload the whole run tree to object storage at this URI — `s3://bucket/prefix` (AWS / R2 / MinIO) or `gs://bucket/prefix` (Google Cloud Storage). The remote layout mirrors the local one under the prefix (`<prefix><runId>/…`), so the upload path selects the cloud lifecycle policy (retain main-branch evidence, expire feature-branch evidence). Runs **after** the verdict, so an upload failure is reported as a warning and can't affect pass/fail. Needs the `s3` or `gcs` extra ([BE-0110](../roadmaps/BE-0110-evidence-store-uri/BE-0110-evidence-store-uri.md)) |
 | `--config` | `bajutsu.config.yaml` | the config file |
 | `--project` | "" | run a project registered with [`project add`](#project) by name — resolves its stored config source back to a `--config` spec and runs it. The headless trigger a CI/cron step calls, the CLI mirror of `POST /api/projects/<name>/run` ([BE-0225](../roadmaps/BE-0225-config-project-hub/BE-0225-config-project-hub.md)). Mutually exclusive with `--config` |
+| `--config-offline` | off | for a Git `--config` ([configuration](configuration.md#config-from-a-git-repository-be-0063)): use the local cache and never touch the network — needs a pinned `@<sha>`, since a branch can't be resolved offline |
+| `--require-pinned-config` | off | for a Git `--config`: fail unless it pins a commit SHA — a branch or tag can move under a gate, so only a SHA is accepted |
 
 - Evidence is written to `FileSink(runs/<runId>, udid=..., log_predicate=...)`
   ([evidence](evidence.md#sinks-where-evidence-goes)).
@@ -321,8 +326,9 @@ bajutsu flakiness [--org <org>] [--json] [--window N]          # read the serve 
 ## `export`
 
 Bundles a finished run into a single portable `.zip` — `report.html` together with `manifest.json`,
-`junit.xml`, the executed `scenario.yaml`, and **all** of its evidence (screenshots, video,
-`network.json`, …) ([BE-0060](../roadmaps/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md)).
+`junit.xml`, `ctrf.json` ([reporting](reporting.md#ctrfjson)), the executed `scenario.yaml`, and
+**all** of its evidence (screenshots, video, `network.json`, …)
+([BE-0060](../roadmaps/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md)).
 The whole `runs/<id>/` tree is rooted under a single `<id>/` folder, so `report.html`'s **relative**
 links resolve offline — the report works by double-click, no server.
 
@@ -366,7 +372,8 @@ bajutsu trace --explain <scenario.yaml>     # pre-run dry run (no device)
 
 ## `report`
 
-Re-renders a finished run's `report.html` (and re-emits `junit.xml`) from its **stored data**, with
+Re-renders a finished run's `report.html` (and re-emits `junit.xml` and `ctrf.json`,
+[reporting](reporting.md#ctrfjson)) from its **stored data**, with
 the **current** template — no device, no LLM, no re-run
 ([BE-0068](../roadmaps/BE-0068-regenerable-reports/BE-0068-regenerable-reports.md)). So a
 template improvement or a rendering-bug fix reaches past runs without re-executing them; the
@@ -475,7 +482,10 @@ bajutsu record --target <name> --goal "<natural-language goal>" [--out <file.yam
 | `--backend` | config | actuator order |
 | `--erase / --no-erase` | `--erase` | erase before launch (the app must be installed) |
 | `--system-alert-handling` | on | clear prompts during authoring (needs an API key) |
+| `--max-steps` | `30` | cap the number of authoring turns (and therefore worst-case token spend) ([BE-0194](../roadmaps/BE-0194-record-turn-payload-diet/BE-0194-record-turn-payload-diet.md)) |
+| `--screenshot / --no-screenshot` | `--screenshot` | send a screenshot each turn; `--no-screenshot` records elements-only (cheaper), for an app fully instrumented with ids ([BE-0194](../roadmaps/BE-0194-record-turn-payload-diet/BE-0194-record-turn-payload-diet.md)) |
 | `--headed / --no-headed` | app `headless` | web backend: author against a visible (headed, slow-motion) browser instead of headless; omit to use the app's `headless` config |
+| `--browser` | app `browser` (chromium) | web backend: the Playwright rendering engine to author against — `chromium` / `firefox` / `webkit`; omit to use the target's `browser` config |
 | `--alert-instruction` | "" | the press instruction for the above |
 | `--language` | config `ai.language` (`auto`) | AI output language for the authored prose (`from:` provenance, reasoning) — `ja` / `en` / `auto`; overrides `ai.language`, `auto` follows the goal ([BE-0188](../roadmaps/BE-0188-configurable-ai-output-language/BE-0188-configurable-ai-output-language.md)) |
 | `--config` | `bajutsu.config.yaml` | config |
@@ -515,6 +525,7 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
 | `--backend` | config | actuator order |
 | `--erase / --no-erase` | `--erase` | erase before launch (the app must be installed) |
 | `--system-alert-handling / --no-system-alert-handling` | `--system-alert-handling` | dismiss unexpected OS prompts while crawling (so they aren't read as crashes; uses the configured AI provider — `ANTHROPIC_API_KEY`, or AWS credentials for Bedrock) |
+| `--alert-instruction` | "" | the press instruction for the above |
 | `--headed / --no-headed` | app `headless` | web backend: crawl a visible (headed, slow-motion) browser instead of headless; omit to use the app's `headless` config |
 | `--language` | config `ai.language` (`auto`) | AI output language for the guide's streamed reasoning — `ja` / `en` / `auto`; overrides `ai.language`, `auto` stays English for crawl ([BE-0188](../roadmaps/BE-0188-configurable-ai-output-language/BE-0188-configurable-ai-output-language.md)) |
 | `--out` | `runs/<timestamp>` | run dir the screen map is written into |
@@ -824,9 +835,13 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   combined `POST /api/upload` is a separate follow-up.)
 - The **AI provider for authoring** (Record and Crawl) is one global choice in **Settings → AI
   provider**: **Anthropic API** (`ANTHROPIC_API_KEY`), **Amazon Bedrock** (AWS credentials +
-  `BAJUTSU_BEDROCK_MODEL`), or the **Anthropic CLI** (`ant`, a browser-based OAuth/SSO sign-in on your
-  Pro/Max/Console seat — BE-0163). `serve` applies it to spawned jobs via `BAJUTSU_AI_PROVIDER`, so
-  there is no per-tab picker; every AI path (authoring, the alert guard, triage) uses the one provider.
+  `BAJUTSU_BEDROCK_MODEL`), the **Anthropic CLI** (`ant`, a browser-based OAuth/SSO sign-in on your
+  Pro/Max/Console seat — BE-0163, with its own `/api/ant/login` route), or the **Claude Code CLI**
+  (`claude-code`, billed on a Claude Code Pro/Max/Console seat — BE-0176; the panel holds its
+  long-lived OAuth token write-once, for a headless host that can't run `claude setup-token`
+  interactively — [configuration](configuration.md#ai-provider-ai-be-0047), BE-0215). `serve` applies
+  it to spawned jobs via `BAJUTSU_AI_PROVIDER`, so there is no per-tab picker; every AI path
+  (authoring, the alert guard, triage) uses the one provider.
 - **Inline scenario validation in the editor ([BE-0138](../roadmaps/BE-0138-serve-lint/BE-0138-serve-lint.md)).**
   The Author tab's YAML editor validates **as you type**, not only on Save: a debounced `POST /api/lint`
   runs the same `bajutsu lint` checks and returns line-anchored diagnostics, shown as a gutter marker
@@ -867,7 +882,11 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   [self-hosting](self-hosting.md) for the topology.
 - **Hosting flags (advanced).** `--emit-launchagent` prints a launchd plist to run `serve` as a
   token-authenticated LaunchAgent on a single Mac; `--backend server` (with `--asgi`) switches to
-  the hosted FastAPI control plane. Both are covered in [self-hosting](self-hosting.md).
+  the hosted FastAPI control plane; `--upload-exec` (or `$BAJUTSU_UPLOAD_EXEC`) governs whether an
+  **uploaded bundle**'s `launchServer` command may run (`deny` / `reuse` / `sandbox`, default
+  `sandbox`); `--allow-remote-build` (or `$BAJUTSU_ALLOW_REMOTE_BUILD`) opts a UI-bound **Git**
+  config's `build` command into running on the host (off by default). All are covered in
+  [self-hosting](self-hosting.md).
 
 ## `mcp`
 

@@ -100,7 +100,7 @@ the launch sequence ([run-loop](run-loop.md#runner-the-run-pipeline)).
 
 | Key | Type | Default | Description | Wired |
 |---|---|---|---|---|
-| `erase` | bool | `false` | Wipe the whole simulator (`simctl erase` — apps/data/settings) before the test. Off by default; `reinstall` keeps the app fresh without a full wipe, so set `true` only when a test needs a pristine device | ✅ |
+| `erase` | bool | unset (inherits; off unless the config sets it) | Wipe the whole simulator (`simctl erase` — apps/data/settings) before the test. Off by default; `reinstall` keeps the app fresh without a full wipe, so set `true` only when a test needs a pristine device | ✅ |
 | `reinstall` | `clean` \| `overwrite` | `clean` | How the app is reinstalled before each run when the app config sets `appPath`: `clean` = uninstall then install (fresh app + data); `overwrite` = install over the existing app (keeps its data) | ✅ |
 | `launchArgs` | list[str] | `[]` | Launch arguments (appended to config's `launchArgs`) | ✅ |
 | `launchEnv` | dict | `{}` | Launch env (injected via `SIMCTL_CHILD_*`; merged onto config's `launchEnv`) | ✅ |
@@ -110,6 +110,12 @@ the launch sequence ([run-loop](run-loop.md#runner-the-run-pipeline)).
 
 > **launchEnv resolution order** is **config's `launchEnv` < preconditions' `launchEnv`** (the
 > one closer to the test wins). `launch_driver` merges `{**eff.launch_env, **pre.launch_env}`.
+
+> **`erase` resolution order** is **CLI `--erase`/`--no-erase` > this scenario's own `erase` >
+> the target config's `run_defaults.erase` > built-in off** ([BE-0177](../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md);
+> [configuration](configuration.md#config-layering-defaults--targets)) — an unset scenario value
+> (the common case) inherits whatever the target config defaults to, which is itself off unless the
+> config sets it. `_filter_scenarios` (`cli/commands/run.py`) resolves this before the run starts.
 
 ## systemAlertHandling (the system-alert guard)
 
@@ -476,9 +482,10 @@ returns to the native driver once the block's steps finish. The nested steps sha
 scenario's `vars.*` bindings, the same as `if`'s and `forEach`'s do, and `capture` / `extract`
 modifiers are not allowed on the `web` step itself. The step needs a WebView bridge configured
 (`BAJUTSU_WEBVIEW_PORT`); without one it fails cleanly rather than doing nothing. This first slice
-supports `tap` / `type` / `wait` / `assert` inside the block. `clear` / `delete` / `select` /
-`copy` / `selectOption` / `scroll` / `back` / `pinch` / `rotate` / `handleSystemAlert` are not yet
-reachable there, and each fails with a clear "not supported in web context" reason.
+supports `tap` / `tapPoint` / `doubleTap` / `type` / `wait` / `assert` inside the block. `longPress` /
+`swipe` / `drag` / `clear` / `delete` / `select` / `copy` / `selectOption` / `scroll` / `back` /
+`pinch` / `rotate` / `handleSystemAlert` are not yet reachable there, and each fails with a clear
+"not supported in web context" reason.
 
 ### `swipe`
 

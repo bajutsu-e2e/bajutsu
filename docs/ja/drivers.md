@@ -50,6 +50,8 @@ class Driver(Protocol):
 | `network` | ネイティブネットワーク監視 | — | — | ✅ | — |
 | `multiTouch` | 2 本指ジェスチャ（pinch / rotate） | ✅ | ✅ | ✅ | ✅ |
 | `textSelection` | フォーカス中フィールドの全選択とクリップボードへのコピー | ✅ | ✅ | ✅ | ✅ |
+| `selectOption` | ネイティブ `<select>` を値で設定（web のみ） | — | — | ✅ | ✅ |
+| `handleSystemAlert` | iOS SpringBoard の許可プロンプトのボタンをネイティブにタップ | ✅ | — | — | ✅ |
 | `deviceControl.setLocation` | 疑似 GPS 位置の設定 | ✅ | ✅ | — | — |
 | `deviceControl.clipboard` | クリップボードの読み取り / 書き込み / クリア | ✅ | ✅ | — | — |
 | `deviceControl.push` | プッシュ通知の配信 | ✅ | — | — | — |
@@ -65,7 +67,7 @@ class Driver(Protocol):
 
 バックエンドの能力集合は静的なので、選んだ actuator が持たない能力をシナリオが必要とするかどうかは、デバイス作業の前に分かります。run の開始時（actuator を選んだ後、最初のデバイスを lease する前）に、runner は各シナリオを actuator の能力と照合し（`bajutsu/capability_preflight.py`）、未対応のシナリオを即座に失敗させます。集約した 1 つの理由（`UnsupportedAction` 相当）を付けて、デバイスを起動して途中で失敗するのを避けます（prime directive #2：速く明確に失敗する）。検査は (シナリオ, 能力集合) の純粋関数で、デバイスも時計も使いません。シナリオ単位なので、未対応のシナリオだけが失敗し、残りは実行されます。
 
-検査は、能力集合で明確に判定できる**真の hard requirement** だけを門にします。`pinch` / `rotate` は `multiTouch`、`select` / `copy` は `textSelection`（全選択とクリップボードへのコピー。web コンテキストはこれらについて座標専用でどちらも拒否します。`delete` / `clear` はどのバックエンドも `delete_text` を実現できるので門にしません）、`visual` アサーションは `screenshot`、そして各デバイス制御ステップは自分の操作に対応するトークンを必要とします。`setLocation` は `deviceControl.setLocation`、クリップボードのステップは `deviceControl.clipboard`、`push` は `deviceControl.push`、という具合です（この操作ごとのトークンへの分割は BE-0212、前掲）。すべての run は `query` と `elements` を必要とします。`relaunch` はここに含みません。`relaunch` は `DeviceControl` ではなく、注入される relauncher で門を通すからです。一方、`conditionWait` は門にしません（run ループはすべての待機を polling で実装するので、どのバックエンドもこのトークンを必要としません）。`network` も門にしません（XCUITest は `network` を公開しませんが、アプリ側の collector で通信を捕捉するため、`request` / `event` / `requestSequence` / `responseSchema` アサーションや `until: { request }` 待機は iOS でも動きます）。`gestures.py` の `_require_multi_touch` は、ジェスチャ実行時の多層防御の検査として残します。デバイス制御ステップについても同様に `_need_control` を残し、その run で `DeviceControl` がまったく配線されていない場合（デバイスを固定しない並行 run など）を捕捉します。トークンが操作ごとになったので、一族の一部だけを実現するバックエンド（Android エミュレータの `setLocation` と `clipboard`）は、公開した操作については preflight を通し、残りについては速く失敗します。未対応のステップは一つずつ名指しされ、一族が全か無かで扱われることはありません。
+検査は、能力集合で明確に判定できる**真の hard requirement** だけを門にします。`pinch` / `rotate` は `multiTouch`、`selectOption` は `selectOption` トークン（web だけで通る `<select>` の切り替え。iOS / Android はデバイス作業の前に拒否されます）、`select` / `copy` は `textSelection`（全選択とクリップボードへのコピー。web コンテキストはこれらについて座標専用でどちらも拒否します。`delete` / `clear` はどのバックエンドも `delete_text` を実現できるので門にしません）、`visual` アサーションは `screenshot`、`handleSystemAlert` は `handleSystemAlert` トークン（xcuitest だけが公開します）、そして各デバイス制御ステップは自分の操作に対応するトークンを必要とします。`setLocation` は `deviceControl.setLocation`、クリップボードのステップは `deviceControl.clipboard`、`push` は `deviceControl.push`、という具合です（この操作ごとのトークンへの分割は BE-0212、前掲）。`permissions` の各エントリも同様に、サービスごと（`deviceControl.permissions.<service>`）の門を通すので、未対応のサービスはフィールド全体としてではなく1 つずつ名指しされます。すべての run は `query` と `elements` を必要とします。`relaunch` はここに含みません。`relaunch` は `DeviceControl` ではなく、注入される relauncher で門を通すからです。一方、`conditionWait` は門にしません（run ループはすべての待機を polling で実装するので、どのバックエンドもこのトークンを必要としません）。`network` も門にしません（XCUITest は `network` を公開しませんが、アプリ側の collector で通信を捕捉するため、`request` / `event` / `requestSequence` / `responseSchema` アサーションや `until: { request }` 待機は iOS でも動きます）。`gestures.py` の `_require_multi_touch` は、ジェスチャ実行時の多層防御の検査として残します。デバイス制御ステップについても同様に `_need_control` を残し、その run で `DeviceControl` がまったく配線されていない場合（デバイスを固定しない並行 run など）を捕捉します。トークンが操作ごとになったので、一族の一部だけを実現するバックエンド（Android エミュレータの `setLocation` と `clipboard`）は、公開した操作については preflight を通し、残りについては速く失敗します。未対応のステップは1 つずつ名指しされ、一族が全か無かで扱われることはありません。
 
 ## XCUITest（iOS）
 
@@ -107,7 +109,7 @@ class Driver(Protocol):
 - **区間証跡**（BE-0007 の Unit 4）: `video` は `adb shell screenrecord` で録画し、`deviceLog` は `adb logcat` をストリームします。simctl の provider の双子です。`screenrecord` はデバイス側に書き込む（ホストのファイルへは流せない）ので、録画は停止時に SIGINT で確定させてから `adb pull` で回収し、`logcat` はファイルへストリームして SIGTERM で停止します。どちらも web バックエンドと同じ driver の `driver_interval` seam から供給するので、バックエンド非依存の `capture` ポリシーがそのまま両方を運びます（[evidence](evidence.md)を参照）。
 - **ネットワーク**はネイティブには観測しません（`NETWORK` 能力を持ちません）。iOS と同じモックで対応し、アプリ側の collector の URL を launch env 経由で intent extra として渡すので、新しいコードパスなしに `mocks` が動きます。デバイス制御は、エミュレータが実現できるサブセットとして `setLocation`（`emu geo fix`、BE-0211）とクリップボード操作に対応します。一族の残りは未対応のままです。クリップボードは `cmd clipboard` ではなくアプリ内のレシーバ（`BajutsuAndroid`、BE-0233）を経由します。このコマンドは実機では黙って何もせず、Android 10 以降はフォアグラウンドのアプリと既定の IME しかクリップボードを触れないためです。そこで bajutsu は順序付き `am broadcast` を送り、アプリの内側のレシーバがアプリプロセスからこれを処理します（両方向を base64 で運ぶので argv に引用符付けは要らず、レシーバがなければ空のクリップを読むのではなく明確に失敗します）。XCUITest がクリップボードを simctl 経由で実現するのと同じく、協調するアプリがあればバックエンドが駆動できるので、adb は `clipboard` を公開し続けます。[`BajutsuAndroid`](../../BajutsuAndroid/README.ja.md) を参照してください。
 
-> XML の属性名は UI Automator の `uiautomator dump` スキーマに従います。Views の `android:id` における `.`↔`_` の扱いはシナリオ側で解決します。セレクタが id を両方の形で持ち、どちらにもマッチします（BE-0221）。そのため共有の showcase シナリオが両 Android toolkit でそのまま走り、[`android-e2e.yml`](../.github/workflows/android-e2e.yml) が `showcase-compose` と `showcase-views` を同じセットで駆動して push／PR ごとに検証します。fast ゲートでは、取得済みの XML フィクスチャに対してパーサ、frame 中心タップ、transient-empty のリトライ、ambiguity 即失敗を検証します。adb は `brew install android-platform-tools` でインストールします。
+> XML の属性名は UI Automator の `uiautomator dump` スキーマに従います。Views の `android:id` における `.`↔`_` の扱いはシナリオ側で解決します。セレクタが id を両方の形で持ち、どちらにもマッチします（BE-0221）。そのため共有の showcase シナリオが両 Android toolkit でそのまま走り、[`android-e2e.yml`](../../.github/workflows/android-e2e.yml) が `showcase-compose` と `showcase-views` を同じセットで駆動して push／PR ごとに検証します。fast ゲートでは、取得済みの XML フィクスチャに対してパーサ、frame 中心タップ、transient-empty のリトライ、ambiguity 即失敗を検証します。adb は `brew install android-platform-tools` でインストールします。
 
 ## Flutter（ネイティブバックエンド経由）
 
@@ -179,12 +181,12 @@ FakeDriver(screen=[...], react=react)
 ```python
 PLATFORMS = {                              # プラットフォームトークンは actuator 列へ展開（安定度順）
     "ios":     ("xcuitest",),              #   BE-0290 で idb を撤去して以来、iOS の唯一の actuator
-    "android": ("adb",),                   #   計画中
+    "android": ("adb",),                   #   Android の唯一の actuator（BE-0007）
     "web":     ("playwright",),            #   実装済み（BE-0041）
     "fake":    ("fake",),                  #   メモリ上のテスト/デモ用ドライバ
 }
 COST_ORDER: dict[str, tuple[str, ...]] = {}  # 空。どのプラットフォームもコスト順が安定度順と食い違わない
-IMPLEMENTED = {"fake", "playwright", "xcuitest"}  # 今日ドライバがある actuator
+IMPLEMENTED = {"fake", "playwright", "xcuitest", "adb"}  # 今日ドライバがある actuator
 
 def default_available(actuator) -> bool:   # 実装済みかつ裏のツールがあるか（playwright はパッケージ import、fake は常に可）
 def resolve_actuators(backends) -> list:   # 各トークン（プラットフォーム/actuator）を actuator 列へ展開

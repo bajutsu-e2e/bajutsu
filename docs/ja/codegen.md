@@ -94,11 +94,21 @@ final class ComponentsUITests: XCTestCase {
 | シナリオ要素 | 生成される XCUITest |
 |---|---|
 | `tap` | `el(id).tap()` / `byLabel(...).tap()` |
+| `doubleTap` | `.doubleTap()` |
 | `longPress` | `.press(forDuration: <sec>)` |
 | `type`（`into` あり） | `el(id).tap()` + `.typeText(...)` |
 | `type`（`into` なし） | `app.typeText(...)` |
+| `clear` | `.tap()` + 全選択（`typeKey("a", modifierFlags: .command)`）+ 削除。XCUIElement には「clear」の基本操作が無いため、フォーカス→全選択→削除で runner 自身の clear（BE-0265）を忠実に再現します |
+| `delete { count }` | `.tap()` + 削除キーを `count` 回（`typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count:))`、BE-0265） |
+| `select` | `.tap()` + 全選択（BE-0265） |
+| `copy` | `app.typeKey("c", modifierFlags: .command)` |
+| `back` | OS のナビゲーション戻るボタンを tap します。XCUITest ドライバが実行時に tap するのと同じ要素（共有定数、BE-0210） |
 | `swipe { on, direction }` | `.swipeUp/Down/Left/Right()` |
 | `swipe { from, to }` | `coord(x1, y1).press(forDuration: 0.1, thenDragTo: coord(x2, y2))`（`XCUICoordinate` のドラッグ。BE-0025） |
+| `drag { on, direction }` | 方向指定 `swipe` と同じ基本操作（`.swipeUp/Down/Left/Right()`）。iOS では実際のドラッグがスクロールとハンドル移動の両方を兼ねます（BE-0227） |
+| `pinch` | `.pinch(withScale: <scale>, velocity: <±1.0>)`。velocity の符号は scale に合わせます（scale ≥ 1 で拡大） |
+| `rotate` | `.rotate(<radians>, withVelocity: 1.0)` |
+| `scroll { to }` | `// TODO`。XCUITest には要素までスクロールする堅牢な単一の基本操作が無く（`swipeUp()` は再クエリせず固定量スクロールするだけ）、忠実な有界・再クエリ型のループは手書きヘルパが必要なため、偽の `swipeUp()` 連打を出す代わりに未生成のままにします（BE-0326） |
 | `handleSystemAlert` | `XCTAssertTrue(XCUIApplication(bundleIdentifier: "com.apple.springboard").buttons["…"].waitForExistence(timeout:))` + `.tap()`。ネイティブな SpringBoard の書き方で、ステップの `timeout` を引き継ぐ（BE-0316）。`prompt` / `choice` の形は label を **run の** locale から解決するため（BE-0320）、静的な変換では扱えず、ラベル付きの `// TODO` を出力する |
 | `wait { for }` | `XCTAssertTrue(el(...).waitForExistence(timeout:))` |
 | `wait { until: gone }` | `.waitForNonExistence(timeout:)` |
@@ -197,8 +207,15 @@ test.describe('Components', () => {
 | `type`（`into` あり） | `await loc.fill('…')` |
 | `type`（`into` なし） | `await page.keyboard.type('…')` |
 | `longPress` | `await loc.click({ delay: <ms> })` |
+| `clear` | `await loc.clear()`。ドライバ自身のフォーカス→バックスペースによる clear（BE-0265）を忠実に再現します |
+| `delete { count }` | フォーカス + `page.keyboard.press('Backspace')` を `count` 回（BE-0265） |
+| `select` | `await loc.selectText()`。web における全選択の対応物です（BE-0265） |
+| `copy` | `await page.keyboard.press('Control+c')` |
+| `back` | `await page.goBack()`。ブラウザ履歴で、ドライバの `back()` と同じ基本操作です（BE-0210） |
 | `swipe { on, direction }` | 要素中心からその方向への `page.mouse.wheel` スクロール（BE-0227） |
 | `swipe { from, to }` | `// TODO`（座標スワイプは生成しない） |
+| `drag { on, direction }` | 要素中心から実際にポインタでドラッグ（move → down → move → up）します。方向指定の `swipe` は wheel で済ませますが、`drag` は web ドライバと同じくドラッグします（BE-0227） |
+| `scroll { to }` | `await loc.scrollIntoViewIfNeeded()`。Playwright のロケータは操作前に自動でスクロールして要素を可視領域に入れるため、`direction` / `within` / `maxScrolls` はブラウザ自身のスクロールに吸収されます（BE-0326） |
 | `wait { for }` | `await expect(loc).toBeVisible({ timeout: <ms> })` |
 | `wait { until: gone }` | `await expect(loc).toBeHidden({ timeout: <ms> })` |
 | `wait { until: screenChanged/settled }` | コメント（Playwright は自動待機） |
@@ -343,8 +360,15 @@ class ComponentsUITest {
 | `type`（`into` あり） | `act(<by>).text = '…'` |
 | `type`（`into` なし） | `// TODO`（解決対象の要素が無い） |
 | `longPress` | `.longClick()`（プラットフォームの長押しタイムアウトを使い、シナリオの duration はパラメータが無い） |
+| `clear` | `act(<by>).clear()`。ドライバ自身の clear（BE-0265）を忠実に再現します |
+| `delete { count }` | `.click()` + `device.pressKeyCode(KeyEvent.KEYCODE_DEL)` を `count` 回（BE-0265） |
+| `select` | `.click()` + `device.pressKeyCode(KeyEvent.KEYCODE_A, KeyEvent.META_CTRL_ON)`（BE-0265） |
+| `copy` | `device.pressKeyCode(KeyEvent.KEYCODE_C, KeyEvent.META_CTRL_ON)` |
+| `back` | `device.pressBack()`。UI Automator ネイティブのシステム戻る操作で、adb ドライバの `keyevent 4` に対応します（BE-0210） |
 | `swipe { on, direction }` | `.swipe(Direction.<UP/DOWN/LEFT/RIGHT>, 0.75f)` |
 | `swipe { from, to }` | `// TODO`（座標スワイプは生成しない） |
+| `drag { on, direction }` | `swipe { on, direction }` と同じ基本操作です。`UiObject2.swipe` は実際のドラッグなので、要素起点の `drag` は Android でもスクロールとハンドル移動の両方を兼ねます（BE-0227） |
+| `scroll { to }` | `UiScrollable(UiSelector().scrollable(true)).<setAsHorizontalList/setAsVerticalList>().setMaxSearchSwipes(<max>).scrollIntoView(<selector>)`。UI Automator ネイティブの要素までスクロールする機能で、`maxScrolls` で上限を付けます（BE-0326） |
 | `pinch` | `.pinchOpen(0.5f)` / `.pinchClose(0.5f)`（scale ≥ 1 で拡大） |
 | `wait { for }` | `assertTrue(device.wait(Until.hasObject(<by>), <ms>L))` |
 | `wait { until: gone }` | `assertTrue(device.wait(Until.gone(<by>), <ms>L))` |

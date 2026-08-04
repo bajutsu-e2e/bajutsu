@@ -45,7 +45,7 @@ swipe / wait）し、**機械チェック可能なアサーション**で結果�
 | 10 | [reporting](reporting.md) | レポート（manifest.json / JUnit / HTML）と `runs/` レイアウト |
 | 11 | [configuration](configuration.md) | 設定の階層（defaults × targets）、ターゲットのオンボーディング、`doctor` 充足度スコア |
 | 12 | [recording](recording.md) | AI オーサリング（Tier 1 `record`）、Agent 抽象、システムアラート対処 |
-| 13 | [codegen](codegen.md) | シナリオ → ネイティブ XCUITest 生成 |
+| 13 | [codegen](codegen.md) | シナリオ → ネイティブ XCUITest / Playwright / UI Automator 生成 |
 | 14 | [cli](cli.md) | CLI のコマンドとオプションの完全リファレンス |
 | 15 | [showcase](showcase.md) | showcase 群（唯一の iOS フィクスチャ、全プリミティブを網羅） |
 | 16 | [ci](ci.md) | CI で動かす。リポ自身の workflow と再利用可能な `bajutsu-e2e` アクション |

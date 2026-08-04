@@ -144,6 +144,7 @@ app's os_log subsystem, paired into timed intervals by `parse_app_trace`.)
 ```python
 class EvidenceSink(Protocol):
     def capture(self, driver, step_id, kinds, *, elements=None) -> list[Artifact]: ...   # instant captures after a step
+    def wait_diagnostic(self, step_id, *, trace, elements) -> Artifact | None: ...       # the first-wait timeout diagnostic (below)
     def start_scenario_intervals(self, scenario_id, kinds) -> list[Interval]: ...        # begin video / deviceLog / appTrace for the whole scenario
     def finish_scenario_intervals(self, scenario_id, started) -> list[Artifact]: ...     # stop them and collect the files
 ```

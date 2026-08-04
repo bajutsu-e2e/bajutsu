@@ -47,12 +47,17 @@ bajutsu run --target <name> [--scenario <file.yaml>] [options]
 | `--schemas` | config の `schemas`、次にシナリオ隣の `schemas/` | `responseSchema` アサーション用の JSON Schema ファイルのディレクトリ。`schema: items.json` はこの中で解決されます（`schema` extra が必要です） |
 | `--goldens` | config の `goldens`、次にシナリオ隣の `goldens/` | `golden` アサーション用の golden JSON ファイルのディレクトリ。`golden: response.json` はこの中で解決されます |
 | `--headed / --no-headed` | アプリの `headless`（既定はヘッドレス） | web backend: ヘッドレスの代わりにブラウザを画面に表示し（低速再生）、実行の各ステップを確認できます（コマンドを実行しているマシン上でウィンドウが開きます）。省略時はアプリの `headless` 設定に従います。iOS は無視します |
+| `--browser` | アプリの `browser`（既定 chromium） | web backend: この run で使う Playwright のレンダリングエンジン。`chromium` / `firefox` / `webkit` から選びます。省略時はターゲットの `browser` config に従います（[configuration](configuration.md)、[BE-0076](../../roadmaps/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md)） |
+| `--browsers` | "" | web backend: **クロスブラウザマトリクス**を実行します。エンジンのカンマ区切りリスト（例 `chromium,firefox,webkit`）を指定すると、各シナリオがエンジンごとに1回ずつ走り、全エンジンが合格して初めて run 全体が緑になります（[configuration](configuration.md#クロスブラウザマトリクス--browsersbe-0076)）。エンジンを1つだけ指定するのは `--browser` と同じです |
 | `--progress / --no-progress` | off | シナリオ / ステップごとの進捗を stderr に流します（`serve` UI が消費します） |
+| `--score / --no-score` | off | アプリの入口画面の規約スコア（doctor の Ready/Partial/Blocked グレード）を、この run 自身の最初の起動から算出して stderr に出力します。2 つめの XCUITest ランナーをコールド起動する別立ての `doctor` を挟まずに、CI がこの目印を読み取れます。診断専用で、pass/fail には一切影響しません |
 | `--zip` | off | run の後に `runs/<id>.zip` も書き出します。レポートと証跡をまとめた1つの可搬な成果物で、CI アップロードや共有に使えます。**判定の後**に走るので pass/fail に影響しません。[`export`](#export) 参照 |
 | `--runs-dir` | `runs` | run ツリーを書き出すディレクトリ。作業ディレクトリと出力先を分けられる。`serve` は、アクティブな config が別のツリー（Git チェックアウトやアップロードされたバンドル）からバインドされているとき、そのツリーで走らせつつ run を `serve` のストアに残すためにこれを使います（[BE-0073](../../roadmaps/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload-ja.md)） |
 | `--evidence-store` | "" (環境変数 `BAJUTSU_EVIDENCE_STORE` も可) | run の後に、run ツリー全体をこの URI のオブジェクトストレージへアップロードします。`s3://bucket/prefix`（AWS / R2 / MinIO）または `gs://bucket/prefix`（Google Cloud Storage）を指定します。リモートのレイアウトはローカルと同じ構造を prefix 配下に再現するので（`<prefix><runId>/…`）、アップロード先のパスによってクラウドのライフサイクルポリシーが切り替わります（main ブランチの証跡は保持し、feature ブランチの証跡は短期で失効させる、など）。**判定の後**に走るので、アップロードが失敗しても警告を出すだけで pass/fail には影響しません。`s3` または `gcs` の extra が必要です（[BE-0110](../../roadmaps/BE-0110-evidence-store-uri/BE-0110-evidence-store-uri-ja.md)） |
 | `--config` | `bajutsu.config.yaml` | config ファイル |
 | `--project` | "" | [`project add`](#project) で登録したプロジェクトを名前で実行します。保存された config ソースを `--config` の spec に戻して実行する、CI や cron のステップが呼ぶヘッドレスなトリガーで、`POST /api/projects/<name>/run` の CLI 版です（[BE-0225](../../roadmaps/BE-0225-config-project-hub/BE-0225-config-project-hub.md)）。`--config` とは同時に指定できません |
+| `--config-offline` | off | Git ソースの `--config`（[configuration](configuration.md#git-リポジトリからの-configbe-0063)）向け。ローカルキャッシュだけを使い、ネットワークには一切触れません。ブランチはオフラインで解決できないので、pinned な `@<sha>` が必要です |
+| `--require-pinned-config` | off | Git ソースの `--config` 向け。コミット SHA を pin していなければ失敗します。ブランチや tag はゲート下で動きうるので、SHA だけを受け付けます |
 
 - 証跡は `FileSink(runs/<runId>, udid=..., log_predicate=...)` に書きます（[evidence](evidence.md#sink証跡の出力先)）。
 - `runId` は `YYYYMMDD-HHMMSS`。
@@ -195,7 +200,7 @@ bajutsu flakiness [--org <org>] [--json] [--window N]          # serve のデー
 
 ## `export`
 
-完了した run を1つの可搬な `.zip` にまとめます。`report.html` に加えて `manifest.json`、`junit.xml`、実行した `scenario.yaml`、**すべての**証跡（スクリーンショット、動画、`network.json` …）を含みます（[BE-0060](../../roadmaps/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export-ja.md)）。`runs/<id>/` のツリー全体を単一の `<id>/` フォルダ直下に収めるので、`report.html` の**相対**リンクがオフラインで解決します。ダブルクリックで開け、サーバは要りません。
+完了した run を1つの可搬な `.zip` にまとめます。`report.html` に加えて `manifest.json`、`junit.xml`、`ctrf.json`（[reporting](reporting.md#ctrfjson)）、実行した `scenario.yaml`、**すべての**証跡（スクリーンショット、動画、`network.json` …）を含みます（[BE-0060](../../roadmaps/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export-ja.md)）。`runs/<id>/` のツリー全体を単一の `<id>/` フォルダ直下に収めるので、`report.html` の**相対**リンクがオフラインで解決します。ダブルクリックで開け、サーバは要りません。
 
 ```bash
 bajutsu export <run-id | run-dir> [-o out.zip] [--force]
@@ -231,7 +236,7 @@ bajutsu trace --explain <scenario.yaml>     # 実行前のドライラン（デ�
 
 ## `report`
 
-完了した run の `report.html` を**保存済みデータ**から、**現行の**テンプレで再描画します（`junit.xml` も再出力）。デバイスも LLM も使わず、再実行もしません（[BE-0068](../../roadmaps/BE-0068-regenerable-reports/BE-0068-regenerable-reports-ja.md)）。テンプレ改善やレンダリングのバグ修正が、再実行せずに過去の run にも届きます。合否は保存済みモデルから読むだけで、再計算しません。
+完了した run の `report.html` を**保存済みデータ**から、**現行の**テンプレで再描画します（`junit.xml` と `ctrf.json`〈[reporting](reporting.md#ctrfjson)〉も再出力）。デバイスも LLM も使わず、再実行もしません（[BE-0068](../../roadmaps/BE-0068-regenerable-reports/BE-0068-regenerable-reports-ja.md)）。テンプレ改善やレンダリングのバグ修正が、再実行せずに過去の run にも届きます。合否は保存済みモデルから読むだけで、再計算しません。
 
 ```bash
 bajutsu report <run-id | run-dir>      # 1 つの run を再描画
@@ -324,7 +329,10 @@ bajutsu record --target <name> --goal "<自然言語ゴール>" [--out <file.yam
 | `--backend` | config | actuator 順 |
 | `--erase / --no-erase` | `--erase` | 起動前に erase（アプリはインストール済みである必要） |
 | `--system-alert-handling` | on | オーサリング中のプロンプトを片付ける（要 API キー） |
+| `--max-steps` | `30` | オーサリングのターン数（＝トークン消費の上限）に上限を設けます（[BE-0194](../../roadmaps/BE-0194-record-turn-payload-diet/BE-0194-record-turn-payload-diet-ja.md)） |
+| `--screenshot / --no-screenshot` | `--screenshot` | 毎ターン、スクリーンショットを送ります。`--no-screenshot` は要素情報だけを記録し（コストが安い）、id を十分に備えたアプリ向けです（[BE-0194](../../roadmaps/BE-0194-record-turn-payload-diet/BE-0194-record-turn-payload-diet-ja.md)） |
 | `--headed / --no-headed` | アプリの `headless` | web backend: ヘッドレスではなく目に見える（低速再生の）ブラウザでオーサリングします。省略時はアプリの `headless` 設定に従います |
+| `--browser` | アプリの `browser`（既定 chromium） | web backend: オーサリングに使う Playwright のレンダリングエンジン。`chromium` / `firefox` / `webkit` から選びます。省略時はターゲットの `browser` config に従います |
 | `--alert-instruction` | "" | 同上の押下指示 |
 | `--language` | config の `ai.language`（`auto`） | 著すプローズ（`from:` 由来、推論）の AI 出力言語。`ja` / `en` / `auto` から選び `ai.language` を上書きします。`auto` はゴールに追従します（[BE-0188](../../roadmaps/BE-0188-configurable-ai-output-language/BE-0188-configurable-ai-output-language-ja.md)） |
 | `--config` | `bajutsu.config.yaml` | config |
@@ -359,6 +367,7 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
 | `--backend` | config | actuator 順 |
 | `--erase / --no-erase` | `--erase` | 起動前に erase（アプリはインストール済みである必要） |
 | `--system-alert-handling / --no-system-alert-handling` | `--system-alert-handling` | クロール中に予期せぬ OS プロンプトを片付ける（クラッシュ誤判定を防ぐ。設定した AI プロバイダを使用し、`ANTHROPIC_API_KEY`、Bedrock なら AWS 認証情報） |
+| `--alert-instruction` | "" | 同上の押下指示 |
 | `--headed / --no-headed` | アプリの `headless` | web backend: ヘッドレスではなく目に見える（低速再生の）ブラウザでクロールする。省略時はアプリの `headless` 設定に従う |
 | `--language` | config の `ai.language`（`auto`） | ガイドの流れる推論の AI 出力言語。`ja` / `en` / `auto` から選び `ai.language` を上書きします。`auto` はクロールでは英語のままです（[BE-0188](../../roadmaps/BE-0188-configurable-ai-output-language/BE-0188-configurable-ai-output-language-ja.md)） |
 | `--out` | `runs/<timestamp>` | 画面マップを書き出す run ディレクトリ |
@@ -635,7 +644,11 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
 - オーサリング（Record と Crawl）の **AI プロバイダ**は **Settings → AI プロバイダ** の一箇所で選びます。
   **Anthropic API**（`ANTHROPIC_API_KEY`）、**Amazon Bedrock**（AWS 認証情報 + `BAJUTSU_BEDROCK_MODEL`）、
   **Anthropic CLI**（`ant`。Pro / Max / Console のシートに対するブラウザ経由の OAuth（SSO）サインイン。
-  BE-0163）の 3 択で、`serve` はこの選択を `BAJUTSU_AI_PROVIDER` として起動ジョブに渡します。タブごとの
+  BE-0163。専用の `/api/ant/login` ルートを持ちます）、**Claude Code CLI**（`claude-code`。Claude Code
+  の Pro / Max / Console シートに課金します。BE-0176。ヘッダレスなホストで対話的な `claude setup-token`
+  が実行できない場合に備え、長期間有効な OAuth トークンを write-once でパネルに保持します。
+  [configuration](configuration.md#ai-プロバイダaibe-0047)、BE-0215）の 4 択で、`serve` はこの選択を
+  `BAJUTSU_AI_PROVIDER` として起動ジョブに渡します。タブごとの
   選択はなく、すべての AI 経路（オーサリング、アラートガード、triage）が同じ 1 つのプロバイダを使います。
 - **エディタでのシナリオのインライン検証（[BE-0138](../../roadmaps/BE-0138-serve-lint/BE-0138-serve-lint-ja.md)）。**
   Author タブの YAML エディタは、保存時だけでなく**入力しながら**検証します。デバウンスした `POST /api/lint`
@@ -661,7 +674,7 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
 - **`--max-concurrent-runs`（既定 4）** は同時実行できる run/record ジョブ数の上限です。1 呼び出し元が
   希少なデバイスを独占しないようにします（BE-0051）。上限超過の dispatch は **429** を返します。`0` で無制限。
 - **`--evidence-store <uri>`（または `$BAJUTSU_EVIDENCE_STORE`）。各 run の証跡をアップロードします（[BE-0110](../../roadmaps/BE-0110-evidence-store-uri/BE-0110-evidence-store-uri-ja.md)）。** `s3://bucket/prefix` または `gs://bucket/prefix` を指定すると、完了した run のツリーがそこへアップロードされます。キーは `<prefix><evidence_prefix><runId>/…` の形になるので、パスによってクラウドのライフサイクルポリシーが切り替わります。スタンドアロンの `run --evidence-store`（Runner 自身の認証情報で直接アップロードする）と違い、**`serve` は認証情報を保持し、Worker には渡しません**。コントロールプレーンがファイルごとに presigned PUT URL を発行し、Worker はクラウド SDK も認証情報も持たずに平文 HTTP でアップロードします。呼び出し元は `POST /api/run` のボディに `evidence_prefix`（安全な相対セグメントとして検証されます）を渡して run ごとのパスを選びます。サーバが自分のバケットとベースプレフィックスを前置するので、run ID が必ずキーに含まれ、run 同士が衝突しません。アップロードは判定の後に走るため、失敗しても警告のみです。**サーバ側**に `s3` または `gcs` extra が必要です（Worker には不要）。トポロジは [self-hosting](self-hosting.md) を参照してください。
-- **ホスティング向けフラグ（応用）。** `--emit-launchagent` は `serve` を単一 Mac 上でトークン認証付きの LaunchAgent として動かす launchd plist を出力します。`--backend server`（と `--asgi`）はホスティング用の FastAPI コントロールプレーンに切り替えます。どちらも [self-hosting](self-hosting.md) で扱います。
+- **ホスティング向けフラグ（応用）。** `--emit-launchagent` は `serve` を単一 Mac 上でトークン認証付きの LaunchAgent として動かす launchd plist を出力します。`--backend server`（と `--asgi`）はホスティング用の FastAPI コントロールプレーンに切り替えます。`--upload-exec`（または環境変数 `BAJUTSU_UPLOAD_EXEC`）は、アップロードされたバンドルの `launchServer` コマンドを実行してよいかを決めます（`deny` / `reuse` / `sandbox`、既定は `sandbox`）。`--allow-remote-build`（または環境変数 `BAJUTSU_ALLOW_REMOTE_BUILD`）は、UI で bind した **Git** ソースの config の `build` コマンドをホスト上で実行することを許可します（既定はオフ）。いずれも [self-hosting](self-hosting.md) で扱います。
 
 ## `mcp`
 

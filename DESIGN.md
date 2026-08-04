@@ -188,7 +188,7 @@ class Driver(Protocol):
 
 ### 操作の安定度順（stability ladder）
 
-UI 操作は **最も安定する選択手段から順に試し、成立した手段を採用**します。採用結果は record で凍結し（§6.5）、`run` は凍結済みを決定的に再実行します。安定度で変わるのは **どの要素を選ぶか** です。actuation は backend によって異なり、adb は semantic tap を持たないため常に frame 中心への座標 tap ですが、XCUITest は解決した要素を identifier で直接 tap します（BE-0019）。下に行くほど壊れやすく、順 3 を使ったら manifest に degradation として明示します（§10）。
+UI 操作は **最も安定する選択手段から順に試し、成立した手段を採用**します。採用結果は record で凍結し（§6.5）、`run` は凍結済みを決定的に再実行します。安定度で変わるのは **どの要素を選ぶか** です。actuation は backend によって異なります。XCUITest は解決した要素を identifier で直接 tap します（BE-0019）。adb は常駐 UI Automator サーバの `/act` エンドポイントへ解決済みの identity を渡し、端末側で tap / long press / double tap を行います。エンドポイントが使えない、または対象の identity を特定できないときに限り、frame 中心への座標 tap へ縮退します（BE-0339。pinch / rotate は二本指ジェスチャで frame が要るため座標のままです）。下に行くほど壊れやすく、順 3 を使ったら manifest に degradation として明示します（§10）。
 
 | 順 | 選択（どの要素） | 安定性 |
 |---|---|---|
@@ -197,7 +197,7 @@ UI 操作は **最も安定する選択手段から順に試し、成立した�
 | 3 | `index` / 生座標 | レイアウト変化で壊れる。最終手段・manifest 必須 |
 
 - **要素ツリーに現れない操作対象は `tapPoint`（順 3 の座標タップ）で叩く**：ID なしアプリのタブバーのタブのように、アクセシビリティツリーが addressable な要素として公開しない操作対象は、順 1〜2 では選べません。この場合 record のエージェントはスクリーンショットから位置を読み取り、正規化座標（0..1、左上原点）を `tapPoint` として凍結します。`run` は現在の画面サイズを掛けて `driver.tap_point` に再生します。セレクタで検証できない最下段なので、ツリーに載っている要素には使わず、必ず `id`/`label` で指します。
-- **actuation は backend ごとに異なる**：adb は `query()` で id を引き当て、その要素の frame 中心を座標で叩きます。XCUITest は同じ解決結果を要素の identifier で直接 tap し、座標を経由しません（BE-0019）。選択（順 1〜3）はどの backend でも id で安定させます。
+- **actuation は backend ごとに異なる**：XCUITest は `query()` で解決した要素の identifier で直接 tap し、座標を経由しません（BE-0019）。adb は常駐サーバへ解決済みの identity を渡して端末側で tap / long press / double tap を行い、エンドポイントが使えないときだけ frame 中心の座標 tap に縮退します（BE-0339）。pinch / rotate は adb では引き続き座標です。選択（順 1〜3）はどの backend でも id で安定させます。
 - **actuator はシナリオごとに、最も安く十分な backend**：actuator を複数持つプラットフォームでは、各シナリオを、そのステップが実際に必要とする能力を満たす最も安い backend で走らせます（BE-0240）。判定は `capability_preflight`（§9）が計算する `unsupported(scenario, 能力集合)` を各候補に対して再利用するだけで、新しい能力モデルは要りません。iOS は [BE-0290](roadmaps/BE-0290-xcuitest-default-ios-backend/BE-0290-xcuitest-default-ios-backend-ja.md) で idb を撤去して以来、単一 actuator（XCUITest）なので、`pinch` / `rotate` の `multiTouch` を含むすべての構文をそのまま扱います。actuator はシナリオの実行のあいだ固定で、複数 backend が同一デバイスを同時に操作しないことで §3.3 の決定性を維持します（従来の「run 中は固定」という単位をシナリオ単位へ狭めたもので、規則自体は緩めません）。現状は XCUITest（iOS）、adb（Android）、Playwright（web）で、将来 backend を追加できるようリスト構造を残します
 - **明示指定は固定**：`--backend <one>` で単一指定したらフォールバックも能力による昇格もしません（`--udid` と同様です、§3.3）
 
