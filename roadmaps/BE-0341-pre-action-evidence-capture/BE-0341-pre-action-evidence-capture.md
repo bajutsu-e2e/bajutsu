@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-pre-action-evidence-capture-ja.md)
+**English** · [日本語](BE-0341-pre-action-evidence-capture-ja.md)
 
-# BE-XXXX — Capture per-step report evidence before the step acts
+# BE-0341 — Capture per-step report evidence before the step acts
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-pre-action-evidence-capture.md) |
+| Proposal | [BE-0341](BE-0341-pre-action-evidence-capture.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0341") |
 | Implementing PR | [#1471](https://github.com/bajutsu-e2e/bajutsu/pull/1471) |
 | Topic | Verification & coverage |
 <!-- /BE-METADATA -->
