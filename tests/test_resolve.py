@@ -292,6 +292,17 @@ def test_duplicates_differing_in_frame_still_ambiguous() -> None:
     raise AssertionError("frame が異なる候補は畳まれず AmbiguousSelector になるべき")
 
 
+def test_duplicates_with_differently_ordered_traits_still_collapse() -> None:
+    # `matches` already treats `traits` as a set (`issubset`); the same two traits reported in a
+    # different order are the same content, not a genuine difference to key the collapse on.
+    screen = [
+        el("alert.ok", "OK", ["button", "notEnabled"], frame=(201.0, 470.0, 134.0, 44.0)),
+        el("alert.ok", "OK", ["notEnabled", "button"], frame=(201.0, 470.0, 134.0, 44.0)),
+    ]
+    got = resolve_unique(screen, {"id": "alert.ok"})
+    assert got["identifier"] == "alert.ok"
+
+
 def test_id_candidates_normalizes_scalar_and_list() -> None:
     from bajutsu.drivers.base import id_candidates
 

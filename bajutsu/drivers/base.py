@@ -627,11 +627,19 @@ def _collapse_identical_duplicates(candidates: list[Element]) -> list[Element]:
     nodes, so `index` cannot pick the "real" one either: which of the two a run actually taps
     swaps between runs, stale-handle-failing whichever twin it didn't. Two candidates that differ
     in any reported field are not this case and stay separate, so a genuinely ambiguous selector
-    still raises `AmbiguousSelector` below.
+    still raises `AmbiguousSelector` below. `traits` is compared as a set (`matches` already treats
+    it that way via `issubset`), so two reports of the same trait set in a different order are
+    still the same content, not a difference to key on.
     """
     seen: dict[tuple[object, ...], Element] = {}
     for el in candidates:
-        key = (el["identifier"], el["label"], tuple(sorted(set(el["traits"]))), el["value"], el["frame"])
+        key = (
+            el["identifier"],
+            el["label"],
+            tuple(sorted(set(el["traits"]))),
+            el["value"],
+            el["frame"],
+        )
         seen.setdefault(key, el)
     return list(seen.values())
 
