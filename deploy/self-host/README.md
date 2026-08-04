@@ -1,7 +1,7 @@
 # Self-hosting the bajutsu server backend (single-tenant)
 
 A Docker Compose stack that runs bajutsu's **single-tenant** server backend (BE-0015's control
-plane) on one Linux node: the FastAPI app, Postgres, Redis, and MinIO (S3-compatible), with GitHub
+plane) on one Linux node: the FastAPI app, Postgres, and MinIO (S3-compatible), with GitHub
 OAuth, RBAC, and a per-user quota. The macOS **worker** runs natively on a Mac (it needs the
 Simulator) and joins over a Tailscale tailnet — it is **not** part of this compose.
 
@@ -17,7 +17,7 @@ The step-by-step guide — including the macOS worker, OAuth setup, and exposure
 cd deploy/self-host           # the compose file and .env live here
 cp .env.example .env          # then edit: tokens, passwords, OAuth, bucket
 mkdir -p config               # put your bajutsu.config.yaml (the app list) here
-docker compose up -d          # postgres, redis, minio, migrate (one-shot), bajutsu
+docker compose up -d          # postgres, minio, minio-init (one-shot), migrate (one-shot), bajutsu
 ```
 
 The control plane is then on `:8765`. Front it with `tailscale serve --bg 8765` (tailnet-only,
@@ -41,11 +41,9 @@ datasource and a starter **Bajutsu serve** dashboard already provisioned. Promet
 On a Mac, run the worker (see the guide):
 
 ```sh
-export BAJUTSU_REDIS_URL=redis://<linux-node-on-tailnet>:6379
-export BAJUTSU_SERVER_STORE=s3://bajutsu BAJUTSU_S3_ENDPOINT=http://<linux-node>:9000
-export AWS_ACCESS_KEY_ID=… AWS_SECRET_ACCESS_KEY=… ANTHROPIC_API_KEY=…   # AI paths
-# To record runs in the history list, install bajutsu[worker,idb,db] and also set:
-export BAJUTSU_DATABASE_URL=postgresql+psycopg://bajutsu:<password>@<linux-node>:5432/bajutsu
+export BAJUTSU_SERVER_URL=http://<linux-node-on-tailnet>:8765
+export BAJUTSU_TOKEN=<BAJUTSU_SERVE_TOKEN>   # the same operator token the control plane uses
+export ANTHROPIC_API_KEY=…                   # only if scenarios use the AI paths
 bajutsu worker
 ```
 
