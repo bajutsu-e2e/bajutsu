@@ -126,6 +126,126 @@ def test_device_catalog_maps_udid_to_model_and_os() -> None:
     assert simctl.device_catalog(run=boom) == {}  # failure -> empty, never raises
 
 
+def test_device_recovery_command_builders() -> None:
+    assert simctl.list_all_devices_cmd() == ["xcrun", "simctl", "list", "devices", "-j"]
+    assert simctl.list_devicetypes_cmd() == ["xcrun", "simctl", "list", "devicetypes", "-j"]
+    assert simctl.create_cmd("bajutsu-recovered", "com.apple.x.iPhone-17") == [
+        "xcrun",
+        "simctl",
+        "create",
+        "bajutsu-recovered",
+        "com.apple.x.iPhone-17",
+    ]
+
+
+@pytest.mark.parametrize("bad", ["", "-rf"])
+def test_create_cmd_rejects_an_option_shaped_argument(bad: str) -> None:
+    with pytest.raises(simctl.DeviceError):
+        simctl.create_cmd(bad, "com.apple.x.iPhone-17")
+    with pytest.raises(simctl.DeviceError):
+        simctl.create_cmd("name", bad)
+
+
+def test_device_available_is_three_valued() -> None:
+    import json
+
+    payload = json.dumps(
+        {"devices": {"com.apple.CoreSimulator.SimRuntime.iOS-26-0": [{"udid": "AAA"}]}}
+    )
+    assert simctl.device_available("AAA", run=lambda args, e=None: payload) is True
+    assert simctl.device_available("BBB", run=lambda args, e=None: payload) is False
+
+    def boom(args: list[str], e: object = None) -> str:
+        raise OSError("simctl not found")
+
+    # A probe that could not run reads as unknown, never as "the device is gone": creating a
+    # replacement on a host too sick to list its devices would replace a device needlessly.
+    assert simctl.device_available("AAA", run=boom) is None
+
+
+def test_device_type_of_reads_the_unfiltered_listing() -> None:
+    import json
+
+    payload = json.dumps(
+        {
+            "devices": {
+                "com.apple.CoreSimulator.SimRuntime.iOS-26-0": [
+                    {"udid": "AAA", "deviceTypeIdentifier": "com.apple.x.iPhone-17-Pro"},
+                    {"udid": "BBB"},
+                ]
+            }
+        }
+    )
+    calls: list[list[str]] = []
+
+    def run(args: list[str], e: object = None) -> str:
+        calls.append(args)
+        return payload
+
+    assert simctl.device_type_of("AAA", run=run) == "com.apple.x.iPhone-17-Pro"
+    assert calls == [simctl.list_all_devices_cmd()]
+    assert simctl.device_type_of("BBB", run=run) is None  # listed, but carries no type
+    assert simctl.device_type_of("CCC", run=run) is None
+
+
+def test_device_type_identifier_and_newest_iphone() -> None:
+    import json
+
+    payload = json.dumps(
+        {
+            "devicetypes": [
+                {
+                    "name": "iPhone 16",
+                    "identifier": "com.apple.x.iPhone-16",
+                    "productFamily": "iPhone",
+                },
+                {"name": "iPad Pro", "identifier": "com.apple.x.iPad-Pro", "productFamily": "iPad"},
+                {
+                    "name": "iPhone 17 Pro",
+                    "identifier": "com.apple.x.iPhone-17-Pro",
+                    "productFamily": "iPhone",
+                },
+            ]
+        }
+    )
+    run = lambda args, e=None: payload  # noqa: E731
+    assert simctl.device_type_identifier("iPhone 17 Pro", run=run) == "com.apple.x.iPhone-17-Pro"
+    assert simctl.device_type_identifier("iPhone 99", run=run) is None
+    # simctl lists devicetypes oldest first, so the last iPhone is the newest installed one.
+    assert simctl.newest_iphone_device_type(run=run) == "com.apple.x.iPhone-17-Pro"
+
+    def boom(args: list[str], e: object = None) -> str:
+        raise OSError("simctl not found")
+
+    assert simctl.device_type_identifier("iPhone 17 Pro", run=boom) is None
+    assert simctl.newest_iphone_device_type(run=boom) is None
+
+
+def test_create_device_returns_the_new_udid() -> None:
+    calls: list[list[str]] = []
+
+    def run(args: list[str], e: object = None) -> str:
+        calls.append(args)
+        return "AAAA-BBBB\n"
+
+    assert simctl.create_device("com.apple.x.iPhone-17", run=run) == "AAAA-BBBB"
+    assert calls == [simctl.create_cmd("bajutsu-recovered", "com.apple.x.iPhone-17")]
+
+
+def test_create_device_fails_loudly_when_no_runtime_remains() -> None:
+    def boom(args: list[str], e: object = None) -> str:
+        raise subprocess.CalledProcessError(
+            1, args, stderr="Invalid runtime: no runtimes are installed"
+        )
+
+    with pytest.raises(simctl.DeviceError, match="no runtimes are installed"):
+        simctl.create_device("com.apple.x.iPhone-17", run=boom)
+
+    # A device type simctl accepted but printed nothing for leaves no udid to return.
+    with pytest.raises(simctl.DeviceError, match="printed no udid"):
+        simctl.create_device("com.apple.x.iPhone-17", run=lambda args, e=None: "\n")
+
+
 def test_locale_args() -> None:
     assert simctl.locale_args("ja_JP") == ["-AppleLocale", "ja_JP", "-AppleLanguages", "(ja)"]
     assert simctl.locale_args("en") == ["-AppleLocale", "en", "-AppleLanguages", "(en)"]

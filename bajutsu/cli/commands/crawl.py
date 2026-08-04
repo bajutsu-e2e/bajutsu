@@ -310,10 +310,14 @@ def _execute(plan: _CrawlPlan, guide: crawl_engine.Guide, report: Report) -> cra
     def build_lane(u: str) -> tuple[base.Driver, crawl_engine.Reset]:
         # The crawl `reset` (revisit a known screen from a clean start) is the platform's, behind the
         # Environment seam (BE-0009): web opens a fresh context, iOS relaunches the app.
+        # One environment drives both the launch and the reset: a second instance built from the raw
+        # lane udid would reset a different device than the one that came up whenever the launch had to
+        # replace a vanished Simulator (BE-XXXX).
+        env = environment_for(plan.actuator, u)
         driver, _readiness = launch_driver(
-            u, plan.eff, plan.actuator, Preconditions(erase=plan.erase)
+            u, plan.eff, plan.actuator, Preconditions(erase=plan.erase), environment=env
         )
-        return driver, environment_for(plan.actuator, u).crawl_reset(plan.eff)
+        return driver, env.crawl_reset(plan.eff)
 
     try:
         # The primary lane is built here (on the main thread): it drives bootstrap and the in-place

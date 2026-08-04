@@ -293,6 +293,17 @@ class RunEnvironment(Protocol):
         are the same release.
         """
 
+    def replaced_device(self) -> str | None:
+        """The device this environment moved to when `start` replaced a vanished one, else None.
+
+        Read *after* `start`, like `has_reusable_resident`: the XCUITest Simulator lifecycle creates a
+        replacement when CoreSimulator has stopped listing the leased device, because retrying onto a
+        device that no longer exists cannot work. The pool keys leases, collectors, evidence capture,
+        and its warm cache by udid, so a swap it did not hear about would leave all of them naming a
+        device that is gone. Default `None` (the leased device is the one that ran) — every platform
+        but that one.
+        """
+
 
 @runtime_checkable
 class CrawlEnvironment(Protocol):

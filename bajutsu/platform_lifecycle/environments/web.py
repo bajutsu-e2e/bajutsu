@@ -110,6 +110,9 @@ class WebEnvironment:
     def has_reusable_resident(self) -> bool:
         return False  # a browser context per lease, no cross-lease resident to amortize (BE-0291)
 
+    def replaced_device(self) -> str | None:
+        return None  # no device behind a browser lane, so none can vanish and be replaced
+
     def end_lease(self, driver: base.Driver, eff: Effective) -> None:
         self.teardown(driver, eff)  # no warm resident: a lease's end is its full teardown
 

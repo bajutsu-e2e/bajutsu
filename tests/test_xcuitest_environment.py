@@ -11,7 +11,9 @@ loud refusal of simctl-only operations against a real device are exercised witho
 from __future__ import annotations
 
 import plistlib
+import signal
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -23,13 +25,17 @@ from bajutsu.drivers.xcuitest import XcuitestChannelError
 from bajutsu.platform_lifecycle.environments.xcuitest import (
     _MAX_WARM_REUSES,
     _MAX_WARM_REUSES_ENV,
+    _RECOVERY_TIMEOUT,
     _RESPAWN_TIMEOUT_ENV,
     _RUNNER_STARTUP_TIMEOUT,
     _RUNNER_STARTUP_TIMEOUT_ENV,
     _WARM_HEALTH_TIMEOUT,
     XcuitestEnvironment,
+    _AttemptFailure,
     _await_cold_runner,
     _destination,
+    _Recovery,
+    _recovery_timeout,
     _respawn_timeout,
     _run_ended_probe,
     _runner_startup_timeout,
@@ -189,13 +195,23 @@ def _sim_eff(*, test_runner: str) -> Effective:
 
 
 class _FakeProc:
-    """A fake runner process: `poll()` reports liveness, `terminate()`/`kill()` end it."""
+    """A fake runner process: `poll()` reports liveness, `terminate()`/`kill()` end it.
+
+    Each instance registers itself in `_FAKE_PROCS` under a unique pid so `_patch_group_signals` can
+    route a group signal back to it — the discard signals the runner's *process group*, not the bare
+    process, so a fake that only implemented `terminate()` would never see the signal at all.
+    """
+
+    _next_pid = 9000
 
     def __init__(self) -> None:
         self.alive = True
         self.terminated = (
             False  # observed by the mid-run-crash test (a dead runner is not signalled)
         )
+        type(self)._next_pid += 1
+        self.pid = type(self)._next_pid
+        _FAKE_PROCS[self.pid] = self
 
     def poll(self) -> int | None:
         return None if self.alive else 0
@@ -209,6 +225,27 @@ class _FakeProc:
 
     def kill(self) -> None:
         self.alive = False
+
+
+_FAKE_PROCS: dict[int, _FakeProc] = {}
+
+
+def _patch_group_signals(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Route the discard's process-group signals to the `_FakeProc` they name.
+
+    Every fake process is its own group leader here (`getpgid` is the identity), so a SIGTERM to the
+    group ends exactly the fake that was spawned. Without this the real `os.killpg` would signal
+    whatever group on the test host happens to carry the fake's pid.
+    """
+    monkeypatch.setattr("os.getpgid", lambda pid: pid)
+
+    def _killpg(pgid: int, sig: int) -> None:
+        proc = _FAKE_PROCS.get(pgid)
+        if proc is None:
+            raise ProcessLookupError(pgid)
+        proc.terminate() if sig == signal.SIGTERM else proc.kill()
+
+    monkeypatch.setattr("os.killpg", _killpg)
 
 
 def _write_runner(tmp_path: Path) -> Path:
@@ -270,6 +307,10 @@ def _fake_toolchain(
         simctl_calls.append(argv)
         if argv[2:3] == ["erase"]:
             domain["v"] = None  # a real erase wipes the device's preferences with everything else
+        if argv[2:3] == ["list"]:
+            # The device listing a cold prep reads to record what kind of device this is, so a
+            # replacement can later be cloned from it.
+            return _device_json(["UDID"])
         if argv[4:7] == ["defaults", "export", "-globalDomain"]:
             if export_fails:
                 raise subprocess.CalledProcessError(1, argv, stderr="device not booted")
@@ -280,6 +321,7 @@ def _fake_toolchain(
 
     monkeypatch.setattr(subprocess, "Popen", _popen)
     monkeypatch.setattr(backends, "make_driver", lambda *_a, **_k: _Driver())
+    _patch_group_signals(monkeypatch)
     return popen_argvs, simctl_calls, _run
 
 
@@ -331,10 +373,12 @@ def test_cold_spawn_pins_the_system_locale_and_reboots_for_it(
 
     assert domain["v"] == "ja_JP"  # the device now carries the configured locale
     assert simctl.system_locale_cmds("UDID", "ja_JP")[0] in simctl_calls
-    # boot (the initial one) -> spawn (the read, then the two writes) -> shutdown -> boot (the one
-    # that re-renders SpringBoard) -> spawn (the read-back that verifies it took).
+    # boot (the initial one) -> list (recording the device type a replacement would be cloned from)
+    # -> spawn (the read, then the two writes) -> shutdown -> boot (the one that re-renders
+    # SpringBoard) -> spawn (the read-back that verifies it took).
     assert _verbs(simctl_calls) == [
         "boot",
+        "list",
         "spawn",
         "spawn",
         "spawn",
@@ -904,10 +948,12 @@ def test_await_cold_runner_fails_fast_when_the_xcodebuild_process_exits() -> Non
     # BE-0319 unit 3: a dead xcodebuild aborts the wait at once with its exit code, rather than
     # probing a dead port for the remaining budget — the huge timeout here is never spent.
     spawned = _fake_spawned(ready=lambda: False, poll=lambda: 71)
-    reason = _await_cold_runner(
+    failure = _await_cold_runner(
         spawned, timeout=999.0, poll=0.0, sleep=lambda _s: None, clock=lambda: 0.0
     )
-    assert reason is not None and "exited (code 71)" in reason
+    assert failure is not None and "exited (code 71)" in failure.detail
+    # The kind is what the recovery ladder keys on, so it must not depend on parsing the prose.
+    assert failure.kind == "process-exit"
 
 
 def test_run_ended_probe_reports_nothing_while_the_run_is_still_going(tmp_path: Path) -> None:
@@ -967,10 +1013,11 @@ def test_await_cold_runner_fails_fast_when_the_test_run_ended_though_the_process
         now += 100.0
         return now
 
-    reason = _await_cold_runner(
+    failure = _await_cold_runner(
         spawned, timeout=999.0, poll=0.0, sleep=lambda _s: None, clock=clock
     )
-    assert reason is not None and "the xctest run ended" in reason
+    assert failure is not None and "the xctest run ended" in failure.detail
+    assert failure.kind == "run-ended"
     assert now == 100.0  # only the deadline was read: the marker ended the wait on the first round
 
 
@@ -989,10 +1036,11 @@ def test_await_cold_runner_times_out_when_never_ready_and_process_alive() -> Non
     # `health never ready` case), driven by the injected clock so the gate spends no wall time.
     ticks = iter([0.0, 0.0, 0.3])  # deadline = 0.0 + 0.2; the second poll is past it
     spawned = _fake_spawned(ready=lambda: False, poll=lambda: None)
-    reason = _await_cold_runner(
+    failure = _await_cold_runner(
         spawned, timeout=0.2, poll=0.0, sleep=lambda _s: None, clock=lambda: next(ticks)
     )
-    assert reason is not None and "health never ready within 0.2s" in reason
+    assert failure is not None and "health never ready within 0.2s" in failure.detail
+    assert failure.kind == "never-ready"
 
 
 def test_spawn_cold_retries_once_then_succeeds() -> None:
@@ -1024,11 +1072,12 @@ def test_spawn_cold_retries_once_then_succeeds() -> None:
 
 
 def test_spawn_cold_does_not_retry_after_a_timeout() -> None:
-    # The startup ceiling is a *total* budget shared across attempts: a first attempt that spends the
-    # whole ceiling on "health never ready" (process alive, never binds its port) leaves nothing for a
-    # retry, so exactly one attempt runs and it fails loudly. A second full-ceiling wait would double
-    # the worst case (300s → 600s on the ios-e2e lane) and blow a job's timeout-minutes — the fast-
-    # failing case still retries (the two tests around this one), only the budget-spent one does not.
+    # With nothing about the device changed (the default no-op recovery), the startup ceiling is a
+    # *total* budget shared across attempts: a first attempt that spends the whole ceiling on "health
+    # never ready" (process alive, never binds its port) leaves nothing for a retry, so exactly one
+    # attempt runs and it fails loudly. A second full-ceiling wait against the same device would
+    # double the worst case (300s → 600s on the ios-e2e lane) for no new information. A recovery that
+    # repaired the device does earn a fresh ceiling — see the fresh-budget test below.
     spawns = 0
 
     def spawn() -> _Spawned:
@@ -1117,3 +1166,333 @@ def test_spawn_cold_fails_loudly_after_exactly_two_attempts_with_both_tails() ->
     assert "attempt 1/2" in message and "attempt 2/2" in message
     assert "<<tail-1>>" in message and "<<tail-2>>" in message  # each attempt's tail is folded in
     assert "exited (code 65)" in message  # the dead-process reason (unit 3) reaches the error
+
+
+# --- device recovery between cold-spawn attempts (BE-XXXX) --- #
+#
+# BE-0319's retry isolates every *host*-side resource per attempt (port, .xctestrun, capture) but
+# hands the retry the same device the first attempt failed on. These cover the seam that repairs the
+# device in between, and what that does to the retry's budget.
+
+
+def _failing_spawn(counter: list[int], *, ready_on: int | None = None) -> Callable[[], _Spawned]:
+    """A spawn whose Nth attempt is the first to come up (never, when `ready_on` is None)."""
+
+    def spawn() -> _Spawned:
+        counter.append(1)
+        n = len(counter)
+        return _Spawned(
+            driver=f"driver-{n}",
+            ready=lambda: n == ready_on,
+            poll=lambda: None,  # alive throughout: the ended run is what fails each attempt
+            log_tail=lambda: "",
+            discard=lambda: None,
+            run_ended=(
+                lambda: (
+                    None
+                    if n == ready_on
+                    else "the xctest run ended (Test Suite 'All tests' failed) after the app launch "
+                    "timed out"
+                )
+            ),
+        )
+
+    return spawn
+
+
+def test_recovery_gets_the_classified_failure_and_runs_between_attempts() -> None:
+    # The rung is chosen from the failure's `kind`, so a recovery never has to parse the prose.
+    spawns: list[int] = []
+    seen: list[str] = []
+
+    def recover(failure: _AttemptFailure) -> _Recovery | None:
+        seen.append(failure.kind)
+        return _Recovery("rebooted it")
+
+    result = _spawn_cold_with_retry(
+        _failing_spawn(spawns, ready_on=2),
+        timeout=300.0,
+        recover=recover,
+        poll=0.0,
+        sleep=lambda _s: None,
+        clock=lambda: 0.0,
+    )
+    assert result.driver == "driver-2"
+    assert seen == ["run-ended"]  # recovery ran once, between the two attempts
+
+
+def test_a_repaired_device_earns_a_fresh_ceiling_even_after_a_spent_budget() -> None:
+    # The heart of the fix. An app-launch timeout leaves a degraded device, not spare seconds, so the
+    # shared budget alone makes the retry unreachable exactly when it is most needed. A recovery that
+    # rebooted or replaced the device restarts the ceiling, because the next attempt runs against a
+    # device that demonstrably came back up.
+    spawns: list[int] = []
+    now = 0.0
+
+    def clock() -> float:
+        nonlocal now
+        now += 100.0  # every probe is expensive: attempt 1 spends the whole 200s ceiling
+        return now
+
+    result = _spawn_cold_with_retry(
+        _failing_spawn(spawns, ready_on=2),
+        timeout=200.0,
+        recover=lambda _f: _Recovery("rebooted it", fresh_budget=200.0),
+        poll=0.0,
+        sleep=lambda _s: None,
+        clock=clock,
+    )
+    assert result.driver == "driver-2" and len(spawns) == 2
+
+
+def test_a_recovery_that_changed_nothing_keeps_the_shared_budget() -> None:
+    # The other half of that contract: a rung that only observed the device (the probe itself failed,
+    # or an `xcodebuild` that exited on its own) must not buy a second full wait.
+    spawns: list[int] = []
+    ticks = iter([0.0, 0.0, 0.0, 0.3, 0.3])
+    with pytest.raises(XcuitestChannelError) as excinfo:
+        _spawn_cold_with_retry(
+            _failing_spawn(spawns),
+            timeout=0.2,
+            recover=lambda _f: _Recovery("could not probe the device; left it as it is"),
+            poll=0.0,
+            sleep=lambda _s: None,
+            clock=lambda: next(ticks),
+        )
+    assert len(spawns) == 1
+    # The note still reaches the error, so a reader sees the rung ran and chose to do nothing.
+    assert "recovery after attempt 1: could not probe the device" in str(excinfo.value)
+
+
+def test_recovery_notes_are_folded_into_the_loud_failure() -> None:
+    spawns: list[int] = []
+    with pytest.raises(XcuitestChannelError) as excinfo:
+        _spawn_cold_with_retry(
+            _failing_spawn(spawns),
+            timeout=300.0,
+            recover=lambda _f: _Recovery("UDID-old vanished; created replacement UDID-new"),
+            poll=0.0,
+            sleep=lambda _s: None,
+            clock=lambda: 0.0,
+        )
+    message = str(excinfo.value)
+    assert "attempt 1/2" in message and "attempt 2/2" in message
+    assert "recovery after attempt 1: UDID-old vanished; created replacement UDID-new" in message
+    # No recovery is attempted after the *last* attempt: there is no further spawn to prepare for.
+    assert "recovery after attempt 2" not in message
+
+
+def test_a_device_that_cannot_be_repaired_fails_the_run() -> None:
+    # A host that lost its Simulator runtimes is a device fault, not a flaky spawn: the recovery
+    # raises and the error propagates, rather than funding another attempt that cannot work.
+    spawns: list[int] = []
+
+    def recover(_f: _AttemptFailure) -> _Recovery | None:
+        raise simctl.DeviceError("no iPhone device type is available to replace it")
+
+    with pytest.raises(simctl.DeviceError, match="no iPhone device type"):
+        _spawn_cold_with_retry(
+            _failing_spawn(spawns),
+            timeout=300.0,
+            recover=recover,
+            poll=0.0,
+            sleep=lambda _s: None,
+            clock=lambda: 0.0,
+        )
+    assert len(spawns) == 1  # the second attempt was never spawned
+
+
+# --- the ladder itself: which rung a classified failure picks, against a fake simctl --- #
+#
+# These drive `_recover_between_attempts` directly: it is the decision the rest of the recovery hangs
+# on, and calling it without a spawn keeps each case to the simctl argvs it is actually about.
+
+
+def _eff_for_ladder() -> Effective:
+    # No appPath, so the re-prepare exercises boot / locale / permissions without needing a built app.
+    return _sim_eff(test_runner="/nonexistent.xctestrun")
+
+
+def _device_json(udids: list[str], *, device_type: str = "com.apple.x.iPhone-17-Pro") -> str:
+    import json
+
+    return json.dumps(
+        {
+            "devices": {
+                "com.apple.CoreSimulator.SimRuntime.iOS-26-0": [
+                    {"udid": u, "deviceTypeIdentifier": device_type, "state": "Booted"}
+                    for u in udids
+                ]
+            }
+        }
+    )
+
+
+def _ladder_run(present: list[str], *, created: str = "UDID-NEW") -> tuple[list[list[str]], Any]:
+    """A fake simctl that lists `present` as available and mints `created` on `simctl create`."""
+    import json
+
+    calls: list[list[str]] = []
+
+    def run(argv: list[str], env: object = None) -> str:
+        calls.append(argv)
+        verb = argv[2:3]
+        if verb == ["list"] and argv[3:4] == ["devicetypes"]:
+            return json.dumps(
+                {
+                    "devicetypes": [
+                        {
+                            "name": "iPhone 17 Pro",
+                            "identifier": "com.apple.x.iPhone-17-Pro",
+                            "productFamily": "iPhone",
+                        }
+                    ]
+                }
+            )
+        if verb == ["list"]:
+            return _device_json(present)
+        if verb == ["create"]:
+            present.append(created)
+            return f"{created}\n"
+        if argv[4:7] == ["defaults", "export", "-globalDomain"]:
+            return _globals_plist("en_US")
+        return ""
+
+    return calls, run
+
+
+def _verb_seq(calls: list[list[str]]) -> list[str]:
+    return [c[2] for c in calls if c[:2] == ["xcrun", "simctl"]]
+
+
+def test_a_process_exit_leaves_the_booted_device_alone() -> None:
+    # An `xcodebuild` that exited on its own says nothing about the device, and the discard has already
+    # terminated the app — so the cheapest rung is the right one, and it buys no fresh budget.
+    calls, run = _ladder_run(["UDID"])
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    recovery = env._recover_between_attempts(
+        _AttemptFailure("process-exit", "exited (code 65)"),
+        _eff_for_ladder(),
+        Preconditions(),
+        None,
+    )
+    assert recovery is not None and recovery.fresh_budget is None
+    assert _verb_seq(calls) == ["list"]  # probed, nothing more
+
+
+def test_an_app_launch_timeout_reboots_and_re_prepares_the_device() -> None:
+    # The dominant flake: the device stopped honouring automation, which only a reboot clears. The
+    # re-prepare is what puts the app and its permissions back where a scenario expects them.
+    calls, run = _ladder_run(["UDID"])
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    recovery = env._recover_between_attempts(
+        _AttemptFailure("run-ended", "the xctest run ended after the app launch timed out"),
+        _eff_for_ladder(),
+        Preconditions(),
+        None,
+    )
+    assert recovery is not None and recovery.fresh_budget == _runner_startup_timeout()
+    assert _verb_seq(calls)[:5] == ["list", "shutdown", "boot", "bootstatus", "boot"]
+    assert "rebooted and re-prepared UDID" in recovery.note
+
+
+def test_a_vanished_device_is_replaced_and_reported_to_the_pool() -> None:
+    # The exit-70 case: simctl no longer lists the device, so retrying onto it cannot work. The run
+    # continues on a replacement, and `replaced_device()` is how the pool learns to re-key by it.
+    calls, run = _ladder_run([])  # the leased device is gone from the listing
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    recovery = env._recover_between_attempts(
+        _AttemptFailure("run-ended", "the xctest run ended"),
+        _eff_for_ladder(),
+        Preconditions(),
+        None,
+    )
+    assert recovery is not None and recovery.fresh_budget == _runner_startup_timeout()
+    assert env._udid == "UDID-NEW" and env.replaced_device() == "UDID-NEW"
+    # Created, then booted to completion *before* the prep, so the first boot is not charged to the
+    # next attempt's readiness ceiling. The listings ahead of `create` are the probe and the
+    # device-type lookup (this environment never cold-prepped, so it captured no type to clone).
+    seq = _verb_seq(calls)
+    assert seq[0] == "list" and "create" in seq
+    assert seq[seq.index("create") + 1] == "bootstatus"
+    assert "vanished" in recovery.note and "UDID-NEW" in recovery.note
+
+
+def test_a_replacement_clones_the_type_captured_while_the_device_was_healthy(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The device type is recorded at the first cold prep, because by the time a replacement is needed
+    # the device is no longer there to ask — so the replacement is the model the run was written
+    # against rather than whatever the host happens to offer.
+    _, simctl_calls, run = _fake_toolchain(monkeypatch)
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
+    assert simctl.list_all_devices_cmd() in simctl_calls
+    assert env._device_type_id == "com.apple.x.iPhone-17-Pro"
+
+    # With a type already captured, the replacement clones it and never consults `list devicetypes`.
+    calls, replace_run = _ladder_run([])
+    env._run = replace_run  # type: ignore[assignment]
+    env._recover_between_attempts(
+        _AttemptFailure("run-ended", "ended"), _eff_for_ladder(), Preconditions(), None
+    )
+    assert simctl.create_cmd("bajutsu-recovered", "com.apple.x.iPhone-17-Pro") in calls
+    assert not any(c[2:4] == ["list", "devicetypes"] for c in calls)
+
+
+def test_a_probe_that_could_not_run_changes_nothing() -> None:
+    # A host too sick to list its devices must not have a device replaced on that evidence.
+    calls: list[list[str]] = []
+
+    def run(argv: list[str], env: object = None) -> str:
+        calls.append(argv)
+        raise OSError("xcrun unavailable")
+
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    recovery = env._recover_between_attempts(
+        _AttemptFailure("never-ready", "health never ready"),
+        _eff_for_ladder(),
+        Preconditions(),
+        None,
+    )
+    assert recovery is not None and recovery.fresh_budget is None
+    assert env._udid == "UDID" and env.replaced_device() is None
+    assert "could not probe" in recovery.note
+
+
+def test_a_vanished_device_with_no_replaceable_type_fails_loudly() -> None:
+    # A host that lost its runtimes along with the device: nothing is left to run on, so this is a
+    # device fault rather than another doomed attempt.
+    import json
+
+    def run(argv: list[str], env: object = None) -> str:
+        if argv[2:4] == ["list", "devicetypes"]:
+            return json.dumps({"devicetypes": []})  # no iPhone type at all
+        if argv[2:3] == ["list"]:
+            return _device_json([])
+        return ""
+
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    with pytest.raises(simctl.DeviceError, match="no iPhone device type is available"):
+        env._recover_between_attempts(
+            _AttemptFailure("run-ended", "ended"), _eff_for_ladder(), Preconditions(), None
+        )
+
+
+def test_a_recovery_that_overran_its_bound_fails_the_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A device that takes longer than the bound to come back is not coming back, and a retry funded
+    # out of the remaining job time would only fail later.
+    monkeypatch.setenv("BAJUTSU_XCUITEST_RECOVERY_TIMEOUT", "0")
+    _calls, run = _ladder_run(["UDID"])
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    with pytest.raises(simctl.DeviceError, match="recovery exceeded"):
+        env._recover_between_attempts(
+            _AttemptFailure("run-ended", "ended"), _eff_for_ladder(), Preconditions(), None
+        )
+
+
+def test_recovery_timeout_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("BAJUTSU_XCUITEST_RECOVERY_TIMEOUT", "42")
+    assert _recovery_timeout() == 42.0
+    monkeypatch.setenv("BAJUTSU_XCUITEST_RECOVERY_TIMEOUT", "not-a-number")
+    assert _recovery_timeout() == _RECOVERY_TIMEOUT  # an unparseable override keeps the default

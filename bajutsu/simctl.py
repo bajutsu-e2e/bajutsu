@@ -307,9 +307,54 @@ def list_devices_cmd() -> list[str]:
     return ["xcrun", "simctl", "list", "devices", "available", "-j"]
 
 
+def list_all_devices_cmd() -> list[str]:
+    """Every device simctl knows, including the unavailable ones `list_devices_cmd` filters out.
+
+    An unavailable device still carries its `deviceTypeIdentifier`, which is what a replacement is
+    cloned from (BE-XXXX device recovery); the available-only listing would hide exactly the device
+    whose type we need.
+    """
+    return ["xcrun", "simctl", "list", "devices", "-j"]
+
+
+def list_devicetypes_cmd() -> list[str]:
+    return ["xcrun", "simctl", "list", "devicetypes", "-j"]
+
+
+def create_cmd(name: str, device_type: str) -> list[str]:
+    """Create a device of `device_type`, letting simctl pair the newest compatible runtime.
+
+    Naming no runtime is deliberate: pinning one that the host has since dropped is what makes a
+    replacement fail on the very host degradation it exists to recover from.
+    """
+    return [
+        "xcrun",
+        "simctl",
+        "create",
+        validated_device_arg(name),
+        validated_device_arg(device_type),
+    ]
+
+
 def bootstatus_cmd(udid: str) -> list[str]:
     """Boot the device if it isn't already (-b) and wait until it finishes booting."""
     return ["xcrun", "simctl", "bootstatus", validated_udid(udid), "-b"]
+
+
+def validated_device_arg(value: str) -> str:
+    """Return `value` if it is safe to place on a simctl argv, else raise.
+
+    A device type identifier and a device name reach an argv the way a `--udid` does — one comes
+    from config, the other from simctl's own listing — so they take the same never-leads-with-`-`
+    policy `validated_udid` applies, while staying permissive about the body (a type identifier is
+    dotted, a name has spaces).
+
+    Raises:
+        DeviceError: if `value` is empty or would read as a simctl option.
+    """
+    if value and not value.startswith("-"):
+        return value
+    raise DeviceError(f"invalid simctl device argument: {value!r}")
 
 
 def _real_run(args: list[str], extra_env: Mapping[str, str] | None = None) -> str:
@@ -372,6 +417,98 @@ def device_catalog(run: RunFn = _real_run) -> dict[str, dict[str, str]]:
             if udid:
                 catalog[str(udid)] = {"name": str(dev.get("name", "")), "runtime": label}
     return catalog
+
+
+def device_available(udid: str, run: RunFn = _real_run) -> bool | None:
+    """Whether simctl still lists `udid` as available, or None when the probe itself failed.
+
+    The three-valued result is the point: device recovery (BE-XXXX) creates a replacement only on a
+    definite `False`. A wedged CoreSimulator makes the listing itself fail, and reading that as "the
+    device is gone" would create a replacement on a host that cannot boot one.
+    """
+    try:
+        data = json.loads(run(list_devices_cmd(), None))
+    except (subprocess.CalledProcessError, json.JSONDecodeError, OSError, ValueError):
+        return None
+    return any(
+        dev.get("udid") == udid
+        for devices in (data.get("devices") or {}).values()
+        for dev in devices
+    )
+
+
+def device_type_of(udid: str, run: RunFn = _real_run) -> str | None:
+    """The device's `deviceTypeIdentifier` (None when unresolvable), so a replacement can clone it.
+
+    Reads the unfiltered listing: this is captured while the device is healthy, but a device that
+    has become *unavailable* rather than deleted still answers here, which keeps the clone possible
+    in the case that matters.
+    """
+    try:
+        data = json.loads(run(list_all_devices_cmd(), None))
+    except (subprocess.CalledProcessError, json.JSONDecodeError, OSError, ValueError):
+        return None
+    for devices in (data.get("devices") or {}).values():
+        for dev in devices:
+            if dev.get("udid") == udid and dev.get("deviceTypeIdentifier"):
+                return str(dev["deviceTypeIdentifier"])
+    return None
+
+
+def device_type_identifier(name: str, run: RunFn = _real_run) -> str | None:
+    """The devicetype identifier a human device name resolves to ('iPhone 17 Pro' -> com.apple…).
+
+    None when this host's Xcode ships no such type — the caller then falls back rather than failing,
+    since a config default outliving the Xcode that had it is ordinary.
+    """
+    try:
+        data = json.loads(run(list_devicetypes_cmd(), None))
+    except (subprocess.CalledProcessError, json.JSONDecodeError, OSError, ValueError):
+        return None
+    for dev_type in data.get("devicetypes") or []:
+        if dev_type.get("name") == name and dev_type.get("identifier"):
+            return str(dev_type["identifier"])
+    return None
+
+
+def newest_iphone_device_type(run: RunFn = _real_run) -> str | None:
+    """The last iPhone devicetype simctl lists (None when it lists none).
+
+    simctl orders devicetypes oldest to newest, so the last iPhone is the newest one installed —
+    the same "whichever iPhone this host actually has" choice the CI boot action makes when no
+    model is pinned.
+    """
+    try:
+        data = json.loads(run(list_devicetypes_cmd(), None))
+    except (subprocess.CalledProcessError, json.JSONDecodeError, OSError, ValueError):
+        return None
+    iphones = [
+        str(d["identifier"])
+        for d in data.get("devicetypes") or []
+        if d.get("productFamily") == "iPhone" and d.get("identifier")
+    ]
+    return iphones[-1] if iphones else None
+
+
+def create_device(
+    device_type: str, run: RunFn = _real_run, *, name: str = "bajutsu-recovered"
+) -> str:
+    """Create a Simulator of `device_type` and return its udid.
+
+    Raises:
+        DeviceError: if simctl could not create the device — chiefly a host whose iOS runtimes have
+            gone with the device we are replacing, where no replacement is possible at all.
+    """
+    try:
+        out = run(create_cmd(name, device_type), None)
+    except subprocess.CalledProcessError as exc:
+        raise device_error(exc) from exc
+    except OSError as exc:
+        raise DeviceError(f"could not create a replacement Simulator: {exc}") from exc
+    udid = out.strip().splitlines()[-1].strip() if out.strip() else ""
+    if not udid:
+        raise DeviceError(f"simctl create {device_type} printed no udid")
+    return validated_udid(udid)
 
 
 class Env:

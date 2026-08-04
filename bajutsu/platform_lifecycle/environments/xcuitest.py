@@ -8,11 +8,13 @@ every platform loads.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
 import plistlib
 import shlex
+import signal
 import socket
 import subprocess
 import tempfile
@@ -55,11 +57,11 @@ _RUNNER_LOG_TAIL_LINES = 20
 # A cold XCTest-host launch that never binds its port is a transient blip (the class BE-0207 absorbs
 # at the transport layer). One retry absorbs a one-off cold-start blip; a repeatable failure — a
 # broken build, signature, or app — fails every attempt and still stops the gate (BE-0049). Bounded
-# to a single retry: two attempts total. The startup ceiling is a *shared* budget across these
-# attempts (`_spawn_cold_with_retry`), not a fresh ceiling each: a slow "health never ready" attempt
-# has already spent the budget, so a second full-ceiling wait would double the worst case (e.g. the
-# ios-e2e lane's 300s → 600s) and blow a job's `timeout-minutes` — while a fast-failing attempt (an
-# `xcodebuild` that exits at once) leaves the budget nearly intact for the genuine retry it wants.
+# to a single retry: two attempts total. The startup ceiling is shared across the attempts by default
+# (`_spawn_cold_with_retry`) — a slow "health never ready" attempt has spent it, and a second full
+# wait against an unchanged device would double the worst case for no new information — but a retry
+# that follows a device repair restarts the ceiling, since the device it spawns onto has demonstrably
+# come back up (BE-XXXX).
 _COLD_SPAWN_ATTEMPTS = 2
 
 # Between health probes during the cold-spawn wait, re-check the `xcodebuild` handle this often — a
@@ -77,9 +79,41 @@ _COLD_POLL_SECONDS = 0.1
 # a runner still on its way up.
 _RUN_ENDED_MARKERS = (b"Test Suite 'All tests' failed", b"Test Suite 'All tests' passed")
 
+# `XCUIApplication.launch()` giving up on the app under test — the dominant CI signature, and the one
+# that says the *device* is degraded rather than the build broken (BE-XXXX device recovery). Read for
+# the diagnostic only: it precedes a `_RUN_ENDED_MARKERS` line, which is what ends the wait.
+_LAUNCH_TIMEOUT_MARKER = b"Timed out attempting to launch"
+
 # Carried between probes so a marker split across two reads is still matched; one byte short of the
 # longest marker is all the overlap that can hide one.
-_RUN_ENDED_OVERLAP = max(len(m) for m in _RUN_ENDED_MARKERS) - 1
+_RUN_ENDED_OVERLAP = max(len(m) for m in (*_RUN_ENDED_MARKERS, _LAUNCH_TIMEOUT_MARKER)) - 1
+
+
+def _terminate_process_group(proc: subprocess.Popen[bytes]) -> None:
+    """SIGTERM the runner's process group, escalating to SIGKILL after a grace; never raises.
+
+    `xcodebuild` spawns the XCTest-host plumbing that drives the device, so signalling only the
+    parent leaves those children alive and holding the device's automation session — the state a
+    following spawn attempt then has to spawn onto. The runner gets its own process group
+    (`start_new_session` in `_spawn_runner`) precisely so this can reach all of it, and every step is
+    suppressed: a discard runs on the failure path, where raising would mask the real error.
+    """
+    with contextlib.suppress(OSError):
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+        except (ProcessLookupError, PermissionError):
+            proc.terminate()
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        with contextlib.suppress(OSError):
+            try:
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                proc.kill()
+        # Reap the killed child so it does not linger as a zombie until this process exits.
+        with contextlib.suppress(subprocess.TimeoutExpired, OSError):
+            proc.wait(timeout=5)
 
 
 def _allocate_port() -> int:
@@ -122,6 +156,25 @@ def _runner_startup_timeout() -> float:
 # recovery budget in pipeline.py cannot cut a single respawn's readiness wait short). This overrides
 # the ceiling for respawns only; unset keeps the cold ceiling, so a lane not opting in is unchanged.
 _RESPAWN_TIMEOUT_ENV = "BAJUTSU_XCUITEST_RESPAWN_TIMEOUT"
+
+
+# How long the between-attempts device recovery may spend before the run gives up on the device
+# (`_check_recovery_budget`). Generous enough for the slowest rung — creating a Simulator and waiting
+# out its first boot — but bounded, because a device that takes longer than this to come back is not
+# coming back, and a retry funded out of the remaining job time would only fail later.
+_RECOVERY_TIMEOUT = 180.0
+_RECOVERY_TIMEOUT_ENV = "BAJUTSU_XCUITEST_RECOVERY_TIMEOUT"
+
+
+def _recovery_timeout() -> float:
+    """The device-recovery wall bound in seconds, from the env override or the default."""
+    raw = os.environ.get(_RECOVERY_TIMEOUT_ENV)
+    if not raw:
+        return _RECOVERY_TIMEOUT
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        return _RECOVERY_TIMEOUT
 
 
 def _respawn_timeout() -> float | None:
@@ -188,14 +241,20 @@ def _run_ended_probe(log_path: Path | None) -> Callable[[], str | None]:
     `xcodebuild` that *exits*, this one an `xcodebuild` that finished its test run and lingers. Only
     the bytes appended since the previous probe are read, so polling the capture stays cheap however
     verbose it grows.
+
+    A run that ended because the app never came to the foreground names that in its reason
+    (`_LAUNCH_TIMEOUT_MARKER`): it is the signature of a degraded Simulator, and saying so is what
+    lets a reader tell "this device needs rebooting" from "this build is broken" — the recovery ladder
+    itself keys on the failure *kind*, not on this text.
     """
     if log_path is None:
         return _never_ended
     offset = 0
     carry = b""
+    launch_timed_out = False
 
     def probe() -> str | None:
-        nonlocal offset, carry
+        nonlocal offset, carry, launch_timed_out
         try:
             with log_path.open("rb") as fh:
                 fh.seek(offset)
@@ -206,9 +265,16 @@ def _run_ended_probe(log_path: Path | None) -> Callable[[], str | None]:
         if not chunk:
             return None
         window = carry + chunk
+        # Sticky: the launch timeout is logged before the suite reports failure, so the two markers
+        # rarely land in the same read window.
+        launch_timed_out = launch_timed_out or _LAUNCH_TIMEOUT_MARKER in window
         for marker in _RUN_ENDED_MARKERS:
             if marker in window:
-                return f"the xctest run ended ({marker.decode()}) before the runner bound its port"
+                cause = " after the app launch timed out" if launch_timed_out else ""
+                return (
+                    f"the xctest run ended ({marker.decode()}){cause} "
+                    "before the runner bound its port"
+                )
         carry = window[-_RUN_ENDED_OVERLAP:]
         return None
 
@@ -235,6 +301,21 @@ class _Spawned:
     run_ended: Callable[[], str | None] = _never_ended
 
 
+@dataclass(frozen=True)
+class _AttemptFailure:
+    """Why one cold-spawn attempt did not produce a ready runner.
+
+    `kind` is what the recovery ladder keys on, so the choice of remedy never depends on parsing the
+    prose: `process-exit` is an `xcodebuild` that gave up on its own (a fast, often transient blip),
+    `run-ended` an XCTest run that finished without the runner ever serving (the app-launch timeout
+    of a degraded Simulator), and `never-ready` a wait that reached its ceiling with the process
+    still alive and the run still going. `detail` is the human sentence the failing error quotes.
+    """
+
+    kind: Literal["process-exit", "run-ended", "never-ready"]
+    detail: str
+
+
 def _await_cold_runner(
     spawned: _Spawned,
     *,
@@ -242,7 +323,7 @@ def _await_cold_runner(
     poll: float,
     sleep: Callable[[float], None],
     clock: Callable[[], float],
-) -> str | None:
+) -> _AttemptFailure | None:
     """Wait for the runner to answer `/health` while watching its process; `None` if ready, else why not.
 
     A bounded condition wait (BE-0319 unit 3): each round probes `spawned.ready()` first — a runner
@@ -250,8 +331,8 @@ def _await_cold_runner(
     during startup aborts at once with its exit code rather than probing a dead port for the
     remaining budget, and finally `spawned.run_ended()`, which catches the failure the exit code
     cannot: an `xcodebuild` whose test run has ended but whose process lingers (see
-    `_RUN_ENDED_MARKERS`). Returns `None` once ready, else a failure reason (a dead process's exit
-    code, an ended run, or the timeout) the caller folds the captured tail onto.
+    `_RUN_ENDED_MARKERS`). Returns `None` once ready, else the classified failure the caller folds
+    the captured tail onto and picks a recovery rung from.
     """
     deadline = clock() + timeout
     while True:
@@ -259,27 +340,49 @@ def _await_cold_runner(
             return None
         exit_code = spawned.poll()
         if exit_code is not None:
-            return (
-                f"the xcodebuild process exited (code {exit_code}) before the runner bound its port"
+            return _AttemptFailure(
+                "process-exit",
+                f"the xcodebuild process exited (code {exit_code}) before the runner bound its port",
             )
         ended = spawned.run_ended()
         if ended is not None:
-            return ended
+            return _AttemptFailure("run-ended", ended)
         if clock() >= deadline:
-            return f"health never ready within {timeout}s"
+            return _AttemptFailure("never-ready", f"health never ready within {timeout}s")
         sleep(poll)
+
+
+@dataclass(frozen=True)
+class _Recovery:
+    """What a between-attempts recovery did, and whether the next attempt has earned a fresh budget.
+
+    `note` goes into the failing error's diagnostics, so a reader sees which rung ran and what the
+    device looked like. `fresh_budget` is the repaired device's new readiness ceiling in seconds, or
+    `None` when nothing about the device changed — the difference between "retry against a device we
+    just rebooted" and "retry against the same device", which is what decides whether a second full
+    wait is justified.
+    """
+
+    note: str
+    fresh_budget: float | None = None
+
+
+def _no_recovery(failure: _AttemptFailure) -> _Recovery | None:
+    """The neutral recovery: nothing to repair (a real device, or a caller that opts out)."""
+    return None
 
 
 def _spawn_cold_with_retry(
     spawn: Callable[[], _Spawned],
     *,
     timeout: float,
+    recover: Callable[[_AttemptFailure], _Recovery | None] = _no_recovery,
     attempts: int = _COLD_SPAWN_ATTEMPTS,
     poll: float = _COLD_POLL_SECONDS,
     sleep: Callable[[float], None] = time.sleep,
     clock: Callable[[], float] = time.monotonic,
 ) -> _Spawned:
-    """Spawn the cold runner, await readiness with a liveness check, and retry once before failing loudly.
+    """Spawn the cold runner, await readiness with a liveness check, recover the device, and retry once.
 
     A cold XCTest-host launch that never binds its port is a transient infrastructure blip (BE-0207's
     class); a single retry absorbs a one-off cold-start blip, while a repeatable failure — a broken
@@ -288,18 +391,23 @@ def _spawn_cold_with_retry(
     subprocess) and its captured tail folded into the final loud `XcuitestChannelError` (unit 2), so
     the run-failing error shows *why* the runner never answered, not merely that it did not.
 
-    `timeout` is a *total* budget shared across attempts, not a per-attempt ceiling: the first
-    attempt gets the whole budget; each later attempt gets only what an earlier one left unspent.
-    A "health never ready" attempt spends the entire budget, so no retry follows it (a second
-    full-ceiling wait would double the worst case — 300s → 600s on the ios-e2e lane — and blow a
-    job's `timeout-minutes`); an attempt that fails while budget remains still earns its retry. So
-    the total cold-spawn wall time is bounded by `timeout` regardless of how the attempts fail.
+    Between attempts `recover` gets the classified failure and may repair the device it spawns onto
+    (BE-XXXX): the retry BE-0319 added isolated every host-side resource per attempt — port,
+    `.xctestrun`, capture — but never the device, so a Simulator whose app launch had just timed out
+    was handed to the retry in exactly the state that had defeated the first attempt. What `recover`
+    returns decides the retry's budget:
 
-    Which failures leave budget is what decides whether the retry is reachable at all, so
-    `_await_cold_runner` ends the wait on the *first* evidence the attempt is doomed — a dead
-    process, or a test run that ended — rather than on the ceiling. Before it read the second,
-    a Simulator app-launch timeout (the dominant observed flake) sat at the ceiling until the budget
-    was gone and so was structurally unable to retry, which is the residual BE-0319 left behind.
+    - `None` (nothing about the device changed) keeps the *shared* budget: the first attempt got the
+      whole ceiling and a later one gets only what it left unspent. A "health never ready" attempt
+      leaves nothing, so no retry follows it — a second full wait against an unchanged device would
+      double the worst case for no new information.
+    - a `fresh_budget` (the device was rebooted, or replaced outright) restarts the ceiling, because
+      the next attempt runs against a device that has demonstrably come back up. This is what makes
+      the dominant flake recoverable at all: an app-launch timeout ends the *first* attempt fast, but
+      what it leaves behind is a degraded device, not spare seconds.
+
+    Worst-case wall time is therefore `attempts` ceilings plus whatever `recover` spends, which it
+    bounds itself — the ios-e2e lane's headroom is set against that (see the workflow's env block).
     """
     from bajutsu.drivers.xcuitest import XcuitestChannelError
 
@@ -307,13 +415,14 @@ def _spawn_cold_with_retry(
     diagnostics: list[str] = []
     for n in range(1, attempts + 1):
         remaining = deadline - clock()
-        # First attempt always runs (with the full budget); a later one only if a fast failure left
-        # budget for it — a prior attempt that spent the whole ceiling gets no wasteful second wait.
+        # First attempt always runs (with the full budget); a later one only if a fast failure or a
+        # device repair left budget for it — an unchanged device that spent the whole ceiling gets no
+        # wasteful second wait.
         if n > 1 and remaining <= 0:
             break
         spawned = spawn()
         try:
-            reason = _await_cold_runner(
+            failure = _await_cold_runner(
                 spawned, timeout=max(0.0, remaining), poll=poll, sleep=sleep, clock=clock
             )
         except BaseException:
@@ -321,10 +430,20 @@ def _spawn_cold_with_retry(
             # BE-0290 prevents); discard it before propagating.
             spawned.discard()
             raise
-        if reason is None:
+        if failure is None:
             return spawned
-        diagnostics.append(f"attempt {n}/{attempts}: {reason}{spawned.log_tail()}")
+        diagnostics.append(f"attempt {n}/{attempts}: {failure.detail}{spawned.log_tail()}")
         spawned.discard()
+        if n == attempts:
+            break  # no further attempt to prepare a device for
+        # Recovery runs after the discard, so it acts on a device this run no longer holds a runner
+        # on. It raises rather than returns when the device cannot be repaired at all (a host whose
+        # Simulator runtimes are gone), which is a device fault, not a flaky spawn.
+        recovery = recover(failure)
+        if recovery is not None:
+            diagnostics.append(f"recovery after attempt {n}: {recovery.note}")
+            if recovery.fresh_budget is not None:
+                deadline = clock() + recovery.fresh_budget
     raise XcuitestChannelError("xcuitest runner did not come up:\n" + "\n".join(diagnostics))
 
 
@@ -395,6 +514,16 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # incremented on each warm resume, and capped by `_max_warm_reuses()` so the runner is
         # respawned cold before it accumulates enough app.launch() cycles to crash mid-scenario.
         self._warm_reuses = 0
+        # The app the runner launches, remembered on the Simulator path so a discard can terminate it
+        # (`_terminate_app_under_test`). None until the first spawn, and on a real device, where
+        # simctl does not apply.
+        self._bundle_id: str | None = None
+        # This device's `deviceTypeIdentifier`, captured while it is healthy so a replacement can be
+        # cloned from it after it vanishes (`_replace_vanished_device`).
+        self._device_type_id: str | None = None
+        # The udid this environment started on, once a vanished device forced a replacement — the flag
+        # `replaced_device()` reports the swap by, so the pool can re-key what it holds per device.
+        self._replaced_from: str | None = None
 
     def start(
         self,
@@ -461,12 +590,15 @@ class XcuitestEnvironment(_DeviceEnvironment):
     ) -> base.Driver:
         """Bring the runner up from cold: simctl prep (Simulator only), then spawn `xcodebuild`.
 
-        The simctl device prep runs once; only the `xcodebuild` spawn is retried (BE-0319 unit 4).
-        `_spawn_cold_with_retry` awaits readiness with a liveness check (unit 3), retries a one-off
-        cold-start blip once, discards every failed attempt (no leaked subprocess — the leak BE-0290
-        prevents), and on a repeatable failure fails loudly with each attempt's captured tail.
+        The simctl device prep runs once on the healthy path; only the `xcodebuild` spawn is retried
+        (BE-0319 unit 4). `_spawn_cold_with_retry` awaits readiness with a liveness check (unit 3),
+        retries a one-off cold-start blip once, discards every failed attempt (no leaked subprocess —
+        the leak BE-0290 prevents), and on a repeatable failure fails loudly with each attempt's
+        captured tail. Between attempts on a Simulator it also repairs the device
+        (`_recover_between_attempts`), which is the one path that runs the prep a second time.
         """
         ios = require_ios(eff)
+        self._bundle_id = ios.bundle_id if device_type != "device" else None
         if device_type != "device":
             self._prepare_simulator(eff, pre, permissions, cold=True)
 
@@ -502,13 +634,145 @@ class XcuitestEnvironment(_DeviceEnvironment):
         is_respawn = (self._respawn or self._cold_spawned_before) and not pre.erase
         respawn_ceiling = _respawn_timeout() if is_respawn else None
         timeout = respawn_ceiling if respawn_ceiling is not None else _runner_startup_timeout()
-        spawned = _spawn_cold_with_retry(spawn, timeout=timeout)
+
+        # A real device has no simctl to recover through — it is powered on out of band — so it keeps
+        # the plain retry. Only the Simulator gets the recovery ladder.
+        def recover(failure: _AttemptFailure) -> _Recovery | None:
+            return self._recover_between_attempts(failure, eff, pre, permissions)
+
+        spawned = _spawn_cold_with_retry(
+            spawn, timeout=timeout, recover=_no_recovery if device_type == "device" else recover
+        )
         # A later cold spawn on this same instance is an in-place respawn, so tighten its ceiling too.
         self._cold_spawned_before = True
         # Only the Simulator runner is kept warm; a real-device runner is torn down per lease.
         self._reusable = device_type != "device"
         self._warm_reuses = 0  # a fresh XCTest session: the app.launch()-cycle count starts over
         return spawned.driver
+
+    def _recover_between_attempts(
+        self,
+        failure: _AttemptFailure,
+        eff: Effective,
+        pre: Preconditions,
+        permissions: Mapping[str, str] | None,
+    ) -> _Recovery | None:
+        """Repair the Simulator a failed cold attempt leaves behind, so the retry spawns onto a live device.
+
+        The rung is chosen by what the attempt failed *on*, because the failures differ in what they
+        say about the device. A device simctl no longer lists has to be replaced outright; an
+        `xcodebuild` that exited on its own says nothing about the device, so the app it may have left
+        running is all there is to clean up; an app-launch timeout or a wait that reached its ceiling
+        says the device stopped honouring automation, which only a reboot clears.
+
+        Returns the note and fresh readiness ceiling `_spawn_cold_with_retry` folds into its
+        diagnostics and budget, or None when nothing about the device changed.
+
+        Raises:
+            DeviceError: if the device cannot be repaired — no replacement can be created, or a rung
+                overran `_recovery_timeout()`. A device that will not come back is a device fault, not
+                a flaky spawn, so it fails the run rather than funding another doomed attempt.
+        """
+        started = time.monotonic()
+        probe = simctl.device_available(self._udid, self._run)
+        if probe is False:
+            note = self._replace_vanished_device(eff, pre, permissions)
+            self._check_recovery_budget(started, note)
+            return _Recovery(note, fresh_budget=_runner_startup_timeout())
+        if probe is None:
+            # The listing itself failed, so nothing is known about the device. Repairing on a guess
+            # could reboot a healthy device — or replace one that never vanished — so this rung
+            # deliberately does nothing beyond what the discard already did.
+            return _Recovery("could not probe the device; left it as it is")
+        if failure.kind == "process-exit":
+            # `xcodebuild` gave up by itself and fast, which is the transient blip BE-0319's retry was
+            # written for. The discard has already terminated the app, so the device needs nothing.
+            return _Recovery("xcodebuild exited on its own; device left booted")
+        note = self._reboot_device(eff, pre, permissions)
+        self._check_recovery_budget(started, note)
+        return _Recovery(note, fresh_budget=_runner_startup_timeout())
+
+    def _check_recovery_budget(self, started: float, note: str) -> None:
+        """Fail the run when a recovery rung overran its wall bound.
+
+        Checked after the rung rather than inside it: the simctl steps are blocking calls this cannot
+        preempt, so the bound catches a device that took absurdly long to come back rather than
+        cutting a boot short. A rung that overran has spent the budget the retry would need anyway.
+
+        Raises:
+            DeviceError: if the rung took longer than `_recovery_timeout()`.
+        """
+        spent = time.monotonic() - started
+        if spent > _recovery_timeout():
+            raise simctl.DeviceError(
+                f"Simulator recovery exceeded {_recovery_timeout()}s (spent {spent:.1f}s): {note}"
+            )
+
+    def _reboot_device(
+        self, eff: Effective, pre: Preconditions, permissions: Mapping[str, str] | None
+    ) -> str:
+        """Shut the Simulator down, boot it back up, and re-establish the state a scenario needs."""
+        e = simctl.Env(self._udid, run=self._run)
+        try:
+            e.shutdown()
+            e.boot()
+            self._run(simctl.bootstatus_cmd(self._udid), None)
+            self._prepare_simulator(eff, pre, permissions, cold=True)
+        except subprocess.CalledProcessError as exc:
+            raise simctl.device_error(exc) from exc
+        _logger.warning("rebooted Simulator %s after a failed cold runner spawn", self._udid)
+        return f"rebooted and re-prepared {self._udid}"
+
+    def _replace_vanished_device(
+        self, eff: Effective, pre: Preconditions, permissions: Mapping[str, str] | None
+    ) -> str:
+        """Create a Simulator to take the place of one simctl no longer lists, and prepare it.
+
+        Observed on CI as an `xcodebuild` exiting with "Unable to find a device matching the provided
+        destination specifier" while the host's whole iOS device set had gone. Retrying onto a device
+        that no longer exists cannot work, so the run continues on a replacement — and `bootstatus`
+        runs before the prep so a fresh device's first boot is paid here rather than inside the next
+        attempt's readiness ceiling.
+
+        Raises:
+            DeviceError: if no replacement can be created — chiefly a host that lost its iOS runtimes
+                along with the device, where there is nothing left to run on.
+        """
+        old = self._udid
+        device_type = self._replacement_device_type(eff)
+        if device_type is None:
+            raise simctl.DeviceError(
+                f"Simulator {old} is gone and no iPhone device type is available to replace it; "
+                "the host's Simulator runtimes are likely gone too"
+            )
+        replacement = simctl.create_device(device_type, self._run)
+        self._udid = replacement
+        self._replaced_from = old
+        self._pinned_locale = None  # a fresh device: nothing has pinned its SpringBoard yet
+        self._device_type_id = device_type
+        try:
+            self._run(simctl.bootstatus_cmd(replacement), None)
+            self._prepare_simulator(eff, pre, permissions, cold=True)
+        except subprocess.CalledProcessError as exc:
+            raise simctl.device_error(exc) from exc
+        _logger.warning(
+            "Simulator %s vanished from CoreSimulator; created and prepared replacement %s",
+            old,
+            replacement,
+        )
+        return f"{old} vanished; created and prepared replacement {replacement} ({device_type})"
+
+    def _replacement_device_type(self, eff: Effective) -> str | None:
+        """The device type a replacement is created from, or None when this host offers no iPhone.
+
+        Prefers the vanished device's own type, so the replacement is the device the run was written
+        against; falls back to the configured model, then to whichever iPhone this host's Xcode ships
+        — the config may name a model a later Xcode dropped, and any iPhone beats failing the run.
+        """
+        if self._device_type_id is not None:
+            return self._device_type_id
+        configured = simctl.device_type_identifier(eff.device, self._run)
+        return configured if configured is not None else simctl.newest_iphone_device_type(self._run)
 
     def _spawn_runner(
         self, runner_path: Path, forwarded_base: Mapping[str, str], device_type: str
@@ -543,6 +807,10 @@ class XcuitestEnvironment(_DeviceEnvironment):
                 stdout=runner_out,
                 # Fold stderr into the same sink so a crash's cause is captured in order.
                 stderr=subprocess.STDOUT,
+                # Own process group, so teardown reaches the XCTest-host plumbing `xcodebuild`
+                # spawned rather than only `xcodebuild` itself — a signal that stops at the parent
+                # leaves children holding the device's automation session (`_discard_runner`).
+                start_new_session=True,
             )
         except OSError as exc:
             raise simctl.DeviceError(f"failed to start xcodebuild: {exc}") from exc
@@ -633,6 +901,10 @@ class XcuitestEnvironment(_DeviceEnvironment):
                     e.shutdown()
                     e.erase()
                 e.boot()
+                # Remember what kind of device this is while it is still listed: a replacement is
+                # cloned from this type, and by the time one is needed the device is gone.
+                if self._device_type_id is None:
+                    self._device_type_id = simctl.device_type_of(self._udid, self._run)
                 self._pin_system_locale(e, pre.resolved_locale(eff.locale))
             if ios.app_path:
                 if not Path(ios.app_path).exists():
@@ -782,6 +1054,10 @@ class XcuitestEnvironment(_DeviceEnvironment):
         prunes it (BE-0319). A mid-run crash keeps its capture too — `warn_on_crash`'s hint tells the
         operator to "see <path>", so pruning that same file in this call would point at evidence that
         no longer exists.
+
+        Teardown reaches the whole process group and then the app under test, because what this
+        discards is handed straight to another spawn on the same device (BE-XXXX): a runner whose
+        children survived, or an app left mid-launch, is state the next attempt inherits.
         """
         crashed = False
         if self._runner_proc is not None:
@@ -800,18 +1076,27 @@ class XcuitestEnvironment(_DeviceEnvironment):
                         self._runner_log_hint(),
                     )
             else:
-                self._runner_proc.terminate()
-                try:
-                    self._runner_proc.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    self._runner_proc.kill()
-                    self._runner_proc.wait()
+                _terminate_process_group(self._runner_proc)
             self._runner_proc = None
+        self._terminate_app_under_test()
         self._release_log(keep=keep_log or crashed)  # after the hint above has read the tail
         if self._patched_runner is not None:
             self._patched_runner.unlink(missing_ok=True)
             self._patched_runner = None
         self._reusable = False
+
+    def _terminate_app_under_test(self) -> None:
+        """Best-effort `simctl terminate` of the app the runner launched (Simulator only).
+
+        The Swift runner `_exit`s on a pre-serving failure rather than unwinding XCTest, so nothing
+        else brings the app down: an app left mid-launch by the timeout that failed one attempt is
+        exactly what the next attempt would call `launch()` on again. Every failure here is ignored —
+        the common case is an app that is not running, and a discard must never fail.
+        """
+        if self._bundle_id is None:
+            return
+        with contextlib.suppress(subprocess.CalledProcessError, simctl.DeviceError, OSError):
+            simctl.Env(self._udid, run=self._run).terminate(self._bundle_id)
 
     def _release_log(self, *, keep: bool) -> None:
         """Drop the reference to the current capture, pruning a default (env-unset) one unless kept.
@@ -840,6 +1125,12 @@ class XcuitestEnvironment(_DeviceEnvironment):
 
     def has_reusable_resident(self) -> bool:
         return self._reusable  # BE-0291: a Simulator start left a warm runner the pool should keep
+
+    def replaced_device(self) -> str | None:
+        # The udid this environment is on now, once a vanished device forced a replacement. Reported
+        # unconditionally after the swap (not cleared per lease): the pool compares it against the
+        # udid it leased, so a pool that has already adopted the replacement reads no further change.
+        return self._udid if self._replaced_from is not None else None
 
     def end_lease(self, driver: base.Driver, eff: Effective) -> None:
         # Keep the warm runner alive for the next lease on this device; terminate only the app, the
