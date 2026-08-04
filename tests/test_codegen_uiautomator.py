@@ -134,7 +134,8 @@ def test_a_wedged_window_list_is_kicked_rather_than_waited_out() -> None:
     assert "runCatching { device.pressHome() }" in code
     # pressHome waits through UiAutomation.executeAndWaitForEvent itself; wrapping it in another
     # would clear the queue the outer wait watches, leaving that wait able only to time out.
-    assert "executeAndWaitForEvent(" not in code
+    kick = code[code.index("private fun kickWindowTracking") : code.index("private fun ensureWindowTracking")]
+    assert "executeAndWaitForEvent(" not in kick
     # A kick that never lands must fail here, naming the channel — not 15s later at a selector.
     assert "accessibility window tracking reported no windows after" in code
 
