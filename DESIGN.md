@@ -471,7 +471,7 @@ redact:                       # 保存前にマスクする対象（§9 注意�
 
 - **種別**：`screenshot` / `elements` / `actionLog` / `deviceLog` / `network` / `video` / `appTrace`（下表）
 - **修飾子**：`before` / `after` / `around`（操作前に開始し後で停止）/ `onError`
-- **既定の修飾子**：常時発火するベースラインは `before`（ステップが動作する前に取得。§10）。`capturePolicy` ルールやインラインの `capture:` が発火したときは、修飾子なしの瞬時系（`screenshot` / `elements`）は今日どおり `after` が既定です。区間系（`video` / `deviceLog` / `network` / `appTrace`）は `around`、`actionLog` は常時記録です
+- **既定の修飾子**：常時発火するベースラインは `before`（ステップが動作する前に取得。§10）。`capturePolicy` ルールやインラインの `capture:` が発火したときは、修飾子なしの瞬時系（`screenshot` / `elements`）は従来どおり `after` が既定です。区間系（`video` / `deviceLog` / `network` / `appTrace`）は `around`、`actionLog` は常時記録です
 - 区間を持つ種別は `around` でライフサイクル管理し、停止はステップの wait 完了に同期させます（→ 後述「区間境界」）
 
 ### 証跡種別と取得元

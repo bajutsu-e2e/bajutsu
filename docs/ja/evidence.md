@@ -36,7 +36,7 @@
 
 > `appTrace` はアプリの `os_signpost` / `os_log` が出す `<name> started` / `<name> finished` マーカーを、時刻つきの区間にペアリングします（`intervals.parse_app_trace`）。`network` は区間システムではなく request collector が生成し、その exchange を `<sid>/network.json` に書き出します（[network observation](drivers.md)、`--network` フラグ）。
 
-**修飾子の既定**：常時発火するベースライン（後述）は `before` です。ステップが動作したあとではなく、動作する前に取得します。`capturePolicy` ルールやインラインの `capture:` が発火したときは、修飾子なしの瞬時種別は今日どおり `after` が既定のままです。区間系（`video`/`deviceLog`）は `around`（操作前に開始し、ステップ後に停止）です。ルール・インラインで `screenshot.before` を明示しても、ベースラインと重複するため撮り直されません。
+**修飾子の既定**：常時発火するベースライン（後述）は `before` です。ステップが動作したあとではなく、動作する前に取得します。`capturePolicy` ルールやインラインの `capture:` が発火したときは、修飾子なしの瞬時種別は従来どおり `after` が既定のままです。区間系（`video`/`deviceLog`）は `around`（操作前に開始し、ステップ後に停止）です。ルール・インラインで `screenshot.before` を明示しても、ベースラインと重複するため撮り直されません。
 
 ## A. `capturePolicy`（ルール方式）
 

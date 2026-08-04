@@ -300,7 +300,7 @@
 7. **新しい既定値を文書化します。** [`docs/evidence.md`](../../docs/evidence.md) とその日本語版は、
    「既定の修飾子は … `after` になる」という記述（`docs/evidence.md:44-46`）を、常時発火する
    ベースラインが `screenshot.before` と `elements` であり、ステップの動作前に取得される、という
-   記述に改めます。明示的なルールやインラインの要求については、今日どおり `after` が既定のまま
+   記述に改めます。明示的なルールやインラインの要求については、従来どおり `after` が既定のまま
    です。[`DESIGN.md`](../../DESIGN.md) はすでにディレクトリレイアウト（§9）で `before.png` を
    `after.png` と並べて示しており、取得タイミングの表にも同じ区別を加えます。
    [`docs/architecture.md`](../../docs/architecture.md) は、この挙動を記述している箇所がないかを
