@@ -33,9 +33,11 @@ few project-specific points are worth keeping in mind:
   [`docs/ai-development.md`](docs/ai-development.md#block-a-secret-before-its-committed) — but
   treat that as a backstop, not a reason to paste one in.
 - **`setClipboard` writes to a device-wide clipboard.** The `setClipboard` scenario step (used
-  for paste flows) seeds the target's clipboard directly: `simctl pbcopy` on the iOS Simulator,
-  the Android clipboard provider on Android. That clipboard is readable by any other process with
-  access to the same Simulator or device. Avoid seeding a secret or one-time passcode this way.
+  for paste flows) seeds the target's clipboard: `simctl pbcopy` on the iOS Simulator; on Android,
+  an ordered `am broadcast` to the app's in-app receiver (BajutsuAndroid, BE-0233), which then
+  writes the OS clipboard — so it depends on the app under test embedding that receiver. That
+  clipboard is readable by any other process with access to the same Simulator or device. Avoid
+  seeding a secret or one-time passcode this way.
 - **Captured evidence.** Run artifacts under `runs/` (screenshots, page sources,
   logs) can contain sensitive data from the app under test. Review them before
   sharing, attaching to a pull request, or uploading to CI.
