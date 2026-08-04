@@ -919,6 +919,7 @@ class _StepRunner:
         # it too — a sink that reads nothing must pay nothing even for a `web` block's first step.
         pre_elements = self.state.prev_after
         pre_kinds = ["screenshot.before", "elements"]
+        pre_query_was_fresh = False
         if (
             pre_elements is None
             and active_driver is not self.cfg.driver
@@ -929,8 +930,12 @@ class _StepRunner:
                 self.state.total_reads += 1
                 # Seed `prev_after` with this same read: the `screenChanged`-policy `before` below
                 # would otherwise see `prev_after` still unset and pay a second, duplicate query of
-                # the same web driver for the same pre-action moment.
+                # the same web driver for the same pre-action moment. Tracked separately from
+                # `before_is_fresh` below (a tree just read *this iteration*, vs. one merely
+                # available from `prev_after`) so the interrupt guard also recognizes this read as
+                # current and skips its own redundant re-query.
                 self.state.prev_after = pre_elements
+                pre_query_was_fresh = True
             except (ConnectionError, base.UnsupportedAction, OSError) as exc:
                 # Best-effort: a web context that can't be read yet must not crash the step before it
                 # even gets to attempt its own action — that failure surfaces normally through
@@ -960,6 +965,10 @@ class _StepRunner:
             before = None
         elif self.state.prev_after is not None:
             before = self.state.prev_after
+            # A snapshot seeded by *this* step's own pre-step query above is current, not a
+            # carried-over one from the previous step's boundary — recognized as fresh here too,
+            # so the interrupt guard below skips its own redundant re-query of the same tree.
+            before_is_fresh = pre_query_was_fresh
         else:
             before = active_driver.query()
             self.state.total_reads += 1

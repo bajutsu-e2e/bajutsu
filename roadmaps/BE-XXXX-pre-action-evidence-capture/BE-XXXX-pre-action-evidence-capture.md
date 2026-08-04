@@ -116,7 +116,14 @@ otherwise — and never call `query()` itself to fill that gap.
    also seeds `self.state.prev_after`, not only the local `pre_elements`: without it, the
    `screenChanged`-policy `before` computed just below would see `prev_after` still unset on this
    same first nested step and pay a second, duplicate query of the same web driver for the same
-   pre-action moment.
+   pre-action moment. That `before` computation also tracks `before_is_fresh` — whether the tree it
+   is holding was just read this iteration, or is a snapshot carried over from the previous step's
+   boundary — for the interrupt guard right after it, which skips its own re-query only when
+   `before_is_fresh`. A local `pre_query_was_fresh` flag, set only when this call's own
+   `active_driver.query()` succeeds, feeds that same `before_is_fresh` when `before` turns out to be
+   the tree this call just seeded; otherwise (a step reusing an already-current `prev_after` from an
+   earlier step) it stays unset, unchanged from before this item. Without it, the guard would see a
+   tree it does not actually need to re-read as stale and pay a redundant `query_dom()` of its own.
 
 2. **Close the scenario's final-step gap.** Chaining step *i*'s result forward as step *(i+1)*'s
    pre-step baseline (unit 1) leaves exactly one step uncovered: the scenario's actual last

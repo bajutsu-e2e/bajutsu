@@ -12,7 +12,7 @@ from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence import FileSink
 from bajutsu.orchestrator import run_scenario
-from bajutsu.scenario import Relaunch
+from bajutsu.scenario import Interrupt, Relaunch
 
 
 class _QueryLoggingDriver(FakeDriver):
@@ -609,6 +609,62 @@ def test_pre_step_capture_downgrades_to_screenshot_only_when_web_query_fails(
     names = {a.name for a in leaf_outcome.artifacts}
     assert any(name.endswith("before.png") for name in names)
     assert not any(a.kind == "elements" for a in leaf_outcome.artifacts)
+
+
+def test_pre_step_query_marks_prev_after_fresh_for_the_interrupt_guard(tmp_path: Path) -> None:
+    """The pre-step baseline's own `active_driver.query()` for a `web` block's first nested step
+    (BE-XXXX) must count as a *fresh* read for the interrupt guard's `before_is_fresh` bookkeeping,
+    not just for `prev_after` — otherwise, with a `screenChanged` policy configured, the guard sees
+    `before_is_fresh=False` for a tree it did not actually need to re-read and pays a redundant
+    second `query_dom()` (review follow-up)."""
+
+    class _CountingBridge(_FakeBridge):
+        def __init__(self, dom_elements: list[base.Element]) -> None:
+            super().__init__(dom_elements)
+            self.calls = 0
+
+        def query_dom(self, webview_id: str) -> list[base.Element]:
+            self.calls += 1
+            return super().query_dom(webview_id)
+
+    native_screen = [el("app.webview", frame=(0.0, 0.0, 400.0, 800.0))]
+    dom_elements: list[base.Element] = [el("field", "Field", ["textField"])]
+    bridge = _CountingBridge(dom_elements)
+    driver = FakeDriver(native_screen)
+    run_dir = tmp_path / "run1"
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "x",
+                "capturePolicy": [
+                    {"on": {"event": "screenChanged"}, "capture": ["screenshot.before"]}
+                ],
+                "steps": [
+                    {
+                        "web": {
+                            "within": {"id": "app.webview"},
+                            "steps": [{"type": {"text": "hi"}}],
+                        }
+                    }
+                ],
+            }
+        ),
+        clock=FakeClock(),
+        sink=FileSink(run_dir),
+        webview_bridge=bridge,
+        interrupts=[
+            Interrupt.model_validate(
+                {"condition": {"exists": {"id": "never.matches"}}, "steps": [{"tap": {"id": "x"}}]}
+            )
+        ],
+    )
+    assert result.ok, result.failure
+    # Two queries: the pre-step baseline's own, and the pre-existing, unrelated post-step read
+    # every web-block step already pays (BE-0234 Unit 2, out of scope here). Without this fix, the
+    # interrupt guard's `before_is_fresh` check sees the pre-step tree as stale and pays a third,
+    # redundant `query_dom()`.
+    assert bridge.calls == 2
 
 
 def test_pre_step_and_final_captures_write_content_from_the_same_pre_action_moment(
