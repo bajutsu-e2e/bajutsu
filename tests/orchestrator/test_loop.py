@@ -480,28 +480,15 @@ class _FakeBridge:
         pass
 
 
-class _TornDownAfterStepBridge(_FakeBridge):
-    """A bridge that serves `good_calls` queries normally, then fails — standing in for a WebView
-    context torn down between the step completing and the scenario's own final re-query."""
-
-    def __init__(self, dom_elements: list[base.Element], good_calls: int) -> None:
-        super().__init__(dom_elements)
-        self._good_calls = good_calls
-        self._calls = 0
-
-    def query_dom(self, webview_id: str) -> list[base.Element]:
-        self._calls += 1
-        if self._calls > self._good_calls:
-            raise ConnectionError("webview bridge gone")
-        return super().query_dom(webview_id)
-
-
-def test_final_capture_requeries_the_web_driver_when_the_scenario_ends_mid_block(
+def test_pre_step_capture_queries_the_web_driver_for_a_blocks_first_nested_step(
     tmp_path: Path,
 ) -> None:
-    """A scenario ending inside a `web` block re-queries the web driver for its final capture,
-    since `prev_after` is reset to `None` on the way out of the block (BE-XXXX) — proven by
-    content: the DOM-only element must appear in the written elements.json."""
+    """The pre-step baseline for a `web` block's first nested step queries the *web* driver, not
+    the native one, since `prev_after` is reset to `None` around the whole block (BE-0234 Unit 2)
+    and the sink call always targets the native driver otherwise (BE-XXXX) — proven by content:
+    the DOM-only element must appear in the written elements.json. The scenario's final capture
+    (screenshot only, added since this is also the last step) never touches `elements` at all, so
+    it needs no web-driver interaction of its own."""
     native_screen = [el("app.webview", frame=(0.0, 0.0, 400.0, 800.0))]
     dom_elements: list[base.Element] = [
         el("confirm", "Confirm", ["button"], frame=(10.0, 10.0, 100.0, 20.0))
@@ -533,54 +520,24 @@ def test_final_capture_requeries_the_web_driver_when_the_scenario_ends_mid_block
     els_artifact = next(a for a in leaf_outcome.artifacts if a.kind == "elements")
     written = json.loads((run_dir / els_artifact.name).read_text(encoding="utf-8"))
     assert any(e["identifier"] == "confirm" for e in written)  # the DOM tree, not the native one
-
-
-def test_final_capture_skips_cleanly_when_the_web_driver_requery_fails(tmp_path: Path) -> None:
-    """A web context torn down strictly *after* the step itself finished — but before the
-    scenario's own final re-query reaches it — must not crash the run: the step succeeds
-    normally, and only the extra final-capture artifact is quietly skipped (BE-XXXX).
-
-    `good_calls=3` serves the pre-step capture's own query, the `tap`'s selector-resolve query, and
-    the existing post-step capture's own web-aware query (`loop.py`'s `screen.get()` branch, which
-    always re-queries the active driver inside a `web` block, unrelated to this item) — all needed
-    for the step to succeed and record its ordinary evidence. Only the 4th call, the scenario-final
-    capture's re-query, then fails — isolating the failure to exactly that path.
-    """
-    native_screen = [el("app.webview", frame=(0.0, 0.0, 400.0, 800.0))]
-    dom_elements: list[base.Element] = [
-        el("confirm", "Confirm", ["button"], frame=(10.0, 10.0, 100.0, 20.0))
-    ]
-    bridge = _TornDownAfterStepBridge(dom_elements, good_calls=3)
-    driver = FakeDriver(native_screen)
-    result = run_scenario(
-        driver,
-        _scenario(
-            {
-                "name": "x",
-                "steps": [
-                    {
-                        "web": {
-                            "within": {"id": "app.webview"},
-                            "steps": [{"tap": {"id": "confirm"}}],
-                        }
-                    }
-                ],
-            }
-        ),
-        clock=FakeClock(),
-        sink=FileSink(tmp_path / "run1"),
-        webview_bridge=bridge,
-    )
-    assert result.ok, result.failure
-    leaf_outcome = next(s for s in result.steps if s.action == "tap")
-    # The pre-step baseline still landed (before the bridge failed); the final capture did not add
-    # a second, overwriting "elements" entry — it was skipped, not crashed past.
+    # Exactly one `elements` entry: the final capture (this is also the last step) adds only a
+    # second screenshot, never a second `elements`.
     assert sum(1 for a in leaf_outcome.artifacts if a.kind == "elements") == 1
+    names = {a.name for a in leaf_outcome.artifacts}
+    assert any(name.endswith("before.png") for name in names)
+    assert any(name.endswith("after.png") for name in names)
 
 
-def test_pre_step_and_final_captures_write_distinct_tree_content(tmp_path: Path) -> None:
-    """Content check, not just call ordering: a non-last step's elements.json holds the pre-action
-    tree it acted on; the scenario's last step's holds the settled post-action one (BE-XXXX)."""
+def test_pre_step_and_final_captures_write_content_from_the_same_pre_action_moment(
+    tmp_path: Path,
+) -> None:
+    """Content check, not just call ordering: every step's elements.json holds the pre-action tree
+    it acted on — including the scenario's last step, whose final capture only adds a screenshot
+    (`after.png`), never re-capturing `elements` (BE-XXXX). `elements.json` has one fixed filename,
+    so if the final capture re-wrote it, the last step's `elements.json` would silently disagree
+    with the `before.png` the editor's `screenshotUrl` still resolves to — a real review finding
+    this test now guards against.
+    """
 
     def react(d: FakeDriver, kind: str, arg: object) -> None:
         if kind != "tap":
@@ -605,12 +562,17 @@ def test_pre_step_and_final_captures_write_distinct_tree_content(tmp_path: Path)
         data = json.loads((run_dir / art.name).read_text(encoding="utf-8"))
         return {e["identifier"] for e in data}
 
-    # step0 is not the last step: its elements.json is only ever the pre-step baseline, written
-    # before its own tap ran — the original screen, not the one its own tap produced.
+    # step0's elements.json is the pre-step baseline, written before its own tap ran — the
+    # original screen, not the one its own tap produced.
     assert _tree_ids(0) == {"a", "b"}
-    # step1 is the last step: its final capture overwrites elements.json with the settled
-    # post-action tree, after its own tap ran.
-    assert "final" in _tree_ids(1)
+    # step1 is the last step, but its elements.json is *also* the pre-step baseline — written
+    # before its own tap ran, matching the moment `before.png` shows. "final" (produced only by
+    # step1's own tap) never appears, since the final capture does not touch `elements`.
+    assert _tree_ids(1) == {"a", "b", "mid"}
+    assert "final" not in _tree_ids(1)
+    # The final capture still adds the extra screenshot, visually showing the true end state.
+    names = {a.name for a in result.steps[1].artifacts}
+    assert any(name.endswith("after.png") for name in names)
 
 
 def test_extract_still_reads_the_settled_post_action_value(tmp_path: Path) -> None:

@@ -2,11 +2,13 @@
 
 Every step always captures two instant baselines: a pre-step one (screenshot.before + elements,
 taken before the step acts, BE-XXXX) and, only for the scenario's last leaf step, a post-step one
-(screenshot.after + elements, since no following step exists to carry its result forward).
-capturePolicy / inline `capture` add extra instant captures on top of the post-step call — never
-`screenshot.before`, which the pre-step baseline already wrote (filtered out as redundant). Interval
-kinds (video / deviceLog / appTrace) are heavy and opt-in (BE-0028): recorded once for the whole
-scenario, but only when the scenario actually requests that kind.
+(screenshot.after alone — `elements` is deliberately not re-captured, since `elements.json` has one
+fixed filename and re-capturing it would overwrite the pre-step baseline's pre-action tree with a
+post-action one, decoupling it from what `before.png` shows). capturePolicy / inline `capture` add
+extra instant captures on top of the post-step call — never `screenshot.before`, which the pre-step
+baseline already wrote (filtered out as redundant). Interval kinds (video / deviceLog / appTrace)
+are heavy and opt-in (BE-0028): recorded once for the whole scenario, but only when the scenario
+actually requests that kind.
 
 Every scenario below has exactly one step, which is therefore always also the last leaf step — so
 every test sees both baselines around whatever a capturePolicy rule itself contributes.
@@ -24,7 +26,7 @@ from bajutsu.orchestrator.evidence_rules import requested_intervals
 from bajutsu.scenario import Scenario
 
 BASELINE_BEFORE = ["screenshot.before", "elements"]
-BASELINE_AFTER = ["screenshot.after", "elements"]
+BASELINE_AFTER = ["screenshot.after"]
 
 
 class RecordingSink:

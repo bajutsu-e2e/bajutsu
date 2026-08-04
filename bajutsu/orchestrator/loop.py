@@ -666,19 +666,15 @@ def _run_for_each(
 @dataclass(frozen=True)
 class LastLeafStep:
     """The last leaf step (an actuating/`wait`/`assert`/`email` kind) to actually run, however deep
-    the `if`/`forEach`/`web` nesting (BE-XXXX). `_run_steps` gives it one more capture once the whole
-    run finishes, since no following step exists to carry its result forward as a pre-step baseline
-    the way every other step's does. Bundled rather than three parallel `StepLoopState` fields so the
-    three are always set together — `_handle_action` constructs one in a single assignment, and a
-    consumer narrows all three at once from one `is not None` check.
+    the `if`/`forEach`/`web` nesting (BE-XXXX). `_run_steps` gives it one more screenshot once the
+    whole run finishes, since no following step exists to carry its result forward as a pre-step
+    baseline the way every other step's does. Bundled rather than two parallel `StepLoopState`
+    fields so the two are always set together — `_handle_action` constructs one in a single
+    assignment, and a consumer narrows both at once from one `is not None` check.
     """
 
     outcome: StepOutcome
     step_id: str
-    # The driver that step actually ran against — a `WebContextDriver` inside a `web` block, so the
-    # final capture can re-query the right one on the rare scenario ending mid-block, where
-    # `prev_after` was already reset to None on the way back out (BE-0234 Unit 2).
-    driver: base.Driver
 
 
 @dataclass
@@ -921,11 +917,15 @@ class _StepRunner:
             try:
                 pre_elements = active_driver.query()
                 self.state.total_reads += 1
+                # Seed `prev_after` with this same read: the `screenChanged`-policy `before` below
+                # would otherwise see `prev_after` still unset and pay a second, duplicate query of
+                # the same web driver for the same pre-action moment.
+                self.state.prev_after = pre_elements
             except (ConnectionError, base.UnsupportedAction, OSError) as exc:
-                # Best-effort, like the scenario-final capture's own re-query guard: a web context
-                # that can't be read yet must not crash the step before it even gets to attempt its
-                # own action — that failure surfaces normally through `_run_step_body` instead. Skip
-                # only this report artifact, and disclose the gap via logging rather than guess.
+                # Best-effort: a web context that can't be read yet must not crash the step before it
+                # even gets to attempt its own action — that failure surfaces normally through
+                # `_run_step_body` instead. Skip only this report artifact, and disclose the gap via
+                # logging rather than guess.
                 _logger.debug(
                     "%s: pre-step capture skipped, web driver query failed: %s", step_id, exc
                 )
@@ -1156,7 +1156,7 @@ class _StepRunner:
         # The last leaf step to actually run (BE-XXXX): `_run_steps` uses this after the whole run
         # finishes to give the scenario's true final state a capture too, since no following step
         # exists to carry it forward as its own pre-step baseline (unlike every other step).
-        self.state.last_leaf = LastLeafStep(outcome, step_id, active_driver)
+        self.state.last_leaf = LastLeafStep(outcome, step_id)
         # Seed the next step's `before` only with a tree we actually read; if we skipped the
         # read, the next `before` reads fresh (BE-0234 Unit 2).
         self.state.prev_after = screen.cached
@@ -1217,36 +1217,14 @@ def _run_steps(
     result = _StepRunner(state, cfg).exec_steps(scenario.steps, driver)
     _logger.debug("%s: %d runner-issued screen reads (BE-0234)", sid, state.total_reads)
     # The scenario's true final state has no following step to carry it forward as a pre-step
-    # baseline, so the last leaf step's outcome gets one more capture here (BE-XXXX). `prev_after` is
-    # already that step's settled post-action tree (BE-0234 Unit 2), so this usually costs no extra
-    # query. The rare exception is a scenario ending inside a `web` block: `prev_after` was already
-    # reset to `None` on the way back out, and a `None` `elements` would make the sink's fallback
-    # query `driver` (native) instead of the web driver the last step actually ran against — so that
-    # one case re-queries the right driver explicitly instead.
+    # baseline, so the last leaf step's outcome gets one more screenshot here (BE-XXXX). `elements`
+    # is deliberately NOT re-captured: `elements.json` has one fixed filename, so re-capturing it
+    # here would overwrite the pre-step baseline's pre-action tree with a post-action one — while
+    # `screenshotUrl` (the editor's element-picker pairing, `bajutsu/serve/operations/reads.py`) keeps
+    # resolving to the *first*-recorded screenshot, `before.png`. That mismatch would let a picked
+    # element's coordinates (from the post-action tree) drift from what `before.png` actually shows.
+    # Keeping `elements.json` the pre-action tree for every step, including the last, keeps that pair
+    # consistent throughout; `after.png` alone still shows the scenario's true end state visually.
     if (leaf := state.last_leaf) is not None:
-        final_elements = state.prev_after
-        skip_final_capture = False
-        if final_elements is None and leaf.driver is not driver:
-            try:
-                final_elements = leaf.driver.query()
-            except (ConnectionError, base.UnsupportedAction, OSError) as exc:
-                # Best-effort: this capture only enriches an already-decided outcome's evidence, well
-                # after the run's own verdict is fixed. A web context torn down by this point must
-                # not crash an otherwise-finished (possibly passing) run, and falling back to
-                # `driver` (native) would silently mislabel this step's tree as native instead of the
-                # web one it actually acted on — skip the capture and disclose the gap via logging
-                # rather than guess at wrong content.
-                _logger.debug(
-                    "%s: final-step capture skipped, web driver re-query failed: %s", sid, exc
-                )
-                skip_final_capture = True
-        if not skip_final_capture:
-            leaf.outcome.artifacts.extend(
-                sink.capture(
-                    driver,
-                    leaf.step_id,
-                    ["screenshot.after", "elements"],
-                    elements=final_elements,
-                )
-            )
+        leaf.outcome.artifacts.extend(sink.capture(driver, leaf.step_id, ["screenshot.after"]))
     return result

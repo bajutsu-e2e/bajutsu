@@ -356,7 +356,7 @@ def test_cleared_interstitial_is_not_misattributed_as_the_steps_screen_change() 
     # gets, and the final-step one since it is also the scenario's only (and therefore last)
     # step (BE-XXXX).
     step0 = [kinds for sid, kinds in sink.calls if sid == "x/step0"]
-    assert step0 == [["screenshot.before", "elements"], ["screenshot.after", "elements"]]
+    assert step0 == [["screenshot.before", "elements"], ["screenshot.after"]]
 
 
 def test_pre_act_guard_reads_fresh_not_a_stale_prev_after_snapshot() -> None:

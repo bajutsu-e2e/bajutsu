@@ -433,7 +433,9 @@ def _step_artifacts(
 
     effective_name = scenario_name or matched.name
     scenario = _find_scenario(manifest, effective_name)
-    sid = scenario.get("sid") if scenario is not None else None
+    # `or None` coerces a falsy/empty `sid` (e.g. `""`) to `None` too, so a malformed scenario
+    # record bails to `[]` below rather than building a malformed step id like `/step0`.
+    sid = scenario.get("sid") or None if scenario is not None else None
     if sid is None:
         return []
     # index -> that step's recorded artifacts, so the loop below resolves the real names the run
@@ -482,7 +484,9 @@ def _artifact_names(step_artifacts: list[dict[str, Any]]) -> tuple[str | None, s
     by_kind: dict[str, str] = {}
     for art in step_artifacts:
         kind, name = art.get("kind"), art.get("name")
-        if kind is not None and name is not None:
+        # Narrowed to `str`, not just non-`None`: a malformed/partially written manifest could carry
+        # a non-string value here, which would otherwise flow into the URL/path built from it below.
+        if isinstance(kind, str) and isinstance(name, str):
             by_kind.setdefault(kind, name)
     return by_kind.get("elements"), by_kind.get("screenshot")
 

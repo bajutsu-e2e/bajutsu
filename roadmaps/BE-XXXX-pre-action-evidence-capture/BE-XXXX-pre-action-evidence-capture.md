@@ -112,31 +112,36 @@ otherwise — and never call `query()` itself to fill that gap.
    so the pre-step call resolves `elements` explicitly (`active_driver.query()`) whenever `prev_after`
    is unset and `active_driver is not self.cfg.driver`, and does so behind a best-effort
    `try`/`except (ConnectionError, base.UnsupportedAction, OSError)` that skips just this artifact on
-   a torn-down bridge rather than crashing the step before its own action even runs.
+   a torn-down bridge rather than crashing the step before its own action even runs. That same query
+   also seeds `self.state.prev_after`, not only the local `pre_elements`: without it, the
+   `screenChanged`-policy `before` computed just below would see `prev_after` still unset on this
+   same first nested step and pay a second, duplicate query of the same web driver for the same
+   pre-action moment.
 
 2. **Close the scenario's final-step gap.** Chaining step *i*'s result forward as step *(i+1)*'s
    pre-step baseline (unit 1) leaves exactly one step uncovered: the scenario's actual last
    executed step, which has no following step to carry its result forward. Left alone, that step's
    own after-the-fact state would never become a default artifact — a regression from today, where
    every step (including the last) unconditionally gets `after.png`. Track the last *leaf* step's
-   identity as the loop runs, bundled into one `LastLeafStep(outcome, step_id, driver)` value
-   (`loop.py`) rather than three parallel `Optional` fields, so the three are always set together by
-   construction and a consumer narrows all three from one `is not None` check; `StepLoopState` holds
-   a single `last_leaf: LastLeafStep | None` field. `_handle_action` constructs it at the end, next to
+   identity as the loop runs, bundled into one `LastLeafStep(outcome, step_id)` value (`loop.py`)
+   rather than two parallel `Optional` fields, so the two are always set together by construction and
+   a consumer narrows both from one `is not None` check; `StepLoopState` holds a single
+   `last_leaf: LastLeafStep | None` field. `_handle_action` constructs it at the end, next to
    `self.state.prev_after = screen.cached` — `_handle_action` is the single handler every
    actuating/`wait`/`assert`/`email` kind flows through (`_run_one`, `loop.py:754-775`), so this never
    fires for an `if`/`forEach`/`web` container's own bookkeeping outcome, only for the leaf step that
    actually ran last. After the top-level `exec_steps` call returns in `_run_steps`, regardless of its
    outcome, extend `leaf.outcome.artifacts` with one more call:
-   `self.cfg.sink.capture(driver, leaf.step_id, ["screenshot.after", "elements"], elements=final_elements)`.
-   `state.prev_after` is already that step's settled post-action tree at this point (maintained
-   unconditionally), so this usually costs no extra query — the same reuse unit 1 relies on, spent
-   once more at the very end of the run. **Implementation note:** the one exception is a scenario
-   ending inside a `web` block, where `prev_after` was already reset to `None` on the way back out;
-   the block re-queries `leaf.driver` directly in that case, behind the same best-effort
-   `try`/`except` as unit 1's pre-step call — a web context torn down by the time this purely
-   cosmetic, post-verdict capture runs must not crash an already-decided (possibly passing) run, so
-   the capture is skipped rather than guessed at with the wrong driver's tree.
+   `self.cfg.sink.capture(driver, leaf.step_id, ["screenshot.after"])`. This adds only a screenshot,
+   deliberately never `elements`: `elements.json` has one fixed filename, so re-capturing it here
+   would overwrite the pre-step baseline's pre-action tree with a post-action one, while
+   `reads.py`'s `_step_artifacts` (unit 5) keeps resolving `screenshotUrl` to the *first*-recorded
+   screenshot, `before.png` — decoupling the paired screenshot and tree the editor's element-picker
+   relies on describing the same moment. Keeping `elements.json` the pre-action tree for every step,
+   including the last, keeps that pair consistent throughout the whole run; `after.png` alone still
+   shows the scenario's true end state visually. Because this capture always targets `self.cfg.driver`
+   (native — the same choice unit 1's pre-step call makes, and screenshots need no tree at all), it
+   needs no web-driver re-query and no exception guard of its own, unlike unit 1's pre-step call.
 
 3. **Drop redundant `.before` tokens from the post-step call.** A scenario's inline `capture` or a
    `capturePolicy` rule can still spell `screenshot.before` explicitly; since Unit 1's pre-step call
@@ -168,6 +173,12 @@ otherwise — and never call `query()` itself to fill that gap.
    serialization) and pick the first artifact of kind `"screenshot"` / `"elements"`, mirroring
    `bajutsu/report/rows.py`'s existing `by_kind.setdefault(a.kind, a)` pattern
    (`report/rows.py:113-122`) — which already reads generically by kind and needs no change itself.
+   `_artifact_names` narrows each `kind`/`name` to `str` (not merely non-`None`) before indexing
+   `by_kind`, so a malformed or partially written manifest entry degrades to "no link" rather than
+   flowing a non-string value into the URL built from it. `_step_artifacts` restores the `or None`
+   coercion the removed `_find_sid` deliberately applied to `sid`: an empty-string `sid` on a
+   scenario record now bails to `[]` the same way a missing one already does, instead of building a
+   malformed step id like `/step0`.
 
 6. **Cover the ordering, the final-step capture, the read-count invariant, and the non-regression in
    the deterministic suite.** A `FakeDriver`-backed test in `tests/orchestrator/test_loop.py` records
@@ -176,7 +187,10 @@ otherwise — and never call `query()` itself to fill that gap.
    A further case runs a multi-step scenario and asserts the last step's `outcome.artifacts` carries
    both the pre-step (`before.png`) and the unit 2 final-step (`after.png`) entries, while an earlier
    step carries only the former — and a variant ending in an `if`/`forEach` proves the final capture
-   still lands on the last *leaf* step, not the container's own outcome.
+   still lands on the last *leaf* step, not the container's own outcome. A content-level case
+   proves the last step's `elements.json` stays the pre-action tree — matching `before.png`, never
+   the post-action one the final capture's `screenshot.after` alone shows — the pairing unit 2's
+   design note above depends on.
    `tests/test_alerts.py` and `tests/orchestrator/test_waits.py` gain cases proving the
    `alert_guard` reactive guard's two retry paths (the end-of-step one-shot retry in
    `_handle_action`, and the mid-wait `_AlertGuardGate` in `waits.py`) don't corrupt this item's

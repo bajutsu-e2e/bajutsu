@@ -517,6 +517,80 @@ def test_read_scenario_with_run_missing_artifacts(tmp_path: Path) -> None:
         assert s["elementsUrl"] is None
 
 
+def test_read_scenario_with_run_empty_sid_yields_no_steps(tmp_path: Path) -> None:
+    """A scenario record whose `sid` is `""` (malformed/partially written) bails to no steps, the
+    same as a missing `sid` — restoring the coercion the old `_find_sid` applied (BE-XXXX)."""
+    state, runs = _state(tmp_path)
+    scn_dir = tmp_path / "scenarios"
+    (scn_dir / "login.yaml").write_text(SCENARIO_YAML, encoding="utf-8")
+    run_dir = runs / "run1"
+    run_dir.mkdir(parents=True)
+    manifest = {
+        "runId": "run1",
+        "ok": True,
+        "scenarios": [{"scenario": "login", "ok": True, "sid": "", "steps": []}],
+    }
+    (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    payload, status = ops.read_scenario(
+        state,
+        "demo",
+        str(scn_dir / "login.yaml"),
+        run_id="run1",
+        scenario_name="login",
+    )
+    assert status == 200
+    assert payload["steps"] == []
+
+
+def test_read_scenario_with_run_ignores_non_string_artifact_fields(tmp_path: Path) -> None:
+    """A malformed manifest entry whose `kind`/`name` are not strings degrades to "no link" rather
+    than flowing a non-string value into the URL built from it (BE-XXXX)."""
+    state, runs = _state(tmp_path)
+    scn_dir = tmp_path / "scenarios"
+    (scn_dir / "login.yaml").write_text(SCENARIO_YAML, encoding="utf-8")
+    run_dir = runs / "run1"
+    run_dir.mkdir(parents=True)
+    manifest = {
+        "runId": "run1",
+        "ok": True,
+        "scenarios": [
+            {
+                "scenario": "login",
+                "ok": True,
+                "sid": "00-login",
+                "steps": [
+                    {
+                        "index": 0,
+                        "action": "tap",
+                        "ok": True,
+                        "artifacts": [
+                            {"name": 123, "kind": "screenshot", "provider": "driver"},
+                            {
+                                "name": "00-login/step0/elements.json",
+                                "kind": None,
+                                "provider": "driver",
+                            },
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+    (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    payload, status = ops.read_scenario(
+        state,
+        "demo",
+        str(scn_dir / "login.yaml"),
+        run_id="run1",
+        scenario_name="login",
+    )
+    assert status == 200
+    assert payload["steps"][0]["screenshotUrl"] is None
+    assert payload["steps"][0]["elementsUrl"] is None
+
+
 def test_read_scenario_with_run_reads_from_object_storage(tmp_path: Path) -> None:
     """A hosted backend (`ObjectStorageArtifactStore`) populates the per-step artifact list the
     same as local `serve` (BE-0258): before this fix, `_step_artifacts` read `state.runs_dir`

@@ -220,8 +220,9 @@ def test_end_of_step_alert_guard_retry_preserves_correct_before_after_evidence(
 def test_end_of_step_alert_guard_retry_on_the_last_step_still_gets_a_final_capture(
     tmp_path: Path,
 ) -> None:
-    """The scenario's last step still gets its final post-action capture after an end-of-step
-    alert-guard retry — reflecting the retried, successful attempt, not the failed first one."""
+    """The scenario's last step still gets its final post-action screenshot after an end-of-step
+    alert-guard retry — reflecting the retried, successful attempt, not the failed first one.
+    `elements.json`, unaffected, stays the pre-step baseline (BE-XXXX)."""
     go = {
         "identifier": "go",
         "label": "Go",
@@ -254,9 +255,10 @@ def test_end_of_step_alert_guard_retry_on_the_last_step_still_gets_a_final_captu
             run_dir / next(a.name for a in result.steps[0].artifacts if a.kind == "elements")
         ).read_text(encoding="utf-8")
     )
-    # The final elements.json (written last) reflects the post-retry success, not the empty
-    # pre-attempt screen.
-    assert {e["identifier"] for e in els} == {"go"}
+    # elements.json is the pre-step baseline (the true pre-attempt, empty screen) even though this
+    # is the last step: the final capture only adds a screenshot, never re-capturing `elements`
+    # (BE-XXXX) — so it stays paired with `before.png`, not the post-retry `after.png`.
+    assert els == []
 
 
 def test_failure_stands_without_handler() -> None:
