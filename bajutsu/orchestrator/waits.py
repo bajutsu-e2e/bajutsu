@@ -13,11 +13,13 @@ from bajutsu.drivers import base
 from bajutsu.elements import shows_app_ui
 from bajutsu.evidence.network import TransitionSource, _no_transitions
 from bajutsu.orchestrator.types import (
+    DEFAULT_DISMISSIVE_LABELS,
     AlertEvent,
     AlertGuardConfig,
     Clock,
     NetworkSource,
     _no_network,
+    pick_alert_label,
 )
 from bajutsu.scenario import Gone, Wait, WaitRequest
 
@@ -221,9 +223,14 @@ class _AlertGuardGate:
         self._observe_vision(elements)
 
     def _observe_vision(self, elements: list[base.Element]) -> None:
-        """The collapsed-tree-proxy + vision path: for a backend without the native capability, and
-        for a native backend's `"absent"` polls, where a non-SpringBoard surface the native query
-        cannot enumerate may still be blocking."""
+        """The tree-label match, then the collapsed-tree-proxy + vision path: for a backend without
+        the native capability, and for a native backend's `"absent"` polls, where a non-SpringBoard
+        surface the native query cannot enumerate may still be blocking."""
+        event = self._dismiss_from_tree(elements)
+        if event is not None:
+            self.alerts.append(event)
+            self._collapsed_polls = 0
+            return
         if shows_app_ui(elements):
             self._collapsed_polls = 0
             return
@@ -257,6 +264,35 @@ class _AlertGuardGate:
         event = self.guard.vision(self.driver)
         if event is not None:
             self.alerts.append(event)
+
+    def _dismiss_from_tree(self, elements: list[base.Element]) -> AlertEvent | None:
+        """Tap a policy-named dismiss button already visible in this poll's own tree — no model call.
+
+        Covers a system-owned prompt the native query cannot enumerate (BE-0315's `probe_native`
+        reads only `springboard.alerts`) yet that still surfaces its buttons in the normalized tree
+        the wait already fetched — an app-attached sheet such as iOS's Save Password prompt, whose
+        `label`ed buttons appear right in the poll's own `elements`. Restricted to `identifier`-less
+        buttons: an app's own UI carries the identifiers this project's scenarios select by, so a
+        real in-app button that happens to share a policy label (e.g. an app screen with its own
+        "Not Now") is never mistaken for a system-owned one — only an unlabeled-by-the-app button
+        can match, same as `system_alert_labels()` already assumes for a genuine SpringBoard alert.
+        """
+        candidates = self.guard.labels or DEFAULT_DISMISSIVE_LABELS
+        buttons = [
+            el["label"]
+            for el in elements
+            if el["label"] and not el["identifier"] and base.Trait.BUTTON in el["traits"]
+        ]
+        label = pick_alert_label(candidates, buttons)
+        if label is None:
+            return None
+        try:
+            self.driver.tap({"label": label})
+        except (base.ElementNotFound, base.AmbiguousSelector):
+            # The button vanished between this poll's query and the tap — a benign self-resolved
+            # race, same treatment as `probe_native`'s TOCTOU branch.
+            return None
+        return AlertEvent(label=label)
 
 
 def _wait(

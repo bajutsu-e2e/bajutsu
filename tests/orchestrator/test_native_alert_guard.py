@@ -281,6 +281,58 @@ def test_gate_polls_the_native_query_on_its_own_interval_not_every_tick() -> Non
     assert 2 <= probes["n"] <= 4
 
 
+def test_gate_dismisses_an_app_attached_sheet_from_the_tree_without_vision() -> None:
+    # A system-owned prompt that is never SpringBoard-enumerable (e.g. iOS's Save Password sheet,
+    # attached to the app's own accessibility tree) reads as "absent" on every native probe forever,
+    # yet its own labeled, identifier-less buttons keep `shows_app_ui` from seeing a collapsed tree
+    # either — both mid-wait detectors used to sit idle for the whole timeout on exactly this shape.
+    # The in-tree label match (BE-0316's gap) must clear it within a poll or two, no vision call.
+    from bajutsu.orchestrator.waits import _wait
+
+    target = _button("R")
+    target["identifier"] = "ready"
+    prompt_button = _button(
+        "今はしない"
+    )  # identifier-less, like a real system-owned sheet's button
+
+    def react(d: FakeDriver, kind: str, arg: object) -> None:
+        if kind == "tap" and arg == {"label": "今はしない"}:
+            d.screen = [target]  # dismissing the sheet reveals the awaited element
+
+    driver = FakeDriver([prompt_button], react=react)  # capable; no SpringBoard alert seeded
+    guard = AlertGuardConfig(
+        vision=_never_vision, labels=["今はしない", "Not Now"], poll_interval=1.0
+    )
+    alerts: list[AlertEvent] = []
+    clock = _LogicalClock()
+    ok, reason, _tree = _wait(
+        driver, _for_wait("ready", 30.0), clock, alert_guard=guard, alerts=alerts
+    )
+    assert ok and reason == ""
+    assert clock.now() < 1.0  # cleared at tree-poll latency, not anywhere near the 30s timeout
+    assert alerts == [AlertEvent(label="今はしない")]
+
+
+def test_dismiss_from_tree_never_matches_an_in_app_button_carrying_an_identifier() -> None:
+    # An app screen with its own button that happens to share a policy label (e.g. a real in-app
+    # "Not Now") must never be tapped by the guard — only a system-owned, identifier-less button can
+    # match, same restriction `system_alert_labels()` already assumes for a genuine SpringBoard alert.
+    from bajutsu.orchestrator.waits import _wait
+
+    target = _button("R")
+    target["identifier"] = "ready"
+    app_button = _button("Not Now")
+    app_button["identifier"] = "screen.home.button.not-now"  # an app-authored button, not a prompt
+
+    driver = FakeDriver([app_button])  # capable; no SpringBoard alert seeded; never reveals "ready"
+    guard = AlertGuardConfig(vision=_never_vision, labels=["Not Now"], poll_interval=1.0)
+    ok, _reason, _tree = _wait(
+        driver, _for_wait("ready", 0.2), _LogicalClock(), alert_guard=guard, alerts=[]
+    )
+    assert not ok  # the in-app button was never tapped, so "ready" never appears
+    assert driver.actions == []  # confirms no tap was issued against it
+
+
 def test_gate_unhandled_native_alert_falls_back_to_vision_bounded() -> None:
     # An alert is up but no policy label resolves (unknown button): the gate routes to the vision
     # fallback, bounded by the same attempt ceiling as the collapsed-tree path — never an unbounded
