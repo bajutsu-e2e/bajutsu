@@ -148,8 +148,9 @@ class Element(TypedDict):
 class Trait:
     """Normalized accessibility traits.
 
-    Drivers normalize at least the following to these common tokens. Most back state
-    assertions; `OTHER` instead backs `resolve_unique`'s ambiguity filtering (below).
+    Drivers normalize at least the following to these common tokens. `NOT_ENABLED` and
+    `SELECTED` back state assertions and `BUTTON` / `LINK` the `traits` selector and doctor
+    check; `OTHER` instead backs `resolve_unique`'s ambiguity filtering (below).
     """
 
     BUTTON = "button"
