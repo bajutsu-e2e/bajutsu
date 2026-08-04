@@ -330,7 +330,8 @@ class ComponentsUITest {
       if (reportsWindows()) return
       kickWindowTracking("no accessibility windows reported (attempt $attempt)")
     }
-    if (!reportsWindows()) {   // the last kick would otherwise go unchecked
+    // The last kick would otherwise go unchecked — the loop provokes it and exits.
+    if (!reportsWindows()) {
       throw AssertionError(
         "accessibility window tracking reported no windows after " +
           "$TRACKING_KICK_ATTEMPTS kick(s); every selector wait would search an empty tree"
