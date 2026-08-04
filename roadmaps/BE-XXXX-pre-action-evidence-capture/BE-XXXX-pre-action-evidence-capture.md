@@ -171,6 +171,16 @@ otherwise — and never call `query()` itself to fill that gap.
    Documented as the precedence a scenario author needs to know: the pre-step baseline is the
    floor, a firing rule's own capture list is the ceiling. Unit 2's final-step capture is exactly
    this same post-step shape, applied unconditionally to one step rather than gated on a rule.
+   Accepted collateral of that same choice: `reads.py`'s `_step_artifacts` (unit 5) still resolves
+   `screenshotUrl` to the *first*-recorded screenshot (`before.png`, a distinct file a firing rule's
+   own `screenshot.after`/`.around` never touches), so a firing rule that also lists `elements`
+   leaves the editor's element-picker pairing pointing a pre-action `before.png` at a post-action
+   tree. Giving `elements` its own acquisition modifier (mirroring `screenshot`'s) would let a rule's
+   post-action tree land under a distinct name instead of overwriting the shared `elements.json`,
+   closing this the same way unit 2 closes it for the last step — but that is a DSL change (a new
+   capture-token shape, `evidence/core.py`, docs, tests), a materially larger scope than this item's
+   single fixed-shape default. Left for a future item; this one only guarantees the *default* pairing
+   a scenario with no firing rule gets, which is what unit 6 tests.
 
 5. **Fix the one hardcoded consumer.** `bajutsu/serve/operations/reads.py`'s `_step_artifacts`
    (`reads.py:411-456`) currently probes the literal paths `.../elements.json` and `.../after.png`
