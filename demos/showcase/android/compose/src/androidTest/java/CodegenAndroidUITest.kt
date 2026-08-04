@@ -165,13 +165,15 @@ class CodegenandroiduitestUITest {
     InstrumentationRegistry.getInstrumentation().uiAutomation.windows.isNotEmpty()
   }.getOrElse { Log.w(LOG_TAG, "could not read the window list", it); false }
 
-  // Cheap insurance, not the main event: a list with nothing in it cannot be waited on at
-  // all, so rule that out before the launch wait rather than spend the whole timeout on it.
+  // One of two observed ways the app's window fails to reach the list, and the one that can be
+  // caught before the launch wait spends its whole timeout: the list holds nothing at all. A CI
+  // run logged exactly that — "no accessibility windows reported (attempt 1)" — and the
+  // window change below recovered it.
   //
-  // The failure this file exists for is a different one, and an empty list is NOT it — see
-  // launch() below. There the list is live and the app's window is simply missing from it,
-  // which no is-it-empty check can see. Both are met by provoking a window change, because
-  // no timeout recovers a list that will not gain the window on its own.
+  // The other way is invisible here: the list is live and merely missing the app's window, which
+  // reads as healthy to any is-it-empty check. launch() handles that one after its wait fails.
+  // Both want the same remedy, because no timeout recovers a list that will not gain the window
+  // on its own — only a window change can.
   private fun ensureWindowTracking() {
     for (attempt in 1..TRACKING_KICK_ATTEMPTS) {
       if (reportsWindows()) return

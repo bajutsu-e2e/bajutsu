@@ -442,11 +442,13 @@ class ComponentsUITest {
   logged. The kick stays outside `UiAutomation.executeAndWaitForEvent`, because `pressHome` already
   waits through that same call and a nested one would clear the event queue the outer wait is
   watching.
-- **The kick after a failed attempt does not consult the window list**, because the case it recovers
-  is invisible to any reading of it — see the run below, where the list was neither empty nor
-  unreadable. `ensureWindowTracking`, which does read the list before each attempt, covers only the
-  narrower case of a list with nothing in it at all: cheap to rule out up front rather than at the
-  cost of a whole launch timeout.
+- **Two ways the window fails to arrive, both observed in CI, and one remedy.** `ensureWindowTracking`
+  reads the list before each attempt and catches the first: a list holding nothing at all, which one
+  run logged as `no accessibility windows reported (attempt 1)` before the window change recovered it.
+  The second is invisible to that check — the list is live and merely missing the app's window — so the
+  kick after a failed attempt fires **without consulting the list**, which is what the run below
+  needed. Reading the list first is worth it only because it turns the first case into one key press
+  instead of a whole launch timeout.
 - **The last attempt does not kick**, because after it there is no intent left to re-issue and HOME
   would overwrite every piece of evidence the failure is about to collect. The `AssertionError`'s own
   window summary, the hierarchy dump, and the screenshot would all describe the launcher, and a
