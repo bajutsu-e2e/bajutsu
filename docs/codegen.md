@@ -299,7 +299,8 @@ class ComponentsUITest {
   both resolve.
 - The `act` helper waits for the element before returning it. `findObject` alone is a single-shot
   query with no implicit wait. Acting right after `launch()` or a UI transition could otherwise race
-  the render. Every generated action in the table below routes through `act`. A read-only assertion
+  the render. An element-targeting action routes through `act`. `relaunch` and the `wait` steps
+  stay direct, since neither targets an element. A read-only assertion
   still calls `device.findObject` / `device.findObjects` directly, unwaited. That matches the
   driver's own assertions.
 - Each method builds an `extras` map (config's `launchEnv` < the scenario's
