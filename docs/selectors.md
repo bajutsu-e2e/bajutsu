@@ -35,6 +35,7 @@ The common tokens that state assertions look at. Drivers normalize at least thes
 | `button` / `link` | kind | the `traits` selector · doctor's actionable check |
 | `notEnabled` | disabled state | `enabled` / `disabled` |
 | `selected` | selected / toggled on | `selected` |
+| `other` | generic/unclassified element (iOS's catch-all `XCUIElementTypeOther`, for example) | `resolve_unique`'s ambiguity judgment (below) |
 
 (idb normalizes `enabled: false` → `notEnabled`, `selected: true` → `selected`. Type strings drop
 the `AX` prefix and lowercase the first letter: `AXButton` → `button`. See `drivers/idb.py`.)
@@ -100,6 +101,13 @@ As an exception, only when `index` is given does it pick the nth of multiple can
 (out-of-range = `ElementNotFound`). `index` breaks on order changes, so it is a last resort. For
 sets, use `idMatches` + `count` ([scenarios](scenarios.md#assertion-dsl)).
 
+Before judging a 2+ match ambiguous, resolution drops candidates carrying the `other` trait. A
+generic wrapper commonly repeats a real element's label. iOS's catch-all `XCUIElementTypeOther`
+is one example. A scenario shouldn't need `within` or `index` to route around that duplicate. Two
+cases keep the tie as-is. One: every candidate is `other`, so there's nothing to fall back to. Two:
+the selector explicitly requests `other` via `traits: ["other"]`. The filtering stays local to
+`resolve_unique`. `find_all` (and so `count` / `exists`) still sees every match, `other` included.
+
 ```python
 # drivers/base.py (excerpt)
 def resolve_unique(elements, sel):
@@ -108,6 +116,10 @@ def resolve_unique(elements, sel):
         ...                          # nth (out-of-range raises ElementNotFound)
     if not candidates:
         raise ElementNotFound(...)
+    if len(candidates) > 1 and "other" not in sel.get("traits", []):
+        without_other = [c for c in candidates if "other" not in c["traits"]]
+        if without_other:
+            candidates = without_other  # drop `other` ties unless they're all there is
     if len(candidates) > 1:
         raise AmbiguousSelector(...)  # needs within or index to disambiguate
     return candidates[0]

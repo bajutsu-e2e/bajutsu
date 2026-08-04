@@ -32,6 +32,7 @@ class Element(TypedDict):
 | `button` / `link` | 種別 | `traits` セレクタ、doctor の actionable 判定 |
 | `notEnabled` | 無効状態 | `enabled` / `disabled` |
 | `selected` | 選択 / トグル ON | `selected` |
+| `other` | 汎用・未分類の要素（iOS の catch-all `XCUIElementTypeOther` など） | `resolve_unique` の曖昧判定（後述） |
 
 （idb は `enabled: false` → `notEnabled`、`selected: true` → `selected` に正規化します。種別文字列は `AX` 接頭辞を外して先頭を小文字化します: `AXButton` → `button`。詳細は `drivers/idb.py` を参照してください）
 
@@ -84,6 +85,8 @@ class Element(TypedDict):
 
 例外として `index` が指定されたときだけ、複数候補から n 番目を選びます（範囲外は `ElementNotFound`）。`index` は順序変化で壊れるため最終手段です。集合を扱う場合は `idMatches` + `count` を使ってください（[scenarios](scenarios.md#アサーション-dsl)）。
 
+2 件以上の一致を曖昧と判定する前に、`other` トレイトを持つ候補を除外します。汎用のラッパー要素（iOS の catch-all `XCUIElementTypeOther` など）は、実体のある要素の label をそのまま繰り返すことが多いからです。そうした重複のためだけに、シナリオへ `within` や `index` を足させたくありません。一致した候補がすべて `other` なら、それ以上除外する先がないため、そのまま曖昧判定にかけます。セレクタが `traits: ["other"]` で `other` を明示的に要求している場合も同様です。この除外は `resolve_unique` に閉じています。`find_all`（したがって `count` / `exists`）は、`other` を含めすべての一致をそのまま返します。
+
 ```python
 # drivers/base.py（抜粋）
 def resolve_unique(elements, sel):
@@ -92,6 +95,10 @@ def resolve_unique(elements, sel):
         ...                         # n 番目（範囲外は ElementNotFound）
     if not candidates:
         raise ElementNotFound(...)
+    if len(candidates) > 1 and "other" not in sel.get("traits", []):
+        without_other = [c for c in candidates if "other" not in c["traits"]]
+        if without_other:
+            candidates = without_other  # other 同士の重複は除外（全滅時は残す）
     if len(candidates) > 1:
         raise AmbiguousSelector(...)  # within か index で一意化が必要
     return candidates[0]

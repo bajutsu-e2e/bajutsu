@@ -155,6 +155,7 @@ class Trait:
     LINK = "link"
     NOT_ENABLED = "notEnabled"  # disabled state (enabled / disabled assertions)
     SELECTED = "selected"  # selected / toggled state (selected assertion)
+    OTHER = "other"  # generic/unclassified element (e.g. iOS's catch-all XCUIElementTypeOther)
 
 
 class Selector(TypedDict, total=False):
@@ -631,7 +632,8 @@ def resolve_unique(elements: list[Element], sel: Selector) -> Element:
 
     Raises:
         ElementNotFound: Nothing matched, or `index` is out of range.
-        AmbiguousSelector: Two or more matched and no `index` disambiguates.
+        AmbiguousSelector: Two or more matched (after dropping `other`-trait ties, below) and no
+            `index` disambiguates.
     """
     candidates = find_all(elements, sel)
     if "index" in sel:
@@ -641,6 +643,16 @@ def resolve_unique(elements: list[Element], sel: Selector) -> Element:
         return candidates[i]
     if not candidates:
         raise ElementNotFound(f"一致なし: {sel!r}")
+    if len(candidates) > 1 and Trait.OTHER not in sel.get("traits", []):
+        # A same-label/id tie is often a generic `other` wrapper duplicating a real element's
+        # label (e.g. iOS's catch-all XCUIElementTypeOther) rather than a genuine ambiguity — drop
+        # `other`-trait candidates before judging uniqueness, unless the selector explicitly asked
+        # for `other` elements. Falls back to the full set when every candidate is `other`, so a
+        # scenario that does target such an element still resolves (or still fails loud on a real
+        # tie among them).
+        without_other = [c for c in candidates if Trait.OTHER not in c["traits"]]
+        if without_other:
+            candidates = without_other
     if len(candidates) > 1:
         raise AmbiguousSelector(
             f"{len(candidates)} 件一致: {sel!r} — `within` か `index` で一意化が必要"
