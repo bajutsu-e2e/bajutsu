@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from bajutsu.config import load_config, resolve
+from bajutsu.config import load_config
 from bajutsu.evidence.redaction import Redactor
 from bajutsu.serve.operations._common import (
     _default_driver_factory,
     _device_args,
     _resolve_org_or_forbid,
+    _session_effective,
 )
 from bajutsu.serve.state import CaptureSession, ServeState
 
@@ -56,16 +57,8 @@ def start_capture(
     if not udid:
         udid = "booted"
 
-    # `resolve()` copies `appPath` (and the other path fields) verbatim from the raw YAML; a relative
-    # value only resolves correctly once rebased against `state.cwd` — the config's own directory, a
-    # Git checkout root, or an uploaded bundle's root (BE-0063/BE-0073/BE-0242). `run`/`record` get
-    # this for free through the CLI's `_load_effective_with_source`; a live capture session runs
-    # in-process and must rebase explicitly, or an uploaded config's `appPath` never resolves.
-    # `confine=False`: every bind path (`bind_config`/`bind_git_config`/`bind_upload_config`) already
-    # confined this same config's path fields once, at bind time.
     factory = driver_factory or _default_driver_factory
-    eff = resolve(config, target).rebased(state.cwd, confine=False)
-    driver, teardown = factory(eff, backends_list, udid)
+    driver, teardown = factory(_session_effective(state, config, target), backends_list, udid)
     # From bring-up until the session owns `teardown`, a failed query/screenshot (a real failure mode
     # for a freshly-launched XCUITest runner) must still stop the runner — otherwise the `xcodebuild`
     # subprocess leaks, the very thing BE-0290 set out to prevent. Once the CaptureSession is stored,
