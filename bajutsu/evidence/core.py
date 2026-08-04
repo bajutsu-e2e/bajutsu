@@ -202,7 +202,6 @@ class EvidenceSink(Protocol):
         and must not let the later call overwrite state the earlier one for the same `step_id`
         already recorded.
         """
-        ...
 
     def wait_diagnostic(
         self,
