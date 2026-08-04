@@ -309,15 +309,15 @@ class _AlertGuardGate:
                 self._tree_dismiss_pending = None
             return None
         # Decline an in-app collision *before* tapping: `label` was resolved unique only over the
-        # identifier-less subset above, so an app-authored button sharing it would otherwise make the
-        # whole-tree `tap` raise `AmbiguousSelector` below — and since that branch never arms
-        # `_tree_dismiss_pending`, a *persistent* collision would re-issue the on-device tap on every
-        # `_POLL` (~20x/s) for the rest of the wait. Re-checking uniqueness over the full tree here
-        # keeps that case a cheap in-memory decline instead of a repeated round-trip.
-        all_buttons = [
-            el["label"] for el in elements if el["label"] and base.Trait.BUTTON in el["traits"]
-        ]
-        if all_buttons.count(label) != 1:
+        # identifier-less button subset above, but `tap({"label": label})` resolves via `matches()`
+        # (base.py), which matches on `label` alone and ignores `traits` entirely — so *any* element
+        # sharing the text (a static caption, a header, not only another button) would otherwise make
+        # the whole-tree tap raise `AmbiguousSelector` below. That branch never arms
+        # `_tree_dismiss_pending`, so a *persistent* collision would re-issue the on-device tap on
+        # every `_POLL` (~20x/s) for the rest of the wait. Counting every element by label alone here
+        # — mirroring what the tap actually resolves against — keeps that case a cheap in-memory
+        # decline instead of a repeated round-trip.
+        if sum(1 for el in elements if el["label"] == label) != 1:
             return None
         try:
             self.driver.tap({"label": label})

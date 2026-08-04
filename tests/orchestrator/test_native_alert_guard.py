@@ -394,6 +394,36 @@ def test_dismiss_from_tree_declines_on_an_in_app_label_collision() -> None:
     assert driver.tap_calls == 0  # declined before attempting the tap, not caught after
 
 
+def test_dismiss_from_tree_declines_on_a_non_button_label_collision() -> None:
+    # `tap({"label": label})` resolves via `matches()` (base.py), which matches on `label` alone and
+    # ignores `traits` — so a *non-button* element sharing the exact text (a static caption drawn next
+    # to the sheet, a header) collides with the tap just as another button would, even though the
+    # pre-check must scan every element by label alone (not only buttons) to catch it.
+    from bajutsu.orchestrator.waits import _wait
+
+    prompt_button = _button("Not Now")  # identifier-less, system-owned
+    caption = _button("Not Now")
+    caption["traits"] = ["staticText"]  # not a button; still resolves the same `label` selector
+
+    class _CountingTapDriver(FakeDriver):
+        def __init__(self) -> None:
+            super().__init__([prompt_button, caption])
+            self.tap_calls = 0
+
+        def tap(self, sel: base.Selector) -> None:
+            self.tap_calls += 1
+            super().tap(sel)
+
+    driver = _CountingTapDriver()  # native-capable; no SpringBoard alert
+    guard = AlertGuardConfig(vision=_never_vision, labels=["Not Now"], poll_interval=1.0)
+    ok, _reason, _tree = _wait(
+        driver, _for_wait("ready", 0.2), _LogicalClock(), alert_guard=guard, alerts=[]
+    )
+    assert not ok
+    assert driver.actions == []
+    assert driver.tap_calls == 0  # declined before attempting the tap, not caught after
+
+
 def test_dismiss_from_tree_never_matches_an_in_app_button_carrying_an_identifier() -> None:
     # An app screen with its own button that happens to share a policy label (e.g. a real in-app
     # "Not Now") must never be tapped by the guard — only a system-owned, identifier-less button can
