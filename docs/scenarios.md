@@ -100,7 +100,7 @@ the launch sequence ([run-loop](run-loop.md#runner-the-run-pipeline)).
 
 | Key | Type | Default | Description | Wired |
 |---|---|---|---|---|
-| `erase` | bool | none (off) | Wipe the whole simulator (`simctl erase` — apps/data/settings) before the test. Off by default; `reinstall` keeps the app fresh without a full wipe, so set `true` only when a test needs a pristine device | ✅ |
+| `erase` | bool | unset (inherits; off unless the config sets it) | Wipe the whole simulator (`simctl erase` — apps/data/settings) before the test. Off by default; `reinstall` keeps the app fresh without a full wipe, so set `true` only when a test needs a pristine device | ✅ |
 | `reinstall` | `clean` \| `overwrite` | `clean` | How the app is reinstalled before each run when the app config sets `appPath`: `clean` = uninstall then install (fresh app + data); `overwrite` = install over the existing app (keeps its data) | ✅ |
 | `launchArgs` | list[str] | `[]` | Launch arguments (appended to config's `launchArgs`) | ✅ |
 | `launchEnv` | dict | `{}` | Launch env (injected via `SIMCTL_CHILD_*`; merged onto config's `launchEnv`) | ✅ |
