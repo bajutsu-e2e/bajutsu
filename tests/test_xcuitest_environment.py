@@ -1448,8 +1448,12 @@ def test_a_replacement_clones_the_type_captured_while_the_device_was_healthy(
         None,
         ceiling=_COLD,
     )
-    # Named after the device it replaces, so several recoveries on one host stay tellable apart.
-    assert simctl.create_cmd("bajutsu-recovered-UDID", "com.apple.x.iPhone-17-Pro") in calls
+    # The name leads with the model (the report's device row and `serve`'s `iphone`/`ipad` capability
+    # token both read it as one) and carries the replaced udid so recoveries stay tellable apart.
+    assert (
+        simctl.create_cmd("iPhone 17 Pro (bajutsu-recovered-UDID)", "com.apple.x.iPhone-17-Pro")
+        in calls
+    )
     assert not any(c[2:4] == ["list", "devicetypes"] for c in calls)
 
 
@@ -1593,3 +1597,26 @@ def test_an_unknown_probe_is_still_reported_within_the_bound() -> None:
         ceiling=_COLD,
     )
     assert recovery.fresh_budget is None and "could not probe" in recovery.note
+
+
+def test_a_replacements_name_keeps_its_capability_token_and_report_row() -> None:
+    # Two consumers read a device's name as its human model, and a name of ours that dropped the model
+    # would break both silently: `serve`'s capability inventory takes the `iphone` / `ipad` class token
+    # out of it by substring (a missing token means the hosted router never leases the device for a job
+    # that asked for `iphone`), and the report renders it as the device row.
+    from bajutsu.serve.capabilities import _device_class_token
+
+    calls, run = _ladder_run([])
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    env._recover_between_attempts(
+        _AttemptFailure("run-ended", "ended"),
+        _eff_for_ladder(),
+        Preconditions(),
+        None,
+        ceiling=_COLD,
+    )
+    created = next(c for c in calls if c[2:3] == ["create"])
+    name = created[3]
+    assert _device_class_token(name) == "iphone"
+    assert "iPhone" in name  # the report's device row shows a model a reader recognizes
+    assert "bajutsu-recovered" in name  # ... while staying traceable to the recovery that minted it

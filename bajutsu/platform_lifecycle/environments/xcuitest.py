@@ -802,11 +802,12 @@ class XcuitestEnvironment(_DeviceEnvironment):
                 f"Simulator {old} is gone and no iPhone device type is available to replace it; "
                 "the host's Simulator runtimes are likely gone too"
             )
-        # Named after the device it stands in for, so an operator reading `simctl list` afterwards can
-        # tell which recovery minted which device rather than finding several identical ones.
-        replacement = simctl.create_device(
-            device_type, self._run, name=f"bajutsu-recovered-{old[:8]}"
-        )
+        # The model comes first because two consumers read a device's name as its human model: the
+        # report's device row, and `serve`'s capability inventory, which takes the `iphone` / `ipad`
+        # class token out of it by substring. The `bajutsu-recovered-<udid>` suffix is what lets an
+        # operator reading `simctl list` afterwards tell which recovery minted which device.
+        name = f"{simctl.device_type_label(device_type)} (bajutsu-recovered-{old[:8]})"
+        replacement = simctl.create_device(device_type, self._run, name=name)
         self._udid = replacement
         self._replaced_from = old
         self._pinned_locale = None  # a fresh device: nothing has pinned its SpringBoard yet

@@ -186,9 +186,11 @@ classification in unit 1, unit 4 on units 2 and 3, and unit 5 on unit 4.
   is a healthy device a later run can lease, where deleting it would make the next run pay another
   creation on a host that has already shown it loses devices, and it is the evidence that a replacement
   happened at all. The cost is that a long-lived host with a flaky CoreSimulator accumulates one device
-  per recovery — bounded by how often that host loses a device, named `bajutsu-recovered-<old udid>` so
-  an operator can tell which recovery minted which, and cleared by `xcrun simctl delete unavailable` or
-  by deleting those devices. On an ephemeral CI runner none of this is visible; the deliberate choice is
+  per recovery — bounded by how often that host loses a device, named `<model> (bajutsu-recovered-<old
+  udid>)` so an operator can tell which recovery minted which, and cleared by `xcrun simctl delete
+  unavailable` or by deleting those devices. The model leads that name because two consumers read a
+  device's name as its human model: the report's device row, and `serve`'s capability inventory, which
+  takes the `iphone` / `ipad` class token out of it by substring. On an ephemeral CI runner none of this is visible; the deliberate choice is
   for the developer's own Mac and a long-lived `serve` process.
 - **Re-create the device on every failed attempt, without probing first.** Cheaper to write than the
   ladder, and wrong in the common case: a Simulator that is merely wedged is repaired by a reboot in a

@@ -632,3 +632,16 @@ def test_system_locale_matches_reports_an_unreadable_domain_as_unknown() -> None
     # readable domain that merely lacks the key — that one is a mismatch, covered above.
     mangled = plistlib.dumps([]).decode()
     assert simctl.Env("UDID", run=lambda a, e=None: mangled).system_locale_matches("ja") is None
+
+
+def test_device_type_label_recovers_the_model_name() -> None:
+    assert (
+        simctl.device_type_label("com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro")
+        == "iPhone 17 Pro"
+    )
+    assert (
+        simctl.device_type_label("com.apple.CoreSimulator.SimDeviceType.iPad-Pro-11-inch-M4")
+        == "iPad Pro 11 inch M4"
+    )
+    # The family token is what `serve`'s capability inventory reads by substring, so it must survive.
+    assert "iphone" in simctl.device_type_label("com.apple.x.iPhone-16").lower()

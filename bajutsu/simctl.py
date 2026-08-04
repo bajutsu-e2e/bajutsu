@@ -401,6 +401,17 @@ def runtime_label(runtime_id: str) -> str:
     return runtime_id.split("SimRuntime.")[-1].replace("-", " ", 1).replace("-", ".")
 
 
+def device_type_label(device_type: str) -> str:
+    """'com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro' -> 'iPhone 17 Pro'.
+
+    A created device's *name* is free-form, but two consumers read it as the human model: the report's
+    device row and `serve`'s capability inventory, which takes the `iphone` / `ipad` class token by
+    substring. So a device this code names has to carry its model, which this recovers from the type
+    identifier rather than paying another `simctl list devicetypes` to look the name up.
+    """
+    return device_type.rsplit(".", 1)[-1].replace("-", " ")
+
+
 def device_catalog(run: RunFn = _real_run) -> dict[str, dict[str, str]]:
     """Map udid -> {'name', 'runtime'} for the available simulators (best-effort, {} on any
     failure). Lets a run label which simulator (device model + OS) each scenario ran on."""
