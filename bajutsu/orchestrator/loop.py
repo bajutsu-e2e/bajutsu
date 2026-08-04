@@ -953,9 +953,9 @@ class _StepRunner:
             # assignment at its end — set it here too, so a scenario that ends on this failure
             # still gets a final capture attributed to the step that actually ran last, rather than
             # a stale one left over from an earlier step (or none at all, for a single-step run).
-            # The pre-step baseline above already ran, so this step's `before.png`/`elements.json`
-            # are in place too — this failure gets the same complete evidence pair every other leaf
-            # step does, not just the final capture.
+            # The pre-step baseline above already ran (whatever it produced — a `NullSink` writes
+            # nothing, same as any other step), so this failure gets the same evidence contract
+            # every other leaf step does, not just the final capture.
             self.state.last_leaf = LastLeafStep(outcome, step_id)
             return f"step {idx} ({kind}): {exc}"
         # `before` is needed only for a `screenChanged` policy. Reuse the previous step's

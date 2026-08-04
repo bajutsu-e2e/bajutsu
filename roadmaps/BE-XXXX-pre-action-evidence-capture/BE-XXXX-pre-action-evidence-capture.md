@@ -163,9 +163,10 @@ otherwise — and never call `query()` itself to fill that gap.
    scenario that ends on this failure with a stale `last_leaf` from an earlier step (or none at all,
    for a single-step scenario). Unit 1's pre-step baseline capture runs ahead of this locale
    resolution too — moved there deliberately, since it depends only on the screen the step is about
-   to act on, never on the step's own resolved fields — so this failure gets the full
-   `before.png`/`elements.json`/`after.png` evidence set every other leaf step does, not just the
-   final capture. After the top-level `exec_steps` call returns in `_run_steps`,
+   to act on, never on the step's own resolved fields — so this failure gets the same evidence
+   contract every other leaf step does (whatever the sink actually writes — a `NullSink` writes
+   nothing, same as any other step), not just the final capture. After the top-level `exec_steps`
+   call returns in `_run_steps`,
    regardless of its outcome, extend `leaf.outcome.artifacts` with one more call:
    `self.cfg.sink.capture(driver, leaf.step_id, ["screenshot.after"])`. This adds only a screenshot,
    deliberately never `elements`: `elements.json` has one fixed filename, so re-capturing it here
