@@ -182,7 +182,17 @@ def test_a_timed_out_launch_attempt_kicks_only_while_an_attempt_remains() -> Non
     # The per-attempt log carries the window list, not only the miss. An empty list and a stale
     # non-empty one both reach here and call for different fixes, and the AssertionError raised
     # after the loop reports only the state left behind once every attempt has run.
-    assert 'window in "\n        + "${LAUNCH_TIMEOUT_MS}ms; windows:\\n" + windowSummary()' in body
+    #
+    # Sliced to that one statement rather than searched for in the whole body, because the trailing
+    # AssertionError appends windowSummary() too — a body-wide search would pass with the
+    # per-attempt summary dropped. The slice pins no line wrap or continuation indent, so reflowing
+    # the emitted string cannot redden this on its own.
+    per_attempt = body[
+        body.index('Log.w(LOG_TAG, "launch attempt $attempt saw no') : body.index(
+            "if (attempt < LAUNCH_ATTEMPTS) {"
+        )
+    ]
+    assert "windowSummary()" in per_attempt
 
 
 def test_failure_messages_name_the_windows_that_were_searched() -> None:
