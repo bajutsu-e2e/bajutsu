@@ -1,14 +1,14 @@
-[English](BE-XXXX-replay-scenario-upload.md) · **日本語**
+[English](BE-0340-replay-scenario-upload.md) · **日本語**
 
-# BE-XXXX — シナリオファイルを Replay へ直接アップロードする
+# BE-0340 — シナリオファイルを Replay へ直接アップロードする
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-replay-scenario-upload-ja.md) |
+| 提案 | [BE-0340](BE-0340-replay-scenario-upload-ja.md) |
 | 提案者 | [@akira-matsuda](https://github.com/akira-matsuda) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0340") |
 | トピック | serve Web UI への CLI 機能の取り込み |
 | 関連 | [BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload-ja.md)、[BE-0268](../BE-0268-composable-upload-artifacts/BE-0268-composable-upload-artifacts-ja.md)、[BE-0273](../BE-0273-serve-replay-scenario-viewer/BE-0273-serve-replay-scenario-viewer-ja.md) |
 <!-- /BE-METADATA -->

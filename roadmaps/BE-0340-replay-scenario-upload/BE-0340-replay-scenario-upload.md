@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-replay-scenario-upload-ja.md)
+**English** · [日本語](BE-0340-replay-scenario-upload-ja.md)
 
-# BE-XXXX — Upload a scenario file directly into Replay
+# BE-0340 — Upload a scenario file directly into Replay
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-replay-scenario-upload.md) |
+| Proposal | [BE-0340](BE-0340-replay-scenario-upload.md) |
 | Author | [@akira-matsuda](https://github.com/akira-matsuda) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0340") |
 | Topic | Surfacing CLI features in the serve Web UI |
 | Related | [BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md), [BE-0268](../BE-0268-composable-upload-artifacts/BE-0268-composable-upload-artifacts.md), [BE-0273](../BE-0273-serve-replay-scenario-viewer/BE-0273-serve-replay-scenario-viewer.md) |
 <!-- /BE-METADATA -->
