@@ -320,6 +320,7 @@ class ComponentsUITest {
     }.onFailure { Log.w(LOG_TAG, "pressHome failed", it) }
   }
 
+  // Never throws: getWindows() raises IllegalStateException when the connection is not established
   private fun reportsWindows(): Boolean = runCatching {
     InstrumentationRegistry.getInstrumentation().uiAutomation.windows.isNotEmpty()
   }.getOrElse { Log.w(LOG_TAG, "could not read the window list", it); false }

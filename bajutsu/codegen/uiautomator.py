@@ -610,6 +610,15 @@ class _UiAutomatorGen:
             '    }.onFailure { Log.w(LOG_TAG, "pressHome failed", it) }',
             "  }",
             "",
+            "  // Never throws. getWindows() raises IllegalStateException when the connection is not"
+            + "",
+            "  // established — the very fault being diagnosed — and that has to reach the caller's"
+            + " named",
+            "  // AssertionError rather than replace it with a raw framework exception.",
+            "  private fun reportsWindows(): Boolean = runCatching {",
+            "    InstrumentationRegistry.getInstrumentation().uiAutomation.windows.isNotEmpty()",
+            '  }.getOrElse { Log.w(LOG_TAG, "could not read the window list", it); false }',
+            "",
             "  // Confirm the accessibility read channel is reporting windows at all before anything"
             + " waits",
             "  // on what it says. The window list arrives by event, so a connection that misses the"
@@ -624,22 +633,13 @@ class _UiAutomatorGen:
             "  //",
             "  // An empty list is the case this can rule out cheaply and up front. A stale"
             + " non-empty one",
-            "  // reads as healthy here and is caught by the unconditional kick on a failed launch"
-            + " attempt",
-            "  // below. Across seven CI runs the two were indistinguishable from the outcome alone:"
-            + " every",
-            "  // passing run logged the transient null roots of a live view during launch, and"
-            + " every",
-            "  // failing run logged none across 119-171 polls.",
-            "  // Never throws. getWindows() raises IllegalStateException when the connection is not"
-            + "",
-            "  // established — the very fault being diagnosed — and that has to reach the caller's"
-            + " named",
-            "  // AssertionError rather than replace it with a raw framework exception.",
-            "  private fun reportsWindows(): Boolean = runCatching {",
-            "    InstrumentationRegistry.getInstrumentation().uiAutomation.windows.isNotEmpty()",
-            '  }.getOrElse { Log.w(LOG_TAG, "could not read the window list", it); false }',
-            "",
+            "  // reads as healthy here, and the kick a failed launch attempt makes below covers"
+            + " that",
+            "  // instead. Across seven CI runs the two were indistinguishable from the outcome"
+            + " alone:",
+            "  // every passing run logged the transient null roots of a live view during launch,"
+            + " and",
+            "  // every failing run logged none across 119-171 polls.",
             "  private fun ensureWindowTracking() {",
             "    for (attempt in 1..TRACKING_KICK_ATTEMPTS) {",
             "      if (reportsWindows()) return",
