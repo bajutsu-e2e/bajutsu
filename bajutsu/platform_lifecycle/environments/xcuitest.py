@@ -397,10 +397,10 @@ def _spawn_cold_with_retry(
     was handed to the retry in exactly the state that had defeated the first attempt. What `recover`
     returns decides the retry's budget:
 
-    - `None` (nothing about the device changed) keeps the *shared* budget: the first attempt got the
-      whole ceiling and a later one gets only what it left unspent. A "health never ready" attempt
-      leaves nothing, so no retry follows it — a second full wait against an unchanged device would
-      double the worst case for no new information.
+    - a recovery with `fresh_budget` unset keeps the *shared* budget: the first attempt got the whole
+      ceiling and a later one gets only what it left unspent. A "health never ready" attempt leaves
+      nothing, so no retry follows it — a second full wait against an unchanged device would double
+      the worst case for no new information.
     - a `fresh_budget` (the device was rebooted, or replaced outright) restarts the ceiling, because
       the next attempt runs against a device that has demonstrably come back up. This is what makes
       the dominant flake recoverable at all: an app-launch timeout ends the *first* attempt fast, but
