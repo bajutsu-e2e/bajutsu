@@ -265,6 +265,11 @@ class ComponentsUITest {
     device.wait(Until.hasObject(By.pkg(PACKAGE).depth(0)), LAUNCH_TIMEOUT_MS)
   }
 
+  private fun act(by: BySelector): UiObject2 {
+    device.wait(Until.hasObject(by), ACT_TIMEOUT_MS)
+    return device.findObject(by)
+  }
+
   @Test
   fun test_open_filter_shows_the_sheet() {
     val extras = mutableMapOf<String, String>()
@@ -272,7 +277,7 @@ class ComponentsUITest {
     launch(extras)
 
     assertFalse(device.hasObject(byId("log.sheet.title")))
-    device.findObject(byId("log.openFilter")).click()
+    act(byId("log.openFilter")).click()
 
     // expect
     assertTrue(device.hasObject(byId("log.sheet.title")))
@@ -283,6 +288,10 @@ class ComponentsUITest {
 - ヘルパ `byId` は、アプリが id に `<package>:id/` の接頭辞を付けているかどうかによらずローカル id に一致させます。
   これは **adb ドライバがその接頭辞を剥がす処理の逆向き** なので、ネイティブの `android:id` と、接頭辞を持たない
   Compose の `testTag`（`testTagsAsResourceId` で露出したもの）の両方が解決されます。
+- ヘルパ `act` は、要素を返す前にその出現を待ちます。`findObject` 単体は暗黙の待機を持たない単発クエリです。
+  `launch()` の直後や画面遷移の直後に操作すると、描画とレースする恐れがあります。下表の生成アクションは、
+  すべてこのヘルパを経由します。読み取り専用のアサーションは、従来どおり `device.findObject` /
+  `device.findObjects` を直接呼び、待機しません。これはドライバ自身のアサーションと同じ挙動です。
 - 各メソッドは `extras` マップ（config の `launchEnv` < シナリオの `preconditions.launchEnv`）を組み立て、
   `launch(extras)` を呼びます。この関数は env を intent extra として渡します。adb backend の `am start --es` の
   逆向きです。
@@ -311,8 +320,8 @@ class ComponentsUITest {
 
 | シナリオ要素 | UI Automator |
 |---|---|
-| `tap` | `device.findObject(<by>).click()` |
-| `type`（`into` あり） | `device.findObject(<by>).text = '…'` |
+| `tap` | `act(<by>).click()` |
+| `type`（`into` あり） | `act(<by>).text = '…'` |
 | `type`（`into` なし） | `// TODO`（解決対象の要素が無い） |
 | `longPress` | `.longClick()`（プラットフォームの長押しタイムアウトを使い、シナリオの duration はパラメータが無い） |
 | `swipe { on, direction }` | `.swipe(Direction.<UP/DOWN/LEFT/RIGHT>, 0.75f)` |

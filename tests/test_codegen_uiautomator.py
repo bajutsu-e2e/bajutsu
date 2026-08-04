@@ -56,9 +56,9 @@ def test_tap_by_id_text_and_desc() -> None:
         "    - tap: { label: Submit }\n"
         "    - tap: { value: off }\n"
     )
-    assert 'device.findObject(byId("onboarding.start")).click()' in code
-    assert 'device.findObject(By.text("Submit")).click()' in code
-    assert 'device.findObject(By.desc("off")).click()' in code
+    assert 'act(byId("onboarding.start")).click()' in code
+    assert 'act(By.text("Submit")).click()' in code
+    assert 'act(By.desc("off")).click()' in code
 
 
 def test_type_into_sets_text_and_bare_type_is_todo() -> None:
@@ -67,7 +67,7 @@ def test_type_into_sets_text_and_bare_type_is_todo() -> None:
         "    - type: { text: a@b.com, into: { id: auth.email } }\n"
         "    - type: { text: hello }\n"
     )
-    assert 'device.findObject(byId("auth.email")).text = "a@b.com"' in code
+    assert 'act(byId("auth.email")).text = "a@b.com"' in code
     assert "// TODO: type without a target" in code
 
 
@@ -82,7 +82,7 @@ def test_text_editing_steps_emit_uiautomator_peers() -> None:
         "    - copy: {}\n"
     )
     assert "import android.view.KeyEvent" in code
-    assert 'device.findObject(byId("form.note")).clear()' in code
+    assert 'act(byId("form.note")).clear()' in code
     assert "repeat(2) { device.pressKeyCode(KeyEvent.KEYCODE_DEL) }" in code
     assert "device.pressKeyCode(KeyEvent.KEYCODE_A, KeyEvent.META_CTRL_ON)" in code
     assert "device.pressKeyCode(KeyEvent.KEYCODE_C, KeyEvent.META_CTRL_ON)" in code
@@ -111,7 +111,7 @@ def test_swipe_direction_and_from_to_todo() -> None:
         "    - swipe: { on: { id: list }, direction: up }\n"
         "    - swipe: { from: [0.5, 0.8], to: [0.5, 0.2] }\n"
     )
-    assert 'device.findObject(byId("list")).swipe(Direction.UP, 0.75f)' in code
+    assert 'act(byId("list")).swipe(Direction.UP, 0.75f)' in code
     assert "// TODO: coordinate swipe (from/to) is not generated" in code
 
 
@@ -119,7 +119,7 @@ def test_drag_maps_to_swipe_gesture() -> None:
     # `drag` (BE-0227) is an element-anchored pointer drag; UiObject2.swipe is a real drag, so it
     # emits the same primitive a directional swipe does.
     code = _gen("- name: x\n  steps:\n    - drag: { on: { id: divider }, direction: right }\n")
-    assert 'device.findObject(byId("divider")).swipe(Direction.RIGHT, 0.75f)' in code
+    assert 'act(byId("divider")).swipe(Direction.RIGHT, 0.75f)' in code
 
 
 def test_scroll_maps_to_uiscrollable_scroll_into_view() -> None:
@@ -151,9 +151,9 @@ def test_long_press_pinch_and_unsupported_gestures() -> None:
         "    - doubleTap: { id: comp.double }\n"
         "    - rotate: { sel: { id: photo }, radians: 1.5 }\n"
     )
-    assert 'device.findObject(byId("comp.longpress")).longClick()' in code
-    assert 'device.findObject(byId("photo")).pinchOpen(0.5f)' in code
-    assert 'device.findObject(byId("photo")).pinchClose(0.5f)' in code
+    assert 'act(byId("comp.longpress")).longClick()' in code
+    assert 'act(byId("photo")).pinchOpen(0.5f)' in code
+    assert 'act(byId("photo")).pinchClose(0.5f)' in code
     assert "// TODO: doubleTap" in code
     assert "// TODO: rotate" in code
 
@@ -202,7 +202,7 @@ def test_id_candidate_list_emits_byanyid() -> None:
     # whether the build surfaces the dotted (Compose) or underscore (Views) id, so it matches ANY
     # candidate via byAnyId rather than picking the first — otherwise a Views target never resolves.
     code = _gen("- name: x\n  steps:\n    - tap: { id: [stable.refresh, stable_refresh] }\n")
-    assert 'device.findObject(byAnyId("stable.refresh", "stable_refresh")).click()' in code
+    assert 'act(byAnyId("stable.refresh", "stable_refresh")).click()' in code
     # The byAnyId helper is defined in the generated preamble.
     assert "private fun byAnyId(vararg ids: String)" in code
 
@@ -232,7 +232,7 @@ def test_label_matches_substring_maps_to_contains_but_regex_is_todo() -> None:
     # `By.text(Pattern)` is a full-string match, unlike labelMatches' re.search — so a plain
     # substring maps to By.textContains, while a real regex (e.g. `^Item `) has no faithful form.
     substr = _gen("- name: x\n  steps:\n    - tap: { labelMatches: 'Item' }\n")
-    assert 'device.findObject(By.textContains("Item")).click()' in substr
+    assert 'act(By.textContains("Item")).click()' in substr
     regex = _gen("- name: x\n  steps:\n    - tap: { labelMatches: '^Item ' }\n")
     assert "// TODO: unsupported selector" in regex
 
@@ -346,7 +346,7 @@ def test_string_literals_escape_kotlin_specials() -> None:
     # Kotlin forbids a raw line break in a "…" literal and reads `$` as a template start, so both
     # must be escaped or the generated file would not compile.
     code = _gen('- name: x\n  steps:\n    - type: { text: "a$b\\nc", into: { id: f } }\n')
-    assert r'device.findObject(byId("f")).text = "a\$b\nc"' in code
+    assert r'act(byId("f")).text = "a\$b\nc"' in code
 
 
 def test_class_name_for_stem() -> None:
@@ -418,7 +418,7 @@ def test_cli_emit_uiautomator_writes_kt(tmp_path: Path) -> None:
     assert r.exit_code == 0, r.output
     code = out.read_text(encoding="utf-8")
     assert 'private const val PACKAGE = "com.example.app"' in code
-    assert 'device.findObject(byId("home.title")).click()' in code
+    assert 'act(byId("home.title")).click()' in code
 
 
 def test_cli_emit_uiautomator_without_package_exits(tmp_path: Path) -> None:

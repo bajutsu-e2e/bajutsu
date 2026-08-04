@@ -87,6 +87,8 @@ class Element(TypedDict):
 
 2 件以上の一致を曖昧と判定する前に、`other` トレイトを持つ候補を除外します。汎用のラッパー要素（iOS の catch-all `XCUIElementTypeOther` など）は、実体のある要素の label をそのまま繰り返すことが多いからです。そうした重複のためだけに、シナリオへ `within` や `index` を足させたくありません。一致した候補がすべて `other` なら、それ以上除外する先がないため、そのまま曖昧判定にかけます。セレクタが `traits: ["other"]` で `other` を明示的に要求している場合も同様です。この除外は `resolve_unique` に閉じています。`find_all`（したがって `count` / `exists`）は、`other` を含めすべての一致をそのまま返します。
 
+> **トレードオフ**：iOS では `other` が、このドライバが名前を付けていない実在のコントロールも含みます。`checkBox`、`radioButton`、`popUpButton`、`stepper`、`datePicker` などは、汎用ラッパーと同じく `typeName` の `default:` 節に落ちます（`BajutsuKit/Runner/Sources/XcuitestElementProvider.swift`）。そうしたコントロールが、同じ label を持つ分類済みの兄弟要素と衝突すると、`AmbiguousSelector` を送出せず分類済みの側を黙って残します。影響するのは同一セレクタでの衝突だけであり、分類済みの兄弟要素がなく単独で解決される未分類コントロールには影響しません。
+
 ```python
 # drivers/base.py（抜粋）
 def resolve_unique(elements, sel):

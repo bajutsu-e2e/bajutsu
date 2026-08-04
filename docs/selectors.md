@@ -108,6 +108,14 @@ cases keep the tie as-is. One: every candidate is `other`, so there's nothing to
 the selector explicitly requests `other` via `traits: ["other"]`. The filtering stays local to
 `resolve_unique`. `find_all` (and so `count` / `exists`) still sees every match, `other` included.
 
+> **Trade-off.** On iOS, `other` also covers a real control whose `XCUIElementType` this driver has
+> not named (`checkBox` / `radioButton` / `popUpButton` / `stepper` / `datePicker` and more). Those
+> fall through `typeName`'s `default:` arm the same as the generic wrapper
+> (`BajutsuKit/Runner/Sources/XcuitestElementProvider.swift`). A tie between such a control and a
+> classified sibling sharing its label silently keeps the sibling rather than raising
+> `AmbiguousSelector`. Only a same-selector tie is affected; a lone unclassified control (no
+> classified sibling sharing the selector) resolves normally.
+
 ```python
 # drivers/base.py (excerpt)
 def resolve_unique(elements, sel):

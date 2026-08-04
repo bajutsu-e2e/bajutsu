@@ -270,6 +270,11 @@ class ComponentsUITest {
     device.wait(Until.hasObject(By.pkg(PACKAGE).depth(0)), LAUNCH_TIMEOUT_MS)
   }
 
+  private fun act(by: BySelector): UiObject2 {
+    device.wait(Until.hasObject(by), ACT_TIMEOUT_MS)
+    return device.findObject(by)
+  }
+
   @Test
   fun test_open_filter_shows_the_sheet() {
     val extras = mutableMapOf<String, String>()
@@ -277,7 +282,7 @@ class ComponentsUITest {
     launch(extras)
 
     assertFalse(device.hasObject(byId("log.sheet.title")))
-    device.findObject(byId("log.openFilter")).click()
+    act(byId("log.openFilter")).click()
 
     // expect
     assertTrue(device.hasObject(byId("log.sheet.title")))
@@ -289,6 +294,11 @@ class ComponentsUITest {
   `<package>:id/` prefix — the **reverse of the adb driver stripping that prefix**, so a native
   `android:id` and a Compose `testTag` (surfaced via `testTagsAsResourceId`, which carries no prefix)
   both resolve.
+- The `act` helper waits for the element before returning it. `findObject` alone is a single-shot
+  query with no implicit wait. Acting right after `launch()` or a UI transition could otherwise race
+  the render. Every generated action in the table below routes through `act`. A read-only assertion
+  still calls `device.findObject` / `device.findObjects` directly, unwaited. That matches the
+  driver's own assertions.
 - Each method builds an `extras` map (config's `launchEnv` < the scenario's
   `preconditions.launchEnv`) and calls `launch(extras)`, which forwards the env as intent extras —
   the reverse of the adb backend's `am start --es`.
@@ -317,8 +327,8 @@ same limit the XCUITest emitter hits for NSPredicate `MATCHES`), so it stays a `
 
 | Scenario step | UI Automator |
 |---|---|
-| `tap` | `device.findObject(<by>).click()` |
-| `type` (with `into`) | `device.findObject(<by>).text = '…'` |
+| `tap` | `act(<by>).click()` |
+| `type` (with `into`) | `act(<by>).text = '…'` |
 | `type` (no `into`) | `// TODO` (no resolved target element) |
 | `longPress` | `.longClick()` (the platform long-press timeout; the scenario duration has no parameter) |
 | `swipe { on, direction }` | `.swipe(Direction.<UP/DOWN/LEFT/RIGHT>, 0.75f)` |

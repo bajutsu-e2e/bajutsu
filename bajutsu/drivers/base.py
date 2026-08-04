@@ -652,6 +652,13 @@ def resolve_unique(elements: list[Element], sel: Selector) -> Element:
         # for `other` elements. Falls back to the full set when every candidate is `other`, so a
         # scenario that does target such an element still resolves (or still fails loud on a real
         # tie among them).
+        # Known trade-off: iOS's `other` also covers a real control of an XCUIElementType this
+        # driver has not named (e.g. checkBox / radioButton / popUpButton / stepper / datePicker —
+        # see XcuitestElementProvider.swift's typeName `default:` arm), not only the generic
+        # wrapper. A tie between such a control and a classified sibling sharing its label silently
+        # keeps the sibling instead of raising AmbiguousSelector. Only a same-selector tie is
+        # affected — an unclassified control resolved on its own (no classified sibling sharing the
+        # selector) is unaffected.
         without_other = [c for c in candidates if Trait.OTHER not in c["traits"]]
         if without_other:
             candidates = without_other

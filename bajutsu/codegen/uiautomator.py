@@ -160,11 +160,16 @@ def _unsupported_selector_todo(sel: base.Selector) -> str:
 
 
 def _act(sel: base.Selector, call: str) -> list[str]:
-    """A `device.findObject(<by>).<call>` line, or a TODO when the selector can't be rendered."""
+    """An `act(<by>).<call>` line, or a TODO when the selector can't be rendered.
+
+    `act` (below, in the file preamble) waits for the element before returning it — `findObject`
+    alone is a single-shot query with no implicit wait, unlike the adb driver's `tap()` /
+    `resolve_unique`, so an action right after `launch()` or a UI transition can race the render.
+    """
     by = _by(sel)
     if by is None:
         return [_unsupported_selector_todo(sel)]
-    return [f"device.findObject({by}).{call}"]
+    return [f"act({by}).{call}"]
 
 
 def _emit_step(step: Step) -> list[str]:
@@ -196,7 +201,7 @@ def _emit_step(step: Step) -> list[str]:
             return [_unsupported_selector_todo(step.delete.into.as_selector())]
         # Focus, then backspace `count` times (KEYCODE_DEL) — one key event per character (BE-0265).
         return [
-            f"device.findObject({by}).click()",
+            f"act({by}).click()",
             f"repeat({step.delete.count}) {{ device.pressKeyCode(KeyEvent.KEYCODE_DEL) }}",
         ]
     if step.select is not None:
@@ -205,7 +210,7 @@ def _emit_step(step: Step) -> list[str]:
             return [_unsupported_selector_todo(step.select.into.as_selector())]
         # Focus, then Ctrl+A selects the whole field (BE-0265).
         return [
-            f"device.findObject({by}).click()",
+            f"act({by}).click()",
             "device.pressKeyCode(KeyEvent.KEYCODE_A, KeyEvent.META_CTRL_ON)",
         ]
     if step.copy_ is not None:
@@ -382,8 +387,10 @@ class _UiAutomatorGen:
             "import androidx.test.ext.junit.runners.AndroidJUnit4",
             "import androidx.test.platform.app.InstrumentationRegistry",
             "import androidx.test.uiautomator.By",
+            "import androidx.test.uiautomator.BySelector",
             "import androidx.test.uiautomator.Direction",
             "import androidx.test.uiautomator.UiDevice",
+            "import androidx.test.uiautomator.UiObject2",
             "import androidx.test.uiautomator.UiScrollable",
             "import androidx.test.uiautomator.UiSelector",
             "import androidx.test.uiautomator.Until",
@@ -396,6 +403,7 @@ class _UiAutomatorGen:
             "",
             f"private const val PACKAGE = {_s(self._package)}",
             "private const val LAUNCH_TIMEOUT_MS = 5000L",
+            "private const val ACT_TIMEOUT_MS = 5000L",
             "",
             "@RunWith(AndroidJUnit4::class)",
             f"class {self._class_name} {{",
@@ -425,6 +433,17 @@ class _UiAutomatorGen:
             "    for ((k, v) in extras) intent.putExtra(k, v)",
             "    context.startActivity(intent)",
             "    device.wait(Until.hasObject(By.pkg(PACKAGE).depth(0)), LAUNCH_TIMEOUT_MS)",
+            "  }",
+            "",
+            "  // Wait for an element before acting on it. findObject alone is a single-shot query"
+            + " with no",
+            "  // implicit wait (unlike the adb driver's tap() / resolve_unique), so acting right"
+            + " after",
+            "  // launch() or a UI transition can race the render — a condition wait, never a"
+            + " fixed sleep.",
+            "  private fun act(by: BySelector): UiObject2 {",
+            "    device.wait(Until.hasObject(by), ACT_TIMEOUT_MS)",
+            "    return device.findObject(by)",
             "  }",
             "",
         ]

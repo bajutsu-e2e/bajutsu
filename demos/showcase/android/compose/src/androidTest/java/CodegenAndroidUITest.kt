@@ -6,8 +6,10 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
+import androidx.test.uiautomator.BySelector
 import androidx.test.uiautomator.Direction
 import androidx.test.uiautomator.UiDevice
+import androidx.test.uiautomator.UiObject2
 import androidx.test.uiautomator.UiScrollable
 import androidx.test.uiautomator.UiSelector
 import androidx.test.uiautomator.Until
@@ -20,6 +22,7 @@ import java.util.regex.Pattern
 
 private const val PACKAGE = "com.bajutsu.showcase.android.compose"
 private const val LAUNCH_TIMEOUT_MS = 5000L
+private const val ACT_TIMEOUT_MS = 5000L
 
 @RunWith(AndroidJUnit4::class)
 class CodegenandroiduitestUITest {
@@ -46,16 +49,24 @@ class CodegenandroiduitestUITest {
     device.wait(Until.hasObject(By.pkg(PACKAGE).depth(0)), LAUNCH_TIMEOUT_MS)
   }
 
+  // Wait for an element before acting on it. findObject alone is a single-shot query with no
+  // implicit wait (unlike the adb driver's tap() / resolve_unique), so acting right after
+  // launch() or a UI transition can race the render — a condition wait, never a fixed sleep.
+  private fun act(by: BySelector): UiObject2 {
+    device.wait(Until.hasObject(by), ACT_TIMEOUT_MS)
+    return device.findObject(by)
+  }
+
   @Test
   fun test_search_filters_the_catalog() {
     val extras = mutableMapOf<String, String>()
     extras["SHOWCASE_UITEST"] = "1"
     launch(extras)
 
-    device.findObject(byId("search")).click()
+    act(byId("search")).click()
     assertTrue(device.wait(Until.hasObject(byId("search.field")), 10000L))
     assertTrue(device.wait(Until.hasObject(byId("search.row.1")), 5000L))
-    device.findObject(byId("search.field")).text = "Horse 5"
+    act(byId("search.field")).text = "Horse 5"
     assertTrue(device.wait(Until.hasObject(byId("search.row.5")), 5000L))
     assertTrue(device.wait(Until.gone(byId("search.row.1")), 5000L))
 
