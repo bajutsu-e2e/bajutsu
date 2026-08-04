@@ -55,7 +55,7 @@ attempt 2/2: health never ready within 166.9s
 <unknown>:0: error: Failed to launch com.bajutsu.showcase.ios.swiftui: Timed out attempting to launch app.
 ```
 
-起動の完了を待ち終えたシミュレータの上で、アプリの起動が 40 秒後にタイムアウトする。これはビルドに
+起動の完了を待ち終えたシミュレータの上で、アプリの起動が 40 秒後にタイムアウトします。これはビルドに
 ついてではなく、デバイスについての事実です。同じコミットの他のジョブは、同じアプリを問題なく
 インストールして起動しています。こうして 1 回目の試行は runner を破棄して終わり、再試行はその
 デバイスへ、つまりたった今アプリを前面に出すことを拒んだデバイスへ、起動をかけます。
