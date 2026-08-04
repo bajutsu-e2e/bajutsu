@@ -663,6 +663,20 @@ def _run_for_each(
     return True, ""
 
 
+@dataclass(frozen=True)
+class LastLeafStep:
+    """The last leaf step (an actuating/`wait`/`assert`/`email` kind) to actually run, however deep
+    the `if`/`forEach`/`web` nesting (BE-XXXX). `_run_steps` gives it one more screenshot once the
+    whole run finishes, since no following step exists to carry its result forward as a pre-step
+    baseline the way every other step's does. Bundled rather than two parallel `StepLoopState`
+    fields so the two are always set together — `_handle_action` constructs one in a single
+    assignment, and a consumer narrows both at once from one `is not None` check.
+    """
+
+    outcome: StepOutcome
+    step_id: str
+
+
 @dataclass
 class StepLoopState:
     """The mutable context a run's step loop carries across its recursive descent.
@@ -687,6 +701,8 @@ class StepLoopState:
     # the next `before` reads fresh, and a `web` block resets it (the tree is a different driver's).
     prev_after: list[base.Element] | None = None
     total_reads: int = 0  # runner-issued screen reads, the BE-0234 read-count yardstick (Unit 1)
+    # Set only by `_handle_action`, once per leaf step it runs (see `LastLeafStep`).
+    last_leaf: LastLeafStep | None = None
     # True while an interrupt's own recovery steps run (BE-0314). Those steps go through the step loop
     # too, so without this an interrupt whose recovery targets the very screen its `condition` matches
     # would re-trigger itself on each recovery step and recurse without end. Suppressing the guard
@@ -871,6 +887,54 @@ class _StepRunner:
         start: float,
     ) -> str | None:
         step_id = f"{self.cfg.sid}/{step.name or f'step{idx}'}"
+        # The report's baseline: the screen this step is about to act on, captured before it acts
+        # (BE-XXXX). Reuses `prev_after` — already maintained unconditionally (BE-0234 Unit 2) —
+        # rather than a fresh query, so a sink that reads nothing pays nothing here either. The sink
+        # call below always targets `self.cfg.driver` (native — a `WebContextDriver` cannot
+        # screenshot), so a `None` `elements` would make its fallback query the wrong driver whenever
+        # `active_driver` is the web one; only a genuinely unset `prev_after` (the block's first
+        # nested step — reset around the whole block, BE-0234 Unit 2) pays a fresh, correctly-targeted
+        # `active_driver.query()` here, and every later nested step reuses `prev_after` for free, same
+        # as a native step. `NullSink` ignores `elements` outright, so skip the query entirely under
+        # it too — a sink that reads nothing must pay nothing even for a `web` block's first step.
+        # Deliberately ahead of locale resolution below: this baseline depends only on the screen,
+        # never on the step's own resolved fields, so a step that fails resolving them still gets it
+        # — the run loop's report contract guarantees a pre-step baseline for every leaf step, a
+        # failure at this point notwithstanding.
+        pre_elements = self.state.prev_after
+        pre_kinds = ["screenshot.before", "elements"]
+        pre_query_was_fresh = False
+        if (
+            pre_elements is None
+            and active_driver is not self.cfg.driver
+            and not isinstance(self.cfg.sink, NullSink)
+        ):
+            try:
+                pre_elements = active_driver.query()
+                self.state.total_reads += 1
+                # Seed `prev_after` with this same read: the `screenChanged`-policy `before` below
+                # would otherwise see `prev_after` still unset and pay a second, duplicate query of
+                # the same web driver for the same pre-action moment. Tracked separately from
+                # `before_is_fresh` below (a tree just read *this iteration*, vs. one merely
+                # available from `prev_after`) so the interrupt guard also recognizes this read as
+                # current and skips its own redundant re-query.
+                self.state.prev_after = pre_elements
+                pre_query_was_fresh = True
+            except (ConnectionError, base.UnsupportedAction, OSError) as exc:
+                # Best-effort: a web context that can't be read yet must not crash the step before it
+                # even gets to attempt its own action — that failure surfaces normally through
+                # `_run_step_body` instead. Only `elements` needs the web driver; `screenshot.before`
+                # is captured from the native driver regardless, so drop just `elements` here rather
+                # than losing the whole baseline, and disclose the gap via logging rather than guess.
+                _logger.debug(
+                    "%s: pre-step elements capture skipped, web driver query failed: %s",
+                    step_id,
+                    exc,
+                )
+                pre_kinds = ["screenshot.before"]
+        outcome.artifacts.extend(
+            self.cfg.sink.capture(self.cfg.driver, step_id, pre_kinds, elements=pre_elements)
+        )
         # Interpolate ${...} tokens, then turn a `handleSystemAlert` naming a prompt and a
         # choice into the concrete button label this run's locale renders (BE-0320). Resolving
         # here rather than per action kind means nested steps — `if` / `forEach` branches and an
@@ -885,6 +949,14 @@ class _StepRunner:
             outcome.ok, outcome.reason = False, str(exc)
             outcome.duration_s = self.cfg.clock.now() - start
             self.state.outcomes.append(outcome)
+            # This early return skips the rest of the function, including the `last_leaf`
+            # assignment at its end — set it here too, so a scenario that ends on this failure
+            # still gets a final capture attributed to the step that actually ran last, rather than
+            # a stale one left over from an earlier step (or none at all, for a single-step run).
+            # The pre-step baseline above already ran (whatever it produced — a `NullSink` writes
+            # nothing, same as any other step), so this failure gets the same evidence contract
+            # every other leaf step does, not just the final capture.
+            self.state.last_leaf = LastLeafStep(outcome, step_id)
             return f"step {idx} ({kind}): {exc}"
         # `before` is needed only for a `screenChanged` policy. Reuse the previous step's
         # post-step tree when we have one (same device state — nothing actuated in between), so
@@ -900,6 +972,10 @@ class _StepRunner:
             before = None
         elif self.state.prev_after is not None:
             before = self.state.prev_after
+            # A snapshot seeded by *this* step's own pre-step query above is current, not a
+            # carried-over one from the previous step's boundary — recognized as fresh here too,
+            # so the interrupt guard below skips its own redundant re-query of the same tree.
+            before_is_fresh = pre_query_was_fresh
         else:
             before = active_driver.query()
             self.state.total_reads += 1
@@ -1083,6 +1159,9 @@ class _StepRunner:
             if not ext_ok:
                 outcome.ok, outcome.reason = False, ext_reason
 
+        # `_collect_captures` already excludes `screenshot.before` (BE-XXXX): the pre-step baseline
+        # above wrote that file from the true pre-action state, so re-taking it here would silently
+        # mislabel a post-action pixel as `before.png`.
         fired = _collect_captures(self.cfg.scenario, step, kind, outcome.ok, screen_changed)
         # Interval kinds are recorded scenario-wide (run_scenario), so only the
         # instant kinds are captured per step here. Pass the tree only if we already read it;
@@ -1097,6 +1176,10 @@ class _StepRunner:
         )
         if screen.queried:
             self.state.total_reads += 1
+        # The last leaf step to actually run (BE-XXXX): `_run_steps` uses this after the whole run
+        # finishes to give the scenario's true final state a capture too, since no following step
+        # exists to carry it forward as its own pre-step baseline (unlike every other step).
+        self.state.last_leaf = LastLeafStep(outcome, step_id)
         # Seed the next step's `before` only with a tree we actually read; if we skipped the
         # read, the next `before` reads fresh (BE-0234 Unit 2).
         self.state.prev_after = screen.cached
@@ -1156,4 +1239,27 @@ def _run_steps(
     )
     result = _StepRunner(state, cfg).exec_steps(scenario.steps, driver)
     _logger.debug("%s: %d runner-issued screen reads (BE-0234)", sid, state.total_reads)
+    # The scenario's true final state has no following step to carry it forward as a pre-step
+    # baseline, so the last leaf step's outcome gets one more screenshot here (BE-XXXX). `elements`
+    # is deliberately NOT re-captured: `elements.json` has one fixed filename, so re-capturing it
+    # here would overwrite the pre-step baseline's pre-action tree with a post-action one — while
+    # `screenshotUrl` (the editor's element-picker pairing, `bajutsu/serve/operations/reads.py`) keeps
+    # resolving to the *first*-recorded screenshot, `before.png`. That mismatch would let a picked
+    # element's coordinates (from the post-action tree) drift from what `before.png` actually shows.
+    # Keeping `elements.json` the pre-action tree for every step, including the last, keeps that pair
+    # consistent throughout. `after.png` is written as a raw artifact for anyone reading the manifest
+    # directly; today's viewers (the HTML report and the serve editor) both resolve a step's
+    # displayed screenshot to the *first*-recorded one, `before.png`, so this file is not surfaced by
+    # default — making a viewer prefer it for the scenario's last step, if ever wanted, is separate,
+    # future scope.
+    # Gated on the leaf not already having recorded an `after.png`: a `capturePolicy` rule
+    # (`screenshot.after`, or bare `screenshot` — defaults to `after`) firing post-step on this same
+    # last leaf already wrote one. Capturing again would silently overwrite the rule's own shot with
+    # a slightly later one (same fixed filename) and leave a second, duplicate `screenshot`/`after.png`
+    # entry in `leaf.outcome.artifacts` for anyone reading the manifest directly — exactly the
+    # audience the comment above names for this file.
+    if (leaf := state.last_leaf) is not None and not any(
+        a.kind == "screenshot" and a.name.endswith("after.png") for a in leaf.outcome.artifacts
+    ):
+        leaf.outcome.artifacts.extend(sink.capture(driver, leaf.step_id, ["screenshot.after"]))
     return result

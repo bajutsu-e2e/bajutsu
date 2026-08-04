@@ -428,32 +428,113 @@ def _step_artifacts(
         # A race (the run trashed/purged between listing and read) or a transient store error reads
         # the same as a missing/malformed manifest — an empty step list, never a failed request.
         return []
-    if manifest is None:
+    if not isinstance(manifest, dict):
         return []
 
     effective_name = scenario_name or matched.name
-    sid = _find_sid(manifest, effective_name)
-    if sid is None:
+    scenario = _find_scenario(manifest, effective_name)
+    # `or None` coerces a falsy/empty `sid` (e.g. `""`) to `None` too, so a malformed scenario
+    # record bails to `[]` below rather than building a malformed step id like `/step0`. Parenthesized
+    # so `scenario.get(...)` never runs when `scenario` is `None` regardless of how this expression
+    # is later refactored or read.
+    sid = (scenario.get("sid") or None) if scenario is not None else None
+    # Not just `str`-narrowed: `_valid_step_id` (already the gate `resolve_scenario_pick` applies to
+    # a `stepId` coming *back* from the client) also rejects `..`/absolute segments here, at the
+    # point every `stepId` this function returns is built from `sid` — so a malformed manifest can't
+    # produce a traversal-shaped id in the first place, not just have one rejected on its way back.
+    if not isinstance(sid, str) or not _valid_step_id(sid):
         return []
+    # step id (parsed from each outcome's own recorded artifact paths) -> that step's artifacts, so
+    # the loop below resolves the real names the run recorded (BE-XXXX) instead of assuming the
+    # baseline is always `before.png`/`after.png` under fixed names — a capturePolicy rule can add
+    # or replace either. Keyed by the runtime step id, not the outcome's `index`: `index` is a
+    # counter across *all executed steps* including nested `if`/`forEach`/`web` steps, while the
+    # loop below counts only top-level YAML steps, so the two diverge as soon as the scenario has
+    # any nesting before this step. A named step's runtime id doesn't depend on either counter, so
+    # this keeps resolving to the right artifacts regardless of nesting; an unnamed step still falls
+    # back to `step{idx}` on both sides, the same positional ambiguity as before this rework. Skips
+    # a non-`dict` entry rather than raising, so a malformed/partially written manifest degrades to
+    # missing artifacts for that step instead of a 500.
+    steps = (scenario or {}).get("steps")
+    artifacts_by_step_id: dict[str, list[dict[str, Any]]] = {}
+    for out in steps if isinstance(steps, list) else []:
+        if not isinstance(out, dict):
+            continue
+        step_artifacts = out.get("artifacts")
+        if not isinstance(step_artifacts, list):
+            continue
+        # Filtered once, up front, to `dict` entries only: `_artifact_names` below calls `.get` on
+        # each one, so a stray non-`dict` artifact must never reach it. The step id then comes from
+        # the first artifact that is both a `dict` and has a usable, safe (`_valid_step_id`) `name`
+        # — not merely the first `dict` — so one malformed entry ahead of a valid one never stops
+        # the search. `_valid_step_id`, not a bare `"/" in name` check: a traversal-shaped name
+        # (e.g. `../../../run2/...`) would otherwise become the key itself, hiding every other,
+        # legitimate artifact recorded for this same step under a key no real `step_id` ever
+        # matches.
+        dict_artifacts = [a for a in step_artifacts if isinstance(a, dict)]
+        name = next(
+            (
+                a["name"]
+                for a in dict_artifacts
+                if isinstance(a.get("name"), str) and "/" in a["name"] and _valid_step_id(a["name"])
+            ),
+            None,
+        )
+        if name is not None:
+            artifacts_by_step_id[name.rsplit("/", 1)[0]] = dict_artifacts
 
     result: list[dict[str, Any]] = []
     for idx, step in enumerate(matched.steps):
         step_id = f"{sid}/{step.name or f'step{idx}'}"
         action, fields = _step_action_fields(step)
+        elements_name, screenshot_name = _artifact_names(artifacts_by_step_id.get(step_id, []))
         result.append(
             {
                 "stepId": step_id,
                 "action": action,
                 "fields": fields,
-                "elementsUrl": f"/runs/{run_id}/{step_id}/elements.json"
-                if _safe_exists(artifacts, f"{run_id}/{step_id}/elements.json")
+                "elementsUrl": f"/runs/{run_id}/{elements_name}"
+                if elements_name is not None
+                and _safe_exists(artifacts, f"{run_id}/{elements_name}")
                 else None,
-                "screenshotUrl": f"/runs/{run_id}/{step_id}/after.png"
-                if _safe_exists(artifacts, f"{run_id}/{step_id}/after.png")
+                "screenshotUrl": f"/runs/{run_id}/{screenshot_name}"
+                if screenshot_name is not None
+                and _safe_exists(artifacts, f"{run_id}/{screenshot_name}")
                 else None,
             }
         )
     return result
+
+
+def _find_scenario(manifest: dict[str, Any], scenario_name: str | None) -> dict[str, Any] | None:
+    """The manifest's own scenario record for *scenario_name* (its `sid` and per-step outcomes)."""
+    scenarios = manifest.get("scenarios", [])
+    if not isinstance(scenarios, list):
+        return None
+    for scn in scenarios:
+        if isinstance(scn, dict) and scn.get("scenario") == scenario_name:
+            return scn
+    return None
+
+
+def _artifact_names(step_artifacts: list[dict[str, Any]]) -> tuple[str | None, str | None]:
+    """The first recorded `elements` / `screenshot` artifact name for a step, or `None` for either
+    the run never recorded (BE-XXXX) — mirrors `report/rows.py`'s `by_kind.setdefault` precedence:
+    the pre-step baseline is first in the list, so it wins even when a capturePolicy rule fired too."""
+    by_kind: dict[str, str] = {}
+    for art in step_artifacts:
+        if not isinstance(art, dict):
+            continue
+        kind, name = art.get("kind"), art.get("name")
+        # Narrowed to `str`, not just non-`None`: a malformed/partially written manifest could carry
+        # a non-string value here, which would otherwise flow into the URL/path built from it below.
+        # `_valid_step_id` (a generic safe-relative-path check despite its name) also rejects an
+        # absolute or `..`-shaped `name`: `LocalArtifactStore` only enforces containment to
+        # `runs_dir`, not per-run, so a traversal-shaped name could otherwise resolve to an
+        # unrelated artifact elsewhere in the org's runs tree.
+        if isinstance(kind, str) and isinstance(name, str) and _valid_step_id(name):
+            by_kind.setdefault(kind, name)
+    return by_kind.get("elements"), by_kind.get("screenshot")
 
 
 def _safe_exists(store: ArtifactStore, rel: str) -> bool:
@@ -485,14 +566,6 @@ def _valid_step_id(step_id: str) -> bool:
         return False
     parts = Path(step_id).parts
     return ".." not in parts
-
-
-def _find_sid(manifest: dict[str, Any], scenario_name: str | None) -> str | None:
-    """Find the evidence-dir slug for *scenario_name* in the manifest."""
-    for scn in manifest.get("scenarios", []):
-        if scn.get("scenario") == scenario_name:
-            return scn.get("sid") or None
-    return None
 
 
 def job_view(state: ServeState, job_id: str) -> tuple[Any, int]:

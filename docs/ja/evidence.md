@@ -36,7 +36,7 @@
 
 > `appTrace` はアプリの `os_signpost` / `os_log` が出す `<name> started` / `<name> finished` マーカーを、時刻つきの区間にペアリングします（`intervals.parse_app_trace`）。`network` は区間システムではなく request collector が生成し、その exchange を `<sid>/network.json` に書き出します（[network observation](drivers.md)、`--network` フラグ）。
 
-**修飾子の既定**：瞬時系（`screenshot`/`elements`）は `after`、区間系（`video`/`deviceLog`）は `around`（操作前に開始し、ステップ後に停止）です。`screenshot.before` のように明示すると、`before.png` のようなファイル名になります。
+**修飾子の既定**：常時発火するベースライン（後述）は `before` です。ステップが動作したあとではなく、動作する前に取得します。`capturePolicy` ルールやインラインの `capture:` が発火したときは、修飾子なしの瞬時種別は従来どおり `after` が既定のままです。区間系（`video`/`deviceLog`）は `around`（操作前に開始し、ステップ後に停止）です。ルール・インラインで `screenshot.before` を明示しても、ベースラインと重複するため撮り直されません。
 
 ## A. `capturePolicy`（ルール方式）
 
@@ -93,7 +93,12 @@ web は子プロセスを使いません。区間証跡は Playwright ネイテ�
 > **その kind を要求したときだけ**記録します。要求の経路は、インライン `capture:` か `capturePolicy` ルール
 > （例: `video` を取得する `result: error` ルール）です。何も要求しなければ何も記録せず、通常ケースを
 > 安価に保ちます。軽量な瞬時の baseline（`screenshot` + `elements`）は常に取得するので、失敗時も証跡が
-> 残ります（DESIGN §10）。何が記録されるかは `bajutsu trace --explain` で事前に確認できます
+> 残ります（DESIGN §10）。この取得は**ステップが動作する前**に行われます。`before.png` と
+> `elements.json` は、その動作が残した画面ではなく、そのステップが動作の対象とした画面を示します。
+> シナリオの最後のステップだけは、動作したあとにもう一度取得します（`after.png`）。ほかのすべての
+> ステップは、その結果を次のステップがステップ前ベースラインとして引き継ぎますが、最後のステップ
+> には、それを引き継ぐ後続ステップがないからです。
+> 何が記録されるかは `bajutsu trace --explain` で事前に確認できます
 > （[cli](cli.md#trace) 参照）。
 
 | 種別 | 開始コマンド（iOS / Android） | 停止シグナル | ファイル名 |
@@ -147,7 +152,7 @@ class EvidenceSink(Protocol):
 ```python
 @dataclass
 class Artifact:
-    name: str       # ファイル名（例 "after.png"）
+    name: str       # ファイル名（例 "before.png"）
     kind: str       # "screenshot" / "elements" / "video" / "deviceLog" / "network" / "waitDiagnostic"
     provider: str   # このアーティファクトを供給した provider（下表参照）
 ```

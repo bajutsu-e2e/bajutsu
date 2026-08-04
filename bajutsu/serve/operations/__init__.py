@@ -81,7 +81,6 @@ from bajutsu.serve.operations.projects import (
     run_project,
 )
 from bajutsu.serve.operations.reads import (
-    _find_sid,
     _primary_backend,
     _step_action_fields,
     _step_artifacts,
@@ -148,7 +147,6 @@ __all__ = [
     "_confined_config_path",
     "_default_driver_factory",
     "_device_args",
-    "_find_sid",
     "_job_event_pairs",
     "_job_sse_frames",
     "_primary_backend",

@@ -41,9 +41,11 @@ A `capture:` token is `<kind>[.<modifier>]` ([scenarios](scenarios.md#capture-to
 > rather than the interval system — its exchanges are written to `<sid>/network.json`
 > ([network observation](drivers.md), the `--network` flag).
 
-**Default modifiers**: instant kinds (`screenshot`/`elements`) default to `after`; interval kinds
-(`video`/`deviceLog`) default to `around` (start before the action, stop after the step). Stating
-`screenshot.before` explicitly yields a filename like `before.png`.
+**Default modifiers**: the always-on instant baseline (below) is `before` — captured before the step
+acts, not after. A `capturePolicy` rule or inline `capture:` still defaults an unmodified instant
+kind to `after` when it fires; interval kinds (`video`/`deviceLog`) default to `around` (start
+before the action, stop after the step). Stating `screenshot.before` explicitly on a rule/inline
+capture is redundant with the baseline and is dropped rather than re-taken.
 
 ## A. `capturePolicy` (rule-based)
 
@@ -106,6 +108,10 @@ app's os_log subsystem, paired into timed intervals by `parse_app_trace`.)
 > or a `capturePolicy` rule (e.g. a `result: error` rule that captures `video`). A scenario that
 > requests none records none, keeping the common case cheap; the lightweight instant baseline
 > (`screenshot` + `elements`) is always captured, so a failure still leaves evidence (DESIGN §10).
+> It is captured **before** the step acts — `before.png` and `elements.json`, showing the screen the
+> step is about to act on rather than the one its action left behind. The scenario's last step gets
+> one further baseline capture after it acts (`after.png`), since no following step exists to carry
+> its result forward the way every other step's pre-step baseline already does.
 > Preview what a scenario would record with `bajutsu trace --explain` (see [cli](cli.md#trace)).
 
 | Kind | Start command (iOS / Android) | Stop signal | Filename |
@@ -188,7 +194,7 @@ Every piece of evidence is recorded as an `Artifact(name, kind, provider)`, leav
 ```python
 @dataclass
 class Artifact:
-    name: str       # filename (e.g. "after.png")
+    name: str       # filename (e.g. "before.png")
     kind: str       # "screenshot" / "elements" / "video" / "deviceLog" / "network" / "waitDiagnostic"
     provider: str   # who supplied this artifact (see table below)
 ```

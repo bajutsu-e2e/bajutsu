@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 from _orch import FakeClock, _scenario
 from conftest import el
 
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
+from bajutsu.evidence import FileSink
 from bajutsu.evidence.network import ScreenTransition
 from bajutsu.orchestrator import AlertGuardConfig, _wait, run_scenario
 from bajutsu.orchestrator.waits import _TRANSITION_QUIESCENCE
@@ -690,6 +694,72 @@ def test_wait_for_guard_fires_mid_wait_and_records_the_alert() -> None:
     assert calls["n"] == 1  # the guard fired exactly once, mid-wait
     assert alerts == [AlertEvent(label="Not Now")]
     assert clock.now() < 1.0  # cleared in a few poll intervals, not the full 30s budget
+
+
+class _CollapsingThenRevealedDriver(FakeDriver):
+    """A `FakeDriver` that reports an empty (collapsed) tree until cleared, then reveals `revealed`
+    — models a SpringBoard alert covering the app during a mid-wait poll (BE-0269), while still
+    supporting `screenshot()`/`tap()` so a full `run_scenario` (not just `_wait`) can exercise it.
+    `query()` syncs `self.screen` once cleared, so a later step's `tap()` (which resolves against
+    `self.screen`, not `query()`) sees the revealed tree too."""
+
+    def __init__(self, revealed: list[base.Element]) -> None:
+        super().__init__([])
+        self._revealed = revealed
+        self.cleared = False
+
+    def query(self) -> list[base.Element]:
+        if not self.cleared:
+            return []
+        self.screen = list(self._revealed)
+        return list(self._revealed)
+
+
+def test_mid_wait_alert_guard_dismiss_preserves_correct_before_after_evidence(
+    tmp_path: Path,
+) -> None:
+    """The mid-wait alert-guard dismiss must not corrupt the report's evidence (BE-XXXX
+    non-regression): the waiting step's pre-step baseline still shows the true, collapsed
+    pre-dismiss state, and the *next* step's own baseline reflects the post-dismiss, settled
+    state — not something stale from before the alert cleared."""
+    from bajutsu.orchestrator.types import AlertEvent
+
+    ready = el("ready", "R")
+    nxt = el("next", "Next", ["button"])
+    driver = _CollapsingThenRevealedDriver([ready, nxt])
+
+    def on_blocked(d: object) -> AlertEvent:
+        d.cleared = True  # type: ignore[attr-defined]
+        return AlertEvent(label="Not Now")
+
+    run_dir = tmp_path / "run1"
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "t",
+                "steps": [
+                    {"wait": {"for": {"id": "ready"}, "timeout": 5}},
+                    {"tap": {"id": "next"}},
+                ],
+            }
+        ),
+        alert_guard=AlertGuardConfig(vision=on_blocked),
+        clock=FakeClock(),
+        sink=FileSink(run_dir),
+    )
+    assert result.ok, result.failure
+    assert result.steps[0].alerts == [AlertEvent(label="Not Now")]
+
+    def _els(step_index: int) -> list[dict[str, object]]:
+        art = next(a for a in result.steps[step_index].artifacts if a.kind == "elements")
+        return json.loads((run_dir / art.name).read_text(encoding="utf-8"))
+
+    # step0's (the wait's) pre-step baseline is the true pre-wait state: collapsed, before the
+    # alert was ever detected.
+    assert _els(0) == []
+    # step1's own pre-step baseline reflects the post-dismiss, settled state.
+    assert {e["identifier"] for e in _els(1)} == {"ready", "next"}
 
 
 def test_wait_guard_debounces_a_transient_collapse() -> None:
