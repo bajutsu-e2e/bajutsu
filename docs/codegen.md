@@ -437,8 +437,12 @@ class ComponentsUITest {
   wait runs. `kickWindowTracking` presses HOME and the intent is re-issued. HOME is dispatched through
   the input pipeline rather than the accessibility one, so it lands whatever the accessibility view
   currently says, and it dismisses whatever holds focus. The key press waits for the events it
-  produces, so the recovery adds no sleep, and `LAUNCH_ATTEMPTS` bounds it — at the emitted value of
-  2, that is one HOME press per launch at most. `pressHome` reports
+  produces, so the recovery adds no sleep. `LAUNCH_ATTEMPTS` bounds this kick to one fewer than the
+  number of attempts, so once at the emitted value of 2. It is not the only kick a launch can make,
+  though: the pre-launch check in the next bullet carries its own `TRACKING_KICK_ATTEMPTS` budget per
+  attempt, putting the worst case for one `launch` at `LAUNCH_ATTEMPTS × TRACKING_KICK_ATTEMPTS +
+  (LAUNCH_ATTEMPTS - 1)` presses — seven as emitted, and only on a device that stays unreadable
+  throughout. `pressHome` reports
   a window event that never arrived by returning false rather than by throwing, so both outcomes are
   logged. The kick stays outside `UiAutomation.executeAndWaitForEvent`, because `pressHome` already
   waits through that same call and a nested one would clear the event queue the outer wait is
