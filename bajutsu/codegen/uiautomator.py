@@ -178,7 +178,6 @@ def _wait_for(by: str) -> str:
     message = _s(f"target not found within {_ACTION_WAIT_TIMEOUT_MS}ms: {by}")
     return f"assertTrue({message}, device.wait(Until.hasObject({by}), {_ACTION_WAIT_TIMEOUT_MS}L))"
 
-
 def _act(sel: base.Selector, call: str) -> list[str]:
     """A wait for the target, then `device.findObject(<by>).<call>` — or a TODO."""
     by = _by(sel)
