@@ -308,6 +308,17 @@ class _AlertGuardGate:
             if label is None:
                 self._tree_dismiss_pending = None
             return None
+        # Decline an in-app collision *before* tapping: `label` was resolved unique only over the
+        # identifier-less subset above, so an app-authored button sharing it would otherwise make the
+        # whole-tree `tap` raise `AmbiguousSelector` below — and since that branch never arms
+        # `_tree_dismiss_pending`, a *persistent* collision would re-issue the on-device tap on every
+        # `_POLL` (~20x/s) for the rest of the wait. Re-checking uniqueness over the full tree here
+        # keeps that case a cheap in-memory decline instead of a repeated round-trip.
+        all_buttons = [
+            el["label"] for el in elements if el["label"] and base.Trait.BUTTON in el["traits"]
+        ]
+        if all_buttons.count(label) != 1:
+            return None
         try:
             self.driver.tap({"label": label})
         except base.ElementNotFound:
@@ -315,9 +326,9 @@ class _AlertGuardGate:
             # race, same treatment as `probe_native`'s TOCTOU branch.
             return None
         except base.AmbiguousSelector:
-            # An app-authored button shares the label: the whole-tree `tap` matches more than one
-            # candidate (the uniqueness check above ran only over the identifier-less subset) and
-            # declines rather than risk tapping the wrong one.
+            # A rare query-vs-tap race: an app-authored button carrying the same label appeared
+            # between this poll's tree read (checked unique above) and the tap. Declines rather than
+            # risk tapping the wrong one.
             return None
         self._tree_dismiss_pending = label
         return AlertEvent(label=label)

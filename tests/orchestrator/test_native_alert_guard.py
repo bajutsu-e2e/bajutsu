@@ -363,20 +363,35 @@ def test_dismiss_from_tree_taps_a_showing_at_most_once() -> None:
 def test_dismiss_from_tree_declines_on_an_in_app_label_collision() -> None:
     # A system-owned identifier-less button and an app-authored one share a configured label:
     # pick_alert_label resolves uniquely over the identifier-less subset, but the whole-tree tap
-    # sees both and must decline rather than tap the wrong one (determinism first).
+    # sees both and must decline rather than tap the wrong one (determinism first). A *persistent*
+    # collision (unlike a vanish race) must decline before ever attempting the tap: the collision
+    # never clears, so `_tree_dismiss_pending` (only armed on a successful tap) never guards it, and
+    # a decline reached only via `except AmbiguousSelector` would re-issue the on-device tap every
+    # `_POLL` for the rest of the wait — count `tap()` calls directly, not `driver.actions`, since a
+    # raised `AmbiguousSelector` never reaches `_record` either way.
     from bajutsu.orchestrator.waits import _wait
 
     prompt_button = _button("Not Now")  # identifier-less, system-owned
     app_button = _button("Not Now")
     app_button["identifier"] = "screen.home.button.not-now"
 
-    driver = FakeDriver([prompt_button, app_button])  # native-capable; no SpringBoard alert
+    class _CountingTapDriver(FakeDriver):
+        def __init__(self) -> None:
+            super().__init__([prompt_button, app_button])
+            self.tap_calls = 0
+
+        def tap(self, sel: base.Selector) -> None:
+            self.tap_calls += 1
+            super().tap(sel)
+
+    driver = _CountingTapDriver()  # native-capable; no SpringBoard alert
     guard = AlertGuardConfig(vision=_never_vision, labels=["Not Now"], poll_interval=1.0)
     ok, _reason, _tree = _wait(
         driver, _for_wait("ready", 0.2), _LogicalClock(), alert_guard=guard, alerts=[]
     )
     assert not ok
     assert driver.actions == []  # ambiguous → declined, nothing tapped
+    assert driver.tap_calls == 0  # declined before attempting the tap, not caught after
 
 
 def test_dismiss_from_tree_never_matches_an_in_app_button_carrying_an_identifier() -> None:
