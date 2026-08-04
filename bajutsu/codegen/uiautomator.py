@@ -172,8 +172,7 @@ def _wait_for(by: str) -> str:
     lag further behind the coarse "some window appeared" signal `launch()` waits on. Every
     action waits for its own target first, so a slow render is absorbed by the poll instead of
     racing it.
-    """
-    return f"assertTrue(device.wait(Until.hasObject({by}), {_ACTION_WAIT_TIMEOUT_MS}L))"
+    return f"assertTrue(\"Timed out waiting for target to exist\", device.wait(Until.hasObject({by}), {_ACTION_WAIT_TIMEOUT_MS}L))"
 
 
 def _act(sel: base.Selector, call: str) -> list[str]:
