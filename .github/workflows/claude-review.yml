@@ -195,11 +195,14 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           # The action rejects any non-human (Bot/App) actor unless it is allow-listed, so PRs opened
           # by our own automation bot (bajutsu-automation-bot — roadmap-refresh, docs-refresh, etc.)
-          # would otherwise fail the review with "Workflow initiated by non-human actor". Allow-list
-          # exactly that trusted internal bot rather than using '*' (which the action warns can let
-          # external Apps invoke it with attacker-controlled prompts on public repos). The match is
-          # case-insensitive and strips a trailing `[bot]`, so this covers both actor spellings.
-          allowed_bots: "bajutsu-automation-bot"
+          # would otherwise fail the review with "Workflow initiated by non-human actor". A push from
+          # GitHub's own Copilot coding agent (actor `Copilot`, commits authored as
+          # `copilot-swe-agent[bot]`) hits the same gate — it only runs when a repo owner/collaborator
+          # explicitly assigns it, the same trust boundary as our own bot. Allow-list exactly these two
+          # trusted actors rather than using '*' (which the action warns can let external Apps invoke
+          # it with attacker-controlled prompts on public repos). The match is case-insensitive and
+          # strips a trailing `[bot]`, so this covers every spelling each actor uses.
+          allowed_bots: "bajutsu-automation-bot,Copilot"
           # Inline comments post through the action's native tool (the action buffers and posts them);
           # the diff read and discussion read go through the narrowly-scoped `gh pr …` commands. The
           # built-in `/code-review` skill posts via unrestricted `gh` (Bash), which the action sandboxes

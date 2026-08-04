@@ -653,7 +653,10 @@ def test_a_backend_that_reports_no_lag_is_read_exactly_once_per_step() -> None:
 
 
 def test_ambiguous_target_fails_rather_than_scrolling_forever() -> None:
-    driver = _scrollable([_row(0), _row(0)])  # two elements share an id
+    # Two elements share an id at different positions — a genuine duplicate-id ambiguity, not a
+    # content-identical duplicate registration (which resolve_unique now collapses instead of
+    # flagging ambiguous).
+    driver = _scrollable([_row(0), _el("row.0", (0.0, _TOP_INSET + _ROW_H, 280.0, _ROW_H))])
     with pytest.raises(base.AmbiguousSelector):
         _do_action(driver, Step(scroll=Scroll.model_validate({"to": {"id": "row.0"}})))
 

@@ -99,8 +99,16 @@ determinism.
 | 1 | resolved |
 | 2+ | raises `AmbiguousSelector` — **structurally rules out** "tap whatever matched first" |
 
-Before judging a 2+ match ambiguous, resolution drops candidates carrying the `other` trait. A
-generic wrapper commonly repeats a real element's label. iOS's catch-all `XCUIElementTypeOther`
+Before counting candidates, `resolve_unique` collapses any that report identical content
+(identifier, label, traits, value, and frame all equal) to one. This targets a known XCUITest
+quirk — a standard `UIAlertController` button sometimes registers twice in the accessibility
+tree, indistinguishably and for the alert's whole lifetime — where the two "candidates" carry no
+information to disambiguate on, so `index` cannot pick a "real" one (which twin a run actually
+taps swaps between runs). `index` stays reserved for candidates that genuinely differ in some
+field; on truly indistinguishable duplicates it is unnecessary and unused.
+
+Next, before judging a 2+ match ambiguous, resolution drops candidates carrying the `other` trait.
+A generic wrapper commonly repeats a real element's label. iOS's catch-all `XCUIElementTypeOther`
 is one example. A scenario shouldn't need `within` or `index` to route around that duplicate. Two
 cases keep the tie as-is. One: every candidate is `other`, so there's nothing to fall back to. Two:
 the selector explicitly requests `other` via `traits: ["other"]`. The filtering stays local to
@@ -124,7 +132,7 @@ ambiguity count above. Otherwise, a dropped `other` would shift every later posi
 ```python
 # drivers/base.py (excerpt)
 def resolve_unique(elements, sel):
-    candidates = find_all(elements, sel)
+    candidates = _collapse_identical_duplicates(find_all(elements, sel))
     if len(candidates) > 1 and "other" not in sel.get("traits", []):
         without_other = [c for c in candidates if "other" not in c["traits"]]
         if without_other:

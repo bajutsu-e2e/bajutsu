@@ -433,7 +433,11 @@ def test_select_all_and_copy_are_unsupported_on_the_live_route() -> None:
 
 
 def test_a_gesture_on_an_ambiguous_selector_fails_before_actuation() -> None:
-    grid = _FakeGrid([_button("e1", "dup"), _button("e2", "dup")])
+    # Distinct rects: two genuinely different buttons sharing a name, not a content-identical
+    # duplicate (which resolve_unique now collapses rather than flags ambiguous).
+    button_a, button_b = _button("e1", "dup"), _button("e2", "dup")
+    button_b["rect"] = _rect(0, 20, 0, 0)
+    grid = _FakeGrid([button_a, button_b])
     client = WebDriverClient(grid)
     client.new_session({})
     with pytest.raises(base.AmbiguousSelector):

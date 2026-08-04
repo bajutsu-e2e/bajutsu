@@ -265,6 +265,44 @@ def test_id_matches_list_matches_any_glob() -> None:
     assert len(find_all(views, sel)) == 2
 
 
+# --- identical-content duplicate collapsing (a UIAlertController button double-registered on
+# XCUITest: same identifier/label/traits/value/frame, indistinguishable and stable for the
+# alert's lifetime, so `index` cannot pick a "real" one) ---
+
+
+def test_identical_duplicates_resolve_without_index() -> None:
+    ok_button = el("alert.ok", "OK", ["button"], frame=(201.0, 470.0, 134.0, 44.0))
+    screen = [ok_button, el("alert.ok", "OK", ["button"], frame=(201.0, 470.0, 134.0, 44.0))]
+    got = resolve_unique(screen, {"id": "alert.ok"})
+    assert got["identifier"] == "alert.ok"
+    assert got["frame"] == (201.0, 470.0, 134.0, 44.0)
+
+
+def test_duplicates_differing_in_frame_still_ambiguous() -> None:
+    # Same identifier/label/traits but a different frame is a genuine 2+ match — not the ghost
+    # duplicate this collapsing targets — so it must still raise.
+    screen = [
+        el("alert.ok", "OK", ["button"], frame=(201.0, 470.0, 134.0, 44.0)),
+        el("alert.ok", "OK", ["button"], frame=(201.0, 300.0, 134.0, 44.0)),
+    ]
+    try:
+        resolve_unique(screen, {"id": "alert.ok"})
+    except AmbiguousSelector:
+        return
+    raise AssertionError("frame が異なる候補は畳まれず AmbiguousSelector になるべき")
+
+
+def test_duplicates_with_differently_ordered_traits_still_collapse() -> None:
+    # `matches` already treats `traits` as a set (`issubset`); the same two traits reported in a
+    # different order are the same content, not a genuine difference to key the collapse on.
+    screen = [
+        el("alert.ok", "OK", ["button", "notEnabled"], frame=(201.0, 470.0, 134.0, 44.0)),
+        el("alert.ok", "OK", ["notEnabled", "button"], frame=(201.0, 470.0, 134.0, 44.0)),
+    ]
+    got = resolve_unique(screen, {"id": "alert.ok"})
+    assert got["identifier"] == "alert.ok"
+
+
 def test_id_candidates_normalizes_scalar_and_list() -> None:
     from bajutsu.drivers.base import id_candidates
 

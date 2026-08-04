@@ -212,27 +212,36 @@ def test_a_real_socket_hang_is_absorbed_by_the_transient_retry(driver: base.Driv
     base.resolve_unique(elements, _MARKER)
 
 
-def test_a_hang_past_the_retry_budget_is_ridden_out_by_crash_recovery(driver: base.Driver) -> None:
+def test_a_hang_past_the_retry_budget_is_ridden_out_by_crash_recovery(
+    lease: LeaseHolder, driver: base.Driver
+) -> None:
     # The BE-0287 path against the real failure mode. Held frozen until the channel has spent its
     # whole retry budget and declared a mid-run crash, the runner comes back while recovery is polling
     # `/health` — so the idempotent read is re-issued and returns the real screen, exactly the "ride
     # out a runner that went away and came back" contract, driven by a real socket-level fault.
-    _read_back_the_marker(driver)
-    frozen = _require_runner_pids()
-    with fault_injection.watch(_CHANNEL_LOGGER, _CRASH) as log:
-        _inject(frozen, "-STOP")
-        try:
-            with fault_injection.lifted_when_reached(
-                log, lambda: _release(frozen), timeout=_TRIGGER_TIMEOUT
-            ):
-                elements = driver.query()
-        finally:
-            _release(frozen)
-    assert log.mentions(_CRASH), f"crash recovery was never reached:\n{log.report()}"
-    assert log.mentions(_RECOVERED), (
-        f"crash recovery never reported re-issuing the call:\n{log.report()}"
-    )
-    base.resolve_unique(elements, _MARKER)
+    try:
+        _read_back_the_marker(driver)
+        frozen = _require_runner_pids()
+        with fault_injection.watch(_CHANNEL_LOGGER, _CRASH) as log:
+            _inject(frozen, "-STOP")
+            try:
+                with fault_injection.lifted_when_reached(
+                    log, lambda: _release(frozen), timeout=_TRIGGER_TIMEOUT
+                ):
+                    elements = driver.query()
+            finally:
+                _release(frozen)
+        assert log.mentions(_CRASH), f"crash recovery was never reached:\n{log.report()}"
+        assert log.mentions(_RECOVERED), (
+            f"crash recovery never reported re-issuing the call:\n{log.report()}"
+        )
+        base.resolve_unique(elements, _MARKER)
+    finally:
+        # A read that recovers by re-issuing can come back on a freshly re-spawned runner. Discard
+        # the module lease regardless of outcome (including an assertion failure above) so the next
+        # case never inherits a half-turned-over resident (old port / dead process) and fails before
+        # it injects its own fault.
+        lease.invalidate()
 
 
 def test_a_killed_runner_fails_loudly_with_a_crash_diagnosis(lease: LeaseHolder) -> None:
