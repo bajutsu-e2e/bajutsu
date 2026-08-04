@@ -83,7 +83,7 @@ The `bajutsu/` package (Python 3.13+, pydantic v2 / typer / anthropic / pyyaml /
 | `drivers/coordinate_tree.py` | `CoordinateTreeDriver` — the shared transient-empty retry / stable-key settle / `_resolve` / `wait_for` base class the coordinate backend (adb) inherits (BE-0254) | [drivers](drivers.md#adb-android) |
 | `drivers/fake.py` | In-memory `FakeDriver` (for tests without a device) | [drivers](drivers.md#fakedriver) |
 | `drivers/xcuitest.py` | XCUITest backend (iOS; the sole iOS backend since BE-0290 retired idb — semantic tap, native condition-wait, text selection, and multi-touch via a resident on-device runner; BE-0019) | [drivers](drivers.md#xcuitest-ios) |
-| `drivers/adb.py` | adb backend (Android; `uiautomator dump` frame-center coordinate tap) | [drivers](drivers.md#adb-android) |
+| `drivers/adb.py` | adb backend (Android; `tap`/`long_press`/`double_tap` resolve and inject device-side via the resident server's `POST /act`, falling back to a `uiautomator dump` frame-center coordinate tap when that channel is unavailable, BE-0339) | [drivers](drivers.md#adb-android) |
 | `drivers/playwright.py` | Playwright web backend (browser; first slice — deterministic run) | [drivers](drivers.md#playwright-web) |
 | `drivers/xcuitest_live.py` | The live-route XCUITest driver: W3C WebDriver (Appium's XCUITest driver) against a reserved device-cloud iOS device, in place of the resident-runner channel, for the `appium` device provider (BE-0238) — session lifecycle, query/tap/screenshot/readiness, gestures, and text entry are wired; `selectAll`/`copy` fail loudly (no Appium XCUITest equivalent); verification against a real device-cloud grid is still open ([BE-0303](../roadmaps/BE-0303-xcuitest-live-real-grid-verification/BE-0303-xcuitest-live-real-grid-verification.md)) | — |
 | `scenario/` | Scenario schema (strict pydantic validation) + YAML load / dump (package: `models` / `load` / `load_expanded` / `expand` / `select` / `serialize` / `edit`) | [scenarios](scenarios.md) |
@@ -364,8 +364,11 @@ purpose and so carry more inherent flakiness risk than the ones driving a health
   (pinch / rotate), parallel runs across N `BrowserContext` lanes, and a target-level `deviceMode`
   (desktop default, or a Playwright device preset for mobile emulation; BE-0228); `appTrace` stays
   iOS-only (`os_log`/simctl-based)
-- The **Android adb backend** (`drivers/adb.py` + `adb.py`): the coordinate driver
-  (`uiautomator dump` → frame-center tap), the `AndroidEnvironment` launch sequence, `doctor`
+- The **Android adb backend** (`drivers/adb.py` + `adb.py`): `tap`/`long_press`/`double_tap` send
+  the resolved element's identity to the resident server's `POST /act`, which re-resolves and
+  injects device-side so the gesture lands on the bounds the device holds at inject time, falling
+  back to a host-computed frame-center coordinate tap once retries exhaust or the channel has no
+  `/act` endpoint (BE-0339, in progress); the `AndroidEnvironment` launch sequence, `doctor`
   reporting, interval evidence (`video` via `screenrecord`, `deviceLog` via `logcat`, both through
   the driver-supplied `driver_interval` seam) plus in-app **network capture** — `request` assertions
   over an OkHttp interceptor (`BajutsuAndroid`) reporting to the host collector, bridged to the
@@ -578,7 +581,8 @@ purpose and so carry more inherent flakiness risk than the ones driving a health
 
 ### Validated on an Android emulator (Linux, no Mac)
 
-- The adb backend's subprocess execution — `uiautomator dump` parsing, frame-center tap, the
+- The adb backend's subprocess execution — `uiautomator dump` parsing, the resident server's
+  `POST /act` identity-addressed tap with its frame-center coordinate fallback (BE-0339), the
   `AndroidEnvironment` launch sequence, on-device actuation fidelity, and the `pinch`/`rotate`
   multi-touch and device-control slices — is confirmed against a booted x86_64 API 34 AVD under KVM
   (`android-e2e.yml`; BE-0208), driving both the Compose and Views showcase builds over the same
