@@ -87,6 +87,22 @@ def test_plain_tap_issues_no_runner_read() -> None:
     assert driver.queries == 0
 
 
+def test_pre_step_baseline_issues_no_extra_runner_read() -> None:
+    # The pre-step baseline capture (BE-XXXX) must defer to the sink exactly like the post-step one
+    # already does: passing whatever `prev_after` holds, never forcing a `query()` of its own. A
+    # sink that does not consume `elements` (like `test_plain_tap_issues_no_runner_read`'s) pays
+    # nothing for either baseline, so the loop's own read count stays at the pre-existing floor.
+    driver = _CountingDriver([el("a", "A", ["button"]), el("b", "B", ["button"])])
+    result = run_scenario(
+        driver,
+        _scenario({"name": "x", "steps": [{"tap": {"id": "a"}}, {"tap": {"id": "b"}}]}),
+        clock=FakeClock(),
+        sink=_KindsSink(),
+    )
+    assert result.ok
+    assert driver.queries == 0
+
+
 def test_screen_changed_reuses_previous_after_as_before() -> None:
     # With a screenChanged policy every step needs a `before`, but the previous step's `after` is the
     # same device state, so it is reused: one initial `before` plus one post-step read per step —
@@ -136,7 +152,11 @@ def test_extract_forces_a_single_post_step_read() -> None:
 def test_before_reuse_detects_screen_change_per_step() -> None:
     # Correctness of the reuse: step 1 changes the screen, step 2 does not. screenChanged must fire
     # for step 1 only — which holds only if step 2's reused `before` is step 1's `after` (the changed
-    # screen), not a stale earlier tree that would make step 2 look changed too.
+    # screen), not a stale earlier tree that would make step 2 look changed too. The rule requests
+    # `actionLog` rather than a `screenshot` modifier: the pre-step baseline always fires
+    # `screenshot.before` and the scenario's last step (step 1 here) additionally always fires
+    # `screenshot.after` (BE-XXXX), so neither modifier can tell "the rule fired" apart from "every
+    # step's own baseline."
     changed = [el("next", "Next"), el("b", "B", ["button"])]
 
     def react(d: FakeDriver, kind: str, arg: object) -> None:
@@ -151,17 +171,15 @@ def test_before_reuse_detects_screen_change_per_step() -> None:
             {
                 "name": "x",
                 "steps": [{"tap": {"id": "a"}}, {"tap": {"id": "b"}}],
-                "capturePolicy": [
-                    {"on": {"event": "screenChanged"}, "capture": ["screenshot.before"]}
-                ],
+                "capturePolicy": [{"on": {"event": "screenChanged"}, "capture": ["actionLog"]}],
             }
         ),
         clock=FakeClock(),
         sink=sink,
     )
     assert result.ok
-    assert "screenshot.before" in sink.kinds_by_step["x/step0"]
-    assert "screenshot.before" not in sink.kinds_by_step["x/step1"]
+    assert "actionLog" in sink.kinds_by_step["x/step0"]
+    assert "actionLog" not in sink.kinds_by_step["x/step1"]
 
 
 def test_assert_with_extract_reuses_the_evaluated_tree() -> None:

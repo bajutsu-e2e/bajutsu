@@ -432,28 +432,59 @@ def _step_artifacts(
         return []
 
     effective_name = scenario_name or matched.name
-    sid = _find_sid(manifest, effective_name)
+    scenario = _find_scenario(manifest, effective_name)
+    sid = scenario.get("sid") if scenario is not None else None
     if sid is None:
         return []
+    # index -> that step's recorded artifacts, so the loop below resolves the real names the run
+    # recorded (BE-XXXX) instead of assuming the baseline is always `before.png`/`after.png` under
+    # fixed names — a capturePolicy rule can add or replace either.
+    outcomes_by_index = {
+        out.get("index"): out.get("artifacts") or [] for out in (scenario or {}).get("steps", [])
+    }
 
     result: list[dict[str, Any]] = []
     for idx, step in enumerate(matched.steps):
         step_id = f"{sid}/{step.name or f'step{idx}'}"
         action, fields = _step_action_fields(step)
+        elements_name, screenshot_name = _artifact_names(outcomes_by_index.get(idx, []))
         result.append(
             {
                 "stepId": step_id,
                 "action": action,
                 "fields": fields,
-                "elementsUrl": f"/runs/{run_id}/{step_id}/elements.json"
-                if _safe_exists(artifacts, f"{run_id}/{step_id}/elements.json")
+                "elementsUrl": f"/runs/{run_id}/{elements_name}"
+                if elements_name is not None
+                and _safe_exists(artifacts, f"{run_id}/{elements_name}")
                 else None,
-                "screenshotUrl": f"/runs/{run_id}/{step_id}/after.png"
-                if _safe_exists(artifacts, f"{run_id}/{step_id}/after.png")
+                "screenshotUrl": f"/runs/{run_id}/{screenshot_name}"
+                if screenshot_name is not None
+                and _safe_exists(artifacts, f"{run_id}/{screenshot_name}")
                 else None,
             }
         )
     return result
+
+
+def _find_scenario(manifest: dict[str, Any], scenario_name: str | None) -> dict[str, Any] | None:
+    """The manifest's own scenario record for *scenario_name* (its `sid` and per-step outcomes)."""
+    scenarios: list[dict[str, Any]] = manifest.get("scenarios", [])
+    for scn in scenarios:
+        if scn.get("scenario") == scenario_name:
+            return scn
+    return None
+
+
+def _artifact_names(step_artifacts: list[dict[str, Any]]) -> tuple[str | None, str | None]:
+    """The first recorded `elements` / `screenshot` artifact name for a step, or `None` for either
+    the run never recorded (BE-XXXX) — mirrors `report/rows.py`'s `by_kind.setdefault` precedence:
+    the pre-step baseline is first in the list, so it wins unless a capturePolicy rule fired too."""
+    by_kind: dict[str, str] = {}
+    for art in step_artifacts:
+        kind, name = art.get("kind"), art.get("name")
+        if kind is not None and name is not None:
+            by_kind.setdefault(kind, name)
+    return by_kind.get("elements"), by_kind.get("screenshot")
 
 
 def _safe_exists(store: ArtifactStore, rel: str) -> bool:
@@ -485,14 +516,6 @@ def _valid_step_id(step_id: str) -> bool:
         return False
     parts = Path(step_id).parts
     return ".." not in parts
-
-
-def _find_sid(manifest: dict[str, Any], scenario_name: str | None) -> str | None:
-    """Find the evidence-dir slug for *scenario_name* in the manifest."""
-    for scn in manifest.get("scenarios", []):
-        if scn.get("scenario") == scenario_name:
-            return scn.get("sid") or None
-    return None
 
 
 def job_view(state: ServeState, job_id: str) -> tuple[Any, int]:

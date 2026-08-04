@@ -289,7 +289,12 @@ SCENARIO_YAML = """\
 
 
 def _write_run_with_steps(runs: Path, run_id: str, sid: str, step_ids: list[str]) -> None:
-    """Write a minimal run with manifest + per-step artifacts."""
+    """Write a minimal run with manifest + per-step artifacts.
+
+    The manifest's own `artifacts` list is what `_step_artifacts` now resolves names from
+    (BE-XXXX), so each step's entry names the pre-step baseline files this fixture writes —
+    `before.png` first, matching the run loop's own ordering (`by_kind.setdefault` precedence).
+    """
     run_dir = runs / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
     manifest = {
@@ -301,8 +306,24 @@ def _write_run_with_steps(runs: Path, run_id: str, sid: str, step_ids: list[str]
                 "ok": True,
                 "sid": sid,
                 "steps": [
-                    {"index": i, "action": "tap", "ok": True, "artifacts": []}
-                    for i in range(len(step_ids))
+                    {
+                        "index": i,
+                        "action": "tap",
+                        "ok": True,
+                        "artifacts": [
+                            {
+                                "name": f"{step_id}/before.png",
+                                "kind": "screenshot",
+                                "provider": "driver",
+                            },
+                            {
+                                "name": f"{step_id}/elements.json",
+                                "kind": "elements",
+                                "provider": "driver",
+                            },
+                        ],
+                    }
+                    for i, step_id in enumerate(step_ids)
                 ],
             }
         ],
@@ -312,8 +333,8 @@ def _write_run_with_steps(runs: Path, run_id: str, sid: str, step_ids: list[str]
         step_dir = run_dir / step_id
         step_dir.mkdir(parents=True, exist_ok=True)
         (step_dir / "elements.json").write_text(json.dumps(_elements()), encoding="utf-8")
-        # Write a tiny placeholder for after.png
-        (step_dir / "after.png").write_bytes(b"PNG")
+        # Write a tiny placeholder for before.png
+        (step_dir / "before.png").write_bytes(b"PNG")
 
 
 def test_read_scenario_with_run_returns_steps(tmp_path: Path) -> None:
@@ -339,8 +360,131 @@ def test_read_scenario_with_run_returns_steps(tmp_path: Path) -> None:
     steps = payload["steps"]
     assert len(steps) == 3
     assert steps[0]["stepId"] == "00-login/step0"
-    assert steps[0]["screenshotUrl"].endswith("/after.png")
+    assert steps[0]["screenshotUrl"].endswith("/before.png")
     assert steps[0]["elementsUrl"].endswith("/elements.json")
+
+
+def test_read_scenario_with_run_resolves_manifest_recorded_names_not_hardcoded(
+    tmp_path: Path,
+) -> None:
+    """`_step_artifacts` resolves whatever name the run actually recorded (BE-XXXX) — proven with a
+    name that would not match if the lookup still assumed a fixed `before.png` / `after.png`."""
+    state, runs = _state(tmp_path)
+    scn_dir = tmp_path / "scenarios"
+    (scn_dir / "login.yaml").write_text(SCENARIO_YAML, encoding="utf-8")
+
+    run_dir = runs / "run1"
+    run_dir.mkdir(parents=True)
+    step_dir = run_dir / "00-login/step0"
+    step_dir.mkdir(parents=True)
+    (step_dir / "elements.json").write_text(json.dumps(_elements()), encoding="utf-8")
+    # A capturePolicy rule's own screenshot, not the pre-step baseline's `before.png` — proves the
+    # lookup reads the manifest's recorded name rather than assuming one.
+    (step_dir / "around.png").write_bytes(b"PNG")
+    manifest = {
+        "runId": "run1",
+        "ok": True,
+        "scenarios": [
+            {
+                "scenario": "login",
+                "ok": True,
+                "sid": "00-login",
+                "steps": [
+                    {
+                        "index": 0,
+                        "action": "tap",
+                        "ok": True,
+                        "artifacts": [
+                            {
+                                "name": "00-login/step0/around.png",
+                                "kind": "screenshot",
+                                "provider": "driver",
+                            },
+                            {
+                                "name": "00-login/step0/elements.json",
+                                "kind": "elements",
+                                "provider": "driver",
+                            },
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+    (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    payload, status = ops.read_scenario(
+        state,
+        "demo",
+        str(scn_dir / "login.yaml"),
+        run_id="run1",
+        scenario_name="login",
+    )
+    assert status == 200
+    assert payload["steps"][0]["screenshotUrl"] == "/runs/run1/00-login/step0/around.png"
+
+
+def test_read_scenario_with_run_prefers_the_first_recorded_screenshot(tmp_path: Path) -> None:
+    """When a step's artifacts list carries two `screenshot`-kind entries — the pre-step baseline
+    plus a capturePolicy rule's own shot, as a real run under an active rule produces — the first
+    one recorded (the baseline) wins, mirroring `report/rows.py`'s `by_kind.setdefault` precedence
+    (BE-XXXX). Locks in the documented floor/ceiling precedence rather than leaving it untested."""
+    state, runs = _state(tmp_path)
+    scn_dir = tmp_path / "scenarios"
+    (scn_dir / "login.yaml").write_text(SCENARIO_YAML, encoding="utf-8")
+
+    run_dir = runs / "run1"
+    step_dir = run_dir / "00-login/step0"
+    step_dir.mkdir(parents=True)
+    (step_dir / "elements.json").write_text(json.dumps(_elements()), encoding="utf-8")
+    (step_dir / "before.png").write_bytes(b"PNG")
+    (step_dir / "around.png").write_bytes(b"PNG")
+    manifest = {
+        "runId": "run1",
+        "ok": True,
+        "scenarios": [
+            {
+                "scenario": "login",
+                "ok": True,
+                "sid": "00-login",
+                "steps": [
+                    {
+                        "index": 0,
+                        "action": "tap",
+                        "ok": True,
+                        "artifacts": [
+                            {
+                                "name": "00-login/step0/before.png",
+                                "kind": "screenshot",
+                                "provider": "driver",
+                            },
+                            {
+                                "name": "00-login/step0/elements.json",
+                                "kind": "elements",
+                                "provider": "driver",
+                            },
+                            {
+                                "name": "00-login/step0/around.png",
+                                "kind": "screenshot",
+                                "provider": "driver",
+                            },
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+    (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    payload, status = ops.read_scenario(
+        state,
+        "demo",
+        str(scn_dir / "login.yaml"),
+        run_id="run1",
+        scenario_name="login",
+    )
+    assert status == 200
+    assert payload["steps"][0]["screenshotUrl"] == "/runs/run1/00-login/step0/before.png"
 
 
 def test_read_scenario_with_run_missing_artifacts(tmp_path: Path) -> None:
@@ -390,7 +534,24 @@ def test_read_scenario_with_run_reads_from_object_storage(tmp_path: Path) -> Non
                 "ok": True,
                 "sid": "00-login",
                 "steps": [
-                    {"index": i, "action": "tap", "ok": True, "artifacts": []} for i in range(3)
+                    {
+                        "index": i,
+                        "action": "tap",
+                        "ok": True,
+                        "artifacts": [
+                            {
+                                "name": f"00-login/step{i}/before.png",
+                                "kind": "screenshot",
+                                "provider": "driver",
+                            },
+                            {
+                                "name": f"00-login/step{i}/elements.json",
+                                "kind": "elements",
+                                "provider": "driver",
+                            },
+                        ],
+                    }
+                    for i in range(3)
                 ],
             }
         ],
@@ -399,7 +560,7 @@ def test_read_scenario_with_run_reads_from_object_storage(tmp_path: Path) -> Non
     for i in range(3):
         step_id = f"00-login/step{i}"
         objects[f"run1/{step_id}/elements.json"] = json.dumps(_elements()).encode()
-        objects[f"run1/{step_id}/after.png"] = b"PNG"
+        objects[f"run1/{step_id}/before.png"] = b"PNG"
     state.artifacts = ObjectStorageArtifactStore(  # type: ignore[assignment]
         FakeObjectStore(objects), prefix=""
     )
@@ -415,7 +576,7 @@ def test_read_scenario_with_run_reads_from_object_storage(tmp_path: Path) -> Non
     steps = payload["steps"]
     assert len(steps) == 3
     assert steps[0]["stepId"] == "00-login/step0"
-    assert steps[0]["screenshotUrl"] == "/runs/run1/00-login/step0/after.png"
+    assert steps[0]["screenshotUrl"] == "/runs/run1/00-login/step0/before.png"
     assert steps[0]["elementsUrl"] == "/runs/run1/00-login/step0/elements.json"
 
 
