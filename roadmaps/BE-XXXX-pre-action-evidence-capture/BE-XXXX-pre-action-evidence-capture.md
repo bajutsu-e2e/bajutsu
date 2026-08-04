@@ -179,7 +179,14 @@ otherwise — and never call `query()` itself to fill that gap.
    file is not surfaced by default — making a viewer prefer it for the scenario's last step is
    separate, future scope. Because this capture always targets `self.cfg.driver` (native — the same
    choice unit 1's pre-step call makes, and screenshots need no tree at all), it needs no web-driver
-   re-query and no exception guard of its own, unlike unit 1's pre-step call.
+   re-query and no exception guard of its own, unlike unit 1's pre-step call. Gated on the leaf not
+   already having recorded an `after.png`: a `capturePolicy` rule (`screenshot.after`, or bare
+   `screenshot` — defaults to `after`) firing post-step on this same last leaf — the common
+   `{on: {result: error}, capture: [screenshot.after]}` safety net firing on a failing final step —
+   already wrote one. Capturing again would silently overwrite the rule's own shot with a slightly
+   later one (same fixed filename) and leave a second, duplicate `screenshot`/`after.png` entry in
+   the leaf's artifacts for the same "anyone reading the manifest directly" audience unit 5 names
+   above.
 
 3. **Drop redundant `.before` tokens from the post-step call.** A scenario's inline `capture` or a
    `capturePolicy` rule can still spell `screenshot.before` explicitly; since Unit 1's pre-step call

@@ -1252,6 +1252,14 @@ def _run_steps(
     # displayed screenshot to the *first*-recorded one, `before.png`, so this file is not surfaced by
     # default — making a viewer prefer it for the scenario's last step, if ever wanted, is separate,
     # future scope.
-    if (leaf := state.last_leaf) is not None:
+    # Gated on the leaf not already having recorded an `after.png`: a `capturePolicy` rule
+    # (`screenshot.after`, or bare `screenshot` — defaults to `after`) firing post-step on this same
+    # last leaf already wrote one. Capturing again would silently overwrite the rule's own shot with
+    # a slightly later one (same fixed filename) and leave a second, duplicate `screenshot`/`after.png`
+    # entry in `leaf.outcome.artifacts` for anyone reading the manifest directly — exactly the
+    # audience the comment above names for this file.
+    if (leaf := state.last_leaf) is not None and not any(
+        a.kind == "screenshot" and a.name.endswith("after.png") for a in leaf.outcome.artifacts
+    ):
         leaf.outcome.artifacts.extend(sink.capture(driver, leaf.step_id, ["screenshot.after"]))
     return result

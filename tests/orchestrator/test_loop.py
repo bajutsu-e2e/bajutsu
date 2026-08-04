@@ -348,6 +348,34 @@ def test_last_step_gets_a_final_capture_earlier_steps_do_not(tmp_path: Path) -> 
     assert not any(name.endswith("after.png") for name in step0_names)
 
 
+def test_final_capture_does_not_duplicate_a_rule_fired_after_png(tmp_path: Path) -> None:
+    """When a `capturePolicy` rule already fires `screenshot.after` post-step on the scenario's
+    last (and only) leaf step — e.g. a `result: error` safety net on a failing final step — the
+    final capture must not re-shoot and duplicate `after.png` (review follow-up): the rule's own
+    shot already satisfies the same contract the final capture exists for."""
+    driver = FakeDriver([el("a", "A", ["button"])])
+    run_dir = tmp_path / "run1"
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "x",
+                "capturePolicy": [{"on": {"result": "error"}, "capture": ["screenshot.after"]}],
+                "steps": [{"tap": {"id": "missing"}}],
+            }
+        ),
+        clock=FakeClock(),
+        sink=FileSink(run_dir),
+    )
+    assert not result.ok
+    after_artifacts = [
+        a
+        for a in result.steps[0].artifacts
+        if a.kind == "screenshot" and a.name.endswith("after.png")
+    ]
+    assert len(after_artifacts) == 1
+
+
 def test_a_step_that_fails_before_it_acts_still_gets_its_full_evidence_pair(
     tmp_path: Path,
 ) -> None:
