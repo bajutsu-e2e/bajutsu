@@ -146,15 +146,18 @@ class Element(TypedDict):
 
 
 class Trait:
-    """Normalized accessibility traits used by state assertions.
+    """Normalized accessibility traits.
 
-    Drivers normalize at least the following to these common tokens.
+    Drivers normalize at least the following to these common tokens. `NOT_ENABLED` and
+    `SELECTED` back state assertions and `BUTTON` / `LINK` the `traits` selector and doctor
+    check; `OTHER` instead backs `resolve_unique`'s ambiguity filtering (below).
     """
 
     BUTTON = "button"
     LINK = "link"
     NOT_ENABLED = "notEnabled"  # disabled state (enabled / disabled assertions)
     SELECTED = "selected"  # selected / toggled state (selected assertion)
+    OTHER = "other"  # generic/unclassified element (e.g. iOS's catch-all XCUIElementTypeOther)
 
 
 class Selector(TypedDict, total=False):
@@ -624,16 +627,37 @@ def resolve_unique(elements: list[Element], sel: Selector) -> Element:
     Args:
         elements: One `query()` snapshot of the on-screen elements.
         sel: The selector to resolve. `index` is honored only as a last resort, picking the nth of
-            several candidates (negative values count from the end).
+            several candidates (negative values count from the end) from the same, already
+            `other`-filtered set the ambiguity count below reports — not the raw `find_all` result.
 
     Returns:
         The one element the selector resolves to.
 
     Raises:
         ElementNotFound: Nothing matched, or `index` is out of range.
-        AmbiguousSelector: Two or more matched and no `index` disambiguates.
+        AmbiguousSelector: Two or more matched (after dropping `other`-trait ties, below) and no
+            `index` disambiguates.
     """
     candidates = find_all(elements, sel)
+    if len(candidates) > 1 and Trait.OTHER not in sel.get("traits", []):
+        # A same-label/id tie is often a generic `other` wrapper duplicating a real element's
+        # label (e.g. iOS's catch-all XCUIElementTypeOther) rather than a genuine ambiguity — drop
+        # `other`-trait candidates before judging uniqueness, unless the selector explicitly asked
+        # for `other` elements. Falls back to the full set when every candidate is `other`, so a
+        # scenario that does target such an element still resolves (or still fails loud on a real
+        # tie among them). This runs before the `index` branch below, so an index counts positions
+        # in the same filtered set the ambiguity message below reports — not the raw `find_all`
+        # result, where a dropped `other` would otherwise shift every later position by one.
+        # Known trade-off: iOS's `other` also covers a real control of an XCUIElementType this
+        # driver has not named (e.g. checkBox / radioButton / popUpButton / stepper / datePicker —
+        # see XcuitestElementProvider.swift's typeName `default:` arm), not only the generic
+        # wrapper. A tie between such a control and a classified sibling sharing its label silently
+        # keeps the sibling instead of raising AmbiguousSelector. Only a same-selector tie is
+        # affected — an unclassified control resolved on its own (no classified sibling sharing the
+        # selector) is unaffected.
+        without_other = [c for c in candidates if Trait.OTHER not in c["traits"]]
+        if without_other:
+            candidates = without_other
     if "index" in sel:
         i = sel["index"]
         if not -len(candidates) <= i < len(candidates):
