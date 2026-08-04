@@ -1,10 +1,10 @@
 """Tests for evidence firing in the run loop.
 
-Every step always captures two instant baselines: a pre-step one (screenshot.before + elements,
-taken before the step acts, BE-XXXX) and, only for the scenario's last leaf step, a post-step one
-(screenshot.after alone — `elements` is deliberately not re-captured, since `elements.json` has one
-fixed filename and re-capturing it would overwrite the pre-step baseline's pre-action tree with a
-post-action one, decoupling it from what `before.png` shows). capturePolicy / inline `capture` add
+Every step always captures a pre-step baseline (screenshot.before + elements, taken before the step
+acts, BE-XXXX); only the scenario's last leaf step also gets a second, post-step one (screenshot.after
+alone — `elements` is deliberately not re-captured, since `elements.json` has one fixed filename and
+re-capturing it would overwrite the pre-step baseline's pre-action tree with a post-action one,
+decoupling it from what `before.png` shows). capturePolicy / inline `capture` add
 extra instant captures on top of the post-step call — never `screenshot.before`, which the pre-step
 baseline already wrote (filtered out as redundant). Interval kinds (video / deviceLog / appTrace)
 are heavy and opt-in (BE-0028): recorded once for the whole scenario, but only when the scenario
