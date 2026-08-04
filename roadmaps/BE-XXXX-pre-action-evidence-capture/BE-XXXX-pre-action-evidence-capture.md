@@ -186,7 +186,12 @@ otherwise — and never call `query()` itself to fill that gap.
    `index` counts every executed step, including nested `if`/`forEach`/`web` steps, while the loop
    over `matched.steps` counts only top-level YAML steps, so the two diverge as soon as the scenario
    has any nesting before a given step — a named step's runtime id doesn't depend on either counter,
-   so this keeps resolving to the right artifacts regardless.
+   so this keeps resolving to the right artifacts regardless. Every step of this walk — the manifest
+   itself, `scenarios`, each scenario's `steps`, each step's `artifacts`, and each artifact — is
+   `isinstance`-checked before use, and the step id search skips past any artifact lacking a usable
+   (`str`, slash-bearing) `name` rather than stopping at the first one, so one malformed entry
+   anywhere in a partially written manifest degrades to missing artifacts for that step rather than
+   a 500.
 
 6. **Cover the ordering, the final-step capture, the read-count invariant, and the non-regression in
    the deterministic suite.** A `FakeDriver`-backed test in `tests/orchestrator/test_loop.py` records

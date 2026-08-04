@@ -428,7 +428,7 @@ def _step_artifacts(
         # A race (the run trashed/purged between listing and read) or a transient store error reads
         # the same as a missing/malformed manifest — an empty step list, never a failed request.
         return []
-    if manifest is None:
+    if not isinstance(manifest, dict):
         return []
 
     effective_name = scenario_name or matched.name
@@ -451,17 +451,30 @@ def _step_artifacts(
     # back to `step{idx}` on both sides, the same positional ambiguity as before this rework. Skips
     # a non-`dict` entry rather than raising, so a malformed/partially written manifest degrades to
     # missing artifacts for that step instead of a 500.
-    artifacts_by_step_id: dict[str, list[Any]] = {}
-    for out in (scenario or {}).get("steps", []):
+    steps = (scenario or {}).get("steps")
+    artifacts_by_step_id: dict[str, list[dict[str, Any]]] = {}
+    for out in steps if isinstance(steps, list) else []:
         if not isinstance(out, dict):
             continue
         step_artifacts = out.get("artifacts")
         if not isinstance(step_artifacts, list):
             continue
-        first = next((a for a in step_artifacts if isinstance(a, dict)), None)
-        name = first.get("name") if first is not None else None
-        if isinstance(name, str) and "/" in name:
-            artifacts_by_step_id[name.rsplit("/", 1)[0]] = step_artifacts
+        # Filtered once, up front, to `dict` entries only: `_artifact_names` below calls `.get` on
+        # each one, so a stray non-`dict` artifact must never reach it. The step id then comes from
+        # the first artifact that is both a `dict` and has a usable (`str`, slash-bearing) `name` —
+        # not merely the first `dict` — so one malformed entry ahead of a valid one never stops the
+        # search.
+        dict_artifacts = [a for a in step_artifacts if isinstance(a, dict)]
+        name = next(
+            (
+                a["name"]
+                for a in dict_artifacts
+                if isinstance(a.get("name"), str) and "/" in a["name"]
+            ),
+            None,
+        )
+        if name is not None:
+            artifacts_by_step_id[name.rsplit("/", 1)[0]] = dict_artifacts
 
     result: list[dict[str, Any]] = []
     for idx, step in enumerate(matched.steps):
@@ -488,9 +501,11 @@ def _step_artifacts(
 
 def _find_scenario(manifest: dict[str, Any], scenario_name: str | None) -> dict[str, Any] | None:
     """The manifest's own scenario record for *scenario_name* (its `sid` and per-step outcomes)."""
-    scenarios: list[dict[str, Any]] = manifest.get("scenarios", [])
+    scenarios = manifest.get("scenarios", [])
+    if not isinstance(scenarios, list):
+        return None
     for scn in scenarios:
-        if scn.get("scenario") == scenario_name:
+        if isinstance(scn, dict) and scn.get("scenario") == scenario_name:
             return scn
     return None
 

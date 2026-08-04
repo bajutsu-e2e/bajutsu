@@ -687,6 +687,185 @@ def test_read_scenario_with_run_ignores_non_string_artifact_fields(tmp_path: Pat
     assert payload["steps"][0]["elementsUrl"] is None
 
 
+def test_read_scenario_with_run_ignores_non_dict_artifact_entries(tmp_path: Path) -> None:
+    """A step's `artifacts` list carrying a non-`dict` entry (a malformed/partially written
+    manifest) degrades to "no link" for that entry rather than raising when `_artifact_names`
+    calls `.get` on it — and the step id is still derived from the first entry that has a valid
+    `name`, skipping past the leading non-`dict` one (BE-XXXX review follow-up)."""
+    state, runs = _state(tmp_path)
+    scn_dir = tmp_path / "scenarios"
+    (scn_dir / "login.yaml").write_text(SCENARIO_YAML, encoding="utf-8")
+    run_dir = runs / "run1"
+    step_dir = run_dir / "00-login/step0"
+    step_dir.mkdir(parents=True)
+    (step_dir / "before.png").write_bytes(b"PNG")
+    manifest = {
+        "runId": "run1",
+        "ok": True,
+        "scenarios": [
+            {
+                "scenario": "login",
+                "ok": True,
+                "sid": "00-login",
+                "steps": [
+                    {
+                        "index": 0,
+                        "action": "tap",
+                        "ok": True,
+                        "artifacts": [
+                            "not-a-dict",
+                            {
+                                "name": "00-login/step0/before.png",
+                                "kind": "screenshot",
+                                "provider": "driver",
+                            },
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+    (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    payload, status = ops.read_scenario(
+        state,
+        "demo",
+        str(scn_dir / "login.yaml"),
+        run_id="run1",
+        scenario_name="login",
+    )
+    assert status == 200
+    assert payload["steps"][0]["screenshotUrl"] == "/runs/run1/00-login/step0/before.png"
+
+
+def test_read_scenario_with_run_ignores_non_dict_scenario_entries(tmp_path: Path) -> None:
+    """A manifest whose `scenarios` list carries a non-`dict` entry ahead of the real record
+    degrades to skipping it rather than raising on `.get` (BE-XXXX review follow-up)."""
+    state, runs = _state(tmp_path)
+    scn_dir = tmp_path / "scenarios"
+    (scn_dir / "login.yaml").write_text(SCENARIO_YAML, encoding="utf-8")
+    run_dir = runs / "run1"
+    run_dir.mkdir(parents=True)
+    manifest = {
+        "runId": "run1",
+        "ok": True,
+        "scenarios": [
+            "not-a-dict",
+            {"scenario": "login", "ok": True, "sid": "00-login", "steps": []},
+        ],
+    }
+    (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    payload, status = ops.read_scenario(
+        state,
+        "demo",
+        str(scn_dir / "login.yaml"),
+        run_id="run1",
+        scenario_name="login",
+    )
+    assert status == 200
+    assert payload["steps"][0]["stepId"] == "00-login/step0"
+
+
+def test_read_scenario_with_run_ignores_a_non_dict_manifest(tmp_path: Path) -> None:
+    """A `manifest.json` that parses as JSON but isn't an object (e.g. a bare list) degrades to an
+    empty step list rather than raising on the first `.get()` (BE-XXXX review follow-up)."""
+    state, runs = _state(tmp_path)
+    scn_dir = tmp_path / "scenarios"
+    (scn_dir / "login.yaml").write_text(SCENARIO_YAML, encoding="utf-8")
+    run_dir = runs / "run1"
+    run_dir.mkdir(parents=True)
+    (run_dir / "manifest.json").write_text(json.dumps(["not", "a", "dict"]), encoding="utf-8")
+
+    payload, status = ops.read_scenario(
+        state,
+        "demo",
+        str(scn_dir / "login.yaml"),
+        run_id="run1",
+        scenario_name="login",
+    )
+    assert status == 200
+    assert payload["steps"] == []
+
+
+def test_read_scenario_with_run_ignores_a_non_list_steps_field(tmp_path: Path) -> None:
+    """A scenario record whose `steps` field is `null` (or otherwise not a list) degrades to no
+    artifacts for any step rather than raising when iterated (BE-XXXX review follow-up)."""
+    state, runs = _state(tmp_path)
+    scn_dir = tmp_path / "scenarios"
+    (scn_dir / "login.yaml").write_text(SCENARIO_YAML, encoding="utf-8")
+    run_dir = runs / "run1"
+    run_dir.mkdir(parents=True)
+    manifest = {
+        "runId": "run1",
+        "ok": True,
+        "scenarios": [{"scenario": "login", "ok": True, "sid": "00-login", "steps": None}],
+    }
+    (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    payload, status = ops.read_scenario(
+        state,
+        "demo",
+        str(scn_dir / "login.yaml"),
+        run_id="run1",
+        scenario_name="login",
+    )
+    assert status == 200
+    assert payload["steps"][0]["screenshotUrl"] is None
+
+
+def test_read_scenario_with_run_skips_a_slash_less_name_for_a_later_valid_one(
+    tmp_path: Path,
+) -> None:
+    """A `dict` artifact with a `str` `name` that carries no step-id prefix (e.g. a fallback
+    filename recorded for a path outside the run dir) must not stop the step-id search before a
+    later artifact with a real, usable name (BE-XXXX review follow-up)."""
+    state, runs = _state(tmp_path)
+    scn_dir = tmp_path / "scenarios"
+    (scn_dir / "login.yaml").write_text(SCENARIO_YAML, encoding="utf-8")
+    run_dir = runs / "run1"
+    step_dir = run_dir / "00-login/step0"
+    step_dir.mkdir(parents=True)
+    (step_dir / "before.png").write_bytes(b"PNG")
+    manifest = {
+        "runId": "run1",
+        "ok": True,
+        "scenarios": [
+            {
+                "scenario": "login",
+                "ok": True,
+                "sid": "00-login",
+                "steps": [
+                    {
+                        "index": 0,
+                        "action": "tap",
+                        "ok": True,
+                        "artifacts": [
+                            {"name": "orphan.png", "kind": "note", "provider": "driver"},
+                            {
+                                "name": "00-login/step0/before.png",
+                                "kind": "screenshot",
+                                "provider": "driver",
+                            },
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+    (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    payload, status = ops.read_scenario(
+        state,
+        "demo",
+        str(scn_dir / "login.yaml"),
+        run_id="run1",
+        scenario_name="login",
+    )
+    assert status == 200
+    assert payload["steps"][0]["screenshotUrl"] == "/runs/run1/00-login/step0/before.png"
+
+
 def test_read_scenario_with_run_reads_from_object_storage(tmp_path: Path) -> None:
     """A hosted backend (`ObjectStorageArtifactStore`) populates the per-step artifact list the
     same as local `serve` (BE-0258): before this fix, `_step_artifacts` read `state.runs_dir`
