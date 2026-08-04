@@ -517,7 +517,7 @@ def _find_scenario(manifest: dict[str, Any], scenario_name: str | None) -> dict[
 def _artifact_names(step_artifacts: list[dict[str, Any]]) -> tuple[str | None, str | None]:
     """The first recorded `elements` / `screenshot` artifact name for a step, or `None` for either
     the run never recorded (BE-XXXX) — mirrors `report/rows.py`'s `by_kind.setdefault` precedence:
-    the pre-step baseline is first in the list, so it wins unless a capturePolicy rule fired too."""
+    the pre-step baseline is first in the list, so it wins even when a capturePolicy rule fired too."""
     by_kind: dict[str, str] = {}
     for art in step_artifacts:
         if not isinstance(art, dict):
