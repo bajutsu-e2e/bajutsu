@@ -143,8 +143,12 @@ def test_a_wedged_window_list_is_kicked_rather_than_waited_out() -> None:
         < body.index("kickWindowTracking(")
         < body.index("throw AssertionError(")
     )
-    # A kick that never lands fails here, naming the channel — not 15s later at a selector.
-    assert "accessibility window tracking reported no windows after" in body
+    # A kick that never lands fails here, naming the channel — not 15s later at a selector. The
+    # message appends windowSummary() because reportsWindows() collapses two faults into one false:
+    # an empty list, which a kick recovers, and getWindows() throwing, which it cannot. The summary
+    # renders those as "<no accessibility windows>" and "<unavailable: …>" respectively.
+    assert "accessibility window tracking reported no usable window list after" in body
+    assert "windowSummary()" in body
     # The read cannot throw past that AssertionError: getWindows() raises IllegalStateException
     # when the connection is not established, which is the fault being reported.
     assert "private fun reportsWindows(): Boolean = runCatching {" in code

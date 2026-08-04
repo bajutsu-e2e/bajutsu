@@ -333,8 +333,8 @@ class ComponentsUITest {
     // The last kick would otherwise go unchecked — the loop provokes it and exits.
     if (!reportsWindows()) {
       throw AssertionError(
-        "accessibility window tracking reported no windows after " +
-          "$TRACKING_KICK_ATTEMPTS kick(s); every selector wait would search an empty tree"
+        "accessibility window tracking reported no usable window list after " +
+          "$TRACKING_KICK_ATTEMPTS kick(s); windows:\n" + windowSummary()
       )
     }
   }
@@ -428,7 +428,7 @@ class ComponentsUITest {
   フォーカスを握っているものを片付けます。キー入力自体が、それによって発生するイベントを待つので、
   この回復に sleep は要りません。回数の上限は `LAUNCH_ATTEMPTS` が与えます。生成される値は2なので、
   1回の起動で HOME を押すのは多くても1度です。なお `pressHome` は、
-  イベントが届かなかったことを例外ではなく false の戻り値で報告するので、どちらの結果も記録します。
+  イベントが届かなかったことを例外ではなく false の返り値で報告するので、どちらの結果も記録します。
   この処理は `UiAutomation.executeAndWaitForEvent` の外に置きます。`pressHome` がすでに同じ呼び出しで
   待機しており、入れ子にすると外側の待機が見ているイベントキューを内側が空にしてしまうためです。
 - **ウィンドウが現れない道筋は2つあり、どちらも CI で観測されていて、対処は共通です。** 1つめは一覧に
@@ -447,19 +447,19 @@ class ComponentsUITest {
   logcat です。決め手になったのは、試行ごとのウィンドウ一覧の記録でした。ある実行では、20秒の起動待機の
   終わりにこう記録されていました。
 
-```text
-W BajutsuCodegen: launch attempt 1 saw no com.bajutsu.showcase.android.compose window in 20000ms; windows:
-W BajutsuCodegen: root=com.android.systemui AccessibilityWindowInfo[title=null, type=TYPE_SYSTEM, layer=1, …]
-W BajutsuCodegen: root=android AccessibilityWindowInfo[title=Pixel Launcher isn't responding, type=TYPE_SYSTEM, focused=true, active=true, …]
-W BajutsuCodegen: kicking accessibility window tracking with pressHome(): launch attempt 1 timed out
-```
+  ```text
+  W BajutsuCodegen: launch attempt 1 saw no com.bajutsu.showcase.android.compose window in 20000ms; windows:
+  W BajutsuCodegen: root=com.android.systemui AccessibilityWindowInfo[title=null, type=TYPE_SYSTEM, layer=1, …]
+  W BajutsuCodegen: root=android AccessibilityWindowInfo[title=Pixel Launcher isn't responding, type=TYPE_SYSTEM, focused=true, active=true, …]
+  W BajutsuCodegen: kicking accessibility window tracking with pressHome(): launch attempt 1 timed out
+  ```
 
   一覧は生きており、内容も正しいものでした。2つのウィンドウがあり、うち1つは待機中に現れた、
   フォーカスを持つ「応答なし」ダイアログです。載っていなかったのはアプリ自身のウィンドウでした。
   しかも `ActivityTaskManager` がその Activity を `Displayed` と報告してから19秒後の時点です。
   **フォーカスを持つシステムウィンドウは、UiAutomation が報告する内容からアプリのウィンドウを
-  外してしまいます。** アプリは描画されて前面にあるのに、どのセレクタも自分が載っていない一覧を
-  照合先にするのです。HOME でダイアログが片付き、2回目の試行が立ち上がって、テストは通りました。
+  外してしまいます。** アプリは描画されて前面にあるのに、どのセレクタも、アプリのウィンドウが
+  載っていない一覧を照合先にするのです。HOME でダイアログが片付き、2回目の試行が立ち上がって、テストは通りました。
 
   この事実は、それ以前の証跡も説明します。以前の証跡は、経路そのものが報告をやめたことを示唆して
   いました。実行 30899952762 は3回の試行すべてが失敗し、Activity は `RESUMED` と `Displayed` の

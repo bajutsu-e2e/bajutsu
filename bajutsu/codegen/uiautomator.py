@@ -612,9 +612,15 @@ class _UiAutomatorGen:
             "",
             "  // Never throws. getWindows() raises IllegalStateException when the connection is"
             + " not",
-            "  // established — the very fault being diagnosed — and that has to reach the caller's"
-            + " named",
-            "  // AssertionError rather than replace it with a raw framework exception.",
+            "  // established, so an unguarded read would replace the caller's named AssertionError"
+            + " with a",
+            "  // raw framework exception. Returning false collapses that fault together with an"
+            + " empty list,",
+            "  // which want opposite next steps — a kick recovers an empty list, an unestablished"
+            + " connection",
+            "  // it cannot — so the caller names which one it met by appending windowSummary()"
+            + " (never",
+            '  // throws either): "<no accessibility windows>" against "<unavailable: …>".',
             "  private fun reportsWindows(): Boolean = runCatching {",
             "    InstrumentationRegistry.getInstrumentation().uiAutomation.windows.isNotEmpty()",
             '  }.getOrElse { Log.w(LOG_TAG, "could not read the window list", it); false }',
@@ -641,9 +647,8 @@ class _UiAutomatorGen:
             "    // The last kick would otherwise go unchecked — the loop provokes it and exits.",
             "    if (!reportsWindows()) {",
             "      throw AssertionError(",
-            '        "accessibility window tracking reported no windows after " +',
-            '          "$TRACKING_KICK_ATTEMPTS kick(s); every selector wait would search an empty'
-            + ' tree"',
+            '        "accessibility window tracking reported no usable window list after " +',
+            '          "$TRACKING_KICK_ATTEMPTS kick(s); windows:\\n" + windowSummary()',
             "      )",
             "    }",
             "  }",

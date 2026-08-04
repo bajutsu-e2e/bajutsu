@@ -339,8 +339,8 @@ class ComponentsUITest {
     // The last kick would otherwise go unchecked — the loop provokes it and exits.
     if (!reportsWindows()) {
       throw AssertionError(
-        "accessibility window tracking reported no windows after " +
-          "$TRACKING_KICK_ATTEMPTS kick(s); every selector wait would search an empty tree"
+        "accessibility window tracking reported no usable window list after " +
+          "$TRACKING_KICK_ATTEMPTS kick(s); windows:\n" + windowSummary()
       )
     }
   }
@@ -459,12 +459,12 @@ class ComponentsUITest {
   failure, and the per-attempt window summary is the line that did it. One run logged this at the end
   of a 20-second launch wait:
 
-```text
-W BajutsuCodegen: launch attempt 1 saw no com.bajutsu.showcase.android.compose window in 20000ms; windows:
-W BajutsuCodegen: root=com.android.systemui AccessibilityWindowInfo[title=null, type=TYPE_SYSTEM, layer=1, …]
-W BajutsuCodegen: root=android AccessibilityWindowInfo[title=Pixel Launcher isn't responding, type=TYPE_SYSTEM, focused=true, active=true, …]
-W BajutsuCodegen: kicking accessibility window tracking with pressHome(): launch attempt 1 timed out
-```
+  ```text
+  W BajutsuCodegen: launch attempt 1 saw no com.bajutsu.showcase.android.compose window in 20000ms; windows:
+  W BajutsuCodegen: root=com.android.systemui AccessibilityWindowInfo[title=null, type=TYPE_SYSTEM, layer=1, …]
+  W BajutsuCodegen: root=android AccessibilityWindowInfo[title=Pixel Launcher isn't responding, type=TYPE_SYSTEM, focused=true, active=true, …]
+  W BajutsuCodegen: kicking accessibility window tracking with pressHome(): launch attempt 1 timed out
+  ```
 
   The list was live and correct: two windows, one of them a focused application-not-responding dialog
   that had appeared during the wait. What it did not contain was the app's own window — 19 seconds
