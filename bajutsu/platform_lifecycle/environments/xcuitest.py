@@ -679,8 +679,34 @@ class XcuitestEnvironment(_DeviceEnvironment):
         permissions: Mapping[str, str] | None,
         *,
         ceiling: float,
-    ) -> _Recovery | None:
+    ) -> _Recovery:
         """Repair the Simulator a failed cold attempt leaves behind, so the retry spawns onto a live device.
+
+        Times the whole ladder and holds it to `_recovery_timeout()`. The bound covers every rung,
+        including the two that deliberately change nothing: the probe that opens the ladder is itself a
+        subprocess, so a host slow enough to blow the bound merely answering `simctl list` is a host the
+        run must give up on, whatever the rung then decided.
+
+        Raises:
+            DeviceError: if the device cannot be repaired — no replacement can be created, or the ladder
+                overran `_recovery_timeout()`. A device that will not come back is a device fault, not a
+                flaky spawn, so it fails the run rather than funding another doomed attempt.
+        """
+        started = time.monotonic()
+        recovery = self._recovery_rung(failure, eff, pre, permissions, ceiling=ceiling)
+        self._check_recovery_budget(started, recovery.note)
+        return recovery
+
+    def _recovery_rung(
+        self,
+        failure: _AttemptFailure,
+        eff: Effective,
+        pre: Preconditions,
+        permissions: Mapping[str, str] | None,
+        *,
+        ceiling: float,
+    ) -> _Recovery:
+        """Probe the device and run the one rung its state and this failure call for.
 
         The rung is chosen by what the attempt failed *on*, because the failures differ in what they
         say about the device. A device simctl no longer lists has to be replaced outright; an
@@ -696,19 +722,12 @@ class XcuitestEnvironment(_DeviceEnvironment):
         `xcodebuild test-without-building` is a genuine first bring-up and takes the full cold ceiling
         however tight the failing spawn's was.
 
-        Returns the note and fresh readiness ceiling `_spawn_cold_with_retry` folds into its
-        diagnostics and budget, or None when no rung ran at all.
-
-        Raises:
-            DeviceError: if the device cannot be repaired — no replacement can be created, or a rung
-                overran `_recovery_timeout()`. A device that will not come back is a device fault, not
-                a flaky spawn, so it fails the run rather than funding another doomed attempt.
+        Returns the note and fresh readiness ceiling `_spawn_cold_with_retry` folds into its diagnostics
+        and budget; a rung that changed nothing about the device carries a note and no fresh budget.
         """
-        started = time.monotonic()
         probe = simctl.device_available(self._udid, self._run)
         if probe is False:
             note = self._replace_vanished_device(eff, pre, permissions)
-            self._check_recovery_budget(started, note)
             return _Recovery(note, fresh_budget=_runner_startup_timeout())
         if probe is None:
             # The listing itself failed, so nothing is known about the device. Repairing on a guess
@@ -719,9 +738,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
             # `xcodebuild` gave up by itself and fast, which is the transient blip BE-0319's retry was
             # written for. The discard has already terminated the app, so the device needs nothing.
             return _Recovery("xcodebuild exited on its own; device left booted")
-        note = self._reboot_device(eff, pre, permissions)
-        self._check_recovery_budget(started, note)
-        return _Recovery(note, fresh_budget=ceiling)
+        return _Recovery(self._reboot_device(eff, pre, permissions), fresh_budget=ceiling)
 
     def _check_recovery_budget(self, started: float, note: str) -> None:
         """Fail the run when a recovery rung overran its wall bound.

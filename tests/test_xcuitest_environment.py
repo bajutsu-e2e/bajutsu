@@ -1550,3 +1550,46 @@ def test_a_replacement_device_earns_the_full_cold_ceiling() -> None:
     )
     assert recovery is not None and recovery.fresh_budget == _runner_startup_timeout()
     assert recovery.fresh_budget != 90.0
+
+
+@pytest.mark.parametrize(
+    ("present", "kind"),
+    [
+        (["UDID"], "process-exit"),  # the rung that deliberately leaves a booted device alone
+        ([], "run-ended"),  # ... and the replace rung, for contrast
+    ],
+)
+def test_the_recovery_bound_covers_a_rung_that_changes_nothing(
+    monkeypatch: pytest.MonkeyPatch, present: list[str], kind: str
+) -> None:
+    # The probe that opens the ladder is itself a subprocess, so a host slow enough to blow the bound
+    # merely answering `simctl list` must fail the run whatever the rung then decided — otherwise the
+    # "whole ladder is bounded" contract holds only on the paths that happen to repair something.
+    monkeypatch.setenv("BAJUTSU_XCUITEST_RECOVERY_TIMEOUT", "0")
+    _calls, run = _ladder_run(list(present))
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    with pytest.raises(simctl.DeviceError, match="recovery exceeded"):
+        env._recover_between_attempts(
+            _AttemptFailure(kind, "why"),  # type: ignore[arg-type]
+            _eff_for_ladder(),
+            Preconditions(),
+            None,
+            ceiling=_COLD,
+        )
+
+
+def test_an_unknown_probe_is_still_reported_within_the_bound() -> None:
+    # The same do-nothing rung, on a host answering promptly: it reports its note and no fresh budget
+    # rather than failing, so the bound above is what distinguishes a sick host from a quiet one.
+    def run(argv: list[str], env: object = None) -> str:
+        raise OSError("xcrun unavailable")
+
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    recovery = env._recover_between_attempts(
+        _AttemptFailure("never-ready", "health never ready"),
+        _eff_for_ladder(),
+        Preconditions(),
+        None,
+        ceiling=_COLD,
+    )
+    assert recovery.fresh_budget is None and "could not probe" in recovery.note
