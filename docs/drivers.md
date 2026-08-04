@@ -171,7 +171,7 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
 - `tap(sel)`: `_resolve` confirms uniqueness (**retries not-found, fails ambiguity fast** — a
   mid-transition dump is a transient null-root that is retried, and a 2+ match fails immediately).
   `tap`, `long_press`, and `double_tap` then send the resolved element's identity — its raw
-  accessibility fields plus an ordinal, never a coordinate — to the resident server's `POST /act`
+  accessibility fields plus an ordinal, never a host-computed coordinate — to the resident server's `POST /act`
   (roadmap [BE-0339](../roadmaps/BE-0339-adb-device-side-actuation/BE-0339-adb-device-side-actuation.md)):
   the server re-resolves that identity against its own live tree and injects from the same warm
   session, so a gesture lands on the bounds the device holds at the moment it injects, never a

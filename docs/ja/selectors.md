@@ -112,7 +112,7 @@ def resolve_unique(elements, sel):
 
 ### バックエンドに依らず一元化される
 
-adb（Android）は座標のみで動作する唯一のバックエンドです。semantic tap を持たないため、抽象側は**常に `query()` で候補数を検証してから**操作し、確定した要素の frame 中心をタップします。playwright と fake ドライバも、バックエンドごとに解決方法を分岐させず常に同じ `resolve_unique` を通すという設計上の理由から、同じ経路をたどります。XCUITest も同じ検証を経てから、識別子を指定して直接タップします。この事前検証により、「曖昧なら失敗」の挙動がすべてのバックエンドで同一になります（各ドライバの `tap` 実装は [drivers](drivers.md) を参照してください）。
+adb（Android）、playwright（web）、fake ドライバは semantic tap を持たないため、いずれも**常に `query()` で候補数を検証してから**操作し、確定した要素の frame 中心をタップします。XCUITest も同じ検証を経てから、座標ではなく識別子を指定して直接タップします。すべてのアクションが同じ `resolve_unique` を通るため、「曖昧なら失敗」の挙動はすべてのバックエンドで同一です（各ドライバの `tap` 実装は [drivers](drivers.md) を参照してください）。
 
 `id` は各バックエンドが自分自身のアクセシビリティ id から取得します。XCUITest は `accessibilityIdentifier`、adb は `resource-id`（パッケージ接頭辞を除去）、web は `data-testid` です。いずれも `Element.identifier` に正規化されるため、`id` セレクタは正規化形に対して直接解決できます。
 

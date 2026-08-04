@@ -144,12 +144,11 @@ failure" (they do not propagate the exception upward).
 
 ### Centralized regardless of backend
 
-adb (Android) is the sole coordinate backend: it has no semantic tap. The abstraction **always
-verifies the candidate count via `query()` before** acting. It then taps the resolved element's
-frame center. playwright and the fake driver take the same path by design. Every action then
-resolves through the shared `resolve_unique` instead of diverging per backend. XCUITest resolves
-through that same check too, then taps directly by identifier. This up-front check makes the
-"ambiguous = fail" behavior identical across every backend. Each driver's `tap` implementation is in
+adb (Android), playwright (web), and the fake driver have no semantic tap, so each **always
+verifies the candidate count via `query()` before** acting, then taps the resolved element's
+frame center. XCUITest resolves through that same check too, then taps directly by identifier
+instead of a coordinate. Every action resolves through the shared `resolve_unique`, so the
+"ambiguous = fail" behavior is identical across every backend. Each driver's `tap` implementation is in
 [drivers](drivers.md).
 
 Each backend derives `identifier` from its own accessibility id. XCUITest uses
