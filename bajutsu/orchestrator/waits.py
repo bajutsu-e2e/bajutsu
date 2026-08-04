@@ -178,6 +178,7 @@ class _AlertGuardGate:
     _attempts: int = 0
     _last_attempt: float | None = None
     _gave_up: bool = False
+    _tree_dismiss_pending: str | None = None
 
     def __post_init__(self) -> None:
         self._native = base.Capability.HANDLE_SYSTEM_ALERT in self.driver.capabilities()
@@ -286,6 +287,15 @@ class _AlertGuardGate:
         `DEFAULT_DISMISSIVE_LABELS` — ordinary English UI vocabulary ("Cancel", "Close") a real
         screen can legitimately show — and acts only on the scenario author's own explicit
         `systemAlertHandling.instruction`, the narrow surface this path exists to speed up.
+
+        Taps a given label at most once per showing: unlike the native probe (rate-limited to
+        `poll_interval`) and the vision path (debounce + cooldown + attempt ceiling), this runs every
+        `_POLL`, so without its own guard a dismiss animation that keeps the button in the tree for a
+        few frames — or a target screen that renders a poll or two later — would re-match and re-tap
+        it on every one of those polls, over-counting one dismissal into several `AlertEvent`s and
+        actuating the app repeatedly. `_tree_dismiss_pending` remembers the label just tapped and
+        skips re-tapping it while it is still the poll's match, until the tree stops matching it
+        (dismissed, or a different label appears), only then re-arming.
         """
         candidates = self.guard.labels
         buttons = [
@@ -294,7 +304,9 @@ class _AlertGuardGate:
             if el["label"] and not el["identifier"] and base.Trait.BUTTON in el["traits"]
         ]
         label = pick_alert_label(candidates, buttons)
-        if label is None:
+        if label is None or label == self._tree_dismiss_pending:
+            if label is None:
+                self._tree_dismiss_pending = None
             return None
         try:
             self.driver.tap({"label": label})
@@ -307,6 +319,7 @@ class _AlertGuardGate:
             # candidate (the uniqueness check above ran only over the identifier-less subset) and
             # declines rather than risk tapping the wrong one.
             return None
+        self._tree_dismiss_pending = label
         return AlertEvent(label=label)
 
 
