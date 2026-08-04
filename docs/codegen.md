@@ -241,8 +241,10 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
+import androidx.test.uiautomator.BySelector
 import androidx.test.uiautomator.Direction
 import androidx.test.uiautomator.UiDevice
+import androidx.test.uiautomator.UiObject2
 import androidx.test.uiautomator.Until
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -253,6 +255,7 @@ import java.util.regex.Pattern
 
 private const val PACKAGE = "com.example.app"
 private const val LAUNCH_TIMEOUT_MS = 5000L
+private const val ACT_TIMEOUT_MS = 15000L
 
 @RunWith(AndroidJUnit4::class)
 class ComponentsUITest {

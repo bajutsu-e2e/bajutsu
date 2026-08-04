@@ -49,6 +49,17 @@ def test_launch_env_merges_config_and_scenario_as_intent_extras() -> None:
     assert 'extras["SHOWCASE_TAB"] = "log"' in code
 
 
+def test_act_preamble_is_emitted() -> None:
+    # Every act(...) call site depends on this preamble compiling — a dropped or broken helper
+    # would leave the call sites' string assertions passing while the generated Kotlin fails to
+    # build (undefined `act`, missing `UiObject2` import).
+    code = _gen("- name: x\n  steps:\n    - tap: { id: a }\n")
+    assert "import androidx.test.uiautomator.BySelector" in code
+    assert "import androidx.test.uiautomator.UiObject2" in code
+    assert "private const val ACT_TIMEOUT_MS" in code
+    assert "private fun act(by: BySelector): UiObject2 {" in code
+
+
 def test_tap_by_id_text_and_desc() -> None:
     code = _gen(
         "- name: x\n  steps:\n"
