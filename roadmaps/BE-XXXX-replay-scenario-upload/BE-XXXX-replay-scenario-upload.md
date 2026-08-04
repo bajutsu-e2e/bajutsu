@@ -16,11 +16,12 @@
 ## Introduction
 
 The serve Web UI's **Replay** tab runs a scenario that already sits in the bound config's target
-scenarios directory on disk. It has no way to add one. This proposal adds an upload affordance to
-Replay: pick a local `.yaml` scenario file, or a `.zip` bundling more than one, and it lands
-directly in that directory. It becomes selectable and runnable at once. The upload always targets
-the config already open; it adds no new way to bind a config. A same-named file gets overwritten in
-place, and the UI states that an overwrite happened.
+scenario scope — its scenarios directory locally, or per-project storage on a hosted deployment
+([BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)). It has no way to add
+one. This proposal adds an upload affordance to Replay: pick a local `.yaml` scenario file, or a
+`.zip` bundling more than one, and it lands directly in that scope. It becomes selectable and
+runnable at once. The upload always targets the config already open; it adds no new way to bind a
+config. A same-named file gets overwritten in place, and the UI states that an overwrite happened.
 
 ## Motivation
 
@@ -29,8 +30,8 @@ Replay's scenario list always comes from `GET /api/scenarios`, backed by
 config resolves that scope to `None`, so the list comes back empty with no error raised; the
 explicit `"open a config first"` message instead gates `start_run` and `start_record`
 (`bajutsu/serve/operations/dispatch.py`), the actions that actually run or author a scenario. Three
-paths add a scenario to that scope today. An operator can place the file on the server's filesystem by hand,
-an affordance a hosted deployment does not have
+paths add a scenario to that scope today. An operator can place the file on the server's filesystem
+by hand — an affordance a hosted deployment does not have
 ([BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)). An operator can run
 `record` and have AI author one. Or an operator can replace the whole config through the
 zip/compose upload ceremony
@@ -83,8 +84,8 @@ new `POST /api/scenarios/upload` route does not exist yet, so this proposal adds
   wiring lives in `bajutsu/templates/serve.core.mjs`. It mirrors the file-input pattern the compose
   picker already uses (`cmp-scenarios-file`). The control reads the chosen `.yaml` file's text on
   the client. It posts that text to the same `/api/scenario` endpoint the Author editor's Save
-  button uses, with the file's own name as the target path. A scenario landing on disk through
-  Upload is then indistinguishable from one landing there through Save or `record`. On success the
+  button uses, with the file's own name as the target path. A scenario reaching the scope through
+  Upload is then indistinguishable from one reaching it through Save or `record`. On success the
   control reports "added" or "overwrote" from the new `overwritten` flag, then reloads the scenario
   list so the file is selectable and runnable at once. It activates once a config and a target are
   both in place, the precondition every other Replay affordance already applies.
@@ -115,8 +116,7 @@ new `POST /api/scenarios/upload` route does not exist yet, so this proposal adds
   nothing; a zip-slip entry and an oversized entry both get turned away. New `data-testid`s mark the
   upload controls. A dogfood E2E scenario alongside the existing Replay fixtures exercises the
   single-file upload path from end to end. `docs/architecture.md` and its `docs/ja/` mirror gain a
-  note that Replay can populate a bound config's scenarios directory directly, with no config
-  rebind.
+  note that Replay can populate a bound config's scenario scope directly, with no config rebind.
 
 ## Alternatives considered
 
@@ -140,9 +140,9 @@ new `POST /api/scenarios/upload` route does not exist yet, so this proposal adds
   gain subdirectories elsewhere, and not before.
 
 - **Best-effort partial writes when a zip has entries that fail to parse.** Set aside in favor of
-  all-or-nothing. A batch that lands partially leaves the scenarios directory in a state the
-  uploader did not ask for and cannot readily reason about. `start_run_set` already checks every
-  item before it touches any of them, for the same reason.
+  all-or-nothing. A batch that lands partially leaves the scope in a state the uploader did not ask
+  for and cannot readily reason about. `start_run_set` already checks every item before it touches
+  any of them, for the same reason.
 
 ## Progress
 
