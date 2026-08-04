@@ -691,7 +691,13 @@ class _UiAutomatorGen:
             + " apart. The",
             "      // attempt has already failed, so kick unconditionally before re-issuing the"
             + " intent.",
-            '      kickWindowTracking("launch attempt $attempt timed out")',
+            "      // On the final attempt there is no re-issue below — only the throw — so a kick",
+            "      // here would press HOME and leave the failure diagnostics (window list, screen)",
+            "      // capturing the launcher instead of the app's last state. Kick only when another",
+            "      // attempt will follow.",
+            "      if (attempt < LAUNCH_ATTEMPTS) {",
+            '        kickWindowTracking("launch attempt $attempt timed out")',
+            "      }",
             "    }",
             "    throw AssertionError(",
             '      "launch: no $PACKAGE window in the accessibility tree after $LAUNCH_ATTEMPTS '
