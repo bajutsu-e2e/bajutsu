@@ -404,7 +404,12 @@ class _UiAutomatorGen:
             "",
             f"private const val PACKAGE = {_s(self._package)}",
             "private const val LAUNCH_TIMEOUT_MS = 5000L",
-            "private const val ACT_TIMEOUT_MS = 5000L",
+            # A CI emulator's first render after launch can outrun a short wait often enough to flake
+            # (the same reasoning behind the on-device scenario lanes' BAJUTSU_MIN_WAIT_TIMEOUT floor,
+            # demos/showcase/android/Makefile's E2E_WAIT_FLOOR): a wait returns the instant the
+            # element appears, so a generous ceiling never slows a fast render — it only gives a slow
+            # one room before the step is failed.
+            "private const val ACT_TIMEOUT_MS = 15000L",
             "",
             "@RunWith(AndroidJUnit4::class)",
             f"class {self._class_name} {{",

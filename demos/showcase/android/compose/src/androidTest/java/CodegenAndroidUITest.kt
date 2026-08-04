@@ -22,7 +22,7 @@ import java.util.regex.Pattern
 
 private const val PACKAGE = "com.bajutsu.showcase.android.compose"
 private const val LAUNCH_TIMEOUT_MS = 5000L
-private const val ACT_TIMEOUT_MS = 5000L
+private const val ACT_TIMEOUT_MS = 15000L
 
 @RunWith(AndroidJUnit4::class)
 class CodegenandroiduitestUITest {
