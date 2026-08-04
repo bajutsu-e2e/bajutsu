@@ -35,6 +35,14 @@ class _Incapable:
         return set()
 
 
+class _NonNativeDriver(FakeDriver):
+    """A web/Android-shaped backend stand-in: capable of everything `FakeDriver` is, minus
+    `HANDLE_SYSTEM_ALERT` — for asserting the in-tree dismiss path stays native-only."""
+
+    def capabilities(self) -> set[str]:
+        return super().capabilities() - {base.Capability.HANDLE_SYSTEM_ALERT}
+
+
 def _button(label: str) -> base.Element:
     return {
         "identifier": None,
@@ -331,6 +339,56 @@ def test_dismiss_from_tree_never_matches_an_in_app_button_carrying_an_identifier
     )
     assert not ok  # the in-app button was never tapped, so "ready" never appears
     assert driver.actions == []  # confirms no tap was issued against it
+
+
+def test_dismiss_from_tree_never_fires_on_a_non_native_backend() -> None:
+    # The in-tree match is native-only (the app-attached-sheet case it targets is an iOS one): a
+    # web/Android-shaped backend must keep its pre-existing behavior untouched — only the
+    # collapsed-tree + vision path (BE-0269) can act there, never the fast in-tree tap.
+    from bajutsu.orchestrator.waits import _wait
+
+    target = _button("R")
+    target["identifier"] = "ready"
+    prompt_button = _button("今はしない")
+
+    def react(d: FakeDriver, kind: str, arg: object) -> None:
+        if kind == "tap" and arg == {"label": "今はしない"}:
+            d.screen = [target]  # would reveal "ready" if the in-tree path fired (it must not)
+
+    driver = _NonNativeDriver([prompt_button], react=react)
+    guard = AlertGuardConfig(
+        vision=_never_vision, labels=["今はしない", "Not Now"], poll_interval=1.0
+    )
+    ok, _reason, _tree = _wait(
+        driver, _for_wait("ready", 0.2), _LogicalClock(), alert_guard=guard, alerts=[]
+    )
+    assert not ok  # never tapped, so "ready" never appears; the wait runs to its full budget
+    assert driver.actions == []
+
+
+def test_dismiss_from_tree_never_fires_on_default_dismissive_labels_alone() -> None:
+    # Without an explicit `systemAlertHandling.instruction`, only `DEFAULT_DISMISSIVE_LABELS`
+    # applies — generic English UI vocabulary ("Cancel", "Close", …) a real app screen can
+    # legitimately show. The fast in-tree path must stay off unless the scenario author opted in
+    # with their own `labels`; a default-only guard falls back to the collapsed-tree + vision path,
+    # same as before this path existed.
+    from bajutsu.orchestrator.waits import _wait
+
+    target = _button("R")
+    target["identifier"] = "ready"
+    cancel_button = _button("Cancel")  # identifier-less; matches DEFAULT_DISMISSIVE_LABELS
+
+    def react(d: FakeDriver, kind: str, arg: object) -> None:
+        if kind == "tap" and arg == {"label": "Cancel"}:
+            d.screen = [target]  # would reveal "ready" if the in-tree path fired (it must not)
+
+    driver = FakeDriver([cancel_button], react=react)  # native-capable; no labels configured
+    guard = AlertGuardConfig(vision=_never_vision, poll_interval=1.0)  # labels=[] (default)
+    ok, _reason, _tree = _wait(
+        driver, _for_wait("ready", 0.2), _LogicalClock(), alert_guard=guard, alerts=[]
+    )
+    assert not ok
+    assert driver.actions == []
 
 
 def test_gate_unhandled_native_alert_falls_back_to_vision_bounded() -> None:

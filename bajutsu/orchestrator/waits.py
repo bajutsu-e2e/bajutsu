@@ -13,7 +13,6 @@ from bajutsu.drivers import base
 from bajutsu.elements import shows_app_ui
 from bajutsu.evidence.network import TransitionSource, _no_transitions
 from bajutsu.orchestrator.types import (
-    DEFAULT_DISMISSIVE_LABELS,
     AlertEvent,
     AlertGuardConfig,
     Clock,
@@ -212,6 +211,18 @@ class _AlertGuardGate:
                 self._fire_vision_bounded()
                 return
             # "absent": no *SpringBoard* alert — fall through to the collapsed-tree proxy below.
+        if self.guard.labels:
+            # Every `_POLL`, on the native path alone, and only once the scenario has named its own
+            # candidate labels: an author who configured `systemAlertHandling.instruction` has opted
+            # into exactly the narrow surface `_dismiss_from_tree` matches against, so the fast in-tree
+            # path is safe to try here. It stays off the *default* dismissive labels (`Cancel`,
+            # `Close`, …) and off every non-native backend, where those are ordinary English UI
+            # vocabulary a real screen can legitimately show (see `_dismiss_from_tree`'s docstring).
+            event = self._dismiss_from_tree(elements)
+            if event is not None:
+                self.alerts.append(event)
+                self._collapsed_polls = 0
+                return
         # Every `_POLL`, whether or not the native query ran this tick, drive the debounced collapsed-
         # tree proxy: `system_alert_labels()` only sees `springboard.alerts`, so an action sheet or a
         # WKWebView JS dialog reads as absent yet still collapses the tree, and the vision guard exists
@@ -223,14 +234,9 @@ class _AlertGuardGate:
         self._observe_vision(elements)
 
     def _observe_vision(self, elements: list[base.Element]) -> None:
-        """The tree-label match, then the collapsed-tree-proxy + vision path: for a backend without
-        the native capability, and for a native backend's `"absent"` polls, where a non-SpringBoard
-        surface the native query cannot enumerate may still be blocking."""
-        event = self._dismiss_from_tree(elements)
-        if event is not None:
-            self.alerts.append(event)
-            self._collapsed_polls = 0
-            return
+        """The collapsed-tree-proxy + vision path: for a backend without the native capability, and
+        for a native backend's `"absent"` polls, where a non-SpringBoard surface the native query
+        cannot enumerate may still be blocking."""
         if shows_app_ui(elements):
             self._collapsed_polls = 0
             return
@@ -266,18 +272,22 @@ class _AlertGuardGate:
             self.alerts.append(event)
 
     def _dismiss_from_tree(self, elements: list[base.Element]) -> AlertEvent | None:
-        """Tap a policy-named dismiss button already visible in this poll's own tree — no model call.
+        """Tap a scenario-named dismiss button already visible in this poll's own tree — no model call.
 
         Covers a system-owned prompt the native query cannot enumerate (BE-0315's `probe_native`
         reads only `springboard.alerts`) yet that still surfaces its buttons in the normalized tree
         the wait already fetched — an app-attached sheet such as iOS's Save Password prompt, whose
-        `label`ed buttons appear right in the poll's own `elements`. Restricted to `identifier`-less
-        buttons: an app's own UI carries the identifiers this project's scenarios select by, so a
-        real in-app button that happens to share a policy label (e.g. an app screen with its own
-        "Not Now") is never mistaken for a system-owned one — only an unlabeled-by-the-app button
-        can match, same as `system_alert_labels()` already assumes for a genuine SpringBoard alert.
+        `label`ed buttons appear right in the poll's own `elements`.
+
+        Only ever called (see `_observe_native`) when `self.guard.labels` is non-empty and the
+        backend is native-capable: `identifier is None` is not by itself a reliable "system-owned"
+        signal (a backend or an unlabeled-by-design app screen can carry legitimate identifier-less
+        buttons, per `shows_app_ui`'s own docstring), so this stays off the generic
+        `DEFAULT_DISMISSIVE_LABELS` — ordinary English UI vocabulary ("Cancel", "Close") a real
+        screen can legitimately show — and acts only on the scenario author's own explicit
+        `systemAlertHandling.instruction`, the narrow surface this path exists to speed up.
         """
-        candidates = self.guard.labels or DEFAULT_DISMISSIVE_LABELS
+        candidates = self.guard.labels
         buttons = [
             el["label"]
             for el in elements
@@ -288,9 +298,14 @@ class _AlertGuardGate:
             return None
         try:
             self.driver.tap({"label": label})
-        except (base.ElementNotFound, base.AmbiguousSelector):
+        except base.ElementNotFound:
             # The button vanished between this poll's query and the tap — a benign self-resolved
             # race, same treatment as `probe_native`'s TOCTOU branch.
+            return None
+        except base.AmbiguousSelector:
+            # An app-authored button shares the label: the whole-tree `tap` matches more than one
+            # candidate (the uniqueness check above ran only over the identifier-less subset) and
+            # declines rather than risk tapping the wrong one.
             return None
         return AlertEvent(label=label)
 
