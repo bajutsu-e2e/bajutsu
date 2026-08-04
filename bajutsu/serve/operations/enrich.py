@@ -77,8 +77,13 @@ def start_enrich(
     if not udid:
         udid = "booted"
 
+    # See capture.py's start_capture for why this rebase is needed: `resolve()` alone copies `appPath`
+    # verbatim from the raw YAML, so a relative value only resolves once rebased against `state.cwd`
+    # (BE-0063/BE-0073/BE-0242). `confine=False` mirrors capture.py — every bind path already
+    # confined this config's path fields once, at bind time.
     factory = driver_factory or _default_driver_factory
-    driver, teardown = factory(resolve(config, target), backends_list, udid)
+    eff = resolve(config, target).rebased(state.cwd, confine=False)
+    driver, teardown = factory(eff, backends_list, udid)
 
     from bajutsu.agents.enrich import enrich
 
