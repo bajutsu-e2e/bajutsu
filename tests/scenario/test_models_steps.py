@@ -34,6 +34,22 @@ def test_unknown_key_rejected() -> None:
         Step.model_validate({"tapp": {"id": "a"}})  # typo rejected by extra=forbid
 
 
+# --- name (a real filesystem path segment downstream: loop.py's step_id, reads.py's editor
+# lookup) is rejected at load time if it could escape the run directory --------------------------
+
+
+@pytest.mark.parametrize("name", ["..", ".", "a/b", "/etc/passwd", "../../../etc/passwd", "a\\b"])
+def test_step_rejects_unsafe_name(name: str) -> None:
+    with pytest.raises(ValidationError, match="name must not"):
+        Step.model_validate({"tap": {"id": "a"}, "name": name})
+
+
+@pytest.mark.parametrize("name", ["opens home", "step 1", "v1.2", "a-b_c"])
+def test_step_accepts_ordinary_name(name: str) -> None:
+    step = Step.model_validate({"tap": {"id": "a"}, "name": name})
+    assert step.name == name
+
+
 def test_extract_on_step() -> None:
     step = Step.model_validate(
         {"tap": {"id": "counter.inc"}, "extract": {"count": {"sel": {"id": "counter.value"}}}}

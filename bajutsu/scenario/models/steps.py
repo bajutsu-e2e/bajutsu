@@ -118,6 +118,14 @@ class Web(_Model):
     steps: list[Step]
 
 
+# `name` becomes a filesystem path segment twice over — the run's step_id
+# (`orchestrator/loop.py`) and the editor's artifact lookup (`serve/operations/reads.py`) both
+# build `f"{sid}/{name}"` and join it onto a real directory with no confinement check downstream.
+# Rejecting a path separator or a bare `.`/`..` here, once, at load time, closes the traversal for
+# every consumer instead of patching each join site.
+_UNSAFE_STEP_NAME_CHARS = ("/", "\\")
+
+
 class Step(_Model):
     """One action plus optional modifiers (capture / name / extract)."""
 
@@ -175,6 +183,13 @@ class Step(_Model):
     @classmethod
     def _cap(cls, v: list[str] | None) -> list[str] | None:
         return _validate_capture(v) if v is not None else v
+
+    @field_validator("name")
+    @classmethod
+    def _safe_name(cls, v: str | None) -> str | None:
+        if v is not None and (any(c in v for c in _UNSAFE_STEP_NAME_CHARS) or v in (".", "..")):
+            raise ValueError(f"name must not contain a path separator or be '.'/'..' (§6.2): {v!r}")
+        return v
 
     @model_validator(mode="after")
     def _one_action(self) -> Self:

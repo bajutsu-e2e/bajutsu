@@ -145,6 +145,8 @@ PermissionAction  ::= "grant" | "revoke"
 Step      ::= <Action> & <StepMods>
 StepMods  ::= { capture?: list(<CaptureToken>), extract?: map(string, <Extract>), name?: string, from?: string }
                 # `from`: provenance, the natural-language phrase `record` normalized this step from (BE-0044)
+                # `name` becomes a real filesystem path segment (the run's step_id, the editor's
+                # artifact lookup) — a path separator, or a bare "." / "..", is a load error
 Extract   ::= { sel: <Selector>, prop?: ("value"|"label"|"identifier") }   # default "value"
 Action    ::=
     { tap:         <Selector> }

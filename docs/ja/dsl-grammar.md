@@ -143,6 +143,8 @@ PermissionAction  ::= "grant" | "revoke"
 Step      ::= <Action> & <StepMods>
 StepMods  ::= { capture?: list(<CaptureToken>), extract?: map(string, <Extract>), name?: string, from?: string }
                 # `from`: 由来。record がこのステップを正規化した元の自然言語の文（BE-0044）
+                # `name` はダウンストリームで実際のファイルシステムパスの一部になる（run の
+                # step_id、エディタの証跡参照）。パス区切り文字、または単独の「.」「..」はロードエラー
 Extract   ::= { sel: <Selector>, prop?: ("value"|"label"|"identifier") }   # 既定 "value"
 Action    ::=
     { tap:         <Selector> }
