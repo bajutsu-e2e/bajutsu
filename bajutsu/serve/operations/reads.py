@@ -525,7 +525,11 @@ def _artifact_names(step_artifacts: list[dict[str, Any]]) -> tuple[str | None, s
         kind, name = art.get("kind"), art.get("name")
         # Narrowed to `str`, not just non-`None`: a malformed/partially written manifest could carry
         # a non-string value here, which would otherwise flow into the URL/path built from it below.
-        if isinstance(kind, str) and isinstance(name, str):
+        # `_valid_step_id` (a generic safe-relative-path check despite its name) also rejects an
+        # absolute or `..`-shaped `name`: `LocalArtifactStore` only enforces containment to
+        # `runs_dir`, not per-run, so a traversal-shaped name could otherwise resolve to an
+        # unrelated artifact elsewhere in the org's runs tree.
+        if isinstance(kind, str) and isinstance(name, str) and _valid_step_id(name):
             by_kind.setdefault(kind, name)
     return by_kind.get("elements"), by_kind.get("screenshot")
 

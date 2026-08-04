@@ -106,6 +106,25 @@ otherwise — and never call `query()` itself to fill that gap.
    `_collect_captures` (`evidence_rules.py:157-168`), which now returns only what the scenario
    actually asked for (`step.capture` plus matching `capturePolicy` rules) — no implicit baseline
    left to dedupe against.
+   **Accepted collateral of the deferred-query design:** the "cost identical to today's" claim
+   holds for a sink that does not consume `elements`, and for the common case of a consuming sink
+   with no `screenChanged` policy. It does not hold for one narrow combination: a consuming sink
+   (`FileSink`), a `screenChanged`/interrupt policy that needs a fresh `before`, a *native* step, and
+   `prev_after` unset (the scenario's first step, or one right after a tree-less step). There,
+   `write_elements`'s own deferred query (fired because this call passes `elements=None`) and the
+   `before` computation just below (fired because `prev_after` is still unset) each independently
+   query the identical pre-action state — one query more than today's single post-step read fed
+   both consumers with. Unlike the `web` block's first-step case just below, closing this would mean
+   eagerly querying on every native step whenever a `screenChanged` policy is active, not only the
+   scenario's first — and that eager query cannot be gated on `isinstance(sink, NullSink)` the way
+   the `web` case is, without also over-triggering for `tests/orchestrator/test_read_count.py`'s
+   `_KindsSink` stub (a non-`NullSink` sink that nonetheless never queries a driver itself, unlike a
+   real consuming sink), which would turn a correctness fix into a test regression. Left as accepted,
+   narrow collateral rather than reworked under time pressure this late in review; a real fix needs
+   reordering the `before` computation ahead of the baseline capture for this one combination so a
+   single fresh query feeds both, mirroring the `web` case's seed-forward shape in the other
+   direction — future work, not blocking this item's actual defect (evidence captured pre- vs
+   post-action).
    **Implementation note:** inside a `web` block, `self.state.prev_after` is reset to `None` around
    the whole block (BE-0234 Unit 2) and would otherwise force `write_elements`'s fallback to query
    `self.cfg.driver` (native) instead of the actual `WebContextDriver` a nested step ran against —

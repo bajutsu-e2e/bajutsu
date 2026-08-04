@@ -693,6 +693,72 @@ def test_read_scenario_with_run_rejects_a_path_traversal_sid(tmp_path: Path) -> 
     assert payload["steps"] == []
 
 
+def test_read_scenario_with_run_rejects_a_traversal_shaped_artifact_name(tmp_path: Path) -> None:
+    """An artifact `name` that is a `str` but `..`-shaped (a malformed/tampered manifest) is
+    rejected rather than flowing into `/runs/<run_id>/<name>` and an `ArtifactStore.exists()` probe
+    — `LocalArtifactStore` only enforces containment to `runs_dir` as a whole, not per-run, so a
+    traversal name can otherwise resolve to a *different* run's artifact within the same org's
+    runs tree (review follow-up). Proven by content, not just a null check: a real file at that
+    escaped path exists on disk, under a second run this step never belongs to. The step's own
+    valid `elements` entry still establishes the step-id key; only the malformed `screenshot`
+    entry is rejected."""
+    state, runs = _state(tmp_path)
+    scn_dir = tmp_path / "scenarios"
+    (scn_dir / "login.yaml").write_text(SCENARIO_YAML, encoding="utf-8")
+    run_dir = runs / "run1"
+    step_dir = run_dir / "00-login/step0"
+    step_dir.mkdir(parents=True)
+    (step_dir / "elements.json").write_text(json.dumps(_elements()), encoding="utf-8")
+    # A second, unrelated run whose artifact the traversal below targets — proves an escape to
+    # another run within `runs_dir`, not merely a nonexistent path that would resolve to `None`
+    # regardless of validation.
+    other_run_dir = runs / "run2" / "00-other/step0"
+    other_run_dir.mkdir(parents=True)
+    (other_run_dir / "secret.png").write_bytes(b"PNG")
+    manifest = {
+        "runId": "run1",
+        "ok": True,
+        "scenarios": [
+            {
+                "scenario": "login",
+                "ok": True,
+                "sid": "00-login",
+                "steps": [
+                    {
+                        "index": 0,
+                        "action": "tap",
+                        "ok": True,
+                        "artifacts": [
+                            {
+                                "name": "00-login/step0/elements.json",
+                                "kind": "elements",
+                                "provider": "driver",
+                            },
+                            {
+                                "name": "00-login/step0/../../../run2/00-other/step0/secret.png",
+                                "kind": "screenshot",
+                                "provider": "driver",
+                            },
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+    (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    payload, status = ops.read_scenario(
+        state,
+        "demo",
+        str(scn_dir / "login.yaml"),
+        run_id="run1",
+        scenario_name="login",
+    )
+    assert status == 200
+    assert payload["steps"][0]["elementsUrl"] == "/runs/run1/00-login/step0/elements.json"
+    assert payload["steps"][0]["screenshotUrl"] is None
+
+
 def test_read_scenario_with_run_ignores_non_string_artifact_fields(tmp_path: Path) -> None:
     """A malformed manifest entry whose `kind`/`name` are not strings degrades to "no link" rather
     than flowing a non-string value into the URL built from it (BE-XXXX)."""
