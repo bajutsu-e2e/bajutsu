@@ -308,27 +308,30 @@ class _AlertGuardGate:
             if label is None:
                 self._tree_dismiss_pending = None
             return None
-        # Decline an in-app collision *before* tapping: `label` was resolved unique only over the
-        # identifier-less button subset above, but `tap({"label": label})` resolves via `matches()`
-        # (base.py), which matches on `label` alone and ignores `traits` entirely — so *any* element
-        # sharing the text (a static caption, a header, not only another button) would otherwise make
-        # the whole-tree tap raise `AmbiguousSelector` below. That branch never arms
-        # `_tree_dismiss_pending`, so a *persistent* collision would re-issue the on-device tap on
-        # every `_POLL` (~20x/s) for the rest of the wait. Counting every element by label alone here
-        # — mirroring what the tap actually resolves against — keeps that case a cheap in-memory
-        # decline instead of a repeated round-trip.
-        if sum(1 for el in elements if el["label"] == label) != 1:
+        # Scope the tap to `traits: [BUTTON]`, the same constraint `buttons` above already applied
+        # when resolving `label` — matching a bare `{"label": label}` selector against `matches()`
+        # (base.py) ignores `traits` entirely, so a non-button element sharing the exact text (a
+        # static caption, a header drawn next to the sheet) would otherwise make the tap ambiguous
+        # despite the intended button being uniquely named. Pre-checking uniqueness over this same
+        # button-scoped count before tapping keeps a *persistent* same-label app button (identified,
+        # so excluded from `buttons` above, but still a button) a cheap in-memory decline: that
+        # `except AmbiguousSelector` branch below never arms `_tree_dismiss_pending`, so reaching it
+        # every poll would re-issue the on-device tap ~20x/s for the rest of the wait.
+        if (
+            sum(1 for el in elements if el["label"] == label and base.Trait.BUTTON in el["traits"])
+            != 1
+        ):
             return None
         try:
-            self.driver.tap({"label": label})
+            self.driver.tap({"label": label, "traits": [base.Trait.BUTTON]})
         except base.ElementNotFound:
             # The button vanished between this poll's query and the tap — a benign self-resolved
             # race, same treatment as `probe_native`'s TOCTOU branch.
             return None
         except base.AmbiguousSelector:
-            # A rare query-vs-tap race: an app-authored button carrying the same label appeared
-            # between this poll's tree read (checked unique above) and the tap. Declines rather than
-            # risk tapping the wrong one.
+            # A rare query-vs-tap race: another button carrying the same label appeared between this
+            # poll's tree read (checked unique above) and the tap. Declines rather than risk tapping
+            # the wrong one.
             return None
         self._tree_dismiss_pending = label
         return AlertEvent(label=label)

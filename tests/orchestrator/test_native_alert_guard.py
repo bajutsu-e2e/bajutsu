@@ -304,7 +304,7 @@ def test_gate_dismisses_an_app_attached_sheet_from_the_tree_without_vision() -> 
     )  # identifier-less, like a real system-owned sheet's button
 
     def react(d: FakeDriver, kind: str, arg: object) -> None:
-        if kind == "tap" and arg == {"label": "今はしない"}:
+        if kind == "tap" and arg == {"label": "今はしない", "traits": ["button"]}:
             d.screen = [target]  # dismissing the sheet reveals the awaited element
 
     driver = FakeDriver([prompt_button], react=react)  # capable; no SpringBoard alert seeded
@@ -356,7 +356,8 @@ def test_dismiss_from_tree_taps_a_showing_at_most_once() -> None:
         driver, _for_wait("ready", 2.0), _LogicalClock(), alert_guard=guard, alerts=alerts
     )
     assert ok
-    assert driver.actions.count(("tap", {"label": "今はしない"})) == 1  # tapped exactly once
+    tap_sel = {"label": "今はしない", "traits": ["button"]}
+    assert driver.actions.count(("tap", tap_sel)) == 1  # tapped exactly once
     assert alerts == [AlertEvent(label="今はしない")]  # exactly one dismissal recorded, not several
 
 
@@ -394,34 +395,35 @@ def test_dismiss_from_tree_declines_on_an_in_app_label_collision() -> None:
     assert driver.tap_calls == 0  # declined before attempting the tap, not caught after
 
 
-def test_dismiss_from_tree_declines_on_a_non_button_label_collision() -> None:
-    # `tap({"label": label})` resolves via `matches()` (base.py), which matches on `label` alone and
-    # ignores `traits` — so a *non-button* element sharing the exact text (a static caption drawn next
-    # to the sheet, a header) collides with the tap just as another button would, even though the
-    # pre-check must scan every element by label alone (not only buttons) to catch it.
+def test_dismiss_from_tree_dismisses_despite_a_non_button_label_collision() -> None:
+    # A bare `{"label": label}` selector resolves via `matches()` (base.py), which matches on
+    # `label` alone and ignores `traits` — so a non-button element sharing the exact text (a static
+    # caption drawn next to the sheet, a header) would make a trait-unscoped tap ambiguous despite
+    # the intended button being uniquely named among buttons. Scoping both the pre-check and the tap
+    # itself to `traits: [BUTTON]` (mirroring the `buttons` filter `label` was resolved against)
+    # means a same-labeled caption never blocks dismissal at all.
     from bajutsu.orchestrator.waits import _wait
 
+    target = _button("R")
+    target["identifier"] = "ready"
     prompt_button = _button("Not Now")  # identifier-less, system-owned
     caption = _button("Not Now")
-    caption["traits"] = ["staticText"]  # not a button; still resolves the same `label` selector
+    caption["traits"] = ["staticText"]  # not a button; must not block the tap below
 
-    class _CountingTapDriver(FakeDriver):
-        def __init__(self) -> None:
-            super().__init__([prompt_button, caption])
-            self.tap_calls = 0
+    def react(d: FakeDriver, kind: str, arg: object) -> None:
+        if kind == "tap" and arg == {"label": "Not Now", "traits": ["button"]}:
+            d.screen = [target]
 
-        def tap(self, sel: base.Selector) -> None:
-            self.tap_calls += 1
-            super().tap(sel)
-
-    driver = _CountingTapDriver()  # native-capable; no SpringBoard alert
+    driver = FakeDriver(
+        [prompt_button, caption], react=react
+    )  # native-capable; no SpringBoard alert
     guard = AlertGuardConfig(vision=_never_vision, labels=["Not Now"], poll_interval=1.0)
+    alerts: list[AlertEvent] = []
     ok, _reason, _tree = _wait(
-        driver, _for_wait("ready", 0.2), _LogicalClock(), alert_guard=guard, alerts=[]
+        driver, _for_wait("ready", 0.2), _LogicalClock(), alert_guard=guard, alerts=alerts
     )
-    assert not ok
-    assert driver.actions == []
-    assert driver.tap_calls == 0  # declined before attempting the tap, not caught after
+    assert ok
+    assert alerts == [AlertEvent(label="Not Now")]
 
 
 def test_dismiss_from_tree_never_matches_an_in_app_button_carrying_an_identifier() -> None:
