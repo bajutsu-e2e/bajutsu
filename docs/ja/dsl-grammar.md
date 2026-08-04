@@ -118,7 +118,7 @@ Interrupt ::= { condition: <Assertion>, steps: list(<Step>) }
 
 # ── Preconditions ──────────────────────────────────────────────────────
 Preconditions ::= {
-  erase?:      boolean,                     # 既定 false — 先頭で simctl erase
+  erase?:      boolean,                     # 未設定は target config の erase を継承し、それもなければオフ（BE-0177）。先頭で simctl erase
   reinstall?:  ("clean" | "overwrite"),     # 既定 "clean" — config が appPath 指定時の再インストール
   launchArgs?: list(string),                # 既定 []
   launchEnv?:  map(string,string),          # 既定 {}    — SIMCTL_CHILD_* として注入
@@ -347,10 +347,10 @@ MockResponse ::= { status?: integer, headers?: map(string,string), body?: string
 | フィールド | 既定値 |
 |---|---|
 | `Scenario.tags` / `expect` / `capturePolicy` / `mocks` / `interrupts` | `[]` |
-| `Scenario.preconditions` | `{}`（= `erase: false`, `reinstall: clean`） |
+| `Scenario.preconditions` | `{}`（= `erase` は未設定 — target config が指定しない限りオフ、`reinstall: clean`） |
 | `Scenario.systemAlertHandling` | 未指定（アラートガード ON; プロンプトを dismiss） |
 | `Scenario.permissions` | `{}`（起動前の権限状態を適用しない） |
-| `Preconditions.erase` | `false` |
+| `Preconditions.erase` | 未設定 — target config の `erase` を継承し、それもなければオフ（BE-0177） |
 | `Preconditions.reinstall` | `clean` |
 | `Preconditions.launchArgs` | `[]` |
 | `Preconditions.launchEnv` | `{}` |

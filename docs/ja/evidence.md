@@ -113,6 +113,7 @@ web は子プロセスを使いません。区間証跡は Playwright ネイテ�
 ```python
 class EvidenceSink(Protocol):
     def capture(self, driver, step_id, kinds, *, elements=None) -> list[Artifact]: ...   # ステップ後に瞬時を取得
+    def wait_diagnostic(self, step_id, *, trace, elements) -> Artifact | None: ...       # 初回 wait のタイムアウト診断（後述）
     def start_scenario_intervals(self, scenario_id, kinds) -> list[Interval]: ...         # シナリオ全体の video / deviceLog / appTrace を開始
     def finish_scenario_intervals(self, scenario_id, started) -> list[Artifact]: ...      # 停止してファイルを回収
 ```

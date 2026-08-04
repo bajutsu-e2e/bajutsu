@@ -27,6 +27,7 @@ class Observation:
     screen: list[Element]           # the current screen's elements
     history: list[Step]             # the steps recorded so far
     screenshot: bytes | None        # a PNG of the current screen (for vision)
+    plan: list[str] = field(default_factory=list)  # the goal decomposed up front (below)
 
 @dataclass
 class Proposal:
@@ -34,12 +35,29 @@ class Proposal:
     done: bool = False                               # the goal is reached
     expect: list[Assertion] = field(default_factory=list)  # on done, the assertions that verify the goal
     note: str = ""
+    plan_step: int | None = None    # the plan step (below) this move carries out, for live progress
     needs_human: bool = False       # a third outcome: hand off to a human (BE-0179)
     human_prompt: str = ""          # why, shown to the human on handoff
 
 class Agent(Protocol):
     def next_action(self, observation: Observation) -> Proposal: ...
+    def plan(self, goal: str) -> list[str]: ...  # the up-front decomposition (below); optional
 ```
+
+### Up-front goal decomposition
+
+Before the loop starts, `record` calls `agent.plan(goal)` once to break the natural-language goal
+into a short, ordered list of concrete, human-readable steps (`_plan_goal` in `record.py`; the
+`ClaudeAgent` implementation forces a dedicated `plan` tool call). The plan is streamed to the
+watcher up front and carried in every subsequent turn's `Observation.plan`, so the agent has a
+procedure to follow while the live screen stays the source of truth — the plan only guides the run,
+it never substitutes for what the screen actually shows. Each move the agent proposes tags the plan
+step it carries out (`Proposal.plan_step`), which is what the live per-step line's `(plan k/N)`
+prefix and the `plan` category in the AI-usage breakdown (below) refer to.
+
+Planning is best-effort: an agent with no `plan` method (e.g. a test fake), or a planning call that
+fails or times out, simply yields no plan, and the loop runs exactly as it did before this feature —
+nothing here affects `run`, which never sees a plan at all.
 
 ## The record loop
 

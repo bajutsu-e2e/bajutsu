@@ -101,4 +101,7 @@ uv run bajutsu record --target showcase-swiftui --goal "log in and increment the
 uv run bajutsu codegen demos/showcase/scenarios/smoke.yaml --target showcase-swiftui -o UITests/Smoke.swift
 ```
 
-`make -C demos/showcase ui-test` で end-to-end に実行できます。構造のマッピングは [codegen](../codegen.md) を参照してください。
+`make -C demos/showcase ui-test` は、同じパイプラインを実物で end-to-end に示します（上とは別のシナリオ
+`components.yaml` からリポジトリ自身の checked-in フィクスチャを再生成し、`xcodebuild test` でビルドして
+実行します）。これは codegen の real-compile 検証であり、上で生成した `Smoke.swift` をそのまま実行するもの
+ではありません。構造のマッピングは [codegen](../codegen.md) を参照してください。

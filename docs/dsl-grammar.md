@@ -120,7 +120,7 @@ Interrupt ::= { condition: <Assertion>, steps: list(<Step>) }
 
 # ── Preconditions ──────────────────────────────────────────────────────
 Preconditions ::= {
-  erase?:      boolean,                     # default false — simctl erase first
+  erase?:      boolean,                     # unset inherits the target config's erase, else off (BE-0177); simctl erase first
   reinstall?:  ("clean" | "overwrite"),     # default "clean" — app reinstall when config sets appPath
   launchArgs?: list(string),                # default []
   launchEnv?:  map(string,string),          # default {}    — injected as SIMCTL_CHILD_*
@@ -359,10 +359,10 @@ Omitted optional keys take these values (so a minimal scenario is just `name` + 
 | Field | Default |
 |---|---|
 | `Scenario.tags` / `expect` / `capturePolicy` / `mocks` / `interrupts` | `[]` |
-| `Scenario.preconditions` | `{}` (i.e. `erase: false`, `reinstall: clean`) |
+| `Scenario.preconditions` | `{}` (i.e. `erase` unset — off unless the target config says otherwise — and `reinstall: clean`) |
 | `Scenario.systemAlertHandling` | unset (alert guard on; dismiss the prompt) |
 | `Scenario.permissions` | `{}` (no pre-launch permission state applied) |
-| `Preconditions.erase` | `false` |
+| `Preconditions.erase` | unset — inherits the target config's `erase`, else off (BE-0177) |
 | `Preconditions.reinstall` | `clean` |
 | `Preconditions.launchArgs` | `[]` |
 | `Preconditions.launchEnv` | `{}` |

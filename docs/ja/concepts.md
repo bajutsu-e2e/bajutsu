@@ -18,7 +18,7 @@ LLM（大規模言語モデル）の非決定性、コスト、レイテンシ�
 |---|---|---|---|
 | `record` | Tier 1 | 著者 | 探索しながら次の 1 手を提案 → 決定的シナリオを書き出す（[recording](recording.md)） |
 | `run` | Tier 2 | **なし** | 各ステップを act → wait → verify。合否は `expect` の機械アサーションのみ（[run-loop](run-loop.md)） |
-| `codegen` | — | なし | シナリオ → XCUITest の構造マッピング（[codegen](codegen.md)） |
+| `codegen` | — | なし | シナリオ → XCUITest / Playwright / UI Automator の構造マッピング（[codegen](codegen.md)） |
 
 `run` の経路には `anthropic` の呼び出しが一切ありません。唯一の例外は `--system-alert-handling`（OS の
 システムアラートを視覚的に消す機能）です。これは合否を判定するのではなく環境を準備するものであり、
@@ -49,7 +49,7 @@ Bajutsu の「決定的」という性質は、コードの構造として強制
 3. **クリーン環境から開始する**：各テストは既定で boot/launch の前に `simctl erase` を実行し、前テストからの
    汚染を断ちます。状態は launch env や deeplink から注入します（[drivers](drivers.md#環境管理simctl)）。
 4. **合否は機械チェックのみで決める**：「成功した気がする」という判断は入りません。機械アサーションは
-   `exists`/`value`/`label`/`count`/`enabled`/`disabled`/`selected`/`request`/`visual` です
+   `exists`/`value`/`label`/`count`/`enabled`/`disabled`/`selected`/`request`/`event`/`requestSequence`/`responseSchema`/`visual`/`clipboard`/`golden` です
    （[selectors](selectors.md#アサーション評価)）。
 
 > 適用範囲に注意してください。安定した識別子が安定させるのは「選択の決定性」だけです。タイミング、状態、

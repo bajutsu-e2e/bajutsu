@@ -153,8 +153,8 @@ make install               # 土台に加えて、config が使う backend だ�
 `make setup` は決定的ゲートが必要とする backend 非依存の土台です。`make install` はその上に重ねます。
 `--config`（`make install ARGS="--config demos/showcase/showcase.config.yaml"` のように渡します）を読み、
 `targets.*` が実際に使う backend と、AI プロバイダが設定されているかどうかを解決し、必要な pip extra と
-外部ツールだけを導入します（iOS なら Xcode の `xcodebuild` と `make -C demos/showcase runner-build` で
-組む XCUITest ランナー、web なら Playwright のブラウザ、AI が設定されていれば `anthropic` SDK）。冪等なので再実行しても安全です。作業ディレクトリに config が
+外部ツールだけを導入します（iOS なら XCUITest ランナーを組む Xcode の `xcodebuild`、web なら
+Playwright のブラウザ、AI が設定されていれば `anthropic` SDK）。冪等なので再実行しても安全です。作業ディレクトリに config が
 なければ、土台以外は何も導入しません。導入元の要件は単一のマッピング
 （[`bajutsu/requirements.py`](bajutsu/requirements.py)）にまとまっており、`doctor` の pre-flight と共有する
 ので両者がずれることはありません。

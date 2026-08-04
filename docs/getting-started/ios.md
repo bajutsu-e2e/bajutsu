@@ -102,4 +102,7 @@ uv run bajutsu record --target showcase-swiftui --goal "log in and increment the
 uv run bajutsu codegen demos/showcase/scenarios/smoke.yaml --target showcase-swiftui -o UITests/Smoke.swift
 ```
 
-Run it end-to-end with `make -C demos/showcase ui-test`. The structural mapping: [codegen](../codegen.md).
+`make -C demos/showcase ui-test` shows the same pipeline end to end for real: it re-generates the
+repo's own checked-in fixture from `components.yaml` (a different scenario from the one above), then
+builds and runs it with `xcodebuild test` — codegen's real-compile verification, not a replay of the
+`Smoke.swift` file generated above. The structural mapping: [codegen](../codegen.md).

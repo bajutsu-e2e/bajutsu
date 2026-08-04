@@ -94,11 +94,21 @@ the selector at `el("UNSUPPORTED_SELECTOR")` — an honest gap, not a wrong gues
 | Scenario element | Generated XCUITest |
 |---|---|
 | `tap` | `el(id).tap()` / `byLabel(...).tap()` |
+| `doubleTap` | `.doubleTap()` |
 | `longPress` | `.press(forDuration: <sec>)` |
 | `type` (with `into`) | `el(id).tap()` + `.typeText(...)` |
 | `type` (no `into`) | `app.typeText(...)` |
+| `clear` | `.tap()` + select-all (`typeKey("a", modifierFlags: .command)`) + delete — no XCUIElement "clear" primitive, so focus/select-all/delete is the faithful peer of the runner's own clear (BE-0265) |
+| `delete { count }` | `.tap()` + `count` delete keypresses (`typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count:))`, BE-0265) |
+| `select` | `.tap()` + select-all (BE-0265) |
+| `copy` | `app.typeKey("c", modifierFlags: .command)` |
+| `back` | taps the OS navigation back button — the same element (and shared constant) the XCUITest driver taps at run time (BE-0210) |
 | `swipe { on, direction }` | `.swipeUp/Down/Left/Right()` |
 | `swipe { from, to }` | `coord(x1, y1).press(forDuration: 0.1, thenDragTo: coord(x2, y2))` — an `XCUICoordinate` drag (BE-0025) |
+| `drag { on, direction }` | the same primitive as a directional `swipe` (`.swipeUp/Down/Left/Right()`) — a real drag both scrolls and moves handles on iOS (BE-0227) |
+| `pinch` | `.pinch(withScale: <scale>, velocity: <±1.0>)` — the velocity sign matches the scale (scale ≥ 1 zooms in) |
+| `rotate` | `.rotate(<radians>, withVelocity: 1.0)` |
+| `scroll { to }` | `// TODO` — XCUITest has no single robust scroll-to-element primitive (`swipeUp()` scrolls a fixed amount without re-querying), so the faithful bounded, re-querying loop is left unemitted rather than faked (BE-0326) |
 | `handleSystemAlert` | `XCTAssertTrue(XCUIApplication(bundleIdentifier: "com.apple.springboard").buttons["…"].waitForExistence(timeout:))` + `.tap()` — the native SpringBoard idiom, carrying the step's `timeout` (BE-0316). The `prompt` / `choice` form resolves its label from the *run's* locale (BE-0320), which a static translation has no access to, so it emits a labeled `// TODO` instead |
 | `wait { for }` | `XCTAssertTrue(el(...).waitForExistence(timeout:))` |
 | `wait { until: gone }` | `.waitForNonExistence(timeout:)` |
@@ -200,8 +210,15 @@ test.describe('Components', () => {
 | `type` (with `into`) | `await loc.fill('…')` |
 | `type` (no `into`) | `await page.keyboard.type('…')` |
 | `longPress` | `await loc.click({ delay: <ms> })` |
+| `clear` | `await loc.clear()` — the faithful peer of the driver's own focus-then-backspace clear (BE-0265) |
+| `delete { count }` | focus + `count` × `page.keyboard.press('Backspace')` (BE-0265) |
+| `select` | `await loc.selectText()` — the web peer of select-all (BE-0265) |
+| `copy` | `await page.keyboard.press('Control+c')` |
+| `back` | `await page.goBack()` — browser history, the same primitive the driver's `back()` uses (BE-0210) |
 | `swipe { on, direction }` | a `page.mouse.wheel` scroll from the element center in the direction (BE-0227) |
 | `swipe { from, to }` | `// TODO` (coordinate swipes are not generated) |
+| `drag { on, direction }` | a real pointer drag of the element (move → down → move → up) from its center, in the direction — the web driver drags for `drag` where it wheels for a directional `swipe` (BE-0227) |
+| `scroll { to }` | `await loc.scrollIntoViewIfNeeded()` — a Playwright locator auto-scrolls into view before acting, so `direction` / `within` / `maxScrolls` are subsumed by the browser's own scroll (BE-0326) |
 | `wait { for }` | `await expect(loc).toBeVisible({ timeout: <ms> })` |
 | `wait { until: gone }` | `await expect(loc).toBeHidden({ timeout: <ms> })` |
 | `wait { until: screenChanged/settled }` | a comment (Playwright auto-waits) |
@@ -351,8 +368,15 @@ same limit the XCUITest emitter hits for NSPredicate `MATCHES`), so it stays a `
 | `type` (with `into`) | `act(<by>).text = '…'` |
 | `type` (no `into`) | `// TODO` (no resolved target element) |
 | `longPress` | `.longClick()` (the platform long-press timeout; the scenario duration has no parameter) |
+| `clear` | `act(<by>).clear()` — the faithful peer of the driver's own clear (BE-0265) |
+| `delete { count }` | `.click()` + `count` × `device.pressKeyCode(KeyEvent.KEYCODE_DEL)` (BE-0265) |
+| `select` | `.click()` + `device.pressKeyCode(KeyEvent.KEYCODE_A, KeyEvent.META_CTRL_ON)` (BE-0265) |
+| `copy` | `device.pressKeyCode(KeyEvent.KEYCODE_C, KeyEvent.META_CTRL_ON)` |
+| `back` | `device.pressBack()` — UI Automator's native system back, the peer of the adb driver's `keyevent 4` (BE-0210) |
 | `swipe { on, direction }` | `.swipe(Direction.<UP/DOWN/LEFT/RIGHT>, 0.75f)` |
 | `swipe { from, to }` | `// TODO` (coordinate swipes are not generated) |
+| `drag { on, direction }` | the same primitive as `swipe { on, direction }` — `UiObject2.swipe` is a real drag, so an element-anchored `drag` both scrolls and moves handles on Android (BE-0227) |
+| `scroll { to }` | `UiScrollable(UiSelector().scrollable(true)).<setAsHorizontalList/setAsVerticalList>().setMaxSearchSwipes(<max>).scrollIntoView(<selector>)` — UI Automator's native scroll-to-element, bounded by `maxScrolls` (BE-0326) |
 | `pinch` | `.pinchOpen(0.5f)` / `.pinchClose(0.5f)` (scale ≥ 1 zooms in) |
 | `wait { for }` | `assertTrue(device.wait(Until.hasObject(<by>), <ms>L))` |
 | `wait { until: gone }` | `assertTrue(device.wait(Until.gone(<by>), <ms>L))` |
