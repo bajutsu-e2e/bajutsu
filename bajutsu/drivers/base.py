@@ -657,17 +657,19 @@ def resolve_unique(elements: list[Element], sel: Selector) -> Element:
     Args:
         elements: One `query()` snapshot of the on-screen elements.
         sel: The selector to resolve. `index` is honored only as a last resort, picking the nth of
-            several (content-distinct, `other`-filtered) candidates (negative values count from
-            the end) from the same filtered set the ambiguity count below reports — not the raw
-            `find_all` result.
+            several content-distinct candidates (negative values count from the end) — with any
+            `other`-trait ties among them dropped first, unless the selector itself targets
+            `other` or every candidate is one — from the same filtered set the ambiguity count
+            below reports, not the raw `find_all` result.
 
     Returns:
         The one element the selector resolves to.
 
     Raises:
         ElementNotFound: Nothing matched, or `index` is out of range.
-        AmbiguousSelector: Two or more content-distinct candidates matched (after dropping
-            `other`-trait ties, below) and no `index` disambiguates.
+        AmbiguousSelector: Two or more content-distinct candidates matched — with `other`-trait
+            ties dropped first when the selector doesn't itself target `other` and at least one
+            non-`other` candidate remains — and no `index` disambiguates.
     """
     candidates = _collapse_identical_duplicates(find_all(elements, sel))
     if len(candidates) > 1 and Trait.OTHER not in sel.get("traits", []):
