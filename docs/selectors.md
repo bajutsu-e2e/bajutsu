@@ -28,7 +28,7 @@ class Element(TypedDict):
 
 ### Normalized traits (`Trait`)
 
-The common tokens that state assertions look at. Drivers normalize at least these:
+The common tokens state assertions, selectors, and other checks read. Drivers normalize at least these:
 
 | Token | Meaning | Used by |
 |---|---|---|
