@@ -656,7 +656,7 @@ def test_ambiguous_target_fails_rather_than_scrolling_forever() -> None:
     # Two elements share an id at different positions — a genuine duplicate-id ambiguity, not a
     # content-identical duplicate registration (which resolve_unique now collapses instead of
     # flagging ambiguous).
-    driver = _scrollable([_row(0), _el("row.0", (0.0, _TOP_INSET, 280.0, _ROW_H * 2))])
+    driver = _scrollable([_row(0), _el("row.0", (0.0, _TOP_INSET + _ROW_H, 280.0, _ROW_H))])
     with pytest.raises(base.AmbiguousSelector):
         _do_action(driver, Step(scroll=Scroll.model_validate({"to": {"id": "row.0"}})))
 
