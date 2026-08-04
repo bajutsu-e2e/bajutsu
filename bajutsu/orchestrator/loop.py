@@ -1252,6 +1252,8 @@ def _run_steps(
     # displayed screenshot to the *first*-recorded one, `before.png`, so this file is not surfaced by
     # default — making a viewer prefer it for the scenario's last step, if ever wanted, is separate,
     # future scope.
-    if (leaf := state.last_leaf) is not None:
+    if (leaf := state.last_leaf) is not None and not any(
+        a.kind == "screenshot" and a.name.endswith("after.png") for a in leaf.outcome.artifacts
+    ):
         leaf.outcome.artifacts.extend(sink.capture(driver, leaf.step_id, ["screenshot.after"]))
     return result
