@@ -312,7 +312,7 @@ def _execute(plan: _CrawlPlan, guide: crawl_engine.Guide, report: Report) -> cra
         # Environment seam (BE-0009): web opens a fresh context, iOS relaunches the app.
         # One environment drives both the launch and the reset: a second instance built from the raw
         # lane udid would reset a different device than the one that came up whenever the launch had to
-        # replace a vanished Simulator (BE-XXXX).
+        # replace a vanished Simulator.
         env = environment_for(plan.actuator, u)
         driver, _readiness = launch_driver(
             u, plan.eff, plan.actuator, Preconditions(erase=plan.erase), environment=env

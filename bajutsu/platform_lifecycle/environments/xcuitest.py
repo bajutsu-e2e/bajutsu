@@ -61,7 +61,7 @@ _RUNNER_LOG_TAIL_LINES = 20
 # (`_spawn_cold_with_retry`) — a slow "health never ready" attempt has spent it, and a second full
 # wait against an unchanged device would double the worst case for no new information — but a retry
 # that follows a device repair restarts the ceiling, since the device it spawns onto has demonstrably
-# come back up (BE-XXXX).
+# come back up.
 _COLD_SPAWN_ATTEMPTS = 2
 
 # Between health probes during the cold-spawn wait, re-check the `xcodebuild` handle this often — a
@@ -80,8 +80,8 @@ _COLD_POLL_SECONDS = 0.1
 _RUN_ENDED_MARKERS = (b"Test Suite 'All tests' failed", b"Test Suite 'All tests' passed")
 
 # `XCUIApplication.launch()` giving up on the app under test — the dominant CI signature, and the one
-# that says the *device* is degraded rather than the build broken (BE-XXXX device recovery). Read for
-# the diagnostic only: it precedes a `_RUN_ENDED_MARKERS` line, which is what ends the wait.
+# that says the *device* is degraded rather than the build broken, which is what picks the recovery
+# rung between attempts. Read for the diagnostic only: it precedes a `_RUN_ENDED_MARKERS` line, which is what ends the wait.
 _LAUNCH_TIMEOUT_MARKER = b"Timed out attempting to launch"
 
 # Carried between probes so a marker split across two reads is still matched; one byte short of the
@@ -408,8 +408,8 @@ def _spawn_cold_with_retry(
     subprocess) and its captured tail folded into the final loud `XcuitestChannelError` (unit 2), so
     the run-failing error shows *why* the runner never answered, not merely that it did not.
 
-    Between attempts `recover` gets the classified failure and may repair the device it spawns onto
-    (BE-XXXX): the retry BE-0319 added isolated every host-side resource per attempt — port,
+    Between attempts `recover` gets the classified failure and may repair the device it spawns onto:
+    the retry BE-0319 added isolated every host-side resource per attempt — port,
     `.xctestrun`, capture — but never the device, so a Simulator whose app launch had just timed out
     was handed to the retry in exactly the state that had defeated the first attempt. What `recover`
     returns decides both the retry's budget and what the failing error says:
@@ -1081,7 +1081,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
         no longer exists.
 
         Teardown reaches the whole process group and then the app under test, because what this
-        discards is handed straight to another spawn on the same device (BE-XXXX): a runner whose
+        discards is handed straight to another spawn on the same device: a runner whose
         children survived, or an app left mid-launch, is state the next attempt inherits.
         """
         crashed = False

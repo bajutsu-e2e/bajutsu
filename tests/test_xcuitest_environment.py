@@ -1168,7 +1168,7 @@ def test_spawn_cold_fails_loudly_after_exactly_two_attempts_with_both_tails() ->
     assert "exited (code 65)" in message  # the dead-process reason (unit 3) reaches the error
 
 
-# --- device recovery between cold-spawn attempts (BE-XXXX) --- #
+# --- device recovery between cold-spawn attempts --- #
 #
 # BE-0319's retry isolates every *host*-side resource per attempt (port, .xctestrun, capture) but
 # hands the retry the same device the first attempt failed on. These cover the seam that repairs the

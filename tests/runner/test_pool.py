@@ -442,7 +442,7 @@ class _RecordingEnv:
         self.provision = provision  # the ProvisionProfile device_pool threaded through (BE-0236)
         self.started = False
         self.torn = False
-        # BE-XXXX: a device this env replaced during `start` (None: the leased device is the one that
+        # A device this env replaced during `start` (None: the leased device is the one that
         # ran, which is every platform but the XCUITest Simulator's vanished-device path).
         self.replacement = replacement
         self.fail_start = fail_start
@@ -502,7 +502,7 @@ class _RecordingEnv:
         return self.reusable
 
     def replaced_device(self) -> str | None:
-        # BE-XXXX: the udid this env moved to when `start` had to replace a vanished device. Settable
+        # The udid this env moved to when `start` had to replace a vanished device. Settable
         # per instance so a test can drive the pool's re-keying without a Simulator.
         return self.replacement
 
@@ -1254,7 +1254,7 @@ def test_device_pool_network_lease_defaults_to_collector_provenance(
         shutdown()
 
 
-# --- following a lease onto a replaced device (BE-XXXX) --- #
+# --- following a lease onto a replaced device --- #
 #
 # The XCUITest Simulator lifecycle creates a replacement when CoreSimulator stops listing the leased
 # device. The pool keys leases, collectors, evidence capture and its warm cache by udid, so it has to
