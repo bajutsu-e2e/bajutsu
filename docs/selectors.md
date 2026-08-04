@@ -97,16 +97,19 @@ determinism.
 | 1 | resolved |
 | 2+ | raises `AmbiguousSelector` — **structurally rules out** "tap whatever matched first" |
 
-As an exception, only when `index` is given does it pick the nth of multiple candidates
-(out-of-range = `ElementNotFound`). `index` breaks on order changes, so it is a last resort. For
-sets, use `idMatches` + `count` ([scenarios](scenarios.md#assertion-dsl)).
-
 Before judging a 2+ match ambiguous, resolution drops candidates carrying the `other` trait. A
 generic wrapper commonly repeats a real element's label. iOS's catch-all `XCUIElementTypeOther`
 is one example. A scenario shouldn't need `within` or `index` to route around that duplicate. Two
 cases keep the tie as-is. One: every candidate is `other`, so there's nothing to fall back to. Two:
 the selector explicitly requests `other` via `traits: ["other"]`. The filtering stays local to
 `resolve_unique`. `find_all` (and so `count` / `exists`) still sees every match, `other` included.
+
+As an exception, only when `index` is given does it pick the nth of multiple candidates
+(out-of-range = `ElementNotFound`). This filtering runs before the `index` branch. `index`
+counts the same filtered set, not the raw `find_all` result. That keeps it aligned with the
+ambiguity count above. Otherwise, a dropped `other` would shift every later position by one.
+`index` breaks on order changes regardless, so it stays a last resort. For sets, use `idMatches` +
+`count` ([scenarios](scenarios.md#assertion-dsl)).
 
 > **Trade-off.** On iOS, `other` also covers a real control whose `XCUIElementType` this driver has
 > not named (`checkBox` / `radioButton` / `popUpButton` / `stepper` / `datePicker` and more). Those
@@ -120,14 +123,14 @@ the selector explicitly requests `other` via `traits: ["other"]`. The filtering 
 # drivers/base.py (excerpt)
 def resolve_unique(elements, sel):
     candidates = find_all(elements, sel)
-    if "index" in sel:
-        ...                          # nth (out-of-range raises ElementNotFound)
-    if not candidates:
-        raise ElementNotFound(...)
     if len(candidates) > 1 and "other" not in sel.get("traits", []):
         without_other = [c for c in candidates if "other" not in c["traits"]]
         if without_other:
             candidates = without_other  # drop `other` ties unless they're all there is
+    if "index" in sel:
+        ...                          # nth of the filtered set (out-of-range raises ElementNotFound)
+    if not candidates:
+        raise ElementNotFound(...)
     if len(candidates) > 1:
         raise AmbiguousSelector(...)  # needs within or index to disambiguate
     return candidates[0]

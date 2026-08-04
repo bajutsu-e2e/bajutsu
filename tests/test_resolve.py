@@ -323,6 +323,37 @@ def test_explicit_other_trait_selector_is_not_filtered() -> None:
     raise AssertionError("traits で other を明示指定した場合も曖昧は曖昧のまま")
 
 
+def test_index_counts_over_the_other_filtered_candidates() -> None:
+    # index must count the same, already `other`-filtered set the ambiguity message reports —
+    # not the raw find_all result, where a dropped `other` would shift later positions by one.
+    screen: list[Element] = [
+        el("a", "設定", ["button"]),
+        el("b", "設定", ["button"]),
+        el("wrapper", "設定", ["other"]),  # generic container repeating the buttons' label
+    ]
+    assert resolve_unique(screen, {"label": "設定", "index": 0})["identifier"] == "a"
+    assert resolve_unique(screen, {"label": "設定", "index": 1})["identifier"] == "b"
+    message = ""
+    try:
+        resolve_unique(screen, {"label": "設定", "index": 2})
+    except ElementNotFound as e:
+        message = str(e)
+    assert "範囲外" in message, "index 2 は other を除いた候補2件の範囲外であるべき"
+
+
+def test_explicit_other_trait_selector_disambiguates_by_index_too() -> None:
+    # traits: ["other"] opts the whole `other`-drop heuristic out (matching
+    # test_explicit_other_trait_selector_is_not_filtered above), so index here counts the two
+    # matched `other` elements themselves rather than a heuristic-reduced set.
+    screen: list[Element] = [
+        el("a", "重複", ["other"]),
+        el("b", "重複", ["other"]),
+    ]
+    sel = {"label": "重複", "traits": ["other"]}
+    assert resolve_unique(screen, {**sel, "index": 0})["identifier"] == "a"
+    assert resolve_unique(screen, {**sel, "index": 1})["identifier"] == "b"
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     for fn in fns:

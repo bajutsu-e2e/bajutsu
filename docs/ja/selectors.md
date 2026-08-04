@@ -83,9 +83,9 @@ class Element(TypedDict):
 | 1 件 | 解決成功 |
 | 2 件以上 | `AmbiguousSelector` を送出。「たまたま最初の一致を叩く」非決定性を**構造的に排除**する |
 
-例外として `index` が指定されたときだけ、複数候補から n 番目を選びます（範囲外は `ElementNotFound`）。`index` は順序変化で壊れるため最終手段です。集合を扱う場合は `idMatches` + `count` を使ってください（[scenarios](scenarios.md#アサーション-dsl)）。
-
 2 件以上の一致を曖昧と判定する前に、`other` トレイトを持つ候補を除外します。汎用のラッパー要素（iOS の catch-all `XCUIElementTypeOther` など）は、実体のある要素の label をそのまま繰り返すことが多いからです。そうした重複のためだけに、シナリオへ `within` や `index` を足させたくありません。一致した候補がすべて `other` なら、それ以上除外する先がないため、そのまま曖昧判定にかけます。セレクタが `traits: ["other"]` で `other` を明示的に要求している場合も同様です。この除外は `resolve_unique` に閉じています。`find_all`（したがって `count` / `exists`）は、`other` を含めすべての一致をそのまま返します。
+
+例外として `index` が指定されたときだけ、複数候補から n 番目を選びます（範囲外は `ElementNotFound`）。この除外は `index` の分岐より前に走ります。そのため `index` は、上記の曖昧件数と同じ、除外後の候補集合を数えます。除外前の `find_all` の結果を数えてしまうと、取り除かれた `other` の分だけ後続の位置がずれます。`index` は順序変化でも壊れるため、いずれにせよ最終手段です。集合を扱う場合は `idMatches` + `count` を使ってください（[scenarios](scenarios.md#アサーション-dsl)）。
 
 > **トレードオフ**：iOS では `other` が、このドライバが名前を付けていない実在のコントロールも含みます。`checkBox`、`radioButton`、`popUpButton`、`stepper`、`datePicker` などは、汎用ラッパーと同じく `typeName` の `default:` 節に落ちます（`BajutsuKit/Runner/Sources/XcuitestElementProvider.swift`）。そうしたコントロールが、同じ label を持つ分類済みの兄弟要素と衝突すると、`AmbiguousSelector` を送出せず分類済みの側を黙って残します。影響するのは同一セレクタでの衝突だけであり、分類済みの兄弟要素がなく単独で解決される未分類コントロールには影響しません。
 
@@ -93,14 +93,14 @@ class Element(TypedDict):
 # drivers/base.py（抜粋）
 def resolve_unique(elements, sel):
     candidates = find_all(elements, sel)
-    if "index" in sel:
-        ...                         # n 番目（範囲外は ElementNotFound）
-    if not candidates:
-        raise ElementNotFound(...)
     if len(candidates) > 1 and "other" not in sel.get("traits", []):
         without_other = [c for c in candidates if "other" not in c["traits"]]
         if without_other:
             candidates = without_other  # other 同士の重複は除外（全滅時は残す）
+    if "index" in sel:
+        ...                         # 除外後の集合で n 番目（範囲外は ElementNotFound）
+    if not candidates:
+        raise ElementNotFound(...)
     if len(candidates) > 1:
         raise AmbiguousSelector(...)  # within か index で一意化が必要
     return candidates[0]
