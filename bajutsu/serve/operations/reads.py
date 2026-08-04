@@ -438,7 +438,11 @@ def _step_artifacts(
     # so `scenario.get(...)` never runs when `scenario` is `None` regardless of how this expression
     # is later refactored or read.
     sid = (scenario.get("sid") or None) if scenario is not None else None
-    if sid is None:
+    # Not just `str`-narrowed: `_valid_step_id` (already the gate `resolve_scenario_pick` applies to
+    # a `stepId` coming *back* from the client) also rejects `..`/absolute segments here, at the
+    # point every `stepId` this function returns is built from `sid` — so a malformed manifest can't
+    # produce a traversal-shaped id in the first place, not just have one rejected on its way back.
+    if not isinstance(sid, str) or not _valid_step_id(sid):
         return []
     # step id (parsed from each outcome's own recorded artifact paths) -> that step's artifacts, so
     # the loop below resolves the real names the run recorded (BE-XXXX) instead of assuming the

@@ -348,12 +348,16 @@ def test_last_step_gets_a_final_capture_earlier_steps_do_not(tmp_path: Path) -> 
     assert not any(name.endswith("after.png") for name in step0_names)
 
 
-def test_final_capture_still_lands_on_a_step_that_fails_before_it_acts(tmp_path: Path) -> None:
+def test_a_step_that_fails_before_it_acts_still_gets_its_full_evidence_pair(
+    tmp_path: Path,
+) -> None:
     """A step that fails resolving `handleSystemAlert`'s label against an uncovered locale returns
-    early, before the pre-step capture and before the `last_leaf` assignment at the end of
-    `_handle_action` — both skipped by the early `return` (review follow-up). Without setting
-    `last_leaf` in that except block too, the scenario's final capture would either land on a
-    stale, earlier step or (for a single-step scenario, as here) never fire at all."""
+    early, before the `last_leaf` assignment at the end of `_handle_action` — but the pre-step
+    baseline itself runs *before* locale resolution, so this failure still gets the same complete
+    `before.png`/`elements.json`/`after.png` evidence set every other leaf step does (review
+    follow-up). Without also setting `last_leaf` in that except block, the final capture would
+    either land on a stale, earlier step or (for a single-step scenario, as here) never fire at
+    all."""
     driver = FakeDriver([el("a", "A", ["button"])])
     run_dir = tmp_path / "run1"
     result = run_scenario(
@@ -379,6 +383,8 @@ def test_final_capture_still_lands_on_a_step_that_fails_before_it_acts(tmp_path:
     assert not result.ok
     assert result.failure is not None and "language 'de'" in result.failure
     step0_names = {a.name for a in result.steps[0].artifacts}
+    assert any(name.endswith("before.png") for name in step0_names)
+    assert any(name.endswith("elements.json") for name in step0_names)
     assert any(name.endswith("after.png") for name in step0_names)
 
 

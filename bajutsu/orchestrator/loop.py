@@ -887,26 +887,6 @@ class _StepRunner:
         start: float,
     ) -> str | None:
         step_id = f"{self.cfg.sid}/{step.name or f'step{idx}'}"
-        # Interpolate ${...} tokens, then turn a `handleSystemAlert` naming a prompt and a
-        # choice into the concrete button label this run's locale renders (BE-0320). Resolving
-        # here rather than per action kind means nested steps — `if` / `forEach` branches and an
-        # interrupt's recovery — all arrive already resolved, since they come back through here.
-        # A locale the lookup does not cover fails this step loudly, like the blocks above; it
-        # never falls back to a guessed label.
-        try:
-            interp_step = _resolve_system_alert(
-                _interp_step(step, self.state.bindings), self.cfg.locale
-            )
-        except UncoveredSystemAlertLocale as exc:
-            outcome.ok, outcome.reason = False, str(exc)
-            outcome.duration_s = self.cfg.clock.now() - start
-            self.state.outcomes.append(outcome)
-            # This early return skips the rest of the function, including the `last_leaf`
-            # assignment at its end — set it here too, so a scenario that ends on this failure
-            # still gets a final capture attributed to the step that actually ran last, rather than
-            # a stale one left over from an earlier step (or none at all, for a single-step run).
-            self.state.last_leaf = LastLeafStep(outcome, step_id)
-            return f"step {idx} ({kind}): {exc}"
         # The report's baseline: the screen this step is about to act on, captured before it acts
         # (BE-XXXX). Reuses `prev_after` — already maintained unconditionally (BE-0234 Unit 2) —
         # rather than a fresh query, so a sink that reads nothing pays nothing here either. The sink
@@ -917,6 +897,10 @@ class _StepRunner:
         # `active_driver.query()` here, and every later nested step reuses `prev_after` for free, same
         # as a native step. `NullSink` ignores `elements` outright, so skip the query entirely under
         # it too — a sink that reads nothing must pay nothing even for a `web` block's first step.
+        # Deliberately ahead of locale resolution below: this baseline depends only on the screen,
+        # never on the step's own resolved fields, so a step that fails resolving them still gets it
+        # — the run loop's report contract guarantees a pre-step baseline for every leaf step, a
+        # failure at this point notwithstanding.
         pre_elements = self.state.prev_after
         pre_kinds = ["screenshot.before", "elements"]
         pre_query_was_fresh = False
@@ -951,6 +935,29 @@ class _StepRunner:
         outcome.artifacts.extend(
             self.cfg.sink.capture(self.cfg.driver, step_id, pre_kinds, elements=pre_elements)
         )
+        # Interpolate ${...} tokens, then turn a `handleSystemAlert` naming a prompt and a
+        # choice into the concrete button label this run's locale renders (BE-0320). Resolving
+        # here rather than per action kind means nested steps — `if` / `forEach` branches and an
+        # interrupt's recovery — all arrive already resolved, since they come back through here.
+        # A locale the lookup does not cover fails this step loudly, like the blocks above; it
+        # never falls back to a guessed label.
+        try:
+            interp_step = _resolve_system_alert(
+                _interp_step(step, self.state.bindings), self.cfg.locale
+            )
+        except UncoveredSystemAlertLocale as exc:
+            outcome.ok, outcome.reason = False, str(exc)
+            outcome.duration_s = self.cfg.clock.now() - start
+            self.state.outcomes.append(outcome)
+            # This early return skips the rest of the function, including the `last_leaf`
+            # assignment at its end — set it here too, so a scenario that ends on this failure
+            # still gets a final capture attributed to the step that actually ran last, rather than
+            # a stale one left over from an earlier step (or none at all, for a single-step run).
+            # The pre-step baseline above already ran, so this step's `before.png`/`elements.json`
+            # are in place too — this failure gets the same complete evidence pair every other leaf
+            # step does, not just the final capture.
+            self.state.last_leaf = LastLeafStep(outcome, step_id)
+            return f"step {idx} ({kind}): {exc}"
         # `before` is needed only for a `screenChanged` policy. Reuse the previous step's
         # post-step tree when we have one (same device state — nothing actuated in between), so
         # the read drops to (near) zero across the scenario; only the first step, or a step after

@@ -142,7 +142,11 @@ otherwise — and never call `query()` itself to fill that gap.
    (`UncoveredSystemAlertLocale`) fails and returns immediately, before ever reaching it — so that
    path sets `last_leaf` itself, right where it appends its own outcome, rather than leaving a
    scenario that ends on this failure with a stale `last_leaf` from an earlier step (or none at all,
-   for a single-step scenario). After the top-level `exec_steps` call returns in `_run_steps`,
+   for a single-step scenario). Unit 1's pre-step baseline capture runs ahead of this locale
+   resolution too — moved there deliberately, since it depends only on the screen the step is about
+   to act on, never on the step's own resolved fields — so this failure gets the full
+   `before.png`/`elements.json`/`after.png` evidence set every other leaf step does, not just the
+   final capture. After the top-level `exec_steps` call returns in `_run_steps`,
    regardless of its outcome, extend `leaf.outcome.artifacts` with one more call:
    `self.cfg.sink.capture(driver, leaf.step_id, ["screenshot.after"])`. This adds only a screenshot,
    deliberately never `elements`: `elements.json` has one fixed filename, so re-capturing it here
@@ -201,10 +205,13 @@ otherwise — and never call `query()` itself to fill that gap.
    `_artifact_names` narrows each `kind`/`name` to `str` (not merely non-`None`) before indexing
    `by_kind`, so a malformed or partially written manifest entry degrades to "no link" rather than
    flowing a non-string value into the URL built from it. `_step_artifacts` restores the `or None`
-   coercion the removed `_find_sid` deliberately applied to `sid`: an empty-string `sid` on a
-   scenario record now bails to `[]` the same way a missing one already does, instead of building a
-   malformed step id like `/step0`. The per-step lookup keys on the runtime step id parsed from each
-   outcome's own recorded artifact path (`name.rsplit("/", 1)[0]`), not the outcome's `index`:
+   coercion the removed `_find_sid` deliberately applied to `sid`, and validates it with the file's
+   own `_valid_step_id` (already the gate `resolve_scenario_pick` applies to a `stepId` coming back
+   *from* the client) — so a non-`str` or `..`/absolute-shaped `sid` bails to `[]` the same way a
+   missing one already does, instead of building a malformed or traversal-shaped step id every
+   `stepId` this function returns is derived from. The per-step lookup keys on the runtime step id
+   parsed from each outcome's own recorded artifact path (`name.rsplit("/", 1)[0]`), not the
+   outcome's `index`:
    `index` counts every executed step, including nested `if`/`forEach`/`web` steps, while the loop
    over `matched.steps` counts only top-level YAML steps, so the two diverge as soon as the scenario
    has any nesting before a given step — a named step's runtime id doesn't depend on either counter,

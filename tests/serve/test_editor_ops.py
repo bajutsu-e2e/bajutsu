@@ -639,6 +639,60 @@ def test_read_scenario_with_run_empty_sid_yields_no_steps(tmp_path: Path) -> Non
     assert payload["steps"] == []
 
 
+def test_read_scenario_with_run_rejects_a_non_string_sid(tmp_path: Path) -> None:
+    """A scenario record whose `sid` is not a `str` (e.g. an int, from a malformed manifest)
+    bails to no steps rather than flowing into an f-string-built `stepId` (review follow-up)."""
+    state, runs = _state(tmp_path)
+    scn_dir = tmp_path / "scenarios"
+    (scn_dir / "login.yaml").write_text(SCENARIO_YAML, encoding="utf-8")
+    run_dir = runs / "run1"
+    run_dir.mkdir(parents=True)
+    manifest = {
+        "runId": "run1",
+        "ok": True,
+        "scenarios": [{"scenario": "login", "ok": True, "sid": 123, "steps": []}],
+    }
+    (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    payload, status = ops.read_scenario(
+        state,
+        "demo",
+        str(scn_dir / "login.yaml"),
+        run_id="run1",
+        scenario_name="login",
+    )
+    assert status == 200
+    assert payload["steps"] == []
+
+
+def test_read_scenario_with_run_rejects_a_path_traversal_sid(tmp_path: Path) -> None:
+    """A scenario record whose `sid` is a `..`-shaped traversal attempt (a malformed manifest, or
+    one from an untrusted source) bails to no steps rather than building a `stepId` that would
+    later be rejected by `resolve_scenario_pick`'s own `_valid_step_id` check anyway — better to
+    never produce one in the first place (review follow-up)."""
+    state, runs = _state(tmp_path)
+    scn_dir = tmp_path / "scenarios"
+    (scn_dir / "login.yaml").write_text(SCENARIO_YAML, encoding="utf-8")
+    run_dir = runs / "run1"
+    run_dir.mkdir(parents=True)
+    manifest = {
+        "runId": "run1",
+        "ok": True,
+        "scenarios": [{"scenario": "login", "ok": True, "sid": "..", "steps": []}],
+    }
+    (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    payload, status = ops.read_scenario(
+        state,
+        "demo",
+        str(scn_dir / "login.yaml"),
+        run_id="run1",
+        scenario_name="login",
+    )
+    assert status == 200
+    assert payload["steps"] == []
+
+
 def test_read_scenario_with_run_ignores_non_string_artifact_fields(tmp_path: Path) -> None:
     """A malformed manifest entry whose `kind`/`name` are not strings degrades to "no link" rather
     than flowing a non-string value into the URL built from it (BE-XXXX)."""
