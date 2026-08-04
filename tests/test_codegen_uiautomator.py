@@ -106,6 +106,51 @@ def test_a_slow_cold_start_is_waited_out_rather_than_restarted() -> None:
     )
 
 
+def test_launch_confirms_window_tracking_before_it_waits_on_the_tree() -> None:
+    # The launch wait can only see the app through the accessibility window list, so a list that is
+    # never reported reads exactly like an app that never started. CI run 30899952762 failed all
+    # three attempts that way: ~180 polls over 20s with the activity RESUMED and Displayed, and no
+    # window enumerated once. Check the channel first, so the failure names the channel.
+    code = _gen("- name: x\n  steps:\n    - tap: { id: a }\n")
+    assert "private fun ensureWindowTracking() {" in code
+    assert "if (automation.windows.isNotEmpty()) return" in code
+    launch = code[code.index("private fun launch") :]
+    body = launch[: launch.index("private fun act")]
+    # Inside the attempt loop and before the intent: a check that ran after startActivity would
+    # kick the app it just launched back to the launcher.
+    assert (
+        body.index("for (attempt in 1..LAUNCH_ATTEMPTS)")
+        < body.index("ensureWindowTracking()")
+        < body.index("context.startActivity(intent)")
+    )
+
+
+def test_a_wedged_window_list_is_kicked_rather_than_waited_out() -> None:
+    # The list is delivered by event, so no timeout can recover one that is never sent — only a
+    # window change can, and HOME produces one whatever is on screen. Raising the timeout was
+    # measured not to help (5s -> 15s -> 20s across several runs).
+    code = _gen("- name: x\n  steps:\n    - tap: { id: a }\n")
+    assert "private const val TRACKING_KICK_ATTEMPTS" in code
+    assert "runCatching { device.pressHome() }" in code
+    # pressHome waits through UiAutomation.executeAndWaitForEvent itself; wrapping it in another
+    # would clear the queue the outer wait watches, leaving that wait able only to time out.
+    assert "executeAndWaitForEvent(" not in code
+    # A kick that never lands must fail here, naming the channel — not 15s later at a selector.
+    assert "accessibility window tracking reported no windows after" in code
+
+
+def test_a_timed_out_launch_attempt_kicks_before_re_issuing_the_intent() -> None:
+    # A stale-but-non-empty list satisfies ensureWindowTracking() while still being one the app's
+    # window never joined, and no is-it-empty check tells those apart. The attempt has already
+    # failed by this point, so the kick costs nothing and covers the case the check cannot.
+    code = _gen("- name: x\n  steps:\n    - tap: { id: a }\n")
+    launch = code[code.index("private fun launch") :]
+    body = launch[: launch.index("private fun act")]
+    assert body.index('Log.w(LOG_TAG, "launch attempt $attempt saw no') < body.index(
+        'kickWindowTracking("launch attempt $attempt timed out")'
+    )
+
+
 def test_failure_messages_name_the_windows_that_were_searched() -> None:
     # "no element matched <selector>" cannot distinguish an id that has not rendered from an app
     # whose window is absent from the accessibility tree altogether — the two need opposite fixes.

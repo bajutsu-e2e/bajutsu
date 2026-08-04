@@ -30,6 +30,7 @@ private const val PACKAGE = "com.bajutsu.showcase.android.compose"
 private const val LAUNCH_TIMEOUT_MS = 20000L
 private const val LAUNCH_ATTEMPTS = 2
 private const val ACT_TIMEOUT_MS = 15000L
+private const val TRACKING_KICK_ATTEMPTS = 3
 private const val DIAGNOSTICS_DIR = "codegen-diagnostics"
 private const val ADDITIONAL_OUTPUT_ARG = "additionalTestOutputDir"
 private const val LOG_TAG = "BajutsuCodegen"
@@ -137,6 +138,40 @@ class CodegenandroiduitestUITest {
   private fun byAnyId(vararg ids: String) =
     By.res(Pattern.compile("(.*:id/)?(" + ids.joinToString("|") { Pattern.quote(it) } + ")"))
 
+  // Provoke a window change so the accessibility framework has to re-report the window list,
+  // and let the key press's own wait for the events it produces pace the recovery — never a
+  // sleep. HOME is the one key that changes windows whatever is on screen.
+  //
+  // Deliberately not wrapped in UiAutomation.executeAndWaitForEvent: pressHome already waits
+  // through that same call, and the nested one would clear the event queue the outer wait is
+  // watching, so the outer wait could only ever time out. The caller re-reads the window list
+  // instead, which is the fact in question anyway.
+  private fun kickWindowTracking(reason: String) {
+    Log.w(LOG_TAG, "kicking accessibility window tracking with pressHome(): $reason")
+    runCatching { device.pressHome() }.onFailure { Log.w(LOG_TAG, "pressHome failed", it) }
+  }
+
+  // Confirm the accessibility read channel is reporting windows at all before anything waits
+  // on what it says. The window list is delivered by event: a connection that misses the
+  // change it was opened across can report an empty list indefinitely on an otherwise idle
+  // emulator, and then every selector wait below searches nothing and times out against a
+  // screen that is in fact fully drawn (CI run 30899952762 polled ~180 times over 20s with
+  // the activity RESUMED and Displayed). Waiting longer cannot fix that — only a window
+  // change can — so provoke one rather than raise a timeout.
+  private fun ensureWindowTracking() {
+    val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+    for (attempt in 1..TRACKING_KICK_ATTEMPTS) {
+      if (automation.windows.isNotEmpty()) return
+      kickWindowTracking("no accessibility windows reported (attempt $attempt)")
+    }
+    if (automation.windows.isEmpty()) {
+      throw AssertionError(
+        "accessibility window tracking reported no windows after $TRACKING_KICK_ATTEMPTS kick(s); " +
+          "every selector wait would search an empty tree"
+      )
+    }
+  }
+
   // Launch (or relaunch) the app, forwarding launchEnv as intent extras (the reverse of the
   // adb backend's `am start --es`), and wait for its window to reach the accessibility tree —
   // a condition wait, never a sleep.
@@ -152,6 +187,10 @@ class CodegenandroiduitestUITest {
   private fun launch(extras: Map<String, String>) {
     val context = ApplicationProvider.getApplicationContext<Context>()
     for (attempt in 1..LAUNCH_ATTEMPTS) {
+      // The window the wait below looks for can only be seen through the accessibility window
+      // list, so check that the list is live before launching into it rather than reading the
+      // silence as a slow app.
+      ensureWindowTracking()
       val intent = context.packageManager.getLaunchIntentForPackage(PACKAGE)!!
         .apply { addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK) }
       for ((k, v) in extras) intent.putExtra(k, v)
@@ -164,6 +203,10 @@ class CodegenandroiduitestUITest {
         return
       }
       Log.w(LOG_TAG, "launch attempt $attempt saw no $PACKAGE window in ${LAUNCH_TIMEOUT_MS}ms")
+      // A non-empty window list satisfies ensureWindowTracking() while still being a stale one
+      // that the app's window never joined, which no list-is-empty check can tell apart. The
+      // attempt has already failed, so kick unconditionally before re-issuing the intent.
+      kickWindowTracking("launch attempt $attempt timed out")
     }
     throw AssertionError(
       "launch: no $PACKAGE window in the accessibility tree after $LAUNCH_ATTEMPTS attempt(s) " +

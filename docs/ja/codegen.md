@@ -287,6 +287,7 @@ private const val PACKAGE = "com.example.app"
 private const val LAUNCH_TIMEOUT_MS = 20000L
 private const val LAUNCH_ATTEMPTS = 2
 private const val ACT_TIMEOUT_MS = 15000L
+private const val TRACKING_KICK_ATTEMPTS = 3
 private const val DIAGNOSTICS_DIR = "codegen-diagnostics"
 private const val ADDITIONAL_OUTPUT_ARG = "additionalTestOutputDir"
 private const val LOG_TAG = "BajutsuCodegen"
@@ -306,9 +307,29 @@ class ComponentsUITest {
   private fun byId(id: String) =
     By.res(Pattern.compile("(.*:id/)?" + Pattern.quote(id)))
 
+  private fun kickWindowTracking(reason: String) {
+    Log.w(LOG_TAG, "kicking accessibility window tracking with pressHome(): $reason")
+    runCatching { device.pressHome() }.onFailure { Log.w(LOG_TAG, "pressHome failed", it) }
+  }
+
+  private fun ensureWindowTracking() {
+    val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+    for (attempt in 1..TRACKING_KICK_ATTEMPTS) {
+      if (automation.windows.isNotEmpty()) return
+      kickWindowTracking("no accessibility windows reported (attempt $attempt)")
+    }
+    if (automation.windows.isEmpty()) {
+      throw AssertionError(
+        "accessibility window tracking reported no windows after $TRACKING_KICK_ATTEMPTS kick(s); " +
+          "every selector wait would search an empty tree"
+      )
+    }
+  }
+
   private fun launch(extras: Map<String, String>) {
     val context = ApplicationProvider.getApplicationContext<Context>()
     for (attempt in 1..LAUNCH_ATTEMPTS) {
+      ensureWindowTracking()
       val intent = context.packageManager.getLaunchIntentForPackage(PACKAGE)!!
         .apply { addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK) }
       for ((k, v) in extras) intent.putExtra(k, v)
@@ -319,6 +340,7 @@ class ComponentsUITest {
         return
       }
       Log.w(LOG_TAG, "launch attempt $attempt saw no $PACKAGE window in ${LAUNCH_TIMEOUT_MS}ms")
+      kickWindowTracking("launch attempt $attempt timed out")
     }
     throw AssertionError(
       "launch: no $PACKAGE window in the accessibility tree after $LAUNCH_ATTEMPTS attempt(s) " +
@@ -382,6 +404,28 @@ class ComponentsUITest {
   再開する形にすると、extra は `onNewIntent` に回ってしまいます。
 - **どちらの失敗も、照合先のウィンドウを名指しします。** 原因は2通りあります。id がまだ描画されていないか、
   アプリのウィンドウがツリーに存在しないかです。「no element matched」だけでは区別できず、対処は正反対です。
+- **`launch` は、ウィンドウ一覧の内容を待つ前に、その一覧が生きていることを確かめます。** UI Automator が
+  セレクタを照合する先は、アクセシビリティ機構が報告するウィンドウの一覧です。そして機構がこの一覧を配信する
+  のはイベントによってなので、接続の確立とウィンドウ変更が交錯して変更を取りこぼした接続は、端末側で次の
+  ウィンドウ変更が起こるまで空の一覧を報告し続けます。待機中に何も起こらない継続的インテグレーションの
+  エミュレータは、まさにそういう環境です。そこで生成テストは、一覧の内容を待ち始める前に
+  `uiAutomation.windows` を読み、待つ相手の一覧が生きていなければ一覧そのものを名指しして失敗します。
+- **一覧が空のときは、上限を延ばすのではなくウィンドウ変更を起こします。** 配信されないイベントは、どんな
+  上限を設けても回復しません。そこで `kickWindowTracking` は HOME キーを押します。画面に何が出ていようと
+  ウィンドウが変わる唯一のキーであり、機構は一覧を報告し直さざるをえません。キー入力自体が、それによって
+  発生するイベントを待つので、この回復に独自の sleep は不要です。回数の上限は
+  `TRACKING_KICK_ATTEMPTS` が与えます。起動の試行がタイムアウトした後は、intent を再送する前に無条件で
+  ウィンドウ変更を起こします。アプリのウィンドウが加わらなかった古い一覧は空ではないため、一覧を読むだけでは
+  正常な場合と区別できず、しかもこの時点で試行はすでに失敗しているからです。この処理は
+  `UiAutomation.executeAndWaitForEvent` の外に置きます。`pressHome` がすでに同じ呼び出しで待機しており、
+  入れ子にすると外側の待機が見ているイベントキューを内側が空にしてしまうためです。
+
+  下の証跡は、この失敗を診断するために加えたものです。実行 30899952762 は、いずれも新しいエミュレータの
+  起動から始まった3回の試行すべてが最初のアクションで失敗しました。20秒ほどのあいだに照合を試みた回数は
+  153回、168回、171回です。その間、logcat には Activity の `RESUMED` と `Displayed` の両方が
+  記録されていました。画面は描画されており、
+  ウィンドウの一覧はそれに一度も言及しなかったのです。待機の上限を5秒から15秒、さらに20秒へ引き上げても
+  何も変わらず、アプリが遅いのではなく報告していない経路があると最初に示したのは、この事実でした。
 
 #### 失敗時の証跡
 

@@ -293,6 +293,7 @@ private const val PACKAGE = "com.example.app"
 private const val LAUNCH_TIMEOUT_MS = 20000L
 private const val LAUNCH_ATTEMPTS = 2
 private const val ACT_TIMEOUT_MS = 15000L
+private const val TRACKING_KICK_ATTEMPTS = 3
 private const val DIAGNOSTICS_DIR = "codegen-diagnostics"
 private const val ADDITIONAL_OUTPUT_ARG = "additionalTestOutputDir"
 private const val LOG_TAG = "BajutsuCodegen"
@@ -312,9 +313,29 @@ class ComponentsUITest {
   private fun byId(id: String) =
     By.res(Pattern.compile("(.*:id/)?" + Pattern.quote(id)))
 
+  private fun kickWindowTracking(reason: String) {
+    Log.w(LOG_TAG, "kicking accessibility window tracking with pressHome(): $reason")
+    runCatching { device.pressHome() }.onFailure { Log.w(LOG_TAG, "pressHome failed", it) }
+  }
+
+  private fun ensureWindowTracking() {
+    val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+    for (attempt in 1..TRACKING_KICK_ATTEMPTS) {
+      if (automation.windows.isNotEmpty()) return
+      kickWindowTracking("no accessibility windows reported (attempt $attempt)")
+    }
+    if (automation.windows.isEmpty()) {
+      throw AssertionError(
+        "accessibility window tracking reported no windows after $TRACKING_KICK_ATTEMPTS kick(s); " +
+          "every selector wait would search an empty tree"
+      )
+    }
+  }
+
   private fun launch(extras: Map<String, String>) {
     val context = ApplicationProvider.getApplicationContext<Context>()
     for (attempt in 1..LAUNCH_ATTEMPTS) {
+      ensureWindowTracking()
       val intent = context.packageManager.getLaunchIntentForPackage(PACKAGE)!!
         .apply { addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK) }
       for ((k, v) in extras) intent.putExtra(k, v)
@@ -325,6 +346,7 @@ class ComponentsUITest {
         return
       }
       Log.w(LOG_TAG, "launch attempt $attempt saw no $PACKAGE window in ${LAUNCH_TIMEOUT_MS}ms")
+      kickWindowTracking("launch attempt $attempt timed out")
     }
     throw AssertionError(
       "launch: no $PACKAGE window in the accessibility tree after $LAUNCH_ATTEMPTS attempt(s) " +
@@ -393,6 +415,29 @@ class ComponentsUITest {
 - **Both failures name the windows they searched**, because "no element matched" cannot distinguish
   an id that has not rendered from an app whose window is absent from the tree altogether. The two
   need opposite fixes.
+- **`launch` confirms the accessibility window list is live before it waits on what the list says.**
+  UI Automator matches every selector against the windows the accessibility framework reports, and
+  the framework delivers that list by event. A connection that misses the window change it opened
+  across keeps reporting an empty list until something else on the device changes windows, and on an
+  idle continuous-integration emulator nothing else does. The generated test reads
+  `uiAutomation.windows` before launching into the list, so a wait with no live list to wait on
+  fails naming the list.
+- **An empty list is met with a window change, not a longer timeout.** No timeout recovers an event
+  that is never sent, so `kickWindowTracking` presses HOME — the one key that changes windows
+  whatever is on screen — and the framework has to re-report the list. The key press waits for the
+  events it produces, so the recovery needs no sleep of its own, and `TRACKING_KICK_ATTEMPTS`
+  bounds it. A timed-out launch attempt kicks unconditionally before re-issuing the intent: a stale
+  list the app's window never joined is not empty, so reading the list cannot tell that case from a
+  healthy one, and by then the attempt has failed anyway. The kick stays outside
+  `UiAutomation.executeAndWaitForEvent`, because `pressHome` already waits through that same call
+  and a nested one would clear the event queue the outer wait is watching.
+
+  The evidence below diagnosed this failure. Run 30899952762 failed all three of its attempts at the
+  first action, each on a fresh emulator boot. The three polled 153, 168, and 171 times across some
+  20 seconds. Throughout, logcat recorded the activity as both `RESUMED` and `Displayed` — the app
+  had drawn its screen, and the window list never mentioned it. Raising the wait from 5 to 15 and then to
+  20 seconds changed nothing, which is what first pointed at a channel that was not reporting rather
+  than an app that was slow.
 
 #### Failure evidence
 

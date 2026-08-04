@@ -433,6 +433,10 @@ class _UiAutomatorGen:
             # element appears, so a generous ceiling never slows a fast render — it only gives a slow
             # one room before the step is failed.
             "private const val ACT_TIMEOUT_MS = 15000L",
+            # How many window changes to provoke before giving up on the accessibility window list.
+            # Each kick is bounded by the key press's own wait for the events it produces, so the
+            # count is the whole budget — there is no interval to tune.
+            "private const val TRACKING_KICK_ATTEMPTS = 3",
             # Where the on-device failure evidence lands, inside the directory the Android Gradle
             # Plugin names with the `additionalTestOutputDir` instrumentation argument and copies off
             # the device after the run (build/outputs/connected_android_test_additional_output),
@@ -576,6 +580,53 @@ class _UiAutomatorGen:
             f'    By.res(Pattern.compile("{_ID_PREFIX}(" +'
             + ' ids.joinToString("|") { Pattern.quote(it) } + ")"))',
             "",
+            "  // Provoke a window change so the accessibility framework has to re-report the"
+            + " window list,",
+            "  // and let the key press's own wait for the events it produces pace the recovery —"
+            + " never a",
+            "  // sleep. HOME is the one key that changes windows whatever is on screen.",
+            "  //",
+            "  // Deliberately not wrapped in UiAutomation.executeAndWaitForEvent: pressHome already"
+            + " waits",
+            "  // through that same call, and the nested one would clear the event queue the outer"
+            + " wait is",
+            "  // watching, so the outer wait could only ever time out. The caller re-reads the"
+            + " window list",
+            "  // instead, which is the fact in question anyway.",
+            "  private fun kickWindowTracking(reason: String) {",
+            '    Log.w(LOG_TAG, "kicking accessibility window tracking with pressHome(): $reason")',
+            "    runCatching { device.pressHome() }"
+            + '.onFailure { Log.w(LOG_TAG, "pressHome failed", it) }',
+            "  }",
+            "",
+            "  // Confirm the accessibility read channel is reporting windows at all before anything"
+            + " waits",
+            "  // on what it says. The window list is delivered by event: a connection that misses"
+            + " the",
+            "  // change it was opened across can report an empty list indefinitely on an otherwise"
+            + " idle",
+            "  // emulator, and then every selector wait below searches nothing and times out"
+            + " against a",
+            "  // screen that is in fact fully drawn (CI run 30899952762 polled ~180 times over 20s"
+            + " with",
+            "  // the activity RESUMED and Displayed). Waiting longer cannot fix that — only a"
+            + " window",
+            "  // change can — so provoke one rather than raise a timeout.",
+            "  private fun ensureWindowTracking() {",
+            "    val automation = InstrumentationRegistry.getInstrumentation().uiAutomation",
+            "    for (attempt in 1..TRACKING_KICK_ATTEMPTS) {",
+            "      if (automation.windows.isNotEmpty()) return",
+            '      kickWindowTracking("no accessibility windows reported (attempt $attempt)")',
+            "    }",
+            "    if (automation.windows.isEmpty()) {",
+            "      throw AssertionError(",
+            '        "accessibility window tracking reported no windows after '
+            + '$TRACKING_KICK_ATTEMPTS kick(s); " +',
+            '          "every selector wait would search an empty tree"',
+            "      )",
+            "    }",
+            "  }",
+            "",
             "  // Launch (or relaunch) the app, forwarding launchEnv as intent extras (the reverse"
             + " of the",
             "  // adb backend's `am start --es`), and wait for its window to reach the accessibility"
@@ -599,6 +650,12 @@ class _UiAutomatorGen:
             "  private fun launch(extras: Map<String, String>) {",
             "    val context = ApplicationProvider.getApplicationContext<Context>()",
             "    for (attempt in 1..LAUNCH_ATTEMPTS) {",
+            "      // The window the wait below looks for can only be seen through the"
+            + " accessibility window",
+            "      // list, so check that the list is live before launching into it rather than"
+            + " reading the",
+            "      // silence as a slow app.",
+            "      ensureWindowTracking()",
             "      val intent = context.packageManager.getLaunchIntentForPackage(PACKAGE)!!",
             "        .apply { addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK) }",
             "      for ((k, v) in extras) intent.putExtra(k, v)",
@@ -614,6 +671,13 @@ class _UiAutomatorGen:
             "      }",
             '      Log.w(LOG_TAG, "launch attempt $attempt saw no $PACKAGE window in '
             + '${LAUNCH_TIMEOUT_MS}ms")',
+            "      // A non-empty window list satisfies ensureWindowTracking() while still being a"
+            + " stale one",
+            "      // that the app's window never joined, which no list-is-empty check can tell"
+            + " apart. The",
+            "      // attempt has already failed, so kick unconditionally before re-issuing the"
+            + " intent.",
+            '      kickWindowTracking("launch attempt $attempt timed out")',
             "    }",
             "    throw AssertionError(",
             '      "launch: no $PACKAGE window in the accessibility tree after $LAUNCH_ATTEMPTS '
