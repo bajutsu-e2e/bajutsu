@@ -266,6 +266,7 @@ class ComponentsUITest {
     for ((k, v) in extras) intent.putExtra(k, v)
     context.startActivity(intent)
     device.wait(Until.hasObject(By.pkg(PACKAGE).depth(0)), LAUNCH_TIMEOUT_MS)
+    device.waitForIdle(LAUNCH_TIMEOUT_MS)
   }
 
   private fun act(by: BySelector): UiObject2 {
@@ -302,6 +303,11 @@ class ComponentsUITest {
 - 各メソッドは `extras` マップ（config の `launchEnv` < シナリオの `preconditions.launchEnv`）を組み立て、
   `launch(extras)` を呼びます。この関数は env を intent extra として渡します。adb backend の `am start --es` の
   逆向きです。
+- `launch` はアプリの最初のウィンドウを待ってから、そのウィンドウの描画が落ち着くまで待ちます
+  （`device.waitForIdle`）。ウィンドウ待機だけでは「パッケージの何らかのウィンドウが存在する」ことしか
+  確認できません。最初のフレームが描画を終えたことまでは保証しません。CI ランナーが混雑していると、直後の
+  `act()` が描画の途中の画面と競合することがあります。`waitForIdle` はこの隙間を埋め、テスト自身の各アクション
+  の待機時間が始まる前に描画を落ち着かせます。
 
 ### セレクタのマッピング（UI Automator）
 
