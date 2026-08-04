@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import struct
+from pathlib import Path
 
 from conftest import FakeBackend, FakeBlock, ShotDriver
 
@@ -11,6 +13,7 @@ from bajutsu.agents.protocols import Proposal
 from bajutsu.ai.base import AnyTool, ImagePart, TextPart
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
+from bajutsu.evidence import FileSink
 from bajutsu.orchestrator import AlertEvent, AlertGuardConfig, run_scenario
 from bajutsu.record import record as record_loop
 from bajutsu.scenario import Step, load_scenarios
@@ -163,6 +166,97 @@ def test_on_blocked_retries_step_after_recovery() -> None:
     assert ("tap", {"id": "go"}) in driver.actions
     # The dismissal is recorded on the retried step's outcome (for the report).
     assert result.steps[0].alerts == [AlertEvent(label="Not Now")]
+
+
+def test_end_of_step_alert_guard_retry_preserves_correct_before_after_evidence(
+    tmp_path: Path,
+) -> None:
+    """The end-of-step alert-guard retry must not corrupt the report's evidence (BE-XXXX
+    non-regression): the retried step's pre-step baseline still shows the true pre-attempt
+    state, and the *next* step's own baseline reflects the post-retry, settled state — not
+    something stale from the failed first attempt."""
+    go = {
+        "identifier": "go",
+        "label": "Go",
+        "traits": ["button"],
+        "value": None,
+        "frame": (0.0, 0.0, 10.0, 10.0),
+    }
+    nxt = {
+        "identifier": "next",
+        "label": "Next",
+        "traits": ["button"],
+        "value": None,
+        "frame": (0.0, 0.0, 10.0, 10.0),
+    }
+    driver = FakeDriver([])  # empty screen -> the first tap fails to resolve
+
+    def on_blocked(d: base.Driver) -> AlertEvent | None:
+        assert isinstance(d, FakeDriver)
+        d.screen = [go, nxt]  # "dismiss the alert": the app reappears with both targets
+        return AlertEvent(label="Not Now")
+
+    yaml = "- name: t\n  steps:\n    - tap: { id: go }\n    - tap: { id: next }\n"
+    run_dir = tmp_path / "run1"
+    result = run_scenario(
+        driver,
+        load_scenarios(yaml)[0],
+        alert_guard=AlertGuardConfig(vision=on_blocked),
+        sink=FileSink(run_dir),
+    )
+    assert result.ok is True, result.failure
+
+    def _els(step_index: int) -> list[dict[str, object]]:
+        art = next(a for a in result.steps[step_index].artifacts if a.kind == "elements")
+        return json.loads((run_dir / art.name).read_text(encoding="utf-8"))
+
+    # step0's pre-step baseline is the *true* pre-attempt state — the empty screen the runner
+    # actually found when it started this step — not the post-dismissal state.
+    assert _els(0) == []
+    # step1's own pre-step baseline reflects the post-retry, settled state (both targets present).
+    assert {e["identifier"] for e in _els(1)} == {"go", "next"}
+
+
+def test_end_of_step_alert_guard_retry_on_the_last_step_still_gets_a_final_capture(
+    tmp_path: Path,
+) -> None:
+    """The scenario's last step still gets its final post-action capture after an end-of-step
+    alert-guard retry — reflecting the retried, successful attempt, not the failed first one."""
+    go = {
+        "identifier": "go",
+        "label": "Go",
+        "traits": ["button"],
+        "value": None,
+        "frame": (0.0, 0.0, 10.0, 10.0),
+    }
+    driver = FakeDriver([])  # empty screen -> the tap fails to resolve
+
+    def on_blocked(d: base.Driver) -> AlertEvent | None:
+        assert isinstance(d, FakeDriver)
+        d.screen = [go]
+        return AlertEvent(label="Not Now")
+
+    run_dir = tmp_path / "run1"
+    result = run_scenario(
+        driver,
+        load_scenarios(_TAP_GO)[0],
+        alert_guard=AlertGuardConfig(vision=on_blocked),
+        sink=FileSink(run_dir),
+    )
+    assert result.ok is True, result.failure
+    names = {a.name for a in result.steps[0].artifacts}
+    # The only (and therefore last) step gets both the pre-step baseline and the final capture,
+    # even though it took a retry to get there.
+    assert any(name.endswith("before.png") for name in names)
+    assert any(name.endswith("after.png") for name in names)
+    els = json.loads(
+        (
+            run_dir / next(a.name for a in result.steps[0].artifacts if a.kind == "elements")
+        ).read_text(encoding="utf-8")
+    )
+    # The final elements.json (written last) reflects the post-retry success, not the empty
+    # pre-attempt screen.
+    assert {e["identifier"] for e in els} == {"go"}
 
 
 def test_failure_stands_without_handler() -> None:

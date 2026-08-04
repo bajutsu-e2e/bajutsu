@@ -177,6 +177,12 @@ otherwise — and never call `query()` itself to fill that gap.
    both the pre-step (`before.png`) and the unit 2 final-step (`after.png`) entries, while an earlier
    step carries only the former — and a variant ending in an `if`/`forEach` proves the final capture
    still lands on the last *leaf* step, not the container's own outcome.
+   `tests/test_alerts.py` and `tests/orchestrator/test_waits.py` gain cases proving the
+   `alert_guard` reactive guard's two retry paths (the end-of-step one-shot retry in
+   `_handle_action`, and the mid-wait `_AlertGuardGate` in `waits.py`) don't corrupt this item's
+   evidence: the retried/dismissed step's pre-step baseline still shows the true pre-attempt state,
+   and the *following* step's own baseline reflects the post-recovery, settled state — never
+   something stale from before the alert cleared.
    `tests/orchestrator/test_read_count.py` gains a case proving the new pre-step call costs no
    additional loop-issued read when the sink does not consume `elements` — guarding the exact
    invariant `test_plain_tap_issues_no_runner_read` already pins, so this item cannot silently
