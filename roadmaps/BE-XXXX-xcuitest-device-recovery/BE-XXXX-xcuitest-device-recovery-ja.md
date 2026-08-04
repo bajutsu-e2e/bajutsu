@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
-| 実装 PR | （PR を開いたときに記入します） |
+| 実装 PR | [#1481](https://github.com/bajutsu-e2e/bajutsu/pull/1481) |
 | トピック | Platform support |
 | 関連 | [BE-0319](../BE-0319-xcuitest-cold-spawn-resilience/BE-0319-xcuitest-cold-spawn-resilience-ja.md), [BE-0218](../BE-0218-e2e-simulator-flaky-readiness-actuation/BE-0218-e2e-simulator-flaky-readiness-actuation-ja.md), [BE-0291](../BE-0291-xcuitest-runner-reuse-across-scenarios/BE-0291-xcuitest-runner-reuse-across-scenarios-ja.md) |
 <!-- /BE-METADATA -->
@@ -110,11 +110,13 @@ xcodebuild: error: Unable to find a device matching the provided destination spe
 
 2. **プロセスグループと対象アプリを終了させる。** `xcodebuild` プロセス 1 つではなく runner の
    プロセスグループ全体にシグナルを送り、XCTest ホストの子プロセスも一緒に終わらせます。そのシグナル
-   を届けるため、起動時に runner へ独自のグループを与えます。猶予のあとで `SIGTERM` から `SIGKILL`
-   に上げます。失敗した実行の後始末をしている `xcodebuild` は、最初のシグナルより長く生き延びること
-   があるからです。そのうえで `simctl` によって対象アプリを終了させます。これはベストエフォートで
-   行い、すべての段を例外の抑制で包みます。後片付けは失敗の経路で走るため、ここで例外を投げると
-   その原因となったエラーを隠してしまいます。
+   を届けるため、起動時に runner へ独自のグループを与えます。グループに `SIGTERM` を送り、グループの
+   リーダーについて猶予を待ち、そのあとグループへ `SIGKILL` を**無条件に**送ります。リーダーが猶予を
+   超えて生きていた場合だけに限らないのは、リーダーの終了が子プロセスについて何も語らないからです。
+   `xcodebuild` がすぐに巻き戻る一方で子プロセスが自動操作セッションを持ち続ける状態こそ、このユニット
+   が防ごうとしているものです。そのうえで `simctl` によって対象アプリを終了させます。これはベスト
+   エフォートで行い、すべての段を例外の抑制で包みます。後片付けは失敗の経路で走るため、ここで例外を
+   投げると、その原因となったエラーを隠してしまいます。
 
 3. **デバイスを調べて対処を選ぶ。** 試行のあいだに、貸し出されたデバイスを `simctl` がまだ一覧するか
    を尋ね、次のように選びます。

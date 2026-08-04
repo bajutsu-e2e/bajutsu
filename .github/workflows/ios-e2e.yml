@@ -131,13 +131,15 @@ env:
   # whole lane down: the device was degraded, not merely unlucky. The recovery reboots and re-prepares
   # it — or creates a replacement when CoreSimulator has stopped listing it at all — and only then is
   # the second attempt worth spawning, so it earns a fresh readiness ceiling rather than the remains of
-  # the first attempt's. 180s covers the slowest rung (creating a Simulator and waiting out its first
-  # boot) while keeping the worst case bounded: 300s + 180s + 300s = 13min for a failing *first*
-  # bring-up, and 90s + 180s + 300s ≈ 9.5min for a failing respawn — a repaired device earns the full
-  # cold ceiling (`_runner_startup_timeout`), not the 90s respawn one — and only a failing spawn pays
-  # recovery at all, so one such event fits inside both the
-  # 25- and 30-minute `timeout-minutes` below; a job that sees two is running on a sick host, which
-  # the "cannot be repaired" path fails loudly and fast on.
+  # the first attempt's. That fresh ceiling is always the *cold* one (`_runner_startup_timeout`), even
+  # when the failing spawn was a respawn: a rebooted or replaced device is a first bring-up again, so
+  # the premise the 90s respawn ceiling rests on (booted device, app installed) no longer holds. 180s
+  # covers the slowest rung (creating a Simulator and waiting out its first boot) while keeping the
+  # worst case bounded: 300s + 180s + 300s = 13min for a failing *first* bring-up, and
+  # 90s + 180s + 300s ≈ 9.5min for a failing respawn that had to repair its device. Only a *failing*
+  # spawn pays recovery at all, so one such event fits inside both the 25- and 30-minute
+  # `timeout-minutes` below; a job that sees two is running on a sick host, which the "cannot be
+  # repaired" path fails loudly and fast on.
   BAJUTSU_XCUITEST_RECOVERY_TIMEOUT: "180"
   # Respawn the resident runner cold after a single warm reuse rather than the default 3
   # (`_MAX_WARM_REUSES`). Folding many scenarios into one `bajutsu run` (the `run` / `actuation` jobs)

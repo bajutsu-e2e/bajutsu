@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
-| Implementing PR | (to be filled when the PR opens) |
+| Implementing PR | [#1481](https://github.com/bajutsu-e2e/bajutsu/pull/1481) |
 | Topic | Platform support |
 | Related | [BE-0319](../BE-0319-xcuitest-cold-spawn-resilience/BE-0319-xcuitest-cold-spawn-resilience.md), [BE-0218](../BE-0218-e2e-simulator-flaky-readiness-actuation/BE-0218-e2e-simulator-flaky-readiness-actuation.md), [BE-0291](../BE-0291-xcuitest-runner-reuse-across-scenarios/BE-0291-xcuitest-runner-reuse-across-scenarios.md) |
 <!-- /BE-METADATA -->
@@ -109,10 +109,12 @@ classification in unit 1, unit 4 on units 2 and 3, and unit 5 on unit 4.
 
 2. **Terminate the process group and the app under test.** Signal the runner's whole process group
    rather than the `xcodebuild` process alone, so the XCTest-host children go with it, and give the
-   runner its own group at spawn time for that signal to reach. Escalate from `SIGTERM` to `SIGKILL`
-   after a grace period, because an `xcodebuild` finalizing a failed run can outlive the first signal.
-   Then terminate the app under test through `simctl`, best-effort. Every step is suppressed: a
-   teardown runs on the failure path, where raising would mask the error that caused it.
+   runner its own group at spawn time for that signal to reach. `SIGTERM` the group, wait out a grace
+   period for the leader, then `SIGKILL` the group **unconditionally** rather than only when the leader
+   outlived the grace: the leader's exit says nothing about its children, and an `xcodebuild` that
+   unwinds within the grace while a child keeps the automation session is the state this unit exists
+   to prevent. Then terminate the app under test through `simctl`, best-effort. Every step is suppressed:
+   a teardown runs on the failure path, where raising would mask the error that caused it.
 
 3. **Probe the device and pick a remedy.** Between attempts, ask `simctl` whether it still lists the
    leased device, and choose:

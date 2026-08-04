@@ -90,30 +90,46 @@ _RUN_ENDED_OVERLAP = max(len(m) for m in (*_RUN_ENDED_MARKERS, _LAUNCH_TIMEOUT_M
 
 
 def _terminate_process_group(proc: subprocess.Popen[bytes]) -> None:
-    """SIGTERM the runner's process group, escalating to SIGKILL after a grace; never raises.
+    """SIGTERM the runner's process group, then SIGKILL whatever is left of it; never raises.
 
     `xcodebuild` spawns the XCTest-host plumbing that drives the device, so signalling only the
     parent leaves those children alive and holding the device's automation session — the state a
     following spawn attempt then has to spawn onto. The runner gets its own process group
     (`start_new_session` in `_spawn_runner`) precisely so this can reach all of it, and every step is
     suppressed: a discard runs on the failure path, where raising would mask the real error.
+
+    The closing SIGKILL is unconditional rather than an escalation the parent's exit can skip, because
+    the parent's exit says nothing about its children: `xcodebuild` can unwind promptly on the SIGTERM
+    while an XCTest-host child ignores it and keeps the automation session, which is exactly what this
+    exists to prevent. The group id is read once while the leader is alive, since reaping the leader
+    makes it unreadable; sweeping a group that is already empty raises `ProcessLookupError`, which is
+    suppressed along with the rest.
     """
-    with contextlib.suppress(OSError):
-        try:
-            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
-        except (ProcessLookupError, PermissionError):
-            proc.terminate()
     try:
-        proc.wait(timeout=5)
-    except subprocess.TimeoutExpired:
-        with contextlib.suppress(OSError):
+        pgid: int | None = os.getpgid(proc.pid)
+    except OSError:
+        pgid = None  # already reaped, or no group to read — fall back to the process itself
+
+    def signal_group(sig: int) -> None:
+        """Signal the whole group, falling back to the process alone when the group is unreachable."""
+        if pgid is not None:
             try:
-                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                os.killpg(pgid, sig)
+                return
             except (ProcessLookupError, PermissionError):
-                proc.kill()
-        # Reap the killed child so it does not linger as a zombie until this process exits.
-        with contextlib.suppress(subprocess.TimeoutExpired, OSError):
-            proc.wait(timeout=5)
+                pass  # the group is gone or not ours: try the process itself below
+            except OSError:
+                return
+        with contextlib.suppress(OSError):
+            proc.terminate() if sig == signal.SIGTERM else proc.kill()
+
+    signal_group(signal.SIGTERM)
+    with contextlib.suppress(subprocess.TimeoutExpired, OSError):
+        proc.wait(timeout=5)
+    signal_group(signal.SIGKILL)
+    # Reap the parent so it does not linger as a zombie until this process exits.
+    with contextlib.suppress(subprocess.TimeoutExpired, OSError):
+        proc.wait(timeout=5)
 
 
 def _allocate_port() -> int:
@@ -395,16 +411,19 @@ def _spawn_cold_with_retry(
     (BE-XXXX): the retry BE-0319 added isolated every host-side resource per attempt — port,
     `.xctestrun`, capture — but never the device, so a Simulator whose app launch had just timed out
     was handed to the retry in exactly the state that had defeated the first attempt. What `recover`
-    returns decides the retry's budget:
+    returns decides both the retry's budget and what the failing error says:
 
-    - a recovery with `fresh_budget` unset keeps the *shared* budget: the first attempt got the whole
-      ceiling and a later one gets only what it left unspent. A "health never ready" attempt leaves
-      nothing, so no retry follows it — a second full wait against an unchanged device would double
-      the worst case for no new information.
-    - a `fresh_budget` (the device was rebooted, or replaced outright) restarts the ceiling, because
-      the next attempt runs against a device that has demonstrably come back up. This is what makes
-      the dominant flake recoverable at all: an app-launch timeout ends the *first* attempt fast, but
-      what it leaves behind is a degraded device, not spare seconds.
+    - A `_Recovery` carrying a `fresh_budget` (the device was rebooted, or replaced outright) restarts
+      the ceiling, because the next attempt runs against a device that has demonstrably come back up.
+      This is what makes the dominant flake recoverable at all: an app-launch timeout ends the *first*
+      attempt fast, but what it leaves behind is a degraded device, not spare seconds.
+    - A `_Recovery` whose `fresh_budget` is `None` reports a rung that inspected the device and left it
+      as it was, so its note reaches the diagnostics while the *shared* budget stands: the first attempt
+      got the whole ceiling and a later one gets only what it left unspent. A "health never ready"
+      attempt leaves nothing, so no retry follows it — a second full wait against an unchanged device
+      would double the worst case for no new information.
+    - `None` reports no recovery at all (`_no_recovery`, for a real device or a caller that opts out),
+      which keeps the shared budget and adds no note.
 
     Worst-case wall time is therefore `attempts` ceilings plus whatever `recover` spends, which it
     bounds itself — the ios-e2e lane's headroom is set against that (see the workflow's env block).
@@ -665,8 +684,13 @@ class XcuitestEnvironment(_DeviceEnvironment):
         running is all there is to clean up; an app-launch timeout or a wait that reached its ceiling
         says the device stopped honouring automation, which only a reboot clears.
 
+        A rung that repaired the device grants the *cold* ceiling, never the tighter respawn one, even
+        when this spawn started on the respawn ceiling: a rebooted or replaced device is a first
+        bring-up again, so the premise the respawn ceiling rests on — a booted device with the app
+        already installed under a live runner — no longer holds.
+
         Returns the note and fresh readiness ceiling `_spawn_cold_with_retry` folds into its
-        diagnostics and budget, or None when nothing about the device changed.
+        diagnostics and budget, or None when no rung ran at all.
 
         Raises:
             DeviceError: if the device cannot be repaired — no replacement can be created, or a rung
