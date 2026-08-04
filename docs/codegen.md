@@ -241,8 +241,10 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
+import androidx.test.uiautomator.BySelector
 import androidx.test.uiautomator.Direction
 import androidx.test.uiautomator.UiDevice
+import androidx.test.uiautomator.UiObject2
 import androidx.test.uiautomator.Until
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -253,6 +255,7 @@ import java.util.regex.Pattern
 
 private const val PACKAGE = "com.example.app"
 private const val LAUNCH_TIMEOUT_MS = 5000L
+private const val ACT_TIMEOUT_MS = 15000L
 
 @RunWith(AndroidJUnit4::class)
 class ComponentsUITest {
@@ -270,6 +273,13 @@ class ComponentsUITest {
     device.wait(Until.hasObject(By.pkg(PACKAGE).depth(0)), LAUNCH_TIMEOUT_MS)
   }
 
+  private fun act(by: BySelector): UiObject2 {
+    if (!device.wait(Until.hasObject(by), ACT_TIMEOUT_MS)) {
+      throw AssertionError("act: no element matched $by within ${ACT_TIMEOUT_MS}ms")
+    }
+    return device.findObject(by)
+  }
+
   @Test
   fun test_open_filter_shows_the_sheet() {
     val extras = mutableMapOf<String, String>()
@@ -277,7 +287,7 @@ class ComponentsUITest {
     launch(extras)
 
     assertFalse(device.hasObject(byId("log.sheet.title")))
-    device.findObject(byId("log.openFilter")).click()
+    act(byId("log.openFilter")).click()
 
     // expect
     assertTrue(device.hasObject(byId("log.sheet.title")))
@@ -289,6 +299,13 @@ class ComponentsUITest {
   `<package>:id/` prefix — the **reverse of the adb driver stripping that prefix**, so a native
   `android:id` and a Compose `testTag` (surfaced via `testTagsAsResourceId`, which carries no prefix)
   both resolve.
+- The `act` helper waits for the element before returning it. `findObject` alone is a single-shot
+  query with no implicit wait. Acting right after `launch()` or a UI transition could otherwise race
+  the render. An element-targeting action routes through `act`. `relaunch` and the `wait` steps
+  stay direct, since neither targets an element. A timed-out wait throws an `AssertionError` naming
+  the selector and the timeout. `findObject` alone would instead throw a bare
+  `NullPointerException` that names neither. A read-only assertion still calls `device.findObject` /
+  `device.findObjects` directly, unwaited. That matches the driver's own assertions.
 - Each method builds an `extras` map (config's `launchEnv` < the scenario's
   `preconditions.launchEnv`) and calls `launch(extras)`, which forwards the env as intent extras —
   the reverse of the adb backend's `am start --es`.
@@ -317,8 +334,8 @@ same limit the XCUITest emitter hits for NSPredicate `MATCHES`), so it stays a `
 
 | Scenario step | UI Automator |
 |---|---|
-| `tap` | `device.findObject(<by>).click()` |
-| `type` (with `into`) | `device.findObject(<by>).text = '…'` |
+| `tap` | `act(<by>).click()` |
+| `type` (with `into`) | `act(<by>).text = '…'` |
 | `type` (no `into`) | `// TODO` (no resolved target element) |
 | `longPress` | `.longClick()` (the platform long-press timeout; the scenario duration has no parameter) |
 | `swipe { on, direction }` | `.swipe(Direction.<UP/DOWN/LEFT/RIGHT>, 0.75f)` |
