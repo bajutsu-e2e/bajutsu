@@ -34,7 +34,9 @@ class Element(TypedDict):
 | `selected` | 選択 / トグル ON | `selected` |
 | `other` | 汎用・未分類の要素（iOS の catch-all `XCUIElementTypeOther` など） | `resolve_unique` の曖昧判定（後述） |
 
-（idb は `enabled: false` → `notEnabled`、`selected: true` → `selected` に正規化します。種別文字列は `AX` 接頭辞を外して先頭を小文字化します: `AXButton` → `button`。詳細は `drivers/idb.py` を参照してください）
+> 各バックエンドが自分自身の属性をこれらのトークンへ正規化します。adb は `enabled="false"` を `notEnabled` に正規化します。`selected="true"` /
+> `checked="true"` は `selected` に正規化します。XCUITest の常駐ランナーは `isEnabled` が false のとき同様に `notEnabled` に正規化します。
+> バックエンドごとの正規化の詳細は [drivers](drivers.md) を参照してください。
 
 ## セレクタ（`Selector`）
 
@@ -110,9 +112,9 @@ def resolve_unique(elements, sel):
 
 ### バックエンドに依らず一元化される
 
-idb は使える semantic tap を持たないため、抽象側は **常に `query()` で候補数を検証してから**操作し、確定した要素の frame 中心をタップします。これにより「曖昧なら失敗」の挙動が idb / playwright / fake で同一になります（各ドライバの `tap` 実装は [drivers](drivers.md) を参照してください）。
+adb（Android）は座標のみで動作する唯一のバックエンドです。semantic tap を持たないため、抽象側は**常に `query()` で候補数を検証してから**操作し、確定した要素の frame 中心をタップします。playwright と fake ドライバも、バックエンドごとに解決方法を分岐させず常に同じ `resolve_unique` を通すという設計上の理由から、同じ経路をたどります。XCUITest も同じ検証を経てから、識別子を指定して直接タップします。この事前検証により、「曖昧なら失敗」の挙動がすべてのバックエンドで同一になります（各ドライバの `tap` 実装は [drivers](drivers.md) を参照してください）。
 
-`id` は idb の要素ツリー（`AXUniqueId`）から直接得られ、`Element.identifier` に正規化されます。そのため `id` セレクタは正規化形に対して直接解決できます。
+`id` は各バックエンドが自分自身のアクセシビリティ id から取得します。XCUITest は `accessibilityIdentifier`、adb は `resource-id`（パッケージ接頭辞を除去）、web は `data-testid` です。いずれも `Element.identifier` に正規化されるため、`id` セレクタは正規化形に対して直接解決できます。
 
 ## アサーション評価
 
@@ -127,7 +129,7 @@ class AssertionResult:
     reason: str      # 失敗理由（ok のとき空）
 ```
 
-種別ごとの仕組み（全 8 種別）:
+種別ごとの仕組み（このページが扱う 8 種別）:
 
 | 種別 | 解決 | 判定 |
 |---|---|---|
@@ -140,4 +142,4 @@ class AssertionResult:
 | `selected` | `resolve_unique` | `selected` トレイトが有る |
 | `request` | 観測した通信を照合（要素ツリーではない） | `count` 指定時は `equals`/`atLeast`/…、無指定なら 1 件以上（[network](network.md)） |
 
-> `exists` だけ `find_all`（複数許容）を使い、他の単一要素アサーションは `resolve_unique`（曖昧は失敗）を使います。「2 件あるのに値を検証しようとした」場合も決定的に失敗します。`request` だけが非 UI のアサーションで、要素ではなくキャプチャした HTTP(S) 通信を検査します。
+> `exists` だけ `find_all`（複数許容）を使い、他の単一要素アサーションは `resolve_unique`（曖昧は失敗）を使います。「2 件あるのに値を検証しようとした」場合も決定的に失敗します。上の表は、このページの解決セマンティクスが関わる 8 種別（要素ツリーを読む 7 種別と、要素ではなくキャプチャした HTTP(S) 通信を検査する `request`）をカバーします。残る `event` / `requestSequence` / `responseSchema` / `visual` / `clipboard` / `golden` の 6 種別は要素解決を経由しません。全種別は [scenarios](scenarios.md#アサーション-dsl) を参照してください。

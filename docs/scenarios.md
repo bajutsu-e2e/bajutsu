@@ -386,6 +386,7 @@ actions in one step is a validation error (`scenario/models/steps.py` `_one_acti
 | Action | Form | Description |
 |---|---|---|
 | `tap` | `tap: <Selector>` | requires unique resolution (fails if ambiguous) |
+| `tapPoint` | `tapPoint: { x: <frac>, y: <frac> }` | tap a normalized screen coordinate (0..1, top-left origin) instead of a selector — the bottom rung of the stability ladder, for a control the accessibility tree exposes as no addressable element (for example, a no-id tab-bar tab); `record`'s vision path emits it, and `run` replays it against the current screen size |
 | `doubleTap` | `doubleTap: <Selector>` | two quick taps on the resolved element |
 | `longPress` | `longPress: { sel: <Selector>, duration: <sec> }` | long press |
 | `type` | `type: { text: "...", into?: <Selector>, submit?: <bool> }` | with `into`, focuses first |
@@ -397,6 +398,7 @@ actions in one step is a validation error (`scenario/models/steps.py` `_one_acti
 | `swipe` | `swipe: { on: <Selector>, direction: up\|down\|left\|right }` or `swipe: { from: [x,y], to: [x,y] }` | selector form and coordinate form cannot mix; the directional form **scrolls** |
 | `drag` | `drag: { on: <Selector>, direction: up\|down\|left\|right, amount?: <frac> }` | a real pointer **drag** of the element (a handle / divider / slider), not a scroll |
 | `scroll` | `scroll: { to: <Selector>, direction?: up\|down\|left\|right, within?: <Selector>, maxScrolls?: <int> }` | scroll (non-inertially) until `to` is on-screen, or fail at a bound; `direction` is **scroll** direction (default `down`), the inverse of `swipe`'s |
+| `back` | `back: {}` | navigate back one level, each backend using its platform-correct primitive — the Android system back key, the iOS OS-provided back button, or web history ([BE-0210](../roadmaps/BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md)) |
 | `pinch` | `pinch: { sel: <Selector>, scale: <num> }` | two-finger magnify; `scale > 0` (`>1` zooms in, `<1` out) |
 | `rotate` | `rotate: { sel: <Selector>, radians: <num> }` | two-finger rotation; `>0` is clockwise |
 | `handleSystemAlert` | `handleSystemAlert: { sel: <Selector>, timeout: <sec> }` | tap a button on an iOS SpringBoard permission prompt, deterministically ([below](#handlesystemalert-the-deterministic-system-alert-step)); iOS (XCUITest) only. `sel` accepts only `label` / `labelMatches` / `index`, and resolves against the system language the run pins the Simulator to. In place of `sel`, `prompt: notifications\|tracking` + `choice: grant\|deny` names the button by meaning and lets the run resolve its label (BE-0320) |
@@ -417,6 +419,7 @@ actions in one step is a validation error (`scenario/models/steps.py` `_one_acti
 | `overrideStatusBar` | `overrideStatusBar: { time?, batteryLevel?, batteryState?, cellularBars?, wifiBars? }` | override the status bar for deterministic screenshots |
 | `clearStatusBar` | `clearStatusBar: {}` | remove status-bar overrides (restore the live bar) |
 | `use` | `use: { component: <file>, with?: {...} }` | expand a reusable component's steps — a compile-time macro ([reuse](#reuse-data-and-tags)) |
+| `web` | `web: { within: <Selector>, steps: [...] }` | enter a WebView's DOM: `within` resolves the host `WKWebView` natively, and the nested `steps` address its normalized DOM instead of the native tree ([below](#web-entering-a-webviews-dom)) |
 
 Modifiers:
 
@@ -454,6 +457,28 @@ label) and fires a `change` event, so the page reacts exactly as it would to a u
 value matches what a `value` assertion reads back from the `<select>`, so a selection is directly
 assertable. `selectOption` is a web-only action — a `<select>` has no native counterpart on iOS or Android,
 so those backends fail the step with a clear "unsupported action" reason rather than doing nothing.
+
+### `web` (entering a WebView's DOM)
+
+```yaml
+- web:
+    within: { id: checkout.webview }
+    steps:
+      - tap: { id: pay.submit }
+      - wait: { for: { id: pay.confirmation }, timeout: 10 }
+```
+
+`web` resolves `within` natively to exactly one `WKWebView` host. It then runs the nested `steps`
+against the WebView's normalized DOM (`data-testid` → `Element.identifier`), not the app's native
+accessibility tree — for a hybrid screen that embeds web content inside a native app
+([BE-0037](../roadmaps/BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support.md)). Control
+returns to the native driver once the block's steps finish. The nested steps share the enclosing
+scenario's `vars.*` bindings, the same as `if`'s and `forEach`'s do, and `capture` / `extract`
+modifiers are not allowed on the `web` step itself. The step needs a WebView bridge configured
+(`BAJUTSU_WEBVIEW_PORT`); without one it fails cleanly rather than doing nothing. This first slice
+supports `tap` / `type` / `wait` / `assert` inside the block. `clear` / `delete` / `select` /
+`copy` / `selectOption` / `scroll` / `back` / `pinch` / `rotate` / `handleSystemAlert` are not yet
+reachable there, and each fails with a clear "not supported in web context" reason.
 
 ### `swipe`
 
@@ -545,7 +570,7 @@ the step asked for is caught rather than assumed away, by the look-back above.
 - rotate: { sel: { id: gest.rotate }, radians: 1.57 }  # >0 clockwise (radians)
 ```
 
-`scale` must be **> 0** (a validation error otherwise). `pinch` / `rotate` require multi-touch, which the iOS (XCUITest) backend and the generated XCUITest (`pinch(withScale:)` / `rotate(_:)`) both provide; a backend without it fails with a "needs multiTouch" reason. `doubleTap` runs everywhere (two taps). (real file: [`demos/showcase/scenarios/gestures.yaml`](../demos/showcase/scenarios/gestures.yaml))
+`scale` must be **> 0** (a validation error otherwise). `pinch` / `rotate` require multi-touch, which the iOS (XCUITest) backend and the generated XCUITest (`pinch(withScale:)` / `rotate(_:)`) both provide; a backend without it fails with a "needs multiTouch" reason. `doubleTap` runs everywhere (two taps). (real files: [`demos/showcase/scenarios/gestures.yaml`](../demos/showcase/scenarios/gestures.yaml) for `doubleTap` / `longPress`, [`demos/showcase/scenarios/gestures_multitouch.yaml`](../demos/showcase/scenarios/gestures_multitouch.yaml) for `pinch` / `rotate`)
 
 ### `wait` (condition wait)
 

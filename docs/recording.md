@@ -269,7 +269,8 @@ provider is active:
   every remaining turn.
 - **`tap_point` — the vision fallback for a control absent from the tree.** When the goal needs a
   control the accessibility tree does not expose — most often an individual tab in a bottom tab bar
-  on a no-id app, which `idb` collapses into one opaque group — the agent locates it in the
+  on a no-id app, which the iOS accessibility tree can surface as a single opaque group with no
+  per-tab identifiers — the agent locates it in the
   screenshot and taps by **normalized coordinates [0,1]** (top-left origin). `run` scales them by the
   app-window frame to a `driver.tap_point` (the same normalized-point convention the alert locator
   uses, below). It is the bottom rung of the stability ladder (unverifiable by selector), so the
@@ -305,7 +306,7 @@ class AlertLocator(Protocol):
     def locate(self, screenshot_png, instruction) -> AlertDecision: ...
 
 class SystemAlertGuard:
-    def dismiss(self, driver) -> bool: ...   # if a prompt is present, coordinate-tap it and return True
+    def dismiss(self, driver) -> AlertEvent | None: ...   # if a prompt is present, coordinate-tap it and return the tapped button
 ```
 
 - `SystemAlertGuard.dismiss`: takes a screenshot, asks the locator "is a prompt present, and where

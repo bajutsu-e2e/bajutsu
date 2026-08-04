@@ -1,17 +1,22 @@
 **English** · [日本語](ja/showcase.md)
 
-# The showcase suite (the single iOS fixture)
+# The showcase suite (Bajutsu's single cross-platform fixture)
 
-> Bajutsu's iOS test fixture lives under [`demos/showcase/`](../demos/showcase). It is **the same
-> app written twice** — UIKit and SwiftUI — and **each in an accessibility-on / -off variant**, so
-> four products (`showcase-swiftui`, `showcase-swiftui-noax`, `showcase-uikit`, `showcase-uikit-noax`)
-> come from two codebases. It packs the interaction surface a real app has (five tabs with push
-> navigation, all four modal styles, text entry, gestures, async loading, live + mockable
-> networking, an OS-alert screen) into the smallest coherent app that still tells that whole story.
+> Bajutsu's test fixture lives under [`demos/showcase/`](../demos/showcase). The same screen
+> contract is built five times — SwiftUI and UIKit on iOS, Jetpack Compose and Views on Android, and
+> one Flutter codebase that targets both platforms — mostly in an accessibility-on / -off pair per
+> toolkit (Flutter's iOS build ships accessibility-on only, for now). Together, the five codebases
+> register a dozen `targets.<name>` entries in
+> [`demos/showcase/showcase.config.yaml`](../demos/showcase/showcase.config.yaml). It packs the
+> interaction surface a real app has (five tabs with push navigation, all four modal styles, text
+> entry, gestures, async loading, live + mockable networking, an OS-alert screen) into the smallest
+> coherent app that still tells that whole story.
 >
-> BE-0079 made it the **single** iOS fixture, retiring the older `demo` / `sample` / `sample2` apps.
-> The authoritative, screen-by-screen contract — every identifier, every scenario mapping — is
-> [`demos/showcase/SPEC.md`](../demos/showcase/SPEC.md); this page summarizes how to reach it.
+> BE-0079 made it the **single** iOS fixture, retiring the older `demo` / `sample` / `sample2` apps;
+> BE-0007 and BE-0008 then grew that iOS fixture into today's cross-platform one, adding the Android
+> and Flutter twins. The authoritative, screen-by-screen contract — every identifier, every scenario
+> mapping — is [`demos/showcase/SPEC.md`](../demos/showcase/SPEC.md); this page summarizes how to
+> reach it.
 
 Related: [scenarios](scenarios.md) · [configuration](configuration.md) · [codegen](codegen.md) · [cli](cli.md)
 
@@ -32,18 +37,24 @@ The showcase makes visible the two axes on which Bajutsu's design rests:
 
 ## Build and run
 
-Registered as four `targets.<name>` in [`demos/showcase/showcase.config.yaml`](../demos/showcase/showcase.config.yaml)
-(bundle ids `com.bajutsu.showcase.ios.{swiftui,uikit}[.noax]`, deeplink schemes `showcase{swiftui,uikit}[noax]`).
-Built with XcodeGen + xcodebuild (`project.yml` is the source of truth; `.xcodeproj` / `build/` are
-gitignored). A fifth target, `showcase-swiftui-bundled`, runs the same SwiftUI app with no
-`xcuitest:` sub-config, so a Simulator run resolves to the wheel-bundled runner (BE-0292) instead of
-the locally built one — `bajutsu doctor --target showcase-swiftui-bundled` reports the runner source.
+The four core iOS targets keep the original bundle ids
+(`com.bajutsu.showcase.ios.{swiftui,uikit}[.noax]`) and deeplink schemes
+(`showcase{swiftui,uikit}[noax]`). They build with XcodeGen + xcodebuild (`project.yml` is the
+source of truth; `.xcodeproj` / `build/` are gitignored). A fifth iOS target,
+`showcase-swiftui-bundled`, runs the same SwiftUI app with no `xcuitest:` sub-config. A Simulator
+run for it resolves to the wheel-bundled runner (BE-0292) instead of the locally built one, and
+`bajutsu doctor --target showcase-swiftui-bundled` reports which one that is. The remaining seven
+targets are the Android twins ([`android/`](../demos/showcase/android), Jetpack Compose and Views,
+BE-0007) and the Flutter twins on both platforms ([`flutter/`](../demos/showcase/flutter),
+BE-0008). They build with Gradle and the Flutter SDK respectively.
 
 ```bash
 make -C demos/showcase swiftui-build       # compile the SwiftUI a11y product for the Simulator
 make -C demos/showcase run-swiftui         # build → install → bajutsu run (XCUITest) against a booted Simulator
 make -C demos/showcase doctor              # the accessibility A/B: a11y grades Ready, -noax Blocked
 make -C demos/showcase ui-test             # the codegen path: scenario → XCUITest → xcodebuild test
+make -C demos/showcase run-flutter         # the Flutter twin on iOS: build → install → bajutsu run (XCUITest)
+make -C demos/showcase run-flutter-android # the Flutter twin on Android: build → install → bajutsu run (adb)
 make -C demos/showcase/android e2e-codegen # the Android twin: scenario → UI Automator → connectedAndroidTest (needs a booted emulator, BE-0294)
 ```
 

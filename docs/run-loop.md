@@ -16,15 +16,15 @@ Related: [scenarios](scenarios.md) · [selectors](selectors.md) · [evidence](ev
 ## `run_scenario` (running one scenario)
 
 ```python
-def run_scenario(driver, scenario, clock=None, sink=None, on_blocked=None) -> RunResult
+def run_scenario(driver, scenario, clock=None, sink=None, alert_guard=None, ...) -> RunResult
 ```
 
 - `driver`: a `base.Driver` (a real driver or `FakeDriver`). The loop depends only on this interface.
 - `clock`: injected time / sleep (to make waits deterministic in tests). Default `RealClock`
   (`time.monotonic` / `time.sleep`).
 - `sink`: the evidence output target (default `NullSink` = writes nothing) ([evidence](evidence.md)).
-- `on_blocked`: a handler that, on step failure, "cleans up a blocker (a system alert, etc.) and
-  returns True." If it does, **the step is retried exactly once**
+- `alert_guard`: a handler that, on step failure, "cleans up a blocker (a system alert, etc.) and
+  returns the event it dismissed." If it does, **the step is retried exactly once**
   ([the alert guard](recording.md#dismissing-system-alerts-automatically)). For a `wait` step
   (`for`/`settled`/`screenChanged`), the same handler is also armed **mid-wait** (BE-0269): it fires
   against the already-polled screen as soon as the tree looks collapsed — debounced, cooldown-limited,
@@ -42,7 +42,7 @@ For each step `i` (in `orchestrator/loop.py`):
    action). `_pre_intervals` picks only triggers determinable from the step itself
    (`screenChanged`/`error` are too late).
 5. Run the **act** (or wait / assert) via `_run_step_body` → `(ok, reason, assertion_results)`.
-6. On failure, if `on_blocked` cleared a blocker, **retry once**.
+6. On failure, if `alert_guard` cleared a blocker, **retry once**.
 7. **Stop interval captures** (after the step has settled). Record the artifacts.
 8. Acquire the **instant captures** (`screenshot` / `elements`) (from `_collect_captures`'s
    firing result).
@@ -121,7 +121,7 @@ class RunResult:
     failure: str | None          # e.g. "step 3 (tap): no match: {...}"
 ```
 
-`expect` is evaluated only after all steps pass. If `on_blocked` is present, expect is also
+`expect` is evaluated only after all steps pass. If `alert_guard` is present, expect is also
 re-evaluated once. These become `report/`'s `manifest.json` / JUnit / HTML directly
 ([reporting](reporting.md)).
 
@@ -146,12 +146,12 @@ erase (if pre.erase: shutdown → erase) → boot → terminate(bundle) (for a c
 > launch args via `env.locale_args`). The simctl launch sequencing is validated on a real device
 > (iPhone 17 Pro) via `make -C demos/showcase run-swiftui` + the `ios-e2e.yml` CI workflow.
 
-### `device_factory` / `run_all` / `run_and_report`
+### `device_pool` / `run_all` / `run_and_report`
 
-- `device_factory(udid, backends, ...)`: selects the actuator and returns a factory that
-  `launch_driver`s per scenario.
-- `run_all(eff, scenarios, factory, ...)`: runs each scenario **with a freshly built driver**
-  (clean isolation).
+- `device_pool(udids, backends, ...)`: selects the actuator and returns a `(lease, shutdown)` pair —
+  `lease(eff, scenario)` leases a free device and `launch_driver`s it per scenario.
+- `run_all(eff, scenarios, lease, ...)`: runs each scenario **with a freshly leased, freshly built
+  driver** (clean isolation).
 - `run_and_report(...)`: writes the `run_all` results via `write_report(runs_dir/run_id, ...)` and
   returns `(results, manifest_path)`.
 

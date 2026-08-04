@@ -17,10 +17,11 @@
 
 Bajutsu はアーキテクチャに明確な線を引いています。決定論的な `run` と CI ゲートはモデルを一切
 呼ばず、Claude に到達するのは Tier 1 の作成と調査の経路だけです。軸は、特定の資格情報があるか
-どうかではなく、経路がそもそも Claude を呼ぶかどうかにあります。Claude へは三つの方法で到達できる
+どうかではなく、経路がそもそも Claude を呼ぶかどうかにあります。Claude へは四つの方法で到達できる
 ため（Anthropic API、Amazon Bedrock、ブラウザ経由の OAuth（SSO）でサインインする Anthropic CLI
-`ant`）、「API キーが要る」という捉え方は、区切りの軸として誤りです。正しい軸は「Claude を使う」であり、
-プロバイダが増えても正しいままです。
+`ant`、または Claude の Pro / Max / Console のシートを使う Claude Code CLI `claude`）、「API キーが
+要る」という捉え方は、区切りの軸として誤りです。正しい軸は「Claude を使う」であり、プロバイダが
+増えても正しいままです。
 
 Claude を使わない側のすべては、設定ゼロで動きます。資格情報も `.env` もログインも、いかなる AI の
 ランタイムも要りません。リポジトリをクローンした直後からそのまま動きます。
@@ -35,10 +36,11 @@ Claude を使わない側のすべては、設定ゼロで動きます。資格�
 | | `trace` | 保存済みの実行をテキストのタイムラインとして表示する |
 | | `lint` / `schema` | 実行せずにシナリオを検証する、または JSON Schema を出力する |
 | | `approve` | 実行のスクリーンショットを視覚ベースラインに昇格させる |
-| | `audit` / `coverage` | シナリオの決定論性を採点する、または id 名前空間の網羅状況を調べる（助言的） |
-| | `report` / `export` | 完了した実行を再描画する、またはアーカイブする |
+| | `audit` / `coverage` / `impact` / `flakiness` | シナリオの決定論性を採点する、id 名前空間の網羅状況を調べる、ソースの変更が影響しそうなステップを示す、検証結果のブレでシナリオを順位付けする（いずれも助言的） |
+| | `report` / `export` / `stats` | 完了した実行を再描画する、アーカイブする、実行ディレクトリ全体をスイート全体の傾向に集計する |
 | | `mcp` / `worker` | run / doctor を MCP ツールとして提供する、またはバックグラウンドのジョブワーカーを動かす |
 | | `serve` | ローカルの Web UI。何も設定せずに起動し、Claude のタブは無理なく縮退する |
+| | `project` | 設定プロジェクトハブを管理する（登録・一覧・切り替え・削除） |
 | | `triage` | ルールベースのエージェントで失敗した実行を診断する（`--ai` なし） |
 | **Claude を使う** | `record` | Claude でアプリを操作しながらシナリオを作成する |
 | | `crawl` | Claude で自律的にアプリを探索し、画面マップを作る |
@@ -58,14 +60,15 @@ Claude を使わない側のすべては、設定ゼロで動きます。資格�
 分類は一度だけ（`bajutsu/capabilities.py` に）定義し、あらゆる場所がそれを参照します。そのため表示面が
 食い違うことはありません。
 
-- **`bajutsu --help`** は、各コマンドを *Claude-free (zero-config)* か *Uses Claude* のいずれかに
-  まとめて表示します。
+- **`bajutsu --help`** は、各トップレベルコマンドを *Claude-free (zero-config)* か *Uses Claude*
+  のいずれかにまとめて表示します。`project` のサブコマンド（登録・一覧・切り替え・削除）は別の
+  グループで表示されますが、分類上はこの列の他のコマンドと同じく Claude を使いません。
 - **`doctor`** は、Claude の準備状況を独立した明らかに任意の節として報告します。AI の準備が無い
   ホストでも決定論的な経路については `Ready` と採点され、Claude は別立ての「not configured (optional)」の
   行として示されます。阻害要因と混同されることはありません。
 - **`serve`** は Claude のタブ（`record` と `crawl`）を見せたうえで、Claude に到達できないときは
   インラインの説明とともに無効化し、UI 内のキー入力欄へ誘導します。キーを設定するか、Bedrock を
-  構成するか、`ant` CLI にサインインした時点で、タブはすぐに有効へ戻ります。
+  構成するか、`ant` CLI か `claude` CLI にサインインした時点で、タブはすぐに有効へ戻ります。
 
 ## Claude の経路をインストールする
 
@@ -76,9 +79,11 @@ AI のソフトウェア開発キット（SDK）は任意インストールの e
 - `pip install bajutsu`：決定論的なオーサリングと実行の経路（`run`、`doctor`、`lint`、`codegen`、
   `trace`、`approve` など、上記の Claude-free 列すべて）です。AI SDK はインストールされず、ここから
   モデルに到達することはありません。
-- `pip install bajutsu[ai]`：Claude の経路（`record`、`crawl`、`triage --ai`、`run --system-alert-handling`）の
-  ために Anthropic の SDK を追加します。Amazon Bedrock プロバイダを使う場合は代わりに
-  `bajutsu[bedrock]` を指定します。同じ SDK の上に Bedrock 版を重ねる形になります。
+- `pip install bajutsu[ai]`：Claude の経路（`record`、`crawl`、`triage --ai`、`run --system-alert-handling`）を
+  API キー・Bedrock・`ant` の各プロバイダで使うために、Anthropic の SDK を追加します。Amazon
+  Bedrock プロバイダを使う場合は代わりに `bajutsu[bedrock]` を指定します。同じ SDK の上に Bedrock 版を
+  重ねる形になります。`claude-code` プロバイダはどちらの extra も不要です。SDK ではなく外部の
+  `claude` CLI を呼び出すためです。
 
 コントリビュータは `uv sync --group dev` ですべての extra をまとめて導入するため、ゲートは変わらず
 Claude の経路をテストし続けます。AI-free の保証はあくまで**基本**インストールに関するものであり、
@@ -94,8 +99,13 @@ Claude の経路をテストし続けます。AI-free の保証はあくまで**
   または `$BAJUTSU_BEDROCK_MODEL`）を用意します。
 - **Anthropic CLI（`ant`）**：`ai.provider: ant` を設定して `ant auth login` を実行します。キーの
   代わりに Claude の Pro / Max / Console のシートを使います（BE-0163）。
+- **Claude Code CLI（`claude`）**：`ai.provider: claude-code` を設定してサインインします
+  （`claude setup-token`、または対話的なログイン。ブラウザのないホストでは代わりに
+  `CLAUDE_CODE_OAUTH_TOKEN` を設定します）。こちらもキーの代わりに Claude の Pro / Max / Console の
+  シートを使います（BE-0176）。
 
 どの手段で認証するかは設定の問題です（[BE-0047](../../roadmaps/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md)、
 [BE-0053](../../roadmaps/BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider-ja.md)、
-[BE-0163](../../roadmaps/BE-0163-ant-cli-oauth-provider/BE-0163-ant-cli-oauth-provider-ja.md)
+[BE-0163](../../roadmaps/BE-0163-ant-cli-oauth-provider/BE-0163-ant-cli-oauth-provider-ja.md)、
+[BE-0176](../../roadmaps/BE-0176-claude-code-ai-backend/BE-0176-claude-code-ai-backend-ja.md)
 に従います）。どれを選んでも、上記の分類は変わりません。

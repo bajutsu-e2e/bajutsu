@@ -48,14 +48,15 @@ XCUITest backend は、**事前ビルドしたオンデバイスの runner**（t
 の一部として（`make runner-build`）ビルドまで済ませるので、追加でインストールするものはありません。
 Xcode だけで十分です。
 
-一発で通す経路は `make` ターゲットです。runner をビルドし、ビルドしたばかりのアプリを install し、
-smoke シナリオと `doctor` チェックを booted デバイスで実行します。
+一発で通す経路は `make` ターゲットです。runner をビルドし、ビルドしたばかりのアプリを install します。
+続けて、showcase のシナリオ一式（`xcuitest` または `systemalert` タグ付きのシナリオは除きます）を booted
+デバイスで実行します。
 
 ```bash
 make -C demos/showcase run-swiftui
 ```
 
-あるいは CLI を直接叩くこともできます（上と同じ手順を書き下したものです）。
+あるいは、smoke シナリオだけを対象に CLI を直接叩くこともできます。より短時間で済む単一シナリオの確認です。
 
 ```bash
 uv run bajutsu run --scenario demos/showcase/scenarios/smoke.yaml --target showcase-swiftui --backend ios --udid booted --no-erase

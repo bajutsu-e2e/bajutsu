@@ -2,14 +2,16 @@
 
 # Network observation (`request` assertions)
 
-> Verify the HTTP(S) traffic an app makes, as a step/expect assertion. Observation is
-> **in-app**: the app reports each exchange to a collector bajutsu runs, and a `request`
-> assertion checks the accumulated exchanges.
+> Verify the HTTP(S) traffic an app makes, as a step/expect assertion. On iOS and Android,
+> observation is **in-app**: the app reports each exchange to a collector bajutsu runs. On web,
+> Playwright observes the page's traffic natively, with no app-side reporting involved. Either
+> way, a `request` assertion checks the accumulated exchanges.
 >
 > Implementation: `bajutsu/evidence/network.py` (model + collector), `bajutsu/assertions/network.py`
-> (`request` eval), and the in-app SDK (software development kit) —
-> [`BajutsuKit`](../BajutsuKit/README.md) on iOS, [`BajutsuAndroid`](../BajutsuAndroid/README.md) on
-> Android.
+> (`request` eval), `bajutsu/web_network.py` (the Playwright-native collector and mocking, BE-0054),
+> and the in-app SDK (software development kit) — [`BajutsuKit`](../BajutsuKit/README.md) on iOS,
+> [`BajutsuAndroid`](../BajutsuAndroid/README.md) on Android. The web (Playwright) backend needs no
+> SDK: it observes the page's traffic natively.
 
 Related: [scenarios](scenarios.md) · [evidence](evidence.md)
 
@@ -54,6 +56,12 @@ periodically names a port the guest already holds and the bridge fails to bind. 
 Android alone: the iOS Simulator shares the Mac's loopback, bridges nothing, and keeps the
 operating-system pick. The collector, the token check, and the assertion pipeline are identical.
 
+**Web** (Playwright) needs none of this in-app machinery: Playwright already sees every request the
+page makes (BE-0054). `PlaywrightDriver.network_collector()` hooks the page's `requestfinished`
+event directly into the same `NetworkExchange` model. There is no `BAJUTSU_COLLECTOR` launch env,
+no port, and no token to inject — the driver is the collector. The resulting `NetworkExchange`
+records match the same `request` assertion as the iOS and Android path.
+
 > This mechanism is the in-app path. RocketSim's GUI network inspector and a TLS-intercepting proxy
 > were both rejected — the former is not exposed on its CLI (unusable for automated
 > assertions), the latter needs CA install and breaks on pinning. See the design notes.
@@ -87,11 +95,12 @@ expect:
 ## Deterministic mocks
 
 A scenario's `mocks` make the network deterministic: when an outgoing request matches a
-rule, BajutsuKit returns the canned response **instead of hitting the network**, so a test
-never depends on a live server (and runs offline). The stub is served inside the URL
-protocol — after TLS, no proxy/CA — and is still observed (it appears in `network.json`
-flagged `mocked`, and `request` assertions match it like any exchange). Mocks are iOS-only for now;
-BajutsuAndroid observes but does not yet stub (a follow-up to BE-0283).
+rule, the platform's collector returns the canned response **instead of hitting the network**, so
+a test never depends on a live server (and runs offline). On iOS, BajutsuKit serves the stub
+inside the URL protocol — after TLS, no proxy/CA. On web, `WebNetworkCollector` fulfills it
+in-process via Playwright's `page.route`. Either way the stub is still observed (it appears in
+`network.json` flagged `mocked`, and `request` assertions match it like any exchange). BajutsuAndroid
+observes but does not yet stub (a follow-up to BE-0283).
 
 ```yaml
 mocks:
@@ -107,15 +116,17 @@ mocks:
 
 The first matching rule wins. `match` reuses the request matcher's request-side fields
 (`method` / `url` / `urlMatches` / `path` / `pathMatches` / `bodyMatches`). Mocks ride the
-same channel as observation, so they need `--network`. The rules are injected into the app
-via the `BAJUTSU_MOCKS` launch env (like `BAJUTSU_COLLECTOR`).
+same channel as observation, so they need `--network`. On iOS, the rules reach the app via the
+`BAJUTSU_MOCKS` launch env (like `BAJUTSU_COLLECTOR`); on web there is no app to launch into, so
+`network_collector()` takes the scenario's `mocks` directly and fulfills them in-process.
 
 ## Timing
 
 Network I/O is asynchronous, so a step can run before the response lands. Bridge the gap with a wait
 on the UI that reflects the response (e.g. `wait: { until: settled }`, or wait for an
-element the response reveals) **before** the `request` assertion. The SDK POSTs on
-completion, so by the time the UI has updated, the exchange is in the collector.
+element the response reveals) **before** the `request` assertion. On iOS and Android the SDK POSTs
+on completion; on web, Playwright's own `requestfinished` event fires then. Either way, by the
+time the UI has updated, the exchange is in the collector.
 
 ## App contract
 
@@ -131,3 +142,6 @@ caveat as iOS above). Android also needs a `network_security_config` cleartext e
 `127.0.0.1` in the test/debug build (the collector URL is plain HTTP, which API 28+ blocks by default;
 iOS exempts loopback from App Transport Security (ATS), so it needs none) — without it the report POST
 fails — logged, but otherwise silent, so no exchange ever reaches the collector.
+
+**Web** — no app-side contract at all: Playwright observes and mocks the page's traffic natively,
+so nothing in the app under test needs to change.

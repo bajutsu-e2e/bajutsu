@@ -16,7 +16,7 @@ Steps 1–3 and 6 below are the same regardless of what you're driving — insta
 scenario, read the report. Only Steps 4–5 (build/serve the app under test, then run a scenario
 against it) differ by **[backend](../glossary.md#driver-backend-actuator-platform)**, because "a platform is a backend" ([concepts](../concepts.md)):
 
-- **[iOS track](ios.md)** — finishes on the iOS Simulator via the idb backend. Needs macOS + Xcode.
+- **[iOS track](ios.md)** — finishes on the iOS Simulator via the XCUITest backend. Needs macOS + Xcode.
 - **[Web track](web.md)** — finishes against a browser via the Playwright backend. Runs on any OS
   (Linux, Windows, macOS) — no Xcode, no Simulator.
 
@@ -60,8 +60,9 @@ uv run bajutsu --help
 You should see the commands `run`, `doctor`, `record`, `crawl`, `codegen`, `trace`, `triage`,
 `approve`, `serve`, `mcp`, `worker`, `lint`, and `schema` (full reference: [cli](../cli.md)).
 
-Each track adds one more install step on top of this (the idb backend's tools for iOS, or the
-Playwright browser for web) — see [Step 1 on your chosen track](#two-tracks-one-loop).
+The web track adds one more install step on top of this (the Playwright browser); the iOS track
+needs only Xcode, which the XCUITest backend drives directly — see
+[Step 1 on your chosen track](#two-tracks-one-loop).
 
 ---
 
@@ -120,13 +121,14 @@ every track shares this exact step/expect grammar.
 
 ## Step 6 — Read the report
 
-Every run writes a folder `runs/<runId>/` (where `runId` is `YYYYMMDD-HHMMSS`) with three views of
+Every run writes a folder `runs/<runId>/` (where `runId` is `YYYYMMDD-HHMMSS`) with four views of
 the same result:
 
 ```
 runs/20260610-120000/
 ├── manifest.json     # the step -> outcome correlation — the single source of truth
 ├── junit.xml         # CI integration (1 scenario = 1 testcase)
+├── ctrf.json         # Common Test Report Format (richer CI consumers: PR comments, dashboards)
 └── report.html       # self-contained HTML (open it in a browser)
 ```
 

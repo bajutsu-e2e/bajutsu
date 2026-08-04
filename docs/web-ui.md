@@ -31,9 +31,10 @@ list, the [CLI reference](cli.md) is the source of truth.
 
 In a repository checkout, start the server with `make serve` — the one-step path. `make serve`
 ([`scripts/serve.sh`](https://github.com/bajutsu-e2e/bajutsu/blob/main/scripts/serve.sh)) provisions
-the configured backend's on-demand dependencies (for an iOS target, the XCUITest runner via
-`make -C demos/showcase runner-build`, on top of Xcode's `xcodebuild`) and then runs the
-server; without them, iOS runs fail with `no available actuator`. Pass flags through `ARGS`:
+the configured backend's on-demand dependencies and then runs the server. On macOS, when the target
+needs XCUITest, it also stages the bundled iOS Simulator runner via `make runner-bundle` (built with
+Xcode's `xcodebuild` and `xcodegen`) whenever the bundle is missing or stale; without it, iOS runs
+fail with `no available actuator`. Pass flags through `ARGS`:
 
 ```bash
 make serve                                                        # the default port (8765)
@@ -49,9 +50,10 @@ Under the hood `make serve` runs `python -m bajutsu serve` — the `bajutsu serv
 the backend's dependencies yourself — the XCUITest runner (and Xcode) for an iOS target (a web /
 Playwright target does not need them). Either way the server does not open a browser for you: it
 binds `127.0.0.1`, so once it is running, open the printed URL yourself (`http://127.0.0.1:8765` by
-default, or the `--port` you passed). The full option list — `--port`, `--config`, `--root`,
+default, or the `--port` you passed). These flags — `--port`, `--config`, `--root`,
 `--runs`, `--baselines`, `--themes`, `--host`, `--token`, `--max-concurrent-runs`,
-`--evidence-store` — is in the [CLI reference](cli.md#serve).
+`--evidence-store` — cover everyday use; the complete option list is in the
+[CLI reference](cli.md#serve).
 
 ## The layout
 
@@ -195,9 +197,11 @@ gates anything.
 
 ## Settings
 
-**Settings** holds the two choices the AI paths need. Nothing here is written to disk: settings live
-in the running server's memory for the session only and reset when `serve` restarts. For values that
-survive a restart, set `ANTHROPIC_API_KEY` / `AWS_*` in your shell or a `.env` before launching.
+**Settings** opens on three tabs: **AI** and **Secrets** hold the choices the AI paths need, and
+**Server** (below) is a read-only view of how the running server is configured. Nothing on the AI or
+Secrets tabs is written to disk: those settings live in the running server's memory for the session
+only and reset when `serve` restarts. For values that survive a restart, set `ANTHROPIC_API_KEY` /
+`AWS_*` in your shell or a `.env` before launching.
 
 **AI provider** picks the backend that authoring (Record and Crawl) uses:
 
@@ -220,8 +224,9 @@ The picker starts on a placeholder — there is **no default provider**, and **S
 you pick one explicitly. Each provider's own fields (the API key, the Bedrock region and model id,
 the CLI sign-in) appear only once that provider is selected. Three overrides apply across providers:
 **Model** substitutes a specific model id for the default (Bedrock keeps its own prefixed id
-field), **Reasoning effort** trades speed against depth for the authoring agents, and **Output
-language** ([BE-0188](../roadmaps/BE-0188-configurable-ai-output-language/BE-0188-configurable-ai-output-language.md))
+field), **Reasoning effort** trades speed against depth for the authoring agents (only the Claude
+Code CLI provider honors it; the Anthropic API and `ant` adapters have no such knob and ignore it),
+and **Output language** ([BE-0188](../roadmaps/BE-0188-configurable-ai-output-language/BE-0188-configurable-ai-output-language.md))
 fixes the language the AI writes its generated prose in — `record`'s `from:` provenance and
 `crawl`'s streamed reasoning. Its default *auto* keeps today's behavior (record follows the goal,
 crawl stays English); it never affects the deterministic `run` verdict, and it is separate from a
@@ -243,9 +248,23 @@ one **write-once** field per declared name (masked, never displayed again, just 
 you can provision a scenario's credentials from the Web UI instead of `export`ing them or hand-editing
 a `.env` before launching `serve`. A value set here materializes under its own declared name, and a
 spawned **Replay** / **Record** / **Crawl** inherits it so `${secrets.X}` resolves in the run. The
-panel is hidden when the bound config declares no secrets, and refreshes when you switch to a config
-with a different `secrets:` list — only names the config itself declares are settable, never an
-arbitrary environment variable. Setting one is an **admin** action on a role-gated deployment.
+panel always shows, with an empty-state message explaining the feature when the bound config
+declares no secrets, and it refreshes when you switch to a config with a different `secrets:` list —
+only names the config itself declares are settable, never an arbitrary environment variable. Setting
+one is an **admin** action on a role-gated deployment.
+
+**Server** is a read-only tab reporting how the running server is configured
+([BE-0318](../roadmaps/BE-0318-serve-server-settings-tab/BE-0318-serve-server-settings-tab.md)): the
+deployment mode (local or hosted), the bound config and its source, the backends this build can run,
+the runs and baselines directories, the trash retention window, the concurrency caps, and the running
+version. Its sharpest row is the **iOS test runner**: whether this build ships the bundled XCUITest
+Simulator runner
+([BE-0292](../roadmaps/BE-0292-xcuitest-bundled-runner/BE-0292-xcuitest-bundled-runner.md)), the
+Xcode and Simulator SDK versions it was built against when it does, and whether the bound config
+overrides it with an explicit `xcuitest.testRunner` — the one fact that decides whether an iOS
+Simulator run can start at all. A hosted deployment withholds the host paths (the config path, the
+runs and baselines directories); every other row shows either way. The tab takes no input: it reports
+what the launch command and environment already resolved, and never writes anything back.
 
 ## Record — author a scenario from a goal
 

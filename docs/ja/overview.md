@@ -5,7 +5,8 @@
 > 自然言語駆動の E2E（end-to-end）テストツールの実装に基づいたリファレンスです。決定的コアはプラット
 > フォーム非依存で、プラットフォーム固有の継ぎ目は 1 つの `Driver` インターフェースの背後の **backend**
 > だけです。つまり新しいプラットフォームは新しい backend です。iOS Simulator（XCUITest）、
-> web（Playwright）backend、Android（adb）backend はいずれも実装済みで、Flutter が次に予定されています。
+> web（Playwright）backend、Android（adb）backend はいずれも実装済みです。Flutter アプリはこれら
+> と同じ backend の上でそのまま動き、専用の backend を持ちません。
 > [`README.md`](../../README.md) が紹介、[`DESIGN.md`](../../DESIGN.md) が設計の根拠を扱うのに対し、この
 > ドキュメント群は **現状のコードが実際に何をするか** を機能ごとに説明します。今後の計画は
 > [ロードマップ](../../roadmaps/README-ja.md)にあります。

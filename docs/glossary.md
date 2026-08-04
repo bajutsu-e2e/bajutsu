@@ -158,6 +158,6 @@ command and option is in [cli](cli.md).
 | `run` | 2 | Deterministic execution; the only pass/fail authority. |
 | `trace` | — | Render a finished run as a read-only timeline (no AI). |
 | `triage` | 1 | AI diagnoses a failed run and proposes a fix (advisory). |
-| `codegen` | — | Structural mapping of a scenario to native XCUITest / Playwright. |
+| `codegen` | — | Structural mapping of a scenario to native XCUITest / Playwright / UI Automator. |
 | `doctor` | — | Score how well a target follows the conventions Bajutsu relies on. |
 | `serve` | 1 | Launch the local web UI (record / replay / crawl / stats); Tier 1, not for CI. |

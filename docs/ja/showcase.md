@@ -1,17 +1,21 @@
 [English](../showcase.md) · **日本語**
 
-# showcase 群（唯一の iOS フィクスチャ）
+# showcase 群（プラットフォームをまたぐ唯一のフィクスチャ）
 
-> Bajutsu の iOS テストフィクスチャは [`demos/showcase/`](../../demos/showcase) にあります。**同じアプリを
-> 2 回書き**（UIKit と SwiftUI）、**さらに各々をアクセシビリティ有／無の変種**で出すので、2 つのコード
-> ベースから 4 つのプロダクト（`showcase-swiftui`、`showcase-swiftui-noax`、`showcase-uikit`、
-> `showcase-uikit-noax`）が生まれます。実アプリが持つ操作面（push ナビゲーションを伴う 5 タブ、4 種すべての
-> モーダル、テキスト入力、ジェスチャ、非同期ロード、実通信＋モック可能な通信、OS アラートを出す画面）を、
-> その全体を語れる最小のアプリに収めています。
+> Bajutsu のテストフィクスチャは [`demos/showcase/`](../../demos/showcase) にあります。同じ画面契約を
+> 5 回実装しています。iOS の SwiftUI と UIKit、Android の Jetpack Compose と Views、そして両方の
+> プラットフォームを対象とする 1 つの Flutter コードベースです。ほとんどのツールキットはアクセシビリティ
+> 有／無の対で作られています（Flutter の iOS 版は今のところアクセシビリティ有のみです）。この 5 つの
+> コードベースから、[`demos/showcase/showcase.config.yaml`](../../demos/showcase/showcase.config.yaml)
+> に 12 個の `targets.<name>` を登録しています。実アプリが持つ操作面（push ナビゲーションを伴う 5 タブ、
+> 4 種すべてのモーダル、テキスト入力、ジェスチャ、非同期ロード、実通信＋モック可能な通信、OS アラートを
+> 出す画面）を、その全体を語れる最小のアプリに収めています。
 >
 > BE-0079 でこれを**唯一**の iOS フィクスチャとし、旧来の `demo` / `sample` / `sample2` を退役させました。
-> 画面ごとの正式な契約（各識別子と各シナリオの対応）は [`demos/showcase/SPEC.md`](../../demos/showcase/SPEC.md)
-> にあります。本ページはそこへの入り口をまとめたものです。
+> その後 BE-0007 と BE-0008 が、この iOS フィクスチャを今日のプラットフォームをまたぐ姿へと広げ、Android
+> と Flutter の双子アプリを加えました。画面ごとの正式な契約（各識別子と各シナリオの対応）は
+> [`demos/showcase/SPEC.md`](../../demos/showcase/SPEC.md) にあります。本ページはそこへの入り口をまとめた
+> ものです。
 
 関連：[シナリオ](scenarios.md) · [設定](configuration.md) · [codegen](codegen.md) · [cli](cli.md)
 
@@ -32,19 +36,23 @@ showcase は、Bajutsu の設計が依って立つ 2 つの軸を可視化しま
 
 ## ビルドと実行
 
-4 つの `targets.<name>` として [`demos/showcase/showcase.config.yaml`](../../demos/showcase/showcase.config.yaml)
-に登録しています（bundle id は `com.bajutsu.showcase.ios.{swiftui,uikit}[.noax]`、deeplink scheme は
-`showcase{swiftui,uikit}[noax]`）。XcodeGen ＋ xcodebuild でビルドします（`project.yml` が信頼できる唯一の情報源で、
-`.xcodeproj` / `build/` は gitignore 対象です）。5 つめのターゲット `showcase-swiftui-bundled` は同じ SwiftUI
-アプリを使いますが、`xcuitest:` の設定を持ちません。そのため Simulator 上の実行はローカルビルドのランナーで
-はなく、wheel に同梱されたランナー（BE-0292）に解決されます。`bajutsu doctor --target
-showcase-swiftui-bundled` を実行すると、実際にどちらのランナーが使われているかを確認できます。
+中核となる iOS の 4 ターゲットは、もとの bundle id（`com.bajutsu.showcase.ios.{swiftui,uikit}[.noax]`）と
+deeplink scheme（`showcase{swiftui,uikit}[noax]`）をそのまま使います。XcodeGen ＋ xcodebuild でビルドします
+（`project.yml` が信頼できる唯一の情報源で、`.xcodeproj` / `build/` は gitignore 対象です）。5 つめの iOS
+ターゲット `showcase-swiftui-bundled` は同じ SwiftUI アプリを使いますが、`xcuitest:` の設定を持ちません。
+そのため Simulator 上の実行はローカルビルドのランナーではなく、wheel に同梱されたランナー（BE-0292）に
+解決されます。`bajutsu doctor --target showcase-swiftui-bundled` を実行すると、実際にどちらのランナーが
+使われているかを確認できます。残る 7 ターゲットは、Android の双子アプリ（[`android/`](../../demos/showcase/android)、
+Jetpack Compose と Views、BE-0007）と、両プラットフォーム向けの Flutter の双子アプリ
+（[`flutter/`](../../demos/showcase/flutter)、BE-0008）です。それぞれ Gradle と Flutter SDK でビルドします。
 
 ```bash
 make -C demos/showcase swiftui-build       # SwiftUI a11y プロダクトを Simulator 向けにコンパイル
 make -C demos/showcase run-swiftui         # ビルド → インストール → 起動中 Simulator に対し bajutsu run（XCUITest）
 make -C demos/showcase doctor              # アクセシビリティ A/B：a11y は Ready、-noax は Blocked
 make -C demos/showcase ui-test             # codegen 経路：シナリオ → XCUITest → xcodebuild test
+make -C demos/showcase run-flutter         # Flutter の iOS 版：ビルド → インストール → bajutsu run（XCUITest）
+make -C demos/showcase run-flutter-android # Flutter の Android 版：ビルド → インストール → bajutsu run（adb）
 make -C demos/showcase/android e2e-codegen # Android 版：シナリオ → UI Automator → connectedAndroidTest（起動済みエミュレータが必要、BE-0294）
 ```
 

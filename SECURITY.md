@@ -21,8 +21,9 @@ to reproduce the issue — affected commit, steps, and impact.
 
 ## Scope and notes
 
-Bajutsu is a defensive end-to-end (E2E) testing tool for the iOS Simulator. A few
-project-specific points are worth keeping in mind:
+Bajutsu is a defensive end-to-end (E2E) testing tool built on a backend-agnostic driver: the iOS
+Simulator (XCUITest), a web (Playwright) backend, and an Android (adb) backend are all landed. A
+few project-specific points are worth keeping in mind:
 
 - **API keys / secrets.** Only the AI paths (`record`, `run --system-alert-handling`)
   need `ANTHROPIC_API_KEY`. Never commit or share API keys; keep them in `.env`
@@ -31,12 +32,10 @@ project-specific points are worth keeping in mind:
   before and after it lands on a branch — see
   [`docs/ai-development.md`](docs/ai-development.md#block-a-secret-before-its-committed) — but
   treat that as a backstop, not a reason to paste one in.
-- **`type` of non-Latin text on the iOS Simulator (idb) backend.** idb's hardware-keyboard
-  text path only encodes US-keyboard-layout characters. A `type` step with non-Latin text
-  falls back to the Simulator's pasteboard instead. The fallback writes the value with
-  `simctl pbcopy` and sends a hardware paste. That pasteboard is readable by any process
-  with `simctl` access to the same Simulator instance. Avoid typing a secret or one-time
-  passcode that contains non-Latin characters on this backend.
+- **`setClipboard` writes to a device-wide clipboard.** The `setClipboard` scenario step (used
+  for paste flows) seeds the target's clipboard directly: `simctl pbcopy` on the iOS Simulator,
+  the Android clipboard provider on Android. That clipboard is readable by any other process with
+  access to the same Simulator or device. Avoid seeding a secret or one-time passcode this way.
 - **Captured evidence.** Run artifacts under `runs/` (screenshots, page sources,
   logs) can contain sensitive data from the app under test. Review them before
   sharing, attaching to a pull request, or uploading to CI.

@@ -2,13 +2,16 @@
 
 # ネットワーク観測（`request` アサーション）
 
-> アプリが送受信する HTTP(S) 通信を、step/expect のアサーションとして検証します。観測は
-> **アプリ内**で行います。アプリが個々の通信を Bajutsu の起動するコレクタに報告し、`request`
-> アサーションが蓄積された通信を照合します。
+> アプリが送受信する HTTP(S) 通信を、step/expect のアサーションとして検証します。iOS と Android では、
+> 観測は**アプリ内**で行います。アプリが個々の通信を Bajutsu の起動するコレクタに報告します。Web では
+> Playwright がページの通信をネイティブに観測するため、アプリ側の報告は不要です。いずれの場合も、
+> `request` アサーションが蓄積された通信を照合します。
 >
 > 実装: `bajutsu/evidence/network.py`（モデルとコレクタ）、`bajutsu/assertions/network.py`（`request` の評価）、
-> アプリ内 SDK（software development kit、ソフトウェア開発キット） — iOS は
-> [`BajutsuKit`](../../BajutsuKit/README.md)、Android は [`BajutsuAndroid`](../../BajutsuAndroid/README.md)。
+> `bajutsu/web_network.py`（Playwright ネイティブのコレクタとモック、BE-0054）、アプリ内 SDK（software
+> development kit、ソフトウェア開発キット） — iOS は [`BajutsuKit`](../../BajutsuKit/README.md)、Android は
+> [`BajutsuAndroid`](../../BajutsuAndroid/README.md)。Web（Playwright）バックエンドは SDK を必要とせず、
+> ページの通信をネイティブに観測します。
 
 関連: [scenarios](scenarios.md) · [evidence](evidence.md)
 
@@ -54,6 +57,12 @@ Android にはないため、インターセプタはクライアントごとで
 Android だけです。iOS シミュレータは Mac のループバックを共有し、橋渡しをしないので、OS が選んだポートを
 そのまま使います。コレクタ、トークン検査、アサーションパイプラインは同一です。
 
+**Web**（Playwright）では、このアプリ内の仕組みは一切不要です。Playwright はページが送るすべてのリクエストを
+すでにネイティブに観測しているためです（BE-0054）。`PlaywrightDriver.network_collector()` は、ページの
+`requestfinished` イベントを同じ `NetworkExchange` モデルへ直接結び付けます。`BAJUTSU_COLLECTOR` の起動
+環境変数もポートもトークンも注入する必要はありません。ドライバ自体がコレクタです。得られる
+`NetworkExchange` の記録は、iOS や Android の経路と同じ `request` アサーションで照合できます。
+
 > これはアプリ内の経路です。RocketSim の GUI ネットワークインスペクタと、TLS を傍受するプロキシは、
 > どちらも採用しませんでした。前者は CLI に公開されておらず（自動アサーションには使えません）、後者は
 > CA のインストールを必要とし、証明書ピンニングがあると動作しなくなるためです。設計上の判断は設計ノートを
@@ -87,12 +96,13 @@ expect:
 
 ## 決定的なモック
 
-シナリオの `mocks` はネットワークを決定的にします。外向きのリクエストがルールに一致すると、BajutsuKit は
-**ネットワークへ送る代わりに**あらかじめ用意したレスポンスを返します。これにより、テストはライブのサーバに
-依存しません（オフラインでも動作します）。スタブは URL プロトコルの内側で返され（TLS の後段、プロキシも CA も
-使いません）、なお観測の対象になります（`network.json` に `mocked` の印つきで現れ、`request` アサーションは
-他の通信と同様にこれを照合します）。モックは当面 iOS 専用です。BajutsuAndroid は観測はしますが、
-スタブ応答はまだ返しません（BE-0283 の追随の課題です）。
+シナリオの `mocks` はネットワークを決定的にします。外向きのリクエストがルールに一致すると、各プラットフォームの
+コレクタは**ネットワークへ送る代わりに**あらかじめ用意したレスポンスを返します。これにより、テストはライブの
+サーバに依存しません（オフラインでも動作します）。iOS では、BajutsuKit が URL プロトコルの内側でスタブを
+返します（TLS の後段、プロキシも CA も使いません）。Web では、`WebNetworkCollector` が Playwright の
+`page.route` を使ってインプロセスでスタブを返します。いずれの場合も、スタブはなお観測の対象になります
+（`network.json` に `mocked` の印つきで現れ、`request` アサーションは他の通信と同様にこれを照合します）。
+BajutsuAndroid は観測はしますが、スタブ応答はまだ返しません（BE-0283 の追随の課題です）。
 
 ```yaml
 mocks:
@@ -108,15 +118,17 @@ mocks:
 
 最初に一致したルールが採用されます。`match` はリクエスト側の照合フィールド（`method` /
 `url` / `urlMatches` / `path` / `pathMatches` / `bodyMatches`）をそのまま使います。モックは観測と同じ
-経路に乗るため、`--network` が必要です。ルールは `BAJUTSU_MOCKS` 起動環境変数を介してアプリに注入します
-（`BAJUTSU_COLLECTOR` と同様です）。
+経路に乗るため、`--network` が必要です。iOS では、ルールは `BAJUTSU_MOCKS` 起動環境変数を介してアプリに
+注入します（`BAJUTSU_COLLECTOR` と同様です）。Web には起動するアプリが存在しないため、
+`network_collector()` がシナリオの `mocks` を直接受け取り、インプロセスで解決します。
 
 ## タイミング
 
 ネットワークは非同期なので、レスポンスが届く前に step が動くことがあります。この隙間は、レスポンスを
 反映する UI への待機で埋めます（たとえば `wait: { until: settled }`、あるいはレスポンスによって現れる要素への
-待機）。これを `request` アサーションの**前**に置きます。SDK は通信の完了時に POST するので、UI が更新された
-時点では通信はコレクタに入っています。
+待機）。これを `request` アサーションの**前**に置きます。iOS と Android では SDK が通信の完了時に POST し、
+Web では Playwright 自身の `requestfinished` イベントがそこで発火します。いずれの場合も、UI が更新された
+時点では通信はすでにコレクタに入っています。
 
 ## アプリ側の契約
 
@@ -134,3 +146,6 @@ mocks:
 （コレクタの URL は平文 HTTP で、API 28 以降は既定で遮断します。iOS は loopback を App Transport
 Security（ATS）で除外するため不要です）。これがないと報告 POST は失敗し、ログに記録されるだけで、
 やり取りはコレクタに届きません。
+
+**Web** — アプリ側の契約は一切ありません。Playwright がページの通信を観測し、モックもネイティブに
+解決するため、テスト対象のアプリを変更する必要はありません。

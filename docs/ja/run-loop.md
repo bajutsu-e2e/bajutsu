@@ -16,13 +16,13 @@
 ## `run_scenario`（1 シナリオの実行）
 
 ```python
-def run_scenario(driver, scenario, clock=None, sink=None, on_blocked=None) -> RunResult
+def run_scenario(driver, scenario, clock=None, sink=None, alert_guard=None, ...) -> RunResult
 ```
 
 - `driver`: `base.Driver`（実ドライバ or `FakeDriver`）。ループはこれにしか依存しません。
 - `clock`: 時刻 / sleep の注入（テストで待機を決定化）。既定 `RealClock`（`time.monotonic` / `time.sleep`）。
 - `sink`: 証跡の出力先（既定 `NullSink` は何も書かない）。詳細は [evidence](evidence.md)。
-- `on_blocked`: ステップ失敗時に「ブロッカー（システムアラート等）を片付けたら True」を返すハンドラです。True を返した場合、**そのステップを 1 回だけ再試行します**（[recording の alert guard](recording.md#システムアラートの自動対処)）。`wait` ステップ（`for`/`settled`/`screenChanged`）では同じハンドラが **wait の途中でも**待ち構えています（BE-0269）。すでにポーリング済みの画面のツリーが崩壊して見えた時点で発火します（デバウンスとクールダウンを挟み、1 回の wait につき最大 2 回まで）。末尾の再試行とは独立に、wait 自体のタイムアウトを待たず回復できます。
+- `alert_guard`: ステップ失敗時に「ブロッカー（システムアラート等）を片付けたら、その片付けたイベントを返す」ハンドラです。イベントを返した場合、**そのステップを 1 回だけ再試行します**（[recording の alert guard](recording.md#システムアラートの自動対処)）。`wait` ステップ（`for`/`settled`/`screenChanged`）では同じハンドラが **wait の途中でも**待ち構えています（BE-0269）。すでにポーリング済みの画面のツリーが崩壊して見えた時点で発火します（デバウンスとクールダウンを挟み、1 回の wait につき最大 2 回まで）。末尾の再試行とは独立に、wait 自体のタイムアウトを待たず回復できます。
 
 ### 1 ステップの流れ
 
@@ -33,7 +33,7 @@ def run_scenario(driver, scenario, clock=None, sink=None, on_blocked=None) -> Ru
 3. （`capturePolicy` に `screenChanged` トリガーがあれば）操作前の `query()` を控えます。
 4. **区間証跡を開始**します（`video` / `deviceLog` のうち、操作前から始める必要があるもの）。`_pre_intervals` は「ステップ自身から判定可能なトリガー」だけを拾います（`screenChanged`/`error` は遅すぎるため対象外）。
 5. `_run_step_body` で **act**（or wait / assert）を実行し、`(ok, reason, assertion_results)` を得ます。
-6. 失敗かつ `on_blocked` がブロッカーを片付けた場合は **1 回再試行します**。
+6. 失敗かつ `alert_guard` がブロッカーを片付けた場合は **1 回再試行します**。
 7. **区間証跡を停止**します（ステップが落ち着いてから）。アーティファクトを記録します。
 8. **瞬時証跡**（`screenshot` / `elements`）を取得します（`_collect_captures` の発火結果）。
 9. `StepOutcome` を積みます。失敗なら `failure` を設定して **break** します。
@@ -101,7 +101,7 @@ class RunResult:
     failure: str | None          # 例: "step 3 (tap): 一致なし: {...}"
 ```
 
-`expect` は全ステップ成功後にのみ評価されます。`on_blocked` があれば expect も 1 回だけ再評価します。これらはそのまま `report/` の `manifest.json` / JUnit / HTML になります（[reporting](reporting.md)）。
+`expect` は全ステップ成功後にのみ評価されます。`alert_guard` があれば expect も 1 回だけ再評価します。これらはそのまま `report/` の `manifest.json` / JUnit / HTML になります（[reporting](reporting.md)）。
 
 ## runner（実行パイプライン）
 
@@ -120,10 +120,10 @@ erase（pre.erase なら shutdown → erase） → boot → terminate(bundle)（
 
 > `_await_ready` は「アプリが UI を描画した（ルート要素より多い）」ことをポーリングで待ちます。`locale` は launch 時に **適用されます**（シナリオの `preconditions.locale` が config 既定を上書きし、`env.locale_args` で launch 引数として渡ります）。simctl の launch 手順は `make -C demos/showcase run-swiftui` ＋ `ios-e2e.yml` CI ワークフローで実機（iPhone 17 Pro）検証済みです。
 
-### `device_factory` / `run_all` / `run_and_report`
+### `device_pool` / `run_all` / `run_and_report`
 
-- `device_factory(udid, backends, ...)`: actuator を選び、シナリオごとに `launch_driver` する factory を返します。
-- `run_all(eff, scenarios, factory, ...)`: 各シナリオを **新しいドライバで** 実行します（クリーン分離）。
+- `device_pool(udids, backends, ...)`: actuator を選び、`(lease, shutdown)` の組を返します。`lease(eff, scenario)` は空いているデバイスをリースし、シナリオごとに `launch_driver` します。
+- `run_all(eff, scenarios, lease, ...)`: 各シナリオを **新しくリースした、新しいドライバで** 実行します（クリーン分離）。
 - `run_and_report(...)`: `run_all` の結果を `write_report(runs_dir/run_id, ...)` で書き出し、`(results, manifest_path)` を返します。
 
 CLI の `run` はこの `run_and_report` を呼びます（[cli](cli.md#run)）。

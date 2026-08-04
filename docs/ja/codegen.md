@@ -119,11 +119,15 @@ final class ComponentsUITests: XCTestCase {
 
 ## 未対応は TODO コメントに落とす
 
-未対応の構文（`simctl` レベルのデバイス制御 `setLocation` / `push`、ネットワークの `request`
-アサーション、未知の trait、および Playwright 出力先での座標スワイプ）は、失敗させずに
-`// TODO` 行を出力します。デバイス制御ステップはレビュー担当が実行する `simctl` コマンド名を明記します。
-出力は常にレビューでき、生成結果を壊しません。生成ファイルの先頭にも「手で編集せず再生成せよ」と明記します。
-これはどの出力先にも共通です。
+未対応の構文（`simctl` レベルのデバイス制御 `setLocation` / `push`、未知の trait、および
+Playwright 出力先での座標スワイプ）は、失敗させずに `// TODO` 行を出力します。デバイス制御ステップは
+レビュー担当が実行する `simctl` コマンド名を明記します。出力は常にレビューでき、生成結果を壊しません。
+生成ファイルの先頭にも「手で編集せず再生成せよ」と明記します。これはどの出力先にも共通です。
+
+ネットワークの `request` / `requestSequence` アサーションも、XCUITest と UI Automator では同じ
+`// TODO` の規則に従います。どちらの backend もネットワーク傍受の面を持たないためです。Playwright は
+例外です。web backend はネットワーク通信を実際に傍受するため、生成テストは `// TODO` に落とさず、
+本物のアサーションとして出力します（詳細は[後述](#playwrightwebの出力)）。
 
 ただし `if` / `forEach` / `extract` の 3 つは例外です。いずれも実行時の UI ツリーに対して
 評価します — 現在の状態による分岐、その時点のマッチ集合に対するループ、解決した要素のプロパティの
@@ -166,9 +170,10 @@ test.describe('Components', () => {
 - 各テストは `BASE_URL`（アプリの `baseUrl`。web では `page.goto` が `launch` に相当）へ遷移します。config の
   `launchEnv` < シナリオの `preconditions.launchEnv` は `page.addInitScript(() => localStorage.setItem(...))` で
   シードします。別のチャネル（クエリパラメータやクッキー）を期待するアプリには `// TODO` を出します。
-- 待機はすべて Playwright の自動待機を使います。出力する固定の時間は **ジェスチャの長さ**（`longPress` の
-  `delay`、方向スワイプのドラッグ）だけで、これはジェスチャ固有のものです。iOS 側が `press(forDuration:)` に
-  対して取るのと同じ扱いです。
+- 待機はすべて Playwright の自動待機を使います。出力する固定の時間は `longPress` の `delay` だけで、これは
+  ジェスチャ固有のものです。iOS 側が `press(forDuration:)` に対して取るのと同じ扱いです。方向指定の
+  `swipe` にはこの固定の時間はありません。要素をドラッグするのではなく、その中心から wheel イベントで
+  ページをスクロールするからです（web ドライバ自身のスクロールと合わせています。BE-0227）。
 
 ### セレクタのマッピング（Playwright）
 
@@ -192,7 +197,7 @@ test.describe('Components', () => {
 | `type`（`into` あり） | `await loc.fill('…')` |
 | `type`（`into` なし） | `await page.keyboard.type('…')` |
 | `longPress` | `await loc.click({ delay: <ms> })` |
-| `swipe { on, direction }` | 要素中心からその方向への `page.mouse` ドラッグ |
+| `swipe { on, direction }` | 要素中心からその方向への `page.mouse.wheel` スクロール（BE-0227） |
 | `swipe { from, to }` | `// TODO`（座標スワイプは生成しない） |
 | `wait { for }` | `await expect(loc).toBeVisible({ timeout: <ms> })` |
 | `wait { until: gone }` | `await expect(loc).toBeHidden({ timeout: <ms> })` |
@@ -211,6 +216,13 @@ test.describe('Components', () => {
 | `enabled` / `disabled` | `.toBeEnabled()` / `.toBeDisabled()` |
 | `selected` | `.toBeChecked()` |
 | `count` (equals/atLeast/atMost) | `.toHaveCount(n)`。atLeast/atMost は `await loc.count()` を比較 |
+
+XCUITest や UI Automator と異なり、web backend はネットワーク通信を実際に傍受します。そのため
+`request` / `requestSequence` アサーション（および `until: { request }` の待機）は、この出力先では
+`// TODO` になりません。生成テストはナビゲーション前に `page.on('requestfinished', ...)` の recorder を
+仕込み、そこまでに観測した通信に対してアサートします。これは runner 自身の collector を写した時点確認で、
+今後の通信を待って止まりかねない `waitForResponse` は使いません。`responseSchema` アサーションは、
+JSON Schema の検証に生成テストへ持ち込むライブラリが必要になるため、依然として `// TODO` に落とします。
 
 `describe` ブロック名は `-o` のファイル名 stem（なければシナリオファイル名）を読みやすく整えたものです。各
 `test(...)` のタイトルはシナリオ名をそのまま使います（TypeScript のテストタイトルは単なる文字列なので、識別子用の

@@ -11,7 +11,9 @@
 > backend 非依存のドライバを土台とする自然言語駆動 E2E（エンドツーエンド）テスト。シナリオ形式と決定的
 > ランナーは 1 つで、**プラットフォームはその 1 つのインターフェースの背後の backend に過ぎません**。
 > backend を差し替えれば同じシナリオが別のターゲットで動きます。iOS Simulator（XCUITest）、
-> web（Playwright）backend、Android（adb）backend はいずれも実装済みで、次は Flutter です。
+> web（Playwright）backend、Android（adb）backend はいずれも実装済みです。Flutter アプリは
+> 同じ iOS / Android の backend の上でそのまま動き、新しい backend を追加する必要はありません
+> （BE-0008）。
 > **ステータス: pre-alpha。** 決定的コア、AI オーサリングループ（`record` / `crawl`）、証跡
 > サブシステム、codegen、自己修復トリアージはいずれも実装・ユニットテスト済みです
 > （Simulator 不要）。iOS の **XCUITest backend** は **実機 Simulator で
@@ -25,7 +27,8 @@ swipe / wait）して、**機械チェック可能なアサーション**で結�
 プラットフォーム非依存です。シナリオ形式、セレクタ解決、決定的ランナー、証跡サブシステム、レポーターは
 どれもプラットフォームを名指ししません。その 1 つの継ぎ目が、UI を操作する **backend** です。ランナーを
 別の backend に向ければ、同じシナリオが別のターゲットで動きます。対象は iOS Simulator（XCUITest）、
-ブラウザ（Playwright）、Android（adb）で、次は Flutter です。プラットフォームを選ぶとは backend を
+ブラウザ（Playwright）、Android（adb）です。Flutter アプリは同じ iOS / Android の backend の上で
+そのまま動き、新しい backend は要りません。プラットフォームを選ぶとは backend を
 選ぶことであり、別のツールへ乗り換えることではありません。
 
 > **名前について。** *Bajutsu*（馬術）は馬を扱う技術を指す日本語です。この名前は、ツールが扱う
@@ -97,7 +100,8 @@ swipe / wait）して、**機械チェック可能なアサーション**で結�
   テスト時は AI 不要）
 - **自己修復トリアージ**（原因 + 最小修正案。助言のみ、AI は任意）
 - 配線済み CLI: `run` / `doctor` / `record` / `crawl` / `codegen` / `trace` /
-  `triage` / `approve` / `serve` / `mcp` / `worker` / `lint` / `schema`
+  `triage` / `approve` / `serve` / `mcp` / `worker` / `lint` / `schema` / `audit` / `coverage` /
+  `export` / `flakiness` / `impact` / `project` / `report` / `stats`
 - **MCP サーバ**（`bajutsu mcp`）: `run` と `doctor` を MCP ツールとして、run の証跡
   （manifest / report / JUnit / artifact）をリソースとして公開し、Claude Desktop / Code 連携に
   使えます
@@ -123,7 +127,7 @@ Android エミュレータで検証済み（Linux・Mac 不要）:
   actuation を実現しており、KVM 上で起動した API 34 のエミュレータに対して
   [`android-e2e.yml`](.github/workflows/android-e2e.yml) が同じ共有シナリオを走らせて確認済み。
 
-未配線: 外部 `mockServer` コマンド（シナリオ内 `mocks` で代替済み）、Flutter backend（予定）。
+未配線: 外部 `mockServer` コマンド（シナリオ内 `mocks` で代替済み）。
 完全な「実装済み vs 未配線」表は [`docs/ja/architecture.md`](docs/ja/architecture.md)
 にあります。
 
@@ -173,7 +177,9 @@ bajutsu schema                                            # エディタ連携�
 ```
 
 `trace`（完了した run の確認）・`triage`（失敗の診断）・`worker`（ホスティング backend 向けに
-キュー済み run をリース）も揃っています。[CLI リファレンス](docs/ja/cli.md) を参照してください。
+キュー済み run をリース）も揃っています。CLI には `audit` / `coverage` / `export` / `flakiness` /
+`impact` / `project` / `report` / `stats` もあります。全コマンドは
+[CLI リファレンス](docs/ja/cli.md) を参照してください。
 
 > `make serve`（または `scripts/serve.sh`）は `bajutsu serve` をラップし、設定された backend の
 > 依存を必要時に導入します。これにより、クリーンなチェックアウトでも
@@ -240,25 +246,24 @@ bajutsu/
 ├── drivers/              # Driver プロトコル + セレクタ解決（決定性の核）; fake / xcuitest (iOS) / playwright (web) / adb (Android)
 ├── backends.py           # プラットフォーム対応の backend レジストリ + ドライバ生成（安定度順）
 ├── scenario/             # シナリオスキーマ（models）, YAML ロード / ラウンドトリップ, 展開, JSON Schema
-├── assertions.py         # 機械チェック可能なアサーション評価
+├── assertions/           # 機械チェック可能なアサーション評価
 ├── interp.py             # data / vars / secrets に対する ${namespace.key} 補間
 ├── orchestrator/         # 決定的 Tier 2 run ループ（act → wait → verify）
 ├── runner/               # config + シナリオ -> レポート; デバイスプール経由
 ├── report/               # manifest.json + JUnit + インタラクティブ HTML
-├── evidence.py           # 瞬時証跡（screenshot / elements）+ Sink
-├── intervals.py          # 区間証跡（video / deviceLog）via simctl
-├── network.py            # ネットワーク観測（exchange モデル + collector）
-├── visual.py             # ビジュアルリグレッションの画像比較
-├── redaction.py          # 取得証跡内のシークレットをマスク
-├── config.py             # チーム既定 × アプリ別の解決（iOS bundleId / web baseUrl）
+├── evidence/             # 瞬時証跡（core）、simctl 経由の区間証跡（intervals）、ネットワーク観測、
+│                         #   ビジュアルリグレッション比較、golden 要素ツリー比較、シークレットの redaction
+├── analysis/             # 読み取り専用の助言的分析: coverage、決定性 audit、run の stats
+├── config/               # チーム既定 × アプリ別の解決（iOS bundleId / web baseUrl）
 ├── simctl.py             # simctl コマンド層（iOS 環境）
 ├── preflight.py          # doctor / CI 向けの環境 runnability ゲート
 ├── doctor.py             # 規約スコア
-├── agent.py · agents.py  # オーサリング Agent 抽象 + 構築（Tier 1）
-├── claude_agent.py       # SDK オーサリングエージェント（Anthropic API / Bedrock / ant）
+├── agents/               # AI / agent 周辺: protocols + factory、Claude のオーサリング / enrich / triage
+│                         #   各 agent と共有の claude_backed 基底、ai_config / anthropic_client、
+│                         #   availability、enrich ループ、アラートガード
 ├── record.py             # record ループ: 探索 -> シナリオ出力
 ├── crawl/                # 自律的な幅優先クロール -> スクリーンマップ（core + guide/tabs/report/repro/flows）
-├── alerts.py             # システムアラートガード（視覚ロケータ）
+├── analytics/            # トークン / コスト集計: usage、帰属付きの ledger、usage ダッシュボード
 ├── codegen/              # シナリオ -> ネイティブテスト (XCUITest / Playwright / UI Automator)
 ├── trace.py              # 完了した run をテキストのタイムラインで確認
 ├── triage.py             # 自己修復トリアージ: 失敗 run を診断し修正案を提示
@@ -277,8 +282,9 @@ bajutsu/
 ルール、codegen + CI、自己修復トリアージのいずれも実機 Simulator で検証済みです（実装済み
 の範囲は上の[ステータス](#ステータス)を参照してください）。プラットフォームは 1 つのドライバインター
 フェースの背後にある backend にすぎないため、同じコアが対象をまたいで動きます。**web（Playwright）**
-backend と **Android（`adb`）** backend はいずれも実装済みで、**Flutter** を予定しています
-（[`docs/ja/vision.md`](docs/ja/vision.md#1-reachより多くのプラットフォームと面)）。
+backend と **Android（`adb`）** backend はいずれも実装済みで、**Flutter** アプリも同じ
+iOS / Android の backend の上でそのまま動きます（新しい backend は不要、BE-0008。
+[`docs/ja/vision.md`](docs/ja/vision.md#1-reachより多くのプラットフォームと面) を参照してください）。
 
 今後の優先順位付きバックログ（次に作りたいもの）は [`roadmaps/`](roadmaps/README-ja.md) にあります。
 
