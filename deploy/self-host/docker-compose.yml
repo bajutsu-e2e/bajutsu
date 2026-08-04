@@ -29,8 +29,7 @@ services:
       MINIO_ROOT_USER: ${AWS_ACCESS_KEY_ID:?set AWS_ACCESS_KEY_ID in .env}
       MINIO_ROOT_PASSWORD: ${AWS_SECRET_ACCESS_KEY:?set AWS_SECRET_ACCESS_KEY in .env}
     volumes: ["miniodata:/data"]
-    # S3 API (reached by the Mac worker over the tailnet) + console — same BIND_ADDR rule as Redis;
-    # loopback by default so a public host can't accidentally expose the artifacts bucket.
+    # S3 API + console — same BIND_ADDR rule as above;
     ports:
       - "${BIND_ADDR:-127.0.0.1}:9000:9000"
       - "${BIND_ADDR:-127.0.0.1}:9001:9001"

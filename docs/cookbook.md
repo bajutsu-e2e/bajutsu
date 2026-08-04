@@ -81,14 +81,17 @@ Full file (including the cross-platform id-candidate-list form):
 ## Grant a system permission dialog
 
 A runtime permission prompt (notifications, location, …) is an **out-of-process system alert**, not
-part of the app's own UI — the iOS backend can't tap it directly. `systemAlertHandling` hands that one tap to the AI
-alert guard, which watches for the prompt and taps "Allow", while every assertion around it stays
-machine-checked.
+part of the app's own UI — the iOS backend can't tap it directly. `systemAlertHandling` hands that one
+tap to the reactive alert guard, which watches for the prompt and taps "Allow" through a deterministic
+native accessibility query, with no screenshot and no model call, while every assertion around it
+stays machine-checked. The `instruction` must take the list form (`["Allow"]`): the native path
+resolves a list deterministically, but a free-text string falls back to the guard's default dismissive
+labels and denies the prompt instead of granting it.
 
 ```yaml
 - name: grant notification permission
   tags: [permission, system]
-  systemAlertHandling: { instruction: "tap Allow" }
+  systemAlertHandling: { instruction: ["Allow"] }
   preconditions:
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
@@ -133,8 +136,8 @@ flaky network, and `request` assertions confirm the mocked call happened.
 ```
 
 `wait: { until: { gone: … } }` polls until an element *disappears* — useful for a transient toast
-like this one. Full file (including the `redact` policy that masks the request's `Authorization`
-header and `password` body field in captured evidence):
+like this one. Full file (the request also carries an `Authorization` header; sensitive headers are
+masked in captured evidence by default, so this scenario needs no `redact` policy of its own for that):
 [`demos/showcase/scenarios/network_mock.yaml`](../demos/showcase/scenarios/network_mock.yaml).
 
 ## Run the same scenario over a data table

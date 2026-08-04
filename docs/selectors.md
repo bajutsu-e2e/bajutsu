@@ -37,8 +37,10 @@ The common tokens state assertions, selectors, and other checks read. Drivers no
 | `selected` | selected / toggled on | `selected` |
 | `other` | generic/unclassified element (iOS's catch-all `XCUIElementTypeOther`, for example) | `resolve_unique`'s ambiguity judgment (below) |
 
-(idb normalizes `enabled: false` → `notEnabled`, `selected: true` → `selected`. Type strings drop
-the `AX` prefix and lowercase the first letter: `AXButton` → `button`. See `drivers/idb.py`.)
+> Each backend normalizes its own attributes to these tokens. adb maps UI Automator's
+> `enabled="false"` to `notEnabled`. It maps `selected="true"` / `checked="true"` to `selected` the
+> same way. XCUITest's resident runner normalizes `isEnabled == false` to `notEnabled` the same way.
+> See [drivers](drivers.md) for each backend's exact mapping.
 
 ## The selector (`Selector`)
 
@@ -150,13 +152,17 @@ failure" (they do not propagate the exception upward).
 
 ### Centralized regardless of backend
 
-idb exposes no usable semantic tap, so the abstraction **always verifies the candidate count via
-`query()` before** acting, then taps the resolved element's frame center. This up-front count check makes the "ambiguous =
-fail" behavior identical across idb / playwright / fake (each driver's `tap` implementation is in
-[drivers](drivers.md)).
+adb (Android), playwright (web), and the fake driver have no semantic tap, so each **always
+verifies the candidate count via `query()` before** acting, then taps the resolved element's
+frame center. XCUITest resolves through that same check too, then taps directly by identifier
+instead of a coordinate. Every action resolves through the shared `resolve_unique`, so the
+"ambiguous = fail" behavior is identical across every backend. Each driver's `tap` implementation is in
+[drivers](drivers.md).
 
-The `id` comes straight from idb's element tree (`AXUniqueId`), normalized into `Element.identifier`,
-so the `id` selector resolves directly against the normalized form.
+Each backend derives `identifier` from its own accessibility id. XCUITest uses
+`accessibilityIdentifier`. adb uses `resource-id` (package prefix stripped). The web backend uses
+`data-testid`. Each normalizes into `Element.identifier`. The `id` selector then resolves directly
+against that normalized form.
 
 ## Assertion evaluation
 
@@ -190,5 +196,7 @@ Per-kind mechanics:
 
 > Only `exists` uses `find_all` (allows multiple); the other single-element assertions use
 > `resolve_unique` (ambiguous fails). So "tried to check the value when there were two matches" also
-> fails deterministically. The `request` kind is the one non-UI assertion — it checks the captured
-> HTTP(S) exchanges instead of the elements (eight kinds in total).
+> fails deterministically. The table above covers eight kinds. Seven resolve against the element
+> tree. The eighth, `request`, checks the captured HTTP(S) exchanges instead. Six more kinds never
+> resolve a selector this way. They are `event` / `requestSequence` / `responseSchema` / `visual` /
+> `clipboard` / `golden`. See [scenarios](scenarios.md#assertion-dsl) for the full list.

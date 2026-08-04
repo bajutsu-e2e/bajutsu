@@ -35,11 +35,11 @@ Every mapping rejects keys it does not declare (`_Model`, `scenario/models/_base
 
 ## 2. Grammar at a glance
 
-The **reference graph** below shows which non-terminal references which. It makes visible the recursion and sharing that are harder to trace in the EBNF text: `Selector`'s `within` self-loop, and how `RequestMatch` is shared by the `request` assertion, the `until: { request }` wait, and `Mock.match`. (Actions that carry only scalars and reference no shared non-terminal — `relaunch`, `setLocation`, `push`, `http`, and the device / status-bar steps — are omitted.)
+The **reference graph** below shows which non-terminal references which. It makes visible the recursion and sharing that the EBNF text below states but does not show directly: `Selector`'s `within` self-loop; `RequestMatch`, shared by the `request` assertion, the `until: { request }` wait, and `Mock.match`; and `Web` and `Component`, which both nest a fresh `Step` list. The diagram omits actions that carry only scalars and reference no shared non-terminal (`relaunch`, `setLocation`, `push`, `http`, `setClipboard`, `foreground`, and the remaining device / status-bar steps) and the `golden` assertion, whose payload is a bare path.
 
 ```mermaid
 graph LR
-  SF["ScenarioFile = list(Scenario)"] --> SC["Scenario"]
+  SF["ScenarioFile"] --> SC["Scenario"]
 
   SC -->|preconditions| PRE["Preconditions"]
   SC -->|steps| ST["Step"]
@@ -48,13 +48,19 @@ graph LR
   SC -->|network| NET["Network"]
   SC -->|mocks| MK["Mock"]
   SC -->|redact| RD["Redact"]
+  SC -->|interrupts| IR["Interrupt"]
 
   ST -->|"tap·doubleTap·longPress·<br/>type·swipe·pinch·rotate"| SEL["Selector"]
   ST -->|wait| WT["Wait"]
   ST -->|assert| AS
   ST -->|use| CMP["Component"]
+  ST -->|web| WEB["Web"]
   ST -->|capture| CT["CaptureToken"]
   CMP -->|steps| ST
+  WEB -->|within| SEL
+  WEB -->|steps| ST
+  IR -->|condition| AS
+  IR -->|steps| ST
 
   SEL -->|within| SEL
   WT -->|"for · until:gone"| SEL
@@ -63,7 +69,8 @@ graph LR
   AS -->|"exists·enabled·<br/>disabled·selected"| SEL
   AS -->|"value·label"| TM["TextMatch"]
   AS -->|count| CM["CountMatch"]
-  AS -->|request| RM
+  AS -->|"request·requestSequence·<br/>responseSchema"| RM
+  AS -->|event| EM["EventMatch"]
   TM --> SEL
   CM --> SEL
 
@@ -78,12 +85,18 @@ And the productions in full:
 
 ```ebnf
 # ── Files ──────────────────────────────────────────────────────────────
-ScenarioFile  ::= list(<Scenario>)          # top level MUST be a sequence
+# Two on-disk forms: a bare sequence of scenarios, or a mapping that also carries a file-level
+# `description` and/or `schema` (the cross-version read gate, BE-0119; default 1, an older
+# bajutsu rejects a higher declared version rather than misinterpret it).
+ScenarioFile  ::= list(<Scenario>)
+               | { schema?: integer, description?: string, scenarios: list(<Scenario>) }
 ComponentFile ::= <Component>               # a single mapping (loaded separately)
 
 # ── Scenario ───────────────────────────────────────────────────────────
 Scenario ::= {
   name:            string,                  # required
+  description?:   string,                   # authoring metadata; `run` never reads it
+  from?:           string,                  # provenance: the natural-language goal `record` authored this from (BE-0044)
   tags?:           list(string),            # default []  — selection (§6.4)
   data?:           list(map(string,string)),# inline rows   ┐ XOR
   dataFile?:       string,                  # CSV path      ┘ (§6.3)
@@ -96,13 +109,18 @@ Scenario ::= {
   redact?:         <Redact>,
   systemAlertHandling?: <SystemAlertHandling>,  # alert guard; on when unset
   permissions?:    <Permissions>,           # pre-launch OS permission state; default {}
+  interrupts?:     list(<Interrupt>),       # default []  — handlers for interstitials that surface at an unpredictable point (BE-0314), appended after the target config's own
 }
 
 Component ::= { params?: list(string), steps: list(<Step>) }
 
+# A handler the runner checks opportunistically against trees it has already fetched, wherever in
+# the step sequence the matching screen surfaces, running `steps` to clear it (BE-0314).
+Interrupt ::= { condition: <Assertion>, steps: list(<Step>) }
+
 # ── Preconditions ──────────────────────────────────────────────────────
 Preconditions ::= {
-  erase?:      boolean,                     # default false — simctl erase first
+  erase?:      boolean,                     # unset inherits the target config's erase, else off (BE-0177); simctl erase first
   reinstall?:  ("clean" | "overwrite"),     # default "clean" — app reinstall when config sets appPath
   launchArgs?: list(string),                # default []
   launchEnv?:  map(string,string),          # default {}    — injected as SIMCTL_CHILD_*
@@ -125,7 +143,8 @@ PermissionAction  ::= "grant" | "revoke"
 
 # ── Step = exactly one Action + optional modifiers ─────────────────────
 Step      ::= <Action> & <StepMods>
-StepMods  ::= { capture?: list(<CaptureToken>), extract?: map(string, <Extract>), name?: string }
+StepMods  ::= { capture?: list(<CaptureToken>), extract?: map(string, <Extract>), name?: string, from?: string }
+                # `from`: provenance, the natural-language phrase `record` normalized this step from (BE-0044)
 Extract   ::= { sel: <Selector>, prop?: ("value"|"label"|"identifier") }   # default "value"
 Action    ::=
     { tap:         <Selector> }
@@ -155,17 +174,23 @@ Action    ::=
   | { totp:        { secret: string, into: { var: string } } }  # RFC 6238 OTP → vars.<var> (secret is base32)
   | { email:       { match: { to?: string, subject?: string, subjectMatches?: string }, extract: { var: string, bodyMatches: string }, timeout: number } }  # poll mailbox → vars.<var>
   | { background:       {} }                               # Home button (backgrounds via SpringBoard, no terminate)
+  | { foreground:       {} }                               # resume a backgrounded app (simctl launch, no terminate); the other half of background
   | { clearKeychain:    {} }                               # reset saved passwords / certificates
   | { clearClipboard:   {} }                               # clear the pasteboard
+  | { setClipboard:     { text: string } }                 # seed the pasteboard with text (simctl pbcopy), for paste flows
   | { overrideStatusBar: { time?: string, batteryLevel?: integer, batteryState?: string, cellularBars?: integer, wifiBars?: integer } }
   | { clearStatusBar:   {} }                               # restore the live status bar
   | { use:         { component: string, with?: map(string,string) } }   # macro (§6.2)
   | { if:          <If> }                                               # conditional (no capture/extract)
   | { forEach:     <ForEach> }                                          # loop (no capture/extract)
+  | { web:         <Web> }                                              # enter a WebView's DOM context (BE-0037; no capture/extract)
   | { manual:      { label: string, bypass?: string } }                # human takeover recorded during `record` (BE-0185); fails loudly at run time — no deterministic equivalent unless `bypass` is wired
 
 If ::= { condition: <Assertion>, then: list(<Step>), else?: list(<Step>) }
 ForEach ::= { sel: <Selector>, as: string, steps: list(<Step>) }
+Web ::= { within: <Selector>, steps: list(<Step>) }
+    # `within` resolves natively to exactly one WKWebView host; nested `steps` address the
+    # normalized DOM (`data-testid` → Element.identifier), not the native accessibility tree.
 
 Swipe ::=
     { on: <Selector>, direction: ("up"|"down"|"left"|"right"), amount?: number }   # selector form  ┐ XOR
@@ -179,8 +204,8 @@ Point ::= [ number, number ]
 
 # ── Selector (≥1 field; provided fields are AND-ed) ────────────────────
 Selector ::= {
-  id?:           string,
-  idMatches?:    string,        # glob over the id (fnmatch, e.g. "list.row.*")
+  id?:           string | list(string),        # a list is an OR over candidates (BE-0221) — one shared scenario can carry every platform's spelling of an id; list the canonical (dotted) form first
+  idMatches?:    string | list(string),         # glob over the id (fnmatch, e.g. "list.row.*"); a list ORs candidates the same way as id
   label?:        string,
   labelMatches?: string,        # regex over the label
   traits?:       list(string),
@@ -206,12 +231,18 @@ Assertion ::=
   | { disabled: <Selector> }
   | { selected: <Selector> }
   | { request:  <RequestMatch> }
+  | { event:    <EventMatch> }        # an analytics/telemetry event the app sent (BE-0048)
+  | { requestSequence: list(<RequestMatch>) }   # ≥1 matcher; an ordered/aggregate set of matched exchanges
+  | { responseSchema: <ResponseSchemaMatch> }   # validate a captured response body against a JSON Schema (BE-0048)
   | { visual:   <VisualMatch> }
   | { clipboard: <ClipboardMatch> }   # read-back of the device pasteboard (simctl pbpaste)
+  | { golden:   <GoldenMatch> }       # compare the live element tree to a recorded golden file (BE-0006)
 
 TextMatch  ::= { sel: <Selector> } & ( {equals:string} | {contains:string} | {matches:string} )
 CountMatch ::= { sel: <Selector> } & ( {equals:integer} | {atLeast:integer} | {atMost:integer} )
+CountOp    ::= ( {equals:integer} | {atLeast:integer} | {atMost:integer} )   # a count comparison with no selector — an EventMatch's multiplicity
 ClipboardMatch ::= ( {equals:string} | {matches:string} )   # exactly one; matches is a regex
+GoldenMatch ::= { path: string }   # resolved against the golden context's base directory (BE-0006)
 
 VisualMatch ::= {                  # pixel-compare the screen against a baseline image
   baseline:   string,             # filename resolved inside --baselines (default: baselines/ beside the scenario)
@@ -236,12 +267,25 @@ RequestMatch ::= {              # ≥1 of the match fields below
   count?:       integer,        # assertion → exact count; wait → lower bound
 }
 
+EventMatch ::= {                # ≥1 of an endpoint field (method/url/urlMatches/path/pathMatches) or body
+  method?:      string,
+  url?:         string,
+  urlMatches?:  string,
+  path?:        string,
+  pathMatches?: string,
+  body?:        map(string,string),  # each key must be present and equal (as text) to the request body's JSON value
+  count?:       <CountOp>,           # expected multiplicity (default: at least one)
+}
+
+ResponseSchemaMatch ::= { request: <RequestMatch>, schema: string }   # `schema` resolved against the app's schemas dir
+
 # ── Evidence capture ───────────────────────────────────────────────────
 CaptureToken ::= <Kind> ( "." <Modifier> )?
 Kind     ::= "screenshot" | "elements" | "actionLog" | "deviceLog" | "network" | "video" | "appTrace"
 Modifier ::= "before" | "after" | "around" | "onError"
 
-CaptureRule ::= { on: <Trigger>, capture: list(<CaptureToken>) }
+CaptureRule ::= { on: <Trigger>, capture: list(<CaptureToken>), from?: string }
+    # `from`: provenance, the instruction this evidence rule was normalized from (BE-0044)
 Trigger ::=                                    # exactly one of action / event / result
     { action: string, idMatches?: string }     # idMatches only alongside action
   | { event: "screenChanged" }
@@ -249,7 +293,9 @@ Trigger ::=                                    # exactly one of action / event /
 
 # ── Network / mocks / redact ───────────────────────────────────────────
 Network ::= { filter?: { domains?: list(string) } }
-Redact  ::= { labels?: list(string), headers?: list(string), fields?: list(string) }
+Redact  ::= { labels?: list(string), headers?: list(string), fields?: list(string), unmaskHeaders?: list(string) }
+    # unmaskHeaders: an explicit, visible opt-out releasing one of the credential-bearing headers
+    # (authorization, cookie, set-cookie, …) masked by default (BE-0130)
 Mock    ::= { match: <RequestMatch>, respond?: <MockResponse> }   # match: request-side fields only
 MockResponse ::= { status?: integer, headers?: map(string,string), body?: string, delayMs?: number }
 ```
@@ -293,6 +339,9 @@ error). This table is the **authoritative list of "exactly one / at least one / 
 | `CountMatch` (`count`) | **exactly one** of `equals` / `atLeast` / `atMost` | `scenario/models/assertions.py` |
 | `ClipboardMatch` (`clipboard`) | **exactly one** of `equals` / `matches` | `scenario/models/assertions.py` |
 | `RequestMatch` | **≥ 1** of `method`/`url`/`urlMatches`/`path`/`pathMatches`/`status`/`bodyMatches` (`count` is not a match field) | `scenario/models/assertions.py` |
+| `EventMatch` (`event`) | **≥ 1** of `method`/`url`/`urlMatches`/`path`/`pathMatches`/`body` | `scenario/models/assertions.py` |
+| `CountOp` (`event.count`) | **exactly one** of `equals` / `atLeast` / `atMost` | `scenario/models/assertions.py` |
+| `Assertion.requestSequence` | **≥ 1** item | `scenario/models/assertions.py` |
 | `Trigger` (`capturePolicy[].on`) | **exactly one** of `action` / `event` / `result`; `idMatches` only **with** `action` | `scenario/models/evidence.py` |
 | `Scenario` | `data` and `dataFile` **not both** | `scenario/models/scenario.py` |
 | every mapping | **no unknown keys** (`extra="forbid"`) | `scenario/models/_base.py` |
@@ -309,11 +358,11 @@ Omitted optional keys take these values (so a minimal scenario is just `name` + 
 
 | Field | Default |
 |---|---|
-| `Scenario.tags` / `expect` / `capturePolicy` / `mocks` | `[]` |
-| `Scenario.preconditions` | `{}` (i.e. `erase: false`, `reinstall: clean`) |
+| `Scenario.tags` / `expect` / `capturePolicy` / `mocks` / `interrupts` | `[]` |
+| `Scenario.preconditions` | `{}` (i.e. `erase` unset — off unless the target config says otherwise — and `reinstall: clean`) |
 | `Scenario.systemAlertHandling` | unset (alert guard on; dismiss the prompt) |
 | `Scenario.permissions` | `{}` (no pre-launch permission state applied) |
-| `Preconditions.erase` | `false` |
+| `Preconditions.erase` | unset — inherits the target config's `erase`, else off (BE-0177) |
 | `Preconditions.reinstall` | `clean` |
 | `Preconditions.launchArgs` | `[]` |
 | `Preconditions.launchEnv` | `{}` |
@@ -323,6 +372,7 @@ Omitted optional keys take these values (so a minimal scenario is just `name` + 
 | `MockResponse.status` | `200` |
 | `MockResponse.headers` | `{}` |
 | `Component.params` | `[]` |
+| `ScenarioFile.schema` | `1` (BE-0119) |
 
 A complete minimal scenario:
 
@@ -432,8 +482,8 @@ load_scenarios        # parse + validate against this grammar
 ## 7. Validation & round-trip
 
 - `load_scenarios(text) -> list[Scenario]` validates against everything above; the top level must be
-  a sequence, and any rule in [§4](#4-cardinality--mutual-exclusion-constraints) failing is a load
-  error (`scenario/load.py`).
+  a sequence of scenarios or a `{description, scenarios}` mapping, and any rule in
+  [§4](#4-cardinality--mutual-exclusion-constraints) failing is a load error (`scenario/load.py`).
 - `dump_scenarios(scenarios) -> str` serializes back to YAML, pruning `None` / empty list / empty
   dict for readability and emitting alias keys (`idMatches`, `launchEnv`, …). The output **reloads
   cleanly** — this is the round-trip `record` relies on (`scenario/serialize.py`).

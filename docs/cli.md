@@ -29,12 +29,13 @@ bajutsu run --target <name> [--scenario <file.yaml>] [options]
 
 By default `run` loads **every `*.yaml`** in the app's configured scenarios dir
 (`targets.<name>.scenarios`, see [configuration](configuration.md)) — so the config alone is enough
-to run. Pass `--scenario <file>` to run a single file instead.
+to run. Pass `--scenario <file>` to run one file instead, or repeat the flag to run several
+specific files in one process, sharing a single warm runner.
 
 | Option | Default | Description |
 |---|---|---|
 | `--target` | (required) | the target app (config's `targets.<name>`) |
-| `--scenario` | config's `scenarios` dir | run one `*.yaml` instead of the app's whole scenarios dir |
+| `--scenario` | config's `scenarios` dir | run these `*.yaml` files instead of the app's whole scenarios dir; repeat the flag to run several in one process, sharing one warm runner |
 | `--backend` | config | actuator order (comma-separated; first usable wins) |
 | `--tag` | "" | comma list; run only scenarios carrying any of these tags |
 | `--exclude` | "" | comma list; skip scenarios carrying any of these tags |
@@ -46,15 +47,21 @@ to run. Pass `--scenario <file>` to run a single file instead.
 | `--log-subsystem` | "" | the os_log subsystem for `appTrace` (defaults to the app's `bundleId`) |
 | `--network / --no-network` | config › on | collect the app's network exchanges for `request` assertions; omit and it resolves the target's `network` config, then on ([BE-0177](../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md)). iOS needs BajutsuKit in the app; web observes natively via Playwright, and stubs scenario `mocks` in-process |
 | `--workers` | 1 | parallel scenarios over a device pool. On iOS, needs `--udid u1,u2,…` and is capped to that pool size. On web, `--workers N` alone is N parallel browser-context lanes — no `--udid` needed ([BE-0054](../roadmaps/BE-0054-web-backend-completion/BE-0054-web-backend-completion.md)). Each lane carries its own network collector, interval recordings, and (iOS) device control, so network / video / `setLocation` / `push` work the same as a single-device run |
-| `--baselines` | `baselines/` beside the scenario | directory of baseline images for `visual` assertions; `baseline: home.png` resolves inside it |
-| `--schemas` | `schemas/` beside the scenario | directory of JSON Schema files for `responseSchema` assertions; `schema: items.json` resolves inside it (needs the `schema` extra) |
+| `--baselines` | config's `baselines`, then `baselines/` beside the scenario | directory of baseline images for `visual` assertions; `baseline: home.png` resolves inside it |
+| `--schemas` | config's `schemas`, then `schemas/` beside the scenario | directory of JSON Schema files for `responseSchema` assertions; `schema: items.json` resolves inside it (needs the `schema` extra) |
+| `--goldens` | config's `goldens`, then `goldens/` beside the scenario | directory of golden JSON files for `golden` assertions; `golden: response.json` resolves inside it |
 | `--headed / --no-headed` | app `headless` (headless) | web backend: show the run in a visible, slow-motion Chromium window instead of headless, so you can watch each step (the window opens on the machine running the command). Omit to use the app's `headless` config; iOS ignores it |
+| `--browser` | app `browser` (chromium) | web backend: the Playwright rendering engine to drive for this run — `chromium` / `firefox` / `webkit`; omit to use the target's `browser` config ([configuration](configuration.md), [BE-0076](../roadmaps/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md)) |
+| `--browsers` | "" | web backend: run the **cross-browser matrix** — a comma list of engines (e.g. `chromium,firefox,webkit`); each scenario runs once per engine and the run is green only if every engine passes ([configuration](configuration.md#cross-browser-matrix---browsers-be-0076)). A single engine is exactly `--browser` |
 | `--progress / --no-progress` | off | stream per-scenario / per-step progress lines to stderr (the `serve` UI consumes these) |
+| `--score / --no-score` | off | print the app's entry-screen convention score (doctor's Ready/Partial/Blocked grade) to stderr, computed from this run's own first launch — so CI reads the tell without a separate `doctor` step that cold-spawns a second runner. Diagnostic only; never affects pass/fail |
 | `--zip` | off | after the run, also write `runs/<id>.zip` — one portable artifact (report + evidence) for CI upload or sharing. Runs **after** the verdict, so it can't affect pass/fail; see [`export`](#export) |
 | `--runs-dir` | `runs` | directory to write the run tree into. Lets a caller run from one working directory but persist the run elsewhere — `serve` uses it when the active config is bound from a different tree (a Git checkout or an uploaded bundle) to run from that tree while keeping the run in `serve`'s store ([BE-0073](../roadmaps/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md)) |
 | `--evidence-store` | "" (also `BAJUTSU_EVIDENCE_STORE`) | after the run, upload the whole run tree to object storage at this URI — `s3://bucket/prefix` (AWS / R2 / MinIO) or `gs://bucket/prefix` (Google Cloud Storage). The remote layout mirrors the local one under the prefix (`<prefix><runId>/…`), so the upload path selects the cloud lifecycle policy (retain main-branch evidence, expire feature-branch evidence). Runs **after** the verdict, so an upload failure is reported as a warning and can't affect pass/fail. Needs the `s3` or `gcs` extra ([BE-0110](../roadmaps/BE-0110-evidence-store-uri/BE-0110-evidence-store-uri.md)) |
 | `--config` | `bajutsu.config.yaml` | the config file |
 | `--project` | "" | run a project registered with [`project add`](#project) by name — resolves its stored config source back to a `--config` spec and runs it. The headless trigger a CI/cron step calls, the CLI mirror of `POST /api/projects/<name>/run` ([BE-0225](../roadmaps/BE-0225-config-project-hub/BE-0225-config-project-hub.md)). Mutually exclusive with `--config` |
+| `--config-offline` | off | for a Git `--config` ([configuration](configuration.md#config-from-a-git-repository-be-0063)): use the local cache and never touch the network — needs a pinned `@<sha>`, since a branch can't be resolved offline |
+| `--require-pinned-config` | off | for a Git `--config`: fail unless it pins a commit SHA — a branch or tag can move under a gate, so only a SHA is accepted |
 
 - Evidence is written to `FileSink(runs/<runId>, udid=..., log_predicate=...)`
   ([evidence](evidence.md#sinks-where-evidence-goes)).
@@ -319,8 +326,9 @@ bajutsu flakiness [--org <org>] [--json] [--window N]          # read the serve 
 ## `export`
 
 Bundles a finished run into a single portable `.zip` — `report.html` together with `manifest.json`,
-`junit.xml`, the executed `scenario.yaml`, and **all** of its evidence (screenshots, video,
-`network.json`, …) ([BE-0060](../roadmaps/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md)).
+`junit.xml`, `ctrf.json` ([reporting](reporting.md#ctrfjson)), the executed `scenario.yaml`, and
+**all** of its evidence (screenshots, video, `network.json`, …)
+([BE-0060](../roadmaps/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md)).
 The whole `runs/<id>/` tree is rooted under a single `<id>/` folder, so `report.html`'s **relative**
 links resolve offline — the report works by double-click, no server.
 
@@ -364,7 +372,8 @@ bajutsu trace --explain <scenario.yaml>     # pre-run dry run (no device)
 
 ## `report`
 
-Re-renders a finished run's `report.html` (and re-emits `junit.xml`) from its **stored data**, with
+Re-renders a finished run's `report.html` (and re-emits `junit.xml` and `ctrf.json`,
+[reporting](reporting.md#ctrfjson)) from its **stored data**, with
 the **current** template — no device, no LLM, no re-run
 ([BE-0068](../roadmaps/BE-0068-regenerable-reports/BE-0068-regenerable-reports.md)). So a
 template improvement or a rendering-bug fix reaches past runs without re-executing them; the
@@ -473,7 +482,10 @@ bajutsu record --target <name> --goal "<natural-language goal>" [--out <file.yam
 | `--backend` | config | actuator order |
 | `--erase / --no-erase` | `--erase` | erase before launch (the app must be installed) |
 | `--system-alert-handling` | on | clear prompts during authoring (needs an API key) |
+| `--max-steps` | `30` | cap the number of authoring turns (and therefore worst-case token spend) ([BE-0194](../roadmaps/BE-0194-record-turn-payload-diet/BE-0194-record-turn-payload-diet.md)) |
+| `--screenshot / --no-screenshot` | `--screenshot` | send a screenshot each turn; `--no-screenshot` records elements-only (cheaper), for an app fully instrumented with ids ([BE-0194](../roadmaps/BE-0194-record-turn-payload-diet/BE-0194-record-turn-payload-diet.md)) |
 | `--headed / --no-headed` | app `headless` | web backend: author against a visible (headed, slow-motion) browser instead of headless; omit to use the app's `headless` config |
+| `--browser` | app `browser` (chromium) | web backend: the Playwright rendering engine to author against — `chromium` / `firefox` / `webkit`; omit to use the target's `browser` config |
 | `--alert-instruction` | "" | the press instruction for the above |
 | `--language` | config `ai.language` (`auto`) | AI output language for the authored prose (`from:` provenance, reasoning) — `ja` / `en` / `auto`; overrides `ai.language`, `auto` follows the goal ([BE-0188](../roadmaps/BE-0188-configurable-ai-output-language/BE-0188-configurable-ai-output-language.md)) |
 | `--config` | `bajutsu.config.yaml` | config |
@@ -507,15 +519,18 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
 | `--target` | (required) | the target app |
 | `--max-screens` | `50` | stop after discovering this many distinct screens |
 | `--max-steps` | `200` | stop after taking this many actions |
+| `--prune-global / --no-prune-global` | on | explore a global control (a tab/nav reused across screens) once instead of from every screen that shows it; the Web UI lets you resume a pruned branch on demand (see `--resume-src`/`--resume-key`) |
 | `--udid` | `booted` | the target Simulator — or a comma list (`A,B,C`) for a parallel pool (see `--workers`) |
 | `--workers` | `1` | crawl with this many workers at once, sharing one screen map: across this many simulators on iOS ([BE-0064](../roadmaps/BE-0064-parallel-crawl/BE-0064-parallel-crawl.md), capped to the `--udid` devices) or this many browser processes on web ([BE-0077](../roadmaps/BE-0077-parallel-web-crawl/BE-0077-parallel-web-crawl.md)). `1` = single-worker crawl |
 | `--backend` | config | actuator order |
 | `--erase / --no-erase` | `--erase` | erase before launch (the app must be installed) |
 | `--system-alert-handling / --no-system-alert-handling` | `--system-alert-handling` | dismiss unexpected OS prompts while crawling (so they aren't read as crashes; uses the configured AI provider — `ANTHROPIC_API_KEY`, or AWS credentials for Bedrock) |
+| `--alert-instruction` | "" | the press instruction for the above |
 | `--headed / --no-headed` | app `headless` | web backend: crawl a visible (headed, slow-motion) browser instead of headless; omit to use the app's `headless` config |
 | `--language` | config `ai.language` (`auto`) | AI output language for the guide's streamed reasoning — `ja` / `en` / `auto`; overrides `ai.language`, `auto` stays English for crawl ([BE-0188](../roadmaps/BE-0188-configurable-ai-output-language/BE-0188-configurable-ai-output-language.md)) |
 | `--out` | `runs/<timestamp>` | run dir the screen map is written into |
-| `--continue` | off | continue a past run (point `--out` at it) — re-explore **every** screen it left with untried operations, not one branch; raise `--max-screens`/`--max-steps` to go deeper, and `--workers`/`--udid` run the continuation in parallel ([BE-0181](../roadmaps/BE-0181-crawl-continuation/BE-0181-crawl-continuation.md)) |
+| `--resume-src` / `--resume-key` | "" | resume one pruned branch (from the Web UI's "tap to resume"): `--resume-src` is the screen fingerprint it was pruned on, `--resume-key` its replay key, both with `--out` pointing at the existing run. Mutually exclusive with `--continue` |
+| `--continue` | off | continue a past run (point `--out` at it) — re-explore **every** screen it left with untried operations, not one branch; raise `--max-screens`/`--max-steps` to go deeper, and `--workers`/`--udid` run the continuation in parallel ([BE-0181](../roadmaps/BE-0181-crawl-continuation/BE-0181-crawl-continuation.md)). Mutually exclusive with `--resume-src`/`--resume-key` |
 | `--config` | `bajutsu.config.yaml` | config |
 
 - **A Git `--config` is read-only input** ([BE-0063](../roadmaps/BE-0063-git-config-source/BE-0063-git-config-source.md)):
@@ -657,21 +672,21 @@ engine is platform-neutral, so `bajutsu crawl --target <web-app> --backend web` 
 ## `codegen`
 
 Generates a **native test** from a scenario (AI-independent · structural mapping · [codegen](codegen.md)):
-**XCUITest** (Swift, iOS) or **Playwright** (TypeScript, web).
+**XCUITest** (Swift, iOS), **Playwright** (TypeScript, web), or **UI Automator** (Kotlin, Android).
 
 ```bash
-bajutsu codegen <scenario.yaml> --target <name> [--emit xcuitest | playwright] [-o <out>] [--config ...]
+bajutsu codegen <scenario.yaml> --target <name> [--emit xcuitest | playwright | uiautomator] [-o <out>] [--config ...]
 ```
 
 | Option | Default | Description |
 |---|---|---|
-| `--emit` | `xcuitest` | output format: `xcuitest` or `playwright` (others exit with code 2) |
+| `--emit` | `xcuitest` | output format: `xcuitest`, `playwright`, or `uiautomator` (others exit with code 2) |
 | `-o, --out` | `-` | output file. `-` for stdout |
 
 - Config's `launchEnv` goes into the generated test: `app.launchEnvironment` (XCUITest) or seeded
   `localStorage` (Playwright).
-- `--emit playwright` requires the app to be a web target (`targets.<name>.baseUrl`); otherwise it exits
-  with code 2.
+- `--emit playwright` requires the app to be a web target (`targets.<name>.baseUrl`); `--emit
+  uiautomator` requires an Android target (`targets.<name>.package`); otherwise it exits with code 2.
 - On file output: `wrote <N> scenario(s) -> <out>`.
 
 ## `approve`
@@ -820,9 +835,13 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   combined `POST /api/upload` is a separate follow-up.)
 - The **AI provider for authoring** (Record and Crawl) is one global choice in **Settings → AI
   provider**: **Anthropic API** (`ANTHROPIC_API_KEY`), **Amazon Bedrock** (AWS credentials +
-  `BAJUTSU_BEDROCK_MODEL`), or the **Anthropic CLI** (`ant`, a browser-based OAuth/SSO sign-in on your
-  Pro/Max/Console seat — BE-0163). `serve` applies it to spawned jobs via `BAJUTSU_AI_PROVIDER`, so
-  there is no per-tab picker; every AI path (authoring, the alert guard, triage) uses the one provider.
+  `BAJUTSU_BEDROCK_MODEL`), the **Anthropic CLI** (`ant`, a browser-based OAuth/SSO sign-in on your
+  Pro/Max/Console seat — BE-0163, with its own `/api/ant/login` route), or the **Claude Code CLI**
+  (`claude-code`, billed on a Claude Code Pro/Max/Console seat — BE-0176; the panel holds its
+  long-lived OAuth token write-once, for a headless host that can't run `claude setup-token`
+  interactively — [configuration](configuration.md#ai-provider-ai-be-0047), BE-0215). `serve` applies
+  it to spawned jobs via `BAJUTSU_AI_PROVIDER`, so there is no per-tab picker; every AI path
+  (authoring, the alert guard, triage) uses the one provider.
 - **Inline scenario validation in the editor ([BE-0138](../roadmaps/BE-0138-serve-lint/BE-0138-serve-lint.md)).**
   The Author tab's YAML editor validates **as you type**, not only on Save: a debounced `POST /api/lint`
   runs the same `bajutsu lint` checks and returns line-anchored diagnostics, shown as a gutter marker
@@ -863,7 +882,11 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   [self-hosting](self-hosting.md) for the topology.
 - **Hosting flags (advanced).** `--emit-launchagent` prints a launchd plist to run `serve` as a
   token-authenticated LaunchAgent on a single Mac; `--backend server` (with `--asgi`) switches to
-  the hosted FastAPI control plane. Both are covered in [self-hosting](self-hosting.md).
+  the hosted FastAPI control plane; `--upload-exec` (or `$BAJUTSU_UPLOAD_EXEC`) governs whether an
+  **uploaded bundle**'s `launchServer` command may run (`deny` / `reuse` / `sandbox`, default
+  `sandbox`); `--allow-remote-build` (or `$BAJUTSU_ALLOW_REMOTE_BUILD`) opts a UI-bound **Git**
+  config's `build` command into running on the host (off by default). All are covered in
+  [self-hosting](self-hosting.md).
 
 ## `mcp`
 
@@ -887,14 +910,29 @@ bajutsu mcp [--config bajutsu.config.yaml] [--runs runs] [--transport stdio]
 
 ## `worker`
 
-Leases queued runs from Redis and executes them — the execution half of the hosted server backend
+Polls the hosted control plane (`serve --backend=server`) for queued runs and executes them — the
+execution half of the hosted server backend
 ([BE-0015](../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md);
-[self-hosting](self-hosting.md)). Needs the optional `bajutsu[worker]` extra (`redis` / `rq`); not
-needed for local use.
+[self-hosting](self-hosting.md)). It leases a job from `/api/worker/lease` over plain HTTP (**no
+Redis or RQ**, BE-0106), runs it with the unchanged `run_job`, and posts the result back to
+`/api/worker/result`. It holds **no cloud credentials**: every object-store touch — downloading
+baselines before a run, uploading the run tree after — goes through presigned URLs the control
+plane signs (BE-0160), so the worker needs only an HTTP client. Not needed for local use.
 
 ```bash
-bajutsu worker [--redis-url <url>] [--queue bajutsu]
+bajutsu worker [--server-url <url>] [--token <t>] [--platform ios] [--capabilities <tokens>]
+               [--poll-interval 2.0] [--heartbeat-interval 30.0] [--worker-id <id>]
 ```
+
+| Option | Default | Description |
+|---|---|---|
+| `--server-url` | `$BAJUTSU_SERVER_URL` or `http://localhost:8765` | the control plane's URL |
+| `--token` | "" | operator token for auth (the control plane's `--token` / `$BAJUTSU_SERVE_TOKEN`) |
+| `--platform` | `ios` | comma list of backends this worker can drive (`ios` / `web` / `android`) — the axis the control plane routes jobs on |
+| `--capabilities` | "" (also `$BAJUTSU_WORKER_CAPABILITIES`) | extra capability tokens to advertise beyond the platform and Simulator inventory (e.g. `ios18,ipad`), so a job can require one and be leased only by a worker that has it |
+| `--poll-interval` | `2.0` | seconds between lease attempts while idle |
+| `--heartbeat-interval` | `30.0` | seconds between lease heartbeats during a run (kept under the control plane's lease timeout, so a long run is never mistaken for a dead worker and reclaimed) |
+| `--worker-id` | "" (auto) | worker identifier |
 
 ## `lint`
 

@@ -50,17 +50,17 @@ targets:
 
 ### 解決（`resolve` → `Effective`）
 
-`resolve(config, target)` が 1 ターゲット分の有効値 `Effective`（frozen dataclass）を構築します。ターゲットが未定義の場合は `KeyError` となり、CLI は終了コード 2 で終了します。
+`resolve(config, target)` が 1 ターゲット分の有効値 `Effective`（frozen dataclass）を構築します。ターゲットが未定義の場合は `KeyError` となり、CLI は終了コード 2 で終了します。下記の一部のフィールド――各プラットフォーム自身の識別子、および web 限定の `headless` / `browser` / `device_mode`――は `Effective` の平坦なフィールドではありません。`Effective.platform_config` が、解決済みの `platform` に応じて、互いに排他的なプラットフォームごとの 3 つの config（`IosConfig` / `WebConfig` / `AndroidConfig`）のいずれかに絞り込みます（[BE-0126](../../roadmaps/BE-0126-per-platform-effective-config/BE-0126-per-platform-effective-config-ja.md)）。読み取るときは `bajutsu/config/accessors.py` の絞り込み用ヘルパーを使います。1 つのプラットフォームに決まっているコードは `require_ios` / `require_web` / `require_android` を使い、プラットフォームをまたいで値を安全に読みたいコードは「soft」な `ios_bundle_id` / `web_base_url` / `web_engine` / `android_package` を使います。`Effective` に `bundle_id` のようなフィールドは存在しません。
 
 | `Effective` フィールド | 由来 | 備考 |
 |---|---|---|
 | `platform` | app < defaults < 導出 | ターゲットのプラットフォーム（`ios`/`android`/`web`）。明示 `platform` が優先、なければターゲットの `backend` が含意、なければ存在する識別子、それも無ければ `ios`。どの識別子を必須にするかを選びます（[BE-0009](../../roadmaps/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md)） |
-| `bundle_id` | app | iOS のターゲット識別子。プラットフォームが `ios` のとき必須 |
-| `base_url` | app | web のターゲット URL（Playwright backend）。プラットフォームが `web` のとき必須 |
-| `package` | app | Android のターゲット識別子。プラットフォームが `android` のとき必須 |
-| `headless` | app | web backend のみ: `true`（既定）はヘッドレス、`false` はブラウザを画面に表示し低速再生する。`bajutsu run --headed / --no-headed` と Web UI の「show browser」トグルが実行ごとに上書きする。iOS は無視する |
-| `browser` | app | web backend のみ: 駆動する Playwright の描画エンジン。`chromium`（既定）、`firefox`、`webkit` から選びます。いずれも Linux 上でヘッドレス実行できます。`bajutsu run/record --browser <engine>` が実行ごとに上書きし（フラグ > config > 既定）、`bajutsu run --browsers <list>` はクロスブラウザマトリクスを実行します（後述）。エンジンのブラウザバイナリが無ければ実行時に取得します。未知の値は config 読み込み時に拒否されます。iOS は無視します（[BE-0076](../../roadmaps/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md)） |
-| `device_mode` | app | web backend のみ: ブラウザコンテキストを生成するときのデバイスモード。`deviceMode: desktop`（既定で、今日から変わりません）か、Playwright のデバイスプリセット名（例 `iPhone 13`）です。プリセットは viewport / `device_scale_factor` / `is_mobile` / `has_touch` / `user_agent` をエミュレートし、web ターゲットをそのモバイル端末として駆動します。これはデスクトップ級ブラウザでのエミュレーション（Chrome DevTools のデバイスツールバー）であり、実機ではありません（[drivers → Playwright](drivers.md#playwrightweb)）。ドライバーの中で `playwright.devices` に対して**遅延**して解決するため、config 読み込みが Playwright を import することはありません。不明なプリセットは config 読み込み時ではなくドライバー起動時に明示的なエラーで失敗します。トップレベルの `device`（iOS シミュレータ名で、web ターゲットは無視します）とは別物です。iOS / Android はこれを無視します（[BE-0228](../../roadmaps/BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation-ja.md)） |
+| `platform_config.bundle_id`（`IosConfig`） | app | iOS のターゲット識別子。プラットフォームが `ios` のとき必須 |
+| `platform_config.base_url`（`WebConfig`） | app | web のターゲット URL（Playwright backend）。プラットフォームが `web` のとき必須 |
+| `platform_config.package`（`AndroidConfig`） | app | Android のターゲット識別子。プラットフォームが `android` のとき必須 |
+| `platform_config.headless`（`WebConfig`） | app | web backend のみ: `true`（既定）はヘッドレス、`false` はブラウザを画面に表示し低速再生する。`bajutsu run --headed / --no-headed` と Web UI の「show browser」トグルが実行ごとに上書きする。iOS は無視する |
+| `platform_config.browser`（`WebConfig`） | app | web backend のみ: 駆動する Playwright の描画エンジン。`chromium`（既定）、`firefox`、`webkit` から選びます。いずれも Linux 上でヘッドレス実行できます。`bajutsu run/record --browser <engine>` が実行ごとに上書きし（フラグ > config > 既定）、`bajutsu run --browsers <list>` はクロスブラウザマトリクスを実行します（後述）。エンジンのブラウザバイナリが無ければ実行時に取得します。未知の値は config 読み込み時に拒否されます。iOS は無視します（[BE-0076](../../roadmaps/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md)） |
+| `platform_config.device_mode`（`WebConfig`） | app | web backend のみ: ブラウザコンテキストを生成するときのデバイスモード。`deviceMode: desktop`（既定で、今日から変わりません）か、Playwright のデバイスプリセット名（例 `iPhone 13`）です。プリセットは viewport / `device_scale_factor` / `is_mobile` / `has_touch` / `user_agent` をエミュレートし、web ターゲットをそのモバイル端末として駆動します。これはデスクトップ級ブラウザでのエミュレーション（Chrome DevTools のデバイスツールバー）であり、実機ではありません（[drivers → Playwright](drivers.md#playwrightweb)）。ドライバーの中で `playwright.devices` に対して**遅延**して解決するため、config 読み込みが Playwright を import することはありません。不明なプリセットは config 読み込み時ではなくドライバー起動時に明示的なエラーで失敗します。トップレベルの `device`（iOS シミュレータ名で、web ターゲットは無視します）とは別物です。iOS / Android はこれを無視します（[BE-0228](../../roadmaps/BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation-ja.md)） |
 | `device_provider` | app | このターゲットのデバイスの取得元です。`deviceProvider: { kind: local }`（既定で、今日どおりのローカル接続デバイス、`--udid` の経路）か、デバイスクラウドのアダプタが登録する別の `kind`（ホスト外でデバイスを予約し、その serial / endpoint を run に渡します）を指定します。`kind` は device provider の registry に対して **config 読み込み時ではなく実行時に**解決するため、決定的コアがクラウド SDK を import することはありません。未知の `kind` は、run が provider を解決する時点で明示的に失敗します。この解決を行うのは今のところ `bajutsu run` だけで、`record`・`crawl`・`audit --repeat` は従来どおりの方法でデバイスを解決するため、この項目を静かに無視します。seam はデバイスプールの手前にあり、run/CI の判定経路の完全に外側です（provider の仕事はデバイスの取得と解放だけです）。組み込みの provider は現時点で2種類あります。**`local`**（既定。ローカル接続デバイスの `--udid` 経路で、追加フィールド不要）と **`appium`**（セルフホストの Appium / WebDriver グリッドに予約済みの iOS デバイスが存在する場合の live 経路。`endpoint: <url>` が必須です。この endpoint は live の W3C WebDriver トランスポートで端から端まで駆動され、セレクタの解決はローカルの XCUITest backend と同じく Python 側で行います。詳細は[iOS デバイスクラウド](ios-device-cloud.md#ライブ--appium-エンドポイントのプロバイダー)を参照してください）。具象のクラウドアダプタは任意導入の別パッケージとして出荷します（[BE-0236](../../roadmaps/BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction-ja.md)、[BE-0238](../../roadmaps/BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution-ja.md)） |
 | `launch_server` | app | 任意の `launchServer: {cmd, readyUrl, readyTimeout, cwd, env}`。run のために `baseUrl` のホストを起動し、終わったら停止します。`readyUrl`（既定は `baseUrl`）をプローブし、すでに応答すれば再利用、しなければ `cmd` を起動して準備が整うまで待ちます（固定 sleep ではなく条件待ち）。iOS の `build` の web 版です（[BE-0059](../../roadmaps/BE-0059-launch-target-server/BE-0059-launch-target-server-ja.md)）。`serve` 上の**アップロードされた**バンドルでは、ホストが `cmd` を直接実行することはなく、`serve --upload-exec` が統制します（[セルフホスティング](self-hosting.md#アップロードされた-config-のコマンド実行be-0090)を参照）。`sandbox` での実行には、追加フィールドとして `dockerImage`（Docker イメージ参照。例 `node:20-slim`）か `dockerfile`（バンドル相対のパスで、`docker build` でビルドします）のどちらか一方、加えて `port`（コンテナ内の待ち受けポート。ループバックのホストポートへ publish します）が必要です（[BE-0090](../../roadmaps/BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution-ja.md)） |
 | `run_defaults.system_alert_handling` / `.erase` / `.network` | app | 本来シナリオ単位や CLI フラグで指定する run のテスト動作設定に、アプリ単位の既定値を与えます（[BE-0177](../../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)）。`systemAlertHandling` はシナリオと同じ形（`false`、または `{ enabled, instruction }`）を取りアラートガードの既定値になり、`erase` は `preconditions.erase` の、`network` はアプリのネットワーク収集の既定値になります。いずれも **フラグ ＞ シナリオ ＞ これ ＞ ビルトイン既定**（ガードは on、erase は off、network は on）の順で解決し、`--headed`/`headless` と同じ重ね方です。`bajutsu run --system-alert-handling/--no-system-alert-handling`・`--erase/--no-erase`・`--network/--no-network`（および `--alert-instruction`）が実行ごとに上書きします |
@@ -147,6 +147,34 @@ targets:
 既定値はよくある形（`to` / `subject` / `body` / `receivedAt` / `id` を持つメッセージの配列）に合わせるので、準拠 API では `messages` / `fields` のマッピングは不要です。`email` ステップは受信箱を HTTP で読み、ステップ開始より新しいメッセージ（`id` で判定）だけを残し、一致するものを待ってコードを取り出します。決定的で LLM 非依存です（[BE-0046](../../roadmaps/BE-0046-otp-email-steps/BE-0046-otp-email-steps-ja.md)）。
 
 `kind` は、メールボックスの背後にあるトランスポートアダプタを選びます。メールボックスは 1 つのインターフェースの背後にある backend であり、ベンダーではなくトランスポート（`http`、将来は `imap`）でキーを引くので、トランスポートを増やすことは runner を分岐させることではなくアダプタを登録することになります（[BE-0186](../../roadmaps/BE-0186-mailbox-provider-registry/BE-0186-mailbox-provider-registry-ja.md)）。`kind` は任意で、省略時は `http` になるので既存の `mailbox:` ブロックはそのまま動きます。未知の `kind` はフォールバックせず、きれいな config エラーで run を落とします。現在出荷しているのは `http` だけです。ベンダーではなくトランスポートでキーを引くのは、ベンダー間の違いが JSON のフィールド名だけで、それは `fields` が吸収するからです。
+
+### Webhook 通知（`notify:`、BE-0099）
+
+`notify:` はトップレベルの Webhook エンドポイントのリストで、`bajutsu run` が判定後の副作用として POST します。LLM を一切使わず、決定的な判定に影響することもない Slack 優先の配信経路です（[BE-0099](../../roadmaps/BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications-ja.md)）。
+
+```yaml
+notify:
+  - format: slack                              # レンダラ。現状出荷しているのは slack だけ
+    url: "${secrets.SLACK_WEBHOOK_URL}"         # webhook URL。${secrets.*} は実行時に解決
+    on: [failure]                               # failure（既定）／change／recovery／always／start
+    targets: []                                 # 任意: このシナリオ名だけに絞る。空なら run 全体が対象
+```
+
+- `on` は、このエンドポイントを発火させるイベントを選びます。`failure`（いずれかのシナリオが失敗、既定）、
+  `always`（すべての run）、`change` / `recovery`（run 全体の判定が、同じ config ソースの直前の run から
+  反転した場合。判定は runs ディレクトリ配下のその run の `manifest.json` から読みます）、`start`（run
+  開始前に、専用のメッセージで 1 回だけ発火。`on` が `[start]` だけのエンドポイントはそこでしか発火せず、
+  判定後には発火しません）。
+- `targets`（トップレベルの config の `targets.<name>` マップとは無関係です）は、リストにある名前の
+  シナリオだけに通知を絞ります。空（既定）なら run 内のすべてのシナリオが対象です。
+- `targets.<name>.notify` は、そのターゲットについてトップレベルのリストを**丸ごと**上書きします
+  （マージはしません）。省略すればトップレベルの `notify:` をそのまま継承します。
+- 配信はベストエフォートです。タイムアウトに上限を設け、数回リトライし、失敗しても警告をログに出す
+  だけです。判定や終了コードを変えることは決してなく、`--zip` や `--evidence-store` と同じ、判定後
+  専用の規律に従います。現状レンダリングされるのは `format: slack` だけです（失敗したシナリオを最大 5
+  件挙げ、残りは「…and N more」でまとめる Block Kit メッセージ）。未知の `format`、または `url` に
+  未解決の `${secrets.*}` トークンが残っている場合は、壊れたペイロードを送る代わりに警告をログに出して
+  スキップします。
 
 ### org（`orgs:`、マルチテナントのサーバ backend）
 

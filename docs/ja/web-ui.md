@@ -31,9 +31,10 @@ UI の操作の多くは CLI コマンド（`record`、`run`、`crawl`、`stats`
 
 リポジトリの checkout では、`make serve` でサーバを起動してください。これが一番手数の少ない方法です。
 `make serve`（[`scripts/serve.sh`](https://github.com/bajutsu-e2e/bajutsu/blob/main/scripts/serve.sh)）は、
-設定した backend のオンデマンド依存（iOS ターゲットなら XCUITest ランナー。`make -C demos/showcase runner-build`
-で用意します。加えて Xcode の `xcodebuild`）を用意してからサーバを起動します。
-これらが無いと、iOS の実行は `no available actuator` で失敗します。フラグは `ARGS` で渡します。
+設定した backend のオンデマンド依存を用意してからサーバを起動します。macOS では、ターゲットが XCUITest を
+必要とするとき、バンドル済みの iOS Simulator ランナーが無いか古ければ `make runner-bundle`（Xcode の
+`xcodebuild` と `xcodegen` でビルドします）でも用意します。これが無いと、iOS の実行は
+`no available actuator` で失敗します。フラグは `ARGS` で渡します。
 
 ```bash
 make serve                                                        # 既定ポート（8765）
@@ -49,9 +50,9 @@ make serve ARGS="--config demos/showcase/showcase.config.yaml --port 8766"   # �
 自分で用意します。iOS ターゲットには XCUITest ランナー（と Xcode）が要りますが、web（Playwright）
 ターゲットには不要です。いずれの方法でも、サーバがブラウザを自動で開くことはありません。`127.0.0.1` に
 bind するので、起動したら表示された URL（既定は `http://127.0.0.1:8765`、`--port` を渡した場合はその
-ポート）を自分で開いてください。オプションの全体像（`--port`、`--config`、`--root`、`--runs`、
+ポート）を自分で開いてください。よく使うフラグ（`--port`、`--config`、`--root`、`--runs`、
 `--baselines`、`--themes`、`--host`、`--token`、`--max-concurrent-runs`、`--evidence-store`）は
-[CLI リファレンス](cli.md#serve) にあります。
+ここまでの用途をカバーします。オプションの一覧は [CLI リファレンス](cli.md#serve) にあります。
 
 ## 画面の全体像
 
@@ -198,10 +199,11 @@ config の Stats ダッシュボードが開きます。ほかの
 
 ## Settings
 
-**Settings** には、AI を使うパスが必要とする 2 つの選択があります。ここの内容はディスクには書かれません。
-設定はそのセッションのあいだサーバのメモリ上に生き、`serve` を再起動するとリセットされます。再起動を
-またいで保持したい値は、`serve` を起動する前にシェルか `.env` で `ANTHROPIC_API_KEY` / `AWS_*` を
-設定してください。
+**Settings** には 3 つのタブがあります。**AI** と **Secrets** には AI を使うパスが必要とする選択があり、
+**Server**（後述）は稼働中のサーバの設定を確認するための読み取り専用のタブです。AI タブと Secrets タブの
+内容はディスクには書かれません。設定はそのセッションのあいだサーバのメモリ上に生き、`serve` を再起動すると
+リセットされます。再起動をまたいで保持したい値は、`serve` を起動する前にシェルか `.env` で
+`ANTHROPIC_API_KEY` / `AWS_*` を設定してください。
 
 **AI provider** は、オーサリング（Record と Crawl）が使う backend を選びます。
 
@@ -224,7 +226,8 @@ config の Stats ダッシュボードが開きます。ほかの
 拒否されます。各 provider 固有の欄（API キー、Bedrock の region と model id、CLI のサインイン）は、
 その provider を選んだときだけ現れます。provider をまたいで効く上書きが三つあります。**Model** は
 既定の代わりに特定のモデル id を使い（Bedrock は自前の接頭辞付き id 欄を保ちます）、**Reasoning
-effort** はオーサリングのエージェントについて速度と深さを釣り合わせ、**Output language**
+effort** はオーサリングのエージェントについて速度と深さを釣り合わせ（反映するのは Claude Code CLI
+provider だけで、Anthropic API と `ant` の実装にはこの仕組みがなく、値は無視します）、**Output language**
 （[BE-0188](../../roadmaps/BE-0188-configurable-ai-output-language/BE-0188-configurable-ai-output-language-ja.md)）は
 AI が生成する文章、すなわち `record` の `from:` 由来と `crawl` が逐次出力する推論テキストを、どの言語で書くかを固定します。
 既定の *auto* は現状の挙動を保ちます（`record` はゴールに追従し、`crawl` は英語のままです）。決定論的な
@@ -245,9 +248,23 @@ iOS ネイティブ経路（BE-0315）は鍵なしで一般的なプロンプト
 `serve` を起動する前に環境変数を export したり `.env` を手で編集したりしなくても、シナリオが必要とする
 認証情報を Web UI から用意できます。ここで設定した値はその宣言済みの名前の環境変数に入り、spawn される
 **Replay** / **Record** / **Crawl** が引き継ぐので、run のなかで `${secrets.X}` が解決します。バインド中の
-config がシークレットを宣言していないときは、このセクションは表示されません。`secrets:` の内容が異なる
-config に切り替えると、一覧は更新されます。設定できるのは config 自身が宣言している名前だけで、任意の
-環境変数を設定することはできません。ロールで保護されたデプロイでは、設定は **admin** の操作です。
+config がシークレットを宣言していないときも、このセクション自体は表示されたままで、機能を説明する
+案内文が代わりに現れます。`secrets:` の内容が異なる config に切り替えると、一覧は更新されます。設定
+できるのは config 自身が宣言している名前だけで、任意の環境変数を設定することはできません。ロールで
+保護されたデプロイでは、設定は **admin** の操作です。
+
+**Server** は、稼働中のサーバの設定を報告する読み取り専用のタブです
+（[BE-0318](../../roadmaps/BE-0318-serve-server-settings-tab/BE-0318-serve-server-settings-tab-ja.md)）。
+デプロイモード（ローカルまたはホスト型）、バインド中の config とその取得元、このビルドが実行できる
+backend、runs と baselines のディレクトリ、ゴミ箱の保持期間、並列実行数の上限、稼働中のバージョンを
+示します。もっとも役立つ行は **iOS test runner** です。このビルドがバンドル済みの XCUITest Simulator
+ランナー
+（[BE-0292](../../roadmaps/BE-0292-xcuitest-bundled-runner/BE-0292-xcuitest-bundled-runner-ja.md)）
+を含むかどうか、含む場合はビルド対象の Xcode と Simulator SDK のバージョン、そしてバインド中の config が
+明示的な `xcuitest.testRunner` でランナーを上書きしているかを示します。iOS の Simulator の run が
+始まるかどうかは、この行だけで決まります。ホスト型のデプロイではホストのパス（config のパス、runs と
+baselines のディレクトリ）を伏せますが、それ以外の行はどちらでも表示されます。このタブは入力を受け付けず、
+起動コマンドと環境からすでに解決された値を報告するだけで、何も書き戻しません。
 
 ## Record — ゴールからシナリオをオーサリングする
 

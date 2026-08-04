@@ -18,7 +18,7 @@
 配信と、それに対するシナリオの実行）だけで、これは **[backend](../glossary.md#driver-backend-actuator-platform)** ごとに変わります。「プラットフォームは
 backend にすぎない」からです（[concepts](../concepts.md)）。
 
-- **[iOS トラック](ios.md)** — idb backend で iOS Simulator 上まで完結します。macOS と Xcode が必要です。
+- **[iOS トラック](ios.md)** — XCUITest backend で iOS Simulator 上まで完結します。macOS と Xcode が必要です。
 - **[web トラック](web.md)** — Playwright backend でブラウザに対して完結します。Linux、Windows、
   macOS のどの OS でも動きます。Xcode も Simulator も不要です。
 
@@ -58,11 +58,12 @@ CLI（コマンドラインインターフェース）が配線されている�
 uv run bajutsu --help
 ```
 
-`run` / `doctor` / `record` / `crawl` / `codegen` / `trace` / `triage` / `approve` / `serve` / `mcp` / `worker` / `lint` / `schema` のコマンドが表示されるはずです
+`run` / `doctor` / `record` / `crawl` / `codegen` / `trace` / `triage` / `approve` / `serve` / `mcp` / `worker` / `lint` / `schema` / `audit` / `coverage` / `export` / `flakiness` / `impact` / `project` / `report` / `stats` のコマンドが表示されるはずです
 （完全なリファレンスは [cli](../cli.md)）。
 
-各トラックは、この上にもう 1 つだけインストール手順を足します（iOS なら idb backend のツール、
-web なら Playwright のブラウザ）。詳細は選んだトラックのページを参照してください。
+web トラックは、この上にもう 1 つだけインストール手順を足します（Playwright のブラウザ）。iOS
+トラックは Xcode さえあれば足り、XCUITest backend が Xcode を直接操作します。詳細は選んだ
+トラックのページを参照してください。
 
 ---
 
@@ -123,12 +124,13 @@ smoke テスト [`demos/showcase/scenarios/smoke.yaml`](../../../demos/showcase/
 ## ステップ 6：レポートを読む
 
 実行ごとに `runs/<runId>/`（`runId` は `YYYYMMDD-HHMMSS`）というフォルダを書き出し、同じ結果を
-3 つのビューで残します。
+4 つのビューで残します。
 
 ```
 runs/20260610-120000/
 ├── manifest.json     # step -> 結果の対応（唯一の正）
 ├── junit.xml         # CI 連携（1 シナリオ = 1 testcase）
+├── ctrf.json         # Common Test Report Format（PR コメントやダッシュボードなど、より高機能な CI 連携向け）
 └── report.html       # 自己完結 HTML（ブラウザで開く）
 ```
 

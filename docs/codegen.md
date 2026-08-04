@@ -94,11 +94,21 @@ the selector at `el("UNSUPPORTED_SELECTOR")` — an honest gap, not a wrong gues
 | Scenario element | Generated XCUITest |
 |---|---|
 | `tap` | `el(id).tap()` / `byLabel(...).tap()` |
+| `doubleTap` | `.doubleTap()` |
 | `longPress` | `.press(forDuration: <sec>)` |
 | `type` (with `into`) | `el(id).tap()` + `.typeText(...)` |
 | `type` (no `into`) | `app.typeText(...)` |
+| `clear` | `.tap()` + select-all (`typeKey("a", modifierFlags: .command)`) + delete — no XCUIElement "clear" primitive, so focus/select-all/delete is the faithful peer of the runner's own clear (BE-0265) |
+| `delete { count }` | `.tap()` + `count` delete keypresses (`typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count:))`, BE-0265) |
+| `select` | `.tap()` + select-all (BE-0265) |
+| `copy` | `app.typeKey("c", modifierFlags: .command)` |
+| `back` | taps the OS navigation back button — the same element (and shared constant) the XCUITest driver taps at run time (BE-0210) |
 | `swipe { on, direction }` | `.swipeUp/Down/Left/Right()` |
 | `swipe { from, to }` | `coord(x1, y1).press(forDuration: 0.1, thenDragTo: coord(x2, y2))` — an `XCUICoordinate` drag (BE-0025) |
+| `drag { on, direction }` | the same primitive as a directional `swipe` (`.swipeUp/Down/Left/Right()`) — a real drag both scrolls and moves handles on iOS (BE-0227) |
+| `pinch` | `.pinch(withScale: <scale>, velocity: <±1.0>)` — the velocity sign matches the scale (scale ≥ 1 zooms in) |
+| `rotate` | `.rotate(<radians>, withVelocity: 1.0)` |
+| `scroll { to }` | `// TODO` — XCUITest has no single robust scroll-to-element primitive (`swipeUp()` scrolls a fixed amount without re-querying), so the faithful bounded, re-querying loop is left unemitted rather than faked (BE-0326) |
 | `handleSystemAlert` | `XCTAssertTrue(XCUIApplication(bundleIdentifier: "com.apple.springboard").buttons["…"].waitForExistence(timeout:))` + `.tap()` — the native SpringBoard idiom, carrying the step's `timeout` (BE-0316). The `prompt` / `choice` form resolves its label from the *run's* locale (BE-0320), which a static translation has no access to, so it emits a labeled `// TODO` instead |
 | `wait { for }` | `XCTAssertTrue(el(...).waitForExistence(timeout:))` |
 | `wait { until: gone }` | `.waitForNonExistence(timeout:)` |
@@ -119,12 +129,16 @@ the selector at `el("UNSUPPORTED_SELECTOR")` — an honest gap, not a wrong gues
 
 ## Unsupported constructs fall back to TODO comments
 
-Unsupported constructs (`simctl`-level device control like `setLocation` / `push`, network
-`request` assertions, an unknown trait, and coordinate swipes on the Playwright
-target) emit a **`// TODO` line rather than failing** — device-control steps name the `simctl`
-command a reviewer would run. The output is always reviewable and never fails generation.
-The generated file header also states "do not edit by hand; re-generate." This fallback behavior
-holds for all three targets.
+Unsupported constructs (`simctl`-level device control like `setLocation` / `push`, an unknown
+trait, and coordinate swipes on the Playwright target) emit a **`// TODO` line rather than
+failing** — device-control steps name the `simctl` command a reviewer would run. The output is
+always reviewable and never fails generation. The generated file header also states "do not edit
+by hand; re-generate." This fallback behavior holds for all three targets.
+
+The same TODO rule covers a network `request` / `requestSequence` assertion on XCUITest and UI
+Automator. Neither backend has a network-interception surface. Playwright is the exception: the
+web backend intercepts network traffic, so the emitted test asserts against it for real, never
+falling back to a TODO (see [below](#playwright-web-target)).
 
 One family of constructs is the exception: `if`, `forEach`, and `extract` each evaluate against a
 live UI tree at run time — a branch on the current state, a loop over the live match set, a capture
@@ -169,9 +183,10 @@ test.describe('Components', () => {
   `page.goto`). Config's `launchEnv` < the scenario's `preconditions.launchEnv` is seeded via
   `page.addInitScript(() => localStorage.setItem(...))`; an app expecting another channel (query
   params / cookies) gets a `// TODO`.
-- All *waiting* uses Playwright's native auto-wait. The only fixed timings emitted are **gesture
-  durations** (`longPress`'s `delay`, directional swipe drags) — intrinsic to the gesture, the same
-  honesty the iOS path applies to `press(forDuration:)`.
+- All *waiting* uses Playwright's native auto-wait. The only fixed timing emitted is `longPress`'s
+  `delay` — intrinsic to the gesture, the same honesty the iOS path applies to
+  `press(forDuration:)`. A directional `swipe` carries no such timing: it wheels the page from the
+  element's center instead of dragging it, matching the web driver's own scroll (BE-0227).
 
 ### Selector mapping (Playwright)
 
@@ -195,8 +210,15 @@ test.describe('Components', () => {
 | `type` (with `into`) | `await loc.fill('…')` |
 | `type` (no `into`) | `await page.keyboard.type('…')` |
 | `longPress` | `await loc.click({ delay: <ms> })` |
-| `swipe { on, direction }` | a `page.mouse` drag from the element center in the direction |
+| `clear` | `await loc.clear()` — the faithful peer of the driver's own focus-then-backspace clear (BE-0265) |
+| `delete { count }` | focus + `count` × `page.keyboard.press('Backspace')` (BE-0265) |
+| `select` | `await loc.selectText()` — the web peer of select-all (BE-0265) |
+| `copy` | `await page.keyboard.press('Control+c')` |
+| `back` | `await page.goBack()` — browser history, the same primitive the driver's `back()` uses (BE-0210) |
+| `swipe { on, direction }` | a `page.mouse.wheel` scroll from the element center in the direction (BE-0227) |
 | `swipe { from, to }` | `// TODO` (coordinate swipes are not generated) |
+| `drag { on, direction }` | a real pointer drag of the element (move → down → move → up) from its center, in the direction — the web driver drags for `drag` where it wheels for a directional `swipe` (BE-0227) |
+| `scroll { to }` | `await loc.scrollIntoViewIfNeeded()` — a Playwright locator auto-scrolls into view before acting, so `direction` / `within` / `maxScrolls` are subsumed by the browser's own scroll (BE-0326) |
 | `wait { for }` | `await expect(loc).toBeVisible({ timeout: <ms> })` |
 | `wait { until: gone }` | `await expect(loc).toBeHidden({ timeout: <ms> })` |
 | `wait { until: screenChanged/settled }` | a comment (Playwright auto-waits) |
@@ -214,6 +236,14 @@ test.describe('Components', () => {
 | `enabled` / `disabled` | `.toBeEnabled()` / `.toBeDisabled()` |
 | `selected` | `.toBeChecked()` |
 | `count` (equals/atLeast/atMost) | `.toHaveCount(n)`; atLeast/atMost compare `await loc.count()` |
+
+Unlike XCUITest and UI Automator, the web backend intercepts network traffic, so a `request` /
+`requestSequence` assertion (or an `until: { request }` wait) is not a TODO here. The emitted test
+installs a `page.on('requestfinished', ...)` recorder before navigation. It then checks the
+exchanges observed so far — a point-in-time check that mirrors the runner's own collector rather
+than a `waitForResponse` that could stall on future traffic. A `responseSchema` assertion still
+falls back to a `// TODO`: validating a JSON Schema needs a schema library the generated test
+should not assume.
 
 The `describe` block name is the `-o` filename stem (or the scenario filename) humanized; each
 `test(...)` title is the scenario name verbatim (TypeScript test titles are plain strings, so no
@@ -271,6 +301,7 @@ class ComponentsUITest {
     for ((k, v) in extras) intent.putExtra(k, v)
     context.startActivity(intent)
     device.wait(Until.hasObject(By.pkg(PACKAGE).depth(0)), LAUNCH_TIMEOUT_MS)
+    device.waitForIdle(LAUNCH_TIMEOUT_MS)
   }
 
   private fun act(by: BySelector): UiObject2 {
@@ -309,6 +340,11 @@ class ComponentsUITest {
 - Each method builds an `extras` map (config's `launchEnv` < the scenario's
   `preconditions.launchEnv`) and calls `launch(extras)`, which forwards the env as intent extras —
   the reverse of the adb backend's `am start --es`.
+- `launch` waits for the app's first window, then for that window to settle
+  (`device.waitForIdle`). The window wait proves some window from the package exists. It does
+  not prove that window has finished drawing its first frame. On a loaded CI runner, the next
+  `act()` can otherwise race a screen still mid-layout. `waitForIdle` closes that gap before the
+  test's own per-action waits start their clock.
 
 ### Selector mapping (UI Automator)
 
@@ -338,8 +374,15 @@ same limit the XCUITest emitter hits for NSPredicate `MATCHES`), so it stays a `
 | `type` (with `into`) | `act(<by>).text = '…'` |
 | `type` (no `into`) | `// TODO` (no resolved target element) |
 | `longPress` | `.longClick()` (the platform long-press timeout; the scenario duration has no parameter) |
+| `clear` | `act(<by>).clear()` — the faithful peer of the driver's own clear (BE-0265) |
+| `delete { count }` | `.click()` + `count` × `device.pressKeyCode(KeyEvent.KEYCODE_DEL)` (BE-0265) |
+| `select` | `.click()` + `device.pressKeyCode(KeyEvent.KEYCODE_A, KeyEvent.META_CTRL_ON)` (BE-0265) |
+| `copy` | `device.pressKeyCode(KeyEvent.KEYCODE_C, KeyEvent.META_CTRL_ON)` |
+| `back` | `device.pressBack()` — UI Automator's native system back, the peer of the adb driver's `keyevent 4` (BE-0210) |
 | `swipe { on, direction }` | `.swipe(Direction.<UP/DOWN/LEFT/RIGHT>, 0.75f)` |
 | `swipe { from, to }` | `// TODO` (coordinate swipes are not generated) |
+| `drag { on, direction }` | the same primitive as `swipe { on, direction }` — `UiObject2.swipe` is a real drag, so an element-anchored `drag` both scrolls and moves handles on Android (BE-0227) |
+| `scroll { to }` | `UiScrollable(UiSelector().scrollable(true)).<setAsHorizontalList/setAsVerticalList>().setMaxSearchSwipes(<max>).scrollIntoView(<selector>)` — UI Automator's native scroll-to-element, bounded by `maxScrolls` (BE-0326) |
 | `pinch` | `.pinchOpen(0.5f)` / `.pinchClose(0.5f)` (scale ≥ 1 zooms in) |
 | `wait { for }` | `assertTrue(device.wait(Until.hasObject(<by>), <ms>L))` |
 | `wait { until: gone }` | `assertTrue(device.wait(Until.gone(<by>), <ms>L))` |

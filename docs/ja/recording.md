@@ -25,6 +25,7 @@ class Observation:
     screen: list[Element]           # 現在画面の要素
     history: list[Step]             # ここまでに記録したステップ
     screenshot: bytes | None        # 現在画面の PNG（視覚用）
+    plan: list[str] = field(default_factory=list)  # ゴールを事前分解した計画（後述）
 
 @dataclass
 class Proposal:
@@ -32,12 +33,29 @@ class Proposal:
     done: bool = False                                     # ゴール到達
     expect: list[Assertion] = field(default_factory=list)  # done 時に、ゴールを検証するアサーション
     note: str = ""
+    plan_step: int | None = None    # この手が実行している計画上のステップ（後述）。ライブ進捗の表示に使う
     needs_human: bool = False       # 第三の結果。人に引き渡す（BE-0179）
     human_prompt: str = ""          # 引き渡しの理由。人に提示する
 
 class Agent(Protocol):
     def next_action(self, observation: Observation) -> Proposal: ...
+    def plan(self, goal: str) -> list[str]: ...  # 事前分解（後述）。省略可能
 ```
+
+### ゴールの事前分解
+
+ループが始まる前に、`record` は `agent.plan(goal)` を一度だけ呼び、自然言語のゴールを、短く具体的で
+人間可読なステップの順序付きリストに分解します（`record.py` の `_plan_goal`。`ClaudeAgent` の実装は専用の
+`plan` ツール呼び出しを強制します）。計画は開始時点で見ている人にストリーム表示され、以降の各ターンの
+`Observation.plan` にも渡されます。ライブ画面が正であるという立場を保ったまま、エージェントは従うべき
+手順を持てるということです。計画はあくまで実行を導くだけで、画面が実際に示すものの代わりにはなりません。
+エージェントが提案する各手は、自分がどの計画ステップを実行しているかを `Proposal.plan_step` にタグ付け
+します。これが、ライブの 1 手ごとの行に付く `(plan k/N)` の接頭辞と、後述する AI 使用量の内訳の `plan`
+カテゴリが指すものです。
+
+計画づくりはベストエフォートです。`plan` メソッドを持たないエージェント（テスト用の fake など）や、
+計画呼び出しが失敗・タイムアウトした場合は、単に計画なしとなり、ループはこの機能がなかった場合とまったく
+同じに動きます。`run` は計画をまったく見ないため、ここでの挙動は `run` に一切影響しません。
 
 ## record ループ
 
@@ -246,7 +264,27 @@ bind は健全な代理になりません——SSH フォワードを見落と�
 モデルは `claude-opus-4-8` です。`anthropic` は遅延インポートで（資格情報無しでもモジュールは
 読み込めます）、クライアントはテスト用に注入できます。どのプロバイダでもターン契約は同じです。
 
-- **ツール強制呼び出し**: `tool_choice={"type": "any"}` で毎ターン **ちょうど 1 つ**のツールを呼びます。`tap(id)` / `type_text(id, text)` / `wait_for(id, timeout)` / `finish(assertions)`。`finish` の `assertions`（`exists` / `notExists` / `valueEquals` / `labelContains`）は `Assertion` に変換されます（`_to_assertion`）。
+- **ツール強制呼び出し**: `tool_choice={"type": "any"}` は毎ターン**ちょうど 1 つ**のツール呼び出しを強制します。呼べるのは
+  `tap(id)` / `tap_point(x, y)` / `swipe(id, direction)` / `type_text(id, text)` / `wait_for(id, timeout)` /
+  `finish(assertions)` です。`finish` の `assertions`（`exists` / `notExists` / `valueEquals` / `labelContains`）は
+  `Assertion` に変換されます（`_to_assertion`）。`swipe` は見えている要素をスクロールして画面外のコントロールを
+  表示させ、`tap_point`（後述）は見えているのにツリーには現れないコントロールへ到達する手段です。
+- **ループガード**: 直近のアクションはターンごとにエージェントへ示されます。記録が同じアクションを 3 回連続で
+  繰り返す、または A,B,A,B の往復になると（`_is_looping`）、ループは決定的に停止します。詰まったまま残りの
+  ターンを費やす代わりに、有限で対処可能な停止に変えます。
+- **`tap_point`。ツリーに現れないコントロールへの視覚フォールバックです。** アクセシビリティツリーが公開しない
+  コントロールをゴールが必要とするときに使います（多いのは、id を持たないアプリの下部タブバーの個々のタブで、
+  iOS のアクセシビリティツリーはタブごとの識別子を持たない単一の不透明なグループとしてこれを見せることが
+  あります）。エージェントはスクリーンショットの中でその位置を特定し、**正規化座標 [0,1]**（左上原点）で
+  タップします。`run` はこの座標をアプリ window の frame に掛けて `driver.tap_point`（下記のアラートロケータ
+  が使うのと同じ正規化座標の規約）に変換します。安定度ラダーの最下段に位置します（セレクタで検証できません）。
+  プロンプトはこれを、要素リストに本当に現れないコントロールへ限定します。リストに載っている要素は、つねに
+  より安定した `id`/`label` でアドレス指定します。タブバーのタブに対しては、プロンプトは**アイコンとラベルを
+  合わせた矩形の中心**（N 個中 i 番目のタブなら `x ≈ (i − 0.5)/N`）を狙い、アイコン単体やラベル下の空白帯は
+  狙いません。
+- **ステップごとの実況行**: 各ターンは 1 行（`(plan k/N) 💭 <意図> → <アクション>`）をストリームします。見ている
+  人は、どの計画ステップが進行中か（エージェントはアクションに `plan_step` を付与します）、意図、具体的な
+  アクションをまとめて把握できます。終了時には `⏱ record finished in <経過時間>` が続きます。
 - **prompt cache**（API 経路）: 静的なシステムプロンプトとツール定義に `cache_control: ephemeral` を付け、ターンごとに変わるのは観測（要素 + スクリーンショット）だけです。
 - **視覚 + 要素の併用**: スクリーンショットで見た目と状態を読み、**操作は必ず要素リストの `id`** で行います（id を生成させません。リストには id を持つ要素だけを出します）。
 
@@ -269,7 +307,7 @@ class AlertLocator(Protocol):
     def locate(self, screenshot_png, instruction) -> AlertDecision: ...
 
 class SystemAlertGuard:
-    def dismiss(self, driver) -> bool: ...   # プロンプトがあれば座標 tap して True
+    def dismiss(self, driver) -> AlertEvent | None: ...   # プロンプトがあれば座標 tap してタップしたボタンを返す
 ```
 
 - `SystemAlertGuard.dismiss`: スクリーンショットを撮り、ロケータに「プロンプトがあるか、どこを押すか」を

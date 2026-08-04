@@ -56,6 +56,8 @@ resolution, and the **preflight capability check** (below).
 | `network` | native network monitoring | — | — | ✅ | — |
 | `multiTouch` | two-finger gestures (pinch / rotate) | ✅ | ✅ | ✅ | ✅ |
 | `textSelection` | select-all + clipboard copy on the focused field | ✅ | ✅ | ✅ | ✅ |
+| `selectOption` | set a native `<select>` by value (web only) | — | — | ✅ | ✅ |
+| `handleSystemAlert` | tap an iOS SpringBoard permission-prompt button natively | ✅ | — | — | ✅ |
 | `deviceControl.setLocation` | set the simulated GPS location | ✅ | ✅ | — | — |
 | `deviceControl.clipboard` | read / write / clear the clipboard | ✅ | ✅ | — | — |
 | `deviceControl.push` | deliver a push notification | ✅ | — | — | — |
@@ -94,13 +96,17 @@ through (prime directive #2: fail fast and clearly). It is a pure function of (s
 set) — no device, no clock — and per-scenario: only the offending scenarios fail, the rest run.
 
 The check gates only the **hard** requirements the capability set cleanly decides: `pinch` /
-`rotate` need `multiTouch`, `select` / `copy` need `textSelection` (select-all + clipboard copy;
-the web context is coordinate-only for these and refuses both — `delete` / `clear` stay ungated, as
-every backend backs `delete_text`), a `visual` assertion needs `screenshot`, and each device-control step
-needs the token for its own operation — `setLocation` needs `deviceControl.setLocation`, the
-clipboard steps need `deviceControl.clipboard`, `push` needs `deviceControl.push`, and so on
-(BE-0212 split the coarse `deviceControl` family of BE-0128 into these per-operation tokens). Every
-run needs `query` + `elements`. It deliberately does **not** gate `conditionWait` (the run loop
+`rotate` need `multiTouch`, `selectOption` needs the `selectOption` token (a web-only `<select>`
+switch; iOS / Android are rejected before any device work), `select` / `copy` need `textSelection`
+(select-all + clipboard copy; the web context is coordinate-only for these and refuses both —
+`delete` / `clear` stay ungated, as every backend backs `delete_text`), a `visual` assertion needs
+`screenshot`, `handleSystemAlert` needs the `handleSystemAlert` token (only xcuitest declares it),
+and each device-control step needs the token for its own operation — `setLocation` needs
+`deviceControl.setLocation`, the clipboard steps need `deviceControl.clipboard`, `push` needs
+`deviceControl.push`, and so on (BE-0212 split the coarse `deviceControl` family of BE-0128 into
+these per-operation tokens); a `permissions` entry is likewise gated per service
+(`deviceControl.permissions.<service>`), so an unsupported service is named individually rather than
+the field as a whole. Every run needs `query` + `elements`. It deliberately does **not** gate `conditionWait` (the run loop
 polls for every wait, so no backend needs the token) or `network` (XCUITest captures traffic through
 the app-side collector despite not advertising `network`, so `request` / `event` / `requestSequence` /
 `responseSchema` assertions and `until: { request }` waits run on iOS). `gestures.py`'s
@@ -169,10 +175,23 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
   one selector — `id: [stable.refresh, stable_refresh]` — and the match is an OR over the candidates
   (BE-0221); see [scenarios](scenarios.md#selectors-addressing-an-element).
 - `tap(sel)`: `_resolve` confirms uniqueness (**retries not-found, fails ambiguity fast** — a
-  mid-transition dump is a transient null-root that is retried, and a 2+ match fails
-  immediately) → `adb shell input tap` at the frame center. `swipe` adds a finite duration so it is a
-  real drag; `long_press` is a same-point swipe held for the duration; `type_text` is `input text`
-  (spaces sent as its `%s` escape).
+  mid-transition dump is a transient null-root that is retried, and a 2+ match fails immediately).
+  `tap`, `long_press`, and `double_tap` then send the resolved element's identity — its raw
+  accessibility fields plus an ordinal, never a host-computed coordinate — to the resident server's `POST /act`
+  (roadmap [BE-0339](../roadmaps/BE-0339-adb-device-side-actuation/BE-0339-adb-device-side-actuation.md)):
+  the server re-resolves that identity against its own live tree and injects from the same warm
+  session, so a gesture lands on the bounds the device holds at the moment it injects, never a
+  coordinate the host computed one round trip earlier. A `stale` reply — the identity's match count
+  moved since the host counted it — is retried, bounded; the driver then falls back to a
+  host-computed coordinate (`adb shell input tap` at the frame center for `tap`, a same-point swipe
+  held for the duration for `long_press`) once retries exhaust, once the channel has no `/act`
+  endpoint (an older server), or once the channel faults outright. When the server injects but
+  cannot confirm it, the driver treats the gesture as done rather than risk a second touch landing on
+  top of the first. `double_tap`'s device path stamps both `MotionEvent`s from one server-side call,
+  declaring a fixed interval between them instead of leaving the gap to a round trip's incidental
+  timing; see **On-device actuation fidelity** below for its coordinate fallback. `swipe` adds a
+  finite duration so it is a real drag; `type_text` is `input text` (spaces sent as its `%s`
+  escape).
 - **A coordinate resolve waits for the tree to catch up with a pan.** Android moves the content first
   and publishes the accessibility update naming the new frames afterwards. A read landing between those
   two moments describes the pre-scroll screen. Repeated reads then agree with each other on frames that
@@ -247,11 +266,18 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
 - **On-device actuation fidelity** (roadmap
   [BE-0210](../roadmaps/BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md)):
   the `back` step is the true system back (`input keyevent 4` / `KEYCODE_BACK`) — Android has no
-  on-screen back element to tap, unlike iOS's OS back button; `double_tap` issues both taps in **one
-  `adb shell` round-trip** (`input tap … ; input tap …`) so the adb transport round-trip does not
-  widen the gap past the platform's double-tap window; and a tap whose target is **not in the current
-  viewport** scrolls toward it (a default up-swipe) and re-queries, bounded by a retry count — a
-  condition wait, so a selector that never appears still fails deterministically.
+  on-screen back element to tap, unlike iOS's OS back button. `double_tap`'s primary path is the
+  resident server's `POST /act` (see above): the server builds both `MotionEvent`s itself and stamps
+  a declared interval between them, rather than trusting a round trip's incidental timing to land
+  inside the platform's double-tap window (roadmap
+  [BE-0339](../roadmaps/BE-0339-adb-device-side-actuation/BE-0339-adb-device-side-actuation.md)).
+  Without that channel it falls back to a host recipe: on a rooted device with a discoverable
+  touchscreen, a raw two-slot `sendevent` sequence (BE-0208) narrows the gap between the two taps to
+  five process spawns; otherwise both taps go out in **one `adb shell` round trip**
+  (`input tap … ; input tap …`), so the transport round trip itself does not widen the gap past the
+  double-tap window. And a tap whose target is **not in the current viewport** scrolls toward it (a
+  default up-swipe) and re-queries, bounded by a retry count — a condition wait, so a selector that
+  never appears still fails deterministically.
 
   > [!NOTE]
   > This implicit scroll-into-view is an **adb-only tap recovery**: XCUITest / Playwright still fail a
@@ -485,12 +511,12 @@ Implementation: `bajutsu/backends.py`.
 ```python
 PLATFORMS = {                              # a platform token expands to its actuators (stability order)
     "ios":     ("xcuitest",),              #   the sole iOS actuator since BE-0290 retired idb
-    "android": ("adb",),                   #   planned
+    "android": ("adb",),                   #   the sole Android actuator (BE-0007)
     "web":     ("playwright",),            #   implemented (BE-0041)
     "fake":    ("fake",),                  #   the in-memory test/demo driver
 }
 COST_ORDER: dict[str, tuple[str, ...]] = {}  # empty: no platform's cost order differs from its stability order
-IMPLEMENTED = {"fake", "playwright", "xcuitest"}  # actuators with a driver today
+IMPLEMENTED = {"fake", "playwright", "xcuitest", "adb"}  # actuators with a driver today
 
 def default_available(actuator) -> bool:   # implemented + backing tool present (playwright: package import; fake: always)
 def resolve_actuators(backends) -> list:   # expand each token (platform or actuator) to actuators

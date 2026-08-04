@@ -48,14 +48,15 @@ The XCUITest backend drives the app through a **prebuilt on-device runner** (the
 one-shot `make` target below (`make runner-build`), so there is nothing extra to install — Xcode
 alone is enough.
 
-The one-shot path is the `make` target, which builds the runner, installs the freshly built app,
-and runs the smoke scenario plus a `doctor` check on the booted device:
+The one-shot path is the `make` target. It builds the runner, installs the freshly built app, and
+runs the full showcase suite (skipping scenarios tagged `xcuitest` or `systemalert`) on the booted
+device:
 
 ```bash
 make -C demos/showcase run-swiftui
 ```
 
-Or drive the CLI directly (the same steps, written out):
+Or drive the CLI directly against the smoke scenario alone — a quicker, single-scenario check:
 
 ```bash
 uv run bajutsu run --scenario demos/showcase/scenarios/smoke.yaml --target showcase-swiftui --backend ios --udid booted --no-erase
@@ -101,4 +102,7 @@ uv run bajutsu record --target showcase-swiftui --goal "log in and increment the
 uv run bajutsu codegen demos/showcase/scenarios/smoke.yaml --target showcase-swiftui -o UITests/Smoke.swift
 ```
 
-Run it end-to-end with `make -C demos/showcase ui-test`. The structural mapping: [codegen](../codegen.md).
+`make -C demos/showcase ui-test` shows the same pipeline end to end for real: it re-generates the
+repo's own checked-in fixture from `components.yaml` (a different scenario from the one above), then
+builds and runs it with `xcodebuild test` — codegen's real-compile verification, not a replay of the
+`Smoke.swift` file generated above. The structural mapping: [codegen](../codegen.md).

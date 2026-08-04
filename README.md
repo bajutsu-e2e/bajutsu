@@ -12,7 +12,8 @@
 > scenario format and one deterministic runner, where **a platform is a backend** behind that
 > one interface. Swap the backend and the same scenarios run on a different target — the iOS
 > Simulator (XCUITest), a web (Playwright) backend, and an Android (adb) backend are all
-> landed, with Flutter next.
+> landed; Flutter apps run on those same iOS/Android backends unchanged, needing no new backend
+> (BE-0008).
 > **Status: pre-alpha.** The deterministic core, the AI authoring loop (`record` / `crawl`),
 > the evidence subsystem, codegen, and self-healing triage are all implemented and
 > unit-tested (no Simulator needed). The iOS **XCUITest backend** is **validated
@@ -27,8 +28,9 @@ Everything but one seam is platform-neutral: the scenario format, selector resol
 deterministic runner, the evidence subsystem, and the reporter never name a platform. That one seam
 is the **backend** — the driver that actuates the UI. Point the runner at a different backend and
 the same scenario runs on a different target: the **iOS Simulator** (XCUITest), a **browser**
-(Playwright), or **Android** (adb), with **Flutter** next. Choosing a platform is choosing a
-backend, not adopting a different tool.
+(Playwright), or **Android** (adb). **Flutter** apps ride those same iOS/Android backends
+unchanged, needing no new backend. Choosing a platform is choosing a backend, not adopting a
+different tool.
 
 > **The name.** *Bajutsu* (馬術) is Japanese for *horsemanship / equestrianism*. The name
 > refers to the sources of test instability the tool tames — flaky timing, async transitions,
@@ -103,7 +105,8 @@ Implemented and covered by tests (run without a Simulator):
   (TypeScript, web), UI Automator (Kotlin, Android); structural mapping, no AI at test time
 - **Self-healing triage** (root cause + minimal-fix suggestions; advisory, AI optional)
 - The wired CLI: `run` / `doctor` / `record` / `crawl` / `codegen` / `trace` /
-  `triage` / `approve` / `serve` / `mcp` / `worker` / `lint` / `schema`
+  `triage` / `approve` / `serve` / `mcp` / `worker` / `lint` / `schema` / `audit` / `coverage` /
+  `export` / `flakiness` / `impact` / `project` / `report` / `stats`
 - **MCP server** (`bajutsu mcp`): exposes `run` and `doctor` as MCP tools and run evidence
   (manifest / report / JUnit / artifacts) as resources, for Claude Desktop / Code integration
 - **Web UI** (`bajutsu serve`): author (`record` / `crawl`), edit, and run scenarios; browse
@@ -131,8 +134,7 @@ Validated on an Android emulator (Linux, no Mac):
   in [`android-e2e.yml`](.github/workflows/android-e2e.yml), driving the same shared scenarios
   XCUITest runs.
 
-Not yet wired: the external `mockServer` command (superseded by in-scenario `mocks`); the
-Flutter backend (planned). See
+Not yet wired: the external `mockServer` command (superseded by in-scenario `mocks`). See
 [`docs/architecture.md`](docs/architecture.md) for the full implemented-vs-unwired table.
 
 ## Requirements
@@ -185,7 +187,9 @@ bajutsu schema                                            # print the JSON Schem
 ```
 
 `trace` (inspect a finished run), `triage` (diagnose a failure), and `worker` (lease queued runs
-for the hosted backend) round out the set — see the [CLI reference](docs/cli.md).
+for the hosted backend) round out this walkthrough. The CLI also wires `audit` / `coverage` /
+`export` / `flakiness` / `impact` / `project` / `report` / `stats` — see the
+[CLI reference](docs/cli.md) for the full command set.
 
 > `make serve` (or `scripts/serve.sh`) wraps `bajutsu serve` and installs the configured
 > backend's dependencies on demand, so a fresh checkout will not hit
@@ -250,7 +254,7 @@ bajutsu/
 ├── drivers/              # Driver protocol + selector resolution (determinism core); fake / xcuitest (iOS) / playwright (web) / adb (Android)
 ├── backends.py           # platform-aware backend registry + driver construction (stability order)
 ├── scenario/             # scenario schema (models), YAML load/round-trip, expansion, JSON Schema
-├── assertions.py         # machine-checkable assertion evaluation
+├── assertions/           # machine-checkable assertion evaluation
 ├── interp.py             # ${namespace.key} interpolation over data / vars / secrets
 ├── orchestrator/         # deterministic Tier 2 run loop (act → wait → verify)
 ├── runner/               # config + scenarios -> report via a device pool
@@ -259,7 +263,7 @@ bajutsu/
 │                          #   observation, visual-regression comparison, golden element-tree comparison,
 │                          #   secret redaction
 ├── analysis/              # read-only advisory analysis: coverage, determinism audit, run-stats
-├── config.py             # team defaults × per-target resolution (iOS bundleId / web baseUrl)
+├── config/               # team defaults × per-target resolution (iOS bundleId / web baseUrl)
 ├── simctl.py             # simctl command layer (iOS environment)
 ├── preflight.py          # environment runnability gate for doctor / CI
 ├── doctor.py             # convention score
@@ -287,8 +291,9 @@ Milestones M1–M4 are complete — the deterministic runner, the AI `record` lo
 evidence rules, codegen + CI, and self-healing triage — all validated on a real
 Simulator (see [Status](#status) above for the implemented surface). Because a platform is just a
 backend behind the one driver interface, the same core spans targets: the **web (Playwright)** and
-**Android (`adb`)** backends have both landed, with **Flutter** planned
-(see [`docs/vision.md`](docs/vision.md#1-reach--more-platforms-and-surfaces)).
+**Android (`adb`)** backends have both landed. **Flutter** apps now run on those same iOS/Android
+backends unchanged, needing no new backend (BE-0008; see
+[`docs/vision.md`](docs/vision.md#1-reach--more-platforms-and-surfaces)).
 
 The forward-looking, prioritized backlog (what we want to build next) lives in
 [`roadmaps/`](roadmaps/README.md).

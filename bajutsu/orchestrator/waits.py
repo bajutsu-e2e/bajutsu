@@ -18,6 +18,7 @@ from bajutsu.orchestrator.types import (
     Clock,
     NetworkSource,
     _no_network,
+    pick_alert_label,
 )
 from bajutsu.scenario import Gone, Wait, WaitRequest
 
@@ -177,6 +178,7 @@ class _AlertGuardGate:
     _attempts: int = 0
     _last_attempt: float | None = None
     _gave_up: bool = False
+    _tree_dismiss_pending: str | None = None
 
     def __post_init__(self) -> None:
         self._native = base.Capability.HANDLE_SYSTEM_ALERT in self.driver.capabilities()
@@ -210,6 +212,18 @@ class _AlertGuardGate:
                 self._fire_vision_bounded()
                 return
             # "absent": no *SpringBoard* alert — fall through to the collapsed-tree proxy below.
+        if self.guard.labels:
+            # Every `_POLL`, on the native path alone, and only once the scenario has named its own
+            # candidate labels: an author who configured `systemAlertHandling.instruction` has opted
+            # into exactly the narrow surface `_dismiss_from_tree` matches against, so the fast in-tree
+            # path is safe to try here. It stays off the *default* dismissive labels (`Cancel`,
+            # `Close`, …) and off every non-native backend, where those are ordinary English UI
+            # vocabulary a real screen can legitimately show (see `_dismiss_from_tree`'s docstring).
+            event = self._dismiss_from_tree(elements)
+            if event is not None:
+                self.alerts.append(event)
+                self._collapsed_polls = 0
+                return
         # Every `_POLL`, whether or not the native query ran this tick, drive the debounced collapsed-
         # tree proxy: `system_alert_labels()` only sees `springboard.alerts`, so an action sheet or a
         # WKWebView JS dialog reads as absent yet still collapses the tree, and the vision guard exists
@@ -257,6 +271,70 @@ class _AlertGuardGate:
         event = self.guard.vision(self.driver)
         if event is not None:
             self.alerts.append(event)
+
+    def _dismiss_from_tree(self, elements: list[base.Element]) -> AlertEvent | None:
+        """Tap a scenario-named dismiss button already visible in this poll's own tree — no model call.
+
+        Covers a system-owned prompt the native query cannot enumerate (BE-0315's `probe_native`
+        reads only `springboard.alerts`) yet that still surfaces its buttons in the normalized tree
+        the wait already fetched — an app-attached sheet such as iOS's Save Password prompt, whose
+        `label`ed buttons appear right in the poll's own `elements`.
+
+        Only ever called (see `_observe_native`) when `self.guard.labels` is non-empty and the
+        backend is native-capable: `identifier is None` is not by itself a reliable "system-owned"
+        signal (a backend or an unlabeled-by-design app screen can carry legitimate identifier-less
+        buttons, per `shows_app_ui`'s own docstring), so this stays off the generic
+        `DEFAULT_DISMISSIVE_LABELS` — ordinary English UI vocabulary ("Cancel", "Close") a real
+        screen can legitimately show — and acts only on the scenario author's own explicit
+        `systemAlertHandling.instruction`, the narrow surface this path exists to speed up.
+
+        Taps a given label at most once per showing: unlike the native probe (rate-limited to
+        `poll_interval`) and the vision path (debounce + cooldown + attempt ceiling), this runs every
+        `_POLL`, so without its own guard a dismiss animation that keeps the button in the tree for a
+        few frames — or a target screen that renders a poll or two later — would re-match and re-tap
+        it on every one of those polls, over-counting one dismissal into several `AlertEvent`s and
+        actuating the app repeatedly. `_tree_dismiss_pending` remembers the label just tapped and
+        skips re-tapping it while it is still the poll's match, until the tree stops matching it
+        (dismissed, or a different label appears), only then re-arming.
+        """
+        candidates = self.guard.labels
+        buttons = [
+            el["label"]
+            for el in elements
+            if el["label"] and not el["identifier"] and base.Trait.BUTTON in el["traits"]
+        ]
+        label = pick_alert_label(candidates, buttons)
+        if label is None or label == self._tree_dismiss_pending:
+            if label is None:
+                self._tree_dismiss_pending = None
+            return None
+        # Scope the tap to `traits: [BUTTON]`, the same constraint `buttons` above already applied
+        # when resolving `label` — matching a bare `{"label": label}` selector against `matches()`
+        # (base.py) ignores `traits` entirely, so a non-button element sharing the exact text (a
+        # static caption, a header drawn next to the sheet) would otherwise make the tap ambiguous
+        # despite the intended button being uniquely named. Pre-checking uniqueness over this same
+        # button-scoped count before tapping keeps a *persistent* same-label app button (identified,
+        # so excluded from `buttons` above, but still a button) a cheap in-memory decline: that
+        # `except AmbiguousSelector` branch below never arms `_tree_dismiss_pending`, so reaching it
+        # every poll would re-issue the on-device tap ~20x/s for the rest of the wait.
+        if (
+            sum(1 for el in elements if el["label"] == label and base.Trait.BUTTON in el["traits"])
+            != 1
+        ):
+            return None
+        try:
+            self.driver.tap({"label": label, "traits": [base.Trait.BUTTON]})
+        except base.ElementNotFound:
+            # The button vanished between this poll's query and the tap — a benign self-resolved
+            # race, same treatment as `probe_native`'s TOCTOU branch.
+            return None
+        except base.AmbiguousSelector:
+            # A rare query-vs-tap race: another button carrying the same label appeared between this
+            # poll's tree read (checked unique above) and the tap. Declines rather than risk tapping
+            # the wrong one.
+            return None
+        self._tree_dismiss_pending = label
+        return AlertEvent(label=label)
 
 
 def _wait(

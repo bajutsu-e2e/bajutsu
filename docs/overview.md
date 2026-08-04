@@ -4,8 +4,9 @@
 
 > Implementation-grounded reference for the natural-language-driven E2E (end-to-end) testing tool.
 > Its deterministic core is platform-neutral; the one platform-specific seam is the **backend**
-> behind a single `Driver` interface, so a new platform is a new backend — the iOS Simulator (XCUITest)
-> today; a web (Playwright) backend and an Android (adb) backend now landed; Flutter planned.
+> behind a single `Driver` interface, so a new platform is a new backend — the iOS Simulator
+> (XCUITest), a web (Playwright) backend, and an Android (adb) backend are all landed. Flutter apps
+> run through those same backends unchanged, with no separate Flutter backend.
 > [`README.md`](../README.md) is the introduction and [`DESIGN.md`](../DESIGN.md)
 > covers the design rationale; this set of pages explains **what the code actually
 > does today**, feature by feature. Planned work is in [the roadmap](../roadmaps/README.md).
@@ -46,7 +47,7 @@ view of the same system — is in [architecture](architecture.md).
 | 10 | [reporting](reporting.md) | Reports (manifest.json / JUnit / HTML) and the `runs/` layout |
 | 11 | [configuration](configuration.md) | Config layering (defaults × targets) · onboarding a new target · the `doctor` convention score |
 | 12 | [recording](recording.md) | AI authoring (Tier 1 `record`) · the Agent abstraction · system-alert handling |
-| 13 | [codegen](codegen.md) | Scenario → native XCUITest generation |
+| 13 | [codegen](codegen.md) | Scenario → native XCUITest / Playwright / UI Automator generation |
 | 14 | [cli](cli.md) | Full reference for CLI commands and options |
 | 15 | [showcase](showcase.md) | The showcase suite — the single iOS fixture (exercises every primitive) |
 | 16 | [ci](ci.md) | Running in CI — the repo's own workflows + the reusable `bajutsu-e2e` action |
