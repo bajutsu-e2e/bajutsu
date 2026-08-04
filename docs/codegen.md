@@ -274,7 +274,9 @@ class ComponentsUITest {
   }
 
   private fun act(by: BySelector): UiObject2 {
-    device.wait(Until.hasObject(by), ACT_TIMEOUT_MS)
+    if (!device.wait(Until.hasObject(by), ACT_TIMEOUT_MS)) {
+      throw AssertionError("act: no element matched $by within ${ACT_TIMEOUT_MS}ms")
+    }
     return device.findObject(by)
   }
 
@@ -300,9 +302,10 @@ class ComponentsUITest {
 - The `act` helper waits for the element before returning it. `findObject` alone is a single-shot
   query with no implicit wait. Acting right after `launch()` or a UI transition could otherwise race
   the render. An element-targeting action routes through `act`. `relaunch` and the `wait` steps
-  stay direct, since neither targets an element. A read-only assertion
-  still calls `device.findObject` / `device.findObjects` directly, unwaited. That matches the
-  driver's own assertions.
+  stay direct, since neither targets an element. A timed-out wait throws an `AssertionError` naming
+  the selector and the timeout. `findObject` alone would instead throw a bare
+  `NullPointerException` that names neither. A read-only assertion still calls `device.findObject` /
+  `device.findObjects` directly, unwaited. That matches the driver's own assertions.
 - Each method builds an `extras` map (config's `launchEnv` < the scenario's
   `preconditions.launchEnv`) and calls `launch(extras)`, which forwards the env as intent extras —
   the reverse of the adb backend's `am start --es`.

@@ -54,7 +54,9 @@ class CodegenandroiduitestUITest {
   // so acting right after launch() or a UI transition can race the render — a condition
   // wait, never a fixed sleep.
   private fun act(by: BySelector): UiObject2 {
-    device.wait(Until.hasObject(by), ACT_TIMEOUT_MS)
+    if (!device.wait(Until.hasObject(by), ACT_TIMEOUT_MS)) {
+      throw AssertionError("act: no element matched $by within ${ACT_TIMEOUT_MS}ms")
+    }
     return device.findObject(by)
   }
 

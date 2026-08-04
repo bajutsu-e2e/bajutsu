@@ -269,7 +269,9 @@ class ComponentsUITest {
   }
 
   private fun act(by: BySelector): UiObject2 {
-    device.wait(Until.hasObject(by), ACT_TIMEOUT_MS)
+    if (!device.wait(Until.hasObject(by), ACT_TIMEOUT_MS)) {
+      throw AssertionError("act: no element matched $by within ${ACT_TIMEOUT_MS}ms")
+    }
     return device.findObject(by)
   }
 
@@ -293,7 +295,9 @@ class ComponentsUITest {
   Compose の `testTag`（`testTagsAsResourceId` で露出したもの）の両方が解決されます。
 - ヘルパ `act` は、要素を返す前にその出現を待ちます。`findObject` 単体は暗黙の待機を持たない単発クエリです。
   `launch()` の直後や画面遷移の直後に操作すると、描画とレースする恐れがあります。下表の生成アクションのうち、要素を
-  対象とするものはすべてこのヘルパを経由します（`relaunch` や `wait` の各ステップは直接呼びます）。読み取り専用のアサーションは、従来どおり `device.findObject` /
+  対象とするものはすべてこのヘルパを経由します（`relaunch` や `wait` の各ステップは直接呼びます）。待機がタイムアウトすると、
+  素の `NullPointerException` ではなく、セレクタとタイムアウト値を名指しした `AssertionError` を送出します。
+  読み取り専用のアサーションは、従来どおり `device.findObject` /
   `device.findObjects` を直接呼び、待機しません。これはドライバ自身のアサーションと同じ挙動です。
 - 各メソッドは `extras` マップ（config の `launchEnv` < シナリオの `preconditions.launchEnv`）を組み立て、
   `launch(extras)` を呼びます。この関数は env を intent extra として渡します。adb backend の `am start --es` の
