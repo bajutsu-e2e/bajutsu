@@ -75,7 +75,7 @@ def oauth_callback(
     # entry lists their GitHub organization (or `orgs:` is absent entirely) — an admin must be able to
     # sign in and repoint a broken or incomplete `orgs:` config, not be locked out by the same config
     # mistake they exist to fix.
-    is_admin_team_member = any(team in admin_teams for team in identity.teams)
+    is_admin_team_member = in_admin_team(identity.teams, admin_teams)
     matched_org = identity_matches_org(orgs, login, identity.orgs)
     if not matched_org and not is_admin_team_member:
         return {"error": "user not allowed"}, 403, None
@@ -187,13 +187,20 @@ _EDITOR_PATHS = frozenset(
 )
 
 
+def in_admin_team(teams: list[str], admin_teams: list[str]) -> bool:
+    """Whether any of *teams* is a server-wide admin Team — the one membership test behind both the
+    admin role below and `oauth_callback`'s admin-Team sign-in bypass, so the gate that admits a
+    bypassing login and the role it resolves to can never drift apart."""
+    return any(team in admin_teams for team in teams)
+
+
 def role_for(*, teams: list[str], editor_team: str | None, admin_teams: list[str]) -> str:
     """The role for a login from its GitHub Team memberships (BE-0313): admin if a member of any of
     the server-wide *admin_teams*, editor if a member of the resolved org's *editor_team*, else viewer
     (the base role every signed-in user gets). *teams* are `"<github-org>/<team-slug>"` direct
     memberships; an unset *editor_team* or empty *admin_teams* never matches. Recomputed on every
     login (BE-0015 7c-2)."""
-    if any(team in admin_teams for team in teams):
+    if in_admin_team(teams, admin_teams):
         return "admin"
     if editor_team is not None and editor_team in teams:
         return "editor"

@@ -131,8 +131,8 @@ def _fetch_orgs(client: object, headers: dict[str, str]) -> list[str]:
 
 def _fetch_teams(client: object, headers: dict[str, str]) -> list[str]:
     """Every GitHub Team the user is a *direct* member of, as `"<github-org>/<team-slug>"`, following
-    pagination. Team membership grants the editor/admin role and, for a configured admin Team, the
-    sign-in gate itself (BE-0313), so a failure never *invents* a team: a failure on the first page
+    pagination. Team membership grants the editor/admin role (BE-0313) and, for a configured admin
+    Team, the sign-in gate itself, so a failure never *invents* a team: a failure on the first page
     yields no teams, and a failure partway through pagination keeps only the teams already confirmed
     from earlier pages, never granting one that wasn't actually returned by GitHub. That is still the
     opposite failure direction from `_fetch_orgs` for the editor role and for a login the org gate
