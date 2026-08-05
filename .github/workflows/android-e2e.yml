@@ -697,7 +697,9 @@ jobs:
       # `connected_android_test_additional_output/` carries the `codegen-diagnostics/` the generated
       # test dumps on failure — the window hierarchy, a screenshot, and the accessibility window list
       # with the ids the selector could actually be matched against. `screenrecord/` (added for this
-      # lane's known flake, a launcher ANR dialog transiently stealing window focus) is a full-motion
+      # lane's known flake: the accessibility tree reporting empty right after launch, or a system
+      # dialog taking the foreground window — which `e2e-codegen` now also suppresses at the source
+      # with `hide_error_dialogs`, so a recurrence is unlikely to still be that dialog) is a full-motion
       # recording of the install+test window, `adb pull`ed by the Makefile's `e2e-codegen` target
       # itself — only on a failing test, so a green run leaves this path absent by design (and
       # best-effort besides: `if-no-files-found: ignore` covers a failed pull the same as the other
