@@ -74,7 +74,7 @@ runs:
         scenario_args=()
         for s in $SCENARIOS; do scenario_args+=(--scenario "$s"); done
         uv run --no-sync bajutsu run "${scenario_args[@]}" --exclude "$EXCLUDE" --target "$TARGET" \
-          --udid "$UDID" --backend "$BACKEND" --config "$CONFIG" --no-erase --score
+          --udid "$UDID" --backend "$BACKEND" --config "$CONFIG" --erase --score
 
     # Collect any macOS crash reports the run produced into the uploaded artifact, so a resident-
     # runner mid-run crash is diagnosable even when the pipeline's scenario-level retry recovers it
