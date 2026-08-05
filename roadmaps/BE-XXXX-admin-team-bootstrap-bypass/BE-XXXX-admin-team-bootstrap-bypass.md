@@ -125,14 +125,16 @@ admit it. One helper makes that drift impossible by construction.
 Team slug case-insensitively, and a real GitHub org login can be stored mixed-case even though a Team
 slug is always lowercased — so an `admin_teams` entry whose organization half carries whatever case
 GitHub stores it in must still match a login's exact-case `identity.teams` membership, and vice versa.
-Without folding, this item's own
-sign-in bypass would carry a latent case-sensitivity trap the pre-existing `editorTeam` role check
-does not: an `editorTeam` is written once by an operator who controls its case and is compared against
-the same GitHub-reported case every time, but an `admin_teams` entry authored from a GitHub org page
-that happens to display mixed case, or copied before an org rename changed its stored case, would
-silently stop matching a login it is supposed to admit — the same "no admin, no visible cause" failure
-the malformed-entry warning above already exists to prevent, just unreachable by that check since a
-case mismatch is syntactically well-formed. Folding never turns an empty team name into a match —
+Without folding, this item's own sign-in bypass would carry a latent case-sensitivity trap: an
+`admin_teams` entry authored from a GitHub org page that happens to display mixed case, or copied
+before an org rename changed its stored case, would silently stop matching a login it is supposed to
+admit — the same "no admin, no visible cause" failure the malformed-entry warning above already
+exists to prevent, just unreachable by that check since a case mismatch is syntactically well-formed.
+`editorTeam` ([`bajutsu/serve/authz.py`](../../bajutsu/serve/authz.py)'s `role_for`) has the identical
+shape and is compared against the identical GitHub-reported case, so it carries the same latent trap
+— left uncorrected here as a scope decision, not because the value is any less exposed: widening
+`editorTeam` to case-fold too is a role-resolution change outside this item's sign-in-recovery scope.
+Folding never turns an empty team name into a match —
 `admin_teams` never contains `""`, since the comma-split that builds it filters on `t.strip()` — and
 does not affect the nested-Team guarantee below, which rests on exact string equality
 (`"acme-gh/parent/child"` is a different string from `"acme-gh/parent"`, folded or not), not on a

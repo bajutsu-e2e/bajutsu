@@ -233,10 +233,10 @@ def role_for(*, teams: Sequence[str], editor_team: str | None, admin_teams: tupl
     the server-wide *admin_teams*, editor if a member of the resolved org's *editor_team*, else viewer
     (the base role every signed-in user gets). *teams* are `"<github-org>/<team-slug>"` direct
     memberships; an unset *editor_team* or empty *admin_teams* never matches. The admin check
-    (`in_admin_team`) is case-insensitive; this *editor_team* check is not — a config-declared
-    `editorTeam` is written once by an operator who controls its case, unlike an `admin_teams` entry
-    that must also match GitHub's own case for the same organization login. Recomputed on every
-    login (BE-0015 7c-2)."""
+    (`in_admin_team`) is case-insensitive; this *editor_team* check is deliberately left exact for
+    now — it carries the same latent case trap, since `identity.teams` reports GitHub's own
+    organization-login case either way, but widening it is a role change outside this item's
+    sign-in-recovery scope. Recomputed on every login (BE-0015 7c-2)."""
     if in_admin_team(teams, admin_teams):
         return "admin"
     if editor_team is not None and editor_team in teams:

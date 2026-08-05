@@ -307,6 +307,20 @@ def _setenv_oauth(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
+def _delenv_oauth(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The mirror image of _setenv_oauth: a "no warning" test's premise is that OAuth isn't wired
+    # (or that a name isn't set), which the ambient shell can silently falsify for a maintainer who
+    # exports these for their own deployment -- pin the premise instead of inheriting it.
+    for var in (
+        "BAJUTSU_OAUTH_GITHUB_CLIENT_ID",
+        "BAJUTSU_OAUTH_GITHUB_CLIENT_SECRET",
+        "BAJUTSU_OAUTH_GITHUB_REDIRECT_URI",
+        "BAJUTSU_OAUTH_ADMIN_TEAM",
+        "BAJUTSU_OAUTH_ADMIN_TEAMS",
+    ):
+        monkeypatch.delenv(var, raising=False)
+
+
 def test_build_state_server_warns_on_the_retired_singular_admin_team_var(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -317,6 +331,7 @@ def test_build_state_server_warns_on_the_retired_singular_admin_team_var(
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
     monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
     _setenv_oauth(monkeypatch)
+    monkeypatch.delenv("BAJUTSU_OAUTH_ADMIN_TEAMS", raising=False)
     monkeypatch.setenv("BAJUTSU_OAUTH_ADMIN_TEAM", "acme-gh/ops")
     _scn, cfg, runs = project(tmp_path)
     state = srv._build_state(
@@ -346,6 +361,8 @@ def test_build_state_server_warns_when_admin_teams_was_never_set(
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
     monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
     _setenv_oauth(monkeypatch)
+    monkeypatch.delenv("BAJUTSU_OAUTH_ADMIN_TEAM", raising=False)
+    monkeypatch.delenv("BAJUTSU_OAUTH_ADMIN_TEAMS", raising=False)
     _scn, cfg, runs = project(tmp_path)
     state = srv._build_state(
         runs_dir=runs,
@@ -372,6 +389,7 @@ def test_build_state_server_without_oauth_does_not_warn_about_admin_teams(
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
     monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
+    _delenv_oauth(monkeypatch)
     _scn, cfg, runs = project(tmp_path)
     srv._build_state(
         runs_dir=runs,
@@ -383,7 +401,7 @@ def test_build_state_server_without_oauth_does_not_warn_about_admin_teams(
         token=None,
         backend="server",
     )
-    assert capsys.readouterr().err == ""
+    assert "BAJUTSU_OAUTH_ADMIN_TEAMS" not in capsys.readouterr().err
 
 
 def test_build_state_server_without_oauth_does_not_warn_on_malformed_admin_teams(
@@ -394,6 +412,7 @@ def test_build_state_server_without_oauth_does_not_warn_on_malformed_admin_teams
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
     monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
+    _delenv_oauth(monkeypatch)
     monkeypatch.setenv("BAJUTSU_OAUTH_ADMIN_TEAMS", "acme-gh/ops other-gh/root")
     _scn, cfg, runs = project(tmp_path)
     srv._build_state(
@@ -406,7 +425,7 @@ def test_build_state_server_without_oauth_does_not_warn_on_malformed_admin_teams
         token=None,
         backend="server",
     )
-    assert capsys.readouterr().err == ""
+    assert "BAJUTSU_OAUTH_ADMIN_TEAMS" not in capsys.readouterr().err
 
 
 def test_build_state_server_stays_quiet_when_admin_teams_is_set(

@@ -117,11 +117,11 @@ def _fetch_orgs(client: object, headers: dict[str, str]) -> list[str]:
     """Every GitHub org the user belongs to, following pagination (so a user in >30 orgs isn't
     truncated). Org membership maps the user to a bajutsu org *and*, since BE-0313, decides the
     sign-in gate (`identity_matches_org` reads this same list), so a failure here now has effects
-    that depend on how the login was admitted: an explicit `members` login still falls back to the
-    `default` org on any failure — a non-200, a parse error, an unexpected shape — but a login
-    relying only on `githubOrgs` is turned away at sign-in instead, since the gate sees no matching
-    org to admit it through, *unless* the login is also a member of a configured admin Team, in
-    which case the admin-Team bypass admits it into `default` regardless of this failure."""
+    that depend on how the login was admitted: an explicit `members` login is unaffected — its org
+    comes from that `members` entry, which never consults this list — but a login relying only on
+    `githubOrgs` is turned away at sign-in instead, since the gate sees no matching org to admit it
+    through, *unless* the login is also a member of a configured admin Team, in which case the
+    admin-Team bypass admits it into `default` regardless of this failure."""
     return [
         str(o["login"])
         for o in _paginate(client, headers, f"{_ORGS}?per_page=100")
