@@ -699,9 +699,10 @@ def test_final_release_warns_on_called_process_error(caplog) -> None:
     )
 
 
-def test_launch_that_raises_after_start_still_tears_the_environment_down() -> None:
-    # A launch thunk that got a driver out of start then failed before returning must tear down
-    # before the error propagates — otherwise the runner leaks with no lease holding a teardown.
+def test_a_failed_launch_leaves_no_leased_teardown() -> None:
+    # A launch thunk that tore its own environment down before raising leaves the holder with no
+    # teardown recorded, so a later access cold-spawns rather than discarding a lease that never
+    # existed. `launch_driver`'s own post-`env.start` guard lives in tests/runner/test_launch.py.
     from backend_crash_recovery import LeaseHolder
 
     from bajutsu.drivers import base
