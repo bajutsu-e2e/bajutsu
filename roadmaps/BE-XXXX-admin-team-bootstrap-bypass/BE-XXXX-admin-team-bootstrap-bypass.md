@@ -62,8 +62,9 @@ Two startup checks keep this parsing from losing every admin without a trace. `_
 `BAJUTSU_OAUTH_ADMIN_TEAMS` is unset but the retired `BAJUTSU_OAUTH_ADMIN_TEAM` still is — the hard
 cutover in *Alternatives considered* means that deployment now has no admin Team at all, and the only
 other symptom is an unexplained 403 on every admin action. It also warns on any entry that isn't
-exactly one `"<github-org>/<team-slug>"` pair (checked by counting `/`): a space- or
-semicolon-separated list parses to a single malformed entry that can never match a real Team, which
+exactly one `"<github-org>/<team-slug>"` pair — matched against a regular expression that also
+rejects an empty half or internal whitespace, not by counting `/`: a space- or semicolon-separated
+list parses to a single malformed entry that can never match a real Team, which
 is the same "no admin, no visible cause" failure reached by a different mistake. Both print a warning
 rather than raising, so a config typo degrades a deployment to no-admin instead of refusing to start
 it entirely — consistent with every other env var this module reads, none of which validate their
