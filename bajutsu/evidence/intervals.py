@@ -169,7 +169,7 @@ class Interval:
 def adopt(interval: Interval, target: Path) -> Interval:
     """Wrap an already-running interval so `stop()` finalizes it, then relocates its file to `target`.
 
-    A device backend starts its video *before* the app launches, so the cold-start frames are
+    Android starts its video *before* the app launches, so the cold-start frames are
     captured; that recording writes to a temporary path. The sink adopts the running capture at
     scenario start and, on stop, moves the finalized file to the scenario's artifact path — the real
     finalize (the wrapped interval's stop signal and timeout) still runs, this only redirects the

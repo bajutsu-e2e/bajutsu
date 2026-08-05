@@ -163,7 +163,7 @@ class EvidenceSink(Protocol):
 | `NullSink` (default) | writes nothing (keeps a run side-effect-free) |
 | `FileSink(run_dir, udid, log_predicate)` | writes under `run_dir/<step_id>/` |
 
-A capture the environment already began before launch (a device backend's `video`) is *adopted*
+A capture the environment already began before launch (Android's `video`) is *adopted*
 rather than started — the sink relocates its finalized file into the scenario dir on stop. Otherwise
 interval captures come from the driver's `driver_interval` provider when it supplies one (web's
 Playwright-native console / video, Android's `adb` logcat); failing that `FileSink`

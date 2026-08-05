@@ -128,7 +128,7 @@ class EvidenceSink(Protocol):
 | `NullSink`（既定） | 何も書かない（run を副作用フリーに保つ） |
 | `FileSink(run_dir, udid, log_predicate)` | `run_dir/<step_id>/` 配下に書き出す |
 
-環境が起動前にすでに開始した録画（デバイスバックエンドの `video`）は、新たに開始せず引き取ります。Sink は停止時に確定したファイルをシナリオのディレクトリへ移します。それ以外の区間証跡は、driver が `driver_interval` provider を供給していればそこから取得し（web の Playwright ネイティブなコンソール / 動画、Android の `adb` logcat）、供給していなければ `FileSink` は simctl の経路を使い、`udid` が無ければスキップします。CLI の `run` は `FileSink(runs/<runId>, udid=..., log_predicate=...)` を使用します（[cli](cli.md#run)）。
+環境が起動前にすでに開始した録画（Android の `video`）は、新たに開始せず引き取ります。Sink は停止時に確定したファイルをシナリオのディレクトリへ移します。それ以外の区間証跡は、driver が `driver_interval` provider を供給していればそこから取得し（web の Playwright ネイティブなコンソール / 動画、Android の `adb` logcat）、供給していなければ `FileSink` は simctl の経路を使い、`udid` が無ければスキップします。CLI の `run` は `FileSink(runs/<runId>, udid=..., log_predicate=...)` を使用します（[cli](cli.md#run)）。
 
 ## 初回 wait のタイムアウト診断（BE-0231）
 

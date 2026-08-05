@@ -45,8 +45,9 @@ class _DeviceEnvironment:
     def prestarted_intervals(self) -> list[intervals.Interval]:
         """Interval captures begun during `start()`, before the app launched, for the sink to adopt.
 
-        Always empty here: XCUITest and the fake backend record video on demand, not up front
-        (see `records_video_up_front`).
+        Always empty here: no subclass starts a capture before the app launches. XCUITest records
+        video on demand instead; the fake and live-WebDriver routes record none at all
+        (`captures_video`). See `records_video_up_front`.
         """
         return []
 
