@@ -147,6 +147,17 @@ targets:
     build: make -C android compose-build
     backend: [android]
     scenarios: scenarios
+    # ANR dialog ("<process> isn't responding") can surface from the OS/launcher at an
+    # unpredictable point during a run, unrelated to this app's own state. android:id/aerr_wait is
+    # the AOSP app_error_dialog.xml's fixed, locale-independent resource-id, so `interrupts`
+    # (BE-0314) — Android's substitute for iOS's native alert guard (BE-0315/0316), which has no
+    # equivalent here (bajutsu/drivers/adb.py's handle_system_alert is intentionally unsupported) —
+    # can dismiss it deterministically wherever it appears. Same interrupts block on every Android
+    # target below: the dialog is OS-owned, not app-specific.
+    interrupts:
+      - condition: { exists: { id: [android:id/aerr_wait] } }
+        steps:
+          - tap: { id: [android:id/aerr_wait] }
 
   # ---- Compose, accessibility OFF ------------------------------------------------
   showcase-compose-noax:
@@ -158,6 +169,10 @@ targets:
     build: make -C android compose-noax-build
     backend: [android]
     scenarios: scenarios
+    interrupts:   # ANR-dialog dismissal — see showcase-compose above
+      - condition: { exists: { id: [android:id/aerr_wait] } }
+        steps:
+          - tap: { id: [android:id/aerr_wait] }
 
   # ---- Views, accessibility ON — native android:id, which allows neither '.' nor '-', so the
   # ids are the SPEC ids with both mapped to '_' (stable.refresh → stable_refresh). The shared
@@ -175,6 +190,10 @@ targets:
     build: make -C android views-build
     backend: [android]
     scenarios: scenarios
+    interrupts:   # ANR-dialog dismissal — see showcase-compose above
+      - condition: { exists: { id: [android:id/aerr_wait] } }
+        steps:
+          - tap: { id: [android:id/aerr_wait] }
 
   # ---- Views, accessibility OFF ---------------------------------------------------
   showcase-views-noax:
@@ -186,6 +205,10 @@ targets:
     build: make -C android views-noax-build
     backend: [android]
     scenarios: scenarios
+    interrupts:   # ANR-dialog dismissal — see showcase-compose above
+      - condition: { exists: { id: [android:id/aerr_wait] } }
+        steps:
+          - tap: { id: [android:id/aerr_wait] }
 
   # ==== Flutter (BE-0008) =========================================================
   # The Flutter twin of the four native products (demos/showcase/flutter), one Dart codebase built
@@ -227,6 +250,10 @@ targets:
     build: cd flutter && flutter build apk --debug --flavor a11y --dart-define=ACCESSIBLE=true
     backend: [android]
     scenarios: scenarios
+    interrupts:   # ANR-dialog dismissal — see showcase-compose above
+      - condition: { exists: { id: [android:id/aerr_wait] } }
+        steps:
+          - tap: { id: [android:id/aerr_wait] }
 
   # ---- Flutter on Android, accessibility OFF -------------------------------------
   showcase-flutter-android-noax:
@@ -238,3 +265,7 @@ targets:
     build: cd flutter && flutter build apk --debug --flavor noax --dart-define=ACCESSIBLE=false
     backend: [android]
     scenarios: scenarios
+    interrupts:   # ANR-dialog dismissal — see showcase-compose above
+      - condition: { exists: { id: [android:id/aerr_wait] } }
+        steps:
+          - tap: { id: [android:id/aerr_wait] }
