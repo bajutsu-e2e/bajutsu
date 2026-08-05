@@ -73,14 +73,13 @@ def test_showcase_android_targets_have_anr_interrupt() -> None:
     # wrong-prefix regression here, without an emulator; that mistake previously shipped and only
     # failed against a live ANR dialog (PR #1492 review).
     cfg = load_config(SHOWCASE_CONFIG.read_text(encoding="utf-8"))
-    for name in (
-        "showcase-compose",
-        "showcase-compose-noax",
-        "showcase-views",
-        "showcase-views-noax",
-        "showcase-flutter-android",
-        "showcase-flutter-android-noax",
-    ):
+    android = [
+        name
+        for name in cfg.targets
+        if isinstance(resolve(cfg, name).platform_config, AndroidConfig)
+    ]
+    assert android, "expected Android showcase targets"
+    for name in android:
         interrupts = resolve(cfg, name).run_defaults.interrupts
         assert len(interrupts) == 1, name
         exists = interrupts[0].condition.exists
