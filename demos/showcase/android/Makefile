@@ -332,11 +332,11 @@ e2e-codegen:
 	#
 	# This lane has been observed flaky (a launcher ANR dialog transiently stealing window focus so
 	# the app's own window drops out of the accessibility tree, or the tree reporting empty right
-	# after launch); the still/XML diagnostics above show the state at the
-	# the moment of failure but not how it got there. Screen-record the whole install+test window
-	# alongside it, the CI twin of `bajutsu/evidence/intervals.py:start_screenrecord` (same SIGINT-then
-	# -pgrep-poll-then-pull finalize sequence, reimplemented in shell here since this lane runs no
-	# bajutsu runtime at test time). One shell instance: the recorder is backgrounded and its PID kept
+	# after launch); the still/XML diagnostics above show the state at the moment of failure but not
+	# how it got there. Screen-record the whole install+test window alongside it, the CI twin of
+	# `bajutsu/evidence/intervals.py:start_screenrecord` (the same SIGINT-then-pgrep-poll-then-pull
+	# finalize sequence, reimplemented in shell here since this lane runs no bajutsu runtime at test
+	# time). One shell instance: the recorder is backgrounded and its PID kept
 	# so it can be stopped after gradle exits — a plain multi-line recipe would run each line in its
 	# own subshell and lose that PID. `|| true` on every teardown step so a failed
 	# recording/pull/cleanup can never mask (or replace) the real test exit code, which is captured
