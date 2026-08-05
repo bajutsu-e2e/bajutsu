@@ -443,8 +443,8 @@ class ComponentsUITest {
   number of attempts, so once at the emitted value of 2. It is not the only kick a launch can make,
   though: the pre-launch check in the next bullet carries its own `TRACKING_KICK_ATTEMPTS` budget
   per attempt, putting the worst case for one `launch` at `LAUNCH_ATTEMPTS × TRACKING_KICK_ATTEMPTS
-  + (LAUNCH_ATTEMPTS - 1)` presses — seven as emitted, reached by any device whose window never
-  joins the list, since the pre-launch check no longer gives up early when its own budget runs out
+  + (LAUNCH_ATTEMPTS - 1)` presses — seven as emitted, but only on a device whose list reads empty
+  at every pre-launch check, since that check no longer gives up early when its own budget runs out
   (see the next bullet). `pressHome` reports a window event that never arrived by returning false
   rather than by throwing, so both outcomes are logged. The kick stays outside
   `UiAutomation.executeAndWaitForEvent`, because `pressHome` already waits through that same call
