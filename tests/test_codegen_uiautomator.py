@@ -141,6 +141,36 @@ def test_launch_confirms_window_tracking_before_it_waits_on_the_tree() -> None:
     )
 
 
+def test_the_window_list_is_read_through_the_flags_uidevice_itself_uses() -> None:
+    # windowSummary() and reportsWindows() must read through the same flags UiDevice uses
+    # (Configurator), not the flag-less Instrumentation.getUiAutomation() overload — which, on any
+    # target that sets non-default flags, tears down and reconnects the very UiAutomation instance
+    # UiDevice depends on, turning a read into the connection churn this file exists to diagnose.
+    # One accessor for both, so they cannot drift onto different flags.
+    code = _gen("- name: x\n  steps:\n    - tap: { id: a }\n")
+    accessor = _fn_body(code, "accessibilityWindows", "windowSummary")
+    assert "Configurator.getInstance().uiAutomationFlags" in accessor
+    # getUiAutomation(flags) only exists from API 24 (N); UiDevice itself branches on the same
+    # check and falls back to the flag-less read below it on older devices, so this accessor has
+    # to mirror that branch rather than raising the API floor a UI Automator target can run on.
+    assert "Build.VERSION.SDK_INT >= Build.VERSION_CODES.N" in accessor
+    assert "InstrumentationRegistry.getInstrumentation().uiAutomation.windows" in accessor
+    assert "accessibilityWindows()" in _fn_body(code, "windowSummary", "matchableIds")
+    assert "accessibilityWindows()" in _fn_body(code, "reportsWindows", "ensureWindowTracking")
+    # Neither of the next two is visible to the fast gate, which never compiles the output: the
+    # flag-less overload must not reappear anywhere outside this accessor's own API-level
+    # fallback, and both imports have to be emitted or the generated Kotlin will not build.
+    # Comment lines are stripped so rewording the accessor's own rationale — which names the
+    # flag-less overload — cannot redden the count on its own.
+    emitted = "\n".join(ln for ln in code.splitlines() if not ln.lstrip().startswith("//"))
+    assert emitted.count(".uiAutomation.") == 1
+    assert ".uiAutomation." in "\n".join(
+        ln for ln in accessor.splitlines() if not ln.lstrip().startswith("//")
+    )
+    assert "import android.os.Build" in code
+    assert "import androidx.test.uiautomator.Configurator" in code
+
+
 def test_a_wedged_window_list_is_kicked_rather_than_waited_out() -> None:
     # The list is delivered by event, so no timeout can recover one that is never sent — only a
     # window change can. Raising the timeout was measured not to help (5s -> 15s -> 20s across
