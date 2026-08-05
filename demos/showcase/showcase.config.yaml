@@ -151,13 +151,19 @@ targets:
     # unpredictable point during a run, unrelated to this app's own state — most often a
     # cold-booted AVD's Pixel Launcher missing its ANR deadline while the first scenario launches.
     # demos/showcase/android/Makefile's ANR_QUIET (`hide_error_dialogs`) stops the OS posting the
-    # dialog at all and is the primary defense for every Makefile-driven CI/local run: every
-    # `make e2e*` target (including the BAJUTSU_ADB_RESIDENT=0 e2e-fallback lane, whose own recipe
-    # runs it too) and demos/showcase/Makefile's `run-flutter-android`, the only lane that drives the
-    # two Flutter Android targets. So this block never fires on a lane a Makefile drives. What
-    # ANR_QUIET cannot reach is a bare `bajutsu run` outside any Makefile wrapper, which is how this
-    # dialog was first reported, so `interrupts` (BE-0314) is declared here as the only guard on that
-    # path.
+    # dialog at all and is the primary defense for every Makefile-driven run of `bajutsu run`: every
+    # `make e2e*` target that drives one (including the BAJUTSU_ADB_RESIDENT=0 e2e-fallback lane,
+    # whose own recipe runs it too) and demos/showcase/Makefile's `run-flutter-android`, which drives
+    # showcase-flutter-android only — nothing drives showcase-flutter-android-noax, so this block is
+    # its sole guard, always, not an inert copy like the rest. `e2e-codegen` is the one `e2e*` target
+    # that runs neither guard: it drives Gradle's `connectedA11yDebugAndroidTest` directly (BE-0294),
+    # never `bajutsu run`, so ANR_QUIET's suppression and this block's tap are both unreachable there
+    # — `uiautomator (codegen)`'s CI job hits exactly this dialog's launch-tree symptom on occasion,
+    # uncovered by design, not a regression to chase here. What ANR_QUIET cannot reach on the lanes it
+    # does cover is a bare `bajutsu run` outside any Makefile wrapper — the AWS Device Farm lane
+    # (demos/showcase/devicefarm/showcase.devicefarm.config.yaml) is exactly this, and carries the
+    # same block for the same reason — which is how this dialog was first reported, so `interrupts`
+    # (BE-0314) is declared here as the only guard on that path.
     #
     # This is not entirely free — a non-`wait` step without a fresh tree pays one extra
     # `driver.query()` for the guard check (bajutsu/orchestrator/loop.py) — but a `wait` step rides

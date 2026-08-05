@@ -19,6 +19,7 @@ MENU_DIR = SCENARIO_DIR / "menu"  # the demo menu's tour/features scenarios (non
 SHOWCASE_CONFIG = ROOT / "demos" / "showcase" / "showcase.config.yaml"
 LIVE_CONFIG = ROOT / "demos" / "showcase" / "live" / "showcase.live.config.yaml"
 DEMO_CONFIG = ROOT / "demos" / "demo.config.yaml"
+DEVICEFARM_CONFIG = ROOT / "demos" / "showcase" / "devicefarm" / "showcase.devicefarm.config.yaml"
 
 # The showcase a11y target's namespaces (SPEC §9); the menu scenarios stay within them.
 NAMESPACES = {"stable", "horse", "search", "log", "notice", "perm", "sys", "net"}
@@ -64,6 +65,20 @@ def test_showcase_config_resolves() -> None:
     assert bundled.run_defaults.interrupts[0].condition.exists is not None
 
 
+def _assert_anr_interrupt(cfg: object, name: str) -> None:
+    interrupts = resolve(cfg, name).run_defaults.interrupts
+    anr = [
+        e
+        for e in interrupts
+        if e.condition.exists is not None and e.condition.exists.sel.id == ["aerr_wait"]
+    ]
+    assert len(anr) == 1, name
+    assert len(anr[0].steps) == 1, name
+    tap = anr[0].steps[0].tap
+    assert tap is not None, name
+    assert tap.id == ["aerr_close"], name
+
+
 def test_showcase_android_targets_have_anr_interrupt() -> None:
     # BE-0314: every Android showcase target carries the same ANR-dialog handler (e.g. "Pixel
     # Launcher isn't responding"), which must condition on `aerr_wait` (unique to the ANR dialog) but
@@ -82,17 +97,13 @@ def test_showcase_android_targets_have_anr_interrupt() -> None:
     ]
     assert android, "expected Android showcase targets"
     for name in android:
-        interrupts = resolve(cfg, name).run_defaults.interrupts
-        anr = [
-            e
-            for e in interrupts
-            if e.condition.exists is not None and e.condition.exists.sel.id == ["aerr_wait"]
-        ]
-        assert len(anr) == 1, name
-        assert len(anr[0].steps) == 1, name
-        tap = anr[0].steps[0].tap
-        assert tap is not None, name
-        assert tap.id == ["aerr_close"], name
+        _assert_anr_interrupt(cfg, name)
+
+    # The AWS Device Farm config (BE-0235) drives a bare `bajutsu run` on a reserved device with no
+    # Makefile-run ANR_QUIET around it — the same uncovered path this handler exists for, not an
+    # optional extra — so it must carry the same handler, kept in step with the local target here.
+    devicefarm_cfg = load_config(DEVICEFARM_CONFIG.read_text(encoding="utf-8"))
+    _assert_anr_interrupt(devicefarm_cfg, "showcase-compose")
 
 
 def test_showcase_live_config_routes_to_the_live_transport() -> None:
