@@ -391,7 +391,11 @@ def device_pool(
             def release() -> None:
                 release_bridge()  # tear the device-side collector tunnel down first (BE-0283)
                 if release_collector is not None:
-                    release_collector.stop()
+                    guarded_teardown(
+                        release_collector.stop,
+                        mid_run=True,
+                        what=f"stopping the collector on {udid} at the lease's end",
+                    )
                 # Keep a warm resident alive for the next lease (`end_lease` terminates only the app);
                 # otherwise the ordinary full teardown. This is the same predicate the pool cached the
                 # env on above, so a kept-warm env is exactly one still held in `warm` (BE-0291). Runs
