@@ -126,8 +126,9 @@ env:
   # NOTE: this cap is inert on the `run` / `actuation` jobs since their step's `--erase` puts every
   # lease on the cold-spawn path (the warm-reuse gate in `start()` is `not preconditions.erase`), so
   # the reuse budget below is never consulted there — every scenario is already a fresh cold spawn,
-  # never a warm reuse. It still governs the `conformance` job below, which drives `launch_driver`
-  # through pytest with no `preconditions`, so `erase` stays unset there and the warm-reuse path holds.
+  # never a warm reuse. It still governs the two jobs that lease through `launch_driver` in pytest with
+  # no `preconditions` — `conformance` and `fault-injection` below — where `erase` stays unset, so the
+  # warm-reuse path holds.
   # Respawn the resident runner cold after a single warm reuse rather than the default 3
   # (`_MAX_WARM_REUSES`). Folding many scenarios into one `bajutsu run` lengthens each warm-runner
   # session, and each warm reuse re-attaches the XCTest automation session to a freshly launched app —
@@ -387,6 +388,9 @@ jobs:
       - name: Wait for the Simulator
         run: xcrun simctl bootstatus "${{ steps.toolchain.outputs.udid }}" -b
 
+      # `--erase` below wipes and reinstalls the app anyway (target declares `appPath`), so this
+      # install is redundant work — kept so a real install failure surfaces here with an unambiguous
+      # diagnostic instead of inside the run step's own erase/reinstall.
       - name: Install the app
         run: xcrun simctl install "${{ steps.toolchain.outputs.udid }}" "demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
 
@@ -445,7 +449,10 @@ jobs:
   #     proven on adb and Playwright only, so running them here is what stops either feature from
   #     resting on one backend. All four are the shared showcase files, unchanged (BE-0221), and are
   #     listed ahead of device.yaml / push.yaml so neither a delivered notification nor an OS-level
-  #     grant precedes a scenario that only reads and taps the app's own UI.
+  #     grant precedes a scenario that only reads and taps the app's own UI. The run step's `--erase`
+  #     makes this ordering non-load-bearing in CI (every scenario starts from a fresh erase regardless
+  #     of order) — but it stays load-bearing off CI, where `erase` resolves to off by default
+  #     (BE-0177), so the order is kept rather than treated as free to shuffle.
   #   - device.yaml / push.yaml: `setLocation`, clipboard round-trip, and a simctl `push` — the
   #     device-control family, the iOS twin of Android's device control (BE-0210). Both run on the
   #     launch tab.
@@ -513,6 +520,9 @@ jobs:
       - name: Wait for the Simulator
         run: xcrun simctl bootstatus "${{ steps.toolchain.outputs.udid }}" -b
 
+      # `--erase` below wipes and reinstalls the app anyway (target declares `appPath`), so this
+      # install is redundant work — kept so a real install failure surfaces here with an unambiguous
+      # diagnostic instead of inside the run step's own erase/reinstall.
       - name: Install the app
         run: xcrun simctl install "${{ steps.toolchain.outputs.udid }}" "demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
 
@@ -601,6 +611,9 @@ jobs:
       - name: Wait for the Simulator
         run: xcrun simctl bootstatus "${{ steps.toolchain.outputs.udid }}" -b
 
+      # `--erase` below wipes and reinstalls the app anyway (target declares `appPath`), so this
+      # install is redundant work — kept so a real install failure surfaces here with an unambiguous
+      # diagnostic instead of inside the run step's own erase/reinstall.
       - name: Install the app
         run: xcrun simctl install "${{ steps.toolchain.outputs.udid }}" "demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
 
@@ -733,6 +746,9 @@ jobs:
       - name: Wait for the Simulator
         run: xcrun simctl bootstatus "${{ steps.toolchain.outputs.udid }}" -b
 
+      # `--erase` below wipes and reinstalls both apps anyway (both targets declare `appPath`), so
+      # this install is redundant work — kept so a real install failure surfaces here with an
+      # unambiguous diagnostic instead of inside either run step's own erase/reinstall.
       - name: Install the apps
         run: |
           xcrun simctl install "${{ steps.toolchain.outputs.udid }}" "demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
