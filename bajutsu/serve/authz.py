@@ -89,18 +89,26 @@ def oauth_callback(
         # the user's GitHub org membership. email is unknown from this scope, so we store GitHub's
         # canonical no-reply form (valid + unique per login).
         org = org_for_identity(orgs, login, identity.orgs)
-        if not matched_org and (not identity.orgs or parsed is None):
-            # The bypass, not `orgs:`, admitted this login, and either it reported no GitHub orgs at
-            # all — the shape a failed `/user/orgs` fetch takes (`_fetch_orgs` fails closed to `[]`)
-            # — or the config itself failed to load (`parsed is None`, `load_serve_config_file`'s own
-            # fail-closed shape for a transient filesystem error or a config typo). Either way we
-            # can't tell whether an org actually claims this login, which makes a real org member
-            # look unmatched for this one login. Keep whatever org is already on record rather than
-            # relocating them to `default` over one hiccup. A login whose orgs and config both
-            # loaded and still matched nothing was genuinely un-claimed — by a first-time bootstrap
-            # or by a deliberate revocation — so it re-resolves through `org_for_identity` above, the
-            # same as any other login: leaving `orgs:` must take effect on next login, exactly like
-            # leaving a Team already does for the role below.
+        if not matched_org and parsed is None:
+            # The bypass, not `orgs:`, admitted this login, and the config itself failed to load
+            # (`load_serve_config_file`'s fail-closed shape for a transient filesystem error or a
+            # config typo — this item's own motivating scenario). Keep whatever org is already on
+            # record rather than relocating them to `default` over one hiccup; a config that loads
+            # clean next time re-resolves through `org_for_identity` above like any other login.
+            #
+            # Deliberately NOT guarded on `not identity.orgs` too, even though that is also the shape
+            # a failed `/user/orgs` fetch takes (`_fetch_orgs` fails closed to `[]`): it is equally
+            # the shape of a login that genuinely belongs to no GitHub org at all -- a `members:`
+            # -listed bot/ops account, say -- and `_fetch_orgs` gives no way to tell the two apart.
+            # Guarding on it would pin such a login to its org forever once revoked from `members:`,
+            # since no future login could ever report a non-empty `identity.orgs` to escape the
+            # guard -- a permanent wrong state, worse than the transient one this trades away (a
+            # `githubOrgs`-only member relocated to `default` for one login on a real API hiccup,
+            # self-healing on their next clean login). Distinguishing "the fetch failed" from
+            # "GitHub said zero orgs" needs `_fetch_orgs` to report failure as `None` rather than
+            # `[]`, which changes `_paginate`'s shared contract, `_fetch_teams`'s, `Identity.orgs`'s
+            # type, and every fake in the test suite -- out of scope for this item; tracked as a
+            # follow-up rather than done here.
             org = state.repository.user_org(login) or org
         oc = orgs.get(org)
         editor_team = oc.editor_team if oc is not None else None
@@ -123,15 +131,19 @@ def oauth_callback(
     # operationally-significant record in serve already does. `bypass` says which gate admitted
     # this one — the one sign-in path `orgs:` did not authorize is still the interesting case, but
     # emitting the event only for that case would make `event=oauth.login` mean "bypass" instead of
-    # "login", the opposite of what an operator's alert on the event name would expect.
+    # "login", the opposite of what an operator's alert on the event name would expect. Name which of
+    # the three shapes left `orgs:` unmatched: a config that never loaded sends an operator to a
+    # different fix (the config itself) than an org roster that genuinely does not list this login.
+    if parsed is None:
+        why = "the serve config failed to load"
+    elif not identity.orgs:
+        why = "GitHub returned no orgs for this login"
+    else:
+        why = "no orgs: entry matched this login"
     oplog.log_event(
         _logger,
         "oauth.login",
-        (
-            f"admin-Team bypass admitted {login}: no orgs: entry matched this login"
-            if not matched_org
-            else f"{login} signed in"
-        ),
+        f"admin-Team bypass admitted {login}: {why}" if not matched_org else f"{login} signed in",
         level=logging.WARNING if not matched_org else logging.INFO,
         bypass=not matched_org,
         actor=login,
