@@ -480,7 +480,7 @@ def _rbac_state(
     *,
     login: str,
     teams: list[str] | None = None,
-    admin_team: str | None = None,
+    admin_teams: list[str] | None = None,
 ) -> srv.ServeState:
     from sqlalchemy import create_engine
 
@@ -499,7 +499,7 @@ def _rbac_state(
         auth=srv.SessionManager(
             token="t",  # a token makes the gate enforce auth, so the OAuth session's role applies
             oauth=_FakeOAuth(login, teams=teams),
-            oauth_admin_team=admin_team,
+            oauth_admin_teams=admin_teams or [],
         ),
         repository=SqlRepository(engine),
         popen=fake_popen([]),
@@ -553,7 +553,9 @@ def test_rbac_admin_can_change_settings(tmp_path: Path, monkeypatch: pytest.Monk
     monkeypatch.setenv("ANTHROPIC_API_KEY", "")  # so monkeypatch restores it after set_api_key runs
     # Membership in the server-wide admin Team grants admin (BE-0313).
     client = TestClient(
-        make_app(_rbac_state(tmp_path, login="root", teams=[_ADMIN_TEAM], admin_team=_ADMIN_TEAM))
+        make_app(
+            _rbac_state(tmp_path, login="root", teams=[_ADMIN_TEAM], admin_teams=[_ADMIN_TEAM])
+        )
     )
     _oauth_signin(client)
     assert client.post("/api/apikey", json={"value": "sk-admin"}).status_code == 200

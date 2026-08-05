@@ -381,13 +381,14 @@ hand-maintained login list:
   must declare an `orgs:` block.
 - **Editor** follows the org's `editorTeam`: a direct member of that one flat GitHub Team may run,
   record, and edit scenarios.
-- **Admin** follows one server-wide GitHub Team, `BAJUTSU_OAUTH_ADMIN_TEAM` (written
-  `"<github-org>/<team-slug>"`), whose members also change server settings (config / API key /
-  provider). Admin is a single deployment-wide tier, so name a Team whose members you trust across
-  every org. An admin still has to clear the sign-in gate above first: `BAJUTSU_OAUTH_ADMIN_TEAM` is
-  checked only after a login already matches some `orgs:` entry, so the Team's GitHub organization
-  must itself appear in some org's `githubOrgs` (or its members listed under `members`) — otherwise
-  the intended admin is turned away at sign-in before the admin Team is ever consulted.
+- **Admin** follows one or more server-wide GitHub Teams, `BAJUTSU_OAUTH_ADMIN_TEAMS` (a
+  comma-separated list, each written `"<github-org>/<team-slug>"`), whose members also change server
+  settings (config / API key / provider). Admin is a single deployment-wide tier, so name a Team
+  whose members you trust across every org. Unlike the viewer/editor roles above, a member of any
+  configured admin Team clears the sign-in gate directly — the Team's GitHub organization does
+  *not* need to appear in any org's `githubOrgs` or `members` — so an admin can always sign in and
+  repoint the server at a corrected config even when the `orgs:` block is broken or missing
+  entirely.
 
 Membership is re-read on every login, so leaving a GitHub org or Team takes effect at the affected
 user's next sign-in — no server-side list to edit. Login always requests the `read:org` scope to read
@@ -399,7 +400,9 @@ these memberships, so the consent screen mentions organization access.
 `orgs:` before switching, or the org gate alone will widen who can sign in. And
 `BAJUTSU_OAUTH_ALLOWED_USERS` / `_ADMINS` / `_VIEWERS` are simply ignored now, so re-declare every
 admin and editor as a Team membership before cutting over — anyone not yet covered by `editorTeam` or
-`BAJUTSU_OAUTH_ADMIN_TEAM` drops to viewer on their next login.
+`BAJUTSU_OAUTH_ADMIN_TEAMS` drops to viewer on their next login. A deployment that already set the
+older, singular `BAJUTSU_OAUTH_ADMIN_TEAM` renames it to `BAJUTSU_OAUTH_ADMIN_TEAMS` at the same
+time — the old name is no longer read.
 
 A third thing: disabling `POST /api/login` stops **minting** new token-cookie sessions once OAuth is
 configured, but it doesn't invalidate one already issued — a browser that logged in with the shared

@@ -69,12 +69,12 @@ def _state(
     *,
     oauth: object = None,
     config: Path | None = None,
-    admin_team: str | None = None,
+    admin_teams: list[str] | None = None,
 ) -> ServeState:
     return ServeState(
         runs_dir=tmp_path / "runs",
         config=config,
-        auth=SessionManager(oauth=oauth, oauth_admin_team=admin_team),
+        auth=SessionManager(oauth=oauth, oauth_admin_teams=admin_teams or []),
     )
 
 
@@ -148,14 +148,17 @@ def _db_state(
     serve_engine: Callable[..., Engine],
     tmp_path: Path,
     oauth: object,
-    admin_team: str | None = None,
+    admin_teams: list[str] | None = None,
+    config: Path | None = None,
 ) -> tuple[ServeState, Engine]:
     from bajutsu.serve.server.db import SqlRepository
     from bajutsu.serve.server.models import Base
 
     engine = serve_engine()
     Base.metadata.create_all(engine)
-    state = _state(tmp_path, oauth=oauth, config=_config_file(tmp_path), admin_team=admin_team)
+    state = _state(
+        tmp_path, oauth=oauth, config=config or _config_file(tmp_path), admin_teams=admin_teams
+    )
     state.repository = SqlRepository(engine)
     return state, engine
 
@@ -213,9 +216,93 @@ def test_oauth_callback_admin_team_membership_promotes_to_admin(
         serve_engine,
         tmp_path,
         FakeOAuthClient(login="alice", teams=["acme-gh/ops"]),
-        admin_team="acme-gh/ops",
+        admin_teams=["acme-gh/ops"],
     )
     assert _role_after_login(state, "alice") == "admin"
+
+
+def test_oauth_callback_admin_team_bypasses_the_org_gate_with_no_matching_org(
+    tmp_path: Path,
+) -> None:
+    # mallory belongs to no configured org, but is a member of the admin Team: the admin-Team
+    # bypass admits her regardless, so she can sign in and repoint a broken `orgs:` config.
+    state = _state(
+        tmp_path,
+        oauth=FakeOAuthClient(login="mallory", teams=["ops-gh/root"]),
+        config=_config_file(tmp_path),
+        admin_teams=["ops-gh/root"],
+    )
+    _payload, status, sid = ops.oauth_callback(state, code="ok", state_param="s", state_cookie="s")
+    assert status == 200
+    assert sid is not None
+
+
+def test_oauth_callback_admin_team_bypasses_the_org_gate_with_no_orgs_block(
+    tmp_path: Path,
+) -> None:
+    # No `orgs:` block at all — every login would normally be rejected (BE-0313) — but the admin
+    # Team bypass still admits an admin so they can fix the config.
+    body = "targets:\n  demo: { bundleId: com.example.demo }\n"
+    state = _state(
+        tmp_path,
+        oauth=FakeOAuthClient(login="mallory", teams=["ops-gh/root"]),
+        config=_config_file(tmp_path, body),
+        admin_teams=["ops-gh/root"],
+    )
+    _payload, status, sid = ops.oauth_callback(state, code="ok", state_param="s", state_cookie="s")
+    assert status == 200
+    assert sid is not None
+
+
+def test_oauth_callback_admin_team_bypass_resolves_to_admin_role(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    body = "targets:\n  demo: { bundleId: com.example.demo }\n"
+    state, _ = _db_state(
+        serve_engine,
+        tmp_path,
+        FakeOAuthClient(login="mallory", teams=["ops-gh/root"]),
+        admin_teams=["ops-gh/root"],
+        config=_config_file(tmp_path, body),
+    )
+    assert _role_after_login(state, "mallory") == "admin"
+
+
+def test_oauth_callback_admin_team_bypass_places_the_user_in_the_default_org(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    from sqlalchemy import select
+    from sqlalchemy.orm import Session
+
+    from bajutsu.serve.server.models import Org
+
+    body = "targets:\n  demo: { bundleId: com.example.demo }\n"
+    state, engine = _db_state(
+        serve_engine,
+        tmp_path,
+        FakeOAuthClient(login="mallory", teams=["ops-gh/root"]),
+        admin_teams=["ops-gh/root"],
+        config=_config_file(tmp_path, body),
+    )
+    _payload, status, sid = ops.oauth_callback(state, code="ok", state_param="s", state_cookie="s")
+    assert status == 200 and sid is not None
+    with Session(engine) as s:
+        orgs = list(s.scalars(select(Org)))
+    assert [o.slug for o in orgs] == ["default"]
+
+
+def test_oauth_callback_rejects_a_login_in_neither_the_org_gate_nor_the_admin_teams(
+    tmp_path: Path,
+) -> None:
+    state = _state(
+        tmp_path,
+        oauth=FakeOAuthClient(login="mallory", teams=["some-other/team"]),
+        config=_config_file(tmp_path),
+        admin_teams=["ops-gh/root"],
+    )
+    _payload, status, sid = ops.oauth_callback(state, code="ok", state_param="s", state_cookie="s")
+    assert status == 403
+    assert sid is None
 
 
 def test_oauth_callback_without_a_database_is_a_no_op(tmp_path: Path) -> None:
