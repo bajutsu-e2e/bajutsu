@@ -232,7 +232,7 @@ Log:
   guarded-teardown policy moved to `bajutsu/runner/recovery.py`, shared by the pool's four sites (the
   actuator switch, the failed lease, and `shutdown()`'s device and collector loops), `launch_driver`,
   and the lease discard; a mid-run wiring defect now warns rather than logging at debug. `shutdown()`
-  finishes its whole sweep before re-raising the first defect it met, so one device's defect no longer
+  finishes its whole sweep before propagating the first defect it met, so one device's defect no longer
   leaves the later devices' runners and the collector sockets up. Status → Implemented.
 
 ## References

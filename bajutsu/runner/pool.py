@@ -200,13 +200,13 @@ def device_pool(
         cached = warm.get(udid)
         if cached is not None and cached[0] != actuator:
             _cached_actuator, cached_env, cached_driver = warm.pop(udid)
-            # Guarded like the other two teardown sites (the failed-resume eviction below and
-            # `shutdown()`): if the cached runner already crashed between leases, `_discard_runner()`'s
-            # `terminate()` can raise `ProcessLookupError` (an `OSError`). This runs before the `try`
-            # below, so anything `guarded_teardown` re-raises propagates out of `lease()` with `udid`
-            # never returned to `free`, leaking the device for the rest of the run — a wiring defect
-            # must not escape here either (`mid_run=True`), the same reasoning as the failed-resume
-            # eviction below (BE-0342).
+            # Guarded like the pool's three other teardown sites (the failed-resume eviction below,
+            # and `shutdown()`'s device and collector loops): if the cached runner already crashed
+            # between leases, `_discard_runner()`'s `terminate()` can raise `ProcessLookupError` (an
+            # `OSError`). This runs before the `try` below, so anything `guarded_teardown` re-raises
+            # propagates out of `lease()` with `udid` never returned to `free`, leaking the device
+            # for the rest of the run — a wiring defect must not escape here either (`mid_run=True`),
+            # the same reasoning as the failed-resume eviction below (BE-0342).
             guarded_teardown(
                 lambda: cached_env.teardown(cached_driver, eff),
                 mid_run=True,
