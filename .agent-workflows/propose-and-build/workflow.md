@@ -125,8 +125,13 @@ does not restate those rules, it runs them:
 
 On the **same branch**, treat the `BE-XXXX-<slug>/` proposal as the spec and run `implement-be`'s
 steps 3–7 — ground yourself in the code, plan and confirm before writing, implement with tests, and
-review the diff through the host's available simplification and correctness-review facilities. Then, unlike the serial `implement-be`,
-run its promotion steps 8–9 **now**, because `Status` and the PR number do not depend on the
+review the diff against [`.github/claude-review-prompt.md`](../../.github/claude-review-prompt.md)
+(step 7's procedure), alongside the host's simplification facility. Keep re-running the contract
+pass against the updated diff until it comes back empty — capped at 3 rounds like Phase A's
+self-review above, escalating to the user with the branch left unpushed if a real finding still
+stands, since this phase has no step 10 to gate on (the human opens this PR, not the skill; see
+below). Only once the pass is clear does this phase, unlike the serial `implement-be`, run its
+promotion steps 8–9 **now**, because `Status` and the PR number do not depend on the
 not-yet-allocated id:
 
 - Flip the item's `Status` to `Implemented` and tick the `Progress` boxes in **both** language

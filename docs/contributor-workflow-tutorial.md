@@ -233,9 +233,11 @@ Implementation matches the codebase grain — strict `mypy`, configured `ruff`, 
 `sleep`, new knobs in `targets.<name>` config, and a test as the regression net for any behavior
 change. It refines the diff with the built-in `simplify` skill and a review pass against the
 `.github/claude-review-prompt.md` contract (authoring aids that advise, never judge), re-running the
-contract pass against the updated diff until it comes back clean. Only then does it flip the item to
-`Status: Implemented` in both language files and add the `Implementing PR` row — the dashboard picks
-up the new status straight from that metadata, with nothing else to regenerate. Then the gate:
+contract pass against the updated diff until it comes back clean — capped at 3 rounds like Step A4
+above, escalating to you with the PR left unopened if a real finding still stands. Only then does it
+flip the item to `Status: Implemented` in both language files and add the `Implementing PR` row —
+the dashboard picks up the new status straight from that metadata, with nothing else to regenerate.
+Then the gate:
 
 ```bash
 make check   # must be green; never push red
