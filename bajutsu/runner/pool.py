@@ -398,15 +398,25 @@ def device_pool(
                 # from `run_one`'s `finally`, so a teardown hiccup (an already-gone app/device) must
                 # not replace the scenario's own result or skip `free.put(udid)` below — the same
                 # leak-on-`mid_run=False` risk as this file's other four teardown sites (BE-0342).
-                guarded_teardown(
-                    lambda: (
+                ended = False
+
+                def _end_lease() -> None:
+                    nonlocal ended
+                    if lease_env.has_reusable_resident():
                         lease_env.end_lease(driver, eff)
-                        if lease_env.has_reusable_resident()
-                        else lease_env.teardown(driver, eff)
-                    ),
+                    else:
+                        lease_env.teardown(driver, eff)
+                    ended = True
+
+                guarded_teardown(
+                    _end_lease,
                     mid_run=True,
                     what=f"tearing down the environment on {udid} at the lease's end",
                 )
+                # A resident whose `end_lease` did not finish must not be resumed: drop it so the
+                # next lease on this device cold-spawns instead of inheriting a half-ended app.
+                if not ended:
+                    warm.pop(udid, None)
                 free.put(udid)
 
             meta = catalog.get(udid, {})
