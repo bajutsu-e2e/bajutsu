@@ -38,13 +38,18 @@ def guarded_teardown(teardown: Callable[[], None], *, mid_run: bool, what: str) 
 
     A runner that had already exited and an unreachable `xcrun` surface as `CalledProcessError` or
     `OSError`; those are always logged at warning and swallowed, matching every call site. Anything
-    else is a wiring defect: on a mid-run discard (`mid_run=True`) it is also swallowed into a
-    warning so it cannot mask the fault that prompted the discard, and on a final release
-    (`mid_run=False`) it propagates so the defect fails the module teardown loudly (BE-0342).
+    else is a wiring defect: at most call sites (`mid_run=True`) it is also swallowed into a warning
+    so it cannot mask the fault that prompted the teardown, or abandon cleanup the caller still owes
+    (the pool's `free.put(udid)`, on a site that runs ahead of its own `try`); only a final release
+    (`mid_run=False`) lets it propagate, since nothing is in flight there and a surviving runner
+    would otherwise leak into the rest of the job (BE-0342).
 
     Args:
         teardown: The zero-arg callable that tears the environment (or warm resident) down.
-        mid_run: Whether this teardown runs on a failure path that must not mask another fault.
+        mid_run: Whether re-raising here would do more damage than the defect it reports — either
+            masking the fault that prompted this teardown, or abandoning cleanup the caller still
+            owes (the pool's `free.put(udid)`). False only for a final release, where nothing is in
+            flight and a surviving runner leaks into the rest of the job.
         what: A short description of the teardown site, used as the warning's subject.
     """
     try:
