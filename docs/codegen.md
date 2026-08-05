@@ -501,8 +501,8 @@ class ComponentsUITest {
   within 10 to 24 polls while every failing run logged none. A missing app window accounts for that
   correlation without a frozen channel: with the app's window never joining the list, there is no
   launch transition for UiDevice to observe, so none of the churn a live launch produces appears.
-  Raising the wait from 5 to 15 and then to 20 seconds changed nothing, for the same reason a longer
-  wait cannot help here.
+  Raising the wait from 5 to 15 and then to 20 seconds changed nothing, and could not: a list the
+  app's window never joins does not gain it by being waited on.
 
 #### Failure evidence
 
