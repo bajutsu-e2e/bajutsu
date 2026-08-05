@@ -7,6 +7,7 @@ pool never branches on the actuator name (BE-0009 Phase 0).
 
 from __future__ import annotations
 
+import logging
 import queue
 from collections.abc import Callable
 from pathlib import Path
@@ -43,6 +44,8 @@ from bajutsu.scenario import Scenario, dump_scenario_file, redact_totp_secrets
 from bajutsu.webview import WebViewBridge
 
 __all__ = ["device_control", "device_pool", "device_relauncher"]
+
+_logger = logging.getLogger(__name__)
 
 
 def _alloc_webview_bridge(
@@ -401,19 +404,40 @@ def device_pool(
         # The run set is over: terminate every warm resident the pool kept across leases (BE-0291 Unit
         # 3 — ownership moved from the lease to the pool). An expected teardown failure on one device
         # (the app already gone, xcrun unreachable) is logged and skipped so the rest — and the
-        # collector sockets below — still come down; a genuine teardown bug still surfaces loudly.
+        # collector sockets below — still come down. A wiring defect must still fail loudly, but not
+        # before the rest of the sweep and the collector sockets have come down: `mid_run=False`'s
+        # usual immediate propagation would otherwise leak every later device's runner and every
+        # collector socket. Only the *first* such defect is what `raise defect` below reports; a
+        # later one is not silently dropped either — it gets its own log line (BE-0342).
+        defect: Exception | None = None
         for udid, (_actuator, env, driver) in warm.items():
 
             def _tear_warm(env: RunEnvironment = env, driver: base.Driver = driver) -> None:
                 env.teardown(driver, eff)
 
-            guarded_teardown(
-                _tear_warm,
-                mid_run=False,
-                what=f"tearing down the warm runner on {udid}",
-            )
+            try:
+                guarded_teardown(
+                    _tear_warm,
+                    mid_run=False,
+                    what=f"tearing down the warm runner on {udid}",
+                )
+            except Exception as exc:
+                if defect is None:
+                    defect = exc
+                else:
+                    _logger.error("tearing down the warm runner on %s failed", udid, exc_info=exc)
         warm.clear()
-        for collector in collectors.values():
-            collector.stop()
+        # A collector socket failing to stop is the same risk as a device's teardown failing: it must
+        # not stop the sweep, and it must not silently swallow a defect already held from above.
+        for udid, collector in collectors.items():
+            try:
+                collector.stop()
+            except Exception as exc:
+                if defect is None:
+                    defect = exc
+                else:
+                    _logger.error("stopping the collector on %s failed", udid, exc_info=exc)
+        if defect is not None:
+            raise defect
 
     return lease, shutdown

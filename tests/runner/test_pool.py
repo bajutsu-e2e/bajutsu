@@ -934,6 +934,145 @@ def test_device_pool_shutdown_tears_down_every_warm_device_despite_a_failure(
     assert "UDID-A" in caplog.text  # the swallowed teardown failure was logged, not silent
 
 
+def test_device_pool_shutdown_completes_the_sweep_before_a_wiring_defect_propagates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """BE-0342: a wiring defect on one device's teardown must still fail `shutdown()` loudly — but
+    only after every other device's warm resident has been torn down, not instead of it. `mid_run`'s
+    usual immediate propagation would otherwise leak `UDID-B`'s runner on `UDID-A`'s defect."""
+    created: list[_RecordingEnv] = []
+
+    def fake_env_for(
+        actuator: str,
+        udid: str,
+        env_run: object = None,
+        *,
+        provision: object = None,
+        respawn: bool = False,
+    ) -> _RecordingEnv:
+        env = _RecordingEnv(
+            actuator,
+            udid,
+            provision,
+            reusable=True,
+            teardown_error=AttributeError("no close on this driver") if udid == "UDID-A" else None,
+        )
+        created.append(env)
+        return env
+
+    monkeypatch.setattr("bajutsu.runner.pool.environment_for", fake_env_for)
+    lease, shutdown = device_pool(
+        ["UDID-A", "UDID-B"],
+        ["ios"],
+        _eff(),
+        Path("runs"),
+        network=False,
+        available=lambda b: True,
+        env_run=lambda *a, **k: "",
+    )
+    la = lease(_eff(), _scn("a"))
+    la.release()
+    lb = lease(_eff(), _scn("b"))
+    lb.release()
+    warm_a = next(e for e in created if e.udid == "UDID-A" and e.start_count)
+    warm_b = next(e for e in created if e.udid == "UDID-B" and e.start_count)
+    with pytest.raises(AttributeError, match="no close on this driver"):
+        shutdown()
+    assert warm_a.torn and warm_b.torn  # the sweep completed for both before the defect propagated
+
+
+def test_device_pool_shutdown_logs_every_defect_past_the_first(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """BE-0342: when more than one device's teardown raises a wiring defect, `shutdown()` still
+    raises only the first — but a later one is not silently dropped; it gets its own log line rather
+    than vanishing with no trace."""
+    created: list[_RecordingEnv] = []
+
+    def fake_env_for(
+        actuator: str,
+        udid: str,
+        env_run: object = None,
+        *,
+        provision: object = None,
+        respawn: bool = False,
+    ) -> _RecordingEnv:
+        env = _RecordingEnv(
+            actuator, udid, provision, reusable=True, teardown_error=RuntimeError(f"broken {udid}")
+        )
+        created.append(env)
+        return env
+
+    monkeypatch.setattr("bajutsu.runner.pool.environment_for", fake_env_for)
+    lease, shutdown = device_pool(
+        ["UDID-A", "UDID-B"],
+        ["ios"],
+        _eff(),
+        Path("runs"),
+        network=False,
+        available=lambda b: True,
+        env_run=lambda *a, **k: "",
+    )
+    la = lease(_eff(), _scn("a"))
+    la.release()
+    lb = lease(_eff(), _scn("b"))
+    lb.release()
+    warm_a = next(e for e in created if e.udid == "UDID-A" and e.start_count)
+    warm_b = next(e for e in created if e.udid == "UDID-B" and e.start_count)
+    with (
+        caplog.at_level(logging.ERROR, logger="bajutsu.runner.pool"),
+        pytest.raises(RuntimeError, match="broken UDID-A"),  # only the first defect propagates
+    ):
+        shutdown()
+    assert warm_a.torn and warm_b.torn  # both were still torn down
+    assert "UDID-B" in caplog.text  # the second defect was logged, not lost
+
+
+def test_device_pool_shutdown_completes_the_collector_sweep_despite_a_stop_failure(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """BE-0342: the collector-stop sweep gets the same guard as the device-teardown loop above it —
+    a `stop()` failure on one device's collector must not skip the others; only the first propagates,
+    and any later one is logged by udid rather than silently dropped."""
+
+    class _FailingStopCollector:
+        def __init__(self) -> None:
+            self.stopped = False
+
+        def start_bridgeable(self) -> None:
+            pass
+
+        def start(self) -> None:
+            pass
+
+        def stop(self) -> None:
+            self.stopped = True
+            raise OSError("socket already closed")
+
+    monkeypatch.setattr("bajutsu.runner.pool.NetworkCollector", _FailingStopCollector)
+    monkeypatch.setattr(
+        "bajutsu.runner.pool.environment_for",
+        lambda actuator, udid, env_run=None, *, provision=None, respawn=False: _RecordingEnv(
+            actuator, udid, provision
+        ),
+    )
+    _, shutdown = device_pool(
+        ["UDID-A", "UDID-B"],
+        ["ios"],
+        _eff(),
+        Path("runs"),
+        network=True,
+        available=lambda b: True,
+        env_run=lambda *a, **k: "",
+    )
+    with (
+        caplog.at_level(logging.ERROR, logger="bajutsu.runner.pool"),
+        pytest.raises(OSError, match="socket already closed"),  # only the first defect propagates
+    ):
+        shutdown()
+    assert "UDID-B" in caplog.text  # the second collector's failure was logged, not lost
+
+
 def test_device_pool_does_not_cache_a_non_reusable_environment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
