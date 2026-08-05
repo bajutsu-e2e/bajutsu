@@ -5,7 +5,9 @@
 # UISegmentedControl) could not be switched by the retired idb backend on iOS 26 (BE-0290), hence the
 # plain buttons. The section
 # sits near the bottom (below Modals + Gestures), so a `scroll` step reveals it (non-inertial,
-# re-querying — BE-0326) before tapping.
+# re-querying — BE-0326) before tapping. It aims at log.segment.value, the lowest element the
+# scenario reads: `scroll` stops once the target's own center is on-screen and promises nothing
+# about the rows below it, so aiming at a button would leave the mirror row off a lazy tree.
 - name: segmented control mirrors the selected choice
   preconditions:
     launchEnv: { SHOWCASE_UITEST: "1" }
