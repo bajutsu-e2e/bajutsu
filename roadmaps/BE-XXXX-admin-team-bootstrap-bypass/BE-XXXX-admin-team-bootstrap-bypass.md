@@ -115,6 +115,11 @@ that event name would expect. A per-record `bypass` field (`True` only when the 
 not `orgs:`, is what admitted the login) and the message and level vary accordingly — `WARNING` and
 an "admin-Team bypass admitted …" message for a bypass, `INFO` and a plain "… signed in" message
 otherwise — so the field carries real information instead of being a constant `True` on every record.
+The bypass message also names which of the three ways `matched_org` can be `False`: the config failed
+to load, GitHub reported no orgs for this login, or no `orgs:` entry matched — because an operator
+paged by the `WARNING` needs to know which one, not just that the org gate didn't admit this login. A
+config-load failure sends them to the config; the other two send them to the org roster instead — a
+distinction the message would otherwise hide behind one fixed phrase.
 The bypass remains the one sign-in path `orgs:` did not authorize, so it is the one path an operator
 auditing who signed in, and when, would otherwise have no record of at all; the `bypass` field is what
 lets that same event stream distinguish it from an ordinary org-gated login.
@@ -179,30 +184,40 @@ has claimed. Admin's `_ADMIN_PATHS` enforcement is already instance-wide regardl
 admin role BE-0313 already made server-wide.
 
 "No other org claims their login" is the case this default is for, and it is not the only way the
-bypass can admit a login: a `/user/orgs` fetch failure also makes `identity_matches_org` see no
-match, for a login a real org *does* claim — and so does a failure to load the config itself
-(`load_serve_config_file` fails closed to `None` on a transient filesystem error or a config typo,
-collapsing `orgs` to `{}`), which is the failure shape this item's own motivating scenario, a broken
-`orgs:` block, actually produces. Without a correction, either one-off hiccup would relocate an
-existing org member to `default` on every such failure — their user row, audit attribution, and
-object-storage prefix all moving until their next clean login moves them back, an outcome the
-placement logic above never intends for someone `orgs:` already claims. `oauth_callback` avoids
-this, but only for those two specific failure shapes: when the bypass, not `orgs:`, is what admitted
-a login, *and* either `identity.orgs` came back empty (the signature `_fetch_orgs` leaves on any
-fetch error, since it fails closed to `[]` rather than raising) *or* the config failed to load
-(`parsed is None`) — either way there is no way to tell whether an org actually claims this login —
+bypass can admit a login: a failure to load the config itself also makes `identity_matches_org` see
+no match, for a login a real org *does* claim (`load_serve_config_file` fails closed to `None` on a
+transient filesystem error or a config typo, collapsing `orgs` to `{}`) — the failure shape this
+item's own motivating scenario, a broken `orgs:` block, actually produces. Without a correction, that
+one-off hiccup would relocate an existing org member to `default` on every such failure — their user
+row, audit attribution, and object-storage prefix all moving until their next clean login moves them
+back, an outcome the placement logic above never intends for someone `orgs:` already claims.
+`oauth_callback` avoids this for that one specific failure shape: when the bypass, not `orgs:`, is
+what admitted a login, *and* the config failed to load (`parsed is None`) — an unambiguous signal —
 it keeps whatever org `state.repository.user_org` already has on record for that login instead of
 recomputing one, falling to `org_for_identity`'s `default` result only when no prior record exists —
-the genuine first-time bootstrap case this section is actually about. A login whose `identity.orgs`
-came back non-empty, with a config that loaded, but still matched nothing in `orgs:` is not this
-case: both signals answered, so that login is genuinely un-claimed, whether because this is its
-first sign-in or because an operator has since removed it from every configured org. That login
-re-resolves through `org_for_identity` like any other, exactly as BE-0015 7c-2 already requires role
-resolution to do on every login — leaving `orgs:` must take effect on the next sign-in, not stay
-pinned to whatever org a now-departed member happened to hold before. Guarding the preservation on
-`not identity.orgs or parsed is None` is what keeps those cases apart: without it, a revoked member's
-org would never re-resolve, since no future login could ever re-match `orgs:` once genuinely revoked,
-silently contradicting the same recompute-every-login principle a few lines below for the role.
+the genuine first-time bootstrap case this section is actually about. A login whose config loaded but
+still matched nothing in `orgs:` is not this case: the config answered, so that login is genuinely
+un-claimed, whether because this is its first sign-in or because an operator has since removed it
+from every configured org. That login re-resolves through `org_for_identity` like any other, exactly
+as BE-0015 7c-2 already requires role resolution to do on every login — leaving `orgs:` must take
+effect on the next sign-in, not stay pinned to whatever org a now-departed member happened to hold
+before.
+
+This preservation is deliberately **not** also guarded on an empty `identity.orgs`, even though that
+is equally the shape a failed `/user/orgs` fetch takes (`_fetch_orgs` fails closed to `[]`): it is
+just as much the shape of a login that genuinely belongs to no GitHub org at all — a `members:`
+-listed bot or ops-only account, say — and `_fetch_orgs`'s `[]` gives no way to tell the two apart.
+Guarding on it would trade one problem for a worse one: such a login's org would be pinned forever
+once it is removed from `members:`, since no future login could ever report a non-empty
+`identity.orgs` to escape the guard — a permanent wrong state, silently contradicting the same
+recompute-every-login principle a few lines below for the role. Narrowing to `parsed is None` alone
+accepts a smaller, self-healing cost instead: a `githubOrgs`-only member who hits a real `/user/orgs`
+outage is relocated to `default` for that one login and moves back on their next clean one, the same
+as a genuinely un-claimed login would be. Making the two cases distinguishable would need
+`_fetch_orgs` to report failure as `None` rather than `[]`, which changes `_paginate`'s contract
+(shared with `_fetch_teams`), `Identity.orgs`'s type, and every fake `OAuthClient` in the test suite
+— a change to code this item did not otherwise touch, so it is left as a follow-up rather than done
+here.
 
 This placement inherits an existing sharp edge of the org model rather than introducing a new one:
 `DEFAULT_ORG` ([`bajutsu/serve/orgs.py`](../../bajutsu/serve/orgs.py)) is the literal string
@@ -309,10 +324,12 @@ mapping.
       `orgs:` block at all; resolved role is admin in both cases; a login matching neither the org
       gate nor the admin-Team list is still rejected; the renamed variable parses a multi-Team list;
       a bypassing admin is placed in the `default` org; an existing member's recorded org survives a
-      transient `/user/orgs` failure and a failure to load the config itself, but a genuinely revoked
-      member re-resolves to `default` on their next login rather than staying pinned; the retired
-      singular var warns even when the new plural one is also set. End to end through the HTTP
-      transport: a login matching no `orgs:` entry, admitted only by the bypass, can actually reach
+      failure to load the config itself, but a genuinely revoked member re-resolves to `default` on
+      their next login rather than staying pinned, and so does a `githubOrgs`-only member relocated
+      by a transient `/user/orgs` failure (the accepted, self-healing cost of that fetch's `[]` being
+      ambiguous with a genuine zero-orgs login); the retired singular var warns even when the new
+      plural one is also set. End to end through the HTTP transport: a login matching no `orgs:`
+      entry, admitted only by the bypass, can actually reach
       an admin-gated endpoint (`POST /api/apikey`) — not just receive a session.
 
 ## References

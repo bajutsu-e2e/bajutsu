@@ -352,13 +352,18 @@ def test_oauth_callback_admin_team_bypass_places_the_user_in_the_default_org(
     assert [o.slug for o in orgs] == ["default"]
 
 
-def test_oauth_callback_admin_team_bypass_keeps_a_github_org_members_recorded_org(
+def test_oauth_callback_admin_team_bypass_relocates_on_a_transient_orgs_fetch_failure(
     serve_engine: Callable[..., Engine], tmp_path: Path
 ) -> None:
-    # bob reaches `acme` only through `githubOrgs` (not an explicit `members` entry), so a
-    # transient /user/orgs failure can make him look unmatched on a later login even though `acme`
-    # still claims him. Without a fix, the bypass (he also carries the admin Team) would relocate
-    # him to `default` on that one bad login -- a real member should not be moved by a hiccup.
+    # bob reaches `acme` only through `githubOrgs` (not an explicit `members` entry). A later
+    # /user/orgs failure makes him look unmatched even though `acme` still claims him -- `authz.py`
+    # can't tell that apart from a login that genuinely belongs to no GitHub org at all (a
+    # `members:`-listed bot/ops account, say), and guarding on it would pin such a login to its old
+    # org forever once revoked, since it could never again report a non-empty orgs list. This is the
+    # accepted, self-healing cost of that ambiguity: bob is relocated to `default` for this one
+    # login, same as a genuinely un-claimed login, and moves back to `acme` on his next clean login
+    # (see test_oauth_callback_admin_team_bypass_keeps_org_when_config_fails_to_load for the
+    # unambiguous config-load-failure case, which does not have this cost).
     state, _ = _db_state(
         serve_engine, tmp_path, FakeOAuthClient(login="bob", orgs=["acme-gh"], teams=[])
     )
@@ -366,12 +371,15 @@ def test_oauth_callback_admin_team_bypass_keeps_a_github_org_members_recorded_or
     assert state.repository is not None
     assert state.repository.user_org("bob") == "acme"
 
-    # Same login, but this time /user/orgs comes back empty (the transient failure) while the
-    # admin-Team bypass still admits him.
     state.auth.oauth = FakeOAuthClient(login="bob", orgs=[], teams=["ops-gh/root"])
     state.auth.oauth_admin_teams = ("ops-gh/root",)
     assert _role_after_login(state, "bob") == "admin"
-    assert state.repository.user_org("bob") == "acme"  # not relocated to `default`
+    assert state.repository.user_org("bob") == "default"
+
+    # His next clean login (orgs answered again) moves him back.
+    state.auth.oauth = FakeOAuthClient(login="bob", orgs=["acme-gh"], teams=["ops-gh/root"])
+    assert _role_after_login(state, "bob") == "admin"
+    assert state.repository.user_org("bob") == "acme"
 
 
 def test_oauth_callback_admin_team_bypass_reresolves_a_revoked_members_org(
