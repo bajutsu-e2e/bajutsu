@@ -373,10 +373,11 @@ def device_pool(
             stale = warm.pop(udid, None)
             if stale is not None:
                 # A leaked runner is the same risk here as at the other two teardown sites; the
-                # original launch error still propagates via the `raise` below (BE-0342).
+                # original launch error still propagates via the `raise` below, so a teardown hiccup
+                # (mid_run=True) must not mask it (BE-0342).
                 guarded_teardown(
                     lambda: stale[1].teardown(stale[2], eff),
-                    mid_run=False,
+                    mid_run=True,
                     what=f"tearing down the stale warm runner on {udid} after a failed lease",
                 )
             free.put(udid)

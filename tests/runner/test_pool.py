@@ -435,6 +435,7 @@ class _RecordingEnv:
         fail_start: bool = False,
         reusable: bool = False,
         raise_on_teardown: bool = False,
+        teardown_error: BaseException | None = None,
     ) -> None:
         self.actuator = actuator
         self.udid = udid
@@ -444,9 +445,12 @@ class _RecordingEnv:
         self.fail_start = fail_start
         # BE-0291: a fake warm resident. `reusable` makes the pool cache and reuse this instance
         # across leases; the counters record how the pool released it (kept warm vs full teardown).
-        # `raise_on_teardown` mimics an expected simctl teardown failure (the app already gone).
+        # `raise_on_teardown` mimics an expected simctl teardown failure (the app already gone);
+        # `teardown_error`, when set, raises that exception instead — a wiring defect rather than an
+        # expected process failure (BE-0342).
         self.reusable = reusable
         self.raise_on_teardown = raise_on_teardown
+        self.teardown_error = teardown_error
         self.start_count = 0
         self.end_lease_count = 0
         # BE-0283 bridge recording: the port bridged, whether it was already bridged when start ran
@@ -502,6 +506,8 @@ class _RecordingEnv:
 
     def teardown(self, driver: base.Driver, eff: Effective) -> None:
         self.torn = True
+        if self.teardown_error is not None:
+            raise self.teardown_error
         if self.raise_on_teardown:
             raise subprocess.CalledProcessError(1, ["xcrun", "simctl", "terminate"])
 
@@ -795,6 +801,55 @@ def test_device_pool_evicts_and_tears_down_a_warm_resident_whose_resume_fails(
             )  # the *original* resume failure propagates, not the teardown one
         assert warm_env.torn  # the stale warm env was evicted from the cache and torn down
         # The device was returned, and the warm entry dropped, so a retry leases a fresh environment.
+        retry = lease(_eff(), _scn("c"))
+        assert len(created) == 3 and created[2] is not warm_env and created[2].started
+        retry.release()
+    finally:
+        shutdown()
+
+
+def test_device_pool_evicting_a_failed_resume_swallows_a_wiring_defect_on_teardown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """BE-0342: a teardown that fails with something other than `CalledProcessError`/`OSError` — a
+    wiring defect, not an expected process failure — must not replace the original resume failure the
+    caller needs to see, nor skip returning the device to `free` (which would leak it for the rest of
+    the run)."""
+    created: list[_RecordingEnv] = []
+
+    def fake_env_for(
+        actuator: str,
+        udid: str,
+        env_run: object = None,
+        *,
+        provision: object = None,
+        respawn: bool = False,
+    ) -> _RecordingEnv:
+        env = _RecordingEnv(actuator, udid, provision, reusable=True)
+        created.append(env)
+        return env
+
+    monkeypatch.setattr("bajutsu.runner.pool.environment_for", fake_env_for)
+    lease, shutdown = device_pool(
+        ["UDID-A"],
+        ["ios"],
+        _eff(),
+        Path("runs"),
+        network=False,
+        available=lambda b: True,
+        env_run=lambda *a, **k: "",
+    )
+    try:
+        first = lease(_eff(), _scn("a"))
+        first.release()
+        warm_env = created[1]  # cached after the first lease
+        warm_env.fail_start = True  # its next resume fails
+        warm_env.teardown_error = AttributeError("close")  # and its eviction teardown is broken
+        with pytest.raises(RuntimeError, match="launch failed"):
+            lease(_eff(), _scn("b"))  # the *resume* failure propagates, not the teardown one
+        assert warm_env.torn  # teardown still ran
+        # The device was still returned despite the wiring defect, so a retry leases a fresh one
+        # instead of hanging on `free.get()`.
         retry = lease(_eff(), _scn("c"))
         assert len(created) == 3 and created[2] is not warm_env and created[2].started
         retry.release()

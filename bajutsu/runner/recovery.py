@@ -14,10 +14,10 @@ the two cannot then drift into different notions of "an infrastructure fault" or
 are left" (BE-0334). The classification rests on the exception type the driver already raises, so it
 stays a deterministic branch on a Python class: no model sits on the `run`/CI verdict.
 
-The guarded teardown helper (BE-0342) is the same seam: the pool's three teardown sites and the
-on-device suites' lease discard share one policy for a runner that had already exited or an
-unreachable `xcrun`, so the two recovery paths cannot drift into different notions of "an expected
-teardown failure" either.
+The guarded teardown helper (BE-0342) is the same seam: the pool's three teardown sites,
+`launch_driver`'s guard for a launch that failed after `env.start`, and the on-device suites' lease
+discard share one policy for a runner that had already exited or an unreachable `xcrun`, so the two
+recovery paths cannot drift into different notions of "an expected teardown failure" either.
 """
 
 from __future__ import annotations
@@ -37,10 +37,10 @@ def guarded_teardown(teardown: Callable[[], None], *, mid_run: bool, what: str) 
     """Run `teardown`, warning on an expected process failure instead of re-raising.
 
     A runner that had already exited and an unreachable `xcrun` surface as `CalledProcessError` or
-    `OSError`; those are always logged at warning and swallowed, matching the pool's three teardown
-    sites. Anything else is a wiring defect: on a mid-run discard (`mid_run=True`) it is also
-    swallowed into a warning so it cannot mask the fault that prompted the discard, and on a final
-    release (`mid_run=False`) it propagates so the defect fails the module teardown loudly (BE-0342).
+    `OSError`; those are always logged at warning and swallowed, matching every call site. Anything
+    else is a wiring defect: on a mid-run discard (`mid_run=True`) it is also swallowed into a
+    warning so it cannot mask the fault that prompted the discard, and on a final release
+    (`mid_run=False`) it propagates so the defect fails the module teardown loudly (BE-0342).
 
     Args:
         teardown: The zero-arg callable that tears the environment (or warm resident) down.
