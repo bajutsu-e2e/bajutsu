@@ -264,7 +264,9 @@ need `R.id` references the string-keyed scenario does not carry). Waiting uses `
 rather than a fixed sleep, the same determinism split the iOS and web targets make.
 
 The listing below is a skeleton, not a transcript: the emitted file carries a paragraph of rationale
-above each helper, abridged here to a short inline comment where one is worth keeping. Read the
+above each helper, abridged here to a short inline comment where one is worth keeping, and several
+helpers are left out entirely — which is why `accessibilityWindows()` and `windowSummary()` are
+called below but defined nowhere in it. Read the
 checked-in
 [`CodegenAndroidUITest.kt`](../demos/showcase/android/compose/src/androidTest/java/CodegenAndroidUITest.kt)
 for the emitter's actual output.
