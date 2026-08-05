@@ -20,7 +20,7 @@
 #     one build and one boot. The run step's `--erase` forces every one of those ten onto its own cold
 #     XCTest-host startup (the warm-runner reuse gate is `not preconditions.erase`, so the
 #     `BAJUTSU_XCUITEST_MAX_WARM_REUSES` cap in the `env` block below is never consulted on this job) —
-#     one more than the four separate jobs' cold startups summed to, but each of those jobs also paid
+#     six more than the four separate jobs' cold startups summed to, but each of those jobs also paid
 #     its own build and boot, which the `build` job below now pays once for the whole lane.
 #     `run` reddens the gate if any scenario
 #     fails, so per-scenario pass/fail moves from job names into its report. Covers BE-0019 (pinch/
@@ -126,8 +126,9 @@ env:
   # NOTE: this cap is inert on the `run` / `actuation` jobs since their step's `--erase` puts every
   # lease on the cold-spawn path (the warm-reuse gate in `start()` is `not preconditions.erase`), so
   # the reuse budget below is never consulted there — every scenario is already a fresh cold spawn,
-  # never a warm reuse. It still applies to any consumer of the `bajutsu-e2e` action that does not
-  # force erase. Respawn the resident runner cold after a single warm reuse rather than the default 3
+  # never a warm reuse. It still governs the `conformance` job below, which drives `launch_driver`
+  # through pytest with no `preconditions`, so `erase` stays unset there and the warm-reuse path holds.
+  # Respawn the resident runner cold after a single warm reuse rather than the default 3
   # (`_MAX_WARM_REUSES`). Folding many scenarios into one `bajutsu run` lengthens each warm-runner
   # session, and each warm reuse re-attaches the XCTest automation session to a freshly launched app —
   # a session that can destabilize into a mid-run crash after enough cycles on a contended CI host
@@ -300,9 +301,9 @@ jobs:
   # six files hold, since BE-0315 made the notification grant native so nothing is `ai`-tagged to
   # exclude — pay that cold startup ten times: the run step's `--erase` forces every one of them onto
   # its own cold spawn (the warm-runner reuse gate is `not preconditions.erase`, so the
-  # `BAJUTSU_XCUITEST_MAX_WARM_REUSES` cap in the env block above is never consulted here), twice the
-  # five the four separate pre-consolidation jobs summed to under warm reuse — but those jobs each also
-  # paid their own Swift build and boot, which the shared `build` job below now pays once for the whole
+  # `BAJUTSU_XCUITEST_MAX_WARM_REUSES` cap in the env block above is never consulted here) — twice the
+  # five this lane paid under warm reuse, and well over the four those jobs summed to — but they each
+  # also paid their own Swift build and boot, which the shared `build` job below now pays once for the whole
   # lane.
   # `run` runs each scenario to its own verdict and exits non-zero if any
   # fails, so the single job reddens the required `E2E` gate exactly as the four jobs did — the
@@ -324,9 +325,10 @@ jobs:
   #     native grant above.
   # The three permission scenarios run last so their OS-level grants never perturb the state-neutral
   # scenarios above them; the run step's `--erase` re-erases the Simulator before each one anyway, so
-  # their isolation from earlier scenarios holds regardless of ordering — the ordering itself is kept
-  # for readability, not correctness. No scenario is `ai`-tagged, so the lane runs every one with no
-  # `--exclude`.
+  # their isolation from earlier scenarios holds in CI regardless of ordering — but the ordering is
+  # still load-bearing off CI, where `erase` resolves to off (BE-0177's built-in default) the way
+  # `docs/cookbook.md` and `docs/getting-started/ios.md` run these same files locally, with
+  # `--no-erase`. No scenario is `ai`-tagged, so the lane runs every one with no `--exclude`.
   run:
     name: run (xcuitest)
     needs: [changes, build]
@@ -340,16 +342,17 @@ jobs:
     # Cap the metered macOS job (10x billing): a hung Simulator/runner would otherwise run to the 6h
     # default. No build here (the `build` job staged the products) — boot + install + five cold runner
     # startups across the ten scenario runs was ~15min under warm reuse, so 25 caught a real hang with
-    # headroom. `--erase` (the bajutsu-e2e action's run step) now forces a cold XCTest-host respawn on
-    # every one of the ten runs — plus a full simctl erase/boot/install (~80s, per the `golden` job's
-    # boot estimate below) each time, not just the five extra host startups. This estimate has not been
-    # measured against a real run on this branch, so 55 is deliberately generous headroom rather than a
-    # tight bound — tighten it once CI has run this lane a few times and the real wall-clock is known.
-    # A mid-run backend crash adds at most about one more cold respawn: BAJUTSU_CRASH_RECOVERY_BUDGET
-    # (300s, above) bounds the scenario-level recovery in wall-clock, so a never-recovering runner
-    # fails loudly inside that window rather than paying BAJUTSU_CRASH_RETRIES × the 300s startup
-    # ceiling and hanging to this cap.
-    timeout-minutes: 55
+    # headroom. `--erase` (the bajutsu-e2e action's run step) forces a cold XCTest-host spawn on every
+    # one of the ten runs, each preceded by a full simctl erase/boot/install (~80s, per the `golden`
+    # job's boot estimate below): 10 × (~80s erase/boot/install + ~2-3min cold host startup) is
+    # ~38-48min of fixed cost alone, before checkout/toolchain-setup/artifact-download and the scenario
+    # bodies themselves, and before any crash retry (BAJUTSU_CRASH_RETRIES: "2") — which, under erase,
+    # pays the full 300s STARTUP_TIMEOUT readiness wait per retry rather than the 90s RESPAWN_TIMEOUT
+    # one (see the workflow-level env comment on BAJUTSU_CRASH_RECOVERY_BUDGET). 75 is sized to sit
+    # meaningfully above that ~48min arithmetic ceiling plus one retry, not pinned at its edge — but it
+    # is still unmeasured against a real run on this branch, so tighten it once CI has run this lane a
+    # few times and the actual wall-clock is known.
+    timeout-minutes: 75
     # BE-0231 unit 4: a cold-boot CI Simulator sometimes renders the first Stable row later than a
     # scenario's 10s first-wait allows — even with unit 2's `readyWhen` gate (which waits up to
     # _await_ready's own 10s for that row). Raise the wait *floor* so the condition wait has the
@@ -455,8 +458,8 @@ jobs:
   # the cold XCTest-host startup plus a full simctl erase/boot/install — is now paid once per scenario
   # run, not shared across them. Folding BE-0285's four files in here rather than into a job of their
   # own follows the same reasoning: a second non-gating job would differ only in which scenarios it
-  # ran, and would re-pay this lane's build-once product download and per-scenario cold cost to do it.
-  # Promote a scenario into `run` once it is stable.
+  # ran, and would re-pay this lane's artifact download and install to do it — the per-scenario cold
+  # cost travels with the scenario either way. Promote a scenario into `run` once it is stable.
   actuation:
     name: actuation (xcuitest)
     needs: [changes, build]
@@ -471,12 +474,17 @@ jobs:
     # default. Install (no build) + the ten scenario runs the eight files below produce (each file holds
     # one scenario; data_driven.yaml's three `${row.*}` rows expand to three) was ~20min under warm
     # reuse (five cold XCTest-host startups, one per two runs at the lane's former warm-reuse cap).
-    # `--erase` (the bajutsu-e2e action's run step) now puts every one of the ten runs on its own cold
-    # path — a full simctl erase/boot/install (~80s, per the `golden` job's boot estimate below) plus a
-    # cold XCTest-host spawn, not just the five extra host startups. This estimate has not been measured
-    # against a real run on this branch, so 60 is deliberately generous headroom rather than a tight
-    # bound — tighten it once CI has run this lane a few times and the real wall-clock is known.
-    timeout-minutes: 60
+    # `--erase` (the bajutsu-e2e action's run step) puts every one of the ten runs on its own cold
+    # path, each preceded by a full simctl erase/boot/install (~80s, per the `golden` job's boot
+    # estimate below): 10 × (~80s erase/boot/install + ~2-3min cold host startup) is ~38-48min of fixed
+    # cost alone, before checkout/toolchain-setup/artifact-download and the scenario bodies themselves,
+    # and before any crash retry — which, under erase, pays the full 300s STARTUP_TIMEOUT readiness
+    # wait per retry rather than the 90s RESPAWN_TIMEOUT one (see the workflow-level env comment on
+    # BAJUTSU_CRASH_RECOVERY_BUDGET). 80 is sized to sit meaningfully above that ~48min arithmetic
+    # ceiling plus one retry, not pinned at its edge — but it is still unmeasured against a real run on
+    # this branch, so tighten it once CI has run this lane a few times and the actual wall-clock is
+    # known.
+    timeout-minutes: 80
     # Raise the wait floor so a cold-boot Simulator has budget to render the first Stable row before
     # each scenario's own 10s first-wait — the same knob the `run` job above and the Android lane use.
     # A condition wait returns the instant the row appears, so this is a ceiling, not a sleep.
