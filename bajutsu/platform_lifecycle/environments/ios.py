@@ -6,9 +6,7 @@ concrete environment adds only its own `start` sequence.
 
 from __future__ import annotations
 
-import contextlib
 from collections.abc import Callable, Mapping
-from pathlib import Path
 
 from bajutsu import simctl
 from bajutsu.config import Effective, require_ios
@@ -36,16 +34,10 @@ class _DeviceEnvironment:
         actuator: str,
         udid: str,
         env_run: simctl.RunFn = simctl._real_run,
-        *,
-        spawn: intervals.Spawn = intervals._spawn,
     ) -> None:
         self._actuator = actuator
         self._udid = udid
         self._run = env_run
-        # How pre-launch interval processes are spawned (simctl recordVideo); injectable for tests.
-        self._spawn = spawn
-        # A video recording begun before the app launched, for the sink to adopt (BE video timing).
-        self._prestarted_video: intervals.Interval | None = None
 
     def resolve_device(self, udid: str) -> str:
         return simctl.resolve_udid(udid, self._run)
@@ -53,39 +45,11 @@ class _DeviceEnvironment:
     def prestarted_intervals(self) -> list[intervals.Interval]:
         """Interval captures begun during `start()`, before the app launched, for the sink to adopt.
 
-        Empty on a backend that records on demand; the simctl family fills it with the scenario video
-        started before launch so the app's cold start is recorded rather than missed.
+        Always empty here: no subclass starts a capture before the app launches. XCUITest records
+        video on demand instead; the fake and live-WebDriver routes record none at all
+        (`captures_video`). See `records_video_up_front`.
         """
-        return [self._prestarted_video] if self._prestarted_video is not None else []
-
-    def _prestart_video(self, record_video_dir: Path | None) -> None:
-        """Begin the scenario video (simctl recordVideo) before the app launches; None records nothing.
-
-        The recording writes to a temp file under `record_video_dir`; the sink adopts it at scenario
-        start and relocates it to the artifact path on stop (`intervals.adopt`). Filed under the udid
-        so concurrent device lanes writing into the shared dir never collide.
-        """
-        if record_video_dir is None:
-            return
-        self._prestarted_video = intervals.start_video(
-            self._udid, record_video_dir / f"prestart-{self._udid}.mp4", spawn=self._spawn
-        )
-
-    def _stop_prestarted_video(self) -> None:
-        """Finalize and discard a pre-started recording after a *failed* launch.
-
-        Only the failure path calls this: on success the sink adopts the running interval. A launch
-        that fails after `_prestart_video` would otherwise leave `recordVideo` running — an orphaned
-        session wedges every later capture on the same simulator (`start_video`'s own warning) — so
-        stop it and drop the orphan temp file. Best-effort: a cleanup error must not mask the launch
-        error being re-raised.
-        """
-        interval = self._prestarted_video
-        if interval is None:
-            return
-        self._prestarted_video = None
-        with contextlib.suppress(Exception):
-            interval.stop().unlink(missing_ok=True)
+        return []
 
     def captures_video(self) -> bool:
         return True  # a simctl-backed device records a scenario-wide video via a simctl interval
@@ -127,6 +91,11 @@ class _DeviceEnvironment:
     def has_reusable_resident(self) -> bool:
         # fake spawns no resident to amortize; XcuitestEnvironment overrides (BE-0291).
         return False
+
+    def replaced_device(self) -> str | None:
+        # Only the XCUITest Simulator lifecycle replaces a vanished device (it overrides this); fake
+        # brings no device up, so the leased udid is always the one it ran on.
+        return None
 
     def end_lease(self, driver: base.Driver, eff: Effective) -> None:
         # No warm resident here, so a lease's end is just its full teardown (BE-0291).

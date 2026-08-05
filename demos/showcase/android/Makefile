@@ -37,13 +37,31 @@ SERIAL ?= booted
 # with `step 0 (wait): wait timeout`, on a warm AVD, while the scenario lanes passed the identical
 # wait. The floor is a ceiling on a condition wait, so a fast render still returns at once.
 #
-# The deep-scroll flows `controls` / `notices` rejoin the lane (BE-0208 unit 5). Both scroll a far
-# target into view — `controls` the segmented-control value node below the buttons, `notices` a list
-# row that starts well below the fold. They failed before because the default directional swipe
-# travelled a fixed coordinate count, which scrolls far less of Android's dense screen (2400px) than
-# of iOS's (~900pt); the default is now a screen fraction (bajutsu/orchestrator/actions/handlers/
-# gestures.py), so a swipe reaches the same proportion on either backend. Verified on a local arm64
-# emulator.
+# The deep-scroll flows `controls` / `notices` rejoin the lane (BE-0208 unit 5), and `system` /
+# `modals` (above) reveal their far targets the same way since this lane's own audit. All four reveal
+# a far target with `scroll` (BE-0326) — `controls` the segmented-control value node below the
+# buttons, `notices` a list row well below the fold — a bounded, non-inertial step that re-queries
+# the tree and stops the moment the target is on-screen, rather than a swipe chain tuned to a
+# fixed distance.
+# A fixed-distance chain scrolls far less of Android's dense screen (2400px) than of iOS's (~900pt);
+# `scroll`'s re-query removes the need to retune the distance per backend. All four are verified by
+# this lane's own x86_64 CI run rather than a local arm64 emulator: `scroll` stops on a re-query of
+# the tree, not on a travelled distance, so the two hosts differ in render speed, not in what it
+# resolves against. The `gestures` swipe chain below still rests on unit 5's other half: the default
+# directional swipe travels a screen *fraction* (`_SWIPE_FRACTION`,
+# bajutsu/orchestrator/actions/handlers/gestures.py), so it covers the same proportion on either
+# backend.
+#
+# The interrupt-handler flow `interrupts` joins the lane (BE-0314): a syntax demo whose `interrupts`
+# entry never actually fires against the real app (its `condition` matches nothing on-screen), so the
+# flow underneath is the stable→horse→favorite one `firstlook.yaml` already runs here — no app or
+# config change needed. What it adds over `firstlook` is the *check* path against a live tree: a
+# `wait` rides its own poll tree at no extra cost, and a bare act step pays one extra `query()` for
+# the guard (`loop.py`'s `_InterruptGuard.clear_before_act`, since this scenario declares no
+# `screenChanged` policy) — so a never-matching handler is proven on a real device to disturb
+# nothing and to cost one bounded read per act, which no fast-suite fake can show. It joins
+# `E2E_VIEWS_SCENARIOS` too: its ids carry both dotted SPEC and underscore Android Views forms
+# (BE-0221), the same ones `firstlook` already proved on the Views tree.
 #
 # The single-touch gesture flow `gestures` rejoins the lane (BE-0208 unit 5): its long-press already
 # landed, but the double-tap did not register through adb's `input tap ; input tap` (each tap spawns
@@ -91,7 +109,7 @@ SERIAL ?= booted
 # Observed network capture lands in its own `e2e-network` target below (BE-0283); mocked network
 # (deterministic stub responses) stays a follow-up.
 E2E_SCENARIOS := smoke firstlook navigation search data_driven relaunch system components modals \
-	controls notices gestures gestures_multitouch permission device extract foreach
+	controls notices gestures gestures_multitouch permission device extract foreach interrupts
 
 # Raise the condition-wait ceiling for this lane only: the CI x86_64 software-rendered emulator
 # presents sheets/covers slower than the shared scenarios' 5s waits allow. A wait returns as soon as
@@ -113,7 +131,8 @@ E2E_ENV = BAJUTSU_MIN_WAIT_TIMEOUT=$(E2E_WAIT_FLOOR) BAJUTSU_LOG_LEVEL=$(E2E_LOG
 # true for one toolkit into a guarantee checked for both, on every push/PR. Views runs the subset
 # whose selectors carry both id forms and that is verified on the Views tree; `components` / `modals`
 # stay Compose-only until their id forms and modal timing are confirmed on Views (a BE-0221 follow-up).
-E2E_VIEWS_SCENARIOS := smoke firstlook navigation search data_driven relaunch system extract foreach
+E2E_VIEWS_SCENARIOS := smoke firstlook navigation search data_driven relaunch system extract foreach \
+	interrupts
 
 # The wrapper jar IS committed (like any standard Android repo), so a fresh clone builds with no
 # extra step. Only run this to bump the pinned Gradle version — never as part of a build, since it
@@ -160,8 +179,24 @@ views-noax-build:
 #
 # The broadcast that follows closes one that is already up: the setting only governs dialogs posted
 # after it, so a lane that starts with the launcher already wedged would otherwise still open on a
-# blocked foreground window.
-ANR_QUIET = adb shell settings put global hide_error_dialogs 1 && adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null
+# blocked foreground window. `hide_error_dialogs=1` should hold for the rest of the emulator's
+# session once set, but a multi-scenario lane (`e2e`, `run-flutter-android`) calls it again before
+# every scenario in its loop rather than trust that once at the top of the job — each call is three
+# fast adb round trips, and the alternative is re-diagnosing a mid-loop dialog from a bare timeout.
+#
+# The tap-based counterpart is showcase.config.yaml's per-target `interrupts`: it covers a
+# `bajutsu run` invoked outside any make target, which this setting therefore never reaches. It
+# answers the locale half of the objection above — the selector is a resource id, not a button
+# label — and still acts on the system surface (a node-level click on the resident channel, an
+# `input tap` at the resolved node otherwise), which is acceptable because the *pair* of ids is
+# exact: `aerr_wait` selects only the ANR dialog, and within it `aerr_close` names one node, so a
+# resolve cannot reach `aerr_report`. Where this setting does reach, suppression stays preferred.
+#
+# The trailing echo reads the setting straight back rather than trusting the `put` succeeded: a
+# lane that fails downstream on an ANR dialog anyway (`adb`'s own failure, a wrong scope, a device
+# that dropped the setting) should say so in its own log line, not leave that ambiguity for whoever
+# investigates the failure to resolve by re-running and guessing.
+ANR_QUIET = adb shell settings put global hide_error_dialogs 1 && adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null && echo "ANR_QUIET: hide_error_dialogs=$$(adb shell settings get global hide_error_dialogs | tr -d '\r')"
 
 # Draw every touch on screen, so the captured video answers "where did it actually land" directly
 # rather than by inference from the log. `show_touches` is a surface-level effect the input system
@@ -178,16 +213,17 @@ TOUCH_DEBUG_OFF = adb shell settings put system show_touches 0 && adb shell sett
 
 e2e: compose-build views-build
 	adb root && adb wait-for-device
-	$(ANR_QUIET)
 	$(TOUCH_DEBUG_ON)
 	cd $(ROOT) && for s in $(E2E_SCENARIOS); do \
 		echo "=== showcase-compose / $$s ==="; \
+		$(ANR_QUIET) && \
 		$(E2E_ENV) \
 		uv run bajutsu run --scenario demos/showcase/scenarios/$$s.yaml \
 			--target showcase-compose --udid $(SERIAL) --backend android --config $(CONFIG) || exit 1; \
 	done
 	cd $(ROOT) && for s in $(E2E_VIEWS_SCENARIOS); do \
 		echo "=== showcase-views / $$s ==="; \
+		$(ANR_QUIET) && \
 		$(E2E_ENV) \
 		uv run bajutsu run --scenario demos/showcase/scenarios/$$s.yaml \
 			--target showcase-views --udid $(SERIAL) --backend android --config $(CONFIG) || exit 1; \
@@ -316,6 +352,7 @@ e2e-codegen:
 	cd $(ROOT) && uv run bajutsu codegen demos/showcase/scenarios/$(CODEGEN_SCENARIO).yaml \
 		--emit uiautomator --target showcase-compose --config $(CONFIG) -o $(CODEGEN_KT)
 	adb wait-for-device
+	$(ANR_QUIET)
 	# Unlike the bajutsu-driven jobs (whose scenarios set reinstall: clean, so AndroidEnvironment
 	# uninstalls before installing), connectedAndroidTest installs incrementally with no such guard.
 	# The CI AVD boot snapshot is cached and shared across jobs (android-e2e.yml), so a stale copy of
@@ -329,7 +366,54 @@ e2e-codegen:
 	# window list into the directory Gradle names with `additionalTestOutputDir` and copies back into
 	# compose/build/outputs/connected_android_test_additional_output — no `adb pull` here, because
 	# `adb` cannot read /sdcard/Android/data/<package> from Android 11 on. android-e2e.yml uploads it.
-	cd $(HERE) && $(GRADLEW) :compose:connectedA11yDebugAndroidTest
+	#
+	# This lane has been observed flaky (a launcher ANR dialog transiently stealing window focus so
+	# the app's own window drops out of the accessibility tree, or the tree reporting empty right
+	# after launch); the still/XML diagnostics above show the state at the moment of failure but not
+	# how it got there. Screen-record the whole install+test window alongside it: this lane runs no
+	# bajutsu runtime at test time, so it cannot go through `bajutsu run`'s own evidence capture, but
+	# the host side (this recipe) already runs bajutsu (`uv run bajutsu codegen` above) and can call
+	# `bajutsu.evidence.intervals.start_screenrecord`/`stop` directly — the same SIGINT-then-device-
+	# poll-then-pull finalize `bajutsu run` uses, in one place instead of a shell reimplementation that
+	# had already drifted from it (PR #1493 review). `demos/showcase/android/screenrecord.py` wraps
+	# that call; backgrounded here and stopped by SIGINT after Gradle exits, the same shape
+	# `net_stub.py` above uses for its host-side helper. The stop/pull/cleanup lives in a
+	# `trap ... EXIT INT TERM` (the `net_stub.py` `trap` above, extended past plain cleanup) rather
+	# than only inline after the Gradle call, so the job's own `timeout-minutes: 25` firing on a real
+	# hang — the case this recording exists to diagnose — still finalizes and pulls the mp4 instead of
+	# leaving the recipe's teardown lines unreached. `rc` defaults to 1 so a trap-triggered finalize
+	# (outcome unknown) keeps the video, the same as an explicit test failure. `|| true` on every
+	# teardown step so a failed recording/pull/cleanup can never mask (or replace) the real test exit
+	# code, which is captured and re-raised via `exit "$$rc"` at the end.
+	# Build the APKs *before* the recorder starts: `screenrecord`'s 180s cap is a hard platform ceiling
+	# (screenrecord.py explains why 900 would not work), so the recorder must span the install+test
+	# window itself rather than a window that also includes the build — a recording starting at build
+	# time would already be over by the time the flake's window arrives. screenrecord.py's
+	# --size/--bit-rate keep the 180s mp4 small enough for /sdcard and the artifact upload (the
+	# default is 20 Mbps at full 1080x2400). The mp4 is always pulled on stop, then discarded here on a
+	# green run — matching the failure-only policy the diagnostics above follow — rather than skipping
+	# the pull itself, so the finalize/pull/cleanup stays one unconditional call into screenrecord.py.
+	# Suppress the system's error dialogs on this lane too, as every other on-device target here
+	# does (ANR_QUIET above): the transient launcher ANR dialog this recording exists to diagnose
+	# is exactly one of the dialogs that setting stops being posted at all.
+	$(ANR_QUIET)
+	$(TOUCH_DEBUG_OFF)
+	cd $(HERE) && $(GRADLEW) :compose:assembleA11yDebug :compose:assembleA11yDebugAndroidTest
+	cd $(ROOT); \
+	uv run python3 demos/showcase/android/screenrecord.py $(SERIAL) \
+		$(HERE)/compose/build/outputs/screenrecord/uiautomator-codegen.mp4 & \
+	rec_pid=$$!; \
+	rc=1; \
+	finalize_recording() { \
+		trap - EXIT INT TERM; \
+		kill -INT "$$rec_pid" 2>/dev/null || true; \
+		adb shell 'pkill -INT -x screenrecord' >/dev/null 2>&1 || true; \
+		wait "$$rec_pid" || true; \
+		[ "$$rc" -eq 0 ] && rm -f $(HERE)/compose/build/outputs/screenrecord/uiautomator-codegen.mp4; \
+	}; \
+	trap finalize_recording EXIT INT TERM; \
+	( cd $(HERE) && $(GRADLEW) :compose:connectedA11yDebugAndroidTest ); rc=$$?; \
+	exit "$$rc"
 
 clean:
 	rm -rf $(HERE)/build $(HERE)/compose/build $(HERE)/views/build $(HERE)/.gradle

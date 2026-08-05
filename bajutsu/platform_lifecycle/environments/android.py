@@ -343,6 +343,11 @@ class AndroidEnvironment:
         # is out of scope for BE-0291 (which targets the XCUITest runner's cold startup).
         return False
 
+    def replaced_device(self) -> str | None:
+        # An adb device (emulator or handset) is brought up out of band, so this lifecycle never
+        # creates one to replace it.
+        return None
+
     def end_lease(self, driver: base.Driver, eff: Effective) -> None:
         self.teardown(driver, eff)  # no warm resident kept: a lease's end is its full teardown
 

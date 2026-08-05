@@ -107,7 +107,10 @@ concurrency:
 # 300s (5 minutes) for every on-device lane: `xcodebuild test-without-building` boots the XCTest host
 # and launches the app before the runner answers /health, and on a loaded/contended macOS runner that
 # first start can exceed 120s. A warm start still returns the instant /health is ready, so this only
-# raises the ceiling for the cold case (bajutsu/platform_lifecycle/environments/xcuitest.py).
+# raises the ceiling for the cold case (bajutsu/platform_lifecycle/environments/xcuitest.py). The
+# ceiling is shared across the two cold-spawn attempts unless the device was repaired in between, in
+# which case the retry restarts it — see BAJUTSU_XCUITEST_RECOVERY_TIMEOUT below for the worst-case
+# arithmetic this lane's `timeout-minutes` are set against.
 env:
   BAJUTSU_XCUITEST_RUNNER_LOG: ${{ github.workspace }}/runs/runner-logs
   BAJUTSU_XCUITEST_STARTUP_TIMEOUT: "300"
@@ -122,6 +125,53 @@ env:
   # host, so a runner that will not come back fails loudly in ~90s instead of ~300s. Unset (elsewhere)
   # keeps the cold ceiling for respawns too, so only this lane opts in.
   BAJUTSU_XCUITEST_RESPAWN_TIMEOUT: "90"
+  # How long the cold spawn may spend repairing the Simulator between its two attempts
+  # (bajutsu/platform_lifecycle/environments/xcuitest.py, `_recovery_timeout`). The retry used to
+  # re-spawn onto the very device that had just failed it, which is why an app-launch timeout took the
+  # whole lane down: the device was degraded, not merely unlucky. The recovery reboots and re-prepares
+  # it — or creates a replacement when CoreSimulator has stopped listing it at all — and only then is
+  # the second attempt worth spawning, so it earns a fresh readiness ceiling rather than the remains of
+  # the first attempt's. Both repairs that actually change the device earn the same fresh ceiling: a
+  # *reboot* ends with the device booted and about to be reinstalled onto, and a *replacement* has never
+  # run anything — either way the retry's `xcodebuild test-without-building` runs against a device in a
+  # genuine first-boot state, so both take the full 300s regardless of the failing attempt's own ceiling
+  # (a rebooted respawn does not keep this lane's tighter 90s; `_spawn_cold`'s own erase-path precedent
+  # already gives a fresh-boot device the full cold ceiling, and a reboot leaves the device no less
+  # fresh-booted than an erase does). 180s covers the slowest rung (creating a Simulator and waiting out
+  # its first boot) — checked once the rung returns, not preemptively (a rung's `simctl` call carries no
+  # subprocess-level timeout of its own, so a genuinely wedged CoreSimulator falls through to this lane's
+  # own `timeout-minutes` instead). The bound stops at the repair itself: the re-prep that follows
+  # (erase/locale-pin/install, `_finish_repair` in the same file) runs unbounded, matching the policy
+  # the first cold bring-up already gets, so it is in neither the 180s above nor either readiness
+  # ceiling below. Whether the re-prep pays a locale-pin reboot cycle follows the device's actual
+  # system locale, not the cached `_pinned_locale` field — `_finish_repair`'s cold prep resets that
+  # field on every rung, reboot or replacement alike, since it only gates warm-runner reuse; it is
+  # `_pin_system_locale`'s own read of the device's global domain that decides. A *replacement*
+  # device is newly created and inherits the host's own locale, which the read finds does not match
+  # the configured one, so the write runs and pays a reboot cycle on top of the boot already waited
+  # out, plus the install: roughly 100-150s more, going by the ~80s Simulator boot the `golden` job
+  # below prices. A *reboot*'s device is the very one from the original cold bring-up, whose earlier
+  # write survives the reboot, so the read finds it already correct and the re-prep skips the cycle,
+  # leaving only the reinstall. Keeping the worst
+  # case bounded when every rung does return in time: 300s + 180s + 300s ≈ 13min (plus the unbounded
+  # re-prep above, so ~15min) for a failing *first* bring-up, and 90s + 180s + 300s ≈ 9.5min for a
+  # failing respawn, whichever rung repairs it (a rebooted respawn's re-prep only reinstalls — small
+  # enough to leave uncounted — while a respawn whose device had vanished pays the same locale-pin-plus-
+  # install cost as the first-bring-up case above, so ~11-12min there). Only a *failing* spawn pays
+  # recovery at all.
+  #
+  # A caveat the arithmetic above does not cover: this recovery happens inside one lease's bring-up, so
+  # BAJUTSU_CRASH_RECOVERY_BUDGET (below) cannot cut it short, and a job whose scenarios are *also*
+  # burning that scenario-level budget can add both. A run on 2026-08-04 hit `timeout-minutes` that
+  # way — three mid-run crashes plus one reboot rung — so treat the caps below as covering one device
+  # recovery on top of the nominal run, not one on top of a host already crashing repeatedly. The
+  # arithmetic above was actually re-run only against the `run` and `actuation` jobs' `timeout-minutes`
+  # comments below — `golden`, `bundled-runner`, `codegen`, `conformance`, `fault-injection`, and
+  # `visual` still carry their original headroom claims, unrevisited. `bundled-runner` is the one this
+  # caveat's "one recovery" scoping does not cover on its own: it runs two separate `bajutsu run`
+  # invocations (SwiftUI, then UIKit), so a single job can pay two independent cold bring-ups' worth
+  # of recovery, not one.
+  BAJUTSU_XCUITEST_RECOVERY_TIMEOUT: "180"
   # Respawn the resident runner cold after a single warm reuse rather than the default 3
   # (`_MAX_WARM_REUSES`). Folding many scenarios into one `bajutsu run` (the `run` / `actuation` jobs)
   # lengthens each warm-runner session, and each warm reuse re-attaches the XCTest automation session
@@ -334,6 +384,12 @@ jobs:
     # adds at most about one more cold respawn: BAJUTSU_CRASH_RECOVERY_BUDGET (300s, above) bounds the
     # scenario-level recovery in wall-clock, so a never-recovering runner fails loudly inside that
     # window rather than paying BAJUTSU_CRASH_RETRIES × the 300s startup ceiling and hanging to this cap.
+    # A cold spawn that has to repair its device costs at most one recovery plus a second ceiling on top
+    # of its own (BAJUTSU_XCUITEST_RECOVERY_TIMEOUT, above). The observed signature — an app-launch
+    # timeout ending attempt 1 in ~40s, repaired by a reboot whose re-prep is cheap enough to leave
+    # uncounted — costs ~40s + 180s + 300s ≈ 9min and fits; the worst case the arithmetic block allows
+    # (a first bring-up that burns the full 300s, repaired by a replacement and its re-prep: ~15min)
+    # puts this job at ~28min and would not, so it is this cap itself that catches that one.
     timeout-minutes: 25
     # BE-0231 unit 4: a cold-boot CI Simulator sometimes renders the first Stable row later than a
     # scenario's 10s first-wait allows — even with unit 2's `readyWhen` gate (which waits up to
@@ -454,7 +510,14 @@ jobs:
     # default. Install (no build) + the ten scenario runs the eight files below produce (each file holds
     # one scenario; data_driven.yaml's three `${row.*}` rows expand to three) is ~20min — the dominant
     # term is five cold XCTest-host startups, one per two runs at this lane's warm-reuse cap — so 30
-    # catches a real hang with headroom rather than reddening a healthy run.
+    # catches a real hang with headroom rather than reddening a healthy run. Of those startups only the
+    # first carries the 300s cold ceiling (the rest take the 90s respawn one), and only a *failing*
+    # spawn adds a device recovery plus a second ceiling. The observed signature — an app-launch
+    # timeout ending attempt 1 in ~40s, repaired by a reboot whose re-prep is cheap enough to leave
+    # uncounted — costs ~40s + 180s + 300s ≈ 9min and fits; the worst case the arithmetic block allows
+    # (a first bring-up that burns the full 300s, repaired by a replacement and its re-prep: ~15min)
+    # would not, so it is the lane's own hang backstop that catches it
+    # (BAJUTSU_XCUITEST_RECOVERY_TIMEOUT, above).
     timeout-minutes: 30
     # Raise the wait floor so a cold-boot Simulator has budget to render the first Stable row before
     # each scenario's own 10s first-wait — the same knob the `run` job above and the Android lane use.

@@ -437,12 +437,21 @@ class _RecordingEnv:
         reusable: bool = False,
         raise_on_teardown: bool = False,
         teardown_error: BaseException | None = None,
+        replacement: str | None = None,
+        catalog: dict[str, dict[str, str]] | None = None,
     ) -> None:
         self.actuator = actuator
         self.udid = udid
         self.provision = provision  # the ProvisionProfile device_pool threaded through (BE-0236)
         self.started = False
         self.torn = False
+        # A device this env replaced during `start` (None: the leased device is the one that
+        # ran, which is every platform but the XCUITest Simulator's vanished-device path).
+        self.replacement = replacement
+        # What `device_catalog()` reports for this env — a replacement re-fetches the catalog from
+        # the *lease* env (pool.py's `adopt_replacement`), not the pool-init one, so this is separate
+        # from any catalog the pool itself was built with.
+        self.catalog = catalog or {}
         self.fail_start = fail_start
         # A failure *after* `start` returns a driver but before `lease()` finishes building the
         # `Lease` — mimics `hook_collector`/`relauncher`/`controller` raising on a real backend
@@ -473,7 +482,7 @@ class _RecordingEnv:
         return FakeDriver([_el("home", "H"), _el("ok", "OK")])  # 2 elems -> ready on count
 
     def device_catalog(self) -> dict[str, dict[str, str]]:
-        return {}
+        return self.catalog
 
     def observes_network_via_driver(self) -> bool:
         return False
@@ -507,6 +516,11 @@ class _RecordingEnv:
 
     def has_reusable_resident(self) -> bool:
         return self.reusable
+
+    def replaced_device(self) -> str | None:
+        # The udid this env moved to when `start` had to replace a vanished device. Settable
+        # per instance so a test can drive the pool's re-keying without a Simulator.
+        return self.replacement
 
     def end_lease(self, driver: base.Driver, eff: Effective) -> None:
         self.end_lease_count += 1  # kept warm: the pool released the lease without a full teardown
@@ -1501,4 +1515,178 @@ def test_device_pool_network_lease_defaults_to_collector_provenance(
     finally:
         if lz is not None:
             lz.release()
+        shutdown()
+
+
+# --- following a lease onto a replaced device --- #
+#
+# The XCUITest Simulator lifecycle creates a replacement when CoreSimulator stops listing the leased
+# device. The pool keys leases, collectors, evidence capture and its warm cache by udid, so it has to
+# follow — otherwise all of them keep naming a device that is gone.
+
+
+def _replacing_env_factory(
+    created: list[_RecordingEnv],
+    *,
+    replacement: str,
+    reusable: bool = True,
+    fail_start: bool = False,
+    replacement_catalog: dict[str, dict[str, str]] | None = None,
+) -> Callable[..., _RecordingEnv]:
+    """An `environment_for` whose *lease* environments report a device replacement during start."""
+
+    def fake_env_for(
+        actuator: str,
+        udid: str,
+        env_run: object = None,
+        *,
+        provision: object = None,
+        respawn: bool = False,
+    ) -> _RecordingEnv:
+        # The first env built is the pool's representative (never leased), so it reports no swap.
+        env = _RecordingEnv(
+            actuator,
+            udid,
+            provision,
+            reusable=reusable,
+            fail_start=fail_start and created,
+            replacement=replacement if created else None,
+            catalog=replacement_catalog if created else None,
+        )
+        created.append(env)
+        return env
+
+    return fake_env_for
+
+
+def test_device_pool_follows_a_lease_onto_a_replacement_device(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    created: list[_RecordingEnv] = []
+    monkeypatch.setattr(
+        "bajutsu.runner.pool.environment_for",
+        _replacing_env_factory(
+            created,
+            replacement="UDID-NEW",
+            replacement_catalog={"UDID-NEW": {"name": "iPhone 17 Pro", "runtime": "iOS 26.0"}},
+        ),
+    )
+    lease, shutdown = device_pool(
+        ["UDID-A"],
+        ["ios"],
+        _eff(),
+        Path("runs"),
+        network=False,
+        available=lambda b: True,
+        env_run=lambda *a, **k: "",
+    )
+    try:
+        lz = lease(_eff(), _scn("s"))
+        # The result names the device that actually ran the scenario, not the one that vanished.
+        assert lz.udid == "UDID-NEW"
+        # The catalog re-key follows the replacement too, or the report would attribute the scenario
+        # to a device whose model/runtime row reads as blank rather than as a bug (BE-XXXX unit 5).
+        assert lz.device_name == "iPhone 17 Pro" and lz.device_runtime == "iOS 26.0"
+        lz.release()
+        # The replacement took the vanished device's place in the pool, so the next lease gets it and
+        # the dead udid is never handed out again.
+        second = lease(_eff(), _scn("s2"))
+        assert second.udid == "UDID-NEW"
+        second.release()
+    finally:
+        shutdown()
+
+
+def test_device_pool_frees_the_replacement_when_the_lease_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A replacement made before the failure is still adopted: the queue must get the live device back,
+    # or every later lease would spawn onto the one that vanished.
+    created: list[_RecordingEnv] = []
+    monkeypatch.setattr(
+        "bajutsu.runner.pool.environment_for",
+        _replacing_env_factory(created, replacement="UDID-NEW", fail_start=True),
+    )
+    lease, shutdown = device_pool(
+        ["UDID-A"],
+        ["ios"],
+        _eff(),
+        Path("runs"),
+        network=False,
+        available=lambda b: True,
+        env_run=lambda *a, **k: "",
+    )
+    try:
+        with pytest.raises(RuntimeError, match="launch failed"):
+            lease(_eff(), _scn("s"))
+        # The next lease is handed the replacement, proving the failure path freed that one.
+        assert created[-1].udid == "UDID-A"
+        with pytest.raises(RuntimeError, match="launch failed"):
+            lease(_eff(), _scn("s2"))
+        assert created[-1].udid == "UDID-NEW"
+    finally:
+        shutdown()
+
+
+def test_device_pool_re_keys_the_collector_onto_the_replacement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The collector is a host-side receiver the device reaches over the loopback, so it needs no
+    # restart — but a later lease looks it up by udid, so the key has to move with the device.
+    created: list[_RecordingEnv] = []
+    monkeypatch.setattr(
+        "bajutsu.runner.pool.environment_for",
+        _replacing_env_factory(created, replacement="UDID-NEW"),
+    )
+    lease, shutdown = device_pool(
+        ["UDID-A"],
+        ["ios"],
+        _eff(),
+        Path("runs"),
+        network=True,
+        available=lambda b: True,
+        env_run=lambda *a, **k: "",
+    )
+    try:
+        first = lease(_eff(), _scn("s"))
+        port = first.collector.port  # type: ignore[union-attr]
+        first.release()
+        second = lease(_eff(), _scn("s2"))
+        # Same receiver, now found under the replacement's udid: it was re-keyed, not re-created. The
+        # udid assertion is what makes this discriminating — a collector left under the dead key would
+        # leave this lease with none at all.
+        assert second.udid == "UDID-NEW"
+        assert second.collector is not None and second.collector.port == port  # type: ignore[union-attr]
+        second.release()
+    finally:
+        shutdown()
+
+
+def test_device_pool_leaves_every_key_alone_when_no_device_was_replaced(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The guard: an environment reporting no swap (every platform but that one path) must leave the
+    # pool's bookkeeping exactly as it was.
+    created: list[_RecordingEnv] = []
+    monkeypatch.setattr(
+        "bajutsu.runner.pool.environment_for",
+        _replacing_env_factory(created, replacement=None),  # type: ignore[arg-type]
+    )
+    lease, shutdown = device_pool(
+        ["UDID-A"],
+        ["ios"],
+        _eff(),
+        Path("runs"),
+        network=False,
+        available=lambda b: True,
+        env_run=lambda *a, **k: "",
+    )
+    try:
+        for _ in range(2):
+            lz = lease(_eff(), _scn("s"))
+            assert lz.udid == "UDID-A"
+            lz.release()
+        # One lease environment served both scenarios: the warm cache was never dropped and re-keyed.
+        assert len(created) == 2
+    finally:
         shutdown()

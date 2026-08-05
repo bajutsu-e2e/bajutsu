@@ -99,10 +99,176 @@ def test_a_slow_cold_start_is_waited_out_rather_than_restarted() -> None:
     assert code.count("LAUNCH_TIMEOUT_MS") >= 3
     # The intent is rebuilt per attempt, so a relaunch re-delivers launchEnv through onCreate;
     # resuming the existing task instead would route the extras to onNewIntent.
-    launch = code[code.index("private fun launch") :]
-    body = launch[: launch.index("private fun act")]
+    body = _fn_body(code, "launch", "act")
     assert body.index("for (attempt in 1..LAUNCH_ATTEMPTS)") < body.index(
         "getLaunchIntentForPackage"
+    )
+
+
+def _fn_body(code: str, name: str, next_name: str) -> str:
+    """The emitted body of one generated Kotlin function, so an assertion on ordering inside it
+    cannot be satisfied by a matching line that lives in some other function."""
+    # The trailing "(" keeps the boundary exact: a bare prefix would also match a longer helper
+    # that starts with the same characters.
+    start = code.index(f"private fun {name}(")
+    end = code.index("private fun ", start + 1)
+    # Fail by name if a helper is ever inserted between the two, rather than silently widening
+    # this slice to span it — which is exactly what this PR did to windowSummary and to launch.
+    assert code.startswith(f"private fun {next_name}(", end), (
+        f"{next_name} no longer directly follows {name}"
+    )
+    body = code[start:end].splitlines()
+    # The next helper's own rationale block sits between the two definitions. Left in, prose about
+    # that helper would satisfy an assertion about this one — the very thing the slice prevents.
+    while body and (not body[-1].strip() or body[-1].lstrip().startswith("//")):
+        body.pop()
+    return "\n".join(body)
+
+
+def test_launch_confirms_window_tracking_before_it_waits_on_the_tree() -> None:
+    # The launch wait can only see the app through the accessibility window list, so a list that is
+    # never reported reads exactly like an app that never started. One CI run logged exactly that —
+    # `no accessibility windows reported` — and the window change recovered it. Check
+    # the channel first, so the failure names it.
+    code = _gen("- name: x\n  steps:\n    - tap: { id: a }\n")
+    body = _fn_body(code, "launch", "act")
+    # Inside the attempt loop and before the intent: a check that ran after startActivity would
+    # kick the app it just launched back to the launcher.
+    assert (
+        body.index("for (attempt in 1..LAUNCH_ATTEMPTS)")
+        < body.index("ensureWindowTracking()")
+        < body.index("context.startActivity(intent)")
+    )
+
+
+def test_the_window_list_is_read_through_the_flags_uidevice_itself_uses() -> None:
+    # windowSummary() and reportsWindows() must read through the same flags UiDevice uses
+    # (Configurator), not the flag-less Instrumentation.getUiAutomation() overload — which, on any
+    # target that sets non-default flags, tears down and reconnects the very UiAutomation instance
+    # UiDevice depends on, turning a read into the connection churn this file exists to diagnose.
+    # One accessor for both, so they cannot drift onto different flags.
+    code = _gen("- name: x\n  steps:\n    - tap: { id: a }\n")
+    accessor = _fn_body(code, "accessibilityWindows", "windowSummary")
+    assert "Configurator.getInstance().uiAutomationFlags" in accessor
+    # getUiAutomation(flags) only exists from API 24 (N); UiDevice itself branches on the same
+    # check and falls back to the flag-less read below it on older devices, so this accessor has
+    # to mirror that branch rather than raising the API floor a UI Automator target can run on.
+    assert "Build.VERSION.SDK_INT >= Build.VERSION_CODES.N" in accessor
+    assert "InstrumentationRegistry.getInstrumentation().uiAutomation.windows" in accessor
+    assert "accessibilityWindows()" in _fn_body(code, "windowSummary", "matchableIds")
+    assert "accessibilityWindows()" in _fn_body(code, "reportsWindows", "ensureWindowTracking")
+    # Neither of the next two is visible to the fast gate, which never compiles the output: the
+    # flag-less overload must not reappear anywhere outside this accessor's own API-level
+    # fallback, and both imports have to be emitted or the generated Kotlin will not build.
+    # Comment lines are stripped so rewording the accessor's own rationale — which names the
+    # flag-less overload — cannot redden the count on its own.
+    emitted = "\n".join(ln for ln in code.splitlines() if not ln.lstrip().startswith("//"))
+    assert emitted.count(".uiAutomation.") == 1
+    assert ".uiAutomation." in "\n".join(
+        ln for ln in accessor.splitlines() if not ln.lstrip().startswith("//")
+    )
+    assert "import android.os.Build" in code
+    assert "import androidx.test.uiautomator.Configurator" in code
+
+
+def test_a_wedged_window_list_is_kicked_rather_than_waited_out() -> None:
+    # The list is delivered by event, so no timeout can recover one that is never sent — only a
+    # window change can. Raising the timeout was measured not to help (5s -> 15s -> 20s across
+    # several runs), so assert the recovery itself: read, kick, and only then fall through.
+    code = _gen("- name: x\n  steps:\n    - tap: { id: a }\n")
+    assert "private const val TRACKING_KICK_ATTEMPTS" in code
+    body = _fn_body(code, "ensureWindowTracking", "launch")
+    # Bounded, and the kick is reached from inside the loop — a bounded loop that only re-read the
+    # same list would satisfy a mere "is the helper defined" assertion while recovering nothing.
+    assert (
+        body.index("for (attempt in 1..TRACKING_KICK_ATTEMPTS)")
+        < body.index("if (reportsWindows()) return")
+        < body.index("kickWindowTracking(")
+        < body.index("if (!reportsWindows()) {")
+    )
+    # Logs rather than throws: HOME against a not-yet-started app (the launcher) is the weakest
+    # stimulus this file has, while starting the activity adds a window outright. Throwing here
+    # would spend the whole kick budget on the weak stimulus and abort before startActivity ever
+    # runs — on the one device that most needs the strong one. launch()'s own retry loop already
+    # reports this failure, naming the window list, if starting the activity does not help either.
+    stripped = "\n".join(ln for ln in body.splitlines() if not ln.lstrip().startswith("//"))
+    assert "throw AssertionError(" not in stripped
+    assert "windowSummary()" in stripped
+    # The read cannot throw past that log: getWindows() raises IllegalStateException when the
+    # connection is not established, which is the fault being reported.
+    assert "runCatching {" in _fn_body(code, "reportsWindows", "ensureWindowTracking")
+
+    accessor = _fn_body(code, "accessibilityWindows", "windowSummary")
+    # windowSummary() and reportsWindows() must read through the same flags UiDevice itself uses
+    # (Configurator), not the flag-less Instrumentation.getUiAutomation() overload — which, on any
+    # target that sets non-default flags, tears down and reconnects the very UiAutomation instance
+    # UiDevice depends on. One accessor for both, so they cannot drift onto different flags.
+    assert "Configurator.getInstance().uiAutomationFlags" in accessor
+    # getUiAutomation(flags) only exists from API 24 (N); UiDevice itself branches on the same
+    # check and falls back to the flag-less read below it on older devices, so this accessor has
+    # to mirror that branch rather than raising the API floor a UI Automator target can run on.
+    assert "Build.VERSION.SDK_INT >= Build.VERSION_CODES.N" in accessor
+    assert "InstrumentationRegistry.getInstrumentation().uiAutomation.windows" in accessor
+    assert "import android.os.Build" in code
+    assert "accessibilityWindows()" in _fn_body(code, "windowSummary", "matchableIds")
+    assert "accessibilityWindows()" in _fn_body(code, "reportsWindows", "ensureWindowTracking")
+    # Comment lines are stripped so rewording a rationale cannot redden either gate below on its
+    # own — the accessor's own comment already names the flag-less overload, and the nesting ban
+    # further down discusses executeAndWaitForEvent by name.
+    emitted = "\n".join(ln for ln in code.splitlines() if not ln.lstrip().startswith("//"))
+    stripped_accessor = "\n".join(
+        ln for ln in accessor.splitlines() if not ln.lstrip().startswith("//")
+    )
+    # Neither of the next two is visible to the fast gate, which never compiles the output: the
+    # flag-less overload must not reappear anywhere outside this accessor's own API-level
+    # fallback, and the accessor's own import has to be emitted or the generated Kotlin will not
+    # build. (".uiAutomation." does not match ".uiAutomationFlags", so the flagged branch passes.)
+    assert emitted.count(".uiAutomation.") == 1
+    assert ".uiAutomation." in stripped_accessor
+    assert "import androidx.test.uiautomator.Configurator" in code
+
+    kick = _fn_body(code, "kickWindowTracking", "reportsWindows")
+    assert "device.pressHome()" in kick
+    # pressHome reports a missing window event by returning false, and no event is the wedge's own
+    # symptom — a dropped return would discard the single most diagnostic outcome.
+    assert "if (!device.pressHome())" in kick
+    # Nesting is banned across the whole emitted file, not just in this helper, and that breadth is
+    # deliberate: pressHome, click, and swipe each wait through UiAutomation.executeAndWaitForEvent
+    # internally, so wrapping any of them clears the queue the outer wait watches and leaves that
+    # wait able only to time out. Scoping the check to kickWindowTracking would let the identical
+    # bug land in the next helper. A future emitter with a genuine use for the call has to come
+    # here, read this, and decide deliberately.
+    assert "executeAndWaitForEvent" not in emitted
+
+
+def test_a_timed_out_launch_attempt_kicks_only_while_an_attempt_remains() -> None:
+    # A stale-but-non-empty list satisfies ensureWindowTracking() while still being one the app's
+    # window never joined, and no is-it-empty check tells those apart, so a failed attempt kicks
+    # regardless. But not after the last one: HOME would leave the AssertionError's own window
+    # summary, the hierarchy dump, and the screenshot all describing the launcher — and a healthy
+    # launcher window list argues the opposite of the failure they were collected to explain.
+    code = _gen("- name: x\n  steps:\n    - tap: { id: a }\n")
+    body = _fn_body(code, "launch", "act")
+    assert (
+        body.index('Log.w(LOG_TAG, "launch attempt $attempt saw no')
+        < body.index("if (attempt < LAUNCH_ATTEMPTS) {")
+        < body.index('kickWindowTracking("launch attempt $attempt timed out")')
+    )
+    # The per-attempt log carries the window list, not only the miss. An empty list and a stale
+    # non-empty one both reach here and call for different fixes, and the AssertionError raised
+    # after the loop reports only the state left behind once every attempt has run.
+    #
+    # Sliced to that one statement rather than searched for in the whole body, because the trailing
+    # AssertionError appends windowSummary() too — a body-wide search would pass with the
+    # per-attempt summary dropped. The slice pins no line wrap or continuation indent, so reflowing
+    # the emitted string cannot redden this on its own.
+    per_attempt = body[
+        body.index('Log.w(LOG_TAG, "launch attempt $attempt saw no') : body.index(
+            "if (attempt < LAUNCH_ATTEMPTS) {"
+        )
+    ]
+    assert "windowSummary()" in "\n".join(
+        ln for ln in per_attempt.splitlines() if not ln.lstrip().startswith("//")
     )
 
 
@@ -110,7 +276,6 @@ def test_failure_messages_name_the_windows_that_were_searched() -> None:
     # "no element matched <selector>" cannot distinguish an id that has not rendered from an app
     # whose window is absent from the accessibility tree altogether — the two need opposite fixes.
     code = _gen("- name: x\n  steps:\n    - tap: { id: a }\n")
-    assert "InstrumentationRegistry.getInstrumentation().uiAutomation.windows" in code
     assert 'root=${window.root?.packageName ?: "<null>"} $window' in code
     assert 'within ${ACT_TIMEOUT_MS}ms; windows:\\n" + windowSummary()' in code
 

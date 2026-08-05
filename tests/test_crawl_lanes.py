@@ -4,6 +4,7 @@ body so each is a named unit taking plain data, unit-testable without a Simulato
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -318,3 +319,89 @@ def test_wire_health_no_credential_leaves_clear_blocking_unwired(
         report=lambda _m: None,
     )
     assert clear_blocking is None
+
+
+# --- _build_lane: one environment per lane, shared by the launch and the reset
+
+
+def _plan_for_lane(tmp_path: Path, *, actuator: str = "xcuitest") -> object:
+    """A `_CrawlPlan` filled with the few fields `_build_lane` reads, and inert values elsewhere."""
+    from bajutsu.cli.commands.crawl import _CrawlPlan
+    from bajutsu.config import load_config, resolve
+    from bajutsu.evidence.redaction import Redactor
+    from bajutsu.platform_lifecycle import environment_for
+
+    eff = resolve(load_config("targets:\n  s:\n    bundleId: com.x\n"), "s")
+    return _CrawlPlan(
+        eff=eff,
+        actuator=actuator,
+        redactor=Redactor([]),
+        target_name="s",
+        out_dir=tmp_path,
+        screens_dir=tmp_path / "screens",
+        screenmap_path=tmp_path / "screenmap.json",
+        environment=environment_for(actuator, "UDID"),
+        udids=["UDID-A"],
+        base_map=None,
+        seed_path=None,
+        seed_ops=None,
+        max_screens=1,
+        max_steps=1,
+        prune_global=False,
+        erase=False,
+        system_alert_handling=False,
+        alert_instruction="",
+        upload_exec="",
+    )
+
+
+def test_build_lane_gives_the_launch_and_the_reset_one_environment(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The invariant the shared environment establishes: a second instance built from the raw lane udid
+    # would reset whichever device that udid still names, which stops being the device that came up as
+    # soon as the launch had to replace a vanished Simulator (the pool's own re-keying has the same
+    # cause). The reset would still succeed — against the wrong device — so nothing else notices.
+    from bajutsu.cli.commands import crawl as crawl_cmd
+
+    built: list[object] = []
+    reset_from: list[object] = []
+    # A shared order log, not just per-call lists: `crawl_reset` snapshots the environment's udid
+    # eagerly (`simctl.Env(self._udid, ...)` at call time), so building the reset ahead of the launch
+    # would bind the pre-replacement udid and pass the identity check above while resetting the wrong
+    # device — only an ordering assertion catches that class of regression.
+    order: list[str] = []
+
+    class _Env:
+        def __init__(self, udid: str) -> None:
+            self.udid = udid
+
+        def crawl_reset(self, eff: object) -> Callable[[], None]:
+            reset_from.append(self)
+            order.append("reset")
+            return lambda: None
+
+    def fake_environment_for(actuator: str, udid: str, *a: object, **k: object) -> _Env:
+        env = _Env(udid)
+        built.append(env)
+        return env
+
+    launched: list[object] = []
+
+    def fake_launch_driver(udid: str, *a: object, **kw: object) -> tuple[object, None]:
+        launched.append(kw.get("environment"))
+        order.append("launch")
+        return object(), None
+
+    monkeypatch.setattr(crawl_cmd, "environment_for", fake_environment_for)
+    monkeypatch.setattr(crawl_cmd, "launch_driver", fake_launch_driver)
+
+    plan = _plan_for_lane(tmp_path)
+    crawl_cmd._build_lane(plan, "UDID-A")  # type: ignore[arg-type]
+
+    # Exactly one environment for the lane, and the *same object* reaches the launch and the reset.
+    assert len(built) == 1
+    assert launched == [built[0]]
+    assert reset_from == [built[0]]
+    # The reset is built only after the launch has run — and may have replaced the device.
+    assert order == ["launch", "reset"]

@@ -111,7 +111,7 @@ web は子プロセスを使いません。区間証跡は Playwright ネイテ�
 - なお `adb screenrecord` は 1 回の録画を約 180 秒（プラットフォームの既定／上限であり、bajutsu が調整できるものではありません）で打ち切るので、それより長いシナリオの Android 動画はその時点で終わります。
 - deviceLog は iOS では `--predicate`（NSPredicate）でサブシステムなどに絞れます（CLI の `--log-predicate`）。`adb logcat` は絞り込みません（logcat の filterspec は別の構文で、後続の knob です）。取得はリングバッファ全体ではなくシナリオの区間を反映するよう、末尾から追従を始めます。
 - `INTERVAL_KINDS = {"video", "deviceLog", "appTrace"}`。orchestrator はこの集合で「区間 / 瞬時」を振り分けます。
-- **シナリオ全体の `video` はアプリの起動より前に開始します**。録画がアプリの起動（コールドスタート）を取りこぼさず含むようにするためです。デバイスバックエンドでは環境の `start` が録画を開始し（デバイスの boot とアプリの install の後、`simctl launch` / `am start` の前）、動いている `Interval` を `prestarted_intervals` で返します。Sink はシナリオ開始時にこの録画を新たに開始し直さず引き取り（`intervals.adopt`）、停止時に確定してファイルを `scenario.mp4` へ移します。web も同じ前倒しの取得をブラウザコンテキストの生成時に組み込みます。この前倒しは `records_video_up_front` で制御し、`video` を要求しないシナリオは何も開始しません。
+- **シナリオ全体の `video` は、Android ではアプリの起動より前に開始します**。録画がアプリの起動（コールドスタート）を取りこぼさず含むようにするためです。環境の `start` が録画を開始し（デバイスの boot とアプリの install の後、`am start` の前）、動いている `Interval` を `prestarted_intervals` で返します。Sink はシナリオ開始時にこの録画を新たに開始し直さず引き取り（`intervals.adopt`）、停止時に確定してファイルを `scenario.mp4` へ移します。web も同じ前倒しの取得をブラウザコンテキストの生成時に組み込みます。現在の iOS バックエンドである XCUITest は、代わりにオンデマンドで録画します。`xcodebuild` ランナーが起動してアプリを立ち上げるまでのあいだに録画を始める処理がどこにもないため、`prestarted_intervals` は常に空です。この前倒しの録画は `records_video_up_front` で制御します。`True` を返すのは Android と web だけです。`video` を要求しないシナリオは、いずれのバックエンドでも何も開始しません。
 
 ## Sink（証跡の出力先）
 
@@ -128,7 +128,7 @@ class EvidenceSink(Protocol):
 | `NullSink`（既定） | 何も書かない（run を副作用フリーに保つ） |
 | `FileSink(run_dir, udid, log_predicate)` | `run_dir/<step_id>/` 配下に書き出す |
 
-環境が起動前にすでに開始した録画（デバイスバックエンドの `video`）は、新たに開始せず引き取ります。Sink は停止時に確定したファイルをシナリオのディレクトリへ移します。それ以外の区間証跡は、driver が `driver_interval` provider を供給していればそこから取得し（web の Playwright ネイティブなコンソール / 動画、Android の `adb` logcat）、供給していなければ `FileSink` は simctl の経路を使い、`udid` が無ければスキップします。CLI の `run` は `FileSink(runs/<runId>, udid=..., log_predicate=...)` を使用します（[cli](cli.md#run)）。
+環境が起動前にすでに開始した録画（Android の `video`）は、新たに開始せず引き取ります。Sink は停止時に確定したファイルをシナリオのディレクトリへ移します。それ以外の区間証跡は、driver が `driver_interval` provider を供給していればそこから取得し（web の Playwright ネイティブなコンソール / 動画、Android の `adb` logcat）、供給していなければ `FileSink` は simctl の経路を使い、`udid` が無ければスキップします。CLI の `run` は `FileSink(runs/<runId>, udid=..., log_predicate=...)` を使用します（[cli](cli.md#run)）。
 
 ## 初回 wait のタイムアウト診断（BE-0231）
 

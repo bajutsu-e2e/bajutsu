@@ -155,13 +155,26 @@ Build to the Detailed design, matching the codebase's grain:
 ### 7. Review and refine the diff
 
 `make check` proves the change is green — it does **not** judge design, simplicity, or
-logic. Close that gap on the diff you just wrote, with official review tooling as
-**authoring aids**. This stays inside directive #1: they advise the author and never
+logic. Close that gap on the diff you just wrote. Lean on the repository's own review contract
+and the host's authoring aids. This stays inside directive #1: they advise the author and never
 judge — the gate (step 9) is still the only verdict, and no LLM touches the `run`/CI path.
 
-Review the diff through the host's available simplification and correctness-review
-facilities. Apply justified fixes before the gate. For a non-trivial change, use fresh,
-independent review contexts for the following lenses:
+Run the review CI runs on the PR, but locally on your diff: follow
+[`ideation`](../ideation/workflow.md) step 5's procedure against the
+[`.github/claude-review-prompt.md`](../../.github/claude-review-prompt.md) contract — read it and
+hand it to the fresh subagent as text, the same way `ideation` already does, so no review command
+is invoked and the pass runs the same way in every host. Two differences from that procedure:
+first, don't scope the staged diff to `roadmaps/`; this skill's changes land wherever the item
+needs them, so stage what you touched (`git add <paths>` — until they are staged, new files are
+invisible to `git diff` at all, the same reason `ideation` stages first) and diff exactly those
+paths from the branch point: `git diff $(git merge-base HEAD origin/main) -- <paths>`. Second,
+tell the subagent that
+steps 8 and 10 are still pending, so it doesn't spend a round flagging the item's un-flipped
+`Status` and its missing `Implementing PR` row — the `Status` flip lands at step 8, and the row is
+filled at step 10, once the PR number exists.
+
+Then review the diff through the host's simplification facility. Apply justified fixes before the
+gate. For a non-trivial change, use fresh, independent review contexts for the following lenses:
 
 - **Silent failures** — swallowed errors and weak fallbacks. This *is* "determinism
   first, fail loudly": a test tool that hides failures is worse than none.
@@ -170,6 +183,14 @@ independent review contexts for the following lenses:
 
 Weigh every suggestion against the prime directives and the surrounding code before taking it;
 drop anything that fights the codebase grain.
+
+**Don't open the PR (step 10) until this pass is clear.** Keep fixing and re-running the contract
+pass against the updated diff until it comes back empty, per `ideation` step 5's loop-until-empty
+rule and its 3-round cap. What's left standing may only be a finding you judged a false positive or
+a deliberate, already-noted trade-off — never an unresolved real finding. Route anything that calls
+for a genuine design change to the user instead of the PR, the same escalation `ideation` step 5
+uses. And if the 3rd round still returns a real finding, the cap has been reached: stop there, leave
+the PR unopened, and let the user make the call rather than looping further.
 
 ### 8. Flip the roadmap item to Implemented
 
@@ -198,9 +219,10 @@ claiming it works untested.
 
 ### 10. Auto-open a Draft PR
 
-Once step 9's `make check` is green and the branch is pushed, **open the PR yourself** — this
-skill's output is always a self-contained, gate-green change, so there is no reason to wait for a
-human to open it. This is the *one* skill that auto-opens: the BE-*authoring* skills
+Once step 7's review pass is clear, step 9's `make check` is green, and the branch is pushed,
+**open the PR yourself** — this skill's output is always a self-contained, gate-green change with
+every review finding resolved, so there is no reason to wait for a human to open it. This is the
+*one* skill that auto-opens: the BE-*authoring* skills
 ([`ideation`](../ideation/workflow.md), the proposal phase of
 [`propose-and-build`](../propose-and-build/workflow.md)) never do, because a proposal PR is a human
 checkpoint whose id is allocated only on merge (see [`AGENTS.md`](../../AGENTS.md) and the
@@ -316,5 +338,6 @@ reviewers, and every genuine decision escalates to the human.
 - [`propose-and-build`](../propose-and-build/workflow.md) — composes `ideation` + this skill for a
   small, settled item: author the proposal and implement it together in one BE-creation PR,
   reusing this skill's steps 3–9 against the still-placeholder item (CI allocates the id on merge).
-- The host's simplification, code-review, and interactive-verification facilities — the
-  authoring aids steps 7 and 9 lean on. They advise the author; only `make check` judges.
+- [`.github/claude-review-prompt.md`](../../.github/claude-review-prompt.md) — the review contract
+  step 7 applies to the diff, alongside the host's simplification and interactive-verification
+  facilities that steps 7 and 9 lean on. They advise the author; only `make check` judges.

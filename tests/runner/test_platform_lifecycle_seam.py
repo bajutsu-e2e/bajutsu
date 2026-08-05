@@ -24,6 +24,19 @@ from bajutsu.platform_lifecycle import (
 from bajutsu.scenario import Preconditions, Relaunch, Scenario
 
 
+def _capture_group_signals(monkeypatch: pytest.MonkeyPatch) -> list[tuple[int, int]]:
+    """Record the `(pgid, signal)` pairs a discard sends, without signalling this host's processes.
+
+    The runner is terminated by process group (so the XCTest-host children `xcodebuild` spawned go
+    with it), and a fake process's pid would name some *real* group on the test host — so both the
+    lookup and the signal are replaced here.
+    """
+    signalled: list[tuple[int, int]] = []
+    monkeypatch.setattr("os.getpgid", lambda pid: 4242)
+    monkeypatch.setattr("os.killpg", lambda pgid, sig: signalled.append((pgid, sig)))
+    return signalled
+
+
 def test_environment_for_selects_by_actuator() -> None:
     assert isinstance(environment_for("xcuitest", "UDID"), XcuitestEnvironment)
     assert isinstance(environment_for("playwright", "UDID"), WebEnvironment)
@@ -557,14 +570,16 @@ def test_xcuitest_environment_applies_permissions_before_the_runner_launches(
 
 
 def test_xcuitest_environment_teardown_stops_runner(monkeypatch: pytest.MonkeyPatch) -> None:
-    terminated = []
+    import signal
 
     class FakeProc:
+        pid = 777
+
         def poll(self) -> int | None:
             return None  # alive: _discard_runner then terminates it
 
         def terminate(self) -> None:
-            terminated.append(True)
+            raise AssertionError("the group signal is the terminate path, not the bare process")
 
         def wait(self, timeout: float | None = None) -> int:
             return 0
@@ -575,14 +590,142 @@ def test_xcuitest_environment_teardown_stops_runner(monkeypatch: pytest.MonkeyPa
         calls.append(args)
         return ""
 
+    signalled = _capture_group_signals(monkeypatch)
     xe = XcuitestEnvironment("xcuitest", "UDID-1", env_run=fake_run)
     xe._runner_proc = FakeProc()  # type: ignore[assignment]
 
     from bajutsu.drivers.fake import FakeDriver
 
     xe.teardown(FakeDriver([]), _eff())
-    assert len(terminated) == 1
+    # The group gets SIGTERM, then SIGKILL even though the leader exited within the grace: the
+    # leader's exit says nothing about the XCTest-host children this signals for.
+    assert signalled == [(4242, signal.SIGTERM), (4242, signal.SIGKILL)]
     assert ["xcrun", "simctl", "terminate", "UDID-1", "com.example.demo"] in calls
+
+
+def test_discard_reaps_a_leader_that_outlives_the_grace(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # An `xcodebuild` finalizing a failed run can outlive SIGTERM. The group is killed either way, so
+    # what this pins is the second `wait`: the killed leader is reaped rather than left a zombie.
+    import signal
+    import subprocess
+
+    waits: list[float | None] = []
+
+    class StubbornProc:
+        pid = 778
+
+        def poll(self) -> int | None:
+            return None
+
+        def wait(self, timeout: float | None = None) -> int:
+            waits.append(timeout)
+            if len(waits) == 1:
+                raise subprocess.TimeoutExpired("xcodebuild", timeout or 0)
+            return 0
+
+    signalled = _capture_group_signals(monkeypatch)
+    xe = XcuitestEnvironment("xcuitest", "UDID-1", env_run=lambda _a, _e=None: "")
+    xe._runner_proc = StubbornProc()  # type: ignore[assignment]
+    xe._discard_runner(warn_on_crash=False)
+    assert signalled == [(4242, signal.SIGTERM), (4242, signal.SIGKILL)]
+    assert waits == [5, 5]  # the grace, then the reap after the kill
+    assert xe._runner_proc is None
+
+
+def test_discard_sweeps_the_group_even_when_the_leader_exits_at_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The gap a leader-gated escalation leaves open: `xcodebuild` can unwind promptly on the SIGTERM
+    # while an XCTest-host child ignores it and keeps holding the device's automation session — the
+    # state the next spawn attempt must not inherit. So the SIGKILL sweep is unconditional, not an
+    # escalation the leader's prompt exit can skip.
+    import signal
+
+    class PromptProc:
+        pid = 781
+
+        def poll(self) -> int | None:
+            return None
+
+        def wait(self, timeout: float | None = None) -> int:
+            return 0  # the leader is gone within the grace; its children may not be
+
+    signalled = _capture_group_signals(monkeypatch)
+    xe = XcuitestEnvironment("xcuitest", "UDID-1", env_run=lambda _a, _e=None: "")
+    xe._runner_proc = PromptProc()  # type: ignore[assignment]
+    xe._discard_runner(warn_on_crash=False)
+    assert signalled == [(4242, signal.SIGTERM), (4242, signal.SIGKILL)]
+
+
+def test_discard_survives_a_process_group_that_is_already_gone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A discard runs on the failure path, where raising would mask the error that caused it. A group
+    # that has already been reaped must therefore be tolerated, not propagated — including on the
+    # unconditional sweep, which by design often finds nothing left to signal.
+    signals: list[str] = []
+
+    class GoneProc:
+        pid = 779
+
+        def poll(self) -> int | None:
+            return None  # still looks alive to us; the group is already gone
+
+        def terminate(self) -> None:
+            signals.append("terminate")
+            raise ProcessLookupError("gone")
+
+        def kill(self) -> None:
+            signals.append("kill")
+            raise ProcessLookupError("gone")
+
+        def wait(self, timeout: float | None = None) -> int:
+            return 0
+
+    monkeypatch.setattr("os.getpgid", lambda pid: (_ for _ in ()).throw(ProcessLookupError("gone")))
+    xe = XcuitestEnvironment("xcuitest", "UDID-1", env_run=lambda _a, _e=None: "")
+    xe._runner_proc = GoneProc()  # type: ignore[assignment]
+    xe._discard_runner(warn_on_crash=False)  # must not raise
+    # With no group id to read, both signals fall back to the process itself, and both are suppressed.
+    assert signals == ["terminate", "kill"]
+    assert xe._runner_proc is None
+
+
+@pytest.mark.parametrize(
+    "killpg_error",
+    [ProcessLookupError("gone"), PermissionError("not ours"), OSError("something else")],
+)
+def test_a_group_signal_that_does_not_land_falls_back_to_the_process(
+    monkeypatch: pytest.MonkeyPatch, killpg_error: OSError
+) -> None:
+    # Whatever the reason `killpg` did not reach the group, the signal has not been delivered — so
+    # every failure falls through to the process itself. Narrowing the fallback to the two *expected*
+    # errors would let an unexpected one leave the runner alive on a device the next attempt spawns on.
+    signals: list[str] = []
+
+    class Proc:
+        pid = 782
+
+        def poll(self) -> int | None:
+            return None
+
+        def terminate(self) -> None:
+            signals.append("terminate")
+
+        def kill(self) -> None:
+            signals.append("kill")
+
+        def wait(self, timeout: float | None = None) -> int:
+            return 0
+
+    monkeypatch.setattr("os.getpgid", lambda pid: 4242)
+    monkeypatch.setattr("os.killpg", lambda pgid, sig: (_ for _ in ()).throw(killpg_error))
+    xe = XcuitestEnvironment("xcuitest", "UDID-1", env_run=lambda _a, _e=None: "")
+    xe._runner_proc = Proc()  # type: ignore[assignment]
+    xe._discard_runner(warn_on_crash=False)
+    assert signals == ["terminate", "kill"]
 
 
 def test_spawn_cold_discards_a_never_ready_runner(
@@ -595,6 +738,7 @@ def test_spawn_cold_discards_a_never_ready_runner(
     # no retry (a second full-ceiling wait would double the worst case and blow a job's
     # timeout-minutes): exactly one attempt, its live runner discarded, then a loud failure.
     import plistlib
+    import signal
     import tempfile
 
     from bajutsu.config import XcuitestConfig
@@ -608,17 +752,16 @@ def test_spawn_cold_discards_a_never_ready_runner(
         "bajutsu.platform_lifecycle.environments.xcuitest._RUNNER_STARTUP_TIMEOUT", 0.02
     )
     monkeypatch.delenv("BAJUTSU_XCUITEST_RUNNER_LOG", raising=False)
-    terminated: list[bool] = []
+    signalled = _capture_group_signals(monkeypatch)
 
     class FakePopen:
+        pid = 780
+
         def __init__(self, cmd: list[str], **kwargs: object) -> None:
             pass
 
         def poll(self) -> int | None:
-            return None  # alive but never binds: the wait times out and discards via terminate()
-
-        def terminate(self) -> None:
-            terminated.append(True)
+            return None  # alive but never binds: the wait times out and the group is signalled
 
         def wait(self, timeout: float | None = None) -> int:
             return 0
@@ -646,7 +789,8 @@ def test_spawn_cold_discards_a_never_ready_runner(
         with pytest.raises(XcuitestChannelError, match="did not come up"):
             xe.start(eff, Preconditions())
 
-    assert len(terminated) == 1  # the one attempt's live runner was discarded, not orphaned
+    # One attempt's live runner was discarded, not orphaned: its group took SIGTERM then the sweep.
+    assert signalled == [(4242, signal.SIGTERM), (4242, signal.SIGKILL)]
     assert xe._runner_proc is None  # the last _discard_runner cleared the handle
 
 

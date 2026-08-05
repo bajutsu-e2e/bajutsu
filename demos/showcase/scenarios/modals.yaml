@@ -40,10 +40,9 @@
       capture: [video]
     - wait: { for: { id: log.submit }, timeout: 10 }
     # The Modals section's lower controls (openDelete, dialog.value) start behind the floating
-    # tab bar, so scroll them well clear before tapping — two swipes anchored on controls that
-    # stay visible, so openDelete lands in the upper screen where an instant tap is reliable.
-    - swipe: { on: { id: log.submit }, direction: up }
-    - swipe: { on: { id: log.openFilter }, direction: up }
+    # tab bar, so aim the `scroll` at the lower of the two: the step stops the moment the target's
+    # frame center is on-screen (BE-0326), which leaves openDelete clear of the bar above it.
+    - scroll: { to: { id: log.dialog.value }, direction: down }
     - wait: { for: { id: log.openDelete }, timeout: 5 }
     - assert:
         - value: { sel: { id: log.dialog.value }, equals: "none" }

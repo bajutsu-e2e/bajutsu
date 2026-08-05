@@ -273,6 +273,26 @@ class _CrawlPlan:
     upload_exec: str
 
 
+def _build_lane(plan: _CrawlPlan, udid: str) -> tuple[base.Driver, crawl_engine.Reset]:
+    """Bring one crawl lane up and pair its driver with the platform's `reset`.
+
+    The crawl `reset` (revisit a known screen from a clean start) is the platform's, behind the
+    Environment seam (BE-0009): web opens a fresh context, iOS relaunches the app.
+
+    One environment drives both the launch and the reset. Building a second from the raw lane udid
+    would reset whichever device that udid still names, which stops being the device that came up as
+    soon as the launch had to replace a vanished Simulator — the reset would then succeed against the
+    wrong device, silently.
+    """
+    env = environment_for(plan.actuator, udid)
+    driver, _readiness = launch_driver(
+        udid, plan.eff, plan.actuator, Preconditions(erase=plan.erase), environment=env
+    )
+    # After the launch, deliberately: `crawl_reset` snapshots `simctl.Env(self._udid)` eagerly, so a
+    # reset built ahead of it would bind the udid the launch may have just replaced.
+    return driver, env.crawl_reset(plan.eff)
+
+
 def _execute(plan: _CrawlPlan, guide: crawl_engine.Guide, report: Report) -> crawl_engine.ScreenMap:
     """Bring up the lanes and drive the crawl engine, returning the final screen map.
 
@@ -308,12 +328,7 @@ def _execute(plan: _CrawlPlan, guide: crawl_engine.Guide, report: Report) -> cra
         )
 
     def build_lane(u: str) -> tuple[base.Driver, crawl_engine.Reset]:
-        # The crawl `reset` (revisit a known screen from a clean start) is the platform's, behind the
-        # Environment seam (BE-0009): web opens a fresh context, iOS relaunches the app.
-        driver, _readiness = launch_driver(
-            u, plan.eff, plan.actuator, Preconditions(erase=plan.erase)
-        )
-        return driver, environment_for(plan.actuator, u).crawl_reset(plan.eff)
+        return _build_lane(plan, u)
 
     try:
         # The primary lane is built here (on the main thread): it drives bootstrap and the in-place
