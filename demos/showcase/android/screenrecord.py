@@ -21,10 +21,15 @@ from types import FrameType
 from bajutsu import adb
 from bajutsu.evidence import intervals
 
-# Bounds a multi-minute recording well inside the ~15min build+test budget (screenrecord's own
-# default is 180s) and keeps the mp4 small enough for /sdcard and the artifact upload (screenrecord's
-# default bit rate is 20 Mbps at the AVD's full 1080x2400 panel).
-_TIME_LIMIT_S = 900
+# `screenrecord`'s 180s cap is a hard platform ceiling, not a default it clamps to: AOSP's
+# screenrecord.cpp rejects any --time-limit above kMaxTimeLimitSec (180) with an error instead of
+# capping it, so passing a larger value would make every recording attempt fail outright rather than
+# just record less (docs/evidence.md documents the same 180s ceiling for `bajutsu run`'s own Android
+# video evidence). 180 here is the same value omitting the flag would produce; it is explicit so a
+# future reader knows the ceiling was hit deliberately, not overlooked. --size/--bit-rate keep the
+# mp4 small enough for /sdcard and the artifact upload (screenrecord's own defaults are 20 Mbps at the
+# AVD's full 1080x2400 panel).
+_TIME_LIMIT_S = 180
 _SIZE = "540x1200"
 _BIT_RATE = 2_000_000
 

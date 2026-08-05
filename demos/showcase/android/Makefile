@@ -340,16 +340,22 @@ e2e-codegen:
 	# poll-then-pull finalize `bajutsu run` uses, in one place instead of a shell reimplementation that
 	# had already drifted from it (PR #1493 review). `demos/showcase/android/screenrecord.py` wraps
 	# that call; backgrounded here and stopped by SIGINT after Gradle exits, the same shape
-	# `net_stub.py` above uses for its host-side helper. `|| true` on every teardown step so a failed
-	# recording/pull/cleanup can never mask (or replace) the real test exit code, which is captured
-	# and re-raised via `exit "$$rc"` at the end.
-	# Build the APKs *before* the recorder starts: the recording is capped at 900s (180s if unset),
-	# while this job budgets ~15min for build+test, so a recording spanning the build would end before
-	# the install+test window the flake lives in. screenrecord.py's --size/--bit-rate keep a multi-
-	# minute mp4 small enough for /sdcard and the artifact upload (the default is 20 Mbps at full
-	# 1080x2400). The mp4 is always pulled on stop, then discarded here on a green run — matching the
-	# failure-only policy the diagnostics above follow — rather than skipping the pull itself, so the
-	# finalize/pull/cleanup stays one unconditional call into screenrecord.py.
+	# `net_stub.py` above uses for its host-side helper. The stop/pull/cleanup lives in a
+	# `trap ... EXIT INT TERM` (the `net_stub.py` `trap` above, extended past plain cleanup) rather
+	# than only inline after the Gradle call, so the job's own `timeout-minutes: 25` firing on a real
+	# hang — the case this recording exists to diagnose — still finalizes and pulls the mp4 instead of
+	# leaving the recipe's teardown lines unreached. `rc` defaults to 1 so a trap-triggered finalize
+	# (outcome unknown) keeps the video, the same as an explicit test failure. `|| true` on every
+	# teardown step so a failed recording/pull/cleanup can never mask (or replace) the real test exit
+	# code, which is captured and re-raised via `exit "$$rc"` at the end.
+	# Build the APKs *before* the recorder starts: `screenrecord`'s 180s cap is a hard platform ceiling
+	# (screenrecord.py explains why 900 would not work), so the recorder must span the install+test
+	# window itself rather than a window that also includes the build — a recording starting at build
+	# time would already be over by the time the flake's window arrives. screenrecord.py's
+	# --size/--bit-rate keep the 180s mp4 small enough for /sdcard and the artifact upload (the
+	# default is 20 Mbps at full 1080x2400). The mp4 is always pulled on stop, then discarded here on a
+	# green run — matching the failure-only policy the diagnostics above follow — rather than skipping
+	# the pull itself, so the finalize/pull/cleanup stays one unconditional call into screenrecord.py.
 	# Suppress the system's error dialogs on this lane too, as every other on-device target here
 	# does (ANR_QUIET above): the transient launcher ANR dialog this recording exists to diagnose
 	# is exactly one of the dialogs that setting stops being posted at all.
@@ -360,11 +366,16 @@ e2e-codegen:
 	uv run python3 demos/showcase/android/screenrecord.py $(SERIAL) \
 		$(HERE)/compose/build/outputs/screenrecord/uiautomator-codegen.mp4 & \
 	rec_pid=$$!; \
+	rc=1; \
+	finalize_recording() { \
+		trap - EXIT INT TERM; \
+		kill -INT "$$rec_pid" 2>/dev/null || true; \
+		adb shell 'pkill -INT -x screenrecord' >/dev/null 2>&1 || true; \
+		wait "$$rec_pid" || true; \
+		[ "$$rc" -eq 0 ] && rm -f $(HERE)/compose/build/outputs/screenrecord/uiautomator-codegen.mp4; \
+	}; \
+	trap finalize_recording EXIT INT TERM; \
 	( cd $(HERE) && $(GRADLEW) :compose:connectedA11yDebugAndroidTest ); rc=$$?; \
-	kill -INT "$$rec_pid" 2>/dev/null || true; \
-	adb shell 'pkill -INT -x screenrecord' >/dev/null 2>&1 || true; \
-	wait "$$rec_pid" || true; \
-	[ "$$rc" -eq 0 ] && rm -f $(HERE)/compose/build/outputs/screenrecord/uiautomator-codegen.mp4; \
 	exit "$$rc"
 
 clean:
