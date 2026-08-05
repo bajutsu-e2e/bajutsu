@@ -329,7 +329,28 @@ e2e-codegen:
 	# window list into the directory Gradle names with `additionalTestOutputDir` and copies back into
 	# compose/build/outputs/connected_android_test_additional_output — no `adb pull` here, because
 	# `adb` cannot read /sdcard/Android/data/<package> from Android 11 on. android-e2e.yml uploads it.
-	cd $(HERE) && $(GRADLEW) :compose:connectedA11yDebugAndroidTest
+	#
+	# This lane has been observed flaky (a launcher ANR dialog transiently stealing window focus so
+	# the app's own window drops out of the accessibility tree, or the tree reporting empty right
+	# after launch — see e2e_changes/CI history); the still/XML diagnostics above show the state at
+	# the moment of failure but not how it got there. Screen-record the whole install+test window
+	# alongside it, the CI twin of `bajutsu/evidence/intervals.py:start_screenrecord` (same SIGINT-then
+	# -pgrep-poll-then-pull finalize sequence, reimplemented in shell here since this lane runs no
+	# bajutsu runtime at test time). One shell instance: the recorder is backgrounded and its PID kept
+	# so it can be stopped after gradle exits — a plain multi-line recipe would run each line in its
+	# own subshell and lose that PID. `|| true` on every teardown step so a failed
+	# recording/pull/cleanup can never mask (or replace) the real test exit code, which is captured
+	# and re-raised via `exit "$$rc"` at the end.
+	adb shell screenrecord /sdcard/uiautomator-codegen.mp4 & \
+	rec_pid=$$!; \
+	( cd $(HERE) && $(GRADLEW) :compose:connectedA11yDebugAndroidTest ); rc=$$?; \
+	kill -INT "$$rec_pid" 2>/dev/null || true; \
+	for i in $$(seq 1 60); do adb shell pgrep -x screenrecord >/dev/null 2>&1 || break; sleep 2; done; \
+	mkdir -p $(HERE)/compose/build/outputs/screenrecord; \
+	adb pull /sdcard/uiautomator-codegen.mp4 \
+		$(HERE)/compose/build/outputs/screenrecord/uiautomator-codegen.mp4 >/dev/null 2>&1 || true; \
+	adb shell rm -f /sdcard/uiautomator-codegen.mp4 || true; \
+	exit "$$rc"
 
 clean:
 	rm -rf $(HERE)/build $(HERE)/compose/build $(HERE)/views/build $(HERE)/.gradle

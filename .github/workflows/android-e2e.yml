@@ -696,9 +696,12 @@ jobs:
       # `androidTest-results/` carries Gradle's own per-test logcat;
       # `connected_android_test_additional_output/` carries the `codegen-diagnostics/` the generated
       # test dumps on failure — the window hierarchy, a screenshot, and the accessibility window list
-      # with the ids the selector could actually be matched against. A timed-out wait reports only
-      # that nothing matched, so without these a failure can be investigated only by re-running it
-      # until it happens again.
+      # with the ids the selector could actually be matched against. `screenrecord/` (added for this
+      # lane's known flake, a launcher ANR dialog transiently stealing window focus) is a full-motion
+      # recording of the install+test window, `adb pull`ed by the Makefile's `e2e-codegen` target
+      # itself (best-effort — `if-no-files-found: ignore` covers a failed pull the same as the other
+      # paths here). A timed-out wait reports only that nothing matched, so without these a failure
+      # can be investigated only by re-running it until it happens again.
       - name: Upload androidTest report
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
@@ -708,6 +711,7 @@ jobs:
             demos/showcase/android/compose/build/reports/androidTests/
             demos/showcase/android/compose/build/outputs/androidTest-results/
             demos/showcase/android/compose/build/outputs/connected_android_test_additional_output/
+            demos/showcase/android/compose/build/outputs/screenrecord/
           if-no-files-found: ignore
 
   # Single required status check for the Android lane — the Android twin of ios-e2e.yml's `E2E`.
