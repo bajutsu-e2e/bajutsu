@@ -1283,7 +1283,14 @@ class AdbDriver(CoordinateTreeDriver):
         no adb analogue, so it returns None.
         """
         if kind == "video":
-            return intervals.start_screenrecord(self.serial, path, run=self._run)
+            # Unreachable through the device pool today — `AndroidEnvironment` always prestarts
+            # (`records_video_up_front` is True), so the sink adopts that running interval instead of
+            # reaching this on-demand path. Confirmed anyway, for a caller that reaches this driver
+            # directly: an on-demand start deserves the same true_start confirmation the prestarted
+            # path gets, not a silent regression to the pre-fix drift.
+            return intervals.start_screenrecord(
+                self.serial, path, run=self._run, confirm_started=True
+            )
         if kind == "deviceLog":
             return intervals.start_logcat(self.serial, path)
         return None

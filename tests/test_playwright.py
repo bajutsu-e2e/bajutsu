@@ -1124,6 +1124,17 @@ def test_driver_interval_video_finalizes_to_target(tmp_path: Any) -> None:
     assert not src.exists()
 
 
+def test_driver_interval_video_carries_true_start(tmp_path: Any) -> None:
+    # Context-creation latency is negligible next to a subprocess spawn's, so the web actuator
+    # needs no confirmation poll: stamping right after new_context() returns is accurate enough.
+    src = tmp_path / "raw.webm"
+    src.write_bytes(b"vid")
+    drv, _ = _video_driver(tmp_path / "vtmp", src)
+    interval = drv.driver_interval("video", tmp_path / "out" / "scenario.mp4")
+    assert interval is not None
+    assert isinstance(interval.true_start, float)
+
+
 def test_driver_interval_video_none_without_recording(tmp_path: Any) -> None:
     # No record_video_dir on this lane (video not requested): no video interval.
     drv, _ = _driver([])

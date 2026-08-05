@@ -136,7 +136,7 @@ def manifest_dict(
         "ok": all(r.ok for r in results),
         "backend": _run_backend(results),
         "sourceName": source_name,
-        "scenarios": [asdict(r) for r in results],
+        "scenarios": [_scenario_dict(r) for r in results],
     }
     if provenance:
         manifest["provenance"] = provenance
@@ -146,6 +146,20 @@ def manifest_dict(
     if (matrix := _matrix(results)) is not None:
         manifest["matrix"] = matrix
     return manifest
+
+
+def _scenario_dict(r: RunResult) -> dict[str, object]:
+    """`asdict(r)`, minus `video_anchor_s`.
+
+    `video_anchor_s` is a raw `time.monotonic()` instant — a same-process handoff from
+    `run_scenario` to the pipeline's network-timestamp calculation, meaningful only during the run
+    that produced it. Every value derived from it (`started_at`, network `startedAt`) is already a
+    relative offset and carries the real information; the absolute instant itself would be noise
+    (or actively misleading) once persisted here.
+    """
+    d = asdict(r)
+    d.pop("video_anchor_s", None)
+    return d
 
 
 def _details(r: RunResult) -> str:

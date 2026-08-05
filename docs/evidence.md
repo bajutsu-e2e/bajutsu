@@ -147,6 +147,22 @@ app's os_log subsystem, paired into timed intervals by `parse_app_trace`.)
   The up-front
   behavior is gated by `records_video_up_front`, `True` for Android and web and `False` for
   XCUITest and the fake backend; a scenario that requests no `video` starts none regardless.
+- **A confirmed start time corrects the report's step/network timestamps to the video's real
+  origin, not the moment recording was merely requested.** `start_video` (iOS) and
+  `start_screenrecord` (Android), passed `confirm_started=True` at their production call sites,
+  poll a real signal after spawning — iOS the output file's first written byte, Android the
+  device-side process appearing (a weaker guarantee: a process existing is not proof its encoder is
+  yet emitting frames, but still real and earlier than a guess) — and store the confirmed
+  `time.monotonic()` instant on `Interval.true_start`. `intervals.adopt` carries `true_start`
+  forward unchanged when it relocates a prestarted interval, so Android's confirmation (made before
+  `adopt` even runs) is not lost. The web actuator stamps `true_start` right after `new_context()`
+  returns, with no poll: a browser context's creation latency is negligible next to a subprocess
+  spawn's. `run_scenario` resolves `video_start_offset = true_start - scenario_start` once per
+  scenario and applies it to every step's `started_at` (and, via `RunResult.video_anchor_s`, to
+  every network exchange's `startedAt`) — see [reporting](reporting.md#manifestjson) for what those
+  fields mean to a report reader. A poll that never confirms leaves `true_start` at `None`, so the
+  offset is `0.0` and the timestamp is exactly what it would have been without this correction —
+  never a guessed number.
 
 ## Sinks (where evidence goes)
 

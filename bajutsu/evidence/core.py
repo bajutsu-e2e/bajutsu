@@ -358,7 +358,7 @@ class FileSink:
         """Start one simctl interval capture (iOS), or None for a kind this lane does not record."""
         assert self.udid is not None
         if kind == "video":
-            return intervals.start_video(self.udid, target)
+            return intervals.start_video(self.udid, target, confirm_started=True)
         if kind == "deviceLog":
             return intervals.start_device_log(self.udid, target, self.log_predicate)
         if kind == "appTrace" and self.log_subsystem:

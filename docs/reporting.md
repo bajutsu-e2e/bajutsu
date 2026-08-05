@@ -208,7 +208,14 @@ it `POST`s `/api/approve` and so works only when the report is opened through `b
 hidden for a report opened from disk). The CLI twin is [`bajutsu approve`](cli.md#approve).
 
 Failing rows have a red background. Clicking a step seeks the recording to that step **without
-auto-playing** (a paused video stays paused; a playing one keeps playing). Clicking a step's
+auto-playing** (a paused video stays paused; a playing one keeps playing) — the seek target is each
+step's `started_at`, anchored to the video's confirmed or best-known real start rather than the raw
+moment the scenario's step loop began, so the seek lands on what the row actually shows
+([evidence](evidence.md#interval-evidence-video--devicelog--apptrace)). One visible consequence: for a
+video-capturing Android or web scenario, a step's `started_at` (and the **steps** table's `at`
+column) can exceed the scenario's own `duration_s`, because the two measure different things on
+purpose — the video's timeline starts before the run's own step loop does, while `duration_s`
+measures the loop itself. That is expected, not a sign either number is wrong. Clicking a step's
 screenshot opens a full-size lightbox; **← / →** (or the on-screen arrows) then walk through every
 screenshot in the run, across scenario boundaries, with a caption showing the scenario, step, and
 position. The run's actuator backend is shown as a `driver: <backend>` chip in the header and a small

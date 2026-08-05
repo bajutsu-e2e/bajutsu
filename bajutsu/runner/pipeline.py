@@ -65,7 +65,7 @@ _logger = logging.getLogger(__name__)
 
 def _write_network(
     timed: list[tuple[NetworkExchange, float]],
-    scenario_start: float,
+    video_anchor_s: float,
     run_dir: Path,
     sid: str,
     redactor: Redactor,
@@ -73,9 +73,10 @@ def _write_network(
 ) -> Artifact | None:
     """Write a scenario's observed exchanges to <sid>/network.json (redacted).
 
-    Each exchange gets a `startedAt` offset (seconds from the scenario's start, the same
-    frame as a step's `started_at`) so the report can place it on the timeline: the
-    receive time is ≈ completion, so the start is `received - scenario_start - duration`.
+    Each exchange gets a `startedAt` offset (seconds from `video_anchor_s`, the same origin a
+    step's `started_at` is relative to — `RunResult.video_anchor_s`) so the report can place it on
+    the timeline: the receive time is ≈ completion, so the start is
+    `received - video_anchor_s - duration`.
     """
     if not timed:
         return None
@@ -83,7 +84,7 @@ def _write_network(
     for ex, received in timed:
         d = ex.model_dump(by_alias=True, exclude_none=True)
         d["startedAt"] = round(
-            max(0.0, received - scenario_start - (ex.duration_ms or 0.0) / 1000.0), 3
+            max(0.0, received - video_anchor_s - (ex.duration_ms or 0.0) / 1000.0), 3
         )
         data.append(redactor.redact_exchange(d))
     text = json.dumps(data, ensure_ascii=False, indent=2)
@@ -327,8 +328,6 @@ class _ScenarioRunner:
             self._maybe_emit_score(i, lz.driver)
             if lz.collector is not None:
                 lz.collector.clear()
-            # t0 after launch, so exchange offsets share the step timeline's origin.
-            scenario_start = time.monotonic()
             # Build visual context for scenario-level visual assertions (expect).
             vc: VisualContext | None = None
             if self.baselines_dir is not None and self.run_dir is not None:
@@ -396,7 +395,7 @@ class _ScenarioRunner:
             if lz.collector is not None and self.run_dir is not None:
                 art = _write_network(
                     lz.collector.snapshot_timed(),
-                    scenario_start,
+                    result.video_anchor_s,
                     self.run_dir,
                     sid,
                     self.redactor,

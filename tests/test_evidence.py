@@ -259,9 +259,20 @@ def test_filesink_dispatches_adb_driver_intervals_end_to_end(
     monkeypatch.setattr(intervals, "_SubprocessProc", lambda argv, stdout_path: _FakeProc())
 
     ran: list[list[str]] = []
+    pgrep_calls = 0
 
     def run(argv: list[str]) -> str:
+        nonlocal pgrep_calls
         ran.append(argv)
+        if "pgrep" in " ".join(argv):
+            pgrep_calls += 1
+            # The video branch's start/stop confirmation probes share this one pgrep check: call 1
+            # is the pre-spawn baseline (nothing running yet), call 2 is the confirm-started poll
+            # (our own process appears — fast, no real wait), call 3+ is the stop-confirmation poll
+            # (it has already exited, so the pull can proceed without waiting out the finalize
+            # timeout). A response that stayed "running" past call 2 would otherwise be
+            # indistinguishable from a real hang and burn `_VIDEO_FINALIZE_TIMEOUT` (120s).
+            return "1234\n" if pgrep_calls == 2 else ""
         return ""
 
     sink = FileSink(tmp_path, udid="SER", driver_interval=AdbDriver("SER", run=run).driver_interval)
@@ -272,6 +283,30 @@ def test_filesink_dispatches_adb_driver_intervals_end_to_end(
     assert {(a.kind, a.provider) for a in arts} == {("video", "adb"), ("deviceLog", "adb")}
     # The video's pull + rm rode the driver's injected run (device-side capture pulled to the host).
     assert any("pull" in c for c in ran) and any("rm" in c for c in ran)
+
+
+def test_filesink_confirms_ios_on_demand_video_start(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The real seam for iOS: a udid set and no driver_interval routes through
+    # `_start_simctl_interval` -> `intervals.start_video(..., confirm_started=True)`. This is the
+    # item's primary motivation (the on-demand path whose confirmation wait iOS's fix relies on),
+    # so it must be exercised through the sink, not only by calling `start_video` directly.
+    from bajutsu.evidence import intervals
+
+    class _FakeProc:
+        def __init__(self, argv: list[str], stdout_path: Path | None) -> None:
+            Path(argv[-1]).write_bytes(b"clip")  # simulate recordVideo's first written byte
+
+        def stop(self, sig: int, timeout: float) -> None:
+            return None
+
+    monkeypatch.setattr(intervals, "_SubprocessProc", _FakeProc)
+
+    sink = FileSink(tmp_path, udid="UDID")
+    started = sink.start_scenario_intervals("00-s", ["video"])
+    assert len(started) == 1 and started[0].kind == "video"
+    assert started[0].true_start is not None
 
 
 def test_filesink_adopts_a_prestarted_video_instead_of_starting_one(tmp_path: Path) -> None:

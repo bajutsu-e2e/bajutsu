@@ -398,6 +398,38 @@ def _run_step_body(
         return False, str(e), [], None
 
 
+def _resolve_video_start_offset(
+    video_interval: intervals.Interval | None, scenario_start: float
+) -> float:
+    """The correction every step's and network exchange's report timestamp is offset by.
+
+    `video_interval.true_start` (confirmed or driver-stamped) may precede or follow
+    `scenario_start` — a prestarted device recording begins before it, an on-demand iOS
+    recording's confirmation wait completes just before it — so this offset, resolved once here,
+    corrects every timestamp to the video's real origin instead of the moment `scenario_start`
+    happened to be stamped. `0.0` (no correction) both when no confirmed `true_start` exists and
+    when the resolved offset is positive: a video starting *after* `scenario_start` is not a case
+    this fix's design expects to occur in production (see the item's Motivation), so treating one
+    as real would silently clamp every early step's `started_at` to `0.0` via `max(0.0, ...)`
+    rather than surface whatever produced it (a stale/reused interval, a clock mismatch).
+    """
+    if video_interval is None or video_interval.true_start is None:
+        return 0.0
+    offset = video_interval.true_start - scenario_start
+    if offset > 0:
+        _logger.warning(
+            "video true_start (%s) is after scenario_start (%s) for kind=%s provider=%s; this is "
+            "not expected in production, so the video-sync correction is skipped for this "
+            "scenario rather than trusted",
+            video_interval.true_start,
+            scenario_start,
+            video_interval.kind,
+            video_interval.provider,
+        )
+        return 0.0
+    return offset
+
+
 def run_scenario(
     driver: base.Driver,
     scenario: Scenario,
@@ -442,7 +474,9 @@ def run_scenario(
     expect_alerts: list[AlertEvent] = []
     failure: str | None = None
     artifacts: list[Artifact] = []
-    scenario_start = clock.now()  # ~video start; step offsets are measured from here
+    scenario_start = clock.now()  # step offsets are measured from here, corrected below
+    video_interval = next((r for r in recordings if r.kind == "video"), None)
+    video_start_offset = _resolve_video_start_offset(video_interval, scenario_start)
     # Mutable bindings: extract steps populate vars.* during the run; scenario-level
     # expect sees the accumulated values.
     live_bindings: dict[str, str] = dict(bindings or {})
@@ -457,6 +491,7 @@ def run_scenario(
             wants_screen_changed,
             outcomes,
             scenario_start,
+            video_start_offset,
             sid,
             network,
             relaunch,
@@ -504,6 +539,7 @@ def run_scenario(
         artifacts=artifacts,
         backend=getattr(driver, "name", ""),
         duration_s=max(0.0, clock.now() - scenario_start),
+        video_anchor_s=scenario_start + video_start_offset,
         expect_alerts=expect_alerts,
     )
 
@@ -727,6 +763,7 @@ class _LoopConfig:
     alert_guard: AlertGuardConfig | None
     wants_screen_changed: bool
     scenario_start: float
+    video_start_offset: float
     sid: str
     network: NetworkSource
     relaunch: RelaunchFn | None
@@ -780,7 +817,9 @@ class _StepRunner:
         if self.cfg.progress is not None:
             self.cfg.progress(f"{self.cfg.sid} · step {idx + 1}: {_step_label(step, kind)}")
         start = self.cfg.clock.now()
-        outcome.started_at = max(0.0, start - self.cfg.scenario_start)
+        outcome.started_at = max(
+            0.0, (start - self.cfg.scenario_start) - self.cfg.video_start_offset
+        )
 
         if kind == "if_":
             return self._handle_if(step, active_driver, idx, kind, outcome, start)
@@ -1197,6 +1236,7 @@ def _run_steps(
     wants_screen_changed: bool,
     outcomes: list[StepOutcome],
     scenario_start: float,
+    video_start_offset: float,
     sid: str,
     network: NetworkSource,
     relaunch: RelaunchFn | None = None,
@@ -1225,6 +1265,7 @@ def _run_steps(
         alert_guard=alert_guard,
         wants_screen_changed=wants_screen_changed,
         scenario_start=scenario_start,
+        video_start_offset=video_start_offset,
         sid=sid,
         network=network,
         relaunch=relaunch,

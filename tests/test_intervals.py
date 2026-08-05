@@ -76,6 +76,65 @@ def test_start_video_lifecycle() -> None:
     assert proc.stopped_timeout == intervals._VIDEO_FINALIZE_TIMEOUT
 
 
+def test_start_video_confirm_started_false_by_default_leaves_true_start_none() -> None:
+    interval = intervals.start_video("UDID", Path("/tmp/v.mp4"), spawn=lambda argv, out: FakeProc())
+    assert interval.true_start is None  # no poll attempted; every existing caller is unaffected
+
+
+def test_start_video_confirm_started_sets_true_start_once_file_grows(tmp_path: Path) -> None:
+    # recordVideo writes progressively to its output path; spawn writing the first byte proves the
+    # confirmation is a real condition wait on that write, not a fixed sleep — it returns on the
+    # very first poll, with no monkeypatched clock needed.
+    path = tmp_path / "v.mp4"
+
+    def spawn(argv: list[str], out: Path | None) -> FakeProc:
+        path.write_bytes(b"clip")  # simulates recordVideo's first written byte
+        return FakeProc()
+
+    interval = intervals.start_video("UDID", path, spawn=spawn, confirm_started=True)
+    assert isinstance(interval.true_start, float)
+
+
+def test_await_video_file_growing_ignores_bytes_left_by_a_stale_retry(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # A crash-retry reuses the same scenario id and thus the same target path (BE-0049): a finalized
+    # earlier attempt's mp4 can already sit at `path` when this attempt spawns. Without a pre-spawn
+    # baseline, the very first poll would misread those leftover bytes as this attempt's own first
+    # frame — confirming a start that never happened. The size must grow *past* what was already
+    # there (the baseline `start_video` captures before spawning), not just be non-zero.
+    monkeypatch.setattr(intervals.time, "sleep", lambda _s: None)
+    path = tmp_path / "v.mp4"
+    path.write_bytes(b"leftover from a finalized earlier attempt")
+    baseline = intervals._file_size(path)
+    # This attempt's recordVideo never actually writes (e.g. the target already exists) — the file
+    # stays exactly at the baseline size throughout the poll.
+    result = intervals._await_video_file_growing(path, baseline, timeout=0.01, poll=0.001)
+    assert result is None
+
+
+def test_await_video_file_growing_confirms_growth_past_a_nonzero_baseline(tmp_path: Path) -> None:
+    path = tmp_path / "v.mp4"
+    path.write_bytes(b"old")
+    baseline = intervals._file_size(path)
+    path.write_bytes(b"old + new frame")
+    result = intervals._await_video_file_growing(path, baseline)
+    assert isinstance(result, float)
+
+
+def test_await_video_file_growing_warns_on_timeout(tmp_path: Path, monkeypatch, caplog) -> None:
+    # A file that never grows (recordVideo never wrote a frame) must not hang the caller — the poll
+    # gives up at the deadline and leaves true_start unconfirmed, with a warning so a scenario whose
+    # video never started is diagnosable rather than silently mistimed.
+    monkeypatch.setattr(intervals.time, "sleep", lambda _s: None)
+    with caplog.at_level("WARNING"):
+        result = intervals._await_video_file_growing(
+            tmp_path / "never-written.mp4", 0, timeout=0.01, poll=0.001
+        )
+    assert result is None
+    assert any("produced no new bytes" in r.message for r in caplog.records)
+
+
 def test_adopt_finalizes_then_relocates_to_target(tmp_path: Path) -> None:
     # A device backend starts recording before launch into a temp path; the sink adopts the running
     # interval and, on stop, finalizes it (real signal/timeout) and moves the file to the artifact
@@ -260,6 +319,110 @@ def test_await_screenrecord_stopped_warns_on_timeout(monkeypatch, caplog) -> Non
     with caplog.at_level("WARNING"):
         intervals._await_screenrecord_stopped("SER", run, timeout=0.01, poll=0.001)
     assert any("still running" in r.message for r in caplog.records)
+
+
+def test_start_screenrecord_confirm_started_false_by_default_leaves_true_start_none(
+    tmp_path: Path,
+) -> None:
+    def spawn(argv: list[str], stdout_path: Path | None) -> FakeProc:
+        return FakeProc()
+
+    def run(argv: list[str]) -> str:
+        return ""
+
+    interval = intervals.start_screenrecord("SER", tmp_path / "scenario.mp4", spawn=spawn, run=run)
+    assert interval.true_start is None  # no poll attempted; every existing caller is unaffected
+
+
+def test_start_screenrecord_confirm_started_sets_true_start_on_first_poll(tmp_path: Path) -> None:
+    # A new pid on the very first poll (none was present at the pre-spawn baseline) proves the
+    # confirmation is a real condition wait on the device-side process, not a fixed sleep — no
+    # monkeypatched clock needed.
+    def spawn(argv: list[str], stdout_path: Path | None) -> FakeProc:
+        return FakeProc()
+
+    calls = 0
+
+    def run(argv: list[str]) -> str:
+        nonlocal calls
+        calls += 1
+        return "" if calls == 1 else "1234"  # baseline: nothing yet; then: our own process appears
+
+    interval = intervals.start_screenrecord(
+        "SER", tmp_path / "scenario.mp4", spawn=spawn, run=run, confirm_started=True
+    )
+    assert isinstance(interval.true_start, float)
+
+
+def test_start_screenrecord_confirm_started_ignores_a_leaked_pid_from_a_stale_retry(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # A leaked screenrecord from a crash-retry (BE-0049), or any other process already running on
+    # the same device, must not confirm a start that never happened — only a *new* pid, absent from
+    # the pre-spawn baseline, counts.
+    monkeypatch.setattr(intervals.time, "sleep", lambda _s: None)
+
+    def spawn(argv: list[str], stdout_path: Path | None) -> FakeProc:
+        return FakeProc()
+
+    def run(argv: list[str]) -> str:
+        return "1234"  # the same leaked pid, before spawn and on every later poll
+
+    interval = intervals.start_screenrecord(
+        "SER", tmp_path / "scenario.mp4", spawn=spawn, run=run, confirm_started=True
+    )
+    assert interval.true_start is None
+
+
+def test_await_screenrecord_started_warns_on_timeout(monkeypatch, caplog) -> None:
+    # If the device-side process never appears, the wait gives up at the deadline rather than hang,
+    # leaving true_start unconfirmed — with a warning so a scenario whose video never started is
+    # diagnosable rather than silently mistimed.
+    monkeypatch.setattr(intervals.time, "sleep", lambda _s: None)
+
+    def run(argv: list[str]) -> str:
+        return ""  # never reports as running
+
+    with caplog.at_level("WARNING"):
+        result = intervals._await_screenrecord_started(
+            "SER", run, frozenset(), timeout=0.01, poll=0.001
+        )
+    assert result is None
+    assert any("did not appear" in r.message for r in caplog.records)
+
+
+def test_await_screenrecord_started_retries_past_a_transient_probe_error(monkeypatch) -> None:
+    # A transient adb hiccup (device offline for one poll, an adb server restart) must not abort
+    # the whole wait the way `_await_screenrecord_stopped` deliberately does — nothing here needs to
+    # avoid hanging a pull, so retrying to the deadline is strictly more resilient.
+    monkeypatch.setattr(intervals.time, "sleep", lambda _s: None)
+    replies = iter([OSError("adb gone"), "1234"])  # one transient failure, then the real pid
+
+    def run(argv: list[str]) -> str:
+        reply = next(replies)
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
+
+    result = intervals._await_screenrecord_started("SER", run, frozenset(), timeout=1.0, poll=0.001)
+    assert isinstance(result, float)
+
+
+def test_await_screenrecord_started_warns_on_persistent_probe_error(monkeypatch, caplog) -> None:
+    # A probe that never recovers must still give up at the deadline rather than hang forever, with
+    # the same "did not appear" disclosure a plain timeout gets — the caller cannot tell "adb is
+    # broken" from "the process never started" apart anyway, and both leave the scenario uncorrected.
+    monkeypatch.setattr(intervals.time, "sleep", lambda _s: None)
+
+    def run(argv: list[str]) -> str:
+        raise OSError("adb gone")
+
+    with caplog.at_level("WARNING"):
+        result = intervals._await_screenrecord_started(
+            "SER", run, frozenset(), timeout=0.01, poll=0.001
+        )
+    assert result is None
+    assert any("did not appear" in r.message for r in caplog.records)
 
 
 def test_start_screenrecord_pull_failure_surfaces(tmp_path: Path) -> None:

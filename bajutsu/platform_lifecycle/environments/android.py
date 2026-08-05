@@ -247,6 +247,7 @@ class AndroidEnvironment:
             record_video_dir / f"prestart-{self._serial}.mp4",
             spawn=self._spawn,
             run=self._run,
+            confirm_started=True,
         )
 
     def _stop_prestarted_video(self) -> None:
