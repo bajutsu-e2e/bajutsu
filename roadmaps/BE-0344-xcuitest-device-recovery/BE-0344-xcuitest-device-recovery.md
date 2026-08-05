@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-xcuitest-device-recovery-ja.md)
+**English** · [日本語](BE-0344-xcuitest-device-recovery-ja.md)
 
-# BE-XXXX — Repair the Simulator between XCUITest cold-spawn retry attempts
+# BE-0344 — Repair the Simulator between XCUITest cold-spawn retry attempts
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-xcuitest-device-recovery.md) |
+| Proposal | [BE-0344](BE-0344-xcuitest-device-recovery.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0344") |
 | Implementing PR | [#1481](https://github.com/bajutsu-e2e/bajutsu/pull/1481) |
 | Topic | Platform support |
 | Related | [BE-0319](../BE-0319-xcuitest-cold-spawn-resilience/BE-0319-xcuitest-cold-spawn-resilience.md), [BE-0218](../BE-0218-e2e-simulator-flaky-readiness-actuation/BE-0218-e2e-simulator-flaky-readiness-actuation.md), [BE-0291](../BE-0291-xcuitest-runner-reuse-across-scenarios/BE-0291-xcuitest-runner-reuse-across-scenarios.md) |
