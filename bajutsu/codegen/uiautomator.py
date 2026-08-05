@@ -686,7 +686,8 @@ class _UiAutomatorGen:
             "  private fun ensureWindowTracking() {",
             "    for (attempt in 1..TRACKING_KICK_ATTEMPTS) {",
             "      if (reportsWindows()) return",
-            '      kickWindowTracking("no accessibility windows reported (attempt $attempt)")',
+            '      kickWindowTracking("no accessibility windows reported '
+            + '(pre-launch kick $attempt)")',
             "    }",
             "    // The last kick would otherwise go unchecked. This reads once more only so a"
             + " failure",
