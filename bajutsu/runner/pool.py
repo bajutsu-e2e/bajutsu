@@ -397,7 +397,9 @@ def device_pool(
                 # env on above, so a kept-warm env is exactly one still held in `warm` (BE-0291). Runs
                 # from `run_one`'s `finally`, so a teardown hiccup (an already-gone app/device) must
                 # not replace the scenario's own result or skip `free.put(udid)` below — the same
-                # leak-on-`mid_run=False` risk as this file's other four teardown sites (BE-0342).
+                # leak-on-`mid_run=False` risk as the actuator switch above and the failed-lease
+                # site below (`shutdown()`'s two loops take `mid_run=False` instead — they own the
+                # deferred `raise defect` that finishes the cleanup first) — BE-0342.
                 ended = False
 
                 def _end_lease() -> None:
