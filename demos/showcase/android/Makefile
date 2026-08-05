@@ -341,8 +341,8 @@ e2e-codegen:
 	# own subshell and lose that PID. `|| true` on every teardown step so a failed
 	# recording/pull/cleanup can never mask (or replace) the real test exit code, which is captured
 	# and re-raised via `exit "$$rc"` at the end.
-	# Build the APKs *before* the recorder starts: `screenrecord`'s default --time-limit is 180s, while
-	# this job budgets ~15min for build+test, so a recording spanning the build would end long before
+	# Build the APKs *before* the recorder starts: the recording is capped at 900s (180s if unset),
+	# while this job budgets ~15min for build+test, so a recording spanning the build would end before
 	# the install+test window the flake lives in. --size/--bit-rate keep a multi-minute mp4 small
 	# enough for /sdcard and for the artifact upload (the default is 20 Mbps at full 1080x2400).
 	cd $(HERE) && $(GRADLEW) :compose:assembleA11yDebug :compose:assembleA11yDebugAndroidTest
