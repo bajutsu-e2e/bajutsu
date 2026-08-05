@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0343](BE-0343-prose-companion-pr.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0343") |
+| Implementing PR | [#1498](https://github.com/bajutsu-e2e/bajutsu/pull/1498) |
 | Topic | Contributor workflow |
 | Related | [BE-0203](../BE-0203-claude-code-pr-review/BE-0203-claude-code-pr-review.md), [BE-0222](../BE-0222-daily-doc-freshness-pr/BE-0222-daily-doc-freshness-pr.md) |
 <!-- /BE-METADATA -->
@@ -180,18 +181,27 @@ entry.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] The `prose-companion` job — reads posted `(non-blocking, prose)` findings, applies each
+- [x] The `prose-companion` job — reads posted `(non-blocking, prose)` findings, applies each
   suggestion mechanically, force-pushes the companion branch, and opens or updates the companion
   pull request based on the source branch
-- [ ] `.github/claude-review-prompt.md` — the new English-prose-quality lens (mirroring the
+- [x] `.github/claude-review-prompt.md` — the new English-prose-quality lens (mirroring the
   existing Japanese one) and the `(non-blocking, prose)` decoration on both
-- [ ] Auto-reply and auto-resolve on the source pull request's finding thread, naming the companion
+- [x] Auto-reply and auto-resolve on the source pull request's finding thread, naming the companion
   pull request
-- [ ] `docs/ai-development.md` and its `docs/ja/ai-development.md` mirror — documenting the
+- [x] `docs/ai-development.md` and its `docs/ja/ai-development.md` mirror — documenting the
   companion-PR mechanism under "Responding to PR review comments"
-- [ ] A short `CLAUDE.md` bullet pointing at the documented mechanism
+- [x] A short `CLAUDE.md` bullet pointing at the documented mechanism
 
 ### Log
+
+- Shipped whole. The decision logic lives in `scripts/prose_companion_pr.py` rather than inline YAML,
+  so it is unit-tested (`tests/test_prose_companion_pr.py`): which findings qualify, what each one
+  expects its lines to read, and whether that still matches the head. The job is a second job in
+  [`claude-review.yml`](../../.github/workflows/claude-review.yml) with `needs: review`, and it runs
+  the script from a **default-branch** checkout while editing a separate checkout of the pull
+  request's head — so a same-repo branch cannot rewrite what executes under the automation App token.
+  The script is stdlib-only and runs on the runner's `python3`, which keeps a pull-request-authored
+  `pyproject.toml` out of the privileged job entirely.
 
 ## References
 

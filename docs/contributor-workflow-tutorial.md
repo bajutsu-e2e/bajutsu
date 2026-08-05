@@ -231,10 +231,13 @@ with the prime directives. You confirm before a line of code is written.
 
 Implementation matches the codebase grain — strict `mypy`, configured `ruff`, condition waits not
 `sleep`, new knobs in `targets.<name>` config, and a test as the regression net for any behavior
-change. It refines the diff with the built-in `simplify` and `code-review` skills (authoring aids
-that advise, never judge), flips the item to `Status: Implemented` in both language files, and adds
-the `Implementing PR` row — the dashboard picks up the new status straight from that metadata, with
-nothing else to regenerate. Then the gate:
+change. It refines the diff with the built-in `simplify` skill and a review pass against the
+`.github/claude-review-prompt.md` contract (authoring aids that advise, never judge), re-running the
+contract pass against the updated diff until it comes back clean — capped at 3 rounds like Step A4
+above, escalating to you with the PR left unopened if a real finding still stands. Only then does it
+flip the item to `Status: Implemented` in both language files and add the `Implementing PR` row —
+the dashboard picks up the new status straight from that metadata, with nothing else to regenerate.
+Then the gate:
 
 ```bash
 make check   # must be green; never push red
@@ -243,7 +246,8 @@ make check   # must be green; never push red
 ### Step B5 — It auto-opens the PR; you merge
 
 Unlike `/ideation`, `/implement-be` **opens its own PR** — its output is always a self-contained,
-gate-green change, so there is nothing to wait for. The PR is **Draft by default**, titled with the
+gate-green change with every review finding already resolved, so there is nothing to wait for. The
+PR is **Draft by default**, titled with the
 id (`[BE-0300] feat(run): bounded retry for transiently-blocked steps`), with a thorough body from
 the [template](../.github/PULL_REQUEST_TEMPLATE.md). (A *doc-only* item is the exception — it opens
 Ready with the `steering-committee` reviewer, exactly like the proposal PR did.)

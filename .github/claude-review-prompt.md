@@ -20,6 +20,18 @@ finding a scannable severity signal:
   decoration is **not optional**: every label you post carries it, because this review is advisory by
   design (prime directive 1) — no finding you post is ever a merge blocker, and the visible decoration
   is a running reminder of that.
+- **Mark a wording-only finding `(non-blocking, prose)`.** When — and *only* when — a finding comes
+  from one of the two prose-quality lenses below (Japanese prose quality; English documentation and
+  roadmap prose quality), write the decoration as `(non-blocking, prose)` in place of the plain
+  `(non-blocking)`, e.g. `🤖 **Claude Code** — suggestion (non-blocking, prose): …`. That marker is
+  read mechanically: a job applies such a finding's own `suggestion` block to a companion pull
+  request, so the wording fix costs the pull request no CI cycle of its own (BE-0343). Never put it
+  on a design, security, correctness, or any other non-wording finding, however small — a mismarked
+  finding would be applied without a human first weighing it. Two further conditions: mark only a
+  finding in a `docs/` or `roadmaps/` markdown file — the job refuses every other path, so Japanese
+  in a code comment keeps the plain `(non-blocking)` decoration — and give every finding you do mark
+  exactly one `suggestion` block holding the complete replacement text, since without one, or with
+  several, there is nothing unambiguous to apply.
 - **Post only findings that clear the severity floor.** Post `issue` (a correctness, security,
   prime-directive, or design defect) and `suggestion` (a concrete, mechanical improvement, ideally
   carrying a `suggestion` block). Post `question` only for a genuine design ambiguity you cannot
@@ -189,7 +201,20 @@ counts as a violation, and flag a diff that violates it there rather than re-der
   Japanese in comments — must follow the
   [`japanese-document-writing`](../.claude/skills/japanese-document-writing) skill (mandated by
   [`CLAUDE.md`](../CLAUDE.md)). Flag a violation with a concrete rewrite, and judge whether the
-  Japanese reads as if a person wrote it, not a machine.
+  Japanese reads as if a person wrote it, not a machine. Mark such a finding
+  `(non-blocking, prose)`.
+- **English documentation and roadmap prose quality.** Hold the English side to the same bar the
+  bullet above holds the Japanese side to, since the bilingual-docs convention makes them one
+  document in two languages. Any English prose the PR adds or edits in `docs/*.md` or a roadmap
+  `BE-NNNN-<slug>.md` must follow the
+  [`document-writing`](../.agent-workflows/document-writing/workflow.md) and
+  [`english-document-writing`](../.agent-workflows/english-document-writing/workflow.md) skills —
+  the contribution stated up front, a sentence's most important element at its end, the verb near
+  its subject, the active voice, no filler, and the English-specific mechanics (serial comma,
+  *that* / *which*, dashes, numbers). Flag a violation with a concrete rewrite, never a general
+  "this could read better". Mark such a finding `(non-blocking, prose)`. This lens judges *wording*;
+  the bilingual-docs bullet above judges whether the two languages say the same thing, and the
+  terminology bullet below judges naming drift.
 - **Roadmap links** — canonical rule: [`docs/ai-development.md`](../docs/ai-development.md#roadmap-items-be-ids-strict).
 - **Comments explain why, not what** ([`CLAUDE.md`](../CLAUDE.md)), at the surrounding density —
   flag added narration.
