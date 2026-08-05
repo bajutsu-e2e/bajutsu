@@ -69,8 +69,10 @@ A new workflow, `.github/workflows/prose-refresh.yml`, calls the reusable
 `docs-refresh.yml` already do: the same two-credential dormancy gate (an AI provider plus the
 `AUTOMATION_BOT_APP_ID`/`AUTOMATION_BOT_PRIVATE_KEY` automation App), the same App-token checkout of
 `main`, the same AI-authoring step bounded by a path allowlist, the same in-job `make check`, and
-the same rolling, idempotent, clobber-guarded, always-Draft PR. Nothing in `refresh.yml` itself
-changes; `prose-refresh.yml` only supplies its own `label`, `branch`
+the same rolling, idempotent, clobber-guarded, always-Draft PR. `refresh.yml`'s *behavior* does not
+change; it gains only a third caller, so its header comment and its `label` input description —
+which name exactly the two existing callers today — are corrected in the same change.
+`prose-refresh.yml` supplies its own `label`, `branch`
 (`chore/prose-refresh`), `contract`, `title`, `allow`, and `allowed_tools` inputs, the same shape
 `docs-refresh.yml` already demonstrates.
 
