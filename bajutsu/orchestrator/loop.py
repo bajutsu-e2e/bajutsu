@@ -883,34 +883,33 @@ class _StepRunner:
         step_id: str,
         what: str,
         read: Callable[[], list[base.Element]],
-        *,
-        level: int = logging.DEBUG,
     ) -> list[base.Element] | None:
         """Best-effort evidence read: `None` on failure rather than crashing the step.
 
         A torn-down WebView context must not crash a step whose pass/fail outcome doesn't depend
         on `read` (prime directive 1) — but the identical failure on the native driver is a dead
         device connection, which must still surface loudly, so it re-raises there instead. Shared
-        by the capture-only reads of the post-step sequence a `web` block can fail (the pre-step
-        baseline, the `screenChanged` comparison, and the post-step `elements` capture); the
-        pre-act `before` read at the top of `_handle_action` is a pre-existing, still-unguarded
-        exposure of the same shape. The wait-timeout diagnostic also calls this, but wraps the
-        result in its own `except OSError` to stay best-effort on the native driver too — that read
-        only enriches an already-decided timeout, so even a native failure there must not replace
-        the real reason with a crash.
+        by the capture-only reads a `web` block can fail: the pre-step baseline, the
+        `screenChanged` comparison, and the post-step `elements` capture. The `screenChanged`
+        policy's own `before` read (`before = active_driver.query()`, in the `wants_screen_changed`
+        block below) is a pre-existing, still-unguarded exposure of the same shape. The
+        wait-timeout diagnostic also calls this, but wraps the result in its own
+        `except (base.UnsupportedAction, OSError)` to stay best-effort on the native driver too —
+        that read only enriches an already-decided timeout, so even a native failure there must not
+        replace the real reason with a crash.
         `ConnectionError` is a subclass of `OSError`, so the tuple below already covers it.
 
-        `level` defaults to a quiet debug line — losing the pre-step baseline, which a `NullSink`
-        would discard anyway. Every other caller drops evidence a scenario author asked for by
-        name (a `capturePolicy` rule, or the `screenChanged` comparison it depends on) and passes
-        `logging.WARNING` instead.
+        Every caller reaches this point only once its own guard already ruled out a `NullSink`
+        (directly, or because the read is unconditional, like `screenChanged`'s) — so a failure
+        here always drops evidence a real sink or a scenario author's `capturePolicy` genuinely
+        wanted, which always warrants `logging.WARNING`.
         """
         try:
             return read()
         except (base.UnsupportedAction, OSError) as exc:
             if active_driver is self.cfg.driver:
                 raise
-            _logger.log(level, "%s: %s skipped, web driver query failed: %s", step_id, what, exc)
+            _logger.warning("%s: %s skipped, web driver query failed: %s", step_id, what, exc)
             return None
 
     def _handle_action(
@@ -1166,9 +1165,7 @@ class _StepRunner:
         if before is not None:
             # Evidence-only: `screen_changed` feeds only `_collect_captures`, never this step's
             # own pass/fail outcome (prime directive 1).
-            current = self._read_evidence(
-                active_driver, step_id, "screenChanged read", screen.get, level=logging.WARNING
-            )
+            current = self._read_evidence(active_driver, step_id, "screenChanged read", screen.get)
             if current is not None:
                 screen_changed = current != before
 
@@ -1186,13 +1183,9 @@ class _StepRunner:
             # failure.
             try:
                 diag_elements = self._read_evidence(
-                    active_driver,
-                    step_id,
-                    "wait-timeout diagnostic",
-                    screen.get,
-                    level=logging.WARNING,
+                    active_driver, step_id, "wait-timeout diagnostic", screen.get
                 )
-            except OSError as exc:
+            except (base.UnsupportedAction, OSError) as exc:
                 _logger.warning("dropping wait-timeout diagnostic: read failed: %s", exc)
                 diag_elements = None
             if diag_elements is not None:
@@ -1239,11 +1232,7 @@ class _StepRunner:
         els = screen.cached
         if wants_web_elements:
             fresh = self._read_evidence(
-                active_driver,
-                step_id,
-                "post-step elements capture",
-                screen.get,
-                level=logging.WARNING,
+                active_driver, step_id, "post-step elements capture", screen.get
             )
             if fresh is None:
                 # `screenshot`/`actionLog` in `instant` still fire.

@@ -160,6 +160,12 @@ class EvidenceSink(Protocol):
 | `NullSink` (default) | writes nothing (keeps a run side-effect-free) |
 | `FileSink(run_dir, udid, log_predicate)` | writes under `run_dir/<step_id>/` |
 
+`capture` may be invoked more than once for the same `step_id` in a single step — for example, a
+pre-step baseline capture followed by a post-step one. A sink must not assume a single call sees
+every kind a step fires. Repeated calls are not isolated from one another either: `FileSink` gives
+each kind a fixed name (`elements.json`, `before.png` / `after.png`), so a later call naming a kind
+an earlier one already wrote overwrites it.
+
 A capture the environment already began before launch (a device backend's `video`) is *adopted*
 rather than started — the sink relocates its finalized file into the scenario dir on stop. Otherwise
 interval captures come from the driver's `driver_interval` provider when it supplies one (web's
