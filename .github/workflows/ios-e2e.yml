@@ -154,7 +154,7 @@ env:
   # respawn, the silent hang that ran the mid-run `pinch/rotate` crash to `timeout-minutes`). So this
   # budget's remaining job is the rest the readiness ceiling does not cover: the simctl prep and
   # scenario re-run, plus the cumulative cost across BAJUTSU_CRASH_RETRIES respawns. 300s keeps a
-  # never-recovering runner failing loudly well under the 25min `timeout-minutes` instead of hanging,
+  # never-recovering runner failing loudly well under the `run` job's 40min `timeout-minutes` instead of hanging,
   # while still riding out a genuine one-off (the first respawn is never blocked) — a backstop on top of
   # the per-respawn ceiling, not a substitute for it.
   BAJUTSU_CRASH_RECOVERY_BUDGET: "300"
@@ -330,11 +330,14 @@ jobs:
     runs-on: macos-latest
     # Cap the metered macOS job (10x billing): a hung Simulator/runner would otherwise run to the 6h
     # default. No build here (the `build` job staged the products) — boot + install + one cold runner
-    # + six short scenarios is ~15min, so 25 catches a real hang with headroom. A mid-run backend crash
-    # adds at most about one more cold respawn: BAJUTSU_CRASH_RECOVERY_BUDGET (300s, above) bounds the
+    # + six short scenarios was ~15min under warm reuse, so 25 caught a real hang with headroom. `--erase`
+    # (the bajutsu-e2e action's run step) now forces a cold XCTest-host respawn on every scenario instead
+    # of the five warm-reused cold starts this lane previously paid for its ten scenario runs, so 40
+    # keeps that same headroom over the doubled cold-start cost. A mid-run backend crash adds at most
+    # about one more cold respawn: BAJUTSU_CRASH_RECOVERY_BUDGET (300s, above) bounds the
     # scenario-level recovery in wall-clock, so a never-recovering runner fails loudly inside that
     # window rather than paying BAJUTSU_CRASH_RETRIES × the 300s startup ceiling and hanging to this cap.
-    timeout-minutes: 25
+    timeout-minutes: 40
     # BE-0231 unit 4: a cold-boot CI Simulator sometimes renders the first Stable row later than a
     # scenario's 10s first-wait allows — even with unit 2's `readyWhen` gate (which waits up to
     # _await_ready's own 10s for that row). Raise the wait *floor* so the condition wait has the
@@ -452,10 +455,12 @@ jobs:
     runs-on: macos-latest
     # Cap the metered macOS job (10x billing): a hung Simulator/runner would otherwise run to the 6h
     # default. Install (no build) + the ten scenario runs the eight files below produce (each file holds
-    # one scenario; data_driven.yaml's three `${row.*}` rows expand to three) is ~20min — the dominant
-    # term is five cold XCTest-host startups, one per two runs at this lane's warm-reuse cap — so 30
-    # catches a real hang with headroom rather than reddening a healthy run.
-    timeout-minutes: 30
+    # one scenario; data_driven.yaml's three `${row.*}` rows expand to three) was ~20min — the dominant
+    # term being five cold XCTest-host startups, one per two runs at this lane's warm-reuse cap. `--erase`
+    # (the bajutsu-e2e action's run step) now forces a cold respawn on every one of the ten runs instead
+    # of five, so 45 keeps this lane's headroom over that doubled cold-start cost rather than reddening a
+    # healthy run.
+    timeout-minutes: 45
     # Raise the wait floor so a cold-boot Simulator has budget to render the first Stable row before
     # each scenario's own 10s first-wait — the same knob the `run` job above and the Android lane use.
     # A condition wait returns the instant the row appears, so this is a ceiling, not a sleep.
@@ -537,9 +542,12 @@ jobs:
       (needs.changes.outputs.shared == 'true' ||
       contains(fromJSON(needs.changes.outputs.affected), 'golden'))
     runs-on: macos-latest
-    # Install the prebuilt products (no build) + a fresh Simulator boot (~80s) + the golden run is
-    # well under this; 25 catches a hung Simulator/runner on the metered macOS runner with headroom.
-    timeout-minutes: 25
+    # Install the prebuilt products (no build) + a fresh Simulator boot (~80s) + the golden run was well
+    # under this. This job runs a single scenario, so `--erase` (the bajutsu-e2e action's run step) adds
+    # one extra simctl erase + reboot cycle on top of the toolchain action's own boot, not a multiplied
+    # cold-start cost like the multi-scenario `run`/`actuation` lanes — 30 still catches a hung
+    # Simulator/runner on the metered macOS runner with headroom.
+    timeout-minutes: 30
     # Raise the wait floor so a cold-boot Simulator has budget to render the first Stable row before
     # the scenario's own 10s first-wait — the same knob the `run` job above and the Android lane use.
     # A condition wait returns the instant the row appears, so this is a ceiling, not a fixed sleep.
@@ -671,9 +679,10 @@ jobs:
       contains(fromJSON(needs.changes.outputs.affected), 'bundled-runner'))
     runs-on: macos-latest
     # Cap the metered macOS job (10x billing): a hung Simulator/runner would otherwise run to the
-    # 6h default. Install both prebuilt apps (no build) + two smoke runs is ~10min, so 25 catches a
-    # real hang with headroom.
-    timeout-minutes: 25
+    # 6h default. Install both prebuilt apps (no build) + two smoke runs was ~10min. `--erase` (the
+    # bajutsu-e2e action's run step) adds one simctl erase + reboot cycle to each of the two calls
+    # below, so 30 keeps headroom over that added cost rather than reddening a healthy run.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
