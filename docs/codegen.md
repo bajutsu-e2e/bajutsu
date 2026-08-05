@@ -336,7 +336,7 @@ class ComponentsUITest {
   private fun ensureWindowTracking() {
     for (attempt in 1..TRACKING_KICK_ATTEMPTS) {
       if (reportsWindows()) return
-      kickWindowTracking("no accessibility windows reported (attempt $attempt)")
+      kickWindowTracking("no accessibility windows reported (pre-launch kick $attempt)")
     }
     // The last kick would otherwise go unchecked. This reads once more only so a failure
     // leaves a line — a recovery is silent, and shows as a kick with no failure line after
@@ -456,7 +456,7 @@ class ComponentsUITest {
   and a nested one would clear the event queue the outer wait is watching.
 - **Two ways the window fails to arrive, both observed in CI, and one remedy.** `ensureWindowTracking`
   reads the list before each attempt and catches the first: a list holding nothing at all, which one
-  run logged as `no accessibility windows reported (attempt 1)` before the window change recovered it.
+  run logged as `no accessibility windows reported` before the window change recovered it.
   The second is invisible to that check — the list is live and merely missing the app's window — so the
   kick after a failed attempt fires **without consulting the list**, which is what the run below
   needed. Reading the list first is worth it only because it turns the first case into one key press

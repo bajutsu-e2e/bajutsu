@@ -658,7 +658,7 @@ class _UiAutomatorGen:
             + " can be",
             "  // caught before the launch wait spends its whole timeout: the list holds nothing at"
             + " all. A CI",
-            '  // run logged exactly that — "no accessibility windows reported (attempt 1)" — and the',
+            '  // run logged exactly that — "no accessibility windows reported" — and the',
             "  // window change below recovered it.",
             "  //",
             "  // The other way is invisible here: the list is live and merely missing the app's"

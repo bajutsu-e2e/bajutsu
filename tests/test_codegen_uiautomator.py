@@ -128,7 +128,7 @@ def _fn_body(code: str, name: str, next_name: str) -> str:
 def test_launch_confirms_window_tracking_before_it_waits_on_the_tree() -> None:
     # The launch wait can only see the app through the accessibility window list, so a list that is
     # never reported reads exactly like an app that never started. One CI run logged exactly that —
-    # `no accessibility windows reported (attempt 1)` — and the window change recovered it. Check
+    # `no accessibility windows reported` — and the window change recovered it. Check
     # the channel first, so the failure names it.
     code = _gen("- name: x\n  steps:\n    - tap: { id: a }\n")
     body = _fn_body(code, "launch", "act")

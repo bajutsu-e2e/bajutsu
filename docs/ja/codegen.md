@@ -329,7 +329,7 @@ class ComponentsUITest {
   private fun ensureWindowTracking() {
     for (attempt in 1..TRACKING_KICK_ATTEMPTS) {
       if (reportsWindows()) return
-      kickWindowTracking("no accessibility windows reported (attempt $attempt)")
+      kickWindowTracking("no accessibility windows reported (pre-launch kick $attempt)")
     }
     // The last kick would otherwise go unchecked. This reads once more only so a failure
     // leaves a line — a recovery is silent, and shows as a kick with no failure line after
@@ -444,7 +444,7 @@ class ComponentsUITest {
   待機しており、入れ子にすると外側の待機が見ているイベントキューを内側が空にしてしまうためです。
 - **ウィンドウが現れない道筋は2つあり、どちらも CI で観測されていて、対処は共通です。** 1つめは一覧に
   何も入っていない場合で、各試行の前に一覧を読む `ensureWindowTracking` が捉えます。ある実行では
-  `no accessibility windows reported (attempt 1)` と記録され、ウィンドウ変更で回復しました。2つめは
+  `no accessibility windows reported` と記録され、ウィンドウ変更で回復しました。2つめは
   この確認では見えません。一覧は生きていて、アプリのウィンドウだけが載っていないからです。ですから
   試行が失敗した後のウィンドウ変更は、**一覧を読まずに**起こします。下の実行例が必要としたのは、
   この一覧を読まないウィンドウ変更でした。事前に一覧を読む価値は、1つめの場合をキー入力1回で

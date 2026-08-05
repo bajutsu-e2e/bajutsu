@@ -191,7 +191,7 @@ class CodegenandroiduitestUITest {
 
   // One of two observed ways the app's window fails to reach the list, and the one that can be
   // caught before the launch wait spends its whole timeout: the list holds nothing at all. A CI
-  // run logged exactly that — "no accessibility windows reported (attempt 1)" — and the
+  // run logged exactly that — "no accessibility windows reported" — and the
   // window change below recovered it.
   //
   // The other way is invisible here: the list is live and merely missing the app's window, which
@@ -209,7 +209,7 @@ class CodegenandroiduitestUITest {
   private fun ensureWindowTracking() {
     for (attempt in 1..TRACKING_KICK_ATTEMPTS) {
       if (reportsWindows()) return
-      kickWindowTracking("no accessibility windows reported (attempt $attempt)")
+      kickWindowTracking("no accessibility windows reported (pre-launch kick $attempt)")
     }
     // The last kick would otherwise go unchecked. This reads once more only so a failure
     // leaves a line — a recovery is silent, and shows as a kick with no failure line after
