@@ -92,6 +92,11 @@ class _DeviceEnvironment:
         # fake spawns no resident to amortize; XcuitestEnvironment overrides (BE-0291).
         return False
 
+    def replaced_device(self) -> str | None:
+        # Only the XCUITest Simulator lifecycle replaces a vanished device (it overrides this); fake
+        # brings no device up, so the leased udid is always the one it ran on.
+        return None
+
     def end_lease(self, driver: base.Driver, eff: Effective) -> None:
         # No warm resident here, so a lease's end is just its full teardown (BE-0291).
         self.teardown(driver, eff)

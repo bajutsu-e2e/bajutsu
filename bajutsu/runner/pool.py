@@ -91,7 +91,8 @@ def device_pool(
     device; `Lease.release()` terminates the app and returns the udid to the pool. A single-device
     run is just a pool of one, so network collection / interval evidence / device control work the
     same whether `workers` is 1 or N. The only shared state is the thread-safe free-device queue and
-    the read-only collectors map, so leases need no lock.
+    the collectors / catalog maps, whose only in-lease writes re-key one exclusively-leased device
+    onto its replacement, so leases need no lock.
 
     Args:
         udids: The devices to pool; the web backend ignores these (one browser lane).
@@ -241,6 +242,41 @@ def device_pool(
         def release_bridge() -> None:
             pass
 
+        def adopt_replacement() -> None:
+            """Follow the environment onto a device it had to replace, re-keying what this pool holds.
+
+            The XCUITest Simulator lifecycle creates a replacement when CoreSimulator stops listing
+            the leased device. Everything the pool keys by udid — the per-device collector, the
+            warm-resident cache, the evidence sink's simctl captures, the result's device
+            attribution, and which udid returns to the free queue — would otherwise keep naming a
+            device that no longer exists. The old udid is deliberately never freed again: the
+            replacement takes its place in the pool, which is what quarantines the dead one.
+
+            Idempotent, because it is reached from both the success and the failure path: once `udid`
+            is the replacement, the environment reports no further change.
+            """
+            nonlocal udid
+            replacement = lease_env.replaced_device()
+            if replacement is None or replacement == udid:
+                return
+            _logger.warning(
+                "device %s vanished mid-lease; this run continues on its replacement %s",
+                udid,
+                replacement,
+            )
+            # The collector is a host-side receiver the device reaches over the loopback, so it needs
+            # no restart — only the key a later lease on this device looks it up by. Writing to
+            # `collectors` / `catalog` here needs no lock for the same reason `warm` doesn't: this
+            # lease exclusively holds the old udid, and the replacement was minted moments ago, so no
+            # other lease can be touching either key.
+            if (moved := collectors.pop(udid, None)) is not None:
+                collectors[replacement] = moved
+            # Anything cached under the dead udid can never be resumed; drop it before the key moves.
+            warm.pop(udid, None)
+            ever_spawned.discard(udid)
+            catalog[replacement] = lease_env.device_catalog().get(replacement, {})
+            udid = replacement
+
         try:
             # Film the whole scenario only when its capture policy asks for video, and only where
             # capture is wired before launch (so the app's cold start is recorded): web binds it to
@@ -296,6 +332,10 @@ def device_pool(
                     else _no_transitions
                 ),
             )
+            # Before anything else is keyed by it: `start` may have moved this lease onto a
+            # replacement device, and every udid-keyed structure below must name the device that
+            # actually ran.
+            adopt_replacement()
             # This device has now been brought up at least once this run, so a later cache-miss lease
             # on it (after a crash evicts the warm resident) is a respawn — see `is_respawn` above.
             ever_spawned.add(udid)
@@ -375,7 +415,9 @@ def device_pool(
             # A warm resident whose resume failed must not be reused next lease: drop it and tear it
             # down so the retry respawns cold rather than reusing a half-broken runner (BE-0291). This
             # is best-effort cleanup on the failure path — the *original* launch error is what must
-            # propagate (via the `raise` below), so a teardown hiccup is logged, never re-raised.
+            # propagate (via the `raise` below), so a teardown hiccup is logged, never re-raised. It
+            # runs before the replacement is adopted below, because a resident cached by an earlier
+            # lease is keyed by the udid this lease started on.
             stale = warm.pop(udid, None)
             if stale is not None:
                 try:
@@ -389,6 +431,9 @@ def device_pool(
                         udid,
                         teardown_exc,
                     )
+            # A replacement made before the failure is still adopted, so the queue gets the live device
+            # back for the next lease instead of the one that vanished.
+            adopt_replacement()
             free.put(udid)
             raise
 

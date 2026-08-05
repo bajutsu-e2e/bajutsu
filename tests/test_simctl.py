@@ -99,6 +99,30 @@ def test_booted_udids_parses_simctl() -> None:
     assert simctl.booted_udids(run=boom) == []  # failure -> empty, never raises
 
 
+def test_device_booted_is_three_valued() -> None:
+    import json
+
+    payload = json.dumps(
+        {
+            "devices": {
+                "com.apple.CoreSimulator.SimRuntime.iOS-26-0": [
+                    {"udid": "AAA", "state": "Booted"},
+                    {"udid": "BBB", "state": "Shutdown"},
+                ],
+            }
+        }
+    )
+    assert simctl.device_booted("AAA", run=lambda args, e=None: payload) is True
+    assert simctl.device_booted("BBB", run=lambda args, e=None: payload) is False
+
+    def boom(args: list[str], e: object = None) -> str:
+        raise OSError("simctl not found")
+
+    # A probe that could not run reads as unknown, not as "not booted" — the same distinction
+    # device_available makes, and for the same reason: a wedged host must not be misread as healthy.
+    assert simctl.device_booted("AAA", run=boom) is None
+
+
 def test_runtime_label_humanizes_identifier() -> None:
     assert simctl.runtime_label("com.apple.CoreSimulator.SimRuntime.iOS-26-5") == "iOS 26.5"
     assert simctl.runtime_label("com.apple.CoreSimulator.SimRuntime.watchOS-11-0") == "watchOS 11.0"
@@ -124,6 +148,213 @@ def test_device_catalog_maps_udid_to_model_and_os() -> None:
         raise OSError("simctl not found")
 
     assert simctl.device_catalog(run=boom) == {}  # failure -> empty, never raises
+
+
+def test_device_recovery_command_builders() -> None:
+    assert simctl.list_all_devices_cmd() == ["xcrun", "simctl", "list", "devices", "-j"]
+    assert simctl.list_devicetypes_cmd() == ["xcrun", "simctl", "list", "devicetypes", "-j"]
+    assert simctl.create_cmd("bajutsu-recovered", "com.apple.x.iPhone-17") == [
+        "xcrun",
+        "simctl",
+        "create",
+        "bajutsu-recovered",
+        "com.apple.x.iPhone-17",
+    ]
+
+
+@pytest.mark.parametrize("bad", ["", "-rf"])
+def test_create_cmd_rejects_an_option_shaped_argument(bad: str) -> None:
+    with pytest.raises(simctl.DeviceError):
+        simctl.create_cmd(bad, "com.apple.x.iPhone-17")
+    with pytest.raises(simctl.DeviceError):
+        simctl.create_cmd("name", bad)
+
+
+def test_device_available_is_three_valued() -> None:
+    import json
+
+    payload = json.dumps(
+        {"devices": {"com.apple.CoreSimulator.SimRuntime.iOS-26-0": [{"udid": "AAA"}]}}
+    )
+    assert simctl.device_available("AAA", run=lambda args, e=None: payload) is True
+    assert simctl.device_available("BBB", run=lambda args, e=None: payload) is False
+
+    def boom(args: list[str], e: object = None) -> str:
+        raise OSError("simctl not found")
+
+    # A probe that could not run reads as unknown, never as "the device is gone": creating a
+    # replacement on a host too sick to list its devices would replace a device needlessly.
+    assert simctl.device_available("AAA", run=boom) is None
+
+
+def test_device_type_of_reads_the_unfiltered_listing() -> None:
+    import json
+
+    payload = json.dumps(
+        {
+            "devices": {
+                "com.apple.CoreSimulator.SimRuntime.iOS-26-0": [
+                    {"udid": "AAA", "deviceTypeIdentifier": "com.apple.x.iPhone-17-Pro"},
+                    {"udid": "BBB"},
+                ]
+            }
+        }
+    )
+    calls: list[list[str]] = []
+
+    def run(args: list[str], e: object = None) -> str:
+        calls.append(args)
+        return payload
+
+    assert simctl.device_type_of("AAA", run=run) == (
+        "com.apple.x.iPhone-17-Pro",
+        "com.apple.CoreSimulator.SimRuntime.iOS-26-0",
+    )
+    assert calls == [simctl.list_all_devices_cmd()]
+    assert simctl.device_type_of("BBB", run=run) is None  # listed, but carries no type
+    assert simctl.device_type_of("CCC", run=run) is None
+
+
+def test_device_type_identifier_and_newest_iphone() -> None:
+    import json
+
+    payload = json.dumps(
+        {
+            "devicetypes": [
+                {
+                    "name": "iPhone 16",
+                    "identifier": "com.apple.x.iPhone-16",
+                    "productFamily": "iPhone",
+                },
+                {"name": "iPad Pro", "identifier": "com.apple.x.iPad-Pro", "productFamily": "iPad"},
+                {
+                    "name": "iPhone 17 Pro",
+                    "identifier": "com.apple.x.iPhone-17-Pro",
+                    "productFamily": "iPhone",
+                },
+            ]
+        }
+    )
+    run = lambda args, e=None: payload  # noqa: E731
+    assert simctl.device_type_identifier("iPhone 17 Pro", run=run) == "com.apple.x.iPhone-17-Pro"
+    assert simctl.device_type_identifier("iPhone 99", run=run) is None
+    # simctl lists devicetypes oldest first, so the last iPhone is the newest installed one.
+    assert simctl.newest_iphone_device_type(run=run) == "com.apple.x.iPhone-17-Pro"
+
+    def boom(args: list[str], e: object = None) -> str:
+        raise OSError("simctl not found")
+
+    assert simctl.device_type_identifier("iPhone 17 Pro", run=boom) is None
+    assert simctl.newest_iphone_device_type(run=boom) is None
+
+
+def test_create_device_returns_the_new_udid() -> None:
+    calls: list[list[str]] = []
+
+    def run(args: list[str], e: object = None) -> str:
+        calls.append(args)
+        return "AAAA-BBBB\n"
+
+    assert simctl.create_device("com.apple.x.iPhone-17", run=run) == "AAAA-BBBB"
+    assert calls == [simctl.create_cmd("bajutsu-recovered", "com.apple.x.iPhone-17")]
+
+
+def test_create_device_pins_the_given_runtime() -> None:
+    calls: list[list[str]] = []
+
+    def run(args: list[str], e: object = None) -> str:
+        calls.append(args)
+        return "AAAA-BBBB\n"
+
+    udid = simctl.create_device(
+        "com.apple.x.iPhone-17", run=run, runtime="com.apple.CoreSimulator.SimRuntime.iOS-26-0"
+    )
+    assert udid == "AAAA-BBBB"
+    assert calls == [
+        simctl.create_cmd(
+            "bajutsu-recovered",
+            "com.apple.x.iPhone-17",
+            "com.apple.CoreSimulator.SimRuntime.iOS-26-0",
+        )
+    ]
+
+
+def test_create_device_falls_back_when_the_pinned_runtime_is_gone() -> None:
+    calls: list[list[str]] = []
+
+    def run(args: list[str], e: object = None) -> str:
+        calls.append(args)
+        if len(calls) == 1:
+            raise subprocess.CalledProcessError(1, args, stderr="Invalid runtime")
+        return "AAAA-BBBB\n"
+
+    udid = simctl.create_device(
+        "com.apple.x.iPhone-17", run=run, runtime="com.apple.CoreSimulator.SimRuntime.iOS-19-0"
+    )
+    assert udid == "AAAA-BBBB"
+    # Falls back to an unpinned create rather than failing the run over a dropped runtime.
+    assert calls == [
+        simctl.create_cmd(
+            "bajutsu-recovered",
+            "com.apple.x.iPhone-17",
+            "com.apple.CoreSimulator.SimRuntime.iOS-19-0",
+        ),
+        simctl.create_cmd("bajutsu-recovered", "com.apple.x.iPhone-17"),
+    ]
+
+
+def test_create_device_warns_when_it_falls_back_to_unpinned(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # A caller that only logs the *requested* runtime next to the replacement can read as a claim
+    # about what it actually got, so the fallback logs its own warning here, next to the decision.
+    calls: list[list[str]] = []
+
+    def run(args: list[str], e: object = None) -> str:
+        calls.append(args)
+        if len(calls) == 1:
+            raise subprocess.CalledProcessError(1, args, stderr="Invalid runtime")
+        return "AAAA-BBBB\n"
+
+    with caplog.at_level("WARNING"):
+        simctl.create_device(
+            "com.apple.x.iPhone-17", run=run, runtime="com.apple.CoreSimulator.SimRuntime.iOS-19-0"
+        )
+    assert "could not create" in caplog.text
+    assert "com.apple.CoreSimulator.SimRuntime.iOS-19-0" in caplog.text
+    assert "unpinned" in caplog.text
+
+
+def test_create_device_wraps_an_oserror_from_the_unpinned_retry() -> None:
+    # The pinned create's CalledProcessError handler owns the fallback call, so its own except
+    # OSError does not apply there — the fallback needs (and had been missing) its own.
+    calls: list[list[str]] = []
+
+    def run(args: list[str], e: object = None) -> str:
+        calls.append(args)
+        if len(calls) == 1:
+            raise subprocess.CalledProcessError(1, args, stderr="Invalid runtime")
+        raise OSError("cannot fork")
+
+    with pytest.raises(simctl.DeviceError, match="cannot fork"):
+        simctl.create_device(
+            "com.apple.x.iPhone-17", run=run, runtime="com.apple.CoreSimulator.SimRuntime.iOS-19-0"
+        )
+    assert len(calls) == 2
+
+
+def test_create_device_fails_loudly_when_no_runtime_remains() -> None:
+    def boom(args: list[str], e: object = None) -> str:
+        raise subprocess.CalledProcessError(
+            1, args, stderr="Invalid runtime: no runtimes are installed"
+        )
+
+    with pytest.raises(simctl.DeviceError, match="no runtimes are installed"):
+        simctl.create_device("com.apple.x.iPhone-17", run=boom)
+
+    # A device type simctl accepted but printed nothing for leaves no udid to return.
+    with pytest.raises(simctl.DeviceError, match="printed no udid"):
+        simctl.create_device("com.apple.x.iPhone-17", run=lambda args, e=None: "\n")
 
 
 def test_locale_args() -> None:
@@ -512,3 +743,16 @@ def test_system_locale_matches_reports_an_unreadable_domain_as_unknown() -> None
     # readable domain that merely lacks the key — that one is a mismatch, covered above.
     mangled = plistlib.dumps([]).decode()
     assert simctl.Env("UDID", run=lambda a, e=None: mangled).system_locale_matches("ja") is None
+
+
+def test_device_type_label_recovers_the_model_name() -> None:
+    assert (
+        simctl.device_type_label("com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro")
+        == "iPhone 17 Pro"
+    )
+    assert (
+        simctl.device_type_label("com.apple.CoreSimulator.SimDeviceType.iPad-Pro-11-inch-M4")
+        == "iPad Pro 11 inch M4"
+    )
+    # The family token is what `serve`'s capability inventory reads by substring, so it must survive.
+    assert "iphone" in simctl.device_type_label("com.apple.x.iPhone-16").lower()
