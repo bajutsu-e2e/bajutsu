@@ -200,7 +200,9 @@ def test_a_timed_out_launch_attempt_kicks_only_while_an_attempt_remains() -> Non
             "if (attempt < LAUNCH_ATTEMPTS) {"
         )
     ]
-    assert "windowSummary()" in per_attempt
+    assert "windowSummary()" in "\n".join(
+        ln for ln in per_attempt.splitlines() if not ln.lstrip().startswith("//")
+    )
 
 
 def test_failure_messages_name_the_windows_that_were_searched() -> None:

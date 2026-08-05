@@ -436,8 +436,8 @@ class ComponentsUITest {
   waited on longer.** UI Automator matches every selector against the windows the accessibility
   framework reports, so an app whose window is missing from that list is unreachable however long the
   wait runs. `kickWindowTracking` presses HOME and the intent is re-issued. HOME is dispatched through
-  the input pipeline rather than the accessibility one, so it lands whatever the accessibility view
-  currently says, and it dismisses whatever holds focus. The key press waits for the events it
+  the input pipeline rather than the accessibility one, so it lands no matter what the accessibility
+  view currently says, and it dismisses whatever holds focus. The key press waits for the events it
   produces, so the recovery adds no sleep. `LAUNCH_ATTEMPTS` bounds this kick to one fewer than the
   number of attempts, so once at the emitted value of 2. It is not the only kick a launch can make,
   though: the pre-launch check in the next bullet carries its own `TRACKING_KICK_ATTEMPTS` budget per
