@@ -165,7 +165,7 @@ classification in unit 1, unit 4 on units 2 and 3, and unit 5 on unit 4.
    A reboot leaves the device booted, about to reinstall the app. A replacement device has run
    nothing yet. Either way, `xcodebuild test-without-building` runs against a device in a
    first-boot state. That state already earns the full cold ceiling on the cold spawn's own erase
-   path. The ceiling applies whatever this instance's respawn history. Giving a rebooted respawn
+   path. The ceiling applies regardless of this instance's respawn history. Giving a rebooted respawn
    the lane's tighter ceiling alone would undersize that first bring-up. Every rung's note is
    folded into the failing error alongside each attempt's captured tail, so a reader sees which
    remedy ran and what the device looked like.
