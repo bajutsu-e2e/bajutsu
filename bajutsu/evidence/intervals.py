@@ -249,7 +249,14 @@ def _await_screenrecord_stopped(
 
 
 def start_screenrecord(
-    serial: str, path: Path, spawn: Spawn = _spawn, run: adb.RunFn = adb._real_run
+    serial: str,
+    path: Path,
+    spawn: Spawn = _spawn,
+    run: adb.RunFn = adb._real_run,
+    *,
+    time_limit: int | None = None,
+    size: str | None = None,
+    bit_rate: int | None = None,
 ) -> Interval:
     """Record the Android screen; stop() (SIGINT) finalizes the mp4, then pulls it off the device.
 
@@ -261,9 +268,18 @@ def start_screenrecord(
     for the *device-side* `screenrecord` to exit (`_await_screenrecord_stopped`) — the local client
     returns before the device finishes writing the moov atom, so pulling without that wait races the
     finalize into a truncated, unplayable file.
+
+    `time_limit`/`size`/`bit_rate` forward to `adb.screenrecord_cmd` (see its docstring) for a caller
+    whose recording window and artifact-size budget need bounding, e.g. an install+test window run
+    outside `bajutsu run`.
     """
     device_path = adb.VIDEO_DEVICE_PATH
-    proc = spawn(adb.screenrecord_cmd(serial, device_path), None)
+    proc = spawn(
+        adb.screenrecord_cmd(
+            serial, device_path, time_limit=time_limit, size=size, bit_rate=bit_rate
+        ),
+        None,
+    )
 
     def transform(target: Path) -> Path:
         # The local `adb shell` has returned, but the device-side screenrecord is still finalizing;

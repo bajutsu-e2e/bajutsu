@@ -101,13 +101,33 @@ def screencap_cmd(serial: str) -> list[str]:
 VIDEO_DEVICE_PATH = "/sdcard/bajutsu-scenario.mp4"
 
 
-def screenrecord_cmd(serial: str, device_path: str = VIDEO_DEVICE_PATH) -> list[str]:
+def screenrecord_cmd(
+    serial: str,
+    device_path: str = VIDEO_DEVICE_PATH,
+    *,
+    time_limit: int | None = None,
+    size: str | None = None,
+    bit_rate: int | None = None,
+) -> list[str]:
     """Record the screen to `device_path` on the device (h264 mp4); the twin of simctl recordVideo.
 
     Writes device-side — `screenrecord` cannot stream to a host file — so the recording is pulled off
-    after the process stops (the stop/pull lifecycle lives in `intervals.start_screenrecord`).
+    after the process stops (the stop/pull lifecycle lives in `intervals.start_screenrecord`). The
+    keyword-only options forward to `screenrecord`'s own flags and are omitted (device defaults) when
+    left `None`: `time_limit` bounds a recording that would otherwise stop at the 180s default,
+    `size`/`bit_rate` shrink the mp4 below the 20 Mbps full-resolution default — a caller with a
+    multi-minute window and a size-conscious artifact upload (the Android CI codegen lane) sets all
+    three; a scenario-length `bajutsu run` capture does not need them.
     """
-    return _adb(serial, "shell", "screenrecord", device_path)
+    cmd = _adb(serial, "shell", "screenrecord")
+    if time_limit is not None:
+        cmd += ["--time-limit", str(time_limit)]
+    if size is not None:
+        cmd += ["--size", size]
+    if bit_rate is not None:
+        cmd += ["--bit-rate", str(bit_rate)]
+    cmd.append(device_path)
+    return cmd
 
 
 def logcat_cmd(serial: str) -> list[str]:

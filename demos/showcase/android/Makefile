@@ -333,38 +333,35 @@ e2e-codegen:
 	# This lane has been observed flaky (a launcher ANR dialog transiently stealing window focus so
 	# the app's own window drops out of the accessibility tree, or the tree reporting empty right
 	# after launch); the still/XML diagnostics above show the state at the moment of failure but not
-	# how it got there. Screen-record the whole install+test window alongside it, the CI twin of
-	# `bajutsu/evidence/intervals.py:start_screenrecord` (the same SIGINT-then-pgrep-poll-then-pull
-	# finalize sequence, reimplemented in shell here since this lane runs no bajutsu runtime at test
-	# time). One shell instance: the recorder is backgrounded and its PID kept
-	# so it can be stopped after gradle exits — a plain multi-line recipe would run each line in its
-	# own subshell and lose that PID. `|| true` on every teardown step so a failed
+	# how it got there. Screen-record the whole install+test window alongside it: this lane runs no
+	# bajutsu runtime at test time, so it cannot go through `bajutsu run`'s own evidence capture, but
+	# the host side (this recipe) already runs bajutsu (`uv run bajutsu codegen` above) and can call
+	# `bajutsu.evidence.intervals.start_screenrecord`/`stop` directly — the same SIGINT-then-device-
+	# poll-then-pull finalize `bajutsu run` uses, in one place instead of a shell reimplementation that
+	# had already drifted from it (PR #1493 review). `demos/showcase/android/screenrecord.py` wraps
+	# that call; backgrounded here and stopped by SIGINT after Gradle exits, the same shape
+	# `net_stub.py` above uses for its host-side helper. `|| true` on every teardown step so a failed
 	# recording/pull/cleanup can never mask (or replace) the real test exit code, which is captured
 	# and re-raised via `exit "$$rc"` at the end.
 	# Build the APKs *before* the recorder starts: the recording is capped at 900s (180s if unset),
 	# while this job budgets ~15min for build+test, so a recording spanning the build would end before
-	# the install+test window the flake lives in. --size/--bit-rate keep a multi-minute mp4 small
-	# enough for /sdcard and for the artifact upload (the default is 20 Mbps at full 1080x2400).
+	# the install+test window the flake lives in. screenrecord.py's --size/--bit-rate keep a multi-
+	# minute mp4 small enough for /sdcard and the artifact upload (the default is 20 Mbps at full
+	# 1080x2400). The mp4 is always pulled on stop, then discarded here on a green run — matching the
+	# failure-only policy the diagnostics above follow — rather than skipping the pull itself, so the
+	# finalize/pull/cleanup stays one unconditional call into screenrecord.py.
 	# Suppress the system's error dialogs on this lane too, as every other on-device target here
 	# does (ANR_QUIET above): the transient launcher ANR dialog this recording exists to diagnose
 	# is exactly one of the dialogs that setting stops being posted at all.
 	$(ANR_QUIET)
 	cd $(HERE) && $(GRADLEW) :compose:assembleA11yDebug :compose:assembleA11yDebugAndroidTest
-	adb shell screenrecord --time-limit 900 --size 540x1200 --bit-rate 2000000 \
-		/sdcard/uiautomator-codegen.mp4 & \
+	cd $(ROOT) && uv run python3 demos/showcase/android/screenrecord.py $(SERIAL) \
+		$(HERE)/compose/build/outputs/screenrecord/uiautomator-codegen.mp4 & \
 	rec_pid=$$!; \
 	( cd $(HERE) && $(GRADLEW) :compose:connectedA11yDebugAndroidTest ); rc=$$?; \
 	kill -INT "$$rec_pid" 2>/dev/null || true; \
-	for i in $$(seq 1 60); do adb shell pgrep -x screenrecord >/dev/null 2>&1 || break; sleep 2; done; \
-	adb shell pgrep -x screenrecord >/dev/null 2>&1 \
-		&& echo "warning: device-side screenrecord still running after 120s; the pulled mp4 may be truncated (no moov atom)" || true; \
-	if [ "$$rc" -ne 0 ]; then \
-		mkdir -p $(HERE)/compose/build/outputs/screenrecord; \
-		adb pull /sdcard/uiautomator-codegen.mp4 \
-			$(HERE)/compose/build/outputs/screenrecord/uiautomator-codegen.mp4 >/dev/null \
-			|| echo "warning: could not pull the codegen screen recording; the artifact will carry no video"; \
-	fi; \
-	adb shell rm -f /sdcard/uiautomator-codegen.mp4 || true; \
+	wait "$$rec_pid" || true; \
+	[ "$$rc" -eq 0 ] && rm -f $(HERE)/compose/build/outputs/screenrecord/uiautomator-codegen.mp4; \
 	exit "$$rc"
 
 clean:

@@ -155,6 +155,32 @@ def test_start_screenrecord_records_device_side_then_pulls_on_stop(tmp_path: Pat
     ]
 
 
+def test_start_screenrecord_forwards_bound_and_size_options(tmp_path: Path) -> None:
+    from bajutsu import adb
+
+    spawn_calls: list[list[str]] = []
+
+    def spawn(argv: list[str], stdout_path: Path | None) -> FakeProc:
+        spawn_calls.append(argv)
+        return FakeProc()
+
+    def run(argv: list[str]) -> str:
+        return ""
+
+    intervals.start_screenrecord(
+        "SER",
+        tmp_path / "scenario.mp4",
+        spawn=spawn,
+        run=run,
+        time_limit=900,
+        size="540x1200",
+        bit_rate=2_000_000,
+    )
+    assert spawn_calls[0] == adb.screenrecord_cmd(
+        "SER", time_limit=900, size="540x1200", bit_rate=2_000_000
+    )
+
+
 def test_start_screenrecord_cleanup_failure_does_not_fail_stop(tmp_path: Path) -> None:
     proc = FakeProc()
     ran: list[str] = []
