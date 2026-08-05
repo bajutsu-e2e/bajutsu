@@ -345,6 +345,7 @@ e2e-codegen:
 	# while this job budgets ~15min for build+test, so a recording spanning the build would end before
 	# the install+test window the flake lives in. --size/--bit-rate keep a multi-minute mp4 small
 	# enough for /sdcard and for the artifact upload (the default is 20 Mbps at full 1080x2400).
+	$(ANR_QUIET)
 	cd $(HERE) && $(GRADLEW) :compose:assembleA11yDebug :compose:assembleA11yDebugAndroidTest
 	adb shell screenrecord --time-limit 900 --size 540x1200 --bit-rate 2000000 \
 		/sdcard/uiautomator-codegen.mp4 & \
