@@ -462,8 +462,9 @@ class ComponentsUITest {
   needed. Reading the list first is worth it only because it turns the first case into one key press
   instead of a whole launch timeout.
 
-  A list that is still empty once the pre-launch budget is spent is logged, not thrown: HOME against
-  an app that has not started yet (the launcher) is the weakest stimulus this file has, while starting
+  A list that is still empty once the pre-launch budget is spent is logged rather than raised as a
+  failure: HOME before the app has started only reaches the launcher — the weakest stimulus this
+  file has — while starting
   the activity adds a window outright. Throwing there would spend the whole kick budget on the weak
   stimulus and abort before `startActivity` ever runs — on the one device that most needs the strong
   one. `launch`'s own retry loop already reports the failure, naming the window list, if starting the
