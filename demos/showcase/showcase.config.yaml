@@ -154,11 +154,11 @@ targets:
     # dialog at all, run by every `make e2e*` target — including `e2e-codegen`, which drives Gradle's
     # `connectedA11yDebugAndroidTest` directly (BE-0294), never `bajutsu run`, but is blocked by the
     # same dialog the same way any reader of the window is — and by demos/showcase/Makefile's
-    # `run-flutter-android`, which drives showcase-flutter-android only. No lane drives the three
-    # `-noax` twins at all (showcase-compose-noax, showcase-views-noax,
-    # showcase-flutter-android-noax), so for them this block is the sole guard, always, not an inert
-    # copy like the rest. What ANR_QUIET cannot reach on the lanes it does cover is a bare
-    # `bajutsu run` outside any Makefile wrapper — the AWS Device Farm lane
+    # `run-flutter-android`, which drives showcase-flutter-android only. The three `-noax` twins
+    # (showcase-compose-noax, showcase-views-noax, showcase-flutter-android-noax) are the `record` /
+    # `doctor` "missing accessibility" demo this file's header describes, and no lane runs them — and
+    # `interrupts` is a `run`-only guard, so it never fires on either of those paths. What ANR_QUIET
+    # cannot reach is a bare `bajutsu run` outside any Makefile wrapper — the AWS Device Farm lane
     # (demos/showcase/devicefarm/showcase.devicefarm.config.yaml) is exactly this, and carries the
     # same block for the same reason — which is how this dialog was first reported, so `interrupts`
     # (BE-0314) is declared here as the only guard on that path.
