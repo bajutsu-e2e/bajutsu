@@ -182,10 +182,11 @@ drop anything that fights the codebase grain.
 
 **Don't open the PR (step 10) until this pass is clear.** Keep fixing and re-running the contract
 pass against the updated diff until it comes back empty, per `ideation` step 5's loop-until-empty
-rule and its 3-round cap. What's left standing at that point may only be a finding you judged a
-false positive or a deliberate, already-noted trade-off — never an unresolved real finding. Route
-anything that calls for a genuine design change to the user instead of the PR, the same escalation
-`ideation` step 5 uses.
+rule and its 3-round cap. What's left standing may only be a finding you judged a false positive or
+a deliberate, already-noted trade-off — never an unresolved real finding. Route anything that calls
+for a genuine design change to the user instead of the PR, the same escalation `ideation` step 5
+uses. And if the 3rd round still returns a real finding, the cap has been reached: stop there, leave
+the PR unopened, and let the user make the call rather than looping further.
 
 ### 8. Flip the roadmap item to Implemented
 
