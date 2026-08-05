@@ -328,7 +328,7 @@ class ComponentsUITest {
 
   // Never throws: getWindows() raises IllegalStateException when the connection is not established
   private fun reportsWindows(): Boolean = runCatching {
-    InstrumentationRegistry.getInstrumentation().uiAutomation.windows.isNotEmpty()
+    accessibilityWindows().isNotEmpty()
   }.getOrElse { Log.w(LOG_TAG, "could not read the window list", it); false }
 
   private fun ensureWindowTracking() {
@@ -336,12 +336,13 @@ class ComponentsUITest {
       if (reportsWindows()) return
       kickWindowTracking("no accessibility windows reported (attempt $attempt)")
     }
-    // The last kick would otherwise go unchecked — the loop provokes it and exits.
+    // The last kick would otherwise go unchecked — the loop provokes it and lets the caller
+    // decide, rather than aborting before it gets to try starting the activity.
     if (!reportsWindows()) {
-      throw AssertionError(
-        "accessibility window tracking reported no usable window list after " +
-          "$TRACKING_KICK_ATTEMPTS kick(s), which the screenshot and hierarchy dump" +
-          " below post-date; windows:\n" + windowSummary()
+      Log.w(
+        LOG_TAG,
+        "no usable window list after $TRACKING_KICK_ATTEMPTS kick(s); trying launch" +
+          " anyway; windows:\n" + windowSummary()
       )
     }
   }
@@ -440,15 +441,14 @@ class ComponentsUITest {
   view currently says, and it dismisses whatever holds focus. The key press waits for the events it
   produces, so the recovery adds no sleep. `LAUNCH_ATTEMPTS` bounds this kick to one fewer than the
   number of attempts, so once at the emitted value of 2. It is not the only kick a launch can make,
-  though: the pre-launch check in the next bullet carries its own `TRACKING_KICK_ATTEMPTS` budget per
-  attempt, putting the worst case for one `launch` at `LAUNCH_ATTEMPTS × TRACKING_KICK_ATTEMPTS +
-  (LAUNCH_ATTEMPTS - 1)` presses — seven as emitted, and only on a device whose list comes back on
-  the last read of each pre-launch check. One that stays unreadable never reaches seven: the first
-  check throws after its three presses, before the app is launched at all. `pressHome` reports a
-  window event that never arrived by returning false rather than by throwing, so both outcomes are
-  logged. The kick stays outside `UiAutomation.executeAndWaitForEvent`, because `pressHome` already
-  waits through that same call and a nested one would clear the event queue the outer wait is
-  watching.
+  though: the pre-launch check in the next bullet carries its own `TRACKING_KICK_ATTEMPTS` budget
+  per attempt, putting the worst case for one `launch` at `LAUNCH_ATTEMPTS × TRACKING_KICK_ATTEMPTS
+  + (LAUNCH_ATTEMPTS - 1)` presses — seven as emitted, reached by any device whose window never
+  joins the list, since the pre-launch check no longer gives up early when its own budget runs out
+  (see the next bullet). `pressHome` reports a window event that never arrived by returning false
+  rather than by throwing, so both outcomes are logged. The kick stays outside
+  `UiAutomation.executeAndWaitForEvent`, because `pressHome` already waits through that same call
+  and a nested one would clear the event queue the outer wait is watching.
 - **Two ways the window fails to arrive, both observed in CI, and one remedy.** `ensureWindowTracking`
   reads the list before each attempt and catches the first: a list holding nothing at all, which one
   run logged as `no accessibility windows reported (attempt 1)` before the window change recovered it.
@@ -456,6 +456,13 @@ class ComponentsUITest {
   kick after a failed attempt fires **without consulting the list**, which is what the run below
   needed. Reading the list first is worth it only because it turns the first case into one key press
   instead of a whole launch timeout.
+
+  A list that is still empty once the pre-launch budget is spent is logged, not thrown: HOME against
+  an app that has not started yet (the launcher) is the weakest stimulus this file has, while starting
+  the activity adds a window outright. Throwing there would spend the whole kick budget on the weak
+  stimulus and abort before `startActivity` ever runs — on the one device that most needs the strong
+  one. `launch`'s own retry loop already reports the failure, naming the window list, if starting the
+  activity does not help either.
 - **The last attempt does not kick once its wait fails**, because after it there is no intent left to
   re-issue and HOME would overwrite every piece of evidence the failure is about to collect. (The
   pre-launch check in the first bullet still presses HOME on that attempt, but before the relaunch, so

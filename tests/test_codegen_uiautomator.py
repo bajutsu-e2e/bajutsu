@@ -99,8 +99,7 @@ def test_a_slow_cold_start_is_waited_out_rather_than_restarted() -> None:
     assert code.count("LAUNCH_TIMEOUT_MS") >= 3
     # The intent is rebuilt per attempt, so a relaunch re-delivers launchEnv through onCreate;
     # resuming the existing task instead would route the extras to onNewIntent.
-    launch = code[code.index("private fun launch") :]
-    body = launch[: launch.index("private fun act")]
+    body = _fn_body(code, "launch", "act")
     assert body.index("for (attempt in 1..LAUNCH_ATTEMPTS)") < body.index(
         "getLaunchIntentForPackage"
     )
@@ -134,7 +133,7 @@ def test_launch_confirms_window_tracking_before_it_waits_on_the_tree() -> None:
 def test_a_wedged_window_list_is_kicked_rather_than_waited_out() -> None:
     # The list is delivered by event, so no timeout can recover one that is never sent — only a
     # window change can. Raising the timeout was measured not to help (5s -> 15s -> 20s across
-    # several runs), so assert the recovery itself: read, kick, and only then fail.
+    # several runs), so assert the recovery itself: read, kick, and only then fall through.
     code = _gen("- name: x\n  steps:\n    - tap: { id: a }\n")
     assert "private const val TRACKING_KICK_ATTEMPTS" in code
     body = _fn_body(code, "ensureWindowTracking", "launch")
@@ -145,17 +144,26 @@ def test_a_wedged_window_list_is_kicked_rather_than_waited_out() -> None:
         < body.index("if (reportsWindows()) return")
         < body.index("kickWindowTracking(")
         < body.index("if (!reportsWindows()) {")
-        < body.index("throw AssertionError(")
     )
-    # A kick that never lands fails here, naming the channel — not 15s later at a selector. The
-    # message appends windowSummary() because reportsWindows() collapses two faults into one false:
-    # an empty list, which a kick recovers, and getWindows() throwing, which it cannot. The summary
-    # renders those as "<no accessibility windows>" and "<unavailable: …>" respectively.
-    assert "accessibility window tracking reported no usable window list after" in body
+    # Logs rather than throws: HOME against a not-yet-started app (the launcher) is the weakest
+    # stimulus this file has, while starting the activity adds a window outright. Throwing here
+    # would spend the whole kick budget on the weak stimulus and abort before startActivity ever
+    # runs — on the one device that most needs the strong one. launch()'s own retry loop already
+    # reports this failure, naming the window list, if starting the activity does not help either.
+    assert "throw AssertionError(" not in body
     assert "windowSummary()" in body
-    # The read cannot throw past that AssertionError: getWindows() raises IllegalStateException
-    # when the connection is not established, which is the fault being reported.
+    # The read cannot throw past that log: getWindows() raises IllegalStateException when the
+    # connection is not established, which is the fault being reported.
     assert "runCatching {" in _fn_body(code, "reportsWindows", "ensureWindowTracking")
+
+    accessor = _fn_body(code, "accessibilityWindows", "windowSummary")
+    # windowSummary() and reportsWindows() must read through the same flags UiDevice itself uses
+    # (Configurator), not the flag-less Instrumentation.getUiAutomation() overload — which, on any
+    # target that sets non-default flags, tears down and reconnects the very UiAutomation instance
+    # UiDevice depends on. One accessor for both, so they cannot drift onto different flags.
+    assert "Configurator.getInstance().uiAutomationFlags" in accessor
+    assert "accessibilityWindows()" in _fn_body(code, "windowSummary", "matchableIds")
+    assert "accessibilityWindows()" in _fn_body(code, "reportsWindows", "ensureWindowTracking")
 
     kick = _fn_body(code, "kickWindowTracking", "reportsWindows")
     assert "device.pressHome()" in kick
@@ -209,7 +217,7 @@ def test_failure_messages_name_the_windows_that_were_searched() -> None:
     # "no element matched <selector>" cannot distinguish an id that has not rendered from an app
     # whose window is absent from the accessibility tree altogether — the two need opposite fixes.
     code = _gen("- name: x\n  steps:\n    - tap: { id: a }\n")
-    assert "InstrumentationRegistry.getInstrumentation().uiAutomation.windows" in code
+    assert "Configurator.getInstance().uiAutomationFlags).windows" in code
     assert 'root=${window.root?.packageName ?: "<null>"} $window' in code
     assert 'within ${ACT_TIMEOUT_MS}ms; windows:\\n" + windowSummary()' in code
 

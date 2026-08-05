@@ -322,7 +322,7 @@ class ComponentsUITest {
 
   // Never throws: getWindows() raises IllegalStateException when the connection is not established
   private fun reportsWindows(): Boolean = runCatching {
-    InstrumentationRegistry.getInstrumentation().uiAutomation.windows.isNotEmpty()
+    accessibilityWindows().isNotEmpty()
   }.getOrElse { Log.w(LOG_TAG, "could not read the window list", it); false }
 
   private fun ensureWindowTracking() {
@@ -330,12 +330,13 @@ class ComponentsUITest {
       if (reportsWindows()) return
       kickWindowTracking("no accessibility windows reported (attempt $attempt)")
     }
-    // The last kick would otherwise go unchecked — the loop provokes it and exits.
+    // The last kick would otherwise go unchecked — the loop provokes it and lets the caller
+    // decide, rather than aborting before it gets to try starting the activity.
     if (!reportsWindows()) {
-      throw AssertionError(
-        "accessibility window tracking reported no usable window list after " +
-          "$TRACKING_KICK_ATTEMPTS kick(s), which the screenshot and hierarchy dump" +
-          " below post-date; windows:\n" + windowSummary()
+      Log.w(
+        LOG_TAG,
+        "no usable window list after $TRACKING_KICK_ATTEMPTS kick(s); trying launch" +
+          " anyway; windows:\n" + windowSummary()
       )
     }
   }
@@ -431,9 +432,8 @@ class ComponentsUITest {
   生成される値の2なら1度です。ただし、1回の起動で起こすウィンドウ変更はこれだけではありません。次の
   箇条書きにある起動前の確認が、試行ごとに `TRACKING_KICK_ATTEMPTS` の予算を別に持つので、`launch`
   1回あたりの最悪値は `LAUNCH_ATTEMPTS × TRACKING_KICK_ATTEMPTS + (LAUNCH_ATTEMPTS - 1)` 回、
-  生成される値では7回です。ただしこれは、起動前の確認のたびに、最後の読み取りで一覧が戻ってきた場合に
-  限ります。最後まで読み取れないままの端末が7回に届くことはありません。最初の確認が3回押したところで
-  AssertionError を投げ、アプリの起動そのものに進まないからです。
+  生成される値では7回です。ウィンドウが一覧に最後まで載らない端末でも、この回数に届きます。起動前の
+  確認は予算を使い切っても、次の箇条書きにあるとおり記録するだけで起動そのものは止めないからです。
   なお `pressHome` は、イベントが届かなかったことを例外ではなく false の返り値で報告するので、
   どちらの結果も記録されます。
   この処理は `UiAutomation.executeAndWaitForEvent` の外に置きます。`pressHome` がすでに同じ呼び出しで
@@ -443,14 +443,21 @@ class ComponentsUITest {
   `no accessibility windows reported (attempt 1)` と記録され、ウィンドウ変更で回復しました。2つめは
   この確認では見えません。一覧は生きていて、アプリのウィンドウだけが載っていないからです。ですから
   試行が失敗した後のウィンドウ変更は、**一覧を読まずに**起こします。下の実行例が必要としたのは、
-  こちらの経路でした。事前に一覧を読む価値は、1つめの場合をキー入力1回で片付け、起動の待機時間を
+  こちらの道筋でした。事前に一覧を読む価値は、1つめの場合をキー入力1回で片付け、起動の待機時間を
   丸ごと使わずに済ませられる点にあります。
+
+  起動前の予算を使い切っても一覧が空のままなら、投げずに記録するだけにとどめます。まだ起動していない
+  アプリ（ランチャー）に向けた HOME は、この仕組みの中でいちばん弱い刺激であり、アクティビティを
+  実際に起動すればウィンドウそのものが増えます。ここで投げてしまうと、弱い刺激だけにキックの予算を
+  使い切り、`startActivity` を一度も呼ばないまま中断してしまいます — 強い刺激をいちばん必要と
+  している端末に対してです。アクティビティの起動でも回復しない場合は、`launch` 自身の再試行が
+  ウィンドウ一覧を添えて失敗を報告します。
 - **最後の試行では、待機が尽きた後にウィンドウ変更を起こしません。** その後に再送する intent はもう
-  ありませんし、HOME を押すと、これから集める証跡がすべて上書きされてしまいます。なお、1つめの
-  箇条書きにある起動前の確認は、最後の試行でも HOME を押しますが、そちらは起動をやり直す前なので、
-  失われる証跡はありません。`AssertionError` 自身のウィンドウ一覧も、
-  階層のダンプも、スクリーンショットも、ランチャーを写したものになります。健全なランチャーのウィンドウ
-  一覧は、証跡が説明しようとしている失敗とは正反対のことを語ってしまいます。
+  ありませんし、HOME を押すと、これから集める証跡がすべて上書きされてしまいます。`AssertionError`
+  自身のウィンドウ一覧も、階層のダンプも、スクリーンショットも、ランチャーを写したものになります。
+  健全なランチャーのウィンドウ一覧は、証跡が説明しようとしている失敗とは正反対のことを語って
+  しまいます。なお、1つめの箇条書きにある起動前の確認は、最後の試行でも HOME を押しますが、そちらは
+  起動をやり直す前なので、証跡は失われません。
 
   この失敗を特定したのは、下の証跡と一緒に CI がアップロードする、Gradle がテストごとに収集する
   logcat です。決め手になったのは、試行ごとのウィンドウ一覧の記録でした。ある実行では、20秒の起動待機の

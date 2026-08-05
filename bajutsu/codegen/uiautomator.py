@@ -402,6 +402,7 @@ class _UiAutomatorGen:
             "import androidx.test.platform.app.InstrumentationRegistry",
             "import androidx.test.uiautomator.By",
             "import androidx.test.uiautomator.BySelector",
+            "import androidx.test.uiautomator.Configurator",
             "import androidx.test.uiautomator.Direction",
             "import androidx.test.uiautomator.UiDevice",
             "import androidx.test.uiautomator.UiObject2",
@@ -471,6 +472,21 @@ class _UiAutomatorGen:
             "    }",
             "  }",
             "",
+            "  // UiDevice reads the window list through Instrumentation.getUiAutomation(flags),"
+            + " using whatever",
+            "  // flags Configurator carries — the usual reason a target sets one is",
+            "  // FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES. The flag-less overload instead"
+            + " disconnects and",
+            "  // reconnects that same UiAutomation on any target whose flags differ, so calling"
+            + " it from the hot",
+            "  // path this file adds below would turn a mere read into the very connection"
+            + " churn it exists to",
+            "  // diagnose. One accessor, so the callers below cannot drift onto different"
+            + " flags.",
+            "  private fun accessibilityWindows() =",
+            "    InstrumentationRegistry.getInstrumentation()",
+            "      .getUiAutomation(Configurator.getInstance().uiAutomationFlags).windows",
+            "",
             "  // Every window the accessibility read channel reports, with the package its root"
             + " belongs",
             '  // to — the fact that separates "the element has not rendered yet" from "this'
@@ -483,7 +499,7 @@ class _UiAutomatorGen:
             + " reading",
             "  // the windows would replace the failure's own message with a worse one.",
             "  private fun windowSummary(): String = runCatching {",
-            "    val windows = InstrumentationRegistry.getInstrumentation().uiAutomation.windows",
+            "    val windows = accessibilityWindows()",
             "    if (windows.isEmpty()) {",
             '      "<no accessibility windows>"',
             "    } else {",
@@ -622,7 +638,7 @@ class _UiAutomatorGen:
             + " (never",
             '  // throws either): "<no accessibility windows>" against "<unavailable: …>".',
             "  private fun reportsWindows(): Boolean = runCatching {",
-            "    InstrumentationRegistry.getInstrumentation().uiAutomation.windows.isNotEmpty()",
+            "    accessibilityWindows().isNotEmpty()",
             '  }.getOrElse { Log.w(LOG_TAG, "could not read the window list", it); false }',
             "",
             "  // One of two observed ways the app's window fails to reach the list, and the one that"
@@ -639,18 +655,35 @@ class _UiAutomatorGen:
             "  // Both want the same remedy, because no timeout recovers a list that will not gain"
             + " the window",
             "  // on its own — only a window change can.",
+            "  //",
+            "  // Logs rather than throws when the list is still empty here: HOME against a"
+            + " not-yet-started",
+            "  // app (the launcher) is the weakest stimulus this file has, per"
+            + " kickWindowTracking's own",
+            '  // note above — "on the launcher it may produce only content changes". Starting'
+            + " the activity",
+            "  // is the strong one, since it adds a window outright, but throwing here would"
+            + " spend the",
+            "  // whole kick budget on the weak stimulus and abort before startActivity ever"
+            + " runs — on the",
+            "  // one device that most needs the strong one. launch()'s own retry loop already"
+            + " reports this",
+            "  // failure, naming the window list, if starting the activity does not help"
+            + " either.",
             "  private fun ensureWindowTracking() {",
             "    for (attempt in 1..TRACKING_KICK_ATTEMPTS) {",
             "      if (reportsWindows()) return",
             '      kickWindowTracking("no accessibility windows reported (attempt $attempt)")',
             "    }",
-            "    // The last kick would otherwise go unchecked — the loop provokes it and exits.",
+            "    // The last kick would otherwise go unchecked — the loop provokes it and lets the"
+            + " caller",
+            "    // decide, rather than aborting before it gets to try starting the activity.",
             "    if (!reportsWindows()) {",
-            "      throw AssertionError(",
-            '        "accessibility window tracking reported no usable window list after " +',
-            '          "$TRACKING_KICK_ATTEMPTS kick(s), which the screenshot and hierarchy dump"'
+            "      Log.w(",
+            "        LOG_TAG,",
+            '        "no usable window list after $TRACKING_KICK_ATTEMPTS kick(s); trying launch"'
             + " +",
-            '          " below post-date; windows:\\n" + windowSummary()',
+            '          " anyway; windows:\\n" + windowSummary()',
             "      )",
             "    }",
             "  }",
