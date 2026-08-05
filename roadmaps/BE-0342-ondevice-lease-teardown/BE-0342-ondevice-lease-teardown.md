@@ -229,9 +229,11 @@ Log:
   environment per lease and returns its teardown alongside the driver, so `LeaseHolder` discards
   through the platform's own teardown rather than `driver.close()`. Unit 1's open decision is
   resolved in favor of `launch_driver` absorbing the guard, so every caller inherits it. The
-  guarded-teardown policy moved to `bajutsu/runner/recovery.py`, shared by the pool's three sites,
-  `launch_driver`, and the lease discard; a mid-run wiring defect now warns rather than logging at
-  debug. Status → Implemented.
+  guarded-teardown policy moved to `bajutsu/runner/recovery.py`, shared by the pool's four sites (the
+  actuator switch, the failed lease, and `shutdown()`'s device and collector loops), `launch_driver`,
+  and the lease discard; a mid-run wiring defect now warns rather than logging at debug. `shutdown()`
+  finishes its whole sweep before re-raising the first defect it met, so one device's defect no longer
+  leaves the later devices' runners and the collector sockets up. Status → Implemented.
 
 ## References
 
