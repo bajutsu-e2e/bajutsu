@@ -711,12 +711,24 @@ def test_device_pool_reuses_a_warm_resident_across_scenarios(
     assert env.torn  # torn down once at the run-set's end — ownership is the pool's (Unit 3)
 
 
+@pytest.mark.parametrize(
+    "teardown_error",
+    [
+        pytest.param(None, id="clean"),
+        pytest.param(AttributeError("no close on this driver"), id="wiring-defect"),  # BE-0342
+    ],
+)
 def test_device_pool_actuator_switch_tears_down_the_warm_resident(
     monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    teardown_error: BaseException | None,
 ) -> None:
     """BE-0291 Unit 3: when the next scenario on a device resolves to a different actuator, the warm
     resident is torn down before the new actuator's environment starts — the one-actuator-per-device
-    rule (BE-0240) still holds, so a warm runner is never inherited across an actuator switch."""
+    rule (BE-0240) still holds, so a warm runner is never inherited across an actuator switch. A
+    wiring defect on that teardown (BE-0342) must not escape either: this site runs before `lease()`'s
+    own `try`, so anything it re-raises would leak `udid` out of `free` and hang every later lease on
+    this device instead of just warning and proceeding with the switch."""
     created: list[_RecordingEnv] = []
 
     def fake_env_for(
@@ -752,59 +764,16 @@ def test_device_pool_actuator_switch_tears_down_the_warm_resident(
             1
         ]  # created[0] is the pool's representative env; [1] is the tap lease env
         assert adb_env.actuator == "adb" and not adb_env.torn  # kept warm after release
-        pinch_lease = lease(_eff(), pinch)  # resolves to the other actuator
+        adb_env.teardown_error = teardown_error
+        with caplog.at_level(logging.WARNING, logger="bajutsu.runner.recovery"):
+            pinch_lease = lease(_eff(), pinch)  # resolves to the other actuator
         assert adb_env.torn  # the warm resident was torn down on the actuator switch
+        if teardown_error is not None:
+            assert "for an actuator switch" in caplog.text  # swallowed into a warning, not silent
         xc_env = created[-1]
         assert (
             xc_env.actuator == "xcuitest" and len(created) == 3
         )  # a fresh env for the new actuator
-        pinch_lease.release()
-    finally:
-        shutdown()
-
-
-def test_device_pool_actuator_switch_swallows_a_wiring_defect_on_teardown(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """BE-0342: this teardown runs before `lease()`'s own `try`, so a wiring defect it doesn't
-    swallow would propagate straight out of `lease()` with `udid` never returned to `free` — hanging
-    every later lease on this device instead of just warning and proceeding with the switch."""
-    created: list[_RecordingEnv] = []
-
-    def fake_env_for(
-        actuator: str,
-        udid: str,
-        env_run: object = None,
-        *,
-        provision: object = None,
-        respawn: bool = False,
-    ) -> _RecordingEnv:
-        env = _RecordingEnv(actuator, udid, provision, reusable=True)
-        created.append(env)
-        return env
-
-    monkeypatch.setattr("bajutsu.runner.pool.environment_for", fake_env_for)
-    monkeypatch.setattr("bajutsu.runner.pool.select_actuator_for_scenario", _fake_resolve)
-    pinch = Scenario.model_validate(
-        {"name": "p", "steps": [{"pinch": {"sel": {"id": "m"}, "scale": 2.0}}]}
-    )
-    lease, shutdown = device_pool(
-        ["UDID-A"],
-        ["ios"],
-        _eff(),
-        Path("runs"),
-        network=False,
-        available=lambda b: True,
-        env_run=lambda *a, **k: "",
-    )
-    try:
-        tap = lease(_eff(), _scn("tap"))  # resolves to the cheap actuator
-        tap.release()
-        adb_env = created[1]  # created[0] is the pool's representative env
-        adb_env.teardown_error = AttributeError("no close on this driver")  # a wiring defect
-        pinch_lease = lease(_eff(), pinch)  # the actuator switch must not hang or leak the device
-        assert adb_env.torn  # teardown still ran despite raising
-        assert created[-1].actuator == "xcuitest" and len(created) == 3  # the switch proceeded
         pinch_lease.release()
         # The device is still usable — a leaked `udid` would hang this on `free.get()`.
         tap_again = lease(_eff(), _scn("tap-again"))
