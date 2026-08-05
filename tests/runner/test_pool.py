@@ -1165,6 +1165,7 @@ def test_device_pool_release_swallows_a_teardown_failure_and_still_frees_the_dev
         env = created[1]  # created[0] is the pool's representative env
         env.raise_on_teardown = teardown_error is None
         env.teardown_error = teardown_error
+        # …and the same over a reusable env, so the `end_lease` arm of the new lambda is pinned too.
         with caplog.at_level(logging.WARNING, logger="bajutsu.runner.recovery"):
             first.release()  # must not raise
         assert env.torn
