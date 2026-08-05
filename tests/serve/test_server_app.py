@@ -481,6 +481,7 @@ def _rbac_state(
     login: str,
     teams: list[str] | None = None,
     admin_teams: list[str] | None = None,
+    in_org: bool = True,
 ) -> srv.ServeState:
     from sqlalchemy import create_engine
 
@@ -488,7 +489,8 @@ def _rbac_state(
     from bajutsu.serve.server.models import Base
 
     _scn_dir, cfg, runs = project(tmp_path)
-    _with_orgs(cfg, [login])  # the login is an org member (BE-0313), so sign-in admits it
+    if in_org:
+        _with_orgs(cfg, [login])  # the login is an org member (BE-0313), so sign-in admits it
     engine = create_engine(f"sqlite:///{tmp_path / 'rbac.db'}")
     Base.metadata.create_all(engine)
     return srv.ServeState(
@@ -499,7 +501,7 @@ def _rbac_state(
         auth=srv.SessionManager(
             token="t",  # a token makes the gate enforce auth, so the OAuth session's role applies
             oauth=_FakeOAuth(login, teams=teams),
-            oauth_admin_teams=admin_teams or [],
+            oauth_admin_teams=admin_teams or (),
         ),
         repository=SqlRepository(engine),
         popen=fake_popen([]),
@@ -555,6 +557,27 @@ def test_rbac_admin_can_change_settings(tmp_path: Path, monkeypatch: pytest.Monk
     client = TestClient(
         make_app(
             _rbac_state(tmp_path, login="root", teams=[_ADMIN_TEAM], admin_teams=[_ADMIN_TEAM])
+        )
+    )
+    _oauth_signin(client)
+    assert client.post("/api/apikey", json={"value": "sk-admin"}).status_code == 200
+
+
+def test_rbac_admin_team_bypass_reaches_the_admin_endpoints(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "")
+    # The recovery this item exists for: `root` matches no `orgs:` entry, so only the admin-Team
+    # bypass admits them -- the admin-only endpoints must then be reachable, not just the session.
+    client = TestClient(
+        make_app(
+            _rbac_state(
+                tmp_path,
+                login="root",
+                teams=[_ADMIN_TEAM],
+                admin_teams=[_ADMIN_TEAM],
+                in_org=False,
+            )
         )
     )
     _oauth_signin(client)

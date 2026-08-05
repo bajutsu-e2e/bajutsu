@@ -123,7 +123,8 @@ placed the same way `org_for_identity` already places any login that matches no
 org "becomes unreachable through OAuth sign-in" once an `orgs:` block is declared, because every
 login that would have landed there is rejected before placement is computed. This item makes that
 statement no longer universally true, since a bypassing admin now reaches `default` precisely because
-no other org claims their login. `default` carries no special targets beyond whatever no other org
+no other org claims their login. `default` carries no special
+[targets](../../docs/glossary.md#target-app-device) beyond whatever no other org
 has claimed. Admin's `_ADMIN_PATHS` enforcement is already instance-wide regardless of org (BE-0313
 §"Admin stays one server-wide tier"), so this placement grants a bypassing admin nothing beyond the
 admin role BE-0313 already made server-wide.
@@ -224,7 +225,9 @@ mapping.
 - [x] Tests: sign-in accepted for an admin-Team member with no matching `orgs:` entry and with no
       `orgs:` block at all; resolved role is admin in both cases; a login matching neither the org
       gate nor the admin-Team list is still rejected; the renamed variable parses a multi-Team list;
-      a bypassing admin is placed in the `default` org.
+      a bypassing admin is placed in the `default` org. End to end through the HTTP transport: a
+      login matching no `orgs:` entry, admitted only by the bypass, can actually reach an
+      admin-gated endpoint (`POST /api/apikey`) — not just receive a session.
 
 ## References
 

@@ -357,9 +357,9 @@ def _build_server_state(
         if cid and secret and redirect
         else None
     )
-    oauth_admin_teams = [
+    oauth_admin_teams = tuple(
         t.strip() for t in os.environ.get("BAJUTSU_OAUTH_ADMIN_TEAMS", "").split(",") if t.strip()
-    ]
+    )
     # Never lose every admin quietly. An empty list with OAuth wired means no login can ever
     # resolve to admin — whether because the rename's hard cutover (BE-0313's own precedent for
     # retiring BAJUTSU_OAUTH_ADMINS) left only the retired singular name set, or because the new
