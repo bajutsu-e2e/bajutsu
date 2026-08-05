@@ -325,7 +325,7 @@ def test_cleared_interstitial_is_not_misattributed_as_the_steps_screen_change() 
     """A `screenChanged` policy must not fire on the recovery's own screen change, only the step's.
 
     The rule requests `actionLog` rather than a `screenshot` modifier: `.before` is always filtered
-    out of the post-step call as redundant with the pre-step baseline (BE-XXXX), so it could no
+    out of the post-step call as redundant with the pre-step baseline (BE-0341), so it could no
     longer distinguish "the rule fired" from "every step's own baseline" — see the identical fix in
     `tests/test_capture_firing.py` and `tests/orchestrator/test_read_count.py`.
     """
@@ -354,7 +354,7 @@ def test_cleared_interstitial_is_not_misattributed_as_the_steps_screen_change() 
     # (no-op) action fires no screenChanged capture — the middle `actionLog` call the rule would
     # add is absent. It carries only the two always-on baselines: the pre-step one every step
     # gets, and the final-step one since it is also the scenario's only (and therefore last)
-    # step (BE-XXXX).
+    # step (BE-0341).
     step0 = [kinds for sid, kinds in sink.calls if sid == "x/step0"]
     assert step0 == [["screenshot.before", "elements"], ["screenshot.after"]]
 
