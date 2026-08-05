@@ -344,7 +344,9 @@ def _build_server_state(
         raise ValueError("BAJUTSU_SECRETS_KEY is required for --backend=server with a database")
     # GitHub OAuth login is optional: wired only when all three OAuth vars are set, else None (token
     # auth only). Once configured, sign-in and the viewer/editor role follow GitHub org/Team
-    # membership (BE-0313); `BAJUTSU_OAUTH_ADMIN_TEAM` names the one server-wide admin Team.
+    # membership (BE-0313); `BAJUTSU_OAUTH_ADMIN_TEAMS` names the server-wide admin Teams (a member of
+    # any of them also clears the sign-in gate itself, so an admin can still sign in and repoint a
+    # broken `orgs:` config).
     cid = os.environ.get("BAJUTSU_OAUTH_GITHUB_CLIENT_ID")
     secret = os.environ.get("BAJUTSU_OAUTH_GITHUB_CLIENT_SECRET")
     redirect = os.environ.get("BAJUTSU_OAUTH_GITHUB_REDIRECT_URI")
@@ -353,7 +355,9 @@ def _build_server_state(
         if cid and secret and redirect
         else None
     )
-    oauth_admin_team = os.environ.get("BAJUTSU_OAUTH_ADMIN_TEAM") or None
+    oauth_admin_teams = [
+        t.strip() for t in os.environ.get("BAJUTSU_OAUTH_ADMIN_TEAMS", "").split(",") if t.strip()
+    ]
 
     repo = repository_from_env()
 
@@ -408,7 +412,7 @@ def _build_server_state(
         ),
         # The authentication cluster (BE-0248): the shared token, the login-session store (a
         # DB-backed one when a database is wired so sessions survive restarts, else in-memory), and
-        # the GitHub OAuth client + the server-wide admin Team (BE-0313).
+        # the GitHub OAuth client + the server-wide admin Teams (BE-0313).
         auth=SessionManager(
             token=token,
             sessions=(
@@ -420,7 +424,7 @@ def _build_server_state(
                 else InMemorySessionStore()
             ),
             oauth=oauth,
-            oauth_admin_team=oauth_admin_team,
+            oauth_admin_teams=oauth_admin_teams,
         ),
     )
 

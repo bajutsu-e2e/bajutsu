@@ -68,7 +68,13 @@ def oauth_callback(
     # deployment still gates sign-in rather than admitting every GitHub user.
     parsed = load_serve_config_file(state.config)
     orgs = parsed[1] if parsed is not None else {}
-    if not identity_matches_org(orgs, login, identity.orgs):
+    admin_teams = state.auth.oauth_admin_teams
+    # A member of a configured admin Team clears the sign-in gate directly, even when no `orgs:`
+    # entry lists their GitHub organization (or `orgs:` is absent entirely) — an admin must be able to
+    # sign in and repoint a broken or incomplete `orgs:` config, not be locked out by the same config
+    # mistake they exist to fix.
+    is_admin_team_member = any(team in admin_teams for team in identity.teams)
+    if not identity_matches_org(orgs, login, identity.orgs) and not is_admin_team_member:
         return {"error": "user not allowed"}, 403, None
     if state.repository is not None:
         # Persist the identity into the system of record, so audit entries and RBAC can reference
@@ -89,7 +95,7 @@ def oauth_callback(
             role=role_for(
                 teams=identity.teams,
                 editor_team=editor_team,
-                admin_team=state.auth.oauth_admin_team,
+                admin_teams=admin_teams,
             ),
         )
     return {"ok": True, "user": login}, 200, state.auth.issue_session(identity=login)
@@ -172,12 +178,13 @@ _EDITOR_PATHS = frozenset(
 )
 
 
-def role_for(*, teams: list[str], editor_team: str | None, admin_team: str | None) -> str:
-    """The role for a login from its GitHub Team memberships (BE-0313): admin if a member of the
-    server-wide *admin_team*, editor if a member of the resolved org's *editor_team*, else viewer
+def role_for(*, teams: list[str], editor_team: str | None, admin_teams: list[str]) -> str:
+    """The role for a login from its GitHub Team memberships (BE-0313): admin if a member of any of
+    the server-wide *admin_teams*, editor if a member of the resolved org's *editor_team*, else viewer
     (the base role every signed-in user gets). *teams* are `"<github-org>/<team-slug>"` direct
-    memberships; an unset team never matches. Recomputed on every login (BE-0015 7c-2)."""
-    if admin_team is not None and admin_team in teams:
+    memberships; an unset *editor_team* or empty *admin_teams* never matches. Recomputed on every
+    login (BE-0015 7c-2)."""
+    if any(team in admin_teams for team in teams):
         return "admin"
     if editor_team is not None and editor_team in teams:
         return "editor"

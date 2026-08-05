@@ -17,31 +17,38 @@ from bajutsu.serve.state import ServeState
 
 
 def test_role_for_derives_the_role_from_team_membership() -> None:
-    # BE-0313: admin follows the server-wide admin Team, editor the org's editor Team, else viewer.
+    # BE-0313: admin follows the server-wide admin Teams, editor the org's editor Team, else viewer.
     teams = ["acme-gh/scenario-maintainers", "acme-gh/ops"]
     assert (
         ops.role_for(
-            teams=teams, editor_team="acme-gh/scenario-maintainers", admin_team="acme-gh/ops"
+            teams=teams, editor_team="acme-gh/scenario-maintainers", admin_teams=["acme-gh/ops"]
         )
         == "admin"
     )
     assert (
         ops.role_for(
-            teams=teams, editor_team="acme-gh/scenario-maintainers", admin_team="acme-gh/absent"
+            teams=teams, editor_team="acme-gh/scenario-maintainers", admin_teams=["acme-gh/absent"]
         )
         == "editor"
     )
     # The base role: signed in, but a member of neither Team.
     assert (
-        ops.role_for(teams=teams, editor_team="acme-gh/absent", admin_team="acme-gh/none")
+        ops.role_for(teams=teams, editor_team="acme-gh/absent", admin_teams=["acme-gh/none"])
         == "viewer"
     )
     # An unset Team never matches, even against an empty-string team name in the list.
-    assert ops.role_for(teams=[""], editor_team=None, admin_team=None) == "viewer"
+    assert ops.role_for(teams=[""], editor_team=None, admin_teams=[]) == "viewer"
     # Nested-Team names don't match the configured flat Team (exact match only).
     assert (
-        ops.role_for(teams=["acme-gh/parent/child"], editor_team="acme-gh/parent", admin_team=None)
+        ops.role_for(teams=["acme-gh/parent/child"], editor_team="acme-gh/parent", admin_teams=[])
         == "viewer"
+    )
+    # A login matching any of several configured admin Teams resolves to admin.
+    assert (
+        ops.role_for(
+            teams=["acme-gh/ops"], editor_team=None, admin_teams=["other-gh/root", "acme-gh/ops"]
+        )
+        == "admin"
     )
 
 

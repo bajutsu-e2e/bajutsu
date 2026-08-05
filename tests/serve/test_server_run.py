@@ -246,7 +246,7 @@ def test_build_state_local_has_no_oauth(tmp_path: Path) -> None:
     # OAuth is server-only; local never has it (token auth only), so behavior is unchanged.
     state = _state(tmp_path)
     assert state.auth.oauth is None
-    assert state.auth.oauth_admin_team is None
+    assert state.auth.oauth_admin_teams == []
 
 
 def test_build_state_server_wires_oauth_when_configured(
@@ -276,14 +276,15 @@ def test_build_state_server_wires_oauth_when_configured(
     assert isinstance(state.auth.oauth, GitHubOAuthClient)
 
 
-def test_build_state_server_parses_the_admin_team(
+def test_build_state_server_parses_the_admin_teams(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # BE-0313: the admin role is one server-wide GitHub Team, named by BAJUTSU_OAUTH_ADMIN_TEAM.
+    # The admin role follows one or more server-wide GitHub Teams, named by the comma-separated
+    # BAJUTSU_OAUTH_ADMIN_TEAMS.
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
     monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
-    monkeypatch.setenv("BAJUTSU_OAUTH_ADMIN_TEAM", "acme-gh/ops")
+    monkeypatch.setenv("BAJUTSU_OAUTH_ADMIN_TEAMS", "acme-gh/ops, other-gh/root")
     _scn, cfg, runs = project(tmp_path)
     state = srv._build_state(
         runs_dir=runs,
@@ -295,7 +296,7 @@ def test_build_state_server_parses_the_admin_team(
         token=None,
         backend="server",
     )
-    assert state.auth.oauth_admin_team == "acme-gh/ops"
+    assert state.auth.oauth_admin_teams == ["acme-gh/ops", "other-gh/root"]
 
 
 def test_build_state_server_parses_the_per_user_quota(

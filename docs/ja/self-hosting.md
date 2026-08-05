@@ -368,13 +368,13 @@ OAuth を構成すると、アクセスは手作業の login リストではな�
   拒否されるので、OAuth を使う構成では `orgs:` ブロックの宣言が必須です。
 - **editor** は org の `editorTeam` に従います。その 1 つのフラットな GitHub Team の直接メンバーが、run、record、
   scenario の編集をできます。
-- **admin** はサーバ全体で 1 つの GitHub Team、`BAJUTSU_OAUTH_ADMIN_TEAM`（`"<github-org>/<team-slug>"` の形）に
-  従います。そのメンバーはサーバ設定（config、API キー、provider）も変更できます。admin はデプロイ全体で 1 段の
-  ロールなので、どの org を越えても信頼できるメンバーの Team を指定します。ただし admin も、まず上記のサインイン
-  のゲートを通過する必要があります。`BAJUTSU_OAUTH_ADMIN_TEAM` は、login がいずれかの `orgs:` エントリに一致した
-  後にしか確認されません。そのため admin Team が属する GitHub organization 自体を、どこかの org の `githubOrgs`
-  に含める（または、そのメンバーを `members` に列挙する）必要があります。含めなければ、意図した admin もサイン
-  インの時点で拒否され、admin Team は確認すらされません。
+- **admin** はサーバ全体で 1 つ以上の GitHub Team、`BAJUTSU_OAUTH_ADMIN_TEAMS`（カンマ区切りのリスト。各要素は
+  `"<github-org>/<team-slug>"` の形）に従います。そのメンバーはサーバ設定（config、API キー、provider）も変更
+  できます。admin はデプロイ全体で 1 段のロールなので、どの org を越えても信頼できるメンバーの Team を指定
+  します。上の viewer・editor とは異なり、設定した admin Team のいずれかのメンバーは、サインインのゲートを
+  直接通過します。admin Team が属する GitHub organization を、どこかの org の `githubOrgs` に含める必要は
+  ありません。そのため、`orgs:` ブロックが壊れている、あるいは存在しない状態でも、admin は常にサインイン
+  して、サーバの向き先を修正済みの config へ張り替えられます。
 
 メンバーシップはログインのたびに読み直されるので、GitHub org や Team を抜けると、対象ユーザの次のサインインで
 反映されます。サーバ側のリストを編集する必要はありません。ログインは常にこれらのメンバーシップを読むために
@@ -385,7 +385,9 @@ OAuth を構成すると、アクセスは手作業の login リストではな�
 がその org の全メンバーより狭い範囲を許可していたなら、切り替え前に `orgs:` を絞ってください。org のゲートだけに
 なると、その分アクセスが広がります。2 つ目は、`BAJUTSU_OAUTH_ALLOWED_USERS`／`_ADMINS`／`_VIEWERS` が単純に無視さ
 れるようになることです。切り替える前に、admin と editor のそれぞれを Team メンバーシップとして宣言し直してくだ
-さい。`editorTeam` や `BAJUTSU_OAUTH_ADMIN_TEAM` でまだカバーされていない login は、次のログインで viewer に落ちます。
+さい。`editorTeam` や `BAJUTSU_OAUTH_ADMIN_TEAMS` でまだカバーされていない login は、次のログインで viewer に
+落ちます。すでに旧来の単数形 `BAJUTSU_OAUTH_ADMIN_TEAM` を設定していたデプロイは、同じタイミングで
+`BAJUTSU_OAUTH_ADMIN_TEAMS` に改名してください。旧名はもう読まれません。
 
 3 つ目は、セッションそのものです。`POST /api/login` を無効にするのは、OAuth を構成した後に**新たな**トークン
 Cookie セッションが発行されなくなるだけで、それ以前にすでに発行されたセッションは無効になりません。OAuth を
