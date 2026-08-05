@@ -91,7 +91,7 @@ SERIAL ?= booted
 # Observed network capture lands in its own `e2e-network` target below (BE-0283); mocked network
 # (deterministic stub responses) stays a follow-up.
 E2E_SCENARIOS := smoke firstlook navigation search data_driven relaunch system components modals \
-	controls notices gestures gestures_multitouch permission device extract foreach
+	controls notices gestures gestures_multitouch permission device extract foreach interrupts
 
 # Raise the condition-wait ceiling for this lane only: the CI x86_64 software-rendered emulator
 # presents sheets/covers slower than the shared scenarios' 5s waits allow. A wait returns as soon as

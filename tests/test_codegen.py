@@ -401,7 +401,11 @@ _COVERAGE_CASES = [
     ("select/copy (Cmd+A / Cmd+C)", "text_editing.yaml", 'typeKey("a", modifierFlags: .command)'),
     ("delete key", "text_editing.yaml", "XCUIKeyboardKey.delete.rawValue"),
     ("longPress", "gestures.yaml", ".press(forDuration:"),
-    ("directional swipe", "gestures.yaml", ".swipeUp()"),
+    # gestures.yaml no longer reaches its target with a hand-tuned swipe chain (scroll, BE-0326,
+    # replaced it); codegen_extra.yaml's element-anchored `drag` emits the same swipeX() primitive a
+    # directional swipe does (see test_drag_maps_to_swipe_gesture above), so it still proves this
+    # primitive compiles and runs on-device.
+    ("directional swipe", "codegen_extra.yaml", ".swipeUp()"),
     ("pinch", "gestures_multitouch.yaml", ".pinch(withScale: 2.0"),
     ("rotate", "gestures_multitouch.yaml", ".rotate(1.0"),
     ("coordinate swipe (drag)", "codegen_extra.yaml", "thenDragTo: coord("),

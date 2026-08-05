@@ -2,10 +2,9 @@
 # it back, so a scenario can assert pasteboard state the backend's app-scoped query cannot otherwise
 # observe. The round-trip is in-app (Copy then Paste) so it reads back silently — reading a
 # pasteboard seeded by another process trips iOS's paste-permission prompt. The System section
-# sits below Notifications + Location, so scroll to the bottom (two swipes, the second anchored
-# on Location which is still visible after the first) before tapping. Each id lists both its
-# dotted SPEC form and its underscore Android Views form, so one scenario runs on every target
-# (BE-0221).
+# sits below Notifications + Location, so a `scroll` step reveals it (non-inertial, re-querying —
+# BE-0326) before tapping. Each id lists both its dotted SPEC form and its underscore Android Views
+# form, so one scenario runs on every target (BE-0221).
 - name: copy then paste round-trips through the mirror
   preconditions:
     launchEnv: { SHOWCASE_UITEST: "1" }
@@ -13,8 +12,8 @@
     - tap: { label: "Permissions", traits: [button] }
       capture: [video]
     - wait: { for: { id: [perm.requestNotif, perm_requestNotif] }, timeout: 10 }
-    - swipe: { on: { id: [perm.requestNotif, perm_requestNotif] }, direction: up }
-    - swipe: { on: { id: [perm.requestLocation, perm_requestLocation] }, direction: up }
+    - scroll: { to: { id: [sys.copy, sys_copy] }, direction: down }
+    - wait: { until: settled, timeout: 3 }
     - wait: { for: { id: [sys.paste.value, sys_paste_value] }, timeout: 5 }
     - tap: { id: [sys.copy, sys_copy] }
     - tap: { id: [sys.paste, sys_paste] }
