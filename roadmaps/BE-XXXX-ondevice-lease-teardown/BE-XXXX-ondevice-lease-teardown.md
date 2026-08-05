@@ -10,7 +10,7 @@
 | Status | **Proposal** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | Topic | Platform support |
-| Related | [BE-0334](../BE-0334-conformance-suite-infra-fault-recovery/BE-0334-conformance-suite-infra-fault-recovery.md), [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md), [BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md) |
+| Related | [BE-0334](../BE-0334-conformance-suite-infra-fault-recovery/BE-0334-conformance-suite-infra-fault-recovery.md), [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md), [BE-0305](../BE-0305-driver-resilience-fault-injection/BE-0305-driver-resilience-fault-injection.md), [BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -77,8 +77,8 @@ So on the iOS backend `dead.close()` raises `AttributeError`, the `except Except
 `invalidate()` returns having discarded nothing. Three things kept that silent. The log line sits at
 debug level; mypy never sees the call, because it runs over `bajutsu demos scripts` and not over
 `tests/`; and every fake driver in the harness's own off-device suite
-(`tests/runner/test_backend_crash_recovery.py`) defines a `close()`, so those cases exercise a shape
-no shipped driver has.
+(`tests/runner/test_backend_crash_recovery.py`) defines a `close()`, so those cases exercise the shape
+only the Playwright driver has, never the XCUITest one these suites lease.
 
 Both places that describe the discard therefore describe something that does not happen.
 `invalidate()`'s own docstring says "Discard the current (dead) lease so the next `driver` access
@@ -112,8 +112,9 @@ unit 3 is the off-device coverage that keeps both from regressing.
 1. **Let the lease tear down the environment that owns the runner.** The launch thunk a suite
    supplies returns its teardown alongside its driver, so the `LeaseHolder` discards through the
    platform's own teardown instead of through `driver.close()`. Each suite's `_backend_launch` already
-   calls `launch_driver`, which accepts a prepared `environment`, so the fixture builds one, passes it,
-   and returns a teardown closing over that environment and driver. That widens the plugin's opt-in
+   calls `launch_driver`, which accepts a prepared `environment`, so the thunk builds one on each
+   call, passes it, and returns a teardown closing over that environment and driver — the thunk, not
+   the module-scoped fixture. That widens the plugin's opt-in
    contract, so change it in the same breath: `LeaseHolder`'s `launch` type and the module docstring
    that specifies "a zero-arg callable returning a fresh `base.Driver`" both name the driver alone
    today. The two descriptions this item's Motivation quotes need no edit — unit 1 is what makes them
@@ -126,6 +127,17 @@ unit 3 is the off-device coverage that keeps both from regressing.
    terminates the app under test through `simctl` — machinery that already exists, and that until now
    had no path from these suites. The web environment's own `teardown` is already that `close()` on the
    browser context, so the lease needs no per-backend branch.
+
+   Unit 1 also has to cover a launch that fails partway. `launch_driver` calls `env.start`, which
+   returns a driver, and then `_await_ready`, which can raise on a runner that dies during its
+   readiness probe (`bajutsu/runner/launch.py:79-82`); today that exception propagates out of
+   `launch_driver` without ever handing the driver back, so the thunk that called it holds the
+   environment but has no driver to pass `env.teardown(driver, eff)`. The run pipeline already guards
+   this same seam: `bajutsu/runner/pool.py:371-383` tears the environment down inside
+   `except BaseException:` and still lets the original launch error propagate. Whether `launch_driver`
+   absorbs that same guard itself, so every caller gains it, or the suite's own thunk wraps the call and
+   tears down on its own catch, is a decision unit 1 still owes, not an implementation detail to leave
+   implicit.
 
 2. **Extract the guarded teardown, and stop swallowing one that could not run.** A *mid-run* discard
    runs on a failure path, where raising would mask the fault that prompted it, so catching there is
@@ -143,9 +155,10 @@ unit 3 is the off-device coverage that keeps both from regressing.
    "the two recovery paths do not drift" a property of the code instead of a promise in prose.
 
    Whether a wiring defect surfaces depends on which path called the helper. A mid-run discard swallows
-   it into the warning, because one of that path's two call sites sits in a `finally` guarding the very
-   `BackendCrashError` a test asserts, and the other runs outside any test, where an escaping exception
-   would abort the session instead of failing one case. On the module's **final** release let a wiring
+   it into the warning: two of that path's three call sites are `finally` blocks in the fault-injection
+   suite — one of them guarding the very `BackendCrashError` a test asserts — and the third is the
+   plugin's own discard, which runs outside any test, where an escaping exception would abort the
+   session instead of failing one case. On the module's **final** release let a wiring
    defect fail the module teardown, since no fault is in flight there and a runner that survives leaks
    into the rest of the job.
 
@@ -153,13 +166,14 @@ unit 3 is the off-device coverage that keeps both from regressing.
    `tests/runner/test_backend_crash_recovery.py` drives the plugin through `pytester` with fake launch
    thunks, so extend that file rather than starting a parallel one. Extending it means moving all
    thirteen inner launch thunks onto the new contract, which is also what stops the fakes drifting from
-   the shipped drivers again. Cover seven cases: that `invalidate()` runs the teardown exactly once for
+   the shipped drivers again. Cover eight cases: that `invalidate()` runs the teardown exactly once for
    the discarded lease; that a successful final release runs it exactly once too; that the next `driver`
    access launches a fresh one; that a mid-run teardown raising `CalledProcessError` or `OSError` is
    reported as a warning; that a mid-run teardown raising anything else is *also* swallowed into that
    warning rather than propagating; that the final release propagates a wiring defect while still
-   warning on `CalledProcessError` / `OSError`; and that a lease which was never launched tears nothing
-   down. These belong in the deterministic suite the fast gate runs, so the fix holds on
+   warning on `CalledProcessError` / `OSError`; that a launch which raises after `env.start` still tears
+   the environment down before the error propagates; and that a lease which was never launched tears
+   nothing down. These belong in the deterministic suite the fast gate runs, so the fix holds on
    Linux with no device.
 
 The Android backend has the same shape — `AdbDriver` has no `close()` either — but no suite leases a
@@ -210,6 +224,7 @@ teardown a suite supplies is its platform's own.
 
 - [BE-0334 — Give the on-device conformance suite the infrastructure-fault recovery the run pipeline already has](../BE-0334-conformance-suite-infra-fault-recovery/BE-0334-conformance-suite-infra-fault-recovery.md) — the item that built the lease and its discard.
 - [BE-0114 — Driver conformance suite for backend-agnostic behavior](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md) — the suite whose lease this fixes.
+- [BE-0305 — Real-device fault-injection coverage for driver resilience paths](../BE-0305-driver-resilience-fault-injection/BE-0305-driver-resilience-fault-injection.md) — the item that built the fault-injection suite whose logs this item reads.
 - [BE-0009 — Cross-platform abstractions](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md) — the environment seam that owns the runner process.
 - `tests/backend_crash_recovery.py` — `LeaseHolder`, its `invalidate()`, and the plugin that re-leases between attempts.
 - `tests/runner/test_backend_crash_recovery.py` — the off-device cases unit 3 extends.

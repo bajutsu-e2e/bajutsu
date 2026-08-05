@@ -10,7 +10,7 @@
 | 状態 | **提案** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | トピック | プラットフォーム対応 |
-| 関連 | [BE-0334](../BE-0334-conformance-suite-infra-fault-recovery/BE-0334-conformance-suite-infra-fault-recovery-ja.md), [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md), [BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md) |
+| 関連 | [BE-0334](../BE-0334-conformance-suite-infra-fault-recovery/BE-0334-conformance-suite-infra-fault-recovery-ja.md), [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md), [BE-0305](../BE-0305-driver-resilience-fault-injection/BE-0305-driver-resilience-fault-injection-ja.md), [BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
@@ -77,7 +77,8 @@ Android では、runner のプロセスは環境に属します。そのため i
 これが沈黙したままだった理由は 3 つあります。ログの行が debug レベルにあること。mypy がこの呼び出しを
 見ないこと。mypy が走る対象は `bajutsu demos scripts` であり、`tests/` を含みません。そしてハーネス自身の
 実機不要のテスト（`tests/runner/test_backend_crash_recovery.py`）では、すべての偽のドライバが `close()`
-を定義していることです。つまりそれらのケースは、出荷するドライバのどれとも違う形を動かしています。
+を定義していることです。つまりそれらのケースは、Playwright のドライバだけが持つ形を動かしており、
+これらのスイートが lease する XCUITest のものではありません。
 
 したがって、この破棄を説明している 2 か所は、どちらも起きていないことを説明しています。`invalidate()`
 自身の docstring は「次に `driver` を参照したときコールド再起動するよう、現在の（死んだ）lease を破棄
@@ -111,8 +112,9 @@ Android では、runner のプロセスは環境に属します。そのため i
 1. **runner を所有する環境を、lease から teardown できるようにする。** スイートが渡す起動の thunk は、
    ドライバと並べて teardown を返します。`LeaseHolder` はこれによって、`driver.close()` ではなく
    プラットフォーム自身の teardown を通して破棄します。両スイートの `_backend_launch` はすでに
-   `launch_driver` を呼んでいます。`launch_driver` は用意済みの `environment` を受け取れるので、fixture
-   が環境を組み立てて渡し、その環境とドライバを捕捉した teardown を返します。これはプラグインの opt-in の
+   `launch_driver` を呼んでいます。`launch_driver` は用意済みの `environment` を受け取れるので、呼び出しの
+   たびに thunk がそれを組み立てて渡し、その環境とドライバを捕捉した teardown を返します（module 全体で
+   保持される fixture ではありません）。これはプラグインの opt-in の
    契約を広げるので、同じ変更のなかで契約も直します。`LeaseHolder` の `launch` の型と、「新しい
    `base.Driver` を返す引数なしの callable」と定めている module の docstring は、どちらも今はドライバだけを
    指しています。本項目の動機が引用した 2 つの記述は、直す必要がありません。ユニット 1 こそが、その記述を
@@ -125,6 +127,17 @@ Android では、runner のプロセスは環境に属します。そのため i
    ます。この仕組みはすでに存在していて、これらのスイートから届く道だけがありませんでした。web の環境が
    持つ `teardown` は、すでにブラウザのコンテキストに対するその `close()` です。したがって lease に
    バックエンドごとの分岐は要りません。
+
+   ユニット 1 は、途中で失敗する起動もカバーしなければなりません。`launch_driver` は `env.start` を呼んで
+   ドライバを受け取り、続けて `_await_ready` を呼びます。この `_await_ready` は、runner が readiness の
+   確認中に死ぬと例外を投げます（`bajutsu/runner/launch.py:79-82`）。今の実装では、この例外は
+   `launch_driver` の外へそのまま伝わり、ドライバを呼び出し元へ返しません。そのため呼び出した thunk は
+   環境を持っていても、`env.teardown(driver, eff)` に渡すドライバを持たないままになります。run パイプライン
+   はすでにこの同じ seam を守っています。`bajutsu/runner/pool.py:371-383` は `except BaseException:` の
+   中で環境を teardown し、それでも元の起動エラーをそのまま伝えます。`launch_driver` 自身がこの同じ保護を
+   取り込んで呼び出し元すべてに行き渡らせるのか、それともスイート自身の thunk が呼び出しを包んで自ら
+   teardown するのかは、ユニット 1 がまだ決めていない選択であり、実装の細部として省略してよいものでは
+   ありません。
 
 2. **守られた teardown を切り出し、走れなかったものを飲み込むのをやめる。** **実行中**の破棄は失敗の
    経路で走るため、そこで例外を投げると原因となった障害を隠してしまいます。捕まえること自体は妥当です。
@@ -142,9 +155,10 @@ Android では、runner のプロセスは環境に属します。そのため i
    約束ではなくコードの性質になります。
 
    配線の欠陥がどこに現れるかは、どちらの経路がヘルパーを呼んだかで決まります。実行中の破棄では warning に
-   飲み込みます。この経路の 2 つの呼び出し箇所のうち一方は、テストが検査している `BackendCrashError` その
-   ものを守る `finally` の中にあり、もう一方はどのテストの外でもない場所で走るため、例外が抜けると 1 件の
-   テストを落とすのではなくセッションごと中断させてしまうからです。module の**最後**の解放では、配線の欠陥が
+   飲み込みます。この経路の 3 つの呼び出し箇所のうち 2 つは、フォールト注入のスイートの `finally` の中に
+   あります。一方は、テストが検査している `BackendCrashError` そのものを守るものです。残る 1 つはプラグイン
+   自身の破棄で、どのテストの外でもない場所で走るため、例外が抜けると 1 件のテストを落とすのではなく
+   セッションごと中断させてしまうからです。module の**最後**の解放では、配線の欠陥が
    module の teardown を失敗させます。ここには処理中の障害がなく、生き残った runner はジョブの残りへ漏れて
    しまうからです。
 
@@ -152,11 +166,12 @@ Android では、runner のプロセスは環境に属します。そのため i
    `tests/runner/test_backend_crash_recovery.py` が `pytester` と偽の起動 thunk でプラグインを駆動して
    いるので、並行するファイルを新しく作るのではなく、このファイルを拡張します。拡張とは、13 個ある内側の
    起動 thunk をすべて新しい契約へ移すことです。これは、偽のドライバが出荷するドライバから再び乖離するのを
-   止めることでもあります。確かめるのは次の 7 つです。`invalidate()` が破棄した lease に対して teardown を
+   止めることでもあります。確かめるのは次の 8 つです。`invalidate()` が破棄した lease に対して teardown を
    ちょうど 1 回走らせること。成功した最後の解放でも、ちょうど 1 回走らせること。次の `driver` 参照が新しい
    lease を起動すること。実行中の teardown が `CalledProcessError` または `OSError` を投げた場合、warning
    として報告されること。実行中の teardown がそれ以外を投げた場合も、伝播させずに同じ warning にすること。
    最後の解放では配線の欠陥を伝播させ、`CalledProcessError` と `OSError` には warning のままとすること。
+   `env.start` のあとで例外を投げる起動でも、その例外が伝わる前に環境を teardown すること。
    一度も起動していない lease は何も片付けないこと。これらは高速なゲートが走らせる決定的なスイートに置き、
    修正がデバイスなしの Linux 上で保たれるようにします。
 
@@ -207,6 +222,7 @@ Android の実機スイートが将来追加されたときに、それが構成
 
 - [BE-0334 — 実機 conformance スイートに run パイプラインと同じインフラ障害からの復旧を持たせる](../BE-0334-conformance-suite-infra-fault-recovery/BE-0334-conformance-suite-infra-fault-recovery-ja.md) — lease とその破棄を作った項目。
 - [BE-0114 — backend 非依存の挙動を検査する driver conformance suite](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md) — lease を修正する対象のスイート。
+- [BE-0305 — ドライバ耐障害経路への実機障害注入カバレッジ](../BE-0305-driver-resilience-fault-injection/BE-0305-driver-resilience-fault-injection-ja.md) — 本項目が読むログを残したフォールト注入のスイートを作った項目。
 - [BE-0009 — 抽象のクロスプラットフォーム化](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md) — runner のプロセスを所有する環境の seam。
 - `tests/backend_crash_recovery.py` — `LeaseHolder`、その `invalidate()`、試行のあいだに再 lease するプラグイン。
 - `tests/runner/test_backend_crash_recovery.py` — ユニット 3 が拡張する実機不要のテスト。
