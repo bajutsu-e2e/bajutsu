@@ -114,10 +114,13 @@ deterministic gate (`make check`) is the judge — never an LLM.
 6. **Implement** to the design, matching the codebase grain — strict `mypy`, configured `ruff`,
    condition waits not `sleep`, new knobs in `targets.<name>` config, tests as the regression net,
    and bilingual docs for any documented behavior.
-7. **Review and refine the diff** with the built-in [`simplify`](../.claude/skills) and
-   [`code-review`](../.claude/skills) skills, and — for a non-trivial change — the **pr-review-toolkit**
-   agents. These are *authoring aids*: they advise the author and never judge, so directive #1 holds
-   and no LLM touches the `run`/CI path.
+7. **Review and refine the diff** against the repository's own review contract,
+   [`.github/claude-review-prompt.md`](../.github/claude-review-prompt.md) — the same lenses CI's
+   automated reviewer applies (BE-0203), read from the contract and applied to the diff in a fresh
+   review context rather than through a review command, so the pass depends on no installed skill.
+   Alongside it, the built-in [`simplify`](../.claude/skills) skill and — for a non-trivial change —
+   the **pr-review-toolkit** agents. These are *authoring aids*: they advise the author and never
+   judge, so directive #1 holds and no LLM touches the `run`/CI path.
 8. **Flip the item to Implemented.** In both language files set `Status: Implemented` and add the
    `Implementing PR` line — nothing else to regenerate, since the dashboard reads `Status` straight
    off the item's metadata. The directory never moves (BE-0159): only the `Status` and its dashboard

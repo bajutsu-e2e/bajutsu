@@ -226,8 +226,9 @@ gh pr create --reviewer bajutsu-e2e/steering-committee \
 ### 手順 B4 — 実装し、レビューし、項目を切り替え、ゲートを走らせる
 
 実装はコードベースの流儀に合わせます。厳格な `mypy`、設定された `ruff`、`sleep` ではなく条件待ち、新しい
-つまみは `targets.<name>` の設定に、そして挙動の変更には回帰ネットとしてのテストです。組み込みの `simplify` と
-`code-review` スキル（判定せず助言する起草の補助）で diff を洗練し、両言語ファイルで項目を
+つまみは `targets.<name>` の設定に、そして挙動の変更には回帰ネットとしてのテストです。組み込みの `simplify`
+スキルと、`.github/claude-review-prompt.md` の契約に照らしたレビュー（判定せず助言する起草の補助）で
+diff を洗練し、両言語ファイルで項目を
 `Status: Implemented` に切り替え、`Implementing PR` の行を足します。ダッシュボードがそのメタデータから
 新しい状態を直接読み取るので、ほかに再生成するものはありません。それからゲートです。
 

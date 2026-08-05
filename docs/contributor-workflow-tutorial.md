@@ -231,8 +231,9 @@ with the prime directives. You confirm before a line of code is written.
 
 Implementation matches the codebase grain — strict `mypy`, configured `ruff`, condition waits not
 `sleep`, new knobs in `targets.<name>` config, and a test as the regression net for any behavior
-change. It refines the diff with the built-in `simplify` and `code-review` skills (authoring aids
-that advise, never judge), flips the item to `Status: Implemented` in both language files, and adds
+change. It refines the diff with the built-in `simplify` skill and a review pass against the
+`.github/claude-review-prompt.md` contract (authoring aids that advise, never judge), flips the item
+to `Status: Implemented` in both language files, and adds
 the `Implementing PR` row — the dashboard picks up the new status straight from that metadata, with
 nothing else to regenerate. Then the gate:
 

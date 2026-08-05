@@ -155,13 +155,20 @@ Build to the Detailed design, matching the codebase's grain:
 ### 7. Review and refine the diff
 
 `make check` proves the change is green — it does **not** judge design, simplicity, or
-logic. Close that gap on the diff you just wrote, with official review tooling as
-**authoring aids**. This stays inside directive #1: they advise the author and never
+logic. Close that gap on the diff you just wrote. Lean on the repository's own review contract
+and the host's authoring aids. This stays inside directive #1: they advise the author and never
 judge — the gate (step 9) is still the only verdict, and no LLM touches the `run`/CI path.
 
-Review the diff through the host's available simplification and correctness-review
-facilities. Apply justified fixes before the gate. For a non-trivial change, use fresh,
-independent review contexts for the following lenses:
+Run the review CI runs on the PR, but locally on your diff: follow
+[`ideation`](../ideation/workflow.md) step 5's procedure against the
+[`.github/claude-review-prompt.md`](../../.github/claude-review-prompt.md) contract, with two
+differences. First, don't scope the staged diff to `roadmaps/`; this skill's changes land wherever
+the item needs them, so stage what you touched and diff the whole change. Second, the contract
+file *is* the procedure — read it and hand it to the fresh subagent as text. This invokes no
+review command, so the pass runs the same way in every host and needs no slash command installed.
+
+Then review the diff through the host's simplification facility. Apply justified fixes before the
+gate. For a non-trivial change, use fresh, independent review contexts for the following lenses:
 
 - **Silent failures** — swallowed errors and weak fallbacks. This *is* "determinism
   first, fail loudly": a test tool that hides failures is worse than none.
@@ -316,5 +323,6 @@ reviewers, and every genuine decision escalates to the human.
 - [`propose-and-build`](../propose-and-build/workflow.md) — composes `ideation` + this skill for a
   small, settled item: author the proposal and implement it together in one BE-creation PR,
   reusing this skill's steps 3–9 against the still-placeholder item (CI allocates the id on merge).
-- The host's simplification, code-review, and interactive-verification facilities — the
-  authoring aids steps 7 and 9 lean on. They advise the author; only `make check` judges.
+- [`.github/claude-review-prompt.md`](../../.github/claude-review-prompt.md) — the review contract
+  step 7 applies to the diff, alongside the host's simplification and interactive-verification
+  facilities that steps 7 and 9 lean on. They advise the author; only `make check` judges.
