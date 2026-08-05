@@ -148,17 +148,28 @@ targets:
     backend: [android]
     scenarios: scenarios
     # ANR dialog ("<process> isn't responding") can surface from the OS/launcher at an
-    # unpredictable point during a run, unrelated to this app's own state. aerr_wait is the Wait
-    # button's fixed, locale-independent resource-id in AOSP's app_anr_dialog.xml, named here in
-    # the local form the adb driver reports (it strips the `android:id/` prefix a uiautomator dump
-    # shows), so `interrupts` (BE-0314) — Android's substitute for iOS's native alert guard
-    # (BE-0315/0316), which has no equivalent here (bajutsu/drivers/adb.py's handle_system_alert is
-    # intentionally unsupported) — can dismiss it deterministically wherever it appears. Same
-    # interrupts block on every Android target below: the dialog is OS-owned, not app-specific.
+    # unpredictable point during a run, unrelated to this app's own state — most often a
+    # cold-booted AVD's Pixel Launcher missing its ANR deadline while the first scenario launches.
+    # demos/showcase/android/Makefile's ANR_QUIET (`hide_error_dialogs`) stops the OS posting the
+    # dialog at all and is the primary defense for every `make e2e*`-driven CI/local run, so this
+    # block never fires there; it cannot reach a bare `bajutsu run` outside that wrapper, which is
+    # how this dialog was originally reported (BE-0314 PR #1492), so `interrupts` stays declared
+    # here as the only guard on that path. The trade-off is accepted, not free: a wait-free `tap`
+    # step without a fresh tree pays one extra `driver.query()` for the guard check
+    # (bajutsu/orchestrator/loop.py), felt mainly on the BAJUTSU_ADB_RESIDENT=0 fallback lane, in
+    # exchange for coverage ANR_QUIET does not give the bare-run path. Taps `aerr_close`, not
+    # `aerr_wait` — both are AOSP's fixed, locale-independent resource-ids for the dialog's two
+    # buttons (named here in the local form the adb driver reports, which strips the
+    # `android:id/` prefix a uiautomator dump shows) — because Wait leaves the offending process
+    # wedged and can re-post the dialog up to `_INTERRUPT_MAX_FIRES` times before the guard gives
+    # up and the step falls back to an opaque timeout, masking a genuine app-under-test ANR; Close
+    # app ends the run loudly on that case, and is harmless for the Pixel Launcher case this
+    # exists for (Android restarts its own launcher). Same interrupts block on every Android
+    # target below: the dialog is OS-owned, not app-specific.
     interrupts:
-      - condition: { exists: { id: [aerr_wait] } }
+      - condition: { exists: { id: [aerr_close] } }
         steps:
-          - tap: { id: [aerr_wait] }
+          - tap: { id: [aerr_close] }
 
   # ---- Compose, accessibility OFF ------------------------------------------------
   showcase-compose-noax:
@@ -171,9 +182,9 @@ targets:
     backend: [android]
     scenarios: scenarios
     interrupts:   # ANR-dialog dismissal — see showcase-compose above
-      - condition: { exists: { id: [aerr_wait] } }
+      - condition: { exists: { id: [aerr_close] } }
         steps:
-          - tap: { id: [aerr_wait] }
+          - tap: { id: [aerr_close] }
 
   # ---- Views, accessibility ON — native android:id, which allows neither '.' nor '-', so the
   # ids are the SPEC ids with both mapped to '_' (stable.refresh → stable_refresh). The shared
@@ -192,9 +203,9 @@ targets:
     backend: [android]
     scenarios: scenarios
     interrupts:   # ANR-dialog dismissal — see showcase-compose above
-      - condition: { exists: { id: [aerr_wait] } }
+      - condition: { exists: { id: [aerr_close] } }
         steps:
-          - tap: { id: [aerr_wait] }
+          - tap: { id: [aerr_close] }
 
   # ---- Views, accessibility OFF ---------------------------------------------------
   showcase-views-noax:
@@ -207,9 +218,9 @@ targets:
     backend: [android]
     scenarios: scenarios
     interrupts:   # ANR-dialog dismissal — see showcase-compose above
-      - condition: { exists: { id: [aerr_wait] } }
+      - condition: { exists: { id: [aerr_close] } }
         steps:
-          - tap: { id: [aerr_wait] }
+          - tap: { id: [aerr_close] }
 
   # ==== Flutter (BE-0008) =========================================================
   # The Flutter twin of the four native products (demos/showcase/flutter), one Dart codebase built
@@ -252,9 +263,9 @@ targets:
     backend: [android]
     scenarios: scenarios
     interrupts:   # ANR-dialog dismissal — see showcase-compose above
-      - condition: { exists: { id: [aerr_wait] } }
+      - condition: { exists: { id: [aerr_close] } }
         steps:
-          - tap: { id: [aerr_wait] }
+          - tap: { id: [aerr_close] }
 
   # ---- Flutter on Android, accessibility OFF -------------------------------------
   showcase-flutter-android-noax:
@@ -267,6 +278,6 @@ targets:
     backend: [android]
     scenarios: scenarios
     interrupts:   # ANR-dialog dismissal — see showcase-compose above
-      - condition: { exists: { id: [aerr_wait] } }
+      - condition: { exists: { id: [aerr_close] } }
         steps:
-          - tap: { id: [aerr_wait] }
+          - tap: { id: [aerr_close] }
