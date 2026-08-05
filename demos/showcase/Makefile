@@ -281,16 +281,16 @@ run-flutter: flutter-build runner-build
 # CI x86_64 software-rendered emulator presents sheets/covers slower than the shared scenarios' 5s
 # waits allow, so the modal/component scenarios need a higher wait ceiling. It is a ceiling on a
 # condition wait, not a fixed delay, so a fast (hardware-accelerated) emulator still resolves early.
-# `run-flutter-android` below suppresses the system's error dialogs the same way the native lane
-# does (full rationale: android/Makefile's ANR_QUIET block): a cold-booted AVD's Pixel Launcher
-# regularly misses its ANR deadline while the first scenario launches, and the dialog takes the
-# foreground window, so the run's first `wait` polls the dialog's tree instead of the app's.
+# Same suppression the native lane applies before its scenario loops — see android/Makefile's
+# ANR_QUIET for why `hide_error_dialogs` rather than tapping the dialog's "Close app".
+ANR_QUIET = adb shell settings put global hide_error_dialogs 1 && adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null
+
 FLUTTER_ANDROID_SCENARIOS := smoke firstlook navigation search data_driven relaunch system \
 	components modals controls notices gestures gestures_multitouch permission extract foreach
 run-flutter-android: flutter-android-build
 	adb root >/dev/null 2>&1 || true
 	adb wait-for-device
-	adb shell settings put global hide_error_dialogs 1 && adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null
+	$(ANR_QUIET)
 	cd $(ROOT) && for s in $(FLUTTER_ANDROID_SCENARIOS); do \
 		BAJUTSU_MIN_WAIT_TIMEOUT=15 \
 		uv run bajutsu run --scenario demos/showcase/scenarios/$$s.yaml \

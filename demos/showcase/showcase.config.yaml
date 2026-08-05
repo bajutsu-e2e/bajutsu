@@ -152,20 +152,26 @@ targets:
     # cold-booted AVD's Pixel Launcher missing its ANR deadline while the first scenario launches.
     # demos/showcase/android/Makefile's ANR_QUIET (`hide_error_dialogs`) stops the OS posting the
     # dialog at all and is the primary defense for every `make e2e*`-driven CI/local run, so this
-    # block never fires there; it cannot reach a bare `bajutsu run` outside that wrapper, which is
-    # how this dialog was originally reported (BE-0314 PR #1492), so `interrupts` stays declared
-    # here as the only guard on that path. The trade-off is accepted, not free: a wait-free `tap`
+    # block never fires there — including on the BAJUTSU_ADB_RESIDENT=0 fallback lane, whose own
+    # e2e-fallback recipe runs ANR_QUIET too. It cannot reach a bare `bajutsu run` outside any
+    # Makefile wrapper, which is how this dialog was first reported, so `interrupts` (BE-0314) stays
+    # declared here as the only guard on that path.
+    #
+    # That coverage is not free, and the cost lands somewhere it buys nothing: a wait-free `tap`
     # step without a fresh tree pays one extra `driver.query()` for the guard check
-    # (bajutsu/orchestrator/loop.py), felt mainly on the BAJUTSU_ADB_RESIDENT=0 fallback lane, in
-    # exchange for coverage ANR_QUIET does not give the bare-run path. Taps `aerr_close`, not
-    # `aerr_wait` — both are AOSP's fixed, locale-independent resource-ids for the dialog's two
-    # buttons (named here in the local form the adb driver reports, which strips the
+    # (bajutsu/orchestrator/loop.py), and BAJUTSU_ADB_RESIDENT=0 turns every one of those into a full
+    # `uiautomator dump` rather than the cheaper resident read — so the fallback lane pays the most
+    # for a guard that, per the paragraph above, can never fire there. Accepted for now for the
+    # bare-run coverage; revisit before adding cost elsewhere on that basis.
+    #
+    # Taps `aerr_close`, not `aerr_wait` — both are AOSP's fixed, locale-independent resource-ids for
+    # the dialog's two buttons (named here in the local form the adb driver reports, which strips the
     # `android:id/` prefix a uiautomator dump shows) — because Wait leaves the offending process
-    # wedged and can re-post the dialog up to `_INTERRUPT_MAX_FIRES` times before the guard gives
-    # up and the step falls back to an opaque timeout, masking a genuine app-under-test ANR; Close
-    # app ends the run loudly on that case, and is harmless for the Pixel Launcher case this
-    # exists for (Android restarts its own launcher). Same interrupts block on every Android
-    # target below: the dialog is OS-owned, not app-specific.
+    # wedged and can re-post the dialog up to `_INTERRUPT_MAX_FIRES` times before the guard gives up
+    # and the step falls back to an opaque timeout, masking a genuine app-under-test ANR; Close app
+    # ends the run loudly on that case, and is harmless for the Pixel Launcher case this exists for
+    # (Android restarts its own launcher). Same interrupts block on every Android target below: the
+    # dialog is OS-owned, not app-specific.
     interrupts:
       - condition: { exists: { id: [aerr_close] } }
         steps:

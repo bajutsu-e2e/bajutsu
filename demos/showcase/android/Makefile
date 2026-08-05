@@ -161,6 +161,10 @@ views-noax-build:
 # The broadcast that follows closes one that is already up: the setting only governs dialogs posted
 # after it, so a lane that starts with the launcher already wedged would otherwise still open on a
 # blocked foreground window.
+#
+# The tap-based counterpart is showcase.config.yaml's per-target `interrupts` (an id selector, not a
+# label, so the locale objection above doesn't apply to it): it covers a bare `bajutsu run`, which no
+# `make e2e*` target wraps and this setting therefore never reaches.
 ANR_QUIET = adb shell settings put global hide_error_dialogs 1 && adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null
 
 # Draw every touch on screen, so the captured video answers "where did it actually land" directly
