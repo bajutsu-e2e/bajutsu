@@ -58,10 +58,15 @@ the existing single-Team variable would otherwise need the same behavior change 
 The rename and the behavior change become one edit rather than two.
 
 Two startup checks keep this parsing from losing every admin without a trace. `_build_server_state`
-([`bajutsu/serve/__init__.py`](../../bajutsu/serve/__init__.py)) prints a stderr warning when
-`BAJUTSU_OAUTH_ADMIN_TEAMS` is unset but the retired `BAJUTSU_OAUTH_ADMIN_TEAM` still is — the hard
-cutover in *Alternatives considered* means that deployment now has no admin Team at all, and the only
-other symptom is an unexplained 403 on every admin action. It also warns on any entry that isn't
+([`bajutsu/serve/__init__.py`](../../bajutsu/serve/__init__.py)) prints a stderr warning whenever
+GitHub OAuth is configured but the parsed `oauth_admin_teams` list comes out empty — whether because
+the deployment never set `BAJUTSU_OAUTH_ADMIN_TEAMS` at all, or because only the retired
+`BAJUTSU_OAUTH_ADMIN_TEAM` is set (the hard cutover in *Alternatives considered* means that
+deployment now has no admin Team at all). Either way the only other symptom is an unexplained 403 on
+every admin action, and — because this same list is now also a sign-in credential (see below) — no
+admin left who can sign in to fix it. The warning names the retired variable only when it's actually
+the cause, so the never-set case isn't blamed on a rename that never happened. It also warns on any
+entry that isn't
 exactly one `"<github-org>/<team-slug>"` pair — matched against a regular expression that also
 rejects an empty half or internal whitespace, not by counting `/`: a space- or semicolon-separated
 list parses to a single malformed entry that can never match a real Team, which
@@ -204,9 +209,9 @@ mapping.
 
 - [x] Rename `BAJUTSU_OAUTH_ADMIN_TEAM` to `BAJUTSU_OAUTH_ADMIN_TEAMS` (comma-separated), threading the
       list through `SessionManager`, `role_for`, and the server-backend env wiring. Warn loudly at
-      startup both when the old singular name is still set and the new one is not, and when an entry
-      is not a well-formed `"<github-org>/<team-slug>"` pair, so neither mistake loses every admin
-      silently.
+      startup whenever OAuth is configured but the resulting list is empty — whether nothing was set
+      or only the retired singular name was — and separately when an entry is not a well-formed
+      `"<github-org>/<team-slug>"` pair, so no admin-losing mistake goes unsignaled.
 - [x] Add the admin-Team bypass to the sign-in gate in `oauth_callback`, alongside
       `identity_matches_org`, using the Team list already fetched for role resolution. Log a warning
       naming the login every time the bypass alone admits it, so the one sign-in path `orgs:` did not

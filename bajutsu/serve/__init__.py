@@ -359,13 +359,20 @@ def _build_server_state(
     oauth_admin_teams = [
         t.strip() for t in os.environ.get("BAJUTSU_OAUTH_ADMIN_TEAMS", "").split(",") if t.strip()
     ]
-    # Never lose every admin quietly: the rename is a hard cutover with no alias (BE-0313's own
-    # precedent for retiring BAJUTSU_OAUTH_ADMINS), and a malformed entry never matches anything
-    # either — both would otherwise leave a deployment with no signal beyond an unexplained 403.
-    if not oauth_admin_teams and os.environ.get("BAJUTSU_OAUTH_ADMIN_TEAM"):
+    # Never lose every admin quietly. An empty list with OAuth wired means no login can ever
+    # resolve to admin — whether because the rename's hard cutover (BE-0313's own precedent for
+    # retiring BAJUTSU_OAUTH_ADMINS) left only the retired singular name set, or because the new
+    # name was simply never set at all — and since this same list is now a sign-in credential, that
+    # deployment also has no admin left to sign in and repair a broken `orgs:` block.
+    if oauth is not None and not oauth_admin_teams:
+        hint = (
+            " (BAJUTSU_OAUTH_ADMIN_TEAM is retired — rename it to BAJUTSU_OAUTH_ADMIN_TEAMS)"
+            if os.environ.get("BAJUTSU_OAUTH_ADMIN_TEAM")
+            else ""
+        )
         print(  # noqa: T201
-            "bajutsu serve: BAJUTSU_OAUTH_ADMIN_TEAM is retired; rename it to "
-            "BAJUTSU_OAUTH_ADMIN_TEAMS or no login will have admin access",
+            "bajutsu serve: BAJUTSU_OAUTH_ADMIN_TEAMS is empty, so no login will have admin "
+            f"access and no admin can sign in to repair a broken `orgs:` block{hint}",
             file=sys.stderr,
         )
     if malformed := [t for t in oauth_admin_teams if not re.fullmatch(r"[^\s/]+/[^\s/]+", t)]:
