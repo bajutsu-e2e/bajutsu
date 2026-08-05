@@ -883,6 +883,8 @@ class _StepRunner:
         step_id: str,
         what: str,
         read: Callable[[], list[base.Element]],
+        *,
+        level: int = logging.DEBUG,
     ) -> list[base.Element] | None:
         """Best-effort evidence read: `None` on failure rather than crashing the step.
 
@@ -893,13 +895,18 @@ class _StepRunner:
         `screenChanged` comparison, the wait-timeout diagnostic, and the post-step `elements`
         capture) so the native/web policy lives in one place instead of four hand-copied guards.
         `ConnectionError` is a subclass of `OSError`, so the tuple below already covers it.
+
+        `level` defaults to a quiet debug line — losing one of the always-on baseline artifacts a
+        `NullSink` would discard anyway. A caller that drops a scenario author's own named
+        `capturePolicy` rule instead (`screenChanged`) passes `logging.WARNING`, since that silently
+        skips evidence the author explicitly asked for.
         """
         try:
             return read()
         except (base.UnsupportedAction, OSError) as exc:
             if active_driver is self.cfg.driver:
                 raise
-            _logger.debug("%s: %s skipped, web driver query failed: %s", step_id, what, exc)
+            _logger.log(level, "%s: %s skipped, web driver query failed: %s", step_id, what, exc)
             return None
 
     def _handle_action(
@@ -1155,7 +1162,9 @@ class _StepRunner:
         if before is not None:
             # Evidence-only: `screen_changed` feeds only `_collect_captures`, never this step's
             # own pass/fail outcome (prime directive 1).
-            current = self._read_evidence(active_driver, step_id, "screenChanged read", screen.get)
+            current = self._read_evidence(
+                active_driver, step_id, "screenChanged read", screen.get, level=logging.WARNING
+            )
             if current is not None:
                 screen_changed = current != before
 

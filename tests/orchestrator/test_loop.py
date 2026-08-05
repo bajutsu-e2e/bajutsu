@@ -548,6 +548,21 @@ class _FakeBridge:
         pass
 
 
+class _FlakyBridge(_FakeBridge):
+    """A `_FakeBridge` whose `fail_on`-th `query_dom()` raises, modeling a torn-down WebView."""
+
+    def __init__(self, dom_elements: list[base.Element], *, fail_on: int) -> None:
+        super().__init__(dom_elements)
+        self.calls = 0
+        self._fail_on = fail_on
+
+    def query_dom(self, webview_id: str) -> list[base.Element]:
+        self.calls += 1
+        if self.calls == self._fail_on:
+            raise ConnectionError("bridge unreachable")
+        return super().query_dom(webview_id)
+
+
 def test_pre_step_capture_queries_the_web_driver_for_a_blocks_first_nested_step(
     tmp_path: Path,
 ) -> None:
@@ -601,24 +616,13 @@ def test_pre_step_capture_downgrades_to_screenshot_only_when_web_query_fails(
 ) -> None:
     """A `web` block's first nested step still gets its native `screenshot.before` when the bridge
     query fails: only `elements` needs the web driver, so the pre-step baseline drops just that
-    token rather than the whole capture (BE-XXXX review follow-up). The bridge recovers for the
-    post-step read (an unrelated, pre-existing capture path), modeling a transient hiccup rather
-    than a permanently dead bridge."""
-
-    class _FlakyBridge(_FakeBridge):
-        def __init__(self, dom_elements: list[base.Element]) -> None:
-            super().__init__(dom_elements)
-            self.calls = 0
-
-        def query_dom(self, webview_id: str) -> list[base.Element]:
-            self.calls += 1
-            if self.calls == 1:
-                raise ConnectionError("bridge unreachable")
-            return super().query_dom(webview_id)
-
+    token rather than the whole capture (BE-XXXX review follow-up). No `capturePolicy` fires a
+    post-step `elements` capture here, so the bridge is queried exactly once — a permanently dead
+    bridge is exactly what this models."""
     native_screen = [el("app.webview", frame=(0.0, 0.0, 400.0, 800.0))]
     driver = FakeDriver(native_screen)
     run_dir = tmp_path / "run1"
+    bridge = _FlakyBridge([], fail_on=1)
     result = run_scenario(
         driver,
         _scenario(
@@ -636,9 +640,10 @@ def test_pre_step_capture_downgrades_to_screenshot_only_when_web_query_fails(
         ),
         clock=FakeClock(),
         sink=FileSink(run_dir),
-        webview_bridge=_FlakyBridge([]),
+        webview_bridge=bridge,
     )
     assert result.ok, result.failure
+    assert bridge.calls == 1  # the failed pre-step baseline read only; no post-step read follows
     leaf_outcome = next(s for s in result.steps if s.action == "type")
     names = {a.name for a in leaf_outcome.artifacts}
     assert any(name.endswith("before.png") for name in names)
@@ -649,25 +654,13 @@ def test_post_step_elements_capture_skips_on_web_query_failure(tmp_path: Path) -
     """A genuinely-requested post-step `elements` capture (via `capturePolicy`) must not crash the
     run when the WebView bridge query fails: only `elements` needs the active driver, so the
     post-step capture drops just that token — mirroring the pre-step baseline's own guard — rather
-    than propagating the exception and failing an otherwise-decided step (review follow-up)."""
-
-    class _FlakyBridge(_FakeBridge):
-        def __init__(self, dom_elements: list[base.Element]) -> None:
-            super().__init__(dom_elements)
-            self.calls = 0
-
-        def query_dom(self, webview_id: str) -> list[base.Element]:
-            self.calls += 1
-            # Call 1 is the pre-step baseline's own read (succeeds, as usual); call 2 is the
-            # post-step capture this test targets.
-            if self.calls == 2:
-                raise ConnectionError("bridge unreachable")
-            return super().query_dom(webview_id)
-
+    than propagating the exception and failing an otherwise-decided step (review follow-up). Call 1
+    is the pre-step baseline's own read (succeeds, as usual); call 2 is the post-step capture this
+    test targets."""
     native_screen = [el("app.webview", frame=(0.0, 0.0, 400.0, 800.0))]
     driver = FakeDriver(native_screen)
     run_dir = tmp_path / "run1"
-    bridge = _FlakyBridge([])
+    bridge = _FlakyBridge([], fail_on=2)
     result = run_scenario(
         driver,
         _scenario(
@@ -703,26 +696,13 @@ def test_screen_changed_read_skips_on_web_query_failure() -> None:
     the WebView bridge query fails: it feeds only `_collect_captures`, never this step's own
     pass/fail outcome, so a torn-down bridge here degrades to `screen_changed=False` rather than
     propagating — one of the post-step-sequence web reads this review round guarded (the sibling
-    pre-act `before` read at `loop.py:980` remains a pre-existing, out-of-scope exposure) (review
-    follow-up)."""
-
-    class _FlakyBridge(_FakeBridge):
-        def __init__(self, dom_elements: list[base.Element]) -> None:
-            super().__init__(dom_elements)
-            self.calls = 0
-
-        def query_dom(self, webview_id: str) -> list[base.Element]:
-            self.calls += 1
-            # Call 1 is the `screenChanged` policy's own `before` read at loop.py:980 (`prev_after`
-            # is reset at the `web`-block boundary, and this run's `NullSink` skips the pre-step
-            # baseline query); call 2 is the comparison read this test targets.
-            if self.calls == 2:
-                raise ConnectionError("bridge unreachable")
-            return super().query_dom(webview_id)
-
+    pre-act `before` read at `loop.py:980` remains a pre-existing, out-of-scope exposure). Call 1 is
+    the `screenChanged` policy's own `before` read at `loop.py:980` (`prev_after` is reset at the
+    `web`-block boundary, and this run's `NullSink` skips the pre-step baseline query); call 2 is
+    the comparison read this test targets (review follow-up)."""
     native_screen = [el("app.webview", frame=(0.0, 0.0, 400.0, 800.0))]
     driver = FakeDriver(native_screen)
-    bridge = _FlakyBridge([])
+    bridge = _FlakyBridge([], fail_on=2)
     result = run_scenario(
         driver,
         _scenario(

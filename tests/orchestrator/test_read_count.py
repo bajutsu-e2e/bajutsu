@@ -221,6 +221,36 @@ def test_web_block_file_sink_skips_the_post_step_read_with_no_capture_policy(
     assert bridge.queries == 1  # the pre-step baseline only; no post-step read
 
 
+def test_web_block_null_sink_skips_the_post_step_read_even_when_elements_fires() -> None:
+    # The `NullSink` half of `wants_web_elements`, isolated: a `capturePolicy` rule really does fire
+    # `elements` post-step, so only the `isinstance(..., NullSink)` clause keeps the bridge read
+    # from happening — a sink that reads nothing must pay nothing. Dropping that clause shows up
+    # here as 1 query, not 0.
+    driver = FakeDriver([el("app.webview", frame=(0.0, 0.0, 400.0, 800.0))])
+    bridge = _CountingBridge([])
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "x",
+                "steps": [
+                    {
+                        "web": {
+                            "within": {"id": "app.webview"},
+                            "steps": [{"type": {"text": "hi"}}],
+                        }
+                    }
+                ],
+                "capturePolicy": [{"on": {"action": "type"}, "capture": ["elements"]}],
+            }
+        ),
+        clock=FakeClock(),
+        webview_bridge=bridge,
+    )
+    assert result.ok, result.failure
+    assert bridge.queries == 0
+
+
 def test_web_block_file_sink_reads_the_web_tree_not_the_native_one(tmp_path: Path) -> None:
     # A FileSink genuinely needs the tree, so the deferred read this laziness relies on must still
     # fire — and against the *active* (web) driver, not the native one passed to `capture()` for
