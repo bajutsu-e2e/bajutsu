@@ -254,6 +254,12 @@ def test_oauth_callback_admin_team_bypass_logs_a_warning(
     with caplog.at_level(logging.WARNING):
         ops.oauth_callback(state, code="ok", state_param="s", state_cookie="s")
     assert "admin-Team bypass admitted mallory" in caplog.text
+    # Pin the structured fields too: a bare `_logger.warning(...)` carrying the same message text
+    # would pass the assertion above but leave `event`/`actor`/`bypass` off the record, breaking
+    # exactly the alert an operator would key on `event=oauth.login` for.
+    record = next(r for r in caplog.records if getattr(r, "event", None) == "oauth.login")
+    assert record.actor == "mallory"
+    assert record.bypass is True
 
 
 def test_oauth_callback_org_member_does_not_log_a_bypass_warning(
@@ -340,6 +346,28 @@ def test_oauth_callback_admin_team_bypass_places_the_user_in_the_default_org(
     with Session(engine) as s:
         orgs = list(s.scalars(select(Org)))
     assert [o.slug for o in orgs] == ["default"]
+
+
+def test_oauth_callback_admin_team_bypass_keeps_an_existing_members_recorded_org(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    # bob reaches `acme` only through `githubOrgs` (not an explicit `members` entry), so a
+    # transient /user/orgs failure can make him look unmatched on a later login even though `acme`
+    # still claims him. Without a fix, the bypass (he also carries the admin Team) would relocate
+    # him to `default` on that one bad login -- a real member should not be moved by a hiccup.
+    state, _ = _db_state(
+        serve_engine, tmp_path, FakeOAuthClient(login="bob", orgs=["acme-gh"], teams=[])
+    )
+    assert _role_after_login(state, "bob") == "viewer"
+    assert state.repository is not None
+    assert state.repository.user_org("bob") == "acme"
+
+    # Same login, but this time /user/orgs comes back empty (the transient failure) while the
+    # admin-Team bypass still admits him.
+    state.auth.oauth = FakeOAuthClient(login="bob", orgs=[], teams=["ops-gh/root"])
+    state.auth.oauth_admin_teams = ("ops-gh/root",)
+    assert _role_after_login(state, "bob") == "admin"
+    assert state.repository.user_org("bob") == "acme"  # not relocated to `default`
 
 
 def test_oauth_callback_rejects_a_login_in_neither_the_org_gate_nor_the_admin_teams(

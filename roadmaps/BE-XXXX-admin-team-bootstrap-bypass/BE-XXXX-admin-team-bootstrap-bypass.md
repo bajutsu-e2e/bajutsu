@@ -68,7 +68,9 @@ admin left who can sign in to fix it. The warning names the retired variable onl
 the cause, so the never-set case isn't blamed on a rename that never happened. It also warns on any
 entry that isn't
 exactly one `"<github-org>/<team-slug>"` pair — matched against a regular expression that also
-rejects an empty half or internal whitespace, not by counting `/`: a space- or semicolon-separated
+rejects an empty half, internal whitespace, or an uppercase character in the slug half (GitHub
+always lowercases a Team's slug, so a slug copied from the Team's display name in the GitHub UI
+looks well-formed but can never match), not by counting `/`: a space- or semicolon-separated
 list parses to a single malformed entry that can never match a real Team, which
 is the same "no admin, no visible cause" failure reached by a different mistake. Both print a warning
 rather than raising, so a config typo degrades a deployment to no-admin instead of refusing to start
@@ -138,6 +140,17 @@ no other org claims their login. `default` carries no special
 has claimed. Admin's `_ADMIN_PATHS` enforcement is already instance-wide regardless of org (BE-0313
 §"Admin stays one server-wide tier"), so this placement grants a bypassing admin nothing beyond the
 admin role BE-0313 already made server-wide.
+
+"No other org claims their login" is the case this default is for, and it is not the only way the
+bypass can admit a login: a `/user/orgs` fetch failure also makes `identity_matches_org` see no
+match, for a login a real org *does* claim. Without a correction, that one-off upstream hiccup would
+relocate an existing org member to `default` on every such failure — their user row, audit
+attribution, and object-storage prefix all moving until their next clean login moves them back, an
+outcome the placement logic above never intends for someone `orgs:` already claims. `oauth_callback`
+avoids this: when the bypass, not `orgs:`, is what admitted a login, it keeps whatever org
+`state.repository.user_org` already has on record for that login instead of recomputing one, falling
+to `org_for_identity`'s `default` result only when no prior record exists — the genuine first-time
+bootstrap case this section is actually about.
 
 This placement inherits an existing sharp edge of the org model rather than introducing a new one:
 `DEFAULT_ORG` ([`bajutsu/serve/orgs.py`](../../bajutsu/serve/orgs.py)) is the literal string
@@ -222,13 +235,16 @@ mapping.
       list through `SessionManager`, `role_for`, and the server-backend env wiring. Warn loudly at
       startup, only when OAuth is configured, whenever the resulting list is empty — whether nothing
       was set or only the retired singular name was — and separately when an entry is not a
-      well-formed `"<github-org>/<team-slug>"` pair, so no admin-losing mistake goes unsignaled and
-      no token-auth-only deployment is warned about an admin role it never had.
+      well-formed `"<github-org>/<team-slug>"` pair — including an uppercase character in the slug
+      half, which GitHub's own always-lowercase slugs never contain — so no admin-losing mistake
+      goes unsignaled and no token-auth-only deployment is warned about an admin role it never had.
 - [x] Add the admin-Team bypass to the sign-in gate in `oauth_callback`, alongside
       `identity_matches_org`, using the Team list already fetched for role resolution. Record every
       bypass-only admission through `oplog.log_event` (the reserved `"oauth.login"` event, the login
       as the `actor` field), so the one sign-in path `orgs:` did not authorize still leaves a record
-      an operator's `event`-keyed alert can see.
+      an operator's `event`-keyed alert can see. When persisting the identity, keep an existing
+      login's already-recorded org rather than relocating it to `default` on a transient
+      `/user/orgs` failure that made the bypass, not `orgs:`, admit it.
 - [x] Update the self-hosting and configuration docs (both languages) and `.env.example` to describe
       the renamed variable and the bypass. BE-0313's claim that the `default` org is unreachable
       through OAuth sign-in is superseded in this item's *Detailed design* instead: no `docs/` page
