@@ -11,6 +11,7 @@ loud refusal of simctl-only operations against a real device are exercised witho
 from __future__ import annotations
 
 import plistlib
+import re
 import signal
 import subprocess
 from collections.abc import Callable
@@ -1055,6 +1056,35 @@ def test_run_ended_probe_finds_a_marker_split_across_two_reads(tmp_path: Path) -
     assert probe() is not None
 
 
+def test_run_ended_probe_sticks_the_launch_timeout_cause_across_reads(tmp_path: Path) -> None:
+    # The launch timeout is logged well before the suite reports failure (BE-XXXX unit 1's premise),
+    # so the two markers rarely land in the same read window — the flag has to persist across probe
+    # calls to still name the cause, the signal a reader needs to tell "this device needs rebooting"
+    # from "this build is broken".
+    log = tmp_path / "runner.log"
+    log.write_bytes(b"")
+    probe = _run_ended_probe(log)
+    with log.open("ab") as fh:
+        fh.write(
+            b"<unknown>:0: error: Failed to launch com.example.app: "
+            b"Timed out attempting to launch app.\n"
+        )
+    assert probe() is None  # the app launch timed out, but the xctest run has not ended yet
+    with log.open("ab") as fh:
+        fh.write(b"Test Suite 'All tests' failed at 2026-07-30 05:22:30.761.\n")
+    reason = probe()
+    assert reason is not None and "after the app launch timed out" in reason
+
+
+def test_run_ended_probe_names_no_cause_without_a_launch_timeout(tmp_path: Path) -> None:
+    # The negative case: a suite failure with no preceding launch-timeout marker gets no cause suffix,
+    # so the sticky flag pins the specific signature rather than firing on every run-ended failure.
+    log = tmp_path / "runner.log"
+    log.write_bytes(b"Test Suite 'All tests' failed at 2026-07-30 05:22:30.761.\n")
+    reason = _run_ended_probe(log)()
+    assert reason is not None and "after the app launch timed out" not in reason
+
+
 def test_run_ended_probe_is_quiet_when_the_capture_does_not_exist(tmp_path: Path) -> None:
     # A spawn that failed before writing anything must not be judged by a missing file.
     assert _run_ended_probe(tmp_path / "absent.log")() is None
@@ -1579,7 +1609,7 @@ def test_a_vanished_device_with_no_replaceable_type_fails_loudly() -> None:
         return ""
 
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
-    with pytest.raises(simctl.DeviceError, match="no iPhone device type is available"):
+    with pytest.raises(simctl.DeviceError, match="no device type matching iPhone 15 is available"):
         env._recover_between_attempts(
             _AttemptFailure("run-ended", "ended"),
             _eff_for_ladder(),
@@ -1587,6 +1617,33 @@ def test_a_vanished_device_with_no_replaceable_type_fails_loudly() -> None:
             None,
             ceiling=_COLD,
         )
+
+
+def test_an_ipad_target_is_never_replaced_with_an_iphone() -> None:
+    # "Any iPhone beats failing" only holds for an iPhone target. `device_type_identifier` matches
+    # simctl's device-type name exactly, and iPad names carry parentheses (e.g. "iPad Pro
+    # (12.9-inch) (6th generation)"), so an exact-match miss is ordinary rather than exotic —
+    # substituting an iPhone for a missed iPad would finish the run on a layout the scenario was
+    # never written against, silently. This must fail loudly instead.
+    cfg = (
+        'defaults:\n  device: "iPad Pro (12.9-inch) (6th generation)"\n'
+        "targets:\n  s:\n    bundleId: com.x\n    xcuitest:\n      testRunner: /nonexistent.xctestrun\n"
+    )
+    ipad_eff = resolve(load_config(cfg), "s")
+    calls, run = _ladder_run([])  # devicetypes lists only "iPhone 17 Pro" — never an iPad match
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    with pytest.raises(
+        simctl.DeviceError,
+        match=re.escape("no device type matching iPad Pro (12.9-inch) (6th generation)"),
+    ):
+        env._recover_between_attempts(
+            _AttemptFailure("run-ended", "ended"),
+            ipad_eff,
+            Preconditions(),
+            None,
+            ceiling=_COLD,
+        )
+    assert not any(c[2:3] == ["create"] for c in calls)  # no iPhone replacement was minted
 
 
 def test_a_recovery_that_overran_its_bound_fails_the_run(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1694,8 +1751,12 @@ def test_a_replacements_name_keeps_its_capability_token_and_report_row() -> None
     # that asked for `iphone`), and the report renders it as the device row.
     from bajutsu.serve.capabilities import _device_class_token
 
+    # A udid longer than 8 characters, so a truncated suffix and the full one are distinguishable —
+    # the point of the suffix is letting an operator match a "UDID-... vanished" log line against
+    # `simctl list` afterwards, which an 8-character prefix cannot support.
+    old_udid = "2A6DC5A9-CE8C-4BC5-959D-F98D5F4BD9AA"
     calls, run = _ladder_run([])
-    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    env = XcuitestEnvironment("xcuitest", old_udid, env_run=run)
     env._recover_between_attempts(
         _AttemptFailure("run-ended", "ended"),
         _eff_for_ladder(),
@@ -1707,4 +1768,6 @@ def test_a_replacements_name_keeps_its_capability_token_and_report_row() -> None
     name = created[3]
     assert _device_class_token(name) == "iphone"
     assert "iPhone" in name  # the report's device row shows a model a reader recognizes
-    assert "bajutsu-recovered" in name  # ... while staying traceable to the recovery that minted it
+    assert (
+        f"bajutsu-recovered-{old_udid}" in name
+    )  # the *whole* vanished udid, not a truncated prefix

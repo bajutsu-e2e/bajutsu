@@ -812,14 +812,15 @@ class XcuitestEnvironment(_DeviceEnvironment):
         device_type = self._replacement_device_type(eff)
         if device_type is None:
             raise simctl.DeviceError(
-                f"Simulator {old} is gone and no iPhone device type is available to replace it; "
-                "the host's Simulator runtimes are likely gone too"
+                f"Simulator {old} is gone and no device type matching {eff.device} is available to "
+                "replace it; the host's Simulator runtimes may be gone, or the configured device "
+                "name doesn't exactly match a simctl device type"
             )
         # The model comes first because two consumers read a device's name as its human model: the
         # report's device row, and `serve`'s capability inventory, which takes the `iphone` / `ipad`
         # class token out of it by substring. The `bajutsu-recovered-<udid>` suffix is what lets an
         # operator reading `simctl list` afterwards tell which recovery minted which device.
-        name = f"{simctl.device_type_label(device_type)} (bajutsu-recovered-{old[:8]})"
+        name = f"{simctl.device_type_label(device_type)} (bajutsu-recovered-{old})"
         replacement = simctl.create_device(device_type, self._run, name=name)
         self._udid = replacement
         self._replaced_from = old
@@ -838,16 +839,25 @@ class XcuitestEnvironment(_DeviceEnvironment):
         return f"{old} vanished; created and prepared replacement {replacement} ({device_type})"
 
     def _replacement_device_type(self, eff: Effective) -> str | None:
-        """The device type a replacement is created from, or None when this host offers no iPhone.
+        """The device type a replacement is created from, or None when no matching type is available.
 
         Prefers the vanished device's own type, so the replacement is the device the run was written
-        against; falls back to the configured model, then to whichever iPhone this host's Xcode ships
-        — the config may name a model a later Xcode dropped, and any iPhone beats failing the run.
+        against; falls back to the configured model, then — only for an iPhone target — to whichever
+        iPhone this host's Xcode ships, since the config may name a model a later Xcode dropped and
+        any iPhone beats failing the run. The fallback is scoped to an iPhone target because it is not
+        scoped to a device *class*: `eff.device` matches simctl's device-type name exactly, and an
+        iPad's name carries parentheses (`iPad Pro (12.9-inch) (6th generation)`), so a near-miss is
+        ordinary rather than exotic — substituting an iPhone for a missed iPad would finish the run on
+        a layout the scenario was never written against, silently.
         """
         if self._device_type_id is not None:
             return self._device_type_id
         configured = simctl.device_type_identifier(eff.device, self._run)
-        return configured if configured is not None else simctl.newest_iphone_device_type(self._run)
+        if configured is not None:
+            return configured
+        if "iphone" not in eff.device.lower():
+            return None
+        return simctl.newest_iphone_device_type(self._run)
 
     def _spawn_runner(
         self, runner_path: Path, forwarded_base: Mapping[str, str], device_type: str

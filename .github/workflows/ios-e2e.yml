@@ -361,7 +361,10 @@ jobs:
     # scenario-level recovery in wall-clock, so a never-recovering runner fails loudly inside that
     # window rather than paying BAJUTSU_CRASH_RETRIES × the 300s startup ceiling and hanging to this cap.
     # A cold spawn that has to repair its device costs at most one recovery plus a second ceiling on top
-    # of its own (BAJUTSU_XCUITEST_RECOVERY_TIMEOUT, above), which one such event fits inside this cap.
+    # of its own (BAJUTSU_XCUITEST_RECOVERY_TIMEOUT, above). The observed signature — an app-launch
+    # timeout ending attempt 1 in ~40s — costs ~40s + 180s + 300s ≈ 9min and fits; the worst case the
+    # arithmetic block allows (a first bring-up that burns the full 300s: 13min) puts this job at
+    # ~26min and would not, so it is this cap itself that catches that one.
     timeout-minutes: 25
     # BE-0231 unit 4: a cold-boot CI Simulator sometimes renders the first Stable row later than a
     # scenario's 10s first-wait allows — even with unit 2's `readyWhen` gate (which waits up to
