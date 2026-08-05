@@ -130,9 +130,9 @@ review the diff against [`.github/claude-review-prompt.md`](../../.github/claude
 pass against the updated diff until it comes back empty — capped at 3 rounds like Phase A's
 self-review above, escalating to the user with the branch left unpushed if a real finding still
 stands, since this phase has no step 10 to gate on (the human opens this PR, not the skill; see
-below). Only once the pass is clear does this phase, unlike the serial `implement-be`, run its
-promotion steps 8–9 **now**, because `Status` and the PR number do not depend on the
-not-yet-allocated id:
+below). Only once the pass is clear does this phase run `implement-be`'s promotion steps 8–9 — and
+unlike the serial `implement-be`, it runs them **now**, because `Status` and the PR number do not
+depend on the not-yet-allocated id:
 
 - Flip the item's `Status` to `Implemented` and tick the `Progress` boxes in **both** language
   files, keeping the `BE-XXXX` placeholder — the allocator rewrites it on merge.
