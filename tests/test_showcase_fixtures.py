@@ -64,6 +64,29 @@ def test_showcase_config_resolves() -> None:
     assert bundled.run_defaults.interrupts[0].condition.exists is not None
 
 
+def test_showcase_android_targets_have_anr_interrupt() -> None:
+    # BE-0314: every Android showcase target carries the same ANR-dialog handler (e.g. "Pixel
+    # Launcher isn't responding"). Its selector must name the driver-normalized local id `aerr_wait`
+    # — not the `android:id/`-qualified resource-id — the same id contract every other selector in
+    # this file uses (`stable.row.1`/`stable_row_1`). Pinning the exact id catches a wrong-prefix
+    # regression here, without an emulator; that mistake previously shipped and only failed against a
+    # live ANR dialog (PR #1492 review).
+    cfg = load_config(SHOWCASE_CONFIG.read_text(encoding="utf-8"))
+    for name in (
+        "showcase-compose",
+        "showcase-compose-noax",
+        "showcase-views",
+        "showcase-views-noax",
+        "showcase-flutter-android",
+        "showcase-flutter-android-noax",
+    ):
+        interrupts = resolve(cfg, name).run_defaults.interrupts
+        assert len(interrupts) == 1, name
+        exists = interrupts[0].condition.exists
+        assert exists is not None, name
+        assert exists.sel.id == ["aerr_wait"], name
+
+
 def test_showcase_live_config_routes_to_the_live_transport() -> None:
     # The BE-0238 live-route example config resolves, and its `appium` provider surfaces the reserved
     # device's endpoint as the run's udid spec — the same WebDriver-URL signal `environment_for` routes
