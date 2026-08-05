@@ -336,8 +336,9 @@ class ComponentsUITest {
       if (reportsWindows()) return
       kickWindowTracking("no accessibility windows reported (attempt $attempt)")
     }
-    // The last kick would otherwise go unchecked — the loop provokes it and lets the caller
-    // decide, rather than aborting before it gets to try starting the activity.
+    // The last kick would otherwise go unchecked. This reads once more only so the log says
+    // whether it worked — launch() is tried either way, since nothing here is reported back
+    // to it and starting the activity is the stronger stimulus.
     if (!reportsWindows()) {
       Log.w(
         LOG_TAG,
