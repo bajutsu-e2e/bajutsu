@@ -389,7 +389,10 @@ hand-maintained login list:
   configured admin Team clears the sign-in gate directly — the Team's GitHub organization does
   *not* need to appear in any org's `githubOrgs` or `members` — so an admin can always sign in and
   repoint the server at a corrected config even when the `orgs:` block is broken or missing
-  entirely.
+  entirely. Because of that, `BAJUTSU_OAUTH_ADMIN_TEAMS` is now a sign-in credential and not only a
+  role mapping: every entry's GitHub-organization half must name an organization you actually
+  control, since anyone who controls it can create a Team with the matching slug and sign in as
+  admin.
 
 Membership is re-read on every login, so leaving a GitHub org or Team takes effect at the affected
 user's next sign-in — no server-side list to edit. Login always requests the `read:org` scope to read

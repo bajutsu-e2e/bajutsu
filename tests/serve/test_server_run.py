@@ -373,6 +373,31 @@ def test_build_state_server_warns_on_a_malformed_admin_teams_entry(
     assert "will never match" in capsys.readouterr().err
 
 
+def test_build_state_server_warns_on_an_empty_side_or_inner_space(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Each of these has exactly one "/" (so a bare count would pass it) but can never match a
+    # real "<github-org>/<team-slug>": an empty org half, an empty slug half, and a slug half with
+    # a stray leading space that `.strip()` on the whole entry doesn't remove.
+    monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
+    monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
+    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
+    monkeypatch.setenv("BAJUTSU_OAUTH_ADMIN_TEAMS", "acme-gh/,/ops,acme-gh/ ops")
+    _scn, cfg, runs = project(tmp_path)
+    state = srv._build_state(
+        runs_dir=runs,
+        config=cfg,
+        scenarios_dir=None,
+        root=tmp_path,
+        baselines_dir=None,
+        max_concurrent=4,
+        token=None,
+        backend="server",
+    )
+    assert state.auth.oauth_admin_teams == ["acme-gh/", "/ops", "acme-gh/ ops"]
+    assert "will never match" in capsys.readouterr().err
+
+
 def test_build_state_server_parses_the_per_user_quota(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
