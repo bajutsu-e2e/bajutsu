@@ -136,14 +136,16 @@ app's os_log subsystem, paired into timed intervals by `parse_app_trace`.)
   ring buffer.
 - `INTERVAL_KINDS = {"video", "deviceLog", "appTrace"}`. The orchestrator uses this set to split
   "interval / instant."
-- **The scenario-wide `video` begins before the app launches**, so the recording spans the app's
-  cold start rather than missing it. On a device backend the environment's `start` starts recording
-  (after the device is booted and the app installed, but before `simctl launch` / `am start`) and
-  hands the running `Interval` back through `prestarted_intervals`; the sink *adopts* it at scenario
-  start (`intervals.adopt`) instead of starting a fresh one, and on stop finalizes it and relocates
-  the file to `scenario.mp4`. Web wires the same up-front capture into the browser context at
-  creation. This is gated by `records_video_up_front`; a scenario that requests no `video` starts
-  none.
+- **The scenario-wide `video` begins before the app launches on Android**, so the recording spans
+  the app's cold start rather than missing it. There, the environment's `start` starts recording
+  (after the device is booted and the app installed, but before `am start`) and hands the running
+  `Interval` back through `prestarted_intervals`; the sink *adopts* it at scenario start
+  (`intervals.adopt`) instead of starting a fresh one, and on stop finalizes it and relocates the
+  file to `scenario.mp4`. Web wires the same up-front capture into the browser context at creation.
+  XCUITest, the current iOS backend, still records on demand: its app launch lives inside the
+  `xcodebuild` runner's own spawn, a path `prestarted_intervals` never reaches. The up-front
+  behavior is gated by `records_video_up_front`, `True` for Android and web and `False` for
+  XCUITest and the fake backend; a scenario that requests no `video` starts none regardless.
 
 ## Sinks (where evidence goes)
 
