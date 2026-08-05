@@ -83,31 +83,21 @@ def oauth_callback(
     matched_org = identity_matches_org(orgs, login, identity.orgs)
     if not matched_org and not is_admin_team_member:
         return {"error": "user not allowed"}, 403, None
-    if not matched_org:
-        # The one sign-in path `orgs:` did not authorize: record that the bootstrap bypass was
-        # used, so an operator can see the hatch itself, not only its effects. Through oplog (not a
-        # bare logging call) so it carries the registered `event` name, redaction, and correlation
-        # fields every other operationally-significant record in serve already does.
-        oplog.log_event(
-            _logger,
-            "oauth.login",
-            f"admin-Team bypass admitted {login}: no orgs: entry matched this login",
-            level=logging.WARNING,
-            bypass=True,
-            actor=login,
-        )
     if state.repository is not None:
         # Persist the identity into the system of record, so audit entries and RBAC can reference
         # the user. The org comes from the config-declared org model — an explicit member listing or
         # the user's GitHub org membership. email is unknown from this scope, so we store GitHub's
         # canonical no-reply form (valid + unique per login).
         org = org_for_identity(orgs, login, identity.orgs)
-        if not matched_org:
-            # The bypass, not `orgs:`, admitted this login — possibly because a transient
-            # `/user/orgs` failure made a real org member look unmatched for this one login, not
-            # because they were ever un-claimed. Keep whatever org is already on record rather than
-            # relocating an existing member to `default` on every such hiccup; only a login with no
-            # prior record (a genuine first-time bootstrap admin) falls to `org_for_identity` above.
+        if not matched_org and not identity.orgs:
+            # The bypass, not `orgs:`, admitted this login, and it reported no GitHub orgs at all —
+            # the shape a failed `/user/orgs` fetch takes (`_fetch_orgs` fails closed to `[]`), which
+            # makes a real org member look unmatched for this one login. Keep whatever org is
+            # already on record rather than relocating them to `default` over one hiccup. A login
+            # that did report orgs and still matched nothing was genuinely un-claimed — by a
+            # first-time bootstrap or by a deliberate revocation — so it re-resolves through
+            # `org_for_identity` above, the same as any other login: leaving `orgs:` must take
+            # effect on next login, exactly like leaving a Team already does for the role below.
             org = state.repository.user_org(login) or org
         oc = orgs.get(org)
         editor_team = oc.editor_team if oc is not None else None
@@ -125,6 +115,24 @@ def oauth_callback(
                 admin_teams=admin_teams,
             ),
         )
+    # Every successful sign-in, through oplog (not a bare logging call) so it carries the
+    # registered `event` name, redaction, and correlation fields every other
+    # operationally-significant record in serve already does. `bypass` says which gate admitted
+    # this one — the one sign-in path `orgs:` did not authorize is still the interesting case, but
+    # emitting the event only for that case would make `event=oauth.login` mean "bypass" instead of
+    # "login", the opposite of what an operator's alert on the event name would expect.
+    oplog.log_event(
+        _logger,
+        "oauth.login",
+        (
+            f"admin-Team bypass admitted {login}: no orgs: entry matched this login"
+            if not matched_org
+            else f"{login} signed in"
+        ),
+        level=logging.WARNING if not matched_org else logging.INFO,
+        bypass=not matched_org,
+        actor=login,
+    )
     return {"ok": True, "user": login}, 200, state.auth.issue_session(identity=login)
 
 
@@ -208,15 +216,25 @@ _EDITOR_PATHS = frozenset(
 def in_admin_team(teams: Sequence[str], admin_teams: tuple[str, ...]) -> bool:
     """Whether any of *teams* is a server-wide admin Team — the one membership test behind both the
     admin role below and `oauth_callback`'s admin-Team sign-in bypass, so the gate that admits a
-    bypassing login and the role it resolves to can never drift apart."""
-    return any(team in admin_teams for team in teams)
+    bypassing login and the role it resolves to can never drift apart. Case-folded on both sides:
+    GitHub resolves an org login and a Team slug case-insensitively, so an `admin_teams` entry whose
+    organization half carries whatever case GitHub stores it in (a real GitHub org login can be
+    mixed-case) must still match a login's exact-case membership, and vice versa. Folding never
+    turns an empty team name into a match — `admin_teams` never contains `""` (the comma-split that
+    builds it filters on `t.strip()`) — and doesn't affect the nested-Team guarantee, which rests on
+    the `/` count, not on case."""
+    folded = {t.casefold() for t in admin_teams}
+    return any(team.casefold() in folded for team in teams)
 
 
 def role_for(*, teams: Sequence[str], editor_team: str | None, admin_teams: tuple[str, ...]) -> str:
     """The role for a login from its GitHub Team memberships (BE-0313): admin if a member of any of
     the server-wide *admin_teams*, editor if a member of the resolved org's *editor_team*, else viewer
     (the base role every signed-in user gets). *teams* are `"<github-org>/<team-slug>"` direct
-    memberships; an unset *editor_team* or empty *admin_teams* never matches. Recomputed on every
+    memberships; an unset *editor_team* or empty *admin_teams* never matches. The admin check
+    (`in_admin_team`) is case-insensitive; this *editor_team* check is not — a config-declared
+    `editorTeam` is written once by an operator who controls its case, unlike an `admin_teams` entry
+    that must also match GitHub's own case for the same organization login. Recomputed on every
     login (BE-0015 7c-2)."""
     if in_admin_team(teams, admin_teams):
         return "admin"

@@ -52,6 +52,20 @@ def test_role_for_derives_the_role_from_team_membership() -> None:
     )
 
 
+def test_role_for_admin_match_is_case_insensitive() -> None:
+    # GitHub resolves an org login and a Team slug case-insensitively, and a real org login can be
+    # stored mixed-case -- an `admin_teams` entry and a login's reported Team must still match
+    # regardless of which side carries the different case.
+    assert ops.role_for(teams=["Acme-GH/ops"], editor_team=None, admin_teams=("acme-gh/ops",)) == (
+        "admin"
+    )
+    assert ops.role_for(teams=["acme-gh/ops"], editor_team=None, admin_teams=("Acme-GH/OPS",)) == (
+        "admin"
+    )
+    # Folding case never turns an empty team name into a spurious match.
+    assert ops.role_for(teams=[""], editor_team=None, admin_teams=("acme-gh/ops",)) == "viewer"
+
+
 def test_required_role_maps_endpoints() -> None:
     assert ops.required_role("GET", "/api/runs") is None  # reads need no role
     assert ops.required_role("POST", "/api/run") == "editor"

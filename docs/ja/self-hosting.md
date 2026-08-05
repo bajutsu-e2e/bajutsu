@@ -370,9 +370,10 @@ OAuth を構成すると、アクセスは手作業の login リストではな�
 - **editor** は org の `editorTeam` に従います。その 1 つのフラットな GitHub Team の直接メンバーが、run、record、
   scenario の編集をできます。
 - **admin** はサーバ全体で 1 つ以上の GitHub Team、`BAJUTSU_OAUTH_ADMIN_TEAMS`（カンマ区切りのリスト。各要素は
-  `"<github-org>/<team-slug>"` の形）に従います。そのメンバーはサーバ設定（config、API キー、provider）も変更
-  できます。admin はデプロイ全体で 1 段のロールなので、どの org を越えても信頼できるメンバーの Team を指定
-  します。上の viewer・editor とは異なり、構成済みの admin Team のいずれかのメンバーは、サインインのゲートを
+  `"<github-org>/<team-slug>"` の形で、`<team-slug>` は GitHub 自身が小文字化した slug であり、Team の
+  表示名ではありません）に従います。そのメンバーはサーバ設定（config、API キー、provider）も変更
+  できます。admin はデプロイ全体で 1 段のロールなので、どの org を越えても信頼できるメンバーの Team だけを
+  指定します。上の viewer・editor とは異なり、構成済みの admin Team のいずれかのメンバーは、サインインのゲートを
   直接通過します。admin Team が属する GitHub organization を、どこかの org の `githubOrgs` に含める必要は
   ありません。そのため、`orgs:` ブロックが壊れている、あるいは存在しない状態でも、admin は常にサインイン
   して、サーバの向き先を修正済みの config へ張り替えられます。この性質により、`BAJUTSU_OAUTH_ADMIN_TEAMS`
