@@ -127,20 +127,27 @@ unit 3 is the off-device coverage that keeps both from regressing.
    had no path from these suites. The web environment's own `teardown` is already that `close()` on the
    browser context, so the lease needs no per-backend branch.
 
-2. **Refuse to swallow a teardown that could not run.** A *mid-run* discard runs on a failure path,
-   where raising would mask the fault that prompted it, so catching there is right; logging at debug
-   level is not, because a teardown that is *structurally* impossible then looks identical to one that
-   merely failed this time. Log a failed mid-run teardown as a warning and name what could not be torn
-   down. Split what may propagate the way the run pipeline already splits it. An expected teardown
-   failure — `CalledProcessError` or `OSError`, from a runner that had already exited or an unreachable
-   `xcrun` — stays a warning on both paths, because the pool warns on exactly those at the same seam
-   and the two recovery paths are meant not to drift. Anything else is a wiring defect, and where it
-   surfaces depends on the path. A mid-run discard still swallows it into that same warning: one of its
-   two call sites sits in a `finally` guarding the very `BackendCrashError` a test asserts, and the other
-   runs outside any test, where an escaping exception would abort the session instead of failing one
-   case. On the module's **final** release let a wiring defect fail the module teardown, since no fault
-   is in flight there and a runner that survives leaks into the rest of the job. A missing method should reach a
-   maintainer on the first run, not sit behind a log level a reader has to raise.
+2. **Extract the guarded teardown, and stop swallowing one that could not run.** A *mid-run* discard
+   runs on a failure path, where raising would mask the fault that prompted it, so catching there is
+   right; logging at debug level is not, because a teardown that is *structurally* impossible then looks
+   identical to one that merely failed this time. A missing method should reach a maintainer on the
+   first run, not sit behind a log level a reader has to raise.
+
+   What may be swallowed is a policy the run pipeline already has: its three teardown sites each warn on
+   a `CalledProcessError` or an `OSError` — a runner that had already exited, an unreachable `xcrun` —
+   and let anything else surface. Restating that policy in the harness would put a fourth copy of the
+   same pair of exception classes in the tree, held in sync by nothing but a comment, so extract the
+   guarded teardown into one helper instead and have the pool's three sites and the lease both call it.
+   `bajutsu/runner/recovery.py` is where it belongs: the harness already borrows the pipeline's retry
+   count and recovery budget from that module by import rather than by restatement, which is what makes
+   "the two recovery paths do not drift" a property of the code instead of a promise in prose.
+
+   Whether a wiring defect surfaces depends on which path called the helper. A mid-run discard swallows
+   it into the warning, because one of that path's two call sites sits in a `finally` guarding the very
+   `BackendCrashError` a test asserts, and the other runs outside any test, where an escaping exception
+   would abort the session instead of failing one case. On the module's **final** release let a wiring
+   defect fail the module teardown, since no fault is in flight there and a runner that survives leaks
+   into the rest of the job.
 
 3. **Pin the teardown off device.** The harness is already exercisable without a Simulator:
    `tests/runner/test_backend_crash_recovery.py` drives the plugin through `pytester` with fake launch
@@ -195,7 +202,8 @@ teardown a suite supplies is its platform's own.
 > (oldest first), linking the PRs.
 
 - [ ] Unit 1 — let the lease tear down the environment that owns the runner, one per lease.
-- [ ] Unit 2 — warn on a failed mid-run teardown; let the final release propagate a wiring defect.
+- [ ] Unit 2 — extract the guarded teardown into `recovery.py`; warn on a failed mid-run teardown and
+      let the final release propagate a wiring defect.
 - [ ] Unit 3 — off-device cases over the lease's launch/teardown seam.
 
 ## References
