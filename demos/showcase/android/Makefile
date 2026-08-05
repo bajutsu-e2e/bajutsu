@@ -341,7 +341,13 @@ e2e-codegen:
 	# own subshell and lose that PID. `|| true` on every teardown step so a failed
 	# recording/pull/cleanup can never mask (or replace) the real test exit code, which is captured
 	# and re-raised via `exit "$$rc"` at the end.
-	adb shell screenrecord /sdcard/uiautomator-codegen.mp4 & \
+	# Build the APKs *before* the recorder starts: `screenrecord`'s default --time-limit is 180s, while
+	# this job budgets ~15min for build+test, so a recording spanning the build would end long before
+	# the install+test window the flake lives in. --size/--bit-rate keep a multi-minute mp4 small
+	# enough for /sdcard and for the artifact upload (the default is 20 Mbps at full 1080x2400).
+	cd $(HERE) && $(GRADLEW) :compose:assembleA11yDebug :compose:assembleA11yDebugAndroidTest
+	adb shell screenrecord --time-limit 900 --size 540x1200 --bit-rate 2000000 \
+		/sdcard/uiautomator-codegen.mp4 & \
 	rec_pid=$$!; \
 	( cd $(HERE) && $(GRADLEW) :compose:connectedA11yDebugAndroidTest ); rc=$$?; \
 	kill -INT "$$rec_pid" 2>/dev/null || true; \
