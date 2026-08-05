@@ -434,9 +434,9 @@ class _UiAutomatorGen:
             # element appears, so a generous ceiling never slows a fast render — it only gives a slow
             # one room before the step is failed.
             "private const val ACT_TIMEOUT_MS = 15000L",
-            # How many window changes to provoke before giving up on the accessibility window list.
-            # Each kick is bounded by the key press's own wait for the events it produces, so the
-            # count is the whole budget — there is no interval to tune.
+            # How many window changes to provoke while the window list reads empty, before
+            # launching anyway. Each kick is bounded by the key press's own wait for the events it
+            # produces, so the count is the whole budget — there is no interval to tune.
             "private const val TRACKING_KICK_ATTEMPTS = 3",
             # Where the on-device failure evidence lands, inside the directory the Android Gradle
             # Plugin names with the `additionalTestOutputDir` instrumentation argument and copies off

@@ -111,7 +111,12 @@ def _fn_body(code: str, name: str, next_name: str) -> str:
     # The trailing "(" keeps the boundary exact: a bare prefix would also match a longer helper
     # that starts with the same characters.
     start = code.index(f"private fun {name}(")
-    return code[start : code.index(f"private fun {next_name}(", start)]
+    body = code[start : code.index(f"private fun {next_name}(", start)].splitlines()
+    # The next helper's own rationale block sits between the two definitions. Left in, prose about
+    # that helper would satisfy an assertion about this one — the very thing the slice prevents.
+    while body and (not body[-1].strip() or body[-1].lstrip().startswith("//")):
+        body.pop()
+    return "\n".join(body)
 
 
 def test_launch_confirms_window_tracking_before_it_waits_on_the_tree() -> None:
@@ -164,11 +169,15 @@ def test_a_wedged_window_list_is_kicked_rather_than_waited_out() -> None:
     assert "Configurator.getInstance().uiAutomationFlags" in accessor
     assert "accessibilityWindows()" in _fn_body(code, "windowSummary", "matchableIds")
     assert "accessibilityWindows()" in _fn_body(code, "reportsWindows", "ensureWindowTracking")
+    # Comment lines are stripped so rewording a rationale cannot redden either gate below on its
+    # own — the accessor's own comment already names the flag-less overload, and the nesting ban
+    # further down discusses executeAndWaitForEvent by name.
+    emitted = "\n".join(ln for ln in code.splitlines() if not ln.lstrip().startswith("//"))
     # Neither of the next two is visible to the fast gate, which never compiles the output: the
     # flag-less overload must not reappear anywhere in the file, and the accessor's own import has
     # to be emitted or the generated Kotlin will not build. (".uiAutomation." does not match
     # ".uiAutomationFlags", so the accessor above passes.)
-    assert ".uiAutomation." not in code
+    assert ".uiAutomation." not in emitted
     assert "import androidx.test.uiautomator.Configurator" in code
 
     kick = _fn_body(code, "kickWindowTracking", "reportsWindows")
@@ -182,9 +191,6 @@ def test_a_wedged_window_list_is_kicked_rather_than_waited_out() -> None:
     # wait able only to time out. Scoping the check to kickWindowTracking would let the identical
     # bug land in the next helper. A future emitter with a genuine use for the call has to come
     # here, read this, and decide deliberately.
-    #
-    # Comment lines are stripped so rewording a rationale cannot redden the gate on its own.
-    emitted = "\n".join(ln for ln in code.splitlines() if not ln.lstrip().startswith("//"))
     assert "executeAndWaitForEvent" not in emitted
 
 

@@ -258,8 +258,9 @@ UI Automator は adb backend と構造がきわめて近い出力先です。ど
 待機は固定スリープではなく `device.wait(Until.…)` を使い、iOS と web の出力先と同じ決定性の切り分けを取ります。
 
 以下は骨組みであり、生成物そのものではありません。実際のファイルでは各ヘルパの上に一段落の説明が
-入りますが、ここでは残す価値のある箇所だけを短い行内コメントに縮めています。エミッタの実際の出力は、
-チェックイン済みの
+入りますが、ここでは残す価値のある箇所だけを短い行内コメントに縮めています。さらに、いくつかの
+ヘルパは丸ごと省いてあります。下で `accessibilityWindows()` と `windowSummary()` が呼ばれているのに
+定義がどこにもないのは、そのためです。エミッタの実際の出力は、チェックイン済みの
 [`CodegenAndroidUITest.kt`](../../demos/showcase/android/compose/src/androidTest/java/CodegenAndroidUITest.kt)
 をご覧ください。
 
