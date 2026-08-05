@@ -197,14 +197,14 @@ e2e: compose-build views-build
 	$(TOUCH_DEBUG_ON)
 	cd $(ROOT) && for s in $(E2E_SCENARIOS); do \
 		echo "=== showcase-compose / $$s ==="; \
-		$(ANR_QUIET); \
+		$(ANR_QUIET) && \
 		$(E2E_ENV) \
 		uv run bajutsu run --scenario demos/showcase/scenarios/$$s.yaml \
 			--target showcase-compose --udid $(SERIAL) --backend android --config $(CONFIG) || exit 1; \
 	done
 	cd $(ROOT) && for s in $(E2E_VIEWS_SCENARIOS); do \
 		echo "=== showcase-views / $$s ==="; \
-		$(ANR_QUIET); \
+		$(ANR_QUIET) && \
 		$(E2E_ENV) \
 		uv run bajutsu run --scenario demos/showcase/scenarios/$$s.yaml \
 			--target showcase-views --udid $(SERIAL) --backend android --config $(CONFIG) || exit 1; \

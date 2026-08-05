@@ -292,7 +292,7 @@ run-flutter-android: flutter-android-build
 	adb root >/dev/null 2>&1 || true
 	adb wait-for-device
 	cd $(ROOT) && for s in $(FLUTTER_ANDROID_SCENARIOS); do \
-		$(ANR_QUIET); \
+		$(ANR_QUIET) && \
 		BAJUTSU_MIN_WAIT_TIMEOUT=15 \
 		uv run bajutsu run --scenario demos/showcase/scenarios/$$s.yaml \
 			--target showcase-flutter-android --backend android --config $(CONFIG) || exit 1; \

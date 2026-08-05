@@ -296,9 +296,11 @@ and fails the rest of the scenario against a screen it was not written to expect
 `interrupts` handles that case. Each entry names a `condition` — the same assertion DSL `if` uses —
 and the `steps` that clear the screen. The runner checks each entry **opportunistically**, wherever in
 the sequence the screen happens to appear, and runs the entry's `steps` when the condition matches.
-That check is free when it reuses an already-fetched tree — a `wait`'s poll tick, or a
-`screenChanged`-policy step's pre-action read — but an act step with neither pays one extra
-`driver.query()` per step to run it. After the handler runs, the interrupted step resumes where it
+That check is free where it rides a tree already read for this step — a `wait`'s poll tick, or
+the fresh `before` a `screenChanged`-policy step reads when it has no carried-over tree to reuse.
+Every other non-`wait` step pays one extra `driver.query()`, including a `screenChanged`-policy step
+whose `before` is the previous step's carried-over tree (BE-0234), which the guard re-reads rather
+than trust as current. After the handler runs, the interrupted step resumes where it
 left off — a `wait` keeps polling toward its original timeout, an act step takes its action — so an
 author no longer has to predict the one spot to place an `if`.
 

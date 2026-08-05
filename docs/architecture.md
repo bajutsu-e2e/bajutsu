@@ -435,8 +435,10 @@ purpose and so carry more inherent flakiness risk than the ones driving a health
   of `{ condition, steps }` entries, checked opportunistically — reusing the assertion-DSL
   `condition` shape `if` already uses — for a screen that can surface at an unpredictable point (an
   onboarding step, a permission prompt the accessibility tree can see) rather than one known spot in
-  the step sequence. The check rides a `screenChanged`-policy step's or a `wait` poll's
-  already-fetched tree for free; any other act step pays one extra `driver.query()` per step for it.
+  the step sequence. The check is free where it rides a tree already read for this step — a
+  `wait` poll, or the fresh `before` a `screenChanged`-policy step reads with no carried-over tree to
+  reuse; every other non-`wait` step pays one extra `driver.query()`, a step reusing a carried-over
+  `prev_after` (BE-0234) included.
   On a match, runs the entry's `steps` then resumes the interrupted step (a `wait` keeps its
   original deadline; an act step retries once), with a re-entrancy cap falling back to the step's
   ordinary outcome
