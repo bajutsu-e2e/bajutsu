@@ -82,6 +82,16 @@ def oauth_callback(
     is_admin_team_member = in_admin_team(identity.teams, admin_teams)
     matched_org = identity_matches_org(orgs, login, identity.orgs)
     if not matched_org and not is_admin_team_member:
+        # A rejection is the one failure this item exists to make recoverable, so it needs a record
+        # too — under its own event rather than `oauth.login`, which stays "login count" (see the
+        # `bypass` reasoning below) rather than absorbing a "denied" outcome it never admitted.
+        oplog.log_event(
+            _logger,
+            "oauth.denied",
+            f"{login} rejected: no orgs: entry and no admin Team matched",
+            level=logging.WARNING,
+            actor=login,
+        )
         return {"error": "user not allowed"}, 403, None
     if state.repository is not None:
         # Persist the identity into the system of record, so audit entries and RBAC can reference

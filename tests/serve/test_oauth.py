@@ -426,7 +426,7 @@ def test_oauth_callback_admin_team_bypass_keeps_org_when_config_fails_to_load(
 
 
 def test_oauth_callback_rejects_a_login_in_neither_the_org_gate_nor_the_admin_teams(
-    tmp_path: Path,
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
     state = _state(
         tmp_path,
@@ -434,9 +434,17 @@ def test_oauth_callback_rejects_a_login_in_neither_the_org_gate_nor_the_admin_te
         config=_config_file(tmp_path),
         admin_teams=["ops-gh/root"],
     )
-    _payload, status, sid = ops.oauth_callback(state, code="ok", state_param="s", state_cookie="s")
+    with caplog.at_level(logging.WARNING):
+        _payload, status, sid = ops.oauth_callback(
+            state, code="ok", state_param="s", state_cookie="s"
+        )
     assert status == 403
     assert sid is None
+    # The rejection is the one failure this item exists to make recoverable, so it must leave a
+    # record too -- under its own event, not `oauth.login`, which stays "login count" (BE-0015 7c-1
+    # audit-style visibility, not just a raw 403 with nothing an operator can correlate on).
+    record = next(r for r in caplog.records if getattr(r, "event", None) == "oauth.denied")
+    assert record.actor == "mallory"
 
 
 def test_oauth_callback_without_a_database_is_a_no_op(tmp_path: Path) -> None:
