@@ -1142,11 +1142,12 @@ class _StepRunner:
                 art = self.cfg.sink.wait_diagnostic(
                     step_id, trace=wait_trace, elements=screen.get()
                 )
-            except OSError as exc:
-                # Best-effort evidence: a disk/permission failure writing the diagnostic must not
-                # mask the real timeout with an I/O traceback — keep the timeout as the failure and
-                # disclose the lost evidence loudly. A genuine bug (e.g. a redaction error) still
-                # surfaces rather than being swallowed here.
+            except (ConnectionError, base.UnsupportedAction, OSError) as exc:
+                # Best-effort evidence: a disk/permission failure writing the diagnostic, or (inside a
+                # `web` block) a torn-down WebView context that `screen.get()` queries afresh here,
+                # must not mask the real timeout with an I/O traceback — keep the timeout as the
+                # failure and disclose the lost evidence loudly. A genuine bug (e.g. a redaction
+                # error) still surfaces rather than being swallowed here.
                 _logger.warning("dropping wait-timeout diagnostic: write failed: %s", exc)
             else:
                 if art is not None:

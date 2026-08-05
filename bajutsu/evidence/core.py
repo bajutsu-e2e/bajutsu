@@ -197,11 +197,12 @@ class EvidenceSink(Protocol):
     ) -> list[Artifact]:
         """Write the given instant `kinds` for `step_id`.
 
-        `capture` is invoked twice per step — once for the pre-step baseline, once for the
-        post-step capture — so a sink must not assume a single call sees every kind a step fires,
-        and must not let the later call overwrite state the earlier one for the same `step_id`
-        already recorded.
+        `capture` may be invoked more than once for the same `step_id` — the pre-step baseline, the
+        post-step capture, and, for the run's last leaf step, a final `screenshot.after` — so a sink
+        must not assume a single call sees every kind a step fires, and must not let a later call
+        overwrite state an earlier one for the same `step_id` already recorded.
         """
+        raise NotImplementedError
 
     def wait_diagnostic(
         self,
