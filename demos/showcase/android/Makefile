@@ -42,9 +42,12 @@ SERIAL ?= booted
 # `notices` a list row well below the fold — a bounded, non-inertial step that re-queries the tree
 # and stops the moment the target is on-screen, rather than a swipe chain tuned to a fixed distance.
 # A fixed-distance chain scrolls far less of Android's dense screen (2400px) than of iOS's (~900pt);
-# `scroll`'s re-query removes the need to retune the distance per backend. Verified by this lane's own
-# x86_64 CI run rather than a local arm64 emulator: `scroll` stops on a re-query of the tree, not on a
-# travelled distance, so the two hosts differ in render speed, not in what it resolves against.
+# `scroll`'s re-query removes the need to retune the distance per backend. The `gestures` swipe chain
+# below still rests on unit 5's other half: the default directional swipe travels a screen *fraction*
+# (`_SWIPE_FRACTION`, bajutsu/orchestrator/actions/handlers/gestures.py), so it covers the same
+# proportion on either backend. Verified by this lane's own x86_64 CI run rather than a local arm64
+# emulator: `scroll` stops on a re-query of the tree, not on a travelled distance, so the two hosts
+# differ in render speed, not in what it resolves against.
 #
 # The interrupt-handler flow `interrupts` joins the lane (BE-0314): a syntax demo whose `interrupts`
 # entry never actually fires against the real app (its `condition` matches nothing on-screen), so it
