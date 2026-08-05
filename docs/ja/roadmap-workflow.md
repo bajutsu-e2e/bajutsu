@@ -113,8 +113,8 @@ flowchart TB
    `sleep` ではなく条件待ち、新しいつまみは `targets.<name>` 設定へ、回帰の網としてのテスト、文書化された
    挙動には両言語のドキュメント、を守ります。
 7. **差分をレビューして洗練する**：リポジトリ自身のレビュー契約
-   [`.github/claude-review-prompt.md`](../../.github/claude-review-prompt.md) に照らします。CI の自動
-   レビュアーが当てるのと同じレンズ（BE-0203）を差分に当てます。レビュー用のコマンドは使わず、契約を
+   [`.github/claude-review-prompt.md`](../../.github/claude-review-prompt.md) に照らします。契約が定めるのは、
+   CI の自動レビュアーが PR に当てるのと同じレンズ（BE-0203）です。レビュー用のコマンドは使わず、契約を
    読み込ませた新しいレビューコンテキストに任せるので、レビューはスキルの導入状況に左右されません。
    あわせて組み込みの
    [`simplify`](../../.claude/skills) スキルを使い、自明でない変更では **pr-review-toolkit** のエージェント
