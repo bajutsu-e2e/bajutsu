@@ -95,8 +95,8 @@ The gate and the Team fetch simply weren't ordered to use it together. This item
 alongside `identity_matches_org`: a login whose `identity.teams` intersects the configured admin Team
 list clears the sign-in gate regardless of what `identity_matches_org` returns. An admin Team member
 then signs in even when no `orgs:` entry lists their GitHub organization, or when `orgs:` is absent
-altogether. A login that satisfies neither check is still rejected exactly as today. Every time the
-successful sign-in, `oauth_callback` now records it through `oplog.log_event`
+altogether. A login that satisfies neither check is still rejected exactly as today. `oauth_callback`
+now records every successful sign-in through `oplog.log_event`
 ([`bajutsu/serve/oplog.py`](../../bajutsu/serve/oplog.py)), under the already-reserved `"oauth.login"`
 event and the login itself as the `actor` correlation field — not a bare logging call, so the record
 carries the same registered event name, redaction, and correlation fields every other
@@ -281,9 +281,10 @@ mapping.
       admin role it never had.
 - [x] Add the admin-Team bypass to the sign-in gate in `oauth_callback`, alongside
       `identity_matches_org`, using the Team list already fetched for role resolution. Record every
-      bypass-only admission through `oplog.log_event` (the reserved `"oauth.login"` event, the login
-      as the `actor` field), so the one sign-in path `orgs:` did not authorize still leaves a record
-      an operator's `event`-keyed alert can see. When persisting the identity, keep an existing
+      successful sign-in through `oplog.log_event` (the reserved `"oauth.login"` event, the login as
+      the `actor` field, and a `bypass` field `True` only for a bypass-only admission), so the one
+      sign-in path `orgs:` did not authorize still leaves a record an operator's `event`-keyed alert
+      can see. When persisting the identity, keep an existing
       login's already-recorded org rather than relocating it to `default` on a transient
       `/user/orgs` failure that made the bypass, not `orgs:`, admit it.
 - [x] Update the self-hosting and configuration docs (both languages) and `.env.example` to describe
@@ -294,9 +295,11 @@ mapping.
 - [x] Tests: sign-in accepted for an admin-Team member with no matching `orgs:` entry and with no
       `orgs:` block at all; resolved role is admin in both cases; a login matching neither the org
       gate nor the admin-Team list is still rejected; the renamed variable parses a multi-Team list;
-      a bypassing admin is placed in the `default` org. End to end through the HTTP transport: a
-      login matching no `orgs:` entry, admitted only by the bypass, can actually reach an
-      admin-gated endpoint (`POST /api/apikey`) — not just receive a session.
+      a bypassing admin is placed in the `default` org; an existing member's recorded org survives a
+      transient `/user/orgs` failure, but a genuinely revoked member re-resolves to `default` on
+      their next login rather than staying pinned. End to end through the HTTP transport: a login
+      matching no `orgs:` entry, admitted only by the bypass, can actually reach an admin-gated
+      endpoint (`POST /api/apikey`) — not just receive a session.
 
 ## References
 
@@ -311,7 +314,7 @@ mapping.
   `_fetch_teams`, whose docstrings this item updates: the same fail-closed behavior on a GitHub API
   failure now sometimes costs sign-in itself, not only a role, for a login the bypass alone admits.
 - [`bajutsu/serve/state.py`](../../bajutsu/serve/state.py) — `SessionManager`, whose
-  `oauth_admin_team` field this item widens to a list.
+  `oauth_admin_team` field this item renames to `oauth_admin_teams` and widens to a tuple of Teams.
 - [`docs/self-hosting.md`](../../docs/self-hosting.md) — the self-hosting guide's GitHub OAuth
   section, which documented the gap this item closes ("An admin still has to clear the sign-in gate
   above first") until this item removed that caveat.
