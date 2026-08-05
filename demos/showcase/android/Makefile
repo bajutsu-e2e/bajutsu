@@ -44,22 +44,24 @@ SERIAL ?= booted
 # the tree and stops the moment the target is on-screen, rather than a swipe chain tuned to a
 # fixed distance.
 # A fixed-distance chain scrolls far less of Android's dense screen (2400px) than of iOS's (~900pt);
-# `scroll`'s re-query removes the need to retune the distance per backend. The `gestures` swipe chain
-# below still rests on unit 5's other half: the default directional swipe travels a screen *fraction*
-# (`_SWIPE_FRACTION`, bajutsu/orchestrator/actions/handlers/gestures.py), so it covers the same
-# proportion on either backend. Verified by this lane's own x86_64 CI run rather than a local arm64
-# emulator: `scroll` stops on a re-query of the tree, not on a travelled distance, so the two hosts
-# differ in render speed, not in what it resolves against.
+# `scroll`'s re-query removes the need to retune the distance per backend. All four are verified by
+# this lane's own x86_64 CI run rather than a local arm64 emulator: `scroll` stops on a re-query of
+# the tree, not on a travelled distance, so the two hosts differ in render speed, not in what it
+# resolves against. The `gestures` swipe chain below still rests on unit 5's other half: the default
+# directional swipe travels a screen *fraction* (`_SWIPE_FRACTION`,
+# bajutsu/orchestrator/actions/handlers/gestures.py), so it covers the same proportion on either
+# backend.
 #
 # The interrupt-handler flow `interrupts` joins the lane (BE-0314): a syntax demo whose `interrupts`
 # entry never actually fires against the real app (its `condition` matches nothing on-screen), so the
 # flow underneath is the stable→horse→favorite one `firstlook.yaml` already runs here — no app or
-# config change needed. What it adds over `firstlook` is the *check* path against a live tree: the
-# condition is evaluated on every tree the run already fetched (a `wait`'s poll tick, an act step's
-# pre-action read), so a never-matching handler is proven to cost nothing and disturb nothing on a
-# real device — which no fast-suite fake can show. It joins `E2E_VIEWS_SCENARIOS` too: its ids carry
-# both dotted SPEC and underscore Android Views forms (BE-0221), the same ones `firstlook` already
-# proved on the Views tree.
+# config change needed. What it adds over `firstlook` is the *check* path against a live tree: a
+# `wait` rides its own poll tree at no extra cost, and a bare act step pays one extra `query()` for
+# the guard (`loop.py`'s `_InterruptGuard.clear_before_act`, since this scenario declares no
+# `screenChanged` policy) — so a never-matching handler is proven on a real device to disturb
+# nothing and to cost one bounded read per act, which no fast-suite fake can show. It joins
+# `E2E_VIEWS_SCENARIOS` too: its ids carry both dotted SPEC and underscore Android Views forms
+# (BE-0221), the same ones `firstlook` already proved on the Views tree.
 #
 # The single-touch gesture flow `gestures` rejoins the lane (BE-0208 unit 5): its long-press already
 # landed, but the double-tap did not register through adb's `input tap ; input tap` (each tap spawns

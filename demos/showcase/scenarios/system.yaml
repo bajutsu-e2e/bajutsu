@@ -13,7 +13,6 @@
       capture: [video]
     - wait: { for: { id: [perm.requestNotif, perm_requestNotif] }, timeout: 10 }
     - scroll: { to: { id: [sys.paste.value, sys_paste_value] }, direction: down }
-    - wait: { for: { id: [sys.paste.value, sys_paste_value] }, timeout: 5 }
     - tap: { id: [sys.copy, sys_copy] }
     - tap: { id: [sys.paste, sys_paste] }
   expect:
