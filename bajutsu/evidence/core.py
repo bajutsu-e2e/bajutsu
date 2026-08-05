@@ -275,7 +275,7 @@ class FileSink:
         # When set (a web or Android lane), interval evidence comes from this driver-supplied provider
         # instead of the simctl starters below — the device pool injects the driver's `driver_interval`.
         self.driver_interval = driver_interval
-        # Captures the environment already began before the app launched (a device backend's video, so
+        # Captures the environment already began before the app launched (Android's video, so
         # the cold-start frames are recorded); the sink adopts the running one at scenario start rather
         # than starting a fresh one on demand. Keyed by kind — at most one per kind.
         self._prestarted = {iv.kind: iv for iv in (prestarted_intervals or [])}
@@ -320,7 +320,7 @@ class FileSink:
     ) -> list[intervals.Interval]:
         """Start the whole-scenario recordings under <scenario_id>/.
 
-        A kind the environment already began before launch (a device backend's video, `_prestarted`)
+        A kind the environment already began before launch (Android's video, `_prestarted`)
         is adopted rather than started, so the recording spans the app launch; the finalized file is
         relocated here on stop. Otherwise a driver-supplied lane records via the injected
         `driver_interval` provider (Playwright-native on web, adb `logcat` on Android),

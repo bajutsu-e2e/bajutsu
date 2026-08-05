@@ -244,7 +244,7 @@ def device_pool(
         try:
             # Film the whole scenario only when its capture policy asks for video, and only where
             # capture is wired before launch (so the app's cold start is recorded): web binds it to
-            # the browser context at creation, a device backend starts recording before the app
+            # the browser context at creation, Android starts recording before the app
             # launches. Either way the temp dir must exist before the driver is built.
             record_video_dir: Path | None = None
             if lease_env.records_video_up_front() and "video" in requested_intervals(scenario):
@@ -315,7 +315,7 @@ def device_pool(
                 # errors; adb logcat — Android's video now takes the prestart/adopt path below); the
                 # iOS backend has no such method, so this is None there and the simctl path is used.
                 driver_interval=getattr(driver, "driver_interval", None),
-                # Video the environment already began before the app launched (a device backend, so
+                # Video the environment already began before the app launched (Android, so
                 # the cold start is recorded); the sink adopts it instead of starting one on demand.
                 prestarted_intervals=lease_env.prestarted_intervals(),
                 # Carried so a first-wait timeout diagnostic can state whether the readiness gate had
