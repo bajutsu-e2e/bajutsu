@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0314") |
-| Implementing PR | [#1316](https://github.com/bajutsu-e2e/bajutsu/pull/1316) |
+| Implementing PR | [#1316](https://github.com/bajutsu-e2e/bajutsu/pull/1316), [#1489](https://github.com/bajutsu-e2e/bajutsu/pull/1489) |
 | Topic | Scenario authoring features |
 | Related | [BE-0033](../BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow.md), [BE-0269](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention.md), [BE-0276](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state.md), [BE-0310](../BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness.md) |
 <!-- /BE-METADATA -->
@@ -210,6 +210,9 @@ scenario's `vars.*` bindings, the same as `if`'s `then`/`else` do today.
   `_wait` / `_wait_settled`; a codegen labeled `// TODO` per entry; docs (en + ja) with the
   `if` / `interrupts` / `dismissAlerts` / `permissions` comparison and a showcase fixture. Covered
   by `tests/orchestrator/test_interrupts.py`.
+- [#1489](https://github.com/bajutsu-e2e/bajutsu/pull/1489) — put `interrupts.yaml` on a real device:
+  added it to the Android (adb) lane's `E2E_SCENARIOS` and `E2E_VIEWS_SCENARIOS`, so the check path
+  runs against a live Compose *and* Views tree on every `smoke (adb)` run, not just the fast-suite fake.
 
 ## References
 
