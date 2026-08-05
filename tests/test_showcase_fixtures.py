@@ -66,12 +66,14 @@ def test_showcase_config_resolves() -> None:
 
 def test_showcase_android_targets_have_anr_interrupt() -> None:
     # BE-0314: every Android showcase target carries the same ANR-dialog handler (e.g. "Pixel
-    # Launcher isn't responding"), taps `aerr_close` (not `aerr_wait` — see showcase.config.yaml's
-    # showcase-compose comment for why). The selector names the driver-normalized local id
-    # `aerr_close` — not the `android:id/`-qualified resource-id — the same id contract every other
-    # selector in this file uses (`stable.row.1`/`stable_row_1`). Pinning the exact id catches a
-    # wrong-prefix regression here, without an emulator; that mistake previously shipped and only
-    # failed against a live ANR dialog (PR #1492 review).
+    # Launcher isn't responding"), which must condition on `aerr_wait` (unique to the ANR dialog) but
+    # tap `aerr_close` (recovers without leaving the process wedged) — not the same id for both, since
+    # `aerr_close` alone also matches a genuine app-under-test crash dialog (see showcase.config.yaml's
+    # showcase-compose comment). Both are the driver-normalized local id — not the `android:id/`-
+    # qualified resource-id — the same id contract every other selector in this file uses
+    # (`stable.row.1`/`stable_row_1`). Pinning the exact ids catches both a wrong-prefix regression and
+    # a condition/action id mix-up without an emulator; each mistake previously shipped and only
+    # failed against a live dialog (PR #1492 review).
     cfg = load_config(SHOWCASE_CONFIG.read_text(encoding="utf-8"))
     android = [
         name
@@ -84,7 +86,11 @@ def test_showcase_android_targets_have_anr_interrupt() -> None:
         assert len(interrupts) == 1, name
         exists = interrupts[0].condition.exists
         assert exists is not None, name
-        assert exists.sel.id == ["aerr_close"], name
+        assert exists.sel.id == ["aerr_wait"], name
+        assert len(interrupts[0].steps) == 1, name
+        tap = interrupts[0].steps[0].tap
+        assert tap is not None, name
+        assert tap.id == ["aerr_close"], name
 
 
 def test_showcase_live_config_routes_to_the_live_transport() -> None:

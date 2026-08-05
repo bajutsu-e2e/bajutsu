@@ -167,16 +167,23 @@ targets:
     # so each of those pays one such read on its first step — the resident channel's fast path
     # (~0.1-0.3s) where the resident server is built, the same ~2.4s dump path otherwise.
     #
-    # Taps `aerr_close`, not `aerr_wait` — both are AOSP's fixed, locale-independent resource-ids for
-    # the dialog's two buttons (named here in the local form the adb driver reports, which strips the
-    # `android:id/` prefix a uiautomator dump shows) — because Wait leaves the offending process
-    # wedged and can re-post the dialog up to `_INTERRUPT_MAX_FIRES` times before the guard gives up
-    # and the step falls back to an opaque timeout, masking a genuine app-under-test ANR; Close app
-    # ends the run loudly on that case, and is harmless for the Pixel Launcher case this exists for
-    # (Android restarts its own launcher). Same interrupts block on every Android target below: the
-    # dialog is OS-owned, not app-specific.
+    # Conditions on `aerr_wait`, taps `aerr_close` — deliberately not the same id, and not `aerr_wait`
+    # for both. AOSP's ANR dialog (app_anr_dialog.xml, AppNotRespondingDialog) carries three buttons —
+    # `aerr_wait`, `aerr_close`, `aerr_report` — and `aerr_wait` is the one unique to it; the crash
+    # dialog (app_error_dialog.xml, AppErrorDialog) shares `aerr_close` (alongside `aerr_restart` /
+    # `aerr_app_info`), verified on-device by force-crashing the app (`adb shell am crash`) and
+    # dumping its tree. Conditioning on `aerr_close` — an earlier version of this block did — would
+    # therefore also match a genuine app-under-test crash and silently tap it away before any artifact
+    # records it, the exact swallowed-signal failure this guard exists to prevent, not cause.
+    # `aerr_wait` names only the dialog this block targets; `aerr_close` recovers from it (over
+    # `aerr_wait` itself) because Wait leaves the offending process wedged and can re-post the dialog
+    # up to `_INTERRUPT_MAX_FIRES` times before the guard gives up and the step falls back to an
+    # opaque timeout — Close app ends the run loudly instead, and is harmless for the Pixel Launcher
+    # case this exists for (Android restarts its own launcher). Both ids are the local form the adb
+    # driver reports, stripped of the `android:id/` prefix a uiautomator dump shows. Same interrupts
+    # block on every Android target below: the dialog is OS-owned, not app-specific.
     interrupts:
-      - condition: { exists: { id: [aerr_close] } }
+      - condition: { exists: { id: [aerr_wait] } }
         steps:
           - tap: { id: [aerr_close] }
 
@@ -191,7 +198,7 @@ targets:
     backend: [android]
     scenarios: scenarios
     interrupts:   # ANR-dialog dismissal — see showcase-compose above
-      - condition: { exists: { id: [aerr_close] } }
+      - condition: { exists: { id: [aerr_wait] } }
         steps:
           - tap: { id: [aerr_close] }
 
@@ -212,7 +219,7 @@ targets:
     backend: [android]
     scenarios: scenarios
     interrupts:   # ANR-dialog dismissal — see showcase-compose above
-      - condition: { exists: { id: [aerr_close] } }
+      - condition: { exists: { id: [aerr_wait] } }
         steps:
           - tap: { id: [aerr_close] }
 
@@ -227,7 +234,7 @@ targets:
     backend: [android]
     scenarios: scenarios
     interrupts:   # ANR-dialog dismissal — see showcase-compose above
-      - condition: { exists: { id: [aerr_close] } }
+      - condition: { exists: { id: [aerr_wait] } }
         steps:
           - tap: { id: [aerr_close] }
 
@@ -272,7 +279,7 @@ targets:
     backend: [android]
     scenarios: scenarios
     interrupts:   # ANR-dialog dismissal — see showcase-compose above
-      - condition: { exists: { id: [aerr_close] } }
+      - condition: { exists: { id: [aerr_wait] } }
         steps:
           - tap: { id: [aerr_close] }
 
@@ -287,6 +294,6 @@ targets:
     backend: [android]
     scenarios: scenarios
     interrupts:   # ANR-dialog dismissal — see showcase-compose above
-      - condition: { exists: { id: [aerr_close] } }
+      - condition: { exists: { id: [aerr_wait] } }
         steps:
           - tap: { id: [aerr_close] }
