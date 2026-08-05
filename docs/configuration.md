@@ -338,8 +338,9 @@ CLI and local `serve` ignore `orgs:` entirely.
 
 Once GitHub OAuth is configured, org membership also decides access
 ([BE-0313](../roadmaps/BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac.md)). Signing in
-requires membership in a configured org — through `members` or `githubOrgs` — and grants the
-**viewer** role. A direct member of the org's `editorTeam` is promoted to **editor**; a member of one
+requires membership in a configured org — through `members` or `githubOrgs` — which grants the
+**viewer** role; a member of a configured admin Team signs in regardless (below). A direct member of
+the org's `editorTeam` is promoted to **editor**; a member of one
 of the server-wide admin Teams (`BAJUTSU_OAUTH_ADMIN_TEAMS`, see
 [Self-hosting](self-hosting.md#2-add-github-oauth-optional)) is **admin**. `editorTeam` is one flat Team, written as
 `"<github-org>/<team-slug>"`; a nested Team beneath it does not match. An OAuth deployment therefore

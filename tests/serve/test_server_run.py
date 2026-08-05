@@ -326,9 +326,12 @@ def test_build_state_server_warns_on_the_retired_singular_admin_team_var(
 def test_build_state_server_stays_quiet_when_admin_teams_is_set(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    # A deployment carrying both vars across the upgrade (the new one wins) must not warn either —
+    # set the retired singular name too, so this actually exercises the guard's other operand.
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
     monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
+    monkeypatch.setenv("BAJUTSU_OAUTH_ADMIN_TEAM", "acme-gh/legacy")
     monkeypatch.setenv("BAJUTSU_OAUTH_ADMIN_TEAMS", "acme-gh/ops")
     _scn, cfg, runs = project(tmp_path)
     srv._build_state(
@@ -341,7 +344,7 @@ def test_build_state_server_stays_quiet_when_admin_teams_is_set(
         token=None,
         backend="server",
     )
-    assert capsys.readouterr().err == ""
+    assert "BAJUTSU_OAUTH_ADMIN_TEAM" not in capsys.readouterr().err
 
 
 def test_build_state_server_parses_the_per_user_quota(

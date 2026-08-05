@@ -45,9 +45,9 @@ def oauth_callback(
 ) -> tuple[Any, int, str | None]:
     """Complete GitHub OAuth (BE-0015 7b-2, BE-0313): verify the CSRF state (the query value must
     match the cookie), exchange the code for a GitHub identity (login + org + Team memberships), gate
-    sign-in on GitHub org membership, persist the user under their resolved org with a Team-derived
-    role, and on success mint a session bound to that login. Returns
-    ``(payload, status, session_id | None)``."""
+    sign-in on GitHub org membership or membership in a configured admin Team, persist the user under
+    their resolved org with a Team-derived role, and on success mint a session bound to that login.
+    Returns ``(payload, status, session_id | None)``."""
     if state.auth.oauth is None:
         return {"error": "oauth not configured"}, 404, None
     if not (state_param and state_cookie and secrets.compare_digest(state_param, state_cookie)):
@@ -63,9 +63,10 @@ def oauth_callback(
     login = identity.login
     # Read the config-declared org model once, for both the sign-in gate and the org/role
     # resolution below (BE-0313). Sign-in is gated on GitHub org membership: a login matching no
-    # `members`/`githubOrgs` entry is turned away — the org roster is now the allowlist. This runs
-    # at the top level, before the database block, so an OAuth-configured but database-less
-    # deployment still gates sign-in rather than admitting every GitHub user.
+    # `members`/`githubOrgs` entry is turned away — unless it also matches a configured admin Team,
+    # in which case the admin-Team check below admits it regardless. This runs at the top level,
+    # before the database block, so an OAuth-configured but database-less deployment still gates
+    # sign-in rather than admitting every GitHub user.
     parsed = load_serve_config_file(state.config)
     orgs = parsed[1] if parsed is not None else {}
     admin_teams = state.auth.oauth_admin_teams

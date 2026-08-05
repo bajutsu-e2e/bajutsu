@@ -1,6 +1,6 @@
 [English](BE-XXXX-admin-team-bootstrap-bypass.md) · **日本語**
 
-# BE-XXXX — admin 用 GitHub Team の環境変数が Organization メンバーシップのサインインゲートを回避する
+# BE-XXXX — admin 用 GitHub Team の環境変数が Organization メンバーシップのサインインゲートを迂回する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
