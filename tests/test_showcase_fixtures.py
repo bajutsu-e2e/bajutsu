@@ -65,18 +65,19 @@ def test_showcase_config_resolves() -> None:
     assert bundled.run_defaults.interrupts[0].condition.exists is not None
 
 
-def _assert_anr_interrupt(cfg: Config, name: str) -> None:
+def _assert_anr_interrupt(cfg: Config, name: str, where: str = "showcase.config.yaml") -> None:
     interrupts = resolve(cfg, name).run_defaults.interrupts
     anr = [
         e
         for e in interrupts
         if e.condition.exists is not None and e.condition.exists.sel.id == ["aerr_wait"]
     ]
-    assert len(anr) == 1, name
-    assert len(anr[0].steps) == 1, name
+    label = f"{where}:{name}"
+    assert len(anr) == 1, label
+    assert len(anr[0].steps) == 1, label
     tap = anr[0].steps[0].tap
-    assert tap is not None, name
-    assert tap.id == ["aerr_close"], name
+    assert tap is not None, label
+    assert tap.id == ["aerr_close"], label
 
 
 def test_showcase_android_targets_have_anr_interrupt() -> None:
@@ -103,7 +104,9 @@ def test_showcase_android_targets_have_anr_interrupt() -> None:
     # Makefile-run ANR_QUIET around it — the same uncovered path this handler exists for, not an
     # optional extra — so it must carry the same handler, kept in step with the local target here.
     devicefarm_cfg = load_config(DEVICEFARM_CONFIG.read_text(encoding="utf-8"))
-    _assert_anr_interrupt(devicefarm_cfg, "showcase-compose")
+    _assert_anr_interrupt(
+        devicefarm_cfg, "showcase-compose", where="showcase.devicefarm.config.yaml"
+    )
 
 
 def test_showcase_live_config_routes_to_the_live_transport() -> None:

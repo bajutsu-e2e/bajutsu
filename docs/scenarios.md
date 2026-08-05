@@ -294,12 +294,13 @@ only catches the screen when it appears exactly where the `if` sits; every other
 and fails the rest of the scenario against a screen it was not written to expect.
 
 `interrupts` handles that case. Each entry names a `condition` — the same assertion DSL `if` uses —
-and the `steps` that clear the screen. The runner checks each entry **opportunistically**, against a
-tree it has already fetched (a `wait`'s poll tick, an act step's pre-action read), wherever in the
-sequence the screen happens to appear, and runs the entry's `steps` when the condition matches. After
-the handler runs, the interrupted step resumes where it left off — a `wait` keeps polling toward its
-original timeout, an act step takes its action — so an author no longer has to predict the one spot to
-place an `if`.
+and the `steps` that clear the screen. The runner checks each entry **opportunistically**, wherever in
+the sequence the screen happens to appear, and runs the entry's `steps` when the condition matches.
+That check is free when it reuses an already-fetched tree — a `wait`'s poll tick, or a
+`screenChanged`-policy step's pre-action read — but an act step with neither pays one extra
+`driver.query()` per step to run it. After the handler runs, the interrupted step resumes where it
+left off — a `wait` keeps polling toward its original timeout, an act step takes its action — so an
+author no longer has to predict the one spot to place an `if`.
 
 ```yaml
 # config.yaml — an app-wide default: this app's onboarding screen, on every scenario

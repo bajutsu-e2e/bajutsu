@@ -169,8 +169,9 @@ views-noax-build:
 # `bajutsu run` invoked outside any make target, which this setting therefore never reaches. It
 # answers the locale half of the objection above — the selector is a resource id, not a button
 # label — and still acts on the system surface (a node-level click on the resident channel, an
-# `input tap` at the resolved node otherwise), which is acceptable only because the id names one
-# button exactly; where this setting does reach, suppression stays preferred.
+# `input tap` at the resolved node otherwise), which is acceptable because the *pair* of ids is
+# exact: `aerr_wait` selects only the ANR dialog, and within it `aerr_close` names one node, so a
+# resolve cannot reach `aerr_report`. Where this setting does reach, suppression stays preferred.
 #
 # The trailing echo reads the setting straight back rather than trusting the `put` succeeded: a
 # lane that fails downstream on an ANR dialog anyway (`adb`'s own failure, a wrong scope, a device
