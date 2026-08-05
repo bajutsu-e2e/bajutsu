@@ -332,7 +332,7 @@ e2e-codegen:
 	#
 	# This lane has been observed flaky (a launcher ANR dialog transiently stealing window focus so
 	# the app's own window drops out of the accessibility tree, or the tree reporting empty right
-	# after launch — see e2e_changes/CI history); the still/XML diagnostics above show the state at
+	# after launch); the still/XML diagnostics above show the state at the
 	# the moment of failure but not how it got there. Screen-record the whole install+test window
 	# alongside it, the CI twin of `bajutsu/evidence/intervals.py:start_screenrecord` (same SIGINT-then
 	# -pgrep-poll-then-pull finalize sequence, reimplemented in shell here since this lane runs no
