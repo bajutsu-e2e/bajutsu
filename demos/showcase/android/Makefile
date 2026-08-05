@@ -40,7 +40,9 @@ SERIAL ?= booted
 # The deep-scroll flows `controls` / `notices` rejoin the lane (BE-0208 unit 5), and `system` /
 # `modals` (above) reveal their far targets the same way since this lane's own audit. All four reveal
 # a far target with `scroll` (BE-0326) — `controls` the segmented-control value node below the
-# and stops the moment the target is on-screen, rather than a swipe chain tuned to a fixed distance.
+# buttons, `notices` a list row well below the fold — a bounded, non-inertial step that re-queries
+# the tree and stops the moment the target is on-screen, rather than a swipe chain tuned to a
+# fixed distance.
 # A fixed-distance chain scrolls far less of Android's dense screen (2400px) than of iOS's (~900pt);
 # `scroll`'s re-query removes the need to retune the distance per backend. The `gestures` swipe chain
 # below still rests on unit 5's other half: the default directional swipe travels a screen *fraction*
@@ -50,10 +52,14 @@ SERIAL ?= booted
 # differ in render speed, not in what it resolves against.
 #
 # The interrupt-handler flow `interrupts` joins the lane (BE-0314): a syntax demo whose `interrupts`
-# entry never actually fires against the real app (its `condition` matches nothing on-screen), so it
-# exercises the same stable→horse→favorite flow `firstlook.yaml` already runs here — no app or config
-# change needed. It joins `E2E_VIEWS_SCENARIOS` too: its ids carry both dotted SPEC and underscore
-# Android Views forms (BE-0221), the same ones `firstlook` already proved on the Views tree.
+# entry never actually fires against the real app (its `condition` matches nothing on-screen), so the
+# flow underneath is the stable→horse→favorite one `firstlook.yaml` already runs here — no app or
+# config change needed. What it adds over `firstlook` is the *check* path against a live tree: the
+# condition is evaluated on every tree the run already fetched (a `wait`'s poll tick, an act step's
+# pre-action read), so a never-matching handler is proven to cost nothing and disturb nothing on a
+# real device — which no fast-suite fake can show. It joins `E2E_VIEWS_SCENARIOS` too: its ids carry
+# both dotted SPEC and underscore Android Views forms (BE-0221), the same ones `firstlook` already
+# proved on the Views tree.
 #
 # The single-touch gesture flow `gestures` rejoins the lane (BE-0208 unit 5): its long-press already
 # landed, but the double-tap did not register through adb's `input tap ; input tap` (each tap spawns

@@ -282,7 +282,8 @@ run-flutter: flutter-build runner-build
 # waits allow, so the modal/component scenarios need a higher wait ceiling. It is a ceiling on a
 # condition wait, not a fixed delay, so a fast (hardware-accelerated) emulator still resolves early.
 FLUTTER_ANDROID_SCENARIOS := smoke firstlook navigation search data_driven relaunch system \
-	components modals controls notices gestures gestures_multitouch permission extract foreach
+	components modals controls notices gestures gestures_multitouch permission extract foreach \
+	interrupts
 run-flutter-android: flutter-android-build
 	adb root >/dev/null 2>&1 || true
 	adb wait-for-device
