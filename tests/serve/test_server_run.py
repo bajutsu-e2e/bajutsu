@@ -488,12 +488,14 @@ def test_build_state_server_warns_on_an_empty_side_or_inner_space(
     assert "will never match" in capsys.readouterr().err
 
 
-def test_build_state_server_warns_on_an_uppercase_slug(
+def test_build_state_server_does_not_warn_on_an_uppercase_slug(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     # GitHub always lowercases a Team's slug, so an operator who copies the Team name as shown in
-    # the UI (title case) writes an entry that looks well-formed but can never match: exactly one
-    # "/", both halves non-empty, yet in_admin_team's exact `in` test never sees it.
+    # the UI (title case) writes an entry whose case differs from the stored slug -- but
+    # `in_admin_team` case-folds both sides before comparing, so this entry matches a real Team
+    # `acme-gh/ops` perfectly. Warning here would tell the operator to "fix" a working config, and
+    # teach them to ignore this warning for the one list where a genuinely broken entry hides.
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
     monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
@@ -511,7 +513,7 @@ def test_build_state_server_warns_on_an_uppercase_slug(
         backend="server",
     )
     assert state.auth.oauth_admin_teams == ("acme-gh/Ops",)
-    assert "will never match" in capsys.readouterr().err
+    assert "will never match" not in capsys.readouterr().err
 
 
 def test_build_state_server_parses_the_per_user_quota(

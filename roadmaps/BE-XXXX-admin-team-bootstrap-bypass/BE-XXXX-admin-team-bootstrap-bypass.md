@@ -67,12 +67,15 @@ every admin action, and — because this same list is now also a sign-in credent
 admin left who can sign in to fix it. The warning names the retired variable only when it's actually
 the cause, so the never-set case isn't blamed on a rename that never happened. It also warns on any
 entry that isn't
-exactly one `"<github-org>/<team-slug>"` pair — matched against a regular expression that also
-rejects an empty half, internal whitespace, or an uppercase character in the slug half (GitHub
-always lowercases a Team's slug, so a slug copied from the Team's display name in the GitHub UI
-looks well-formed but can never match), not by counting `/`: a space- or semicolon-separated
-list parses to a single malformed entry that can never match a real Team, which
-is the same "no admin, no visible cause" failure reached by a different mistake. Both print a warning
+exactly one `"<github-org>/<team-slug>"` pair — matched against a regular expression that rejects an
+empty half or internal whitespace, not by counting `/`: a space- or semicolon-separated list parses
+to a single malformed entry that can never match a real Team, which is the same "no admin, no visible
+cause" failure reached by a different mistake. The regex does not reject an uppercase character in
+either half: `in_admin_team` case-folds both sides of the membership test (see below), so an entry
+whose case differs from GitHub's own stored case — a slug copied from the Team's display name in the
+GitHub UI, say — still matches. Rejecting it here would warn an operator to "fix" an entry that
+already works, and, worse, teach them to ignore this warning on the one list where a genuinely
+broken entry hides. Both print a warning
 rather than raising, so a config typo degrades a deployment to no-admin instead of refusing to start
 it entirely. That is a deliberate departure from the other operator-facing variables this module
 reads (`BAJUTSU_SESSION_TTL`, the concurrency caps, `BAJUTSU_RUN_RETENTION_DAYS`), each of which
@@ -120,9 +123,9 @@ admit it. One helper makes that drift impossible by construction.
 
 `in_admin_team` case-folds both sides of that membership test. GitHub resolves an org login and a
 Team slug case-insensitively, and a real GitHub org login can be stored mixed-case even though a Team
-slug is always lowercased (the same fact the malformed-entry regex above already relies on) — so an
-`admin_teams` entry whose organization half carries whatever case GitHub stores it in must still match
-a login's exact-case `identity.teams` membership, and vice versa. Without folding, this item's own
+slug is always lowercased — so an `admin_teams` entry whose organization half carries whatever case
+GitHub stores it in must still match a login's exact-case `identity.teams` membership, and vice versa.
+Without folding, this item's own
 sign-in bypass would carry a latent case-sensitivity trap the pre-existing `editorTeam` role check
 does not: an `editorTeam` is written once by an operator who controls its case and is compared against
 the same GitHub-reported case every time, but an `admin_teams` entry authored from a GitHub org page
@@ -270,9 +273,10 @@ mapping.
       list through `SessionManager`, `role_for`, and the server-backend env wiring. Warn loudly at
       startup, only when OAuth is configured, whenever the resulting list is empty — whether nothing
       was set or only the retired singular name was — and separately when an entry is not a
-      well-formed `"<github-org>/<team-slug>"` pair — including an uppercase character in the slug
-      half, which GitHub's own always-lowercase slugs never contain — so no admin-losing mistake
-      goes unsignaled and no token-auth-only deployment is warned about an admin role it never had.
+      well-formed `"<github-org>/<team-slug>"` pair (an empty half or internal whitespace, not an
+      uppercase character — `in_admin_team` case-folds, so a differently-cased entry still matches)
+      so no admin-losing mistake goes unsignaled and no token-auth-only deployment is warned about an
+      admin role it never had.
 - [x] Add the admin-Team bypass to the sign-in gate in `oauth_callback`, alongside
       `identity_matches_org`, using the Team list already fetched for role resolution. Record every
       bypass-only admission through `oplog.log_event` (the reserved `"oauth.login"` event, the login
