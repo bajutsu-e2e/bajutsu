@@ -147,8 +147,9 @@ Work breakdown (mirrored in *Progress*):
   launch, at the cost of the same kind of critical-path latency this item already accepts for the
   confirmation poll), left for a future item rather than bundled into this fix.
 - **Re-resolving `video_start_offset` on a mid-scenario driver relaunch** (`RelaunchFn`, the web
-  driver's fault-isolation path that tears down and rebuilds the `BrowserContext`, restamping
-  `PlaywrightDriver`'s own `true_start`). Out of scope: `video_start_offset` is resolved once, from
+  driver's fault-isolation path, which replaces the whole browser through `_starter` rather than
+  `_new_context` — so it neither restamps `PlaywrightDriver`'s `true_start` nor gives the
+  replacement context a `record_video_dir`). Out of scope: `video_start_offset` is resolved once, from
   `sink.start_scenario_intervals`'s result, before the step loop that could ever trigger a relaunch
   even begins, so a relaunch cannot make that already-resolved value wrong. What a relaunch *does*
   do — replace the browser context whose video the sink later finalizes — already changes what the
