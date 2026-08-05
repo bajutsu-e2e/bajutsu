@@ -7,8 +7,11 @@ never makes a network call."""
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+import pytest
 
 from bajutsu.serve import operations as ops
 from bajutsu.serve.server.oauth import Identity
@@ -235,6 +238,33 @@ def test_oauth_callback_admin_team_bypasses_the_org_gate_with_no_matching_org(
     _payload, status, sid = ops.oauth_callback(state, code="ok", state_param="s", state_cookie="s")
     assert status == 200
     assert sid is not None
+
+
+def test_oauth_callback_admin_team_bypass_logs_a_warning(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # The bypass is the one sign-in path `orgs:` did not authorize, so it's the one an operator
+    # auditing sign-ins would otherwise have no record of at all.
+    state = _state(
+        tmp_path,
+        oauth=FakeOAuthClient(login="mallory", teams=["ops-gh/root"]),
+        config=_config_file(tmp_path),
+        admin_teams=["ops-gh/root"],
+    )
+    with caplog.at_level(logging.WARNING):
+        ops.oauth_callback(state, code="ok", state_param="s", state_cookie="s")
+    assert "admin-Team bypass admitted mallory" in caplog.text
+
+
+def test_oauth_callback_org_member_does_not_log_a_bypass_warning(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # alice is an explicit org member, so the ordinary org gate admits her -- no bypass fired, no
+    # warning to log.
+    state = _state(tmp_path, oauth=FakeOAuthClient(login="alice"), config=_config_file(tmp_path))
+    with caplog.at_level(logging.WARNING):
+        ops.oauth_callback(state, code="ok", state_param="s", state_cookie="s")
+    assert "admin-Team bypass" not in caplog.text
 
 
 def test_oauth_callback_admin_team_bypasses_the_org_gate_with_no_orgs_block(
