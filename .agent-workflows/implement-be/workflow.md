@@ -178,6 +178,13 @@ gate. For a non-trivial change, use fresh, independent review contexts for the f
 Weigh every suggestion against the prime directives and the surrounding code before taking it;
 drop anything that fights the codebase grain.
 
+**Don't open the PR (step 10) until this pass is clear.** Keep fixing and re-running the contract
+pass against the updated diff until it comes back empty, per `ideation` step 5's loop-until-empty
+rule and its 3-round cap. What's left standing at that point may only be a finding you judged a
+false positive or a deliberate, already-noted trade-off — never an unresolved real finding. Route
+anything that calls for a genuine design change to the user instead of the PR, the same escalation
+`ideation` step 5 uses.
+
 ### 8. Flip the roadmap item to Implemented
 
 The implementing PR is what ships the item, so promote it in this same change:
@@ -205,9 +212,10 @@ claiming it works untested.
 
 ### 10. Auto-open a Draft PR
 
-Once step 9's `make check` is green and the branch is pushed, **open the PR yourself** — this
-skill's output is always a self-contained, gate-green change, so there is no reason to wait for a
-human to open it. This is the *one* skill that auto-opens: the BE-*authoring* skills
+Once step 7's review pass is clear, step 9's `make check` is green, and the branch is pushed,
+**open the PR yourself** — this skill's output is always a self-contained, gate-green change with
+every review finding resolved, so there is no reason to wait for a human to open it. This is the
+*one* skill that auto-opens: the BE-*authoring* skills
 ([`ideation`](../ideation/workflow.md), the proposal phase of
 [`propose-and-build`](../propose-and-build/workflow.md)) never do, because a proposal PR is a human
 checkpoint whose id is allocated only on merge (see [`AGENTS.md`](../../AGENTS.md) and the

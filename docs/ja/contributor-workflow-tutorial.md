@@ -228,9 +228,10 @@ gh pr create --reviewer bajutsu-e2e/steering-committee \
 実装はコードベースの流儀に合わせます。厳格な `mypy`、設定された `ruff`、`sleep` ではなく条件待ち、新しい
 つまみは `targets.<name>` の設定に、そして挙動の変更には回帰ネットとしてのテストです。組み込みの `simplify`
 スキルと、`.github/claude-review-prompt.md` の契約に照らしたレビュー（判定せず助言する起草の補助）で
-diff を洗練し、両言語ファイルで項目を
-`Status: Implemented` に切り替え、`Implementing PR` の行を足します。ダッシュボードがそのメタデータから
-新しい状態を直接読み取るので、ほかに再生成するものはありません。それからゲートです。
+diff を洗練し、更新した差分に契約を再度当てる作業を指摘がなくなるまで繰り返します。そこで初めて
+両言語ファイルで項目を `Status: Implemented` に切り替え、`Implementing PR` の行を足します。
+ダッシュボードがそのメタデータから新しい状態を直接読み取るので、ほかに再生成するものはありません。
+それからゲートです。
 
 ```bash
 make check   # green でなければならない。red を push しない
@@ -239,7 +240,8 @@ make check   # green でなければならない。red を push しない
 ### 手順 B5 — 自分で PR を開く。あなたがマージする
 
 `/ideation` と違い、`/implement-be` は **自分で PR を開きます**。その出力は常に、それ自体で完結しゲートが
-green な変更なので、待つものがないからです。PR は既定で **Draft** で、ID をタイトルに付け
+green で、レビューの指摘もすべて解消済みの変更なので、待つものがないからです。PR は既定で **Draft** で、
+ID をタイトルに付け
 （`[BE-0300] feat(run): bounded retry for transiently-blocked steps`）、[テンプレート](../../.github/PULL_REQUEST_TEMPLATE.md)
 に沿った十分な本文を持ちます。（*docs だけ* の項目は例外で、提案 PR と同じく `steering-committee` を reviewer に
 Ready で開きます。）

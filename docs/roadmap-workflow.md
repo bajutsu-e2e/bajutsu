@@ -120,7 +120,9 @@ deterministic gate (`make check`) is the judge — never an LLM.
    review context rather than through a review command, so the pass depends on no installed skill.
    Alongside it, the built-in [`simplify`](../.claude/skills) skill and — for a non-trivial change —
    the **pr-review-toolkit** agents. These are *authoring aids*: they advise the author and never
-   judge, so directive #1 holds and no LLM touches the `run`/CI path.
+   judge, so directive #1 holds and no LLM touches the `run`/CI path. It keeps re-running the review
+   contract against the updated diff until the pass comes back empty, and only opens the PR (step
+   10) once every real finding is fixed.
 8. **Flip the item to Implemented.** In both language files set `Status: Implemented` and add the
    `Implementing PR` line — nothing else to regenerate, since the dashboard reads `Status` straight
    off the item's metadata. The directory never moves (BE-0159): only the `Status` and its dashboard
