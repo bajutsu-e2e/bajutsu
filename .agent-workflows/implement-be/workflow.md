@@ -165,7 +165,8 @@ Run the review CI runs on the PR, but locally on your diff: follow
 hand it to the fresh subagent as text, the same way `ideation` already does, so no review command
 is invoked and the pass runs the same way in every host. Two differences from that procedure:
 first, don't scope the staged diff to `roadmaps/`; this skill's changes land wherever the item
-needs them, so stage what you touched and diff the whole change. Second, tell the subagent that
+needs them, so stage what you touched (`git add <paths>`, the same guard `ideation` applies to its
+own new files) and run `git diff origin/main` over the whole tree. Second, tell the subagent that
 steps 8 and 10 are still pending, so it doesn't spend a round flagging the item's un-flipped
 `Status` and its missing `Implementing PR` row — both land before the PR opens.
 
