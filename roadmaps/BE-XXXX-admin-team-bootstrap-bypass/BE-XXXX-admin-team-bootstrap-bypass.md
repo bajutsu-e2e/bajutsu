@@ -134,7 +134,9 @@ silently stop matching a login it is supposed to admit — the same "no admin, n
 the malformed-entry warning above already exists to prevent, just unreachable by that check since a
 case mismatch is syntactically well-formed. Folding never turns an empty team name into a match —
 `admin_teams` never contains `""`, since the comma-split that builds it filters on `t.strip()` — and
-does not affect the nested-Team guarantee below, which rests on the `/` count, not on case.
+does not affect the nested-Team guarantee below, which rests on exact string equality
+(`"acme-gh/parent/child"` is a different string from `"acme-gh/parent"`, folded or not), not on a
+separator count.
 
 ### Role resolution is unaffected in shape, only in name
 

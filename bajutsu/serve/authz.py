@@ -115,7 +115,7 @@ def oauth_callback(
                 admin_teams=admin_teams,
             ),
         )
-    # Every successful sign-in, through oplog (not a bare logging call) so it carries the
+    # Record every successful sign-in through oplog (not a bare logging call) so it carries the
     # registered `event` name, redaction, and correlation fields every other
     # operationally-significant record in serve already does. `bypass` says which gate admitted
     # this one — the one sign-in path `orgs:` did not authorize is still the interesting case, but
@@ -222,7 +222,8 @@ def in_admin_team(teams: Sequence[str], admin_teams: tuple[str, ...]) -> bool:
     mixed-case) must still match a login's exact-case membership, and vice versa. Folding never
     turns an empty team name into a match — `admin_teams` never contains `""` (the comma-split that
     builds it filters on `t.strip()`) — and doesn't affect the nested-Team guarantee, which rests on
-    the `/` count, not on case."""
+    exact string equality: `"acme-gh/parent/child"` is a different string from `"acme-gh/parent"`,
+    folded or not."""
     folded = {t.casefold() for t in admin_teams}
     return any(team.casefold() in folded for team in teams)
 
