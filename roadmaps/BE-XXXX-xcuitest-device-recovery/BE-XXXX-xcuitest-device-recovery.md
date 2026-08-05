@@ -131,7 +131,10 @@ classification in unit 1, unit 4 on units 2 and 3, and unit 5 on unit 4.
      target because it is not scoped to a device *class*: `eff.device` matches simctl's device-type
      name exactly and an iPad's name carries parentheses, so an exact-match miss is ordinary —
      substituting an iPhone for a missed iPad would finish the run on a layout the scenario was
-     never written against, so an iPad target with no matching type fails loudly instead.
+     never written against, so an iPad target with no matching type fails loudly instead. A target
+     that configures no `appPath` fails loudly here too, and before the create rather than after it:
+     a replacement is a blank device, so with nothing to install the retry would spawn onto a device
+     with no app to launch.
    - **The probe itself failed.** Change nothing. A host too sick to list its devices must not have a
      device replaced on that evidence, which is why the probe is three-valued (present, absent,
      unknown) rather than a boolean.

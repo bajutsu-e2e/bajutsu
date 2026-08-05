@@ -717,7 +717,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
                 flaky spawn, so it fails the run rather than funding another doomed attempt.
         """
         started = time.monotonic()
-        recovery = self._recovery_rung(failure, eff, pre, permissions, ceiling=ceiling)
+        recovery = self._recovery_rung(failure, eff, ceiling=ceiling)
         self._check_recovery_budget(started, recovery.note)
         if recovery.fresh_budget is not None:
             # Only a reboot or a replacement earns a fresh budget, and both leave the device
@@ -730,8 +730,6 @@ class XcuitestEnvironment(_DeviceEnvironment):
         self,
         failure: _AttemptFailure,
         eff: Effective,
-        pre: Preconditions,
-        permissions: Mapping[str, str] | None,
         *,
         ceiling: float,
     ) -> _Recovery:
@@ -749,14 +747,16 @@ class XcuitestEnvironment(_DeviceEnvironment):
         back — on a lane that opted into a tighter respawn ceiling, a rebooted respawn keeps it rather
         than inflating to the cold budget. A **replacement** is a device that has never run anything, so
         its first `xcodebuild test-without-building` is a genuine first bring-up and takes the full cold
-        ceiling however tight the failing spawn's was.
+        ceiling however tight the failing spawn's was. A reboot that could not even confirm the device
+        left `Booted` earns neither: nothing changed, so it carries a note and no fresh budget like the
+        two do-nothing rungs below.
 
         Returns the note and fresh readiness ceiling `_spawn_cold_with_retry` folds into its diagnostics
         and budget; a rung that changed nothing about the device carries a note and no fresh budget.
         """
         probe = simctl.device_available(self._udid, self._run)
         if probe is False:
-            note = self._replace_vanished_device(eff, pre, permissions)
+            note = self._replace_vanished_device(eff)
             return _Recovery(note, fresh_budget=_runner_startup_timeout())
         if probe is None:
             # The listing itself failed, so nothing is known about the device. Repairing on a guess
@@ -767,7 +767,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
             # `xcodebuild` gave up by itself and fast, which is the transient blip BE-0319's retry was
             # written for. The discard has already terminated the app, so the device needs nothing.
             return _Recovery("xcodebuild exited on its own; device left booted")
-        return _Recovery(self._reboot_device(eff, pre, permissions), fresh_budget=ceiling)
+        return self._reboot_device(ceiling)
 
     def _check_recovery_budget(self, started: float, note: str) -> None:
         """Fail the run when a recovery rung overran its wall bound.
@@ -785,19 +785,33 @@ class XcuitestEnvironment(_DeviceEnvironment):
                 f"Simulator recovery exceeded {_recovery_timeout()}s (spent {spent:.1f}s): {note}"
             )
 
-    def _reboot_device(
-        self, eff: Effective, pre: Preconditions, permissions: Mapping[str, str] | None
-    ) -> str:
-        """Shut the Simulator down and boot it back up. `_finish_repair` re-establishes scenario state."""
+    def _reboot_device(self, ceiling: float) -> _Recovery:
+        """Shut the Simulator down and boot it back up. `_finish_repair` re-establishes scenario state.
+
+        `Env.shutdown()` suppresses its own failure — right for the benign "already shutting down"
+        case it was written for, but a CoreSimulator wedged enough to stop honouring automation is
+        exactly where `simctl shutdown` itself fails. Left unchecked, that failure is invisible: `boot`
+        no-ops on a device that never left `Booted`, `bootstatus -b` sees it already booted and returns
+        at once, and the retry would spawn onto the same still-wedged device with a fresh ceiling
+        instead of the exhausted shared one — the pre-recovery stall, plus one extra ceiling of wall
+        time. Reading `booted_udids` back after `shutdown` is what tells a real reboot from a no-op,
+        the same read-back `_pin_system_locale` already does for a `defaults write` that can exit 0
+        without surviving the shutdown.
+        """
         e = simctl.Env(self._udid, run=self._run)
         try:
             e.shutdown()
+            if self._udid in simctl.booted_udids(self._run):
+                _logger.warning(
+                    "Simulator %s did not shut down; the reboot rung had no effect", self._udid
+                )
+                return _Recovery(f"{self._udid} would not shut down; left as it is")
             e.boot()
             self._run(simctl.bootstatus_cmd(self._udid), None)
         except subprocess.CalledProcessError as exc:
             raise simctl.device_error(exc) from exc
         _logger.warning("rebooted Simulator %s after a failed cold runner spawn", self._udid)
-        return f"rebooted {self._udid}"
+        return _Recovery(f"rebooted {self._udid}", fresh_budget=ceiling)
 
     def _finish_repair(
         self, eff: Effective, pre: Preconditions, permissions: Mapping[str, str] | None
@@ -814,9 +828,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
         except subprocess.CalledProcessError as exc:
             raise simctl.device_error(exc) from exc
 
-    def _replace_vanished_device(
-        self, eff: Effective, pre: Preconditions, permissions: Mapping[str, str] | None
-    ) -> str:
+    def _replace_vanished_device(self, eff: Effective) -> str:
         """Create a Simulator to take the place of one simctl no longer lists. `_finish_repair` preps it.
 
         Observed on CI as an `xcodebuild` exiting with "Unable to find a device matching the provided

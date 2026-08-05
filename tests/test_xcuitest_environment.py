@@ -1486,16 +1486,23 @@ def _ladder_run(
     *,
     created: str = "UDID-NEW",
     devicetypes: list[dict[str, str]] | None = None,
+    stays_booted_after_shutdown: bool = False,
 ) -> tuple[list[list[str]], Any]:
     """A fake simctl that lists `present` as available and mints `created` on `simctl create`.
 
     `devicetypes` overrides the fake `list devicetypes` response — the default holds only
     "iPhone 17 Pro", so a caller exercising the configured-model fallback tier (rather than the
     iPhone-fallback tier, which that single entry cannot tell apart) must pass its own.
+
+    `stays_booted_after_shutdown`, when True, models a CoreSimulator wedged enough that `simctl
+    shutdown` silently no-ops — the case `_reboot_device`'s post-shutdown read-back exists to catch.
+    False (the default) lets shutdown/boot/bootstatus behave as a healthy host would, so `present`'s
+    devices start out booted and stay that way except across a real shutdown.
     """
     import json
 
     calls: list[list[str]] = []
+    booted = set(present)
     types = devicetypes or [
         {
             "name": "iPhone 17 Pro",
@@ -1509,11 +1516,20 @@ def _ladder_run(
         verb = argv[2:3]
         if verb == ["list"] and argv[3:4] == ["devicetypes"]:
             return json.dumps({"devicetypes": types})
+        if verb == ["list"] and argv[3:5] == ["devices", "booted"]:
+            return _device_json([u for u in present if u in booted])
         if verb == ["list"]:
             return _device_json(present)
         if verb == ["create"]:
             present.append(created)
             return f"{created}\n"
+        if verb == ["shutdown"]:
+            if not stays_booted_after_shutdown:
+                booted.discard(argv[3])
+            return ""
+        if verb in (["boot"], ["bootstatus"]):
+            booted.add(argv[3])
+            return ""
         if argv[4:7] == ["defaults", "export", "-globalDomain"]:
             return _globals_plist("en_US")
         return ""
@@ -1554,8 +1570,30 @@ def test_an_app_launch_timeout_reboots_and_re_prepares_the_device() -> None:
         ceiling=_COLD,
     )
     assert recovery is not None and recovery.fresh_budget == _runner_startup_timeout()
-    assert _verb_seq(calls)[:5] == ["list", "shutdown", "boot", "bootstatus", "boot"]
+    # "list" after "shutdown" is the booted-udids read-back confirming the shutdown actually took.
+    assert _verb_seq(calls)[:6] == ["list", "shutdown", "list", "boot", "bootstatus", "boot"]
     assert "rebooted UDID" in recovery.note
+
+
+def test_a_device_that_will_not_shut_down_earns_no_fresh_budget() -> None:
+    # `Env.shutdown()` suppresses its own failure, and a CoreSimulator wedged enough to stop
+    # honouring automation is exactly where `simctl shutdown` itself fails — so confirm the device
+    # actually left `Booted` before claiming a reboot and granting a fresh ceiling on that basis.
+    # Left unchecked, the retry would spawn onto the same still-wedged device with a fresh budget
+    # instead of the exhausted shared one: the pre-recovery stall, plus one extra ceiling of time.
+    calls, run = _ladder_run(["UDID"], stays_booted_after_shutdown=True)
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    recovery = env._recover_between_attempts(
+        _AttemptFailure("run-ended", "the xctest run ended after the app launch timed out"),
+        _eff_for_ladder(),
+        Preconditions(),
+        None,
+        ceiling=_COLD,
+    )
+    assert recovery is not None and recovery.fresh_budget is None
+    assert "would not shut down" in recovery.note
+    # No boot, no bootstatus, no re-prep: a device nothing changed earns no further work either.
+    assert _verb_seq(calls) == ["list", "shutdown", "list"]
 
 
 def test_a_vanished_device_is_replaced_and_reported_to_the_pool(tmp_path: Path) -> None:
