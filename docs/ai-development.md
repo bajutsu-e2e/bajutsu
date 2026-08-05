@@ -551,6 +551,43 @@ you would any reviewer's, under the reply rules above.
   That is admin state a PR cannot carry (the same shape as the branch-protection ruleset edits
   BE-0122 and BE-0089 call out), so it is an explicit manual step.
 
+### The companion PR for wording-only findings (BE-0343)
+
+Two of the reviewer's lenses judge nothing but wording: Japanese prose quality, and its English
+`docs/*.md`/roadmap-prose counterpart. A finding from either carries the decoration
+`(non-blocking, prose)` rather than the plain `(non-blocking)`, and no other lens ever does. That
+marker is read mechanically by a second job in the same
+[`claude-review`](../.github/workflows/claude-review.yml) workflow, ordered after the review itself:
+for each such finding that carries a `suggestion` block, the job applies that block's exact text to a
+companion branch (`prose-fix/pr-<N>`) rebuilt from your pull request's current head, and opens a
+small companion pull request **based on your branch**. It then replies on the finding's thread naming
+that pull request, and resolves the thread.
+
+**What you do with one:** review and merge it like any other small pull request, on its own schedule.
+Merging it lands the wording fix on your branch as an ordinary push. The point of the detour is that
+your pull request never pays a full CI cycle for a change with no behavioral risk, and — unlike
+deferring the fix until after merge — the corrected wording is there while a human is still reading
+your diff. You do not need to reply to the prose threads yourself; the job already has.
+
+The properties worth knowing:
+
+- **No LLM runs in this job.** The reviewer drafted the fix at review time; this only decides whether
+  that exact text still applies, by comparing the finding's own `diff_hunk` against the file at your
+  current head. A suggestion whose line you have edited since is **skipped and listed in the
+  companion pull request's body**, never guess-applied.
+- **The branch is rebuilt fresh every run**, from your current head, and every currently posted prose
+  finding is reapplied — not just the new ones. So a rebase on your branch needs no action on the
+  companion: nothing carries over between runs.
+- **It never clobbers you.** The force-push is guarded exactly as the refreshers below guard their
+  rolling branches: it force-updates only over the bot's own prior commit, so your own push onto the
+  companion branch makes the next run skip rather than overwrite it.
+- **Same-repo branches only.** The job checks out a pull-request branch while holding the automation
+  App token, so it is confined to branches only an owner, member, or collaborator can push. A fork
+  pull request's wording findings stay unautomated, the same gap the review itself accepts for forks.
+- **It closes itself out.** Once your pull request merges, its branch is deleted, and GitHub
+  retargets any still-open companion pull request onto `main` — merging it after that point is an
+  ordinary, independent merge.
+
 ### The scheduled refreshers (Claude Code, BE-0222)
 
 Two daily scheduled workflows keep the human-maintained parts of the repo in step with what has
