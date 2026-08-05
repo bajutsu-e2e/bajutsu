@@ -4,8 +4,10 @@
 # affordance, not what the run asserts). A native segmented control (Picker(.segmented) /
 # UISegmentedControl) could not be switched by the retired idb backend on iOS 26 (BE-0290), hence the
 # plain buttons. The section
-# sits near the bottom (below Modals + Gestures), so walk down with swipes anchored on each
-# section's still-visible top control until the segment is on-screen.
+# sits near the bottom (below Modals + Gestures), so a `scroll` step reveals it (non-inertial,
+# re-querying — BE-0326) before tapping. It aims at log.segment.value, the lowest element the
+# scenario reads: `scroll` stops once the target's own center is on-screen and promises nothing
+# about the rows below it, so aiming at a button would leave the mirror row off a lazy tree.
 - name: segmented control mirrors the selected choice
   preconditions:
     launchEnv: { SHOWCASE_UITEST: "1" }
@@ -13,9 +15,7 @@
     - tap: { label: "Log", traits: [button] }
       capture: [video]
     - wait: { for: { id: log.note }, timeout: 10 }
-    - swipe: { on: { id: log.note }, direction: up }
-    - swipe: { on: { id: log.openFilter }, direction: up }
-    - swipe: { on: { id: log.longpress }, direction: up }
+    - scroll: { to: { id: log.segment.value }, direction: down }
     - wait: { for: { id: log.segment.one }, timeout: 5 }
     - assert:
         - value: { sel: { id: log.segment.value }, equals: "one" }

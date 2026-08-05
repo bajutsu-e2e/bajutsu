@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0314") |
-| 実装 PR | [#1316](https://github.com/bajutsu-e2e/bajutsu/pull/1316) |
+| 実装 PR | [#1316](https://github.com/bajutsu-e2e/bajutsu/pull/1316), [#1489](https://github.com/bajutsu-e2e/bajutsu/pull/1489) |
 | トピック | シナリオ記述機能 |
 | 関連 | [BE-0033](../BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow-ja.md)、[BE-0269](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention-ja.md)、[BE-0276](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state-ja.md)、[BE-0310](../BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness-ja.md) |
 <!-- /BE-METADATA -->
@@ -200,6 +200,10 @@ scenario:
   追加します。codegen はエントリごとにラベル付きの `// TODO` を出力します。ドキュメント（英語・日本語）
   に `if`・`interrupts`・`dismissAlerts`・`permissions` の対比表と showcase フィクスチャを加えます。
   `tests/orchestrator/test_interrupts.py` で検証します。
+- [#1489](https://github.com/bajutsu-e2e/bajutsu/pull/1489) — `interrupts.yaml` を実機に乗せました。
+  Android（adb）レーンの `E2E_SCENARIOS` と `E2E_VIEWS_SCENARIOS` に追加し、`smoke (adb)` を走らせる
+  たびに、確認経路が高速スイートの fake だけでなく Compose と Views 両方の生きたツリーに対して実行
+  されるようにします。
 
 ## 参考
 

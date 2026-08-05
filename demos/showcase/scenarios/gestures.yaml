@@ -6,7 +6,12 @@
 # The targets sit below the form's fold, and a SwiftUI List renders off-screen rows lazily
 # (they are absent from the accessibility tree until scrolled in), so the scenario scrolls
 # them into view first — each swipe is anchored on an element that stays visible as the form
-# scrolls up, and the condition wait stops once the target appears.
+# scrolls up, and the condition wait stops once the target appears. Deliberately `swipe`, not
+# `scroll` (BE-0326): this file is one of the four scenarios `ui-test-coverage` compiles to a native
+# XCUITest and runs on-device (the required `codegen (xcuitest)` job), and XCUITest has no
+# scroll-to-element primitive, so `scroll` codegens to a labeled TODO rather than a real
+# gesture (bajutsu/codegen/xcuitest.py) — the compiled test would then wait on an unscrolled
+# screen. `swipe`'s directional form has a real XCUITest translation, so it stays here.
 - name: long-press and double-tap targets mirror their result
   preconditions:
     launchEnv: { SHOWCASE_UITEST: "1" }

@@ -287,7 +287,8 @@ run-flutter: flutter-build runner-build
 ANR_QUIET = adb shell settings put global hide_error_dialogs 1 && adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null && echo "ANR_QUIET: hide_error_dialogs=$$(adb shell settings get global hide_error_dialogs | tr -d '\r')"
 
 FLUTTER_ANDROID_SCENARIOS := smoke firstlook navigation search data_driven relaunch system \
-	components modals controls notices gestures gestures_multitouch permission extract foreach
+	components modals controls notices gestures gestures_multitouch permission extract foreach \
+	interrupts
 run-flutter-android: flutter-android-build
 	adb root >/dev/null 2>&1 || true
 	adb wait-for-device
