@@ -37,9 +37,9 @@ SERIAL ?= booted
 # with `step 0 (wait): wait timeout`, on a warm AVD, while the scenario lanes passed the identical
 # wait. The floor is a ceiling on a condition wait, so a fast render still returns at once.
 #
-# The deep-scroll flows `controls` / `notices` rejoin the lane (BE-0208 unit 5). Both reveal a far
-# target with `scroll` (BE-0326) — `controls` the segmented-control value node below the buttons,
-# `notices` a list row well below the fold — a bounded, non-inertial step that re-queries the tree
+# The deep-scroll flows `controls` / `notices` rejoin the lane (BE-0208 unit 5), and `system` /
+# `modals` (above) reveal their far targets the same way since this lane's own audit. All four reveal
+# a far target with `scroll` (BE-0326) — `controls` the segmented-control value node below the
 # and stops the moment the target is on-screen, rather than a swipe chain tuned to a fixed distance.
 # A fixed-distance chain scrolls far less of Android's dense screen (2400px) than of iOS's (~900pt);
 # `scroll`'s re-query removes the need to retune the distance per backend. The `gestures` swipe chain
