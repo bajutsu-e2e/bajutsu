@@ -361,6 +361,7 @@ e2e-codegen:
 	rec_pid=$$!; \
 	( cd $(HERE) && $(GRADLEW) :compose:connectedA11yDebugAndroidTest ); rc=$$?; \
 	kill -INT "$$rec_pid" 2>/dev/null || true; \
+	adb shell 'pkill -INT -x screenrecord' >/dev/null 2>&1 || true; \
 	wait "$$rec_pid" || true; \
 	[ "$$rc" -eq 0 ] && rm -f $(HERE)/compose/build/outputs/screenrecord/uiautomator-codegen.mp4; \
 	exit "$$rc"
