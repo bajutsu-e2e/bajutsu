@@ -88,7 +88,7 @@ def test_plain_tap_issues_no_runner_read() -> None:
 
 
 def test_pre_step_baseline_issues_no_extra_runner_read() -> None:
-    # The pre-step baseline capture (BE-XXXX) must defer to the sink exactly like the post-step one
+    # The pre-step baseline capture (BE-0341) must defer to the sink exactly like the post-step one
     # already does: passing whatever `prev_after` holds, never forcing a `query()` of its own. A
     # sink that does not consume `elements` (like `test_plain_tap_issues_no_runner_read`'s) pays
     # nothing for either baseline, so the loop's own read count stays at the pre-existing floor.
@@ -105,7 +105,7 @@ def test_pre_step_baseline_issues_no_extra_runner_read() -> None:
 
 def test_pre_step_baseline_skips_the_web_query_under_a_null_sink() -> None:
     # A `web` block's first nested step must not force a bridge query for a baseline `NullSink`
-    # discards (review follow-up on BE-XXXX): under the default sink (`NullSink`, `sink=None`),
+    # discards (review follow-up on BE-0341): under the default sink (`NullSink`, `sink=None`),
     # the only bridge read left is the pre-existing, unrelated post-step read every web-block step
     # already pays (BE-0234 Unit 2, `screen.get()` for a web `active_driver`) — one call for one
     # step, not two.
@@ -202,7 +202,7 @@ def test_before_reuse_detects_screen_change_per_step() -> None:
     # screen), not a stale earlier tree that would make step 2 look changed too. The rule requests
     # `actionLog` rather than a `screenshot` modifier: the pre-step baseline always fires
     # `screenshot.before` and the scenario's last step (step 1 here) additionally always fires
-    # `screenshot.after` (BE-XXXX), so neither modifier can tell "the rule fired" apart from "every
+    # `screenshot.after` (BE-0341), so neither modifier can tell "the rule fired" apart from "every
     # step's own baseline."
     changed = [el("next", "Next"), el("b", "B", ["button"])]
 
