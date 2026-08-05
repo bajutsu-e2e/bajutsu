@@ -151,32 +151,33 @@ targets:
     # unpredictable point during a run, unrelated to this app's own state — most often a
     # cold-booted AVD's Pixel Launcher missing its ANR deadline while the first scenario launches.
     # demos/showcase/android/Makefile's ANR_QUIET (`hide_error_dialogs`) stops the OS posting the
-    # dialog at all and is the primary defense for every `make e2e*`-driven CI/local run, so this
-    # block never fires there — including on the BAJUTSU_ADB_RESIDENT=0 fallback lane, whose own
-    # e2e-fallback recipe runs ANR_QUIET too. It cannot reach a bare `bajutsu run` outside any
-    # Makefile wrapper, which is how this dialog was first reported, so `interrupts` (BE-0314) stays
-    # declared here as the only guard on that path.
+    # dialog at all and is the primary defense for every Makefile-driven CI/local run: every
+    # `make e2e*` target (including the BAJUTSU_ADB_RESIDENT=0 e2e-fallback lane, whose own recipe
+    # runs it too) and demos/showcase/Makefile's `run-flutter-android`, the only lane that drives the
+    # two Flutter Android targets. So this block never fires on a lane a Makefile drives. What
+    # ANR_QUIET cannot reach is a bare `bajutsu run` outside any Makefile wrapper, which is how this
+    # dialog was first reported, so `interrupts` (BE-0314) is declared here as the only guard on that
+    # path.
     #
     # This is not entirely free — a non-`wait` step without a fresh tree pays one extra
     # `driver.query()` for the guard check (bajutsu/orchestrator/loop.py) — but a `wait` step rides
     # the guard on its own polling reads at zero extra cost. e2e-fallback (BAJUTSU_ADB_RESIDENT=0,
     # the ~2.4s-per-read dump path, docs/drivers.md) runs only golden.yaml, whose sole step is such a
     # `wait`, so that lane's own screen-read counter (BE-0234) measures 0 extra reads with this block
-    # present versus absent — it is not the lane that pays for this coverage. Several other `e2e*`
-    # scenarios (`search`, `relaunch`, `system`, `components`, `modals`, …) declare no `screenChanged`
-    # capture rule, so the guard has no fresh tree to reuse and pays one such read on *every*
-    # non-`wait` step, not just the first — measured at 4/3/6/3 extra reads across modals.yaml's four
-    # scenarios (`foreach` pays again per iteration) — the resident channel's fast path (~0.1-0.3s)
-    # where the resident server is built, the same ~2.4s dump path otherwise.
+    # present versus absent — it is not the lane that pays for this coverage. No showcase scenario
+    # declares a `screenChanged` capture rule at all, so the guard never has a fresh tree to reuse
+    # here: on these six targets *every* scenario pays one such read on *every* non-`wait` step, not
+    # just the first — measured at 4/3/6/3 extra reads across modals.yaml's four scenarios, and
+    # `foreach` pays again per iteration. Each read is on the resident channel's fast path
+    # (~0.1-0.3s) where the resident server is built, and on the same ~2.4s dump path otherwise.
     #
     # Conditions on `aerr_wait`, taps `aerr_close` — deliberately not the same id, and not `aerr_wait`
     # for both. AOSP's ANR dialog (app_anr_dialog.xml, AppNotRespondingDialog) carries three buttons —
     # `aerr_wait`, `aerr_close`, `aerr_report` — and `aerr_wait` is the one unique to it; the crash
     # dialog (app_error_dialog.xml, AppErrorDialog) shares `aerr_close` (alongside `aerr_restart` /
-    # `aerr_app_info`), verified on-device by force-crashing the app (`adb shell am crash`) and
-    # dumping its tree. Conditioning on `aerr_close` — an earlier version of this block did — would
-    # therefore also match a genuine app-under-test crash and silently tap it away before any artifact
-    # records it, the exact swallowed-signal failure this guard exists to prevent, not cause.
+    # `aerr_app_info`). Conditioning on `aerr_close` would therefore also match a genuine
+    # app-under-test crash and silently tap it away before any artifact records it — the exact
+    # swallowed-signal failure this guard exists to prevent, not cause.
     # `aerr_wait` names only the dialog this block targets; `aerr_close` recovers from it (over
     # `aerr_wait` itself) because Wait leaves the offending process wedged and can re-post the dialog
     # up to `_INTERRUPT_MAX_FIRES` times before the guard gives up and the step falls back to an
