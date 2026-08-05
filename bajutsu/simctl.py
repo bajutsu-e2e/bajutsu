@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import logging
 import os
 import plistlib
 import re
@@ -18,6 +19,8 @@ from collections.abc import Callable, Mapping, Sequence
 
 from bajutsu import device_errors
 from bajutsu.device_id import is_valid_device_id
+
+_logger = logging.getLogger(__name__)
 
 # (argv, extra_env) -> stdout
 RunFn = Callable[[list[str], Mapping[str, str] | None], str]
@@ -538,7 +541,9 @@ def create_device(
     `runtime`, when given, pins the replacement to the vanished device's own iOS version instead of
     whichever one simctl would pick. If the pinned create fails, retries once unpinned — the named
     runtime may be exactly what the host degradation dropped, and any compatible runtime beats
-    failing the run outright over one that no longer exists.
+    failing the run outright over one that no longer exists. A caller that only logs the *requested*
+    runtime alongside the replacement can read as a claim about what it actually got, so the fallback
+    logs its own warning here, next to the decision that made it.
 
     Raises:
         DeviceError: if simctl could not create the device even unpinned — chiefly a host whose iOS
@@ -556,6 +561,11 @@ def create_device(
             raise device_error(exc2) from exc2
         except OSError as exc2:
             raise DeviceError(f"could not create a replacement Simulator: {exc2}") from exc2
+        _logger.warning(
+            "could not create %s pinned to runtime %s; created it unpinned instead",
+            device_type,
+            runtime,
+        )
     except OSError as exc:
         raise DeviceError(f"could not create a replacement Simulator: {exc}") from exc
     udid = out.strip().splitlines()[-1].strip() if out.strip() else ""

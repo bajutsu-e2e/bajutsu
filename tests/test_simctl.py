@@ -303,6 +303,28 @@ def test_create_device_falls_back_when_the_pinned_runtime_is_gone() -> None:
     ]
 
 
+def test_create_device_warns_when_it_falls_back_to_unpinned(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # A caller that only logs the *requested* runtime next to the replacement can read as a claim
+    # about what it actually got, so the fallback logs its own warning here, next to the decision.
+    calls: list[list[str]] = []
+
+    def run(args: list[str], e: object = None) -> str:
+        calls.append(args)
+        if len(calls) == 1:
+            raise subprocess.CalledProcessError(1, args, stderr="Invalid runtime")
+        return "AAAA-BBBB\n"
+
+    with caplog.at_level("WARNING"):
+        simctl.create_device(
+            "com.apple.x.iPhone-17", run=run, runtime="com.apple.CoreSimulator.SimRuntime.iOS-19-0"
+        )
+    assert "could not create" in caplog.text
+    assert "com.apple.CoreSimulator.SimRuntime.iOS-19-0" in caplog.text
+    assert "unpinned" in caplog.text
+
+
 def test_create_device_wraps_an_oserror_from_the_unpinned_retry() -> None:
     # The pinned create's CalledProcessError handler owns the fallback call, so its own except
     # OSError does not apply there — the fallback needs (and had been missing) its own.

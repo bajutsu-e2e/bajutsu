@@ -1455,11 +1455,6 @@ def test_an_oserror_from_recovery_is_folded_in_too() -> None:
 # on, and calling it without a spawn keeps each case to the simctl argvs it is actually about.
 
 
-# The ceiling the failing spawn was given. These cases are all first bring-ups, so it is the cold one;
-# the respawn case has its own test below, where the tighter ceiling is the point.
-_COLD = _RUNNER_STARTUP_TIMEOUT
-
-
 def _eff_for_ladder(*, app_path: str | None = None) -> Effective:
     # No appPath by default, so the re-prepare exercises boot / locale / permissions without needing
     # a built app; the replace-rung tests that must get past the appPath guard pass one.
@@ -1558,7 +1553,6 @@ def test_a_process_exit_leaves_the_booted_device_alone() -> None:
         _eff_for_ladder(),
         Preconditions(),
         None,
-        ceiling=_COLD,
     )
     assert recovery is not None and recovery.fresh_budget is None
     assert _verb_seq(calls) == ["list"]  # probed, nothing more
@@ -1574,7 +1568,6 @@ def test_an_app_launch_timeout_reboots_and_re_prepares_the_device() -> None:
         _eff_for_ladder(),
         Preconditions(),
         None,
-        ceiling=_COLD,
     )
     assert recovery is not None and recovery.fresh_budget == _runner_startup_timeout()
     # "list" after "shutdown" is the booted-udids read-back confirming the shutdown actually took.
@@ -1595,7 +1588,6 @@ def test_a_device_that_will_not_shut_down_earns_no_fresh_budget() -> None:
         _eff_for_ladder(),
         Preconditions(),
         None,
-        ceiling=_COLD,
     )
     assert recovery is not None and recovery.fresh_budget is None
     assert "would not shut down" in recovery.note
@@ -1616,7 +1608,6 @@ def test_an_unreadable_booted_listing_also_earns_no_fresh_budget() -> None:
         _eff_for_ladder(),
         Preconditions(),
         None,
-        ceiling=_COLD,
     )
     assert recovery is not None and recovery.fresh_budget is None
     assert "would not shut down" in recovery.note
@@ -1635,7 +1626,6 @@ def test_a_vanished_device_is_replaced_and_reported_to_the_pool(tmp_path: Path) 
         _eff_for_ladder(app_path=str(app)),
         Preconditions(),
         None,
-        ceiling=_COLD,
     )
     assert recovery is not None and recovery.fresh_budget == _runner_startup_timeout()
     assert env._udid == "UDID-NEW" and env.replaced_device() == "UDID-NEW"
@@ -1673,7 +1663,6 @@ def test_a_replacement_clones_the_type_captured_while_the_device_was_healthy(
         _eff_for_ladder(app_path=str(app)),
         Preconditions(),
         None,
-        ceiling=_COLD,
     )
     # The name leads with the model (the report's device row and `serve`'s `iphone`/`ipad` capability
     # token both read it as one) and carries the replaced udid so recoveries stay tellable apart.
@@ -1706,7 +1695,6 @@ def test_a_replacement_re_reads_its_actual_type_and_runtime(tmp_path: Path) -> N
         _eff_for_ladder(app_path=str(app)),
         Preconditions(),
         None,
-        ceiling=_COLD,
     )
     # Re-read from the replacement (iOS 26.0, per _device_json), not left at the stale iOS 19.0.
     assert env._device_runtime_id == "com.apple.CoreSimulator.SimRuntime.iOS-26-0"
@@ -1727,7 +1715,6 @@ def test_a_probe_that_could_not_run_changes_nothing() -> None:
         _eff_for_ladder(),
         Preconditions(),
         None,
-        ceiling=_COLD,
     )
     assert recovery is not None and recovery.fresh_budget is None
     assert env._udid == "UDID" and env.replaced_device() is None
@@ -1756,7 +1743,6 @@ def test_a_vanished_device_with_no_replaceable_type_fails_loudly(tmp_path: Path)
             _eff_for_ladder(app_path=str(app)),
             Preconditions(),
             None,
-            ceiling=_COLD,
         )
 
 
@@ -1771,7 +1757,6 @@ def test_a_vanished_device_with_no_app_path_fails_loudly() -> None:
             _eff_for_ladder(),  # no appPath
             Preconditions(),
             None,
-            ceiling=_COLD,
         )
     assert not any(
         c[2:3] == ["create"] for c in calls
@@ -1800,7 +1785,6 @@ def test_a_replacement_prefers_the_configured_model_over_the_newest_iphone(tmp_p
         _eff_for_ladder(app_path=str(app)),  # defaults.device is "iPhone 15"
         Preconditions(),
         None,
-        ceiling=_COLD,
     )
     created = next(c for c in calls if c[2:3] == ["create"])
     # The configured identifier, not the newest-iPhone fallback — tier 2 wins over tier 3.
@@ -1832,7 +1816,6 @@ def test_an_ipad_target_is_never_replaced_with_an_iphone(tmp_path: Path) -> None
             ipad_eff,
             Preconditions(),
             None,
-            ceiling=_COLD,
         )
     assert not any(c[2:3] == ["create"] for c in calls)  # no iPhone replacement was minted
 
@@ -1849,7 +1832,6 @@ def test_a_recovery_that_overran_its_bound_fails_the_run(monkeypatch: pytest.Mon
             _eff_for_ladder(),
             Preconditions(),
             None,
-            ceiling=_COLD,
         )
 
 
@@ -1884,16 +1866,16 @@ def test_the_recovery_bound_excludes_the_unbounded_reprep(monkeypatch: pytest.Mo
         _eff_for_ladder(),
         Preconditions(),
         None,
-        ceiling=_COLD,
     )
     assert recovery is not None and recovery.fresh_budget == _runner_startup_timeout()
     assert boots_seen["n"] == 2  # confirms _finish_repair actually ran rather than being skipped
 
 
-def test_a_rebooted_device_keeps_the_ceiling_its_spawn_started_on() -> None:
-    # A reboot ends with the device booted and the app reinstalled, which is exactly what the tighter
-    # respawn ceiling assumes — so a rebooted respawn keeps that ceiling instead of inflating to the
-    # cold budget, which is what kept a mid-run respawn's worst case from tripling.
+def test_a_rebooted_device_earns_the_full_cold_ceiling_even_on_a_tight_respawn() -> None:
+    # A reboot ends the same way an erase does — a genuine first-boot state, fresh CoreSimulator
+    # caches, restarted SpringBoard, no XCTest host run this boot — the state `_spawn_cold`'s own
+    # erase-path precedent already gives the full cold ceiling regardless of respawn history. A
+    # rebooted respawn earns the same, not the tighter respawn ceiling the failing attempt started on.
     _calls, run = _ladder_run(["UDID"])
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     recovery = env._recover_between_attempts(
@@ -1901,14 +1883,13 @@ def test_a_rebooted_device_keeps_the_ceiling_its_spawn_started_on() -> None:
         _eff_for_ladder(),
         Preconditions(),
         None,
-        ceiling=90.0,  # the respawn ceiling this lane opted into
     )
-    assert recovery is not None and recovery.fresh_budget == 90.0
+    assert recovery is not None and recovery.fresh_budget == _runner_startup_timeout()
 
 
 def test_a_replacement_device_earns_the_full_cold_ceiling(tmp_path: Path) -> None:
-    # A device that has never run anything is a genuine first bring-up, however tight the failing
-    # spawn's ceiling was: its very first `xcodebuild test-without-building` pays the whole spin-up.
+    # A device that has never run anything is a genuine first bring-up: its very first
+    # `xcodebuild test-without-building` pays the whole spin-up.
     app = tmp_path / "App.app"
     app.mkdir()
     _calls, run = _ladder_run([])  # the leased device is gone, so a replacement is created
@@ -1918,10 +1899,8 @@ def test_a_replacement_device_earns_the_full_cold_ceiling(tmp_path: Path) -> Non
         _eff_for_ladder(app_path=str(app)),
         Preconditions(),
         None,
-        ceiling=90.0,
     )
     assert recovery is not None and recovery.fresh_budget == _runner_startup_timeout()
-    assert recovery.fresh_budget != 90.0
 
 
 @pytest.mark.parametrize(
@@ -1948,7 +1927,6 @@ def test_the_recovery_bound_covers_a_rung_that_changes_nothing(
             _eff_for_ladder(app_path=str(app)),
             Preconditions(),
             None,
-            ceiling=_COLD,
         )
 
 
@@ -1964,7 +1942,6 @@ def test_an_unknown_probe_is_still_reported_within_the_bound() -> None:
         _eff_for_ladder(),
         Preconditions(),
         None,
-        ceiling=_COLD,
     )
     assert recovery.fresh_budget is None and "could not probe" in recovery.note
 
@@ -1989,7 +1966,6 @@ def test_a_replacements_name_keeps_its_capability_token_and_report_row(tmp_path:
         _eff_for_ladder(app_path=str(app)),
         Preconditions(),
         None,
-        ceiling=_COLD,
     )
     created = next(c for c in calls if c[2:3] == ["create"])
     name = created[3]

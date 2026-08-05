@@ -131,24 +131,33 @@ env:
   # whole lane down: the device was degraded, not merely unlucky. The recovery reboots and re-prepares
   # it — or creates a replacement when CoreSimulator has stopped listing it at all — and only then is
   # the second attempt worth spawning, so it earns a fresh readiness ceiling rather than the remains of
-  # the first attempt's. Which ceiling it earns follows what the repair restored: a *reboot* leaves the
-  # device booted with the app reinstalled — the state this lane's 90s respawn ceiling already assumes —
-  # so a rebooted respawn keeps 90s, while a *replacement* device has never run anything and takes the
-  # full 300s. 180s covers the slowest rung (creating a Simulator and waiting out its first boot) —
-  # checked once the rung returns, not preemptively (a rung's `simctl` call carries no subprocess-level
-  # timeout of its own, so a genuinely wedged CoreSimulator falls through to this lane's own
-  # `timeout-minutes` instead). The bound stops at the repair itself: the re-prep that follows
+  # the first attempt's. Both repairs that actually change the device earn the same fresh ceiling: a
+  # *reboot* ends with the device booted and about to be reinstalled onto, and a *replacement* has never
+  # run anything — either way the retry's `xcodebuild test-without-building` runs against a device in a
+  # genuine first-boot state, so both take the full 300s regardless of the failing attempt's own ceiling
+  # (a rebooted respawn does not keep this lane's tighter 90s; `_spawn_cold`'s own erase-path precedent
+  # already gives a fresh-boot device the full cold ceiling, and a reboot leaves the device no less
+  # fresh-booted than an erase does). 180s covers the slowest rung (creating a Simulator and waiting out
+  # its first boot) — checked once the rung returns, not preemptively (a rung's `simctl` call carries no
+  # subprocess-level timeout of its own, so a genuinely wedged CoreSimulator falls through to this lane's
+  # own `timeout-minutes` instead). The bound stops at the repair itself: the re-prep that follows
   # (erase/locale-pin/install, `_finish_repair` in the same file) runs unbounded, matching the policy
   # the first cold bring-up already gets, so it is in neither the 180s above nor either readiness
-  # ceiling below. On a *replacement* specifically — whose `_pinned_locale` always resets — that re-prep
-  # pays a locale-pin reboot cycle on top of the boot already waited out, plus the install: roughly
-  # 100-150s more, going by the ~80s Simulator boot the `golden` job below prices. Keeping the worst
+  # ceiling below. Whether the re-prep pays a locale-pin reboot cycle follows the device's actual
+  # system locale, not the cached `_pinned_locale` field — `_finish_repair`'s cold prep resets that
+  # field on every rung, reboot or replacement alike, since it only gates warm-runner reuse; it is
+  # `_pin_system_locale`'s own read of the device's global domain that decides. A *replacement*
+  # device is newly created and inherits the host's own locale, which the read finds does not match
+  # the configured one, so the write runs and pays a reboot cycle on top of the boot already waited
+  # out, plus the install: roughly 100-150s more, going by the ~80s Simulator boot the `golden` job
+  # below prices. A *reboot*'s device is the very one from the original cold bring-up, whose earlier
+  # write survives the reboot, so the read finds it already correct and the re-prep skips the cycle,
+  # leaving only the reinstall. Keeping the worst
   # case bounded when every rung does return in time: 300s + 180s + 300s ≈ 13min (plus the unbounded
-  # re-prep above, so ~15min) for a failing *first* bring-up, 90s + 180s + 90s = 6min for a rebooted
-  # respawn (a reboot's re-prep only reinstalls — its `_pinned_locale` was never reset, so it skips
-  # the locale-pin reboot cycle a replacement pays — small enough to leave uncounted here), and
-  # 90s + 180s + 300s ≈ 9.5min (also plus the re-prep, since a vanished device is always a replacement,
-  # so ~11-12min) for the rarest case, a respawn whose device had vanished. Only a *failing* spawn pays
+  # re-prep above, so ~15min) for a failing *first* bring-up, and 90s + 180s + 300s ≈ 9.5min for a
+  # failing respawn, whichever rung repairs it (a rebooted respawn's re-prep only reinstalls — small
+  # enough to leave uncounted — while a respawn whose device had vanished pays the same locale-pin-plus-
+  # install cost as the first-bring-up case above, so ~11-12min there). Only a *failing* spawn pays
   # recovery at all.
   #
   # A caveat the arithmetic above does not cover: this recovery happens inside one lease's bring-up, so
