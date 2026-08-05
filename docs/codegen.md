@@ -469,6 +469,13 @@ class ComponentsUITest {
   stimulus and abort before `startActivity` ever runs — on the one device that most needs the strong
   one. `launch`'s own retry loop already reports the failure, naming the window list, if starting the
   activity does not help either.
+- **Both window reads go through one `Configurator`-flagged accessor.** `windowSummary` and
+  `reportsWindows` read the list through the flags `UiDevice` itself uses, taken from
+  `Configurator.getInstance()`, rather than through the flag-less
+  `Instrumentation.getUiAutomation()` overload — which, on a target that sets non-default flags,
+  tears down and reconnects the same `UiAutomation` on every read, turning a read into the very
+  connection churn the evidence below exists to diagnose. The flagged overload only exists from API
+  24, so the accessor falls back to the flag-less read below that, exactly as `UiDevice` does.
 - **The last attempt does not kick once its wait fails**, because after it there is no intent left to
   re-issue and HOME would overwrite every piece of evidence the failure is about to collect. (The
   pre-launch check `ensureWindowTracking` still presses HOME on that attempt, but before the relaunch, so
