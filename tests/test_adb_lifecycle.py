@@ -353,8 +353,10 @@ def test_android_environment_stops_the_prestarted_video_when_launch_fails(tmp_pa
             return "com.bajutsu.showcase.android.compose/.MainActivity\n"
         if "pgrep" in " ".join(args):
             # Confirms on the first poll (a new pid, absent from the pre-spawn baseline) so this
-            # test's failing launch is reached without burning the real confirm-started timeout.
-            return "1234\n" if spawned else ""
+            # test's failing launch is reached without burning the real confirm-started timeout,
+            # then reports the process gone once stop() has signalled it, so the pull's
+            # `_await_screenrecord_stopped` doesn't burn `_VIDEO_FINALIZE_TIMEOUT` (120s) instead.
+            return "1234\n" if spawned and not stopped else ""
         if "am start" in " ".join(args):
             raise subprocess.CalledProcessError(1, args, output="", stderr="boom")
         return ""
