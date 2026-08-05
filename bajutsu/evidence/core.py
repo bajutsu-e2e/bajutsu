@@ -199,8 +199,10 @@ class EvidenceSink(Protocol):
 
         `capture` may be invoked more than once for the same `step_id` — the pre-step baseline, the
         post-step capture, and, for the run's last leaf step, a final `screenshot.after` — so a sink
-        must not assume a single call sees every kind a step fires, and must not let a later call
-        overwrite state an earlier one for the same `step_id` already recorded.
+        must not assume a single call sees every kind a step fires. Repeated calls are *not*
+        isolated from one another: `FileSink` gives each kind a fixed name (`elements.json`,
+        `before.png` / `after.png`), so a later call naming a kind an earlier one already wrote
+        overwrites it. Keeping the pre-step baseline intact is the loop's job, not the sink's.
         """
         raise NotImplementedError
 

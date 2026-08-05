@@ -1130,7 +1130,18 @@ class _StepRunner:
                     active_driver, interp_step.extract, self.cfg.clock, initial=snapshot
                 )
         screen = _ScreenRead(active_driver, seed=snapshot, read=read)
-        screen_changed = before is not None and screen.get() != before
+        screen_changed = False
+        if before is not None:
+            try:
+                screen_changed = screen.get() != before
+            except (ConnectionError, base.UnsupportedAction, OSError) as exc:
+                # Evidence-only, like the wait-timeout diagnostic and the post-step `elements`
+                # guard below: `screen_changed` feeds only `_collect_captures`, never this step's
+                # own pass/fail outcome, so a torn-down WebView context here must not crash a step
+                # that would otherwise pass or fail cleanly on its own (prime directive 1).
+                _logger.debug(
+                    "%s: screenChanged read skipped, web driver query failed: %s", step_id, exc
+                )
 
         # An unconditional first-wait diagnostic on a `for`-wait timeout: capturePolicy may not
         # request an element dump on failure, so without this the timeout leaves no evidence to

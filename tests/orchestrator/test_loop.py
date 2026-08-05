@@ -667,6 +667,7 @@ def test_post_step_elements_capture_skips_on_web_query_failure(tmp_path: Path) -
     native_screen = [el("app.webview", frame=(0.0, 0.0, 400.0, 800.0))]
     driver = FakeDriver(native_screen)
     run_dir = tmp_path / "run1"
+    bridge = _FlakyBridge([])
     result = run_scenario(
         driver,
         _scenario(
@@ -685,13 +686,65 @@ def test_post_step_elements_capture_skips_on_web_query_failure(tmp_path: Path) -
         ),
         clock=FakeClock(),
         sink=FileSink(run_dir),
-        webview_bridge=_FlakyBridge([]),
+        webview_bridge=bridge,
     )
     assert result.ok, result.failure
     leaf_outcome = next(s for s in result.steps if s.action == "type")
+    # The post-step read this test targets really did fire and fail; without this the count below
+    # also holds when the post-step `elements` capture stops happening at all.
+    assert bridge.calls == 2
     # Exactly the pre-step baseline's `elements` write survives; the post-step capture the failed
     # query would have added is dropped rather than crashing the run.
     assert sum(1 for a in leaf_outcome.artifacts if a.kind == "elements") == 1
+
+
+def test_screen_changed_read_skips_on_web_query_failure(tmp_path: Path) -> None:
+    """The `screenChanged` comparison read (`screen.get() != before`) must not crash the run when
+    the WebView bridge query fails: it feeds only `_collect_captures`, never this step's own
+    pass/fail outcome, so a torn-down bridge here degrades to `screen_changed=False` rather than
+    propagating — the third of the three post-step-sequence web reads this review round found
+    unguarded (review follow-up)."""
+
+    class _FlakyBridge(_FakeBridge):
+        def __init__(self, dom_elements: list[base.Element]) -> None:
+            super().__init__(dom_elements)
+            self.calls = 0
+
+        def query_dom(self, webview_id: str) -> list[base.Element]:
+            self.calls += 1
+            # Call 1 is the pre-step baseline's own read (succeeds, and is reused as `before`);
+            # call 2 is the screenChanged comparison read this test targets.
+            if self.calls == 2:
+                raise ConnectionError("bridge unreachable")
+            return super().query_dom(webview_id)
+
+    native_screen = [el("app.webview", frame=(0.0, 0.0, 400.0, 800.0))]
+    driver = FakeDriver(native_screen)
+    bridge = _FlakyBridge([])
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "x",
+                "steps": [
+                    {
+                        "web": {
+                            "within": {"id": "app.webview"},
+                            "steps": [{"type": {"text": "hi"}}],
+                        }
+                    }
+                ],
+                "capturePolicy": [
+                    {"on": {"event": "screenChanged"}, "capture": ["screenshot.before"]}
+                ],
+            }
+        ),
+        clock=FakeClock(),
+        webview_bridge=bridge,
+    )
+    assert result.ok, result.failure
+    # The comparison read really did fire and fail, not just get skipped some other way.
+    assert bridge.calls == 2
 
 
 def test_pre_step_query_marks_prev_after_fresh_for_the_interrupt_guard(tmp_path: Path) -> None:

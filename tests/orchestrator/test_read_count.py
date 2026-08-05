@@ -229,16 +229,18 @@ def test_web_block_elements_capture_reuses_the_read_for_the_next_steps_baseline(
     tmp_path: Path,
 ) -> None:
     # A real post-step `elements` capture must go through `screen.get()`, not the sink's own
-    # `elements=None` fallback: the fallback queries `active_driver` invisibly to `screen`, so
-    # `prev_after` (seeded from `screen.cached`) would stay `None` and the *next* nested step's
-    # pre-step baseline would pay a redundant duplicate query to reread a tree from (nearly) the
-    # same instant — 2 reads per step boundary instead of 1. `type` steps (no target to resolve)
+    # `elements=None` fallback: `capture()` is handed the *native* `self.cfg.driver`, so the
+    # fallback would query that driver — writing the native tree and leaving `prev_after` (seeded
+    # from `screen.cached`) `None`, so the *next* nested step's pre-step baseline pays its own
+    # bridge query — 2 reads per step boundary instead of 1. `type` steps (no target to resolve)
     # isolate the count to exactly the pre-step/post-step captures, and a real `FileSink` (not a
     # sink that discards `elements`, like `_KindsSink`) is required so its own `elements=None`
-    # fallback is actually reachable — a regression back to it shows up as 4 bridge queries here
-    # instead of the correct 3 (one pre-step baseline read on the block's first nested step, whose
-    # `prev_after` is reset around the block, plus one post-step read per `type` step — each of
-    # those carried forward as the next step's pre-step baseline, which is what keeps it at 3).
+    # fallback is actually reachable — a regression back to it shows up as 2 bridge queries here
+    # (one per step's pre-step baseline, since the fallback never touches the bridge) writing the
+    # *native* tree to `elements.json` both times, instead of the correct 3 (one pre-step baseline
+    # read on the block's first nested step, whose `prev_after` is reset around the block, plus one
+    # post-step read per `type` step — each of those carried forward as the next step's pre-step
+    # baseline, which is what keeps it at 3).
     driver = FakeDriver([el("app.webview", frame=(0.0, 0.0, 400.0, 800.0))])
     bridge = _CountingBridge([])
     result = run_scenario(
