@@ -22,3 +22,10 @@ targets:
     idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
     backend: [android]
     scenarios: scenarios
+    # ANR-dialog dismissal — see ../showcase.config.yaml's showcase-compose comment. This lane is a
+    # bare `bajutsu run` on a reserved device with no Makefile-run ANR_QUIET around it, so it is the
+    # coverage this block exists for, not an inert copy: nothing here suppresses the dialog first.
+    interrupts:
+      - condition: { exists: { id: [aerr_wait] } }
+        steps:
+          - tap: { id: [aerr_close] }

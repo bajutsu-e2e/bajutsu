@@ -160,8 +160,24 @@ views-noax-build:
 #
 # The broadcast that follows closes one that is already up: the setting only governs dialogs posted
 # after it, so a lane that starts with the launcher already wedged would otherwise still open on a
-# blocked foreground window.
-ANR_QUIET = adb shell settings put global hide_error_dialogs 1 && adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null
+# blocked foreground window. `hide_error_dialogs=1` should hold for the rest of the emulator's
+# session once set, but a multi-scenario lane (`e2e`, `run-flutter-android`) calls it again before
+# every scenario in its loop rather than trust that once at the top of the job — each call is three
+# fast adb round trips, and the alternative is re-diagnosing a mid-loop dialog from a bare timeout.
+#
+# The tap-based counterpart is showcase.config.yaml's per-target `interrupts`: it covers a
+# `bajutsu run` invoked outside any make target, which this setting therefore never reaches. It
+# answers the locale half of the objection above — the selector is a resource id, not a button
+# label — and still acts on the system surface (a node-level click on the resident channel, an
+# `input tap` at the resolved node otherwise), which is acceptable because the *pair* of ids is
+# exact: `aerr_wait` selects only the ANR dialog, and within it `aerr_close` names one node, so a
+# resolve cannot reach `aerr_report`. Where this setting does reach, suppression stays preferred.
+#
+# The trailing echo reads the setting straight back rather than trusting the `put` succeeded: a
+# lane that fails downstream on an ANR dialog anyway (`adb`'s own failure, a wrong scope, a device
+# that dropped the setting) should say so in its own log line, not leave that ambiguity for whoever
+# investigates the failure to resolve by re-running and guessing.
+ANR_QUIET = adb shell settings put global hide_error_dialogs 1 && adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null && echo "ANR_QUIET: hide_error_dialogs=$$(adb shell settings get global hide_error_dialogs | tr -d '\r')"
 
 # Draw every touch on screen, so the captured video answers "where did it actually land" directly
 # rather than by inference from the log. `show_touches` is a surface-level effect the input system
@@ -178,16 +194,17 @@ TOUCH_DEBUG_OFF = adb shell settings put system show_touches 0 && adb shell sett
 
 e2e: compose-build views-build
 	adb root && adb wait-for-device
-	$(ANR_QUIET)
 	$(TOUCH_DEBUG_ON)
 	cd $(ROOT) && for s in $(E2E_SCENARIOS); do \
 		echo "=== showcase-compose / $$s ==="; \
+		$(ANR_QUIET) && \
 		$(E2E_ENV) \
 		uv run bajutsu run --scenario demos/showcase/scenarios/$$s.yaml \
 			--target showcase-compose --udid $(SERIAL) --backend android --config $(CONFIG) || exit 1; \
 	done
 	cd $(ROOT) && for s in $(E2E_VIEWS_SCENARIOS); do \
 		echo "=== showcase-views / $$s ==="; \
+		$(ANR_QUIET) && \
 		$(E2E_ENV) \
 		uv run bajutsu run --scenario demos/showcase/scenarios/$$s.yaml \
 			--target showcase-views --udid $(SERIAL) --backend android --config $(CONFIG) || exit 1; \
@@ -316,6 +333,7 @@ e2e-codegen:
 	cd $(ROOT) && uv run bajutsu codegen demos/showcase/scenarios/$(CODEGEN_SCENARIO).yaml \
 		--emit uiautomator --target showcase-compose --config $(CONFIG) -o $(CODEGEN_KT)
 	adb wait-for-device
+	$(ANR_QUIET)
 	# Unlike the bajutsu-driven jobs (whose scenarios set reinstall: clean, so AndroidEnvironment
 	# uninstalls before installing), connectedAndroidTest installs incrementally with no such guard.
 	# The CI AVD boot snapshot is cached and shared across jobs (android-e2e.yml), so a stale copy of

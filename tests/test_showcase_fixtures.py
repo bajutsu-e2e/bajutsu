@@ -10,7 +10,7 @@ import re
 from pathlib import Path
 
 from bajutsu import _yaml
-from bajutsu.config import AndroidConfig, IosConfig, load_config, resolve
+from bajutsu.config import AndroidConfig, Config, IosConfig, load_config, resolve
 from bajutsu.scenario import load_scenarios
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -19,6 +19,7 @@ MENU_DIR = SCENARIO_DIR / "menu"  # the demo menu's tour/features scenarios (non
 SHOWCASE_CONFIG = ROOT / "demos" / "showcase" / "showcase.config.yaml"
 LIVE_CONFIG = ROOT / "demos" / "showcase" / "live" / "showcase.live.config.yaml"
 DEMO_CONFIG = ROOT / "demos" / "demo.config.yaml"
+DEVICEFARM_CONFIG = ROOT / "demos" / "showcase" / "devicefarm" / "showcase.devicefarm.config.yaml"
 
 # The showcase a11y target's namespaces (SPEC §9); the menu scenarios stay within them.
 NAMESPACES = {"stable", "horse", "search", "log", "notice", "perm", "sys", "net"}
@@ -62,6 +63,50 @@ def test_showcase_config_resolves() -> None:
     bundled = resolve(cfg, "showcase-swiftui-bundled")
     assert len(bundled.run_defaults.interrupts) == 1
     assert bundled.run_defaults.interrupts[0].condition.exists is not None
+
+
+def _assert_anr_interrupt(cfg: Config, name: str, where: str = "showcase.config.yaml") -> None:
+    interrupts = resolve(cfg, name).run_defaults.interrupts
+    anr = [
+        e
+        for e in interrupts
+        if e.condition.exists is not None and e.condition.exists.sel.id == ["aerr_wait"]
+    ]
+    label = f"{where}:{name}"
+    assert len(anr) == 1, label
+    assert len(anr[0].steps) == 1, label
+    tap = anr[0].steps[0].tap
+    assert tap is not None, label
+    assert tap.id == ["aerr_close"], label
+
+
+def test_showcase_android_targets_have_anr_interrupt() -> None:
+    # BE-0314: every Android showcase target carries the same ANR-dialog handler (e.g. "Pixel
+    # Launcher isn't responding"), which must condition on `aerr_wait` (unique to the ANR dialog) but
+    # tap `aerr_close` (recovers without leaving the process wedged) — not the same id for both, since
+    # `aerr_close` alone also matches a genuine app-under-test crash dialog (see showcase.config.yaml's
+    # showcase-compose comment). Both are the driver-normalized local id — not the `android:id/`-
+    # qualified resource-id — the same id contract every other selector in this file uses
+    # (`stable.row.1`/`stable_row_1`). Pinning the exact ids catches both a wrong-prefix regression and
+    # a condition/action id mix-up without an emulator; each mistake previously shipped and only
+    # failed against a live dialog (PR #1492 review).
+    cfg = load_config(SHOWCASE_CONFIG.read_text(encoding="utf-8"))
+    android = [
+        name
+        for name in cfg.targets
+        if isinstance(resolve(cfg, name).platform_config, AndroidConfig)
+    ]
+    assert android, "expected Android showcase targets"
+    for name in android:
+        _assert_anr_interrupt(cfg, name)
+
+    # The AWS Device Farm config (BE-0235) drives a bare `bajutsu run` on a reserved device with no
+    # Makefile-run ANR_QUIET around it — the same uncovered path this handler exists for, not an
+    # optional extra — so it must carry the same handler, kept in step with the local target here.
+    devicefarm_cfg = load_config(DEVICEFARM_CONFIG.read_text(encoding="utf-8"))
+    _assert_anr_interrupt(
+        devicefarm_cfg, "showcase-compose", where="showcase.devicefarm.config.yaml"
+    )
 
 
 def test_showcase_live_config_routes_to_the_live_transport() -> None:

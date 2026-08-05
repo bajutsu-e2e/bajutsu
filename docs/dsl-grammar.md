@@ -114,8 +114,9 @@ Scenario ::= {
 
 Component ::= { params?: list(string), steps: list(<Step>) }
 
-# A handler the runner checks opportunistically against trees it has already fetched, wherever in
-# the step sequence the matching screen surfaces, running `steps` to clear it (BE-0314).
+# A handler the runner checks opportunistically wherever in the step sequence the matching screen
+# surfaces, running `steps` to clear it (BE-0314). Free on a `wait`'s poll tick; every other
+# non-`wait` step pays one extra read.
 Interrupt ::= { condition: <Assertion>, steps: list(<Step>) }
 
 # ── Preconditions ──────────────────────────────────────────────────────

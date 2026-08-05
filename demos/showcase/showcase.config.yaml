@@ -147,6 +147,52 @@ targets:
     build: make -C android compose-build
     backend: [android]
     scenarios: scenarios
+    # ANR dialog ("<process> isn't responding") can surface from the OS/launcher at an
+    # unpredictable point during a run, unrelated to this app's own state — most often a
+    # cold-booted AVD's Pixel Launcher missing its ANR deadline while the first scenario launches.
+    # demos/showcase/android/Makefile's ANR_QUIET (`hide_error_dialogs`) stops the OS posting the
+    # dialog at all, run by every `make e2e*` target — including `e2e-codegen`, which drives Gradle's
+    # `connectedA11yDebugAndroidTest` directly (BE-0294), never `bajutsu run`, but is blocked by the
+    # same dialog the same way any reader of the window is — and by demos/showcase/Makefile's
+    # `run-flutter-android`, which drives showcase-flutter-android only. The three `-noax` twins
+    # (showcase-compose-noax, showcase-views-noax, showcase-flutter-android-noax) are the `record` /
+    # `doctor` "missing accessibility" demo this file's header describes, and no lane runs them — and
+    # `interrupts` is a `run`-only guard, so it never fires on either of those paths. What ANR_QUIET
+    # cannot reach is a bare `bajutsu run` outside any Makefile wrapper — the AWS Device Farm lane
+    # (demos/showcase/devicefarm/showcase.devicefarm.config.yaml) is exactly this, and carries the
+    # same block for the same reason — which is how this dialog was first reported, so `interrupts`
+    # (BE-0314) is declared here as the only guard on that path.
+    #
+    # This is not entirely free — a non-`wait` step without a fresh tree pays one extra
+    # `driver.query()` for the guard check (bajutsu/orchestrator/loop.py) — but a `wait` step rides
+    # the guard on its own polling reads at zero extra cost. e2e-fallback (BAJUTSU_ADB_RESIDENT=0,
+    # the ~2.4s-per-read dump path, docs/drivers.md) runs only golden.yaml, whose sole step is such a
+    # `wait`, so that lane's own screen-read counter (BE-0234) measures 0 extra reads with this block
+    # present versus absent — it is not the lane that pays for this coverage. No showcase scenario
+    # declares a `screenChanged` capture rule at all, so the guard never has a fresh tree to reuse
+    # here: on these six targets *every* scenario pays one such read on *every* non-`wait` step, not
+    # just the first — measured at 4/3/6/3 extra reads across modals.yaml's four scenarios, and
+    # `foreach` pays again per iteration. Each read is on the resident channel's fast path
+    # (~0.1-0.3s) where the resident server is built, and on the same ~2.4s dump path otherwise.
+    #
+    # Conditions on `aerr_wait`, taps `aerr_close` — deliberately not the same id, and not `aerr_wait`
+    # for both. AOSP's ANR dialog (app_anr_dialog.xml, AppNotRespondingDialog) carries three buttons —
+    # `aerr_wait`, `aerr_close`, `aerr_report` — and `aerr_wait` is the one unique to it; the crash
+    # dialog (app_error_dialog.xml, AppErrorDialog) shares `aerr_close` (alongside `aerr_restart` /
+    # `aerr_app_info`). Conditioning on `aerr_close` would therefore also match a genuine
+    # app-under-test crash and silently tap it away before any artifact records it — the exact
+    # swallowed-signal failure this guard exists to prevent, not cause.
+    # `aerr_wait` names only the dialog this block targets; `aerr_close` recovers from it (over
+    # `aerr_wait` itself) because Wait leaves the offending process wedged and can re-post the dialog
+    # up to `_INTERRUPT_MAX_FIRES` times before the guard gives up and the step falls back to an
+    # opaque timeout — Close app ends the run loudly instead, and is harmless for the Pixel Launcher
+    # case this exists for (Android restarts its own launcher). Both ids are the local form the adb
+    # driver reports, stripped of the `android:id/` prefix a uiautomator dump shows. Same interrupts
+    # block on every Android target below: the dialog is OS-owned, not app-specific.
+    interrupts:
+      - condition: { exists: { id: [aerr_wait] } }
+        steps:
+          - tap: { id: [aerr_close] }
 
   # ---- Compose, accessibility OFF ------------------------------------------------
   showcase-compose-noax:
@@ -158,6 +204,10 @@ targets:
     build: make -C android compose-noax-build
     backend: [android]
     scenarios: scenarios
+    interrupts:   # ANR-dialog dismissal — see showcase-compose above
+      - condition: { exists: { id: [aerr_wait] } }
+        steps:
+          - tap: { id: [aerr_close] }
 
   # ---- Views, accessibility ON — native android:id, which allows neither '.' nor '-', so the
   # ids are the SPEC ids with both mapped to '_' (stable.refresh → stable_refresh). The shared
@@ -175,6 +225,10 @@ targets:
     build: make -C android views-build
     backend: [android]
     scenarios: scenarios
+    interrupts:   # ANR-dialog dismissal — see showcase-compose above
+      - condition: { exists: { id: [aerr_wait] } }
+        steps:
+          - tap: { id: [aerr_close] }
 
   # ---- Views, accessibility OFF ---------------------------------------------------
   showcase-views-noax:
@@ -186,6 +240,10 @@ targets:
     build: make -C android views-noax-build
     backend: [android]
     scenarios: scenarios
+    interrupts:   # ANR-dialog dismissal — see showcase-compose above
+      - condition: { exists: { id: [aerr_wait] } }
+        steps:
+          - tap: { id: [aerr_close] }
 
   # ==== Flutter (BE-0008) =========================================================
   # The Flutter twin of the four native products (demos/showcase/flutter), one Dart codebase built
@@ -227,6 +285,10 @@ targets:
     build: cd flutter && flutter build apk --debug --flavor a11y --dart-define=ACCESSIBLE=true
     backend: [android]
     scenarios: scenarios
+    interrupts:   # ANR-dialog dismissal — see showcase-compose above
+      - condition: { exists: { id: [aerr_wait] } }
+        steps:
+          - tap: { id: [aerr_close] }
 
   # ---- Flutter on Android, accessibility OFF -------------------------------------
   showcase-flutter-android-noax:
@@ -238,3 +300,7 @@ targets:
     build: cd flutter && flutter build apk --debug --flavor noax --dart-define=ACCESSIBLE=false
     backend: [android]
     scenarios: scenarios
+    interrupts:   # ANR-dialog dismissal — see showcase-compose above
+      - condition: { exists: { id: [aerr_wait] } }
+        steps:
+          - tap: { id: [aerr_close] }
