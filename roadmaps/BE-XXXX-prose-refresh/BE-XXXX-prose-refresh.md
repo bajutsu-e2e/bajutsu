@@ -17,7 +17,8 @@
 
 This item adds **prose-refresh**, a third scheduled workflow beside `roadmap-refresh` and
 `docs-refresh` ([BE-0222](../BE-0222-daily-doc-freshness-pr/BE-0222-daily-doc-freshness-pr.md)),
-that reconciles the wording quality of `docs/**` and roadmap prose, in both languages, against the
+that reconciles the wording quality of `docs/**`, the top-level `DESIGN.md`, and roadmap prose, in
+both languages, against the
 `document-writing` / `english-document-writing` / `japanese-document-writing` skills' norms, and
 opens its own rolling Draft PR when it finds something worth fixing. Alongside it, the advisory
 reviewer ([BE-0203](../BE-0203-claude-code-pr-review/BE-0203-claude-code-pr-review.md)) marks a
