@@ -83,14 +83,23 @@ bypass alone admits a login, `oauth_callback` logs a warning naming the login: t
 sign-in path `orgs:` did not authorize, so it is the one path an operator auditing who signed in, and
 when, would otherwise have no record of at all.
 
+The membership test behind that check — is any of a login's Teams in the configured admin list — is
+also the test `role_for` uses to resolve the admin role, so this item factors it into one shared
+`in_admin_team` helper rather than writing the same expression out twice. Two copies of the same rule
+in two functions ~120 lines apart could drift apart under a later, independent edit to either one —
+a login the gate's copy admits but the role's copy doesn't would sign in and resolve to `viewer`, a
+session for a login `orgs:` never authorized and with none of the admin access that was the reason to
+admit it. One helper makes that drift impossible by construction.
+
 ### Role resolution is unaffected in shape, only in name
 
 `role_for` ([`bajutsu/serve/authz.py`](../../bajutsu/serve/authz.py)) already ranks admin above editor
 above the viewer base role, from a single admin-Team parameter. This item only widens that parameter
-from one Team to a list, checking for any intersection with `identity.teams` instead of a single
-membership test. The sign-in gate above already establishes that a bypassing login carries a matching
-Team, so `role_for` resolves it to admin the same way it resolves any other admin Team member today.
-No separate role path is added for the bypass case.
+from one Team to a list, checking for any intersection with `identity.teams` (via the shared
+`in_admin_team` helper above) instead of a single membership test. The sign-in gate above already
+establishes that a bypassing login carries a matching Team, so `role_for` resolves it to admin the
+same way it resolves any other admin Team member today. No separate role path is added for the
+bypass case.
 
 `role_for` and the org placement below both run only inside `oauth_callback`'s
 `if state.repository is not None:` block, exactly as they do today for every other admin Team member;
