@@ -433,12 +433,13 @@ purpose and so carry more inherent flakiness risk than the ones driving a health
   into `${vars.*}` — a condition wait bounded by `timeout`, never a fixed sleep
 - DSL `interrupts` (BE-0314): a config-level (app-wide default) and scenario-level (appended) list
   of `{ condition, steps }` entries, checked opportunistically — reusing the assertion-DSL
-  `condition` shape `if` already uses — against the tree a `screenChanged`-policy step or a `wait`
-  poll has already fetched, for a screen that can surface at an unpredictable point (an onboarding
-  step, a permission prompt the accessibility tree can see) rather than one known spot in the step
-  sequence; on a match, runs the entry's `steps` then resumes the interrupted step (a `wait` keeps
-  its original deadline; an act step retries once), with a re-entrancy cap falling back to the
-  step's ordinary outcome
+  `condition` shape `if` already uses — for a screen that can surface at an unpredictable point (an
+  onboarding step, a permission prompt the accessibility tree can see) rather than one known spot in
+  the step sequence. The check rides a `screenChanged`-policy step's or a `wait` poll's
+  already-fetched tree for free; any other act step pays one extra `driver.query()` per step for it.
+  On a match, runs the entry's `steps` then resumes the interrupted step (a `wait` keeps its
+  original deadline; an act step retries once), with a re-entrancy cap falling back to the step's
+  ordinary outcome
 - DSL `scroll` action (BE-0326): scroll a region — the whole screen, or a `within` container — until
   a target selector's frame center lands inside the viewport, or fail deterministically at a
   `maxScrolls` bound (default 15) or once two consecutive reads *show* the region standing still
