@@ -363,6 +363,29 @@ def test_build_state_server_warns_when_admin_teams_was_never_set(
     assert "retired" not in err
 
 
+def test_build_state_server_without_oauth_does_not_warn_about_admin_teams(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Token-auth-only server backend: BAJUTSU_OAUTH_ADMIN_TEAMS has no meaning without OAuth wired,
+    # so the empty-list warning must stay quiet rather than tell every such deployment it has no
+    # admin -- the guard's first operand, which no other test in this file exercises.
+    monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
+    monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
+    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
+    _scn, cfg, runs = project(tmp_path)
+    srv._build_state(
+        runs_dir=runs,
+        config=cfg,
+        scenarios_dir=None,
+        root=tmp_path,
+        baselines_dir=None,
+        max_concurrent=4,
+        token=None,
+        backend="server",
+    )
+    assert capsys.readouterr().err == ""
+
+
 def test_build_state_server_stays_quiet_when_admin_teams_is_set(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -391,9 +414,9 @@ def test_build_state_server_stays_quiet_when_admin_teams_is_set(
 def test_build_state_server_warns_on_a_malformed_admin_teams_entry(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    # A space- or semicolon-separated value parses to one entry with no "/", which can never
-    # match a real "<github-org>/<team-slug>" — that silently loses every admin the same way the
-    # retired singular name does, so it must warn too.
+    # A space- or semicolon-separated value parses to one entry that still contains "/" — a bare
+    # "/" count would pass it — yet it can never match a real "<github-org>/<team-slug>": that
+    # silently loses every admin the same way the retired singular name does, so it must warn too.
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
     monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
