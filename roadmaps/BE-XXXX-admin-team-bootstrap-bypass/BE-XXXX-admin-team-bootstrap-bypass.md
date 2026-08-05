@@ -145,12 +145,15 @@ This item adds no login-list fallback for that outage case; see *Alternatives co
 > (oldest first), linking the PRs.
 
 - [x] Rename `BAJUTSU_OAUTH_ADMIN_TEAM` to `BAJUTSU_OAUTH_ADMIN_TEAMS` (comma-separated), threading the
-      list through `SessionManager`, `role_for`, and the server-backend env wiring.
+      list through `SessionManager`, `role_for`, and the server-backend env wiring. Warn loudly at
+      startup when the old singular name is still set and the new one is not, so the hard cutover
+      never loses every admin silently.
 - [x] Add the admin-Team bypass to the sign-in gate in `oauth_callback`, alongside
       `identity_matches_org`, using the Team list already fetched for role resolution.
 - [x] Update the self-hosting and configuration docs (both languages) and `.env.example` to describe
-      the renamed variable and the bypass, including BE-0313's now-superseded claim that the `default`
-      org is unreachable through OAuth sign-in.
+      the renamed variable and the bypass. BE-0313's claim that the `default` org is unreachable
+      through OAuth sign-in is superseded in this item's *Detailed design* instead: no `docs/` page
+      states it, so none needed the edit.
 - [x] Tests: sign-in accepted for an admin-Team member with no matching `orgs:` entry and with no
       `orgs:` block at all; resolved role is admin in both cases; a login matching neither the org
       gate nor the admin-Team list is still rejected; the renamed variable parses a multi-Team list;
