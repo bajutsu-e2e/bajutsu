@@ -201,8 +201,9 @@ def device_pool(
         cached = warm.get(udid)
         if cached is not None and cached[0] != actuator:
             _cached_actuator, cached_env, cached_driver = warm.pop(udid)
-            # Guarded like the pool's three other teardown sites (the failed-resume eviction below,
-            # and `shutdown()`'s device and collector loops): if the cached runner already crashed
+            # Guarded like the pool's four other teardown sites (the failed-resume eviction below,
+            # `release()`'s end of a normal lease, and `shutdown()`'s device and collector loops): if
+            # the cached runner already crashed
             # between leases, `_discard_runner()`'s `terminate()` can raise `ProcessLookupError` (an
             # `OSError`). This runs before the `try` below, so anything `guarded_teardown` re-raises
             # propagates out of `lease()` with `udid` never returned to `free`, leaking the device
@@ -393,11 +394,19 @@ def device_pool(
                     release_collector.stop()
                 # Keep a warm resident alive for the next lease (`end_lease` terminates only the app);
                 # otherwise the ordinary full teardown. This is the same predicate the pool cached the
-                # env on above, so a kept-warm env is exactly one still held in `warm` (BE-0291).
-                if lease_env.has_reusable_resident():
-                    lease_env.end_lease(driver, eff)
-                else:
-                    lease_env.teardown(driver, eff)
+                # env on above, so a kept-warm env is exactly one still held in `warm` (BE-0291). Runs
+                # from `run_one`'s `finally`, so a teardown hiccup (an already-gone app/device) must
+                # not replace the scenario's own result or skip `free.put(udid)` below — the same
+                # leak-on-`mid_run=False` risk as this file's other four teardown sites (BE-0342).
+                guarded_teardown(
+                    lambda: (
+                        lease_env.end_lease(driver, eff)
+                        if lease_env.has_reusable_resident()
+                        else lease_env.teardown(driver, eff)
+                    ),
+                    mid_run=True,
+                    what=f"tearing down the environment on {udid} at the lease's end",
+                )
                 free.put(udid)
 
             meta = catalog.get(udid, {})
@@ -432,10 +441,10 @@ def device_pool(
             doomed = (stale[1], stale[2]) if stale is not None else launched
             if doomed is not None:
                 dead_env, dead_driver = doomed
-                # A leaked runner is the same risk here as at the pool's three other teardown sites
-                # (the actuator switch above, and `shutdown()`'s device and collector loops); the
-                # original launch error still propagates via the `raise` below, so a teardown hiccup
-                # (mid_run=True) must not mask it (BE-0342).
+                # A leaked runner is the same risk here as at the pool's four other teardown sites
+                # (the actuator switch above, `release()`'s end of a normal lease, and `shutdown()`'s
+                # device and collector loops); the original launch error still propagates via the
+                # `raise` below, so a teardown hiccup (mid_run=True) must not mask it (BE-0342).
                 guarded_teardown(
                     lambda: dead_env.teardown(dead_driver, eff),
                     mid_run=True,

@@ -14,7 +14,7 @@ the two cannot then drift into different notions of "an infrastructure fault" or
 are left" (BE-0334). The classification rests on the exception type the driver already raises, so it
 stays a deterministic branch on a Python class: no model sits on the `run`/CI verdict.
 
-The guarded teardown helper (BE-0342) is the same seam: the pool's four teardown sites (three for a
+The guarded teardown helper (BE-0342) is the same seam: the pool's five teardown sites (four for a
 device's environment, one for its collector socket), `launch_driver`'s guard for a launch that
 failed after `env.start`, and the on-device suites' lease discard share one policy for an
 already-gone resource — a runner that had already exited, an unreachable `xcrun`, a socket the OS

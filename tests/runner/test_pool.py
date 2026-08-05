@@ -1118,6 +1118,65 @@ def test_device_pool_shutdown_completes_the_collector_sweep_before_a_wiring_defe
     assert "UDID-B" in caplog.text  # the second collector's defect was logged, not lost
 
 
+@pytest.mark.parametrize(
+    "teardown_error",
+    [
+        pytest.param(
+            None, id="expected-process-failure"
+        ),  # CalledProcessError, via raise_on_teardown
+        pytest.param(AttributeError("close"), id="wiring-defect"),  # BE-0342
+    ],
+)
+def test_device_pool_release_swallows_a_teardown_failure_and_still_frees_the_device(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    teardown_error: BaseException | None,
+) -> None:
+    """BE-0342: `release()` runs from the run pipeline's `finally`, so neither an expected process
+    failure nor a wiring defect on its teardown may replace the scenario's own result or skip
+    returning the device to `free` — unlike the pool's other teardown sites, this one never
+    propagates (it only warns), since there is no caller left to see it raise."""
+    created: list[_RecordingEnv] = []
+
+    def fake_env_for(
+        actuator: str,
+        udid: str,
+        env_run: object = None,
+        *,
+        provision: object = None,
+        respawn: bool = False,
+    ) -> _RecordingEnv:
+        env = _RecordingEnv(actuator, udid, provision)
+        created.append(env)
+        return env
+
+    monkeypatch.setattr("bajutsu.runner.pool.environment_for", fake_env_for)
+    lease, shutdown = device_pool(
+        ["UDID-A"],
+        ["ios"],
+        _eff(),
+        Path("runs"),
+        network=False,
+        available=lambda b: True,
+        env_run=lambda *a, **k: "",
+    )
+    try:
+        first = lease(_eff(), _scn("a"))
+        env = created[1]  # created[0] is the pool's representative env
+        env.raise_on_teardown = teardown_error is None
+        env.teardown_error = teardown_error
+        with caplog.at_level(logging.WARNING, logger="bajutsu.runner.recovery"):
+            first.release()  # must not raise
+        assert env.torn
+        assert "at the lease's end" in caplog.text  # logged, not silent
+        # The device was still returned — a leaked udid would hang this on `free.get()`.
+        retry = lease(_eff(), _scn("b"))
+        assert len(created) == 3 and created[2] is not env and created[2].started
+        retry.release()
+    finally:
+        shutdown()
+
+
 def test_device_pool_does_not_cache_a_non_reusable_environment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
