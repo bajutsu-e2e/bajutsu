@@ -697,8 +697,8 @@ def test_screen_changed_read_skips_on_web_query_failure() -> None:
     the WebView bridge query fails: it feeds only `_collect_captures`, never this step's own
     pass/fail outcome, so a torn-down bridge here degrades to `screen_changed=False` rather than
     propagating — one of the post-step-sequence web reads this review round guarded (the sibling
-    pre-act `before` read at `loop.py:980` remains a pre-existing, out-of-scope exposure). Call 1 is
-    the `screenChanged` policy's own `before` read at `loop.py:980` (`prev_after` is reset at the
+    pre-act `before = active_driver.query()` read in the `wants_screen_changed` block remains a
+    pre-existing, out-of-scope exposure). Call 1 is that same read (`prev_after` is reset at the
     `web`-block boundary, and this run's `NullSink` skips the pre-step baseline query); call 2 is
     the comparison read this test targets (review follow-up)."""
     native_screen = [el("app.webview", frame=(0.0, 0.0, 400.0, 800.0))]

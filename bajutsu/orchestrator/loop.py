@@ -253,11 +253,25 @@ class _ScreenRead:
         self._available = seed is not None
         self._queried = False
         self._read = read
+        self._failure: Exception | None = None
 
     def get(self) -> list[base.Element]:
-        """The post-step tree: the seed if one was given, else read once (via `read`) and cached."""
+        """The post-step tree: the seed if one was given, else read once (via `read`) and cached.
+
+        A read that fails is cached too, as the failure: several evidence-only consumers can call
+        `get` per step (`screenChanged`, the wait-timeout diagnostic, the post-step `elements`
+        capture), and a driver that just failed will fail the identical query again — replaying the
+        failure spares each of them their own blocking round-trip against a channel already proved
+        dead.
+        """
+        if self._failure is not None:
+            raise self._failure
         if not self._available:
-            self._tree = self._read() if self._read is not None else self._driver.query()
+            try:
+                self._tree = self._read() if self._read is not None else self._driver.query()
+            except (base.UnsupportedAction, OSError) as exc:
+                self._failure = exc
+                raise
             self._available = True
             self._queried = True
         assert (
@@ -883,33 +897,36 @@ class _StepRunner:
         step_id: str,
         what: str,
         read: Callable[[], list[base.Element]],
+        *,
+        native_fatal: bool = True,
     ) -> list[base.Element] | None:
         """Best-effort evidence read: `None` on failure rather than crashing the step.
 
         A torn-down WebView context must not crash a step whose pass/fail outcome doesn't depend
-        on `read` (prime directive 1) — but the identical failure on the native driver is a dead
-        device connection, which must still surface loudly, so it re-raises there instead. Shared
-        by the capture-only reads a `web` block can fail: the pre-step baseline, the
-        `screenChanged` comparison, and the post-step `elements` capture. The `screenChanged`
-        policy's own `before` read (`before = active_driver.query()`, in the `wants_screen_changed`
-        block below) is a pre-existing, still-unguarded exposure of the same shape. The
-        wait-timeout diagnostic also calls this, but wraps the result in its own
-        `except (base.UnsupportedAction, OSError)` to stay best-effort on the native driver too —
-        that read only enriches an already-decided timeout, so even a native failure there must not
-        replace the real reason with a crash.
+        on `read` (prime directive 1). The identical failure on the native driver is a dead device
+        connection, which by default must still surface loudly, so it re-raises there instead of
+        degrading to `None`; the wait-timeout diagnostic passes `native_fatal=False` because its
+        read only enriches an already-decided timeout, so even a native failure there must not
+        replace the real reason with a crash. Shared by the capture-only reads a `web` block can
+        fail: the pre-step baseline, the `screenChanged` comparison, the wait-timeout diagnostic,
+        and the post-step `elements` capture. The `screenChanged` policy's own `before` read
+        (`before = active_driver.query()` in the `wants_screen_changed` block) is a pre-existing,
+        still-unguarded exposure of the same shape.
         `ConnectionError` is a subclass of `OSError`, so the tuple below already covers it.
 
-        Every caller reaches this point only once its own guard already ruled out a `NullSink`
-        (directly, or because the read is unconditional, like `screenChanged`'s) — so a failure
-        here always drops evidence a real sink or a scenario author's `capturePolicy` genuinely
-        wanted, which always warrants `logging.WARNING`.
+        Two callers reach this only once their own guard ruled out a `NullSink` (the pre-step
+        baseline and the post-step `elements` capture); the other two read unconditionally, so
+        under a `NullSink` a failure here can drop evidence nothing would have kept.
+        `logging.WARNING` either way: telling the two apart at this depth would mean re-deriving
+        each caller's guard, and a web read that silently stopped working is the harder of the two
+        to diagnose from a run that otherwise reports `ok`.
         """
         try:
             return read()
         except (base.UnsupportedAction, OSError) as exc:
-            if active_driver is self.cfg.driver:
+            if native_fatal and active_driver is self.cfg.driver:
                 raise
-            _logger.warning("%s: %s skipped, web driver query failed: %s", step_id, what, exc)
+            _logger.warning("%s: %s skipped, driver query failed: %s", step_id, what, exc)
             return None
 
     def _handle_action(
@@ -1175,19 +1192,16 @@ class _StepRunner:
         # `polls > 0` fires only after a `for`-wait ran (only that branch records the trace), so
         # the trigger is a structural fact, not the wording of the timeout message.
         if wait_trace is not None and not ok and wait_trace.polls > 0:
-            # Unlike the other three `_read_evidence` callers, this one stays best-effort on the
-            # native driver too: the step already failed cleanly on its own timeout, and this read
-            # only tries to enrich that failure's evidence — a dead native connection here must not
-            # replace the real timeout reason with a crash, so `_read_evidence`'s native re-raise is
-            # caught right back and downgraded to the same "drop the diagnostic" outcome as a web
-            # failure.
-            try:
-                diag_elements = self._read_evidence(
-                    active_driver, step_id, "wait-timeout diagnostic", screen.get
-                )
-            except (base.UnsupportedAction, OSError) as exc:
-                _logger.warning("dropping wait-timeout diagnostic: read failed: %s", exc)
-                diag_elements = None
+            # `native_fatal=False`: the step already failed cleanly on its own timeout, and this
+            # read only enriches that failure's evidence — a dead connection here, native or web,
+            # must not replace the real timeout reason with a crash.
+            diag_elements = self._read_evidence(
+                active_driver,
+                step_id,
+                "wait-timeout diagnostic",
+                screen.get,
+                native_fatal=False,
+            )
             if diag_elements is not None:
                 try:
                     art = self.cfg.sink.wait_diagnostic(

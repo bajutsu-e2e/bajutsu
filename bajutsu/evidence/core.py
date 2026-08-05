@@ -205,6 +205,17 @@ class EvidenceSink(Protocol):
         overwrites it. The loop guards this only for the run's final `screenshot.after` (it omits
         `elements` there for that reason); a `capturePolicy` rule that fires `elements` post-step
         does replace the pre-step baseline's pre-action tree with a post-action one.
+
+        Args:
+            driver: The driver to read from for a kind the caller did not supply — always the
+                native driver, even for a step inside a `web` block (a `WebContextDriver` cannot
+                screenshot), so the caller supplies the tree itself there.
+            step_id: Names the artifacts' step directory; shared across every call for one step.
+            kinds: The instant kinds this call is writing — a subset of a step's full capture,
+                since a step's other kinds may arrive through a separate call (see above).
+            elements: The already-read tree to write for an `elements` kind. `None` obliges the
+                sink to query `driver` for it, so a caller holding a tree passes it to save the
+                read — and must pass one whenever `driver` is not where the tree should come from.
         """
         raise NotImplementedError
 

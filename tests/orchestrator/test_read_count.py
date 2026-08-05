@@ -287,6 +287,9 @@ def test_web_block_file_sink_reads_the_web_tree_not_the_native_one(tmp_path: Pat
     written = (run_dir / "x" / "step1" / "elements.json").read_text(encoding="utf-8")
     assert "go" in written  # the web DOM element the step actually acted on
     assert "native-only" not in written  # never the native tree the sink can't screenshot with
+    # …and the deferred web read really fired, rather than the assertions above passing on the
+    # pre-step baseline's own write: pre-step baseline + the tap's resolve + the post-step capture.
+    assert bridge.queries == 3
 
 
 def test_web_block_elements_capture_reuses_the_read_for_the_next_steps_baseline(

@@ -180,6 +180,10 @@ A `wait for <element>` that times out writes `run_dir/<step_id>/wait-timeout.jso
 captured still leaves the evidence needed to decide *why* it fired. It is pure diagnosis, never a
 verdict input (the run's pass/fail still comes only from machine-checkable assertions).
 
+The write is best-effort in one respect: if the element-tree read at the timeout, or the write
+itself, fails, the diagnostic is dropped and disclosed at `warning` rather than replacing the real
+timeout with a crash. The timeout stays the run's failure either way.
+
 The file is self-contained so a rerun-to-green does not discard it:
 
 | Field | What it answers |
