@@ -96,7 +96,7 @@ class LeaseHolder:
         self._discard(mid_run=False)
 
     def _discard(self, *, mid_run: bool) -> None:
-        _dead_driver, self._driver = self._driver, None
+        self._driver = None
         dead_teardown, self._teardown = self._teardown, None
         if dead_teardown is None:
             return
