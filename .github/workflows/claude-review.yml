@@ -306,7 +306,7 @@ jobs:
         if: steps.gate.outputs.enabled == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.ref }}
+          ref: ${{ github.event.pull_request.head.sha }}
           path: companion
           # Full history, matching refresh.yml — the clobber guard inspects the companion branch and
           # the run pushes to it, neither of which should depend on a shallow clone's edges.
