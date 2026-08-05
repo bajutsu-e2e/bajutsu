@@ -10,7 +10,7 @@ import re
 from pathlib import Path
 
 from bajutsu import _yaml
-from bajutsu.config import AndroidConfig, IosConfig, load_config, resolve
+from bajutsu.config import AndroidConfig, Config, IosConfig, load_config, resolve
 from bajutsu.scenario import load_scenarios
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -65,7 +65,7 @@ def test_showcase_config_resolves() -> None:
     assert bundled.run_defaults.interrupts[0].condition.exists is not None
 
 
-def _assert_anr_interrupt(cfg: object, name: str) -> None:
+def _assert_anr_interrupt(cfg: Config, name: str) -> None:
     interrupts = resolve(cfg, name).run_defaults.interrupts
     anr = [
         e

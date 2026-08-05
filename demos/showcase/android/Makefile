@@ -162,8 +162,8 @@ views-noax-build:
 # after it, so a lane that starts with the launcher already wedged would otherwise still open on a
 # blocked foreground window.
 #
-# The tap-based counterpart is showcase.config.yaml's per-target `interrupts`: it covers a bare
-# `bajutsu run`, which no `make e2e*` target wraps and this setting therefore never reaches. It
+# The tap-based counterpart is showcase.config.yaml's per-target `interrupts`: it covers a
+# `bajutsu run` invoked outside any make target, which this setting therefore never reaches. It
 # answers the locale half of the objection above — the selector is a resource id, not a button
 # label — and still acts on the system surface (a node-level click on the resident channel, an
 # `input tap` at the resolved node otherwise), which is acceptable only because the id names one
@@ -323,6 +323,7 @@ e2e-codegen:
 	cd $(ROOT) && uv run bajutsu codegen demos/showcase/scenarios/$(CODEGEN_SCENARIO).yaml \
 		--emit uiautomator --target showcase-compose --config $(CONFIG) -o $(CODEGEN_KT)
 	adb wait-for-device
+	$(ANR_QUIET)
 	# Unlike the bajutsu-driven jobs (whose scenarios set reinstall: clean, so AndroidEnvironment
 	# uninstalls before installing), connectedAndroidTest installs incrementally with no such guard.
 	# The CI AVD boot snapshot is cached and shared across jobs (android-e2e.yml), so a stale copy of
