@@ -157,12 +157,15 @@ targets:
     # Makefile wrapper, which is how this dialog was first reported, so `interrupts` (BE-0314) stays
     # declared here as the only guard on that path.
     #
-    # That coverage is not free, and the cost lands somewhere it buys nothing: a wait-free `tap`
-    # step without a fresh tree pays one extra `driver.query()` for the guard check
-    # (bajutsu/orchestrator/loop.py), and BAJUTSU_ADB_RESIDENT=0 turns every one of those into a full
-    # `uiautomator dump` rather than the cheaper resident read — so the fallback lane pays the most
-    # for a guard that, per the paragraph above, can never fire there. Accepted for now for the
-    # bare-run coverage; revisit before adding cost elsewhere on that basis.
+    # This is not entirely free — a non-`wait` step without a fresh tree pays one extra
+    # `driver.query()` for the guard check (bajutsu/orchestrator/loop.py) — but a `wait` step rides
+    # the guard on its own polling reads at zero extra cost. e2e-fallback (BAJUTSU_ADB_RESIDENT=0,
+    # the ~2.4s-per-read dump path, docs/drivers.md) runs only golden.yaml, whose sole step is such a
+    # `wait`, so that lane's own screen-read counter (BE-0234) measures 0 extra reads with this block
+    # present versus absent — it is not the lane that pays for this coverage. Several other `e2e*`
+    # scenarios (`search`, `relaunch`, `system`, `components`, `modals`, …) open with a `tap` instead,
+    # so each of those pays one such read on its first step — the resident channel's fast path
+    # (~0.1-0.3s) where the resident server is built, the same ~2.4s dump path otherwise.
     #
     # Taps `aerr_close`, not `aerr_wait` — both are AOSP's fixed, locale-independent resource-ids for
     # the dialog's two buttons (named here in the local form the adb driver reports, which strips the
