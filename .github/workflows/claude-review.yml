@@ -249,11 +249,20 @@ jobs:
     # `prose-fix/` exclusion a prose finding on one would open a companion of the companion, and so
     # on. Excluding the branch prefix stops that at one level: a wording finding on a companion PR is
     # fixed there by hand, which is cheap — it carries no CI matrix worth avoiding.
+    #
+    # `!cancelled()` rather than the implicit success(): the review posts its findings as it goes, so
+    # a provider error late in that step must not strand findings it already posted. A run superseded
+    # by a newer push IS cancelled, and there the newer run does the work instead.
     if: >-
+      !cancelled() &&
       github.event_name == 'pull_request' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       !startsWith(github.event.pull_request.head.ref, 'prose-fix/')
     environment: claude-review
+    # Every write goes through the App token, so the default GITHUB_TOKEN needs read only — narrower
+    # than the workflow-level grant the review job needs for posting comments.
+    permissions:
+      contents: read
     steps:
       - name: Require the automation App (or no-op)
         id: gate
@@ -299,6 +308,9 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.ref }}
           path: companion
+          # Full history, matching refresh.yml — the clobber guard inspects the companion branch and
+          # the run pushes to it, neither of which should depend on a shallow clone's edges.
+          fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
 
       - name: Apply the wording findings and open or update the companion PR

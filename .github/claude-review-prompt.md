@@ -27,9 +27,11 @@ finding a scannable severity signal:
   read mechanically: a job applies such a finding's own `suggestion` block to a companion pull
   request, so the wording fix costs the pull request no CI cycle of its own (BE-0343). Never put it
   on a design, security, correctness, or any other non-wording finding, however small — a mismarked
-  finding would be applied without a human first weighing it. A finding you mark this way must
-  carry a `suggestion` block holding the complete replacement text; without one there is nothing to
-  apply.
+  finding would be applied without a human first weighing it. Two further conditions: mark only a
+  finding in a `docs/` or `roadmaps/` markdown file — the job refuses every other path, so Japanese
+  in a code comment keeps the plain `(non-blocking)` decoration — and give every finding you do mark
+  exactly one `suggestion` block holding the complete replacement text, since without one, or with
+  several, there is nothing unambiguous to apply.
 - **Post only findings that clear the severity floor.** Post `issue` (a correctness, security,
   prime-directive, or design defect) and `suggestion` (a concrete, mechanical improvement, ideally
   carrying a `suggestion` block). Post `question` only for a genuine design ambiguity you cannot

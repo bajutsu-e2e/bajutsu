@@ -573,8 +573,15 @@ The properties worth knowing:
 
 - **No LLM runs in this job.** The reviewer drafted the fix at review time; this only decides whether
   that exact text still applies, by comparing the finding's own `diff_hunk` against the file at your
-  current head. A suggestion whose line you have edited since is **skipped and listed in the
-  companion pull request's body**, never guess-applied.
+  current head. A suggestion whose line you have edited since is **refused and listed in the
+  companion pull request's body**, never guess-applied — as is every other finding it cannot apply,
+  since a job that hides a failure is worse than none.
+- **Two gates bound what it can write**, because it writes under the automation App's token. It
+  applies a finding only when GitHub says the *reviewer account* posted it — the `🤖 **Claude Code**`
+  prefix and the marker are text any commenter could type, so they classify a finding rather than
+  authenticate it — and only when the path is a `docs/` or `roadmaps/` markdown file. A finding
+  mismarked onto product code is therefore refused, and stays an ordinary inline comment for you to
+  weigh.
 - **The branch is rebuilt fresh every run**, from your current head, and every currently posted prose
   finding is reapplied — not just the new ones. So a rebase on your branch needs no action on the
   companion: nothing carries over between runs.
