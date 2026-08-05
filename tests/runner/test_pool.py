@@ -894,7 +894,7 @@ def test_device_pool_shutdown_tears_down_every_warm_device_despite_a_failure(
     lb.release()
     warm_a = next(e for e in created if e.udid == "UDID-A" and e.start_count)
     warm_b = next(e for e in created if e.udid == "UDID-B" and e.start_count)
-    with caplog.at_level(logging.WARNING, logger="bajutsu.runner.pool"):
+    with caplog.at_level(logging.WARNING, logger="bajutsu.runner.recovery"):
         shutdown()  # UDID-A's teardown raises; it must not abort UDID-B's or the collector cleanup
     assert warm_a.torn and warm_b.torn  # both warm residents were torn down
     assert "UDID-A" in caplog.text  # the swallowed teardown failure was logged, not silent

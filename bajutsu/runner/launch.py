@@ -59,6 +59,9 @@ def launch_driver(
             the instance that must later tear itself down). Defaults to a fresh
             `environment_for(actuator, udid, env_run)`; the pool passes its own per-lease environment
             so the instance that starts the resident runner is the one that terminates it (BE-0240).
+            A caller-supplied environment may be torn down here too, on a launch that fails after
+            `env.start` (BE-0342) — a backend's `teardown` must tolerate a second call from the
+            caller's own failure path.
         permissions: The scenario's `permissions` field (BE-0276), applied before the app process
             starts. None (or a platform with no mechanism) applies nothing.
         transitions: The screen-transition signal (BE-0310) `_await_ready` consults as its strongest
