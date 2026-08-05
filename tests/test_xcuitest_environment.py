@@ -697,12 +697,14 @@ def test_start_respawns_a_dead_runner(monkeypatch: pytest.MonkeyPatch, tmp_path:
     assert len(popen_argvs) == 2  # the dead runner was discarded and a fresh one spawned
 
 
-def test_discarding_a_crashed_runner_warns_and_does_not_signal_it(
+def test_discarding_a_crashed_runner_warns_and_sweeps_its_group(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
     # The diagnostic seam: a runner that exited on its own (the known app.launch()-cycle crash) is
-    # discarded without a terminate() — the pid is already reaped — and logs a mid-run-crash warning
-    # so a run that died on a `Connection refused` shows *why* the channel went away.
+    # discarded without a terminate() — the leader's pid is already reaped — and logs a mid-run-crash
+    # warning so a run that died on a `Connection refused` shows *why* the channel went away. It is
+    # still signalled at the group level, though: an XCTest-host child can outlive the leader and keep
+    # holding the device's automation session, so the crashed branch sweeps the group by pid-as-pgid.
     _, _, run = _fake_toolchain(monkeypatch)
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
@@ -711,9 +713,13 @@ def test_discarding_a_crashed_runner_warns_and_does_not_signal_it(
     proc.alive = False  # type: ignore[attr-defined]  # the runner crashed mid-run
     log = env._runner_log
     assert log is not None and log.exists()
+    signalled: list[tuple[int, int]] = []
+    monkeypatch.setattr("os.killpg", lambda pgid, sig: signalled.append((pgid, sig)))
     with caplog.at_level("WARNING"):
         env._discard_runner()
-    assert not proc.terminated  # type: ignore[attr-defined]  # a dead process is never signalled
+    assert not proc.terminated  # type: ignore[attr-defined]  # terminate() is never called: the
+    # leader's pid is already reaped, so there is nothing to signal directly
+    assert signalled == [(proc.pid, signal.SIGKILL)]  # the group is swept instead
     assert "exited on its own" in caplog.text
     # A review finding this PR caught: the warning tells the operator to "see <path>" — that file
     # must still exist, or the pointer resolves to nothing. A mid-run crash keeps its ephemeral
@@ -903,6 +909,9 @@ def test_a_repeatable_cold_spawn_failure_fails_loudly_and_keeps_the_logs(
 
     monkeypatch.setattr(subprocess, "Popen", lambda *_a, **_k: _DeadProc())
     monkeypatch.setattr(backends, "make_driver", lambda *_a, **_k: _Driver())
+    _patch_group_signals(
+        monkeypatch
+    )  # the crashed branch sweeps by pgid; never signal a real group
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=_run)
     eff = _sim_eff(test_runner=str(_write_runner(tmp_path)))
     with (
