@@ -460,7 +460,14 @@ def _spawn_cold_with_retry(
         # Recovery runs after the discard, so it acts on a device this run no longer holds a runner
         # on. It raises rather than returns when the device cannot be repaired at all (a host whose
         # Simulator runtimes are gone), which is a device fault, not a flaky spawn.
-        recovery = recover(failure)
+        try:
+            recovery = recover(failure)
+        except simctl.DeviceError as exc:
+            # An unrepairable device still deserves every attempt's classified reason and captured
+            # tail — that diagnostic is this function's whole point (unit 2) — so it is folded in
+            # rather than lost behind the bare DeviceError an operator would otherwise see alone.
+            diagnostics.append(f"recovery after attempt {n} failed: {exc}")
+            raise simctl.DeviceError("\n".join(diagnostics)) from exc
         if recovery is not None:
             diagnostics.append(f"recovery after attempt {n}: {recovery.note}")
             if recovery.fresh_budget is not None:
@@ -682,7 +689,11 @@ class XcuitestEnvironment(_DeviceEnvironment):
     ) -> _Recovery:
         """Repair the Simulator a failed cold attempt leaves behind, so the retry spawns onto a live device.
 
-        Times the whole ladder and holds it to `_recovery_timeout()`. The bound covers every rung,
+        Times the whole ladder and checks it against `_recovery_timeout()` once the rung returns — a
+        bound on a *slow* recovery, not a hard ceiling: every rung's `simctl` call goes through
+        `self._run`, which carries no subprocess-level timeout, so a rung whose call itself wedges (the
+        exact CoreSimulator degradation this ladder exists to recover from) is never interrupted, and
+        only the run's own outer timeout catches it. Covers every rung that does return promptly,
         including the two that deliberately change nothing: the probe that opens the ladder is itself a
         subprocess, so a host slow enough to blow the bound merely answering `simctl list` is a host the
         run must give up on, whatever the rung then decided.
@@ -1119,17 +1130,20 @@ class XcuitestEnvironment(_DeviceEnvironment):
 
         Teardown reaches the whole process group and then the app under test, because what this
         discards is handed straight to another spawn on the same device: a runner whose children
-        survived, or an app left mid-launch, is state the next attempt inherits.
+        survived, or an app left mid-launch, is state the next attempt inherits. That includes a
+        leader that already exited on its own: `start_new_session` (`_spawn_runner`) makes it its own
+        process group leader, so an XCTest-host child can outlive it and keep holding the device's
+        automation session even though `xcodebuild` is gone — exactly the state a following spawn
+        attempt would then have to spawn onto.
         """
         crashed = False
         if self._runner_proc is not None:
             exited = self._runner_proc.poll()
             if exited is not None:
-                # The process is already gone — it exited on its own, not at our request. For a
+                # The leader is already gone — it exited on its own, not at our request. For a
                 # resident runner that is the known app.launch()-cycle crash (see `_MAX_WARM_REUSES`
                 # above for what this repeatedly surfaced in CI); log it (with the captured output)
-                # so a run that died on a `Connection refused` shows *why* the channel vanished. No
-                # terminate(): the pid is already reaped.
+                # so a run that died on a `Connection refused` shows *why* the channel vanished.
                 crashed = warn_on_crash
                 if warn_on_crash:
                     _logger.warning(
@@ -1137,6 +1151,12 @@ class XcuitestEnvironment(_DeviceEnvironment):
                         exited,
                         self._runner_log_hint(),
                     )
+                # No terminate() — the leader's pid is already reaped — but `start_new_session` made it
+                # its own group leader, so that pid is still a valid pgid for as long as any child
+                # survives it: sweep whatever XCTest-host children outlived the leader. A sweep of an
+                # already-empty group raises ProcessLookupError, suppressed like every other discard step.
+                with contextlib.suppress(OSError):
+                    os.killpg(self._runner_proc.pid, signal.SIGKILL)
             else:
                 _terminate_process_group(self._runner_proc)
             self._runner_proc = None

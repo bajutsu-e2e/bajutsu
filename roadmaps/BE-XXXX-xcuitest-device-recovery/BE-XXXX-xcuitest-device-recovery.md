@@ -135,10 +135,12 @@ classification in unit 1, unit 4 on units 2 and 3, and unit 5 on unit 4.
    - **Anything else** — an app-launch timeout, or a wait that reached its ceiling. Shut the Simulator
      down, boot it, wait for the boot to complete, and re-run the device preparation.
 
-   The whole ladder is bounded by a new `BAJUTSU_XCUITEST_RECOVERY_TIMEOUT` (180 seconds by default).
-   The bound is checked after a rung rather than inside it, since the `simctl` steps are blocking calls
-   the check cannot preempt: it catches a device that took absurdly long to come back, and a rung that
-   overran has spent the budget the retry would need anyway.
+   The whole ladder is checked against a new `BAJUTSU_XCUITEST_RECOVERY_TIMEOUT` (180 seconds by
+   default) once a rung returns. The check cannot preempt a rung in progress, since its `simctl` steps
+   are blocking calls with no subprocess-level timeout of their own: it catches a device that took
+   absurdly long to come back, not a `simctl` call that never returns at all — a genuinely wedged
+   CoreSimulator is caught only by the run's own outer timeout, and a rung that did overrun has spent
+   the budget the retry would need anyway.
 
 4. **Give a repaired device a fresh readiness ceiling.** The startup ceiling is a budget shared across
    the two attempts today, and deliberately so: an attempt that spends the whole ceiling leaves nothing

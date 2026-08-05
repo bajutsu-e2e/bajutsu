@@ -722,6 +722,21 @@ def test_discarding_a_crashed_runner_warns_and_does_not_signal_it(
     assert log.exists()
 
 
+def test_a_discarded_cold_attempt_terminates_the_app_under_test(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The other half of BE-XXXX's motivation: an app left mid-launch by the timeout that failed one
+    # attempt is exactly what the next attempt would call `launch()` on again, so a discard on the
+    # retry path — no teardown in the picture — must terminate the app under test itself, not merely
+    # the runner process.
+    _, simctl_calls, run = _fake_toolchain(monkeypatch)
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
+    simctl_calls.clear()
+    env._discard_runner(warn_on_crash=False, keep_log=True)
+    assert ["xcrun", "simctl", "terminate", "UDID", "com.x"] in simctl_calls
+
+
 def test_runner_output_is_captured_when_the_env_var_is_set(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -862,6 +877,10 @@ def test_a_repeatable_cold_spawn_failure_fails_loudly_and_keeps_the_logs(
     monkeypatch.delenv("BAJUTSU_XCUITEST_RUNNER_LOG", raising=False)
 
     class _DeadProc:
+        pid = (
+            12345  # a real Popen always has one; the discard's group sweep reads it even when dead
+        )
+
         def poll(self) -> int:
             return 71  # the xcodebuild process exited immediately — never bound its port
 
@@ -1300,6 +1319,29 @@ def test_a_device_that_cannot_be_repaired_fails_the_run() -> None:
             clock=lambda: 0.0,
         )
     assert len(spawns) == 1  # the second attempt was never spawned
+
+
+def test_diagnostics_survive_when_the_device_cannot_be_repaired() -> None:
+    # A device fault must not swallow what got the run there: attempt 1's classified reason (the
+    # operator's only signal for *why* the runner never answered, BE-0319 unit 2) would otherwise
+    # vanish behind the bare DeviceError `recover` raises.
+    spawns: list[int] = []
+
+    def recover(_f: _AttemptFailure) -> _Recovery | None:
+        raise simctl.DeviceError("no iPhone device type is available to replace it")
+
+    with pytest.raises(simctl.DeviceError) as excinfo:
+        _spawn_cold_with_retry(
+            _failing_spawn(spawns),
+            timeout=300.0,
+            recover=recover,
+            poll=0.0,
+            sleep=lambda _s: None,
+            clock=lambda: 0.0,
+        )
+    message = str(excinfo.value)
+    assert "attempt 1/2" in message  # the classified failure that led to the unrepairable device
+    assert "recovery after attempt 1 failed: no iPhone device type" in message
 
 
 # --- the ladder itself: which rung a classified failure picks, against a fake simctl --- #
