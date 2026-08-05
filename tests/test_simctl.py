@@ -182,7 +182,10 @@ def test_device_type_of_reads_the_unfiltered_listing() -> None:
         calls.append(args)
         return payload
 
-    assert simctl.device_type_of("AAA", run=run) == "com.apple.x.iPhone-17-Pro"
+    assert simctl.device_type_of("AAA", run=run) == (
+        "com.apple.x.iPhone-17-Pro",
+        "com.apple.CoreSimulator.SimRuntime.iOS-26-0",
+    )
     assert calls == [simctl.list_all_devices_cmd()]
     assert simctl.device_type_of("BBB", run=run) is None  # listed, but carries no type
     assert simctl.device_type_of("CCC", run=run) is None
@@ -230,6 +233,50 @@ def test_create_device_returns_the_new_udid() -> None:
 
     assert simctl.create_device("com.apple.x.iPhone-17", run=run) == "AAAA-BBBB"
     assert calls == [simctl.create_cmd("bajutsu-recovered", "com.apple.x.iPhone-17")]
+
+
+def test_create_device_pins_the_given_runtime() -> None:
+    calls: list[list[str]] = []
+
+    def run(args: list[str], e: object = None) -> str:
+        calls.append(args)
+        return "AAAA-BBBB\n"
+
+    udid = simctl.create_device(
+        "com.apple.x.iPhone-17", run=run, runtime="com.apple.CoreSimulator.SimRuntime.iOS-26-0"
+    )
+    assert udid == "AAAA-BBBB"
+    assert calls == [
+        simctl.create_cmd(
+            "bajutsu-recovered",
+            "com.apple.x.iPhone-17",
+            "com.apple.CoreSimulator.SimRuntime.iOS-26-0",
+        )
+    ]
+
+
+def test_create_device_falls_back_when_the_pinned_runtime_is_gone() -> None:
+    calls: list[list[str]] = []
+
+    def run(args: list[str], e: object = None) -> str:
+        calls.append(args)
+        if len(calls) == 1:
+            raise subprocess.CalledProcessError(1, args, stderr="Invalid runtime")
+        return "AAAA-BBBB\n"
+
+    udid = simctl.create_device(
+        "com.apple.x.iPhone-17", run=run, runtime="com.apple.CoreSimulator.SimRuntime.iOS-19-0"
+    )
+    assert udid == "AAAA-BBBB"
+    # Falls back to an unpinned create rather than failing the run over a dropped runtime.
+    assert calls == [
+        simctl.create_cmd(
+            "bajutsu-recovered",
+            "com.apple.x.iPhone-17",
+            "com.apple.CoreSimulator.SimRuntime.iOS-19-0",
+        ),
+        simctl.create_cmd("bajutsu-recovered", "com.apple.x.iPhone-17"),
+    ]
 
 
 def test_create_device_fails_loudly_when_no_runtime_remains() -> None:

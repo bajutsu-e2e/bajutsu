@@ -162,7 +162,7 @@ classification in unit 1, unit 4 on units 2 and 3, and unit 5 on unit 4.
    device id: the per-device network collector, the warm-runner cache, the evidence sink's `simctl`
    captures, the result's device attribution, and the free-device queue. A replacement the pool did
    not hear about would leave every one of them naming a device that no longer exists. Add one
-   predicate to the environment protocol — the id the environment moved to, or nothing — which every
+   query to the environment protocol — the id the environment moved to, or nothing — which every
    other platform answers with nothing, and have the pool re-key what it holds after the bring-up
    returns. The vanished device is
    never freed again; the replacement takes its place, which is what quarantines the dead one. The

@@ -14,6 +14,7 @@ import plistlib
 import re
 import signal
 import subprocess
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -1518,7 +1519,7 @@ def test_an_app_launch_timeout_reboots_and_re_prepares_the_device() -> None:
     )
     assert recovery is not None and recovery.fresh_budget == _runner_startup_timeout()
     assert _verb_seq(calls)[:5] == ["list", "shutdown", "boot", "bootstatus", "boot"]
-    assert "rebooted and re-prepared UDID" in recovery.note
+    assert "rebooted UDID" in recovery.note
 
 
 def test_a_vanished_device_is_replaced_and_reported_to_the_pool() -> None:
@@ -1555,6 +1556,9 @@ def test_a_replacement_clones_the_type_captured_while_the_device_was_healthy(
     env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
     assert simctl.list_all_devices_cmd() in simctl_calls
     assert env._device_type_id == "com.apple.x.iPhone-17-Pro"
+    # The runtime comes from the same listing, for free, so the replacement can clone the OS version
+    # too, not just the model.
+    assert env._device_runtime_id == "com.apple.CoreSimulator.SimRuntime.iOS-26-0"
 
     # With a type already captured, the replacement clones it and never consults `list devicetypes`.
     calls, replace_run = _ladder_run([])
@@ -1569,7 +1573,11 @@ def test_a_replacement_clones_the_type_captured_while_the_device_was_healthy(
     # The name leads with the model (the report's device row and `serve`'s `iphone`/`ipad` capability
     # token both read it as one) and carries the replaced udid so recoveries stay tellable apart.
     assert (
-        simctl.create_cmd("iPhone 17 Pro (bajutsu-recovered-UDID)", "com.apple.x.iPhone-17-Pro")
+        simctl.create_cmd(
+            "iPhone 17 Pro (bajutsu-recovered-UDID)",
+            "com.apple.x.iPhone-17-Pro",
+            "com.apple.CoreSimulator.SimRuntime.iOS-26-0",
+        )
         in calls
     )
     assert not any(c[2:4] == ["list", "devicetypes"] for c in calls)
@@ -1667,6 +1675,36 @@ def test_recovery_timeout_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
     assert _recovery_timeout() == 42.0
     monkeypatch.setenv("BAJUTSU_XCUITEST_RECOVERY_TIMEOUT", "not-a-number")
     assert _recovery_timeout() == _RECOVERY_TIMEOUT  # an unparseable override keeps the default
+
+
+def test_the_recovery_bound_excludes_the_unbounded_reprep(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A slow-but-successful re-prep (the erase/locale-pin/install cycle `_finish_repair` runs) must
+    # not fail a run whose device demonstrably came back: `_check_recovery_budget` times only the
+    # repair proper — the shutdown/boot/bootstatus this rung runs before handing off to it.
+    monkeypatch.setenv("BAJUTSU_XCUITEST_RECOVERY_TIMEOUT", "5")
+    clock = {"t": 0.0}
+    boots_seen = {"n": 0}
+    _calls, base_run = _ladder_run(["UDID"])
+
+    def run(argv: list[str], env: object = None) -> str:
+        out = base_run(argv, env)
+        if argv[2:3] == ["boot"]:
+            boots_seen["n"] += 1
+            if boots_seen["n"] == 2:  # the boot inside _finish_repair, not the repair itself
+                clock["t"] += 1000.0  # far past the 5s bound, were it ever counted here
+        return out
+
+    monkeypatch.setattr(time, "monotonic", lambda: clock["t"])
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    recovery = env._recover_between_attempts(
+        _AttemptFailure("run-ended", "the xctest run ended after the app launch timed out"),
+        _eff_for_ladder(),
+        Preconditions(),
+        None,
+        ceiling=_COLD,
+    )
+    assert recovery is not None and recovery.fresh_budget == _runner_startup_timeout()
+    assert boots_seen["n"] == 2  # confirms _finish_repair actually ran rather than being skipped
 
 
 def test_a_rebooted_device_keeps_the_ceiling_its_spawn_started_on() -> None:

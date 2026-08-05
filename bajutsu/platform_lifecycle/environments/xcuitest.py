@@ -427,8 +427,10 @@ def _spawn_cold_with_retry(
     - `None` reports no recovery at all (`_no_recovery`, for a real device or a caller that opts out),
       which keeps the shared budget and adds no note.
 
-    Worst-case wall time is therefore `attempts` ceilings plus whatever `recover` spends, which it
-    bounds itself — the ios-e2e lane's headroom is set against that (see the workflow's env block).
+    Worst-case wall time is therefore `attempts` ceilings plus whatever `recover` spends repairing the
+    device, which `_recovery_timeout()` bounds — plus, when a repair earns a fresh budget, the same
+    unbounded re-prep the first cold bring-up already pays before this loop even starts. The ios-e2e
+    lane's headroom is set against that (see the workflow's env block).
     """
     from bajutsu.drivers.xcuitest import XcuitestChannelError
 
@@ -548,9 +550,10 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # (`_terminate_app_under_test`). None until the first spawn, and on a real device, where
         # simctl does not apply.
         self._bundle_id: str | None = None
-        # This device's `deviceTypeIdentifier`, captured while it is healthy so a replacement can be
-        # cloned from it after it vanishes (`_replace_vanished_device`).
+        # This device's `deviceTypeIdentifier` and runtime identifier, captured while it is healthy
+        # so a replacement can be cloned from it after it vanishes (`_replace_vanished_device`).
         self._device_type_id: str | None = None
+        self._device_runtime_id: str | None = None
         # The udid this environment started on, once a vanished device forced a replacement — the flag
         # `replaced_device()` reports the swap by, so the pool can re-key what it holds per device.
         self._replaced_from: str | None = None
@@ -691,7 +694,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
     ) -> _Recovery:
         """Repair the Simulator a failed cold attempt leaves behind, so the retry spawns onto a live device.
 
-        Times the whole ladder and checks it against `_recovery_timeout()` once the rung returns — a
+        Times the repair proper and checks it against `_recovery_timeout()` once the rung returns — a
         bound on a *slow* recovery, not a hard ceiling: every rung's `simctl` call goes through
         `self._run`, which carries no subprocess-level timeout, so a rung whose call itself wedges (the
         exact CoreSimulator degradation this ladder exists to recover from) is never interrupted, and
@@ -700,14 +703,24 @@ class XcuitestEnvironment(_DeviceEnvironment):
         subprocess, so a host slow enough to blow the bound merely answering `simctl list` is a host the
         run must give up on, whatever the rung then decided.
 
+        Deliberately excludes the re-prep (`_finish_repair`) that a reboot or replacement earns: that
+        prep is the same erase/locale-pin/install work the first bring-up already runs with no bound
+        of its own, so a device that demonstrably came back should not fail the run over how long its
+        reinstall took.
+
         Raises:
-            DeviceError: if the device cannot be repaired — no replacement can be created, or the ladder
+            DeviceError: if the device cannot be repaired — no replacement can be created, or the repair
                 overran `_recovery_timeout()`. A device that will not come back is a device fault, not a
                 flaky spawn, so it fails the run rather than funding another doomed attempt.
         """
         started = time.monotonic()
         recovery = self._recovery_rung(failure, eff, pre, permissions, ceiling=ceiling)
         self._check_recovery_budget(started, recovery.note)
+        if recovery.fresh_budget is not None:
+            # Only a reboot or a replacement earns a fresh budget, and both leave the device
+            # freshly booted but not yet re-prepared — the state the caller's own cold spawn
+            # is about to run `xcodebuild` against.
+            self._finish_repair(eff, pre, permissions)
         return recovery
 
     def _recovery_rung(
@@ -727,13 +740,13 @@ class XcuitestEnvironment(_DeviceEnvironment):
         running is all there is to clean up; an app-launch timeout or a wait that reached its ceiling
         says the device stopped honouring automation, which only a reboot clears.
 
-        Which fresh ceiling a repair earns follows what the repair actually restored. A **reboot** ends
-        with the device booted (`bootstatus` waited for it) and the app reinstalled, which is precisely
-        the state the caller's own `ceiling` assumes, so it hands that same ceiling back — on a lane
-        that opted into a tighter respawn ceiling, a rebooted respawn keeps it rather than inflating to
-        the cold budget. A **replacement** is a device that has never run anything, so its first
-        `xcodebuild test-without-building` is a genuine first bring-up and takes the full cold ceiling
-        however tight the failing spawn's was.
+        Which fresh ceiling a repair earns follows what the repair will restore. A **reboot** ends with
+        the device booted (`bootstatus` waited for it) and `_finish_repair` about to reinstall onto it,
+        which is precisely the state the caller's own `ceiling` assumes, so it hands that same ceiling
+        back — on a lane that opted into a tighter respawn ceiling, a rebooted respawn keeps it rather
+        than inflating to the cold budget. A **replacement** is a device that has never run anything, so
+        its first `xcodebuild test-without-building` is a genuine first bring-up and takes the full cold
+        ceiling however tight the failing spawn's was.
 
         Returns the note and fresh readiness ceiling `_spawn_cold_with_retry` folds into its diagnostics
         and budget; a rung that changed nothing about the device carries a note and no fresh budget.
@@ -772,28 +785,42 @@ class XcuitestEnvironment(_DeviceEnvironment):
     def _reboot_device(
         self, eff: Effective, pre: Preconditions, permissions: Mapping[str, str] | None
     ) -> str:
-        """Shut the Simulator down, boot it back up, and re-establish the state a scenario needs."""
+        """Shut the Simulator down and boot it back up. `_finish_repair` re-establishes scenario state."""
         e = simctl.Env(self._udid, run=self._run)
         try:
             e.shutdown()
             e.boot()
             self._run(simctl.bootstatus_cmd(self._udid), None)
-            self._prepare_simulator(eff, pre, permissions, cold=True)
         except subprocess.CalledProcessError as exc:
             raise simctl.device_error(exc) from exc
         _logger.warning("rebooted Simulator %s after a failed cold runner spawn", self._udid)
-        return f"rebooted and re-prepared {self._udid}"
+        return f"rebooted {self._udid}"
+
+    def _finish_repair(
+        self, eff: Effective, pre: Preconditions, permissions: Mapping[str, str] | None
+    ) -> None:
+        """Re-prepare the device a reboot or replacement just brought back, outside the recovery bound.
+
+        The erase / locale-pin / install cycle this runs is exactly what the first cold bring-up
+        already pays with no timeout of its own (`_spawn_cold`), so holding the repaired device to
+        the same policy here — rather than folding it into `_check_recovery_budget` — keeps a device
+        that genuinely recovered from failing the run over a slow but successful reinstall.
+        """
+        try:
+            self._prepare_simulator(eff, pre, permissions, cold=True)
+        except subprocess.CalledProcessError as exc:
+            raise simctl.device_error(exc) from exc
 
     def _replace_vanished_device(
         self, eff: Effective, pre: Preconditions, permissions: Mapping[str, str] | None
     ) -> str:
-        """Create a Simulator to take the place of one simctl no longer lists, and prepare it.
+        """Create a Simulator to take the place of one simctl no longer lists. `_finish_repair` preps it.
 
         Observed on CI as an `xcodebuild` exiting with "Unable to find a device matching the provided
         destination specifier" while the host's whole iOS device set had gone. Retrying onto a device
         that no longer exists cannot work, so the run continues on a replacement — and `bootstatus`
-        runs before the prep so a fresh device's first boot is paid here rather than inside the next
-        attempt's readiness ceiling.
+        runs here so a fresh device's first boot is paid before `_finish_repair`'s prep rather than
+        inside the next attempt's readiness ceiling.
 
         The replacement **outlives the run**: nothing here or in the pool's teardown deletes it. That is
         deliberate on two counts. It is a healthy device a later run can simply lease, where deleting it
@@ -821,22 +848,26 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # class token out of it by substring. The `bajutsu-recovered-<udid>` suffix is what lets an
         # operator reading `simctl list` afterwards tell which recovery minted which device.
         name = f"{simctl.device_type_label(device_type)} (bajutsu-recovered-{old})"
-        replacement = simctl.create_device(device_type, self._run, name=name)
+        # Pinning the vanished device's own runtime keeps the replacement on the same iOS version a
+        # scenario was written against; `create_device` retries unpinned if that runtime is itself
+        # gone, so this only trades away version fidelity in the case it has to.
+        replacement = simctl.create_device(
+            device_type, self._run, name=name, runtime=self._device_runtime_id
+        )
         self._udid = replacement
         self._replaced_from = old
         self._pinned_locale = None  # a fresh device: nothing has pinned its SpringBoard yet
         self._device_type_id = device_type
         try:
             self._run(simctl.bootstatus_cmd(replacement), None)
-            self._prepare_simulator(eff, pre, permissions, cold=True)
         except subprocess.CalledProcessError as exc:
             raise simctl.device_error(exc) from exc
         _logger.warning(
-            "Simulator %s vanished from CoreSimulator; created and prepared replacement %s",
+            "Simulator %s vanished from CoreSimulator; created replacement %s",
             old,
             replacement,
         )
-        return f"{old} vanished; created and prepared replacement {replacement} ({device_type})"
+        return f"{old} vanished; created replacement {replacement} ({device_type})"
 
     def _replacement_device_type(self, eff: Effective) -> str | None:
         """The device type a replacement is created from, or None when no matching type is available.
@@ -998,9 +1029,10 @@ class XcuitestEnvironment(_DeviceEnvironment):
                     e.erase()
                 e.boot()
                 # Remember what kind of device this is while it is still listed: a replacement is
-                # cloned from this type, and by the time one is needed the device is gone.
+                # cloned from this type and runtime, and by the time one is needed the device is gone.
                 if self._device_type_id is None:
-                    self._device_type_id = simctl.device_type_of(self._udid, self._run)
+                    resolved = simctl.device_type_of(self._udid, self._run)
+                    self._device_type_id, self._device_runtime_id = resolved or (None, None)
                 self._pin_system_locale(e, pre.resolved_locale(eff.locale))
             if ios.app_path:
                 if not Path(ios.app_path).exists():

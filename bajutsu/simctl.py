@@ -320,19 +320,24 @@ def list_devicetypes_cmd() -> list[str]:
     return ["xcrun", "simctl", "list", "devicetypes", "-j"]
 
 
-def create_cmd(name: str, device_type: str) -> list[str]:
-    """Create a device of `device_type`, letting simctl pair the newest compatible runtime.
+def create_cmd(name: str, device_type: str, runtime: str | None = None) -> list[str]:
+    """Create a device of `device_type`, pinned to `runtime` when given.
 
-    Naming no runtime is deliberate: pinning one that the host has since dropped is what makes a
-    replacement fail on the very host degradation it exists to recover from.
+    `runtime=None` lets simctl pair the newest compatible runtime instead — the fallback
+    `create_device` retries with when a pinned create fails, since pinning a runtime the host has
+    since dropped is what would make a replacement fail on the very host degradation it exists to
+    recover from.
     """
-    return [
+    cmd = [
         "xcrun",
         "simctl",
         "create",
         validated_device_arg(name),
         validated_device_arg(device_type),
     ]
+    if runtime is not None:
+        cmd.append(validated_device_arg(runtime))
+    return cmd
 
 
 def bootstatus_cmd(udid: str) -> list[str]:
@@ -447,21 +452,23 @@ def device_available(udid: str, run: RunFn = _real_run) -> bool | None:
     )
 
 
-def device_type_of(udid: str, run: RunFn = _real_run) -> str | None:
-    """The device's `deviceTypeIdentifier` (None when unresolvable), so a replacement can clone it.
+def device_type_of(udid: str, run: RunFn = _real_run) -> tuple[str, str] | None:
+    """The device's (`deviceTypeIdentifier`, runtime identifier), so a replacement can clone both.
 
-    Reads the unfiltered listing: this is captured while the device is healthy, but a device that
-    has become *unavailable* rather than deleted still answers here, which keeps the clone possible
-    in the case that matters.
+    None when unresolvable. Reads the unfiltered listing: this is captured while the device is
+    healthy, but a device that has become *unavailable* rather than deleted still answers here,
+    which keeps the clone possible in the case that matters. The runtime comes from
+    `data["devices"]`'s own keys, so it costs no extra simctl call beyond the one already needed
+    for the device type.
     """
     try:
         data = json.loads(run(list_all_devices_cmd(), None))
     except (subprocess.CalledProcessError, json.JSONDecodeError, OSError, ValueError):
         return None
-    for devices in (data.get("devices") or {}).values():
+    for runtime, devices in (data.get("devices") or {}).items():
         for dev in devices:
             if dev.get("udid") == udid and dev.get("deviceTypeIdentifier"):
-                return str(dev["deviceTypeIdentifier"])
+                return str(dev["deviceTypeIdentifier"]), str(runtime)
     return None
 
 
@@ -501,18 +508,33 @@ def newest_iphone_device_type(run: RunFn = _real_run) -> str | None:
 
 
 def create_device(
-    device_type: str, run: RunFn = _real_run, *, name: str = "bajutsu-recovered"
+    device_type: str,
+    run: RunFn = _real_run,
+    *,
+    name: str = "bajutsu-recovered",
+    runtime: str | None = None,
 ) -> str:
     """Create a Simulator of `device_type` and return its udid.
 
+    `runtime`, when given, pins the replacement to the vanished device's own iOS version instead of
+    whichever one simctl would pick. If the pinned create fails, retries once unpinned — the named
+    runtime may be exactly what the host degradation dropped, and any compatible runtime beats
+    failing the run outright over one that no longer exists.
+
     Raises:
-        DeviceError: if simctl could not create the device — chiefly a host whose iOS runtimes have
-            gone with the device we are replacing, where no replacement is possible at all.
+        DeviceError: if simctl could not create the device even unpinned — chiefly a host whose iOS
+            runtimes have gone with the device we are replacing, where no replacement is possible at
+            all.
     """
     try:
-        out = run(create_cmd(name, device_type), None)
+        out = run(create_cmd(name, device_type, runtime), None)
     except subprocess.CalledProcessError as exc:
-        raise device_error(exc) from exc
+        if runtime is None:
+            raise device_error(exc) from exc
+        try:
+            out = run(create_cmd(name, device_type), None)
+        except subprocess.CalledProcessError as exc2:
+            raise device_error(exc2) from exc2
     except OSError as exc:
         raise DeviceError(f"could not create a replacement Simulator: {exc}") from exc
     udid = out.strip().splitlines()[-1].strip() if out.strip() else ""
