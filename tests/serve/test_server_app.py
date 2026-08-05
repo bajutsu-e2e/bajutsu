@@ -501,7 +501,7 @@ def _rbac_state(
         auth=srv.SessionManager(
             token="t",  # a token makes the gate enforce auth, so the OAuth session's role applies
             oauth=_FakeOAuth(login, teams=teams),
-            oauth_admin_teams=admin_teams or (),
+            oauth_admin_teams=tuple(admin_teams or ()),
         ),
         repository=SqlRepository(engine),
         popen=fake_popen([]),

@@ -365,14 +365,14 @@ OAuth を構成すると、アクセスは手作業の login リストではな�
 - **サインインと viewer ロール**は org メンバーシップに従います。構成済みの org のメンバー（明示の
   `members`、または `githubOrgs` に挙げた GitHub org の一員。[`orgs:`](configuration.md#orgorgsマルチテナントのサーバ-backend)
   を参照）だけがサインインでき、成功すると **viewer**（閲覧のみ）が付きます。どの org にも一致しない login は
-  拒否されるので、OAuth を使う構成では `orgs:` ブロックの宣言が必須です。ただし、設定した admin Team の
+  拒否されるので、OAuth を使う構成では `orgs:` ブロックの宣言が必須です。ただし、構成済みの admin Team の
   メンバーだけは例外で、このゲートを直接通過します（下の **admin** を参照）。
 - **editor** は org の `editorTeam` に従います。その 1 つのフラットな GitHub Team の直接メンバーが、run、record、
   scenario の編集をできます。
 - **admin** はサーバ全体で 1 つ以上の GitHub Team、`BAJUTSU_OAUTH_ADMIN_TEAMS`（カンマ区切りのリスト。各要素は
   `"<github-org>/<team-slug>"` の形）に従います。そのメンバーはサーバ設定（config、API キー、provider）も変更
   できます。admin はデプロイ全体で 1 段のロールなので、どの org を越えても信頼できるメンバーの Team を指定
-  します。上の viewer・editor とは異なり、設定した admin Team のいずれかのメンバーは、サインインのゲートを
+  します。上の viewer・editor とは異なり、構成済みの admin Team のいずれかのメンバーは、サインインのゲートを
   直接通過します。admin Team が属する GitHub organization を、どこかの org の `githubOrgs` に含める必要は
   ありません。そのため、`orgs:` ブロックが壊れている、あるいは存在しない状態でも、admin は常にサインイン
   して、サーバの向き先を修正済みの config へ張り替えられます。この性質により、`BAJUTSU_OAUTH_ADMIN_TEAMS`
