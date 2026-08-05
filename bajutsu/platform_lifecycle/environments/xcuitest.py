@@ -833,9 +833,19 @@ class XcuitestEnvironment(_DeviceEnvironment):
 
         Raises:
             DeviceError: if no replacement can be created — chiefly a host that lost its iOS runtimes
-                along with the device, where there is nothing left to run on.
+                along with the device, where there is nothing left to run on — or if the target
+                configures no `appPath`, since a blank replacement would have no app to install.
         """
         old = self._udid
+        # A replacement is a blank device, so without an `appPath` to install onto it the retry has
+        # nothing to launch: say so here rather than spending the create, the boot and a full cold
+        # ceiling proving it.
+        if require_ios(eff).app_path is None:
+            raise simctl.DeviceError(
+                f"Simulator {old} is gone and this target configures no appPath, so a replacement "
+                "device would have no app to launch; set appPath so the recovery can install it, "
+                "or bring a fresh Simulator up with the app installed and re-run"
+            )
         device_type = self._replacement_device_type(eff)
         if device_type is None:
             raise simctl.DeviceError(

@@ -137,10 +137,19 @@ env:
   # full 300s. 180s covers the slowest rung (creating a Simulator and waiting out its first boot) —
   # checked once the rung returns, not preemptively (a rung's `simctl` call carries no subprocess-level
   # timeout of its own, so a genuinely wedged CoreSimulator falls through to this lane's own
-  # `timeout-minutes` instead) — keeping the worst case bounded when every rung does return in time:
-  # 300s + 180s + 300s = 13min for a failing *first* bring-up, 90s + 180s + 90s = 6min for a rebooted
-  # respawn, and 90s + 180s + 300s ≈ 9.5min for the rarest case, a respawn whose device had vanished.
-  # Only a *failing* spawn pays recovery at all.
+  # `timeout-minutes` instead). The bound stops at the repair itself: the re-prep that follows
+  # (erase/locale-pin/install, `_finish_repair` in the same file) runs unbounded, matching the policy
+  # the first cold bring-up already gets, so it is in neither the 180s above nor either readiness
+  # ceiling below. On a *replacement* specifically — whose `_pinned_locale` always resets — that re-prep
+  # pays a locale-pin reboot cycle on top of the boot already waited out, plus the install: roughly
+  # 100-150s more, going by the ~80s Simulator boot the `golden` job below prices. Keeping the worst
+  # case bounded when every rung does return in time: 300s + 180s + 300s ≈ 13min (plus the unbounded
+  # re-prep above, so ~15min) for a failing *first* bring-up, 90s + 180s + 90s = 6min for a rebooted
+  # respawn (a reboot's re-prep only reinstalls — its `_pinned_locale` was never reset, so it skips
+  # the locale-pin reboot cycle a replacement pays — small enough to leave uncounted here), and
+  # 90s + 180s + 300s ≈ 9.5min (also plus the re-prep, since a vanished device is always a replacement,
+  # so ~11-12min) for the rarest case, a respawn whose device had vanished. Only a *failing* spawn pays
+  # recovery at all.
   #
   # A caveat the arithmetic above does not cover: this recovery happens inside one lease's bring-up, so
   # BAJUTSU_CRASH_RECOVERY_BUDGET (below) cannot cut it short, and a job whose scenarios are *also*
@@ -362,9 +371,10 @@ jobs:
     # window rather than paying BAJUTSU_CRASH_RETRIES × the 300s startup ceiling and hanging to this cap.
     # A cold spawn that has to repair its device costs at most one recovery plus a second ceiling on top
     # of its own (BAJUTSU_XCUITEST_RECOVERY_TIMEOUT, above). The observed signature — an app-launch
-    # timeout ending attempt 1 in ~40s — costs ~40s + 180s + 300s ≈ 9min and fits; the worst case the
-    # arithmetic block allows (a first bring-up that burns the full 300s: 13min) puts this job at
-    # ~26min and would not, so it is this cap itself that catches that one.
+    # timeout ending attempt 1 in ~40s, repaired by a reboot whose re-prep is cheap enough to leave
+    # uncounted — costs ~40s + 180s + 300s ≈ 9min and fits; the worst case the arithmetic block allows
+    # (a first bring-up that burns the full 300s, repaired by a replacement and its re-prep: ~15min)
+    # puts this job at ~28min and would not, so it is this cap itself that catches that one.
     timeout-minutes: 25
     # BE-0231 unit 4: a cold-boot CI Simulator sometimes renders the first Stable row later than a
     # scenario's 10s first-wait allows — even with unit 2's `readyWhen` gate (which waits up to
@@ -488,9 +498,11 @@ jobs:
     # catches a real hang with headroom rather than reddening a healthy run. Of those startups only the
     # first carries the 300s cold ceiling (the rest take the 90s respawn one), and only a *failing*
     # spawn adds a device recovery plus a second ceiling. The observed signature — an app-launch
-    # timeout ending attempt 1 in ~40s — costs ~40s + 180s + 300s ≈ 9min and fits; the worst case the
-    # arithmetic block allows (a first bring-up that burns the full 300s: 13min) would not, so it is
-    # the lane's own hang backstop that catches it (BAJUTSU_XCUITEST_RECOVERY_TIMEOUT, above).
+    # timeout ending attempt 1 in ~40s, repaired by a reboot whose re-prep is cheap enough to leave
+    # uncounted — costs ~40s + 180s + 300s ≈ 9min and fits; the worst case the arithmetic block allows
+    # (a first bring-up that burns the full 300s, repaired by a replacement and its re-prep: ~15min)
+    # would not, so it is the lane's own hang backstop that catches it
+    # (BAJUTSU_XCUITEST_RECOVERY_TIMEOUT, above).
     timeout-minutes: 30
     # Raise the wait floor so a cold-boot Simulator has budget to render the first Stable row before
     # each scenario's own 10s first-wait — the same knob the `run` job above and the Android lane use.

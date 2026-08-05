@@ -279,6 +279,24 @@ def test_create_device_falls_back_when_the_pinned_runtime_is_gone() -> None:
     ]
 
 
+def test_create_device_wraps_an_oserror_from_the_unpinned_retry() -> None:
+    # The pinned create's CalledProcessError handler owns the fallback call, so its own except
+    # OSError does not apply there — the fallback needs (and had been missing) its own.
+    calls: list[list[str]] = []
+
+    def run(args: list[str], e: object = None) -> str:
+        calls.append(args)
+        if len(calls) == 1:
+            raise subprocess.CalledProcessError(1, args, stderr="Invalid runtime")
+        raise OSError("cannot fork")
+
+    with pytest.raises(simctl.DeviceError, match="cannot fork"):
+        simctl.create_device(
+            "com.apple.x.iPhone-17", run=run, runtime="com.apple.CoreSimulator.SimRuntime.iOS-19-0"
+        )
+    assert len(calls) == 2
+
+
 def test_create_device_fails_loudly_when_no_runtime_remains() -> None:
     def boom(args: list[str], e: object = None) -> str:
         raise subprocess.CalledProcessError(

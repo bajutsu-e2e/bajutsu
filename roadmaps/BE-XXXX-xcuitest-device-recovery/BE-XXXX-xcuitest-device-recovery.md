@@ -123,9 +123,15 @@ classification in unit 1, unit 4 on units 2 and 3, and unit 5 on unit 4.
      preparation on it — installing the app, applying permission grants, and pinning the system
      locale. The replacement's device type is cloned from the vanished device's own, captured at the
      first preparation while the device was still listed — by the time a replacement is needed the
-     device is no longer there to ask. Two fallbacks follow it: the configured device model, then
-     whichever iPhone this host's Xcode ships, since a configured model can outlive the Xcode that
-     had it.
+     device is no longer there to ask, and its runtime is cloned with it so the replacement stays
+     on the iOS version the scenario was written against (falling back to whichever runtime simctl
+     pairs, when that one is gone too). Two fallbacks follow the type: the configured device model,
+     then — only for an iPhone target — whichever iPhone this host's Xcode ships, since a
+     configured model can outlive the Xcode that had it. That last fallback is scoped to an iPhone
+     target because it is not scoped to a device *class*: `eff.device` matches simctl's device-type
+     name exactly and an iPad's name carries parentheses, so an exact-match miss is ordinary —
+     substituting an iPhone for a missed iPad would finish the run on a layout the scenario was
+     never written against, so an iPad target with no matching type fails loudly instead.
    - **The probe itself failed.** Change nothing. A host too sick to list its devices must not have a
      device replaced on that evidence, which is why the probe is three-valued (present, absent,
      unknown) rather than a boolean.

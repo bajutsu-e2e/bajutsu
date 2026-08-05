@@ -228,9 +228,12 @@ def test_appium_lease_endpoint_routes_to_the_live_environment() -> None:
 # without a Simulator.
 
 
-def _sim_eff(*, test_runner: str) -> Effective:
-    cfg = f"targets:\n  s:\n    bundleId: com.x\n    xcuitest:\n      testRunner: {test_runner}\n"
-    return resolve(load_config(cfg), "s")
+def _sim_eff(*, test_runner: str, app_path: str | None = None) -> Effective:
+    lines = ["targets:", "  s:", "    bundleId: com.x"]
+    if app_path is not None:
+        lines.append(f"    appPath: {app_path}")
+    lines += ["    xcuitest:", f"      testRunner: {test_runner}"]
+    return resolve(load_config("\n".join(lines) + "\n"), "s")
 
 
 class _FakeProc:
@@ -1432,9 +1435,10 @@ def test_diagnostics_survive_when_the_device_cannot_be_repaired() -> None:
 _COLD = _RUNNER_STARTUP_TIMEOUT
 
 
-def _eff_for_ladder() -> Effective:
-    # No appPath, so the re-prepare exercises boot / locale / permissions without needing a built app.
-    return _sim_eff(test_runner="/nonexistent.xctestrun")
+def _eff_for_ladder(*, app_path: str | None = None) -> Effective:
+    # No appPath by default, so the re-prepare exercises boot / locale / permissions without needing
+    # a built app; the replace-rung tests that must get past the appPath guard pass one.
+    return _sim_eff(test_runner="/nonexistent.xctestrun", app_path=app_path)
 
 
 def _device_json(udids: list[str], *, device_type: str = "com.apple.x.iPhone-17-Pro") -> str:
@@ -1522,14 +1526,16 @@ def test_an_app_launch_timeout_reboots_and_re_prepares_the_device() -> None:
     assert "rebooted UDID" in recovery.note
 
 
-def test_a_vanished_device_is_replaced_and_reported_to_the_pool() -> None:
+def test_a_vanished_device_is_replaced_and_reported_to_the_pool(tmp_path: Path) -> None:
     # The exit-70 case: simctl no longer lists the device, so retrying onto it cannot work. The run
     # continues on a replacement, and `replaced_device()` is how the pool learns to re-key by it.
+    app = tmp_path / "App.app"
+    app.mkdir()
     calls, run = _ladder_run([])  # the leased device is gone from the listing
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     recovery = env._recover_between_attempts(
         _AttemptFailure("run-ended", "the xctest run ended"),
-        _eff_for_ladder(),
+        _eff_for_ladder(app_path=str(app)),
         Preconditions(),
         None,
         ceiling=_COLD,
@@ -1561,11 +1567,13 @@ def test_a_replacement_clones_the_type_captured_while_the_device_was_healthy(
     assert env._device_runtime_id == "com.apple.CoreSimulator.SimRuntime.iOS-26-0"
 
     # With a type already captured, the replacement clones it and never consults `list devicetypes`.
+    app = tmp_path / "App.app"
+    app.mkdir()
     calls, replace_run = _ladder_run([])
     env._run = replace_run  # type: ignore[assignment]
     env._recover_between_attempts(
         _AttemptFailure("run-ended", "ended"),
-        _eff_for_ladder(),
+        _eff_for_ladder(app_path=str(app)),
         Preconditions(),
         None,
         ceiling=_COLD,
@@ -1604,10 +1612,13 @@ def test_a_probe_that_could_not_run_changes_nothing() -> None:
     assert "could not probe" in recovery.note
 
 
-def test_a_vanished_device_with_no_replaceable_type_fails_loudly() -> None:
+def test_a_vanished_device_with_no_replaceable_type_fails_loudly(tmp_path: Path) -> None:
     # A host that lost its runtimes along with the device: nothing is left to run on, so this is a
     # device fault rather than another doomed attempt.
     import json
+
+    app = tmp_path / "App.app"
+    app.mkdir()
 
     def run(argv: list[str], env: object = None) -> str:
         if argv[2:4] == ["list", "devicetypes"]:
@@ -1620,22 +1631,43 @@ def test_a_vanished_device_with_no_replaceable_type_fails_loudly() -> None:
     with pytest.raises(simctl.DeviceError, match="no device type matching iPhone 15 is available"):
         env._recover_between_attempts(
             _AttemptFailure("run-ended", "ended"),
-            _eff_for_ladder(),
+            _eff_for_ladder(app_path=str(app)),
             Preconditions(),
             None,
             ceiling=_COLD,
         )
 
 
-def test_an_ipad_target_is_never_replaced_with_an_iphone() -> None:
+def test_a_vanished_device_with_no_app_path_fails_loudly() -> None:
+    # A replacement is a blank device; without an appPath to install onto it, the retry would spawn
+    # onto a device with no app to launch. Fail before paying the create/boot/re-prep proving that.
+    calls, run = _ladder_run([])  # the leased device is gone from the listing
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    with pytest.raises(simctl.DeviceError, match="configures no appPath"):
+        env._recover_between_attempts(
+            _AttemptFailure("run-ended", "ended"),
+            _eff_for_ladder(),  # no appPath
+            Preconditions(),
+            None,
+            ceiling=_COLD,
+        )
+    assert not any(
+        c[2:3] == ["create"] for c in calls
+    )  # no device was minted for nothing to run on
+
+
+def test_an_ipad_target_is_never_replaced_with_an_iphone(tmp_path: Path) -> None:
     # "Any iPhone beats failing" only holds for an iPhone target. `device_type_identifier` matches
     # simctl's device-type name exactly, and iPad names carry parentheses (e.g. "iPad Pro
     # (12.9-inch) (6th generation)"), so an exact-match miss is ordinary rather than exotic —
     # substituting an iPhone for a missed iPad would finish the run on a layout the scenario was
     # never written against, silently. This must fail loudly instead.
+    app = tmp_path / "App.app"
+    app.mkdir()
     cfg = (
         'defaults:\n  device: "iPad Pro (12.9-inch) (6th generation)"\n'
-        "targets:\n  s:\n    bundleId: com.x\n    xcuitest:\n      testRunner: /nonexistent.xctestrun\n"
+        f"targets:\n  s:\n    bundleId: com.x\n    appPath: {app}\n"
+        "    xcuitest:\n      testRunner: /nonexistent.xctestrun\n"
     )
     ipad_eff = resolve(load_config(cfg), "s")
     calls, run = _ladder_run([])  # devicetypes lists only "iPhone 17 Pro" — never an iPad match
@@ -1723,14 +1755,16 @@ def test_a_rebooted_device_keeps_the_ceiling_its_spawn_started_on() -> None:
     assert recovery is not None and recovery.fresh_budget == 90.0
 
 
-def test_a_replacement_device_earns_the_full_cold_ceiling() -> None:
+def test_a_replacement_device_earns_the_full_cold_ceiling(tmp_path: Path) -> None:
     # A device that has never run anything is a genuine first bring-up, however tight the failing
     # spawn's ceiling was: its very first `xcodebuild test-without-building` pays the whole spin-up.
+    app = tmp_path / "App.app"
+    app.mkdir()
     _calls, run = _ladder_run([])  # the leased device is gone, so a replacement is created
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     recovery = env._recover_between_attempts(
         _AttemptFailure("run-ended", "ended"),
-        _eff_for_ladder(),
+        _eff_for_ladder(app_path=str(app)),
         Preconditions(),
         None,
         ceiling=90.0,
@@ -1747,18 +1781,20 @@ def test_a_replacement_device_earns_the_full_cold_ceiling() -> None:
     ],
 )
 def test_the_recovery_bound_covers_a_rung_that_changes_nothing(
-    monkeypatch: pytest.MonkeyPatch, present: list[str], kind: str
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, present: list[str], kind: str
 ) -> None:
     # The probe that opens the ladder is itself a subprocess, so a host slow enough to blow the bound
     # merely answering `simctl list` must fail the run whatever the rung then decided — otherwise the
     # "whole ladder is bounded" contract holds only on the paths that happen to repair something.
     monkeypatch.setenv("BAJUTSU_XCUITEST_RECOVERY_TIMEOUT", "0")
+    app = tmp_path / "App.app"
+    app.mkdir()
     _calls, run = _ladder_run(list(present))
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     with pytest.raises(simctl.DeviceError, match="recovery exceeded"):
         env._recover_between_attempts(
             _AttemptFailure(kind, "why"),  # type: ignore[arg-type]
-            _eff_for_ladder(),
+            _eff_for_ladder(app_path=str(app)),
             Preconditions(),
             None,
             ceiling=_COLD,
@@ -1782,13 +1818,15 @@ def test_an_unknown_probe_is_still_reported_within_the_bound() -> None:
     assert recovery.fresh_budget is None and "could not probe" in recovery.note
 
 
-def test_a_replacements_name_keeps_its_capability_token_and_report_row() -> None:
+def test_a_replacements_name_keeps_its_capability_token_and_report_row(tmp_path: Path) -> None:
     # Two consumers read a device's name as its human model, and a name of ours that dropped the model
     # would break both silently: `serve`'s capability inventory takes the `iphone` / `ipad` class token
     # out of it by substring (a missing token means the hosted router never leases the device for a job
     # that asked for `iphone`), and the report renders it as the device row.
     from bajutsu.serve.capabilities import _device_class_token
 
+    app = tmp_path / "App.app"
+    app.mkdir()
     # A udid longer than 8 characters, so a truncated suffix and the full one are distinguishable —
     # the point of the suffix is letting an operator match a "UDID-... vanished" log line against
     # `simctl list` afterwards, which an 8-character prefix cannot support.
@@ -1797,7 +1835,7 @@ def test_a_replacements_name_keeps_its_capability_token_and_report_row() -> None
     env = XcuitestEnvironment("xcuitest", old_udid, env_run=run)
     env._recover_between_attempts(
         _AttemptFailure("run-ended", "ended"),
-        _eff_for_ladder(),
+        _eff_for_ladder(app_path=str(app)),
         Preconditions(),
         None,
         ceiling=_COLD,

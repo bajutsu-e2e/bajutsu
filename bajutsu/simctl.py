@@ -535,6 +535,8 @@ def create_device(
             out = run(create_cmd(name, device_type), None)
         except subprocess.CalledProcessError as exc2:
             raise device_error(exc2) from exc2
+        except OSError as exc2:
+            raise DeviceError(f"could not create a replacement Simulator: {exc2}") from exc2
     except OSError as exc:
         raise DeviceError(f"could not create a replacement Simulator: {exc}") from exc
     udid = out.strip().splitlines()[-1].strip() if out.strip() else ""
