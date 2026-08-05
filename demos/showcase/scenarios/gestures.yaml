@@ -7,7 +7,7 @@
 # (they are absent from the accessibility tree until scrolled in), so the scenario scrolls
 # them into view first — each swipe is anchored on an element that stays visible as the form
 # scrolls up, and the condition wait stops once the target appears. Deliberately `swipe`, not
-# `scroll` (BE-0326): this file is one of the four `ui-test-coverage` compiles to a native
+# `scroll` (BE-0326): this file is one of the four scenarios `ui-test-coverage` compiles to a native
 # XCUITest and runs on-device (the required `codegen (xcuitest)` job), and XCUITest has no
 # scroll-to-element primitive, so `scroll` codegens to a labeled TODO rather than a real
 # gesture (bajutsu/codegen/xcuitest.py) — the compiled test would then wait on an unscrolled
