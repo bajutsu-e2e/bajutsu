@@ -111,7 +111,13 @@ def _fn_body(code: str, name: str, next_name: str) -> str:
     # The trailing "(" keeps the boundary exact: a bare prefix would also match a longer helper
     # that starts with the same characters.
     start = code.index(f"private fun {name}(")
-    body = code[start : code.index(f"private fun {next_name}(", start)].splitlines()
+    end = code.index("private fun ", start + 1)
+    # Fail by name if a helper is ever inserted between the two, rather than silently widening
+    # this slice to span it — which is exactly what this PR did to windowSummary and to launch.
+    assert code.startswith(f"private fun {next_name}(", end), (
+        f"{next_name} no longer directly follows {name}"
+    )
+    body = code[start:end].splitlines()
     # The next helper's own rationale block sits between the two definitions. Left in, prose about
     # that helper would satisfy an assertion about this one — the very thing the slice prevents.
     while body and (not body[-1].strip() or body[-1].lstrip().startswith("//")):
@@ -155,8 +161,9 @@ def test_a_wedged_window_list_is_kicked_rather_than_waited_out() -> None:
     # would spend the whole kick budget on the weak stimulus and abort before startActivity ever
     # runs — on the one device that most needs the strong one. launch()'s own retry loop already
     # reports this failure, naming the window list, if starting the activity does not help either.
-    assert "throw AssertionError(" not in body
-    assert "windowSummary()" in body
+    stripped = "\n".join(ln for ln in body.splitlines() if not ln.lstrip().startswith("//"))
+    assert "throw AssertionError(" not in stripped
+    assert "windowSummary()" in stripped
     # The read cannot throw past that log: getWindows() raises IllegalStateException when the
     # connection is not established, which is the fault being reported.
     assert "runCatching {" in _fn_body(code, "reportsWindows", "ensureWindowTracking")

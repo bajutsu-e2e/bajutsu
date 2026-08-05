@@ -470,7 +470,7 @@ class ComponentsUITest {
   activity does not help either.
 - **The last attempt does not kick once its wait fails**, because after it there is no intent left to
   re-issue and HOME would overwrite every piece of evidence the failure is about to collect. (The
-  pre-launch check in the second bullet still presses HOME on that attempt, but before the relaunch, so
+  pre-launch check `ensureWindowTracking` still presses HOME on that attempt, but before the relaunch, so
   no evidence is at stake there.) The `AssertionError`'s own window summary, the hierarchy dump, and
   the screenshot would all describe the launcher, and a healthy launcher window list argues the exact
   opposite of the failure they exist to explain.
