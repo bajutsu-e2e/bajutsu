@@ -219,6 +219,16 @@ Android の実機スイートが将来追加されたときに、それが構成
       最後の解放は配線の欠陥を伝播させる。
 - [x] ユニット 3 — lease の起動と teardown の seam に対する実機不要のテスト。
 
+ログ:
+
+- 2026-08-05 — ユニット 1 から 3（[#1491](https://github.com/bajutsu-e2e/bajutsu/pull/1491)）。
+  各スイートの起動 thunk が lease ごとに新しい environment を作り、driver と一緒にその teardown を
+  返すようになりました。これにより `LeaseHolder` は `driver.close()` ではなく、プラットフォーム自身の
+  teardown を通して lease を破棄します。ユニット 1 が残していた選択は、`launch_driver` 自身がガードを
+  引き受ける方向で決着し、すべての呼び出し側がそれを受け継ぎます。守られた teardown の方針は
+  `bajutsu/runner/recovery.py` へ移り、pool の 3 か所、`launch_driver`、lease の破棄が共有します。
+  実行中の配線の欠陥は、debug ではなく warning で報告されるようになりました。状態を実装済みへ。
+
 ## 参考
 
 - [BE-0334 — 実機 conformance スイートに run パイプラインと同じインフラ障害からの復旧を持たせる](../BE-0334-conformance-suite-infra-fault-recovery/BE-0334-conformance-suite-infra-fault-recovery-ja.md) — lease とその破棄を作った項目。
