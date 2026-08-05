@@ -210,7 +210,7 @@ xcodebuild: error: Unable to find a device matching the provided destination spe
   です。しかし設定や `--udid` で udid を固定している場合は自己修復しません。実行のたびに、同じ名前の
   置き換えを新しく作り続けます。掃除は `xcrun simctl delete unavailable`、その名前のデバイスの削除、
   または固定した設定を置き換え先へ向け直すことで済みます。名前の先頭が機種なのは、
-  デバイス名を人が読む機種名として扱う消費者が 2 つあるからです。レポートのデバイス行と、`serve` の
+  デバイス名を人が読む機種名として扱う箇所が 2 つあるからです。レポートのデバイス行と、`serve` の
   capability 一覧（名前の部分一致で `iphone` / `ipad` のクラストークンを取り出します）です。
   使い捨ての CI ランナーでは何も見えないので、この選択は開発者自身の Mac と長命の `serve`
   プロセスのためのものです。
