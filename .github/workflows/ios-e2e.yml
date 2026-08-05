@@ -16,8 +16,8 @@
 #     scenarios they ran, so each re-paid the lane's dominant fixed cost — the cold XCTest-host
 #     startup plus its own build and boot — over again; one job runs all ten scenario documents —
 #     every scenario the six files hold, since BE-0315 made the notification grant native so nothing
-#     is `ai`-tagged to exclude (BE-0291/BE-0287/BE-0315) — as its own `bajutsu run` process, sharing
-#     one build and one boot. The run step's `--erase` forces every one of those ten onto its own cold
+#     is `ai`-tagged to exclude (BE-0291/BE-0287/BE-0315) — as one `bajutsu run` process, sharing
+#     one Swift build. The run step's `--erase` forces every one of those ten onto its own cold
 #     XCTest-host startup (the warm-runner reuse gate is `not preconditions.erase`, so the
 #     `BAJUTSU_XCUITEST_MAX_WARM_REUSES` cap in the `env` block below is never consulted on this job) —
 #     six more than the four separate jobs' cold startups summed to, but each of those jobs also paid
@@ -158,13 +158,16 @@ env:
   # carries `preconditions.erase=True` (the run step's `--erase`), and
   # `is_respawn = (... ) and not pre.erase` in `_spawn_cold` never classifies that re-lease as a
   # respawn — so each retry there pays the full 300s STARTUP_TIMEOUT readiness ceiling instead of the
-  # 90s one, on top of re-erasing and re-booting the Simulator. This budget's remaining job is the rest
-  # the readiness ceiling does not cover: the simctl prep and scenario re-run, plus the cumulative cost
-  # across BAJUTSU_CRASH_RETRIES respawns. 300s keeps a never-recovering runner failing loudly well
-  # under the `run` job's `timeout-minutes` instead of hanging, while still riding out a genuine
-  # one-off (the first respawn is never blocked) — a backstop on top of the per-respawn ceiling (90s
-  # where it applies, 300s where erase forces the cold ceiling), not a substitute for it.
-  BAJUTSU_CRASH_RECOVERY_BUDGET: "300"
+  # 90s one, on top of re-erasing and re-booting the Simulator (~80s). `CrashRecoveryBudget` sets its
+  # deadline at the first crash and checks it only between attempts (bajutsu/runner/recovery.py,
+  # `on_crash`), so on those two lanes a single respawn (~80s + up to 300s readiness) can already spend
+  # most of a 300s budget, leaving the second of BAJUTSU_CRASH_RETRIES: "2" retries unreachable in
+  # practice. 600s restores room for both retries to actually run under erase's heavier per-respawn
+  # cost, while still failing loudly well under the `run` / `actuation` jobs' now much larger
+  # `timeout-minutes`. This is a workflow-level knob, so it also loosens the ceiling on `conformance`
+  # (below) — harmless there, since that job still gets the tighter 90s RESPAWN_TIMEOUT per respawn and
+  # was never close to the old 300s budget.
+  BAJUTSU_CRASH_RECOVERY_BUDGET: "600"
 
 jobs:
   # Decide whether an on-device run is warranted. The macOS jobs only fire when the PR
@@ -293,7 +296,7 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
-  # The homogeneous XCUITest gating lane: one boot drives every `bajutsu run`-over-XCUITest scenario
+  # The homogeneous XCUITest gating lane: one job drives every `bajutsu run`-over-XCUITest scenario
   # that used to be its own job (smoke / gestures / permission / runner-actuation). They differed only
   # in which scenarios they ran, so each re-paid the lane's dominant fixed cost — the cold `xcodebuild
   # test-without-building` XCTest-host startup (~2-3 min on macos-latest) — over again, at 10x macOS
@@ -345,11 +348,11 @@ jobs:
     # headroom. `--erase` (the bajutsu-e2e action's run step) forces a cold XCTest-host spawn on every
     # one of the ten runs, each preceded by a full simctl erase/boot/install (~80s, per the `golden`
     # job's boot estimate below): 10 × (~80s erase/boot/install + ~2-3min cold host startup) is
-    # ~38-48min of fixed cost alone, before checkout/toolchain-setup/artifact-download and the scenario
+    # ~33-43min of fixed cost alone, before checkout/toolchain-setup/artifact-download and the scenario
     # bodies themselves, and before any crash retry (BAJUTSU_CRASH_RETRIES: "2") — which, under erase,
     # pays the full 300s STARTUP_TIMEOUT readiness wait per retry rather than the 90s RESPAWN_TIMEOUT
     # one (see the workflow-level env comment on BAJUTSU_CRASH_RECOVERY_BUDGET). 75 is sized to sit
-    # meaningfully above that ~48min arithmetic ceiling plus one retry, not pinned at its edge — but it
+    # meaningfully above that ~43min arithmetic ceiling plus one retry, not pinned at its edge — but it
     # is still unmeasured against a real run on this branch, so tighten it once CI has run this lane a
     # few times and the actual wall-clock is known.
     timeout-minutes: 75
@@ -476,11 +479,11 @@ jobs:
     # reuse (five cold XCTest-host startups, one per two runs at the lane's former warm-reuse cap).
     # `--erase` (the bajutsu-e2e action's run step) puts every one of the ten runs on its own cold
     # path, each preceded by a full simctl erase/boot/install (~80s, per the `golden` job's boot
-    # estimate below): 10 × (~80s erase/boot/install + ~2-3min cold host startup) is ~38-48min of fixed
+    # estimate below): 10 × (~80s erase/boot/install + ~2-3min cold host startup) is ~33-43min of fixed
     # cost alone, before checkout/toolchain-setup/artifact-download and the scenario bodies themselves,
     # and before any crash retry — which, under erase, pays the full 300s STARTUP_TIMEOUT readiness
     # wait per retry rather than the 90s RESPAWN_TIMEOUT one (see the workflow-level env comment on
-    # BAJUTSU_CRASH_RECOVERY_BUDGET). 80 is sized to sit meaningfully above that ~48min arithmetic
+    # BAJUTSU_CRASH_RECOVERY_BUDGET). 80 is sized to sit meaningfully above that ~43min arithmetic
     # ceiling plus one retry, not pinned at its edge — but it is still unmeasured against a real run on
     # this branch, so tighten it once CI has run this lane a few times and the actual wall-clock is
     # known.

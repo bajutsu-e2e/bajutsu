@@ -114,6 +114,12 @@ a `0` / `1` exit code, and — inside Actions — failure **annotations** + a jo
    `network.json`) as an artifact. The XCUITest backend needs no pip extra — its runner is driven
    over HTTP and `xcodebuild` ships with Xcode on the runner.
 
+   The action's run step passes `--erase`, which wipes the Simulator (including the app you just
+   installed in step 1) before every scenario. Your target config must declare `appPath` — pointing
+   at the same `.app` you built — so bajutsu reinstalls it after the wipe; without it, the run
+   launches a bundle id that is no longer on the device. A `xcuitest.deviceType: device` target
+   cannot use this action at all, since erase is a simctl-only operation.
+
 ```yaml
 jobs:
   e2e:
