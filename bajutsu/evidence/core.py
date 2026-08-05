@@ -183,8 +183,9 @@ def capture(
 class EvidenceSink(Protocol):
     """Where evidence goes during a run.
 
-    The orchestrator captures instant artifacts after each step, and records the
-    interval artifacts (video / deviceLog / appTrace) for the whole scenario.
+    The orchestrator captures instant artifacts around each step — a pre-step baseline before it
+    acts, and a post-step capture after — and records the interval artifacts (video / deviceLog /
+    appTrace) for the whole scenario.
     """
 
     def capture(

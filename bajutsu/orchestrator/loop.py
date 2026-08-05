@@ -255,7 +255,7 @@ class _ScreenRead:
         self._read = read
         self._failure: Exception | None = None
 
-    def get(self) -> list[base.Element]:
+    def get(self, *, retry_if_failed: bool = False) -> list[base.Element]:
         """The post-step tree: the seed if one was given, else read once (via `read`) and cached.
 
         A read that fails is cached too, as the failure: several evidence-only consumers can call
@@ -263,9 +263,17 @@ class _ScreenRead:
         capture), and a driver that just failed will fail the identical query again — replaying the
         failure spares each of them their own blocking round-trip against a channel already proved
         dead.
+
+        `retry_if_failed` opts out of that replay: `extract` binds `vars.*` that later steps and
+        the scenario-level `expect` assert on, so unlike the evidence-only consumers above it is on
+        the pass/fail path, and deserves its own attempt rather than inheriting a failure an
+        earlier, unrelated evidence read happened to hit first. A retry that also fails re-caches
+        the fresh exception for any consumer still to come.
         """
         if self._failure is not None:
-            raise self._failure
+            if not retry_if_failed:
+                raise self._failure
+            self._failure = None
         if not self._available:
             try:
                 self._tree = self._read() if self._read is not None else self._driver.query()
@@ -1202,24 +1210,28 @@ class _StepRunner:
                 screen.get,
                 native_fatal=False,
             )
-            if diag_elements is not None:
-                try:
-                    art = self.cfg.sink.wait_diagnostic(
-                        step_id, trace=wait_trace, elements=diag_elements
-                    )
-                except OSError as exc:
-                    # Best-effort evidence: a disk/permission failure writing the diagnostic must
-                    # not mask the real timeout with an I/O traceback — keep the timeout as the
-                    # failure and disclose the lost evidence loudly. A genuine bug (e.g. a
-                    # redaction error) still surfaces rather than being swallowed here.
-                    _logger.warning("dropping wait-timeout diagnostic: write failed: %s", exc)
-                else:
-                    if art is not None:
-                        outcome.artifacts.append(art)
+            # A failed tree read costs only the `elements` field: `trace` (polls,
+            # firstNonemptySeconds, elementsAtTimeout), `readiness`, and `provenance` never needed
+            # the driver, so still write the file rather than lose the whole diagnostic —
+            # `trace.elementsAtTimeout` (0 here) still separates "empty screen" from "tree unread"
+            # for anyone reading the file.
+            try:
+                art = self.cfg.sink.wait_diagnostic(
+                    step_id, trace=wait_trace, elements=diag_elements or []
+                )
+            except OSError as exc:
+                # Best-effort evidence: a disk/permission failure writing the diagnostic must
+                # not mask the real timeout with an I/O traceback — keep the timeout as the
+                # failure and disclose the lost evidence loudly. A genuine bug (e.g. a
+                # redaction error) still surfaces rather than being swallowed here.
+                _logger.warning("dropping wait-timeout diagnostic: write failed: %s", exc)
+            else:
+                if art is not None:
+                    outcome.artifacts.append(art)
 
         if outcome.ok and interp_step.extract:
             ext_ok, ext_reason = _run_extract(
-                screen.get(), interp_step.extract, self.state.bindings
+                screen.get(retry_if_failed=True), interp_step.extract, self.state.bindings
             )
             if not ext_ok:
                 outcome.ok, outcome.reason = False, ext_reason

@@ -149,7 +149,7 @@ app's os_log subsystem, paired into timed intervals by `parse_app_trace`.)
 
 ```python
 class EvidenceSink(Protocol):
-    def capture(self, driver, step_id, kinds, *, elements=None) -> list[Artifact]: ...   # instant captures after a step
+    def capture(self, driver, step_id, kinds, *, elements=None) -> list[Artifact]: ...   # instant captures around a step
     def wait_diagnostic(self, step_id, *, trace, elements) -> Artifact | None: ...       # the first-wait timeout diagnostic (below)
     def start_scenario_intervals(self, scenario_id, kinds) -> list[Interval]: ...        # begin video / deviceLog / appTrace for the whole scenario
     def finish_scenario_intervals(self, scenario_id, started) -> list[Artifact]: ...     # stop them and collect the files
@@ -180,9 +180,10 @@ A `wait for <element>` that times out writes `run_dir/<step_id>/wait-timeout.jso
 captured still leaves the evidence needed to decide *why* it fired. It is pure diagnosis, never a
 verdict input (the run's pass/fail still comes only from machine-checkable assertions).
 
-The write is best-effort in one respect: if the element-tree read at the timeout, or the write
-itself, fails, the diagnostic is dropped and disclosed at `warning` rather than replacing the real
-timeout with a crash. The timeout stays the run's failure either way.
+The write is best-effort in one respect — it can cost the evidence, never the verdict. If the
+element-tree read at the timeout fails, or the write itself fails, the run drops the diagnostic and
+discloses the loss at `warning` rather than replacing the real timeout with a crash. The timeout
+stays the run's failure either way.
 
 The file is self-contained so a rerun-to-green does not discard it:
 
