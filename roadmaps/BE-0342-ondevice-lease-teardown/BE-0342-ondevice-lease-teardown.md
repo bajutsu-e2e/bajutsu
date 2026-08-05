@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0342](BE-0342-ondevice-lease-teardown.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0342") |
 | Topic | Platform support |
 | Related | [BE-0334](../BE-0334-conformance-suite-infra-fault-recovery/BE-0334-conformance-suite-infra-fault-recovery.md), [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md), [BE-0305](../BE-0305-driver-resilience-fault-injection/BE-0305-driver-resilience-fault-injection.md), [BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md) |
@@ -215,10 +215,10 @@ teardown a suite supplies is its platform's own.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — let the lease tear down the environment that owns the runner, one per lease.
-- [ ] Unit 2 — extract the guarded teardown into `recovery.py`; warn on a failed mid-run teardown and
+- [x] Unit 1 — let the lease tear down the environment that owns the runner, one per lease.
+- [x] Unit 2 — extract the guarded teardown into `recovery.py`; warn on a failed mid-run teardown and
       let the final release propagate a wiring defect.
-- [ ] Unit 3 — off-device cases over the lease's launch/teardown seam.
+- [x] Unit 3 — off-device cases over the lease's launch/teardown seam.
 
 ## References
 

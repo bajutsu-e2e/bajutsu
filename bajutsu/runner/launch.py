@@ -18,6 +18,7 @@ from bajutsu.platform_lifecycle import (
     _await_ready,
     environment_for,
 )
+from bajutsu.runner.recovery import guarded_teardown
 from bajutsu.scenario import Preconditions
 
 __all__ = ["ReadinessResult", "_await_ready", "launch_driver"]
@@ -76,8 +77,28 @@ def launch_driver(
     # The per-platform startup (iOS simctl sequence, web browser context, …) lives behind the
     # `Environment` seam, so this path no longer branches on the actuator name (BE-0009 Phase 0).
     env = environment if environment is not None else environment_for(actuator, udid, env_run)
-    driver = env.start(
-        eff, pre, extra_env=extra_env, record_video_dir=record_video_dir, permissions=permissions
-    )
-    readiness = _await_ready(driver, ready_sel=eff.ready_when, transitions=transitions)
-    return driver, readiness
+    # `env.start` can leave a runner (or browser context) up before `_await_ready` finishes; if the
+    # readiness probe then raises, the driver never reaches the caller. Tear that environment down
+    # here so every caller — the pool, the on-device suites' lease thunk — inherits the same guard
+    # the pool already had around a failed lease (BE-0342). Mid-run swallow keeps a teardown hiccup
+    # from masking the original launch error.
+    driver: base.Driver | None = None
+    try:
+        driver = env.start(
+            eff,
+            pre,
+            extra_env=extra_env,
+            record_video_dir=record_video_dir,
+            permissions=permissions,
+        )
+        readiness = _await_ready(driver, ready_sel=eff.ready_when, transitions=transitions)
+        return driver, readiness
+    except BaseException:
+        if driver is not None:
+            started = driver
+            guarded_teardown(
+                lambda: env.teardown(started, eff),
+                mid_run=True,
+                what=f"tearing down the environment on {udid} after a failed launch",
+            )
+        raise

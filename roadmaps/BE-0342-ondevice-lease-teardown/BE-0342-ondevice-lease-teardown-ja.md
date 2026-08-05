@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0342](BE-0342-ondevice-lease-teardown-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0342") |
 | トピック | プラットフォーム対応 |
 | 関連 | [BE-0334](../BE-0334-conformance-suite-infra-fault-recovery/BE-0334-conformance-suite-infra-fault-recovery-ja.md), [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md), [BE-0305](../BE-0305-driver-resilience-fault-injection/BE-0305-driver-resilience-fault-injection-ja.md), [BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md) |
@@ -213,10 +213,10 @@ Android の実機スイートが将来追加されたときに、それが構成
 > 作業の進行に合わせて更新します。チェックリストは*詳細設計*の MECE な作業分解と対応します
 > （作業単位ごとに 1 項目）。ログには、何がいつ変わったかを古い順に記録し、PR を紐づけます。
 
-- [ ] ユニット 1 — runner を所有する環境を lease ごとに作り、lease から teardown できるようにする。
-- [ ] ユニット 2 — 守られた teardown を `recovery.py` へ切り出し、実行中の失敗は warning で報告し、
+- [x] ユニット 1 — runner を所有する環境を lease ごとに作り、lease から teardown できるようにする。
+- [x] ユニット 2 — 守られた teardown を `recovery.py` へ切り出し、実行中の失敗は warning で報告し、
       最後の解放は配線の欠陥を伝播させる。
-- [ ] ユニット 3 — lease の起動と teardown の seam に対する実機不要のテスト。
+- [x] ユニット 3 — lease の起動と teardown の seam に対する実機不要のテスト。
 
 ## 参考
 

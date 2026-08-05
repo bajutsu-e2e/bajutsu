@@ -9,8 +9,9 @@ the pipeline uses (`bajutsu.runner.recovery`), so the two recovery paths cannot 
 violation is not a `BackendCrashError`, so it is never retried — it keeps failing immediately.
 
 A suite opts in by marking its module `backend_crash_recovery` and exposing a module-scoped
-`_backend_launch` fixture (a zero-arg callable returning a fresh `base.Driver`, i.e. a cold spawn);
-the `_backend_lease_holder` fixture here wraps it in a `LeaseHolder` the plugin re-leases between
+`_backend_launch` fixture (a zero-arg callable returning a fresh `(base.Driver, teardown)` pair —
+the driver and the platform teardown that reaches the runner process it lives in; BE-0342); the
+`_backend_lease_holder` fixture here wraps it in a `LeaseHolder` the plugin re-leases between
 attempts. The plugin is inert for any test the marker does not cover.
 
 Every respawn is reported (BE-0334 Unit 4): announced inline in the job log as it happens, and
@@ -37,6 +38,7 @@ from bajutsu.runner.recovery import (
     RetryDecision,
     _default_crash_recovery_budget,
     _default_crash_retries,
+    guarded_teardown,
     is_infrastructure_fault,
 )
 
@@ -56,39 +58,53 @@ _CRASH_ATTR = "_backend_crash_reason"
 # Every crash the recovery loop saw, in order, accumulated across the session for the report.
 _EVENTS: pytest.StashKey[list[dict[str, object]]] = pytest.StashKey()
 
+# The zero-arg teardown a suite's launch thunk returns alongside its driver (BE-0342): the platform's
+# own environment teardown, not `driver.close()` — only the web driver implements that, and on iOS
+# the runner process belongs to the environment.
+LeaseTeardown = Callable[[], None]
+LeaseLaunch = Callable[[], tuple[base.Driver, LeaseTeardown]]
+
 
 class LeaseHolder:
-    """A module-scoped device lease that re-leases on demand (BE-0334).
+    """A module-scoped device lease that re-leases on demand (BE-0334, BE-0342).
 
     `driver` lazily launches on first use and re-launches after `invalidate()`, so a cold respawn
     after a crash is a property access rather than a fixture rebuild. In the common (crash-free) case
     the launch happens once and is reused across the whole module — the amortization the module scope
-    exists for.
+    exists for. Discard runs the launch thunk's teardown so the runner process is actually gone
+    before the next lease starts.
     """
 
-    def __init__(self, launch: Callable[[], base.Driver]) -> None:
+    def __init__(self, launch: LeaseLaunch) -> None:
         self._launch = launch
         self._driver: base.Driver | None = None
+        self._teardown: LeaseTeardown | None = None
 
     @property
     def driver(self) -> base.Driver:
         if self._driver is None:
-            self._driver = self._launch()
+            self._driver, self._teardown = self._launch()
         return self._driver
 
     def invalidate(self) -> None:
         """Discard the current (dead) lease so the next `driver` access cold-respawns."""
-        dead, self._driver = self._driver, None
-        if dead is not None:
-            # The lease is already dead; a failed close must not mask the crash that prompted it. Log
-            # it, though — a close that fails every respawn is how leaked Simulators/ports would show.
-            try:
-                dead.close()
-            except Exception:
-                _logger.debug("closing the crashed lease failed; ignoring", exc_info=True)
+        # Mid-run: a teardown failure must not mask the crash that prompted the discard (BE-0342).
+        self._discard(mid_run=True)
 
     def close(self) -> None:
-        self.invalidate()
+        """Final module release — a wiring defect fails the teardown rather than being swallowed."""
+        self._discard(mid_run=False)
+
+    def _discard(self, *, mid_run: bool) -> None:
+        _dead_driver, self._driver = self._driver, None
+        dead_teardown, self._teardown = self._teardown, None
+        if dead_teardown is None:
+            return
+        guarded_teardown(
+            dead_teardown,
+            mid_run=mid_run,
+            what="tearing down the discarded on-device lease",
+        )
 
 
 # The module's live holder, keyed by module path, so the protocol hook can re-lease it between
@@ -98,9 +114,7 @@ _HOLDERS: pytest.StashKey[dict[object, LeaseHolder]] = pytest.StashKey()
 
 
 @pytest.fixture(scope="module")
-def _backend_lease_holder(
-    request: pytest.FixtureRequest, _backend_launch: Callable[[], base.Driver]
-):
+def _backend_lease_holder(request: pytest.FixtureRequest, _backend_launch: LeaseLaunch):
     holder = LeaseHolder(_backend_launch)
     registry = request.session.stash.setdefault(_HOLDERS, {})
     registry[request.path] = holder

@@ -1,11 +1,12 @@
-"""The on-device conformance suite's infrastructure-fault recovery (BE-0334 Unit 2).
+"""The on-device conformance suite's infrastructure-fault recovery (BE-0334 / BE-0342).
 
 The suite drives a real Simulator through a module-scoped lease, outside `bajutsu run`'s recovery.
 This exercises the recovery plugin through `pytester`: a real inner pytest session runs the real
 `backend_crash_recovery` plugin, the real `LeaseHolder`, and the real budget, with a fake driver
 standing in for the Simulator — so the re-lease / retry behavior is pinned on the fast gate, without
 a device. A `base.BackendCrashError` is an infrastructure fault and is recovered; a contract
-violation is not, and keeps failing immediately.
+violation is not, and keeps failing immediately. Launch thunks return `(driver, teardown)` so discard
+reaches the platform teardown, not a missing `driver.close()` (BE-0342).
 """
 
 from __future__ import annotations
@@ -34,18 +35,15 @@ def test_recovers_a_transient_backend_crash(pytester) -> None:
             class _FakeDriver:
                 def __init__(self, crash: bool) -> None:
                     self._crash = crash
-                    self.closed = False
                 def act(self) -> None:
                     if self._crash:
                         raise base.BackendCrashError("fake runner crashed mid-test")
-                def close(self) -> None:
-                    self.closed = True
 
             @pytest.fixture(scope="module")
             def _backend_launch():
                 def launch():
                     _LAUNCHES["n"] += 1
-                    return _FakeDriver(crash=_LAUNCHES["n"] == 1)  # only the first lease crashes
+                    return _FakeDriver(crash=_LAUNCHES["n"] == 1), (lambda: None)
                 return launch
 
             @pytest.fixture
@@ -76,8 +74,7 @@ def test_recovers_a_crash_during_lease_bringup(pytester) -> None:
             _LAUNCHES = {"n": 0}
 
             class _FakeDriver:
-                def close(self) -> None:
-                    pass
+                pass
 
             @pytest.fixture(scope="module")
             def _backend_launch():
@@ -85,7 +82,7 @@ def test_recovers_a_crash_during_lease_bringup(pytester) -> None:
                     _LAUNCHES["n"] += 1
                     if _LAUNCHES["n"] == 1:
                         raise base.BackendCrashError("fake runner crashed at bring-up")
-                    return _FakeDriver()
+                    return _FakeDriver(), (lambda: None)
                 return launch
 
             @pytest.fixture
@@ -119,14 +116,12 @@ def test_fails_loudly_when_every_attempt_crashes(pytester, monkeypatch) -> None:
             class _FakeDriver:
                 def act(self) -> None:
                     raise base.BackendCrashError("fake runner crashed mid-test")
-                def close(self) -> None:
-                    pass
 
             @pytest.fixture(scope="module")
             def _backend_launch():
                 def launch():
                     _LAUNCHES["n"] += 1
-                    return _FakeDriver()
+                    return _FakeDriver(), (lambda: None)
                 return launch
 
             @pytest.fixture
@@ -160,14 +155,13 @@ def test_does_not_retry_a_contract_violation(pytester) -> None:
             _LAUNCHES = {"n": 0}
 
             class _FakeDriver:
-                def close(self) -> None:
-                    pass
+                pass
 
             @pytest.fixture(scope="module")
             def _backend_launch():
                 def launch():
                     _LAUNCHES["n"] += 1
-                    return _FakeDriver()
+                    return _FakeDriver(), (lambda: None)
                 return launch
 
             @pytest.fixture
@@ -201,14 +195,12 @@ def test_amortizes_the_lease_across_crash_free_tests(pytester) -> None:
             class _FakeDriver:
                 def act(self) -> None:
                     pass
-                def close(self) -> None:
-                    pass
 
             @pytest.fixture(scope="module")
             def _backend_launch():
                 def launch():
                     _LAUNCHES["n"] += 1
-                    return _FakeDriver()
+                    return _FakeDriver(), (lambda: None)
                 return launch
 
             @pytest.fixture
@@ -250,14 +242,12 @@ def test_a_crash_does_not_cascade_to_later_tests(pytester, monkeypatch) -> None:
                 def act(self) -> None:
                     if self._crash:
                         raise base.BackendCrashError("fake runner crashed mid-test")
-                def close(self) -> None:
-                    pass
 
             @pytest.fixture(scope="module")
             def _backend_launch():
                 def launch():
                     _LAUNCHES["n"] += 1
-                    return _FakeDriver(crash=_LAUNCHES["n"] == 1)  # only the first lease is poisoned
+                    return _FakeDriver(crash=_LAUNCHES["n"] == 1), (lambda: None)
                 return launch
 
             @pytest.fixture
@@ -298,14 +288,12 @@ def test_reports_and_counts_a_recovery(pytester, monkeypatch, tmp_path) -> None:
                 def act(self) -> None:
                     if self._crash:
                         raise base.BackendCrashError("fake runner crashed mid-test")
-                def close(self) -> None:
-                    pass
 
             @pytest.fixture(scope="module")
             def _backend_launch():
                 def launch():
                     _LAUNCHES["n"] += 1
-                    return _FakeDriver(crash=_LAUNCHES["n"] == 1)
+                    return _FakeDriver(crash=_LAUNCHES["n"] == 1), (lambda: None)
                 return launch
 
             @pytest.fixture
@@ -347,13 +335,11 @@ def test_reports_an_exhausted_recovery(pytester, monkeypatch, tmp_path) -> None:
             class _FakeDriver:
                 def act(self) -> None:
                     raise base.BackendCrashError("fake runner crashed mid-test")
-                def close(self) -> None:
-                    pass
 
             @pytest.fixture(scope="module")
             def _backend_launch():
                 def launch():
-                    return _FakeDriver()
+                    return _FakeDriver(), (lambda: None)
                 return launch
 
             @pytest.fixture
@@ -397,13 +383,11 @@ def test_reports_a_budget_exhausted_recovery(pytester, monkeypatch, tmp_path) ->
             class _FakeDriver:
                 def act(self) -> None:
                     raise base.BackendCrashError("fake runner crashed mid-test")
-                def close(self) -> None:
-                    pass
 
             @pytest.fixture(scope="module")
             def _backend_launch():
                 def launch():
-                    return _FakeDriver()
+                    return _FakeDriver(), (lambda: None)
                 return launch
 
             @pytest.fixture
@@ -441,12 +425,11 @@ def test_writes_an_empty_report_when_nothing_crashes(pytester, monkeypatch, tmp_
             pytestmark = pytest.mark.backend_crash_recovery
 
             class _FakeDriver:
-                def close(self) -> None:
-                    pass
+                pass
 
             @pytest.fixture(scope="module")
             def _backend_launch():
-                return lambda: _FakeDriver()
+                return lambda: (_FakeDriver(), (lambda: None))
 
             def test_noop(_backend_lease_holder):
                 assert _backend_lease_holder is not None
@@ -477,12 +460,11 @@ def test_creates_the_report_parent_directory(pytester, monkeypatch, tmp_path) ->
             pytestmark = pytest.mark.backend_crash_recovery
 
             class _FakeDriver:
-                def close(self) -> None:
-                    pass
+                pass
 
             @pytest.fixture(scope="module")
             def _backend_launch():
-                return lambda: _FakeDriver()
+                return lambda: (_FakeDriver(), (lambda: None))
 
             def test_noop(_backend_lease_holder):
                 assert _backend_lease_holder is not None
@@ -514,12 +496,11 @@ def test_a_failed_report_write_does_not_fail_the_session(pytester, monkeypatch, 
             pytestmark = pytest.mark.backend_crash_recovery
 
             class _FakeDriver:
-                def close(self) -> None:
-                    pass
+                pass
 
             @pytest.fixture(scope="module")
             def _backend_launch():
-                return lambda: _FakeDriver()
+                return lambda: (_FakeDriver(), (lambda: None))
 
             def test_noop(_backend_lease_holder):
                 assert _backend_lease_holder is not None
@@ -545,12 +526,11 @@ def test_writes_no_report_when_the_env_is_unset(pytester, monkeypatch) -> None:
             pytestmark = pytest.mark.backend_crash_recovery
 
             class _FakeDriver:
-                def close(self) -> None:
-                    pass
+                pass
 
             @pytest.fixture(scope="module")
             def _backend_launch():
-                return lambda: _FakeDriver()
+                return lambda: (_FakeDriver(), (lambda: None))
 
             def test_noop(_backend_lease_holder):
                 assert _backend_lease_holder is not None
@@ -559,3 +539,208 @@ def test_writes_no_report_when_the_env_is_unset(pytester, monkeypatch) -> None:
     )
     result = pytester.runpytest_inprocess()
     result.assert_outcomes(passed=1)
+
+
+# --- BE-0342: the lease's launch/teardown seam ---
+# Direct `LeaseHolder` cases pin the discard contract without a nested pytest session; the pytester
+# cases above already cover the plugin wiring the same holder into recovery.
+
+
+class _FakeDriver:
+    pass
+
+
+def test_invalidate_runs_teardown_once_for_the_discarded_lease() -> None:
+    from backend_crash_recovery import LeaseHolder
+
+    torn: list[str] = []
+
+    def launch() -> tuple[object, object]:
+        return _FakeDriver(), (lambda: torn.append("teardown"))
+
+    holder = LeaseHolder(launch)  # type: ignore[arg-type]
+    assert holder.driver is not None
+    holder.invalidate()
+    assert torn == ["teardown"]
+    holder.invalidate()  # a second discard with nothing leased tears nothing down
+    assert torn == ["teardown"]
+
+
+def test_final_release_runs_teardown_once() -> None:
+    from backend_crash_recovery import LeaseHolder
+
+    torn: list[str] = []
+
+    def launch() -> tuple[object, object]:
+        return _FakeDriver(), (lambda: torn.append("teardown"))
+
+    holder = LeaseHolder(launch)  # type: ignore[arg-type]
+    assert holder.driver is not None
+    holder.close()
+    assert torn == ["teardown"]
+
+
+def test_next_driver_access_launches_a_fresh_lease() -> None:
+    from backend_crash_recovery import LeaseHolder
+
+    launches: list[object] = []
+
+    def launch() -> tuple[object, object]:
+        driver = _FakeDriver()
+        launches.append(driver)
+        return driver, (lambda: None)
+
+    holder = LeaseHolder(launch)  # type: ignore[arg-type]
+    first = holder.driver
+    holder.invalidate()
+    second = holder.driver
+    assert first is launches[0]
+    assert second is launches[1]
+    assert first is not second
+
+
+def test_mid_run_teardown_warns_on_called_process_error(caplog) -> None:
+    import logging
+    import subprocess
+
+    from backend_crash_recovery import LeaseHolder
+
+    def launch() -> tuple[object, object]:
+        def teardown() -> None:
+            raise subprocess.CalledProcessError(1, ["xcrun"])
+
+        return _FakeDriver(), teardown
+
+    holder = LeaseHolder(launch)  # type: ignore[arg-type]
+    assert holder.driver is not None
+    with caplog.at_level(logging.WARNING):
+        holder.invalidate()  # must not raise
+    assert any(
+        "tearing down the discarded on-device lease failed" in r.message for r in caplog.records
+    )
+
+
+def test_mid_run_teardown_warns_on_os_error(caplog) -> None:
+    import logging
+
+    from backend_crash_recovery import LeaseHolder
+
+    def launch() -> tuple[object, object]:
+        def teardown() -> None:
+            raise ProcessLookupError("runner already gone")
+
+        return _FakeDriver(), teardown
+
+    holder = LeaseHolder(launch)  # type: ignore[arg-type]
+    assert holder.driver is not None
+    with caplog.at_level(logging.WARNING):
+        holder.invalidate()
+    assert any(
+        "tearing down the discarded on-device lease failed" in r.message for r in caplog.records
+    )
+
+
+def test_mid_run_teardown_swallows_a_wiring_defect_into_a_warning(caplog) -> None:
+    # A missing method (AttributeError) on the mid-run path must not mask the crash — and must not
+    # sit at debug level either (BE-0342).
+    import logging
+
+    from backend_crash_recovery import LeaseHolder
+
+    def launch() -> tuple[object, object]:
+        def teardown() -> None:
+            raise AttributeError("no close on this driver")
+
+        return _FakeDriver(), teardown
+
+    holder = LeaseHolder(launch)  # type: ignore[arg-type]
+    assert holder.driver is not None
+    with caplog.at_level(logging.WARNING):
+        holder.invalidate()  # must not raise
+    assert any(
+        "tearing down the discarded on-device lease failed" in r.message for r in caplog.records
+    )
+
+
+def test_final_release_propagates_a_wiring_defect() -> None:
+    import pytest
+    from backend_crash_recovery import LeaseHolder
+
+    def launch() -> tuple[object, object]:
+        def teardown() -> None:
+            raise AttributeError("no close on this driver")
+
+        return _FakeDriver(), teardown
+
+    holder = LeaseHolder(launch)  # type: ignore[arg-type]
+    assert holder.driver is not None
+    with pytest.raises(AttributeError, match="no close on this driver"):
+        holder.close()
+
+
+def test_final_release_warns_on_called_process_error(caplog) -> None:
+    import logging
+    import subprocess
+
+    from backend_crash_recovery import LeaseHolder
+
+    def launch() -> tuple[object, object]:
+        def teardown() -> None:
+            raise subprocess.CalledProcessError(1, ["xcrun"])
+
+        return _FakeDriver(), teardown
+
+    holder = LeaseHolder(launch)  # type: ignore[arg-type]
+    assert holder.driver is not None
+    with caplog.at_level(logging.WARNING):
+        holder.close()  # expected process failure stays a warning
+    assert any(
+        "tearing down the discarded on-device lease failed" in r.message for r in caplog.records
+    )
+
+
+def test_launch_that_raises_after_start_still_tears_the_environment_down() -> None:
+    # A launch thunk that got a driver out of start then failed before returning must tear down
+    # before the error propagates — otherwise the runner leaks with no lease holding a teardown.
+    from backend_crash_recovery import LeaseHolder
+
+    from bajutsu.drivers import base
+
+    state = {"started": 0, "torn": 0}
+
+    def launch() -> tuple[object, object]:
+        state["started"] += 1
+        driver = _FakeDriver()
+
+        def teardown() -> None:
+            state["torn"] += 1
+
+        if state["started"] == 1:
+            teardown()
+            raise base.BackendCrashError("died during readiness")
+        return driver, teardown
+
+    holder = LeaseHolder(launch)  # type: ignore[arg-type]
+    try:
+        _ = holder.driver
+    except base.BackendCrashError:
+        pass
+    else:
+        raise AssertionError("first launch must raise")
+    assert state == {"started": 1, "torn": 1}
+    # A later access cold-spawns cleanly; the failed bring-up left no leased teardown behind.
+    assert holder.driver is not None
+    assert state == {"started": 2, "torn": 1}
+
+
+def test_never_launched_lease_tears_nothing_down() -> None:
+    from backend_crash_recovery import LeaseHolder
+
+    torn: list[str] = []
+
+    def launch() -> tuple[object, object]:
+        return _FakeDriver(), (lambda: torn.append("teardown"))
+
+    holder = LeaseHolder(launch)  # type: ignore[arg-type]
+    holder.close()
+    assert torn == []

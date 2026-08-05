@@ -169,6 +169,32 @@ def test_launch_driver_errors_on_missing_app_path(
     assert "appPath not found" in str(excinfo.value)
 
 
+def test_launch_driver_tears_down_when_await_ready_raises(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # BE-0342: env.start can leave a runner up before readiness finishes; if the probe then raises,
+    # the driver never reaches the caller — launch_driver must tear that environment down itself.
+    from bajutsu.drivers import base as drivers_base
+
+    torn: list[object] = []
+    driver = FakeDriver([_el("home.title", "H"), _el("ok", "OK")])
+
+    class _Env:
+        def start(self, *args: object, **kwargs: object) -> FakeDriver:
+            return driver
+
+        def teardown(self, d: object, eff: object) -> None:
+            torn.append(d)
+
+    def _boom(*args: object, **kwargs: object) -> object:
+        raise drivers_base.BackendCrashError("died during readiness")
+
+    monkeypatch.setattr("bajutsu.runner.launch._await_ready", _boom)
+    with pytest.raises(drivers_base.BackendCrashError, match="died during readiness"):
+        launch_driver("UDID-1", _xcuitest_eff(tmp_path), "xcuitest", environment=_Env())  # type: ignore[arg-type]
+    assert torn == [driver]
+
+
 def test_launch_driver_surfaces_failing_erase_as_device_error(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

@@ -7,9 +7,7 @@ pool never branches on the actuator name (BE-0009 Phase 0).
 
 from __future__ import annotations
 
-import logging
 import queue
-import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
@@ -39,13 +37,12 @@ from bajutsu.platform_lifecycle import (
 )
 from bajutsu.report import git_revision, run_provenance
 from bajutsu.runner.launch import launch_driver
+from bajutsu.runner.recovery import guarded_teardown
 from bajutsu.runner.types import Lease, LeaseFn
 from bajutsu.scenario import Scenario, dump_scenario_file, redact_totp_secrets
 from bajutsu.webview import WebViewBridge
 
 __all__ = ["device_control", "device_pool", "device_relauncher"]
-
-_logger = logging.getLogger(__name__)
 
 
 def _alloc_webview_bridge(
@@ -205,15 +202,12 @@ def device_pool(
             # `terminate()` can raise `ProcessLookupError` (an `OSError`). Left unguarded here — before
             # the `try` below — it would propagate out of `lease()` with `udid` never returned to
             # `free`, leaking the device for the rest of the run. An expected teardown failure is
-            # logged, never re-raised; a genuine bug (anything else) still surfaces.
-            try:
-                cached_env.teardown(cached_driver, eff)
-            except (subprocess.CalledProcessError, OSError) as teardown_exc:
-                _logger.warning(
-                    "tearing down the warm runner on %s for an actuator switch failed: %s",
-                    udid,
-                    teardown_exc,
-                )
+            # logged, never re-raised; a genuine bug (anything else) still surfaces (BE-0342).
+            guarded_teardown(
+                lambda: cached_env.teardown(cached_driver, eff),
+                mid_run=False,
+                what=f"tearing down the warm runner on {udid} for an actuator switch",
+            )
             cached = None
         # A fresh env built for a udid already brought up once this run is a respawn (a prior warm
         # resume failed and evicted the resident), so it gets the tighter respawn readiness ceiling. A
@@ -378,17 +372,13 @@ def device_pool(
             # propagate (via the `raise` below), so a teardown hiccup is logged, never re-raised.
             stale = warm.pop(udid, None)
             if stale is not None:
-                try:
-                    stale[1].teardown(stale[2], eff)
-                except (subprocess.CalledProcessError, OSError) as teardown_exc:
-                    # A leaked runner is the same risk here as at the other two teardown sites, so it
-                    # logs at the same `warning` level; the original launch error still propagates via
-                    # the `raise` below, and a single warning line does not drown it.
-                    _logger.warning(
-                        "tearing down the stale warm runner on %s after a failed lease failed: %s",
-                        udid,
-                        teardown_exc,
-                    )
+                # A leaked runner is the same risk here as at the other two teardown sites; the
+                # original launch error still propagates via the `raise` below (BE-0342).
+                guarded_teardown(
+                    lambda: stale[1].teardown(stale[2], eff),
+                    mid_run=False,
+                    what=f"tearing down the stale warm runner on {udid} after a failed lease",
+                )
             free.put(udid)
             raise
 
@@ -398,10 +388,15 @@ def device_pool(
         # (the app already gone, xcrun unreachable) is logged and skipped so the rest — and the
         # collector sockets below — still come down; a genuine teardown bug still surfaces loudly.
         for udid, (_actuator, env, driver) in warm.items():
-            try:
+
+            def _tear_warm(env: RunEnvironment = env, driver: base.Driver = driver) -> None:
                 env.teardown(driver, eff)
-            except (subprocess.CalledProcessError, OSError) as exc:
-                _logger.warning("tearing down the warm runner on %s failed: %s", udid, exc)
+
+            guarded_teardown(
+                _tear_warm,
+                mid_run=False,
+                what=f"tearing down the warm runner on {udid}",
+            )
         warm.clear()
         for collector in collectors.values():
             collector.stop()
