@@ -288,6 +288,8 @@ def _build_lane(plan: _CrawlPlan, udid: str) -> tuple[base.Driver, crawl_engine.
     driver, _readiness = launch_driver(
         udid, plan.eff, plan.actuator, Preconditions(erase=plan.erase), environment=env
     )
+    # After the launch, deliberately: `crawl_reset` snapshots `simctl.Env(self._udid)` eagerly, so a
+    # reset built ahead of it would bind the udid the launch may have just replaced.
     return driver, env.crawl_reset(plan.eff)
 
 

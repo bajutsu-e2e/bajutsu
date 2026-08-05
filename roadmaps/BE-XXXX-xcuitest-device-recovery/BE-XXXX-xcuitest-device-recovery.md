@@ -193,18 +193,33 @@ classification in unit 1, unit 4 on units 2 and 3, and unit 5 on unit 4.
 - **Delete the replacement when the run ends.** The replacement outlives the run, and deliberately: it
   is a healthy device a later run can lease, where deleting it would make the next run pay another
   creation on a host that has already shown it loses devices, and it is the evidence that a replacement
-  happened at all. The cost is that a long-lived host with a flaky CoreSimulator accumulates one device
-  per recovery — bounded by how often that host loses a device, named `<model> (bajutsu-recovered-<old
-  udid>)` so an operator can tell which recovery minted which, and cleared by `xcrun simctl delete
-  unavailable` or by deleting those devices. The model leads that name because two consumers read a
-  device's name as its human model: the report's device row, and `serve`'s capability inventory, which
-  takes the `iphone` / `ipad` class token out of it by substring. On an ephemeral CI runner none of
-  this is visible; the deliberate choice is for the developer's own Mac and a long-lived `serve`
-  process.
+  happened at all. The cost is one new device named `<model> (bajutsu-recovered-<old udid>)` — so an
+  operator can tell which recovery minted which — per *run* that leases a udid simctl no longer lists,
+  not per loss: the `booted` alias self-heals (the replacement is left booted, so it resolves next
+  time), but a config or `--udid` pinned to a permanently-vanished device mints a fresh, identically
+  named replacement on every run instead of converging on the one already created. Cleared by `xcrun
+  simctl delete unavailable`, by deleting those devices, or by re-pointing the pinned config at the
+  replacement. The model leads that name because two consumers read a device's name as its human
+  model: the report's device row, and `serve`'s capability inventory, which takes the `iphone` /
+  `ipad` class token out of it by substring. On an ephemeral CI runner none of this is visible; the
+  deliberate choice is for the developer's own Mac and a long-lived `serve` process.
 - **Re-create the device on every failed attempt, without probing first.** Cheaper to write than the
   ladder, and wrong in the common case: a Simulator that is merely wedged is repaired by a reboot in a
   fraction of the time a create-plus-first-boot takes, and a probe that could not run would make every
   transient blip replace a healthy device.
+- **Gate the reboot rung on the app-launch-timeout marker instead of every non-process-exit failure.**
+  The classifier already tells a launch timeout apart from an ordinary `run-ended` (a broken build, a
+  bad signature, a crash on launch) and from a wait that reached its ceiling — gating on it would spare
+  the two failures a reboot cannot fix: a broken build pays one reboot-and-reinstall cycle (roughly the
+  `golden` job's ~80s Simulator boot, plus install) before failing anyway, and a ceiling-reached wait is
+  exactly the case BE-0319 argued a second full wait "would double the worst case for no new
+  information" about. Rejected because the marker is a *detected* signature, not the full set of ways a
+  Simulator stops honouring automation: gating on it would let a device-wedge failure that does not
+  happen to log the literal launch-timeout text fall through to the do-nothing rung, reproducing the
+  pre-this-item stall for exactly the case this item exists to recover. The repeatable-failure cost is
+  bounded — one reboot cycle, not a multiplying one, and BE-0049's guarantee that a repeatable failure
+  still fails once `attempts` runs out holds either way — while under-recovering the dominant flake
+  would not be caught by any test the gate can express.
 - **Retry the app launch inside the Swift runner.** BE-0319 rejected this because a relaunch reuses
   the wedged automation session, and a second reason rejects it again here: the fix would ship
   in the Swift package, so every lane would need a rebuilt runner to pick it up, while the recovery in

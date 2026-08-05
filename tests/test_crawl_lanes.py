@@ -366,6 +366,11 @@ def test_build_lane_gives_the_launch_and_the_reset_one_environment(
 
     built: list[object] = []
     reset_from: list[object] = []
+    # A shared order log, not just per-call lists: `crawl_reset` snapshots the environment's udid
+    # eagerly (`simctl.Env(self._udid, ...)` at call time), so building the reset ahead of the launch
+    # would bind the pre-replacement udid and pass the identity check above while resetting the wrong
+    # device — only an ordering assertion catches that class of regression.
+    order: list[str] = []
 
     class _Env:
         def __init__(self, udid: str) -> None:
@@ -373,6 +378,7 @@ def test_build_lane_gives_the_launch_and_the_reset_one_environment(
 
         def crawl_reset(self, eff: object) -> Callable[[], None]:
             reset_from.append(self)
+            order.append("reset")
             return lambda: None
 
     def fake_environment_for(actuator: str, udid: str, *a: object, **k: object) -> _Env:
@@ -384,6 +390,7 @@ def test_build_lane_gives_the_launch_and_the_reset_one_environment(
 
     def fake_launch_driver(udid: str, *a: object, **kw: object) -> tuple[object, None]:
         launched.append(kw.get("environment"))
+        order.append("launch")
         return object(), None
 
     monkeypatch.setattr(crawl_cmd, "environment_for", fake_environment_for)
@@ -396,3 +403,5 @@ def test_build_lane_gives_the_launch_and_the_reset_one_environment(
     assert len(built) == 1
     assert launched == [built[0]]
     assert reset_from == [built[0]]
+    # The reset is built only after the launch has run — and may have replaced the device.
+    assert order == ["launch", "reset"]

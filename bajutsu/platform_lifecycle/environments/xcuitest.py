@@ -464,10 +464,13 @@ def _spawn_cold_with_retry(
         # Simulator runtimes are gone), which is a device fault, not a flaky spawn.
         try:
             recovery = recover(failure)
-        except simctl.DeviceError as exc:
+        except (simctl.DeviceError, OSError) as exc:
             # An unrepairable device still deserves every attempt's classified reason and captured
             # tail — that diagnostic is this function's whole point (unit 2) — so it is folded in
             # rather than lost behind the bare DeviceError an operator would otherwise see alone.
+            # OSError is caught alongside DeviceError because every rung's simctl call can raise it
+            # (a fork that fails with EAGAIN/ENOMEM, an xcrun that has gone) and nothing on the
+            # reboot/replace paths converts it — the same host degradation this ladder recovers from.
             diagnostics.append(f"recovery after attempt {n} failed: {exc}")
             raise simctl.DeviceError(
                 "xcuitest runner did not come up:\n" + "\n".join(diagnostics)
@@ -826,10 +829,13 @@ class XcuitestEnvironment(_DeviceEnvironment):
         deliberate on two counts. It is a healthy device a later run can simply lease, where deleting it
         would make the next run pay another creation on a host that has already shown it loses devices;
         and it is the evidence that this happened at all, which a run that deleted its own replacement
-        would leave only in a log line. The cost is that a long-lived host with a flaky CoreSimulator
-        accumulates one device per recovery — bounded by how often that host loses a device, and cleared
-        by `xcrun simctl delete unavailable` or by deleting the `bajutsu-recovered-*` devices, which the
-        name below makes greppable.
+        would leave only in a log line. The cost is one new `bajutsu-recovered-*` device per *run* that
+        leases a udid simctl no longer lists — not one per loss, since nothing here or later adopts an
+        existing replacement: the `booted` alias self-heals (a replacement is left booted, so it resolves
+        next time), but a config or `--udid` pinned to a permanently-vanished device mints a fresh,
+        identically-named replacement on every run instead of converging on the one already created.
+        Cleared by `xcrun simctl delete unavailable`, by deleting the `bajutsu-recovered-*` devices —
+        which the name below makes greppable — or by re-pointing the pinned config at the replacement.
 
         Raises:
             DeviceError: if no replacement can be created — chiefly a host that lost its iOS runtimes

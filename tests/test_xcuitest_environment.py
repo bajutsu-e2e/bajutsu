@@ -1424,6 +1424,31 @@ def test_diagnostics_survive_when_the_device_cannot_be_repaired() -> None:
     assert "recovery after attempt 1 failed: no iPhone device type" in message
 
 
+def test_an_oserror_from_recovery_is_folded_in_too() -> None:
+    # Every rung reaches simctl through a subprocess call, which can raise OSError (a fork that
+    # fails, an xcrun that has gone) as well as CalledProcessError — and nothing on the reboot/
+    # replace paths converts it. A bare OSError escaping here would drop attempt 1's classified
+    # reason and log tail exactly like the DeviceError case above.
+    spawns: list[int] = []
+
+    def recover(_f: _AttemptFailure) -> _Recovery | None:
+        raise OSError("cannot fork")
+
+    with pytest.raises(simctl.DeviceError) as excinfo:
+        _spawn_cold_with_retry(
+            _failing_spawn(spawns),
+            timeout=300.0,
+            recover=recover,
+            poll=0.0,
+            sleep=lambda _s: None,
+            clock=lambda: 0.0,
+        )
+    message = str(excinfo.value)
+    assert "attempt 1/2" in message
+    assert "recovery after attempt 1 failed: cannot fork" in message
+    assert len(spawns) == 1  # the second attempt was never spawned
+
+
 # --- the ladder itself: which rung a classified failure picks, against a fake simctl --- #
 #
 # These drive `_recover_between_attempts` directly: it is the decision the rest of the recovery hangs
@@ -1456,27 +1481,34 @@ def _device_json(udids: list[str], *, device_type: str = "com.apple.x.iPhone-17-
     )
 
 
-def _ladder_run(present: list[str], *, created: str = "UDID-NEW") -> tuple[list[list[str]], Any]:
-    """A fake simctl that lists `present` as available and mints `created` on `simctl create`."""
+def _ladder_run(
+    present: list[str],
+    *,
+    created: str = "UDID-NEW",
+    devicetypes: list[dict[str, str]] | None = None,
+) -> tuple[list[list[str]], Any]:
+    """A fake simctl that lists `present` as available and mints `created` on `simctl create`.
+
+    `devicetypes` overrides the fake `list devicetypes` response — the default holds only
+    "iPhone 17 Pro", so a caller exercising the configured-model fallback tier (rather than the
+    iPhone-fallback tier, which that single entry cannot tell apart) must pass its own.
+    """
     import json
 
     calls: list[list[str]] = []
+    types = devicetypes or [
+        {
+            "name": "iPhone 17 Pro",
+            "identifier": "com.apple.x.iPhone-17-Pro",
+            "productFamily": "iPhone",
+        }
+    ]
 
     def run(argv: list[str], env: object = None) -> str:
         calls.append(argv)
         verb = argv[2:3]
         if verb == ["list"] and argv[3:4] == ["devicetypes"]:
-            return json.dumps(
-                {
-                    "devicetypes": [
-                        {
-                            "name": "iPhone 17 Pro",
-                            "identifier": "com.apple.x.iPhone-17-Pro",
-                            "productFamily": "iPhone",
-                        }
-                    ]
-                }
-            )
+            return json.dumps({"devicetypes": types})
         if verb == ["list"]:
             return _device_json(present)
         if verb == ["create"]:
@@ -1654,6 +1686,35 @@ def test_a_vanished_device_with_no_app_path_fails_loudly() -> None:
     assert not any(
         c[2:3] == ["create"] for c in calls
     )  # no device was minted for nothing to run on
+
+
+def test_a_replacement_prefers_the_configured_model_over_the_newest_iphone(tmp_path: Path) -> None:
+    # Tier 2 of the fallback ladder (the configured device model) sits between tier 1 (the vanished
+    # device's own captured type) and tier 3 (whichever iPhone this host ships) — and only shows up
+    # when the host has more than one iPhone type, since a single-entry listing can't tell "the
+    # configured model happens to be newest" from "tier 3 fired instead of tier 2".
+    app = tmp_path / "App.app"
+    app.mkdir()
+    devicetypes = [
+        {"name": "iPhone 15", "identifier": "com.apple.x.iPhone-15", "productFamily": "iPhone"},
+        {
+            "name": "iPhone 17 Pro",
+            "identifier": "com.apple.x.iPhone-17-Pro",
+            "productFamily": "iPhone",
+        },
+    ]
+    calls, run = _ladder_run([], devicetypes=devicetypes)  # the leased device is gone
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    env._recover_between_attempts(
+        _AttemptFailure("run-ended", "ended"),
+        _eff_for_ladder(app_path=str(app)),  # defaults.device is "iPhone 15"
+        Preconditions(),
+        None,
+        ceiling=_COLD,
+    )
+    created = next(c for c in calls if c[2:3] == ["create"])
+    # The configured identifier, not the newest-iPhone fallback — tier 2 wins over tier 3.
+    assert created[4] == "com.apple.x.iPhone-15"
 
 
 def test_an_ipad_target_is_never_replaced_with_an_iphone(tmp_path: Path) -> None:
