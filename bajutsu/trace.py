@@ -186,12 +186,31 @@ def _at(value: Any) -> float:
     return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else 0.0
 
 
+def _actuation_summary(step: dict[str, Any]) -> str:
+    """What the step actually did to the screen, one segment per actuation.
+
+    Read straight from the manifest dict (no loader involved): the coordinate the driver sent, or the
+    resolved frame's center for a gesture whose point the platform chose, plus the channel. An older
+    run recorded none, so this is simply empty for it.
+    """
+    out: list[str] = []
+    for a in step.get("actuations") or []:
+        if not isinstance(a, dict):
+            continue
+        points = [p for p in a.get("points") or [] if isinstance(p, (list, tuple)) and len(p) == 2]
+        where = " → ".join(f"({_at(p[0]):g}, {_at(p[1]):g})" for p in points)
+        out.append(f"{a.get('gesture', '')}{f' {where}' if where else ''} [{a.get('via', '')}]")
+    return "   · ".join(out)
+
+
 def _step_event(step: dict[str, Any], from_: str | None = None) -> tuple[float, str]:
     mark = "✓" if step.get("ok") else "✗"
     desc = f"{mark} {step.get('action', '')!s:<9}"
     dur = step.get("duration_s")
     if isinstance(dur, (int, float)) and not isinstance(dur, bool):
         desc += f"  ({dur:.2f}s)"
+    if summary := _actuation_summary(step):
+        desc += f"   {summary}"
     if from_:  # the natural-language phrase this step was recorded from (BE-0044), if shown here
         desc += f'   ← "{from_}"'
     if not step.get("ok") and step.get("reason"):

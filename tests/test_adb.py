@@ -1739,6 +1739,58 @@ def test_tap_goes_to_the_device_and_injects_no_coordinate() -> None:
     assert not [c for c in calls if "input" in c]
 
 
+def test_the_actuation_record_names_the_channel_that_carried_the_gesture() -> None:
+    # The whole point of recording `via` on this backend: Android is the one with two channels, and only
+    # the coordinate one can drift, so a report has to say which one a gesture took. The device path
+    # states no point (the device chose it from its own dump); the fallback states the injected one.
+    act, seen = _recording_act([True])
+    run, _ = _capturing_run([FIXTURE])
+    driver = AdbDriver("U", run=run, act=act)
+    driver.tap({"id": "stable.submit"})
+    (device,) = driver.drain_actuations()
+    assert (device.gesture, device.via, device.unit) == ("tap", "identity", "pixel")
+    assert device.points == []
+    assert device.frame == (0.0, 200.0, 200.0, 100.0)
+    assert [r.kind for r in seen] == ["tap"]  # it really went device-side
+
+    coordinate_only = AdbDriver("U", run=lambda a: FIXTURE)  # no `/act` channel at all
+    coordinate_only.tap({"id": "stable_refresh"})
+    (host,) = coordinate_only.drain_actuations()
+    assert (host.gesture, host.via) == ("tap", "coordinate")
+    assert host.points == [(100.0, 150.0)]  # centre of (0,100,200,100), the point actually injected
+
+
+def test_a_declined_device_gesture_records_both_the_attempt_and_the_fallback() -> None:
+    # The endpoint answers "the target moved" on every attempt, so the gesture degrades to a coordinate.
+    # Both really happened, in that order, and a reader chasing a missed tap needs to see the degrade.
+    act, _ = _recording_act([False])
+    run, _ = _capturing_run([FIXTURE] * 8)
+    driver = AdbDriver("U", run=run, act=act)
+    driver.tap({"id": "stable.submit"})
+    assert [(a.via, bool(a.points)) for a in driver.drain_actuations()] == [
+        ("identity", False),
+        ("identity", False),
+        ("identity", False),  # the bounded stale retry
+        ("coordinate", True),
+    ]
+
+
+def test_the_record_never_carries_the_device_identity_tuple() -> None:
+    # `NodeIdentity` is verbatim dump text: its `content-desc` and `text` components are exactly what
+    # the evidence redactor scrubs, and for a field a `type` step filled, `text` *is* the entered
+    # string. The manifest is written without a redactor, so the record keeps the normalized identifier
+    # and nothing else — this fixture's identity differs from it in every component, so a regression to
+    # the tuple cannot pass unnoticed.
+    act, seen = _recording_act([True])
+    run, _ = _capturing_run([FIXTURE])
+    driver = AdbDriver("U", run=run, act=act)
+    driver.tap({"id": "stable.submit"})
+    (record,) = driver.drain_actuations()
+    assert record.target == "stable.submit"
+    assert seen[0].identity == ("stable.submit", "sent", "送信", "android.widget.Button")
+    assert "送信" not in repr(record) and "sent" not in repr(record)
+
+
 def test_long_press_carries_its_duration_to_the_device() -> None:
     # The device has no press-and-hold either, so it needs the hold length to pace its own zero-length
     # swipe. Sent in milliseconds, the unit the resident server counts steps in.

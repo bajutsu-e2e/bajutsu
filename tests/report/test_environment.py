@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from _report import _passing
 
+from bajutsu.drivers.actuation import Actuation
 from bajutsu.orchestrator import AlertEvent, RunResult, SkippedCapture, StepOutcome
 from bajutsu.report import html_report, manifest_dict
 
@@ -74,6 +75,75 @@ def test_html_shows_expect_phase_dismissed_alert() -> None:
     assert '<span class="tk str">“Allow”</span>' in out
     # No expect-phase dismissal -> no note.
     assert 'class="alertnote"' not in html_report("run1", [_passing()])
+
+
+def test_html_shows_what_the_step_actuated() -> None:
+    # The report's answer to "where did this tap land": the coordinate the driver sent, the element it
+    # resolved, and the channel that carried it, as a sub-row under the step.
+    r = RunResult(
+        scenario="s1",
+        ok=True,
+        steps=[
+            StepOutcome(
+                index=0,
+                action="tap",
+                ok=True,
+                started_at=0.0,
+                actuations=[
+                    Actuation(
+                        "tap",
+                        "coordinate",
+                        "pixel",
+                        points=[(100.0, 150.0)],
+                        frame=(0.0, 100.0, 200.0, 100.0),
+                        target="stable.submit",
+                    )
+                ],
+            )
+        ],
+        expect_results=[],
+        artifacts=[],
+    )
+    out = html_report("run1", [r], definitions=[{"name": "s1", "steps": [{"tap": {"id": "a"}}]}])
+    assert "class='actrow'" in out
+    assert "(100, 150)" in out
+    assert 'class="actn-v">via coordinate' in out
+    assert '<span class="tk id">stable.submit</span>' in out
+
+
+def test_html_shows_a_handle_actuation_by_its_frame() -> None:
+    # A record with no host coordinate still says *where*: the frame the far side resolved from.
+    r = RunResult(
+        scenario="s1",
+        ok=True,
+        steps=[
+            StepOutcome(
+                index=0,
+                action="tap",
+                ok=True,
+                started_at=0.0,
+                actuations=[
+                    Actuation("tap", "handle", "point", frame=(4.0, 8.0, 20.0, 12.0), target="ok")
+                ],
+            )
+        ],
+        expect_results=[],
+        artifacts=[],
+    )
+    out = html_report("run1", [r], definitions=[{"name": "s1", "steps": [{"tap": {"id": "a"}}]}])
+    assert "[4, 8 20×12]" in out
+    assert 'class="actn-v">via handle' in out
+
+
+def test_html_shows_an_expect_phase_actuation_under_the_expectations() -> None:
+    # The guard's dismissing tap during the scenario-level re-check belongs to no step, so it is noted
+    # under the expectations table beside its alert — recorded and shown, never dropped.
+    r = _passing()
+    r.expect_actuations = [Actuation("systemAlert", "handle", "point", target="alert.ok")]
+    out = html_report("run1", [r])
+    assert 'class="actnote"' in out
+    assert '<span class="tk id">alert.ok</span>' in out
+    assert 'class="actnote"' not in html_report("run1", [_passing()])
 
 
 def test_device_shown_in_manifest_and_report() -> None:

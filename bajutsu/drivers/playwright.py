@@ -29,6 +29,7 @@ from typing import TYPE_CHECKING, Any, NamedTuple, Protocol, cast
 from bajutsu import simctl
 from bajutsu.dom import QUERY_JS, parse_dom
 from bajutsu.drivers import base
+from bajutsu.drivers.actuation import Actuation, ActuationLog
 from bajutsu.evidence import intervals
 
 if TYPE_CHECKING:
@@ -179,6 +180,10 @@ def _start_browser(
 # would risk an unlisted wedge type aborting the crawl instead.
 _PW_ERRORS: tuple[type[BaseException], ...] | None = None
 
+# `getBoundingClientRect` reports CSS pixels, so that is the space stamped on this backend's actuation
+# records — a coordinate only means something alongside its unit.
+_UNIT = "cssPixel"
+
 
 def _playwright_error_types() -> tuple[type[BaseException], ...]:
     global _PW_ERRORS
@@ -265,6 +270,8 @@ class PlaywrightDriver:
         self._pw: Any = None
         self._browser: Any = None
         self._context: Any = None  # current BrowserContext (web); closed + replaced on each reset
+        # What this driver actually actuated, drained per step by the run loop.
+        self._actuations = ActuationLog()
         self._cdp: Any = None  # lazily-opened CDP session for multi-touch synthesis
         # Deterministic web health / dialog signals the crawl reads (BE-0066): an uncaught JS
         # exception, a 4xx/5xx main-frame navigation, and a JS dialog are all machine facts — no
@@ -518,25 +525,64 @@ class PlaywrightDriver:
         return parse_dom(records if isinstance(records, list) else [])
 
     def _center(self, sel: base.Selector) -> base.Point:
-        return base.frame_center(base.resolve_unique(self.query(), sel)["frame"])
+        point, _ = self._center_with_element(sel)
+        return point
+
+    def _center_with_element(self, sel: base.Selector) -> tuple[base.Point, base.Element]:
+        """The resolved element's frame center, plus the element (for the actuation record)."""
+        el = base.resolve_unique(self.query(), sel)
+        return base.frame_center(el["frame"]), el
+
+    def drain_actuations(self) -> list[Actuation]:
+        """The concrete actuations performed since the last drain (`ActuationReporter`)."""
+        return self._actuations.drain()
+
+    def _log_coordinate(
+        self,
+        gesture: str,
+        point: base.Point,
+        el: base.Element,
+        *,
+        duration_s: float | None = None,
+        scale: float | None = None,
+        radians: float | None = None,
+    ) -> None:
+        """Record a click / gesture the driver aimed at a point it computed itself."""
+        self._actuations.record(
+            Actuation(
+                gesture,
+                "coordinate",
+                _UNIT,
+                points=[point],
+                frame=el["frame"],
+                target=el["identifier"],
+                duration_s=duration_s,
+                scale=scale,
+                radians=radians,
+            )
+        )
 
     @_wedge_guard
     def tap(self, sel: base.Selector) -> None:
-        x, y = self._center(sel)
+        (x, y), el = self._center_with_element(sel)
+        self._log_coordinate("tap", (x, y), el)
         self._page.mouse.click(x, y)
 
     @_wedge_guard
     def tap_point(self, p: base.Point) -> None:
+        self._actuations.record(Actuation("tap", "coordinate", _UNIT, points=[p]))
         self._page.mouse.click(p[0], p[1])
 
     @_wedge_guard
     def double_tap(self, sel: base.Selector) -> None:
-        x, y = self._center(sel)
+        (x, y), el = self._center_with_element(sel)
+        self._log_coordinate("doubleTap", (x, y), el)
         self._page.mouse.dblclick(x, y)
 
     @_wedge_guard
     def long_press(self, sel: base.Selector, duration: float) -> None:
-        x, y = self._center(sel)
+        (x, y), el = self._center_with_element(sel)
+        self._log_coordinate("longPress", (x, y), el, duration_s=duration)
         self._page.mouse.move(x, y)
         self._page.mouse.down()
         time.sleep(duration)
@@ -544,6 +590,7 @@ class PlaywrightDriver:
 
     @_wedge_guard
     def swipe(self, frm: base.Point, to: base.Point) -> None:
+        self._actuations.record(Actuation("swipe", "coordinate", _UNIT, points=[frm, to]))
         # A literal pointer drag — the coordinate `swipe` form (canvas / map pan) and the `drag`
         # action (a resize divider, a slider thumb). Keyed on input mode like `scroll` (BE-0227): a
         # touch context uses a real touch drag (the pinch/rotate path) so a touch-bound handle
@@ -559,6 +606,7 @@ class PlaywrightDriver:
 
     @_wedge_guard
     def scroll(self, frm: base.Point, to: base.Point) -> None:
+        self._actuations.record(Actuation("scroll", "coordinate", _UNIT, points=[frm, to]))
         # A directional scroll (see base.Driver.scroll). A mouse drag leaves the page inert, so
         # dispatch the primitive that actually scrolls, keyed on the context's input mode (BE-0228): a
         # touch context uses a real single-finger touch drag (the pinch/rotate path, so touch/scroll
@@ -613,12 +661,15 @@ class PlaywrightDriver:
     def back(self) -> None:
         # The web's "back" is browser history; the platform peer of Android's system back key and
         # iOS's OS back button (BE-0210).
+        self._actuations.record(Actuation("back", "history", _UNIT))
         self._page.go_back()
 
     @_wedge_guard
     def pinch(self, sel: base.Selector, scale: float) -> None:
         # Two fingers level on the element's center; `scale` spreads (>1) or closes (<1) their gap.
-        cx, cy, r = self._gesture_anchor(sel)
+        (cx, cy, r), el = self._gesture_anchor(sel)
+        # The anchor: `gesture_anchor`'s rule plus the frame and the scale determine both contacts.
+        self._log_coordinate("pinch", (cx, cy), el, scale=scale)
         start = [(cx - r, cy), (cx + r, cy)]
         end = [(cx - r * scale, cy), (cx + r * scale, cy)]
         self._touch_drag(start, end)
@@ -626,14 +677,21 @@ class PlaywrightDriver:
     @_wedge_guard
     def rotate(self, sel: base.Selector, radians: float) -> None:
         # Two fingers level on the center, rotated about it by `radians`.
-        cx, cy, r = self._gesture_anchor(sel)
+        (cx, cy, r), el = self._gesture_anchor(sel)
+        self._log_coordinate("rotate", (cx, cy), el, radians=radians)
         start = [(cx - r, cy), (cx + r, cy)]
         end = [_rotate_point(p, (cx, cy), radians) for p in start]
         self._touch_drag(start, end)
 
-    def _gesture_anchor(self, sel: base.Selector) -> tuple[float, float, float]:
-        """The element's center and a finger half-distance for a two-finger gesture (BE-0251)."""
-        return base.gesture_anchor(base.resolve_unique(self.query(), sel)["frame"])
+    def _gesture_anchor(
+        self, sel: base.Selector
+    ) -> tuple[tuple[float, float, float], base.Element]:
+        """The element's center and a finger half-distance for a two-finger gesture (BE-0251).
+
+        The resolved element travels with them so the caller records what it actuated.
+        """
+        el = base.resolve_unique(self.query(), sel)
+        return base.gesture_anchor(el["frame"]), el
 
     def _touch_drag(self, start: list[base.Point], end: list[base.Point], steps: int = 5) -> None:
         """Synthesize a touch drag from `start` to `end` via CDP touch events (Chromium).
@@ -674,23 +732,28 @@ class PlaywrightDriver:
     def type_text(self, text: str) -> None:
         # The orchestrator taps `into` before this (see _do_type), focusing the field — same
         # contract every backend relies on, so typing always lands in the just-focused element.
+        # `text` is deliberately absent from the record — not even its length (see `actuation.py`).
+        self._actuations.record(Actuation("typeText", "focused", _UNIT))
         self._page.keyboard.type(text)
 
     @_wedge_guard
     def delete_text(self, count: int) -> None:
         # `count` backspaces on the focused field (BE-0265). `press` per key, since Playwright has no
         # repeat-count on a single press.
+        self._actuations.record(Actuation("deleteText", "focused", _UNIT))
         for _ in range(count):
             self._page.keyboard.press("Backspace")
 
     @_wedge_guard
     def select_all(self) -> None:
         # Ctrl+A selects the focused field's whole content (BE-0265).
+        self._actuations.record(Actuation("selectAll", "focused", _UNIT))
         self._page.keyboard.press("Control+a")
 
     @_wedge_guard
     def copy_selection(self) -> None:
         # Ctrl+C copies the active selection to the clipboard (BE-0265).
+        self._actuations.record(Actuation("copy", "focused", _UNIT))
         self._page.keyboard.press("Control+c")
 
     @_wedge_guard
@@ -706,7 +769,9 @@ class PlaywrightDriver:
         # crash), so the two failure modes — not a <select>, option value absent — are surfaced as
         # sentinel strings and re-raised here as ElementNotFound (a SelectorError) so the run loop
         # can catch them with the same handler as any other selector failure.
-        x, y = self._center(sel)
+        (x, y), el = self._center_with_element(sel)
+        # `option` never reaches the record: like a typed string, it can hold a resolved secret.
+        self._log_coordinate("selectOption", (x, y), el)
         opt = json.dumps(option)
         result = self._page.evaluate(
             "(() => {"

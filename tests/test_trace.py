@@ -88,6 +88,39 @@ def test_trace_run_renders_timeline(tmp_path: Path) -> None:
     assert "evidence: appTrace · network" in out
 
 
+def test_trace_shows_what_each_step_actually_actuated(tmp_path: Path) -> None:
+    # The timeline reads the manifest dict directly, so it needs no loader: the coordinate a tap sent and
+    # the channel that carried it appear on the step's own line, which is where someone asking "where did
+    # this tap land" is already looking.
+    run = _write_run(tmp_path, "20250101-000000")
+    manifest = json.loads((run / "manifest.json").read_text(encoding="utf-8"))
+    manifest["scenarios"][0]["steps"][0]["actuations"] = [
+        {
+            "gesture": "tap",
+            "via": "coordinate",
+            "unit": "pixel",
+            "points": [[100.0, 150.0]],
+            "frame": [0.0, 100.0, 200.0, 100.0],
+            "target": "stable.submit",
+        },
+        {"gesture": "typeText", "via": "focused", "unit": "pixel", "points": []},
+    ]
+    (run / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    out = trace.trace_run(run)
+
+    assert "tap (100, 150) [coordinate]" in out
+    assert "typeText [focused]" in out  # no point to show, so the channel alone
+
+
+def test_trace_of_a_run_recorded_before_actuations_shows_no_summary(tmp_path: Path) -> None:
+    # An older manifest carries no `actuations`, so the line renders exactly as it always did rather
+    # than showing an empty segment (the BE-0068 forward/backward-compatible read).
+    out = trace.trace_run(_write_run(tmp_path, "20250101-000000"))
+    assert "[coordinate]" not in out
+    assert "✓ tap" in out
+
+
 def test_trace_failure_shows_reason(tmp_path: Path) -> None:
     out = trace.trace_run(_write_run(tmp_path / "runs", "20260101-000001", ok=False))
     assert "FAIL" in out and "✗ wait" in out and "timeout" in out

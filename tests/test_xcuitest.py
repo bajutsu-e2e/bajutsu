@@ -115,6 +115,56 @@ def test_tap_resolves_unique_then_sends_that_elements_snapshot_handle() -> None:
     ]  # the resolved element's handle, not coords
 
 
+def test_the_actuation_record_states_the_handle_and_no_coordinate() -> None:
+    # This backend never computes a touch point: the runner picks it on the far side of the handle. So
+    # the record names the element it resolved and leaves `points` empty rather than writing the frame's
+    # centre, which would present a guess as a measurement.
+    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+        if path == "/elements":
+            return _elements(_el_wire("h-ok", "ok", "OK", traits=["button"], frame=(4, 8, 20, 12)))
+        return _Reply(status="ok")
+
+    driver = _driver(transport)
+    driver.long_press({"id": "ok"}, 0.7)
+    (record,) = driver.drain_actuations()
+    assert (record.gesture, record.via, record.unit) == ("longPress", "handle", "point")
+    assert record.points == []
+    assert (record.frame, record.target, record.duration_s) == ((4.0, 8.0, 20.0, 12.0), "ok", 0.7)
+
+
+def test_a_stale_retry_records_both_attempts_and_ends_on_the_actuated_element() -> None:
+    # A `stale` reply re-resolves and re-actuates (BE-0289). Both attempts really went out, so both are
+    # recorded — and the last record names the element the successful attempt resolved, which is the one
+    # that was actuated.
+    frames = [(0.0, 0.0, 10.0, 10.0), (0.0, 40.0, 10.0, 10.0)]  # the row moved between snapshots
+    replies = ["stale", "ok"]
+    snapshots = 0
+
+    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+        nonlocal snapshots
+        if path == "/elements":
+            frame = frames[min(snapshots, len(frames) - 1)]
+            snapshots += 1
+            return _elements(_el_wire("h-ok", "ok", "OK", frame=frame))
+        return _Reply(status=replies.pop(0))
+
+    driver = _driver(transport)
+    driver.tap({"id": "ok"})
+    first, second = driver.drain_actuations()
+    assert first.frame == (0.0, 0.0, 10.0, 10.0)
+    assert second.frame == (0.0, 40.0, 10.0, 10.0)
+
+
+def test_a_coordinate_primitive_records_the_points_it_sent() -> None:
+    # `swipe` / `scroll` / `tap_point` bypass the handle channel and send raw coordinates, so unlike
+    # every other primitive here they do state a point — the one that crossed to the runner.
+    driver = _driver(lambda m, p, b: _Reply(status="ok"))
+    driver.swipe((10.0, 200.0), (10.0, 40.0))
+    (record,) = driver.drain_actuations()
+    assert (record.gesture, record.via) == ("swipe", "coordinate")
+    assert record.points == [(10.0, 200.0), (10.0, 40.0)]
+
+
 def test_tap_resolves_through_a_content_identical_duplicate_registration() -> None:
     # A standard UIAlertController button sometimes registers twice on XCUITest — same identifier,
     # label, traits, value, and frame, on both entries. Without `resolve_unique`'s collapsing this

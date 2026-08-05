@@ -40,6 +40,7 @@ from pathlib import Path
 from typing import Any
 
 from bajutsu.drivers import base
+from bajutsu.drivers.actuation import Actuation, ActuationLog
 from bajutsu.evidence import intervals
 
 # The W3C element-reference key: `findElements` returns each element as `{ELEMENT_KEY: "<id>"}`, and
@@ -61,6 +62,9 @@ _DRAG_DURATION_SECONDS = 0.5
 _SCROLL_DURATION_SECONDS = 1.0
 _PINCH_VELOCITY = 1.0
 _ROTATE_VELOCITY = 1.0
+
+# iOS reports every frame and coordinate in points, on this route as on the runner channel.
+_UNIT = "point"
 
 # Per-request socket timeouts, split by idempotency the way the runner channel splits them: a read is
 # tight, a write (a synthesized UI event) gets more headroom on a contended grid. Unlike the runner
@@ -276,6 +280,12 @@ class XcuitestLiveDriver:
         self._client = client
         # The device screen size (BE-0326), fetched once from the session; fixed for a session.
         self._screen: base.Point | None = None
+        # What this driver actually actuated, drained per step by the run loop.
+        self._actuations = ActuationLog()
+
+    def drain_actuations(self) -> list[Actuation]:
+        """The concrete actuations performed since the last drain (`ActuationReporter`)."""
+        return self._actuations.drain()
 
     # --- query / resolve / act ---
 
@@ -330,18 +340,45 @@ class XcuitestLiveDriver:
         elements, _ = self._query_with_handles()
         return elements
 
-    def _resolve_handle(self, sel: base.Selector) -> str:
-        """Resolve *sel* to a single element Python-side and return its WebDriver id.
+    def _resolve_handle(self, sel: base.Selector) -> tuple[str, base.Element]:
+        """Resolve *sel* to a single element Python-side; return its WebDriver id and the element.
 
         The one resolution point every element-targeted gesture shares: an ambiguous selector fails
         here, before any actuation (determinism first), exactly as the runner-channel driver resolves.
+        The element travels with the id so the caller can record what it actuated without a second
+        query.
         """
         elements, handles = self._query_with_handles()
         el = base.resolve_unique(elements, sel)
-        return handles[id(el)]
+        return handles[id(el)], el
+
+    def _log_element(
+        self,
+        gesture: str,
+        el: base.Element,
+        *,
+        duration_s: float | None = None,
+        scale: float | None = None,
+        radians: float | None = None,
+    ) -> None:
+        """Record an element-targeted gesture; the WebDriver server picks the touch point, so no point."""
+        self._actuations.record(
+            Actuation(
+                gesture,
+                "handle",
+                _UNIT,
+                frame=el["frame"],
+                target=el["identifier"],
+                duration_s=duration_s,
+                scale=scale,
+                radians=radians,
+            )
+        )
 
     def tap(self, sel: base.Selector) -> None:
-        self._client.click(self._resolve_handle(sel))
+        handle, el = self._resolve_handle(sel)
+        self._log_element("tap", el)
+        self._client.click(handle)
 
     def back(self) -> None:
         # No hardware back on iOS: tap the OS navigation back button, the same element the other iOS
@@ -372,17 +409,21 @@ class XcuitestLiveDriver:
 
     def tap_point(self, p: base.Point) -> None:
         # A raw coordinate tap (system alerts and the like), the one path with no element/handle.
+        self._actuations.record(Actuation("tap", "coordinate", _UNIT, points=[p]))
         self._client.execute("mobile: tap", [{"x": p[0], "y": p[1]}])
 
     def double_tap(self, sel: base.Selector) -> None:
-        self._client.execute("mobile: doubleTap", [{"elementId": self._resolve_handle(sel)}])
+        handle, el = self._resolve_handle(sel)
+        self._log_element("doubleTap", el)
+        self._client.execute("mobile: doubleTap", [{"elementId": handle}])
 
     def long_press(self, sel: base.Selector, duration: float) -> None:
-        self._client.execute(
-            "mobile: touchAndHold", [{"elementId": self._resolve_handle(sel), "duration": duration}]
-        )
+        handle, el = self._resolve_handle(sel)
+        self._log_element("longPress", el, duration_s=duration)
+        self._client.execute("mobile: touchAndHold", [{"elementId": handle, "duration": duration}])
 
     def swipe(self, frm: base.Point, to: base.Point) -> None:
+        self._actuations.record(Actuation("swipe", "coordinate", _UNIT, points=[frm, to]))
         self._client.execute(
             "mobile: dragFromToForDuration",
             [
@@ -407,6 +448,7 @@ class XcuitestLiveDriver:
         return self._screen
 
     def scroll(self, frm: base.Point, to: base.Point) -> None:
+        self._actuations.record(Actuation("scroll", "coordinate", _UNIT, points=[frm, to]))
         # A non-inertial pan (BE-0326): `mobile: dragFromToForDuration` over a longer duration than a
         # plain drag keeps the scroll view moving with the finger and settling where it ends, leaving
         # no fling momentum. A quick flick's post-lift travel is device- and frame-rate-dependent —
@@ -428,20 +470,24 @@ class XcuitestLiveDriver:
         # Appium's `mobile: pinch` needs a velocity whose sign matches the scale: positive to zoom in
         # (scale > 1), negative to zoom out (scale < 1).
         velocity = _PINCH_VELOCITY if scale >= 1 else -_PINCH_VELOCITY
+        handle, el = self._resolve_handle(sel)
+        self._log_element("pinch", el, scale=scale)
         self._client.execute(
             "mobile: pinch",
-            [{"elementId": self._resolve_handle(sel), "scale": scale, "velocity": velocity}],
+            [{"elementId": handle, "scale": scale, "velocity": velocity}],
         )
 
     def rotate(self, sel: base.Selector, radians: float) -> None:
         # `rotation` carries the signed direction; `velocity` is a rate/magnitude (always positive),
         # the same convention `XCUIElement.rotate(_:withVelocity:)` uses and codegen/xcuitest.py
         # emits with a fixed `withVelocity: 1.0`.
+        handle, el = self._resolve_handle(sel)
+        self._log_element("rotate", el, radians=radians)
         self._client.execute(
             "mobile: rotateElement",
             [
                 {
-                    "elementId": self._resolve_handle(sel),
+                    "elementId": handle,
                     "rotation": radians,
                     "velocity": _ROTATE_VELOCITY,
                 }
@@ -451,10 +497,13 @@ class XcuitestLiveDriver:
     def type_text(self, text: str) -> None:
         # Type into the focused field, as the runner's `/type` does: W3C send-keys to the active
         # element (Appium's XCUITest driver focuses the field the scenario tapped first).
+        # `text` is deliberately absent from the record — not even its length (see `actuation.py`).
+        self._actuations.record(Actuation("typeText", "focused", _UNIT))
         self._client.send_keys(self._client.active_element(), text)
 
     def delete_text(self, count: int) -> None:
         # A run of backspaces on the focused field (BE-0265) — the W3C backspace key, once per count.
+        self._actuations.record(Actuation("deleteText", "focused", _UNIT))
         self._client.send_keys(self._client.active_element(), BACKSPACE_KEY * count)
 
     def select_all(self) -> None:

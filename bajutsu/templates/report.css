@@ -229,6 +229,16 @@ tr.skip td{color:var(--mut);opacity:.65}
 tr.alertrow>td{background:#fdf3ec;border-top:1px dashed var(--line);color:var(--mut);
  font:.78rem/1.5 -apple-system,system-ui,sans-serif;padding:.18rem .7rem}
 .alertnote{margin-top:.45rem;color:var(--mut);font-size:.8rem}
+/* What the driver actually did to the screen (a sub-row under the step, and a note under the
+   expectations table when the guard actuated during the scenario-level re-check). */
+tr.actrow>td{background:var(--card);border-top:1px dashed var(--line);color:var(--mut);
+ font:.76rem/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;padding:.18rem .7rem}
+.actnote{margin-top:.45rem;color:var(--mut);font-size:.78rem}
+.actn{display:inline-block;margin-right:.9rem}
+.actn-g{color:var(--fg);font-weight:600}
+.actn-p{color:var(--fg)}
+.actn-u,.actn-v,.actn-x{opacity:.75}
+.actn-f{opacity:.85}
 .vtoggle{display:inline-flex;border:1px solid var(--line);border-radius:7px;overflow:hidden;margin-bottom:.6rem}
 .vt{background:var(--card);color:var(--mut);border:0;cursor:pointer;font:600 .78rem -apple-system,system-ui,sans-serif;
  padding:.25rem .7rem}

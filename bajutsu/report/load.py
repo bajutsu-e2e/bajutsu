@@ -20,6 +20,7 @@ from typing import Any
 import yaml
 
 from bajutsu.assertions import AssertionResult, VisualEvidence
+from bajutsu.drivers.actuation import Actuation
 from bajutsu.evidence import Artifact
 from bajutsu.orchestrator import AlertEvent, RunResult, SkippedCapture, StepOutcome
 from bajutsu.report.html import html_report, scenario_render_inputs, write_html_and_junit
@@ -44,6 +45,35 @@ def _assertion(d: dict[str, Any]) -> AssertionResult:
     return AssertionResult(**{**_kw(AssertionResult, d), "visual": _visual(d.get("visual"))})
 
 
+def _point(v: Any) -> tuple[float, ...] | None:
+    """A JSON array back into the tuple the actuation record's type declares.
+
+    JSON has no tuple, so `points` / `frame` arrive as lists and would otherwise compare unequal to
+    what the run wrote — which the manifest round-trip test exists to catch. A malformed entry (not a
+    sequence of numbers) degrades to None rather than failing the whole load, matching this module's
+    read-what-you-know contract.
+    """
+    if not isinstance(v, (list, tuple)):
+        return None
+    if not all(isinstance(n, (int, float)) and not isinstance(n, bool) for n in v):
+        return None
+    return tuple(float(n) for n in v)
+
+
+def _actuation(d: dict[str, Any]) -> Actuation:
+    # A tuple of the wrong arity is dropped rather than reconstructed: a 3-number "point" is not a
+    # point, and letting it through would put a value in the record that no writer can produce.
+    frame = _point(d.get("frame"))
+    points = (_point(v) for v in d.get("points") or [])
+    return Actuation(
+        **{
+            **_kw(Actuation, d),
+            "points": [p for p in points if p is not None and len(p) == 2],
+            "frame": frame if frame is not None and len(frame) == 4 else None,
+        }
+    )
+
+
 def _step(d: dict[str, Any]) -> StepOutcome:
     return StepOutcome(
         **{
@@ -51,6 +81,7 @@ def _step(d: dict[str, Any]) -> StepOutcome:
             "assertion_results": [_assertion(a) for a in d.get("assertion_results") or []],
             "artifacts": [Artifact(**_kw(Artifact, a)) for a in d.get("artifacts") or []],
             "alerts": [AlertEvent(**_kw(AlertEvent, a)) for a in d.get("alerts") or []],
+            "actuations": [_actuation(a) for a in d.get("actuations") or []],
         }
     )
 
@@ -65,6 +96,7 @@ def _result(d: dict[str, Any]) -> RunResult:
             "expect_alerts": [
                 AlertEvent(**_kw(AlertEvent, a)) for a in d.get("expect_alerts") or []
             ],
+            "expect_actuations": [_actuation(a) for a in d.get("expect_actuations") or []],
             "skipped_captures": [
                 SkippedCapture(**_kw(SkippedCapture, c)) for c in d.get("skipped_captures") or []
             ],
