@@ -877,6 +877,31 @@ class _StepRunner:
         self.state.outcomes.append(outcome)
         return None if ok else f"step {idx} ({kind}): {reason}"
 
+    def _read_evidence(
+        self,
+        active_driver: base.Driver,
+        step_id: str,
+        what: str,
+        read: Callable[[], list[base.Element]],
+    ) -> list[base.Element] | None:
+        """Best-effort evidence read: `None` on failure rather than crashing the step.
+
+        A torn-down WebView context must not crash a step whose pass/fail outcome doesn't depend
+        on `read` (prime directive 1) — but the identical failure on the native driver is a dead
+        device connection, which must still surface loudly, so it re-raises there instead. Shared
+        by every capture-only read a `web` block can fail (the pre-step baseline, the
+        `screenChanged` comparison, the wait-timeout diagnostic, and the post-step `elements`
+        capture) so the native/web policy lives in one place instead of four hand-copied guards.
+        `ConnectionError` is a subclass of `OSError`, so the tuple below already covers it.
+        """
+        try:
+            return read()
+        except (base.UnsupportedAction, OSError) as exc:
+            if active_driver is self.cfg.driver:
+                raise
+            _logger.debug("%s: %s skipped, web driver query failed: %s", step_id, what, exc)
+            return None
+
     def _handle_action(
         self,
         step: Step,
@@ -909,8 +934,16 @@ class _StepRunner:
             and active_driver is not self.cfg.driver
             and not isinstance(self.cfg.sink, NullSink)
         ):
-            try:
-                pre_elements = active_driver.query()
+            fresh = self._read_evidence(
+                active_driver, step_id, "pre-step elements capture", active_driver.query
+            )
+            if fresh is None:
+                # Only `elements` needs the web driver; `screenshot.before` is captured from the
+                # native driver regardless, so drop just `elements` rather than losing the whole
+                # baseline.
+                pre_kinds = ["screenshot.before"]
+            else:
+                pre_elements = fresh
                 self.state.total_reads += 1
                 # Seed `prev_after` with this same read: the `screenChanged`-policy `before` below
                 # would otherwise see `prev_after` still unset and pay a second, duplicate query of
@@ -920,18 +953,6 @@ class _StepRunner:
                 # current and skips its own redundant re-query.
                 self.state.prev_after = pre_elements
                 pre_query_was_fresh = True
-            except (ConnectionError, base.UnsupportedAction, OSError) as exc:
-                # Best-effort: a web context that can't be read yet must not crash the step before it
-                # even gets to attempt its own action — that failure surfaces normally through
-                # `_run_step_body` instead. Only `elements` needs the web driver; `screenshot.before`
-                # is captured from the native driver regardless, so drop just `elements` here rather
-                # than losing the whole baseline, and disclose the gap via logging rather than guess.
-                _logger.debug(
-                    "%s: pre-step elements capture skipped, web driver query failed: %s",
-                    step_id,
-                    exc,
-                )
-                pre_kinds = ["screenshot.before"]
         outcome.artifacts.extend(
             self.cfg.sink.capture(self.cfg.driver, step_id, pre_kinds, elements=pre_elements)
         )
@@ -1132,20 +1153,11 @@ class _StepRunner:
         screen = _ScreenRead(active_driver, seed=snapshot, read=read)
         screen_changed = False
         if before is not None:
-            try:
-                screen_changed = screen.get() != before
-            except (ConnectionError, base.UnsupportedAction, OSError) as exc:
-                # Evidence-only, like the wait-timeout diagnostic and the post-step `elements`
-                # guard below: `screen_changed` feeds only `_collect_captures`, never this step's
-                # own pass/fail outcome, so a torn-down WebView context here must not crash a step
-                # that would otherwise pass or fail cleanly on its own (prime directive 1). Scoped
-                # to the web driver like the pre-step baseline's guard above: the same failure on
-                # the native driver is a dead device connection, which must still surface loudly.
-                if active_driver is self.cfg.driver:
-                    raise
-                _logger.debug(
-                    "%s: screenChanged read skipped, web driver query failed: %s", step_id, exc
-                )
+            # Evidence-only: `screen_changed` feeds only `_collect_captures`, never this step's
+            # own pass/fail outcome (prime directive 1).
+            current = self._read_evidence(active_driver, step_id, "screenChanged read", screen.get)
+            if current is not None:
+                screen_changed = current != before
 
         # An unconditional first-wait diagnostic on a `for`-wait timeout: capturePolicy may not
         # request an element dump on failure, so without this the timeout leaves no evidence to
@@ -1153,20 +1165,23 @@ class _StepRunner:
         # `polls > 0` fires only after a `for`-wait ran (only that branch records the trace), so
         # the trigger is a structural fact, not the wording of the timeout message.
         if wait_trace is not None and not ok and wait_trace.polls > 0:
-            try:
-                art = self.cfg.sink.wait_diagnostic(
-                    step_id, trace=wait_trace, elements=screen.get()
-                )
-            except (ConnectionError, base.UnsupportedAction, OSError) as exc:
-                # Best-effort evidence: a disk/permission failure writing the diagnostic, or (inside a
-                # `web` block) a torn-down WebView context that `screen.get()` queries afresh here,
-                # must not mask the real timeout with an I/O traceback — keep the timeout as the
-                # failure and disclose the lost evidence loudly. A genuine bug (e.g. a redaction
-                # error) still surfaces rather than being swallowed here.
-                _logger.warning("dropping wait-timeout diagnostic: write failed: %s", exc)
-            else:
-                if art is not None:
-                    outcome.artifacts.append(art)
+            diag_elements = self._read_evidence(
+                active_driver, step_id, "wait-timeout diagnostic", screen.get
+            )
+            if diag_elements is not None:
+                try:
+                    art = self.cfg.sink.wait_diagnostic(
+                        step_id, trace=wait_trace, elements=diag_elements
+                    )
+                except OSError as exc:
+                    # Best-effort evidence: a disk/permission failure writing the diagnostic must
+                    # not mask the real timeout with an I/O traceback — keep the timeout as the
+                    # failure and disclose the lost evidence loudly. A genuine bug (e.g. a
+                    # redaction error) still surfaces rather than being swallowed here.
+                    _logger.warning("dropping wait-timeout diagnostic: write failed: %s", exc)
+                else:
+                    if art is not None:
+                        outcome.artifacts.append(art)
 
         if outcome.ok and interp_step.extract:
             ext_ok, ext_reason = _run_extract(
@@ -1196,18 +1211,14 @@ class _StepRunner:
         )
         els = screen.cached
         if wants_web_elements:
-            try:
-                els = screen.get()
-            except (ConnectionError, base.UnsupportedAction, OSError) as exc:
-                # Best-effort, like the pre-step baseline's own web-read guard: a torn-down
-                # WebView context must not crash an otherwise-decided step over an evidence
-                # capture. Drop just `elements` — `screenshot`/`actionLog` in `instant` still fire.
-                _logger.debug(
-                    "%s: post-step elements capture skipped, web driver query failed: %s",
-                    step_id,
-                    exc,
-                )
+            fresh = self._read_evidence(
+                active_driver, step_id, "post-step elements capture", screen.get
+            )
+            if fresh is None:
+                # `screenshot`/`actionLog` in `instant` still fire.
                 instant = [t for t in instant if _kind_of(t) != "elements"]
+            else:
+                els = fresh
         outcome.artifacts.extend(
             self.cfg.sink.capture(self.cfg.driver, step_id, instant, elements=els)
         )
