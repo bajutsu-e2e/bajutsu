@@ -374,8 +374,9 @@ OAuth を構成すると、アクセスは手作業の login リストではな�
   表示名ではありません）に従います。そのメンバーはサーバ設定（config、API キー、provider）も変更
   できます。admin はデプロイ全体で 1 段のロールなので、どの org を越えても信頼できるメンバーの Team だけを
   指定します。上の viewer・editor とは異なり、構成済みの admin Team のいずれかのメンバーは、サインインのゲートを
-  直接通過します。admin Team が属する GitHub organization を、どこかの org の `githubOrgs` に含める必要は
-  ありません。そのため、`orgs:` ブロックが壊れている、あるいは存在しない状態でも、admin は常にサインイン
+  直接通過します。admin Team が属する GitHub organization を、どこかの org の `githubOrgs` に含める必要も、
+  そのメンバーを `members` に列挙する必要もありません。そのため、`orgs:` ブロックが壊れている、あるいは
+  存在しない状態でも、admin は常にサインイン
   して、サーバの向き先を修正済みの config へ張り替えられます。この性質により、`BAJUTSU_OAUTH_ADMIN_TEAMS`
   は、ロールの対応づけだけでなくサインインの資格情報そのものになります。各エントリの GitHub organization
   側は、実際に自分が管理する organization でなければなりません。その organization を管理する人は誰でも、

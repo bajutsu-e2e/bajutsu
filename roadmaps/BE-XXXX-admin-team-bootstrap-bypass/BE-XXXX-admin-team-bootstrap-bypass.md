@@ -101,7 +101,13 @@ The gate and the Team fetch simply weren't ordered to use it together. This item
 alongside `identity_matches_org`: a login whose `identity.teams` intersects the configured admin Team
 list clears the sign-in gate regardless of what `identity_matches_org` returns. An admin Team member
 then signs in even when no `orgs:` entry lists their GitHub organization, or when `orgs:` is absent
-altogether. A login that satisfies neither check is still rejected exactly as today. `oauth_callback`
+altogether. A login that satisfies neither check is still rejected with the same 403 as today, but no
+longer silently: it is now also recorded through `oplog.log_event`, under a new `"oauth.denied"`
+entry in `oplog.EVENTS` rather than folded into `"oauth.login"` (which stays "login count," per the
+reasoning below). A rejection is the one failure this item exists to make recoverable — a broken or
+missing `orgs:` block plus no matching admin Team — so it needs the same audit-style visibility a
+successful sign-in gets, not a bare 403 with nothing an operator can correlate a user's "I can't sign
+in" report against. `oauth_callback`
 now records every successful sign-in through `oplog.log_event`
 ([`bajutsu/serve/oplog.py`](../../bajutsu/serve/oplog.py)), under the already-reserved `"oauth.login"`
 event and the login itself as the `actor` correlation field — not a bare logging call, so the record
@@ -312,7 +318,9 @@ mapping.
       successful sign-in through `oplog.log_event` (the reserved `"oauth.login"` event, the login as
       the `actor` field, and a `bypass` field `True` only for a bypass-only admission), so the one
       sign-in path `orgs:` did not authorize still leaves a record an operator's `event`-keyed alert
-      can see. When persisting the identity, keep an existing
+      can see. Record a login that clears neither check under a separate `"oauth.denied"` event, so a
+      broken or missing `orgs:` block with no matching admin Team is recoverable rather than a bare
+      403 with nothing to correlate a user's report against. When persisting the identity, keep an existing
       login's already-recorded org rather than relocating it to `default` on a transient
       `/user/orgs` failure that made the bypass, not `orgs:`, admit it.
 - [x] Update the self-hosting and configuration docs (both languages) and `.env.example` to describe
@@ -322,7 +330,8 @@ mapping.
       organization the deployment actually controls, since the value is now a sign-in credential.
 - [x] Tests: sign-in accepted for an admin-Team member with no matching `orgs:` entry and with no
       `orgs:` block at all; resolved role is admin in both cases; a login matching neither the org
-      gate nor the admin-Team list is still rejected; the renamed variable parses a multi-Team list;
+      gate nor the admin-Team list is still rejected and logs `"oauth.denied"`; the renamed variable
+      parses a multi-Team list;
       a bypassing admin is placed in the `default` org; an existing member's recorded org survives a
       failure to load the config itself, but a genuinely revoked member re-resolves to `default` on
       their next login rather than staying pinned, and so does a `githubOrgs`-only member relocated

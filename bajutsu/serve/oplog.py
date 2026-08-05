@@ -45,6 +45,7 @@ EVENTS: frozenset[str] = frozenset(
         "run.restored",
         "run.purged",
         "oauth.login",
+        "oauth.denied",
         "quota.rejected",
         "worker.job.started",
         "worker.job.finished",
