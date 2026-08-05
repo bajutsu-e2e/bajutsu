@@ -412,15 +412,6 @@ def _resolve_video_start_offset(
     this fix's design expects to occur in production (see the item's Motivation), so treating one
     as real would silently clamp every early step's `started_at` to `0.0` via `max(0.0, ...)`
     rather than surface whatever produced it (a stale/reused interval, a clock mismatch).
-    """
-    if video_interval is None or video_interval.true_start is None:
-        return 0.0
-    rather than surface whatever produced it (a stale/reused interval, a clock mismatch).
-
-    Mixing the two time sources is deliberate but load-bearing: `true_start` is always a raw
-    `time.monotonic()` instant, so `clock` must share that epoch (`RealClock`). A clock with a
-    different origin makes this offset — and every `startedAt` derived from `video_anchor_s` in
-    rather than surface whatever produced it (a stale/reused interval, a clock mismatch).
 
     Mixing the two time sources is deliberate but load-bearing: `true_start` is always a raw
     `time.monotonic()` instant, so `clock` must share that epoch (`RealClock`). A clock with a

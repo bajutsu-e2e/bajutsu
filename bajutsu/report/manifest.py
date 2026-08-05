@@ -123,7 +123,8 @@ def manifest_dict(
 ) -> dict[str, object]:
     """Build the manifest — the run's canonical, versioned render model (BE-0068).
 
-    RunResult and its parts are dataclasses, so asdict() captures step/expect outcomes verbatim.
+    RunResult and its parts are dataclasses, so `_scenario_dict` captures step/expect outcomes
+    verbatim — minus `video_anchor_s`, a process-local instant with no meaning once persisted.
     `backend` is the actuator that drove the run (each scenario also carries its own `backend`);
     `sourceName` is the label the report's YAML toggle shows, persisted here so a re-render can
     recover it.
