@@ -365,7 +365,8 @@ OAuth を構成すると、アクセスは手作業の login リストではな�
 - **サインインと viewer ロール**は org メンバーシップに従います。構成済みの org のメンバー（明示の
   `members`、または `githubOrgs` に挙げた GitHub org の一員。[`orgs:`](configuration.md#orgorgsマルチテナントのサーバ-backend)
   を参照）だけがサインインでき、成功すると **viewer**（閲覧のみ）が付きます。どの org にも一致しない login は
-  拒否されるので、OAuth を使う構成では `orgs:` ブロックの宣言が必須です。
+  拒否されるので、OAuth を使う構成では `orgs:` ブロックの宣言が必須です。ただし、設定した admin Team の
+  メンバーだけは例外で、このゲートを直接通過します（下の **admin** を参照）。
 - **editor** は org の `editorTeam` に従います。その 1 つのフラットな GitHub Team の直接メンバーが、run、record、
   scenario の編集をできます。
 - **admin** はサーバ全体で 1 つ以上の GitHub Team、`BAJUTSU_OAUTH_ADMIN_TEAMS`（カンマ区切りのリスト。各要素は

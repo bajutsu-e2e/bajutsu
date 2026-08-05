@@ -378,7 +378,8 @@ hand-maintained login list:
   configured org — an explicit `members` entry or a member of a `githubOrgs`-listed GitHub org (see
   [`orgs:`](configuration.md#orgs-orgs-the-multi-tenant-server-backend)) — and a successful sign-in
   grants **viewer** (read-only). A login that matches no org is turned away, so an OAuth deployment
-  must declare an `orgs:` block.
+  must declare an `orgs:` block — with one exception, a member of a configured admin Team, who
+  clears this gate regardless (see **Admin** below).
 - **Editor** follows the org's `editorTeam`: a direct member of that one flat GitHub Team may run,
   record, and edit scenarios.
 - **Admin** follows one or more server-wide GitHub Teams, `BAJUTSU_OAUTH_ADMIN_TEAMS` (a

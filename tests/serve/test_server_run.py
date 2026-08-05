@@ -299,6 +299,51 @@ def test_build_state_server_parses_the_admin_teams(
     assert state.auth.oauth_admin_teams == ["acme-gh/ops", "other-gh/root"]
 
 
+def test_build_state_server_warns_on_the_retired_singular_admin_team_var(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # A deployment still on the old BAJUTSU_OAUTH_ADMIN_TEAM (no BAJUTSU_OAUTH_ADMIN_TEAMS) would
+    # otherwise lose every admin silently on this hard cutover — it must warn loudly instead.
+    monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
+    monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
+    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
+    monkeypatch.setenv("BAJUTSU_OAUTH_ADMIN_TEAM", "acme-gh/ops")
+    _scn, cfg, runs = project(tmp_path)
+    state = srv._build_state(
+        runs_dir=runs,
+        config=cfg,
+        scenarios_dir=None,
+        root=tmp_path,
+        baselines_dir=None,
+        max_concurrent=4,
+        token=None,
+        backend="server",
+    )
+    assert state.auth.oauth_admin_teams == []
+    assert "BAJUTSU_OAUTH_ADMIN_TEAM is retired" in capsys.readouterr().err
+
+
+def test_build_state_server_stays_quiet_when_admin_teams_is_set(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
+    monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
+    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
+    monkeypatch.setenv("BAJUTSU_OAUTH_ADMIN_TEAMS", "acme-gh/ops")
+    _scn, cfg, runs = project(tmp_path)
+    srv._build_state(
+        runs_dir=runs,
+        config=cfg,
+        scenarios_dir=None,
+        root=tmp_path,
+        baselines_dir=None,
+        max_concurrent=4,
+        token=None,
+        backend="server",
+    )
+    assert capsys.readouterr().err == ""
+
+
 def test_build_state_server_parses_the_per_user_quota(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
