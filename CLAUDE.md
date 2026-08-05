@@ -140,6 +140,12 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   team assigned as reviewer: `gh pr create --reviewer bajutsu-e2e/steering-committee …` (omit
   `--draft`). Everything else — anything touching product code — still starts as Draft per the rule
   above.
+- **A wording-only review finding arrives as a companion PR (BE-0343).** When the automated reviewer
+  marks a finding `(non-blocking, prose)`, a job applies that finding's own `suggestion` block to a
+  `prose-fix/pr-<N>` branch and opens a small PR **based on your branch**, so your PR pays no CI
+  cycle for a change with no behavioral risk. Review and merge it like any other small PR; the job
+  has already replied to and resolved the source thread, so don't answer those threads yourself.
+  Mechanism: [`docs/ai-development.md`](docs/ai-development.md#the-companion-pr-for-wording-only-findings-be-0343).
 
 ## Conventions
 

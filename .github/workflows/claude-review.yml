@@ -222,3 +222,108 @@ jobs:
           # it looks at. On a comment event the prompt is empty, so the action falls through to its
           # default `@claude` mention handling — the on-demand `@claude review` path.
           prompt: ${{ github.event_name == 'pull_request' && format('Review this pull request (#{0}) as an advisory (non-gating) reviewer. Read the review contract at .github/claude-review-prompt.md and follow it exactly, including its "Identify yourself as Claude Code" rule (prefix every inline comment so the review reads as Claude Code, since it posts under github-actions[bot]). Read the diff with `gh pr diff {0}` and review the ENTIRE diff exhaustively in this single pass — raise every finding at once, and do NOT treat unchanged code as settled just because an earlier run did not flag it; if you find a real issue anywhere in the diff, raise it, so nothing is missed. {1} Post each finding as an inline comment with the mcp__github_inline_comment__create_inline_comment tool, adding a GitHub suggestion block wherever a concrete, mechanical fix fits. Do NOT post any top-level summary comment — post inline findings only, because a fresh summary on every push leaves stale, contradictory overviews on the PR. If nothing warrants a comment, post nothing. This review is advisory only, never a merge gate.', github.event.pull_request.number, steps.inputs.outputs.prior_section) || '' }}
+
+  # Ship the wording-only findings the review just posted as a companion PR instead of making the
+  # author push them here (BE-0343). A `(non-blocking, prose)` finding is never a correctness bug,
+  # yet fixing it on this PR re-runs its whole CI matrix for a change with no behavioral risk. So
+  # this job applies each such finding's own `suggestion` block to a companion branch rebuilt from
+  # this PR's head, and opens that against this PR's branch — the fix is reviewable and mergeable
+  # while this PR is still open, on its own small terms.
+  #
+  # NO LLM RUNS HERE (prime directive 1, with more room to spare than the review above): the review
+  # step already drafted the fix text, so this only matches it against the current head and splices
+  # it in, skipping — never guessing — where the line has since changed. `needs: review` orders it
+  # after that push's findings have posted.
+  prose-companion:
+    name: prose companion PR
+    needs: review
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Same-repo pull requests only. This job checks out a PR-authored branch AND holds a privileged
+    # App token, which is a materially different risk from roadmap-id.yml's and refresh.yml's use of
+    # that token against the already-trusted `main` — so it is confined to branches only an
+    # OWNER/MEMBER/COLLABORATOR can push, the same trust boundary the review step draws for forks.
+    # A fork PR's wording findings stay unautomated, the same gap the review already accepts.
+    #
+    # A companion PR is itself reviewed (it is opened by an allow-listed bot), so without the
+    # `prose-fix/` exclusion a prose finding on one would open a companion of the companion, and so
+    # on. Excluding the branch prefix stops that at one level: a wording finding on a companion PR is
+    # fixed there by hand, which is cheap — it carries no CI matrix worth avoiding.
+    #
+    # `!cancelled()` rather than the implicit success(): the review posts its findings as it goes, so
+    # a provider error late in that step must not strand findings it already posted. A run superseded
+    # by a newer push IS cancelled, and there the newer run does the work instead.
+    if: >-
+      !cancelled() &&
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      !startsWith(github.event.pull_request.head.ref, 'prose-fix/')
+    environment: claude-review
+    # Every write goes through the App token, so the default GITHUB_TOKEN needs read only — narrower
+    # than the workflow-level grant the review job needs for posting comments.
+    permissions:
+      contents: read
+    steps:
+      - name: Require the automation App (or no-op)
+        id: gate
+        env:
+          APP_ID: ${{ secrets.AUTOMATION_BOT_APP_ID }}
+          APP_KEY: ${{ secrets.AUTOMATION_BOT_PRIVATE_KEY }}
+        run: |
+          # The App identity is what makes the companion PR trigger its own `check` CI (a PR opened
+          # with GITHUB_TOKEN does not) — without it the companion would be unreviewable, so a
+          # half-provisioned repo stays a green no-op rather than opening a useless PR.
+          if [ -n "$APP_ID" ] && [ -n "$APP_KEY" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::AUTOMATION_BOT_APP_ID / AUTOMATION_BOT_PRIVATE_KEY are not both set — the prose companion PR is dormant (BE-0343). No-op."
+          fi
+
+      - name: Mint a short-lived installation token for the automation App
+        if: steps.gate.outputs.enabled == 'true'
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
+        with:
+          app-id: ${{ secrets.AUTOMATION_BOT_APP_ID }}
+          private-key: ${{ secrets.AUTOMATION_BOT_PRIVATE_KEY }}
+
+      # The script that runs under the App token comes from the DEFAULT branch, never the PR head —
+      # so a same-repo branch cannot rewrite what this privileged job executes. It is stdlib-only and
+      # runs on the runner's own `python3`, which is also why no `uv sync` (and therefore no
+      # PR-authored `pyproject.toml` build hook) is involved.
+      - name: Check out the default branch (trusted) for the companion script
+        if: steps.gate.outputs.enabled == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      # The PR head, as data the script edits — checked out under the App token because the companion
+      # branch is pushed from here. Rebuilt from the CURRENT head every run, so a rebase on the
+      # source branch has nothing to re-sync: nothing carries over between runs.
+      - name: Check out the pull request's head to build the companion branch on
+        if: steps.gate.outputs.enabled == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: companion
+          # Full history, matching refresh.yml — the clobber guard inspects the companion branch and
+          # the run pushes to it, neither of which should depend on a shallow clone's edges.
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Apply the wording findings and open or update the companion PR
+        if: steps.gate.outputs.enabled == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          git -C companion config user.name "${APP_SLUG}[bot]"
+          git -C companion config user.email "${APP_SLUG}[bot]@users.noreply.github.com"
+          python3 scripts/prose_companion_pr.py \
+            --pr "$PR" --source-branch "$HEAD_REF" --repo-dir companion \
+            --bot-email "${APP_SLUG}[bot]@users.noreply.github.com"
