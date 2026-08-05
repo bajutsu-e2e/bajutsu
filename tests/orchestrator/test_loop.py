@@ -18,7 +18,7 @@ from bajutsu.scenario import Interrupt, Relaunch
 
 class _QueryLoggingDriver(FakeDriver):
     """A `FakeDriver` that also logs `query()` into `actions`, so a test can order it against
-    `screenshot()` (already logged) and the step's own action (BE-XXXX)."""
+    `screenshot()` (already logged) and the step's own action (BE-0341)."""
 
     def query(self) -> list[base.Element]:
         self.actions.append(("query", None))
@@ -280,7 +280,7 @@ def test_step_level_assert_drops_schema_context() -> None:
     assert result.failure is not None and "no schema context" in result.failure
 
 
-# --- pre-step report evidence capture (BE-XXXX) --------------------------------------------------
+# --- pre-step report evidence capture (BE-0341) --------------------------------------------------
 
 
 def test_pre_step_capture_precedes_a_mutating_action(tmp_path: Path) -> None:
@@ -327,7 +327,7 @@ def test_pre_step_capture_precedes_a_non_mutating_step(tmp_path: Path) -> None:
 
 def test_last_step_gets_a_final_capture_earlier_steps_do_not(tmp_path: Path) -> None:
     """Only the scenario's last step gets a post-step baseline too — every step already gets the
-    pre-step one, but only the last has no following step to carry its result forward (BE-XXXX)."""
+    pre-step one, but only the last has no following step to carry its result forward (BE-0341)."""
     driver = FakeDriver([el("a", "A", ["button"]), el("b", "B", ["button"])])
     run_dir = tmp_path / "run1"
     result = run_scenario(
@@ -419,7 +419,7 @@ def test_a_step_that_fails_before_it_acts_still_gets_its_full_evidence_pair(
 
 def test_final_capture_lands_on_the_last_leaf_step_inside_an_if(tmp_path: Path) -> None:
     """A scenario ending in an `if` still gets its final capture on the last *leaf* step actually
-    run, not on the `if` container's own (artifact-less) outcome (BE-XXXX)."""
+    run, not on the `if` container's own (artifact-less) outcome (BE-0341)."""
     driver = FakeDriver([el("a", "A", ["button"]), el("b", "B", ["button"])])
     result = run_scenario(
         driver,
@@ -453,7 +453,7 @@ def test_final_capture_lands_on_the_last_leaf_step_inside_an_if(tmp_path: Path) 
 def test_final_capture_lands_on_the_last_leaf_step_inside_a_for_each(tmp_path: Path) -> None:
     """A scenario ending in a `forEach` with matches still gets its final capture on the last
     iteration's last leaf step, not the `forEach` container's own (artifact-less) outcome, and not
-    an earlier iteration's step (BE-XXXX)."""
+    an earlier iteration's step (BE-0341)."""
     driver = FakeDriver(
         [
             el("a", "A", ["button"]),
@@ -501,7 +501,7 @@ def test_final_capture_lands_on_the_last_leaf_step_before_a_no_match_for_each(
 ) -> None:
     """A trailing `forEach` that matches nothing never calls `_handle_action`, so it must not
     silently swallow the final capture: it still lands on the last leaf step that actually ran
-    before it (BE-XXXX)."""
+    before it (BE-0341)."""
     driver = FakeDriver([el("a", "A", ["button"])])  # no `item.*` elements to match
     result = run_scenario(
         driver,
@@ -569,7 +569,7 @@ def test_pre_step_capture_queries_the_web_driver_for_a_blocks_first_nested_step(
 ) -> None:
     """The pre-step baseline for a `web` block's first nested step queries the *web* driver, not
     the native one, since `prev_after` is reset to `None` around the whole block (BE-0234 Unit 2)
-    and the sink call always targets the native driver otherwise (BE-XXXX) — proven by content:
+    and the sink call always targets the native driver otherwise (BE-0341) — proven by content:
     the DOM-only element must appear in the written elements.json. The scenario's final capture
     (screenshot only, added since this is also the last step) never touches `elements` at all, so
     it needs no web-driver interaction of its own."""
@@ -617,7 +617,7 @@ def test_pre_step_capture_downgrades_to_screenshot_only_when_web_query_fails(
 ) -> None:
     """A `web` block's first nested step still gets its native `screenshot.before` when the bridge
     query fails: only `elements` needs the web driver, so the pre-step baseline drops just that
-    token rather than the whole capture (BE-XXXX review follow-up). No `capturePolicy` fires a
+    token rather than the whole capture (BE-0341 review follow-up). No `capturePolicy` fires a
     post-step `elements` capture here, so the bridge is queried exactly once — a permanently dead
     bridge is exactly what this models."""
     native_screen = [el("app.webview", frame=(0.0, 0.0, 400.0, 800.0))]
@@ -825,7 +825,7 @@ def test_screen_read_failure_is_cached_not_retried_per_consumer(tmp_path: Path) 
 
 def test_pre_step_query_marks_prev_after_fresh_for_the_interrupt_guard(tmp_path: Path) -> None:
     """The pre-step baseline's own `active_driver.query()` for a `web` block's first nested step
-    (BE-XXXX) must count as a *fresh* read for the interrupt guard's `before_is_fresh` bookkeeping,
+    (BE-0341) must count as a *fresh* read for the interrupt guard's `before_is_fresh` bookkeeping,
     not just for `prev_after` — otherwise, with a `screenChanged` policy configured, the guard sees
     `before_is_fresh=False` for a tree it did not actually need to re-read and pays a redundant
     second `query_dom()` (review follow-up)."""
@@ -884,7 +884,7 @@ def test_pre_step_and_final_captures_write_content_from_the_same_pre_action_mome
 ) -> None:
     """Content check, not just call ordering: every step's elements.json holds the pre-action tree
     it acted on — including the scenario's last step, whose final capture only adds a screenshot
-    (`after.png`), never re-capturing `elements` (BE-XXXX). `elements.json` has one fixed filename,
+    (`after.png`), never re-capturing `elements` (BE-0341). `elements.json` has one fixed filename,
     so if the final capture re-wrote it, the last step's `elements.json` would silently disagree
     with the `before.png` the editor's `screenshotUrl` still resolves to — a real review finding
     this test now guards against.
@@ -928,7 +928,7 @@ def test_pre_step_and_final_captures_write_content_from_the_same_pre_action_mome
 
 def test_extract_still_reads_the_settled_post_action_value(tmp_path: Path) -> None:
     """`extract` is unaffected by the pre-step baseline: it still copies out the settled
-    post-action value, never the pre-step snapshot (BE-XXXX leaves BE-0299 untouched)."""
+    post-action value, never the pre-step snapshot (BE-0341 leaves BE-0299 untouched)."""
 
     def react(d: FakeDriver, kind: str, arg: object) -> None:
         if kind == "tap":

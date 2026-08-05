@@ -112,7 +112,7 @@ def test_plain_tap_issues_no_runner_read() -> None:
 
 
 def test_pre_step_baseline_issues_no_extra_runner_read() -> None:
-    # The pre-step baseline capture (BE-XXXX) must defer to the sink exactly like the post-step one
+    # The pre-step baseline capture (BE-0341) must defer to the sink exactly like the post-step one
     # already does: passing whatever `prev_after` holds, never forcing a `query()` of its own. A
     # sink that does not consume `elements` (like `test_plain_tap_issues_no_runner_read`'s) pays
     # nothing for either baseline, so the loop's own read count stays at the pre-existing floor.
@@ -129,7 +129,7 @@ def test_pre_step_baseline_issues_no_extra_runner_read() -> None:
 
 def test_pre_step_baseline_skips_the_web_query_under_a_null_sink() -> None:
     # A `web` block's first nested step must not force a bridge query for a baseline `NullSink`
-    # discards (review follow-up on BE-XXXX): under the default sink (`NullSink`, `sink=None`), a
+    # discards (review follow-up on BE-0341): under the default sink (`NullSink`, `sink=None`), a
     # `type` step (no tap to resolve, no extract) now costs the bridge nothing at all — the
     # post-step laziness fix below closed the one remaining forced read this test used to pin
     # ("one call for one step, not two"; see test_web_block_plain_tap_issues_no_extra_bridge_query
@@ -255,7 +255,7 @@ def test_web_block_file_sink_reads_the_web_tree_not_the_native_one(tmp_path: Pat
     # A FileSink genuinely needs the tree, so the deferred read this laziness relies on must still
     # fire — and against the *active* (web) driver, not the native one passed to `capture()` for
     # `screenshot` (a `WebContextDriver` can't take one). The always-on `elements` baseline is
-    # captured *pre*-step (BE-XXXX), so a post-step `elements` fires only when the scenario asks for
+    # captured *pre*-step (BE-0341), so a post-step `elements` fires only when the scenario asks for
     # it: the `capturePolicy` below is what makes the deferred web read actually fire.
     # Guards against reintroducing the wrong-driver class of bug already fixed once for the
     # pre-step baseline capture.
@@ -386,7 +386,7 @@ def test_before_reuse_detects_screen_change_per_step() -> None:
     # screen), not a stale earlier tree that would make step 2 look changed too. The rule requests
     # `actionLog` rather than a `screenshot` modifier: the pre-step baseline always fires
     # `screenshot.before` and the scenario's last step (step 1 here) additionally always fires
-    # `screenshot.after` (BE-XXXX), so neither modifier can tell "the rule fired" apart from "every
+    # `screenshot.after` (BE-0341), so neither modifier can tell "the rule fired" apart from "every
     # step's own baseline."
     changed = [el("next", "Next"), el("b", "B", ["button"])]
 

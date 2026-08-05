@@ -292,7 +292,7 @@ def _write_run_with_steps(runs: Path, run_id: str, sid: str, step_ids: list[str]
     """Write a minimal run with manifest + per-step artifacts.
 
     The manifest's own `artifacts` list is what `_step_artifacts` now resolves names from
-    (BE-XXXX), so each step's entry names the pre-step baseline files this fixture writes —
+    (BE-0341), so each step's entry names the pre-step baseline files this fixture writes —
     `before.png` first, matching the run loop's own ordering (`by_kind.setdefault` precedence).
     """
     run_dir = runs / run_id
@@ -367,7 +367,7 @@ def test_read_scenario_with_run_returns_steps(tmp_path: Path) -> None:
 def test_read_scenario_with_run_resolves_manifest_recorded_names_not_hardcoded(
     tmp_path: Path,
 ) -> None:
-    """`_step_artifacts` resolves whatever name the run actually recorded (BE-XXXX) — proven with a
+    """`_step_artifacts` resolves whatever name the run actually recorded (BE-0341) — proven with a
     name that would not match if the lookup still assumed a fixed `before.png` / `after.png`."""
     state, runs = _state(tmp_path)
     scn_dir = tmp_path / "scenarios"
@@ -428,7 +428,7 @@ def test_read_scenario_with_run_resolves_a_named_step_after_nested_control_flow(
     tmp_path: Path,
 ) -> None:
     """A named top-level step *after* an `if` block resolves its own artifacts, not the nested
-    step's (BE-XXXX review follow-up). The runner's own step-name fallback counts every executed
+    step's (BE-0341 review follow-up). The runner's own step-name fallback counts every executed
     step, including nested ones, so the `if` block's one nested `tap` consumes an index the
     top-level loop below never sees; keying the lookup by each outcome's own recorded artifact path
     (this step's real runtime id) rather than by top-level position keeps the two YAML steps'
@@ -524,7 +524,7 @@ def test_read_scenario_with_run_prefers_the_first_recorded_screenshot(tmp_path: 
     """When a step's artifacts list carries two `screenshot`-kind entries — the pre-step baseline
     plus a capturePolicy rule's own shot, as a real run under an active rule produces — the first
     one recorded (the baseline) wins, mirroring `report/rows.py`'s `by_kind.setdefault` precedence
-    (BE-XXXX). Locks in the documented floor/ceiling precedence rather than leaving it untested."""
+    (BE-0341). Locks in the documented floor/ceiling precedence rather than leaving it untested."""
     state, runs = _state(tmp_path)
     scn_dir = tmp_path / "scenarios"
     (scn_dir / "login.yaml").write_text(SCENARIO_YAML, encoding="utf-8")
@@ -615,7 +615,7 @@ def test_read_scenario_with_run_missing_artifacts(tmp_path: Path) -> None:
 
 def test_read_scenario_with_run_empty_sid_yields_no_steps(tmp_path: Path) -> None:
     """A scenario record whose `sid` is `""` (malformed/partially written) bails to no steps, the
-    same as a missing `sid` — restoring the coercion the old `_find_sid` applied (BE-XXXX)."""
+    same as a missing `sid` — restoring the coercion the old `_find_sid` applied (BE-0341)."""
     state, runs = _state(tmp_path)
     scn_dir = tmp_path / "scenarios"
     (scn_dir / "login.yaml").write_text(SCENARIO_YAML, encoding="utf-8")
@@ -761,7 +761,7 @@ def test_read_scenario_with_run_rejects_a_traversal_shaped_artifact_name(tmp_pat
 
 def test_read_scenario_with_run_ignores_non_string_artifact_fields(tmp_path: Path) -> None:
     """A malformed manifest entry whose `kind`/`name` are not strings degrades to "no link" rather
-    than flowing a non-string value into the URL built from it (BE-XXXX)."""
+    than flowing a non-string value into the URL built from it (BE-0341)."""
     state, runs = _state(tmp_path)
     scn_dir = tmp_path / "scenarios"
     (scn_dir / "login.yaml").write_text(SCENARIO_YAML, encoding="utf-8")
@@ -811,7 +811,7 @@ def test_read_scenario_with_run_ignores_non_dict_artifact_entries(tmp_path: Path
     """A step's `artifacts` list carrying a non-`dict` entry (a malformed/partially written
     manifest) degrades to "no link" for that entry rather than raising when `_artifact_names`
     calls `.get` on it — and the step id is still derived from the first entry that has a valid
-    `name`, skipping past the leading non-`dict` one (BE-XXXX review follow-up)."""
+    `name`, skipping past the leading non-`dict` one (BE-0341 review follow-up)."""
     state, runs = _state(tmp_path)
     scn_dir = tmp_path / "scenarios"
     (scn_dir / "login.yaml").write_text(SCENARIO_YAML, encoding="utf-8")
@@ -860,7 +860,7 @@ def test_read_scenario_with_run_ignores_non_dict_artifact_entries(tmp_path: Path
 
 def test_read_scenario_with_run_ignores_non_dict_scenario_entries(tmp_path: Path) -> None:
     """A manifest whose `scenarios` list carries a non-`dict` entry ahead of the real record
-    degrades to skipping it rather than raising on `.get` (BE-XXXX review follow-up)."""
+    degrades to skipping it rather than raising on `.get` (BE-0341 review follow-up)."""
     state, runs = _state(tmp_path)
     scn_dir = tmp_path / "scenarios"
     (scn_dir / "login.yaml").write_text(SCENARIO_YAML, encoding="utf-8")
@@ -889,7 +889,7 @@ def test_read_scenario_with_run_ignores_non_dict_scenario_entries(tmp_path: Path
 
 def test_read_scenario_with_run_ignores_a_non_dict_manifest(tmp_path: Path) -> None:
     """A `manifest.json` that parses as JSON but isn't an object (e.g. a bare list) degrades to an
-    empty step list rather than raising on the first `.get()` (BE-XXXX review follow-up)."""
+    empty step list rather than raising on the first `.get()` (BE-0341 review follow-up)."""
     state, runs = _state(tmp_path)
     scn_dir = tmp_path / "scenarios"
     (scn_dir / "login.yaml").write_text(SCENARIO_YAML, encoding="utf-8")
@@ -910,7 +910,7 @@ def test_read_scenario_with_run_ignores_a_non_dict_manifest(tmp_path: Path) -> N
 
 def test_read_scenario_with_run_ignores_a_non_list_steps_field(tmp_path: Path) -> None:
     """A scenario record whose `steps` field is `null` (or otherwise not a list) degrades to no
-    artifacts for any step rather than raising when iterated (BE-XXXX review follow-up)."""
+    artifacts for any step rather than raising when iterated (BE-0341 review follow-up)."""
     state, runs = _state(tmp_path)
     scn_dir = tmp_path / "scenarios"
     (scn_dir / "login.yaml").write_text(SCENARIO_YAML, encoding="utf-8")
@@ -939,7 +939,7 @@ def test_read_scenario_with_run_skips_a_slash_less_name_for_a_later_valid_one(
 ) -> None:
     """A `dict` artifact with a `str` `name` that carries no step-id prefix (e.g. a fallback
     filename recorded for a path outside the run dir) must not stop the step-id search before a
-    later artifact with a real, usable name (BE-XXXX review follow-up)."""
+    later artifact with a real, usable name (BE-0341 review follow-up)."""
     state, runs = _state(tmp_path)
     scn_dir = tmp_path / "scenarios"
     (scn_dir / "login.yaml").write_text(SCENARIO_YAML, encoding="utf-8")
