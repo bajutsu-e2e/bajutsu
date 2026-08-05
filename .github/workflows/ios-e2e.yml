@@ -484,8 +484,10 @@ jobs:
     # term is five cold XCTest-host startups, one per two runs at this lane's warm-reuse cap — so 30
     # catches a real hang with headroom rather than reddening a healthy run. Of those startups only the
     # first carries the 300s cold ceiling (the rest take the 90s respawn one), and only a *failing*
-    # spawn adds a device recovery plus a second ceiling, so one such event still fits
-    # (BAJUTSU_XCUITEST_RECOVERY_TIMEOUT, above, carries the arithmetic).
+    # spawn adds a device recovery plus a second ceiling. The observed signature — an app-launch
+    # timeout ending attempt 1 in ~40s — costs ~40s + 180s + 300s ≈ 9min and fits; the worst case the
+    # arithmetic block allows (a first bring-up that burns the full 300s: 13min) would not, so it is
+    # the lane's own hang backstop that catches it (BAJUTSU_XCUITEST_RECOVERY_TIMEOUT, above).
     timeout-minutes: 30
     # Raise the wait floor so a cold-boot Simulator has budget to render the first Stable row before
     # each scenario's own 10s first-wait — the same knob the `run` job above and the Android lane use.

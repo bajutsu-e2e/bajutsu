@@ -121,11 +121,11 @@ classification in unit 1, unit 4 on units 2 and 3, and unit 5 on unit 4.
 
    - **The device is gone.** Create a replacement, wait out its first boot, then re-run the device
      preparation on it — installing the app, applying permission grants, and pinning the system
-     locale. The
-     replacement's device type is cloned from the vanished device's own, captured at the first
-     preparation while the device was still listed — by the time a replacement is needed the device is
-     no longer there to ask. Two fallbacks follow it: the configured device model, then whichever
-     iPhone this host's Xcode ships, since a configured model can outlive the Xcode that had it.
+     locale. The replacement's device type is cloned from the vanished device's own, captured at the
+     first preparation while the device was still listed — by the time a replacement is needed the
+     device is no longer there to ask. Two fallbacks follow it: the configured device model, then
+     whichever iPhone this host's Xcode ships, since a configured model can outlive the Xcode that
+     had it.
    - **The probe itself failed.** Change nothing. A host too sick to list its devices must not have a
      device replaced on that evidence, which is why the probe is three-valued (present, absent,
      unknown) rather than a boolean.
@@ -160,11 +160,11 @@ classification in unit 1, unit 4 on units 2 and 3, and unit 5 on unit 4.
 
 5. **Follow the lease onto a replacement device.** Five things the device pool holds are keyed by
    device id: the per-device network collector, the warm-runner cache, the evidence sink's `simctl`
-   captures, the result's device attribution, and the free-device queue. A replacement the pool did not
-   hear about would leave every one of them naming a device that no longer exists. Add one predicate to
-   the environment
-   protocol — the id the environment moved to, or nothing — which every other platform answers with
-   nothing, and have the pool re-key what it holds after the bring-up returns. The vanished device is
+   captures, the result's device attribution, and the free-device queue. A replacement the pool did
+   not hear about would leave every one of them naming a device that no longer exists. Add one
+   predicate to the environment protocol — the id the environment moved to, or nothing — which every
+   other platform answers with nothing, and have the pool re-key what it holds after the bring-up
+   returns. The vanished device is
    never freed again; the replacement takes its place, which is what quarantines the dead one. The
    `crawl` command builds a second environment from the raw lane id for its reset seam, which would
    reset a different device after a replacement, so it shares one environment instead.
@@ -192,8 +192,9 @@ classification in unit 1, unit 4 on units 2 and 3, and unit 5 on unit 4.
   udid>)` so an operator can tell which recovery minted which, and cleared by `xcrun simctl delete
   unavailable` or by deleting those devices. The model leads that name because two consumers read a
   device's name as its human model: the report's device row, and `serve`'s capability inventory, which
-  takes the `iphone` / `ipad` class token out of it by substring. On an ephemeral CI runner none of this is visible; the deliberate choice is
-  for the developer's own Mac and a long-lived `serve` process.
+  takes the `iphone` / `ipad` class token out of it by substring. On an ephemeral CI runner none of
+  this is visible; the deliberate choice is for the developer's own Mac and a long-lived `serve`
+  process.
 - **Re-create the device on every failed attempt, without probing first.** Cheaper to write than the
   ladder, and wrong in the common case: a Simulator that is merely wedged is repaired by a reboot in a
   fraction of the time a create-plus-first-boot takes, and a probe that could not run would make every

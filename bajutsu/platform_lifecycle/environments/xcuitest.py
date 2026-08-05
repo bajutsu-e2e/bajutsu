@@ -884,7 +884,18 @@ class XcuitestEnvironment(_DeviceEnvironment):
                 stderr=subprocess.STDOUT,
                 # Own process group, so teardown reaches the XCTest-host plumbing `xcodebuild`
                 # spawned rather than only `xcodebuild` itself — a signal that stops at the parent
-                # leaves children holding the device's automation session (`_discard_runner`).
+                # leaves children holding the device's automation session (`_discard_runner`). The
+                # trade: this also takes the runner out of the CLI's foreground process group, so a
+                # terminal Ctrl-C no longer reaches `xcodebuild` directly — cleanup then depends on
+                # Python's own exception handling (`_spawn_cold_with_retry`'s and `lease()`'s
+                # `except BaseException`, `run.py`'s `finally: shutdown()`), which still runs
+                # `_discard_runner`'s sweep on a single interrupt or any other exception, covering the
+                # common case. It does not cover a second interrupt landing mid-teardown, or a bare
+                # SIGTERM/SIGKILL bypassing Python's cleanup entirely (`bajutsu/` installs no signal
+                # handler) — either would orphan `xcodebuild` and its children in their own session, a
+                # narrower version of the wedged-Simulator failure this unit exists to clear, left as a
+                # known gap rather than closed with signal-handling machinery this PR does not
+                # otherwise need.
                 start_new_session=True,
             )
         except OSError as exc:

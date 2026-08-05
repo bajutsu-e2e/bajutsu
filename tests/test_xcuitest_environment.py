@@ -148,6 +148,43 @@ def test_start_on_a_real_device_targets_the_device_and_skips_simctl(
     assert not env.has_reusable_resident()
 
 
+def test_a_real_device_never_enters_the_recovery_ladder(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # A real device is powered on out of band and is not listed by `simctl list devices`, so a probe
+    # would read it as "gone" and mint a Simulator to replace it — finishing the run on a device the
+    # target never named. The ladder is Simulator-only, and this is what says so.
+    simctl_calls: list[list[str]] = []
+
+    def _run(argv: list[str], env: object = None) -> str:
+        simctl_calls.append(argv)
+        return ""
+
+    class _DeadProc:
+        pid = 9999
+
+        def poll(self) -> int:
+            return 70  # exits at once: both attempts fail, so `recover` runs in between
+
+        def wait(self, timeout: float | None = None) -> int:
+            return 0
+
+    class _Driver:
+        def health_ready(self) -> bool:
+            return False  # /health never answers ready
+
+        def await_ready(self, timeout: float = 10.0) -> None: ...
+
+    monkeypatch.setattr(subprocess, "Popen", lambda *_a, **_k: _DeadProc())
+    monkeypatch.setattr(backends, "make_driver", lambda *_a, **_k: _Driver())
+    _patch_group_signals(monkeypatch)
+    env = XcuitestEnvironment("xcuitest", _DEVICE_UDID, env_run=_run)
+    with pytest.raises(XcuitestChannelError, match="did not come up"):
+        env.start(_device_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
+    assert simctl_calls == []  # no probe, no reboot, and above all no `simctl create`
+    assert env.replaced_device() is None
+
+
 # --- the live-route boundary: an Appium endpoint routes around the udid machinery (BE-0238) --- #
 
 
