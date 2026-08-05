@@ -699,7 +699,8 @@ jobs:
       # with the ids the selector could actually be matched against. `screenrecord/` (added for this
       # lane's known flake, a launcher ANR dialog transiently stealing window focus) is a full-motion
       # recording of the install+test window, `adb pull`ed by the Makefile's `e2e-codegen` target
-      # itself (best-effort — `if-no-files-found: ignore` covers a failed pull the same as the other
+      # itself — only on a failing test, so a green run leaves this path absent by design (and
+      # best-effort besides: `if-no-files-found: ignore` covers a failed pull the same as the other
       # paths here). A timed-out wait reports only that nothing matched, so without these a failure
       # can be investigated only by re-running it until it happens again.
       - name: Upload androidTest report
