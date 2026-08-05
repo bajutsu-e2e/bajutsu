@@ -29,7 +29,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
-from backend_crash_recovery import LeaseHolder
+from backend_crash_recovery import LeaseHolder, LeaseTeardown, xcuitest_lease_launch
 from driver_conformance import (
     ConformanceHarness,
     DriverConformanceContract,
@@ -39,8 +39,6 @@ from driver_conformance import (
 from bajutsu import simctl
 from bajutsu.config import Effective, ios_bundle_id, load_config, resolve
 from bajutsu.drivers import base
-from bajutsu.platform_lifecycle import environment_for
-from bajutsu.runner.launch import launch_driver
 
 # A resident-runner crash mid-suite (a `base.BackendCrashError` — the `XcuitestRunnerCrashError` that
 # reddened PR #1405, whether raised by a test's actuation or by a query driving the bring-up/readiness
@@ -118,20 +116,13 @@ _CONFORMANCE_ENV = {"SHOWCASE_UITEST": "1", "SHOWCASE_CONFORMANCE": ""}
 
 
 @pytest.fixture(scope="module")
-def _backend_launch(_eff: Effective) -> Callable[[], tuple[base.Driver, Callable[[], None]]]:
+def _backend_launch(_eff: Effective) -> Callable[[], tuple[base.Driver, LeaseTeardown]]:
     # A cold spawn: the `backend_crash_recovery` plugin calls this to lease the shared device, and
     # again to re-lease a fresh one after a crash. Each call builds a fresh environment so the
     # respawn stays a cold spawn (not an in-place warm resume) and returns that environment's
     # teardown alongside the driver — `invalidate()` reaches the runner process, not a missing
     # `driver.close()` (BE-0342).
-    def launch() -> tuple[base.Driver, Callable[[], None]]:
-        env = environment_for("xcuitest", UDID, simctl._real_run)
-        driver, _readiness = launch_driver(
-            UDID, _eff, "xcuitest", extra_env=_CONFORMANCE_ENV, environment=env
-        )
-        return driver, lambda: env.teardown(driver, _eff)
-
-    return launch
+    return xcuitest_lease_launch(UDID, _eff, extra_env=_CONFORMANCE_ENV)
 
 
 class TestXcuitestDriverConformance(DriverConformanceContract):

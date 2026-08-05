@@ -39,15 +39,12 @@ from pathlib import Path
 
 import fault_injection
 import pytest
-from backend_crash_recovery import LeaseHolder
+from backend_crash_recovery import LeaseHolder, LeaseTeardown, xcuitest_lease_launch
 from driver_conformance import OnDeviceConformanceHarness
 
-from bajutsu import simctl
 from bajutsu.config import Effective, load_config, resolve
 from bajutsu.drivers import base
 from bajutsu.drivers.xcuitest import XcuitestRunnerCrashError
-from bajutsu.platform_lifecycle import environment_for
-from bajutsu.runner.launch import launch_driver
 
 pytestmark = pytest.mark.ondevice
 
@@ -162,19 +159,12 @@ def _eff() -> Effective:
 
 
 @pytest.fixture(scope="module")
-def _backend_launch(_eff: Effective) -> Callable[[], tuple[base.Driver, Callable[[], None]]]:
+def _backend_launch(_eff: Effective) -> Callable[[], tuple[base.Driver, LeaseTeardown]]:
     # A cold spawn, leased lazily by the `LeaseHolder` the `backend_crash_recovery` plugin supplies:
     # crash-free it is the one shared lease, and the killed-runner case discards it so the next case
     # respawns onto a fresh device instead of inheriting the dead runner. Fresh environment per
     # lease + its teardown, so discard reaches the runner process (BE-0342).
-    def launch() -> tuple[base.Driver, Callable[[], None]]:
-        env = environment_for("xcuitest", UDID, simctl._real_run)
-        driver, _readiness = launch_driver(
-            UDID, _eff, "xcuitest", extra_env=_CONFORMANCE_ENV, environment=env
-        )
-        return driver, lambda: env.teardown(driver, _eff)
-
-    return launch
+    return xcuitest_lease_launch(UDID, _eff, extra_env=_CONFORMANCE_ENV)
 
 
 @pytest.fixture
