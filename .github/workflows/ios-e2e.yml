@@ -122,6 +122,10 @@ env:
   # *between* attempts, never mid-readiness. 90s is ample for a re-spawn to answer /health on a warm
   # host, so a runner that will not come back fails loudly in ~90s instead of ~300s. Unset (elsewhere)
   # keeps the cold ceiling for respawns too, so only this lane opts in.
+  # NOTE: like the reuse cap below, this override is inert on the `run` / `actuation` jobs — their
+  # step's `--erase` keeps `is_respawn` false (`_spawn_cold`), so every re-lease there takes the full
+  # 300s cold ceiling instead. It still governs `conformance` and `fault-injection`, which lease
+  # through `launch_driver` with no `preconditions`.
   BAJUTSU_XCUITEST_RESPAWN_TIMEOUT: "90"
   # NOTE: this cap is inert on the `run` / `actuation` jobs since their step's `--erase` puts every
   # lease on the cold-spawn path (the warm-reuse gate in `start()` is `not preconditions.erase`), so
@@ -724,6 +728,12 @@ jobs:
     # bajutsu-e2e action's run step) adds one simctl erase + reboot cycle to each of the two calls
     # below, so 30 keeps headroom over that added cost rather than reddening a healthy run.
     timeout-minutes: 30
+    # Raise the wait floor so the erase + reboot the run step now does before each of the two runs has
+    # budget to render the first Stable row before smoke.yaml's own 10s first-wait — the same knob
+    # `run` / `actuation` / `golden` above use (BE-0231 unit 4). A condition wait returns the instant
+    # the row appears, so this is a ceiling, not a sleep.
+    env:
+      BAJUTSU_MIN_WAIT_TIMEOUT: "20"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 

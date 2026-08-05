@@ -5,8 +5,8 @@ description: >-
   The caller is responsible for building and installing the app (and the XCUITest runner)
   first; this action owns the bajutsu-specific part (run — with the entry-screen convention score
   folded in via `--score` — and artifacts). The run step passes `--erase`, so the Simulator is wiped
-  before the run: the target must set `appPath`, since that reinstall is what puts the app back after
-  the caller's own out-of-band install is erased. Erase is a simctl operation, so a
+  before every scenario, not once for the step: the target must set `appPath`, since that reinstall
+  is what puts the app back after the caller's own out-of-band install is erased. Erase is a simctl operation, so a
   `xcuitest.deviceType: device` target fails loudly at lease time
   (bajutsu/platform_lifecycle/environments/xcuitest.py); no current caller targets a real device
   through this action.
@@ -75,8 +75,9 @@ runs:
         CONFIG: ${{ inputs.config }}
       run: |
         # Expand the whitespace-separated SCENARIOS into one --scenario per file, so several run in
-        # one process and reuse a single warm runner (scenario paths never contain spaces, so plain
-        # word-splitting is safe). A single path yields a single --scenario, unchanged.
+        # one `bajutsu run` process (scenario paths never contain spaces, so plain word-splitting is
+        # safe). `--erase` below puts each on its own cold runner, so the process is shared, not the
+        # runner. A single path yields a single --scenario, unchanged.
         scenario_args=()
         for s in $SCENARIOS; do scenario_args+=(--scenario "$s"); done
         uv run --no-sync bajutsu run "${scenario_args[@]}" --exclude "$EXCLUDE" --target "$TARGET" \
