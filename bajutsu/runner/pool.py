@@ -235,6 +235,12 @@ def device_pool(
         def release_bridge() -> None:
             pass
 
+        # The environment/driver this attempt launched, remembered so the `except` below can tear it
+        # down even on a backend that keeps no warm resident (`warm[udid]` only ever holds one for
+        # XCUITest) — a failure raised after `launch_driver` returns but before `Lease` is built
+        # (`hook_collector`, `relauncher`, `controller`, the `FileSink` construction) would otherwise
+        # leak it, with `free.put(udid)` handing the lane to the next lease on top of it (BE-0342).
+        launched: tuple[RunEnvironment, base.Driver] | None = None
         try:
             # Film the whole scenario only when its capture policy asks for video, and only where
             # capture is wired before launch (so the app's cold start is recorded): web binds it to
@@ -290,6 +296,7 @@ def device_pool(
                     else _no_transitions
                 ),
             )
+            launched = (lease_env, driver)
             # This device has now been brought up at least once this run, so a later cache-miss lease
             # on it (after a crash evicts the warm resident) is a respawn — see `is_respawn` above.
             ever_spawned.add(udid)
@@ -371,14 +378,20 @@ def device_pool(
             # is best-effort cleanup on the failure path — the *original* launch error is what must
             # propagate (via the `raise` below), so a teardown hiccup is logged, never re-raised.
             stale = warm.pop(udid, None)
-            if stale is not None:
+            # A backend that keeps no warm resident (web / Android / adb / fake) never populates
+            # `warm[udid]`, so a failure raised after `launch_driver` returned falls back to what this
+            # attempt itself launched — the same environment `stale` would have named had this backend
+            # cached one (BE-0342).
+            doomed = (stale[1], stale[2]) if stale is not None else launched
+            if doomed is not None:
+                dead_env, dead_driver = doomed
                 # A leaked runner is the same risk here as at the other two teardown sites; the
                 # original launch error still propagates via the `raise` below, so a teardown hiccup
                 # (mid_run=True) must not mask it (BE-0342).
                 guarded_teardown(
-                    lambda: stale[1].teardown(stale[2], eff),
+                    lambda: dead_env.teardown(dead_driver, eff),
                     mid_run=True,
-                    what=f"tearing down the stale warm runner on {udid} after a failed lease",
+                    what=f"tearing down the environment on {udid} after a failed lease",
                 )
             free.put(udid)
             raise
