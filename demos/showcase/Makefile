@@ -282,8 +282,9 @@ run-flutter: flutter-build runner-build
 # waits allow, so the modal/component scenarios need a higher wait ceiling. It is a ceiling on a
 # condition wait, not a fixed delay, so a fast (hardware-accelerated) emulator still resolves early.
 # Same suppression the native lane applies before its scenario loops — see android/Makefile's
-# ANR_QUIET for why `hide_error_dialogs` rather than tapping the dialog's "Close app".
-ANR_QUIET = adb shell settings put global hide_error_dialogs 1 && adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null
+# ANR_QUIET for why `hide_error_dialogs` rather than tapping the dialog's "Close app", and for why
+# the trailing echo reads the setting back instead of trusting the `put` succeeded.
+ANR_QUIET = adb shell settings put global hide_error_dialogs 1 && adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null && echo "ANR_QUIET: hide_error_dialogs=$$(adb shell settings get global hide_error_dialogs | tr -d '\r')"
 
 FLUTTER_ANDROID_SCENARIOS := smoke firstlook navigation search data_driven relaunch system \
 	components modals controls notices gestures gestures_multitouch permission extract foreach

@@ -168,7 +168,12 @@ views-noax-build:
 # label — and still acts on the system surface (a node-level click on the resident channel, an
 # `input tap` at the resolved node otherwise), which is acceptable only because the id names one
 # button exactly; where this setting does reach, suppression stays preferred.
-ANR_QUIET = adb shell settings put global hide_error_dialogs 1 && adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null
+#
+# The trailing echo reads the setting straight back rather than trusting the `put` succeeded: a
+# lane that fails downstream on an ANR dialog anyway (`adb`'s own failure, a wrong scope, a device
+# that dropped the setting) should say so in its own log line, not leave that ambiguity for whoever
+# investigates the failure to resolve by re-running and guessing.
+ANR_QUIET = adb shell settings put global hide_error_dialogs 1 && adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null && echo "ANR_QUIET: hide_error_dialogs=$$(adb shell settings get global hide_error_dialogs | tr -d '\r')"
 
 # Draw every touch on screen, so the captured video answers "where did it actually land" directly
 # rather than by inference from the log. `show_touches` is a surface-level effect the input system
