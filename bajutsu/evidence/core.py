@@ -202,7 +202,9 @@ class EvidenceSink(Protocol):
         must not assume a single call sees every kind a step fires. Repeated calls are *not*
         isolated from one another: `FileSink` gives each kind a fixed name (`elements.json`,
         `before.png` / `after.png`), so a later call naming a kind an earlier one already wrote
-        overwrites it. Keeping the pre-step baseline intact is the loop's job, not the sink's.
+        overwrites it. The loop guards this only for the run's final `screenshot.after` (it omits
+        `elements` there for that reason); a `capturePolicy` rule that fires `elements` post-step
+        does replace the pre-step baseline's pre-action tree with a post-action one.
         """
         raise NotImplementedError
 

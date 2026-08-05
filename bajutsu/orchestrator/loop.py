@@ -1138,7 +1138,11 @@ class _StepRunner:
                 # Evidence-only, like the wait-timeout diagnostic and the post-step `elements`
                 # guard below: `screen_changed` feeds only `_collect_captures`, never this step's
                 # own pass/fail outcome, so a torn-down WebView context here must not crash a step
-                # that would otherwise pass or fail cleanly on its own (prime directive 1).
+                # that would otherwise pass or fail cleanly on its own (prime directive 1). Scoped
+                # to the web driver like the pre-step baseline's guard above: the same failure on
+                # the native driver is a dead device connection, which must still surface loudly.
+                if active_driver is self.cfg.driver:
+                    raise
                 _logger.debug(
                     "%s: screenChanged read skipped, web driver query failed: %s", step_id, exc
                 )

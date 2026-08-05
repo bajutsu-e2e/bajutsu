@@ -187,6 +187,40 @@ def test_web_block_plain_tap_issues_no_extra_bridge_query() -> None:
     assert driver.queries == 1  # resolving the `within` host element only
 
 
+def test_web_block_file_sink_skips_the_post_step_read_with_no_capture_policy(
+    tmp_path: Path,
+) -> None:
+    # The `elements`-in-`instant` half of `wants_web_elements`, isolated: a real `FileSink` (so the
+    # `NullSink` half of the guard cannot carry the test) whose scenario asks for no post-step
+    # capture at all must still skip the web read — only the block's first nested step's pre-step
+    # baseline touches the bridge. Dropping the `elements`-fired clause shows up here as 2 queries,
+    # not 1 — the PR's headline case ("a step whose capturePolicy never fired the elements capture")
+    # otherwise has no test discriminating it.
+    driver = FakeDriver([el("app.webview", frame=(0.0, 0.0, 400.0, 800.0))])
+    bridge = _CountingBridge([])
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "x",
+                "steps": [
+                    {
+                        "web": {
+                            "within": {"id": "app.webview"},
+                            "steps": [{"type": {"text": "hi"}}],
+                        }
+                    }
+                ],
+            }
+        ),
+        clock=FakeClock(),
+        sink=FileSink(tmp_path / "run1"),
+        webview_bridge=bridge,
+    )
+    assert result.ok, result.failure
+    assert bridge.queries == 1  # the pre-step baseline only; no post-step read
+
+
 def test_web_block_file_sink_reads_the_web_tree_not_the_native_one(tmp_path: Path) -> None:
     # A FileSink genuinely needs the tree, so the deferred read this laziness relies on must still
     # fire — and against the *active* (web) driver, not the native one passed to `capture()` for

@@ -698,12 +698,13 @@ def test_post_step_elements_capture_skips_on_web_query_failure(tmp_path: Path) -
     assert sum(1 for a in leaf_outcome.artifacts if a.kind == "elements") == 1
 
 
-def test_screen_changed_read_skips_on_web_query_failure(tmp_path: Path) -> None:
+def test_screen_changed_read_skips_on_web_query_failure() -> None:
     """The `screenChanged` comparison read (`screen.get() != before`) must not crash the run when
     the WebView bridge query fails: it feeds only `_collect_captures`, never this step's own
     pass/fail outcome, so a torn-down bridge here degrades to `screen_changed=False` rather than
-    propagating — the third of the three post-step-sequence web reads this review round found
-    unguarded (review follow-up)."""
+    propagating — one of the post-step-sequence web reads this review round guarded (the sibling
+    pre-act `before` read at `loop.py:980` remains a pre-existing, out-of-scope exposure) (review
+    follow-up)."""
 
     class _FlakyBridge(_FakeBridge):
         def __init__(self, dom_elements: list[base.Element]) -> None:
@@ -712,8 +713,9 @@ def test_screen_changed_read_skips_on_web_query_failure(tmp_path: Path) -> None:
 
         def query_dom(self, webview_id: str) -> list[base.Element]:
             self.calls += 1
-            # Call 1 is the pre-step baseline's own read (succeeds, and is reused as `before`);
-            # call 2 is the screenChanged comparison read this test targets.
+            # Call 1 is the `screenChanged` policy's own `before` read at loop.py:980 (`prev_after`
+            # is reset at the `web`-block boundary, and this run's `NullSink` skips the pre-step
+            # baseline query); call 2 is the comparison read this test targets.
             if self.calls == 2:
                 raise ConnectionError("bridge unreachable")
             return super().query_dom(webview_id)
