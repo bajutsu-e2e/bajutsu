@@ -79,7 +79,7 @@ Team を1つも持たなくなり、他に見える症状は admin の操作す�
 `identity.teams` が、設定した admin Team のリストと重なる場合、`identity_matches_org` の結果に
 かかわらずサインインゲートを通過します。これにより、admin Team のメンバーは、自身の GitHub
 Organization を挙げる `orgs:` エントリがなくても、あるいは `orgs:` そのものがなくてもサインイン
-できます。どちらの確認にも一致しない login は、今日と同じく拒否されます。迂回だけで login を許可した
+できます。どちらの確認にも一致しない login は、今日と同じく拒否されます。迂回だけで login を許可する
 たびに、`oauth_callback` はその login 名を含む警告をログに出します。迂回は、`orgs:` が認可しなかった
 唯一のサインイン経路です。そのため、誰がいつサインインしたかを追跡したい運用者にとって、記録が何も
 残らない唯一の経路でもあります。
@@ -125,16 +125,35 @@ admin は、他のどの org にも自分の login が一致しないからこ�
 衝突が、もう1つの呼び出し元に広がるだけです。admin Team の迂回に頼るデプロイは、対象の所有権に関する
 既存の理由に加えて、この理由からも、org を文字どおり `default` と名付けることを避けるべきです。
 
-### Team 取得そのものの失敗の扱いは変わらない
+### 下層の Team 取得は fail closed のままだが、サインインそのものを失う場合がある
 
 `_fetch_teams`（[`bajutsu/serve/server/oauth.py`](../../bajutsu/serve/server/oauth.py)）は、非200
 応答、ページネーション途中のネットワーク障害、パースできない本文のいずれに対しても、すでに空の
 Team 一覧へ fail closed します。この項目は、GitHub への新しい呼び出しを追加しません。BE-0313 が
-すでに取得している同じ `identity.teams` を読むだけです。そのため、GitHub の API 障害が起きている間は、
-admin Team のメンバーであってもそのメンバーシップを証明できず、迂回を使えません。その場合、
-Organization メンバーシップのゲート単独が与える結果に戻ります（`orgs:` からもその Organization に
-到達できなければ拒否です）。この項目は、この API 障害のケースに対する login リストの代替経路を
-追加しません。詳しくは「検討した代替案」を参照してください。
+すでに取得している同じ `identity.teams` を読むだけです。org のゲートがすでに通している login に
+とっては、この失敗が及ぼす影響は今日と同じく editor・admin のロールだけです。一方、サインインその
+ものが迂回だけに依存している login にとっては、同じ fail closed の挙動が、いまはサインインそのものを
+失わせます。GitHub の API 障害が起きている間は admin Team のメンバーシップを証明できず、迂回を使えま
+せん。その場合、Organization メンバーシップのゲート単独が与える結果に戻ります（`orgs:` からもその
+Organization に到達できなければ拒否です）。この項目は、この API 障害のケースに対する login リストの
+代替経路を追加しません。詳しくは「検討した代替案」を参照してください。
+
+### admin Team の各エントリは、ロールの対応づけだけでなくサインインの資格情報にもなる
+
+この項目より前は、デプロイが実際には管理していない GitHub organization を指すエントリ（
+organization 側の書き間違い、あるいは後から名前が変わった、あるいは削除された Team の organization
+――GitHub は古い login を誰でも再登録できるようにします――）は、単に誰にも一致しませんでした。
+`role_for` は、`identity_matches_org` が org 名簿にいない login をすでに拒否した後にしか、この値を
+確認しなかったからです。この項目の後は、その同じエントリがサインインゲートの一部になります。その
+organization を管理する人は誰でも、一致する slug の Team を作り、迂回を通じてサインインし、admin に
+解決されます。到達できる範囲は、`_ADMIN_PATHS` のすべてのエンドポイントです。`GET /api/config/content`
+も含まれ、これは config の本文をそのまま返すため、そこに書かれた literal な secrets が漏れることも
+あります。「admin 用環境変数をカンマ区切りのリストにし」の節にある不正なエントリの警告は、これを検出
+できません。誰も管理していない organization を指すエントリでも、形としては正しく整っているからです。
+GitHub organization を誰が管理しているかをコードで確認する方法はありません。そのためこの項目が取れる
+対策は運用面だけです。`deploy/self-host/.env.example` と self-hosting ガイド（両言語）は、各エントリ
+が実際に自分が管理する GitHub organization を指す必要があると明記します。この値は、いまはロールの
+対応づけだけでなく、サインインの資格情報そのものだからです。
 
 ## 検討した代替案
 
@@ -182,13 +201,14 @@ Organization メンバーシップのゲート単独が与える結果に戻り�
       ないとき、それぞれ起動時に大きく警告する。どちらの間違いでも admin 全員を静かに失うことがない
       ようにする。
 - [x] `oauth_callback` のサインインゲートに、`identity_matches_org` と並ぶ admin Team の迂回を追加する。
-      ロール判定のためにすでに取得している Team 一覧をそのまま使う。迂回だけで login を許可した
+      ロール判定のためにすでに取得している Team 一覧をそのまま使う。迂回だけで login を許可する
       たびに、その login 名を含む警告をログに出し、`orgs:` が認可しなかった唯一のサインイン経路にも
       記録を残す。
 - [x] セルフホスティングと設定のドキュメント（両言語）、`.env.example` を、改名した変数とこの迂回の
       説明に更新する。BE-0313 が述べていた「`default` org は OAuth サインインでは到達不能」という
       記述は、この項目の *詳細設計* の中で成り立たなくなる。`docs/` 配下のどのページもこの記述を
-      述べていないため、ドキュメント側の修正は行わない。
+      述べていないため、ドキュメント側の修正は行わない。各エントリは実際に自分が管理する GitHub
+      organization を指す必要があると明記する。この値はいまサインインの資格情報でもあるためである。
 - [x] テストを追加する。`orgs:` に一致するエントリがない場合と、`orgs:` ブロック自体がない場合の
       両方で、admin Team のメンバーがサインインできることを確認する。どちらの場合も解決したロールが
       admin になることを確認する。Organization ゲートにも admin Team のリストにも一致しない login が
@@ -204,8 +224,10 @@ Organization メンバーシップのゲート単独が与える結果に戻り�
   `role_for` のロール判定であり、この項目がどちらにも変更を加えます。
 - [`bajutsu/serve/orgs.py`](../../bajutsu/serve/orgs.py)。`identity_matches_org` と
   `org_for_identity` であり、admin Team の迂回はこれらと並んで動きます。
-- [`bajutsu/serve/server/oauth.py`](../../bajutsu/serve/server/oauth.py)。`_fetch_teams` であり、
-  GitHub API 障害時にすでに fail closed する挙動を、この項目の迂回はそのまま引き継ぎます。
+- [`bajutsu/serve/server/oauth.py`](../../bajutsu/serve/server/oauth.py)。`_fetch_orgs` と
+  `_fetch_teams` であり、この項目はどちらの docstring も更新します。GitHub API 障害時に同じ
+  fail closed の挙動が、迂回だけで許可される login にとってはサインインそのものを失わせるように
+  なるためです。
 - [`bajutsu/serve/state.py`](../../bajutsu/serve/state.py)。`SessionManager` であり、この項目は
   その `oauth_admin_team` フィールドをリストへ広げます。
 - [`docs/ja/self-hosting.md`](../../docs/ja/self-hosting.md)。self-hosting ガイドの GitHub OAuth の節

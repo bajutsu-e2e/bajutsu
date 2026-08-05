@@ -116,11 +116,12 @@ def _paginate(client: object, headers: dict[str, str], url: str) -> list[dict[st
 def _fetch_orgs(client: object, headers: dict[str, str]) -> list[str]:
     """Every GitHub org the user belongs to, following pagination (so a user in >30 orgs isn't
     truncated). Org membership maps the user to a bajutsu org *and*, since BE-0313, decides the
-    sign-in gate (`identity_matches_org` reads this same list), so a failure here now has two
-    different effects depending on how the login was admitted: an explicit `members` login still
-    falls back to the `default` org on any failure — a non-200, a parse error, an unexpected shape —
-    but a login relying only on `githubOrgs` is turned away at sign-in instead, since the gate sees
-    no matching org to admit it through."""
+    sign-in gate (`identity_matches_org` reads this same list), so a failure here now has effects
+    that depend on how the login was admitted: an explicit `members` login still falls back to the
+    `default` org on any failure — a non-200, a parse error, an unexpected shape — but a login
+    relying only on `githubOrgs` is turned away at sign-in instead, since the gate sees no matching
+    org to admit it through, *unless* the login is also a member of a configured admin Team, in
+    which case the admin-Team bypass admits it into `default` regardless of this failure."""
     return [
         str(o["login"])
         for o in _paginate(client, headers, f"{_ORGS}?per_page=100")
@@ -130,12 +131,17 @@ def _fetch_orgs(client: object, headers: dict[str, str]) -> list[str]:
 
 def _fetch_teams(client: object, headers: dict[str, str]) -> list[str]:
     """Every GitHub Team the user is a *direct* member of, as `"<github-org>/<team-slug>"`, following
-    pagination. Team membership grants the editor/admin role (BE-0313), so — the opposite failure
-    direction from `_fetch_orgs` — a failure never *invents* a team: a failure on the first page
-    yields no teams (viewer, fail closed), and a failure partway through pagination keeps only the
-    teams already confirmed from earlier pages, never granting one that wasn't actually returned by
-    GitHub. `/user/teams` lists a child Team distinct from its parent, so a later exact-match check
-    stays flat by construction: only the configured Team matches, never a nested one beneath it."""
+    pagination. Team membership grants the editor/admin role and, for a configured admin Team, the
+    sign-in gate itself (BE-0313), so a failure never *invents* a team: a failure on the first page
+    yields no teams, and a failure partway through pagination keeps only the teams already confirmed
+    from earlier pages, never granting one that wasn't actually returned by GitHub. That is still the
+    opposite failure direction from `_fetch_orgs` for the editor role and for a login the org gate
+    already admits — the failure costs only a role, never grants one — but for a login whose sign-in
+    depends solely on the admin-Team bypass (no org membership of its own), the same fail-closed
+    behavior costs sign-in itself, the one case where a Team-fetch failure and an org-fetch failure
+    now fail in the same direction. `/user/teams` lists a child Team distinct from its parent, so a
+    later exact-match check stays flat by construction: only the configured Team matches, never a
+    nested one beneath it."""
     teams: list[str] = []
     for t in _paginate(client, headers, f"{_TEAMS}?per_page=100"):
         org = t.get("organization")

@@ -125,15 +125,34 @@ extended to one more caller. A deployment that relies on the admin-Team bypass s
 an org literally `default` for this reason, on top of the existing target-ownership reason to avoid
 it.
 
-### Failure mode of the underlying Team fetch is unchanged
+### The underlying Team fetch keeps failing closed, now sometimes at the cost of sign-in itself
 
 `_fetch_teams` ([`bajutsu/serve/server/oauth.py`](../../bajutsu/serve/server/oauth.py)) already fails
 closed to an empty team list on a non-200 response, a network hiccup mid-pagination, or an
-unparseable body. This item adds no new call to GitHub: it reads the same `identity.teams` BE-0313
-already fetches. A GitHub API outage therefore still leaves an admin Team member unable to prove
-membership, and therefore unable to use the bypass. They fall back to whatever the org-membership
-gate alone would have granted them, rejection if their org isn't reachable through `orgs:` either.
-This item adds no login-list fallback for that outage case; see *Alternatives considered*.
+unparseable body, and this item adds no new call to GitHub: it reads the same `identity.teams`
+BE-0313 already fetches. For a login the org gate already admits, that failure still costs only the
+editor/admin role, exactly as before. For a login whose sign-in depends solely on the bypass, the
+same fail-closed behavior now costs sign-in itself: a GitHub API outage leaves them unable to prove
+admin-Team membership, so they fall back to whatever the org-membership gate alone would have
+granted them, rejection if their org isn't reachable through `orgs:` either. This item adds no
+login-list fallback for that outage case; see *Alternatives considered*.
+
+### Every admin Team entry is now a sign-in credential, not only a role mapping
+
+Before this item, an entry naming a GitHub organization the deployment doesn't actually control — a
+typo in the organization half, or a Team whose organization was later renamed or deleted (GitHub
+frees the old login for anyone to register) — simply matched nobody: `role_for` consulted it only
+after `identity_matches_org` had already turned away anyone not otherwise in the org roster. After
+this item, that same entry *is* part of the sign-in gate. Whoever controls that organization login
+can create a Team with the matching slug, sign in through the bypass, and be resolved to admin,
+reaching every `_ADMIN_PATHS` endpoint — including `GET /api/config/content`, which can disclose a
+config body embedding literal secrets. The malformed-entry warning in *The admin env var becomes a
+comma-separated list* cannot catch this: a syntactically well-formed entry naming an organization
+nobody here owns validates its shape perfectly. No code can verify who controls a GitHub
+organization, so this item's only mitigation is operational: `deploy/self-host/.env.example` and the
+self-hosting guide (both languages) now say plainly that every entry must name a GitHub organization
+the deployment actually controls, because the value is a sign-in credential now, not only a role
+mapping.
 
 ## Alternatives considered
 
@@ -185,7 +204,8 @@ This item adds no login-list fallback for that outage case; see *Alternatives co
 - [x] Update the self-hosting and configuration docs (both languages) and `.env.example` to describe
       the renamed variable and the bypass. BE-0313's claim that the `default` org is unreachable
       through OAuth sign-in is superseded in this item's *Detailed design* instead: no `docs/` page
-      states it, so none needed the edit.
+      states it, so none needed the edit. State plainly that every entry must name a GitHub
+      organization the deployment actually controls, since the value is now a sign-in credential.
 - [x] Tests: sign-in accepted for an admin-Team member with no matching `orgs:` entry and with no
       `orgs:` block at all; resolved role is admin in both cases; a login matching neither the org
       gate nor the admin-Team list is still rejected; the renamed variable parses a multi-Team list;
@@ -200,8 +220,9 @@ This item adds no login-list fallback for that outage case; see *Alternatives co
   `role_for`'s role resolution, both touched by this item.
 - [`bajutsu/serve/orgs.py`](../../bajutsu/serve/orgs.py) — `identity_matches_org` and
   `org_for_identity`, the org-membership checks the admin-Team bypass sits alongside.
-- [`bajutsu/serve/server/oauth.py`](../../bajutsu/serve/server/oauth.py) — `_fetch_teams`, whose
-  already-fail-closed behavior on a GitHub API failure this item's bypass inherits unchanged.
+- [`bajutsu/serve/server/oauth.py`](../../bajutsu/serve/server/oauth.py) — `_fetch_orgs` and
+  `_fetch_teams`, whose docstrings this item updates: the same fail-closed behavior on a GitHub API
+  failure now sometimes costs sign-in itself, not only a role, for a login the bypass alone admits.
 - [`bajutsu/serve/state.py`](../../bajutsu/serve/state.py) — `SessionManager`, whose
   `oauth_admin_team` field this item widens to a list.
 - [`docs/self-hosting.md`](../../docs/self-hosting.md) — the self-hosting guide's GitHub OAuth
