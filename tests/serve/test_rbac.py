@@ -38,9 +38,16 @@ def test_role_for_derives_the_role_from_team_membership() -> None:
     )
     # An unset Team never matches, even against an empty-string team name in the list.
     assert ops.role_for(teams=[""], editor_team=None, admin_teams=()) == "viewer"
-    # Nested-Team names don't match the configured flat Team (exact match only).
+    # Nested-Team names don't match the configured flat Team (exact match only) — for the admin
+    # list too, where a false match now clears the sign-in gate and not only the role.
     assert (
         ops.role_for(teams=["acme-gh/parent/child"], editor_team="acme-gh/parent", admin_teams=())
+        == "viewer"
+    )
+    assert (
+        ops.role_for(
+            teams=["acme-gh/parent/child"], editor_team=None, admin_teams=("acme-gh/parent",)
+        )
         == "viewer"
     )
     # A login matching any of several configured admin Teams resolves to admin.

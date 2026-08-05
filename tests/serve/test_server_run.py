@@ -428,12 +428,13 @@ def test_build_state_server_without_oauth_does_not_warn_on_malformed_admin_teams
     assert "BAJUTSU_OAUTH_ADMIN_TEAMS" not in capsys.readouterr().err
 
 
-def test_build_state_server_stays_quiet_when_admin_teams_is_set(
+def test_build_state_server_warns_on_the_retired_var_even_when_admin_teams_is_also_set(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    # A deployment carrying both vars across the upgrade (the new one wins) must not warn either —
-    # set the retired singular name too, and wire OAuth (the warnings fire only then), so this
-    # actually exercises the guard's other operand instead of passing on OAuth being unwired.
+    # The likelier partial-rename mistake: an operator upgrading adds BAJUTSU_OAUTH_ADMIN_TEAMS with
+    # the Team they remember but leaves the old singular var (naming a *different* Team) set. The
+    # old Team's members silently stop being admin -- with the new list non-empty, the empty-list
+    # check below never fires, so this needs its own unconditional check on the retired var alone.
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
     monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
@@ -452,7 +453,9 @@ def test_build_state_server_stays_quiet_when_admin_teams_is_set(
         backend="server",
     )
     assert state.auth.oauth_admin_teams == ("acme-gh/ops",)  # the new name wins, the old is ignored
-    assert "BAJUTSU_OAUTH_ADMIN_TEAM" not in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "BAJUTSU_OAUTH_ADMIN_TEAM is retired" in err
+    assert "BAJUTSU_OAUTH_ADMIN_TEAMS is empty" not in err
 
 
 def test_build_state_server_warns_on_a_malformed_admin_teams_entry(

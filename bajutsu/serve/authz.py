@@ -89,15 +89,18 @@ def oauth_callback(
         # the user's GitHub org membership. email is unknown from this scope, so we store GitHub's
         # canonical no-reply form (valid + unique per login).
         org = org_for_identity(orgs, login, identity.orgs)
-        if not matched_org and not identity.orgs:
-            # The bypass, not `orgs:`, admitted this login, and it reported no GitHub orgs at all —
-            # the shape a failed `/user/orgs` fetch takes (`_fetch_orgs` fails closed to `[]`), which
-            # makes a real org member look unmatched for this one login. Keep whatever org is
-            # already on record rather than relocating them to `default` over one hiccup. A login
-            # that did report orgs and still matched nothing was genuinely un-claimed — by a
-            # first-time bootstrap or by a deliberate revocation — so it re-resolves through
-            # `org_for_identity` above, the same as any other login: leaving `orgs:` must take
-            # effect on next login, exactly like leaving a Team already does for the role below.
+        if not matched_org and (not identity.orgs or parsed is None):
+            # The bypass, not `orgs:`, admitted this login, and either it reported no GitHub orgs at
+            # all — the shape a failed `/user/orgs` fetch takes (`_fetch_orgs` fails closed to `[]`)
+            # — or the config itself failed to load (`parsed is None`, `load_serve_config_file`'s own
+            # fail-closed shape for a transient filesystem error or a config typo). Either way we
+            # can't tell whether an org actually claims this login, which makes a real org member
+            # look unmatched for this one login. Keep whatever org is already on record rather than
+            # relocating them to `default` over one hiccup. A login whose orgs and config both
+            # loaded and still matched nothing was genuinely un-claimed — by a first-time bootstrap
+            # or by a deliberate revocation — so it re-resolves through `org_for_identity` above, the
+            # same as any other login: leaving `orgs:` must take effect on next login, exactly like
+            # leaving a Team already does for the role below.
             org = state.repository.user_org(login) or org
         oc = orgs.get(org)
         editor_team = oc.editor_team if oc is not None else None
