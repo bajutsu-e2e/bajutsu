@@ -57,6 +57,20 @@ sign-in behavior. This item changes what an admin Team membership means at sign-
 the existing single-Team variable would otherwise need the same behavior change under its old name.
 The rename and the behavior change become one edit rather than two.
 
+Two startup checks keep this parsing from losing every admin without a trace. `_build_server_state`
+([`bajutsu/serve/__init__.py`](../../bajutsu/serve/__init__.py)) prints a stderr warning when
+`BAJUTSU_OAUTH_ADMIN_TEAMS` is unset but the retired `BAJUTSU_OAUTH_ADMIN_TEAM` still is — the hard
+cutover in *Alternatives considered* means that deployment now has no admin Team at all, and the only
+other symptom is an unexplained 403 on every admin action. It also warns on any entry that isn't
+exactly one `"<github-org>/<team-slug>"` pair (checked by counting `/`): a space- or
+semicolon-separated list parses to a single malformed entry that can never match a real Team, which
+is the same "no admin, no visible cause" failure reached by a different mistake. Both print a warning
+rather than raising, so a config typo degrades a deployment to no-admin instead of refusing to start
+it entirely — consistent with every other env var this module reads, none of which validate their
+shape at startup either. The malformed entry stays in the list rather than being dropped: dropping it
+would silently narrow the admin roster to whatever remained syntactically valid, a second silent
+failure on top of the one the warning already reports.
+
 `oauth_callback` ([`bajutsu/serve/authz.py`](../../bajutsu/serve/authz.py)) already fetches the
 login's GitHub Team memberships (`identity.teams`, via `fetch_identity`) before it runs the
 org-membership gate, because that same fetch also supplies the `editorTeam` role check further down.
@@ -64,7 +78,10 @@ The gate and the Team fetch simply weren't ordered to use it together. This item
 alongside `identity_matches_org`: a login whose `identity.teams` intersects the configured admin Team
 list clears the sign-in gate regardless of what `identity_matches_org` returns. An admin Team member
 then signs in even when no `orgs:` entry lists their GitHub organization, or when `orgs:` is absent
-altogether. A login that satisfies neither check is still rejected exactly as today.
+altogether. A login that satisfies neither check is still rejected exactly as today. Every time the
+bypass alone admits a login, `oauth_callback` logs a warning naming the login: the bypass is the one
+sign-in path `orgs:` did not authorize, so it is the one path an operator auditing who signed in, and
+when, would otherwise have no record of at all.
 
 ### Role resolution is unaffected in shape, only in name
 
@@ -158,10 +175,13 @@ This item adds no login-list fallback for that outage case; see *Alternatives co
 
 - [x] Rename `BAJUTSU_OAUTH_ADMIN_TEAM` to `BAJUTSU_OAUTH_ADMIN_TEAMS` (comma-separated), threading the
       list through `SessionManager`, `role_for`, and the server-backend env wiring. Warn loudly at
-      startup when the old singular name is still set and the new one is not, so the hard cutover
-      never loses every admin silently.
+      startup both when the old singular name is still set and the new one is not, and when an entry
+      is not a well-formed `"<github-org>/<team-slug>"` pair, so neither mistake loses every admin
+      silently.
 - [x] Add the admin-Team bypass to the sign-in gate in `oauth_callback`, alongside
-      `identity_matches_org`, using the Team list already fetched for role resolution.
+      `identity_matches_org`, using the Team list already fetched for role resolution. Log a warning
+      naming the login every time the bypass alone admits it, so the one sign-in path `orgs:` did not
+      authorize still leaves a record.
 - [x] Update the self-hosting and configuration docs (both languages) and `.env.example` to describe
       the renamed variable and the bypass. BE-0313's claim that the `default` org is unreachable
       through OAuth sign-in is superseded in this item's *Detailed design* instead: no `docs/` page

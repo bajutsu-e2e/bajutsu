@@ -8,6 +8,7 @@ transport layer is unchanged. Every function takes the `ServeState`; none touche
 
 from __future__ import annotations
 
+import logging
 import secrets
 from typing import Any
 
@@ -75,8 +76,15 @@ def oauth_callback(
     # sign in and repoint a broken or incomplete `orgs:` config, not be locked out by the same config
     # mistake they exist to fix.
     is_admin_team_member = any(team in admin_teams for team in identity.teams)
-    if not identity_matches_org(orgs, login, identity.orgs) and not is_admin_team_member:
+    matched_org = identity_matches_org(orgs, login, identity.orgs)
+    if not matched_org and not is_admin_team_member:
         return {"error": "user not allowed"}, 403, None
+    if not matched_org:
+        # The one sign-in path `orgs:` did not authorize: record that the bootstrap bypass was
+        # used, so an operator can see the hatch itself, not only its effects.
+        logging.getLogger(__name__).warning(
+            "admin-Team bypass admitted %s: no orgs: entry matched this login", login
+        )
     if state.repository is not None:
         # Persist the identity into the system of record, so audit entries and RBAC can reference
         # the user. The org comes from the config-declared org model — an explicit member listing or
