@@ -195,6 +195,25 @@ def test_launch_driver_tears_down_when_await_ready_raises(
     assert torn == [driver]
 
 
+def test_launch_driver_does_not_tear_down_when_start_raises(tmp_path: Path) -> None:
+    # The other half of the BE-0342 guard: with no driver produced there is nothing to tear down, and
+    # the pool's failed-resume eviction is what cleans the warm resident up instead.
+    from bajutsu.drivers import base as drivers_base
+
+    torn: list[object] = []
+
+    class _Env:
+        def start(self, *args: object, **kwargs: object) -> FakeDriver:
+            raise drivers_base.BackendCrashError("died during start")
+
+        def teardown(self, d: object, eff: object) -> None:
+            torn.append(d)
+
+    with pytest.raises(drivers_base.BackendCrashError, match="died during start"):
+        launch_driver("UDID-1", _xcuitest_eff(tmp_path), "xcuitest", environment=_Env())  # type: ignore[arg-type]
+    assert torn == []
+
+
 def test_launch_driver_surfaces_failing_erase_as_device_error(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
