@@ -338,9 +338,10 @@ class ComponentsUITest {
       if (reportsWindows()) return
       kickWindowTracking("no accessibility windows reported (attempt $attempt)")
     }
-    // The last kick would otherwise go unchecked. This reads once more only so the log says
-    // whether it worked — launch() is tried either way, since nothing here is reported back
-    // to it and starting the activity is the stronger stimulus.
+    // The last kick would otherwise go unchecked. This reads once more only so a failure
+    // leaves a line — a recovery is silent, and shows as a kick with no failure line after
+    // it. launch() is tried either way, since nothing here is reported back to it and
+    // starting the activity is the stronger stimulus.
     if (!reportsWindows()) {
       Log.w(
         LOG_TAG,
@@ -448,7 +449,8 @@ class ComponentsUITest {
   per attempt, putting the worst case for one `launch` at `LAUNCH_ATTEMPTS × TRACKING_KICK_ATTEMPTS
   + (LAUNCH_ATTEMPTS - 1)` presses — seven as emitted, but only on a device whose list reads empty
   at every pre-launch check, since that check does not give up early when its own budget runs out
-  (see the next bullet). `pressHome` reports a window event that never arrived by returning false
+  (see the next bullet). On a device whose list is live — the run below — it presses once.
+  `pressHome` reports a window event that never arrived by returning false
   rather than by throwing, so both outcomes are logged. The kick stays outside
   `UiAutomation.executeAndWaitForEvent`, because `pressHome` already waits through that same call
   and a nested one would clear the event queue the outer wait is watching.

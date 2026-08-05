@@ -167,17 +167,27 @@ def test_a_wedged_window_list_is_kicked_rather_than_waited_out() -> None:
     # target that sets non-default flags, tears down and reconnects the very UiAutomation instance
     # UiDevice depends on. One accessor for both, so they cannot drift onto different flags.
     assert "Configurator.getInstance().uiAutomationFlags" in accessor
+    # getUiAutomation(flags) only exists from API 24 (N); UiDevice itself branches on the same
+    # check and falls back to the flag-less read below it on older devices, so this accessor has
+    # to mirror that branch rather than raising the API floor a UI Automator target can run on.
+    assert "Build.VERSION.SDK_INT >= Build.VERSION_CODES.N" in accessor
+    assert "InstrumentationRegistry.getInstrumentation().uiAutomation.windows" in accessor
+    assert "import android.os.Build" in code
     assert "accessibilityWindows()" in _fn_body(code, "windowSummary", "matchableIds")
     assert "accessibilityWindows()" in _fn_body(code, "reportsWindows", "ensureWindowTracking")
     # Comment lines are stripped so rewording a rationale cannot redden either gate below on its
     # own — the accessor's own comment already names the flag-less overload, and the nesting ban
     # further down discusses executeAndWaitForEvent by name.
     emitted = "\n".join(ln for ln in code.splitlines() if not ln.lstrip().startswith("//"))
+    stripped_accessor = "\n".join(
+        ln for ln in accessor.splitlines() if not ln.lstrip().startswith("//")
+    )
     # Neither of the next two is visible to the fast gate, which never compiles the output: the
-    # flag-less overload must not reappear anywhere in the file, and the accessor's own import has
-    # to be emitted or the generated Kotlin will not build. (".uiAutomation." does not match
-    # ".uiAutomationFlags", so the accessor above passes.)
-    assert ".uiAutomation." not in emitted
+    # flag-less overload must not reappear anywhere outside this accessor's own API-level
+    # fallback, and the accessor's own import has to be emitted or the generated Kotlin will not
+    # build. (".uiAutomation." does not match ".uiAutomationFlags", so the flagged branch passes.)
+    assert emitted.count(".uiAutomation.") == 1
+    assert ".uiAutomation." in stripped_accessor
     assert "import androidx.test.uiautomator.Configurator" in code
 
     kick = _fn_body(code, "kickWindowTracking", "reportsWindows")
@@ -229,7 +239,6 @@ def test_failure_messages_name_the_windows_that_were_searched() -> None:
     # "no element matched <selector>" cannot distinguish an id that has not rendered from an app
     # whose window is absent from the accessibility tree altogether — the two need opposite fixes.
     code = _gen("- name: x\n  steps:\n    - tap: { id: a }\n")
-    assert "accessibilityWindows()" in _fn_body(code, "windowSummary", "matchableIds")
     assert 'root=${window.root?.packageName ?: "<null>"} $window' in code
     assert 'within ${ACT_TIMEOUT_MS}ms; windows:\\n" + windowSummary()' in code
 

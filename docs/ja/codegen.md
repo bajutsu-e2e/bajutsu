@@ -331,9 +331,10 @@ class ComponentsUITest {
       if (reportsWindows()) return
       kickWindowTracking("no accessibility windows reported (attempt $attempt)")
     }
-    // The last kick would otherwise go unchecked. This reads once more only so the log says
-    // whether it worked — launch() is tried either way, since nothing here is reported back
-    // to it and starting the activity is the stronger stimulus.
+    // The last kick would otherwise go unchecked. This reads once more only so a failure
+    // leaves a line — a recovery is silent, and shows as a kick with no failure line after
+    // it. launch() is tried either way, since nothing here is reported back to it and
+    // starting the activity is the stronger stimulus.
     if (!reportsWindows()) {
       Log.w(
         LOG_TAG,
@@ -451,9 +452,10 @@ class ComponentsUITest {
 
   起動前の予算を使い切っても一覧が空のままなら、投げずに記録するだけにとどめます。まだ起動していない
   アプリ（ランチャー）に向けた HOME は、この仕組みの中でいちばん弱い刺激であり、アクティビティを
-  実際に起動すればウィンドウそのものが増えます。ここで投げてしまうと、弱い刺激だけにキックの予算を
-  使い切り、`startActivity` を一度も呼ばないまま中断してしまいます — 強い刺激をいちばん必要と
-  している端末に対してです。アクティビティの起動でも回復しない場合は、`launch` 自身の再試行が
+  実際に起動すればウィンドウそのものが増えます。ここで投げてしまうと、弱い刺激だけに
+  ウィンドウ変更の予算を使い切り、強い刺激をいちばん必要としている端末に対して、
+  `startActivity` を一度も呼ばないまま中断してしまいます。アクティビティの起動でも
+  回復しない場合は、`launch` 自身の再試行が
   ウィンドウ一覧を添えて失敗を報告します。
 - **最後の試行では、待機が尽きた後にウィンドウ変更を起こしません。** その後に再送する intent はもう
   ありませんし、HOME を押すと、これから集める証跡がすべて上書きされてしまいます。`AssertionError`
