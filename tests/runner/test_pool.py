@@ -441,9 +441,10 @@ class _RecordingEnv:
         reusable: bool = False,
         raise_on_teardown: bool = False,
         teardown_error: BaseException | None = None,
+        raise_on_end_lease: bool = False,
+        end_lease_error: BaseException | None = None,
         replacement: str | None = None,
         catalog: dict[str, dict[str, str]] | None = None,
-        fail_end_lease: bool = False,
         fail_bridge_teardown: bool = False,
     ) -> None:
         self.actuator = actuator
@@ -471,9 +472,13 @@ class _RecordingEnv:
         self.reusable = reusable
         self.raise_on_teardown = raise_on_teardown
         self.teardown_error = teardown_error
-        # `end_lease` raising means the app's teardown never completed; the resident it belongs to
-        # must then be evicted rather than resumed by the next lease (BE-0342).
-        self.fail_end_lease = fail_end_lease
+        # The same expected-failure/wiring-defect shape as `teardown`, but kept independent of it:
+        # `end_lease` raising means the app's teardown never completed, so the resident it belongs to
+        # must be evicted rather than resumed — a distinct failure from `teardown`'s, which several
+        # tests need to fail independently (e.g. a lease releases warm cleanly, and only the later
+        # full teardown at `shutdown()` fails) (BE-0342).
+        self.raise_on_end_lease = raise_on_end_lease
+        self.end_lease_error = end_lease_error
         # `bridge_collector`'s returned teardown raising mimics `adb reverse --remove` on a device
         # that already dropped off the bus (BE-0342).
         self.fail_bridge_teardown = fail_bridge_teardown
@@ -537,7 +542,9 @@ class _RecordingEnv:
         return self.replacement
 
     def end_lease(self, driver: base.Driver, eff: Effective) -> None:
-        if self.fail_end_lease:
+        if self.end_lease_error is not None:
+            raise self.end_lease_error
+        if self.raise_on_end_lease:
             raise subprocess.CalledProcessError(1, ["xcrun", "simctl", "terminate"])
         self.end_lease_count += 1  # kept warm: the pool released the lease without a full teardown
 
@@ -776,7 +783,7 @@ def test_device_pool_evicts_a_warm_resident_whose_end_lease_did_not_finish(
     try:
         first = lease(_eff(), _scn("a"))
         env = created[1]  # created[0] is the pool's representative env
-        env.fail_end_lease = True
+        env.raise_on_end_lease = True
         with caplog.at_level(logging.WARNING, logger="bajutsu.runner.recovery"):
             first.release()  # must not raise
         assert "at the lease's end" in caplog.text  # logged, not silent
@@ -1194,16 +1201,26 @@ def test_device_pool_shutdown_completes_the_collector_sweep_before_a_wiring_defe
         pytest.param(AttributeError("close"), id="wiring-defect"),  # BE-0342
     ],
 )
+@pytest.mark.parametrize(
+    "reusable",
+    [
+        pytest.param(False, id="teardown"),  # the `else lease_env.teardown(...)` arm
+        pytest.param(True, id="end_lease"),  # the `end_lease` arm, XCUITest's warm-resident path
+    ],
+)
 def test_device_pool_release_swallows_a_teardown_failure_and_still_frees_the_device(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
+    reusable: bool,
     teardown_error: BaseException | None,
 ) -> None:
     """BE-0342: `release()` runs from the run pipeline's `finally`, so neither an expected process
     failure nor a wiring defect on its teardown may replace the scenario's own result or skip
     returning the device to `free` — like the actuator-switch and failed-lease sites, and unlike
     `shutdown()`'s two loops, this one never propagates (it only warns), since there is no caller
-    left to see it raise."""
+    left to see it raise. Pinned over both the plain `teardown` arm and the `end_lease` arm a warm
+    resident takes — the latter also falls back to a full teardown, since `end_lease` not finishing
+    means the app was never confirmed down (see the eviction test below)."""
     created: list[_RecordingEnv] = []
 
     def fake_env_for(
@@ -1214,7 +1231,7 @@ def test_device_pool_release_swallows_a_teardown_failure_and_still_frees_the_dev
         provision: object = None,
         respawn: bool = False,
     ) -> _RecordingEnv:
-        env = _RecordingEnv(actuator, udid, provision)
+        env = _RecordingEnv(actuator, udid, provision, reusable=reusable)
         created.append(env)
         return env
 
@@ -1231,12 +1248,17 @@ def test_device_pool_release_swallows_a_teardown_failure_and_still_frees_the_dev
     try:
         first = lease(_eff(), _scn("a"))
         env = created[1]  # created[0] is the pool's representative env
-        env.raise_on_teardown = teardown_error is None
-        env.teardown_error = teardown_error
-        # …and the same over a reusable env, so the `end_lease` arm of the new lambda is pinned too.
+        if reusable:
+            # The `end_lease` arm fails; its fallback teardown (unset error/flag) then completes
+            # cleanly, so `env.torn` still ends up True via that fallback.
+            env.raise_on_end_lease = teardown_error is None
+            env.end_lease_error = teardown_error
+        else:
+            env.raise_on_teardown = teardown_error is None
+            env.teardown_error = teardown_error
         with caplog.at_level(logging.WARNING, logger="bajutsu.runner.recovery"):
             first.release()  # must not raise
-        assert env.torn
+        assert env.torn  # the plain arm's own teardown, or the end_lease arm's fallback teardown
         assert "at the lease's end" in caplog.text  # logged, not silent
         # The device was still returned — a leaked udid would hang this on `free.get()`.
         retry = lease(_eff(), _scn("b"))

@@ -201,14 +201,14 @@ def device_pool(
         cached = warm.get(udid)
         if cached is not None and cached[0] != actuator:
             _cached_actuator, cached_env, cached_driver = warm.pop(udid)
-            # Guarded like the pool's four other teardown sites (the failed-resume eviction below,
-            # `release()`'s end of a normal lease, and `shutdown()`'s device and collector loops): if
-            # the cached runner already crashed
-            # between leases, `_discard_runner()`'s `terminate()` can raise `ProcessLookupError` (an
-            # `OSError`). This runs before the `try` below, so anything `guarded_teardown` re-raises
-            # propagates out of `lease()` with `udid` never returned to `free`, leaking the device
-            # for the rest of the run — a wiring defect must not escape here either (`mid_run=True`),
-            # the same reasoning as the failed-resume eviction below (BE-0342).
+            # Guarded like every other teardown site this module shares through `guarded_teardown`
+            # (the failed-resume eviction below, `release()`'s own sites, and `shutdown()`'s loops):
+            # if the cached runner already crashed between leases, `_discard_runner()`'s `terminate()`
+            # can raise `ProcessLookupError` (an `OSError`). This runs before the `try` below, so
+            # anything `guarded_teardown` re-raises propagates out of `lease()` with `udid` never
+            # returned to `free`, leaking the device for the rest of the run — a wiring defect must
+            # not escape here either (`mid_run=True`), the same reasoning as the failed-resume
+            # eviction below (BE-0342).
             guarded_teardown(
                 lambda: cached_env.teardown(cached_driver, eff),
                 mid_run=True,
@@ -481,10 +481,10 @@ def device_pool(
             doomed = (stale[1], stale[2]) if stale is not None else launched
             if doomed is not None:
                 dead_env, dead_driver = doomed
-                # A leaked runner is the same risk here as at the pool's four other teardown sites
-                # (the actuator switch above, `release()`'s end of a normal lease, and `shutdown()`'s
-                # device and collector loops); the original launch error still propagates via the
-                # `raise` below, so a teardown hiccup (mid_run=True) must not mask it (BE-0342).
+                # A leaked runner is the same risk here as at this module's other teardown sites
+                # (the actuator switch above, `release()`'s own sites, and `shutdown()`'s loops); the
+                # original launch error still propagates via the `raise` below, so a teardown hiccup
+                # (mid_run=True) must not mask it (BE-0342).
                 guarded_teardown(
                     lambda: dead_env.teardown(dead_driver, eff),
                     mid_run=True,
