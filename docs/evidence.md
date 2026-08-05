@@ -142,8 +142,9 @@ app's os_log subsystem, paired into timed intervals by `parse_app_trace`.)
   `Interval` back through `prestarted_intervals`; the sink *adopts* it at scenario start
   (`intervals.adopt`) instead of starting a fresh one, and on stop finalizes it and relocates the
   file to `scenario.mp4`. Web wires the same up-front capture into the browser context at creation.
-  XCUITest, the current iOS backend, still records on demand: its app launch lives inside the
-  `xcodebuild` runner's own spawn, a path `prestarted_intervals` never reaches. The up-front
+  XCUITest, the current iOS backend, records on demand instead: nothing starts a recording before
+  the `xcodebuild` runner spawns and launches the app, so its `prestarted_intervals` is always empty.
+  The up-front
   behavior is gated by `records_video_up_front`, `True` for Android and web and `False` for
   XCUITest and the fake backend; a scenario that requests no `video` starts none regardless.
 
