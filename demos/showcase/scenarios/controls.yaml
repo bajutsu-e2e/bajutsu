@@ -13,8 +13,7 @@
     - tap: { label: "Log", traits: [button] }
       capture: [video]
     - wait: { for: { id: log.note }, timeout: 10 }
-    - scroll: { to: { id: log.segment.one }, direction: down }
-    - wait: { until: settled, timeout: 3 }
+    - scroll: { to: { id: log.segment.value }, direction: down }
     - wait: { for: { id: log.segment.one }, timeout: 5 }
     - assert:
         - value: { sel: { id: log.segment.value }, equals: "one" }

@@ -37,13 +37,20 @@ SERIAL ?= booted
 # with `step 0 (wait): wait timeout`, on a warm AVD, while the scenario lanes passed the identical
 # wait. The floor is a ceiling on a condition wait, so a fast render still returns at once.
 #
-# The deep-scroll flows `controls` / `notices` rejoin the lane (BE-0208 unit 5). Both scroll a far
-# target into view — `controls` the segmented-control value node below the buttons, `notices` a list
-# row that starts well below the fold. They failed before because the default directional swipe
-# travelled a fixed coordinate count, which scrolls far less of Android's dense screen (2400px) than
-# of iOS's (~900pt); the default is now a screen fraction (bajutsu/orchestrator/actions/handlers/
-# gestures.py), so a swipe reaches the same proportion on either backend. Verified on a local arm64
-# emulator.
+# The deep-scroll flows `controls` / `notices` rejoin the lane (BE-0208 unit 5). Both reveal a far
+# target — `controls` the segmented-control value node below the buttons, `notices` a list row that
+# starts well below the fold — with `scroll` (BE-0326): a bounded, non-inertial step that re-queries
+# the tree and stops the moment the target is on-screen, rather than a swipe chain tuned to a fixed
+# distance. A fixed-distance chain scrolls far less of Android's dense screen (2400px) than of iOS's
+# (~900pt); `scroll`'s re-query removes the need to retune the distance per backend. Verified by this
+# lane's own x86_64 CI run rather than a local arm64 emulator, since the mechanism differs by backend
+# only in how far one step travels, not in what it resolves against.
+#
+# The interrupt-handler flow `interrupts` joins the lane (BE-0314): a syntax demo whose `interrupts`
+# entry never actually fires against the real app (its `condition` matches nothing on-screen), so it
+# exercises the same stable→horse→favorite flow `firstlook.yaml` already runs here. Its ids already
+# carry both dotted SPEC and underscore Android Views forms (BE-0221), so it runs unmodified once
+# added to this list — no app or config change needed.
 #
 # The single-touch gesture flow `gestures` rejoins the lane (BE-0208 unit 5): its long-press already
 # landed, but the double-tap did not register through adb's `input tap ; input tap` (each tap spawns

@@ -4,9 +4,14 @@
 # and are not exercised here.
 #
 # The targets sit below the form's fold, and a SwiftUI List renders off-screen rows lazily
-# (they are absent from the accessibility tree until scrolled in), so a `scroll` step reveals
-# them first — non-inertial and re-querying (BE-0326), so it stops the moment the target is
-# on-screen.
+# (they are absent from the accessibility tree until scrolled in), so the scenario scrolls
+# them into view first — each swipe is anchored on an element that stays visible as the form
+# scrolls up, and the condition wait stops once the target appears. Deliberately `swipe`, not
+# `scroll` (BE-0326): this file is one of the four `ui-test-coverage` compiles to a native
+# XCUITest and runs on-device (the required `codegen (xcuitest)` job), and XCUITest has no
+# scroll-to-element primitive, so `scroll` codegens to a labeled TODO rather than a real
+# gesture (bajutsu/codegen/xcuitest.py) — the compiled test would then wait on an unscrolled
+# screen. `swipe`'s directional form has a real XCUITest translation, so it stays here.
 - name: long-press and double-tap targets mirror their result
   preconditions:
     launchEnv: { SHOWCASE_UITEST: "1" }
@@ -14,8 +19,8 @@
     - tap: { label: "Log", traits: [button] }
       capture: [video]
     - wait: { for: { id: log.submit }, timeout: 10 }
-    - scroll: { to: { id: log.longpress }, direction: down }
-    - wait: { until: settled, timeout: 3 }
+    - swipe: { on: { id: log.submit }, direction: up }
+    - swipe: { on: { id: log.dialog.value }, direction: up }
     - wait: { for: { id: log.longpress }, timeout: 5 }
     - assert:
         - value: { sel: { id: log.longpress.value }, equals: "idle" }
