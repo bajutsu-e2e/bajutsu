@@ -160,7 +160,10 @@ views-noax-build:
 #
 # The broadcast that follows closes one that is already up: the setting only governs dialogs posted
 # after it, so a lane that starts with the launcher already wedged would otherwise still open on a
-# blocked foreground window.
+# blocked foreground window. `hide_error_dialogs=1` should hold for the rest of the emulator's
+# session once set, but a multi-scenario lane (`e2e`, `run-flutter-android`) calls it again before
+# every scenario in its loop rather than trust that once at the top of the job — each call is two
+# fast adb round trips, and the alternative is re-diagnosing a mid-loop dialog from a bare timeout.
 #
 # The tap-based counterpart is showcase.config.yaml's per-target `interrupts`: it covers a
 # `bajutsu run` invoked outside any make target, which this setting therefore never reaches. It
@@ -190,16 +193,17 @@ TOUCH_DEBUG_OFF = adb shell settings put system show_touches 0 && adb shell sett
 
 e2e: compose-build views-build
 	adb root && adb wait-for-device
-	$(ANR_QUIET)
 	$(TOUCH_DEBUG_ON)
 	cd $(ROOT) && for s in $(E2E_SCENARIOS); do \
 		echo "=== showcase-compose / $$s ==="; \
+		$(ANR_QUIET); \
 		$(E2E_ENV) \
 		uv run bajutsu run --scenario demos/showcase/scenarios/$$s.yaml \
 			--target showcase-compose --udid $(SERIAL) --backend android --config $(CONFIG) || exit 1; \
 	done
 	cd $(ROOT) && for s in $(E2E_VIEWS_SCENARIOS); do \
 		echo "=== showcase-views / $$s ==="; \
+		$(ANR_QUIET); \
 		$(E2E_ENV) \
 		uv run bajutsu run --scenario demos/showcase/scenarios/$$s.yaml \
 			--target showcase-views --udid $(SERIAL) --backend android --config $(CONFIG) || exit 1; \
