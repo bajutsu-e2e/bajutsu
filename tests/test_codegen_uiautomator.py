@@ -164,6 +164,12 @@ def test_a_wedged_window_list_is_kicked_rather_than_waited_out() -> None:
     assert "Configurator.getInstance().uiAutomationFlags" in accessor
     assert "accessibilityWindows()" in _fn_body(code, "windowSummary", "matchableIds")
     assert "accessibilityWindows()" in _fn_body(code, "reportsWindows", "ensureWindowTracking")
+    # Neither of the next two is visible to the fast gate, which never compiles the output: the
+    # flag-less overload must not reappear anywhere in the file, and the accessor's own import has
+    # to be emitted or the generated Kotlin will not build. (".uiAutomation." does not match
+    # ".uiAutomationFlags", so the accessor above passes.)
+    assert ".uiAutomation." not in code
+    assert "import androidx.test.uiautomator.Configurator" in code
 
     kick = _fn_body(code, "kickWindowTracking", "reportsWindows")
     assert "device.pressHome()" in kick
