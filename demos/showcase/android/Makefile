@@ -354,6 +354,7 @@ e2e-codegen:
 	# does (ANR_QUIET above): the transient launcher ANR dialog this recording exists to diagnose
 	# is exactly one of the dialogs that setting stops being posted at all.
 	$(ANR_QUIET)
+	$(TOUCH_DEBUG_OFF)
 	cd $(HERE) && $(GRADLEW) :compose:assembleA11yDebug :compose:assembleA11yDebugAndroidTest
 	cd $(ROOT) && uv run python3 demos/showcase/android/screenrecord.py $(SERIAL) \
 		$(HERE)/compose/build/outputs/screenrecord/uiautomator-codegen.mp4 & \
