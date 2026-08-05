@@ -14,13 +14,14 @@
 #     used to be its own job (smoke, gestures, the runner channel's /type + /swipe + /back, and the
 #     deterministic permissions surface) folded into one `bajutsu run`. They differed only in which
 #     scenarios they ran, so each re-paid the lane's dominant fixed cost — the cold XCTest-host
-#     startup plus its own build and boot — over again; one job warm-reuses the resident runner
-#     across the ten scenario documents that run — every scenario the six files hold, since BE-0315
-#     made the notification grant native so nothing is `ai`-tagged to exclude (BE-0291/BE-0287/BE-0315)
-#     — paying that cold startup five times (the lane caps warm reuse
-#     at 1, see the `env` block below) — one more than the four separate jobs' cold startups summed
-#     to, but each of those jobs also paid its own build and boot, which the `build` job below now
-#     pays once for the whole lane.
+#     startup plus its own build and boot — over again; one job runs all ten scenario documents —
+#     every scenario the six files hold, since BE-0315 made the notification grant native so nothing
+#     is `ai`-tagged to exclude (BE-0291/BE-0287/BE-0315) — as its own `bajutsu run` process, sharing
+#     one build and one boot. The run step's `--erase` forces every one of those ten onto its own cold
+#     XCTest-host startup (the warm-runner reuse gate is `not preconditions.erase`, so the
+#     `BAJUTSU_XCUITEST_MAX_WARM_REUSES` cap in the `env` block below is never consulted on this job) —
+#     one more than the four separate jobs' cold startups summed to, but each of those jobs also paid
+#     its own build and boot, which the `build` job below now pays once for the whole lane.
 #     `run` reddens the gate if any scenario
 #     fails, so per-scenario pass/fail moves from job names into its report. Covers BE-0019 (pinch/
 #     rotate, /gesture), BE-0281 (/type, /swipe, /back), BE-0276 (`permissions`: location, pre-granted
@@ -122,18 +123,18 @@ env:
   # host, so a runner that will not come back fails loudly in ~90s instead of ~300s. Unset (elsewhere)
   # keeps the cold ceiling for respawns too, so only this lane opts in.
   BAJUTSU_XCUITEST_RESPAWN_TIMEOUT: "90"
-  # Respawn the resident runner cold after a single warm reuse rather than the default 3
-  # (`_MAX_WARM_REUSES`). Folding many scenarios into one `bajutsu run` (the `run` / `actuation` jobs)
-  # lengthens each warm-runner session, and each warm reuse re-attaches the XCTest automation session
-  # to a freshly launched app — a session that can destabilize into a mid-run crash after enough
-  # cycles on a contended CI host (see `_MAX_WARM_REUSES` in
-  # bajutsu/platform_lifecycle/environments/xcuitest.py). Respawning sooner caps that accumulation:
-  # the nine-scenario `run` job pays five cold startups instead of one — one more than the four
-  # pre-consolidation jobs summed to — but the build-once `build` job already removed their per-job
-  # Swift builds, so the lane's net cost still drops even though this cap gives back that one extra
-  # cold startup. The run pipeline's scenario-level crash recovery (BackendCrashError retry) is the
-  # primary defense; this cap is a complementary reduction, kept because a smaller warm-runner
-  # session is simply steadier.
+  # NOTE: this cap is inert on the `run` / `actuation` jobs since their step's `--erase` puts every
+  # lease on the cold-spawn path (the warm-reuse gate in `start()` is `not preconditions.erase`), so
+  # the reuse budget below is never consulted there — every scenario is already a fresh cold spawn,
+  # never a warm reuse. It still applies to any consumer of the `bajutsu-e2e` action that does not
+  # force erase. Respawn the resident runner cold after a single warm reuse rather than the default 3
+  # (`_MAX_WARM_REUSES`). Folding many scenarios into one `bajutsu run` lengthens each warm-runner
+  # session, and each warm reuse re-attaches the XCTest automation session to a freshly launched app —
+  # a session that can destabilize into a mid-run crash after enough cycles on a contended CI host
+  # (see `_MAX_WARM_REUSES` in bajutsu/platform_lifecycle/environments/xcuitest.py). The run pipeline's
+  # scenario-level crash recovery (BackendCrashError retry) is the primary defense; this cap was a
+  # complementary reduction on lanes that still warm-reuse, kept because a smaller warm-runner session
+  # is simply steadier.
   BAJUTSU_XCUITEST_MAX_WARM_REUSES: "1"
   # Raise the scenario-level backend-crash retry budget from the default 1 for the metered on-device
   # lane (`_default_crash_retries`, bajutsu/runner/pipeline.py). The resident XCTest host still crashes
@@ -149,14 +150,19 @@ env:
   # Cap the *wall-clock* the scenario-level crash recovery may spend respawning, on top of the count
   # above (bajutsu/runner/pipeline.py, _default_crash_recovery_budget). The count alone is unbounded in
   # time: a runner that crashes and never comes back keeps respawning, and each respawn runs simctl prep
-  # and re-runs the scenario. BAJUTSU_XCUITEST_RESPAWN_TIMEOUT (90s, above) already caps each respawn's
-  # *readiness* wait on this lane — the part that used to dominate (a full 300s STARTUP_TIMEOUT per
-  # respawn, the silent hang that ran the mid-run `pinch/rotate` crash to `timeout-minutes`). So this
-  # budget's remaining job is the rest the readiness ceiling does not cover: the simctl prep and
-  # scenario re-run, plus the cumulative cost across BAJUTSU_CRASH_RETRIES respawns. 300s keeps a
-  # never-recovering runner failing loudly well under the `run` job's 40min `timeout-minutes` instead of hanging,
-  # while still riding out a genuine one-off (the first respawn is never blocked) — a backstop on top of
-  # the per-respawn ceiling, not a substitute for it.
+  # and re-runs the scenario. BAJUTSU_XCUITEST_RESPAWN_TIMEOUT (90s, above) caps each respawn's
+  # *readiness* wait on a lane that keeps its warm runner across the retry — the part that used to
+  # dominate (a full 300s STARTUP_TIMEOUT per respawn, the silent hang that ran the mid-run
+  # `pinch/rotate` crash to `timeout-minutes`). On `run` / `actuation`, though, the crash-retry re-lease
+  # carries `preconditions.erase=True` (the run step's `--erase`), and
+  # `is_respawn = (... ) and not pre.erase` in `_spawn_cold` never classifies that re-lease as a
+  # respawn — so each retry there pays the full 300s STARTUP_TIMEOUT readiness ceiling instead of the
+  # 90s one, on top of re-erasing and re-booting the Simulator. This budget's remaining job is the rest
+  # the readiness ceiling does not cover: the simctl prep and scenario re-run, plus the cumulative cost
+  # across BAJUTSU_CRASH_RETRIES respawns. 300s keeps a never-recovering runner failing loudly well
+  # under the `run` job's `timeout-minutes` instead of hanging, while still riding out a genuine
+  # one-off (the first respawn is never blocked) — a backstop on top of the per-respawn ceiling (90s
+  # where it applies, 300s where erase forces the cold ceiling), not a substitute for it.
   BAJUTSU_CRASH_RECOVERY_BUDGET: "300"
 
 jobs:
@@ -286,17 +292,18 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
-  # The homogeneous XCUITest gating lane: one boot, one resident runner drive every `bajutsu run`-
-  # over-XCUITest scenario that used to be its own job (smoke / gestures / permission /
-  # runner-actuation). They differed only in which scenarios they ran, so each re-paid the lane's
-  # dominant fixed cost — the cold `xcodebuild test-without-building` XCTest-host startup (~2-3 min on
-  # macos-latest) — over again, at 10x macOS billing. Folded into one `bajutsu run`, the ten scenario
-  # documents that run — every scenario the six files hold, since BE-0315 made the notification grant
-  # native so nothing is `ai`-tagged to exclude — pay that cold
-  # startup five times (BE-0291's warm reuse carries the runner between them, capped at 1 on this lane
-  # — see the env block above), one more than the four the separate jobs summed to — but those jobs
-  # each also paid their own Swift build and boot, which the shared `build` job below now pays once
-  # for the whole lane.
+  # The homogeneous XCUITest gating lane: one boot drives every `bajutsu run`-over-XCUITest scenario
+  # that used to be its own job (smoke / gestures / permission / runner-actuation). They differed only
+  # in which scenarios they ran, so each re-paid the lane's dominant fixed cost — the cold `xcodebuild
+  # test-without-building` XCTest-host startup (~2-3 min on macos-latest) — over again, at 10x macOS
+  # billing. Folded into one `bajutsu run`, the ten scenario documents that run — every scenario the
+  # six files hold, since BE-0315 made the notification grant native so nothing is `ai`-tagged to
+  # exclude — pay that cold startup ten times: the run step's `--erase` forces every one of them onto
+  # its own cold spawn (the warm-runner reuse gate is `not preconditions.erase`, so the
+  # `BAJUTSU_XCUITEST_MAX_WARM_REUSES` cap in the env block above is never consulted here), twice the
+  # five the four separate pre-consolidation jobs summed to under warm reuse — but those jobs each also
+  # paid their own Swift build and boot, which the shared `build` job below now pays once for the whole
+  # lane.
   # `run` runs each scenario to its own verdict and exits non-zero if any
   # fails, so the single job reddens the required `E2E` gate exactly as the four jobs did — the
   # per-scenario pass/fail moves from job names into the run's report. It installs the prebuilt
@@ -316,8 +323,10 @@ jobs:
   #     "Allow" by a native query — the *proactive* native counterpart to permission.yaml's *reactive*
   #     native grant above.
   # The three permission scenarios run last so their OS-level grants never perturb the state-neutral
-  # scenarios above them; each scenario relaunches the app under the warm runner, so their isolation
-  # holds. No scenario is `ai`-tagged, so the lane runs every one with no `--exclude`.
+  # scenarios above them; the run step's `--erase` re-erases the Simulator before each one anyway, so
+  # their isolation from earlier scenarios holds regardless of ordering — the ordering itself is kept
+  # for readability, not correctness. No scenario is `ai`-tagged, so the lane runs every one with no
+  # `--exclude`.
   run:
     name: run (xcuitest)
     needs: [changes, build]
@@ -329,15 +338,18 @@ jobs:
       contains(fromJSON(needs.changes.outputs.affected), 'run'))
     runs-on: macos-latest
     # Cap the metered macOS job (10x billing): a hung Simulator/runner would otherwise run to the 6h
-    # default. No build here (the `build` job staged the products) — boot + install + one cold runner
-    # + six short scenarios was ~15min under warm reuse, so 25 caught a real hang with headroom. `--erase`
-    # (the bajutsu-e2e action's run step) now forces a cold XCTest-host respawn on every scenario instead
-    # of the five warm-reused cold starts this lane previously paid for its ten scenario runs, so 40
-    # keeps that same headroom over the doubled cold-start cost. A mid-run backend crash adds at most
-    # about one more cold respawn: BAJUTSU_CRASH_RECOVERY_BUDGET (300s, above) bounds the
-    # scenario-level recovery in wall-clock, so a never-recovering runner fails loudly inside that
-    # window rather than paying BAJUTSU_CRASH_RETRIES × the 300s startup ceiling and hanging to this cap.
-    timeout-minutes: 40
+    # default. No build here (the `build` job staged the products) — boot + install + five cold runner
+    # startups across the ten scenario runs was ~15min under warm reuse, so 25 caught a real hang with
+    # headroom. `--erase` (the bajutsu-e2e action's run step) now forces a cold XCTest-host respawn on
+    # every one of the ten runs — plus a full simctl erase/boot/install (~80s, per the `golden` job's
+    # boot estimate below) each time, not just the five extra host startups. This estimate has not been
+    # measured against a real run on this branch, so 55 is deliberately generous headroom rather than a
+    # tight bound — tighten it once CI has run this lane a few times and the real wall-clock is known.
+    # A mid-run backend crash adds at most about one more cold respawn: BAJUTSU_CRASH_RECOVERY_BUDGET
+    # (300s, above) bounds the scenario-level recovery in wall-clock, so a never-recovering runner
+    # fails loudly inside that window rather than paying BAJUTSU_CRASH_RETRIES × the 300s startup
+    # ceiling and hanging to this cap.
+    timeout-minutes: 55
     # BE-0231 unit 4: a cold-boot CI Simulator sometimes renders the first Stable row later than a
     # scenario's 10s first-wait allows — even with unit 2's `readyWhen` gate (which waits up to
     # _await_ready's own 10s for that row). Raise the wait *floor* so the condition wait has the
@@ -372,10 +384,11 @@ jobs:
       - name: Install the app
         run: xcrun simctl install "${{ steps.toolchain.outputs.udid }}" "demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
 
-      # Every gating XCUITest scenario in one `bajutsu run`: five cold runner startups (MAX_WARM_REUSES=1), warm-reused
-      # across the ten scenario documents that run (every scenario the six files below hold; nothing is
-      # `ai`-tagged since BE-0315, so no `--exclude`). State-neutral scenarios first, the three
-      # permission scenarios last (see the job header).
+      # Every gating XCUITest scenario in one `bajutsu run`: ten cold runner startups, one per scenario
+      # document — `--erase` below forces every one cold (see the job header) — across the ten scenario
+      # documents that run (every scenario the six files below hold; nothing is `ai`-tagged since
+      # BE-0315, so no `--exclude`). State-neutral scenarios first, the three permission scenarios last
+      # (see the job header).
       - name: Run the gating XCUITest scenarios (smoke, gestures, runner channel, permissions)
         uses: ./.github/actions/bajutsu-e2e
         with:
@@ -437,12 +450,13 @@ jobs:
   # Deliberately NOT in the `E2E` gate's `needs:` below (like `golden` / `visual`): the Simulator lane
   # has a flakiness history (BE-0218), so new coverage lands as a per-PR signal first and is promoted
   # to the gate only once it proves stable. It installs the prebuilt products from the `build` job and
-  # runs every scenario in one `bajutsu run` (cost discipline: the macOS runner bills at 10x), so the
-  # job's dominant cost — the cold XCTest-host startup — is paid once per two scenario runs rather than
-  # once per run. Folding BE-0285's four files in here rather than into a job of their own follows
-  # the same reasoning: a second non-gating job would differ only in which scenarios it ran, and would
-  # re-pay this lane's boot, install, and cold startup to do it. Promote a scenario into `run` once it
-  # is stable.
+  # runs every scenario in one `bajutsu run` (cost discipline: the macOS runner bills at 10x); the run
+  # step's `--erase` (see the job's `timeout-minutes` comment below) means the job's dominant cost —
+  # the cold XCTest-host startup plus a full simctl erase/boot/install — is now paid once per scenario
+  # run, not shared across them. Folding BE-0285's four files in here rather than into a job of their
+  # own follows the same reasoning: a second non-gating job would differ only in which scenarios it
+  # ran, and would re-pay this lane's build-once product download and per-scenario cold cost to do it.
+  # Promote a scenario into `run` once it is stable.
   actuation:
     name: actuation (xcuitest)
     needs: [changes, build]
@@ -455,12 +469,14 @@ jobs:
     runs-on: macos-latest
     # Cap the metered macOS job (10x billing): a hung Simulator/runner would otherwise run to the 6h
     # default. Install (no build) + the ten scenario runs the eight files below produce (each file holds
-    # one scenario; data_driven.yaml's three `${row.*}` rows expand to three) was ~20min — the dominant
-    # term being five cold XCTest-host startups, one per two runs at this lane's warm-reuse cap. `--erase`
-    # (the bajutsu-e2e action's run step) now forces a cold respawn on every one of the ten runs instead
-    # of five, so 45 keeps this lane's headroom over that doubled cold-start cost rather than reddening a
-    # healthy run.
-    timeout-minutes: 45
+    # one scenario; data_driven.yaml's three `${row.*}` rows expand to three) was ~20min under warm
+    # reuse (five cold XCTest-host startups, one per two runs at the lane's former warm-reuse cap).
+    # `--erase` (the bajutsu-e2e action's run step) now puts every one of the ten runs on its own cold
+    # path — a full simctl erase/boot/install (~80s, per the `golden` job's boot estimate below) plus a
+    # cold XCTest-host spawn, not just the five extra host startups. This estimate has not been measured
+    # against a real run on this branch, so 60 is deliberately generous headroom rather than a tight
+    # bound — tighten it once CI has run this lane a few times and the real wall-clock is known.
+    timeout-minutes: 60
     # Raise the wait floor so a cold-boot Simulator has budget to render the first Stable row before
     # each scenario's own 10s first-wait — the same knob the `run` job above and the Android lane use.
     # A condition wait returns the instant the row appears, so this is a ceiling, not a sleep.
@@ -489,10 +505,11 @@ jobs:
       - name: Install the app
         run: xcrun simctl install "${{ steps.toolchain.outputs.udid }}" "demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
 
-      # Every scenario in one `bajutsu run` so they share a warm runner: the cold XCTest-host startup —
-      # the job's dominant cost — is paid once per two scenario runs (BE-0291's warm reuse spans
-      # leases within one process, capped at 1 on this lane — see the env block) instead of once per
-      # run. This also removes the reason the steps were split: `run` runs every
+      # Every scenario in one `bajutsu run` process, though `--erase` below means each still pays its
+      # own cold XCTest-host startup plus a full simctl erase/boot/install rather than sharing a warm
+      # runner (the reuse gate in `start()` is `not preconditions.erase`, so the
+      # `BAJUTSU_XCUITEST_MAX_WARM_REUSES` cap in the env block is never consulted on this job). This
+      # also removes the reason the steps were split: `run` runs every
       # scenario to its own per-scenario verdict regardless of the others failing, then exits non-zero
       # if any failed — the exact "run them all independently, redden if any fails" behavior the
       # continue-on-error steps plus the aggregator hand-rolled, now native to the run loop.

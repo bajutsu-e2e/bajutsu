@@ -4,15 +4,19 @@ description: >-
   then upload the run (report.html, screenshots, video, network.json) as an artifact.
   The caller is responsible for building and installing the app (and the XCUITest runner)
   first; this action owns the bajutsu-specific part (run — with the entry-screen convention score
-  folded in via `--score` — and artifacts).
+  folded in via `--score` — and artifacts). The run step passes `--erase`, so it wipes the
+  Simulator before it — this is a simctl operation and does not apply to a `xcuitest.deviceType:
+  device` target (bajutsu/platform_lifecycle/environments/xcuitest.py); no current caller targets a
+  real device through this action, but a future one must not.
 
 inputs:
   scenarios:
     description: >-
       Scenario *.yaml file(s) to run, whitespace-separated. Each is passed as its own
-      `run --scenario`, so several run in one `bajutsu run` process sharing one warm XCUITest runner
-      (the cold XCTest-host startup is paid once for the step, not once per scenario). A single path
-      is the common case.
+      `run --scenario`, so several run in one `bajutsu run` process — but the run step's `--erase`
+      forces every one of them onto a cold XCTest-host respawn (the warm-runner reuse gate is
+      `not preconditions.erase`), so the cold startup is paid once per scenario, not once for the
+      step. A single path is the common case.
     required: true
   exclude:
     description: >-
