@@ -9,7 +9,7 @@
 | Author | [@paihu](https://github.com/paihu) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
-| Implementing PR | TBD — filled in once the PR is opened (this is a BE-creation PR; the id and PR are not opened by this session) |
+| Implementing PR | [#1485](https://github.com/bajutsu-e2e/bajutsu/pull/1485) |
 | Topic | Hosting the web UI |
 | Related | [BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac.md) |
 <!-- /BE-METADATA -->
