@@ -633,6 +633,11 @@ class XcuitestEnvironment(_DeviceEnvironment):
                     e.shutdown()
                     e.erase()
                 e.boot()
+                # `boot()` only initiates the boot; wait for it to actually finish before installing
+                # or applying permissions below, since a `simctl install` / `simctl privacy` against a
+                # still-booting device fails. A no-op when the device was already booted (the common
+                # case when `pre.erase` is false).
+                e.wait_booted()
                 self._pin_system_locale(e, pre.resolved_locale(eff.locale))
             if ios.app_path:
                 if not Path(ios.app_path).exists():
@@ -674,6 +679,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
             return
         e.shutdown()
         e.boot()
+        e.wait_booted()
         confirmed = e.system_locale_matches(locale)
         if confirmed is False:
             raise simctl.DeviceError(

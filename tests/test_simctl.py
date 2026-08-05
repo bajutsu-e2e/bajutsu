@@ -175,6 +175,19 @@ def test_shutdown_is_idempotent() -> None:
     assert calls == [["xcrun", "simctl", "shutdown", "UDID"]]
 
 
+def test_wait_booted_calls_bootstatus_and_does_not_suppress_a_failure() -> None:
+    """Unlike boot()/shutdown(), a device that never comes up must fail loudly, not swallow the error."""
+    calls: list[list[str]] = []
+
+    def fake_run(args: list[str], extra_env: Mapping[str, str] | None = None) -> str:
+        calls.append(args)
+        raise subprocess.CalledProcessError(1, args, stderr="Unable to boot device")
+
+    with pytest.raises(subprocess.CalledProcessError):
+        simctl.Env("UDID", run=fake_run).wait_booted()
+    assert calls == [["xcrun", "simctl", "bootstatus", "UDID", "-b"]]
+
+
 def test_command_builders_reject_unvalidated_udid() -> None:
     # Each builder validates the udid inline, so a direct builder call (bypassing Env, as
     # serve does with bootstatus_cmd) can't smuggle an option-injecting / metacharacter id into

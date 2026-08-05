@@ -395,6 +395,16 @@ class Env:
         with contextlib.suppress(subprocess.CalledProcessError):
             self._run(boot_cmd(self.udid), None)
 
+    def wait_booted(self) -> None:
+        """Block until the device finishes booting (`simctl bootstatus -b`).
+
+        `boot()` only *initiates* the boot — it returns as soon as the request is issued, not once
+        the device is ready — so a caller that proceeds straight to `install()` or `apply_permissions()`
+        races the boot on a device that was not already running. Unlike `boot()`/`shutdown()`, a
+        failure here is not suppressed: it means the device never came up, which the caller must see.
+        """
+        self._run(bootstatus_cmd(self.udid), None)
+
     def system_locale_matches(self, locale: str) -> bool | None:
         """Whether the device's global domain already renders the language `pin_system_locale` writes.
 

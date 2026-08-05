@@ -331,15 +331,17 @@ def test_cold_spawn_pins_the_system_locale_and_reboots_for_it(
 
     assert domain["v"] == "ja_JP"  # the device now carries the configured locale
     assert simctl.system_locale_cmds("UDID", "ja_JP")[0] in simctl_calls
-    # boot (the initial one) -> spawn (the read, then the two writes) -> shutdown -> boot (the one
-    # that re-renders SpringBoard) -> spawn (the read-back that verifies it took).
+    # boot -> wait for it -> spawn (the read, then the two writes) -> shutdown -> boot -> wait for it
+    # (the one that re-renders SpringBoard) -> spawn (the read-back that verifies it took).
     assert _verbs(simctl_calls) == [
         "boot",
+        "bootstatus",
         "spawn",
         "spawn",
         "spawn",
         "shutdown",
         "boot",
+        "bootstatus",
         "spawn",
     ]
 
