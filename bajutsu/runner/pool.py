@@ -389,7 +389,16 @@ def device_pool(
             control: DeviceControl | None = lease_env.controller(eff)
 
             def release() -> None:
-                release_bridge()  # tear the device-side collector tunnel down first (BE-0283)
+                # Runs from `run_one`'s `finally`, so a teardown hiccup anywhere below (an
+                # already-gone tunnel, socket, app, or device) must not replace the scenario's own
+                # result or skip `free.put(udid)` — the same reasoning as the actuator switch above
+                # and the failed-lease site below (`shutdown()`'s two loops take `mid_run=False`
+                # instead — they own the deferred `raise defect` that finishes the cleanup first).
+                guarded_teardown(
+                    release_bridge,  # tear the device-side collector tunnel down first (BE-0283)
+                    mid_run=True,
+                    what=f"tearing down the collector bridge on {udid} at the lease's end",
+                )
                 if release_collector is not None:
                     guarded_teardown(
                         release_collector.stop,
@@ -398,17 +407,13 @@ def device_pool(
                     )
                 # Keep a warm resident alive for the next lease (`end_lease` terminates only the app);
                 # otherwise the ordinary full teardown. This is the same predicate the pool cached the
-                # env on above, so a kept-warm env is exactly one still held in `warm` (BE-0291). Runs
-                # from `run_one`'s `finally`, so a teardown hiccup (an already-gone app/device) must
-                # not replace the scenario's own result or skip `free.put(udid)` below — the same
-                # leak-on-`mid_run=False` risk as the actuator switch above and the failed-lease
-                # site below (`shutdown()`'s two loops take `mid_run=False` instead — they own the
-                # deferred `raise defect` that finishes the cleanup first) — BE-0342.
+                # env on above, so a kept-warm env is exactly one still held in `warm` (BE-0291).
+                reusable = lease_env.has_reusable_resident()
                 ended = False
 
                 def _end_lease() -> None:
                     nonlocal ended
-                    if lease_env.has_reusable_resident():
+                    if reusable:
                         lease_env.end_lease(driver, eff)
                     else:
                         lease_env.teardown(driver, eff)
@@ -419,10 +424,18 @@ def device_pool(
                     mid_run=True,
                     what=f"tearing down the environment on {udid} at the lease's end",
                 )
-                # A resident whose `end_lease` did not finish must not be resumed: drop it so the
-                # next lease on this device cold-spawns instead of inheriting a half-ended app.
-                if not ended:
+                if reusable and not ended:
+                    # `end_lease` only kills the app; a resident whose `end_lease` did not finish
+                    # must not be resumed, so drop it from `warm` (the next lease then cold-spawns
+                    # instead of inheriting an app whose teardown never completed) — and fall back to
+                    # the full teardown so the runner process it still owns doesn't leak, since a
+                    # dropped `warm` entry is invisible to `shutdown()`'s own sweep (BE-0342).
                     warm.pop(udid, None)
+                    guarded_teardown(
+                        lambda: lease_env.teardown(driver, eff),
+                        mid_run=True,
+                        what=f"discarding the runner on {udid} after a failed end-of-lease teardown",
+                    )
                 free.put(udid)
 
             meta = catalog.get(udid, {})
@@ -440,9 +453,20 @@ def device_pool(
                 webview_bridge=webview_bridge,
             )
         except BaseException:
-            release_bridge()  # a failed launch must not leak the collector tunnel (BE-0283)
+            # A failed launch must not leak the collector tunnel (BE-0283) or the collector itself —
+            # and, same as the teardown below, a hiccup tearing either down must not replace the
+            # *original* launch error that has to propagate via the `raise` below (BE-0342).
+            guarded_teardown(
+                release_bridge,
+                mid_run=True,
+                what=f"tearing down the collector bridge on {udid} after a failed lease",
+            )
             if release_collector is not None:
-                release_collector.stop()
+                guarded_teardown(
+                    release_collector.stop,
+                    mid_run=True,
+                    what=f"stopping the collector on {udid} after a failed lease",
+                )
             # A warm resident whose resume failed must not be reused next lease: drop it and tear it
             # down so the retry respawns cold rather than reusing a half-broken runner (BE-0291). This
             # is best-effort cleanup on the failure path — the *original* launch error is what must

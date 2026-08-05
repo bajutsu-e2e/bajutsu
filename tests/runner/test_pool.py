@@ -380,8 +380,9 @@ def test_device_pool_reserves_a_bridgeable_port_only_where_the_device_mirrors_it
 class _StubCollector:
     """A minimal `Collector` for the web lease test (the real one needs a Playwright page)."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, fail_stop: bool = False) -> None:
         self.stopped = False
+        self.fail_stop = fail_stop
 
     def snapshot(self) -> list[NetworkExchange]:
         return []
@@ -397,17 +398,20 @@ class _StubCollector:
 
     def stop(self) -> None:
         self.stopped = True
+        if self.fail_stop:
+            raise OSError("socket already closed")
 
 
 class _FakeWeb(FakeDriver):
     """A fake web driver: a FakeDriver plus the web-only navigate()/close() lifecycle."""
 
-    def __init__(self, screen: list[base.Element]) -> None:
+    def __init__(self, screen: list[base.Element], *, fail_collector_stop: bool = False) -> None:
         super().__init__(screen)
         self.navigated = 0
         self.closed = 0
         self.collector_mocks: object = "unset"
         self.collector: _StubCollector | None = None
+        self.fail_collector_stop = fail_collector_stop
 
     def navigate(self) -> None:
         self.navigated += 1
@@ -417,7 +421,7 @@ class _FakeWeb(FakeDriver):
 
     def network_collector(self, mocks: object = None) -> _StubCollector:
         self.collector_mocks = mocks
-        self.collector = _StubCollector()
+        self.collector = _StubCollector(fail_stop=self.fail_collector_stop)
         return self.collector
 
 
@@ -439,6 +443,8 @@ class _RecordingEnv:
         teardown_error: BaseException | None = None,
         replacement: str | None = None,
         catalog: dict[str, dict[str, str]] | None = None,
+        fail_end_lease: bool = False,
+        fail_bridge_teardown: bool = False,
     ) -> None:
         self.actuator = actuator
         self.udid = udid
@@ -465,6 +471,12 @@ class _RecordingEnv:
         self.reusable = reusable
         self.raise_on_teardown = raise_on_teardown
         self.teardown_error = teardown_error
+        # `end_lease` raising means the app's teardown never completed; the resident it belongs to
+        # must then be evicted rather than resumed by the next lease (BE-0342).
+        self.fail_end_lease = fail_end_lease
+        # `bridge_collector`'s returned teardown raising mimics `adb reverse --remove` on a device
+        # that already dropped off the bus (BE-0342).
+        self.fail_bridge_teardown = fail_bridge_teardown
         self.start_count = 0
         self.end_lease_count = 0
         # BE-0283 bridge recording: the port bridged, whether it was already bridged when start ran
@@ -495,6 +507,8 @@ class _RecordingEnv:
 
         def remove() -> None:
             self.bridge_torn = True
+            if self.fail_bridge_teardown:
+                raise subprocess.CalledProcessError(1, ["adb", "reverse", "--remove"])
 
         return remove
 
@@ -523,6 +537,8 @@ class _RecordingEnv:
         return self.replacement
 
     def end_lease(self, driver: base.Driver, eff: Effective) -> None:
+        if self.fail_end_lease:
+            raise subprocess.CalledProcessError(1, ["xcrun", "simctl", "terminate"])
         self.end_lease_count += 1  # kept warm: the pool released the lease without a full teardown
 
     def teardown(self, driver: base.Driver, eff: Effective) -> None:
@@ -723,6 +739,57 @@ def test_device_pool_reuses_a_warm_resident_across_scenarios(
     finally:
         shutdown()
     assert env.torn  # torn down once at the run-set's end — ownership is the pool's (Unit 3)
+
+
+def test_device_pool_evicts_a_warm_resident_whose_end_lease_did_not_finish(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """BE-0342: `end_lease` terminates only the app, so a failure there (the same shape as an
+    already-gone `xcrun simctl terminate`) leaves it unclear whether the app under test is really
+    down. `release()` still swallows the failure into a warning rather than failing the run, but the
+    resident is dropped from `warm` so the next lease respawns cold instead of resuming an
+    environment whose app teardown never completed."""
+    created: list[_RecordingEnv] = []
+
+    def fake_env_for(
+        actuator: str,
+        udid: str,
+        env_run: object = None,
+        *,
+        provision: object = None,
+        respawn: bool = False,
+    ) -> _RecordingEnv:
+        env = _RecordingEnv(actuator, udid, provision, reusable=True)
+        created.append(env)
+        return env
+
+    monkeypatch.setattr("bajutsu.runner.pool.environment_for", fake_env_for)
+    lease, shutdown = device_pool(
+        ["UDID-A"],
+        ["ios"],
+        _eff(),
+        Path("runs"),
+        network=False,
+        available=lambda b: True,
+        env_run=lambda *a, **k: "",
+    )
+    try:
+        first = lease(_eff(), _scn("a"))
+        env = created[1]  # created[0] is the pool's representative env
+        env.fail_end_lease = True
+        with caplog.at_level(logging.WARNING, logger="bajutsu.runner.recovery"):
+            first.release()  # must not raise
+        assert "at the lease's end" in caplog.text  # logged, not silent
+        # The runner process is actually discarded too — a dropped `warm` entry alone would leak
+        # it, since it becomes invisible to `shutdown()`'s own sweep.
+        assert env.torn
+        # The failed-to-end resident was evicted, so the next lease builds a fresh environment
+        # rather than resuming the one whose app teardown never completed.
+        retry = lease(_eff(), _scn("b"))
+        assert len(created) == 3 and created[2] is not env and created[2].started
+        retry.release()
+    finally:
+        shutdown()
 
 
 @pytest.mark.parametrize(
@@ -1261,6 +1328,50 @@ def test_device_pool_bridges_the_collector_before_launch_and_tears_it_down(
         shutdown()
 
 
+def test_device_pool_release_swallows_a_bridge_teardown_failure_and_still_frees_the_device(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """BE-0342: `release_bridge()` runs first in `release()`, so a failure tearing down the
+    device-side tunnel (a device that dropped off the bus) must not skip the rest of `release()` or
+    `free.put(udid)` behind it — the same leak this item's other teardown sites guard against."""
+    created: list[_RecordingEnv] = []
+
+    def fake_env_for(
+        actuator: str,
+        udid: str,
+        env_run: object = None,
+        *,
+        provision: object = None,
+        respawn: bool = False,
+    ) -> _RecordingEnv:
+        env = _RecordingEnv(actuator, udid, provision, fail_bridge_teardown=True)
+        created.append(env)
+        return env
+
+    monkeypatch.setattr("bajutsu.runner.pool.environment_for", fake_env_for)
+    lease, shutdown = device_pool(
+        ["UDID-A"],
+        ["android"],
+        _eff(),
+        Path("runs"),
+        network=True,
+        available=lambda b: True,
+        env_run=lambda *a, **k: "",
+    )
+    try:
+        leased = lease(_eff(), _scn("a"))
+        env = created[-1]
+        with caplog.at_level(logging.WARNING, logger="bajutsu.runner.recovery"):
+            leased.release()  # must not raise despite the bridge teardown failing
+        assert env.bridge_torn and env.torn  # the rest of release() still ran
+        assert "at the lease's end" in caplog.text  # logged, not silent
+        # The device was still returned — a leaked udid would hang this on `free.get()`.
+        retry = lease(_eff(), _scn("b"))
+        retry.release()
+    finally:
+        shutdown()
+
+
 def test_device_pool_releases_the_bridge_when_launch_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1427,6 +1538,45 @@ def test_device_pool_web_lease_builds_a_page_hooked_collector(
         assert fakes[0].collector_mocks == scn.mocks  # this scenario's mocks were wired in
         leased.release()
         assert fakes[0].collector is not None and fakes[0].collector.stopped is True
+    finally:
+        shutdown()
+
+
+def test_device_pool_release_swallows_a_page_hooked_collector_stop_failure(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """BE-0342: `release_collector.stop()` in `release()` (the page-hooked collector, not the
+    up-front HTTP receiver `shutdown()` sweeps separately) must not skip `free.put(udid)` either —
+    an already-closed socket there is an expected failure, warned and swallowed like the rest of
+    `release()`'s teardown chain."""
+    fakes: list[_FakeWeb] = []
+
+    def fake_make_driver(
+        actuator: str,
+        udid: str,
+        base_url: str | None = None,
+        headless: bool = True,
+        browser: str = "chromium",
+        device_mode: str = "desktop",
+        record_video_dir: object = None,
+    ) -> base.Driver:
+        d = _FakeWeb([_el("home", "H"), _el("ok", "OK")], fail_collector_stop=True)
+        fakes.append(d)
+        return d
+
+    monkeypatch.setattr("bajutsu.backends.make_driver", fake_make_driver)
+    lease, shutdown = device_pool(
+        ["web"], ["web"], _eff_web(), Path("runs"), network=True, available=lambda b: True
+    )
+    try:
+        leased = lease(_eff_web(), _scn("a"))
+        with caplog.at_level(logging.WARNING, logger="bajutsu.runner.recovery"):
+            leased.release()  # must not raise despite the collector failing to stop
+        assert fakes[0].collector is not None and fakes[0].collector.stopped is True
+        assert "at the lease's end" in caplog.text  # logged, not silent
+        # The device was still returned — a leaked udid would hang this on `free.get()`.
+        retry = lease(_eff_web(), _scn("b"))
+        retry.release()
     finally:
         shutdown()
 
