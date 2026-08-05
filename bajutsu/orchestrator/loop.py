@@ -1206,7 +1206,7 @@ class _StepRunner:
             diag_elements = self._read_evidence(
                 active_driver,
                 step_id,
-                "wait-timeout diagnostic",
+                "wait-timeout diagnostic tree",
                 screen.get,
                 native_fatal=False,
             )
