@@ -373,7 +373,7 @@ OAuth を構成すると、アクセスは手作業の login リストではな�
   `"<github-org>/<team-slug>"` の形で、`<team-slug>` は GitHub 自身が小文字化した slug であり、Team の
   表示名ではありません）に従います。そのメンバーはサーバ設定（config、API キー、provider）も変更
   できます。admin はデプロイ全体で 1 段のロールなので、どの org を越えても信頼できるメンバーの Team だけを
-  指定します。上の viewer・editor とは異なり、構成済みの admin Team のいずれかのメンバーは、サインインのゲートを
+  指定します。上の viewer と editor の場合とは異なり、構成済みの admin Team のいずれかのメンバーは、サインインのゲートを
   直接通過します。admin Team が属する GitHub organization を、どこかの org の `githubOrgs` に含める必要も、
   そのメンバーを `members` に列挙する必要もありません。そのため、`orgs:` ブロックが壊れている、あるいは
   存在しない状態でも、admin は常にサインイン
