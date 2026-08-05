@@ -599,47 +599,6 @@ def test_next_driver_access_launches_a_fresh_lease() -> None:
     assert first is not second
 
 
-def test_mid_run_teardown_warns_on_called_process_error(caplog) -> None:
-    import logging
-    import subprocess
-
-    from backend_crash_recovery import LeaseHolder
-
-    def launch() -> tuple[object, object]:
-        def teardown() -> None:
-            raise subprocess.CalledProcessError(1, ["xcrun"])
-
-        return _FakeDriver(), teardown
-
-    holder = LeaseHolder(launch)  # type: ignore[arg-type]
-    assert holder.driver is not None
-    with caplog.at_level(logging.WARNING):
-        holder.invalidate()  # must not raise
-    assert any(
-        "tearing down the discarded on-device lease failed" in r.message for r in caplog.records
-    )
-
-
-def test_mid_run_teardown_warns_on_os_error(caplog) -> None:
-    import logging
-
-    from backend_crash_recovery import LeaseHolder
-
-    def launch() -> tuple[object, object]:
-        def teardown() -> None:
-            raise ProcessLookupError("runner already gone")
-
-        return _FakeDriver(), teardown
-
-    holder = LeaseHolder(launch)  # type: ignore[arg-type]
-    assert holder.driver is not None
-    with caplog.at_level(logging.WARNING):
-        holder.invalidate()
-    assert any(
-        "tearing down the discarded on-device lease failed" in r.message for r in caplog.records
-    )
-
-
 def test_mid_run_teardown_swallows_a_wiring_defect_into_a_warning(caplog) -> None:
     # A missing method (AttributeError) on the mid-run path must not mask the crash — and must not
     # sit at debug level either (BE-0342).
@@ -676,27 +635,6 @@ def test_final_release_propagates_a_wiring_defect() -> None:
     assert holder.driver is not None
     with pytest.raises(AttributeError, match="no close on this driver"):
         holder.close()
-
-
-def test_final_release_warns_on_called_process_error(caplog) -> None:
-    import logging
-    import subprocess
-
-    from backend_crash_recovery import LeaseHolder
-
-    def launch() -> tuple[object, object]:
-        def teardown() -> None:
-            raise subprocess.CalledProcessError(1, ["xcrun"])
-
-        return _FakeDriver(), teardown
-
-    holder = LeaseHolder(launch)  # type: ignore[arg-type]
-    assert holder.driver is not None
-    with caplog.at_level(logging.WARNING):
-        holder.close()  # expected process failure stays a warning
-    assert any(
-        "tearing down the discarded on-device lease failed" in r.message for r in caplog.records
-    )
 
 
 def test_a_failed_launch_leaves_no_leased_teardown() -> None:

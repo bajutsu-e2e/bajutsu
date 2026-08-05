@@ -763,6 +763,56 @@ def test_device_pool_actuator_switch_tears_down_the_warm_resident(
         shutdown()
 
 
+def test_device_pool_actuator_switch_swallows_a_wiring_defect_on_teardown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """BE-0342: this teardown runs before `lease()`'s own `try`, so a wiring defect it doesn't
+    swallow would propagate straight out of `lease()` with `udid` never returned to `free` — hanging
+    every later lease on this device instead of just warning and proceeding with the switch."""
+    created: list[_RecordingEnv] = []
+
+    def fake_env_for(
+        actuator: str,
+        udid: str,
+        env_run: object = None,
+        *,
+        provision: object = None,
+        respawn: bool = False,
+    ) -> _RecordingEnv:
+        env = _RecordingEnv(actuator, udid, provision, reusable=True)
+        created.append(env)
+        return env
+
+    monkeypatch.setattr("bajutsu.runner.pool.environment_for", fake_env_for)
+    monkeypatch.setattr("bajutsu.runner.pool.select_actuator_for_scenario", _fake_resolve)
+    pinch = Scenario.model_validate(
+        {"name": "p", "steps": [{"pinch": {"sel": {"id": "m"}, "scale": 2.0}}]}
+    )
+    lease, shutdown = device_pool(
+        ["UDID-A"],
+        ["ios"],
+        _eff(),
+        Path("runs"),
+        network=False,
+        available=lambda b: True,
+        env_run=lambda *a, **k: "",
+    )
+    try:
+        tap = lease(_eff(), _scn("tap"))  # resolves to the cheap actuator
+        tap.release()
+        adb_env = created[1]  # created[0] is the pool's representative env
+        adb_env.teardown_error = AttributeError("no close on this driver")  # a wiring defect
+        pinch_lease = lease(_eff(), pinch)  # the actuator switch must not hang or leak the device
+        assert adb_env.torn  # teardown still ran despite raising
+        assert created[-1].actuator == "xcuitest" and len(created) == 3  # the switch proceeded
+        pinch_lease.release()
+        # The device is still usable — a leaked `udid` would hang this on `free.get()`.
+        tap_again = lease(_eff(), _scn("tap-again"))
+        tap_again.release()
+    finally:
+        shutdown()
+
+
 @pytest.mark.parametrize(
     "teardown_error",
     [

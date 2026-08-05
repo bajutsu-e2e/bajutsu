@@ -29,12 +29,13 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
-from backend_crash_recovery import LeaseHolder, LeaseTeardown, xcuitest_lease_launch
+from backend_crash_recovery import LeaseHolder, LeaseTeardown
 from driver_conformance import (
     ConformanceHarness,
     DriverConformanceContract,
     OnDeviceConformanceHarness,
 )
+from xcuitest_lease import xcuitest_lease_launch
 
 from bajutsu import simctl
 from bajutsu.config import Effective, ios_bundle_id, load_config, resolve

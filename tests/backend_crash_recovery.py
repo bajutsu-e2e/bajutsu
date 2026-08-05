@@ -32,10 +32,7 @@ from pathlib import Path
 import pytest
 from _pytest.runner import runtestprotocol
 
-from bajutsu.config import Effective
 from bajutsu.drivers import base
-from bajutsu.platform_lifecycle import environment_for
-from bajutsu.runner.launch import launch_driver
 from bajutsu.runner.recovery import (
     CrashRecoveryBudget,
     RetryDecision,
@@ -66,24 +63,6 @@ _EVENTS: pytest.StashKey[list[dict[str, object]]] = pytest.StashKey()
 # the runner process belongs to the environment.
 LeaseTeardown = Callable[[], None]
 LeaseLaunch = Callable[[], tuple[base.Driver, LeaseTeardown]]
-
-
-def xcuitest_lease_launch(udid: str, eff: Effective, *, extra_env: dict[str, str]) -> LeaseLaunch:
-    """A `_backend_launch` thunk for the XCUITest backend: a fresh environment per lease, launched
-    cold, whose teardown reaches the runner process (BE-0342).
-
-    Shared by the driver conformance and fault-injection suites so their launch/teardown pairing —
-    the contract `LeaseHolder` depends on — can't drift apart between the two copies.
-    """
-
-    def launch() -> tuple[base.Driver, LeaseTeardown]:
-        env = environment_for("xcuitest", udid)
-        driver, _readiness = launch_driver(
-            udid, eff, "xcuitest", extra_env=extra_env, environment=env
-        )
-        return driver, lambda: env.teardown(driver, eff)
-
-    return launch
 
 
 class LeaseHolder:
