@@ -246,7 +246,7 @@ def test_build_state_local_has_no_oauth(tmp_path: Path) -> None:
     # OAuth is server-only; local never has it (token auth only), so behavior is unchanged.
     state = _state(tmp_path)
     assert state.auth.oauth is None
-    assert state.auth.oauth_admin_teams == []
+    assert state.auth.oauth_admin_teams == ()
 
 
 def test_build_state_server_wires_oauth_when_configured(
@@ -296,7 +296,7 @@ def test_build_state_server_parses_the_admin_teams(
         token=None,
         backend="server",
     )
-    assert state.auth.oauth_admin_teams == ["acme-gh/ops", "other-gh/root"]
+    assert state.auth.oauth_admin_teams == ("acme-gh/ops", "other-gh/root")
 
 
 def _setenv_oauth(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -329,7 +329,7 @@ def test_build_state_server_warns_on_the_retired_singular_admin_team_var(
         token=None,
         backend="server",
     )
-    assert state.auth.oauth_admin_teams == []
+    assert state.auth.oauth_admin_teams == ()
     err = capsys.readouterr().err
     assert "BAJUTSU_OAUTH_ADMIN_TEAMS is empty" in err
     assert "BAJUTSU_OAUTH_ADMIN_TEAM is retired" in err
@@ -357,7 +357,7 @@ def test_build_state_server_warns_when_admin_teams_was_never_set(
         token=None,
         backend="server",
     )
-    assert state.auth.oauth_admin_teams == []
+    assert state.auth.oauth_admin_teams == ()
     err = capsys.readouterr().err
     assert "BAJUTSU_OAUTH_ADMIN_TEAMS is empty" in err
     assert "retired" not in err
@@ -384,7 +384,7 @@ def test_build_state_server_stays_quiet_when_admin_teams_is_set(
         token=None,
         backend="server",
     )
-    assert state.auth.oauth_admin_teams == ["acme-gh/ops"]  # the new name wins, the old is ignored
+    assert state.auth.oauth_admin_teams == ("acme-gh/ops",)  # the new name wins, the old is ignored
     assert "BAJUTSU_OAUTH_ADMIN_TEAM" not in capsys.readouterr().err
 
 
@@ -409,7 +409,7 @@ def test_build_state_server_warns_on_a_malformed_admin_teams_entry(
         token=None,
         backend="server",
     )
-    assert state.auth.oauth_admin_teams == ["acme-gh/ops other-gh/root"]
+    assert state.auth.oauth_admin_teams == ("acme-gh/ops other-gh/root",)
     assert "will never match" in capsys.readouterr().err
 
 
@@ -434,7 +434,7 @@ def test_build_state_server_warns_on_an_empty_side_or_inner_space(
         token=None,
         backend="server",
     )
-    assert state.auth.oauth_admin_teams == ["acme-gh/", "/ops", "acme-gh/ ops"]
+    assert state.auth.oauth_admin_teams == ("acme-gh/", "/ops", "acme-gh/ ops")
     assert "will never match" in capsys.readouterr().err
 
 

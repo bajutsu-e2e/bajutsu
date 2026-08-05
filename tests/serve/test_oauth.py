@@ -77,7 +77,7 @@ def _state(
     return ServeState(
         runs_dir=tmp_path / "runs",
         config=config,
-        auth=SessionManager(oauth=oauth, oauth_admin_teams=admin_teams or []),
+        auth=SessionManager(oauth=oauth, oauth_admin_teams=admin_teams or ()),
     )
 
 
