@@ -428,6 +428,11 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
   injects `input motionevent` down, moves, and up. Both went red on 8 of 12, because the gesture was
   never the cause. The explicit stream was worse on the local hardware-accelerated emulator. Its
   contacts sit near each other, so the fling carried the target past two queried viewports.
+- [#1489](https://github.com/bajutsu-e2e/bajutsu/pull/1489) — carried Unit 7's rewrite to the
+  remaining CI-covered shared scenarios: `controls`, `modals`, and `system` each replace a
+  hand-tuned `swipe` chain with one `scroll`, aimed at the lowest element the scenario reads.
+  `gestures.yaml` stays on `swipe` deliberately — `ui-test-coverage` compiles it to a native
+  XCUITest, where `scroll` emits only a `// TODO`.
 
 ## References
 

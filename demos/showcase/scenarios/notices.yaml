@@ -49,7 +49,6 @@
     - assert:
         - exists: { id: notice.row.20, negate: true }   # off-screen before scrolling
     - scroll: { to: { id: notice.row.20 }, direction: down }   # non-inertial: reveal, don't overshoot
-    - wait: { until: settled, timeout: 3 }   # a bare tap follows, with no `wait: for` of its own as backstop
     - tap: { id: notice.row.20 }
     - wait: { for: { id: notice.detail.title }, timeout: 5 }
   expect:

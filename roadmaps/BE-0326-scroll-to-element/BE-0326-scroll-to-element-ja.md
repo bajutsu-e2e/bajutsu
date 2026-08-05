@@ -426,6 +426,11 @@ Mutually Exclusive, Collectively Exhaustive（`MECE`）な作業単位は次の�
   ジェスチャではなかったからです。ローカルのハードウェア支援エミュレータでは、明示的な接点の列のほうが
   悪化しました。接点の間隔が近くフリングが伸びるため、連続する 2 つの照会済みビューポートの間を対象が
   通り抜けてしまいます。
+- [#1489](https://github.com/bajutsu-e2e/bajutsu/pull/1489) — ユニット 7 の書き換えを、CI でカバーする
+  残りの共有シナリオに広げました。`controls`、`modals`、`system` は、それぞれ手作業で調整した `swipe`
+  連鎖を、シナリオが読む最も下の要素を狙う 1 つの `scroll` に置き換えます。`gestures.yaml` は意図的に
+  `swipe` のままです。`ui-test-coverage` がこれをネイティブの XCUITest にコンパイルしますが、そこでは
+  `scroll` が `// TODO` しか出力しないためです。
 
 ## 参考
 
