@@ -666,7 +666,7 @@ def _run_for_each(
 @dataclass(frozen=True)
 class LastLeafStep:
     """The last leaf step (an actuating/`wait`/`assert`/`email` kind) to actually run, however deep
-    the `if`/`forEach`/`web` nesting (BE-XXXX). `_run_steps` gives it one more screenshot once the
+    the `if`/`forEach`/`web` nesting (BE-0341). `_run_steps` gives it one more screenshot once the
     whole run finishes, since no following step exists to carry its result forward as a pre-step
     baseline the way every other step's does. Bundled rather than two parallel `StepLoopState`
     fields so the two are always set together — `_handle_action` constructs one in a single
@@ -888,7 +888,7 @@ class _StepRunner:
     ) -> str | None:
         step_id = f"{self.cfg.sid}/{step.name or f'step{idx}'}"
         # The report's baseline: the screen this step is about to act on, captured before it acts
-        # (BE-XXXX). Reuses `prev_after` — already maintained unconditionally (BE-0234 Unit 2) —
+        # (BE-0341). Reuses `prev_after` — already maintained unconditionally (BE-0234 Unit 2) —
         # rather than a fresh query, so a sink that reads nothing pays nothing here either. The sink
         # call below always targets `self.cfg.driver` (native — a `WebContextDriver` cannot
         # screenshot), so a `None` `elements` would make its fallback query the wrong driver whenever
@@ -1159,7 +1159,7 @@ class _StepRunner:
             if not ext_ok:
                 outcome.ok, outcome.reason = False, ext_reason
 
-        # `_collect_captures` already excludes `screenshot.before` (BE-XXXX): the pre-step baseline
+        # `_collect_captures` already excludes `screenshot.before` (BE-0341): the pre-step baseline
         # above wrote that file from the true pre-action state, so re-taking it here would silently
         # mislabel a post-action pixel as `before.png`.
         fired = _collect_captures(self.cfg.scenario, step, kind, outcome.ok, screen_changed)
@@ -1176,7 +1176,7 @@ class _StepRunner:
         )
         if screen.queried:
             self.state.total_reads += 1
-        # The last leaf step to actually run (BE-XXXX): `_run_steps` uses this after the whole run
+        # The last leaf step to actually run (BE-0341): `_run_steps` uses this after the whole run
         # finishes to give the scenario's true final state a capture too, since no following step
         # exists to carry it forward as its own pre-step baseline (unlike every other step).
         self.state.last_leaf = LastLeafStep(outcome, step_id)
@@ -1240,7 +1240,7 @@ def _run_steps(
     result = _StepRunner(state, cfg).exec_steps(scenario.steps, driver)
     _logger.debug("%s: %d runner-issued screen reads (BE-0234)", sid, state.total_reads)
     # The scenario's true final state has no following step to carry it forward as a pre-step
-    # baseline, so the last leaf step's outcome gets one more screenshot here (BE-XXXX). `elements`
+    # baseline, so the last leaf step's outcome gets one more screenshot here (BE-0341). `elements`
     # is deliberately NOT re-captured: `elements.json` has one fixed filename, so re-capturing it
     # here would overwrite the pre-step baseline's pre-action tree with a post-action one — while
     # `screenshotUrl` (the editor's element-picker pairing, `bajutsu/serve/operations/reads.py`) keeps

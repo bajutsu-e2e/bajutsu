@@ -155,7 +155,7 @@ def _collect_captures(
 ) -> list[str]:
     """Post-step capture kinds for this step: inline `capture` plus any matching capturePolicy
     rules. The always-on baseline (`screenshot.before` + `elements`) is captured separately, before
-    the step acts (BE-XXXX) — this returns only what the scenario itself asked for, minus any
+    the step acts (BE-0341) — this returns only what the scenario itself asked for, minus any
     `screenshot.before` token: that pre-step baseline already wrote the file, so re-taking it here
     would silently mislabel a post-action pixel as `before.png`. Interval kinds (`video` /
     `deviceLog` / `appTrace`) are left in; the caller splits those out separately."""
