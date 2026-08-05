@@ -456,10 +456,12 @@ class ComponentsUITest {
   kick after a failed attempt fires **without consulting the list**, which is what the run below
   needed. Reading the list first is worth it only because it turns the first case into one key press
   instead of a whole launch timeout.
-- **The last attempt does not kick**, because after it there is no intent left to re-issue and HOME
-  would overwrite every piece of evidence the failure is about to collect. The `AssertionError`'s own
-  window summary, the hierarchy dump, and the screenshot would all describe the launcher, and a
-  healthy launcher window list argues the exact opposite of the failure they exist to explain.
+- **The last attempt does not kick once its wait fails**, because after it there is no intent left to
+  re-issue and HOME would overwrite every piece of evidence the failure is about to collect. (The
+  pre-launch check in the first bullet still presses HOME on that attempt, but before the relaunch, so
+  no evidence is at stake there.) The `AssertionError`'s own window summary, the hierarchy dump, and
+  the screenshot would all describe the launcher, and a healthy launcher window list argues the exact
+  opposite of the failure they exist to explain.
 
   Gradle's per-test logcat, which CI uploads alongside the evidence below, is what identified this
   failure, and the per-attempt window summary is the line that did it. One run logged this at the end
@@ -480,14 +482,15 @@ class ComponentsUITest {
   the test passed.
 
   That also explains the earlier evidence, which had suggested a channel that had stopped reporting
-  altogether. Run 30899952762 failed all three of its attempts, polling 153, 168, and 171 times across
-  some 20 seconds with the activity both `RESUMED` and `Displayed`; and across seven runs, every
-  passing run logged UiDevice's transient null roots during launch (`Active window root not found`,
-  `Skipping null root node for window`) 2 to 7 times within 10 to 24 polls while every failing run
-  logged none. A missing app window accounts for that correlation without a frozen channel: with the
-  app's window never joining the list, there is no launch transition for UiDevice to observe, so none
-  of the churn a live launch produces appears. Raising the wait from 5 to 15 and then to 20 seconds
-  changed nothing, for the same reason a longer wait cannot help here.
+  altogether. Run 30899952762 failed three separate CI attempts of that job (reruns, not `launch`'s
+  own two), polling 153, 168, and 171 times across some 20 seconds with the activity both `RESUMED`
+  and `Displayed`; and across seven runs, every passing run logged UiDevice's transient null roots
+  during launch (`Active window root not found`, `Skipping null root node for window`) 2 to 7 times
+  within 10 to 24 polls while every failing run logged none. A missing app window accounts for that
+  correlation without a frozen channel: with the app's window never joining the list, there is no
+  launch transition for UiDevice to observe, so none of the churn a live launch produces appears.
+  Raising the wait from 5 to 15 and then to 20 seconds changed nothing, for the same reason a longer
+  wait cannot help here.
 
 #### Failure evidence
 

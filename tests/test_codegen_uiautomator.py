@@ -117,9 +117,9 @@ def _fn_body(code: str, name: str, next_name: str) -> str:
 
 def test_launch_confirms_window_tracking_before_it_waits_on_the_tree() -> None:
     # The launch wait can only see the app through the accessibility window list, so a list that is
-    # never reported reads exactly like an app that never started. CI run 30899952762 failed all
-    # three attempts that way: 153, 168, and 171 polls over 20s with the activity RESUMED and
-    # Displayed, and no window enumerated once. Check the channel first, so the failure names it.
+    # never reported reads exactly like an app that never started. One CI run logged exactly that —
+    # `no accessibility windows reported (attempt 1)` — and the window change recovered it. Check
+    # the channel first, so the failure names it.
     code = _gen("- name: x\n  steps:\n    - tap: { id: a }\n")
     body = _fn_body(code, "launch", "act")
     # Inside the attempt loop and before the intent: a check that ran after startActivity would
@@ -155,7 +155,7 @@ def test_a_wedged_window_list_is_kicked_rather_than_waited_out() -> None:
     assert "windowSummary()" in body
     # The read cannot throw past that AssertionError: getWindows() raises IllegalStateException
     # when the connection is not established, which is the fault being reported.
-    assert "private fun reportsWindows(): Boolean = runCatching {" in code
+    assert "runCatching {" in _fn_body(code, "reportsWindows", "ensureWindowTracking")
 
     kick = _fn_body(code, "kickWindowTracking", "reportsWindows")
     assert "device.pressHome()" in kick
