@@ -360,6 +360,17 @@ def test_start_screenrecord_confirm_started_ignores_a_leaked_pid_from_a_stale_re
     # A leaked screenrecord from a crash-retry (BE-0049), or any other process already running on
     # the same device, must not confirm a start that never happened — only a *new* pid, absent from
     # the pre-spawn baseline, counts.
+    #
+    # `_await_screenrecord_started`'s 5s timeout is a default argument bound at import, so patching
+    # `_VIDEO_START_TIMEOUT` cannot shorten it — drive its deadline instead: one real poll (which
+    # must see only the leaked pid), then a jump past the deadline.
+    monotonic_calls: list[int] = []
+
+    def monotonic() -> float:
+        monotonic_calls.append(1)
+        return 0.0 if len(monotonic_calls) <= 2 else 1e6
+
+    monkeypatch.setattr(intervals.time, "monotonic", monotonic)
     monkeypatch.setattr(intervals.time, "sleep", lambda _s: None)
 
     def spawn(argv: list[str], stdout_path: Path | None) -> FakeProc:

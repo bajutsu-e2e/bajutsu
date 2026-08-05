@@ -30,12 +30,12 @@
 
 **1. 各動画インターバルの実際の開始を確認する。** `Interval`（`bajutsu/evidence/intervals.py`）に`true_start: float | None`フィールドを追加します。これは、録画が実際にデータを生成し始めたことを確認できた`time.monotonic()`の値であり、確認を試みなかった場合、または確認に失敗した場合は`None`です。`start_video`（iOS）と`start_screenrecord`（Android）には、それぞれ`confirm_started: bool = False`引数を追加します。これが真のとき、両者は録画プロセスを起動したあと、実際に観測できる信号をポーリングします。
 
-- iOSでは、出力ファイルの`stat().st_size > 0`をポーリングします（`simctl io recordVideo`はそのパスへ順次書き込むためです）。これは、録画が実際にフレームを生成し始めたことの確認です。
-- Androidでは、`adb.screenrecord_pids_cmd`が空でないプロセス一覧を返すまでポーリングします。これは、`_await_screenrecord_stopped`が逆方向（停止確認）ですでに使っている形と同じです。ただし、これが確認できるのはデバイス側のプロセスが存在することだけです。プロセスが存在しても、そのエンコーダーがすでにフレームを出力しているとは限らないため、iOSより弱い保証にとどまります。それでも、ローカルの`adb shell`クライアントが返る瞬間よりは早く、アプリが起動するよりも前の実在の信号です。
+- iOSでは、出力ファイルが**この試行の起動前のサイズを超えて**成長するまでポーリングします（`simctl io recordVideo`はそのパスへ順次書き込むためです）。これは、録画が実際にフレームを生成し始めたことの確認です。この起動前のベースラインは、単なる補足ではなく仕組みの要です。クラッシュリトライ（BE-0049）は同じシナリオIDを、したがって同じ対象パスを再利用するため、ベースラインがなければ、確定済みの前回試行が残した末尾のバイトを、最初のポーリングで「起きなかった開始」として確認してしまいます。
+- Androidでは、`adb.screenrecord_pids_cmd`が、この試行の起動前には存在しなかったpidを報告するまでポーリングします。これは`_await_screenrecord_stopped`が逆方向（停止確認）ですでに使っている形と同じで、同じベースラインによる保護を、ここでは前回の試行が残した`screenrecord`に対して適用します。ただし、これが確認できるのはデバイス側のプロセスが存在することだけです。プロセスが存在しても、そのエンコーダーがすでにフレームを出力しているとは限らないため、iOSより弱い保証にとどまります。それでも、ローカルの`adb shell`クライアントが返る瞬間よりは早く、アプリが起動するよりも前の実在の信号です。
 
 どちらのポーリングも、期限つきの条件待ちであり、固定`sleep`ではありません。プライム・ディレクティブ2（決定性優先）に合致します。ポーリングがタイムアウトした場合は`true_start`を`None`のままにし、補正は現状と同じ無効化（ノーオペレーション）に留まります。当て推量の数値を入れることはありません。Webアクチュエーターにはポーリングが不要です。`PlaywrightDriver`は、`new_context()`が返った直後に`time.monotonic()`を記録します。ブラウザーコンテキストの生成にかかる時間は、サブプロセスの起動に比べて無視できるほど小さいためです。
 
-**2. 動作に影響する箇所だけで確認を有効にする。** `confirm_started=True`を渡すのは、ちょうど2箇所です。`FileSink._start_simctl_interval`の動画分岐（`bajutsu/evidence/core.py`、iOSのオンデマンド開始であり、この提案がレイテンシを追加する唯一の箇所です。シナリオのクリティカルパス上ですが、上限が定まった小さな増分です）と、`AndroidEnvironment._prestart_video`（`bajutsu/platform_lifecycle/environments/android.py`、こちらはアプリ起動前の、もともと存在する待機時間の中で行われるため、新たなレイテンシは増えません）です。それ以外の呼び出し元と既存のテストはすべてデフォルトの`confirm_started=False`のままで、影響を受けません。オプトインは呼び出し箇所ごとであり、シナリオ単位ではありません。
+**2. 動作に影響する箇所だけで確認を有効にする。** `confirm_started=True`を渡すのは、本番の2箇所です。`FileSink._start_simctl_interval`の動画分岐（`bajutsu/evidence/core.py`、iOSのオンデマンド開始であり、この提案がレイテンシを追加する唯一の箇所です。シナリオのクリティカルパス上ですが、上限が定まった小さな増分です）と、`AndroidEnvironment._prestart_video`（`bajutsu/platform_lifecycle/environments/android.py`、こちらはアプリ起動前の、もともと存在する待機時間の中で行われるため、新たなレイテンシは増えません）です。`AdbDriver.driver_interval`（`bajutsu/drivers/adb.py`）もこれを渡します。このドライバーへ直接到達する呼び出し元にも、修正前の無補正な挙動へ黙って後退するのではなく、同じ確認処理が働くようにするためです。デバイスプールは、`AndroidEnvironment`が常に事前録画するため、現状ここに到達しません。それ以外の呼び出し元と既存のテストはすべてデフォルトの`confirm_started=False`のままで、影響を受けません。オプトインは呼び出し箇所ごとであり、シナリオ単位ではありません。
 
 **3. `scenario_start`を書き換えずに補正を反映する。** Androidの動画は事前録画されたインターバルであり、シナリオ開始時に新規開始ではなく`intervals.adopt`（`bajutsu/evidence/intervals.py`）でアダプトされます。このため`adopt`は、ラップした元のインターバルの`true_start`を、返す`Interval`にそのまま引き継がなければなりません。引き継がなければ、Unit 1で確認した値がUnit 3まで届かず、Androidの修正は無効化のまま何もしないことになってしまいます。`run_scenario`（`bajutsu/orchestrator/loop.py`）の中では、シナリオのインターバルを開始し`scenario_start`を記録したあと、確認済みの`true_start`が動画インターバルにあるときは`video_start_offset = true_start - scenario_start`を、なければ`0.0`を求めます。この値を`_LoopConfig`に通し、`_StepRunner._run_one`で`outcome.started_at = max(0.0, (start - scenario_start) - video_start_offset)`として反映します。Android/Webでは負のオフセットとなり、各ステップの報告時刻は動画上でより後ろにシフトし、事前録画分の余分な映像を打ち消します。iOSでは、確認処理が完了してから`scenario_start`が記録されるため（動機の節で述べたとおり、これは`scenario_start`に触れないことと同じではありません）、残差は構造的に小さく収まります。この補正後の絶対的な基準点は`RunResult.video_anchor_s`（`bajutsu/orchestrator/types.py`）として公開し、Unit 4で再利用します。単純な加算スカラーのフィールドなので`report/load.py`の復元処理に変更は要りませんが、これは生の`time.monotonic()`の値であり、それを生成したプロセスの外では意味を持ちません。`manifest_dict`（`bajutsu/report/manifest.py`）は、素朴な`asdict()`にこの値を持たせて永続化させず、レポートのJSONから除外しなければなりません。
 
@@ -43,7 +43,7 @@
 
 **4. 通信ログの基準点も同じ修正で統一する。** `bajutsu/runner/pipeline.py`は、`run_scenario`を呼ぶ前に、それ自体が独立にずれていく`scenario_start = time.monotonic()`を記録し、各通信ログのレポート用タイムスタンプの計算に使っています。この記録は`run_scenario`が返った後に使われるので、`result.video_anchor_s`に置き換え、`_write_network`の引数名も合わせてリネームします。これにより、ステップと通信ログという2つのタイムラインの間にあった、もう1つの小さなずれも無くなります。
 
-**5. ドキュメントを訂正・拡張する。** `docs/evidence.md`（および`docs/ja/`の対訳）には、デバイスバックエンドが動画を「`simctl launch` / `am start`より前」に始めると、すべてのデバイスバックエンドに当てはまるかのように書かれています。現状これが当てはまるのはAndroidの`adb`アクチュエーターだけなので、この提案ではその記述を訂正し、`true_start`とオフセット補正についても記載します。`docs/reporting.md`（その日本語版も含む）には、レポートの`data-t`のシーク先が、生の`scenario_start`ではなく、確認済みまたは最善推定の動画開始時刻を基準にしていることを追記します。
+**5. ドキュメントを拡張する。** `docs/evidence.md`（および`docs/ja/`の対訳）は、前倒しの録画をすでに`records_video_up_front`を通じてAndroidとWebに限定して記述しています。この提案では、その節に`true_start`とオフセット補正を追記します。`docs/reporting.md`（その日本語版も含む）には、レポートの`data-t`のシーク先が、生の`scenario_start`ではなく確認済みまたは最善推定の動画開始時刻を基準にしていることと、それを読み手が不具合と誤読しないための、目に見える結果のひとつ（ステップの`started_at`がシナリオの`duration_s`を超えること）を追記します。
 
 作業分解（*進捗*にも対応）：
 
@@ -70,7 +70,7 @@
 - [x] Unit 2 — 本番の2箇所での`confirm_started=True`の配線と、Playwrightドライバーでの`true_start`の記録。
 - [x] Unit 3 — `loop.py`での`video_start_offset`補正と`RunResult.video_anchor_s`。
 - [x] Unit 4 — `pipeline.py`の通信ログ基準点を`video_anchor_s`に統一する。
-- [x] Unit 5 — `docs/evidence.md`と`docs/reporting.md`の訂正・拡張（両言語）。
+- [x] Unit 5 — `docs/evidence.md`と`docs/reporting.md`の拡張（両言語）。
 
 ## 参考
 

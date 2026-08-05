@@ -53,13 +53,18 @@ never succeeded. `start_video` (iOS) and `start_screenrecord` (Android) each gai
 `confirm_started: bool = False` parameter; when set, they poll a real, observable signal after
 spawning the recording process:
 
-- iOS polls the output file for `stat().st_size > 0` (`simctl io recordVideo` writes progressively
-  to that path), confirming the recording is actually producing frames.
-- Android polls `adb.screenrecord_pids_cmd` until it answers a non-empty process list, mirroring
-  the shape `_await_screenrecord_stopped` already uses for the opposite direction. This confirms
-  only that the device-side process exists, a weaker guarantee than iOS's (a process existing is
-  not proof its encoder is yet emitting frames) — but it is still a real signal, earlier than the
-  moment the local `adb shell` client returns, and it lands before the app launches either way.
+- iOS polls the output file until it grows *past the size it had before this attempt spawned*
+  (`simctl io recordVideo` writes progressively to that path), confirming the recording is actually
+  producing frames. The pre-spawn baseline is load-bearing: a crash-retry (BE-0049) reuses the
+  scenario id and so the same target path, and a finalized earlier attempt's leftover bytes would
+  otherwise confirm a start that never happened on the very first poll.
+- Android polls `adb.screenrecord_pids_cmd` until it reports a pid that was *not* already present
+  before this attempt spawned, mirroring the shape `_await_screenrecord_stopped` already uses for
+  the opposite direction — with the same baseline guard, here against a `screenrecord` leaked by an
+  earlier attempt. This confirms only that the device-side process exists, a weaker guarantee than
+  iOS's (a process existing is not proof its encoder is yet emitting frames) — but it is still a
+  real signal, earlier than the moment the local `adb shell` client returns, and it lands before the
+  app launches either way.
 
 Both polls are bounded, condition-based waits — never a fixed `sleep` — matching prime directive 2.
 A poll that times out leaves `true_start` at `None`; the correction then degrades to a no-op (the
@@ -67,13 +72,16 @@ behavior today), never a guessed number. The web actuator needs no polling: `Pla
 stamps `time.monotonic()` immediately after `new_context()` returns, since a browser context's
 creation latency is negligible next to a subprocess spawn's.
 
-**2. Confirm only where it changes behavior.** `confirm_started=True` is passed at exactly two
+**2. Confirm only where it changes behavior.** `confirm_started=True` is passed at two production
 call sites: `FileSink._start_simctl_interval`'s video branch (`bajutsu/evidence/core.py`, iOS's
 on-demand start — the one place this item adds latency, bounded and small, to the scenario's
 critical path) and `AndroidEnvironment._prestart_video` (`bajutsu/platform_lifecycle/environments/android.py`,
-which runs during a pre-launch window that already exists, so the wait adds none). Every other
-caller, and every existing test, keeps the default `confirm_started=False` and is unaffected —
-this keeps the opt-in per call site, not per scenario.
+which runs during a pre-launch window that already exists, so the wait adds none). `AdbDriver.driver_interval`
+(`bajutsu/drivers/adb.py`) passes it too, so a caller reaching that driver directly gets the same
+confirmation rather than a silent regression to the uncorrected behavior; the device pool never
+reaches it today, because `AndroidEnvironment` always prestarts. Every other caller, and every
+existing test, keeps the default `confirm_started=False` and is unaffected — this keeps the opt-in
+per call site, not per scenario.
 
 **3. Apply the correction without reassigning `scenario_start`.** Android's video is a *prestarted*
 interval, adopted (not started fresh) at scenario start via `intervals.adopt`
@@ -108,12 +116,12 @@ returns, replace the local stamp with `result.video_anchor_s` and rename `_write
 parameter to match, removing a second, smaller pre-existing skew between the step and network
 timelines for free.
 
-**5. Correct and extend the documentation.** `docs/evidence.md` (and its `docs/ja/` mirror) states
-that a device backend starts video "before `simctl launch` / `am start`" as though this held for
-every device backend; today only Android's `adb` actuator prestarts, so this item corrects that
-line while documenting `true_start` and the offset correction. `docs/reporting.md` (and its mirror)
-gains a note that a report's `data-t` seek target is now anchored to the confirmed or best-known
-video start, not the raw `scenario_start`.
+**5. Extend the documentation.** `docs/evidence.md` (and its `docs/ja/` mirror) already scopes the
+up-front recording to Android and web via `records_video_up_front`; this item adds `true_start` and
+the offset correction to that section. `docs/reporting.md` (and its mirror) gains a note that a
+report's `data-t` seek target is anchored to the confirmed or best-known video start, not the raw
+`scenario_start`, along with the one visible consequence a reader would otherwise misread as a bug
+(a step's `started_at` exceeding the scenario's `duration_s`).
 
 Work breakdown (mirrored in *Progress*):
 
@@ -167,7 +175,7 @@ Work breakdown (mirrored in *Progress*):
       the Playwright driver.
 - [x] Unit 3 — `video_start_offset` correction in `loop.py`; `RunResult.video_anchor_s`.
 - [x] Unit 4 — unify `pipeline.py`'s network-exchange anchor with `video_anchor_s`.
-- [x] Unit 5 — correct and extend `docs/evidence.md` and `docs/reporting.md` (both languages).
+- [x] Unit 5 — extend `docs/evidence.md` and `docs/reporting.md` (both languages).
 
 ## References
 
