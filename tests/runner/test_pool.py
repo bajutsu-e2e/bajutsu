@@ -1028,17 +1028,8 @@ def test_device_pool_shutdown_logs_every_defect_past_the_first(
     assert "UDID-B" in caplog.text  # the second defect was logged, not lost
 
 
-def test_device_pool_shutdown_completes_the_collector_sweep_despite_a_stop_failure(
-    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
-) -> None:
-    """BE-0342: the collector-stop sweep gets the same guard as the device-teardown loop above it —
-    a `stop()` failure on one device's collector must not skip the others; only the first propagates,
-    and any later one is logged by udid rather than silently dropped."""
-
+def _stop_failing_collector(fail: BaseException) -> type:
     class _FailingStopCollector:
-        def __init__(self) -> None:
-            self.stopped = False
-
         def start_bridgeable(self) -> None:
             pass
 
@@ -1046,10 +1037,50 @@ def test_device_pool_shutdown_completes_the_collector_sweep_despite_a_stop_failu
             pass
 
         def stop(self) -> None:
-            self.stopped = True
-            raise OSError("socket already closed")
+            raise fail
 
-    monkeypatch.setattr("bajutsu.runner.pool.NetworkCollector", _FailingStopCollector)
+    return _FailingStopCollector
+
+
+def test_device_pool_shutdown_swallows_an_expected_collector_stop_failure(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """BE-0342: the collector-stop loop is routed through `guarded_teardown`, the same as the
+    device-teardown loop above it — a socket already gone (`OSError`) is an expected process
+    failure, warned and skipped, not a defect that fails `shutdown()`."""
+    monkeypatch.setattr(
+        "bajutsu.runner.pool.NetworkCollector", _stop_failing_collector(OSError("socket gone"))
+    )
+    monkeypatch.setattr(
+        "bajutsu.runner.pool.environment_for",
+        lambda actuator, udid, env_run=None, *, provision=None, respawn=False: _RecordingEnv(
+            actuator, udid, provision
+        ),
+    )
+    _, shutdown = device_pool(
+        ["UDID-A"],
+        ["ios"],
+        _eff(),
+        Path("runs"),
+        network=True,
+        available=lambda b: True,
+        env_run=lambda *a, **k: "",
+    )
+    with caplog.at_level(logging.WARNING, logger="bajutsu.runner.recovery"):
+        shutdown()  # must not raise
+    assert "UDID-A" in caplog.text  # the expected failure was logged, not silent
+
+
+def test_device_pool_shutdown_completes_the_collector_sweep_before_a_wiring_defect_propagates(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """BE-0342: unlike an expected process failure, a wiring defect on one device's collector must
+    not skip the others' `stop()`, and must still fail `shutdown()` loudly — but only the first such
+    defect propagates; a later one is logged by udid rather than silently dropped."""
+    monkeypatch.setattr(
+        "bajutsu.runner.pool.NetworkCollector",
+        _stop_failing_collector(AttributeError("no stop on this collector")),
+    )
     monkeypatch.setattr(
         "bajutsu.runner.pool.environment_for",
         lambda actuator, udid, env_run=None, *, provision=None, respawn=False: _RecordingEnv(
@@ -1067,10 +1098,10 @@ def test_device_pool_shutdown_completes_the_collector_sweep_despite_a_stop_failu
     )
     with (
         caplog.at_level(logging.ERROR, logger="bajutsu.runner.pool"),
-        pytest.raises(OSError, match="socket already closed"),  # only the first defect propagates
+        pytest.raises(AttributeError, match="no stop on this collector"),  # only the first
     ):
         shutdown()
-    assert "UDID-B" in caplog.text  # the second collector's failure was logged, not lost
+    assert "UDID-B" in caplog.text  # the second collector's defect was logged, not lost
 
 
 def test_device_pool_does_not_cache_a_non_reusable_environment(

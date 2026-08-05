@@ -428,10 +428,16 @@ def device_pool(
                     _logger.error("tearing down the warm runner on %s failed", udid, exc_info=exc)
         warm.clear()
         # A collector socket failing to stop is the same risk as a device's teardown failing: it must
-        # not stop the sweep, and it must not silently swallow a defect already held from above.
+        # not stop the sweep, and it must not silently swallow a defect already held from above. Also
+        # routed through `guarded_teardown`, so an expected process failure here (the socket already
+        # gone) is warned like the device loop's, not treated as a defect of its own.
         for udid, collector in collectors.items():
             try:
-                collector.stop()
+                guarded_teardown(
+                    collector.stop,
+                    mid_run=False,
+                    what=f"stopping the collector on {udid}",
+                )
             except Exception as exc:
                 if defect is None:
                     defect = exc

@@ -14,10 +14,12 @@ the two cannot then drift into different notions of "an infrastructure fault" or
 are left" (BE-0334). The classification rests on the exception type the driver already raises, so it
 stays a deterministic branch on a Python class: no model sits on the `run`/CI verdict.
 
-The guarded teardown helper (BE-0342) is the same seam: the pool's three teardown sites,
-`launch_driver`'s guard for a launch that failed after `env.start`, and the on-device suites' lease
-discard share one policy for a runner that had already exited or an unreachable `xcrun`, so the two
-recovery paths cannot drift into different notions of "an expected teardown failure" either.
+The guarded teardown helper (BE-0342) is the same seam: the pool's four teardown sites (three for a
+device's environment, one for its collector socket), `launch_driver`'s guard for a launch that
+failed after `env.start`, and the on-device suites' lease discard share one policy for an
+already-gone resource — a runner that had already exited, an unreachable `xcrun`, a socket the OS
+already tore down — so the two recovery paths cannot drift into different notions of "an expected
+teardown failure" either.
 """
 
 from __future__ import annotations
@@ -36,22 +38,23 @@ _logger = logging.getLogger(__name__)
 def guarded_teardown(teardown: Callable[[], None], *, mid_run: bool, what: str) -> None:
     """Run `teardown`, warning on an expected process failure instead of re-raising.
 
-    A runner that had already exited and an unreachable `xcrun` surface as `CalledProcessError` or
-    `OSError`; those are always logged at warning and swallowed. The pair is process-shaped, so it
-    covers the subprocess-driven backends (simctl, adb) but not the web context's `close()`, whose
-    already-gone target raises Playwright's own error and lands in the branch below. Anything
+    A runner that had already exited, an unreachable `xcrun`, and a collector socket the OS already
+    tore down all surface as `CalledProcessError` or `OSError`; those are always logged at warning
+    and swallowed. The pair covers the subprocess-driven backends (simctl, adb) and the collector's
+    own socket close, but not the web context's `close()`, whose already-gone target raises
+    Playwright's own error and lands in the branch below. Anything
     else is a wiring defect: at most call sites (`mid_run=True`) it is also swallowed into a warning
     so it cannot mask the fault that prompted the teardown, or abandon cleanup the caller still owes
-    (the pool's `free.put(udid)`, on a site that runs ahead of its own `try`); only a final release
-    (`mid_run=False`) lets it propagate, since nothing is in flight there and a surviving runner
-    would otherwise leak into the rest of the job (BE-0342).
+    (the pool's `free.put(udid)`, on a site that runs ahead of its own `try`); only `mid_run=False`
+    re-raises it, for a caller that must still fail on a wiring defect — the pool's `shutdown()`
+    catches that re-raise so the rest of its sweep still runs, then raises it once the sweep is done
+    (BE-0342).
 
     Args:
         teardown: The zero-arg callable that tears the environment (or warm resident) down.
-        mid_run: Whether re-raising here would do more damage than the defect it reports — either
-            masking the fault that prompted this teardown, or abandoning cleanup the caller still
-            owes (the pool's `free.put(udid)`). False only for a final release, where nothing is in
-            flight and a surviving runner leaks into the rest of the job.
+        mid_run: False when the caller must still see a wiring defect (and is responsible for any
+            cleanup it owes first), True when re-raising would mask the fault that prompted this
+            teardown or abandon cleanup the caller cannot resume.
         what: A short description of the teardown site, used as the warning's subject.
     """
     try:
