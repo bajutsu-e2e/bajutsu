@@ -1487,6 +1487,7 @@ def _ladder_run(
     created: str = "UDID-NEW",
     devicetypes: list[dict[str, str]] | None = None,
     stays_booted_after_shutdown: bool = False,
+    booted_listing_fails: bool = False,
 ) -> tuple[list[list[str]], Any]:
     """A fake simctl that lists `present` as available and mints `created` on `simctl create`.
 
@@ -1498,6 +1499,10 @@ def _ladder_run(
     shutdown` silently no-ops — the case `_reboot_device`'s post-shutdown read-back exists to catch.
     False (the default) lets shutdown/boot/bootstatus behave as a healthy host would, so `present`'s
     devices start out booted and stay that way except across a real shutdown.
+
+    `booted_listing_fails`, when True, makes `simctl list devices booted` itself fail — the host too
+    wedged even to answer that probe, the case `simctl.device_booted` reads as unknown rather than
+    "not booted".
     """
     import json
 
@@ -1517,6 +1522,8 @@ def _ladder_run(
         if verb == ["list"] and argv[3:4] == ["devicetypes"]:
             return json.dumps({"devicetypes": types})
         if verb == ["list"] and argv[3:5] == ["devices", "booted"]:
+            if booted_listing_fails:
+                raise OSError("simctl not found")
             return _device_json([u for u in present if u in booted])
         if verb == ["list"]:
             return _device_json(present)
@@ -1596,6 +1603,26 @@ def test_a_device_that_will_not_shut_down_earns_no_fresh_budget() -> None:
     assert _verb_seq(calls) == ["list", "shutdown", "list"]
 
 
+def test_an_unreadable_booted_listing_also_earns_no_fresh_budget() -> None:
+    # `simctl.device_booted` is three-valued like `device_available`: the same wedged host that
+    # makes `shutdown` no-op can also make `simctl list devices booted` fail outright, and an
+    # unreadable listing confirms a reboot no more than one that still shows the device up does —
+    # `booted_udids`' empty-on-any-failure result would collapse that into "not booted" and wrongly
+    # grant a fresh budget onto the still-wedged device.
+    calls, run = _ladder_run(["UDID"], booted_listing_fails=True)
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    recovery = env._recover_between_attempts(
+        _AttemptFailure("run-ended", "the xctest run ended after the app launch timed out"),
+        _eff_for_ladder(),
+        Preconditions(),
+        None,
+        ceiling=_COLD,
+    )
+    assert recovery is not None and recovery.fresh_budget is None
+    assert "would not shut down" in recovery.note
+    assert _verb_seq(calls) == ["list", "shutdown", "list"]
+
+
 def test_a_vanished_device_is_replaced_and_reported_to_the_pool(tmp_path: Path) -> None:
     # The exit-70 case: simctl no longer lists the device, so retrying onto it cannot work. The run
     # continues on a replacement, and `replaced_device()` is how the pool learns to re-key by it.
@@ -1659,6 +1686,31 @@ def test_a_replacement_clones_the_type_captured_while_the_device_was_healthy(
         in calls
     )
     assert not any(c[2:4] == ["list", "devicetypes"] for c in calls)
+
+
+def test_a_replacement_re_reads_its_actual_type_and_runtime(tmp_path: Path) -> None:
+    # create_device retries unpinned when the requested runtime is gone, so a replacement can land on
+    # a different iOS version than _device_runtime_id named — caching the *requested* type/runtime
+    # after create would leave the environment believing it got what it asked for. Clearing both
+    # instead lets _finish_repair's prep (which runs `device_type_of` when _device_type_id is None)
+    # re-read them from the device that actually exists.
+    app = tmp_path / "App.app"
+    app.mkdir()
+    _calls, run = _ladder_run([])  # the leased device is gone; devicetypes default to iPhone 17 Pro
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    # Seed a stale capture, as if an earlier cold prep had recorded a different runtime.
+    env._device_type_id = "com.apple.x.iPhone-17-Pro"
+    env._device_runtime_id = "com.apple.CoreSimulator.SimRuntime.iOS-19-0"
+    env._recover_between_attempts(
+        _AttemptFailure("run-ended", "ended"),
+        _eff_for_ladder(app_path=str(app)),
+        Preconditions(),
+        None,
+        ceiling=_COLD,
+    )
+    # Re-read from the replacement (iOS 26.0, per _device_json), not left at the stale iOS 19.0.
+    assert env._device_runtime_id == "com.apple.CoreSimulator.SimRuntime.iOS-26-0"
+    assert env._device_type_id == "com.apple.x.iPhone-17-Pro"
 
 
 def test_a_probe_that_could_not_run_changes_nothing() -> None:

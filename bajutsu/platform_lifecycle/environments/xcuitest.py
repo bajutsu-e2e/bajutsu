@@ -794,14 +794,17 @@ class XcuitestEnvironment(_DeviceEnvironment):
         no-ops on a device that never left `Booted`, `bootstatus -b` sees it already booted and returns
         at once, and the retry would spawn onto the same still-wedged device with a fresh ceiling
         instead of the exhausted shared one — the pre-recovery stall, plus one extra ceiling of wall
-        time. Reading `booted_udids` back after `shutdown` is what tells a real reboot from a no-op,
-        the same read-back `_pin_system_locale` already does for a `defaults write` that can exit 0
-        without surviving the shutdown.
+        time. Reading the device's booted state back after `shutdown` is what tells a real reboot from
+        a no-op, the same read-back `_pin_system_locale` already does for a `defaults write` that can
+        exit 0 without surviving the shutdown. The read-back is itself three-valued, like
+        `device_available`: the same wedged host that makes `shutdown` no-op can also make `simctl
+        list devices booted` fail outright, and an unreadable listing confirms a reboot no more than
+        a listing that still shows the device up does.
         """
         e = simctl.Env(self._udid, run=self._run)
         try:
             e.shutdown()
-            if self._udid in simctl.booted_udids(self._run):
+            if simctl.device_booted(self._udid, self._run) is not False:
                 _logger.warning(
                     "Simulator %s did not shut down; the reboot rung had no effect", self._udid
                 )
@@ -879,23 +882,31 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # Pinning the vanished device's own runtime keeps the replacement on the same iOS version a
         # scenario was written against; `create_device` retries unpinned if that runtime is itself
         # gone, so this only trades away version fidelity in the case it has to.
+        requested_runtime = self._device_runtime_id
         replacement = simctl.create_device(
-            device_type, self._run, name=name, runtime=self._device_runtime_id
+            device_type, self._run, name=name, runtime=requested_runtime
         )
         self._udid = replacement
         self._replaced_from = old
         self._pinned_locale = None  # a fresh device: nothing has pinned its SpringBoard yet
-        self._device_type_id = device_type
+        # Cleared, not set: `create_device` falls back to an unpinned create when the pinned runtime
+        # is gone, so what it got is not necessarily what was asked for. `_finish_repair`'s prep
+        # re-reads both from the replacement itself.
+        self._device_type_id = self._device_runtime_id = None
         try:
             self._run(simctl.bootstatus_cmd(replacement), None)
         except subprocess.CalledProcessError as exc:
             raise simctl.device_error(exc) from exc
         _logger.warning(
-            "Simulator %s vanished from CoreSimulator; created replacement %s",
+            "Simulator %s vanished from CoreSimulator; created replacement %s (requested runtime %s)",
             old,
             replacement,
+            requested_runtime or "any",
         )
-        return f"{old} vanished; created replacement {replacement} ({device_type})"
+        return (
+            f"{old} vanished; created replacement {replacement} "
+            f"({device_type}, requested runtime {requested_runtime or 'any'})"
+        )
 
     def _replacement_device_type(self, eff: Effective) -> str | None:
         """The device type a replacement is created from, or None when no matching type is available.

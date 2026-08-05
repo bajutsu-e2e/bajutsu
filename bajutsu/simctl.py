@@ -401,6 +401,25 @@ def booted_udids(run: RunFn = _real_run) -> list[str]:
     ]
 
 
+def device_booted(udid: str, run: RunFn = _real_run) -> bool | None:
+    """Whether `udid` is currently booted, or None when the listing itself failed.
+
+    Three-valued for the same reason `device_available` is: a CoreSimulator wedged enough that
+    `simctl shutdown` silently no-ops is also a host where `simctl list devices booted` is likely to
+    fail, and `booted_udids`' empty-on-any-failure result would read that as "not booted" — exactly
+    the wrong answer for a caller trying to confirm a shutdown actually took.
+    """
+    try:
+        data = json.loads(run(list_booted_cmd(), None))
+    except (subprocess.CalledProcessError, json.JSONDecodeError, OSError, ValueError):
+        return None
+    return any(
+        dev.get("udid") == udid and dev.get("state") == "Booted"
+        for devices in (data.get("devices") or {}).values()
+        for dev in devices
+    )
+
+
 def runtime_label(runtime_id: str) -> str:
     """'com.apple.CoreSimulator.SimRuntime.iOS-26-5' -> 'iOS 26.5'."""
     return runtime_id.split("SimRuntime.")[-1].replace("-", " ", 1).replace("-", ".")

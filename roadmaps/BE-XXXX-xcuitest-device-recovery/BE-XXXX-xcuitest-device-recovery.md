@@ -144,7 +144,9 @@ classification in unit 1, unit 4 on units 2 and 3, and unit 5 on unit 4.
    - **Anything else** — an app-launch timeout, or a wait that reached its ceiling. Shut the Simulator
      down, boot it, wait for the boot to complete, and re-run the device preparation.
 
-   The whole ladder is checked against a new `BAJUTSU_XCUITEST_RECOVERY_TIMEOUT` (180 seconds by
+   The repair proper — the probe, and the reboot or the create that follows it, but *not* the device
+   preparation the two bullets above end with, which runs unbounded exactly as the first cold
+   bring-up's does — is checked against a new `BAJUTSU_XCUITEST_RECOVERY_TIMEOUT` (180 seconds by
    default) once a rung returns. The check cannot preempt a rung in progress, since its `simctl` steps
    are blocking calls with no subprocess-level timeout of their own: it catches a device that took
    absurdly long to come back, not a `simctl` call that never returns at all — a genuinely wedged

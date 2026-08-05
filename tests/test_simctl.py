@@ -99,6 +99,30 @@ def test_booted_udids_parses_simctl() -> None:
     assert simctl.booted_udids(run=boom) == []  # failure -> empty, never raises
 
 
+def test_device_booted_is_three_valued() -> None:
+    import json
+
+    payload = json.dumps(
+        {
+            "devices": {
+                "com.apple.CoreSimulator.SimRuntime.iOS-26-0": [
+                    {"udid": "AAA", "state": "Booted"},
+                    {"udid": "BBB", "state": "Shutdown"},
+                ],
+            }
+        }
+    )
+    assert simctl.device_booted("AAA", run=lambda args, e=None: payload) is True
+    assert simctl.device_booted("BBB", run=lambda args, e=None: payload) is False
+
+    def boom(args: list[str], e: object = None) -> str:
+        raise OSError("simctl not found")
+
+    # A probe that could not run reads as unknown, not as "not booted" — the same distinction
+    # device_available makes, and for the same reason: a wedged host must not be misread as healthy.
+    assert simctl.device_booted("AAA", run=boom) is None
+
+
 def test_runtime_label_humanizes_identifier() -> None:
     assert simctl.runtime_label("com.apple.CoreSimulator.SimRuntime.iOS-26-5") == "iOS 26.5"
     assert simctl.runtime_label("com.apple.CoreSimulator.SimRuntime.watchOS-11-0") == "watchOS 11.0"
