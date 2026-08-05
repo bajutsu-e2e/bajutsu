@@ -170,7 +170,8 @@ invisible to `git diff` at all, the same reason `ideation` stages first) and dif
 paths from the branch point: `git diff $(git merge-base HEAD origin/main) -- <paths>`. Second,
 tell the subagent that
 steps 8 and 10 are still pending, so it doesn't spend a round flagging the item's un-flipped
-`Status` and its missing `Implementing PR` row — both land before the PR opens.
+`Status` and its missing `Implementing PR` row — the `Status` flip lands at step 8, and the row is
+filled at step 10, once the PR number exists.
 
 Then review the diff through the host's simplification facility. Apply justified fixes before the
 gate. For a non-trivial change, use fresh, independent review contexts for the following lenses:
