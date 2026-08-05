@@ -94,6 +94,7 @@ def oauth_callback(
             f"admin-Team bypass admitted {login}: no orgs: entry matched this login",
             level=logging.WARNING,
             bypass=True,
+            actor=login,
         )
     if state.repository is not None:
         # Persist the identity into the system of record, so audit entries and RBAC can reference

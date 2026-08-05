@@ -72,10 +72,16 @@ rejects an empty half or internal whitespace, not by counting `/`: a space- or s
 list parses to a single malformed entry that can never match a real Team, which
 is the same "no admin, no visible cause" failure reached by a different mistake. Both print a warning
 rather than raising, so a config typo degrades a deployment to no-admin instead of refusing to start
-it entirely — consistent with every other env var this module reads, none of which validate their
-shape at startup either. The malformed entry stays in the list rather than being dropped: dropping it
-would silently narrow the admin roster to whatever remained syntactically valid, a second silent
-failure on top of the one the warning already reports.
+it entirely. That is a deliberate departure from the other operator-facing variables this module
+reads (`BAJUTSU_SESSION_TTL`, the concurrency caps, `BAJUTSU_RUN_RETENTION_DAYS`), each of which
+raises on a malformed value: a server that refuses to start is no more repairable than one with no
+admin, and unlike those the mistake here is one an operator can still fix from outside. The malformed
+entry stays in the list rather than being dropped: dropping it would silently narrow the admin
+roster to whatever remained syntactically valid, a second silent failure on top of the one the
+warning already reports. Both checks fire only when GitHub OAuth is configured; on a token-auth-only
+server backend `BAJUTSU_OAUTH_ADMIN_TEAMS` decides nothing, so a stale or malformed value left in the
+environment there must stay quiet rather than warn about an admin role that deployment shape never
+had.
 
 `oauth_callback` ([`bajutsu/serve/authz.py`](../../bajutsu/serve/authz.py)) already fetches the
 login's GitHub Team memberships (`identity.teams`, via `fetch_identity`) before it runs the
@@ -85,9 +91,13 @@ alongside `identity_matches_org`: a login whose `identity.teams` intersects the 
 list clears the sign-in gate regardless of what `identity_matches_org` returns. An admin Team member
 then signs in even when no `orgs:` entry lists their GitHub organization, or when `orgs:` is absent
 altogether. A login that satisfies neither check is still rejected exactly as today. Every time the
-bypass alone admits a login, `oauth_callback` logs a warning naming the login: the bypass is the one
-sign-in path `orgs:` did not authorize, so it is the one path an operator auditing who signed in, and
-when, would otherwise have no record of at all.
+bypass alone admits a login, `oauth_callback` records it through `oplog.log_event`
+([`bajutsu/serve/oplog.py`](../../bajutsu/serve/oplog.py)), under the already-reserved `"oauth.login"`
+event and the login itself as the `actor` correlation field — not a bare logging call, so the record
+carries the same registered event name, redaction, and correlation fields every other
+operationally-significant record in `serve` already does, and an operator's alert keyed on `event`
+can actually see it. The bypass is the one sign-in path `orgs:` did not authorize, so it is the one
+path an operator auditing who signed in, and when, would otherwise have no record of at all.
 
 The membership test behind that check — is any of a login's Teams in the configured admin list — is
 also the test `role_for` uses to resolve the admin role, so this item factors it into one shared
@@ -210,13 +220,15 @@ mapping.
 
 - [x] Rename `BAJUTSU_OAUTH_ADMIN_TEAM` to `BAJUTSU_OAUTH_ADMIN_TEAMS` (comma-separated), threading the
       list through `SessionManager`, `role_for`, and the server-backend env wiring. Warn loudly at
-      startup whenever OAuth is configured but the resulting list is empty — whether nothing was set
-      or only the retired singular name was — and separately when an entry is not a well-formed
-      `"<github-org>/<team-slug>"` pair, so no admin-losing mistake goes unsignaled.
+      startup, only when OAuth is configured, whenever the resulting list is empty — whether nothing
+      was set or only the retired singular name was — and separately when an entry is not a
+      well-formed `"<github-org>/<team-slug>"` pair, so no admin-losing mistake goes unsignaled and
+      no token-auth-only deployment is warned about an admin role it never had.
 - [x] Add the admin-Team bypass to the sign-in gate in `oauth_callback`, alongside
-      `identity_matches_org`, using the Team list already fetched for role resolution. Log a warning
-      naming the login every time the bypass alone admits it, so the one sign-in path `orgs:` did not
-      authorize still leaves a record.
+      `identity_matches_org`, using the Team list already fetched for role resolution. Record every
+      bypass-only admission through `oplog.log_event` (the reserved `"oauth.login"` event, the login
+      as the `actor` field), so the one sign-in path `orgs:` did not authorize still leaves a record
+      an operator's `event`-keyed alert can see.
 - [x] Update the self-hosting and configuration docs (both languages) and `.env.example` to describe
       the renamed variable and the bypass. BE-0313's claim that the `default` org is unreachable
       through OAuth sign-in is superseded in this item's *Detailed design* instead: no `docs/` page
