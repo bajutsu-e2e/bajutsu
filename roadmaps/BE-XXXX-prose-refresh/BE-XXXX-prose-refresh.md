@@ -81,7 +81,7 @@ territory — against the `document-writing`, `english-document-writing`, and
 in the file. It carries the same **conservatism rule** `docs-refresh-prompt.md` already states:
 propose a change only where a norm is concretely violated, and leave prose unchanged rather than
 rewrite on a guess. Its path allowlist is `docs/**`, the top-level `DESIGN.md`, and
-`roadmaps/**/*.md` / `roadmaps/**/*-ja.md` — the union of `docs-refresh`'s tree (which already
+`roadmaps/**/*.md` — the union of `docs-refresh`'s tree (which already
 includes `DESIGN.md`) and `roadmap-refresh`'s tree, scoped to prose bodies only — and, like
 `docs-refresh-prompt.md`, it excludes the top-level `README*` and `CLAUDE.md`: those state the
 prime directives the AI author is itself bound by, so they stay human-authored.
