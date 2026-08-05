@@ -228,8 +228,11 @@ Android の実機スイートが将来追加されたときに、それが構成
   返すようになりました。これにより `LeaseHolder` は `driver.close()` ではなく、プラットフォーム自身の
   teardown を通して lease を破棄します。ユニット 1 が残していた選択は、`launch_driver` 自身がガードを
   引き受ける方向で決着し、すべての呼び出し側がそれを受け継ぎます。守られた teardown の方針は
-  `bajutsu/runner/recovery.py` へ移り、pool の 3 か所、`launch_driver`、lease の破棄が共有します。
-  実行中の配線の欠陥は、debug ではなく warning で報告されるようになりました。状態を実装済みへ。
+  `bajutsu/runner/recovery.py` へ移り、pool の 4 か所（アクチュエータ切り替え、失敗した lease、
+  `shutdown()` のデバイスとコレクタの 2 つのループ）、`launch_driver`、lease の破棄が共有します。
+  実行中の配線の欠陥は、debug ではなく warning で報告されるようになりました。`shutdown()` は掃除を
+  最後までやり切ってから、最初に捕まえた欠陥を送出します。1 台の欠陥で、残りのデバイスの runner と
+  コレクタのソケットを取りこぼさないためです。状態を実装済みへ。
 
 ## 参考
 
