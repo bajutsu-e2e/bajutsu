@@ -32,7 +32,7 @@ GitHub Organization のエントリがない場合でもサインインできる
 自身の設計文書は、この結果として生じる隙間を名指ししています。admin Team のメンバーであっても、その
 GitHub Organization がどのテナントの `githubOrgs` や `members` からも参照されていない場合、たとえば
 どの `orgs:` エントリにも載らない運用専用の GitHub Organization に属する場合、admin Team が参照される
-前にサインインそのもので拒否されます。admin になるはずが、サインインを失います。同じ拒否は、config に
+前にサインインの段階で拒否されます。admin になるどころか、サインインすらできません。同じ拒否は、config に
 `orgs:` ブロックがまったくない場合、あるいは `members`・`githubOrgs` のエントリがデプロイの運用者を
 まだ網羅していない場合にも、すべての login に及びます。`identity_matches_org` は、空のテナント名簿に
 対しては誰も通しません。そのため、`orgs:` ブロックがない状態、または運用者がまだ編集を終えていない
