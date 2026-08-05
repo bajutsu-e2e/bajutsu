@@ -359,20 +359,26 @@ def _build_server_state(
     oauth_admin_teams = tuple(
         t.strip() for t in os.environ.get("BAJUTSU_OAUTH_ADMIN_TEAMS", "").split(",") if t.strip()
     )
+    # Never lose an admin quietly to the rename itself: a deployment that adds the new plural name
+    # but leaves the old singular one set (the likelier migration mistake — an operator remembers
+    # one Team, not that the old name must go) has that Team silently drop out of both the role and
+    # the sign-in gate, with `oauth_admin_teams` non-empty so the check below never fires. This check
+    # is independent of whether the list ends up empty, so it runs even when it isn't.
+    if oauth is not None and os.environ.get("BAJUTSU_OAUTH_ADMIN_TEAM"):
+        print(  # noqa: T201
+            "bajutsu serve: BAJUTSU_OAUTH_ADMIN_TEAM is retired and no longer read — rename it to "
+            "BAJUTSU_OAUTH_ADMIN_TEAMS (comma-separated), folding in every Team it named",
+            file=sys.stderr,
+        )
     # Never lose every admin quietly. An empty list with OAuth wired means no login can ever
     # resolve to admin — whether because the rename's hard cutover (BE-0313's own precedent for
     # retiring BAJUTSU_OAUTH_ADMINS) left only the retired singular name set, or because the new
     # name was simply never set at all — and since this same list is now a sign-in credential, that
     # deployment also has no admin left to sign in and repair a broken `orgs:` block.
     if oauth is not None and not oauth_admin_teams:
-        hint = (
-            " (BAJUTSU_OAUTH_ADMIN_TEAM is retired — rename it to BAJUTSU_OAUTH_ADMIN_TEAMS)"
-            if os.environ.get("BAJUTSU_OAUTH_ADMIN_TEAM")
-            else ""
-        )
         print(  # noqa: T201
             "bajutsu serve: BAJUTSU_OAUTH_ADMIN_TEAMS is empty, so no login will have admin "
-            f"access and no admin can sign in to repair a broken `orgs:` block{hint}",
+            "access and no admin can sign in to repair a broken `orgs:` block",
             file=sys.stderr,
         )
     malformed = [t for t in oauth_admin_teams if not re.fullmatch(r"[^\s/]+/[^\s/]+", t)]

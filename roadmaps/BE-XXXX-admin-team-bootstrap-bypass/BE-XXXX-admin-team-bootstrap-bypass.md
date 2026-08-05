@@ -57,16 +57,21 @@ sign-in behavior. This item changes what an admin Team membership means at sign-
 the existing single-Team variable would otherwise need the same behavior change under its old name.
 The rename and the behavior change become one edit rather than two.
 
-Two startup checks keep this parsing from losing every admin without a trace. `_build_server_state`
+Three startup checks keep this parsing from losing every admin without a trace. `_build_server_state`
 ([`bajutsu/serve/__init__.py`](../../bajutsu/serve/__init__.py)) prints a stderr warning whenever
-GitHub OAuth is configured but the parsed `oauth_admin_teams` list comes out empty — whether because
-the deployment never set `BAJUTSU_OAUTH_ADMIN_TEAMS` at all, or because only the retired
-`BAJUTSU_OAUTH_ADMIN_TEAM` is set (the hard cutover in *Alternatives considered* means that
-deployment now has no admin Team at all). Either way the only other symptom is an unexplained 403 on
-every admin action, and — because this same list is now also a sign-in credential (see below) — no
-admin left who can sign in to fix it. The warning names the retired variable only when it's actually
-the cause, so the never-set case isn't blamed on a rename that never happened. It also warns on any
-entry that isn't
+GitHub OAuth is configured and the retired `BAJUTSU_OAUTH_ADMIN_TEAM` is still set, regardless of
+whether `BAJUTSU_OAUTH_ADMIN_TEAMS` also is — the likelier migration mistake is not leaving the new
+name unset but adding it *without* removing the old one: an operator remembers the Team they're
+adding, not that the old singular name must go, so the old Team's members silently stop being admin
+while `BAJUTSU_OAUTH_ADMIN_TEAMS` stays non-empty. Tying this notice to the *empty* case alone would
+miss exactly that mistake, so it is its own unconditional check on the retired variable, independent
+of whatever the new list resolves to. Separately, it prints a warning whenever the parsed
+`oauth_admin_teams` list comes out empty — whether because the deployment never set
+`BAJUTSU_OAUTH_ADMIN_TEAMS` at all, or because only the retired name was ever set (the hard cutover in
+*Alternatives considered* means that deployment now has no admin Team at all). Either way the only
+other symptom is an unexplained 403 on every admin action, and — because this same list is now also a
+sign-in credential (see below) — no admin left who can sign in to fix it. It also warns on any entry
+that isn't
 exactly one `"<github-org>/<team-slug>"` pair — matched against a regular expression that rejects an
 empty half or internal whitespace, not by counting `/`: a space- or semicolon-separated list parses
 to a single malformed entry that can never match a real Team, which is the same "no admin, no visible
@@ -75,7 +80,7 @@ either half: `in_admin_team` case-folds both sides of the membership test (see b
 whose case differs from GitHub's own stored case — a slug copied from the Team's display name in the
 GitHub UI, say — still matches. Rejecting it here would warn an operator to "fix" an entry that
 already works, and, worse, teach them to ignore this warning on the one list where a genuinely
-broken entry hides. Both print a warning
+broken entry hides. All three print a warning
 rather than raising, so a config typo degrades a deployment to no-admin instead of refusing to start
 it entirely. That is a deliberate departure from the other operator-facing variables this module
 reads (`BAJUTSU_SESSION_TTL`, the concurrency caps, `BAJUTSU_RUN_RETENTION_DAYS`), each of which
@@ -83,7 +88,8 @@ raises on a malformed value: a server that refuses to start is no more repairabl
 admin, and unlike those the mistake here is one an operator can still fix from outside. The malformed
 entry stays in the list rather than being dropped: dropping it would silently narrow the admin
 roster to whatever remained syntactically valid, a second silent failure on top of the one the
-warning already reports. Both checks fire only when GitHub OAuth is configured; on a token-auth-only
+warning already reports. All three checks fire only when GitHub OAuth is configured; on a
+token-auth-only
 server backend `BAJUTSU_OAUTH_ADMIN_TEAMS` decides nothing, so a stale or malformed value left in the
 environment there must stay quiet rather than warn about an admin role that deployment shape never
 had.
@@ -174,25 +180,29 @@ admin role BE-0313 already made server-wide.
 
 "No other org claims their login" is the case this default is for, and it is not the only way the
 bypass can admit a login: a `/user/orgs` fetch failure also makes `identity_matches_org` see no
-match, for a login a real org *does* claim. Without a correction, that one-off upstream hiccup would
-relocate an existing org member to `default` on every such failure — their user row, audit
-attribution, and object-storage prefix all moving until their next clean login moves them back, an
-outcome the placement logic above never intends for someone `orgs:` already claims. `oauth_callback`
-avoids this, but only for that specific failure shape: when the bypass, not `orgs:`, is what admitted
-a login, *and* `identity.orgs` came back empty — the signature `_fetch_orgs` leaves on any fetch
-error, since it fails closed to `[]` rather than raising — it keeps whatever org
-`state.repository.user_org` already has on record for that login instead of recomputing one, falling
-to `org_for_identity`'s `default` result only when no prior record exists — the genuine first-time
-bootstrap case this section is actually about. A login whose `identity.orgs` came back non-empty but
-still matched nothing in `orgs:` is not this case: GitHub answered the fetch, so that login is
-genuinely un-claimed, whether because this is its first sign-in or because an operator has since
-removed it from every configured org. That login re-resolves through `org_for_identity` like any
-other, exactly as BE-0015 7c-2 already requires role resolution to do on every login — leaving `orgs:`
-must take effect on the next sign-in, not stay pinned to whatever org a now-departed member happened
-to hold before. Guarding the preservation on `not identity.orgs` is what keeps those two cases
-apart: without it, a revoked member's org would never re-resolve, since no future login could ever
-re-match `orgs:` once genuinely revoked, silently contradicting the same recompute-every-login
-principle a few lines below for the role.
+match, for a login a real org *does* claim — and so does a failure to load the config itself
+(`load_serve_config_file` fails closed to `None` on a transient filesystem error or a config typo,
+collapsing `orgs` to `{}`), which is the failure shape this item's own motivating scenario, a broken
+`orgs:` block, actually produces. Without a correction, either one-off hiccup would relocate an
+existing org member to `default` on every such failure — their user row, audit attribution, and
+object-storage prefix all moving until their next clean login moves them back, an outcome the
+placement logic above never intends for someone `orgs:` already claims. `oauth_callback` avoids
+this, but only for those two specific failure shapes: when the bypass, not `orgs:`, is what admitted
+a login, *and* either `identity.orgs` came back empty (the signature `_fetch_orgs` leaves on any
+fetch error, since it fails closed to `[]` rather than raising) *or* the config failed to load
+(`parsed is None`) — either way there is no way to tell whether an org actually claims this login —
+it keeps whatever org `state.repository.user_org` already has on record for that login instead of
+recomputing one, falling to `org_for_identity`'s `default` result only when no prior record exists —
+the genuine first-time bootstrap case this section is actually about. A login whose `identity.orgs`
+came back non-empty, with a config that loaded, but still matched nothing in `orgs:` is not this
+case: both signals answered, so that login is genuinely un-claimed, whether because this is its
+first sign-in or because an operator has since removed it from every configured org. That login
+re-resolves through `org_for_identity` like any other, exactly as BE-0015 7c-2 already requires role
+resolution to do on every login — leaving `orgs:` must take effect on the next sign-in, not stay
+pinned to whatever org a now-departed member happened to hold before. Guarding the preservation on
+`not identity.orgs or parsed is None` is what keeps those cases apart: without it, a revoked member's
+org would never re-resolve, since no future login could ever re-match `orgs:` once genuinely revoked,
+silently contradicting the same recompute-every-login principle a few lines below for the role.
 
 This placement inherits an existing sharp edge of the org model rather than introducing a new one:
 `DEFAULT_ORG` ([`bajutsu/serve/orgs.py`](../../bajutsu/serve/orgs.py)) is the literal string
@@ -275,12 +285,13 @@ mapping.
 
 - [x] Rename `BAJUTSU_OAUTH_ADMIN_TEAM` to `BAJUTSU_OAUTH_ADMIN_TEAMS` (comma-separated), threading the
       list through `SessionManager`, `role_for`, and the server-backend env wiring. Warn loudly at
-      startup, only when OAuth is configured, whenever the resulting list is empty — whether nothing
-      was set or only the retired singular name was — and separately when an entry is not a
-      well-formed `"<github-org>/<team-slug>"` pair (an empty half or internal whitespace, not an
-      uppercase character — `in_admin_team` case-folds, so a differently-cased entry still matches)
-      so no admin-losing mistake goes unsignaled and no token-auth-only deployment is warned about an
-      admin role it never had.
+      startup, only when OAuth is configured: whenever the retired singular name is still set,
+      regardless of whether the new plural one also is (the likelier partial-rename mistake);
+      whenever the resulting list is empty — whether nothing was set or only the retired name was;
+      and separately when an entry is not a well-formed `"<github-org>/<team-slug>"` pair (an empty
+      half or internal whitespace, not an uppercase character — `in_admin_team` case-folds, so a
+      differently-cased entry still matches) — so no admin-losing mistake goes unsignaled and no
+      token-auth-only deployment is warned about an admin role it never had.
 - [x] Add the admin-Team bypass to the sign-in gate in `oauth_callback`, alongside
       `identity_matches_org`, using the Team list already fetched for role resolution. Record every
       successful sign-in through `oplog.log_event` (the reserved `"oauth.login"` event, the login as
@@ -298,10 +309,11 @@ mapping.
       `orgs:` block at all; resolved role is admin in both cases; a login matching neither the org
       gate nor the admin-Team list is still rejected; the renamed variable parses a multi-Team list;
       a bypassing admin is placed in the `default` org; an existing member's recorded org survives a
-      transient `/user/orgs` failure, but a genuinely revoked member re-resolves to `default` on
-      their next login rather than staying pinned. End to end through the HTTP transport: a login
-      matching no `orgs:` entry, admitted only by the bypass, can actually reach an admin-gated
-      endpoint (`POST /api/apikey`) — not just receive a session.
+      transient `/user/orgs` failure and a failure to load the config itself, but a genuinely revoked
+      member re-resolves to `default` on their next login rather than staying pinned; the retired
+      singular var warns even when the new plural one is also set. End to end through the HTTP
+      transport: a login matching no `orgs:` entry, admitted only by the bypass, can actually reach
+      an admin-gated endpoint (`POST /api/apikey`) — not just receive a session.
 
 ## References
 

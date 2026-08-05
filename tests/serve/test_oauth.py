@@ -395,6 +395,28 @@ def test_oauth_callback_admin_team_bypass_reresolves_a_revoked_members_org(
     assert state.repository.user_org("bob") == "default"
 
 
+def test_oauth_callback_admin_team_bypass_keeps_org_when_config_fails_to_load(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    # A GitHub API hiccup isn't the only way the bypass can admit a real org member unmatched: the
+    # config itself can fail to load (`load_serve_config_file` fails closed to None on a transient
+    # filesystem error or a config typo -- exactly the state this item's own motivating scenario, a
+    # broken `orgs:` block, produces). carol still reports her real GitHub orgs; it's the org model
+    # that's unreadable, not her membership -- she must not be relocated to `default` over that.
+    state, _ = _db_state(
+        serve_engine, tmp_path, FakeOAuthClient(login="carol", orgs=["acme-gh"], teams=[])
+    )
+    assert _role_after_login(state, "carol") == "viewer"
+    assert state.repository is not None
+    assert state.repository.user_org("carol") == "acme"
+
+    state.auth.oauth = FakeOAuthClient(login="carol", orgs=["acme-gh"], teams=["ops-gh/root"])
+    state.auth.oauth_admin_teams = ("ops-gh/root",)
+    state.config = tmp_path / "missing.yaml"  # never written -- load_serve_config_file -> None
+    assert _role_after_login(state, "carol") == "admin"
+    assert state.repository.user_org("carol") == "acme"
+
+
 def test_oauth_callback_rejects_a_login_in_neither_the_org_gate_nor_the_admin_teams(
     tmp_path: Path,
 ) -> None:
