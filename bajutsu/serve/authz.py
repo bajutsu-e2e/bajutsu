@@ -102,6 +102,13 @@ def oauth_callback(
         # the user's GitHub org membership. email is unknown from this scope, so we store GitHub's
         # canonical no-reply form (valid + unique per login).
         org = org_for_identity(orgs, login, identity.orgs)
+        if not matched_org:
+            # The bypass, not `orgs:`, admitted this login — possibly because a transient
+            # `/user/orgs` failure made a real org member look unmatched for this one login, not
+            # because they were ever un-claimed. Keep whatever org is already on record rather than
+            # relocating an existing member to `default` on every such hiccup; only a login with no
+            # prior record (a genuine first-time bootstrap admin) falls to `org_for_identity` above.
+            org = state.repository.user_org(login) or org
         oc = orgs.get(org)
         editor_team = oc.editor_team if oc is not None else None
         state.repository.ensure_org(org, slug=org, name=org)

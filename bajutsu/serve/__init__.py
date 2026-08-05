@@ -375,7 +375,7 @@ def _build_server_state(
             f"access and no admin can sign in to repair a broken `orgs:` block{hint}",
             file=sys.stderr,
         )
-    malformed = [t for t in oauth_admin_teams if not re.fullmatch(r"[^\s/]+/[^\s/]+", t)]
+    malformed = [t for t in oauth_admin_teams if not re.fullmatch(r"[^\s/]+/[^\s/A-Z]+", t)]
     if oauth is not None and malformed:
         print(  # noqa: T201
             "bajutsu serve: BAJUTSU_OAUTH_ADMIN_TEAMS entries must each be "

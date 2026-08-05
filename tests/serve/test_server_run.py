@@ -413,10 +413,12 @@ def test_build_state_server_stays_quiet_when_admin_teams_is_set(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     # A deployment carrying both vars across the upgrade (the new one wins) must not warn either —
-    # set the retired singular name too, so this actually exercises the guard's other operand.
+    # set the retired singular name too, and wire OAuth (the warnings fire only then), so this
+    # actually exercises the guard's other operand instead of passing on OAuth being unwired.
     monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
     monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
+    _setenv_oauth(monkeypatch)
     monkeypatch.setenv("BAJUTSU_OAUTH_ADMIN_TEAM", "acme-gh/legacy")
     monkeypatch.setenv("BAJUTSU_OAUTH_ADMIN_TEAMS", "acme-gh/ops")
     _scn, cfg, runs = project(tmp_path)
@@ -483,6 +485,32 @@ def test_build_state_server_warns_on_an_empty_side_or_inner_space(
         backend="server",
     )
     assert state.auth.oauth_admin_teams == ("acme-gh/", "/ops", "acme-gh/ ops")
+    assert "will never match" in capsys.readouterr().err
+
+
+def test_build_state_server_warns_on_an_uppercase_slug(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # GitHub always lowercases a Team's slug, so an operator who copies the Team name as shown in
+    # the UI (title case) writes an entry that looks well-formed but can never match: exactly one
+    # "/", both halves non-empty, yet in_admin_team's exact `in` test never sees it.
+    monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
+    monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
+    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
+    _setenv_oauth(monkeypatch)
+    monkeypatch.setenv("BAJUTSU_OAUTH_ADMIN_TEAMS", "acme-gh/Ops")
+    _scn, cfg, runs = project(tmp_path)
+    state = srv._build_state(
+        runs_dir=runs,
+        config=cfg,
+        scenarios_dir=None,
+        root=tmp_path,
+        baselines_dir=None,
+        max_concurrent=4,
+        token=None,
+        backend="server",
+    )
+    assert state.auth.oauth_admin_teams == ("acme-gh/Ops",)
     assert "will never match" in capsys.readouterr().err
 
 
