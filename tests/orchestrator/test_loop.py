@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 from _orch import FakeClock, _scenario
 from conftest import el
 
@@ -727,6 +728,45 @@ def test_screen_changed_read_skips_on_web_query_failure() -> None:
     assert result.ok, result.failure
     # The comparison read really did fire and fail, not just get skipped some other way.
     assert bridge.calls == 2
+
+
+def test_screen_changed_read_crashes_loudly_on_a_dead_native_connection() -> None:
+    """`_read_evidence`'s native-driver policy — re-raise instead of degrading to
+    `screen_changed=False` — is the half of the helper no `web`-block test can exercise (every
+    other test drives the failure through a `_FlakyBridge`, so `active_driver is not
+    self.cfg.driver` always holds there). A dead `simctl`/`adb`/`Playwright` connection on a plain
+    (non-`web`) step must still surface loudly rather than let the run continue against a driver
+    that just proved unreachable (review follow-up)."""
+
+    class _FlakyDriver(FakeDriver):
+        def __init__(self, screen: list[base.Element]) -> None:
+            super().__init__(screen)
+            self.calls = 0
+
+        def query(self) -> list[base.Element]:
+            self.calls += 1
+            # Call 1 is the `screenChanged` policy's own `before` read; call 2 is the comparison
+            # read this test targets.
+            if self.calls == 2:
+                raise ConnectionError("device unreachable")
+            return super().query()
+
+    driver = _FlakyDriver([el("go", "Go", ["button"])])
+    with pytest.raises(ConnectionError):
+        run_scenario(
+            driver,
+            _scenario(
+                {
+                    "name": "x",
+                    "steps": [{"tap": {"id": "go"}}],
+                    "capturePolicy": [
+                        {"on": {"event": "screenChanged"}, "capture": ["screenshot.before"]}
+                    ],
+                }
+            ),
+            clock=FakeClock(),
+        )
+    assert driver.calls == 2
 
 
 def test_pre_step_query_marks_prev_after_fresh_for_the_interrupt_guard(tmp_path: Path) -> None:
