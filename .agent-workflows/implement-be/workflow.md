@@ -161,13 +161,13 @@ judge — the gate (step 9) is still the only verdict, and no LLM touches the `r
 
 Run the review CI runs on the PR, but locally on your diff: follow
 [`ideation`](../ideation/workflow.md) step 5's procedure against the
-[`.github/claude-review-prompt.md`](../../.github/claude-review-prompt.md) contract, with three
-differences. First, don't scope the staged diff to `roadmaps/`; this skill's changes land wherever
-the item needs them, so stage what you touched and diff the whole change. Second, the contract
-file *is* the procedure — read it and hand it to the fresh subagent as text. This invokes no
-review command, so the pass runs the same way in every host and needs no slash command installed.
-Third, tell it that steps 8 and 10 are still pending, so it doesn't spend a round flagging the
-item's un-flipped `Status` and its missing `Implementing PR` row — both land before the PR opens.
+[`.github/claude-review-prompt.md`](../../.github/claude-review-prompt.md) contract — read it and
+hand it to the fresh subagent as text, the same way `ideation` already does, so no review command
+is invoked and the pass runs the same way in every host. Two differences from that procedure:
+first, don't scope the staged diff to `roadmaps/`; this skill's changes land wherever the item
+needs them, so stage what you touched and diff the whole change. Second, tell the subagent that
+steps 8 and 10 are still pending, so it doesn't spend a round flagging the item's un-flipped
+`Status` and its missing `Implementing PR` row — both land before the PR opens.
 
 Then review the diff through the host's simplification facility. Apply justified fixes before the
 gate. For a non-trivial change, use fresh, independent review contexts for the following lenses:
