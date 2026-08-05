@@ -352,7 +352,7 @@ def test_oauth_callback_admin_team_bypass_places_the_user_in_the_default_org(
     assert [o.slug for o in orgs] == ["default"]
 
 
-def test_oauth_callback_admin_team_bypass_keeps_an_existing_members_recorded_org(
+def test_oauth_callback_admin_team_bypass_keeps_a_github_org_members_recorded_org(
     serve_engine: Callable[..., Engine], tmp_path: Path
 ) -> None:
     # bob reaches `acme` only through `githubOrgs` (not an explicit `members` entry), so a
