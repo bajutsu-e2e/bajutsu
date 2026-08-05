@@ -1134,8 +1134,9 @@ def test_device_pool_release_swallows_a_teardown_failure_and_still_frees_the_dev
 ) -> None:
     """BE-0342: `release()` runs from the run pipeline's `finally`, so neither an expected process
     failure nor a wiring defect on its teardown may replace the scenario's own result or skip
-    returning the device to `free` — unlike the pool's other teardown sites, this one never
-    propagates (it only warns), since there is no caller left to see it raise."""
+    returning the device to `free` — like the actuator-switch and failed-lease sites, and unlike
+    `shutdown()`'s two loops, this one never propagates (it only warns), since there is no caller
+    left to see it raise."""
     created: list[_RecordingEnv] = []
 
     def fake_env_for(
