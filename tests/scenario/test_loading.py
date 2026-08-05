@@ -132,6 +132,15 @@ def test_typo_in_supported_scenario_still_fails_loudly() -> None:
         load_scenario_file(text)
 
 
+def test_step_name_path_traversal_fails_to_load() -> None:
+    # A step `name` becomes a real filesystem path segment downstream (the run's step_id and the
+    # editor's artifact lookup both join it onto the run directory) — a `..`-shaped name must fail
+    # to load, not silently produce a traversal-shaped id.
+    text = "- name: s\n  steps:\n    - tap: { id: x }\n      name: ../../../etc/passwd\n"
+    with pytest.raises(ValueError, match="name must not"):
+        load_scenarios(text)
+
+
 def test_load_scenario_example() -> None:
     scenarios = load_scenarios(SCENARIO_YAML)
     assert len(scenarios) == 1
