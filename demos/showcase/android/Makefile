@@ -355,7 +355,8 @@ e2e-codegen:
 	# is exactly one of the dialogs that setting stops being posted at all.
 	$(ANR_QUIET)
 	cd $(HERE) && $(GRADLEW) :compose:assembleA11yDebug :compose:assembleA11yDebugAndroidTest
-	cd $(ROOT) && uv run python3 demos/showcase/android/screenrecord.py $(SERIAL) \
+	cd $(ROOT); \
+	uv run python3 demos/showcase/android/screenrecord.py $(SERIAL) \
 		$(HERE)/compose/build/outputs/screenrecord/uiautomator-codegen.mp4 & \
 	rec_pid=$$!; \
 	( cd $(HERE) && $(GRADLEW) :compose:connectedA11yDebugAndroidTest ); rc=$$?; \
