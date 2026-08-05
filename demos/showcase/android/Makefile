@@ -352,6 +352,8 @@ e2e-codegen:
 	( cd $(HERE) && $(GRADLEW) :compose:connectedA11yDebugAndroidTest ); rc=$$?; \
 	kill -INT "$$rec_pid" 2>/dev/null || true; \
 	for i in $$(seq 1 60); do adb shell pgrep -x screenrecord >/dev/null 2>&1 || break; sleep 2; done; \
+	adb shell pgrep -x screenrecord >/dev/null 2>&1 \
+		&& echo "warning: device-side screenrecord still running after 120s; the pulled mp4 may be truncated (no moov atom)" || true; \
 	mkdir -p $(HERE)/compose/build/outputs/screenrecord; \
 	adb pull /sdcard/uiautomator-codegen.mp4 \
 		$(HERE)/compose/build/outputs/screenrecord/uiautomator-codegen.mp4 >/dev/null \
