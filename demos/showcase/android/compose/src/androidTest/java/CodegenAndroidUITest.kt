@@ -160,8 +160,8 @@ class CodegenandroiduitestUITest {
 
   // Never throws. getWindows() raises IllegalStateException when the connection is not
   // established, so an unguarded read would replace the caller's named AssertionError with a
-  // raw framework exception. Returning false collapses that fault together with an empty list,
-  // which want opposite next steps — a kick recovers an empty list, an unestablished connection
+  // raw framework exception. Returning false collapses that fault together with an empty list.
+  // The two want opposite next steps — a kick recovers an empty list, an unestablished connection
   // it cannot — so the caller names which one it met by appending windowSummary() (never
   // throws either): "<no accessibility windows>" against "<unavailable: …>".
   private fun reportsWindows(): Boolean = runCatching {
@@ -186,7 +186,8 @@ class CodegenandroiduitestUITest {
     if (!reportsWindows()) {
       throw AssertionError(
         "accessibility window tracking reported no usable window list after " +
-          "$TRACKING_KICK_ATTEMPTS kick(s); windows:\n" + windowSummary()
+          "$TRACKING_KICK_ATTEMPTS kick(s), which the screenshot and hierarchy dump" +
+          " below post-date; windows:\n" + windowSummary()
       )
     }
   }

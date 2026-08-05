@@ -257,8 +257,8 @@ UI Automator は adb backend と構造がきわめて近い出力先です。ど
 写し取ります。Espresso のビューマッチャの流儀（文字列キーのシナリオが持たない `R.id` 参照を要する）ではありません。
 待機は固定スリープではなく `device.wait(Until.…)` を使い、iOS と web の出力先と同じ決定性の切り分けを取ります。
 
-以下は骨組みであり、生成物そのものではありません。実際のファイルは各ヘルパの上に一段落の理由を
-持ちますが、ここでは残す価値のある箇所だけを短い行内コメントに縮めています。生成器の実際の出力は、
+以下は骨組みであり、生成物そのものではありません。実際のファイルでは各ヘルパの上に一段落の説明が
+入りますが、ここでは残す価値のある箇所だけを短い行内コメントに縮めています。エミッタの実際の出力は、
 チェックイン済みの
 [`CodegenAndroidUITest.kt`](../../demos/showcase/android/compose/src/androidTest/java/CodegenAndroidUITest.kt)
 をご覧ください。
@@ -334,7 +334,8 @@ class ComponentsUITest {
     if (!reportsWindows()) {
       throw AssertionError(
         "accessibility window tracking reported no usable window list after " +
-          "$TRACKING_KICK_ATTEMPTS kick(s); windows:\n" + windowSummary()
+          "$TRACKING_KICK_ATTEMPTS kick(s), which the screenshot and hierarchy dump" +
+          " below post-date; windows:\n" + windowSummary()
       )
     }
   }
@@ -430,7 +431,9 @@ class ComponentsUITest {
   生成される値の2なら1度です。ただし、1回の起動で起こすウィンドウ変更はこれだけではありません。次の
   箇条書きにある起動前の確認が、試行ごとに `TRACKING_KICK_ATTEMPTS` の予算を別に持つので、`launch`
   1回あたりの最悪値は `LAUNCH_ATTEMPTS × TRACKING_KICK_ATTEMPTS + (LAUNCH_ATTEMPTS - 1)` 回、
-  生成される値では7回です。しかもこれは、端末が最後まで読み取れないままだった場合に限ります。
+  生成される値では7回です。ただしこれは、起動前の確認のたびに、最後の読み取りで一覧が戻ってきた場合に
+  限ります。最後まで読み取れないままの端末が7回に届くことはありません。最初の確認が3回押したところで
+  AssertionError を投げ、アプリの起動そのものに進まないからです。
   なお `pressHome` は、
   イベントが届かなかったことを例外ではなく false の返り値で報告するので、どちらの結果も記録します。
   この処理は `UiAutomation.executeAndWaitForEvent` の外に置きます。`pressHome` がすでに同じ呼び出しで

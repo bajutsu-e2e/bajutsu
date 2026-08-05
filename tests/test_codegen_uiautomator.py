@@ -142,7 +142,9 @@ def test_a_wedged_window_list_is_kicked_rather_than_waited_out() -> None:
     # same list would satisfy a mere "is the helper defined" assertion while recovering nothing.
     assert (
         body.index("for (attempt in 1..TRACKING_KICK_ATTEMPTS)")
+        < body.index("if (reportsWindows()) return")
         < body.index("kickWindowTracking(")
+        < body.index("if (!reportsWindows()) {")
         < body.index("throw AssertionError(")
     )
     # A kick that never lands fails here, naming the channel — not 15s later at a selector. The
