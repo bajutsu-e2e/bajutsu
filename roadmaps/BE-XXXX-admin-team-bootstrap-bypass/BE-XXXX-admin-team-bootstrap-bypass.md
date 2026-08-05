@@ -96,6 +96,18 @@ has claimed. Admin's `_ADMIN_PATHS` enforcement is already instance-wide regardl
 §"Admin stays one server-wide tier"), so this placement grants a bypassing admin nothing beyond the
 admin role BE-0313 already made server-wide.
 
+This placement inherits an existing sharp edge of the org model rather than introducing a new one:
+`DEFAULT_ORG` ([`bajutsu/serve/orgs.py`](../../bajutsu/serve/orgs.py)) is the literal string
+`"default"`, and nothing stops a deployment from also declaring a real tenant under that same key.
+`targets_for_org` already special-cases that string for target ownership regardless of what such a
+tenant's own `targets:` list says, so a deployment naming a tenant literally `default` already has
+an existing collision this item doesn't create. A bypassing admin who matches no other org is placed
+under the same key, so on a deployment with a real `default` tenant, their user row, audit entries,
+and object-storage prefix land under that tenant rather than a neutral catch-all — the same
+collision, extended to one more caller. A deployment that relies on the admin-Team bypass should
+avoid naming a tenant literally `default` for this reason, on top of the existing target-ownership
+reason to avoid it.
+
 ### Failure mode of the underlying Team fetch is unchanged
 
 `_fetch_teams` ([`bajutsu/serve/server/oauth.py`](../../bajutsu/serve/server/oauth.py)) already fails

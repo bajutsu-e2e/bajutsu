@@ -149,16 +149,13 @@ def _db_state(
     tmp_path: Path,
     oauth: object,
     admin_teams: list[str] | None = None,
-    config: Path | None = None,
 ) -> tuple[ServeState, Engine]:
     from bajutsu.serve.server.db import SqlRepository
     from bajutsu.serve.server.models import Base
 
     engine = serve_engine()
     Base.metadata.create_all(engine)
-    state = _state(
-        tmp_path, oauth=oauth, config=config or _config_file(tmp_path), admin_teams=admin_teams
-    )
+    state = _state(tmp_path, oauth=oauth, config=_config_file(tmp_path), admin_teams=admin_teams)
     state.repository = SqlRepository(engine)
     return state, engine
 
