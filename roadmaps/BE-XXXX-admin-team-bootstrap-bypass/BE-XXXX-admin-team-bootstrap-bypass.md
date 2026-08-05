@@ -173,5 +173,5 @@ This item adds no login-list fallback for that outage case; see *Alternatives co
 - [`bajutsu/serve/state.py`](../../bajutsu/serve/state.py) — `SessionManager`, whose
   `oauth_admin_team` field this item widens to a list.
 - [`docs/self-hosting.md`](../../docs/self-hosting.md) — the self-hosting guide's GitHub OAuth
-  section, which already documents the gap this item closes ("An admin still has to clear the sign-in
-  gate above first").
+  section, which documented the gap this item closes ("An admin still has to clear the sign-in gate
+  above first") until this item removed that caveat.
