@@ -82,21 +82,14 @@ def _place_scenarios_and_binaries_and_check_coherence(
     scenarios_filename: str | None,
     binary_path: Path | None,
 ) -> None:
-    """Place the single-file `scenarios` artifact and the `binary` artifact where each target's
-    config names them, and reject a triple whose config needs an artifact the caller didn't supply —
-    or whose supplied artifact didn't actually land where the config expects. One `load_config` + one
-    pass over `cfg.targets` does it: a target's resolved `scenarios` or `appPath` (iOS/Android) being
-    set requires the matching artifact *and* that path must exist on disk after extraction/placement.
-
-    A zip `scenarios` artifact was already unzipped at the root by the caller, so here it is only
-    checked for existence — catching, for instance, a zip wrapped in an extra top-level folder (this
-    artifact has no "one level down" tolerance, unlike a legacy combined bundle). A single-YAML
-    `scenarios` artifact is instead written here, into the directory the config names (created if
-    absent), since its target isn't known until the config is loaded. `resolve(...).rebased(root)`
-    has already confined every path field to *root* (an escaping `scenarios`/`appPath` raises before
-    any write), so both placements stay inside the tree. A supplied-but-unused artifact (a `binary`
-    uploaded for a scenarios-only config) is not an error — a caller may compose one artifact against
-    several configs that don't all need it."""
+    """Place the single-file `scenarios` artifact and the `binary` artifact where each target's config
+    names them, and reject the triple if a target needs an artifact the caller didn't supply or the
+    supplied artifact didn't land at the expected path. A zip `scenarios` artifact is already unzipped
+    at the root by the caller and only checked for existence here (catching e.g. an extra wrapping
+    folder — no "one level down" tolerance, unlike a legacy bundle); a single-YAML artifact is written
+    into the config-named directory instead, since the target is unknown until the config loads.
+    `resolve(...).rebased(root)` already confines every path to *root*. A supplied-but-unused artifact
+    is not an error — one artifact may be composed against several configs that don't all need it."""
     config_path = root / "bajutsu.config.yaml"
     cfg = load_config(config_path.read_text(encoding="utf-8"))
     placed: set[Path] = set()
