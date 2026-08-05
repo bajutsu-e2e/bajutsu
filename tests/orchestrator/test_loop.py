@@ -769,6 +769,60 @@ def test_screen_changed_read_crashes_loudly_on_a_dead_native_connection() -> Non
     assert driver.calls == 2
 
 
+def test_screen_read_failure_is_cached_not_retried_per_consumer(tmp_path: Path) -> None:
+    """`_ScreenRead` must cache a failed read, not just a successful one: a `web` block step whose
+    scenario fires both the `screenChanged` comparison and a post-step `elements` capture shares
+    one `_ScreenRead` between the two consumers. A torn-down bridge that already failed for the
+    first consumer would fail identically for the second — caching the failure collapses both
+    into a single bridge round-trip instead of paying for the same dead connection twice (review
+    follow-up)."""
+
+    class _AlwaysFailingBridge(_FakeBridge):
+        def __init__(self, dom_elements: list[base.Element]) -> None:
+            super().__init__(dom_elements)
+            self.calls = 0
+
+        def query_dom(self, webview_id: str) -> list[base.Element]:
+            self.calls += 1
+            # Call 1 is the pre-step baseline's own read (succeeds); every call from 2 onward
+            # fails, modeling a bridge that stays dead rather than recovering.
+            if self.calls >= 2:
+                raise ConnectionError("bridge unreachable")
+            return super().query_dom(webview_id)
+
+    native_screen = [el("app.webview", frame=(0.0, 0.0, 400.0, 800.0))]
+    driver = FakeDriver(native_screen)
+    run_dir = tmp_path / "run1"
+    bridge = _AlwaysFailingBridge([])
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "x",
+                "steps": [
+                    {
+                        "web": {
+                            "within": {"id": "app.webview"},
+                            "steps": [{"type": {"text": "hi"}}],
+                        }
+                    }
+                ],
+                "capturePolicy": [
+                    {"on": {"event": "screenChanged"}, "capture": ["screenshot.before"]},
+                    {"on": {"action": "type"}, "capture": ["elements"]},
+                ],
+            }
+        ),
+        clock=FakeClock(),
+        sink=FileSink(run_dir),
+        webview_bridge=bridge,
+    )
+    assert result.ok, result.failure
+    # Exactly one failing round-trip: the shared `_ScreenRead` serves both the screenChanged
+    # comparison and the post-step elements capture from the same cached failure.
+    assert bridge.calls == 2
+
+
 def test_pre_step_query_marks_prev_after_fresh_for_the_interrupt_guard(tmp_path: Path) -> None:
     """The pre-step baseline's own `active_driver.query()` for a `web` block's first nested step
     (BE-XXXX) must count as a *fresh* read for the interrupt guard's `before_is_fresh` bookkeeping,
