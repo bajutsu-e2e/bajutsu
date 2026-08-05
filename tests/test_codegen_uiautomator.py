@@ -223,7 +223,7 @@ def test_failure_messages_name_the_windows_that_were_searched() -> None:
     # "no element matched <selector>" cannot distinguish an id that has not rendered from an app
     # whose window is absent from the accessibility tree altogether — the two need opposite fixes.
     code = _gen("- name: x\n  steps:\n    - tap: { id: a }\n")
-    assert "Configurator.getInstance().uiAutomationFlags).windows" in code
+    assert "accessibilityWindows()" in _fn_body(code, "windowSummary", "matchableIds")
     assert 'root=${window.root?.packageName ?: "<null>"} $window' in code
     assert 'within ${ACT_TIMEOUT_MS}ms; windows:\\n" + windowSummary()' in code
 
