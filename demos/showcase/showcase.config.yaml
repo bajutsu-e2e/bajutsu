@@ -148,12 +148,13 @@ targets:
     backend: [android]
     scenarios: scenarios
     # ANR dialog ("<process> isn't responding") can surface from the OS/launcher at an
-    # unpredictable point during a run, unrelated to this app's own state. aerr_wait is
-    # the AOSP app_error_dialog.xml's fixed, locale-independent resource-id, so `interrupts`
-    # (BE-0314) — Android's substitute for iOS's native alert guard (BE-0315/0316), which has no
-    # equivalent here (bajutsu/drivers/adb.py's handle_system_alert is intentionally unsupported) —
-    # can dismiss it deterministically wherever it appears. Same interrupts block on every Android
-    # target below: the dialog is OS-owned, not app-specific.
+    # unpredictable point during a run, unrelated to this app's own state. aerr_wait is the Wait
+    # button's fixed, locale-independent resource-id in AOSP's app_anr_dialog.xml, named here in
+    # the local form the adb driver reports (it strips the `android:id/` prefix a uiautomator dump
+    # shows), so `interrupts` (BE-0314) — Android's substitute for iOS's native alert guard
+    # (BE-0315/0316), which has no equivalent here (bajutsu/drivers/adb.py's handle_system_alert is
+    # intentionally unsupported) — can dismiss it deterministically wherever it appears. Same
+    # interrupts block on every Android target below: the dialog is OS-owned, not app-specific.
     interrupts:
       - condition: { exists: { id: [aerr_wait] } }
         steps:
