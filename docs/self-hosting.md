@@ -383,9 +383,10 @@ hand-maintained login list:
 - **Editor** follows the org's `editorTeam`: a direct member of that one flat GitHub Team may run,
   record, and edit scenarios.
 - **Admin** follows one or more server-wide GitHub Teams, `BAJUTSU_OAUTH_ADMIN_TEAMS` (a
-  comma-separated list, each written `"<github-org>/<team-slug>"`), whose members also change server
-  settings (config / API key / provider). Admin is a single deployment-wide tier, so name a Team
-  whose members you trust across every org. Unlike the viewer/editor roles above, a member of any
+  comma-separated list, each written `"<github-org>/<team-slug>"`, where `<team-slug>` is GitHub's
+  own lowercased slug and not the Team's display name), whose members also change server settings
+  (config / API key / provider). Admin is a single deployment-wide tier, so name only Teams whose
+  members you trust across every org. Unlike the viewer/editor roles above, a member of any
   configured admin Team clears the sign-in gate directly — the Team's GitHub organization does
   *not* need to appear in any org's `githubOrgs` or `members` — so an admin can always sign in and
   repoint the server at a corrected config even when the `orgs:` block is broken or missing

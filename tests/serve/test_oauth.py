@@ -266,16 +266,20 @@ def test_oauth_callback_org_member_does_not_log_a_bypass_warning(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
     # alice is an explicit org member *and* an admin-Team member: the ordinary org gate admits her,
-    # so the bypass never fires -- the warning must record the bypass, not admin-Team membership.
+    # so the bypass never fires -- oauth.login must still record the login, but with bypass=False,
+    # not the "admin-Team bypass" message that only a bypassing admission gets.
     state = _state(
         tmp_path,
         oauth=FakeOAuthClient(login="alice", teams=["ops-gh/root"]),
         config=_config_file(tmp_path),
         admin_teams=["ops-gh/root"],
     )
-    with caplog.at_level(logging.WARNING):
+    with caplog.at_level(logging.INFO):
         ops.oauth_callback(state, code="ok", state_param="s", state_cookie="s")
     assert "admin-Team bypass" not in caplog.text
+    record = next(r for r in caplog.records if getattr(r, "event", None) == "oauth.login")
+    assert record.bypass is False
+    assert record.actor == "alice"
 
 
 def test_oauth_callback_admin_team_bypasses_the_org_gate_with_no_orgs_block(

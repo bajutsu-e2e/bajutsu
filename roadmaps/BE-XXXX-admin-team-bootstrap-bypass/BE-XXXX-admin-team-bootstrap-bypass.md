@@ -93,13 +93,22 @@ alongside `identity_matches_org`: a login whose `identity.teams` intersects the 
 list clears the sign-in gate regardless of what `identity_matches_org` returns. An admin Team member
 then signs in even when no `orgs:` entry lists their GitHub organization, or when `orgs:` is absent
 altogether. A login that satisfies neither check is still rejected exactly as today. Every time the
-bypass alone admits a login, `oauth_callback` records it through `oplog.log_event`
+successful sign-in, `oauth_callback` now records it through `oplog.log_event`
 ([`bajutsu/serve/oplog.py`](../../bajutsu/serve/oplog.py)), under the already-reserved `"oauth.login"`
 event and the login itself as the `actor` correlation field — not a bare logging call, so the record
 carries the same registered event name, redaction, and correlation fields every other
 operationally-significant record in `serve` already does, and an operator's alert keyed on `event`
-can actually see it. The bypass is the one sign-in path `orgs:` did not authorize, so it is the one
-path an operator auditing who signed in, and when, would otherwise have no record of at all.
+can actually see it. `"oauth.login"` was reserved in `oplog.EVENTS` before this item but never
+actually emitted, so this item is what makes the event fire at all — and it fires for every sign-in,
+not only a bypassing one: an event that only ever recorded bypasses would make `event=oauth.login`
+mean "bypass count" instead of "login count," the opposite of what an operator building an alert on
+that event name would expect. A per-record `bypass` field (`True` only when the admin-Team bypass,
+not `orgs:`, is what admitted the login) and the message and level vary accordingly — `WARNING` and
+an "admin-Team bypass admitted …" message for a bypass, `INFO` and a plain "… signed in" message
+otherwise — so the field carries real information instead of being a constant `True` on every record.
+The bypass remains the one sign-in path `orgs:` did not authorize, so it is the one path an operator
+auditing who signed in, and when, would otherwise have no record of at all; the `bypass` field is what
+lets that same event stream distinguish it from an ordinary org-gated login.
 
 The membership test behind that check — is any of a login's Teams in the configured admin list — is
 also the test `role_for` uses to resolve the admin role, so this item factors it into one shared
@@ -108,6 +117,21 @@ in two functions ~120 lines apart could drift apart under a later, independent e
 a login the gate's copy admits but the role's copy doesn't would sign in and resolve to `viewer`, a
 session for a login `orgs:` never authorized and with none of the admin access that was the reason to
 admit it. One helper makes that drift impossible by construction.
+
+`in_admin_team` case-folds both sides of that membership test. GitHub resolves an org login and a
+Team slug case-insensitively, and a real GitHub org login can be stored mixed-case even though a Team
+slug is always lowercased (the same fact the malformed-entry regex above already relies on) — so an
+`admin_teams` entry whose organization half carries whatever case GitHub stores it in must still match
+a login's exact-case `identity.teams` membership, and vice versa. Without folding, this item's own
+sign-in bypass would carry a latent case-sensitivity trap the pre-existing `editorTeam` role check
+does not: an `editorTeam` is written once by an operator who controls its case and is compared against
+the same GitHub-reported case every time, but an `admin_teams` entry authored from a GitHub org page
+that happens to display mixed case, or copied before an org rename changed its stored case, would
+silently stop matching a login it is supposed to admit — the same "no admin, no visible cause" failure
+the malformed-entry warning above already exists to prevent, just unreachable by that check since a
+case mismatch is syntactically well-formed. Folding never turns an empty team name into a match —
+`admin_teams` never contains `""`, since the comma-split that builds it filters on `t.strip()` — and
+does not affect the nested-Team guarantee below, which rests on the `/` count, not on case.
 
 ### Role resolution is unaffected in shape, only in name
 
@@ -147,10 +171,21 @@ match, for a login a real org *does* claim. Without a correction, that one-off u
 relocate an existing org member to `default` on every such failure — their user row, audit
 attribution, and object-storage prefix all moving until their next clean login moves them back, an
 outcome the placement logic above never intends for someone `orgs:` already claims. `oauth_callback`
-avoids this: when the bypass, not `orgs:`, is what admitted a login, it keeps whatever org
+avoids this, but only for that specific failure shape: when the bypass, not `orgs:`, is what admitted
+a login, *and* `identity.orgs` came back empty — the signature `_fetch_orgs` leaves on any fetch
+error, since it fails closed to `[]` rather than raising — it keeps whatever org
 `state.repository.user_org` already has on record for that login instead of recomputing one, falling
 to `org_for_identity`'s `default` result only when no prior record exists — the genuine first-time
-bootstrap case this section is actually about.
+bootstrap case this section is actually about. A login whose `identity.orgs` came back non-empty but
+still matched nothing in `orgs:` is not this case: GitHub answered the fetch, so that login is
+genuinely un-claimed, whether because this is its first sign-in or because an operator has since
+removed it from every configured org. That login re-resolves through `org_for_identity` like any
+other, exactly as BE-0015 7c-2 already requires role resolution to do on every login — leaving `orgs:`
+must take effect on the next sign-in, not stay pinned to whatever org a now-departed member happened
+to hold before. Guarding the preservation on `not identity.orgs` is what keeps those two cases
+apart: without it, a revoked member's org would never re-resolve, since no future login could ever
+re-match `orgs:` once genuinely revoked, silently contradicting the same recompute-every-login
+principle a few lines below for the role.
 
 This placement inherits an existing sharp edge of the org model rather than introducing a new one:
 `DEFAULT_ORG` ([`bajutsu/serve/orgs.py`](../../bajutsu/serve/orgs.py)) is the literal string
