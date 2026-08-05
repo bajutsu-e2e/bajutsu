@@ -188,14 +188,14 @@ _EDITOR_PATHS = frozenset(
 )
 
 
-def in_admin_team(teams: Sequence[str], admin_teams: Sequence[str]) -> bool:
+def in_admin_team(teams: Sequence[str], admin_teams: tuple[str, ...]) -> bool:
     """Whether any of *teams* is a server-wide admin Team — the one membership test behind both the
     admin role below and `oauth_callback`'s admin-Team sign-in bypass, so the gate that admits a
     bypassing login and the role it resolves to can never drift apart."""
     return any(team in admin_teams for team in teams)
 
 
-def role_for(*, teams: Sequence[str], editor_team: str | None, admin_teams: Sequence[str]) -> str:
+def role_for(*, teams: Sequence[str], editor_team: str | None, admin_teams: tuple[str, ...]) -> str:
     """The role for a login from its GitHub Team memberships (BE-0313): admin if a member of any of
     the server-wide *admin_teams*, editor if a member of the resolved org's *editor_team*, else viewer
     (the base role every signed-in user gets). *teams* are `"<github-org>/<team-slug>"` direct
