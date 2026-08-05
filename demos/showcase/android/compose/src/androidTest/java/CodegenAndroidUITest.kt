@@ -78,9 +78,9 @@ class CodegenandroiduitestUITest {
   // to — the fact that separates "the element has not rendered yet" from "this app's
   // window is not in the tree at all".
   //
-  // Never throws. The summary only ever explains a failure, and the callers below build it
-  // into the message of the AssertionError they are about to raise — so a fault in reading
-  // the windows would replace the failure's own message with a worse one.
+  // Never throws. Callers on the failure path build it into the message of the AssertionError
+  // they are about to raise, and callers that are still retrying log it as evidence — so a fault
+  // in reading the windows would cost the very fact each of them was collecting.
   private fun windowSummary(): String = runCatching {
     val windows = accessibilityWindows()
     if (windows.isEmpty()) {
