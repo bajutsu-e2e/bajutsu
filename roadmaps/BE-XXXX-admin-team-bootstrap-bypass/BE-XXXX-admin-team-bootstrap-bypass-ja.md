@@ -178,5 +178,5 @@ Organization メンバーシップのゲート単独が与える結果に戻り�
 - [`bajutsu/serve/state.py`](../../bajutsu/serve/state.py)。`SessionManager` であり、この項目は
   その `oauth_admin_team` フィールドをリストへ広げます。
 - [`docs/ja/self-hosting.md`](../../docs/ja/self-hosting.md)。self-hosting ガイドの GitHub OAuth の節
-  であり、この項目が塞ぐ隙間をすでに文書化しています（「まず上記のサインインのゲートを通過する
-  必要があります」）。
+  です。この項目が塞ぐ隙間は、この項目が取り除くまで、ここに「まず上記のサインインのゲートを
+  通過する必要があります」として書かれていました。

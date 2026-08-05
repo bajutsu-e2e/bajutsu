@@ -257,13 +257,13 @@ def test_oauth_callback_admin_team_bypasses_the_org_gate_with_no_orgs_block(
 def test_oauth_callback_admin_team_bypass_resolves_to_admin_role(
     serve_engine: Callable[..., Engine], tmp_path: Path
 ) -> None:
-    body = "targets:\n  demo: { bundleId: com.example.demo }\n"
+    # An `orgs:` block IS declared (`_ORGS_YAML`'s `acme`) and mallory matches none of it — the
+    # case BE-0313 called unreachable through OAuth sign-in.
     state, _ = _db_state(
         serve_engine,
         tmp_path,
         FakeOAuthClient(login="mallory", teams=["ops-gh/root"]),
         admin_teams=["ops-gh/root"],
-        config=_config_file(tmp_path, body),
     )
     assert _role_after_login(state, "mallory") == "admin"
 
@@ -276,13 +276,13 @@ def test_oauth_callback_admin_team_bypass_places_the_user_in_the_default_org(
 
     from bajutsu.serve.server.models import Org
 
-    body = "targets:\n  demo: { bundleId: com.example.demo }\n"
+    # An `orgs:` block IS declared (`_ORGS_YAML`'s `acme`) and mallory matches none of it — the
+    # case BE-0313 called unreachable through OAuth sign-in, so `default` is created by the bypass.
     state, engine = _db_state(
         serve_engine,
         tmp_path,
         FakeOAuthClient(login="mallory", teams=["ops-gh/root"]),
         admin_teams=["ops-gh/root"],
-        config=_config_file(tmp_path, body),
     )
     _payload, status, sid = ops.oauth_callback(state, code="ok", state_param="s", state_cookie="s")
     assert status == 200 and sid is not None
