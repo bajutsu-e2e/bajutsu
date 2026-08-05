@@ -891,15 +891,19 @@ class _StepRunner:
         A torn-down WebView context must not crash a step whose pass/fail outcome doesn't depend
         on `read` (prime directive 1) — but the identical failure on the native driver is a dead
         device connection, which must still surface loudly, so it re-raises there instead. Shared
-        by every capture-only read a `web` block can fail (the pre-step baseline, the
-        `screenChanged` comparison, the wait-timeout diagnostic, and the post-step `elements`
-        capture) so the native/web policy lives in one place instead of four hand-copied guards.
+        by the capture-only reads of the post-step sequence a `web` block can fail (the pre-step
+        baseline, the `screenChanged` comparison, and the post-step `elements` capture); the
+        pre-act `before` read at the top of `_handle_action` is a pre-existing, still-unguarded
+        exposure of the same shape. The wait-timeout diagnostic also calls this, but wraps the
+        result in its own `except OSError` to stay best-effort on the native driver too — that read
+        only enriches an already-decided timeout, so even a native failure there must not replace
+        the real reason with a crash.
         `ConnectionError` is a subclass of `OSError`, so the tuple below already covers it.
 
-        `level` defaults to a quiet debug line — losing one of the always-on baseline artifacts a
-        `NullSink` would discard anyway. A caller that drops a scenario author's own named
-        `capturePolicy` rule instead (`screenChanged`) passes `logging.WARNING`, since that silently
-        skips evidence the author explicitly asked for.
+        `level` defaults to a quiet debug line — losing the pre-step baseline, which a `NullSink`
+        would discard anyway. Every other caller drops evidence a scenario author asked for by
+        name (a `capturePolicy` rule, or the `screenChanged` comparison it depends on) and passes
+        `logging.WARNING` instead.
         """
         try:
             return read()
@@ -1174,9 +1178,23 @@ class _StepRunner:
         # `polls > 0` fires only after a `for`-wait ran (only that branch records the trace), so
         # the trigger is a structural fact, not the wording of the timeout message.
         if wait_trace is not None and not ok and wait_trace.polls > 0:
-            diag_elements = self._read_evidence(
-                active_driver, step_id, "wait-timeout diagnostic", screen.get
-            )
+            # Unlike the other three `_read_evidence` callers, this one stays best-effort on the
+            # native driver too: the step already failed cleanly on its own timeout, and this read
+            # only tries to enrich that failure's evidence — a dead native connection here must not
+            # replace the real timeout reason with a crash, so `_read_evidence`'s native re-raise is
+            # caught right back and downgraded to the same "drop the diagnostic" outcome as a web
+            # failure.
+            try:
+                diag_elements = self._read_evidence(
+                    active_driver,
+                    step_id,
+                    "wait-timeout diagnostic",
+                    screen.get,
+                    level=logging.WARNING,
+                )
+            except OSError as exc:
+                _logger.warning("dropping wait-timeout diagnostic: read failed: %s", exc)
+                diag_elements = None
             if diag_elements is not None:
                 try:
                     art = self.cfg.sink.wait_diagnostic(
@@ -1221,7 +1239,11 @@ class _StepRunner:
         els = screen.cached
         if wants_web_elements:
             fresh = self._read_evidence(
-                active_driver, step_id, "post-step elements capture", screen.get
+                active_driver,
+                step_id,
+                "post-step elements capture",
+                screen.get,
+                level=logging.WARNING,
             )
             if fresh is None:
                 # `screenshot`/`actionLog` in `instant` still fire.
