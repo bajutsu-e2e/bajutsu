@@ -1,14 +1,14 @@
-[English](BE-XXXX-prose-companion-pr.md) · **日本語**
+[English](BE-0343-prose-companion-pr.md) · **日本語**
 
-# BE-XXXX — Claude review の言い回しのみの指摘を、コード PR の CI サイクルを回さずに解消する companion PR ワークフローを追加する
+# BE-0343 — Claude review の言い回しのみの指摘を、コード PR の CI サイクルを回さずに解消する companion PR ワークフローを追加する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-prose-companion-pr-ja.md) |
+| 提案 | [BE-0343](BE-0343-prose-companion-pr-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0343") |
 | トピック | コントリビューターワークフロー |
 | 関連 | [BE-0203](../BE-0203-claude-code-pr-review/BE-0203-claude-code-pr-review-ja.md)、[BE-0222](../BE-0222-daily-doc-freshness-pr/BE-0222-daily-doc-freshness-pr-ja.md) |
 <!-- /BE-METADATA -->
