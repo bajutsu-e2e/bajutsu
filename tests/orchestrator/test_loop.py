@@ -2,12 +2,26 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 from _orch import FakeClock, _scenario
 from conftest import el
 
+from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
+from bajutsu.evidence import FileSink
 from bajutsu.orchestrator import run_scenario
-from bajutsu.scenario import Relaunch
+from bajutsu.scenario import Interrupt, Relaunch
+
+
+class _QueryLoggingDriver(FakeDriver):
+    """A `FakeDriver` that also logs `query()` into `actions`, so a test can order it against
+    `screenshot()` (already logged) and the step's own action (BE-0341)."""
+
+    def query(self) -> list[base.Element]:
+        self.actions.append(("query", None))
+        return super().query()
 
 
 def test_happy_path_tap_and_expect() -> None:
@@ -263,3 +277,503 @@ def test_step_level_assert_drops_schema_context() -> None:
     )
     assert not result.ok
     assert result.failure is not None and "no schema context" in result.failure
+
+
+# --- pre-step report evidence capture (BE-0341) --------------------------------------------------
+
+
+def test_pre_step_capture_precedes_a_mutating_action(tmp_path: Path) -> None:
+    """The report's screenshot for a `tap` step is taken before the tap runs, not after."""
+    driver = FakeDriver([el("go", "Go", ["button"]), el("next", "Next", ["button"])])
+    run_scenario(
+        driver,
+        _scenario({"name": "x", "steps": [{"tap": {"id": "go"}}, {"tap": {"id": "next"}}]}),
+        clock=FakeClock(),
+        sink=FileSink(tmp_path / "run1"),
+    )
+    first_screenshot = next(i for i, (kind, _) in enumerate(driver.actions) if kind == "screenshot")
+    first_tap = next(i for i, (kind, _) in enumerate(driver.actions) if kind == "tap")
+    assert first_screenshot < first_tap
+
+
+def test_pre_step_capture_precedes_a_non_mutating_step(tmp_path: Path) -> None:
+    """The report's screenshot for an `assert`/`wait` step is taken before it reads the tree to
+    evaluate itself — not just before a mutating action. `capture()`'s own token order always
+    writes the screenshot before it (if needed) queries the tree for `elements.json`
+    (`screenshot.before` precedes `elements` in the pre-step call), and the whole call runs before
+    `_run_step_body`, so the first screenshot logged precedes the first tree query logged either
+    way — whether that query came from the capture's own fallback or the assertion's own read.
+    """
+    driver = _QueryLoggingDriver([el("home.title", "ホーム")])
+    run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "x",
+                "steps": [
+                    {"assert": [{"exists": {"id": "home.title"}}]},
+                    {"wait": {"for": {"id": "home.title"}, "timeout": 1}},
+                ],
+            }
+        ),
+        clock=FakeClock(),
+        sink=FileSink(tmp_path / "run1"),
+    )
+    first_screenshot = next(i for i, (kind, _) in enumerate(driver.actions) if kind == "screenshot")
+    first_query = next(i for i, (kind, _) in enumerate(driver.actions) if kind == "query")
+    assert first_screenshot < first_query
+
+
+def test_last_step_gets_a_final_capture_earlier_steps_do_not(tmp_path: Path) -> None:
+    """Only the scenario's last step gets a post-step baseline too — every step already gets the
+    pre-step one, but only the last has no following step to carry its result forward (BE-0341)."""
+    driver = FakeDriver([el("a", "A", ["button"]), el("b", "B", ["button"])])
+    run_dir = tmp_path / "run1"
+    result = run_scenario(
+        driver,
+        _scenario({"name": "x", "steps": [{"tap": {"id": "a"}}, {"tap": {"id": "b"}}]}),
+        clock=FakeClock(),
+        sink=FileSink(run_dir),
+    )
+    assert result.ok
+    step0_kinds = {a.kind for a in result.steps[0].artifacts}
+    step1_kinds = {a.kind for a in result.steps[1].artifacts}
+    step0_names = {a.name for a in result.steps[0].artifacts}
+    step1_names = {a.name for a in result.steps[1].artifacts}
+    assert step0_kinds == {"screenshot", "elements"}
+    assert step1_kinds == {"screenshot", "elements"}
+    # Only the first step's screenshot is the pre-step one; the last step's is the final one.
+    assert any(name.endswith("before.png") for name in step0_names)
+    assert any(name.endswith("after.png") for name in step1_names)
+    assert not any(name.endswith("after.png") for name in step0_names)
+
+
+def test_final_capture_does_not_duplicate_a_rule_fired_after_png(tmp_path: Path) -> None:
+    """When a `capturePolicy` rule already fires `screenshot.after` post-step on the scenario's
+    last (and only) leaf step — e.g. a `result: error` safety net on a failing final step — the
+    final capture must not re-shoot and duplicate `after.png` (review follow-up): the rule's own
+    shot already satisfies the same contract the final capture exists for."""
+    driver = FakeDriver([el("a", "A", ["button"])])
+    run_dir = tmp_path / "run1"
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "x",
+                "capturePolicy": [{"on": {"result": "error"}, "capture": ["screenshot.after"]}],
+                "steps": [{"tap": {"id": "missing"}}],
+            }
+        ),
+        clock=FakeClock(),
+        sink=FileSink(run_dir),
+    )
+    assert not result.ok
+    after_artifacts = [
+        a
+        for a in result.steps[0].artifacts
+        if a.kind == "screenshot" and a.name.endswith("after.png")
+    ]
+    assert len(after_artifacts) == 1
+
+
+def test_a_step_that_fails_before_it_acts_still_gets_its_full_evidence_pair(
+    tmp_path: Path,
+) -> None:
+    """A step that fails resolving `handleSystemAlert`'s label against an uncovered locale returns
+    early, before the `last_leaf` assignment at the end of `_handle_action` — but the pre-step
+    baseline itself runs *before* locale resolution, so this failure still gets the same complete
+    `before.png`/`elements.json`/`after.png` evidence set every other leaf step does (review
+    follow-up). Without also setting `last_leaf` in that except block, the final capture would
+    either land on a stale, earlier step or (for a single-step scenario, as here) never fire at
+    all."""
+    driver = FakeDriver([el("a", "A", ["button"])])
+    run_dir = tmp_path / "run1"
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "x",
+                "steps": [
+                    {
+                        "handleSystemAlert": {
+                            "prompt": "notifications",
+                            "choice": "grant",
+                            "timeout": 5,
+                        }
+                    }
+                ],
+            }
+        ),
+        clock=FakeClock(),
+        sink=FileSink(run_dir),
+        locale="de_DE",
+    )
+    assert not result.ok
+    assert result.failure is not None and "language 'de'" in result.failure
+    step0_names = {a.name for a in result.steps[0].artifacts}
+    assert any(name.endswith("before.png") for name in step0_names)
+    assert any(name.endswith("elements.json") for name in step0_names)
+    assert any(name.endswith("after.png") for name in step0_names)
+
+
+def test_final_capture_lands_on_the_last_leaf_step_inside_an_if(tmp_path: Path) -> None:
+    """A scenario ending in an `if` still gets its final capture on the last *leaf* step actually
+    run, not on the `if` container's own (artifact-less) outcome (BE-0341)."""
+    driver = FakeDriver([el("a", "A", ["button"]), el("b", "B", ["button"])])
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "x",
+                "steps": [
+                    {"tap": {"id": "a"}},
+                    {
+                        "if": {
+                            "condition": {"exists": {"id": "b"}},
+                            "then": [{"tap": {"id": "b"}}],
+                        }
+                    },
+                ],
+            }
+        ),
+        clock=FakeClock(),
+        sink=FileSink(tmp_path / "run1"),
+    )
+    assert result.ok
+    # The `if` container's own outcome carries no capture artifacts; the nested `tap` it ran does.
+    if_outcome = next(s for s in result.steps if s.action == "if_")
+    leaf_outcome = next(s for s in result.steps if s.action == "tap" and s.index != 0)
+    assert if_outcome.artifacts == []
+    leaf_names = {a.name for a in leaf_outcome.artifacts}
+    assert any(name.endswith("before.png") for name in leaf_names)
+    assert any(name.endswith("after.png") for name in leaf_names)
+
+
+def test_final_capture_lands_on_the_last_leaf_step_inside_a_for_each(tmp_path: Path) -> None:
+    """A scenario ending in a `forEach` with matches still gets its final capture on the last
+    iteration's last leaf step, not the `forEach` container's own (artifact-less) outcome, and not
+    an earlier iteration's step (BE-0341)."""
+    driver = FakeDriver(
+        [
+            el("a", "A", ["button"]),
+            el("item.1", "Item 1", ["cell"]),
+            el("item.2", "Item 2", ["cell"]),
+        ]
+    )
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "x",
+                "steps": [
+                    {"tap": {"id": "a"}},
+                    {
+                        "forEach": {
+                            "sel": {"idMatches": "item.*"},
+                            "as": "current",
+                            "steps": [{"tap": {"id": "${vars.current}"}}],
+                        }
+                    },
+                ],
+            }
+        ),
+        clock=FakeClock(),
+        sink=FileSink(tmp_path / "run1"),
+    )
+    assert result.ok, result.failure
+    for_each_outcome = next(s for s in result.steps if s.action == "for_each")
+    assert for_each_outcome.artifacts == []
+    iteration_taps = [s for s in result.steps if s.action == "tap" and s.index != 0]
+    assert len(iteration_taps) == 2  # both items matched
+    first_iter_names = {a.name for a in iteration_taps[0].artifacts}
+    last_iter_names = {a.name for a in iteration_taps[-1].artifacts}
+    # Only the last iteration's tap gets the final capture; an earlier iteration gets only its
+    # own pre-step baseline.
+    assert any(name.endswith("before.png") for name in first_iter_names)
+    assert not any(name.endswith("after.png") for name in first_iter_names)
+    assert any(name.endswith("before.png") for name in last_iter_names)
+    assert any(name.endswith("after.png") for name in last_iter_names)
+
+
+def test_final_capture_lands_on_the_last_leaf_step_before_a_no_match_for_each(
+    tmp_path: Path,
+) -> None:
+    """A trailing `forEach` that matches nothing never calls `_handle_action`, so it must not
+    silently swallow the final capture: it still lands on the last leaf step that actually ran
+    before it (BE-0341)."""
+    driver = FakeDriver([el("a", "A", ["button"])])  # no `item.*` elements to match
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "x",
+                "steps": [
+                    {"tap": {"id": "a"}},
+                    {
+                        "forEach": {
+                            "sel": {"idMatches": "item.*"},
+                            "as": "current",
+                            "steps": [{"tap": {"id": "${vars.current}"}}],
+                        }
+                    },
+                ],
+            }
+        ),
+        clock=FakeClock(),
+        sink=FileSink(tmp_path / "run1"),
+    )
+    assert result.ok, result.failure
+    tap_outcome = next(s for s in result.steps if s.action == "tap")
+    names = {a.name for a in tap_outcome.artifacts}
+    assert any(name.endswith("before.png") for name in names)
+    assert any(name.endswith("after.png") for name in names)
+
+
+class _FakeBridge:
+    """Minimal `DomSource` for a `web` block: canned DOM elements, no-op writes."""
+
+    def __init__(self, dom_elements: list[base.Element]) -> None:
+        self._elements = dom_elements
+
+    def query_dom(self, webview_id: str) -> list[base.Element]:
+        return self._elements
+
+    def tap_element(self, webview_id: str, point: base.Point) -> None:
+        pass
+
+    def type_text(self, webview_id: str, text: str) -> None:
+        pass
+
+    def scroll_to(self, webview_id: str, element_id: str) -> None:
+        pass
+
+
+def test_pre_step_capture_queries_the_web_driver_for_a_blocks_first_nested_step(
+    tmp_path: Path,
+) -> None:
+    """The pre-step baseline for a `web` block's first nested step queries the *web* driver, not
+    the native one, since `prev_after` is reset to `None` around the whole block (BE-0234 Unit 2)
+    and the sink call always targets the native driver otherwise (BE-0341) — proven by content:
+    the DOM-only element must appear in the written elements.json. The scenario's final capture
+    (screenshot only, added since this is also the last step) never touches `elements` at all, so
+    it needs no web-driver interaction of its own."""
+    native_screen = [el("app.webview", frame=(0.0, 0.0, 400.0, 800.0))]
+    dom_elements: list[base.Element] = [
+        el("confirm", "Confirm", ["button"], frame=(10.0, 10.0, 100.0, 20.0))
+    ]
+    bridge = _FakeBridge(dom_elements)
+    driver = FakeDriver(native_screen)
+    run_dir = tmp_path / "run1"
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "x",
+                "steps": [
+                    {
+                        "web": {
+                            "within": {"id": "app.webview"},
+                            "steps": [{"tap": {"id": "confirm"}}],
+                        }
+                    }
+                ],
+            }
+        ),
+        clock=FakeClock(),
+        sink=FileSink(run_dir),
+        webview_bridge=bridge,
+    )
+    assert result.ok, result.failure
+    leaf_outcome = next(s for s in result.steps if s.action == "tap")
+    els_artifact = next(a for a in leaf_outcome.artifacts if a.kind == "elements")
+    written = json.loads((run_dir / els_artifact.name).read_text(encoding="utf-8"))
+    assert any(e["identifier"] == "confirm" for e in written)  # the DOM tree, not the native one
+    # Exactly one `elements` entry: the final capture (this is also the last step) adds only a
+    # second screenshot, never a second `elements`.
+    assert sum(1 for a in leaf_outcome.artifacts if a.kind == "elements") == 1
+    names = {a.name for a in leaf_outcome.artifacts}
+    assert any(name.endswith("before.png") for name in names)
+    assert any(name.endswith("after.png") for name in names)
+
+
+def test_pre_step_capture_downgrades_to_screenshot_only_when_web_query_fails(
+    tmp_path: Path,
+) -> None:
+    """A `web` block's first nested step still gets its native `screenshot.before` when the bridge
+    query fails: only `elements` needs the web driver, so the pre-step baseline drops just that
+    token rather than the whole capture (BE-0341 review follow-up). The bridge recovers for the
+    post-step read (an unrelated, pre-existing capture path), modeling a transient hiccup rather
+    than a permanently dead bridge."""
+
+    class _FlakyBridge(_FakeBridge):
+        def __init__(self, dom_elements: list[base.Element]) -> None:
+            super().__init__(dom_elements)
+            self.calls = 0
+
+        def query_dom(self, webview_id: str) -> list[base.Element]:
+            self.calls += 1
+            if self.calls == 1:
+                raise ConnectionError("bridge unreachable")
+            return super().query_dom(webview_id)
+
+    native_screen = [el("app.webview", frame=(0.0, 0.0, 400.0, 800.0))]
+    driver = FakeDriver(native_screen)
+    run_dir = tmp_path / "run1"
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "x",
+                "steps": [
+                    {
+                        "web": {
+                            "within": {"id": "app.webview"},
+                            "steps": [{"type": {"text": "hi"}}],
+                        }
+                    }
+                ],
+            }
+        ),
+        clock=FakeClock(),
+        sink=FileSink(run_dir),
+        webview_bridge=_FlakyBridge([]),
+    )
+    assert result.ok, result.failure
+    leaf_outcome = next(s for s in result.steps if s.action == "type")
+    names = {a.name for a in leaf_outcome.artifacts}
+    assert any(name.endswith("before.png") for name in names)
+    assert not any(a.kind == "elements" for a in leaf_outcome.artifacts)
+
+
+def test_pre_step_query_marks_prev_after_fresh_for_the_interrupt_guard(tmp_path: Path) -> None:
+    """The pre-step baseline's own `active_driver.query()` for a `web` block's first nested step
+    (BE-0341) must count as a *fresh* read for the interrupt guard's `before_is_fresh` bookkeeping,
+    not just for `prev_after` — otherwise, with a `screenChanged` policy configured, the guard sees
+    `before_is_fresh=False` for a tree it did not actually need to re-read and pays a redundant
+    second `query_dom()` (review follow-up)."""
+
+    class _CountingBridge(_FakeBridge):
+        def __init__(self, dom_elements: list[base.Element]) -> None:
+            super().__init__(dom_elements)
+            self.calls = 0
+
+        def query_dom(self, webview_id: str) -> list[base.Element]:
+            self.calls += 1
+            return super().query_dom(webview_id)
+
+    native_screen = [el("app.webview", frame=(0.0, 0.0, 400.0, 800.0))]
+    dom_elements: list[base.Element] = [el("field", "Field", ["textField"])]
+    bridge = _CountingBridge(dom_elements)
+    driver = FakeDriver(native_screen)
+    run_dir = tmp_path / "run1"
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "x",
+                "capturePolicy": [
+                    {"on": {"event": "screenChanged"}, "capture": ["screenshot.before"]}
+                ],
+                "steps": [
+                    {
+                        "web": {
+                            "within": {"id": "app.webview"},
+                            "steps": [{"type": {"text": "hi"}}],
+                        }
+                    }
+                ],
+            }
+        ),
+        clock=FakeClock(),
+        sink=FileSink(run_dir),
+        webview_bridge=bridge,
+        interrupts=[
+            Interrupt.model_validate(
+                {"condition": {"exists": {"id": "never.matches"}}, "steps": [{"tap": {"id": "x"}}]}
+            )
+        ],
+    )
+    assert result.ok, result.failure
+    # Two queries: the pre-step baseline's own, and the pre-existing, unrelated post-step read
+    # every web-block step already pays (BE-0234 Unit 2, out of scope here). Without this fix, the
+    # interrupt guard's `before_is_fresh` check sees the pre-step tree as stale and pays a third,
+    # redundant `query_dom()`.
+    assert bridge.calls == 2
+
+
+def test_pre_step_and_final_captures_write_content_from_the_same_pre_action_moment(
+    tmp_path: Path,
+) -> None:
+    """Content check, not just call ordering: every step's elements.json holds the pre-action tree
+    it acted on — including the scenario's last step, whose final capture only adds a screenshot
+    (`after.png`), never re-capturing `elements` (BE-0341). `elements.json` has one fixed filename,
+    so if the final capture re-wrote it, the last step's `elements.json` would silently disagree
+    with the `before.png` the editor's `screenshotUrl` still resolves to — a real review finding
+    this test now guards against.
+    """
+
+    def react(d: FakeDriver, kind: str, arg: object) -> None:
+        if kind != "tap":
+            return
+        if arg == {"id": "a"}:
+            d.screen = [el("a", "A", ["button"]), el("b", "B", ["button"]), el("mid", "Mid")]
+        elif arg == {"id": "b"}:
+            d.screen = [el("a", "A", ["button"]), el("b", "B", ["button"]), el("final", "Final")]
+
+    driver = FakeDriver([el("a", "A", ["button"]), el("b", "B", ["button"])], react=react)
+    run_dir = tmp_path / "run1"
+    result = run_scenario(
+        driver,
+        _scenario({"name": "x", "steps": [{"tap": {"id": "a"}}, {"tap": {"id": "b"}}]}),
+        clock=FakeClock(),
+        sink=FileSink(run_dir),
+    )
+    assert result.ok, result.failure
+
+    def _tree_ids(step_index: int) -> set[str | None]:
+        art = next(a for a in result.steps[step_index].artifacts if a.kind == "elements")
+        data = json.loads((run_dir / art.name).read_text(encoding="utf-8"))
+        return {e["identifier"] for e in data}
+
+    # step0's elements.json is the pre-step baseline, written before its own tap ran — the
+    # original screen, not the one its own tap produced.
+    assert _tree_ids(0) == {"a", "b"}
+    # step1 is the last step, but its elements.json is *also* the pre-step baseline — written
+    # before its own tap ran, matching the moment `before.png` shows. "final" (produced only by
+    # step1's own tap) never appears, since the final capture does not touch `elements`.
+    assert _tree_ids(1) == {"a", "b", "mid"}
+    assert "final" not in _tree_ids(1)
+    # The final capture still adds the extra screenshot, visually showing the true end state.
+    names = {a.name for a in result.steps[1].artifacts}
+    assert any(name.endswith("after.png") for name in names)
+
+
+def test_extract_still_reads_the_settled_post_action_value(tmp_path: Path) -> None:
+    """`extract` is unaffected by the pre-step baseline: it still copies out the settled
+    post-action value, never the pre-step snapshot (BE-0341 leaves BE-0299 untouched)."""
+
+    def react(d: FakeDriver, kind: str, arg: object) -> None:
+        if kind == "tap":
+            d.screen = [el("counter", "counter", value="1"), el("go", "Go", ["button"])]
+
+    driver = FakeDriver(
+        [el("counter", "counter", value="0"), el("go", "Go", ["button"])], react=react
+    )
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "x",
+                "steps": [
+                    {
+                        "tap": {"id": "go"},
+                        "extract": {"n": {"sel": {"id": "counter"}, "prop": "value"}},
+                    },
+                    {"assert": [{"value": {"sel": {"id": "counter"}, "equals": "${vars.n}"}}]},
+                ],
+            }
+        ),
+        clock=FakeClock(),
+        sink=FileSink(tmp_path / "run1"),
+    )
+    assert result.ok, result.failure

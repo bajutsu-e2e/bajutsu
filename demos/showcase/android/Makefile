@@ -325,6 +325,10 @@ e2e-codegen:
 	# guarantees a clean install regardless of what the cached snapshot's disk state carries.
 	adb uninstall com.bajutsu.showcase.android.compose || true
 	adb uninstall com.bajutsu.showcase.android.compose.test || true
+	# On failure the generated test dumps the window hierarchy, a screenshot, and the accessibility
+	# window list into the directory Gradle names with `additionalTestOutputDir` and copies back into
+	# compose/build/outputs/connected_android_test_additional_output — no `adb pull` here, because
+	# `adb` cannot read /sdcard/Android/data/<package> from Android 11 on. android-e2e.yml uploads it.
 	cd $(HERE) && $(GRADLEW) :compose:connectedA11yDebugAndroidTest
 
 clean:

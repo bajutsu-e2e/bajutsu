@@ -322,7 +322,13 @@ def test_recovery_failure_mid_wait_skips_the_end_of_step_alert_guard() -> None:
 
 
 def test_cleared_interstitial_is_not_misattributed_as_the_steps_screen_change() -> None:
-    """A `screenChanged` policy must not fire on the recovery's own screen change, only the step's."""
+    """A `screenChanged` policy must not fire on the recovery's own screen change, only the step's.
+
+    The rule requests `actionLog` rather than a `screenshot` modifier: `.before` is always filtered
+    out of the post-step call as redundant with the pre-step baseline (BE-0341), so it could no
+    longer distinguish "the rule fired" from "every step's own baseline" — see the identical fix in
+    `tests/test_capture_firing.py` and `tests/orchestrator/test_read_count.py`.
+    """
 
     def react(d: FakeDriver, kind: str, arg: object) -> None:
         # The recovery clears the overlay (a real screen change); the `go` tap changes nothing.
@@ -337,9 +343,7 @@ def test_cleared_interstitial_is_not_misattributed_as_the_steps_screen_change() 
             {
                 "name": "x",
                 "steps": [{"tap": {"id": "go"}}],
-                "capturePolicy": [
-                    {"on": {"event": "screenChanged"}, "capture": ["screenshot.before"]}
-                ],
+                "capturePolicy": [{"on": {"event": "screenChanged"}, "capture": ["actionLog"]}],
             }
         ),
         clock=FakeClock(),
@@ -347,9 +351,12 @@ def test_cleared_interstitial_is_not_misattributed_as_the_steps_screen_change() 
         interrupts=[_interrupt({"exists": {"id": "ov.close"}}, [{"tap": {"id": "ov.close"}}])],
     )
     # step0 is the `go` tap; its `before` is re-baselined to the post-recovery tree, so its own
-    # (no-op) action fires no screenChanged capture — only the always-on baseline.
+    # (no-op) action fires no screenChanged capture — the middle `actionLog` call the rule would
+    # add is absent. It carries only the two always-on baselines: the pre-step one every step
+    # gets, and the final-step one since it is also the scenario's only (and therefore last)
+    # step (BE-0341).
     step0 = [kinds for sid, kinds in sink.calls if sid == "x/step0"]
-    assert step0 == [["screenshot.after", "elements"]]
+    assert step0 == [["screenshot.before", "elements"], ["screenshot.after"]]
 
 
 def test_pre_act_guard_reads_fresh_not_a_stale_prev_after_snapshot() -> None:

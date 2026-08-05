@@ -9,10 +9,6 @@ from collections.abc import Iterator, Mapping
 from bajutsu.drivers import base
 from bajutsu.scenario import CaptureRule, Extract, Scenario, Selector, Step
 
-# Always captured, regardless of capturePolicy: an after-screenshot and the element
-# tree per step (instant); interval recordings for the whole scenario live in the run loop.
-_BASELINE_INSTANT = ("screenshot.after", "elements")
-
 # Scenario-wide interval recordings, in canonical order. These are heavy, so they are opt-in
 # (BE-0028): recorded only when a scenario actually requests the kind (see requested_intervals).
 _SCENARIO_INTERVALS = ("video", "deviceLog", "appTrace")
@@ -157,12 +153,16 @@ def requested_intervals(scenario: Scenario) -> list[str]:
 def _collect_captures(
     scenario: Scenario, step: Step, kind: str, ok: bool, screen_changed: bool
 ) -> list[str]:
-    """Capture kinds for this step: the always-on instant baseline, plus inline
-    `capture` and any matching capturePolicy rules."""
-    fired: list[str] = [*_BASELINE_INSTANT, *(step.capture or [])]
+    """Post-step capture kinds for this step: inline `capture` plus any matching capturePolicy
+    rules. The always-on baseline (`screenshot.before` + `elements`) is captured separately, before
+    the step acts (BE-0341) — this returns only what the scenario itself asked for, minus any
+    `screenshot.before` token: that pre-step baseline already wrote the file, so re-taking it here
+    would silently mislabel a post-action pixel as `before.png`. Interval kinds (`video` /
+    `deviceLog` / `appTrace`) are left in; the caller splits those out separately."""
+    fired: list[str] = [*(step.capture or [])]
     primary = _primary_selector(step)
     primary_id = primary.first_id() if primary is not None else None
     for rule in scenario.capture_policy:
         if _rule_fires(rule, kind, primary_id, screen_changed, ok):
             fired.extend(rule.capture)
-    return _dedupe(fired)
+    return [t for t in _dedupe(fired) if t != "screenshot.before"]

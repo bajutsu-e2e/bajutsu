@@ -521,7 +521,14 @@ def test_tap_clicks_frame_center() -> None:
 
 
 def test_tap_ambiguous_raises() -> None:
-    drv, _ = _driver([_rec(identifier="x"), _rec(identifier="x")])
+    # Distinct frames: two different on-page elements sharing a duplicate DOM id, not a
+    # content-identical duplicate (which resolve_unique now collapses rather than flags ambiguous).
+    drv, _ = _driver(
+        [
+            _rec(identifier="x", frame=[0, 0, 10, 10]),
+            _rec(identifier="x", frame=[0, 20, 10, 10]),
+        ]
+    )
     with pytest.raises(base.AmbiguousSelector):
         drv.tap({"id": "x"})
 
@@ -663,7 +670,14 @@ def test_select_option_sets_value_at_resolved_point() -> None:
 
 
 def test_select_option_ambiguous_raises() -> None:
-    drv, _ = _driver([_rec(identifier="dup", role="select"), _rec(identifier="dup", role="select")])
+    # Distinct frames: two different <select>s sharing a duplicate DOM id, not a content-identical
+    # duplicate (which resolve_unique now collapses rather than flags ambiguous).
+    drv, _ = _driver(
+        [
+            _rec(identifier="dup", role="select", frame=[0, 0, 10, 10]),
+            _rec(identifier="dup", role="select", frame=[0, 20, 10, 10]),
+        ]
+    )
     with pytest.raises(base.AmbiguousSelector):
         drv.select_option({"id": "dup"}, "midnight")
 

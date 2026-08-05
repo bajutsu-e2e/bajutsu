@@ -38,18 +38,6 @@ def test_test_per_scenario_uses_sanitized_name_and_launch() -> None:
     assert "launch(extras)" in code
 
 
-def test_launch_waits_for_the_window_then_for_it_to_settle() -> None:
-    # The window wait alone only proves some window from the package exists, not that its first
-    # frame has finished drawing — waitForIdle closes that gap before act()'s own wait starts.
-    code = _gen("- name: x\n  steps:\n    - tap: { id: a }\n")
-    lines = [line.strip() for line in code.splitlines()]
-    window_idx = lines.index(
-        "device.wait(Until.hasObject(By.pkg(PACKAGE).depth(0)), LAUNCH_TIMEOUT_MS)"
-    )
-    idle_idx = lines.index("device.waitForIdle(LAUNCH_TIMEOUT_MS)")
-    assert idle_idx == window_idx + 1
-
-
 def test_launch_env_merges_config_and_scenario_as_intent_extras() -> None:
     code = _gen(
         "- name: x\n  preconditions:\n    launchEnv: { SHOWCASE_TAB: log }\n"
@@ -70,6 +58,138 @@ def test_act_preamble_is_emitted() -> None:
     assert "import androidx.test.uiautomator.UiObject2" in code
     assert "private const val ACT_TIMEOUT_MS" in code
     assert "private fun act(by: BySelector): UiObject2 {" in code
+
+
+def test_launch_checks_its_window_wait_and_re_issues_the_intent() -> None:
+    # The window wait used to be issued and its result dropped, so a launch whose window never
+    # reached the accessibility tree fell through and failed later at the first act() — 15s of
+    # "no element matched" pointing at the selector instead of at the launch. Check the result,
+    # and re-launch rather than widen the wait: a window the read channel never reports is not a
+    # slow first frame, so waiting longer on the same launch cannot recover it.
+    code = _gen("- name: x\n  steps:\n    - tap: { id: a }\n")
+    assert "private const val LAUNCH_TIMEOUT_MS" in code
+    assert "private const val LAUNCH_ATTEMPTS" in code
+    assert "for (attempt in 1..LAUNCH_ATTEMPTS) {" in code
+    assert "if (device.wait(Until.hasObject(by), LAUNCH_TIMEOUT_MS)) {" in code
+    assert (
+        '"launch: no $PACKAGE window in the accessibility tree after $LAUNCH_ATTEMPTS attempt(s) "'
+    ) in code
+
+
+def test_launch_waits_for_the_window_then_for_it_to_settle() -> None:
+    # The window wait alone only proves some window from the package exists, not that its first
+    # frame has finished drawing — waitForIdle closes that gap before act()'s own wait starts.
+    # It sits on the success path: running it after a wait that found no window settles nothing.
+    code = _gen("- name: x\n  steps:\n    - tap: { id: a }\n")
+    lines = [line.strip() for line in code.splitlines()]
+    window_idx = lines.index("if (device.wait(Until.hasObject(by), LAUNCH_TIMEOUT_MS)) {")
+    idle_idx = lines.index("device.waitForIdle(LAUNCH_TIMEOUT_MS)")
+    assert window_idx < idle_idx < lines.index("return", idle_idx)
+
+
+def test_a_slow_cold_start_is_waited_out_rather_than_restarted() -> None:
+    # Every attempt waits the full LAUNCH_TIMEOUT_MS. A shorter per-attempt wait would relaunch a
+    # cold start that was merely still on its way, and FLAG_ACTIVITY_CLEAR_TASK tears the activity
+    # down — so each retry would send a slow app back to the beginning and could starve it, where a
+    # single long wait would have succeeded. Only a window absent for the whole timeout is stuck
+    # rather than slow.
+    code = _gen("- name: x\n  steps:\n    - tap: { id: a }\n")
+    # No second, shorter budget: the attempt wait and the ceiling are the same constant.
+    assert "LAUNCH_ATTEMPT_TIMEOUT_MS" not in code
+    assert code.count("LAUNCH_TIMEOUT_MS") >= 3
+    # The intent is rebuilt per attempt, so a relaunch re-delivers launchEnv through onCreate;
+    # resuming the existing task instead would route the extras to onNewIntent.
+    launch = code[code.index("private fun launch") :]
+    body = launch[: launch.index("private fun act")]
+    assert body.index("for (attempt in 1..LAUNCH_ATTEMPTS)") < body.index(
+        "getLaunchIntentForPackage"
+    )
+
+
+def test_failure_messages_name_the_windows_that_were_searched() -> None:
+    # "no element matched <selector>" cannot distinguish an id that has not rendered from an app
+    # whose window is absent from the accessibility tree altogether — the two need opposite fixes.
+    code = _gen("- name: x\n  steps:\n    - tap: { id: a }\n")
+    assert "InstrumentationRegistry.getInstrumentation().uiAutomation.windows" in code
+    assert 'root=${window.root?.packageName ?: "<null>"} $window' in code
+    assert 'within ${ACT_TIMEOUT_MS}ms; windows:\\n" + windowSummary()' in code
+
+
+def test_failure_dumps_hierarchy_screenshot_and_windows_as_artifacts() -> None:
+    # On failure the generated test writes the state it read the assertion from into the directory
+    # the Android Gradle Plugin names with `additionalTestOutputDir` and copies off the device after
+    # the run, which CI uploads (android-e2e.yml). Not the app's own external files directory: `adb`
+    # cannot read /sdcard/Android/data/<package> from Android 11 on, so a dump written there is
+    # stranded on the device.
+    code = _gen("- name: x\n  steps:\n    - tap: { id: a }\n")
+    assert 'private const val DIAGNOSTICS_DIR = "codegen-diagnostics"' in code
+    assert 'private const val ADDITIONAL_OUTPUT_ARG = "additionalTestOutputDir"' in code
+    assert "InstrumentationRegistry.getArguments().getString(ADDITIONAL_OUTPUT_ARG)" in code
+    assert "@get:Rule" in code
+    assert "val diagnostics: TestRule = object : TestWatcher() {" in code
+    assert "override fun failed(error: Throwable, description: Description) {" in code
+    # A platform-typed methodName would make Kotlin insert an invisible null check, losing
+    # the evidence to a NullPointerException on the one path that needs it.
+    assert "dumpDiagnostics(description.methodName ?: description.displayName)" in code
+    assert (
+        'it.writeText("accessibility windows:\\n$summary\\n\\nmatchable ids:\\n${matchableIds()}\\n")'
+    ) in code
+    assert 'dump(File(dir, "$stem-hierarchy.xml")) { device.dumpWindowHierarchy(it) }' in code
+    assert 'dump(File(dir, "$stem-screen.png")) {' in code
+    for line in ("import org.junit.Rule", "import org.junit.rules.TestRule"):
+        assert line in code
+    for line in ("import org.junit.rules.TestWatcher", "import org.junit.runner.Description"):
+        assert line in code
+    assert "import java.io.File" in code
+    assert "import android.util.Log" in code
+
+
+def test_failure_records_the_ids_the_selector_was_matched_against() -> None:
+    # `dumpWindowHierarchy` reports `resource-id` from the raw node, which leaves a Compose testTag
+    # surfaced by testTagsAsResourceId blank — so the hierarchy alone cannot answer "was this id
+    # matchable?". Reading the ids back through `By.res` uses the matcher a selector goes through.
+    code = _gen("- name: x\n  steps:\n    - tap: { id: a }\n")
+    assert 'device.findObjects(By.res(Pattern.compile(".+")))' in code
+    assert ".mapNotNull { it.resourceName }.distinct().sorted()" in code
+
+
+def test_each_dump_is_written_independently_and_reports_its_own_failure() -> None:
+    # A hierarchy dump that throws must not cost the screenshot, nor the window list that names the
+    # windows the failing wait searched — each is separate evidence for a different failure mode.
+    # Nor may the throw pass silently: an artifact that is simply absent explains nothing on the one
+    # path meant to explain a failure, so the file and the reason go to logcat.
+    code = _gen("- name: x\n  steps:\n    - tap: { id: a }\n")
+    assert "private fun dump(file: File, write: (File) -> Unit) {" in code
+    assert (
+        'runCatching { write(file) }.onFailure { Log.w(LOG_TAG, "could not write $file", it) }'
+    ) in code
+    body = code[code.index("private fun dumpDiagnostics") : code.index("private fun diagnostics")]
+    assert body.count("dump(File(dir, ") == 3
+    # takeScreenshot reports failure by returning false, which `dump` would otherwise never see.
+    assert 'if (!device.takeScreenshot(it)) error("takeScreenshot returned false")' in code
+
+
+def test_no_usable_directory_is_reported_rather_than_written_to_a_relative_path() -> None:
+    # `File(parent, DIAGNOSTICS_DIR)` with a null parent is a *relative* path, so the dumps would
+    # land somewhere the harness never collects — silently losing the evidence they exist for. A
+    # blank `additionalTestOutputDir` counts as absent for the same reason: `File("")` resolves to
+    # the current directory rather than to the collected one.
+    code = _gen("- name: x\n  steps:\n    - tap: { id: a }\n")
+    assert "if (!collected.isNullOrBlank()) return File(collected)" in code
+    assert "val parent = diagnosticsParent()" in code
+    assert "if (parent == null) {" in code
+    assert '"no directory to write evidence to; see the window list above"' in code
+    assert "val dir = File(parent, DIAGNOSTICS_DIR)" in code
+
+
+def test_the_diagnostic_helpers_cannot_throw_over_the_failure_they_explain() -> None:
+    # `windowSummary()` is concatenated into the AssertionError that `launch` / `act` raise, and
+    # `matchableIds()` into the `<test>-windows.txt` dump. A throw in either would replace the
+    # failure's own message or cost that evidence, so each resolves to a placeholder instead.
+    code = _gen("- name: x\n  steps:\n    - tap: { id: a }\n")
+    for helper in ("windowSummary", "matchableIds"):
+        assert f"private fun {helper}(): String = runCatching {{" in code
+    assert code.count('}.getOrElse { "<unavailable: $it>" }') == 2
 
 
 def test_tap_by_id_text_and_desc() -> None:

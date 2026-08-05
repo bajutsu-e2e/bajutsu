@@ -115,6 +115,26 @@ def test_tap_resolves_unique_then_sends_that_elements_snapshot_handle() -> None:
     ]  # the resolved element's handle, not coords
 
 
+def test_tap_resolves_through_a_content_identical_duplicate_registration() -> None:
+    # A standard UIAlertController button sometimes registers twice on XCUITest — same identifier,
+    # label, traits, value, and frame, on both entries. Without `resolve_unique`'s collapsing this
+    # selector would raise AmbiguousSelector and force an `index` guess; with it, `tap` resolves
+    # and actuates without one.
+    sent: list[tuple[str, str, dict[str, Any] | None]] = []
+
+    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+        if path == "/elements":
+            return _elements(
+                _el_wire("h-ok-1", "alert.ok", "OK", traits=["button"]),
+                _el_wire("h-ok-2", "alert.ok", "OK", traits=["button"]),
+            )
+        sent.append((method, path, body))
+        return _Reply(status="ok")
+
+    _driver(transport).tap({"id": "alert.ok"})
+    assert sent == [("POST", "/tap", {"handle": "h-ok-1"})]  # the first duplicate's own handle
+
+
 def test_back_taps_the_os_back_button() -> None:
     # iOS has no hardware back: `back` resolves and taps the OS navigation back button
     # (identifier "BackButton") — BE-0210.
@@ -900,10 +920,12 @@ def test_handle_system_alert_resolves_the_labelled_button_and_taps_its_handle() 
 
 
 def test_handle_system_alert_ambiguous_label_fails_without_index() -> None:
+    # Distinct frames: two genuinely different buttons sharing a label, not a content-identical
+    # duplicate registration — the latter no longer counts as ambiguous (resolve_unique collapses it).
     transport, sent = _alert_transport(
         [
-            _el_wire("h-a", label="OK", traits=["button"]),
-            _el_wire("h-b", label="OK", traits=["button"]),
+            _el_wire("h-a", label="OK", traits=["button"], frame=(0.0, 0.0, 10.0, 10.0)),
+            _el_wire("h-b", label="OK", traits=["button"], frame=(20.0, 0.0, 10.0, 10.0)),
         ]
     )
     with pytest.raises(base.AmbiguousSelector):
@@ -914,8 +936,8 @@ def test_handle_system_alert_ambiguous_label_fails_without_index() -> None:
 def test_handle_system_alert_index_disambiguates_multiple_matches() -> None:
     transport, sent = _alert_transport(
         [
-            _el_wire("h-a", label="OK", traits=["button"]),
-            _el_wire("h-b", label="OK", traits=["button"]),
+            _el_wire("h-a", label="OK", traits=["button"], frame=(0.0, 0.0, 10.0, 10.0)),
+            _el_wire("h-b", label="OK", traits=["button"], frame=(20.0, 0.0, 10.0, 10.0)),
         ]
     )
     _driver(transport).handle_system_alert({"label": "OK", "index": 1}, timeout=5.0)

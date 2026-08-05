@@ -155,14 +155,40 @@ def test_http_read_scenario_with_run(tmp_path: Path) -> None:
     manifest = {
         "runId": "run1",
         "ok": True,
-        "scenarios": [{"scenario": "login", "ok": True, "sid": "00-login", "steps": []}],
+        "scenarios": [
+            {
+                "scenario": "login",
+                "ok": True,
+                "sid": "00-login",
+                "steps": [
+                    {
+                        "index": i,
+                        "action": "tap",
+                        "ok": True,
+                        "artifacts": [
+                            {
+                                "name": f"00-login/step{i}/before.png",
+                                "kind": "screenshot",
+                                "provider": "driver",
+                            },
+                            {
+                                "name": f"00-login/step{i}/elements.json",
+                                "kind": "elements",
+                                "provider": "driver",
+                            },
+                        ],
+                    }
+                    for i in range(2)
+                ],
+            }
+        ],
     }
     (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     for i in range(2):
         d = run_dir / f"00-login/step{i}"
         d.mkdir(parents=True)
         (d / "elements.json").write_text(json.dumps(_elements()), encoding="utf-8")
-        (d / "after.png").write_bytes(b"PNG")
+        (d / "before.png").write_bytes(b"PNG")
 
     state = srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
     server, port = _serve(state)

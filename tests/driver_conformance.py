@@ -242,8 +242,16 @@ class DriverConformanceContract:
     """
 
     def test_ambiguous_selector_fails_rather_than_acting(self, harness: ConformanceHarness) -> None:
-        # Two matches, no way to disambiguate: a single action must fail, not tap the first.
-        driver = harness.with_screen([element(identifier="dup"), element(identifier="dup")])
+        # Two matches, no way to disambiguate: a single action must fail, not tap the first. Distinct
+        # frames make the two genuinely separate elements — a content-identical duplicate (same
+        # identifier/label/traits/value/frame) is a different case that `resolve_unique` now collapses
+        # instead of flagging ambiguous.
+        driver = harness.with_screen(
+            [
+                element(identifier="dup", frame=(0.0, 0.0, 10.0, 10.0)),
+                element(identifier="dup", frame=(0.0, 20.0, 10.0, 10.0)),
+            ]
+        )
         with pytest.raises(base.AmbiguousSelector):
             driver.tap({"id": "dup"})
 
@@ -254,7 +262,13 @@ class DriverConformanceContract:
 
     def test_selector_failures_share_one_error_type(self, harness: ConformanceHarness) -> None:
         # Both failure modes are SelectorError, so a caller catches them uniformly on any backend.
-        ambiguous = harness.with_screen([element(identifier="dup"), element(identifier="dup")])
+        # Distinct frames, as above: two genuinely separate elements, not a collapsible duplicate.
+        ambiguous = harness.with_screen(
+            [
+                element(identifier="dup", frame=(0.0, 0.0, 10.0, 10.0)),
+                element(identifier="dup", frame=(0.0, 20.0, 10.0, 10.0)),
+            ]
+        )
         with pytest.raises(base.SelectorError):
             ambiguous.tap({"id": "dup"})
         empty = harness.with_screen([])

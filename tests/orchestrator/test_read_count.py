@@ -87,6 +87,69 @@ def test_plain_tap_issues_no_runner_read() -> None:
     assert driver.queries == 0
 
 
+def test_pre_step_baseline_issues_no_extra_runner_read() -> None:
+    # The pre-step baseline capture (BE-0341) must defer to the sink exactly like the post-step one
+    # already does: passing whatever `prev_after` holds, never forcing a `query()` of its own. A
+    # sink that does not consume `elements` (like `test_plain_tap_issues_no_runner_read`'s) pays
+    # nothing for either baseline, so the loop's own read count stays at the pre-existing floor.
+    driver = _CountingDriver([el("a", "A", ["button"]), el("b", "B", ["button"])])
+    result = run_scenario(
+        driver,
+        _scenario({"name": "x", "steps": [{"tap": {"id": "a"}}, {"tap": {"id": "b"}}]}),
+        clock=FakeClock(),
+        sink=_KindsSink(),
+    )
+    assert result.ok
+    assert driver.queries == 0
+
+
+def test_pre_step_baseline_skips_the_web_query_under_a_null_sink() -> None:
+    # A `web` block's first nested step must not force a bridge query for a baseline `NullSink`
+    # discards (review follow-up on BE-0341): under the default sink (`NullSink`, `sink=None`),
+    # the only bridge read left is the pre-existing, unrelated post-step read every web-block step
+    # already pays (BE-0234 Unit 2, `screen.get()` for a web `active_driver`) — one call for one
+    # step, not two.
+    class _CountingBridge:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def query_dom(self, webview_id: str) -> list[base.Element]:
+            self.calls += 1
+            return []
+
+        def tap_element(self, webview_id: str, point: tuple[float, float]) -> None:
+            pass
+
+        def type_text(self, webview_id: str, text: str) -> None:
+            pass
+
+        def scroll_to(self, webview_id: str, element_id: str) -> None:
+            pass
+
+    bridge = _CountingBridge()
+    driver = _CountingDriver([el("app.webview", frame=(0.0, 0.0, 400.0, 800.0))])
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "x",
+                "steps": [
+                    {
+                        "web": {
+                            "within": {"id": "app.webview"},
+                            "steps": [{"type": {"text": "hi"}}],
+                        }
+                    }
+                ],
+            }
+        ),
+        clock=FakeClock(),
+        webview_bridge=bridge,
+    )
+    assert result.ok, result.failure
+    assert bridge.calls == 1
+
+
 def test_screen_changed_reuses_previous_after_as_before() -> None:
     # With a screenChanged policy every step needs a `before`, but the previous step's `after` is the
     # same device state, so it is reused: one initial `before` plus one post-step read per step —
@@ -136,7 +199,11 @@ def test_extract_forces_a_single_post_step_read() -> None:
 def test_before_reuse_detects_screen_change_per_step() -> None:
     # Correctness of the reuse: step 1 changes the screen, step 2 does not. screenChanged must fire
     # for step 1 only — which holds only if step 2's reused `before` is step 1's `after` (the changed
-    # screen), not a stale earlier tree that would make step 2 look changed too.
+    # screen), not a stale earlier tree that would make step 2 look changed too. The rule requests
+    # `actionLog` rather than a `screenshot` modifier: the pre-step baseline always fires
+    # `screenshot.before` and the scenario's last step (step 1 here) additionally always fires
+    # `screenshot.after` (BE-0341), so neither modifier can tell "the rule fired" apart from "every
+    # step's own baseline."
     changed = [el("next", "Next"), el("b", "B", ["button"])]
 
     def react(d: FakeDriver, kind: str, arg: object) -> None:
@@ -151,17 +218,15 @@ def test_before_reuse_detects_screen_change_per_step() -> None:
             {
                 "name": "x",
                 "steps": [{"tap": {"id": "a"}}, {"tap": {"id": "b"}}],
-                "capturePolicy": [
-                    {"on": {"event": "screenChanged"}, "capture": ["screenshot.before"]}
-                ],
+                "capturePolicy": [{"on": {"event": "screenChanged"}, "capture": ["actionLog"]}],
             }
         ),
         clock=FakeClock(),
         sink=sink,
     )
     assert result.ok
-    assert "screenshot.before" in sink.kinds_by_step["x/step0"]
-    assert "screenshot.before" not in sink.kinds_by_step["x/step1"]
+    assert "actionLog" in sink.kinds_by_step["x/step0"]
+    assert "actionLog" not in sink.kinds_by_step["x/step1"]
 
 
 def test_assert_with_extract_reuses_the_evaluated_tree() -> None:

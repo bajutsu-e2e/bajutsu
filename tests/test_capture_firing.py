@@ -1,9 +1,17 @@
 """Tests for evidence firing in the run loop.
 
-Every step always captures an instant baseline (screenshot.after + elements);
-capturePolicy / inline `capture` add extra instant captures on top. Interval kinds
-(video / deviceLog / appTrace) are heavy and opt-in (BE-0028): recorded once for the
-whole scenario, but only when the scenario actually requests that kind.
+Every step always captures a pre-step baseline (screenshot.before + elements, taken before the step
+acts, BE-0341); only the scenario's last leaf step also gets a second, post-step one (screenshot.after
+alone — `elements` is deliberately not re-captured, since `elements.json` has one fixed filename and
+re-capturing it would overwrite the pre-step baseline's pre-action tree with a post-action one,
+decoupling it from what `before.png` shows). capturePolicy / inline `capture` add
+extra instant captures on top of the post-step call — never `screenshot.before`, which the pre-step
+baseline already wrote (filtered out as redundant). Interval kinds (video / deviceLog / appTrace)
+are heavy and opt-in (BE-0028): recorded once for the whole scenario, but only when the scenario
+actually requests that kind.
+
+Every scenario below has exactly one step, which is therefore always also the last leaf step — so
+every test sees both baselines around whatever a capturePolicy rule itself contributes.
 """
 
 from __future__ import annotations
@@ -17,7 +25,8 @@ from bajutsu.orchestrator import run_scenario
 from bajutsu.orchestrator.evidence_rules import requested_intervals
 from bajutsu.scenario import Scenario
 
-BASELINE = ["screenshot.after", "elements"]
+BASELINE_BEFORE = ["screenshot.before", "elements"]
+BASELINE_AFTER = ["screenshot.after"]
 
 
 class RecordingSink:
@@ -64,11 +73,12 @@ def _scn(data: dict[str, object]) -> Scenario:
 
 
 def test_baseline_always_fires() -> None:
-    # No capturePolicy / inline capture at all: the instant baseline still fires.
+    # No capturePolicy / inline capture at all: both instant baselines still fire — the pre-step
+    # one every step gets, and the post-step one this (also last) step gets too.
     driver = FakeDriver([_el("a", "A")])
     sink = RecordingSink()
     run_scenario(driver, _scn({"name": "x", "steps": [{"tap": {"id": "a"}}]}), sink=sink)
-    assert sink.calls == [("x/step0", BASELINE)]
+    assert sink.calls == [("x/step0", BASELINE_BEFORE), ("x/step0", BASELINE_AFTER)]
 
 
 # --- requested_intervals: heavy intervals are opt-in (BE-0028 guard #2) --------------------
@@ -124,6 +134,9 @@ def test_requested_intervals_ignores_instant_kinds() -> None:
 
 
 def test_action_trigger_adds_to_baseline() -> None:
+    # The rule requests `actionLog` rather than a `screenshot` modifier: `.before` is always
+    # redundant with the pre-step baseline (filtered post-step) and `.after` would be
+    # indistinguishable from this (also last) step's own final-step baseline.
     driver = FakeDriver([_el("home.submit", "Submit")])
     sink = RecordingSink()
     run_scenario(
@@ -135,14 +148,18 @@ def test_action_trigger_adds_to_baseline() -> None:
                 "capturePolicy": [
                     {
                         "on": {"action": "tap", "idMatches": "*.submit"},
-                        "capture": ["screenshot.before"],
+                        "capture": ["actionLog"],
                     },
                 ],
             }
         ),
         sink=sink,
     )
-    assert sink.calls == [("x/step0", [*BASELINE, "screenshot.before"])]
+    assert sink.calls == [
+        ("x/step0", BASELINE_BEFORE),
+        ("x/step0", ["actionLog"]),
+        ("x/step0", BASELINE_AFTER),
+    ]
 
 
 def test_action_trigger_skips_on_id_mismatch() -> None:
@@ -157,14 +174,15 @@ def test_action_trigger_skips_on_id_mismatch() -> None:
                 "capturePolicy": [
                     {
                         "on": {"action": "tap", "idMatches": "*.submit"},
-                        "capture": ["screenshot.before"],
+                        "capture": ["actionLog"],
                     },
                 ],
             }
         ),
         sink=sink,
     )
-    assert sink.calls == [("x/step0", BASELINE)]  # only the baseline, policy did not fire
+    # Only the two baselines: the policy did not fire, so no middle call.
+    assert sink.calls == [("x/step0", BASELINE_BEFORE), ("x/step0", BASELINE_AFTER)]
 
 
 def test_screen_changed_trigger_adds_to_baseline() -> None:
@@ -182,14 +200,16 @@ def test_screen_changed_trigger_adds_to_baseline() -> None:
             {
                 "name": "x",
                 "steps": [{"tap": {"id": "go"}}],
-                "capturePolicy": [
-                    {"on": {"event": "screenChanged"}, "capture": ["screenshot.before"]}
-                ],
+                "capturePolicy": [{"on": {"event": "screenChanged"}, "capture": ["actionLog"]}],
             }
         ),
         sink=sink,
     )
-    assert sink.calls == [("x/step0", [*BASELINE, "screenshot.before"])]
+    assert sink.calls == [
+        ("x/step0", BASELINE_BEFORE),
+        ("x/step0", ["actionLog"]),
+        ("x/step0", BASELINE_AFTER),
+    ]
 
 
 def test_error_trigger_is_the_safety_net() -> None:
@@ -201,17 +221,21 @@ def test_error_trigger_is_the_safety_net() -> None:
             {
                 "name": "x",
                 "steps": [{"tap": {"id": "missing"}}],
-                "capturePolicy": [{"on": {"result": "error"}, "capture": ["screenshot.before"]}],
+                "capturePolicy": [{"on": {"result": "error"}, "capture": ["actionLog"]}],
             }
         ),
         sink=sink,
     )
-    assert sink.calls == [("x/step0", [*BASELINE, "screenshot.before"])]
+    assert sink.calls == [
+        ("x/step0", BASELINE_BEFORE),
+        ("x/step0", ["actionLog"]),
+        ("x/step0", BASELINE_AFTER),
+    ]
 
 
 def test_inline_interval_token_is_recorded_scenario_wide_not_per_step() -> None:
     # deviceLog is an interval kind: it is recorded for the whole scenario, so it
-    # does not appear as a per-step instant capture (only the baseline does).
+    # does not appear as a per-step instant capture (only the two baselines do).
     driver = FakeDriver([_el("a", "A")])
     sink = RecordingSink()
     run_scenario(
@@ -219,7 +243,7 @@ def test_inline_interval_token_is_recorded_scenario_wide_not_per_step() -> None:
         _scn({"name": "x", "steps": [{"tap": {"id": "a"}, "capture": ["deviceLog"]}]}),
         sink=sink,
     )
-    assert sink.calls == [("x/step0", BASELINE)]
+    assert sink.calls == [("x/step0", BASELINE_BEFORE), ("x/step0", BASELINE_AFTER)]
     assert sink.scenario_intervals == [("x", ["deviceLog"])]  # opt-in: only the requested kind
 
 
@@ -238,7 +262,7 @@ def test_multiple_inline_interval_tokens_are_recorded_scenario_wide() -> None:
         ),
         sink=sink,
     )
-    assert sink.calls == [("x/step0", BASELINE)]
+    assert sink.calls == [("x/step0", BASELINE_BEFORE), ("x/step0", BASELINE_AFTER)]
     assert sink.scenario_intervals == [("x", ["video", "deviceLog"])]
 
 
