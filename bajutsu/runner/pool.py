@@ -389,7 +389,8 @@ def device_pool(
             doomed = (stale[1], stale[2]) if stale is not None else launched
             if doomed is not None:
                 dead_env, dead_driver = doomed
-                # A leaked runner is the same risk here as at the other two teardown sites; the
+                # A leaked runner is the same risk here as at the pool's three other teardown sites
+                # (the actuator switch above, and `shutdown()`'s device and collector loops); the
                 # original launch error still propagates via the `raise` below, so a teardown hiccup
                 # (mid_run=True) must not mask it (BE-0342).
                 guarded_teardown(
