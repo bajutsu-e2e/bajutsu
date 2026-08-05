@@ -374,6 +374,27 @@ def test_oauth_callback_admin_team_bypass_keeps_a_github_org_members_recorded_or
     assert state.repository.user_org("bob") == "acme"  # not relocated to `default`
 
 
+def test_oauth_callback_admin_team_bypass_reresolves_a_revoked_members_org(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    # The complement of the test above: GitHub *did* answer /user/orgs, so a login matching no
+    # `orgs:` entry is genuinely un-claimed -- an operator who removed them must see that take
+    # effect on the next sign-in (BE-0015 7c-2), not stay pinned to the org they used to hold.
+    state, _ = _db_state(
+        serve_engine, tmp_path, FakeOAuthClient(login="bob", orgs=["acme-gh"], teams=[])
+    )
+    assert _role_after_login(state, "bob") == "viewer"
+    assert state.repository is not None
+    assert state.repository.user_org("bob") == "acme"
+
+    # bob has since been removed from `acme-gh`, but still reports some other org: not a fetch
+    # failure, so the bypass admits him and he re-resolves to `default`.
+    state.auth.oauth = FakeOAuthClient(login="bob", orgs=["ops-gh"], teams=["ops-gh/root"])
+    state.auth.oauth_admin_teams = ("ops-gh/root",)
+    assert _role_after_login(state, "bob") == "admin"
+    assert state.repository.user_org("bob") == "default"
+
+
 def test_oauth_callback_rejects_a_login_in_neither_the_org_gate_nor_the_admin_teams(
     tmp_path: Path,
 ) -> None:

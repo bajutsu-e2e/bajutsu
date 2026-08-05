@@ -288,9 +288,10 @@ GitHub organization を誰が管理しているかをコードで確認する方
       エントリでも一致し続ける）、それぞれ起動時に大きく警告する。admin を失う間違いをどれも見逃さず、
       かつトークン認証だけのデプロイに持っていない admin ロールについて警告しないようにする。
 - [x] `oauth_callback` のサインインゲートに、`identity_matches_org` と並ぶ admin Team の迂回を追加する。
-      ロール判定のためにすでに取得している Team 一覧をそのまま使う。迂回だけで login を許可した場合は
-      すべて `oplog.log_event`（予約済みの `"oauth.login"` イベント、login を `actor` に）を通じて
-      記録し、`orgs:` が認可しなかった唯一のサインイン経路にも、`event` で絞り込める記録を残す。
+      ロール判定のためにすでに取得している Team 一覧をそのまま使う。サインインが成功したときは
+      すべて `oplog.log_event`（予約済みの `"oauth.login"` イベント、login を `actor` に、迂回だけで
+      許可した場合にだけ `True` になる `bypass` フィールド）を通じて記録し、`orgs:` が認可しなかった
+      唯一のサインイン経路にも、`event` で絞り込める記録を残す。
       identity を永続化する際、`/user/orgs` の一時的な取得失敗によって `orgs:` ではなく迂回がその login
       を許可した場合は、`default` へ移すのではなく、その login にすでに記録されている org をそのまま
       使う。
@@ -303,7 +304,9 @@ GitHub organization を誰が管理しているかをコードで確認する方
       両方で、admin Team のメンバーがサインインできることを確認する。どちらの場合も解決したロールが
       admin になることを確認する。Organization ゲートにも admin Team のリストにも一致しない login が
       引き続き拒否されることを確認する。改名した変数が複数の Team を持つリストとしてパースされることを
-      確認する。迂回した admin が `default` org に配置されることを確認する。HTTP transport を通じて
+      確認する。迂回した admin が `default` org に配置されることを確認する。既存メンバーの記録済み org が
+      `/user/orgs` の一時的な取得失敗を乗り越えて残る一方で、実際に revoke されたメンバーは次回の
+      サインインで `default` に再解決され、固定され続けないことを確認する。HTTP transport を通じて
       end to end で確認する。`orgs:` のどのエントリにも一致せず、迂回だけで許可された login が、
       セッションを得るだけでなく、admin 限定のエンドポイント（`POST /api/apikey`）に実際に到達できる
       ことを確認する。
@@ -322,7 +325,7 @@ GitHub organization を誰が管理しているかをコードで確認する方
   fail closed の挙動が、迂回だけで許可される login にとってはサインインそのものを失わせるように
   なるためです。
 - [`bajutsu/serve/state.py`](../../bajutsu/serve/state.py)。`SessionManager` であり、この項目は
-  その `oauth_admin_team` フィールドをリストへ広げます。
+  その `oauth_admin_team` フィールドを `oauth_admin_teams` に改名し、Team の tuple へ広げます。
 - [`docs/ja/self-hosting.md`](../../docs/ja/self-hosting.md)。self-hosting ガイドの GitHub OAuth の節
   です。この項目が塞ぐ隙間は、この項目が取り除くまで、ここに「まず上記のサインインのゲートを
   通過する必要があります」として書かれていました。
