@@ -222,7 +222,9 @@ Android の実機スイートが将来追加されたときに、それが構成
 ログ:
 
 - 2026-08-05 — ユニット 1 から 3（[#1491](https://github.com/bajutsu-e2e/bajutsu/pull/1491)）。
-  各スイートの起動 thunk が lease ごとに新しい environment を作り、driver と一緒にその teardown を
+  両方のオンデバイススイートが、新設した `tests/xcuitest_lease.py` の `xcuitest_lease_launch` という
+  ひとつの thunk ファクトリを共有します（バックエンド非依存な `backend_crash_recovery` プラグインの
+  外に置きました）。この thunk が lease ごとに新しい environment を作り、driver と一緒にその teardown を
   返すようになりました。これにより `LeaseHolder` は `driver.close()` ではなく、プラットフォーム自身の
   teardown を通して lease を破棄します。ユニット 1 が残していた選択は、`launch_driver` 自身がガードを
   引き受ける方向で決着し、すべての呼び出し側がそれを受け継ぎます。守られた teardown の方針は

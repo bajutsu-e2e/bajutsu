@@ -223,13 +223,15 @@ teardown a suite supplies is its platform's own.
 
 Log:
 
-- 2026-08-05 — Units 1–3 ([#1491](https://github.com/bajutsu-e2e/bajutsu/pull/1491)). Each suite's
-  launch thunk builds a fresh environment per lease and returns its teardown alongside the driver,
-  so `LeaseHolder` discards through the platform's own teardown rather than `driver.close()`. Unit
-  1's open decision is resolved in favor of `launch_driver` absorbing the guard, so every caller
-  inherits it. The guarded-teardown policy moved to `bajutsu/runner/recovery.py`, shared by the
-  pool's three sites, `launch_driver`, and the lease discard; a mid-run wiring defect now warns
-  rather than logging at debug. Status → Implemented.
+- 2026-08-05 — Units 1–3 ([#1491](https://github.com/bajutsu-e2e/bajutsu/pull/1491)). Both on-device
+  suites now share one thunk factory, `xcuitest_lease_launch` in the new `tests/xcuitest_lease.py` —
+  kept out of the backend-agnostic `backend_crash_recovery` plugin — which builds a fresh
+  environment per lease and returns its teardown alongside the driver, so `LeaseHolder` discards
+  through the platform's own teardown rather than `driver.close()`. Unit 1's open decision is
+  resolved in favor of `launch_driver` absorbing the guard, so every caller inherits it. The
+  guarded-teardown policy moved to `bajutsu/runner/recovery.py`, shared by the pool's three sites,
+  `launch_driver`, and the lease discard; a mid-run wiring defect now warns rather than logging at
+  debug. Status → Implemented.
 
 ## References
 

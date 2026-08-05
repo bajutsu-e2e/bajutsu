@@ -37,7 +37,9 @@ def guarded_teardown(teardown: Callable[[], None], *, mid_run: bool, what: str) 
     """Run `teardown`, warning on an expected process failure instead of re-raising.
 
     A runner that had already exited and an unreachable `xcrun` surface as `CalledProcessError` or
-    `OSError`; those are always logged at warning and swallowed, matching every call site. Anything
+    `OSError`; those are always logged at warning and swallowed. The pair is process-shaped, so it
+    covers the subprocess-driven backends (simctl, adb) but not the web context's `close()`, whose
+    already-gone target raises Playwright's own error and lands in the branch below. Anything
     else is a wiring defect: at most call sites (`mid_run=True`) it is also swallowed into a warning
     so it cannot mask the fault that prompted the teardown, or abandon cleanup the caller still owes
     (the pool's `free.put(udid)`, on a site that runs ahead of its own `try`); only a final release
