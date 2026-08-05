@@ -91,7 +91,8 @@ def device_pool(
     device; `Lease.release()` terminates the app and returns the udid to the pool. A single-device
     run is just a pool of one, so network collection / interval evidence / device control work the
     same whether `workers` is 1 or N. The only shared state is the thread-safe free-device queue and
-    the read-only collectors map, so leases need no lock.
+    the collectors / catalog maps, whose only in-lease writes re-key one exclusively-leased device
+    onto its replacement, so leases need no lock.
 
     Args:
         udids: The devices to pool; the web backend ignores these (one browser lane).
@@ -264,7 +265,10 @@ def device_pool(
                 replacement,
             )
             # The collector is a host-side receiver the device reaches over the loopback, so it needs
-            # no restart — only the key a later lease on this device looks it up by.
+            # no restart — only the key a later lease on this device looks it up by. Writing to
+            # `collectors` / `catalog` here needs no lock for the same reason `warm` doesn't: this
+            # lease exclusively holds the old udid, and the replacement was minted moments ago, so no
+            # other lease can be touching either key.
             if (moved := collectors.pop(udid, None)) is not None:
                 collectors[replacement] = moved
             # Anything cached under the dead udid can never be resumed; drop it before the key moves.

@@ -523,12 +523,6 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # `_respawn`, which a reused instance built at first bring-up never has set (see the PR review).
         self._cold_spawned_before = False
         self._runner_proc: subprocess.Popen[bytes] | None = None
-        # Whether *any* earlier poll of `_runner_proc` (a warm-resume health check, the crash probe)
-        # has already observed its exit. Reset on every fresh spawn (`_spawn_runner`); read by
-        # `_discard_runner`, whose crashed-branch group sweep may only trust the leader's pid as a
-        # pgid while it is the one doing the reaping — once some earlier poll already reaped it, the
-        # OS is free to recycle that pid, and a later `killpg` on it could hit an unrelated group.
-        self._runner_exit_known = False
         self._runner_port: int = 0
         self._patched_runner: Path | None = None
         # Where the current runner's captured output went; a mid-run-crash warning and a startup
@@ -900,7 +894,6 @@ class XcuitestEnvironment(_DeviceEnvironment):
             # closing on the error path too means a failed spawn never leaks the log handle.
             runner_out.close()
         self._runner_proc = proc
-        self._runner_exit_known = False  # a fresh leader: nothing has observed its exit yet
         _logger.info("xcuitest runner output → %s", self._runner_log)
 
         driver = backends.make_driver(
@@ -1066,17 +1059,8 @@ class XcuitestEnvironment(_DeviceEnvironment):
         that has exited will never answer `/health` again on its port, so recovery fails fast instead
         of polling it for the whole window (a runner merely unreachable but alive stays BE-0287's
         recoverable case). `poll()` is `None` while the process runs, an exit code once it has ended.
-
-        Marks `_runner_exit_known` on an observed exit, since `_discard_runner`'s crashed-branch group
-        sweep may only trust the leader's pid as a still-unrecycled pgid while it is itself the first
-        to see the exit.
         """
-        if self._runner_proc is None:
-            return False
-        if self._runner_proc.poll() is not None:
-            self._runner_exit_known = True
-            return False
-        return True
+        return self._runner_proc is not None and self._runner_proc.poll() is None
 
     def _healthy_resident_driver(self) -> base.Driver | None:
         """The driver for the warm runner if it is up and answering `/health`, else None (BE-0291 Unit 4).
@@ -1085,13 +1069,8 @@ class XcuitestEnvironment(_DeviceEnvironment):
         respawns cold. The known failure is the runner crashing after repeated `app.launch()` cycles
         (docs/architecture.md), so this stays cheap and never waits the cold ceiling. The probed driver
         is returned (not rebuilt) so a warm resume reuses this same channel on the runner's port.
-
-        Marks `_runner_exit_known` on an observed exit — see `_runner_alive`.
         """
-        if self._runner_proc is None:
-            return None
-        if self._runner_proc.poll() is not None:
-            self._runner_exit_known = True
+        if self._runner_proc is None or self._runner_proc.poll() is not None:
             return None
         from bajutsu.drivers.xcuitest import XcuitestChannelError
 
@@ -1157,22 +1136,23 @@ class XcuitestEnvironment(_DeviceEnvironment):
         leader that already exited on its own: `start_new_session` (`_spawn_runner`) makes it its own
         process group leader, so an XCTest-host child can outlive it and keep holding the device's
         automation session even though `xcodebuild` is gone — exactly the state a following spawn
-        attempt would then have to spawn onto. That sweep is safe only while *this* call is the one
-        that reaps the leader: once an earlier poll elsewhere (`_runner_alive`, the warm-resume health
-        check) has already seen the exit, the pid can have been recycled by the OS since, so a `killpg`
-        on it here could land on an unrelated process group — `_runner_exit_known` is what tells the
-        two cases apart.
+        attempt would then have to spawn onto. The sweep runs unconditionally, even though `poll()`
+        here may not be the call that first reaped the leader (`_runner_alive`, the warm-resume health
+        check, and `start()`'s own reuse probe all poll the same handle, and each is the dominant path
+        into this branch) — while any XCTest-host child outlives the leader, POSIX keeps the leader's
+        pid reserved as that child's process-group id, so it cannot have been recycled regardless of
+        who reaped it or when; only once the group is *empty* — the case where the sweep has nothing
+        left to reach anyway — is the pid free to be reused, the same narrow window the `else` branch
+        below already accepts unconditionally via `_terminate_process_group`.
         """
         crashed = False
         if self._runner_proc is not None:
-            exit_already_known = self._runner_exit_known
             exited = self._runner_proc.poll()
             if exited is not None:
                 # The leader is already gone — it exited on its own, not at our request. For a
                 # resident runner that is the known app.launch()-cycle crash (see `_MAX_WARM_REUSES`
                 # above for what this repeatedly surfaced in CI); log it (with the captured output)
                 # so a run that died on a `Connection refused` shows *why* the channel vanished.
-                self._runner_exit_known = True
                 crashed = warn_on_crash
                 if warn_on_crash:
                     _logger.warning(
@@ -1180,15 +1160,12 @@ class XcuitestEnvironment(_DeviceEnvironment):
                         exited,
                         self._runner_log_hint(),
                     )
-                if not exit_already_known:
-                    # No terminate() — the leader's pid is already reaped — but `start_new_session`
-                    # made it its own group leader, so that pid is still a valid pgid for as long as
-                    # any child survives it: sweep whatever XCTest-host children outlived the leader.
-                    # This is the call that just did the reaping, so the pid is guaranteed unrecycled;
-                    # a sweep of an already-empty group raises ProcessLookupError, suppressed like
-                    # every other discard step.
-                    with contextlib.suppress(OSError):
-                        os.killpg(self._runner_proc.pid, signal.SIGKILL)
+                # No terminate() — the leader's pid is already reaped — but `start_new_session` made it
+                # its own group leader, so that pid is still a valid pgid for as long as any child
+                # survives it: sweep whatever XCTest-host children outlived the leader. A sweep of an
+                # already-empty group raises ProcessLookupError, suppressed like every other discard step.
+                with contextlib.suppress(OSError):
+                    os.killpg(self._runner_proc.pid, signal.SIGKILL)
             else:
                 _terminate_process_group(self._runner_proc)
             self._runner_proc = None

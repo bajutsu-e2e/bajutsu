@@ -436,6 +436,7 @@ class _RecordingEnv:
         reusable: bool = False,
         raise_on_teardown: bool = False,
         replacement: str | None = None,
+        catalog: dict[str, dict[str, str]] | None = None,
     ) -> None:
         self.actuator = actuator
         self.udid = udid
@@ -445,6 +446,10 @@ class _RecordingEnv:
         # A device this env replaced during `start` (None: the leased device is the one that
         # ran, which is every platform but the XCUITest Simulator's vanished-device path).
         self.replacement = replacement
+        # What `device_catalog()` reports for this env — a replacement re-fetches the catalog from
+        # the *lease* env (pool.py's `adopt_replacement`), not the pool-init one, so this is separate
+        # from any catalog the pool itself was built with.
+        self.catalog = catalog or {}
         self.fail_start = fail_start
         # BE-0291: a fake warm resident. `reusable` makes the pool cache and reuse this instance
         # across leases; the counters record how the pool released it (kept warm vs full teardown).
@@ -468,7 +473,7 @@ class _RecordingEnv:
         return FakeDriver([_el("home", "H"), _el("ok", "OK")])  # 2 elems -> ready on count
 
     def device_catalog(self) -> dict[str, dict[str, str]]:
-        return {}
+        return self.catalog
 
     def observes_network_via_driver(self) -> bool:
         return False
@@ -1267,6 +1272,7 @@ def _replacing_env_factory(
     replacement: str,
     reusable: bool = True,
     fail_start: bool = False,
+    replacement_catalog: dict[str, dict[str, str]] | None = None,
 ) -> Callable[..., _RecordingEnv]:
     """An `environment_for` whose *lease* environments report a device replacement during start."""
 
@@ -1286,6 +1292,7 @@ def _replacing_env_factory(
             reusable=reusable,
             fail_start=fail_start and created,
             replacement=replacement if created else None,
+            catalog=replacement_catalog if created else None,
         )
         created.append(env)
         return env
@@ -1299,7 +1306,11 @@ def test_device_pool_follows_a_lease_onto_a_replacement_device(
     created: list[_RecordingEnv] = []
     monkeypatch.setattr(
         "bajutsu.runner.pool.environment_for",
-        _replacing_env_factory(created, replacement="UDID-NEW"),
+        _replacing_env_factory(
+            created,
+            replacement="UDID-NEW",
+            replacement_catalog={"UDID-NEW": {"name": "iPhone 17 Pro", "runtime": "iOS 26.0"}},
+        ),
     )
     lease, shutdown = device_pool(
         ["UDID-A"],
@@ -1314,6 +1325,9 @@ def test_device_pool_follows_a_lease_onto_a_replacement_device(
         lz = lease(_eff(), _scn("s"))
         # The result names the device that actually ran the scenario, not the one that vanished.
         assert lz.udid == "UDID-NEW"
+        # The catalog re-key follows the replacement too, or the report would attribute the scenario
+        # to a device whose model/runtime row reads as blank rather than as a bug (BE-XXXX unit 5).
+        assert lz.device_name == "iPhone 17 Pro" and lz.device_runtime == "iOS 26.0"
         lz.release()
         # The replacement took the vanished device's place in the pool, so the next lease gets it and
         # the dead udid is never handed out again.
