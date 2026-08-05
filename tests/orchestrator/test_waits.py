@@ -718,7 +718,7 @@ class _CollapsingThenRevealedDriver(FakeDriver):
 def test_mid_wait_alert_guard_dismiss_preserves_correct_before_after_evidence(
     tmp_path: Path,
 ) -> None:
-    """The mid-wait alert-guard dismiss must not corrupt the report's evidence (BE-XXXX
+    """The mid-wait alert-guard dismiss must not corrupt the report's evidence (BE-0341
     non-regression): the waiting step's pre-step baseline still shows the true, collapsed
     pre-dismiss state, and the *next* step's own baseline reflects the post-dismiss, settled
     state — not something stale from before the alert cleared."""

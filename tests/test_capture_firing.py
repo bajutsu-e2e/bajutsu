@@ -1,7 +1,7 @@
 """Tests for evidence firing in the run loop.
 
 Every step always captures a pre-step baseline (screenshot.before + elements, taken before the step
-acts, BE-XXXX); only the scenario's last leaf step also gets a second, post-step one (screenshot.after
+acts, BE-0341); only the scenario's last leaf step also gets a second, post-step one (screenshot.after
 alone — `elements` is deliberately not re-captured, since `elements.json` has one fixed filename and
 re-capturing it would overwrite the pre-step baseline's pre-action tree with a post-action one,
 decoupling it from what `before.png` shows). capturePolicy / inline `capture` add

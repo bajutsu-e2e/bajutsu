@@ -445,7 +445,7 @@ def _step_artifacts(
     if not isinstance(sid, str) or not _valid_step_id(sid):
         return []
     # step id (parsed from each outcome's own recorded artifact paths) -> that step's artifacts, so
-    # the loop below resolves the real names the run recorded (BE-XXXX) instead of assuming the
+    # the loop below resolves the real names the run recorded (BE-0341) instead of assuming the
     # baseline is always `before.png`/`after.png` under fixed names — a capturePolicy rule can add
     # or replace either. Keyed by the runtime step id, not the outcome's `index`: `index` is a
     # counter across *all executed steps* including nested `if`/`forEach`/`web` steps, while the
@@ -519,7 +519,7 @@ def _find_scenario(manifest: dict[str, Any], scenario_name: str | None) -> dict[
 
 def _artifact_names(step_artifacts: list[dict[str, Any]]) -> tuple[str | None, str | None]:
     """The first recorded `elements` / `screenshot` artifact name for a step, or `None` for either
-    the run never recorded (BE-XXXX) — mirrors `report/rows.py`'s `by_kind.setdefault` precedence:
+    the run never recorded (BE-0341) — mirrors `report/rows.py`'s `by_kind.setdefault` precedence:
     the pre-step baseline is first in the list, so it wins even when a capturePolicy rule fired too."""
     by_kind: dict[str, str] = {}
     for art in step_artifacts:

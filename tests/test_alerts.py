@@ -171,7 +171,7 @@ def test_on_blocked_retries_step_after_recovery() -> None:
 def test_end_of_step_alert_guard_retry_preserves_correct_before_after_evidence(
     tmp_path: Path,
 ) -> None:
-    """The end-of-step alert-guard retry must not corrupt the report's evidence (BE-XXXX
+    """The end-of-step alert-guard retry must not corrupt the report's evidence (BE-0341
     non-regression): the retried step's pre-step baseline still shows the true pre-attempt
     state, and the *next* step's own baseline reflects the post-retry, settled state — not
     something stale from the failed first attempt."""
@@ -222,7 +222,7 @@ def test_end_of_step_alert_guard_retry_on_the_last_step_still_gets_a_final_captu
 ) -> None:
     """The scenario's last step still gets its final post-action screenshot after an end-of-step
     alert-guard retry — reflecting the retried, successful attempt, not the failed first one.
-    `elements.json`, unaffected, stays the pre-step baseline (BE-XXXX)."""
+    `elements.json`, unaffected, stays the pre-step baseline (BE-0341)."""
     go = {
         "identifier": "go",
         "label": "Go",
@@ -257,7 +257,7 @@ def test_end_of_step_alert_guard_retry_on_the_last_step_still_gets_a_final_captu
     )
     # elements.json is the pre-step baseline (the true pre-attempt, empty screen) even though this
     # is the last step: the final capture only adds a screenshot, never re-capturing `elements`
-    # (BE-XXXX) — so it stays paired with `before.png`, not the post-retry `after.png`.
+    # (BE-0341) — so it stays paired with `before.png`, not the post-retry `after.png`.
     assert els == []
 
 
