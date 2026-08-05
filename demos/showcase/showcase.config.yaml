@@ -163,9 +163,11 @@ targets:
     # the ~2.4s-per-read dump path, docs/drivers.md) runs only golden.yaml, whose sole step is such a
     # `wait`, so that lane's own screen-read counter (BE-0234) measures 0 extra reads with this block
     # present versus absent — it is not the lane that pays for this coverage. Several other `e2e*`
-    # scenarios (`search`, `relaunch`, `system`, `components`, `modals`, …) open with a `tap` instead,
-    # so each of those pays one such read on its first step — the resident channel's fast path
-    # (~0.1-0.3s) where the resident server is built, the same ~2.4s dump path otherwise.
+    # scenarios (`search`, `relaunch`, `system`, `components`, `modals`, …) declare no `screenChanged`
+    # capture rule, so the guard has no fresh tree to reuse and pays one such read on *every*
+    # non-`wait` step, not just the first — measured at 4/3/6/3 extra reads across modals.yaml's four
+    # scenarios (`foreach` pays again per iteration) — the resident channel's fast path (~0.1-0.3s)
+    # where the resident server is built, the same ~2.4s dump path otherwise.
     #
     # Conditions on `aerr_wait`, taps `aerr_close` — deliberately not the same id, and not `aerr_wait`
     # for both. AOSP's ANR dialog (app_anr_dialog.xml, AppNotRespondingDialog) carries three buttons —

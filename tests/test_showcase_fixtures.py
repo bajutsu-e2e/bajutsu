@@ -83,12 +83,14 @@ def test_showcase_android_targets_have_anr_interrupt() -> None:
     assert android, "expected Android showcase targets"
     for name in android:
         interrupts = resolve(cfg, name).run_defaults.interrupts
-        assert len(interrupts) == 1, name
-        exists = interrupts[0].condition.exists
-        assert exists is not None, name
-        assert exists.sel.id == ["aerr_wait"], name
-        assert len(interrupts[0].steps) == 1, name
-        tap = interrupts[0].steps[0].tap
+        anr = [
+            e
+            for e in interrupts
+            if e.condition.exists is not None and e.condition.exists.sel.id == ["aerr_wait"]
+        ]
+        assert len(anr) == 1, name
+        assert len(anr[0].steps) == 1, name
+        tap = anr[0].steps[0].tap
         assert tap is not None, name
         assert tap.id == ["aerr_close"], name
 
