@@ -321,11 +321,11 @@ class SessionManager:
     `oauth_admin_teams` are the server-wide GitHub Teams (each `"<github-org>/<team-slug>"`) whose
     members are admin — a member of any of them also clears the sign-in gate itself, not only the
     admin role, so an admin can still sign in and repoint a broken `orgs:` config even when no tenant
-    lists their GitHub organization. A tuple, not a list, so the same "don't alias a caller-owned
-    collection" discipline `JobRegistry.register` documents above holds by the type itself: no later
-    reference can grow or clear the admin roster on a live server. The OAuth fields are fixed at
-    server construction and never change after, so they travel with the token/session state they
-    gate.
+    lists their GitHub organization. Annotated as a tuple rather than a list so the callers `mypy`
+    checks cannot hand over a collection they still hold a reference to — the same "don't alias a
+    caller-owned collection" concern `JobRegistry._register` handles by copying. The OAuth fields are
+    fixed at server construction and never change after, so they travel with the token/session state
+    they gate.
     """
 
     token: str | None = None

@@ -13,9 +13,12 @@ import secrets
 from collections.abc import Sequence
 from typing import Any
 
+from bajutsu.serve import oplog
 from bajutsu.serve.helpers import load_serve_config_file
 from bajutsu.serve.orgs import identity_matches_org, org_for_identity, org_for_target
 from bajutsu.serve.state import ServeState
+
+_logger = logging.getLogger(__name__)
 
 
 def login(state: ServeState, token: str) -> tuple[Any, int, str | None]:
@@ -82,9 +85,15 @@ def oauth_callback(
         return {"error": "user not allowed"}, 403, None
     if not matched_org:
         # The one sign-in path `orgs:` did not authorize: record that the bootstrap bypass was
-        # used, so an operator can see the hatch itself, not only its effects.
-        logging.getLogger(__name__).warning(
-            "admin-Team bypass admitted %s: no orgs: entry matched this login", login
+        # used, so an operator can see the hatch itself, not only its effects. Through oplog (not a
+        # bare logging call) so it carries the registered `event` name, redaction, and correlation
+        # fields every other operationally-significant record in serve already does.
+        oplog.log_event(
+            _logger,
+            "oauth.login",
+            f"admin-Team bypass admitted {login}: no orgs: entry matched this login",
+            level=logging.WARNING,
+            bypass=True,
         )
     if state.repository is not None:
         # Persist the identity into the system of record, so audit entries and RBAC can reference
