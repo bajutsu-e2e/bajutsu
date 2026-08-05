@@ -122,7 +122,8 @@ deterministic gate (`make check`) is the judge — never an LLM.
    change — the **pr-review-toolkit** agents. These are *authoring aids*: they advise the author and
    never judge, so directive #1 holds and no LLM touches the `run`/CI path. Keep re-running the
    review contract against the updated diff until the pass comes back empty, and open the PR (step
-   10) only once every real finding is fixed.
+   10) only once every real finding is fixed — capped at 3 rounds like step 5 above, escalating to
+   you with the PR left unopened if a real finding still stands.
 8. **Flip the item to Implemented.** In both language files set `Status: Implemented` and add the
    `Implementing PR` line — nothing else to regenerate, since the dashboard reads `Status` straight
    off the item's metadata. The directory never moves (BE-0159): only the `Status` and its dashboard
