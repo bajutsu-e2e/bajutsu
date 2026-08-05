@@ -334,7 +334,7 @@ def test_build_state_server_stays_quiet_when_admin_teams_is_set(
     monkeypatch.setenv("BAJUTSU_OAUTH_ADMIN_TEAM", "acme-gh/legacy")
     monkeypatch.setenv("BAJUTSU_OAUTH_ADMIN_TEAMS", "acme-gh/ops")
     _scn, cfg, runs = project(tmp_path)
-    srv._build_state(
+    state = srv._build_state(
         runs_dir=runs,
         config=cfg,
         scenarios_dir=None,
@@ -344,7 +344,33 @@ def test_build_state_server_stays_quiet_when_admin_teams_is_set(
         token=None,
         backend="server",
     )
+    assert state.auth.oauth_admin_teams == ["acme-gh/ops"]  # the new name wins, the old is ignored
     assert "BAJUTSU_OAUTH_ADMIN_TEAM" not in capsys.readouterr().err
+
+
+def test_build_state_server_warns_on_a_malformed_admin_teams_entry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # A space- or semicolon-separated value parses to one entry with no "/", which can never
+    # match a real "<github-org>/<team-slug>" — that silently loses every admin the same way the
+    # retired singular name does, so it must warn too.
+    monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
+    monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
+    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
+    monkeypatch.setenv("BAJUTSU_OAUTH_ADMIN_TEAMS", "acme-gh/ops other-gh/root")
+    _scn, cfg, runs = project(tmp_path)
+    state = srv._build_state(
+        runs_dir=runs,
+        config=cfg,
+        scenarios_dir=None,
+        root=tmp_path,
+        baselines_dir=None,
+        max_concurrent=4,
+        token=None,
+        backend="server",
+    )
+    assert state.auth.oauth_admin_teams == ["acme-gh/ops other-gh/root"]
+    assert "will never match" in capsys.readouterr().err
 
 
 def test_build_state_server_parses_the_per_user_quota(

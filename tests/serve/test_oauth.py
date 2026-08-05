@@ -149,13 +149,16 @@ def _db_state(
     tmp_path: Path,
     oauth: object,
     admin_teams: list[str] | None = None,
+    config: Path | None = None,
 ) -> tuple[ServeState, Engine]:
     from bajutsu.serve.server.db import SqlRepository
     from bajutsu.serve.server.models import Base
 
     engine = serve_engine()
     Base.metadata.create_all(engine)
-    state = _state(tmp_path, oauth=oauth, config=_config_file(tmp_path), admin_teams=admin_teams)
+    state = _state(
+        tmp_path, oauth=oauth, config=config or _config_file(tmp_path), admin_teams=admin_teams
+    )
     state.repository = SqlRepository(engine)
     return state, engine
 
@@ -261,6 +264,22 @@ def test_oauth_callback_admin_team_bypass_resolves_to_admin_role(
         tmp_path,
         FakeOAuthClient(login="mallory", teams=["ops-gh/root"]),
         admin_teams=["ops-gh/root"],
+    )
+    assert _role_after_login(state, "mallory") == "admin"
+
+
+def test_oauth_callback_admin_team_bypass_resolves_to_admin_role_with_no_orgs_block(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    # The other case the Progress checklist claims: no `orgs:` block at all, with a database wired
+    # (so `role_for` actually runs) — the resolved role must still be admin.
+    body = "targets:\n  demo: { bundleId: com.example.demo }\n"
+    state, _ = _db_state(
+        serve_engine,
+        tmp_path,
+        FakeOAuthClient(login="mallory", teams=["ops-gh/root"]),
+        admin_teams=["ops-gh/root"],
+        config=_config_file(tmp_path, body),
     )
     assert _role_after_login(state, "mallory") == "admin"
 

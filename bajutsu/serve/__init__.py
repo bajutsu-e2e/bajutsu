@@ -357,15 +357,23 @@ def _build_server_state(
     oauth_admin_teams = [
         t.strip() for t in os.environ.get("BAJUTSU_OAUTH_ADMIN_TEAMS", "").split(",") if t.strip()
     ]
-    # The rename is a hard cutover with no alias (BE-0313's own precedent for retiring
-    # BAJUTSU_OAUTH_ADMINS) — but a deployment still on the old singular name would otherwise lose
-    # every admin with no signal beyond an unexplained 403. Warn loudly rather than fail silently.
+    # Never lose every admin quietly: the rename is a hard cutover with no alias (BE-0313's own
+    # precedent for retiring BAJUTSU_OAUTH_ADMINS), and a malformed entry never matches anything
+    # either — both would otherwise leave a deployment with no signal beyond an unexplained 403.
     if not oauth_admin_teams and os.environ.get("BAJUTSU_OAUTH_ADMIN_TEAM"):
         import sys
 
         print(  # noqa: T201
             "bajutsu serve: BAJUTSU_OAUTH_ADMIN_TEAM is retired; rename it to "
             "BAJUTSU_OAUTH_ADMIN_TEAMS or no login will have admin access",
+            file=sys.stderr,
+        )
+    if malformed := [t for t in oauth_admin_teams if t.count("/") != 1]:
+        import sys
+
+        print(  # noqa: T201
+            "bajutsu serve: BAJUTSU_OAUTH_ADMIN_TEAMS entries must each be "
+            f'"<github-org>/<team-slug>"; these will never match: {malformed}',
             file=sys.stderr,
         )
 
