@@ -24,8 +24,15 @@ def test_xcuitest_lease_launch_tears_down_through_the_environment(
 
     env, sentinel, eff = _Env(), object(), object()
     monkeypatch.setattr(xcuitest_lease, "environment_for", lambda *a, **k: env)
-    monkeypatch.setattr(xcuitest_lease, "launch_driver", lambda *a, **k: (sentinel, None))
+    started_on: list[object] = []
+
+    def _launch(*a: object, **k: object) -> tuple[object, None]:
+        started_on.append(k.get("environment"))
+        return sentinel, None
+
+    monkeypatch.setattr(xcuitest_lease, "launch_driver", _launch)
     driver, teardown = xcuitest_lease.xcuitest_lease_launch("UDID-1", eff, extra_env={})()
     assert driver is sentinel
+    assert started_on == [env]  # started on the very environment the teardown closes over
     teardown()
     assert torn == [(sentinel, eff)]  # the environment's own teardown, not driver.close()
