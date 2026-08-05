@@ -618,8 +618,8 @@ def test_pre_step_capture_downgrades_to_screenshot_only_when_web_query_fails(
     """A `web` block's first nested step still gets its native `screenshot.before` when the bridge
     query fails: only `elements` needs the web driver, so the pre-step baseline drops just that
     token rather than the whole capture (BE-0341 review follow-up). No `capturePolicy` fires a
-    post-step `elements` capture here, so the bridge is queried exactly once — a permanently dead
-    bridge is exactly what this models."""
+    post-step `elements` capture here, so the bridge is queried exactly once — no later read exists
+    for it to recover on, so this run cannot tell a transient failure from a permanent one."""
     native_screen = [el("app.webview", frame=(0.0, 0.0, 400.0, 800.0))]
     driver = FakeDriver(native_screen)
     run_dir = tmp_path / "run1"
