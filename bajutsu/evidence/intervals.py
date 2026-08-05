@@ -313,7 +313,15 @@ def _screenrecord_pids(serial: str, run: adb.RunFn) -> set[str]:
     """The device-side `screenrecord` pids right now, or an empty set on a probe failure."""
     try:
         return {pid for pid in run(adb.screenrecord_pids_cmd(serial)).split() if pid}
-    except (subprocess.CalledProcessError, OSError):
+    except (subprocess.CalledProcessError, OSError) as exc:
+        # An empty baseline reads as "nothing was running", so a failed probe silently disables the
+        # leaked-process guard the baseline exists for — disclose it rather than mistime silently.
+        _logger.warning(
+            "could not probe device-side screenrecord on %s before spawning (%s); a leaked "
+            "recording from an earlier attempt may now confirm a start that never happened",
+            serial,
+            exc,
+        )
         return set()
 
 
