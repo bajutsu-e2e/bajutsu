@@ -532,11 +532,12 @@ def test_run_all_honors_the_crash_recovery_budget_environment_override(
 
 
 def test_run_all_stops_respawning_once_the_run_crash_recovery_budget_is_spent() -> None:
-    # The run-level budget is shared across every scenario, unlike `crash_recovery_budget`, which
-    # resets for each one. Scenario "a" crashes once and recovers (arming the shared deadline at its
-    # crash: t=100, budget=50 -> deadline=150). Scenario "b" then crashes once more, at t=160 — past
-    # the shared deadline — so even *its own first* attempt is cut off: this is what tells "the
-    # run-level budget is spent" apart from "this scenario's own attempts/budget ran out".
+    # The run-level budget accumulates *actual recovery time spent*, not wall-clock elapsed since some
+    # earlier crash: scenario "a" crashes once, and its successful respawn costs 60s of real recovery
+    # time (billed in full once its loop concludes). Scenario "b" then crashes once more — by then the
+    # accumulated total (60s) already meets the 50s budget, so even *its own first* attempt is cut
+    # off: this is what tells "the run-level budget is spent" apart from "this scenario's own
+    # attempts/budget ran out".
     clock = _AdvancingClock()
     calls = 0
 
@@ -544,9 +545,9 @@ def test_run_all_stops_respawning_once_the_run_crash_recovery_budget_is_spent() 
         nonlocal calls
         calls += 1
         if calls == 1:
-            clock.advance(100.0)
             raise base.BackendCrashError("runner crashed during the readiness gate (test)")
         if calls == 2:
+            clock.advance(60.0)  # scenario a's one respawn took 60s
             return Lease(
                 driver=_fake_driver(),
                 sink=NullSink(),
@@ -555,7 +556,6 @@ def test_run_all_stops_respawning_once_the_run_crash_recovery_budget_is_spent() 
                 collector=None,
                 release=lambda: None,
             )
-        clock.advance(60.0)
         raise base.BackendCrashError("runner crashed during the readiness gate (test)")
 
     scenarios = [
@@ -565,19 +565,54 @@ def test_run_all_stops_respawning_once_the_run_crash_recovery_budget_is_spent() 
     results = run_all(
         _eff(), scenarios, lease, clock=clock, crash_retries=5, run_crash_recovery_budget=50.0
     )
-    assert results[0].ok  # scenario a recovered on its own respawn
+    assert results[0].ok  # scenario a recovered; its 60s of recovery time is now billed in full
     assert not results[1].ok
-    assert (
-        calls == 3
-    )  # a: 2 leases; b: 1 lease, cut off by the run-level budget on its first attempt
+    assert calls == 3  # a: 2 leases; b: 1 lease, cut off by the already-exhausted run-level budget
     assert "run-level crash-recovery budget" in (results[1].failure or "")
 
 
+def test_run_all_run_crash_recovery_budget_ignores_healthy_scenarios_between_crashes() -> None:
+    # A long stretch of scenarios that never crash must not itself erode the run-level budget — only
+    # time actually billed via a completed recovery episode counts. Guards the exact bug an earlier,
+    # deadline-based design had: a budget measured as wall-clock elapsed since the run's first crash
+    # would have let a later, unrelated one-off crash get blocked outright even though almost none of
+    # the budget had genuinely been spent recovering.
+    clock = _AdvancingClock()
+
+    def lease(eff: Effective, scenario: Scenario) -> Lease:
+        if scenario.name == "healthy":
+            clock.advance(10_000.0)  # this scenario's real run took a long time; no crash involved
+        else:
+            raise base.BackendCrashError("runner crashed during the readiness gate (test)")
+        return Lease(
+            driver=_fake_driver(),
+            sink=NullSink(),
+            relaunch=None,
+            control=None,
+            collector=None,
+            release=lambda: None,
+        )
+
+    scenarios = [
+        Scenario.model_validate({"name": "healthy", "steps": [{"tap": {"id": "ok"}}]}),
+        Scenario.model_validate({"name": "late-crash", "steps": [{"tap": {"id": "ok"}}]}),
+    ]
+    results = run_all(
+        _eff(), scenarios, lease, clock=clock, crash_retries=5, run_crash_recovery_budget=50.0
+    )
+    assert results[0].ok
+    assert not results[1].ok  # every attempt crashes (the lease always raises for "late-crash")
+    # No real recovery time had been billed yet when "late-crash" made its own first attempt — the
+    # 10,000s the healthy scenario burned must play no part — so it exhausts on its own retry count,
+    # never on the run-level budget.
+    assert "run-level crash-recovery budget" not in (results[1].failure or "")
+    assert "did not recover across" in (results[1].failure or "")
+
+
 def test_run_all_run_crash_recovery_budget_never_blocks_the_very_first_crash() -> None:
-    # The run-level deadline is armed at the run's first crash, so that very crash's own retry
-    # decision is never blocked by it, even under a near-zero budget — the same
-    # never-block-the-first-respawn rule `crash_recovery_budget` already follows per scenario, now
-    # shared across the whole run.
+    # The run's very first crash always sees an empty accumulator, so it is never blocked by even a
+    # near-zero run-level budget — the same never-block-the-first-respawn rule `crash_recovery_budget`
+    # already follows per scenario, now shared across the whole run.
     clock = _AdvancingClock()
     state = {"n": 0}
 
@@ -620,21 +655,42 @@ def test_run_all_honors_the_run_crash_recovery_budget_environment_override(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # End to end: with the env set and no explicit arg, run_all reads the env's run-level budget and
-    # stops the respawn loop once the shared wall-clock is spent — the same None-reads-the-env wiring
-    # as crash_recovery_budget.
+    # stops the respawn loop once the accumulated recovery time is spent — the same None-reads-the-env
+    # wiring as crash_recovery_budget. Two scenarios, matching
+    # test_run_all_stops_respawning_once_the_run_crash_recovery_budget_is_spent: a single scenario can
+    # never see its *own* in-progress spend (billed only once its own loop ends), so a one-scenario
+    # version of this test could never actually observe the run-level budget as the reported cause.
     monkeypatch.setenv("BAJUTSU_RUN_CRASH_RECOVERY_BUDGET", "50")
     clock = _AdvancingClock()
+    calls = 0
 
     def lease(eff: Effective, scenario: Scenario) -> Lease:
-        clock.advance(100.0)
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise base.BackendCrashError("runner crashed during the readiness gate (test)")
+        if calls == 2:
+            clock.advance(60.0)
+            return Lease(
+                driver=_fake_driver(),
+                sink=NullSink(),
+                relaunch=None,
+                control=None,
+                collector=None,
+                release=lambda: None,
+            )
         raise base.BackendCrashError("runner crashed during the readiness gate (test)")
 
-    scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
+    scenarios = [
+        Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]}),
+        Scenario.model_validate({"name": "b", "steps": [{"tap": {"id": "ok"}}]}),
+    ]
     results = run_all(
         _eff(), scenarios, lease, clock=clock, crash_retries=5
     )  # run_crash_recovery_budget arg unset
-    assert not results[0].ok
-    assert "run-level crash-recovery budget" in (results[0].failure or "")
+    assert results[0].ok
+    assert not results[1].ok
+    assert "run-level crash-recovery budget" in (results[1].failure or "")
 
 
 def test_scenario_runner_runs_one_in_isolation() -> None:

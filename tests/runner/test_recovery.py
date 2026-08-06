@@ -118,35 +118,51 @@ def test_crash_recovery_budget_default_reads_the_environment(monkeypatch) -> Non
 
 
 def test_run_budget_never_exhausted_when_unbounded() -> None:
-    # None (the default) is unbounded: a crash never arms a deadline, so `note_crash()` keeps
-    # reporting False regardless of how many crashes are noted or how far the clock advances.
+    # None (the default) is unbounded: `exhausted()` stays False no matter how much recovery time is
+    # billed against it.
     clock = _AdvancingClock()
     budget = RunCrashRecoveryBudget(budget=None, now=clock.now)
-    assert budget.note_crash() is False
-    clock.advance(10_000.0)
-    assert budget.note_crash() is False
+    assert budget.exhausted() is False
+    budget.add_recovery_time(10_000.0)
+    assert budget.exhausted() is False
 
 
-def test_run_budget_exhausts_once_the_deadline_passes() -> None:
-    # The deadline is set at the *first* crash, not re-armed by a later one: a 100s budget noted at
-    # t=0 exhausts at t=100 regardless of how many further crashes are noted in between.
+def test_run_budget_exhausts_once_accumulated_recovery_time_meets_it() -> None:
+    # The budget bills *actual recovery time spent*, not wall-clock elapsed since some earlier crash:
+    # a 100s budget exhausts once 100s has actually been billed via add_recovery_time, regardless of
+    # how that total was split across separate calls (separate scenarios' recovery episodes).
     clock = _AdvancingClock()
     budget = RunCrashRecoveryBudget(budget=100.0, now=clock.now)
-    assert budget.note_crash() is False
-    clock.advance(50.0)
-    assert budget.note_crash() is False  # a second crash before the deadline does not push it out
-    clock.advance(50.0)  # now=100 >= the deadline set at the first crash (0 + 100)
-    assert budget.note_crash() is True
+    budget.add_recovery_time(40.0)
+    assert budget.exhausted() is False
+    budget.add_recovery_time(59.0)  # 99.0 total, still under
+    assert budget.exhausted() is False
+    budget.add_recovery_time(1.0)  # 100.0 total, meets the budget
+    assert budget.exhausted() is True
+
+
+def test_run_budget_ignores_healthy_time_between_unrelated_crashes() -> None:
+    # A long, perfectly healthy stretch between two unrelated one-off crashes must not itself erode
+    # the budget — only time actually billed via add_recovery_time counts, so advancing the clock with
+    # nothing billed changes nothing (guards the exact bug an earlier, deadline-based design had: a
+    # single armed-at-first-crash deadline treated wall-clock elapsed as if it were all recovery time).
+    clock = _AdvancingClock()
+    budget = RunCrashRecoveryBudget(budget=100.0, now=clock.now)
+    budget.add_recovery_time(50.0)  # scenario 1's crash cost 50s of real recovery time
+    clock.advance(10_000.0)  # a long healthy stretch of scenarios that never crash
+    assert budget.exhausted() is False  # still only 50s billed, nowhere near the 100s budget
+    budget.add_recovery_time(50.0)  # scenario 8's crash costs another 50s
+    assert budget.exhausted() is True  # 100s billed in total, now it is exhausted
 
 
 def test_run_budget_never_blocks_the_first_crash() -> None:
-    # Noting the very first crash must never itself report exhausted, even under a near-zero budget —
-    # the same never-block-the-first-respawn rule `CrashRecoveryBudget` applies per scenario. The
-    # deadline and the check both read from the same clock call, so this holds regardless of how slow
-    # the clock itself is to answer.
+    # The run's very first crash always sees an empty accumulator (0.0 billed so far), so `exhausted()`
+    # reads False right up to the point a caller has actually billed the whole budget — the same
+    # never-block-the-first-respawn property `CrashRecoveryBudget` gives per scenario, here true by
+    # construction (a positive budget can never be `<= 0.0`) rather than a special case.
     clock = _AdvancingClock()
     budget = RunCrashRecoveryBudget(budget=0.001, now=clock.now)
-    assert budget.note_crash() is False
+    assert budget.exhausted() is False
 
 
 def test_run_crash_recovery_budget_default_reads_the_environment(monkeypatch) -> None:

@@ -216,20 +216,28 @@ def _default_run_crash_recovery_budget() -> float | None:
 
 
 class RunCrashRecoveryBudget:
-    """Wall-clock ceiling on crash recovery across a whole run, not just one scenario.
+    """Wall-clock ceiling on *actual recovery time* accumulated across a whole run, not one scenario.
 
     `CrashRecoveryBudget` resets a fresh deadline for every scenario, so a device that keeps
-    degrading pays each scenario's own budget again — the caller (`_ScenarioRunner`) shares one of
-    these across every scenario in a run instead, so the deadline is set once, at the *first* crash
-    anywhere in the run (never blocking that first respawn, the same rule `CrashRecoveryBudget`
-    applies per scenario), and every later crash checks against it. A device that keeps degrading
-    then fails the run loudly once the shared deadline passes, instead of silently re-spending each
-    scenario's own budget until an external timeout cancels the job.
+    degrading pays each scenario's own budget again — this class shares one accumulator across every
+    scenario in a run instead. It bills only the time a scenario's own crash-retry loop actually
+    spends recovering (`bajutsu/runner/pipeline.py`'s `run_one` times its own retry loop and reports
+    the elapsed seconds via `add_recovery_time`), not wall-clock elapsed since some earlier crash: an
+    earlier design armed a single deadline at the first crash and never re-armed it, so a long,
+    perfectly healthy stretch between two unrelated one-off crashes silently ate into the same
+    budget, and a scenario whose backend crashed only once, late in the run, could be denied even its
+    first retry — exactly the "residual one-off crash" `crash_retries` exists to ride out. Billing
+    the accumulated total instead means 600s means 600s actually spent recovering.
 
-    `note_crash` is guarded by a lock because `run_all`'s `workers > 1` path shares one
-    `_ScenarioRunner` — and so one instance of this class — across a `ThreadPoolExecutor`
-    (`bajutsu/runner/pool.py`'s `lease_defect_lock` guards shared state across that same pool for the
-    same reason).
+    Deliberately keeps no notion of an in-progress "episode" as shared state: `run_all`'s
+    `workers > 1` path can run several scenarios' crash-retry loops concurrently
+    (`bajutsu/runner/pool.py`'s `lease_defect_lock` guards shared state across that same
+    `ThreadPoolExecutor` for the same reason this class needs a lock), and a single shared
+    start-of-episode timestamp would let two concurrent recoveries corrupt each other's timing —
+    whichever finished first would end "the" episode out from under the other. Each `run_one` call
+    times its own loop with a local variable instead (never shared), and only ever calls into this
+    class for a threadsafe read (`exhausted`) or a single atomic add (`add_recovery_time`) once its
+    own loop is done — so accumulation is correct under any amount of concurrency.
 
     `budget` is public (not `_budget`) so a caller that needs the configured seconds for a failure
     message (`bajutsu/runner/pipeline.py`'s `run_one`) reads it straight from the one object that
@@ -239,21 +247,26 @@ class RunCrashRecoveryBudget:
     def __init__(self, budget: float | None, now: Callable[[], float]) -> None:
         self.budget = budget
         self._now = now
-        self._deadline: float | None = None
+        self._spent = 0.0
         self._lock = threading.Lock()
 
-    def note_crash(self) -> bool:
-        """Record a crash and report whether the run-level budget is exhausted.
+    def exhausted(self) -> bool:
+        """Whether the accumulated recovery time already meets the budget. Always `False` when unbounded.
 
-        Reads the clock exactly once, so the very crash that arms the deadline (the first one, or the
-        first after a `None` budget starts enforcing) is judged against the same instant that set it
-        and can never itself be reported exhausted — the same never-block-the-first-respawn guarantee
-        `CrashRecoveryBudget.on_crash` gives its own single clock read, now shared across a whole run
-        instead of reset per scenario.
+        A budget of exactly 0 seconds accumulated never exhausts a positive budget (`_default_run_crash_recovery_budget`
+        never returns a non-positive value, so this only ever compares a real elapsed total against a
+        real ceiling) — the run's very first crash always sees `_spent == 0.0`, so it is never blocked
+        by this check alone.
         """
         with self._lock:
-            t = self._now()
-            if self.budget is not None and self._deadline is None:
-                self._deadline = t + self.budget
-                return False
-            return self._deadline is not None and t >= self._deadline
+            return self.budget is not None and self._spent >= self.budget
+
+    def add_recovery_time(self, seconds: float) -> None:
+        """Bill `seconds` of actual recovery time against the shared run-level total.
+
+        Called once per scenario whose backend crashed at least once, after its own crash-retry loop
+        ends (pass or fail) — a scenario that never crashes never calls this, so the common case costs
+        no lock acquisition at all.
+        """
+        with self._lock:
+            self._spent += seconds

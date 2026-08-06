@@ -108,7 +108,7 @@ runner channel GET /screenshot: the runner recovered from a mid-run crash; re-is
        attempt > 1
        and s.preconditions.reinstall != "overwrite"
        and s.preconditions.erase is not False
-       and _erase_is_safe_to_force(actuator, self.eff, self.udid_spec)
+       and erase_precondition_supported(actuator, self.eff, self.udid_spec)
    ):
        retry_scenario = s.model_copy(
            update={"preconditions": s.preconditions.model_copy(update={"erase": True})}
@@ -140,66 +140,84 @@ runner channel GET /screenshot: the runner recovered from a mid-run crash; re-is
    シナリオも、`reinstall: overwrite` と同じ種類の意図的な上書きを行っているため、強制された
    再試行がそれを覆してはいけません。
 
-   `_erase_is_safe_to_force` を設けたのは、2つの XCUITest 経路が `erase` の precondition を
+   `erase_precondition_supported` を設けたのは、2つの XCUITest 経路が `erase` の precondition を
    そもそも受け付けず、黙って no-op にする代わりに例外を送出するからです。実機
    （`xcuitest.deviceType: device`）と live WebDriver エンドポイントはどちらも、権限やインストール
    の precondition がすでに従っている「決定性を優先し、黙らせずに失敗する」という設計に沿って
    （`simctl.DeviceError` / `base.UnsupportedAction` を）送出します。どちらの例外も
    `base.BackendCrashError` ではないため、これらの経路で `erase` を強制すると、このループ自身の
    `except BackendCrashError` を素通りして run 全体が中断してしまいます。これは本項目が置き換える
-   その場での respawn よりも悪い結果です。このガードは、preflight がすでに使っている（BE-0238）
-   のと全く同じ判定材料（`xcuitest_targets_real_device(eff)`、`is_webdriver_endpoint(udid_spec)`）
-   を再利用するため、シナリオがどちらの経路にいるかについて2つの判定が食い違うことはありません。
+   その場での respawn よりも悪い結果です。この関数は `pipeline.py` ではなく `bajutsu/backends.py`
+   に、`capabilities_for_run`（BE-0238）と並べて置きます。同じ関数の判定材料
+   （`xcuitest_targets_real_device(eff)`、`is_webdriver_endpoint(udid_spec)`）をそのまま再利用する
+   ためです。すでに経路ごとの capability を分類している唯一のファイルが、この問いにも答える唯一の
+   場所になるので、将来 XCUITest 隣接の経路（デバイスファーム、新しいトランスポート）が追加された
+   ときも、そこでの capability の絞り込みと同じ場所でレビューされます。別のファイルに残された、
+   `erase` を常に安全だと思い込んだままの箇所が見落とされる心配がありません。
 
    Android の `pre.erase` は、アプリレベルのクリーンな状態化であり、エミュレータのプロセス自体
    （`adb emu kill` と再起動）の再起動ではありません。詳しくは「検討した代替案」を参照してください。
 
-2. **run 全体を通したクラッシュ復旧の累積時間に上限を設ける。** `bajutsu/runner/recovery.py` の
-   既存の `CrashRecoveryBudget` と並べて、小さなプリミティブを追加します。
+2. **run 全体を通して蓄積した「実際に復旧に使った時間」に上限を設ける。**
+   `bajutsu/runner/recovery.py` の既存の `CrashRecoveryBudget` と並べて、小さなプリミティブを
+   追加します。
 
    ```python
    class RunCrashRecoveryBudget:
        def __init__(self, budget: float | None, now: Callable[[], float]) -> None:
            self.budget = budget
            self._now = now
-           self._deadline: float | None = None
+           self._spent = 0.0
            self._lock = threading.Lock()
 
-       def note_crash(self) -> bool:
-           """クラッシュを記録し、run 単位の予算を使い切ったかどうかを返す。"""
+       def exhausted(self) -> bool:
+           """累積した復旧時間がすでに予算に達しているかどうか。"""
            with self._lock:
-               t = self._now()
-               if self.budget is not None and self._deadline is None:
-                   self._deadline = t + self.budget
-                   return False
-               return self._deadline is not None and t >= self._deadline
+               return self.budget is not None and self._spent >= self.budget
+
+       def add_recovery_time(self, seconds: float) -> None:
+           """`seconds` 秒の実際の復旧時間を、run 単位の累積値に加算する。"""
+           with self._lock:
+               self._spent += seconds
    ```
 
-   デッドラインは run 中で最初のクラッシュのときに設定され、それ以降のすべてのシナリオで共有
-   されます。`note_crash` はクロックをちょうど1回だけ読みます。そのためデッドラインを設定する
-   まさにそのクラッシュは、デッドラインを設定したのと同じ瞬間で判定され、それ自身が「予算を
-   使い切った」と報告されることは決してありません。これは `CrashRecoveryBudget.on_crash` がすでに
-   自分自身の1回のクロック読み取りで与えている、最初の respawn を絶対にブロックしないという規則と
-   同じです（この2つの操作を別メソッドではなく1つのメソッドにしているのはこのためです。設計の
-   初期版では `note_crash()` と、それぞれ独自にクロックを読む別の `exhausted()` に分けていました。
-   今日利用できるどのクロックの上でも正しく動きますが、原理的には2回の呼び出しの間に実時間が
-   進む余地があり、デッドラインを設定したまさにそのクラッシュが、すでに使い切っていると読める
-   可能性が残っていました）。`budget` は `_budget` ではなく公開フィールドです。予算を強制する
-   その1つのオブジェクトが、失敗メッセージ用に設定済みの秒数を読む唯一の場所にもなるようにし、
-   手で同期を保つ2つ目のフィールドを持たないようにするためです。`note_crash` を
-   `threading.Lock` で保護しているのは、`run_all` の `workers > 1` の経路が1つの
-   `_ScenarioRunner` をスレッドプール全体で共有するためで、`bajutsu/runner/pool.py` の
-   `lease_defect_lock` が存在する理由と同じです。`_default_crash_recovery_budget` と並べて、
-   新しい `BAJUTSU_RUN_CRASH_RECOVERY_BUDGET` を読む環境変数駆動のデフォルトも追加します。
+   `bajutsu/runner/pipeline.py` の `run_one` は、自分自身のクラッシュ再試行ループをローカル変数
+   （`recovery_started`。シナリオの最初のクラッシュ時に1度だけ設定）で計測し、ループ全体を囲む
+   `finally` で1度だけ `add_recovery_time` を呼び出します。これにより、このシナリオの再試行が
+   実際に復旧へ費やした秒数だけを計上します。これは意図的に、何らかの早いクラッシュから経過した
+   wall-clock ではなく、蓄積した実際の復旧時間を課金する設計です。設計の初期版では、run 中で
+   最初のクラッシュのときに単一の共有デッドラインを設定し、以後一切再設定しませんでした。その
+   ため、無関係な2つの単発クラッシュのあいだにある、まったく健全で長い期間が、同じ予算を黙って
+   消費してしまい、run の終盤でバックエンドが1回だけクラッシュしたシナリオが、その最初の再試行
+   すらも拒否されかねませんでした。これはまさに `crash_retries` が乗り越えるために存在する
+   「単発の残存クラッシュ」そのものです。累積した合計を課金する設計に変えたことで、600秒は
+   「実際に復旧に使った600秒」を意味するようになります。
+
+   計時状態（`recovery_started`）は `RunCrashRecoveryBudget` のフィールドではなく、各
+   `run_one` 呼び出しのローカルに留めます。`run_all` の `workers > 1` の経路は複数のシナリオの
+   クラッシュ再試行ループを同時に走らせうるため（`bajutsu/runner/pool.py` の
+   `lease_defect_lock` が存在するのと同じ理由）、単一の共有された「復旧開始」タイムスタンプでは、
+   同時に走る2つの復旧が互いの計時を壊してしまいます。先に終わった方が、もう一方の復旧が使って
+   いる「その」計測区間を勝手に終了させてしまうからです。各 `run_one` 呼び出しは、自分自身の
+   ループが終わったときにだけ、共有オブジェクトに対してスレッドセーフな読み取り
+   （`exhausted`）か、単一のアトミックな加算（`add_recovery_time`）を呼ぶだけなので、並行度が
+   どれだけ高くても集計は正しく保たれます。`budget` は `_budget` ではなく公開フィールドです。
+   予算を強制するその1つのオブジェクトが、失敗メッセージ用に設定済みの秒数を読む唯一の場所にも
+   なるようにし、手で同期を保つ2つ目のフィールドを持たないようにするためです。
+   `_default_crash_recovery_budget` と並べて、新しい `BAJUTSU_RUN_CRASH_RECOVERY_BUDGET` を読む
+   環境変数駆動のデフォルトも追加します。
 
    `bajutsu/runner/pipeline.py` にも配線します。`run_all` に
    `run_crash_recovery_budget: float | None = None` を追加し、`crash_recovery_budget` と同じ
    「`None` なら環境変数を読む」方式で解決したうえで、`_ScenarioRunner` に、run 内の全シナリオ
    で共有する1つの `RunCrashRecoveryBudget` として渡します。`run_one` の
-   `except BackendCrashError` 節では、`note_crash()` の戻り値が、シナリオ単位の予算自身の
-   `on_crash(attempt).will_retry` と並んで、次にリースするかどうかを決めます。run 単位の
-   予算を使い切っていれば、再試行を止め、シナリオ単位の予算やリトライ回数の枯渇とは区別できる
-   形で、run 単位の予算を名指しした失敗を報告します。
+   `except BackendCrashError` 節では、`exhausted()` の読み取り結果が、シナリオ単位の予算自身の
+   `on_crash(attempt).will_retry` と並んで、次にリースするかどうかを決めます。失敗メッセージが
+   run 単位の予算を原因として名指しするのは、それが実際に決め手になった場合
+   （`run_exhausted and decision.will_retry`）に限ります。たまたま run 単位の予算も使い切って
+   いただけで、実際にはリトライ回数やシナリオ単位の予算が復旧を止めた原因だった場合、そちらを
+   そのまま報告します。そうしないと、自分のリトライ回数を使い切っただけのシナリオが、一度も
+   実際には到達していない予算のせいだと誤解を招く形で報告してしまいます。
 
    `.github/workflows/ios-e2e.yml` のワークフローレベルの `env` に
    `BAJUTSU_RUN_CRASH_RECOVERY_BUDGET` を追加します。`run`/`actuation` ジョブの
@@ -211,9 +229,11 @@ runner channel GET /screenshot: the runner recovered from a mid-run crash; re-is
    対してサイズを決めます。
 
    `docs/architecture.md` と `docs/ja/architecture.md` の「run パイプラインでのバックエンド
-   クラッシュ復旧」の箇条書きを更新し、強制 `erase` による再試行と run 単位の予算の両方を
-   記述します。文書化された挙動の変更は両方の言語ミラーを同じ変更で更新するという、本
-   リポジトリの規則に従います。
+   クラッシュ復旧」の箇条書き、および `docs/run-loop.md` / `docs/ja/run-loop.md` のより詳しい
+   説明の両方を更新し、強制 `erase` による再試行と run 単位の予算の両方を記述します。後者は
+   「（消去ではなく）」という、本項目が覆す既存の安全性の記述を持つページなので、
+   `architecture.md` 側の短い要約だけでなくこちらも直す必要があります。文書化された挙動の変更は
+   両方の言語ミラーを同じ変更で更新するという、本リポジトリの規則に従います。
 
 ## 検討した代替案
 
@@ -232,6 +252,29 @@ runner channel GET /screenshot: the runner recovered from a mid-run crash; re-is
   うまくいかないとすでにわかっている対処に、本項目が節約しようとしているまさにその
   wall-clock を費やすことになります。1回目の再試行から `erase` を強制するコストは、すでに
   `erase: true` を宣言しているどのシナリオも、その最初の試行で支払っているコストと同じです。
+- **「どの XCUITest 経路が `erase` を拒否するか」という判定を、`bajutsu/backends.py` の
+  `capabilities_for_run` の隣にではなく、`bajutsu/runner/pipeline.py` 自身の中に独自の private
+  ヘルパーとして留める。** 初期のドラフトがまさにこれを行っていたため、後から却下しました。
+  `capabilities_for_run` はすでに同じ2つの判定材料（`xcuitest_targets_real_device`、
+  `is_webdriver_endpoint`）で経路の capability を分類しており、`pipeline.py` 側の独自コピーは
+  同じ規則が2つのファイルに存在することになります。将来 `backends.py` 側の絞り込みにだけ経路が
+  追加されれば、`pipeline.py` 側のコピーは黙って「安全」と答え続けてしまい、本項目自身の
+  再試行安全性ガードが防ごうとしている run 全体中断という失敗モードが、今日の2経路ではなく
+  *新しい*経路に対して再発します。`erase_precondition_supported` は代わりに `backends.py` に
+  置き、経路についてのどちらの問いも、すでに経路の分類を持つ唯一のファイルでレビューされる
+  ようにしました。
+- **run 単位のデッドラインを、run 中の最初のクラッシュ1回だけ設定して共有する（累積した実際の
+  復旧時間を課金するのではなく）。** Unit 2 の最初の実装がまさにこれを行っていました。
+  `note_crash()` が run 中の最初のクラッシュで `_deadline = now() + budget` を設定し、
+  以後のすべてのクラッシュの時刻をそれと比較していました。複数シナリオの run で追跡した結果、
+  却下しました。このデッドラインが測っているのは、実際に「復旧に使った」時間ではなく単なる
+  wall-clock の経過であるため、無関係な2つの単発クラッシュのあいだにある、まったく健全で長い
+  期間が、同じ予算を黙って消費してしまいます。run の終盤でバックエンドが1回だけクラッシュした
+  シナリオが、その最初の再試行すらも拒否されかねません。これはまさに `crash_retries` がすでに
+  乗り越えるために存在する「単発の残存クラッシュ」そのものです
+  （`ios-e2e.yml` 自身の `BAJUTSU_CRASH_RETRIES` へのコメントを参照）。累積した復旧時間を
+  課金する（`add_recovery_time`、各シナリオでローカルに計測）ように変えることで、予算は実際の
+  復旧活動に応じてのみ減るようになります。
 - **Android にも、アプリレベルの `erase` 経路を再利用するのではなく、本物のエミュレータ・
   プロセス再起動（`adb emu kill` と再起動）を与える。** 本項目のスコープからは外します。
   `pre.erase`（アンインストール/インストールに加えて `pm clear`）は、adb バックエンド上で
@@ -264,12 +307,14 @@ runner channel GET /screenshot: the runner recovered from a mid-run crash; re-is
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [x] Unit 1 — クラッシュ起点の再試行の2回目以降の試行で、シナリオが `reinstall: overwrite` を
-      宣言している場合を除き、XCUITest・adb 両バックエンドについて `preconditions.erase=True`
-      を強制する。
-- [x] Unit 2 — `RunCrashRecoveryBudget` を追加し、`run_crash_recovery_budget` /
-      `BAJUTSU_RUN_CRASH_RECOVERY_BUDGET` を `run_all` に配線し、ワークフローの env knob を
-      追加し、`docs/architecture.md` / `docs/ja/architecture.md` を更新する。
+- [x] Unit 1 — クラッシュ起点の再試行の2回目以降の試行で、シナリオが `reinstall: overwrite` や
+      `erase: false` を宣言している場合、および経路自体が `erase` をそもそも拒否する場合
+      （`bajutsu/backends.py` の `erase_precondition_supported`）を除き、XCUITest・adb 両
+      バックエンドについて `preconditions.erase=True` を強制する。
+- [x] Unit 2 — `RunCrashRecoveryBudget`（デッドライン方式ではなく、累積した実際の復旧時間を
+      課金する方式）を追加し、`run_crash_recovery_budget` / `BAJUTSU_RUN_CRASH_RECOVERY_BUDGET`
+      を `run_all` に配線し、ワークフローの env knob を追加し、`docs/architecture.md` /
+      `docs/run-loop.md` および両方の `docs/ja/` ミラーを更新する。
 
 ## 参考
 
@@ -278,5 +323,7 @@ runner channel GET /screenshot: the runner recovered from a mid-run crash; re-is
 - [BE-0342 — 実機スイートの lease に runner まで届く teardown を持たせる](../BE-0342-ondevice-lease-teardown/BE-0342-ondevice-lease-teardown-ja.md) — クラッシュ起点の再試行経路が使う、共有の teardown の記録。
 - [BE-0049 — 決定性／フレーキネス監査](../BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md) — 本項目の上限付き復旧が保つ、フレーキネスを吸収によって許容しないという立場。
 - `bajutsu/runner/pipeline.py`、`bajutsu/runner/recovery.py`、`bajutsu/runner/pool.py` — クラッシュ起点の再試行ループと、新しい予算プリミティブ。
+- `bajutsu/backends.py` — `capabilities_for_run` と、本項目がその隣に追加する `erase_precondition_supported`。
 - `bajutsu/platform_lifecycle/environments/xcuitest.py`、`bajutsu/platform_lifecycle/environments/android.py` — 両バックエンドがすでに走らせている消去経路。
 - `.github/workflows/ios-e2e.yml`、`.github/workflows/android-e2e.yml` — 本項目が追加するワークフローの env knob と、前者にすでに記録されているインシデント。
+- `docs/run-loop.md`、`docs/architecture.md`（および両方の `docs/ja/` ミラー）— 本項目が更新する、文書化された挙動。
