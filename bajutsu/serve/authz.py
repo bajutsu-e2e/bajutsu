@@ -56,14 +56,21 @@ def oauth_callback(
     if state.auth.oauth is None:
         return {"error": "oauth not configured"}, 404, None
     if not (state_param and state_cookie and secrets.compare_digest(state_param, state_cookie)):
+        # Repeated mismatches are the signature of a login-CSRF attempt, not just an expired
+        # cookie, and no login is known yet to blame it on -- worth its own record either way.
+        oplog.log_event(_logger, "oauth.denied", "oauth state mismatch", level=logging.WARNING)
         return {"error": "invalid oauth state"}, 403, None
     try:
         identity = state.auth.oauth.fetch_identity(code)
     except Exception:
         # The exchange talks to GitHub (network / token parsing); a failure is an upstream error,
         # not a 500 — surface it as a clean 502 rather than a traceback.
+        oplog.log_event(_logger, "oauth.denied", "oauth exchange failed", level=logging.WARNING)
         return {"error": "oauth exchange failed"}, 502, None
     if identity is None or not identity.login:
+        oplog.log_event(
+            _logger, "oauth.denied", "oauth exchange returned no identity", level=logging.WARNING
+        )
         return {"error": "oauth exchange failed"}, 403, None
     login = identity.login
     # Read the config-declared org model once, for both the sign-in gate and the org/role
@@ -85,10 +92,17 @@ def oauth_callback(
         # A rejection is the one failure this item exists to make recoverable, so it needs a record
         # too — under its own event rather than `oauth.login`, which stays "login count" (see the
         # `bypass` reasoning below) rather than absorbing a "denied" outcome it never admitted.
+        # Name which shape left `orgs:` unmatched, as the success record below does: a config that
+        # never loaded sends an operator to the config itself, an unmatched roster to `orgs:`.
+        cause = (
+            "the serve config failed to load"
+            if parsed is None
+            else "no orgs: entry matched this login"
+        )
         oplog.log_event(
             _logger,
             "oauth.denied",
-            f"{login} rejected: no orgs: entry and no admin Team matched",
+            f"{login} rejected: {cause}, and no admin Team matched",
             level=logging.WARNING,
             actor=login,
         )

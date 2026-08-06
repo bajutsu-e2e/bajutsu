@@ -93,11 +93,19 @@ def test_oauth_login_returns_redirect_carrying_the_state(tmp_path: Path) -> None
     assert csrf and csrf in payload["redirect"]  # the CSRF state rides in the authorize URL
 
 
-def test_oauth_callback_rejects_a_state_mismatch(tmp_path: Path) -> None:
+def test_oauth_callback_rejects_a_state_mismatch(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
     state = _state(tmp_path, oauth=FakeOAuthClient(), config=_config_file(tmp_path))
-    _payload, status, sid = ops.oauth_callback(state, code="ok", state_param="x", state_cookie="y")
+    with caplog.at_level(logging.WARNING):
+        _payload, status, sid = ops.oauth_callback(
+            state, code="ok", state_param="x", state_cookie="y"
+        )
     assert status == 403
     assert sid is None
+    # No login is known this early -- a repeated mismatch is the signature of a login-CSRF
+    # attempt, not just an expired cookie, so it still needs its own record.
+    assert any(getattr(r, "event", None) == "oauth.denied" for r in caplog.records)
 
 
 def test_oauth_callback_allows_an_org_member_and_binds_identity(tmp_path: Path) -> None:
@@ -130,11 +138,17 @@ def test_oauth_callback_rejects_when_no_orgs_block_is_configured(tmp_path: Path)
     assert sid is None
 
 
-def test_oauth_callback_rejects_a_failed_exchange(tmp_path: Path) -> None:
+def test_oauth_callback_rejects_a_failed_exchange(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
     state = _state(tmp_path, oauth=FakeOAuthClient(), config=_config_file(tmp_path))
-    _payload, status, sid = ops.oauth_callback(state, code="bad", state_param="s", state_cookie="s")
+    with caplog.at_level(logging.WARNING):
+        _payload, status, sid = ops.oauth_callback(
+            state, code="bad", state_param="s", state_cookie="s"
+        )
     assert status == 403
     assert sid is None
+    assert any(getattr(r, "event", None) == "oauth.denied" for r in caplog.records)
 
 
 class _RaisingOAuthClient:
@@ -445,6 +459,30 @@ def test_oauth_callback_rejects_a_login_in_neither_the_org_gate_nor_the_admin_te
     # audit-style visibility, not just a raw 403 with nothing an operator can correlate on).
     record = next(r for r in caplog.records if getattr(r, "event", None) == "oauth.denied")
     assert record.actor == "mallory"
+    assert "no orgs: entry matched this login" in record.getMessage()
+
+
+def test_oauth_callback_denial_names_a_config_load_failure_not_the_org_roster(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # When the config itself fails to load, `orgs` collapses to `{}` and every non-admin login is
+    # denied -- the message must blame the config, not an org roster that was never actually read,
+    # or an operator chasing it edits `orgs:` while the real fault is the unreadable file.
+    state = _state(
+        tmp_path,
+        oauth=FakeOAuthClient(login="mallory", teams=["some-other/team"]),
+        config=tmp_path / "missing.yaml",  # never written -- load_serve_config_file -> None
+        admin_teams=["ops-gh/root"],
+    )
+    with caplog.at_level(logging.WARNING):
+        _payload, status, sid = ops.oauth_callback(
+            state, code="ok", state_param="s", state_cookie="s"
+        )
+    assert status == 403
+    assert sid is None
+    record = next(r for r in caplog.records if getattr(r, "event", None) == "oauth.denied")
+    assert "the serve config failed to load" in record.getMessage()
+    assert "no orgs: entry matched this login" not in record.getMessage()
 
 
 def test_oauth_callback_without_a_database_is_a_no_op(tmp_path: Path) -> None:
@@ -455,12 +493,18 @@ def test_oauth_callback_without_a_database_is_a_no_op(tmp_path: Path) -> None:
     assert state.repository is None
 
 
-def test_oauth_callback_surfaces_an_exchange_error_as_502(tmp_path: Path) -> None:
+def test_oauth_callback_surfaces_an_exchange_error_as_502(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
     # A raising exchange (network / token parsing / missing dep) is an upstream error, not a 500.
     state = _state(tmp_path, oauth=_RaisingOAuthClient(), config=_config_file(tmp_path))
-    _payload, status, sid = ops.oauth_callback(state, code="ok", state_param="s", state_cookie="s")
+    with caplog.at_level(logging.WARNING):
+        _payload, status, sid = ops.oauth_callback(
+            state, code="ok", state_param="s", state_cookie="s"
+        )
     assert status == 502
     assert sid is None
+    assert any(getattr(r, "event", None) == "oauth.denied" for r in caplog.records)
 
 
 class _FakeResponse:

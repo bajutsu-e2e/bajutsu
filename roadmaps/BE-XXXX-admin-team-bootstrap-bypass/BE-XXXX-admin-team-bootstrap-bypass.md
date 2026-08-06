@@ -107,7 +107,19 @@ entry in `oplog.EVENTS` rather than folded into `"oauth.login"` (which stays "lo
 reasoning below). A rejection is the one failure this item exists to make recoverable — a broken or
 missing `orgs:` block plus no matching admin Team — so it needs the same audit-style visibility a
 successful sign-in gets, not a bare 403 with nothing an operator can correlate a user's "I can't sign
-in" report against. `oauth_callback`
+in" report against. The denial message names which of the two ways it can happen: the config failed
+to load, or a real org roster simply doesn't list this login — the same triage the success record
+gives an operator for a bypass admission, and for the same reason: when the config itself fails to
+load, `orgs` collapses to `{}` and *every* non-admin login is denied, so blaming an org roster that
+was never actually read sends an operator to edit `orgs:` when the real fault is the file failing to
+load. `oauth_callback` has four places it can end a sign-in without success, and this item now
+records all four: the other three — a CSRF state mismatch, an exchange that raised, an exchange that
+returned no identity — get the same `"oauth.denied"` event, since the reasoning above applies to them
+just as much (a bare 403/502 a user's "I can't sign in" report can't be correlated against). The CSRF
+branch is also worth its own record on a different ground: repeated state mismatches are the
+signature of a login-CSRF attempt, not just an expired cookie, and were invisible before this item. No
+`login` is known yet at these three earlier points, so their records carry no `actor` field — only the
+later, gate-level denial and every successful sign-in do. `oauth_callback`
 now records every successful sign-in through `oplog.log_event`
 ([`bajutsu/serve/oplog.py`](../../bajutsu/serve/oplog.py)), under the already-reserved `"oauth.login"`
 event and the login itself as the `actor` correlation field — not a bare logging call, so the record
@@ -318,11 +330,15 @@ mapping.
       successful sign-in through `oplog.log_event` (the reserved `"oauth.login"` event, the login as
       the `actor` field, and a `bypass` field `True` only for a bypass-only admission), so the one
       sign-in path `orgs:` did not authorize still leaves a record an operator's `event`-keyed alert
-      can see. Record a login that clears neither check under a separate `"oauth.denied"` event, so a
+      can see. Record every one of the four ways this function ends a sign-in without success under a
+      separate `"oauth.denied"` event: a CSRF state mismatch, an exchange that raised or returned no
+      identity, and a login clearing neither the org gate nor the bypass — the last naming which of
+      two shapes left `orgs:` unmatched (a config-load failure vs. a real, unmatching roster), so a
       broken or missing `orgs:` block with no matching admin Team is recoverable rather than a bare
-      403 with nothing to correlate a user's report against. When persisting the identity, keep an existing
-      login's already-recorded org rather than relocating it to `default` on a transient
-      `/user/orgs` failure that made the bypass, not `orgs:`, admit it.
+      403/502 with nothing to correlate a user's report against. When persisting the identity, keep
+      an existing login's already-recorded org rather than relocating it to `default`, but only on a
+      config-load failure — an unambiguous signal — not on an empty `/user/orgs` response, which is
+      equally the shape of a login that genuinely has no GitHub org.
 - [x] Update the self-hosting and configuration docs (both languages) and `.env.example` to describe
       the renamed variable and the bypass. BE-0313's claim that the `default` org is unreachable
       through OAuth sign-in is superseded in this item's *Detailed design* instead: no `docs/` page
@@ -330,7 +346,9 @@ mapping.
       organization the deployment actually controls, since the value is now a sign-in credential.
 - [x] Tests: sign-in accepted for an admin-Team member with no matching `orgs:` entry and with no
       `orgs:` block at all; resolved role is admin in both cases; a login matching neither the org
-      gate nor the admin-Team list is still rejected and logs `"oauth.denied"`; the renamed variable
+      gate nor the admin-Team list is still rejected and logs `"oauth.denied"` naming the config-load
+      shape distinctly from the unmatched-roster shape; a CSRF state mismatch, a raising exchange, and
+      an exchange returning no identity each log `"oauth.denied"` too; the renamed variable
       parses a multi-Team list;
       a bypassing admin is placed in the `default` org; an existing member's recorded org survives a
       failure to load the config itself, but a genuinely revoked member re-resolves to `default` on
