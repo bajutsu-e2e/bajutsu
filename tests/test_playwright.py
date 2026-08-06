@@ -626,6 +626,19 @@ def test_is_tappable_checks_element_from_point_at_the_frame_center() -> None:
     assert "elementFromPoint(30.0, 25.0)" in page.evaluated[-1]
 
 
+def test_is_tappable_guards_against_a_below_viewport_point_before_hit_testing() -> None:
+    # `elementFromPoint` returns null off-viewport regardless of occlusion (real-browser behavior
+    # pinned by test_driver_conformance_web.py's below-the-fold test); this only checks that the
+    # emitted JS carries the viewport guard ahead of the `elementFromPoint` call, since the fake
+    # page returns a canned value rather than evaluating real JavaScript.
+    drv, page = _driver([_rec(identifier="x", frame=[10, 20, 40, 10])])
+    page.evaluate_returns = [True]
+    drv.is_tappable({"id": "x"})
+    script = page.evaluated[-1]
+    assert "window.innerWidth" in script and "window.innerHeight" in script
+    assert script.index("window.innerHeight") < script.index("elementFromPoint")
+
+
 def test_back_goes_back_in_history() -> None:
     # The web's `back` is browser history (BE-0210), the platform peer of Android's system back key.
     drv, page = _driver([])

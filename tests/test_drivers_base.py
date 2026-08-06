@@ -161,3 +161,15 @@ def test_topmost_at_point_ignores_a_non_overlapping_later_element() -> None:
     elsewhere = _element("elsewhere", (100.0, 100.0, 10.0, 10.0))
     elements = [target, elsewhere]
     assert base.topmost_at_point(elements, base.frame_center(target["frame"]), target) is None
+
+
+def test_topmost_at_point_scans_nothing_when_target_is_not_in_elements_by_identity() -> None:
+    # `target` here is an equal-but-not-identical copy of `button` — not found by `is`, so the
+    # StopIteration fallback fires. It must scan nothing (as the function's own docstring and
+    # comment say), not fall back to a full-list scan that would misjudge `card` — a real
+    # container the naive full-list scan this function exists to avoid — as a cover.
+    card = _element("card", (0.0, 0.0, 50.0, 50.0))
+    button = _element("button", (5.0, 5.0, 10.0, 10.0))
+    elements = [card, button]
+    target = _element("button", (5.0, 5.0, 10.0, 10.0))  # equal, not identical
+    assert base.topmost_at_point(elements, base.frame_center(target["frame"]), target) is None

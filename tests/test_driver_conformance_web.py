@@ -166,6 +166,30 @@ class TestPlaywrightDriverConformance(DriverConformanceContract):
 
 
 @pytest.mark.web
+def test_is_tappable_true_for_a_below_the_fold_target_not_actually_covered(chromium: Any) -> None:
+    """A resolved target past the viewport bottom reads as tappable, not "covered".
+
+    `document.elementFromPoint` returns `null` for any point outside the viewport regardless of
+    occlusion (`query()`'s frames are viewport-relative, so a below-the-fold element is still
+    resolvable with a center past `window.innerHeight`). Reading that `null` as "covered" would
+    make `tap` implicitly scroll a below-the-fold target into view through the occlusion check —
+    behavior `docs/drivers.md` documents as adb-only. This target has nothing drawn over it at
+    all; it is merely past the bottom of a deliberately short viewport.
+    """
+    page = chromium.new_page()
+    try:
+        page.set_viewport_size({"width": 800, "height": 200})
+        driver = PlaywrightDriver("about:blank", page=page)
+        page.set_content(
+            '<div data-testid="below-fold" '
+            'style="position:absolute;left:0;top:900px;width:100px;height:20px"></div>'
+        )
+        assert driver.is_tappable({"id": "below-fold"}) is True
+    finally:
+        page.close()
+
+
+@pytest.mark.web
 def test_native_checkbox_checked_reads_as_selected(chromium: Any) -> None:
     """A native checkbox's live checked state must surface as the `selected` trait.
 

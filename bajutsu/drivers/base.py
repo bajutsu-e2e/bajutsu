@@ -797,7 +797,7 @@ def topmost_at_point(elements: list[Element], point: Point, target: Element) -> 
     try:
         after_target = next(i for i, el in enumerate(elements) if el is target) + 1
     except StopIteration:
-        after_target = 0  # target isn't one of `elements` by identity — nothing to scan after it
+        after_target = len(elements)  # not one of `elements` by identity — nothing to scan after it
     for el in reversed(elements[after_target:]):
         x, y, w, h = el["frame"]
         if not (x <= px <= x + w and y <= py <= y + h):

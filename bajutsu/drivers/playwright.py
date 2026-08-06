@@ -570,6 +570,14 @@ class PlaywrightDriver:
         `bajutsu/dom.py`, reads into `identifier`) when it has one, or by matching bounding rects
         when it does not (an element `QUERY_JS` matched by tag/role/`aria-label` instead). A hit
         chain that never reaches `el` means an unrelated element genuinely covers the point.
+
+        A point outside the current viewport is a different question this check does not answer:
+        `elementFromPoint` returns `null` there regardless of occlusion (`query()`'s frames are
+        viewport-relative, BE-0326, so a below-the-fold `el` is resolvable with a point past
+        `window.innerHeight`), and treating that `null` as "covered" would make `tap` implicitly
+        scroll a below-the-fold target into view — exactly the behavior `docs/drivers.md` documents
+        as adb-only. So an off-viewport point is reported as hit (`True`) here, leaving that case to
+        the explicit `scroll` action rather than this occlusion check.
         """
         x, y = point
         tx, ty, tw, th = el["frame"]
@@ -577,6 +585,8 @@ class PlaywrightDriver:
         return bool(
             self._page.evaluate(
                 "(() => {"
+                f"if ({x} < 0 || {y} < 0 || {x} >= window.innerWidth || {y} >= window.innerHeight) "
+                "return true;"
                 f"const hit = document.elementFromPoint({x}, {y});"
                 "if (!hit) return false;"
                 f"const identifier = {identifier};"

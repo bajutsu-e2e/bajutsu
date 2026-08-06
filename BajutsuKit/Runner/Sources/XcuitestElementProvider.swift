@@ -57,7 +57,15 @@ final class XcuitestElementProvider: ElementProviding {
     func tap(backingElement: AnyObject, taps: Int, duration: TimeInterval) -> TapResult {
         guard let backing = backingElement as? PositionPathBacking else { return .notFound }
         guard let el = liveElement(for: backing) else { return .stale }
-        guard el.isHittable else { return .notHittable }
+        // `isHittable` reads `false` both for "covered" and for "offscreen" (Apple's own docs say
+        // so) — but only the former is this check's question; a not-yet-scrolled-to target is a
+        // `scroll` question (docs/drivers.md), not this one. `app.frame` is the stable window/screen
+        // bounds `screenSize()` above already uses for the same viewport-vs-content-extent
+        // distinction, so a live `el.frame` outside it skips the guard rather than being read as
+        // "covered".
+        if app.frame.intersects(el.frame) {
+            guard el.isHittable else { return .notHittable }
+        }
         if duration > 0 {
             el.press(forDuration: duration)
         } else if taps >= 2 {
@@ -71,6 +79,7 @@ final class XcuitestElementProvider: ElementProviding {
     func isHittable(backingElement: AnyObject) -> TapResult {
         guard let backing = backingElement as? PositionPathBacking else { return .notFound }
         guard let el = liveElement(for: backing) else { return .stale }
+        if !app.frame.intersects(el.frame) { return .ok }
         return el.isHittable ? .ok : .notHittable
     }
 
