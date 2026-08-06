@@ -179,6 +179,11 @@ class RunResult:
     device_runtime: str = ""
     # Wall-clock the scenario took end to end (steps + verification), for the report.
     duration_s: float = 0.0
+    # The resolved video anchor (scenario_start corrected by video_start_offset) every step's and
+    # network exchange's `started_at` is relative to — for a caller (`pipeline.py`) that computes
+    # its own report timestamps after run_scenario returns, so it shares the same corrected origin
+    # instead of stamping a second, independently drifting one.
+    video_anchor_s: float = 0.0
     # System prompts the guard cleared before the scenario-level `expect` re-checked.
     expect_alerts: list[AlertEvent] = field(default_factory=list)
     # Actuations the guard performed for that same expect-phase retry — the one place a gesture happens

@@ -32,8 +32,9 @@ call site shares one format. `stepId` is `step.name` or `step<i>`.
 
 ## manifest.json
 
-`RunResult` and its parts are all dataclasses, so `asdict()` drops the step / expect results
-verbatim.
+`RunResult` and its parts are all dataclasses, so `manifest_dict` drops the step / expect results
+verbatim — minus `video_anchor_s`, a same-process-only `time.monotonic()` instant with no meaning
+once persisted (see [evidence](evidence.md#interval-evidence-video--devicelog--apptrace)).
 
 ```json
 {
@@ -67,14 +68,21 @@ verbatim.
   per run, so the top-level value is normally a single name; each scenario also carries its own
   `backend` ([drivers](drivers.md#backend-selection-and-the-actuator)).
 - `steps[].duration_s`: each step's timing.
+- `steps[].started_at`: the step's report-relative timestamp, anchored to the scenario video's
+  confirmed or best-known real start rather than the raw moment the scenario's step loop began
+  ([evidence](evidence.md#interval-evidence-video--devicelog--apptrace)); [report.html](#reporthtml)
+  uses it to seek the recording and as the **steps** table's `at` column.
+- `steps[].artifacts`: the provenance of evidence captured for that step
+  ([evidence](evidence.md#artifact-provenance-provider)).
 - `steps[].actuations`: what the driver actually did to the screen during that step — the coordinate a
   tap sent, the endpoints a swipe travelled, the channel that carried each gesture. This is the
   `actionLog` evidence kind, inherent in the manifest rather than a file
   ([evidence](evidence.md#actionlog--what-each-step-actually-did-to-the-screen)). A run recorded before
   `schemaVersion` 5 carries none. `expect_actuations` holds the same for the scenario-level `expect`
   re-check, where the system-alert guard can actuate with no step to attribute it to.
-- `steps[].artifacts`: the provenance of evidence captured for that step
-  ([evidence](evidence.md#artifact-provenance-provider)).
+- `network.json`'s `startedAt` (one file per scenario, not shown in the manifest above): each
+  observed exchange's report-relative timestamp, on the same anchor as `steps[].started_at` — see
+  [report.html](#reporthtml) for how the two are interleaved into one timeline.
 - `failure`: a summary on failure (e.g. `"step 3 (tap): no match: {...}"`). null on success.
 - `provenance` (top, optional): a run-identity stamp ([BE-0049](../roadmaps/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md))
   — `scenarioHash` (a `sha256:` fingerprint of the executed `scenario.yaml`), `toolVersion`
@@ -214,7 +222,14 @@ it `POST`s `/api/approve` and so works only when the report is opened through `b
 hidden for a report opened from disk). The CLI twin is [`bajutsu approve`](cli.md#approve).
 
 Failing rows have a red background. Clicking a step seeks the recording to that step **without
-auto-playing** (a paused video stays paused; a playing one keeps playing). Clicking a step's
+auto-playing** (a paused video stays paused; a playing one keeps playing) — the seek target is each
+step's `started_at`, anchored to the video's confirmed or best-known real start rather than the raw
+moment the scenario's step loop began, so the seek lands on what the row actually shows
+([evidence](evidence.md#interval-evidence-video--devicelog--apptrace)). One visible consequence: for a
+video-capturing Android or web scenario, a step's `started_at` (and the **steps** table's `at`
+column) can exceed the scenario's own `duration_s`, because the two measure different things on
+purpose — the video's timeline starts before the run's own step loop does, while `duration_s`
+measures the loop itself. That is expected, not a sign either number is wrong. Clicking a step's
 screenshot opens a full-size lightbox; **← / →** (or the on-screen arrows) then walk through every
 screenshot in the run, across scenario boundaries, with a caption showing the scenario, step, and
 position. The run's actuator backend is shown as a `driver: <backend>` chip in the header and a small

@@ -214,6 +214,22 @@ def test_manifest_records_scenario_duration() -> None:
     assert manifest_dict("run1", [r])["scenarios"][0]["duration_s"] == 2.5
 
 
+def test_manifest_excludes_video_anchor_s() -> None:
+    # video_anchor_s is a raw time.monotonic() instant — a same-process handoff from run_scenario to
+    # pipeline.py's network-timestamp calculation, meaningful only during the run that produced it.
+    # It must never reach the persisted manifest, where it would be noise at best (or a value a
+    # future reader mistakes for something meaningful). A non-default value here proves the
+    # exclusion is real, not merely a coincidence of an unset field looking absent.
+    from dataclasses import fields
+
+    r = RunResult(scenario="s1", ok=True, steps=[], video_anchor_s=123456.789)
+    scenario = manifest_dict("run1", [r])["scenarios"][0]
+    assert "video_anchor_s" not in scenario
+    # Exactly this one field is missing — not a different field excluded by mistake, and not this
+    # field plus others dropped by a broader (over-eager) exclusion.
+    assert {f.name for f in fields(RunResult)} - set(scenario) == {"video_anchor_s"}
+
+
 def test_manifest_records_device_environment() -> None:
     r = _passing()
     r.device, r.device_name, r.device_runtime = "SIM-1", "iPhone 15", "iOS 17.2"

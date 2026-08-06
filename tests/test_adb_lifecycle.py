@@ -305,12 +305,18 @@ def test_android_environment_starts_screenrecord_before_launching_the_app(tmp_pa
     # The video must begin before `am start` so the app's cold start is recorded; the running
     # screenrecord is exposed for the sink to adopt rather than started on demand after launch.
     events: list[str] = []
+    spawned = False
 
     def run(args: list[str]) -> str:
         if "sys.boot_completed" in args:
             return "1\n"
         if "resolve-activity" in args:
             return "com.bajutsu.showcase.android.compose/.MainActivity\n"
+        if "pgrep" in " ".join(args):
+            # The confirm-started probe: nothing running device-side yet at the pre-spawn baseline,
+            # then our own screenrecord appears — never the same pid at both points, so the wait
+            # confirms on a genuinely *new* process, not a leaked one.
+            return "1234\n" if spawned else ""
         if "am start" in " ".join(args):
             events.append("launch")
         return ""
@@ -320,6 +326,8 @@ def test_android_environment_starts_screenrecord_before_launching_the_app(tmp_pa
             pass
 
     def spawn(argv: list[str], stdout_path: object) -> _Proc:
+        nonlocal spawned
+        spawned = True
         events.append("record")
         return _Proc()
 
@@ -329,18 +337,28 @@ def test_android_environment_starts_screenrecord_before_launching_the_app(tmp_pa
     assert events == ["record", "launch"]  # recording began before the app launched
     started = env.prestarted_intervals()
     assert len(started) == 1 and started[0].kind == "video"
+    # The pre-launch window is used to confirm the recording actually started (video timing), not
+    # merely spawned, so the runner can anchor step/network report timestamps to it.
+    assert started[0].true_start is not None
 
 
 def test_android_environment_stops_the_prestarted_video_when_launch_fails(tmp_path) -> None:
     # A launch failure after the recording started must finalize it, not leak the local `adb shell`
     # client and the device-side `screenrecord` (which would otherwise run to its ~180s cap).
     stopped: list[int] = []
+    spawned = False
 
     def run(args: list[str]) -> str:
         if "sys.boot_completed" in args:
             return "1\n"
         if "resolve-activity" in args:
             return "com.bajutsu.showcase.android.compose/.MainActivity\n"
+        if "pgrep" in " ".join(args):
+            # Confirms on the first poll (a new pid, absent from the pre-spawn baseline) so this
+            # test's failing launch is reached without burning the real confirm-started timeout,
+            # then reports the process gone once stop() has signalled it, so the pull's
+            # `_await_screenrecord_stopped` doesn't burn `_VIDEO_FINALIZE_TIMEOUT` (120s) instead.
+            return "1234\n" if spawned and not stopped else ""
         if "am start" in " ".join(args):
             raise subprocess.CalledProcessError(1, args, output="", stderr="boom")
         return ""
@@ -349,7 +367,12 @@ def test_android_environment_stops_the_prestarted_video_when_launch_fails(tmp_pa
         def stop(self, sig: int, timeout: float) -> None:
             stopped.append(sig)
 
-    env = AndroidEnvironment("adb", "emulator-5554", adb_run=run, spawn=lambda argv, out: _Proc())  # type: ignore[arg-type]
+    def spawn(argv: list[str], out: object) -> _Proc:
+        nonlocal spawned
+        spawned = True
+        return _Proc()
+
+    env = AndroidEnvironment("adb", "emulator-5554", adb_run=run, spawn=spawn)  # type: ignore[arg-type]
     with pytest.raises(adb.DeviceError):
         env.start(_eff(), Preconditions(), record_video_dir=tmp_path)
 

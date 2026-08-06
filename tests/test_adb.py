@@ -236,8 +236,8 @@ def test_driver_interval_routes_video_and_devicelog_to_adb_starters(
     # runner, so the screenrecord pull/rm go through the same injected run).
     seen: dict[str, tuple[object, ...]] = {}
 
-    def fake_screenrecord(serial: str, path: Path, run: object = None, **_: object) -> object:
-        seen["video"] = (serial, path, run)
+    def fake_screenrecord(serial: str, path: Path, run: object = None, **kw: object) -> object:
+        seen["video"] = (serial, path, run, kw.get("confirm_started"))
         return intervals.Interval(kind="video", path=path, provider="adb")
 
     def fake_logcat(serial: str, path: Path, **_: object) -> object:
@@ -253,7 +253,9 @@ def test_driver_interval_routes_video_and_devicelog_to_adb_starters(
     drv = AdbDriver("U", run=run)
     video = drv.driver_interval("video", Path("/tmp/v.mp4"))
     assert video is not None and video.kind == "video" and video.provider == "adb"
-    assert seen["video"] == ("U", Path("/tmp/v.mp4"), run)
+    # confirm_started=True: a caller reaching this driver directly gets the same true_start
+    # confirmation the prestarted path gets, not a silent regression to the pre-fix drift.
+    assert seen["video"] == ("U", Path("/tmp/v.mp4"), run, True)
 
     log = drv.driver_interval("deviceLog", Path("/tmp/d.log"))
     assert log is not None and log.kind == "deviceLog"

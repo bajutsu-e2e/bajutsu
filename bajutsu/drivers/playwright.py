@@ -267,6 +267,11 @@ class PlaywrightDriver:
         # When set, contexts are created with Playwright's record_video_dir so the whole scenario is
         # filmed (BE-0054); the `video` interval finalizes and collects it. None = no recording.
         self._record_video_dir = record_video_dir
+        # time.monotonic() when the current recording context was created, for the runner to anchor
+        # step/network report timestamps to instead of scenario_start; None until a recording
+        # context exists. Context-creation latency is negligible next to a subprocess spawn's, so
+        # this needs no confirmation poll (unlike the simctl/adb interval providers).
+        self._video_true_start: float | None = None
         self._pw: Any = None
         self._browser: Any = None
         self._context: Any = None  # current BrowserContext (web); closed + replaced on each reset
@@ -291,6 +296,7 @@ class PlaywrightDriver:
                     self._context.close()
                 self._context = self._new_context()
                 page = self._context.new_page()
+                self._video_true_start = time.monotonic()
         self._bind(page)
 
     def _new_context(self) -> Any:
@@ -400,7 +406,11 @@ class PlaywrightDriver:
                 driver._finalize_video(path)
 
         return intervals.Interval(
-            kind="video", path=path, provider=self.name, _proc=_VideoCapture()
+            kind="video",
+            path=path,
+            provider=self.name,
+            true_start=self._video_true_start,
+            _proc=_VideoCapture(),
         )
 
     def _finalize_video(self, target: Path) -> None:
@@ -415,6 +425,9 @@ class PlaywrightDriver:
                 self._context.close()
             self._context = None  # finalized; the lease's close() just stops the browser
             self._cdp = None  # its CDP session went with the closed context
+            # Its true_start went with it too: a later recording context's Interval must never be
+            # built with a stale instant belonging to this one.
+            self._video_true_start = None
         if video is None:
             return
         # Let a failed move surface (like the iOS interval providers): swallowing it would record a
@@ -481,6 +494,8 @@ class PlaywrightDriver:
                     self._context.close()
             self._context = self._new_context()
             self._bind(self._context.new_page())
+            if self._record_video_dir:
+                self._video_true_start = time.monotonic()
         self.navigate()
 
     def relaunch(self) -> None:

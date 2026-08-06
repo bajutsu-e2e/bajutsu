@@ -97,6 +97,10 @@ def app_trace_cmd(udid: str, subsystem: str) -> list[str]:
 # already in progress". So video gets a generous finalize window; the kill stays only as a last resort.
 _STOP_TIMEOUT = 10.0
 _VIDEO_FINALIZE_TIMEOUT = 120.0
+# How long `confirm_started` polls for a video's first written byte / device-side process before
+# giving up. Generous versus reported simctl/adb startup jitter, small versus the finalize timeouts
+# above — the report's video-sync correction just goes uncorrected for this scenario on timeout.
+_VIDEO_START_TIMEOUT = 5.0
 
 
 class Proc(Protocol):
@@ -156,6 +160,14 @@ class Interval:
     kind: str  # "video" | "deviceLog" | "appTrace"
     path: Path
     provider: str = PROVIDER
+    # The time.monotonic() instant the capture was confirmed to have begun, for the runner to anchor
+    # step/network report timestamps to instead of the moment the process was merely spawned. The
+    # confirmation strength differs by provider: iOS confirms the video's first written byte (data is
+    # flowing); Android confirms only that the device-side process exists yet (a weaker signal, but
+    # still real and much earlier than a guess — the app hasn't launched at that point either). None
+    # when no confirmation was attempted or it never succeeded — callers must treat that as "no
+    # better information than before", not as zero.
+    true_start: float | None = None
     _proc: Proc = field(repr=False, default_factory=_NullProc)
     _stop_signal: int = signal.SIGTERM
     _stop_timeout: float = _STOP_TIMEOUT
@@ -174,7 +186,9 @@ def adopt(interval: Interval, target: Path) -> Interval:
     scenario start and, on stop, moves the finalized file to the scenario's artifact path — the real
     finalize (the wrapped interval's stop signal and timeout) still runs, this only redirects the
     result. The web lane finalizes in place instead; this is the device twin of that adopt-on-stop
-    shape.
+    shape. Carries `interval`'s `true_start` forward unchanged: the wrapped interval already
+    confirmed when it actually began, and that instant does not move just because its file is later
+    relocated.
     """
 
     def relocate(_: Path) -> Path:
@@ -184,20 +198,81 @@ def adopt(interval: Interval, target: Path) -> Interval:
         return target
 
     return Interval(
-        kind=interval.kind, path=target, provider=interval.provider, _transform=relocate
+        kind=interval.kind,
+        path=target,
+        provider=interval.provider,
+        true_start=interval.true_start,
+        _transform=relocate,
     )
 
 
-def start_video(udid: str, path: Path, spawn: Spawn = _spawn) -> Interval:
+def _file_size(path: Path, *, disclose: bool = False) -> int:
+    """`path`'s size, or 0 if it doesn't exist yet (the common case: nothing has written to it).
+
+    `disclose` warns when the size can't be read for some *other* reason: a 0 from such a failure
+    reads as "no leftover bytes", so it silently disables the stale-retry guard the pre-spawn
+    baseline exists for. Only the baseline call sets it — a per-poll warning would be noise.
+    """
+    try:
+        return path.stat().st_size
+    except FileNotFoundError:
+        return 0
+    except OSError as exc:
+        if disclose:
+            _logger.warning(
+                "could not size %s before spawning recordVideo (%s); a finalized earlier "
+                "attempt's leftover bytes may now confirm a start that never happened",
+                path,
+                exc,
+            )
+        return 0
+
+
+def _await_video_file_growing(
+    path: Path, baseline_size: int, timeout: float = _VIDEO_START_TIMEOUT, poll: float = 0.05
+) -> float | None:
+    """Wait until `path` grows past `baseline_size`, confirming `recordVideo` is producing frames.
+
+    `simctl io recordVideo` writes progressively to `path`, but has real startup latency before the
+    first byte lands — a returned `Popen` proves only that the process was spawned, not that it is
+    recording yet. `baseline_size` (the file's size *before* this spawn) guards a crash-retry that
+    reuses the same scenario id and thus the same target path: without it, a leftover file from a
+    finalized earlier attempt already has bytes, and the very first poll would "confirm" a start
+    that never happened. Poll to a bounded deadline (a condition wait, not a fixed sleep); give up
+    and warn rather than hang or guess a start time.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if _file_size(path) > baseline_size:
+            return time.monotonic()
+        time.sleep(poll)
+    _logger.warning(
+        "recordVideo produced no new bytes in %s within %ss; step/network timestamps stay "
+        "uncorrected for this scenario's video",
+        path,
+        timeout,
+    )
+    return None
+
+
+def start_video(
+    udid: str, path: Path, spawn: Spawn = _spawn, *, confirm_started: bool = False
+) -> Interval:
     """Begin recording the screen to `path`; stop() (SIGINT) finalizes the mp4.
 
     The stop gives `recordVideo` the generous `_VIDEO_FINALIZE_TIMEOUT` to write and mux the clip: a
     premature kill would truncate the mp4 (no `moov` atom) and wedge the simulator's recording session.
+    `confirm_started`, when set, polls for the recording to write past its pre-spawn size so the
+    returned `Interval.true_start` reflects when it actually began rather than when the process was
+    spawned.
     """
+    baseline_size = _file_size(path, disclose=True) if confirm_started else 0
     proc = spawn(record_video_cmd(udid, str(path)), None)
+    true_start = _await_video_file_growing(path, baseline_size) if confirm_started else None
     return Interval(
         kind="video",
         path=path,
+        true_start=true_start,
         _proc=proc,
         _stop_signal=signal.SIGINT,
         _stop_timeout=_VIDEO_FINALIZE_TIMEOUT,
@@ -248,6 +323,71 @@ def _await_screenrecord_stopped(
     )
 
 
+def _screenrecord_pids(serial: str, run: adb.RunFn) -> set[str]:
+    """The device-side `screenrecord` pids right now, or an empty set on a probe failure."""
+    try:
+        return {pid for pid in run(adb.screenrecord_pids_cmd(serial)).split() if pid}
+    except (subprocess.CalledProcessError, OSError) as exc:
+        # An empty baseline reads as "nothing was running", so a failed probe silently disables the
+        # leaked-process guard the baseline exists for — disclose it rather than mistime silently.
+        _logger.warning(
+            "could not probe device-side screenrecord on %s before spawning (%s); a leaked "
+            "recording from an earlier attempt may now confirm a start that never happened",
+            serial,
+            exc,
+        )
+        return set()
+
+
+def _await_screenrecord_started(
+    serial: str,
+    run: adb.RunFn,
+    baseline_pids: frozenset[str],
+    timeout: float = _VIDEO_START_TIMEOUT,
+    poll: float = 0.2,
+) -> float | None:
+    """Wait until the device-side `screenrecord` process exists, not merely spawned locally.
+
+    The mirror of `_await_screenrecord_stopped`: a *new* pid (not already present in
+    `baseline_pids`, captured before this attempt spawned) means the process is running
+    device-side. This confirms less than the iOS video signal does (a process existing is not proof
+    the encoder is yet emitting frames), but it is still a real, earlier signal than the moment the
+    local `adb shell` client returned, and it lands before the app launches either way. The baseline
+    guards a crash-retry (BE-0049) or any other leaked `screenrecord` still running on the same
+    device: without it, that unrelated process's pid would confirm a start that never happened.
+    Poll to a bounded deadline (a condition wait, not a fixed sleep); a probe failure is retried like
+    any other unmet condition rather than aborting the wait early, since — unlike
+    `_await_screenrecord_stopped` — nothing here needs to avoid hanging the pull. Give up and warn
+    only once the deadline itself is reached, rather than guess a start time.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        # Stamped *before* the probe: `adb shell pgrep` is a full round trip, so reading the clock
+        # after it returns charges that latency to the recording's start and biases every corrected
+        # `started_at` low — seeking early, the same direction as the drift this correction removes.
+        probed_at = time.monotonic()
+        try:
+            current = {pid for pid in run(adb.screenrecord_pids_cmd(serial)).split() if pid}
+        except (subprocess.CalledProcessError, OSError) as exc:
+            _logger.debug(
+                "transient probe failure while confirming screenrecord start on %s (%s); retrying",
+                serial,
+                exc,
+            )
+            time.sleep(poll)
+            continue
+        if current - baseline_pids:
+            return probed_at
+        time.sleep(poll)
+    _logger.warning(
+        "device-side screenrecord on %s did not appear within %ss; step/network timestamps stay "
+        "uncorrected for this scenario's video",
+        serial,
+        timeout,
+    )
+    return None
+
+
 def start_screenrecord(
     serial: str,
     path: Path,
@@ -257,6 +397,7 @@ def start_screenrecord(
     time_limit: int | None = None,
     size: str | None = None,
     bit_rate: int | None = None,
+    confirm_started: bool = False,
 ) -> Interval:
     """Record the Android screen; stop() (SIGINT) finalizes the mp4, then pulls it off the device.
 
@@ -267,18 +408,26 @@ def start_screenrecord(
     *local* `adb shell` client `_VIDEO_FINALIZE_TIMEOUT` before any hard kill, then the transform waits
     for the *device-side* `screenrecord` to exit (`_await_screenrecord_stopped`) — the local client
     returns before the device finishes writing the moov atom, so pulling without that wait races the
-    finalize into a truncated, unplayable file.
+    finalize into a truncated, unplayable file. `confirm_started`, when set, polls for the device-side
+    process to appear so the returned `Interval.true_start` reflects that (a weaker signal than
+    iOS's confirmed first frame, but still real and earlier than the local client merely returning).
 
     `time_limit`/`size`/`bit_rate` forward to `adb.screenrecord_cmd` (see its docstring) for a caller
     whose recording window and artifact-size budget need bounding, e.g. an install+test window run
     outside `bajutsu run`.
     """
     device_path = adb.VIDEO_DEVICE_PATH
+    # Captured before spawning: a leaked screenrecord from a crash-retry (BE-0049) or any other
+    # stale process on the same device must not confirm a start that never happened.
+    baseline_pids = frozenset(_screenrecord_pids(serial, run)) if confirm_started else frozenset()
     proc = spawn(
         adb.screenrecord_cmd(
             serial, device_path, time_limit=time_limit, size=size, bit_rate=bit_rate
         ),
         None,
+    )
+    true_start = (
+        _await_screenrecord_started(serial, run, baseline_pids) if confirm_started else None
     )
 
     def transform(target: Path) -> Path:
@@ -297,6 +446,7 @@ def start_screenrecord(
         kind="video",
         path=path,
         provider=ADB_PROVIDER,
+        true_start=true_start,
         _proc=proc,
         _stop_signal=signal.SIGINT,
         _stop_timeout=_VIDEO_FINALIZE_TIMEOUT,

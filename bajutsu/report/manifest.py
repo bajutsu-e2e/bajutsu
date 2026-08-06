@@ -126,7 +126,8 @@ def manifest_dict(
 ) -> dict[str, object]:
     """Build the manifest — the run's canonical, versioned render model (BE-0068).
 
-    RunResult and its parts are dataclasses, so asdict() captures step/expect outcomes verbatim.
+    RunResult and its parts are dataclasses, so `_scenario_dict` captures step/expect outcomes
+    verbatim — minus `video_anchor_s`, a process-local instant with no meaning once persisted.
     `backend` is the actuator that drove the run (each scenario also carries its own `backend`);
     `sourceName` is the label the report's YAML toggle shows, persisted here so a re-render can
     recover it.
@@ -139,7 +140,7 @@ def manifest_dict(
         "ok": all(r.ok for r in results),
         "backend": _run_backend(results),
         "sourceName": source_name,
-        "scenarios": [asdict(r) for r in results],
+        "scenarios": [_scenario_dict(r) for r in results],
     }
     if provenance:
         manifest["provenance"] = provenance
@@ -149,6 +150,20 @@ def manifest_dict(
     if (matrix := _matrix(results)) is not None:
         manifest["matrix"] = matrix
     return manifest
+
+
+def _scenario_dict(r: RunResult) -> dict[str, object]:
+    """`asdict(r)`, minus `video_anchor_s`.
+
+    `video_anchor_s` is a raw `time.monotonic()` instant — a same-process handoff from
+    `run_scenario` to the pipeline's network-timestamp calculation, meaningful only during the run
+    that produced it. Every value derived from it (`started_at`, network `startedAt`) is already a
+    relative offset and carries the real information; the absolute instant itself would be noise
+    (or actively misleading) once persisted here.
+    """
+    d = asdict(r)
+    d.pop("video_anchor_s", None)
+    return d
 
 
 def _details(r: RunResult) -> str:
