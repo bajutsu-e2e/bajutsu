@@ -516,6 +516,7 @@ def test_is_a_driver() -> None:
 
 def test_tap_clicks_frame_center() -> None:
     drv, page = _driver([_rec(identifier="counter.increment", frame=[10, 20, 40, 10])])
+    page.evaluate_returns = [{"ok": True, "cover": None, "rect": None}]
     drv.tap({"id": "counter.increment"})
     assert page.mouse.calls == [("click", 30.0, 25.0)]
 
@@ -547,6 +548,7 @@ def test_tap_point() -> None:
 
 def test_double_tap() -> None:
     drv, page = _driver([_rec(identifier="x", frame=[0, 0, 10, 10])])
+    page.evaluate_returns = [{"ok": True, "cover": None, "rect": None}]
     drv.double_tap({"id": "x"})
     assert page.mouse.calls == [("dblclick", 5.0, 5.0)]
 
@@ -555,15 +557,30 @@ def test_tap_raises_element_not_tappable_when_covered() -> None:
     # elementFromPoint's hit chain never reaches the resolved target: an unrelated element covers
     # its point, so `tap` fails with the dedicated error rather than clicking through it.
     drv, page = _driver([_rec(identifier="x", frame=[0, 0, 10, 10])])
-    page.evaluate_returns = [False]
+    page.evaluate_returns = [{"ok": False, "cover": None, "rect": None}]
     with pytest.raises(base.ElementNotTappable, match="covered by another element"):
         drv.tap({"id": "x"})
     assert page.mouse.calls == []  # never clicked
 
 
+def test_tap_raises_element_not_tappable_naming_the_cover() -> None:
+    # Mirrors `base.raise_if_covered`'s message shape on the other backends: the covering element's
+    # identifier (or tag/DOM id) and rect are named, not just "covered by another element" with no
+    # way to tell a sticky header from a toast from a modal backdrop.
+    drv, page = _driver([_rec(identifier="x", frame=[0, 0, 10, 10])])
+    page.evaluate_returns = [
+        {"ok": False, "cover": "modal-backdrop", "rect": [0.0, 0.0, 400.0, 800.0]}
+    ]
+    with pytest.raises(
+        base.ElementNotTappable,
+        match=r"covered by another element \('modal-backdrop' at \(0\.0, 0\.0, 400\.0, 800\.0\)\)",
+    ):
+        drv.tap({"id": "x"})
+
+
 def test_double_tap_raises_element_not_tappable_when_covered() -> None:
     drv, page = _driver([_rec(identifier="x", frame=[0, 0, 10, 10])])
-    page.evaluate_returns = [False]
+    page.evaluate_returns = [{"ok": False, "cover": None, "rect": None}]
     with pytest.raises(base.ElementNotTappable):
         drv.double_tap({"id": "x"})
     assert page.mouse.calls == []
@@ -571,7 +588,7 @@ def test_double_tap_raises_element_not_tappable_when_covered() -> None:
 
 def test_long_press_raises_element_not_tappable_when_covered() -> None:
     drv, page = _driver([_rec(identifier="x", frame=[0, 0, 10, 10])])
-    page.evaluate_returns = [False]
+    page.evaluate_returns = [{"ok": False, "cover": None, "rect": None}]
     with pytest.raises(base.ElementNotTappable):
         drv.long_press({"id": "x"}, 0.0)
     assert page.mouse.calls == []
@@ -579,20 +596,20 @@ def test_long_press_raises_element_not_tappable_when_covered() -> None:
 
 def test_tap_clicks_when_the_point_hits_the_element() -> None:
     drv, page = _driver([_rec(identifier="x", frame=[0, 0, 10, 10])])
-    page.evaluate_returns = [True]
+    page.evaluate_returns = [{"ok": True, "cover": None, "rect": None}]
     drv.tap({"id": "x"})
     assert page.mouse.calls == [("click", 5.0, 5.0)]
 
 
 def test_is_tappable_true_when_the_point_hits_the_element() -> None:
     drv, page = _driver([_rec(identifier="x", frame=[0, 0, 10, 10])])
-    page.evaluate_returns = [True]
+    page.evaluate_returns = [{"ok": True, "cover": None, "rect": None}]
     assert drv.is_tappable({"id": "x"}) is True
 
 
 def test_is_tappable_false_when_covered() -> None:
     drv, page = _driver([_rec(identifier="x", frame=[0, 0, 10, 10])])
-    page.evaluate_returns = [False]
+    page.evaluate_returns = [{"ok": False, "cover": "div#overlay", "rect": [0.0, 0.0, 10.0, 10.0]}]
     assert drv.is_tappable({"id": "x"}) is False
 
 
@@ -614,14 +631,14 @@ def test_is_tappable_propagates_ambiguous_selector() -> None:
 
 def test_is_tappable_never_clicks() -> None:
     drv, page = _driver([_rec(identifier="x", frame=[0, 0, 10, 10])])
-    page.evaluate_returns = [True]
+    page.evaluate_returns = [{"ok": True, "cover": None, "rect": None}]
     drv.is_tappable({"id": "x"})
     assert page.mouse.calls == []
 
 
 def test_is_tappable_checks_element_from_point_at_the_frame_center() -> None:
     drv, page = _driver([_rec(identifier="x", frame=[10, 20, 40, 10])])
-    page.evaluate_returns = [True]
+    page.evaluate_returns = [{"ok": True, "cover": None, "rect": None}]
     drv.is_tappable({"id": "x"})
     assert "elementFromPoint(30.0, 25.0)" in page.evaluated[-1]
 
@@ -632,7 +649,7 @@ def test_is_tappable_guards_against_a_below_viewport_point_before_hit_testing() 
     # emitted JS carries the viewport guard ahead of the `elementFromPoint` call, since the fake
     # page returns a canned value rather than evaluating real JavaScript.
     drv, page = _driver([_rec(identifier="x", frame=[10, 20, 40, 10])])
-    page.evaluate_returns = [True]
+    page.evaluate_returns = [{"ok": True, "cover": None, "rect": None}]
     drv.is_tappable({"id": "x"})
     script = page.evaluated[-1]
     assert "window.innerWidth" in script and "window.innerHeight" in script
@@ -648,6 +665,7 @@ def test_back_goes_back_in_history() -> None:
 
 def test_long_press() -> None:
     drv, page = _driver([_rec(identifier="x", frame=[0, 0, 10, 10])])
+    page.evaluate_returns = [{"ok": True, "cover": None, "rect": None}]
     drv.long_press({"id": "x"}, 0.0)
     assert [c[0] for c in page.mouse.calls] == ["move", "down", "up"]
 

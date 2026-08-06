@@ -44,6 +44,19 @@ def _rotate_point(p: base.Point, center: base.Point, radians: float) -> base.Poi
     return (center[0] + dx * cos - dy * sin, center[1] + dx * sin + dy * cos)
 
 
+class _HitResult(NamedTuple):
+    """`_point_hits`'s verdict: whether the point hit `el`, and what covered it if not.
+
+    `cover` / `rect` name the covering element the same way `base.raise_if_covered` names a cover on
+    the other backends; both are `None` together on a hit, or when nothing rendered at the point at
+    all.
+    """
+
+    ok: bool
+    cover: str | None
+    rect: base.Frame | None
+
+
 # The subset of Playwright's Page the driver uses — kept as a Protocol so tests can inject a
 # fake page without importing playwright, and the real (untyped, lazily imported) page satisfies it.
 class _Mouse(Protocol):
@@ -562,49 +575,63 @@ class PlaywrightDriver:
         el = base.resolve_unique(self.query(), sel)
         return base.frame_center(el["frame"]), el
 
-    def _point_hits(self, point: base.Point, el: base.Element) -> bool:
+    def _point_hits(self, point: base.Point, el: base.Element) -> _HitResult:
         """Whether `document.elementFromPoint` actually resolves to `el`, not an unrelated cover.
 
         Generalizes the `elementFromPoint` pattern already used by `select_option` below: walk the
         hit's ancestor chain looking for `el` — by its `data-testid` (the same attribute `QUERY_JS`,
         `bajutsu/dom.py`, reads into `identifier`) when it has one, or by matching bounding rects
         when it does not (an element `QUERY_JS` matched by tag/role/`aria-label` instead). A hit
-        chain that never reaches `el` means an unrelated element genuinely covers the point.
+        chain that never reaches `el` means an unrelated element genuinely covers the point — named
+        in the returned `_HitResult.cover` / `.rect` (by `data-testid`, else tag plus DOM `id`) the
+        same way `base.raise_if_covered` names a cover on the other backends, so a failure message
+        does not force reproducing the screen by hand to learn what blocked the tap.
 
         A point outside the current viewport is a different question this check does not answer:
         `elementFromPoint` returns `null` there regardless of occlusion (`query()`'s frames are
         viewport-relative, BE-0326, so a below-the-fold `el` is resolvable with a point past
         `window.innerHeight`), and treating that `null` as "covered" would make `tap` implicitly
         scroll a below-the-fold target into view — exactly the behavior `docs/drivers.md` documents
-        as adb-only. So an off-viewport point is reported as hit (`True`) here, leaving that case to
-        the explicit `scroll` action rather than this occlusion check.
+        as adb-only. So an off-viewport point is reported as hit here, leaving that case to the
+        explicit `scroll` action rather than this occlusion check.
         """
         x, y = point
         tx, ty, tw, th = el["frame"]
         identifier = json.dumps(el["identifier"])
-        return bool(
-            self._page.evaluate(
-                "(() => {"
-                f"if ({x} < 0 || {y} < 0 || {x} >= window.innerWidth || {y} >= window.innerHeight) "
-                "return true;"
-                f"const hit = document.elementFromPoint({x}, {y});"
-                "if (!hit) return false;"
-                f"const identifier = {identifier};"
-                "if (identifier !== null) {"
-                '  return hit.closest(`[data-testid="${CSS.escape(identifier)}"]`) !== null;'
-                "}"
-                "let node = hit;"
-                "while (node) {"
-                "  const r = node.getBoundingClientRect();"
-                f"  if (Math.abs(r.x - {tx}) < 1 && Math.abs(r.y - {ty}) < 1"
-                f"      && Math.abs(r.width - {tw}) < 1 && Math.abs(r.height - {th}) < 1) {{"
-                "    return true;"
-                "  }"
-                "  node = node.parentElement;"
-                "}"
-                "return false;"
-                "})()"
-            )
+        result = self._page.evaluate(
+            "(() => {"
+            "const describe = (node) => {"
+            "  const r = node.getBoundingClientRect();"
+            "  const testid = node.getAttribute('data-testid');"
+            "  const cover = testid || (node.tagName.toLowerCase() + (node.id ? '#' + node.id : ''));"
+            "  return {ok: false, cover: cover, rect: [r.x, r.y, r.width, r.height]};"
+            "};"
+            f"if ({x} < 0 || {y} < 0 || {x} >= window.innerWidth || {y} >= window.innerHeight) "
+            "return {ok: true, cover: null, rect: null};"
+            f"const hit = document.elementFromPoint({x}, {y});"
+            "if (!hit) return {ok: false, cover: null, rect: null};"
+            f"const identifier = {identifier};"
+            "if (identifier !== null) {"
+            '  return hit.closest(`[data-testid="${CSS.escape(identifier)}"]`) !== null'
+            "    ? {ok: true, cover: null, rect: null} : describe(hit);"
+            "}"
+            "let node = hit;"
+            "while (node) {"
+            "  const r = node.getBoundingClientRect();"
+            f"  if (Math.abs(r.x - {tx}) < 1 && Math.abs(r.y - {ty}) < 1"
+            f"      && Math.abs(r.width - {tw}) < 1 && Math.abs(r.height - {th}) < 1) {{"
+            "    return {ok: true, cover: null, rect: null};"
+            "  }"
+            "  node = node.parentElement;"
+            "}"
+            "return describe(hit);"
+            "})()"
+        )
+        rect = result["rect"]
+        return _HitResult(
+            ok=result["ok"],
+            cover=result["cover"],
+            rect=(rect[0], rect[1], rect[2], rect[3]) if rect is not None else None,
         )
 
     @_wedge_guard
@@ -620,7 +647,7 @@ class PlaywrightDriver:
             point, el = self._center_with_element(sel)
         except base.ElementNotFound:
             return False
-        return self._point_hits(point, el)
+        return self._point_hits(point, el).ok
 
     def _center_checked(self, sel: base.Selector) -> tuple[base.Point, base.Element]:
         """`_center_with_element`, but raises `ElementNotTappable` when the point does not hit `sel`.
@@ -629,9 +656,11 @@ class PlaywrightDriver:
         rather than being duplicated at each call site.
         """
         point, el = self._center_with_element(sel)
-        if not self._point_hits(point, el):
+        hit = self._point_hits(point, el)
+        if not hit.ok:
+            named = f" ({hit.cover!r} at {hit.rect})" if hit.cover is not None else ""
             raise base.ElementNotTappable(
-                f"element resolved but covered by another element: {sel!r}"
+                f"element resolved but covered by another element{named}: {sel!r}"
             )
         return point, el
 

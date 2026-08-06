@@ -93,8 +93,10 @@ _GUARD_COOLDOWN = 1.0
 # the next poll can't re-match it) and `AmbiguousSelector` (guarded by the uniqueness pre-check
 # above it), a genuinely stuck obstruction — a scrim that never lifts, an `elevation` false
 # positive — has neither property, so without its own bound this decline would re-issue a real
-# actuation attempt every `_POLL` for the rest of the wait.
-_TREE_DISMISS_MAX_DECLINES = 5
+# actuation attempt every `_POLL` for the rest of the wait. Counted in polls, not seconds, so the
+# bound must clear a real presentation animation (a UIKit sheet ~0.35-0.5s, an Android dialog enter
+# ~0.25s+), not just the poll cadence: ~1s at `_POLL`, the same horizon as `_GUARD_COOLDOWN` below.
+_TREE_DISMISS_MAX_DECLINES = 20
 
 
 @dataclass

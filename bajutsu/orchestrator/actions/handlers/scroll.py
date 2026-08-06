@@ -492,7 +492,6 @@ def scroll_to_target(
         # reached with the target absent, so a step that revealed it is never second-guessed — but a
         # custom `stop` (`scroll_until_tappable`) can reach it with the target present and merely
         # unreachable, where `_overshot`'s "the target may have passed unseen" inference does not hold.
-        # step that revealed it is never second-guessed.
         if previous is not None:
             movers |= _moved(previous, view)
             if not reversed_step and _overshot(previous, view):

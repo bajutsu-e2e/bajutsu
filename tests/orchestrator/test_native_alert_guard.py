@@ -362,11 +362,13 @@ def test_dismiss_from_tree_taps_a_showing_at_most_once() -> None:
 
 
 def test_dismiss_from_tree_declines_on_not_yet_tappable_then_dismisses() -> None:
-    # A sheet's own scrim can still cover its button for a poll or two while the presentation
-    # animation finishes, the platform's hit-test (`isHittable` / `topmost_at_point`) reading the
-    # button as unreachable until it settles. `ElementNotTappable` here is the same benign,
-    # self-resolved race `ElementNotFound` and `AmbiguousSelector` already forgive — not a reason
-    # to fail the wait.
+    # A sheet's own scrim can still cover its button while the presentation animation finishes, the
+    # platform's hit-test (`isHittable` / `topmost_at_point`) reading the button as unreachable until
+    # it settles. `ElementNotTappable` here is the same benign, self-resolved race `ElementNotFound`
+    # and `AmbiguousSelector` already forgive — not a reason to fail the wait. Cleared after 9
+    # declines (~450ms at `_POLL = 0.05`), animation scale for a real presentation (a UIKit sheet
+    # ~0.35-0.5s, an Android dialog enter ~0.25s+) — comfortably inside `_TREE_DISMISS_MAX_DECLINES`,
+    # unlike a bound that only cleared a couple of polls in (150ms), well short of any real animation.
     from bajutsu.orchestrator.waits import _wait
 
     target = _button("R")
@@ -380,7 +382,7 @@ def test_dismiss_from_tree_declines_on_not_yet_tappable_then_dismisses() -> None
 
         def tap(self, sel: base.Selector) -> None:
             self.tap_calls += 1
-            if self.tap_calls < 3:  # the scrim is still animating away
+            if self.tap_calls < 10:  # the scrim is still animating away
                 raise base.ElementNotTappable("covered by the sheet's own scrim")
             super().tap(sel)
             self.screen = [target]  # the animation finishes; the screen updates
@@ -392,7 +394,7 @@ def test_dismiss_from_tree_declines_on_not_yet_tappable_then_dismisses() -> None
         driver, _for_wait("ready", 3.0), _LogicalClock(), alert_guard=guard, alerts=alerts
     )
     assert ok
-    assert driver.tap_calls == 3  # declined twice, then dismissed
+    assert driver.tap_calls == 10  # declined 9 times, then dismissed
     assert alerts == [AlertEvent(label="今はしない")]
 
 
