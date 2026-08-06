@@ -21,8 +21,10 @@
 操作しています。この取得を一切受け継いでいません。4つのジョブのどれで失敗が起きても、診断できる
 アーティファクトが残らないということです。本項目は、パイプラインがすでに提供しているこのインター
 バル型エビデンス（テスト1件につき1本の画面録画と1本のデバイスログストリーム）を4つのスイートすべて
-に追加します。録画とログは、それを生んだテストが失敗したときだけ残します。これにより、どのジョブで
-失敗しても、シナリオ駆動の失敗がすでに得ているのと同じ動画とデバイスログが手に入ります。
+に追加します。録画とログは、それを生んだテストが失敗したときだけ残します。対象は各テスト自身の
+セットアップ以降に起きた失敗です。これにより、シナリオ駆動の失敗がすでに得ているのと同じ動画と
+デバイスログが手に入ります。このセットアップより前、つまりスイート自身のモジュールスコープの
+バックエンド起動中の失敗が残す隙間は、単位2で触れます。
 
 ## 動機
 
@@ -85,8 +87,9 @@ region did not change ... (end of content)`で失敗しました。これはま�
 以下に残します。これは`screenrecord.py`自身のMakefileターゲットがcodegenレーンに対してすでに適用して
 いる、失敗時のみ残す方針と同じです。
 
-この判定は、フィクスチャ自身のteardownには置けません。`_evidence`はautouseなので、そのテストのフィク
-スチャの中で最初にセットアップされ、したがって最後にteardownされます。pytestが「teardown」の
+この判定は、フィクスチャ自身のteardownには置けません。`_evidence`はautouseかつfunctionスコープなの
+で、そのテストのfunctionスコープのフィクスチャの中では最初にセットアップされ、最後にteardownされま
+す。pytestが「teardown」の
 `TestReport`を組み立てるのは、その項目のすべてのfinalizer（このフィクスチャ自身のteardownも含む）が
 実行を終えたあとです。自分のteardownコード内でテストの結果を読もうとするフィクスチャは、その時点で
 すでに作られている「call」フェーズのレポートは読めますが、**自分より前にteardownされる、別のフィクス
@@ -114,12 +117,31 @@ region did not change ... (end of content)`で失敗しました。これはま�
 録画は、それを引き継いだ試行によって同じディレクトリからもう消去されています。各試行自身の「setup」
 レポートでリセットすることで、`backend_crash_recovery`自身が最終的に公開する試行の結果だけが残ります。
 
+`_evidence`自身のfunctionスコープは、本項目の境界でもあります。各スイートのバックエンド起動は、
+functionスコープのどのフィクスチャよりも前に、moduleスコープで実行されます。Android側の
+`_eff`/`_adb_driver`/`_component`、iOS側conformanceスイートの`_backend_launch`、
+`backend_crash_recovery.py`の`_backend_lease_holder`は、いずれも`_evidence`より後ではなく前に
+セットアップされます。
+
+これらが失敗する経路は2つあります。`launch_driver`がアプリのインストールや起動に失敗する経路と、
+XCUITestランナーが`BAJUTSU_XCUITEST_STARTUP_TIMEOUT`（300秒）以内に準備完了へ達しない経路です。
+どちらの場合も、pytestはそのフィクスチャでモジュールのセットアップを打ち切ります。`_evidence`は
+一度も実行されず、`runs/<lane>/<test-id>/`も作られません。モジュール内の全ケースが、動画・
+デバイスログのいずれも欠けたままエラーになります。`backend_crash_recovery`（BE-0334）の再試行も、
+同じmoduleスコープの起動を`_evidence`より前にやり直します。復旧を使い切るまでクラッシュし続ける
+起動失敗には、やはり何も残りません。
+
+「はじめに」と単位3が述べる対象範囲は、各テスト自身のfunctionスコープのセットアップ以降に起きた
+失敗です。スイート自身のmoduleスコープの起動中の失敗は、本項目の対象外です。
+
 ### 単位3 — 4つのスイートすべてにautouseフィクスチャとして組み込む
 
 このフィクスチャを`tests/test_driver_conformance_ondevice_android.py`、
 `tests/test_fault_injection_ondevice_android.py`、`tests/test_driver_conformance_ondevice.py`、
 `tests/test_fault_injection_ondevice.py`の4つにautouseフィクスチャとして追加し、テストごとに個別に
-指定しなくても4つのスイートすべての全ケースを対象にします。それぞれのスイートは自分自身のレーン名
+指定しなくても4つのスイートすべての全ケースに適用します。対象は各テスト自身のセットアップ以降に
+起きた失敗です。moduleスコープの起動区間が対象外である点は、単位2で述べたとおりです。それぞれの
+スイートは自分自身のレーン名
 （`conformance-adb`/`fault-injection-adb`/`conformance-xcuitest`/`fault-injection-xcuitest`）を渡す
 ので、各ジョブがアップロードするアーティファクトは互いに独立したままで、同じパス上で衝突しません。
 

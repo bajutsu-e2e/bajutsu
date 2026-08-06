@@ -21,8 +21,9 @@ for it, but the on-device `conformance (adb)`/`fault-injection (adb)` jobs and t
 inherit none of that capture: a failure in any of the four produces no artifact to diagnose it.
 This item adds the same interval evidence the pipeline already provides — a screen recording and a
 device-log stream, one pair per test — to all four suites, kept only for the test that produced
-them when it fails, so a failure in any of them ships with the same video and device log a
-scenario-driven failure already gets.
+them when it fails. A failure at or after that test's own setup then ships with the same video and
+device log a scenario-driven failure already gets. Unit 2 notes the one gap this leaves: a failure
+during a suite's own module-scoped backend bring-up, before that setup ever starts.
 
 ## Motivation
 
@@ -86,25 +87,43 @@ Discard the recorded video and device log when the test they wrap passes; keep t
 `runs/<lane>/<test-id>/` only when it fails, mirroring the failure-only retention
 `screenrecord.py`'s own Makefile target already applies to the codegen lane.
 
-The decision cannot live inside the fixture's own teardown. `_evidence` is autouse, so it is set up
-first among a test's fixtures and therefore torn down last; pytest only builds the "teardown"
-`TestReport` after every finalizer for the item — the fixture's own included — has already run. A
-fixture reading its test's outcome from inside its own teardown code can see the "call" phase's
-report (already produced by then), but never an *earlier-torn-down sibling fixture's own teardown
-failure*, since that failure has not been reported yet at the point the fixture's code runs. That is
-not a corner case for the fault-injection suites: their per-test `driver` fixture's post-`yield` half
-puts the display back to a known state, and a display that will not wake is exactly the failure a
-recording exists to explain. Defer the decision to a `pytest_runtest_makereport` hook instead — the
-same mechanism `tests/backend_crash_recovery.py` already uses to classify a report for the on-device
-conformance suite (BE-0334) — specifically to the hook's own "teardown" invocation, the first point
-that has actually seen the whole attempt. The fixture registers its directory for that hook to sweep
-unconditionally, whether or not either `start_*` call succeeded: a start failure is warned about, not
-raised, so it never reaches the outcome tag — leaving the directory unregistered would strand
-whatever the video alone managed to record on a test that then passes. A green run contributes
-nothing of its own, so the "Upload run artifacts" step carries only what the job already wrote to
-`runs/` — on `conformance (xcuitest)`, the workflow-level `BAJUTSU_XCUITEST_RUNNER_LOG`'s
-`runs/runner-logs`, which is why that job's missing step also discarded its runner log — and starts
-carrying per-test evidence only on the first real failure.
+The decision cannot live inside the fixture's own teardown. `_evidence` is autouse and
+function-scoped, so among a test's function-scoped fixtures it is set up first and torn down last;
+pytest only builds the "teardown" `TestReport` after every finalizer for the item — the fixture's
+own included — has already run. A fixture reading its test's outcome from inside its own teardown
+code can see the "call" phase's report (already produced by then), but never an *earlier-torn-down
+sibling fixture's own teardown failure*, since that failure has not been reported yet at the point
+the fixture's code runs. That is not a corner case for the fault-injection suites: their per-test
+`driver` fixture's post-`yield` half puts the display back to a known state, and a display that will
+not wake is exactly the failure a recording exists to explain. Defer the decision to a
+`pytest_runtest_makereport` hook instead — the same mechanism `tests/backend_crash_recovery.py`
+already uses to classify a report for the on-device conformance suite (BE-0334) — specifically to
+the hook's own "teardown" invocation, the first point that has actually seen the whole attempt. The
+fixture registers its directory for that hook to sweep unconditionally, whether or not either
+`start_*` call succeeded: a start failure is warned about, not raised, so it never reaches the
+outcome tag — leaving the directory unregistered would strand whatever the video alone managed to
+record on a test that then passes. A green run contributes nothing of its own, so the "Upload run
+artifacts" step carries only what the job already wrote to `runs/` — on `conformance (xcuitest)`,
+the workflow-level `BAJUTSU_XCUITEST_RUNNER_LOG`'s `runs/runner-logs`, which is why that job's
+missing step also discarded its runner log — and starts carrying per-test evidence only on the
+first real failure.
+
+`_evidence`'s own function scope is also this item's boundary. Each suite's backend bring-up runs
+at module scope, ahead of every function-scoped fixture. `_eff`/`_adb_driver`/`_component` in the
+Android suites, `_backend_launch` in the iOS conformance suite, and `_backend_lease_holder` in
+`backend_crash_recovery.py` all set up before `_evidence`, never after it.
+
+Two concrete triggers follow from that ordering. `launch_driver` can fail to install or launch the
+app. The XCUITest runner can also miss readiness within `BAJUTSU_XCUITEST_STARTUP_TIMEOUT` (300
+seconds). Either one aborts the module's setup at that bring-up fixture. `_evidence` then never
+runs. `runs/<lane>/<test-id>/` is never created, and every case in the module errors with neither a
+video nor a device log. `backend_crash_recovery` (BE-0334) re-enters the same module-scoped
+bring-up on its retry, still ahead of `_evidence`. A bring-up that keeps crashing until the retry
+budget runs out publishes its failing setup report with nothing attached either.
+
+The Introduction's and Unit 3's coverage claims hold for a failure at or after each test's own
+function-scoped setup. A failure during a suite's own module-scoped bring-up sits outside this
+item's scope.
 
 The per-attempt outcome the hook tracks must be reset at each "setup" report and only accumulated
 (never reset) afterward, rather than latched true forever, because the iOS conformance suite's own
@@ -121,8 +140,10 @@ publishes.
 
 Add the fixture to `tests/test_driver_conformance_ondevice_android.py`,
 `tests/test_fault_injection_ondevice_android.py`, `tests/test_driver_conformance_ondevice.py`, and
-`tests/test_fault_injection_ondevice.py` as an autouse fixture, so every case in all four suites is
-covered without opting in per test. Each suite passes its own lane name (`conformance-adb` /
+`tests/test_fault_injection_ondevice.py` as an autouse fixture, so every case in all four suites
+gets it without opting in per test. That coverage runs from each test's own setup onward; Unit 2
+notes the module-scoped bring-up window it leaves out. Each suite passes its own lane name
+(`conformance-adb` /
 `fault-injection-adb` / `conformance-xcuitest` / `fault-injection-xcuitest`) so every job's uploaded
 artifact stays self-contained and none collide on the same path.
 

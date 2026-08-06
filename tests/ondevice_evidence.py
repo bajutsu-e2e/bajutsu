@@ -43,6 +43,7 @@ import logging
 import re
 import shutil
 import subprocess
+import warnings
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
@@ -254,6 +255,4 @@ def capture(
                     warnings.warn(
                         f"{artifact} is missing or empty: this test recorded no evidence",
                         stacklevel=2,
-                    )
-                        "%s is missing or empty: this test recorded no evidence", artifact
                     )

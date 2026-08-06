@@ -302,12 +302,12 @@ def test_warns_and_still_yields_when_the_evidence_directory_cannot_be_prepared(
     assert any("could not prepare the evidence directory" in r.message for r in caplog.records)
 
 
-def test_warns_about_a_missing_or_empty_artifact(caplog, monkeypatch, tmp_path) -> None:
+def test_warns_about_a_missing_or_empty_artifact(monkeypatch, tmp_path) -> None:
     # `_spawn` discards the child's stderr, so a `recordVideo`/`screenrecord` that refused to start
     # or died leaves no other trace, and `if-no-files-found: ignore` on the CI upload step would let
     # an entirely blind capture pass for a clean one. Drive `capture()` directly as a plain generator
     # (it is one; only its callers wrap it as a fixture) rather than through `pytester`, since this
-    # only needs to inspect a log record, not a whole inner pytest session.
+    # only needs to inspect the emitted warnings, not a whole inner pytest session.
     monkeypatch.chdir(tmp_path)
 
     class _NullInterval:
@@ -317,7 +317,6 @@ def test_warns_about_a_missing_or_empty_artifact(caplog, monkeypatch, tmp_path) 
     def start_records_nothing(serial: str, path: Path) -> _NullInterval:
         return _NullInterval()  # nothing ever writes to `path`
 
-    caplog.set_level(logging.WARNING)
     gen = ondevice_evidence.capture(
         "fake-serial",
         "fake-lane",
@@ -326,14 +325,16 @@ def test_warns_about_a_missing_or_empty_artifact(caplog, monkeypatch, tmp_path) 
         start_log=start_records_nothing,
     )
     next(gen)
-    with pytest.raises(StopIteration):
+    with (
+        pytest.warns(UserWarning, match="is missing or empty") as missing_warnings,
+        pytest.raises(StopIteration),
+    ):
         next(gen)
-    missing_warnings = [r for r in caplog.records if "is missing or empty" in r.message]
     assert len(missing_warnings) == 2  # video.mp4 and device.log, both never written
 
 
 def test_warns_about_missing_evidence_even_when_a_stop_failure_reraises(
-    caplog, monkeypatch, tmp_path
+    monkeypatch, tmp_path
 ) -> None:
     # The missing/empty check used to be plain trailing code after the stop try/except, so the
     # `raise` on an already-failing attempt jumped straight past it — exactly the path whose
@@ -351,7 +352,6 @@ def test_warns_about_missing_evidence_even_when_a_stop_failure_reraises(
     request = _FakeRequest("fake::test")
     request.node.stash[ondevice_evidence._FAILED] = True  # the attempt is already failing
 
-    caplog.set_level(logging.WARNING)
     gen = ondevice_evidence.capture(
         "fake-serial",
         "fake-lane",
@@ -360,9 +360,11 @@ def test_warns_about_missing_evidence_even_when_a_stop_failure_reraises(
         start_log=start_raises_on_stop,
     )
     next(gen)
-    with pytest.raises(RuntimeError, match="adb pull failed"):
+    with (
+        pytest.warns(UserWarning, match="is missing or empty") as missing_warnings,
+        pytest.raises(RuntimeError, match="adb pull failed"),
+    ):
         next(gen)
-    missing_warnings = [r for r in caplog.records if "is missing or empty" in r.message]
     assert len(missing_warnings) == 2  # video.mp4 and device.log, both never written
 
 
