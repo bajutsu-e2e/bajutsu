@@ -484,6 +484,17 @@ def test_the_real_starters_accept_captures_two_argument_call() -> None:
         intervals.start_logcat,
     ):
         inspect.signature(starter).bind("device-id", Path("artifact"))
+    # The two pre-bound helpers forward more than that, and both unit tests below monkeypatch the
+    # real function away — so bind the keyword arguments they actually pass, too.
+    inspect.signature(intervals.start_video).bind("udid", Path("v.mp4"), confirm_started=True)
+    inspect.signature(intervals.start_screenrecord).bind(
+        "serial",
+        Path("v.mp4"),
+        time_limit=ondevice_evidence._TIME_LIMIT_S,
+        size=ondevice_evidence._SIZE,
+        bit_rate=ondevice_evidence._BIT_RATE,
+        confirm_started=True,
+    )
 
 
 def test_android_screenrecord_forwards_this_modules_pinned_bounds(monkeypatch) -> None:

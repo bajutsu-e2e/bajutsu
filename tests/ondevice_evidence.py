@@ -75,9 +75,12 @@ _BIT_RATE = 2_000_000
 def android_screenrecord(serial: str, path: Path) -> intervals.Interval:
     """`intervals.start_screenrecord` pre-bound to this module's size/bit-rate/time-limit bounds.
 
-    `confirm_started=True`: a bare spawn only proves the `screenrecord` process started, not that it
-    has written a frame yet, and a fast failing case can otherwise tear down before it does — the
-    exact case this module's evidence exists to explain, shipping an absent or unplayable mp4 for it.
+    `confirm_started=True`: a bare spawn only proves the local `adb shell` client started, not that a
+    device-side `screenrecord` process exists yet, and a fast failing case can otherwise tear down
+    before it does — the exact case this module's evidence exists to explain, shipping an absent or
+    unplayable mp4 for it. It confirms less than the iOS signal does, though
+    (`_await_screenrecord_started`: a live process is not proof frames are being emitted), and it
+    warns rather than raises on timeout — `capture()`'s missing/empty check stays the backstop.
     """
     return intervals.start_screenrecord(
         serial,
