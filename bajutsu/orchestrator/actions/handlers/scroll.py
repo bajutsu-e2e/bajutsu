@@ -488,7 +488,10 @@ def scroll_to_target(
         if target is not None and stop(target["frame"], viewport):
             return
         view = _region_view(elements, within, viewport, axis)
-        # Judge the step that produced this read — but only now that the target is known absent, so a
+        # Judge the step that produced this read. With the default stop condition this is only ever
+        # reached with the target absent, so a step that revealed it is never second-guessed — but a
+        # custom `stop` (`scroll_until_tappable`) can reach it with the target present and merely
+        # unreachable, where `_overshot`'s "the target may have passed unseen" inference does not hold.
         # step that revealed it is never second-guessed.
         if previous is not None:
             movers |= _moved(previous, view)
