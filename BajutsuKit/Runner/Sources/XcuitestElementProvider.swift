@@ -66,7 +66,8 @@ final class XcuitestElementProvider: ElementProviding {
     // single shared predicate, not one copy per caller, so `tap` and `isHittable(backingElement:)` —
     // which the recovery loop requires to agree — cannot drift apart on this question.
     private func centerIsOnScreen(_ el: XCUIElement) -> Bool {
-        app.frame.contains(CGPoint(x: el.frame.midX, y: el.frame.midY))
+        let f = el.frame
+        return app.frame.contains(CGPoint(x: f.midX, y: f.midY))
     }
 
     func tap(backingElement: AnyObject, taps: Int, duration: TimeInterval) -> TapResult {
