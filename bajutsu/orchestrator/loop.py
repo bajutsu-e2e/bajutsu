@@ -996,8 +996,8 @@ class _StepRunner:
         # with a post-action tree, per `_run_steps`'s own final-step comment on that same hazard).
         # Only where this baseline targets the driver `rawTree` itself would read from: inside a `web`
         # block `active_driver` differs from `self.cfg.driver`, and the native driver's raw dump would
-        # describe an unrelated read entirely — `_collect_captures` below drops such a request rather
-        # than pair it wrong.
+        # describe an unrelated read entirely — the post-step `instant` filter below drops such a
+        # request rather than pair it wrong.
         raw_tree_pre_captured = active_driver is self.cfg.driver and any(
             _kind_of(t) == "rawTree" for t in (step.capture or [])
         )
@@ -1257,7 +1257,11 @@ class _StepRunner:
         instant = [t for t in fired if _kind_of(t) not in intervals.INTERVAL_KINDS]
         if raw_tree_pre_captured:
             # Already written above, paired with the pre-action read `pre_elements` seeded — a
-            # second, post-action write here would silently replace it with a mismatched dump.
+            # second, post-action write here would silently replace it with a mismatched dump. This
+            # drops every `rawTree` token, including one that arrived only via a capturePolicy rule
+            # (e.g. `onError`) rather than the inline request that triggered the pre-step capture —
+            # an unlikely combination no scenario in this repo exercises today, so a scenario wanting
+            # both a pre-action and a post-action dump on the same step has no way to ask for it yet.
             instant = [t for t in instant if _kind_of(t) != "rawTree"]
         elif active_driver is not self.cfg.driver:
             # A `web` block's capture call below always targets the native `self.cfg.driver` (a
