@@ -26,11 +26,11 @@
     - assert:
         - value: { sel: { id: log.longpress.value }, equals: "idle" }
         - value: { sel: { id: log.doubletap.value }, equals: "0" }
-      capture: [rawTree]
+      capture: [elements, rawTree]
     - longPress: { sel: { id: log.longpress }, duration: 0.7 }
-      capture: [rawTree]
+      capture: [elements, rawTree]
     - doubleTap: { id: log.doubletap }
-      capture: [rawTree]
+      capture: [elements, rawTree]
   expect:
     - value: { sel: { id: log.longpress.value }, equals: "pressed" }
     - value: { sel: { id: log.doubletap.value }, equals: "1" }
