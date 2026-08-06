@@ -131,6 +131,12 @@ def capture(
     and a test can pass a fake pair to exercise this without a real device.
     """
     dest = Path("runs") / lane / _slug(request.node.nodeid)
+    # Start every attempt from an empty directory: simctl `recordVideo` (no `--force`) refuses to
+    # overwrite an existing file, so a clip kept by a crashed attempt — or by an earlier local run of
+    # the same test — would otherwise silently stand in for this attempt's own evidence. `adb pull`
+    # and `start_logcat`'s own `wb` open would have overwritten either file regardless, but clearing
+    # first makes that true for both backends without relying on it.
+    shutil.rmtree(dest, ignore_errors=True)
     dest.mkdir(parents=True, exist_ok=True)
     video: intervals.Interval | None = None
     log: intervals.Interval | None = None

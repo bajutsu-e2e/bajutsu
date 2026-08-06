@@ -98,6 +98,56 @@ def test_keeps_the_capture_when_setup_fails(pytester) -> None:
     assert (kept / "video.mp4").read_text() == "captured"
 
 
+def test_clears_a_stale_directory_before_recording(pytester) -> None:
+    # simctl `recordVideo` (no `--force`) refuses to overwrite an existing file — silently, since
+    # its stderr is discarded — so a leftover clip from a crashed attempt, or from an earlier local
+    # run of the same test, must never still be there when the next attempt's `start_video` runs.
+    pytester.makeconftest(_INNER_CONFTEST)
+    pytester.makepyfile(
+        "import pathlib\n"
+        "\n"
+        "import ondevice_evidence\n"
+        "import pytest\n"
+        "\n"
+        "\n"
+        "class _FakeInterval:\n"
+        "    def __init__(self, path):\n"
+        "        self.path = path\n"
+        "\n"
+        "    def stop(self):\n"
+        "        return self.path\n"
+        "\n"
+        "\n"
+        "def _fake_start(serial, path, **kwargs):\n"
+        "    # A stand-in for simctl recordVideo's real refusal to overwrite an existing file.\n"
+        "    if path.exists():\n"
+        "        raise RuntimeError('recordVideo: file already exists')\n"
+        "    path.write_text('fresh')\n"
+        "    return _FakeInterval(path)\n"
+        "\n"
+        "\n"
+        "@pytest.fixture(autouse=True)\n"
+        "def _evidence(request):\n"
+        "    slug = ondevice_evidence._slug(request.node.nodeid)\n"
+        "    stale = pathlib.Path('runs') / 'fake-lane' / slug\n"
+        "    stale.mkdir(parents=True, exist_ok=True)\n"
+        "    (stale / 'video.mp4').write_text('stale from a previous attempt')\n"
+        "    yield from ondevice_evidence.capture(\n"
+        "        'fake-serial', 'fake-lane', request,\n"
+        "        start_video=_fake_start, start_log=_fake_start,\n"
+        "    )\n"
+        "\n"
+        "\n"
+        "def test_broken():\n"
+        "    assert False\n"
+    )
+    result = pytester.runpytest_inprocess()
+    result.assert_outcomes(failed=1)
+    slug = ondevice_evidence._slug("test_clears_a_stale_directory_before_recording.py::test_broken")
+    kept = pytester.path / "runs" / "fake-lane" / slug
+    assert (kept / "video.mp4").read_text() == "fresh"
+
+
 def test_stops_the_started_video_when_start_log_raises(pytester) -> None:
     # `start_video` can succeed (spawning a real device-side `screenrecord`) and then `start_log`
     # raise — a transient adb hiccup starting the second process must not orphan the first.
