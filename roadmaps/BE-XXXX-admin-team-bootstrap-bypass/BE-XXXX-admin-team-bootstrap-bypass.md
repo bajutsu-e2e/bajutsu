@@ -140,7 +140,7 @@ entry in `oplog.EVENTS` rather than folded into `"oauth.login"` (which stays "lo
 reasoning below). A rejection is the one failure this item exists to make recoverable — a broken or
 missing `orgs:` block plus no matching admin Team — so it needs the same audit-style visibility a
 successful sign-in gets, not a bare 403 with nothing an operator can correlate a user's "I can't sign
-in" report against. The denial message names which of the same four shapes left `orgs:` unmatched
+in" report against. The denial message names which of the same five shapes left `orgs:` unmatched
 that the success record's bypass-admission message does (below) — a shared `_unmatched_org_cause`
 helper computes it for both, so the two records can't drift the way an earlier revision of this item
 briefly let them: a denied login is, if anything, the more likely source of an "I can't sign in"
@@ -185,17 +185,22 @@ that event name would expect. A per-record `bypass` field (`True` only when the 
 not `orgs:`, is what admitted the login) and the message and level vary accordingly — `WARNING` and
 an "admin-Team bypass admitted …" message for a bypass, `INFO` and a plain "… signed in" message
 otherwise — so the field carries real information instead of being a constant `True` on every record.
-The bypass message also names which of the four ways `matched_org` can be `False`: the config failed
-to load, the config declares no `orgs:` block, GitHub reported no orgs for this login, or no `orgs:`
-entry matched — because an operator paged by the `WARNING` needs to know which one, not just that the
-org gate didn't admit this login. The first two send them to the config; the other two send them to
-the org roster instead — a distinction the message would otherwise hide behind one fixed phrase. The
-outright-denied path below names the same four shapes for the same reason — a denied login is, if
-anything, the more likely source of an "I can't sign in" report — so a shared module-level
-`_unmatched_org_cause` helper computes it once for both call sites, the same reasoning behind
-factoring `in_admin_team` out below: two independent copies of the same four-way branch, edited
-separately later, could drift the way this branch pair itself once did — a fifth shape could land in
-one copy and not the other, or a denied login could get told a stale one of the first four.
+The bypass message also names which of the five ways `matched_org` can be `False`: no config is bound
+yet, the config failed to load, the config declares no `orgs:` block, GitHub reported no orgs for this
+login, or no `orgs:` entry matched — because an operator paged by the `WARNING` needs to know which
+one, not just that the org gate didn't admit this login. The first two send them to the config; the
+other three send them to the org roster instead — a distinction the message would otherwise hide
+behind one fixed phrase. `_unmatched_org_cause` tells the first two apart by whether `state.config`
+itself is `None`: `load_serve_config_file` returns the same `None` immediately when no config path is
+bound at all — the ordinary, no-error bootstrap state `serve()` itself treats as normal — not only
+when a bound path fails to load, so collapsing both into "the config failed to load" would send an
+operator hunting a filesystem error in a file that was never supposed to exist yet. The outright-denied
+path below names the same five shapes for the same reason — a denied login is, if anything, the more
+likely source of an "I can't sign in" report — so a shared module-level `_unmatched_org_cause` helper
+computes it once for both call sites, the same reasoning behind factoring `in_admin_team` out below:
+two independent copies of the same five-way branch, edited separately later, could drift the way this
+branch pair itself once did — a sixth shape could land in one copy and not the other, or a denied
+login could get told a stale one of the first five.
 The bypass remains the one sign-in path `orgs:` did not authorize, so it is the one path an operator
 auditing who signed in, and when, would otherwise have no record of at all; the `bypass` field is what
 lets that same event stream distinguish it from an ordinary org-gated login.
@@ -268,11 +273,16 @@ one-off hiccup would relocate an existing org member to `default` on every such 
 row, audit attribution, and object-storage prefix all moving until their next clean login moves them
 back, an outcome the placement logic above never intends for someone `orgs:` already claims.
 `oauth_callback` avoids this for that one specific failure shape: when the bypass, not `orgs:`, is
-what admitted a login, *and* the config failed to load (`parsed is None`) — an unambiguous signal —
-it keeps whatever org `state.repository.user_org` already has on record for that login instead of
-recomputing one, falling to `org_for_identity`'s `default` result only when no prior record exists —
-the genuine first-time bootstrap case this section is actually about. A login whose config loaded but
-still matched nothing in `orgs:` is not this case: the config answered, so that login is genuinely
+what admitted a login, *and* a config path **is** bound but failed to load (`parsed is None and
+state.config is not None`), it keeps whatever org `state.repository.user_org` already has on record
+for that login instead of recomputing one, falling to `org_for_identity`'s `default` result only when
+no prior record exists — the genuine first-time bootstrap case this section is actually about. The
+`state.config is not None` half of that guard matters on its own: `load_serve_config_file` returns the
+same `parsed is None` immediately when no config path is bound at all, the ordinary bootstrap state
+`serve()` treats as normal, not a transient failure — it stays `None` on every login until an admin
+binds one, so guarding the preservation on `parsed is None` alone would pin such a login's org forever,
+never re-resolving once a config is finally bound. A login whose config loaded but still matched
+nothing in `orgs:` is not the preserved case either: the config answered, so that login is genuinely
 un-claimed, whether because this is its first sign-in or because an operator has since removed it
 from every configured org. That login re-resolves through `org_for_identity` like any other, exactly
 as BE-0015 7c-2 already requires role resolution to do on every login — leaving `orgs:` must take
@@ -388,7 +398,12 @@ mapping.
       `oauth is None` as "deliberately token-auth-only," and it is strictly worse than an empty
       admin-Team list — every login 404s, not just admin ones.
 - [x] Add the admin-Team bypass to the sign-in gate in `oauth_callback`, alongside
-      `identity_matches_org`, using the Team list already fetched for role resolution. Record every
+      `identity_matches_org`, using the Team list already fetched for role resolution. Import
+      `Identity` under `TYPE_CHECKING` (an annotation-only need, since `from __future__ import
+      annotations` is already in effect), not at module level — a runtime import would drag
+      `bajutsu.serve.server` onto the default `bajutsu.serve` / CLI path, which
+      `bajutsu/serve/server/__init__.py` states is never supposed to happen; `state.py` already sets
+      this precedent for the same module. Record every
       successful sign-in through `oplog.log_event` (the reserved `"oauth.login"` event, the login as
       the `actor` field, and a `bypass` field `True` only for a bypass-only admission), so the one
       sign-in path `orgs:` did not authorize still leaves a record an operator's `event`-keyed alert
@@ -399,13 +414,16 @@ mapping.
       clears the CSRF check for free by sending the same fake value as both `state_param` and their
       own `Cookie:` header, so a per-request `WARNING` on any of them is a volume an anonymous caller
       sets themselves — and a login clearing neither the org gate nor the bypass — the last naming
-      which of four shapes left `orgs:` unmatched (a config-load failure, a config with no `orgs:`
-      block, GitHub reporting no orgs, or a real, unmatching
-      roster), so a broken or missing `orgs:` block with no matching admin Team is recoverable rather
-      than a bare 404/403/502 with nothing to correlate a user's report against. When persisting the
-      identity, keep an existing login's already-recorded org rather than relocating it to `default`,
-      but only on a config-load failure — an unambiguous signal — not on an empty `/user/orgs`
-      response, which is equally the shape of a login that genuinely has no GitHub org.
+      which of five shapes left `orgs:` unmatched via a shared `_unmatched_org_cause` helper (no
+      config bound, a config-load failure, a config with no `orgs:` block, GitHub reporting no orgs,
+      or a real, unmatching roster — the first two told apart by whether `state.config` itself is
+      `None`, since `load_serve_config_file` returns the same `None` for both), so a broken or missing
+      `orgs:` block with no matching admin Team is recoverable rather than a bare 404/403/502 with
+      nothing to correlate a user's report against. When persisting the identity, keep an existing
+      login's already-recorded org rather than relocating it to `default`, but only when a config path
+      is bound and failed to load — not when no config is bound at all (a standing state, not a
+      hiccup) and not on an empty `/user/orgs` response, which is equally the shape of a login that
+      genuinely has no GitHub org.
 - [x] Collect `_build_server_state`'s four startup warnings onto a new
       `ServeState.startup_warnings` field instead of only printing them, and add a new
       `_emit_startup_warnings` boot seam — a separately-callable function alongside
@@ -424,7 +442,8 @@ mapping.
 - [x] Tests: sign-in accepted for an admin-Team member with no matching `orgs:` entry and with no
       `orgs:` block at all; resolved role is admin in both cases; a login matching neither the org
       gate nor the admin-Team list is still rejected and logs `"oauth.denied"` naming which of the
-      four `orgs:`-unmatched shapes it is; OAuth not configured, a real CSRF state mismatch, a
+      five `orgs:`-unmatched shapes it is (including no config bound at all, distinct from a bound
+      config that failed to load); OAuth not configured, a real CSRF state mismatch, a
       no-state probe, a CSRF check bypassed with matching fake values, a raising exchange, and an
       exchange returning no identity each log `"oauth.denied"` at `INFO`; a half-configured OAuth
       deployment warns (and a fully-unset one does not); `_build_state`
@@ -434,8 +453,9 @@ mapping.
       test to fail rather than only a boot-time `ValueError`; the renamed variable
       parses a multi-Team list;
       a bypassing admin is placed in the `default` org; an existing member's recorded org survives a
-      failure to load the config itself, but a genuinely revoked member re-resolves to `default` on
-      their next login rather than staying pinned, and so does a `githubOrgs`-only member relocated
+      failure to load the config itself, but re-resolves to `default` instead when no config is
+      bound at all (proving the guard's two halves apart) or when a genuinely revoked member's next
+      login re-checks `orgs:` rather than staying pinned, and so does a `githubOrgs`-only member relocated
       by a transient `/user/orgs` failure (the accepted, self-healing cost of that fetch's `[]` being
       ambiguous with a genuine zero-orgs login); the retired singular var warns even when the new
       plural one is also set. End to end through the HTTP transport: a login matching no `orgs:`

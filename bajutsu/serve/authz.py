@@ -11,13 +11,16 @@ from __future__ import annotations
 import logging
 import secrets
 from collections.abc import Sequence
-from typing import Any
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 from bajutsu.serve import oplog
 from bajutsu.serve.helpers import load_serve_config_file
 from bajutsu.serve.orgs import OrgConfig, identity_matches_org, org_for_identity, org_for_target
-from bajutsu.serve.server.oauth import Identity
 from bajutsu.serve.state import ServeState
+
+if TYPE_CHECKING:  # keeps the default serve/CLI path free of `serve.server` (server/__init__.py)
+    from bajutsu.serve.server.oauth import Identity
 
 _logger = logging.getLogger(__name__)
 
@@ -47,16 +50,26 @@ def oauth_login(state: ServeState) -> tuple[Any, int, str | None]:
 
 
 def _unmatched_org_cause(
-    parsed: tuple[Any, dict[str, OrgConfig]] | None, orgs: dict[str, OrgConfig], identity: Identity
+    parsed: tuple[Any, dict[str, OrgConfig]] | None,
+    orgs: dict[str, OrgConfig],
+    identity: Identity,
+    config: Path | None,
 ) -> str:
-    """Which of the four shapes left *orgs* unmatched for *identity* in `oauth_callback`, named so an
-    operator is sent to the config itself (the first two) rather than the org roster (the last two):
-    the config failed to load, the config declares no `orgs:` block, GitHub reported no orgs for this
-    login, or a real, unmatching roster. Read by both the bypass-success record and the denial
-    record — one shared copy so a fifth shape can only be added in one place, the same reasoning
-    `in_admin_team` is factored out for below."""
+    """Which of the five shapes left *orgs* unmatched for *identity* in `oauth_callback`, named so an
+    operator is sent to the config itself (the first two) rather than the org roster (the last three):
+    no config is bound yet, the config failed to load, the config declares no `orgs:` block, GitHub
+    reported no orgs for this login, or a real, unmatching roster. Read by both the bypass-success
+    record and the denial record — one shared copy so a sixth shape can only be added in one place,
+    the same reasoning `in_admin_team` is factored out for below.
+
+    *config* (`state.config`, threaded through separately from *parsed*) is what tells the first two
+    shapes apart: `load_serve_config_file` returns `None` immediately when *config* itself is `None`
+    — the ordinary, no-error bootstrap state `serve()` treats as normal ("open a config.yml in the
+    UI") — not only when a bound path fails to load. Collapsing both into "the serve config failed to
+    load" would send an operator hunting a filesystem error or a YAML typo in a file that was never
+    supposed to exist yet."""
     if parsed is None:
-        return "the serve config failed to load"
+        return "no serve config is bound" if config is None else "the serve config failed to load"
     if not orgs:
         return "the serve config declares no orgs: block"
     if not identity.orgs:
@@ -137,7 +150,7 @@ def oauth_callback(
         oplog.log_event(
             _logger,
             "oauth.denied",
-            f"{login} rejected: {_unmatched_org_cause(parsed, orgs, identity)}, "
+            f"{login} rejected: {_unmatched_org_cause(parsed, orgs, identity, state.config)}, "
             "and no admin Team matched",
             level=logging.WARNING,
             actor=login,
@@ -149,12 +162,19 @@ def oauth_callback(
         # the user's GitHub org membership. email is unknown from this scope, so we store GitHub's
         # canonical no-reply form (valid + unique per login).
         org = org_for_identity(orgs, login, identity.orgs)
-        if not matched_org and parsed is None:
-            # The bypass, not `orgs:`, admitted this login, and the config itself failed to load
-            # (`load_serve_config_file`'s fail-closed shape for a transient filesystem error or a
+        if not matched_org and parsed is None and state.config is not None:
+            # The bypass, not `orgs:`, admitted this login, and a config path IS bound but failed to
+            # load (`load_serve_config_file`'s fail-closed shape for a transient filesystem error or a
             # config typo — this item's own motivating scenario). Keep whatever org is already on
             # record rather than relocating them to `default` over one hiccup; a config that loads
             # clean next time re-resolves through `org_for_identity` above like any other login.
+            #
+            # `state.config is None` is excluded deliberately: `load_serve_config_file` returns that
+            # same `None` immediately when no config path is bound at all -- the ordinary, no-error
+            # bootstrap state `serve()` treats as normal, not a hiccup -- and it is a *standing*
+            # state, not a transient one: `parsed` stays `None` on every login until an admin binds a
+            # config, so guarding on it here would pin an org forever, the same permanent-wrong-state
+            # failure the next guard below declines to risk for the `not identity.orgs` case.
             #
             # Deliberately NOT guarded on `not identity.orgs` too, even though that is also the shape
             # a failed `/user/orgs` fetch takes (`_fetch_orgs` fails closed to `[]`): it is equally
@@ -196,7 +216,8 @@ def oauth_callback(
         _logger,
         "oauth.login",
         (
-            f"admin-Team bypass admitted {login}: {_unmatched_org_cause(parsed, orgs, identity)}"
+            f"admin-Team bypass admitted {login}: "
+            f"{_unmatched_org_cause(parsed, orgs, identity, state.config)}"
             if not matched_org
             else f"{login} signed in"
         ),

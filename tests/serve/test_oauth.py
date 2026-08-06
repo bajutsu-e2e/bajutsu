@@ -564,6 +564,66 @@ def test_oauth_callback_admin_team_bypass_keeps_org_when_config_fails_to_load(
     assert state.repository.user_org("carol") == "acme"
 
 
+def test_oauth_callback_admin_team_bypass_reresolves_when_no_config_is_bound(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    # `state.config is None` -- no config path bound at all, the ordinary bootstrap state serve()
+    # treats as normal -- makes load_serve_config_file return the same None a real load failure
+    # does, but it is not transient: it stays None on every login until an admin binds a config, so
+    # pinning carol's org here (like the config-load-failure case above) would never re-resolve.
+    # Guarding the preservation on it would be the permanent-wrong-state failure this item's own
+    # `not identity.orgs` guard already declines to risk.
+    state, _ = _db_state(
+        serve_engine, tmp_path, FakeOAuthClient(login="carol", orgs=["acme-gh"], teams=[])
+    )
+    assert _role_after_login(state, "carol") == "viewer"
+    assert state.repository is not None
+    assert state.repository.user_org("carol") == "acme"
+
+    state.auth.oauth = FakeOAuthClient(login="carol", orgs=["acme-gh"], teams=["ops-gh/root"])
+    state.auth.oauth_admin_teams = ("ops-gh/root",)
+    state.config = None
+    assert _role_after_login(state, "carol") == "admin"
+    assert state.repository.user_org("carol") == "default"
+
+
+def test_oauth_callback_bypass_names_no_config_bound_not_a_load_failure(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # The complement of the message-triage tests above, for the fifth shape: an operator must not
+    # be told the config "failed to load" when none was ever bound -- that sends them hunting a
+    # filesystem error or a YAML typo in a file that doesn't exist yet.
+    state = _state(
+        tmp_path,
+        oauth=FakeOAuthClient(login="mallory", teams=["ops-gh/root"]),
+        admin_teams=["ops-gh/root"],
+    )  # config left at its None default
+    with caplog.at_level(logging.WARNING):
+        ops.oauth_callback(state, code="ok", state_param="s", state_cookie="s")
+    record = next(r for r in caplog.records if getattr(r, "event", None) == "oauth.login")
+    assert "no serve config is bound" in record.getMessage()
+    assert "failed to load" not in record.getMessage()
+
+
+def test_oauth_callback_denial_names_no_config_bound_not_a_load_failure(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    state = _state(
+        tmp_path,
+        oauth=FakeOAuthClient(login="mallory", teams=["some-other/team"]),
+        admin_teams=["ops-gh/root"],
+    )  # config left at its None default
+    with caplog.at_level(logging.WARNING):
+        _payload, status, sid = ops.oauth_callback(
+            state, code="ok", state_param="s", state_cookie="s"
+        )
+    assert status == 403
+    assert sid is None
+    record = next(r for r in caplog.records if getattr(r, "event", None) == "oauth.denied")
+    assert "no serve config is bound" in record.getMessage()
+    assert "failed to load" not in record.getMessage()
+
+
 def test_oauth_callback_rejects_a_login_in_neither_the_org_gate_nor_the_admin_teams(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:

@@ -394,9 +394,11 @@ OAuth を構成すると、アクセスは手作業の login リストではな�
 さい。`editorTeam` や `BAJUTSU_OAUTH_ADMIN_TEAMS` でまだカバーされていない login は、次のログインで viewer に
 落ちます。すでに旧来の単数形 `BAJUTSU_OAUTH_ADMIN_TEAM` を設定していたデプロイは、同じタイミングで
 `BAJUTSU_OAUTH_ADMIN_TEAMS` に改名してください。旧名はもう読まれません。廃止名がまだ設定されている
-とき、`BAJUTSU_OAUTH_ADMIN_TEAMS` の解決結果が空のリストになるとき、そしてエントリが正しい
-`"<github-org>/<team-slug>"` の組でないとき、`serve` は起動時に stderr へ警告を出します。アップグレード
-後はログの最初の数行を確認してください。
+とき、`BAJUTSU_OAUTH_ADMIN_TEAMS` の解決結果が空のリストになるとき、エントリが正しい
+`"<github-org>/<team-slug>"` の組でないとき、そして GitHub OAuth が部分的にしか構成されていない
+とき（`BAJUTSU_OAUTH_GITHUB_CLIENT_ID` / `_CLIENT_SECRET` / `_REDIRECT_URI` のどれか1つでも
+未設定だと OAuth 自体が完全に無効になり、すべての login が 404 になります）、`serve` は起動時に
+stderr へ警告を出します。アップグレード後はログの最初の数行を確認してください。
 
 3 つ目は、セッションそのものです。`POST /api/login` を無効にするのは、OAuth を構成した後に**新たな**トークン
 Cookie セッションが発行されなくなるだけで、それ以前にすでに発行されたセッションは無効になりません。OAuth を
