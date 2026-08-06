@@ -151,6 +151,51 @@ def test_a_malformed_actuation_record_is_dropped_whole_not_field_by_field() -> N
     assert [(a.gesture, a.points) for a in restored.steps[0].actuations] == [("tap", ((9.0, 9.0),))]
 
 
+def test_a_loader_side_drop_is_disclosed_through_dropped_actuations() -> None:
+    # A truncated log discloses itself through `dropped_actuations` when a *driver* truncates it
+    # (BE-0332 Unit 4's own reasoning for why a log line is not evidence). A record that instead
+    # arrives damaged and is dropped by the loader must add to that same field, not vanish into a
+    # warning line the run directory never keeps — the report and the trace only look at the field.
+    data = manifest_dict("r1", [_result()])
+    step = data["scenarios"][0]["steps"][0]  # type: ignore[index]
+    step["actuations"] = [
+        {"gesture": "tap", "via": "coordinate", "unit": "pixel", "points": [["a", "b"]]},
+        {"gesture": "tap", "via": "coordinate", "unit": "pixel", "points": [[9, 9]]},
+    ]
+    step["dropped_actuations"] = 2  # the run's own truncation count, already recorded
+
+    [restored] = results_from_manifest(data)
+
+    # The loader's one fresh drop adds to the two the run already disclosed, rather than replacing or
+    # ignoring them.
+    assert restored.steps[0].dropped_actuations == 3
+
+
+def test_a_wrong_typed_scalar_field_degrades_to_none_not_a_string() -> None:
+    # `target` / `accepted` / `duration_s` / `scale` / `radians` carry no runtime check of their own
+    # today, so a corrupt value among them reconstructs into an `Actuation` whose field holds a string
+    # where `bool | None` or `float | None` is declared — mypy accepts it because `known` is `Any`.
+    # Downstream that reads as a refused attempt landing (`accepted is False` is `False` for the string
+    # "no") or a bogus duration rendered verbatim. Each field must instead degrade to the same "not
+    # recorded" `None` a corrupt geometry field already gets.
+    data = manifest_dict("r1", [_result()])
+    step = data["scenarios"][0]["steps"][0]  # type: ignore[index]
+    step["actuations"] = [
+        {
+            "gesture": "tap",
+            "via": "coordinate",
+            "unit": "pixel",
+            "accepted": "no",
+            "duration_s": "1.5s",
+        }
+    ]
+
+    [restored] = results_from_manifest(data)
+
+    [record] = restored.steps[0].actuations
+    assert (record.accepted, record.duration_s) == (None, None)
+
+
 def test_one_malformed_record_does_not_fail_the_whole_render() -> None:
     # A missing required key used to raise a bare dataclass TypeError out of the loader, taking down
     # the entire run's report for one bad entry.

@@ -18,6 +18,7 @@ import pytest
 import bajutsu.drivers.adb as adb_driver_mod
 from bajutsu import adb
 from bajutsu.drivers import base
+from bajutsu.drivers.actuation import Actuation
 from bajutsu.drivers.adb import (
     AdbActUnsupported,
     AdbDriver,
@@ -393,6 +394,23 @@ def test_resident_failure_latches_to_dump_for_the_rest_of_the_lease() -> None:
     driver.query()  # first read: tries the channel, fails, latches off
     driver.query()  # second read: goes straight to dump, no further fetch attempt
     assert fetch_calls == 1
+
+
+def test_a_resident_read_fault_does_not_settle_the_last_actuation() -> None:
+    # `_read_source` is the hierarchy READ path, not the gesture path: a fault here says nothing
+    # about whether the last recorded actuation was accepted. Regression: this used to stamp the
+    # record `accepted=False`, striking through a gesture that was never refused — only the read that
+    # happened to follow it degraded to `uiautomator dump`.
+    def fetch(_since: float | None) -> HierarchyRead:
+        raise AdbResidentError("channel down")
+
+    driver = AdbDriver("U", run=lambda a: FIXTURE, fetch_hierarchy=fetch)
+    driver._actuations.record(
+        Actuation(gesture="scroll", via="coordinate", unit="pixel", points=((1.0, 2.0),))
+    )
+    driver._read_source()  # the resident channel faults here and falls back to the dump subprocess
+    (record,) = driver.drain_actuations().records
+    assert record.accepted is None
 
 
 def test_wait_for_is_single_shot() -> None:
@@ -1915,6 +1933,14 @@ def test_a_transient_actuation_fault_keeps_the_channel_for_the_next_gesture() ->
     driver.tap({"id": "stable.submit"})  # and the channel is still tried
     assert len(seen) == 2
     assert len([c for c in calls if "input" in c]) == 1  # only the blipped gesture used coordinates
+    # The faulted attempt is settled `accepted=False` — refused, not left reading as landed — and the
+    # coordinate fallback that actually carried the gesture answers nothing, so it stays unsettled.
+    # The second tap's device attempt succeeds cleanly, so it needs no fallback record at all.
+    assert [(a.via, a.accepted) for a in driver.drain_actuations().records] == [
+        ("identity", False),
+        ("coordinate", None),
+        ("identity", True),
+    ]
 
 
 def test_a_reply_lost_after_the_request_went_out_does_not_actuate_twice() -> None:

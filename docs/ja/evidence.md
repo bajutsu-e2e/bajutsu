@@ -45,7 +45,7 @@
 | `gesture` | ドライバのプリミティブ。`tap`、`doubleTap`、`longPress`、`swipe`、`scroll`、`pinch`、`rotate`、文字系のプリミティブ、`selectOption`、`systemAlert`、`back` |
 | `via` | ジェスチャが対象へ届いた方法。`coordinate`（ドライバが点を計算して送った）、`handle`（XCUITest がスナップショットの handle を操作した）、`identity`（Android の端末が要素を解決して点を選んだ）、`bridge`（WebView を要素 id で呼んだ）、`focused`（フォーカスを持つ入力欄に対する文字系のプリミティブ）、`key`、`history` |
 | `unit` | 座標系。`point`（iOS）、`pixel`（Android）、`cssPixel`（ブラウザのページ、または WebView 自身の空間） |
-| `points` | 触れた接触点を順に並べたもの。タップは 1 点、ドラッグは 2 点 |
+| `points` | ドライバが送った座標を順に並べたもの。タップは 1 点、ドラッグは始点と終点の 2 点です。二本指のジェスチャでは、2 つの接触点そのものではなく、そこから導いた単一のアンカーを記録します |
 | `frame` / `target` | 解決した要素の領域と、そのアクセシビリティ識別子 |
 | `accepted` | その試行をプラットフォームが受け入れたかどうか。答えを返す 2 つの経路（XCUITest の handle 操作と Android の端末側エンドポイント）で設定されます。拒否された試行は打ち消し線で表示されるので、stale で再試行したタップが複数回のタップには見えません。`None` はその経路が個別の答えを返さなかったことを意味します |
 | `duration_s` / `scale` / `radians` | ジェスチャが持つ場合の、位置以外のパラメータ |

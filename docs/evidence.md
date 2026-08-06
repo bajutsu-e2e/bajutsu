@@ -53,7 +53,7 @@ tree cannot: *where did this tap land, and how far did this swipe travel*.
 | `gesture` | the driver primitive — `tap`, `doubleTap`, `longPress`, `swipe`, `scroll`, `pinch`, `rotate`, the text primitives, `selectOption`, `systemAlert`, `back` |
 | `via` | how the gesture reached its target: `coordinate` (the driver computed a point and sent it), `handle` (XCUITest actuated a snapshot handle), `identity` (the Android device resolved the element and chose the point), `bridge` (a WebView call addressed by element id), `focused` (a text primitive on whatever field holds focus), `key`, `history` |
 | `unit` | the coordinate space: `point` (iOS), `pixel` (Android), `cssPixel` (a browser page, or a WebView's own space) |
-| `points` | the contact points touched, in order — one for a tap, two for a drag |
+| `points` | the coordinates the driver sent, in order — one for a tap, two for a drag's start and end. A two-finger gesture records the single anchor its two contacts were derived from, not the contacts |
 | `frame` · `target` | the resolved element's bounds and its accessibility identifier |
 | `accepted` | whether the platform accepted this attempt, on the two channels that answer (XCUITest's handle actuation, Android's device-side endpoint). A refused attempt is shown struck through, so a stale-retried tap does not read as several taps; `None` means the channel gave no separate answer |
 | `duration_s` · `scale` · `radians` | the gesture's non-positional parameters, where it has any |

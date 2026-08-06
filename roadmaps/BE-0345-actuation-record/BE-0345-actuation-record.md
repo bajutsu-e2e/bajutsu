@@ -329,8 +329,9 @@ grow a dependency on `serve`, `triage`, the agents, the orchestrator, the runner
 
 7. **Documentation.** [`docs/evidence.md`](../../docs/evidence.md) and its Japanese mirror
    `docs/ja/evidence.md`: the `actionLog` row changes from "orchestrator internals (action ·
-   duration)" to name what is now recorded, and gains the redaction boundary (a character count and no
-   label, never the typed text) and the rule that a driver records only a coordinate it chose itself.
+   duration)" to name what is now recorded, and gains the redaction boundary (never the typed text,
+   not even its length, and never a label) and the rule that a driver records only a coordinate it
+   chose itself.
    [`DESIGN.md`](../../DESIGN.md) §9's evidence-kind table row for `actionLog` is revised the same
    way. §10's shipping-criteria checklist line about disclosing a coordinate fallback
    (`DESIGN.md:543`) is amended to record precisely which half this item closes, and no more. The

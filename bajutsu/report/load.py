@@ -64,6 +64,16 @@ def _numbers(v: Any, arity: int) -> tuple[float, ...] | None:
     return tuple(float(n) for n in v)
 
 
+def _scalar(v: Any) -> float | None:
+    """`v` as a plain float, or None when it is not exactly a JSON number.
+
+    The scalar twin of `_numbers`: `duration_s` / `scale` / `radians` are read the same untrusting way
+    geometry is, so a corrupt scalar degrades to "not recorded" rather than reaching `Actuation` as a
+    string or bool the dataclass's type never allows.
+    """
+    return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+
+
 def _actuation(d: dict[str, Any]) -> Actuation | None:
     """One actuation record, or None when the entry is malformed.
 
@@ -89,25 +99,28 @@ def _actuation(d: dict[str, Any]) -> Actuation | None:
         frame = _numbers(d["frame"], 4)
         if frame is None:
             return None
+    target = known.get("target")
+    accepted = known.get("accepted")
     # Explicit keyword arguments rather than a `**` unpack of `dict[str, Any]`: this is the one
     # function here that parses untrusted geometry, and unpacking would switch mypy off at exactly
-    # that boundary — the runtime checks above would become the only thing keeping the record typed.
+    # that boundary — the runtime checks above (plus the `isinstance`/`_scalar` guards below) are what
+    # keep the whole record typed, not just the fields with dedicated checks.
     return Actuation(
         gesture=str(known["gesture"]),
         via=str(known["via"]),
         unit=str(known["unit"]),
         points=cast("tuple[Point, ...]", tuple(p for p in points if p is not None)),
         frame=cast("Frame | None", frame),
-        target=known.get("target"),
-        accepted=known.get("accepted"),
-        duration_s=known.get("duration_s"),
-        scale=known.get("scale"),
-        radians=known.get("radians"),
+        target=target if isinstance(target, str) else None,
+        accepted=accepted if isinstance(accepted, bool) else None,
+        duration_s=_scalar(known.get("duration_s")),
+        scale=_scalar(known.get("scale")),
+        radians=_scalar(known.get("radians")),
     )
 
 
-def _actuations(entries: Any) -> list[Actuation]:
-    """Every readable actuation record in `entries`, skipping (and logging) the malformed ones."""
+def _actuations(entries: Any) -> tuple[list[Actuation], int]:
+    """Every readable actuation record in `entries`, plus how many were malformed and dropped."""
     out, dropped = [], 0
     for e in entries or []:
         record = _actuation(e) if isinstance(e, dict) else None
@@ -117,17 +130,23 @@ def _actuations(entries: Any) -> list[Actuation]:
             out.append(record)
     if dropped:
         _logger.warning("dropped %d malformed actuation record(s) while loading a run", dropped)
-    return out
+    return out, dropped
 
 
 def _step(d: dict[str, Any]) -> StepOutcome:
+    actuations, dropped = _actuations(d.get("actuations"))
+    kw = _kw(StepOutcome, d)
     return StepOutcome(
         **{
-            **_kw(StepOutcome, d),
+            **kw,
             "assertion_results": [_assertion(a) for a in d.get("assertion_results") or []],
             "artifacts": [Artifact(**_kw(Artifact, a)) for a in d.get("artifacts") or []],
             "alerts": [AlertEvent(**_kw(AlertEvent, a)) for a in d.get("alerts") or []],
-            "actuations": _actuations(d.get("actuations")),
+            "actuations": actuations,
+            # `dropped` is the loader's own casualty, on top of whatever the run itself already
+            # disclosed (a driver-side truncation) in the same field — a run that also loads with a
+            # damaged record must not read as more complete than either gap alone.
+            "dropped_actuations": kw.get("dropped_actuations", 0) + dropped,
         }
     )
 
@@ -142,7 +161,7 @@ def _result(d: dict[str, Any]) -> RunResult:
             "expect_alerts": [
                 AlertEvent(**_kw(AlertEvent, a)) for a in d.get("expect_alerts") or []
             ],
-            "expect_actuations": _actuations(d.get("expect_actuations")),
+            "expect_actuations": _actuations(d.get("expect_actuations"))[0],
             "skipped_captures": [
                 SkippedCapture(**_kw(SkippedCapture, c)) for c in d.get("skipped_captures") or []
             ],
