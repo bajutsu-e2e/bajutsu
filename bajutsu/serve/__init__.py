@@ -314,7 +314,7 @@ def _build_server_state(
     boto3, google-cloud-storage) are imported lazily so the default path stays SDK-free."""
     import os
 
-    from bajutsu.serve.authz import ADMIN_TEAM_ENTRY_RE
+    from bajutsu.serve.authz import ADMIN_TEAM_ENTRY_RE, admin_teams_unusable
     from bajutsu.serve.server.artifacts import ObjectStorageArtifactStore
     from bajutsu.serve.server.baselines import ObjectBaselineStore
     from bajutsu.serve.server.db import engine_from_url, repository_from_env
@@ -446,6 +446,16 @@ def _build_server_state(
             'BAJUTSU_OAUTH_ADMIN_TEAMS entries must each be "<github-org>/<team-slug>"; '
             f"these will never match: {malformed}"
         )
+        # `oauth_callback` treats an entirely-malformed list as the same total lockout as an empty
+        # one (`admin_teams_unusable`) -- match that severity here too, or the worst shape (every
+        # entry malformed) gets the mildest boot message: a syntax note about one entry, not the
+        # "no login will have admin access" consequence `admin_teams_empty`'s message names, which
+        # never fires here since the list isn't empty.
+        if admin_teams_unusable(oauth_admin_teams):
+            msg += (
+                " -- no entry is well-formed, so no login will have admin access and no admin can "
+                "sign in to repair a broken `orgs:` block"
+            )
         _warn("admin_teams_malformed", msg)
 
     repo = repository_from_env()

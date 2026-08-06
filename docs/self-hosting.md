@@ -708,8 +708,11 @@ The `event` field names a stable event (`run.dispatched`, `quota.rejected`, `wor
 field (e.g. `admin_teams_empty`) naming which startup condition fired, distinct from the free-text
 `msg` — key an alert on `check` rather than on message text that can reword. `oauth.login` records
 every successful sign-in and carries a `bypass` field, true only when a configured admin Team — not
-`orgs:` — is what admitted the login; that field is the only record a bypass admission leaves, so
-alert on it if you rely on `BAJUTSU_OAUTH_ADMIN_TEAMS` as a sign-in credential.
+`orgs:` — is what admitted the login; that field is the only record a bypass admission leaves. Most
+bypass admissions are `INFO`, since an admin Team in an operations-only organization bypasses on
+every sign-in by design; `oauth.login` is `WARNING` only when the bypass admitted a login while the
+org model itself was unusable (no config bound, a config that failed to load, or one declaring no
+`orgs:` block) — so alert on `WARNING`, and grep `bypass` when auditing who signed in and when.
 
 **Redaction is structural.** A single filter sits at the root logger, so *every* line — including
 ones from third-party libraries — is scrubbed before it is written; correctness does not depend on

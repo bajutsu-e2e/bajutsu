@@ -702,6 +702,10 @@ def test_build_state_server_warns_on_a_malformed_admin_teams_entry(
     # Pin the `check` discriminator, not just the message: it is the field docs/self-hosting.md and
     # .env.example both tell an operator to alert on, and nothing else in the suite names it.
     assert any(c == "admin_teams_malformed" for c, _m in state.startup_warnings)
+    # This single entry is the WHOLE list -- entirely malformed, the same total lockout
+    # `admin_teams_empty` warns about (oauth_callback's `admin_teams_unusable` treats them
+    # identically) -- so the message must name that consequence too, not just the syntax note.
+    assert "no login will have admin access" in err
 
 
 def test_build_state_server_warns_on_an_empty_side_or_inner_space(
