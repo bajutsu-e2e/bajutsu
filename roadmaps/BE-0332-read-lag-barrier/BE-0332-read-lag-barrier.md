@@ -266,6 +266,16 @@ Log:
   that use is unchanged. Deterministic coverage replaces the Unit 3 early-release test with the
   regression: a backend whose mark fires while the value is still stale must bind the live value.
 
+- 2026-08-06 — Follow-up: `respondAct`'s tearing settle (Unit 4) changed. It now compares the
+  resolved identity's matched bounds across re-dumps. `settledDump` still compares the whole dumped
+  XML, but now for `respondSource` alone. That endpoint answers an arbitrary host-side selector, so
+  it cannot narrow the comparison. `respondAct` already knows which element it targets: the four
+  identity fields (`want`) the host sent. A node unrelated to that target can keep changing
+  elsewhere on screen. A status bar clock, a spinner, or a blinking cursor are common examples.
+  Such a node no longer forces every gesture through the full `SETTLE_DUMPS` budget. That budget
+  now releases once the target's own bounds stop moving. The bound and the condition-driven settle
+  stay the same; no fixed sleep enters either path.
+
 ## References
 
 - [BE-0326](../BE-0326-scroll-to-element/BE-0326-scroll-to-element.md) — the `scroll` action, and the

@@ -1,6 +1,7 @@
 package dev.bajutsu.android.server
 
 import android.app.UiAutomation
+import android.graphics.Rect
 import android.os.SystemClock
 import android.util.Log
 import android.util.Xml
@@ -182,15 +183,15 @@ class ResidentServerTest {
             readMark.awaitPostdate(it, POSTDATE_BUDGET_MS)
             device.waitForIdle()
         }
-        val matches = matchingBounds(settledDump(device), want)
+        val matches = settledActBounds(device, want)
         if (matches.size != count || index !in matches.indices) {
             // Loudly stale, never a guess: the screen the host resolved on is not the screen here, so
             // acting on `matches[index]` would be acting on a different element. The host re-resolves.
             return respond(out, STALE_STATUS, TEXT, "stale: ${matches.size} of $count\n".bytes())
         }
         val bounds = matches[index]
-        val x = (bounds[0] + bounds[2]) / 2
-        val y = (bounds[1] + bounds[3]) / 2
+        val x = bounds.centerX()
+        val y = bounds.centerY()
         // Each injector's boolean return is the only signal that the touch actually reached the
         // screen — `UiDevice.click` / `.swipe` and `UiAutomation.injectInputEvent` (via
         // [injectDoubleTap]) all report `false` when the platform rejects the event. Answering
@@ -281,8 +282,8 @@ class ResidentServerTest {
      * generic `class`) would count nodes here that the host's narrowed copy never saw, so `count`
      * never agrees and every such gesture answers stale on every attempt.
      */
-    private fun matchingBounds(xml: ByteArray, want: List<String>): List<IntArray> {
-        val found = mutableListOf<IntArray>()
+    private fun matchingBounds(xml: ByteArray, want: List<String>): List<Rect> {
+        val found = mutableListOf<Rect>()
         val parser = Xml.newPullParser()
         parser.setInput(xml.inputStream(), "UTF-8")
         var nodeDepth = 0
@@ -310,10 +311,10 @@ class ResidentServerTest {
         return found
     }
 
-    /** `[l,t][r,b]` as four ints, or null when the attribute is missing or malformed. */
-    private fun parseBounds(raw: String?): IntArray? {
+    /** `[l,t][r,b]` as a [Rect], or null when the attribute is missing or malformed. */
+    private fun parseBounds(raw: String?): Rect? {
         val nums = Regex("-?\\d+").findAll(raw ?: "").map { it.value.toInt() }.toList()
-        return if (nums.size == 4) nums.toIntArray() else null
+        return if (nums.size == 4) Rect(nums[0], nums[1], nums[2], nums[3]) else null
     }
 
     private fun String.bytes(): ByteArray = toByteArray(StandardCharsets.UTF_8)
@@ -353,33 +354,66 @@ class ResidentServerTest {
     }
 
     /**
-     * Dump the hierarchy once it has stopped *tearing*: re-dump across [UiDevice.waitForIdle] until two
-     * consecutive dumps are byte-identical, or [SETTLE_DUMPS] is reached.
+     * Re-dump across [UiDevice.waitForIdle] until two consecutive `read()`s agree per `sameAs`, or
+     * [SETTLE_DUMPS] is reached. [settledDump] and [settledActBounds] both close *tearing* this way —
+     * the window where Android has republished some node bounds but not the rest, so a lone dump
+     * captures a half-updated tree — and differ only in what they read and how they compare it.
      *
-     * This closes tearing only — the window where Android has republished some node bounds but not the
-     * rest, so a lone dump captures a half-updated tree. It does **not** decide *staleness* (whether the
-     * read postdates the gesture); that is the mark gate's job (BE-0332 Units 3 and 4), which has
-     * already run in [respondSource] when `since` was set. Layering the two restores both guarantees the
-     * retired `stableHierarchy` gave, but now the mark — not a settled-but-late tree — is what certifies
-     * freshness, so the read-lag bug BE-0332 fixes stays fixed: a merely-late tree that has stopped
-     * changing settles here yet never postdates the mark, so the host still re-polls for it.
-     *
-     * `waitForIdle` alone is the mechanism this timing class distrusts (it can look idle between two
-     * node republishes), which is why the barrier is two matching dumps, not one idle. Bounded and
-     * condition-driven (settle, not a fixed sleep — Bajutsu determinism); a node that never settles (an
-     * animation) costs at most [SETTLE_DUMPS] dumps and returns the last read. A tear outlasting the
-     * bound still gets through, exactly as the host's `_CATCHUP_DWELL_S` accepts one that outlasts its
-     * dwell.
+     * This does **not** decide *staleness* (whether the read postdates a gesture); that is the mark
+     * gate's job (BE-0332 Units 3 and 4), which runs in [respondSource]/[respondAct] before either calls
+     * in here. `read`/`sameAs` must stay scoped to wholeness only — folding a freshness/mark check into
+     * either would blur that split; the mark check belongs in the caller, before `settled` is invoked,
+     * as both callers already do. `waitForIdle` alone is the mechanism this timing class distrusts (it
+     * can look idle between two node republishes), which is why the barrier is two agreeing reads, not
+     * one idle. Bounded and condition-driven (settle, not a fixed sleep — Bajutsu determinism); a read
+     * that never settles (an animation) costs at most [SETTLE_DUMPS] reads and returns the last one,
+     * exactly as the host's `AdbDriver._CATCHUP_DWELL_S` accepts a tear that outlasts its dwell.
      */
-    private fun settledDump(device: UiDevice): ByteArray {
-        var previous = dumpHierarchy(device)
+    private fun <T> settled(device: UiDevice, label: String, read: () -> T, sameAs: (T, T) -> Boolean): T {
+        var previous = read()
         repeat(SETTLE_DUMPS - 1) {
             device.waitForIdle()
-            val current = dumpHierarchy(device)
-            if (current.contentEquals(previous)) return current
+            val current = read()
+            if (sameAs(current, previous)) return current
             previous = current
         }
-        return previous.also { Log.d(TAG, "hierarchy did not settle after $SETTLE_DUMPS dumps") }
+        return previous.also { Log.d(TAG, "$label did not settle after $SETTLE_DUMPS dumps") }
+    }
+
+    /**
+     * Dump the hierarchy once it has stopped tearing, comparing the whole dumped XML. Used by
+     * [respondSource], which answers an arbitrary host-side selector and so cannot narrow the
+     * comparison the way [settledActBounds] does for `/act`.
+     */
+    private fun settledDump(device: UiDevice): ByteArray =
+        settled(device, "hierarchy", { dumpHierarchy(device) }, ByteArray::contentEquals)
+
+    /**
+     * Like [settledDump], but scoped to the identity `/act` has already resolved: settles once two
+     * consecutive reads agree on `want`'s matched bounds, rather than on the whole dumped XML.
+     *
+     * `respondAct` already knows: `want` names the one element it is about to inject a touch into.
+     * Comparing only its bounds — instead of the whole tree — means an unrelated node still changing
+     * elsewhere on screen (the status bar clock every dump carries, a spinner, a blinking cursor) no
+     * longer forces every gesture to pay the full settle budget once the target's own bounds have
+     * stopped moving.
+     *
+     * `read` re-parses [matchingBounds] only when the raw dump actually changed since the last read —
+     * a byte-identical dump can only re-derive the same bounds, so the cheap [ByteArray.contentEquals]
+     * check skips the [XmlPullParser] walk on a screen that has genuinely gone idle, rather than paying
+     * it on every settle attempt.
+     */
+    private fun settledActBounds(device: UiDevice, want: List<String>): List<Rect> {
+        var seenXml: ByteArray? = null
+        var seenBounds = emptyList<Rect>()
+        return settled(device, "act bounds", {
+            val xml = dumpHierarchy(device)
+            if (seenXml?.contentEquals(xml) != true) {
+                seenBounds = matchingBounds(xml, want)
+                seenXml = xml
+            }
+            seenBounds
+        }) { a, b -> a == b }
     }
 
     private fun dumpHierarchy(device: UiDevice): ByteArray =
@@ -460,11 +494,11 @@ class ResidentServerTest {
         // investigation saw the post-gesture update land within ~2 s (BE-0332 Motivation).
         const val POSTDATE_BUDGET_MS = 2_000L
 
-        // Max dumps per read while `settledDump` waits for two consecutive hierarchies to match — the
-        // tearing barrier layered under the mark gate (BE-0332 Unit 4). A settled screen matches on the
-        // 2nd dump; the headroom absorbs a republish that lands mid-read without letting an animated
-        // node spin forever. Same value the retired `stableHierarchy` used, now scoped to tearing while
-        // the mark decides staleness.
+        // Max reads per `settled` call — shared by `settledDump` (whole hierarchy) and `settledActBounds`
+        // (one element's bounds) — the tearing barrier layered under the mark gate (BE-0332 Unit 4). A
+        // settled read matches on the 2nd attempt; the headroom absorbs a republish that lands mid-read
+        // without letting an animated value spin forever. Same value the retired `stableHierarchy` used,
+        // now scoped to tearing while the mark decides staleness.
         const val SETTLE_DUMPS = 4
 
         const val TEXT = "text/plain; charset=utf-8"
