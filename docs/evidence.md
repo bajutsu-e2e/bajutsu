@@ -178,8 +178,9 @@ app's os_log subsystem, paired into timed intervals by `parse_app_trace`.)
   (`main,system,crash`) to add `events`: an app's own uncaught exception lands in `crash`, but a
   process killed by `ActivityManager` for memory pressure logs only a structured `am_kill` /
   `am_low_memory` entry in `events` — without it, that cause is indistinguishable from a silent,
-  uncaptured failure. The kernel's own OOM/LMK path (`dmesg`) is a separate ring buffer logd never
-  sees, so no `-b` combination reaches it.
+  uncaptured failure. The kernel's own OOM/LMK path lands in the kernel ring buffer instead, which
+  `logcat -b kernel` reaches only where logd bridges `/proc/kmsg` (`ro.logd.kernel`, typically
+  userdebug builds) — so it is left out of the set here, not out of reach.
 - `INTERVAL_KINDS = {"video", "deviceLog", "appTrace"}`. The orchestrator uses this set to split
   "interval / instant."
 - **The scenario-wide `video` begins before the app launches on Android**, so the recording spans
