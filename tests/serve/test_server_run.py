@@ -618,6 +618,32 @@ def test_build_state_server_without_oauth_does_not_warn_on_malformed_admin_teams
     assert "BAJUTSU_OAUTH_ADMIN_TEAMS" not in capsys.readouterr().err
 
 
+def test_build_state_server_without_oauth_does_not_warn_on_the_retired_admin_team_var(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # The third OAuth-gated check, and the only one with no no-warn test of its own: a token-auth-
+    # only backend still carrying the retired singular name must stay quiet too, since the value
+    # decides nothing there. Without this, dropping `oauth is not None` from that check is green.
+    monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
+    monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
+    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
+    _delenv_oauth(monkeypatch)
+    monkeypatch.setenv("BAJUTSU_OAUTH_ADMIN_TEAM", "acme-gh/ops")
+    _scn, cfg, runs = project(tmp_path)
+    state = srv._build_state(
+        runs_dir=runs,
+        config=cfg,
+        scenarios_dir=None,
+        root=tmp_path,
+        baselines_dir=None,
+        max_concurrent=4,
+        token=None,
+        backend="server",
+    )
+    assert "retired" not in capsys.readouterr().err
+    assert state.startup_warnings == ()
+
+
 def test_build_state_server_warns_on_the_retired_var_even_when_admin_teams_is_also_set(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

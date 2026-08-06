@@ -178,9 +178,9 @@ clause gets the same care: "no admin Team matched" reads as a real membership mi
 identically for an unconfigured `oauth_admin_teams` — the exact state the boot-time
 `admin_teams_empty` check warns about and the one in which no admin can sign in to fix `orgs:` at
 all — so the message names that shape as "no admin Team is configured" instead, one conditional on
-the already-in-scope `admin_teams`. Two of the four
-shapes collapse `orgs` to `{}` and deny *every* non-admin login outright — a config that failed to
-load, or one that declares no `orgs:` block at all — so blaming an org roster that was never actually
+the already-in-scope `admin_teams`. Three of the five shapes collapse `orgs` to `{}` and deny *every*
+non-admin login outright — no config bound at all, a config that failed to load, or one that declares
+no `orgs:` block — so blaming an org roster that was never actually
 read, or was declared empty on purpose, sends an operator chasing the wrong fix. The missing-block
 shape is not a corner case — it is the item's own headline scenario (*Motivation*: "A
 GitHub OAuth deployment that starts up with no `orgs:` block … locks out every admin along with
@@ -209,10 +209,17 @@ The org-gate denial itself is not unconditionally `WARNING` either: `GET /api/oa
 unauthenticated and a GitHub OAuth app authorizes any of GitHub's own users, not only this
 deployment's — a stranger with a free account can reach this branch just as easily as the four above,
 so "needs a real GitHub exchange" bounds the volume at one account, not at the deployment's own
-operators. `WARNING` is reserved for the one shape actually worth paging on: `admin_teams` empty, so
-no admin can sign in to fix `orgs:` either. An ordinary denial — a configured admin Team that simply
-didn't match this login — still gets a record, at `INFO`, the same reasoning the four earlier
-failures get. `oauth_callback`
+operators. `WARNING` is reserved for the one shape actually worth paging on: `admin_teams_unusable`
+(`authz.py`), true when `admin_teams` is empty *or* every entry fails the well-formedness pattern —
+not `not admin_teams` alone, since a non-empty but entirely malformed list (a space-separated value
+that parses to one `"a/b c/d"` entry, say — this item's own malformed-entry test uses exactly that
+shape) is functionally the same lockout `_build_server_state`'s `admin_teams_empty` check warns about
+at boot. That well-formedness pattern is now a single module-level constant in `authz.py`
+(`ADMIN_TEAM_ENTRY_RE`), imported by `_build_server_state` for its own `admin_teams_malformed` check,
+rather than a second regex literal that could drift from the first the way `in_admin_team` and
+`_unmatched_org_cause` were already factored out to prevent. An ordinary denial — a configured admin
+Team that simply didn't match this login — still gets a record, at `INFO`, the same reasoning the
+four earlier failures get. `oauth_callback`
 now records every successful sign-in through `oplog.log_event`
 ([`bajutsu/serve/oplog.py`](../../bajutsu/serve/oplog.py)), under the already-reserved `"oauth.login"`
 event and the login itself as the `actor` correlation field — not a bare logging call, so the record

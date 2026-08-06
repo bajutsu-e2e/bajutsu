@@ -9,6 +9,7 @@ transport layer is unchanged. Every function takes the `ServeState`; none touche
 from __future__ import annotations
 
 import logging
+import re
 import secrets
 from collections.abc import Sequence
 from pathlib import Path
@@ -158,14 +159,17 @@ def oauth_callback(
         # just this deployment's members -- an ordinary denial (admin_teams configured, this login
         # just isn't in orgs: or it) is reachable by any curious visitor with a free GitHub account,
         # not only the deployment's operators. Reserve WARNING for the shape an operator actually
-        # needs paging on: no admin Team configured at all, so nobody can sign in to fix orgs:
-        # either. Every other denial still gets a record, just at INFO.
+        # needs paging on: `admin_teams_unusable` -- empty, or every entry malformed, so nobody can
+        # sign in to fix orgs: either. A non-empty but entirely malformed list (a space-separated
+        # value collapsing to one entry that can never match, say) is functionally the same lockout
+        # as an empty one; checking `not admin_teams` alone would call it an ordinary INFO denial.
+        # Every other denial still gets a record, just at INFO.
         oplog.log_event(
             _logger,
             "oauth.denied",
             f"{login} rejected: {_unmatched_org_cause(parsed, orgs, identity, state.config)}, "
             f"and {admin_note}",
-            level=logging.WARNING if not admin_teams else logging.INFO,
+            level=logging.WARNING if admin_teams_unusable(admin_teams) else logging.INFO,
             actor=login,
         )
         return {"error": "user not allowed"}, 403, None
@@ -329,6 +333,24 @@ _EDITOR_PATHS = frozenset(
         "/api/capture/finish",
     }
 )
+
+
+# The one pattern that decides whether an `admin_teams` entry could ever match a real GitHub Team
+# ("<github-org>/<team-slug>", no empty half or internal whitespace) -- shared between
+# `_build_server_state`'s `admin_teams_malformed` startup check and `admin_teams_unusable` below, so
+# the two copies can't drift the way `in_admin_team` and `_unmatched_org_cause` were already factored
+# out to prevent. Does not reject an uppercase character in either half; see `in_admin_team`'s own
+# case-folding for why.
+ADMIN_TEAM_ENTRY_RE = re.compile(r"[^\s/]+/[^\s/]+")
+
+
+def admin_teams_unusable(admin_teams: tuple[str, ...]) -> bool:
+    """True when no entry in *admin_teams* could ever match a real Team -- the list is empty, or
+    every entry fails `ADMIN_TEAM_ENTRY_RE`. A non-empty but entirely malformed list (e.g. a
+    space-separated value that parses to one `"a/b c/d"` entry) is functionally identical to an
+    empty one: `in_admin_team` can never match anyone, so a caller that only checks `not
+    admin_teams` treats a total lockout as an ordinary, healthy configuration."""
+    return not admin_teams or all(not ADMIN_TEAM_ENTRY_RE.fullmatch(t) for t in admin_teams)
 
 
 def in_admin_team(teams: Sequence[str], admin_teams: tuple[str, ...]) -> bool:

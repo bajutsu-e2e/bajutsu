@@ -702,10 +702,13 @@ across processes. A line looks like:
 ```
 
 The `event` field names a stable event (`run.dispatched`, `quota.rejected`, `worker.job.started`,
-`worker.job.finished`, `artifact.upload.failed`, `server.startup_warning`, `oauth.denied`, …) so you
-can grep and alert on it. `server.startup_warning` also carries a `check` field (e.g.
-`admin_teams_empty`) naming which startup condition fired, distinct from the free-text `msg` — key an
-alert on `check` rather than on message text that can reword.
+`worker.job.finished`, `artifact.upload.failed`, `server.startup_warning`, `oauth.login`,
+`oauth.denied`, …) so you can grep and alert on it. `server.startup_warning` also carries a `check`
+field (e.g. `admin_teams_empty`) naming which startup condition fired, distinct from the free-text
+`msg` — key an alert on `check` rather than on message text that can reword. `oauth.login` records
+every successful sign-in and carries a `bypass` field, true only when a configured admin Team — not
+`orgs:` — is what admitted the login; that field is the only record a bypass admission leaves, so
+alert on it if you rely on `BAJUTSU_OAUTH_ADMIN_TEAMS` as a sign-in credential.
 
 **Redaction is structural.** A single filter sits at the root logger, so *every* line — including
 ones from third-party libraries — is scrubbed before it is written; correctness does not depend on

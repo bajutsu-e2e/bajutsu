@@ -683,10 +683,14 @@ BE-0015 で今後の作業です。
 ```
 
 `event` フィールドは安定したイベント名（`run.dispatched`、`quota.rejected`、`worker.job.started`、
-`worker.job.finished`、`artifact.upload.failed`、`server.startup_warning`、`oauth.denied` など）を示すので、
+`worker.job.finished`、`artifact.upload.failed`、`server.startup_warning`、`oauth.login`、
+`oauth.denied` など）を示すので、
 これを対象に grep やアラートを設定できます。`server.startup_warning` は、自由文の `msg` とは別に、どの起動時
 条件が発火したかを示す `check` フィールド（例：`admin_teams_empty`）も携えます。アラートは言い回しが変わり
-うるメッセージ本文ではなく、この `check` をキーにしてください。
+うるメッセージ本文ではなく、この `check` をキーにしてください。`oauth.login` はすべての成功したサインイン
+を記録し、`bypass` フィールドを携えます。これは `orgs:` ではなく構成済みの admin Team がこの login を
+許可した場合にだけ true になります。迂回による許可が残す記録はこのフィールドしかないため、
+`BAJUTSU_OAUTH_ADMIN_TEAMS` をサインインの資格情報として使う場合は、これをアラートの対象にしてください。
 
 **マスクは構造的です。** 1 つのフィルタがルートロガーに置かれるので、書き出される前に**すべての**行が
 スキャンされます。サードパーティのライブラリが出した行も対象です。正しさは、各呼び出し箇所がマスクを

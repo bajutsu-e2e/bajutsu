@@ -393,6 +393,29 @@ def test_oauth_callback_denial_names_a_github_orgs_outage_not_the_org_roster(
     assert record.levelno == logging.WARNING
 
 
+def test_oauth_callback_denial_warns_when_admin_teams_is_entirely_malformed(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # A space-separated value ("acme-gh/ops other-gh/root") parses to ONE entry that can never
+    # match a real Team -- `admin_teams` is truthy, but functionally identical to an empty tuple.
+    # `not admin_teams` alone would call this an ordinary INFO denial; it must warn like the
+    # genuinely-empty case above, since nobody can sign in to fix orgs: here either.
+    state = _state(
+        tmp_path,
+        oauth=FakeOAuthClient(login="bob", orgs=[], teams=["some-other/team"]),
+        config=_config_file(tmp_path),
+        admin_teams=["acme-gh/ops other-gh/root"],
+    )
+    with caplog.at_level(logging.WARNING):
+        _payload, status, sid = ops.oauth_callback(
+            state, code="ok", state_param="s", state_cookie="s"
+        )
+    assert status == 403
+    assert sid is None
+    record = next(r for r in caplog.records if getattr(r, "event", None) == "oauth.denied")
+    assert record.levelno == logging.WARNING
+
+
 def test_oauth_callback_ordinary_admin_team_bypass_logs_at_info(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:

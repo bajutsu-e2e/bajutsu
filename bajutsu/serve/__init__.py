@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import logging
 import os
-import re
 import sys
 from functools import partial
 from pathlib import Path
@@ -315,6 +314,7 @@ def _build_server_state(
     boto3, google-cloud-storage) are imported lazily so the default path stays SDK-free."""
     import os
 
+    from bajutsu.serve.authz import ADMIN_TEAM_ENTRY_RE
     from bajutsu.serve.server.artifacts import ObjectStorageArtifactStore
     from bajutsu.serve.server.baselines import ObjectBaselineStore
     from bajutsu.serve.server.db import engine_from_url, repository_from_env
@@ -440,7 +440,7 @@ def _build_server_state(
             "can sign in to repair a broken `orgs:` block"
         )
         _warn("admin_teams_empty", msg)
-    malformed = [t for t in oauth_admin_teams if not re.fullmatch(r"[^\s/]+/[^\s/]+", t)]
+    malformed = [t for t in oauth_admin_teams if not ADMIN_TEAM_ENTRY_RE.fullmatch(t)]
     if oauth is not None and malformed:
         msg = (
             'BAJUTSU_OAUTH_ADMIN_TEAMS entries must each be "<github-org>/<team-slug>"; '
