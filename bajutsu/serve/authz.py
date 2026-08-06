@@ -15,7 +15,8 @@ from typing import Any
 
 from bajutsu.serve import oplog
 from bajutsu.serve.helpers import load_serve_config_file
-from bajutsu.serve.orgs import identity_matches_org, org_for_identity, org_for_target
+from bajutsu.serve.orgs import OrgConfig, identity_matches_org, org_for_identity, org_for_target
+from bajutsu.serve.server.oauth import Identity
 from bajutsu.serve.state import ServeState
 
 _logger = logging.getLogger(__name__)
@@ -43,6 +44,24 @@ def oauth_login(state: ServeState) -> tuple[Any, int, str | None]:
         return {"error": "oauth not configured"}, 404, None
     csrf = secrets.token_urlsafe(24)
     return {"redirect": state.auth.oauth.authorize_url(csrf)}, 200, csrf
+
+
+def _unmatched_org_cause(
+    parsed: tuple[Any, dict[str, OrgConfig]] | None, orgs: dict[str, OrgConfig], identity: Identity
+) -> str:
+    """Which of the four shapes left *orgs* unmatched for *identity* in `oauth_callback`, named so an
+    operator is sent to the config itself (the first two) rather than the org roster (the last two):
+    the config failed to load, the config declares no `orgs:` block, GitHub reported no orgs for this
+    login, or a real, unmatching roster. Read by both the bypass-success record and the denial
+    record — one shared copy so a fifth shape can only be added in one place, the same reasoning
+    `in_admin_team` is factored out for below."""
+    if parsed is None:
+        return "the serve config failed to load"
+    if not orgs:
+        return "the serve config declares no orgs: block"
+    if not identity.orgs:
+        return "GitHub returned no orgs for this login"
+    return "no orgs: entry matched this login"
 
 
 def oauth_callback(
@@ -104,19 +123,11 @@ def oauth_callback(
         # A rejection is the one failure this item exists to make recoverable, so it needs a record
         # too — under its own event rather than `oauth.login`, which stays "login count" (see the
         # `bypass` reasoning below) rather than absorbing a "denied" outcome it never admitted.
-        # Name which shape left `orgs:` unmatched, as the success record below does: a config that
-        # never loaded or that declares no `orgs:` block sends an operator to the config itself, an
-        # unmatched roster to `orgs:`.
-        if parsed is None:
-            cause = "the serve config failed to load"
-        elif not orgs:
-            cause = "the serve config declares no orgs: block"
-        else:
-            cause = "no orgs: entry matched this login"
         oplog.log_event(
             _logger,
             "oauth.denied",
-            f"{login} rejected: {cause}, and no admin Team matched",
+            f"{login} rejected: {_unmatched_org_cause(parsed, orgs, identity)}, "
+            "and no admin Team matched",
             level=logging.WARNING,
             actor=login,
         )
@@ -169,22 +180,15 @@ def oauth_callback(
     # operationally-significant record in serve already does. `bypass` says which gate admitted
     # this one — the one sign-in path `orgs:` did not authorize is still the interesting case, but
     # emitting the event only for that case would make `event=oauth.login` mean "bypass" instead of
-    # "login", the opposite of what an operator's alert on the event name would expect. Name which of
-    # the four shapes left `orgs:` unmatched: a config that never loaded, or that declares no
-    # `orgs:` block, sends an operator to a different fix (the config itself) than an org roster
-    # that genuinely does not list this login.
-    if parsed is None:
-        why = "the serve config failed to load"
-    elif not orgs:
-        why = "the serve config declares no orgs: block"
-    elif not identity.orgs:
-        why = "GitHub returned no orgs for this login"
-    else:
-        why = "no orgs: entry matched this login"
+    # "login", the opposite of what an operator's alert on the event name would expect.
     oplog.log_event(
         _logger,
         "oauth.login",
-        f"admin-Team bypass admitted {login}: {why}" if not matched_org else f"{login} signed in",
+        (
+            f"admin-Team bypass admitted {login}: {_unmatched_org_cause(parsed, orgs, identity)}"
+            if not matched_org
+            else f"{login} signed in"
+        ),
         level=logging.WARNING if not matched_org else logging.INFO,
         bypass=not matched_org,
         actor=login,

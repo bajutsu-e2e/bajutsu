@@ -132,12 +132,15 @@ entry in `oplog.EVENTS` rather than folded into `"oauth.login"` (which stays "lo
 reasoning below). A rejection is the one failure this item exists to make recoverable — a broken or
 missing `orgs:` block plus no matching admin Team — so it needs the same audit-style visibility a
 successful sign-in gets, not a bare 403 with nothing an operator can correlate a user's "I can't sign
-in" report against. The denial message names which of two config-level shapes it is, when it is one:
-the config failed to load, or the config declares no `orgs:` block at all — the same triage the
-success record gives an operator for a bypass admission (below), and for the same reason: either
-shape collapses `orgs` to `{}` and denies *every* non-admin login, so blaming an org roster that was
-never actually read, or was declared empty on purpose, sends an operator chasing the wrong fix. The
-missing-block shape is not a corner case — it is the item's own headline scenario (*Motivation*: "A
+in" report against. The denial message names which of the same four shapes left `orgs:` unmatched
+that the success record's bypass-admission message does (below) — a shared `_unmatched_org_cause`
+helper computes it for both, so the two records can't drift the way an earlier revision of this item
+briefly let them: a denied login is, if anything, the more likely source of an "I can't sign in"
+report, so it needs at least the same triage a bypass admission gets, not less. Two of the four
+shapes collapse `orgs` to `{}` and deny *every* non-admin login outright — a config that failed to
+load, or one that declares no `orgs:` block at all — so blaming an org roster that was never actually
+read, or was declared empty on purpose, sends an operator chasing the wrong fix. The missing-block
+shape is not a corner case — it is the item's own headline scenario (*Motivation*: "A
 GitHub OAuth deployment that starts up with no `orgs:` block … locks out every admin along with
 everyone else"). `oauth_callback` has five places it can end a sign-in without success, and this item
 now records all five: the other four — OAuth not configured (a half-configured deployment 404s for
@@ -171,7 +174,13 @@ The bypass message also names which of the four ways `matched_org` can be `False
 to load, the config declares no `orgs:` block, GitHub reported no orgs for this login, or no `orgs:`
 entry matched — because an operator paged by the `WARNING` needs to know which one, not just that the
 org gate didn't admit this login. The first two send them to the config; the other two send them to
-the org roster instead — a distinction the message would otherwise hide behind one fixed phrase.
+the org roster instead — a distinction the message would otherwise hide behind one fixed phrase. The
+outright-denied path below names the same four shapes for the same reason — a denied login is, if
+anything, the more likely source of an "I can't sign in" report — so a shared module-level
+`_unmatched_org_cause` helper computes it once for both call sites, the same reasoning behind
+factoring `in_admin_team` out below: two independent copies of the same four-way branch, edited
+separately later, could drift the way this branch pair itself once did — a fifth shape could land in
+one copy and not the other, or a denied login could get told a stale one of the first four.
 The bypass remains the one sign-in path `orgs:` did not authorize, so it is the one path an operator
 auditing who signed in, and when, would otherwise have no record of at all; the `bypass` field is what
 lets that same event stream distinguish it from an ordinary org-gated login.

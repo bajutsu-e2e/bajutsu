@@ -329,6 +329,29 @@ def test_oauth_callback_denial_names_a_missing_orgs_block(
     assert "no orgs: entry matched this login" not in record.getMessage()
 
 
+def test_oauth_callback_denial_names_a_github_orgs_outage_not_the_org_roster(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # bob is a real githubOrgs member of `acme`, but /user/orgs is down (identity.orgs == []) and
+    # he carries no admin Team, so he is denied -- not by a bad roster (`acme` already claims him),
+    # but by the outage. The message must blame GitHub, or an operator edits an `orgs:` block that
+    # was never wrong.
+    state = _state(
+        tmp_path,
+        oauth=FakeOAuthClient(login="bob", orgs=[], teams=["some-other/team"]),
+        config=_config_file(tmp_path),
+    )
+    with caplog.at_level(logging.WARNING):
+        _payload, status, sid = ops.oauth_callback(
+            state, code="ok", state_param="s", state_cookie="s"
+        )
+    assert status == 403
+    assert sid is None
+    record = next(r for r in caplog.records if getattr(r, "event", None) == "oauth.denied")
+    assert "GitHub returned no orgs for this login" in record.getMessage()
+    assert "no orgs: entry matched this login" not in record.getMessage()
+
+
 def test_oauth_callback_admin_team_bypass_logs_a_warning(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -517,9 +540,11 @@ def test_oauth_callback_admin_team_bypass_keeps_org_when_config_fails_to_load(
 def test_oauth_callback_rejects_a_login_in_neither_the_org_gate_nor_the_admin_teams(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
+    # mallory reports a real (but non-matching) GitHub org, so this hits the final branch --
+    # neither a config-load failure, nor a missing `orgs:` block, nor an empty GitHub orgs list.
     state = _state(
         tmp_path,
-        oauth=FakeOAuthClient(login="mallory", teams=["some-other/team"]),
+        oauth=FakeOAuthClient(login="mallory", orgs=["some-other-gh"], teams=["some-other/team"]),
         config=_config_file(tmp_path),
         admin_teams=["ops-gh/root"],
     )
