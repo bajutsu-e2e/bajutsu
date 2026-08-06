@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-video-timing-sync-ja.md)
+**English** · [日本語](BE-0346-video-timing-sync-ja.md)
 
-# BE-XXXX — Anchor step and network timestamps to the recording's confirmed start
+# BE-0346 — Anchor step and network timestamps to the recording's confirmed start
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-video-timing-sync.md) |
+| Proposal | [BE-0346](BE-0346-video-timing-sync.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0346") |
 | Implementing PR | [#1500](https://github.com/bajutsu-e2e/bajutsu/pull/1500) |
 | Topic | Verification & coverage |
 <!-- /BE-METADATA -->
