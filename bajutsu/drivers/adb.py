@@ -648,7 +648,9 @@ class AdbDriver(CoordinateTreeDriver):
                         "X-Bajutsu-Read-Mark",
                         self._READ_LAG_S,
                     )
-                self._raw_source = base.RawSource(text=read.text, pre_transform=read.raw)
+                self._raw_source = base.RawSource(
+                    text=read.text, suffix=".xml", pre_transform=read.raw
+                )
                 return read.text
             except AdbResidentError as exc:
                 logger.warning(
@@ -665,7 +667,7 @@ class AdbDriver(CoordinateTreeDriver):
         logger.debug(
             "dump read in %.2fs (no mark: the barrier is on its wall clock)", time.monotonic() - t0
         )
-        self._raw_source = base.RawSource(text=text)  # no narrowing on this path
+        self._raw_source = base.RawSource(text=text, suffix=".xml")  # no narrowing on this path
         return text
 
     def _record_tree(self, els: list[base.Element]) -> list[base.Element]:

@@ -382,12 +382,15 @@ class RawSource:
     unchanged. `suffix` names the format `text` is actually written in (adb: `.xml`; XCUITest's
     `GET /elements` body is undecoded JSON, so it sets `.json`) — carried here rather than hardcoded
     by the writer, so a future `RawSourceProvider` with a different dump format needs no edit outside
-    the backend that produces it.
+    the backend that produces it. Required, not defaulted: a default of `.xml` would let a future
+    backend construct `RawSource(text=body)` and silently mislabel a non-XML dump, the exact bug this
+    field exists to prevent — every producer must state its own format, or mypy catches the omission
+    at the call site.
     """
 
     text: str
+    suffix: str
     pre_transform: str | None = None
-    suffix: str = ".xml"
 
 
 @runtime_checkable

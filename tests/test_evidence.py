@@ -100,7 +100,7 @@ def test_write_raw_tree_is_a_noop_before_the_first_read() -> None:
 
 
 def test_write_raw_tree_writes_the_raw_dump(tmp_path: Path) -> None:
-    driver = _RawSourceStub(base.RawSource(text="<hierarchy>raw</hierarchy>"))
+    driver = _RawSourceStub(base.RawSource(text="<hierarchy>raw</hierarchy>", suffix=".xml"))
     paths = write_raw_tree(driver, tmp_path / "step0")
     assert [p.name for p in paths] == ["hierarchy.raw.xml"]  # no pre-transform file: none given
     assert paths[0].read_text(encoding="utf-8") == "<hierarchy>raw</hierarchy>"
@@ -109,7 +109,9 @@ def test_write_raw_tree_writes_the_raw_dump(tmp_path: Path) -> None:
 def test_write_raw_tree_writes_the_pre_transform_body_when_present(tmp_path: Path) -> None:
     driver = _RawSourceStub(
         base.RawSource(
-            text="<hierarchy>narrowed</hierarchy>", pre_transform="<hierarchy>wide</hierarchy>"
+            text="<hierarchy>narrowed</hierarchy>",
+            suffix=".xml",
+            pre_transform="<hierarchy>wide</hierarchy>",
         )
     )
     paths = write_raw_tree(driver, tmp_path / "step0")
@@ -120,7 +122,7 @@ def test_write_raw_tree_writes_the_pre_transform_body_when_present(tmp_path: Pat
 
 
 def test_write_raw_tree_redacts_a_configured_secret(tmp_path: Path) -> None:
-    driver = _RawSourceStub(base.RawSource(text='<node text="s3kr3t" />'))
+    driver = _RawSourceStub(base.RawSource(text='<node text="s3kr3t" />', suffix=".xml"))
     redactor = Redactor(Redact(), values=["s3kr3t"])
     paths = write_raw_tree(driver, tmp_path / "step0", redactor)
     assert "s3kr3t" not in paths[0].read_text(encoding="utf-8")
@@ -131,7 +133,9 @@ def test_write_raw_tree_redacts_the_pre_transform_body_too(tmp_path: Path) -> No
     # narrow_to_active_window strips out) — both files go through the same redaction call, and both
     # must actually come out clean, not just the primary hierarchy.raw.xml.
     driver = _RawSourceStub(
-        base.RawSource(text='<node text="clean" />', pre_transform='<node text="s3kr3t" />')
+        base.RawSource(
+            text='<node text="clean" />', suffix=".xml", pre_transform='<node text="s3kr3t" />'
+        )
     )
     redactor = Redactor(Redact(), values=["s3kr3t"])
     paths = write_raw_tree(driver, tmp_path / "step0", redactor)
@@ -144,7 +148,9 @@ def test_write_raw_tree_refuses_when_a_label_rule_is_configured(tmp_path: Path) 
     # (`redact_elements`, which has the parsed tree); `redact_text` over free text has no such
     # structure to match against, so writing the raw dump anyway would leak exactly what
     # elements.json just masked. Refuse the artifact instead of writing an unmasked superset.
-    driver = _RawSourceStub(base.RawSource(text='<node label="Password" text="hunter2" />'))
+    driver = _RawSourceStub(
+        base.RawSource(text='<node label="Password" text="hunter2" />', suffix=".xml")
+    )
     redactor = Redactor(Redact(labels=["Password"]))
     assert write_raw_tree(driver, tmp_path / "step0", redactor) == []
     assert not (tmp_path / "step0").exists()  # refused before ever creating the step dir
@@ -153,7 +159,7 @@ def test_write_raw_tree_refuses_when_a_label_rule_is_configured(tmp_path: Path) 
 def test_write_raw_tree_still_writes_without_a_label_rule(tmp_path: Path) -> None:
     # Only `redact.labels` triggers the refusal above — a redactor active for other reasons
     # (header/field patterns, literal secret values) still lets `rawTree` through.
-    driver = _RawSourceStub(base.RawSource(text="<node/>"))
+    driver = _RawSourceStub(base.RawSource(text="<node/>", suffix=".xml"))
     redactor = Redactor(Redact(), values=["s3kr3t"])
     assert write_raw_tree(driver, tmp_path / "step0", redactor) != []
 
@@ -161,7 +167,9 @@ def test_write_raw_tree_still_writes_without_a_label_rule(tmp_path: Path) -> Non
 def test_capture_raw_tree_kind_produces_artifacts(tmp_path: Path) -> None:
     driver = _RawSourceStub(
         base.RawSource(
-            text="<hierarchy>narrowed</hierarchy>", pre_transform="<hierarchy>wide</hierarchy>"
+            text="<hierarchy>narrowed</hierarchy>",
+            suffix=".xml",
+            pre_transform="<hierarchy>wide</hierarchy>",
         )
     )
     written = capture(driver, tmp_path / "step0", ["rawTree"])
@@ -189,7 +197,7 @@ class _RawSourceQueryStub:
         return [_el(f"e{self.reads}", "L")]
 
     def last_raw_source(self) -> base.RawSource:
-        return base.RawSource(text=f"read-{self.reads}")
+        return base.RawSource(text=f"read-{self.reads}", suffix=".xml")
 
 
 def test_capture_pairs_raw_tree_with_the_read_elements_json_took_regardless_of_kinds_order(
