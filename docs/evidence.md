@@ -196,9 +196,10 @@ app's os_log subsystem, paired into timed intervals by `parse_app_trace`.)
   yet emitting frames, but still real and earlier than a guess) — and store the confirmed
   `time.monotonic()` instant on `Interval.true_start`. `intervals.adopt` carries `true_start`
   forward unchanged when it relocates a prestarted interval, so Android's confirmation (made before
-  `adopt` even runs) is not lost. The web actuator stamps `true_start` right after `new_context()`
-  returns, with no poll: a browser context's creation latency is negligible next to a subprocess
-  spawn's. `run_scenario` resolves `video_start_offset = true_start - scenario_start` once per
+  `adopt` even runs) is not lost. The web actuator stamps `true_start` right after the recording
+  page is created, with no poll: `record_video_dir` enables recording for the pages in a context,
+  but the video itself does not exist until a page does, so the stamp waits for `new_page()` rather
+  than `new_context()`. `run_scenario` resolves `video_start_offset = true_start - scenario_start` once per
   scenario and applies it to every step's `started_at` (and, via `RunResult.video_anchor_s`, to
   every network exchange's `startedAt`) — see [reporting](reporting.md#manifestjson) for what those
   fields mean to a report reader. A poll that never confirms leaves `true_start` at `None`, so the

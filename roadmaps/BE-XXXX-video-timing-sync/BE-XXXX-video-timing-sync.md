@@ -72,8 +72,9 @@ spawning the recording process:
 Both polls are bounded, condition-based waits — never a fixed `sleep` — matching prime directive 2.
 A poll that times out leaves `true_start` at `None`; the correction then degrades to a no-op (the
 behavior today), never a guessed number. The web actuator needs no polling: `PlaywrightDriver`
-stamps `time.monotonic()` immediately after `new_context()` returns, since a browser context's
-creation latency is negligible next to a subprocess spawn's.
+stamps `time.monotonic()` immediately after the recording page is created — `record_video_dir`
+enables recording for a context's pages, but the video itself does not exist until a page does, so
+the stamp waits for `new_page()` rather than `new_context()`.
 
 **2. Confirm only where it changes behavior.** `confirm_started=True` is passed at two production
 call sites: `FileSink._start_simctl_interval`'s video branch (`bajutsu/evidence/core.py`, iOS's
@@ -84,9 +85,11 @@ its poll delays `am start` too. Both are bounded and small — a probe round tri
 `_VIDEO_START_TIMEOUT` (5s) when the signal never arrives. `AdbDriver.driver_interval`
 (`bajutsu/drivers/adb.py`) passes it too, so a caller reaching that driver directly gets the same
 confirmation rather than a silent regression to the uncorrected behavior; the device pool never
-reaches it today, because `AndroidEnvironment` always prestarts. Every other caller, and every
-existing test, keeps the default `confirm_started=False` and is unaffected — this keeps the opt-in
-per call site, not per scenario.
+reaches it today, because `AndroidEnvironment` always prestarts. Every other *caller* keeps the
+default `confirm_started=False`, so the opt-in stays per call site, not per scenario. Existing
+tests are not all unaffected, though: `tests/test_adb.py`, `tests/test_evidence.py`, and
+`tests/test_adb_lifecycle.py` each had to script the new `pgrep` probe for a changed call site,
+since a test that leaves it unanswered stalls for the full `_VIDEO_START_TIMEOUT`.
 
 **3. Apply the correction without reassigning `scenario_start`.** Android's video is a *prestarted*
 interval, adopted (not started fresh) at scenario start via `intervals.adopt`

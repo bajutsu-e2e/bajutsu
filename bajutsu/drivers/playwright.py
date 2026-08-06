@@ -296,6 +296,7 @@ class PlaywrightDriver:
                     self._context.close()
                 self._context = self._new_context()
                 page = self._context.new_page()
+                self._video_true_start = time.monotonic()
         self._bind(page)
 
     def _new_context(self) -> Any:
@@ -309,10 +310,7 @@ class PlaywrightDriver:
         kwargs: dict[str, Any] = {"reduced_motion": "reduce", **self._resolved_device_kwargs()}
         if self._record_video_dir:
             kwargs["record_video_dir"] = str(self._record_video_dir)
-        context = self._browser.new_context(**kwargs)
-        if self._record_video_dir:
-            self._video_true_start = time.monotonic()
-        return context
+        return self._browser.new_context(**kwargs)
 
     def _resolved_device_kwargs(self) -> dict[str, Any]:
         """The device descriptor for the current mode (BE-0228), resolved once against the live pw.
@@ -496,6 +494,8 @@ class PlaywrightDriver:
                     self._context.close()
             self._context = self._new_context()
             self._bind(self._context.new_page())
+            if self._record_video_dir:
+                self._video_true_start = time.monotonic()
         self.navigate()
 
     def relaunch(self) -> None:
