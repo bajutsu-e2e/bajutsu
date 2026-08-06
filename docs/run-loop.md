@@ -211,7 +211,10 @@ The CLI's `run` calls this `run_and_report` ([cli](cli.md#run)).
 > `bajutsu/cli/commands/run.py`) resolves every scenario's `erase` to a concrete bool, most commonly
 > `false`, before the pipeline ever sees it, so a guard on that value alone would disable the forced
 > retry on the very production path it exists for — only `reinstall: overwrite` genuinely protects a
-> scenario's data, since `reinstall`'s own default (`clean`) wipes it regardless of `erase` anyway.
+> scenario's data, since `reinstall`'s own default (`clean`) wipes it regardless of `erase` anyway. An
+> explicit `bajutsu run --no-erase`, by contrast, *is* honored: the CLI carries that flag's
+> pre-resolution value (`erase is not False`) into the run as `force_erase_on_retry`, so an operator's
+> deliberate opt-out still skips the forced retry even though a scenario's own `erase: false` cannot.
 > Because the replayed app's data is wiped by default, the retry is safe
 > only for a scenario idempotent up to its crash point; one with a persistent side effect before the
 > crash (e.g. a server-side write), or one that depends on state a prior step in the same scenario

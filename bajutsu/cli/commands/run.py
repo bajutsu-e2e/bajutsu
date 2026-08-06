@@ -519,6 +519,12 @@ class _RunPlan:
     # `--score`: emit the app's entry-screen convention score once (doctor's grade, inline) so CI needs
     # no separate `doctor` cold-spawn. Diagnostic only — never on the verdict path.
     score: bool
+    # Whether a backend-crash-triggered retry may force `preconditions.erase=True`
+    # (`bajutsu/runner/pipeline.py`'s forced-erase retry). `erase is not False` — True for the default
+    # (unset) and explicit `--erase`, False only for an explicit `--no-erase` — captured here, ahead of
+    # `_filter_scenarios` resolving every scenario's `preconditions.erase` to a concrete bool, since
+    # that resolved value can no longer distinguish an explicit opt-out from "nobody asked".
+    force_erase_on_retry: bool
 
 
 def _print_score(score: Score) -> None:
@@ -624,6 +630,7 @@ def _dispatch_single(
             # the Ready/Partial/Blocked tell without a separate `doctor` that cold-spawns a second
             # XCUITest runner. Off by default, so an ordinary run is unchanged.
             on_score=_print_score if plan.score else None,
+            force_erase_on_retry=plan.force_erase_on_retry,
         )
     finally:
         shutdown()
@@ -675,6 +682,7 @@ def _dispatch_matrix(
                 golden_context=plan.golden_context,
                 # Each engine pass scores its own entry screen once (`--score`); off by default.
                 on_score=_print_score if plan.score else None,
+                force_erase_on_retry=plan.force_erase_on_retry,
             )
         finally:
             shutdown()
@@ -1056,6 +1064,9 @@ def run(
             evidence_store=evidence_store,
             upload_exec=upload_exec,
             score=score,
+            # `erase` is the pre-`_filter_scenarios` CLI flag: None (unset) and explicit `--erase` both
+            # mean "no operator opt-out", only `--no-erase` (False) does.
+            force_erase_on_retry=erase is not False,
         )
         # Install the usage/cost ledger before dispatch (BE-0196). Reporting only — emission is
         # best-effort and off the deterministic verdict path (prime directive 1). Per-scenario

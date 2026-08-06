@@ -227,12 +227,24 @@ env:
   # the ≈90s a bare-respawn-only design would cost. 900s (15min) clears that single-scenario worst case
   # with real margin, so this cap functions as a genuine multi-scenario backstop (a systemically
   # degrading device across several scenarios) rather than a tighter version of the per-scenario budget
-  # that could trip on one scenario's own legitimate retry. It still leaves 600s (10min) of headroom
+  # that could trip on one scenario's own legitimate retry. The 900s is not a hard stop, though: a
+  # scenario's recovery time is billed only once its own retry loop ends, and `exhausted()` is read
+  # at crash time, so a scenario that starts recovering while the total still reads 899s is never
+  # refused — it pays its full ≈450s worst case above, and only the *next* scenario is cut off.
+  # Worst case billed is therefore ≈1350s, which leaves ≈150s (not 600s) of headroom
   # under the smallest `timeout-minutes` below (25min = 1500s) for the nine scenarios' nominal work
   # (seconds each, not minutes, when nothing crashes) and the artifact upload once recovery gives up —
   # see the caveat above BAJUTSU_XCUITEST_RECOVERY_TIMEOUT for the incident this closes and the
   # `bundled-runner` job it does not fully cover (two `bajutsu run` invocations, each billed this budget
-  # independently).
+  # independently). This budget also bounds *retry* time only, not the run: `exhausted()` is read
+  # inside `except BackendCrashError`, i.e. after a scenario has already leased and crashed once, so a
+  # scenario is never refused its *first* attempt once the run-level budget is spent — every remaining
+  # scenario still pays one cold-spawn attempt against a still-wedged device before failing loudly on
+  # this budget. That is a deliberate trade-off, not an oversight: latching "the run budget is spent" to
+  # skip leasing entirely for every later scenario would also abandon a device that happens to have
+  # recovered on its own after the erase-carrying retry that spent the budget. With this budget spent,
+  # the job's worst case is therefore ≈900s (the budget) plus one cold-spawn ceiling per remaining
+  # scenario, not a single clean cutoff at 900s.
   BAJUTSU_RUN_CRASH_RECOVERY_BUDGET: "900"
 
 jobs:

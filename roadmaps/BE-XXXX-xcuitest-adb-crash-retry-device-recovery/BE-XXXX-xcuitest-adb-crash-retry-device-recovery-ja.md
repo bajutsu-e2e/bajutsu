@@ -38,7 +38,13 @@ Bajutsu の run パイプラインは、シナリオ実行中のバックエン�
 し、クラッシュ復旧に使ってよい時間を1つのシナリオ内だけでなく run 全体を通して制限することです。
 これにより、劣化し続けるデバイスは、各シナリオが自分の予算を静かに使い切ってジョブ自身の継続的
 インテグレーション（CI）タイムアウトに診断不能な形で打ち切られる代わりに、run 自体を早い段階で
-はっきりと失敗させるようになります。
+はっきりと失敗させるようになります。ただし、この予算が上限を設けるのは「再試行」に費やす時間で
+あり、run 自体ではありません。予算の枯渇は、シナリオがすでに一度リースしてクラッシュしたあとに
+しか読み取らないため、予算を使い果たしたあとも、残るシナリオはそれぞれ劣化したデバイスに対して
+1回はコールドスポーンでの試行を行ってから失敗します。この振る舞いは意図した trade-off です。予算
+を使い切った時点で以後のリースを一律に打ち切ってしまうと、その予算を使い切った再試行のあとで
+自力回復していたデバイスまで見捨てることになるためです（詳細は `.github/workflows/ios-e2e.yml`
+の `BAJUTSU_RUN_CRASH_RECOVERY_BUDGET` 直上のコメントを参照してください）。
 
 ## 動機
 
@@ -106,6 +112,7 @@ runner channel GET /screenshot: the runner recovered from a mid-run crash; re-is
    retry_scenario = s
    if (
        attempt > 1
+       and self.force_erase_on_retry
        and s.preconditions.reinstall != "overwrite"
        and erase_precondition_supported(actuator, self.eff, self.udid_spec)
    ):
@@ -114,6 +121,15 @@ runner channel GET /screenshot: the runner recovered from a mid-run crash; re-is
        )
    lz = self.lease(self.eff, retry_scenario)
    ```
+
+   `force_erase_on_retry`（`_ScenarioRunner` のフィールドで、`run_all` / `run_and_report` を通じて
+   渡され、既定は `True` なので既存の呼び出し元はすべて変わりません）は、`bajutsu run --no-erase`
+   の `_filter_scenarios` 解決前の値（`erase is not False`、`bajutsu/cli/commands/run.py` の
+   `run()` 内で、CLI フラグが下の段落で説明する「シナリオ単位の bool には opt-out と沈黙の区別が
+   つかなくなる」解決を経る前に計算します）を運びます。`preconditions.erase is not False` という
+   ガード（下記）を外したからといって、opt-out の合図がすべて失われるわけではありません。失われる
+   のは*解決後のシナリオ側フィールド*がその合図を運べなくなることだけであり、*解決前の CLI フラグ*
+   は今も運べますし、実際に運んでいます。
 
    `Scenario` と `Preconditions`（`bajutsu/scenario/models/scenario.py`）はどちらも pydantic の
    モデルなので、`model_copy(update=...)` はフィールドを上書きするだけで、元のシナリオや
@@ -336,7 +352,9 @@ runner channel GET /screenshot: the runner recovered from a mid-run crash; re-is
       宣言している場合、または経路自体が `erase` をそもそも拒否する場合
       （`bajutsu/backends.py` の `erase_precondition_supported`）を除き、XCUITest・adb 両
       バックエンドについて `preconditions.erase=True` を強制する。`erase is False` だけでは
-      スキップしない（「検討した代替案」を参照）。
+      スキップしない（「検討した代替案」を参照）。明示的な `bajutsu run --no-erase` は今も尊重
+      される。`force_erase_on_retry` がこのフラグの解決前の値を `_filter_scenarios` の先まで
+      運ぶためである（「詳細設計」を参照）。
 - [x] Unit 2 — `RunCrashRecoveryBudget`（デッドライン方式ではなく、累積した実際の復旧時間を
       課金する方式）を追加し、`run_crash_recovery_budget` / `BAJUTSU_RUN_CRASH_RECOVERY_BUDGET`
       を `run_all` に配線し、ワークフローの env knob を追加し、`docs/architecture.md` /

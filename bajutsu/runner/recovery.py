@@ -237,16 +237,19 @@ class RunCrashRecoveryBudget:
     whichever finished first would end "the" episode out from under the other. Each `run_one` call
     times its own loop with a local variable instead (never shared), and only ever calls into this
     class for a threadsafe read (`exhausted`) or a single atomic add (`add_recovery_time`) once its
-    own loop is done — so accumulation is correct under any amount of concurrency.
+    own loop is done — so accumulation is correct under any amount of concurrency. Note what the
+    total measures, though: a *sum of per-scenario recovery seconds*, not elapsed wall-clock. Under
+    `run_all`'s `workers > 1` path, N scenarios recovering at once bill N x the real time, so a
+    parallel lane must size its budget against `workers x` the serial figure or it exhausts that
+    much sooner and denies a later scenario even its first retry.
 
     `budget` is public (not `_budget`) so a caller that needs the configured seconds for a failure
     message (`bajutsu/runner/pipeline.py`'s `run_one`) reads it straight from the one object that
     also enforces it, rather than keeping a second field of its own in sync by hand.
     """
 
-    def __init__(self, budget: float | None, now: Callable[[], float]) -> None:
+    def __init__(self, budget: float | None) -> None:
         self.budget = budget
-        self._now = now
         self._spent = 0.0
         self._lock = threading.Lock()
 

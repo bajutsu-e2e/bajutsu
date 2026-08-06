@@ -69,9 +69,9 @@ _logger = logging.getLogger(__name__)
 def _resolve_now(clock: Clock | None) -> Callable[[], float]:
     """The monotonic-seconds callable a run's clock resolves to, real time when `clock` is None.
 
-    The one place this resolution lives, so `_ScenarioRunner._now` and a `RunCrashRecoveryBudget`
-    built before the runner exists (`run_all`, ahead of the `_ScenarioRunner` construction that shares
-    it across every scenario) read the same clock.
+    The one place this resolution lives, so every `_ScenarioRunner._now` call across the run reads
+    the same clock — `RunCrashRecoveryBudget` needs no clock of its own; each `run_one` call times its
+    own retry loop locally (via `_now`) and only ever reports a finished elapsed span to it.
     """
     return clock.now if clock is not None else time.monotonic
 
@@ -178,8 +178,19 @@ class _ScenarioRunner:
     # one built on the run's own clock whenever a caller opts in (see
     # `_default_run_crash_recovery_budget`).
     run_crash_budget: RunCrashRecoveryBudget = field(
-        default_factory=lambda: RunCrashRecoveryBudget(None, time.monotonic)
+        default_factory=lambda: RunCrashRecoveryBudget(None)
     )
+    # Whether a crash-triggered retry (attempt > 1) may force `preconditions.erase=True`. True (the
+    # default) matches every existing caller. `bajutsu run`'s `--no-erase` (an operator override of
+    # every scenario's `preconditions.erase`, applied by `_filter_scenarios` in
+    # `bajutsu/cli/commands/run.py` before a scenario ever reaches here) is the one signal this
+    # forced retry must still honor: by the time a scenario reaches `run_one`, `_filter_scenarios` has
+    # already resolved `preconditions.erase` to a concrete bool for every scenario (most commonly
+    # `False`, the built-in default nobody asked for), so a guard reading that field can no longer
+    # distinguish "the operator explicitly asked to keep the device as-is" from "nobody said
+    # anything" — this flag carries the pre-resolution CLI signal (`erase is not False`) instead, so
+    # `--no-erase` still means what it says even on a crash-triggered retry.
+    force_erase_on_retry: bool = True
     # Latches once `_maybe_emit_score` has fired, so a backend-crash retry of scenario 0 (which
     # re-enters `_run_on_lease` on a respawned app — BE-0049) does not re-score and emit a second
     # grade: the score is a once-per-run tell, not a per-attempt one. A mutable field on a frozen
@@ -302,14 +313,18 @@ class _ScenarioRunner:
                 # scenario never asked for — so a guard on that value would silently disable this whole
                 # unit on the one path it was written for (see *Alternatives considered*: only
                 # `reinstall: overwrite` actually protects app data; a bare `erase: false` does not, since
-                # `reinstall`'s own default `"clean"` wipes the app's data regardless of `erase`). Also
-                # skipped wherever forcing `erase` would itself raise (a real device or the live WebDriver
-                # route, `erase_precondition_supported` in `bajutsu/backends.py`): that would abort the
-                # whole run past this loop's own `except BackendCrashError`, not merely fail this one
-                # scenario.
+                # `reinstall`'s own default `"clean"` wipes the app's data regardless of `erase`). Skipped
+                # on `not self.force_erase_on_retry` instead: that flag carries the operator's explicit
+                # `bajutsu run --no-erase`, read before `_filter_scenarios` collapses it into the same
+                # per-scenario bool — the one signal an explicit opt-out can still reach this guard
+                # through. Also skipped wherever forcing `erase` would itself raise (a real device or the
+                # live WebDriver route, `erase_precondition_supported` in `bajutsu/backends.py`): that
+                # would abort the whole run past this loop's own `except BackendCrashError`, not merely
+                # fail this one scenario.
                 retry_scenario = s
                 if (
                     attempt > 1
+                    and self.force_erase_on_retry
                     and s.preconditions.reinstall != "overwrite"
                     and erase_precondition_supported(actuator, self.eff, self.udid_spec)
                 ):
@@ -521,6 +536,7 @@ def run_all(
     crash_retries: int | None = None,
     crash_recovery_budget: float | None = None,
     run_crash_recovery_budget: float | None = None,
+    force_erase_on_retry: bool = True,
 ) -> list[RunResult]:
     """Run every scenario, each on a freshly leased device, and return one result per scenario.
 
@@ -581,7 +597,9 @@ def run_all(
             cold-startup ceiling and blow a job's timeout; the first respawn is never blocked, so a
             genuine one-off is still ridden out.
         run_crash_recovery_budget: A wall-clock ceiling (seconds) on the total time crash recovery may
-            spend across the *whole run*, not just one scenario. None reads
+            spend across this one `run_all` call, not just one scenario. Note the scoping: the
+            cross-browser matrix (`run_matrix_and_report`) runs `run_all` once per engine, so each
+            engine pass gets its own full budget rather than sharing one. None reads
             `BAJUTSU_RUN_CRASH_RECOVERY_BUDGET` — unset is unbounded, unchanged from before this
             parameter existed. `crash_recovery_budget` resets for every new scenario, so a device that
             keeps degrading pays it again and again; this bounds the cumulative spend instead, so the
@@ -589,6 +607,14 @@ def run_all(
             own budget until an external timeout cancels the job. The first respawn anywhere in the
             run is never blocked, the same never-block-the-first-respawn rule
             `crash_recovery_budget` already follows per scenario.
+        force_erase_on_retry: Whether a crash-triggered retry (attempt > 1) may force
+            `preconditions.erase=True`, the same recovery a scenario already gets by declaring
+            `erase: true` (see `_ScenarioRunner.run_one`). True (the default) preserves every
+            existing caller's behavior. `bajutsu run --no-erase` passes False here, carrying the
+            operator's explicit opt-out past `_filter_scenarios`'s per-scenario resolution — the CLI
+            resolves every scenario's `preconditions.erase` to a concrete bool before `run_all` ever
+            sees it, so that field alone cannot distinguish "the operator asked to keep the device"
+            from "nobody said anything" by the time a retry decides whether to force it.
 
     Returns:
         One result per scenario, in the same order as `scenarios`.
@@ -649,9 +675,8 @@ def run_all(
             if crash_recovery_budget is not None
             else _default_crash_recovery_budget()
         ),
-        run_crash_budget=RunCrashRecoveryBudget(
-            resolved_run_crash_recovery_budget, _resolve_now(clock)
-        ),
+        run_crash_budget=RunCrashRecoveryBudget(resolved_run_crash_recovery_budget),
+        force_erase_on_retry=force_erase_on_retry,
     )
     if workers > 1:
         # >1 hands each worker its own device + per-device resources; the runner is frozen and
@@ -685,16 +710,18 @@ def run_and_report(
     golden_context: GoldenContext | None = None,
     lease_udid_spec: str = "booted",
     on_score: Callable[[Score], None] | None = None,
+    force_erase_on_retry: bool = True,
 ) -> tuple[list[RunResult], Path]:
     """Run the scenarios, then write the run's artifacts under `runs_dir/run_id`.
 
     Wraps `run_all` and persists the report: `manifest.json`, JUnit XML, and the executed
     `scenario.yaml` (so a run is re-runnable / reviewable).
 
-    Beyond `run_all`'s arguments, `runs_dir` + `run_id` locate this run's artifact directory
-    (`runs_dir/run_id`), `source_name` / `description` are recorded in the report, and
-    `config_source` — the Git source the config came from (BE-0063), or None for a local config — is
-    stamped into the manifest's provenance so a branch-based run states the exact commit it executed.
+    Beyond `run_all`'s arguments (`force_erase_on_retry` passes straight through — see its docstring
+    there), `runs_dir` + `run_id` locate this run's artifact directory (`runs_dir/run_id`),
+    `source_name` / `description` are recorded in the report, and `config_source` — the Git source
+    the config came from (BE-0063), or None for a local config — is stamped into the manifest's
+    provenance so a branch-based run states the exact commit it executed.
 
     Returns:
         The per-scenario results and the path to the written `manifest.json`.
@@ -722,6 +749,7 @@ def run_and_report(
         golden_context=golden_context,
         lease_udid_spec=lease_udid_spec,
         on_score=on_score,
+        force_erase_on_retry=force_erase_on_retry,
     )
     manifest = _assemble_report(
         scenarios,

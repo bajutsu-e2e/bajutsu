@@ -343,6 +343,40 @@ def test_run_all_forces_erase_even_when_preconditions_erase_is_already_false() -
     assert erase_seen == [False, True]  # attempt 1 unmodified, attempt 2 forces erase regardless
 
 
+def test_run_all_honors_an_explicit_no_erase_override_on_a_crash_triggered_retry() -> None:
+    # `force_erase_on_retry=False` is what `bajutsu run --no-erase` passes (bajutsu/cli/commands/run.py):
+    # the operator's explicit opt-out, captured ahead of `_filter_scenarios` resolving every scenario's
+    # `preconditions.erase` to a concrete bool. Unlike a bare `erase: false` on the scenario itself
+    # (which the test above shows does NOT skip the forced retry, since it is indistinguishable from
+    # "nobody asked"), this flag must still be honored — an operator who explicitly asked to keep the
+    # device as-is should not have it silently erased mid-run.
+    state = {"n": 0}
+    erase_seen: list[bool | None] = []
+
+    def lease(eff: Effective, scenario: Scenario) -> Lease:
+        state["n"] += 1
+        erase_seen.append(scenario.preconditions.erase)
+        if state["n"] == 1:
+            raise base.BackendCrashError("runner crashed during the readiness gate (test)")
+        return Lease(
+            driver=_fake_driver(),
+            sink=NullSink(),
+            relaunch=None,
+            control=None,
+            collector=None,
+            release=lambda: None,
+        )
+
+    scenarios = [
+        Scenario.model_validate(
+            {"name": "a", "preconditions": {"erase": False}, "steps": [{"tap": {"id": "ok"}}]}
+        )
+    ]
+    results = run_all(_eff(), scenarios, lease, force_erase_on_retry=False)
+    assert results[0].ok
+    assert erase_seen == [False, False]  # never forced — the operator opted out
+
+
 def test_run_all_skips_forced_erase_on_a_real_device() -> None:
     # A real device (`xcuitest.deviceType: device`) raises loudly on any `erase` precondition
     # (`XcuitestEnvironment.start`) instead of honoring it — simctl cannot reach a physical device.

@@ -36,7 +36,12 @@ remedy — see *Alternatives considered*. Second, a new run-scoped wall-clock bu
 (`run_crash_recovery_budget`) bounds how long crash recovery may run across a whole run, not only
 within one scenario, so a device that keeps degrading fails the run loudly and quickly instead of
 silently spending every scenario's own budget until the job's own continuous integration (CI)
-timeout cancels it with no diagnosable cause.
+timeout cancels it with no diagnosable cause. That budget bounds *retry* time, not the run itself:
+it is read only after a scenario has already leased and crashed once, so once it is spent every
+remaining scenario still pays one cold-spawn attempt against the degraded device before failing on
+it — a deliberate trade-off against abandoning a device that recovered on its own after the retry
+that spent the budget (see the comment above `BAJUTSU_RUN_CRASH_RECOVERY_BUDGET` in
+`.github/workflows/ios-e2e.yml`).
 
 ## Motivation
 
@@ -98,6 +103,7 @@ Two independent units.
    retry_scenario = s
    if (
        attempt > 1
+       and self.force_erase_on_retry
        and s.preconditions.reinstall != "overwrite"
        and erase_precondition_supported(actuator, self.eff, self.udid_spec)
    ):
@@ -106,6 +112,15 @@ Two independent units.
        )
    lz = self.lease(self.eff, retry_scenario)
    ```
+
+   `force_erase_on_retry` (a `_ScenarioRunner` field, threaded through `run_all` /
+   `run_and_report`, defaulting to `True` so every existing caller is unchanged) carries
+   `bajutsu run --no-erase`'s pre-`_filter_scenarios` value (`erase is not False`, computed in
+   `bajutsu/cli/commands/run.py`'s `run()` before the CLI flag collapses into the same per-scenario
+   bool the paragraph below explains cannot itself distinguish an opt-out from silence). Dropping the
+   `preconditions.erase is not False` guard (below) does not mean every opt-out signal is lost — only
+   that the *post-resolution scenario field* cannot carry it; the *pre-resolution CLI flag* still can,
+   and does.
 
    `Scenario` and `Preconditions` (`bajutsu/scenario/models/scenario.py`) are both pydantic models, so
    `model_copy(update=...)` overrides the field without mutating the original scenario or its
@@ -307,6 +322,8 @@ Two independent units.
       unless the scenario declared `reinstall: overwrite`, or the route rejects `erase` outright
       (`erase_precondition_supported` in `bajutsu/backends.py`), on both the XCUITest and adb
       backends. Deliberately not skipped on `erase is False` alone — see *Alternatives considered*.
+      An explicit `bajutsu run --no-erase` is still honored, via `force_erase_on_retry` carrying that
+      flag's pre-resolution value past `_filter_scenarios` (see *Detailed design*).
 - [x] Unit 2 — add `RunCrashRecoveryBudget` (accumulated-recovery-time, not deadline-based), wire
       `run_crash_recovery_budget` / `BAJUTSU_RUN_CRASH_RECOVERY_BUDGET` through `run_all`, add the
       workflow env knobs, and update `docs/architecture.md` / `docs/run-loop.md` and their `docs/ja/`

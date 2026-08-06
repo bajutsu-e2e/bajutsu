@@ -120,8 +120,7 @@ def test_crash_recovery_budget_default_reads_the_environment(monkeypatch) -> Non
 def test_run_budget_never_exhausted_when_unbounded() -> None:
     # None (the default) is unbounded: `exhausted()` stays False no matter how much recovery time is
     # billed against it.
-    clock = _AdvancingClock()
-    budget = RunCrashRecoveryBudget(budget=None, now=clock.now)
+    budget = RunCrashRecoveryBudget(budget=None)
     assert budget.exhausted() is False
     budget.add_recovery_time(10_000.0)
     assert budget.exhausted() is False
@@ -131,8 +130,7 @@ def test_run_budget_exhausts_once_accumulated_recovery_time_meets_it() -> None:
     # The budget bills *actual recovery time spent*, not wall-clock elapsed since some earlier crash:
     # a 100s budget exhausts once 100s has actually been billed via add_recovery_time, regardless of
     # how that total was split across separate calls (separate scenarios' recovery episodes).
-    clock = _AdvancingClock()
-    budget = RunCrashRecoveryBudget(budget=100.0, now=clock.now)
+    budget = RunCrashRecoveryBudget(budget=100.0)
     budget.add_recovery_time(40.0)
     assert budget.exhausted() is False
     budget.add_recovery_time(59.0)  # 99.0 total, still under
@@ -143,13 +141,12 @@ def test_run_budget_exhausts_once_accumulated_recovery_time_meets_it() -> None:
 
 def test_run_budget_ignores_healthy_time_between_unrelated_crashes() -> None:
     # A long, perfectly healthy stretch between two unrelated one-off crashes must not itself erode
-    # the budget — only time actually billed via add_recovery_time counts, so advancing the clock with
-    # nothing billed changes nothing (guards the exact bug an earlier, deadline-based design had: a
-    # single armed-at-first-crash deadline treated wall-clock elapsed as if it were all recovery time).
-    clock = _AdvancingClock()
-    budget = RunCrashRecoveryBudget(budget=100.0, now=clock.now)
+    # the budget — the object has no clock of its own, only `add_recovery_time` moves the total, so a
+    # stretch with nothing billed changes nothing (guards the exact bug an earlier, deadline-based
+    # design had: a single armed-at-first-crash deadline treated wall-clock elapsed as if it were all
+    # recovery time).
+    budget = RunCrashRecoveryBudget(budget=100.0)
     budget.add_recovery_time(50.0)  # scenario 1's crash cost 50s of real recovery time
-    clock.advance(10_000.0)  # a long healthy stretch of scenarios that never crash
     assert budget.exhausted() is False  # still only 50s billed, nowhere near the 100s budget
     budget.add_recovery_time(50.0)  # scenario 8's crash costs another 50s
     assert budget.exhausted() is True  # 100s billed in total, now it is exhausted
@@ -160,8 +157,7 @@ def test_run_budget_never_blocks_the_first_crash() -> None:
     # reads False right up to the point a caller has actually billed the whole budget — the same
     # never-block-the-first-respawn property `CrashRecoveryBudget` gives per scenario, here true by
     # construction (a positive budget can never be `<= 0.0`) rather than a special case.
-    clock = _AdvancingClock()
-    budget = RunCrashRecoveryBudget(budget=0.001, now=clock.now)
+    budget = RunCrashRecoveryBudget(budget=0.001)
     assert budget.exhausted() is False
 
 

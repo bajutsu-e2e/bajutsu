@@ -130,16 +130,25 @@ jobs:
     # This job runs the largest scenario set in the lane (Compose full set + Views subset), so it is
     # the one most exposed to a mid-run backend crash (BAJUTSU_CRASH_RETRIES/
     # BAJUTSU_CRASH_RECOVERY_BUDGET, bajutsu/runner/pipeline.py) — unset elsewhere in this workflow,
-    # falling back to one retry and an unbounded per-scenario budget. 2 retries (three attempts) rides
-    # out a one-off crash the same way ios-e2e.yml's `run`/`actuation` jobs do; 180s bounds one
-    # scenario's respawn wall-clock. BAJUTSU_RUN_CRASH_RECOVERY_BUDGET
-    # (_default_run_crash_recovery_budget) is the run-scoped counterpart: it caps crash-recovery time
-    # across every scenario in this one `bajutsu run` invocation, not per scenario, so a device that
-    # keeps degrading fails loudly well before this job's own 30min `timeout-minutes` instead of being
-    # cancelled with no diagnosable cause (the iOS incident this knob was added for —
-    # ios-e2e.yml's comment above its own BAJUTSU_XCUITEST_RECOVERY_TIMEOUT). 480s leaves the ~18min
-    # nominal run (see the timeout-minutes comment below) comfortable headroom under the 30min cap
-    # even at the budget's full spend.
+    # falling back to one retry and an unbounded per-scenario budget. These two numbers were sized
+    # against a *bare* in-place respawn and, unlike ios-e2e.yml's own knobs (re-derived in 2115b10),
+    # were not re-measured once a crash-triggered retry (attempt > 1) started forcing the same `erase`
+    # precondition `erase: true` already gets. The reason they still hold on this lane: `pre.erase` on
+    # adb (`bajutsu/platform_lifecycle/environments/android.py`) is an app-level clean state —
+    # `uninstall` + `install` + `pm clear` on an emulator that stays booted throughout — not the
+    # `simctl shutdown → erase → boot` device restart iOS pays, so the erase-carrying attempt costs low
+    # tens of seconds on top of a bare respawn, not the extra ≈360s (the full STARTUP_TIMEOUT ceiling
+    # plus erase/boot/install prep) that made ios-e2e.yml's own budget bound roughly one retry instead
+    # of the full count. 2 retries (three attempts) still comfortably fits in 180s on that basis; a lane
+    # that changes the a11y APKs' size or Android's own erase path enough to challenge that should
+    # re-derive this the way ios-e2e.yml's comment above BAJUTSU_CRASH_RECOVERY_BUDGET does.
+    # BAJUTSU_RUN_CRASH_RECOVERY_BUDGET (_default_run_crash_recovery_budget) is the run-scoped
+    # counterpart: it caps crash-recovery time across every scenario in this one `bajutsu run`
+    # invocation, not per scenario, so a device that keeps degrading fails loudly well before this
+    # job's own 30min `timeout-minutes` instead of being cancelled with no diagnosable cause (the iOS
+    # incident this knob was added for — ios-e2e.yml's comment above its own
+    # BAJUTSU_XCUITEST_RECOVERY_TIMEOUT). 480s leaves the ~18min nominal run (see the timeout-minutes
+    # comment below) comfortable headroom under the 30min cap even at the budget's full spend.
     env:
       UV_NO_DEV: "1"
       BAJUTSU_CRASH_RETRIES: "2"
