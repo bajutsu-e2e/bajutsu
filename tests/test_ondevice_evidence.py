@@ -8,6 +8,7 @@ keep-on-failure / discard-on-pass behavior is pinned on the fast gate, without a
 
 from __future__ import annotations
 
+import inspect
 from pathlib import Path
 
 import ondevice_evidence
@@ -365,6 +366,19 @@ def test_discards_evidence_once_a_crashed_attempt_recovers_and_passes(pytester) 
         "test_discards_evidence_once_a_crashed_attempt_recovers_and_passes.py::test_acts"
     )
     assert not (pytester.path / "runs" / "fake-lane" / slug).exists()
+
+
+def test_the_real_starters_accept_captures_two_argument_call() -> None:
+    # `capture()` calls every starter as `(serial_or_udid, path)`, and nothing type-checks that:
+    # `make typecheck` covers `bajutsu demos scripts`, not `tests/`, and every test above uses a
+    # fake. Bind the real signatures so a new required parameter fails here, not on-device.
+    for starter in (
+        intervals.start_video,
+        intervals.start_device_log,
+        intervals.start_screenrecord,
+        intervals.start_logcat,
+    ):
+        inspect.signature(starter).bind("device-id", Path("artifact"))
 
 
 def test_android_screenrecord_forwards_this_modules_pinned_bounds(monkeypatch) -> None:

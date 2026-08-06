@@ -158,9 +158,11 @@ def capture(
         # setup or the test's own call already failed, this is already going to redden the lane, so
         # let it surface loudly, same as any other teardown failure. If the test passed, though, a
         # transient `adb pull` / finalize hiccup is the capture tooling glitching, not the driver
-        # contract under test — and the hook above is about to discard this very directory regardless,
-        # since the attempt is clean — so failing the case over it would only turn a passing test red
-        # for evidence nobody keeps. Warn instead.
+        # contract under test — so failing the case over it would only turn a passing test red for
+        # evidence that is usually discarded anyway. Warn instead. "Usually", not always: `_FAILED`
+        # cannot yet see a sibling fixture torn down *before* this one failing its own teardown
+        # (that report comes later), so on that path the hook keeps a directory whose video this
+        # warning has just said may be missing, and the log line is the only record of why.
         already_failing = request.node.stash.get(_FAILED, False)
         try:
             try:
