@@ -229,14 +229,19 @@ Log:
   environment per lease and returns its teardown alongside the driver, so `LeaseHolder` discards
   through the platform's own teardown rather than `driver.close()`. Unit 1's open decision is
   resolved in favor of `launch_driver` absorbing the guard, so every caller inherits it. The
-  guarded-teardown policy moved to `bajutsu/runner/recovery.py`, shared by the pool's own teardown
-  sites (the actuator switch, the failed lease, `release()`'s own teardown and its collector stop,
-  and `shutdown()`'s device and collector loops), `launch_driver`, and the lease discard; a mid-run
-  wiring defect now warns rather than logging at debug. `shutdown()` finishes its whole sweep before
-  propagating the first defect it met, so one device's defect no longer leaves the later devices'
-  runners and the collector sockets up. `release()` gets the same guard for the normal end of a
-  lease, and evicts (falling back to a full teardown) a warm resident whose `end_lease` did not
-  finish, so a half-ended app is never resumed by the next lease. Status → Implemented.
+  guarded-teardown policy moved to `bajutsu/runner/recovery.py`, shared by the pool's own sites (the
+  collector start-up rollback, the actuator switch, the failed lease with its bridge and collector
+  stops, `release()`'s own teardown with its bridge and collector stops, and `shutdown()`'s device
+  and collector loops), `launch_driver`, and the lease discard; a mid-run wiring defect now warns
+  rather than logging at debug. `shutdown()` finishes its whole sweep before propagating the first
+  defect it met, so one device's defect no longer leaves the later devices' runners and the
+  collector sockets up. `release()` gets the same guard for the normal end of a lease, and evicts
+  (falling back to a full teardown) a warm resident whose `end_lease` did not finish, so a
+  half-ended app is never resumed by the next lease. A *wiring* defect on that end-of-lease teardown
+  still cannot raise from `release()`: doing so would replace the scenario's own result and skip
+  returning the device to the pool. `release()` stashes the defect instead, and `shutdown()` raises
+  it once every lease returns its device — closing the one path (a backend with no warm resident)
+  where such a defect would otherwise warn forever and never fail the run. Status → Implemented.
 
 ## References
 

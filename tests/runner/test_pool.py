@@ -1395,35 +1395,25 @@ def test_device_pool_shutdown_completes_the_collector_sweep_before_a_wiring_defe
 
 
 @pytest.mark.parametrize(
-    "teardown_error",
-    [
-        pytest.param(
-            None, id="expected-process-failure"
-        ),  # CalledProcessError, via raise_on_teardown
-        pytest.param(AttributeError("close"), id="wiring-defect"),  # BE-0342
-    ],
-)
-@pytest.mark.parametrize(
     "reusable",
     [
         pytest.param(False, id="teardown"),  # the `else lease_env.teardown(...)` arm
         pytest.param(True, id="end_lease"),  # the `end_lease` arm, XCUITest's warm-resident path
     ],
 )
-def test_device_pool_release_swallows_a_teardown_failure_and_still_frees_the_device(
+def test_device_pool_release_swallows_an_expected_process_failure_and_still_frees_the_device(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
     reusable: bool,
-    teardown_error: BaseException | None,
 ) -> None:
-    """BE-0342: `release()` runs from the run pipeline's `finally`, so neither an expected process
-    failure nor a wiring defect on its teardown may replace the scenario's own result or skip
-    returning the device to `free` — like the actuator-switch and failed-lease sites, and unlike
-    `shutdown()`'s two loops, this one never propagates (it only warns), since there is no caller
-    left to see it raise. Pinned over both the plain `teardown` arm and the `end_lease` arm a warm
-    resident takes — the latter also falls back to a full teardown, since `end_lease` not finishing
-    means the app was never confirmed down (see
-    `test_device_pool_evicts_a_warm_resident_whose_end_lease_did_not_finish` above)."""
+    """BE-0342: `release()` runs from the run pipeline's `finally`, so an expected process failure on
+    its teardown (a runner already gone, an unreachable `xcrun`) may not replace the scenario's own
+    result or skip returning the device to `free` — like the actuator-switch and failed-lease sites.
+    Pinned over both the plain `teardown` arm and the `end_lease` arm a warm resident takes — the
+    latter also falls back to a full teardown, since `end_lease` not finishing means the app was
+    never confirmed down (see
+    `test_device_pool_evicts_a_warm_resident_whose_end_lease_did_not_finish` above). Unlike a *wiring*
+    defect (below), this class is only ever warned, never deferred to `shutdown()`."""
     created: list[_RecordingEnv] = []
 
     def fake_env_for(
@@ -1454,11 +1444,9 @@ def test_device_pool_release_swallows_a_teardown_failure_and_still_frees_the_dev
         if reusable:
             # The `end_lease` arm fails; its fallback teardown (unset error/flag) then completes
             # cleanly, so `env.torn` still ends up True via that fallback.
-            env.raise_on_end_lease = teardown_error is None
-            env.end_lease_error = teardown_error
+            env.raise_on_end_lease = True
         else:
-            env.raise_on_teardown = teardown_error is None
-            env.teardown_error = teardown_error
+            env.raise_on_teardown = True
         with caplog.at_level(logging.WARNING, logger="bajutsu.runner.recovery"):
             first.release()  # must not raise
         assert env.torn  # the plain arm's own teardown, or the end_lease arm's fallback teardown
@@ -1468,7 +1456,108 @@ def test_device_pool_release_swallows_a_teardown_failure_and_still_frees_the_dev
         assert len(created) == 3 and created[2] is not env and created[2].started
         retry.release()
     finally:
+        shutdown()  # no lease defect was stashed — must not raise
+
+
+@pytest.mark.parametrize(
+    "reusable",
+    [
+        pytest.param(False, id="teardown"),
+        pytest.param(True, id="end_lease"),
+    ],
+)
+def test_device_pool_release_defers_a_lease_teardown_wiring_defect_to_shutdown(
+    monkeypatch: pytest.MonkeyPatch,
+    reusable: bool,
+) -> None:
+    """BE-0342: unlike an expected process failure (above), a *wiring* defect on a lease's own
+    end-of-lease teardown cannot raise from `release()` either — the same reasoning, it would replace
+    the scenario's own result and skip `free.put(udid)` — but silently warning it away forever would
+    let a teardown that is *structurally* broken (not merely a runner that happened to be gone) ship
+    unnoticed: for a backend with no warm resident (web, adb) it is the only teardown that ever runs,
+    so nothing else would ever catch it. `release()` stashes it instead, and `shutdown()` raises it
+    once every lease this run held has been released."""
+    created: list[_RecordingEnv] = []
+
+    def fake_env_for(
+        actuator: str,
+        udid: str,
+        env_run: object = None,
+        *,
+        provision: object = None,
+        respawn: bool = False,
+    ) -> _RecordingEnv:
+        env = _RecordingEnv(actuator, udid, provision, reusable=reusable)
+        created.append(env)
+        return env
+
+    monkeypatch.setattr("bajutsu.runner.pool.environment_for", fake_env_for)
+    lease, shutdown = device_pool(
+        ["UDID-A"],
+        ["ios"],
+        _eff(),
+        Path("runs"),
+        network=False,
+        available=lambda b: True,
+        env_run=lambda *a, **k: "",
+    )
+    first = lease(_eff(), _scn("a"))
+    env = created[1]  # created[0] is the pool's representative env
+    if reusable:
+        env.end_lease_error = AttributeError("close")
+    else:
+        env.teardown_error = AttributeError("close")
+    first.release()  # must not raise despite the wiring defect
+    assert env.torn  # the plain arm's own teardown, or the end_lease arm's fallback teardown
+    # The device was still returned — a leaked udid would hang this on `free.get()` — even though
+    # the defect it hit is still owed a loud failure, deferred to `shutdown()` below.
+    retry = lease(_eff(), _scn("b"))
+    assert len(created) == 3 and created[2] is not env and created[2].started
+    retry.release()  # a later, defect-free release must not clear the earlier stashed defect
+    with pytest.raises(AttributeError, match="close"):
         shutdown()
+
+
+def test_device_pool_logs_a_second_lease_teardown_defect_rather_than_dropping_it(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """BE-0342: when more than one lease's own teardown hits a wiring defect, `shutdown()` still
+    raises only the first — the same "first raised, rest logged" shape its own sweep already uses —
+    but a later one is not silently dropped either; it gets its own log line."""
+    created: list[_RecordingEnv] = []
+
+    def fake_env_for(
+        actuator: str,
+        udid: str,
+        env_run: object = None,
+        *,
+        provision: object = None,
+        respawn: bool = False,
+    ) -> _RecordingEnv:
+        env = _RecordingEnv(
+            actuator, udid, provision, teardown_error=RuntimeError(f"broken {udid}")
+        )
+        created.append(env)
+        return env
+
+    monkeypatch.setattr("bajutsu.runner.pool.environment_for", fake_env_for)
+    lease, shutdown = device_pool(
+        ["UDID-A", "UDID-B"],
+        ["ios"],
+        _eff(),
+        Path("runs"),
+        network=False,
+        available=lambda b: True,
+        env_run=lambda *a, **k: "",
+    )
+    la = lease(_eff(), _scn("a"))
+    lb = lease(_eff(), _scn("b"))
+    la.release()  # the first lease-teardown defect this run hits
+    with caplog.at_level(logging.ERROR, logger="bajutsu.runner.pool"):
+        lb.release()  # the second — logged here rather than silently dropped
+    with pytest.raises(RuntimeError, match="broken UDID-A"):  # only the first propagates
+        shutdown()
+    assert "UDID-B" in caplog.text
 
 
 def test_device_pool_does_not_cache_a_non_reusable_environment(

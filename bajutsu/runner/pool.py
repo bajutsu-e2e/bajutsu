@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import queue
+import threading
 from collections.abc import Callable
 from pathlib import Path
 
@@ -194,6 +195,33 @@ def device_pool(
     # spawn history into the next run's first cold start. Same no-lock reasoning as `warm`/`free`: a
     # udid is leased exclusively for the whole lease.
     ever_spawned: set[str] = set()
+
+    # The first *wiring* defect (not an expected process failure — `guarded_teardown` already warns
+    # those away) a lease's own end-of-lease teardown hit, across every lease this pool ever ran.
+    # `release()` cannot raise it directly: that would replace the scenario's own result and skip
+    # `free.put(udid)`, the exact leak this item exists to close. So it stashes the defect here
+    # instead and `shutdown()` raises it once the run's last release and every warm/collector
+    # teardown are done — the same "swallow to finish the work, surface once it's safe to" shape
+    # `shutdown()`'s own sweep already uses. Without this, a teardown that is *structurally*
+    # impossible (a coding bug, not a runner that happened to be gone) would warn once per scenario
+    # forever and never fail a run — for a backend with no warm resident (web, adb), this is the
+    # *only* teardown that ever runs, so nothing else could catch it (BE-0342). Concurrent releases
+    # across leases (BE-0009: the pool serves `ThreadPoolExecutor` workers) write this under a lock;
+    # `shutdown()` reads it only after every worker has joined, so it needs none there.
+    lease_defect_lock = threading.Lock()
+    lease_defect: Exception | None = None
+
+    def _record_lease_defect(udid: str, exc: Exception) -> None:
+        nonlocal lease_defect
+        with lease_defect_lock:
+            if lease_defect is None:
+                lease_defect = exc
+            else:
+                _logger.error(
+                    "tearing down the environment on %s at the lease's end failed",
+                    udid,
+                    exc_info=exc,
+                )
 
     def lease(eff: Effective, scenario: Scenario) -> Lease:
         udid = free.get()
@@ -433,11 +461,19 @@ def device_pool(
                         lease_env.teardown(driver, eff)
                     ended = True
 
-                guarded_teardown(
-                    _end_lease,
-                    mid_run=True,
-                    what=f"tearing down the environment on {udid} at the lease's end",
-                )
+                try:
+                    # `mid_run=False` here, unlike every other site in this function: an expected
+                    # process failure is still just warned (that branch of `guarded_teardown` runs
+                    # regardless of `mid_run`), but a *wiring* defect re-raises instead of warning, so
+                    # it can be caught below and stashed in `lease_defect` rather than lost to a log
+                    # line no one is watching (BE-0342).
+                    guarded_teardown(
+                        _end_lease,
+                        mid_run=False,
+                        what=f"tearing down the environment on {udid} at the lease's end",
+                    )
+                except Exception as exc:
+                    _record_lease_defect(udid, exc)
                 if reusable and not ended:
                     # `end_lease` only kills the app; a resident whose `end_lease` did not finish
                     # must not be resumed, so drop it from `warm` (the next lease then cold-spawns
@@ -561,6 +597,13 @@ def device_pool(
                     defect = exc
                 else:
                     _logger.error("stopping the collector on %s failed", udid, exc_info=exc)
+        # A lease's own end-of-lease wiring defect happened before any of this sweep — `release()`
+        # stashed it instead of raising it, so it is this run's *first* defect even though it is
+        # checked last here; anything this sweep found is a later one, logged rather than dropped.
+        if lease_defect is not None:
+            if defect is not None:
+                _logger.error("tearing down a warm runner or collector failed", exc_info=defect)
+            defect = lease_defect
         if defect is not None:
             raise defect
 
