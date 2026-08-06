@@ -19,7 +19,7 @@
     launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_GESTURES: "1", BAJUTSU_GESTURE_RETRY: "1" }
   steps:
     - wait: { for: { id: log.pinch }, timeout: 10 }
-      capture: [video]
+      capture: [video, deviceLog]
     - wait: { for: { id: log.rotate }, timeout: 10 }
     - assert:
         - value: { sel: { id: log.pinch.value }, equals: "idle" }

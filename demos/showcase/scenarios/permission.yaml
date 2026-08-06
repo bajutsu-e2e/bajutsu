@@ -28,7 +28,7 @@
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Permissions", traits: [button] }
-      capture: [video]
+      capture: [video, deviceLog]
     - wait: { for: { id: perm.requestNotif }, timeout: 10 }
     - assert:
         - value: { sel: { id: perm.notif.value }, equals: "notDetermined" }
@@ -52,7 +52,7 @@
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Permissions", traits: [button] }
-      capture: [video]
+      capture: [video, deviceLog]
     - wait: { for: { id: perm.requestLocation }, timeout: 10 }
     - tap: { id: perm.requestLocation }
     # Android: pre-granted, so the RequestPermission launcher's callback fires immediately with no

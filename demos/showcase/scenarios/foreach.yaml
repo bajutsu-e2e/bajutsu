@@ -11,7 +11,7 @@
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
     - wait: { for: { id: [stable.row.1, stable_row_1] }, timeout: 10 }
-      capture: [video]
+      capture: [video, deviceLog]
     - forEach:
         sel: { idMatches: ["stable.row.*", "stable_row_*"] }
         as: current

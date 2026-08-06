@@ -13,7 +13,7 @@
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Log", traits: [button] }
-      capture: [video]
+      capture: [video, deviceLog]
     - wait: { for: { id: log.note }, timeout: 10 }
     - scroll: { to: { id: log.segment.value }, direction: down }
     - wait: { for: { id: log.segment.one }, timeout: 5 }
