@@ -366,6 +366,18 @@ def _build_server_state(
     # Collected alongside each `print` below (nothing is configured to route through `oplog` this
     # early) so `serve()` can re-emit them once logging is live — see `ServeState.startup_warnings`.
     startup_warnings: list[str] = []
+    # A half-configured deployment (one of the three BAJUTSU_OAUTH_GITHUB_* vars unset) falls back
+    # to token auth silently and then 404s every login — the one shape where nobody can sign in at
+    # all, and the one shape the three checks below cannot reach, since each reads `oauth is None`
+    # as "token-auth-only, deliberately" rather than "OAuth half-configured by mistake". This check
+    # is deliberately the opposite gate from the three below it.
+    if oauth is None and any((cid, secret, redirect)):
+        msg = (
+            "GitHub OAuth is only partly configured — BAJUTSU_OAUTH_GITHUB_CLIENT_ID, "
+            "_CLIENT_SECRET and _REDIRECT_URI must all be set; OAuth is off, so every login will 404"
+        )
+        print(f"bajutsu serve: {msg}", file=sys.stderr)  # noqa: T201
+        startup_warnings.append(msg)
     # Never lose an admin quietly to the rename itself: a deployment that adds the new plural name
     # but leaves the old singular one set (the likelier migration mistake — an operator remembers
     # one Team, not that the old name must go) has that Team silently drop out of both the role and

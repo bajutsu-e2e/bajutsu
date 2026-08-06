@@ -57,7 +57,18 @@ admin が直すべき対象です。しかし BE-0313 の設計は、ブロッ�
 残しません。改名しなければ、既存の単数形の変数にも同じ挙動の変更を、古い名前のまま加えることになり、
 改名と挙動の変更が別々の2回の変更になってしまいます。
 
-この解析には、admin 全員を跡形もなく失うことを防ぐための起動時チェックを3つ追加します。
+この解析には、admin 全員を跡形もなく失うことを防ぐための起動時チェックを4つ追加します。そのうち
+3つは GitHub OAuth が構成されていること（`oauth is not None`）に紐づき、1つは逆に紐づきます。
+その4つ目のチェックが最初に来ます。`oauth` は `GitHubOAuthClient(...) if cid and secret and redirect
+else None` として組み立てられるため、`BAJUTSU_OAUTH_GITHUB_*` のどれか1つでも未設定または誤りが
+あると `None` に潰れ、下の3つのチェックからは、意図的にトークン認証だけを選んだデプロイと見分けが
+つきません。`BAJUTSU_OAUTH_ADMIN_TEAMS` は正しく設定していても GitHub 側の変数を1つ書き間違えると、
+運用者はこの3つのどこからも出力を得られず、すべての login がそこで 404 になります。admin Team が
+空のリストであるより、こちらはさらに悪い状態です。admin だけでなく、誰もサインインできません。この
+チェックは、`oauth is None` かつ GitHub 側の3変数のうち少なくとも1つが設定されている場合、つまり
+意図的なトークン認証専用デプロイではなく構成が半端な状態のときにだけ発火し、GitHub OAuth が部分的にしか
+構成されていないこと、そして3変数すべてが設定されるまではすべての login が 404 になることを出力します。
+
 `_build_server_state`（[`bajutsu/serve/__init__.py`](../../bajutsu/serve/__init__.py)）は、
 GitHub OAuth を構成していて、廃止した `BAJUTSU_OAUTH_ADMIN_TEAM` がまだ設定されているとき、
 `BAJUTSU_OAUTH_ADMIN_TEAMS` の設定有無を問わず常に stderr に警告を出します。ありがちな移行ミスは
@@ -83,19 +94,19 @@ admin Team を1つも持たなくなるケースです）。どちらにして�
 異なるエントリ（たとえば GitHub の UI に表示される Team の表示名からそのまま書き起こした slug）でも
 一致し続けます。ここで拒否してしまうと、すでに機能しているエントリを運用者に「直す」よう促すことに
 なり、さらに悪いことに、本当に壊れたエントリが隠れている、まさにこのリストに対する警告を無視する
-習慣を運用者に付けてしまいます。3つとも例外を発生させず警告だけを出します。config の書き間違いによって、
+習慣を運用者に付けてしまいます。4つとも例外を発生させず警告だけを出します。config の書き間違いによって、
 デプロイが起動できなくなるのではなく admin なしの状態に落ちるようにするためです。これは、この
 module が読む他の運用者向け環境変数（`BAJUTSU_SESSION_TTL`、同時実行数の上限、
 `BAJUTSU_RUN_RETENTION_DAYS`）とは意図的に異なる選択です。それらはいずれも不正な値では例外を
 発生させます。起動できないサーバーは、admin がいないサーバーと同じくらい直しにくく、しかもここでの
 間違いは、それらの場合とは異なり、外側から直せるものだからです。不正なエントリは、リストから
 取り除かず残します。取り除いてしまうと、admin の名簿を構文的に正しいものだけへ静かに絞り込むことに
-なり、すでに警告している失敗の上に、もう1つの静かな失敗を重ねてしまうからです。3つの確認とも、
+なり、すでに警告している失敗の上に、もう1つの静かな失敗を重ねてしまうからです。4つのうち3つの確認は、
 GitHub OAuth を構成しているときにしか動きません。トークン認証だけのサーバーバックエンドでは
 `BAJUTSU_OAUTH_ADMIN_TEAMS` は何も決めないため、そこに残った古い値や不正な値は、そのデプロイ形態が
 持ったことのない admin ロールについて警告するのではなく、静かなままであるべきです。
 
-この3つの確認は `_build_server_state` の中で、まだ何も構成されていない段階で動くため、その時点で
+この4つの確認は `_build_server_state` の中で、まだ何も構成されていない段階で動くため、その時点で
 選べる手段は素の `print(..., file=sys.stderr)` しかありません。登録された `event` も無く、
 correlation フィールドも redaction もない、構造化されていないテキストであり、ログが立ち上がった後の
 JSON 形式の `oplog` の stdout 書き込みと混在します。これはまさに、ログ pipeline が捨ててしまうか
@@ -364,7 +375,10 @@ GitHub organization を誰が管理しているかをコードで確認する方
       対象外とする。`in_admin_team` が case-fold するため、大文字小文字が異なるエントリでも
       一致し続けるからである）。
       admin を失う間違いをどれも見逃さず、かつトークン認証だけのデプロイに持っていない admin ロールに
-      ついて警告しないようにする。
+      ついて警告しないようにする。逆方向にゲートされた4つ目の確認（`oauth is None` だが GitHub 側の
+      変数が少なくとも1つ設定されている）は、構成が半端なデプロイに警告する。上の3つの確認はここには
+      届かない。どれも `oauth is None` を「意図的にトークン認証専用」と読むためであり、この状態は
+      admin Team が空のリストであるより悪い。admin だけでなく、すべての login が 404 になる。
 - [x] `oauth_callback` のサインインゲートに、`identity_matches_org` と並ぶ admin Team の迂回を追加する。
       ロール判定のためにすでに取得している Team 一覧をそのまま使う。サインインが成功したときは
       すべて `oplog.log_event`（予約済みの `"oauth.login"` イベント、login を `actor` に、迂回だけで
@@ -382,7 +396,7 @@ GitHub organization を誰が管理しているかをコードで確認する方
       永続化する際、既存の login の記録済み org を `default` へ移すのではなくそのまま使うのは、
       config 自体の読み込みが失敗した場合（曖昧さのない手がかり）に限る。`/user/orgs` が空を返した
       場合には適用しない。これは、GitHub のどの org にも本当に属していない login と同じ形だからである。
-- [x] `_build_server_state` の3つの admin-Team 起動時警告を、出力するだけでなく新しい
+- [x] `_build_server_state` の4つの起動時警告を、出力するだけでなく新しい
       `ServeState.startup_warnings` フィールドに集約するようにする。`serve()` はそれぞれを
       `oplog.log_event` を通じて、`oplog.EVENTS` の新しいエントリ `"server.startup_warning"` として、
       `_configure_oplog` の直後に再発行する。これは `restore_persisted_provider_settings` がすでに
@@ -394,7 +408,7 @@ GitHub organization を誰が管理しているかをコードで確認する方
       記述は、この項目の *詳細設計* の中で成り立たなくなる。`docs/` 配下のどのページもこの記述を
       述べていないため、ドキュメント側の修正は行わない。各エントリは実際に自分が管理する GitHub
       organization を指す必要があると明記する。この値はいまサインインの資格情報でもあるためである。
-      3つの起動時警告そのものを self-hosting ガイド（両言語）と `.env.example` に名指しし、
+      起動時警告そのものを self-hosting ガイド（両言語）と `.env.example` に名指しし、
       アップグレードする運用者がログの最初の数行を確認するべきだとわかるようにする。
 - [x] テストを追加する。`orgs:` に一致するエントリがない場合と、`orgs:` ブロック自体がない場合の
       両方で、admin Team のメンバーがサインインできることを確認する。どちらの場合も解決したロールが
@@ -402,7 +416,8 @@ GitHub organization を誰が管理しているかをコードで確認する方
       引き続き拒否され、`orgs:` が一致しなかった4つの形のうちどれだったかを名指しして `"oauth.denied"`
       を記録することを確認する。OAuth が構成されていない場合、CSRF の state 不一致（両方のレベルで）、
       例外を発生させた exchange、identity を返さなかった exchange のそれぞれも `"oauth.denied"` を
-      記録することを確認する。`_build_state` が、出力した内容と一致する `startup_warnings` を
+      記録することを確認する。構成が半端な OAuth デプロイが警告し、完全に未設定のデプロイは警告しない
+      ことを確認する。`_build_state` が、出力した内容と一致する `startup_warnings` を
       返すことを確認する。改名した変数が
       複数の Team を持つリストとしてパースされることを
       確認する。迂回した admin が `default` org に配置されることを確認する。既存メンバーの記録済み org が
@@ -433,6 +448,8 @@ GitHub organization を誰が管理しているかをコードで確認する方
   `ServeState` には、この項目が新しい `startup_warnings` フィールドを追加します。
 - [`bajutsu/serve/oplog.py`](../../bajutsu/serve/oplog.py)。`oplog.EVENTS` であり、この項目は
   `"oauth.denied"` と `"server.startup_warning"` を追加します。
+- [`bajutsu/serve/__init__.py`](../../bajutsu/serve/__init__.py)。`_build_server_state` の4つの
+  起動時チェックと、`serve()` が `_configure_oplog` の後にそれらを再発行する部分です。
 - [`docs/ja/self-hosting.md`](../../docs/ja/self-hosting.md)。self-hosting ガイドの GitHub OAuth の節
   です。この項目が塞ぐ隙間は、この項目が取り除くまで、ここに「まず上記のサインインのゲートを
   通過する必要があります」として書かれていました。

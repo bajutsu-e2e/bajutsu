@@ -489,8 +489,10 @@ def _rbac_state(
     from bajutsu.serve.server.models import Base
 
     _scn_dir, cfg, runs = project(tmp_path)
-    if in_org:
-        _with_orgs(cfg, [login])  # the login is an org member (BE-0313), so sign-in admits it
+    # `in_org=False` still declares an `orgs:` block -- one that just doesn't list this login. That
+    # is the case the bypass is for (a real org model that doesn't claim the admin); an absent
+    # block is the easier shape, already covered at the unit level in test_oauth.py.
+    _with_orgs(cfg, [login] if in_org else ["someone-else"])
     engine = create_engine(f"sqlite:///{tmp_path / 'rbac.db'}")
     Base.metadata.create_all(engine)
     return srv.ServeState(

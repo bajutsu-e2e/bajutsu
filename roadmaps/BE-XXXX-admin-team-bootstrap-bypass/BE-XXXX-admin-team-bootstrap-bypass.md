@@ -57,7 +57,19 @@ sign-in behavior. This item changes what an admin Team membership means at sign-
 the existing single-Team variable would otherwise need the same behavior change under its old name.
 The rename and the behavior change become one edit rather than two.
 
-Three startup checks keep this parsing from losing every admin without a trace. `_build_server_state`
+Four startup checks keep this parsing from losing every admin without a trace, three of them gated on
+GitHub OAuth being configured (`oauth is not None`) and one gated the opposite way. That fourth check
+comes first: `oauth` is built as `GitHubOAuthClient(...) if cid and secret and redirect else None`, so
+a single missing or mistyped `BAJUTSU_OAUTH_GITHUB_*` variable collapses to `None` — indistinguishable,
+to the three checks below, from a deliberate token-auth-only deployment that never set any of them. An
+operator who sets `BAJUTSU_OAUTH_ADMIN_TEAMS` correctly and typos one GitHub OAuth variable gets no
+output from any of the three, and every login then 404s: not just no admin, but no sign-in for anyone,
+strictly worse than an empty admin-Team list. This check fires precisely when `oauth is None` *and* at
+least one of the three GitHub vars is set — a half-configured deployment, not a deliberately
+token-auth-only one — printing that GitHub OAuth is only partly configured and that every login will
+404 until all three are set.
+
+`_build_server_state`
 ([`bajutsu/serve/__init__.py`](../../bajutsu/serve/__init__.py)) prints a stderr warning whenever
 GitHub OAuth is configured and the retired `BAJUTSU_OAUTH_ADMIN_TEAM` is still set, regardless of
 whether `BAJUTSU_OAUTH_ADMIN_TEAMS` also is — the likelier migration mistake is not leaving the new
@@ -80,7 +92,7 @@ either half: `in_admin_team` case-folds both sides of the membership test (see b
 whose case differs from GitHub's own stored case — a slug copied from the Team's display name in the
 GitHub UI, say — still matches. Rejecting it here would warn an operator to "fix" an entry that
 already works, and, worse, teach them to ignore this warning on the one list where a genuinely
-broken entry hides. All three print a warning
+broken entry hides. All four print a warning
 rather than raising, so a config typo degrades a deployment to no-admin instead of refusing to start
 it entirely. That is a deliberate departure from the other operator-facing variables this module
 reads (`BAJUTSU_SESSION_TTL`, the concurrency caps, `BAJUTSU_RUN_RETENTION_DAYS`), each of which
@@ -88,13 +100,13 @@ raises on a malformed value: a server that refuses to start is no more repairabl
 admin, and unlike those the mistake here is one an operator can still fix from outside. The malformed
 entry stays in the list rather than being dropped: dropping it would silently narrow the admin
 roster to whatever remained syntactically valid, a second silent failure on top of the one the
-warning already reports. All three checks fire only when GitHub OAuth is configured; on a
+warning already reports. Three of the four checks fire only when GitHub OAuth is configured; on a
 token-auth-only
 server backend `BAJUTSU_OAUTH_ADMIN_TEAMS` decides nothing, so a stale or malformed value left in the
 environment there must stay quiet rather than warn about an admin role that deployment shape never
 had.
 
-These three checks run inside `_build_server_state`, before anything is configured, so their only
+These four checks run inside `_build_server_state`, before anything is configured, so their only
 option at that point is a bare `print(..., file=sys.stderr)` — unstructured text with no registered
 `event`, no correlation fields, and no redaction, interleaved with the JSON `oplog` writes to stdout
 once logging comes up. That is exactly the shape a log pipeline drops or fails to parse, and it is the
@@ -346,7 +358,11 @@ mapping.
       and separately when an entry is not a well-formed `"<github-org>/<team-slug>"` pair (an empty
       half or internal whitespace, not an uppercase character — `in_admin_team` case-folds, so a
       differently-cased entry still matches) — so no admin-losing mistake goes unsignaled and no
-      token-auth-only deployment is warned about an admin role it never had.
+      token-auth-only deployment is warned about an admin role it never had. A fourth check, gated
+      the opposite way (`oauth is None` but at least one GitHub OAuth var is set), warns on a
+      half-configured deployment: the three checks above cannot reach it, since each reads
+      `oauth is None` as "deliberately token-auth-only," and it is strictly worse than an empty
+      admin-Team list — every login 404s, not just admin ones.
 - [x] Add the admin-Team bypass to the sign-in gate in `oauth_callback`, alongside
       `identity_matches_org`, using the Team list already fetched for role resolution. Record every
       successful sign-in through `oplog.log_event` (the reserved `"oauth.login"` event, the login as
@@ -364,7 +380,7 @@ mapping.
       identity, keep an existing login's already-recorded org rather than relocating it to `default`,
       but only on a config-load failure — an unambiguous signal — not on an empty `/user/orgs`
       response, which is equally the shape of a login that genuinely has no GitHub org.
-- [x] Collect `_build_server_state`'s three admin-Team startup warnings onto a new
+- [x] Collect `_build_server_state`'s four startup warnings onto a new
       `ServeState.startup_warnings` field instead of only printing them, and have `serve()` re-emit
       each through `oplog.log_event` under a new `"server.startup_warning"` event right after
       `_configure_oplog` — the same placement `restore_persisted_provider_settings` already uses — so
@@ -375,15 +391,16 @@ mapping.
       through OAuth sign-in is superseded in this item's *Detailed design* instead: no `docs/` page
       states it, so none needed the edit. State plainly that every entry must name a GitHub
       organization the deployment actually controls, since the value is now a sign-in credential.
-      Name the three startup warnings themselves in the self-hosting guide (both languages) and
+      Name the startup warnings themselves in the self-hosting guide (both languages) and
       `.env.example`, so an upgrading operator knows to read the first lines of the log.
 - [x] Tests: sign-in accepted for an admin-Team member with no matching `orgs:` entry and with no
       `orgs:` block at all; resolved role is admin in both cases; a login matching neither the org
       gate nor the admin-Team list is still rejected and logs `"oauth.denied"` naming which of the
       four `orgs:`-unmatched shapes it is; OAuth not configured, a CSRF state mismatch (at both
       levels), a raising exchange, and an exchange returning no identity each log `"oauth.denied"`
-      too; `_build_state` returns the collected `startup_warnings` matching what was printed; the
-      renamed variable parses a multi-Team list;
+      too; a half-configured OAuth deployment warns (and a fully-unset one does not); `_build_state`
+      returns the collected `startup_warnings` matching what was printed; the renamed variable
+      parses a multi-Team list;
       a bypassing admin is placed in the `default` org; an existing member's recorded org survives a
       failure to load the config itself, but a genuinely revoked member re-resolves to `default` on
       their next login rather than staying pinned, and so does a `githubOrgs`-only member relocated
@@ -410,6 +427,8 @@ mapping.
   `ServeState`, which this item gives a new `startup_warnings` field.
 - [`bajutsu/serve/oplog.py`](../../bajutsu/serve/oplog.py) — `oplog.EVENTS`, into which this item adds
   `"oauth.denied"` and `"server.startup_warning"`.
+- [`bajutsu/serve/__init__.py`](../../bajutsu/serve/__init__.py) — `_build_server_state`'s four
+  startup checks and `serve()`'s post-`_configure_oplog` re-emission of them.
 - [`docs/self-hosting.md`](../../docs/self-hosting.md) — the self-hosting guide's GitHub OAuth
   section, which documented the gap this item closes ("An admin still has to clear the sign-in gate
   above first") until this item removed that caveat.

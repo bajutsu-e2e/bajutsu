@@ -321,6 +321,63 @@ def _delenv_oauth(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv(var, raising=False)
 
 
+def test_build_state_server_warns_on_a_half_configured_oauth(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # A single missing/mistyped GitHub OAuth var collapses `oauth` to None -- indistinguishable
+    # from a deliberate token-auth-only backend to the three checks below, which all gate on
+    # `oauth is not None`. This is the one shape where nobody can sign in at all, so it needs its
+    # own check, gated the opposite way.
+    monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
+    monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
+    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
+    _delenv_oauth(monkeypatch)
+    monkeypatch.setenv("BAJUTSU_OAUTH_GITHUB_CLIENT_ID", "cid")
+    monkeypatch.setenv("BAJUTSU_OAUTH_GITHUB_CLIENT_SECRET", "secret")
+    # BAJUTSU_OAUTH_GITHUB_REDIRECT_URI deliberately left unset.
+    _scn, cfg, runs = project(tmp_path)
+    state = srv._build_state(
+        runs_dir=runs,
+        config=cfg,
+        scenarios_dir=None,
+        root=tmp_path,
+        baselines_dir=None,
+        max_concurrent=4,
+        token=None,
+        backend="server",
+    )
+    assert state.auth.oauth is None
+    err = capsys.readouterr().err
+    assert "GitHub OAuth is only partly configured" in err
+    assert len(state.startup_warnings) == 1
+    assert "GitHub OAuth is only partly configured" in state.startup_warnings[0]
+
+
+def test_build_state_server_does_not_warn_when_oauth_is_fully_unset(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # A deliberate token-auth-only deployment (no GitHub OAuth vars at all) must not be told its
+    # OAuth is "partly configured" -- none of it is configured, on purpose.
+    monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
+    monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
+    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
+    _delenv_oauth(monkeypatch)
+    _scn, cfg, runs = project(tmp_path)
+    state = srv._build_state(
+        runs_dir=runs,
+        config=cfg,
+        scenarios_dir=None,
+        root=tmp_path,
+        baselines_dir=None,
+        max_concurrent=4,
+        token=None,
+        backend="server",
+    )
+    assert state.auth.oauth is None
+    assert "GitHub OAuth is only partly configured" not in capsys.readouterr().err
+    assert state.startup_warnings == ()
+
+
 def test_build_state_server_warns_on_the_retired_singular_admin_team_var(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
