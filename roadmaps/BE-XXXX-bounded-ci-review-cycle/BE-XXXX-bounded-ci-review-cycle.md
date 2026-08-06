@@ -87,11 +87,12 @@ loop also gains a round cap on the live cycle itself, with escalation to a human
    prefix, and the dedup that keeps it from re-posting findings already on the pull request. Skip
    the request when nothing was pushed this
    iteration, or when the self-review escalated instead of clearing — the pull request is not yet in
-   a stable state to review. After posting, confirm the requested run actually started (for example
-   `gh run list --workflow "Claude review" --event issue_comment --branch <branch>`) and escalate
-   when it did not: the workflow drops a request whose commenter is not
-   `OWNER`/`MEMBER`/`COLLABORATOR` without any signal on the pull request, and unit 5 would read
-   that silence as a quiet poll.
+   a stable state to review. After posting, confirm the requested run actually started — poll
+   `gh run list --workflow "Claude review" --event issue_comment --json databaseId,createdAt` for a
+   run created after the comment, with no `--branch` filter, since an `issue_comment` run is
+   attributed to the default branch rather than the pull request's — and escalate when it did not:
+   the workflow drops a request whose commenter is not `OWNER`/`MEMBER`/`COLLABORATOR` without any
+   signal on the pull request, and unit 5 would read that silence as a quiet poll.
 4. **`propose-and-build` Phase A — inherit the same split by reference.** This phase's self-review is
    a condensed restatement of `ideation` step 5. Point it at unit 1's two-role procedure, instead of
    describing one subagent that both critiques and fixes. Phase B and `implement-be` step 12 already
@@ -116,17 +117,31 @@ loop also gains a round cap on the live cycle itself, with escalation to a human
    the `pull_request` trigger's `types`, keeping only `opened` and `reopened`. Extend the
    `prose-companion` job's `github.event_name == 'pull_request'` condition to the on-demand comment
    events in the same change — otherwise a wording-only finding raised after the open event has no
-   job left to apply it, and BE-0343 stops working for every later review. Every later check is
-   requested on demand, through the workflow's existing `@claude review` comment path (already gated
-   to `OWNER`/`MEMBER`/`COLLABORATOR`), typically issued by unit 3. Update the file's own
-   top-of-file comment block to describe this model, and to state why the workflow stays rather than
-   being removed: a fork pull request, and any commit made outside these Claude Code skills, never
-   goes through the local self-review pass, and would otherwise get no review at all. Extend the
-   "Compute the review inputs (prior findings)" step to the comment events too: it is gated on
-   `github.event_name == 'pull_request'` today, so an on-demand run would otherwise start with an
-   empty prior-findings list and re-post settled findings. Note also that `cancel-in-progress` is
-   true only for `pull_request`, so two on-demand requests in quick succession run concurrently
-   rather than superseding each other.
+   job left to apply it, and BE-0343 stops working for every later review. Widening only that clause
+   is not enough: `github.event.pull_request` is null on a comment event, so the job's same-repo
+   trust boundary (`head.repo.full_name == github.repository`, what keeps the privileged App token
+   away from fork-authored code), its `head.ref` (the companion script's `--source-branch`), and its
+   `head.sha` (the companion checkout's `ref`) all evaluate empty. On comment events the job must
+   instead re-derive the pull request's head from its number — for example
+   `gh pr view --json headRefName,headRefOid,headRepository` — and re-assert the same-repo check
+   against that data. Every later check is requested on demand, through the workflow's existing
+   `@claude review` comment path (already gated to `OWNER`/`MEMBER`/`COLLABORATOR`), typically
+   issued by unit 3. Update the file's own top-of-file comment block to describe this model, and to
+   state why the workflow stays rather than being removed: a fork pull request, and any commit made
+   outside these Claude Code skills, never goes through the local self-review pass, and would
+   otherwise get no review at all. Extend the "Compute the review inputs (prior findings)" step to
+   the comment events too: it is gated on `github.event_name == 'pull_request'` today, so an
+   on-demand run would otherwise start with an empty prior-findings list and re-post settled
+   findings. Widening that gate alone still fails the step: its `PR` env
+   (`${{ github.event.pull_request.number }}`) is also empty on a comment event, and the step's own
+   `gh api --paginate .../pulls//comments` call errors under `set -euo pipefail` once `PR` is empty.
+   The contract prompt unit 3 asks for carries the same dependency twice — `format(...)`'s `{0}`
+   fills both `#{0}` and `` gh pr diff {0} `` from the same null value, so an on-demand review would
+   be told to diff nothing. All three want the shape the workflow's own concurrency group already
+   uses, `github.event.pull_request.number || github.event.issue.number`, which also covers
+   `pull_request_review_comment`, where it is `issue.number` that is empty. Note also that
+   `cancel-in-progress` is true only for `pull_request`, so two on-demand requests in quick
+   succession run concurrently rather than superseding each other.
 7. **`docs/ai-development.md` and its Japanese mirror — document the split and the trigger change.**
    Add a subsection to the "Right-sizing the model and reasoning effort" section. Name Fable as the
    local pass's reviewer and planner, state the Sonnet-default, Opus-for-product-code rule for its
