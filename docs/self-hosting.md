@@ -384,13 +384,16 @@ hand-maintained login list:
   record, and edit scenarios.
 - **Admin** follows one or more server-wide GitHub Teams, `BAJUTSU_OAUTH_ADMIN_TEAMS` (a
   comma-separated list, each written `"<github-org>/<team-slug>"`, where `<team-slug>` is GitHub's
-  own lowercased slug and not the Team's display name), whose members also change server settings
+  own lowercased slug and not the Team's display name; like `editorTeam`, each entry names one flat
+  Team — a Team nested beneath it does not match), whose members also change server settings
   (config / API key / provider). Admin is a single deployment-wide tier, so name only Teams whose
   members you trust across every org. Unlike the viewer/editor roles above, a member of any
   configured admin Team clears the sign-in gate directly — the Team's GitHub organization does
-  *not* need to appear in any org's `githubOrgs` or `members` — so an admin can always sign in and
-  repoint the server at a corrected config even when the `orgs:` block is broken or missing
-  entirely. Because of that, `BAJUTSU_OAUTH_ADMIN_TEAMS` is now a sign-in credential and not only a
+  *not* need to appear in any org's `githubOrgs` or `members` — so an admin can sign in and repoint
+  the server at a corrected config even when the `orgs:` block is broken or missing entirely. One
+  failure still closes that door: `/user/teams` fails closed, so while GitHub's Teams API is
+  erroring, a login whose only claim is admin-Team membership is turned away like any other.
+  Because of that, `BAJUTSU_OAUTH_ADMIN_TEAMS` is now a sign-in credential and not only a
   role mapping: every entry's GitHub-organization half must name an organization you actually
   control, since anyone who controls it can create a Team with the matching slug and sign in as
   admin.

@@ -371,13 +371,16 @@ OAuth を構成すると、アクセスは手作業の login リストではな�
   scenario の編集をできます。
 - **admin** はサーバ全体で 1 つ以上の GitHub Team、`BAJUTSU_OAUTH_ADMIN_TEAMS`（カンマ区切りのリスト。各要素は
   `"<github-org>/<team-slug>"` の形で、`<team-slug>` は GitHub 自身が小文字化した slug であり、Team の
-  表示名ではありません）に従います。そのメンバーはサーバ設定（config、API キー、provider）も変更
+  表示名ではありません。`editorTeam` と同様、各エントリは 1 つのフラットな Team を指し、その下にネストした
+  Team は一致しません）に従います。そのメンバーはサーバ設定（config、API キー、provider）も変更
   できます。admin はデプロイ全体で 1 段のロールなので、どの org を越えても信頼できるメンバーの Team だけを
-  指定します。上の viewer・editor とは異なり、構成済みの admin Team のいずれかのメンバーは、サインインのゲートを
+  指定します。上の viewer と editor の場合とは異なり、構成済みの admin Team のいずれかのメンバーは、サインインのゲートを
   直接通過します。admin Team が属する GitHub organization を、どこかの org の `githubOrgs` に含める必要も、
   そのメンバーを `members` に列挙する必要もありません。そのため、`orgs:` ブロックが壊れている、あるいは
-  存在しない状態でも、admin は常にサインイン
-  して、サーバの向き先を修正済みの config へ張り替えられます。この性質により、`BAJUTSU_OAUTH_ADMIN_TEAMS`
+  存在しない状態でも、admin はサインインして、サーバの向き先を修正済みの config へ張り替えられます。
+  ただし、この経路も GitHub の Teams API の障害までは越えられません。`/user/teams` は fail closed
+  なので、障害のあいだは admin Team のメンバーシップだけを頼りにした login も、ほかの login と同じく
+  拒否されます。この性質により、`BAJUTSU_OAUTH_ADMIN_TEAMS`
   は、ロールの対応づけだけでなくサインインの資格情報そのものになります。各エントリの GitHub organization
   側は、実際に自分が管理する organization でなければなりません。その organization を管理する人は誰でも、
   一致する slug の Team を作って admin としてサインインできてしまうからです。
