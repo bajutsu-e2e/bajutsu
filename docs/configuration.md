@@ -344,9 +344,9 @@ the org's `editorTeam` is promoted to **editor**; a member of one
 of the server-wide admin Teams (`BAJUTSU_OAUTH_ADMIN_TEAMS`, see
 [Self-hosting](self-hosting.md#2-add-github-oauth-optional)) is **admin**. `editorTeam` is one flat Team, written as
 `"<github-org>/<team-slug>"`; a nested Team beneath it does not match. An OAuth deployment therefore
-must declare an `orgs:` block, or every login other than an admin Team member is turned away — a
 must declare an `orgs:` block, or every login except a configured admin Team's members is turned
 away — so a broken or missing block never locks every admin out.
+
 ## Selecting from the CLI
 
 Every command in the CLI (command-line interface) selects one app with `--target <name>` and points at
