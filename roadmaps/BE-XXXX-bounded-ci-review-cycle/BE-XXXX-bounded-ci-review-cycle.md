@@ -87,7 +87,11 @@ loop also gains a round cap on the live cycle itself, with escalation to a human
    prefix, and the dedup that keeps it from re-posting findings already on the pull request. Skip
    the request when nothing was pushed this
    iteration, or when the self-review escalated instead of clearing — the pull request is not yet in
-   a stable state to review.
+   a stable state to review. After posting, confirm the requested run actually started (for example
+   `gh run list --workflow "Claude review" --event issue_comment --branch <branch>`) and escalate
+   when it did not: the workflow drops a request whose commenter is not
+   `OWNER`/`MEMBER`/`COLLABORATOR` without any signal on the pull request, and unit 5 would read
+   that silence as a quiet poll.
 4. **`propose-and-build` Phase A — inherit the same split by reference.** This phase's self-review is
    a condensed restatement of `ideation` step 5. Point it at unit 1's two-role procedure, instead of
    describing one subagent that both critiques and fixes. Phase B and `implement-be` steps 7 and 12
