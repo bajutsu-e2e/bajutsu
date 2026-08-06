@@ -818,7 +818,7 @@ def raise_if_covered(elements: list[Element], el: Element, sel: Selector) -> Non
     """
     covering = topmost_at_point(elements, frame_center(el["frame"]), el)
     if covering is not None:
-        cover = covering["identifier"] or covering["label"]
+        cover = covering["identifier"] or covering["label"] or "<unnamed>"
         raise ElementNotTappable(
             f"element resolved but covered by another element "
             f"({cover!r} at {covering['frame']}): {sel!r}"

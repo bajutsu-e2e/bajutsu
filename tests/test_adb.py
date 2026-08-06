@@ -254,6 +254,28 @@ def test_tap_does_not_shell_out_when_covered() -> None:
     assert calls == []  # never shelled out to `adb ... input tap`
 
 
+def test_tap_raises_element_not_tappable_after_scrolling_into_a_covered_target() -> None:
+    # `_scroll_into_view` (BE-0210's not-found scroll fallback) returns its own post-scroll tree
+    # paired with the element it resolved there; `_resolve_frame_and_screen` must run the occlusion
+    # check against *that* tree, not the pre-scroll one it seeded the scroll with. Pairing `el` with
+    # the wrong tree would make `topmost_at_point`'s identity lookup silently scan nothing and miss
+    # a real cover — this is a regression test for exactly that mismatch, not a duplicate of
+    # `test_tap_raises_element_not_tappable_when_covered` (which never triggers a scroll at all).
+    scrolled = {"done": False}
+
+    def run(args: list[str]) -> str:
+        if "dump" in args:
+            return OCCLUDED_FIXTURE if scrolled["done"] else _OFFSCREEN
+        if "swipe" in args:
+            scrolled["done"] = True
+        return ""
+
+    driver = AdbDriver("U", run=run)
+    driver._RESOLVE_TIMEOUT_S = 0  # the initial (no-scroll) resolve fails fast
+    with pytest.raises(base.ElementNotTappable, match="covered by another element"):
+        driver.tap({"id": "target.button"})
+
+
 def test_is_tappable_false_when_covered() -> None:
     driver = AdbDriver("U", run=lambda a: OCCLUDED_FIXTURE)
     assert driver.is_tappable({"id": "target.button"}) is False

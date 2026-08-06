@@ -190,3 +190,21 @@ def test_raise_if_covered_names_the_covering_element_in_the_message() -> None:
 def test_raise_if_covered_does_nothing_when_the_target_is_reachable() -> None:
     target = _element("target", (0.0, 0.0, 10.0, 10.0))
     base.raise_if_covered([target], target, {"id": "target"})  # must not raise
+
+
+def test_raise_if_covered_names_an_unnamed_cover_rather_than_none() -> None:
+    # The typical real Android occluder (a scrim View, a dimming backdrop) carries no
+    # resource-id and no text/content-desc, so `identifier` and `label` are both None — the
+    # message must not read the literal string "None" for the single most common obstruction.
+    target = _element("target", (0.0, 0.0, 10.0, 10.0))
+    cover: base.Element = {
+        "identifier": None,
+        "label": None,
+        "traits": [],
+        "value": None,
+        "frame": (0.0, 0.0, 20.0, 20.0),
+    }
+    with pytest.raises(base.ElementNotTappable) as exc_info:
+        base.raise_if_covered([target, cover], target, {"id": "target"})
+    assert "None" not in str(exc_info.value)
+    assert "<unnamed>" in str(exc_info.value)
