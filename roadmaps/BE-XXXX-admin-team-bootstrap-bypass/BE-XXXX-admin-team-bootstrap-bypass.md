@@ -514,7 +514,11 @@ mapping.
       actually re-emits each collected warning through `oplog.log_event` under
       `"server.startup_warning"` with `check` carried through as its own field, so a later rename or
       drop of that name from `oplog.EVENTS` has a
-      test to fail rather than only a boot-time `ValueError`; the renamed variable
+      test to fail rather than only a boot-time `ValueError` — a standalone test drives
+      `_emit_startup_warnings` directly against a hand-built `ServeState.startup_warnings`, so this
+      coverage survives independently of how any particular startup check is spelled or whether it
+      still exists, and a second standalone test pins the no-op path when nothing needs to warn; the
+      renamed variable
       parses a multi-Team list;
       a bypassing admin is placed in the `default` org; an existing member's recorded org survives a
       failure to load the config itself, but re-resolves to `default` instead when no config is

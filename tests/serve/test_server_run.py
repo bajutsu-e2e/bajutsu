@@ -502,6 +502,44 @@ def test_build_state_server_warns_on_the_retired_singular_admin_team_var(
     assert {r.check for r in records} == checks
 
 
+def test_emit_startup_warnings_reemits_each_entry_under_its_own_event_and_check(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # A standalone test of the seam itself, independent of any particular startup check's spelling
+    # or of the retired-singular-var test whose coverage this used to ride on -- so a rename/drop of
+    # "server.startup_warning" from oplog.EVENTS has a direct test to fail here even if every startup
+    # check above changes shape or is deleted outright (e.g. the day BAJUTSU_OAUTH_ADMIN_TEAM itself
+    # is dropped from the codebase).
+    state = srv.ServeState(
+        runs_dir=tmp_path / "runs",
+        startup_warnings=(
+            ("admin_teams_empty", "BAJUTSU_OAUTH_ADMIN_TEAMS is empty"),
+            ("oauth_half_configured", "GitHub OAuth is only partly configured"),
+        ),
+    )
+    with caplog.at_level(logging.WARNING):
+        srv._emit_startup_warnings(state)
+    records = [r for r in caplog.records if getattr(r, "event", None) == "server.startup_warning"]
+    assert len(records) == 2
+    assert all(r.levelno == logging.WARNING for r in records)
+    assert {r.check for r in records} == {"admin_teams_empty", "oauth_half_configured"}
+    assert {r.getMessage() for r in records} == {
+        "BAJUTSU_OAUTH_ADMIN_TEAMS is empty",
+        "GitHub OAuth is only partly configured",
+    }
+
+
+def test_emit_startup_warnings_is_a_no_op_with_nothing_to_warn_about(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # Local serve, or a server deployment with nothing misconfigured -- the empty-tuple default
+    # nothing above exercises directly.
+    state = srv.ServeState(runs_dir=tmp_path / "runs")
+    with caplog.at_level(logging.WARNING):
+        srv._emit_startup_warnings(state)
+    assert not any(getattr(r, "event", None) == "server.startup_warning" for r in caplog.records)
+
+
 def test_build_state_server_warns_when_admin_teams_was_never_set(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
