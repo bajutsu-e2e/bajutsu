@@ -7,7 +7,7 @@
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Search", traits: [button] }
-      capture: [video]
+      capture: [video, deviceLog]
     - wait: { for: { id: [search.field, search_field] }, timeout: 10 }
     - type: { text: "Horse 3", into: { id: [search.field, search_field] } }
     - wait: { for: { id: [search.row.3, search_row_3] }, timeout: 5 }
@@ -21,7 +21,7 @@
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
     - tap: { label: "Search", traits: [button] }
-      capture: [video]
+      capture: [video, deviceLog]
     - wait: { for: { id: [search.field, search_field] }, timeout: 10 }
     - type: { text: "zzz", into: { id: [search.field, search_field] } }
     - wait: { for: { id: [search.results-empty, search_results_empty] }, timeout: 5 }
