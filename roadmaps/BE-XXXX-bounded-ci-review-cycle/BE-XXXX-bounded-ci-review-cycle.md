@@ -113,7 +113,10 @@ loop also gains a round cap on the live cycle itself, with escalation to a human
    merge conflict, and `CHANGES_REQUESTED` with no inline threads ever left) — stop the loop and hand
    it to a human with a summary, rather than an indefinite iteration.
 6. **`.github/workflows/claude-review.yml` — narrow the automatic trigger.** Drop `synchronize` from
-   the `pull_request` trigger's `types`, keeping only `opened` and `reopened`. Every later check is
+   the `pull_request` trigger's `types`, keeping only `opened` and `reopened`. Extend the
+   `prose-companion` job's `github.event_name == 'pull_request'` condition to the on-demand comment
+   events in the same change — otherwise a wording-only finding raised after the open event has no
+   job left to apply it, and BE-0343 stops working for every later review. Every later check is
    requested on demand, through the workflow's existing `@claude review` comment path (already gated
    to `OWNER`/`MEMBER`/`COLLABORATOR`), typically issued by unit 3. Update the file's own
    top-of-file comment block to describe this model, and to state why the workflow stays rather than
