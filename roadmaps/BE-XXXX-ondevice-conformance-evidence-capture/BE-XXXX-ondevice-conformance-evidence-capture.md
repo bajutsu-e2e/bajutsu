@@ -70,8 +70,15 @@ already calls `start_screenrecord` directly outside `bajutsu run`, for the codeg
 `connectedAndroidTest`; this unit applies the same approach to a pytest fixture instead of a
 backgrounded script. The fixture itself stays backend-agnostic — it takes the two starters as
 explicit parameters rather than hardcoding either backend — so a single implementation serves all
-four suites; a small `android_screenrecord` helper pre-binds the adb-specific size, bit-rate, and
-time-limit bounds both Android suites share, so neither call site repeats it.
+four suites. Two thin helpers sit between it and the primitives. `android_screenrecord` pre-binds
+the adb-specific size, bit-rate, and time-limit bounds both Android suites share, so neither call
+site repeats them, and it clears `adb.VIDEO_DEVICE_PATH` before every spawn: `start_screenrecord`
+records to that one fixed device-side path and pulls whatever sits there unconditionally, so a clip
+a prior test failed to pull would otherwise arrive as this test's evidence — non-empty, and so
+invisible to the missing/empty check. `xcuitest_video` pre-binds `confirm_started=True`, which
+`android_screenrecord` sets too: a bare spawn proves only that the local client started, and a fast
+failing case can tear down before the recording produces anything, shipping an absent or unplayable
+mp4 for exactly the failure this evidence exists to explain.
 
 Scope the capture per test, not per module. `screenrecord`'s device-side recording stops at an
 approximately 180-second ceiling regardless of whether a caller sets `time_limit` explicitly, and
