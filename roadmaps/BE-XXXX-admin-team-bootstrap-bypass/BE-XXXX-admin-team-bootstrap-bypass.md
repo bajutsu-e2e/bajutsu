@@ -76,7 +76,11 @@ a strictly worse shape than the shared-token fallback. This check fires precisel
 None` *and* at least one of the three GitHub vars is set — a half-configured deployment, not a
 deliberately token-auth-only one — printing that GitHub OAuth is only partly configured and that
 GitHub sign-in will 404, naming whichever of the two fallbacks this deployment actually fell into
-(`token` is already a parameter of `_build_server_state`), until all three GitHub vars are set.
+(`token` is already a parameter of `_build_server_state`), until all three GitHub vars are set. The
+message also names exactly which of `cid` / `secret` / `redirect` is unset, not just the whole triple
+as a checklist: an operator who typo'd a variable *name* (`_REDIRECT_URL` for `_REDIRECT_URI`, say)
+would otherwise see all three look present in a quick `.env` read and go hunting the OAuth app
+registration instead of their own file.
 
 `_build_server_state`
 ([`bajutsu/serve/__init__.py`](../../bajutsu/serve/__init__.py)) prints a stderr warning whenever
@@ -187,22 +191,28 @@ operator needs to know about), a CSRF state mismatch, an exchange that raised, a
 returned no identity —
 get the same `"oauth.denied"` event, since the reasoning above applies to them just as much (a bare
 404/403/502 a user's "I can't sign in" report can't be correlated against). All four of those earlier
-records fire at `INFO`, not `WARNING` — the only one this item gives `WARNING` is the org-gate denial
-below, which needs an actual GitHub exchange to reach. Each of the other four needs nothing that
-identifies a real GitHub account: `oauth is None` is a static property of the deployment, not a
-per-request signal; and `state_param`/`state_cookie` are both caller-supplied (a query value and the
-caller's own `Cookie:` header), so an attacker clears `secrets.compare_digest` for free by sending the
-same fake value as both — passing the CSRF check with no real auth and reaching whichever of the
-exchange-failure branches a garbage `code` then triggers. A `WARNING` on any of these four is a
-per-request signal an anonymous caller sets the volume of, which would let a loop against this
-endpoint bury the one signal this item exists to add — the org-gate denial — under free amplification.
-Recording them at `INFO` still leaves every one a record (no silent 404/403/502), just not one an
-operator's `WARNING`-keyed alert has to filter out. Repeated CSRF mismatches remain the signature of a
-login-CSRF attempt worth watching for, but that is a *rate* claim about many records, not a property
-of any one of them — the right home for it is a counter an operator can threshold, not this event's
-log level. No `login` is known yet at these four earlier points, so their records carry no `actor`
-field — only the later, gate-level denial and every
-successful sign-in do. `oauth_callback`
+records fire at `INFO`. Each needs nothing that identifies a real GitHub account: `oauth is None` is a
+static property of the deployment, not a per-request signal; and `state_param`/`state_cookie` are both
+caller-supplied (a query value and the caller's own `Cookie:` header), so an attacker clears
+`secrets.compare_digest` for free by sending the same fake value as both — passing the CSRF check with
+no real auth and reaching whichever of the exchange-failure branches a garbage `code` then triggers. A
+`WARNING` on any of these four is a per-request signal an anonymous caller sets the volume of, which
+would let a loop against this endpoint bury a genuine denial under free amplification. Recording them
+at `INFO` still leaves every one a record (no silent 404/403/502), just not one an operator's
+`WARNING`-keyed alert has to filter out. Repeated CSRF mismatches remain the signature of a login-CSRF
+attempt worth watching for, but that is a *rate* claim about many records, not a property of any one
+of them — the right home for it is a counter an operator can threshold, not this event's log level. No
+`login` is known yet at these four earlier points, so their records carry no `actor` field — only the
+later, gate-level denial and every successful sign-in do.
+
+The org-gate denial itself is not unconditionally `WARNING` either: `GET /api/oauth/login` is
+unauthenticated and a GitHub OAuth app authorizes any of GitHub's own users, not only this
+deployment's — a stranger with a free account can reach this branch just as easily as the four above,
+so "needs a real GitHub exchange" bounds the volume at one account, not at the deployment's own
+operators. `WARNING` is reserved for the one shape actually worth paging on: `admin_teams` empty, so
+no admin can sign in to fix `orgs:` either. An ordinary denial — a configured admin Team that simply
+didn't match this login — still gets a record, at `INFO`, the same reasoning the four earlier
+failures get. `oauth_callback`
 now records every successful sign-in through `oplog.log_event`
 ([`bajutsu/serve/oplog.py`](../../bajutsu/serve/oplog.py)), under the already-reserved `"oauth.login"`
 event and the login itself as the `actor` correlation field — not a bare logging call, so the record
@@ -213,9 +223,16 @@ actually emitted, so this item is what makes the event fire at all — and it fi
 not only a bypassing one: an event that only ever recorded bypasses would make `event=oauth.login`
 mean "bypass count" instead of "login count," the opposite of what an operator building an alert on
 that event name would expect. A per-record `bypass` field (`True` only when the admin-Team bypass,
-not `orgs:`, is what admitted the login) and the message and level vary accordingly — `WARNING` and
-an "admin-Team bypass admitted …" message for a bypass, `INFO` and a plain "… signed in" message
-otherwise — so the field carries real information instead of being a constant `True` on every record.
+not `orgs:`, is what admitted the login) and the message vary accordingly — an "admin-Team bypass
+admitted …" message for a bypass, a plain "… signed in" message otherwise. The level does NOT just
+mirror `bypass`: this item's own guidance recommends an admin Team living in an operations-only GitHub
+organization no `orgs:` entry lists, so `bypass` is `True` on *every* admin sign-in there,
+permanently — the normal operating condition of a correctly configured deployment, not something
+worth paging on. `WARNING` fires only when the org model itself is unusable — `parsed is None` (no
+config bound, or one that failed to load) or the config loaded but declares no `orgs:` block at all —
+the shape in which the bypass just admitted a login into a deployment nobody but an admin Team member
+can currently sign in to repair. Every other bypass, and every ordinary sign-in, stays `INFO`, so the
+field carries real information instead of being a constant `True` on every record.
 The bypass message also names which of the five ways `matched_org` can be `False`: no config is bound
 yet, the config failed to load, the config declares no `orgs:` block, GitHub reported no orgs for this
 login, or no `orgs:` entry matched — because an operator paged by the `WARNING` needs to know which

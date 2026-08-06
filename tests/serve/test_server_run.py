@@ -356,10 +356,42 @@ def test_build_state_server_warns_on_a_half_configured_oauth(
     # endpoint unauthenticated. The message must name THIS failure mode, not the reassuring one.
     assert "no token is configured either" in err
     assert "unauthenticated" in err
+    # Name the actual unset variable, not just the whole triple -- a typo'd variable NAME (e.g.
+    # _REDIRECT_URL for _REDIRECT_URI) would otherwise leave all three look present in a quick .env
+    # read, sending the operator to the OAuth app registration instead of their own .env.
+    assert "BAJUTSU_OAUTH_GITHUB_REDIRECT_URI" in err
+    assert "is unset" in err
     assert len(state.startup_warnings) == 1
     check, msg = state.startup_warnings[0]
     assert check == "oauth_half_configured"
     assert "GitHub OAuth is only partly configured" in msg
+
+
+def test_build_state_server_warns_on_a_half_configured_oauth_naming_every_unset_var(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Two of the three vars unset -- the grammar branch ("are unset," not "is unset") and the
+    # join must name both, not just whichever one a single-var test happens to cover.
+    monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
+    monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
+    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
+    _delenv_oauth(monkeypatch)
+    monkeypatch.setenv("BAJUTSU_OAUTH_GITHUB_CLIENT_ID", "cid")
+    # _CLIENT_SECRET and _REDIRECT_URI both deliberately left unset.
+    _scn, cfg, runs = project(tmp_path)
+    state = srv._build_state(
+        runs_dir=runs,
+        config=cfg,
+        scenarios_dir=None,
+        root=tmp_path,
+        baselines_dir=None,
+        max_concurrent=4,
+        token=None,
+        backend="server",
+    )
+    assert state.auth.oauth is None
+    err = capsys.readouterr().err
+    assert "BAJUTSU_OAUTH_GITHUB_CLIENT_SECRET, BAJUTSU_OAUTH_GITHUB_REDIRECT_URI are unset" in err
 
 
 def test_build_state_server_warns_on_a_half_configured_oauth_with_a_token_set(

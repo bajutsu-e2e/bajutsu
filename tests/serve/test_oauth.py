@@ -345,7 +345,7 @@ def test_oauth_callback_denial_names_a_missing_orgs_block(
         config=_config_file(tmp_path, body),
         admin_teams=["ops-gh/root"],
     )
-    with caplog.at_level(logging.WARNING):
+    with caplog.at_level(logging.INFO):
         _payload, status, sid = ops.oauth_callback(
             state, code="ok", state_param="s", state_cookie="s"
         )
@@ -355,9 +355,11 @@ def test_oauth_callback_denial_names_a_missing_orgs_block(
     assert "declares no orgs: block" in record.getMessage()
     assert "no orgs: entry matched this login" not in record.getMessage()
     # admin_teams is configured (non-empty) but mallory isn't in it -- a real membership miss, not
-    # an unconfigured admin_teams, so the message must say "matched," not "configured."
+    # an unconfigured admin_teams, so the message must say "matched," not "configured," and this
+    # denial is INFO, not the WARNING reserved for the no-admin-Team-at-all case.
     assert "no admin Team matched" in record.getMessage()
     assert "no admin Team is configured" not in record.getMessage()
+    assert record.levelno == logging.INFO
 
 
 def test_oauth_callback_denial_names_a_github_orgs_outage_not_the_org_roster(
@@ -387,27 +389,51 @@ def test_oauth_callback_denial_names_a_github_orgs_outage_not_the_org_roster(
     # BAJUTSU_OAUTH_ADMIN_TEAMS.
     assert "no admin Team is configured" in record.getMessage()
     assert "no admin Team matched" not in record.getMessage()
+    # No admin can sign in to fix anything on this deployment -- the shape worth paging on.
+    assert record.levelno == logging.WARNING
 
 
-def test_oauth_callback_admin_team_bypass_logs_a_warning(
+def test_oauth_callback_ordinary_admin_team_bypass_logs_at_info(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
     # The bypass is the one sign-in path `orgs:` did not authorize, so it's the one an operator
-    # auditing sign-ins would otherwise have no record of at all.
+    # auditing sign-ins would otherwise have no record of at all -- but a config that loaded clean
+    # and simply doesn't list this admin's org (the deliberate ops-only-org shape this item's own
+    # docs recommend) is the normal, permanent operating state of a correctly configured deployment,
+    # not something worth paging on. INFO still leaves a record.
     state = _state(
         tmp_path,
         oauth=FakeOAuthClient(login="mallory", teams=["ops-gh/root"]),
         config=_config_file(tmp_path),
         admin_teams=["ops-gh/root"],
     )
-    with caplog.at_level(logging.WARNING):
+    with caplog.at_level(logging.INFO):
         ops.oauth_callback(state, code="ok", state_param="s", state_cookie="s")
     assert "admin-Team bypass admitted mallory" in caplog.text
-    # Pin the structured fields too: a bare `_logger.warning(...)` carrying the same message text
+    # Pin the structured fields too: a bare `_logger.info(...)` carrying the same message text
     # would pass the assertion above but leave `event`/`actor`/`bypass` off the record, breaking
     # exactly the alert an operator would key on `event=oauth.login` for.
     record = next(r for r in caplog.records if getattr(r, "event", None) == "oauth.login")
+    assert record.levelno == logging.INFO
     assert record.actor == "mallory"
+    assert record.bypass is True
+
+
+def test_oauth_callback_admin_team_bypass_logs_a_warning_when_no_config_is_bound(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # The complement of the test above: with no config bound at all (parsed is None), the bypass
+    # admitted a login into a deployment nobody but an admin Team member can currently sign in to
+    # repair -- the recovery state this item exists for, and the one worth paging on.
+    state = _state(
+        tmp_path,
+        oauth=FakeOAuthClient(login="mallory", teams=["ops-gh/root"]),
+        admin_teams=["ops-gh/root"],
+    )  # config left at its None default
+    with caplog.at_level(logging.WARNING):
+        ops.oauth_callback(state, code="ok", state_param="s", state_cookie="s")
+    record = next(r for r in caplog.records if getattr(r, "event", None) == "oauth.login")
+    assert record.levelno == logging.WARNING
     assert record.bypass is True
 
 
@@ -624,7 +650,7 @@ def test_oauth_callback_denial_names_no_config_bound_not_a_load_failure(
         oauth=FakeOAuthClient(login="mallory", teams=["some-other/team"]),
         admin_teams=["ops-gh/root"],
     )  # config left at its None default
-    with caplog.at_level(logging.WARNING):
+    with caplog.at_level(logging.INFO):
         _payload, status, sid = ops.oauth_callback(
             state, code="ok", state_param="s", state_cookie="s"
         )
@@ -633,6 +659,7 @@ def test_oauth_callback_denial_names_no_config_bound_not_a_load_failure(
     record = next(r for r in caplog.records if getattr(r, "event", None) == "oauth.denied")
     assert "no serve config is bound" in record.getMessage()
     assert "failed to load" not in record.getMessage()
+    assert record.levelno == logging.INFO  # admin_teams is configured; WARNING is not this shape
 
 
 def test_oauth_callback_rejects_a_login_in_neither_the_org_gate_nor_the_admin_teams(
@@ -646,7 +673,7 @@ def test_oauth_callback_rejects_a_login_in_neither_the_org_gate_nor_the_admin_te
         config=_config_file(tmp_path),
         admin_teams=["ops-gh/root"],
     )
-    with caplog.at_level(logging.WARNING):
+    with caplog.at_level(logging.INFO):
         _payload, status, sid = ops.oauth_callback(
             state, code="ok", state_param="s", state_cookie="s"
         )
@@ -658,6 +685,7 @@ def test_oauth_callback_rejects_a_login_in_neither_the_org_gate_nor_the_admin_te
     record = next(r for r in caplog.records if getattr(r, "event", None) == "oauth.denied")
     assert record.actor == "mallory"
     assert "no orgs: entry matched this login" in record.getMessage()
+    assert record.levelno == logging.INFO  # admin_teams is configured; WARNING is not this shape
 
 
 def test_oauth_callback_denial_names_a_config_load_failure_not_the_org_roster(
@@ -672,7 +700,7 @@ def test_oauth_callback_denial_names_a_config_load_failure_not_the_org_roster(
         config=tmp_path / "missing.yaml",  # never written -- load_serve_config_file -> None
         admin_teams=["ops-gh/root"],
     )
-    with caplog.at_level(logging.WARNING):
+    with caplog.at_level(logging.INFO):
         _payload, status, sid = ops.oauth_callback(
             state, code="ok", state_param="s", state_cookie="s"
         )
@@ -681,6 +709,7 @@ def test_oauth_callback_denial_names_a_config_load_failure_not_the_org_roster(
     record = next(r for r in caplog.records if getattr(r, "event", None) == "oauth.denied")
     assert "the serve config failed to load" in record.getMessage()
     assert "no orgs: entry matched this login" not in record.getMessage()
+    assert record.levelno == logging.INFO  # admin_teams is configured; WARNING is not this shape
 
 
 def test_oauth_callback_without_a_database_is_a_no_op(tmp_path: Path) -> None:

@@ -154,12 +154,18 @@ def oauth_callback(
         # setting BAJUTSU_OAUTH_ADMIN_TEAMS -- name that shape distinctly, the same reasoning
         # `_unmatched_org_cause` already applies to the org half of this message.
         admin_note = "no admin Team is configured" if not admin_teams else "no admin Team matched"
+        # `GET /api/oauth/login` is unauthenticated and GitHub authorizes any of its own users, not
+        # just this deployment's members -- an ordinary denial (admin_teams configured, this login
+        # just isn't in orgs: or it) is reachable by any curious visitor with a free GitHub account,
+        # not only the deployment's operators. Reserve WARNING for the shape an operator actually
+        # needs paging on: no admin Team configured at all, so nobody can sign in to fix orgs:
+        # either. Every other denial still gets a record, just at INFO.
         oplog.log_event(
             _logger,
             "oauth.denied",
             f"{login} rejected: {_unmatched_org_cause(parsed, orgs, identity, state.config)}, "
             f"and {admin_note}",
-            level=logging.WARNING,
+            level=logging.WARNING if not admin_teams else logging.INFO,
             actor=login,
         )
         return {"error": "user not allowed"}, 403, None
@@ -219,6 +225,19 @@ def oauth_callback(
     # this one — the one sign-in path `orgs:` did not authorize is still the interesting case, but
     # emitting the event only for that case would make `event=oauth.login` mean "bypass" instead of
     # "login", the opposite of what an operator's alert on the event name would expect.
+    #
+    # `not matched_org` alone is not the WARNING signal: this item's own guidance puts a correctly
+    # configured admin Team in an operations-only GitHub organization no `orgs:` entry lists, so
+    # `matched_org` is `False` on *every* admin sign-in there, permanently -- the normal operating
+    # condition of a working deployment, not something worth paging on. What IS worth paging on is
+    # the org model itself being unusable: `parsed is None` (no config bound, or one that failed to
+    # load) or `not orgs` (a config that loaded but declares no `orgs:` block at all) -- either way
+    # the bypass just admitted a login into a deployment nobody but an admin Team member can
+    # currently sign in to repair. A GitHub-side outage (`not identity.orgs`) or a real, unmatching
+    # roster stay INFO: the config itself is fine there, so there is nothing an admin needs paged in
+    # to fix. Key the level on which of `_unmatched_org_cause`'s shapes this is, not on
+    # `matched_org`, so `bypass` keeps varying on what an operator greps while `WARNING` keeps
+    # meaning "something is wrong."
     oplog.log_event(
         _logger,
         "oauth.login",
@@ -228,7 +247,7 @@ def oauth_callback(
             if not matched_org
             else f"{login} signed in"
         ),
-        level=logging.WARNING if not matched_org else logging.INFO,
+        level=logging.WARNING if not matched_org and (parsed is None or not orgs) else logging.INFO,
         bypass=not matched_org,
         actor=login,
     )

@@ -393,6 +393,18 @@ def _build_server_state(
     # unauthenticated. Name which of the two this deployment actually fell into, since *token* is
     # already a parameter here.
     if oauth is None and any((cid, secret, redirect)):
+        # Name which variable(s) are unset -- the three are all in scope here, and a typo'd variable
+        # NAME (e.g. _REDIRECT_URL for _REDIRECT_URI) leaves all three look present in a quick .env
+        # read; naming the actual unset one ends that hunt on the first line of the log.
+        unset = [
+            name
+            for name, value in (
+                ("BAJUTSU_OAUTH_GITHUB_CLIENT_ID", cid),
+                ("BAJUTSU_OAUTH_GITHUB_CLIENT_SECRET", secret),
+                ("BAJUTSU_OAUTH_GITHUB_REDIRECT_URI", redirect),
+            )
+            if not value
+        ]
         fallback = (
             "the shared-token login is enabled instead"
             if token is not None
@@ -400,9 +412,10 @@ def _build_server_state(
             "endpoint is served unauthenticated"
         )
         msg = (
-            "GitHub OAuth is only partly configured — BAJUTSU_OAUTH_GITHUB_CLIENT_ID, "
-            "_CLIENT_SECRET and _REDIRECT_URI must all be set; OAuth is off, so every GitHub "
-            f"sign-in will 404 and {fallback}"
+            "GitHub OAuth is only partly configured — all three of BAJUTSU_OAUTH_GITHUB_CLIENT_ID, "
+            f"_CLIENT_SECRET and _REDIRECT_URI must be set, but {', '.join(unset)} "
+            f"{'is' if len(unset) == 1 else 'are'} unset; OAuth is off, so every GitHub sign-in "
+            f"will 404 and {fallback}"
         )
         _warn("oauth_half_configured", msg)
     # Never lose an admin quietly to the rename itself: a deployment that adds the new plural name
