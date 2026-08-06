@@ -75,32 +75,43 @@ def oauth_callback(
     if state.auth.oauth is None:
         # A half-configured deployment (one of the three BAJUTSU_OAUTH_GITHUB_* vars unset) 404s
         # here for every login -- the same "config is broken and nobody can sign in" class of
-        # failure this item exists to make visible, so it gets the same record as the other four.
-        oplog.log_event(_logger, "oauth.denied", "oauth not configured", level=logging.WARNING)
+        # failure this item exists to make visible. But `oauth is None` is a static property of the
+        # deployment, not a per-request signal, and this endpoint takes unauthenticated traffic
+        # unconditionally -- a loop against it would write one WARNING per request forever, on a
+        # deployment that may not even use OAuth. INFO still leaves a record; the loud, once-per-boot
+        # signal for this deployment shape is `_build_server_state`'s "oauth is only partly
+        # configured" `server.startup_warning`, not a per-request WARNING an anonymous caller sets
+        # the volume of.
+        oplog.log_event(_logger, "oauth.denied", "oauth not configured", level=logging.INFO)
         return {"error": "oauth not configured"}, 404, None
     if not (state_param and state_cookie and secrets.compare_digest(state_param, state_cookie)):
         # Repeated mismatches are the signature of a login-CSRF attempt, not just an expired
-        # cookie, and no login is known yet to blame it on -- worth its own record either way. A
-        # callback carrying no state at all is an anonymous probe rather than a mismatch, so it
-        # records at INFO: this endpoint takes unauthenticated traffic, and a WARNING per request
-        # would let anyone bury the gate-level denials below under their own noise.
-        oplog.log_event(
-            _logger,
-            "oauth.denied",
-            "oauth state mismatch",
-            level=logging.WARNING if state_param and state_cookie else logging.INFO,
-        )
+        # cookie -- but that is a rate claim, and nothing available at this point distinguishes an
+        # attack from an expired cookie on any single request. `state_param`/`state_cookie` are both
+        # caller-supplied (a query value and the caller's own Cookie: header), so gating the level on
+        # "both present" filters only the laziest possible probe: an attacker who sends any two
+        # non-matching values lands on WARNING just as cheaply as the bare no-state case. Recording
+        # at INFO unconditionally is the honest level for a per-request record; a genuine rate signal
+        # belongs in a counter an operator can threshold (the GET /metrics surface, BE-0169), not in
+        # a log level an anonymous caller picks for themselves.
+        oplog.log_event(_logger, "oauth.denied", "oauth state mismatch", level=logging.INFO)
         return {"error": "invalid oauth state"}, 403, None
     try:
         identity = state.auth.oauth.fetch_identity(code)
     except Exception:
         # The exchange talks to GitHub (network / token parsing); a failure is an upstream error,
-        # not a 500 — surface it as a clean 502 rather than a traceback.
-        oplog.log_event(_logger, "oauth.denied", "oauth exchange failed", level=logging.WARNING)
+        # not a 500 — surface it as a clean 502 rather than a traceback. Reaching this line needs no
+        # real GitHub auth: an attacker sets *both* `state_param` (a query value) and `state_cookie`
+        # (their own Cookie: header) to the same value, clears the CSRF check above for free, and
+        # supplies any garbage `code` — GitHub's token endpoint then errors and this branch fires.
+        # INFO for the same reason as the branches above: a per-request WARNING an anonymous caller
+        # can trigger this cheaply isn't a signal an operator can alert on.
+        oplog.log_event(_logger, "oauth.denied", "oauth exchange failed", level=logging.INFO)
         return {"error": "oauth exchange failed"}, 502, None
     if identity is None or not identity.login:
+        # Reachable the same caller-controlled way as the exception case above.
         oplog.log_event(
-            _logger, "oauth.denied", "oauth exchange returned no identity", level=logging.WARNING
+            _logger, "oauth.denied", "oauth exchange returned no identity", level=logging.INFO
         )
         return {"error": "oauth exchange failed"}, 403, None
     login = identity.login

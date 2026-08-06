@@ -147,15 +147,22 @@ now records all five: the other four — OAuth not configured (a half-configured
 every login, the same "config is broken and nobody can sign in" class of failure this item exists to
 make visible), a CSRF state mismatch, an exchange that raised, an exchange that returned no identity —
 get the same `"oauth.denied"` event, since the reasoning above applies to them just as much (a bare
-404/403/502 a user's "I can't sign in" report can't be correlated against). The CSRF branch is also
-worth its own record on a different ground: repeated state mismatches are the signature of a
-login-CSRF attempt, not just an expired cookie, and were invisible before this item — but a callback
-carrying no state at all (no cookie, no query value) is the cheapest possible unauthenticated request
-against this public endpoint, not a presented-and-differed mismatch, so it records at `INFO` rather
-than `WARNING`: a loop against it would otherwise write one `WARNING` per request into the same
-`event`-keyed stream an operator greps for the gate-level denials, burying the signal this item exists
-to add under free amplification anyone can trigger. No `login` is known yet at these four earlier
-points, so their records carry no `actor` field — only the later, gate-level denial and every
+404/403/502 a user's "I can't sign in" report can't be correlated against). All four of those earlier
+records fire at `INFO`, not `WARNING` — the only one this item gives `WARNING` is the org-gate denial
+below, which needs an actual GitHub exchange to reach. Each of the other four needs nothing that
+identifies a real GitHub account: `oauth is None` is a static property of the deployment, not a
+per-request signal; and `state_param`/`state_cookie` are both caller-supplied (a query value and the
+caller's own `Cookie:` header), so an attacker clears `secrets.compare_digest` for free by sending the
+same fake value as both — passing the CSRF check with no real auth and reaching whichever of the
+exchange-failure branches a garbage `code` then triggers. A `WARNING` on any of these four is a
+per-request signal an anonymous caller sets the volume of, which would let a loop against this
+endpoint bury the one signal this item exists to add — the org-gate denial — under free amplification.
+Recording them at `INFO` still leaves every one a record (no silent 404/403/502), just not one an
+operator's `WARNING`-keyed alert has to filter out. Repeated CSRF mismatches remain the signature of a
+login-CSRF attempt worth watching for, but that is a *rate* claim about many records, not a property
+of any one of them — the right home for it is a counter an operator can threshold, not this event's
+log level. No `login` is known yet at these four earlier points, so their records carry no `actor`
+field — only the later, gate-level denial and every
 successful sign-in do. `oauth_callback`
 now records every successful sign-in through `oplog.log_event`
 ([`bajutsu/serve/oplog.py`](../../bajutsu/serve/oplog.py)), under the already-reserved `"oauth.login"`
@@ -378,12 +385,14 @@ mapping.
       the `actor` field, and a `bypass` field `True` only for a bypass-only admission), so the one
       sign-in path `orgs:` did not authorize still leaves a record an operator's `event`-keyed alert
       can see. Record every one of the five ways this function ends a sign-in without success under a
-      separate `"oauth.denied"` event: OAuth not configured, a CSRF state mismatch (at `INFO` rather
-      than `WARNING` when the callback carries no state at all — an anonymous probe, not a
-      presented-and-differed mismatch, since anyone can trigger it against this unauthenticated
-      endpoint), an exchange that raised or returned no identity, and a login clearing neither the org
-      gate nor the bypass — the last naming which of four shapes left `orgs:` unmatched (a config-load
-      failure, a config with no `orgs:` block, GitHub reporting no orgs, or a real, unmatching
+      separate `"oauth.denied"` event: OAuth not configured, a CSRF state mismatch, an exchange that
+      raised, and an exchange that returned no identity all at `INFO` — none needs a real GitHub
+      account to trigger, since `oauth is None` is a static per-deployment property and an attacker
+      clears the CSRF check for free by sending the same fake value as both `state_param` and their
+      own `Cookie:` header, so a per-request `WARNING` on any of them is a volume an anonymous caller
+      sets themselves — and a login clearing neither the org gate nor the bypass — the last naming
+      which of four shapes left `orgs:` unmatched (a config-load failure, a config with no `orgs:`
+      block, GitHub reporting no orgs, or a real, unmatching
       roster), so a broken or missing `orgs:` block with no matching admin Team is recoverable rather
       than a bare 404/403/502 with nothing to correlate a user's report against. When persisting the
       identity, keep an existing login's already-recorded org rather than relocating it to `default`,
@@ -405,9 +414,10 @@ mapping.
 - [x] Tests: sign-in accepted for an admin-Team member with no matching `orgs:` entry and with no
       `orgs:` block at all; resolved role is admin in both cases; a login matching neither the org
       gate nor the admin-Team list is still rejected and logs `"oauth.denied"` naming which of the
-      four `orgs:`-unmatched shapes it is; OAuth not configured, a CSRF state mismatch (at both
-      levels), a raising exchange, and an exchange returning no identity each log `"oauth.denied"`
-      too; a half-configured OAuth deployment warns (and a fully-unset one does not); `_build_state`
+      four `orgs:`-unmatched shapes it is; OAuth not configured, a real CSRF state mismatch, a
+      no-state probe, a CSRF check bypassed with matching fake values, a raising exchange, and an
+      exchange returning no identity each log `"oauth.denied"` at `INFO`; a half-configured OAuth
+      deployment warns (and a fully-unset one does not); `_build_state`
       returns the collected `startup_warnings` matching what was printed; the renamed variable
       parses a multi-Team list;
       a bypassing admin is placed in the `default` org; an existing member's recorded org survives a

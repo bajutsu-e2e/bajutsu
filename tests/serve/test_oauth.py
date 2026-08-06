@@ -98,42 +98,67 @@ def test_oauth_callback_rejects_when_oauth_is_not_configured(
 ) -> None:
     # A half-configured deployment (one of the three BAJUTSU_OAUTH_GITHUB_* vars unset) 404s here
     # for every login -- the same "config is broken and nobody can sign in" class of failure this
-    # item exists to make visible, so it needs a record too.
+    # item exists to make visible, so it needs a record too. `oauth is None` is a static property
+    # of the deployment an anonymous caller can hit at request rate, so this records at INFO, not a
+    # per-request WARNING -- the loud once-per-boot signal lives in `server.startup_warning`.
     state = _state(tmp_path, config=_config_file(tmp_path))
-    with caplog.at_level(logging.WARNING):
+    with caplog.at_level(logging.INFO):
         _payload, status, sid = ops.oauth_callback(
             state, code="ok", state_param="s", state_cookie="s"
         )
     assert status == 404
     assert sid is None
-    assert any(getattr(r, "event", None) == "oauth.denied" for r in caplog.records)
+    record = next(r for r in caplog.records if getattr(r, "event", None) == "oauth.denied")
+    assert record.levelno == logging.INFO
 
 
 def test_oauth_callback_rejects_a_state_mismatch(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
+    # No login is known this early -- a repeated mismatch is the signature of a login-CSRF attempt,
+    # not just an expired cookie, so it still needs its own record. But `state_param`/`state_cookie`
+    # are both caller-supplied (a query value and the caller's own Cookie: header), so nothing here
+    # distinguishes an attack from an expired cookie on any single request -- this records at INFO,
+    # not a per-request WARNING an anonymous caller can trigger at request rate.
     state = _state(tmp_path, oauth=FakeOAuthClient(), config=_config_file(tmp_path))
-    with caplog.at_level(logging.WARNING):
+    with caplog.at_level(logging.INFO):
         _payload, status, sid = ops.oauth_callback(
             state, code="ok", state_param="x", state_cookie="y"
         )
     assert status == 403
     assert sid is None
-    # No login is known this early -- a repeated mismatch is the signature of a login-CSRF
-    # attempt, not just an expired cookie, so it still needs its own record.
-    assert any(getattr(r, "event", None) == "oauth.denied" for r in caplog.records)
+    record = next(r for r in caplog.records if getattr(r, "event", None) == "oauth.denied")
+    assert record.levelno == logging.INFO
 
 
-def test_oauth_callback_rejects_an_anonymous_probe_with_no_state_at_the_info_level(
+def test_oauth_callback_rejects_an_anonymous_probe_with_no_state_at_all(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
     # A callback carrying no state at all (no cookie, no query value) is the cheapest possible
-    # unauthenticated request against this endpoint, not a presented-and-differed mismatch -- it
-    # must not compete at WARNING with the CSRF signal a real mismatch is meant to raise.
+    # unauthenticated request against this endpoint -- also INFO, for the same reason as a real
+    # mismatch above.
     state = _state(tmp_path, oauth=FakeOAuthClient(), config=_config_file(tmp_path))
     with caplog.at_level(logging.INFO):
         _payload, status, sid = ops.oauth_callback(
             state, code="ok", state_param="", state_cookie=""
+        )
+    assert status == 403
+    assert sid is None
+    record = next(r for r in caplog.records if getattr(r, "event", None) == "oauth.denied")
+    assert record.levelno == logging.INFO
+
+
+def test_oauth_callback_bypasses_csrf_with_matching_fake_state_then_records_at_info(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # An attacker who fully controls both the query value and their own Cookie: header can satisfy
+    # `secrets.compare_digest(state_param, state_cookie)` for free by sending the same fake value as
+    # both -- this clears the CSRF check with no real GitHub auth, then fails the exchange (a
+    # garbage `code`) and records under the same INFO-level path as the branches above.
+    state = _state(tmp_path, oauth=FakeOAuthClient(), config=_config_file(tmp_path))
+    with caplog.at_level(logging.INFO):
+        _payload, status, sid = ops.oauth_callback(
+            state, code="bad", state_param="fake", state_cookie="fake"
         )
     assert status == 403
     assert sid is None
@@ -174,14 +199,16 @@ def test_oauth_callback_rejects_when_no_orgs_block_is_configured(tmp_path: Path)
 def test_oauth_callback_rejects_a_failed_exchange(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
+    # Reachable with no real GitHub auth (see the CSRF-bypass test above), so this records at INFO.
     state = _state(tmp_path, oauth=FakeOAuthClient(), config=_config_file(tmp_path))
-    with caplog.at_level(logging.WARNING):
+    with caplog.at_level(logging.INFO):
         _payload, status, sid = ops.oauth_callback(
             state, code="bad", state_param="s", state_cookie="s"
         )
     assert status == 403
     assert sid is None
-    assert any(getattr(r, "event", None) == "oauth.denied" for r in caplog.records)
+    record = next(r for r in caplog.records if getattr(r, "event", None) == "oauth.denied")
+    assert record.levelno == logging.INFO
 
 
 class _RaisingOAuthClient:
@@ -597,14 +624,16 @@ def test_oauth_callback_surfaces_an_exchange_error_as_502(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
     # A raising exchange (network / token parsing / missing dep) is an upstream error, not a 500.
+    # Reachable with no real GitHub auth (see the CSRF-bypass test above), so this records at INFO.
     state = _state(tmp_path, oauth=_RaisingOAuthClient(), config=_config_file(tmp_path))
-    with caplog.at_level(logging.WARNING):
+    with caplog.at_level(logging.INFO):
         _payload, status, sid = ops.oauth_callback(
             state, code="ok", state_param="s", state_cookie="s"
         )
     assert status == 502
     assert sid is None
-    assert any(getattr(r, "event", None) == "oauth.denied" for r in caplog.records)
+    record = next(r for r in caplog.records if getattr(r, "event", None) == "oauth.denied")
+    assert record.levelno == logging.INFO
 
 
 class _FakeResponse:
