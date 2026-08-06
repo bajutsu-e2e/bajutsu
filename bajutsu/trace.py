@@ -186,13 +186,15 @@ def _at(value: Any) -> float:
     return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else 0.0
 
 
-def _video_at(value: Any, video_anchor_s: float) -> float:
+def _video_at(value: Any, *, video_anchor_s: float) -> float:
     """A recorded absolute instant as seconds into the scenario's recording (BE-0348).
 
     The timeline's own copy of the report's `video_seconds` derivation, kept here rather than
     imported so `bajutsu trace <run-dir>` stays free of the report package (which pulls in the
     orchestrator). A run recorded before the anchor was persisted supplies `0.0`, so its
-    already-relative timestamps pass through unchanged.
+    already-relative timestamps pass through unchanged. `video_anchor_s` is keyword-only, matching
+    `video_seconds` (`report/format.py`): both arguments are same-magnitude epoch floats, so a
+    swapped call would type-check and clamp to a silent `0.0` for every row instead of erroring.
     """
     return max(0.0, _at(value) - video_anchor_s)
 
@@ -245,7 +247,7 @@ def _step_event(
         desc += f'   ← "{from_}"'
     if not step.get("ok") and step.get("reason"):
         desc += f"   ✗ {step['reason']}"
-    return _video_at(step.get("started_at"), video_anchor_s), desc
+    return _video_at(step.get("started_at"), video_anchor_s=video_anchor_s), desc
 
 
 def _net_event(exchange: dict[str, Any], video_anchor_s: float) -> tuple[float, str]:
@@ -258,7 +260,7 @@ def _net_event(exchange: dict[str, Any], video_anchor_s: float) -> tuple[float, 
         desc += f"  {dur:.0f}ms"
     if exchange.get("mocked"):
         desc += "  [mock]"
-    return _video_at(exchange.get("startedAt"), video_anchor_s), desc
+    return _video_at(exchange.get("startedAt"), video_anchor_s=video_anchor_s), desc
 
 
 def _provenance_by_scenario(run_dir: Path) -> dict[str, list[str | None]]:
