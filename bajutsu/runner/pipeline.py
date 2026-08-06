@@ -365,8 +365,8 @@ class _ScenarioRunner:
         if run_budget_spent:
             failure = (
                 "backend crashed mid-run and the run-level crash-recovery budget of "
-                f"{self.run_crash_budget.budget:g}s is exhausted (spent recovering across earlier "
-                f"scenarios in this run, {attempt} attempt(s) into this one): {last_crash}"
+                f"{self.run_crash_budget.budget:g}s is exhausted ({attempt} attempt(s) into this "
+                f"scenario; the budget is shared across every scenario in this run): {last_crash}"
             )
         elif budget_spent:
             failure = (
