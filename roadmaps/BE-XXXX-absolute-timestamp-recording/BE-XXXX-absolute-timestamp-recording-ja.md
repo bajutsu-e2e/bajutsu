@@ -41,9 +41,9 @@ recordVideo produced no new bytes in runs/20260806-073350/02-filter-narrows-the-
 within 5.0s; step/network timestamps stay uncorrected for this scenario's video
 ```
 
-ポーリングがタイムアウトすると`true_start`は`None`のままとなり——設計どおり、
-`_resolve_video_start_offset`(`bajutsu/orchestrator/loop.py`)は推測せずに`0.0`へフォールバックし
-ますが——そのシナリオのレポートタイムスタンプは、BE-0346が防ぐはずだった素朴な
+ポーリングがタイムアウトすると`true_start`は`None`のままとなり(設計どおり、
+`_resolve_video_start_offset`(`bajutsu/orchestrator/loop.py`)は推測せずに`0.0`へフォールバック
+します)、そのシナリオのレポートタイムスタンプは、BE-0346が防ぐはずだった素朴な
 `step_start - run_start`というズレへと、静かに退行します。`_VIDEO_START_TIMEOUT`は、この一族の
 タイムアウトの中で唯一、兄弟たちがすでに受けている「環境変数化とCI側の調整」という扱いを受けて
 いないものです。
