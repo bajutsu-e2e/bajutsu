@@ -197,24 +197,32 @@ counts as a violation, and flag a diff that violates it there rather than re-der
 
 - **Bilingual docs** — canonical rule: [`docs/ai-development.md`](../docs/ai-development.md#documentation-style-every-document-both-languages).
 - **Docstring standard (BE-0065)** — canonical rule: [`docs/ai-development.md`](../docs/ai-development.md#code-documentation-comments-docstrings--be-0065).
-- **Japanese prose quality.** Any Japanese the PR adds or edits — `docs/ja/`, roadmap `*-ja.md`, or
-  Japanese in comments — must follow the
+- **Japanese prose quality — raise the floor higher than the other lenses.** Any Japanese the PR
+  adds or edits — `docs/ja/`, roadmap `*-ja.md`, or Japanese in comments — must follow the
   [`japanese-document-writing`](../.claude/skills/japanese-document-writing) skill (mandated by
-  [`CLAUDE.md`](../CLAUDE.md)). Flag a violation with a concrete rewrite, and judge whether the
-  Japanese reads as if a person wrote it, not a machine. Mark such a finding
-  `(non-blocking, prose)`.
-- **English documentation and roadmap prose quality.** Hold the English side to the same bar the
-  bullet above holds the Japanese side to, since the bilingual-docs convention makes them one
-  document in two languages. Any English prose the PR adds or edits in `docs/*.md` or a roadmap
+  [`CLAUDE.md`](../CLAUDE.md)). Flag only a **clear, nameable violation**: wrong register (常体
+  mixed into ですます調), a forced/unnatural translation of a term that should stay untranslated, a
+  coined term, an omission, or a sentence a native reader would actually find confusing or
+  ambiguous. Attach a concrete rewrite. Do **not** flag a sentence that is already grammatical,
+  natural, and clear merely because you'd phrase it slightly differently — a same-quality
+  alternative is not a finding. Mark such a finding `(non-blocking, prose)`.
+- **English documentation and roadmap prose quality — same elevated floor as the bullet above.**
+  Hold the English side to the same bar, since the bilingual-docs convention makes the two
+  languages one document. Any English prose the PR adds or edits in `docs/*.md` or a roadmap
   `BE-NNNN-<slug>.md` must follow the
   [`document-writing`](../.agent-workflows/document-writing/workflow.md) and
-  [`english-document-writing`](../.agent-workflows/english-document-writing/workflow.md) skills —
-  the contribution stated up front, a sentence's most important element at its end, the verb near
-  its subject, the active voice, no filler, and the English-specific mechanics (serial comma,
-  *that* / *which*, dashes, numbers). Flag a violation with a concrete rewrite, never a general
-  "this could read better". Mark such a finding `(non-blocking, prose)`. This lens judges *wording*;
-  the bilingual-docs bullet above judges whether the two languages say the same thing, and the
-  terminology bullet below judges naming drift.
+  [`english-document-writing`](../.agent-workflows/english-document-writing/workflow.md) skills.
+  Flag only a **clear, nameable violation** of one of these skills' named rules — the contribution
+  buried instead of stated up front, a sentence's key element misplaced, the verb stranded far from
+  its subject, passive voice with no reason for it, filler that adds no information, or a broken
+  mechanic (serial comma, *that* / *which*, dashes, numbers) — or a sentence that is actually
+  confusing or ambiguous. Attach a concrete rewrite, never a general "this could read better." Do
+  **not** flag a sentence that already reads clearly and correctly just because a different phrasing
+  would be marginally smoother — that is taste, not a finding, and every prose finding you post costs
+  the author a companion-PR review cycle (BE-0343) even though it is non-blocking, so only spend that
+  cost on a genuine violation. Mark such a finding `(non-blocking, prose)`. This lens judges
+  *wording*; the bilingual-docs bullet above judges whether the two languages say the same thing, and
+  the terminology bullet below judges naming drift.
 - **Roadmap links** — canonical rule: [`docs/ai-development.md`](../docs/ai-development.md#roadmap-items-be-ids-strict).
 - **Comments explain why, not what** ([`CLAUDE.md`](../CLAUDE.md)), at the surrounding density —
   flag added narration.
