@@ -1,14 +1,14 @@
-[English](BE-XXXX-absolute-timestamp-recording.md) · **日本語**
+[English](BE-0348-absolute-timestamp-recording.md) · **日本語**
 
-# BE-XXXX — 動画・ステップ・通信ログのタイムスタンプを絶対時刻(壁時計)で記録する
+# BE-0348 — 動画・ステップ・通信ログのタイムスタンプを絶対時刻(壁時計)で記録する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-absolute-timestamp-recording-ja.md) |
+| 提案 | [BE-0348](BE-0348-absolute-timestamp-recording-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0348") |
 | トピック | 検証とカバレッジ |
 | 関連 | [BE-0346](../BE-0346-video-timing-sync/BE-0346-video-timing-sync-ja.md) |
 <!-- /BE-METADATA -->

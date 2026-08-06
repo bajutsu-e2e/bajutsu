@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-absolute-timestamp-recording-ja.md)
+**English** · [日本語](BE-0348-absolute-timestamp-recording-ja.md)
 
-# BE-XXXX — Record video, step, and network timestamps as absolute wall-clock time
+# BE-0348 — Record video, step, and network timestamps as absolute wall-clock time
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-absolute-timestamp-recording.md) |
+| Proposal | [BE-0348](BE-0348-absolute-timestamp-recording.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0348") |
 | Topic | Verification & coverage |
 | Related | [BE-0346](../BE-0346-video-timing-sync/BE-0346-video-timing-sync.md) |
 <!-- /BE-METADATA -->
