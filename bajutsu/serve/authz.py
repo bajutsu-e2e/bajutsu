@@ -54,6 +54,10 @@ def oauth_callback(
     their resolved org with a Team-derived role, and on success mint a session bound to that login.
     Returns ``(payload, status, session_id | None)``."""
     if state.auth.oauth is None:
+        # A half-configured deployment (one of the three BAJUTSU_OAUTH_GITHUB_* vars unset) 404s
+        # here for every login -- the same "config is broken and nobody can sign in" class of
+        # failure this item exists to make visible, so it gets the same record as the other four.
+        oplog.log_event(_logger, "oauth.denied", "oauth not configured", level=logging.WARNING)
         return {"error": "oauth not configured"}, 404, None
     if not (state_param and state_cookie and secrets.compare_digest(state_param, state_cookie)):
         # Repeated mismatches are the signature of a login-CSRF attempt, not just an expired

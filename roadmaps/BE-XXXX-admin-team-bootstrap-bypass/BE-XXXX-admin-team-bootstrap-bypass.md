@@ -112,14 +112,16 @@ to load, or a real org roster simply doesn't list this login — the same triage
 gives an operator for a bypass admission, and for the same reason: when the config itself fails to
 load, `orgs` collapses to `{}` and *every* non-admin login is denied, so blaming an org roster that
 was never actually read sends an operator to edit `orgs:` when the real fault is the file failing to
-load. `oauth_callback` has four places it can end a sign-in without success, and this item now
-records all four: the other three — a CSRF state mismatch, an exchange that raised, an exchange that
-returned no identity — get the same `"oauth.denied"` event, since the reasoning above applies to them
-just as much (a bare 403/502 a user's "I can't sign in" report can't be correlated against). The CSRF
-branch is also worth its own record on a different ground: repeated state mismatches are the
-signature of a login-CSRF attempt, not just an expired cookie, and were invisible before this item. No
-`login` is known yet at these three earlier points, so their records carry no `actor` field — only the
-later, gate-level denial and every successful sign-in do. `oauth_callback`
+load. `oauth_callback` has five places it can end a sign-in without success, and this item now
+records all five: the other four — OAuth not configured (a half-configured deployment 404s for every
+login, the same "config is broken and nobody can sign in" class of failure this item exists to make
+visible), a CSRF state mismatch, an exchange that raised, an exchange that returned no identity — get
+the same `"oauth.denied"` event, since the reasoning above applies to them just as much (a bare
+404/403/502 a user's "I can't sign in" report can't be correlated against). The CSRF branch is also
+worth its own record on a different ground: repeated state mismatches are the signature of a
+login-CSRF attempt, not just an expired cookie, and were invisible before this item. No `login` is
+known yet at these four earlier points, so their records carry no `actor` field — only the later,
+gate-level denial and every successful sign-in do. `oauth_callback`
 now records every successful sign-in through `oplog.log_event`
 ([`bajutsu/serve/oplog.py`](../../bajutsu/serve/oplog.py)), under the already-reserved `"oauth.login"`
 event and the login itself as the `actor` correlation field — not a bare logging call, so the record
@@ -330,9 +332,9 @@ mapping.
       successful sign-in through `oplog.log_event` (the reserved `"oauth.login"` event, the login as
       the `actor` field, and a `bypass` field `True` only for a bypass-only admission), so the one
       sign-in path `orgs:` did not authorize still leaves a record an operator's `event`-keyed alert
-      can see. Record every one of the four ways this function ends a sign-in without success under a
-      separate `"oauth.denied"` event: a CSRF state mismatch, an exchange that raised or returned no
-      identity, and a login clearing neither the org gate nor the bypass — the last naming which of
+      can see. Record every one of the five ways this function ends a sign-in without success under a
+      separate `"oauth.denied"` event: OAuth not configured, a CSRF state mismatch, an exchange that
+      raised or returned no identity, and a login clearing neither the org gate nor the bypass — the last naming which of
       two shapes left `orgs:` unmatched (a config-load failure vs. a real, unmatching roster), so a
       broken or missing `orgs:` block with no matching admin Team is recoverable rather than a bare
       403/502 with nothing to correlate a user's report against. When persisting the identity, keep
@@ -347,8 +349,8 @@ mapping.
 - [x] Tests: sign-in accepted for an admin-Team member with no matching `orgs:` entry and with no
       `orgs:` block at all; resolved role is admin in both cases; a login matching neither the org
       gate nor the admin-Team list is still rejected and logs `"oauth.denied"` naming the config-load
-      shape distinctly from the unmatched-roster shape; a CSRF state mismatch, a raising exchange, and
-      an exchange returning no identity each log `"oauth.denied"` too; the renamed variable
+      shape distinctly from the unmatched-roster shape; OAuth not configured, a CSRF state mismatch,
+      a raising exchange, and an exchange returning no identity each log `"oauth.denied"` too; the renamed variable
       parses a multi-Team list;
       a bypassing admin is placed in the `default` org; an existing member's recorded org survives a
       failure to load the config itself, but a genuinely revoked member re-resolves to `default` on

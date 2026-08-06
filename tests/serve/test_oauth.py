@@ -93,6 +93,22 @@ def test_oauth_login_returns_redirect_carrying_the_state(tmp_path: Path) -> None
     assert csrf and csrf in payload["redirect"]  # the CSRF state rides in the authorize URL
 
 
+def test_oauth_callback_rejects_when_oauth_is_not_configured(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # A half-configured deployment (one of the three BAJUTSU_OAUTH_GITHUB_* vars unset) 404s here
+    # for every login -- the same "config is broken and nobody can sign in" class of failure this
+    # item exists to make visible, so it needs a record too.
+    state = _state(tmp_path, config=_config_file(tmp_path))
+    with caplog.at_level(logging.WARNING):
+        _payload, status, sid = ops.oauth_callback(
+            state, code="ok", state_param="s", state_cookie="s"
+        )
+    assert status == 404
+    assert sid is None
+    assert any(getattr(r, "event", None) == "oauth.denied" for r in caplog.records)
+
+
 def test_oauth_callback_rejects_a_state_mismatch(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
