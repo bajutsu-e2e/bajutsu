@@ -1,14 +1,14 @@
-[English](BE-XXXX-actuation-record.md) · **日本語**
+[English](BE-0345-actuation-record.md) · **日本語**
 
-# BE-XXXX — ステップが実際に行った操作の座標とジェスチャの形状を記録するようにする
+# BE-0345 — ステップが実際に行った操作の座標とジェスチャの形状を記録するようにする
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-actuation-record-ja.md) |
+| 提案 | [BE-0345](BE-0345-actuation-record-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0345") |
 | 実装 PR | [#1511](https://github.com/bajutsu-e2e/bajutsu/pull/1511) |
 | トピック | 検証とカバレッジ |
 <!-- /BE-METADATA -->

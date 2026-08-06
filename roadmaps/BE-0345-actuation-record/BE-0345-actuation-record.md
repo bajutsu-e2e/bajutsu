@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-actuation-record-ja.md)
+**English** · [日本語](BE-0345-actuation-record-ja.md)
 
-# BE-XXXX — Record the concrete coordinate and gesture geometry each step actually actuated
+# BE-0345 — Record the concrete coordinate and gesture geometry each step actually actuated
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-actuation-record.md) |
+| Proposal | [BE-0345](BE-0345-actuation-record.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0345") |
 | Implementing PR | [#1511](https://github.com/bajutsu-e2e/bajutsu/pull/1511) |
 | Topic | Verification & coverage |
 <!-- /BE-METADATA -->
