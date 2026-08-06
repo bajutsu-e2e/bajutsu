@@ -155,8 +155,9 @@ alternative narrows how often the churn happens without bounding it, so the live
 run unbounded in the worst case.
 
 **Remove the "Claude review" GitHub Actions workflow entirely, once the local pass is trusted.**
-Rejected. A fork pull request is never checked out with review credentials by design, because a plain
-`pull_request` event from a fork carries no secrets. A commit made outside these Claude Code skills —
+Rejected. A fork pull request's `pull_request` run carries no secrets by design, so its only review is
+the `@claude review` pass a maintainer requests on demand — the very path that would disappear with
+the workflow. A commit made outside these Claude Code skills —
 a human pushing directly, for instance — never goes through the local self-review pass either. Both
 cases would lose their only review entirely, rather than gaining a less frequent one.
 
