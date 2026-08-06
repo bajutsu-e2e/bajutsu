@@ -39,6 +39,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import fault_injection
+import ondevice_evidence
 import pytest
 
 from bajutsu import adb
@@ -101,6 +102,12 @@ def _eff() -> Effective:
 def _adb_driver(_eff: Effective) -> base.Driver:
     driver, _readiness = launch_driver(SERIAL, _eff, "adb", extra_env={"SHOWCASE_UITEST": "1"})
     return driver
+
+
+@pytest.fixture(autouse=True)
+def _evidence(request: pytest.FixtureRequest) -> Iterator[None]:
+    """Video + deviceLog for this case, kept only on failure (the CI job otherwise has neither)."""
+    yield from ondevice_evidence.capture(SERIAL, "fault-injection-adb", request)
 
 
 @pytest.fixture
