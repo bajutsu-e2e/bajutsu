@@ -11,46 +11,65 @@ from bajutsu.orchestrator.actions.handlers._gesture_math import _scroll_gesture
 from bajutsu.orchestrator.actions.handlers.scroll import scroll_until_tappable
 from bajutsu.scenario import Step
 
-# The recovery scroll's step bound: small, well under `scroll`'s own default of 15. This is a safety
-# net for the common case (a transient overlay, a sticky header/footer settling out of the way) —
-# not a search. An author who already knows a target needs scrolling in a specific direction,
-# through a specific container, still writes the explicit `scroll` action; this net only insures
-# against the obstruction the author did not expect.
+# The recovery scroll's step bound: small, well under `scroll`'s own default of 15, per direction
+# tried below. This is a safety net for the common case (a transient overlay, a sticky header/footer
+# settling out of the way) — not a search. An author who already knows a target needs scrolling in a
+# specific direction, through a specific container, still writes the explicit `scroll` action; this
+# net only insures against the obstruction the author did not expect.
 _TAP_RECOVERY_MAX_SCROLLS = 3
+
+# Tried in this order: `down` first, since a bottom-anchored obstruction (a toast, a snackbar, a
+# sticky footer) is the more common case, then `up` as a fallback for a top-anchored one (a sticky
+# header) that `down` alone cannot clear — `down`'s content motion moves the target *toward* the top
+# of the screen, so it drives a target stuck under a header further underneath it, never out.
+_TAP_RECOVERY_DIRECTIONS = ("down", "up")
 
 
 def _tap_with_recovery(
     actuate: Callable[[], None], driver: base.Driver, sel: base.Selector
 ) -> None:
-    """Call `actuate()`; on `ElementNotTappable`, try one bounded scroll, then retry once.
+    """Call `actuate()`; on `ElementNotTappable`, try a bounded scroll in each direction, then retry once.
 
     `scroll_until_tappable` (not `scroll_to_target`) is the reason this recovery does anything at
     all: an occluded target's frame center is already inside the viewport — that is exactly why it
     is occluded rather than off-screen — so a stop condition of mere on-screen presence would return
-    immediately without a single scroll step. Direction is fixed `down`, matching the bound above:
-    this insures against an unexpected obstruction, it does not search for one in an author-chosen
-    direction.
+    immediately without a single scroll step.
 
-    Any failure along the recovery path — the scroll bound exhausted while still not tappable, or
-    the retried `actuate()` finding the target still not tappable — surfaces as a single
+    A single fixed direction cannot clear every obstruction: `down` (content moving toward the top
+    of the screen) clears a bottom-anchored cover but drives a target under a top-anchored one
+    further underneath it. `_TAP_RECOVERY_DIRECTIONS` tries `down`, then — only once `down` is
+    exhausted without success — `up`, each bounded independently by `_TAP_RECOVERY_MAX_SCROLLS`; the
+    first direction to make `sel` tappable wins and the actuation is retried immediately. This is
+    still a bounded safety net, not a search in an author-chosen direction: an author who already
+    knows a target needs scrolling through a specific container still writes the explicit `scroll`
+    action.
+
+    Any failure along the recovery path — both directions' scroll bounds exhausted while still not
+    tappable, or the retried `actuate()` finding the target still not tappable — surfaces as a single
     `ElementNotTappable`. The first attempt's own exception (which names what covered the target,
     via `base.raise_if_covered`) is interpolated into that message rather than dropped, so the
-    fact a CI log needs to avoid reproducing the screen by hand survives; the scroll failure that
-    triggered the recovery is chained (`raise … from`) alongside it. It never falls back to the
-    misleading `ElementNotFound` a scroll timeout would otherwise raise.
+    fact a CI log needs to avoid reproducing the screen by hand survives; the last direction's scroll
+    failure that triggered the recovery is chained (`raise … from`) alongside it. It never falls back
+    to the misleading `ElementNotFound` a scroll timeout would otherwise raise.
     """
     try:
         actuate()
         return
     except base.ElementNotTappable as obstruction_exc:
         obstruction = obstruction_exc
-    try:
-        scroll_until_tappable(driver, sel, "down", None, _TAP_RECOVERY_MAX_SCROLLS)
-    except base.ElementNotFound as exc:
-        raise base.ElementNotTappable(
-            f"still not tappable after a bounded scroll attempt: {obstruction}"
-        ) from exc
-    actuate()
+    exhausted: base.ElementNotFound | None = None
+    for direction in _TAP_RECOVERY_DIRECTIONS:
+        try:
+            scroll_until_tappable(driver, sel, direction, None, _TAP_RECOVERY_MAX_SCROLLS)
+        except base.ElementNotFound as exc:
+            exhausted = exc
+            continue
+        actuate()
+        return
+    assert exhausted is not None
+    raise base.ElementNotTappable(
+        f"still not tappable after a bounded scroll attempt: {obstruction}"
+    ) from exhausted
 
 
 def _require_multi_touch(driver: base.Driver, action: str) -> None:

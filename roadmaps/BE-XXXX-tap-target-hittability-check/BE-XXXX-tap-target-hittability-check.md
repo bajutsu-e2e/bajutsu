@@ -243,18 +243,24 @@ unit.
 
 The wiring itself is a small wrapper in `gestures.py`, `_tap_with_recovery(actuate, driver, sel)`,
 that calls the specific `driver.tap(sel)` / `driver.double_tap(sel)` / `driver.long_press(sel,
-duration)`, and on `base.ElementNotTappable` calls `scroll_until_tappable(driver, sel, "down", None,
-_TAP_RECOVERY_MAX_SCROLLS)` once, then retries the actuation exactly once. Any failure along that
-path collapses to a single `base.ElementNotTappable`: the first attempt's own exception — which
-names what covered the target, via `base.raise_if_covered` — is interpolated into the final
-message rather than dropped, and the scroll failure that triggered the recovery is chained
+duration)`, and on `base.ElementNotTappable` calls `scroll_until_tappable(driver, sel, direction,
+None, _TAP_RECOVERY_MAX_SCROLLS)` once per direction in `_TAP_RECOVERY_DIRECTIONS = ("down", "up")`,
+stopping at the first direction that makes `sel` tappable, then retries the actuation exactly once.
+A single fixed direction cannot cover both common obstructions: `down`'s content motion moves the
+target toward the top of the screen, clearing a bottom-anchored cover (a toast, a snackbar, a sticky
+footer) but driving a target stuck under a top-anchored one (a sticky header) further underneath it,
+never out. `down` is tried first, since the bottom-anchored case is the more common one; `up` is
+tried only once `down`'s own bound is exhausted without success. Any failure along that path
+collapses to a single `base.ElementNotTappable`: the first attempt's own exception — which names
+what covered the target, via `base.raise_if_covered` — is interpolated into the final message
+rather than dropped, and the last direction's scroll failure that triggered the recovery is chained
 (`raise ... from exc`) alongside it, so neither fact is lost. `_do_tap`, `_do_double_tap`,
 `_do_long_press`, and the
 focus-tap call sites inside `_do_type`, `_do_clear`, `_do_delete`, and `_do_select` all switch their
 bare `driver.tap(sel)` call to this one shared wrapper, rather than seven copies of the same
-try/except. `_TAP_RECOVERY_MAX_SCROLLS` stays small, well under `scroll`'s own default of 15, and
-the direction stays fixed at `"down"`: this is a safety net for the common case — a transient overlay,
-a sticky header or footer — not a search. An author who already knows a target needs scrolling in a
+try/except. `_TAP_RECOVERY_MAX_SCROLLS` stays small per direction, well under `scroll`'s own default
+of 15 even doubled across both: this is a safety net for the common case — a transient overlay, a
+sticky header or footer — not a search. An author who already knows a target needs scrolling in a
 specific direction, through a specific container, still writes the explicit `scroll` action; this net
 insures only against the case the author did not expect.
 
@@ -450,6 +456,12 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
   this proposal.
 - All ten units above landed together on the branch that carries this proposal. `make check` is
   green; see the `Implementing PR` row above.
+- Review found that a `down`-only recovery direction cannot clear a top-anchored obstruction (a
+  sticky header): `down`'s content motion moves the target toward the top of the screen, driving it
+  further underneath a header rather than out. Fixed by trying `up` as a bounded fallback once
+  `down` is exhausted (`_TAP_RECOVERY_DIRECTIONS = ("down", "up")` in `gestures.py`), with a new
+  `FakeDriver` regression case (`test_tap_recovery_falls_back_to_up_when_down_cannot_clear_a_top_anchored_cover`,
+  `tests/orchestrator/test_tap_recovery.py`) pinning it.
 
 ## References
 
